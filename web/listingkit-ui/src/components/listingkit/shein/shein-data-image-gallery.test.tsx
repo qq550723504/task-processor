@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { vi } from "vitest";
 
 import { SheinDataImageGallery } from "@/components/listingkit/shein/shein-data-image-gallery";
@@ -57,5 +57,168 @@ describe("SheinDataImageGallery", () => {
 
     expect(screen.getAllByText("默认使用首图")).toHaveLength(2);
     expect(screen.getAllByText("未设置")).toHaveLength(2);
+  });
+
+  it("lets the operator add a source image without selecting it by default", () => {
+    const onSaveImageControls = vi.fn();
+    render(
+      <SheinDataImageGallery
+        images={[
+          {
+            id: "generated-main",
+            label: "生成主图",
+            url: "https://cdn.example.com/generated-main.jpg",
+            origin: "generated",
+          },
+        ]}
+        availableImages={[
+          {
+            id: "source-1",
+            label: "来源图 1",
+            url: "https://1688.example.com/source-1.jpg",
+            origin: "source",
+            requiresReview: true,
+          },
+        ]}
+        onSelect={vi.fn()}
+        onSaveImageControls={onSaveImageControls}
+      />,
+    );
+
+    expect(screen.getByText("最终提交 1 / 1 张")).toBeInTheDocument();
+    expect(screen.getByText("来源图 1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "加入提交图片" }));
+
+    expect(screen.getByText("最终提交 2 / 2 张")).toBeInTheDocument();
+    expect(screen.getByText("IP 风险")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "保存图片设置" }));
+    expect(onSaveImageControls).toHaveBeenCalledWith(
+      expect.objectContaining({
+        final_image_order: [
+          "https://cdn.example.com/generated-main.jpg",
+          "https://1688.example.com/source-1.jpg",
+        ],
+      }),
+    );
+  });
+
+  it("returns an added source image to the available list when removed", () => {
+    render(
+      <SheinDataImageGallery
+        images={[
+          {
+            id: "generated-main",
+            label: "生成主图",
+            url: "https://cdn.example.com/generated-main.jpg",
+          },
+        ]}
+        availableImages={[
+          {
+            id: "source-1",
+            label: "来源图 1",
+            url: "https://1688.example.com/source-1.jpg",
+            origin: "source",
+            requiresReview: true,
+          },
+        ]}
+        onSelect={vi.fn()}
+        onSaveImageControls={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "加入提交图片" }));
+    const removeButtons = screen.getAllByRole("button", { name: "从提交中移除" });
+    fireEvent.click(removeButtons[removeButtons.length - 1]);
+
+    expect(screen.getByRole("button", { name: "加入提交图片" })).toBeInTheDocument();
+    expect(screen.queryByText("IP 风险")).not.toBeInTheDocument();
+  });
+
+  it("clears a source deletion when the image is added again", () => {
+    const onSaveImageControls = vi.fn();
+    render(
+      <SheinDataImageGallery
+        images={[
+          {
+            id: "generated-main",
+            label: "生成主图",
+            url: "https://cdn.example.com/generated-main.jpg",
+          },
+        ]}
+        availableImages={[
+          {
+            id: "source-1",
+            label: "来源图 1",
+            url: "https://1688.example.com/source-1.jpg",
+            origin: "source",
+            requiresReview: true,
+          },
+        ]}
+        onSelect={vi.fn()}
+        onSaveImageControls={onSaveImageControls}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "加入提交图片" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "从提交中移除" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "加入提交图片" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存图片设置" }));
+
+    expect(onSaveImageControls).toHaveBeenCalledWith(
+      expect.objectContaining({
+        final_image_order: [
+          "https://cdn.example.com/generated-main.jpg",
+          "https://1688.example.com/source-1.jpg",
+        ],
+        deleted_image_urls: [],
+      }),
+    );
+  });
+
+  it("keeps an added source image in the working order after reordering", () => {
+    const onSaveImageControls = vi.fn();
+    render(
+      <SheinDataImageGallery
+        images={[
+          {
+            id: "generated-main",
+            label: "生成主图",
+            url: "https://cdn.example.com/generated-main.jpg",
+          },
+          {
+            id: "generated-gallery",
+            label: "生成图库图",
+            url: "https://cdn.example.com/generated-gallery.jpg",
+          },
+        ]}
+        availableImages={[
+          {
+            id: "source-1",
+            label: "来源图 1",
+            url: "https://1688.example.com/source-1.jpg",
+            origin: "source",
+            requiresReview: true,
+          },
+        ]}
+        onSelect={vi.fn()}
+        onSaveImageControls={onSaveImageControls}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "下移" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "加入提交图片" }));
+
+    expect(screen.getByText("最终提交 3 / 3 张")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "保存图片设置" }));
+    expect(onSaveImageControls).toHaveBeenCalledWith(
+      expect.objectContaining({
+        final_image_order: [
+          "https://cdn.example.com/generated-gallery.jpg",
+          "https://cdn.example.com/generated-main.jpg",
+          "https://1688.example.com/source-1.jpg",
+        ],
+      }),
+    );
   });
 });

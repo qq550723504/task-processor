@@ -40,6 +40,7 @@ export function buildSheinWorkspaceViewProps({
   selectedPlatform,
   focusedPreview,
   sheinImages,
+  sheinAvailableImages,
   sheinMockupImages,
   sheinVariantCount,
   sheinActions,
@@ -57,6 +58,7 @@ export function buildSheinWorkspaceViewProps({
   selectedPlatform?: string;
   focusedPreview?: PreviewSlot;
   sheinImages: SheinPreviewImage[];
+  sheinAvailableImages: SheinPreviewImage[];
   sheinMockupImages: SheinPreviewImage[];
   sheinVariantCount?: number;
   sheinActions: SheinWorkspaceActions;
@@ -89,6 +91,7 @@ export function buildSheinWorkspaceViewProps({
   const canSubmit = shein?.submit_readiness?.ready === true;
   const imageGalleryProps: SheinImageGalleryProps = {
     images: sheinImages,
+    availableImages: sheinAvailableImages,
     mockupImages: sheinMockupImages,
     finalImages: shein?.final_review?.images,
     variantCount: sheinVariantCount,

@@ -47,7 +47,7 @@ func TestSheinPreviewProjectionBoundary(t *testing.T) {
 		}
 		assertSourceContainsAll(t, source, []string{
 			"final.SKUs = sheinworkspace.BuildFinalReviewSKUs(pkg.DraftPayload)",
-			"final.Images = sheinworkspace.BuildFinalReviewImages(pkg.DraftPayload, pkg.FinalSubmissionDraft, pkg.PreviewPayload)",
+			"final.Images = sheinworkspace.BuildFinalReviewImages(pkg.DraftPayload, pkg.FinalSubmissionDraft, pkg.PreviewPayload, offeredSourceImageURLs)",
 		})
 		if !strings.Contains(string(fileSource), `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`) {
 			t.Fatal("preview_builder_shein_final_review.go should call marketplace SHEIN workspace directly")

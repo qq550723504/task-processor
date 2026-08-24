@@ -125,6 +125,7 @@ export function useWorkspaceData({
       ? workspacePlatformProjection.projection
       : undefined;
   const sheinImages = sheinWorkspaceProjection?.images ?? [];
+  const sheinAvailableImages = sheinWorkspaceProjection?.availableImages ?? [];
   const sheinMockupImages = sheinWorkspaceProjection?.mockupImages ?? [];
   const sheinVariantCount =
     sheinWorkspaceProjection?.variantCount ?? preview.data?.overview?.variant_count;
@@ -185,6 +186,7 @@ export function useWorkspaceData({
     resolvedActionSummary: effectiveResolvedActionSummary,
     previewSuggestion,
     sheinImages,
+    sheinAvailableImages,
     sheinMockupImages,
     sheinVariantCount,
     sheinPreviewPayload,

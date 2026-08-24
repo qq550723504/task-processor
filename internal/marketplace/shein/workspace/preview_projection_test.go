@@ -70,7 +70,7 @@ func TestBuildFinalReviewImagesDeduplicatesAndMarksSizeMap(t *testing.T) {
 		},
 	}
 
-	images := BuildFinalReviewImages(draft, &sheinpub.FinalDraft{MainImageURL: mainImage}, product)
+	images := BuildFinalReviewImages(draft, &sheinpub.FinalDraft{MainImageURL: mainImage}, product, nil)
 
 	if len(images) != 2 {
 		t.Fatalf("len(images) = %d, want 2 (%+v)", len(images), images)
@@ -123,7 +123,7 @@ func TestBuildFinalReviewImagesIncludesPreviewSKCDetailImages(t *testing.T) {
 		},
 	}
 
-	images := BuildFinalReviewImages(draft, nil, product)
+	images := BuildFinalReviewImages(draft, nil, product, nil)
 
 	if len(images) != 4 {
 		t.Fatalf("len(images) = %d, want 4 (%+v)", len(images), images)
@@ -133,5 +133,56 @@ func TestBuildFinalReviewImagesIncludesPreviewSKCDetailImages(t *testing.T) {
 	}
 	if images[3].URL != secondDetail || images[3].Role != "gallery" {
 		t.Fatalf("second skc detail = %+v, want gallery role", images[3])
+	}
+}
+
+func TestBuildFinalReviewImagesKeepsUnselectedSourceImagesAvailable(t *testing.T) {
+	t.Parallel()
+
+	mainImage := "https://cdn.example.com/generated-main.jpg"
+	sourceOne := "https://1688.example.com/source-1.jpg"
+	sourceTwo := "https://1688.example.com/source-2.jpg"
+	draft := &sheinpub.RequestDraft{
+		ImageInfo: &sheinpub.ImageDraft{
+			MainImage: mainImage,
+			Source:    []string{sourceOne, sourceTwo},
+		},
+	}
+
+	images := BuildFinalReviewImages(draft, nil, nil, nil)
+
+	if len(images) != 3 {
+		t.Fatalf("len(images) = %d, want 3 (%+v)", len(images), images)
+	}
+	if !images[0].Final || !images[0].Selected || images[0].Origin != "generated" {
+		t.Fatalf("generated image = %+v, want selected generated image", images[0])
+	}
+	for index, want := range []string{sourceOne, sourceTwo} {
+		image := images[index+1]
+		if image.URL != want || image.Final || image.Selected || image.Origin != "source" || !image.RequiresReview {
+			t.Fatalf("source image %d = %+v, want unselected source image", index, image)
+		}
+	}
+}
+
+func TestBuildFinalReviewImagesPreservesOfferedSourceImageProvenance(t *testing.T) {
+	t.Parallel()
+
+	mainImage := "https://cdn.example.com/generated-main.jpg"
+	sourceImage := "https://1688.example.com/offered-source.jpg"
+	draft := &sheinpub.RequestDraft{
+		ImageInfo: &sheinpub.ImageDraft{
+			MainImage: mainImage,
+			Gallery:   []string{sourceImage},
+		},
+	}
+
+	images := BuildFinalReviewImages(draft, nil, nil, []string{sourceImage})
+
+	if len(images) != 2 {
+		t.Fatalf("len(images) = %d, want 2 (%+v)", len(images), images)
+	}
+	if images[1].URL != sourceImage || images[1].Origin != "source" || !images[1].RequiresReview {
+		t.Fatalf("offered source image = %+v, want source provenance", images[1])
 	}
 }
