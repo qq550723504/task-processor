@@ -126,11 +126,12 @@ async function fetchValidatedImage(url: URL) {
 
     let response: Response;
     try {
-      response = await fetch(current.toString(), {
-        headers: REQUEST_HEADERS,
-        cache: "no-store",
-        redirect: "manual",
-      });
+    response = await fetch(current.toString(), {
+      headers: REQUEST_HEADERS,
+      cache: "no-store",
+      redirect: "manual",
+      referrerPolicy: "no-referrer",
+    });
     } catch (error) {
       const message = error instanceof Error ? error.message : "image fetch failed";
       return { error: `fetch_failed:${message}`, response: null };
