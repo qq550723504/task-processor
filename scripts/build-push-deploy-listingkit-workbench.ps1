@@ -31,6 +31,8 @@ $ProductSchemaMigrationManifest = "deployments/kubernetes/listingkit-workbench/j
 $ListingKitSchemaMigrationManifest = "deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml"
 $ApiDeploymentManifest = "deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml"
 $UiDeploymentManifest = "deployments/kubernetes/listingkit-workbench/base/listingkit-ui-deployment.yaml"
+$ProductionNamespace = "task-processor"
+$ProductionIngressManifest = "deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml"
 
 if ($PSBoundParameters.ContainsKey("Tag") -and [string]::IsNullOrWhiteSpace($Tag)) {
     throw "ListingKit release requires a non-empty immutable API image tag"
@@ -211,8 +213,18 @@ if (-not $SkipApply) {
     }
 
     Invoke-Step "[11/11] Waiting for rollouts..." {
+        kubectl -n $Namespace rollout restart deployment/product-listing-api
+        if ($LASTEXITCODE -ne 0) { throw "product-listing-api restart failed" }
+
         kubectl -n $Namespace rollout status deployment/product-listing-api --timeout=5m
         if ($LASTEXITCODE -ne 0) { throw "product-listing-api rollout failed" }
+
+        if ($Namespace -eq $ProductionNamespace) {
+            kubectl -n $Namespace apply -f $ProductionIngressManifest
+            if ($LASTEXITCODE -ne 0) { throw "production ListingKit SMS webhook ingress apply failed" }
+        } else {
+            Write-Host "Skipped production ListingKit SMS webhook ingress for non-production namespace $Namespace." -ForegroundColor Yellow
+        }
 
         kubectl -n $Namespace rollout status deployment/listingkit-ui --timeout=5m
         if ($LASTEXITCODE -ne 0) { throw "listingkit-ui rollout failed" }
