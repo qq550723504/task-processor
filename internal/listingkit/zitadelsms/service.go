@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -189,18 +190,32 @@ func NewTencentSender(secretID, secretKey string) (Sender, error) {
 	if strings.TrimSpace(secretID) == "" || strings.TrimSpace(secretKey) == "" {
 		return nil, ErrInvalidConfiguration
 	}
-	client, err := sms.NewClient(common.NewCredential(secretID, secretKey), tencentSMSRegion, profile.NewClientProfile())
-	if err != nil {
+	clientFactory := func(ctx context.Context) (*sms.Client, error) {
+		client, err := sms.NewClient(common.NewCredential(secretID, secretKey), tencentSMSRegion, profile.NewClientProfile())
+		if err != nil {
+			return nil, err
+		}
+		client.WithHttpTransport(contextRoundTripper{ctx: ctx, base: http.DefaultTransport})
+		return client, nil
+	}
+	if _, err := clientFactory(context.Background()); err != nil {
 		return nil, ErrInvalidConfiguration
 	}
-	return &tencentSender{client: client}, nil
+	return &tencentSender{clientFactory: clientFactory}, nil
 }
 
 type tencentSender struct {
-	client *sms.Client
+	clientFactory func(context.Context) (*sms.Client, error)
 }
 
-func (s *tencentSender) Send(_ context.Context, message Message) error {
+func (s *tencentSender) Send(ctx context.Context, message Message) error {
+	if s == nil || s.clientFactory == nil {
+		return ErrDeliveryFailed
+	}
+	client, err := s.clientFactory(ctx)
+	if err != nil {
+		return ErrDeliveryFailed
+	}
 	request := sms.NewSendSmsRequest()
 	request.PhoneNumberSet = []*string{common.StringPtr(message.Phone)}
 	request.TemplateID = common.StringPtr(message.TemplateID)
@@ -208,10 +223,25 @@ func (s *tencentSender) Send(_ context.Context, message Message) error {
 	request.Sign = common.StringPtr(message.SignName)
 	request.TemplateParamSet = common.StringPtrs(message.Params)
 
-	response, err := s.client.SendSms(request)
+	response, err := client.SendSms(request)
 	if err != nil || response == nil || response.Response == nil || len(response.Response.SendStatusSet) != 1 ||
 		response.Response.SendStatusSet[0] == nil || response.Response.SendStatusSet[0].Code == nil || *response.Response.SendStatusSet[0].Code != "Ok" {
 		return ErrDeliveryFailed
 	}
 	return nil
+}
+
+type contextRoundTripper struct {
+	ctx  context.Context
+	base http.RoundTripper
+}
+
+func (t contextRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	if t.ctx != nil {
+		request = request.WithContext(t.ctx)
+	}
+	if t.base == nil {
+		t.base = http.DefaultTransport
+	}
+	return t.base.RoundTrip(request)
 }

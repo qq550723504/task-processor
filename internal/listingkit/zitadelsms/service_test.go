@@ -8,11 +8,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
+	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
+	sms "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms/v20190711"
 )
 
 type senderStub struct {
@@ -106,6 +110,55 @@ func TestDeliverRedactsTencentFailure(t *testing.T) {
 	require.NotContains(t, err.Error(), "123456")
 }
 
+func TestTencentSenderPropagatesContextCancellationToSDKRequest(t *testing.T) {
+	clientProfile := profile.NewClientProfile()
+	clientProfile.HttpProfile.Endpoint = "sms.test"
+	clientProfile.HttpProfile.Scheme = "http"
+	client, err := sms.NewClient(common.NewCredential("secret-id", "secret-key"), tencentSMSRegion, clientProfile)
+	require.NoError(t, err)
+
+	started := make(chan struct{})
+	var observedContext context.Context
+	transport := smsRoundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		observedContext = request.Context()
+		close(started)
+		select {
+		case <-request.Context().Done():
+			return nil, request.Context().Err()
+		case <-time.After(250 * time.Millisecond):
+			return nil, errors.New("request context was not propagated")
+		}
+	})
+
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), smsContextProbeKey{}, "propagated"))
+	defer cancel()
+	sender := &tencentSender{clientFactory: func(ctx context.Context) (*sms.Client, error) {
+		client.WithHttpTransport(contextRoundTripper{ctx: ctx, base: transport})
+		return client, nil
+	}}
+	done := make(chan error, 1)
+	go func() {
+		done <- sender.Send(ctx, Message{
+			Phone:      "+8613800138000",
+			TemplateID: "template-id",
+			SignName:   "sign-name",
+			AppID:      "app-id",
+			Params:     []string{"123456"},
+		})
+	}()
+
+	select {
+	case <-started:
+		cancel()
+	case <-time.After(time.Second):
+		t.Fatal("Tencent SDK request did not start")
+	}
+
+	require.ErrorIs(t, <-done, ErrDeliveryFailed)
+	require.Equal(t, "propagated", observedContext.Value(smsContextProbeKey{}))
+	require.ErrorIs(t, observedContext.Err(), context.Canceled)
+}
+
 func TestNewServiceRejectsIncompleteConfiguration(t *testing.T) {
 	_, err := NewService(Config{}, &senderStub{})
 	require.ErrorIs(t, err, ErrInvalidConfiguration)
@@ -130,6 +183,14 @@ func newTestSMSService(t *testing.T, sender Sender) *Service {
 	}, sender)
 	require.NoError(t, err)
 	return service
+}
+
+type smsRoundTripperFunc func(*http.Request) (*http.Response, error)
+
+type smsContextProbeKey struct{}
+
+func (f smsRoundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }
 
 func validZitadelSMSPayload(t *testing.T, phone, code, eventType string) []byte {
