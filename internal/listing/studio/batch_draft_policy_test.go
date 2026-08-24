@@ -14,6 +14,26 @@ func TestNormalizeBatchDesignTypePreservesExplicitValue(t *testing.T) {
 	}
 }
 
+func TestBuildSelectionKeyUsesStableBatchSelectionFields(t *testing.T) {
+	got := BuildSelectionKey(SelectionKeyInput{
+		ProductID:        124110,
+		ParentProductID:  124100,
+		VariantID:        124200,
+		PrototypeGroupID: 18203,
+		LayerID:          " layer-2 ",
+		PrintableWidth:   1200,
+		PrintableHeight:  900,
+		SelectedVariantIDs: []int64{
+			124200,
+			124201,
+		},
+	})
+
+	if want := "124110:124100:124200:18203:layer-2:1200:900:124200,124201"; got != want {
+		t.Fatalf("BuildSelectionKey() = %q, want %q", got, want)
+	}
+}
+
 func TestShouldDropCreateGenerationJobsOnlyForCreate(t *testing.T) {
 	if !ShouldDropCreateGenerationJobs(true, 1) {
 		t.Fatal("ShouldDropCreateGenerationJobs(create, 1) = false, want true")
