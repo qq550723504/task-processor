@@ -829,3 +829,9 @@ secret values expected to be supplied by runtime configuration. For ListingKit
 auth, use `listingkit.zitadel.*` in YAML or the bound env vars above; the
 middleware no longer reads process env directly.
 
+ZITADEL SMS OTP staging acceptance: see
+`docs/operations/listingkit-zitadel-sms-otp-acceptance.md`. The webhook
+allowlist covers `user.human.phone.code.added`,
+`user.human.initialization.code.added`, `user.human.mfa.otp.sms.code.added`,
+and `session.otp.sms.challenged`; near-match events fail closed.
+
