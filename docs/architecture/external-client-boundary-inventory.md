@@ -178,6 +178,7 @@ Current direct dependency hotspots are:
   - `internal/app/runtime/listing` management retirement seams are guarded by
     `TestAppRuntimeListingRetiredManagementImportsStayBlocked`
   - `internal/app/taskstatus` management import retirement is guarded by
+    `depguard: app_taskstatus_legacy_management` and
     `TestAppTaskStatusRetiredManagementImportsStayBlocked`
 - `internal/platformtask`
   - current platform task helpers still import `management` in product sync,

@@ -250,6 +250,16 @@ linters-settings:
           - pkg: "task-processor/internal/infra/clients/management$"
             desc: "Local runtime must not depend on the retired management client package"
 
+      app_taskstatus_legacy_management:
+        # Task-status runtime code must stay on task-status ports, not the retired management client.
+        # The repository-wide issues.exclude-files excludes _test.go; semantic build-target coverage remains in tests/import_boundaries_test.go.
+        files:
+          - "**/internal/app/taskstatus/*.go"
+          - "**/internal/app/taskstatus/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/infra/clients/management"
+            desc: "Task-status runtime code must not depend on the retired management client"
+
   govet:
     disable:
       - fieldalignment

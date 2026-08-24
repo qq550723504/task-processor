@@ -436,7 +436,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestTaskStatusCompatibilityPackageStaysRetired`
 - `TestTaskStatusPackageDoesNotExposeManagementNamedAdapter`
 - `TestTaskStatusRuntimeErrorsUseCapabilityNames`
-- `TestTaskStatusPackageDoesNotImportRetiredManagementPackage`
+- `depguard: app_taskstatus_legacy_management`
 - `TestAmazonTaskStatusUpdatesUseTaskStatusRuntime`
 - `TestAmazonAuthPauseUsesStoreAPIPort`
 - `TestAmazonServicesUseStoreAPIPort`
