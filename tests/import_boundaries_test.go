@@ -2173,22 +2173,6 @@ func TestTaskStatusRuntimeErrorsUseCapabilityNames(t *testing.T) {
 	}
 }
 
-func TestTaskStatusPackageDoesNotImportRetiredManagementPackage(t *testing.T) {
-	root := filepath.Join("..", "internal", "app", "taskstatus")
-	index, err := loadGoFileIndex(root, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for path, facts := range index.files {
-		for quotedImport := range facts.imports {
-			importPath := strings.Trim(quotedImport, `"`)
-			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
-				t.Fatalf("%s imports %s; keep taskstatus package on task-status runtime ports", path, importPath)
-			}
-		}
-	}
-}
-
 func TestBaseProcessorDoesNotExposeRetiredManagementService(t *testing.T) {
 	path := filepath.Join("..", "internal", "processor", "base_processor.go")
 	fset := token.NewFileSet()
