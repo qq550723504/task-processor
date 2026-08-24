@@ -3,6 +3,7 @@ package listingkit
 import "context"
 
 func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error) {
+	s.normalizeTrustedGenerateRequestSource(ctx, req)
 	return s.taskLifecycleOrDefault().CreateGenerateTask(ctx, req)
 }
 
