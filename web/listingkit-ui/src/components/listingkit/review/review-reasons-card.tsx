@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   buildTaskReviewActionLinks,
   extractTaskReviewReasons,
+  hasTaskWorkflowReviewIssue,
 } from "@/components/listingkit/tasks/task-review-reasons";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
@@ -22,7 +23,8 @@ export function ReviewReasonsCard({
   onRepairSDS?: () => void;
 }) {
   const reasons = extractTaskReviewReasons(task);
-  const isProcessingWithReview = task?.status === "processing" && reasons.length > 0;
+  const isProcessingWithReview =
+    task?.status === "processing" && hasTaskWorkflowReviewIssue(task);
   const isNeedsReview = task?.status === "needs_review";
   if ((!isNeedsReview && !isProcessingWithReview) || reasons.length === 0) {
     return null;

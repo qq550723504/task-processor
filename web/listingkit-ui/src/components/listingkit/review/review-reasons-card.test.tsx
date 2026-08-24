@@ -48,6 +48,28 @@ describe("ReviewReasonsCard", () => {
     ).toBeInTheDocument();
   });
 
+  it("does not treat processing warnings or fallback errors as review items", () => {
+    const { container } = render(
+      <ReviewReasonsCard
+        task={{
+          status: "processing",
+          error: "Image processing used a recoverable fallback",
+          result: {
+            workflow_issues: [
+              {
+                severity: "warning",
+                stage: "product_image:amazon",
+                message: "Image processing used a recoverable fallback",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("renders capped review reasons for needs-review tasks", () => {
     render(
       <ReviewReasonsCard
