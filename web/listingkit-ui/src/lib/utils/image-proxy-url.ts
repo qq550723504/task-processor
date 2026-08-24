@@ -31,6 +31,24 @@ export function toImageProxyUrl(
     return trimmed;
   }
 
+  if (/^https?:\/\/[^/]+\/api\/image-proxy(?:[/?#]|$)/i.test(trimmed)) {
+    if (!options?.forceProxy) {
+      try {
+        const parsedProxy = new URL(trimmed);
+        const upstream = parsedProxy.searchParams.get("url");
+        if (upstream) {
+          const parsedUpstream = new URL(upstream);
+          if (isDirectPublicImageHost(parsedUpstream.hostname)) {
+            return upstream;
+          }
+        }
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
+  }
+
   if (trimmed.startsWith("/api/listing-kits/uploads/files/")) {
     return trimmed;
   }

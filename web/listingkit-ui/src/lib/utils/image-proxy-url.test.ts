@@ -38,6 +38,16 @@ describe("toImageProxyUrl", () => {
     );
   });
 
+  it("unwraps absolute image-proxy URLs on the app domain for direct public image hosts", () => {
+    const upstream =
+      "https://cbu01.alicdn.com/img/ibank/O1CN01kPkNaJ2EvfGpWE0VF_!!991938807-0-cib.jpg";
+    const url = `https://pod.shuomiai.com/api/image-proxy?url=${encodeURIComponent(
+      upstream,
+    )}`;
+
+    expect(toImageProxyUrl(url)).toBe(upstream);
+  });
+
   it("rewrites listingkit uploaded image URLs to the local upload fetch route", () => {
     const url =
       "/api/v1/listing-kits/uploads/files/20260610/2ce3d54a-8ce9-459c-8118-cf8586d06e2d.png";
