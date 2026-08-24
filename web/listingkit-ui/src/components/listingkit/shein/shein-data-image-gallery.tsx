@@ -172,8 +172,11 @@ export function SheinDataImageGallery({
     regenerationPrompt.trim().length > 0 &&
     !isRegenerating;
 
+  const selectedImageUrls = new Set(images.map((image) => image.url));
   const unselectedAvailableImages = availableImages.filter(
-    (image) => !includedAvailableUrls.includes(image.url),
+    (image) =>
+      !includedAvailableUrls.includes(image.url) &&
+      (!selectedImageUrls.has(image.url) || deletedUrls.includes(image.url)),
   );
 
   if (workingImages.length === 0 && unselectedAvailableImages.length === 0 && mockupImages.length === 0) {

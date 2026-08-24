@@ -135,6 +135,45 @@ describe("SheinDataImageGallery", () => {
     expect(screen.queryByText("IP 风险")).not.toBeInTheDocument();
   });
 
+  it("reveals a persisted source image after it is removed", () => {
+    const sourceURL = "https://1688.example.com/source-1.jpg";
+    render(
+      <SheinDataImageGallery
+        images={[
+          {
+            id: "generated-main",
+            label: "生成主图",
+            url: "https://cdn.example.com/generated-main.jpg",
+          },
+          {
+            id: "source-1",
+            label: "来源图 1",
+            url: sourceURL,
+            origin: "source",
+            requiresReview: true,
+          },
+        ]}
+        availableImages={[
+          {
+            id: "source-1-available",
+            label: "来源图 1",
+            url: sourceURL,
+            origin: "source",
+            requiresReview: true,
+          },
+        ]}
+        onSelect={vi.fn()}
+        onSaveImageControls={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "加入提交图片" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "从提交中移除" })[1]);
+
+    expect(screen.getByRole("button", { name: "加入提交图片" })).toBeInTheDocument();
+  });
+
   it("clears a source deletion when the image is added again", () => {
     const onSaveImageControls = vi.fn();
     render(

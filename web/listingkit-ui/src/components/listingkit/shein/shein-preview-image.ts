@@ -122,9 +122,6 @@ export function collectSheinPreviewImageGroups(
   const appendSourceImages = () => {
     const appendSourcesFromImageInfo = (label: string, info?: SheinImageInfo | null) => {
       info?.source?.forEach((url, index) => {
-        if (productSeen.has(url?.trim() ?? "")) {
-          return;
-        }
         pushImage(
           availableImages,
           availableSeen,
@@ -136,9 +133,6 @@ export function collectSheinPreviewImageGroups(
     };
 
     shein?.source_product?.image_urls?.forEach((url, index) => {
-      if (productSeen.has(url?.trim() ?? "")) {
-        return;
-      }
       pushImage(
         availableImages,
         availableSeen,
