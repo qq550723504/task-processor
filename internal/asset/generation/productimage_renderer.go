@@ -49,6 +49,7 @@ func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredR
 		inputAsset.Metadata = map[string]string{}
 	}
 	promotePublishedPath(inputAsset.Metadata)
+	inputAsset.URL = productimage.ResolveReadableAssetURL(inputAsset.URL, inputAsset.SourceURL, inputAsset.Metadata)
 	clearPublicationMetadata(inputAsset.Metadata)
 	if value := strings.TrimSpace(req.Task.RenderProfile); value != "" {
 		inputAsset.Metadata["render_profile"] = value
