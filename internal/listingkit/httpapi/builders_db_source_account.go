@@ -10,6 +10,9 @@ import (
 	"task-processor/internal/sourceaccount"
 )
 
+// newDBSourceAccountRepository remains as a compatibility seam for the
+// existing HTTPAPI builder boundary. New marketplace runtimes should use
+// internal/sourceaccount/bootstrap directly.
 func newDBSourceAccountRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (sourceaccount.Repository, func() error, error) {
 	db, closer, err := openListingKitRepositoryDB(cfg, logger)
 	if err != nil {
