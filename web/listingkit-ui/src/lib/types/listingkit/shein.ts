@@ -543,6 +543,9 @@ export type SheinFinalReviewImage = {
   role?: string;
   sort?: number;
   final?: boolean;
+  selected?: boolean;
+  origin?: "generated" | "source";
+  requires_review?: boolean;
   main?: boolean;
   swatch?: boolean;
   size_map?: boolean;

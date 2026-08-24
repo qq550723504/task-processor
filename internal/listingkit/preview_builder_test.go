@@ -10,8 +10,35 @@ import (
 	listingplatform "task-processor/internal/listing/platform"
 	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
+
+func TestBuildSheinFinalReviewPayloadPreservesSourceProductImageProvenance(t *testing.T) {
+	t.Parallel()
+
+	sourceImage := "https://1688.example.com/offered-source.jpg"
+	pkg := &sheinpub.Package{
+		DraftPayload: &sheinpub.RequestDraft{
+			ImageInfo: &sheinpub.ImageDraft{
+				MainImage: "https://cdn.example.com/generated-main.jpg",
+				Gallery:   []string{sourceImage},
+			},
+		},
+	}
+	canonicalProduct := &canonical.Product{
+		Images: []canonical.Image{{URL: sourceImage}},
+	}
+
+	review := buildSheinFinalReviewPayload(pkg, canonicalProduct, &SheinSubmitReadiness{})
+
+	if review == nil || len(review.Images) != 2 {
+		t.Fatalf("final review images = %+v, want generated and source images", review)
+	}
+	if image := review.Images[1]; image.URL != sourceImage || image.Origin != "source" || !image.RequiresReview {
+		t.Fatalf("source image = %+v, want source provenance", review.Images[1])
+	}
+}
 
 func TestBuildPreviewHeaderCopiesSummaryFields(t *testing.T) {
 	t.Parallel()

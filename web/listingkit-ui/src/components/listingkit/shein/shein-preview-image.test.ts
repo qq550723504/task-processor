@@ -70,6 +70,75 @@ describe("collectSheinPreviewImages", () => {
     expect(groups.mockupImages).toEqual([]);
   });
 
+  it("separates unselected source images from the default submit image list", () => {
+    const groups = collectSheinPreviewImageGroups({
+      final_review: {
+        images: [
+          {
+            url: "https://cdn.example.com/generated-main.jpg",
+            origin: "generated",
+            selected: true,
+            final: true,
+          },
+          {
+            url: "https://1688.example.com/source-1.jpg",
+            origin: "source",
+            selected: false,
+            final: false,
+            requires_review: true,
+          },
+        ],
+      },
+    });
+
+    expect(groups.productImages.map((image) => image.url)).toEqual([
+      "https://cdn.example.com/generated-main.jpg",
+    ]);
+    expect(groups.availableImages.map((image) => image.url)).toEqual([
+      "https://1688.example.com/source-1.jpg",
+    ]);
+    expect(groups.availableImages[0]).toMatchObject({
+      origin: "source",
+      requiresReview: true,
+    });
+  });
+
+  it("keeps a persisted source image available for re-selection after reload", () => {
+    const sourceURL = "https://1688.example.com/source-1.jpg";
+    const groups = collectSheinPreviewImageGroups({
+      source_product: {
+        image_urls: [sourceURL],
+      },
+      final_review: {
+        images: [
+          {
+            url: "https://cdn.example.com/generated-main.jpg",
+            origin: "generated",
+            selected: true,
+            final: true,
+          },
+          {
+            url: sourceURL,
+            origin: "source",
+            selected: true,
+            final: true,
+            requires_review: true,
+          },
+        ],
+      },
+    });
+
+    expect(groups.productImages.map((image) => image.url)).toEqual([
+      "https://cdn.example.com/generated-main.jpg",
+      sourceURL,
+    ]);
+    expect(groups.availableImages.map((image) => image.url)).toEqual([sourceURL]);
+    expect(groups.availableImages[0]).toMatchObject({
+      origin: "source",
+      requiresReview: true,
+    });
+  });
+
   it("separates SHEIN product images from SDS mockup renderings", () => {
     const shein: SheinPreviewPayload = {
       preview_payload: {

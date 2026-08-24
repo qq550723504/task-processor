@@ -41,15 +41,45 @@ func ApplyFinalImageDraft(pkg *Package) {
 			}
 		}
 	}
-	if pkg.PreviewPayload != nil && pkg.PreviewPayload.ImageInfo != nil {
+	if pkg.PreviewPayload != nil {
+		if pkg.PreviewPayload.ImageInfo == nil && (len(order) > 0 || main != "") {
+			pkg.PreviewPayload.ImageInfo = &sheinproduct.ImageInfo{}
+		}
 		ReorderFinalDraftProductImages(pkg.PreviewPayload.ImageInfo, order, main, deleted, pkg.FinalSubmissionDraft.ImageRoleOverrides)
 	}
 	EnsureFinalPreviewSKCImages(pkg)
 	if pkg.PreviewPayload != nil {
 		for i := range pkg.PreviewPayload.SKCList {
-			ReorderFinalDraftProductImages(&pkg.PreviewPayload.SKCList[i].ImageInfo, order, main, deleted, pkg.FinalSubmissionDraft.ImageRoleOverrides)
+			skcMain := finalPreviewSKCMainImage(pkg, i, deleted)
+			ReorderFinalDraftProductImages(&pkg.PreviewPayload.SKCList[i].ImageInfo, order, skcMain, deleted, pkg.FinalSubmissionDraft.ImageRoleOverrides)
 		}
 	}
+}
+
+func finalPreviewSKCMainImage(pkg *Package, index int, deleted map[string]struct{}) string {
+	if pkg == nil || pkg.PreviewPayload == nil || index < 0 || index >= len(pkg.PreviewPayload.SKCList) {
+		return ""
+	}
+	skc := &pkg.PreviewPayload.SKCList[index]
+	if draft := RequestDraftSKCByIndexOrCode(pkg.DraftPayload, index, PreviewSKCSupplierCode(skc)); draft != nil && draft.ImageInfo != nil {
+		main := strings.TrimSpace(draft.ImageInfo.MainImage)
+		if main != "" {
+			if _, removed := deleted[main]; !removed {
+				return main
+			}
+		}
+	}
+	for _, image := range skc.ImageInfo.ImageInfoList {
+		main := strings.TrimSpace(image.ImageURL)
+		if main == "" {
+			continue
+		}
+		if _, removed := deleted[main]; removed {
+			continue
+		}
+		return main
+	}
+	return ""
 }
 
 // EnsureFinalDraftSKCImages fills draft SKC/SKU images from final image selections and package fallbacks.

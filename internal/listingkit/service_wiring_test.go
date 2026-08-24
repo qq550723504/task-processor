@@ -2858,7 +2858,7 @@ func TestSheinFinalReviewImageHelpersLiveOutsideMainFinalReviewBuilder(t *testin
 	assertFileAbsent(t, "preview_builder_shein_final_review_images.go")
 
 	for _, needle := range []string{
-		"final.Images = sheinworkspace.BuildFinalReviewImages(pkg.DraftPayload, pkg.FinalSubmissionDraft, pkg.PreviewPayload)",
+		"final.Images = sheinworkspace.BuildFinalReviewImages(pkg.DraftPayload, pkg.FinalSubmissionDraft, pkg.PreviewPayload, offeredSourceImageURLs)",
 		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
 		finalReviewSrc, err := os.ReadFile("preview_builder_shein_final_review.go")
