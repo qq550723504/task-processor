@@ -17,6 +17,64 @@ func TestAlibaba1688CrawlerDoesNotImportListingKitRoot(t *testing.T) {
 	}, nil)
 }
 
+func TestAlibaba1688CrawlerDoesNotImportListingKitHTTPAPIForSourceAccountBuilder(t *testing.T) {
+	root := filepath.Join("..", "internal", "crawler", "alibaba1688")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, path, facts.source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listingKitHTTPAPINames := make(map[string]struct{})
+		dotImportedListingKitHTTPAPI := false
+		for _, imported := range file.Imports {
+			if strings.Trim(imported.Path.Value, `"`) != "task-processor/internal/listingkit/httpapi" {
+				continue
+			}
+			if imported.Name == nil {
+				listingKitHTTPAPINames["httpapi"] = struct{}{}
+				continue
+			}
+			if imported.Name.Name == "." {
+				dotImportedListingKitHTTPAPI = true
+				continue
+			}
+			if imported.Name.Name != "_" {
+				listingKitHTTPAPINames[imported.Name.Name] = struct{}{}
+			}
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			if dotImportedListingKitHTTPAPI {
+				call, ok := node.(*ast.CallExpr)
+				if ok {
+					ident, ok := call.Fun.(*ast.Ident)
+					if ok && ident.Name == "BuildSourceAccountRepository" {
+						t.Errorf("%s dot-imports listingkit/httpapi to build source-account repositories; use the source-account bootstrap owner", path)
+					}
+				}
+			}
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || selector.Sel == nil || selector.Sel.Name != "BuildSourceAccountRepository" {
+				return true
+			}
+			ident, ok := selector.X.(*ast.Ident)
+			if ok {
+				if _, imported := listingKitHTTPAPINames[ident.Name]; imported {
+					t.Errorf("%s still builds source-account repositories through listingkit/httpapi; use the source-account bootstrap owner", path)
+				}
+			}
+			return true
+		})
+	}
+}
+
 func TestA1688ListingKitCompatibilityReadsIdentityFromNeutralContext(t *testing.T) {
 	path := filepath.Join("..", "internal", "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi", "handler.go")
 	source, err := os.ReadFile(path)

@@ -14,10 +14,11 @@ import (
 	"task-processor/internal/infra/httpx"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/sourceaccount"
+	sourceaccountbootstrap "task-processor/internal/sourceaccount/bootstrap"
 	"task-processor/internal/tenantbridge"
 )
 
-var buildSourceAccountRepository = listingkithttpapi.BuildSourceAccountRepository
+var buildSourceAccountRepository = sourceaccountbootstrap.BuildRepository
 
 // APIService 1688 爬虫 HTTP API 服务
 type APIService struct {
