@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 )
@@ -129,7 +130,7 @@ func accountCacheKeyForContext(ctx context.Context, tenantID int64) accountCache
 	sort.Strings(roles)
 	userID := listingkit.RequestUserIDFromContext(ctx)
 	if userID == "" {
-		if identity, ok := listingkit.AuthenticatedIdentityFromContext(ctx); ok {
+		if identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx); ok {
 			userID = identity.UserID
 		}
 	}
@@ -142,7 +143,7 @@ func accountCacheKeyForContext(ctx context.Context, tenantID int64) accountCache
 
 func listingAdminAccountRoles(ctx context.Context) []string {
 	roles := listingkit.RequestRolesFromContext(ctx)
-	if identity, ok := listingkit.AuthenticatedIdentityFromContext(ctx); ok {
+	if identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx); ok {
 		roles = append(roles, identity.Roles...)
 	}
 	return roles

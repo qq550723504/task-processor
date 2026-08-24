@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authidentity"
 	a1688 "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
@@ -139,7 +140,7 @@ func verifiedRequestContext(c *gin.Context) (context.Context, listingkit.Request
 	if c == nil || c.Request == nil {
 		return nil, listingkit.RequestIdentity{}, errors.New("verified request identity is required")
 	}
-	authenticatedIdentity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+	authenticatedIdentity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 	if !ok || strings.TrimSpace(authenticatedIdentity.UserID) == "" {
 		return nil, listingkit.RequestIdentity{}, errors.New("verified request identity is required")
 	}

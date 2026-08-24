@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/listingkit"
+	"task-processor/internal/authidentity"
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/tenantbridge"
 )
@@ -168,15 +168,15 @@ func (h *handler) requirePlatformSubscriptionAccess(c *gin.Context) bool {
 	return h.authorizePlatformSubscriptionIdentity(c, identity)
 }
 
-func (h *handler) requirePlatformSubscriptionActor(c *gin.Context) (listingkit.AuthenticatedIdentity, bool) {
+func (h *handler) requirePlatformSubscriptionActor(c *gin.Context) (authidentity.AuthenticatedIdentity, bool) {
 	identity, ok := authenticatedActor(c)
 	if !ok || !h.authorizePlatformSubscriptionIdentity(c, identity) {
-		return listingkit.AuthenticatedIdentity{}, false
+		return authidentity.AuthenticatedIdentity{}, false
 	}
 	return identity, true
 }
 
-func (h *handler) authorizePlatformSubscriptionIdentity(c *gin.Context, identity listingkit.AuthenticatedIdentity) bool {
+func (h *handler) authorizePlatformSubscriptionIdentity(c *gin.Context, identity authidentity.AuthenticatedIdentity) bool {
 	if slices.Contains(h.platformAdminUsers, identity.UserID) {
 		return true
 	}

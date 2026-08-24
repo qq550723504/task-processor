@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	a1688 "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
@@ -278,7 +279,7 @@ func performJSONRequest(t *testing.T, router http.Handler, method string, path s
 	return rec
 }
 
-func performJSONRequestWithAuthenticatedIdentity(t *testing.T, router http.Handler, method string, path string, body any, headers map[string]string, identity listingkit.AuthenticatedIdentity) *httptest.ResponseRecorder {
+func performJSONRequestWithAuthenticatedIdentity(t *testing.T, router http.Handler, method string, path string, body any, headers map[string]string, identity authidentity.AuthenticatedIdentity) *httptest.ResponseRecorder {
 	t.Helper()
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -289,7 +290,7 @@ func performJSONRequestWithAuthenticatedIdentity(t *testing.T, router http.Handl
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
-	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), identity))
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(req.Context(), identity))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	return rec

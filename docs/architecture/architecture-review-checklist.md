@@ -89,6 +89,12 @@ At minimum, structural review should consider representative guards such as:
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 - `depguard: source_handoff_legacy_http`
 - `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`
+- `TestAlibaba1688CrawlerDoesNotImportListingKitRoot`
+- `TestA1688ListingKitCompatibilityReadsIdentityFromNeutralContext`
+- `TestLocalAgentHTTPAPIReadsIdentityFromNeutralContext`
+- `TestSheinLoginReadsIdentityFromNeutralContext`
+- `TestListingKitIdentityReadersUseNeutralContext`
+- `TestZitadelAuthMiddlewareWritesNeutralIdentityContext`
 - `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
 - `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted`

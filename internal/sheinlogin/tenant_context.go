@@ -10,8 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
-	"task-processor/internal/listingkit"
 	"task-processor/internal/tenantbridge"
 )
 
@@ -25,7 +25,7 @@ func requestTenantID(c *gin.Context) (int64, error) {
 	}
 
 	if visitTenantID := strings.TrimSpace(c.GetHeader(visitTenantIDHeader)); visitTenantID != "" {
-		identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+		identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 		if !ok || !authz.IsListingKitPlatformAdmin(identity.UserID, identity.Roles) {
 			return 0, errVisitTenantAccessDenied
 		}

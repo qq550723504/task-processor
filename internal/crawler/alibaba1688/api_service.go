@@ -9,9 +9,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/httpx"
-	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/sourceaccount"
 	"task-processor/internal/tenantbridge"
@@ -137,7 +137,7 @@ func hasConfiguredDatabase(cfg *config.Config) bool {
 }
 
 func VerifiedCrawlerTenantResolver(ctx context.Context) (int64, bool) {
-	identity, ok := listingkit.AuthenticatedIdentityFromContext(ctx)
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	if !ok {
 		return 0, false
 	}

@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/listingkit"
+	"task-processor/internal/authidentity"
 	"task-processor/internal/localagent"
 	"task-processor/internal/product/sourcing"
 )
@@ -299,7 +299,7 @@ func verifiedActor(c *gin.Context) (localagent.Actor, bool) {
 	if c == nil || c.Request == nil {
 		return localagent.Actor{}, false
 	}
-	identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 	if !ok {
 		return localagent.Actor{}, false
 	}

@@ -6,9 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"task-processor/internal/httproute"
-	"task-processor/internal/listingkit"
 )
 
 func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
@@ -82,7 +82,7 @@ func NewRouteRoleMiddleware(route httproute.Descriptor) gin.HandlerFunc {
 		}
 	}
 	return func(c *gin.Context) {
-		identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+		identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error":   "listingkit_permission_denied",
