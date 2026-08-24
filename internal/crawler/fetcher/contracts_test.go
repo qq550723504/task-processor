@@ -40,6 +40,12 @@ func TestContractsOwnFetcherTypeAndProductFetcherInterface(t *testing.T) {
 	}
 }
 
+func TestProductFetcherExposesComposableCapabilities(t *testing.T) {
+	var _ ProductReader = (ProductFetcher)(nil)
+	var _ ProductCache = (ProductFetcher)(nil)
+	var _ ProductFetcherStats = (ProductFetcher)(nil)
+}
+
 func TestFetcherFactoryCreateDistributedRequiresRabbitMQClient(t *testing.T) {
 	_, err := NewFetcherFactory().CreateFetcher(
 		DistributedFetcher,

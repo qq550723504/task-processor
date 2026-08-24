@@ -75,7 +75,7 @@ func buildTemuProcessorDependencies(cfg *config.Config, resources platformProces
 		return temu.Dependencies{}, err
 	}
 
-	return temu.BuildDependencies(context.Background(), resources.processorRuntime, productFetcher, resources.rabbitmqClient), nil
+	return temu.BuildDependencies(context.Background(), resources.processorRuntime, productFetcher, productFetcher, productFetcher, resources.rabbitmqClient), nil
 }
 
 func buildSheinProcessorDependencies(cfg *config.Config, resources platformProcessorResources) (pipeline.Dependencies, error) {
@@ -94,7 +94,7 @@ func buildSheinProcessorDependencies(cfg *config.Config, resources platformProce
 		return pipeline.Dependencies{}, err
 	}
 
-	return pipeline.BuildDependencies(context.Background(), sheinDependencyRuntimeAdapter{ProcessorRuntime: resources.processorRuntime}, productFetcher, resources.rabbitmqClient), nil
+	return pipeline.BuildDependencies(context.Background(), sheinDependencyRuntimeAdapter{ProcessorRuntime: resources.processorRuntime}, productFetcher, productFetcher, resources.rabbitmqClient), nil
 }
 
 type sheinDependencyRuntimeAdapter struct {

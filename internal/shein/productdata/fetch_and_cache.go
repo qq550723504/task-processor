@@ -10,12 +10,13 @@ import (
 )
 
 type FetchAndCacheProductHandler struct {
-	fetcher appProduct.ProductFetcher
-	logger  *logrus.Entry
+	reader appProduct.ProductReader
+	cache  appProduct.ProductCache
+	logger *logrus.Entry
 }
 
-func NewFetchAndCacheProductHandler(fetcher appProduct.ProductFetcher) *FetchAndCacheProductHandler {
-	return &FetchAndCacheProductHandler{fetcher: fetcher, logger: coreLogger.GetGlobalLogger("FetchAndCacheProductHandler")}
+func NewFetchAndCacheProductHandler(reader appProduct.ProductReader, cache appProduct.ProductCache) *FetchAndCacheProductHandler {
+	return &FetchAndCacheProductHandler{reader: reader, cache: cache, logger: coreLogger.GetGlobalLogger("FetchAndCacheProductHandler")}
 }
 
 func (h *FetchAndCacheProductHandler) Name() string {
@@ -35,7 +36,7 @@ func (h *FetchAndCacheProductHandler) Handle(ctx *shein.TaskContext) error {
 		Creator:    ctx.Task.Creator,
 	}
 
-	amazonProduct, err := h.fetcher.FetchProduct(ctx.Context, req)
+	amazonProduct, err := h.reader.FetchProduct(ctx.Context, req)
 	if err != nil {
 		if isProductNotFoundError(err) {
 			h.logger.Warnf("product not found: product_id=%s err=%v", ctx.Task.ProductID, err)
@@ -55,7 +56,7 @@ func (h *FetchAndCacheProductHandler) Handle(ctx *shein.TaskContext) error {
 		CategoryID: ctx.Task.CategoryID,
 		Creator:    ctx.Task.Creator,
 	}
-	if err := h.fetcher.CacheProduct(cacheReq, amazonProduct); err != nil {
+	if err := h.cache.CacheProduct(cacheReq, amazonProduct); err != nil {
 		h.logger.Warnf("cache product data failed: %v", err)
 	} else {
 		h.logger.Infof("cached product data: product_id=%s", ctx.Task.ProductID)

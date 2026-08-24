@@ -16,7 +16,9 @@ type dependencyRuntime interface {
 func BuildDependencies(
 	ctx context.Context,
 	runtime dependencyRuntime,
-	productFetcher appfetcher.ProductFetcher,
+	productReader appfetcher.ProductReader,
+	productCache appfetcher.ProductCache,
+	productFetcherStats appfetcher.ProductFetcherStats,
 	rabbitmqClient *rabbitmq.Client,
 ) Dependencies {
 	mem := state.NewMemoryManager(ctx, runtime)
@@ -25,10 +27,12 @@ func BuildDependencies(
 	}
 
 	return Dependencies{
-		ProcessorRuntime:  runtime,
-		TaskStatusRuntime: runtime,
-		MemoryManager:     mem,
-		ProductFetcher:    productFetcher,
-		RabbitMQClient:    rabbitmqClient,
+		ProcessorRuntime:    runtime,
+		TaskStatusRuntime:   runtime,
+		MemoryManager:       mem,
+		ProductReader:       productReader,
+		ProductCache:        productCache,
+		ProductFetcherStats: productFetcherStats,
+		RabbitMQClient:      rabbitmqClient,
 	}
 }

@@ -214,7 +214,9 @@ type PlatformRuntimeContext struct {
 	listingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
 	storeAPI                           listingadmin.StoreAPI
 	processorRuntime                   ProcessorRuntime
-	productFetcher                     appfetcher.ProductFetcher
+	productReader                      appfetcher.ProductReader
+	productCache                       appfetcher.ProductCache
+	productFetcherStats                appfetcher.ProductFetcherStats
 	schedulerRuntime                   runner.SchedulerRuntimeProvider
 	schedulerFactoryRuntime            SchedulerFactoryRuntime
 	crawlSource                        ports.CrawlSource
@@ -238,7 +240,9 @@ func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRunt
 		listingRuntimeImportTaskRepository: input.Resources.listingRuntimeImportTaskRepository,
 		storeAPI:                           input.Resources.storeAPI,
 		processorRuntime:                   input.Resources.processorRuntime,
-		productFetcher:                     input.Resources.productFetcher,
+		productReader:                      input.Resources.productFetcher,
+		productCache:                       input.Resources.productFetcher,
+		productFetcherStats:                input.Resources.productFetcher,
 		schedulerRuntime:                   schedulerResources.Runtime(),
 		schedulerFactoryRuntime:            schedulerResources.FactoryRuntime(),
 		crawlSource:                        schedulerResources.CrawlSource(),
@@ -309,8 +313,16 @@ func (rt PlatformRuntimeContext) ProcessorRuntime() ProcessorRuntime {
 	return rt.processorRuntime
 }
 
-func (rt PlatformRuntimeContext) ProductFetcher() appfetcher.ProductFetcher {
-	return rt.productFetcher
+func (rt PlatformRuntimeContext) ProductReader() appfetcher.ProductReader {
+	return rt.productReader
+}
+
+func (rt PlatformRuntimeContext) ProductCache() appfetcher.ProductCache {
+	return rt.productCache
+}
+
+func (rt PlatformRuntimeContext) ProductFetcherStats() appfetcher.ProductFetcherStats {
+	return rt.productFetcherStats
 }
 
 func (rt PlatformRuntimeContext) ListingRuntimeImportTaskRepository() ListingRuntimeImportTaskRepository {

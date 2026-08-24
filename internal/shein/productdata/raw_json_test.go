@@ -41,7 +41,8 @@ func (s *stubProductFetcher) GetStats() map[string]any {
 func TestFetchAndCacheProductHandlerTreatsPlaywrightDriver404AsRetryable(t *testing.T) {
 	driverErr := errors.New("初始化浏览器池失败: 初始化playwright失败: 自动安装 Playwright 驱动失败: error: got non 200 status code: 404 (404 Not Found) from https://playwright.azureedge.net/builds/driver/playwright-1.57.0-linux.zip")
 
-	handler := NewFetchAndCacheProductHandler(&stubProductFetcher{err: driverErr})
+	fetcher := &stubProductFetcher{err: driverErr}
+	handler := NewFetchAndCacheProductHandler(fetcher, fetcher)
 	err := handler.Handle(shein.NewTaskContext(context.Background(), &model.Task{
 		TenantID:  1,
 		Platform:  "shein",

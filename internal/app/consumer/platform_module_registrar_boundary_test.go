@@ -235,6 +235,43 @@ func TestPlatformRuntimeContextDoesNotExposeRuntimeResourceFields(t *testing.T) 
 	}
 }
 
+func TestPlatformRuntimeContextExposesFetcherCapabilitiesSeparately(t *testing.T) {
+	content, err := os.ReadFile("shared_resources.go")
+	if err != nil {
+		t.Fatalf("read shared_resources.go: %v", err)
+	}
+	source := string(content)
+	start := strings.Index(source, "type PlatformRuntimeContext struct {")
+	if start < 0 {
+		t.Fatal("shared_resources.go should define PlatformRuntimeContext")
+	}
+	end := strings.Index(source[start:], "\n}")
+	if end < 0 {
+		t.Fatal("PlatformRuntimeContext struct should have a closing brace")
+	}
+	contextSource := source[start : start+end]
+	for _, marker := range []string{
+		"productFetcher appfetcher.ProductFetcher",
+		"func (rt PlatformRuntimeContext) ProductFetcher()",
+	} {
+		if strings.Contains(contextSource, marker) || strings.Contains(source, marker) {
+			t.Fatalf("shared_resources.go exposes %q; platform modules should consume narrow fetcher capabilities", marker)
+		}
+	}
+	for _, marker := range []string{
+		"productReader",
+		"appfetcher.ProductReader",
+		"productCache",
+		"appfetcher.ProductCache",
+		"productFetcherStats",
+		"appfetcher.ProductFetcherStats",
+	} {
+		if !strings.Contains(contextSource, marker) {
+			t.Fatalf("shared_resources.go is missing %q from PlatformRuntimeContext", marker)
+		}
+	}
+}
+
 func TestPlatformRuntimeContextDoesNotExposeContextFields(t *testing.T) {
 	t.Parallel()
 

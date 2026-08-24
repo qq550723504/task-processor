@@ -50,7 +50,7 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 				if err != nil {
 					return err
 				}
-				p, err := creator(ctx, cfg, s.logger, temu.BuildDependencies(ctx, temuDependencyRuntimeAdapter{processorRuntimeProvider: s.processorRuntime}, productFetcher, s.rabbitmqClient))
+				p, err := creator(ctx, cfg, s.logger, temu.BuildDependencies(ctx, temuDependencyRuntimeAdapter{processorRuntimeProvider: s.processorRuntime}, productFetcher, productFetcher, productFetcher, s.rabbitmqClient))
 				if err != nil {
 					return fmt.Errorf("create TEMU processor: %w", err)
 				}
@@ -83,7 +83,7 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 				if err != nil {
 					return err
 				}
-				p, err := creator(ctx, cfg, s.logger, pipeline.BuildDependencies(ctx, sheinDependencyRuntimeAdapter{processorRuntimeProvider: s.processorRuntime}, productFetcher, s.rabbitmqClient))
+				p, err := creator(ctx, cfg, s.logger, pipeline.BuildDependencies(ctx, sheinDependencyRuntimeAdapter{processorRuntimeProvider: s.processorRuntime}, productFetcher, productFetcher, s.rabbitmqClient))
 				if err != nil {
 					return fmt.Errorf("create SHEIN processor: %w", err)
 				}

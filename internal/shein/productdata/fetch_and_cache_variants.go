@@ -15,13 +15,14 @@ import (
 )
 
 type FetchAndCacheVariantsHandler struct {
-	fetcher appProduct.ProductFetcher
-	logger  *logrus.Entry
+	reader appProduct.ProductReader
+	cache  appProduct.ProductCache
+	logger *logrus.Entry
 }
 
-func NewFetchAndCacheVariantsHandler(fetcher appProduct.ProductFetcher) *FetchAndCacheVariantsHandler {
+func NewFetchAndCacheVariantsHandler(reader appProduct.ProductReader, cache appProduct.ProductCache) *FetchAndCacheVariantsHandler {
 	logger := coreLogger.GetGlobalLogger("FetchAndCacheVariantsHandler")
-	return &FetchAndCacheVariantsHandler{fetcher: fetcher, logger: logger}
+	return &FetchAndCacheVariantsHandler{reader: reader, cache: cache, logger: logger}
 }
 
 func (h *FetchAndCacheVariantsHandler) Name() string {
@@ -56,7 +57,7 @@ func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
 		CategoryID: ctx.Task.CategoryID,
 		Creator:    ctx.Task.Creator,
 	}
-	variants, err := h.fetcher.FetchVariants(context.Background(), req, variantAsins)
+	variants, err := h.reader.FetchVariants(context.Background(), req, variantAsins)
 	if err != nil {
 		return fmt.Errorf("fetch variants failed: %w", err)
 	}
@@ -83,7 +84,7 @@ func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
 	for i := range variantList {
 		variantPtrs[i] = &variantList[i]
 	}
-	if err := h.fetcher.CacheVariants(cacheReq, variantPtrs); err != nil {
+	if err := h.cache.CacheVariants(cacheReq, variantPtrs); err != nil {
 		h.logger.Warnf("cache variants failed: %v", err)
 	}
 
