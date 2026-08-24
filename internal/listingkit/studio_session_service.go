@@ -2,9 +2,10 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
+
+	studiodomain "task-processor/internal/listing/studio"
 )
 
 type StudioSessionService interface {
@@ -28,21 +29,16 @@ func buildStudioSelectionKey(selection *SheinStudioSelection) string {
 	if selection == nil {
 		return ""
 	}
-	variantIDs := make([]string, 0, len(selection.SelectedVariantIDs))
-	for _, id := range selection.SelectedVariantIDs {
-		variantIDs = append(variantIDs, fmt.Sprintf("%d", id))
-	}
-	return fmt.Sprintf(
-		"%d:%d:%d:%d:%s:%d:%d:%s",
-		selection.ProductID,
-		selection.ParentProductID,
-		selection.VariantID,
-		selection.PrototypeGroupID,
-		strings.TrimSpace(selection.LayerID),
-		selection.PrintableWidth,
-		selection.PrintableHeight,
-		strings.Join(variantIDs, ","),
-	)
+	return studiodomain.BuildSelectionKey(studiodomain.SelectionKeyInput{
+		ProductID:          selection.ProductID,
+		ParentProductID:    selection.ParentProductID,
+		VariantID:          selection.VariantID,
+		PrototypeGroupID:   selection.PrototypeGroupID,
+		LayerID:            selection.LayerID,
+		PrintableWidth:     selection.PrintableWidth,
+		PrintableHeight:    selection.PrintableHeight,
+		SelectedVariantIDs: selection.SelectedVariantIDs,
+	})
 }
 
 func deriveBatchStatus(req *UpsertStudioBatchRequest) SheinStudioSessionStatus {
