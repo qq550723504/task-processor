@@ -1,6 +1,9 @@
 package studio
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestNormalizeBatchDesignTypeDefaultsBlankValue(t *testing.T) {
 	if got := NormalizeBatchDesignType("  "); got != DefaultBatchDesignType {
@@ -32,6 +35,19 @@ func TestResolveDraftStatusPrioritizesGenerationTasksThenDesigns(t *testing.T) {
 				t.Fatalf("ResolveDraftStatus(%+v) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNormalizeHotStyleReferenceImageURLsKeepsFirstDistinctNonEmptyURL(t *testing.T) {
+	got := NormalizeHotStyleReferenceImageURLs([]string{
+		"  ",
+		" https://cdn.example.com/first.png ",
+		"https://cdn.example.com/first.png",
+		"https://cdn.example.com/second.png",
+	})
+
+	if want := []string{"https://cdn.example.com/first.png"}; !slices.Equal(got, want) {
+		t.Fatalf("NormalizeHotStyleReferenceImageURLs() = %#v, want %#v", got, want)
 	}
 }
 
