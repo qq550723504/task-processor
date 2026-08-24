@@ -224,6 +224,92 @@ func TestZitadelAuthMiddlewareWritesNeutralIdentityContext(t *testing.T) {
 	})
 }
 
+func TestAuthenticatedIdentityRootImportsStayRestricted(t *testing.T) {
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		violations, err := findListingKitAuthenticatedIdentityImports(path, facts.source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, violation := range violations {
+			t.Errorf("%s", violation)
+		}
+	}
+}
+
+func TestAuthenticatedIdentityRootImportScannerResolvesAliases(t *testing.T) {
+	violations, err := findListingKitAuthenticatedIdentityImports("synthetic.go", []byte(`package synthetic
+
+import legacylistingkit "task-processor/internal/listingkit"
+
+func readIdentity(ctx any) {
+		legacylistingkit.AuthenticatedIdentityFromContext(ctx)
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 {
+		t.Fatalf("violations = %v, want one alias violation", violations)
+	}
+}
+
+func findListingKitAuthenticatedIdentityImports(path string, source []byte) ([]string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	listingKitNames := make(map[string]struct{})
+	var violations []string
+	for _, imp := range file.Imports {
+		importPath := strings.Trim(imp.Path.Value, `"`)
+		if importPath != "task-processor/internal/listingkit" {
+			continue
+		}
+		if imp.Name != nil {
+			switch imp.Name.Name {
+			case "_":
+				continue
+			case ".":
+				violations = append(violations, path+": dot-imports internal/listingkit; identity context must use internal/authidentity")
+				continue
+			default:
+				listingKitNames[imp.Name.Name] = struct{}{}
+			}
+			continue
+		}
+		listingKitNames["listingkit"] = struct{}{}
+	}
+
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil {
+			return true
+		}
+		switch selector.Sel.Name {
+		case "AuthenticatedIdentity", "AuthenticatedIdentityFromContext", "WithAuthenticatedIdentity":
+		default:
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if _, ok := listingKitNames[ident.Name]; ok {
+			violations = append(violations, path+": imports internal/listingkit for authenticated identity; use internal/authidentity")
+		}
+		return true
+	})
+	return violations, nil
+}
+
 func TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets(t *testing.T) {
 	t.Parallel()
 	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
