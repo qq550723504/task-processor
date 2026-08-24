@@ -221,6 +221,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestSharedPricingRetiredManagementImportsStayBlocked",
 		"TestListingKitHTTPAPIRetiredManagementImportsStayBlocked",
 		"TestCmdPackagesDoNotImportAppCompatibilityLayers",
+		"depguard: cmd_legacy_app_compatibility",
 		"depguard: internal_legacy_app_compatibility",
 		"TestInternalPackagesDoNotImportAppCompatibilityLayersAcrossBuildTargets",
 		"TestAppProcessorCompatibilityLayerIsRetired",
@@ -417,6 +418,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestCmdContainsOnlyOfficialEntrypoints",
 		"TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages",
 		"TestCmdPackagesDoNotImportAppCompatibilityLayers",
+		"depguard: cmd_legacy_app_compatibility",
 		"TestHackContainsOnlyManagedSupportAreas",
 		"TestHackSupportAreasContainNoLocalArtifacts",
 		"TestTrackedLocalArtifactsStayOutOfProductionEntrypoints",
@@ -432,6 +434,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestInfraProductCrawlerAdapterIsRetired",
 		"TestAppCrawlerFetcherCompatibilityLayerIsRetired",
 		"TestCmdPackagesDoNotImportAppCompatibilityLayers",
+		"depguard: cmd_legacy_app_compatibility",
 		"TestProductImageExternalClientImportsStayAllowlisted",
 		"TestAmazonExternalClientImportsStayAllowlisted",
 		"TestSheinBridgeExternalClientImportsStayAllowlisted",
@@ -1544,6 +1547,7 @@ func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
 		"TestCmdContainsOnlyOfficialEntrypoints",
 		"TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages",
 		"TestCmdPackagesDoNotImportAppCompatibilityLayers",
+		"depguard: cmd_legacy_app_compatibility",
 		"TestHackContainsOnlyManagedSupportAreas",
 		"TestHackSupportAreasContainNoLocalArtifacts",
 		"TestTrackedLocalArtifactsStayOutOfProductionEntrypoints",
@@ -1630,6 +1634,7 @@ func TestCompatibilityRetirementDocumentCapturesAppCompatibilityStatus(t *testin
 		"TestInfraProductCrawlerAdapterIsRetired",
 		"TestAppCrawlerFetcherCompatibilityLayerIsRetired",
 		"TestCmdPackagesDoNotImportAppCompatibilityLayers",
+		"depguard: cmd_legacy_app_compatibility",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
