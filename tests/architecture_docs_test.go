@@ -59,6 +59,7 @@ func TestProjectBoundaryDocumentKeepsPreviewPlacementAlignedWithStablePreviewBou
 		"| Platform-neutral preview rules | `internal/listing/preview`; see `listing-preview-boundaries.md` |",
 		"| Legacy preview facade / task-result aggregation | `internal/listingkit` during migration |",
 		"depguard: listing_preview_platform_neutral",
+		"TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
@@ -120,6 +121,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestListingKitRootServiceGenerationFilesStayAllowlisted",
 		"TestListingKitRootGenerationFilesStayAllowlisted",
 		"depguard: listing_preview_platform_neutral",
+		"TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets",
 		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
 		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
 		"TestProductImageExternalClientImportsStayAllowlisted",
@@ -482,6 +484,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
 		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
 		"depguard: listing_preview_platform_neutral",
+		"TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
@@ -1635,6 +1638,7 @@ func TestListingPreviewBoundaryDocumentTracksPlatformNeutralGuard(t *testing.T) 
 		"platform-neutral",
 		"TestProjectBoundaryDomainsDoNotImportListingKitFacade",
 		"depguard: listing_preview_platform_neutral",
+		"TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {

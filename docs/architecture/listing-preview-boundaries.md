@@ -53,6 +53,7 @@ This package should remain platform-neutral. It should not start depending on ma
 Current guardrail:
 
 - `depguard: listing_preview_platform_neutral` prevents `internal/listing/preview` from importing the ListingKit facade or marketplace-specific Amazon, SHEIN, TEMU, publishing, or workspace implementation packages.
+- `TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets` repeats the production import check across all parsed `.go` files, including build-constrained files that the default lint target may skip.
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade` keeps new domain-side preview logic from reintroducing root `internal/listingkit` facade dependencies as the default home for extraction work.
 
 ## `internal/listing/platform`

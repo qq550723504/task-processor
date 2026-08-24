@@ -258,6 +258,35 @@ func TestListingKitAmazonListingImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets(t *testing.T) {
+	root := filepath.Join("..", "internal", "listing", "preview")
+	bannedImports := []string{
+		`"task-processor/internal/listingkit"`,
+		`"task-processor/internal/marketplace/amazon"`,
+		`"task-processor/internal/marketplace/shein"`,
+		`"task-processor/internal/publishing/shein"`,
+		`"task-processor/internal/workspace/shein"`,
+		`"task-processor/internal/shein"`,
+		`"task-processor/internal/temu"`,
+		`"task-processor/internal/amazon"`,
+		`"task-processor/internal/amazonlisting"`,
+	}
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		for _, bannedImport := range bannedImports {
+			if _, ok := facts.imports[bannedImport]; ok {
+				t.Errorf("%s imports %s; platform-neutral preview code must stay independent of marketplace implementations", path, bannedImport)
+			}
+		}
+	}
+}
+
 func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "publishing", "shein")
 	allowedImports := map[string]map[string]struct{}{
