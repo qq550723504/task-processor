@@ -201,22 +201,6 @@ func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestListingKitRootDoesNotImportManagementAPI(t *testing.T) {
-	root := filepath.Join("..", "internal", "listingkit")
-	index, err := loadGoFileIndex(root, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for path, facts := range index.files {
-		if strings.HasSuffix(filepath.Base(path), "_test.go") || filepath.Dir(path) != filepath.Clean(root) {
-			continue
-		}
-		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Errorf("%s imports management/api; keep ListingKit root facade free of concrete management DTO contracts", path)
-		}
-	}
-}
-
 func TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit", "sheinsync")
 	allowedFiles := map[string]struct{}{

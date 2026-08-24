@@ -110,6 +110,9 @@ ListingKit's direct dependency on the SHEIN API root is guarded by
 `depguard: listingkit_shein_api_root`; subpackage adapter exceptions remain in
 the project-specific boundary tests.
 
+The ListingKit root facade's direct dependency on management API DTO contracts
+is guarded by `depguard: listingkit_root_management_api`.
+
 ### `internal/platforms/*`
 
 `internal/platforms/*` is a thin registration and platform selection layer. It
