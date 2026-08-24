@@ -69,7 +69,7 @@ At minimum, structural review should consider representative guards such as:
 - `depguard: listingkit_legacy_shein_runtime`
 - `depguard: listingkit_shein_api_root`
 - `TestListingKitNonAPISheinImportsStayAllowlisted`
-- `TestListingKitRootDoesNotImportManagementAPI`
+- `depguard: listingkit_root_management_api`
 - `depguard: listingkit_marketplace_publishing`
 - `TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted`
 - `TestListingKitAmazonListingImportsStayAllowlisted`
