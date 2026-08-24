@@ -315,7 +315,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestListingKitRootTaskSubmissionFilesStayAllowlisted`
 - `TestListingKitRootServiceGenerationFilesStayAllowlisted`
 - `TestListingKitRootGenerationFilesStayAllowlisted`
-- `TestListingPreviewPackageStaysPlatformNeutral`
+- `depguard: listing_preview_platform_neutral`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
 - `TestProductImageExternalClientImportsStayAllowlisted`

@@ -258,20 +258,6 @@ func TestListingKitAmazonListingImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestListingPreviewPackageStaysPlatformNeutral(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "listing", "preview"), []string{
-		`"task-processor/internal/listingkit"`,
-		`"task-processor/internal/marketplace/amazon"`,
-		`"task-processor/internal/marketplace/shein"`,
-		`"task-processor/internal/publishing/shein"`,
-		`"task-processor/internal/workspace/shein"`,
-		`"task-processor/internal/shein"`,
-		`"task-processor/internal/temu"`,
-		`"task-processor/internal/amazon"`,
-		`"task-processor/internal/amazonlisting"`,
-	}, nil)
-}
-
 func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "publishing", "shein")
 	allowedImports := map[string]map[string]struct{}{

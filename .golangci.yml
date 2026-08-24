@@ -105,6 +105,32 @@ linters-settings:
           - pkg: "task-processor/internal/infra/clients/management/api$"
             desc: "ListingKit root production code must not depend on management API DTO contracts"
 
+      listing_preview_platform_neutral:
+        # Keep the platform-neutral preview domain independent from marketplace implementations.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listing/preview/*.go"
+          - "**/internal/listing/preview/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit$"
+            desc: "Platform-neutral preview code must not depend on ListingKit"
+          - pkg: "task-processor/internal/marketplace/amazon$"
+            desc: "Platform-neutral preview code must not depend on Amazon marketplace code"
+          - pkg: "task-processor/internal/marketplace/shein$"
+            desc: "Platform-neutral preview code must not depend on SHEIN marketplace code"
+          - pkg: "task-processor/internal/publishing/shein$"
+            desc: "Platform-neutral preview code must not depend on SHEIN publishing code"
+          - pkg: "task-processor/internal/workspace/shein$"
+            desc: "Platform-neutral preview code must not depend on SHEIN workspace code"
+          - pkg: "task-processor/internal/shein$"
+            desc: "Platform-neutral preview code must not depend on legacy SHEIN code"
+          - pkg: "task-processor/internal/temu$"
+            desc: "Platform-neutral preview code must not depend on TEMU code"
+          - pkg: "task-processor/internal/amazon$"
+            desc: "Platform-neutral preview code must not depend on legacy Amazon code"
+          - pkg: "task-processor/internal/amazonlisting$"
+            desc: "Platform-neutral preview code must not depend on legacy Amazon Listing code"
+
       source_handoff_legacy_http:
         # The retired ProductEnrich HTTP owner must not regain production consumers.
         # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.

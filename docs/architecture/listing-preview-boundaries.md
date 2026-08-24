@@ -52,7 +52,7 @@ This package should remain platform-neutral. It should not start depending on ma
 
 Current guardrail:
 
-- `TestListingPreviewPackageStaysPlatformNeutral` prevents `internal/listing/preview` from importing the ListingKit facade or marketplace-specific Amazon, SHEIN, TEMU, publishing, or workspace implementation packages.
+- `depguard: listing_preview_platform_neutral` prevents `internal/listing/preview` from importing the ListingKit facade or marketplace-specific Amazon, SHEIN, TEMU, publishing, or workspace implementation packages.
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade` keeps new domain-side preview logic from reintroducing root `internal/listingkit` facade dependencies as the default home for extraction work.
 
 ## `internal/listing/platform`
