@@ -17,6 +17,65 @@ func TestAlibaba1688CrawlerDoesNotImportListingKitRoot(t *testing.T) {
 	}, nil)
 }
 
+func TestAlibaba1688CrawlerDoesNotConfigureLegacyTenantThroughListingKitHTTPAPI(t *testing.T) {
+	root := filepath.Join("..", "internal", "crawler", "alibaba1688")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, path, facts.source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listingKitHTTPAPINames := make(map[string]struct{})
+		dotImportedListingKitHTTPAPI := false
+		for _, imported := range file.Imports {
+			if strings.Trim(imported.Path.Value, `"`) != "task-processor/internal/listingkit/httpapi" {
+				continue
+			}
+			if imported.Name == nil {
+				listingKitHTTPAPINames["httpapi"] = struct{}{}
+				continue
+			}
+			if imported.Name.Name == "." {
+				dotImportedListingKitHTTPAPI = true
+				continue
+			}
+			if imported.Name.Name != "_" {
+				listingKitHTTPAPINames[imported.Name.Name] = struct{}{}
+			}
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if dotImportedListingKitHTTPAPI {
+				ident, ok := call.Fun.(*ast.Ident)
+				if ok && ident.Name == "ConfigureLegacyTenantResolver" {
+					t.Errorf("%s dot-imports listingkit/httpapi to configure Legacy Tenant Bridge; use internal/tenantbridge/bootstrap", path)
+				}
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || selector.Sel == nil || selector.Sel.Name != "ConfigureLegacyTenantResolver" {
+				return true
+			}
+			ident, ok := selector.X.(*ast.Ident)
+			if ok {
+				if _, imported := listingKitHTTPAPINames[ident.Name]; imported {
+					t.Errorf("%s still configures Legacy Tenant Bridge through listingkit/httpapi; use internal/tenantbridge/bootstrap", path)
+				}
+			}
+			return true
+		})
+	}
+}
+
 func TestAlibaba1688CrawlerDoesNotImportListingKitHTTPAPIForSourceAccountBuilder(t *testing.T) {
 	root := filepath.Join("..", "internal", "crawler", "alibaba1688")
 	index, err := loadGoFileIndex(root, "")
