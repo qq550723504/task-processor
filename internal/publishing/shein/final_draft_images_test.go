@@ -53,14 +53,58 @@ func TestApplyFinalImageDraftAppliesOrderDeletionAndPreviewRoles(t *testing.T) {
 	if pkg.DraftPayload.SKCList[0].ImageInfo == nil || pkg.DraftPayload.SKCList[0].SKUList[0].MainImage == "" {
 		t.Fatalf("draft SKC/SKU images were not filled: %+v", pkg.DraftPayload.SKCList[0])
 	}
-	if len(pkg.PreviewPayload.ImageInfo.ImageInfoList) != 1 {
-		t.Fatalf("preview images = %+v, want deleted image removed", pkg.PreviewPayload.ImageInfo.ImageInfoList)
+	if len(pkg.PreviewPayload.ImageInfo.ImageInfoList) != 2 {
+		t.Fatalf("preview images = %+v, want selected images without deletion", pkg.PreviewPayload.ImageInfo.ImageInfoList)
 	}
-	if got := pkg.PreviewPayload.ImageInfo.ImageInfoList[0]; got.ImageType != 6 || got.MarketingMainImage {
-		t.Fatalf("preview role image = %+v, want swatch image type", got)
+	for _, image := range pkg.PreviewPayload.ImageInfo.ImageInfoList {
+		if image.ImageURL == "https://cdn.example/delete.jpg" {
+			t.Fatalf("deleted image remained in preview: %+v", pkg.PreviewPayload.ImageInfo.ImageInfoList)
+		}
+		if image.ImageURL == "https://cdn.example/gallery-2.jpg" && (image.ImageType != 6 || image.MarketingMainImage) {
+			t.Fatalf("preview role image = %+v, want swatch image type", image)
+		}
 	}
 	if len(pkg.PreviewPayload.SKCList[0].ImageInfo.ImageInfoList) == 0 {
 		t.Fatal("preview SKC image info was not filled from draft")
+	}
+}
+
+func TestApplyFinalImageDraftMaterializesNewImageIntoPreviewPayload(t *testing.T) {
+	t.Parallel()
+
+	const sourceURL = "https://1688.example.com/source-main.jpg"
+	pkg := &Package{
+		FinalSubmissionDraft: &FinalDraft{
+			MainImageURL:    sourceURL,
+			FinalImageOrder: []string{sourceURL, "https://cdn.example/generated.jpg"},
+		},
+		DraftPayload: &RequestDraft{
+			ImageInfo: &ImageDraft{
+				Gallery: []string{"https://cdn.example/generated.jpg"},
+			},
+		},
+		PreviewPayload: &sheinproduct.Product{
+			ImageInfo: &sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{
+				{ImageURL: "https://cdn.example/generated.jpg", ImageType: 1},
+			}},
+		},
+	}
+
+	ApplyFinalImageDraft(pkg)
+
+	var sourceImage *sheinproduct.ImageDetail
+	for index := range pkg.PreviewPayload.ImageInfo.ImageInfoList {
+		image := &pkg.PreviewPayload.ImageInfo.ImageInfoList[index]
+		if image.ImageURL == sourceURL {
+			sourceImage = image
+			break
+		}
+	}
+	if sourceImage == nil {
+		t.Fatalf("preview payload images = %+v, want selected source image", pkg.PreviewPayload.ImageInfo.ImageInfoList)
+	}
+	if !sourceImage.MarketingMainImage || sourceImage.ImageType != 1 {
+		t.Fatalf("materialized source image = %+v, want main image", *sourceImage)
 	}
 }
 

@@ -243,13 +243,45 @@ func finalDraftImageInputHasImage(input FinalDraftImageInput) bool {
 
 // ReorderFinalDraftProductImages applies ordering, deletion, main image, and role overrides to product images.
 func ReorderFinalDraftProductImages(info *sheinproduct.ImageInfo, order []string, main string, deleted map[string]struct{}, roles map[string]string) {
-	if info == nil || len(info.ImageInfoList) == 0 {
+	if info == nil {
 		return
 	}
+	main = strings.TrimSpace(main)
 	priority := make(map[string]int, len(order))
 	for i, image := range order {
-		priority[strings.TrimSpace(image)] = i + 1
+		image = strings.TrimSpace(image)
+		if image != "" {
+			priority[image] = i + 1
+		}
 	}
+	existing := make(map[string]struct{}, len(info.ImageInfoList))
+	for _, image := range info.ImageInfoList {
+		url := strings.TrimSpace(image.ImageURL)
+		if url != "" {
+			existing[url] = struct{}{}
+		}
+	}
+	materialize := func(url string) {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return
+		}
+		if _, ok := deleted[url]; ok {
+			return
+		}
+		if _, ok := existing[url]; ok {
+			return
+		}
+		info.ImageInfoList = append(info.ImageInfoList, sheinproduct.ImageDetail{
+			ImageURL:  url,
+			ImageType: 2,
+		})
+		existing[url] = struct{}{}
+	}
+	for _, image := range order {
+		materialize(image)
+	}
+	materialize(main)
 	filtered := make([]sheinproduct.ImageDetail, 0, len(info.ImageInfoList))
 	for _, image := range info.ImageInfoList {
 		url := strings.TrimSpace(image.ImageURL)

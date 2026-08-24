@@ -175,7 +175,7 @@ export function SheinDataImageGallery({
   const selectedImageUrls = new Set(images.map((image) => image.url));
   const unselectedAvailableImages = availableImages.filter(
     (image) =>
-      !includedAvailableUrls.includes(image.url) &&
+      (!includedAvailableUrls.includes(image.url) || deletedUrls.includes(image.url)) &&
       (!selectedImageUrls.has(image.url) || deletedUrls.includes(image.url)),
   );
 
@@ -244,11 +244,6 @@ export function SheinDataImageGallery({
             onSelect={onSelect}
             onSetActiveImage={setActiveImage}
             onSetDeletedUrls={setDeletedUrls}
-            onRemoveImage={(url) =>
-              setIncludedAvailableUrls((current) =>
-                current.filter((includedUrl) => includedUrl !== url),
-              )
-            }
             onSetOrderOverride={setOrderOverride}
             onSetRegenerationPrompt={setRegenerationPrompt}
             roleByUrl={roleByUrl}

@@ -41,7 +41,10 @@ func ApplyFinalImageDraft(pkg *Package) {
 			}
 		}
 	}
-	if pkg.PreviewPayload != nil && pkg.PreviewPayload.ImageInfo != nil {
+	if pkg.PreviewPayload != nil {
+		if pkg.PreviewPayload.ImageInfo == nil && (len(order) > 0 || main != "") {
+			pkg.PreviewPayload.ImageInfo = &sheinproduct.ImageInfo{}
+		}
 		ReorderFinalDraftProductImages(pkg.PreviewPayload.ImageInfo, order, main, deleted, pkg.FinalSubmissionDraft.ImageRoleOverrides)
 	}
 	EnsureFinalPreviewSKCImages(pkg)
