@@ -48,9 +48,11 @@ func (r *GormCategoryRepository) GetCategory(ctx context.Context, tenantID, id i
 func (r *GormCategoryRepository) CreateCategory(ctx context.Context, category *Category) (*Category, error) {
 	row := listingCategoryFromCategory(category)
 	applyCategoryDefaults(&row)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyCategoryAuditFields(&row, ownerUserID, true)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyCategoryAuditFields(&row, ownerUserID, true)
 	if row.ParentID > 0 {
 		if _, err := r.GetCategory(ctx, row.TenantID, row.ParentID); err != nil {
 			return nil, err
@@ -66,9 +68,11 @@ func (r *GormCategoryRepository) CreateCategory(ctx context.Context, category *C
 func (r *GormCategoryRepository) UpdateCategory(ctx context.Context, category *Category) (*Category, error) {
 	row := listingCategoryFromCategory(category)
 	applyCategoryDefaults(&row)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyCategoryAuditFields(&row, ownerUserID, false)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyCategoryAuditFields(&row, ownerUserID, false)
 	updates := map[string]any{
 		"owner_user_id": row.OwnerUserID,
 		"name":          row.Name,

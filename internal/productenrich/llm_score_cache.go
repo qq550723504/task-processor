@@ -4,16 +4,21 @@ package productenrich
 import (
 	"context"
 	"encoding/json"
-	"task-processor/internal/pkg/hashx"
+	"fmt"
 	"time"
 
 	"task-processor/internal/core/logger"
+	"task-processor/internal/pkg/hashx"
 
 	"github.com/sirupsen/logrus"
 )
 
 // LLMScoreCache LLM 评分缓存接口
 type LLMScoreCache interface {
+	// GetGovernedScoreResult reads a score only from the complete versioned governance identity.
+	GetGovernedScoreResult(ctx context.Context, identity ScoreCacheIdentity) (*CachedLLMScore, bool)
+	// SetGovernedScoreResult stores a score only under the complete versioned governance identity.
+	SetGovernedScoreResult(ctx context.Context, identity ScoreCacheIdentity, result *CachedLLMScore, ttl time.Duration) error
 	// GetTextScore 获取文本评分缓存
 	GetTextScore(ctx context.Context, text string) (float64, bool)
 	// GetTextScoreResult 获取文本评分缓存及其 prompt lineage
@@ -30,6 +35,22 @@ type LLMScoreCache interface {
 	SetImageScore(ctx context.Context, imageURL string, score float64, ttl time.Duration) error
 	// SetImageScoreResult 设置图片评分缓存及其 prompt lineage
 	SetImageScoreResult(ctx context.Context, imageURL string, result *CachedLLMScore, ttl time.Duration) error
+}
+
+func (c *llmScoreCache) GetGovernedScoreResult(ctx context.Context, identity ScoreCacheIdentity) (*CachedLLMScore, bool) {
+	cacheKey := identity.Key()
+	if cacheKey == "" {
+		return nil, false
+	}
+	return c.getScore(ctx, cacheKey, "llm_governed_score")
+}
+
+func (c *llmScoreCache) SetGovernedScoreResult(ctx context.Context, identity ScoreCacheIdentity, result *CachedLLMScore, ttl time.Duration) error {
+	cacheKey := identity.Key()
+	if cacheKey == "" {
+		return fmt.Errorf("governed score cache identity requires a positive version")
+	}
+	return c.setScore(ctx, cacheKey, "llm_governed_score", result, ttl)
 }
 
 type CachedLLMScore struct {

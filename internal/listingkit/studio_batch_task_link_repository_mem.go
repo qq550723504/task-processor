@@ -74,13 +74,192 @@ func (r *MemStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx context
 
 	row := existing
 	row.ListingKitTaskID = link.ListingKitTaskID
+	if strings.TrimSpace(link.ClaimToken) != "" {
+		row.ClaimToken = link.ClaimToken
+	}
 	row.Status = link.Status
 	row.Source = link.Source
 	row.ReasonCode = link.ReasonCode
 	row.Message = link.Message
+	row.ProductImageUsageRoute = link.ProductImageUsageRoute
+	row.ProductImageUsageSettled = link.ProductImageUsageSettled
+	row.PendingProductImageUsageReleaseClaimToken = link.PendingProductImageUsageReleaseClaimToken
 	row.UpdatedAt = link.UpdatedAt
 	r.links[row.ID] = row
 	return nil
+}
+
+func (r *MemStudioBatchTaskLinkRepository) ResolveStudioBatchProductImageUsageRoute(ctx context.Context, candidateKey string, claimToken string, route studioBatchProductImageUsageRoute, updatedAt time.Time) (studioBatchProductImageUsageRoute, bool, error) {
+	if route != studioBatchProductImageUsageRouteLegacy && route != studioBatchProductImageUsageRouteLedger {
+		return "", false, fmt.Errorf("unsupported studio batch product image usage route %q", route)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.Status != studioBatchTaskLinkStatusCreating || strings.TrimSpace(link.ClaimToken) != strings.TrimSpace(claimToken) || link.ProductImageUsageRoute != studioBatchProductImageUsageRoutePending {
+			return link.ProductImageUsageRoute, false, nil
+		}
+		link.ProductImageUsageRoute = route
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		return link.ProductImageUsageRoute, true, nil
+	}
+	return "", false, gorm.ErrRecordNotFound
+}
+
+func (r *MemStudioBatchTaskLinkRepository) ResolveStudioBatchProductImageUsageCompatibilityRoute(ctx context.Context, candidateKey string, route studioBatchProductImageUsageRoute, updatedAt time.Time) (studioBatchProductImageUsageRoute, bool, error) {
+	if route != studioBatchProductImageUsageRouteLegacy && route != studioBatchProductImageUsageRouteLedger {
+		return "", false, fmt.Errorf("unsupported studio batch product image usage route %q", route)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.ProductImageUsageRoute != "" {
+			return link.ProductImageUsageRoute, false, nil
+		}
+		link.ProductImageUsageRoute = route
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		return link.ProductImageUsageRoute, true, nil
+	}
+	return "", false, gorm.ErrRecordNotFound
+}
+
+func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchProductImageUsageSettled(ctx context.Context, candidateKey string, updatedAt time.Time) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.ProductImageUsageSettled {
+			return false, nil
+		}
+		link.ProductImageUsageSettled = true
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		return true, nil
+	}
+	return false, gorm.ErrRecordNotFound
+}
+
+func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateWithToken(ctx context.Context, candidateKey string, fromStatus string, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.Status != fromStatus {
+			cloned := link
+			return &cloned, false, nil
+		}
+		link.Status = toStatus
+		link.ClaimToken = strings.TrimSpace(claimToken)
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		cloned := link
+		return &cloned, true, nil
+	}
+	return nil, false, gorm.ErrRecordNotFound
+}
+
+func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.Status != fromStatus || !link.UpdatedAt.Equal(observedUpdatedAt) {
+			cloned := link
+			return &cloned, false, nil
+		}
+		link.Status = toStatus
+		link.ClaimToken = strings.TrimSpace(claimToken)
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		cloned := link
+		return &cloned, true, nil
+	}
+	return nil, false, gorm.ErrRecordNotFound
+}
+
+func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAtWithTokenAndPendingRelease(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, pendingReleaseClaimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.Status != fromStatus || !link.UpdatedAt.Equal(observedUpdatedAt) {
+			cloned := link
+			return &cloned, false, nil
+		}
+		link.Status = toStatus
+		link.ClaimToken = strings.TrimSpace(claimToken)
+		link.PendingProductImageUsageReleaseClaimToken = strings.TrimSpace(pendingReleaseClaimToken)
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		cloned := link
+		return &cloned, true, nil
+	}
+	return nil, false, gorm.ErrRecordNotFound
+}
+
+func (r *MemStudioBatchTaskLinkRepository) RefreshStudioBatchTaskLink(ctx context.Context, candidateKey string, claimToken string, updatedAt time.Time) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.Status != studioBatchTaskLinkStatusCreating || strings.TrimSpace(link.ClaimToken) != strings.TrimSpace(claimToken) || strings.TrimSpace(link.ListingKitTaskID) != "" {
+			return false, nil
+		}
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		return true, nil
+	}
+	return false, gorm.ErrRecordNotFound
+}
+
+func (r *MemStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLinkWithClaimToken(ctx context.Context, link *StudioBatchTaskLinkRecord, claimToken string) (bool, error) {
+	if link == nil {
+		return false, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	existing, ok := r.links[link.ID]
+	if !ok || !matchesStudioBatchScope(ctx, existing.TenantID, existing.UserID) {
+		return false, gorm.ErrRecordNotFound
+	}
+	if existing.Status != studioBatchTaskLinkStatusCreating || strings.TrimSpace(existing.ClaimToken) != strings.TrimSpace(claimToken) {
+		return false, nil
+	}
+	row := existing
+	row.ListingKitTaskID = link.ListingKitTaskID
+	row.ClaimToken = strings.TrimSpace(link.ClaimToken)
+	row.Status = link.Status
+	row.Source = link.Source
+	row.ReasonCode = link.ReasonCode
+	row.Message = link.Message
+	row.ProductImageUsageRoute = link.ProductImageUsageRoute
+	row.ProductImageUsageSettled = link.ProductImageUsageSettled
+	row.PendingProductImageUsageReleaseClaimToken = link.PendingProductImageUsageReleaseClaimToken
+	row.UpdatedAt = link.UpdatedAt
+	r.links[row.ID] = row
+	return true, nil
 }
 
 func (r *MemStudioBatchTaskLinkRepository) ListStudioBatchTaskLinksByBatchID(ctx context.Context, batchID string) ([]StudioBatchTaskLinkRecord, error) {
@@ -161,6 +340,7 @@ func (r *MemStudioBatchTaskLinkRepository) validateUniqueLocked(candidate Studio
 			link.DesignID == candidate.DesignID &&
 			link.SelectionID == candidate.SelectionID &&
 			link.CompatibilityFingerprint == candidate.CompatibilityFingerprint &&
+			link.ImageStrategy == candidate.ImageStrategy &&
 			link.SheinStoreID == candidate.SheinStoreID {
 			return fmt.Errorf("studio batch task link tuple already exists")
 		}

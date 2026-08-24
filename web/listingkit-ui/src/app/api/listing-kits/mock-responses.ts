@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { buildMockShared } from "@/app/api/listing-kits/mock-shared";
 import type { ListingKitMockBundle } from "@/app/api/listing-kits/mock-types";
 
-export function shouldUseListingKitMock(taskId: string) {
+ function shouldUseListingKitMock(taskId: string) {
   return (
     process.env.LISTINGKIT_UI_USE_MOCK === "1" ||
     taskId === "demo-task" ||

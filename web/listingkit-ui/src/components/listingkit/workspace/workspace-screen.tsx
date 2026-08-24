@@ -39,7 +39,10 @@ import {
 import { useUpdateSheinFinalDraft } from "@/lib/query/use-shein-final-draft";
 import { useClearSheinResolutionCache } from "@/lib/query/use-shein-resolution-cache";
 import { useExecuteAction } from "@/lib/query/use-action";
-import { useRetryChildTask } from "@/lib/query/use-child-task-retry";
+import {
+  getTaskRetryVersion,
+  useRetryChildTask,
+} from "@/lib/query/use-child-task-retry";
 
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
 	const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
@@ -60,6 +63,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     resolvedActionSummary,
     previewSuggestion,
     sheinImages,
+    sheinAvailableImages,
     sheinMockupImages,
     sheinVariantCount,
     sheinPreviewPayload,
@@ -108,12 +112,17 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         sheinActions.handleRegenerateSheinSaleAttributes,
     },
   });
-  const childTaskRetry = useRetryChildTask(taskId);
+  const childTaskRetry = useRetryChildTask(
+    taskId,
+    getTaskRetryVersion(taskResult.data),
+    taskResult.data?.child_retries,
+  );
   const sheinViewProps = buildSheinWorkspaceViewProps({
     shein: preview.data?.shein,
     selectedPlatform,
     focusedPreview,
     sheinImages,
+    sheinAvailableImages,
     sheinMockupImages,
     sheinVariantCount,
     sheinActions,
@@ -187,7 +196,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     reviewPreviewData: reviewPreview.data,
     taskResult: taskResult.data,
     focusedPreview,
-    shein: preview.data?.shein,
     sheinViewProps,
     focusedScenePreset,
     recoveryDescriptors:
@@ -215,7 +223,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           session.data?.recovery_summary ??
           preview.data.asset_generation_overview?.recovery_summary
         }
-        showSheinStudioLink={selectedPlatform === "shein"}
         showLayerActions
         layerActionsPending={layerAction.isPending}
         onRunStandardLayer={handleRunStandardProductTemporal}
@@ -227,6 +234,8 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         task={taskResult.data}
         onRetryChildTask={(kind) => childTaskRetry.mutate({ kind })}
         retryingChildTaskKind={childTaskRetry.isPending ? childTaskRetry.variables?.kind ?? null : null}
+        retryQueued={childTaskRetry.retryQueued}
+        retryError={childTaskRetry.error}
       />
       <ReviewReasonsCard
         task={taskResult.data}

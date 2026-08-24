@@ -1,5 +1,7 @@
 package listingkit
 
+import listinggeneration "task-processor/internal/listingkit/generation"
+
 type AssetGenerationOverview struct {
 	PrimaryAction             string                             `json:"primary_action,omitempty"`
 	PrimaryActionKey          string                             `json:"primary_action_key,omitempty"`
@@ -35,7 +37,7 @@ func buildAssetGenerationOverview(queue *GenerationWorkQueue) *AssetGenerationOv
 	grade := dominantGenerationQualityGrade(summary)
 	overview := &AssetGenerationOverview{
 		DominantQualityGrade:      grade,
-		DominantQualityGradeLabel: generationQualityGradeLabel(grade),
+		DominantQualityGradeLabel: listinggeneration.QualityGradeLabel(grade),
 		BlockingPlatforms:         blockingPlatformsForQueue(queue),
 		BlockingQualityGrades:     blockingQualityGradesForQueue(summary),
 		PreviewableItems:          summary.PreviewableItems,
@@ -56,7 +58,7 @@ func buildAssetGenerationOverview(queue *GenerationWorkQueue) *AssetGenerationOv
 		overview.SecondaryActionKeys = []string{"review_missing_slots"}
 		overview.RecommendedFilters = &AssetGenerationRecommendedFilters{
 			QualityGrade:      "missing",
-			QualityGradeLabel: generationQualityGradeLabel("missing"),
+			QualityGradeLabel: listinggeneration.QualityGradeLabel("missing"),
 			Platforms:         append([]string(nil), overview.BlockingPlatforms...),
 			RetryableOnly:     true,
 		}
@@ -68,7 +70,7 @@ func buildAssetGenerationOverview(queue *GenerationWorkQueue) *AssetGenerationOv
 		overview.SecondaryActionKeys = []string{"inspect_failed_renderer_tasks"}
 		overview.RecommendedFilters = &AssetGenerationRecommendedFilters{
 			QualityGrade:      "provisional",
-			QualityGradeLabel: generationQualityGradeLabel("provisional"),
+			QualityGradeLabel: listinggeneration.QualityGradeLabel("provisional"),
 			Platforms:         append([]string(nil), overview.BlockingPlatforms...),
 			RetryableOnly:     true,
 			ExecutionQuality:  "failed",
@@ -81,7 +83,7 @@ func buildAssetGenerationOverview(queue *GenerationWorkQueue) *AssetGenerationOv
 		overview.SecondaryActionKeys = []string{"retry_provisional_slots"}
 		overview.RecommendedFilters = &AssetGenerationRecommendedFilters{
 			QualityGrade:      "provisional",
-			QualityGradeLabel: generationQualityGradeLabel("provisional"),
+			QualityGradeLabel: listinggeneration.QualityGradeLabel("provisional"),
 			Platforms:         append([]string(nil), overview.BlockingPlatforms...),
 			RetryableOnly:     true,
 		}
@@ -96,7 +98,7 @@ func buildAssetGenerationOverview(queue *GenerationWorkQueue) *AssetGenerationOv
 		}
 		overview.RecommendedFilters = &AssetGenerationRecommendedFilters{
 			QualityGrade:           grade,
-			QualityGradeLabel:      generationQualityGradeLabel(grade),
+			QualityGradeLabel:      listinggeneration.QualityGradeLabel(grade),
 			Platforms:              append([]string(nil), overview.BlockingPlatforms...),
 			RetryableOnly:          false,
 			RenderPreviewAvailable: summary.PreviewableItems > 0,
@@ -168,7 +170,7 @@ func applyAssetGenerationRegularActionKeyFilterMutation(actionKey string, filter
 	switch actionKey {
 	case "generate_missing_assets", "review_missing_slots":
 		filters.QualityGrade = "missing"
-		filters.QualityGradeLabel = generationQualityGradeLabel("missing")
+		filters.QualityGradeLabel = listinggeneration.QualityGradeLabel("missing")
 		if actionKey == "generate_missing_assets" {
 			filters.RetryableOnly = true
 		}

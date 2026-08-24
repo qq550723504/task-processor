@@ -38,12 +38,12 @@ openai:
 aiCapability:
   studioImageRoutingMode: legacy
   productImageSceneEnabled: false
+  productImageSceneAllowedTenantIDs: []
 
 listingkit:
   sheinSubmitDebugDumpDir: ""
   platformAdminUsers: []
   platformAdminRoles: []
-  ownerScopeRequired: false
   zitadel:
     issuerURL: ""
     clientID: ""
@@ -51,7 +51,6 @@ listingkit:
     authorizationRequired: false
     allowedTenantIDs: []
     allowedUserIDs: []
-    allowedUsernames: []
     allowedRoles: []
 
 platforms:

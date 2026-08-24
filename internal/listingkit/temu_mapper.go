@@ -5,6 +5,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
+	common "task-processor/internal/publishing/common"
 )
 
 func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *TemuPackage {
@@ -12,14 +13,14 @@ func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image 
 		return &TemuPackage{ReviewNotes: []string{"canonical product is empty"}}
 	}
 
-	images := buildPlatformImages(canonical, image)
-	variants := buildPlatformVariants(canonical)
+	images := common.BuildImagesWithSelection(canonical, image)
+	variants := common.BuildVariants(canonical)
 	pkg := &TemuPackage{
-		GoodsName:        withBrandHint(canonical.Title, req),
+		GoodsName:        common.WithBrandHint(canonical.Title, req.BrandHint),
 		CategoryPath:     append([]string(nil), canonical.CategoryPath...),
 		ShortDescription: canonical.Description,
 		BulletPoints:     append([]string(nil), canonical.SellingPoints...),
-		Attributes:       flattenAttributes(canonical.Attributes),
+		Attributes:       common.FlattenAttributes(canonical.Attributes),
 		SkcList:          buildTemuSKCs(variants, images),
 		BatchSkuInfo:     buildTemuBatchSKUInfo(variants, canonical),
 		Images:           images,
@@ -28,14 +29,14 @@ func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image 
 			"country":         req.Country,
 			"language":        req.Language,
 			"goods_type":      "normal",
-			"category_name":   lastCategory(canonical.CategoryPath),
+			"category_name":   common.LastCategory(canonical.CategoryPath),
 		},
 		CategoryDisclaimer: nil,
 	}
 	if strings.TrimSpace(req.TargetCategoryHint) != "" {
 		pkg.Metadata["target_category_hint"] = req.TargetCategoryHint
 	}
-	pkg.ReviewNotes = collectReviewNotes(canonical, image, "TEMU 资料包已贴近 goods_basic/skc_list 结构，但类目 ID、属性 ID、承诺/扩展字段仍需接 TEMU 模板规则")
+	pkg.ReviewNotes = common.CollectReviewNotes(canonical, image, "TEMU 资料包已贴近 goods_basic/skc_list 结构，但类目 ID、属性 ID、承诺/扩展字段仍需接 TEMU 模板规则")
 	return pkg
 }
 
@@ -73,17 +74,17 @@ func buildTemuBatchSKUInfo(variants []PlatformVariant, canonical *canonical.Prod
 		OutSkuSN: base.SKU,
 	}
 	if base.Price != nil {
-		info.Price = formatFloat(base.Price.Amount)
-		info.CostPrice = formatFloat(base.Price.CostPrice)
+		info.Price = common.FormatFloat(base.Price.Amount)
+		info.CostPrice = common.FormatFloat(base.Price.CostPrice)
 	}
 	if canonical != nil && canonical.Specifications != nil {
 		if canonical.Specifications.Weight != nil {
-			info.Weight = formatFloat(canonical.Specifications.Weight.Value)
+			info.Weight = common.FormatFloat(canonical.Specifications.Weight.Value)
 		}
 		if canonical.Specifications.Dimensions != nil {
-			info.Length = formatFloat(canonical.Specifications.Dimensions.Length)
-			info.Width = formatFloat(canonical.Specifications.Dimensions.Width)
-			info.Height = formatFloat(canonical.Specifications.Dimensions.Height)
+			info.Length = common.FormatFloat(canonical.Specifications.Dimensions.Length)
+			info.Width = common.FormatFloat(canonical.Specifications.Dimensions.Width)
+			info.Height = common.FormatFloat(canonical.Specifications.Dimensions.Height)
 		}
 	}
 	return info

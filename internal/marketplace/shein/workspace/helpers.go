@@ -1,7 +1,6 @@
 package workspace
 
 import (
-	"strconv"
 	"strings"
 )
 
@@ -22,17 +21,6 @@ func uniqueStrings(items []string) []string {
 		result = append(result, item)
 	}
 	return result
-}
-
-func joinStrings(values []string, sep string) string {
-	filtered := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value != "" {
-			filtered = append(filtered, value)
-		}
-	}
-	return strings.Join(filtered, sep)
 }
 
 func filterNonEmptyStrings(values []string) []string {
@@ -62,8 +50,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func formatInt(v int) string {
-	return strconv.Itoa(v)
 }

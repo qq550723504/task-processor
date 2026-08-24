@@ -23,7 +23,9 @@ func ValidateConfig(c *Config) []error {
 		&c.Platforms,
 		&c.AICapability,
 	)
-	return validator.Validate()
+	errors := validator.Validate()
+	errors = append(errors, ValidateListingKitConfig(&c.ListingKit)...)
+	return errors
 }
 
 func (c *Config) ValidateAndLog(logger *logrus.Logger) bool {

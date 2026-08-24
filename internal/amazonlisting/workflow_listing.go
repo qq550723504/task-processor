@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type WorkflowArtifacts struct {
@@ -137,7 +138,18 @@ func (w *listingWorkflow) ensureProductArtifacts(ctx context.Context, task *Task
 	}
 	updateChildTaskState(artifacts.Draft, "product_enrich", productTask.ID, string(productenrich.TaskStatusPending), "")
 
-	productJSON, err := w.productService.ProcessProduct(ctx, productTask)
+	productCtx := ctx
+	if envelope, envelopeErr := productTask.ExecutionEnvelope(); envelopeErr != nil {
+		markChildTaskFailed(artifacts.Draft, "product_enrich", productTask.ID, envelopeErr)
+		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("invalid product task identity: %w", envelopeErr)}
+	} else if envelope.Version != 0 {
+		productCtx, envelopeErr = aiidentity.RestoreExecutionEnvelope(ctx, envelope, productTask.ID)
+		if envelopeErr != nil {
+			markChildTaskFailed(artifacts.Draft, "product_enrich", productTask.ID, envelopeErr)
+			return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("restore product task identity: %w", envelopeErr)}
+		}
+	}
+	productJSON, err := w.productService.ProcessProduct(productCtx, productTask)
 	if err != nil {
 		markChildTaskFailed(artifacts.Draft, "product_enrich", productTask.ID, err)
 		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("product enrichment failed: %w", err)}
@@ -180,7 +192,18 @@ func (w *listingWorkflow) ensureImageArtifacts(ctx context.Context, task *Task, 
 		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("failed to create image task: %w", err)}
 	}
 	updateChildTaskState(artifacts.Draft, "product_image", imageTask.ID, string(productimage.TaskStatusPending), "")
-	imageResult, err := w.imageService.ProcessImages(ctx, imageTask)
+	imageCtx := ctx
+	if envelope, envelopeErr := imageTask.ExecutionEnvelope(); envelopeErr != nil {
+		markChildTaskFailed(artifacts.Draft, "product_image", imageTask.ID, envelopeErr)
+		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("invalid image task identity: %w", envelopeErr)}
+	} else if envelope.Version != 0 {
+		imageCtx, envelopeErr = aiidentity.RestoreExecutionEnvelope(ctx, envelope, imageTask.ID)
+		if envelopeErr != nil {
+			markChildTaskFailed(artifacts.Draft, "product_image", imageTask.ID, envelopeErr)
+			return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("restore image task identity: %w", envelopeErr)}
+		}
+	}
+	imageResult, err := w.imageService.ProcessImages(imageCtx, imageTask)
 	if err != nil {
 		markChildTaskFailed(artifacts.Draft, "product_image", imageTask.ID, err)
 		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("image processing failed: %w", err)}

@@ -6,12 +6,12 @@ type SearchParamsLike = {
   get(name: string): string | null;
 };
 
-export function parseOptionalNumber(value?: string | null) {
+ function parseOptionalNumber(value?: string | null) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-export function parseOptionalStringArray(value?: string | null) {
+ function parseOptionalStringArray(value?: string | null) {
   if (!value) {
     return undefined;
   }
@@ -29,7 +29,7 @@ export function parseOptionalStringArray(value?: string | null) {
   }
 }
 
-export function parseOptionalNumberArray(value?: string | null) {
+ function parseOptionalNumberArray(value?: string | null) {
   if (!value) {
     return undefined;
   }

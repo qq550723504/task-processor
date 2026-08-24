@@ -344,7 +344,7 @@ export async function deleteSheinStudioBatch(batchID: string) {
   }
 }
 
-export function flattenSheinStudioBatchDetailDesigns(
+ function flattenSheinStudioBatchDetailDesigns(
   detail: SheinStudioBatchDetail,
 ): SheinStudioGeneratedDesign[] {
   return detail.items.flatMap((entry) =>
@@ -365,7 +365,7 @@ export function flattenSheinStudioBatchDetailDesigns(
   );
 }
 
-export function getApprovedSheinStudioBatchDesignIDs(
+ function getApprovedSheinStudioBatchDesignIDs(
   detail: SheinStudioBatchDetail,
 ) {
   return detail.items.flatMap((entry) =>
@@ -373,22 +373,6 @@ export function getApprovedSheinStudioBatchDesignIDs(
       .filter((design) => design.reviewStatus === "approved")
       .map((design) => design.id),
   );
-}
-
-export function updateSheinStudioBatchDetailReviewNote(
-  detail: SheinStudioBatchDetail,
-  designID: string,
-  note: string,
-): SheinStudioBatchDetail {
-  return {
-    ...detail,
-    items: detail.items.map((entry) => ({
-      ...entry,
-      designs: entry.designs.map((design) =>
-        design.id === designID ? { ...design, reviewNote: note } : design,
-      ),
-    })),
-  };
 }
 
 function projectItemizedBatchSavedBatchCompatibility(

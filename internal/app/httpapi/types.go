@@ -2,12 +2,13 @@ package httpapi
 
 import (
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	a1688httpapi "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	localagenthttpapi "task-processor/internal/localagent/httpapi"
 	productenrich "task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	sourcea1688httpapi "task-processor/internal/productenrich/httpapi/sourcea1688"
 	productimage "task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
@@ -30,6 +31,7 @@ type featureRuntimeState struct {
 	imageSubjectExtractor  productimage.SubjectExtractor
 	imageWhiteBgRenderer   productimage.WhiteBackgroundRenderer
 	imageSceneRenderer     productimage.SceneRenderer
+	imageAssetPublisher    productimage.AssetPublisher
 	listingKitSupport      *listingKitSupport
 }
 
@@ -43,11 +45,12 @@ type httpFeatureComposition struct {
 	imageModule           *productimagehttpapi.Module
 	amazonListingModule   *amazonlistinghttpapi.Module
 	listingKitModule      *listingkithttpapi.Module
-	productSourcingModule *sourcea1688httpapi.BuildResult
+	productSourcingModule *a1688httpapi.BuildResult
 	promptModule          *promptmgmtapi.BuildResult
 	sdsModule             *sdshttpapi.BuildResult
 	taskRPCResult         *taskrpcapi.BuildResult
 	sheinLoginResult      *sheinloginbootstrap.BuildResult
 	sdsLoginResult        *sdsloginbootstrap.BuildResult
 	crawler1688Module     kernelmodule.Module
+	localAgentModule      *localagenthttpapi.BuildResult
 }

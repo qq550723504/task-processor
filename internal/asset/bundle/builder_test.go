@@ -130,6 +130,29 @@ func TestBuilderBuildReportsMissingSlotsAndPendingGeneration(t *testing.T) {
 	}
 }
 
+func TestBuilderPendingGenerationIncludesGalleryCandidate(t *testing.T) {
+	t.Parallel()
+
+	builder := assetbundle.NewBuilder()
+	bundle := builder.Build(assetbundle.BuildRequest{
+		Platform: "shein",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://cbu01.alicdn.com/source.jpg"},
+			{ID: "gallery-1", Kind: asset.KindGalleryImage, URL: "https://oss.example.test/gallery.png"},
+		}},
+		Recipes: []assetrecipe.AssetRecipe{{
+			ID: "shein-gallery-scene", Platform: "shein", AssetKind: asset.KindSceneImage, Generated: true,
+			Template: &assetrecipe.Template{BundleSlot: "gallery", Purpose: "gallery", PreferredKinds: []asset.Kind{asset.KindSceneImage}},
+		}},
+	})
+	if len(bundle.PendingGeneration) != 1 {
+		t.Fatalf("pending generation = %+v, want one task", bundle.PendingGeneration)
+	}
+	if got := bundle.PendingGeneration[0].SourceAssetIDs; len(got) != 2 || got[0] != "source-1" || got[1] != "gallery-1" {
+		t.Fatalf("source asset IDs = %#v, want source and gallery candidates", got)
+	}
+}
+
 func TestBuilderBuildMarksFallbackSlotSemantics(t *testing.T) {
 	t.Parallel()
 

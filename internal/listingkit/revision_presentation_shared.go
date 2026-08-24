@@ -1,5 +1,7 @@
 package listingkit
 
+import "strconv"
+
 const (
 	revisionPresentationSceneApplySuccess   = "apply_success"
 	revisionPresentationSceneRestoreSuccess = "restore_success"
@@ -35,7 +37,7 @@ func buildRevisionApplyHighlights(changeCount int, appliedChanges *RevisionDiffP
 
 func buildRevisionApplySubtitle(changeCount int) string {
 	if changeCount > 0 {
-		return "本次共更新 " + formatInt(changeCount) + " 个字段。"
+		return "本次共更新 " + strconv.Itoa(changeCount) + " 个字段。"
 	}
 	return "资料已保存。"
 }

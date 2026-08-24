@@ -105,6 +105,7 @@ type ExecuteStandaloneTaskCreationResult = {
 type CreateBatchTasksOptions = {
   tenantId?: string;
   allowPartialWhileGenerating?: boolean;
+  imageStrategy?: SheinStudioImageStrategy;
 };
 
 type ExecuteItemizedBatchTaskCreationInput = {
@@ -116,6 +117,7 @@ type ExecuteItemizedBatchTaskCreationInput = {
     approvedDesignIds: string[],
     options?: CreateBatchTasksOptions,
   ) => Promise<SheinStudioBatchTaskCreationResult>;
+  imageStrategy: SheinStudioImageStrategy;
   onCreated: (result: SheinStudioBatchTaskCreationResult) => void;
   tenantId?: string;
 };
@@ -362,6 +364,7 @@ export async function executeItemizedBatchTaskCreation({
   approvedDesignIds,
   batchId,
   createBatchTasks,
+  imageStrategy,
   onCreated,
   tenantId,
 }: ExecuteItemizedBatchTaskCreationInput): Promise<ExecuteItemizedBatchTaskCreationResult> {
@@ -371,6 +374,7 @@ export async function executeItemizedBatchTaskCreation({
     ...(allowPartialWhileGenerating
       ? { allowPartialWhileGenerating: true }
       : {}),
+    imageStrategy,
   };
   const result =
     Object.keys(requestOptions).length > 0

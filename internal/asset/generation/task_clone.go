@@ -2,6 +2,7 @@ package generation
 
 func CloneTask(task Task) Task {
 	cloned := task
+	cloned.TargetPlatforms = append([]string(nil), task.TargetPlatforms...)
 	cloned.Lineage = append([]string(nil), task.Lineage...)
 	cloned.SourceAssetIDs = append([]string(nil), task.SourceAssetIDs...)
 	cloned.Metadata = cloneTaskMetadata(task.Metadata)

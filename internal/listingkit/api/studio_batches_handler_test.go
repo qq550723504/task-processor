@@ -557,7 +557,7 @@ func TestStudioBatchTasksHandlerUsesApprovedDesignOwnership(t *testing.T) {
 	router := gin.New()
 	router.POST("/api/v1/listing-kits/studio/batches/:batch_id/tasks", h.CreateStudioBatchTasks)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batches/batch-1/tasks", strings.NewReader(`{"design_ids":["design-1"]}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batches/batch-1/tasks", strings.NewReader(`{"design_ids":["design-1"],"image_strategy":"ai_generated"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -570,6 +570,9 @@ func TestStudioBatchTasksHandlerUsesApprovedDesignOwnership(t *testing.T) {
 	}
 	if svc.prepareCreateTasksReq == nil || len(svc.prepareCreateTasksReq.DesignIDs) != 1 || svc.prepareCreateTasksReq.DesignIDs[0] != "design-1" {
 		t.Fatalf("prepare create tasks req = %+v, want bound design id", svc.prepareCreateTasksReq)
+	}
+	if svc.prepareCreateTasksReq.ImageStrategy == nil || *svc.prepareCreateTasksReq.ImageStrategy != "ai_generated" {
+		t.Fatalf("prepare create tasks image strategy = %+v, want ai_generated", svc.prepareCreateTasksReq.ImageStrategy)
 	}
 	select {
 	case <-svc.resumeCalled:

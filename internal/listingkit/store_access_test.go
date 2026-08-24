@@ -49,8 +49,8 @@ func enableTestStoreAccess(s *service) {
 
 type storeAccessValidatorStub struct{}
 
-func (*storeAccessValidatorStub) ValidateStoreAccess(context.Context, int64, int64, string) (StoreAccess, error) {
-	return StoreAccess{}, nil
+func (*storeAccessValidatorStub) ValidateStoreAccess(_ context.Context, tenantID, storeID int64, platform string) (StoreAccess, error) {
+	return StoreAccess{ID: storeID, TenantID: tenantID, Platform: platform, Enabled: true}, nil
 }
 
 type storeAccessLegacyTenantResolver struct{}

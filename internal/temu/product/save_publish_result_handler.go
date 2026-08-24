@@ -50,7 +50,7 @@ func (h *SavePublishResultHandler) HandleTemu(temuCtx *temucontext.TemuTaskConte
 
 	input, err := buildSavePublishResultInput(temuCtx)
 	if err != nil {
-		h.logger.Warn("TEMU提交响应数据为空，跳过保存")
+		h.logger.WithError(err).Warn("TEMU发布结果输入无效，跳过保存")
 		return nil
 	}
 

@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/productenrich"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type taskRepository struct {
@@ -21,6 +22,9 @@ func NewTaskRepository(db *gorm.DB) productenrich.TaskRepository {
 func (r *taskRepository) CreateTask(ctx context.Context, task *productenrich.Task) error {
 	if task == nil {
 		return fmt.Errorf("task cannot be nil")
+	}
+	if !aiidentity.TenantCanCreateTask(ctx, task.PersistedExecutionEnvelope) {
+		return productenrich.ErrTaskNotFound
 	}
 
 	result := r.db.WithContext(ctx).Create(task)
@@ -36,7 +40,7 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*producten
 	}
 
 	var task productenrich.Task
-	result := r.db.WithContext(ctx).Where("id = ?", taskID).First(&task)
+	result := r.scoped(ctx, r.db.WithContext(ctx)).Where("id = ?", taskID).First(&task)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, productenrich.ErrTaskNotFound
@@ -48,7 +52,7 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*producten
 }
 
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
-	result := r.db.WithContext(ctx).
+	result := r.scoped(ctx, r.db.WithContext(ctx)).
 		Model(&productenrich.Task{}).
 		Where("id = ? AND status = ?", taskID, productenrich.TaskStatusPending).
 		Updates(map[string]any{
@@ -115,7 +119,7 @@ func (r *taskRepository) IncrementRetryCount(ctx context.Context, taskID string)
 		return fmt.Errorf("task ID cannot be empty")
 	}
 
-	result := r.db.WithContext(ctx).
+	result := r.scoped(ctx, r.db.WithContext(ctx)).
 		Model(&productenrich.Task{}).
 		Where("id = ?", taskID).
 		UpdateColumn("retry_count", gorm.Expr("retry_count + ?", 1))
@@ -124,7 +128,7 @@ func (r *taskRepository) IncrementRetryCount(ctx context.Context, taskID string)
 		return fmt.Errorf("failed to increment retry count: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("task not found: %s", taskID)
+		return productenrich.ErrTaskNotFound
 	}
 	return nil
 }
@@ -143,7 +147,7 @@ func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, up
 
 	updates["updated_at"] = gorm.Expr("NOW()")
 
-	result := r.db.WithContext(ctx).
+	result := r.scoped(ctx, r.db.WithContext(ctx)).
 		Model(&productenrich.Task{}).
 		Where("id = ?", taskID).
 		Updates(updates)
@@ -152,7 +156,14 @@ func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, up
 		return fmt.Errorf("failed to update task: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("task not found: %s", taskID)
+		return productenrich.ErrTaskNotFound
 	}
 	return nil
+}
+
+func (r *taskRepository) scoped(ctx context.Context, query *gorm.DB) *gorm.DB {
+	if tenantID := aiidentity.TenantIDFromContext(ctx); tenantID != "" {
+		return query.Where("(execution_tenant_id = ? OR TRIM(execution_tenant_id) = ?)", tenantID, tenantID)
+	}
+	return query
 }

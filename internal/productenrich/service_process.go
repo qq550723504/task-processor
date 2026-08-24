@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
+	"task-processor/internal/shared/aiidentity"
 
 	"github.com/sirupsen/logrus"
 )
@@ -14,6 +15,18 @@ import (
 func (s *productService) ProcessProduct(ctx context.Context, task *Task) (*ProductJSON, error) {
 	if task == nil {
 		return nil, fmt.Errorf("task cannot be nil")
+	}
+	switch task.PersistedExecutionEnvelope.State() {
+	case aiidentity.PersistedEnvelopePartial:
+		return nil, aiidentity.ErrIdentityIntegrity
+	case aiidentity.PersistedEnvelopePresent:
+		envelope, err := task.ExecutionEnvelope()
+		if err != nil {
+			return nil, err
+		}
+		if err := aiidentity.EnsureExecutionEnvelopeContext(ctx, envelope); err != nil {
+			return nil, err
+		}
 	}
 
 	log := loggerForServiceProcess(task.ID)

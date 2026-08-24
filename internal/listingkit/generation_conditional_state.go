@@ -15,10 +15,6 @@ func buildGenerationConditionalState(deltaToken string, notModified bool, noChan
 	}
 }
 
-func buildGenerationConditionalETag(deltaToken string) string {
-	return listinggeneration.ConditionalETag(deltaToken)
-}
-
 func applyGenerationConditionalStateToQueuePage(page *GenerationQueuePage) *GenerationQueuePage {
 	if page == nil {
 		return nil

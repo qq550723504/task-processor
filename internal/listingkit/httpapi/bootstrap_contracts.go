@@ -170,6 +170,7 @@ type BuildServiceInput struct {
 	ImageSubjectExtractor      productimage.SubjectExtractor
 	ImageWhiteBackgroundRender productimage.WhiteBackgroundRenderer
 	ImageSceneRenderer         productimage.SceneRenderer
+	ImageAssetPublisher        productimage.AssetPublisher
 	AICredentialStore          aiCredentialStore
 	AIInvocationRecorder       aicapability.InvocationRecorder
 	AIAsyncJobStore            aicapability.AsyncJobBindingStore

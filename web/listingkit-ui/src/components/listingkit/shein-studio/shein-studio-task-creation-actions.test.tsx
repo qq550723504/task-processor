@@ -295,7 +295,7 @@ describe("useSheinStudioTaskCreationAction", () => {
     expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
       "design-1",
       "design-2",
-    ]);
+    ], { imageStrategy: "sds_official" });
     expect(setCreatedTasks).toHaveBeenCalledWith([
       { id: "task-1", title: "Task 1", designId: "design-1" },
       { id: "task-2", title: "Task 2", designId: "design-2" },
@@ -309,6 +309,22 @@ describe("useSheinStudioTaskCreationAction", () => {
       }),
     );
     expect(navigateToStep).toHaveBeenCalledWith("tasks");
+  });
+
+  it("blocks task creation when the selected store is no longer in the catalog", async () => {
+    const { result, params } = renderTaskCreationAction({
+      sheinStoreId: "869",
+      storeRequiredMessage: "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
+    });
+
+    await act(async () => {
+      await result.current.handleCreateTasks();
+    });
+
+    expect(createSheinStudioBatchTasks).not.toHaveBeenCalled();
+    expect(params.setCreatingError).toHaveBeenCalledWith(
+      "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
+    );
   });
 
   it("hydrates and persists the SDS size table before creating itemized batch tasks", async () => {
@@ -390,7 +406,7 @@ describe("useSheinStudioTaskCreationAction", () => {
     expect(persistDraft).not.toHaveBeenCalled();
     expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
       "design-1",
-    ]);
+    ], { imageStrategy: "sds_official" });
   });
 
   it("confirms before creating tasks while the itemized batch is still generating", async () => {
@@ -439,7 +455,7 @@ describe("useSheinStudioTaskCreationAction", () => {
     expect(createSheinStudioBatchTasks).toHaveBeenCalledWith(
       "batch-1",
       ["design-1"],
-      { allowPartialWhileGenerating: true },
+      { allowPartialWhileGenerating: true, imageStrategy: "sds_official" },
     );
   });
 
@@ -526,7 +542,7 @@ describe("useSheinStudioTaskCreationAction", () => {
 
     expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
       "design-1",
-    ]);
+    ], { imageStrategy: "sds_official" });
     expect(navigateToStep).toHaveBeenCalledWith("tasks");
   });
 

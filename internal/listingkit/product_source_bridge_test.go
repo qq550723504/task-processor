@@ -116,3 +116,22 @@ func TestGenerateRequestFromSourceFactsKeepsEmptySourceReference(t *testing.T) {
 		t.Fatalf("Text = %q, want title-only prompt", req.Text)
 	}
 }
+
+func TestGenerateRequestFromSourceFactsPreservesAllImageURLs(t *testing.T) {
+	assets := make([]asset.ItemFacts, 0, 12)
+	for i := 0; i < 12; i++ {
+		assets = append(assets, asset.ItemFacts{URL: "https://img.example/" + string(rune('a'+i)) + ".jpg"})
+	}
+
+	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{
+		Product: catalog.ProductFacts{Title: "Source product"},
+		Assets:  asset.Facts{Items: assets},
+	})
+
+	if len(req.ImageURLs) != 12 {
+		t.Fatalf("ImageURLs length = %d, want all source assets", len(req.ImageURLs))
+	}
+	if req.ImageURLs[0] != "https://img.example/a.jpg" || req.ImageURLs[11] != "https://img.example/l.jpg" {
+		t.Fatalf("ImageURLs = %#v, want all source assets in order", req.ImageURLs)
+	}
+}

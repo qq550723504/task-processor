@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/listingkit"
 )
 
@@ -98,11 +99,11 @@ func requestRoles(c *gin.Context) []string {
 	return roles
 }
 
-func authenticatedIdentity(c *gin.Context) (listingkit.AuthenticatedIdentity, bool) {
+func authenticatedIdentity(c *gin.Context) (authidentity.AuthenticatedIdentity, bool) {
 	if c == nil || c.Request == nil {
-		return listingkit.AuthenticatedIdentity{}, false
+		return authidentity.AuthenticatedIdentity{}, false
 	}
-	return listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+	return authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 }
 
 func requestTrace(c *gin.Context) listingkit.RequestTrace {

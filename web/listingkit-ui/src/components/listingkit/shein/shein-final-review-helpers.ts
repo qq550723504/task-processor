@@ -19,11 +19,11 @@ export function money(value?: number, currency?: string) {
   return `${currency ?? "USD"} ${value.toFixed(2)}`;
 }
 
-export function hasBlockingKey(items: SheinReadinessItem[], keys: string[]) {
+ function hasBlockingKey(items: SheinReadinessItem[], keys: string[]) {
   return items.some((item) => keys.includes(item.key ?? ""));
 }
 
-export function isPublishOnlySizeChartBlocker(item: SheinReadinessItem) {
+ function isPublishOnlySizeChartBlocker(item: SheinReadinessItem) {
   return (
     item.key === "variants" &&
     String(item.message ?? "")
@@ -32,7 +32,7 @@ export function isPublishOnlySizeChartBlocker(item: SheinReadinessItem) {
   );
 }
 
-export function imageRoleCounts(images?: SheinFinalReviewImage[]) {
+ function imageRoleCounts(images?: SheinFinalReviewImage[]) {
   const counts = {
     final: images?.filter((image) => image.final !== false).length ?? 0,
     main: 0,

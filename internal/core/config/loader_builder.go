@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strconv"
 	"strings"
 	"task-processor/internal/core/logger"
@@ -13,6 +14,7 @@ func BuildConfig(v *viper.Viper) *Config {
 	listingKitAllowedTenantIDs := getStringSlice(v, "listingkit.zitadel.allowedTenantIDs")
 	listingKitAllowedUserIDs := getStringSlice(v, "listingkit.zitadel.allowedUserIDs")
 	listingKitAllowedUsernames := getStringSlice(v, "listingkit.zitadel.allowedUsernames")
+	listingKitLegacyUsernameAllowlistConfigured := legacyListingKitUsernameAllowlistConfigured(v)
 	listingKitAllowedRoles := getStringSlice(v, "listingkit.zitadel.allowedRoles")
 
 	cfg := &Config{
@@ -187,8 +189,15 @@ func BuildConfig(v *viper.Viper) *Config {
 			ProductEnrichMockLLM: v.GetBool("debug.productEnrichMockLLM"),
 		},
 		AICapability: AICapabilityConfig{
-			StudioImageRoutingMode:   v.GetString("aiCapability.studioImageRoutingMode"),
-			ProductImageSceneEnabled: v.GetBool("aiCapability.productImageSceneEnabled"),
+			StudioImageRoutingMode:               v.GetString("aiCapability.studioImageRoutingMode"),
+			ProductImageSceneEnabled:             v.GetBool("aiCapability.productImageSceneEnabled"),
+			ProductImageSceneAllowedTenantIDs:    getStringSlice(v, "aiCapability.productImageSceneAllowedTenantIDs"),
+			ProductEnrichTextEnabled:             v.GetBool("aiCapability.productEnrichTextEnabled"),
+			ProductEnrichTextAllowedTenantIDs:    getStringSlice(v, "aiCapability.productEnrichTextAllowedTenantIDs"),
+			ProductEnrichVisionEnabled:           v.GetBool("aiCapability.productEnrichVisionEnabled"),
+			ProductEnrichVisionAllowedTenantIDs:  getStringSlice(v, "aiCapability.productEnrichVisionAllowedTenantIDs"),
+			ProductEnrichListingEnabled:          v.GetBool("aiCapability.productEnrichListingEnabled"),
+			ProductEnrichListingAllowedTenantIDs: getStringSlice(v, "aiCapability.productEnrichListingAllowedTenantIDs"),
 		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    v.GetBool("listingControlPlane.enabled"),
@@ -206,22 +215,24 @@ func BuildConfig(v *viper.Viper) *Config {
 			PausedTaskRecoveryInterval: v.GetDuration("listingControlPlane.pausedTaskRecoveryInterval"),
 		},
 		ListingKit: ListingKitConfig{
-			SheinSubmitDebugDumpDir: v.GetString("listingkit.sheinSubmitDebugDumpDir"),
-			PlatformAdminUsers:      getStringSlice(v, "listingkit.platformAdminUsers"),
-			PlatformAdminRoles:      getStringSlice(v, "listingkit.platformAdminRoles"),
-			OwnerScopeRequired:      v.GetBool("listingkit.ownerScopeRequired"),
+			SheinSubmitDebugDumpDir:        v.GetString("listingkit.sheinSubmitDebugDumpDir"),
+			GenerationUsageLedgerEnabled:   v.GetBool("listingkit.generationUsageLedgerEnabled"),
+			GenerationUsageLedgerTenantIDs: getStringSlice(v, "listingkit.generationUsageLedgerTenantIDs"),
+			PlatformAdminUsers:             getStringSlice(v, "listingkit.platformAdminUsers"),
+			PlatformAdminRoles:             getStringSlice(v, "listingkit.platformAdminRoles"),
 			Zitadel: ListingKitZitadelConfig{
-				IssuerURL:             v.GetString("listingkit.zitadel.issuerURL"),
-				ClientID:              v.GetString("listingkit.zitadel.clientID"),
-				ClientSecret:          v.GetString("listingkit.zitadel.clientSecret"),
-				TenantDirectoryToken:  v.GetString("listingkit.zitadel.tenantDirectoryToken"),
-				MemberInvitationToken: v.GetString("listingkit.zitadel.memberInvitationToken"),
-				ProjectID:             v.GetString("listingkit.zitadel.projectID"),
-				AuthorizationRequired: v.GetBool("listingkit.zitadel.authorizationRequired"),
-				AllowedTenantIDs:      listingKitAllowedTenantIDs,
-				AllowedUserIDs:        listingKitAllowedUserIDs,
-				AllowedUsernames:      listingKitAllowedUsernames,
-				AllowedRoles:          listingKitAllowedRoles,
+				IssuerURL:                         v.GetString("listingkit.zitadel.issuerURL"),
+				ClientID:                          v.GetString("listingkit.zitadel.clientID"),
+				ClientSecret:                      v.GetString("listingkit.zitadel.clientSecret"),
+				TenantDirectoryToken:              v.GetString("listingkit.zitadel.tenantDirectoryToken"),
+				MemberInvitationToken:             v.GetString("listingkit.zitadel.memberInvitationToken"),
+				ProjectID:                         v.GetString("listingkit.zitadel.projectID"),
+				AuthorizationRequired:             v.GetBool("listingkit.zitadel.authorizationRequired"),
+				AllowedTenantIDs:                  listingKitAllowedTenantIDs,
+				AllowedUserIDs:                    listingKitAllowedUserIDs,
+				AllowedUsernames:                  listingKitAllowedUsernames,
+				LegacyUsernameAllowlistConfigured: listingKitLegacyUsernameAllowlistConfigured,
+				AllowedRoles:                      listingKitAllowedRoles,
 				SMS: ListingKitZitadelSMSConfig{
 					SigningKey:        v.GetString("listingkit.zitadel.sms.signingKey"),
 					TencentSecretID:   v.GetString("listingkit.zitadel.sms.tencentSecretID"),
@@ -275,6 +286,24 @@ func BuildConfig(v *viper.Viper) *Config {
 	}
 
 	return cfg
+}
+
+func legacyListingKitUsernameAllowlistConfigured(v *viper.Viper) bool {
+	const key = "listingkit.zitadel.allowedUsernames"
+	if v == nil {
+		return false
+	}
+	if v.InConfig(key) || len(getStringSlice(v, key)) > 0 {
+		return true
+	}
+
+	binding := knownEnvBindings()[key]
+	for _, name := range append([]string{binding.Primary}, binding.Deprecated...) {
+		if value, ok := os.LookupEnv(name); ok && strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func BuildHTTPClientConfig(v *viper.Viper, prefix string) HTTPClientConfig {

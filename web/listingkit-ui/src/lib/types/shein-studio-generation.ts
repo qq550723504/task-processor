@@ -24,7 +24,7 @@ export type SheinStudioGeneratedDesign = {
 
 export type SheinStudioArtworkModel = string;
 export type SheinStudioTransparencyMode = "none" | "native" | "removal";
-export type SheinStudioBackgroundRemovalStatus =
+ type SheinStudioBackgroundRemovalStatus =
   | "not_requested"
   | "pending"
   | "succeeded"
@@ -45,7 +45,7 @@ export function resolveSheinStudioTransparencyMode({
 export type SheinStudioPromptMode = "managed" | "raw";
 export type SheinStudioVariationIntensity = "light" | "medium" | "strong";
 
-export type SheinStudioGenerationJobStatus =
+ type SheinStudioGenerationJobStatus =
   | "running"
   | "succeeded"
   | "failed";

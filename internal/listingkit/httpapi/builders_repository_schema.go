@@ -89,9 +89,9 @@ func shouldAutoMigrateListingKitRuntime() bool {
 }
 
 func AutoMigrateListingKitRuntimeSchema(db *gorm.DB) error {
-	return runListingKitRepositoryAutoMigrations(db)
+	return listingkitschema.AutoMigrateRuntime(db)
 }
 
 func runListingKitRepositoryAutoMigrations(db *gorm.DB) error {
-	return listingkitschema.AutoMigrateRuntime(db)
+	return listingkitschema.AutoMigrateRepositoryRuntime(db)
 }

@@ -29,6 +29,10 @@ import {
   type ListingImportTask,
 } from "@/lib/api/admin-import-tasks";
 import {
+  getListingCategories,
+  type ListingCategory,
+} from "@/lib/api/admin-categories";
+import {
   AdminStoreSelect,
   formatAdminStoreName,
   useAdminSimpleStores,
@@ -37,7 +41,6 @@ import { SHEIN_SITE_OPTIONS } from "@/components/listingkit/stores/shein-site-op
 
 const DEFAULT_FORM: BatchCreateListingImportTaskInput = {
   storeId: 0,
-  categoryId: 0,
   platform: "Amazon",
   targetPlatform: "SHEIN",
   region: "US",
@@ -62,6 +65,11 @@ type ProductIdImportSummary = {
   duplicateCount: number;
 };
 
+type BatchImportResultSummary = {
+  createdCount: number;
+  skippedProductIds: string[];
+};
+
 export function ImportTaskAdminPage() {
   const [platform, setPlatform] = useState("");
   const [productId, setProductId] = useState("");
@@ -72,6 +80,8 @@ export function ImportTaskAdminPage() {
   const [productText, setProductText] = useState("");
   const [productImportSummary, setProductImportSummary] =
     useState<ProductIdImportSummary | null>(null);
+  const [batchImportResult, setBatchImportResult] =
+    useState<BatchImportResultSummary | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -89,27 +99,49 @@ export function ImportTaskAdminPage() {
     queryKey: ["listingkit-admin-import-tasks", query],
     queryFn: () => getListingImportTasks(query),
   });
+  const categoryQuery = useQuery({
+    queryKey: ["listingkit-admin-import-categories", "enabled"],
+    queryFn: () => getListingCategories({ status: "1" }),
+  });
   const storesQuery = useAdminSimpleStores();
 
   const tasks: ListingImportTask[] = importTaskQuery.data?.items ?? [];
   const total = importTaskQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const stores = storesQuery.data ?? [];
+  const categoryOptions = useMemo(
+    () => buildCategoryOptions(categoryQuery.data ?? []),
+    [categoryQuery.data],
+  );
+  const categorySelectOptions = [
+    "",
+    ...categoryOptions.map((category) => String(category.id)),
+  ];
+  const categorySelectLabels = Object.fromEntries([
+    ["", "未指定分类"],
+    ...categoryOptions.map((category) => [String(category.id), category.label]),
+  ]);
   const loading = importTaskQuery.isLoading || importTaskQuery.isFetching;
   const visibleError =
     error ||
     (importTaskQuery.error instanceof Error
       ? importTaskQuery.error.message
       : "") ||
+    (categoryQuery.error instanceof Error ? categoryQuery.error.message : "") ||
     (storesQuery.error instanceof Error ? storesQuery.error.message : "");
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError("");
+    setBatchImportResult(null);
     try {
       const productIds = uniqueProductIdsFromText(productText).values;
-      await batchCreateListingImportTasks({ ...form, productIds });
+      const result = await batchCreateListingImportTasks({ ...form, productIds });
+      setBatchImportResult({
+        createdCount: result.createdCount,
+        skippedProductIds: result.skippedProductIds ?? [],
+      });
       setForm({ ...DEFAULT_FORM, storeId: form.storeId });
       setProductText("");
       setProductImportSummary(null);
@@ -229,6 +261,20 @@ export function ImportTaskAdminPage() {
           </Alert>
         ) : null}
       </section>
+
+      {batchImportResult ? (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+          <AlertDescription>
+            已创建 {batchImportResult.createdCount} 个导入任务
+            {batchImportResult.skippedProductIds.length > 0 ? (
+              <>
+                ，已跳过 {batchImportResult.skippedProductIds.length} 个已完成商品：
+                {batchImportResult.skippedProductIds.join("、")}
+              </>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
@@ -367,13 +413,18 @@ export function ImportTaskAdminPage() {
             emptyLabel="选择店铺"
           />
           <div className="grid gap-3 sm:grid-cols-2">
-            <ImportTaskInput
-              label="类目 ID"
-              type="number"
-              value={String(form.categoryId || "")}
+            <ImportTaskSelect
+              label="分类"
+              value={form.categoryId == null ? "" : String(form.categoryId)}
               onChange={(categoryId) =>
-                setForm({ ...form, categoryId: Number(categoryId) || 0 })
+                setForm({
+                  ...form,
+                  categoryId: categoryId ? Number(categoryId) : undefined,
+                })
               }
+              options={categorySelectOptions}
+              labels={categorySelectLabels}
+              disabled={categoryQuery.isLoading}
             />
             <ImportTaskInput
               label="优先级"
@@ -543,6 +594,36 @@ function uniqueProductIds(values: string[]) {
   return { values: out, duplicateCount };
 }
 
+function buildCategoryOptions(categories: ListingCategory[]) {
+  const byID = new Map(categories.map((category) => [category.id, category]));
+
+  function categoryPath(category: ListingCategory, visited = new Set<number>()): string {
+    if (category.parentId <= 0 || visited.has(category.id)) {
+      return category.name;
+    }
+    const parent = byID.get(category.parentId);
+    if (!parent) {
+      return category.name;
+    }
+    const nextVisited = new Set(visited);
+    nextVisited.add(category.id);
+    return `${categoryPath(parent, nextVisited)} / ${category.name}`;
+  }
+
+  return categories
+    .filter((category) => category.status === 1)
+    .sort(
+      (left, right) =>
+        left.level - right.level ||
+        left.sort - right.sort ||
+        left.id - right.id,
+    )
+    .map((category) => ({
+      id: category.id,
+      label: `${categoryPath(category)} (#${category.id})`,
+    }));
+}
+
 function splitDelimitedRow(row: string) {
   if (row.includes("\t")) {
     return row.split("\t").map((column) => column.trim());
@@ -589,18 +670,21 @@ function ImportTaskSelect({
   onChange,
   options,
   labels = {},
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: string[];
   labels?: Record<string, string>;
+  disabled?: boolean;
 }) {
   return (
     <Label className="mb-3 block text-xs font-medium text-zinc-500">
       {label}
       <Select
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
       >

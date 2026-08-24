@@ -35,6 +35,7 @@ type TaskRecoveryService interface {
 }
 
 type SDSChildRetrySweepService interface {
+	ScheduleTaskChildRetry(ctx context.Context, taskID string, req *RetryChildTaskRequest) (*TaskChildRetryAccepted, error)
 	RunDueSDSChildRetries(ctx context.Context, now time.Time, limit int) (int64, error)
 }
 

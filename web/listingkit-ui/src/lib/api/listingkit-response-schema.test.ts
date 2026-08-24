@@ -13,6 +13,13 @@ describe("listingkit response schemas", () => {
       parseTaskResultResponse({
         task_id: "task-1",
         status: "completed",
+        child_retries: [
+          {
+            kind: "sds_design_sync",
+            status: "exhausted",
+            last_error: "SDS options are missing",
+          },
+        ],
         result: {
           task_id: "task-1",
           review_reasons: [],
@@ -30,7 +37,10 @@ describe("listingkit response schemas", () => {
           },
         },
       }),
-    ).toMatchObject({ task_id: "task-1" });
+    ).toMatchObject({
+      task_id: "task-1",
+      child_retries: [{ status: "exhausted", last_error: "SDS options are missing" }],
+    });
 
     expect(
       parseTaskResultResponse({
@@ -113,6 +123,15 @@ describe("listingkit response schemas", () => {
     expect(() => parsePreviewResponse({ status: "completed" })).toThrow(
       "unexpected preview response",
     );
+
+    expect(() =>
+      parsePreviewResponse({
+        task_id: "task-unsupported-platform",
+        status: "completed",
+        selected_platform: "etsy",
+        platforms: ["shein", "etsy"],
+      }),
+    ).toThrow("unexpected preview response");
   });
 
   it("parses review preview responses", () => {

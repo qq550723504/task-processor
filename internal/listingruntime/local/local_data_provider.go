@@ -292,6 +292,7 @@ func (p *LocalDataProvider) ImportTaskRepository() *listingadmin.GormImportTaskR
 type localListingStore struct {
 	ID                       int64      `gorm:"column:id"`
 	TenantID                 int64      `gorm:"column:tenant_id"`
+	OwnerUserID              string     `gorm:"column:owner_user_id"`
 	StoreID                  string     `gorm:"column:store_id"`
 	Name                     string     `gorm:"column:name"`
 	Username                 string     `gorm:"column:username"`
@@ -320,6 +321,7 @@ type localListingStore struct {
 	PriceType                string     `gorm:"column:price_type"`
 	Remark                   string     `gorm:"column:remark"`
 	Status                   int16      `gorm:"column:status"`
+	Deleted                  int16      `gorm:"column:deleted"`
 	ValidFrom                *time.Time `gorm:"column:valid_from"`
 	ValidUntil               *time.Time `gorm:"column:valid_until"`
 	CreateTime               *time.Time `gorm:"column:create_time"`
@@ -330,6 +332,7 @@ func (s localListingStore) toDTO() *listingadmin.StoreRespDTO {
 	return &listingadmin.StoreRespDTO{
 		ID:                       s.ID,
 		TenantID:                 s.TenantID,
+		OwnerUserID:              s.OwnerUserID,
 		StoreID:                  s.StoreID,
 		Name:                     s.Name,
 		Username:                 s.Username,
@@ -370,6 +373,7 @@ func storeToDTO(store *listingadmin.Store) *listingadmin.StoreRespDTO {
 	return &listingadmin.StoreRespDTO{
 		ID:                       store.ID,
 		TenantID:                 store.TenantID,
+		OwnerUserID:              store.OwnerUserID,
 		StoreID:                  store.StoreID,
 		Name:                     store.Name,
 		Username:                 store.Username,
@@ -534,6 +538,7 @@ func productImportMappingToDTO(mapping *listingadmin.ProductImportMapping) *list
 	}
 	dto := &listingadmin.ProductImportMappingRespDTO{
 		ID:                      mapping.ID,
+		OwnerUserID:             mapping.OwnerUserID,
 		ImportTaskId:            mapping.ImportTaskID,
 		StoreId:                 mapping.StoreID,
 		Platform:                mapping.Platform,
@@ -575,6 +580,7 @@ func productImportMappingFromCreateReq(req *listingadmin.ProductImportMappingCre
 	}
 	mapping := &listingadmin.ProductImportMapping{
 		TenantID:                req.TenantID,
+		OwnerUserID:             req.OwnerUserID,
 		ImportTaskID:            req.ImportTaskId,
 		StoreID:                 req.StoreId,
 		Platform:                req.Platform,
@@ -754,6 +760,8 @@ func importTaskToRuntime(task *listingadmin.ImportTask) *listingruntime.ImportTa
 		TenantID:        task.TenantID,
 		StoreID:         int64FromPtr(task.StoreID),
 		Platform:        task.Platform,
+		SourcePlatform:  task.SourcePlatform,
+		TargetPlatform:  task.TargetPlatform,
 		Region:          task.Region,
 		CategoryID:      int64FromPtr(task.CategoryID),
 		ProductID:       task.ProductID,
@@ -1337,6 +1345,7 @@ func (p *LocalDataProvider) BatchUpdateProductAttributes(req *listingadmin.Produ
 type localProductImportMappingRow struct {
 	ID                      int64      `gorm:"column:id"`
 	TenantID                int64      `gorm:"column:tenant_id"`
+	OwnerUserID             string     `gorm:"column:owner_user_id"`
 	ImportTaskID            int64      `gorm:"column:import_task_id"`
 	StoreID                 int64      `gorm:"column:store_id"`
 	Platform                string     `gorm:"column:platform"`
@@ -1380,6 +1389,7 @@ func formatOptionalFloat(raw *float64) *string {
 func (r localProductImportMappingRow) toDTO() *listingadmin.ProductImportMappingRespDTO {
 	return &listingadmin.ProductImportMappingRespDTO{
 		ID:                      r.ID,
+		OwnerUserID:             r.OwnerUserID,
 		ImportTaskId:            r.ImportTaskID,
 		StoreId:                 r.StoreID,
 		Platform:                r.Platform,
@@ -1407,7 +1417,7 @@ func (p *LocalDataProvider) CreateProductImportMapping(req *listingadmin.Product
 	if repo == nil || req == nil {
 		return 0, nil
 	}
-	created, err := repo.CreateProductImportMapping(context.Background(), productImportMappingFromCreateReq(req))
+	created, err := repo.CreateProductImportMappingForStore(context.Background(), productImportMappingFromCreateReq(req))
 	if err != nil || created == nil {
 		return 0, err
 	}
@@ -1423,7 +1433,7 @@ func (p *LocalDataProvider) UpdateProductImportMapping(req *listingadmin.Product
 	if mapping == nil || mapping.ID == 0 {
 		return false, nil
 	}
-	updated, err := repo.UpdateProductImportMapping(context.Background(), mapping)
+	updated, err := repo.UpdateProductImportMappingForStore(context.Background(), mapping)
 	return updated != nil, err
 }
 
@@ -1572,26 +1582,30 @@ func (p *LocalDataProvider) GetLatestInventoryRecord(platform, productID, region
 }
 
 type localImportTaskRow struct {
-	ID            int64      `gorm:"column:id"`
-	TenantID      int64      `gorm:"column:tenant_id"`
-	StoreID       int64      `gorm:"column:store_id"`
-	Platform      string     `gorm:"column:platform"`
-	Region        string     `gorm:"column:region"`
-	CategoryID    int64      `gorm:"column:category_id"`
-	ProductID     string     `gorm:"column:product_id"`
-	Status        int16      `gorm:"column:status"`
-	ErrorMessage  string     `gorm:"column:error_message"`
-	ReasonCode    string     `gorm:"column:reason_code"`
-	Stage         string     `gorm:"column:stage"`
-	RetryCount    int        `gorm:"column:retry_count"`
-	MaxRetryCount int        `gorm:"column:max_retry_count"`
-	Remark        string     `gorm:"column:remark"`
-	Priority      int        `gorm:"column:priority"`
-	CreateTime    time.Time  `gorm:"column:create_time"`
-	UpdateTime    time.Time  `gorm:"column:update_time"`
-	PublishedTime *time.Time `gorm:"column:published_time"`
-	Creator       string     `gorm:"column:creator"`
-	Updater       string     `gorm:"column:updater"`
+	ID             int64      `gorm:"column:id"`
+	TenantID       int64      `gorm:"column:tenant_id"`
+	OwnerUserID    string     `gorm:"column:owner_user_id"`
+	StoreID        int64      `gorm:"column:store_id"`
+	Platform       string     `gorm:"column:platform"`
+	SourcePlatform string     `gorm:"column:source_platform"`
+	TargetPlatform string     `gorm:"column:target_platform"`
+	Region         string     `gorm:"column:region"`
+	CategoryID     *int64     `gorm:"column:category_id"`
+	ProductID      string     `gorm:"column:product_id"`
+	Status         int16      `gorm:"column:status"`
+	ErrorMessage   string     `gorm:"column:error_message"`
+	ReasonCode     string     `gorm:"column:reason_code"`
+	Stage          string     `gorm:"column:stage"`
+	RetryCount     int        `gorm:"column:retry_count"`
+	MaxRetryCount  int        `gorm:"column:max_retry_count"`
+	Deleted        int16      `gorm:"column:deleted"`
+	Remark         string     `gorm:"column:remark"`
+	Priority       int        `gorm:"column:priority"`
+	CreateTime     time.Time  `gorm:"column:create_time"`
+	UpdateTime     time.Time  `gorm:"column:update_time"`
+	PublishedTime  *time.Time `gorm:"column:published_time"`
+	Creator        string     `gorm:"column:creator"`
+	Updater        string     `gorm:"column:updater"`
 }
 
 func (r localImportTaskRow) toRuntimeTask() listingruntime.ImportTask {
@@ -1601,8 +1615,10 @@ func (r localImportTaskRow) toRuntimeTask() listingruntime.ImportTask {
 		TenantID:        r.TenantID,
 		StoreID:         r.StoreID,
 		Platform:        r.Platform,
+		SourcePlatform:  r.SourcePlatform,
+		TargetPlatform:  r.TargetPlatform,
 		Region:          r.Region,
-		CategoryID:      r.CategoryID,
+		CategoryID:      int64FromPtr(r.CategoryID),
 		ProductID:       r.ProductID,
 		Status:          r.Status,
 		ErrorMessage:    r.ErrorMessage,

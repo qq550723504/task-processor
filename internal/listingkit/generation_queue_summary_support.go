@@ -6,18 +6,6 @@ import (
 	listinggeneration "task-processor/internal/listingkit/generation"
 )
 
-func generationQualityGrade(value string) string {
-	return listinggeneration.QualityGrade(value)
-}
-
-func generationQualityGradeLabel(value string) string {
-	return listinggeneration.QualityGradeLabel(value)
-}
-
-func generationExecutionQualityLabel(value string) string {
-	return listinggeneration.ExecutionQualityLabel(value)
-}
-
 func buildGenerationWorkQueueSummary(items []GenerationWorkQueueItem) *GenerationWorkQueueSummary {
 	summary := &GenerationWorkQueueSummary{
 		TotalItems:                      len(items),
@@ -47,7 +35,7 @@ func buildGenerationWorkQueueSummary(items []GenerationWorkQueueItem) *Generatio
 	}
 	summary.Platforms = uniqueStrings(platforms)
 	summary.DominantQualityGrade = dominantGenerationQualityGrade(summary)
-	summary.DominantQualityGradeLabel = generationQualityGradeLabel(summary.DominantQualityGrade)
+	summary.DominantQualityGradeLabel = listinggeneration.QualityGradeLabel(summary.DominantQualityGrade)
 	return summary
 }
 
@@ -128,7 +116,7 @@ func accumulateGenerationQueueQualityMetrics(summary *GenerationWorkQueueSummary
 		if platform != "" {
 			summary.PlatformExecutionQualityCounts[platform][quality]++
 		}
-		if label := firstNonEmpty(strings.TrimSpace(item.ExecutionQualityLabel), generationExecutionQualityLabel(quality)); label != "" {
+		if label := firstNonEmpty(strings.TrimSpace(item.ExecutionQualityLabel), listinggeneration.ExecutionQualityLabel(quality)); label != "" {
 			summary.ExecutionQualityLabels[quality] = label
 		}
 	}
@@ -137,7 +125,7 @@ func accumulateGenerationQueueQualityMetrics(summary *GenerationWorkQueueSummary
 		if platform != "" {
 			summary.PlatformQualityGradeCounts[platform][grade]++
 		}
-		if label := firstNonEmpty(strings.TrimSpace(item.QualityGradeLabel), generationQualityGradeLabel(grade)); label != "" {
+		if label := firstNonEmpty(strings.TrimSpace(item.QualityGradeLabel), listinggeneration.QualityGradeLabel(grade)); label != "" {
 			summary.QualityGradeLabels[grade] = label
 		}
 		if _, ok := summary.GradeStateCounts[grade]; !ok {

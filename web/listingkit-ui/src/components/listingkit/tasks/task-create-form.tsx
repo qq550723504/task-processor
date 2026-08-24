@@ -411,6 +411,7 @@ export function TaskCreateForm({
 
               {selectedPlatforms?.includes("shein") ? (
                 <TaskSheinStoreField
+                  error={errors.sheinStoreId?.message}
                   register={register}
                   selectedPlatforms={selectedPlatforms}
                   selectedStoreId={currentSheinStoreId}
@@ -458,7 +459,7 @@ export function TaskCreateForm({
 
                 {selectedPlatforms?.includes("shein") ? (
                   <div className="mt-4 rounded-xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
-                    SHEIN 已启用时，如有多个店铺共用环境，建议补充店铺 ID。
+                    SHEIN 已启用，提交前必须显式选择目标店铺。
                   </div>
                 ) : null}
               </div>

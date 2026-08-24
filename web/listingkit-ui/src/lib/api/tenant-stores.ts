@@ -3,10 +3,8 @@ import {
   type ListingStoreInput,
   type ListingStorePage,
   type ListingStoreQuery,
-  parseSimpleStoreResponse,
   parseStorePageResponse,
   parseStoreResponse,
-  type SimpleListingStore,
 } from "@/lib/api/admin-stores";
 import { apiRequest } from "@/lib/api/client";
 
@@ -15,11 +13,6 @@ export async function getTenantListingStores(
 ): Promise<ListingStorePage> {
   const payload = await apiRequest<unknown>("/stores", { query });
   return parseStorePageResponse(payload);
-}
-
-export async function getSimpleTenantListingStores(): Promise<SimpleListingStore[]> {
-  const payload = await apiRequest<unknown>("/stores/simple");
-  return parseSimpleStoreResponse(payload);
 }
 
 export async function createTenantListingStore(

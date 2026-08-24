@@ -97,6 +97,32 @@ func buildTaskResult(task *Task, resultPayload *ListingKitResult) *TaskResult {
 	return result
 }
 
+func projectSDSChildRetryStatuses(jobs []SDSChildRetryJob, now time.Time) []SDSChildRetryStatus {
+	if len(jobs) == 0 {
+		return nil
+	}
+	statuses := make([]SDSChildRetryStatus, 0, len(jobs))
+	for _, job := range jobs {
+		status := string(job.Status)
+		if job.Status == SDSChildRetryJobStatusPending {
+			status = "queued"
+			if job.LeaseUntil != nil && job.LeaseUntil.After(now) {
+				status = "running"
+			}
+		}
+		statuses = append(statuses, SDSChildRetryStatus{
+			TaskID:      job.TaskID,
+			Kind:        job.Kind,
+			Status:      status,
+			Attempt:     job.Attempt,
+			NextRetryAt: job.NextRetryAt,
+			LastError:   job.LastError,
+			UpdatedAt:   job.UpdatedAt,
+		})
+	}
+	return statuses
+}
+
 func taskStatusIsTerminal(status core.TaskStatus) bool {
 	return status == core.TaskStatusCompleted || status == core.TaskStatusNeedsReview || status == core.TaskStatusFailed
 }

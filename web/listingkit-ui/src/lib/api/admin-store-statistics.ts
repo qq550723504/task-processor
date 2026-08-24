@@ -3,7 +3,7 @@ import { parseApiResponseShape } from "@/lib/api/response-schema";
 import type { QueueQuery } from "@/lib/types/listingkit";
 import { z } from "zod";
 
-export const listingStoreStatisticsSchema = z
+ const listingStoreStatisticsSchema = z
   .object({
     id: z.number(),
     storeId: z.string().optional(),
@@ -22,7 +22,7 @@ export const listingStoreStatisticsSchema = z
   })
   .passthrough();
 
-export const listingStoreStatisticsSummarySchema = z
+ const listingStoreStatisticsSummarySchema = z
   .object({
     completed_count: z.coerce.number().int().nonnegative(),
     daily_limit: z.coerce.number().int().nonnegative(),
@@ -32,7 +32,7 @@ export const listingStoreStatisticsSummarySchema = z
   })
   .passthrough();
 
-export const listingStoreStatisticsPageSchema = z
+ const listingStoreStatisticsPageSchema = z
   .object({
     items: z.array(listingStoreStatisticsSchema),
     total: z.coerce.number().int().nonnegative(),

@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/listingkit"
+	"task-processor/internal/authidentity"
 	"task-processor/internal/tenantbridge"
 )
 
@@ -87,7 +87,7 @@ func TestRequestTenantIDAllowsPlatformAdminToVisitAnotherTenant(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set(visitTenantIDHeader, "286")
-	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(req.Context(), authidentity.AuthenticatedIdentity{
 		TenantID: "227",
 		UserID:   "platform-user",
 		Roles:    []string{"platform_admin"},
@@ -109,7 +109,7 @@ func TestRequestTenantIDRejectsVisitTenantForNonPlatformAdmin(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set(visitTenantIDHeader, "286")
-	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(req.Context(), authidentity.AuthenticatedIdentity{
 		TenantID: "227",
 		UserID:   "operator-user",
 		Roles:    []string{"listingkit_operator"},

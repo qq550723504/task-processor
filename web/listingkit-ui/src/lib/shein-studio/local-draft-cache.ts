@@ -11,7 +11,7 @@ type LocalDraftSnapshotInput =
   | null
   | undefined;
 
-export type LocalDraftSnapshotPayload = {
+ type LocalDraftSnapshotPayload = {
   batchId?: string;
   draft: SheinStudioDraft;
 };

@@ -13,6 +13,7 @@ type SheinPreviewPayload struct {
 	BrandName         string                            `json:"brand_name,omitempty"`
 	CategoryPath      []string                          `json:"category_path,omitempty"`
 	CategoryID        int                               `json:"category_id,omitempty"`
+	SourceReference   *SourceReference                  `json:"source_reference,omitempty"`
 	SourceProduct     *SheinSourceProductSummary        `json:"source_product,omitempty"`
 	NeedsReview       bool                              `json:"needs_review"`
 	Summary           []string                          `json:"summary,omitempty"`
@@ -45,20 +46,21 @@ type SheinPreviewPayload struct {
 type SheinStoreResolutionSummary = sheinmarketplace.StoreResolutionSummary
 
 type SheinFinalReview struct {
-	Confirmed      bool                             `json:"confirmed"`
-	SubmitMode     string                           `json:"submit_mode,omitempty"`
-	StoreID        int64                            `json:"store_id,omitempty"`
-	Site           string                           `json:"site,omitempty"`
-	SourceProduct  *SheinSourceProductSummary       `json:"source_product,omitempty"`
-	Title          string                           `json:"title,omitempty"`
-	Description    string                           `json:"description,omitempty"`
-	CategoryPath   []string                         `json:"category_path,omitempty"`
-	CategoryID     int                              `json:"category_id,omitempty"`
-	Attributes     []sheinpub.ResolvedAttribute     `json:"attributes,omitempty"`
-	SaleAttributes []sheinpub.ResolvedSaleAttribute `json:"sale_attributes,omitempty"`
-	SKUs           []SheinFinalReviewSKU            `json:"skus,omitempty"`
-	Images         []SheinFinalReviewImage          `json:"images,omitempty"`
-	BlockingItems  []SheinReadinessItem             `json:"blocking_items,omitempty"`
+	Confirmed       bool                             `json:"confirmed"`
+	SubmitMode      string                           `json:"submit_mode,omitempty"`
+	StoreID         int64                            `json:"store_id,omitempty"`
+	Site            string                           `json:"site,omitempty"`
+	SourceReference *SourceReference                 `json:"source_reference,omitempty"`
+	SourceProduct   *SheinSourceProductSummary       `json:"source_product,omitempty"`
+	Title           string                           `json:"title,omitempty"`
+	Description     string                           `json:"description,omitempty"`
+	CategoryPath    []string                         `json:"category_path,omitempty"`
+	CategoryID      int                              `json:"category_id,omitempty"`
+	Attributes      []sheinpub.ResolvedAttribute     `json:"attributes,omitempty"`
+	SaleAttributes  []sheinpub.ResolvedSaleAttribute `json:"sale_attributes,omitempty"`
+	SKUs            []SheinFinalReviewSKU            `json:"skus,omitempty"`
+	Images          []SheinFinalReviewImage          `json:"images,omitempty"`
+	BlockingItems   []SheinReadinessItem             `json:"blocking_items,omitempty"`
 }
 
 type SheinFinalReviewSKU = sheinmarketplace.FinalReviewSKU

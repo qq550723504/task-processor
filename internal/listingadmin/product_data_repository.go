@@ -3,6 +3,7 @@ package listingadmin
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -48,9 +49,11 @@ func (r *GormProductDataRepository) GetProductData(ctx context.Context, tenantID
 
 func (r *GormProductDataRepository) CreateProductData(ctx context.Context, product *ProductData) (*ProductData, error) {
 	row := listingProductDataFromProductData(product)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyProductDataAuditFields(&row, ownerUserID, true)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyProductDataAuditFields(&row, ownerUserID, true)
 	if err := r.db.WithContext(ctx).Table("listing_product_data").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -60,9 +63,11 @@ func (r *GormProductDataRepository) CreateProductData(ctx context.Context, produ
 
 func (r *GormProductDataRepository) UpdateProductData(ctx context.Context, product *ProductData) (*ProductData, error) {
 	row := listingProductDataFromProductData(product)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyProductDataAuditFields(&row, ownerUserID, false)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyProductDataAuditFields(&row, ownerUserID, false)
 	updates := map[string]any{
 		"owner_user_id":       row.OwnerUserID,
 		"source":              row.Source,
@@ -130,9 +135,28 @@ func (r *GormProductDataRepository) UpsertProductDataBatch(ctx context.Context, 
 	if r == nil || r.db == nil {
 		return 0, errors.New("product data repository database is not configured")
 	}
+	if len(items) == 0 {
+		return 0, nil
+	}
+	tx := r.db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return 0, tx.Error
+	}
+	defer tx.Rollback()
 	updated := 0
+	var err error
 	for _, item := range items {
 		row := listingProductDataFromProductData(&item)
+		ownerUserID := strings.TrimSpace(row.OwnerUserID)
+		if row.StoreID > 0 {
+			ownerUserID, err = resolveStoreOwnerUserIDForUpdate(ctx, tx, row.TenantID, row.StoreID)
+		} else {
+			ownerUserID, err = requireOwnerUserID(ctx, ownerUserID)
+		}
+		if err != nil {
+			return 0, err
+		}
+		row.OwnerUserID = ownerUserID
 		now := time.Now()
 		if row.UpdateTime == nil {
 			row.UpdateTime = &now
@@ -170,29 +194,27 @@ func (r *GormProductDataRepository) UpsertProductDataBatch(ctx context.Context, 
 			"platform_data":       row.PlatformData,
 			"update_time":         row.UpdateTime,
 		}
-		if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
-			updates["updater"] = updatedBy
-			updates["updated_by"] = updatedBy
-			row.OwnerUserID = updatedBy
-		}
-		res := r.db.WithContext(ctx).Table("listing_product_data").
+		updates["updater"] = ownerUserID
+		updates["updated_by"] = ownerUserID
+		res := tx.Table("listing_product_data").
 			Where("platform = ? AND tenant_id = ? AND store_id = ? AND platform_product_id = ?", row.Platform, row.TenantID, row.StoreID, row.PlatformProductID).
 			Updates(updates)
 		if res.Error != nil {
-			return updated, res.Error
+			return 0, res.Error
 		}
 		if res.RowsAffected == 0 {
 			if row.CreateTime == nil {
 				row.CreateTime = &now
 			}
-			if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-				applyProductDataAuditFields(&row, ownerUserID, true)
-			}
-			if err := r.db.WithContext(ctx).Table("listing_product_data").Create(&row).Error; err != nil {
-				return updated, err
+			applyProductDataAuditFields(&row, ownerUserID, true)
+			if err := tx.Table("listing_product_data").Create(&row).Error; err != nil {
+				return 0, err
 			}
 		}
 		updated++
+	}
+	if err := tx.Commit().Error; err != nil {
+		return 0, err
 	}
 	return updated, nil
 }

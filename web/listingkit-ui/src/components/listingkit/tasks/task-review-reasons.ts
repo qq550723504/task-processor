@@ -16,6 +16,14 @@ function workflowReviewReasonMessages(task?: ListingKitTaskResult | null) {
   );
 }
 
+export function hasTaskWorkflowReviewIssue(task?: ListingKitTaskResult | null) {
+  return (
+    task?.result?.workflow_issues?.some(
+      (issue) => issue.severity === "review" || issue.severity === "blocking",
+    ) ?? false
+  );
+}
+
 function uniqueNormalizedReasons(values: string[]) {
   const seen = new Set<string>();
   return values

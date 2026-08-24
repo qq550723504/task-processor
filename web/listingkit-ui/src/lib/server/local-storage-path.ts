@@ -1,6 +1,6 @@
 import path from "node:path";
 
-export function resolveListingKitUILocalStorageDir() {
+ function resolveListingKitUILocalStorageDir() {
   return process.env.LISTINGKIT_UI_STORAGE_DIR?.trim() || path.join(process.cwd(), ".data");
 }
 

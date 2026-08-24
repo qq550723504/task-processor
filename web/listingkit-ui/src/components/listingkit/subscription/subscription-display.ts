@@ -1,4 +1,4 @@
-export const SUBSCRIPTION_MODULE_GUIDANCE: Record<string, string> = {
+ const SUBSCRIPTION_MODULE_GUIDANCE: Record<string, string> = {
   store_management: "控制店铺、店铺资料与基础运营配置是否可用。",
   task_import: "控制任务导入与批量导入能力是否可用。",
   rules: "控制规则、映射和限制类配置能力是否可用。",
@@ -7,7 +7,7 @@ export const SUBSCRIPTION_MODULE_GUIDANCE: Record<string, string> = {
   oss_storage: "控制文件存储额度，适合按存储空间进行配额管理。",
 };
 
-export const SUBSCRIPTION_METRIC_LABELS: Record<string, { label: string; unit?: string }> = {
+ const SUBSCRIPTION_METRIC_LABELS: Record<string, { label: string; unit?: string }> = {
   design_jobs: { label: "设计任务额度", unit: "次" },
   product_image_jobs: { label: "商品图片任务额度", unit: "次" },
   storage_bytes: { label: "存储额度", unit: "字节" },
@@ -40,7 +40,7 @@ export function formatSubscriptionRecord(value?: Record<string, number>) {
     .join(", ");
 }
 
-export function formatSubscriptionMetricValue(key: string, value: number) {
+ function formatSubscriptionMetricValue(key: string, value: number) {
   if (key === "storage_bytes" || key.endsWith("_bytes")) {
     return formatBytes(value);
   }

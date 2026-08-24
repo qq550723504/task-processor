@@ -75,10 +75,17 @@ It should not own:
 
 Publishing convergence is guarded by:
 
-- `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
+- `depguard: publishing_shein_legacy_runtime`
+- `depguard: shein_submitprep_legacy_tenantctx`
+- `depguard: shein_pipeline_legacy_listingkit`
 - `TestPublishingSheinNonAPISheinImportsStayAllowlisted`
-- `TestPublishingCommonUsesCanonicalPackage`
-- `TestPublishingCommonDoesNotImportPlatformImplementations`
+- `depguard: publishing_common_legacy_productenrich`
+- `TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets`
+- `depguard: publishing_common_platforms`
+
+These depguard guards apply to production files; repository-wide lint policy
+excludes `_test.go`, while test-only semantic and compatibility constraints
+remain in the project-specific boundary tests.
 
 Treat direct dependencies on legacy SHEIN runtime packages, ListingKit facade
 code, or platform implementation packages as migration seams, not precedent
@@ -95,6 +102,24 @@ SHEIN, TEMU, Amazon, or Walmart platform rules.
 
 New platform-specific rules should move toward marketplace or publishing
 packages unless the behavior is truly a ListingKit product concept.
+
+ListingKit's production dependency on legacy SHEIN runtime packages is guarded
+by `depguard: listingkit_legacy_shein_runtime`; test-only semantic exceptions
+remain in the project-specific boundary tests.
+
+ListingKit's direct dependency on the SHEIN API root is guarded by
+`depguard: listingkit_shein_api_root`; subpackage adapter exceptions remain in
+the project-specific boundary tests.
+
+The ListingKit root facade's direct dependency on management API DTO contracts
+is guarded by `depguard: listingkit_root_management_api`.
+
+ListingKit subdomains are guarded from depending on the root facade by
+`depguard: listingkit_subdomains_root_facade`; root files are separately kept
+off the legacy workspace SHEIN domain by
+`depguard: listingkit_root_workspace_shein`. The target-independent semantic
+scan `TestListingKitImportDirectionStaysRetiredAcrossBuildTargets` covers the
+same production paths across build-constrained `.go` files.
 
 ### `internal/platforms/*`
 

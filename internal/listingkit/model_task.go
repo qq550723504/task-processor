@@ -12,28 +12,44 @@ import (
 )
 
 type Task struct {
-	ID                           string                        `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	TenantID                     string                        `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
-	UserID                       string                        `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
-	Request                      *GenerateRequest              `json:"request" gorm:"type:text"`
-	SheinStoreResolutionSnapshot *SheinStoreResolutionSnapshot `json:"shein_store_resolution_snapshot,omitempty" gorm:"type:text"`
-	Status                       core.TaskStatus               `json:"status" gorm:"type:varchar(20);index"`
-	Result                       *ListingKitResult             `json:"result,omitempty" gorm:"type:text"`
-	RetryableBlock               *RetryableBlock               `json:"retryable_block,omitempty" gorm:"type:text"`
-	Error                        string                        `json:"error,omitempty" gorm:"type:text"`
-	CreatedAt                    time.Time                     `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt                    time.Time                     `json:"updated_at" gorm:"autoUpdateTime"`
-	RetryCount                   int                           `json:"retry_count" gorm:"default:0"`
+	ID       string `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	TenantID string `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	// BillingTenantID is the entitlement and usage-ledger identity. TenantID
+	// remains the canonical task owner used for API access scopes.
+	BillingTenantID string `json:"-" gorm:"type:varchar(64);index"`
+	// GenerationUsageReservationState and GenerationUsageReservationLeaseUntil
+	// are worker-internal durability markers. They are deliberately hidden from
+	// task API responses and contain no billing payload or provider data.
+	GenerationUsageReservationState      GenerationUsageReservationState `json:"-" gorm:"type:varchar(16);index"`
+	GenerationUsageReservationLeaseUntil *time.Time                      `json:"-" gorm:"index"`
+	UserID                               string                          `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
+	Request                              *GenerateRequest                `json:"request" gorm:"type:text"`
+	SheinStoreResolutionSnapshot         *SheinStoreResolutionSnapshot   `json:"shein_store_resolution_snapshot,omitempty" gorm:"type:text"`
+	Status                               core.TaskStatus                 `json:"status" gorm:"type:varchar(20);index"`
+	Result                               *ListingKitResult               `json:"result,omitempty" gorm:"type:text"`
+	RetryableBlock                       *RetryableBlock                 `json:"retryable_block,omitempty" gorm:"type:text"`
+	Error                                string                          `json:"error,omitempty" gorm:"type:text"`
+	CreatedAt                            time.Time                       `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt                            time.Time                       `json:"updated_at" gorm:"autoUpdateTime"`
+	RetryCount                           int                             `json:"retry_count" gorm:"default:0"`
 }
+
+type GenerationUsageReservationState string
+
+const (
+	GenerationUsageReservationStatePending  GenerationUsageReservationState = "pending"
+	GenerationUsageReservationStateReserved GenerationUsageReservationState = "reserved"
+)
 
 type TaskResult struct {
 	TaskIdentityFields
 	TaskResultLifecycleFields
 	SheinSubmissionStatusFields
-	SourceReference *SourceReference  `json:"source_reference,omitempty"`
-	Result          *ListingKitResult `json:"result,omitempty"`
-	ReviewReasons   []string          `json:"review_reasons,omitempty"`
-	RetryableBlock  *RetryableBlock   `json:"retryable_block,omitempty"`
+	SourceReference *SourceReference      `json:"source_reference,omitempty"`
+	Result          *ListingKitResult     `json:"result,omitempty"`
+	ReviewReasons   []string              `json:"review_reasons,omitempty"`
+	RetryableBlock  *RetryableBlock       `json:"retryable_block,omitempty"`
+	ChildRetries    []SDSChildRetryStatus `json:"child_retries,omitempty"`
 }
 
 type TaskListQuery struct {
@@ -55,8 +71,10 @@ type TaskListQuery struct {
 }
 
 type RecoverableTaskQuery struct {
-	DueBefore time.Time `form:"due_before" json:"due_before"`
-	Limit     int       `form:"limit" json:"limit,omitempty"`
+	DueBefore          time.Time `form:"due_before" json:"due_before"`
+	Limit              int       `form:"limit" json:"limit,omitempty"`
+	ReasonCodes        []string  `form:"-" json:"-"`
+	ExcludeReasonCodes []string  `form:"-" json:"-"`
 }
 
 type RecoverBlockedTasksQuery struct {
@@ -168,7 +186,6 @@ type SheinTaskListStoreFields struct {
 	SheinStoreReason           string     `json:"shein_store_reason,omitempty"`
 	SheinStoreMatchedRuleKinds []string   `json:"shein_store_matched_rule_kinds,omitempty"`
 	SheinStoreManualOverride   bool       `json:"shein_store_manual_override,omitempty"`
-	SheinStoreFallback         bool       `json:"shein_store_fallback,omitempty"`
 }
 
 type SheinTaskListSubmissionFields struct {
@@ -189,7 +206,13 @@ type SheinStoreResolutionSnapshot struct {
 	MatchedProfileID  int64                `json:"matched_profile_id,omitempty"`
 	ManualOverride    bool                 `json:"manual_override,omitempty"`
 	Fallback          bool                 `json:"fallback,omitempty"`
-	ResolvedAt        time.Time            `json:"resolved_at,omitempty"`
+	// ProfileResolved distinguishes a complete store snapshot from the
+	// access-only marker persisted when profile enrichment was unavailable.
+	ProfileResolved bool `json:"profile_resolved,omitempty"`
+	// TenantAdminAccess records the server-validated tenant-wide store access
+	// needed when this queued task is revalidated outside the original request.
+	TenantAdminAccess bool      `json:"tenant_admin_access,omitempty"`
+	ResolvedAt        time.Time `json:"resolved_at,omitempty"`
 }
 
 type TaskListSummary struct {

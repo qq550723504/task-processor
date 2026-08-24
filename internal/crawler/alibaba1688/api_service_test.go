@@ -10,17 +10,17 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/core/config"
-	"task-processor/internal/listingadmin"
-	"task-processor/internal/listingkit"
+	"task-processor/internal/sourceaccount"
 	"task-processor/internal/tenantbridge"
 )
 
-func TestNewAPIServiceWithStoreRepositoryWiresAccountProfileResolver(t *testing.T) {
+func TestNewAPIServiceWithSourceAccountRepositoryWiresAccountProfileResolver(t *testing.T) {
 	cfg := config.NewDefaultConfig()
-	repository := &accountProfileStoreRepository{}
+	repository := &accountProfileSourceRepository{}
 
-	service := NewAPIServiceWithStoreRepository(cfg, nil, 8080, repository)
+	service := NewAPIServiceWithSourceAccountRepository(cfg, nil, 8080, repository)
 
 	if service == nil || service.crawlerService == nil {
 		t.Fatal("expected API service and crawler service")
@@ -49,12 +49,12 @@ func TestNewAPIServiceRemainsResolverFreeWithoutRepository(t *testing.T) {
 }
 
 func TestNewAPIServiceBuildsAndClosesAccountRepositoryWhenDatabaseConfigured(t *testing.T) {
-	previousBuilder := buildListingAdminStoreRepository
-	t.Cleanup(func() { buildListingAdminStoreRepository = previousBuilder })
+	previousBuilder := buildSourceAccountRepository
+	t.Cleanup(func() { buildSourceAccountRepository = previousBuilder })
 
-	repository := &accountProfileStoreRepository{}
+	repository := &accountProfileSourceRepository{}
 	closerCalls := 0
-	buildListingAdminStoreRepository = func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
+	buildSourceAccountRepository = func(*config.Config, *logrus.Logger) (sourceaccount.Repository, []func() error, error) {
 		return repository, []func() error{func() error {
 			closerCalls++
 			return nil
@@ -77,10 +77,10 @@ func TestNewAPIServiceBuildsAndClosesAccountRepositoryWhenDatabaseConfigured(t *
 }
 
 func TestNewAPIServiceDoesNotLogRepositoryBuilderErrorDetails(t *testing.T) {
-	previousBuilder := buildListingAdminStoreRepository
-	t.Cleanup(func() { buildListingAdminStoreRepository = previousBuilder })
+	previousBuilder := buildSourceAccountRepository
+	t.Cleanup(func() { buildSourceAccountRepository = previousBuilder })
 	const secret = "database-password-must-not-leak"
-	buildListingAdminStoreRepository = func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
+	buildSourceAccountRepository = func(*config.Config, *logrus.Logger) (sourceaccount.Repository, []func() error, error) {
 		return nil, nil, errors.New(secret)
 	}
 	var logs bytes.Buffer
@@ -99,9 +99,9 @@ func TestNewAPIServiceDoesNotLogRepositoryBuilderErrorDetails(t *testing.T) {
 	}
 }
 
-func TestVerifiedCrawlerTenantResolverUsesAuthenticatedListingKitIdentity(t *testing.T) {
+func TestVerifiedCrawlerTenantResolverUsesAuthenticatedIdentity(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", nil)
-	request = request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-101"}))
+	request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-101"}))
 
 	tenantID, ok := verifiedCrawlerTenantResolver(request.Context())
 
@@ -112,7 +112,7 @@ func TestVerifiedCrawlerTenantResolverUsesAuthenticatedListingKitIdentity(t *tes
 
 func TestVerifiedCrawlerTenantResolverRejectsNonNumericTenantIdentity(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", nil)
-	request = request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-101"}))
+	request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-101"}))
 
 	tenantID, ok := verifiedCrawlerTenantResolver(request.Context())
 
@@ -125,7 +125,7 @@ func TestVerifiedCrawlerTenantResolverUsesLegacyTenantBridge(t *testing.T) {
 	restore := tenantbridge.ConfigureLegacyTenantResolver(staticLegacyTenantResolver{value: 227})
 	defer restore()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", nil)
-	request = request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{TenantID: "373211199677923496"}))
+	request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{TenantID: "373211199677923496", UserID: "zitadel-subject-227"}))
 
 	tenantID, ok := verifiedCrawlerTenantResolver(request.Context())
 

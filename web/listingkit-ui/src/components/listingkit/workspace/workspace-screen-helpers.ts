@@ -115,7 +115,7 @@ export function selectedPlatformFromReviewTarget(
   return target?.platform ?? target?.panel_state?.selected_platform;
 }
 
-export function openSheinAdvancedDetailsForTarget(targetId: string) {
+ function openSheinAdvancedDetailsForTarget(targetId: string) {
   if (
     targetId !== "shein-category-review-card" &&
     targetId !== "shein-attribute-review-card" &&

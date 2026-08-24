@@ -10,24 +10,47 @@ import (
 )
 
 func TestAuthenticatedIdentityRoundTripsThroughContext(t *testing.T) {
+	roles := []string{"listingkit_operator"}
+	ctx := WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{
+		TenantID: " tenant-a ",
+		UserID:   " user-a ",
+		Roles:    roles,
+	})
+	roles[0] = "mutated-after-storage"
+
 	want := AuthenticatedIdentity{
 		TenantID: "tenant-a",
 		UserID:   "user-a",
 		Roles:    []string{"listingkit_operator"},
 	}
 
-	ctx := WithAuthenticatedIdentity(context.Background(), want)
 	got, ok := AuthenticatedIdentityFromContext(ctx)
 
 	require.True(t, ok)
 	require.Equal(t, want, got)
 	require.Equal(t, aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"}, aiidentity.FromContext(ctx))
+	got.Roles[0] = "mutated-after-read"
+	got, ok = AuthenticatedIdentityFromContext(ctx)
+	require.True(t, ok)
+	require.Equal(t, want, got)
 }
 
-func TestAuthenticatedIdentityFromContextRejectsMissingOrBlankTenant(t *testing.T) {
-	_, ok := AuthenticatedIdentityFromContext(context.Background())
-	require.False(t, ok)
+func TestAuthenticatedIdentityFromContextRejectsIncompleteIdentity(t *testing.T) {
+	tests := []struct {
+		name string
+		ctx  context.Context
+	}{
+		{name: "missing identity", ctx: context.Background()},
+		{name: "missing tenant", ctx: WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{UserID: "user-a"})},
+		{name: "blank tenant", ctx: WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{TenantID: " \t ", UserID: "user-a"})},
+		{name: "missing user", ctx: WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{TenantID: "tenant-a"})},
+		{name: "blank user", ctx: WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{TenantID: "tenant-a", UserID: " \t "})},
+	}
 
-	_, ok = AuthenticatedIdentityFromContext(WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{UserID: "user-a"}))
-	require.False(t, ok)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, ok := AuthenticatedIdentityFromContext(tt.ctx)
+			require.False(t, ok)
+		})
+	}
 }

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ImagePreviewDialog } from "@/components/listingkit/shein/shein-data-image-gallery-dialog";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@/components/listingkit/shein/shein-data-image-gallery-grid";
 import { ImageRoleStatus } from "@/components/listingkit/shein/shein-data-image-gallery-sections";
 import type { SheinPreviewImage } from "@/components/listingkit/shein/shein-preview-image";
+import { toThumbnailPreviewUrl } from "@/lib/utils/imgproxy-url";
 import {
   hasSavedImageRole,
   normalizeImageRole,
@@ -19,6 +21,7 @@ import {
 
 export function SheinDataImageGallery({
   images,
+  availableImages = [],
   mockupImages = [],
   selectedUrl,
   onSelect,
@@ -33,6 +36,7 @@ export function SheinDataImageGallery({
   saveErrorMessage,
 }: {
   images: SheinPreviewImage[];
+  availableImages?: SheinPreviewImage[];
   mockupImages?: SheinPreviewImage[];
   selectedUrl?: string;
   onSelect: (image: SheinPreviewImage) => void;
@@ -62,16 +66,28 @@ export function SheinDataImageGallery({
   const [orderOverride, setOrderOverride] = useState<string[]>();
   const [deletedUrls, setDeletedUrls] = useState<string[]>([]);
   const [mainOverride, setMainOverride] = useState<string>();
+  const [includedAvailableUrls, setIncludedAvailableUrls] = useState<string[]>([]);
   const [roleOverrides, setRoleOverrides] = useState<
     Record<string, ImageRole>
   >({});
 
+  const workingImages = useMemo(() => {
+    const selected = new Set(images.map((image) => image.url));
+    return [
+      ...images,
+      ...availableImages.filter(
+        (image) =>
+          includedAvailableUrls.includes(image.url) && !selected.has(image.url),
+      ),
+    ];
+  }, [availableImages, images, includedAvailableUrls]);
+
   const defaults = useMemo(() => {
     const finalByUrl = new Map(finalImages?.map((image) => [image.url, image]));
-    const nextOrder = images.map((image) => image.url);
+    const nextOrder = workingImages.map((image) => image.url);
     const nextRoles: Record<string, ImageRole> = {};
-    let nextMain = finalImages?.find((image) => image.main)?.url ?? images[0]?.url;
-    for (const image of images) {
+    let nextMain = finalImages?.find((image) => image.main)?.url ?? workingImages[0]?.url;
+    for (const image of workingImages) {
       const finalImage = finalByUrl.get(image.url);
       const finalRole = normalizeImageRole(finalImage?.role);
       if (finalRole === "main" || finalImage?.main) {
@@ -92,23 +108,23 @@ export function SheinDataImageGallery({
     if (!hasSavedImageRole(finalImages)) {
       return {
         order: nextOrder,
-        ...suggestImageRoles(images, nextRoles, nextMain),
+        ...suggestImageRoles(workingImages, nextRoles, nextMain),
       };
     }
     return { order: nextOrder, mainUrl: nextMain, roles: nextRoles };
-  }, [finalImages, images]);
+  }, [finalImages, workingImages]);
 
   const order = orderOverride ?? defaults.order;
   const mainUrl = mainOverride ?? defaults.mainUrl;
   const roleByUrl = { ...defaults.roles, ...roleOverrides };
 
   const visibleImages = useMemo(() => {
-    const byUrl = new Map(images.map((image) => [image.url, image]));
+    const byUrl = new Map(workingImages.map((image) => [image.url, image]));
     return order
       .map((url) => byUrl.get(url))
       .filter((image): image is SheinPreviewImage => Boolean(image))
       .filter((image) => !deletedUrls.includes(image.url));
-  }, [deletedUrls, images, order]);
+  }, [deletedUrls, order, workingImages]);
   const roleCounts = visibleImages.reduce(
     (counts, image) => {
       const role = image.url === mainUrl ? "main" : roleByUrl[image.url] ?? "gallery";
@@ -156,7 +172,14 @@ export function SheinDataImageGallery({
     regenerationPrompt.trim().length > 0 &&
     !isRegenerating;
 
-  if (images.length === 0 && mockupImages.length === 0) {
+  const selectedImageUrls = new Set(images.map((image) => image.url));
+  const unselectedAvailableImages = availableImages.filter(
+    (image) =>
+      (!includedAvailableUrls.includes(image.url) || deletedUrls.includes(image.url)) &&
+      (!selectedImageUrls.has(image.url) || deletedUrls.includes(image.url)),
+  );
+
+  if (workingImages.length === 0 && unselectedAvailableImages.length === 0 && mockupImages.length === 0) {
     return null;
   }
 
@@ -173,11 +196,11 @@ export function SheinDataImageGallery({
             </p>
           </div>
           <span className="text-xs font-medium text-zinc-500">
-            最终提交 {visibleImages.length} / {images.length} 张
+            最终提交 {visibleImages.length} / {workingImages.length} 张
           </span>
         </div>
 
-        {images.length === 0 ? (
+        {workingImages.length === 0 ? (
           <Alert variant="warning">
             <AlertDescription>
               暂未生成 SHEIN 成品图。下方 SDS mockup 仅作为渲染参考，不会自动进入最终提交图包。
@@ -185,7 +208,7 @@ export function SheinDataImageGallery({
           </Alert>
         ) : null}
 
-        {onSaveImageControls && images.length > 0 ? (
+        {onSaveImageControls && workingImages.length > 0 ? (
           <div className="grid gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-xs sm:grid-cols-5">
             <ImageRoleStatus
               count={roleCounts.main}
@@ -230,13 +253,75 @@ export function SheinDataImageGallery({
           />
         ) : null}
 
+        {unselectedAvailableImages.length > 0 ? (
+          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">
+                  可用来源图
+                </p>
+                <p className="mt-1 text-sm leading-6 text-amber-900/80">
+                  来源图默认不提交；加入提交后会带 IP 风险标记，请确认来源授权。
+                </p>
+              </div>
+              <span className="text-xs font-medium text-amber-800">
+                可选 {unselectedAvailableImages.length} 张
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {unselectedAvailableImages.map((image) => (
+                <div
+                  className="min-w-0 rounded-2xl border border-amber-200 bg-white p-2"
+                  key={`${image.id}-${image.url}`}
+                >
+                  <div className="relative aspect-square overflow-hidden rounded-xl bg-zinc-50">
+                    {/* Source URLs are external and may not be known to Next image config. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      alt={image.label}
+                      className="h-full w-full object-contain"
+                      src={toThumbnailPreviewUrl(image.url, { width: 480, height: 480 })}
+                    />
+                    <span className="absolute left-2 top-2 rounded-full bg-amber-100/95 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-900">
+                      来源图
+                    </span>
+                  </div>
+                  <p className="mt-2 truncate text-xs font-semibold text-zinc-900">
+                    {image.label}
+                  </p>
+                  <Button
+                    className="mt-3 w-full rounded-xl px-2 py-1 text-xs"
+                    onClick={() => {
+                      setIncludedAvailableUrls((current) =>
+                        current.includes(image.url) ? current : [...current, image.url],
+                      );
+                      setDeletedUrls((current) =>
+                        current.filter((url) => url !== image.url),
+                      );
+                      setOrderOverride((current) =>
+                        current && !current.includes(image.url)
+                          ? [...current, image.url]
+                          : current,
+                      );
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    加入提交图片
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <MockupReferenceGrid
           mockupImages={mockupImages}
           onSelect={onSelect}
           onSetActiveImage={setActiveImage}
           onSetRegenerationPrompt={setRegenerationPrompt}
         />
-        {images.length > 0 ? (
+        {workingImages.length > 0 ? (
           <ImageControlActions
             canSaveImageControls={canSaveImageControls}
             deletedUrls={deletedUrls}

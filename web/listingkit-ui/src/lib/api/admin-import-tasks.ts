@@ -12,7 +12,7 @@ export const listingImportTaskSchema = z
     targetPlatform: z.string().optional(),
     sourcePlatform: z.string().optional(),
     region: z.string().optional(),
-    categoryId: z.number().optional(),
+    categoryId: z.number().nullable().optional(),
     productId: z.string(),
     status: z.number(),
     errorMessage: z.string().optional(),
@@ -43,6 +43,8 @@ const importTaskPageSchema = z
 const batchCreateImportTaskResponseSchema = z
   .object({
     createdCount: z.number(),
+    skippedCount: z.number().optional(),
+    skippedProductIds: z.array(z.string()).optional(),
     items: z.array(listingImportTaskSchema),
   })
   .passthrough();
@@ -66,7 +68,7 @@ export type ListingImportTaskQuery = QueueQuery & {
 
 export type BatchCreateListingImportTaskInput = {
   storeId: number;
-  categoryId: number;
+  categoryId?: number;
   platform: string;
   targetPlatform?: string;
   region?: string;

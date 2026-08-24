@@ -1,6 +1,8 @@
 package listingkit
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -353,6 +355,7 @@ func TestBuildTaskListItemIncludesResolvedSheinStoreContext(t *testing.T) {
 			Reason:           "根据任务国家信息命中了对应店铺。",
 			MatchedRuleKinds: []string{"country"},
 			MatchedProfileID: 17,
+			Fallback:         true,
 			ResolvedAt:       time.Date(2026, 5, 18, 8, 15, 0, 0, time.UTC),
 		},
 		Result: &ListingKitResult{
@@ -381,6 +384,18 @@ func TestBuildTaskListItemIncludesResolvedSheinStoreContext(t *testing.T) {
 	}
 	if len(item.SheinStoreMatchedRuleKinds) != 1 || item.SheinStoreMatchedRuleKinds[0] != "country" {
 		t.Fatalf("shein store matched rules = %+v, want [country]", item.SheinStoreMatchedRuleKinds)
+	}
+	encoded, err := json.Marshal(item)
+	if err != nil {
+		t.Fatalf("json.Marshal task list item: %v", err)
+	}
+	legacyKey := strings.Join([]string{"shein_store", "_fallback"}, "")
+	var payload map[string]any
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatalf("json.Unmarshal task list item: %v", err)
+	}
+	if _, exists := payload[legacyKey]; exists {
+		t.Fatalf("task list item = %s, must not expose legacy field %q", encoded, legacyKey)
 	}
 }
 

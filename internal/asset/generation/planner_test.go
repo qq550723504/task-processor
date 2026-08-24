@@ -2,6 +2,11 @@ package generation_test
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"task-processor/internal/asset"
@@ -120,6 +125,43 @@ func TestNoopServicePlansMissingGeneratedAssetForDifferentBundleSlot(t *testing.
 	}
 }
 
+func TestServiceDispatchRestoresCommonTaskTargetPlatforms(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	request := assetgeneration.Request{
+		TaskID:          "task-common-deferred-platform-tags",
+		TargetPlatforms: []string{"shein", "amazon"},
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source.jpg",
+		}}},
+		Recipes: []assetrecipe.AssetRecipe{{
+			ID: "common-detail", Platform: "common", AssetKind: asset.KindDetailCrop, Generated: true,
+			Template: &assetrecipe.Template{Purpose: "detail", PreferredKinds: []asset.Kind{asset.KindDetailCrop}},
+		}},
+	}
+	plan, err := service.Plan(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if len(plan.Tasks) != 1 {
+		t.Fatalf("planned tasks = %+v, want one common deferred task", plan.Tasks)
+	}
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: request.TaskID, Inventory: request.Inventory, Tasks: plan.Tasks,
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one common deferred asset", result.Assets)
+	}
+	want := []string{"shein", "amazon"}
+	if got := result.Assets[0].PlatformTags; !reflect.DeepEqual(got, want) {
+		t.Fatalf("common deferred asset platform tags = %#v, want %#v", got, want)
+	}
+}
+
 func TestNoopServiceExecuteMaterializesCleanImageFromMainAsset(t *testing.T) {
 	t.Parallel()
 
@@ -160,6 +202,58 @@ func TestNoopServiceExecuteMaterializesCleanImageFromMainAsset(t *testing.T) {
 	}
 	if result.Assets[0].Lineage == nil || len(result.Assets[0].Lineage.SourceAssetIDs) == 0 || result.Assets[0].Lineage.SourceAssetIDs[0] != "main-1" {
 		t.Fatalf("asset lineage = %+v, want source main-1", result.Assets[0].Lineage)
+	}
+}
+
+func TestServiceExecuteStampsNativeAssetWithCanonicalPlatformTag(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Execute(context.Background(), assetgeneration.Request{
+		TaskID: "task-native-platform-tag",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "main-1", Kind: asset.KindMainImage, URL: "https://example.com/main.jpg",
+		}}},
+		Recipes: []assetrecipe.AssetRecipe{{
+			ID: "shein-clean", Platform: " SHEIN ", AssetKind: asset.KindCleanImage, Generated: true,
+			Template: &assetrecipe.Template{Purpose: "clean", PreferredKinds: []asset.Kind{asset.KindCleanImage}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one native asset", result.Assets)
+	}
+	if got := result.Assets[0].PlatformTags; len(got) != 1 || got[0] != "shein" {
+		t.Fatalf("native asset platform tags = %#v, want [shein]", got)
+	}
+}
+
+func TestServiceExecuteExpandsCommonAssetToExplicitTargetPlatforms(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Execute(context.Background(), assetgeneration.Request{
+		TaskID:          "task-common-platform-tags",
+		TargetPlatforms: []string{" SHEIN ", "amazon", "shein", ""},
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "main-1", Kind: asset.KindMainImage, URL: "https://example.com/main.jpg",
+		}}},
+		Recipes: []assetrecipe.AssetRecipe{{
+			ID: "base-clean", Platform: "common", AssetKind: asset.KindCleanImage, Generated: true,
+			Template: &assetrecipe.Template{Purpose: "clean", PreferredKinds: []asset.Kind{asset.KindCleanImage}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one common native asset", result.Assets)
+	}
+	want := []string{"shein", "amazon"}
+	if got := result.Assets[0].PlatformTags; !reflect.DeepEqual(got, want) {
+		t.Fatalf("common asset platform tags = %#v, want %#v", got, want)
 	}
 }
 
@@ -250,9 +344,261 @@ type stubDeferredRenderer struct {
 	result      *asset.AssetRecord
 }
 
+type failingDeferredRenderer struct {
+	err error
+}
+
+func TestServiceDispatchStampsDeferredAssetWithCanonicalPlatformTag(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-deferred-platform-tag",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source.jpg",
+		}}},
+		Tasks: []assetgeneration.Task{{
+			ID: "temu:detail", Platform: " TEMU ", RecipeID: "temu-detail", AssetKind: asset.KindDetailCrop,
+			ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"source-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one deferred asset", result.Assets)
+	}
+	if got := result.Assets[0].PlatformTags; len(got) != 1 || got[0] != "temu" {
+		t.Fatalf("deferred asset platform tags = %#v, want [temu]", got)
+	}
+}
+
+func TestServiceDispatchPrefersProcessedBaseOverFirstSourceAssetID(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-deferred-preferred-base",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://cbu01.alicdn.com/source.jpg"},
+			{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+		}},
+		Tasks: []assetgeneration.Task{{
+			ID: "shein:main", Platform: "shein", RecipeID: "shein-main-model", AssetKind: asset.KindModelImage,
+			ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"source-1", "main-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one deferred asset", result.Assets)
+	}
+	if got := result.Assets[0].URL; got != "https://oss.example.test/main.png" {
+		t.Fatalf("deferred asset URL = %q, want processed main image URL", got)
+	}
+	if result.Assets[0].Lineage == nil || len(result.Assets[0].Lineage.SourceAssetIDs) != 1 || result.Assets[0].Lineage.SourceAssetIDs[0] != "main-1" {
+		t.Fatalf("deferred asset lineage = %+v, want main-1", result.Assets[0].Lineage)
+	}
+}
+
+func TestServiceDispatchPrefersProcessedMainOverSourceForScene(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-deferred-scene-main-priority",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://cbu01.alicdn.com/source.jpg"},
+			{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+		}},
+		Tasks: []assetgeneration.Task{{
+			ID: "shein:scene", Platform: "shein", RecipeID: "shein-scene", AssetKind: asset.KindSceneImage,
+			ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"source-1", "main-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one deferred asset", result.Assets)
+	}
+	if got := result.Assets[0].URL; got != "https://oss.example.test/main.png" {
+		t.Fatalf("scene deferred asset URL = %q, want processed main image URL", got)
+	}
+	if result.Assets[0].Lineage == nil || len(result.Assets[0].Lineage.SourceAssetIDs) != 1 || result.Assets[0].Lineage.SourceAssetIDs[0] != "main-1" {
+		t.Fatalf("scene deferred asset lineage = %+v, want main-1", result.Assets[0].Lineage)
+	}
+}
+
+func TestServiceDispatchKeepsCleanImageEligibleForScene(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-deferred-scene-clean-base",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "clean-1", Kind: asset.KindCleanImage, URL: "https://oss.example.test/clean.png"},
+		}},
+		Tasks: []assetgeneration.Task{{
+			ID: "amazon:scene", Platform: "amazon", RecipeID: "amazon-scene", AssetKind: asset.KindSceneImage,
+			ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"clean-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one deferred asset", result.Assets)
+	}
+	if got := result.Assets[0].URL; got != "https://oss.example.test/clean.png" {
+		t.Fatalf("scene deferred asset URL = %q, want clean image URL", got)
+	}
+	if result.Assets[0].Lineage == nil || len(result.Assets[0].Lineage.SourceAssetIDs) != 1 || result.Assets[0].Lineage.SourceAssetIDs[0] != "clean-1" {
+		t.Fatalf("scene deferred asset lineage = %+v, want clean-1", result.Assets[0].Lineage)
+	}
+}
+
+func TestServiceDispatchUsesSubjectCutoutWhenItIsTheOnlyProcessedBase(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-deferred-subject-base",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "subject-1", Kind: asset.KindSubjectCutout, URL: "https://oss.example.test/subject.png"},
+		}},
+		Tasks: []assetgeneration.Task{{
+			ID: "shein:main", Platform: "shein", RecipeID: "shein-main-model", AssetKind: asset.KindModelImage,
+			ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"subject-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 || result.Assets[0].URL != "https://oss.example.test/subject.png" {
+		t.Fatalf("assets = %+v, want subject cutout as deferred base", result.Assets)
+	}
+}
+
+func TestServiceDispatchUsesGalleryImageWhenItIsTheOnlyModelBase(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-deferred-gallery-model-base",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "gallery-1", Kind: asset.KindGalleryImage, URL: "https://oss.example.test/gallery.png"},
+		}},
+		Tasks: []assetgeneration.Task{{
+			ID: "shein:model", Platform: "shein", RecipeID: "shein-model", AssetKind: asset.KindModelImage,
+			ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"gallery-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 || result.Assets[0].URL != "https://oss.example.test/gallery.png" {
+		t.Fatalf("assets = %+v, want gallery image as model base", result.Assets)
+	}
+}
+
+func TestServiceDispatchDoesNotFallbackAfterRendererFailure(t *testing.T) {
+	t.Parallel()
+
+	wantErr := fmt.Errorf("publisher unavailable")
+	service := assetgeneration.NewService(assetgeneration.Config{DeferredRenderer: &failingDeferredRenderer{err: wantErr}})
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-renderer-failure",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+		}},
+		Tasks: []assetgeneration.Task{{
+			ID: "shein:scene", Platform: "shein", RecipeID: "shein-scene", AssetKind: asset.KindSceneImage,
+			ExecutionMode: assetgeneration.ExecutionModeRendererBacked, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"main-1"},
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), wantErr.Error()) {
+		t.Fatalf("Dispatch() error = %v, want renderer failure", err)
+	}
+	if len(result.Assets) != 0 {
+		t.Fatalf("assets = %+v, want no fallback asset", result.Assets)
+	}
+	if len(result.Tasks) != 1 || result.Tasks[0].ExecutionStatus != "failed" || result.Tasks[0].Metadata["error"] == "" {
+		t.Fatalf("tasks = %+v, want failed retryable task with error metadata", result.Tasks)
+	}
+}
+
+func TestServicePlanIncludesGalleryAsDeferredSourceCandidate(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Plan(context.Background(), assetgeneration.Request{
+		TaskID: "task-deferred-gallery-candidate",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.test/source.jpg"},
+			{ID: "gallery-1", Kind: asset.KindGalleryImage, URL: "https://oss.example.test/gallery.png"},
+		}},
+		Recipes: []assetrecipe.AssetRecipe{{
+			ID: "shein-gallery-scene", Platform: "shein", AssetKind: asset.KindSceneImage, Generated: true,
+			Template: &assetrecipe.Template{BundleSlot: "gallery", Purpose: "gallery", PreferredKinds: []asset.Kind{asset.KindSceneImage}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if len(result.Tasks) != 1 {
+		t.Fatalf("tasks = %+v, want one planned task", result.Tasks)
+	}
+	if !reflect.DeepEqual(result.Tasks[0].SourceAssetIDs, []string{"source-1", "gallery-1"}) {
+		t.Fatalf("source asset IDs = %#v, want source and gallery candidates", result.Tasks[0].SourceAssetIDs)
+	}
+}
+
+func TestServiceDispatchOverridesArbitraryRendererTagsWithCanonicalTaskPlatform(t *testing.T) {
+	t.Parallel()
+
+	renderer := &stubDeferredRenderer{result: &asset.AssetRecord{
+		ID: "rendered-scene", Kind: asset.KindSceneImage, URL: "https://cdn.example.com/rendered-scene.jpg",
+		PlatformTags: []string{"wrong-target"},
+	}}
+	service := assetgeneration.NewService(assetgeneration.Config{DeferredRenderer: renderer})
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-renderer-platform-tag",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source.jpg",
+		}}},
+		Tasks: []assetgeneration.Task{{
+			ID: "shein:scene", Platform: " SHEIN ", RecipeID: "shein-scene", AssetKind: asset.KindSceneImage,
+			ExecutionMode: assetgeneration.ExecutionModeRendererBacked, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"source-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one renderer-backed asset", result.Assets)
+	}
+	if got := result.Assets[0].PlatformTags; len(got) != 1 || got[0] != "shein" {
+		t.Fatalf("renderer-backed asset platform tags = %#v, want [shein]", got)
+	}
+}
+
 func (s *stubDeferredRenderer) Render(ctx context.Context, req assetgeneration.DeferredRenderRequest) (*asset.AssetRecord, error) {
 	s.lastRequest = req
 	return s.result, nil
+}
+
+func (s *failingDeferredRenderer) Render(context.Context, assetgeneration.DeferredRenderRequest) (*asset.AssetRecord, error) {
+	return nil, s.err
 }
 
 type stubProductImageSceneRenderer struct {
@@ -389,6 +735,47 @@ func TestServiceExecuteUsesPipelineBackedWhiteBgAndCutout(t *testing.T) {
 	}
 }
 
+func TestServiceExecutePreservesSourceProvenanceWhenPublishedURLIsReadable(t *testing.T) {
+	t.Parallel()
+
+	whiteBgRenderer := &stubWhiteBackgroundRenderer{
+		result: &productimage.ImageAsset{
+			URL:       "file:///tmp/white.png",
+			Type:      productimage.AssetTypeWhiteBgImage,
+			SourceURL: "https://cdn.example.test/main.jpg",
+		},
+	}
+	service := assetgeneration.NewService(assetgeneration.Config{WhiteBackgroundRenderer: whiteBgRenderer})
+	provenanceURL := "https://detail.1688.com/offer/1/promo-watermark.jpg"
+	publishedURL := "https://cdn.example.test/main.jpg"
+	_, err := service.Execute(context.Background(), assetgeneration.Request{
+		TaskID: "task-source-provenance",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "main-1", Kind: asset.KindMainImage, URL: publishedURL,
+			Metadata: map[string]string{
+				"published_url": publishedURL,
+				"source_url":    provenanceURL,
+			},
+		}}},
+		Recipes: []assetrecipe.AssetRecipe{{
+			ID: "base-white-bg", Platform: "common", AssetKind: asset.KindWhiteBgImage, Generated: true,
+			Template: &assetrecipe.Template{Purpose: "base_white_bg", PreferredKinds: []asset.Kind{asset.KindWhiteBgImage}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if whiteBgRenderer.lastAsset == nil {
+		t.Fatal("white background renderer did not receive a base asset")
+	}
+	if whiteBgRenderer.lastAsset.URL != publishedURL {
+		t.Fatalf("renderer URL = %q, want published URL %q", whiteBgRenderer.lastAsset.URL, publishedURL)
+	}
+	if whiteBgRenderer.lastAsset.SourceURL != provenanceURL {
+		t.Fatalf("renderer SourceURL = %q, want provenance URL %q", whiteBgRenderer.lastAsset.SourceURL, provenanceURL)
+	}
+}
+
 func TestServiceDispatchCompletesDeferredGenerationTasks(t *testing.T) {
 	t.Parallel()
 
@@ -456,6 +843,9 @@ func TestServiceDispatchCompletesDeferredGenerationTasks(t *testing.T) {
 	}
 	if result.Tasks[0].ExecutionMode != assetgeneration.ExecutionModeDeferredStub {
 		t.Fatalf("first task = %+v, want deferred_stub fallback", result.Tasks[0])
+	}
+	if result.Tasks[1].ExecutionStatus != "completed" || result.Tasks[1].SatisfiedBy != "generated_asset" {
+		t.Fatalf("second task = %+v, want completed generated asset", result.Tasks[1])
 	}
 }
 
@@ -530,7 +920,7 @@ func TestProductImageDeferredRendererMapsSceneAssets(t *testing.T) {
 	sceneRenderer := &stubProductImageSceneRenderer{
 		results: []productimage.ImageAsset{
 			{
-				URL:       "file:///tmp/scene-rendered.jpg",
+				URL:       "https://oss.example.test/scene-rendered.jpg",
 				Type:      productimage.AssetTypeGalleryImage,
 				SourceURL: "file:///tmp/gallery.jpg",
 				Width:     1400,
@@ -615,13 +1005,318 @@ func TestProductImageDeferredRendererMapsSceneAssets(t *testing.T) {
 	}
 }
 
+func TestProductImageDeferredRendererPreservesPublicSceneURL(t *testing.T) {
+	t.Parallel()
+
+	sceneRenderer := &stubProductImageSceneRenderer{
+		results: []productimage.ImageAsset{{
+			URL:       "https://oss.example.test/scene-rendered.jpg",
+			Type:      productimage.AssetTypeGalleryImage,
+			SourceURL: "https://oss.example.test/source.jpg",
+			Metadata:  map[string]string{},
+		}},
+	}
+	renderer := assetgeneration.NewProductImageDeferredRenderer(sceneRenderer)
+
+	record, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID:    "task-renderer-published-url",
+		Product:   &catalog.Product{Title: "Portable Speaker"},
+		Task:      assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if record.URL != "https://oss.example.test/scene-rendered.jpg" {
+		t.Fatalf("rendered asset URL = %q, want public scene URL", record.URL)
+	}
+}
+
+type copyingMetadataSceneRenderer struct{}
+
+func (copyingMetadataSceneRenderer) Render(_ context.Context, input *productimage.ImageAsset, _ *productimage.ProductContext) ([]productimage.ImageAsset, error) {
+	metadata := map[string]string{}
+	for key, value := range input.Metadata {
+		metadata[key] = value
+	}
+	metadata["local_path"] = "C:/tmp/new-scene.jpg"
+	return []productimage.ImageAsset{{
+		URL:      "file:///tmp/new-scene.jpg",
+		Type:     productimage.AssetTypeGalleryImage,
+		Metadata: metadata,
+	}}, nil
+}
+
+type validatingDeferredAssetPublisher struct{}
+
+func (validatingDeferredAssetPublisher) Publish(_ context.Context, _ *productimage.ImageProcessRequest, result *productimage.ImageProcessResult) error {
+	if len(result.GalleryImages) != 1 {
+		return fmt.Errorf("gallery images = %+v, want one image", result.GalleryImages)
+	}
+	if _, inherited := result.GalleryImages[0].Metadata["published_url"]; inherited {
+		return fmt.Errorf("selected scene inherited published_url")
+	}
+	result.GalleryImages[0].URL = "https://oss.example.test/new-scene.jpg"
+	return nil
+}
+
+func TestProductImageDeferredRendererClearsInheritedPublicationMetadata(t *testing.T) {
+	t.Parallel()
+
+	renderer := assetgeneration.NewProductImageDeferredRendererWithPublisher(copyingMetadataSceneRenderer{}, validatingDeferredAssetPublisher{})
+	record, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID: "task-renderer-clears-publication-metadata",
+		Task:   assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png", Metadata: map[string]string{
+			"published_url":  "https://oss.example.test/old-main.png",
+			"published_path": "C:/tmp/old-main.png",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if record.URL != "https://oss.example.test/new-scene.jpg" {
+		t.Fatalf("rendered asset URL = %q, want new scene URL", record.URL)
+	}
+}
+
+type recordingPublishedBaseSceneRenderer struct {
+	lastAsset *productimage.ImageAsset
+}
+
+func (r *recordingPublishedBaseSceneRenderer) Render(_ context.Context, input *productimage.ImageAsset, _ *productimage.ProductContext) ([]productimage.ImageAsset, error) {
+	r.lastAsset = input
+	return []productimage.ImageAsset{{
+		URL:      "https://oss.example.test/rendered-from-published-base.jpg",
+		Type:     productimage.AssetTypeGalleryImage,
+		Metadata: map[string]string{},
+	}}, nil
+}
+
+func TestProductImageDeferredRendererPromotesPublishedPathBeforeClearingMetadata(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	publishedPath := dir + "/published-main.jpg"
+	if err := os.WriteFile(publishedPath, []byte("published"), 0o644); err != nil {
+		t.Fatalf("write published asset: %v", err)
+	}
+	rendererSpy := &recordingPublishedBaseSceneRenderer{}
+	renderer := assetgeneration.NewProductImageDeferredRenderer(rendererSpy)
+
+	_, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID: "task-renderer-published-base",
+		Task:   assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://cdn.example.test/main.jpg", Metadata: map[string]string{
+			"published_path": publishedPath,
+			"published_url":  "https://cdn.example.test/main.jpg",
+			"source_url":     "https://detail.1688.com/offer/1/main.jpg",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if rendererSpy.lastAsset == nil || rendererSpy.lastAsset.Metadata["local_path"] != publishedPath {
+		t.Fatalf("scene renderer input = %+v, want published path promoted to local_path", rendererSpy.lastAsset)
+	}
+	if _, ok := rendererSpy.lastAsset.Metadata["published_path"]; ok {
+		t.Fatalf("scene renderer input metadata = %+v, want published_path scrubbed", rendererSpy.lastAsset.Metadata)
+	}
+}
+
+func TestProductImageDeferredRendererSeparatesUploadedURLFromProvenance(t *testing.T) {
+	t.Parallel()
+
+	rendererSpy := &recordingPublishedBaseSceneRenderer{}
+	renderer := assetgeneration.NewProductImageDeferredRenderer(rendererSpy)
+	uploadedURL := "https://images.amazon.example/uploaded-main.jpg"
+	provenanceURL := "https://detail.1688.com/offer/1/main.jpg"
+
+	record, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID: "task-renderer-amazon-uploaded-base",
+		Task:   assetgeneration.Task{Platform: "amazon", AssetKind: asset.KindSceneImage, Purpose: "scene"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: uploadedURL, Metadata: map[string]string{
+			"source_url":   provenanceURL,
+			"uploaded_url": uploadedURL,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if rendererSpy.lastAsset == nil {
+		t.Fatal("scene renderer did not receive a base asset")
+	}
+	if rendererSpy.lastAsset.URL != uploadedURL {
+		t.Fatalf("scene renderer readable URL = %q, want uploaded URL %q", rendererSpy.lastAsset.URL, uploadedURL)
+	}
+	if rendererSpy.lastAsset.SourceURL != provenanceURL {
+		t.Fatalf("scene renderer provenance URL = %q, want original URL %q", rendererSpy.lastAsset.SourceURL, provenanceURL)
+	}
+	if record.Metadata["source_url"] != provenanceURL {
+		t.Fatalf("rendered asset provenance = %q, want original URL %q", record.Metadata["source_url"], provenanceURL)
+	}
+}
+
+func TestProductImageDeferredRendererRejectsNonPublicOutput(t *testing.T) {
+	t.Parallel()
+
+	renderer := assetgeneration.NewProductImageDeferredRenderer(&stubProductImageSceneRenderer{results: []productimage.ImageAsset{{
+		URL:  "file:///tmp/scene-rendered.jpg",
+		Type: productimage.AssetTypeGalleryImage,
+	}}})
+	_, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID:    "task-renderer-local-output",
+		Task:      assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "public http(s) URL") {
+		t.Fatalf("Render() error = %v, want non-public output rejection", err)
+	}
+}
+
+type stubDeferredAssetPublisher struct {
+	called bool
+}
+
+type durableDeferredAssetPublisher struct {
+	publishedPath string
+}
+
+func (p *durableDeferredAssetPublisher) Publish(_ context.Context, _ *productimage.ImageProcessRequest, result *productimage.ImageProcessResult) error {
+	if len(result.GalleryImages) != 1 {
+		return fmt.Errorf("gallery images = %+v, want one image", result.GalleryImages)
+	}
+	result.GalleryImages[0].Metadata["published_path"] = p.publishedPath
+	result.GalleryImages[0].Metadata["published_url"] = "https://cdn.example.test/published-scene.jpg"
+	result.GalleryImages[0].URL = result.GalleryImages[0].Metadata["published_url"]
+	return nil
+}
+
+func (p *stubDeferredAssetPublisher) Publish(_ context.Context, req *productimage.ImageProcessRequest, result *productimage.ImageProcessResult) error {
+	p.called = true
+	if req == nil || req.Text != "task-renderer-publisher" {
+		return fmt.Errorf("unexpected publish request: %+v", req)
+	}
+	if len(result.GalleryImages) != 1 {
+		return fmt.Errorf("gallery images = %+v, want one image", result.GalleryImages)
+	}
+	result.GalleryImages[0].URL = "https://oss.example.test/published-scene.jpg"
+	return nil
+}
+
+func TestProductImageDeferredRendererPublishesLocalSceneOutput(t *testing.T) {
+	t.Parallel()
+
+	sceneRenderer := &stubProductImageSceneRenderer{results: []productimage.ImageAsset{{
+		URL:      "file:///tmp/scene-rendered.jpg",
+		Type:     productimage.AssetTypeGalleryImage,
+		Metadata: map[string]string{"local_path": "C:/tmp/scene-rendered.jpg"},
+	}}}
+	publisher := &stubDeferredAssetPublisher{}
+	renderer := assetgeneration.NewProductImageDeferredRendererWithPublisher(sceneRenderer, publisher)
+
+	record, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID:    "task-renderer-publisher",
+		Product:   &catalog.Product{Title: "Portable Speaker"},
+		Task:      assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if !publisher.called {
+		t.Fatal("asset publisher was not called")
+	}
+	if record.URL != "https://oss.example.test/published-scene.jpg" {
+		t.Fatalf("rendered asset URL = %q, want published URL", record.URL)
+	}
+}
+
+func TestProductImageDeferredRendererCleansTemporaryAfterDurablePublication(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	localPath := filepath.Join(workDir, "rendered-scene.jpg")
+	publishedPath := filepath.Join(workDir, "published", "rendered-scene.jpg")
+	if err := os.WriteFile(localPath, []byte("rendered"), 0o644); err != nil {
+		t.Fatalf("write rendered asset: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(publishedPath), 0o755); err != nil {
+		t.Fatalf("create published directory: %v", err)
+	}
+	if err := os.WriteFile(publishedPath, []byte("published"), 0o644); err != nil {
+		t.Fatalf("write published asset: %v", err)
+	}
+
+	renderer := assetgeneration.NewProductImageDeferredRendererWithPublisher(
+		&stubProductImageSceneRenderer{results: []productimage.ImageAsset{{
+			URL:      localPath,
+			Type:     productimage.AssetTypeGalleryImage,
+			Metadata: map[string]string{"local_path": localPath},
+		}}},
+		&durableDeferredAssetPublisher{publishedPath: publishedPath},
+	)
+	_, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID:    "task-renderer-cleans-temporary",
+		Task:      assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if _, err := os.Stat(localPath); !os.IsNotExist(err) {
+		t.Fatalf("temporary local asset still exists, stat error = %v", err)
+	}
+	if _, err := os.Stat(publishedPath); err != nil {
+		t.Fatalf("durable published asset missing: %v", err)
+	}
+}
+
+func TestProductImageDeferredRendererHonorsDisabledTemporaryCleanup(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	localPath := filepath.Join(workDir, "rendered-scene.jpg")
+	publishedPath := filepath.Join(workDir, "published", "rendered-scene.jpg")
+	if err := os.WriteFile(localPath, []byte("rendered"), 0o644); err != nil {
+		t.Fatalf("write rendered asset: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(publishedPath), 0o755); err != nil {
+		t.Fatalf("create published directory: %v", err)
+	}
+	if err := os.WriteFile(publishedPath, []byte("published"), 0o644); err != nil {
+		t.Fatalf("write published asset: %v", err)
+	}
+
+	renderer := assetgeneration.NewProductImageDeferredRendererWithPublisherAndCleanup(
+		&stubProductImageSceneRenderer{results: []productimage.ImageAsset{{
+			URL:      localPath,
+			Type:     productimage.AssetTypeGalleryImage,
+			Metadata: map[string]string{"local_path": localPath},
+		}}},
+		&durableDeferredAssetPublisher{publishedPath: publishedPath},
+		false,
+	)
+	_, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID:    "task-renderer-keeps-temporary",
+		Task:      assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if _, err := os.Stat(localPath); err != nil {
+		t.Fatalf("temporary local asset was removed despite cleanup disabled: %v", err)
+	}
+}
+
 func TestProductImageDeferredRendererPropagatesSellingPointSlotPlan(t *testing.T) {
 	t.Parallel()
 
 	sceneRenderer := &stubProductImageSceneRenderer{
 		results: []productimage.ImageAsset{
 			{
-				URL:       "file:///tmp/selling-point-rendered.jpg",
+				URL:       "https://oss.example.test/selling-point-rendered.jpg",
 				Type:      productimage.AssetTypeGalleryImage,
 				SourceURL: "file:///tmp/gallery.jpg",
 				Width:     1400,

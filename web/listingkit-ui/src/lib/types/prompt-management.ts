@@ -13,13 +13,13 @@ export type PromptTemplateListResponse = {
   items: PromptTemplate[];
 };
 
-export type PromptTemplateScopeDefinition = {
+ type PromptTemplateScopeDefinition = {
   id: string;
   label: string;
   description?: string;
 };
 
-export type PromptTemplateVariableDefinition = {
+ type PromptTemplateVariableDefinition = {
   key: string;
   label: string;
   description?: string;

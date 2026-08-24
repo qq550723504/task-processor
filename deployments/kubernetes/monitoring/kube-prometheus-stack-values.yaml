@@ -6,8 +6,13 @@ prometheus:
     probeSelectorNilUsesHelmValues: false
     scrapeInterval: 30s
     evaluationInterval: 30s
-    retention: 7d
-    retentionSize: 20GB
+    retention: 21d
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        memory: 3Gi
     storageSpec:
       volumeClaimTemplate:
         spec:
@@ -16,7 +21,7 @@ prometheus:
             - ReadWriteOnce
           resources:
             requests:
-              storage: 20Gi
+              storage: 30Gi
 
 grafana:
   initChownData:
@@ -27,6 +32,12 @@ grafana:
     accessModes:
       - ReadWriteOnce
     size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
   sidecar:
     dashboards:
       enabled: true
@@ -34,30 +45,12 @@ grafana:
 
 alertmanager:
   alertmanagerSpec:
-    affinity:
-      nodeAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          nodeSelectorTerms:
-            - matchExpressions:
-                - key: kubernetes.io/hostname
-                  operator: In
-                  values:
-                    - vm-4-17-ubuntu
-      podAntiAffinity:
-        preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                  - key: app.kubernetes.io/name
-                    operator: In
-                    values:
-                      - alertmanager
-                  - key: alertmanager
-                    operator: In
-                    values:
-                      - monitoring-kube-prometheus-alertmanager
-              topologyKey: kubernetes.io/hostname
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
     storage:
       volumeClaimTemplate:
         spec:
@@ -72,3 +65,11 @@ prometheusOperator:
   admissionWebhooks:
     patch:
       enabled: true
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi

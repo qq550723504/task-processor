@@ -17,11 +17,20 @@ type listingAdminStoreAccessValidator struct {
 	repo listingadmin.StoreRepository
 }
 
+func listingAdminRequestContext(ctx context.Context) context.Context {
+	return listingadmin.WithRequestRoles(ctx, listingkit.RequestRolesFromContext(ctx))
+}
+
+func activeStoreStatusFilter() *int16 {
+	status := int16(0)
+	return &status
+}
+
 func (v listingAdminStoreAccessValidator) ValidateStoreAccess(ctx context.Context, tenantID, storeID int64, expectedPlatform string) (listingkit.StoreAccess, error) {
 	if v.repo == nil || tenantID <= 0 || storeID <= 0 {
 		return listingkit.StoreAccess{}, listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
 	}
-	store, err := v.repo.GetStore(ctx, tenantID, storeID)
+	store, err := v.repo.GetStore(listingAdminRequestContext(ctx), tenantID, storeID)
 	if err != nil || store == nil || store.ID != storeID || store.TenantID != tenantID || !strings.EqualFold(strings.TrimSpace(store.Platform), strings.TrimSpace(expectedPlatform)) {
 		return listingkit.StoreAccess{}, listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
 	}
@@ -40,7 +49,7 @@ func (c sheinListingStoreCatalog) GetStoreInfo(ctx context.Context, tenantID, st
 	if c.repo == nil {
 		return nil, fmt.Errorf("listing admin store repository is not configured")
 	}
-	store, err := c.repo.GetStore(ctx, tenantID, storeID)
+	store, err := c.repo.GetStore(listingAdminRequestContext(ctx), tenantID, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -63,27 +72,43 @@ func (c sheinListingStoreCatalog) ListStoreOptions(ctx context.Context, tenantID
 	if c.repo == nil {
 		return nil, fmt.Errorf("listing admin store repository is not configured")
 	}
-	page, err := c.repo.ListStores(ctx, listingadmin.StoreQuery{
-		TenantID: tenantID,
-		Platform: "shein",
-		Page:     1,
-		PageSize: 200,
-	})
-	if err != nil || page == nil || len(page.Items) == 0 {
-		return nil, err
-	}
-	options := make([]listingkit.SheinStoreOption, 0, len(page.Items))
-	for _, item := range page.Items {
-		if item.ID <= 0 {
-			continue
-		}
-		options = append(options, listingkit.SheinStoreOption{
-			ID:       item.ID,
-			StoreID:  strings.TrimSpace(item.StoreID),
-			Name:     strings.TrimSpace(item.Name),
-			Platform: strings.TrimSpace(item.Platform),
-			Region:   strings.TrimSpace(item.Region),
+	options := make([]listingkit.SheinStoreOption, 0)
+	const pageSize = 200
+	for pageNumber := 1; ; pageNumber++ {
+		page, err := c.repo.ListStores(listingAdminRequestContext(ctx), listingadmin.StoreQuery{
+			TenantID:   tenantID,
+			Platform:   "SHEIN",
+			ReadAccess: true,
+			Status:     activeStoreStatusFilter(),
+			Page:       pageNumber,
+			PageSize:   pageSize,
 		})
+		if err != nil {
+			return nil, err
+		}
+		if page == nil || len(page.Items) == 0 {
+			break
+		}
+		for _, item := range page.Items {
+			if item.ID <= 0 {
+				continue
+			}
+			options = append(options, listingkit.SheinStoreOption{
+				ID:       item.ID,
+				StoreID:  strings.TrimSpace(item.StoreID),
+				Name:     strings.TrimSpace(item.Name),
+				Platform: strings.TrimSpace(item.Platform),
+				Region:   strings.TrimSpace(item.Region),
+				Status:   item.Status,
+			})
+		}
+		responsePageSize := page.PageSize
+		if responsePageSize <= 0 {
+			responsePageSize = pageSize
+		}
+		if int64(pageNumber*responsePageSize) >= page.Total || len(page.Items) < responsePageSize {
+			break
+		}
 	}
 	return options, nil
 }

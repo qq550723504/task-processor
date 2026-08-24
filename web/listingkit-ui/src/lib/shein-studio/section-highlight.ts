@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export const SHEIN_STUDIO_SECTION_FOCUS_EVENT =
   "listingkit:shein-studio:section-focus";
 
-export type SheinStudioSectionFocusAction =
+ type SheinStudioSectionFocusAction =
   | "recent-batches"
   | "product-picker";
 

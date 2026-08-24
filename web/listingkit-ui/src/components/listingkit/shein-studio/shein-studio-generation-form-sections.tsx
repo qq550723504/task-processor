@@ -435,15 +435,13 @@ export function ProductImageGenerationSettings({
         >
           <option value="ai_generated">AI 生成商品图</option>
           <option value="sds_official">SDS 官方渲染</option>
-          <option value="hybrid">混合：SDS 主图 + AI 图库</option>
         </Select>
         <p className="text-xs leading-6 text-muted-foreground">
-          AI 生成模式不调用 SDS 设计器；SDS 官方渲染会使用模板图； 混合模式先用
-          SDS 图，再追加 AI 商品图。
+          AI 生成模式不调用 SDS 设计器；SDS 官方渲染会使用模板图。
         </p>
       </Label>
 
-      {imageStrategy === "hybrid" || imageStrategy === "sds_official" ? (
+      {imageStrategy === "sds_official" ? (
         <SDSImagePicker
           availableImages={availableSdsImages}
           selectedImages={selectedSdsImages}
@@ -509,7 +507,8 @@ export function BatchStoreSettings({
   sheinStoreId: string;
   setSheinStoreId: (value: string) => void;
 }) {
-  const { enabledProfiles, profiles } = useSheinStoreSelector();
+  const { enabledProfiles, profiles, storeOptions } = useSheinStoreSelector();
+  const selectableStores = storeOptions ?? enabledProfiles;
 
   return (
     <div
@@ -553,11 +552,11 @@ export function BatchStoreSettings({
             value={sheinStoreId}
           >
             <option value="">
-              {enabledProfiles.length > 0
+              {selectableStores.length > 0
                 ? "请选择批次店铺"
-                : "当前没有已启用店铺配置"}
+                : "当前没有可用店铺"}
             </option>
-            {enabledProfiles.map((item) => (
+            {selectableStores.map((item) => (
               <option
                 key={item.id ?? item.store_id}
                 value={String(item.store_id)}

@@ -80,30 +80,38 @@ func (p *inputParser) ParseInput(ctx context.Context, req *productenrich.Generat
 		p.logger.WithField("url", req.ProductURL).Info("scraping product URL")
 		scrapedData, err := p.Scrape1688(ctx, req.ProductURL)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scrape product URL: %w", err)
-		}
-		if scrapedData == nil {
-			return nil, fmt.Errorf("failed to scrape product URL: scraper returned no data")
-		}
-		result.ScrapedData = scrapedData
-
-		if len(scrapedData.Images) > 0 {
-			existing := make(map[string]struct{}, len(result.Images))
-			for _, u := range result.Images {
-				existing[u] = struct{}{}
+			if len(result.Images) == 0 && result.Text == "" {
+				return nil, fmt.Errorf("failed to scrape product URL: %w", err)
 			}
-			for _, u := range scrapedData.Images {
-				if _, ok := existing[u]; !ok {
-					result.Images = append(result.Images, u)
+			p.logger.WithError(err).Warn("failed to scrape product URL; continuing with explicit input")
+		}
+		if err == nil && scrapedData == nil {
+			if len(result.Images) == 0 && result.Text == "" {
+				return nil, fmt.Errorf("failed to scrape product URL: scraper returned no data")
+			}
+			p.logger.Warn("product URL scraper returned no data; continuing with explicit input")
+		}
+		if err == nil && scrapedData != nil {
+			result.ScrapedData = scrapedData
+
+			if len(scrapedData.Images) > 0 {
+				existing := make(map[string]struct{}, len(result.Images))
+				for _, u := range result.Images {
 					existing[u] = struct{}{}
 				}
+				for _, u := range scrapedData.Images {
+					if _, ok := existing[u]; !ok {
+						result.Images = append(result.Images, u)
+						existing[u] = struct{}{}
+					}
+				}
 			}
-		}
-		if scrapedData.Description != "" {
-			if result.Text != "" {
-				result.Text += "\n" + scrapedData.Description
-			} else {
-				result.Text = scrapedData.Description
+			if scrapedData.Description != "" {
+				if result.Text != "" {
+					result.Text += "\n" + scrapedData.Description
+				} else {
+					result.Text = scrapedData.Description
+				}
 			}
 		}
 	}

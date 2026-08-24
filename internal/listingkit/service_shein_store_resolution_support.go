@@ -1,5 +1,7 @@
 package listingkit
 
+import "strings"
+
 type sheinStoreSelection struct {
 	Profile          *ListingKitStoreProfile
 	Strategy         string
@@ -14,6 +16,25 @@ func sheinStoreResolutionSnapshotFromTask(task *Task) *SheinStoreResolutionSnaps
 		return nil
 	}
 	return task.SheinStoreResolutionSnapshot
+}
+
+func sheinStoreResolutionSnapshotHasProfile(snapshot *SheinStoreResolutionSnapshot) bool {
+	if snapshot == nil || snapshot.StoreID <= 0 {
+		return false
+	}
+	if snapshot.ProfileResolved {
+		return true
+	}
+	// Treat older snapshots with persisted profile fields as complete. New
+	// access-only snapshots intentionally contain only StoreID and the access
+	// decision, so they fall through to repository re-resolution.
+	return snapshot.MatchedProfileID > 0 ||
+		strings.TrimSpace(snapshot.Site) != "" ||
+		strings.TrimSpace(snapshot.WarehouseCode) != "" ||
+		snapshot.DefaultStock != 0 ||
+		strings.TrimSpace(snapshot.DefaultSubmitMode) != "" ||
+		strings.TrimSpace(snapshot.Strategy) != "" ||
+		strings.TrimSpace(snapshot.Reason) != ""
 }
 
 func selectionFromSnapshot(snapshot *SheinStoreResolutionSnapshot) *sheinStoreSelection {

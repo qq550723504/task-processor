@@ -93,3 +93,176 @@ func TestStudioBatchTaskCandidateKey_DiffersWhenProductSizeDiffers(t *testing.T)
 		t.Fatalf("product-size-change candidate keys unexpectedly matched: %q", got)
 	}
 }
+
+func TestStudioBatchTaskCandidateKey_DiffersWhenImageStrategyDiffers(t *testing.T) {
+	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1"}
+	base := studioBatchTaskCandidate{
+		Item:          StudioBatchItemRecord{ID: "item-1"},
+		Design:        StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:   "selection-1",
+		SheinStoreID:  1043,
+		ImageStrategy: sheinImageStrategySDSOfficial,
+		SelectionSnapshot: SheinStudioSelection{
+			ProductSize: `[[{"content":"尺码"},{"content":"衣长(cm/in)"}],[{"content":"S"},{"content":"87.5cm/34.45in"}]]`,
+		},
+	}
+	changed := base
+	changed.ImageStrategy = sheinImageStrategyAIGenerated
+
+	if got, want := buildStudioBatchTaskCandidateKey(nil, batch, base), buildStudioBatchTaskCandidateKey(nil, batch, changed); got == want {
+		t.Fatalf("image-strategy-change candidate keys unexpectedly matched: %q", got)
+	}
+}
+
+func TestStudioBatchTaskCandidateKeyDiffersWhenProductImageSettingsChange(t *testing.T) {
+	batch := &StudioBatchRecord{
+		ID:                 "batch-1",
+		TenantID:           "tenant-1",
+		PromptMode:         "managed",
+		ProductImageCount:  "5",
+		ProductImagePrompt: "clean studio background",
+	}
+	base := studioBatchTaskCandidate{
+		Item:          StudioBatchItemRecord{ID: "item-1"},
+		Design:        StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:   "selection-1",
+		ImageStrategy: sheinImageStrategyAIGenerated,
+	}
+	changed := *batch
+	changed.ProductImageCount = "6"
+	changedBatch := &changed
+	if got, want := buildStudioBatchTaskCandidateKey(nil, batch, base), buildStudioBatchTaskCandidateKey(nil, changedBatch, base); got == want {
+		t.Fatalf("product-image-settings candidate keys unexpectedly matched: %q", got)
+	}
+}
+
+func TestStudioBatchTaskLinkCompatibilityFingerprintDiffersWhenProductImageSettingsChange(t *testing.T) {
+	baseBatch := &StudioBatchRecord{
+		PromptMode:         "managed",
+		ProductImageCount:  "5",
+		ProductImagePrompt: "clean studio background",
+	}
+	changedBatch := *baseBatch
+	changedBatch.ProductImageCount = "6"
+
+	base := studioBatchTaskCandidate{
+		CompatibilityFingerprint:        "selection-fingerprint",
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		ProductImageSettingsFingerprint: studioBatchTaskProductImageSettingsFingerprint(baseBatch),
+	}
+	changed := base
+	changed.ProductImageSettingsFingerprint = studioBatchTaskProductImageSettingsFingerprint(&changedBatch)
+	if got, want := studioBatchTaskLinkCompatibilityFingerprint(base), studioBatchTaskLinkCompatibilityFingerprint(changed); got == want {
+		t.Fatalf("product-image-settings link compatibility fingerprints unexpectedly matched: %q", got)
+	}
+}
+
+func TestStudioBatchTaskLinkCompatibilityFingerprintDiffersWhenProductImageInputsChange(t *testing.T) {
+	base := studioBatchTaskCandidate{
+		CompatibilityFingerprint:        "selection-fingerprint",
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		ProductImageSettingsFingerprint: "settings-fingerprint",
+		SelectionSnapshot: SheinStudioSelection{
+			ProductName:    "Canvas Tote",
+			MockupImageURL: "https://example.com/canvas.png",
+		},
+	}
+	changed := base
+	changed.SelectionSnapshot.ProductName = "Updated Canvas Tote"
+	if got, want := studioBatchTaskLinkCompatibilityFingerprint(base), studioBatchTaskLinkCompatibilityFingerprint(changed); got == want {
+		t.Fatalf("product-image-input link compatibility fingerprints unexpectedly matched: %q", got)
+	}
+}
+
+func TestStudioBatchTaskLinkCompatibilityFingerprintFitsPersistentColumnWithProductImageInputs(t *testing.T) {
+	candidate := studioBatchTaskCandidate{
+		CompatibilityFingerprint:        "selection-fingerprint",
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		ProductImageSettingsFingerprint: "settings-fingerprint",
+		SelectionSnapshot: SheinStudioSelection{
+			ProductName:    "Canvas Tote",
+			MockupImageURL: "https://example.com/canvas.png",
+		},
+	}
+	if got := studioBatchTaskLinkCompatibilityFingerprint(candidate); len(got) > 128 {
+		t.Fatalf("product-image link compatibility fingerprint length = %d, want <= 128: %q", len(got), got)
+	}
+}
+
+func TestStudioBatchTaskCandidateKeyUsesEffectiveSessionProductImageSettings(t *testing.T) {
+	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1", ProductImageCount: "5"}
+	session := &SheinStudioSession{ProductImageCount: "6"}
+	base := studioBatchTaskCandidate{
+		Item:                            StudioBatchItemRecord{ID: "item-1"},
+		Design:                          StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:                     "selection-1",
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		ProductImageSettingsFingerprint: studioBatchTaskEffectiveProductImageSettingsFingerprint(session, batch),
+	}
+	changedSession := *session
+	changedSession.ProductImageCount = "7"
+	changed := base
+	changed.ProductImageSettingsFingerprint = studioBatchTaskEffectiveProductImageSettingsFingerprint(&changedSession, batch)
+	if got, want := buildStudioBatchTaskCandidateKey(nil, batch, base), buildStudioBatchTaskCandidateKey(nil, batch, changed); got == want {
+		t.Fatalf("session product-image-settings candidate keys unexpectedly matched: %q", got)
+	}
+}
+
+func TestStudioBatchTaskCandidateKeyDiffersWhenEffectivePromptChanges(t *testing.T) {
+	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1", Prompt: "spring theme"}
+	baseSession := &SheinStudioSession{Prompt: "spring theme"}
+	changedSession := &SheinStudioSession{Prompt: "summer theme"}
+	base := studioBatchTaskCandidate{
+		Item:                            StudioBatchItemRecord{ID: "item-1"},
+		Design:                          StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:                     "selection-1",
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		ProductImageSettingsFingerprint: studioBatchTaskEffectiveProductImageSettingsFingerprint(baseSession, batch),
+	}
+	changed := base
+	changed.ProductImageSettingsFingerprint = studioBatchTaskEffectiveProductImageSettingsFingerprint(changedSession, batch)
+	if got, want := buildStudioBatchTaskCandidateKey(nil, batch, base), buildStudioBatchTaskCandidateKey(nil, batch, changed); got == want {
+		t.Fatalf("effective-prompt candidate keys unexpectedly matched: %q", got)
+	}
+}
+
+func TestStudioBatchTaskCandidateKeyDiffersWhenHotReferencePromptChanges(t *testing.T) {
+	baseBatch := &StudioBatchRecord{
+		ID:                         "batch-1",
+		TenantID:                   "tenant-1",
+		HotStyleReferenceImageURLs: SheinStudioStringList{"https://example.com/hot-reference.png"},
+		HotStyleReferencePrompt:    "extract the cherry badge",
+	}
+	changedBatch := *baseBatch
+	changedBatch.HotStyleReferencePrompt = "extract the floral badge"
+	base := studioBatchTaskCandidate{
+		Item:                            StudioBatchItemRecord{ID: "item-1"},
+		Design:                          StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:                     "selection-1",
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		ProductImageSettingsFingerprint: studioBatchTaskEffectiveProductImageSettingsFingerprint(nil, baseBatch),
+	}
+	changed := base
+	changed.ProductImageSettingsFingerprint = studioBatchTaskEffectiveProductImageSettingsFingerprint(nil, &changedBatch)
+	if got, want := buildStudioBatchTaskCandidateKey(nil, baseBatch, base), buildStudioBatchTaskCandidateKey(nil, &changedBatch, changed); got == want {
+		t.Fatalf("hot-reference prompt candidate keys unexpectedly matched: %q", got)
+	}
+}
+
+func TestStudioBatchTaskCandidateKey_PreservesHistoricalSDSKeyForBlankStrategy(t *testing.T) {
+	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1"}
+	base := studioBatchTaskCandidate{
+		Item:         StudioBatchItemRecord{ID: "item-1"},
+		Design:       StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:  "selection-1",
+		SheinStoreID: 1043,
+		SelectionSnapshot: SheinStudioSelection{
+			ProductSize: `[[{"content":"尺码"}],[{"content":"S"}]]`,
+		},
+	}
+	sds := base
+	sds.ImageStrategy = sheinImageStrategySDSOfficial
+	if got, want := buildStudioBatchTaskCandidateKey(nil, batch, base), buildStudioBatchTaskCandidateKey(nil, batch, sds); got != want {
+		t.Fatalf("blank and SDS image strategies changed historical candidate key: %q != %q", got, want)
+	}
+}

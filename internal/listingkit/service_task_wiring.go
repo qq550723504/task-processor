@@ -74,9 +74,6 @@ func buildTaskLifecycleServiceConfig(s *service) taskLifecycleServiceConfig {
 			_, err := validator.ValidateStoreAccess(ctx, tenantID, storeID, "SHEIN")
 			return err
 		},
-		requestDefaults: func() generateRequestDefaults {
-			return resolveTaskRequestDefaults(s)
-		},
 		taskSubmitter: func() TaskSubmitter {
 			return resolveTaskSubmitter(s)
 		},

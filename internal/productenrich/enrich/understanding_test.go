@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	productenrich "task-processor/internal/productenrich"
@@ -343,9 +344,37 @@ func TestFuseMultimodal_LLMError_ReturnsError(t *testing.T) {
 	}
 }
 
+func TestFuseMultimodalUsesInjectedGenerator(t *testing.T) {
+	legacy := newMockLLMManager(`{"product_type":"legacy"}`)
+	fusion := &recordingTextGenerator{response: `{"product_type":"governed"}`}
+	p, err := productenrichenrich.NewProductUnderstandingWithAllCapabilities(legacy, nil, nil, fusion)
+	if err != nil {
+		t.Fatalf("NewProductUnderstandingWithAllCapabilities: %v", err)
+	}
+
+	rep, err := p.FuseMultimodal(context.Background(), nil, &productenrich.TextAttributes{Title: "Desk"})
+	if err != nil {
+		t.Fatalf("FuseMultimodal: %v", err)
+	}
+	if rep.ProductType != "governed" || !fusion.called {
+		t.Fatalf("fusion response/call = %+v/%v", rep, fusion.called)
+	}
+}
+
 type rotatingMockClient struct {
 	responses []string
+	mu        sync.Mutex
 	idx       int
+}
+
+type recordingTextGenerator struct {
+	response string
+	called   bool
+}
+
+func (g *recordingTextGenerator) Generate(context.Context, string) (string, error) {
+	g.called = true
+	return g.response, nil
 }
 
 func (r *rotatingMockClient) GetClient(_ string) (productenrich.LLMClient, error) {
@@ -357,6 +386,9 @@ func (r *rotatingMockClient) GetDefaultClient() productenrich.LLMClient {
 }
 
 func (r *rotatingMockClient) Generate(_ context.Context, _ string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if r.idx >= len(r.responses) {
 		return "{}", nil
 	}
@@ -366,6 +398,9 @@ func (r *rotatingMockClient) Generate(_ context.Context, _ string) (string, erro
 }
 
 func (r *rotatingMockClient) AnalyzeImage(_ context.Context, _ string, _ string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if r.idx >= len(r.responses) {
 		return "{}", nil
 	}

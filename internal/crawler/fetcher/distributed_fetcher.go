@@ -124,14 +124,16 @@ func (f *DistributedProductFetcher) fetchFromDistributedCrawler(ctx context.Cont
 
 	// 构建爬虫请求
 	crawlReq := &distributed.CrawlRequest{
-		TaskID:    crawlTaskID(req.ProductID, req.Region), // 基于 productID+region 的稳定哈希，重启后不变
-		TenantID:  req.TenantID,
-		StoreID:   req.StoreID,
-		Platform:  crawlerPlatform,
-		Region:    req.Region,
-		ProductID: req.ProductID,
-		Zipcode:   req.Zipcode,
-		Priority:  f.calculatePriority(req),
+		TaskID:         crawlTaskID(req.ProductID, req.Region), // 基于 productID+region 的稳定哈希，重启后不变
+		TenantID:       req.TenantID,
+		StoreID:        req.StoreID,
+		Platform:       crawlerPlatform,
+		SourcePlatform: crawlerPlatform,
+		TargetPlatform: crawlerPlatform,
+		Region:         req.Region,
+		ProductID:      req.ProductID,
+		Zipcode:        req.Zipcode,
+		Priority:       f.calculatePriority(req),
 	}
 
 	result, err := f.distributedCrawler.SubmitCrawlTask(ctx, crawlReq)
@@ -237,14 +239,16 @@ func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *doma
 
 		crawlerPlatform := sourcing.CrawlerPlatformForSource(req.Platform)
 		crawlReqs = append(crawlReqs, &distributed.CrawlRequest{
-			TaskID:    crawlTaskID(asin, req.Region),
-			TenantID:  req.TenantID,
-			StoreID:   req.StoreID,
-			Platform:  crawlerPlatform,
-			Region:    req.Region,
-			ProductID: asin,
-			Zipcode:   variantReq.Zipcode,
-			Priority:  f.calculatePriority(variantReq),
+			TaskID:         crawlTaskID(asin, req.Region),
+			TenantID:       req.TenantID,
+			StoreID:        req.StoreID,
+			Platform:       crawlerPlatform,
+			SourcePlatform: crawlerPlatform,
+			TargetPlatform: crawlerPlatform,
+			Region:         req.Region,
+			ProductID:      asin,
+			Zipcode:        variantReq.Zipcode,
+			Priority:       f.calculatePriority(variantReq),
 		})
 	}
 

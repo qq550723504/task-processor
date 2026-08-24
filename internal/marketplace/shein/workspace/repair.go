@@ -1,5 +1,7 @@
 package workspace
 
+import "strconv"
+
 type RepairCenter[R any, P any, S any, Q any, V any] struct {
 	Status        string                              `json:"status,omitempty"`
 	Summary       []string                            `json:"summary,omitempty"`
@@ -191,7 +193,7 @@ func BuildRepairPlan[R any, P any, S any, Q any, V any](
 	}
 	for i, action := range actions {
 		step := RepairPlanStep{
-			ID:               "step-" + intString(i+1),
+			ID:               "step-" + strconv.Itoa(i+1),
 			ActionID:         action.ID,
 			Order:            i + 1,
 			Label:            action.Label,
@@ -322,13 +324,13 @@ func BuildRepairCenterSummary[R any, P any, S any, Q any, V any](center *RepairC
 	}
 	summary := make([]string, 0, 3)
 	if center.Stats.TotalActions > 0 {
-		summary = append(summary, "已整理 "+intString(center.Stats.TotalActions)+" 个修复动作")
+		summary = append(summary, "已整理 "+strconv.Itoa(center.Stats.TotalActions)+" 个修复动作")
 	}
 	if center.Stats.BlockingActions > 0 {
-		summary = append(summary, "其中 "+intString(center.Stats.BlockingActions)+" 个会直接影响提交")
+		summary = append(summary, "其中 "+strconv.Itoa(center.Stats.BlockingActions)+" 个会直接影响提交")
 	}
 	if center.Stats.DirectApplyActions > 0 {
-		summary = append(summary, "有 "+intString(center.Stats.DirectApplyActions)+" 个动作可直接生成最小修复请求")
+		summary = append(summary, "有 "+strconv.Itoa(center.Stats.DirectApplyActions)+" 个动作可直接生成最小修复请求")
 	}
 	return summary
 }
@@ -432,7 +434,7 @@ func buildRepairStepHighlights[R any, P any, S any, Q any, V any](
 	}
 	if action.Validation != nil && changeCount != nil {
 		if count := changeCount(action.Validation); count > 0 {
-			highlights = append(highlights, "预计变更 "+intString(count)+" 个字段")
+			highlights = append(highlights, "预计变更 "+strconv.Itoa(count)+" 个字段")
 		}
 	}
 	if action.CanApplyDirectly {
@@ -578,11 +580,4 @@ func buildRepairResumeState(session *RepairSession, lookup map[string]RepairSess
 		resume.RemainingSteps = session.CompletionSnapshot.TotalSteps - session.CompletionSnapshot.CompletedSteps
 	}
 	return resume
-}
-
-func intString(v int) string {
-	if v == 0 {
-		return "0"
-	}
-	return formatInt(v)
 }

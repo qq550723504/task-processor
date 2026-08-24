@@ -151,6 +151,9 @@ func newOperationStrategyTestRouter(t *testing.T) storeTestRouter {
 
 func seedOperationStrategy(t *testing.T, db *gorm.DB, strategy listingOperationStrategy) listingOperationStrategy {
 	t.Helper()
+	if strategy.OwnerUserID == "" {
+		strategy.OwnerUserID = "test-owner"
+	}
 	if err := db.Table("listing_operation_strategy").Create(&strategy).Error; err != nil {
 		t.Fatalf("seed operation strategy: %v", err)
 	}

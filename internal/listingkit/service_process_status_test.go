@@ -22,12 +22,18 @@ type stubProcessStatusAssembler struct {
 
 type stubProcessStatusRepo struct {
 	*stubGenerationRepo
-	completedTaskID string
-	completedCalls  int
-	failedTaskID    string
-	failedError     string
-	failedCalls     int
-	savedResults    []*ListingKitResult
+	completedTaskID         string
+	completedCalls          int
+	completedErr            error
+	failedTaskID            string
+	failedError             string
+	failedCalls             int
+	savedResults            []*ListingKitResult
+	blockedCalls            int
+	blockedErrs             []error
+	failedErrs              []error
+	resolveUsageReleaseErrs []error
+	requireLiveBlockContext bool
 }
 
 func (a *stubProcessStatusAssembler) Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult {
@@ -41,10 +47,14 @@ func (a *stubProcessStatusAssembler) Assemble(task *Task, canonical *canonical.P
 func (r *stubProcessStatusRepo) MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error {
 	r.completedTaskID = taskID
 	r.completedCalls++
+	if r.completedErr != nil {
+		return r.completedErr
+	}
 	if err := r.SaveTaskResult(ctx, taskID, result); err != nil {
 		return err
 	}
 	r.task.Status = core.TaskStatusCompleted
+	r.task.RetryableBlock = nil
 	return nil
 }
 
@@ -52,16 +62,61 @@ func (r *stubProcessStatusRepo) MarkFailed(_ context.Context, taskID string, err
 	r.failedTaskID = taskID
 	r.failedError = errorMsg
 	r.failedCalls++
+	if len(r.failedErrs) > 0 {
+		err := r.failedErrs[0]
+		r.failedErrs = r.failedErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
 	if r.task != nil && r.task.ID == taskID {
 		r.task.Status = core.TaskStatusFailed
+		r.task.RetryableBlock = nil
 		r.task.Error = errorMsg
 	}
 	return nil
 }
 
+func (r *stubProcessStatusRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
+	r.blockedCalls++
+	if r.requireLiveBlockContext && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if len(r.blockedErrs) > 0 {
+		err := r.blockedErrs[0]
+		r.blockedErrs = r.blockedErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
+	return r.stubGenerationRepo.MarkBlockedRetryable(ctx, taskID, block, errorMsg)
+}
+
 func (r *stubProcessStatusRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
 	r.savedResults = append(r.savedResults, result)
 	return r.stubGenerationRepo.SaveTaskResult(ctx, taskID, result)
+}
+
+func (r *stubProcessStatusRepo) ResolveGenerationUsageRelease(ctx context.Context, taskID, terminalError string) error {
+	if len(r.resolveUsageReleaseErrs) > 0 {
+		err := r.resolveUsageReleaseErrs[0]
+		r.resolveUsageReleaseErrs = r.resolveUsageReleaseErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
+	return r.stubGenerationRepo.ResolveGenerationUsageRelease(ctx, taskID, terminalError)
+}
+
+func (r *stubProcessStatusRepo) FinalizeGenerationUsageAdmission(ctx context.Context, taskID string, status core.TaskStatus, block *RetryableBlock, errorMsg string) error {
+	if len(r.failedErrs) > 0 {
+		err := r.failedErrs[0]
+		r.failedErrs = r.failedErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
+	return r.stubGenerationRepo.FinalizeGenerationUsageAdmission(ctx, taskID, status, block, errorMsg)
 }
 
 func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T) {

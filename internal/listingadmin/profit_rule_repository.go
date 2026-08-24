@@ -51,9 +51,11 @@ func (r *GormProfitRuleRepository) GetProfitRule(ctx context.Context, tenantID, 
 func (r *GormProfitRuleRepository) CreateProfitRule(ctx context.Context, rule *ProfitRule) (*ProfitRule, error) {
 	row := listingProfitRuleFromProfitRule(rule)
 	applyProfitRuleDefaults(&row)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyProfitRuleAuditFields(&row, ownerUserID, true)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyProfitRuleAuditFields(&row, ownerUserID, true)
 	if err := r.db.WithContext(ctx).Table("listing_profit_rule").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -64,9 +66,11 @@ func (r *GormProfitRuleRepository) CreateProfitRule(ctx context.Context, rule *P
 func (r *GormProfitRuleRepository) UpdateProfitRule(ctx context.Context, rule *ProfitRule) (*ProfitRule, error) {
 	row := listingProfitRuleFromProfitRule(rule)
 	applyProfitRuleDefaults(&row)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyProfitRuleAuditFields(&row, ownerUserID, false)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyProfitRuleAuditFields(&row, ownerUserID, false)
 	updates := map[string]any{
 		"owner_user_id":             row.OwnerUserID,
 		"name":                      row.Name,

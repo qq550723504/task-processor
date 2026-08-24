@@ -12,12 +12,9 @@ import type {
   SheinStatusOverview,
 } from "./shein";
 import type { AssetGenerationOverview } from "./review";
+import type { ListingKitPreview as GeneratedListingKitPreview } from "@/lib/api/generated";
 
-export type ListingKitPreview = {
-  task_id: string;
-  status: string;
-  selected_platform?: string;
-  platforms?: string[];
+export type ListingKitPreview = GeneratedListingKitPreview & {
   needs_review?: boolean;
   overview?: ListingKitPreviewHeader;
   asset_generation_overview?: AssetGenerationOverview;
@@ -40,14 +37,24 @@ export type AmazonPreviewPayload = PlatformPreviewPayload & {
   product_type?: string;
 };
 
-export type ListingKitChildTask = {
+type ListingKitChildTask = {
   kind?: string;
   task_id?: string;
   status?: string;
   error?: string;
 };
 
-export type ListingKitWorkflowStage = {
+export type ListingKitChildRetry = {
+  task_id?: string;
+  kind?: string;
+  status?: string;
+  attempt?: number;
+  next_retry_at?: string;
+  last_error?: string;
+  updated_at?: string;
+};
+
+type ListingKitWorkflowStage = {
   kind?: string;
   status?: "pending" | "running" | "completed" | "skipped" | "degraded" | "failed" | string;
   task_id?: string;
@@ -57,7 +64,7 @@ export type ListingKitWorkflowStage = {
   duration_ms?: number;
 };
 
-export type ListingKitWorkflowIssue = {
+type ListingKitWorkflowIssue = {
   code?: string;
   severity?: "info" | "warning" | "review" | "blocking" | string;
   stage?: string;
@@ -65,8 +72,8 @@ export type ListingKitWorkflowIssue = {
   detail?: string;
 };
 
-export type SDSRepairLayer = { id: string; name?: string };
-export type SDSRepairVariant = {
+type SDSRepairLayer = { id: string; name?: string };
+type SDSRepairVariant = {
   variant_id: number;
   variant_sku?: string;
   color?: string;
@@ -121,7 +128,7 @@ export type ListingKitTaskResultData = {
   updated_at?: string;
 };
 
-export type RetryableBlock = {
+type RetryableBlock = {
   reason_code?: string;
   reason_message?: string;
   blocked_at?: string;
@@ -144,11 +151,18 @@ export type ListingKitTaskResult = {
   shein_latest_submission_error?: string;
   shein_submission_remote_status?: string;
   result?: ListingKitTaskResultData;
+  child_retries?: ListingKitChildRetry[];
   retryable_block?: RetryableBlock;
   error?: string;
   review_reasons?: string[];
   created_at?: string;
   completed_at?: string;
+};
+
+export type TaskChildRetryAccepted = {
+  task_id: string;
+  kind: string;
+  status: "queued" | string;
 };
 
 export type RecoverTaskNowResponse = {
@@ -250,7 +264,6 @@ export type ListingKitTaskListItem = {
   shein_store_reason?: string;
   shein_store_matched_rule_kinds?: string[];
   shein_store_manual_override?: boolean;
-  shein_store_fallback?: boolean;
   shein_status_overview?: SheinStatusOverview;
   shein_latest_submission_status?: string;
   shein_latest_submission_error?: string;

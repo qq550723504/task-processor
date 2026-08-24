@@ -7,7 +7,7 @@ func buildAmazonExportPayloadInputFromResult(
 	if result == nil || result.Amazon == nil {
 		return amazonExportPayloadInput{}, false
 	}
-	context := buildPlatformPayloadResultContext(result, platformPreviews)
+	context := buildPlatformPayloadResultContext(result, "amazon", platformPreviews)
 	return amazonExportPayloadInput{
 		draft:      result.Amazon.Draft,
 		visualBase: context.exportVisualBase("amazon", result.Amazon.ImageBundle),
@@ -40,7 +40,7 @@ func buildTemuExportPayloadInputFromResult(
 	if result == nil || result.Temu == nil {
 		return reviewableExportPayloadInput{}, nil, false
 	}
-	context := buildPlatformPayloadResultContext(result, platformPreviews)
+	context := buildPlatformPayloadResultContext(result, "temu", platformPreviews)
 	return buildReviewablePlatformExportPayloadInput("temu", result.Temu.ImageBundle, context.assetBundle, context.platformPreviews), result.Temu, true
 }
 
@@ -51,6 +51,6 @@ func buildWalmartExportPayloadInputFromResult(
 	if result == nil || result.Walmart == nil {
 		return reviewableExportPayloadInput{}, nil, false
 	}
-	context := buildPlatformPayloadResultContext(result, platformPreviews)
+	context := buildPlatformPayloadResultContext(result, "walmart", platformPreviews)
 	return buildReviewablePlatformExportPayloadInput("walmart", result.Walmart.ImageBundle, context.assetBundle, context.platformPreviews), result.Walmart, true
 }

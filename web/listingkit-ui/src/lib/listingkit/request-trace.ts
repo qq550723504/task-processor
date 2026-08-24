@@ -1,4 +1,4 @@
-export const LISTINGKIT_TRACE_STORAGE_KEY =
+ const LISTINGKIT_TRACE_STORAGE_KEY =
   "listingkit:shein-studio:trace-context";
 
 export const LISTINGKIT_TRACE_HEADER_NAMES = {
@@ -37,7 +37,7 @@ export function beginListingKitTraceRun(
   );
 }
 
-export function readListingKitTraceContext(): ListingKitTraceContext {
+ function readListingKitTraceContext(): ListingKitTraceContext {
   if (!canUseSessionStorage()) {
     return {};
   }
@@ -91,7 +91,7 @@ export function buildListingKitTraceHeaders(
   return headers;
 }
 
-export function applyListingKitTraceHeaders(
+ function applyListingKitTraceHeaders(
   headers: Headers,
   context?: Partial<ListingKitTraceContext>,
 ) {
@@ -115,7 +115,7 @@ export function applyListingKitTraceHeaders(
   return headers;
 }
 
-export function readListingKitTraceContextFromHeaders(headers: Headers) {
+ function readListingKitTraceContextFromHeaders(headers: Headers) {
   const queueIndexHeader = headers.get(LISTINGKIT_TRACE_HEADER_NAMES.queueIndex);
   const queueTotalHeader = headers.get(LISTINGKIT_TRACE_HEADER_NAMES.queueTotal);
   return normalizeListingKitTraceContext({

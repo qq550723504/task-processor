@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	previewdomain "task-processor/internal/listing/preview"
+	common "task-processor/internal/publishing/common"
 )
 
 type PlatformAssetRenderPreviews struct {
@@ -76,38 +77,45 @@ func buildPlatformAssetRenderPreviews(result *ListingKitResult) []PlatformAssetR
 	if result == nil {
 		return nil
 	}
-	previews := result.AssetRenderPreviews
-	if len(previews) == 0 {
-		previews = attachTaskRevisionToAssetRenderPreviews(buildAssetRenderPreviews(result.AssetBundle), buildTaskRevision(result))
-	}
-	previewByAssetID := make(map[string]AssetRenderPreview, len(previews))
-	for _, preview := range previews {
-		if preview.AssetID == "" {
-			continue
-		}
-		previewByAssetID[preview.AssetID] = preview
-	}
-	if len(previewByAssetID) == 0 {
-		previewByAssetID = map[string]AssetRenderPreview{}
-	}
-	assetURLByID := buildAssetURLLookup(result.AssetBundle)
 	out := make([]PlatformAssetRenderPreviews, 0, 4)
-	if group, ok := buildPlatformAssetRenderPreviewGroup("amazon", previewByAssetID, assetURLByID, result.AssetBundle, imageBundleFromAmazon(result.Amazon)); ok {
+	if group, ok := buildPlatformAssetRenderPreviewGroupForTarget(result, "amazon", imageBundleFromAmazon(result.Amazon)); ok {
 		out = append(out, group)
 	}
-	if group, ok := buildPlatformAssetRenderPreviewGroup("shein", previewByAssetID, assetURLByID, result.AssetBundle, imageBundleFromShein(result.Shein)); ok {
+	if group, ok := buildPlatformAssetRenderPreviewGroupForTarget(result, "shein", imageBundleFromShein(result.Shein)); ok {
 		out = append(out, group)
 	}
-	if group, ok := buildPlatformAssetRenderPreviewGroup("temu", previewByAssetID, assetURLByID, result.AssetBundle, imageBundleFromTemu(result.Temu)); ok {
+	if group, ok := buildPlatformAssetRenderPreviewGroupForTarget(result, "temu", imageBundleFromTemu(result.Temu)); ok {
 		out = append(out, group)
 	}
-	if group, ok := buildPlatformAssetRenderPreviewGroup("walmart", previewByAssetID, assetURLByID, result.AssetBundle, imageBundleFromWalmart(result.Walmart)); ok {
+	if group, ok := buildPlatformAssetRenderPreviewGroupForTarget(result, "walmart", imageBundleFromWalmart(result.Walmart)); ok {
 		out = append(out, group)
 	}
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+func buildPlatformAssetRenderPreviewGroupForTarget(result *ListingKitResult, target string, imageBundle *common.PublishImageBundle) (PlatformAssetRenderPreviews, bool) {
+	bundle := result.AssetBundleForTarget(target)
+	previews := assetRenderPreviewsForTarget(result, target)
+	previewByAssetID := make(map[string]AssetRenderPreview, len(previews))
+	for _, preview := range previews {
+		if preview.AssetID != "" {
+			previewByAssetID[preview.AssetID] = preview
+		}
+	}
+	return buildPlatformAssetRenderPreviewGroup(target, previewByAssetID, buildAssetURLLookup(bundle), bundle, imageBundle)
+}
+
+func assetRenderPreviewsForTarget(result *ListingKitResult, target string) []AssetRenderPreview {
+	if result == nil {
+		return nil
+	}
+	if len(result.AssetBundlesByTarget) == 0 && len(result.AssetRenderPreviews) > 0 {
+		return append([]AssetRenderPreview(nil), result.AssetRenderPreviews...)
+	}
+	return attachTaskRevisionToAssetRenderPreviews(buildAssetRenderPreviews(result.AssetBundleForTarget(target)), buildTaskRevision(result))
 }
 
 func syncAssetRenderPreviews(result *ListingKitResult) {

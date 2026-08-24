@@ -253,17 +253,20 @@ export function useSheinStudioCurrentBatchSelection({
 export function useSheinStudioStoreSelection({
   currentStoreId,
   enabledProfiles,
+  groupedSelections,
 }: {
   currentStoreId: string;
   enabledProfiles: Array<Parameters<typeof formatSheinStoreOptionLabel>[0]>;
+  groupedSelections?: GroupedSDSSelectionEligibility[];
 }) {
   return useMemo(
     () =>
       projectSheinStudioStoreSelectionState({
         currentStoreId,
         enabledProfiles,
+        groupedSelections,
       }),
-    [currentStoreId, enabledProfiles],
+    [currentStoreId, enabledProfiles, groupedSelections],
   );
 }
 

@@ -280,6 +280,7 @@ describe("SHEIN Studio task creation controller", () => {
       approvedDesignIds: ["design-1", "design-2"],
       batchId: "batch-1",
       createBatchTasks,
+      imageStrategy: "ai_generated",
       onCreated,
       tenantId: " tenant-1 ",
     });
@@ -287,7 +288,11 @@ describe("SHEIN Studio task creation controller", () => {
     expect(createBatchTasks).toHaveBeenCalledWith(
       "batch-1",
       ["design-1", "design-2"],
-      { tenantId: "tenant-1", allowPartialWhileGenerating: true },
+      {
+        tenantId: "tenant-1",
+        allowPartialWhileGenerating: true,
+        imageStrategy: "ai_generated",
+      },
     );
     expect(onCreated).toHaveBeenCalledWith(resultPayload);
     expect(result).toEqual({

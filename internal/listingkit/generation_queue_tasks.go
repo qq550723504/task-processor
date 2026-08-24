@@ -53,9 +53,9 @@ func mergeGenerationTaskIntoQueue(items *[]GenerationWorkQueueItem, index map[ge
 		item.StateReason = firstNonEmpty(generationQueueTaskStateReason(task), item.StateReason)
 		item.TargetAssetKind = firstNonEmpty(string(task.AssetKind), item.TargetAssetKind)
 		item.ExecutionQuality = firstNonEmpty(generationQueueTaskExecutionQuality(task), item.ExecutionQuality)
-		item.ExecutionQualityLabel = firstNonEmpty(generationExecutionQualityLabel(generationQueueTaskExecutionQuality(task)), item.ExecutionQualityLabel)
-		item.QualityGrade = firstNonEmpty(generationQualityGrade(generationQueueTaskExecutionQuality(task)), item.QualityGrade)
-		item.QualityGradeLabel = firstNonEmpty(generationQualityGradeLabel(generationQualityGrade(generationQueueTaskExecutionQuality(task))), item.QualityGradeLabel)
+		item.ExecutionQualityLabel = firstNonEmpty(listinggeneration.ExecutionQualityLabel(generationQueueTaskExecutionQuality(task)), item.ExecutionQualityLabel)
+		item.QualityGrade = firstNonEmpty(listinggeneration.QualityGrade(generationQueueTaskExecutionQuality(task)), item.QualityGrade)
+		item.QualityGradeLabel = firstNonEmpty(listinggeneration.QualityGradeLabel(listinggeneration.QualityGrade(generationQueueTaskExecutionQuality(task))), item.QualityGradeLabel)
 		(*items)[idx] = item
 		return
 	}
@@ -78,9 +78,9 @@ func mergeGenerationTaskIntoQueue(items *[]GenerationWorkQueueItem, index map[ge
 		StateReason:           generationQueueTaskStateReason(task),
 		TargetAssetKind:       string(task.AssetKind),
 		ExecutionQuality:      generationQueueTaskExecutionQuality(task),
-		ExecutionQualityLabel: generationExecutionQualityLabel(generationQueueTaskExecutionQuality(task)),
-		QualityGrade:          generationQualityGrade(generationQueueTaskExecutionQuality(task)),
-		QualityGradeLabel:     generationQualityGradeLabel(generationQualityGrade(generationQueueTaskExecutionQuality(task))),
+		ExecutionQualityLabel: listinggeneration.ExecutionQualityLabel(generationQueueTaskExecutionQuality(task)),
+		QualityGrade:          listinggeneration.QualityGrade(generationQueueTaskExecutionQuality(task)),
+		QualityGradeLabel:     listinggeneration.QualityGradeLabel(listinggeneration.QualityGrade(generationQueueTaskExecutionQuality(task))),
 	}
 	index[key] = len(*items)
 	*items = append(*items, item)

@@ -132,6 +132,21 @@ func TestListingKitPromptRoutesRequireVerifiedIdentity(t *testing.T) {
 	}
 }
 
+func TestListingKitAuthContextRouteRequiresVerifiedIdentity(t *testing.T) {
+	handler := &stubListingKitHandler{}
+	server := buildHTTPServerFromRoutes(0, listingkithttpapi.AppendRouteDescriptors(nil, handler))
+
+	unauthenticated := httptest.NewRecorder()
+	server.Handler.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/auth-context", nil))
+	require.Equal(t, http.StatusUnauthorized, unauthenticated.Code)
+	require.Contains(t, unauthenticated.Body.String(), "zitadel_token_missing")
+
+	authenticated := httptest.NewRecorder()
+	server.Handler.ServeHTTP(authenticated, withAppHTTPTestBearer(httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/auth-context", nil)))
+	require.Equal(t, http.StatusOK, authenticated.Code)
+	require.True(t, handler.getAuthContextCalled)
+}
+
 func TestListingKitPromptRoutesAllowVerifiedIdentity(t *testing.T) {
 	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}))
 	request := withAppHTTPTestBearer(httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/prompts/catalog", nil))
@@ -383,6 +398,7 @@ type stubListingKitHandler struct {
 	listAdminProductDataCalled             bool
 	createAdminProductDataCalled           bool
 	deleteAdminProductDataCalled           bool
+	getAuthContextCalled                   bool
 }
 
 func (s *stubListingKitHandler) GenerateListingKit(c *gin.Context) {
@@ -392,6 +408,11 @@ func (s *stubListingKitHandler) GenerateListingKit(c *gin.Context) {
 
 func (s *stubListingKitHandler) DeliverZitadelSMS(c *gin.Context) {
 	c.Status(http.StatusNoContent)
+}
+
+func (s *stubListingKitHandler) GetAuthContext(c *gin.Context) {
+	s.getAuthContextCalled = true
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func (s *stubListingKitHandler) AnalyzeStudioReferenceStyle(c *gin.Context) {

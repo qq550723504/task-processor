@@ -23,6 +23,7 @@ func TestTaskGenerationServiceFileKeepsRetryOwnershipBoundaries(t *testing.T) {
 
 	required := []string{
 		"return buildRetryGenerationProjectionPhase(s.assetRecipeResolver, s.assetBundleBuilder).emptySelectionPage(task), nil",
+		"dispatchGenerationTasksByPlatform(",
 		"updatedTasks := buildRetryGenerationMutationPhase().run(",
 		"if err := buildRetryGenerationPersistPhase(s.assetRepo).run(ctx, task.ID, inventory, updatedTasks); err != nil {",
 		"rebuiltResult, page := buildRetryGenerationProjectionPhase(s.assetRecipeResolver, s.assetBundleBuilder).run(",
@@ -35,6 +36,7 @@ func TestTaskGenerationServiceFileKeepsRetryOwnershipBoundaries(t *testing.T) {
 	}
 
 	forbidden := []string{
+		"s.assetGenerator.Dispatch(",
 		"assetgeneration.MergeTasks(existingTasks, dispatchResult.Tasks)",
 		"replaceGeneratedAssetsForTargets(",
 		"asset.RebuildInventorySummary(inventory)",
@@ -52,6 +54,22 @@ func TestTaskGenerationServiceFileKeepsRetryOwnershipBoundaries(t *testing.T) {
 		if strings.Contains(retrySource, needle) {
 			t.Fatalf("task_generation_service.go should not inline retry ownership %q", needle)
 		}
+	}
+}
+
+func TestPlatformAssetDispatchPhaseUsesPlatformScopedDispatcher(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("workflow_platform_asset_dispatch_phase.go")
+	if err != nil {
+		t.Fatalf("ReadFile(workflow_platform_asset_dispatch_phase.go) error = %v", err)
+	}
+	source := string(content)
+	if !strings.Contains(source, "dispatchGenerationTasksByPlatform(") {
+		t.Fatal("workflow_platform_asset_dispatch_phase.go should use the platform-scoped dispatcher")
+	}
+	if strings.Contains(source, "assetGenerator.Dispatch(") {
+		t.Fatal("workflow_platform_asset_dispatch_phase.go should not bypass platform inventory isolation")
 	}
 }
 

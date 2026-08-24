@@ -23,7 +23,7 @@ func buildRevisionValidationResult(taskID, platform string, result *ListingKitRe
 		output.FieldErrors = append([]RevisionFieldError(nil), validationErr.Fields...)
 	}
 	if result != nil && platform == "shein" && result.Shein != nil {
-		output.ScenePresets = buildPlatformScenePresetSummaries(result.Shein.ImageBundle, result.AssetBundle)
+		output.ScenePresets = buildPlatformScenePresetSummaries(result.Shein.ImageBundle, result.AssetBundleForTarget("shein"))
 		output.Shein = sheinworkspace.BuildValidationPayload(result.Shein, restorePreview)
 	}
 	return output

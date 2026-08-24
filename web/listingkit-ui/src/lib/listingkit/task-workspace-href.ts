@@ -7,7 +7,7 @@ const RESUMABLE_SHEIN_WORKFLOW_STATUSES = new Set([
   "draft_saved",
 ]);
 
-export function isResumableSheinTask(task: ListingKitTaskListItem) {
+ function isResumableSheinTask(task: ListingKitTaskListItem) {
   return (
     task.platforms?.includes("shein") &&
     (task.shein_workflow_status == null ||

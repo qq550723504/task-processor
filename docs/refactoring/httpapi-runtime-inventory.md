@@ -21,12 +21,12 @@ Goal:
 | File | Classification | Notes |
 | --- | --- | --- |
 | `feature_builder_listingkit.go` | `assembly-only` | Composes ProductEnrich, ProductImage, and ListingKit runtime modules, including ListingKit runtime input shaping, without embedding ListingKit behavior. |
-| `listingkit_temporal_worker.go` | `assembly-only` | Boots the standalone ListingKit Temporal worker process and delegates feature/runtime construction. |
 | `runtime_support_listingkit.go` | `adapter construction` | Prepares shared prerequisites such as the SHEIN cookie store, SDS sync service, and SDS baseline remote provider for the feature-owned runtime support contract. |
 
 Current app-layer read:
 
 - no obvious ListingKit business rules remain in `internal/app/httpapi`,
+- the retired standalone Temporal worker shim is intentionally absent; Temporal runtime ownership lives in `internal/listingkit/httpapi`,
 - the app layer is mostly assembling modules and preparing shared runtime prerequisites,
 - `runtime_support_listingkit.go` is the file to keep watching so it does not drift from prerequisite prep into ListingKit-specific policy.
 

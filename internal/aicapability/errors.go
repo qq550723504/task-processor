@@ -5,6 +5,7 @@ import "errors"
 type ErrorCategory string
 
 const (
+	ErrorIdentityIntegrity       ErrorCategory = "identity_integrity"
 	ErrorInvalidInput            ErrorCategory = "invalid_input"
 	ErrorPolicyDenied            ErrorCategory = "policy_denied"
 	ErrorCapabilityUnavailable   ErrorCategory = "capability_unavailable"

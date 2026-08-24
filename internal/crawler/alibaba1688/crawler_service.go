@@ -28,13 +28,60 @@ type Service struct {
 	processor1688          alibaba1688TaskProcessor
 	accountProfileResolver AccountProfileResolver
 	profileLocksMu         sync.Mutex
-	profileLocks           map[string]*sync.Mutex
+	profileLocks           map[string]*accountProfileLock
+	sourceAccessMu         sync.Mutex
+	sourceAccessCounts     map[string]int64
+}
+
+type accountProfileLock struct {
+	token chan struct{}
+}
+
+func newAccountProfileLock() *accountProfileLock {
+	token := make(chan struct{}, 1)
+	token <- struct{}{}
+	return &accountProfileLock{token: token}
+}
+
+func (l *accountProfileLock) lock(ctx context.Context) (func(), error) {
+	if l == nil {
+		return nil, fmt.Errorf("account profile lock is nil")
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-l.token:
+	}
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			l.token <- struct{}{}
+		})
+	}, nil
 }
 
 type alibaba1688TaskProcessor interface {
-	Process(string) (*model.Product1688, error)
-	ProcessWithAccountProfile(string, AccountProfile) (*model.Product1688, error)
+	Process(context.Context, string) (*model.Product1688, error)
+	ProcessWithAccountProfile(context.Context, string, AccountProfile) (*model.Product1688, error)
 	Shutdown()
+}
+
+var sourceAccessMetricKeys = [...]string{
+	"public",
+	"account_assisted",
+	"source_public_unavailable",
+	"source_account_unavailable",
+	"source_account_disabled",
+}
+
+func newSourceAccessCounts() map[string]int64 {
+	counts := make(map[string]int64, len(sourceAccessMetricKeys))
+	for _, key := range sourceAccessMetricKeys {
+		counts[key] = 0
+	}
+	return counts
 }
 
 // NewService 创建1688爬虫应用服务
@@ -50,7 +97,8 @@ func NewService(cfg *config.Config, logger *logrus.Logger, resolvers ...AccountP
 		logger:                 logger,
 		processor1688:          processor1688,
 		accountProfileResolver: resolver,
-		profileLocks:           make(map[string]*sync.Mutex),
+		profileLocks:           make(map[string]*accountProfileLock),
+		sourceAccessCounts:     newSourceAccessCounts(),
 	}
 
 	poolConfig := worker.DefaultPoolConfig()
@@ -73,6 +121,37 @@ func NewService(cfg *config.Config, logger *logrus.Logger, resolvers ...AccountP
 	}
 
 	return svc
+}
+
+func (s *Service) recordSourceAccess(key string) {
+	if s == nil || key == "" {
+		return
+	}
+	s.sourceAccessMu.Lock()
+	defer s.sourceAccessMu.Unlock()
+	if s.sourceAccessCounts == nil {
+		s.sourceAccessCounts = newSourceAccessCounts()
+	}
+	s.sourceAccessCounts[key]++
+}
+
+func (s *Service) sourceAccessStats() map[string]int64 {
+	if s == nil {
+		return nil
+	}
+	s.sourceAccessMu.Lock()
+	defer s.sourceAccessMu.Unlock()
+	stats := make(map[string]int64, len(s.sourceAccessCounts))
+	for key, value := range s.sourceAccessCounts {
+		stats[key] = value
+	}
+	return stats
+}
+
+func (s *Service) GetStats() map[string]any {
+	stats := s.BaseService.GetStats()
+	stats["source_access_total"] = s.sourceAccessStats()
+	return stats
 }
 
 // Start 启动服务

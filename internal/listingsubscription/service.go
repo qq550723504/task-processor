@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 type Service struct {
 	repo                      Repository
+	usageLedger               UsageLedger
 	now                       func() time.Time
 	tenantDisplayNameResolver TenantDisplayNameResolver
 }
@@ -31,6 +33,196 @@ func NewService(repo Repository) (*Service, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// NewServiceWithLedger adds the optional PAY-042 usage-ledger boundary without
+// changing the legacy constructor or paid entrypoints.
+func NewServiceWithLedger(repo Repository, ledger UsageLedger) (*Service, error) {
+	if repositoryIsNil(repo) {
+		return nil, errors.New("subscription repository is required")
+	}
+	if usageLedgerIsNil(ledger) {
+		return nil, errors.New("usage ledger is required")
+	}
+	s, err := NewService(repo)
+	if err != nil {
+		return nil, err
+	}
+	s.usageLedger = ledger
+	return s, nil
+}
+
+// ReserveUsage delegates an explicit PAY-042 reservation to the optional
+// ledger. Existing CheckUsage, AuthorizeUsage, and RecordUsage remain on the
+// legacy aggregate-counter path.
+func (s *Service) ReserveUsage(ctx context.Context, input ReserveUsageInput) (ReserveUsageResult, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return ReserveUsageResult{}, err
+	}
+	return ledger.Reserve(ctx, input)
+}
+
+// CommitUsage delegates an explicit PAY-042 commit to the optional ledger.
+func (s *Service) CommitUsage(ctx context.Context, eventID string) (UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	return ledger.Commit(ctx, eventID)
+}
+
+// ReleaseUsage delegates an explicit PAY-042 release to the optional ledger.
+func (s *Service) ReleaseUsage(ctx context.Context, eventID, reason string) (UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	return ledger.Release(ctx, eventID, reason)
+}
+
+// ReverseUsage delegates an explicit PAY-042 reversal to the optional ledger.
+func (s *Service) ReverseUsage(ctx context.Context, eventID, idempotencyKey, reason string) (UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	return ledger.Reverse(ctx, eventID, idempotencyKey, reason)
+}
+
+// ListPendingUsageOutbox exposes the asynchronous shadow-metering boundary to
+// a future worker without performing delivery from this service.
+func (s *Service) ListPendingUsageOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	return ledger.ListPendingOutbox(ctx, limit)
+}
+
+// GetUsage resolves a durable usage event by tenant and idempotency key for
+// adapter-level lifecycle replay.
+func (s *Service) GetUsage(ctx context.Context, tenantID, idempotencyKey string) (*UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	return ledger.Get(ctx, tenantID, idempotencyKey)
+}
+
+// GetUsageEventByID resolves a durable usage event for reconciliation workers.
+func (s *Service) GetUsageEventByID(ctx context.Context, eventID string) (*UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	lookup, ok := ledger.(UsageLedgerEventLookup)
+	if !ok {
+		return nil, ErrUsageLedgerEventLookupUnsupported
+	}
+	event, err := lookup.GetByID(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	return &event, nil
+}
+
+// ListUsageEvents returns a bounded durable event snapshot for reconciliation
+// workers when the configured ledger supports that optional extension.
+func (s *Service) ListUsageEvents(ctx context.Context, limit int) ([]UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	lister, ok := ledger.(UsageLedgerEventLister)
+	if !ok {
+		return nil, ErrUsageLedgerEventLookupUnsupported
+	}
+	return lister.ListEvents(ctx, limit)
+}
+
+// ListUsageEventPage returns one bounded page of durable events for
+// reconciliation workers when the configured ledger supports pagination.
+func (s *Service) ListUsageEventPage(ctx context.Context, limit, offset int) ([]UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	pager, ok := ledger.(UsageLedgerEventPager)
+	if !ok {
+		return nil, ErrUsageLedgerEventLookupUnsupported
+	}
+	return pager.ListEventsPage(ctx, limit, offset)
+}
+
+// ListUsageEventPageForReconciliation returns one tenant- and adapter-scoped
+// page when the configured ledger supports predicate-pushed pagination.
+func (s *Service) ListUsageEventPageForReconciliation(ctx context.Context, tenantID, sourceType, metric string, limit, offset int) ([]UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	pager, ok := ledger.(UsageLedgerReconciliationEventPager)
+	if !ok {
+		return nil, ErrUsageLedgerEventLookupUnsupported
+	}
+	return pager.ListEventsPageForReconciliation(ctx, tenantID, sourceType, metric, limit, offset)
+}
+
+func (s *Service) ListUsageEventPageForReconciliationWithFilter(ctx context.Context, filter UsageLedgerReconciliationFilter, limit, offset int) ([]UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	pager, ok := ledger.(UsageLedgerFilteredReconciliationEventPager)
+	if !ok {
+		return nil, ErrUsageLedgerEventLookupUnsupported
+	}
+	return pager.ListEventsPageForReconciliationWithFilter(ctx, filter, limit, offset)
+}
+
+// UpdateUsageMetadata persists adapter-owned reconciliation state on a usage
+// event when the configured ledger supports that optional extension.
+func (s *Service) UpdateUsageMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	updater, ok := ledger.(UsageLedgerMetadataUpdater)
+	if !ok {
+		return UsageEvent{}, ErrUsageLedgerMetadataUnsupported
+	}
+	return updater.UpdateMetadata(ctx, eventID, metadata)
+}
+
+func (s *Service) requireUsageLedger() (UsageLedger, error) {
+	if s == nil || usageLedgerIsNil(s.usageLedger) {
+		return nil, ErrUsageLedgerNotConfigured
+	}
+	return s.usageLedger, nil
+}
+
+// HasUsageLedger reports whether this service can settle durable PAY-042 usage
+// events. Bootstrap uses it to retain the recovery adapter independently from
+// whether new admissions are currently enabled.
+func (s *Service) HasUsageLedger() bool {
+	return s != nil && !usageLedgerIsNil(s.usageLedger)
+}
+
+func usageLedgerIsNil(ledger UsageLedger) bool {
+	if ledger == nil {
+		return true
+	}
+	value := reflect.ValueOf(ledger)
+	return (value.Kind() == reflect.Chan || value.Kind() == reflect.Func || value.Kind() == reflect.Interface || value.Kind() == reflect.Map || value.Kind() == reflect.Pointer || value.Kind() == reflect.Slice) && value.IsNil()
+}
+
+func repositoryIsNil(repo Repository) bool {
+	if repo == nil {
+		return true
+	}
+	value := reflect.ValueOf(repo)
+	return (value.Kind() == reflect.Chan || value.Kind() == reflect.Func || value.Kind() == reflect.Interface || value.Kind() == reflect.Map || value.Kind() == reflect.Pointer || value.Kind() == reflect.Slice) && value.IsNil()
 }
 
 func (s *Service) SetTenantDisplayNameResolver(resolver TenantDisplayNameResolver) {
@@ -71,7 +263,7 @@ func DefaultPlans() []PlanBundle {
 				{PlanCode: PlanProfessional, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 1000}, SortOrder: 20},
 				{PlanCode: PlanProfessional, ModuleCode: ModuleRules, SortOrder: 30},
 				{PlanCode: PlanProfessional, ModuleCode: ModuleOperationStrategy, SortOrder: 40},
-				{PlanCode: PlanProfessional, ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 100, "product_image_jobs": 100}, SortOrder: 50},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 100, "product_image_jobs": 100, "shein_drafts_succeeded": 100, "shein_publishes_succeeded": 100}, SortOrder: 50},
 				{PlanCode: PlanProfessional, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 10 * 1024 * 1024 * 1024}, SortOrder: 60},
 			},
 		},
@@ -82,7 +274,7 @@ func DefaultPlans() []PlanBundle {
 				{PlanCode: PlanEnterprise, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 10000}, SortOrder: 20},
 				{PlanCode: PlanEnterprise, ModuleCode: ModuleRules, SortOrder: 30},
 				{PlanCode: PlanEnterprise, ModuleCode: ModuleOperationStrategy, SortOrder: 40},
-				{PlanCode: PlanEnterprise, ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 1000, "product_image_jobs": 1000}, SortOrder: 50},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 1000, "product_image_jobs": 1000, "shein_drafts_succeeded": 1000, "shein_publishes_succeeded": 1000}, SortOrder: 50},
 				{PlanCode: PlanEnterprise, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 100 * 1024 * 1024 * 1024}, SortOrder: 60},
 			},
 		},
@@ -599,6 +791,76 @@ func (s *Service) RecordUsage(ctx context.Context, tenantID, moduleCode, metric 
 	}
 	periodKey := s.now().UTC().Format("2006-01")
 	return s.repo.IncrementUsage(ctx, tenantID, moduleCode, periodKey, metric, increment)
+}
+
+// RecordUsageForPeriod applies a legacy aggregate-counter adjustment to the
+// billing period that owns a durable usage event. It is used for reservation
+// rollback, which may happen after the calendar period has changed.
+func (s *Service) RecordUsageForPeriod(ctx context.Context, tenantID, moduleCode, metric, periodKey string, increment int) (*UsageCounter, error) {
+	if s == nil || s.repo == nil {
+		return nil, ErrSubscriptionRequired
+	}
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(moduleCode) == "" || strings.TrimSpace(metric) == "" {
+		return nil, ErrUsageInvalidInput
+	}
+	if strings.TrimSpace(periodKey) == "" {
+		return nil, ErrUsageInvalidInput
+	}
+	if increment == 0 {
+		return nil, errors.New("usage increment cannot be zero")
+	}
+	if !s.moduleExists(ctx, moduleCode) {
+		return nil, ErrModuleNotFound
+	}
+	if increment < 0 {
+		current, err := s.repo.ListUsage(ctx, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		used := 0
+		for _, counter := range current {
+			if counter.ModuleCode == moduleCode && counter.PeriodKey == periodKey && counter.Metric == metric {
+				used += counter.Used
+			}
+		}
+		if used+increment < 0 {
+			increment = -used
+		}
+	}
+	return s.repo.IncrementUsage(ctx, tenantID, moduleCode, periodKey, metric, increment)
+}
+
+// RecordUsageForPeriodOnce applies a legacy counter adjustment under a
+// durable operation identity. It is used for mirrors of usage-ledger events;
+// retries after a process crash return the existing counter without applying
+// the adjustment again.
+func (s *Service) RecordUsageForPeriodOnce(ctx context.Context, tenantID, moduleCode, metric, periodKey string, increment int, operationKey string) (*UsageCounter, bool, error) {
+	if s == nil || s.repo == nil {
+		return nil, false, ErrSubscriptionRequired
+	}
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(moduleCode) == "" || strings.TrimSpace(metric) == "" || strings.TrimSpace(periodKey) == "" || strings.TrimSpace(operationKey) == "" || increment == 0 {
+		return nil, false, ErrUsageInvalidInput
+	}
+	if !s.moduleExists(ctx, moduleCode) {
+		return nil, false, ErrModuleNotFound
+	}
+	repo, ok := s.repo.(UsageCounterIdempotencyRepository)
+	if !ok {
+		return nil, false, ErrUsageCounterIdempotencyUnsupported
+	}
+	counter, applied, err := repo.IncrementUsageOnce(ctx, tenantID, moduleCode, periodKey, metric, increment, operationKey)
+	return counter, applied, err
+}
+
+func (s *Service) UsageOperationExists(ctx context.Context, operationKey string) (bool, error) {
+	if s == nil || s.repo == nil {
+		return false, ErrSubscriptionRequired
+	}
+	repo, ok := s.repo.(UsageCounterOperationLookup)
+	if !ok {
+		return false, ErrUsageCounterIdempotencyUnsupported
+	}
+	return repo.UsageOperationExists(ctx, strings.TrimSpace(operationKey))
 }
 
 func (s *Service) currentPeriodUsage(ctx context.Context, tenantID, moduleCode, metric string) (int, error) {

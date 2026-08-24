@@ -33,6 +33,33 @@ kubectl apply -n task-processor -f tmp/listingkit-member-invitation-secret.yaml
 
 Do not commit the filled secret file.
 
+The application does not consume `TASK_PROCESSOR_DATABASE_DSN`. Before
+applying this least-privilege manifest revision, make sure the existing
+`listingkit-workbench-secret` contains the five bound database keys from the
+example: `TASK_PROCESSOR_DATABASE_HOST`, `TASK_PROCESSOR_DATABASE_PORT`,
+`TASK_PROCESSOR_DATABASE_USER`, `TASK_PROCESSOR_DATABASE_PASSWORD`, and
+`TASK_PROCESSOR_DATABASE_NAME`. Copy the existing connection values in the
+secret manager without printing or changing them; do not rely on the baked
+example database settings.
+
+The shared Secret name is reused, but its values are not shared with every
+Pod. `product-listing-api` and the release-scoped identity preflight import the
+whole Secret because they need the database plus API/read-only-directory
+configuration. Every other manifest has an explicit key allowlist:
+
+- `listingkit-ui`: Auth.js secret, ZITADEL issuer/client credentials, role
+  allowlist, and demo webhook only. Public origins and redirect URIs come from
+  `listingkit-workbench-config`.
+- `shein-login-worker`: the five database keys and four SHEIN cookie Redis
+  keys only. Each queued account already supplies its tenant and store id.
+- `imgproxy`: signing key/salt and the two ProductImage S3 credential keys.
+- both schema migration Jobs: the five database keys only.
+
+None of those five workloads receives the read-only directory token or the
+member-invitation write token. The worker and migration binaries use scoped
+configuration loading so they do not require unrelated OpenAI, RabbitMQ,
+Amazon, or ZITADEL credentials merely to pass startup validation.
+
 When migrating an existing deployment, create
 `listingkit-member-invitation-secret` with both the token and project id.
 Then remove both invitation keys from the already deployed shared Secret and
@@ -93,8 +120,9 @@ config `listingkit.zitadel.*`; in Kubernetes we currently populate those config
 keys through env binding such as `ZITADEL_ISSUER_URL` and
 `ZITADEL_CLIENT_ID`. Authentication is mandatory; missing issuer/client
 configuration fails closed for protected ListingKit routes.
-For the full migration checklist, including owner-scope and allowlist rollout
-checks, see
+Owner filtering is a fixed ListingKit startup invariant; deployment
+configuration cannot disable it. For the full migration checklist, including
+allowlist checks, see
 [listingkit-config-migration-checklist.md](/D:/code/task-processor/docs/development/listingkit-config-migration-checklist.md).
 
 ## Provision ZITADEL roles
@@ -134,7 +162,9 @@ Copy the command output into the workbench shared Secret/config:
 
 ```text
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<project-id>
-LISTINGKIT_ZITADEL_ALLOWED_ROLES=listingkit_admin,listingkit_operator,listingkit_viewer,platform_admin
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS=
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS=
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES=listingkit_admin,listingkit_operator,listingkit_viewer,platform_admin
 ZITADEL_SCOPES=<printed scope string>
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED=1
 ```
@@ -175,11 +205,12 @@ TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<existing-listingkit-project-id>
 Inject the token through the approved secret manager; never commit it, print it,
 or paste it into the OIDC or tenant-directory fields. Do not add the dedicated
 Secret to UI, worker, imgproxy, or migration Job `envFrom` lists. Apply the
-dedicated Secret and API Deployment, then restart only the API deployment:
+dedicated Secret, verify its key names, then restart only the already-pinned
+API deployment. Do not apply the base API Deployment here: its image is a
+development default and is not a release target.
 
 ```powershell
 kubectl apply -n task-processor -f tmp/listingkit-member-invitation-secret.yaml
-kubectl apply -n task-processor -f deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml
 
 $requiredKeys = @(
   "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN"
@@ -327,32 +358,178 @@ at startup.
 
 ```powershell
 $tag = "<immutable-release-tag>"
+$apiCandidateImage = "docker.io/xuwei190/task-processor-product-listing-api@sha256:<64-hex-api-digest>"
 
 kubectl apply -f deployments/kubernetes/listingkit-workbench/base/namespace.yaml
 kubectl apply -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 # Apply the real Secret created outside Git before continuing.
 
-$migrationJobs = @(
-  "product-listing-api-schema-migrate-job.yaml",
-  "listingkit-schema-migrate-job.yaml"
-)
-foreach ($jobFile in $migrationJobs) {
-  $migrationFile = Join-Path $env:TEMP $jobFile
-  Copy-Item (Join-Path "deployments/kubernetes/listingkit-workbench/jobs" $jobFile) $migrationFile
-  (Get-Content -Raw $migrationFile).Replace("REPLACE_WITH_DEPLOYED_TAG", $tag) |
-    Set-Content -NoNewline $migrationFile
-  $jobName = kubectl create -n task-processor -f $migrationFile -o jsonpath='{.metadata.name}'
-  kubectl -n task-processor wait --for=condition=complete "job/$jobName" --timeout=15m
-  kubectl -n task-processor logs "job/$jobName"
-}
+$productMigrationFile = Join-Path $env:TEMP "product-listing-api-schema-migrate-job.yaml"
+Copy-Item "deployments/kubernetes/listingkit-workbench/jobs/product-listing-api-schema-migrate-job.yaml" $productMigrationFile
+(Get-Content -Raw $productMigrationFile).Replace("REPLACE_WITH_DEPLOYED_TAG", $tag) |
+  Set-Content -NoNewline $productMigrationFile
+$jobName = kubectl create -n task-processor -f $productMigrationFile -o jsonpath='{.metadata.name}'
+kubectl -n task-processor wait --for=condition=complete "job/$jobName" --timeout=15m
+kubectl -n task-processor logs "job/$jobName"
+
+bash scripts/listingkit-schema-migrate-job.sh `
+  --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml `
+  --namespace task-processor `
+  --image "$apiCandidateImage"
 ```
 
-The two Jobs share only the production ConfigMap and Secret references required
-by the API. They run `/app/product-listing-api-schema-migrate` and
+The two Jobs import the production ConfigMap plus only the five database keys
+from `listingkit-workbench-secret`. They run `/app/product-listing-api-schema-migrate` and
 `/app/listingkit-schema-migrate -scope all` respectively, using the same
 immutable API image that will be released. A failed Job is a No-Go: investigate
 and use an approved roll-forward or restore procedure instead of deleting or
 editing the production schema manually.
+
+The ListingKit deployment workflow runs the ListingKit schema migration Job
+before the identity preflight. For an environment carrying the reviewed
+system-owned exception set, run the one-shot
+`scripts/listingkit-owner-scope-exceptions.ps1` seeder after that migration and
+before the preflight. The seeder validates the live report fingerprint and
+counts, so an empty or newly changed exception set remains a release blocker;
+the workflow never copies approved exceptions into an unrelated database.
+
+### Identity preflight release gate
+
+Every API release must pass the read-only identity preflight in the target
+environment before either the API or its matching UI is updated. The directory
+credential needs read access sufficient to query `POST /v2/users` for every
+ZITADEL organization represented by persisted tenant-owned rows. It does not
+need user-create, update, invitation, or membership-write permission. The Job
+uses the shared ConfigMap and shared Secret for the database and read-only
+directory credential; it never references the API-only member-invitation
+Secret.
+
+Legacy ListingAdmin owner rows use numeric tenant IDs. For those rows, the
+preflight must find both `projections.org_metadata2` and
+`projections.user_metadata5` in exactly one of the `zitadel_auth` or `zitadel`
+PostgreSQL databases that share the configured database host and credentials.
+Grant the Job account only `CONNECT` plus `SELECT` on both projection tables in
+the selected database. Neither candidate, both candidates, or an unreadable
+metadata table blocks the release without printing database connection details;
+verify the one intended metadata database and both read-only grants before
+retrying.
+
+Run the tested driver with the exact full immutable API and preflight-runner
+images. Copy each digest from the release build output; do not substitute a
+mutable tag.
+
+```bash
+API_CANDIDATE_IMAGE="docker.io/xuwei190/task-processor-product-listing-api@sha256:<64-hex-api-digest>"
+PREFLIGHT_RUNNER_IMAGE="docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:<64-hex-runner-digest>"
+
+bash scripts/listingkit-identity-preflight-job.sh \
+  --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
+  --namespace task-processor \
+  --image "$API_CANDIDATE_IMAGE" \
+  --runner-image "$PREFLIGHT_RUNNER_IMAGE"
+```
+
+The driver renders a temporary manifest, creates one generated Job, waits up to
+15 minutes, and prints its logs. The Job's 900-second active deadline matches
+that driver wait, so a timed-out release gate cannot leave the preflight
+running indefinitely. A failure or timeout also prints `describe` output and
+returns non-zero before any Deployment image update. The Job only reads owner
+identifiers from the database and users from ZITADEL; it never mutates either
+system.
+
+Successful output ends with:
+
+```text
+status=ok identity_preflight=passed
+```
+
+A blocked finding has this safe shape:
+
+```text
+status=blocked table=listing_store tenant=sha256:<12-hex> owner=sha256:<12-hex> rows=3 reason=unknown_subject
+```
+
+`unknown_subject` means a persisted owner value is not a current ZITADEL `sub`
+in the same organization. Stop the release and investigate the source mapping,
+deleted account, or organization mismatch; do not add a fallback or rewrite
+data automatically. Fingerprints, table names, and aggregate row counts are
+safe correlation fields, but no complete tenant ID, subject, personal data, or
+secret may be pasted into an issue, change record, or release log.
+
+Treat the API and UI as one coordinated release:
+
+1. Confirm the legacy `user_id` claim is absent or exactly equals `sub`.
+2. Pass this preflight against the target environment.
+3. Deploy and verify the canonical-subject API image.
+4. Deploy the matching ListingKit UI/Auth.js image.
+5. Complete the real-token role and owner-scope checks.
+
+A partial API/UI rollout is not release acceptance. The preflight is
+release-scoped and intentionally absent from the base Kustomization.
+
+### One-time owner reconciliation
+
+The release preflight is a blocker, not a migration command. For a database
+that has already completed the legacy migration, run the reconciliation tool
+in its default read-only mode and review the redacted report:
+
+```powershell
+pwsh -File scripts/listingkit-owner-scope-dry-run.ps1 -ConfigPath config/config-prod.yaml
+```
+
+The command uses the non-validating configuration loader and strict,
+non-creating database connections because this job mounts only database and
+ZITADEL directory settings. It writes only aggregate counts and short
+fingerprints; it never writes raw tenant IDs, legacy IDs, subjects, tokens, or
+SQL bodies. Unmapped and conflicting candidates remain unresolved and must be
+handled explicitly; the tool never assigns an arbitrary current member.
+
+Only after the report has been reviewed may an operator repeat the command with
+`-Execute -ConfirmReport <exact-12-hex-report-fingerprint>`. The command
+re-runs the read-only scan, compares the fingerprint before opening a write
+transaction, and updates only blank owner fields for uniquely verified
+candidates. Use a small `-BatchSize` first and preserve the report and command
+output in the change record. A mismatch, missing confirmation, metadata error,
+or unresolved candidate fails closed before any `UPDATE`.
+
+The application migration installs a PostgreSQL `owner_user_id` check as
+`NOT VALID`. That protects new inserts and updates without making the schema
+migration fail on the historical ownerless set. Do not validate these
+constraints until the reviewed reconciliation report shows both
+`unresolved_rows=0` and `auto_rows=0`. After the controlled backfill, validate
+each legacy owner-scoped table explicitly:
+
+```sql
+ALTER TABLE "listing_store"
+  VALIDATE CONSTRAINT "ck_listing_store_owner_user_id_nonblank";
+ALTER TABLE "listing_category"
+  VALIDATE CONSTRAINT "ck_listing_category_owner_user_id_nonblank";
+ALTER TABLE "listing_filter_rule"
+  VALIDATE CONSTRAINT "ck_listing_filter_rule_owner_user_id_nonblank";
+ALTER TABLE "listing_generation_topic_override"
+  VALIDATE CONSTRAINT "ck_listing_generation_topic_override_owner_user_id_nonblank";
+ALTER TABLE "listing_generation_topic_policy"
+  VALIDATE CONSTRAINT "ck_listing_generation_topic_policy_owner_user_id_nonblank";
+ALTER TABLE "listing_operation_strategy"
+  VALIDATE CONSTRAINT "ck_listing_operation_strategy_owner_user_id_nonblank";
+ALTER TABLE "listing_pricing_rule"
+  VALIDATE CONSTRAINT "ck_listing_pricing_rule_owner_user_id_nonblank";
+ALTER TABLE "listing_profit_rule"
+  VALIDATE CONSTRAINT "ck_listing_profit_rule_owner_user_id_nonblank";
+ALTER TABLE "listing_scheduled_task_config"
+  VALIDATE CONSTRAINT "ck_listing_scheduled_task_config_owner_user_id_nonblank";
+ALTER TABLE "listing_sensitive_word"
+  VALIDATE CONSTRAINT "ck_listing_sensitive_word_owner_user_id_nonblank";
+ALTER TABLE "listing_product_import_task"
+  VALIDATE CONSTRAINT "ck_listing_product_import_task_owner_user_id_nonblank";
+ALTER TABLE "listing_product_import_mapping"
+  VALIDATE CONSTRAINT "ck_listing_product_import_mapping_owner_user_id_nonblank";
+ALTER TABLE "listing_product_data"
+  VALIDATE CONSTRAINT "ck_listing_product_data_owner_user_id_nonblank";
+```
+
+This validation is a separate operational change. It is not run by the
+deployment workflow and must not be used to bypass the identity preflight.
 
 For a new cluster, render the existing production overlay from a temporary
 copy, pin both image names to the same immutable tag, and apply that rendered
@@ -429,12 +606,18 @@ GitHub Actions itself is unavailable.
 
 Standard rollback path:
 
-1. Identify the prior API and UI image tags from a successful release record.
-2. Run `ListingKit API Deploy` with its prior immutable tag, then wait for the
+1. Confirm the legacy ZITADEL `user_id` claim is absent or exactly equals
+   `sub`; otherwise rollback can restore split ownership semantics and is not
+   allowed.
+2. Identify the prior API and UI image digests from a successful release record.
+   Also identify the current `task-processor-listingkit-identity-preflight`
+   runner digest; the gate runner is deliberately separate from the rollback
+   candidate and must be available even when that candidate predates preflight.
+3. Run `ListingKit API Deploy` with its prior immutable digest, then wait for the
    API rollout and readiness probe.
-3. Run `ListingKit UI Deploy` with its prior immutable tag, then wait for the
+4. Run `ListingKit UI Deploy` with its prior immutable tag, then wait for the
    UI rollout.
-4. Record the rollback decision, deployed tags, probe results, and any data
+5. Record the rollback decision, deployed tags, probe results, and any data
    recovery action in the validation run.
 
 This reuses the same deployment logic as a normal release and keeps the
@@ -446,13 +629,29 @@ To find a rollback target:
 - Or inspect the currently deployed / previously deployed image tags in Docker
   Hub or Kubernetes rollout history.
 
-Emergency fallback from a workstation:
+Emergency fallback from a workstation (use the same preflight and immutable
+apply drivers; do not use a direct API `set image`):
 
 ```powershell
-kubectl -n task-processor set image deployment/product-listing-api product-listing-api=docker.io/xuwei190/task-processor-product-listing-api:496ca069
+$apiImage = "docker.io/xuwei190/task-processor-product-listing-api@sha256:<64-hex-api-digest>"
+$preflightRunnerImage = "docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:<64-hex-runner-digest>"
+& "C:\Program Files\Git\bin\bash.exe" scripts/listingkit-identity-preflight-job.sh `
+  --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml `
+  --namespace task-processor `
+  --image $apiImage `
+  --runner-image $preflightRunnerImage
+if ($LASTEXITCODE -ne 0) { throw "Identity preflight failed; refusing rollback deployment" }
+& "C:\Program Files\Git\bin\bash.exe" scripts/listingkit-apply-api-deployment.sh `
+  --manifest deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml `
+  --namespace task-processor `
+  --image $apiImage
+if ($LASTEXITCODE -ne 0) { throw "Immutable API rollback apply failed" }
 kubectl -n task-processor set image deployment/listingkit-ui listingkit-ui=docker.io/xuwei190/task-processor-listingkit-ui:496ca069
+if ($LASTEXITCODE -ne 0) { throw "ListingKit UI rollback image update failed" }
 kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
+if ($LASTEXITCODE -ne 0) { throw "ListingKit API rollback rollout failed" }
 kubectl -n task-processor rollout status deployment/listingkit-ui --timeout=5m
+if ($LASTEXITCODE -ne 0) { throw "ListingKit UI rollback rollout failed" }
 ```
 
 Use the emergency path only when GitHub Actions cannot be used. If you do use
@@ -492,8 +691,8 @@ diagnostics (`task_id`, JSON field name, and reason only) are written to stderr;
 persisted request/result JSON is never logged. A failed Job may be safely rerun
 after fixing the cause; upserts are idempotent. Verify a known full SKU through
 `GET /api/v1/listing-kits/shein-pod-image-lookup/stores/<store_id>?q=<sku>`,
-then inspect API/proxy logs for errors. Keep owner-scope rollout disabled until
-the backfill and tenant/user sampling are complete.
+then inspect API/proxy logs for errors. Owner filtering remains enabled while
+you complete backfill and tenant/user sampling.
 
 ## Temporal rollout
 
@@ -555,16 +754,24 @@ Important current behavior:
 ## Manual deploy fallback
 
 ```powershell
-.\scripts\build-push-deploy-listingkit-workbench.ps1 -Tag v20260428-1 -PublishLatest
+.\scripts\build-push-deploy-listingkit-workbench.ps1 -Tag v20260428-1
 ```
+
+This uses the same target-namespace identity preflight and immutable API
+Deployment driver as CI. It requires Git Bash (automatically preferred when
+installed) to run the tested release drivers. A failed preflight stops before
+any API or UI Deployment mutation; the API is applied once with the exact
+versioned image, and only then is the matching UI image updated. `latest` is
+never accepted as the candidate release tag.
 
 Useful switches:
 
 - `-DockerHubUser xuwei190`: image namespace.
 - `-Namespace task-processor`: Kubernetes namespace.
-- `-OverlayPath deployments/kubernetes/listingkit-workbench/overlays/prod`: Kustomize overlay.
 - `-SkipTests`: skip local test/build checks before Docker build.
-- `-SkipApply`: update images without applying manifests.
+- `-SkipApply`: build and push images only; it performs no Kubernetes command.
+- `-PublishLatest`: additionally refreshes floating tags for development only;
+  the gated release still uses the versioned tag.
 
 ## Change public host
 
@@ -576,8 +783,14 @@ The UI uses:
 
 - `LISTINGKIT_API_BASE=http://product-listing-api:8085/api/v1/listing-kits`
 - `LISTINGKIT_SERVICE_API_BASE=http://product-listing-api:8085/api/v1`
-- `ZITADEL_ISSUER_URL`, `ZITADEL_CLIENT_ID`, `ZITADEL_CLIENT_SECRET`, and
-  redirect URIs from `listingkit-workbench-secret`
+- `AUTH_SECRET`, `ZITADEL_ISSUER_URL`, `ZITADEL_CLIENT_ID`,
+  `ZITADEL_CLIENT_SECRET`, the canonical `TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS`,
+  `TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS`, and
+  `TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES` keys, plus
+  `LISTINGKIT_DEMO_WEBHOOK_URL`, from explicit keys in
+  `listingkit-workbench-secret`
+- public Auth.js origins and redirect URIs from
+  `listingkit-workbench-config`, not the shared Secret
 - `TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN` only from
   `listingkit-member-invitation-secret` in `product-listing-api`; the project
   id is co-located there so the deployment cannot overwrite it with an empty
@@ -590,3 +803,4 @@ The Go API still reads `config/config-prod.yaml` baked into the image, with
 secret values expected to be supplied by runtime configuration. For ListingKit
 auth, use `listingkit.zitadel.*` in YAML or the bound env vars above; the
 middleware no longer reads process env directly.
+

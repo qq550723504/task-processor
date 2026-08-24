@@ -26,7 +26,7 @@ export type SheinStudioBatchStatus =
   | "tasks_creating"
   | "tasks_created";
 
-export type SheinStudioMaterializedDesignReviewStatus =
+ type SheinStudioMaterializedDesignReviewStatus =
   | "unreviewed"
   | "approved"
   | "rejected";
@@ -38,7 +38,7 @@ export type SheinStudioBatchItemStatus =
   | "review_ready"
   | "failed";
 
-export type SheinStudioBatchStatusGroupKey =
+ type SheinStudioBatchStatusGroupKey =
   | "submittable"
   | "needs_fix"
   | "processing"

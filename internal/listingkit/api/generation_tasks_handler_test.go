@@ -13,6 +13,8 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/listingsubscription"
+	"task-processor/internal/tenantbridge"
 )
 
 func TestGetTaskGenerationTasksReturnsPage(t *testing.T) {
@@ -96,6 +98,36 @@ func TestGenerateListingKitAbsolutizesUploadedImageURLs(t *testing.T) {
 	}
 	if got := svc.createReq.ImageURLs; len(got) != 1 || got[0] != "https://pod.shuomiai.com/api/v1/listing-kits/uploads/files/20260610/demo.png" {
 		t.Fatalf("image_urls = %#v, want absolutized uploaded image URL", got)
+	}
+}
+
+func TestGenerateListingKitPreservesCanonicalTaskTenantAndSetsLegacyBillingTenant(t *testing.T) {
+	restore := tenantbridge.ConfigureLegacyTenantResolver(staticStudioLegacyTenantResolver{values: map[string]int64{"zitadel-tenant": 227}})
+	t.Cleanup(restore)
+	subscriptionService, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
+	if err != nil {
+		t.Fatalf("create subscription service: %v", err)
+	}
+	if _, err := subscriptionService.UpsertEntitlement(t.Context(), "227", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{Status: listingsubscription.StatusActive, Limits: map[string]int{"design_jobs": 10}}); err != nil {
+		t.Fatalf("upsert entitlement: %v", err)
+	}
+	svc := &stubCreateGenerateTaskHandlerService{createdTask: &listingkit.Task{ID: "task-legacy-tenant", TenantID: "zitadel-tenant", Status: core.TaskStatusPending}}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc), WithSubscriptionService(subscriptionService))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/generate", h.GenerateListingKit)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/generate", strings.NewReader(`{"text":"demo"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "zitadel-tenant")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", resp.Code, resp.Body.String())
+	}
+	if svc.createReq == nil || svc.createReq.TenantID != "zitadel-tenant" || svc.createReq.BillingTenantID != "227" {
+		t.Fatalf("created request = %#v, want canonical tenant zitadel-tenant and billing tenant 227", svc.createReq)
 	}
 }
 

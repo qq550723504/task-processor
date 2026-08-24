@@ -10,8 +10,69 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/semaphore"
+	"task-processor/internal/pkg/safeimagehttp"
 )
+
+const (
+	maxImageReferenceBytes                     int64 = 32 << 20
+	defaultReferenceMaterializedBytes          int64 = 512 << 20
+	defaultReferenceMaterializationConcurrency       = 8
+	referenceBudgetUnitBytes                   int64 = 1 << 20
+)
+
+type referenceMaterializationBudget struct {
+	downloadSlots *semaphore.Weighted
+	bytes         *semaphore.Weighted
+	byteUnits     int64
+}
+
+func newReferenceMaterializationBudget(maxBytes int64, maxConcurrent int) *referenceMaterializationBudget {
+	if maxBytes <= 0 {
+		maxBytes = defaultReferenceMaterializedBytes
+	}
+	if maxBytes < maxImageReferenceBytes {
+		maxBytes = maxImageReferenceBytes
+	}
+	if maxConcurrent <= 0 {
+		maxConcurrent = defaultReferenceMaterializationConcurrency
+	}
+	units := (maxBytes + referenceBudgetUnitBytes - 1) / referenceBudgetUnitBytes
+	return &referenceMaterializationBudget{
+		downloadSlots: semaphore.NewWeighted(int64(maxConcurrent)),
+		bytes:         semaphore.NewWeighted(units),
+		byteUnits:     units,
+	}
+}
+
+func (b *referenceMaterializationBudget) acquire(ctx context.Context, bytes int64) (func(), error) {
+	if b == nil {
+		return func() {}, nil
+	}
+	units := (bytes + referenceBudgetUnitBytes - 1) / referenceBudgetUnitBytes
+	if units <= 0 || units > b.byteUnits {
+		return nil, fmt.Errorf("openai reference materialization budget is too small")
+	}
+	if err := b.bytes.Acquire(ctx, units); err != nil {
+		return nil, err
+	}
+	var once sync.Once
+	return func() { once.Do(func() { b.bytes.Release(units) }) }, nil
+}
+
+func (b *referenceMaterializationBudget) acquireDownload(ctx context.Context) (func(), error) {
+	if b == nil {
+		return func() {}, nil
+	}
+	if err := b.downloadSlots.Acquire(ctx, 1); err != nil {
+		return nil, err
+	}
+	var once sync.Once
+	return func() { once.Do(func() { b.downloadSlots.Release(1) }) }, nil
+}
 
 func extractImageRequestID(header http.Header) string {
 	return strings.TrimSpace(header.Get("X-Request-Id"))
@@ -96,8 +157,45 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
-	if len(req.Image) == 0 {
-		return nil, fmt.Errorf("image edit request requires image bytes")
+	primaryURL := strings.TrimSpace(req.ImageURL)
+	if len(req.Image) == 0 && primaryURL == "" {
+		return nil, fmt.Errorf("image edit request requires image bytes or image URL")
+	}
+	primaryImage := req.Image
+	primaryContentType := req.ImageContentType
+	referenceURLs := make([]string, 0, len(req.ImageURLs)+1)
+	seenURLs := map[string]struct{}{}
+	if primaryURL != "" {
+		seenURLs[primaryURL] = struct{}{}
+	}
+	if len(primaryImage) == 0 && primaryURL != "" {
+		referenceURLs = append(referenceURLs, primaryURL)
+	}
+	for _, rawURL := range req.ImageURLs {
+		imageURL := strings.TrimSpace(rawURL)
+		if imageURL == "" {
+			continue
+		}
+		if _, seen := seenURLs[imageURL]; seen {
+			continue
+		}
+		seenURLs[imageURL] = struct{}{}
+		referenceURLs = append(referenceURLs, imageURL)
+	}
+	if len(referenceURLs) > 0 {
+		lease, err := bc.referenceMaterialization.acquire(ctx, int64(len(referenceURLs))*maxImageReferenceBytes)
+		if err != nil {
+			return nil, fmt.Errorf("reserve OpenAI image reference materialization budget: %w", err)
+		}
+		defer lease()
+	}
+	if len(primaryImage) == 0 {
+		data, contentType, err := bc.downloadImageEditReference(ctx, referenceURLs[0])
+		if err != nil {
+			return nil, err
+		}
+		primaryImage = data
+		primaryContentType = contentType
 	}
 	model := req.Model
 	if model == "" {
@@ -121,12 +219,29 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 	if req.N > 0 {
 		_ = writer.WriteField("n", fmt.Sprintf("%d", req.N))
 	}
-	imagePart, err := writer.CreateFormFile("image", imageEditFilename(req.ImageContentType))
+	imagePart, err := writer.CreateFormFile("image[]", imageEditFilename(primaryContentType))
 	if err != nil {
 		return nil, fmt.Errorf("create image form file: %w", err)
 	}
-	if _, err := imagePart.Write(req.Image); err != nil {
+	if _, err := imagePart.Write(primaryImage); err != nil {
 		return nil, fmt.Errorf("write image form file: %w", err)
+	}
+	secondaryStart := 0
+	if len(req.Image) == 0 && primaryURL != "" && len(referenceURLs) > 0 && referenceURLs[0] == primaryURL {
+		secondaryStart = 1
+	}
+	for _, imageURL := range referenceURLs[secondaryStart:] {
+		data, contentType, err := bc.downloadImageEditReference(ctx, imageURL)
+		if err != nil {
+			return nil, err
+		}
+		secondaryPart, err := writer.CreateFormFile("image[]", imageEditFilename(contentType))
+		if err != nil {
+			return nil, fmt.Errorf("create secondary image form file: %w", err)
+		}
+		if _, err := secondaryPart.Write(data); err != nil {
+			return nil, fmt.Errorf("write secondary image form file: %w", err)
+		}
 	}
 	if len(req.Mask) > 0 {
 		maskPart, err := writer.CreateFormFile("mask", "mask.png")
@@ -141,6 +256,68 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 	return bc.doMultipartImageRequest(ctx, "/images/edits", body, writer.FormDataContentType())
+}
+
+func (bc *BaseClient) downloadImageEditReference(ctx context.Context, imageURL string) ([]byte, string, error) {
+	downloadRelease, err := bc.referenceMaterialization.acquireDownload(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("reserve OpenAI image reference download slot: %w", err)
+	}
+	defer downloadRelease()
+	downloadCtx := ctx
+	cancel := func() {}
+	if bc.config != nil && bc.config.Timeout > 0 {
+		downloadCtx, cancel = context.WithTimeout(ctx, bc.config.Timeout)
+	}
+	defer cancel()
+	var referenceClient *http.Client
+	if bc.config != nil {
+		referenceClient = bc.config.ImageReferenceHTTPClient
+	}
+	return downloadImageEditReference(downloadCtx, imageURL, referenceClient)
+}
+
+func downloadImageEditReference(ctx context.Context, imageURL string, override *http.Client) ([]byte, string, error) {
+	validatedURL := strings.TrimSpace(imageURL)
+	client := override
+	if client == nil {
+		var err error
+		validatedURL, err = safeimagehttp.ValidatePublicHTTPSURL(validatedURL)
+		if err != nil {
+			return nil, "", fmt.Errorf("validate secondary image URL: %w", err)
+		}
+		client = safeimagehttp.NewPublicImageHTTPClient()
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, validatedURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("build secondary image request: %w", err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, "", fmt.Errorf("download secondary image: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, "", fmt.Errorf("download secondary image returned status %d", response.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxImageReferenceBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("read secondary image: %w", err)
+	}
+	if int64(len(data)) > maxImageReferenceBytes {
+		return nil, "", fmt.Errorf("secondary image exceeds 32 MiB")
+	}
+	if len(data) == 0 {
+		return nil, "", fmt.Errorf("secondary image is empty")
+	}
+	contentType := strings.TrimSpace(response.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return nil, "", fmt.Errorf("secondary image content type %q is not an image", contentType)
+	}
+	return data, contentType, nil
 }
 
 func imageEditFilename(contentType string) string {

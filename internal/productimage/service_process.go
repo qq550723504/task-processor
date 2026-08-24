@@ -8,6 +8,7 @@ import (
 	"time"
 
 	corelogger "task-processor/internal/core/logger"
+	"task-processor/internal/shared/aiidentity"
 
 	"github.com/sirupsen/logrus"
 )
@@ -16,14 +17,26 @@ func (s *service) ProcessImages(ctx context.Context, task *Task) (*ImageProcessR
 	if task == nil {
 		return nil, fmt.Errorf("task cannot be nil")
 	}
+	switch task.PersistedExecutionEnvelope.State() {
+	case aiidentity.PersistedEnvelopePartial:
+		return nil, aiidentity.ErrIdentityIntegrity
+	case aiidentity.PersistedEnvelopePresent:
+		envelope, err := task.ExecutionEnvelope()
+		if err != nil {
+			return nil, err
+		}
+		if err := aiidentity.EnsureExecutionEnvelopeContext(ctx, envelope); err != nil {
+			return nil, err
+		}
+	}
 	ctx = WithTaskIdentity(ctx, task)
 
 	log := loggerForImageProcess(task.ID)
 	startedAt := time.Now()
 	log.WithFields(logrus.Fields{
-		"marketplace": task.Request.Marketplace,
-		"retry_count": task.RetryCount,
-		"status":      task.Status,
+		"target_platform": task.Request.TargetPlatform,
+		"retry_count":     task.RetryCount,
+		"status":          task.Status,
 	}).Info("starting productimage processing")
 
 	if err := s.taskRepo.MarkProcessing(ctx, task.ID); err != nil {

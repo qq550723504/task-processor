@@ -85,9 +85,11 @@ func (r *GormGenerationTopicPolicyRepository) CreateGenerationTopicPolicy(ctx co
 		return nil, errors.New("generation topic policy repository database is not configured")
 	}
 	row := listingGenerationTopicPolicyFromGenerationTopicPolicy(policy)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyGenerationTopicPolicyAuditFields(&row, ownerUserID, true)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyGenerationTopicPolicyAuditFields(&row, ownerUserID, true)
 	if err := r.db.WithContext(ctx).Table("listing_generation_topic_policy").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -100,9 +102,11 @@ func (r *GormGenerationTopicPolicyRepository) UpdateGenerationTopicPolicy(ctx co
 		return nil, errors.New("generation topic policy repository database is not configured")
 	}
 	row := listingGenerationTopicPolicyFromGenerationTopicPolicy(policy)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyGenerationTopicPolicyAuditFields(&row, ownerUserID, false)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyGenerationTopicPolicyAuditFields(&row, ownerUserID, false)
 	updates := map[string]any{
 		"owner_user_id": row.OwnerUserID,
 		"platform":      row.Platform,

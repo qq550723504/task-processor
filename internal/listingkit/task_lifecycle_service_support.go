@@ -10,7 +10,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/infra/worker"
+	listingplatform "task-processor/internal/listing/platform"
 	listingsubmission "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/tenantbridge"
@@ -112,34 +114,52 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	if req == nil {
 		return ctx, nil, fmt.Errorf("request cannot be nil")
 	}
-	if identity, ok := AuthenticatedIdentityFromContext(ctx); ok {
+	if identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx); ok {
 		req.TenantID = identity.TenantID
 	} else if req.TenantID == "" {
 		req.TenantID = TenantIDFromContext(ctx)
 	}
 	ctx = WithTenantID(ctx, req.TenantID)
-	if s.requestDefaults != nil {
-		applyGenerateRequestDefaults(req, s.requestDefaults())
-	}
+	normalizeGenerateRequest(req)
 	if err := validateRequest(req); err != nil {
 		return ctx, nil, fmt.Errorf("invalid request: %w", err)
+	}
+	if err := validateExplicitSheinStoreSelection(req); err != nil {
+		return ctx, nil, err
 	}
 	if err := s.validateRequestedSheinStoreAccess(ctx, req); err != nil {
 		return ctx, nil, err
 	}
 
 	task := &Task{
-		ID:         uuid.New().String(),
-		TenantID:   TenantIDFromContext(ctx),
-		UserID:     strings.TrimSpace(req.UserID),
-		Request:    req,
-		Status:     core.TaskStatusPending,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-		RetryCount: 0,
+		ID:              uuid.New().String(),
+		TenantID:        TenantIDFromContext(ctx),
+		BillingTenantID: billingTenantIDForTask(req, TenantIDFromContext(ctx)),
+		UserID:          strings.TrimSpace(req.UserID),
+		Request:         req,
+		Status:          core.TaskStatusPending,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+		RetryCount:      0,
 	}
 	s.applySheinStoreResolutionSnapshot(ctx, task)
 	return ctx, task, nil
+}
+
+func billingTenantIDForTask(req *GenerateRequest, _ string) string {
+	if req != nil {
+		if billingTenantID := strings.TrimSpace(req.BillingTenantID); billingTenantID != "" {
+			return billingTenantID
+		}
+	}
+	return ""
+}
+
+func validateExplicitSheinStoreSelection(req *GenerateRequest) error {
+	if generateRequestTargetsPlatform(req, "shein") && req.SheinStoreID <= 0 {
+		return fmt.Errorf("invalid request: shein_store_id is required for SHEIN tasks")
+	}
+	return nil
 }
 
 func (s *taskLifecycleService) validateRequestedSheinStoreAccess(ctx context.Context, req *GenerateRequest) error {
@@ -169,11 +189,31 @@ func generateRequestTargetsPlatform(req *GenerateRequest, platform string) bool 
 }
 
 func (s *taskLifecycleService) applySheinStoreResolutionSnapshot(ctx context.Context, task *Task) {
-	if task == nil || !taskHasPlatform(task, "shein") || s.resolveStoreSelection == nil {
+	if task == nil || !taskHasPlatform(task, "shein") {
 		return
 	}
-	if selection, err := s.resolveStoreSelection(ctx, task); err == nil && selection != nil {
-		task.SheinStoreResolutionSnapshot = sheinStoreResolutionSnapshotFromSelection(selection, task, nil)
+	if s.resolveStoreSelection != nil {
+		if selection, err := s.resolveStoreSelection(ctx, task); err == nil && selection != nil {
+			snapshot := sheinStoreResolutionSnapshotFromSelection(selection, task, nil)
+			if snapshot != nil {
+				snapshot.TenantAdminAccess = RequestHasTenantAdminAccess(ctx)
+				task.SheinStoreResolutionSnapshot = snapshot
+				return
+			}
+		}
+	}
+
+	// Store access has already been validated before this optional profile
+	// resolution step. Preserve that decision for queued execution even when
+	// profile enrichment fails (for example, because another profile is
+	// malformed), so the task is not reclassified as a stale user selection.
+	if !RequestHasTenantAdminAccess(ctx) || task.Request == nil || task.Request.SheinStoreID <= 0 {
+		return
+	}
+	task.SheinStoreResolutionSnapshot = &SheinStoreResolutionSnapshot{
+		StoreID:           task.Request.SheinStoreID,
+		TenantAdminAccess: true,
+		ResolvedAt:        time.Now(),
 	}
 }
 
@@ -205,10 +245,20 @@ func (s *taskLifecycleService) dispatchStudioTask(ctx context.Context, task *Tas
 
 func (s *taskLifecycleService) runGenerateTaskInline(ctx context.Context, task *Task) (*Task, error) {
 	runCtx := context.WithoutCancel(ctx)
+	preserveCancellation := taskDispatchCancellationPreserved(ctx)
+	if preserveCancellation {
+		runCtx = ctx
+	}
 	if s.processListingKit != nil {
 		if _, err := s.processListingKit(runCtx, task); err != nil {
+			if preserveCancellation && runCtx.Err() != nil {
+				return task, runCtx.Err()
+			}
 			return s.refreshGenerateTask(runCtx, task)
 		}
+	}
+	if preserveCancellation && runCtx.Err() != nil {
+		return task, runCtx.Err()
 	}
 	return s.refreshGenerateTask(runCtx, task)
 }
@@ -289,11 +339,11 @@ func validateRequest(req *GenerateRequest) error {
 	if len(req.ImageURLs) == 0 && strings.TrimSpace(req.Text) == "" && strings.TrimSpace(req.ProductURL) == "" {
 		return fmt.Errorf("at least one of image_urls, text, or product_url must be provided")
 	}
-	if len(req.ImageURLs) > 10 {
-		return fmt.Errorf("too many image URLs (max 10)")
-	}
 	if len(req.Platforms) == 0 {
 		return fmt.Errorf("at least one platform is required")
+	}
+	if shouldProcessImages(req) && hasImageProcessingInput(req) && len(listingplatform.NormalizeSupportedPlatforms(req.Platforms)) == 0 {
+		return fmt.Errorf("image processing requires at least one supported target platform")
 	}
 	if err := validateSheinStudioAspectRatio(req); err != nil {
 		return err

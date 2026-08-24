@@ -51,7 +51,7 @@ func toProductImageAsset(record asset.AssetRecord) *productimage.ImageAsset {
 	return &productimage.ImageAsset{
 		URL:        record.URL,
 		Type:       assetKindToProductImageType(record.Kind),
-		SourceURL:  readableSourceURL(record),
+		SourceURL:  sourceProvenanceURL(record),
 		Operations: append([]string(nil), record.Operations...),
 		Width:      record.Width,
 		Height:     record.Height,
@@ -113,10 +113,7 @@ func buildPipelineRecord(taskID string, idx int, item assetrecipe.AssetRecipe, b
 }
 
 func readableSourceURL(record asset.AssetRecord) string {
-	if value := strings.TrimSpace(record.Metadata["source_url"]); value != "" {
-		return value
-	}
-	return strings.TrimSpace(record.URL)
+	return productimage.ResolveReadableAssetURL(record.URL, record.Metadata["source_url"], record.Metadata)
 }
 
 func assetKindToProductImageType(kind asset.Kind) productimage.AssetType {

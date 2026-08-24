@@ -20,7 +20,6 @@ export function buildWorkspaceReviewViewProps({
   reviewPreviewData,
   taskResult,
   focusedPreview,
-  shein,
   sheinViewProps,
   focusedScenePreset,
   recoveryDescriptors,
@@ -34,7 +33,6 @@ export function buildWorkspaceReviewViewProps({
   reviewPreviewData?: ReviewPreviewResponse;
   taskResult?: ListingKitTaskResult;
   focusedPreview?: PreviewSlot;
-  shein: WorkspaceReviewViewProps["sheinSourceProductProps"]["shein"];
   sheinViewProps: {
     sheinFallbackPreview?: PreviewSlot;
     imageGalleryProps: WorkspaceReviewViewProps["sheinImageGalleryProps"];
@@ -59,7 +57,6 @@ export function buildWorkspaceReviewViewProps({
       selectedKey: sessionData.focused_section_key,
       onSelect: (section) => onDispatch(section.review_target?.navigation_target),
     },
-    sheinSourceProductProps: { shein },
     sheinImageGalleryProps: sheinViewProps.imageGalleryProps,
     sheinFinalReviewProps: sheinViewProps.finalReviewProps,
     previewCanvasProps: {

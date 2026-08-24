@@ -51,7 +51,7 @@ const storeProfileListSchema = z
   })
   .passthrough();
 
-export function parseStoreProfilesResponse(
+ function parseStoreProfilesResponse(
   payload: unknown,
 ): ListingKitStoreProfile[] {
   return parseApiResponseShape(

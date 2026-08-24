@@ -36,6 +36,10 @@ func (h *imageHandler) ProcessImages(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	if strings.TrimSpace(req.TargetPlatform) == "" && strings.TrimSpace(req.Marketplace) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "target_platform or marketplace is required"})
+		return
+	}
 
 	task, err := h.service.CreateProcessTask(c.Request.Context(), &req)
 	if err != nil {
@@ -67,6 +71,10 @@ func (h *imageHandler) GetTaskResult(c *gin.Context) {
 
 	result, err := h.service.GetTaskResult(c.Request.Context(), taskID)
 	if err != nil {
+		if errors.Is(err, productimage.ErrTaskTargetUnavailable) {
+			c.JSON(http.StatusConflict, gin.H{"error": "task_target_unavailable", "message": "image task target_platform is unavailable"})
+			return
+		}
 		if errors.Is(err, productimage.ErrTaskNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "task_not_found", "message": "Task with the specified ID does not exist"})
 			return

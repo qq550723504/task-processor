@@ -6,10 +6,11 @@ func TestCloneTasksDefensivelyCopiesMutableFields(t *testing.T) {
 	t.Parallel()
 
 	original := []Task{{
-		ID:             "task-1",
-		Lineage:        []string{"shein", "main"},
-		SourceAssetIDs: []string{"source-1"},
-		Metadata:       map[string]string{"slot": "main"},
+		ID:              "task-1",
+		TargetPlatforms: []string{"shein", "amazon"},
+		Lineage:         []string{"shein", "main"},
+		SourceAssetIDs:  []string{"source-1"},
+		Metadata:        map[string]string{"slot": "main"},
 	}}
 
 	cloned := CloneTasks(original)
@@ -17,9 +18,10 @@ func TestCloneTasksDefensivelyCopiesMutableFields(t *testing.T) {
 		t.Fatalf("CloneTasks() = %+v, want one task", cloned)
 	}
 	original[0].Lineage[0] = "mutated"
+	original[0].TargetPlatforms[0] = "mutated"
 	original[0].SourceAssetIDs[0] = "mutated"
 	original[0].Metadata["slot"] = "mutated"
-	if cloned[0].Lineage[0] != "shein" || cloned[0].SourceAssetIDs[0] != "source-1" || cloned[0].Metadata["slot"] != "main" {
+	if cloned[0].TargetPlatforms[0] != "shein" || cloned[0].Lineage[0] != "shein" || cloned[0].SourceAssetIDs[0] != "source-1" || cloned[0].Metadata["slot"] != "main" {
 		t.Fatalf("CloneTasks() = %+v, want defensive copies", cloned)
 	}
 }

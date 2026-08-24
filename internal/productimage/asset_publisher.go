@@ -11,11 +11,58 @@ import (
 
 	amazonapi "task-processor/internal/amazon/api"
 	amazonimage "task-processor/internal/amazon/image"
-	coreconfig "task-processor/internal/core/config"
 )
 
 type multiAssetPublisher struct {
 	publishers []AssetPublisher
+}
+
+// platformAssetPublisher keeps Amazon SP-API uploads scoped to Amazon image
+// tasks while allowing a local or object-storage publisher to provide the
+// readable URL required by ListingKit. For an Amazon task, a configured
+// nonAmazon publisher runs first and the SP-API upload runs second; the latter
+// records the upload destination ID without replacing the readable URL.
+type platformAssetPublisher struct {
+	nonAmazon AssetPublisher
+	amazon    AssetPublisher
+}
+
+func NewPlatformAssetPublisher(nonAmazon, amazon AssetPublisher) AssetPublisher {
+	if nonAmazon == nil && amazon == nil {
+		return nil
+	}
+	if amazon == nil {
+		return nonAmazon
+	}
+	return &platformAssetPublisher{nonAmazon: nonAmazon, amazon: amazon}
+}
+
+func (p *platformAssetPublisher) Publish(ctx context.Context, req *ImageProcessRequest, result *ImageProcessResult) error {
+	if p == nil {
+		return nil
+	}
+	platform := ""
+	if req != nil {
+		platform = strings.ToLower(strings.TrimSpace(req.TargetPlatform))
+		if platform == "" {
+			platform = strings.ToLower(strings.TrimSpace(req.Marketplace))
+		}
+	}
+	if platform == "amazon" {
+		if p.amazon == nil {
+			return nil
+		}
+		if p.nonAmazon != nil {
+			if err := p.nonAmazon.Publish(ctx, req, result); err != nil {
+				return err
+			}
+		}
+		return p.amazon.Publish(ctx, req, result)
+	}
+	if p.nonAmazon == nil {
+		return fmt.Errorf("image publisher has no route for target platform %q", platform)
+	}
+	return p.nonAmazon.Publish(ctx, req, result)
 }
 
 func NewMultiAssetPublisher(publishers ...AssetPublisher) AssetPublisher {
@@ -137,29 +184,41 @@ func (p *localAssetPublisher) applyPublishedMetadata(asset *ImageAsset, targetPa
 }
 
 type amazonAssetPublisher struct {
-	service       *amazonimage.ImageManagementService
+	service       amazonImageUploader
 	marketplaceID string
 }
 
-func NewAmazonAssetPublisher(cfg *coreconfig.Config) (AssetPublisher, error) {
-	if cfg == nil {
-		return nil, fmt.Errorf("config cannot be nil")
-	}
-	if !cfg.Amazon.SPAPI.Enabled {
+type amazonImageUploader interface {
+	UploadImage(ctx context.Context, imageData []byte, filename, marketplaceID string) (*amazonimage.ImageUploadResult, error)
+}
+
+type AmazonAssetPublisherOptions struct {
+	Enabled        bool
+	Region         string
+	MarketplaceID  string
+	ClientID       string
+	ClientSecret   string
+	RefreshToken   string
+	AWSAccessKeyID string
+	AWSSecretKey   string
+}
+
+func NewAmazonAssetPublisher(options AmazonAssetPublisherOptions) (AssetPublisher, error) {
+	if !options.Enabled {
 		return nil, fmt.Errorf("amazon SP-API is not enabled")
 	}
 	apiClient := amazonapi.NewClient(&amazonapi.Config{
-		Region:         cfg.Amazon.SPAPI.Region,
-		MarketplaceID:  resolveMarketplaceID(cfg),
-		ClientID:       cfg.Amazon.SPAPI.ClientID,
-		ClientSecret:   cfg.Amazon.SPAPI.ClientSecret,
-		RefreshToken:   cfg.Amazon.SPAPI.RefreshToken,
-		AWSAccessKeyID: cfg.Amazon.SPAPI.AWSAccessKeyID,
-		AWSSecretKey:   cfg.Amazon.SPAPI.AWSSecretKey,
+		Region:         options.Region,
+		MarketplaceID:  options.MarketplaceID,
+		ClientID:       options.ClientID,
+		ClientSecret:   options.ClientSecret,
+		RefreshToken:   options.RefreshToken,
+		AWSAccessKeyID: options.AWSAccessKeyID,
+		AWSSecretKey:   options.AWSSecretKey,
 	})
 	return &amazonAssetPublisher{
 		service:       amazonimage.NewImageManagementService(apiClient),
-		marketplaceID: resolveMarketplaceID(cfg),
+		marketplaceID: options.MarketplaceID,
 	}, nil
 }
 
@@ -188,6 +247,9 @@ func (p *amazonAssetPublisher) publishAsset(ctx context.Context, asset *ImageAss
 	if asset == nil {
 		return nil
 	}
+	if !isHTTPURL(ResolveReadableAssetURL(asset.URL, "", asset.Metadata)) {
+		return fmt.Errorf("amazon publication requires a readable public asset URL")
+	}
 	localPath := ""
 	if asset.Metadata != nil {
 		localPath = asset.Metadata["published_path"]
@@ -214,19 +276,11 @@ func (p *amazonAssetPublisher) publishAsset(ctx context.Context, asset *ImageAss
 		asset.Metadata = map[string]string{}
 	}
 	asset.Metadata["uploaded_image_id"] = uploadResult.ImageID
-	asset.Metadata["uploaded_url"] = uploadResult.URL
+	asset.Metadata["uploaded_destination_url"] = uploadResult.URL
 	asset.Metadata["upload_format"] = uploadResult.Format
 	asset.Metadata["original_local_path"] = localPath
 	asset.Metadata["published_provider"] = "amazon"
-	asset.URL = uploadResult.URL
 	return nil
-}
-
-func resolveMarketplaceID(cfg *coreconfig.Config) string {
-	if cfg == nil {
-		return ""
-	}
-	return coreconfig.ResolveAmazonMarketplaceID(cfg.Amazon.SPAPI)
 }
 
 func publisherTaskKey(req *ImageProcessRequest) string {

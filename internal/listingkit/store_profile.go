@@ -22,7 +22,6 @@ type ListingKitStoreProfile struct {
 	StoreID           int64                      `json:"store_id"`
 	Enabled           bool                       `json:"enabled"`
 	Priority          int                        `json:"priority,omitempty"`
-	IsFallback        bool                       `json:"is_fallback,omitempty"`
 	Site              string                     `json:"site,omitempty"`
 	WarehouseCode     string                     `json:"warehouse_code,omitempty"`
 	DefaultStock      int                        `json:"default_stock,omitempty"`

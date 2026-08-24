@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,29 +11,54 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	sheinclient "task-processor/internal/shein/client"
+	"task-processor/internal/core/config"
+	"task-processor/internal/listingadmin"
+	localruntime "task-processor/internal/listingruntime/local"
+	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 )
+
+var errSheinLoginWorkerUnavailable = errors.New("SHEIN login worker is unavailable")
+
+type sheinLoginWorkerRuntimeDependencies struct {
+	LoadConfig            func(string) (*config.Config, error)
+	BuildDatabaseStoreAPI func(*config.Config) (listingadmin.StoreAPI, func() error, error)
+	BuildLoginService     func(*runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error)
+}
+
+type sheinLoginWorkerRuntime struct {
+	result  *sheinloginbootstrap.BuildResult
+	closers []func() error
+}
+
+func (r *sheinLoginWorkerRuntime) Close() error {
+	if r == nil {
+		return nil
+	}
+	var closeErrors []error
+	for _, closeFn := range r.closers {
+		if closeFn == nil {
+			continue
+		}
+		if err := closeFn(); err != nil {
+			closeErrors = append(closeErrors, err)
+		}
+	}
+	return errors.Join(closeErrors...)
+}
 
 // RunSheinLoginWorker starts only the dependencies required by the dedicated
 // browser worker. It deliberately does not construct an HTTP server.
 func RunSheinLoginWorker(logger *logrus.Logger, options Options) error {
-	deps, err := buildRuntimeDeps(logger, options.ConfigPath)
+	workerRuntime, err := buildSheinLoginWorkerRuntime(options.ConfigPath)
 	if err != nil {
-		return fmt.Errorf("build runtime deps: %w", err)
+		return fmt.Errorf("build SHEIN login worker runtime: %w", err)
 	}
-	defer closeResources(logger, deps.shared.closers)
-
-	sheinclient.ConfigureLoginAccountFromConfig(deps.shared.cfg)
-	result, closer, err := buildSheinLoginModuleResult(deps)
-	if err != nil {
-		return fmt.Errorf("build SHEIN login worker: %w", err)
-	}
-	if closer != nil {
-		defer func() { _ = closer() }()
-	}
-	if result == nil || result.Service == nil {
-		return fmt.Errorf("SHEIN login worker is unavailable")
-	}
+	defer func() {
+		if err := workerRuntime.Close(); err != nil {
+			logger.WithError(err).Warn("close SHEIN login worker runtime")
+		}
+	}()
+	result := workerRuntime.result
 	var healthServer *http.Server
 	if options.Port > 0 {
 		mux := http.NewServeMux()
@@ -71,4 +97,81 @@ func RunSheinLoginWorker(logger *logrus.Logger, options Options) error {
 	}()
 
 	return result.Service.RunWorker(ctx, "")
+}
+
+func loadSheinLoginWorkerConfig(configPath string) (*config.Config, error) {
+	cfg, err := config.LoadConfigFromFileWithoutValidation(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	login := &cfg.Platforms.Shein.LoginService
+	login.BaseURL = ""
+	login.SharedKey = ""
+	login.TenantID = ""
+	login.Identifier = ""
+	login.MerchantName = ""
+	login.Username = ""
+	login.Password = ""
+	return cfg, nil
+}
+
+func buildSheinLoginWorkerRuntime(configPath string) (*sheinLoginWorkerRuntime, error) {
+	return buildSheinLoginWorkerRuntimeWithDependencies(configPath, sheinLoginWorkerRuntimeDependencies{
+		LoadConfig:            loadSheinLoginWorkerConfig,
+		BuildDatabaseStoreAPI: buildSheinLoginWorkerDatabaseStoreAPI,
+		BuildLoginService:     buildSheinLoginModuleResult,
+	})
+}
+
+func buildSheinLoginWorkerRuntimeWithDependencies(configPath string, dependencies sheinLoginWorkerRuntimeDependencies) (*sheinLoginWorkerRuntime, error) {
+	if dependencies.LoadConfig == nil || dependencies.BuildDatabaseStoreAPI == nil || dependencies.BuildLoginService == nil {
+		return nil, fmt.Errorf("SHEIN login worker runtime dependencies are incomplete")
+	}
+
+	cfg, err := dependencies.LoadConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	storeAPI, storeCloser, err := dependencies.BuildDatabaseStoreAPI(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("build SHEIN login worker database StoreAPI: %w", err)
+	}
+
+	deps := &runtimeDeps{
+		shared: &sharedRuntimeDeps{
+			cfg:      cfg,
+			storeAPI: storeAPI,
+		},
+		features: &featureRuntimeState{},
+	}
+	result, loginCloser, err := dependencies.BuildLoginService(deps)
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("build SHEIN login worker service: %w", err), closeWorkerRuntimeClosers(loginCloser, storeCloser))
+	}
+	if result == nil || result.Service == nil {
+		return nil, errors.Join(errSheinLoginWorkerUnavailable, closeWorkerRuntimeClosers(loginCloser, storeCloser))
+	}
+
+	return &sheinLoginWorkerRuntime{
+		result:  result,
+		closers: []func() error{loginCloser, storeCloser},
+	}, nil
+}
+
+func buildSheinLoginWorkerDatabaseStoreAPI(cfg *config.Config) (listingadmin.StoreAPI, func() error, error) {
+	provider, err := localruntime.NewLocalDataProvider(cfg.Database, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if provider == nil {
+		return nil, nil, nil
+	}
+	storeAPI := localruntime.NewLocalRuntime(provider, localruntime.LocalRuntimeOptions{}).GetStoreAPI()
+	return storeAPI, provider.Close, nil
+}
+
+func closeWorkerRuntimeClosers(closers ...func() error) error {
+	runtime := &sheinLoginWorkerRuntime{closers: closers}
+	return runtime.Close()
 }

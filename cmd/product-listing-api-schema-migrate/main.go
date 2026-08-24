@@ -1,21 +1,19 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 
 	productlistingschemamigrate "task-processor/internal/app/runtime/productlistingschemamigrate"
-	"task-processor/internal/core/config"
 )
 
 func main() {
 	configPath := flag.String("config", "config/config-dev.yaml", "config file path")
 	flag.Parse()
 
-	if err := productlistingschemamigrate.Run(nil, *configPath, productlistingschemamigrate.Dependencies{
-		LoadConfig: config.LoadConfigFromFile,
-	}); err != nil {
+	if err := productlistingschemamigrate.Run(context.Background(), *configPath); err != nil {
 		exitf("migrate product listing API schema: %v", err)
 	}
 

@@ -28,10 +28,12 @@ type mockImageHandlerSvc struct {
 	reviewResult *productimage.TaskResult
 	reviewErr    error
 	createCtx    context.Context
+	createReq    *productimage.ImageProcessRequest
 }
 
-func (m *mockImageHandlerSvc) CreateProcessTask(ctx context.Context, _ *productimage.ImageProcessRequest) (*productimage.Task, error) {
+func (m *mockImageHandlerSvc) CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
 	m.createCtx = ctx
+	m.createReq = req
 	return m.createResult, m.createErr
 }
 
@@ -64,7 +66,7 @@ func TestProcessImages_ValidRequest_Returns200(t *testing.T) {
 	svc := &mockImageHandlerSvc{createResult: &productimage.Task{ID: "img-123", Status: productimage.TaskStatusPending, CreatedAt: now}}
 	r := newTestRouter(svc)
 
-	body := `{"image_urls":["http://example.com/img.jpg"],"marketplace":"amazon"}`
+	body := `{"image_urls":["http://example.com/img.jpg"],"target_platform":"amazon","marketplace":"amazon"}`
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -85,7 +87,7 @@ func TestProcessImages_ValidRequest_Returns200(t *testing.T) {
 func TestProcessImagesPropagatesVerifiedIdentityToTaskCreation(t *testing.T) {
 	svc := &mockImageHandlerSvc{createResult: &productimage.Task{ID: "img-identity", Status: productimage.TaskStatusPending}}
 	r := newTestRouter(svc)
-	body := `{"image_urls":["http://example.com/img.jpg"],"marketplace":"amazon"}`
+	body := `{"image_urls":["http://example.com/img.jpg"],"target_platform":"amazon","marketplace":"amazon"}`
 	req := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"}))
@@ -122,6 +124,40 @@ func TestProcessImages_InvalidRequestError_Returns400(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestProcessImages_MarketplaceOnly_ReachesServiceCompatibilityNormalization(t *testing.T) {
+	svc := &mockImageHandlerSvc{createResult: &productimage.Task{ID: "legacy-marketplace", Status: productimage.TaskStatusPending}}
+	r := newTestRouter(svc)
+	body := `{"image_urls":["http://example.com/img.jpg"],"marketplace":"amazon"}`
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	if svc.createReq == nil || svc.createReq.Marketplace != "amazon" || svc.createReq.TargetPlatform != "" {
+		t.Fatalf("service request = %+v, want marketplace-only compatibility input", svc.createReq)
+	}
+}
+
+func TestProcessImages_MissingTargetAndMarketplace_Returns400WithoutCreatingTask(t *testing.T) {
+	svc := &mockImageHandlerSvc{createResult: &productimage.Task{ID: "must-not-create"}}
+	r := newTestRouter(svc)
+	body := `{"image_urls":["http://example.com/img.jpg"]}`
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if svc.createReq != nil {
+		t.Fatal("CreateProcessTask called for a request without target_platform or marketplace")
 	}
 }
 

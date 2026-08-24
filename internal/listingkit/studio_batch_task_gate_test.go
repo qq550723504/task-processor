@@ -50,6 +50,15 @@ type stubStudioBatchStoreValidator struct {
 	calls   int
 }
 
+type stubStudioBatchStoreAccessValidator struct {
+	access StoreAccess
+	err    error
+}
+
+func (s stubStudioBatchStoreAccessValidator) ValidateStoreAccess(context.Context, int64, int64, string) (StoreAccess, error) {
+	return s.access, s.err
+}
+
 func (s *stubStudioBatchStoreValidator) ValidateStudioBatchStore(_ context.Context, _ string, storeID int64) (studioBatchStoreValidationResult, error) {
 	s.calls++
 	if s.err != nil {
@@ -397,6 +406,26 @@ func TestStudioBatchStoreProfileValidatorSkipsWhenTenantCannotResolve(t *testing
 	}
 	if !result.Exists || !result.Valid || !result.Available {
 		t.Fatalf("ValidateStudioBatchStore() = %+v, want non-blocking result for unresolved tenant", result)
+	}
+}
+
+func TestStudioBatchStoreProfileValidatorAcceptsAuthorizedCatalogStoreWithoutProfile(t *testing.T) {
+	t.Parallel()
+
+	validator := stubStudioBatchStoreAccessValidator{
+		access: StoreAccess{ID: 870, TenantID: 101, Platform: "SHEIN", Enabled: true},
+	}
+	ctx := WithRequestIdentity(context.Background(), RequestIdentity{TenantID: "101", UserID: "user-1"})
+
+	result, err := (studioBatchStoreProfileValidator{
+		repo:            newInMemoryStoreProfileRepository(),
+		accessValidator: validator,
+	}).ValidateStudioBatchStore(ctx, "101", 870)
+	if err != nil {
+		t.Fatalf("ValidateStudioBatchStore() error = %v", err)
+	}
+	if !result.Exists || !result.Valid || !result.Available {
+		t.Fatalf("ValidateStudioBatchStore() = %+v, want active catalog store without profile", result)
 	}
 }
 

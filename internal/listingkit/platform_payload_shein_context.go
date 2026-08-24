@@ -21,7 +21,7 @@ func buildSheinPlatformPayloadContext(
 		return nil, false
 	}
 	sheinpub.NormalizePackageSemanticFields(result.Shein)
-	context := buildPlatformPayloadResultContext(result, platformPreviews)
+	context := buildPlatformPayloadResultContext(result, "shein", platformPreviews)
 	return &sheinPlatformPayloadContext{
 		pkg:           result.Shein,
 		assetBundle:   context.assetBundle,

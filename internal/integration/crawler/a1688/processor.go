@@ -16,12 +16,16 @@ var ErrSourceUnavailable = errors.New("1688 crawler source unavailable")
 
 // Source is the legacy 1688 crawler surface used by this integration adapter.
 type Source interface {
-	Process(url string) (*model.Product1688, error)
+	Process(context.Context, string) (*model.Product1688, error)
 }
 
 // Processor exposes 1688 crawling through a stable integration boundary.
 type Processor struct {
 	source Source
+}
+
+type sourcePreparer interface {
+	Prepare(context.Context) error
 }
 
 // NewProcessor wraps a 1688 crawler source.
@@ -34,6 +38,21 @@ func NewLegacyProcessor(cfg *config.Config) *Processor {
 	return NewProcessor(legacy.NewAlibaba1688Processor(cfg))
 }
 
+// Prepare provisions the legacy crawler's browser dependencies before a job
+// is claimed. Sources that do not need preparation remain compatible.
+func (p *Processor) Prepare(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if p == nil || p.source == nil {
+		return ErrSourceUnavailable
+	}
+	if preparer, ok := p.source.(sourcePreparer); ok {
+		return preparer.Prepare(ctx)
+	}
+	return nil
+}
+
 // Process crawls a 1688 product URL.
 func (p *Processor) Process(ctx context.Context, url string) (*model.Product1688, error) {
 	if err := ctx.Err(); err != nil {
@@ -42,5 +61,5 @@ func (p *Processor) Process(ctx context.Context, url string) (*model.Product1688
 	if p == nil || p.source == nil {
 		return nil, ErrSourceUnavailable
 	}
-	return p.source.Process(url)
+	return p.source.Process(ctx, url)
 }

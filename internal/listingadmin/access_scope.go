@@ -2,6 +2,7 @@ package listingadmin
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -20,10 +21,16 @@ var (
 	ownerScopeRequiredTest sync.Mutex
 )
 
-func ConfigureOwnerScopeRequired(required bool) {
-	ownerScopeRequired.Store(required)
+func init() {
+	ownerScopeRequired.Store(true)
 }
 
+// EnableOwnerScope ensures the production owner-filtering invariant is active.
+func EnableOwnerScope() {
+	ownerScopeRequired.Store(true)
+}
+
+// SetOwnerScopeRequiredForTesting is reserved for tests, including external-package tests.
 func SetOwnerScopeRequiredForTesting(required bool) func() {
 	ownerScopeRequiredTest.Lock()
 	previous := ownerScopeRequired.Load()
@@ -35,6 +42,10 @@ func SetOwnerScopeRequiredForTesting(required bool) func() {
 }
 
 func ownerScopeEnabled() bool {
+	return ownerScopeRequired.Load()
+}
+
+func OwnerScopeEnabled() bool {
 	return ownerScopeRequired.Load()
 }
 
@@ -53,6 +64,24 @@ func withRequestUserID(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, requestUserIDContextKey{}, userID)
 }
 
+// WithRequestRoles bridges verified application roles into the listing-admin
+// access scope used by repository reads.
+func WithRequestRoles(ctx context.Context, roles []string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	normalized := normalizeRequestRoles(roles)
+	if len(normalized) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, requestRolesContextKey{}, normalized)
+}
+
+// RequestRolesFromContext returns the roles available to listing-admin access checks.
+func RequestRolesFromContext(ctx context.Context) []string {
+	return requestRolesFromContext(ctx)
+}
+
 func requestUserIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
@@ -61,6 +90,24 @@ func requestUserIDFromContext(ctx context.Context) string {
 		return requestUserIDHeader(value)
 	}
 	return requestUserIDHeader(openaiclient.IdentityFromContext(ctx).UserID)
+}
+
+var ErrOwnerUserIDRequired = errors.New("owner user id is required")
+
+// WithOwnerUserID supplies a trusted owner identity to internal write paths
+// that do not originate from an HTTP request.
+func WithOwnerUserID(ctx context.Context, ownerUserID string) context.Context {
+	return withRequestUserID(ctx, ownerUserID)
+}
+
+func requireOwnerUserID(ctx context.Context, explicitOwner string) (string, error) {
+	if owner := strings.TrimSpace(requestUserIDFromContext(ctx)); owner != "" {
+		return owner, nil
+	}
+	if owner := strings.TrimSpace(explicitOwner); owner != "" {
+		return owner, nil
+	}
+	return "", ErrOwnerUserIDRequired
 }
 
 func withRequestIdentity(ctx context.Context, userID string, roles []string) context.Context {
@@ -72,7 +119,7 @@ func withRequestIdentity(ctx context.Context, userID string, roles []string) con
 	if len(normalized) == 0 {
 		return ctx
 	}
-	return context.WithValue(ctx, requestRolesContextKey{}, normalized)
+	return WithRequestRoles(ctx, normalized)
 }
 
 func requestRolesFromContext(ctx context.Context) []string {

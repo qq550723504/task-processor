@@ -7,7 +7,7 @@ export type SDSBaselineStatus =
   | "missing"
   | "failed";
 
-export type SDSBaselineValidationStatus =
+ type SDSBaselineValidationStatus =
   | "unknown"
   | "ready"
   | "blocked"

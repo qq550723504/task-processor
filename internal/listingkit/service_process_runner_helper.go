@@ -5,16 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/listingsubscription"
 
 	"github.com/sirupsen/logrus"
 )
 
 type listingKitProcessFlow struct {
-	service *service
+	service                *service
+	startUsageLeaseRenewal func(context.Context, *Task) (context.Context, func() error)
 }
 
 func buildListingKitProcessFlow(s *service) *listingKitProcessFlow {
-	return &listingKitProcessFlow{service: s}
+	return &listingKitProcessFlow{
+		service:                s,
+		startUsageLeaseRenewal: s.startGenerationUsageReservationLeaseRenewal,
+	}
 }
 
 func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus.Entry) (*ListingKitResult, error) {
@@ -22,15 +27,115 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		return nil, err
 	}
 	log.Info("marked listing kit task as processing")
-
-	result, err := f.service.runWorkflow(ctx, task)
+	reservation, usageEnabled, err := f.service.reserveGenerationUsage(ctx, task)
 	if err != nil {
-		log.WithError(err).Error("listing kit workflow failed")
-		if persistErr := f.service.persistProcessFailure(ctx, task.ID, result, err); persistErr != nil {
-			log.WithError(persistErr).Error("failed to persist listing kit workflow failure")
+		var postReserveErr *generationUsagePostReservePersistenceError
+		if errors.As(err, &postReserveErr) {
+			if persistErr := f.service.persistGenerationUsageReconciliation(ctx, task, err); persistErr != nil {
+				return nil, errors.Join(err, persistErr)
+			}
+			return nil, err
+		}
+		var replayReservationErr *generationUsageReplayReservationError
+		if errors.As(err, &replayReservationErr) {
+			if persistErr := f.service.persistGenerationUsageReconciliation(ctx, task, err); persistErr != nil {
+				return nil, errors.Join(err, persistErr)
+			}
+			return nil, err
+		}
+		if errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) {
+			quotaErr := generationQuotaFailure(task.ID)
+			if persistErr := markFailedTaskState(ctx, f.service.repo, task.ID, quotaErr.Error()); persistErr != nil {
+				fallbackErr := markTerminalPersistencePending(ctx, f.service.repo, task.ID, quotaErr.Error(), persistErr)
+				return nil, errors.Join(err, quotaErr, persistErr, fallbackErr)
+			}
+			return nil, err
+		}
+		if persistErr := f.service.persistReservationFailure(ctx, task, err); persistErr != nil {
 			return nil, errors.Join(err, persistErr)
 		}
 		return nil, err
+	}
+	if usageEnabled && reservation.AlreadyCommitted {
+		result, replayErr := generationUsageCommittedReplayResult(task)
+		if replayErr != nil {
+			return nil, replayErr
+		}
+		// claimTask moves the row to processing before the idempotent usage
+		// lookup. Re-persist the already terminal result so a committed replay
+		// cannot strand the task in processing.
+		if persistErr := f.service.persistProcessSuccess(ctx, task.ID, result); persistErr != nil {
+			fallbackErr := markCommittedReplayPersistencePending(ctx, f.service.repo, task.ID, persistErr)
+			return nil, errors.Join(persistErr, fallbackErr)
+		}
+		if clearErr := f.service.clearGenerationUsageReservation(ctx, task); clearErr != nil {
+			return nil, clearErr
+		}
+		return result, nil
+	}
+
+	workflowCtx := ctx
+	stopLeaseRenewal := func() error { return nil }
+	if usageEnabled {
+		startLeaseRenewal := f.startUsageLeaseRenewal
+		if startLeaseRenewal == nil {
+			startLeaseRenewal = f.service.startGenerationUsageReservationLeaseRenewal
+		}
+		workflowCtx, stopLeaseRenewal = startLeaseRenewal(ctx, task)
+	}
+	result, workflowErr := f.service.runWorkflow(workflowCtx, task)
+	if renewalErr := stopLeaseRenewal(); renewalErr != nil {
+		// A failed lease renewal makes the provider outcome ambiguous: it may
+		// have completed after its task-side lease stopped being durable. Keep
+		// the reservation for operator reconciliation instead of releasing it
+		// or scheduling another provider invocation.
+		cause := errors.Join(workflowErr, renewalErr)
+		if persistErr := f.service.persistGenerationUsageReconciliation(ctx, task, cause); persistErr != nil {
+			return nil, errors.Join(cause, persistErr)
+		}
+		return nil, cause
+	}
+	if workflowErr != nil {
+		log.WithError(workflowErr).Error("listing kit workflow failed")
+		// A canceled provider call is ambiguous: the remote provider can accept
+		// work before the local worker observes cancellation. Keep the reservation
+		// under explicit reconciliation rather than releasing quota and risking a
+		// second provider invocation for the same task.
+		if usageEnabled && errors.Is(workflowErr, context.Canceled) {
+			if persistErr := f.service.persistGenerationUsageReconciliation(ctx, task, workflowErr); persistErr != nil {
+				return nil, errors.Join(workflowErr, persistErr)
+			}
+			return nil, workflowErr
+		}
+		if _, retryable := classifyRetryableTaskFailure(workflowErr); retryable {
+			var persistErr error
+			if usageEnabled {
+				persistErr = f.service.persistProcessRetryableFailure(ctx, task, result, workflowErr, true)
+			} else {
+				persistErr = f.service.persistProcessFailure(ctx, task.ID, result, workflowErr)
+			}
+			if persistErr != nil {
+				log.WithError(persistErr).Error("failed to persist scheduled listing kit workflow failure")
+				return nil, errors.Join(workflowErr, persistErr)
+			}
+			return nil, workflowErr
+		}
+		if usageEnabled {
+			if releaseErr := f.service.releaseGenerationUsageAndFail(ctx, task, result, "workflow_failed", workflowErr.Error()); releaseErr != nil {
+				log.WithError(releaseErr).Error("failed to release listing kit generation usage")
+				return nil, errors.Join(workflowErr, releaseErr)
+			}
+			return nil, workflowErr
+		}
+		if persistErr := f.service.persistProcessFailure(ctx, task.ID, result, workflowErr); persistErr != nil {
+			log.WithError(persistErr).Error("failed to persist listing kit workflow failure")
+			// The ledger release has already succeeded and cleared the task-side
+			// intent. If durable failure persistence then fails, retain an explicit
+			// recovery block rather than leaving the claimed task in processing.
+			fallbackErr := markTerminalPersistencePending(ctx, f.service.repo, task.ID, workflowErr.Error(), persistErr)
+			return nil, errors.Join(workflowErr, persistErr, fallbackErr)
+		}
+		return nil, workflowErr
 	}
 	log.WithFields(logrus.Fields{
 		"needs_review":  result != nil && result.Summary != nil && result.Summary.NeedsReview,
@@ -43,7 +148,15 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		log.WithField("review_reason_count", len(result.ReviewReasons)).Info("marking listing kit task as needs_review")
 		if err := f.service.persistProcessSuccess(ctx, task.ID, result); err != nil {
 			log.WithError(err).Error("failed to mark listing kit task as needs_review")
-			return nil, err
+			if !usageEnabled {
+				return nil, err
+			}
+			return nil, f.service.handleGenerationTerminalPersistenceFailure(ctx, task, result, err)
+		}
+		if usageEnabled {
+			if err := f.service.commitGenerationUsage(ctx, task); err != nil {
+				return nil, f.service.markGenerationUsageCommitPending(ctx, task, err)
+			}
 		}
 		log.Info("marked listing kit task as needs_review")
 		return result, nil
@@ -52,7 +165,15 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 	log.Info("marking listing kit task as completed")
 	if err := f.service.persistProcessSuccess(ctx, task.ID, result); err != nil {
 		log.WithError(err).Error("failed to mark listing kit task as completed")
-		return nil, err
+		if !usageEnabled {
+			return nil, err
+		}
+		return nil, f.service.handleGenerationTerminalPersistenceFailure(ctx, task, result, err)
+	}
+	if usageEnabled {
+		if err := f.service.commitGenerationUsage(ctx, task); err != nil {
+			return nil, f.service.markGenerationUsageCommitPending(ctx, task, err)
+		}
 	}
 	log.Info("marked listing kit task as completed")
 	return result, nil

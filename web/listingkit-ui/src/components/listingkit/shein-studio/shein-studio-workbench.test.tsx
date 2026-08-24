@@ -54,7 +54,7 @@ describe("SheinStudioWorkbench", () => {
     resetSheinStudioWorkbenchHarness(resetDedicatedBatchPromptOverrides);
   });
 
-  it("defaults to one SDS main image plus size references in hybrid and SDS modes", async () => {
+  it("defaults to one SDS main image plus size references in SDS mode", async () => {
     hydrateSDSVariantSelection.mockResolvedValue({
       ...selection,
       mockupImageUrls: ["https://example.com/main-mockup.jpg"],
@@ -69,7 +69,7 @@ describe("SheinStudioWorkbench", () => {
       artworkModel: "nanobanana",
       transparentBackground: false,
       sheinStoreId: "1",
-      imageStrategy: "hybrid",
+      imageStrategy: "sds_official",
       selectedSdsImages: [],
       renderSizeImagesWithSds: true,
       selectionVariantId: 100,
@@ -180,7 +180,7 @@ describe("SheinStudioWorkbench", () => {
     render(<SheinStudioWorkbench activeStep="generate" />);
 
     expect(await screen.findByText("Group 2")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("prompt b")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("prompt b")).toBeInTheDocument();
   });
 
   it("shows recent batch cards before any explicit product reselection", async () => {
@@ -936,10 +936,11 @@ describe("SheinStudioWorkbench", () => {
     );
 
     await waitFor(() =>
-      expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
-        "design-1",
-        "design-2",
-      ]),
+      expect(createSheinStudioBatchTasks).toHaveBeenCalledWith(
+        "batch-1",
+        ["design-1", "design-2"],
+        { imageStrategy: "sds_official" },
+      ),
     );
     expect(createSheinReviewTasks).not.toHaveBeenCalled();
 
@@ -1732,9 +1733,11 @@ describe("SheinStudioWorkbench", () => {
     );
 
     await waitFor(() =>
-      expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
-        "design-1",
-      ]),
+      expect(createSheinStudioBatchTasks).toHaveBeenCalledWith(
+        "batch-1",
+        ["design-1"],
+        { imageStrategy: "sds_official" },
+      ),
     );
     await waitFor(() =>
       expect(screen.getByText("created tasks: 1")).toBeInTheDocument(),
@@ -1951,10 +1954,11 @@ describe("SheinStudioWorkbench", () => {
       screen.queryByRole("button", { name: "继续生成" }),
     ).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
-        "design-1",
-        "design-2",
-      ]),
+      expect(createSheinStudioBatchTasks).toHaveBeenCalledWith(
+        "batch-1",
+        ["design-1", "design-2"],
+        { imageStrategy: "sds_official" },
+      ),
     );
     await waitFor(() =>
       expect(screen.getByText("created tasks: 2")).toBeInTheDocument(),

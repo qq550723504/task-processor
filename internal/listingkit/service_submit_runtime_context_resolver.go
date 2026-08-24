@@ -134,16 +134,26 @@ func (r *submitRuntimeContextResolver) resolveStoreProfile(ctx context.Context, 
 }
 
 func (r *submitRuntimeContextResolver) resolveStoreSelection(ctx context.Context, task *Task) (*sheinStoreSelection, error) {
-	if snapshot := sheinStoreResolutionSnapshotFromTask(task); snapshot != nil && snapshot.StoreID > 0 {
+	if snapshot := sheinStoreResolutionSnapshotFromTask(task); sheinStoreResolutionSnapshotHasProfile(snapshot) {
 		return selectionFromSnapshot(snapshot), nil
 	}
-	if task == nil || task.Request == nil || task.Request.SheinStoreID <= 0 {
+	if task == nil {
+		return nil, fmt.Errorf("shein store id is unavailable")
+	}
+	storeID := int64(0)
+	if snapshot := sheinStoreResolutionSnapshotFromTask(task); snapshot != nil {
+		storeID = snapshot.StoreID
+	}
+	if storeID <= 0 && task.Request != nil {
+		storeID = task.Request.SheinStoreID
+	}
+	if storeID <= 0 {
 		return nil, fmt.Errorf("shein store id is unavailable")
 	}
 
 	selection := &sheinStoreSelection{
 		Profile: &ListingKitStoreProfile{
-			StoreID: task.Request.SheinStoreID,
+			StoreID: storeID,
 			Enabled: true,
 		},
 		Strategy:       "manual",
@@ -167,7 +177,7 @@ func (r *submitRuntimeContextResolver) resolveStoreSelection(ctx context.Context
 		return nil, err
 	}
 	for idx := range items {
-		if !items[idx].Enabled || items[idx].StoreID != task.Request.SheinStoreID {
+		if !items[idx].Enabled || items[idx].StoreID != storeID {
 			continue
 		}
 		selection.Profile = cloneStoreProfile(&items[idx])

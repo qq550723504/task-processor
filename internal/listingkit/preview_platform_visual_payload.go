@@ -1,7 +1,3 @@
 package listingkit
 
 type platformVisualPreviewPayloadBase = platformVisualPresentationBase
-
-func buildPlatformVisualPreviewPayloadBase(base platformVisualPresentationBase) platformVisualPreviewPayloadBase {
-	return base
-}

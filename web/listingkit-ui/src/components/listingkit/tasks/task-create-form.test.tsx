@@ -69,13 +69,7 @@ describe("TaskCreateForm", () => {
     expect(screen.getByRole("button", { name: "返回首页" })).toHaveClass("w-full");
   });
 
-  it("submits the minimal request and routes to status", async () => {
-    mutateAsync.mockResolvedValue({
-      task_id: "task_123",
-      status: "pending",
-      created_at: "2026-04-19T00:00:00Z",
-    });
-
+  it("rejects SHEIN creation without an explicit store", async () => {
     render(<TaskCreateForm />);
 
     fireEvent.change(screen.getByLabelText("商品标题"), {
@@ -91,36 +85,13 @@ describe("TaskCreateForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "创建任务" }));
 
     await waitFor(() => {
-      expect(mutateAsync).toHaveBeenCalledWith({
-        text: "Women knit cardigan",
-        image_urls: ["https://example.com/1.jpg", "https://example.com/2.jpg"],
-        platforms: ["shein"],
-      });
+      expect(
+        screen.getByText("选择 SHEIN 平台时，必须选择有效的 SHEIN 店铺。"),
+      ).toBeInTheDocument();
     });
-
-    expect(push).toHaveBeenCalledWith("/listing-kits/task_123/status");
-    expect(loadTaskCreateDraft("task_123")).toEqual({
-      text: "Women knit cardigan",
-      imageUrls: "https://example.com/1.jpg\nhttps://example.com/2.jpg",
-      productUrl: "",
-      platforms: ["shein"],
-      sheinStoreId: "",
-      sdsEnabled: false,
-      sdsVariantId: "",
-      sdsParentProductId: "",
-      sdsPrototypeGroupId: "",
-      sdsLayerId: "",
-      sdsDesignType: "material",
-      sdsFitLevel: "1",
-      sdsResizeMode: "0",
-      sceneCategory: "",
-      sceneStyle: "",
-      backgroundTone: "",
-      composition: "",
-      propsLevel: "",
-      audienceHint: "",
-      customSceneHint: "",
-    });
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(loadTaskCreateDraft("task_123")).toBeNull();
   });
 
   it("allows product URL only creation", async () => {
@@ -212,7 +183,7 @@ describe("TaskCreateForm", () => {
   it("blocks submit when no source input is provided", async () => {
     render(<TaskCreateForm />);
 
-    fireEvent.click(screen.getByLabelText("SHEIN"));
+    fireEvent.click(screen.getByLabelText("Amazon"));
     fireEvent.click(screen.getByRole("button", { name: "创建任务" }));
 
     await waitFor(() => {
@@ -254,7 +225,7 @@ describe("TaskCreateForm", () => {
       expect(screen.getByRole("combobox", { name: "SHEIN 店铺" })).toHaveValue("");
     });
     expect(
-      screen.getByText("这里选中的 SHEIN 店铺就是后续使用的店铺；如果不选，任务仍可创建，但后续在线解析和提交可能受阻。"),
+      screen.getByText("SHEIN 任务必须显式选择目标店铺；所选店铺将用于后续在线解析和提交。"),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("option", { name: "US 主店 (US / US)" }),
@@ -362,6 +333,31 @@ describe("TaskCreateForm", () => {
           enabled: true,
           site: "US",
           store: { name: "US 主店", store_id: "SHEIN-US-870", region: "US" },
+        },
+      ],
+      profiles: { isError: false },
+      selectedStoreLoginStatus: null,
+    });
+
+    render(<TaskCreateForm />);
+    fireEvent.click(screen.getByLabelText("SHEIN"));
+
+    expect(
+      screen.getByText(
+        "当前没有可用的 SHEIN 店铺登录态。你仍然可以先创建标准商品和 SDS 图片；但后续 SHEIN 在线解析和提交会在平台阶段受阻，建议先完成店铺登录。",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("warns for a profileless catalog store without a login account", () => {
+    useSheinStoreSelector.mockReturnValue({
+      anyLoggedInStore: false,
+      enabledProfiles: [],
+      storeOptions: [
+        {
+          store_id: 870,
+          enabled: true,
+          store: { name: "US 目录店", store_id: "SHEIN-US-870", region: "US" },
         },
       ],
       profiles: { isError: false },

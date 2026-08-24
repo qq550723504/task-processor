@@ -13,8 +13,8 @@ func buildStudioBatchCompatibilityFingerprint(selection SheinStudioSelection) st
 		int64String(selection.PrototypeGroupID),
 		strings.TrimSpace(selection.LayerID),
 		strings.TrimSpace(selection.DesignType),
-		intString(selection.PrintableWidth),
-		intString(selection.PrintableHeight),
+		strconv.Itoa(selection.PrintableWidth),
+		strconv.Itoa(selection.PrintableHeight),
 		strings.TrimSpace(selection.TemplateImageURL),
 		strings.TrimSpace(selection.MaskImageURL),
 		strings.TrimSpace(selection.ProductSize),
@@ -26,8 +26,4 @@ func buildStudioBatchCompatibilityFingerprint(selection SheinStudioSelection) st
 
 func int64String(v int64) string {
 	return strconv.FormatInt(v, 10)
-}
-
-func intString(v int) string {
-	return strconv.Itoa(v)
 }

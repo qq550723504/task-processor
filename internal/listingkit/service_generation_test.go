@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"task-processor/internal/asset"
@@ -14,7 +15,10 @@ type stubServiceDeferredRenderer struct {
 }
 
 type stubGenerationRepo struct {
-	task *Task
+	task                    *Task
+	generationUsageRenewed  chan struct{}
+	beginGenerationUsageErr error
+	markGenerationUsageErr  error
 }
 
 func (r *stubGenerationRepo) CreateTask(ctx context.Context, task *Task) error {
@@ -48,6 +52,7 @@ func (r *stubGenerationRepo) MarkNeedsReview(ctx context.Context, taskID string,
 		return err
 	}
 	r.task.Status = core.TaskStatusNeedsReview
+	r.task.RetryableBlock = nil
 	r.task.Error = reason
 	return nil
 }
@@ -63,6 +68,19 @@ func (r *stubGenerationRepo) MarkBlockedRetryable(ctx context.Context, taskID st
 	r.task.Error = errorMsg
 	r.task.UpdatedAt = time.Now()
 	return nil
+}
+
+func (r *stubGenerationRepo) MarkBlockedRetryableIfCurrent(ctx context.Context, taskID string, expected, next *RetryableBlock, errorMsg string) (bool, error) {
+	if r.task == nil || r.task.ID != taskID {
+		return false, core.ErrTaskNotFound
+	}
+	if r.task.Status != core.TaskStatusBlockedRetryable || !reflect.DeepEqual(r.task.RetryableBlock, expected) {
+		return false, nil
+	}
+	if err := r.MarkBlockedRetryable(ctx, taskID, next, errorMsg); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 func (r *stubGenerationRepo) ListRecoverableTasks(context.Context, *RecoverableTaskQuery) ([]Task, error) {
 	return []Task{}, nil
@@ -90,6 +108,117 @@ func (r *stubGenerationRepo) SaveTaskResult(ctx context.Context, taskID string, 
 	}
 	r.task.Result = result
 	r.task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *stubGenerationRepo) BeginGenerationUsageReservation(_ context.Context, taskID string, leaseUntil time.Time) error {
+	if r.beginGenerationUsageErr != nil {
+		return r.beginGenerationUsageErr
+	}
+	if r.task == nil || r.task.ID != taskID {
+		return core.ErrTaskNotFound
+	}
+	if r.task.GenerationUsageReservationState == "" {
+		r.task.GenerationUsageReservationState = GenerationUsageReservationStatePending
+	}
+	r.task.GenerationUsageReservationLeaseUntil = &leaseUntil
+	return nil
+}
+
+func (r *stubGenerationRepo) MarkGenerationUsageReserved(_ context.Context, taskID string, leaseUntil time.Time) error {
+	if r.markGenerationUsageErr != nil {
+		return r.markGenerationUsageErr
+	}
+	if r.task == nil || r.task.ID != taskID || r.task.GenerationUsageReservationState == "" {
+		return core.ErrTaskNotRecoverable
+	}
+	r.task.GenerationUsageReservationState = GenerationUsageReservationStateReserved
+	r.task.GenerationUsageReservationLeaseUntil = &leaseUntil
+	return nil
+}
+
+func (r *stubGenerationRepo) RenewGenerationUsageReservation(_ context.Context, taskID string, leaseUntil time.Time) error {
+	if r.task == nil || r.task.ID != taskID || r.task.GenerationUsageReservationState == "" {
+		return core.ErrTaskNotRecoverable
+	}
+	r.task.GenerationUsageReservationLeaseUntil = &leaseUntil
+	if r.generationUsageRenewed != nil {
+		select {
+		case r.generationUsageRenewed <- struct{}{}:
+		default:
+		}
+	}
+	return nil
+}
+
+func (r *stubGenerationRepo) ClearGenerationUsageReservation(_ context.Context, taskID string) error {
+	if r.task == nil || r.task.ID != taskID {
+		return core.ErrTaskNotFound
+	}
+	r.task.GenerationUsageReservationState = ""
+	r.task.GenerationUsageReservationLeaseUntil = nil
+	return nil
+}
+
+func (r *stubGenerationRepo) FinalizeGenerationUsageAdmission(_ context.Context, taskID string, status core.TaskStatus, block *RetryableBlock, errorMsg string) error {
+	if r.task == nil || r.task.ID != taskID || (status != core.TaskStatusFailed && (status != core.TaskStatusBlockedRetryable || block == nil)) {
+		return core.ErrTaskNotRecoverable
+	}
+	r.task.Status = status
+	r.task.RetryableBlock = cloneRetryableBlock(block)
+	r.task.Error = errorMsg
+	r.task.GenerationUsageReservationState = ""
+	r.task.GenerationUsageReservationLeaseUntil = nil
+	return nil
+}
+
+func (r *stubGenerationRepo) PrepareGenerationUsageRelease(_ context.Context, taskID string, block *RetryableBlock, errorMsg string, result *ListingKitResult) error {
+	if r.task == nil || r.task.ID != taskID || block == nil || block.ReasonCode != usageReleasePendingReason {
+		return core.ErrTaskNotRecoverable
+	}
+	r.task.Status = core.TaskStatusBlockedRetryable
+	r.task.RetryableBlock = cloneRetryableBlock(block)
+	r.task.Error = errorMsg
+	if result != nil {
+		r.task.Result = result
+	}
+	return nil
+}
+
+func (r *stubGenerationRepo) ResolveGenerationUsageRelease(_ context.Context, taskID, terminalError string) error {
+	if r.task == nil || r.task.ID != taskID || r.task.RetryableBlock == nil || r.task.RetryableBlock.ReasonCode != usageReleasePendingReason {
+		return core.ErrTaskNotRecoverable
+	}
+	r.task.Status = core.TaskStatusFailed
+	r.task.RetryableBlock = nil
+	r.task.Error = terminalError
+	r.task.GenerationUsageReservationState = ""
+	r.task.GenerationUsageReservationLeaseUntil = nil
+	return nil
+}
+
+func (r *stubGenerationRepo) ListExpiredGenerationUsageReservations(_ context.Context, dueBefore time.Time, limit int) ([]Task, error) {
+	if r.task == nil || r.task.GenerationUsageReservationState == "" || r.task.GenerationUsageReservationLeaseUntil == nil || r.task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+		return nil, nil
+	}
+	if limit == 0 {
+		return nil, nil
+	}
+	copied := *r.task
+	return []Task{copied}, nil
+}
+
+func (r *stubGenerationRepo) ResolveExpiredGenerationUsageReservation(_ context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error {
+	if r.task == nil || r.task.ID != taskID || r.task.Status != expectedStatus || r.task.GenerationUsageReservationState == "" || r.task.GenerationUsageReservationLeaseUntil == nil || r.task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+		return core.ErrTaskNotRecoverable
+	}
+	r.task.Status = core.TaskStatusBlockedRetryable
+	r.task.RetryableBlock = block
+	r.task.Error = errorMsg
+	if clearReservation {
+		r.task.GenerationUsageReservationState = ""
+		r.task.GenerationUsageReservationLeaseUntil = nil
+	}
 	return nil
 }
 

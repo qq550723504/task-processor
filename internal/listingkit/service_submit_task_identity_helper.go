@@ -22,5 +22,14 @@ func withSheinSubmitTaskIdentity(ctx context.Context, task *Task) (context.Conte
 	}
 
 	ctx = WithTenantID(ctx, tenantID)
+	ctx = withSheinTaskStoreAccess(ctx, task)
 	return WithRequestIdentity(ctx, identity), nil
+}
+
+func withSheinTaskStoreAccess(ctx context.Context, task *Task) context.Context {
+	if task == nil || task.SheinStoreResolutionSnapshot == nil || !task.SheinStoreResolutionSnapshot.TenantAdminAccess {
+		return ctx
+	}
+	roles := append(RequestRolesFromContext(ctx), "listingkit_admin")
+	return WithRequestRoles(ctx, roles)
 }

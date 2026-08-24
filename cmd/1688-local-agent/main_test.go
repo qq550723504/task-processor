@@ -1,0 +1,161 @@
+package main
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"task-processor/internal/localagent"
+	"task-processor/internal/localagent/deviceauth"
+)
+
+func TestVerificationURLCommandDoesNotInvokeCommandInterpreter(t *testing.T) {
+	verificationURI := "https://issuer.example/verify?x=1&calc.exe"
+	command := newVerificationURLCommand(verificationURI)
+	require.Equal(t, "rundll32.exe", filepath.Base(command.Path))
+	require.Equal(t, "url.dll,FileProtocolHandler", command.Args[1])
+	require.Equal(t, verificationURI, command.Args[2])
+}
+
+func TestParseConfigAcceptsOneShotOfferURL(t *testing.T) {
+	cfg, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-url", "https://detail.1688.com/offer/1052008074197.html"})
+	require.NoError(t, err)
+	require.Equal(t, "https://detail.1688.com/offer/1052008074197.html", cfg.CreateURL)
+}
+
+func TestParseConfigRejectsOfferPort(t *testing.T) {
+	_, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-url", "https://detail.1688.com:443/offer/1052008074197.html"})
+	require.Error(t, err)
+}
+
+func TestParseConfigRejectsOfferEmptyPort(t *testing.T) {
+	_, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-url", "https://detail.1688.com:/offer/1052008074197.html"})
+	require.Error(t, err)
+}
+
+func TestParseConfigRejectsExtensionlessOffer(t *testing.T) {
+	_, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-url", "https://detail.1688.com/offer/1052008074197"})
+	require.Error(t, err)
+}
+
+func TestParseConfigRejectsOfferEmptyQuery(t *testing.T) {
+	_, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-url", "https://detail.1688.com/offer/1052008074197.html?"})
+	require.Error(t, err)
+}
+
+func TestParseConfigRejectsAPIBaseEmptyQuery(t *testing.T) {
+	_, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086?", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project"})
+	require.Error(t, err)
+}
+
+func TestCreatePreparedJobPreparesBeforeCreation(t *testing.T) {
+	order := []string{}
+	jobs := &fakeJobCreator{order: &order}
+	crawler := &fakeJobCrawlerPreparer{order: &order}
+
+	jobID, err := createPreparedJob(context.Background(), jobs, crawler, "https://detail.1688.com/offer/1052008074197.html")
+	require.NoError(t, err)
+	require.Equal(t, "job-1", jobID)
+	require.Equal(t, []string{"prepare", "create"}, order)
+}
+
+func TestPrepareAndAuthorizePreparesBeforeAuthorization(t *testing.T) {
+	order := []string{}
+	crawler := &fakeJobCrawlerPreparer{order: &order}
+	authorize := func(context.Context, deviceauth.Config, deviceauth.Presenter) (string, error) {
+		order = append(order, "authorize")
+		return "token", nil
+	}
+
+	token, err := prepareAndAuthorize(context.Background(), crawler, authorize, deviceauth.Config{}, nil)
+	require.NoError(t, err)
+	require.Equal(t, "token", token)
+	require.Equal(t, []string{"prepare", "authorize"}, order)
+}
+
+func TestInvalidDeviceAuthConfigFailsBeforeCrawlerPreparation(t *testing.T) {
+	order := []string{}
+	crawler := &fakeJobCrawlerPreparer{order: &order}
+	authorize := func(context.Context, deviceauth.Config, deviceauth.Presenter) (string, error) {
+		order = append(order, "authorize")
+		return "token", nil
+	}
+
+	_, err := validateAndPrepareAndAuthorize(context.Background(), crawler, authorize, deviceauth.Config{
+		IssuerURL: "https://issuer.example",
+		ClientID:  "client",
+		ProjectID: "project",
+		Scopes:    "openid offline_access",
+	}, nil)
+	require.ErrorContains(t, err, "offline_access")
+	require.Empty(t, order)
+}
+
+func TestPreparePendingAndAuthorizeAuthorizesAfterPreparationAttempt(t *testing.T) {
+	order := []string{}
+	crawler := &fakeJobCrawlerPreparer{order: &order, prepareErr: os.ErrNotExist}
+	authorize := func(context.Context, deviceauth.Config, deviceauth.Presenter) (string, error) {
+		order = append(order, "authorize")
+		return "token", nil
+	}
+
+	token, preparationErr, err := preparePendingAndAuthorize(context.Background(), crawler, authorize, deviceauth.Config{
+		IssuerURL: "https://issuer.example",
+		ClientID:  "client",
+		ProjectID: "project",
+	}, nil)
+	require.NoError(t, err)
+	require.Equal(t, "token", token)
+	require.ErrorIs(t, preparationErr, os.ErrNotExist)
+	require.Equal(t, []string{"prepare", "authorize"}, order)
+}
+
+func TestDetectInstalledChromeIgnoresMissingEnvironmentBases(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", "")
+	t.Setenv("PROGRAMFILES", "")
+	t.Setenv("PROGRAMFILES(X86)", "")
+	t.Chdir(t.TempDir())
+	relative := filepath.Join("Google", "Chrome", "Application")
+	require.NoError(t, os.MkdirAll(relative, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(relative, "chrome.exe"), []byte("not a browser"), 0o600))
+
+	require.Empty(t, detectInstalledChrome())
+}
+
+type fakeJobCreator struct {
+	order *[]string
+}
+
+func (f *fakeJobCreator) CreateJob(context.Context, string) (localagent.Job, error) {
+	*f.order = append(*f.order, "create")
+	return localagent.Job{ID: "job-1"}, nil
+}
+
+type fakeJobCrawlerPreparer struct {
+	order      *[]string
+	prepareErr error
+}
+
+func (f *fakeJobCrawlerPreparer) Prepare(context.Context) error {
+	*f.order = append(*f.order, "prepare")
+	return f.prepareErr
+}
+
+func TestParseConfigAcceptsBrowserPath(t *testing.T) {
+	cfg, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-browser-path", "C:/Program Files/Google/Chrome/Application/chrome.exe"})
+	require.NoError(t, err)
+	require.Equal(t, "C:/Program Files/Google/Chrome/Application/chrome.exe", cfg.BrowserPath)
+}
+
+func TestParseConfigAcceptsScopesOverride(t *testing.T) {
+	cfg, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-scopes", "openid custom-scope"})
+	require.NoError(t, err)
+	require.Equal(t, "openid custom-scope", cfg.Scopes)
+}
+
+func TestParseConfigRejectsSourceAccountAndListingStoreFlags(t *testing.T) {
+	_, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-source-account-id", "42"})
+	require.Error(t, err)
+}

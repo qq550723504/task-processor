@@ -21,6 +21,7 @@ import type {
 
 export type SheinWorkspaceProjection = {
   images: ReturnType<typeof collectSheinPreviewImageGroups>["productImages"];
+  availableImages: ReturnType<typeof collectSheinPreviewImageGroups>["availableImages"];
   mockupImages: ReturnType<typeof collectSheinPreviewImageGroups>["mockupImages"];
   variantCount?: number;
   readiness: SheinReadinessProjection;
@@ -65,6 +66,7 @@ export function createSheinWorkspaceAdapter({
         readiness.previewBlocked;
       const projection: SheinWorkspaceProjection = {
         images: imageGroups.productImages,
+        availableImages: imageGroups.availableImages,
         mockupImages: imageGroups.mockupImages,
         variantCount: shein?.final_review?.skus?.length,
         readiness,

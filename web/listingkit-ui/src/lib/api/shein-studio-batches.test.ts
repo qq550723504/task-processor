@@ -925,6 +925,37 @@ describe("shein studio batches API", () => {
     });
   });
 
+  it("passes the selected image strategy when creating batch tasks", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          batch: {
+            id: "batch-1",
+            status: "tasks_created",
+            created_at: "2026-06-01T10:00:00Z",
+            updated_at: "2026-06-01T10:10:00Z",
+          },
+          items: [],
+          created_tasks: [],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createSheinStudioBatchTasks("batch-1", ["design-1"], {
+      imageStrategy: "ai_generated",
+    });
+
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({
+        design_ids: ["design-1"],
+        image_strategy: "ai_generated",
+      }),
+    });
+  });
+
   const validPngBytes = new Uint8Array([
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
     0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,

@@ -322,6 +322,12 @@ describe("SheinFinalReviewPanel", () => {
             confirmed: true,
             title: "SHEIN pants",
             category_id: 123,
+            source_reference: {
+              type: "sds",
+              platform: "sds",
+              id: "238915",
+              url: "https://www.sdsdiy.com/portal/detail/238915",
+            },
             source_product: {
               parent_product_id: "238915",
               variant_id: "238916",
@@ -342,6 +348,68 @@ describe("SheinFinalReviewPanel", () => {
       "target",
       "_blank",
     );
+  });
+
+  it("shows a non-SDS source link without SDS wording", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          final_review: {
+            title: "SHEIN bottle",
+            source_reference: {
+              type: "crawler",
+              platform: "1688",
+              id: "888",
+              url: "https://detail.1688.com/offer/888.html",
+            },
+            source_product: { title: "1688 bottle", sku: "B-888" },
+            skus: [{ supplier_sku: "B-888", price: 29, currency: "CNY" }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: /打开 1688 商品/ })).toHaveAttribute(
+      "href",
+      "https://detail.1688.com/offer/888.html",
+    );
+    expect(screen.queryByText(/SDS/)).not.toBeInTheDocument();
+  });
+
+  it("does not show a source card or SDS pricing copy without a source", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          final_review: {
+            title: "SHEIN bottle",
+            skus: [{ supplier_sku: "B-1", price: 29, currency: "CNY" }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByText(/来源商品/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/价格来自 SDS/)).not.toBeInTheDocument();
+  });
+
+  it("shows an SDS variant identity when no parent product URL is available", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          final_review: {
+            title: "SHEIN variant",
+            source_reference: { type: "sds", platform: "sds", id: "41662" },
+            source_product: { title: "SDS variant", variant_id: "41662" },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("来源：SDS · 41662")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /打开 SDS 商品/ })).not.toBeInTheDocument();
   });
 
   it("saves manually completed required SHEIN size chart attributes", async () => {

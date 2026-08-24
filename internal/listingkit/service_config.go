@@ -8,7 +8,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 }
 
 func newServiceWithConfig(config *ServiceConfig) *service {
-	defaultSettings := defaultSheinSettings(config.Shein.SheinDefaultStoreID, config.Shein.SheinPricingPolicy)
+	defaultSettings := defaultSheinSettings(config.Shein.SheinPricingPolicy)
 	svc := newServiceBase(config, defaultSettings)
 	applyServiceDependencyGroups(svc, config)
 	return svc

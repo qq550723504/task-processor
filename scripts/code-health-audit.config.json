@@ -1,0 +1,23 @@
+{
+  "deadcode_version": "v0.48.0",
+  "knip_version": "6.32.2",
+  "jscpd_version": "5.0.14",
+  "root_patterns": ["./cmd/...", "./scripts/..."],
+  "nested_modules": ["tools", "hack/debug"],
+  "target_goos": ["windows", "linux"],
+  "output_root": ".local/code-health",
+  "clone_paths": ["internal", "cmd", "scripts", "tools", "hack/debug", "web/listingkit-ui/src"],
+  "clone_ignore": [
+    "**/*_test.go",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/.worktrees/**",
+    "**/tmp/**",
+    "**/.local/**",
+    "**/generated/**"
+  ],
+  "clone_min_lines": 12,
+  "clone_min_tokens": 70
+}

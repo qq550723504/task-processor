@@ -137,3 +137,57 @@ func TestGormProductImportMappingRepositoryFindLatestAndExistsPublished(t *testi
 		t.Fatal("ExistsPublishedProduct() = false, want true")
 	}
 }
+
+func TestGormProductImportMappingRepositoryCreateUsesExplicitOwnerWithoutContextIdentity(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingProductImportMapping{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	repo := NewGormProductImportMappingRepository(db)
+	created, err := repo.CreateProductImportMapping(context.Background(), &ProductImportMapping{
+		TenantID:     101,
+		OwnerUserID:  "zitadel-sub-1",
+		ImportTaskID: 10,
+		StoreID:      20,
+		Platform:     "SHEIN",
+		Region:       "US",
+		ProductID:    "P-1",
+	})
+	if err != nil {
+		t.Fatalf("CreateProductImportMapping() error = %v", err)
+	}
+	if created == nil || created.OwnerUserID != "zitadel-sub-1" {
+		t.Fatalf("created owner = %q, want zitadel-sub-1", created.OwnerUserID)
+	}
+}
+
+func TestGormProductImportMappingRepositoryCreateRejectsMissingOwner(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingProductImportMapping{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	repo := NewGormProductImportMappingRepository(db)
+	_, err = repo.CreateProductImportMapping(context.Background(), &ProductImportMapping{
+		TenantID:     101,
+		ImportTaskID: 10,
+		StoreID:      20,
+		Platform:     "SHEIN",
+		Region:       "US",
+		ProductID:    "P-1",
+	})
+	if err == nil {
+		t.Fatal("CreateProductImportMapping() error = nil, want missing owner error")
+	}
+}

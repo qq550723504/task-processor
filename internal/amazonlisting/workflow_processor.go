@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type Processor struct {
@@ -50,9 +51,23 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 	if task.Status != TaskStatusPending {
 		return nil
 	}
+	envelope, envelopeErr := task.ExecutionEnvelope()
+	if envelopeErr != nil {
+		_ = p.repo.MarkFailed(ctx, task.ID, "identity_integrity: "+envelopeErr.Error())
+		return envelopeErr
+	}
+	ctx, envelopeErr = aiidentity.RestoreExecutionEnvelope(ctx, envelope, task.ID)
+	if envelopeErr != nil {
+		_ = p.repo.MarkFailed(ctx, task.ID, "identity_integrity: "+envelopeErr.Error())
+		return envelopeErr
+	}
 	if _, err := p.service.ProcessListing(ctx, task); err != nil {
 		if errors.Is(err, ErrTaskNotPending) {
 			return nil
+		}
+		if errors.Is(err, aiidentity.ErrIdentityIntegrity) || errors.Is(err, aiidentity.ErrMissingIdentity) {
+			_ = p.repo.MarkFailed(ctx, task.ID, "identity_integrity: "+err.Error())
+			return err
 		}
 		if task.RetryCount < p.maxRetries {
 			_ = p.repo.IncrementRetryCount(ctx, task.ID)

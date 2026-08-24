@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"gorm.io/gorm"
 )
 
 type studioBatchPartialTaskCreationContextKey struct{}
+
+type studioBatchTaskImageStrategyContextKey struct{}
 
 func withStudioBatchPartialTaskCreationAllowed(ctx context.Context) context.Context {
 	return context.WithValue(ctx, studioBatchPartialTaskCreationContextKey{}, true)
@@ -45,29 +49,51 @@ func (s *taskStudioBatchService) loadStudioBatchTaskPreparationResult(ctx contex
 	}, nil
 }
 
-func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Context, candidate studioBatchTaskCandidate) error {
-	if s == nil || s.batchTaskLinkRepo == nil {
+func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Context, candidate *studioBatchTaskCandidate) error {
+	if s == nil || s.batchTaskLinkRepo == nil || candidate == nil {
 		return nil
 	}
 	now := s.currentTime().UTC()
 	link := &StudioBatchTaskLinkRecord{
-		ID:                       buildStudioBatchTaskLinkID(candidate),
+		ID:                       buildStudioBatchTaskLinkID(*candidate),
 		BatchID:                  strings.TrimSpace(candidate.Design.BatchID),
 		ItemID:                   strings.TrimSpace(candidate.Item.ID),
 		DesignID:                 strings.TrimSpace(candidate.Design.ID),
 		SelectionID:              strings.TrimSpace(candidate.SelectionID),
-		CompatibilityFingerprint: strings.TrimSpace(candidate.CompatibilityFingerprint),
+		CompatibilityFingerprint: studioBatchTaskLinkCompatibilityFingerprint(*candidate),
+		ImageStrategy:            normalizeSheinImageStrategy(candidate.ImageStrategy),
 		SheinStoreID:             candidate.SheinStoreID,
 		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),
+		ClaimToken:               strings.TrimSpace(candidate.ClaimToken),
 		Status:                   studioBatchTaskLinkStatusReserved,
 		CreatedAt:                now,
 		UpdatedAt:                now,
+	}
+	if link.ImageStrategy == sheinImageStrategyAIGenerated {
+		link.ProductImageUsageRoute = studioBatchProductImageUsageRoutePending
 	}
 	if link.BatchID == "" {
 		link.BatchID = strings.TrimSpace(candidate.Item.BatchID)
 	}
 	if err := s.batchTaskLinkRepo.CreateStudioBatchTaskLink(ctx, link); err != nil {
-		if _, getErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey); getErr == nil {
+		existing, getErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+		if getErr == nil && existing != nil {
+			var linkedTask *Task
+			if s.getTask != nil && strings.TrimSpace(existing.ListingKitTaskID) != "" {
+				linkedTask, _ = s.getTask(ctx, existing.ListingKitTaskID)
+			}
+			if studioBatchTaskLinkMatchesImageStrategy(existing, linkedTask, *candidate) {
+				return nil
+			}
+			candidate.CandidateKey = buildDisambiguatedStudioBatchTaskCandidateKey(*candidate)
+			link.ID = buildStudioBatchTaskLinkID(*candidate)
+			link.CandidateKey = candidate.CandidateKey
+			if retryErr := s.batchTaskLinkRepo.CreateStudioBatchTaskLink(ctx, link); retryErr != nil {
+				if _, retryGetErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey); retryGetErr == nil {
+					return nil
+				}
+				return retryErr
+			}
 			return nil
 		}
 		return err
@@ -75,42 +101,97 @@ func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Con
 	return nil
 }
 
-func (s *taskStudioBatchService) claimStudioBatchTaskCandidate(ctx context.Context, candidate studioBatchTaskCandidate) (bool, error) {
+func (s *taskStudioBatchService) claimStudioBatchTaskCandidate(ctx context.Context, candidate *studioBatchTaskCandidate) (bool, string, error) {
 	if s == nil || s.batchTaskLinkRepo == nil {
-		return true, nil
+		return true, "", nil
 	}
+	if candidate == nil {
+		return false, "", fmt.Errorf("studio batch task candidate is required")
+	}
+	leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository)
+	if !ok {
+		return false, "", fmt.Errorf("studio batch task link repository does not support lease tokens")
+	}
+	claimToken := uuid.NewString()
 	now := s.currentTime().UTC()
 	existing, existingErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
 	if existingErr != nil && !errors.Is(existingErr, gorm.ErrRecordNotFound) {
-		return false, existingErr
+		return false, "", existingErr
 	}
 	if existingErr == nil && existing != nil {
 		if existing.Status == studioBatchTaskLinkStatusFailed && strings.TrimSpace(existing.ListingKitTaskID) != "" {
-			return false, nil
+			return false, "", nil
 		}
 		if s.studioBatchTaskLinkIsStale(existing) {
-			if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidateUpdatedAt(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusCreating, existing.UpdatedAt, studioBatchTaskLinkStatusCreating, now); err != nil {
-				return false, err
+			previousClaimToken := strings.TrimSpace(existing.ClaimToken)
+			var claimed bool
+			var err error
+			if reclaimRepo, supportsPending := s.batchTaskLinkRepo.(studioBatchTaskLinkReclaimRepository); supportsPending && previousClaimToken != "" {
+				_, claimed, err = reclaimRepo.ClaimStudioBatchTaskCandidateUpdatedAtWithTokenAndPendingRelease(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusCreating, existing.UpdatedAt, studioBatchTaskLinkStatusCreating, claimToken, previousClaimToken, now)
+			} else {
+				_, claimed, err = leaseRepo.ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusCreating, existing.UpdatedAt, studioBatchTaskLinkStatusCreating, claimToken, now)
+			}
+			if err != nil {
+				return false, "", err
 			} else if claimed {
-				return true, nil
+				candidate.ClaimToken = claimToken
+				return true, previousClaimToken, nil
+			}
+		}
+		if existing.Status == studioBatchTaskLinkStatusFailed && strings.TrimSpace(existing.ClaimToken) != "" {
+			if _, claimed, err := leaseRepo.ClaimStudioBatchTaskCandidateWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkStatusCreating, claimToken, now); err != nil {
+				if !errors.Is(err, gorm.ErrRecordNotFound) {
+					return false, "", err
+				}
+			} else if claimed {
+				candidate.ClaimToken = claimToken
+				return true, strings.TrimSpace(existing.ClaimToken), nil
 			}
 		}
 	}
-	if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidate(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusReserved, studioBatchTaskLinkStatusCreating, now); err != nil {
+	if _, claimed, err := leaseRepo.ClaimStudioBatchTaskCandidateWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusReserved, studioBatchTaskLinkStatusCreating, claimToken, now); err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, err
+			return false, "", err
 		}
 	} else if claimed {
-		return true, nil
+		candidate.ClaimToken = claimToken
+		return true, "", nil
 	}
-	if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidate(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkStatusCreating, now); err != nil {
+	if _, claimed, err := leaseRepo.ClaimStudioBatchTaskCandidateWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkStatusCreating, claimToken, now); err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, err
+			return false, "", err
 		}
 	} else if claimed {
-		return true, nil
+		candidate.ClaimToken = claimToken
+		return true, "", nil
 	}
-	return false, nil
+	return false, "", nil
+}
+
+// releaseFailedStudioBatchProductImageReservationBeforeReclaim clears a
+// terminal failed attempt before its link is reopened. A failed link has no
+// active heartbeat owner, so releasing before the compare-and-update avoids
+// creating a replacement reservation while the previous event is still held.
+func (s *taskStudioBatchService) releaseFailedStudioBatchProductImageReservationBeforeReclaim(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate) error {
+	if s == nil || s.batchTaskLinkRepo == nil || normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
+		return nil
+	}
+	if _, ok := s.productImageUsageReservation(); !ok {
+		return nil
+	}
+	existing, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if existing == nil || existing.Status != studioBatchTaskLinkStatusFailed || strings.TrimSpace(existing.ListingKitTaskID) != "" || strings.TrimSpace(existing.ClaimToken) == "" {
+		return nil
+	}
+	previous := candidate
+	previous.ClaimToken = strings.TrimSpace(existing.ClaimToken)
+	return s.releaseStudioBatchProductImageUsage(ctx, batch, previous, "failed_reclaim")
 }
 
 func (s *taskStudioBatchService) completeStudioBatchTaskExecution(
@@ -279,7 +360,35 @@ func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(
 	if err := validateStudioBatchTaskCreationDesignReadiness(designs, batchDetail); err != nil {
 		return nil, nil, nil, err
 	}
+	strategy := resolveStudioBatchTaskImageStrategy(req, session, batchDetail.Batch)
+	if session != nil {
+		session.ImageStrategy = strategy
+	}
+	if batchDetail.Batch.ImageStrategy != strategy {
+		batchDetail.Batch.ImageStrategy = strategy
+		batchDetail.Batch.UpdatedAt = s.currentTime().UTC()
+		if err := s.repo.UpdateStudioBatch(ctx, batchDetail.Batch); err != nil {
+			return nil, nil, nil, err
+		}
+	}
 	return designIDs, session, batchDetail, nil
+}
+
+func withStudioBatchTaskImageStrategy(ctx context.Context, req *CreateStudioBatchTasksRequest) context.Context {
+	if req == nil || req.ImageStrategy == nil || strings.TrimSpace(*req.ImageStrategy) == "" {
+		return ctx
+	}
+	strategy := normalizeStudioBatchTaskCreationImageStrategy(*req.ImageStrategy)
+	return context.WithValue(ctx, studioBatchTaskImageStrategyContextKey{}, strategy)
+}
+
+func studioBatchTaskImageStrategyFromContext(ctx context.Context) *string {
+	strategy, _ := ctx.Value(studioBatchTaskImageStrategyContextKey{}).(string)
+	strategy = strings.TrimSpace(strategy)
+	if strategy == "" {
+		return nil
+	}
+	return &strategy
 }
 
 func validateStudioBatchTaskCreationDesignReadiness(

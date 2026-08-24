@@ -27,7 +27,6 @@ listingkit:
     clientSecret: ""
     allowedTenantIDs: []
     allowedUserIDs: []
-    allowedUsernames: []
     allowedRoles: []
 ```
 
@@ -36,14 +35,20 @@ Relevant env bindings:
 - `LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR`
 - `LISTINGKIT_PLATFORM_ADMIN_USERS`
 - `LISTINGKIT_PLATFORM_ADMIN_ROLES`
-- `LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS`
-- `LISTINGKIT_ZITADEL_ALLOWED_USER_IDS`
-- `LISTINGKIT_ZITADEL_ALLOWED_USERNAMES`
-- `LISTINGKIT_ZITADEL_ALLOWED_ROLES`
+- `TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS`
+- `TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS`
+- `TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES`
 
 Compatibility aliases remain bound for some old `LISTINGKIT_ZITADEL_*` names,
 but new deployment manifests should move to the `TASK_PROCESSOR_*` forms where
 they exist.
+
+The obsolete YAML key `listingkit.zitadel.allowedUsernames` and both
+`TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES` and
+`LISTINGKIT_ZITADEL_ALLOWED_USERNAMES` are retained only as validation traps.
+Any configured YAML key or non-empty env value makes configuration validation
+fail without logging the configured usernames. Remove those settings and authorize only canonical
+tenant IDs, ZITADEL subject IDs, or roles; usernames never determine access.
 
 ## Migration Steps
 
@@ -52,8 +57,8 @@ they exist.
 2. Keep `ZITADEL_ISSUER_URL`, `ZITADEL_CLIENT_ID`, `ZITADEL_CLIENT_SECRET`,
    `ZITADEL_REDIRECT_URI`, and `ZITADEL_POST_LOGOUT_REDIRECT_URI` in the
    runtime secret because the Next.js UI still reads them directly.
-3. Move Go API allowlists to the bound envs or YAML:
-   `LISTINGKIT_ZITADEL_ALLOWED_*`.
+3. Move Go API allowlists to the canonical tenant ID, subject ID, or role envs
+   or YAML keys. Remove every username allowlist setting.
 4. ListingKit owner scope and ZITADEL auth now fail closed by default. Confirm
    historical rows already have `user_id` populated before rollout.
 5. Remove any operator runbooks that tell engineers to patch

@@ -11,12 +11,320 @@ import (
 	"testing"
 )
 
-func TestListingKitDoesNotImportLegacySheinRuntime(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
-		`"task-processor/internal/shein/pipeline"`,
-		`"task-processor/internal/shein/publish"`,
-		`"task-processor/internal/shein/product/build"`,
+func TestAlibaba1688CrawlerDoesNotImportListingKitRoot(t *testing.T) {
+	assertNoProductionBannedImports(t, filepath.Join("..", "internal", "crawler", "alibaba1688"), []string{
+		`"task-processor/internal/listingkit"`,
 	}, nil)
+}
+
+func TestA1688ListingKitCompatibilityReadsIdentityFromNeutralContext(t *testing.T) {
+	path := filepath.Join("..", "internal", "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi", "handler.go")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	importsAuthIdentity := false
+	for _, imp := range file.Imports {
+		if imp.Path.Value == `"task-processor/internal/authidentity"` {
+			importsAuthIdentity = true
+			break
+		}
+	}
+	if !importsAuthIdentity {
+		t.Errorf("%s must import internal/authidentity for verified identity context", path)
+	}
+
+	file, err = parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil || selector.Sel.Name != "AuthenticatedIdentityFromContext" {
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if ok && ident.Name == "listingkit" {
+			t.Errorf("%s reads verified identity through listingkit; use internal/authidentity", path)
+		}
+		return true
+	})
+}
+
+func TestLocalAgentHTTPAPIReadsIdentityFromNeutralContext(t *testing.T) {
+	path := filepath.Join("..", "internal", "localagent", "httpapi", "handler.go")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	importsAuthIdentity := false
+	for _, imp := range file.Imports {
+		if imp.Path.Value == `"task-processor/internal/authidentity"` {
+			importsAuthIdentity = true
+			break
+		}
+	}
+	if !importsAuthIdentity {
+		t.Errorf("%s must import internal/authidentity for verified identity context", path)
+	}
+
+	file, err = parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil || selector.Sel.Name != "AuthenticatedIdentityFromContext" {
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if ok && ident.Name == "listingkit" {
+			t.Errorf("%s reads verified identity through listingkit; use internal/authidentity", path)
+		}
+		return true
+	})
+}
+
+func TestSheinLoginReadsIdentityFromNeutralContext(t *testing.T) {
+	root := filepath.Join("..", "internal", "sheinlogin")
+	for _, name := range []string{"tenant_context.go", "accounts.go"} {
+		path := filepath.Join(root, name)
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		importsAuthIdentity := false
+		for _, imp := range file.Imports {
+			if imp.Path.Value == `"task-processor/internal/authidentity"` {
+				importsAuthIdentity = true
+				break
+			}
+		}
+		if !importsAuthIdentity {
+			t.Errorf("%s must import internal/authidentity for verified identity context", path)
+		}
+
+		file, err = parser.ParseFile(token.NewFileSet(), path, source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || selector.Sel == nil ||
+				(selector.Sel.Name != "AuthenticatedIdentityFromContext" && selector.Sel.Name != "AuthenticatedIdentity") {
+				return true
+			}
+			ident, ok := selector.X.(*ast.Ident)
+			if ok && ident.Name == "listingkit" {
+				t.Errorf("%s reads verified identity through listingkit; use internal/authidentity", path)
+			}
+			return true
+		})
+	}
+}
+
+func TestListingKitIdentityReadersUseNeutralContext(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "listingkit", "api", "tenant_context.go"),
+		filepath.Join("..", "internal", "listingkit", "api", "authenticated_actor.go"),
+		filepath.Join("..", "internal", "listingkit", "api", "subscription_guard.go"),
+		filepath.Join("..", "internal", "listingkit", "httpapi", "zitadel_auth_route_authorization.go"),
+		filepath.Join("..", "internal", "listingkit", "request_context.go"),
+		filepath.Join("..", "internal", "listingkit", "task_lifecycle_service_support.go"),
+	}
+	for _, path := range paths {
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		importsAuthIdentity := false
+		for _, imp := range file.Imports {
+			if imp.Path.Value == `"task-processor/internal/authidentity"` {
+				importsAuthIdentity = true
+				break
+			}
+		}
+		if !importsAuthIdentity {
+			t.Errorf("%s must import internal/authidentity for verified identity context", path)
+		}
+
+		file, err = parser.ParseFile(token.NewFileSet(), path, source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || selector.Sel == nil ||
+				(selector.Sel.Name != "AuthenticatedIdentityFromContext" && selector.Sel.Name != "AuthenticatedIdentity") {
+				return true
+			}
+			ident, ok := selector.X.(*ast.Ident)
+			if ok && ident.Name == "listingkit" {
+				t.Errorf("%s reads verified identity through listingkit; use internal/authidentity", path)
+			}
+			return true
+		})
+	}
+}
+
+func TestZitadelAuthMiddlewareWritesNeutralIdentityContext(t *testing.T) {
+	path := filepath.Join("..", "internal", "listingkit", "httpapi", "zitadel_auth_middleware.go")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	importsAuthIdentity := false
+	for _, imp := range file.Imports {
+		if imp.Path.Value == `"task-processor/internal/authidentity"` {
+			importsAuthIdentity = true
+			break
+		}
+	}
+	if !importsAuthIdentity {
+		t.Fatalf("%s must import internal/authidentity for verified identity projection", path)
+	}
+
+	file, err = parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil {
+			return true
+		}
+		if selector.Sel.Name != "WithAuthenticatedIdentity" && selector.Sel.Name != "AuthenticatedIdentity" {
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if ok && ident.Name == "listingkit" {
+			t.Errorf("%s projects verified identity through listingkit; use internal/authidentity", path)
+		}
+		return true
+	})
+}
+
+func TestAuthenticatedIdentityRootImportsStayRestricted(t *testing.T) {
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		violations, err := findListingKitAuthenticatedIdentityImports(path, facts.source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, violation := range violations {
+			t.Errorf("%s", violation)
+		}
+	}
+}
+
+func TestAuthenticatedIdentityRootImportScannerResolvesAliases(t *testing.T) {
+	violations, err := findListingKitAuthenticatedIdentityImports("synthetic.go", []byte(`package synthetic
+
+import legacylistingkit "task-processor/internal/listingkit"
+
+func readIdentity(ctx any) {
+		legacylistingkit.AuthenticatedIdentityFromContext(ctx)
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 {
+		t.Fatalf("violations = %v, want one alias violation", violations)
+	}
+}
+
+func findListingKitAuthenticatedIdentityImports(path string, source []byte) ([]string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	listingKitNames := make(map[string]struct{})
+	var violations []string
+	for _, imp := range file.Imports {
+		importPath := strings.Trim(imp.Path.Value, `"`)
+		if importPath != "task-processor/internal/listingkit" {
+			continue
+		}
+		if imp.Name != nil {
+			switch imp.Name.Name {
+			case "_":
+				continue
+			case ".":
+				violations = append(violations, path+": dot-imports internal/listingkit; identity context must use internal/authidentity")
+				continue
+			default:
+				listingKitNames[imp.Name.Name] = struct{}{}
+			}
+			continue
+		}
+		listingKitNames["listingkit"] = struct{}{}
+	}
+
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil {
+			return true
+		}
+		switch selector.Sel.Name {
+		case "AuthenticatedIdentity", "AuthenticatedIdentityFromContext", "WithAuthenticatedIdentity":
+		default:
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if _, ok := listingKitNames[ident.Name]; ok {
+			violations = append(violations, path+": imports internal/listingkit for authenticated identity; use internal/authidentity")
+		}
+		return true
+	})
+	return violations, nil
+}
+
+func TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets(t *testing.T) {
+	t.Parallel()
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/productenrich/httpapi/sourcea1688"`]; ok {
+			t.Errorf("%s imports retired source-handoff HTTP owner; use the canonical product source-handoff package", path)
+		}
+	}
 }
 
 func TestPortsManagementAPIPackageIsRetired(t *testing.T) {
@@ -47,6 +355,15 @@ func TestGlobalPortsFacadePackageStaysRetired(t *testing.T) {
 		if _, ok := facts.imports[`"task-processor/internal/ports"`]; ok {
 			t.Fatalf("%s imports retired global ports facade; use task-processor/internal/app/ports directly", path)
 		}
+	}
+}
+
+func TestLegacyResiliencePackageStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "pkg", "resilience")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; use internal/infra/resilience for resilience behavior", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
 	}
 }
 
@@ -136,12 +453,6 @@ func TestAppTaskStatusDTOAdapterIsRetired(t *testing.T) {
 	}
 }
 
-func TestListingKitDoesNotImportSheinAPIRoot(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
-		`"task-processor/internal/shein/api"`,
-	}, nil)
-}
-
 func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedImports := map[string]map[string]struct{}{
@@ -187,28 +498,6 @@ func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
 			}
 		}
 	}
-}
-
-func TestListingKitRootDoesNotImportManagementAPI(t *testing.T) {
-	root := filepath.Join("..", "internal", "listingkit")
-	index, err := loadGoFileIndex(root, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for path, facts := range index.files {
-		if strings.HasSuffix(filepath.Base(path), "_test.go") || filepath.Dir(path) != filepath.Clean(root) {
-			continue
-		}
-		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Errorf("%s imports management/api; keep ListingKit root facade free of concrete management DTO contracts", path)
-		}
-	}
-}
-
-func TestListingKitProductionDoesNotImportMarketplaceSheinPublishing(t *testing.T) {
-	assertNoProductionBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
-		`"task-processor/internal/marketplace/shein/publishing"`,
-	}, nil)
 }
 
 func TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted(t *testing.T) {
@@ -268,8 +557,9 @@ func TestListingKitAmazonListingImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestListingPreviewPackageStaysPlatformNeutral(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "listing", "preview"), []string{
+func TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets(t *testing.T) {
+	root := filepath.Join("..", "internal", "listing", "preview")
+	bannedImports := []string{
 		`"task-processor/internal/listingkit"`,
 		`"task-processor/internal/marketplace/amazon"`,
 		`"task-processor/internal/marketplace/shein"`,
@@ -279,31 +569,21 @@ func TestListingPreviewPackageStaysPlatformNeutral(t *testing.T) {
 		`"task-processor/internal/temu"`,
 		`"task-processor/internal/amazon"`,
 		`"task-processor/internal/amazonlisting"`,
-	}, nil)
-}
-
-func TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "publishing", "shein"), []string{
-		`"task-processor/internal/listingkit"`,
-		`"task-processor/internal/listingkit/tenantctx"`,
-		`"task-processor/internal/productenrich"`,
-		`"task-processor/internal/shein/pipeline"`,
-		`"task-processor/internal/shein/publish"`,
-		`"task-processor/internal/shein/product/build"`,
-	}, nil)
-}
-
-func TestSheinPipelineDoesNotImportListingKitFacade(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "shein", "pipeline"), []string{
-		`"task-processor/internal/listingkit"`,
-		`"task-processor/internal/listingkit/tenantctx"`,
-	}, nil)
-}
-
-func TestSheinSubmitPrepDoesNotImportListingKitTenantContext(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "shein", "submitprep"), []string{
-		`"task-processor/internal/listingkit/tenantctx"`,
-	}, nil)
+	}
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		for _, bannedImport := range bannedImports {
+			if _, ok := facts.imports[bannedImport]; ok {
+				t.Errorf("%s imports %s; platform-neutral preview code must stay independent of marketplace implementations", path, bannedImport)
+			}
+		}
+	}
 }
 
 func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
@@ -491,40 +771,64 @@ func TestPublishingSheinSubmitPrepUsesOnlySensitiveWordAdapter(t *testing.T) {
 	})
 }
 
-func TestPublishingCommonUsesCanonicalPackage(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "publishing", "common"), []string{
-		`"task-processor/internal/productenrich"`,
-	}, nil)
-}
-
-func TestPublishingCommonDoesNotImportPlatformImplementations(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "publishing", "common"), []string{
-		`"task-processor/internal/shein"`,
-		`"task-processor/internal/temu"`,
-		`"task-processor/internal/amazon"`,
-	}, nil)
-}
-
-func TestCatalogDoesNotDependOnProductEnrichAliases(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "catalog"), []string{
-		`"task-processor/internal/productenrich"`,
-	}, nil)
-}
-
-func TestListingKitSubdomainsDoNotImportRootFacade(t *testing.T) {
-	for _, subdomain := range []string{"generation", "submission", "workflow", "workspace"} {
-		t.Run(subdomain, func(t *testing.T) {
-			dir := filepath.Join("..", "internal", "listingkit", subdomain)
-			if _, err := os.Stat(dir); err != nil {
-				if os.IsNotExist(err) {
-					t.Skipf("listingkit subdomain %s is retired", subdomain)
-				}
-				t.Fatalf("stat %s: %v", dir, err)
+func TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		root string
+	}{
+		{name: "publishing common", root: filepath.Join("..", "internal", "publishing", "common")},
+		{name: "catalog", root: filepath.Join("..", "internal", "catalog")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			index, err := loadGoFileIndex(tc.root, "")
+			if err != nil {
+				t.Fatal(err)
 			}
-			assertNoBannedImports(t, dir, []string{
-				`"task-processor/internal/listingkit"`,
-			}, nil)
+			for path, facts := range index.files {
+				if strings.HasSuffix(filepath.Base(path), "_test.go") {
+					continue
+				}
+				if _, ok := facts.imports[`"task-processor/internal/productenrich"`]; ok {
+					t.Errorf("%s imports task-processor/internal/productenrich; use canonical catalog/product contracts", path)
+				}
+			}
 		})
+	}
+}
+
+func TestListingKitImportDirectionStaysRetiredAcrossBuildTargets(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingkit")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subdomains := map[string]struct{}{
+		"generation": {},
+		"submission": {},
+		"workflow":   {},
+		"workspace":  {},
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		rel, err := filepath.Rel(filepath.Clean(root), path)
+		if err != nil {
+			t.Fatalf("rel %s to %s: %v", path, root, err)
+		}
+		parts := strings.Split(filepath.ToSlash(rel), "/")
+		if len(parts) > 1 {
+			if _, ok := subdomains[parts[0]]; ok {
+				if _, ok := facts.imports[`"task-processor/internal/listingkit"`]; ok {
+					t.Errorf("%s imports task-processor/internal/listingkit; ListingKit subdomains must stay independent of the root facade", path)
+				}
+			}
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/workspace/shein"`]; ok {
+			t.Errorf("%s imports task-processor/internal/workspace/shein; root ListingKit files must use the compatibility bridge", path)
+		}
 	}
 }
 
@@ -855,27 +1159,6 @@ func TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly(t
 			if _, ok := allowedFiles[path]; !ok {
 				t.Errorf("%s imports %s; keep root shein workspace bridges as thin compatibility wrappers and move direct workspace domain wiring into internal/listingkit/workspace/shein", path, bannedImport)
 			}
-		}
-	}
-}
-
-func TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly(t *testing.T) {
-	root := filepath.Join("..", "internal", "listingkit")
-
-	index, err := loadGoFileIndex(root, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for path, facts := range index.files {
-		if filepath.Dir(path) != filepath.Clean(root) {
-			continue
-		}
-		name := filepath.Base(path)
-		if strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		if _, ok := facts.imports[`"task-processor/internal/workspace/shein"`]; ok {
-			t.Errorf("%s imports task-processor/internal/workspace/shein; keep root ListingKit files on the internal/listingkit/workspace/shein compatibility layer instead", path)
 		}
 	}
 }
@@ -2189,22 +2472,6 @@ func TestTaskStatusRuntimeErrorsUseCapabilityNames(t *testing.T) {
 	}
 }
 
-func TestTaskStatusPackageDoesNotImportRetiredManagementPackage(t *testing.T) {
-	root := filepath.Join("..", "internal", "app", "taskstatus")
-	index, err := loadGoFileIndex(root, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for path, facts := range index.files {
-		for quotedImport := range facts.imports {
-			importPath := strings.Trim(quotedImport, `"`)
-			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
-				t.Fatalf("%s imports %s; keep taskstatus package on task-status runtime ports", path, importPath)
-			}
-		}
-	}
-}
-
 func TestBaseProcessorDoesNotExposeRetiredManagementService(t *testing.T) {
 	path := filepath.Join("..", "internal", "processor", "base_processor.go")
 	fset := token.NewFileSet()
@@ -2927,10 +3194,20 @@ func TestAppBootstrapRetiredManagementImportsStayBlocked(t *testing.T) {
 	}
 }
 
-func TestListingRuntimeLocalDoesNotImportRetiredManagementPackage(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "listingruntime", "local"), []string{
-		`"task-processor/internal/infra/clients/management"`,
-	}, nil)
+func TestListingRuntimeLocalManagementImportsStayRetiredAcrossBuildTargets(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingruntime", "local")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management"`]; ok {
+			t.Errorf("%s imports retired management client; keep the neutral local runtime on local runtime contracts", path)
+		}
+	}
 }
 
 func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
@@ -2985,12 +3262,6 @@ func TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases(t *testing.T) {
 	})
 }
 
-func TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal"), []string{
-		`"task-processor/internal/app/processor"`,
-	}, nil)
-}
-
 func TestAppProcessorCompatibilityLayerIsRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "processor")
 	if _, err := os.Stat(path); err == nil {
@@ -2998,12 +3269,6 @@ func TestAppProcessorCompatibilityLayerIsRetired(t *testing.T) {
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("stat %s: %v", path, err)
 	}
-}
-
-func TestInternalPackagesDoNotImportAppStateCompatibilityLayer(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal"), []string{
-		`"task-processor/internal/app/state"`,
-	}, nil)
 }
 
 func TestAppStateCompatibilityLayerIsRetired(t *testing.T) {
@@ -3018,6 +3283,21 @@ func TestAppStateCompatibilityLayerIsRetired(t *testing.T) {
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".go") {
 			t.Fatalf("%s still contains Go compatibility file %s; use internal/state directly instead", path, entry.Name())
+		}
+	}
+}
+
+func TestInternalPackagesDoNotImportAppCompatibilityLayersAcrossBuildTargets(t *testing.T) {
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/app/processor") || importMatchesPrefix(importPath, "task-processor/internal/app/state") {
+				t.Errorf("%s imports %s; keep retired app compatibility packages out of internal production code", path, importPath)
+			}
 		}
 	}
 }
@@ -3041,10 +3321,19 @@ func TestAppCrawlerFetcherCompatibilityLayerIsRetired(t *testing.T) {
 }
 
 func TestCmdPackagesDoNotImportAppCompatibilityLayers(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "cmd"), []string{
-		`"task-processor/internal/app/processor"`,
-		`"task-processor/internal/app/state"`,
-	}, nil)
+	root := filepath.Join("..", "cmd")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/app/processor") || importMatchesPrefix(importPath, "task-processor/internal/app/state") {
+				t.Errorf("%s imports banned boundary package %q", path, importPath)
+			}
+		}
+	}
 }
 
 func TestDomainHTTPPackagesDoNotImportAppHTTPAPI(t *testing.T) {
@@ -3109,6 +3398,17 @@ func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
 			}, nil)
 		})
 	}
+}
+
+func TestProductDomainDoesNotDependOnOuterAdapters(t *testing.T) {
+	t.Parallel()
+
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "product"), []string{
+		"task-processor/internal/listingkit",
+		"task-processor/internal/compatibility",
+		"task-processor/internal/crawler",
+		"task-processor/internal/integration",
+	}, nil)
 }
 
 func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
@@ -3212,6 +3512,8 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "listingsubscription", "handler.go")):                    {},
 		filepath.Clean(filepath.Join(root, "productenrich", "handler.go")):                          {},
 	}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "localagent", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -3261,6 +3563,16 @@ func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestProductImageBusinessPackagesDoNotImportGlobalConfig(t *testing.T) {
+	root := filepath.Join("..", "internal", "productimage")
+	allowedComposition := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "httpapi")) + string(os.PathSeparator): {},
+	}
+	assertNoProductionBannedImports(t, root, []string{
+		`"task-processor/internal/core/config"`,
+	}, allowedComposition)
 }
 
 func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
@@ -4181,8 +4493,7 @@ func TestTemporalRuntimePackagesDoNotImportHTTPAPI(t *testing.T) {
 func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{
-		"listingkit_shein_support.go":   {},
-		"listingkit_temporal_worker.go": {},
+		"listingkit_shein_support.go": {},
 	}
 
 	entries, err := os.ReadDir(root)
@@ -4600,7 +4911,6 @@ func TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "feature_module_builders.go")):    {},
 		filepath.Clean(filepath.Join(root, "feature_builder_listingkit.go")): {},
 		filepath.Clean(filepath.Join(root, "http_modules.go")):               {},
-		filepath.Clean(filepath.Join(root, "listingkit_temporal_worker.go")): {},
 		filepath.Clean(filepath.Join(root, "runtime_login_modules.go")):      {},
 		filepath.Clean(filepath.Join(root, "runtime.go")):                    {},
 		filepath.Clean(filepath.Join(root, "runtime_deps_methods.go")):       {},

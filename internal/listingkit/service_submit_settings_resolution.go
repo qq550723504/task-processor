@@ -6,9 +6,6 @@ func applySubmitSettingsProfile(settings SheinSettings, profile *ListingKitStore
 	if profile == nil {
 		return settings
 	}
-	if profile.StoreID > 0 {
-		settings.DefaultStoreID = profile.StoreID
-	}
 	if profile.Site != "" {
 		settings.Site = profile.Site
 	}

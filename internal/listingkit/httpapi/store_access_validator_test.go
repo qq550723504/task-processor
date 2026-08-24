@@ -39,7 +39,7 @@ func TestListingAdminStoreAccessValidatorRejectsForeignDisabledAndWrongPlatform(
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			validator := listingAdminStoreAccessValidator{repo: storeAccessRepositoryStub{store: tt.store}}
+			validator := listingAdminStoreAccessValidator{repo: &storeAccessRepositoryStub{store: tt.store}}
 
 			_, err := validator.ValidateStoreAccess(context.Background(), 101, 202, tt.platform)
 
@@ -51,8 +51,25 @@ func TestListingAdminStoreAccessValidatorRejectsForeignDisabledAndWrongPlatform(
 type storeAccessRepositoryStub struct {
 	listingadmin.StoreRepository
 	store *listingadmin.Store
+	ctx   context.Context
 }
 
-func (s storeAccessRepositoryStub) GetStore(context.Context, int64, int64) (*listingadmin.Store, error) {
+func (s *storeAccessRepositoryStub) GetStore(ctx context.Context, _ int64, _ int64) (*listingadmin.Store, error) {
+	s.ctx = ctx
 	return s.store, nil
+}
+
+func TestListingAdminStoreAccessValidatorPropagatesListingKitRoles(t *testing.T) {
+	stub := &storeAccessRepositoryStub{
+		store: &listingadmin.Store{ID: 202, TenantID: 101, Platform: "SHEIN", Status: 0},
+	}
+	ctx := listingkit.WithRequestRoles(context.Background(), []string{"listingkit_admin"})
+
+	if _, err := (listingAdminStoreAccessValidator{repo: stub}).ValidateStoreAccess(ctx, 101, 202, "SHEIN"); err != nil {
+		t.Fatalf("ValidateStoreAccess error = %v", err)
+	}
+	roles := listingadmin.RequestRolesFromContext(stub.ctx)
+	if len(roles) != 1 || roles[0] != "listingkit_admin" {
+		t.Fatalf("listingadmin roles = %v, want listingkit_admin", roles)
+	}
 }

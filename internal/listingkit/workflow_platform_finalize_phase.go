@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"time"
 
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
@@ -52,6 +53,12 @@ type platformPostprocessPhase struct {
 	service *service
 }
 
+const sheinReviewContentOptimizationTimeout = time.Minute
+
+func withSheinReviewContentOptimizationTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, sheinReviewContentOptimizationTimeout)
+}
+
 func buildPlatformPostprocessPhase(s *service) *platformPostprocessPhase {
 	return &platformPostprocessPhase{service: s}
 }
@@ -63,7 +70,10 @@ func (p *platformPostprocessPhase) run(
 	sdsOptions *SDSSyncOptions,
 ) {
 	if final.Shein != nil {
-		if err := sheinpub.OptimizePackageReviewContent(ctx, final.Shein, sheinadapter.NewReviewContentOptimizer(resolveWorkflowSheinContentOptimizer(p.service))); err != nil {
+		optimizationCtx, cancel := withSheinReviewContentOptimizationTimeout(ctx)
+		err := sheinpub.OptimizePackageReviewContent(optimizationCtx, final.Shein, sheinadapter.NewReviewContentOptimizer(resolveWorkflowSheinContentOptimizer(p.service)))
+		cancel()
+		if err != nil {
 			appendWarning(final, "shein content optimization skipped: "+err.Error())
 		}
 	}

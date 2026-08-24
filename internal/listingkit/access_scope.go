@@ -17,10 +17,16 @@ var (
 
 type requestRolesContextKey struct{}
 
-func ConfigureOwnerScopeRequired(required bool) {
-	ownerScopeRequired.Store(required)
+func init() {
+	ownerScopeRequired.Store(true)
 }
 
+// EnableOwnerScope ensures the production owner-filtering invariant is active.
+func EnableOwnerScope() {
+	ownerScopeRequired.Store(true)
+}
+
+// SetOwnerScopeRequiredForTesting is reserved for tests, including external-package tests.
 func SetOwnerScopeRequiredForTesting(required bool) func() {
 	ownerScopeRequiredTest.Lock()
 	previous := ownerScopeRequired.Load()

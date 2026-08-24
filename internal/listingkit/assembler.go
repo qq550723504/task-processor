@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
+	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -50,24 +51,39 @@ func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
 }
 
 func (a *assembler) Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult {
+	result := a.assemble(task, canonical, func(string) *productimage.ImageProcessResult { return image })
+	result.ImageAssets = image
+	return result
+}
+
+func (a *assembler) AssembleForTargets(task *Task, canonical *canonical.Product, images map[string]*productimage.ImageProcessResult) *ListingKitResult {
+	result := a.assemble(task, canonical, func(target string) *productimage.ImageProcessResult { return images[target] })
+	result.ImageAssetsByTarget = cloneImageAssetsByTarget(images)
+	if task != nil {
+		result.applyCompatibilityAssetProjectionForRequest(task.Request)
+	}
+	return result
+}
+
+func (a *assembler) assemble(task *Task, canonical *canonical.Product, imageForTarget func(string) *productimage.ImageProcessResult) *ListingKitResult {
 	now := time.Now()
 	result := initResult(task)
 	result.UpdatedAt = now
 	result.CanonicalProduct = canonical
-	result.ImageAssets = image
-	result.Summary = buildSummary(task, canonical, image)
+	result.Summary = buildSummary(task, canonical, nil)
 
 	if task == nil || task.Request == nil {
 		return result
 	}
 
 	for _, platform := range task.Request.Platforms {
+		image := imageForTarget(platform)
 		switch platform {
 		case "amazon":
 			result.Amazon = &AmazonPackage{Draft: a.amazonBuilder.Build(task.Request, canonical, image)}
 		case "shein":
 			result.Shein = sheinpub.NewAssembler(a.buildSheinAssemblerConfig()).Build(buildSheinPublishRequestForTask(task, task.Request), canonical, image)
-			refreshSheinReviewState(result.Shein, collectReviewNotes(canonical, image)...)
+			refreshSheinReviewState(result.Shein, common.CollectReviewNotes(canonical, image)...)
 		case "temu":
 			result.Temu = buildTemuPackage(task.Request, canonical, image)
 		case "walmart":

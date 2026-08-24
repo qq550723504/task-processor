@@ -86,59 +86,6 @@ export function FinalReviewReadinessBanner({
   );
 }
 
-export function FinalReviewPublishConfirmCard({
-  categoryId,
-  finalImageCount,
-  isPublished,
-  isSubmitting,
-  onCancel,
-  onConfirm,
-  skuCount,
-}: {
-  categoryId?: number | null;
-  finalImageCount: number;
-  isPublished?: boolean;
-  isSubmitting?: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-  skuCount: number;
-}) {
-  return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-      <div className="space-y-2">
-        <h3 className="text-base font-semibold text-zinc-950">确认发布到 SHEIN</h3>
-        <p className="text-sm leading-6 text-zinc-600">
-          这会把当前已确认资料正式提交到 SHEIN，请先核对类目、图片和 SKU。
-        </p>
-        <div className="grid gap-2 text-sm text-zinc-700 sm:grid-cols-3">
-          <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2">
-            类目：{categoryId ?? "未确认"}
-          </div>
-          <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2">
-            图片：{finalImageCount} 张
-          </div>
-          <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2">
-            SKU：{skuCount} 个
-          </div>
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <Button className="w-full sm:w-auto" variant="secondary" onClick={onCancel} type="button">
-            取消
-          </Button>
-          <Button
-            className="w-full sm:w-auto"
-            disabled={isSubmitting || isPublished}
-            onClick={onConfirm}
-            type="button"
-          >
-            {isPublished ? "已发布到 SHEIN" : "确认发布"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function FinalReviewSubmitActions({
   confirmed,
   isSaving,

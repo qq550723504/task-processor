@@ -3,6 +3,8 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -466,6 +468,45 @@ func TestRecoverTaskNowReblocksRetryableSubmitFailuresAtMaxAutoRetryAttempts(t *
 	}
 }
 
+func TestRecoverTaskNowMovesExhaustedIntentBearingSubmissionToReconciliation(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-intent-exhausted")
+	now := time.Date(2026, 6, 6, 17, 35, 0, 0, time.UTC)
+	nextRetryAt := now.Add(-time.Minute)
+	leaseUntil := now.Add(time.Hour)
+	task := &Task{ID: "task-intent-exhausted", TenantID: "tenant-intent-exhausted", Status: core.TaskStatusPending, Request: &GenerateRequest{TenantID: "tenant-intent-exhausted", Platforms: []string{"amazon"}, Text: "recover"}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now.Add(-10 * time.Minute), UpdatedAt: now.Add(-10 * time.Minute)}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: listingsubmission.RetryableReasonCodeWorkerQueueBackpressure, ReasonMessage: "queue full", BlockedAt: now.Add(-5 * time.Minute), NextRetryAt: &nextRetryAt, RetryAttempts: 2, MaxAutoRetryAttempts: 3, RecoveryScope: listingsubmission.RetryableRecoveryScopeTask, AutoResumeEnabled: true}, "queue full"); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo: repo,
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(string) error { return errors.New("queue full") })
+		},
+		now: func() time.Time { return now },
+	})
+
+	if _, err := svc.RecoverTaskNow(ctx, task.ID); err == nil {
+		t.Fatal("RecoverTaskNow() error = nil, want retryable submit failure")
+	}
+	stored, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.RetryableBlock.AutoResumeEnabled || stored.RetryableBlock.NextRetryAt != nil {
+		t.Fatalf("exhausted intent-bearing task = %#v, want reconciliation-only block", stored)
+	}
+	if stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("reservation = (%q, %v), want retained reconciliation intent", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
+	}
+}
+
 func TestRecoverTaskNowRestoresBlockedStateWhenReblockPersistenceFails(t *testing.T) {
 	t.Parallel()
 
@@ -559,6 +600,14 @@ type taskRecoveryServiceTestRepo struct {
 	tasks                         map[string]*Task
 	markBlockedRetryableErrors    []error
 	markBlockedRetryableCallCount int
+	requireLiveBlockContext       bool
+	markFailedErrors              []error
+	resolveUsageSettlementErrors  []error
+	resolveUsageReleaseErrors     []error
+	resolveUsageReleaseHook       func(*Task)
+	resolveUsageSettlementHook    func(*Task)
+	afterListExpired              func()
+	listRecoverableErr            error
 }
 
 func newTaskRecoveryServiceTestRepo() *taskRecoveryServiceTestRepo {
@@ -618,11 +667,27 @@ func (r *taskRecoveryServiceTestRepo) MarkProcessing(context.Context, string) er
 	return nil
 }
 
-func (r *taskRecoveryServiceTestRepo) MarkCompleted(context.Context, string, *ListingKitResult) error {
+func (r *taskRecoveryServiceTestRepo) MarkCompleted(_ context.Context, taskID string, result *ListingKitResult) error {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return core.ErrTaskNotFound
+	}
+	task.Status = core.TaskStatusCompleted
+	task.Result = result
+	task.RetryableBlock = nil
+	task.Error = ""
 	return nil
 }
 
-func (r *taskRecoveryServiceTestRepo) MarkNeedsReview(context.Context, string, *ListingKitResult, string) error {
+func (r *taskRecoveryServiceTestRepo) MarkNeedsReview(_ context.Context, taskID string, result *ListingKitResult, reason string) error {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return core.ErrTaskNotFound
+	}
+	task.Status = core.TaskStatusNeedsReview
+	task.Result = result
+	task.RetryableBlock = nil
+	task.Error = reason
 	return nil
 }
 
@@ -631,18 +696,29 @@ func (r *taskRecoveryServiceTestRepo) MarkFailed(_ context.Context, taskID strin
 	if !ok {
 		return core.ErrTaskNotFound
 	}
+	if len(r.markFailedErrors) > 0 {
+		err := r.markFailedErrors[0]
+		r.markFailedErrors = r.markFailedErrors[1:]
+		if err != nil {
+			return err
+		}
+	}
 	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now().UTC()
 	return nil
 }
 
-func (r *taskRecoveryServiceTestRepo) MarkBlockedRetryable(_ context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
+func (r *taskRecoveryServiceTestRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
 		return core.ErrTaskNotFound
 	}
 	r.markBlockedRetryableCallCount++
+	if r.requireLiveBlockContext && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if len(r.markBlockedRetryableErrors) > 0 {
 		err := r.markBlockedRetryableErrors[0]
 		r.markBlockedRetryableErrors = r.markBlockedRetryableErrors[1:]
@@ -657,7 +733,36 @@ func (r *taskRecoveryServiceTestRepo) MarkBlockedRetryable(_ context.Context, ta
 	return nil
 }
 
+func (r *taskRecoveryServiceTestRepo) MarkBlockedRetryableIfCurrent(ctx context.Context, taskID string, expected, next *RetryableBlock, errorMsg string) (bool, error) {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return false, core.ErrTaskNotFound
+	}
+	if r.requireLiveBlockContext && ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	if task.Status != core.TaskStatusBlockedRetryable || !reflect.DeepEqual(task.RetryableBlock, expected) {
+		return false, nil
+	}
+	if len(r.markBlockedRetryableErrors) > 0 {
+		err := r.markBlockedRetryableErrors[0]
+		r.markBlockedRetryableErrors = r.markBlockedRetryableErrors[1:]
+		if err != nil {
+			return false, err
+		}
+	}
+	r.markBlockedRetryableCallCount++
+	task.Status = core.TaskStatusBlockedRetryable
+	task.Error = errorMsg
+	task.RetryableBlock = cloneRetryableBlock(next)
+	task.UpdatedAt = time.Now().UTC()
+	return true, nil
+}
+
 func (r *taskRecoveryServiceTestRepo) ListRecoverableTasks(_ context.Context, query *RecoverableTaskQuery) ([]Task, error) {
+	if r.listRecoverableErr != nil {
+		return nil, r.listRecoverableErr
+	}
 	dueBefore := time.Time{}
 	if query != nil {
 		dueBefore = query.DueBefore
@@ -667,14 +772,54 @@ func (r *taskRecoveryServiceTestRepo) ListRecoverableTasks(_ context.Context, qu
 		if !taskRecoveryServiceTaskIsRecoverable(task, dueBefore, false) {
 			continue
 		}
+		if !taskRecoveryServiceMatchesReasonCodes(task.RetryableBlock, query) {
+			continue
+		}
 		copied := *task
 		copied.RetryableBlock = cloneRetryableBlock(task.RetryableBlock)
 		items = append(items, copied)
 	}
+	sort.SliceStable(items, func(i, j int) bool {
+		left, right := items[i].RetryableBlock.NextRetryAt, items[j].RetryableBlock.NextRetryAt
+		if left != nil && right != nil && !left.Equal(*right) {
+			return left.Before(*right)
+		}
+		if left != nil && right == nil {
+			return true
+		}
+		if left == nil && right != nil {
+			return false
+		}
+		return items[i].ID < items[j].ID
+	})
 	if query != nil && query.Limit > 0 && len(items) > query.Limit {
 		items = items[:query.Limit]
 	}
 	return items, nil
+}
+
+func taskRecoveryServiceMatchesReasonCodes(block *RetryableBlock, query *RecoverableTaskQuery) bool {
+	if block == nil || query == nil {
+		return block != nil
+	}
+	if len(query.ReasonCodes) > 0 {
+		matched := false
+		for _, code := range query.ReasonCodes {
+			if block.ReasonCode == code {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	for _, code := range query.ExcludeReasonCodes {
+		if block.ReasonCode == code {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *taskRecoveryServiceTestRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, recoveredAt time.Time) error {
@@ -731,6 +876,143 @@ func (r *taskRecoveryServiceTestRepo) IncrementRetryCount(context.Context, strin
 }
 
 func (r *taskRecoveryServiceTestRepo) SaveTaskResult(context.Context, string, *ListingKitResult) error {
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) BeginGenerationUsageReservation(_ context.Context, taskID string, leaseUntil time.Time) error {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return core.ErrTaskNotFound
+	}
+	if task.GenerationUsageReservationState == "" {
+		task.GenerationUsageReservationState = GenerationUsageReservationStatePending
+	}
+	task.GenerationUsageReservationLeaseUntil = timestampTaskRecoveryServiceTest(leaseUntil)
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) MarkGenerationUsageReserved(_ context.Context, taskID string, leaseUntil time.Time) error {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return core.ErrTaskNotFound
+	}
+	task.GenerationUsageReservationState = GenerationUsageReservationStateReserved
+	task.GenerationUsageReservationLeaseUntil = timestampTaskRecoveryServiceTest(leaseUntil)
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) RenewGenerationUsageReservation(_ context.Context, taskID string, leaseUntil time.Time) error {
+	task, ok := r.tasks[taskID]
+	if !ok || task.GenerationUsageReservationState == "" {
+		return core.ErrTaskNotRecoverable
+	}
+	task.GenerationUsageReservationLeaseUntil = timestampTaskRecoveryServiceTest(leaseUntil)
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) ClearGenerationUsageReservation(_ context.Context, taskID string) error {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return core.ErrTaskNotFound
+	}
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) FinalizeGenerationUsageAdmission(_ context.Context, taskID string, status core.TaskStatus, block *RetryableBlock, errorMsg string) error {
+	task, ok := r.tasks[taskID]
+	if !ok || (status != core.TaskStatusFailed && (status != core.TaskStatusBlockedRetryable || block == nil)) {
+		return core.ErrTaskNotRecoverable
+	}
+	if len(r.markFailedErrors) > 0 {
+		err := r.markFailedErrors[0]
+		r.markFailedErrors = r.markFailedErrors[1:]
+		if err != nil {
+			return err
+		}
+	}
+	task.Status = status
+	task.RetryableBlock = cloneRetryableBlock(block)
+	task.Error = errorMsg
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) PrepareGenerationUsageRelease(_ context.Context, taskID string, block *RetryableBlock, errorMsg string, result *ListingKitResult) error {
+	task, ok := r.tasks[taskID]
+	if !ok || block == nil || block.ReasonCode != usageReleasePendingReason {
+		return core.ErrTaskNotRecoverable
+	}
+	task.Status = core.TaskStatusBlockedRetryable
+	task.RetryableBlock = cloneRetryableBlock(block)
+	task.Error = errorMsg
+	if result != nil {
+		task.Result = result
+	}
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) ResolveGenerationUsageRelease(_ context.Context, taskID, terminalError string) error {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return core.ErrTaskNotFound
+	}
+	if r.resolveUsageReleaseHook != nil {
+		r.resolveUsageReleaseHook(task)
+	}
+	if len(r.resolveUsageReleaseErrors) > 0 {
+		err := r.resolveUsageReleaseErrors[0]
+		r.resolveUsageReleaseErrors = r.resolveUsageReleaseErrors[1:]
+		if err != nil {
+			return err
+		}
+	}
+	if task.RetryableBlock == nil || task.RetryableBlock.ReasonCode != usageReleasePendingReason {
+		return core.ErrTaskNotRecoverable
+	}
+	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
+	task.Error = terminalError
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) ListExpiredGenerationUsageReservations(_ context.Context, dueBefore time.Time, limit int) ([]Task, error) {
+	items := make([]Task, 0)
+	for _, task := range r.tasks {
+		if (task.Status != core.TaskStatusPending && task.Status != core.TaskStatusProcessing && task.Status != core.TaskStatusCompleted && task.Status != core.TaskStatusNeedsReview) || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+			continue
+		}
+		copied := *task
+		items = append(items, copied)
+	}
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	if r.afterListExpired != nil {
+		r.afterListExpired()
+	}
+	return items, nil
+}
+
+func (r *taskRecoveryServiceTestRepo) ResolveExpiredGenerationUsageReservation(_ context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error {
+	if block == nil || (expectedStatus != core.TaskStatusPending && expectedStatus != core.TaskStatusProcessing && expectedStatus != core.TaskStatusCompleted && expectedStatus != core.TaskStatusNeedsReview) {
+		return core.ErrTaskNotRecoverable
+	}
+	task, ok := r.tasks[taskID]
+	if !ok || task.Status != expectedStatus || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+		return core.ErrTaskNotRecoverable
+	}
+	task.Status = core.TaskStatusBlockedRetryable
+	task.RetryableBlock = cloneRetryableBlock(block)
+	task.Error = errorMsg
+	if clearReservation {
+		task.GenerationUsageReservationState = ""
+		task.GenerationUsageReservationLeaseUntil = nil
+	}
 	return nil
 }
 

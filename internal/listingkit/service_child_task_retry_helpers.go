@@ -3,12 +3,15 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog"
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/productimage"
 )
 
 func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) error {
@@ -20,10 +23,7 @@ func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result
 	}
 	result.CanonicalProduct = canonicalProduct
 	result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
-	if result.AssetBundle == nil {
-		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
-	}
-	result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
+	rebuildAssetBundlesForRetry(result, canonicalProduct, task.Request)
 	markChildTask(result, "sds_catalog_product", "", string(core.TaskStatusCompleted), "")
 	stage.Complete()
 
@@ -33,10 +33,7 @@ func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result
 	}
 	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSDesignResult, sdsOptions) {
 		result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
-		if result.AssetBundle == nil {
-			result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
-		}
-		result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
+		rebuildAssetBundlesForRetry(result, canonicalProduct, task.Request)
 	}
 	result.Summary = ensureGenerationSummary(result.Summary)
 	result.Summary.NeedsReview = false
@@ -59,7 +56,9 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 	if sdsOptions == nil {
 		return core.ErrChildTaskNotRetryable
 	}
-	if result.ImageAssets != nil {
+	if len(result.ImageAssetsByTarget) > 0 {
+		s.syncSDSDesign(ctx, task, result, deterministicSDSImageResult(result), recorder)
+	} else if result.ImageAssets != nil {
 		s.syncSDSDesign(ctx, task, result, result.ImageAssets, recorder)
 	} else if shouldRunRemoteSDSDesignSync(task.Request) {
 		s.syncSDSDesignFromRemote(ctx, task, result, recorder)
@@ -69,10 +68,7 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 	if result.CanonicalProduct != nil {
 		if applySDSSyncMetadataToCanonical(result.CanonicalProduct, result.SDSDesignResult, sdsOptions) {
 			result.CatalogProduct = catalog.BuildProduct(result.CanonicalProduct)
-			if result.AssetBundle == nil {
-				result.AssetBundle = asset.BuildBundle(result.CanonicalProduct, result.ImageAssets)
-			}
-			result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
+			rebuildAssetBundlesForRetry(result, result.CanonicalProduct, task.Request)
 		}
 	}
 	result.Summary = ensureGenerationSummary(result.Summary)
@@ -83,6 +79,42 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 	final := s.runPlatformAdaptation(ctx, task, snapshot, recipesByPlatform, nil, nil, nil, shouldGenerateAssets(task.Request), sdsOptions)
 	*result = *final
 	return nil
+}
+
+func rebuildAssetBundlesForRetry(result *ListingKitResult, canonicalProduct *canonical.Product, req *GenerateRequest) {
+	if result == nil {
+		return
+	}
+	if len(result.ImageAssetsByTarget) > 0 {
+		if result.AssetBundlesByTarget == nil {
+			result.AssetBundlesByTarget = map[string]*asset.Bundle{}
+		}
+		if result.AssetInventorySummariesByTarget == nil {
+			result.AssetInventorySummariesByTarget = map[string]*asset.InventorySummary{}
+		}
+		for target, imageResult := range result.ImageAssetsByTarget {
+			bundle := asset.BuildBundle(canonicalProduct, imageResult)
+			result.AssetBundlesByTarget[target] = bundle
+			result.AssetInventorySummariesByTarget[target] = asset.InventorySummaryFromBundle(bundle)
+		}
+		result.applyCompatibilityAssetProjectionForRequest(req)
+		return
+	}
+	if result.AssetBundle == nil {
+		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
+	}
+	result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
+}
+
+func sortedImageAssetTargets(images map[string]*productimage.ImageProcessResult) []string {
+	targets := make([]string, 0, len(images))
+	for target, imageResult := range images {
+		if imageResult != nil {
+			targets = append(targets, target)
+		}
+	}
+	sort.Strings(targets)
+	return targets
 }
 
 func (s *service) persistRetriedChildTaskResult(ctx context.Context, task *Task, result *ListingKitResult, kind string, retryErr error) (*TaskResult, error) {

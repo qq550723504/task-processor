@@ -19,3 +19,10 @@ func TestCrawlerTaskRetainsTrustedTenantIDInWorkerPayload(t *testing.T) {
 		t.Fatalf("TenantID = %d, want 101", task.TenantID)
 	}
 }
+
+func TestCrawlerTaskInfersPublicModeForLegacyZeroAccount(t *testing.T) {
+	task := NewCrawlerTask("https://detail.1688.com/offer/3001.html")
+	if got := task.EffectiveSourceAccessMode(); got != "public" {
+		t.Fatalf("EffectiveSourceAccessMode() = %q, want public", got)
+	}
+}

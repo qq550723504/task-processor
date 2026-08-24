@@ -92,7 +92,9 @@ type taskStudioBatchServiceConfig struct {
 	storeValidator           StudioBatchStoreValidator
 	generator                studioBatchGenerator
 	createGenerateTask       func(ctx context.Context, req *GenerateRequest) (*Task, error)
+	generateProductImages    func(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error)
 	getTask                  func(ctx context.Context, taskID string) (*Task, error)
+	markTaskFailed           func(ctx context.Context, taskID string, errorMsg string) error
 	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
 	serviceRunner            *listingStudioBatchServiceRunner
 	batchRunner              *listingStudioBatchGenerationRunner
@@ -103,4 +105,8 @@ type taskStudioBatchServiceConfig struct {
 	taskExecuteRunner        *listingStudioBatchTaskExecuteRunner
 	taskPrepareRunner        *listingStudioBatchTaskPrepareRunner
 	taskResumeRunner         *listingStudioBatchTaskResumeRunner
+
+	productImageUsage             StudioProductImageUsage
+	generationUsageAdmission      GenerationUsageAdmission
+	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }

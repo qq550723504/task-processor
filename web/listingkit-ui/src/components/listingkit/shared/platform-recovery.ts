@@ -1,7 +1,7 @@
 import { presentRecoveryDescriptor } from "@/components/listingkit/shared/hint-presentation";
 import type { PlatformCard, RecoveryDescriptor } from "@/lib/types/listingkit";
 
-export function derivePlatformRecoveryDescriptor(
+ function derivePlatformRecoveryDescriptor(
   card: PlatformCard,
 ): RecoveryDescriptor | undefined {
   const summary = card.recovery_summary;

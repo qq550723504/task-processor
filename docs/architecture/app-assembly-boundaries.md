@@ -211,6 +211,7 @@ App-layer assembly boundaries are guarded by:
 - `TestAppConsumerRetiredManagementImportsStayBlocked`
 - `TestAppHTTPAPIRetiredManagementImportsStayBlocked`
 - `TestAppRuntimeListingRetiredManagementImportsStayBlocked`
+- `depguard: app_taskstatus_legacy_management`
 - `TestAppTaskStatusRetiredManagementImportsStayBlocked`
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`

@@ -7,6 +7,8 @@ import (
 )
 
 var ErrImportTaskNotFound = errors.New("import task not found")
+var ErrImportTaskAlreadyExists = errors.New("an active import task already exists for this product, store, region, and target platform")
+var ErrImportTaskIntegrityUnavailable = errors.New("active import task uniqueness is unavailable because legacy duplicate rows require remediation")
 
 type ImportTask struct {
 	ID             int64      `json:"id"`
@@ -16,7 +18,7 @@ type ImportTask struct {
 	TargetPlatform string     `json:"targetPlatform,omitempty"`
 	SourcePlatform string     `json:"sourcePlatform,omitempty"`
 	Region         string     `json:"region"`
-	CategoryID     *int64     `json:"categoryId,omitempty"`
+	CategoryID     *int64     `json:"categoryId"`
 	ProductID      string     `json:"productId"`
 	Status         int16      `json:"status"`
 	ProcessingNode string     `json:"processingNode,omitempty"`
@@ -52,6 +54,11 @@ type ImportTaskPage struct {
 	Total    int64        `json:"total"`
 	Page     int          `json:"page"`
 	PageSize int          `json:"page_size"`
+}
+
+type BatchCreateImportTasksResult struct {
+	Items             []ImportTask
+	SkippedProductIDs []string
 }
 
 type ImportTaskStatusUpdate struct {
@@ -113,7 +120,7 @@ type DispatchEvent struct {
 
 type ImportTaskRepository interface {
 	ListImportTasks(ctx context.Context, query ImportTaskQuery) (*ImportTaskPage, error)
-	BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) ([]ImportTask, error)
+	BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) (BatchCreateImportTasksResult, error)
 	GetImportTaskByID(ctx context.Context, id int64) (*ImportTask, error)
 	ListPendingAndRetryTasks(ctx context.Context, limit int, tenantID int64, storeIDs []int64) ([]ImportTask, error)
 	ListDispatchCandidatesFair(ctx context.Context, req DispatchCandidateRequest) ([]ImportTask, error)
@@ -162,7 +169,7 @@ type listingProductImportTask struct {
 	TargetPlatform string     `gorm:"column:target_platform"`
 	SourcePlatform string     `gorm:"column:source_platform"`
 	Region         string     `gorm:"column:region;not null"`
-	CategoryID     int64      `gorm:"column:category_id;not null;index"`
+	CategoryID     *int64     `gorm:"column:category_id;index"`
 	ProductID      string     `gorm:"column:product_id;not null;index"`
 	Status         int16      `gorm:"column:status;not null;default:0;index"`
 	ProcessingNode string     `gorm:"column:processing_node"`

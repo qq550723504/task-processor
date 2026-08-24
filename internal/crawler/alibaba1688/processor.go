@@ -2,6 +2,8 @@
 package alibaba1688
 
 import (
+	"context"
+	"errors"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
@@ -33,20 +35,32 @@ func NewAlibaba1688Processor(cfg *config.Config) *Alibaba1688Processor {
 	}
 }
 
+// Prepare provisions the public browser dependencies before a local-agent job
+// is claimed, so setup time does not consume the execution lease.
+func (ap *Alibaba1688Processor) Prepare(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if ap == nil || ap.singleProcessor == nil {
+		return errors.New("1688 crawler processor is not configured")
+	}
+	return ap.singleProcessor.Prepare(ctx)
+}
+
 // Process 处理1688产品页面
-func (ap *Alibaba1688Processor) Process(url string) (*model.Product1688, error) {
+func (ap *Alibaba1688Processor) Process(ctx context.Context, url string) (*model.Product1688, error) {
 	startTime := time.Now()
 	logger.GetGlobalLogger("crawler/alibaba1688").Infof("开始处理1688产品: %s", url)
 
-	return ap.singleProcessor.ProcessWithSingleBrowser(url, startTime)
+	return ap.singleProcessor.ProcessWithSingleBrowser(ctx, url, startTime)
 }
 
 // ProcessWithAccountProfile handles a product page with one account-bound browser profile.
-func (ap *Alibaba1688Processor) ProcessWithAccountProfile(url string, profile AccountProfile) (*model.Product1688, error) {
+func (ap *Alibaba1688Processor) ProcessWithAccountProfile(ctx context.Context, url string, profile AccountProfile) (*model.Product1688, error) {
 	startTime := time.Now()
 	logger.GetGlobalLogger("crawler/alibaba1688").Infof("开始处理1688产品: %s", url)
 
-	return ap.singleProcessor.ProcessWithAccountProfile(url, startTime, profile)
+	return ap.singleProcessor.ProcessWithAccountProfile(ctx, url, startTime, profile)
 }
 
 // ProcessBatch 批量处理多个1688产品页面
@@ -65,7 +79,7 @@ func (ap *Alibaba1688Processor) ProcessBatch(requests []model.Product1688Request
 
 		logger.GetGlobalLogger("crawler/alibaba1688").Infof("处理产品 %d/%d: %s", i+1, len(requests), request.URL)
 
-		product, err := ap.singleProcessor.ProcessWithSingleBrowser(request.URL, requestStartTime)
+		product, err := ap.singleProcessor.ProcessWithSingleBrowser(context.Background(), request.URL, requestStartTime)
 
 		results[i] = model.Product1688Result{
 			Request:   request,

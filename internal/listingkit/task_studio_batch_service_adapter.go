@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	studiodomain "task-processor/internal/listing/studio"
 )
@@ -118,17 +117,15 @@ func newListingStudioBatchServiceRunner(s *taskStudioBatchService) *listingStudi
 			if err != nil {
 				return nil, err
 			}
-			_, session, _, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
-				DesignIDs: state.DesignIDs,
-			})
+			_, session, _, err := s.prepareStudioBatchTaskCreation(ctx, batchID, studioBatchTaskCreationRequest(ctx, state.DesignIDs))
 			if err != nil {
 				return nil, err
 			}
 			if session == nil {
-				session = &SheinStudioSession{
-					ID:                   strings.TrimSpace(batchID),
-					PendingTaskDesignIDs: append(SheinStudioStringList(nil), state.DesignIDs...),
-				}
+				session = state.Session
+			}
+			if session == nil {
+				session = fallbackStudioBatchTaskSession(batchID, state.Batch, state.DesignIDs, "")
 			}
 			s.ensureTaskPrepareRunner()
 			if s.taskPrepareRunner == nil {

@@ -212,7 +212,7 @@ M0 固定基线和发布证据
 
 - `internal/listingkit/httpapi/zitadel_auth_route_authorization.go`
 - `internal/productenrich/httpapi/sourcea1688/*`
-- `internal/product/sourcehandoff/a1688/httpapi/*`
+- `internal/compatibility/listingkit/sourcehandoff/a1688/httpapi/*`
 - 路由 descriptor 和权限测试
 
 **实现要求**
@@ -288,7 +288,7 @@ M0 固定基线和发布证据
 
 **验证证据（2026-07-16，Asia/Singapore）**
 
-- `$env:GOWORK='off'; go test ./internal/listingkit ./internal/listingkit/api ./internal/listingkit/httpapi ./internal/product/sourcehandoff/a1688 ./internal/productenrich/httpapi/sourcea1688 ./internal/app/httpapi -count=1`：通过。
+- `$env:GOWORK='off'; go test ./internal/listingkit ./internal/listingkit/api ./internal/listingkit/httpapi ./internal/compatibility/listingkit/sourcehandoff/a1688 ./internal/productenrich/httpapi/sourcea1688 ./internal/app/httpapi -count=1`：通过。
 - `$env:GOWORK='off'; go test ./tests/... -count=1`：通过。
 - `web/listingkit-ui` 中的 `npm run lint`（0 error，14 个既有 warning）、`npm run typecheck` 和 `npm test`：通过；Vitest 为 243 个文件、1351 个测试。
 
@@ -614,6 +614,7 @@ UsageEvent
 - 成功 commit；明确失败策略后 release/reverse。
 - 重试不会重复扣费。
 - 原有 counter 可由 ledger 重建或每日校验。
+- 已完成的 PAY-041 对账 dry-run 边界、操作证据和 PAY-042 交接见 [`../architecture/pay-041-usage-ledger.md`](../architecture/pay-041-usage-ledger.md)；该证据不接入任何收费入口，也不授权修复生产数据。
 
 **验收标准**
 
@@ -625,6 +626,8 @@ UsageEvent
 ```
 
 ### PAY-042：统一所有收费入口的 entitlement 和 usage
+
+PAY-042 是 PAY-041 之后的下一道门禁：必须按 [`../architecture/pay-041-usage-ledger.md`](../architecture/pay-041-usage-ledger.md) 中的稳定业务幂等键和 reserve/commit/release 合同接入全部入口，再单独批准 cutover；PAY-041 不改变现有生产行为。
 
 **覆盖入口**
 
@@ -1011,7 +1014,7 @@ go test ./internal/listingkit/api/... -count=1
 go test ./internal/listingkit/httpapi/... -count=1
 go test ./internal/listingkit/store/... -count=1
 go test ./internal/listingsubscription/... -count=1
-go test ./internal/product/sourcehandoff/... -count=1
+go test ./internal/compatibility/listingkit/sourcehandoff/... -count=1
 go test ./internal/productenrich/httpapi/sourcea1688/... -count=1
 go test ./tests/... -count=1
 ```

@@ -4,14 +4,15 @@ import type { JWT } from "next-auth/jwt";
 import ZITADEL from "next-auth/providers/zitadel";
 
 import { createResilientOidcFetch } from "@/lib/server/auth-fetch";
+import {
+  extractZitadelIdentityFromClaims,
+  normalizeClaim,
+  type ListingKitSessionIdentity,
+  type ZitadelTokenPayload,
+  ZITADEL_IDENTITY_VERSION,
+} from "@/lib/server/zitadel-identity";
 
-export type ListingKitSessionIdentity = {
-  tenantId?: string | number;
-  userId?: string | number;
-  username?: string;
-  userType?: string | number;
-  roles?: string[];
-};
+export type { ListingKitSessionIdentity };
 
 declare module "next-auth" {
   interface Session {
@@ -22,6 +23,7 @@ declare module "next-auth" {
     issuerUrl?: string;
     clientId?: string;
     identity?: ListingKitSessionIdentity | null;
+    identityVersion?: number;
   }
 }
 
@@ -35,6 +37,7 @@ declare module "next-auth/jwt" {
     issuerUrl?: string;
     clientId?: string;
     identity?: ListingKitSessionIdentity | null;
+    identityVersion?: number;
   }
 }
 
@@ -163,6 +166,9 @@ export function buildAuthConfig(): NextAuthConfig {
     callbacks: {
       async jwt({ token, account, profile }) {
         if (account?.provider === "zitadel") {
+          const identity = profile
+            ? extractZitadelIdentityFromClaims(profile as ZitadelTokenPayload)
+            : null;
           return {
             ...token,
             accessToken: account.access_token,
@@ -177,17 +183,8 @@ export function buildAuthConfig(): NextAuthConfig {
             issuerUrl: zitadel?.issuerUrl,
             clientId: zitadel?.clientId,
             error: undefined,
-            identity: extractIdentity({
-              preferredUsername:
-                asString(profile?.preferred_username) ||
-                asString(profile?.username),
-              businessUserId: asString(profile?.user_id),
-              subject: asString(profile?.sub),
-              resourceOwnerId: asString(
-                profile?.["urn:zitadel:iam:user:resourceowner:id"],
-              ),
-              roles: extractRoles(profile),
-            }),
+            identity,
+            identityVersion: identity ? ZITADEL_IDENTITY_VERSION : undefined,
           } satisfies JWT;
         }
 
@@ -211,14 +208,12 @@ export function buildAuthConfig(): NextAuthConfig {
             issuerUrl: zitadel.issuerUrl,
             clientId: zitadel.clientId,
             error: undefined,
-            identity:
-              refreshed.identity ??
-              token.identity ??
-              extractIdentityFromTokenPayload(refreshed.idToken),
           } satisfies JWT;
         } catch (error) {
           return {
             ...token,
+            identity: null,
+            identityVersion: undefined,
             error:
               error instanceof Error
                 ? error.message
@@ -233,7 +228,12 @@ export function buildAuthConfig(): NextAuthConfig {
         session.error = token.error;
         session.issuerUrl = token.issuerUrl;
         session.clientId = token.clientId;
-        session.identity = token.identity ?? null;
+        session.identity = hasCurrentZitadelIdentity(token)
+          ? token.identity
+          : null;
+        session.identityVersion = hasCurrentZitadelIdentity(token)
+          ? ZITADEL_IDENTITY_VERSION
+          : undefined;
         return session;
       },
       async redirect({ url, baseUrl }) {
@@ -290,6 +290,16 @@ async function refreshZitadelToken(
     );
   }
 
+  const includesIDToken = Object.hasOwn(payload, "id_token");
+  const identity = includesIDToken
+    ? extractIdentityFromTokenPayload(payload.id_token)
+    : hasCurrentZitadelIdentity(token)
+      ? token.identity
+      : null;
+  if (includesIDToken && !identity) {
+    throw new Error("Refreshed ZITADEL ID token is missing a canonical subject");
+  }
+
   return {
     accessToken: payload.access_token,
     refreshToken: payload.refresh_token ?? token.refreshToken,
@@ -297,11 +307,19 @@ async function refreshZitadelToken(
     expiresAt: payload.expires_in
       ? Math.floor(Date.now() / 1000) + payload.expires_in
       : token.expiresAt,
-    identity:
-      extractIdentityFromTokenPayload(payload.id_token) ??
-      token.identity ??
-      null,
+    identity,
+    identityVersion: identity ? ZITADEL_IDENTITY_VERSION : undefined,
   } satisfies Partial<JWT>;
+}
+
+function hasCurrentZitadelIdentity(
+  token: Pick<JWT, "identity" | "identityVersion">,
+): token is JWT & { identity: ListingKitSessionIdentity } {
+  return Boolean(
+    token.identityVersion === ZITADEL_IDENTITY_VERSION &&
+      normalizeClaim(token.identity?.tenantId) &&
+      normalizeClaim(token.identity?.userId),
+  );
 }
 
 async function fetchZitadelDiscovery(
@@ -341,83 +359,16 @@ function extractIdentityFromTokenPayload(
   if (!payload) {
     return null;
   }
-  return extractIdentity({
-    preferredUsername:
-      asString(payload.preferred_username) || asString(payload.username),
-    businessUserId: asString(payload.user_id),
-    subject: asString(payload.sub),
-    resourceOwnerId: asString(
-      payload["urn:zitadel:iam:user:resourceowner:id"],
-    ),
-    roles: extractRoles(payload),
-  });
+  return extractZitadelIdentityFromClaims(payload);
 }
 
-function extractIdentity(input: {
-  preferredUsername?: string;
-  businessUserId?: string;
-  subject?: string;
-  resourceOwnerId?: string;
-  roles?: string[];
-}) {
-  return {
-    tenantId: input.resourceOwnerId,
-    userId: input.businessUserId ?? input.subject ?? input.preferredUsername,
-    username: input.preferredUsername,
-    userType: "zitadel",
-    roles: input.roles ?? [],
-  } satisfies ListingKitSessionIdentity;
-}
-
-function extractRoles(payload: Record<string, unknown> | null | undefined) {
-  if (!payload) {
-    return [];
-  }
-  const seen = new Set<string>();
-  const roles: string[] = [];
-  const addRole = (value: unknown) => {
-    if (typeof value !== "string") {
-      return;
-    }
-    const normalized = value.trim();
-    if (!normalized || seen.has(normalized)) {
-      return;
-    }
-    seen.add(normalized);
-    roles.push(normalized);
-  };
-
-  for (const raw of [
-    payload["urn:zitadel:iam:org:project:roles"],
-    payload.roles,
-    payload.role,
-  ]) {
-    if (!raw) {
-      continue;
-    }
-    if (Array.isArray(raw)) {
-      raw.forEach(addRole);
-      continue;
-    }
-    if (typeof raw === "string") {
-      raw.split(",").forEach(addRole);
-      continue;
-    }
-    if (typeof raw === "object") {
-      Object.keys(raw).forEach(addRole);
-    }
-  }
-
-  return roles;
-}
-
-function parseJWTClaims(token: string) {
+function parseJWTClaims(token: string): ZitadelTokenPayload | null {
   const [, payload = ""] = token.split(".");
   if (!payload) {
     return null;
   }
   try {
-    return JSON.parse(base64UrlDecode(payload)) as Record<string, unknown>;
+    return JSON.parse(base64UrlDecode(payload)) as ZitadelTokenPayload;
   } catch {
     return null;
   }
@@ -426,11 +377,4 @@ function parseJWTClaims(token: string) {
 function base64UrlDecode(value: string) {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/");
   return Buffer.from(padded, "base64").toString("utf8");
-}
-
-function asString(value: unknown) {
-  if (typeof value === "string" && value.trim()) {
-    return value.trim();
-  }
-  return undefined;
 }

@@ -10,6 +10,10 @@ import type {
 } from "@/lib/types/shein-studio-generation";
 import type { SheinStudioCreatedTask } from "@/lib/types/shein-studio-task";
 
+/**
+ * `hybrid` remains a legacy wire/storage value only; the UI exposes the two
+ * supported strategies and normalizes legacy drafts to SDS.
+ */
 export type SheinStudioImageStrategy =
   "ai_generated" | "sds_official" | "hybrid";
 
@@ -24,13 +28,12 @@ export type SheinStudioProductImagePrompt = {
   label: string;
   prompt: string;
 };
-
+// End of draft storage types.
 export type SheinStudioVariantProductImageSet = {
   variantSku?: string;
   color?: string;
   imageUrls: string[];
 };
-
 export type SheinStudioSelectedSDSImage = {
   imageUrl: string;
   variantSku?: string;
@@ -83,7 +86,6 @@ export type SheinStudioGroupedWorkspace = {
   legacyCompatibilitySnapshot?: SheinStudioLegacyCompatibilitySnapshot;
   updatedAt: string;
 };
-
 export type SheinStudioPersistedGroupedWorkspace = Omit<
   SheinStudioGroupedWorkspace,
   "designs" | "selectedIds" | "createdTasks"
@@ -122,8 +124,6 @@ export type SheinStudioPersistedBatchView = {
   draftUpdatedAt?: string;
   updatedAt: string;
 };
-
-export type SheinStudioPersistedDraft = SheinStudioPersistedBatchView;
 
 export type SheinStudioSavedBatch = {
   id: string;
@@ -199,9 +199,4 @@ export type SheinStudioDraft = {
   batchStatus?: string;
   draftUpdatedAt?: string;
   updatedAt: string;
-};
-
-export type SheinStudioStorageData = {
-  draft: SheinStudioDraft | null;
-  batches: SheinStudioSavedBatch[];
 };

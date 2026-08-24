@@ -2,14 +2,18 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
+
+	"task-processor/internal/listingkit/core"
 )
 
 type taskLifecycleServiceConfig struct {
 	repo                        Repository
 	sdsBaselineReadinessService sdsBaselineReadinessService
 	validateSheinStoreAccess    func(context.Context, int64, int64) error
-	requestDefaults             func() generateRequestDefaults
 	taskSubmitter               func() TaskSubmitter
 	standardWorkflow            func() (StandardProductWorkflowClient, bool)
 	processListingKit           func(context.Context, *Task) (*ListingKitResult, error)
@@ -21,7 +25,6 @@ type taskLifecycleService struct {
 	repo                        Repository
 	sdsBaselineReadinessService sdsBaselineReadinessService
 	validateSheinStoreAccess    func(context.Context, int64, int64) error
-	requestDefaults             func() generateRequestDefaults
 	taskSubmitter               func() TaskSubmitter
 	standardWorkflow            func() (StandardProductWorkflowClient, bool)
 	processListingKit           func(context.Context, *Task) (*ListingKitResult, error)
@@ -34,7 +37,6 @@ func newTaskLifecycleService(config taskLifecycleServiceConfig) *taskLifecycleSe
 		repo:                        config.repo,
 		sdsBaselineReadinessService: config.sdsBaselineReadinessService,
 		validateSheinStoreAccess:    config.validateSheinStoreAccess,
-		requestDefaults:             config.requestDefaults,
 		taskSubmitter:               config.taskSubmitter,
 		standardWorkflow:            config.standardWorkflow,
 		processListingKit:           config.processListingKit,
@@ -53,9 +55,28 @@ func (s *taskLifecycleService) CreateGenerateTask(ctx context.Context, req *Gene
 	}
 	dispatched, err := s.dispatchGenerateTask(ctx, task)
 	if err != nil {
+		if task != nil && errors.Is(err, context.Canceled) {
+			if persistErr := markCanceledTaskFailedIfActive(DetachedRequestContext(ctx), s.repo, task.ID, err.Error()); persistErr != nil {
+				return task, errors.Join(err, fmt.Errorf("failed to persist canceled task failure: %w", persistErr))
+			}
+		}
 		return task, err
 	}
 	return dispatched, nil
+}
+
+func markCanceledTaskFailedIfActive(ctx context.Context, repo Repository, taskID, errorMsg string) error {
+	if repo == nil || strings.TrimSpace(taskID) == "" {
+		return nil
+	}
+	current, err := repo.GetTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if current == nil || (current.Status != core.TaskStatusPending && current.Status != core.TaskStatusProcessing) {
+		return nil
+	}
+	return markFailedTaskState(ctx, repo, taskID, errorMsg)
 }
 
 func (s *taskLifecycleService) GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error) {
@@ -70,7 +91,15 @@ func (s *taskLifecycleService) GetTaskResult(ctx context.Context, taskID string)
 			return nil, err
 		}
 	}
-	return buildTaskResult(task, resultPayload), nil
+	result := buildTaskResult(task, resultPayload)
+	if source, ok := s.repo.(SDSChildRetryJobStatusSource); ok {
+		jobs, err := source.ListSDSChildRetries(ctx, task.ID)
+		if err != nil {
+			return nil, err
+		}
+		result.ChildRetries = projectSDSChildRetryStatuses(jobs, time.Now().UTC())
+	}
+	return result, nil
 }
 
 func (s *taskLifecycleService) GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {

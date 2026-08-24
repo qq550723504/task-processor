@@ -30,9 +30,11 @@ vi.mock("@/lib/query/use-action", () => ({
 }));
 
 vi.mock("@/lib/query/use-child-task-retry", () => ({
+  getTaskRetryVersion: () => "test-version",
   useRetryChildTask: () => ({
     mutate: retryChildTaskMutate,
     isPending: false,
+    retryQueued: false,
   }),
 }));
 

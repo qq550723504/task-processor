@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"task-processor/internal/model"
 )
 
 type StoreStatistics struct {
@@ -165,6 +166,20 @@ type storeTaskStatisticsCounts struct {
 	Hold      int
 }
 
+var storeStatisticsCountedStatuses = []int16{
+	model.TaskStatusPending.Int16(),
+	model.TaskStatusProcessing.Int16(),
+	model.TaskStatusCrawled.Int16(),
+	model.TaskStatusPendingRetry.Int16(),
+	model.TaskStatusQueued.Int16(),
+	model.TaskStatusPublished.Int16(),
+	model.TaskStatusRepublishing.Int16(),
+	model.TaskStatusDraft.Int16(),
+	model.TaskStatusPaused.Int16(),
+	model.TaskStatusResumed.Int16(),
+	model.TaskStatusResuming.Int16(),
+}
+
 func (r *GormStoreStatisticsRepository) countTasks(ctx context.Context, tenantID, storeID int64, date string) (storeTaskStatisticsCounts, error) {
 	var rows []struct {
 		Status int16
@@ -173,7 +188,7 @@ func (r *GormStoreStatisticsRepository) countTasks(ctx context.Context, tenantID
 	db := r.db.WithContext(ctx).Table("listing_product_import_task").
 		Select("status, count(*) as count").
 		Where("deleted = 0 AND tenant_id = ? AND store_id = ?", tenantID, storeID).
-		Where("status IN ?", []int16{0, 1, 2, 5, 10})
+		Where("status IN ?", storeStatisticsCountedStatuses)
 	if date != "" {
 		start, end, ok := statisticsDateRange(date)
 		if ok {
@@ -186,16 +201,7 @@ func (r *GormStoreStatisticsRepository) countTasks(ctx context.Context, tenantID
 	}
 	var counts storeTaskStatisticsCounts
 	for _, row := range rows {
-		switch row.Status {
-		case 0, 1:
-			counts.Pending += int(row.Count)
-		case 2:
-			counts.Completed += int(row.Count)
-		case 5:
-			counts.Queued += int(row.Count)
-		case 10:
-			counts.Hold += int(row.Count)
-		}
+		accumulateStoreTaskStatistics(&counts, row.Status, row.Count)
 	}
 	return counts, nil
 }
@@ -215,7 +221,7 @@ func (r *GormStoreStatisticsRepository) summarizeTasks(ctx context.Context, quer
 		Select("task.status as status, count(*) as count").
 		Joins("join (?) as eligible_stores on eligible_stores.id = task.store_id and eligible_stores.tenant_id = task.tenant_id", eligibleStores).
 		Where("task.deleted = 0").
-		Where("task.status IN ?", []int16{0, 1, 2, 5, 10})
+		Where("task.status IN ?", storeStatisticsCountedStatuses)
 	if query.Date != "" {
 		start, end, ok := statisticsDateRange(query.Date)
 		if ok {
@@ -229,20 +235,39 @@ func (r *GormStoreStatisticsRepository) summarizeTasks(ctx context.Context, quer
 	if err := db.Group("task.status").Scan(&rows).Error; err != nil {
 		return StoreStatisticsSummary{}, err
 	}
-	summary := StoreStatisticsSummary{DailyLimit: limitRow.DailyLimit}
+	counts := storeTaskStatisticsCounts{}
 	for _, row := range rows {
-		switch row.Status {
-		case 0, 1:
-			summary.RemainingCount += int(row.Count)
-		case 2:
-			summary.CompletedCount += int(row.Count)
-		case 5:
-			summary.QueuedCount += int(row.Count)
-		case 10:
-			summary.HoldCount += int(row.Count)
-		}
+		accumulateStoreTaskStatistics(&counts, row.Status, row.Count)
 	}
-	return summary, nil
+	return StoreStatisticsSummary{
+		CompletedCount: counts.Completed,
+		DailyLimit:     limitRow.DailyLimit,
+		RemainingCount: counts.Pending,
+		QueuedCount:    counts.Queued,
+		HoldCount:      counts.Hold,
+	}, nil
+}
+
+func accumulateStoreTaskStatistics(counts *storeTaskStatisticsCounts, status int16, count int64) {
+	if counts == nil {
+		return
+	}
+	switch model.TaskStatus(status) {
+	case model.TaskStatusPending,
+		model.TaskStatusProcessing,
+		model.TaskStatusCrawled,
+		model.TaskStatusPendingRetry,
+		model.TaskStatusRepublishing,
+		model.TaskStatusResumed,
+		model.TaskStatusResuming:
+		counts.Pending += int(count)
+	case model.TaskStatusQueued:
+		counts.Queued += int(count)
+	case model.TaskStatusPublished, model.TaskStatusDraft:
+		counts.Completed += int(count)
+	case model.TaskStatusPaused:
+		counts.Hold += int(count)
+	}
 }
 
 func buildStoreStatistics(store listingStore, counts storeTaskStatisticsCounts) StoreStatistics {

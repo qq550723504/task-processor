@@ -99,6 +99,7 @@ func (input *SavePublishResultInput) BuildImportMappingCreateReq(sku *models.Sku
 	return &listingadmin.ProductImportMappingCreateReqDTO{
 		ImportTaskId: input.Task.ID,
 		TenantID:     input.Task.TenantID,
+		OwnerUserID:  input.StoreInfo.OwnerUserID,
 		StoreId:      input.Task.StoreID,
 		Platform:     "TEMU",
 		Region:       input.Task.Region,
@@ -288,6 +289,12 @@ func buildSavePublishResultInput(temuCtx *temucontext.TemuTaskContext) (*SavePub
 	task := temuCtx.GetTask()
 	if task == nil {
 		return nil, fmt.Errorf("task is not initialized")
+	}
+	if temuCtx.StoreInfo == nil {
+		return nil, fmt.Errorf("store info is not initialized")
+	}
+	if strings.TrimSpace(temuCtx.StoreInfo.OwnerUserID) == "" {
+		return nil, fmt.Errorf("store owner is not initialized")
 	}
 
 	submitResponse, exists := getSubmitResponseFromContext(temuCtx)

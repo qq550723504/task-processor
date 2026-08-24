@@ -18,10 +18,14 @@ type Dependencies struct {
 	MigrateAll func(*gorm.DB) error
 }
 
-func Run(ctx context.Context, configPath string, deps Dependencies) error {
+func Run(ctx context.Context, configPath string) error {
+	return runWithDependencies(ctx, configPath, Dependencies{})
+}
+
+func runWithDependencies(ctx context.Context, configPath string, deps Dependencies) error {
 	_ = ctx
 	if deps.LoadConfig == nil {
-		deps.LoadConfig = config.LoadConfigFromFile
+		deps.LoadConfig = config.LoadConfigFromFileWithoutValidation
 	}
 	if deps.OpenDB == nil {
 		deps.OpenDB = database.NewDatabaseFromConfig

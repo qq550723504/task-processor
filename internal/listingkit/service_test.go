@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
+	sdsdesign "task-processor/internal/sds/design"
+	sdstemplate "task-processor/internal/sds/template"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -85,34 +88,223 @@ func TestNormalizeGenerateRequestEnablesProcessImagesWhenSceneOptionsProvided(t 
 	}
 }
 
-func TestApplyGenerateRequestDefaultsSetsSheinStoreIDForSingleStoreConfig(t *testing.T) {
+func TestNormalizeGenerateRequestDoesNotCreateSDSSourceContract(t *testing.T) {
 	t.Parallel()
 
 	req := &GenerateRequest{
-		Text:      "demo",
-		Platforms: []string{"shein"},
+		Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}},
 	}
+	normalizeGenerateRequest(req)
 
-	applyGenerateRequestDefaults(req, generateRequestDefaults{sheinDefaultStoreID: 873})
-
-	if req.SheinStoreID != 873 {
-		t.Fatalf("shein_store_id = %d, want 873", req.SheinStoreID)
+	if req.Source != nil {
+		t.Fatalf("source = %+v, want no SDS source without trusted validation", req.Source)
 	}
 }
 
-func TestApplyGenerateRequestDefaultsKeepsExplicitSheinStoreID(t *testing.T) {
+func TestNormalizeTrustedGenerateRequestCreatesValidatedSDSSourceContract(t *testing.T) {
 	t.Parallel()
 
+	svc := &service{supportDeps: supportDependencies{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			productDetail: &sdstemplate.ProductDetail{
+				ProductSummary: sdstemplate.ProductSummary{
+					ID:          41661,
+					Subproducts: &sdstemplate.Subproducts{Items: []sdstemplate.ProductSummary{{ID: 41662, ParentID: 41661}}},
+				},
+			},
+		},
+	}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}}}
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+
+	if got := req.Source; got == nil || got.Type != "sds" || got.Platform != "sds" || got.ID != "41661" || got.URL != "https://www.sdsdiy.com/portal/detail/41661" {
+		t.Fatalf("source = %+v, want validated SDS source contract", got)
+	}
+}
+
+func TestNormalizeTrustedGenerateRequestCreatesValidatedVariantOnlySDSSourceContract(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{supportDeps: supportDependencies{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			designProduct: &sdsdesign.DesignProductPage{Product: sdsdesign.DesignProduct{ID: 41662}},
+		},
+	}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 41662}}}
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+
+	if got := req.Source; got == nil || got.Type != "sds" || got.Platform != "sds" || got.ID != "41662" || got.URL != "" || got.Key != "sds:variant:41662" {
+		t.Fatalf("source = %+v, want validated variant-only SDS source contract", got)
+	}
+}
+
+func TestNormalizeTrustedGenerateRequestRejectsUnverifiedSDSParentFromDesignProduct(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{supportDeps: supportDependencies{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			designProduct: &sdsdesign.DesignProductPage{Product: sdsdesign.DesignProduct{ID: 41662}},
+		},
+	}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}}}
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+
+	if req.Source != nil {
+		t.Fatalf("source = %+v, want no source without verified SDS parent relationship", req.Source)
+	}
+}
+
+func TestNormalizeTrustedGenerateRequestDoesNotCreateUnvalidatedSDSSourceContract(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{supportDeps: supportDependencies{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			productDetail: &sdstemplate.ProductDetail{ProductSummary: sdstemplate.ProductSummary{ID: 41661}},
+		},
+	}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 99999, VariantID: 99998}}}
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+
+	if req.Source != nil {
+		t.Fatalf("source = %+v, want no source for unvalidated SDS IDs", req.Source)
+	}
+}
+
+func TestNormalizeTrustedGenerateRequestBoundsSDSValidation(t *testing.T) {
+	provider := &blockingSDSBaselineRemoteProvider{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+	}
+	svc := &service{supportDeps: supportDependencies{sdsBaselineRemoteProvider: provider}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661}}}
+
+	startedAt := time.Now()
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+	elapsed := time.Since(startedAt)
+
+	if req.Source != nil {
+		t.Fatalf("source = %+v, want no source after SDS validation timeout", req.Source)
+	}
+	if elapsed > trustedSDSProvenanceValidationTimeout+time.Second {
+		t.Fatalf("SDS validation took %s, want it bounded by the dedicated timeout", elapsed)
+	}
+	select {
+	case <-provider.started:
+	case <-time.After(time.Second):
+		t.Fatal("SDS validation provider was not called")
+	}
+	select {
+	case <-provider.cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("SDS validation context was not cancelled")
+	}
+}
+
+type blockingSDSBaselineRemoteProvider struct {
+	started   chan struct{}
+	cancelled chan struct{}
+}
+
+func (p *blockingSDSBaselineRemoteProvider) GetProductDetail(ctx context.Context, _ int64) (*sdstemplate.ProductDetail, error) {
+	close(p.started)
+	<-ctx.Done()
+	close(p.cancelled)
+	return nil, ctx.Err()
+}
+
+func (*blockingSDSBaselineRemoteProvider) GetDesignProduct(context.Context, int64) (*sdsdesign.DesignProductPage, error) {
+	return nil, context.Canceled
+}
+
+func (*blockingSDSBaselineRemoteProvider) GetPrototypeGroups(context.Context, int64) ([]sdsdesign.PrototypeGroup, error) {
+	return nil, context.Canceled
+}
+
+func TestNormalizeGenerateRequestPreservesExplicitSourceOverSDSOptions(t *testing.T) {
+	t.Parallel()
+
+	explicit := &SourceReference{Type: "crawler", Platform: "1688", ID: "888", URL: "https://detail.1688.com/offer/888.html"}
 	req := &GenerateRequest{
-		Text:         "demo",
-		Platforms:    []string{"shein"},
-		SheinStoreID: 431,
+		Source:  explicit,
+		Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661}},
+	}
+	(&service{}).normalizeTrustedGenerateRequestSource(context.Background(), req)
+
+	if req.Source != explicit {
+		t.Fatalf("source = %+v, want explicit source to remain authoritative", req.Source)
+	}
+}
+
+func TestNormalizeGenerateRequestCreatesProductURLSourceContract(t *testing.T) {
+	t.Parallel()
+
+	req := &GenerateRequest{ProductURL: " https://detail.example/item/123 "}
+	normalizeGenerateRequest(req)
+
+	if got := req.Source; got == nil || got.Type != "product_url" || got.URL != "https://detail.example/item/123" {
+		t.Fatalf("source = %+v, want normalized product URL source contract", got)
+	}
+}
+
+func TestBuildListingKitServiceContractOmitsRequestDefaultsWiring(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		contract  reflect.Type
+		fieldName string
+	}{
+		{
+			name:      "task dependencies",
+			contract:  reflect.TypeOf(taskDependencies{}),
+			fieldName: "requestDefaults",
+		},
+		{
+			name:      "task lifecycle config",
+			contract:  reflect.TypeOf(taskLifecycleServiceConfig{}),
+			fieldName: "requestDefaults",
+		},
+		{
+			name:      "task lifecycle service",
+			contract:  reflect.TypeOf(taskLifecycleService{}),
+			fieldName: "requestDefaults",
+		},
 	}
 
-	applyGenerateRequestDefaults(req, generateRequestDefaults{sheinDefaultStoreID: 873})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, ok := tt.contract.FieldByName(tt.fieldName); ok {
+				t.Fatalf("%s still contains obsolete request field %q", tt.contract, tt.fieldName)
+			}
+		})
+	}
+}
 
-	if req.SheinStoreID != 431 {
-		t.Fatalf("shein_store_id = %d, want 431", req.SheinStoreID)
+func TestBuildListingKitRequestPreparationNormalizesNonSheinRequestWithoutSheinStore(t *testing.T) {
+	t.Parallel()
+
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{})
+	req := &GenerateRequest{
+		Text:      "demo",
+		Platforms: []string{" Amazon "},
+	}
+
+	_, task, err := lifecycle.prepareGenerateTask(context.Background(), req)
+	if err != nil {
+		t.Fatalf("prepareGenerateTask() error = %v", err)
+	}
+
+	if req.SheinStoreID != 0 {
+		t.Fatalf("request shein_store_id = %d, want 0", req.SheinStoreID)
+	}
+	if task.Request.SheinStoreID != 0 {
+		t.Fatalf("task request shein_store_id = %d, want 0", task.Request.SheinStoreID)
+	}
+	if req.Country != "US" || req.Language != "en_US" {
+		t.Fatalf("normalized locale = %q/%q, want US/en_US", req.Country, req.Language)
+	}
+	if len(req.Platforms) != 1 || req.Platforms[0] != "amazon" {
+		t.Fatalf("normalized platforms = %#v, want [amazon]", req.Platforms)
 	}
 }
 
@@ -146,12 +338,11 @@ func TestValidateRequest(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "too many images",
+			name: "many images are accepted",
 			req: &GenerateRequest{
 				ImageURLs: []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"},
 				Platforms: []string{"amazon"},
 			},
-			wantErr: true,
 		},
 		{
 			name: "shein studio gallery ratio mismatch",
@@ -516,7 +707,7 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 	}
 }
 
-func TestCreateGenerateTaskDoesNotInferSheinStoreResolutionSnapshotFromRoutingRules(t *testing.T) {
+func TestCreateGenerateTaskRequiresExplicitSheinStoreInsteadOfInferringRoutingRules(t *testing.T) {
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
@@ -548,16 +739,13 @@ func TestCreateGenerateTaskDoesNotInferSheinStoreResolutionSnapshotFromRoutingRu
 	}); err != nil {
 		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
 	}
-	task, err := svc.CreateGenerateTask(ctx, &GenerateRequest{
+	_, err := svc.CreateGenerateTask(ctx, &GenerateRequest{
 		Text:      "snapshot demo",
 		Platforms: []string{"shein"},
 		Country:   "GB",
 	})
-	if err != nil {
-		t.Fatalf("CreateGenerateTask error = %v", err)
-	}
-	if task.SheinStoreResolutionSnapshot != nil {
-		t.Fatalf("snapshot = %+v, want nil without explicit shein_store_id", task.SheinStoreResolutionSnapshot)
+	if err == nil || err.Error() != "invalid request: shein_store_id is required for SHEIN tasks" {
+		t.Fatalf("CreateGenerateTask error = %v, want missing SHEIN store error", err)
 	}
 }
 

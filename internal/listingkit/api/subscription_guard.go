@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/tenantbridge"
 )
@@ -117,15 +118,26 @@ func shouldTryLegacySubscriptionFallback(err error, result listingsubscription.G
 }
 
 func resolveLegacySubscriptionTenantID(c *gin.Context, tenantID string) (string, bool) {
+	resolved, ok, _ := resolveLegacySubscriptionTenantIDWithError(c, tenantID)
+	return resolved, ok
+}
+
+func resolveLegacySubscriptionTenantIDWithError(c *gin.Context, tenantID string) (string, bool, error) {
 	legacyTenantID, err := tenantbridge.ResolveLegacyTenantID(c.Request.Context(), tenantID)
-	if err != nil || legacyTenantID <= 0 {
-		return "", false
+	if errors.Is(err, tenantbridge.ErrLegacyTenantNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if legacyTenantID <= 0 {
+		return "", false, nil
 	}
 	resolved := strconv.FormatInt(legacyTenantID, 10)
 	if resolved == strings.TrimSpace(tenantID) {
-		return "", false
+		return "", false, nil
 	}
-	return resolved, true
+	return resolved, true, nil
 }
 
 func subscriptionTenantID(c *gin.Context) string {
@@ -149,16 +161,31 @@ func (h *handler) requireSubscriptionHandler(c *gin.Context) bool {
 }
 
 func (h *handler) requirePlatformSubscriptionAccess(c *gin.Context) bool {
-	userID := strings.TrimSpace(c.GetHeader("X-User-ID"))
-	if userID != "" && slices.Contains(h.platformAdminUsers, userID) {
+	identity, ok := authenticatedActor(c)
+	if !ok {
+		return false
+	}
+	return h.authorizePlatformSubscriptionIdentity(c, identity)
+}
+
+func (h *handler) requirePlatformSubscriptionActor(c *gin.Context) (authidentity.AuthenticatedIdentity, bool) {
+	identity, ok := authenticatedActor(c)
+	if !ok || !h.authorizePlatformSubscriptionIdentity(c, identity) {
+		return authidentity.AuthenticatedIdentity{}, false
+	}
+	return identity, true
+}
+
+func (h *handler) authorizePlatformSubscriptionIdentity(c *gin.Context, identity authidentity.AuthenticatedIdentity) bool {
+	if slices.Contains(h.platformAdminUsers, identity.UserID) {
 		return true
 	}
 	allowedRoles := h.platformAdminRoles
 	if len(allowedRoles) == 0 {
 		allowedRoles = []string{"platform_admin", "admin"}
 	}
-	for _, role := range splitCSVHeaders(c.GetHeader("X-User-Roles"), c.GetHeader("X-Zitadel-Roles")) {
-		if slices.Contains(allowedRoles, role) {
+	for _, role := range identity.Roles {
+		if slices.Contains(allowedRoles, strings.TrimSpace(role)) {
 			return true
 		}
 	}
@@ -187,23 +214,4 @@ func writeQuotaExceeded(c *gin.Context, result listingsubscription.GuardResult) 
 		"used":        result.Used,
 		"message":     "subscription quota exceeded",
 	})
-}
-
-func splitCSVHeaders(values ...string) []string {
-	out := []string{}
-	seen := map[string]struct{}{}
-	for _, value := range values {
-		for _, part := range strings.Split(value, ",") {
-			item := strings.TrimSpace(part)
-			if item == "" {
-				continue
-			}
-			if _, ok := seen[item]; ok {
-				continue
-			}
-			seen[item] = struct{}{}
-			out = append(out, item)
-		}
-	}
-	return out
 }

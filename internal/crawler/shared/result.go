@@ -15,14 +15,16 @@ const (
 
 // CrawlerResult 爬虫任务结果
 type CrawlerResult struct {
-	TaskID      string         // 任务 ID
-	TenantID    int64          // 任务所属租户
-	Status      TaskStatus     // 任务状态
-	ProductData map[string]any // 产品数据
-	Error       string         // 错误信息
-	StartedAt   *time.Time     // 开始时间
-	CompletedAt *time.Time     // 完成时间
-	Duration    string         // 执行时长
+	TaskID               string         // 任务 ID
+	TenantID             int64          // 任务所属租户
+	Status               TaskStatus     // 任务状态
+	ProductData          map[string]any // 产品数据
+	Error                string         // 错误信息
+	StartedAt            *time.Time     // 开始时间
+	CompletedAt          *time.Time     // 完成时间
+	Duration             string         // 执行时长
+	SourceAccessMode     string         `json:"source_access_mode,omitempty"`
+	SourceFallbackReason string         `json:"source_fallback_reason,omitempty"`
 }
 
 // NewCrawlerResult 创建任务结果

@@ -3,9 +3,9 @@ package listingkit
 import listinggeneration "task-processor/internal/listingkit/generation"
 
 func buildGenerationReviewTarget(platform, slot, capability string) *GenerationReviewTarget {
-	actionKey := reviewActionKeyForCapability(capability)
+	actionKey := listinggeneration.ReviewActionKeyForCapability(capability)
 	sectionKey := generationReviewSectionKey(capability)
-	focusKey := generationReviewFocusKey(platform, slot, capability)
+	focusKey := listinggeneration.ReviewFocusKey(platform, slot, capability)
 	query := buildGenerationReviewQueueQuery(platform, slot, capability)
 	return &GenerationReviewTarget{
 		Platform:   platform,
@@ -24,22 +24,6 @@ func buildGenerationReviewTarget(platform, slot, capability string) *GenerationR
 		SessionQuery:     buildGenerationReviewSessionQuery(platform, slot, capability),
 		NavigationTarget: buildGenerationReviewNavigationTarget(platform, slot, capability, nil),
 	}
-}
-
-func generationReviewFocusKey(platform, slot, capability string) string {
-	return listinggeneration.ReviewFocusKey(platform, slot, capability)
-}
-
-func reviewActionKeyForCapability(capability string) string {
-	return listinggeneration.ReviewActionKeyForCapability(capability)
-}
-
-func capabilityActionKey(capability string) string {
-	return listinggeneration.CapabilityActionKey(capability)
-}
-
-func reviewActionLabelForCapability(capability string) string {
-	return listinggeneration.ReviewActionLabelForCapability(capability)
 }
 
 func enrichGenerationReviewTargetWithContext(target *GenerationReviewTarget, selectedPlatform, selectedSlot, selectedCapability, selectedSectionKey string, focusedPreview *AssetRenderPreviewSlot) *GenerationReviewTarget {

@@ -17,6 +17,7 @@ import type {
   ScenePresetSummary,
   ToolbarAction,
 } from "./preview";
+import type { TargetPlatform } from "@/lib/api/generated";
 export type ReviewSlot = {
   platform?: string;
   slot?: string;
@@ -81,7 +82,7 @@ export type AssetGenerationOverview = {
 };
 
 export type ReviewSession = {
-  selected_platform?: string;
+  selected_platform?: TargetPlatform;
   selected_slot?: string;
   focus_capability?: string;
   focused_section_key?: string;
@@ -101,7 +102,7 @@ export type ReviewSession = {
   sections?: ReviewSection[];
 };
 
-export type ReviewPatch = {
+ type ReviewPatch = {
   delta_token?: string;
   selected_platform?: string;
   selected_slot?: string;
@@ -143,7 +144,7 @@ export type ReviewPreviewResponse = {
   revision_mismatch_reason?: string;
 };
 
-export type PanelUpdate = {
+ type PanelUpdate = {
   dispatch_kind?: string;
   response_mode?: string;
   delta_token?: string;

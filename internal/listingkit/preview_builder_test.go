@@ -10,8 +10,35 @@ import (
 	listingplatform "task-processor/internal/listing/platform"
 	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
+
+func TestBuildSheinFinalReviewPayloadPreservesSourceProductImageProvenance(t *testing.T) {
+	t.Parallel()
+
+	sourceImage := "https://1688.example.com/offered-source.jpg"
+	pkg := &sheinpub.Package{
+		DraftPayload: &sheinpub.RequestDraft{
+			ImageInfo: &sheinpub.ImageDraft{
+				MainImage: "https://cdn.example.com/generated-main.jpg",
+				Gallery:   []string{sourceImage},
+			},
+		},
+	}
+	canonicalProduct := &canonical.Product{
+		Images: []canonical.Image{{URL: sourceImage}},
+	}
+
+	review := buildSheinFinalReviewPayload(pkg, canonicalProduct, &SheinSubmitReadiness{})
+
+	if review == nil || len(review.Images) != 2 {
+		t.Fatalf("final review images = %+v, want generated and source images", review)
+	}
+	if image := review.Images[1]; image.URL != sourceImage || image.Origin != "source" || !image.RequiresReview {
+		t.Fatalf("source image = %+v, want source provenance", review.Images[1])
+	}
+}
 
 func TestBuildPreviewHeaderCopiesSummaryFields(t *testing.T) {
 	t.Parallel()
@@ -59,6 +86,13 @@ func TestBuildListingKitPreviewBackfillsSheinSourceProductSDSIdentity(t *testing
 		ID: "task-sds-source-link",
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
+			Source: &SourceReference{
+				Key:      "sds:41661",
+				Type:     "sds",
+				Platform: "sds",
+				ID:       "41661",
+				URL:      "https://www.sdsdiy.com/portal/detail/41661",
+			},
 			Options: &GenerateOptions{SDS: &SDSSyncOptions{
 				ParentProductID: 41661,
 				VariantID:       41662,
@@ -91,6 +125,167 @@ func TestBuildListingKitPreviewBackfillsSheinSourceProductSDSIdentity(t *testing
 	}
 	if got := preview.Shein.FinalReview.SourceProduct.ParentProductID; got != "41661" {
 		t.Fatalf("final review source product parent_product_id = %q, want 41661", got)
+	}
+	if got := preview.Shein.SourceReference; got == nil || got.Type != "sds" || got.Platform != "sds" || got.ID != "41661" {
+		t.Fatalf("source reference = %+v, want explicit SDS reference", got)
+	}
+	if got := preview.Shein.FinalReview.SourceReference; got == nil || got.Type != "sds" || got.Platform != "sds" || got.ID != "41661" {
+		t.Fatalf("final review source reference = %+v, want explicit SDS reference", got)
+	}
+}
+
+func TestBuildListingKitPreviewUsesPersistedNonSDSSourceReference(t *testing.T) {
+	t.Parallel()
+
+	preview, err := buildListingKitPreview(&Task{
+		ID: "task-1688-source-link",
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+			Source: &SourceReference{
+				Key:      "crawler:1688:888",
+				Type:     "crawler",
+				Platform: "1688",
+				ID:       "888",
+				URL:      "https://detail.1688.com/offer/888.html",
+			},
+		},
+		Result: &ListingKitResult{
+			TaskID:    "task-1688-source-link",
+			Platforms: []string{"shein"},
+			CanonicalProduct: &canonical.Product{
+				Title: "1688 Bottle",
+				Specifications: &canonical.ProductSpecs{Technical: map[string]string{
+					"parent_product_id": "238915",
+					"variant_id":        "238916",
+				}},
+			},
+			Shein: &SheinPackage{},
+		},
+	}, "shein")
+	if err != nil {
+		t.Fatalf("build preview: %v", err)
+	}
+
+	if preview.Shein == nil || preview.Shein.SourceReference == nil {
+		t.Fatalf("source reference = %+v, want persisted non-SDS source", preview.Shein)
+	}
+	if got := preview.Shein.SourceReference; got.Platform != "1688" || got.ID != "888" || got.URL != "https://detail.1688.com/offer/888.html" {
+		t.Fatalf("source reference = %+v, want persisted 1688 reference", got)
+	}
+	if preview.Shein.SourceProduct == nil {
+		t.Fatal("expected source product summary for persisted source")
+	}
+	if preview.Shein.SourceProduct.ParentProductID != "" || preview.Shein.SourceProduct.VariantID != "" {
+		t.Fatalf("source product SDS ids = %+v, want empty for non-SDS source", preview.Shein.SourceProduct)
+	}
+}
+
+func TestBuildListingKitPreviewPrefersExplicitSourceReferenceOverSDSOptions(t *testing.T) {
+	t.Parallel()
+
+	preview, err := buildListingKitPreview(&Task{
+		ID: "task-source-precedence",
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+			Source:    &SourceReference{Type: "crawler", Platform: "1688", ID: "888", URL: "https://detail.1688.com/offer/888.html"},
+			Options:   &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}},
+		},
+		Result: &ListingKitResult{
+			Platforms:        []string{"shein"},
+			CanonicalProduct: &canonical.Product{Title: "1688 Bottle"},
+			Shein:            &SheinPackage{},
+		},
+	}, "shein")
+	if err != nil {
+		t.Fatalf("build preview: %v", err)
+	}
+	if got := preview.Shein.SourceReference; got == nil || got.Platform != "1688" || got.ID != "888" {
+		t.Fatalf("source reference = %+v, want explicit 1688 source", got)
+	}
+	if got := preview.Shein.SourceProduct; got == nil || got.ParentProductID != "" || got.VariantID != "" {
+		t.Fatalf("source product = %+v, want no SDS identity for explicit non-SDS source", got)
+	}
+}
+
+func TestBuildListingKitPreviewUsesSDSVariantIDWhenParentProductIsMissing(t *testing.T) {
+	t.Parallel()
+
+	preview, err := buildListingKitPreview(&Task{
+		ID: "task-sds-variant-only",
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+			Source: &SourceReference{
+				Key:      "sds:variant:41662",
+				Type:     "sds",
+				Platform: "sds",
+				ID:       "41662",
+			},
+			Options: &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 41662}},
+		},
+		Result: &ListingKitResult{
+			Platforms:        []string{"shein"},
+			CanonicalProduct: &canonical.Product{Title: "SDS Variant"},
+			Shein:            &SheinPackage{},
+		},
+	}, "shein")
+	if err != nil {
+		t.Fatalf("build preview: %v", err)
+	}
+	if got := preview.Shein.SourceReference; got == nil || got.Type != "sds" || got.ID != "41662" || got.URL != "" {
+		t.Fatalf("source reference = %+v, want variant-only SDS identity without guessed URL", got)
+	}
+	if got := preview.Shein.SourceProduct; got == nil || got.VariantID != "41662" {
+		t.Fatalf("source product = %+v, want SDS variant identity", got)
+	}
+}
+
+func TestBuildListingKitPreviewDoesNotInferSDSSourceFromOptions(t *testing.T) {
+	t.Parallel()
+
+	preview, err := buildListingKitPreview(&Task{
+		ID: "task-sds-source-contract-missing",
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+			Options:   &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}},
+		},
+		Result: &ListingKitResult{
+			Platforms:        []string{"shein"},
+			CanonicalProduct: &canonical.Product{Title: "SDS Pants"},
+			Shein:            &SheinPackage{},
+		},
+	}, "shein")
+	if err != nil {
+		t.Fatalf("build preview: %v", err)
+	}
+	if preview.Shein == nil {
+		t.Fatal("expected shein preview")
+	}
+	if preview.Shein.SourceReference != nil || preview.Shein.SourceProduct != nil {
+		t.Fatalf("source fields = reference=%+v product=%+v, want omitted without source contract", preview.Shein.SourceReference, preview.Shein.SourceProduct)
+	}
+}
+
+func TestBuildListingKitPreviewOmitsSourceProductWithoutSourceReference(t *testing.T) {
+	t.Parallel()
+
+	preview, err := buildListingKitPreview(&Task{
+		ID:      "task-no-source",
+		Request: &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID:           "task-no-source",
+			Platforms:        []string{"shein"},
+			CanonicalProduct: &canonical.Product{Title: "Typed from text"},
+			Shein:            &SheinPackage{},
+		},
+	}, "shein")
+	if err != nil {
+		t.Fatalf("build preview: %v", err)
+	}
+	if preview.Shein == nil {
+		t.Fatal("expected shein preview")
+	}
+	if preview.Shein.SourceReference != nil || preview.Shein.SourceProduct != nil {
+		t.Fatalf("source fields = reference=%+v product=%+v, want omitted without source", preview.Shein.SourceReference, preview.Shein.SourceProduct)
 	}
 }
 

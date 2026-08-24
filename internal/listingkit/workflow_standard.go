@@ -38,8 +38,10 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 
 	result.CanonicalProduct = canonicalProduct
 	result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
-	result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
-	result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
+	if !shouldProcessImages(task.Request) {
+		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
+		result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
+	}
 	log.WithFields(logrus.Fields{
 		"has_canonical": canonicalProduct != nil,
 		"image_count": func() int {
@@ -61,7 +63,10 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 		log.WithError(validationErr).Warn("sds baseline validation persistence failed")
 	}
 
-	_, sdsOptions := buildStandardWorkflowMediaPhase(s).run(ctx, task, result, canonicalProduct, recorder, log)
+	_, sdsOptions, mediaErr := buildStandardWorkflowMediaPhase(s).run(ctx, task, result, canonicalProduct, recorder, log)
+	if mediaErr != nil {
+		return &standardWorkflowState{result: result}, mediaErr
+	}
 
 	inventory, recipesByPlatform, generationPlan, persistedGenerationTasks := buildStandardWorkflowAssetPhase(s).run(
 		ctx,
@@ -72,6 +77,7 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 		enableAssetGeneration,
 	)
 
+	recorder.FinalizeSummary()
 	snapshot := buildStandardProductSnapshot(result)
 	result.StandardProductSnapshot = snapshot
 	return &standardWorkflowState{

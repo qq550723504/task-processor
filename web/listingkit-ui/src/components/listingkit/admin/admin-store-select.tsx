@@ -30,7 +30,7 @@ export function formatAdminStoreName(
   return store ? formatAdminStoreOption(store) : `#${storeId}`;
 }
 
-export function formatAdminStoreOption(
+ function formatAdminStoreOption(
   store: Pick<SimpleListingStore, "id" | "name">,
 ) {
   const name = store.name.trim() || "未命名店铺";

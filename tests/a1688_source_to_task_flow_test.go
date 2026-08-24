@@ -12,11 +12,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	a1688 "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
+	sourcea1688 "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
-	a1688 "task-processor/internal/product/sourcehandoff/a1688"
-	sourcea1688 "task-processor/internal/productenrich/httpapi/sourcea1688"
+	"task-processor/internal/sourceaccount"
 )
 
 func TestAlibaba1688HTTPReplayCreatesTaskAndPreservesSourceFacts(t *testing.T) {
@@ -211,18 +212,18 @@ func TestAlibaba1688HTTPReplayRejectsUnavailableSourceAccountAndPreservesSheinTa
 		{
 			name: "disabled source account",
 			validator: replayStoreAccessValidator{errs: map[replayStoreAccessKey]error{
-				{storeID: 3001, platform: "1688"}: listingkit.NewStoreAccessError(listingkit.StoreAccessDisabled, "store is disabled"),
+				{storeID: 3001, platform: "1688"}: sourceaccount.NewDisabledError(),
 			}},
-			wantCode: listingkit.StoreAccessDisabled,
-			wantText: "1688 login account",
+			wantCode: sourceaccount.SourceAccountDisabled,
+			wantText: "1688 source account",
 		},
 		{
 			name: "foreign source account",
 			validator: replayStoreAccessValidator{errs: map[replayStoreAccessKey]error{
-				{storeID: 3001, platform: "1688"}: listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable"),
+				{storeID: 3001, platform: "1688"}: sourceaccount.NewUnavailableError("foreign account"),
 			}},
-			wantCode: listingkit.StoreAccessUnavailable,
-			wantText: "1688 login account",
+			wantCode: sourceaccount.SourceAccountUnavailable,
+			wantText: "1688 source account",
 		},
 		{
 			name: "disabled SHEIN target store",
@@ -292,6 +293,16 @@ func (v replayStoreAccessValidator) ValidateStoreAccess(_ context.Context, tenan
 		return listingkit.StoreAccess{ID: storeID, TenantID: tenantID, Platform: platform, Enabled: true}, nil
 	}
 	return listingkit.StoreAccess{}, fmt.Errorf("unexpected replay store access: tenant=%d store=%d platform=%s", tenantID, storeID, platform)
+}
+
+func (v replayStoreAccessValidator) ValidateSourceAccountAccess(_ context.Context, tenantID, accountID int64) (sourceaccount.Access, error) {
+	if err := v.errs[replayStoreAccessKey{storeID: accountID, platform: "1688"}]; err != nil {
+		return sourceaccount.Access{}, err
+	}
+	if tenantID == 101 && accountID == 3001 {
+		return sourceaccount.Access{ID: accountID, TenantID: tenantID, Platform: sourceaccount.PlatformAlibaba1688, Enabled: true}, nil
+	}
+	return sourceaccount.Access{}, fmt.Errorf("unexpected replay source account access: tenant=%d account=%d", tenantID, accountID)
 }
 
 func newAlibaba1688ReplayRouter(creator *replayGenerateTaskCreator) http.Handler {

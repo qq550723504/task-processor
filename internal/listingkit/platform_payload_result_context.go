@@ -10,14 +10,14 @@ type platformPayloadResultContext struct {
 	platformPreviews []PlatformAssetRenderPreviews
 }
 
-func buildPlatformPayloadResultContext(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) platformPayloadResultContext {
+func buildPlatformPayloadResultContext(result *ListingKitResult, target string, platformPreviews []PlatformAssetRenderPreviews) platformPayloadResultContext {
 	if result == nil {
 		return platformPayloadResultContext{
 			platformPreviews: append([]PlatformAssetRenderPreviews(nil), platformPreviews...),
 		}
 	}
 	return platformPayloadResultContext{
-		assetBundle:      result.AssetBundle,
+		assetBundle:      result.AssetBundleForTarget(target),
 		platformPreviews: append([]PlatformAssetRenderPreviews(nil), platformPreviews...),
 	}
 }

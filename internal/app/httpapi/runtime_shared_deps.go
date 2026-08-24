@@ -6,6 +6,7 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/productenrich"
+	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/prompt"
 )
 
@@ -20,6 +21,12 @@ type sharedRuntimeDeps struct {
 	llmMgr               productenrich.LLMManager
 	inputParser          productenrich.InputParser
 	understanding        productenrich.ProductUnderstanding
+	contentGenerator     productenrichenrich.TextGenerator
+	specsGenerator       productenrichenrich.TextGenerator
+	variantsGenerator    productenrichenrich.TextGenerator
+	fusionGenerator      productenrichenrich.TextGenerator
+	scoringTextGenerator productenrichenrich.TextGenerator
+	scoringImageAnalyzer productenrichenrich.ImageAnalyzer
 	imageWorkDir         string
 	storeAPI             listingadmin.StoreAPI
 }

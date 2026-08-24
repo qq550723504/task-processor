@@ -17,6 +17,7 @@ export function FinalImageGrid({
   onSelect,
   onSetActiveImage,
   onSetDeletedUrls,
+  onRemoveImage,
   onSetOrderOverride,
   onSetRegenerationPrompt,
   roleByUrl,
@@ -32,6 +33,7 @@ export function FinalImageGrid({
   onSetDeletedUrls: (
     updater: (current: string[]) => string[],
   ) => void;
+  onRemoveImage?: (url: string) => void;
   onSetOrderOverride: (
     updater: (current?: string[]) => string[],
   ) => void;
@@ -81,6 +83,11 @@ export function FinalImageGrid({
                 <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-800">
                   {image.url === mainUrl ? "主图" : roleLabel(role)}
                 </span>
+                {image.requiresReview || image.origin === "source" ? (
+                  <span className="absolute right-2 top-2 rounded-full bg-amber-100/95 px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-amber-900">
+                    IP 风险
+                  </span>
+                ) : null}
               </div>
               <div className="mt-2 min-w-0">
                 <p className="truncate text-xs font-semibold text-zinc-900">
@@ -142,7 +149,10 @@ export function FinalImageGrid({
                 </Select>
                 <Button
                   className="col-span-2 h-auto rounded-xl px-2 py-1 text-xs"
-                  onClick={() => onSetDeletedUrls((current) => [...current, image.url])}
+                  onClick={() => {
+                    onRemoveImage?.(image.url);
+                    onSetDeletedUrls((current) => [...current, image.url]);
+                  }}
                   type="button"
                   variant="destructive"
                 >

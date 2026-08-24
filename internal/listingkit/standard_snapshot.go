@@ -1,6 +1,10 @@
 package listingkit
 
-import assetgeneration "task-processor/internal/asset/generation"
+import (
+	"task-processor/internal/asset"
+	assetgeneration "task-processor/internal/asset/generation"
+	"task-processor/internal/productimage"
+)
 
 func buildStandardProductSnapshot(result *ListingKitResult) *StandardProductSnapshot {
 	result = normalizeListingKitResultSemanticFields(result)
@@ -8,17 +12,20 @@ func buildStandardProductSnapshot(result *ListingKitResult) *StandardProductSnap
 		return nil
 	}
 	return normalizeStandardProductSnapshotSemanticFields(&StandardProductSnapshot{
-		CatalogProduct:        result.CatalogProduct,
-		CanonicalProduct:      result.CanonicalProduct,
-		AssetBundle:           result.AssetBundle,
-		AssetInventorySummary: result.AssetInventorySummary,
-		ImageAssets:           result.ImageAssets,
-		PodExecution:          clonePodExecutionSummary(result.PodExecution),
-		SDSDesignResult:       result.SDSDesignResult,
-		Summary:               cloneGenerationSummary(result.Summary),
-		ChildTasks:            append([]ChildTaskState(nil), result.ChildTasks...),
-		WorkflowStages:        append([]WorkflowStage(nil), result.WorkflowStages...),
-		WorkflowIssues:        append([]WorkflowIssue(nil), result.WorkflowIssues...),
+		CatalogProduct:                  result.CatalogProduct,
+		CanonicalProduct:                result.CanonicalProduct,
+		AssetBundle:                     result.AssetBundle,
+		AssetInventorySummary:           result.AssetInventorySummary,
+		ImageAssets:                     result.ImageAssets,
+		ImageAssetsByTarget:             cloneImageAssetsByTarget(result.ImageAssetsByTarget),
+		AssetBundlesByTarget:            cloneAssetBundlesByTarget(result.AssetBundlesByTarget),
+		AssetInventorySummariesByTarget: cloneAssetInventorySummariesByTarget(result.AssetInventorySummariesByTarget),
+		PodExecution:                    clonePodExecutionSummary(result.PodExecution),
+		SDSDesignResult:                 result.SDSDesignResult,
+		Summary:                         cloneGenerationSummary(result.Summary),
+		ChildTasks:                      append([]ChildTaskState(nil), result.ChildTasks...),
+		WorkflowStages:                  append([]WorkflowStage(nil), result.WorkflowStages...),
+		WorkflowIssues:                  append([]WorkflowIssue(nil), result.WorkflowIssues...),
 	})
 }
 
@@ -34,6 +41,9 @@ func applyStandardProductSnapshot(result *ListingKitResult, snapshot *StandardPr
 	result.AssetBundle = snapshot.AssetBundle
 	result.AssetInventorySummary = snapshot.AssetInventorySummary
 	result.ImageAssets = snapshot.ImageAssets
+	result.ImageAssetsByTarget = cloneImageAssetsByTarget(snapshot.ImageAssetsByTarget)
+	result.AssetBundlesByTarget = cloneAssetBundlesByTarget(snapshot.AssetBundlesByTarget)
+	result.AssetInventorySummariesByTarget = cloneAssetInventorySummariesByTarget(snapshot.AssetInventorySummariesByTarget)
 	result.PodExecution = clonePodExecutionSummary(snapshot.PodExecution)
 	result.SDSDesignResult = snapshot.SDSDesignResult
 	result.ChildTasks = append([]ChildTaskState(nil), snapshot.ChildTasks...)
@@ -67,6 +77,9 @@ func mergeStandardProductLayerResult(existing, standard *ListingKitResult) *List
 	merged.AssetGenerationOverview = standard.AssetGenerationOverview
 	merged.CanonicalProduct = standard.CanonicalProduct
 	merged.ImageAssets = standard.ImageAssets
+	merged.ImageAssetsByTarget = cloneImageAssetsByTarget(standard.ImageAssetsByTarget)
+	merged.AssetBundlesByTarget = cloneAssetBundlesByTarget(standard.AssetBundlesByTarget)
+	merged.AssetInventorySummariesByTarget = cloneAssetInventorySummariesByTarget(standard.AssetInventorySummariesByTarget)
 	if standard.SDSDesignResult != nil {
 		merged.SDSDesignResult = standard.SDSDesignResult
 	}
@@ -77,6 +90,39 @@ func mergeStandardProductLayerResult(existing, standard *ListingKitResult) *List
 	merged.CreatedAt = standard.CreatedAt
 	merged.UpdatedAt = standard.UpdatedAt
 	return normalizeListingKitResultSemanticFields(&merged)
+}
+
+func cloneImageAssetsByTarget(input map[string]*productimage.ImageProcessResult) map[string]*productimage.ImageProcessResult {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make(map[string]*productimage.ImageProcessResult, len(input))
+	for target, result := range input {
+		out[target] = result
+	}
+	return out
+}
+
+func cloneAssetBundlesByTarget(input map[string]*asset.Bundle) map[string]*asset.Bundle {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make(map[string]*asset.Bundle, len(input))
+	for target, bundle := range input {
+		out[target] = bundle
+	}
+	return out
+}
+
+func cloneAssetInventorySummariesByTarget(input map[string]*asset.InventorySummary) map[string]*asset.InventorySummary {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make(map[string]*asset.InventorySummary, len(input))
+	for target, summary := range input {
+		out[target] = summary
+	}
+	return out
 }
 
 func cloneGenerationSummary(summary *GenerationSummary) *GenerationSummary {
@@ -97,6 +143,9 @@ func standardProductSnapshotEmpty(snapshot *StandardProductSnapshot) bool {
 		snapshot.AssetBundle == nil &&
 		snapshot.AssetInventorySummary == nil &&
 		snapshot.ImageAssets == nil &&
+		len(snapshot.ImageAssetsByTarget) == 0 &&
+		len(snapshot.AssetBundlesByTarget) == 0 &&
+		len(snapshot.AssetInventorySummariesByTarget) == 0 &&
 		snapshot.PodExecution == nil &&
 		snapshot.SDSDesignResult == nil &&
 		snapshot.Summary == nil &&

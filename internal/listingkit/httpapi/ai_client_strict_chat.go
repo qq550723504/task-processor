@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"task-processor/internal/ai"
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
@@ -17,7 +18,7 @@ type strictListingKitChatClient struct {
 	cache      map[string]*openaiclient.Client
 }
 
-func (c *strictListingKitChatClient) CreateChatCompletion(ctx context.Context, req *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
+func (c *strictListingKitChatClient) CreateChatCompletion(ctx context.Context, req *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
 	client, err := c.resolve(ctx)
 	if err != nil {
 		return nil, err

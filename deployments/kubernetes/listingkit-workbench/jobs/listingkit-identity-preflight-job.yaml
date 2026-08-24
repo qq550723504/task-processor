@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: listingkit-identity-preflight-
+  labels:
+    app: listingkit-identity-preflight
+  annotations:
+    listingkit.io/candidate-api-image: REPLACE_WITH_API_CANDIDATE_IMAGE
+spec:
+  backoffLimit: 0
+  # Keep aligned with the release-gate driver's kubectl wait --timeout=15m.
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: listingkit-identity-preflight
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: listingkit-identity-preflight
+          image: REPLACE_WITH_PREFLIGHT_RUNNER_IMAGE
+          imagePullPolicy: IfNotPresent
+          command: ["/app/listingkit-identity-preflight"]
+          args: ["-config", "/app/config/config-prod.yaml", "-log-level", "info"]
+          envFrom:
+            - configMapRef:
+                name: listingkit-workbench-config
+          env:
+            - name: TASK_PROCESSOR_DATABASE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_HOST
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_PORT
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_USER
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_PASSWORD
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_NAME
+                  optional: false
+            - name: ZITADEL_ISSUER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: ZITADEL_ISSUER_URL
+                  optional: false
+            - name: TASK_PROCESSOR_LISTINGKIT_ZITADEL_TENANT_DIRECTORY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_TENANT_DIRECTORY_TOKEN
+                  optional: false

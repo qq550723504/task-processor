@@ -2,11 +2,15 @@ package productimage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+
+	listingplatform "task-processor/internal/listing/platform"
+	"task-processor/internal/shared/aiidentity"
 )
 
 func (s *service) CreateProcessTask(ctx context.Context, req *ImageProcessRequest) (*Task, error) {
@@ -30,6 +34,12 @@ func (s *service) CreateProcessTask(ctx context.Context, req *ImageProcessReques
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 		RetryCount: 0,
+	}
+	identityEnvelope, envelopeErr := aiidentity.CaptureExecutionEnvelope(ctx, task.ID, "productimage", "image")
+	if envelopeErr == nil {
+		task.SetExecutionEnvelope(identityEnvelope)
+	} else if !errors.Is(envelopeErr, aiidentity.ErrMissingIdentity) {
+		return nil, fmt.Errorf("capture execution identity: %w", envelopeErr)
 	}
 
 	if err := s.taskRepo.CreateTask(ctx, task); err != nil {
@@ -55,18 +65,36 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 	if err != nil {
 		return nil, err
 	}
+	targetPlatform, err := taskTargetPlatform(task)
+	if err != nil {
+		return nil, err
+	}
 
 	result := &TaskResult{
-		TaskID:    task.ID,
-		Status:    task.Status,
-		Result:    task.Result,
-		Error:     task.Error,
-		CreatedAt: task.CreatedAt,
+		TaskID:         task.ID,
+		Status:         task.Status,
+		TargetPlatform: targetPlatform,
+		Result:         task.Result,
+		Error:          task.Error,
+		CreatedAt:      task.CreatedAt,
 	}
 	if task.Status == TaskStatusCompleted || task.Status == TaskStatusNeedsReview || task.Status == TaskStatusRejected || task.Status == TaskStatusFailed {
 		result.CompletedAt = &task.UpdatedAt
 	}
 	return result, nil
+}
+
+func taskTargetPlatform(task *Task) (string, error) {
+	if task == nil || task.Request == nil {
+		return "", ErrTaskTargetUnavailable
+	}
+	if target := listingplatform.Normalize(task.Request.TargetPlatform); listingplatform.IsSupported(target) {
+		return target, nil
+	}
+	if legacy := listingplatform.Normalize(task.Request.Marketplace); listingplatform.IsSupported(legacy) {
+		return legacy, nil
+	}
+	return "", ErrTaskTargetUnavailable
 }
 
 func (s *service) ReviewTask(ctx context.Context, taskID string, req *ReviewTaskRequest) (*TaskResult, error) {
@@ -129,11 +157,33 @@ func (s *service) validateRequest(req *ImageProcessRequest) error {
 	if len(req.ImageURLs) == 0 && req.ProductURL == "" {
 		return fmt.Errorf("at least one of image_urls or product_url must be provided")
 	}
-	if len(req.ImageURLs) > 20 {
-		return fmt.Errorf("too many image URLs (max 20)")
+	if err := normalizeRequestTargetPlatform(req); err != nil {
+		return err
 	}
-	if strings.TrimSpace(req.Marketplace) == "" {
-		return fmt.Errorf("marketplace is required")
+	return nil
+}
+
+func normalizeRequestTargetPlatform(req *ImageProcessRequest) error {
+	if req == nil {
+		return fmt.Errorf("request cannot be nil")
 	}
+	target := listingplatform.Normalize(req.TargetPlatform)
+	legacy := listingplatform.Normalize(req.Marketplace)
+	if target == "" {
+		target = legacy
+	}
+	if target == "" {
+		return fmt.Errorf("target_platform is required")
+	}
+	if !listingplatform.IsSupported(target) {
+		return fmt.Errorf("target_platform %q is unsupported", target)
+	}
+	if legacy != "" && !listingplatform.IsSupported(legacy) {
+		return fmt.Errorf("marketplace %q is unsupported", legacy)
+	}
+	if legacy != "" && legacy != target {
+		return fmt.Errorf("target_platform and marketplace must match")
+	}
+	req.TargetPlatform = target
 	return nil
 }

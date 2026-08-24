@@ -51,9 +51,11 @@ func (r *GormFilterRuleRepository) GetFilterRule(ctx context.Context, tenantID, 
 func (r *GormFilterRuleRepository) CreateFilterRule(ctx context.Context, rule *FilterRule) (*FilterRule, error) {
 	row := listingFilterRuleFromFilterRule(rule)
 	applyFilterRuleDefaults(&row)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyFilterRuleAuditFields(&row, ownerUserID, true)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyFilterRuleAuditFields(&row, ownerUserID, true)
 	if err := r.db.WithContext(ctx).Table("listing_filter_rule").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -64,9 +66,11 @@ func (r *GormFilterRuleRepository) CreateFilterRule(ctx context.Context, rule *F
 func (r *GormFilterRuleRepository) UpdateFilterRule(ctx context.Context, rule *FilterRule) (*FilterRule, error) {
 	row := listingFilterRuleFromFilterRule(rule)
 	applyFilterRuleDefaults(&row)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyFilterRuleAuditFields(&row, ownerUserID, false)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyFilterRuleAuditFields(&row, ownerUserID, false)
 	updates := map[string]any{
 		"owner_user_id":     row.OwnerUserID,
 		"name":              row.Name,

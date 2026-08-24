@@ -2,6 +2,7 @@ package tenantbridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,6 +14,8 @@ import (
 const defaultMetadataTable = "projections.org_metadata2"
 const defaultMetadataKey = "yudao_tenant_id"
 
+var ErrLegacyTenantNotFound = errors.New("legacy tenant mapping not found")
+
 // Resolver bridges ZITADEL tenant IDs back to legacy Yudao tenant IDs for
 // tables that are still shared with the old system. This is an explicit
 // compatibility layer and should be removed once the old system no longer reads
@@ -21,11 +24,19 @@ type Resolver interface {
 	ResolveLegacyTenantID(ctx context.Context, tenantID string) (int64, bool, error)
 }
 
+// OrganizationResolver is the optional inverse of Resolver. It lets callers
+// that start from a legacy numeric tenant recover the canonical organization
+// used by tenant-scoped records.
+type OrganizationResolver interface {
+	ResolveOrganizationID(ctx context.Context, legacyTenantID int64) (string, bool, error)
+}
+
 type MetadataResolver struct {
-	db          *gorm.DB
-	tableName   string
-	metadataKey string
-	cache       sync.Map
+	db           *gorm.DB
+	tableName    string
+	metadataKey  string
+	cache        sync.Map
+	reverseCache sync.Map
 }
 
 type metadataRow struct {
@@ -101,6 +112,43 @@ func (r *MetadataResolver) ResolveLegacyTenantID(ctx context.Context, tenantID s
 	return value, true, nil
 }
 
+// ResolveOrganizationID performs the inverse, read-only bridge lookup needed
+// by tools that inspect legacy numeric tenant-owned rows in a ZITADEL domain.
+func (r *MetadataResolver) ResolveOrganizationID(ctx context.Context, legacyTenantID int64) (string, bool, error) {
+	if r == nil || r.db == nil || legacyTenantID <= 0 {
+		return "", false, nil
+	}
+	if cached, ok := r.reverseCache.Load(legacyTenantID); ok {
+		return cached.(string), true, nil
+	}
+
+	var rows []metadataRow
+	err := r.db.WithContext(ctx).
+		Table(r.tableName).
+		Distinct("org_id").
+		Where("key = ? AND value = ? AND owner_removed = ?", r.metadataKey, []byte(strconv.FormatInt(legacyTenantID, 10)), false).
+		Limit(2).
+		Find(&rows).Error
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", false, fmt.Errorf("resolve organization id: %w", ctxErr)
+		}
+		return "", false, fmt.Errorf("resolve organization id: database query failed")
+	}
+	if len(rows) == 0 {
+		return "", false, nil
+	}
+	if len(rows) > 1 {
+		return "", false, fmt.Errorf("resolve organization id: metadata mapping is ambiguous")
+	}
+	organizationID := strings.TrimSpace(rows[0].OrgID)
+	if organizationID == "" {
+		return "", false, fmt.Errorf("resolve organization id: metadata mapping is invalid")
+	}
+	r.reverseCache.Store(legacyTenantID, organizationID)
+	return organizationID, true, nil
+}
+
 var resolverState struct {
 	mu       sync.RWMutex
 	resolver Resolver
@@ -140,7 +188,26 @@ func ResolveLegacyTenantID(ctx context.Context, tenantID string) (int64, error) 
 		}
 	}
 	if parseErr != nil || parsed <= 0 {
-		return 0, fmt.Errorf("tenant id is required")
+		return 0, fmt.Errorf("%w: tenant id is required", ErrLegacyTenantNotFound)
 	}
 	return parsed, nil
+}
+
+// ResolveOrganizationID performs the optional inverse bridge lookup. A
+// resolver that only supports canonical-to-legacy mapping is deliberately
+// treated as a miss so callers can choose a safe fallback.
+func ResolveOrganizationID(ctx context.Context, tenantID string) (string, bool, error) {
+	trimmed := strings.TrimSpace(tenantID)
+	legacyTenantID, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil || legacyTenantID <= 0 {
+		return "", false, nil
+	}
+	resolverState.mu.RLock()
+	current := resolverState.resolver
+	resolverState.mu.RUnlock()
+	resolver, ok := current.(OrganizationResolver)
+	if !ok {
+		return "", false, nil
+	}
+	return resolver.ResolveOrganizationID(ctx, legacyTenantID)
 }

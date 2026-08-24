@@ -1,11 +1,30 @@
 package sourcing
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
-
-	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 )
+
+func TestAlibaba1688CrawlRequestJSONOmitsPublicAccountSelector(t *testing.T) {
+	payload, err := json.Marshal(Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/1.html"})
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if string(payload) != `{"url":"https://detail.1688.com/offer/1.html"}` {
+		t.Fatalf("public request JSON = %s, want account selector omitted", payload)
+	}
+}
+
+func TestAlibaba1688CrawlRequestJSONIncludesAccountSelectorForAssistedMode(t *testing.T) {
+	payload, err := json.Marshal(Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/1.html", AccountID: 42})
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if string(payload) != `{"url":"https://detail.1688.com/offer/1.html","account_id":42}` {
+		t.Fatalf("assisted request JSON = %s, want account selector", payload)
+	}
+}
 
 func TestAlibaba1688SourceRequestUsesOfferIDIdentity(t *testing.T) {
 	got := Alibaba1688SourceRequest(Alibaba1688CrawlRequestInput{
@@ -44,7 +63,7 @@ func TestAlibaba1688SourceRequestFallsBackToCleanURL(t *testing.T) {
 
 func TestNormalizeAlibaba1688SourceResultAttachesIdentity(t *testing.T) {
 	wantErr := errors.New("captcha")
-	product := &alibaba1688model.Product1688{ID: "123", Title: "sample"}
+	product := &Alibaba1688ProductSnapshot{ID: "123", Title: "sample"}
 
 	got := NormalizeAlibaba1688SourceResult(Alibaba1688CrawlRequestInput{
 		URL: "https://detail.1688.com/offer/123.html",
@@ -62,12 +81,12 @@ func TestNormalizeAlibaba1688SourceResultAttachesIdentity(t *testing.T) {
 }
 
 func TestNormalizeAlibaba1688BatchResultsAlignsShortResults(t *testing.T) {
-	requests := []alibaba1688model.Product1688Request{
+	requests := []Alibaba1688CrawlRequestInput{
 		{URL: "https://detail.1688.com/offer/1.html"},
 		{URL: "https://detail.1688.com/offer/2.html"},
 	}
-	results := []alibaba1688model.Product1688Result{
-		{Product: &alibaba1688model.Product1688{ID: "1", Title: "first"}},
+	results := []Alibaba1688CrawlResultInput{
+		{Product: &Alibaba1688ProductSnapshot{ID: "1", Title: "first"}},
 	}
 
 	got := NormalizeAlibaba1688BatchResults(requests, results)

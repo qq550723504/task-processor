@@ -52,9 +52,11 @@ func (r *GormSensitiveWordRepository) GetSensitiveWord(ctx context.Context, tena
 func (r *GormSensitiveWordRepository) CreateSensitiveWord(ctx context.Context, word *SensitiveWord) (*SensitiveWord, error) {
 	row := listingSensitiveWordFromSensitiveWord(word)
 	applySensitiveWordDefaults(&row)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applySensitiveWordAuditFields(&row, ownerUserID, true)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applySensitiveWordAuditFields(&row, ownerUserID, true)
 	if err := r.db.WithContext(ctx).Table("listing_sensitive_word").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -65,9 +67,11 @@ func (r *GormSensitiveWordRepository) CreateSensitiveWord(ctx context.Context, w
 func (r *GormSensitiveWordRepository) UpdateSensitiveWord(ctx context.Context, word *SensitiveWord) (*SensitiveWord, error) {
 	row := listingSensitiveWordFromSensitiveWord(word)
 	applySensitiveWordDefaults(&row)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applySensitiveWordAuditFields(&row, ownerUserID, false)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applySensitiveWordAuditFields(&row, ownerUserID, false)
 	updates := map[string]any{
 		"owner_user_id": row.OwnerUserID,
 		"word":          row.Word,

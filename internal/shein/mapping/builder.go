@@ -4,6 +4,7 @@ package mapping
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"task-processor/internal/listingruntime"
@@ -17,6 +18,13 @@ import (
 type MappingBuilder struct {
 	mappingGateway runtimeMappingGateway
 	logger         *logrus.Entry
+}
+
+func ownerUserIDFromStore(store *listingruntime.StoreInfo) string {
+	if store == nil {
+		return ""
+	}
+	return store.OwnerUserID
 }
 
 type runtimeMappingGateway interface {
@@ -36,6 +44,7 @@ func NewMappingBuilder(mappingGateway runtimeMappingGateway) *MappingBuilder {
 type MappingCreateOptions struct {
 	TenantID                int64          `json:"tenantId"`                          // 租户ID
 	StoreID                 int64          `json:"storeId"`                           // 店铺ID
+	OwnerUserID             string         `json:"ownerUserId,omitempty"`             // canonical owner
 	SkuCode                 string         `json:"skuCode"`                           // SKU编码（平台SKU）
 	SupplierSku             string         `json:"supplierSku,omitempty"`             // 供应商SKU
 	ProductID               string         `json:"productId"`                         // 产品ID（ASIN）
@@ -112,13 +121,14 @@ func (b *MappingBuilder) CreateMappingRelation(options *MappingCreateOptions) (*
 // CreateMappingFromContext 从修复上下文创建映射关系
 func (b *MappingBuilder) CreateMappingFromContext(ctx *MappingRepairContext, reason string) (*listingruntime.ProductImportMapping, error) {
 	options := &MappingCreateOptions{
-		TenantID: ctx.Request.TenantID,
-		StoreID:  ctx.Request.StoreID,
-		SkuCode:  ctx.Request.SkuCode,
-		SpuCode:  ctx.Request.SpuCode,
-		SpuName:  ctx.Request.SpuName,
-		Region:   b.determineRegion(ctx.StoreInfo),
-		Reason:   reason,
+		TenantID:    ctx.Request.TenantID,
+		StoreID:     ctx.Request.StoreID,
+		OwnerUserID: ownerUserIDFromStore(ctx.StoreInfo),
+		SkuCode:     ctx.Request.SkuCode,
+		SpuCode:     ctx.Request.SpuCode,
+		SpuName:     ctx.Request.SpuName,
+		Region:      b.determineRegion(ctx.StoreInfo),
+		Reason:      reason,
 	}
 
 	// 如果有SKU详细信息，可以设置更多字段
@@ -134,101 +144,6 @@ func (b *MappingBuilder) CreateMappingFromContext(ctx *MappingRepairContext, rea
 	return b.CreateMappingRelation(options)
 }
 
-// CreateBasicMapping 创建基础映射关系（最少参数）
-func (b *MappingBuilder) CreateBasicMapping(tenantID, storeID int64, skuCode, region, reason string) (*listingruntime.ProductImportMapping, error) {
-	options := &MappingCreateOptions{
-		TenantID: tenantID,
-		StoreID:  storeID,
-		SkuCode:  skuCode,
-		Region:   region,
-		Reason:   reason,
-	}
-
-	return b.CreateMappingRelation(options)
-}
-
-// CreateMappingWithSPU 创建包含SPU信息的映射关系
-func (b *MappingBuilder) CreateMappingWithSPU(tenantID, storeID int64, skuCode, spuCode, spuName, region, reason string) (*listingruntime.ProductImportMapping, error) {
-	options := &MappingCreateOptions{
-		TenantID: tenantID,
-		StoreID:  storeID,
-		SkuCode:  skuCode,
-		SpuCode:  spuCode,
-		SpuName:  spuName,
-		Region:   region,
-		Reason:   reason,
-	}
-
-	return b.CreateMappingRelation(options)
-}
-
-// CreateMappingWithPrice 创建包含价格信息的映射关系
-func (b *MappingBuilder) CreateMappingWithPrice(tenantID, storeID int64, skuCode, region, reason string, costPrice float64) (*listingruntime.ProductImportMapping, error) {
-	options := &MappingCreateOptions{
-		TenantID:  tenantID,
-		StoreID:   storeID,
-		SkuCode:   skuCode,
-		Region:    region,
-		Reason:    reason,
-		CostPrice: &costPrice,
-	}
-
-	return b.CreateMappingRelation(options)
-}
-
-// CreateMappingWithRules 创建包含规则信息的映射关系
-func (b *MappingBuilder) CreateMappingWithRules(
-	tenantID, storeID int64,
-	skuCode, region, reason string,
-	profitRuleID, filterRuleID *int64,
-	salePriceMultiplier, discountPriceMultiplier, filterRuleRange *string,
-) (*listingruntime.ProductImportMapping, error) {
-	options := &MappingCreateOptions{
-		TenantID:                tenantID,
-		StoreID:                 storeID,
-		SkuCode:                 skuCode,
-		Region:                  region,
-		Reason:                  reason,
-		ProfitRuleID:            profitRuleID,
-		FilterRuleID:            filterRuleID,
-		SalePriceMultiplier:     salePriceMultiplier,
-		DiscountPriceMultiplier: discountPriceMultiplier,
-		FilterRuleRange:         filterRuleRange,
-	}
-
-	return b.CreateMappingRelation(options)
-}
-
-// CreateMappingFromTaskContext 从任务上下文创建映射关系（类似result_service.go的实现）
-func (b *MappingBuilder) CreateMappingFromTaskContext(
-	tenantID, storeID int64,
-	skuCode, supplierSku, productID, region, reason string,
-	parentProductID, platformParentProductID *string,
-	costPrice *float64,
-	profitRuleID, filterRuleID *int64,
-	salePriceMultiplier, discountPriceMultiplier, filterRuleRange *string,
-) (*listingruntime.ProductImportMapping, error) {
-	options := &MappingCreateOptions{
-		TenantID:                tenantID,
-		StoreID:                 storeID,
-		SkuCode:                 skuCode,
-		SupplierSku:             supplierSku,
-		ProductID:               productID,
-		ParentProductID:         parentProductID,
-		PlatformParentProductID: platformParentProductID,
-		Region:                  region,
-		Reason:                  reason,
-		CostPrice:               costPrice,
-		ProfitRuleID:            profitRuleID,
-		FilterRuleID:            filterRuleID,
-		SalePriceMultiplier:     salePriceMultiplier,
-		DiscountPriceMultiplier: discountPriceMultiplier,
-		FilterRuleRange:         filterRuleRange,
-	}
-
-	return b.CreateMappingRelation(options)
-}
-
 // validateOptions 验证创建选项
 func (b *MappingBuilder) validateOptions(options *MappingCreateOptions) error {
 	if options.TenantID <= 0 {
@@ -237,6 +152,9 @@ func (b *MappingBuilder) validateOptions(options *MappingCreateOptions) error {
 
 	if options.StoreID <= 0 {
 		return fmt.Errorf("店铺ID不能为空或小于等于0")
+	}
+	if strings.TrimSpace(options.OwnerUserID) == "" {
+		return fmt.Errorf("映射所有者不能为空")
 	}
 
 	if options.SkuCode == "" {
@@ -266,6 +184,7 @@ func (b *MappingBuilder) buildCreateRequest(options *MappingCreateOptions) *list
 
 	createReq := &listingruntime.ProductImportMappingUpsert{
 		TenantID:          options.TenantID,
+		OwnerUserID:       options.OwnerUserID,
 		ImportTaskID:      importTaskID,
 		StoreID:           options.StoreID,
 		Platform:          "SHEIN",

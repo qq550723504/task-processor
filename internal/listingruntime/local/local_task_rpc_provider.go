@@ -1,10 +1,14 @@
 package local
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	taskdomain "task-processor/internal/domain/task"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
 	api "task-processor/internal/taskrpcapi"
@@ -27,7 +31,13 @@ func (p *LocalTaskRPCProvider) SubmitTask(req *api.TaskSubmitReqDTO, urgent bool
 	if p == nil || p.db == nil || req == nil {
 		return nil, false, nil
 	}
+	if err := listingadmin.EnsureImportTaskWriteReady(p.db); err != nil {
+		return nil, true, err
+	}
+	return p.submitTask(req, urgent)
+}
 
+func (p *LocalTaskRPCProvider) submitTask(req *api.TaskSubmitReqDTO, urgent bool) (*api.TaskSubmitRespDTO, bool, error) {
 	priority := req.BusinessPriority
 	if urgent && priority > 1 {
 		priority = 1
@@ -41,31 +51,74 @@ func (p *LocalTaskRPCProvider) SubmitTask(req *api.TaskSubmitReqDTO, urgent bool
 	}
 
 	now := time.Now()
+	var categoryID *int64
+	if req.CategoryID > 0 {
+		value := req.CategoryID
+		categoryID = &value
+	}
+	platform := taskdomain.NormalizePlatform(req.Platform)
+	sourcePlatform := taskdomain.NormalizePlatform(req.SourcePlatform)
+	if sourcePlatform == "" {
+		sourcePlatform = platform
+	}
+	targetPlatform := taskdomain.NormalizePlatform(req.TargetPlatform)
+	if targetPlatform == "" {
+		targetPlatform = platform
+	}
 	row := localImportTaskRow{
-		ID:            req.TaskID,
-		TenantID:      req.TenantID,
-		StoreID:       req.StoreID,
-		Platform:      req.Platform,
-		Region:        req.Region,
-		CategoryID:    req.CategoryID,
-		ProductID:     req.ProductID,
-		Status:        model.TaskStatusPending.Int16(),
-		Stage:         req.TaskType,
-		RetryCount:    0,
-		MaxRetryCount: maxRetries,
-		Remark:        req.Description,
-		Priority:      priority,
-		Creator:       "local-task-rpc",
-		Updater:       "local-task-rpc",
-		CreateTime:    now,
-		UpdateTime:    now,
+		ID:             req.TaskID,
+		TenantID:       req.TenantID,
+		StoreID:        req.StoreID,
+		Platform:       platform,
+		SourcePlatform: sourcePlatform,
+		TargetPlatform: targetPlatform,
+		Region:         req.Region,
+		CategoryID:     categoryID,
+		ProductID:      req.ProductID,
+		Status:         model.TaskStatusPending.Int16(),
+		Stage:          req.TaskType,
+		RetryCount:     0,
+		MaxRetryCount:  maxRetries,
+		Remark:         req.Description,
+		Priority:       priority,
+		Creator:        "local-task-rpc",
+		Updater:        "local-task-rpc",
+		CreateTime:     now,
+		UpdateTime:     now,
 	}
 	if row.ID == 0 {
 		row.ID = time.Now().UnixNano()
 	}
-	if err := p.db.Table("listing_product_import_task").Create(&row).Error; err != nil {
+	storeID := row.StoreID
+	created, err := listingadmin.NewGormImportTaskRepository(p.db).BatchCreateImportTasksForStore(
+		context.Background(),
+		[]listingadmin.ImportTask{{
+			ID:             row.ID,
+			TenantID:       row.TenantID,
+			StoreID:        &storeID,
+			Platform:       row.Platform,
+			SourcePlatform: row.SourcePlatform,
+			TargetPlatform: row.TargetPlatform,
+			Region:         row.Region,
+			CategoryID:     row.CategoryID,
+			ProductID:      row.ProductID,
+			Status:         row.Status,
+			Stage:          row.Stage,
+			RetryCount:     row.RetryCount,
+			MaxRetryCount:  row.MaxRetryCount,
+			Remark:         row.Remark,
+			Priority:       row.Priority,
+			Creator:        row.Creator,
+			Updater:        row.Updater,
+		}},
+	)
+	if err != nil {
 		return nil, true, err
 	}
+	if len(created) != 1 {
+		return nil, true, errors.New("local task rpc repository created no import task")
+	}
+	row.ID = created[0].ID
 
 	meta := localTaskStatusMetadata(row.Status)
 	resp := &api.TaskSubmitRespDTO{
@@ -87,6 +140,11 @@ func (p *LocalTaskRPCProvider) SubmitBatchTasks(req *api.TaskBatchSubmitReqDTO) 
 	if p == nil || p.db == nil || req == nil {
 		return nil, false, nil
 	}
+	if len(req.Tasks) > 0 {
+		if err := listingadmin.EnsureImportTaskWriteReady(p.db); err != nil {
+			return nil, true, err
+		}
+	}
 	now := time.Now()
 	resp := &api.TaskBatchSubmitRespDTO{
 		BatchID:         req.BatchID,
@@ -101,7 +159,7 @@ func (p *LocalTaskRPCProvider) SubmitBatchTasks(req *api.TaskBatchSubmitReqDTO) 
 	}
 	resp.TotalCount = len(req.Tasks)
 	for _, taskReq := range req.Tasks {
-		item, _, err := p.SubmitTask(&taskReq, false)
+		item, _, err := p.submitTask(&taskReq, false)
 		if err != nil {
 			resp.FailureCount++
 			resp.FailureTasks = append(resp.FailureTasks, api.TaskSubmitRespDTO{

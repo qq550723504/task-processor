@@ -4,10 +4,10 @@ package alibaba1688
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 
 	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/crawler/shared"
@@ -32,73 +32,121 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
 
-	if crawlerTask.SourceAccountID < 0 {
-		return newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
-	}
-
-	var product *model.Product1688
-	if crawlerTask.SourceAccountID > 0 {
-		profile, err := p.service.resolveAccountProfile(ctx, crawlerTask.TenantID, crawlerTask.SourceAccountID)
-		if err != nil {
-			return err
-		}
-		unlock := p.service.lockAccountProfile(profile)
-		defer unlock()
-		product, err = p.service.processor1688.ProcessWithAccountProfile(crawlerTask.URL, profile)
-		if err != nil {
-			return err
-		}
-	} else {
-		resolvedProduct, err := p.service.processor1688.Process(crawlerTask.URL)
-		if err != nil {
-			return err
-		}
-		product = resolvedProduct
-	}
-
 	updateResult := p.service.UpdateResult
 	if crawlerTask.TenantID > 0 {
 		updateResult = func(taskID string, fn func(*shared.CrawlerResult)) error {
 			return p.service.UpdateResultForTenant(crawlerTask.TenantID, taskID, fn)
 		}
 	}
+
+	product, accessMode, fallbackReason, err := p.fetchProduct(ctx, &crawlerTask)
+	if err != nil {
+		_ = updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
+			result.SourceAccessMode = string(accessMode)
+			result.SourceFallbackReason = fallbackReason
+		})
+		return err
+	}
+
 	_ = updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.ProductData = shared.ProductToMap(product)
+		result.SourceAccessMode = string(accessMode)
+		result.SourceFallbackReason = fallbackReason
 	})
 
 	return nil
 }
 
-func (s *Service) lockAccountProfile(profile AccountProfile) func() {
+func (p *Crawler1688Processor) fetchProduct(ctx context.Context, task *shared.CrawlerTask) (*model.Product1688, sourceAccessMode, string, error) {
+	if p == nil || p.service == nil || task == nil || task.SourceAccountID < 0 {
+		return nil, sourceAccessModePublic, "", newAccountUnavailableError()
+	}
+	product, publicErr := p.service.processor1688.Process(ctx, task.URL)
+	if publicErr == nil {
+		p.service.recordSourceAccess("public")
+		return product, sourceAccessModePublic, "", nil
+	}
+	if err := cancellationError(ctx, publicErr); err != nil {
+		return nil, sourceAccessModePublic, "", err
+	}
+	if task.SourceAccountID == 0 || !IsAccountFallbackEligible(publicErr) {
+		p.service.recordSourceAccess("source_public_unavailable")
+		return nil, sourceAccessModePublic, "", newPublicUnavailableError()
+	}
+	profile, err := p.service.resolveAccountProfile(ctx, task.TenantID, task.SourceAccountID)
+	if err != nil {
+		if cancellationErr := cancellationError(ctx, err); cancellationErr != nil {
+			return nil, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), cancellationErr
+		}
+		if AccountProfileErrorCode(err) == AccountProfileDisabled {
+			p.service.recordSourceAccess("source_account_disabled")
+		} else {
+			p.service.recordSourceAccess("source_account_unavailable")
+		}
+		return nil, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), err
+	}
+	unlock, err := p.service.lockAccountProfile(ctx, profile)
+	if err != nil {
+		return nil, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), err
+	}
+	defer unlock()
+	product, err = p.service.processor1688.ProcessWithAccountProfile(ctx, task.URL, profile)
+	p.service.recordSourceAccess("account_assisted")
+	if err != nil {
+		return nil, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), err
+	}
+	return product, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), nil
+}
+
+type sourceAccessMode string
+
+const (
+	sourceAccessModePublic          sourceAccessMode = "public"
+	sourceAccessModeAccountAssisted sourceAccessMode = "account_assisted"
+)
+
+func (s *Service) lockAccountProfile(ctx context.Context, profile AccountProfile) (func(), error) {
 	key := strconv.FormatInt(profile.TenantID, 10) + ":" + strconv.FormatInt(profile.ID, 10)
 	s.profileLocksMu.Lock()
 	if s.profileLocks == nil {
-		s.profileLocks = make(map[string]*sync.Mutex)
+		s.profileLocks = make(map[string]*accountProfileLock)
 	}
 	lock := s.profileLocks[key]
 	if lock == nil {
-		lock = &sync.Mutex{}
+		lock = newAccountProfileLock()
 		s.profileLocks[key] = lock
 	}
 	s.profileLocksMu.Unlock()
-	lock.Lock()
-	return lock.Unlock
+	return lock.lock(ctx)
 }
 
 func (s *Service) resolveAccountProfile(ctx context.Context, tenantID, accountID int64) (AccountProfile, error) {
 	if s == nil || tenantID <= 0 || accountID <= 0 || s.accountProfileResolver == nil {
-		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+		return AccountProfile{}, newAccountUnavailableError()
 	}
 
 	profile, err := s.accountProfileResolver.ResolveAlibaba1688Account(ctx, tenantID, accountID)
 	if err != nil {
-		if AccountProfileErrorCode(err) == AccountProfileDisabled {
-			return AccountProfile{}, newAccountProfileError(AccountProfileDisabled, "1688 account is disabled")
+		if cancellationErr := cancellationError(ctx, err); cancellationErr != nil {
+			return AccountProfile{}, cancellationErr
 		}
-		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+		if AccountProfileErrorCode(err) == AccountProfileDisabled {
+			return AccountProfile{}, newAccountDisabledError()
+		}
+		return AccountProfile{}, newAccountUnavailableError()
 	}
 	if profile.ID != accountID || profile.TenantID != tenantID || strings.TrimSpace(profile.ProfileDir) == "" {
-		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+		return AccountProfile{}, newAccountUnavailableError()
 	}
 	return profile, nil
+}
+
+func cancellationError(ctx context.Context, err error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return nil
 }

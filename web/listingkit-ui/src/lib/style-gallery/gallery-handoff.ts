@@ -20,7 +20,7 @@ export type StyleGalleryHandoff = {
   height?: number;
 };
 
-export type SDSRatioMatchStatus = "unknown" | "pass" | "warning" | "blocking";
+ type SDSRatioMatchStatus = "unknown" | "pass" | "warning" | "blocking";
 
 export type SDSRatioMatch = {
   status: SDSRatioMatchStatus;

@@ -1,19 +1,22 @@
 package listingadmin
 
-import "strings"
+import (
+	"strings"
+
+	taskdomain "task-processor/internal/domain/task"
+)
 
 func (t listingProductImportTask) toImportTask() ImportTask {
 	storeID := t.StoreID
-	categoryID := t.CategoryID
 	return ImportTask{
 		ID:             t.ID,
 		TenantID:       t.TenantID,
 		StoreID:        &storeID,
-		Platform:       t.Platform,
-		TargetPlatform: t.TargetPlatform,
-		SourcePlatform: t.SourcePlatform,
+		Platform:       taskdomain.NormalizePlatform(t.Platform),
+		TargetPlatform: taskdomain.NormalizePlatform(t.TargetPlatform),
+		SourcePlatform: taskdomain.NormalizePlatform(t.SourcePlatform),
 		Region:         t.Region,
-		CategoryID:     &categoryID,
+		CategoryID:     t.CategoryID,
 		ProductID:      t.ProductID,
 		Status:         t.Status,
 		ProcessingNode: t.ProcessingNode,
@@ -37,20 +40,23 @@ func listingProductImportTaskFromImportTask(task ImportTask) listingProductImpor
 	if task.StoreID != nil {
 		storeID = *task.StoreID
 	}
-	var categoryID int64
+	var categoryID *int64
 	if task.CategoryID != nil {
-		categoryID = *task.CategoryID
+		value := *task.CategoryID
+		categoryID = &value
 	}
-	sourcePlatform := strings.TrimSpace(task.SourcePlatform)
+	platform := taskdomain.NormalizePlatform(task.Platform)
+	targetPlatform := taskdomain.NormalizePlatform(task.TargetPlatform)
+	sourcePlatform := taskdomain.NormalizePlatform(task.SourcePlatform)
 	if sourcePlatform == "" {
-		sourcePlatform = strings.TrimSpace(task.Platform)
+		sourcePlatform = platform
 	}
 	return listingProductImportTask{
 		ID:             task.ID,
 		TenantID:       task.TenantID,
 		StoreID:        storeID,
-		Platform:       strings.TrimSpace(task.Platform),
-		TargetPlatform: strings.TrimSpace(task.TargetPlatform),
+		Platform:       platform,
+		TargetPlatform: targetPlatform,
 		SourcePlatform: sourcePlatform,
 		Region:         strings.TrimSpace(task.Region),
 		CategoryID:     categoryID,
@@ -70,8 +76,11 @@ func listingProductImportTaskFromImportTask(task ImportTask) listingProductImpor
 }
 
 func applyImportTaskDefaults(row *listingProductImportTask) {
+	row.Platform = taskdomain.NormalizePlatform(row.Platform)
+	row.TargetPlatform = taskdomain.NormalizePlatform(row.TargetPlatform)
+	row.SourcePlatform = taskdomain.NormalizePlatform(row.SourcePlatform)
 	if row.SourcePlatform == "" {
-		row.SourcePlatform = strings.TrimSpace(row.Platform)
+		row.SourcePlatform = row.Platform
 	}
 	if row.Region == "" {
 		row.Region = "US"

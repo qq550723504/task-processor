@@ -128,4 +128,29 @@ describe("useSheinStudioDedicatedBatchRunController", () => {
     expect(startBatchRun).not.toHaveBeenCalled();
     expect(setBatchRunError).not.toHaveBeenCalled();
   });
+
+  it("does not start a dedicated run when the selected store is stale", () => {
+    const storeRequiredMessage =
+      "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。";
+    const { result } = renderHook(() =>
+      useSheinStudioDedicatedBatchRunController({
+        getBatchRunStartErrorMessage: () => "failed",
+        getHydratedBatch,
+        initialBatchId: "batch-1",
+        loadHydratedBatch,
+        refreshSavedBatches,
+        setActiveBatchRunId,
+        setBatchRunError,
+        startBatchRun,
+        storeRequiredMessage,
+      }),
+    );
+
+    act(() => {
+      result.current.handleStartDedicatedBatchRun();
+    });
+
+    expect(startBatchRun).not.toHaveBeenCalled();
+    expect(setBatchRunError).toHaveBeenCalledWith(storeRequiredMessage);
+  });
 });

@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
+	listingplatform "task-processor/internal/listing/platform"
 	"task-processor/internal/listingkit/core"
 	listinggeneration "task-processor/internal/listingkit/generation"
 )
@@ -108,10 +109,11 @@ func (s *service) planMissingRetryGenerationTasks(ctx context.Context, task *Tas
 		return nil, nil
 	}
 	planned, err := assetGenerator.Plan(ctx, assetgeneration.Request{
-		TaskID:    task.ID,
-		Product:   effectiveCatalogProduct(task.Result),
-		Inventory: inventory,
-		Recipes:   assetrecipe.FlattenResolved(recipesByPlatform),
+		TaskID:          task.ID,
+		TargetPlatforms: listingplatform.NormalizeSupportedPlatforms(task.Request.Platforms),
+		Product:         effectiveCatalogProduct(task.Result),
+		Inventory:       inventory,
+		Recipes:         assetrecipe.FlattenResolved(recipesByPlatform),
 	})
 	if err != nil || planned == nil || len(planned.Tasks) == 0 {
 		return nil, err

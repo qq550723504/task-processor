@@ -4,6 +4,7 @@ package productenrich
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"task-processor/internal/core/config"
@@ -31,6 +32,20 @@ type llmManagerAdapter struct {
 func (a *llmManagerAdapter) GetClient(clientName string) (LLMClient, error) {
 	c, err := a.manager.GetClient(clientName)
 	if err != nil {
+		return nil, err
+	}
+	return &llmClientAdapter{client: c}, nil
+}
+
+func (a *llmManagerAdapter) GetClientWithRoute(ctx context.Context, clientName string, route LLMClientRoute) (LLMClient, error) {
+	c, err := a.manager.GetClientWithRoute(ctx, clientName, openai.ImageRouteSelection{CredentialReference: route.CredentialReference, ConfigurationVersion: route.ConfigurationVersion})
+	if err != nil {
+		if errors.Is(err, openai.ErrClientConfigurationChanged) {
+			return nil, fmt.Errorf("%w: %v", ErrLLMClientConfigurationChanged, err)
+		}
+		if errors.Is(err, openai.ErrClientConfigurationUnavailable) {
+			return nil, fmt.Errorf("%w: %v", ErrLLMClientUnavailable, err)
+		}
 		return nil, err
 	}
 	return &llmClientAdapter{client: c}, nil

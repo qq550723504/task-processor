@@ -6,12 +6,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"task-processor/internal/httproute"
-	"task-processor/internal/listingkit"
 )
 
 func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
+	switch route.AuthPolicy {
+	case httproute.AuthPolicyVerifiedIdentity:
+		return true
+	case httproute.AuthPolicyPublic:
+		return false
+	}
 	if route.Method == http.MethodGet && (route.Path == "/api/v1/shein-login/health" || route.Path == "/api/v1/sds-login/health") {
 		return false
 	}
@@ -29,6 +35,7 @@ func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
 		route.Module == "sds" ||
 		route.Module == "sds-login" ||
 		route.Module == "product-sourcing" ||
+		route.Module == "local-agent" ||
 		route.Module == "crawler-1688" ||
 		route.Module == "images"
 }
@@ -80,7 +87,7 @@ func NewRouteRoleMiddleware(route httproute.Descriptor) gin.HandlerFunc {
 		}
 	}
 	return func(c *gin.Context) {
-		identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+		identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error":   "listingkit_permission_denied",
@@ -120,22 +127,21 @@ func roleHeaderValues(value string) []string {
 }
 
 func authorizeZitadelIdentity(identity *zitadelIntrospectionResponse, cfg zitadelAuthorizationConfig) (bool, string) {
+	if cfg.LegacyUsernameAllowlistConfigured {
+		return false, "ZITADEL username allowlists are obsolete; configure canonical allowlists"
+	}
 	if identity == nil {
 		return false, "ZITADEL identity is missing"
 	}
 	if len(cfg.AllowedTenantIDs) == 0 &&
 		len(cfg.AllowedUserIDs) == 0 &&
-		len(cfg.AllowedUsernames) == 0 &&
 		len(cfg.AllowedRoles) == 0 {
 		return false, "ZITADEL authorization is required but no allowlist is configured"
 	}
 	if valueInSet(firstNonEmptyZitadelValue(identity.ResourceID), cfg.AllowedTenantIDs) {
 		return true, ""
 	}
-	if valueInSet(firstNonEmptyZitadelValue(identity.Subject, identity.UserID), cfg.AllowedUserIDs) {
-		return true, ""
-	}
-	if valueInSet(firstNonEmptyZitadelValue(identity.Username), cfg.AllowedUsernames) {
+	if valueInSet(strings.TrimSpace(identity.Subject), cfg.AllowedUserIDs) {
 		return true, ""
 	}
 	for _, role := range identity.Roles {

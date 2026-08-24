@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	taskdomain "task-processor/internal/domain/task"
 )
 
 type ImportTaskHandler struct {
@@ -14,7 +15,7 @@ type ImportTaskHandler struct {
 
 type BatchCreateImportTaskRequest struct {
 	StoreID        int64    `json:"storeId"`
-	CategoryID     int64    `json:"categoryId"`
+	CategoryID     *int64   `json:"categoryId"`
 	Platform       string   `json:"platform"`
 	TargetPlatform string   `json:"targetPlatform"`
 	Region         string   `json:"region"`
@@ -24,8 +25,10 @@ type BatchCreateImportTaskRequest struct {
 }
 
 type BatchCreateImportTaskResponse struct {
-	CreatedCount int          `json:"createdCount"`
-	Items        []ImportTask `json:"items"`
+	CreatedCount      int          `json:"createdCount"`
+	SkippedCount      int          `json:"skippedCount"`
+	SkippedProductIDs []string     `json:"skippedProductIds"`
+	Items             []ImportTask `json:"items"`
 }
 
 func NewImportTaskHandler(repo ImportTaskRepository) *ImportTaskHandler {
@@ -74,17 +77,22 @@ func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 	}
 
 	storeID := req.StoreID
-	categoryID := req.CategoryID
+	categoryID := optionalPositiveInt64(req.CategoryID)
+	platform := taskdomain.NormalizePlatform(req.Platform)
+	targetPlatform := taskdomain.NormalizePlatform(req.TargetPlatform)
+	if targetPlatform == "" {
+		targetPlatform = platform
+	}
 	tasks := make([]ImportTask, 0, len(productIDs))
 	for _, productID := range productIDs {
 		tasks = append(tasks, ImportTask{
 			TenantID:       tenantID,
 			StoreID:        &storeID,
-			Platform:       strings.TrimSpace(req.Platform),
-			TargetPlatform: strings.TrimSpace(req.TargetPlatform),
-			SourcePlatform: strings.TrimSpace(req.Platform),
+			Platform:       platform,
+			TargetPlatform: targetPlatform,
+			SourcePlatform: platform,
 			Region:         strings.TrimSpace(req.Region),
-			CategoryID:     &categoryID,
+			CategoryID:     categoryID,
 			ProductID:      productID,
 			Status:         0,
 			MaxRetryCount:  3,
@@ -92,12 +100,17 @@ func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 			Priority:       req.Priority,
 		})
 	}
-	items, err := h.repo.BatchCreateImportTasks(requestIdentityContext(c), tasks)
+	result, err := h.repo.BatchCreateImportTasks(requestIdentityContext(c), tasks)
 	if err != nil {
-		writeInternalHandlerError(c, "import_task_create_failed", err)
+		writeImportTaskError(c, err, "import_task_create_failed")
 		return
 	}
-	c.JSON(http.StatusCreated, BatchCreateImportTaskResponse{CreatedCount: len(items), Items: items})
+	c.JSON(http.StatusCreated, BatchCreateImportTaskResponse{
+		CreatedCount:      len(result.Items),
+		SkippedCount:      len(result.SkippedProductIDs),
+		SkippedProductIDs: result.SkippedProductIDs,
+		Items:             result.Items,
+	})
 }
 
 func (h *ImportTaskHandler) DeleteImportTask(c *gin.Context) {
@@ -135,8 +148,8 @@ func validateBatchCreateImportTask(tenantID int64, req BatchCreateImportTaskRequ
 		return errors.New("tenant id is required")
 	case req.StoreID <= 0:
 		return errors.New("storeId is required")
-	case req.CategoryID <= 0:
-		return errors.New("categoryId is required")
+	case req.CategoryID != nil && *req.CategoryID < 0:
+		return errors.New("categoryId must be greater than 0")
 	case strings.TrimSpace(req.Platform) == "":
 		return errors.New("platform is required")
 	case len(productIDs) == 0:
@@ -145,6 +158,16 @@ func validateBatchCreateImportTask(tenantID int64, req BatchCreateImportTaskRequ
 	return nil
 }
 
+func optionalPositiveInt64(value *int64) *int64 {
+	if value == nil || *value <= 0 {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
 var writeImportTaskError = newMappedHandlerErrorWriter(
 	handlerErrorRule{match: ErrImportTaskNotFound, status: http.StatusNotFound, errorCode: "import_task_not_found"},
+	handlerErrorRule{match: ErrImportTaskAlreadyExists, status: http.StatusConflict, errorCode: "import_task_already_exists"},
+	handlerErrorRule{match: ErrImportTaskIntegrityUnavailable, status: http.StatusServiceUnavailable, errorCode: "import_task_integrity_unavailable"},
 )

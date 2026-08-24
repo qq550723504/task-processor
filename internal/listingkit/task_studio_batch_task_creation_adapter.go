@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	studiodomain "task-processor/internal/listing/studio"
 )
@@ -32,17 +31,15 @@ func newListingStudioBatchTaskCreationService(s *taskStudioBatchService) *listin
 			if err != nil {
 				return studiodomain.BatchTaskPrepareState[SheinStudioSession, StudioBatchRecord]{}, err
 			}
-			_, session, _, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
-				DesignIDs: append([]string(nil), designIDs...),
-			})
+			_, session, _, err := s.prepareStudioBatchTaskCreation(ctx, batchID, studioBatchTaskCreationRequest(ctx, designIDs))
 			if err != nil {
 				return studiodomain.BatchTaskPrepareState[SheinStudioSession, StudioBatchRecord]{}, err
 			}
 			if session == nil {
-				session = &SheinStudioSession{
-					ID:                   strings.TrimSpace(batchID),
-					PendingTaskDesignIDs: append(SheinStudioStringList(nil), state.DesignIDs...),
-				}
+				session = state.Session
+			}
+			if session == nil {
+				session = fallbackStudioBatchTaskSession(batchID, state.Batch, state.DesignIDs, "")
 			}
 			return studiodomain.BatchTaskPrepareState[SheinStudioSession, StudioBatchRecord]{
 				Session:   session,
@@ -83,9 +80,7 @@ func newListingStudioBatchTaskCreationService(s *taskStudioBatchService) *listin
 			if s == nil {
 				return nil, fmt.Errorf("studio batch task creation service is not configured")
 			}
-			return s.CreateStudioBatchTasks(ctx, batchID, &CreateStudioBatchTasksRequest{
-				DesignIDs: append([]string(nil), designIDs...),
-			})
+			return s.CreateStudioBatchTasks(ctx, batchID, studioBatchTaskCreationRequest(ctx, designIDs))
 		},
 		LoadBatch: func(ctx context.Context, batchID string) (*StudioBatchRecord, error) {
 			if s == nil || s.repo == nil {

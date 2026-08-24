@@ -245,7 +245,7 @@ export function taxonomySeverity(
   return items?.find((item) => item.key === key)?.severity;
 }
 
-export function buildSummaryEntries(
+ function buildSummaryEntries(
   counts: Record<string, number> | undefined,
   descriptors: ListingKitTaskFacetDescriptor[] | undefined,
 ) {

@@ -100,6 +100,7 @@ func toStoreInfo(storeDTO *listingruntime.StoreInfo) *listingruntime.StoreInfo {
 	return &listingruntime.StoreInfo{
 		ID:             storeDTO.ID,
 		TenantID:       storeDTO.TenantID,
+		OwnerUserID:    storeDTO.OwnerUserID,
 		StoreID:        storeDTO.StoreID,
 		Platform:       storeDTO.Platform,
 		Name:           storeDTO.Name,

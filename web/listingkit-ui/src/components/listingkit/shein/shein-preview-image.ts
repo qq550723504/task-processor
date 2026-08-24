@@ -12,22 +12,22 @@ export type SheinPreviewImage = {
   id: string;
   label: string;
   url: string;
+  origin?: "generated" | "source" | "mockup";
+  requiresReview?: boolean;
 };
 
 export type SheinPreviewImageGroups = {
   productImages: SheinPreviewImage[];
+  availableImages: SheinPreviewImage[];
   mockupImages: SheinPreviewImage[];
 };
-
-function firstUrl(values: Array<string | null | undefined>) {
-  return values.find((value) => typeof value === "string" && value.trim())?.trim();
-}
 
 function pushImage(
   images: SheinPreviewImage[],
   seen: Set<string>,
   label: string,
   url?: string | null,
+  metadata?: Pick<SheinPreviewImage, "origin" | "requiresReview">,
 ) {
   const trimmed = typeof url === "string" ? url.trim() : "";
   if (!trimmed || seen.has(trimmed)) {
@@ -38,6 +38,7 @@ function pushImage(
     id: `${label}:${images.length}`,
     label,
     url: trimmed,
+    ...metadata,
   });
 }
 
@@ -74,6 +75,9 @@ export function collectSheinPreviewImages(
   if (groups.productImages.length > 0) {
     return groups.productImages;
   }
+  if (groups.availableImages.length > 0) {
+    return groups.availableImages;
+  }
   return groups.mockupImages;
 }
 
@@ -82,11 +86,13 @@ export function collectSheinPreviewImageGroups(
   sdsSync?: SDSSyncSummary | null,
 ): SheinPreviewImageGroups {
   if (!shein && !sdsSync) {
-    return { productImages: [], mockupImages: [] };
+    return { productImages: [], availableImages: [], mockupImages: [] };
   }
 
   const productImages: SheinPreviewImage[] = [];
   const productSeen = new Set<string>();
+  const availableImages: SheinPreviewImage[] = [];
+  const availableSeen = new Set<string>();
   const mockupImages: SheinPreviewImage[] = [];
   const mockupSeen = new Set<string>();
   const requestDraft = getSheinDraftPayload(shein);
@@ -98,19 +104,42 @@ export function collectSheinPreviewImageGroups(
       image.main || image.role === "main"
         ? "Final review main"
         : `Final review image ${index + 1}`;
-    pushImage(productImages, productSeen, label, image.url);
+    const metadata = {
+      origin: image.origin ?? "generated",
+      requiresReview: image.requires_review,
+    } satisfies Pick<SheinPreviewImage, "origin" | "requiresReview">;
+    const selected = image.selected ?? image.final ?? true;
+    pushImage(
+      selected ? productImages : availableImages,
+      selected ? productSeen : availableSeen,
+      label,
+      image.url,
+      metadata,
+    );
   });
   hasFinalReviewImages = productImages.length > 0;
 
   const appendSourceImages = () => {
     const appendSourcesFromImageInfo = (label: string, info?: SheinImageInfo | null) => {
       info?.source?.forEach((url, index) => {
-        pushImage(productImages, productSeen, `${label} source ${index + 1}`, url);
+        pushImage(
+          availableImages,
+          availableSeen,
+          `${label} source ${index + 1}`,
+          url,
+          { origin: "source", requiresReview: true },
+        );
       });
     };
 
     shein?.source_product?.image_urls?.forEach((url, index) => {
-      pushImage(productImages, productSeen, `Source product ${index + 1}`, url);
+      pushImage(
+        availableImages,
+        availableSeen,
+        `Source product ${index + 1}`,
+        url,
+        { origin: "source", requiresReview: true },
+      );
     });
     appendSourcesFromImageInfo("Preview product", previewProduct?.image_info);
     appendSourcesFromImageInfo("Request draft", requestDraft?.image_info);
@@ -157,13 +186,7 @@ export function collectSheinPreviewImageGroups(
       });
     });
   }
-  if (productImages.length === 0) {
-    appendSourceImages();
-  }
+  appendSourceImages();
 
-  return { productImages, mockupImages };
-}
-
-export function firstSheinPreviewImageUrl(shein?: SheinPreviewPayload | null) {
-  return firstUrl(collectSheinPreviewImages(shein).map((image) => image.url));
+  return { productImages, availableImages, mockupImages };
 }

@@ -10,14 +10,18 @@ import (
 
 // CrawlRequest 爬虫请求
 type CrawlRequest struct {
-	TaskID    string `json:"taskId"` // 字符串类型，避免 JSON float64 精度丢失
-	TenantID  int64  `json:"tenantId"`
-	StoreID   int64  `json:"storeId"`
-	Platform  string `json:"platform"`
-	Region    string `json:"region"`
-	ProductID string `json:"productId"`
-	Zipcode   string `json:"zipcode,omitempty"`
-	Priority  int    `json:"priority"`
+	TaskID         string            `json:"taskId"` // 字符串类型，避免 JSON float64 精度丢失
+	TenantID       int64             `json:"tenantId"`
+	StoreID        int64             `json:"storeId"`
+	Platform       string            `json:"platform"` // Queue naming only; not sent as routing data.
+	SourcePlatform string            `json:"sourcePlatform"`
+	TargetPlatform string            `json:"targetPlatform"`
+	Region         string            `json:"region"`
+	ProductID      string            `json:"productId"`
+	Zipcode        string            `json:"zipcode,omitempty"`
+	Priority       int               `json:"priority"`
+	TraceID        string            `json:"traceId,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
 }
 
 // CrawlResult 爬虫结果

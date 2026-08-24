@@ -146,6 +146,7 @@ func TestMemStudioBatchRepositoryGetBatchAndItemAndListDesignsAndUpdate(t *testi
 	}
 
 	batch.Status = StudioBatchStatusGenerating
+	batch.ImageStrategy = sheinImageStrategyAIGenerated
 	batch.UpdatedAt = now.Add(5 * time.Second)
 	if err := repo.UpdateStudioBatch(ctx, batch); err != nil {
 		t.Fatalf("UpdateStudioBatch() error = %v", err)
@@ -157,6 +158,9 @@ func TestMemStudioBatchRepositoryGetBatchAndItemAndListDesignsAndUpdate(t *testi
 	}
 	if updatedBatch.Status != StudioBatchStatusGenerating {
 		t.Fatalf("updated batch status = %q, want generating", updatedBatch.Status)
+	}
+	if updatedBatch.ImageStrategy != sheinImageStrategyAIGenerated {
+		t.Fatalf("updated batch image strategy = %q, want %q", updatedBatch.ImageStrategy, sheinImageStrategyAIGenerated)
 	}
 }
 
@@ -318,6 +322,7 @@ func TestGormStudioBatchRepositoryReplaceGraphUpdatesHotStyleReferenceFields(t *
 	}
 
 	replacement := newStudioBatchRecordForTest("batch-1", now.Add(time.Minute))
+	replacement.ImageStrategy = sheinImageStrategyAIGenerated
 	replacement.TransparentBackgroundMode = StudioTransparencyModeRemoval
 	replacement.HotStyleReferenceImageURLs = SheinStudioStringList{"https://cdn.example.com/new-ref.png"}
 	replacement.HotStyleReferenceBrief = "new reference brief"
@@ -341,6 +346,9 @@ func TestGormStudioBatchRepositoryReplaceGraphUpdatesHotStyleReferenceFields(t *
 	}
 	if got, want := updated.TransparentBackgroundMode, StudioTransparencyModeRemoval; got != want {
 		t.Fatalf("transparent background mode = %q, want %q", got, want)
+	}
+	if got, want := updated.ImageStrategy, sheinImageStrategyAIGenerated; got != want {
+		t.Fatalf("image strategy = %q, want %q", got, want)
 	}
 }
 
@@ -482,6 +490,7 @@ func TestGormStudioBatchRepositoryOwnerScopeAndPublicAccessorsAndUpdate(t *testi
 	}
 
 	batch.Status = StudioBatchStatusGenerating
+	batch.ImageStrategy = sheinImageStrategyAIGenerated
 	batch.UpdatedAt = now.Add(5 * time.Second)
 	if err := repo.UpdateStudioBatch(ctxUserA, batch); err != nil {
 		t.Fatalf("UpdateStudioBatch() error = %v", err)
@@ -493,6 +502,9 @@ func TestGormStudioBatchRepositoryOwnerScopeAndPublicAccessorsAndUpdate(t *testi
 	}
 	if updatedBatch.Status != StudioBatchStatusGenerating {
 		t.Fatalf("updated batch status = %q, want generating", updatedBatch.Status)
+	}
+	if updatedBatch.ImageStrategy != sheinImageStrategyAIGenerated {
+		t.Fatalf("updated batch image strategy = %q, want %q", updatedBatch.ImageStrategy, sheinImageStrategyAIGenerated)
 	}
 
 	if _, err := repo.GetStudioBatch(ctxUserB, "batch-1"); !errors.Is(err, gorm.ErrRecordNotFound) {

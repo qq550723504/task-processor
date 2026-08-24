@@ -17,10 +17,11 @@ data:
       schedulerEnabled: false
 
     worker:
-      concurrency: 6
-      bufferSize: 30
+      # Keep browser-backed work within the current shard pod's 2 CPU / 3 GiB limit.
+      concurrency: 2
+      bufferSize: 12
       taskInterval: 50
-      maxFetchPerCycle: 6
+      maxFetchPerCycle: 2
       queueThreshold: 75
       cleanupInterval: 1800
       taskTimeout: 2400
@@ -38,7 +39,7 @@ data:
       enabled: true
       headless: true
       browserPath: "/app/chrome/chrome-144/chrome"
-      poolSize: 8
+      poolSize: 4
       viewportWidth: 1920
       viewportHeight: 1080
       proxyServer: ""
@@ -57,17 +58,17 @@ data:
       reconnectInterval: "5s"
       maxReconnectTries: 10
       consumer:
-        prefetchCount: 6
+        prefetchCount: 2
         prefetchSize: 0
         retryDelay: "5s"
         maxRetries: 3
         queues:
           - name: "shein.tasks.store.*"
             priority: 8
-            prefetch: 6
+            prefetch: 2
       node:
         role: "task"
-        maxConcurrency: 6
+        maxConcurrency: 2
         useStoreQueues: true
         ownedStores: []
         ownedBuckets: []
@@ -416,7 +417,7 @@ data:
         - http://10.42.0.1:31254
       concurrencyControl:
         enabled: true
-        maxInFlight: 6
+        maxInFlight: 2
         maxWaiting: 60
         acquireTimeoutSeconds: 60
       remoteAPI:

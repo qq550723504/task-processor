@@ -68,24 +68,3 @@ func (r listingRawJSONData) toRawJSONData() RawJSONData {
 		UpdateTime:   r.UpdateTime,
 	}
 }
-
-func listingRawJSONDataFromRawJSONData(record *RawJSONData) listingRawJSONData {
-	if record == nil {
-		return listingRawJSONData{}
-	}
-	return listingRawJSONData{
-		ID:           record.ID,
-		StoreID:      record.StoreID,
-		ImportTaskID: record.ImportTaskID,
-		Platform:     record.Platform,
-		ProductID:    record.ProductID,
-		Region:       record.Region,
-		CategoryID:   record.CategoryID,
-		RawJSONData:  record.RawJSONData,
-		Status:       record.Status,
-		Creator:      record.Creator,
-		Updater:      record.Updater,
-		CreateTime:   record.CreateTime,
-		UpdateTime:   record.UpdateTime,
-	}
-}

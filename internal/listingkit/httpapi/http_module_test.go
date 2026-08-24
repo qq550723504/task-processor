@@ -32,10 +32,15 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	require.Contains(t, keys, "POST /api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/integrations/zitadel/sms")
 	foundStoreStatisticsRoute := false
+	foundPlatformStoreStatisticsRoute := false
 	foundMemberInvitationRoute := false
 	for _, route := range reg.Routes() {
 		if route.Method == "GET" && route.Path == "/api/v1/listing-kits/admin/store-statistics" {
 			foundStoreStatisticsRoute = true
+			require.Equal(t, "listing-kit-admin", route.Module)
+		}
+		if route.Method == "GET" && route.Path == "/api/v1/listing-kits/platform/store-statistics" {
+			foundPlatformStoreStatisticsRoute = true
 			require.Equal(t, "listing-kit-platform-admin", route.Module)
 		}
 		if route.Method == "POST" && route.Path == "/api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations" {
@@ -44,6 +49,7 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 		}
 	}
 	require.True(t, foundStoreStatisticsRoute)
+	require.True(t, foundPlatformStoreStatisticsRoute)
 	require.True(t, foundMemberInvitationRoute)
 	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/sds/retirements/:run_id")
@@ -51,6 +57,14 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements/:run_id/confirm")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements/:run_id/retry")
 	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
+}
+
+func TestAppendRouteDescriptorsIncludesAuthContextForSupportingHandler(t *testing.T) {
+	t.Parallel()
+
+	routes := AppendRouteDescriptors(nil, stubRouteHandlerWithAuthContext{})
+
+	require.Contains(t, routeKeys(routes), "GET /api/v1/listing-kits/auth-context")
 }
 
 func TestNewStudioHTTPModuleRegistersStudioRoutes(t *testing.T) {
@@ -141,6 +155,10 @@ func (stubStudioSessionRouteHandler) UpsertStudioBatch(*gin.Context)            
 func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)             {}
 
 type stubRouteHandler struct{}
+
+type stubRouteHandlerWithAuthContext struct{ stubRouteHandler }
+
+func (stubRouteHandlerWithAuthContext) GetAuthContext(*gin.Context) {}
 
 func (stubRouteHandler) GenerateListingKit(*gin.Context)                          {}
 func (stubRouteHandler) DeliverZitadelSMS(*gin.Context)                           {}

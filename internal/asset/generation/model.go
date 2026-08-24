@@ -11,10 +11,11 @@ import (
 )
 
 type Request struct {
-	TaskID    string
-	Product   *catalog.Product
-	Inventory *asset.Inventory
-	Recipes   []assetrecipe.AssetRecipe
+	TaskID          string
+	TargetPlatforms []string
+	Product         *catalog.Product
+	Inventory       *asset.Inventory
+	Recipes         []assetrecipe.AssetRecipe
 }
 
 type DispatchRequest struct {
@@ -35,6 +36,7 @@ type Task struct {
 	TaskID           string            `json:"task_id,omitempty"`
 	ID               string            `json:"id,omitempty"`
 	Platform         string            `json:"platform,omitempty"`
+	TargetPlatforms  []string          `json:"target_platforms,omitempty"`
 	RecipeID         string            `json:"recipe_id,omitempty"`
 	AssetKind        asset.Kind        `json:"asset_kind,omitempty"`
 	Slot             string            `json:"slot,omitempty"`

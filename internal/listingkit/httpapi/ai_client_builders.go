@@ -5,13 +5,14 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
 	geminiimage "task-processor/internal/infra/clients/geminiimage"
 	grsai "task-processor/internal/infra/clients/grsai"
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
-func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ChatCompleter {
+func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ChatCompleter {
 	return &strictListingKitChatClient{
 		clientName: clientName,
 		resolver:   resolver,
@@ -20,13 +21,13 @@ func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.C
 	}
 }
 
-func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ImageGenerator {
+func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ImageGenerator {
 	return &strictListingKitConfiguredImageClient{
 		clientName: clientName,
 		resolver:   resolver,
 		fallback:   buildListingKitClientFallback(cfg, clientName),
-		cache:      make(map[string]openaiclient.ImageGenerator),
-		build: func(cfg *openaiclient.ClientConfig) (openaiclient.ImageGenerator, error) {
+		cache:      make(map[string]ai.ImageGenerator),
+		build: func(cfg *openaiclient.ClientConfig) (ai.ImageGenerator, error) {
 			switch normalizeImageAPIStyle(cfg) {
 			case imageAPIStyleGemini:
 				return geminiimage.NewClient(geminiimage.Config{
@@ -56,13 +57,13 @@ func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.
 	}
 }
 
-func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ImageGenerator {
+func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ImageGenerator {
 	return &strictListingKitConfiguredImageClient{
 		clientName: clientName,
 		resolver:   resolver,
 		fallback:   buildListingKitClientFallback(cfg, clientName),
-		cache:      make(map[string]openaiclient.ImageGenerator),
-		build: func(cfg *openaiclient.ClientConfig) (openaiclient.ImageGenerator, error) {
+		cache:      make(map[string]ai.ImageGenerator),
+		build: func(cfg *openaiclient.ClientConfig) (ai.ImageGenerator, error) {
 			switch normalizeNanobananaImageAPIStyle(cfg) {
 			case imageAPIStyleGemini:
 				return geminiimage.NewClient(geminiimage.Config{

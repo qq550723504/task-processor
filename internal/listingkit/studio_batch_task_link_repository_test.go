@@ -47,12 +47,76 @@ func TestGormStudioBatchTaskLinkRepositorySelfHealsMissingSourceColumn(t *testin
 	if !db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "Source") {
 		t.Fatal("repository did not add missing source column")
 	}
+	if !db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "ImageStrategy") {
+		t.Fatal("repository did not add missing image strategy column")
+	}
+	if !studioBatchTaskLinkTupleIndexIncludesImageStrategy(db, "idx_listingkit_studio_batch_task_links_tuple") {
+		t.Fatal("repository did not rebuild tuple index with image strategy")
+	}
 	loaded, err := repo.GetStudioBatchTaskLinkByCandidateKey(ctx, "candidate-1")
 	if err != nil {
 		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
 	}
 	if got := loaded.Source; got != studioBatchTaskLinkSourceBatchCreated {
 		t.Fatalf("source = %q, want %q", got, studioBatchTaskLinkSourceBatchCreated)
+	}
+}
+
+func TestGormStudioBatchTaskLinkRepositorySelfHealsMissingClaimTokenColumnOnUpdate(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&legacyStudioBatchTaskLinkRecordWithoutClaimToken{}); err != nil {
+		t.Fatalf("legacy AutoMigrate() error = %v", err)
+	}
+	if db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "ClaimToken") {
+		t.Fatal("legacy table unexpectedly has claim token column before repository update")
+	}
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	legacy := legacyStudioBatchTaskLinkRecordWithoutClaimToken{
+		ID:                       "link-claim-token",
+		TenantID:                 "tenant-a",
+		BatchID:                  "batch-1",
+		ItemID:                   "item-1",
+		DesignID:                 "design-1",
+		SelectionID:              "selection-1",
+		CompatibilityFingerprint: "fingerprint-selection-1",
+		ImageStrategy:            sheinImageStrategySDSOfficial,
+		SheinStoreID:             1001,
+		ListingKitTaskID:         "task-link-claim-token",
+		CandidateKey:             "candidate-claim-token",
+		Status:                   studioBatchTaskLinkStatusCreated,
+		Source:                   studioBatchTaskLinkSourceBatchCreated,
+		CreatedAt:                time.Now().UTC().Add(-time.Minute),
+		UpdatedAt:                time.Now().UTC().Add(-time.Minute),
+	}
+	if err := db.WithContext(ctx).Create(&legacy).Error; err != nil {
+		t.Fatalf("create legacy link: %v", err)
+	}
+
+	repo := NewGormStudioBatchTaskLinkRepository(db)
+	link := studioBatchTaskLinkRecordForTest(legacy.ID, legacy.BatchID, legacy.ItemID, legacy.DesignID, legacy.SelectionID, legacy.CandidateKey)
+	link.ClaimToken = "claim-token-1"
+	link.Source = studioBatchTaskLinkSourceBatchCreated
+	link.ImageStrategy = sheinImageStrategySDSOfficial
+	link.Status = studioBatchTaskLinkStatusFailed
+	link.UpdatedAt = time.Now().UTC()
+	if err := repo.UpdateStudioBatchTaskLink(ctx, link); err != nil {
+		t.Fatalf("UpdateStudioBatchTaskLink() error = %v, want lazy claim token migration and retry", err)
+	}
+	if !db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "ClaimToken") {
+		t.Fatal("repository did not add missing claim token column")
+	}
+	loaded, err := repo.GetStudioBatchTaskLinkByCandidateKey(ctx, legacy.CandidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	if loaded.ClaimToken != link.ClaimToken || loaded.Status != link.Status {
+		t.Fatalf("loaded claim token/status = (%q, %q), want (%q, %q)", loaded.ClaimToken, loaded.Status, link.ClaimToken, link.Status)
 	}
 }
 
@@ -138,6 +202,21 @@ func TestGormStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentCompatibili
 	testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentCompatibilityFingerprints(t, newGormStudioBatchTaskLinkRepositoryForTest)
 }
 
+func TestMemStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentImageStrategies(t *testing.T) {
+	t.Parallel()
+
+	testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentImageStrategies(t, func(t *testing.T) StudioBatchTaskLinkRepository {
+		t.Helper()
+		return NewMemStudioBatchTaskLinkRepository()
+	})
+}
+
+func TestGormStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentImageStrategies(t *testing.T) {
+	t.Parallel()
+
+	testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentImageStrategies(t, newGormStudioBatchTaskLinkRepositoryForTest)
+}
+
 func TestMemStudioBatchTaskLinkRepositoryUpdateProjectionStatus(t *testing.T) {
 	t.Parallel()
 	testStudioBatchTaskLinkRepositoryUpdateProjectionStatus(t, func(t *testing.T) StudioBatchTaskLinkRepository {
@@ -216,6 +295,125 @@ func TestGormStudioBatchTaskLinkRepositoryClaimCandidateUpdatedAt(t *testing.T) 
 	t.Parallel()
 
 	testStudioBatchTaskLinkRepositoryClaimCandidateUpdatedAt(t, newGormStudioBatchTaskLinkRepositoryForTest)
+}
+
+func TestMemStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t *testing.T) {
+	testStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t, func(*testing.T) StudioBatchTaskLinkRepository {
+		return NewMemStudioBatchTaskLinkRepository()
+	})
+}
+
+func TestGormStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t *testing.T) {
+	testStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t, newGormStudioBatchTaskLinkRepositoryForTest)
+}
+
+func TestMemStudioBatchTaskLinkRepositoryResolvesProductImageUsageRouteAtomically(t *testing.T) {
+	testStudioBatchTaskLinkRepositoryResolvesProductImageUsageRouteAtomically(t, func(*testing.T) StudioBatchTaskLinkRepository {
+		return NewMemStudioBatchTaskLinkRepository()
+	})
+}
+
+func TestGormStudioBatchTaskLinkRepositoryResolvesProductImageUsageRouteAtomically(t *testing.T) {
+	testStudioBatchTaskLinkRepositoryResolvesProductImageUsageRouteAtomically(t, newGormStudioBatchTaskLinkRepositoryForTest)
+}
+
+func TestMemStudioBatchTaskLinkRepositoryPersistsCompatibilityProductImageUsageRouteAtomically(t *testing.T) {
+	testStudioBatchTaskLinkRepositoryPersistsCompatibilityProductImageUsageRouteAtomically(t, func(*testing.T) StudioBatchTaskLinkRepository {
+		return NewMemStudioBatchTaskLinkRepository()
+	})
+}
+
+func TestGormStudioBatchTaskLinkRepositoryPersistsCompatibilityProductImageUsageRouteAtomically(t *testing.T) {
+	testStudioBatchTaskLinkRepositoryPersistsCompatibilityProductImageUsageRouteAtomically(t, newGormStudioBatchTaskLinkRepositoryForTest)
+}
+
+func testStudioBatchTaskLinkRepositoryResolvesProductImageUsageRouteAtomically(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
+	t.Helper()
+	repo := newRepo(t)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	link := studioBatchTaskLinkRecordForTest("link-route", "batch-1", "item-1", "design-1", "selection-1", "candidate-route")
+	link.Status = studioBatchTaskLinkStatusCreating
+	link.ClaimToken = "claim-1"
+	link.ProductImageUsageRoute = studioBatchProductImageUsageRoutePending
+	mustCreateStudioBatchTaskLinkForTest(t, repo, ctx, link)
+
+	resolver, ok := repo.(interface {
+		ResolveStudioBatchProductImageUsageRoute(context.Context, string, string, studioBatchProductImageUsageRoute, time.Time) (studioBatchProductImageUsageRoute, bool, error)
+	})
+	if !ok {
+		t.Fatalf("repository %T does not implement product-image usage route resolution", repo)
+	}
+
+	resolvedAt := link.UpdatedAt.Add(time.Minute)
+	stored, changed, err := resolver.ResolveStudioBatchProductImageUsageRoute(ctx, link.CandidateKey, link.ClaimToken, studioBatchProductImageUsageRouteLedger, resolvedAt)
+	if err != nil || !changed || stored != studioBatchProductImageUsageRouteLedger {
+		t.Fatalf("first route resolution = (%q, %v, %v), want (ledger, true, nil)", stored, changed, err)
+	}
+	stored, changed, err = resolver.ResolveStudioBatchProductImageUsageRoute(ctx, link.CandidateKey, link.ClaimToken, studioBatchProductImageUsageRouteLegacy, resolvedAt.Add(time.Minute))
+	if err != nil || changed || stored != studioBatchProductImageUsageRouteLedger {
+		t.Fatalf("second route resolution = (%q, %v, %v), want (ledger, false, nil)", stored, changed, err)
+	}
+	stored, changed, err = resolver.ResolveStudioBatchProductImageUsageRoute(ctx, link.CandidateKey, "wrong-claim", studioBatchProductImageUsageRouteLegacy, resolvedAt.Add(2*time.Minute))
+	if err != nil || changed || stored != studioBatchProductImageUsageRouteLedger {
+		t.Fatalf("mismatched-claim resolution = (%q, %v, %v), want (ledger, false, nil)", stored, changed, err)
+	}
+}
+
+func testStudioBatchTaskLinkRepositoryPersistsCompatibilityProductImageUsageRouteAtomically(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
+	t.Helper()
+	repo := newRepo(t)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	link := studioBatchTaskLinkRecordForTest("link-compatibility-route", "batch-1", "item-1", "design-1", "selection-1", "candidate-compatibility-route")
+	link.Status = studioBatchTaskLinkStatusCreated
+	link.ProductImageUsageRoute = ""
+	mustCreateStudioBatchTaskLinkForTest(t, repo, ctx, link)
+
+	resolver, ok := repo.(interface {
+		ResolveStudioBatchProductImageUsageCompatibilityRoute(context.Context, string, studioBatchProductImageUsageRoute, time.Time) (studioBatchProductImageUsageRoute, bool, error)
+	})
+	if !ok {
+		t.Fatalf("repository %T does not implement compatibility product-image usage route resolution", repo)
+	}
+
+	resolvedAt := link.UpdatedAt.Add(time.Minute)
+	stored, changed, err := resolver.ResolveStudioBatchProductImageUsageCompatibilityRoute(ctx, link.CandidateKey, studioBatchProductImageUsageRouteLedger, resolvedAt)
+	if err != nil || !changed || stored != studioBatchProductImageUsageRouteLedger {
+		t.Fatalf("first compatibility resolution = (%q, %v, %v), want (ledger, true, nil)", stored, changed, err)
+	}
+	stored, changed, err = resolver.ResolveStudioBatchProductImageUsageCompatibilityRoute(ctx, link.CandidateKey, studioBatchProductImageUsageRouteLegacy, resolvedAt.Add(time.Minute))
+	if err != nil || changed || stored != studioBatchProductImageUsageRouteLedger {
+		t.Fatalf("second compatibility resolution = (%q, %v, %v), want (ledger, false, nil)", stored, changed, err)
+	}
+}
+
+func testStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
+	t.Helper()
+	repo := newRepo(t)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	link := studioBatchTaskLinkRecordForTest("link-settlement", "batch-1", "item-1", "design-1", "selection-1", "candidate-settlement")
+	link.ProductImageUsageSettled = false
+	mustCreateStudioBatchTaskLinkForTest(t, repo, ctx, link)
+	claimer, ok := repo.(interface {
+		ClaimStudioBatchProductImageUsageSettled(context.Context, string, time.Time) (bool, error)
+	})
+	if !ok {
+		t.Fatalf("repository %T does not implement atomic settlement claim", repo)
+	}
+	first, err := claimer.ClaimStudioBatchProductImageUsageSettled(ctx, link.CandidateKey, link.UpdatedAt.Add(time.Minute))
+	if err != nil || !first {
+		t.Fatalf("first settlement claim = (%v, %v), want true", first, err)
+	}
+	second, err := claimer.ClaimStudioBatchProductImageUsageSettled(ctx, link.CandidateKey, link.UpdatedAt.Add(2*time.Minute))
+	if err != nil || second {
+		t.Fatalf("second settlement claim = (%v, %v), want false", second, err)
+	}
+	stored, err := repo.GetStudioBatchTaskLinkByCandidateKey(ctx, link.CandidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	if !stored.ProductImageUsageSettled {
+		t.Fatal("ProductImageUsageSettled = false, want true")
+	}
 }
 
 func testStudioBatchTaskLinkRepositoryCreateAndLoadByCandidateKey(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
@@ -343,6 +541,22 @@ func testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentCompatibilityFi
 	changed.CompatibilityFingerprint = "fingerprint-selection-1-with-product-size"
 	if err := repo.CreateStudioBatchTaskLink(ctx, changed); err != nil {
 		t.Fatalf("CreateStudioBatchTaskLink(different compatibility fingerprint) error = %v, want allowed regenerated candidate", err)
+	}
+}
+
+func testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentImageStrategies(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
+	t.Helper()
+
+	repo := newRepo(t)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	base := studioBatchTaskLinkRecordForTest("link-1", "batch-1", "item-1", "design-1", "selection-1", "candidate-1")
+	base.ImageStrategy = sheinImageStrategySDSOfficial
+	mustCreateStudioBatchTaskLinkForTest(t, repo, ctx, base)
+
+	changed := studioBatchTaskLinkRecordForTest("link-2", "batch-1", "item-1", "design-1", "selection-1", "candidate-2")
+	changed.ImageStrategy = sheinImageStrategyAIGenerated
+	if err := repo.CreateStudioBatchTaskLink(ctx, changed); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink(different image strategy) error = %v, want allowed strategy-specific task", err)
 	}
 }
 
@@ -576,6 +790,31 @@ type legacyStudioBatchTaskLinkRecordWithoutSource struct {
 }
 
 func (legacyStudioBatchTaskLinkRecordWithoutSource) TableName() string {
+	return StudioBatchTaskLinkRecord{}.TableName()
+}
+
+type legacyStudioBatchTaskLinkRecordWithoutClaimToken struct {
+	ID                       string `gorm:"primaryKey;type:varchar(96)"`
+	TenantID                 string `gorm:"type:varchar(64);uniqueIndex:idx_listingkit_studio_batch_task_links_candidate,priority:1;uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:1;index"`
+	UserID                   string `gorm:"type:varchar(128);index"`
+	BatchID                  string `gorm:"type:varchar(64);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:2;index"`
+	ItemID                   string `gorm:"type:varchar(96);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:3"`
+	DesignID                 string `gorm:"type:varchar(96);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:4"`
+	SelectionID              string `gorm:"type:varchar(128);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:5"`
+	CompatibilityFingerprint string `gorm:"type:varchar(128);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:6"`
+	ImageStrategy            string `gorm:"type:varchar(32);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:7"`
+	SheinStoreID             int64  `gorm:"uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:8;index"`
+	ListingKitTaskID         string `gorm:"column:listingkit_task_id;type:varchar(96);index"`
+	CandidateKey             string `gorm:"type:varchar(128);uniqueIndex:idx_listingkit_studio_batch_task_links_candidate,priority:2"`
+	Status                   string `gorm:"type:varchar(32);index"`
+	Source                   string `gorm:"type:varchar(64);index"`
+	ReasonCode               string `gorm:"type:varchar(96)"`
+	Message                  string `gorm:"type:text"`
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+}
+
+func (legacyStudioBatchTaskLinkRecordWithoutClaimToken) TableName() string {
 	return StudioBatchTaskLinkRecord{}.TableName()
 }
 

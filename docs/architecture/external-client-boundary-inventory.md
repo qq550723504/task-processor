@@ -166,7 +166,8 @@ Current direct dependency hotspots are:
     `TestAppBootstrapRetiredManagementImportsStayBlocked`
   - `internal/listingruntime/local` is the local provider/runtime implementation
     package for bootstrap runtime assembly and is guarded by
-    `TestListingRuntimeLocalDoesNotImportRetiredManagementPackage`
+    `depguard: listingruntime_local_legacy_management` and
+    `TestListingRuntimeLocalManagementImportsStayRetiredAcrossBuildTargets`
   - `internal/app/httpapi` management retirement seams are guarded by
     `TestAppHTTPAPIRetiredManagementImportsStayBlocked`
   - `internal/app/httpapi` OpenAI runtime state and adapter assembly seams are
@@ -177,6 +178,7 @@ Current direct dependency hotspots are:
   - `internal/app/runtime/listing` management retirement seams are guarded by
     `TestAppRuntimeListingRetiredManagementImportsStayBlocked`
   - `internal/app/taskstatus` management import retirement is guarded by
+    `depguard: app_taskstatus_legacy_management` and
     `TestAppTaskStatusRetiredManagementImportsStayBlocked`
 - `internal/platformtask`
   - current platform task helpers still import `management` in product sync,

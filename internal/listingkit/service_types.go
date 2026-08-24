@@ -47,6 +47,9 @@ type ServiceCoreDependencies struct {
 	StoreProfileRepository        StoreProfileRepository
 	TaskSubmitter                 TaskSubmitter
 	AIClientCredentialStore       AIClientCredentialStore
+	GenerationUsageLedger         GenerationUsageSettlement
+	GenerationUsageAdmission      GenerationUsageAdmission
+	StudioProductImageUsage       StudioProductImageUsage
 }
 
 type ServiceAssetDependencies struct {
@@ -59,7 +62,6 @@ type ServiceAssetDependencies struct {
 }
 
 type ServiceSheinDependencies struct {
-	SheinDefaultStoreID        int64
 	SheinStoreCatalog          SheinStoreCatalog
 	StoreAccessValidator       StoreAccessValidator
 	SheinAPIClientFactory      SheinAPIClientFactory

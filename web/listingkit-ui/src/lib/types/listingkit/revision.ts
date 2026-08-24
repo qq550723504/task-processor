@@ -1,13 +1,13 @@
 import type { SheinStoreResolutionSummary } from "./shein";
 
-export type ListingKitRevisionTimelineSummary = {
+ type ListingKitRevisionTimelineSummary = {
   headline?: string;
   badge?: string;
   relation_text?: string;
   change_count?: number;
 };
 
-export type RevisionDiffPreview = {
+ type RevisionDiffPreview = {
   change_count?: number;
   field_changes?: Array<{
     field_path?: string;
@@ -16,7 +16,7 @@ export type RevisionDiffPreview = {
   }>;
 };
 
-export type RevisionHistoryNavigation = {
+ type RevisionHistoryNavigation = {
   prev_revision_id?: string;
   next_revision_id?: string;
 };
@@ -34,13 +34,13 @@ export type ListingKitRevisionRecord = {
   store_resolution?: SheinStoreResolutionSummary;
 };
 
-export type ListingKitRevisionHistoryCounts = {
+ type ListingKitRevisionHistoryCounts = {
   all?: number;
   edit?: number;
   restore?: number;
 };
 
-export type ListingKitRevisionHistoryPageMeta = {
+ type ListingKitRevisionHistoryPageMeta = {
   total_records?: number;
   returned_records?: number;
   has_more?: boolean;

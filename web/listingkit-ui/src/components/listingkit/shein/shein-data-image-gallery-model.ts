@@ -49,7 +49,7 @@ export function suggestImageRoles(
   return { mainUrl, roles };
 }
 
-export function isLikelySizeMapImage(
+ function isLikelySizeMapImage(
   image: SheinPreviewImage,
   role?: ImageRole,
 ) {

@@ -1,6 +1,8 @@
 # 监控运维说明
 
-当前仓库里的监控能力由这几部分组成：
+本目录定义受版本控制的监控目标状态；它不表示任一集群已经安装了这些组件。生产变更前必须先完成本文件的 preflight，并获得单独的生产写入授权。
+
+监控能力由这几部分组成：
 
 - `kube-prometheus-stack`
 - `amazon-crawler-api` 指标、告警和 Grafana 看板
@@ -8,16 +10,9 @@
 - 企业微信告警适配器
 - Grafana 域名入口
 
-## 当前访问入口
+## 访问与凭证
 
-- Grafana: [https://monitoring.shuomiai.com](https://monitoring.shuomiai.com)
-- Dashboard 标题: `Amazon 爬虫 Pod 看板`
-
-Grafana 管理员密码可通过下面命令查看：
-
-```bash
-kubectl -n monitoring get secret monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d && echo
-```
+本次 TaskEvent V2 发布不创建公网 Grafana 或 Alertmanager Ingress。安装后仅通过已获授权的内部访问方式或临时 `kubectl -n monitoring port-forward service/monitoring-grafana 3000:80` 访问 Grafana。管理员凭证只保留在 Kubernetes Secret 中，不在 Git、终端记录或发布证据中输出。
 
 ## 当前部署清单
 
@@ -28,22 +23,36 @@ kubectl -n monitoring get secret monitoring-grafana -o jsonpath="{.data.admin-pa
 - `deployments/kubernetes/monitoring/grafana-ingress`
 - `deployments/kubernetes/cert-manager/letsencrypt-prod`
 
-## 建议部署顺序
+## 固定版本与部署顺序
+
+- Chart: `oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack`
+- Version: `88.3.0`
+- OCI digest: `sha256:2b2f2c5c6f76ff661bdb34e6ae3410e01258f39632bffa52b94c0d42a1da0be6`
+- Storage: default `local-path`; Prometheus 使用 30Gi RWO PVC，保留 21 天。
+
+安装前必须确认存储类和节点资源：
 
 ```bash
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
-helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+kubectl get storageclass local-path
+kubectl top node
+```
+
+在已获生产授权后执行：
+
+```bash
+helm upgrade --install monitoring oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack \
+  --version 88.3.0 \
   --namespace monitoring \
   --create-namespace \
+  --atomic \
+  --timeout 10m \
   -f deployments/kubernetes/monitoring/kube-prometheus-stack-values.yaml
 
-kubectl apply -k deployments/kubernetes/cert-manager/letsencrypt-prod
 kubectl apply -k deployments/kubernetes/monitoring/amazon-crawler-api
 kubectl apply -k deployments/kubernetes/monitoring/shein-listing
-kubectl apply -k deployments/kubernetes/monitoring/alertmanager-wecom
-kubectl apply -k deployments/kubernetes/monitoring/grafana-ingress
 ```
+
+企业微信告警和公网 Grafana Ingress 是独立的既有运维决策，不属于 TaskEvent V2 发布；需要时应另行审批和应用对应清单。
 
 ## 企业微信告警
 
@@ -85,17 +94,8 @@ kubectl -n monitoring create secret generic alertmanager-wecom-secret \
 
 监控上仍然会按 pod 维度展示；如果要区分规格层级，可以后续在看板里追加 `crawler-tier` 维度。
 
-## 集群兼容性约束
-
-当前 k3s 集群存在跨节点 Pod 网络访问异常或不稳定的现象，因此仓库里固化了两个兼容性配置：
-
-- `letsencrypt-prod` 的 HTTP-01 solver 固定到 `vm-4-17-ubuntu`
-- Alertmanager 固定到 `vm-4-17-ubuntu`
-
-如果后续集群网络恢复正常，可以再评估是否移除这些节点固定策略。
-
 ## 当前已知注意点
 
 - Grafana 使用 `local-path` 持久卷，因此 values 里关闭了 `initChownData`，避免滚动升级时权限修复失败
-- `monitoring.shuomiai.com` 使用 `traefik + cert-manager(letsencrypt-prod)` 证书链路
 - `amazon-crawler-api` 监控依赖 Prometheus Operator CRD 和 Grafana dashboard sidecar
+- TaskEvent V2 兼容性移除前，必须同时满足两个消费者发布周期完成、所有活跃消费者均为 V2 镜像，并且 `increase(task_event_decoded_total{schema_version="legacy",kubernetes_namespace="task-processor"}[14d]) == 0` 持续完整 14 天；任一抓取中断、legacy 事件或回滚都会重置窗口。

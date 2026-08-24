@@ -27,8 +27,18 @@ func (p *retryGenerationMutationPhase) run(
 		return updatedTasks
 	}
 
-	retriedTargets := listinggeneration.TaskTargets(selectedTasks)
+	retriedTargets := listinggeneration.TaskTargets(completedRetryTasks(dispatchResult.Tasks))
 	inventory.Records = listinggeneration.ReplaceGeneratedAssetsForTargets(inventory.Records, retriedTargets, dispatchResult.Assets)
 	inventory.Summary = asset.RebuildInventorySummary(inventory)
 	return updatedTasks
+}
+
+func completedRetryTasks(tasks []assetgeneration.Task) []assetgeneration.Task {
+	completed := make([]assetgeneration.Task, 0, len(tasks))
+	for _, task := range tasks {
+		if task.ExecutionStatus == "completed" {
+			completed = append(completed, task)
+		}
+	}
+	return completed
 }

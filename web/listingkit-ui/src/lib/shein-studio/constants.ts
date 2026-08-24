@@ -1,1 +1,1 @@
-export const DEFAULT_SHEIN_STORE_ID = "";
+export const UNSELECTED_SHEIN_STORE_ID = "";

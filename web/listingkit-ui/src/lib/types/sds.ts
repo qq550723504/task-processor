@@ -1,4 +1,4 @@
-export type SDSPrototypeLayer = {
+ type SDSPrototypeLayer = {
   id: string;
   name?: string;
   isMasterMap?: number;
@@ -11,14 +11,14 @@ export type SDSPrototypeLayer = {
   imageUrl?: string;
 };
 
-export type SDSPrototypeResultGroup = {
+ type SDSPrototypeResultGroup = {
   id?: string;
   resultImage?: string;
   sort?: number;
   faceSheetState?: boolean;
 };
 
-export type SDSDesignPrototype = {
+ type SDSDesignPrototype = {
   prototypeId?: string;
   prototypeGroupId?: number;
   prototypeLayerList?: SDSPrototypeLayer[];
@@ -48,7 +48,7 @@ export type SDSProductVariant = {
   designPrototype?: SDSDesignPrototype;
 };
 
-export type SDSProductDetails = {
+ type SDSProductDetails = {
   production_process?: string;
   material_description?: string;
   product_performance?: string;
@@ -61,7 +61,7 @@ export type SDSProductDetails = {
   packaging_specification?: string;
 };
 
-export type SDSTexture = {
+ type SDSTexture = {
   name?: string;
 };
 
@@ -110,7 +110,7 @@ export type SDSSelectedProductVariant = {
   sizeReferenceImageUrls?: string[];
 };
 
-export type SDSSubproducts = {
+ type SDSSubproducts = {
   items?: SDSProductVariant[];
 };
 

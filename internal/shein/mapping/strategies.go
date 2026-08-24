@@ -204,13 +204,14 @@ func (s *SmartRepairStrategy) buildEnhancedMappingOptions(
 	skuInfo *product.SkuInfo,
 ) *MappingCreateOptions {
 	options := &MappingCreateOptions{
-		TenantID: ctx.Request.TenantID,
-		StoreID:  ctx.Request.StoreID,
-		SkuCode:  ctx.Request.SkuCode,
-		SpuCode:  ctx.Request.SpuCode,
-		SpuName:  ctx.Request.SpuName,
-		Region:   s.determineRegion(ctx.StoreInfo),
-		Reason:   fmt.Sprintf("智能修复创建: %s", ctx.Request.Reason),
+		TenantID:    ctx.Request.TenantID,
+		StoreID:     ctx.Request.StoreID,
+		OwnerUserID: ownerUserIDFromStore(ctx.StoreInfo),
+		SkuCode:     ctx.Request.SkuCode,
+		SpuCode:     ctx.Request.SpuCode,
+		SpuName:     ctx.Request.SpuName,
+		Region:      s.determineRegion(ctx.StoreInfo),
+		Reason:      fmt.Sprintf("智能修复创建: %s", ctx.Request.Reason),
 	}
 
 	// 如果有SKU详细信息，设置更多字段

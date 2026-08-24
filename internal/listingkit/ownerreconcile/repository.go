@@ -1,0 +1,627 @@
+package ownerreconcile
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+type TenantDomain uint8
+
+const (
+	TenantDomainZITADELOrganization TenantDomain = iota
+	TenantDomainLegacyNumeric
+)
+
+type CandidateColumn struct {
+	Name   string
+	Source string
+}
+
+type TableSpec struct {
+	Table            string
+	TenantDomain     TenantDomain
+	CandidatePolicy  CandidatePolicy
+	Query            string
+	UpdateQuery      string
+	UpdateLimitArg   int
+	Columns          []string
+	CandidateColumns []CandidateColumn
+}
+
+type Queryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+type Repository struct {
+	Queryer    Queryer
+	Inventory  []TableSpec
+	Identities []LegacyIdentity
+	Exceptions ExceptionStore
+	Beginner   interface {
+		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	}
+}
+
+type ApplySummary struct {
+	RowsUpdated int64
+	Batches     int
+}
+
+var ErrReportConfirmationMismatch = errors.New("owner reconciliation report confirmation mismatch")
+
+const postgresUndefinedTableSQLState = "42P01"
+
+var ownerReconcileIdentifier = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+func (repository Repository) DryRun(ctx context.Context, identities []LegacyIdentity) (Report, error) {
+	if repository.Queryer == nil {
+		return Report{}, errors.New("owner reconciliation database is unavailable")
+	}
+	identityMap, err := indexLegacyIdentities(identities)
+	if err != nil {
+		return Report{}, err
+	}
+	exceptionIndex, err := repository.systemOwnedExceptionIndex(ctx)
+	if err != nil {
+		return Report{}, err
+	}
+	findings := make([]Finding, 0)
+	systemOwnedFindings := make([]Finding, 0)
+	resolutions := make([]Resolution, 0)
+	var autoRows int64
+	for _, spec := range repository.Inventory {
+		if err := validateTableSpec(spec); err != nil {
+			return Report{}, err
+		}
+		releaseSavepoint, err := beginTableSavepoint(ctx, repository.Queryer)
+		if err != nil {
+			return Report{}, err
+		}
+		rows, err := repository.Queryer.QueryContext(ctx, spec.Query)
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				_ = releaseSavepoint(false)
+				return Report{}, ctxErr
+			}
+			if isPostgresUndefinedTable(err) {
+				if savepointErr := releaseSavepoint(false); savepointErr != nil {
+					return Report{}, savepointErr
+				}
+				continue
+			}
+			_ = releaseSavepoint(false)
+			return Report{}, fmt.Errorf("query owner reconciliation table %s failed", spec.Table)
+		}
+		rowsFindings, rowsSystemOwned, rowsAuto, rowsResolutions, scanErr := scanTableRows(ctx, rows, spec, identityMap, exceptionIndex)
+		if scanErr != nil {
+			_ = releaseSavepoint(false)
+			return Report{}, scanErr
+		}
+		if err := releaseSavepoint(true); err != nil {
+			return Report{}, err
+		}
+		findings = append(findings, rowsFindings...)
+		systemOwnedFindings = append(systemOwnedFindings, rowsSystemOwned...)
+		resolutions = append(resolutions, rowsResolutions...)
+		autoRows += rowsAuto
+	}
+	return NewReportWithClassifiedFindings("", "", findings, systemOwnedFindings, autoRows, resolutions), nil
+}
+
+func (repository Repository) systemOwnedExceptionIndex(ctx context.Context) (map[string]int64, error) {
+	if repository.Exceptions == nil {
+		return map[string]int64{}, nil
+	}
+	items, err := repository.Exceptions.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	index := make(map[string]int64, len(items))
+	for _, item := range items {
+		if err := validateSystemOwnedException(item); err != nil {
+			return nil, err
+		}
+		key := systemOwnedExceptionKey(item.Table, item.TenantFingerprint, item.CandidateFingerprint)
+		if _, exists := index[key]; exists {
+			return nil, errors.New("owner exception registry contains duplicate keys")
+		}
+		index[key] = item.Rows
+	}
+	return index, nil
+}
+
+const ownerReconcileTableSavepoint = "owner_reconcile_table"
+
+func beginTableSavepoint(ctx context.Context, queryer Queryer) (func(bool) error, error) {
+	tx, ok := queryer.(*sql.Tx)
+	if !ok {
+		return func(bool) error { return nil }, nil
+	}
+	if _, err := tx.ExecContext(ctx, "SAVEPOINT "+ownerReconcileTableSavepoint); err != nil {
+		return nil, errors.New("owner reconciliation savepoint failed")
+	}
+	return func(keep bool) error {
+		if !keep {
+			if _, err := tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT "+ownerReconcileTableSavepoint); err != nil {
+				return errors.New("owner reconciliation savepoint rollback failed")
+			}
+		}
+		if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT "+ownerReconcileTableSavepoint); err != nil {
+			return errors.New("owner reconciliation savepoint release failed")
+		}
+		return nil
+	}, nil
+}
+
+type sqlStateError interface {
+	SQLState() string
+}
+
+func isPostgresUndefinedTable(err error) bool {
+	var stateError sqlStateError
+	return errors.As(err, &stateError) && stateError.SQLState() == postgresUndefinedTableSQLState
+}
+
+// ApplyUnique revalidates the redacted report and applies only uniquely
+// resolved groups through fixed, parameterized UPDATE statements. The caller
+// must provide the exact report fingerprint it reviewed and the same value as
+// the confirmation token.
+func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint, expected string, batchSize int) (ApplySummary, error) {
+	if strings.TrimSpace(reportFingerprint) == "" || strings.TrimSpace(reportFingerprint) != strings.TrimSpace(expected) {
+		return ApplySummary{}, ErrReportConfirmationMismatch
+	}
+	if batchSize <= 0 {
+		return ApplySummary{}, errors.New("batch size must be positive")
+	}
+	if repository.Queryer == nil || len(repository.Identities) == 0 {
+		return ApplySummary{}, errors.New("owner reconciliation identities are unavailable")
+	}
+	beginner := repository.Beginner
+	if beginner == nil {
+		if db, ok := repository.Queryer.(*sql.DB); ok {
+			beginner = db
+		}
+	}
+	if beginner == nil {
+		return ApplySummary{}, errors.New("owner reconciliation database cannot begin a write transaction")
+	}
+	snapshotTx, err := beginner.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ApplySummary{}, ctxErr
+		}
+		return ApplySummary{}, errors.New("begin owner reconciliation transaction failed")
+	}
+	snapshotRepository := repository
+	snapshotRepository.Queryer = snapshotTx
+	if _, ok := repository.Exceptions.(postgresExceptionStore); ok {
+		snapshotRepository.Exceptions = newPostgresExceptionStore(snapshotTx)
+	}
+	current, err := snapshotRepository.DryRun(ctx, repository.Identities)
+	if err != nil {
+		_ = snapshotTx.Rollback()
+		return ApplySummary{}, err
+	}
+	if err := current.SetFingerprint(); err != nil || current.ReportFingerprint != reportFingerprint {
+		_ = snapshotTx.Rollback()
+		return ApplySummary{}, ErrReportConfirmationMismatch
+	}
+	if current.Summary.UnresolvedRows > 0 {
+		_ = snapshotTx.Rollback()
+		return ApplySummary{}, errors.New("owner reconciliation report contains unresolved rows")
+	}
+	identityMap, err := indexLegacyIdentities(repository.Identities)
+	if err != nil {
+		_ = snapshotTx.Rollback()
+		return ApplySummary{}, err
+	}
+	exceptionIndex, err := snapshotRepository.systemOwnedExceptionIndex(ctx)
+	if err != nil {
+		_ = snapshotTx.Rollback()
+		return ApplySummary{}, err
+	}
+	planned := make([]plannedGroup, 0)
+	for _, spec := range repository.Inventory {
+		if strings.TrimSpace(spec.UpdateQuery) == "" || len(spec.CandidateColumns) == 0 {
+			continue
+		}
+		if spec.UpdateLimitArg <= 0 {
+			_ = snapshotTx.Rollback()
+			return ApplySummary{}, fmt.Errorf("owner reconciliation table %s has no bounded update limit", spec.Table)
+		}
+		groups, err := collectCandidateGroups(ctx, snapshotTx, spec, identityMap, exceptionIndex)
+		if err != nil {
+			_ = snapshotTx.Rollback()
+			return ApplySummary{}, err
+		}
+		if err := compareCandidateGroups(current, spec, groups); err != nil {
+			_ = snapshotTx.Rollback()
+			return ApplySummary{}, err
+		}
+		for _, group := range groups {
+			planned = append(planned, plannedGroup{Spec: spec, Group: group})
+		}
+	}
+	if err := snapshotTx.Rollback(); err != nil {
+		return ApplySummary{}, errors.New("close owner reconciliation validation snapshot failed")
+	}
+	var summary ApplySummary
+	for _, item := range planned {
+		remaining := item.Group.Rows
+		for remaining > 0 {
+			limit := int64(batchSize)
+			if remaining < limit {
+				limit = remaining
+			}
+			tx, beginErr := beginner.BeginTx(ctx, nil)
+			if beginErr != nil {
+				return ApplySummary{}, errors.New("begin owner reconciliation transaction failed")
+			}
+			args := []any{item.Group.Subject, item.Group.TenantID}
+			for _, value := range item.Group.CandidateValues {
+				args = append(args, value)
+			}
+			if len(args)+1 != item.Spec.UpdateLimitArg {
+				_ = tx.Rollback()
+				return ApplySummary{}, fmt.Errorf("owner reconciliation table %s has an invalid update limit parameter", item.Spec.Table)
+			}
+			args = append(args, limit)
+			result, execErr := tx.ExecContext(ctx, item.Spec.UpdateQuery, args...)
+			if execErr != nil {
+				_ = tx.Rollback()
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return ApplySummary{}, ctxErr
+				}
+				return ApplySummary{}, fmt.Errorf("apply owner reconciliation for %s failed", item.Spec.Table)
+			}
+			updated, rowsErr := result.RowsAffected()
+			if rowsErr != nil || updated <= 0 || updated > limit {
+				_ = tx.Rollback()
+				return ApplySummary{}, fmt.Errorf("owner reconciliation update count for %s failed postcondition", item.Spec.Table)
+			}
+			if updated != limit && updated != remaining {
+				_ = tx.Rollback()
+				return ApplySummary{}, fmt.Errorf("owner reconciliation update for %s changed during execution", item.Spec.Table)
+			}
+			if err := tx.Commit(); err != nil {
+				_ = tx.Rollback()
+				return ApplySummary{}, errors.New("commit owner reconciliation transaction failed")
+			}
+			summary.RowsUpdated += updated
+			summary.Batches++
+			remaining -= updated
+		}
+	}
+	finalReport, err := repository.DryRun(ctx, repository.Identities)
+	if err != nil {
+		return ApplySummary{}, err
+	}
+	if finalReport.Summary.UnresolvedRows > 0 || finalReport.Summary.AutoRows > 0 {
+		return ApplySummary{}, errors.New("owner reconciliation left blank owner rows")
+	}
+	return summary, nil
+}
+
+type plannedGroup struct {
+	Spec  TableSpec
+	Group candidateGroup
+}
+
+func compareCandidateGroups(report Report, spec TableSpec, groups []candidateGroup) error {
+	confirmed := make(map[string]int, len(report.Resolutions))
+	for _, resolution := range report.Resolutions {
+		confirmed[resolutionKey(resolution)]++
+	}
+	for _, group := range groups {
+		parts := make([]string, 0, len(spec.CandidateColumns))
+		for index, candidate := range spec.CandidateColumns {
+			value := group.CandidateValues[index]
+			if value == "" {
+				continue
+			}
+			parts = append(parts, candidate.Source+"="+value)
+		}
+		resolution := Resolution{
+			Table:                spec.Table,
+			TenantFingerprint:    shortFingerprint(group.TenantID),
+			CandidateFingerprint: shortFingerprint(strings.Join(parts, ";")),
+			SubjectFingerprint:   shortFingerprint(group.Subject),
+			Rows:                 group.Rows,
+		}
+		key := resolutionKey(resolution)
+		if confirmed[key] == 0 {
+			return ErrReportConfirmationMismatch
+		}
+		confirmed[key]--
+	}
+	// The caller compares each table's groups; a resolution from this table
+	// that disappeared between the two snapshot reads must also fail closed.
+	for _, resolution := range report.Resolutions {
+		if resolution.Table == spec.Table && confirmed[resolutionKey(resolution)] > 0 {
+			return ErrReportConfirmationMismatch
+		}
+	}
+	return nil
+}
+
+func resolutionKey(resolution Resolution) string {
+	return fmt.Sprintf("%s|%s|%s|%s|%d", resolution.Table, resolution.TenantFingerprint, resolution.CandidateFingerprint, resolution.SubjectFingerprint, resolution.Rows)
+}
+
+type candidateGroup struct {
+	TenantID        string
+	CandidateValues []string
+	Subject         string
+	Rows            int64
+}
+
+func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec, identities map[string]string, exceptionIndex map[string]int64) (groups []candidateGroup, resultErr error) {
+	if err := validateTableSpec(spec); err != nil {
+		return nil, err
+	}
+	releaseSavepoint, err := beginTableSavepoint(ctx, queryer)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := queryer.QueryContext(ctx, spec.Query)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			_ = releaseSavepoint(false)
+			return nil, ctxErr
+		}
+		if isPostgresUndefinedTable(err) {
+			if savepointErr := releaseSavepoint(false); savepointErr != nil {
+				return nil, savepointErr
+			}
+			return nil, nil
+		}
+		_ = releaseSavepoint(false)
+		return nil, fmt.Errorf("query owner reconciliation table %s failed", spec.Table)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && resultErr == nil {
+			resultErr = fmt.Errorf("close owner reconciliation rows for %s failed", spec.Table)
+		}
+	}()
+	columnIndex := make(map[string]int, len(spec.Columns))
+	for index, column := range spec.Columns {
+		columnIndex[column] = index
+	}
+	tenantIndex := columnIndex["tenant_id"]
+	countIndex := columnIndex["row_count"]
+	groups = make([]candidateGroup, 0)
+	for rows.Next() {
+		values := make([]any, len(spec.Columns))
+		pointers := make([]any, len(values))
+		for index := range values {
+			pointers[index] = &values[index]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			return nil, fmt.Errorf("scan owner reconciliation rows for %s failed", spec.Table)
+		}
+		tenantID := sqlText(values[tenantIndex])
+		rowCount, err := sqlInt64(values[countIndex])
+		if err != nil {
+			return nil, fmt.Errorf("scan row count for %s failed", spec.Table)
+		}
+		candidateValues := make([]string, 0, len(spec.CandidateColumns))
+		for _, candidateColumn := range spec.CandidateColumns {
+			value := sqlText(values[columnIndex[candidateColumn.Name]])
+			candidateValues = append(candidateValues, value)
+		}
+		rawCandidates := make([]Candidate, 0, len(spec.CandidateColumns))
+		for index, candidateColumn := range spec.CandidateColumns {
+			rawCandidates = append(rawCandidates, Candidate{Source: candidateColumn.Source, Subject: candidateValues[index]})
+		}
+		fingerprintParts := make([]string, 0, len(spec.CandidateColumns))
+		for index, candidateColumn := range spec.CandidateColumns {
+			if candidateValues[index] != "" {
+				fingerprintParts = append(fingerprintParts, candidateColumn.Source+"="+candidateValues[index])
+			}
+		}
+		candidateFingerprint := shortFingerprint(strings.Join(fingerprintParts, ";"))
+		if expectedRows, exempted := exceptionIndex[systemOwnedExceptionKey(spec.Table, shortFingerprint(tenantID), candidateFingerprint)]; exempted && expectedRows == rowCount {
+			continue
+		}
+		subject, _ := resolveCandidateValues(spec.CandidatePolicy, tenantID, rawCandidates, identities)
+		if subject != "" {
+			groups = append(groups, candidateGroup{TenantID: tenantID, CandidateValues: candidateValues, Subject: subject, Rows: rowCount})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, fmt.Errorf("iterate owner reconciliation rows for %s failed", spec.Table)
+	}
+	if err := releaseSavepoint(true); err != nil {
+		return nil, err
+	}
+	return groups, nil
+}
+
+func validateTableSpec(spec TableSpec) error {
+	if !ownerReconcileIdentifier.MatchString(spec.Table) {
+		return errors.New("owner reconciliation inventory contains an invalid table identifier")
+	}
+	query := strings.TrimSpace(spec.Query)
+	if query == "" || !strings.EqualFold(strings.TrimSpace(strings.SplitN(query, " ", 2)[0]), "select") {
+		return fmt.Errorf("owner reconciliation table %s must use a SELECT query", spec.Table)
+	}
+	if len(spec.Columns) == 0 {
+		return fmt.Errorf("owner reconciliation table %s has no result columns", spec.Table)
+	}
+	for _, column := range spec.Columns {
+		if !ownerReconcileIdentifier.MatchString(column) {
+			return errors.New("owner reconciliation inventory contains an invalid result identifier")
+		}
+	}
+	for _, candidate := range spec.CandidateColumns {
+		if !ownerReconcileIdentifier.MatchString(candidate.Name) || strings.TrimSpace(candidate.Source) == "" {
+			return errors.New("owner reconciliation inventory contains an invalid candidate identifier")
+		}
+		found := false
+		for _, column := range spec.Columns {
+			if column == candidate.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("owner reconciliation table %s omitted candidate column %s", spec.Table, candidate.Name)
+		}
+	}
+	if update := strings.TrimSpace(spec.UpdateQuery); update != "" {
+		firstToken := strings.ToUpper(strings.TrimSpace(strings.SplitN(update, " ", 2)[0]))
+		if firstToken != "UPDATE" && firstToken != "WITH" || strings.Contains(update, ";") {
+			return fmt.Errorf("owner reconciliation table %s has an invalid update query", spec.Table)
+		}
+		if spec.UpdateLimitArg != len(spec.CandidateColumns)+3 {
+			return fmt.Errorf("owner reconciliation table %s has an invalid update limit parameter", spec.Table)
+		}
+	}
+	return nil
+}
+
+func indexLegacyIdentities(identities []LegacyIdentity) (map[string]string, error) {
+	result := make(map[string]string, len(identities))
+	for _, identity := range identities {
+		tenantID := strings.TrimSpace(identity.TenantID)
+		legacyUserID := strings.TrimSpace(identity.LegacyUserID)
+		subject := strings.TrimSpace(identity.Subject)
+		if tenantID == "" || legacyUserID == "" || subject == "" {
+			return nil, errors.New("legacy identity metadata contains an incomplete mapping")
+		}
+		key := legacyIdentityKey(tenantID, legacyUserID)
+		if _, exists := result[key]; exists {
+			return nil, errors.New("legacy identity metadata contains a duplicate mapping")
+		}
+		result[key] = subject
+	}
+	return result, nil
+}
+
+func legacyIdentityKey(tenantID, legacyUserID string) string {
+	return tenantID + "\x00" + legacyUserID
+}
+
+func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identities map[string]string, exceptionIndex map[string]int64) (findings []Finding, systemOwnedFindings []Finding, autoRows int64, resolutions []Resolution, resultErr error) {
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && resultErr == nil {
+			resultErr = fmt.Errorf("close owner reconciliation rows for %s failed", spec.Table)
+		}
+	}()
+
+	columnIndex := make(map[string]int, len(spec.Columns))
+	for index, column := range spec.Columns {
+		columnIndex[column] = index
+	}
+	tenantIndex, tenantOK := columnIndex["tenant_id"]
+	countIndex, countOK := columnIndex["row_count"]
+	if !tenantOK || !countOK {
+		return nil, nil, 0, nil, fmt.Errorf("owner reconciliation table %s omitted tenant_id or row_count", spec.Table)
+	}
+	for rows.Next() {
+		values := make([]any, len(spec.Columns))
+		pointers := make([]any, len(values))
+		for index := range values {
+			pointers[index] = &values[index]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, nil, 0, nil, ctxErr
+			}
+			return nil, nil, 0, nil, fmt.Errorf("scan owner reconciliation rows for %s failed", spec.Table)
+		}
+		tenantID := sqlText(values[tenantIndex])
+		rowCount, err := sqlInt64(values[countIndex])
+		if err != nil {
+			return nil, nil, 0, nil, fmt.Errorf("scan row count for %s failed", spec.Table)
+		}
+		fingerprintParts := make([]string, 0, len(spec.CandidateColumns))
+		rawCandidates := make([]Candidate, 0, len(spec.CandidateColumns))
+		for _, candidateColumn := range spec.CandidateColumns {
+			value := sqlText(values[columnIndex[candidateColumn.Name]])
+			rawCandidates = append(rawCandidates, Candidate{Source: candidateColumn.Source, Subject: value})
+			if value == "" {
+				continue
+			}
+			fingerprintParts = append(fingerprintParts, candidateColumn.Source+"="+value)
+		}
+		candidateFingerprint := shortFingerprint(strings.Join(fingerprintParts, ";"))
+		if expectedRows, exempted := exceptionIndex[systemOwnedExceptionKey(spec.Table, shortFingerprint(tenantID), candidateFingerprint)]; exempted && expectedRows == rowCount {
+			systemOwnedFindings = append(systemOwnedFindings, Finding{
+				Table: spec.Table, TenantFingerprint: shortFingerprint(tenantID), OwnerFingerprint: candidateFingerprint,
+				Rows: rowCount, Reason: "system_owned",
+			})
+			continue
+		}
+		subject, reason := resolveCandidateValues(spec.CandidatePolicy, tenantID, rawCandidates, identities)
+		if subject != "" {
+			autoRows += rowCount
+			resolutions = append(resolutions, Resolution{
+				Table:                spec.Table,
+				TenantFingerprint:    shortFingerprint(tenantID),
+				CandidateFingerprint: shortFingerprint(strings.Join(fingerprintParts, ";")),
+				SubjectFingerprint:   shortFingerprint(subject),
+				Rows:                 rowCount,
+			})
+			continue
+		}
+		finding := Finding{
+			Table:             spec.Table,
+			TenantFingerprint: shortFingerprint(tenantID),
+			OwnerFingerprint:  shortFingerprint(strings.Join(fingerprintParts, ";")),
+			Rows:              rowCount,
+			Reason:            reason,
+		}
+		if reason == "system_owned" || reason == "no_candidate" {
+			if reason == "no_candidate" {
+				finding.Reason = "system_owned"
+			}
+			systemOwnedFindings = append(systemOwnedFindings, finding)
+		} else {
+			findings = append(findings, finding)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, nil, 0, nil, ctxErr
+		}
+		return nil, nil, 0, nil, fmt.Errorf("iterate owner reconciliation rows for %s failed", spec.Table)
+	}
+	return findings, systemOwnedFindings, autoRows, resolutions, nil
+}
+
+func sqlText(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case []byte:
+		return strings.TrimSpace(string(typed))
+	default:
+		return strings.TrimSpace(fmt.Sprint(typed))
+	}
+}
+
+func sqlInt64(value any) (int64, error) {
+	switch typed := value.(type) {
+	case int64:
+		return typed, nil
+	case int32:
+		return int64(typed), nil
+	case int:
+		return int64(typed), nil
+	case []byte:
+		return strconv.ParseInt(string(typed), 10, 64)
+	case string:
+		return strconv.ParseInt(typed, 10, 64)
+	default:
+		return 0, fmt.Errorf("unsupported count type %T", value)
+	}
+}

@@ -2,10 +2,10 @@ package listingkit
 
 import previewdomain "task-processor/internal/listing/preview"
 
-func buildListingKitPreviewReadModelInput(result *ListingKitResult, platformCards []ListingKitPlatformCard) previewdomain.ReadModelInput {
+func buildListingKitPreviewReadModelInput(result *ListingKitResult, platformCards []ListingKitPlatformCard, selectedPlatform string) previewdomain.ReadModelInput {
 	return previewdomain.ReadModelInput{
 		NeedsReview: calculateListingKitNeedsReview(result),
-		Attachment:  buildListingKitPreviewAttachmentInput(result),
+		Attachment:  buildListingKitPreviewAttachmentInput(result, selectedPlatform),
 		Overview:    buildListingKitPreviewHeaderInput(result, platformCards),
 	}
 }
@@ -52,14 +52,14 @@ func buildPreviewDomainPlatformCards(platformCards []ListingKitPlatformCard) []p
 	return cards
 }
 
-func buildListingKitPreviewAttachmentInput(result *ListingKitResult) *previewdomain.AttachmentInput {
+func buildListingKitPreviewAttachmentInput(result *ListingKitResult, selectedPlatform string) *previewdomain.AttachmentInput {
 	if result == nil {
 		return nil
 	}
 	return &previewdomain.AttachmentInput{
 		CatalogProduct:        result.CatalogProduct,
-		AssetBundle:           result.AssetBundle,
-		AssetInventorySummary: result.AssetInventorySummary,
+		AssetBundle:           result.AssetBundleForTarget(selectedPlatform),
+		AssetInventorySummary: result.AssetInventorySummaryForTarget(selectedPlatform),
 	}
 }
 
@@ -71,13 +71,10 @@ func buildListingKitReadProjectionAttachmentExtras(
 		return listingKitReadProjectionAttachmentExtras{}
 	}
 
-	assetRenderPreviews := append([]AssetRenderPreview(nil), result.AssetRenderPreviews...)
-	if len(assetRenderPreviews) == 0 {
-		assetRenderPreviews = buildAssetRenderPreviews(result.AssetBundle)
-	}
+	assetRenderPreviews := assetRenderPreviewsForTarget(result, selectedPlatform)
 
 	platformRenderPreviews := append([]PlatformAssetRenderPreviews(nil), result.PlatformAssetRenderPreviews...)
-	if len(platformRenderPreviews) == 0 {
+	if len(result.AssetBundlesByTarget) > 0 || len(platformRenderPreviews) == 0 {
 		platformRenderPreviews = buildPlatformAssetRenderPreviews(result)
 	}
 	platformRenderPreviews = filterPlatformAssetRenderPreviews(platformRenderPreviews, selectedPlatform)

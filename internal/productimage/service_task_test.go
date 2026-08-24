@@ -2,6 +2,7 @@ package productimage
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
@@ -29,6 +30,48 @@ func TestValidateRequestRequiresMarketplace(t *testing.T) {
 
 	if err := svc.validateRequest(req); err == nil {
 		t.Fatal("expected missing marketplace to be rejected")
+	}
+}
+
+func TestValidateRequestCanonicalizesLegacyMarketplaceToTargetPlatform(t *testing.T) {
+	t.Parallel()
+
+	req := &ImageProcessRequest{ProductURL: "https://example.test/product", Marketplace: " SHEIN "}
+	if err := (&service{}).validateRequest(req); err != nil {
+		t.Fatalf("validateRequest() error = %v", err)
+	}
+	if req.TargetPlatform != "shein" {
+		t.Fatalf("TargetPlatform = %q, want shein", req.TargetPlatform)
+	}
+}
+
+func TestValidateRequestPreservesMoreThanTwentyImageURLs(t *testing.T) {
+	t.Parallel()
+
+	imageURLs := make([]string, 21)
+	for idx := range imageURLs {
+		imageURLs[idx] = fmt.Sprintf("https://example.test/image-%d.jpg", idx+1)
+	}
+	req := &ImageProcessRequest{ImageURLs: imageURLs, TargetPlatform: "shein"}
+
+	if err := (&service{}).validateRequest(req); err != nil {
+		t.Fatalf("validateRequest() error = %v, want no artificial image count limit", err)
+	}
+	if len(req.ImageURLs) != len(imageURLs) {
+		t.Fatalf("image URL count = %d, want %d preserved", len(req.ImageURLs), len(imageURLs))
+	}
+}
+
+func TestValidateRequestRejectsContradictoryTargetPlatform(t *testing.T) {
+	t.Parallel()
+
+	req := &ImageProcessRequest{
+		ProductURL:     "https://example.test/product",
+		TargetPlatform: "temu",
+		Marketplace:    "shein",
+	}
+	if err := (&service{}).validateRequest(req); err == nil {
+		t.Fatal("validateRequest() error = nil, want conflicting target rejection")
 	}
 }
 
@@ -69,5 +112,21 @@ func TestCreateProcessTaskRejectsMissingAIIdentityWhenRequired(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("CreateProcessTask error = nil, want missing identity rejection")
+	}
+}
+
+func TestCreateProcessTaskAllowsMissingAIIdentityForLegacyCaller(t *testing.T) {
+	repo := &contextAwareTaskRepo{}
+	svc := &service{taskRepo: repo, requireAIIdentity: false}
+
+	task, err := svc.CreateProcessTask(context.Background(), &ImageProcessRequest{
+		ProductURL:  "https://example.test/product",
+		Marketplace: "amazon",
+	})
+	if err != nil {
+		t.Fatalf("CreateProcessTask: %v", err)
+	}
+	if task.TenantID != "" || task.UserID != "" {
+		t.Fatalf("task identity = %q/%q, want empty legacy identity", task.TenantID, task.UserID)
 	}
 }

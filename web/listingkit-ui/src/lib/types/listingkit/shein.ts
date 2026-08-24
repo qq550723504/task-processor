@@ -1,12 +1,13 @@
 import type { PlatformScenePresetSummary } from "./preview";
+import type { ListingKitSourceReference } from "./tasks";
 
-export type SheinReadinessReason = {
+ type SheinReadinessReason = {
   code?: string;
   category?: string;
   summary?: string;
 };
 
-export type SheinReadinessTaxonomy = {
+ type SheinReadinessTaxonomy = {
   blocker_key?: string;
   severity?: "blocker" | "warning" | "info" | string;
   domain?:
@@ -26,13 +27,13 @@ export type SheinReadinessTaxonomy = {
   requires_engineering?: boolean;
 };
 
-export type SheinRepairValidationPreview = {
+ type SheinRepairValidationPreview = {
   valid?: boolean;
   status?: string;
   affected_sections?: string[];
 };
 
-export type SheinRepairHint = {
+ type SheinRepairHint = {
   action?: string;
   priority?: string;
   target?: string;
@@ -55,7 +56,7 @@ export type SheinReadinessItem = {
   taxonomy?: SheinReadinessTaxonomy;
 };
 
-export type SheinReadinessCheck = {
+ type SheinReadinessCheck = {
   key?: string;
   label?: string;
   status?: string;
@@ -139,7 +140,7 @@ export type SheinStatusOverview = {
   next_actions?: string[];
 };
 
-export type SheinWorkspaceSubmitState = {
+ type SheinWorkspaceSubmitState = {
   status?: string;
   ready?: boolean;
   blocking_count?: number;
@@ -198,7 +199,7 @@ export type SheinImageInfo = {
   }>;
 };
 
-export type SheinProductSaleAttribute = {
+ type SheinProductSaleAttribute = {
   attribute_id?: number;
   attribute_value_id?: number;
 };
@@ -210,7 +211,7 @@ export type SheinSizeAttribute = {
   relate_sale_attribute_value_id?: number;
 };
 
-export type SheinSKUDraftPreview = {
+ type SheinSKUDraftPreview = {
   supplier_sku?: string;
   attributes?: Record<string, string>;
   main_image?: string;
@@ -218,7 +219,7 @@ export type SheinSKUDraftPreview = {
   sale_attributes?: SheinResolvedSaleAttribute[];
 };
 
-export type SheinSKCDraftPreview = {
+ type SheinSKCDraftPreview = {
   image_info?: SheinImageInfo;
   sale_attribute?: SheinResolvedSaleAttribute;
   sku_list?: SheinSKUDraftPreview[];
@@ -230,13 +231,13 @@ export type SheinRequestDraftPreview = {
   skc_list?: SheinSKCDraftPreview[];
 };
 
-export type SheinPreviewProductSKU = {
+ type SheinPreviewProductSKU = {
   image_info?: SheinImageInfo;
   sale_attribute_list?: SheinProductSaleAttribute[];
   supplier_sku?: string;
 };
 
-export type SheinPreviewProductSKC = {
+ type SheinPreviewProductSKC = {
   image_info?: SheinImageInfo;
   sale_attribute?: SheinProductSaleAttribute;
   sku_list?: SheinPreviewProductSKU[];
@@ -274,7 +275,7 @@ export type SheinManualCategorySearchResult = {
   items?: SheinManualCategoryCandidate[];
 };
 
-export type SheinInspectionCategoryPayload = {
+ type SheinInspectionCategoryPayload = {
   status?: string;
   source?: string;
   category_name?: string;
@@ -303,7 +304,7 @@ export type SheinResolvedAttribute = {
   skc_scope?: boolean;
 };
 
-export type SheinAttributeValueCandidate = {
+ type SheinAttributeValueCandidate = {
   attribute_value_id?: number;
   value?: string;
   value_en?: string;
@@ -330,7 +331,7 @@ export type SheinSourceAttribute = {
   value?: string;
 };
 
-export type SheinInspectionAttributePayload = {
+ type SheinInspectionAttributePayload = {
   status?: string;
   source?: string;
   template_count?: number;
@@ -363,7 +364,7 @@ export type SheinSaleAttributeCandidateInfo = {
   reasons?: string[];
 };
 
-export type SheinSourceVariantDimension = {
+ type SheinSourceVariantDimension = {
   name?: string;
   values?: string[];
   distinct_count?: number;
@@ -380,7 +381,7 @@ export type SheinSaleAttributeTemplateOption = {
   attribute_value_list?: SheinAttributeValueCandidate[];
 };
 
-export type SheinInspectionSKUPatchPayload = {
+ type SheinInspectionSKUPatchPayload = {
   supplier_sku?: string;
   attributes?: Record<string, string>;
   base_price?: string;
@@ -402,7 +403,7 @@ export type SheinInspectionSKCPatchPayload = {
   sku_patches?: SheinInspectionSKUPatchPayload[];
 };
 
-export type SheinInspectionSaleAttributePayload = {
+ type SheinInspectionSaleAttributePayload = {
   status?: string;
   source?: string;
   recommend_category_review?: boolean;
@@ -424,7 +425,7 @@ export type SheinInspectionSaleAttributePayload = {
   review_notes?: string[];
 };
 
-export type SheinRevisionSaleAttributePatch = {
+ type SheinRevisionSaleAttributePatch = {
   status?: string;
   source?: string;
   recommend_category_review?: boolean;
@@ -462,6 +463,7 @@ export type SheinPreviewPayload = PlatformPreviewPayload & {
   pod_execution?: PodExecutionSummary;
   category_id?: number;
   category_path?: string[];
+  source_reference?: ListingKitSourceReference;
   source_product?: {
     parent_product_id?: string;
     variant_id?: string;
@@ -496,7 +498,7 @@ export type SheinPreviewPayload = PlatformPreviewPayload & {
   submission_events?: SheinSubmissionEvent[];
 };
 
-export type SheinPricingRule = {
+ type SheinPricingRule = {
   source_currency?: string;
   target_currency?: string;
   exchange_rate?: number;
@@ -506,7 +508,7 @@ export type SheinPricingRule = {
   price_ending?: number;
 };
 
-export type SheinSKUPriceReview = {
+ type SheinSKUPriceReview = {
   supplier_sku?: string;
   supplier_code?: string;
   cost_cny?: number;
@@ -516,7 +518,7 @@ export type SheinSKUPriceReview = {
   manual?: boolean;
 };
 
-export type SheinPricingReview = {
+ type SheinPricingReview = {
   rule_snapshot?: SheinPricingRule;
   sku_prices?: SheinSKUPriceReview[];
   manual_overrides?: Record<string, number>;
@@ -525,7 +527,7 @@ export type SheinPricingReview = {
   updated_at?: string;
 };
 
-export type SheinFinalReviewSKU = {
+ type SheinFinalReviewSKU = {
   supplier_code?: string;
   supplier_sku?: string;
   color?: string;
@@ -541,16 +543,20 @@ export type SheinFinalReviewImage = {
   role?: string;
   sort?: number;
   final?: boolean;
+  selected?: boolean;
+  origin?: "generated" | "source";
+  requires_review?: boolean;
   main?: boolean;
   swatch?: boolean;
   size_map?: boolean;
 };
 
-export type SheinFinalReview = {
+type SheinFinalReview = {
   confirmed?: boolean;
   submit_mode?: "publish" | "save_draft";
   store_id?: number;
   site?: string;
+  source_reference?: ListingKitSourceReference;
   source_product?: SheinPreviewPayload["source_product"];
   title?: string;
   description?: string;
@@ -571,7 +577,6 @@ export type SheinStoreResolutionSummary = {
   matched_rule_kinds?: string[];
   matched_profile_id?: number;
   manual_override?: boolean;
-  fallback?: boolean;
   resolved_at?: string;
 };
 
@@ -586,7 +591,7 @@ export type SheinImageUploadPreflight = {
   summary?: string[];
 };
 
-export type SheinSubmissionResponse = {
+ type SheinSubmissionResponse = {
   code?: string;
   message?: string;
   success?: boolean;
@@ -652,24 +657,6 @@ export type SheinSubmissionEvent = {
   store_resolution?: SheinStoreResolutionSummary;
 };
 
-export type SheinSettings = {
-  default_store_id?: number;
-  enabled_store_ids?: number[];
-  available_stores?: Array<{
-    id: number;
-    store_id?: string;
-    name?: string;
-    platform?: string;
-    region?: string;
-  }>;
-  site?: string;
-  warehouse_code?: string;
-  default_stock?: number;
-  default_submit_mode?: "publish" | "save_draft";
-  pricing?: SheinPricingRule;
-  updated_at?: string;
-};
-
 export type AIClientSettings = {
   scope?: "tenant" | "user" | string;
   client_name?: string;
@@ -682,12 +669,13 @@ export type AIClientSettings = {
   resolved_scope?: "tenant" | "user" | string;
 };
 
-export type ListingKitStoreProfileStoreOption = {
+export type ListingKitStoreCatalogOption = {
   id: number;
   store_id?: string;
   name?: string;
   platform?: string;
   region?: string;
+  status?: number;
 };
 
 export type ListingKitStoreProfile = {
@@ -702,16 +690,26 @@ export type ListingKitStoreProfile = {
   default_submit_mode?: "publish" | "save_draft";
   pricing?: SheinPricingRule;
   updated_at?: string;
-  store?: ListingKitStoreProfileStoreOption;
+  store?: ListingKitStoreCatalogOption;
 };
 
-export type ListingKitSettingsScopeDefinition = {
+export type ListingKitSheinSettings = {
+  available_stores?: ListingKitStoreCatalogOption[];
+  site?: string;
+  warehouse_code?: string;
+  default_stock?: number;
+  default_submit_mode?: "publish" | "save_draft";
+  pricing?: SheinPricingRule;
+  updated_at?: string;
+};
+
+ type ListingKitSettingsScopeDefinition = {
   id: string;
   label: string;
   description?: string;
 };
 
-export type ListingKitSettingsFieldDefinition = {
+ type ListingKitSettingsFieldDefinition = {
   key: string;
   label: string;
   type: string;

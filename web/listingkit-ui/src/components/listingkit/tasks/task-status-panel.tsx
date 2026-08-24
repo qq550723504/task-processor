@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { presentTaskStatus } from "@/components/listingkit/shared/status-presentation";
-import { extractTaskReviewReasons } from "@/components/listingkit/tasks/task-review-reasons";
+import { ApiError } from "@/lib/api/client";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 function hasFailedSDSChildTask(task?: ListingKitTaskResult | null) {
@@ -22,10 +22,31 @@ function hasFailedSheinSubmission(task?: ListingKitTaskResult | null) {
   );
 }
 
+function terminalChildRetryError(task?: ListingKitTaskResult | null) {
+  const errors =
+    task?.child_retries
+      ?.filter(
+        (retry) =>
+          retry.status === "exhausted" &&
+          retry.last_error &&
+          (task.result?.child_tasks?.some(
+            (child) => child.kind === retry.kind && child.status === "failed",
+          ) ?? false),
+      )
+      .sort((left, right) =>
+        String(left.updated_at ?? "").localeCompare(String(right.updated_at ?? "")),
+      ) ?? [];
+  const error = errors[errors.length - 1]?.last_error;
+  return error === "SDS child retry did not complete" ? undefined : error;
+}
+
 function primaryTaskError(task: ListingKitTaskResult) {
-  const blockingIssue = task.result?.workflow_issues?.find(
+  const retryError = terminalChildRetryError(task);
+  if (retryError) return retryError;
+  const blockingIssues = task.result?.workflow_issues?.filter(
     (issue) => issue.severity === "blocking" && (issue.detail || issue.message),
-  );
+  ) ?? [];
+  const blockingIssue = blockingIssues[blockingIssues.length - 1];
   if (blockingIssue?.detail) return blockingIssue.detail;
   if (blockingIssue?.message) return blockingIssue.message;
   if (hasFailedSheinSubmission(task) && task.shein_latest_submission_error) {
@@ -60,22 +81,45 @@ function isBlockedRetryable(task?: ListingKitTaskResult | null) {
   return task?.status === "blocked_retryable";
 }
 
+function formatRetryError(error: unknown) {
+  if (error instanceof ApiError) {
+    const payload = error.payload;
+    if (payload && typeof payload === "object" && "message" in payload) {
+      const message = (payload as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) {
+        return message;
+      }
+    }
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return error ? String(error) : "";
+}
+
 export function TaskStatusPanel({
   task,
   onRecoverNow,
   onRetryChildTask,
   recoveringNow,
   retryingChildTaskKind,
+  retryQueued,
+  retryError,
 }: {
   task?: ListingKitTaskResult | null;
   onRecoverNow?: () => void;
   onRetryChildTask?: (kind: string) => void;
   recoveringNow?: boolean;
   retryingChildTaskKind?: string | null;
+  retryQueued?: boolean;
+  retryError?: unknown;
 }) {
   const keepsActionableFailureVisible =
     task?.status === "completed" &&
-    (hasFailedSDSChildTask(task) || hasFailedSheinSubmission(task));
+    (hasFailedSDSChildTask(task) ||
+      hasFailedSheinSubmission(task) ||
+      Boolean(terminalChildRetryError(task)));
   if (!task?.status || (task.status === "completed" && !keepsActionableFailureVisible)) {
     return null;
   }
@@ -116,7 +160,6 @@ export function TaskStatusPanel({
   const error = isBlockedRetryable(task)
     ? blockedRetryableReason(task)
     : primaryTaskError(task);
-  const reviewReasons = extractTaskReviewReasons(task);
   const failedStages =
     task.result?.workflow_stages?.filter((stage) => stage.status === "failed") ?? [];
   const failedChildren =
@@ -129,6 +172,7 @@ export function TaskStatusPanel({
   const storeResolution = task.result?.shein_store_resolution;
   const retryableBlock = task.retryable_block;
   const nextRetryAt = formatTaskDate(retryableBlock?.next_retry_at);
+  const retryErrorMessage = formatRetryError(retryError);
 
   return (
     <Card className="border-border bg-card/95 p-5">
@@ -261,7 +305,19 @@ export function TaskStatusPanel({
           </div>
         ) : null}
 
-        {task.status === "needs_review" && reviewReasons.length > 0 ? null : error ? (
+        {retryQueued ? (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
+            重试已加入队列，系统会在后台完成 SDS 和 SHEIN 平台适配，并自动刷新任务状态。
+          </div>
+        ) : null}
+
+        {retryErrorMessage ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-900 whitespace-pre-wrap">
+            重试请求失败：{retryErrorMessage}
+          </div>
+        ) : null}
+
+        {error ? (
           <div className="rounded-2xl border border-border bg-muted p-4 text-sm leading-6 text-foreground whitespace-pre-wrap">
             {error}
           </div>

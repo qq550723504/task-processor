@@ -635,13 +635,13 @@ func (s *Service) watchVerifySession(account Account, session VerifySession) {
 			}).Warn("persist SHEIN cookie after manual verification failed")
 			return
 		}
+		s.clearSession(account.TenantID, account.StoreID)
 		now := time.Now()
 		_ = s.store.RecordLastLoginTime(ctx, account.TenantID, account.StoreID, now)
 		_ = s.store.ClearLastFailure(ctx, account.TenantID, account.StoreID)
 		_ = s.store.ClearPauseKeys(ctx, account.TenantID, account.StoreID)
 		_, _ = s.store.CancelVerifyWait(ctx, account.TenantID, account.StoreID)
 		s.syncStoreIDAfterLogin(ctx, account)
-		s.clearSession(account.TenantID, account.StoreID)
 	}()
 }
 

@@ -20,13 +20,16 @@ type FinalReviewSKU struct {
 }
 
 type FinalReviewImage struct {
-	URL     string `json:"url,omitempty"`
-	Role    string `json:"role,omitempty"`
-	Sort    int    `json:"sort,omitempty"`
-	Final   bool   `json:"final"`
-	Main    bool   `json:"main,omitempty"`
-	Swatch  bool   `json:"swatch,omitempty"`
-	SizeMap bool   `json:"size_map,omitempty"`
+	URL            string `json:"url,omitempty"`
+	Role           string `json:"role,omitempty"`
+	Sort           int    `json:"sort,omitempty"`
+	Final          bool   `json:"final"`
+	Selected       bool   `json:"selected"`
+	Origin         string `json:"origin,omitempty"`
+	RequiresReview bool   `json:"requires_review,omitempty"`
+	Main           bool   `json:"main,omitempty"`
+	Swatch         bool   `json:"swatch,omitempty"`
+	SizeMap        bool   `json:"size_map,omitempty"`
 }
 
 func BuildPreviewReviewSummary(pkg *sheinpub.Package) (bool, []string) {
@@ -76,18 +79,32 @@ func BuildFinalReviewSKU(supplierCode string, sku sheinpub.SKUDraft) FinalReview
 	return item
 }
 
-func BuildFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *sheinpub.FinalDraft, product *sheinproduct.Product) []FinalReviewImage {
+func BuildFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *sheinpub.FinalDraft, product *sheinproduct.Product, offeredSourceURLs []string) []FinalReviewImage {
 	if draft == nil || draft.ImageInfo == nil {
 		return nil
 	}
 	sizeMapURLs := sheinproduct.CollectSizeMapImageURLs(product)
 	out := make([]FinalReviewImage, 0)
 	seen := make(map[string]int)
+	sourceURLs := make(map[string]struct{}, len(draft.ImageInfo.Source))
+	for _, sourceURL := range draft.ImageInfo.Source {
+		sourceURL = strings.TrimSpace(sourceURL)
+		if sourceURL != "" {
+			sourceURLs[sourceURL] = struct{}{}
+		}
+	}
+	for _, sourceURL := range offeredSourceURLs {
+		sourceURL = strings.TrimSpace(sourceURL)
+		if sourceURL != "" {
+			sourceURLs[sourceURL] = struct{}{}
+		}
+	}
 	add := func(url, role string, sort int, main bool) {
 		url = strings.TrimSpace(url)
 		if url == "" {
 			return
 		}
+		_, isSource := sourceURLs[url]
 		role, main = resolveFinalReviewImageRole(url, role, main, finalDraft, sizeMapURLs)
 		if existingIndex, ok := seen[url]; ok {
 			mergeFinalReviewImage(&out[existingIndex], role, main)
@@ -95,13 +112,16 @@ func BuildFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *sheinpub.F
 		}
 		seen[url] = len(out)
 		out = append(out, FinalReviewImage{
-			URL:     url,
-			Role:    role,
-			Sort:    sort,
-			Final:   true,
-			Main:    main || role == "main",
-			Swatch:  isFinalReviewSwatchRole(role),
-			SizeMap: role == "size_map",
+			URL:            url,
+			Role:           role,
+			Sort:           sort,
+			Final:          true,
+			Selected:       true,
+			Origin:         map[bool]string{true: "source", false: "generated"}[isSource],
+			RequiresReview: isSource,
+			Main:           main || role == "main",
+			Swatch:         isFinalReviewSwatchRole(role),
+			SizeMap:        role == "size_map",
 		})
 	}
 	add(draft.ImageInfo.MainImage, "main", 1, true)
@@ -119,6 +139,25 @@ func BuildFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *sheinpub.F
 	addPreviewProductImages(product, func(url, role string, main bool) {
 		add(url, role, len(out)+1, main)
 	})
+	for _, sourceURL := range draft.ImageInfo.Source {
+		sourceURL = strings.TrimSpace(sourceURL)
+		if sourceURL == "" {
+			continue
+		}
+		if _, ok := seen[sourceURL]; ok {
+			continue
+		}
+		seen[sourceURL] = len(out)
+		out = append(out, FinalReviewImage{
+			URL:            sourceURL,
+			Role:           "source",
+			Sort:           len(out) + 1,
+			Final:          false,
+			Selected:       false,
+			Origin:         "source",
+			RequiresReview: true,
+		})
+	}
 	return out
 }
 

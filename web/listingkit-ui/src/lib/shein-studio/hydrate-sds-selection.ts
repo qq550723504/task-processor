@@ -24,7 +24,7 @@ export async function hydrateSDSVariantSelection(
   return mergeSDSSelectionMetadata(selection, metadata);
 }
 
-export function mergeSDSSelectionMetadata(
+ function mergeSDSSelectionMetadata(
   selection: SDSProductVariantSelection,
   metadata: SDSListingKitMetadata,
 ): SDSProductVariantSelection {

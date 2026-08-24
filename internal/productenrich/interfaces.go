@@ -3,6 +3,7 @@ package productenrich
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -32,6 +33,21 @@ type LLMManager interface {
 	GetClient(clientName string) (LLMClient, error)
 	GetDefaultClient() LLMClient
 }
+
+type LLMClientRoute struct {
+	CredentialReference  string
+	ConfigurationVersion string
+}
+
+type RoutedLLMManager interface {
+	LLMManager
+	GetClientWithRoute(ctx context.Context, clientName string, route LLMClientRoute) (LLMClient, error)
+}
+
+var (
+	ErrLLMClientUnavailable          = errors.New("llm client is unavailable")
+	ErrLLMClientConfigurationChanged = errors.New("llm client configuration changed")
+)
 
 // LLMClient LLM 客户端接口
 type LLMClient interface {

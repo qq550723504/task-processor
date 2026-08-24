@@ -9,25 +9,26 @@ import (
 var ErrFilterRuleNotFound = errors.New("filter rule not found")
 
 type FilterRule struct {
-	ID              int64      `json:"id"`
-	TenantID        int64      `json:"tenantId"`
-	Name            string     `json:"name"`
-	RuleCode        string     `json:"ruleCode"`
-	Description     string     `json:"description,omitempty"`
-	StoreID         *int64     `json:"storeId,omitempty"`
-	CategoryID      *int64     `json:"categoryId,omitempty"`
-	PriceType       string     `json:"priceType,omitempty"`
-	PriceMin        float64    `json:"priceMin"`
-	PriceMax        float64    `json:"priceMax"`
-	StockMin        int        `json:"stockMin"`
-	RatingMin       float64    `json:"ratingMin"`
-	ReviewCountMin  int        `json:"reviewCountMin"`
-	DeliveryTimeMax *int       `json:"deliveryTimeMax,omitempty"`
-	FulfillmentType string     `json:"fulfillmentType,omitempty"`
-	Status          int16      `json:"status"`
-	Remark          string     `json:"remark,omitempty"`
-	CreateTime      *time.Time `json:"createTime,omitempty"`
-	UpdateTime      *time.Time `json:"updateTime,omitempty"`
+	ID              int64   `json:"id"`
+	TenantID        int64   `json:"tenantId"`
+	Name            string  `json:"name"`
+	RuleCode        string  `json:"ruleCode"`
+	Description     string  `json:"description,omitempty"`
+	StoreID         *int64  `json:"storeId,omitempty"`
+	CategoryID      *int64  `json:"categoryId,omitempty"`
+	PriceType       string  `json:"priceType,omitempty"`
+	PriceMin        float64 `json:"priceMin"`
+	PriceMax        float64 `json:"priceMax"`
+	StockMin        int     `json:"stockMin"`
+	RatingMin       float64 `json:"ratingMin"`
+	ReviewCountMin  int     `json:"reviewCountMin"`
+	DeliveryTimeMax *int    `json:"deliveryTimeMax,omitempty"`
+	FulfillmentType string  `json:"fulfillmentType,omitempty"`
+	// Status uses RuleStatusEnabled/RuleStatusDisabled; enabled is persisted as 0.
+	Status     int16      `json:"status"`
+	Remark     string     `json:"remark,omitempty"`
+	CreateTime *time.Time `json:"createTime,omitempty"`
+	UpdateTime *time.Time `json:"updateTime,omitempty"`
 }
 
 type FilterRuleQuery struct {

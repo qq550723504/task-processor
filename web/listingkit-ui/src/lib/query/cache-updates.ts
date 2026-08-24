@@ -15,7 +15,7 @@ import type {
   ReviewSessionResponse,
 } from "@/lib/types/listingkit";
 
-export function applyQueueCache(
+ function applyQueueCache(
   client: QueryClient,
   taskId: string,
   query: QueueQuery,
@@ -27,7 +27,7 @@ export function applyQueueCache(
   );
 }
 
-export function applyReviewSessionCache(
+ function applyReviewSessionCache(
   client: QueryClient,
   taskId: string,
   query: QueueQuery,
@@ -40,7 +40,7 @@ export function applyReviewSessionCache(
   );
 }
 
-export function applyReviewPreviewCache(
+ function applyReviewPreviewCache(
   client: QueryClient,
   taskId: string,
   query: QueueQuery,

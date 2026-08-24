@@ -11,9 +11,19 @@ func TestListingKitAuthorizerAllowsOperationalRolesToWriteProductSourcing(t *tes
 	require.NoError(t, err)
 
 	require.True(t, authorizer.Authorize("", []string{"listingkit_operator"}, PermissionProductSourcingWrite))
+	require.True(t, authorizer.Authorize("", []string{"listingkit_operator"}, PermissionLocalAgentWrite))
 	require.True(t, authorizer.Authorize("", []string{"listingkit_admin"}, PermissionProductSourcingWrite))
+	require.True(t, authorizer.Authorize("", []string{"listingkit_admin"}, PermissionLocalAgentWrite))
 	require.True(t, authorizer.Authorize("", []string{"platform_admin"}, PermissionProductSourcingWrite))
 	require.False(t, authorizer.Authorize("", []string{"viewer"}, PermissionProductSourcingWrite))
+}
+
+func TestListingKitAuthorizerGrantsLocalAgentToConfiguredAdmins(t *testing.T) {
+	authorizer, err := NewListingKitAuthorizer([]string{"user-1"}, []string{"custom_platform_admin"})
+	require.NoError(t, err)
+	require.True(t, authorizer.Authorize("user-1", nil, PermissionLocalAgentWrite))
+	require.True(t, authorizer.Authorize("", []string{"custom_platform_admin"}, PermissionLocalAgentWrite))
+	require.True(t, authorizer.Authorize("", []string{"admin"}, PermissionLocalAgentWrite))
 }
 
 func TestListingKitAuthorizerDoesNotTreatListingKitAdminAsPlatformAdmin(t *testing.T) {

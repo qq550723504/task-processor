@@ -12,7 +12,7 @@ import {
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
   DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
 } from "@/lib/shein-studio/storage-shared";
-import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/constants";
+import { UNSELECTED_SHEIN_STORE_ID } from "@/lib/shein-studio/constants";
 export { buildSheinStudioGenerateRequest } from "@/lib/shein-studio/generation-controller";
 import type { SubscriptionSummary } from "@/lib/api/subscription";
 import type {
@@ -40,31 +40,44 @@ import {
 } from "@/lib/shein-studio/sds-selectable-images";
 import type { SheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 
-export const STUDIO_SESSION_SYNC_TIMEOUT_MS = 15_000;
-
 type SheinStoreOptionProjectionInput = {
   currentStoreId?: string | null;
   enabledProfiles: Array<Parameters<typeof formatSheinStoreOptionLabel>[0]>;
+  groupedSelections?: GroupedSDSSelectionEligibility[];
 };
 
 export function projectSheinStudioStoreSelectionState({
   currentStoreId,
   enabledProfiles,
+  groupedSelections = [],
 }: SheinStoreOptionProjectionInput) {
   const effectiveCurrentStoreId = (currentStoreId ?? "").trim();
   const matched = enabledProfiles.find(
     (item) => String(item.store_id) === effectiveCurrentStoreId,
   );
+  const validCurrentStoreId = matched ? effectiveCurrentStoreId : "";
+  const selectableStoreIDs = new Set(
+    enabledProfiles.map((item) => String(item.store_id)),
+  );
+  const hasInvalidGroupedStore = groupedSelections.some((item) => {
+    const storeID = item.sheinStoreId.trim();
+    return (
+      item.eligible !== false &&
+      (storeID === "" || !selectableStoreIDs.has(storeID))
+    );
+  });
   return {
     currentStoreLabel: matched ? formatSheinStoreOptionLabel(matched) : "",
-    effectiveCurrentStoreId,
+    effectiveCurrentStoreId: validCurrentStoreId,
     recentBatchStoreOptions: enabledProfiles.map((profile) => ({
       id: String(profile.store_id),
       label: formatSheinStoreOptionLabel(profile),
     })),
-    storeRequiredMessage: effectiveCurrentStoreId
-      ? ""
-      : "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
+    storeRequiredMessage: hasInvalidGroupedStore
+      ? "请重新选择仍在授权目录中的商品店铺，再生成款式图或创建 SHEIN 资料。"
+      : validCurrentStoreId
+        ? ""
+        : "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
   };
 }
 
@@ -124,7 +137,7 @@ export function selectActiveGroupPrimarySelection({
   return groups.find((group) => group.id === activeGroupId)?.primarySelection;
 }
 
-export function resolveArtworkGenerationMode(input: {
+ function resolveArtworkGenerationMode(input: {
   artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   hotStyleReferenceImageUrls?: string[];
   hotStyleReferenceBrief?: string;
@@ -158,7 +171,7 @@ export function projectGroupToWorkbench(group: SheinStudioGroupedWorkspace) {
     artworkModel: group.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: group.transparentBackground ?? false,
     transparentBackgroundMode: group.transparentBackgroundMode,
-    sheinStoreId: group.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+    sheinStoreId: group.sheinStoreId || UNSELECTED_SHEIN_STORE_ID,
     imageStrategy: group.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
       group.groupedImageMode ?? DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
@@ -488,7 +501,7 @@ export function projectSavedBatchToWorkbench(
     artworkModel: savedBatch.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: savedBatch.transparentBackground ?? false,
     transparentBackgroundMode: savedBatch.transparentBackgroundMode,
-    sheinStoreId: savedBatch.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+    sheinStoreId: savedBatch.sheinStoreId || UNSELECTED_SHEIN_STORE_ID,
     imageStrategy:
       savedBatch.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
@@ -589,7 +602,7 @@ export function projectHydratedBatchToWorkbench(
     transparentBackgroundMode:
       itemized.transparentBackgroundMode ?? saved.transparentBackgroundMode,
     sheinStoreId:
-      itemized.sheinStoreId || saved.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+      itemized.sheinStoreId || saved.sheinStoreId || UNSELECTED_SHEIN_STORE_ID,
     imageStrategy: saved.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
       itemized.groupedImageMode ??
@@ -795,7 +808,7 @@ export function projectDefaultSelectedSDSImages({
   imageStrategy: SheinStudioImageStrategy;
   renderSizeImagesWithSds: boolean;
 }): SheinStudioSelectedSDSImage[] | null {
-  if (imageStrategy !== "hybrid" && imageStrategy !== "sds_official") {
+  if (imageStrategy !== "sds_official") {
     return null;
   }
   if (hasCustomizedSdsSelection) {
@@ -995,7 +1008,7 @@ export function mergeSheinStudioDraftState({
     hotStyleReferencePrompt: draft?.hotStyleReferencePrompt ?? "",
     artworkModel: draft?.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: draft?.transparentBackground ?? false,
-    sheinStoreId: draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+    sheinStoreId: draft?.sheinStoreId || UNSELECTED_SHEIN_STORE_ID,
     imageStrategy: draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
       draft?.groupedImageMode ?? DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,

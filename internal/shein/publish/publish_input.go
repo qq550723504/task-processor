@@ -2,6 +2,7 @@ package publish
 
 import (
 	"fmt"
+	"strings"
 
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
@@ -118,12 +119,19 @@ func buildMappingRequestInput(ctx *shein.TaskContext) (*MappingRequestInput, err
 	if ctx.Task == nil {
 		return nil, fmt.Errorf("task is nil")
 	}
+	storeInfo := publishRuntimeStoreInfo(ctx.StoreInfo)
+	if storeInfo == nil {
+		return nil, fmt.Errorf("store info is not initialized")
+	}
+	if strings.TrimSpace(storeInfo.OwnerUserID) == "" {
+		return nil, fmt.Errorf("store owner is not initialized")
+	}
 
 	return &MappingRequestInput{
 		Task:               ctx.Task,
 		Variants:           ctx.Variants,
 		UnfilteredVariants: ctx.UnFilteredVariants,
-		StoreInfo:          publishRuntimeStoreInfo(ctx.StoreInfo),
+		StoreInfo:          storeInfo,
 		AmazonProduct:      ctx.AmazonProduct,
 		ProductData:        ctx.ProductData,
 		FilterRule:         ctx.FilterRule,

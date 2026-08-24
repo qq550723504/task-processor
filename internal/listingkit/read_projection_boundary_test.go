@@ -56,13 +56,14 @@ func TestListingKitReadProjectionBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, readSource, []string{
 			"platformCards := buildPlatformPreviewCards(result, selectedPlatform)",
-			"previewInput := buildListingKitPreviewReadModelInput(result, platformCards)",
+			"previewInput := buildListingKitPreviewReadModelInput(result, platformCards, selectedPlatform)",
 		})
 		assertSourceExcludesAll(t, readSource, []string{
 			"previewInput := buildListingKitPreviewReadModelInput(result, selectedPlatform)",
 		})
 		assertSourceContainsAll(t, inputSource, []string{
-			"func buildListingKitPreviewReadModelInput(result *ListingKitResult, platformCards []ListingKitPlatformCard) previewdomain.ReadModelInput",
+			"func buildListingKitPreviewReadModelInput(result *ListingKitResult, platformCards []ListingKitPlatformCard, selectedPlatform string) previewdomain.ReadModelInput",
+			"Attachment:  buildListingKitPreviewAttachmentInput(result, selectedPlatform)",
 			"Overview:    buildListingKitPreviewHeaderInput(result, platformCards)",
 		})
 		assertSourceContainsAll(t, headerSource, []string{

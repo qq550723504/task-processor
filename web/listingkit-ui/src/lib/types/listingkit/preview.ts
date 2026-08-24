@@ -6,7 +6,7 @@ import type {
   RecoverySummary,
   ResolvedActionSummary,
 } from "./navigation";
-export type PlatformPreviewSummary = {
+ type PlatformPreviewSummary = {
   total_previews?: number;
   main_available?: boolean;
   gallery_count?: number;

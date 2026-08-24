@@ -2279,10 +2279,22 @@ func TestServiceResumeStudioBatchTaskCreationDoesNotFinalizePartialRequest(t *te
 	svc.repo = newStudioBatchTaskRepositoryStub()
 	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 
+	strategy := sheinImageStrategyAIGenerated
 	if _, err := svc.PrepareCreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
-		DesignIDs: []string{"design-1"},
+		DesignIDs:     []string{"design-1"},
+		ImageStrategy: &strategy,
 	}); err != nil {
 		t.Fatalf("PrepareCreateStudioBatchTasks() error = %v", err)
+	}
+	if sessionRepo.session.ImageStrategy != sheinImageStrategyAIGenerated {
+		t.Fatalf("prepared session image strategy = %q, want %q", sessionRepo.session.ImageStrategy, sheinImageStrategyAIGenerated)
+	}
+	persistedBatch, err := repo.GetStudioBatch(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatch() after prepare error = %v", err)
+	}
+	if persistedBatch.ImageStrategy != sheinImageStrategyAIGenerated {
+		t.Fatalf("persisted batch image strategy = %q, want %q", persistedBatch.ImageStrategy, sheinImageStrategyAIGenerated)
 	}
 	if sessionRepo.session.Status != SheinStudioSessionStatusTasksCreating {
 		t.Fatalf("prepared session status = %q, want tasks_creating", sessionRepo.session.Status)
@@ -3952,7 +3964,9 @@ func TestServiceCreateStudioBatchTasks_ConcurrentStaleCreatingRecoveryCreatesOne
 	now := time.Now().UTC()
 
 	batch := newStudioBatchRecordForTest("batch-1", now)
-	if err := batchRepo.CreateStudioBatchGraph(ctx, batch, newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].Status = StudioBatchItemStatusReviewReady
+	if err := batchRepo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -4024,12 +4038,14 @@ func TestServiceCreateStudioBatchTasks_ConcurrentStaleCreatingRecoveryCreatesOne
 		if err != nil {
 			t.Fatalf("CreateStudioBatchTasks(%d) error = %v", index, err)
 		}
-		if results[index] == nil || len(results[index].CreatedTasks) != 1 {
-			t.Fatalf("CreateStudioBatchTasks(%d) result = %+v, want one task", index, results[index])
+		if results[index] == nil || len(results[index].CreatedTasks)+len(results[index].ReusedTasks) != 1 {
+			t.Fatalf("CreateStudioBatchTasks(%d) result = %+v, want one created or reused task", index, results[index])
 		}
 	}
-	if results[0].CreatedTasks[0].ID != results[1].CreatedTasks[0].ID {
-		t.Fatalf("stale recovery task ids = %q and %q, want same task", results[0].CreatedTasks[0].ID, results[1].CreatedTasks[0].ID)
+	leftIDs := studioBatchResultTaskIDs(results[0])
+	rightIDs := studioBatchResultTaskIDs(results[1])
+	if len(leftIDs) != 1 || len(rightIDs) != 1 || leftIDs[0] != rightIDs[0] {
+		t.Fatalf("stale recovery task ids = %q and %q, want same task", leftIDs, rightIDs)
 	}
 	if got := taskRepo.taskCount(); got != 1 {
 		t.Fatalf("persisted task count = %d, want exactly one task", got)
@@ -4890,6 +4906,28 @@ func (r *failingStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpda
 	return r.delegate.ClaimStudioBatchTaskCandidateUpdatedAt(ctx, candidateKey, fromStatus, observedUpdatedAt, toStatus, updatedAt)
 }
 
+func (r *failingStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateWithToken(ctx context.Context, candidateKey string, fromStatus string, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	return r.delegate.(studioBatchTaskLinkLeaseRepository).ClaimStudioBatchTaskCandidateWithToken(ctx, candidateKey, fromStatus, toStatus, claimToken, updatedAt)
+}
+
+func (r *failingStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	return r.delegate.(studioBatchTaskLinkLeaseRepository).ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx, candidateKey, fromStatus, observedUpdatedAt, toStatus, claimToken, updatedAt)
+}
+
+func (r *failingStudioBatchTaskLinkRepository) RefreshStudioBatchTaskLink(ctx context.Context, candidateKey string, claimToken string, updatedAt time.Time) (bool, error) {
+	if r.failUpdate {
+		return false, fmt.Errorf("forced link update failure")
+	}
+	return r.delegate.(studioBatchTaskLinkLeaseRepository).RefreshStudioBatchTaskLink(ctx, candidateKey, claimToken, updatedAt)
+}
+
+func (r *failingStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLinkWithClaimToken(ctx context.Context, link *StudioBatchTaskLinkRecord, claimToken string) (bool, error) {
+	if r.failUpdate {
+		return false, fmt.Errorf("forced link update failure")
+	}
+	return r.delegate.(studioBatchTaskLinkLeaseRepository).UpdateStudioBatchTaskLinkWithClaimToken(ctx, link, claimToken)
+}
+
 type synchronizedStaleCreatingLinkRepository struct {
 	delegate     StudioBatchTaskLinkRepository
 	candidateKey string
@@ -4953,6 +4991,22 @@ func (r *synchronizedStaleCreatingLinkRepository) ClaimStudioBatchTaskCandidateU
 		}
 	}
 	return r.delegate.ClaimStudioBatchTaskCandidateUpdatedAt(ctx, candidateKey, fromStatus, observedUpdatedAt, toStatus, updatedAt)
+}
+
+func (r *synchronizedStaleCreatingLinkRepository) ClaimStudioBatchTaskCandidateWithToken(ctx context.Context, candidateKey string, fromStatus string, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	return r.delegate.(studioBatchTaskLinkLeaseRepository).ClaimStudioBatchTaskCandidateWithToken(ctx, candidateKey, fromStatus, toStatus, claimToken, updatedAt)
+}
+
+func (r *synchronizedStaleCreatingLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	return r.delegate.(studioBatchTaskLinkLeaseRepository).ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx, candidateKey, fromStatus, observedUpdatedAt, toStatus, claimToken, updatedAt)
+}
+
+func (r *synchronizedStaleCreatingLinkRepository) RefreshStudioBatchTaskLink(ctx context.Context, candidateKey string, claimToken string, updatedAt time.Time) (bool, error) {
+	return r.delegate.(studioBatchTaskLinkLeaseRepository).RefreshStudioBatchTaskLink(ctx, candidateKey, claimToken, updatedAt)
+}
+
+func (r *synchronizedStaleCreatingLinkRepository) UpdateStudioBatchTaskLinkWithClaimToken(ctx context.Context, link *StudioBatchTaskLinkRecord, claimToken string) (bool, error) {
+	return r.delegate.(studioBatchTaskLinkLeaseRepository).UpdateStudioBatchTaskLinkWithClaimToken(ctx, link, claimToken)
 }
 
 type studioBatchTaskSubmitterStub struct {

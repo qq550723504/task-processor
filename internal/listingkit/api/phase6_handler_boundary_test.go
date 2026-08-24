@@ -77,7 +77,6 @@ func TestHandlerFilesOwnSeparatedFamilies(t *testing.T) {
 		"func (h *handler) requireSubscription(",
 		"func (h *handler) requireSubscriptionUsage(",
 		"func (h *handler) requirePlatformSubscriptionAccess(",
-		"func splitCSVHeaders(",
 	)
 	assertHandlerNotContainsAny(t, subscriptionGuardFile,
 		"func (h *handler) GetCurrentSubscription(",

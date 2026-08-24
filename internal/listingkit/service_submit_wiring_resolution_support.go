@@ -63,8 +63,9 @@ func buildTaskRequeueServiceConfigWithWiring(wiring taskSubmitterWiring) taskReq
 
 func buildTaskRecoveryServiceConfigWithWiring(wiring taskSubmitterWiring) taskRecoveryServiceConfig {
 	return taskRecoveryServiceConfig{
-		repo:          wiring.repo,
-		taskSubmitter: wiring.taskSubmitter,
+		repo:            wiring.repo,
+		taskSubmitter:   wiring.taskSubmitter,
+		generationUsage: wiring.generationUsage,
 	}
 }
 

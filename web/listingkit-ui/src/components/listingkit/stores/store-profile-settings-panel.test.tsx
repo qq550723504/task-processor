@@ -142,6 +142,29 @@ describe("StoreProfileSettingsPanel", () => {
       );
     });
   });
+
+  it("describes an unlogged selected store without global-store wording", async () => {
+    mocks.listSheinLoginAccounts.mockResolvedValue([
+      {
+        account: { store_id: 869, tenant_id: 1, store_name: "US 主店" },
+        has_cookie: true,
+        cookie_ttl: 1800,
+        waiting_for_verify_code: false,
+        login_in_progress: false,
+      },
+    ]);
+
+    renderWithQueryClient(<StoreProfileSettingsPanel />);
+
+    await screen.findByRole("option", { name: "US 备用店 (SHEIN-US-870 / US)" });
+    fireEvent.change(screen.getByRole("combobox", { name: "SHEIN 店铺" }), {
+      target: { value: "870" },
+    });
+
+    expect(
+      await screen.findByText("已选择的目标店铺还未登录，先在店铺列表完成登录后再选择仓库。"),
+    ).toBeInTheDocument();
+  });
 });
 
 function renderWithQueryClient(ui: React.ReactElement) {

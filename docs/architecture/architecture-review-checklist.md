@@ -61,21 +61,24 @@ At minimum, structural review should consider representative guards such as:
 
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
-- `TestListingKitSubdomainsDoNotImportRootFacade`
+- `TestProductDomainDoesNotDependOnOuterAdapters`
+- `depguard: listingkit_subdomains_root_facade`
+- `TestListingKitImportDirectionStaysRetiredAcrossBuildTargets`
 - `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`
-- `TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly`
+- `depguard: listingkit_root_workspace_shein`
 - `TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain`
-- `TestListingKitDoesNotImportLegacySheinRuntime`
-- `TestListingKitDoesNotImportSheinAPIRoot`
+- `depguard: listingkit_legacy_shein_runtime`
+- `depguard: listingkit_shein_api_root`
 - `TestListingKitNonAPISheinImportsStayAllowlisted`
-- `TestListingKitRootDoesNotImportManagementAPI`
-- `TestListingKitProductionDoesNotImportMarketplaceSheinPublishing`
+- `depguard: listingkit_root_management_api`
+- `depguard: listingkit_marketplace_publishing`
 - `TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted`
 - `TestListingKitAmazonListingImportsStayAllowlisted`
-- `TestCatalogDoesNotDependOnProductEnrichAliases`
+- `depguard: catalog_legacy_productenrich`
+- `TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets`
 - `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases`
-- `TestSheinPipelineDoesNotImportListingKitFacade`
-- `TestSheinSubmitPrepDoesNotImportListingKitTenantContext`
+- `depguard: shein_pipeline_legacy_listingkit`
+- `depguard: shein_submitprep_legacy_tenantctx`
 - `TestPublishingSheinSubmitPrepUsesOnlySensitiveWordAdapter`
 - `TestListingKitRootSheinHelpersStayAllowlisted`
 - `TestListingKitRootServiceSubmitFilesStayAllowlisted`
@@ -84,6 +87,16 @@ At minimum, structural review should consider representative guards such as:
 - `TestListingKitRootGenerationFilesStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
+- `depguard: source_handoff_legacy_http`
+- `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`
+- `TestAlibaba1688CrawlerDoesNotImportListingKitRoot`
+- `TestA1688ListingKitCompatibilityReadsIdentityFromNeutralContext`
+- `TestLocalAgentHTTPAPIReadsIdentityFromNeutralContext`
+- `TestSheinLoginReadsIdentityFromNeutralContext`
+- `TestListingKitIdentityReadersUseNeutralContext`
+- `TestZitadelAuthMiddlewareWritesNeutralIdentityContext`
+- `TestAuthenticatedIdentityRootImportsStayRestricted`
+- `TestAuthenticatedIdentityRootImportScannerResolvesAliases`
 - `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
 - `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted`
@@ -150,13 +163,14 @@ At minimum, structural review should consider representative guards such as:
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
-- `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
+- `depguard: publishing_shein_legacy_runtime`
 - `TestPublishingSheinNonAPISheinImportsStayAllowlisted`
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted`
 - `TestPublishingSheinManagedRetiredManagementImportsStayBlocked`
 - `TestPublishingSheinRuntimeBaseAPIClientAliasStaysRetired`
-- `TestPublishingCommonUsesCanonicalPackage`
-- `TestPublishingCommonDoesNotImportPlatformImplementations`
+- `depguard: publishing_common_legacy_productenrich`
+- `TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets`
+- `depguard: publishing_common_platforms`
 - `TestCmdContainsOnlyOfficialEntrypoints`
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
 - `TestHackContainsOnlyManagedSupportAreas`
@@ -167,14 +181,16 @@ At minimum, structural review should consider representative guards such as:
 - `TestToolsContainNoLocalArtifacts`
 - `TestInternalPackagesContainNoLocalArtifacts`
 - `TestSDSLoginRuntimeStateStaysOutOfInternalPackages`
-- `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
+- `depguard: internal_legacy_app_compatibility`
+- `TestInternalPackagesDoNotImportAppCompatibilityLayersAcrossBuildTargets`
 - `TestAppProcessorCompatibilityLayerIsRetired`
-- `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
 - `TestAppStateCompatibilityLayerIsRetired`
 - `TestInfraProductCrawlerAdapterIsRetired`
 - `TestAppCrawlerFetcherCompatibilityLayerIsRetired`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
+- `depguard: cmd_legacy_app_compatibility`
 - `TestProductImageExternalClientImportsStayAllowlisted`
+- `TestProductImageBusinessPackagesDoNotImportGlobalConfig`
 - `TestAmazonExternalClientImportsStayAllowlisted`
 - `TestSheinBridgeExternalClientImportsStayAllowlisted`
 - `TestSheinRetiredManagementImportsStayBlocked`
@@ -240,9 +256,10 @@ At minimum, structural review should consider representative guards such as:
 - `TestTaskStatusCompatibilityPackageStaysRetired`
 - `TestTaskStatusPackageDoesNotExposeManagementNamedAdapter`
 - `TestTaskStatusRuntimeErrorsUseCapabilityNames`
-- `TestTaskStatusPackageDoesNotImportRetiredManagementPackage`
+- `depguard: app_taskstatus_legacy_management`
 - `TestPortsManagementAPIPackageIsRetired`
 - `TestGlobalPortsFacadePackageStaysRetired`
+- `TestLegacyResiliencePackageStaysRetired`
 - `TestListingAdminCompatibilityDoesNotExposeTaskStatusAdapters`
 - `TestListingAdminCompatibilityDoesNotExposeImportTaskUpdateDTO`
 - `TestListingAdminCompatibilityDoesNotExposeImportTaskResponseDTO`
@@ -281,7 +298,8 @@ At minimum, structural review should consider representative guards such as:
 - `TestAppAssemblyUsesManagementAPIPortAliases`
 - `TestListingAdminUsesManagementAPIPortAliases`
 - `TestAppBootstrapRetiredManagementImportsStayBlocked`
-- `TestListingRuntimeLocalDoesNotImportRetiredManagementPackage`
+- `depguard: listingruntime_local_legacy_management`
+- `TestListingRuntimeLocalManagementImportsStayRetiredAcrossBuildTargets`
 - `TestAppHTTPAPIRetiredManagementImportsStayBlocked`
 - `TestAppRuntimeListingRetiredManagementImportsStayBlocked`
 - `TestAppTaskStatusRetiredManagementImportsStayBlocked`
@@ -312,7 +330,8 @@ At minimum, structural review should consider representative guards such as:
 - `TestTEMUOpenAIImportsStayAllowlisted`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
-- `TestListingPreviewPackageStaysPlatformNeutral`
+- `depguard: listing_preview_platform_neutral`
+- `TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets`
 
 If a PR changes the intended boundary, update the owning architecture document
 and its document test in the same change as the code exception.

@@ -3,6 +3,7 @@ import {
   buildSceneOptions,
   parseImageUrls,
   parseOptionalPositiveInt,
+  SHEIN_STORE_REQUIRED_MESSAGE,
   type FormValues,
 } from "@/components/listingkit/tasks/task-create-form-model";
 import type { TaskCreateDraft } from "@/components/listingkit/tasks/task-create-draft";
@@ -19,11 +20,21 @@ export async function buildTaskCreateSubmission({
   const imageUrls = values.imageUrls ?? "";
   const productUrl = (values.productUrl ?? "").trim();
   const parsedImageUrls = parseImageUrls(imageUrls);
+  const targetsShein = values.platforms.some(
+    (platform) => platform.trim().toLowerCase() === "shein",
+  );
+  const sheinStoreId = parseOptionalPositiveInt(values.sheinStoreId ?? "");
 
   if (!text && parsedImageUrls.length === 0 && !productUrl) {
     return {
       ok: false as const,
       message: "请至少提供商品标题、图片链接或商品链接中的一种。",
+    };
+  }
+  if (targetsShein && sheinStoreId === undefined) {
+    return {
+      ok: false as const,
+      message: SHEIN_STORE_REQUIRED_MESSAGE,
     };
   }
 
@@ -56,7 +67,6 @@ export async function buildTaskCreateSubmission({
         ...sdsOptions,
       }
     : undefined;
-  const sheinStoreId = parseOptionalPositiveInt(values.sheinStoreId ?? "");
   const options = {
     ...(sceneOptions ? { process_images: true } : {}),
     ...(enrichedSDSOptions && !sceneOptions ? { process_images: false } : {}),

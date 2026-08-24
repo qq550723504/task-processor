@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"task-processor/internal/crawler/shared"
+	"task-processor/internal/sourceaccount"
 
 	"github.com/sirupsen/logrus"
 )
@@ -63,17 +64,23 @@ func (h *Crawler1688Handler) handleCrawl(w http.ResponseWriter, r *http.Request)
 		BadRequest(w, "source_account_id must not be negative")
 		return
 	}
+	accessMode, err := sourceaccount.SelectAccessMode(req.SourceAccountID)
+	if err != nil {
+		BadRequest(w, "source_account_id is invalid")
+		return
+	}
 	var tenantID int64
 	if req.SourceAccountID > 0 || h.tenantResolver != nil {
 		var ok bool
 		tenantID, ok = h.resolveTenant(r.Context())
 		if !ok {
-			BadRequest(w, "trusted tenant context is required for source_account_id")
+			BadRequest(w, "trusted tenant context is required for crawler task scope")
 			return
 		}
 	}
 	crawlerTask := shared.NewCrawlerTask(req.URL)
 	crawlerTask.SourceAccountID = req.SourceAccountID
+	crawlerTask.SourceAccessMode = string(accessMode)
 	crawlerTask.TenantID = tenantID
 	if req.OfferID != "" {
 		crawlerTask.WithASIN(req.OfferID) // 复用ASIN字段存储OfferID

@@ -78,31 +78,38 @@ func loadStudioBatchDraftState(
 	getTask func(context.Context, string) (*Task, error),
 	batchID string,
 ) (*time.Time, []SheinStudioCreatedTask, []SheinStudioRejectedTask, []SheinStudioFailedTask, error) {
+	var session *SheinStudioSession
+	if studioSessionRepo != nil {
+		loaded, err := studioSessionRepo.GetSession(ctx, batchID)
+		switch {
+		case err == nil:
+			session = loaded
+		case errors.Is(err, gorm.ErrRecordNotFound):
+		case err != nil:
+			return nil, nil, nil, nil, err
+		}
+	}
+	activeStrategy := sheinImageStrategySDSOfficial
+	if session != nil && strings.TrimSpace(session.ImageStrategy) != "" {
+		activeStrategy = sessionImageStrategy(session)
+	}
 	linkTasks, err := loadStudioBatchCreatedTasksFromLinks(ctx, taskLinkRepo, getTask, batchID)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	linkRejectedTasks, err := loadStudioBatchRejectedTasksFromLinks(ctx, taskLinkRepo, batchID)
+	linkRejectedTasks, err := loadStudioBatchRejectedTasksFromLinks(ctx, taskLinkRepo, batchID, activeStrategy)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	if studioSessionRepo == nil {
+	if studioSessionRepo == nil || session == nil {
 		return nil, linkTasks, linkRejectedTasks, nil, nil
 	}
-	session, err := studioSessionRepo.GetSession(ctx, batchID)
-	switch {
-	case err == nil:
-		if session == nil || !session.SavedAsBatch {
-			return nil, linkTasks, linkRejectedTasks, nil, nil
-		}
-		updatedAt := session.UpdatedAt.UTC()
-		createdTasks := mergeStudioCreatedTasks(linkTasks, session.CreatedTasks)
-		return &updatedAt, createdTasks, linkRejectedTasks, append([]SheinStudioFailedTask(nil), session.FailedTasks...), nil
-	case errors.Is(err, gorm.ErrRecordNotFound):
+	if !session.SavedAsBatch {
 		return nil, linkTasks, linkRejectedTasks, nil, nil
-	default:
-		return nil, nil, nil, nil, err
 	}
+	updatedAt := session.UpdatedAt.UTC()
+	createdTasks := mergeStudioCreatedTasks(linkTasks, session.CreatedTasks)
+	return &updatedAt, createdTasks, linkRejectedTasks, append([]SheinStudioFailedTask(nil), session.FailedTasks...), nil
 }
 
 func loadStudioBatchCreatedTasksFromLinks(
@@ -158,6 +165,7 @@ func loadStudioBatchRejectedTasksFromLinks(
 	ctx context.Context,
 	taskLinkRepo StudioBatchTaskLinkRepository,
 	batchID string,
+	activeStrategy string,
 ) ([]SheinStudioRejectedTask, error) {
 	if taskLinkRepo == nil {
 		return nil, nil
@@ -168,11 +176,22 @@ func loadStudioBatchRejectedTasksFromLinks(
 	}
 	rejected := make([]SheinStudioRejectedTask, 0)
 	seen := make(map[string]struct{}, len(links))
+	activeStrategy = normalizeSheinImageStrategy(activeStrategy)
+	if activeStrategy == "" {
+		activeStrategy = sheinImageStrategySDSOfficial
+	}
 	for _, link := range links {
 		if link.Status != studioBatchTaskLinkStatusFailed ||
 			strings.TrimSpace(link.ListingKitTaskID) != "" ||
 			strings.TrimSpace(link.ReasonCode) == "task_create_failed" {
 			continue
+		}
+		// A blank strategy predates this field and is therefore applicable to
+		// the active strategy; only an explicitly different strategy is stale.
+		if rawStrategy := strings.TrimSpace(link.ImageStrategy); rawStrategy != "" {
+			if linkStrategy := normalizeSheinImageStrategy(rawStrategy); linkStrategy != activeStrategy {
+				continue
+			}
 		}
 		key := strings.Join([]string{
 			strings.TrimSpace(link.DesignID),

@@ -6,6 +6,7 @@ func (r listingProductImportMapping) toProductImportMapping() ProductImportMappi
 	return ProductImportMapping{
 		ID:                      r.ID,
 		TenantID:                r.TenantID,
+		OwnerUserID:             r.OwnerUserID,
 		ImportTaskID:            r.ImportTaskID,
 		StoreID:                 r.StoreID,
 		Platform:                r.Platform,
@@ -35,6 +36,7 @@ func listingProductImportMappingFromProductImportMapping(mapping *ProductImportM
 	return listingProductImportMapping{
 		ID:                      mapping.ID,
 		TenantID:                mapping.TenantID,
+		OwnerUserID:             strings.TrimSpace(mapping.OwnerUserID),
 		ImportTaskID:            mapping.ImportTaskID,
 		StoreID:                 mapping.StoreID,
 		Platform:                strings.TrimSpace(mapping.Platform),

@@ -118,7 +118,7 @@ func (r *TaskProcessorRegistry) GetAllProcessors() map[string]worker.Processor {
 }
 
 // GetQueueName returns the queue name for a platform.
-func (r *TaskProcessorRegistry) GetQueueName(platform string) string {
+func (r *TaskProcessorRegistry) GetQueueName(platform string) (string, error) {
 	return apptask.NewMessageAdapter().GetQueueName(platform)
 }
 

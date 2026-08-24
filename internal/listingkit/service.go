@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
@@ -65,6 +66,10 @@ func (s *service) settingsHealthProbes() SettingsHealthProbes {
 	return s.healthProbes
 }
 
+func (s *service) GetSettingsHealthProbes(context.Context) SettingsHealthProbes {
+	return s.settingsHealthProbes()
+}
+
 func normalizeGenerateRequest(req *GenerateRequest) {
 	if req == nil {
 		return
@@ -84,9 +89,21 @@ func normalizeGenerateRequest(req *GenerateRequest) {
 	}
 	req.Platforms = listingplatform.NormalizeSupportedPlatforms(req.Platforms)
 	req.ImageURLs = normalizeGenerateRequestImageURLs(req.ImageURLs)
+	normalizeGenerateRequestSource(req)
+	if shouldProcessImages(req) && hasImageProcessingInput(req) && len(req.Platforms) == 0 {
+		req.Platforms = nil
+		return
+	}
 	if len(req.Platforms) == 0 {
 		req.Platforms = listingplatform.SupportedPlatforms()
 	}
+}
+
+func hasImageProcessingInput(req *GenerateRequest) bool {
+	if req == nil {
+		return false
+	}
+	return len(req.ImageURLs) > 0 || strings.TrimSpace(req.ProductURL) != ""
 }
 
 func normalizeGenerateRequestImageURLs(urls []string) []string {

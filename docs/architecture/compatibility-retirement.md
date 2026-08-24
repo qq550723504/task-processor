@@ -18,8 +18,8 @@ package placement decisions.
 
 | Path | Status | Replacement | Guard |
 | --- | --- | --- | --- |
-| `internal/app/processor` | Retired | `internal/processor` | `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`, `TestAppProcessorCompatibilityLayerIsRetired` |
-| `internal/app/state` | Retired for Go code | `internal/state` | `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`, `TestAppStateCompatibilityLayerIsRetired` |
+| `internal/app/processor` | Retired | `internal/processor` | `depguard: internal_legacy_app_compatibility`, `TestInternalPackagesDoNotImportAppCompatibilityLayersAcrossBuildTargets`, `TestAppProcessorCompatibilityLayerIsRetired` |
+| `internal/app/state` | Retired for Go code | `internal/state` | `depguard: internal_legacy_app_compatibility`, `TestInternalPackagesDoNotImportAppCompatibilityLayersAcrossBuildTargets`, `TestAppStateCompatibilityLayerIsRetired` |
 | `internal/infra/productcrawler` | Retired | `internal/product/sourcing` plus app crawler fetchers | `TestInfraProductCrawlerAdapterIsRetired` |
 | `internal/app/crawler/fetcher` | Retired | `internal/crawler/fetcher` | `TestAppCrawlerFetcherCompatibilityLayerIsRetired` |
 
@@ -31,7 +31,8 @@ directory on developer machines, but it must not contain tracked Go
 compatibility files. State owners should use `internal/state` directly.
 
 Production entrypoints must not keep compatibility paths alive. This is guarded
-by `TestCmdPackagesDoNotImportAppCompatibilityLayers`.
+by `depguard: cmd_legacy_app_compatibility` and
+`TestCmdPackagesDoNotImportAppCompatibilityLayers`.
 
 ## Retirement Conditions
 

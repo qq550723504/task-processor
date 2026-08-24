@@ -30,7 +30,11 @@ func buildSheinFinalReviewPayload(pkg *sheinpub.Package, canonical *canonical.Pr
 	}
 	if pkg.DraftPayload != nil {
 		final.SKUs = sheinworkspace.BuildFinalReviewSKUs(pkg.DraftPayload)
-		final.Images = sheinworkspace.BuildFinalReviewImages(pkg.DraftPayload, pkg.FinalSubmissionDraft, pkg.PreviewPayload)
+		var offeredSourceImageURLs []string
+		if final.SourceProduct != nil {
+			offeredSourceImageURLs = final.SourceProduct.ImageURLs
+		}
+		final.Images = sheinworkspace.BuildFinalReviewImages(pkg.DraftPayload, pkg.FinalSubmissionDraft, pkg.PreviewPayload, offeredSourceImageURLs)
 	}
 	return final
 }

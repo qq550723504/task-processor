@@ -8,12 +8,13 @@ import (
 )
 
 type settingsAdminWiring struct {
-	storeProfileRepo     StoreProfileRepository
-	aiCredentialStore    AIClientCredentialStore
-	currentSheinSettings func() SheinSettings
-	mutateSheinSettings  func(func(*SheinSettings)) SheinSettings
-	listStoreOptions     func(context.Context) []SheinStoreOption
-	settingsHealthProbes SettingsHealthProbes
+	storeProfileRepo          StoreProfileRepository
+	aiCredentialStore         AIClientCredentialStore
+	currentSheinSettings      func() SheinSettings
+	mutateSheinSettings       func(func(*SheinSettings)) SheinSettings
+	listStoreOptions          func(context.Context) []SheinStoreOption
+	listStoreOptionsWithError func(context.Context) ([]SheinStoreOption, error)
+	settingsHealthProbes      SettingsHealthProbes
 }
 
 type sheinAdminWiring struct {
@@ -44,8 +45,9 @@ func buildSettingsAdminWiring(s *service) settingsAdminWiring {
 			s.sheinSettings = settings
 			return settings
 		},
-		listStoreOptions:     s.listSheinStoreOptions,
-		settingsHealthProbes: s.settingsHealthProbes(),
+		listStoreOptions:          s.listSheinStoreOptions,
+		listStoreOptionsWithError: s.listSheinStoreOptionsWithError,
+		settingsHealthProbes:      s.settingsHealthProbes(),
 	}
 }
 
@@ -82,12 +84,13 @@ func resolveAdminAICredentialStore(s *service) AIClientCredentialStore {
 
 func buildSettingsAdminServiceConfigWithWiring(wiring settingsAdminWiring) settingsAdminServiceConfig {
 	return settingsAdminServiceConfig{
-		storeProfileRepo:     wiring.storeProfileRepo,
-		aiCredentialStore:    wiring.aiCredentialStore,
-		currentSheinSettings: wiring.currentSheinSettings,
-		mutateSheinSettings:  wiring.mutateSheinSettings,
-		listStoreOptions:     wiring.listStoreOptions,
-		settingsHealthProbes: wiring.settingsHealthProbes,
+		storeProfileRepo:          wiring.storeProfileRepo,
+		aiCredentialStore:         wiring.aiCredentialStore,
+		currentSheinSettings:      wiring.currentSheinSettings,
+		mutateSheinSettings:       wiring.mutateSheinSettings,
+		listStoreOptions:          wiring.listStoreOptions,
+		listStoreOptionsWithError: wiring.listStoreOptionsWithError,
+		settingsHealthProbes:      wiring.settingsHealthProbes,
 	}
 }
 

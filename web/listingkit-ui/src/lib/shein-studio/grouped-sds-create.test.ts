@@ -235,6 +235,44 @@ describe("createGroupedSheinReviewTasks", () => {
     });
   });
 
+  it("preflights every task-producing group before creating any task", async () => {
+    const createReviewTasks = vi.fn();
+
+    await expect(
+      createGroupedSheinReviewTasks({
+        prompt: "Grouped prompt",
+        groupedImageMode: "per_product",
+        groups: [
+          {
+            sheinStoreId: "869",
+            selections: [
+              {
+                selection: baseSelection,
+                baselineStatus: "ready",
+              },
+            ],
+            designs: [perProductDesign],
+            selectedIds: [perProductDesign.id],
+          },
+          {
+            sheinStoreId: "",
+            selections: [
+              {
+                selection: secondSelection,
+                baselineStatus: "ready",
+              },
+            ],
+            designs: [secondProductDesign],
+            selectedIds: [secondProductDesign.id],
+          },
+        ],
+        createReviewTasks,
+      }),
+    ).rejects.toThrow("Select a SHEIN store before creating SHEIN tasks.");
+
+    expect(createReviewTasks).not.toHaveBeenCalled();
+  });
+
   it("skips grouped selections that are marked ineligible", async () => {
     const createReviewTasks = vi
       .fn()

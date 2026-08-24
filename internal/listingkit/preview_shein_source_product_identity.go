@@ -1,9 +1,28 @@
 package listingkit
 
-import "strconv"
+import (
+	"strconv"
+)
 
-func backfillSheinPreviewSourceProductIdentity(preview *ListingKitPreview, task *Task) {
-	if preview == nil || preview.Shein == nil || task == nil || task.Request == nil || task.Request.Options == nil || task.Request.Options.SDS == nil {
+func backfillSheinPreviewSourceMetadata(preview *ListingKitPreview, task *Task) {
+	if preview == nil || preview.Shein == nil || task == nil || task.Request == nil {
+		return
+	}
+	source := sheinPreviewSourceReference(task)
+	preview.Shein.SourceReference = cloneSourceReference(source)
+	if preview.Shein.FinalReview != nil {
+		preview.Shein.FinalReview.SourceReference = cloneSourceReference(source)
+	}
+
+	if source == nil {
+		preview.Shein.SourceProduct = nil
+		if preview.Shein.FinalReview != nil {
+			preview.Shein.FinalReview.SourceProduct = nil
+		}
+		return
+	}
+
+	if task.Request.Options == nil || task.Request.Options.SDS == nil || !isSDSSourceReference(source) {
 		return
 	}
 	sds := task.Request.Options.SDS
@@ -22,4 +41,14 @@ func backfillSheinPreviewSourceProductIdentity(preview *ListingKitPreview, task 
 	if preview.Shein.FinalReview != nil {
 		apply(preview.Shein.FinalReview.SourceProduct)
 	}
+}
+
+func sheinPreviewSourceReference(task *Task) *SourceReference {
+	if task == nil || task.Request == nil {
+		return nil
+	}
+	if source := task.Request.Source; hasSourceReference(source) {
+		return cloneSourceReference(source)
+	}
+	return nil
 }

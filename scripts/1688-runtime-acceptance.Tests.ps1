@@ -1,0 +1,751 @@
+Describe "1688 runtime acceptance safety" {
+    BeforeAll {
+        $scriptPath = Join-Path $PSScriptRoot "1688-runtime-acceptance.ps1"
+        . $scriptPath -TestOnly
+    }
+
+    It "requires an exact confirmation before task creation" {
+        $threw = $false
+        try { Assert-TaskCreationConfirmation -Mode "Crawl" -Confirmation "" } catch { $threw = $true }
+        $threw | Should Be $true
+
+        { Assert-TaskCreationConfirmation -Mode "Crawl" -Confirmation "CREATE-1688-TASK" } | Should Not Throw
+        $threw = $false
+        try { Assert-TaskCreationConfirmation -Mode "Crawl" -Confirmation "create-1688-task" } catch { $threw = $true }
+        $threw | Should Be $true
+        { Assert-TaskCreationConfirmation -Mode "Preflight" -Confirmation "" } | Should Not Throw
+    }
+
+    It "maps crawler product data without adding the rejected source store field" {
+        $payload = New-ListingKitHandoffPayload `
+            -ProductData ([pscustomobject]@{ id = "321"; title = "Test product"; url = "https://detail.1688.com/offer/321.html" }) `
+            -SourceAccountID 3001 -SheinStoreID 168811 -CrawlerTaskID "crawler-task-1"
+
+        $payload.source_account_id | Should Be 3001
+        $payload.shein_store_id | Should Be 168811
+        $payload.product.id | Should Be "321"
+        ($payload.Keys -contains "source_store_id") | Should Be $false
+    }
+
+    It "omits the source account selector for public handoff payloads" {
+        $payload = New-ListingKitHandoffPayload `
+            -ProductData ([pscustomobject]@{ id = "322"; title = "Public product"; url = "https://detail.1688.com/offer/322.html" }) `
+            -SourceAccountID 0 -SheinStoreID 168811 -CrawlerTaskID "crawler-task-public"
+
+        ($payload.Keys -contains "source_account_id") | Should Be $false
+        $payload.url | Should Be "https://detail.1688.com/offer/322.html"
+    }
+
+    It "does not expose token or profile values in redacted errors" {
+        $message = Get-RedactedRuntimeError -StatusCode 401 -Endpoint "https://example.test" -RawBody "token=secret; user_data_dir=C:\profiles\tenant-1"
+        $message | Should Match "HTTP 401"
+        $message | Should Not Match "secret|profiles|tenant-1|user_data_dir"
+    }
+
+    It "prefers the environment token over the token file" {
+        $tokenPath = Join-Path $TestDrive "listingkit-token.txt"
+        Set-Content -LiteralPath $tokenPath -Value "file-token"
+        $previous = $env:LISTINGKIT_API_TOKEN
+        try {
+            $env:LISTINGKIT_API_TOKEN = "Bearer env-token"
+            (Resolve-ListingKitToken -Path $tokenPath) | Should Be "env-token"
+        } finally {
+            $env:LISTINGKIT_API_TOKEN = $previous
+        }
+    }
+
+    It "keeps legacy token resolution when device authorization is absent" {
+        Mock Resolve-ListingKitToken { "legacy-token" }
+
+        (Resolve-AcceptanceToken) | Should Be "legacy-token"
+    }
+
+    It "stops device authorization before settings health when the authenticated tenant differs" {
+        $script:requestPaths = @()
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            $script:requestPaths += "$Method $Path"
+            if ($Path -eq "/api/v1/listing-kits/auth-context") {
+                return @{ tenant_id = "wrong-tenant"; user_id = "subject"; roles = @("listingkit_operator") }
+            }
+            throw "settings health must not run"
+        }
+
+        { Invoke-Preflight -Token "access-token-sentinel" -BaseUrl "https://example.test" -ExpectedTenantID "373211199677923496" } | Should Throw "authenticated tenant does not match -ExpectedTenantID"
+        ($script:requestPaths -join ",") | Should Be "Get /api/v1/listing-kits/auth-context"
+    }
+
+    It "rejects an authenticated identity without a task-creating role" {
+        Mock Invoke-AcceptanceRequest {
+            return @{ tenant_id = "373211199677923496"; user_id = "subject"; roles = @("listingkit_viewer") }
+        }
+
+        { Assert-AuthenticatedTenant -Token "access-token-sentinel" -ExpectedTenantID "373211199677923496" -BaseUrl "https://example.test" } | Should Throw "does not have a task-creating role"
+    }
+
+    It "validates the API URL before starting device authorization" {
+        $previousUseDeviceAuthorization = $script:UseDeviceAuthorization
+        $previousIssuerURL = $script:IssuerURL
+        $previousClientID = $script:ClientID
+        $previousExpectedTenantID = $script:ExpectedTenantID
+        $previousApiBaseUrl = $script:AcceptanceApiBaseUrl
+        try {
+            $script:UseDeviceAuthorization = $true
+            $script:IssuerURL = "https://issuer.example"
+            $script:ClientID = "device-client"
+            $script:ExpectedTenantID = "373211199677923496"
+            $script:AcceptanceApiBaseUrl = "http://api.example"
+            Mock Resolve-ListingKitDeviceToken { throw "device authorization must not run" }
+
+            { Resolve-AcceptanceToken } | Should Throw "-ApiBaseUrl must use HTTPS unless it is a literal loopback test endpoint"
+            Assert-MockCalled Resolve-ListingKitDeviceToken -Times 0 -Exactly
+        } finally {
+            $script:UseDeviceAuthorization = $previousUseDeviceAuthorization
+            $script:IssuerURL = $previousIssuerURL
+            $script:ClientID = $previousClientID
+            $script:ExpectedTenantID = $previousExpectedTenantID
+            $script:AcceptanceApiBaseUrl = $previousApiBaseUrl
+        }
+    }
+
+    It "keeps the default preflight request sequence GET-only" {
+        $script:requestMethods = @()
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            $script:requestMethods += "$Method $Path"
+            if ($Path -eq "/api/v1/listing-kits/auth-context") {
+                return @{ tenant_id = "373211199677923496"; user_id = "subject"; roles = @("listingkit_operator") }
+            }
+            if ($Path -eq "/api/v1/listing-kits/settings-health") {
+                return @{ status = "ready" }
+            }
+            return @{ status = "ok" }
+        }
+
+        Invoke-Preflight -Token "test-token" -BaseUrl "https://example.test" | Out-Null
+
+        ($script:requestMethods -join ",") | Should Be "Get /api/v1/listing-kits/auth-context,Get /health,Get /readyz,Get /api/v1/listing-kits/settings-health"
+    }
+
+    It "runs public preflight checks then stops before settings health when the token is missing" {
+        $script:requestMethods = @()
+        Mock Resolve-ListingKitToken { throw "token is missing" }
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path, $Token)
+            $script:requestMethods += "$Method $Path"
+            return @{ status = "ok" }
+        }
+
+        { Invoke-Main } | Should Throw "token is missing"
+
+        ($script:requestMethods -join ",") | Should Be "Get /health,Get /readyz"
+    }
+
+    It "blocks preflight when settings health is not ready" {
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            if ($Path -eq "/api/v1/listing-kits/auth-context") {
+                return @{ tenant_id = "373211199677923496"; user_id = "subject"; roles = @("listingkit_operator") }
+            }
+            if ($Path -eq "/api/v1/listing-kits/settings-health") {
+                return @{ status = "blocked" }
+            }
+            return @{ status = "ok" }
+        }
+
+        { Invoke-Preflight -Token "test-token" -BaseUrl "https://example.test" } | Should Throw "settings-health status is 'blocked'; task creation is not allowed"
+    }
+
+    It "accepts the ordered handoff payload at the request boundary" {
+        Mock Invoke-RestMethod { return @{ status = "ok" } }
+        $body = New-ListingKitHandoffPayload `
+            -ProductData ([pscustomobject]@{ id = "325"; title = "Binding product"; url = "https://detail.1688.com/offer/325.html" }) `
+            -SourceAccountID 3005 -SheinStoreID 168815 -CrawlerTaskID "crawler-task-5"
+
+        { Invoke-AcceptanceRequest -Method Post -Path "/api/v1/test" -Token "test-token" -Body $body -BaseUrl "https://example.test" } | Should Not Throw
+    }
+
+    It "rejects Crawl without exact confirmation before making a request" {
+        $script:requestCalls = 0
+        Mock Invoke-AcceptanceRequest {
+            $script:requestCalls++
+            throw "request should not run"
+        }
+
+        try { Invoke-Crawl -Url "https://detail.1688.com/offer/321.html" -SourceAccountID 3001 -Confirmation "" } catch { }
+
+        $script:requestCalls | Should Be 0
+    }
+
+    It "rejects a non-1688 URL before making a crawler request" {
+        $script:requestCalls = 0
+        Mock Invoke-AcceptanceRequest {
+            $script:requestCalls++
+            throw "request should not run"
+        }
+
+        try { Invoke-Crawl -Url "https://example.com/product/321" -SourceAccountID 3001 -Confirmation "CREATE-1688-TASK" } catch { }
+
+        $script:requestCalls | Should Be 0
+    }
+
+    It "polls processing then returns a successful crawler product" {
+        $script:pollCount = 0
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-1" } }
+            }
+            $status = if ($script:pollCount++ -eq 0) { "processing" } else { "success" }
+            return @{ data = @{ task_id = "crawler-task-1"; status = $status; product_data = [pscustomobject]@{ id = "321"; title = "Test product"; url = "https://detail.1688.com/offer/321.html" } } }
+        }
+
+        $result = Invoke-Crawl -Url "https://detail.1688.com/offer/321.html" -SourceAccountID 3001 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0
+
+        $result.TaskID | Should Be "crawler-task-1"
+        $result.Status | Should Be "success"
+        $result.ProductData.id | Should Be "321"
+    }
+
+    It "allows public Crawl and omits the source account selector" {
+        $script:lastCrawlBody = $null
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path, $Body)
+            if ($Path -eq "/api/v1/crawl") {
+                $script:lastCrawlBody = $Body
+                return @{ data = @{ task_id = "crawler-task-public" } }
+            }
+            return @{ data = @{ task_id = "crawler-task-public"; status = "success"; product_data = [pscustomobject]@{ id = "322"; title = "Public product"; url = "https://detail.1688.com/offer/322.html" } } }
+        }
+
+        $result = Invoke-Crawl -Url "https://detail.1688.com/offer/322.html" -SourceAccountID 0 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0
+
+        $result.Status | Should Be "success"
+        ($script:lastCrawlBody.Keys -contains "source_account_id") | Should Be $false
+        $script:lastCrawlBody.url | Should Be "https://detail.1688.com/offer/322.html"
+    }
+
+    It "accepts the live ProductData response casing from the crawler task" {
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-live" } }
+            }
+            return @{ data = @{ task_id = "crawler-task-live"; status = "success"; ProductData = [pscustomobject]@{ id = "323"; title = "Live casing product"; url = "https://detail.1688.com/offer/323.html" } } }
+        }
+
+        $result = Invoke-Crawl -Url "https://detail.1688.com/offer/323.html" -SourceAccountID 3003 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0
+
+        $result.ProductData.id | Should Be "323"
+    }
+
+    It "fails immediately when the crawler returns an unknown status" {
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-invalid-status" } }
+            }
+            return @{ data = @{ task_id = "crawler-task-invalid-status"; status = "queued" } }
+        }
+
+        { Invoke-Crawl -Url "https://detail.1688.com/offer/326.html" -SourceAccountID 3006 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 } | Should Throw "crawler task crawler-task-invalid-status returned unexpected status 'queued'"
+    }
+
+    It "rejects a successful crawler result for a different task" {
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-expected" } }
+            }
+            return @{ data = @{ TaskID = "crawler-task-other"; Status = "success"; ProductData = [pscustomobject]@{ id = "328"; title = "Wrong task"; url = "https://detail.1688.com/offer/328.html" } } }
+        }
+
+        { Invoke-Crawl -Url "https://detail.1688.com/offer/328.html" -SourceAccountID 3008 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 } | Should Throw "crawler task crawler-task-expected response task id 'crawler-task-other' does not match"
+    }
+
+    It "rejects an expired crawler deadline before polling" {
+        { Get-RemainingRequestTimeoutSec -Deadline ([DateTime]::UtcNow.AddSeconds(-1)) -TaskID "crawler-task-expired" } | Should Throw "crawler task crawler-task-expired timed out"
+
+        $remaining = Get-RemainingRequestTimeoutSec -Deadline ([DateTime]::UtcNow.AddSeconds(10))
+        ($remaining -ge 1 -and $remaining -le 11) | Should Be $true
+    }
+
+    It "caps polling sleep at the remaining deadline" {
+        $sleep = Get-CappedPollSleepSec -PollIntervalSec 300 -Deadline ([DateTime]::UtcNow.AddSeconds(2))
+
+        ($sleep -ge 0 -and $sleep -le 2) | Should Be $true
+    }
+
+    It "preserves a one-second request allowance while the deadline is still future" {
+        $remaining = Get-RemainingRequestTimeoutSec -Deadline ([DateTime]::UtcNow.AddMilliseconds(500)) -TaskID "crawler-task-short"
+
+        $remaining | Should Be 1
+    }
+
+    It "sends the crawler product to the ListingKit handoff without source_store_id" {
+        $script:lastHandoffBody = $null
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path, $Body)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-2" } }
+            }
+            if ($Path -eq "/api/v1/tasks/crawler-task-2") {
+                return @{ data = @{ task_id = "crawler-task-2"; status = "success"; product_data = [pscustomobject]@{ id = "322"; title = "End-to-end product"; url = "https://detail.1688.com/offer/322.html" } } }
+            }
+            $script:lastHandoffBody = $Body
+            return @{ data = @{ task_id = "listing-task-2"; status = "pending" } }
+        }
+
+        $result = Invoke-EndToEnd -Url "https://detail.1688.com/offer/322.html" -SourceAccountID 3002 -SheinStoreID 168812 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0
+
+        $result.CrawlerTaskID | Should Be "crawler-task-2"
+        $script:lastHandoffBody.source_account_id | Should Be 3002
+        $script:lastHandoffBody.shein_store_id | Should Be 168812
+        ($script:lastHandoffBody.Keys -contains "source_store_id") | Should Be $false
+    }
+
+    It "omits an unused account selector when public crawl succeeds" {
+        $script:lastHandoffBody = $null
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path, $Body)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-public-handoff" } }
+            }
+            if ($Path -eq "/api/v1/tasks/crawler-task-public-handoff") {
+                return @{ data = @{ task_id = "crawler-task-public-handoff"; status = "success"; source_access_mode = "public"; product_data = [pscustomobject]@{ id = "329"; title = "Public handoff product"; url = "https://detail.1688.com/offer/329.html" } } }
+            }
+            $script:lastHandoffBody = $Body
+            return @{ data = @{ task_id = "listing-task-public-handoff"; status = "pending" } }
+        }
+
+        Invoke-EndToEnd -Url "https://detail.1688.com/offer/329.html" -SourceAccountID 3009 -SheinStoreID 168819 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 | Out-Null
+
+        ($script:lastHandoffBody.Keys -contains "source_account_id") | Should Be $false
+        $script:lastHandoffBody.shein_store_id | Should Be 168819
+    }
+
+    It "rejects an EndToEnd handoff response without a task id" {
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-3" } }
+            }
+            if ($Path -eq "/api/v1/tasks/crawler-task-3") {
+                return @{ data = @{ task_id = "crawler-task-3"; status = "success"; ProductData = [pscustomobject]@{ id = "324"; title = "Missing handoff task"; url = "https://detail.1688.com/offer/324.html" } } }
+            }
+            return @{ data = @{ status = "pending" } }
+        }
+
+        { Invoke-EndToEnd -Url "https://detail.1688.com/offer/324.html" -SourceAccountID 3004 -SheinStoreID 168814 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 } | Should Throw "handoff response did not contain a task id"
+    }
+
+    It "reports the live source identity fields and derived source key" {
+        $evidence = Get-SourceIdentityEvidence -SourceIdentity ([pscustomobject]@{
+            SourceType = "crawler"
+            SourcePlatform = "1688"
+            SourceID = "327"
+            SourceVersion = "v1"
+        })
+
+        $evidence.SourceID | Should Be "327"
+        $evidence.SourceKey | Should Be "crawler:1688:327:version:v1"
+    }
+
+    It "runs a source-only preflight without requiring settings health" {
+        $script:requestMethods = @()
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            $script:requestMethods += "$Method $Path"
+            if ($Path -eq "/api/v1/listing-kits/auth-context") {
+                return @{ tenant_id = "373211199677923496"; user_id = "subject"; roles = @("listingkit_operator") }
+            }
+            return @{ status = "ok" }
+        }
+
+        { Invoke-SourcePreflight -Token "test-token" -BaseUrl "https://example.test" } | Should Not Throw
+
+        ($script:requestMethods -join ",") | Should Be "Get /api/v1/listing-kits/auth-context,Get /health,Get /readyz"
+    }
+
+    It "runs the source-only gate before Crawl" {
+        $previousMode = $script:Mode
+        $previousUrl = $script:Url
+        $previousSourceAccountID = $script:SourceAccountID
+        $previousConfirm = $script:ConfirmCreateTask
+        $previousUseDeviceAuthorization = $script:UseDeviceAuthorization
+        try {
+            $script:Mode = "Crawl"
+            $script:Url = "https://detail.1688.com/offer/321.html"
+            $script:SourceAccountID = 3001
+            $script:ConfirmCreateTask = "CREATE-1688-TASK"
+            $script:UseDeviceAuthorization = $false
+            $script:sourceGateCalls = 0
+            $script:crawlCalls = 0
+            Mock Resolve-AcceptanceToken { "test-token" }
+            Mock Invoke-SourcePreflight { $script:sourceGateCalls++ }
+            Mock Invoke-Crawl { $script:crawlCalls++; return @{ TaskID = "crawler-task-1"; Status = "success" } }
+
+            Invoke-Main | Out-Null
+
+            $script:sourceGateCalls | Should Be 1
+            $script:crawlCalls | Should Be 1
+        } finally {
+            $script:Mode = $previousMode
+            $script:Url = $previousUrl
+            $script:SourceAccountID = $previousSourceAccountID
+            $script:ConfirmCreateTask = $previousConfirm
+            $script:UseDeviceAuthorization = $previousUseDeviceAuthorization
+        }
+    }
+
+    It "runs the full gate before EndToEnd" {
+        $previousMode = $script:Mode
+        $previousUseDeviceAuthorization = $script:UseDeviceAuthorization
+        try {
+            $script:Mode = "EndToEnd"
+            $script:UseDeviceAuthorization = $false
+            $script:endToEndCalls = 0
+            Mock Resolve-AcceptanceToken { "test-token" }
+            Mock Invoke-Preflight { throw "full settings gate blocked" }
+            Mock Invoke-EndToEnd { $script:endToEndCalls++ }
+
+            { Invoke-Main } | Should Throw "full settings gate blocked"
+            $script:endToEndCalls | Should Be 0
+        } finally {
+            $script:Mode = $previousMode
+            $script:UseDeviceAuthorization = $previousUseDeviceAuthorization
+        }
+    }
+
+    It "always validates authenticated identity when the expected tenant is omitted" {
+        Mock Invoke-AcceptanceRequest {
+            return @{ tenant_id = "runtime-tenant"; user_id = "subject"; roles = @("listingkit_operator") }
+        }
+
+        { Assert-AuthenticatedTenant -Token "test-token" -BaseUrl "https://example.test" } | Should Not Throw
+    }
+}
+
+Describe "ListingKit device authorization safety" {
+    BeforeAll {
+        . (Join-Path $PSScriptRoot "lib\listingkit-device-auth.ps1")
+    }
+
+    It "stores a device access token encrypted and reloads it before expiry" {
+        $payload = [ordered]@{
+            exp = [DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()
+        } | ConvertTo-Json -Compress
+        $payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload)).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+        $token = "header.$payloadBase64.signature"
+        $cachePath = Join-Path $TestDrive "device-token-cache.json"
+
+        Save-ListingKitDeviceTokenCache -Path $cachePath -Token $token
+
+        (Get-ListingKitDeviceTokenCache -Path $cachePath) | Should Be $token
+        $cacheContents = Get-Content -LiteralPath $cachePath -Raw
+        $cacheContents.Contains($token) | Should Be $false
+    }
+
+    It "does not reuse an expired device access token" {
+        $payload = [ordered]@{
+            exp = [DateTimeOffset]::UtcNow.AddMinutes(-1).ToUnixTimeSeconds()
+        } | ConvertTo-Json -Compress
+        $payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload)).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+        $token = "header.$payloadBase64.signature"
+        $cachePath = Join-Path $TestDrive "expired-device-token-cache.json"
+
+        Save-ListingKitDeviceTokenCache -Path $cachePath -Token $token
+
+        (Get-ListingKitDeviceTokenCache -Path $cachePath) | Should Be ""
+    }
+
+    It "stores an opaque device access token when its OAuth expiry is supplied" {
+        $token = "opaque-access-token-sentinel"
+        $cachePath = Join-Path $TestDrive "opaque-device-token-cache.json"
+        $expiry = [DateTimeOffset]::UtcNow.AddHours(1)
+
+        Save-ListingKitDeviceTokenCache -Path $cachePath -Token $token -ExpiresAt $expiry
+
+        (Get-ListingKitDeviceTokenCache -Path $cachePath) | Should Be $token
+        (Get-Content -LiteralPath $cachePath -Raw).Contains($token) | Should Be $false
+    }
+
+    It "rejects a non-HTTPS non-loopback issuer before discovery" {
+        Mock Invoke-RestMethod { throw "discovery must not run" }
+
+        { Resolve-ListingKitDeviceToken -IssuerURL "http://issuer.example" -ClientID "device-client" -TimeoutSec 30 } | Should Throw "-IssuerURL must use HTTPS unless it is a literal loopback test endpoint"
+
+        Assert-MockCalled Invoke-RestMethod -Times 0 -Exactly
+    }
+
+    It "rejects a non-HTTPS non-loopback API URL before a device-authorized request" {
+        { Assert-ListingKitDeviceAPIBaseUrl -ApiBaseUrl "http://api.example" } | Should Throw "-ApiBaseUrl must use HTTPS unless it is a literal loopback test endpoint"
+    }
+
+    It "rejects a discovered token endpoint outside the issuer origin" {
+        Mock Invoke-RestMethod {
+            @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://attacker.example/token" }
+        }
+
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -TimeoutSec 30 } | Should Throw "token endpoint must use the same-origin as the issuer"
+    }
+
+    It "rejects a verification URI outside the issuer origin" {
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://attacker.example/verify"; expires_in = 60 }
+        }
+
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 } | Should Throw "verification URI must use the same-origin as the issuer"
+    }
+
+    It "passes configured ListingKit scopes to device authorization" {
+        $script:requestedScope = ""
+        Mock Invoke-RestMethod {
+            param($Uri, $Body)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                $script:requestedScope = [string]$Body.scope
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60 }
+            }
+            return @{ access_token = "access-token" }
+        }
+        Mock Write-Host {}
+        Mock Start-Sleep {}
+
+        $configuredScopes = "openid profile email urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:listingkit-project:aud urn:zitadel:iam:org:project:role:listingkit_operator"
+        Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -Scopes $configuredScopes -TimeoutSec 30 | Should Be "access-token"
+        $script:requestedScope | Should Be $configuredScopes
+    }
+
+    It "delimits the project ID when constructing the audience scope" {
+        $scopes = Get-ListingKitDeviceOAuthScopes -ProjectID "listingkit-project"
+
+        $scopes | Should Match "urn:zitadel:iam:org:project:id:listingkit-project:aud"
+    }
+
+    It "rejects offline access in configured ListingKit scopes" {
+        { Get-ListingKitDeviceOAuthScopes -Scopes "openid offline_access" } | Should Throw "offline_access is not allowed"
+    }
+
+    It "rejects a refresh token returned by the device token endpoint" {
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60 }
+            }
+            return @{ access_token = "access-token"; refresh_token = "refresh-token-sentinel" }
+        }
+        Mock Write-Host {}
+        Mock Start-Sleep {}
+
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 } | Should Throw "refresh token"
+    }
+
+    It "bounds every OAuth request and disables redirects" {
+        $script:oauthRequests = @()
+        Mock Invoke-RestMethod {
+            param($Uri, $TimeoutSec, $OperationTimeoutSeconds, $MaximumRedirection)
+            $script:oauthRequests += [pscustomobject]@{
+                TimeoutSec = $TimeoutSec
+                OperationTimeoutSeconds = $OperationTimeoutSeconds
+                MaximumRedirection = $MaximumRedirection
+            }
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60 }
+            }
+            return @{ access_token = "access-token" }
+        }
+        Mock Write-Host {}
+        Mock Start-Sleep {}
+
+        Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 | Should Be "access-token"
+        @($script:oauthRequests).Count | Should Be 3
+        foreach ($request in @($script:oauthRequests)) {
+            $effectiveTimeout = if ($null -ne $request.OperationTimeoutSeconds) { $request.OperationTimeoutSeconds } else { $request.TimeoutSec }
+            if (-not ($effectiveTimeout -ge 1 -and $effectiveTimeout -le 30)) {
+                throw "unexpected OAuth timeout $effectiveTimeout"
+            }
+            $request.MaximumRedirection | Should Be 0
+        }
+    }
+
+    It "polls pending authorization and returns the access token without displaying secrets" {
+        $script:tokenPolls = 0
+        $script:devicePrompt = ""
+        $script:pollSleeps = @()
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = "device-code-sentinel"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60; interval = 1 }
+            }
+            if ($script:tokenPolls++ -eq 0) {
+                return @{ error = "authorization_pending" }
+            }
+            return @{ access_token = "access-token-sentinel" }
+        }
+        Mock Start-Sleep { param($Seconds) $script:pollSleeps += $Seconds }
+        Mock Write-Host { param($Object) $script:devicePrompt = [string]$Object }
+
+        $token = Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30
+
+        $token | Should Be "access-token-sentinel"
+        $script:devicePrompt | Should Match "https://issuer.example/verify"
+        $script:devicePrompt | Should Not Match "device-code-sentinel|access-token-sentinel"
+        ($script:pollSleeps -join ",") | Should Be "1,1"
+    }
+
+    It "backs off after slow_down" {
+        $script:tokenPolls = 0
+        $script:lastSleep = 0
+        $script:pollSleeps = @()
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60; interval = 2 }
+            }
+            if ($script:tokenPolls++ -eq 0) { return @{ error = "slow_down" } }
+            return @{ access_token = "access-token" }
+        }
+        Mock Start-Sleep { param($Seconds) $script:lastSleep = $Seconds; $script:pollSleeps += $Seconds }
+        Mock Write-Host {}
+
+        (Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30) | Should Be "access-token"
+        ($script:pollSleeps -join ",") | Should Be "2,7"
+    }
+
+    It "caps device polling sleep at the authorization deadline" {
+        $sleep = Get-ListingKitDevicePollSleepSec -PollIntervalSec 300 -Deadline ([DateTime]::UtcNow.AddSeconds(2))
+
+        ($sleep -ge 0 -and $sleep -le 2) | Should Be $true
+    }
+
+    It "fails closed when the provider expires device authorization" {
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60 }
+            }
+            return @{ error = "expired_token" }
+        }
+        Mock Write-Host {}
+
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 } | Should Throw "Device authorization expired"
+    }
+
+    It "fails closed for denial, malformed device responses, and timeout" {
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = ""; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60 }
+            }
+        }
+        Mock Write-Host {}
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 } | Should Throw "Device authorization response is incomplete"
+
+        $script:denialPolls = 0
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60 }
+            }
+            return @{ error = "access_denied" }
+        }
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 } | Should Throw "Device authorization was denied"
+
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 1; interval = 1 }
+            }
+            return @{ error = "authorization_pending" }
+        }
+        Mock Start-Sleep { [System.Threading.Thread]::Sleep(1100) }
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 1 } | Should Throw "Device authorization timed out"
+    }
+
+    It "returns the OAuth expires_in value for opaque device access tokens" {
+        $expiresAt = [DateTimeOffset]::MinValue
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60 }
+            }
+            return @{ access_token = "opaque-access-token"; expires_in = 3600 }
+        }
+        Mock Write-Host {}
+        Mock Start-Sleep {}
+
+        Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 -ExpiresAt ([ref]$expiresAt) | Should Be "opaque-access-token"
+        $expiresAt | Should BeGreaterThan ([DateTimeOffset]::UtcNow.AddMinutes(59))
+    }
+
+    It "uses a valid device token cache before starting device authorization" {
+        $payload = [ordered]@{
+            exp = [DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()
+        } | ConvertTo-Json -Compress
+        $payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload)).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+        $token = "header.$payloadBase64.signature"
+        $cachePath = Join-Path $TestDrive "reusable-device-token-cache.json"
+        Save-ListingKitDeviceTokenCache -Path $cachePath -Token $token
+
+        $previousUseDeviceAuthorization = $script:UseDeviceAuthorization
+        $previousIssuerURL = $script:IssuerURL
+        $previousClientID = $script:ClientID
+        $previousExpectedTenantID = $script:ExpectedTenantID
+        $previousApiBaseUrl = $script:AcceptanceApiBaseUrl
+        $previousCachePath = $script:AcceptanceDeviceTokenCacheFile
+        try {
+            $script:UseDeviceAuthorization = $true
+            $script:IssuerURL = "https://issuer.example"
+            $script:ClientID = "device-client"
+            $script:ExpectedTenantID = "373211199677923496"
+            $script:AcceptanceApiBaseUrl = "http://127.0.0.1:8085"
+            $script:AcceptanceDeviceTokenCacheFile = $cachePath
+            Mock Resolve-ListingKitDeviceToken { throw "device authorization must not run" }
+
+            (Resolve-AcceptanceToken) | Should Be $token
+            Assert-MockCalled Resolve-ListingKitDeviceToken -Times 0 -Exactly
+        } finally {
+            $script:UseDeviceAuthorization = $previousUseDeviceAuthorization
+            $script:IssuerURL = $previousIssuerURL
+            $script:ClientID = $previousClientID
+            $script:ExpectedTenantID = $previousExpectedTenantID
+            $script:AcceptanceApiBaseUrl = $previousApiBaseUrl
+            $script:AcceptanceDeviceTokenCacheFile = $previousCachePath
+        }
+    }
+
+}

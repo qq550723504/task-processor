@@ -23,15 +23,6 @@ const (
 	assetGenerationActionRunPlatformAdaptTemporal   = "run_platform_adapt_temporal"
 )
 
-func allowedAssetGenerationActionKeys() []string {
-	keys := append([]string(nil), generation.AllowedActionKeys()...)
-	keys = append(keys,
-		assetGenerationActionRunStandardProductTemporal,
-		assetGenerationActionRunPlatformAdaptTemporal,
-	)
-	return keys
-}
-
 func isAllowedAssetGenerationActionKey(actionKey string) bool {
 	if generation.IsAllowedActionKey(actionKey) {
 		return true

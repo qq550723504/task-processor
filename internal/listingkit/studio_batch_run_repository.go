@@ -45,24 +45,25 @@ const (
 )
 
 type StudioBatchRunRecord struct {
-	ID               string                      `json:"id" gorm:"primaryKey;type:varchar(64)"`
-	TenantID         string                      `json:"-" gorm:"type:varchar(64);index"`
-	UserID           string                      `json:"-" gorm:"type:varchar(128);index"`
-	Mode             StudioBatchRunMode          `json:"mode" gorm:"type:varchar(32);not null"`
-	FailurePolicy    StudioBatchRunFailurePolicy `json:"failure_policy" gorm:"type:varchar(32);not null"`
-	Status           StudioBatchRunStatus        `json:"status" gorm:"type:varchar(32);index;not null"`
-	CurrentBatchID   string                      `json:"current_batch_id,omitempty" gorm:"type:varchar(64);index"`
-	CurrentIndex     int                         `json:"current_index" gorm:"not null;default:0"`
-	TotalBatches     int                         `json:"total_batches" gorm:"not null;default:0"`
-	CompletedBatches int                         `json:"completed_batches" gorm:"not null;default:0"`
-	SucceededBatches int                         `json:"succeeded_batches" gorm:"not null;default:0"`
-	FailedBatches    int                         `json:"failed_batches" gorm:"not null;default:0"`
-	LastError        string                      `json:"last_error,omitempty" gorm:"type:text"`
-	CancelRequested  bool                        `json:"cancel_requested" gorm:"not null;default:false"`
-	StartedAt        *time.Time                  `json:"started_at,omitempty"`
-	FinishedAt       *time.Time                  `json:"finished_at,omitempty"`
-	CreatedAt        time.Time                   `json:"created_at"`
-	UpdatedAt        time.Time                   `json:"updated_at"`
+	ID                string                      `json:"id" gorm:"primaryKey;type:varchar(64)"`
+	TenantID          string                      `json:"-" gorm:"type:varchar(64);index"`
+	UserID            string                      `json:"-" gorm:"type:varchar(128);index"`
+	TenantAdminAccess bool                        `json:"-" gorm:"not null;default:false"`
+	Mode              StudioBatchRunMode          `json:"mode" gorm:"type:varchar(32);not null"`
+	FailurePolicy     StudioBatchRunFailurePolicy `json:"failure_policy" gorm:"type:varchar(32);not null"`
+	Status            StudioBatchRunStatus        `json:"status" gorm:"type:varchar(32);index;not null"`
+	CurrentBatchID    string                      `json:"current_batch_id,omitempty" gorm:"type:varchar(64);index"`
+	CurrentIndex      int                         `json:"current_index" gorm:"not null;default:0"`
+	TotalBatches      int                         `json:"total_batches" gorm:"not null;default:0"`
+	CompletedBatches  int                         `json:"completed_batches" gorm:"not null;default:0"`
+	SucceededBatches  int                         `json:"succeeded_batches" gorm:"not null;default:0"`
+	FailedBatches     int                         `json:"failed_batches" gorm:"not null;default:0"`
+	LastError         string                      `json:"last_error,omitempty" gorm:"type:text"`
+	CancelRequested   bool                        `json:"cancel_requested" gorm:"not null;default:false"`
+	StartedAt         *time.Time                  `json:"started_at,omitempty"`
+	FinishedAt        *time.Time                  `json:"finished_at,omitempty"`
+	CreatedAt         time.Time                   `json:"created_at"`
+	UpdatedAt         time.Time                   `json:"updated_at"`
 }
 
 func (StudioBatchRunRecord) TableName() string {

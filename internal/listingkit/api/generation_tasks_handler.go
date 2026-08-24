@@ -128,7 +128,7 @@ func (h *handler) RetryTaskChildTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "kind is required"})
 		return
 	}
-	result, err := h.childTaskRetryService.RetryTaskChildTask(requestContext(c), c.Param("task_id"), &req)
+	result, err := h.childTaskRetryService.ScheduleTaskChildRetry(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
@@ -136,13 +136,13 @@ func (h *handler) RetryTaskChildTask(c *gin.Context) {
 			status = http.StatusNotFound
 		case errors.Is(err, core.ErrChildTaskRetryInvalidRequest):
 			status = http.StatusBadRequest
-		case errors.Is(err, core.ErrChildTaskNotRetryable), errors.Is(err, core.ErrChildTaskRetryConflict):
+		case errors.Is(err, core.ErrChildTaskNotRetryable), errors.Is(err, core.ErrChildTaskRetryConflict), errors.Is(err, listingkit.ErrSDSRepairRetryInProgress):
 			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": "child_task_retry_failed", "message": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusAccepted, result)
 }
 
 func (h *handler) ExecuteTaskGenerationAction(c *gin.Context) {
@@ -165,3 +165,4 @@ func (h *handler) ExecuteTaskGenerationAction(c *gin.Context) {
 	}
 	writeGenerationConditionalMutationResponse(c, result.DeltaToken, result)
 }
+

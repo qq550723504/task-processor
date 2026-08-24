@@ -21,7 +21,7 @@ func TestGormScheduledTaskConfigRepositoryUpsertAndListEnabled(t *testing.T) {
 	}
 
 	repo := NewGormScheduledTaskConfigRepository(db)
-	ctx := context.Background()
+	ctx := WithOwnerUserID(context.Background(), "test-owner")
 
 	first, err := repo.UpsertScheduledTaskConfig(ctx, &ScheduledTaskConfig{
 		TenantID:        246,
@@ -57,7 +57,7 @@ func TestGormScheduledTaskConfigRepositoryUpsertAndListEnabled(t *testing.T) {
 
 	page, err := repo.ListScheduledTaskConfigs(ctx, ScheduledTaskConfigQuery{
 		TenantID: 246,
-		StoreID: int64PtrIfPositive(962),
+		StoreID:  int64PtrIfPositive(962),
 	})
 	if err != nil {
 		t.Fatalf("ListScheduledTaskConfigs() error = %v", err)

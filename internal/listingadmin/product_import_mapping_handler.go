@@ -66,6 +66,7 @@ func (h *ProductImportMappingHandler) CreateProductImportMapping(c *gin.Context)
 	var req ProductImportMapping
 	if !bindAndValidateJSON(c, &req, "invalid_product_import_mapping", func(value *ProductImportMapping) {
 		value.TenantID = requestTenantID(c)
+		value.OwnerUserID = requestUserIDFromContext(requestIdentityContext(c))
 	}, validateProductImportMapping) {
 		return
 	}
@@ -86,6 +87,7 @@ func (h *ProductImportMappingHandler) UpdateProductImportMapping(c *gin.Context)
 	if !bindAndValidateJSON(c, &req, "invalid_product_import_mapping", func(value *ProductImportMapping) {
 		value.ID = id
 		value.TenantID = requestTenantID(c)
+		value.OwnerUserID = requestUserIDFromContext(requestIdentityContext(c))
 	}, validateProductImportMapping) {
 		return
 	}

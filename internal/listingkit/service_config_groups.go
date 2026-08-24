@@ -2,15 +2,6 @@ package listingkit
 
 import listingsubmission "task-processor/internal/listing/submission"
 
-func buildGenerateRequestDefaults(config *ServiceConfig) generateRequestDefaults {
-	if config == nil {
-		return generateRequestDefaults{}
-	}
-	return generateRequestDefaults{
-		sheinDefaultStoreID: config.Shein.SheinDefaultStoreID,
-	}
-}
-
 func buildTaskDependencies(config *ServiceConfig) taskDependencies {
 	if config == nil {
 		return taskDependencies{}
@@ -18,7 +9,8 @@ func buildTaskDependencies(config *ServiceConfig) taskDependencies {
 	return taskDependencies{
 		sdsLoginStatusProvider:       config.Core.SDSLoginStatusProvider,
 		taskSubmitter:                config.Core.TaskSubmitter,
-		requestDefaults:              buildGenerateRequestDefaults(config),
+		generationUsage:              config.Core.GenerationUsageLedger,
+		generationUsageAdmission:     config.Core.GenerationUsageAdmission,
 		standardWorkflowClient:       config.Workflow.StandardProductWorkflowClient,
 		standardWorkflowEnabled:      config.Workflow.StandardProductWorkflowEnabled,
 		platformAdaptWorkflowClient:  config.Workflow.PlatformAdaptWorkflowClient,
@@ -31,14 +23,16 @@ func buildStudioDependencies(config *ServiceConfig) studioDependencies {
 		return studioDependencies{}
 	}
 	return studioDependencies{
-		sessionRepo:       config.Core.StudioSessionRepository,
-		batchRepo:         config.Core.StudioBatchRepository,
-		batchRunRepo:      config.Core.StudioBatchRunRepository,
-		batchTaskLinkRepo: config.Core.StudioBatchTaskLinkRepository,
-		promptDiversifier: config.Shein.StudioPromptDiversifier,
-		imageGenerator:    config.Shein.StudioImageGenerator,
-		backgroundRemover: config.Shein.StudioBackgroundRemover,
-		uploadStore:       config.Core.ImageUploadStore,
+		sessionRepo:              config.Core.StudioSessionRepository,
+		batchRepo:                config.Core.StudioBatchRepository,
+		batchRunRepo:             config.Core.StudioBatchRunRepository,
+		batchTaskLinkRepo:        config.Core.StudioBatchTaskLinkRepository,
+		promptDiversifier:        config.Shein.StudioPromptDiversifier,
+		imageGenerator:           config.Shein.StudioImageGenerator,
+		backgroundRemover:        config.Shein.StudioBackgroundRemover,
+		uploadStore:              config.Core.ImageUploadStore,
+		productImageUsage:        config.Core.StudioProductImageUsage,
+		generationUsageAdmission: config.Core.GenerationUsageAdmission,
 	}
 }
 

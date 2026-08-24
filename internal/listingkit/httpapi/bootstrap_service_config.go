@@ -4,6 +4,7 @@ import (
 	assetbundle "task-processor/internal/asset/bundle"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
+	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
 )
 
@@ -39,7 +40,17 @@ func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listi
 		UploadedImageRepository:       in.repositories.uploadedImageRepository,
 		StoreProfileRepository:        in.repositories.storeProfileRepository,
 		AIClientCredentialStore:       adaptListingKitAICredentialStore(in.input.AICredentialStore),
+		GenerationUsageLedger:         generationUsageSettlementDependency(in),
+		GenerationUsageAdmission:      generationUsageAdmissionForConfig(in.input.Config),
+		StudioProductImageUsage:       studioProductImageUsageDependency(in.repositories.subscriptionService, generationUsageAdmissionForConfig(in.input.Config)),
 	}
+}
+
+func generationUsageSettlementDependency(in buildListingKitServiceConfigInput) listingkit.GenerationUsageSettlement {
+	if in.repositories == nil || in.repositories.subscriptionService == nil || !in.repositories.subscriptionService.HasUsageLedger() {
+		return nil
+	}
+	return newSubscriptionGenerationUsage(in.repositories.subscriptionService)
 }
 
 func buildListingKitAssetDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceAssetDependencies {
@@ -52,14 +63,24 @@ func buildListingKitAssetDependencies(in buildListingKitServiceConfigInput) list
 		AssetGenerationService: assetgeneration.NewService(assetgeneration.Config{
 			SubjectExtractor:        in.input.ImageSubjectExtractor,
 			WhiteBackgroundRenderer: in.input.ImageWhiteBackgroundRender,
-			DeferredRenderer:        assetgeneration.NewProductImageDeferredRenderer(in.input.ImageSceneRenderer),
+			DeferredRenderer: assetgeneration.NewProductImageDeferredRendererWithPublisherAndCleanup(
+				in.input.ImageSceneRenderer,
+				in.input.ImageAssetPublisher,
+				productImageCleanupTemporaryFiles(in.input.Config),
+			),
 		}),
 	}
 }
 
+func productImageCleanupTemporaryFiles(cfg *config.Config) bool {
+	if cfg == nil {
+		return true
+	}
+	return cfg.ProductImage.Lifecycle.CleanupTemporaryFiles
+}
+
 func buildListingKitSheinDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceSheinDependencies {
 	return listingkit.ServiceSheinDependencies{
-		SheinDefaultStoreID:        in.submit.shein.defaultStoreID,
 		SheinStoreCatalog:          sheinListingStoreCatalog{repo: in.repositories.storeRepository},
 		StoreAccessValidator:       listingAdminStoreAccessValidator{repo: in.repositories.storeRepository},
 		SheinAPIClientFactory:      in.submit.shein.apiClientFactory,

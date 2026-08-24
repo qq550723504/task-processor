@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit"
@@ -11,7 +12,7 @@ import (
 
 const (
 	listingKitImageClientName                     = "image"
-	listingKitImageClientNameGPTImage2            = "image_gpt_image_2"
+	listingKitImageClientNameGPTImage2            = listingkit.ImageAIClientNameGPTImage2
 	listingKitImageClientNameNanobanana           = "image_nanobanana"
 	listingKitImageClientNameBackgroundRemoval    = "image_background_removal"
 	listingKitImageModelSelectorGPTImage2         = "gpt-image-2"
@@ -21,15 +22,15 @@ const (
 	listingKitStudioImageMinTimeout               = 300 * time.Second
 )
 
-func BuildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ChatCompleter {
+func BuildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ChatCompleter {
 	return buildStrictListingKitChatClient(cfg, resolver, "default")
 }
 
-func BuildSheinSaleAttributeLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ChatCompleter {
+func BuildSheinSaleAttributeLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ChatCompleter {
 	return buildStrictListingKitChatClient(cfg, resolver, sheinSaleAttributeClientName)
 }
 
-func BuildStudioImageGenerator(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
+func BuildStudioImageGenerator(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ImageGenerator {
 	return buildListingKitRoutedImageClient(cfg, resolver)
 }
 

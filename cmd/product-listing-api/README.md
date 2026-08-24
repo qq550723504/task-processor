@@ -365,7 +365,7 @@ productimage:
 - 不传 `platforms` 时默认生成四个平台资料包
 - `options.process_images=true` 时会串联 `productimage` 产出主图、白底图和辅图地址
 - `options.sds` 是可选字段；仅当服务端已配置有效 SDS 登录态，且 `variant_id>0` 时才会在图片处理成功后触发 SDS 设计同步
-- `shein_store_id` 是可选字段；当需要启用 SHEIN 在线类目解析和属性模板加载时应传入有效店铺 ID，否则会降级为离线解析
+- 当请求目标包含 `shein`（包括省略 `platforms` 而使用默认四个平台时），必须传入正数且当前租户已授权的 `shein_store_id`；缺少或无权使用该店铺时请求会被拒绝，不再降级为离线解析
 
 ### 带 SDS 同步的请求示例
 

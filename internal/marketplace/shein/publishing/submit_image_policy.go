@@ -243,28 +243,56 @@ func finalDraftImageInputHasImage(input FinalDraftImageInput) bool {
 
 // ReorderFinalDraftProductImages applies ordering, deletion, main image, and role overrides to product images.
 func ReorderFinalDraftProductImages(info *sheinproduct.ImageInfo, order []string, main string, deleted map[string]struct{}, roles map[string]string) {
-	if info == nil || len(info.ImageInfoList) == 0 {
+	if info == nil {
 		return
 	}
-	priority := make(map[string]int, len(order))
-	for i, image := range order {
-		priority[strings.TrimSpace(image)] = i + 1
-	}
-	filtered := make([]sheinproduct.ImageDetail, 0, len(info.ImageInfoList))
+	main = strings.TrimSpace(main)
+	byURL := make(map[string]sheinproduct.ImageDetail, len(info.ImageInfoList)+len(order)+1)
 	for _, image := range info.ImageInfoList {
 		url := strings.TrimSpace(image.ImageURL)
 		if url == "" {
 			continue
 		}
-		if _, ok := deleted[url]; ok {
+		if _, removed := deleted[url]; removed {
 			continue
 		}
+		if _, exists := byURL[url]; !exists {
+			byURL[url] = image
+		}
+	}
+	orderedURLs := make([]string, 0, len(byURL)+len(order)+1)
+	seen := make(map[string]struct{}, len(byURL)+len(order)+1)
+	appendURL := func(url string) {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return
+		}
+		if _, ok := deleted[url]; ok {
+			return
+		}
+		if _, ok := seen[url]; ok {
+			return
+		}
+		if _, ok := byURL[url]; !ok {
+			byURL[url] = sheinproduct.ImageDetail{ImageURL: url, ImageType: 2}
+		}
+		seen[url] = struct{}{}
+		orderedURLs = append(orderedURLs, url)
+	}
+	appendURL(main)
+	for _, image := range order {
+		appendURL(image)
+	}
+	for _, image := range info.ImageInfoList {
+		appendURL(image.ImageURL)
+	}
+	filtered := make([]sheinproduct.ImageDetail, 0, len(orderedURLs))
+	for index, url := range orderedURLs {
+		image := byURL[url]
+		image.ImageSort = index + 1
 		if url == main {
-			image.ImageSort = 1
 			image.MarketingMainImage = true
 			image.ImageType = 1
-		} else if sort, ok := priority[url]; ok {
-			image.ImageSort = sort + 1
 		}
 		switch roles[url] {
 		case "main":

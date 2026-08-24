@@ -47,12 +47,29 @@ func TestGenerationOverviewSupportFilesOwnActionHelpers(t *testing.T) {
 		"func buildAssetGenerationActionTarget(queue *GenerationWorkQueue, actionKey string, filters *AssetGenerationRecommendedFilters) *AssetGenerationActionTarget {",
 		"func buildSecondaryActionTargets(queue *GenerationWorkQueue, actionKeys []string, filters *AssetGenerationRecommendedFilters) []*AssetGenerationActionTarget {",
 		"func buildAssetGenerationActionImpact(queue *GenerationWorkQueue, query *GenerationQueueQuery) *AssetGenerationActionImpact {",
-		"func actionInteractionMode(actionKey string) string {",
 		"func buildPreviewCapabilitySecondaryActions(summary *GenerationWorkQueueSummary) ([]string, []string) {",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("generation_overview_action_support.go should contain %q", needle)
 		}
+	}
+	if strings.Contains(supportContent, "func actionInteractionMode(actionKey string) string {") {
+		t.Fatal("generation_overview_action_support.go should not keep a direct delegation wrapper")
+	}
+	if !strings.Contains(supportContent, "listinggeneration.ActionInteractionMode(") {
+		t.Fatal("generation_overview_action_support.go should call generation domain directly")
+	}
+
+	resolutionSrc, err := os.ReadFile("task_generation_action_target_resolution.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_generation_action_target_resolution.go) error = %v", err)
+	}
+	resolutionContent := string(resolutionSrc)
+	if strings.Contains(resolutionContent, "actionInteractionMode(") {
+		t.Fatal("task_generation_action_target_resolution.go should not use the ListingKit wrapper")
+	}
+	if !strings.Contains(resolutionContent, "listinggeneration.ActionInteractionMode(") {
+		t.Fatal("task_generation_action_target_resolution.go should call generation domain directly")
 	}
 
 	filterSupportSrc, err := os.ReadFile("generation_overview_filter_support.go")

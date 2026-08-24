@@ -145,6 +145,9 @@ func newSensitiveWordTestRouter(t *testing.T) storeTestRouter {
 
 func seedSensitiveWord(t *testing.T, db *gorm.DB, word listingSensitiveWord) listingSensitiveWord {
 	t.Helper()
+	if word.OwnerUserID == "" {
+		word.OwnerUserID = "test-owner"
+	}
 	if err := db.Table("listing_sensitive_word").Create(&word).Error; err != nil {
 		t.Fatalf("seed sensitive word: %v", err)
 	}

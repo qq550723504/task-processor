@@ -9,7 +9,16 @@ import (
 
 type sdsChildRetryTestRepository struct {
 	Repository
-	jobs map[string]SDSChildRetryJob
+	jobs         map[string]SDSChildRetryJob
+	retryCtx     context.Context
+	getTaskCalls int
+	afterBegin   func()
+}
+
+func (r *sdsChildRetryTestRepository) GetTask(ctx context.Context, taskID string) (*Task, error) {
+	r.retryCtx = ctx
+	r.getTaskCalls++
+	return r.Repository.GetTask(ctx, taskID)
 }
 
 func (r *sdsChildRetryTestRepository) ScheduleSDSChildRetry(_ context.Context, job *SDSChildRetryJob) (*SDSChildRetryJob, error) {
@@ -38,6 +47,77 @@ func (r *sdsChildRetryTestRepository) ClaimDueSDSChildRetries(context.Context, t
 
 func (r *sdsChildRetryTestRepository) SaveSDSChildRetry(context.Context, *SDSChildRetryJob) error {
 	return nil
+}
+
+func (r *sdsChildRetryTestRepository) BeginSDSChildRetryRepair(_ context.Context, taskID string, kind SDSChildRetryKind) (*SDSChildRetryRepairLease, error) {
+	now := time.Now()
+	for id, job := range r.jobs {
+		if job.TaskID != taskID || job.Kind != kind {
+			continue
+		}
+		if (job.Status == SDSChildRetryJobStatusPending || job.Status == SDSChildRetryJobStatusRepairing) && job.LeaseUntil != nil && job.LeaseUntil.After(now) {
+			return nil, ErrSDSRepairRetryInProgress
+		}
+		if job.Status == SDSChildRetryJobStatusPending || job.Status == SDSChildRetryJobStatusExhausted {
+			job.Status = SDSChildRetryJobStatusCancelled
+			job.LeaseOwner = ""
+			job.LeaseUntil = nil
+			r.jobs[id] = job
+		}
+	}
+	owner := "repair-owner-" + taskID
+	for id, job := range r.jobs {
+		if job.TaskID != taskID || job.Kind != kind {
+			continue
+		}
+		job.Status = SDSChildRetryJobStatusRepairing
+		job.LeaseOwner = owner
+		leaseUntil := now.Add(30 * time.Minute)
+		job.LeaseUntil = &leaseUntil
+		job.ReasonCode = "sds_repair_in_progress"
+		r.jobs[id] = job
+		if r.afterBegin != nil {
+			r.afterBegin()
+		}
+		return &SDSChildRetryRepairLease{JobID: job.ID, Owner: owner}, nil
+	}
+	job := SDSChildRetryJob{ID: "repair-" + taskID, TaskID: taskID, Kind: kind, Status: SDSChildRetryJobStatusRepairing, LeaseOwner: owner, ReasonCode: "sds_repair_in_progress"}
+	leaseUntil := now.Add(30 * time.Minute)
+	job.LeaseUntil = &leaseUntil
+	r.jobs[job.ID] = job
+	if r.afterBegin != nil {
+		r.afterBegin()
+	}
+	return &SDSChildRetryRepairLease{JobID: job.ID, Owner: owner}, nil
+}
+
+func (r *sdsChildRetryTestRepository) EndSDSChildRetryRepair(_ context.Context, lease *SDSChildRetryRepairLease) error {
+	if lease == nil {
+		return nil
+	}
+	job, ok := r.jobs[lease.JobID]
+	if !ok || job.LeaseOwner != lease.Owner {
+		return nil
+	}
+	job.Status = SDSChildRetryJobStatusCancelled
+	job.LeaseOwner = ""
+	job.LeaseUntil = nil
+	r.jobs[job.ID] = job
+	return nil
+}
+
+func (r *sdsChildRetryTestRepository) ReplaceTaskSDSOptionsForRetry(ctx context.Context, taskID string, options *SDSSyncOptions, audit PodExecutionAuditEvent) (*Task, error) {
+	return r.Repository.(TaskSDSRepairRepository).ReplaceTaskSDSOptionsForRetry(ctx, taskID, options, audit)
+}
+
+func (r *sdsChildRetryTestRepository) ListSDSChildRetries(_ context.Context, taskID string) ([]SDSChildRetryJob, error) {
+	jobs := make([]SDSChildRetryJob, 0)
+	for _, job := range r.jobs {
+		if job.TaskID == taskID {
+			jobs = append(jobs, job)
+		}
+	}
+	return jobs, nil
 }
 
 func TestScheduleStudioBatchSDSChildRetriesQueuesOnlyFailedSDSChildren(t *testing.T) {
@@ -86,5 +166,152 @@ func TestScheduleStudioBatchSDSChildRetriesQueuesOnlyFailedSDSChildren(t *testin
 	}
 	if job.ReasonCode != "manual_studio_batch_sds_retry" || job.NextRetryAt.After(time.Now().UTC().Add(time.Second)) {
 		t.Fatalf("job = %#v, want immediate manual retry", job)
+	}
+}
+
+func TestScheduleTaskChildRetryQueuesSDSDesignSyncWithoutRunningRemoteWork(t *testing.T) {
+	ctx := context.Background()
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest()}
+	task := &Task{
+		ID:       "task-manual-retry",
+		TenantID: "tenant-1",
+		Status:   core.TaskStatusNeedsReview,
+		Request:  &GenerateRequest{SheinStoreID: 1038},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
+			Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed), Error: "SHEIN cookie unavailable",
+		}}},
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	result, err := (&service{repo: repo}).ScheduleTaskChildRetry(ctx, task.ID, &RetryChildTaskRequest{Kind: string(SDSChildRetryKindDesignSync)})
+	if err != nil {
+		t.Fatalf("ScheduleTaskChildRetry() error = %v", err)
+	}
+	if result == nil || result.TaskID != task.ID || result.Kind != string(SDSChildRetryKindDesignSync) || result.Status != "queued" {
+		t.Fatalf("result = %#v, want queued retry acknowledgement", result)
+	}
+	if len(repo.jobs) != 1 {
+		t.Fatalf("scheduled jobs = %#v, want one job", repo.jobs)
+	}
+	for _, job := range repo.jobs {
+		if job.ReasonCode != "manual_child_task_retry" {
+			t.Fatalf("job reason code = %q, want manual_child_task_retry", job.ReasonCode)
+		}
+		if job.NextRetryAt.After(time.Now().UTC().Add(time.Second)) {
+			t.Fatalf("job next retry at = %s, want immediate scheduling", job.NextRetryAt)
+		}
+	}
+}
+
+func TestScheduleTaskChildRetryQueuesSDSCatalogProduct(t *testing.T) {
+	ctx := context.Background()
+	const catalogKind = SDSChildRetryKindCatalogProduct
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest()}
+	task := &Task{
+		ID:       "task-catalog-retry",
+		TenantID: "tenant-1",
+		Status:   core.TaskStatusNeedsReview,
+		Request:  &GenerateRequest{SheinStoreID: 1038},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
+			Kind: string(catalogKind), Status: string(core.TaskStatusFailed), Error: "catalog failed",
+		}}},
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	result, err := (&service{repo: repo}).ScheduleTaskChildRetry(ctx, task.ID, &RetryChildTaskRequest{Kind: string(catalogKind)})
+	if err != nil {
+		t.Fatalf("ScheduleTaskChildRetry() error = %v", err)
+	}
+	if result == nil || result.TaskID != task.ID || result.Kind != string(catalogKind) || result.Status != "queued" {
+		t.Fatalf("result = %#v, want queued catalog retry acknowledgement", result)
+	}
+	job, ok := repo.jobs["job-"+task.ID]
+	if !ok || job.Kind != catalogKind {
+		t.Fatalf("scheduled jobs = %#v, want catalog product retry", repo.jobs)
+	}
+}
+
+func TestRunSDSChildRetryRestoresTenantContext(t *testing.T) {
+	ctx := context.Background()
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest()}
+	task := &Task{
+		ID:       "task-tenant-retry",
+		TenantID: "tenant-policy-1",
+		Status:   core.TaskStatusNeedsReview,
+		Request:  &GenerateRequest{SheinStoreID: 1038},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
+			Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed), Error: "retry failed",
+		}}},
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	job := &SDSChildRetryJob{TaskID: task.ID, TenantID: task.TenantID, Kind: SDSChildRetryKindDesignSync}
+	if err := (&service{repo: repo}).runSDSChildRetry(ctx, job); err != nil {
+		t.Fatalf("runSDSChildRetry() error = %v", err)
+	}
+	if got := TenantIDFromContext(repo.retryCtx); got != task.TenantID {
+		t.Fatalf("retry tenant context = %q, want %q", got, task.TenantID)
+	}
+}
+
+func TestRunSDSChildRetryPreservesDomainFailure(t *testing.T) {
+	ctx := context.Background()
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest()}
+	task := &Task{
+		ID:       "task-domain-failure",
+		TenantID: "tenant-1",
+		Status:   core.TaskStatusNeedsReview,
+		Request:  &GenerateRequest{Options: &GenerateOptions{}},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
+			Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed),
+		}}},
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	job := &SDSChildRetryJob{TaskID: task.ID, TenantID: task.TenantID, Kind: SDSChildRetryKindDesignSync}
+	if err := (&service{repo: repo}).runSDSChildRetry(ctx, job); err != nil {
+		t.Fatalf("runSDSChildRetry() error = %v", err)
+	}
+	if job.LastError != core.ErrChildTaskNotRetryable.Error() {
+		t.Fatalf("job.LastError = %q, want domain error %q", job.LastError, core.ErrChildTaskNotRetryable.Error())
+	}
+}
+
+func TestGetTaskResultIncludesDurableSDSChildRetryStatus(t *testing.T) {
+	ctx := context.Background()
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest(), jobs: map[string]SDSChildRetryJob{
+		"job-task-retry-status": {
+			ID:        "job-task-retry-status",
+			TaskID:    "task-retry-status",
+			Kind:      SDSChildRetryKindDesignSync,
+			Status:    SDSChildRetryJobStatusExhausted,
+			Attempt:   3,
+			LastError: "SDS options are missing",
+		},
+	}}
+	task := &Task{
+		ID:       "task-retry-status",
+		Status:   core.TaskStatusNeedsReview,
+		Request:  &GenerateRequest{},
+		Result:   &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed)}}},
+		TenantID: "tenant-1",
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	result, err := (&service{repo: repo}).GetTaskResult(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskResult() error = %v", err)
+	}
+	if len(result.ChildRetries) != 1 || result.ChildRetries[0].Status != string(SDSChildRetryJobStatusExhausted) || result.ChildRetries[0].LastError != "SDS options are missing" {
+		t.Fatalf("child retries = %#v, want durable exhausted status and error", result.ChildRetries)
 	}
 }

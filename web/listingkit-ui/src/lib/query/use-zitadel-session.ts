@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { listingKitSettingsKeys } from "@/lib/query/listingkit-settings";
 
-export type ZitadelIdentity = {
+ type ZitadelIdentity = {
   tenantId?: string | number;
   userId?: string | number;
   username?: string;

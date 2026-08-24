@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
@@ -347,6 +348,30 @@ func TestPrepareModuleServiceEnvironmentAddsLegacyTenantResolverCloser(t *testin
 	}
 }
 
+func TestPrepareModuleServiceEnvironmentEnablesOwnerScopesWhenTestsTemporarilyDisableThem(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_OWNER_SCOPE_REQUIRED", "false")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED", "false")
+
+	restoreListingKit := listingkit.SetOwnerScopeRequiredForTesting(false)
+	restoreListingAdmin := listingadmin.SetOwnerScopeRequiredForTesting(false)
+	t.Cleanup(func() {
+		restoreListingAdmin()
+		restoreListingKit()
+	})
+
+	input := buildServiceInputFixture()
+	input.Config = &config.Config{}
+	input.Hooks.ConfigureAuthorization = func([]string, []string) error { return nil }
+	input.Hooks.LegacyTenantResolverConfigurator = func(*config.Config, *logrus.Logger) (func() error, error) {
+		return nil, nil
+	}
+
+	err := prepareModuleServiceEnvironment(input, &closerStack{})
+	assert.NoError(t, err)
+	assert.True(t, listingkit.OwnerScopeEnabled())
+	assert.True(t, listingadmin.OwnerScopeEnabled())
+}
+
 func TestConfigureModuleServiceAuthorizationWrapsAuthorizationError(t *testing.T) {
 	t.Parallel()
 
@@ -479,9 +504,6 @@ func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
 	}
 	if cfg.Shein.SheinAPIClientFactory != apiFactory {
 		t.Fatal("expected shein api client factory to be mapped from submit module")
-	}
-	if cfg.Shein.SheinDefaultStoreID != 0 {
-		t.Fatalf("default shein store id = %d, want 0", cfg.Shein.SheinDefaultStoreID)
 	}
 }
 
@@ -946,9 +968,6 @@ func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 	if got := module.studio.imageGenerator.GetDefaultModel(); got != "studio-model" {
 		t.Fatalf("studio image generator default model = %q, want studio-model", got)
 	}
-	if module.shein.defaultStoreID != 0 {
-		t.Fatalf("default shein store id = %d, want 0", module.shein.defaultStoreID)
-	}
 	if module.assets.assembler == nil {
 		t.Fatal("expected assembler to be built from submit-scoped dependencies")
 	}
@@ -1093,9 +1112,6 @@ func TestBuildSubmitModuleResolvesSubmitScopedHooks(t *testing.T) {
 
 	if module.assets.imageUploadStore != uploadStore {
 		t.Fatal("expected submit image upload store to be built from scoped hooks")
-	}
-	if module.shein.defaultStoreID != 0 {
-		t.Fatalf("default shein store id = %d, want 0", module.shein.defaultStoreID)
 	}
 	if module.shein.contentOptimizer != nil {
 		t.Fatal("expected omitted shein optimizer hook to leave zero value output")

@@ -1,4 +1,4 @@
-export type SheinLoginFailureSummary = {
+ type SheinLoginFailureSummary = {
   error_code?: string;
   error_message?: string;
   page_state?: string;
@@ -27,12 +27,12 @@ export type SheinLoginFailureDetail = SheinLoginFailureSummary & {
   network_payloads?: Array<Record<string, unknown>>;
 };
 
-export type SheinLoginRecommendedAction = {
+ type SheinLoginRecommendedAction = {
   key?: string;
   message?: string;
 };
 
-export type SheinLoginAttempt = {
+ type SheinLoginAttempt = {
   id: string;
   status: "queued" | "launching" | "waiting_verify_code" | "succeeded" | "failed" | "cancelled" | "interrupted";
   message?: string;
@@ -42,7 +42,7 @@ export type SheinLoginAttempt = {
   completed_at?: string;
 };
 
-export type SheinLoginAccount = {
+ type SheinLoginAccount = {
   store_id: number;
   tenant_id: number;
   username?: string;
@@ -70,10 +70,4 @@ export type SheinLoginWarehouse = {
   warehouse_name?: string;
   sale_country_list?: string[];
   warehouse_type?: number;
-};
-
-export type SheinLoginAccountsResponse = {
-  success: boolean;
-  data?: SheinLoginAccountStatus[];
-  message?: string;
 };

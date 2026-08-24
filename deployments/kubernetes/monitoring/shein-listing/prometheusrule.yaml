@@ -111,3 +111,43 @@ spec:
             action: 优先查看业务看板中的 24h 重试压力、最近 1h 最异常原因，以及按原因切换的问题店铺榜。
             dashboard_url: https://monitoring.shuomiai.com/d/shein-listing-business
             runbook_url: http://shein-listing.task-processor.svc.cluster.local:8082/stats?view=problem&format=compact
+        - alert: TaskEventV2LegacyDecodeObserved
+          expr: increase(task_event_decoded_total{schema_version="legacy",kubernetes_namespace="task-processor"}[15m]) > 0
+          for: 0m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: shein-listing
+          annotations:
+            summary: TaskEvent V2 收到 legacy 消息
+            description: 最近 15 分钟至少有一条 legacy TaskEvent 被兼容解码。
+            action: 排查仍在发布 legacy 消息的生产者；该事件会重置 14 天兼容性移除观察窗口。
+        - alert: TaskEventV2MetricsScrapeMissing
+          expr: (count(up{namespace="task-processor",job=~"monitoring/(shein-listing|shein-listing-store-883)"} == 1) or vector(0)) < 11
+          for: 5m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: shein-listing
+          annotations:
+            summary: TaskEvent V2 消费者指标抓取不完整
+            description: SHEIN 活跃消费者的可用 Prometheus 抓取目标少于 11 个。
+            action: 检查 shard 和 store-883 的 PodMonitor、Pod ready 状态和 metrics 端口；抓取缺失期间不能将 legacy 计数视为零。
+        - alert: TaskEventV2PrometheusStorageAtRisk
+          expr: |
+            (
+              kubelet_volume_stats_available_bytes{namespace="monitoring"}
+              /
+              kubelet_volume_stats_capacity_bytes{namespace="monitoring"}
+            ) < 0.20
+            and on (namespace, persistentvolumeclaim)
+            kube_persistentvolumeclaim_info{namespace="monitoring",persistentvolumeclaim=~"prometheus-.*"}
+          for: 15m
+          labels:
+            namespace: monitoring
+            severity: warning
+            service: shein-listing
+          annotations:
+            summary: Prometheus 迁移证据存储空间不足
+            description: Prometheus PVC 可用空间低于 20%，可能提前破坏 TaskEvent V2 的 21 天保留窗口。
+            action: 检查 Prometheus PVC 增长和采样量，必要时扩容；在存储风险解除前不要批准删除 legacy decoder。

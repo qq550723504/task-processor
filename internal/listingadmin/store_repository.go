@@ -54,9 +54,11 @@ func (r *GormStoreRepository) GetStore(ctx context.Context, tenantID, id int64) 
 func (r *GormStoreRepository) CreateStore(ctx context.Context, store *Store) (*Store, error) {
 	row := listingStoreFromStore(store)
 	applyStoreCreateDefaults(&row)
-	if row.OwnerUserID == "" {
-		row.OwnerUserID = strings.TrimSpace(store.OwnerUserID)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	row.OwnerUserID = ownerUserID
 	if row.CreatedBy == "" {
 		row.CreatedBy = strings.TrimSpace(store.CreatedBy)
 	}
@@ -72,6 +74,11 @@ func (r *GormStoreRepository) CreateStore(ctx context.Context, store *Store) (*S
 
 func (r *GormStoreRepository) UpdateStore(ctx context.Context, store *Store) (*Store, error) {
 	row := listingStoreFromStore(store)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
+	}
+	row.OwnerUserID = ownerUserID
 	updates := map[string]any{
 		"store_id":                   row.StoreID,
 		"name":                       row.Name,

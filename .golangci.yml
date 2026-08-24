@@ -30,6 +30,7 @@ linters:
     - govet         # go vet检查
     - ineffassign   # 检查无效的赋值
     - staticcheck   # 静态分析检查
+    - depguard     # 检查稳定的包依赖方向
     
     # 代码风格
     - gofmt         # 检查代码格式
@@ -38,6 +39,258 @@ linters:
 
 # Linters 设置
 linters-settings:
+  depguard:
+    rules:
+      shein_marketplace_publishing:
+        # Keep this first rule narrow: migration-specific exceptions remain in
+        # tests/import_boundaries_test.go until their contracts are stable.
+        list-mode: lax
+        files:
+          - "**/internal/marketplace/shein/publishing/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit"
+            desc: "SHEIN publishing policies must not depend on ListingKit"
+          - pkg: "task-processor/internal/app"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+          - pkg: "task-processor/internal/httpbootstrap"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+          - pkg: "task-processor/internal/httproute"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+          - pkg: "task-processor/internal/infra"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+          - pkg: "task-processor/internal/integration"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+          - pkg: "task-processor/internal/platform"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+
+      listingkit_marketplace_publishing:
+        # This package direction is stable and has no compatibility exceptions.
+        files:
+          - "**/internal/listingkit/*.go"
+          - "**/internal/listingkit/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/marketplace/shein/publishing"
+            desc: "ListingKit production code must not depend on SHEIN publishing policies"
+
+      listingkit_legacy_shein_runtime:
+        # Keep ListingKit independent from legacy SHEIN runtime implementation packages.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listingkit/*.go"
+          - "**/internal/listingkit/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/shein/pipeline"
+            desc: "ListingKit production code must not depend on the legacy SHEIN pipeline"
+          - pkg: "task-processor/internal/shein/publish"
+            desc: "ListingKit production code must not depend on the legacy SHEIN publish package"
+          - pkg: "task-processor/internal/shein/product/build"
+            desc: "ListingKit production code must not depend on the legacy SHEIN product builder"
+
+      listingkit_shein_api_root:
+        # Keep ListingKit free of the SHEIN API root package; subpackage adapters remain explicit seams.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listingkit/*.go"
+          - "**/internal/listingkit/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/shein/api$"
+            desc: "ListingKit production code must not depend on the SHEIN API root package"
+
+      listingkit_root_management_api:
+        # Keep the ListingKit root facade free of concrete management DTO contracts.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listingkit/*.go"
+        deny:
+          - pkg: "task-processor/internal/infra/clients/management/api$"
+            desc: "ListingKit root production code must not depend on management API DTO contracts"
+
+      listing_preview_platform_neutral:
+        # Keep the platform-neutral preview domain independent from marketplace implementations.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listing/preview/*.go"
+          - "**/internal/listing/preview/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit$"
+            desc: "Platform-neutral preview code must not depend on ListingKit"
+          - pkg: "task-processor/internal/marketplace/amazon$"
+            desc: "Platform-neutral preview code must not depend on Amazon marketplace code"
+          - pkg: "task-processor/internal/marketplace/shein$"
+            desc: "Platform-neutral preview code must not depend on SHEIN marketplace code"
+          - pkg: "task-processor/internal/publishing/shein$"
+            desc: "Platform-neutral preview code must not depend on SHEIN publishing code"
+          - pkg: "task-processor/internal/workspace/shein$"
+            desc: "Platform-neutral preview code must not depend on SHEIN workspace code"
+          - pkg: "task-processor/internal/shein$"
+            desc: "Platform-neutral preview code must not depend on legacy SHEIN code"
+          - pkg: "task-processor/internal/temu$"
+            desc: "Platform-neutral preview code must not depend on TEMU code"
+          - pkg: "task-processor/internal/amazon$"
+            desc: "Platform-neutral preview code must not depend on legacy Amazon code"
+          - pkg: "task-processor/internal/amazonlisting$"
+            desc: "Platform-neutral preview code must not depend on legacy Amazon Listing code"
+
+      listingkit_subdomains_root_facade:
+        # ListingKit subdomains must not depend back on the root facade package.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listingkit/generation/*.go"
+          - "**/internal/listingkit/generation/**/*.go"
+          - "**/internal/listingkit/submission/*.go"
+          - "**/internal/listingkit/submission/**/*.go"
+          - "**/internal/listingkit/workflow/*.go"
+          - "**/internal/listingkit/workflow/**/*.go"
+          - "**/internal/listingkit/workspace/*.go"
+          - "**/internal/listingkit/workspace/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit$"
+            desc: "ListingKit subdomains must not depend on the root facade package"
+
+      listingkit_root_workspace_shein:
+        # Root ListingKit files must use the compatibility bridge instead of the legacy workspace domain.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listingkit/*.go"
+        deny:
+          - pkg: "task-processor/internal/workspace/shein$"
+            desc: "ListingKit root production code must not depend on the legacy workspace SHEIN domain"
+
+      source_handoff_legacy_http:
+        # The retired ProductEnrich HTTP owner must not regain production consumers.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/productenrich/httpapi/sourcea1688"
+            desc: "Production code must use the canonical product source-handoff owner"
+
+      publishing_shein_legacy_runtime:
+        # Keep the publishing owner independent from legacy runtime and facade packages.
+        files:
+          - "**/internal/publishing/shein/*.go"
+          - "**/internal/publishing/shein/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit"
+            desc: "SHEIN publishing owner must not depend on ListingKit"
+          - pkg: "task-processor/internal/listingkit/tenantctx"
+            desc: "SHEIN publishing owner must not depend on ListingKit tenant context"
+          - pkg: "task-processor/internal/productenrich"
+            desc: "SHEIN publishing owner must not depend on ProductEnrich compatibility runtime"
+          - pkg: "task-processor/internal/shein/pipeline"
+            desc: "SHEIN publishing owner must not depend on the legacy SHEIN pipeline"
+          - pkg: "task-processor/internal/shein/publish"
+            desc: "SHEIN publishing owner must not depend on the legacy SHEIN publish package"
+          - pkg: "task-processor/internal/shein/product/build"
+            desc: "SHEIN publishing owner must not depend on the legacy SHEIN product builder"
+
+      shein_submitprep_legacy_tenantctx:
+        # SHEIN submit preparation must not depend on the retired ListingKit tenant context.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/shein/submitprep/*.go"
+          - "**/internal/shein/submitprep/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit/tenantctx"
+            desc: "SHEIN submit preparation must not depend on ListingKit tenant context"
+
+      shein_pipeline_legacy_listingkit:
+        # The legacy pipeline remains a compatibility seam and production code must not regain ListingKit coupling.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/shein/pipeline/*.go"
+          - "**/internal/shein/pipeline/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit"
+            desc: "Legacy SHEIN pipeline must not depend on ListingKit"
+          - pkg: "task-processor/internal/listingkit/tenantctx"
+            desc: "Legacy SHEIN pipeline must not depend on ListingKit tenant context"
+
+      publishing_common_platforms:
+        # Publishing common code must stay platform-neutral; production-only guard by repository policy.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/publishing/common/*.go"
+          - "**/internal/publishing/common/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/shein"
+            desc: "Publishing common code must not depend on SHEIN implementation packages"
+          - pkg: "task-processor/internal/temu"
+            desc: "Publishing common code must not depend on TEMU implementation packages"
+          - pkg: "task-processor/internal/amazon"
+            desc: "Publishing common code must not depend on Amazon implementation packages"
+
+      publishing_common_legacy_productenrich:
+        # Publishing common code must use canonical catalog/product contracts, not ProductEnrich aliases.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/publishing/common/*.go"
+          - "**/internal/publishing/common/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/productenrich$"
+            desc: "Publishing common code must not depend on ProductEnrich compatibility aliases"
+
+      catalog_legacy_productenrich:
+        # Catalog code must own canonical product facts instead of depending on ProductEnrich compatibility aliases.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/catalog/*.go"
+          - "**/internal/catalog/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/productenrich$"
+            desc: "Catalog code must not depend on ProductEnrich compatibility aliases"
+
+      listingruntime_local_legacy_management:
+        # The neutral local runtime must not regain a dependency on the retired management client.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listingruntime/local/*.go"
+          - "**/internal/listingruntime/local/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/infra/clients/management$"
+            desc: "Local runtime must not depend on the retired management client package"
+
+      app_taskstatus_legacy_management:
+        # Task-status runtime code must stay on task-status ports, not the retired management client.
+        # The repository-wide issues.exclude-files excludes _test.go; semantic build-target coverage remains in tests/import_boundaries_test.go.
+        files:
+          - "**/internal/app/taskstatus/*.go"
+          - "**/internal/app/taskstatus/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/infra/clients/management"
+            desc: "Task-status runtime code must not depend on the retired management client"
+
+      internal_legacy_app_compatibility:
+        # Retired app compatibility packages must not regain production consumers.
+        # The repository-wide issues.exclude-files excludes _test.go; semantic build-target coverage remains in tests/import_boundaries_test.go.
+        files:
+          - "**/internal/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/app/processor$"
+            desc: "Internal production code must not depend on the retired app processor compatibility package"
+          - pkg: "task-processor/internal/app/processor/"
+            desc: "Internal production code must not depend on retired app processor subpackages"
+          - pkg: "task-processor/internal/app/state$"
+            desc: "Internal production code must not depend on the retired app state compatibility package"
+          - pkg: "task-processor/internal/app/state/"
+            desc: "Internal production code must not depend on retired app state subpackages"
+
+      cmd_legacy_app_compatibility:
+        # Command entrypoints must not regain dependencies on retired app compatibility packages.
+        # The repository-wide issues.exclude-files excludes _test.go; TestCmdPackagesDoNotImportAppCompatibilityLayers retains semantic coverage for all command files.
+        files:
+          - "**/cmd/*.go"
+          - "**/cmd/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/app/processor$"
+            desc: "Command entrypoints must not depend on the retired app processor compatibility package"
+          - pkg: "task-processor/internal/app/processor/"
+            desc: "Command entrypoints must not depend on retired app processor subpackages"
+          - pkg: "task-processor/internal/app/state$"
+            desc: "Command entrypoints must not depend on the retired app state compatibility package"
+          - pkg: "task-processor/internal/app/state/"
+            desc: "Command entrypoints must not depend on retired app state subpackages"
+
   govet:
     disable:
       - fieldalignment

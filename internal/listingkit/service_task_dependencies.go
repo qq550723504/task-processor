@@ -3,7 +3,8 @@ package listingkit
 type taskDependencies struct {
 	sdsLoginStatusProvider       SDSLoginStatusProvider
 	taskSubmitter                TaskSubmitter
-	requestDefaults              generateRequestDefaults
+	generationUsage              GenerationUsageSettlement
+	generationUsageAdmission     GenerationUsageAdmission
 	standardWorkflowClient       StandardProductWorkflowClient
 	standardWorkflowEnabled      bool
 	platformAdaptWorkflowClient  PlatformAdaptWorkflowClient

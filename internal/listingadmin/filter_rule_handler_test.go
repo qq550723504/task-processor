@@ -185,6 +185,9 @@ func newFilterRuleTestRouter(t *testing.T) storeTestRouter {
 
 func seedFilterRule(t *testing.T, db *gorm.DB, rule listingFilterRule) listingFilterRule {
 	t.Helper()
+	if rule.OwnerUserID == "" {
+		rule.OwnerUserID = "test-owner"
+	}
 	if err := db.Table("listing_filter_rule").Create(&rule).Error; err != nil {
 		t.Fatalf("seed filter rule: %v", err)
 	}

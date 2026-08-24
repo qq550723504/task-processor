@@ -367,25 +367,20 @@ func (r *realImageComponents) download(imageURL string) ([]byte, string, error) 
 }
 
 func (r *realImageComponents) loadAssetBytes(asset *ImageAsset) ([]byte, string, error) {
-	if asset == nil {
-		return nil, "", fmt.Errorf("asset cannot be nil")
+	source, err := ResolveReadableAssetSource(asset)
+	if err != nil {
+		return nil, "", err
 	}
-	if localPath := asset.Metadata["local_path"]; localPath != "" {
+	if source.LocalPath != "" {
+		localPath := source.LocalPath
 		data, err := os.ReadFile(localPath)
 		if err != nil {
 			return nil, "", fmt.Errorf("read local asset %q: %w", localPath, err)
 		}
 		return data, filepath.Base(localPath), nil
 	}
-	if asset.SourceURL != "" {
-		return r.download(asset.SourceURL)
-	}
-	if asset.URL != "" && !strings.HasPrefix(strings.ToLower(asset.URL), "http://") && !strings.HasPrefix(strings.ToLower(asset.URL), "https://") {
-		data, err := os.ReadFile(asset.URL)
-		if err != nil {
-			return nil, "", fmt.Errorf("read asset path %q: %w", asset.URL, err)
-		}
-		return data, filepath.Base(asset.URL), nil
+	if source.URL != "" {
+		return r.download(source.URL)
 	}
 	return nil, "", fmt.Errorf("asset has no readable source")
 }

@@ -3,7 +3,7 @@ import { parseApiResponseShape } from "@/lib/api/response-schema";
 import type { QueueQuery } from "@/lib/types/listingkit";
 import { z } from "zod";
 
-export const listingGenerationTopicPolicySchema = z
+ const listingGenerationTopicPolicySchema = z
   .object({
     id: z.number(),
     tenantId: z.number().optional(),
@@ -58,7 +58,7 @@ export function parseGenerationTopicPolicyPageResponse(
   );
 }
 
-export function parseGenerationTopicPolicyResponse(
+ function parseGenerationTopicPolicyResponse(
   payload: unknown,
 ): ListingGenerationTopicPolicy {
   return parseApiResponseShape(

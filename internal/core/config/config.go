@@ -95,17 +95,7 @@ func dotEnvCandidates() []string {
 		)
 	}
 
-	seen := make(map[string]struct{}, len(candidates))
-	result := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		cleaned := filepath.Clean(candidate)
-		if _, ok := seen[cleaned]; ok {
-			continue
-		}
-		seen[cleaned] = struct{}{}
-		result = append(result, cleaned)
-	}
-	return result
+	return uniqueCleanPaths(candidates)
 }
 
 func dotEnvCandidatesForConfig(configFile string) []string {
@@ -122,6 +112,10 @@ func dotEnvCandidatesForConfig(configFile string) []string {
 	}
 	candidates = append(candidates, baseCandidates...)
 
+	return uniqueCleanPaths(candidates)
+}
+
+func uniqueCleanPaths(candidates []string) []string {
 	seen := make(map[string]struct{}, len(candidates))
 	result := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -230,6 +224,27 @@ func knownEnvBindings() map[string]envBinding {
 		},
 		"aiCapability.productImageSceneEnabled": {
 			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED",
+		},
+		"aiCapability.productImageSceneAllowedTenantIDs": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS",
+		},
+		"aiCapability.productEnrichTextEnabled": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_TEXT_ENABLED",
+		},
+		"aiCapability.productEnrichTextAllowedTenantIDs": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_TEXT_ALLOWED_TENANT_IDS",
+		},
+		"aiCapability.productEnrichVisionEnabled": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_VISION_ENABLED",
+		},
+		"aiCapability.productEnrichVisionAllowedTenantIDs": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_VISION_ALLOWED_TENANT_IDS",
+		},
+		"aiCapability.productEnrichListingEnabled": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_LISTING_ENABLED",
+		},
+		"aiCapability.productEnrichListingAllowedTenantIDs": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_LISTING_ALLOWED_TENANT_IDS",
 		},
 		"openai.apiKey": {
 			Primary:    "TASK_PROCESSOR_OPENAI_API_KEY",
@@ -645,15 +660,17 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.sheinSubmitDebugDumpDir": {
 			Primary: "LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR",
 		},
+		"listingkit.generationUsageLedgerEnabled": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_ENABLED",
+		},
+		"listingkit.generationUsageLedgerTenantIDs": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_TENANT_IDS",
+		},
 		"listingkit.platformAdminUsers": {
 			Primary: "LISTINGKIT_PLATFORM_ADMIN_USERS",
 		},
 		"listingkit.platformAdminRoles": {
 			Primary: "LISTINGKIT_PLATFORM_ADMIN_ROLES",
-		},
-		"listingkit.ownerScopeRequired": {
-			Primary:    "TASK_PROCESSOR_LISTINGKIT_OWNER_SCOPE_REQUIRED",
-			Deprecated: []string{"TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED"},
 		},
 		"listingkit.zitadel.issuerURL": {
 			Primary: "ZITADEL_ISSUER_URL",

@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
@@ -14,7 +15,6 @@ func TestSettingsAdminServiceGetSheinSettingsAttachesAvailableStores(t *testing.
 	svc := &service{
 
 		sheinSettings: SheinSettings{
-			DefaultStoreID:    870,
 			Site:              "US",
 			WarehouseCode:     "WH-US-1",
 			DefaultSubmitMode: "publish",
@@ -31,9 +31,6 @@ func TestSettingsAdminServiceGetSheinSettingsAttachesAvailableStores(t *testing.
 	if err != nil {
 		t.Fatalf("GetSheinSettings error = %v", err)
 	}
-	if settings.DefaultStoreID != 870 {
-		t.Fatalf("default store id = %d, want 870", settings.DefaultStoreID)
-	}
 	if len(settings.AvailableStores) != 2 {
 		t.Fatalf("available stores = %+v, want 2 options", settings.AvailableStores)
 	}
@@ -42,12 +39,51 @@ func TestSettingsAdminServiceGetSheinSettingsAttachesAvailableStores(t *testing.
 	}
 }
 
+func TestSettingsAdminServicePropagatesStoreCatalogFailure(t *testing.T) {
+	t.Parallel()
+
+	catalogErr := errors.New("store catalog unavailable")
+	svc := &service{
+		sheinSettings: SheinSettings{Site: "US"},
+		sheinSharedDeps: sheinSharedDependencies{storeCatalog: &stubSheinStoreCatalog{
+			err: catalogErr,
+		}},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "227", UserID: "user-settings"})
+
+	_, err := svc.GetSheinSettings(ctx)
+	if !errors.Is(err, catalogErr) {
+		t.Fatalf("GetSheinSettings error = %v, want catalog error", err)
+	}
+}
+
+func TestSettingsAdminServiceHealthReadSkipsStoreCatalog(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{
+		sheinSettings: SheinSettings{Site: "US", DefaultSubmitMode: "save_draft"},
+		sheinSharedDeps: sheinSharedDependencies{storeCatalog: &stubSheinStoreCatalog{
+			err: errors.New("store catalog unavailable"),
+		}},
+	}
+
+	settings, err := svc.GetSheinSettingsForHealth(context.Background())
+	if err != nil {
+		t.Fatalf("GetSheinSettingsForHealth error = %v", err)
+	}
+	if settings.Site != "US" || settings.DefaultSubmitMode != "save_draft" {
+		t.Fatalf("health settings = %+v, want current configuration", settings)
+	}
+	if settings.AvailableStores != nil {
+		t.Fatalf("health settings available stores = %+v, want catalog-free result", settings.AvailableStores)
+	}
+}
+
 func TestSettingsAdminServiceUpdateSheinSettingsNormalizesAndPersistsValues(t *testing.T) {
 	t.Parallel()
 
 	svc := &service{
 		sheinSettings: SheinSettings{
-			DefaultStoreID:    869,
 			Site:              "US",
 			WarehouseCode:     "WH-US-1",
 			DefaultStock:      50,
@@ -64,7 +100,6 @@ func TestSettingsAdminServiceUpdateSheinSettingsNormalizesAndPersistsValues(t *t
 	}
 
 	settings, err := svc.UpdateSheinSettings(context.Background(), &SheinSettings{
-		DefaultStoreID:    900,
 		Site:              "gb",
 		WarehouseCode:     "WH-GB-1",
 		DefaultStock:      88,
@@ -79,9 +114,6 @@ func TestSettingsAdminServiceUpdateSheinSettingsNormalizesAndPersistsValues(t *t
 	})
 	if err != nil {
 		t.Fatalf("UpdateSheinSettings error = %v", err)
-	}
-	if settings.DefaultStoreID != 900 {
-		t.Fatalf("default store id = %d, want 900", settings.DefaultStoreID)
 	}
 	if settings.Site != "GB" {
 		t.Fatalf("site = %q, want GB", settings.Site)
@@ -98,8 +130,37 @@ func TestSettingsAdminServiceUpdateSheinSettingsNormalizesAndPersistsValues(t *t
 	if settings.Pricing.TargetCurrency != "EUR" {
 		t.Fatalf("pricing target currency = %q, want EUR", settings.Pricing.TargetCurrency)
 	}
-	if svc.sheinSettings.Site != "GB" || svc.sheinSettings.DefaultStoreID != 900 {
+	if svc.sheinSettings.Site != "GB" {
 		t.Fatalf("persisted shein settings = %+v, want updated values", svc.sheinSettings)
+	}
+	if svc.sheinSettings.UpdatedAt == nil || svc.sheinSettings.UpdatedAt.IsZero() {
+		t.Fatalf("persisted updated_at = %v, want non-zero", svc.sheinSettings.UpdatedAt)
+	}
+}
+
+func TestSettingsAdminServiceUpdatePersistsBeforeReportingStoreCatalogFailure(t *testing.T) {
+	t.Parallel()
+
+	catalogErr := errors.New("store catalog unavailable")
+	svc := &service{
+		sheinSettings: SheinSettings{Site: "US"},
+		sheinSharedDeps: sheinSharedDependencies{storeCatalog: &stubSheinStoreCatalog{
+			err: catalogErr,
+		}},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "227", UserID: "user-settings"})
+
+	_, err := svc.UpdateSheinSettings(ctx, &SheinSettings{
+		Site:              "GB",
+		WarehouseCode:     "WH-GB-1",
+		DefaultStock:      88,
+		DefaultSubmitMode: "save_draft",
+	})
+	if !errors.Is(err, catalogErr) {
+		t.Fatalf("UpdateSheinSettings error = %v, want catalog error", err)
+	}
+	if svc.sheinSettings.Site != "GB" || svc.sheinSettings.WarehouseCode != "WH-GB-1" || svc.sheinSettings.DefaultStock != 88 || svc.sheinSettings.DefaultSubmitMode != "save_draft" {
+		t.Fatalf("persisted settings = %+v, want updated values despite catalog failure", svc.sheinSettings)
 	}
 	if svc.sheinSettings.UpdatedAt == nil || svc.sheinSettings.UpdatedAt.IsZero() {
 		t.Fatalf("persisted updated_at = %v, want non-zero", svc.sheinSettings.UpdatedAt)

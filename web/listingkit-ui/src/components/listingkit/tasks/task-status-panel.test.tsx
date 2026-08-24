@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
+import { ApiError } from "@/lib/api/client";
 
 describe("TaskStatusPanel", () => {
   it("renders nothing for completed tasks", () => {
@@ -204,8 +205,137 @@ describe("TaskStatusPanel", () => {
       screen.queryByText("The IP risk level is 'medium' due to using scraped 1688 source images."),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText("legacy semicolon string should not be used here"),
-    ).not.toBeInTheDocument();
+      screen.getByText("legacy semicolon string should not be used here"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the latest retry error alongside review reasons", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "needs_review",
+          review_reasons: ["SHEIN 店铺登录态不可用"],
+          error: "SHEIN 验证码等待超时",
+        }}
+        retryQueued
+        retryError={new ApiError("ListingKit API request failed: 504", 504, {
+          message: "SHEIN 店铺登录态不可用，请重新登录后重试",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("SHEIN 验证码等待超时")).toBeInTheDocument();
+    expect(screen.getByText(/SHEIN 店铺登录态不可用，请重新登录后重试/)).toBeInTheDocument();
+    expect(screen.getByText(/重试已加入队列/)).toBeInTheDocument();
+  });
+
+  it("shows the durable terminal retry error and prefers the newest blocking issue", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "completed",
+          child_retries: [
+            {
+              kind: "sds_design_sync",
+              status: "exhausted",
+              last_error: "SDS options are missing",
+              updated_at: "2026-08-13T02:00:00Z",
+            },
+          ],
+          result: {
+            child_tasks: [
+              { kind: "sds_design_sync", status: "failed" },
+            ],
+            workflow_issues: [
+              {
+                severity: "blocking",
+                message: "old failure",
+              },
+              {
+                severity: "blocking",
+                message: "new retry failure",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("SDS options are missing")).toBeInTheDocument();
+    expect(screen.queryByText("old failure")).not.toBeInTheDocument();
+    expect(screen.queryByText("new retry failure")).not.toBeInTheDocument();
+  });
+
+  it("hides an exhausted retry error after the child repair completes", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "completed",
+          child_retries: [
+            {
+              kind: "sds_design_sync",
+              status: "exhausted",
+              last_error: "stale repair failure",
+            },
+          ],
+          result: {
+            child_tasks: [
+              { kind: "sds_design_sync", status: "completed" },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("stale repair failure")).not.toBeInTheDocument();
+  });
+
+  it("uses the newest blocking issue when no durable retry error exists", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "failed",
+          result: {
+            workflow_issues: [
+              { severity: "blocking", message: "old failure" },
+              { severity: "blocking", message: "new failure" },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("new failure")).toBeInTheDocument();
+    expect(screen.queryByText("old failure")).not.toBeInTheDocument();
+  });
+
+  it("falls through from a generic durable retry error to the persisted child error", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "needs_review",
+          child_retries: [
+            {
+              kind: "sds_design_sync",
+              status: "exhausted",
+              last_error: "SDS child retry did not complete",
+            },
+          ],
+          result: {
+            child_tasks: [
+              {
+                kind: "sds_design_sync",
+                status: "failed",
+                error: "SHEIN 登录态失效",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("SHEIN 登录态失效")).toBeInTheDocument();
+    expect(screen.queryByText("SDS child retry did not complete")).not.toBeInTheDocument();
   });
 
   it("splits semicolon-joined review reasons into separate items", () => {

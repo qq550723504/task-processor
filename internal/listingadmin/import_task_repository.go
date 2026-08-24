@@ -7,7 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+	moderncsqlite "modernc.org/sqlite"
+	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/model"
 )
 
@@ -32,6 +35,12 @@ func AutoMigrateImportTaskRepository(db *gorm.DB) error {
 			return err
 		}
 	}
+	if err := ensureNullableImportTaskCategoryID(db, table); err != nil {
+		return err
+	}
+	if _, err := ensureImportTaskActiveUniqueIndex(db, table); err != nil {
+		return err
+	}
 	return db.AutoMigrate(&listingDispatchEvent{})
 }
 
@@ -50,30 +59,142 @@ func (r *GormImportTaskRepository) ListImportTasks(ctx context.Context, query Im
 	return &ImportTaskPage{Items: items, Total: total, Page: page, PageSize: pageSize}, nil
 }
 
-func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) ([]ImportTask, error) {
+func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) (BatchCreateImportTasksResult, error) {
+	return r.batchCreateImportTasks(ctx, tasks, false)
+}
+
+// BatchCreateImportTasksForStore derives the owner from the parent store while
+// holding that store row in the same transaction as the child insert.
+func (r *GormImportTaskRepository) BatchCreateImportTasksForStore(ctx context.Context, tasks []ImportTask) ([]ImportTask, error) {
+	result, err := r.batchCreateImportTasks(ctx, tasks, true)
+	return result.Items, err
+}
+
+func (r *GormImportTaskRepository) batchCreateImportTasks(ctx context.Context, tasks []ImportTask, deriveStoreOwner bool) (BatchCreateImportTasksResult, error) {
+	result := BatchCreateImportTasksResult{
+		Items:             []ImportTask{},
+		SkippedProductIDs: []string{},
+	}
 	if r == nil || r.db == nil {
-		return nil, errors.New("import task repository database is not configured")
+		return result, errors.New("import task repository database is not configured")
+	}
+	if len(tasks) == 0 {
+		return result, nil
+	}
+	if err := EnsureImportTaskWriteReady(r.db); err != nil {
+		return result, err
+	}
+	tx := r.db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return result, tx.Error
+	}
+	defer tx.Rollback()
+
+	var ownerUserID string
+	var err error
+	if !deriveStoreOwner {
+		ownerUserID, err = requireOwnerUserID(ctx, "")
 	}
 	rows := make([]listingProductImportTask, 0, len(tasks))
 	for _, task := range tasks {
 		row := listingProductImportTaskFromImportTask(task)
 		applyImportTaskDefaults(&row)
-		if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-			applyImportTaskAuditFields(&row, ownerUserID, true)
+		if deriveStoreOwner {
+			ownerUserID, err = resolveStoreOwnerUserIDForUpdate(ctx, tx, row.TenantID, row.StoreID)
+			if err != nil {
+				return result, err
+			}
+		} else if err != nil {
+			return result, err
 		}
+		applyImportTaskAuditFields(&row, ownerUserID, true)
 		rows = append(rows, row)
 	}
-	if len(rows) == 0 {
-		return []ImportTask{}, nil
-	}
-	if err := r.db.WithContext(ctx).Table("listing_product_import_task").Create(&rows).Error; err != nil {
-		return nil, err
-	}
-	out := make([]ImportTask, 0, len(rows))
+	productIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, row.toImportTask())
+		productIDs = append(productIDs, row.ProductID)
 	}
-	return out, nil
+	var existing []listingProductImportTask
+	if err := tx.
+		Table("listing_product_import_task").
+		Where("tenant_id = ?", rows[0].TenantID).
+		Where(fmt.Sprintf("deleted = 0 AND %s = ? AND region = ? AND store_id = ?", importTaskCanonicalTargetPlatformExpression("target_platform", "platform")), rows[0].TargetPlatform, rows[0].Region, rows[0].StoreID).
+		Where("product_id IN ?", productIDs).
+		Find(&existing).Error; err != nil {
+		return result, err
+	}
+	skipped := make(map[string]struct{})
+	for _, row := range existing {
+		if isImportTaskCompletedStatus(row.Status) {
+			skipped[row.ProductID] = struct{}{}
+			continue
+		}
+		if model.TaskStatus(row.Status).IsTerminal() {
+			continue
+		}
+		return result, ErrImportTaskAlreadyExists
+	}
+	if deriveStoreOwner && len(skipped) > 0 {
+		return result, ErrImportTaskAlreadyExists
+	}
+	rowsToCreate := make([]listingProductImportTask, 0, len(rows))
+	for _, row := range rows {
+		if _, ok := skipped[row.ProductID]; ok {
+			continue
+		}
+		rowsToCreate = append(rowsToCreate, row)
+	}
+	for _, row := range rows {
+		if _, ok := skipped[row.ProductID]; ok {
+			result.SkippedProductIDs = append(result.SkippedProductIDs, row.ProductID)
+		}
+	}
+	if len(rowsToCreate) == 0 {
+		if err := tx.Commit().Error; err != nil {
+			return result, err
+		}
+		return result, nil
+	}
+	if err := tx.Table("listing_product_import_task").Create(&rowsToCreate).Error; err != nil {
+		if isImportTaskActiveUniqueViolation(err) {
+			return result, ErrImportTaskAlreadyExists
+		}
+		return result, err
+	}
+	if err := tx.Commit().Error; err != nil {
+		return result, err
+	}
+	result.Items = make([]ImportTask, 0, len(rowsToCreate))
+	for _, row := range rowsToCreate {
+		result.Items = append(result.Items, row.toImportTask())
+	}
+	return result, nil
+}
+
+func isImportTaskActiveUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	var postgresErr *pgconn.PgError
+	if errors.As(err, &postgresErr) {
+		return postgresErr.Code == "23505" && postgresErr.ConstraintName == "idx_listing_product_import_task_unique"
+	}
+	var sqliteErr *moderncsqlite.Error
+	if errors.As(err, &sqliteErr) {
+		if sqliteErr.Code() != 1555 && sqliteErr.Code() != 2067 {
+			return false
+		}
+		message := strings.ToLower(sqliteErr.Error())
+		if strings.Contains(message, "index 'idx_listing_product_import_task_unique'") {
+			return true
+		}
+		return strings.Contains(message, "listing_product_import_task") &&
+			strings.Contains(message, "target_platform") &&
+			strings.Contains(message, "product_id") &&
+			strings.Contains(message, "region") &&
+			strings.Contains(message, "store_id")
+	}
+	return false
 }
 
 func (r *GormImportTaskRepository) DeleteImportTask(ctx context.Context, tenantID, id int64) error {
@@ -154,7 +275,7 @@ func (r *GormImportTaskRepository) ListDispatchCandidatesFair(ctx context.Contex
 		model.TaskStatusCrawled.Int16(),
 		model.TaskStatusPendingRetry.Int16(),
 	}
-	platform := strings.TrimSpace(req.Platform)
+	platform := taskdomain.NormalizePlatform(req.Platform)
 	if platform == "" {
 		return []ImportTask{}, nil
 	}
@@ -165,7 +286,7 @@ func (r *GormImportTaskRepository) ListDispatchCandidatesFair(ctx context.Contex
 			order by t.priority desc, t.update_time asc, t.id asc
 		) as rn`).
 		Where("t.deleted = 0").
-		Where("COALESCE(t.target_platform, t.platform) = ?", platform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(t.target_platform), ''), t.platform))) = ?", platform).
 		Where("t.status IN ?", statuses).
 		Where("t.store_id IS NOT NULL")
 	if len(req.ExcludedStoreIDs) > 0 {
@@ -193,7 +314,7 @@ func (r *GormImportTaskRepository) ListPausedTaskGroups(ctx context.Context, pla
 	if r == nil || r.db == nil {
 		return nil, errors.New("import task repository database is not configured")
 	}
-	platform = strings.TrimSpace(platform)
+	platform = taskdomain.NormalizePlatform(platform)
 	if platform == "" {
 		return []PausedTaskGroup{}, nil
 	}
@@ -203,7 +324,7 @@ func (r *GormImportTaskRepository) ListPausedTaskGroups(ctx context.Context, pla
 		Table("listing_product_import_task").
 		Select("tenant_id, store_id, reason_code, stage, count(*) AS count").
 		Where("deleted = 0").
-		Where("COALESCE(NULLIF(target_platform, ''), platform) = ?", platform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform))) = ?", platform).
 		Where("status = ?", model.TaskStatusPaused.Int16()).
 		Group("tenant_id, store_id, reason_code, stage").
 		Order("count DESC, tenant_id ASC, store_id ASC, reason_code ASC, stage ASC").
@@ -218,7 +339,7 @@ func (r *GormImportTaskRepository) RecoverPausedTaskGroup(ctx context.Context, p
 	if r == nil || r.db == nil {
 		return 0, errors.New("import task repository database is not configured")
 	}
-	platform = strings.TrimSpace(platform)
+	platform = taskdomain.NormalizePlatform(platform)
 	if platform == "" {
 		return 0, nil
 	}
@@ -229,7 +350,7 @@ func (r *GormImportTaskRepository) RecoverPausedTaskGroup(ctx context.Context, p
 	res := r.db.WithContext(ctx).
 		Table("listing_product_import_task").
 		Where("deleted = 0").
-		Where("COALESCE(NULLIF(target_platform, ''), platform) = ?", platform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform))) = ?", platform).
 		Where("tenant_id = ? AND store_id = ?", group.TenantID, group.StoreID).
 		Where("status = ?", model.TaskStatusPaused.Int16()).
 		Where("COALESCE(reason_code, '') = ?", strings.TrimSpace(group.ReasonCode)).
@@ -332,7 +453,7 @@ func (r *GormImportTaskRepository) CountDailyDispatchUsage(ctx context.Context, 
 	if r == nil || r.db == nil {
 		return DailyDispatchUsage{}, errors.New("import task repository database is not configured")
 	}
-	platform = strings.TrimSpace(platform)
+	platform = taskdomain.NormalizePlatform(platform)
 	if platform == "" {
 		return DailyDispatchUsage{}, nil
 	}
@@ -350,7 +471,7 @@ func (r *GormImportTaskRepository) CountDailyDispatchUsage(ctx context.Context, 
 		Select("status, count(*) as count").
 		Where("deleted = 0").
 		Where("tenant_id = ? AND store_id = ?", tenantID, storeID).
-		Where("COALESCE(NULLIF(target_platform, ''), platform) = ?", platform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform))) = ?", platform).
 		Where("create_time >= ? AND create_time < ?", start, end).
 		Where("status IN ?", []int16{
 			model.TaskStatusProcessing.Int16(),
@@ -439,7 +560,7 @@ func (r *GormImportTaskRepository) CountQueuedByStore(ctx context.Context, platf
 	if r == nil || r.db == nil {
 		return nil, errors.New("import task repository database is not configured")
 	}
-	trimmedPlatform := strings.TrimSpace(platform)
+	trimmedPlatform := taskdomain.NormalizePlatform(platform)
 	if trimmedPlatform == "" {
 		return map[int64]int64{}, nil
 	}
@@ -452,7 +573,7 @@ func (r *GormImportTaskRepository) CountQueuedByStore(ctx context.Context, platf
 		Select("store_id, count(*) as count").
 		Where("deleted = 0").
 		Where("status = ?", model.TaskStatusQueued.Int16()).
-		Where("COALESCE(target_platform, platform) = ?", trimmedPlatform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform))) = ?", trimmedPlatform).
 		Group("store_id")
 	if len(storeIDs) > 0 {
 		query = query.Where("store_id IN ?", storeIDs)

@@ -1,5 +1,7 @@
 package workspace
 
+import "strconv"
+
 type HistoryRestoreTimeline struct {
 	Headline     string
 	RelationText string
@@ -170,7 +172,7 @@ func BuildHistoryRestoreOverview(record *HistoryRestoreRecordInput, safety *Hist
 		}
 		switch {
 		case compare.ChangeCount > 0:
-			overview.Highlights = append(overview.Highlights, "恢复后预计会影响 "+formatInt(compare.ChangeCount)+" 个字段")
+			overview.Highlights = append(overview.Highlights, "恢复后预计会影响 "+strconv.Itoa(compare.ChangeCount)+" 个字段")
 		case compare.CompareTo != "":
 			overview.Highlights = append(overview.Highlights, "恢复后与"+firstNonEmpty(compare.RelationLabel, "比较目标")+"没有字段差异")
 		}

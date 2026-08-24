@@ -11,7 +11,7 @@ export const getSDSBaselineReadiness = vi.fn();
 export const warmSDSBaselineForSelection = vi.fn();
 export const hydrateSDSVariantSelection = vi.fn();
 export const listSheinStudioBatches = vi.fn();
-export const getSheinStudioBatch = vi.fn();
+ const getSheinStudioBatch = vi.fn();
 export const getSheinStudioHydratedBatch = vi.fn();
 export const loadSheinStudioDraft = vi.fn();
 export const saveSheinStudioBatch = vi.fn();
@@ -424,7 +424,11 @@ vi.mock("@/lib/utils/shein-studio-batches", () => ({
 
 vi.mock("@/lib/query/use-shein-store-selector", () => ({
   useSheinStoreSelector: () => ({
-    enabledProfiles: [],
+    enabledProfiles: [1, 9, 869].map((store_id) => ({
+      store_id,
+      storeId: String(store_id),
+      name: `Test SHEIN Store ${store_id}`,
+    })),
     profiles: { isError: false },
     routing: { isError: false },
     recommendedStoreId: "",

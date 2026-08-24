@@ -27,5 +27,6 @@ type imageEditResponse struct {
 
 type imageEditData struct {
 	B64JSON       string
+	URL           string
 	RevisedPrompt string
 }

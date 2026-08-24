@@ -136,6 +136,7 @@ type UseSheinStudioDesignActionsParams = {
   workbench: Pick<SheinStudioWorkbenchController, "setField">;
   batchGenerationContext?: BatchGenerationContext;
   sheinStoreId: string;
+  storeRequiredMessage: string;
   styleCount: string;
   transparentBackground: boolean;
   transparentBackgroundMode?: SheinStudioTransparencyMode;
@@ -185,6 +186,7 @@ export function useSheinStudioDesignActions({
   workbench,
   batchGenerationContext,
   sheinStoreId,
+  storeRequiredMessage,
   styleCount,
   transparentBackground,
   transparentBackgroundMode,
@@ -219,6 +221,7 @@ export function useSheinStudioDesignActions({
       workbench.setField("galleryRatioCheck", value),
     setIsCreatingTasks: (value) => workbench.setField("isCreatingTasks", value),
     sheinStoreId,
+    storeRequiredMessage,
     hasLocalWorkflowStateRef,
     itemizedBatchContext,
   });

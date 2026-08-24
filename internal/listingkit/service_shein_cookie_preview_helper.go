@@ -27,12 +27,13 @@ func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, ta
 		&pkg,
 		task.Result.PodExecution,
 		task.Result.CanonicalProduct,
-		task.Result.AssetBundle,
+		task.Result.AssetBundleForTarget("shein"),
 		preview.Shein.RenderPreviews,
 	)
 	if rebuilt == nil {
 		return
 	}
 	preview.Shein = rebuilt
+	backfillSheinPreviewSourceMetadata(preview, task)
 	preview.NeedsReview = preview.NeedsReview || rebuilt.NeedsReview
 }

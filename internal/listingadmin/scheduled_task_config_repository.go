@@ -72,14 +72,16 @@ func (r *GormScheduledTaskConfigRepository) UpsertScheduledTaskConfig(ctx contex
 	if err := validateScheduledTaskConfigRow(row); err != nil {
 		return nil, err
 	}
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		row.OwnerUserID = ownerUserID
-		row.Creator = ownerUserID
-		row.CreatedBy = ownerUserID
-		row.Updater = ownerUserID
-		row.UpdatedBy = ownerUserID
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
-	err := r.db.WithContext(ctx).
+	row.OwnerUserID = ownerUserID
+	row.Creator = ownerUserID
+	row.CreatedBy = ownerUserID
+	row.Updater = ownerUserID
+	row.UpdatedBy = ownerUserID
+	err = r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{
 				{Name: "tenant_id"},

@@ -345,7 +345,8 @@ export function SheinStudioWorkbench({
     }
     setActiveSheinStudioBatchId(initialBatchId);
   }, [initialBatchId]);
-  const { enabledProfiles } = useSheinStoreSelector();
+  const { enabledProfiles, storeOptions } = useSheinStoreSelector();
+  const selectableStores = storeOptions ?? enabledProfiles;
   const subscriptionQuery = useQuery({
     queryKey: ["listingkit-subscription"],
     queryFn: getCurrentSubscription,
@@ -384,7 +385,8 @@ export function SheinStudioWorkbench({
     storeRequiredMessage,
   } = useSheinStudioStoreSelection({
     currentStoreId: sheinStoreId,
-    enabledProfiles,
+    enabledProfiles: selectableStores,
+    groupedSelections,
   });
   const activeGroupPromptHistory = useSheinStudioActiveGroupPromptHistory({
     activeGroupId,
@@ -829,7 +831,8 @@ export function SheinStudioWorkbench({
       activeSelectionBaselineReason,
       workbench: workbenchController,
       batchGenerationContext,
-      sheinStoreId,
+      sheinStoreId: effectiveCurrentStoreId,
+      storeRequiredMessage,
       styleCount,
       transparentBackground,
       transparentBackgroundMode,
@@ -1162,6 +1165,7 @@ export function SheinStudioWorkbench({
     setActiveBatchRunId,
     setBatchRunError,
     startBatchRun: startSheinStudioBatchRun,
+    storeRequiredMessage,
   });
 
   const applyItemizedBatchDetail = useCallback(
@@ -1638,7 +1642,11 @@ export function SheinStudioWorkbench({
         <div className="flex flex-wrap gap-2 xl:justify-end">
           {shouldPrioritizeTaskCreationRecovery ? (
             <Button
-              disabled={isCreatingTasks || Boolean(retryingBackgroundRemovalId)}
+              disabled={
+                isCreatingTasks ||
+                Boolean(retryingBackgroundRemovalId) ||
+                Boolean(storeRequiredMessage)
+              }
               onClick={() => {
                 void handleCreateTasks();
               }}
@@ -1650,7 +1658,11 @@ export function SheinStudioWorkbench({
             </Button>
           ) : (
             <Button
-              disabled={isStartingDedicatedBatchRun || Boolean(retryingFailedItemId)}
+              disabled={
+                isStartingDedicatedBatchRun ||
+                Boolean(retryingFailedItemId) ||
+                Boolean(storeRequiredMessage)
+              }
               onClick={() => {
                 if (hasRetryableFailedItems) {
                   void handleRetryFailedItems();
@@ -1878,7 +1890,7 @@ export function SheinStudioWorkbench({
                 selectedColorCount={selectedColorCount}
                 selectedSizeCount={selectedSizeCount}
                 selectedVariantCount={selectedVariants.length}
-                storeOptions={enabledProfiles}
+                storeOptions={selectableStores}
               />
               <SheinStudioGenerationPanelBoundary
                 input={generationPanelInput}

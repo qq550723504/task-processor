@@ -19,12 +19,18 @@ type taskStudioBatchServiceWiring struct {
 	storeValidator           StudioBatchStoreValidator
 	generator                *studioBatchGenerationService
 	createGenerateTask       func(context.Context, *GenerateRequest) (*Task, error)
+	generateProductImages    func(context.Context, *StudioProductImageRequest) (*StudioProductImageResponse, error)
 	getTask                  func(context.Context, string) (*Task, error)
+	markTaskFailed           func(context.Context, string, string) error
 	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
 	ensureGraph              func(context.Context, string) error
 	loadDetail               func(context.Context, string) (*StudioBatchDetail, error)
 	resetRetryItems          func(context.Context, []StudioBatchItemRecord) error
 	currentTime              func() time.Time
+
+	productImageUsage             StudioProductImageUsage
+	generationUsageAdmission      GenerationUsageAdmission
+	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
 type taskStudioBatchServiceConfigWiring struct {
@@ -69,7 +75,18 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 		storeValidator:           resolveStudioBatchStoreValidator(s),
 		generator:                generator,
 		createGenerateTask:       s.CreateGenerateTask,
-		getTask:                  repository.getTask,
+		generateProductImages: func(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
+			media := s.taskStudioMediaOrDefault()
+			if media == nil {
+				return nil, fmt.Errorf("studio media service is not configured")
+			}
+			return media.GenerateStudioProductImages(ctx, req)
+		},
+		productImageUsage:             s.studioDeps.productImageUsage,
+		generationUsageAdmission:      s.studioDeps.generationUsageAdmission,
+		resolveUploadedImagePublicURL: buildResolveUploadedImagePublicURLFunc(s),
+		getTask:                       repository.getTask,
+		markTaskFailed:                repository.markTaskFailed,
 		retryBackgroundRemoval: func(ctx context.Context, sourceURL string, filename string) (*studioBackgroundRemovalMaterialization, error) {
 			media := s.taskStudioMediaOrDefault()
 			if media == nil {
@@ -85,10 +102,13 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 		},
 		resetRetryItems: func(ctx context.Context, items []StudioBatchItemRecord) error {
 			batchService := &taskStudioBatchService{
-				repo:                     repo,
-				batchRunRepo:             resolveStudioBatchRunRepo(s),
-				currentTime:              time.Now,
-				sdsProductDetailProvider: resolveSDSBaselineRemoteProvider(s),
+				repo:                          repo,
+				batchRunRepo:                  resolveStudioBatchRunRepo(s),
+				currentTime:                   time.Now,
+				sdsProductDetailProvider:      resolveSDSBaselineRemoteProvider(s),
+				productImageUsage:             s.studioDeps.productImageUsage,
+				generationUsageAdmission:      s.studioDeps.generationUsageAdmission,
+				resolveUploadedImagePublicURL: buildResolveUploadedImagePublicURLFunc(s),
 			}
 			return batchService.resetStudioBatchRetryItems(ctx, items)
 		},
@@ -291,13 +311,19 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 		storeValidator:           config.batch.storeValidator,
 		generator:                config.batch.generator,
 		createGenerateTask:       config.batch.createGenerateTask,
+		generateProductImages:    config.batch.generateProductImages,
 		getTask:                  config.batch.getTask,
+		markTaskFailed:           config.batch.markTaskFailed,
 		retryBackgroundRemoval:   config.batch.retryBackgroundRemoval,
 		detailRunner:             config.detailRunner,
 		reviewRunner:             config.reviewRunner,
 		retryRunner:              config.retryRunner,
 		taskPrepareRunner:        config.taskPrepare,
 		taskResumeRunner:         config.taskResume,
+
+		productImageUsage:             config.batch.productImageUsage,
+		generationUsageAdmission:      config.batch.generationUsageAdmission,
+		resolveUploadedImagePublicURL: config.batch.resolveUploadedImagePublicURL,
 	}
 }
 
@@ -316,8 +342,10 @@ func resolveStudioBatchBaselineReadinessChecker(s *service) StudioBatchBaselineR
 }
 
 func resolveStudioBatchStoreValidator(s *service) StudioBatchStoreValidator {
-	if repo := resolveAdminStoreProfileRepo(s); repo != nil {
-		return studioBatchStoreProfileValidator{repo: repo}
+	repo := resolveAdminStoreProfileRepo(s)
+	accessValidator := resolveSheinStoreAccessValidator(s)
+	if repo != nil || accessValidator != nil {
+		return studioBatchStoreProfileValidator{repo: repo, accessValidator: accessValidator}
 	}
 	return nil
 }

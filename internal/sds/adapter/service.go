@@ -53,7 +53,7 @@ func (s *Service) SyncFromImageRequest(ctx context.Context, input SyncFromImageR
 		return nil, err
 	}
 
-	result, err := s.images.ProcessImages(ctx, task)
+	result, err := s.images.ProcessImages(productimage.WithTaskIdentity(ctx, task), task)
 	if err != nil {
 		return nil, err
 	}

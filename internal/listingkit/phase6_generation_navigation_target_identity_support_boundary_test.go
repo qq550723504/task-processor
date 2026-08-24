@@ -43,13 +43,14 @@ func TestGenerationNavigationTargetIdentitySupportBoundary(t *testing.T) {
 	assertSourceContainsAll(t, dispatchSource, []string{
 		"func buildGenerationNavigationFollowUpReads(",
 		"func buildGenerationNavigationDispatchPlan(",
-		"func buildGenerationNavigationDispatchStrategy(",
 		"func generationNavigationDispatchBaseQuery(",
 		"func firstNonNilQueueQuery(",
+		"listinggeneration.NavigationDispatchStrategy(",
 	})
 	assertSourceExcludesAll(t, dispatchSource, []string{
 		"func buildGenerationNavigationDescriptor(",
 		"func buildGenerationNavigationTargetCacheKey(",
 		"func normalizeGenerationReviewDispatchKind(",
+		"func buildGenerationNavigationDispatchStrategy(",
 	})
 }

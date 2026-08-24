@@ -10,12 +10,15 @@ func canReuseAsset(asset *ImageAsset) bool {
 		return false
 	}
 	if asset.Metadata != nil {
+		if asset.Metadata["tenant_model_gate"] == "true" {
+			return false
+		}
 		if publishedPath := asset.Metadata["published_path"]; publishedPath != "" {
 			if _, err := os.Stat(publishedPath); err == nil {
 				return true
 			}
 		}
-		if uploadedURL := asset.Metadata["uploaded_url"]; uploadedURL != "" {
+		if hasReusablePublishedURL(asset.Metadata) {
 			return true
 		}
 		if localPath := asset.Metadata["local_path"]; localPath != "" {
@@ -36,15 +39,22 @@ func canReusePublishedAsset(asset *ImageAsset) bool {
 	if asset == nil || asset.Metadata == nil {
 		return false
 	}
+	if asset.Metadata["tenant_model_gate"] == "true" {
+		return false
+	}
 	if publishedPath := asset.Metadata["published_path"]; publishedPath != "" {
 		if _, err := os.Stat(publishedPath); err == nil {
 			return true
 		}
 	}
-	if asset.Metadata["uploaded_url"] != "" || asset.Metadata["published_url"] != "" {
+	if hasReusablePublishedURL(asset.Metadata) {
 		return true
 	}
 	return false
+}
+
+func hasReusablePublishedURL(metadata map[string]string) bool {
+	return isHTTPURL(ResolveReadableAssetURL("", "", metadata))
 }
 
 func looksRemoteURL(value string) bool {
@@ -55,6 +65,12 @@ func cleanupTemporaryAssets(result *ImageProcessResult) {
 	for _, asset := range collectAssets(result) {
 		cleanupTemporaryAsset(asset)
 	}
+}
+
+// CleanupTemporaryAsset applies the same durable-publication cleanup used by
+// the full product-image pipeline to a directly rendered asset.
+func CleanupTemporaryAsset(asset *ImageAsset) {
+	cleanupTemporaryAsset(asset)
 }
 
 func cleanupTemporaryAsset(asset *ImageAsset) {

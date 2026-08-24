@@ -41,6 +41,7 @@ func TestStoreStatisticsHandlerListsAutoListingStoresWithinTenant(t *testing.T) 
 	seedStore(t, router.db, listingStore{
 		ID:                1,
 		TenantID:          101,
+		OwnerUserID:       "user-101",
 		StoreID:           "SHEIN-US",
 		Name:              "SHEIN US",
 		Username:          "shein-us",
@@ -82,7 +83,7 @@ func TestStoreStatisticsHandlerListsAutoListingStoresWithinTenant(t *testing.T) 
 	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P2", Status: 1, CreateTime: timePtr(time.Date(2026, 5, 15, 8, 30, 0, 0, time.UTC))})
 	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P3", Status: 5, CreateTime: timePtr(time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC))})
 	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P4", Status: 10, CreateTime: timePtr(time.Date(2026, 5, 15, 9, 30, 0, 0, time.UTC))})
-	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P5", Status: 2, CreateTime: timePtr(time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC))})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "P5", Status: 6, CreateTime: timePtr(time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC))})
 
 	req := httptest.NewRequest(http.MethodGet, "/store-statistics?date=2026-05-15", nil)
 	req.Header.Set("X-Tenant-ID", "101")
@@ -302,8 +303,8 @@ func TestStoreStatisticsHandlerFiltersTaskCountsByDate(t *testing.T) {
 		EnableAutoLogin:   &trueValue,
 		Status:            0,
 	})
-	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "D1", Status: 2, CreateTime: timePtr(time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC))})
-	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "D2", Status: 2, CreateTime: timePtr(time.Date(2026, 5, 16, 9, 0, 0, 0, time.UTC))})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "D1", Status: 6, CreateTime: timePtr(time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC))})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "D2", Status: 6, CreateTime: timePtr(time.Date(2026, 5, 16, 9, 0, 0, 0, time.UTC))})
 	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, Platform: "SHEIN", Region: "US", ProductID: "D3", Status: 5, CreateTime: timePtr(time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC))})
 
 	req := httptest.NewRequest(http.MethodGet, "/store-statistics?date=2026-05-15", nil)
@@ -375,7 +376,7 @@ func TestStoreStatisticsHandlerSummaryJSONMatchesFrontendContract(t *testing.T) 
 		EnableAutoLogin:   &trueValue,
 		Status:            0,
 	})
-	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, ProductID: "P1", Status: 2, CreateTime: timePtr(time.Date(2026, 5, 15, 8, 0, 0, 0, time.UTC))})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, ProductID: "P1", Status: 6, CreateTime: timePtr(time.Date(2026, 5, 15, 8, 0, 0, 0, time.UTC))})
 	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 2, ProductID: "P2", Status: 5, CreateTime: timePtr(time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC))})
 	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 3, ProductID: "P3", Status: 10, CreateTime: timePtr(time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC))})
 
@@ -555,8 +556,9 @@ func newStoreStatisticsTestRouter(t *testing.T) storeStatisticsTestRouter {
 
 func seedStatisticsImportTask(t *testing.T, db *gorm.DB, task listingProductImportTask) listingProductImportTask {
 	t.Helper()
-	if task.CategoryID == 0 {
-		task.CategoryID = 1
+	if task.CategoryID == nil {
+		categoryID := int64(1)
+		task.CategoryID = &categoryID
 	}
 	if err := db.Table("listing_product_import_task").Create(&task).Error; err != nil {
 		t.Fatalf("seed import task: %v", err)

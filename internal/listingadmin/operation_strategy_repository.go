@@ -65,9 +65,11 @@ func (r *GormOperationStrategyRepository) CreateOperationStrategy(ctx context.Co
 		return nil, err
 	}
 	row := listingOperationStrategyFromOperationStrategy(strategy)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyOperationStrategyAuditFields(&row, ownerUserID, true)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyOperationStrategyAuditFields(&row, ownerUserID, true)
 	if err := r.db.WithContext(ctx).Table("listing_operation_strategy").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -80,9 +82,11 @@ func (r *GormOperationStrategyRepository) UpdateOperationStrategy(ctx context.Co
 		return nil, err
 	}
 	row := listingOperationStrategyFromOperationStrategy(strategy)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyOperationStrategyAuditFields(&row, ownerUserID, false)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyOperationStrategyAuditFields(&row, ownerUserID, false)
 	updates := map[string]any{
 		"owner_user_id":                    row.OwnerUserID,
 		"store_id":                         row.StoreID,
@@ -139,8 +143,13 @@ func (r *GormOperationStrategyRepository) SaveActivityStrategy(ctx context.Conte
 		return nil, err
 	}
 	row := listingOperationStrategyFromOperationStrategy(strategy)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
+	}
 	values := map[string]any{
 		"tenant_id":                        row.TenantID,
+		"owner_user_id":                    ownerUserID,
 		"store_id":                         row.StoreID,
 		"name":                             row.Name,
 		"platform":                         row.Platform,
@@ -158,11 +167,6 @@ func (r *GormOperationStrategyRepository) SaveActivityStrategy(ctx context.Conte
 	}
 	if row.ID <= 0 {
 		values["deleted"] = 0
-		if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-			// Keep the creator for audit history. Activity strategies themselves
-			// are shared by all operators with access to the same store.
-			values["owner_user_id"] = ownerUserID
-		}
 		if err := r.db.WithContext(ctx).Table("listing_operation_strategy").Create(values).Error; err != nil {
 			return nil, err
 		}

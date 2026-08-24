@@ -9,7 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/app/task"
+	apptask "task-processor/internal/app/task"
+	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
@@ -42,7 +43,7 @@ func NewDistributedCrawlerClient(rabbitmqClient *rabbitmq.Client, logger *logrus
 		publisher:   adapter,
 		listener:    listener,
 		registry:    registry,
-		taskAdapter: task.NewMessageAdapter(),
+		taskAdapter: apptask.NewMessageAdapter(),
 		queueNaming: rabbitmq.NewNamingService(),
 		logger:      logger,
 	}
@@ -78,6 +79,21 @@ func (c *DistributedCrawlerClient) SubmitCrawlTasks(ctx context.Context, reqs []
 		return nil, nil
 	}
 
+	// Resolve every route before allocating a listener or a pending task. Queue
+	// names are derived only from this validated value, so an unsupported
+	// platform can never create or receive a crawler queue.
+	routes := make([]string, len(reqs))
+	for i, req := range reqs {
+		if req == nil {
+			return nil, fmt.Errorf("crawl request %d is nil", i)
+		}
+		route, err := apptask.ResolveCrawlerRoute(req.Platform)
+		if err != nil {
+			return nil, fmt.Errorf("resolve crawler route for request %d: %w", i, err)
+		}
+		routes[i] = route
+	}
+
 	replyTo, err := c.ensureListenerStarted()
 	if err != nil {
 		return nil, fmt.Errorf("启动结果监听器失败: %w", err)
@@ -89,9 +105,9 @@ func (c *DistributedCrawlerClient) SubmitCrawlTasks(ctx context.Context, reqs []
 		pts[i] = c.registry.Register(ctx, req.TaskID)
 		var queueName string
 		if req.Region != "" {
-			queueName = c.queueNaming.BuildCrawlerQueueNameByRegion(req.Platform, req.Region, req.Priority)
+			queueName = c.queueNaming.BuildCrawlerQueueNameByRegion(routes[i], req.Region, req.Priority)
 		} else {
-			queueName = c.queueNaming.BuildCrawlerQueueName(req.Platform, req.Priority)
+			queueName = c.queueNaming.BuildCrawlerQueueName(routes[i], req.Priority)
 		}
 		if err := c.publishCrawlTask(ctx, req, queueName, replyTo, pts[i].TaskID); err != nil {
 			// 发布失败，清理已注册的任务
@@ -160,36 +176,45 @@ func (c *DistributedCrawlerClient) publishCrawlTask(
 	req *CrawlRequest,
 	queueName, replyTo, taskIDStr string,
 ) error {
+	if _, err := apptask.ResolveCrawlerRoute(req.Platform); err != nil {
+		return fmt.Errorf("resolve crawler route: %w", err)
+	}
 	now := time.Now().Unix()
 	priority := c.taskAdapter.CalculatePriority(req.Priority)
 
-	payload := map[string]any{
-		"id":             req.TaskID, // string，避免 JSON float64 精度丢失
-		"tenantId":       req.TenantID,
-		"storeId":        req.StoreID,
-		"sourcePlatform": req.Platform,
-		"region":         req.Region,
-		"productId":      req.ProductID,
-		"priority":       req.Priority,
-		"reply_to":       replyTo,
-		"createTime":     now,
-		"updateTime":     now,
-		"retryCount":     0,
-		"maxRetryCount":  3,
+	payloadBytes, err := json.Marshal(apptask.TaskPayload{
+		TaskID:         taskIDStr,
+		TenantID:       req.TenantID,
+		StoreID:        req.StoreID,
+		SourcePlatform: req.SourcePlatform,
+		TargetPlatform: req.TargetPlatform,
+		Region:         req.Region,
+		ProductID:      req.ProductID,
+		Priority:       req.Priority,
+		ReplyTo:        replyTo,
+		CreateTime:     now,
+		UpdateTime:     now,
+		RetryCount:     0,
+		MaxRetryCount:  3,
+		Zipcode:        strings.TrimSpace(req.Zipcode),
+	})
+	if err != nil {
+		return fmt.Errorf("序列化爬虫任务载荷失败: %w", err)
 	}
-	if zipcode := strings.TrimSpace(req.Zipcode); zipcode != "" {
-		payload["zipcode"] = zipcode
+	event := taskdomain.TaskEventV2{
+		SchemaVersion:  taskdomain.TaskEventSchemaVersionV2,
+		TaskID:         taskIDStr,
+		SourcePlatform: taskdomain.SourcePlatform(strings.TrimSpace(req.SourcePlatform)),
+		TargetPlatform: taskdomain.TargetPlatform(strings.TrimSpace(req.TargetPlatform)),
+		Payload:        payloadBytes,
+		TraceID:        strings.TrimSpace(req.TraceID),
+		Metadata:       req.Metadata,
+	}
+	if _, err := taskdomain.NormalizeTaskEventV2(event); err != nil {
+		return fmt.Errorf("normalize crawler task event: %w", err)
 	}
 
-	body, err := json.Marshal(&rabbitmq.Message{
-		ID:         taskIDStr,
-		Type:       "task",
-		Payload:    payload,
-		Priority:   priority,
-		Timestamp:  now,
-		RetryCount: 0,
-		MaxRetries: 3,
-	})
+	body, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("序列化爬虫任务消息失败: %w", err)
 	}

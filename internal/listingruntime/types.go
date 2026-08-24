@@ -5,6 +5,8 @@ type ImportTask struct {
 	TenantID        int64
 	StoreID         int64
 	Platform        string
+	SourcePlatform  string
+	TargetPlatform  string
 	Region          string
 	CategoryID      int64
 	ProductID       string
@@ -23,6 +25,7 @@ type ImportTask struct {
 type StoreInfo struct {
 	ID                       int64
 	TenantID                 int64
+	OwnerUserID              string
 	StoreID                  string
 	Username                 string
 	Platform                 string
@@ -76,6 +79,7 @@ type ProductImportMapping struct {
 	ID                      int64
 	ImportTaskID            int64
 	StoreID                 int64
+	OwnerUserID             string
 	Platform                string
 	Region                  string
 	ProductID               string
@@ -97,6 +101,7 @@ type ProductImportMapping struct {
 type ProductImportMappingUpsert struct {
 	ID                      *int64
 	TenantID                int64
+	OwnerUserID             string
 	ImportTaskID            int64
 	StoreID                 int64
 	Platform                string

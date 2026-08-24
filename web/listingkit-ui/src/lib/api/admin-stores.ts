@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const optionalBooleanSchema = z.boolean().optional();
 
-export const listingStoreSchema = z
+ const listingStoreSchema = z
   .object({
     id: z.number(),
     tenantId: z.number().optional(),
@@ -133,7 +133,7 @@ export function parseStoreResponse(payload: unknown): ListingStore {
   );
 }
 
-export function parseSimpleStoreResponse(payload: unknown): SimpleListingStore[] {
+function parseSimpleStoreResponse(payload: unknown): SimpleListingStore[] {
   return parseApiResponseShape(
     payload,
     simpleStorePageSchema,

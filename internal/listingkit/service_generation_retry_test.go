@@ -20,7 +20,9 @@ import (
 	common "task-processor/internal/publishing/common"
 )
 
-type stubRetryNilDispatchGenerator struct{}
+type stubRetryNilDispatchGenerator struct {
+	lastPlanReq *assetgeneration.Request
+}
 
 type stubRetryDispatchGenerator struct {
 	dispatchResult *assetgeneration.Result
@@ -257,6 +259,9 @@ func (r *sequencedTaskSnapshotsRepo) SaveTaskResult(ctx context.Context, taskID 
 }
 
 func (s *stubRetryNilDispatchGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
+	clonedReq := req
+	clonedReq.TargetPlatforms = append([]string(nil), req.TargetPlatforms...)
+	s.lastPlanReq = &clonedReq
 	return &assetgeneration.Result{}, nil
 }
 
@@ -731,6 +736,46 @@ func TestRetryGenerationMutationApplySkipsInventoryMutationWhenDispatchResultNil
 	}
 	if !reflect.DeepEqual(*inventory.Summary, wantSummary) {
 		t.Fatalf("inventory summary = %+v, want unchanged %+v", inventory.Summary, &wantSummary)
+	}
+}
+
+func TestRetryGenerationMutationPreservesAssetsForFailedTasksInPartialDispatch(t *testing.T) {
+	t.Parallel()
+
+	inventory := &asset.Inventory{Records: []asset.AssetRecord{
+		{ID: "successful-old", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, RecipeID: "scene-success", Metadata: map[string]string{"bundle_slot": "main"}},
+		{ID: "failed-old", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, RecipeID: "scene-failed", Metadata: map[string]string{"bundle_slot": "main"}},
+	}}
+	selectedTasks := []assetgeneration.Task{
+		{ID: "task-success", RecipeID: "scene-success", Slot: "main", ExecutionStatus: "planned"},
+		{ID: "task-failed", RecipeID: "scene-failed", Slot: "main", ExecutionStatus: "planned"},
+	}
+	dispatchResult := &assetgeneration.Result{
+		Tasks: []assetgeneration.Task{
+			{ID: "task-success", RecipeID: "scene-success", Slot: "main", ExecutionStatus: "completed"},
+			{ID: "task-failed", RecipeID: "scene-failed", Slot: "main", ExecutionStatus: "failed"},
+		},
+		Assets: []asset.AssetRecord{{
+			ID: "successful-new", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated,
+			RecipeID: "scene-success", Metadata: map[string]string{"bundle_slot": "main"},
+		}},
+	}
+
+	got := buildRetryGenerationMutationPhase().run(inventory, nil, selectedTasks, dispatchResult)
+	if len(got) != 2 || got[0].ExecutionStatus != "completed" || got[1].ExecutionStatus != "failed" {
+		t.Fatalf("updated tasks = %+v, want successful and failed task states", got)
+	}
+	ids := make(map[string]bool, len(inventory.Records))
+	for _, record := range inventory.Records {
+		ids[record.ID] = true
+	}
+	for _, id := range []string{"successful-new", "failed-old"} {
+		if !ids[id] {
+			t.Fatalf("inventory records = %+v, want %q preserved", inventory.Records, id)
+		}
+	}
+	if ids["successful-old"] {
+		t.Fatalf("inventory records = %+v, want successful old asset replaced", inventory.Records)
 	}
 }
 
@@ -1515,6 +1560,78 @@ func TestRetryTaskGenerationTasksMergesReturnedTasksAndRefreshesRetriedAssets(t 
 	}
 	if updatedInventory.Summary == nil || updatedInventory.Summary.TotalRecords != 3 || updatedInventory.Summary.DerivedRecords != 1 || updatedInventory.Summary.GeneratedRecords != 2 || updatedInventory.Summary.RecipeCount != 2 {
 		t.Fatalf("inventory summary = %+v, want rebuilt summary counts", updatedInventory.Summary)
+	}
+}
+
+func TestRetryTaskGenerationTasksDispatchesEachPlatformAgainstTargetInventory(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	generator := &stubWorkflowAssetGenerator{}
+	taskID := "task-generation-retry-target-inventory"
+	task := &Task{
+		ID:        taskID,
+		Status:    core.TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Result: &ListingKitResult{
+			TaskID:         taskID,
+			Platforms:      []string{"amazon", "shein"},
+			CatalogProduct: &catalog.Product{Title: "Portable Speaker"},
+			AssetBundlesByTarget: map[string]*asset.Bundle{
+				"amazon": {Assets: []asset.Asset{{ID: "main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/amazon-main.jpg"}}},
+				"shein":  {Assets: []asset.Asset{{ID: "main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/shein-main.jpg"}}},
+			},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	inventory := asset.BuildInventory(taskID, task.Result.assetBundleForInventory())
+	if err := assetRepository.SaveInventory(context.Background(), inventory); err != nil {
+		t.Fatalf("SaveInventory() error = %v", err)
+	}
+	existingTasks := []assetgeneration.Task{
+		{TaskID: taskID, ID: "amazon:scene", Platform: "amazon", RecipeID: "amazon-lifestyle", AssetKind: asset.KindSceneImage, Slot: "auxiliary", Purpose: "scene", ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "failed", CanExecute: true, SourceAssetIDs: []string{"main"}},
+		{TaskID: taskID, ID: "shein:scene", Platform: "shein", RecipeID: "shein-gallery-scene", AssetKind: asset.KindSceneImage, Slot: "gallery", Purpose: "gallery", ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "failed", CanExecute: true, SourceAssetIDs: []string{"main"}},
+	}
+	if err := assetRepository.SaveGenerationTasks(context.Background(), taskID, existingTasks); err != nil {
+		t.Fatalf("SaveGenerationTasks() error = %v", err)
+	}
+
+	svc := newTaskGenerationService(taskGenerationServiceConfig{
+		repo:                repo,
+		assetRepo:           assetRepository,
+		assetRecipeResolver: assetrecipe.NewStaticResolver(),
+		assetBundleBuilder:  assetbundle.NewBuilder(),
+		assetGenerator:      generator,
+		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
+			return assetRepository.ListGenerationTasks(ctx, taskID)
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+		buildRetryGenerationTaskSelection: func(context.Context, *Task, *asset.Inventory, []assetgeneration.Task, *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {
+			return assetgeneration.CloneTasks(existingTasks), nil
+		},
+	})
+
+	if _, err := svc.RetryTaskGenerationTasks(context.Background(), taskID, &RetryGenerationTasksRequest{}); err != nil {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v", err)
+	}
+	if len(generator.dispatchRequests) != 2 {
+		t.Fatalf("dispatch requests = %d, want one per target platform", len(generator.dispatchRequests))
+	}
+	for _, req := range generator.dispatchRequests {
+		if len(req.Tasks) != 1 || req.Inventory == nil || len(req.Inventory.Records) != 1 {
+			t.Fatalf("dispatch request = %+v, want one task and one target record", req)
+		}
+		wantURL := "https://cdn.example.test/" + req.Tasks[0].Platform + "-main.jpg"
+		if req.Inventory.Records[0].URL != wantURL {
+			t.Fatalf("%s retry inventory URL = %q, want %q", req.Tasks[0].Platform, req.Inventory.Records[0].URL, wantURL)
+		}
 	}
 }
 
@@ -3720,6 +3837,42 @@ func TestRetryTaskGenerationTasksPersistenceFailureStopsRetry(t *testing.T) {
 	}
 }
 
+func TestRetryTaskGenerationTasksPersistsFailedDispatchBeforeReturningError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("publisher unavailable")
+	fixture := newRetryPersistenceFailureFixture(t, "task-generation-retry-dispatch-failed-1")
+	fixture.generation.assetGenerator = &stubRetryDispatchGenerator{
+		dispatchResult: &assetgeneration.Result{Tasks: []assetgeneration.Task{{
+			TaskID: fixture.taskID, ID: "amazon:amazon-lifestyle", Platform: "amazon", RecipeID: "amazon-lifestyle",
+			AssetKind: asset.KindSceneImage, Slot: "auxiliary", ExecutionStatus: "failed", ExecutionMode: assetgeneration.ExecutionModeRendererBacked,
+			CanExecute: true, Metadata: map[string]string{"error": wantErr.Error()},
+		}}},
+		dispatchErr: wantErr,
+	}
+	fixture.assetRepository.resetCalls()
+
+	page, err := fixture.generation.RetryTaskGenerationTasks(context.Background(), fixture.taskID, &RetryGenerationTasksRequest{
+		Slots: []string{"auxiliary"},
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v, want %v", err, wantErr)
+	}
+	if page != nil {
+		t.Fatalf("page = %+v, want nil after failed dispatch", page)
+	}
+	if !reflect.DeepEqual(fixture.assetRepository.calls, []string{"save_inventory", "save_generation_tasks"}) {
+		t.Fatalf("persistence calls = %+v, want failed task persistence", fixture.assetRepository.calls)
+	}
+	persisted, err := fixture.assetRepository.ListGenerationTasks(context.Background(), fixture.taskID)
+	if err != nil {
+		t.Fatalf("ListGenerationTasks() error = %v", err)
+	}
+	if len(persisted) != 1 || persisted[0].ExecutionStatus != "failed" || persisted[0].Metadata["error"] != wantErr.Error() {
+		t.Fatalf("persisted tasks = %+v, want failed retryable task", persisted)
+	}
+}
+
 func TestRetryTaskGenerationTasksInventoryPersistenceFailureStopsRetry(t *testing.T) {
 	t.Parallel()
 
@@ -3984,5 +4137,62 @@ func TestRetryTaskGenerationTasksPlansMissingQueueFallbackSlot(t *testing.T) {
 	}
 	if !foundCompletedGallery {
 		t.Fatalf("executed queue items = %+v, want completed renderer-backed gallery item", page.ExecutedQueue.Items)
+	}
+}
+
+func TestRetryTaskGenerationTasksPassesNormalizedRequestedTargetsToMissingTaskPlan(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	assetGenerator := &stubRetryNilDispatchGenerator{}
+	owner := seedWorkflowAssets(seedWorkflowDeps(&service{}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetGenerator)
+	task := &Task{
+		ID:        "task-generation-retry-plan-targets-1",
+		Status:    core.TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request: &GenerateRequest{Platforms: []string{
+			" SHEIN ", "amazon", "shein", "unsupported",
+		}},
+		Result: &ListingKitResult{
+			TaskID:           "task-generation-retry-plan-targets-1",
+			Platforms:        []string{"shein", "amazon"},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Home"}},
+			CatalogProduct:   &catalog.Product{Title: "Retry plan targets", CategoryPath: []string{"Home"}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := assetRepository.SaveInventory(context.Background(), &asset.Inventory{
+		Ref:     asset.InventoryRef{TaskID: task.ID},
+		Summary: &asset.InventorySummary{},
+	}); err != nil {
+		t.Fatalf("SaveInventory() error = %v", err)
+	}
+	generation := newTaskGenerationService(taskGenerationServiceConfig{
+		repo:                repo,
+		assetRepo:           assetRepository,
+		assetRecipeResolver: assetrecipe.NewStaticResolver(),
+		assetBundleBuilder:  assetbundle.NewBuilder(),
+		assetGenerator:      assetGenerator,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+		buildRetryGenerationTaskSelection: owner.buildRetryGenerationTaskSelection,
+	})
+
+	if _, err := generation.RetryTaskGenerationTasks(context.Background(), task.ID, &RetryGenerationTasksRequest{}); err != nil {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v", err)
+	}
+	if assetGenerator.lastPlanReq == nil {
+		t.Fatal("missing-task Plan request = nil")
+	}
+	if got, want := assetGenerator.lastPlanReq.TargetPlatforms, []string{"shein", "amazon"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("missing-task Plan targets = %#v, want normalized requested targets %#v", got, want)
 	}
 }
