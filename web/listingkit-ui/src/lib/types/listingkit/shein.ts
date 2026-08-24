@@ -1,4 +1,5 @@
 import type { PlatformScenePresetSummary } from "./preview";
+import type { ListingKitSourceReference } from "./tasks";
 
  type SheinReadinessReason = {
   code?: string;
@@ -462,6 +463,7 @@ export type SheinPreviewPayload = PlatformPreviewPayload & {
   pod_execution?: PodExecutionSummary;
   category_id?: number;
   category_path?: string[];
+  source_reference?: ListingKitSourceReference;
   source_product?: {
     parent_product_id?: string;
     variant_id?: string;
@@ -546,11 +548,12 @@ export type SheinFinalReviewImage = {
   size_map?: boolean;
 };
 
- type SheinFinalReview = {
+type SheinFinalReview = {
   confirmed?: boolean;
   submit_mode?: "publish" | "save_draft";
   store_id?: number;
   site?: string;
+  source_reference?: ListingKitSourceReference;
   source_product?: SheinPreviewPayload["source_product"];
   title?: string;
   description?: string;

@@ -19,7 +19,6 @@ export function WorkspaceHeader({
   updatedAtLabel,
   summary,
   recoverySummary,
-  showSheinStudioLink = false,
   showLayerActions = false,
   onRunStandardLayer,
   onRunPlatformLayer,
@@ -33,7 +32,6 @@ export function WorkspaceHeader({
   updatedAtLabel?: string;
   summary?: ResolvedActionSummary | null;
   recoverySummary?: RecoverySummary | null;
-  showSheinStudioLink?: boolean;
   showLayerActions?: boolean;
   onRunStandardLayer?: () => void;
   onRunPlatformLayer?: () => void;
@@ -55,14 +53,6 @@ export function WorkspaceHeader({
             >
               返回任务列表
             </Link>
-            {showSheinStudioLink ? (
-              <Link
-                href="/listing-kits/sds"
-                className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition hover:border-ring hover:text-foreground"
-              >
-                返回 POD 工作室
-              </Link>
-            ) : null}
             {showLayerActions ? (
               <details className="rounded-full border border-border bg-background px-3 py-1.5">
                 <summary className="cursor-pointer list-none text-sm font-medium text-muted-foreground">

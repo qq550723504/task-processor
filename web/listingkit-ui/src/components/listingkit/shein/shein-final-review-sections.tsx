@@ -17,13 +17,37 @@ import {
   getSheinDraftPayload,
   getSheinPreviewPayload,
 } from "@/lib/listingkit/semantic-fields";
-import { buildSDSSourceProductHref } from "@/components/listingkit/shein/shein-source-product-panel";
 import type {
   SheinFinalReviewImage,
   SheinPreviewPayload,
   SheinResolvedSaleAttribute,
   SheinSizeAttribute,
 } from "@/lib/types/listingkit";
+
+type SheinSourceReference = NonNullable<
+  SheinPreviewPayload["final_review"]
+>["source_reference"];
+
+function isSDSSource(source?: SheinSourceReference) {
+  const type = source?.type?.trim().toLowerCase();
+  const platform = source?.platform?.trim().toLowerCase();
+  return type === "sds" || platform === "sds";
+}
+
+function sourcePlatformLabel(source?: SheinSourceReference) {
+  if (isSDSSource(source)) {
+    return "SDS";
+  }
+  const platform = source?.platform?.trim();
+  return platform || "来源";
+}
+
+function pricingDescription(source?: SheinSourceReference) {
+  if (isSDSSource(source)) {
+    return "价格来自 SDS 人民币成本换算，可在下方覆盖。";
+  }
+  return "价格按当前定价规则计算，可在下方覆盖。";
+}
 
 export function FailureGuidance({
   title,
@@ -251,7 +275,9 @@ export function FinalReviewOverviewCards({
 }: {
   finalReview?: SheinPreviewPayload["final_review"];
 }) {
-  const sourceProductHref = buildSDSSourceProductHref(finalReview?.source_product);
+  const sourceReference = finalReview?.source_reference;
+  const sourceProductHref = sourceReference?.url?.trim();
+  const sourceLabel = sourcePlatformLabel(sourceReference);
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-3">
@@ -264,14 +290,14 @@ export function FinalReviewOverviewCards({
         <div className="mt-1 text-xs text-zinc-500">
           {finalReview?.category_path?.join(" > ") || "未匹配类目"}
         </div>
-        {finalReview?.source_product && sourceProductHref ? (
+        {sourceReference && sourceProductHref ? (
           <Link
             className="mt-3 inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"
             href={sourceProductHref}
             rel="noreferrer"
             target="_blank"
           >
-            打开 SDS 商品
+            打开 {sourceLabel} 商品
             <ExternalLink className="size-3" />
           </Link>
         ) : null}
@@ -295,7 +321,7 @@ export function FinalReviewOverviewCards({
           {finalReview?.skus?.length ?? 0} SKUs
         </div>
         <div className="mt-1 text-xs text-zinc-500">
-          价格来自 SDS 人民币成本换算，可在下方覆盖。
+          {pricingDescription(sourceReference)}
         </div>
       </div>
     </div>
@@ -757,10 +783,12 @@ function buildSaleAttributeValueLabels(shein?: SheinPreviewPayload | null) {
 export function SkuPricingTable({
   priceOverrides,
   pricing,
+  sourceReference,
   setPriceOverrides,
 }: {
   priceOverrides: Record<string, string>;
   pricing?: SheinPreviewPayload["pricing"];
+  sourceReference?: SheinSourceReference;
   setPriceOverrides: Dispatch<SetStateAction<Record<string, string>>>;
 }) {
   return (
@@ -770,7 +798,9 @@ export function SkuPricingTable({
           SKU 价格确认
         </p>
         <p className="mt-1 text-sm leading-6 text-zinc-600">
-          价格来自 SDS 人民币成本换算，提交前可人工覆盖单个 SKU 售价。
+          {isSDSSource(sourceReference)
+            ? "价格来自 SDS 人民币成本换算，提交前可人工覆盖单个 SKU 售价。"
+            : "价格按当前定价规则计算，提交前可人工覆盖单个 SKU 售价。"}
         </p>
       </div>
       <div

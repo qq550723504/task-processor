@@ -242,6 +242,7 @@ export function SheinFinalReviewPanel({
       <SkuPricingTable
         priceOverrides={priceOverrides}
         pricing={pricing}
+        sourceReference={finalReview?.source_reference}
         setPriceOverrides={setPriceOverrides}
       />
 

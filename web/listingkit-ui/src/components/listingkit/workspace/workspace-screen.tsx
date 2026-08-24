@@ -194,7 +194,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     reviewPreviewData: reviewPreview.data,
     taskResult: taskResult.data,
     focusedPreview,
-    shein: preview.data?.shein,
     sheinViewProps,
     focusedScenePreset,
     recoveryDescriptors:
@@ -222,7 +221,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           session.data?.recovery_summary ??
           preview.data.asset_generation_overview?.recovery_summary
         }
-        showSheinStudioLink={selectedPlatform === "shein"}
         showLayerActions
         layerActionsPending={layerAction.isPending}
         onRunStandardLayer={handleRunStandardProductTemporal}

@@ -29,8 +29,8 @@ func TestBuildSourceProductSummary(t *testing.T) {
 	if summary.Title != "Bottle" || summary.SKU != "SKU-1" {
 		t.Fatalf("summary = %+v", summary)
 	}
-	if summary.ParentProductID != "238915" || summary.VariantID != "238916" {
-		t.Fatalf("source ids = parent %q variant %q, want 238915/238916", summary.ParentProductID, summary.VariantID)
+	if summary.ParentProductID != "" || summary.VariantID != "" {
+		t.Fatalf("source ids = parent %q variant %q, want empty without explicit SDS provenance", summary.ParentProductID, summary.VariantID)
 	}
 	if summary.Attributes["brand"] != "Acme" {
 		t.Fatalf("attributes = %+v", summary.Attributes)

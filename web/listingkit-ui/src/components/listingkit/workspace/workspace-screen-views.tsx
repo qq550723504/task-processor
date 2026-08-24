@@ -9,7 +9,6 @@ import { ScenePresetPanel } from "@/components/listingkit/review/scene-preset-pa
 import { SlotNavigationList } from "@/components/listingkit/review/slot-navigation-list";
 import { SheinDataImageGallery } from "@/components/listingkit/shein/shein-data-image-gallery";
 import { SheinFinalReviewPanel } from "@/components/listingkit/shein/shein-final-review-panel";
-import { SheinSourceProductPanel } from "@/components/listingkit/shein/shein-source-product-panel";
 import { SheinSubmitReadinessPanel } from "@/components/listingkit/shein/shein-submit-readiness-panel";
 import { SheinSubmissionTimeline } from "@/components/listingkit/shein/shein-submission-timeline";
 import { WorkspacePreviewSuggestionCard } from "@/components/listingkit/workspace/workspace-preview-suggestion";
@@ -112,7 +111,6 @@ export function WorkspaceReviewView({
   selectedPlatform,
   previewSuggestionProps,
   reviewSectionTabsProps,
-  sheinSourceProductProps,
   sheinImageGalleryProps,
   sheinFinalReviewProps,
   previewCanvasProps,
@@ -126,7 +124,6 @@ export function WorkspaceReviewView({
   selectedPlatform?: string;
   previewSuggestionProps: ComponentProps<typeof WorkspacePreviewSuggestionCard>;
   reviewSectionTabsProps: ComponentProps<typeof ReviewSectionTabs>;
-  sheinSourceProductProps: ComponentProps<typeof SheinSourceProductPanel>;
   sheinImageGalleryProps: SheinImageGalleryProps;
   sheinFinalReviewProps: SheinFinalReviewPanelProps;
   previewCanvasProps: ComponentProps<typeof PreviewCanvas>;
@@ -224,12 +221,6 @@ export function WorkspaceReviewView({
                 <SheinFinalReviewPanel {...sheinFinalReviewProps} />
               </div>
             </details>
-            <div id="shein-source-product" className="scroll-mt-6">
-              <SheinSourceProductPanel
-                {...sheinSourceProductProps}
-                defaultCollapsed
-              />
-            </div>
           </WorkspaceStageSection>
         ) : null}
       </main>

@@ -37,10 +37,6 @@ vi.mock("@/components/listingkit/shein/shein-final-review-panel", () => ({
   SheinFinalReviewPanel: () => <div>最终确认面板</div>,
 }));
 
-vi.mock("@/components/listingkit/shein/shein-source-product-panel", () => ({
-  SheinSourceProductPanel: () => <div>来源商品面板</div>,
-}));
-
 vi.mock("@/components/listingkit/shein/shein-submit-readiness-panel", () => ({
   SheinSubmitReadinessPanel: () => <div>发布检查</div>,
 }));
@@ -73,7 +69,6 @@ describe("WorkspaceReviewView", () => {
           selectedKey: "a",
           onSelect: vi.fn(),
         }}
-        sheinSourceProductProps={{ shein: null } as never}
         sheinImageGalleryProps={{} as never}
         sheinFinalReviewProps={{} as never}
         previewCanvasProps={{} as never}
@@ -102,7 +97,7 @@ describe("WorkspaceReviewView", () => {
     expect(within(previewSection as HTMLElement).getByText("图片画廊")).toBeInTheDocument();
     expect(within(previewSection as HTMLElement).getByText("预览画布内容")).toBeInTheDocument();
     expect(within(submitSection as HTMLElement).getByText("最终确认面板")).toBeInTheDocument();
-    expect(within(submitSection as HTMLElement).getByText("来源商品面板")).toBeInTheDocument();
+    expect(within(submitSection as HTMLElement).queryByText("来源商品面板")).not.toBeInTheDocument();
 
     expect(screen.getByText("更多诊断")).toBeInTheDocument();
     expect(screen.getByText("工具栏动作")).toBeInTheDocument();

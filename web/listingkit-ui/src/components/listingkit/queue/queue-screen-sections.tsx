@@ -88,9 +88,6 @@ export function QueuePendingDataState({ taskId }: { taskId: string }) {
             打开工作区
           </Link>
         </Button>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/listing-kits/sds">返回 POD 工作室</Link>
-        </Button>
       </div>
     </div>
   );
