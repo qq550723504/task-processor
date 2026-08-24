@@ -104,7 +104,7 @@ func validatedSDSVariantReference(ctx context.Context, provider SDSBaselineRemot
 	if resolvedParentID <= 0 {
 		resolvedParentID = page.MerchantProductParentID
 	}
-	return parentProductID <= 0 || resolvedParentID <= 0 || resolvedParentID == parentProductID
+	return parentProductID <= 0 || resolvedParentID == parentProductID
 }
 
 func hasSourceReference(source *SourceReference) bool {

@@ -138,6 +138,22 @@ func TestNormalizeTrustedGenerateRequestCreatesValidatedVariantOnlySDSSourceCont
 	}
 }
 
+func TestNormalizeTrustedGenerateRequestRejectsUnverifiedSDSParentFromDesignProduct(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{supportDeps: supportDependencies{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			designProduct: &sdsdesign.DesignProductPage{Product: sdsdesign.DesignProduct{ID: 41662}},
+		},
+	}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}}}
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+
+	if req.Source != nil {
+		t.Fatalf("source = %+v, want no source without verified SDS parent relationship", req.Source)
+	}
+}
+
 func TestNormalizeTrustedGenerateRequestDoesNotCreateUnvalidatedSDSSourceContract(t *testing.T) {
 	t.Parallel()
 
