@@ -275,6 +275,22 @@ linters-settings:
           - pkg: "task-processor/internal/app/state/"
             desc: "Internal production code must not depend on retired app state subpackages"
 
+      cmd_legacy_app_compatibility:
+        # Command entrypoints must not regain dependencies on retired app compatibility packages.
+        # The repository-wide issues.exclude-files excludes _test.go; TestCmdPackagesDoNotImportAppCompatibilityLayers retains semantic coverage for all command files.
+        files:
+          - "**/cmd/*.go"
+          - "**/cmd/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/app/processor$"
+            desc: "Command entrypoints must not depend on the retired app processor compatibility package"
+          - pkg: "task-processor/internal/app/processor/"
+            desc: "Command entrypoints must not depend on retired app processor subpackages"
+          - pkg: "task-processor/internal/app/state$"
+            desc: "Command entrypoints must not depend on the retired app state compatibility package"
+          - pkg: "task-processor/internal/app/state/"
+            desc: "Command entrypoints must not depend on retired app state subpackages"
+
   govet:
     disable:
       - fieldalignment

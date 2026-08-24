@@ -3022,10 +3022,19 @@ func TestAppCrawlerFetcherCompatibilityLayerIsRetired(t *testing.T) {
 }
 
 func TestCmdPackagesDoNotImportAppCompatibilityLayers(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "cmd"), []string{
-		`"task-processor/internal/app/processor"`,
-		`"task-processor/internal/app/state"`,
-	}, nil)
+	root := filepath.Join("..", "cmd")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/app/processor") || importMatchesPrefix(importPath, "task-processor/internal/app/state") {
+				t.Errorf("%s imports banned boundary package %q", path, importPath)
+			}
+		}
+	}
 }
 
 func TestDomainHTTPPackagesDoNotImportAppHTTPAPI(t *testing.T) {

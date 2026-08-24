@@ -180,6 +180,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestInfraProductCrawlerAdapterIsRetired`
 - `TestAppCrawlerFetcherCompatibilityLayerIsRetired`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
+- `depguard: cmd_legacy_app_compatibility`
 - `TestProductImageExternalClientImportsStayAllowlisted`
 - `TestProductImageBusinessPackagesDoNotImportGlobalConfig`
 - `TestAmazonExternalClientImportsStayAllowlisted`

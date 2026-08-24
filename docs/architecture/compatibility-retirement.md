@@ -31,7 +31,8 @@ directory on developer machines, but it must not contain tracked Go
 compatibility files. State owners should use `internal/state` directly.
 
 Production entrypoints must not keep compatibility paths alive. This is guarded
-by `TestCmdPackagesDoNotImportAppCompatibilityLayers`.
+by `depguard: cmd_legacy_app_compatibility` and
+`TestCmdPackagesDoNotImportAppCompatibilityLayers`.
 
 ## Retirement Conditions
 

@@ -65,6 +65,7 @@
 - `TestCmdContainsOnlyOfficialEntrypoints`
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
+- `depguard: cmd_legacy_app_compatibility`
 - `TestHackContainsOnlyManagedSupportAreas`
 - `TestHackSupportAreasContainNoLocalArtifacts`
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
