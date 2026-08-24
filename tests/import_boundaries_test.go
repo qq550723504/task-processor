@@ -11,6 +11,305 @@ import (
 	"testing"
 )
 
+func TestAlibaba1688CrawlerDoesNotImportListingKitRoot(t *testing.T) {
+	assertNoProductionBannedImports(t, filepath.Join("..", "internal", "crawler", "alibaba1688"), []string{
+		`"task-processor/internal/listingkit"`,
+	}, nil)
+}
+
+func TestA1688ListingKitCompatibilityReadsIdentityFromNeutralContext(t *testing.T) {
+	path := filepath.Join("..", "internal", "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi", "handler.go")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	importsAuthIdentity := false
+	for _, imp := range file.Imports {
+		if imp.Path.Value == `"task-processor/internal/authidentity"` {
+			importsAuthIdentity = true
+			break
+		}
+	}
+	if !importsAuthIdentity {
+		t.Errorf("%s must import internal/authidentity for verified identity context", path)
+	}
+
+	file, err = parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil || selector.Sel.Name != "AuthenticatedIdentityFromContext" {
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if ok && ident.Name == "listingkit" {
+			t.Errorf("%s reads verified identity through listingkit; use internal/authidentity", path)
+		}
+		return true
+	})
+}
+
+func TestLocalAgentHTTPAPIReadsIdentityFromNeutralContext(t *testing.T) {
+	path := filepath.Join("..", "internal", "localagent", "httpapi", "handler.go")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	importsAuthIdentity := false
+	for _, imp := range file.Imports {
+		if imp.Path.Value == `"task-processor/internal/authidentity"` {
+			importsAuthIdentity = true
+			break
+		}
+	}
+	if !importsAuthIdentity {
+		t.Errorf("%s must import internal/authidentity for verified identity context", path)
+	}
+
+	file, err = parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil || selector.Sel.Name != "AuthenticatedIdentityFromContext" {
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if ok && ident.Name == "listingkit" {
+			t.Errorf("%s reads verified identity through listingkit; use internal/authidentity", path)
+		}
+		return true
+	})
+}
+
+func TestSheinLoginReadsIdentityFromNeutralContext(t *testing.T) {
+	root := filepath.Join("..", "internal", "sheinlogin")
+	for _, name := range []string{"tenant_context.go", "accounts.go"} {
+		path := filepath.Join(root, name)
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		importsAuthIdentity := false
+		for _, imp := range file.Imports {
+			if imp.Path.Value == `"task-processor/internal/authidentity"` {
+				importsAuthIdentity = true
+				break
+			}
+		}
+		if !importsAuthIdentity {
+			t.Errorf("%s must import internal/authidentity for verified identity context", path)
+		}
+
+		file, err = parser.ParseFile(token.NewFileSet(), path, source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || selector.Sel == nil ||
+				(selector.Sel.Name != "AuthenticatedIdentityFromContext" && selector.Sel.Name != "AuthenticatedIdentity") {
+				return true
+			}
+			ident, ok := selector.X.(*ast.Ident)
+			if ok && ident.Name == "listingkit" {
+				t.Errorf("%s reads verified identity through listingkit; use internal/authidentity", path)
+			}
+			return true
+		})
+	}
+}
+
+func TestListingKitIdentityReadersUseNeutralContext(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "listingkit", "api", "tenant_context.go"),
+		filepath.Join("..", "internal", "listingkit", "api", "authenticated_actor.go"),
+		filepath.Join("..", "internal", "listingkit", "api", "subscription_guard.go"),
+		filepath.Join("..", "internal", "listingkit", "httpapi", "zitadel_auth_route_authorization.go"),
+		filepath.Join("..", "internal", "listingkit", "request_context.go"),
+		filepath.Join("..", "internal", "listingkit", "task_lifecycle_service_support.go"),
+	}
+	for _, path := range paths {
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		importsAuthIdentity := false
+		for _, imp := range file.Imports {
+			if imp.Path.Value == `"task-processor/internal/authidentity"` {
+				importsAuthIdentity = true
+				break
+			}
+		}
+		if !importsAuthIdentity {
+			t.Errorf("%s must import internal/authidentity for verified identity context", path)
+		}
+
+		file, err = parser.ParseFile(token.NewFileSet(), path, source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || selector.Sel == nil ||
+				(selector.Sel.Name != "AuthenticatedIdentityFromContext" && selector.Sel.Name != "AuthenticatedIdentity") {
+				return true
+			}
+			ident, ok := selector.X.(*ast.Ident)
+			if ok && ident.Name == "listingkit" {
+				t.Errorf("%s reads verified identity through listingkit; use internal/authidentity", path)
+			}
+			return true
+		})
+	}
+}
+
+func TestZitadelAuthMiddlewareWritesNeutralIdentityContext(t *testing.T) {
+	path := filepath.Join("..", "internal", "listingkit", "httpapi", "zitadel_auth_middleware.go")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	importsAuthIdentity := false
+	for _, imp := range file.Imports {
+		if imp.Path.Value == `"task-processor/internal/authidentity"` {
+			importsAuthIdentity = true
+			break
+		}
+	}
+	if !importsAuthIdentity {
+		t.Fatalf("%s must import internal/authidentity for verified identity projection", path)
+	}
+
+	file, err = parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil {
+			return true
+		}
+		if selector.Sel.Name != "WithAuthenticatedIdentity" && selector.Sel.Name != "AuthenticatedIdentity" {
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if ok && ident.Name == "listingkit" {
+			t.Errorf("%s projects verified identity through listingkit; use internal/authidentity", path)
+		}
+		return true
+	})
+}
+
+func TestAuthenticatedIdentityRootImportsStayRestricted(t *testing.T) {
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		violations, err := findListingKitAuthenticatedIdentityImports(path, facts.source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, violation := range violations {
+			t.Errorf("%s", violation)
+		}
+	}
+}
+
+func TestAuthenticatedIdentityRootImportScannerResolvesAliases(t *testing.T) {
+	violations, err := findListingKitAuthenticatedIdentityImports("synthetic.go", []byte(`package synthetic
+
+import legacylistingkit "task-processor/internal/listingkit"
+
+func readIdentity(ctx any) {
+		legacylistingkit.AuthenticatedIdentityFromContext(ctx)
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 {
+		t.Fatalf("violations = %v, want one alias violation", violations)
+	}
+}
+
+func findListingKitAuthenticatedIdentityImports(path string, source []byte) ([]string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	listingKitNames := make(map[string]struct{})
+	var violations []string
+	for _, imp := range file.Imports {
+		importPath := strings.Trim(imp.Path.Value, `"`)
+		if importPath != "task-processor/internal/listingkit" {
+			continue
+		}
+		if imp.Name != nil {
+			switch imp.Name.Name {
+			case "_":
+				continue
+			case ".":
+				violations = append(violations, path+": dot-imports internal/listingkit; identity context must use internal/authidentity")
+				continue
+			default:
+				listingKitNames[imp.Name.Name] = struct{}{}
+			}
+			continue
+		}
+		listingKitNames["listingkit"] = struct{}{}
+	}
+
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil {
+			return true
+		}
+		switch selector.Sel.Name {
+		case "AuthenticatedIdentity", "AuthenticatedIdentityFromContext", "WithAuthenticatedIdentity":
+		default:
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if _, ok := listingKitNames[ident.Name]; ok {
+			violations = append(violations, path+": imports internal/listingkit for authenticated identity; use internal/authidentity")
+		}
+		return true
+	})
+	return violations, nil
+}
+
 func TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets(t *testing.T) {
 	t.Parallel()
 	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")

@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/infra/worker"
 	listingplatform "task-processor/internal/listing/platform"
 	listingsubmission "task-processor/internal/listing/submission"
@@ -113,7 +114,7 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	if req == nil {
 		return ctx, nil, fmt.Errorf("request cannot be nil")
 	}
-	if identity, ok := AuthenticatedIdentityFromContext(ctx); ok {
+	if identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx); ok {
 		req.TenantID = identity.TenantID
 	} else if req.TenantID == "" {
 		req.TenantID = TenantIDFromContext(ctx)

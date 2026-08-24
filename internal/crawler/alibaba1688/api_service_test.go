@@ -10,8 +10,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/core/config"
-	"task-processor/internal/listingkit"
 	"task-processor/internal/sourceaccount"
 	"task-processor/internal/tenantbridge"
 )
@@ -99,9 +99,9 @@ func TestNewAPIServiceDoesNotLogRepositoryBuilderErrorDetails(t *testing.T) {
 	}
 }
 
-func TestVerifiedCrawlerTenantResolverUsesAuthenticatedListingKitIdentity(t *testing.T) {
+func TestVerifiedCrawlerTenantResolverUsesAuthenticatedIdentity(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", nil)
-	request = request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-101"}))
+	request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-101"}))
 
 	tenantID, ok := verifiedCrawlerTenantResolver(request.Context())
 
@@ -112,7 +112,7 @@ func TestVerifiedCrawlerTenantResolverUsesAuthenticatedListingKitIdentity(t *tes
 
 func TestVerifiedCrawlerTenantResolverRejectsNonNumericTenantIdentity(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", nil)
-	request = request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-101"}))
+	request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-101"}))
 
 	tenantID, ok := verifiedCrawlerTenantResolver(request.Context())
 
@@ -125,7 +125,7 @@ func TestVerifiedCrawlerTenantResolverUsesLegacyTenantBridge(t *testing.T) {
 	restore := tenantbridge.ConfigureLegacyTenantResolver(staticLegacyTenantResolver{value: 227})
 	defer restore()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", nil)
-	request = request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{TenantID: "373211199677923496", UserID: "zitadel-subject-227"}))
+	request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{TenantID: "373211199677923496", UserID: "zitadel-subject-227"}))
 
 	tenantID, ok := verifiedCrawlerTenantResolver(request.Context())
 

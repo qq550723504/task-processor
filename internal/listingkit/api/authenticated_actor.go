@@ -5,20 +5,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/listingkit"
+	"task-processor/internal/authidentity"
 )
 
-func authenticatedActor(c *gin.Context) (listingkit.AuthenticatedIdentity, bool) {
+func authenticatedActor(c *gin.Context) (authidentity.AuthenticatedIdentity, bool) {
 	if c == nil || c.Request == nil {
-		return listingkit.AuthenticatedIdentity{}, false
+		return authidentity.AuthenticatedIdentity{}, false
 	}
-	identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 	if !ok {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":   "zitadel_user_missing",
 			"message": "authenticated ZITADEL subject is required",
 		})
-		return listingkit.AuthenticatedIdentity{}, false
+		return authidentity.AuthenticatedIdentity{}, false
 	}
 	return identity, true
 }

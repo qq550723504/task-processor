@@ -12,7 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/listingkit"
+	"task-processor/internal/authidentity"
 )
 
 func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
@@ -57,7 +57,7 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 		})
 		return
 	}
-	trustedIdentity := listingkit.AuthenticatedIdentity{
+	trustedIdentity := authidentity.AuthenticatedIdentity{
 		TenantID: tenantID,
 		UserID:   userID,
 		Roles:    append([]string{}, identity.Roles...),
@@ -74,7 +74,7 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 	} {
 		c.Request.Header.Del(header)
 	}
-	c.Request = c.Request.WithContext(listingkit.WithAuthenticatedIdentity(c.Request.Context(), trustedIdentity))
+	c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), trustedIdentity))
 
 	c.Request.Header.Set("X-Tenant-ID", tenantID)
 	c.Request.Header.Set("tenant-id", tenantID)

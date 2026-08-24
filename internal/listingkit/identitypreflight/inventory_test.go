@@ -211,7 +211,6 @@ func productionNonPersistentOwnerModelExclusions(repositoryRoot string) map[owne
 
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "AIAsyncImageQueryContext"}:        "request context value, never passed to GORM as a model",
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "AIClientCredential"}:              "service contract mapped to the infrastructure credential store",
-		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "AuthenticatedIdentity"}:           "verified request context value, never passed to GORM as a model",
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "GenerateRequest"}:                 "orchestration request input, never passed to GORM as a model",
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "RequestIdentity"}:                 "request context value, never passed to GORM as a model",
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "SourceFactsGenerateRequestInput"}: "source-facts bridge input, never passed to GORM as a model",

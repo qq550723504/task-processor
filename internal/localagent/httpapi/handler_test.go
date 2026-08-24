@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/localagent"
 )
@@ -24,7 +25,7 @@ func TestCreateJobUsesVerifiedTenant(t *testing.T) {
 	r.POST("/api/v1/local-agent/1688-jobs", handler.Create)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/local-agent/1688-jobs", strings.NewReader(`{"url":"https://detail.1688.com/offer/1052008074197.html","tenant_id":"forged"}`))
-	req = req.WithContext(listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-real", UserID: "user-1"}))
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-real", UserID: "user-1"}))
 	response := httptest.NewRecorder()
 	r.ServeHTTP(response, req)
 

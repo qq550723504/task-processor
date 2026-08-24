@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 )
@@ -167,7 +168,7 @@ func TestListingAdminAccountProviderBridgesAuthenticatedIdentityRoles(t *testing
 		ID: 12, TenantID: 7, Platform: "SHEIN", Username: "admin-store", Password: "secret",
 	}}}
 	provider := NewListingAdminAccountProvider(repo)
-	ctx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{
 		TenantID: "7",
 		UserID:   "tenant-admin",
 		Roles:    []string{"listingkit_admin"},
@@ -190,12 +191,12 @@ func TestListingAdminAccountProviderAuthenticatedIdentityCacheIncludesUserAndRol
 		ID: 12, TenantID: 7, Platform: "SHEIN", Username: "demo-user", Password: "secret",
 	}}}
 	provider := NewListingAdminAccountProvider(repo)
-	adminCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{
+	adminCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{
 		TenantID: "7",
 		UserID:   "tenant-admin",
 		Roles:    []string{"listingkit_admin"},
 	})
-	userCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{
+	userCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{
 		TenantID: "7",
 		UserID:   "regular-user",
 		Roles:    []string{"listingkit_viewer"},

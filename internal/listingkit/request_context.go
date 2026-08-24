@@ -2,6 +2,8 @@ package listingkit
 
 import (
 	"context"
+
+	"task-processor/internal/authidentity"
 )
 
 func DetachedRequestContext(ctx context.Context) context.Context {
@@ -9,8 +11,8 @@ func DetachedRequestContext(ctx context.Context) context.Context {
 	detached = WithRequestIdentity(detached, RequestIdentityFromContext(ctx))
 	detached = WithRequestRoles(detached, RequestRolesFromContext(ctx))
 	detached = WithRequestTrace(detached, RequestTraceFromContext(ctx))
-	if identity, ok := AuthenticatedIdentityFromContext(ctx); ok {
-		detached = WithAuthenticatedIdentity(detached, identity)
+	if identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx); ok {
+		detached = authidentity.WithAuthenticatedIdentity(detached, identity)
 	}
 	return detached
 }
