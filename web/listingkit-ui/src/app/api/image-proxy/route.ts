@@ -25,6 +25,7 @@ export const DEFAULT_ALLOWED_HOSTS = [
 ];
 const REQUEST_HEADERS = {
   Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+  Referer: "",
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147 Safari/537.36",
 };
