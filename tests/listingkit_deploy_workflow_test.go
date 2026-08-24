@@ -88,6 +88,92 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 	}
 }
 
+func TestListingKitDeployPublishesProductionSMSWebhookIngressAfterAPIRollout(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+
+	workflow := string(content)
+	var parsedWorkflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string            `yaml:"name"`
+				With map[string]string `yaml:"with"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &parsedWorkflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+	deployJob := listingKitDeployAPIJob(t, workflow)
+	const productionIngress = "deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml"
+	checkoutSparsePaths := ""
+	for _, step := range parsedWorkflow.Jobs["deploy-api"].Steps {
+		if step.Name == "Checkout workflow tooling" {
+			checkoutSparsePaths = step.With["sparse-checkout"]
+			break
+		}
+	}
+	if !strings.Contains(checkoutSparsePaths, productionIngress) {
+		t.Fatalf("ListingKit deploy workflow must check out the production SMS webhook ingress %q", productionIngress)
+	}
+
+	apiApplyIndex := strings.Index(deployJob, "scripts/listingkit-apply-api-deployment.sh")
+	restartIndex := strings.Index(deployJob, "kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/product-listing-api")
+	rolloutIndex := strings.Index(deployJob, "kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/product-listing-api --timeout=5m")
+	ingressApplyIndex := strings.Index(deployJob, "kubectl -n ${{ env.K8S_NAMESPACE }} apply -f .workflow-tools/"+productionIngress)
+	if apiApplyIndex < 0 || restartIndex < 0 || rolloutIndex < 0 || ingressApplyIndex < 0 {
+		t.Fatalf("ListingKit deploy workflow must apply the API, restart it, wait for its rollout, and then apply the production SMS webhook ingress, api=%d restart=%d rollout=%d ingress=%d", apiApplyIndex, restartIndex, rolloutIndex, ingressApplyIndex)
+	}
+	if !(apiApplyIndex < restartIndex && restartIndex < rolloutIndex && rolloutIndex < ingressApplyIndex) {
+		t.Fatal("ListingKit deploy workflow must restart API Pods after the immutable apply, wait for the rollout, then publish the SMS webhook ingress")
+	}
+
+	ingressPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "overlays", "prod", "patch-ingress.yaml")
+	ingressContent, err := os.ReadFile(ingressPath)
+	if err != nil {
+		t.Fatalf("read production ListingKit ingress: %v", err)
+	}
+	var ingress struct {
+		Metadata struct {
+			Annotations map[string]string `yaml:"annotations"`
+		} `yaml:"metadata"`
+		Spec struct {
+			IngressClassName string `yaml:"ingressClassName"`
+			Rules            []struct {
+				Host string `yaml:"host"`
+			} `yaml:"rules"`
+			TLS []struct {
+				Hosts      []string `yaml:"hosts"`
+				SecretName string   `yaml:"secretName"`
+			} `yaml:"tls"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(ingressContent, &ingress); err != nil {
+		t.Fatalf("parse production ListingKit ingress: %v", err)
+	}
+	if ingress.Spec.IngressClassName != "traefik" {
+		t.Fatalf("production ListingKit ingress must be independently applicable with ingressClassName traefik, got %q", ingress.Spec.IngressClassName)
+	}
+	if ingress.Metadata.Annotations["cert-manager.io/cluster-issuer"] != "letsencrypt-prod" {
+		t.Fatal("production ListingKit ingress must retain its TLS issuer when applied independently")
+	}
+	if ingress.Metadata.Annotations["ingress.kubernetes.io/ssl-redirect"] != "true" {
+		t.Fatal("production ListingKit ingress must redirect HTTP to HTTPS when applied independently")
+	}
+	if ingress.Metadata.Annotations["traefik.ingress.kubernetes.io/router.entrypoints"] != "web,websecure" {
+		t.Fatal("production ListingKit ingress must retain its Traefik entrypoints when applied independently")
+	}
+	if len(ingress.Spec.Rules) != 1 || ingress.Spec.Rules[0].Host != "pod.shuomiai.com" {
+		t.Fatalf("production ListingKit ingress must retain its public host, got %#v", ingress.Spec.Rules)
+	}
+	if len(ingress.Spec.TLS) != 1 || len(ingress.Spec.TLS[0].Hosts) != 1 || ingress.Spec.TLS[0].Hosts[0] != "pod.shuomiai.com" || ingress.Spec.TLS[0].SecretName != "pod-shuomiai-com-tls" {
+		t.Fatalf("production ListingKit ingress must retain its TLS host and certificate Secret, got %#v", ingress.Spec.TLS)
+	}
+}
+
 func TestListingKitSchemaMigrationRunsBeforeIdentityPreflight(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
 	content, err := os.ReadFile(workflowPath)
@@ -271,7 +357,7 @@ func TestListingKitAPIImageDeclaresCandidateIdentityCompatibilityLabel(t *testin
 	}
 }
 
-func TestListingKitManualDeployCleansSecretAfterPreflight(t *testing.T) {
+func TestListingKitManualDeployPublishesSMSWebhookIngressAfterAPIRollout(t *testing.T) {
 	scriptPath := filepath.Join("..", "scripts", "build-push-deploy-listingkit-workbench.ps1")
 	content, err := os.ReadFile(scriptPath)
 	if err != nil {
@@ -281,14 +367,42 @@ func TestListingKitManualDeployCleansSecretAfterPreflight(t *testing.T) {
 	preflightCall := strings.Index(text, "& $BashExecutable $IdentityPreflightDriver")
 	cleanupCall := strings.Index(text, "& $BashExecutable $LegacyIdentitySecretCleanupDriver")
 	apiApplyCall := strings.Index(text, "& $BashExecutable $ImmutableApiApplyDriver")
-	if preflightCall < 0 || cleanupCall < 0 || apiApplyCall < 0 {
-		t.Fatalf("manual deploy must invoke preflight, legacy Secret cleanup, and API apply drivers: preflight=%d cleanup=%d api=%d", preflightCall, cleanupCall, apiApplyCall)
+	apiRestart := strings.Index(text, "kubectl -n $Namespace rollout restart deployment/product-listing-api")
+	apiRollout := strings.Index(text, "kubectl -n $Namespace rollout status deployment/product-listing-api --timeout=5m")
+	ingressApply := strings.Index(text, "kubectl -n $Namespace apply -f $ProductionIngressManifest")
+	uiRollout := strings.Index(text, "kubectl -n $Namespace rollout status deployment/listingkit-ui --timeout=5m")
+	if preflightCall < 0 || cleanupCall < 0 || apiApplyCall < 0 || apiRestart < 0 || apiRollout < 0 || ingressApply < 0 || uiRollout < 0 {
+		t.Fatalf("manual deploy must invoke preflight, cleanup, API apply, API restart, API rollout, ingress apply, and UI rollout: preflight=%d cleanup=%d api=%d apiRestart=%d apiRollout=%d ingress=%d uiRollout=%d", preflightCall, cleanupCall, apiApplyCall, apiRestart, apiRollout, ingressApply, uiRollout)
 	}
 	if !(preflightCall < cleanupCall && cleanupCall < apiApplyCall) {
 		t.Fatalf("manual deploy must clean the Secret after preflight and before API apply: preflight=%d cleanup=%d api=%d", preflightCall, cleanupCall, apiApplyCall)
 	}
+	if !(apiApplyCall < apiRestart && apiRestart < apiRollout && apiRollout < ingressApply && ingressApply < uiRollout) {
+		t.Fatalf("manual deploy must restart API Pods after the immutable apply, wait for their rollout, then apply the SMS webhook ingress before waiting for the UI: api=%d apiRestart=%d apiRollout=%d ingress=%d uiRollout=%d", apiApplyCall, apiRestart, apiRollout, ingressApply, uiRollout)
+	}
 	if !strings.Contains(text, "listingkit-workbench-secret") {
 		t.Error("manual deploy cleanup must target the shared ListingKit Secret")
+	}
+}
+
+func TestListingKitManualDeployLimitsProductionSMSWebhookIngressToProductionNamespace(t *testing.T) {
+	scriptPath := filepath.Join("..", "scripts", "build-push-deploy-listingkit-workbench.ps1")
+	content, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read ListingKit manual deploy script: %v", err)
+	}
+
+	text := string(content)
+	const productionNamespace = `$ProductionNamespace = "task-processor"`
+	const productionIngressGate = `if ($Namespace -eq $ProductionNamespace) {`
+	productionNamespaceIndex := strings.Index(text, productionNamespace)
+	gateIndex := strings.Index(text, productionIngressGate)
+	ingressApplyIndex := strings.Index(text, "kubectl -n $Namespace apply -f $ProductionIngressManifest")
+	if productionNamespaceIndex < 0 || gateIndex < 0 || ingressApplyIndex < 0 {
+		t.Fatalf("manual deploy must define and gate the production SMS webhook ingress by namespace: productionNamespace=%d gate=%d ingress=%d", productionNamespaceIndex, gateIndex, ingressApplyIndex)
+	}
+	if gateIndex >= ingressApplyIndex {
+		t.Fatal("manual deploy must apply the production SMS webhook ingress only inside the production namespace gate")
 	}
 }
 

@@ -235,6 +235,7 @@ jobs:
             scripts/lib/listingkit-immutable-image.sh
             deployments/kubernetes/listingkit-workbench/base/configmap.yaml
             deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml
+            deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml
             deployments/kubernetes/listingkit-workbench/jobs/product-listing-api-schema-migrate-job.yaml
             deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml
             deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml
@@ -384,9 +385,17 @@ jobs:
             --namespace "$K8S_NAMESPACE" \
             --image "$API_CANDIDATE_IMAGE"
 
+      - name: Restart API Pods for Secret changes
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/product-listing-api
+
       - name: Wait for API rollout
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/product-listing-api --timeout=5m
+
+      - name: Apply production ListingKit SMS webhook ingress
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} apply -f .workflow-tools/deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml
 
       - name: Show running API image
         run: |

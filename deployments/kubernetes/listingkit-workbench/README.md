@@ -282,15 +282,19 @@ message. Do not build or operate a second OTP system.
    the approved sign name and template ID issued by Tencent; confirm the
    template supports the ZITADEL notification values without placing a code or
    phone number in source control, tickets, or logs.
-2. Have the approved secret manager materialize a Kubernetes Secret named
+2. Use the ZITADEL Admin API to create an HTTP SMS Provider with the public
+   HTTPS endpoint
+   `https://<workbench-host>/api/v1/listing-kits/integrations/zitadel/sms`.
+   Creating the provider returns its signing key once and leaves it inactive;
+   do not activate it yet. The key must be shared only with the API-only
+   Kubernetes Secret.
+3. Have the approved secret manager materialize a Kubernetes Secret named
    `listingkit-tencent-sms-secret` from
-   `base/tencent-sms-secret.example.yaml`. Populate all six listed keys only in
-   that secret. The signing key must be a newly generated secret shared only
-   with the ZITADEL HTTP SMS Provider configuration. Never place these values
-   in `listingkit-workbench-secret`, a ConfigMap, UI, worker, imgproxy, or a
-   migration Job.
-3. Apply the secret-manager output before applying the API Deployment. Inspect
-   only key names, never decode or print values:
+   `base/tencent-sms-secret.example.yaml`, including the signing key returned
+   in step 2 and the five Tencent SMS values. Apply the Secret before applying
+   the API Deployment. Never place these values in
+   `listingkit-workbench-secret`, a ConfigMap, UI, worker, imgproxy, or a
+   migration Job. Inspect only key names, never decode or print values:
 
    ```powershell
    kubectl apply -n task-processor -f <secret-manager-output>.yaml
@@ -309,24 +313,35 @@ message. Do not build or operate a second OTP system.
    }
    ```
 
-4. Render and apply the production overlay. The provider endpoint is the
-   public HTTPS URL
-   `https://<workbench-host>/api/v1/listing-kits/integrations/zitadel/sms`.
-   It is the only newly public API path and must resolve to
-   `product-listing-api` before the UI catch-all:
+4. Publish the API-only SMS path after the API has loaded that Secret. It is
+   the only newly public API path and must resolve to
+   `product-listing-api` before the UI catch-all. Do not run `kubectl apply -k`
+   for the production overlay here: it renders the overlay's mutable `latest`
+   image fields and can change unrelated workloads. Reapply the currently
+   deployed immutable API image to load the API-only Secret, wait for readiness,
+   then apply only the standalone production Ingress:
 
    ```powershell
-   kubectl kustomize deployments/kubernetes/listingkit-workbench/overlays/prod
-   kubectl apply -k deployments/kubernetes/listingkit-workbench/overlays/prod
+   $apiImage = kubectl -n task-processor get deployment product-listing-api -o jsonpath='{.spec.template.spec.containers[?(@.name=="product-listing-api")].image}'
+   if ($apiImage -notmatch '@sha256:') { throw "ListingKit API must use an immutable digest" }
+   & "C:\Program Files\Git\bin\bash.exe" scripts/listingkit-apply-api-deployment.sh `
+     --manifest deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml `
+     --namespace task-processor `
+     --image $apiImage
+   if ($LASTEXITCODE -ne 0) { throw "Immutable ListingKit API apply failed" }
    kubectl -n task-processor rollout restart deployment/product-listing-api
+   if ($LASTEXITCODE -ne 0) { throw "ListingKit API restart failed" }
    kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
+   if ($LASTEXITCODE -ne 0) { throw "ListingKit API rollout failed" }
+   kubectl -n task-processor apply -f deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml
+   if ($LASTEXITCODE -ne 0) { throw "ListingKit SMS webhook ingress apply failed" }
    ```
 
-5. In the ZITADEL Console, configure an HTTP SMS Provider with that exact
-   HTTPS endpoint and the same signing key from the API-only Secret. Verify
-   the provider endpoint and template mapping, then activate the provider.
-   Do not disable signature validation or add bearer authentication as a
-   replacement; invalid, stale, or unsigned requests must fail.
+5. After the API rollout and Ingress apply succeed, verify the provider endpoint
+   and template mapping, then activate the provider. Do not activate it before
+   the rollout: Secret updates do not refresh existing API Pod environment
+   variables. Do not disable signature validation or add bearer authentication
+   as a replacement; invalid, stale, or unsigned requests must fail.
 6. Test once with a controlled disposable device and a non-production user.
    Confirm delivery, one-time-code verification in ZITADEL, and only masked
    audit/log data. Do not record the phone number or verification code. Then
@@ -614,7 +629,8 @@ Standard rollback path:
    runner digest; the gate runner is deliberately separate from the rollback
    candidate and must be available even when that candidate predates preflight.
 3. Run `ListingKit API Deploy` with its prior immutable digest, then wait for the
-   API rollout and readiness probe.
+   API rollout and readiness probe. The workflow then reapplies the standalone
+   production SMS webhook Ingress only after that rollout succeeds.
 4. Run `ListingKit UI Deploy` with its prior immutable tag, then wait for the
    UI rollout.
 5. Record the rollback decision, deployed tags, probe results, and any data
@@ -648,8 +664,12 @@ if ($LASTEXITCODE -ne 0) { throw "Identity preflight failed; refusing rollback d
 if ($LASTEXITCODE -ne 0) { throw "Immutable API rollback apply failed" }
 kubectl -n task-processor set image deployment/listingkit-ui listingkit-ui=docker.io/xuwei190/task-processor-listingkit-ui:496ca069
 if ($LASTEXITCODE -ne 0) { throw "ListingKit UI rollback image update failed" }
+kubectl -n task-processor rollout restart deployment/product-listing-api
+if ($LASTEXITCODE -ne 0) { throw "ListingKit API rollback restart failed" }
 kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
 if ($LASTEXITCODE -ne 0) { throw "ListingKit API rollback rollout failed" }
+kubectl -n task-processor apply -f deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml
+if ($LASTEXITCODE -ne 0) { throw "ListingKit SMS webhook ingress rollback apply failed" }
 kubectl -n task-processor rollout status deployment/listingkit-ui --timeout=5m
 if ($LASTEXITCODE -ne 0) { throw "ListingKit UI rollback rollout failed" }
 ```
@@ -772,6 +792,11 @@ Useful switches:
 - `-SkipApply`: build and push images only; it performs no Kubernetes command.
 - `-PublishLatest`: additionally refreshes floating tags for development only;
   the gated release still uses the versioned tag.
+
+When `-Namespace` is not `task-processor`, the script deliberately skips the
+production SMS webhook Ingress. That manifest owns `pod.shuomiai.com` and its
+production TLS Secret; use an environment-specific Ingress manifest for a
+staging namespace.
 
 ## Change public host
 
