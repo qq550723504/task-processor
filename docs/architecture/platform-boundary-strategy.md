@@ -79,7 +79,8 @@ Publishing convergence is guarded by:
 - `depguard: shein_submitprep_legacy_tenantctx`
 - `depguard: shein_pipeline_legacy_listingkit`
 - `TestPublishingSheinNonAPISheinImportsStayAllowlisted`
-- `TestPublishingCommonUsesCanonicalPackage`
+- `depguard: publishing_common_legacy_productenrich`
+- `TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets`
 - `depguard: publishing_common_platforms`
 
 These depguard guards apply to production files; repository-wide lint policy

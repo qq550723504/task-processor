@@ -74,7 +74,8 @@ At minimum, structural review should consider representative guards such as:
 - `depguard: listingkit_marketplace_publishing`
 - `TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted`
 - `TestListingKitAmazonListingImportsStayAllowlisted`
-- `TestCatalogDoesNotDependOnProductEnrichAliases`
+- `depguard: catalog_legacy_productenrich`
+- `TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets`
 - `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases`
 - `depguard: shein_pipeline_legacy_listingkit`
 - `depguard: shein_submitprep_legacy_tenantctx`
@@ -159,7 +160,8 @@ At minimum, structural review should consider representative guards such as:
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted`
 - `TestPublishingSheinManagedRetiredManagementImportsStayBlocked`
 - `TestPublishingSheinRuntimeBaseAPIClientAliasStaysRetired`
-- `TestPublishingCommonUsesCanonicalPackage`
+- `depguard: publishing_common_legacy_productenrich`
+- `TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets`
 - `depguard: publishing_common_platforms`
 - `TestCmdContainsOnlyOfficialEntrypoints`
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`

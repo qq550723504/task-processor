@@ -472,16 +472,29 @@ func TestPublishingSheinSubmitPrepUsesOnlySensitiveWordAdapter(t *testing.T) {
 	})
 }
 
-func TestPublishingCommonUsesCanonicalPackage(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "publishing", "common"), []string{
-		`"task-processor/internal/productenrich"`,
-	}, nil)
-}
-
-func TestCatalogDoesNotDependOnProductEnrichAliases(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "catalog"), []string{
-		`"task-processor/internal/productenrich"`,
-	}, nil)
+func TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		root string
+	}{
+		{name: "publishing common", root: filepath.Join("..", "internal", "publishing", "common")},
+		{name: "catalog", root: filepath.Join("..", "internal", "catalog")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			index, err := loadGoFileIndex(tc.root, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for path, facts := range index.files {
+				if strings.HasSuffix(filepath.Base(path), "_test.go") {
+					continue
+				}
+				if _, ok := facts.imports[`"task-processor/internal/productenrich"`]; ok {
+					t.Errorf("%s imports task-processor/internal/productenrich; use canonical catalog/product contracts", path)
+				}
+			}
+		})
+	}
 }
 
 func TestListingKitImportDirectionStaysRetiredAcrossBuildTargets(t *testing.T) {
