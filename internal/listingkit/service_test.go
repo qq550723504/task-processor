@@ -154,6 +154,56 @@ func TestNormalizeTrustedGenerateRequestDoesNotCreateUnvalidatedSDSSourceContrac
 	}
 }
 
+func TestNormalizeTrustedGenerateRequestBoundsSDSValidation(t *testing.T) {
+	provider := &blockingSDSBaselineRemoteProvider{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+	}
+	svc := &service{supportDeps: supportDependencies{sdsBaselineRemoteProvider: provider}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661}}}
+
+	startedAt := time.Now()
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+	elapsed := time.Since(startedAt)
+
+	if req.Source != nil {
+		t.Fatalf("source = %+v, want no source after SDS validation timeout", req.Source)
+	}
+	if elapsed > trustedSDSProvenanceValidationTimeout+time.Second {
+		t.Fatalf("SDS validation took %s, want it bounded by the dedicated timeout", elapsed)
+	}
+	select {
+	case <-provider.started:
+	case <-time.After(time.Second):
+		t.Fatal("SDS validation provider was not called")
+	}
+	select {
+	case <-provider.cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("SDS validation context was not cancelled")
+	}
+}
+
+type blockingSDSBaselineRemoteProvider struct {
+	started   chan struct{}
+	cancelled chan struct{}
+}
+
+func (p *blockingSDSBaselineRemoteProvider) GetProductDetail(ctx context.Context, _ int64) (*sdstemplate.ProductDetail, error) {
+	close(p.started)
+	<-ctx.Done()
+	close(p.cancelled)
+	return nil, ctx.Err()
+}
+
+func (*blockingSDSBaselineRemoteProvider) GetDesignProduct(context.Context, int64) (*sdsdesign.DesignProductPage, error) {
+	return nil, context.Canceled
+}
+
+func (*blockingSDSBaselineRemoteProvider) GetPrototypeGroups(context.Context, int64) ([]sdsdesign.PrototypeGroup, error) {
+	return nil, context.Canceled
+}
+
 func TestNormalizeGenerateRequestPreservesExplicitSourceOverSDSOptions(t *testing.T) {
 	t.Parallel()
 

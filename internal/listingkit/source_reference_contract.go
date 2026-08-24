@@ -4,9 +4,12 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"time"
 
 	sdstemplate "task-processor/internal/sds/template"
 )
+
+const trustedSDSProvenanceValidationTimeout = 2 * time.Second
 
 // normalizeGenerateRequestSource establishes the durable provenance contract at
 // task creation time. Preview code must only read GenerateRequest.Source; task
@@ -28,7 +31,9 @@ func (s *service) normalizeTrustedGenerateRequestSource(ctx context.Context, req
 	if req == nil || hasSourceReference(req.Source) {
 		return
 	}
-	if source := s.validatedSDSSourceReference(ctx, req.Options); source != nil {
+	validationCtx, cancel := context.WithTimeout(ctx, trustedSDSProvenanceValidationTimeout)
+	defer cancel()
+	if source := s.validatedSDSSourceReference(validationCtx, req.Options); source != nil {
 		req.Source = source
 		return
 	}
