@@ -3,6 +3,9 @@
 This directory contains a local-only ZITADEL Helm configuration for testing the
 ListingKit OIDC integration.
 
+For production upgrades, use `scripts/zitadel-v4-upgrade-preflight.ps1` (read-only
+deployment snapshot) and follow `docs/operations/zitadel-v4-security-upgrade-runbook.md`.
+
 ## Install
 
 ```bash
