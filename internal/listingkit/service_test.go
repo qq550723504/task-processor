@@ -86,6 +86,56 @@ func TestNormalizeGenerateRequestEnablesProcessImagesWhenSceneOptionsProvided(t 
 	}
 }
 
+func TestNormalizeGenerateRequestCreatesSDSSourceContract(t *testing.T) {
+	t.Parallel()
+
+	req := &GenerateRequest{
+		Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}},
+	}
+	normalizeGenerateRequest(req)
+
+	if got := req.Source; got == nil || got.Type != "sds" || got.Platform != "sds" || got.ID != "41661" || got.URL != "https://www.sdsdiy.com/portal/detail/41661" {
+		t.Fatalf("source = %+v, want explicit SDS source contract", got)
+	}
+}
+
+func TestNormalizeGenerateRequestCreatesVariantOnlySDSSourceContract(t *testing.T) {
+	t.Parallel()
+
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 41662}}}
+	normalizeGenerateRequest(req)
+
+	if got := req.Source; got == nil || got.Type != "sds" || got.Platform != "sds" || got.ID != "41662" || got.URL != "" || got.Key != "sds:variant:41662" {
+		t.Fatalf("source = %+v, want variant-only SDS source contract without guessed URL", got)
+	}
+}
+
+func TestNormalizeGenerateRequestPreservesExplicitSourceOverSDSOptions(t *testing.T) {
+	t.Parallel()
+
+	explicit := &SourceReference{Type: "crawler", Platform: "1688", ID: "888", URL: "https://detail.1688.com/offer/888.html"}
+	req := &GenerateRequest{
+		Source:  explicit,
+		Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661}},
+	}
+	normalizeGenerateRequest(req)
+
+	if req.Source != explicit {
+		t.Fatalf("source = %+v, want explicit source to remain authoritative", req.Source)
+	}
+}
+
+func TestNormalizeGenerateRequestCreatesProductURLSourceContract(t *testing.T) {
+	t.Parallel()
+
+	req := &GenerateRequest{ProductURL: " https://detail.example/item/123 "}
+	normalizeGenerateRequest(req)
+
+	if got := req.Source; got == nil || got.Type != "product_url" || got.URL != "https://detail.example/item/123" {
+		t.Fatalf("source = %+v, want normalized product URL source contract", got)
+	}
+}
+
 func TestBuildListingKitServiceContractOmitsRequestDefaultsWiring(t *testing.T) {
 	t.Parallel()
 

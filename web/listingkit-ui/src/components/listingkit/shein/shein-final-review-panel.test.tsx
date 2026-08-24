@@ -394,6 +394,24 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.queryByText(/价格来自 SDS/)).not.toBeInTheDocument();
   });
 
+  it("shows an SDS variant identity when no parent product URL is available", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          final_review: {
+            title: "SHEIN variant",
+            source_reference: { type: "sds", platform: "sds", id: "41662" },
+            source_product: { title: "SDS variant", variant_id: "41662" },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("来源：SDS · 41662")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /打开 SDS 商品/ })).not.toBeInTheDocument();
+  });
+
   it("saves manually completed required SHEIN size chart attributes", async () => {
     const user = userEvent.setup();
     const onSaveFinalDraft = vi.fn();

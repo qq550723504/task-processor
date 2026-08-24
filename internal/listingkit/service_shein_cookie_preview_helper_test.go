@@ -48,3 +48,34 @@ func TestDecorateSheinCookieAvailabilityPreviewUsesSheinTargetBundleWithoutCompa
 		t.Fatalf("SHEIN scene prompt = %q, want SHEIN target bundle prompt", got)
 	}
 }
+
+func TestDecorateSheinCookieAvailabilityPreviewPreservesSourceMetadata(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{
+		Request: &GenerateRequest{Source: &SourceReference{
+			Type:     "crawler",
+			Platform: "1688",
+			ID:       "888",
+			URL:      "https://detail.1688.com/offer/888.html",
+		}},
+		Result: &ListingKitResult{
+			Shein: &SheinPackage{RequestDraft: &SheinRequestDraft{}},
+		},
+	}
+	preview := &ListingKitPreview{
+		Shein: &SheinPreviewPayload{
+			SourceReference: cloneSourceReference(task.Request.Source),
+			FinalReview:     &SheinFinalReview{SourceReference: cloneSourceReference(task.Request.Source)},
+		},
+	}
+
+	(&service{}).decorateSheinCookieAvailabilityPreview(context.Background(), task, preview)
+
+	if got := preview.Shein.SourceReference; got == nil || got.Platform != "1688" || got.ID != "888" {
+		t.Fatalf("source reference = %+v, want preserved 1688 source", got)
+	}
+	if got := preview.Shein.FinalReview.SourceReference; got == nil || got.Platform != "1688" || got.ID != "888" {
+		t.Fatalf("final review source reference = %+v, want preserved 1688 source", got)
+	}
+}

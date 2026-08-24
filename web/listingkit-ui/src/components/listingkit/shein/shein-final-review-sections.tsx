@@ -278,6 +278,7 @@ export function FinalReviewOverviewCards({
   const sourceReference = finalReview?.source_reference;
   const sourceProductHref = sourceReference?.url?.trim();
   const sourceLabel = sourcePlatformLabel(sourceReference);
+  const sourceID = sourceReference?.id?.trim();
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-3">
@@ -290,6 +291,11 @@ export function FinalReviewOverviewCards({
         <div className="mt-1 text-xs text-zinc-500">
           {finalReview?.category_path?.join(" > ") || "未匹配类目"}
         </div>
+        {sourceReference ? (
+          <div className="mt-2 text-xs text-zinc-500">
+            来源：{sourceLabel}{sourceID ? ` · ${sourceID}` : ""}
+          </div>
+        ) : null}
         {sourceReference && sourceProductHref ? (
           <Link
             className="mt-3 inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"

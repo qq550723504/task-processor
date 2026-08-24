@@ -1,9 +1,7 @@
 package listingkit
 
 import (
-	"fmt"
 	"strconv"
-	"strings"
 )
 
 func backfillSheinPreviewSourceMetadata(preview *ListingKitPreview, task *Task) {
@@ -24,7 +22,7 @@ func backfillSheinPreviewSourceMetadata(preview *ListingKitPreview, task *Task) 
 		return
 	}
 
-	if task.Request.Options == nil || task.Request.Options.SDS == nil {
+	if task.Request.Options == nil || task.Request.Options.SDS == nil || !isSDSSourceReference(source) {
 		return
 	}
 	sds := task.Request.Options.SDS
@@ -49,29 +47,8 @@ func sheinPreviewSourceReference(task *Task) *SourceReference {
 	if task == nil || task.Request == nil {
 		return nil
 	}
-	if task.Request.Options != nil && task.Request.Options.SDS != nil {
-		sds := task.Request.Options.SDS
-		parentProductID := ""
-		if sds.ParentProductID > 0 {
-			parentProductID = strconv.FormatInt(sds.ParentProductID, 10)
-		}
-		url := ""
-		if parentProductID != "" {
-			url = fmt.Sprintf("https://www.sdsdiy.com/portal/detail/%s", parentProductID)
-		}
-		return &SourceReference{
-			Key:      "sds:" + parentProductID,
-			Type:     "sds",
-			Platform: "sds",
-			ID:       parentProductID,
-			URL:      url,
-		}
-	}
-	if task.Request.Source != nil {
-		return cloneSourceReference(task.Request.Source)
-	}
-	if url := strings.TrimSpace(task.Request.ProductURL); url != "" {
-		return &SourceReference{Type: "product_url", URL: url}
+	if source := task.Request.Source; hasSourceReference(source) {
+		return cloneSourceReference(source)
 	}
 	return nil
 }

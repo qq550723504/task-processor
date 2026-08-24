@@ -59,6 +59,13 @@ func TestBuildListingKitPreviewBackfillsSheinSourceProductSDSIdentity(t *testing
 		ID: "task-sds-source-link",
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
+			Source: &SourceReference{
+				Key:      "sds:41661",
+				Type:     "sds",
+				Platform: "sds",
+				ID:       "41661",
+				URL:      "https://www.sdsdiy.com/portal/detail/41661",
+			},
 			Options: &GenerateOptions{SDS: &SDSSyncOptions{
 				ParentProductID: 41661,
 				VariantID:       41662,
@@ -146,15 +153,100 @@ func TestBuildListingKitPreviewUsesPersistedNonSDSSourceReference(t *testing.T) 
 	}
 }
 
+func TestBuildListingKitPreviewPrefersExplicitSourceReferenceOverSDSOptions(t *testing.T) {
+	t.Parallel()
+
+	preview, err := buildListingKitPreview(&Task{
+		ID: "task-source-precedence",
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+			Source:    &SourceReference{Type: "crawler", Platform: "1688", ID: "888", URL: "https://detail.1688.com/offer/888.html"},
+			Options:   &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}},
+		},
+		Result: &ListingKitResult{
+			Platforms:        []string{"shein"},
+			CanonicalProduct: &canonical.Product{Title: "1688 Bottle"},
+			Shein:            &SheinPackage{},
+		},
+	}, "shein")
+	if err != nil {
+		t.Fatalf("build preview: %v", err)
+	}
+	if got := preview.Shein.SourceReference; got == nil || got.Platform != "1688" || got.ID != "888" {
+		t.Fatalf("source reference = %+v, want explicit 1688 source", got)
+	}
+	if got := preview.Shein.SourceProduct; got == nil || got.ParentProductID != "" || got.VariantID != "" {
+		t.Fatalf("source product = %+v, want no SDS identity for explicit non-SDS source", got)
+	}
+}
+
+func TestBuildListingKitPreviewUsesSDSVariantIDWhenParentProductIsMissing(t *testing.T) {
+	t.Parallel()
+
+	preview, err := buildListingKitPreview(&Task{
+		ID: "task-sds-variant-only",
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+			Source: &SourceReference{
+				Key:      "sds:variant:41662",
+				Type:     "sds",
+				Platform: "sds",
+				ID:       "41662",
+			},
+			Options: &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 41662}},
+		},
+		Result: &ListingKitResult{
+			Platforms:        []string{"shein"},
+			CanonicalProduct: &canonical.Product{Title: "SDS Variant"},
+			Shein:            &SheinPackage{},
+		},
+	}, "shein")
+	if err != nil {
+		t.Fatalf("build preview: %v", err)
+	}
+	if got := preview.Shein.SourceReference; got == nil || got.Type != "sds" || got.ID != "41662" || got.URL != "" {
+		t.Fatalf("source reference = %+v, want variant-only SDS identity without guessed URL", got)
+	}
+	if got := preview.Shein.SourceProduct; got == nil || got.VariantID != "41662" {
+		t.Fatalf("source product = %+v, want SDS variant identity", got)
+	}
+}
+
+func TestBuildListingKitPreviewDoesNotInferSDSSourceFromOptions(t *testing.T) {
+	t.Parallel()
+
+	preview, err := buildListingKitPreview(&Task{
+		ID: "task-sds-source-contract-missing",
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+			Options:   &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}},
+		},
+		Result: &ListingKitResult{
+			Platforms:        []string{"shein"},
+			CanonicalProduct: &canonical.Product{Title: "SDS Pants"},
+			Shein:            &SheinPackage{},
+		},
+	}, "shein")
+	if err != nil {
+		t.Fatalf("build preview: %v", err)
+	}
+	if preview.Shein == nil {
+		t.Fatal("expected shein preview")
+	}
+	if preview.Shein.SourceReference != nil || preview.Shein.SourceProduct != nil {
+		t.Fatalf("source fields = reference=%+v product=%+v, want omitted without source contract", preview.Shein.SourceReference, preview.Shein.SourceProduct)
+	}
+}
+
 func TestBuildListingKitPreviewOmitsSourceProductWithoutSourceReference(t *testing.T) {
 	t.Parallel()
 
 	preview, err := buildListingKitPreview(&Task{
-		ID: "task-no-source",
+		ID:      "task-no-source",
 		Request: &GenerateRequest{Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
-			TaskID:    "task-no-source",
-			Platforms: []string{"shein"},
+			TaskID:           "task-no-source",
+			Platforms:        []string{"shein"},
 			CanonicalProduct: &canonical.Product{Title: "Typed from text"},
 			Shein:            &SheinPackage{},
 		},
