@@ -1,7 +1,6 @@
 import type { SheinPreviewImage } from "@/components/listingkit/shein/shein-preview-image";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { toImageProxyUrl } from "@/lib/utils/image-proxy-url";
 
 export function ImagePreviewDialog({
   activeImage,
@@ -68,7 +67,8 @@ export function ImagePreviewDialog({
             <img
               alt={activeImage.label}
               className="mx-auto max-h-[76vh] max-w-full rounded-2xl bg-white object-contain shadow-sm"
-              src={toImageProxyUrl(activeImage.url)}
+              referrerPolicy="no-referrer"
+              src={activeImage.url}
             />
           </div>
           {onRegenerate && activeImageCanRegenerate ? (

@@ -19,7 +19,6 @@ import type {
   SheinPreviewPayload,
   SheinReadinessItem,
 } from "@/lib/types/listingkit";
-import { toImageProxyUrl } from "@/lib/utils/image-proxy-url";
 import { formatSheinSubmitError } from "@/lib/utils/shein-submit-error";
 
 type SheinImageGalleryProps = ComponentProps<typeof SheinDataImageGallery>;
@@ -83,7 +82,7 @@ export function buildSheinWorkspaceViewProps({
     !focusedPreview?.asset_url &&
     !focusedPreview?.preview_svg
       ? {
-          asset_url: toImageProxyUrl(selectedSheinImage?.url),
+          asset_url: selectedSheinImage?.url,
           template_label: selectedSheinImage?.label ?? "SHEIN product image",
           asset_id: selectedSheinImage?.id ?? "shein-product-image",
         }

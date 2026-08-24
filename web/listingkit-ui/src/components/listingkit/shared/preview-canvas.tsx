@@ -25,6 +25,7 @@ export function PreviewCanvas({
           <img
             alt={preview.template_label ?? preview.asset_id ?? "Listing preview"}
             className="mx-auto max-h-[32rem] w-auto rounded-xl object-contain"
+            referrerPolicy="no-referrer"
             src={preview.asset_url}
           />
         </div>

@@ -10,9 +10,27 @@ export function toImageProxyUrl(
   if (!trimmed) {
     return "";
   }
-  if (trimmed.startsWith("data:") || trimmed.startsWith("/api/image-proxy")) {
+  if (trimmed.startsWith("data:")) {
     return trimmed;
   }
+  if (trimmed.startsWith("/api/image-proxy")) {
+    if (!options?.forceProxy) {
+      try {
+        const parsedProxy = new URL(trimmed, "https://shuomiai.com");
+        const upstream = parsedProxy.searchParams.get("url");
+        if (upstream) {
+          const parsedUpstream = new URL(upstream);
+          if (isDirectPublicImageHost(parsedUpstream.hostname)) {
+            return upstream;
+          }
+        }
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
+  }
+
   if (trimmed.startsWith("/api/listing-kits/uploads/files/")) {
     return trimmed;
   }
@@ -40,6 +58,7 @@ export function toImageProxyUrl(
 function isDirectPublicImageHost(hostname: string) {
   const normalized = hostname.toLowerCase();
   return (
+    normalized === "cbu01.alicdn.com" ||
     normalized === "oss.shuomiai.com" ||
     normalized === "cos-1303159911.cos.na-ashburn.myqcloud.com" ||
     normalized === "shuomi-1303159911.cos.ap-hongkong.myqcloud.com"
