@@ -289,7 +289,8 @@ At minimum, structural review should consider representative guards such as:
 - `TestAppAssemblyUsesManagementAPIPortAliases`
 - `TestListingAdminUsesManagementAPIPortAliases`
 - `TestAppBootstrapRetiredManagementImportsStayBlocked`
-- `TestListingRuntimeLocalDoesNotImportRetiredManagementPackage`
+- `depguard: listingruntime_local_legacy_management`
+- `TestListingRuntimeLocalManagementImportsStayRetiredAcrossBuildTargets`
 - `TestAppHTTPAPIRetiredManagementImportsStayBlocked`
 - `TestAppRuntimeListingRetiredManagementImportsStayBlocked`
 - `TestAppTaskStatusRetiredManagementImportsStayBlocked`
