@@ -210,6 +210,8 @@ const platformTenantMemberInvitationSchema = z
     role: platformTenantMemberRoleSchema,
     authorization_id: z.string(),
     invitation_email_sent: z.boolean(),
+    delivery_mode: z.enum(["email", "email_phone"]),
+    contact: z.string(),
   })
   .passthrough();
 

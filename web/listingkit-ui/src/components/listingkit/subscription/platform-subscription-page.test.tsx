@@ -74,6 +74,8 @@ describe("PlatformSubscriptionPage", () => {
       role: "listingkit_viewer",
       authorization_id: "authorization-1",
       invitation_email_sent: true,
+      delivery_mode: "email",
+      contact: "j***@example.com",
     });
     mockedGetPlatformSubscriptionPlans.mockResolvedValue([
       {
@@ -688,6 +690,60 @@ describe("PlatformSubscriptionPage", () => {
     expect(confirmMock).not.toHaveBeenCalled();
   });
 
+  it("shows a custom validation error for an email rejected by the server pattern", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.clear(screen.getByLabelText("邮箱"));
+    await user.type(screen.getByLabelText("邮箱"), "user@example");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    const emailInput = screen.getByLabelText("邮箱");
+    expect(mockedInvitePlatformTenantMember).not.toHaveBeenCalled();
+    expect(emailInput).toBeInvalid();
+    expect(emailInput).toHaveProperty("validationMessage", "请输入有效的邮箱地址");
+  });
+
+  it("renders server-derived delivery metadata after a phone invitation", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedInvitePlatformTenantMember.mockResolvedValue({
+      tenant_id: "org-target",
+      user_id: "user-1",
+      email: "j***@example.com",
+      role: "listingkit_viewer",
+      authorization_id: "authorization-1",
+      invitation_email_sent: true,
+      delivery_mode: "email_phone",
+      contact: "server***@example.net,+86***4321",
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.selectOptions(screen.getByLabelText("邀请方式"), "email_phone");
+    await user.type(screen.getByLabelText("手机号"), "+8613812345678");
+    await user.type(screen.getByLabelText("用户名"), "jane.doe");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    expect(
+      await screen.findByText(
+        /org-target.*server\*\*\*@example\.net,\+86\*\*\*4321.*短信验证手机号/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("locks the invitation and tenant context while the request is pending", async () => {
     const user = userEvent.setup();
     const invitationRequest = createDeferred<
@@ -737,6 +793,8 @@ describe("PlatformSubscriptionPage", () => {
         role: "listingkit_operator",
         authorization_id: "authorization-2",
         invitation_email_sent: true,
+        delivery_mode: "email_phone",
+        contact: "j***@example.com,+86***5678",
       });
       await invitationRequest.promise;
     });
@@ -834,6 +892,8 @@ describe("PlatformSubscriptionPage", () => {
         role: "listingkit_viewer",
         authorization_id: "authorization-3",
         invitation_email_sent: true,
+        delivery_mode: "email",
+        contact: "j***@example.com",
       });
       await invitationRequest.promise;
     });

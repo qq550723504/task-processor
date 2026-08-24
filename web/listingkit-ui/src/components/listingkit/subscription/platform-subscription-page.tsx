@@ -225,6 +225,12 @@ export function PlatformSubscriptionPage() {
     const email = invitationEmail.trim();
     const phone = invitationPhone.trim();
     const username = invitationUsername.trim();
+    const emailInput = event.currentTarget.elements.namedItem("email");
+    if (emailInput instanceof HTMLInputElement) {
+      emailInput.setCustomValidity(
+        email && !EMAIL_PATTERN.test(email) ? "请输入有效的邮箱地址" : "",
+      );
+    }
     if (
       !normalizedTenantId ||
       !givenName ||
@@ -273,7 +279,10 @@ export function PlatformSubscriptionPage() {
     setError("");
     setInvitationFeedback("");
     try {
-      await invitePlatformTenantMember(requestContext.tenantId, invitationInput);
+      const invitation = await invitePlatformTenantMember(
+        requestContext.tenantId,
+        invitationInput,
+      );
       setInvitationGivenName("");
       setInvitationFamilyName("");
       setInvitationEmail("");
@@ -283,7 +292,7 @@ export function PlatformSubscriptionPage() {
       setInvitationRole("listingkit_viewer");
       setShowMemberInvitation(false);
       setInvitationFeedback(
-        `租户 ${requestContext.tenantId} 的成员 ${maskEmail(requestContext.email)}（角色 ${requestContext.role}）：ZITADEL 已发送初始化邮件${requestContext.mode === "email_phone" ? "，并会通过短信验证手机号" : ""}。`,
+        `租户 ${invitation.tenant_id} 的成员 ${invitation.contact}（角色 ${invitation.role}）：ZITADEL 已发送初始化邮件${invitation.delivery_mode === "email_phone" ? "，并会通过短信验证手机号" : ""}。`,
       );
       await auditQuery.refetch();
     } catch (err) {
@@ -835,11 +844,13 @@ export function PlatformSubscriptionPage() {
                         邮箱
                         <Input
                           required
+                          name="email"
                           type="email"
                           value={invitationEmail}
-                          onChange={(event) =>
-                            setInvitationEmail(event.target.value)
-                          }
+                          onChange={(event) => {
+                            event.currentTarget.setCustomValidity("");
+                            setInvitationEmail(event.target.value);
+                          }}
                           className="mt-1 h-9"
                           aria-label="邮箱"
                         />

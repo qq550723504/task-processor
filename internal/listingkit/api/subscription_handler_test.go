@@ -270,6 +270,32 @@ func TestInviteTenantMemberPassesPairedPhoneAndUsernameToProvider(t *testing.T) 
 	}
 }
 
+func TestInviteTenantMemberReturnsServerDerivedMaskedDeliveryMetadata(t *testing.T) {
+	audit := &invitationAuditStub{}
+	provider := invitationProviderStub{
+		invitation: memberinvite.Invitation{UserID: "user-1", AuthorizationID: "authorization-1"},
+	}
+	request := invitationRequest("org-1", "platform_admin", "admin-1")
+	request.Body = io.NopCloser(bytes.NewBufferString(`{"given_name":"Jane","family_name":"Doe","email":"jane@example.com","phone":"+8613712345678","username":"jane-phone","role":"listingkit_viewer"}`))
+	response := httptest.NewRecorder()
+
+	invitationRouter(t, provider, audit).ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d; body=%s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Email        string `json:"email"`
+		DeliveryMode string `json:"delivery_mode"`
+		Contact      string `json:"contact"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Email != "j***@example.com" || body.DeliveryMode != "email_phone" || body.Contact != "j***@example.com,+86***5678" {
+		t.Fatalf("delivery metadata = %#v", body)
+	}
+}
+
 func TestInviteTenantMemberMapsProviderConflictTo409(t *testing.T) {
 	audit := &invitationAuditStub{}
 	response := invokeInvitation(t, invitationProviderStub{err: memberinvite.ErrConflict}, audit)

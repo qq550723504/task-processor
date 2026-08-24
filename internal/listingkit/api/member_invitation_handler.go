@@ -61,13 +61,16 @@ func (h *handler) InviteTenantMember(c *gin.Context) {
 	if !h.recordMemberInvitationOutcome(c, identity.UserID, request, invitation, memberinvite.OutcomeSucceeded, "") {
 		return
 	}
+	delivery := memberinvite.DeliveryMetadataFor(invitation.Email, invitation.Phone)
 	c.JSON(http.StatusCreated, gin.H{
 		"tenant_id":             invitation.TenantID,
 		"user_id":               invitation.UserID,
-		"email":                 invitation.Email,
+		"email":                 delivery.Email,
 		"role":                  invitation.Role,
 		"authorization_id":      invitation.AuthorizationID,
 		"invitation_email_sent": true,
+		"delivery_mode":         delivery.Mode,
+		"contact":               delivery.Contact,
 	})
 }
 

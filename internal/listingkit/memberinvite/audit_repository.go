@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"gorm.io/gorm"
 )
@@ -71,19 +70,17 @@ func AutoMigrateAuditRepository(db *gorm.DB) error {
 	var rows []memberInvitationAuditRow
 	return db.Where("delivery_mode = ? OR contact = ?", "", "").FindInBatches(&rows, auditMigrationBatchSize, func(tx *gorm.DB, _ int) error {
 		for _, row := range rows {
-			email := maskEmail(row.Email)
-			mode := row.DeliveryMode
-			if mode == "" {
-				mode = "email"
+			delivery := DeliveryMetadataFor(row.Email, "")
+			if row.DeliveryMode != "" {
+				delivery.Mode = row.DeliveryMode
 			}
-			contact := row.Contact
-			if contact == "" {
-				contact = email
+			if row.Contact != "" {
+				delivery.Contact = row.Contact
 			}
 			if err := tx.Model(&memberInvitationAuditRow{}).Where("id = ?", row.ID).Updates(map[string]any{
-				"email":         email,
-				"delivery_mode": mode,
-				"contact":       contact,
+				"email":         delivery.Email,
+				"delivery_mode": delivery.Mode,
+				"contact":       delivery.Contact,
 			}).Error; err != nil {
 				return err
 			}
@@ -93,21 +90,14 @@ func AutoMigrateAuditRepository(db *gorm.DB) error {
 }
 
 func (r *gormAuditRepository) Record(ctx context.Context, record AuditRecord) error {
-	email := maskEmail(record.Email)
-	phone := maskPhone(record.Phone)
-	deliveryMode := "email"
-	contact := email
-	if phone != "" {
-		deliveryMode = "email_phone"
-		contact += "," + phone
-	}
+	delivery := DeliveryMetadataFor(record.Email, record.Phone)
 	row := memberInvitationAuditRow{
 		ActorUserID:     strings.TrimSpace(record.ActorUserID),
 		TenantID:        strings.TrimSpace(record.TenantID),
-		Email:           email,
-		Phone:           phone,
-		DeliveryMode:    deliveryMode,
-		Contact:         contact,
+		Email:           delivery.Email,
+		Phone:           delivery.Phone,
+		DeliveryMode:    delivery.Mode,
+		Contact:         delivery.Contact,
 		Role:            strings.TrimSpace(record.Role),
 		UserID:          strings.TrimSpace(record.UserID),
 		AuthorizationID: strings.TrimSpace(record.AuthorizationID),
@@ -116,29 +106,4 @@ func (r *gormAuditRepository) Record(ctx context.Context, record AuditRecord) er
 		CreatedAt:       time.Now().UTC(),
 	}
 	return r.db.WithContext(ctx).Create(&row).Error
-}
-
-func maskEmail(email string) string {
-	email = strings.ToLower(strings.TrimSpace(email))
-	at := strings.LastIndex(email, "@")
-	if at <= 0 || at == len(email)-1 {
-		return "***"
-	}
-	local := email[:at]
-	if len(local) == 1 {
-		return "*" + email[at:]
-	}
-	firstRune, _ := utf8.DecodeRuneInString(local)
-	return string(firstRune) + "***" + email[at:]
-}
-
-func maskPhone(phone string) string {
-	phone = strings.TrimSpace(phone)
-	if phone == "" {
-		return ""
-	}
-	if len(phone) <= 5 {
-		return "***"
-	}
-	return phone[:3] + "***" + phone[len(phone)-4:]
 }

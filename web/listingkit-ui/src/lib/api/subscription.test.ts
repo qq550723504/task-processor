@@ -22,6 +22,8 @@ describe("subscription API client", () => {
           role: "listingkit_viewer",
           authorization_id: "authorization-1",
           invitation_email_sent: true,
+          delivery_mode: "email",
+          contact: "j***@example.com",
         }),
         { status: 201, headers: { "Content-Type": "application/json" } },
       ),
@@ -39,6 +41,8 @@ describe("subscription API client", () => {
       tenant_id: "org-1",
       user_id: "user-1",
       invitation_email_sent: true,
+      delivery_mode: "email",
+      contact: "j***@example.com",
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -55,6 +59,34 @@ describe("subscription API client", () => {
     );
   });
 
+  it("rejects an invitation response without server delivery metadata", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          tenant_id: "org-1",
+          user_id: "user-1",
+          email: "jane@example.com",
+          role: "listingkit_viewer",
+          authorization_id: "authorization-1",
+          invitation_email_sent: true,
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      invitePlatformTenantMember("org-1", {
+        given_name: "Jane",
+        family_name: "Doe",
+        email: "jane@example.com",
+        role: "listingkit_viewer",
+      }),
+    ).rejects.toThrow(
+      "ListingKit API returned an unexpected member invitation response",
+    );
+  });
+
   it("posts an email invitation with phone verification fields unchanged", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
@@ -65,6 +97,8 @@ describe("subscription API client", () => {
           role: "listingkit_viewer",
           authorization_id: "authorization-1",
           invitation_email_sent: true,
+          delivery_mode: "email_phone",
+          contact: "j***@example.com,+86***5678",
         }),
         { status: 201, headers: { "Content-Type": "application/json" } },
       ),
@@ -106,6 +140,8 @@ describe("subscription API client", () => {
           role: "listingkit_viewer",
           authorization_id: "authorization-1",
           invitation_email_sent: true,
+          delivery_mode: "email",
+          contact: "j***@example.com",
         }),
         { status: 201, headers: { "Content-Type": "application/json" } },
       ),
