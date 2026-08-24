@@ -21,12 +21,10 @@ export function ReviewReasonsCard({
   limit?: number;
   onRepairSDS?: () => void;
 }) {
-  if (task?.status !== "needs_review") {
-    return null;
-  }
-
   const reasons = extractTaskReviewReasons(task);
-  if (reasons.length === 0) {
+  const isProcessingWithReview = task?.status === "processing" && reasons.length > 0;
+  const isNeedsReview = task?.status === "needs_review";
+  if ((!isNeedsReview && !isProcessingWithReview) || reasons.length === 0) {
     return null;
   }
 
@@ -39,10 +37,12 @@ export function ReviewReasonsCard({
       <div className="space-y-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-            审核重点
+            {isProcessingWithReview ? "处理中发现待确认项" : "审核重点"}
           </p>
           <p className="mt-1 text-sm leading-6 text-zinc-700">
-            当前任务仍有待确认项。请先处理或确认这些内容，再进入最终提交。
+            {isProcessingWithReview
+              ? "子任务已经发现需要人工确认的问题，系统会继续完成其他处理；请先查看下面的原因，完成后再继续提交。"
+              : "当前任务仍有待确认项。请先处理或确认这些内容，再进入最终提交。"}
           </p>
         </div>
         <ul className="space-y-2">

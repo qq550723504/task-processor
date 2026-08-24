@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -85,8 +86,22 @@ func (p *standardWorkflowMediaPhase) run(
 					stage.Degrade("image_processing_failed", "Image processing failed", imageErr.Error())
 					continue
 				}
-				markChildTask(result, kind, imageTask.ID, string(productimage.TaskStatusCompleted), "")
-				stage.Complete()
+				if targetResult != nil && targetResult.Review != nil && targetResult.Review.NeedsReview {
+					reasons := normalizeReviewReasons(targetResult.Review.Reasons)
+					detail := strings.Join(reasons, "; ")
+					if detail == "" {
+						detail = "image processing requires manual review"
+					}
+					message := detail
+					if len(reasons) == 0 {
+						message = "Image processing requires manual review"
+					}
+					markChildTask(result, kind, imageTask.ID, string(productimage.TaskStatusNeedsReview), detail)
+					stage.Review("image_review_required", message, detail)
+				} else {
+					markChildTask(result, kind, imageTask.ID, string(productimage.TaskStatusCompleted), "")
+					stage.Complete()
+				}
 				bundle := asset.BuildBundle(canonicalProduct, targetResult)
 				result.recordTargetImageAssets(target, targetResult, bundle, asset.InventorySummaryFromBundle(bundle))
 			}

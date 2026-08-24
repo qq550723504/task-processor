@@ -24,6 +24,30 @@ describe("ReviewReasonsCard", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("shows review reasons discovered while the parent task is processing", () => {
+    render(
+      <ReviewReasonsCard
+        task={{
+          status: "processing",
+          result: {
+            workflow_issues: [
+              {
+                severity: "review",
+                stage: "product_image:amazon",
+                message: "IP risk detected: image pipeline uses scraped 1688 source images",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("处理中发现待确认项")).toBeInTheDocument();
+    expect(
+      screen.getByText("IP risk detected: image pipeline uses scraped 1688 source images"),
+    ).toBeInTheDocument();
+  });
+
   it("renders capped review reasons for needs-review tasks", () => {
     render(
       <ReviewReasonsCard

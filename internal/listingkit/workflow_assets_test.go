@@ -2310,6 +2310,59 @@ func TestRunWorkflowRecordsDegradedImageStageWhenImageProcessingFails(t *testing
 	}
 }
 
+func TestStandardWorkflowPropagatesImageReviewToParentWorkflow(t *testing.T) {
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task-image-review"},
+		product: &productenrich.ProductJSON{Title: "Reviewed product", Images: []string{"https://example.test/image.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		taskByTarget: map[string]*productimage.Task{
+			"amazon": {ID: "image-task-amazon-review"},
+		},
+		resultByTarget: map[string]*productimage.ImageProcessResult{
+			"amazon": {
+				Review: &productimage.ReviewDecision{
+					NeedsReview: true,
+					Reasons:     []string{"IP risk detected: image pipeline uses scraped 1688 source images"},
+				},
+			},
+		},
+	}
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedSupportDeps(&service{}, supportDependencySeed{
+			assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		}),
+		assetrepo.NewMemRepository(),
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		newDefaultAssetGenerationService(),
+	), productSvc, imageSvc)
+
+	task := &Task{ID: "listing-task-image-review", Request: &GenerateRequest{
+		ImageURLs: []string{"https://example.test/image.jpg"},
+		Platforms: []string{"amazon"},
+		Options:   &GenerateOptions{ProcessImages: true},
+	}}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+
+	if !hasChildTaskStatus(state.result.ChildTasks, "product_image:amazon", string(productimage.TaskStatusNeedsReview)) {
+		t.Fatalf("child tasks = %+v, want image child needs_review", state.result.ChildTasks)
+	}
+	if state.result.Summary == nil || !state.result.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want needs_review", state.result.Summary)
+	}
+	if !hasWorkflowIssue(state.result.WorkflowIssues, "product_image:amazon", WorkflowIssueSeverityReview, "image_review_required") {
+		t.Fatalf("workflow issues = %+v, want image review issue", state.result.WorkflowIssues)
+	}
+	if got := reviewReasonsFromResult(state.result); len(got) != 1 || got[0] != "IP risk detected: image pipeline uses scraped 1688 source images" {
+		t.Fatalf("review reasons = %#v, want image review reason", got)
+	}
+}
+
 func TestRunWorkflowUsesSDSCatalogCanonicalAndSkipsImageProcessing(t *testing.T) {
 	t.Parallel()
 
