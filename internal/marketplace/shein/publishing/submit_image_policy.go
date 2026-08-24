@@ -247,21 +247,22 @@ func ReorderFinalDraftProductImages(info *sheinproduct.ImageInfo, order []string
 		return
 	}
 	main = strings.TrimSpace(main)
-	priority := make(map[string]int, len(order))
-	for i, image := range order {
-		image = strings.TrimSpace(image)
-		if image != "" {
-			priority[image] = i + 1
-		}
-	}
-	existing := make(map[string]struct{}, len(info.ImageInfoList))
+	byURL := make(map[string]sheinproduct.ImageDetail, len(info.ImageInfoList)+len(order)+1)
 	for _, image := range info.ImageInfoList {
 		url := strings.TrimSpace(image.ImageURL)
-		if url != "" {
-			existing[url] = struct{}{}
+		if url == "" {
+			continue
+		}
+		if _, removed := deleted[url]; removed {
+			continue
+		}
+		if _, exists := byURL[url]; !exists {
+			byURL[url] = image
 		}
 	}
-	materialize := func(url string) {
+	orderedURLs := make([]string, 0, len(byURL)+len(order)+1)
+	seen := make(map[string]struct{}, len(byURL)+len(order)+1)
+	appendURL := func(url string) {
 		url = strings.TrimSpace(url)
 		if url == "" {
 			return
@@ -269,34 +270,29 @@ func ReorderFinalDraftProductImages(info *sheinproduct.ImageInfo, order []string
 		if _, ok := deleted[url]; ok {
 			return
 		}
-		if _, ok := existing[url]; ok {
+		if _, ok := seen[url]; ok {
 			return
 		}
-		info.ImageInfoList = append(info.ImageInfoList, sheinproduct.ImageDetail{
-			ImageURL:  url,
-			ImageType: 2,
-		})
-		existing[url] = struct{}{}
+		if _, ok := byURL[url]; !ok {
+			byURL[url] = sheinproduct.ImageDetail{ImageURL: url, ImageType: 2}
+		}
+		seen[url] = struct{}{}
+		orderedURLs = append(orderedURLs, url)
 	}
+	appendURL(main)
 	for _, image := range order {
-		materialize(image)
+		appendURL(image)
 	}
-	materialize(main)
-	filtered := make([]sheinproduct.ImageDetail, 0, len(info.ImageInfoList))
 	for _, image := range info.ImageInfoList {
-		url := strings.TrimSpace(image.ImageURL)
-		if url == "" {
-			continue
-		}
-		if _, ok := deleted[url]; ok {
-			continue
-		}
+		appendURL(image.ImageURL)
+	}
+	filtered := make([]sheinproduct.ImageDetail, 0, len(orderedURLs))
+	for index, url := range orderedURLs {
+		image := byURL[url]
+		image.ImageSort = index + 1
 		if url == main {
-			image.ImageSort = 1
 			image.MarketingMainImage = true
 			image.ImageType = 1
-		} else if sort, ok := priority[url]; ok {
-			image.ImageSort = sort + 1
 		}
 		switch roles[url] {
 		case "main":

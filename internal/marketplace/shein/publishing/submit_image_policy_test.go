@@ -184,16 +184,16 @@ func TestReorderFinalDraftProductImagesAppliesSelectionPolicy(t *testing.T) {
 	if len(got) != 4 {
 		t.Fatalf("ImageInfoList length = %d, want 4: %#v", len(got), got)
 	}
-	if got[0].ImageURL != " later.jpg " || got[0].ImageSort != 3 {
-		t.Fatalf("ordered image = %#v, want later image with priority sort 3", got[0])
+	if got[0].ImageURL != "main.jpg" || got[0].ImageSort != 1 || got[0].ImageType != 1 || !got[0].MarketingMainImage {
+		t.Fatalf("main image = %#v, want selected main image first", got[0])
 	}
-	if got[1].ImageURL != "main.jpg" || got[1].ImageSort != 1 || got[1].ImageType != 1 || !got[1].MarketingMainImage {
-		t.Fatalf("main image = %#v, want selected marketing main image", got[1])
+	if got[1].ImageURL != "swatch.jpg" || got[1].ImageSort != 2 || got[1].ImageType != 6 || got[1].MarketingMainImage || got[1].SizeImgFlag {
+		t.Fatalf("swatch image = %#v, want selected swatch image second", got[1])
 	}
-	if got[2].ImageURL != "swatch.jpg" || got[2].ImageType != 6 || got[2].MarketingMainImage || got[2].SizeImgFlag {
-		t.Fatalf("swatch image = %#v, want role override without size flag", got[2])
+	if got[2].ImageURL != " later.jpg " || got[2].ImageSort != 3 {
+		t.Fatalf("ordered image = %#v, want later image with priority sort 3", got[2])
 	}
-	if got[3].ImageURL != "size.jpg" || got[3].ImageType != 6 || !got[3].SizeImgFlag {
+	if got[3].ImageURL != "size.jpg" || got[3].ImageSort != 4 || got[3].ImageType != 6 || !got[3].SizeImgFlag {
 		t.Fatalf("size map image = %#v, want size map override", got[3])
 	}
 }

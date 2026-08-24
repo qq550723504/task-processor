@@ -108,6 +108,31 @@ func TestApplyFinalImageDraftMaterializesNewImageIntoPreviewPayload(t *testing.T
 	}
 }
 
+func TestFinalDraftMainImageRemainsFirstAfterSubmitNormalization(t *testing.T) {
+	t.Parallel()
+
+	const sourceURL = "https://1688.example.com/source-main.jpg"
+	pkg := &Package{
+		FinalSubmissionDraft: &FinalDraft{
+			MainImageURL:    sourceURL,
+			FinalImageOrder: []string{sourceURL, "https://cdn.example/generated.jpg"},
+		},
+		PreviewPayload: &sheinproduct.Product{
+			ImageInfo: &sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{
+				{ImageURL: "https://cdn.example/generated.jpg", ImageType: 1},
+			}},
+		},
+	}
+
+	ApplyFinalImageDraft(pkg)
+	NormalizeSubmitImages(pkg.PreviewPayload)
+
+	got := pkg.PreviewPayload.ImageInfo.ImageInfoList
+	if len(got) == 0 || got[0].ImageURL != sourceURL || got[0].ImageType != 1 {
+		t.Fatalf("normalized preview images = %+v, want selected source main image first", got)
+	}
+}
+
 func TestNormalizeImageRoleOverridesKeepsAcceptedRoles(t *testing.T) {
 	t.Parallel()
 
