@@ -16,13 +16,13 @@ import (
 )
 
 type VariantJsonDataHandler struct {
-	logger         *logrus.Entry
-	productFetcher appProduct.ProductFetcher
+	logger        *logrus.Entry
+	productReader appProduct.ProductReader
 }
 
-func NewVariantJsonDataHandler(fetcher appProduct.ProductFetcher) *VariantJsonDataHandler {
+func NewVariantJsonDataHandler(reader appProduct.ProductReader) *VariantJsonDataHandler {
 	logger := coreLogger.GetGlobalLogger("VariantJsonDataHandler")
-	return &VariantJsonDataHandler{logger: logger, productFetcher: fetcher}
+	return &VariantJsonDataHandler{logger: logger, productReader: reader}
 }
 
 func (h *VariantJsonDataHandler) Name() string {
@@ -57,7 +57,7 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 		CategoryID: ctx.Task.CategoryID,
 		Creator:    ctx.Task.Creator,
 	}
-	variants, err := h.productFetcher.FetchVariants(context.Background(), req, variantAsins)
+	variants, err := h.productReader.FetchVariants(context.Background(), req, variantAsins)
 	if err != nil {
 		return fmt.Errorf("fetch variants failed: %w", err)
 	}

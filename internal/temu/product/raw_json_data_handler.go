@@ -16,24 +16,27 @@ import (
 
 // RawJsonDataHandlerV2 原始JSON数据处理器V2（使用工厂模式选择获取器）
 type RawJsonDataHandlerV2 struct {
-	logger  *logrus.Entry
-	fetcher appProduct.ProductFetcher
+	logger *logrus.Entry
+	reader appProduct.ProductReader
 }
 
 // NewRawJsonDataHandlerV2 创建新的原始JSON数据处理器V2（支持分布式获取器）
 func NewRawJsonDataHandlerV2(
-	fetcher appProduct.ProductFetcher,
+	reader appProduct.ProductReader,
+	stats appProduct.ProductFetcherStats,
 ) *RawJsonDataHandlerV2 {
 	logger := logger.GetGlobalLogger("RawJsonDataHandlerV2")
 
 	// 打印实际使用的获取器类型（通过 GetStats 判断）
-	if stats := fetcher.GetStats(); stats != nil {
-		logger.Infof("✅ 产品获取器创建成功，实际类型: %v", stats["type"])
+	if stats != nil {
+		if values := stats.GetStats(); values != nil {
+			logger.Infof("✅ 产品获取器创建成功，实际类型: %v", values["type"])
+		}
 	}
 
 	return &RawJsonDataHandlerV2{
-		logger:  logger,
-		fetcher: fetcher,
+		logger: logger,
+		reader: reader,
 	}
 }
 
@@ -67,7 +70,7 @@ func (h *RawJsonDataHandlerV2) Handle(ctx pipeline.TaskContext) error {
 		Creator:    task.Creator,
 	}
 
-	amazonProduct, err := h.fetcher.FetchProduct(ctx.GetContext(), req)
+	amazonProduct, err := h.reader.FetchProduct(ctx.GetContext(), req)
 	if err != nil {
 		// 检查是否为产品不存在错误（不可重试）
 		var productNotFoundErr *model.ProductNotFoundError

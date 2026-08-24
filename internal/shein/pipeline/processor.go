@@ -44,7 +44,8 @@ type Dependencies struct {
 	ImageDownloader   interface {
 		DownloadImage(url string) ([]byte, error)
 	}
-	ProductFetcher appfetcher.ProductFetcher
+	ProductReader  appfetcher.ProductReader
+	ProductCache   appfetcher.ProductCache
 	RabbitMQClient *rabbitmq.Client
 }
 
@@ -55,7 +56,8 @@ type SheinProcessor struct {
 	imageDownloader   interface {
 		DownloadImage(url string) ([]byte, error)
 	}
-	productFetcher appfetcher.ProductFetcher
+	productReader  appfetcher.ProductReader
+	productCache   appfetcher.ProductCache
 	rabbitmqClient *rabbitmq.Client
 	taskHandler    *TaskHandler
 	pipeline       *Pipeline
@@ -67,9 +69,13 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 		logger.Error("[SHEIN] runtime repository is required")
 		return nil, fmt.Errorf("runtime repository is required")
 	}
-	if deps.ProductFetcher == nil {
-		logger.Error("[SHEIN] ProductFetcher is required")
-		return nil, fmt.Errorf("productFetcher is required")
+	if deps.ProductReader == nil {
+		logger.Error("[SHEIN] ProductReader is required")
+		return nil, fmt.Errorf("productReader is required")
+	}
+	if deps.ProductCache == nil {
+		logger.Error("[SHEIN] ProductCache is required")
+		return nil, fmt.Errorf("productCache is required")
 	}
 	if deps.TaskStatusRuntime == nil {
 		logger.Error("[SHEIN] TaskStatusRuntime is required")
@@ -101,7 +107,8 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 		runtimeRepository: deps.RuntimeRepository,
 		taskStatusRuntime: deps.TaskStatusRuntime,
 		imageDownloader:   deps.ImageDownloader,
-		productFetcher:    deps.ProductFetcher,
+		productReader:     deps.ProductReader,
+		productCache:      deps.ProductCache,
 		rabbitmqClient:    deps.RabbitMQClient,
 	}
 
@@ -148,8 +155,12 @@ func (p *SheinProcessor) GetAICache() *aicache.Cache {
 	return p.aiCache
 }
 
-func (p *SheinProcessor) GetProductFetcher() appfetcher.ProductFetcher {
-	return p.productFetcher
+func (p *SheinProcessor) GetProductReader() appfetcher.ProductReader {
+	return p.productReader
+}
+
+func (p *SheinProcessor) GetProductCache() appfetcher.ProductCache {
+	return p.productCache
 }
 
 func (p *SheinProcessor) GetRuntimeRepository() sheincontext.RuntimeRepository {

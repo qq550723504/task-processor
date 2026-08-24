@@ -29,21 +29,25 @@ type processorRuntime interface {
 }
 
 type Dependencies struct {
-	ProcessorRuntime  processorRuntime
-	TaskStatusRuntime taskstatus.RuntimeTaskStatusUpdater
-	MemoryManager     *state.MemoryManager
-	ProductFetcher    appfetcher.ProductFetcher
-	RabbitMQClient    *rabbitmq.Client
+	ProcessorRuntime    processorRuntime
+	TaskStatusRuntime   taskstatus.RuntimeTaskStatusUpdater
+	MemoryManager       *state.MemoryManager
+	ProductReader       appfetcher.ProductReader
+	ProductCache        appfetcher.ProductCache
+	ProductFetcherStats appfetcher.ProductFetcherStats
+	RabbitMQClient      *rabbitmq.Client
 }
 
 type TemuProcessor struct {
 	*processor.BaseProcessor
-	processorRuntime  processorRuntime
-	taskStatusRuntime taskstatus.RuntimeTaskStatusUpdater
-	productFetcher    appfetcher.ProductFetcher
-	rabbitmqClient    *rabbitmq.Client
-	taskHandler       *TaskHandler
-	pipelineExecutor  *TemuPipelineExecutor
+	processorRuntime    processorRuntime
+	taskStatusRuntime   taskstatus.RuntimeTaskStatusUpdater
+	productReader       appfetcher.ProductReader
+	productCache        appfetcher.ProductCache
+	productFetcherStats appfetcher.ProductFetcherStats
+	rabbitmqClient      *rabbitmq.Client
+	taskHandler         *TaskHandler
+	pipelineExecutor    *TemuPipelineExecutor
 }
 
 func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *logrus.Logger, deps Dependencies) (*TemuProcessor, error) {
@@ -61,9 +65,17 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 		log.Error("MemoryManager is required")
 		return nil, fmt.Errorf("memoryManager is required")
 	}
-	if deps.ProductFetcher == nil {
-		log.Error("ProductFetcher is required")
-		return nil, fmt.Errorf("productFetcher is required")
+	if deps.ProductReader == nil {
+		log.Error("ProductReader is required")
+		return nil, fmt.Errorf("productReader is required")
+	}
+	if deps.ProductCache == nil {
+		log.Error("ProductCache is required")
+		return nil, fmt.Errorf("productCache is required")
+	}
+	if deps.ProductFetcherStats == nil {
+		log.Error("ProductFetcherStats is required")
+		return nil, fmt.Errorf("productFetcherStats is required")
 	}
 
 	if deps.RabbitMQClient != nil {
@@ -80,11 +92,13 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 	}, deps.MemoryManager)
 
 	p := &TemuProcessor{
-		BaseProcessor:     baseProcessor,
-		processorRuntime:  deps.ProcessorRuntime,
-		taskStatusRuntime: deps.TaskStatusRuntime,
-		productFetcher:    deps.ProductFetcher,
-		rabbitmqClient:    deps.RabbitMQClient,
+		BaseProcessor:       baseProcessor,
+		processorRuntime:    deps.ProcessorRuntime,
+		taskStatusRuntime:   deps.TaskStatusRuntime,
+		productReader:       deps.ProductReader,
+		productCache:        deps.ProductCache,
+		productFetcherStats: deps.ProductFetcherStats,
+		rabbitmqClient:      deps.RabbitMQClient,
 	}
 
 	workerPool := worker.NewPool(p, cfg.Worker)
@@ -143,8 +157,16 @@ func (p *TemuProcessor) Start(ctx context.Context) error {
 	return nil
 }
 
-func (p *TemuProcessor) GetProductFetcher() appfetcher.ProductFetcher {
-	return p.productFetcher
+func (p *TemuProcessor) GetProductReader() appfetcher.ProductReader {
+	return p.productReader
+}
+
+func (p *TemuProcessor) GetProductCache() appfetcher.ProductCache {
+	return p.productCache
+}
+
+func (p *TemuProcessor) GetProductFetcherStats() appfetcher.ProductFetcherStats {
+	return p.productFetcherStats
 }
 
 func (p *TemuProcessor) GetTaskStatusRuntime() taskstatus.RuntimeTaskStatusUpdater {

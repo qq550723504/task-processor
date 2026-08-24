@@ -19,17 +19,17 @@ import (
 
 // ParallelVariantHandler 并行变体数据处理器
 type ParallelVariantHandler struct {
-	logger         *logrus.Entry
-	productFetcher appProduct.ProductFetcher
+	logger        *logrus.Entry
+	productReader appProduct.ProductReader
 }
 
 // NewParallelVariantHandler 创建并行变体数据处理器。
-func NewParallelVariantHandler(fetcher appProduct.ProductFetcher) *ParallelVariantHandler {
+func NewParallelVariantHandler(reader appProduct.ProductReader) *ParallelVariantHandler {
 	logger := logger.GetGlobalLogger("ParallelVariantHandler")
 
 	return &ParallelVariantHandler{
-		logger:         logger,
-		productFetcher: fetcher,
+		logger:        logger,
+		productReader: reader,
 	}
 }
 
@@ -126,7 +126,7 @@ func (h *ParallelVariantHandler) fetchVariantsParallel(temuCtx *temucontext.Temu
 		Creator:    task.Creator,
 	}
 
-	variants, err := h.productFetcher.FetchVariants(context.Background(), req, variantAsins)
+	variants, err := h.productReader.FetchVariants(context.Background(), req, variantAsins)
 	if err != nil {
 		return nil, err
 	}

@@ -72,6 +72,9 @@ Allowed:
 - Worker registration.
 - Wiring handlers to service interfaces.
 - Runtime support glue.
+- Expose platform runtime capabilities through narrow interfaces; product readers,
+  caches, and fetcher statistics remain separate from the composed fetcher
+  contract.
 
 Avoid:
 

@@ -87,7 +87,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 重新上架任务处理器
 	//pipeline.AddHandler(modules.NewReListingHandler())
 	// 获取并缓存主产品数据（Fetch + Cache 合并为一步；缓存失败仅记录警告，不阻断上架）
-	pipeline.AddHandler(productdata.NewFetchAndCacheProductHandler(processor.GetProductFetcher()))
+	pipeline.AddHandler(productdata.NewFetchAndCacheProductHandler(processor.GetProductReader(), processor.GetProductCache()))
 	// 早期检查产品是否已上架（避免后续无效处理）
 	pipeline.AddHandler(publish.NewProductExistsCheckHandler())
 	// 验证图片数量（SHEIN要求至少3张：1张主图+2张细节图）
@@ -110,7 +110,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 应用筛选规则
 	pipeline.AddHandler(validation.NewApplyFilterRuleHandler())
 	// 获取并缓存变体数据（Fetch + Cache 合并为一步；缓存失败仅记录警告，不阻断上架）
-	pipeline.AddHandler(productdata.NewFetchAndCacheVariantsHandler(processor.GetProductFetcher()))
+	pipeline.AddHandler(productdata.NewFetchAndCacheVariantsHandler(processor.GetProductReader(), processor.GetProductCache()))
 	// 查询是否有发品记录。放在变体抓取后，确保 ASIN->SupplierSKU 映射覆盖完整变体集。
 	pipeline.AddHandler(product.NewHasSpuRecordHandler())
 	// 重新应用筛选规则到变体

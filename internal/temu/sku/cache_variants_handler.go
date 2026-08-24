@@ -15,17 +15,17 @@ import (
 // CacheVariantsHandler 缓存变体数据处理器
 // 将已获取的变体数据批量缓存到服务器
 type CacheVariantsHandler struct {
-	logger  *logrus.Entry
-	fetcher appProduct.ProductFetcher
+	logger *logrus.Entry
+	cache  appProduct.ProductCache
 }
 
 // NewCacheVariantsHandler 创建缓存变体数据处理器。
-func NewCacheVariantsHandler(fetcher appProduct.ProductFetcher) *CacheVariantsHandler {
+func NewCacheVariantsHandler(cache appProduct.ProductCache) *CacheVariantsHandler {
 	logger := logger.GetGlobalLogger("CacheVariantsHandler")
 
 	return &CacheVariantsHandler{
-		logger:  logger,
-		fetcher: fetcher,
+		logger: logger,
+		cache:  cache,
 	}
 }
 
@@ -65,7 +65,7 @@ func (h *CacheVariantsHandler) Handle(ctx pipeline.TaskContext) error {
 	}
 
 	// 缓存变体数据
-	if err := h.fetcher.CacheVariants(req, variants); err != nil {
+	if err := h.cache.CacheVariants(req, variants); err != nil {
 		h.logger.Warnf("⚠️ 缓存变体数据失败: %v", err)
 		// 缓存失败不影响主流程，只记录警告
 		return nil

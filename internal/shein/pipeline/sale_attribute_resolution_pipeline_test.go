@@ -128,7 +128,8 @@ func newSheinPipelineTestProcessor(cfg *config.Config, productFetcher fetcher.Pr
 		runtimeRepository: runtime,
 		taskStatusRuntime: stubPipelineTaskStatusRuntime{},
 		imageDownloader:   stubPipelineImageDownloader{},
-		productFetcher:    productFetcher,
+		productReader:     productFetcher,
+		productCache:      productFetcher,
 	}
 }
 

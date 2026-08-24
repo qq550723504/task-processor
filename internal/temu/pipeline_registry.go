@@ -21,7 +21,9 @@ import (
 )
 
 type pipelineRuntime interface {
-	GetProductFetcher() appfetcher.ProductFetcher
+	GetProductReader() appfetcher.ProductReader
+	GetProductCache() appfetcher.ProductCache
+	GetProductFetcherStats() appfetcher.ProductFetcherStats
 	GetMemoryManager() *state.MemoryManager
 	GetOpenAIClientConfig() *openai.ClientConfig
 	GetStoreClient() listingadmin.StoreAPI
@@ -89,9 +91,9 @@ func (pr *PipelineRegistry) registerCommonHandlers() {
 func (pr *PipelineRegistry) registerInitHandlers() {
 	pr.register("init_data", handlerbase.NewInitDataHandler())
 	pr.register("store_info", store.NewStoreInfoHandler(pr.runtime.GetStoreClient()))
-	pr.register("raw_json_data", product.NewRawJsonDataHandlerV2(pr.runtime.GetProductFetcher()))
+	pr.register("raw_json_data", product.NewRawJsonDataHandlerV2(pr.runtime.GetProductReader(), pr.runtime.GetProductFetcherStats()))
 	pr.register("prohibited_items", NewTemuHandlerAdapter("prohibited_items_detector", filter.NewProhibitedItemsDetector()))
-	pr.register("cache_product", product.NewCacheProductHandler(pr.runtime.GetProductFetcher()))
+	pr.register("cache_product", product.NewCacheProductHandler(pr.runtime.GetProductCache()))
 	pr.register("product_exists", product.NewProductExistsCheckHandler(pr.runtime.GetProductImportMappingClient()))
 }
 
@@ -100,8 +102,8 @@ func (pr *PipelineRegistry) registerFilterHandlers() {
 	pr.register("filter_rule", filter.NewFilterRuleHandler(pr.runtime.GetFilterRuleClient()))
 	pr.register("store_id", store.NewStoreIDHandler(pr.runtime.GetStoreClient()))
 	pr.register("text_check", rules.NewTextCheckHandler())
-	pr.register("parallel_variant", sku.NewParallelVariantHandler(pr.runtime.GetProductFetcher()))
-	pr.register("cache_variants", sku.NewCacheVariantsHandler(pr.runtime.GetProductFetcher()))
+	pr.register("parallel_variant", sku.NewParallelVariantHandler(pr.runtime.GetProductReader()))
+	pr.register("cache_variants", sku.NewCacheVariantsHandler(pr.runtime.GetProductCache()))
 	pr.register("variant_filter", sku.NewVariantFilterHandler(pr.runtime.GetFilterRuleClient()))
 	pr.register("daily_limit", product.NewCheckDailyLimitHandler(pr.runtime.GetMemoryManager()))
 }

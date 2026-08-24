@@ -22,12 +22,24 @@ const (
 	RemoteAPIFetcher   FetcherType = "remote-api"
 )
 
-type ProductFetcher interface {
+type ProductReader interface {
 	FetchProduct(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error)
 	FetchVariants(ctx context.Context, req *domainProduct.FetchRequest, variantASINs []string) ([]*model.Product, error)
+}
+
+type ProductCache interface {
 	CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error
 	CacheVariants(req *domainProduct.FetchRequest, variants []*model.Product) error
+}
+
+type ProductFetcherStats interface {
 	GetStats() map[string]any
+}
+
+type ProductFetcher interface {
+	ProductReader
+	ProductCache
+	ProductFetcherStats
 }
 
 type FetcherFactory struct {

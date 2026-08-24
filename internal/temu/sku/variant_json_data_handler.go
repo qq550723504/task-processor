@@ -20,17 +20,17 @@ import (
 
 // VariantJsonDataHandler 变体JSON数据处理器
 type VariantJsonDataHandler struct {
-	logger         *logrus.Entry
-	productFetcher appProduct.ProductFetcher
+	logger        *logrus.Entry
+	productReader appProduct.ProductReader
 }
 
 // NewVariantJsonDataHandler 创建新的变体JSON数据处理器
-func NewVariantJsonDataHandler(fetcher appProduct.ProductFetcher) *VariantJsonDataHandler {
+func NewVariantJsonDataHandler(reader appProduct.ProductReader) *VariantJsonDataHandler {
 	log := logger.GetGlobalLogger("VariantJsonDataHandler")
 
 	return &VariantJsonDataHandler{
-		logger:         log,
-		productFetcher: fetcher,
+		logger:        log,
+		productReader: reader,
 	}
 }
 
@@ -83,7 +83,7 @@ func (h *VariantJsonDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 		Creator:    task.Creator,
 	}
 
-	variants, err := h.productFetcher.FetchVariants(context.Background(), req, variantAsins)
+	variants, err := h.productReader.FetchVariants(context.Background(), req, variantAsins)
 	if err != nil {
 		h.logger.Errorf("批量获取变体数据失败: %v", err)
 		return fmt.Errorf("批量获取变体数据失败: %w", err)

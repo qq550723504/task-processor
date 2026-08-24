@@ -15,19 +15,19 @@ import (
 // CacheProductHandler 缓存产品数据处理器
 // 将已获取的产品数据缓存到服务器
 type CacheProductHandler struct {
-	logger  *logrus.Entry
-	fetcher appProduct.ProductFetcher
+	logger *logrus.Entry
+	cache  appProduct.ProductCache
 }
 
 // NewCacheProductHandler 创建缓存产品数据处理器（支持分布式获取器）
 func NewCacheProductHandler(
-	fetcher appProduct.ProductFetcher,
+	cache appProduct.ProductCache,
 ) *CacheProductHandler {
 	logger := logger.GetGlobalLogger("CacheProductHandler")
 
 	return &CacheProductHandler{
-		logger:  logger,
-		fetcher: fetcher,
+		logger: logger,
+		cache:  cache,
 	}
 }
 
@@ -71,7 +71,7 @@ func (h *CacheProductHandler) Handle(ctx pipeline.TaskContext) error {
 	}
 
 	// 缓存产品数据
-	if err := h.fetcher.CacheProduct(req, amazonProduct); err != nil {
+	if err := h.cache.CacheProduct(req, amazonProduct); err != nil {
 		h.logger.Warnf("⚠️ 缓存产品数据失败: %v", err)
 		// 缓存失败不影响主流程，只记录警告
 		return nil
