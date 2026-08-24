@@ -2963,12 +2963,6 @@ func TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases(t *testing.T) {
 	})
 }
 
-func TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal"), []string{
-		`"task-processor/internal/app/processor"`,
-	}, nil)
-}
-
 func TestAppProcessorCompatibilityLayerIsRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "processor")
 	if _, err := os.Stat(path); err == nil {
@@ -2976,12 +2970,6 @@ func TestAppProcessorCompatibilityLayerIsRetired(t *testing.T) {
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("stat %s: %v", path, err)
 	}
-}
-
-func TestInternalPackagesDoNotImportAppStateCompatibilityLayer(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal"), []string{
-		`"task-processor/internal/app/state"`,
-	}, nil)
 }
 
 func TestAppStateCompatibilityLayerIsRetired(t *testing.T) {
@@ -2996,6 +2984,21 @@ func TestAppStateCompatibilityLayerIsRetired(t *testing.T) {
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".go") {
 			t.Fatalf("%s still contains Go compatibility file %s; use internal/state directly instead", path, entry.Name())
+		}
+	}
+}
+
+func TestInternalPackagesDoNotImportAppCompatibilityLayersAcrossBuildTargets(t *testing.T) {
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/app/processor") || importMatchesPrefix(importPath, "task-processor/internal/app/state") {
+				t.Errorf("%s imports %s; keep retired app compatibility packages out of internal production code", path, importPath)
+			}
 		}
 	}
 }
