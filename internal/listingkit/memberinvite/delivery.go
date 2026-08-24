@@ -49,8 +49,9 @@ func maskPhone(phone string) string {
 	if phone == "" {
 		return ""
 	}
-	if len(phone) <= 5 {
+	runes := []rune(phone)
+	if len(runes) <= 5 {
 		return "***"
 	}
-	return phone[:3] + "***" + phone[len(phone)-4:]
+	return string(runes[:3]) + "***" + string(runes[len(runes)-4:])
 }

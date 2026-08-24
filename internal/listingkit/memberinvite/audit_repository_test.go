@@ -126,6 +126,33 @@ func TestGormAuditRepositoryMasksUnicodeEmailLocalPartByRune(t *testing.T) {
 	}
 }
 
+func TestGormAuditRepositoryMasksUnicodePhoneByRune(t *testing.T) {
+	db := openAuditTestDB(t)
+	if err := AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("AutoMigrateAuditRepository() error = %v", err)
+	}
+
+	if err := NewGormAuditRepository(db).Record(context.Background(), AuditRecord{
+		ActorUserID: "admin-1",
+		TenantID:    "org-1",
+		Email:       "jane@example.com",
+		Phone:       "😀😀",
+		Role:        "listingkit_viewer",
+		Outcome:     OutcomeFailed,
+		ErrorCode:   "invalid_member_invitation",
+	}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	got := readAuditRecord(t, db)
+	if got.Phone != "***" || got.Contact != "j***@example.com,***" {
+		t.Fatalf("masked delivery values = phone %q, contact %q", got.Phone, got.Contact)
+	}
+	if !utf8.ValidString(got.Phone) || !utf8.ValidString(got.Contact) {
+		t.Fatalf("masked delivery values are invalid UTF-8: phone %q, contact %q", got.Phone, got.Contact)
+	}
+}
+
 func TestAutoMigrateAuditRepositoryPreservesAndRedactsLegacyRecords(t *testing.T) {
 	db := openAuditTestDB(t)
 	if err := db.AutoMigrate(&legacyMemberInvitationAuditRow{}); err != nil {
