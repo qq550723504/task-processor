@@ -99,6 +99,7 @@ func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps) li
 			ImageSubjectExtractor:      deps.features.imageSubjectExtractor,
 			ImageWhiteBackgroundRender: deps.features.imageWhiteBgRenderer,
 			ImageSceneRenderer:         deps.features.imageSceneRenderer,
+			ImageAssetPublisher:        deps.features.imageAssetPublisher,
 			AICredentialStore:          deps.shared.aiCredentialStore,
 			AIInvocationRecorder:       deps.shared.aiInvocationRecorder,
 			AIAsyncJobStore:            deps.shared.aiAsyncJobStore,

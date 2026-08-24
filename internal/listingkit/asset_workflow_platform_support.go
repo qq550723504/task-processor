@@ -17,7 +17,7 @@ func attachPlatformImageBundles(result *ListingKitResult, inventory *asset.Inven
 		platforms = append(platforms, platform)
 		targetInventory := platformAssetInventory(result, platform, inventory)
 		imageBundle := builder.Build(assetbundleRequest(platform, targetInventory, recipes))
-		if len(platformGenerationTasks(platform, generationPlan)) > 0 {
+		if generationPlan != nil {
 			imageBundle.PendingGeneration = platformGenerationTasks(platform, generationPlan)
 		}
 		switch platform {
@@ -58,6 +58,9 @@ func platformAssetInventory(result *ListingKitResult, platform string, shared *a
 		return nil
 	}
 	targetBundle := explicitTargetAssetBundle(result, platform)
+	if targetBundle == nil && len(result.AssetBundlesByTarget) == 0 && !hasConflictingLegacyScalarTarget(result, platform, shared) {
+		return cloneAssetInventory(shared)
+	}
 	if targetBundle == nil {
 		targetBundle = &asset.Bundle{}
 	}
@@ -79,6 +82,33 @@ func platformAssetInventory(result *ListingKitResult, platform string, shared *a
 	}
 	targetInventory.Summary = asset.RebuildInventorySummary(targetInventory)
 	return targetInventory
+}
+
+func hasConflictingLegacyScalarTarget(result *ListingKitResult, platform string, shared *asset.Inventory) bool {
+	if result == nil {
+		return false
+	}
+	targets := listingplatform.NormalizeSupportedPlatforms(result.Platforms)
+	if len(targets) > 1 || (len(targets) == 1 && targets[0] != platform) {
+		return true
+	}
+	for _, record := range shared.Records {
+		for _, tag := range record.PlatformTags {
+			if normalizedTag := listingplatform.Normalize(tag); normalizedTag != "" && normalizedTag != platform {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func cloneAssetInventory(inventory *asset.Inventory) *asset.Inventory {
+	if inventory == nil {
+		return nil
+	}
+	clone := *inventory
+	clone.Records = append([]asset.AssetRecord(nil), inventory.Records...)
+	return &clone
 }
 
 func explicitTargetAssetBundle(result *ListingKitResult, platform string) *asset.Bundle {
@@ -142,7 +172,7 @@ func platformGenerationTasks(platform string, plan *assetgeneration.Result) []as
 	}
 	out := make([]assetgeneration.Task, 0, len(plan.Tasks))
 	for _, task := range plan.Tasks {
-		if task.Platform == platform && task.ExecutionStatus != "completed" {
+		if task.Platform == platform && task.ExecutionStatus != "completed" && task.ExecutionStatus != "failed" {
 			out = append(out, assetgeneration.CloneTask(task))
 		}
 	}

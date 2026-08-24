@@ -5,6 +5,7 @@ import (
 
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
+	assetpolicy "task-processor/internal/asset/policy"
 	assetrecipe "task-processor/internal/asset/recipe"
 	common "task-processor/internal/publishing/common"
 )
@@ -167,7 +168,7 @@ func candidateSourceAssetIDs(inventory *asset.Inventory) []string {
 	}
 	out := make([]string, 0, len(inventory.Records))
 	for _, record := range inventory.Records {
-		if record.Kind == asset.KindSourceImage || record.Kind == asset.KindMainImage || record.Kind == asset.KindCleanImage || record.Kind == asset.KindSubjectCutout {
+		if assetpolicy.IsCandidateSourceKind(record.Kind) {
 			out = append(out, record.ID)
 		}
 	}

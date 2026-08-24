@@ -61,8 +61,14 @@ func sdsLoginProbe(cfg *config.Config) listingkit.SettingsHealthProbe {
 
 func objectStorageProbe(cfg *config.Config) listingkit.SettingsHealthProbe {
 	publisher := cfg.ProductImage.Publisher
+	if !publisher.Enabled {
+		return missingProbe("productimage.publisher.enabled 未启用")
+	}
 	provider := strings.TrimSpace(strings.ToLower(publisher.Provider))
 	if provider == "" || provider == "local" || provider == "filesystem" || provider == "file" {
+		if publisher.Enabled && strings.TrimSpace(publisher.PublicBase) == "" {
+			return missingProbe("productimage.publisher.publicBase 缺失")
+		}
 		return listingkit.SettingsHealthProbe{Configured: true}
 	}
 	if provider != "s3" {

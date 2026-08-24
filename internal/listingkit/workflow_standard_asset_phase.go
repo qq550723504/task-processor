@@ -85,12 +85,7 @@ func (p *standardWorkflowAssetPhase) run(
 				stage.Degrade("asset_generation_platform_plan_failed", "Platform asset generation planning failed", planErr.Error())
 			}
 			if generationPlan != nil && len(generationPlan.Tasks) > 0 {
-				dispatchResult, dispatchErr := assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
-					TaskID:    task.ID,
-					Product:   result.CatalogProduct,
-					Inventory: inventory,
-					Tasks:     generationPlan.Tasks,
-				})
+				dispatchResult, dispatchErr := dispatchGenerationTasksByPlatform(ctx, assetGenerator, task.ID, result.CatalogProduct, result, inventory, generationPlan.Tasks)
 				if dispatchErr != nil {
 					stage.Degrade("asset_generation_platform_dispatch_failed", "Platform asset generation dispatch failed", dispatchErr.Error())
 				}

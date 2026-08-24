@@ -2,6 +2,7 @@ package generation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -103,12 +104,19 @@ func (s *service) Execute(ctx context.Context, req Request) (*Result, error) {
 
 func (s *service) Dispatch(ctx context.Context, req DispatchRequest) (*Result, error) {
 	result := &Result{}
+	var dispatchErr error
 	for idx, task := range req.Tasks {
-		updated, produced := s.dispatchTask(ctx, req, idx, task)
+		updated, produced, err := s.dispatchTask(ctx, req, idx, task)
 		result.Tasks = append(result.Tasks, updated)
 		result.Assets = append(result.Assets, produced...)
+		if err != nil {
+			dispatchErr = errors.Join(dispatchErr, err)
+		}
 	}
-	return result, nil
+	if dispatchErr != nil {
+		result.Error = dispatchErr.Error()
+	}
+	return result, dispatchErr
 }
 
 func (s *service) executeRecipe(ctx context.Context, req Request, idx int, item assetrecipe.AssetRecipe) (asset.AssetRecord, bool) {
@@ -125,13 +133,16 @@ func (s *service) executeRecipe(ctx context.Context, req Request, idx int, item 
 	return executeNativeRecipe(req.TaskID, idx, req.Inventory, item)
 }
 
-func (s *service) dispatchTask(ctx context.Context, req DispatchRequest, idx int, task Task) (Task, []asset.AssetRecord) {
+func (s *service) dispatchTask(ctx context.Context, req DispatchRequest, idx int, task Task) (Task, []asset.AssetRecord, error) {
 	updated := task
 	if !task.CanExecute || task.ExecutionStatus == "completed" {
-		return updated, nil
+		return updated, nil, nil
 	}
 	if task.ExecutionMode == ExecutionModeRendererBacked && s.deferredRenderer != nil {
-		record, ok := s.executeRendererBackedTask(ctx, req, task)
+		record, ok, err := s.executeRendererBackedTask(ctx, req, task)
+		if err != nil {
+			return failedDispatchTask(task, err), nil, err
+		}
 		if ok {
 			stampGeneratedRecordPlatform(&record, task.Platform, task.TargetPlatforms)
 			updated.Status = "completed"
@@ -140,15 +151,15 @@ func (s *service) dispatchTask(ctx context.Context, req DispatchRequest, idx int
 			updated.SatisfiedBy = ExecutionModeGeneratedAsset
 			updated.Metadata = taskMetadataFromAssetMetadata(record.Metadata)
 			updated.ReviewConfidence = reviewConfidenceFromMetadata(record.Metadata)
-			return updated, []asset.AssetRecord{record}
+			return updated, []asset.AssetRecord{record}, nil
 		}
 	}
 	if task.ExecutionMode != ExecutionModeDeferredPlan && task.ExecutionMode != ExecutionModeRendererBacked {
-		return updated, nil
+		return updated, nil, nil
 	}
 	record, ok := executeDeferredTask(req.TaskID, idx, req.Inventory, task)
 	if !ok {
-		return updated, nil
+		return updated, nil, nil
 	}
 	stampGeneratedRecordPlatform(&record, task.Platform, task.TargetPlatforms)
 	updated.Status = "completed"
@@ -157,7 +168,21 @@ func (s *service) dispatchTask(ctx context.Context, req DispatchRequest, idx int
 	updated.SatisfiedBy = ExecutionModeGeneratedAsset
 	updated.Metadata = taskMetadataFromAssetMetadata(record.Metadata)
 	updated.ReviewConfidence = reviewConfidenceFromMetadata(record.Metadata)
-	return updated, []asset.AssetRecord{record}
+	return updated, []asset.AssetRecord{record}, nil
+}
+
+func failedDispatchTask(task Task, err error) Task {
+	updated := task
+	updated.Status = "failed"
+	updated.ExecutionStatus = "failed"
+	updated.SatisfiedBy = ""
+	updated.ReviewConfidence = 0
+	updated.Metadata = cloneTaskMetadata(task.Metadata)
+	if updated.Metadata == nil {
+		updated.Metadata = map[string]string{}
+	}
+	updated.Metadata["error"] = err.Error()
+	return updated
 }
 
 func stampGeneratedRecordPlatform(record *asset.AssetRecord, platform string, targetPlatforms []string) {

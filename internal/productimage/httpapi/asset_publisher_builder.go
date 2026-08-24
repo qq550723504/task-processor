@@ -70,7 +70,7 @@ func buildAssetPublisher(options assetPublisherOptions, logger *logrus.Logger) p
 
 	provider := strings.ToLower(strings.TrimSpace(options.provider))
 	switch provider {
-	case "", "local":
+	case "", "local", "file", "filesystem":
 		publisher, err := productimage.NewLocalAssetPublisher(options.outputDir, options.publicBase)
 		if err != nil {
 			logger.WithError(err).Warn("local image asset publisher unavailable")
@@ -85,7 +85,7 @@ func buildAssetPublisher(options assetPublisherOptions, logger *logrus.Logger) p
 			logger.WithError(err).Warn("amazon image asset publisher unavailable")
 			return nil
 		}
-		return publisher
+		return productimage.NewPlatformAssetPublisher(nil, publisher)
 	case "hybrid":
 		localPublisher, err := productimage.NewLocalAssetPublisher(options.outputDir, options.publicBase)
 		if err != nil {
@@ -97,7 +97,7 @@ func buildAssetPublisher(options assetPublisherOptions, logger *logrus.Logger) p
 			logger.WithError(err).Warn("hybrid amazon image asset publisher partially unavailable")
 			return localPublisher
 		}
-		return productimage.NewMultiAssetPublisher(localPublisher, amazonPublisher)
+		return productimage.NewPlatformAssetPublisher(localPublisher, amazonPublisher)
 	default:
 		logger.Warnf("unsupported image publisher provider: %s", provider)
 		return nil

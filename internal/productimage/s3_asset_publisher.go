@@ -83,7 +83,9 @@ func (p *s3AssetPublisher) publishAsset(ctx context.Context, taskKey string, ass
 		asset.Metadata = map[string]string{}
 	}
 	asset.Metadata["published_provider"] = "s3"
-	asset.Metadata["published_path"] = localPath
+	// S3 is the durable copy; retaining localPath as published_path makes the
+	// lifecycle cleaner mistake the temporary renderer output for that copy.
+	delete(asset.Metadata, "published_path")
 	asset.Metadata["published_size_bytes"] = fmt.Sprintf("%d", len(data))
 	asset.Metadata["published_key"] = key
 	asset.Metadata["published_url"] = storage.ResolveObjectURL(p.publicBase, key, fallbackURL)

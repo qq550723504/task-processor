@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/aicapability"
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
+	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
@@ -53,15 +54,16 @@ func (s *stubWorkflowProductService) ProcessProduct(ctx context.Context, task *p
 }
 
 type stubWorkflowAssetGenerator struct {
-	planResult      *assetgeneration.Result
-	executeErr      error
-	planErr         error
-	dispatchErr     error
-	dispatchResult  *assetgeneration.Result
-	dispatchCalls   int
-	dispatchErrAt   map[int]error
-	lastDispatchReq *assetgeneration.DispatchRequest
-	lastPlanReq     *assetgeneration.Request
+	planResult       *assetgeneration.Result
+	executeErr       error
+	planErr          error
+	dispatchErr      error
+	dispatchResult   *assetgeneration.Result
+	dispatchCalls    int
+	dispatchErrAt    map[int]error
+	lastDispatchReq  *assetgeneration.DispatchRequest
+	dispatchRequests []*assetgeneration.DispatchRequest
+	lastPlanReq      *assetgeneration.Request
 }
 
 type targetURLDeferredRenderer struct{}
@@ -101,6 +103,7 @@ func (s *stubWorkflowAssetGenerator) Dispatch(ctx context.Context, req assetgene
 	clonedReq := req
 	clonedReq.Tasks = assetgeneration.CloneTasks(req.Tasks)
 	s.lastDispatchReq = &clonedReq
+	s.dispatchRequests = append(s.dispatchRequests, &clonedReq)
 	if s.dispatchErrAt != nil {
 		if err := s.dispatchErrAt[s.dispatchCalls]; err != nil {
 			return nil, err
@@ -113,6 +116,75 @@ func (s *stubWorkflowAssetGenerator) Dispatch(ctx context.Context, req assetgene
 		return s.dispatchResult, nil
 	}
 	return &assetgeneration.Result{Tasks: req.Tasks}, nil
+}
+
+func TestDispatchGenerationTasksByPlatformUsesTargetInventory(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{AssetBundlesByTarget: map[string]*asset.Bundle{
+		"amazon": {Assets: []asset.Asset{{ID: "main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/amazon-main.jpg"}}},
+		"shein":  {Assets: []asset.Asset{{ID: "main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/shein-main.jpg"}}},
+	}}
+	shared := asset.BuildInventory("task-target-inventory", result.assetBundleForInventory())
+	generator := &stubWorkflowAssetGenerator{}
+	tasks := []assetgeneration.Task{
+		{ID: "amazon-scene", Platform: "amazon", AssetKind: asset.KindSceneImage, ExecutionStatus: "planned", ExecutionMode: assetgeneration.ExecutionModeRendererBacked, CanExecute: true, SourceAssetIDs: []string{"main"}},
+		{ID: "shein-scene", Platform: "shein", AssetKind: asset.KindSceneImage, ExecutionStatus: "planned", ExecutionMode: assetgeneration.ExecutionModeRendererBacked, CanExecute: true, SourceAssetIDs: []string{"main"}},
+	}
+
+	_, err := dispatchGenerationTasksByPlatform(context.Background(), generator, "task-target-inventory", nil, result, shared, tasks)
+	if err != nil {
+		t.Fatalf("dispatchGenerationTasksByPlatform() error = %v", err)
+	}
+	if len(generator.dispatchRequests) != 2 {
+		t.Fatalf("dispatch requests = %d, want one per target", len(generator.dispatchRequests))
+	}
+	for _, req := range generator.dispatchRequests {
+		if len(req.Tasks) != 1 || len(req.Inventory.Records) != 1 {
+			t.Fatalf("dispatch request = %+v, want one task and one target record", req)
+		}
+		wantURL := "https://cdn.example.test/" + req.Tasks[0].Platform + "-main.jpg"
+		if req.Inventory.Records[0].URL != wantURL {
+			t.Fatalf("%s inventory URL = %q, want %q", req.Tasks[0].Platform, req.Inventory.Records[0].URL, wantURL)
+		}
+	}
+}
+
+func TestPlatformAssetDispatchBundleReshapeSuppressesFailedRecipePendingTask(t *testing.T) {
+	t.Parallel()
+
+	final := &ListingKitResult{Amazon: &AmazonPackage{}}
+	inventory := &asset.Inventory{Records: []asset.AssetRecord{
+		{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source.jpg"},
+	}}
+	recipesByPlatform := map[string][]assetrecipe.AssetRecipe{
+		"amazon": {{
+			ID:        "amazon-scene",
+			Platform:  "amazon",
+			AssetKind: asset.KindSceneImage,
+			Generated: true,
+			Template: &assetrecipe.Template{
+				BundleSlot:     "auxiliary",
+				Purpose:        "scene",
+				PreferredKinds: []asset.Kind{asset.KindSceneImage},
+				Optional:       true,
+			},
+		}},
+	}
+	dispatchTasks := []assetgeneration.Task{{
+		ID: "amazon:amazon-scene", Platform: "amazon", RecipeID: "amazon-scene", ExecutionStatus: "failed",
+	}}
+
+	buildPlatformAssetDispatchBundleReshapePhase(newDefaultAssetBundleBuilder()).run(
+		final, inventory, recipesByPlatform, dispatchTasks,
+	)
+
+	if final.Amazon.ImageBundle == nil {
+		t.Fatal("amazon image bundle is nil")
+	}
+	if len(final.Amazon.ImageBundle.PendingGeneration) != 0 {
+		t.Fatalf("amazon pending generation = %+v, want failed task suppressed", final.Amazon.ImageBundle.PendingGeneration)
+	}
 }
 
 type stubWorkflowAssetRepository struct {
@@ -609,6 +681,46 @@ func TestPlatformAssetInventoryPreservesOnlySafeSingleTargetLegacyBaseAssets(t *
 	}, "shein", shared)
 	if hasInventoryURL(multiTarget, "https://cdn.example.test/legacy-shein-main.jpg") {
 		t.Fatalf("multi-target inventory = %+v, want ambiguous scalar legacy base rejected", multiTarget)
+	}
+}
+
+func TestPlatformAssetInventoryFallsBackToSharedInventoryForLegacyScalarBundle(t *testing.T) {
+	t.Parallel()
+
+	legacyBase := &asset.Bundle{Assets: []asset.Asset{{
+		ID: "legacy-main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/legacy-main.jpg",
+	}}}
+	shared := asset.BuildInventory("task-legacy-scalar-bundle", legacyBase)
+	shared.Records = append(shared.Records, asset.AssetRecord{
+		ID: "legacy-gallery", Kind: asset.KindGalleryImage, Origin: asset.OriginGenerated,
+		URL: "https://cdn.example.test/legacy-gallery.jpg",
+	})
+
+	got := platformAssetInventory(&ListingKitResult{AssetBundle: legacyBase}, "shein", shared)
+	if got == nil {
+		t.Fatal("platformAssetInventory() returned nil")
+	}
+	if !hasInventoryURL(got, "https://cdn.example.test/legacy-main.jpg") || !hasInventoryURL(got, "https://cdn.example.test/legacy-gallery.jpg") {
+		t.Fatalf("target inventory = %+v, want the complete shared legacy inventory", got)
+	}
+}
+
+func TestPlatformAssetInventoryDoesNotCloneLegacyScalarBundleAcrossTaggedTargets(t *testing.T) {
+	t.Parallel()
+
+	shared := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: "task-legacy-scalar-conflict"},
+		Records: []asset.AssetRecord{
+			{ID: "amazon-gallery", Kind: asset.KindGalleryImage, Origin: asset.OriginGenerated, URL: "https://cdn.example.test/amazon-gallery.jpg", PlatformTags: []string{"amazon"}},
+		},
+	}
+
+	got := platformAssetInventory(&ListingKitResult{AssetBundle: &asset.Bundle{}}, "shein", shared)
+	if got == shared {
+		t.Fatal("platformAssetInventory() cloned shared inventory despite a conflicting target tag")
+	}
+	if hasInventoryURL(got, "https://cdn.example.test/amazon-gallery.jpg") {
+		t.Fatalf("target inventory = %+v, want conflicting Amazon record rejected", got)
 	}
 }
 

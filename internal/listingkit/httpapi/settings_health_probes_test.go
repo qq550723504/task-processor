@@ -34,6 +34,7 @@ func TestBuildSettingsHealthProbesFromConfigReportsReadyConfiguredRuntime(t *tes
 		},
 		ProductImage: config.ProductImageConfig{
 			Publisher: config.ProductImagePublisherConfig{
+				Enabled:    true,
 				Provider:   "s3",
 				PublicBase: "https://cdn.example.test/assets",
 				S3: config.ProductImagePublisherS3Config{
@@ -88,6 +89,7 @@ func TestBuildSettingsHealthProbesFromConfigReportsMissingRuntimeFields(t *testi
 	probes := buildSettingsHealthProbesFromConfig(&config.Config{
 		ProductImage: config.ProductImageConfig{
 			Publisher: config.ProductImagePublisherConfig{
+				Enabled:  true,
 				Provider: "s3",
 			},
 		},
@@ -100,6 +102,39 @@ func TestBuildSettingsHealthProbesFromConfigReportsMissingRuntimeFields(t *testi
 	assertProbeMissing(t, probes.SDSLogin, "sds.loginService.identifier 缺失")
 	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.s3.bucket 缺失")
 	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.s3.endpoint 缺失")
+}
+
+func TestBuildSettingsHealthProbesReportsLocalPublisherWithoutPublicBase(t *testing.T) {
+	t.Parallel()
+
+	probes := buildSettingsHealthProbesFromConfig(&config.Config{
+		ProductImage: config.ProductImageConfig{
+			Publisher: config.ProductImagePublisherConfig{
+				Enabled:  true,
+				Provider: "local",
+			},
+		},
+	})
+
+	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.publicBase 缺失")
+}
+
+func TestBuildSettingsHealthProbesReportsDisabledPublisherUnavailable(t *testing.T) {
+	t.Parallel()
+
+	probes := buildSettingsHealthProbesFromConfig(&config.Config{
+		ProductImage: config.ProductImageConfig{
+			Publisher: config.ProductImagePublisherConfig{
+				Provider:   "local",
+				PublicBase: "https://cdn.example.test/assets",
+			},
+		},
+	})
+
+	if probes.ObjectStorage.Configured {
+		t.Fatalf("object storage probe = %+v, want unavailable when publisher is disabled", probes.ObjectStorage)
+	}
+	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.enabled 未启用")
 }
 
 func TestCompleteSettingsHealthProbesWithSubmitRuntimeReportsMissingSheinCapabilities(t *testing.T) {

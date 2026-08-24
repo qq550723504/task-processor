@@ -87,3 +87,17 @@ func TestCanReuseAssetAndPublishedAsset(t *testing.T) {
 	require.False(t, canReuseAsset(asset))
 	require.False(t, canReusePublishedAsset(asset))
 }
+
+func TestCanReuseAssetAcceptsDurablePublishedURL(t *testing.T) {
+	t.Parallel()
+
+	asset := &ImageAsset{
+		URL: "https://cdn.example.com/product/main.jpg",
+		Metadata: map[string]string{
+			"published_provider": "s3",
+			"published_url":      "https://cdn.example.com/product/main.jpg",
+		},
+	}
+
+	require.True(t, canReuseAsset(asset), "S3 published_url should make a durable asset reusable")
+}
