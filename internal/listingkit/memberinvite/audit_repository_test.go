@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -97,6 +98,31 @@ func TestGormAuditRepositoryStoresMaskedDeliveryModeAndContacts(t *testing.T) {
 	}
 	if mode := got.DeliveryMode; mode != "email_phone" {
 		t.Fatalf("delivery mode = %q", mode)
+	}
+}
+
+func TestGormAuditRepositoryMasksUnicodeEmailLocalPartByRune(t *testing.T) {
+	db := openAuditTestDB(t)
+	if err := AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("AutoMigrateAuditRepository() error = %v", err)
+	}
+
+	if err := NewGormAuditRepository(db).Record(context.Background(), AuditRecord{
+		ActorUserID: "admin-1",
+		TenantID:    "org-1",
+		Email:       "é@example.com",
+		Role:        "listingkit_viewer",
+		Outcome:     OutcomeSucceeded,
+	}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	got := readAuditRecord(t, db)
+	if got.Email != "é***@example.com" {
+		t.Fatalf("masked email = %q, want rune-preserving mask", got.Email)
+	}
+	if !utf8.ValidString(got.Email) {
+		t.Fatalf("masked email is invalid UTF-8: %q", got.Email)
 	}
 }
 

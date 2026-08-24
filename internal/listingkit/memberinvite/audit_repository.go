@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
 )
@@ -127,7 +128,8 @@ func maskEmail(email string) string {
 	if len(local) == 1 {
 		return "*" + email[at:]
 	}
-	return local[:1] + "***" + email[at:]
+	firstRune, _ := utf8.DecodeRuneInString(local)
+	return string(firstRune) + "***" + email[at:]
 }
 
 func maskPhone(phone string) string {
