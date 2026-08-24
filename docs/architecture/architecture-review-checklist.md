@@ -63,6 +63,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
 - `TestProductDomainDoesNotDependOnOuterAdapters`
 - `depguard: listingkit_subdomains_root_facade`
+- `TestListingKitImportDirectionStaysRetiredAcrossBuildTargets`
 - `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`
 - `depguard: listingkit_root_workspace_shein`
 - `TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain`

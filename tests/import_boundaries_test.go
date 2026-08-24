@@ -469,6 +469,42 @@ func TestCatalogDoesNotDependOnProductEnrichAliases(t *testing.T) {
 	}, nil)
 }
 
+func TestListingKitImportDirectionStaysRetiredAcrossBuildTargets(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingkit")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subdomains := map[string]struct{}{
+		"generation": {},
+		"submission": {},
+		"workflow":   {},
+		"workspace":  {},
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		rel, err := filepath.Rel(filepath.Clean(root), path)
+		if err != nil {
+			t.Fatalf("rel %s to %s: %v", path, root, err)
+		}
+		parts := strings.Split(filepath.ToSlash(rel), "/")
+		if len(parts) > 1 {
+			if _, ok := subdomains[parts[0]]; ok {
+				if _, ok := facts.imports[`"task-processor/internal/listingkit"`]; ok {
+					t.Errorf("%s imports task-processor/internal/listingkit; ListingKit subdomains must stay independent of the root facade", path)
+				}
+			}
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/workspace/shein"`]; ok {
+			t.Errorf("%s imports task-processor/internal/workspace/shein; root ListingKit files must use the compatibility bridge", path)
+		}
+	}
+}
+
 func TestListingKitRootSheinHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowed := map[string]struct{}{

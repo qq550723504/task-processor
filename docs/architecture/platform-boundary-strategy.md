@@ -116,7 +116,9 @@ is guarded by `depguard: listingkit_root_management_api`.
 ListingKit subdomains are guarded from depending on the root facade by
 `depguard: listingkit_subdomains_root_facade`; root files are separately kept
 off the legacy workspace SHEIN domain by
-`depguard: listingkit_root_workspace_shein`.
+`depguard: listingkit_root_workspace_shein`. The target-independent semantic
+scan `TestListingKitImportDirectionStaysRetiredAcrossBuildTargets` covers the
+same production paths across build-constrained `.go` files.
 
 ### `internal/platforms/*`
 
