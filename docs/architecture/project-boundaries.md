@@ -420,8 +420,8 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestSharedPricingRetiredManagementImportsStayBlocked`
 - `TestListingKitHTTPAPIRetiredManagementImportsStayBlocked`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
-- `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
-- `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
+- `depguard: internal_legacy_app_compatibility`
+- `TestInternalPackagesDoNotImportAppCompatibilityLayersAcrossBuildTargets`
 - `TestAppProcessorCompatibilityLayerIsRetired`
 - `TestAppStateCompatibilityLayerIsRetired`
 - `TestInfraProductCrawlerAdapterIsRetired`

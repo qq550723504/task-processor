@@ -260,6 +260,21 @@ linters-settings:
           - pkg: "task-processor/internal/infra/clients/management"
             desc: "Task-status runtime code must not depend on the retired management client"
 
+      internal_legacy_app_compatibility:
+        # Retired app compatibility packages must not regain production consumers.
+        # The repository-wide issues.exclude-files excludes _test.go; semantic build-target coverage remains in tests/import_boundaries_test.go.
+        files:
+          - "**/internal/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/app/processor$"
+            desc: "Internal production code must not depend on the retired app processor compatibility package"
+          - pkg: "task-processor/internal/app/processor/"
+            desc: "Internal production code must not depend on retired app processor subpackages"
+          - pkg: "task-processor/internal/app/state$"
+            desc: "Internal production code must not depend on the retired app state compatibility package"
+          - pkg: "task-processor/internal/app/state/"
+            desc: "Internal production code must not depend on retired app state subpackages"
+
   govet:
     disable:
       - fieldalignment
