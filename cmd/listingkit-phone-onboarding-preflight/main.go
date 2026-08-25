@@ -28,11 +28,17 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	if err := run(ctx, os.Getenv, readSecret, phoneonboardingpreflight.NewClient, os.Stdin, os.Stdout, os.Stderr, os.Args[1:], preflightTimeout); err != nil {
-		if errors.Is(err, errNonProductionConfirmation) {
-			_, _ = fmt.Fprintln(os.Stderr, "usage: listingkit-phone-onboarding-preflight --non-production")
-		}
+		writeRunError(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func writeRunError(stderr io.Writer, err error) {
+	if errors.Is(err, errNonProductionConfirmation) {
+		_, _ = fmt.Fprintln(stderr, "usage: listingkit-phone-onboarding-preflight --non-production")
+		return
+	}
+	_, _ = fmt.Fprintln(stderr, err)
 }
 
 func run(parent context.Context, getenv func(string) string, read secretReader, newClient clientFactory, input *os.File, stdout, stderr io.Writer, args []string, timeout time.Duration) error {
@@ -52,11 +58,11 @@ func run(parent context.Context, getenv func(string) string, read secretReader, 
 		SessionToken:      getenv("ZITADEL_PREFLIGHT_LOGIN_TOKEN"),
 	})
 	if err != nil {
-		return errors.New("phone onboarding preflight setup failed")
+		return fmt.Errorf("phone onboarding preflight setup: %w", err)
 	}
 	runner, err := phoneonboardingpreflight.NewRunner(client, rand.Reader, time.Now, stdout)
 	if err != nil {
-		return errors.New("phone onboarding preflight setup failed")
+		return fmt.Errorf("phone onboarding preflight setup: %w", err)
 	}
 	attempt, err := runner.Start(ctx, phone)
 	if err != nil {

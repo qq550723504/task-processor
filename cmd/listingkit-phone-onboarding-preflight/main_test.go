@@ -140,6 +140,28 @@ func TestRunRequiresNonProductionFlagBeforeRemoteMutation(t *testing.T) {
 	require.Empty(t, stderr.String())
 }
 
+func TestWriteRunErrorReportsFailureWithoutChangingUsage(t *testing.T) {
+	var stderr bytes.Buffer
+
+	writeRunError(&stderr, errors.New("ZITADEL login client token is required"))
+	require.Equal(t, "ZITADEL login client token is required\n", stderr.String())
+
+	stderr.Reset()
+	writeRunError(&stderr, errNonProductionConfirmation)
+	require.Equal(t, "usage: listingkit-phone-onboarding-preflight --non-production\n", stderr.String())
+}
+
+func TestRunPreservesSafeSetupDiagnostic(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := run(context.Background(), func(string) string { return "" }, func(_ string, _ *os.File, _ io.Writer) (string, error) {
+		return "+8613712345678", nil
+	}, func(phoneonboardingpreflight.ClientConfig) (phoneonboardingpreflight.Client, error) {
+		return nil, errors.New("ZITADEL login client token is required")
+	}, os.Stdin, &stdout, &stderr, []string{"--non-production"}, preflightTimeout)
+
+	require.EqualError(t, err, "phone onboarding preflight setup: ZITADEL login client token is required")
+}
+
 func TestRunTimeoutDuringHiddenCodeReadDeletesSessionWithSeparateCleanupContext(t *testing.T) {
 	values := map[string]string{
 		"ZITADEL_ISSUER_URL":                "https://zitadel.example.test",
