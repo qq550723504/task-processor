@@ -96,6 +96,10 @@ func (s *Service) Deliver(ctx context.Context, body []byte, signature string) er
 		AppID:      s.config.AppID,
 		Params:     params,
 	}); err != nil {
+		var failure *DeliveryFailure
+		if errors.As(err, &failure) {
+			return failure
+		}
 		return ErrDeliveryFailed
 	}
 	return nil
