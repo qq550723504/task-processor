@@ -100,7 +100,12 @@ func readSecret(prompt string, input *os.File, output io.Writer) (string, error)
 	if _, err := fmt.Fprint(output, prompt); err != nil {
 		return "", err
 	}
-	value, err := term.ReadPassword(int(input.Fd()))
+	secretInput, closeInput, err := openSecretInput(input)
+	if err != nil {
+		return "", errors.New("secure input failed")
+	}
+	defer closeInput()
+	value, err := term.ReadPassword(int(secretInput.Fd()))
 	_, _ = fmt.Fprintln(output)
 	if err != nil {
 		return "", errors.New("secure input failed")
