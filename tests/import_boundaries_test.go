@@ -341,6 +341,13 @@ func TestZitadelAuthMiddlewareWritesNeutralIdentityContext(t *testing.T) {
 	})
 }
 
+func TestZitadelAuthRuntimeDoesNotImportListingKit(t *testing.T) {
+	assertNoProductionBannedImports(t, filepath.Join("..", "internal", "authruntime", "zitadel"), []string{
+		`"task-processor/internal/listingkit"`,
+		`"task-processor/internal/listingkit/httpapi"`,
+	}, nil)
+}
+
 func TestAuthenticatedIdentityRootImportsStayRestricted(t *testing.T) {
 	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
 	if err != nil {
