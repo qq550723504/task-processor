@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go, `testify/require`, ZITADEL HTTP SMS provider, Tencent Cloud SMS.
 
-**Spec:** `docs/superpowers/specs/2026-08-25-listingkit-phone-identity-design.md`
+**Spec:** `docs/superpowers/specs/2026-08-25-listingkit-zitadel-native-phone-onboarding-design.md`
 
 ## Global Constraints
 
