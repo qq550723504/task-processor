@@ -253,8 +253,8 @@ Expected: all tests pass and the commit contains only the client and its tests.
 **Files:**
 - Create: `internal/listingkit/phoneonboardingpreflight/runner.go`
 - Test: `internal/listingkit/phoneonboardingpreflight/runner_test.go`
-- Create: `cmd/listingkit-phone-onboarding-preflight/main.go`
-- Test: `cmd/listingkit-phone-onboarding-preflight/main_test.go`
+- Create: `hack/debug/listingkit-phone-onboarding-preflight/main.go`
+- Test: `hack/debug/listingkit-phone-onboarding-preflight/main_test.go`
 - Modify: `go.mod`
 - Modify: `go.sum`
 
@@ -349,9 +349,9 @@ Exit nonzero on the first failed step and never retry a code automatically.
 
 ```powershell
 go get golang.org/x/term@v0.43.0
-go test ./cmd/listingkit-phone-onboarding-preflight ./internal/listingkit/phoneonboardingpreflight -count=1
+go test ./hack/debug/listingkit-phone-onboarding-preflight ./internal/listingkit/phoneonboardingpreflight -count=1
 go test ./internal/listingkit/zitadelsms ./internal/listingkit/memberinvite -count=1
-git add -- cmd/listingkit-phone-onboarding-preflight internal/listingkit/phoneonboardingpreflight/runner.go internal/listingkit/phoneonboardingpreflight/runner_test.go go.mod go.sum
+git add -- hack/debug/listingkit-phone-onboarding-preflight internal/listingkit/phoneonboardingpreflight/runner.go internal/listingkit/phoneonboardingpreflight/runner_test.go go.mod go.sum
 git commit -m "feat: add interactive phone onboarding preflight"
 ```
 
@@ -386,7 +386,7 @@ expected HTTPS webhook; never print signing/Tencent credentials.
 - [ ] **Step 2: Prove the binary cannot grant access**
 
 ```powershell
-rg -n 'CreateProjectGrant|CreateAuthorization|ApplyPlan|AuthorizationService/CreateAuthorization|/v2/projects|/subscriptions|/entitlements' internal/listingkit/phoneonboardingpreflight cmd/listingkit-phone-onboarding-preflight
+rg -n 'CreateProjectGrant|CreateAuthorization|ApplyPlan|AuthorizationService/CreateAuthorization|/v2/projects|/subscriptions|/entitlements' internal/listingkit/phoneonboardingpreflight hack/debug/listingkit-phone-onboarding-preflight
 ```
 
 Expected: no matches.
@@ -405,7 +405,7 @@ $loginTokenPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($logi
 try {
     $env:ZITADEL_PREFLIGHT_PROVISION_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($provisionTokenPointer)
     $env:ZITADEL_PREFLIGHT_LOGIN_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($loginTokenPointer)
-    go run ./cmd/listingkit-phone-onboarding-preflight
+    go run ./hack/debug/listingkit-phone-onboarding-preflight
 } finally {
     Remove-Item Env:ZITADEL_PREFLIGHT_PROVISION_TOKEN -ErrorAction SilentlyContinue
     Remove-Item Env:ZITADEL_PREFLIGHT_LOGIN_TOKEN -ErrorAction SilentlyContinue
@@ -458,7 +458,7 @@ assertions hold. Otherwise record `fail` and stop.
 ```powershell
 rg -n 'v4\.17\.1|phone only|Password field|One SMS challenge|Session OTP SMS factor|Decision:' docs/operations/listingkit-zitadel-phone-onboarding-feasibility.md docs/superpowers/verification/2026-08-25-listingkit-zitadel-phone-onboarding-feasibility.md
 git diff --check
-go test ./cmd/listingkit-phone-onboarding-preflight ./internal/listingkit/phoneonboardingpreflight ./internal/listingkit/zitadelsms -count=1
+go test ./hack/debug/listingkit-phone-onboarding-preflight ./internal/listingkit/phoneonboardingpreflight ./internal/listingkit/zitadelsms -count=1
 git add -- docs/operations/listingkit-zitadel-phone-onboarding-feasibility.md docs/superpowers/verification/2026-08-25-listingkit-zitadel-phone-onboarding-feasibility.md
 git commit -m "docs: record ZITADEL phone onboarding feasibility"
 ```
