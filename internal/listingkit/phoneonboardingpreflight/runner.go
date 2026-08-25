@@ -1,0 +1,156 @@
+package phoneonboardingpreflight
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+	"time"
+
+	"github.com/oklog/ulid/v2"
+)
+
+const preflightSessionLifetime = 5 * time.Minute
+
+// Attempt retains only the opaque references needed to complete one preflight.
+// The phone number, technical email, OTP code, and session token stay in memory.
+type Attempt struct {
+	OrganizationID string
+	UserID         string
+	SessionID      string
+	sessionToken   string
+	id             string
+}
+
+// Runner performs one interactive native-phone onboarding preflight.
+type Runner struct {
+	client Client
+	random io.Reader
+	now    func() time.Time
+	output io.Writer
+}
+
+// NewRunner constructs an isolated preflight runner.
+func NewRunner(client Client, random io.Reader, now func() time.Time, output io.Writer) (*Runner, error) {
+	if client == nil || random == nil || now == nil || output == nil {
+		return nil, errors.New("invalid phone onboarding preflight runner")
+	}
+	return &Runner{client: client, random: random, now: now, output: output}, nil
+}
+
+// Start creates a disposable organization and technical user before sending an
+// OTP SMS challenge. The phone number is never retained after this call.
+func (r *Runner) Start(ctx context.Context, phone string) (*Attempt, error) {
+	normalizedPhone, err := normalizeE164(phone)
+	if err != nil {
+		return nil, errors.New("invalid phone number")
+	}
+	attemptID, err := newULID(r.now(), r.random)
+	if err != nil {
+		return nil, errors.New("preflight identifier generation failed")
+	}
+	attempt := &Attempt{id: attemptID}
+
+	organizationID, err := r.client.CreateOrganization(ctx, "lk-phone-preflight-"+attemptID)
+	if err != nil {
+		return nil, r.fail(attemptID, "organization_create")
+	}
+	attempt.OrganizationID = organizationID
+
+	userID, err := r.client.CreateTechnicalUser(ctx, TechnicalUserInput{
+		OrganizationID: organizationID,
+		Username:       "lkp-" + attemptID,
+		TechnicalEmail: "u-" + attemptID + "@phone.invalid",
+		Phone:          normalizedPhone,
+	})
+	if err != nil {
+		return nil, r.fail(attemptID, "user_create")
+	}
+	attempt.UserID = userID
+
+	if err := r.client.AddOTPSMS(ctx, userID); err != nil {
+		return nil, r.fail(attemptID, "otp_sms_add")
+	}
+	material, err := r.client.CreateSMSChallenge(ctx, userID, preflightSessionLifetime)
+	if err != nil {
+		return nil, r.fail(attemptID, "challenge_create")
+	}
+	attempt.SessionID = material.ID
+	attempt.sessionToken = material.Token
+	if err := r.status("status=challenge_sent attempt=%s organization_id=%s user_id=%s session_id=%s\n", attemptID, organizationID, userID, material.ID); err != nil {
+		return nil, errors.New("preflight output failed")
+	}
+	return attempt, nil
+}
+
+// Verify verifies one OTP code, proves its factor state, and deletes the
+// session before returning. It never retries a code automatically.
+func (r *Runner) Verify(ctx context.Context, attempt *Attempt, code string) (SessionProof, error) {
+	if attempt == nil || strings.TrimSpace(attempt.id) == "" || strings.TrimSpace(attempt.SessionID) == "" || strings.TrimSpace(attempt.sessionToken) == "" {
+		return SessionProof{}, errors.New("invalid phone onboarding preflight attempt")
+	}
+	defer func() { attempt.sessionToken = "" }()
+
+	replacementToken, err := r.client.VerifySMS(ctx, attempt.SessionID, strings.TrimSpace(code))
+	if err != nil {
+		return SessionProof{}, r.failAfterCleanup(ctx, attempt, "code_verify")
+	}
+	attempt.sessionToken = replacementToken
+	proof, err := r.client.GetSession(ctx, attempt.SessionID, replacementToken)
+	if err != nil || !matchingVerifiedFactors(proof, attempt) {
+		return SessionProof{}, r.failAfterCleanup(ctx, attempt, "session_read")
+	}
+	if err := r.client.DeleteSession(ctx, attempt.SessionID); err != nil {
+		return SessionProof{}, r.fail(attempt.id, "session_delete")
+	}
+	if err := r.status("status=otp_verified attempt=%s user_factor=true otp_sms_factor=true\n", attempt.id); err != nil {
+		return SessionProof{}, errors.New("preflight output failed")
+	}
+	return proof, nil
+}
+
+func (r *Runner) failAfterCleanup(ctx context.Context, attempt *Attempt, step string) error {
+	if err := r.client.DeleteSession(ctx, attempt.SessionID); err != nil {
+		return r.fail(attempt.id, "session_delete")
+	}
+	return r.fail(attempt.id, step)
+}
+
+func (r *Runner) fail(attemptID, step string) error {
+	if err := r.status("status=failed attempt=%s step=%s\n", attemptID, step); err != nil {
+		return errors.New("preflight output failed")
+	}
+	return fmt.Errorf("phone onboarding preflight failed at %s", step)
+}
+
+func (r *Runner) status(format string, args ...any) error {
+	_, err := fmt.Fprintf(r.output, format, args...)
+	return err
+}
+
+func matchingVerifiedFactors(proof SessionProof, attempt *Attempt) bool {
+	return proof.UserID == attempt.UserID && proof.OrganizationID == attempt.OrganizationID &&
+		!proof.UserVerifiedAt.IsZero() && !proof.OTPSMSVerifiedAt.IsZero()
+}
+
+func normalizeE164(phone string) (string, error) {
+	normalized := strings.TrimSpace(phone)
+	if len(normalized) < 3 || len(normalized) > 16 || normalized[0] != '+' || normalized[1] < '1' || normalized[1] > '9' {
+		return "", errors.New("invalid E.164 phone number")
+	}
+	for _, digit := range normalized[2:] {
+		if digit < '0' || digit > '9' {
+			return "", errors.New("invalid E.164 phone number")
+		}
+	}
+	return normalized, nil
+}
+
+func newULID(now time.Time, random io.Reader) (string, error) {
+	identifier, err := ulid.New(ulid.Timestamp(now.UTC()), random)
+	if err != nil {
+		return "", err
+	}
+	return identifier.String(), nil
+}

@@ -20,6 +20,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/mxschmitt/playwright-go v0.6100.0
 	github.com/openmeterio/openmeter/api/v3/client v1.0.0-beta.231
+	github.com/oklog/ulid/v2 v2.1.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/redis/go-redis/v9 v9.18.0
@@ -37,6 +38,7 @@ require (
 	golang.org/x/sync v0.20.0
 	golang.org/x/sys v0.45.0
 	golang.org/x/text v0.37.0
+	golang.org/x/term v0.43.0
 	golang.org/x/time v0.15.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.0
