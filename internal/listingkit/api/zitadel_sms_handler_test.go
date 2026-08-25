@@ -51,6 +51,22 @@ func TestZitadelSMSWebhookDeliversValidSignedRequest(t *testing.T) {
 	require.Equal(t, 1, sender.calls)
 }
 
+func TestZitadelSMSWebhookMapsInvalidPayloadToBadRequest(t *testing.T) {
+	t.Parallel()
+
+	sender := &zitadelSMSSenderStub{}
+	router := newZitadelSMSWebhookRouter(t, newZitadelSMSService(t, sender))
+	body := []byte(`{"contextInfo":{"recipientPhoneNumber":"+8613800138000","eventType":"session.otp.sms.checked"},"templateData":{},"args":{"code":"123456"}}`)
+	request := httptest.NewRequest(http.MethodPost, zitadelSMSWebhookPath, strings.NewReader(string(body)))
+	request.Header.Set("ZITADEL-Signature", signedZitadelSMSWebhookHeader(body, "test-signing-key", time.Now()))
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Zero(t, sender.calls)
+}
+
 func TestZitadelSMSWebhookRejectsTooLargeBody(t *testing.T) {
 	t.Parallel()
 

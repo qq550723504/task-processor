@@ -104,7 +104,6 @@ func parseZitadelSMSPayload(body []byte) (zitadelSMSPayload, bool) {
 	if json.Unmarshal(body, &payload) != nil ||
 		!isE164(payload.ContextInfo.RecipientPhoneNumber) ||
 		!approvedEventType(payload.ContextInfo.EventType) ||
-		strings.TrimSpace(payload.TemplateData.Text) == "" ||
 		strings.TrimSpace(payload.Args.Code) == "" || len(payload.Args.Code) > 256 {
 		return zitadelSMSPayload{}, false
 	}
@@ -121,10 +120,10 @@ func parseZitadelSMSPayload(body []byte) (zitadelSMSPayload, bool) {
 // https://github.com/zitadel/zitadel/blob/v4.17.1/internal/repository/user/human_mfa_otp.go
 // https://github.com/zitadel/zitadel/blob/v4.17.1/internal/command/session.go#L188-L190
 var approvedZitadelSMSEvents = map[string]struct{}{
-	"user.human.phone.code.added":         {},
+	"user.human.phone.code.added":          {},
 	"user.human.initialization.code.added": {},
-	"user.human.mfa.otp.sms.code.added":   {},
-	"session.otp.sms.challenged":          {},
+	"user.human.mfa.otp.sms.code.added":    {},
+	"session.otp.sms.challenged":           {},
 }
 
 func approvedEventType(eventType string) bool {
