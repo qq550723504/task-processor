@@ -15,6 +15,24 @@ type VariantImageSKCInput struct {
 	ColorCandidates []string
 }
 
+// NormalizeVariantImageSets trims variant identity fields, deduplicates image
+// URLs, and drops sets that contain no usable images.
+func NormalizeVariantImageSets(input []VariantImageSet) []VariantImageSet {
+	result := make([]VariantImageSet, 0, len(input))
+	for _, item := range input {
+		images := uniqueNonEmptyImageStrings(item.ImageURLs)
+		if len(images) == 0 {
+			continue
+		}
+		result = append(result, VariantImageSet{
+			VariantSKU: strings.TrimSpace(item.VariantSKU),
+			Color:      strings.TrimSpace(item.Color),
+			ImageURLs:  images,
+		})
+	}
+	return result
+}
+
 // FindVariantImageSet matches generated variant images to an SKC by SKU first, then color.
 func FindVariantImageSet(input VariantImageSKCInput, byColor map[string]VariantImageSet, bySKU map[string]VariantImageSet) (VariantImageSet, bool) {
 	for _, candidate := range input.SKUCandidates {

@@ -5,6 +5,12 @@ import sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 // VariantImageSet describes generated product images for a SHEIN variant.
 type VariantImageSet = sheinmarketpub.VariantImageSet
 
+// NormalizeVariantImageSets delegates variant-image normalization to the
+// marketplace SHEIN publishing policy owner.
+func NormalizeVariantImageSets(input []VariantImageSet) []VariantImageSet {
+	return sheinmarketpub.NormalizeVariantImageSets(input)
+}
+
 // FindVariantImageSetForRequestSKC matches generated variant images to a draft SKC.
 func FindVariantImageSetForRequestSKC(skc SKCRequestDraft, byColor map[string]VariantImageSet, bySKU map[string]VariantImageSet) (VariantImageSet, bool) {
 	return sheinmarketpub.FindVariantImageSet(variantImageInputFromRequestSKC(skc), byColor, bySKU)

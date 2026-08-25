@@ -1,6 +1,25 @@
 package shein
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
+
+func TestNormalizeVariantImageSetsTrimsDeduplicatesAndDropsEmptySets(t *testing.T) {
+	got := NormalizeVariantImageSets([]VariantImageSet{
+		{VariantSKU: " SKU-1 ", Color: " Blue ", ImageURLs: []string{"", " a.jpg ", "a.jpg", "b.jpg"}},
+		{VariantSKU: "empty", ImageURLs: []string{"  "}},
+	})
+
+	want := []VariantImageSet{{
+		VariantSKU: "SKU-1",
+		Color:      "Blue",
+		ImageURLs:  []string{"a.jpg", "b.jpg"},
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("NormalizeVariantImageSets() = %#v, want %#v", got, want)
+	}
+}
 
 func TestFindVariantImageSetForRequestSKCUsesSourceSKUBeforeColor(t *testing.T) {
 	t.Parallel()

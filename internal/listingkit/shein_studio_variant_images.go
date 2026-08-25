@@ -7,19 +7,15 @@ import (
 )
 
 func normalizeSheinStudioVariantImageSets(input []SheinStudioVariantImageSet) []sheinpub.VariantImageSet {
-	result := make([]sheinpub.VariantImageSet, 0, len(input))
+	sets := make([]sheinpub.VariantImageSet, 0, len(input))
 	for _, item := range input {
-		images := uniqueNonEmptyStrings(item.ImageURLs)
-		if len(images) == 0 {
-			continue
-		}
-		result = append(result, sheinpub.VariantImageSet{
+		sets = append(sets, sheinpub.VariantImageSet{
 			VariantSKU: strings.TrimSpace(item.VariantSKU),
 			Color:      strings.TrimSpace(item.Color),
-			ImageURLs:  images,
+			ImageURLs:  item.ImageURLs,
 		})
 	}
-	return result
+	return sheinpub.NormalizeVariantImageSets(sets)
 }
 
 func applyVariantProductImagesToShein(pkg *sheinpub.Package, variantImages []sheinpub.VariantImageSet, sourceImages []string) {
