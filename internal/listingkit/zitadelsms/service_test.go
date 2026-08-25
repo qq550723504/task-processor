@@ -89,6 +89,17 @@ func TestDeliverAcceptsSMSChallengeWithoutLocalizedTemplateText(t *testing.T) {
 	require.Equal(t, []string{"123456"}, sender.messages[0].Params)
 }
 
+func TestDeliverUsesZitadelOTPArgumentForSMSChallenge(t *testing.T) {
+	sender := &senderStub{}
+	service := newTestSMSService(t, sender)
+	body := []byte(`{"contextInfo":{"recipientPhoneNumber":"+8613800138000","eventType":"session.otp.sms.challenged"},"templateData":{},"args":{"oTP":"123456"}}`)
+
+	err := service.Deliver(context.Background(), body, signedHeader(t, body, time.Now()))
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"123456"}, sender.messages[0].Params)
+}
+
 func TestDeliverRejectsNearMatchOTPSMSEventsWithoutSending(t *testing.T) {
 	for _, eventType := range []string{
 		"user.human.mfa.otp.sms.code.sent",

@@ -79,7 +79,7 @@ func (s *Service) Deliver(ctx context.Context, body []byte, signature string) er
 		TemplateID: s.config.TemplateID,
 		SignName:   s.config.SignName,
 		AppID:      s.config.AppID,
-		Params:     []string{payload.Args.Code},
+		Params:     []string{payload.Args.OTP},
 	}); err != nil {
 		return ErrDeliveryFailed
 	}
@@ -95,7 +95,10 @@ type zitadelSMSPayload struct {
 		Text string `json:"text"`
 	} `json:"templateData"`
 	Args struct {
-		Code string `json:"code"`
+		// ZITADEL's webhook serializer lowercases only the first character of
+		// the "OTP" argument, so the v4.17.1 wire key is "oTP".
+		OTP  string `json:"oTP"`
+		Code string `json:"code"` // legacy/provider compatibility
 	} `json:"args"`
 }
 
@@ -104,10 +107,24 @@ func parseZitadelSMSPayload(body []byte) (zitadelSMSPayload, bool) {
 	if json.Unmarshal(body, &payload) != nil ||
 		!isE164(payload.ContextInfo.RecipientPhoneNumber) ||
 		!approvedEventType(payload.ContextInfo.EventType) ||
-		strings.TrimSpace(payload.Args.Code) == "" || len(payload.Args.Code) > 256 {
+		!validOTPArgument(&payload) {
 		return zitadelSMSPayload{}, false
 	}
+	if strings.TrimSpace(payload.Args.OTP) == "" {
+		payload.Args.OTP = payload.Args.Code
+	}
 	return payload, true
+}
+
+func validOTPArgument(payload *zitadelSMSPayload) bool {
+	if payload == nil {
+		return false
+	}
+	value := payload.Args.OTP
+	if strings.TrimSpace(value) == "" {
+		value = payload.Args.Code
+	}
+	return strings.TrimSpace(value) != "" && len(value) <= 256
 }
 
 // Provenance is pinned to ZITADEL Core v4.17.1: the human MFA event type is
