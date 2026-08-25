@@ -207,21 +207,7 @@ func sanitizeStudioBatchCreateRequest(req *UpsertStudioBatchRequest, isCreate bo
 }
 
 func normalizeStudioHotStyleReferenceImageURLs(values []string) SheinStudioStringList {
-	result := make(SheinStudioStringList, 0, 1)
-	seen := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			continue
-		}
-		if _, ok := seen[trimmed]; ok {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		result = append(result, trimmed)
-		break
-	}
-	return result
+	return SheinStudioStringList(studiodomain.NormalizeHotStyleReferenceImageURLs(values))
 }
 
 func (s *taskStudioBatchDraftService) DeleteStudioBatch(ctx context.Context, batchID string) error {

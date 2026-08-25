@@ -39,3 +39,23 @@ func ResolveBatchName(input BatchNameResolutionInput) string {
 	}
 	return NextBatchName(input.ExistingNames)
 }
+
+// NormalizeHotStyleReferenceImageURLs keeps the first distinct, non-empty
+// reference URL because a batch draft has one active hot-style reference.
+func NormalizeHotStyleReferenceImageURLs(values []string) []string {
+	result := make([]string, 0, 1)
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+		break
+	}
+	return result
+}
