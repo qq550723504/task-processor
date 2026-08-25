@@ -47,7 +47,7 @@ func TestRunUsesOnlyPreflightEnvironmentAndRedactsSecrets(t *testing.T) {
 	}, func(cfg phoneonboardingpreflight.ClientConfig) (phoneonboardingpreflight.Client, error) {
 		gotConfig = cfg
 		return fake, nil
-	}, os.Stdin, &stdout, &stderr)
+	}, os.Stdin, &stdout, &stderr, []string{"--non-production"}, preflightTimeout)
 
 	require.NoError(t, err)
 	require.Equal(t, []string{"ZITADEL_ISSUER_URL", "ZITADEL_PREFLIGHT_PROVISION_TOKEN", "ZITADEL_PREFLIGHT_LOGIN_TOKEN"}, requested)
@@ -77,13 +77,61 @@ func TestRunReturnsGenericRedactedErrorOnFirstFailure(t *testing.T) {
 		return "+8613712345678", nil
 	}, func(phoneonboardingpreflight.ClientConfig) (phoneonboardingpreflight.Client, error) {
 		return fake, nil
-	}, os.Stdin, &stdout, &stderr)
+	}, os.Stdin, &stdout, &stderr, []string{"--non-production"}, preflightTimeout)
 
 	require.Error(t, err)
-	require.Equal(t, "preflight failed\n", stderr.String())
+	require.Empty(t, stderr.String())
 	require.Regexp(t, `^status=failed attempt=[0-9A-HJKMNP-TV-Z]{26} step=organization_create\n$`, stdout.String())
 	require.NotContains(t, stdout.String()+stderr.String()+err.Error(), "+8613712345678")
 	require.Equal(t, []string{"CreateOrganization"}, fake.calls)
+}
+
+func TestRunRequiresNonProductionFlagBeforeRemoteMutation(t *testing.T) {
+	fake := &cliFakeClient{}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), func(string) string { return "" }, func(_ string, _ *os.File, _ io.Writer) (string, error) {
+		return "", errors.New("hidden input must not be read")
+	}, func(phoneonboardingpreflight.ClientConfig) (phoneonboardingpreflight.Client, error) {
+		return fake, nil
+	}, os.Stdin, &stdout, &stderr, nil, preflightTimeout)
+
+	require.ErrorIs(t, err, errNonProductionConfirmation)
+	require.Empty(t, fake.calls)
+	require.Empty(t, stdout.String())
+	require.Empty(t, stderr.String())
+}
+
+func TestRunTimeoutDuringHiddenCodeReadDeletesSessionWithSeparateCleanupContext(t *testing.T) {
+	values := map[string]string{
+		"ZITADEL_ISSUER_URL":                "https://zitadel.example.test",
+		"ZITADEL_PREFLIGHT_PROVISION_TOKEN": "provisioning-token-secret",
+		"ZITADEL_PREFLIGHT_LOGIN_TOKEN":     "login-token-secret",
+	}
+	fake := &cliFakeClient{proof: validCLIProof()}
+	blocked := make(chan struct{})
+	defer close(blocked)
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), func(key string) string { return values[key] }, func(_ string, _ *os.File, _ io.Writer) (string, error) {
+		if fake.secretReads == 0 {
+			fake.secretReads++
+			return "+8613712345678", nil
+		}
+		fake.secretReads++
+		<-blocked
+		return "", errors.New("terminal read released")
+	}, func(phoneonboardingpreflight.ClientConfig) (phoneonboardingpreflight.Client, error) {
+		return fake, nil
+	}, os.Stdin, &stdout, &stderr, []string{"--non-production"}, time.Millisecond)
+
+	require.Error(t, err)
+	require.Equal(t, []string{"CreateOrganization", "CreateTechnicalUser", "AddOTPSMS", "CreateSMSChallenge", "DeleteSession"}, fake.calls)
+	require.True(t, fake.deleteDeadlineSet)
+	require.True(t, fake.deleteDeadline.Before(time.Now().Add(30*time.Second)))
+	require.Empty(t, fake.deleteContextErr)
+	require.Empty(t, stderr.String())
+	require.Regexp(t, `^status=challenge_sent attempt=[0-9A-HJKMNP-TV-Z]{26} organization_id=org-1 user_id=user-1 session_id=session-1\nstatus=failed attempt=[0-9A-HJKMNP-TV-Z]{26} step=code_verify\n$`, stdout.String())
 }
 
 func validCLIProof() phoneonboardingpreflight.SessionProof {
@@ -93,12 +141,15 @@ func validCLIProof() phoneonboardingpreflight.SessionProof {
 }
 
 type cliFakeClient struct {
-	calls           []string
-	proof           phoneonboardingpreflight.SessionProof
-	organizationErr error
-	secretReads     int
-	deadlineSet     bool
-	deadline        time.Time
+	calls             []string
+	proof             phoneonboardingpreflight.SessionProof
+	organizationErr   error
+	secretReads       int
+	deadlineSet       bool
+	deadline          time.Time
+	deleteDeadlineSet bool
+	deleteDeadline    time.Time
+	deleteContextErr  error
 }
 
 func (f *cliFakeClient) CreateOrganization(ctx context.Context, _ string) (string, error) {
@@ -135,7 +186,9 @@ func (f *cliFakeClient) GetSession(_ context.Context, _, _ string) (phoneonboard
 	return f.proof, nil
 }
 
-func (f *cliFakeClient) DeleteSession(_ context.Context, _ string) error {
+func (f *cliFakeClient) DeleteSession(ctx context.Context, _ string) error {
 	f.calls = append(f.calls, "DeleteSession")
+	f.deleteDeadline, f.deleteDeadlineSet = ctx.Deadline()
+	f.deleteContextErr = ctx.Err()
 	return nil
 }

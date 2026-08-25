@@ -12,6 +12,7 @@ import (
 )
 
 const preflightSessionLifetime = 5 * time.Minute
+const cleanupTimeout = 10 * time.Second
 
 // Attempt retains only the opaque references needed to complete one preflight.
 // The phone number, technical email, OTP code, and session token stay in memory.
@@ -94,14 +95,14 @@ func (r *Runner) Verify(ctx context.Context, attempt *Attempt, code string) (Ses
 
 	replacementToken, err := r.client.VerifySMS(ctx, attempt.SessionID, strings.TrimSpace(code))
 	if err != nil {
-		return SessionProof{}, r.failAfterCleanup(ctx, attempt, "code_verify")
+		return SessionProof{}, r.failAfterCleanup(attempt, "code_verify")
 	}
 	attempt.sessionToken = replacementToken
 	proof, err := r.client.GetSession(ctx, attempt.SessionID, replacementToken)
 	if err != nil || !matchingVerifiedFactors(proof, attempt) {
-		return SessionProof{}, r.failAfterCleanup(ctx, attempt, "session_read")
+		return SessionProof{}, r.failAfterCleanup(attempt, "session_read")
 	}
-	if err := r.client.DeleteSession(ctx, attempt.SessionID); err != nil {
+	if err := r.deleteSession(attempt); err != nil {
 		return SessionProof{}, r.fail(attempt.id, "session_delete")
 	}
 	if err := r.status("status=otp_verified attempt=%s user_factor=true otp_sms_factor=true\n", attempt.id); err != nil {
@@ -110,11 +111,28 @@ func (r *Runner) Verify(ctx context.Context, attempt *Attempt, code string) (Ses
 	return proof, nil
 }
 
-func (r *Runner) failAfterCleanup(ctx context.Context, attempt *Attempt, step string) error {
-	if err := r.client.DeleteSession(ctx, attempt.SessionID); err != nil {
+// Abandon deletes a created session after an interrupted hidden-input read.
+// It uses a fresh bounded context because the caller's overall context may
+// already have expired.
+func (r *Runner) Abandon(attempt *Attempt) error {
+	if attempt == nil || strings.TrimSpace(attempt.id) == "" || strings.TrimSpace(attempt.SessionID) == "" {
+		return errors.New("invalid phone onboarding preflight attempt")
+	}
+	defer func() { attempt.sessionToken = "" }()
+	return r.failAfterCleanup(attempt, "code_verify")
+}
+
+func (r *Runner) failAfterCleanup(attempt *Attempt, step string) error {
+	if err := r.deleteSession(attempt); err != nil {
 		return r.fail(attempt.id, "session_delete")
 	}
 	return r.fail(attempt.id, step)
+}
+
+func (r *Runner) deleteSession(attempt *Attempt) error {
+	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	defer cancel()
+	return r.client.DeleteSession(ctx, attempt.SessionID)
 }
 
 func (r *Runner) fail(attemptID, step string) error {

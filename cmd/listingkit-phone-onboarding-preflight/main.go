@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -20,17 +21,29 @@ import (
 
 const preflightTimeout = 5 * time.Minute
 
+var errNonProductionConfirmation = errors.New("--non-production confirmation is required")
+
 type secretReader func(string, *os.File, io.Writer) (string, error)
 type clientFactory func(phoneonboardingpreflight.ClientConfig) (phoneonboardingpreflight.Client, error)
 
 func main() {
-	if err := run(context.Background(), os.Getenv, readSecret, phoneonboardingpreflight.NewClient, os.Stdin, os.Stdout, os.Stderr); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	if err := run(ctx, os.Getenv, readSecret, phoneonboardingpreflight.NewClient, os.Stdin, os.Stdout, os.Stderr, os.Args[1:], preflightTimeout); err != nil {
+		if errors.Is(err, errNonProductionConfirmation) {
+			_, _ = fmt.Fprintln(os.Stderr, "usage: listingkit-phone-onboarding-preflight --non-production")
+		}
 		os.Exit(1)
 	}
 }
 
-func run(parent context.Context, getenv func(string) string, read secretReader, newClient clientFactory, input *os.File, stdout, stderr io.Writer) error {
-	phone, err := readSecretValue("phone: ", read, input, stdout, stderr)
+func run(parent context.Context, getenv func(string) string, read secretReader, newClient clientFactory, input *os.File, stdout, stderr io.Writer, args []string, timeout time.Duration) error {
+	if len(args) != 1 || args[0] != "--non-production" {
+		return errNonProductionConfirmation
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+	phone, err := readSecretValue(ctx, "phone: ", read, input, stdout)
 	if err != nil {
 		return err
 	}
@@ -41,40 +54,46 @@ func run(parent context.Context, getenv func(string) string, read secretReader, 
 		SessionToken:      getenv("ZITADEL_PREFLIGHT_LOGIN_TOKEN"),
 	})
 	if err != nil {
-		return failed(stderr)
+		return errors.New("phone onboarding preflight setup failed")
 	}
 	runner, err := phoneonboardingpreflight.NewRunner(client, rand.Reader, time.Now, stdout)
 	if err != nil {
-		return failed(stderr)
+		return errors.New("phone onboarding preflight setup failed")
 	}
-	ctx, cancel := context.WithTimeout(parent, preflightTimeout)
-	defer cancel()
 	attempt, err := runner.Start(ctx, phone)
-	if err != nil {
-		return failed(stderr)
-	}
-
-	code, err := readSecretValue("verification code: ", read, input, stdout, stderr)
 	if err != nil {
 		return err
 	}
+
+	code, err := readSecretValue(ctx, "verification code: ", read, input, stdout)
+	if err != nil {
+		return runner.Abandon(attempt)
+	}
 	if _, err := runner.Verify(ctx, attempt, code); err != nil {
-		return failed(stderr)
+		return err
 	}
 	return nil
 }
 
-func readSecretValue(prompt string, read secretReader, input *os.File, stdout, stderr io.Writer) (string, error) {
-	value, err := read(prompt, input, stdout)
-	if err != nil || strings.TrimSpace(value) == "" {
-		return "", failed(stderr)
+func readSecretValue(ctx context.Context, prompt string, read secretReader, input *os.File, stdout io.Writer) (string, error) {
+	type result struct {
+		value string
+		err   error
 	}
-	return value, nil
-}
-
-func failed(stderr io.Writer) error {
-	_, _ = fmt.Fprintln(stderr, "preflight failed")
-	return errors.New("preflight failed")
+	resultCh := make(chan result, 1)
+	go func() {
+		value, err := read(prompt, input, stdout)
+		resultCh <- result{value: value, err: err}
+	}()
+	select {
+	case result := <-resultCh:
+		if result.err != nil || strings.TrimSpace(result.value) == "" {
+			return "", errors.New("secure input failed")
+		}
+		return result.value, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 }
 
 func readSecret(prompt string, input *os.File, output io.Writer) (string, error) {

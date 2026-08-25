@@ -91,6 +91,25 @@ func TestRunnerVerifyReportsSessionDeleteWhenCleanupFails(t *testing.T) {
 	require.Equal(t, "status=failed attempt=01JTEST step=session_delete\n", output.String())
 }
 
+func TestRunnerAbandonDeletesSessionWithSeparateShortContext(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeRunnerClient{}
+	var output bytes.Buffer
+	runner, err := NewRunner(fake, bytes.NewReader(bytes.Repeat([]byte{0x42}, 10)), time.Now, &output)
+	require.NoError(t, err)
+	attempt := &Attempt{SessionID: "session-1", sessionToken: "created-token", id: "01JTEST"}
+
+	err = runner.Abandon(attempt)
+	require.Error(t, err)
+	require.Equal(t, []string{"DeleteSession"}, fake.calls)
+	require.True(t, fake.deleteDeadlineSet)
+	require.WithinDuration(t, time.Now().Add(cleanupTimeout), fake.deleteDeadline, 2*time.Second)
+	require.Empty(t, fake.deleteContextErr)
+	require.Empty(t, attempt.sessionToken)
+	require.Equal(t, "status=failed attempt=01JTEST step=code_verify\n", output.String())
+}
+
 func TestRunnerRejectsInvalidPhoneBeforeProviderCalls(t *testing.T) {
 	t.Parallel()
 
@@ -104,12 +123,15 @@ func TestRunnerRejectsInvalidPhoneBeforeProviderCalls(t *testing.T) {
 }
 
 type fakeRunnerClient struct {
-	calls            []string
-	organizationName string
-	user             TechnicalUserInput
-	proof            SessionProof
-	getSessionToken  string
-	deleteErr        error
+	calls             []string
+	organizationName  string
+	user              TechnicalUserInput
+	proof             SessionProof
+	getSessionToken   string
+	deleteErr         error
+	deleteDeadlineSet bool
+	deleteDeadline    time.Time
+	deleteContextErr  error
 }
 
 func (f *fakeRunnerClient) CreateOrganization(_ context.Context, name string) (string, error) {
@@ -154,8 +176,10 @@ func (f *fakeRunnerClient) GetSession(_ context.Context, sessionID, token string
 	return f.proof, nil
 }
 
-func (f *fakeRunnerClient) DeleteSession(_ context.Context, sessionID string) error {
+func (f *fakeRunnerClient) DeleteSession(ctx context.Context, sessionID string) error {
 	f.calls = append(f.calls, "DeleteSession")
+	f.deleteDeadline, f.deleteDeadlineSet = ctx.Deadline()
+	f.deleteContextErr = ctx.Err()
 	if sessionID != "session-1" {
 		return errors.New("wrong session")
 	}
