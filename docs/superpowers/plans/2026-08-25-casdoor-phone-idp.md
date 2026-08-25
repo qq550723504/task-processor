@@ -4,9 +4,9 @@
 
 **Goal:** Deploy a locked-down self-hosted Casdoor phone-code IdP at `id.shuomiai.com` and federate it to ZITADEL without phone leakage, account takeover, or default ListingKit grants.
 
-**Architecture:** Native Kustomize manifests run Casdoor v3.143.0 with an isolated PostgreSQL database in `casdoor`. Casdoor authenticates phone users upstream; ZITADEL Generic OIDC plus one External Authentication action creates the final ZITADEL user and remains the only ListingKit issuer/role authority.
+**Architecture:** Native Kustomize manifests run Casdoor v3.143.0 in `casdoor`, using a logically isolated `casdoor` database and `casdoor_app` role on the existing private `platform-data/shared-postgresql` service. Casdoor authenticates phone users upstream; ZITADEL Generic OIDC plus one External Authentication action creates the final ZITADEL user and remains the only ListingKit issuer/role authority.
 
-**Tech Stack:** Casdoor v3.143.0, PostgreSQL 16, Kubernetes/Kustomize, Traefik, External Secrets, Tencent Cloud SMS, ZITADEL Generic OIDC and Actions.
+**Tech Stack:** Casdoor v3.143.0, existing shared PostgreSQL 18.4 for staging, Kubernetes/Kustomize, Traefik, External Secrets, Tencent Cloud SMS, ZITADEL Generic OIDC and Actions.
 
 **Spec:** `docs/superpowers/specs/2026-08-25-listingkit-phone-identity-design.md`
 
@@ -24,14 +24,14 @@
 
 **Files:**
 - Create: `deployments/kubernetes/casdoor/base/namespace.yaml`
-- Create: `deployments/kubernetes/casdoor/base/{configmap,postgres-statefulset,postgres-service,deployment,service,ingress,kustomization}.yaml`
+- Create: `deployments/kubernetes/casdoor/base/{configmap,deployment,service,ingress,kustomization}.yaml`
 - Create: `deployments/kubernetes/casdoor/overlays/staging/{kustomization,patch-config,patch-ingress,external-secret}.yaml`
 - Create: `deployments/kubernetes/casdoor/overlays/prod/{kustomization,patch-config,patch-ingress,external-secret}.yaml`
 - Create: `scripts/tests/casdoor-kustomize-test.sh`
 
 **Interfaces:**
 - Consumes: Secret keys `CASDOOR_POSTGRES_PASSWORD`, `CASDOOR_TENCENT_SECRET_ID`, `CASDOOR_TENCENT_SECRET_KEY`, `CASDOOR_TENCENT_SMS_APP_ID`, `CASDOOR_TENCENT_SMS_SIGN_NAME`, `CASDOOR_TENCENT_SMS_TEMPLATE_ID`, and `CASDOOR_OIDC_CLIENT_SECRET`.
-- Produces: private `casdoor-postgres`, public HTTPS Casdoor service on port 8000, and one Casdoor-only Kubernetes Secret.
+- Produces: public HTTPS Casdoor service on port 8000 and one Casdoor-only Kubernetes Secret. It does not create a PostgreSQL workload, PVC, or public database service.
 
 - [ ] **Step 1: Write the failing render test.**
 
@@ -43,6 +43,7 @@ grep -F 'namespace: casdoor' <<<"$rendered"
 grep -F 'image: casbin/casdoor:v3.143.0' <<<"$rendered"
 grep -F 'host: id.staging.shuomiai.com' <<<"$rendered"
 grep -F 'driverName = postgres' <<<"$rendered"
+grep -F 'shared-postgresql.platform-data.svc.cluster.local' <<<"$rendered"
 ! grep -Eqi 'image: .*:latest|listingkit-tencent-sms-secret|TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_SIGNING_KEY' <<<"$rendered"
 ```
 
@@ -52,7 +53,7 @@ Run: `bash scripts/tests/casdoor-kustomize-test.sh`
 
 Expected: FAIL because no Casdoor overlay exists.
 
-- [ ] **Step 3: Implement base workload, private database and explicit Secret reference.**
+- [ ] **Step 3: Implement the base workload and explicit Secret reference.**
 
 ```yaml
 containers:
@@ -64,7 +65,7 @@ containers:
 volumes: [{name: config, configMap: {name: casdoor-config}}]
 ```
 
-Set `driverName = postgres`, use only `casdoor-postgres.casdoor.svc.cluster.local`, and make base ingress non-routable. Each overlay sets origin, TLS, ExternalSecret remote key and the digest after staging verification.
+Set `driverName = postgres`, use only `shared-postgresql.platform-data.svc.cluster.local`, and make base ingress non-routable. A separately authorized, redacted administrative operation creates the `casdoor` database and least-privilege `casdoor_app` role; the manifests never read or copy the shared PostgreSQL administrator secret. Each overlay sets origin, TLS, ExternalSecret remote key and the digest after staging verification.
 
 - [ ] **Step 4: Add and attach the public endpoint rate limiter.**
 
