@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	corelogger "task-processor/internal/core/logger"
 
 	"task-processor/internal/listingkit/zitadelsms"
 )
@@ -36,6 +37,12 @@ func (h *handler) DeliverZitadelSMS(c *gin.Context) {
 		c.Status(http.StatusBadRequest)
 	case errors.Is(err, zitadelsms.ErrInvalidConfiguration):
 		c.Status(http.StatusServiceUnavailable)
+	case errors.Is(err, zitadelsms.ErrDeliveryFailed):
+		var failure *zitadelsms.DeliveryFailure
+		if errors.As(err, &failure) {
+			corelogger.GetGlobalLogger("zitadel-sms").WithField("provider_code", failure.Code).Warn("Tencent SMS delivery failed")
+		}
+		c.Status(http.StatusBadGateway)
 	default:
 		c.Status(http.StatusBadGateway)
 	}

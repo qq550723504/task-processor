@@ -24,6 +24,17 @@ var (
 	ErrInvalidConfiguration = errors.New("invalid ZITADEL SMS configuration")
 )
 
+// DeliveryFailure carries a provider error category for safe operational
+// logging while keeping phone numbers, OTPs, and provider response text out
+// of the public error returned to ZITADEL.
+type DeliveryFailure struct {
+	Code string
+}
+
+func (e *DeliveryFailure) Error() string { return ErrDeliveryFailed.Error() }
+
+func (e *DeliveryFailure) Unwrap() error { return ErrDeliveryFailed }
+
 const (
 	zitadelSignatureTolerance = 5 * time.Minute
 	tencentSMSRegion          = "ap-guangzhou"
@@ -267,7 +278,7 @@ func (s *tencentSender) Send(ctx context.Context, message Message) error {
 	}
 	client, err := s.clientFactory(ctx)
 	if err != nil {
-		return ErrDeliveryFailed
+		return &DeliveryFailure{Code: providerErrorCode(err)}
 	}
 	request := sms.NewSendSmsRequest()
 	request.PhoneNumberSet = []*string{common.StringPtr(message.Phone)}
@@ -277,11 +288,28 @@ func (s *tencentSender) Send(ctx context.Context, message Message) error {
 	request.TemplateParamSet = common.StringPtrs(message.Params)
 
 	response, err := client.SendSms(request)
-	if err != nil || response == nil || response.Response == nil || len(response.Response.SendStatusSet) != 1 ||
+	if err != nil {
+		return &DeliveryFailure{Code: providerErrorCode(err)}
+	}
+	if response == nil || response.Response == nil || len(response.Response.SendStatusSet) != 1 ||
 		response.Response.SendStatusSet[0] == nil || response.Response.SendStatusSet[0].Code == nil || *response.Response.SendStatusSet[0].Code != "Ok" {
-		return ErrDeliveryFailed
+		code := "invalid_response"
+		if response != nil && response.Response != nil && len(response.Response.SendStatusSet) == 1 && response.Response.SendStatusSet[0] != nil && response.Response.SendStatusSet[0].Code != nil {
+			code = *response.Response.SendStatusSet[0].Code
+		}
+		return &DeliveryFailure{Code: code}
 	}
 	return nil
+}
+
+func providerErrorCode(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	if coded, ok := err.(interface{ GetCode() string }); ok && strings.TrimSpace(coded.GetCode()) != "" {
+		return coded.GetCode()
+	}
+	return "request_error"
 }
 
 type contextRoundTripper struct {
