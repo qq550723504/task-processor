@@ -80,8 +80,14 @@ func (r *Runner) Start(ctx context.Context, phone string) (*Attempt, error) {
 	attempt.SessionID = material.ID
 	attempt.sessionToken = material.Token
 	if err := r.status("status=challenge_sent attempt=%s organization_id=%s user_id=%s session_id=%s\n", attemptID, organizationID, userID, material.ID); err != nil {
-		_ = r.deleteSession(attempt)
-		_ = r.deleteOrganization(attempt)
+		sessionErr := r.deleteSession(attempt)
+		organizationErr := r.deleteOrganization(attempt)
+		if sessionErr != nil {
+			return nil, r.reportCleanupFailure(attempt.id, "session_delete", sessionErr)
+		}
+		if organizationErr != nil {
+			return nil, r.reportCleanupFailure(attempt.id, "organization_delete", organizationErr)
+		}
 		return nil, errors.New("preflight output failed")
 	}
 	return attempt, nil
@@ -147,6 +153,13 @@ func (r *Runner) failAfterOrganizationCleanup(attempt *Attempt, step string, cau
 		return r.fail(attempt.id, "organization_delete", err)
 	}
 	return r.fail(attempt.id, step, cause...)
+}
+
+func (r *Runner) reportCleanupFailure(attemptID, step string, cause error) error {
+	if err := r.fail(attemptID, step, cause); err != nil && err.Error() != "preflight output failed" {
+		return err
+	}
+	return fmt.Errorf("preflight output failed; cleanup failed at %s", step)
 }
 
 func (r *Runner) deleteSession(attempt *Attempt) error {

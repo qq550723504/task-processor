@@ -121,6 +121,18 @@ func TestRunnerStartDeletesOrganizationWhenChallengeCreationFails(t *testing.T) 
 	require.Equal(t, "status=failed attempt=", output.String()[:len("status=failed attempt=")])
 }
 
+func TestRunnerStartReportsCleanupFailureWhenChallengeStatusOutputFails(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeRunnerClient{deleteErr: errors.New("session cleanup failed"), organizationDeleteErr: errors.New("organization cleanup failed")}
+	runner, err := NewRunner(fake, bytes.NewReader(bytes.Repeat([]byte{0x42}, 10)), time.Now, errorWriter{})
+	require.NoError(t, err)
+
+	_, err = runner.Start(context.Background(), "+8613712345678")
+	require.EqualError(t, err, "preflight output failed; cleanup failed at session_delete")
+	require.Equal(t, []string{"CreateOrganization", "CreateTechnicalUser", "AddOTPSMS", "CreateSMSChallenge", "DeleteSession", "DeleteOrganization"}, fake.calls)
+}
+
 func TestRunnerAbandonDeletesSessionWithSeparateShortContext(t *testing.T) {
 	t.Parallel()
 
@@ -176,6 +188,12 @@ type fakeRunnerClient struct {
 	organizationErr       error
 	organizationDeleteErr error
 	challengeErr          error
+}
+
+type errorWriter struct{}
+
+func (errorWriter) Write([]byte) (int, error) {
+	return 0, errors.New("output closed")
 }
 
 func (f *fakeRunnerClient) CreateOrganization(_ context.Context, name string) (string, error) {
