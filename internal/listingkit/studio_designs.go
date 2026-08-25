@@ -303,24 +303,7 @@ func validateStudioDesignPromptRequirement(req *StudioDesignRequest, referenceUR
 }
 
 func studioDesignReferenceImageURLs(urls []string) []string {
-	const maxStudioDesignReferenceImages = 5
-	cleaned := make([]string, 0, min(len(urls), maxStudioDesignReferenceImages))
-	seen := make(map[string]struct{}, len(urls))
-	for _, raw := range urls {
-		item := strings.TrimSpace(raw)
-		if item == "" {
-			continue
-		}
-		if _, ok := seen[item]; ok {
-			continue
-		}
-		seen[item] = struct{}{}
-		cleaned = append(cleaned, item)
-		if len(cleaned) >= maxStudioDesignReferenceImages {
-			break
-		}
-	}
-	return cleaned
+	return studiodomain.NormalizeDesignReferenceImageURLs(urls)
 }
 
 func resolveStudioDesignSize(width int, height int) string {
