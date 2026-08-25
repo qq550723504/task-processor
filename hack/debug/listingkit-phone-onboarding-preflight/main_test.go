@@ -186,7 +186,7 @@ func TestRunTimeoutDuringHiddenCodeReadDeletesSessionWithSeparateCleanupContext(
 	}, os.Stdin, &stdout, &stderr, []string{"--non-production"}, time.Millisecond)
 
 	require.Error(t, err)
-	require.Equal(t, []string{"CreateOrganization", "CreateTechnicalUser", "AddOTPSMS", "CreateSMSChallenge", "DeleteSession"}, fake.calls)
+	require.Equal(t, []string{"CreateOrganization", "CreateTechnicalUser", "AddOTPSMS", "CreateSMSChallenge", "DeleteSession", "DeleteOrganization"}, fake.calls)
 	require.True(t, fake.deleteDeadlineSet)
 	require.True(t, fake.deleteDeadline.Before(time.Now().Add(30*time.Second)))
 	require.Empty(t, fake.deleteContextErr)
@@ -250,5 +250,10 @@ func (f *cliFakeClient) DeleteSession(ctx context.Context, _ string) error {
 	f.calls = append(f.calls, "DeleteSession")
 	f.deleteDeadline, f.deleteDeadlineSet = ctx.Deadline()
 	f.deleteContextErr = ctx.Err()
+	return nil
+}
+
+func (f *cliFakeClient) DeleteOrganization(_ context.Context, _ string) error {
+	f.calls = append(f.calls, "DeleteOrganization")
 	return nil
 }

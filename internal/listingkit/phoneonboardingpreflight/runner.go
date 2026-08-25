@@ -40,8 +40,8 @@ func NewRunner(client Client, random io.Reader, now func() time.Time, output io.
 	return &Runner{client: client, random: random, now: now, output: output}, nil
 }
 
-// Start creates a disposable organization and technical user before sending an
-// OTP SMS challenge. The phone number is never retained after this call.
+// Start creates a temporary organization and technical user before sending an
+// OTP SMS challenge. The organization is deleted on every failure path.
 func (r *Runner) Start(ctx context.Context, phone string) (*Attempt, error) {
 	normalizedPhone, err := normalizeE164(phone)
 	if err != nil {
@@ -66,20 +66,22 @@ func (r *Runner) Start(ctx context.Context, phone string) (*Attempt, error) {
 		Phone:          normalizedPhone,
 	})
 	if err != nil {
-		return nil, r.fail(attemptID, "user_create", err)
+		return nil, r.failAfterOrganizationCleanup(attempt, "user_create", err)
 	}
 	attempt.UserID = userID
 
 	if err := r.client.AddOTPSMS(ctx, userID); err != nil {
-		return nil, r.fail(attemptID, "otp_sms_add", err)
+		return nil, r.failAfterOrganizationCleanup(attempt, "otp_sms_add", err)
 	}
 	material, err := r.client.CreateSMSChallenge(ctx, userID, preflightSessionLifetime)
 	if err != nil {
-		return nil, r.fail(attemptID, "challenge_create", err)
+		return nil, r.failAfterOrganizationCleanup(attempt, "challenge_create", err)
 	}
 	attempt.SessionID = material.ID
 	attempt.sessionToken = material.Token
 	if err := r.status("status=challenge_sent attempt=%s organization_id=%s user_id=%s session_id=%s\n", attemptID, organizationID, userID, material.ID); err != nil {
+		_ = r.deleteSession(attempt)
+		_ = r.deleteOrganization(attempt)
 		return nil, errors.New("preflight output failed")
 	}
 	return attempt, nil
@@ -102,8 +104,13 @@ func (r *Runner) Verify(ctx context.Context, attempt *Attempt, code string) (Ses
 	if err != nil || !matchingVerifiedFactors(proof, attempt) {
 		return SessionProof{}, r.failAfterCleanup(attempt, "session_read")
 	}
-	if err := r.deleteSession(attempt); err != nil {
-		return SessionProof{}, r.fail(attempt.id, "session_delete", err)
+	sessionErr := r.deleteSession(attempt)
+	organizationErr := r.deleteOrganization(attempt)
+	if sessionErr != nil {
+		return SessionProof{}, r.fail(attempt.id, "session_delete", sessionErr)
+	}
+	if organizationErr != nil {
+		return SessionProof{}, r.fail(attempt.id, "organization_delete", organizationErr)
 	}
 	if err := r.status("status=otp_verified attempt=%s user_factor=true otp_sms_factor=true\n", attempt.id); err != nil {
 		return SessionProof{}, errors.New("preflight output failed")
@@ -111,7 +118,8 @@ func (r *Runner) Verify(ctx context.Context, attempt *Attempt, code string) (Ses
 	return proof, nil
 }
 
-// Abandon deletes a created session after an interrupted hidden-input read.
+// Abandon deletes a created session and temporary organization after an
+// interrupted input read.
 // It uses a fresh bounded context because the caller's overall context may
 // already have expired.
 func (r *Runner) Abandon(attempt *Attempt) error {
@@ -123,8 +131,20 @@ func (r *Runner) Abandon(attempt *Attempt) error {
 }
 
 func (r *Runner) failAfterCleanup(attempt *Attempt, step string, cause ...error) error {
-	if err := r.deleteSession(attempt); err != nil {
-		return r.fail(attempt.id, "session_delete", err)
+	sessionErr := r.deleteSession(attempt)
+	organizationErr := r.deleteOrganization(attempt)
+	if sessionErr != nil {
+		return r.fail(attempt.id, "session_delete", sessionErr)
+	}
+	if organizationErr != nil {
+		return r.fail(attempt.id, "organization_delete", organizationErr)
+	}
+	return r.fail(attempt.id, step, cause...)
+}
+
+func (r *Runner) failAfterOrganizationCleanup(attempt *Attempt, step string, cause ...error) error {
+	if err := r.deleteOrganization(attempt); err != nil {
+		return r.fail(attempt.id, "organization_delete", err)
 	}
 	return r.fail(attempt.id, step, cause...)
 }
@@ -133,6 +153,15 @@ func (r *Runner) deleteSession(attempt *Attempt) error {
 	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 	defer cancel()
 	return r.client.DeleteSession(ctx, attempt.SessionID)
+}
+
+func (r *Runner) deleteOrganization(attempt *Attempt) error {
+	if attempt == nil || strings.TrimSpace(attempt.OrganizationID) == "" {
+		return errors.New("invalid phone onboarding preflight organization")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	defer cancel()
+	return r.client.DeleteOrganization(ctx, attempt.OrganizationID)
 }
 
 func (r *Runner) fail(attemptID, step string, cause ...error) error {

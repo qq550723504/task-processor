@@ -4,9 +4,9 @@
 
 **Goal:** Prove against ZITADEL v4.17.1 that a user who supplies only a phone number can receive one ZITADEL SMS code, verify it once, and obtain a checked passwordless session without receiving ListingKit roles, a project grant, or a subscription.
 
-**Architecture:** Reuse the already implemented exact-event extension for the signed ListingKit Tencent SMS relay, then add a standalone Go preflight runner that calls only the version-pinned ZITADEL Organization, User, OTP SMS, and Session APIs. The runner creates an isolated disposable organization and a Human User with a generated verified technical email, no password, and a verified phone; it requests one ZITADEL OTP SMS challenge, submits the entered code to ZITADEL, and verifies the returned session factors. It is not wired into `product-listing-api` and cannot grant ListingKit access.
+**Architecture:** Reuse the already implemented exact-event extension for the signed ListingKit Tencent SMS relay, then add a standalone Go preflight runner that calls only the version-pinned ZITADEL Organization, User, OTP SMS, and Session APIs. The runner creates an isolated temporary organization and a Human User with a generated verified technical email, no password, and a verified phone; it requests one ZITADEL OTP SMS challenge, submits the entered code to ZITADEL, verifies the returned session factors, and deletes the temporary organization on every cleanup path. It is not wired into `product-listing-api` and cannot grant ListingKit access.
 
-**Tech Stack:** Go 1.25, standard `net/http`, `golang.org/x/term`, ZITADEL v4.17.1 REST APIs, existing signed ListingKit HTTP SMS Provider relay, Tencent Cloud SMS, `httptest`, Kubernetes read-only preflight commands.
+**Tech Stack:** Go 1.25, standard `net/http`, ZITADEL v4.17.1 REST APIs, existing signed ListingKit HTTP SMS Provider relay, Tencent Cloud SMS, `httptest`, Kubernetes read-only preflight commands.
 
 **Spec:** `docs/superpowers/specs/2026-08-25-listingkit-zitadel-native-phone-onboarding-design.md`
 
@@ -21,12 +21,13 @@
 - Use the returned ZITADEL user ID, not a phone/login-name query, when creating the session.
 - Before verification, create no project grant, user authorization, organization admin membership, subscription, or entitlement.
 - Never print or log the phone, technical email, code, bearer token, session token, callback URL, Tencent response, or provider response body.
-- Use a disposable organization named `lk-phone-preflight-<opaque-id>` and a non-production phone.
+- Use a temporary organization named `lk-phone-preflight-<opaque-id>` and a non-production phone; delete it by exact ID during cleanup.
 - Keep provisioning and login/session credentials separate: the provisioning
   service user has `IAM_ORG_MANAGER`; the Login Client has `IAM_LOGIN_CLIENT`.
   Neither token is sent to the browser or written to disk.
-- No production feature gate, Login V2 route, API route, schema migration,
-  subscription call, or organization/user cleanup mutation is part of this plan.
+- No production feature gate, Login V2 route, API route, schema migration, or
+  subscription call is part of this plan. Temporary organization cleanup is
+  required and uses only the exact ID created by the current attempt.
 - A failed real-device proof stops the program; it does not authorize a second OTP implementation.
 
 ## Program decomposition
@@ -259,7 +260,8 @@ Expected: all tests pass and the commit contains only the client and its tests.
 - Modify: `go.sum`
 
 **Interfaces:**
-- Consumes: Task 2 `Client`, cryptographic randomness, current time, hidden phone/code input, and a redacted output writer.
+- Consumes: Task 2 `Client`, cryptographic randomness, current time, temporary
+  phone/code line input, and a redacted output writer.
 - Produces:
 
 ```go
@@ -289,7 +291,8 @@ require.NotContains(t, fake.user.Username+fake.user.TechnicalEmail, "13712345678
 
 `Verify` must call `VerifySMS`, replace the in-memory token, call `GetSession`,
 require matching user/organization IDs and both factor timestamps, and then
-call `DeleteSession`. It also deletes the session after a factor mismatch.
+call `DeleteSession` and `DeleteOrganization`. It also deletes both resources
+after a factor mismatch.
 
 - [ ] **Step 2: Run the runner tests and observe the red state**
 
@@ -319,7 +322,8 @@ status=failed attempt=<opaque-id> step=<stable-step-name>
 ```
 
 Allowed step names are `organization_create`, `user_create`, `otp_sms_add`,
-`challenge_create`, `code_verify`, `session_read`, and `session_delete`.
+`challenge_create`, `code_verify`, `session_read`, `session_delete`, and
+`organization_delete`.
 
 - [ ] **Step 4: Write and implement CLI boundary tests**
 
@@ -330,15 +334,18 @@ require database, Tencent, AI-provider, RabbitMQ, COS, or subscription values.
 Capture stdout/stderr and prove they contain none of the token, phone, code, or
 technical email.
 
-Use `golang.org/x/term` to read hidden input:
+This is a temporary non-production probe. It reads the phone and OTP as
+ordinary line input so it works reliably in PowerShell; the values are held
+only in memory and are not written to logs or files. Do not run it against a
+production issuer, and do not paste the OTP into chat or issue trackers.
 
 ```go
 func readSecret(prompt string, input *os.File, output io.Writer) (string, error) {
 	if _, err := fmt.Fprint(output, prompt); err != nil { return "", err }
-	value, err := term.ReadPassword(int(input.Fd()))
+	var value string
+	if _, err := fmt.Fscanln(input, &value); err != nil { return "", errors.New("secure input failed") }
 	_, _ = fmt.Fprintln(output)
-	if err != nil { return "", errors.New("secure input failed") }
-	return strings.TrimSpace(string(value)), nil
+	return strings.TrimSpace(value), nil
 }
 ```
 
@@ -348,8 +355,8 @@ Exit nonzero on the first failed step and never retry a code automatically.
 - [ ] **Step 5: Verify and commit the runner slice**
 
 ```powershell
-go get golang.org/x/term@v0.43.0
-go test ./hack/debug/listingkit-phone-onboarding-preflight ./internal/listingkit/phoneonboardingpreflight -count=1
+go -C hack/debug test ./listingkit-phone-onboarding-preflight -count=1
+go test ./internal/listingkit/phoneonboardingpreflight -count=1
 go test ./internal/listingkit/zitadelsms ./internal/listingkit/memberinvite -count=1
 git add -- hack/debug/listingkit-phone-onboarding-preflight internal/listingkit/phoneonboardingpreflight/runner.go internal/listingkit/phoneonboardingpreflight/runner_test.go go.mod go.sum
 git commit -m "feat: add interactive phone onboarding preflight"
@@ -405,7 +412,7 @@ $loginTokenPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($logi
 try {
     $env:ZITADEL_PREFLIGHT_PROVISION_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($provisionTokenPointer)
     $env:ZITADEL_PREFLIGHT_LOGIN_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($loginTokenPointer)
-    go run ./hack/debug/listingkit-phone-onboarding-preflight
+    go -C hack/debug run ./listingkit-phone-onboarding-preflight --non-production
 } finally {
     Remove-Item Env:ZITADEL_PREFLIGHT_PROVISION_TOKEN -ErrorAction SilentlyContinue
     Remove-Item Env:ZITADEL_PREFLIGHT_LOGIN_TOKEN -ErrorAction SilentlyContinue
@@ -414,7 +421,10 @@ try {
 }
 ```
 
-Enter phone and received code through hidden prompts. Expected output:
+Before running, independently verify that `ZITADEL_ISSUER_URL` is the
+non-production instance. The `--non-production` flag is an operator
+confirmation, not a production-access control. Enter the phone and received
+code at the line prompts. Expected output:
 
 ```text
 status=challenge_sent attempt=<opaque> organization_id=<opaque> user_id=<opaque> session_id=<opaque>
@@ -447,7 +457,7 @@ Use this complete schema with real redacted values:
 - ListingKit subscription before verification: absent
 - Sensitive-value scan: pass|fail
 - Decision: pass|fail
-- Blocking step: none|organization_create|user_create|otp_sms_add|challenge_create|code_verify|session_read|session_delete
+- Blocking step: none|organization_create|user_create|otp_sms_add|challenge_create|code_verify|session_read|session_delete|organization_delete
 ```
 
 Set `Decision: pass` only if every required item passes and both absence
@@ -458,14 +468,15 @@ assertions hold. Otherwise record `fail` and stop.
 ```powershell
 rg -n 'v4\.17\.1|phone only|Password field|One SMS challenge|Session OTP SMS factor|Decision:' docs/operations/listingkit-zitadel-phone-onboarding-feasibility.md docs/superpowers/verification/2026-08-25-listingkit-zitadel-phone-onboarding-feasibility.md
 git diff --check
-go test ./hack/debug/listingkit-phone-onboarding-preflight ./internal/listingkit/phoneonboardingpreflight ./internal/listingkit/zitadelsms -count=1
+go -C hack/debug test ./listingkit-phone-onboarding-preflight -count=1
+go test ./internal/listingkit/phoneonboardingpreflight ./internal/listingkit/zitadelsms -count=1
 git add -- docs/operations/listingkit-zitadel-phone-onboarding-feasibility.md docs/superpowers/verification/2026-08-25-listingkit-zitadel-phone-onboarding-feasibility.md
 git commit -m "docs: record ZITADEL phone onboarding feasibility"
 ```
 
-The runner deletes the session but leaves the exact disposable organization and
-user IDs for inspection. Obtain separate approval before deleting those exact
-resources; never search by prefix and bulk-delete.
+The runner deletes the session and the exact temporary organization created by
+the current attempt. Existing organizations from earlier runs are not searched
+or bulk-deleted; clean those exact IDs only with separate approval.
 
 ---
 

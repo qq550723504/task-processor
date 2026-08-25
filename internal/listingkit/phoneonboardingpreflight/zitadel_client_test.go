@@ -68,6 +68,13 @@ func TestClientUsesPinnedZITADELRequestContractsAndScopedTokens(t *testing.T) {
 			default:
 				w.WriteHeader(http.StatusMethodNotAllowed)
 			}
+		case "/v2/organizations/org-preflight":
+			if r.Method != http.MethodDelete {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"deletionDate":"2026-08-25T01:02:05Z"}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -99,8 +106,9 @@ func TestClientUsesPinnedZITADELRequestContractsAndScopedTokens(t *testing.T) {
 		OTPSMSVerifiedAt: time.Date(2026, 8, 25, 1, 2, 4, 0, time.UTC),
 	}, proof)
 	require.NoError(t, client.DeleteSession(context.Background(), material.ID))
+	require.NoError(t, client.DeleteOrganization(context.Background(), organizationID))
 
-	require.Len(t, requests, 7)
+	require.Len(t, requests, 8)
 	require.Equal(t, "/v2/organizations", requests[0].Path)
 	require.Equal(t, "/v2/users/new", requests[1].Path)
 	require.Equal(t, "/v2/users/user-preflight/otp_sms", requests[2].Path)
@@ -112,9 +120,11 @@ func TestClientUsesPinnedZITADELRequestContractsAndScopedTokens(t *testing.T) {
 	require.Equal(t, http.MethodPatch, requests[4].Method)
 	require.Equal(t, http.MethodGet, requests[5].Method)
 	require.Equal(t, http.MethodDelete, requests[6].Method)
+	require.Equal(t, "/v2/organizations/org-preflight", requests[7].Path)
+	require.Equal(t, http.MethodDelete, requests[7].Method)
 	for index, request := range requests {
 		want := "Bearer " + sessionToken
-		if index < 3 {
+		if index < 3 || index == 7 {
 			want = "Bearer " + provisioningToken
 		}
 		require.Equalf(t, want, request.Authorization, "request %d authorization", index)
@@ -253,6 +263,22 @@ func TestClientDeleteSessionAcceptsOnly200Or204(t *testing.T) {
 			require.EqualError(t, err, test.wantErr)
 		})
 	}
+}
+
+func TestClientDeleteOrganizationUsesProvisioningToken(t *testing.T) {
+	t.Parallel()
+	var authorization string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("Authorization")
+		require.Equal(t, http.MethodDelete, r.Method)
+		require.Equal(t, "/v2/organizations/org-preflight", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL, "provisioning-token", "session-token", server.Client())
+	require.NoError(t, client.DeleteOrganization(context.Background(), "org-preflight"))
+	require.Equal(t, "Bearer provisioning-token", authorization)
 }
 
 func TestNewClientUsesTenSecondDefaultHTTPTimeout(t *testing.T) {

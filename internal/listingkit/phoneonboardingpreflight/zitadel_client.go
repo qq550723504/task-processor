@@ -41,6 +41,7 @@ type Client interface {
 	VerifySMS(context.Context, string, string) (string, error)
 	GetSession(context.Context, string, string) (SessionProof, error)
 	DeleteSession(context.Context, string) error
+	DeleteOrganization(context.Context, string) error
 }
 
 type TechnicalUserInput struct {
@@ -235,6 +236,13 @@ func (c *zitadelClient) DeleteSession(ctx context.Context, sessionID string) err
 	return c.doJSON(ctx, loginClientSessionToken, http.MethodDelete, "/v2/sessions/"+url.PathEscape(sessionID), nil, nil, nil)
 }
 
+func (c *zitadelClient) DeleteOrganization(ctx context.Context, organizationID string) error {
+	if strings.TrimSpace(organizationID) == "" {
+		return errors.New("delete ZITADEL organization: invalid input")
+	}
+	return c.doJSON(ctx, organizationManagerToken, http.MethodDelete, "/v2/organizations/"+url.PathEscape(organizationID), nil, nil, nil)
+}
+
 func (c *zitadelClient) doJSON(ctx context.Context, credential, method, path string, query url.Values, body, output any) error {
 	operation := operationFor(method, path)
 	requestURL := c.baseURL + path
@@ -307,6 +315,9 @@ func operationFor(method, path string) string {
 	case method == http.MethodGet:
 		return "get ZITADEL session"
 	case method == http.MethodDelete:
+		if strings.HasPrefix(path, "/v2/organizations/") {
+			return "delete ZITADEL organization"
+		}
 		return "delete ZITADEL session"
 	default:
 		return "call ZITADEL"

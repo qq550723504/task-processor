@@ -49,7 +49,7 @@ func TestRunnerVerifyReplacesTokenChecksFactorsAndDeletesSession(t *testing.T) {
 	proof, err := runner.Verify(context.Background(), attempt, "654321")
 	require.NoError(t, err)
 	require.Equal(t, fake.proof, proof)
-	require.Equal(t, []string{"VerifySMS", "GetSession", "DeleteSession"}, fake.calls)
+	require.Equal(t, []string{"VerifySMS", "GetSession", "DeleteSession", "DeleteOrganization"}, fake.calls)
 	require.Equal(t, "verified-token", fake.getSessionToken)
 	require.Equal(t, "", attempt.sessionToken)
 	require.Equal(t, "status=otp_verified attempt=01JTEST user_factor=true otp_sms_factor=true\n", output.String())
@@ -68,7 +68,7 @@ func TestRunnerVerifyDeletesSessionAfterFactorMismatchWithoutLeakingCode(t *test
 
 	_, err = runner.Verify(context.Background(), attempt, "654321")
 	require.Error(t, err)
-	require.Equal(t, []string{"VerifySMS", "GetSession", "DeleteSession"}, fake.calls)
+	require.Equal(t, []string{"VerifySMS", "GetSession", "DeleteSession", "DeleteOrganization"}, fake.calls)
 	require.Equal(t, "", attempt.sessionToken)
 	require.Equal(t, "status=failed attempt=01JTEST step=session_read\n", output.String())
 	require.NotContains(t, output.String(), "654321")
@@ -87,8 +87,38 @@ func TestRunnerVerifyReportsSessionDeleteWhenCleanupFails(t *testing.T) {
 
 	_, err = runner.Verify(context.Background(), &Attempt{OrganizationID: "org-1", UserID: "user-1", SessionID: "session-1", sessionToken: "created-token", id: "01JTEST"}, "654321")
 	require.Error(t, err)
-	require.Equal(t, []string{"VerifySMS", "GetSession", "DeleteSession"}, fake.calls)
+	require.Equal(t, []string{"VerifySMS", "GetSession", "DeleteSession", "DeleteOrganization"}, fake.calls)
 	require.Equal(t, "status=failed attempt=01JTEST step=session_delete\n", output.String())
+}
+
+func TestRunnerVerifyReportsOrganizationDeleteWhenSessionCleanupSucceedsButOrganizationCleanupFails(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeRunnerClient{proof: SessionProof{
+		UserID: "user-1", OrganizationID: "org-1", UserVerifiedAt: time.Now(), OTPSMSVerifiedAt: time.Now(),
+	}, organizationDeleteErr: errors.New("provider error")}
+	var output bytes.Buffer
+	runner, err := NewRunner(fake, bytes.NewReader(bytes.Repeat([]byte{0x42}, 10)), time.Now, &output)
+	require.NoError(t, err)
+
+	_, err = runner.Verify(context.Background(), &Attempt{OrganizationID: "org-1", UserID: "user-1", SessionID: "session-1", sessionToken: "created-token", id: "01JTEST"}, "654321")
+	require.EqualError(t, err, "phone onboarding preflight failed at organization_delete")
+	require.Equal(t, []string{"VerifySMS", "GetSession", "DeleteSession", "DeleteOrganization"}, fake.calls)
+	require.Equal(t, "status=failed attempt=01JTEST step=organization_delete\n", output.String())
+}
+
+func TestRunnerStartDeletesOrganizationWhenChallengeCreationFails(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeRunnerClient{challengeErr: errors.New("provider error")}
+	var output bytes.Buffer
+	runner, err := NewRunner(fake, bytes.NewReader(bytes.Repeat([]byte{0x42}, 10)), time.Now, &output)
+	require.NoError(t, err)
+
+	_, err = runner.Start(context.Background(), "+8613712345678")
+	require.EqualError(t, err, "phone onboarding preflight failed at challenge_create")
+	require.Equal(t, []string{"CreateOrganization", "CreateTechnicalUser", "AddOTPSMS", "CreateSMSChallenge", "DeleteOrganization"}, fake.calls)
+	require.Equal(t, "status=failed attempt=", output.String()[:len("status=failed attempt=")])
 }
 
 func TestRunnerAbandonDeletesSessionWithSeparateShortContext(t *testing.T) {
@@ -98,11 +128,11 @@ func TestRunnerAbandonDeletesSessionWithSeparateShortContext(t *testing.T) {
 	var output bytes.Buffer
 	runner, err := NewRunner(fake, bytes.NewReader(bytes.Repeat([]byte{0x42}, 10)), time.Now, &output)
 	require.NoError(t, err)
-	attempt := &Attempt{SessionID: "session-1", sessionToken: "created-token", id: "01JTEST"}
+	attempt := &Attempt{OrganizationID: "org-1", SessionID: "session-1", sessionToken: "created-token", id: "01JTEST"}
 
 	err = runner.Abandon(attempt)
 	require.Error(t, err)
-	require.Equal(t, []string{"DeleteSession"}, fake.calls)
+	require.Equal(t, []string{"DeleteSession", "DeleteOrganization"}, fake.calls)
 	require.True(t, fake.deleteDeadlineSet)
 	require.WithinDuration(t, time.Now().Add(cleanupTimeout), fake.deleteDeadline, 2*time.Second)
 	require.Empty(t, fake.deleteContextErr)
@@ -134,16 +164,18 @@ func TestRunnerPreservesSafeHTTPStatusInFailure(t *testing.T) {
 }
 
 type fakeRunnerClient struct {
-	calls             []string
-	organizationName  string
-	user              TechnicalUserInput
-	proof             SessionProof
-	getSessionToken   string
-	deleteErr         error
-	deleteDeadlineSet bool
-	deleteDeadline    time.Time
-	deleteContextErr  error
-	organizationErr   error
+	calls                 []string
+	organizationName      string
+	user                  TechnicalUserInput
+	proof                 SessionProof
+	getSessionToken       string
+	deleteErr             error
+	deleteDeadlineSet     bool
+	deleteDeadline        time.Time
+	deleteContextErr      error
+	organizationErr       error
+	organizationDeleteErr error
+	challengeErr          error
 }
 
 func (f *fakeRunnerClient) CreateOrganization(_ context.Context, name string) (string, error) {
@@ -168,6 +200,9 @@ func (f *fakeRunnerClient) AddOTPSMS(_ context.Context, _ string) error {
 
 func (f *fakeRunnerClient) CreateSMSChallenge(_ context.Context, _ string, lifetime time.Duration) (SessionMaterial, error) {
 	f.calls = append(f.calls, "CreateSMSChallenge")
+	if f.challengeErr != nil {
+		return SessionMaterial{}, f.challengeErr
+	}
 	if lifetime != 5*time.Minute {
 		return SessionMaterial{}, errors.New("wrong lifetime")
 	}
@@ -199,4 +234,12 @@ func (f *fakeRunnerClient) DeleteSession(ctx context.Context, sessionID string) 
 		return errors.New("wrong session")
 	}
 	return f.deleteErr
+}
+
+func (f *fakeRunnerClient) DeleteOrganization(_ context.Context, organizationID string) error {
+	f.calls = append(f.calls, "DeleteOrganization")
+	if organizationID != "org-1" {
+		return errors.New("wrong organization")
+	}
+	return f.organizationDeleteErr
 }
