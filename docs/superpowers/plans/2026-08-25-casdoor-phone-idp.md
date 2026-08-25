@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deploy a locked-down self-hosted Casdoor phone-code IdP at `id.shuomiai.com` and federate it to ZITADEL without phone leakage, account takeover, or default ListingKit grants.
+**Goal:** Deliver a staging-only, locked-down Casdoor phone-code IdP and its ZITADEL federation contract without phone leakage, account takeover, or default ListingKit grants.
 
 **Architecture:** Native Kustomize manifests run Casdoor v3.143.0 in `casdoor`, using a logically isolated `casdoor` database and `casdoor_app` role on the existing private `platform-data/shared-postgresql` service. Casdoor authenticates phone users upstream; ZITADEL Generic OIDC plus one External Authentication action creates the final ZITADEL user and remains the only ListingKit issuer/role authority.
 
@@ -14,9 +14,12 @@
 
 - Use native manifests, not the current Casdoor Helm chart: PostgreSQL rendering has a documented regression in recent chart versions.
 - Pin the staging-verified Casdoor v3.143.0 image digest; never use `latest`.
-- Use only Secret Manager key `task-processor/prod/casdoor-phone-idp`; do not reuse `listingkit-tencent-sms-secret` or its signing key.
+- Use only the staging Secret Manager key `task-processor/staging/casdoor-phone-idp`; do not reuse `listingkit-tencent-sms-secret` or its signing key.
 - Casdoor gives ListingKit no token, tenant membership, or role. ListingKit consumes the final ZITADEL `sub` only.
 - Password sign-in, password reset, email recovery, unused IdPs, automatic account linking and automatic profile update are disabled.
+- This plan creates no PostgreSQL workload, PVC, database administrator Job, production Ingress, or production DNS record.
+- Creating the `casdoor` database and `casdoor_app` role on `shared-postgresql` is a separate redacted DBA operation and is not automated by these manifests.
+- No Tencent SMS credential or ZITADEL client secret may appear in Git, command output, test fixtures, or evidence.
 
 ---
 
@@ -26,12 +29,11 @@
 - Create: `deployments/kubernetes/casdoor/base/namespace.yaml`
 - Create: `deployments/kubernetes/casdoor/base/{configmap,deployment,service,ingress,kustomization}.yaml`
 - Create: `deployments/kubernetes/casdoor/overlays/staging/{kustomization,patch-config,patch-ingress,external-secret}.yaml`
-- Create: `deployments/kubernetes/casdoor/overlays/prod/{kustomization,patch-config,patch-ingress,external-secret}.yaml`
 - Create: `scripts/tests/casdoor-kustomize-test.sh`
 
 **Interfaces:**
 - Consumes: Secret keys `CASDOOR_POSTGRES_PASSWORD`, `CASDOOR_TENCENT_SECRET_ID`, `CASDOOR_TENCENT_SECRET_KEY`, `CASDOOR_TENCENT_SMS_APP_ID`, `CASDOOR_TENCENT_SMS_SIGN_NAME`, `CASDOOR_TENCENT_SMS_TEMPLATE_ID`, and `CASDOOR_OIDC_CLIENT_SECRET`.
-- Produces: public HTTPS Casdoor service on port 8000 and one Casdoor-only Kubernetes Secret. It does not create a PostgreSQL workload, PVC, or public database service.
+- Produces: public HTTPS staging Casdoor service on port 8000 and one Casdoor-only Kubernetes Secret. It does not create a PostgreSQL workload, PVC, database administrator Job, or public database service.
 
 - [ ] **Step 1: Write the failing render test.**
 
@@ -80,9 +82,9 @@ Attach `casdoor-auth-rate-limit@kubernetescrd` to the ingress. Casdoor's separat
 
 - [ ] **Step 5: Run render tests and commit the infrastructure slice.**
 
-Run: `bash scripts/tests/casdoor-kustomize-test.sh; kustomize build deployments/kubernetes/casdoor/overlays/prod >/dev/null`
+Run: `bash scripts/tests/casdoor-kustomize-test.sh`
 
-Expected: PASS; no latest tag, no SQLite, no ListingKit secret.
+Expected: PASS; no latest tag, no SQLite, no ListingKit secret, no PostgreSQL workload, and no production host.
 
 ```powershell
 git add deployments/kubernetes/casdoor scripts/tests/casdoor-kustomize-test.sh
@@ -213,40 +215,41 @@ git add deployments/kubernetes/casdoor/zitadel-actions/map-casdoor-phone-identit
 git commit -m "feat: define Casdoor phone identity federation"
 ```
 
-### Task 4: Production gated acceptance
+### Task 4: Staging acceptance evidence
 
 **Files:**
 - Modify: `docs/operations/casdoor-phone-idp-runbook.md`
 - Modify: `docs/operations/zitadel-casdoor-phone-federation-runbook.md`
 
 **Interfaces:**
-- Consumes: green Tasks 1-3, ZITADEL v4.17.1, approved DNS and explicit production authorization.
-- Produces: phone login availability and optional SMS OTP enrollment; MFA is not forced globally.
+- Consumes: green Tasks 1-3, ZITADEL v4.17.1, a staging DNS/TLS entry, a non-production phone, and explicit staging deployment authorization.
+- Produces: redacted staging evidence for phone login, no automatic linking, no default ListingKit grant, and optional SMS OTP enrollment; MFA is not forced globally.
 
-- [ ] **Step 1: Add the production checklist.**
+- [ ] **Step 1: Add the staging checklist.**
 
 ```markdown
 - [ ] ZITADEL core and Login V2 are v4.17.1 and healthy.
-- [ ] Casdoor backup restore, phone-code limits, OIDC claims, no-link and no-grant tests are recorded.
-- [ ] DNS, TLS, ExternalSecret and Ingress readiness are verified without Secret values.
+- [ ] The shared PostgreSQL `casdoor` database and least-privilege `casdoor_app` role were created by the separately authorized DBA operation.
+- [ ] Casdoor phone-code limits, OIDC claims, no-link and no-grant tests are recorded without a phone number or code.
+- [ ] Staging DNS, TLS, ExternalSecret and Ingress readiness are verified without Secret values.
 - [ ] Generic OIDC linking/update are disabled; OTP SMS is permitted but not globally required.
 ```
 
-- [ ] **Step 2: Apply only after authorization, then validate before IdP activation.**
+- [ ] **Step 2: Apply staging only after authorization, then validate before IdP activation.**
 
-Run: `kustomize build deployments/kubernetes/casdoor/overlays/prod | kubectl apply -f -; kubectl -n casdoor rollout status deployment/casdoor --timeout=10m`
+Run: `kustomize build deployments/kubernetes/casdoor/overlays/staging | kubectl apply -f -; kubectl -n casdoor rollout status deployment/casdoor --timeout=10m`
 
-Expected: Casdoor is healthy; stop on failed readiness, ExternalSecret or preflight.
+Expected: Casdoor is healthy; stop on failed readiness, ExternalSecret or preflight. Do not apply this command to a production overlay.
 
-- [ ] **Step 3: Execute a disposable real-device acceptance.**
+- [ ] **Step 3: Execute a disposable staging-phone acceptance.**
 
 ```markdown
-Register one disposable phone identity. Verify its final ZITADEL token is denied ListingKit access with no role. Grant one existing allowed role through member management, verify only the intended tenant becomes accessible, record redacted evidence, then remove the disposable user through normal identity administration.
+Register one disposable staging phone identity. Verify its final ZITADEL token is denied ListingKit access with no role. Grant one existing allowed role through member management, verify only the intended tenant becomes accessible, record redacted evidence, then remove the disposable user through normal identity administration.
 ```
 
-- [ ] **Step 4: Commit final acceptance documentation.**
+- [ ] **Step 4: Commit staging acceptance documentation.**
 
 ```powershell
 git add docs/operations/casdoor-phone-idp-runbook.md docs/operations/zitadel-casdoor-phone-federation-runbook.md
-git commit -m "docs: add phone identity production acceptance checklist"
+git commit -m "docs: add phone identity staging acceptance checklist"
 ```
