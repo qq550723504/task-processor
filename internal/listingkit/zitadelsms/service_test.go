@@ -55,6 +55,45 @@ func TestDeliverRejectsFutureSignatureWithoutCallingTencent(t *testing.T) {
 	require.Empty(t, sender.messages)
 }
 
+func TestDeliverMapsEveryApprovedEventToTencent(t *testing.T) {
+	for _, eventType := range []string{
+		"user.human.phone.code.added",
+		"user.human.initialization.code.added",
+		"user.human.mfa.otp.sms.code.added",
+		"session.otp.sms.challenged",
+	} {
+		t.Run(eventType, func(t *testing.T) {
+			sender := &senderStub{}
+			service := newTestSMSService(t, sender)
+			body := validZitadelSMSPayload(t, "+8613800138000", "123456", eventType)
+
+			err := service.Deliver(context.Background(), body, signedHeader(t, body, time.Now()))
+
+			require.NoError(t, err)
+			require.Len(t, sender.messages, 1)
+		})
+	}
+}
+
+func TestDeliverRejectsNearMatchOTPSMSEventsWithoutSending(t *testing.T) {
+	for _, eventType := range []string{
+		"user.human.mfa.otp.sms.code.sent",
+		"session.otp.sms.checked",
+		"user.human.mfa.otp.sms.code.added.extra",
+	} {
+		t.Run(eventType, func(t *testing.T) {
+			sender := &senderStub{}
+			service := newTestSMSService(t, sender)
+			body := validZitadelSMSPayload(t, "+8613800138000", "123456", eventType)
+
+			err := service.Deliver(context.Background(), body, signedHeader(t, body, time.Now()))
+
+			require.ErrorIs(t, err, ErrInvalidPayload)
+			require.Empty(t, sender.messages)
+		})
+	}
+}
+
 func TestDeliverMapsVerifiedPayloadToConfiguredTencentTemplate(t *testing.T) {
 	sender := &senderStub{}
 	service := newTestSMSService(t, sender)
