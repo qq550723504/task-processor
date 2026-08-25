@@ -15,8 +15,6 @@ import (
 	"time"
 
 	"task-processor/internal/listingkit/phoneonboardingpreflight"
-
-	"golang.org/x/term"
 )
 
 const preflightTimeout = 5 * time.Minute
@@ -100,15 +98,23 @@ func readSecret(prompt string, input *os.File, output io.Writer) (string, error)
 	if _, err := fmt.Fprint(output, prompt); err != nil {
 		return "", err
 	}
-	secretInput, closeInput, err := openSecretInput(input)
-	if err != nil {
-		return "", errors.New("secure input failed")
+	var value []byte
+	var one [1]byte
+	for {
+		n, err := input.Read(one[:])
+		if n > 0 {
+			if one[0] == '\n' {
+				break
+			}
+			value = append(value, one[0])
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) && len(value) > 0 {
+				break
+			}
+			return "", errors.New("secure input failed")
+		}
 	}
-	defer closeInput()
-	value, err := term.ReadPassword(int(secretInput.Fd()))
 	_, _ = fmt.Fprintln(output)
-	if err != nil {
-		return "", errors.New("secure input failed")
-	}
 	return strings.TrimSpace(string(value)), nil
 }
