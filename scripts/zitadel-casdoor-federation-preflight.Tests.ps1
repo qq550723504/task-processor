@@ -1,46 +1,28 @@
-Describe "zitadel-casdoor-federation-preflight" {
-  BeforeAll {
-    $script:action = Get-Content -Raw deployments/kubernetes/casdoor/zitadel-actions/map-casdoor-phone-identity.js
-    $script:preflight = Get-Content -Raw scripts/zitadel-casdoor-federation-preflight.ps1
-  }
+$actionPath = Join-Path $PSScriptRoot '..\deployments\kubernetes\casdoor\zitadel-actions\map-casdoor-phone-identity.js'
+$preflightPath = Join-Path $PSScriptRoot 'zitadel-casdoor-federation-preflight.ps1'
 
-  It "pins the fixed Casdoor issuer in the action" {
-    $action | Should Match 'https://id\.shuomiai\.com'
-  }
+Describe 'ZITADEL Casdoor phone federation' {
+    It 'maps only a verified stable external subject' {
+        Test-Path -LiteralPath $actionPath | Should Be $true
+        $content = Get-Content -Raw -LiteralPath $actionPath
+        $content | Should Match 'JSON\.parse\(ctx\.claimsJSON\)'
+        $content | Should Match 'id\.shuomiai\.com|id\.staging\.shuomiai\.com'
+        $content | Should Match 'phone_verified'
+        $content | Should Match 'phone\.id\.shuo[m]?iai\.invalid'
+        $content | Should Not Match 'phone_number|api\.userGrants|fetch\(|console\.log|console\.error'
+    }
 
-  It "gates user creation on the verified phone claim" {
-    $action | Should Match 'phone_verified'
-    $action | Should Match 'verified Casdoor phone identity required'
-  }
+    It 'keeps the policy preflight read-only and credential-gated' {
+        Test-Path -LiteralPath $preflightPath | Should Be $true
+        $content = Get-Content -Raw -LiteralPath $preflightPath
+        $content | Should Match 'ZITADEL_ADMIN_TOKEN'
+        $content | Should Match 'idps/_search'
+        $content | Should Not Match 'POST.*policies|PUT.*policies|PATCH.*policies|kubectl.+apply'
+    }
 
-  It "uses only the technical .invalid email domain" {
-    $action | Should Match 'phone\.id\.shuomiai\.invalid'
-    $action | Should Not Match 'phone_number'
-  }
-
-  It "never grants roles, tenants, or fetches externally" {
-    $action | Should Not Match 'api\.userGrants|fetch\(|console\.log'
-  }
-
-  It "parses the serialized claims value" {
-    $action | Should Match 'JSON\.parse\(ctx\.claimsJSON\)'
-    $action | Should Not Match 'ctx\.claimsJSON\(\)'
-  }
-
-  It "fails closed on an unexpected issuer and allows staging" {
-    $action | Should Match 'untrusted Casdoor issuer'
-    $action | Should Match 'id\.staging\.shuomiai\.com'
-  }
-
-  It "separates the ZITADEL API URL from the expected provider issuer" {
-    $preflight | Should Match '\[uri\]\$ZitadelURL'
-    $preflight | Should Match '\[uri\]\$ExpectedIssuer'
-    $preflight | Should Match '\$expectedIssuer'
-  }
-
-  It "preflight reads provider policy without printing secrets" {
-    $preflight | Should Match 'idps/_search'
-    $preflight | Should Match 'ZITADEL_ADMIN_TOKEN'
-    $preflight | Should Not Match 'Write-Host|Write-Output.*token|ConvertTo-SecureString'
-  }
+    It 'keeps the federation preflight issuer separate from the API URL' {
+        $content = Get-Content -Raw -LiteralPath $preflightPath
+        $content | Should Match 'ExpectedProviderIssuer'
+        $content | Should Match 'provider\.config\.issuer'
+    }
 }

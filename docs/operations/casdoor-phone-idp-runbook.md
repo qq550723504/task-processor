@@ -1,77 +1,81 @@
-# Casdoor Phone IdP Runbook
+# Casdoor Phone IdP Staging Runbook
 
-Operate the self-hosted Casdoor phone-code identity provider at
-`id.shuomiai.com` (staging: `id.staging.shuomiai.com`). Casdoor authenticates
-phone users upstream; ZITADEL remains the only ListingKit issuer/role authority.
+This runbook is for staging only. It does not authorize a cluster apply,
+database administration, DNS changes, or ZITADEL policy changes.
 
-## Staging console configuration
+## Preconditions
 
-Application name is `listingkit-phone-idp`; it has exactly the ZITADEL callback
-URI, authorization-code grant and required PKCE. Enable only phone
-verification-code signup/signin. Disable password, password reset and email
-recovery. Emit `https://shuomiai.com/claims/phone_verified=true` only after
-phone verification.
+- ZITADEL core and Login V2 are healthy at v4.17.1.
+- A DBA has created database `casdoor` and role `casdoor_app` on the private
+  `platform-data/shared-postgresql` service. The role has access only to that
+  database. Do not put the shared PostgreSQL administrator password in this
+  repository or command output.
+- Secret Manager key `task-processor/staging/casdoor-phone-idp` contains the
+  Casdoor database password, Tencent SMS settings, and the OIDC client secret.
+  The ExternalSecret must be ready before the Casdoor Pod starts.
+- `id.staging.shuomiai.com` is reserved for staging and is not a production
+  login domain.
 
-## Preflight
+## Render and apply gate
 
-Read-only discovery check (no credentials, no Secret output):
+Run the local checks first:
 
-```bash
-./scripts/casdoor-phone-idp-preflight.ps1 -IssuerURL https://id.staging.shuomiai.com
+```powershell
+pwsh -NoProfile -File scripts/tests/casdoor-kustomize-test.ps1
+kubectl kustomize deployments/kubernetes/casdoor/overlays/staging | Out-Null
 ```
 
-Expected: issuer, authorization endpoint and JWKS URI are HTTPS and match the
-staging domain.
+Only after separate staging deployment authorization, apply the rendered
+manifests and wait for readiness:
 
-## Black-box acceptance matrix
-
-Using a non-production phone, prove new registration, repeat login, resend
-cooldown, five incorrect codes causing temporary lockout, expired-code
-rejection, and equivalent error responses for known and unknown numbers.
-Record no number or code.
-
-## Rotating the database password
-
-`POSTGRES_PASSWORD` only seeds the `casdoor` role when its volume is empty, so
-an hourly ExternalSecret refresh never updates the persisted role. Never rotate
-`CASDOOR_POSTGRES_PASSWORD` by changing the secret manager value alone; use
-this coordinated procedure:
-
-1. Scale the `casdoor` deployment to zero so no pod renders with mismatched
-   credentials: `kubectl -n casdoor scale deployment/casdoor --replicas=0`.
-2. Update the persisted role using the still-valid current password:
-   `kubectl -n casdoor exec casdoor-postgres-0 -- psql -U casdoor -c "ALTER ROLE casdoor WITH PASSWORD '<new>'"`.
-3. Change `CASDOOR_POSTGRES_PASSWORD` in the secret manager and force an
-   ExternalSecret sync; verify the Kubernetes Secret carries the new value.
-4. Restore serving: `kubectl -n casdoor scale deployment/casdoor --replicas=1`
-   and confirm readiness plus one successful phone login.
-
-## Production gated acceptance
-
-Apply only after explicit production authorization, with ZITADEL core and
-Login V2 on v4.17.1:
-
-- [ ] ZITADEL core and Login V2 are v4.17.1 and healthy.
-- [ ] Casdoor backup restore, phone-code limits, OIDC claims, no-link and no-grant tests are recorded.
-- [ ] The prod overlay pins `casbin/casdoor` to the exact digest accepted in staging before rendering; the applied manifests reference the digest, never a mutable tag.
-- [ ] DNS, TLS, ExternalSecret and Ingress readiness are verified without Secret values.
-- [ ] Generic OIDC linking/update are disabled; OTP SMS is permitted but not globally required.
-
-Pin the production image to the staging-verified immutable digest, then render
-and apply. Stop if the digest was never recorded from staging acceptance:
-
-```bash
-cd deployments/kubernetes/casdoor/overlays/prod
-kustomize edit set image casbin/casdoor=casbin/casdoor@sha256:<staging-verified-digest>
-kustomize build . | grep 'image: casbin/casdoor@'   # confirm no mutable tag remains
-kustomize build . | kubectl apply -f -
+```powershell
+kubectl kustomize deployments/kubernetes/casdoor/overlays/staging | kubectl apply -f -
 kubectl -n casdoor rollout status deployment/casdoor --timeout=10m
-cd - >/dev/null
+kubectl -n casdoor get externalsecret,secret,service,ingress
 ```
 
-Stop on failed readiness, ExternalSecret or preflight. Then execute a
-disposable real-device acceptance: register one disposable phone identity,
-verify its final ZITADEL token is denied ListingKit access with no role, grant
-one existing allowed role through member management, verify only the intended
-tenant becomes accessible, record redacted evidence, then remove the
-disposable user through normal identity administration.
+The last command may show resource names and readiness only; never print Secret
+data.
+
+## Initial administration
+
+Before adding DNS or allowing external users, use a private port-forward to
+open the Casdoor console and replace the built-in demo administrator password.
+Do not expose a fresh Casdoor installation with its demo credential. Confirm
+the console can be reached and the password was changed, then close the
+port-forward.
+
+In the Casdoor console:
+
+1. Add a Tencent Cloud SMS provider with the staging credentials from Secret
+   Manager. Configure the approved SMS template and test only with a disposable
+   staging phone. Do not record the phone number, code, SecretId, or SecretKey.
+2. Create the OIDC application `listingkit-phone-idp`.
+3. Use authorization code flow, enable PKCE, and set the redirect URI to the
+   exact ZITADEL Generic OIDC callback URL copied from the ZITADEL console.
+4. Enable only verification-code sign-in/sign-up. Disable password sign-in,
+   password reset, email recovery, and unused providers.
+5. Record only the application ID and non-secret endpoint metadata needed by
+   the next ZITADEL configuration step. Store the client secret only in the
+   staging Secret Manager entry.
+
+Casdoor's OIDC discovery and JWKS are checked without credentials:
+
+```powershell
+pwsh -NoProfile -File scripts/casdoor-phone-idp-preflight.ps1 `
+  -IssuerURL https://id.staging.shuomiai.com
+```
+
+Expected output contains only the issuer, authorization endpoint, JWKS URI,
+and key count.
+
+## Abuse-control acceptance
+
+Using one disposable staging phone, record only pass/fail and timestamps:
+
+- first registration and repeat login succeed after a valid code;
+- resend cooldown blocks immediate repeats;
+- expired codes fail;
+- five incorrect codes trigger temporary lockout;
+- known and unknown numbers have equivalent error responses;
+- no phone number or verification code appears in logs or evidence.

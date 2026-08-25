@@ -2,19 +2,49 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: casdoor-config
+  namespace: casdoor
 data:
-  # Static configuration mounted read-only by the casdoor container. The
-  # PostgreSQL password is supplied to the driver via the PGPASSWORD
-  # environment variable from casdoor-phone-idp-secret; it never appears in
-  # this manifest.
-  app.conf: |
+  app.conf.template: |-
     appname = casdoor
     httpport = 8000
     runmode = prod
     copyrequestbody = true
     driverName = postgres
-    dataSourceName = "user=casdoor host=casdoor-postgres.casdoor.svc.cluster.local port=5432 sslmode=disable dbname=casdoor"
-    dbName =
-    showInfo = false
-    origin = http://casdoor.base.invalid
+    dataSourceName = __CASDOOR_DATASOURCE_NAME__
+    dbName = casdoor
+    tableNamePrefix =
+    showSql = false
+    redisEndpoint =
+    defaultStorageProvider =
+    isCloudIntranet = false
+    authState = "casdoor"
+    socks5Proxy = ""
+    verificationCodeTimeout = 10
+    initScore = 0
+    logPostOnly = true
+    isUsernameLowered = false
+    origin = "https://id.invalid"
+    originFrontend = "https://id.invalid"
+    staticBaseUrl = "https://cdn.casbin.org"
+    isDemoMode = false
+    batchSize = 100
+    showGithubCorner = false
+    forceLanguage = ""
+    defaultLanguage = "en"
+    aiAssistantUrl = ""
+    defaultApplication = "app-built-in"
+    maxItemsForFlatMenu = 7
+    enableErrorMask = true
     enableGzip = true
+    inactiveTimeoutMinutes = 30
+    ldapServerPort = 389
+    ldapsCertId = ""
+    ldapsServerPort = 636
+    radiusServerPort = 1812
+    radiusDefaultOrganization = "built-in"
+    radiusSecret = ""
+    quota = {"organization": -1, "user": -1, "application": -1, "provider": -1}
+    logConfig = {"adapter":"console"}
+    initDataNewOnly = true
+    initDataFile = "/conf/init_data.json"
+    frontendBaseDir = "../cc_0"

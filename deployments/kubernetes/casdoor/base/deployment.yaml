@@ -2,29 +2,55 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: casdoor
+  namespace: casdoor
+  labels:
+    app.kubernetes.io/name: casdoor
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
-      app: casdoor
+      app.kubernetes.io/name: casdoor
   template:
     metadata:
       labels:
-        app: casdoor
+        app.kubernetes.io/name: casdoor
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: render-config
+          image: busybox:1.36.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              while IFS= read -r line; do
+                if [ "$line" = "dataSourceName = __CASDOOR_DATASOURCE_NAME__" ]; then
+                  printf '%s\n' "dataSourceName = user=casdoor_app host=shared-postgresql.platform-data.svc.cluster.local port=5432 sslmode=disable dbname=casdoor"
+                else
+                  printf '%s\n' "$line"
+                fi
+              done < /templates/app.conf.template > /conf/app.conf
+              printf '%s\n' '{}' > /conf/init_data.json
+          volumeMounts:
+            - name: config-template
+              mountPath: /templates
+              readOnly: true
+            - name: generated-config
+              mountPath: /conf
       containers:
         - name: casdoor
-          image: casbin/casdoor:v3.143.0
-          ports:
-            - name: http
-              containerPort: 8000
+          image: casbin/casdoor:3.143.0@sha256:1284af680ddf10aa80569f1f4a46210dd9875ce70845e67047053363d0c0ba58
+          imagePullPolicy: IfNotPresent
           env:
-            # dataSourceName in app.conf intentionally carries no password.
-            # The PostgreSQL driver falls back to the standard PGPASSWORD
-            # environment variable, so arbitrary Secret values (spaces,
-            # quotes, backslashes) never need escaping into the rendered
-            # configuration and the password never appears in a ConfigMap,
-            # image, or log line.
+            - name: RUNNING_IN_DOCKER
+              value: "true"
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
@@ -33,17 +59,43 @@ spec:
           envFrom:
             - secretRef:
                 name: casdoor-phone-idp-secret
-          volumeMounts:
-            - name: conf
-              mountPath: /conf
-              readOnly: true
+          ports:
+            - name: http
+              containerPort: 8000
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /
               port: http
-            initialDelaySeconds: 15
+            initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: generated-config
+              mountPath: /conf
+              readOnly: true
       volumes:
-        - name: conf
+        - name: config-template
           configMap:
             name: casdoor-config
+        - name: generated-config
+          emptyDir: {}

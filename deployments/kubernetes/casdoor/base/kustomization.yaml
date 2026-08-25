@@ -1,21 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+namespace: casdoor
+
 resources:
   - namespace.yaml
   - configmap.yaml
-  - postgres-statefulset.yaml
-  - postgres-service.yaml
   - deployment.yaml
   - service.yaml
   - rate-limit-middleware.yaml
   - ingress.yaml
   - ingress-otp.yaml
-
-images:
-  # Production MUST pin the staging-verified digest via
-  # `kustomize edit set image casbin/casdoor=casbin/casdoor@sha256:<digest>`
-  # before rendering/applying the prod overlay (see the Casdoor phone IdP
-  # runbook). This base entry only sets a mutable default for staging.
-  - name: casbin/casdoor
-    newTag: v3.143.0
