@@ -1,12 +1,15 @@
+# Strict rate limiting is scoped to the OTP endpoints only. Traefik gives the
+# longer paths priority over the catch-all "/" router in ingress.yaml, so OTP
+# requests hit this limiter while normal Casdoor traffic keeps the looser one.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: casdoor
+  name: casdoor-otp
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     ingress.kubernetes.io/ssl-redirect: "true"
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
-    traefik.ingress.kubernetes.io/router.middlewares: casdoor-web-rate-limit@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: casdoor-auth-rate-limit@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:
@@ -14,7 +17,14 @@ spec:
     - host: casdoor.base.invalid
       http:
         paths:
-          - path: /
+          - path: /api/send-verification-code
+            pathType: Prefix
+            backend:
+              service:
+                name: casdoor
+                port:
+                  name: http
+          - path: /api/login
             pathType: Prefix
             backend:
               service:

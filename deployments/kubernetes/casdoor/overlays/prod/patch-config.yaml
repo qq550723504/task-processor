@@ -3,15 +3,15 @@ kind: ConfigMap
 metadata:
   name: casdoor-config
 data:
-  # Password placeholder is rendered from casdoor-phone-idp-secret by the
-  # init container; it never appears in this manifest.
+  # Password is supplied via PGPASSWORD from casdoor-phone-idp-secret;
+  # it never appears in this manifest.
   app.conf: |
     appname = casdoor
     httpport = 8000
     runmode = prod
     copyrequestbody = true
     driverName = postgres
-    dataSourceName = "user=casdoor password=${CASDOOR_POSTGRES_PASSWORD} host=casdoor-postgres.casdoor.svc.cluster.local port=5432 sslmode=disable dbname=casdoor"
+    dataSourceName = "user=casdoor host=casdoor-postgres.casdoor.svc.cluster.local port=5432 sslmode=disable dbname=casdoor"
     dbName =
     showInfo = false
     origin = https://id.shuomiai.com

@@ -10,8 +10,12 @@ resources:
   - service.yaml
   - rate-limit-middleware.yaml
   - ingress.yaml
+  - ingress-otp.yaml
 
 images:
-  # Digest pinning happens in overlays after staging verification.
+  # Production MUST pin the staging-verified digest via
+  # `kustomize edit set image casbin/casdoor=casbin/casdoor@sha256:<digest>`
+  # before rendering/applying the prod overlay (see the Casdoor phone IdP
+  # runbook). This base entry only sets a mutable default for staging.
   - name: casbin/casdoor
     newTag: v3.143.0

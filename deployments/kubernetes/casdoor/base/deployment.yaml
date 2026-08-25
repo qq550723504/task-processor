@@ -18,47 +18,32 @@ spec:
           ports:
             - name: http
               containerPort: 8000
+          env:
+            # dataSourceName in app.conf intentionally carries no password.
+            # The PostgreSQL driver falls back to the standard PGPASSWORD
+            # environment variable, so arbitrary Secret values (spaces,
+            # quotes, backslashes) never need escaping into the rendered
+            # configuration and the password never appears in a ConfigMap,
+            # image, or log line.
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: casdoor-phone-idp-secret
+                  key: CASDOOR_POSTGRES_PASSWORD
           envFrom:
             - secretRef:
                 name: casdoor-phone-idp-secret
           volumeMounts:
-            - name: conf-rendered
+            - name: conf
               mountPath: /conf
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /api/health
               port: http
             initialDelaySeconds: 15
             periodSeconds: 10
-      initContainers:
-        # Render app.conf so the database password stays in the Secret and is
-        # never written to the ConfigMap or the image.
-        - name: render-config
-          image: alpine:3.20
-          command:
-            - sh
-            - -c
-            - |
-              awk '
-                {
-                  pw = ENVIRON["CASDOOR_POSTGRES_PASSWORD"]
-                  esc = pw
-                  gsub(/&/, "\\\\&", esc)
-                  gsub(/\$\{CASDOOR_POSTGRES_PASSWORD\}/, esc)
-                  print
-                }
-              ' /template/app.conf > /conf/app.conf
-          envFrom:
-            - secretRef:
-                name: casdoor-phone-idp-secret
-          volumeMounts:
-            - name: config-template
-              mountPath: /template
-            - name: conf-rendered
-              mountPath: /conf
       volumes:
-        - name: config-template
+        - name: conf
           configMap:
             name: casdoor-config
-        - name: conf-rendered
-          emptyDir: {}

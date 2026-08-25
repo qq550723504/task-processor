@@ -64,6 +64,22 @@ func TestZitadelSMSWebhookRejectsTooLargeBody(t *testing.T) {
 	require.Zero(t, sender.calls)
 }
 
+func TestZitadelSMSWebhookRejectsUnapprovedSignedEventWithBadRequest(t *testing.T) {
+	t.Parallel()
+
+	sender := &zitadelSMSSenderStub{}
+	router := newZitadelSMSWebhookRouter(t, newZitadelSMSService(t, sender))
+	body := []byte(`{"contextInfo":{"recipientPhoneNumber":"+8613800138000","eventType":"user.human.mfa.otp.sms.code.sent"},"templateData":{"text":"Your code"},"args":{"code":"123456"}}`)
+	request := httptest.NewRequest(http.MethodPost, zitadelSMSWebhookPath, strings.NewReader(string(body)))
+	request.Header.Set("ZITADEL-Signature", signedZitadelSMSWebhookHeader(body, "test-signing-key", time.Now()))
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Zero(t, sender.calls)
+}
+
 func TestZitadelSMSWebhookFailsClosedWhenUnconfigured(t *testing.T) {
 	t.Parallel()
 

@@ -19,12 +19,14 @@ grant action.
 ## Read-only policy preflight
 
 ```bash
-./scripts/zitadel-casdoor-federation-preflight.ps1 -IssuerURL https://id.staging.shuomiai.com -ProviderID <provider-id>
+./scripts/zitadel-casdoor-federation-preflight.ps1 -ZitadelURL https://id.staging.shuomiai.com -ExpectedIssuer https://id.staging.shuomiai.com -ProviderID <provider-id>
 ```
 
-Requires `ZITADEL_ADMIN_TOKEN` in the environment. Fails closed on: wrong
-issuer, missing `openid` scope, linking allowed, automatic update allowed, or
-external login disabled.
+`-ZitadelURL` is the ZITADEL Admin API base; `-ExpectedIssuer` must match the
+Casdoor issuer configured for the target environment. Requires
+`ZITADEL_ADMIN_TOKEN` in the environment. Fails closed on: wrong issuer,
+missing `openid` scope, linking allowed, automatic update allowed, or external
+login disabled.
 
 ## Negative cases
 

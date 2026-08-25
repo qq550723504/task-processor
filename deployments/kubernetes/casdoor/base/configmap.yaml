@@ -3,15 +3,17 @@ kind: ConfigMap
 metadata:
   name: casdoor-config
 data:
-  # Template rendered by the casdoor init container. The PostgreSQL password is
-  # never stored here; it is interpolated from the casdoor-phone-idp-secret.
+  # Static configuration mounted read-only by the casdoor container. The
+  # PostgreSQL password is supplied to the driver via the PGPASSWORD
+  # environment variable from casdoor-phone-idp-secret; it never appears in
+  # this manifest.
   app.conf: |
     appname = casdoor
     httpport = 8000
     runmode = prod
     copyrequestbody = true
     driverName = postgres
-    dataSourceName = "user=casdoor password=${CASDOOR_POSTGRES_PASSWORD} host=casdoor-postgres.casdoor.svc.cluster.local port=5432 sslmode=disable dbname=casdoor"
+    dataSourceName = "user=casdoor host=casdoor-postgres.casdoor.svc.cluster.local port=5432 sslmode=disable dbname=casdoor"
     dbName =
     showInfo = false
     origin = http://casdoor.base.invalid
