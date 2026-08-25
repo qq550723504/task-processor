@@ -74,12 +74,16 @@ func (s *Service) Deliver(ctx context.Context, body []byte, signature string) er
 		return ErrInvalidPayload
 	}
 
+	params := []string{payload.Args.OTP}
+	if expiryMinutes := expiryMinutes(payload.Args.Expiry); expiryMinutes != "" {
+		params = append(params, expiryMinutes)
+	}
 	if err := s.sender.Send(ctx, Message{
 		Phone:      payload.ContextInfo.RecipientPhoneNumber,
 		TemplateID: s.config.TemplateID,
 		SignName:   s.config.SignName,
 		AppID:      s.config.AppID,
-		Params:     []string{payload.Args.OTP},
+		Params:     params,
 	}); err != nil {
 		return ErrDeliveryFailed
 	}
@@ -97,9 +101,26 @@ type zitadelSMSPayload struct {
 	Args struct {
 		// ZITADEL's webhook serializer lowercases only the first character of
 		// the "OTP" argument, so the v4.17.1 wire key is "oTP".
-		OTP  string `json:"oTP"`
-		Code string `json:"code"` // legacy/provider compatibility
+		OTP    string          `json:"oTP"`
+		Code   string          `json:"code"` // legacy/provider compatibility
+		Expiry json.RawMessage `json:"expiry"`
 	} `json:"args"`
+}
+
+func expiryMinutes(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var nanos int64
+	if json.Unmarshal(raw, &nanos) != nil || nanos <= 0 {
+		return ""
+	}
+	const minuteNanos = int64(time.Minute)
+	minutes := (nanos + minuteNanos - 1) / minuteNanos
+	if minutes <= 0 || minutes > 60 {
+		return ""
+	}
+	return strconv.FormatInt(minutes, 10)
 }
 
 func parseZitadelSMSPayload(body []byte) (zitadelSMSPayload, bool) {
