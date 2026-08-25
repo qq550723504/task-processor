@@ -30,3 +30,9 @@ Plain input is accepted only for this temporary preflight CLI; it is not a gener
 - `go mod tidy -diff` showed no direct `golang.org/x/term` requirement, while proposing the seven `x/term` checksum entries restored here.
 - `go list -m all` before restoration reported the missing `golang.org/x/term v0.17.0/go.mod` checksum through the transitive `golang.org/x/crypto` dependency.
 - Restored only the seven root `go.sum` entries; `go.mod` remains without a direct `x/term` requirement.
+
+## Review fix 2: tidy module metadata
+
+- Ran `go mod tidy`; the only changes were the deterministic placement of `github.com/mattn/go-sqlite3 v1.14.22` in the direct require block and ordering of the OpenMeter client line.
+- `go mod tidy -diff` is clean after the correction.
+- `go list -m all` confirms `sqlite3`, OpenMeter, testcontainers, `x/crypto`, and transitive `x/term` module resolution.
