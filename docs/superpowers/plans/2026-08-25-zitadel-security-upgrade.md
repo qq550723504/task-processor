@@ -29,7 +29,7 @@
 - Consumes: current kubeconfig and optional `-Namespace zitadel`, `-TargetVersion v4.17.1`.
 - Produces: JSON with `coreImage`, `loginImage`, readiness, generations, target version, and `upgradeRequired`; no Secret data.
 
-- [ ] **Step 1: Write the failing Pester tests.**
+- [x] **Step 1: Write the failing Pester tests.**
 
 ```powershell
 Describe "zitadel-v4-upgrade-preflight" {
@@ -45,13 +45,13 @@ Describe "zitadel-v4-upgrade-preflight" {
 }
 ```
 
-- [ ] **Step 2: Run the failing test.**
+- [x] **Step 2: Run the failing test.**
 
 Run: `Invoke-Pester scripts/zitadel-v4-upgrade-preflight.Tests.ps1 -Output Detailed`
 
 Expected: FAIL because the script is absent.
 
-- [ ] **Step 3: Implement the smallest read-only report.**
+- [x] **Step 3: Implement the smallest read-only report.**
 
 ```powershell
 [CmdletBinding()] param([string]$Namespace = "zitadel", [string]$TargetVersion = "v4.17.1")
@@ -64,13 +64,13 @@ $core = Get-Snapshot zitadel; $login = Get-Snapshot zitadel-login
 [pscustomobject]@{ coreImage=$core.image; loginImage=$login.image; coreReady=$core.ready; loginReady=$login.ready; coreGeneration=$core.generation; loginGeneration=$login.generation; targetVersion=$TargetVersion; upgradeRequired=(($core.image -notmatch [regex]::Escape($TargetVersion)) -or ($login.image -notmatch [regex]::Escape($TargetVersion))) } | ConvertTo-Json -Compress
 ```
 
-- [ ] **Step 4: Verify focused tests and a sanitized baseline.**
+- [x] **Step 4: Verify focused tests and a sanitized baseline.**
 
 Run: `Invoke-Pester scripts/zitadel-v4-upgrade-preflight.Tests.ps1 -Output Detailed; ./scripts/zitadel-v4-upgrade-preflight.ps1`
 
 Expected: PASS; JSON contains image/health metadata only.
 
-- [ ] **Step 5: Commit the preflight.**
+- [x] **Step 5: Commit the preflight.**
 
 ```powershell
 git add scripts/zitadel-v4-upgrade-preflight.ps1 scripts/zitadel-v4-upgrade-preflight.Tests.ps1
@@ -87,17 +87,17 @@ git commit -m "ops: add ZITADEL upgrade preflight"
 - Consumes: Task 1 report, backup identifier, restore-rehearsal evidence, and a separately approved change window.
 - Produces: v4.17.1 core/login deployments plus recorded health and legacy login regression evidence.
 
-- [ ] **Step 1: Write the runbook acceptance checklist before update commands.**
+- [x] **Step 1: Write the runbook acceptance checklist before update commands.**
 
 ```markdown
-- [ ] Database backup identifier and isolated restore rehearsal timestamp are recorded without credentials.
-- [ ] `zitadel` and `zitadel-login` are Ready on v4.17.1.
-- [ ] `https://auth.shuomiai.com/.well-known/openid-configuration` returns 200.
-- [ ] Incognito email/password and ListingKit callback login both work.
-- [ ] OTP SMS and Generic OIDC remain disabled.
+- [x] Database backup identifier and isolated restore rehearsal timestamp are recorded without credentials.
+- [x] `zitadel` and `zitadel-login` are Ready on v4.17.1.
+- [x] `https://auth.shuomiai.com/.well-known/openid-configuration` returns 200.
+- [x] Incognito email/password and ListingKit callback login both work.
+- [x] OTP SMS and Generic OIDC remain disabled.
 ```
 
-- [ ] **Step 2: Add this exact approved-change sequence.**
+- [x] **Step 2: Add this exact approved-change sequence.**
 
 ```bash
 kubectl -n zitadel set image deployment/zitadel zitadel=ghcr.io/zitadel/zitadel:v4.17.1
@@ -107,19 +107,19 @@ kubectl -n zitadel rollout status deployment/zitadel-login --timeout=10m
 curl --fail --silent --show-error https://auth.shuomiai.com/.well-known/openid-configuration >/dev/null
 ```
 
-- [ ] **Step 3: State the failure boundary.**
+- [x] **Step 3: State the failure boundary.**
 
 ```markdown
 If a rollout fails, stop feature activation. Do not downgrade a migrated ZITADEL database in place. Restore the rehearsed backup into the isolated recovery target, validate there, and obtain a new approval before moving production traffic.
 ```
 
-- [ ] **Step 4: Validate the runbook and preflight.**
+- [x] **Step 4: Validate the runbook and preflight.**
 
 Run: `rg -n 'v4.17.1|restore rehearsal|Do not downgrade' docs/operations/zitadel-v4-security-upgrade-runbook.md; ./scripts/zitadel-v4-upgrade-preflight.ps1`
 
 Expected: all three safeguards are documented; the preflight remains read-only.
 
-- [ ] **Step 5: Commit the runbook.**
+- [x] **Step 5: Commit the runbook.**
 
 ```powershell
 git add docs/operations/zitadel-v4-security-upgrade-runbook.md deployments/kubernetes/zitadel/local/README.md

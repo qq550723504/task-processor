@@ -29,7 +29,7 @@
 - Consumes: `Service.Deliver(context.Context, []byte, string)` and `validZitadelSMSPayload`.
 - Produces: a four-value explicit event allowlist used by `parseZitadelSMSPayload`.
 
-- [ ] **Step 1: Add a failing test for every approved event.**
+- [x] **Step 1: Add a failing test for every approved event.**
 
 ```go
 func TestDeliverMapsEveryApprovedEventToTencent(t *testing.T) {
@@ -49,7 +49,7 @@ func TestDeliverMapsEveryApprovedEventToTencent(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Add near-match rejection cases and run them.**
+- [x] **Step 2: Add near-match rejection cases and run them.**
 
 ```go
 for _, eventType := range []string{
@@ -65,7 +65,7 @@ Run: `go test ./internal/listingkit/zitadelsms -run 'TestDeliverMapsEveryApprove
 
 Expected: FAIL because the two exact OTP events are not yet allowed.
 
-- [ ] **Step 3: Implement a named fixed allowlist.**
+- [x] **Step 3: Implement a named fixed allowlist.**
 
 ```go
 var approvedZitadelSMSEvents = map[string]struct{}{
@@ -81,13 +81,13 @@ func approvedEventType(eventType string) bool {
 }
 ```
 
-- [ ] **Step 4: Run focused plus deployment-boundary regression checks.**
+- [x] **Step 4: Run focused plus deployment-boundary regression checks.**
 
 Run: `go test ./internal/listingkit/zitadelsms -count=1; go test ./tests -run 'TestListingKit.*(Secret|Deploy)' -count=1`
 
 Expected: PASS; no manifest, route or Secret boundary changes.
 
-- [ ] **Step 5: Commit only service code and tests.**
+- [x] **Step 5: Commit only service code and tests.**
 
 ```powershell
 git add internal/listingkit/zitadelsms/service.go internal/listingkit/zitadelsms/service_test.go
@@ -104,25 +104,25 @@ git commit -m "feat: allow ZITADEL SMS OTP webhook events"
 - Consumes: ZITADEL v4.17.1 staging, active HTTP SMS provider, and a non-production test phone.
 - Produces: redacted evidence for factor-enrollment and login-challenge delivery; it does not change production policy.
 
-- [ ] **Step 1: Document expected events and negative checks.**
+- [x] **Step 1: Document expected events and negative checks.**
 
 ```markdown
 For factor enrollment expect `user.human.mfa.otp.sms.code.added`; for a session challenge expect `session.otp.sms.challenged`. Each accepted signed webhook returns 204. A signed `user.human.mfa.otp.sms.code.sent` returns 400 without a Tencent call; an invalid signature returns 401. Do not replay production payloads.
 ```
 
-- [ ] **Step 2: Document the device acceptance assertions.**
+- [x] **Step 2: Document the device acceptance assertions.**
 
 ```markdown
 Use a staging phone to verify an existing user first enrolls a verified phone, then adds SMS OTP, then completes one challenge. Logs and the evidence record may contain event type and HTTP result only, never the code or full number.
 ```
 
-- [ ] **Step 3: Verify docs and code.**
+- [x] **Step 3: Verify docs and code.**
 
 Run: `rg -n 'code.added|session.otp.sms.challenged|code.sent|204|401' docs/operations/listingkit-zitadel-sms-otp-acceptance.md; go test ./internal/listingkit/zitadelsms -count=1`
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit the acceptance procedure.**
+- [x] **Step 4: Commit the acceptance procedure.**
 
 ```powershell
 git add docs/operations/listingkit-zitadel-sms-otp-acceptance.md deployments/kubernetes/listingkit-workbench/README.md
