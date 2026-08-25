@@ -16,6 +16,7 @@ import (
 	"task-processor/internal/sourceaccount"
 	sourceaccountbootstrap "task-processor/internal/sourceaccount/bootstrap"
 	"task-processor/internal/tenantbridge"
+	tenantbridgebootstrap "task-processor/internal/tenantbridge/bootstrap"
 )
 
 var buildSourceAccountRepository = sourceaccountbootstrap.BuildRepository
@@ -56,7 +57,7 @@ func NewAPIServiceWithSourceAccountRepository(cfg *config.Config, logger *logrus
 }
 
 func configureLegacyTenantBridge(cfg *config.Config, logger *logrus.Logger) []func() error {
-	closer, err := listingkithttpapi.ConfigureLegacyTenantResolver(cfg, logger)
+	closer, err := tenantbridgebootstrap.ConfigureFromConfig(cfg, logger)
 	if err != nil {
 		if logger != nil {
 			logger.Warn("1688 legacy tenant bridge unavailable")

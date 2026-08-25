@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	studiodomain "task-processor/internal/listing/studio"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 )
@@ -17,9 +18,9 @@ const maxStudioDesignCount = 10
 const studioDesignTransparentModel = "gpt-image-2"
 const studioPromptModeRaw = "raw"
 const (
-	studioVariationLight  = "light"
-	studioVariationMedium = "medium"
-	studioVariationStrong = "strong"
+	studioVariationLight  = string(studiodomain.VariationIntensityLight)
+	studioVariationMedium = string(studiodomain.VariationIntensityMedium)
+	studioVariationStrong = string(studiodomain.VariationIntensityStrong)
 )
 
 func buildStudioDesignPrompt(req *StudioDesignRequest) string {
@@ -164,14 +165,7 @@ func studioDesignPrintableHint(width int, height int) string {
 }
 
 func normalizeStudioVariationIntensity(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case studioVariationLight:
-		return studioVariationLight
-	case studioVariationStrong:
-		return studioVariationStrong
-	default:
-		return studioVariationMedium
-	}
+	return string(studiodomain.NormalizeVariationIntensity(value))
 }
 
 func buildFallbackStudioDesignThemes(promptText string, count int) []string {

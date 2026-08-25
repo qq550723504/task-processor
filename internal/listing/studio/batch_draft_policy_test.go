@@ -1,6 +1,9 @@
 package studio
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestNormalizeBatchDesignTypeDefaultsBlankValue(t *testing.T) {
 	if got := NormalizeBatchDesignType("  "); got != DefaultBatchDesignType {
@@ -11,6 +14,28 @@ func TestNormalizeBatchDesignTypeDefaultsBlankValue(t *testing.T) {
 func TestNormalizeBatchDesignTypePreservesExplicitValue(t *testing.T) {
 	if got := NormalizeBatchDesignType("embroidery"); got != "embroidery" {
 		t.Fatalf("NormalizeBatchDesignType() = %q, want embroidery", got)
+	}
+}
+
+func TestNormalizeVariationIntensityDefaultsToMedium(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  VariationIntensity
+	}{
+		{name: "light", value: " LIGHT ", want: VariationIntensityLight},
+		{name: "strong", value: "strong", want: VariationIntensityStrong},
+		{name: "medium", value: "medium", want: VariationIntensityMedium},
+		{name: "invalid", value: "extreme", want: VariationIntensityMedium},
+		{name: "blank", want: VariationIntensityMedium},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NormalizeVariationIntensity(tt.value); got != tt.want {
+				t.Fatalf("NormalizeVariationIntensity(%q) = %q, want %q", tt.value, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -32,6 +57,19 @@ func TestResolveDraftStatusPrioritizesGenerationTasksThenDesigns(t *testing.T) {
 				t.Fatalf("ResolveDraftStatus(%+v) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNormalizeHotStyleReferenceImageURLsKeepsFirstDistinctNonEmptyURL(t *testing.T) {
+	got := NormalizeHotStyleReferenceImageURLs([]string{
+		"  ",
+		" https://cdn.example.com/first.png ",
+		"https://cdn.example.com/first.png",
+		"https://cdn.example.com/second.png",
+	})
+
+	if want := []string{"https://cdn.example.com/first.png"}; !slices.Equal(got, want) {
+		t.Fatalf("NormalizeHotStyleReferenceImageURLs() = %#v, want %#v", got, want)
 	}
 }
 

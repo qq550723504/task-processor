@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"image/color"
 	"image/png"
-	"strings"
+
+	studiodomain "task-processor/internal/listing/studio"
 )
 
 type StudioTransparencyMode string
@@ -26,22 +27,7 @@ const (
 )
 
 func NormalizeStudioTransparencyMode(mode string, legacy *bool) StudioTransparencyMode {
-	normalized := strings.ToLower(strings.TrimSpace(mode))
-	switch StudioTransparencyMode(normalized) {
-	case StudioTransparencyModeNone:
-		return StudioTransparencyModeNone
-	case StudioTransparencyModeNative:
-		return StudioTransparencyModeNative
-	case StudioTransparencyModeRemoval:
-		return StudioTransparencyModeRemoval
-	}
-	if normalized != "" {
-		return StudioTransparencyModeNone
-	}
-	if legacy != nil && *legacy {
-		return StudioTransparencyModeNative
-	}
-	return StudioTransparencyModeNone
+	return StudioTransparencyMode(studiodomain.NormalizeTransparencyMode(mode, legacy))
 }
 
 func studioDesignTransparencyMode(req *StudioDesignRequest) StudioTransparencyMode {
