@@ -24,6 +24,17 @@ var (
 	ErrInvalidConfiguration = errors.New("invalid ZITADEL SMS configuration")
 )
 
+// DeliveryFailure carries a provider error category for safe operational
+// logging while keeping phone numbers, OTPs, and provider response text out
+// of the public error returned to ZITADEL.
+type DeliveryFailure struct {
+	Code string
+}
+
+func (e *DeliveryFailure) Error() string { return ErrDeliveryFailed.Error() }
+
+func (e *DeliveryFailure) Unwrap() error { return ErrDeliveryFailed }
+
 const (
 	zitadelSignatureTolerance = 5 * time.Minute
 	tencentSMSRegion          = "ap-guangzhou"
@@ -74,13 +85,21 @@ func (s *Service) Deliver(ctx context.Context, body []byte, signature string) er
 		return ErrInvalidPayload
 	}
 
+	params := []string{payload.Args.OTP}
+	if expiryMinutes := expiryMinutes(payload.Args.Expiry); expiryMinutes != "" {
+		params = append(params, expiryMinutes)
+	}
 	if err := s.sender.Send(ctx, Message{
 		Phone:      payload.ContextInfo.RecipientPhoneNumber,
 		TemplateID: s.config.TemplateID,
 		SignName:   s.config.SignName,
 		AppID:      s.config.AppID,
-		Params:     []string{payload.Args.Code},
+		Params:     params,
 	}); err != nil {
+		var failure *DeliveryFailure
+		if errors.As(err, &failure) {
+			return failure
+		}
 		return ErrDeliveryFailed
 	}
 	return nil
@@ -95,8 +114,28 @@ type zitadelSMSPayload struct {
 		Text string `json:"text"`
 	} `json:"templateData"`
 	Args struct {
-		Code string `json:"code"`
+		// ZITADEL's webhook serializer lowercases only the first character of
+		// the "OTP" argument, so the v4.17.1 wire key is "oTP".
+		OTP    string          `json:"oTP"`
+		Code   string          `json:"code"` // legacy/provider compatibility
+		Expiry json.RawMessage `json:"expiry"`
 	} `json:"args"`
+}
+
+func expiryMinutes(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var nanos int64
+	if json.Unmarshal(raw, &nanos) != nil || nanos <= 0 {
+		return ""
+	}
+	const minuteNanos = int64(time.Minute)
+	minutes := (nanos + minuteNanos - 1) / minuteNanos
+	if minutes <= 0 || minutes > 60 {
+		return ""
+	}
+	return strconv.FormatInt(minutes, 10)
 }
 
 func parseZitadelSMSPayload(body []byte) (zitadelSMSPayload, bool) {
@@ -104,16 +143,45 @@ func parseZitadelSMSPayload(body []byte) (zitadelSMSPayload, bool) {
 	if json.Unmarshal(body, &payload) != nil ||
 		!isE164(payload.ContextInfo.RecipientPhoneNumber) ||
 		!approvedEventType(payload.ContextInfo.EventType) ||
-		strings.TrimSpace(payload.TemplateData.Text) == "" ||
-		strings.TrimSpace(payload.Args.Code) == "" || len(payload.Args.Code) > 256 {
+		!validOTPArgument(&payload) {
 		return zitadelSMSPayload{}, false
+	}
+	if strings.TrimSpace(payload.Args.OTP) == "" {
+		payload.Args.OTP = payload.Args.Code
 	}
 	return payload, true
 }
 
+func validOTPArgument(payload *zitadelSMSPayload) bool {
+	if payload == nil {
+		return false
+	}
+	value := payload.Args.OTP
+	if strings.TrimSpace(value) == "" {
+		value = payload.Args.Code
+	}
+	return strings.TrimSpace(value) != "" && len(value) <= 256
+}
+
+// Provenance is pinned to ZITADEL Core v4.17.1: the human MFA event type is
+// HumanOTPSMSCodeAddedType in internal/repository/user/human_mfa_otp.go, and
+// the session event is emitted by SessionCommands.OTPSMSChallenged in
+// internal/command/session.go. These Core contracts are consumed here only for
+// the Login V2 v4.17.1 compatibility boundary; enabling this relay requires
+// verifying both deployed Core and Login V2 versions, not just matching names.
+// References:
+// https://github.com/zitadel/zitadel/blob/v4.17.1/internal/repository/user/human_mfa_otp.go
+// https://github.com/zitadel/zitadel/blob/v4.17.1/internal/command/session.go#L188-L190
+var approvedZitadelSMSEvents = map[string]struct{}{
+	"user.human.phone.code.added":          {},
+	"user.human.initialization.code.added": {},
+	"user.human.mfa.otp.sms.code.added":    {},
+	"session.otp.sms.challenged":           {},
+}
+
 func approvedEventType(eventType string) bool {
-	return eventType == "user.human.phone.code.added" ||
-		eventType == "user.human.initialization.code.added"
+	_, ok := approvedZitadelSMSEvents[eventType]
+	return ok
 }
 
 func isE164(phone string) bool {
@@ -214,7 +282,7 @@ func (s *tencentSender) Send(ctx context.Context, message Message) error {
 	}
 	client, err := s.clientFactory(ctx)
 	if err != nil {
-		return ErrDeliveryFailed
+		return &DeliveryFailure{Code: providerErrorCode(err)}
 	}
 	request := sms.NewSendSmsRequest()
 	request.PhoneNumberSet = []*string{common.StringPtr(message.Phone)}
@@ -224,11 +292,28 @@ func (s *tencentSender) Send(ctx context.Context, message Message) error {
 	request.TemplateParamSet = common.StringPtrs(message.Params)
 
 	response, err := client.SendSms(request)
-	if err != nil || response == nil || response.Response == nil || len(response.Response.SendStatusSet) != 1 ||
+	if err != nil {
+		return &DeliveryFailure{Code: providerErrorCode(err)}
+	}
+	if response == nil || response.Response == nil || len(response.Response.SendStatusSet) != 1 ||
 		response.Response.SendStatusSet[0] == nil || response.Response.SendStatusSet[0].Code == nil || *response.Response.SendStatusSet[0].Code != "Ok" {
-		return ErrDeliveryFailed
+		code := "invalid_response"
+		if response != nil && response.Response != nil && len(response.Response.SendStatusSet) == 1 && response.Response.SendStatusSet[0] != nil && response.Response.SendStatusSet[0].Code != nil {
+			code = *response.Response.SendStatusSet[0].Code
+		}
+		return &DeliveryFailure{Code: code}
 	}
 	return nil
+}
+
+func providerErrorCode(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	if coded, ok := err.(interface{ GetCode() string }); ok && strings.TrimSpace(coded.GetCode()) != "" {
+		return coded.GetCode()
+	}
+	return "request_error"
 }
 
 type contextRoundTripper struct {

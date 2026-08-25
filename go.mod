@@ -18,7 +18,9 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/imroc/req/v3 v3.59.0
 	github.com/jackc/pgx/v5 v5.9.2
+	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/mxschmitt/playwright-go v0.6100.0
+	github.com/oklog/ulid/v2 v2.1.1
 	github.com/openmeterio/openmeter/api/v3/client v1.0.0-beta.231
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rabbitmq/amqp091-go v1.10.0
@@ -117,7 +119,6 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mdelapenya/tlscert v0.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect

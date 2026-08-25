@@ -1,5 +1,11 @@
 # Casdoor Phone Identity Provider Implementation Plan
 
+> **Superseded — do not execute.** The accepted design now extends official
+> ZITADEL Login V2 directly and is documented in
+> `docs/superpowers/specs/2026-08-25-listingkit-zitadel-native-phone-onboarding-design.md`.
+> This file is retained only as historical design evidence; it does not
+> authorize Casdoor deployment or cleanup of the existing experimental branch.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deploy a locked-down self-hosted Casdoor phone-code IdP at `id.shuomiai.com` and federate it to ZITADEL without phone leakage, account takeover, or default ListingKit grants.
@@ -8,7 +14,7 @@
 
 **Tech Stack:** Casdoor v3.143.0, PostgreSQL 16, Kubernetes/Kustomize, Traefik, External Secrets, Tencent Cloud SMS, ZITADEL Generic OIDC and Actions.
 
-**Spec:** `docs/superpowers/specs/2026-08-25-listingkit-phone-identity-design.md`
+**Superseded by:** `docs/superpowers/specs/2026-08-25-listingkit-zitadel-native-phone-onboarding-design.md`
 
 ## Global Constraints
 

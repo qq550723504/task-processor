@@ -55,6 +55,81 @@ func TestDeliverRejectsFutureSignatureWithoutCallingTencent(t *testing.T) {
 	require.Empty(t, sender.messages)
 }
 
+func TestDeliverMapsEveryApprovedEventToTencent(t *testing.T) {
+	// The two OTP additions are Core v4.17.1 event contracts (human_mfa_otp.go
+	// and session.go). Login V2 compatibility remains bounded to v4.17.1 and is
+	// a deployment verification prerequisite, not an inference from this test.
+	for _, eventType := range []string{
+		"user.human.phone.code.added",
+		"user.human.initialization.code.added",
+		"user.human.mfa.otp.sms.code.added",
+		"session.otp.sms.challenged",
+	} {
+		t.Run(eventType, func(t *testing.T) {
+			sender := &senderStub{}
+			service := newTestSMSService(t, sender)
+			body := validZitadelSMSPayload(t, "+8613800138000", "123456", eventType)
+
+			err := service.Deliver(context.Background(), body, signedHeader(t, body, time.Now()))
+
+			require.NoError(t, err)
+			require.Len(t, sender.messages, 1)
+		})
+	}
+}
+
+func TestDeliverAcceptsSMSChallengeWithoutLocalizedTemplateText(t *testing.T) {
+	sender := &senderStub{}
+	service := newTestSMSService(t, sender)
+	body := []byte(`{"contextInfo":{"recipientPhoneNumber":"+8613800138000","eventType":"session.otp.sms.challenged"},"templateData":{},"args":{"code":"123456"}}`)
+
+	err := service.Deliver(context.Background(), body, signedHeader(t, body, time.Now()))
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"123456"}, sender.messages[0].Params)
+}
+
+func TestDeliverUsesZitadelOTPArgumentForSMSChallenge(t *testing.T) {
+	sender := &senderStub{}
+	service := newTestSMSService(t, sender)
+	body := []byte(`{"contextInfo":{"recipientPhoneNumber":"+8613800138000","eventType":"session.otp.sms.challenged"},"templateData":{},"args":{"oTP":"123456"}}`)
+
+	err := service.Deliver(context.Background(), body, signedHeader(t, body, time.Now()))
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"123456"}, sender.messages[0].Params)
+}
+
+func TestDeliverMapsZitadelExpiryToTencentTemplateParameter(t *testing.T) {
+	sender := &senderStub{}
+	service := newTestSMSService(t, sender)
+	body := []byte(`{"contextInfo":{"recipientPhoneNumber":"+8613800138000","eventType":"session.otp.sms.challenged"},"templateData":{},"args":{"oTP":"123456","expiry":300000000000}}`)
+
+	err := service.Deliver(context.Background(), body, signedHeader(t, body, time.Now()))
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"123456", "5"}, sender.messages[0].Params)
+}
+
+func TestDeliverRejectsNearMatchOTPSMSEventsWithoutSending(t *testing.T) {
+	for _, eventType := range []string{
+		"user.human.mfa.otp.sms.code.sent",
+		"session.otp.sms.checked",
+		"user.human.mfa.otp.sms.code.added.extra",
+	} {
+		t.Run(eventType, func(t *testing.T) {
+			sender := &senderStub{}
+			service := newTestSMSService(t, sender)
+			body := validZitadelSMSPayload(t, "+8613800138000", "123456", eventType)
+
+			err := service.Deliver(context.Background(), body, signedHeader(t, body, time.Now()))
+
+			require.ErrorIs(t, err, ErrInvalidPayload)
+			require.Empty(t, sender.messages)
+		})
+	}
+}
+
 func TestDeliverMapsVerifiedPayloadToConfiguredTencentTemplate(t *testing.T) {
 	sender := &senderStub{}
 	service := newTestSMSService(t, sender)
