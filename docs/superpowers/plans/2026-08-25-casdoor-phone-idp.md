@@ -138,7 +138,7 @@ Using a non-production phone, prove new registration, repeat login, resend coold
 
 - [ ] **Step 4: Run staging acceptance and commit.**
 
-Run: `./scripts/casdoor-phone-idp-preflight.ps1 -IssuerURL https://id.staging.shuomiai.com`
+Run: `pwsh -NoProfile -File scripts/casdoor-phone-idp-preflight.ps1 -IssuerURL https://id.staging.shuomiai.com`
 
 Expected: issuer, authorization endpoint and JWKS URI are HTTPS and match the staging domain; the manual matrix passes.
 
@@ -164,7 +164,7 @@ git commit -m "docs: add Casdoor phone IdP acceptance runbook"
 ```javascript
 function mapCasdoorPhoneIdentity(ctx, api) {
   const claims = ctx.claimsJSON();
-  if (claims.iss !== "https://id.shuomiai.com") return;
+  if (claims.iss !== "https://id.staging.shuomiai.com") return;
   if (typeof claims.sub !== "string" || !/^[A-Za-z0-9_-]{8,128}$/.test(claims.sub) || claims["https://shuomiai.com/claims/phone_verified"] !== true) throw new Error("verified Casdoor phone identity required");
   const id = claims.sub, alias = `casdoor-${id}@phone.id.shuomiai.invalid`;
   api.setFirstName(typeof claims.given_name === "string" && claims.given_name ? claims.given_name : "Phone");
@@ -185,14 +185,15 @@ Expected: FAIL until action and preflight exist.
 - [ ] **Step 3: Implement the read-only ZITADEL provider policy check.**
 
 ```powershell
-param([Parameter(Mandatory)][uri]$IssuerURL, [Parameter(Mandatory)][string]$ProviderID)
+param([Parameter(Mandatory)][uri]$ZitadelURL, [Parameter(Mandatory)][string]$ProviderID, [Parameter(Mandatory)][uri]$ExpectedProviderIssuer)
 $token = [string]$env:ZITADEL_ADMIN_TOKEN
 if ([string]::IsNullOrWhiteSpace($token)) { throw "ZITADEL_ADMIN_TOKEN is required" }
 $headers = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
-$providers = Invoke-RestMethod -Method Post -Uri ($IssuerURL.ToString().TrimEnd('/') + "/admin/v1/idps/_search") -Headers $headers -Body "{}"
+$base = $ZitadelURL.ToString().TrimEnd('/')
+$providers = Invoke-RestMethod -Method Post -Uri ($base + "/admin/v1/idps/_search") -Headers $headers -Body "{}"
 $provider = @($providers.result | Where-Object id -eq $ProviderID)[0]
-$policy = Invoke-RestMethod -Uri ($IssuerURL.ToString().TrimEnd('/') + "/admin/v1/policies/login") -Headers $headers
-if ($null -eq $provider -or $provider.config.issuer -ne "https://id.shuomiai.com" -or $provider.config.scopes -notcontains "openid" -or -not $provider.config.isCreationAllowed -or $provider.config.isLinkingAllowed -or $provider.config.isAutoUpdate -or -not $policy.externalLogin) { throw "unsafe Casdoor IdP policy" }
+$policy = Invoke-RestMethod -Method Get -Uri ($base + "/admin/v1/policies/login") -Headers $headers
+if ($null -eq $provider -or $provider.config.issuer -ne $ExpectedProviderIssuer.ToString().TrimEnd('/') -or $provider.config.scopes -notcontains "openid" -or -not $provider.config.isCreationAllowed -or $provider.config.isLinkingAllowed -or $provider.config.isAutoUpdate -or -not $policy.externalLogin) { throw "unsafe Casdoor IdP policy" }
 [pscustomobject]@{ providerID=$provider.id; issuer=$provider.config.issuer; scopes=@($provider.config.scopes); creationAllowed=[bool]$provider.config.isCreationAllowed; linkingAllowed=[bool]$provider.config.isLinkingAllowed; automaticUpdate=[bool]$provider.config.isAutoUpdate; externalLogin=[bool]$policy.externalLogin } | ConvertTo-Json -Compress
 ```
 
