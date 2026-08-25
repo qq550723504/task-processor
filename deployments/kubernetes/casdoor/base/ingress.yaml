@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: casdoor
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    ingress.kubernetes.io/ssl-redirect: "true"
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.middlewares: casdoor-auth-rate-limit@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    # Base host is intentionally non-routable; overlays patch the real origin.
+    - host: casdoor.base.invalid
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: casdoor
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - casdoor.base.invalid
+      secretName: casdoor-base-tls
