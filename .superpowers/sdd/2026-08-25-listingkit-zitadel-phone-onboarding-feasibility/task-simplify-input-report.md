@@ -24,3 +24,9 @@ No ZITADEL request, client, runner, token collection, or stable redacted output 
 - `go test -race ./cmd/listingkit-phone-onboarding-preflight ./internal/listingkit/phoneonboardingpreflight -count=1` — PASS
 
 Plain input is accepted only for this temporary preflight CLI; it is not a general credential-input policy.
+
+## Review fix 1: dependency checksum evidence
+
+- `go mod tidy -diff` showed no direct `golang.org/x/term` requirement, while proposing the seven `x/term` checksum entries restored here.
+- `go list -m all` before restoration reported the missing `golang.org/x/term v0.17.0/go.mod` checksum through the transitive `golang.org/x/crypto` dependency.
+- Restored only the seven root `go.sum` entries; `go.mod` remains without a direct `x/term` requirement.
