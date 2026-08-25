@@ -14,6 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Request-contract provenance is pinned to the immutable ZITADEL v4.17.1
+// sources. The operation tests below exercise only this version boundary:
+// https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/org/v2/org_service.proto
+// https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/user/v2/user_service.proto
+// https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/session/v2/session_service.proto
+// https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/session/v2/session.proto
+// https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/session/v2/challenge.proto
+
 func TestClientUsesPinnedZITADELRequestContractsAndScopedTokens(t *testing.T) {
 	t.Parallel()
 
@@ -214,6 +222,50 @@ func TestClientLimitsProviderResponseBody(t *testing.T) {
 	_, err := client.CreateOrganization(context.Background(), "organization-secret")
 	require.EqualError(t, err, "create ZITADEL organization: provider response exceeded size limit")
 	assertDoesNotContain(t, err.Error(), "organization-secret")
+}
+
+func TestClientDeleteSessionAcceptsOnly200Or204(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name    string
+		status  int
+		wantErr string
+	}{
+		{name: "ok", status: http.StatusOK},
+		{name: "no content", status: http.StatusNoContent},
+		{name: "created", status: http.StatusCreated, wantErr: "delete ZITADEL session: ZITADEL returned HTTP status 201"},
+		{name: "accepted", status: http.StatusAccepted, wantErr: "delete ZITADEL session: ZITADEL returned HTTP status 202"},
+		{name: "partial content", status: http.StatusPartialContent, wantErr: "delete ZITADEL session: ZITADEL returned HTTP status 206"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(test.status)
+			}))
+			defer server.Close()
+			client := newTestClient(t, server.URL, "provisioning-token", "session-token", server.Client())
+
+			err := client.DeleteSession(context.Background(), "session-preflight")
+			if test.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, test.wantErr)
+		})
+	}
+}
+
+func TestNewClientUsesTenSecondDefaultHTTPTimeout(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClient(ClientConfig{
+		IssuerURL: "https://issuer.example", ProvisioningToken: "provisioning-token", SessionToken: "session-token",
+	})
+	require.NoError(t, err)
+	actual, ok := client.(*zitadelClient)
+	require.True(t, ok)
+	require.NotSame(t, http.DefaultClient, actual.http)
+	require.Equal(t, 10*time.Second, actual.http.Timeout)
 }
 
 func newTestClient(t *testing.T, issuerURL, provisioningToken, sessionToken string, httpClient *http.Client) Client {

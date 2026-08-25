@@ -1,5 +1,13 @@
 // Package phoneonboardingpreflight contains the narrow ZITADEL Login V2
 // contract probe used by the native phone onboarding feasibility gate.
+//
+// Protocol provenance is deliberately bounded to ZITADEL Core/Login V2
+// v4.17.1. The immutable REST definitions are:
+// https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/org/v2/org_service.proto
+// https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/user/v2/user_service.proto
+// https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/session/v2/session_service.proto
+// https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/session/v2/session.proto
+// https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/session/v2/challenge.proto
 package phoneonboardingpreflight
 
 import (
@@ -260,6 +268,10 @@ func (c *zitadelClient) doJSON(ctx context.Context, credential, method, path str
 	responseBody, err := readProviderResponse(response.Body)
 	if err != nil {
 		return fmt.Errorf("%s: %w", operation, err)
+	}
+	if method == http.MethodDelete && strings.HasPrefix(path, "/v2/sessions/") &&
+		response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("%s: ZITADEL returned HTTP status %d", operation, response.StatusCode)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("%s: ZITADEL returned HTTP status %d", operation, response.StatusCode)
