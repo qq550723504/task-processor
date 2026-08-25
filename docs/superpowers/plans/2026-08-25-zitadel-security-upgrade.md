@@ -90,11 +90,11 @@ git commit -m "ops: add ZITADEL upgrade preflight"
 - [x] **Step 1: Write the runbook acceptance checklist before update commands.**
 
 ```markdown
-- [x] Database backup identifier and isolated restore rehearsal timestamp are recorded without credentials.
-- [x] `zitadel` and `zitadel-login` are Ready on v4.17.1.
-- [x] `https://auth.shuomiai.com/.well-known/openid-configuration` returns 200.
-- [x] Incognito email/password and ListingKit callback login both work.
-- [x] OTP SMS and Generic OIDC remain disabled.
+- [ ] Database backup identifier and isolated restore rehearsal timestamp are recorded without credentials.
+- [ ] `zitadel` and `zitadel-login` are Ready on v4.17.1.
+- [ ] `https://auth.shuomiai.com/.well-known/openid-configuration` returns 200.
+- [ ] Incognito email/password and ListingKit callback login both work.
+- [ ] OTP SMS and Generic OIDC remain disabled.
 ```
 
 - [x] **Step 2: Add this exact approved-change sequence.**
