@@ -32,3 +32,12 @@ Verify a new phone user gets a ZITADEL subject but no ListingKit role, and that
 an old email user with matching display data is not linked. Wrong issuer/
 audience, expired token, and missing `phone_verified` must fail before user
 creation.
+
+## Production gated acceptance
+
+Requires ZITADEL core and Login V2 on v4.17.1 plus explicit production
+authorization. Before IdP activation:
+
+- [ ] ZITADEL core and Login V2 are v4.17.1 and healthy.
+- [ ] Generic OIDC linking/update are disabled; OTP SMS is permitted but not globally required.
+- [ ] Disposable-user acceptance recorded: token denied ListingKit access with no role until an allowed role is granted explicitly.
