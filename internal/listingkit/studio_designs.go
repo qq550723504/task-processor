@@ -169,15 +169,7 @@ func normalizeStudioVariationIntensity(value string) string {
 }
 
 func buildFallbackStudioDesignThemes(promptText string, count int) []string {
-	if count <= 0 {
-		return nil
-	}
-	theme := strings.TrimSpace(promptText)
-	themes := make([]string, count)
-	for idx := range themes {
-		themes[idx] = theme
-	}
-	return themes
+	return studiodomain.BuildFallbackDesignThemes(promptText, count)
 }
 
 type studioSiblingPromptResponse struct {
