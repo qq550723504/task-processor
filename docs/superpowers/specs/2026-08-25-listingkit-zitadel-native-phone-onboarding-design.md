@@ -7,6 +7,9 @@
 - Scope: ListingKit passwordless phone registration, sign-in, invitation admission, tenant bootstrap, and Login V2 customization
 - Implementation status: Not started
 - Supersedes: `docs/superpowers/plans/2026-08-25-casdoor-phone-idp.md`
+- Accepted amendment: Users provide no email or password; ZITADEL v4.17.1
+  receives a generated verified technical email because its Human User schema
+  requires the email field.
 
 ## Goal
 
@@ -74,10 +77,14 @@ them.
    in.
 5. The technical organization name is generated as `lk-<opaque-id>` and never
    contains phone digits.
-6. The default UI label is `我的工作空间`; it may be renamed later.
-7. The creator receives `ORG_OWNER` and `listingkit_admin` only after the SMS
+6. The backend generates `u-<opaque-id>@phone.invalid` as an internal verified
+   technical email. It is not supplied by the user, displayed, mailed, or used
+   for recovery, and it contains no phone digits.
+7. No password credential is created.
+8. The default UI label is `我的工作空间`; it may be renamed later.
+9. The creator receives `ORG_OWNER` and `listingkit_admin` only after the SMS
    proof succeeds.
-8. The new tenant receives `professional`, status `trialing`, starting at
+10. The new tenant receives `professional`, status `trialing`, starting at
    successful finalization and expiring exactly 14 days later in UTC.
 
 ### Invitation registration
@@ -191,6 +198,8 @@ The exact API composition must be proven before broader implementation:
    generated technical name and an inert human user in that organization. For
    invitation registration, it creates the inert user in the invitation's
    existing organization.
+   The Human User has a generated verified `@phone.invalid` technical email, no
+   password, and a generated username; none contains the phone number.
 4. The trusted backend provisions the phone in the minimum ZITADEL state needed
    to add SMS OTP and create a session challenge. This provisional state is not
    proof of possession and grants no ListingKit or organization privilege.
@@ -323,6 +332,11 @@ phone, user, tenant, or trial already exists.
 
 - Normalize to E.164 before any lookup; reject unsupported destinations with a
   generic response.
+- ZITADEL's required email field uses `u-<opaque-id>@phone.invalid`, marked
+  verified without sending mail. It is never a login choice in the customized
+  UI and cannot be used for recovery.
+- Omit both `password` and `hashedPassword` when creating the Human User. The
+  user has no password authentication path.
 - ListingKit PostgreSQL stores only a keyed HMAC fingerprint. ZITADEL stores the
   actual phone because it is the identity authority.
 - Request bodies, phone numbers, SMS codes, session material, invitation
@@ -374,7 +388,8 @@ ZITADEL organizations or subscription data.
 
 Against a disposable ZITADEL v4.17.1 environment and mock SMS provider, prove:
 
-1. an inert no-email human user can be created with phone identity;
+1. an inert human user can be created without user-supplied email or password,
+   using only the generated verified technical email required by v4.17.1;
 2. one ZITADEL SMS challenge can verify possession and produce the first usable
    session;
 3. the service identity has a documented minimal role set;
@@ -438,7 +453,8 @@ worktree is authorized by this design document.
 
 - ZITADEL hosted/self-hosted Login V2: <https://zitadel.com/docs/guides/integrate/login/hosted-login>
 - ZITADEL Login App: <https://zitadel.com/docs/guides/integrate/login-ui/login-app>
-- Add human user: <https://zitadel.com/docs/reference/api/user/zitadel.user.v2.UserService.AddHumanUser>
+- Create user: <https://zitadel.com/docs/reference/api/user/zitadel.user.v2.UserService.CreateUser>
+- ZITADEL v4.17.1 UserService schema: <https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/user/v2/user_service.proto>
 - Add organization: <https://zitadel.com/docs/reference/api/org/zitadel.org.v2.OrganizationService.AddOrganization>
 - Add SMS OTP: <https://zitadel.com/docs/reference/api/user/zitadel.user.v2.UserService.AddOTPSMS>
 - Session SMS flow: <https://zitadel.com/docs/guides/integrate/login-ui/mfa>
@@ -462,6 +478,9 @@ worktree is authorized by this design document.
    retries never duplicate or extend access.
 6. ListingKit stores no plaintext phone or OTP and exposes no phone-existence
    oracle.
-7. Existing email login and invitation paths remain compatible.
-8. The custom UI is a maintained thin fork of official Login V2 and can be
+7. Users provide no email or password; generated technical emails contain no
+   phone data, receive no mail, are not exposed as user-facing login names, and
+   provide no email recovery path.
+8. Existing email login and invitation paths remain compatible.
+9. The custom UI is a maintained thin fork of official Login V2 and can be
    rolled back independently of identity/subscription data.
