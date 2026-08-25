@@ -111,6 +111,15 @@ func parseZitadelSMSPayload(body []byte) (zitadelSMSPayload, bool) {
 	return payload, true
 }
 
+// Provenance is pinned to ZITADEL Core v4.17.1: the human MFA event type is
+// HumanOTPSMSCodeAddedType in internal/repository/user/human_mfa_otp.go, and
+// the session event is emitted by SessionCommands.OTPSMSChallenged in
+// internal/command/session.go. These Core contracts are consumed here only for
+// the Login V2 v4.17.1 compatibility boundary; enabling this relay requires
+// verifying both deployed Core and Login V2 versions, not just matching names.
+// References:
+// https://github.com/zitadel/zitadel/blob/v4.17.1/internal/repository/user/human_mfa_otp.go
+// https://github.com/zitadel/zitadel/blob/v4.17.1/internal/command/session.go#L188-L190
 var approvedZitadelSMSEvents = map[string]struct{}{
 	"user.human.phone.code.added":         {},
 	"user.human.initialization.code.added": {},

@@ -56,6 +56,9 @@ func TestDeliverRejectsFutureSignatureWithoutCallingTencent(t *testing.T) {
 }
 
 func TestDeliverMapsEveryApprovedEventToTencent(t *testing.T) {
+	// The two OTP additions are Core v4.17.1 event contracts (human_mfa_otp.go
+	// and session.go). Login V2 compatibility remains bounded to v4.17.1 and is
+	// a deployment verification prerequisite, not an inference from this test.
 	for _, eventType := range []string{
 		"user.human.phone.code.added",
 		"user.human.initialization.code.added",
