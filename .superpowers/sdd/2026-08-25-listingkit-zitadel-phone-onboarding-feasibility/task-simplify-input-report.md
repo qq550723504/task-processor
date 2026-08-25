@@ -36,3 +36,9 @@ Plain input is accepted only for this temporary preflight CLI; it is not a gener
 - Ran `go mod tidy`; the only changes were the deterministic placement of `github.com/mattn/go-sqlite3 v1.14.22` in the direct require block and ordering of the OpenMeter client line.
 - `go mod tidy -diff` is clean after the correction.
 - `go list -m all` confirms `sqlite3`, OpenMeter, testcontainers, `x/crypto`, and transitive `x/term` module resolution.
+
+## Final console line-scanning fix
+
+- Added CRLF successive-line coverage for PowerShell-style console input.
+- Replaced the custom byte loop with `fmt.Fscanln`, retaining the existing `readSecret` signature, prompt/error behavior, and successive reads without hidden-input or platform-specific code.
+- The original focused regression was observed red before the first simplification (`secure input failed`); focused and full CLI/package/race suites are green after this final scanner change.

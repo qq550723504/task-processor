@@ -98,23 +98,10 @@ func readSecret(prompt string, input *os.File, output io.Writer) (string, error)
 	if _, err := fmt.Fprint(output, prompt); err != nil {
 		return "", err
 	}
-	var value []byte
-	var one [1]byte
-	for {
-		n, err := input.Read(one[:])
-		if n > 0 {
-			if one[0] == '\n' {
-				break
-			}
-			value = append(value, one[0])
-		}
-		if err != nil {
-			if errors.Is(err, io.EOF) && len(value) > 0 {
-				break
-			}
-			return "", errors.New("secure input failed")
-		}
+	var value string
+	if _, err := fmt.Fscanln(input, &value); err != nil {
+		return "", errors.New("secure input failed")
 	}
 	_, _ = fmt.Fprintln(output)
-	return strings.TrimSpace(string(value)), nil
+	return strings.TrimSpace(value), nil
 }

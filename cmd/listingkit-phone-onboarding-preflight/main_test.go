@@ -83,6 +83,25 @@ func TestReadSecretReadsSuccessiveLinesFromPowerShellLikeStdin(t *testing.T) {
 	require.Equal(t, "654321", code)
 }
 
+func TestReadSecretReadsSuccessiveCRLFConsoleLines(t *testing.T) {
+	input, err := os.CreateTemp(t.TempDir(), "console-stdin")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, input.Close()) })
+	_, err = input.WriteString("+8613712345678\r\n654321\r\n")
+	require.NoError(t, err)
+	_, err = input.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	var output bytes.Buffer
+
+	phone, err := readSecret("phone: ", input, &output)
+	require.NoError(t, err)
+	code, err := readSecret("verification code: ", input, &output)
+	require.NoError(t, err)
+
+	require.Equal(t, "+8613712345678", phone)
+	require.Equal(t, "654321", code)
+}
+
 func TestRunReturnsGenericRedactedErrorOnFirstFailure(t *testing.T) {
 	values := map[string]string{
 		"ZITADEL_ISSUER_URL":                "https://zitadel.example.test",
