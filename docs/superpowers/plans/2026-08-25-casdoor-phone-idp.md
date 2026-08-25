@@ -4,16 +4,16 @@
 
 **Goal:** Deliver a staging-only, locked-down Casdoor phone-code IdP and its ZITADEL federation contract without phone leakage, account takeover, or default ListingKit grants.
 
-**Architecture:** Native Kustomize manifests run Casdoor v3.143.0 in `casdoor`, using a logically isolated `casdoor` database and `casdoor_app` role on the existing private `platform-data/shared-postgresql` service. Casdoor authenticates phone users upstream; ZITADEL Generic OIDC plus one External Authentication action creates the final ZITADEL user and remains the only ListingKit issuer/role authority.
+**Architecture:** Native Kustomize manifests run Casdoor 3.143.0 (manifest digest `sha256:1284af680ddf10aa80569f1f4a46210dd9875ce70845e67047053363d0c0ba58`) in `casdoor`, using a logically isolated `casdoor` database and `casdoor_app` role on the existing private `platform-data/shared-postgresql` service. Casdoor authenticates phone users upstream; ZITADEL Generic OIDC plus one External Authentication action creates the final ZITADEL user and remains the only ListingKit issuer/role authority.
 
-**Tech Stack:** Casdoor v3.143.0, existing shared PostgreSQL 18.4 for staging, Kubernetes/Kustomize, Traefik, External Secrets, Tencent Cloud SMS, ZITADEL Generic OIDC and Actions.
+**Tech Stack:** Casdoor 3.143.0, existing shared PostgreSQL 18.4 for staging, Kubernetes/Kustomize, Traefik, External Secrets, Tencent Cloud SMS, ZITADEL Generic OIDC and Actions.
 
 **Spec:** `docs/superpowers/specs/2026-08-25-listingkit-phone-identity-design.md`
 
 ## Global Constraints
 
 - Use native manifests, not the current Casdoor Helm chart: PostgreSQL rendering has a documented regression in recent chart versions.
-- Pin the staging-verified Casdoor v3.143.0 image digest; never use `latest`.
+- Pin the staging-verified Casdoor 3.143.0 image digest `sha256:1284af680ddf10aa80569f1f4a46210dd9875ce70845e67047053363d0c0ba58`; never use `latest`.
 - Use only the staging Secret Manager key `task-processor/staging/casdoor-phone-idp`; do not reuse `listingkit-tencent-sms-secret` or its signing key.
 - Casdoor gives ListingKit no token, tenant membership, or role. ListingKit consumes the final ZITADEL `sub` only.
 - Password sign-in, password reset, email recovery, unused IdPs, automatic account linking and automatic profile update are disabled.
@@ -29,7 +29,7 @@
 - Create: `deployments/kubernetes/casdoor/base/namespace.yaml`
 - Create: `deployments/kubernetes/casdoor/base/{configmap,deployment,service,ingress,kustomization}.yaml`
 - Create: `deployments/kubernetes/casdoor/overlays/staging/{kustomization,patch-config,patch-ingress,external-secret}.yaml`
-- Create: `scripts/tests/casdoor-kustomize-test.sh`
+- Create: `scripts/tests/casdoor-kustomize-test.ps1`
 
 **Interfaces:**
 - Consumes: Secret keys `CASDOOR_POSTGRES_PASSWORD`, `CASDOOR_TENCENT_SECRET_ID`, `CASDOOR_TENCENT_SECRET_KEY`, `CASDOOR_TENCENT_SMS_APP_ID`, `CASDOOR_TENCENT_SMS_SIGN_NAME`, `CASDOOR_TENCENT_SMS_TEMPLATE_ID`, and `CASDOOR_OIDC_CLIENT_SECRET`.
@@ -42,7 +42,7 @@
 set -euo pipefail
 rendered="$(kustomize build deployments/kubernetes/casdoor/overlays/staging)"
 grep -F 'namespace: casdoor' <<<"$rendered"
-grep -F 'image: casbin/casdoor:v3.143.0' <<<"$rendered"
+grep -F 'image: casbin/casdoor:3.143.0@sha256:1284af680ddf10aa80569f1f4a46210dd9875ce70845e67047053363d0c0ba58' <<<"$rendered"
 grep -F 'host: id.staging.shuomiai.com' <<<"$rendered"
 grep -F 'driverName = postgres' <<<"$rendered"
 grep -F 'shared-postgresql.platform-data.svc.cluster.local' <<<"$rendered"
@@ -51,7 +51,7 @@ grep -F 'shared-postgresql.platform-data.svc.cluster.local' <<<"$rendered"
 
 - [ ] **Step 2: Run the test.**
 
-Run: `bash scripts/tests/casdoor-kustomize-test.sh`
+Run: `pwsh -File scripts/tests/casdoor-kustomize-test.ps1`
 
 Expected: FAIL because no Casdoor overlay exists.
 
@@ -60,7 +60,7 @@ Expected: FAIL because no Casdoor overlay exists.
 ```yaml
 containers:
   - name: casdoor
-    image: casbin/casdoor:v3.143.0
+    image: casbin/casdoor:3.143.0@sha256:1284af680ddf10aa80569f1f4a46210dd9875ce70845e67047053363d0c0ba58
     ports: [{name: http, containerPort: 8000}]
     envFrom: [{secretRef: {name: casdoor-phone-idp-secret}}]
     volumeMounts: [{name: config, mountPath: /conf/app.conf, subPath: app.conf}]
@@ -82,12 +82,12 @@ Attach `casdoor-auth-rate-limit@kubernetescrd` to the ingress. Casdoor's separat
 
 - [ ] **Step 5: Run render tests and commit the infrastructure slice.**
 
-Run: `bash scripts/tests/casdoor-kustomize-test.sh`
+Run: `pwsh -File scripts/tests/casdoor-kustomize-test.ps1`
 
 Expected: PASS; no latest tag, no SQLite, no ListingKit secret, no PostgreSQL workload, and no production host.
 
 ```powershell
-git add deployments/kubernetes/casdoor scripts/tests/casdoor-kustomize-test.sh
+git add deployments/kubernetes/casdoor scripts/tests/casdoor-kustomize-test.ps1
 git commit -m "feat: add isolated Casdoor phone IdP manifests"
 ```
 

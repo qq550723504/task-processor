@@ -1,0 +1,9 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: casdoor-auth-rate-limit
+  namespace: casdoor
+spec:
+  rateLimit:
+    average: 5
+    burst: 10

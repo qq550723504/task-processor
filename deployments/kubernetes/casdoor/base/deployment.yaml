@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: casdoor
+  namespace: casdoor
+  labels:
+    app.kubernetes.io/name: casdoor
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: casdoor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: casdoor
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: render-config
+          image: busybox:1.36.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CASDOOR_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: casdoor-phone-idp-secret
+                  key: CASDOOR_POSTGRES_PASSWORD
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              while IFS= read -r line; do
+                if [ "$line" = "dataSourceName = __CASDOOR_DATASOURCE_NAME__" ]; then
+                  printf '%s\n' "dataSourceName = user=casdoor_app password=${CASDOOR_POSTGRES_PASSWORD} host=shared-postgresql.platform-data.svc.cluster.local port=5432 sslmode=disable dbname=casdoor"
+                else
+                  printf '%s\n' "$line"
+                fi
+              done < /templates/app.conf.template > /conf/app.conf
+              : > /conf/init_data.json
+          volumeMounts:
+            - name: config-template
+              mountPath: /templates
+              readOnly: true
+            - name: generated-config
+              mountPath: /conf
+      containers:
+        - name: casdoor
+          image: casbin/casdoor:3.143.0@sha256:1284af680ddf10aa80569f1f4a46210dd9875ce70845e67047053363d0c0ba58
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RUNNING_IN_DOCKER
+              value: "true"
+          envFrom:
+            - secretRef:
+                name: casdoor-phone-idp-secret
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: generated-config
+              mountPath: /conf
+              readOnly: true
+      volumes:
+        - name: config-template
+          configMap:
+            name: casdoor-config
+        - name: generated-config
+          emptyDir: {}

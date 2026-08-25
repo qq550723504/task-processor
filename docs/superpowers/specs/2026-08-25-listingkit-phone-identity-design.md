@@ -16,7 +16,9 @@ roles; it stores neither phone numbers nor verification codes.
 
 ## Staging topology
 
-Casdoor runs in a new `casdoor` namespace and is exposed only as
+Casdoor 3.143.0 runs from its fixed manifest digest
+`sha256:1284af680ddf10aa80569f1f4a46210dd9875ce70845e67047053363d0c0ba58`
+in a new `casdoor` namespace and is exposed only as
 `https://id.staging.shuomiai.com`.  It reuses the existing private
 `platform-data/shared-postgresql` service, but has its own `casdoor` database
 and least-privilege `casdoor_app` role.  No Casdoor PostgreSQL StatefulSet,

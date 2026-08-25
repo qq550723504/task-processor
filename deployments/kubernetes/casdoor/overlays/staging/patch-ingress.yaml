@@ -1,0 +1,15 @@
+- op: replace
+  path: /spec/rules/0/host
+  value: id.staging.shuomiai.com
+- op: add
+  path: /metadata/annotations/cert-manager.io~1cluster-issuer
+  value: letsencrypt-prod
+- op: add
+  path: /metadata/annotations/traefik.ingress.kubernetes.io~1router.middlewares
+  value: casdoor-auth-rate-limit@kubernetescrd
+- op: add
+  path: /spec/tls
+  value:
+    - hosts:
+        - id.staging.shuomiai.com
+      secretName: id-staging-shuomiai-com-tls
