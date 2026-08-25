@@ -179,7 +179,7 @@ func TestMiddlewareProjectsVerifiedIdentityAndDeduplicatedRoles(t *testing.T) {
 		require.Equal(t, authidentity.AuthenticatedIdentity{
 			TenantID: "tenant-9",
 			UserID:   "user-42",
-			Roles:    []string{"operator", "admin"},
+			Roles:    []string{"admin", "operator"},
 		}, identity)
 
 		c.JSON(http.StatusOK, gin.H{
@@ -204,7 +204,7 @@ func TestMiddlewareProjectsVerifiedIdentityAndDeduplicatedRoles(t *testing.T) {
 	require.Equal(t, "user-42", body["user_id"])
 	require.Equal(t, "zitadel", body["user_type"])
 	require.Equal(t, "", body["user_legacy"])
-	require.Equal(t, "operator,admin", body["user_roles"])
+	require.Equal(t, "admin,operator", body["user_roles"])
 	require.Equal(t, "", body["zitadel_roles"])
 }
 
@@ -407,7 +407,7 @@ func TestMiddlewareAuthorizesWithFailClosedGlobalAllowlist(t *testing.T) {
 
 func TestParseRolesPreservesOrderAndDeduplicates(t *testing.T) {
 	roles := ParseRoles([]byte(`{"roles":["operator"],"role":"operator,admin","urn:zitadel:iam:org:project:roles":{"admin":{}}}`))
-	require.Equal(t, []string{"operator", "admin"}, roles)
+	require.Equal(t, []string{"admin", "operator"}, roles)
 }
 
 func TestStringSliceToSetTrimsAndReturnsNilWhenEmpty(t *testing.T) {

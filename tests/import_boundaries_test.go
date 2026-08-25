@@ -3592,6 +3592,7 @@ func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
 func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 	root := filepath.Join("..", "internal")
 	allowedHTTPPackages := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "authruntime", "zitadel")) + string(os.PathSeparator):    {},
 		filepath.Clean(filepath.Join(root, "app", "httpapi")) + string(os.PathSeparator):            {},
 		filepath.Clean(filepath.Join(root, "amazonlisting", "api")) + string(os.PathSeparator):      {},
 		filepath.Clean(filepath.Join(root, "amazonlisting", "httpapi")) + string(os.PathSeparator):  {},

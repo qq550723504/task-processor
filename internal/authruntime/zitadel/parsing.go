@@ -25,7 +25,7 @@ func ParseRoles(data []byte) []string {
 		roles = append(roles, role)
 	}
 
-	for _, key := range []string{"roles", "role", "urn:zitadel:iam:org:project:roles"} {
+	for _, key := range []string{"urn:zitadel:iam:org:project:roles", "roles", "role"} {
 		value, ok := raw[key]
 		if !ok {
 			continue
