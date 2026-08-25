@@ -125,29 +125,3 @@ func roleHeaderValues(value string) []string {
 	}
 	return roles
 }
-
-func authorizeZitadelIdentity(identity *zitadelIntrospectionResponse, cfg zitadelAuthorizationConfig) (bool, string) {
-	if cfg.LegacyUsernameAllowlistConfigured {
-		return false, "ZITADEL username allowlists are obsolete; configure canonical allowlists"
-	}
-	if identity == nil {
-		return false, "ZITADEL identity is missing"
-	}
-	if len(cfg.AllowedTenantIDs) == 0 &&
-		len(cfg.AllowedUserIDs) == 0 &&
-		len(cfg.AllowedRoles) == 0 {
-		return false, "ZITADEL authorization is required but no allowlist is configured"
-	}
-	if valueInSet(firstNonEmptyZitadelValue(identity.ResourceID), cfg.AllowedTenantIDs) {
-		return true, ""
-	}
-	if valueInSet(strings.TrimSpace(identity.Subject), cfg.AllowedUserIDs) {
-		return true, ""
-	}
-	for _, role := range identity.Roles {
-		if valueInSet(role, cfg.AllowedRoles) {
-			return true, ""
-		}
-	}
-	return false, "ZITADEL identity is not allowed to access ListingKit"
-}
