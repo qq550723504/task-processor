@@ -72,27 +72,14 @@ func sheinDisplayTitle(pkg *sheinpub.Package) string {
 	if pkg == nil {
 		return ""
 	}
-	title := firstNonEmpty(pkg.ProductNameEn, pkg.ProductNameMulti)
-	if strings.TrimSpace(title) != "" {
-		return title
+	titleSource := ""
+	if pkg.TitleDiagnostics != nil {
+		titleSource = pkg.TitleDiagnostics.Source
 	}
-	if shouldSuppressSheinTitleFallback(pkg) {
-		return ""
-	}
-	return strings.TrimSpace(pkg.SpuName)
-}
-
-func shouldSuppressSheinTitleFallback(pkg *sheinpub.Package) bool {
-	if pkg == nil || pkg.TitleDiagnostics == nil {
-		return false
-	}
-	if strings.TrimSpace(firstNonEmpty(pkg.ProductNameEn, pkg.ProductNameMulti)) != "" {
-		return false
-	}
-	switch strings.TrimSpace(pkg.TitleDiagnostics.Source) {
-	case "unresolved_prompt_title", "structured_fallback":
-		return true
-	default:
-		return false
-	}
+	return sheinworkspace.ResolveDisplayTitle(sheinworkspace.DisplayTitleInput{
+		ProductNameEn:    pkg.ProductNameEn,
+		ProductNameMulti: pkg.ProductNameMulti,
+		SpuName:          pkg.SpuName,
+		TitleSource:      titleSource,
+	})
 }
