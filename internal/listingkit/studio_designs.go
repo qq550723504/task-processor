@@ -152,16 +152,7 @@ func buildRawStudioDesignPrompt(req *StudioDesignRequest, theme string) string {
 }
 
 func studioDesignPrintableHint(width int, height int) string {
-	if width <= 0 || height <= 0 {
-		return ""
-	}
-	return fmt.Sprintf(
-		"Mandatory print size requirement: target print area: %d by %d pixels. Preserve this exact %d:%d aspect ratio. Compose the artwork for this requested print area and do not output a square design unless the requested print area is square.",
-		width,
-		height,
-		width,
-		height,
-	)
+	return studiodomain.BuildPrintableHint(width, height)
 }
 
 func normalizeStudioVariationIntensity(value string) string {
