@@ -57,11 +57,13 @@ func TestZitadelAuthRouteAuthorizationFileOwnsRouteAndPermissionMapping(t *testi
 func TestNeutralRuntimeMiddlewareOwnsProviderVerification(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("../../authruntime/zitadel/middleware.go")
+	configSrc, err := os.ReadFile("../../authruntime/zitadel/config.go")
 	require.NoError(t, err)
-	content := string(src)
+	require.Contains(t, string(configSrc), "func NewMiddleware(cfg Config, authzCfg AuthorizationConfig) gin.HandlerFunc {")
 
-	require.Contains(t, content, "func NewMiddleware(cfg Config, authzCfg AuthorizationConfig) gin.HandlerFunc {")
+	middlewareSrc, err := os.ReadFile("../../authruntime/zitadel/middleware.go")
+	require.NoError(t, err)
+	content := string(middlewareSrc)
 	require.Contains(t, content, "func (m *middleware) Handle(c *gin.Context) {")
 	require.Contains(t, content, "func (m *middleware) verifyToken(r *http.Request, token string) (*IntrospectionResponse, error) {")
 }
