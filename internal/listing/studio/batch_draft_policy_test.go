@@ -73,6 +73,30 @@ func TestNormalizeHotStyleReferenceImageURLsKeepsFirstDistinctNonEmptyURL(t *tes
 	}
 }
 
+func TestNormalizeDesignReferenceImageURLsDeduplicatesAndCaps(t *testing.T) {
+	got := NormalizeDesignReferenceImageURLs([]string{
+		"",
+		" https://example.com/a.png ",
+		"https://example.com/a.png",
+		"https://example.com/b.png",
+		"https://example.com/c.png",
+		"https://example.com/d.png",
+		"https://example.com/e.png",
+		"https://example.com/f.png",
+	})
+
+	want := []string{
+		"https://example.com/a.png",
+		"https://example.com/b.png",
+		"https://example.com/c.png",
+		"https://example.com/d.png",
+		"https://example.com/e.png",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("NormalizeDesignReferenceImageURLs() = %#v, want %#v", got, want)
+	}
+}
+
 func TestBuildSelectionKeyUsesStableBatchSelectionFields(t *testing.T) {
 	got := BuildSelectionKey(SelectionKeyInput{
 		ProductID:        124110,
