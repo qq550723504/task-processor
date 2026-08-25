@@ -122,6 +122,17 @@ func TestRunnerRejectsInvalidPhoneBeforeProviderCalls(t *testing.T) {
 	require.Empty(t, fake.calls)
 }
 
+func TestRunnerPreservesSafeHTTPStatusInFailure(t *testing.T) {
+	fake := &fakeRunnerClient{organizationErr: errors.New("create ZITADEL organization: ZITADEL returned HTTP status 403")}
+	var output bytes.Buffer
+	runner, err := NewRunner(fake, bytes.NewReader(bytes.Repeat([]byte{0x42}, 10)), time.Now, &output)
+	require.NoError(t, err)
+
+	_, err = runner.Start(context.Background(), "+8613712345678")
+	require.EqualError(t, err, "phone onboarding preflight failed at organization_create: HTTP status 403")
+	require.Equal(t, "status=failed attempt=", output.String()[:len("status=failed attempt=")])
+}
+
 type fakeRunnerClient struct {
 	calls             []string
 	organizationName  string
@@ -132,11 +143,15 @@ type fakeRunnerClient struct {
 	deleteDeadlineSet bool
 	deleteDeadline    time.Time
 	deleteContextErr  error
+	organizationErr   error
 }
 
 func (f *fakeRunnerClient) CreateOrganization(_ context.Context, name string) (string, error) {
 	f.calls = append(f.calls, "CreateOrganization")
 	f.organizationName = name
+	if f.organizationErr != nil {
+		return "", f.organizationErr
+	}
 	return "org-1", nil
 }
 

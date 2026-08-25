@@ -55,7 +55,7 @@ func (r *Runner) Start(ctx context.Context, phone string) (*Attempt, error) {
 
 	organizationID, err := r.client.CreateOrganization(ctx, "lk-phone-preflight-"+attemptID)
 	if err != nil {
-		return nil, r.fail(attemptID, "organization_create")
+		return nil, r.fail(attemptID, "organization_create", err)
 	}
 	attempt.OrganizationID = organizationID
 
@@ -66,16 +66,16 @@ func (r *Runner) Start(ctx context.Context, phone string) (*Attempt, error) {
 		Phone:          normalizedPhone,
 	})
 	if err != nil {
-		return nil, r.fail(attemptID, "user_create")
+		return nil, r.fail(attemptID, "user_create", err)
 	}
 	attempt.UserID = userID
 
 	if err := r.client.AddOTPSMS(ctx, userID); err != nil {
-		return nil, r.fail(attemptID, "otp_sms_add")
+		return nil, r.fail(attemptID, "otp_sms_add", err)
 	}
 	material, err := r.client.CreateSMSChallenge(ctx, userID, preflightSessionLifetime)
 	if err != nil {
-		return nil, r.fail(attemptID, "challenge_create")
+		return nil, r.fail(attemptID, "challenge_create", err)
 	}
 	attempt.SessionID = material.ID
 	attempt.sessionToken = material.Token
@@ -95,7 +95,7 @@ func (r *Runner) Verify(ctx context.Context, attempt *Attempt, code string) (Ses
 
 	replacementToken, err := r.client.VerifySMS(ctx, attempt.SessionID, strings.TrimSpace(code))
 	if err != nil {
-		return SessionProof{}, r.failAfterCleanup(attempt, "code_verify")
+		return SessionProof{}, r.failAfterCleanup(attempt, "code_verify", err)
 	}
 	attempt.sessionToken = replacementToken
 	proof, err := r.client.GetSession(ctx, attempt.SessionID, replacementToken)
@@ -103,7 +103,7 @@ func (r *Runner) Verify(ctx context.Context, attempt *Attempt, code string) (Ses
 		return SessionProof{}, r.failAfterCleanup(attempt, "session_read")
 	}
 	if err := r.deleteSession(attempt); err != nil {
-		return SessionProof{}, r.fail(attempt.id, "session_delete")
+		return SessionProof{}, r.fail(attempt.id, "session_delete", err)
 	}
 	if err := r.status("status=otp_verified attempt=%s user_factor=true otp_sms_factor=true\n", attempt.id); err != nil {
 		return SessionProof{}, errors.New("preflight output failed")
@@ -122,11 +122,11 @@ func (r *Runner) Abandon(attempt *Attempt) error {
 	return r.failAfterCleanup(attempt, "code_verify")
 }
 
-func (r *Runner) failAfterCleanup(attempt *Attempt, step string) error {
+func (r *Runner) failAfterCleanup(attempt *Attempt, step string, cause ...error) error {
 	if err := r.deleteSession(attempt); err != nil {
-		return r.fail(attempt.id, "session_delete")
+		return r.fail(attempt.id, "session_delete", err)
 	}
-	return r.fail(attempt.id, step)
+	return r.fail(attempt.id, step, cause...)
 }
 
 func (r *Runner) deleteSession(attempt *Attempt) error {
@@ -135,11 +135,31 @@ func (r *Runner) deleteSession(attempt *Attempt) error {
 	return r.client.DeleteSession(ctx, attempt.SessionID)
 }
 
-func (r *Runner) fail(attemptID, step string) error {
+func (r *Runner) fail(attemptID, step string, cause ...error) error {
 	if err := r.status("status=failed attempt=%s step=%s\n", attemptID, step); err != nil {
 		return errors.New("preflight output failed")
 	}
+	if detail := safeFailureDetail(cause...); detail != "" {
+		return fmt.Errorf("phone onboarding preflight failed at %s: %s", step, detail)
+	}
 	return fmt.Errorf("phone onboarding preflight failed at %s", step)
+}
+
+func safeFailureDetail(cause ...error) string {
+	if len(cause) == 0 || cause[0] == nil {
+		return ""
+	}
+	const marker = ": ZITADEL returned HTTP status "
+	message := cause[0].Error()
+	index := strings.LastIndex(message, marker)
+	if index < 0 {
+		return ""
+	}
+	status := strings.TrimSpace(message[index+len(marker):])
+	if len(status) != 3 || status[0] < '1' || status[0] > '5' || status[1] < '0' || status[1] > '9' || status[2] < '0' || status[2] > '9' {
+		return ""
+	}
+	return "HTTP status " + status
 }
 
 func (r *Runner) status(format string, args ...any) error {
