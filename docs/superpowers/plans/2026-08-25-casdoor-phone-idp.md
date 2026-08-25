@@ -124,7 +124,7 @@ if ($d.issuer -ne $issuer -or [string]::IsNullOrWhiteSpace($d.authorization_endp
 [pscustomobject]@{issuer=$d.issuer; authorizationEndpoint=$d.authorization_endpoint; jwksUri=$d.jwks_uri} | ConvertTo-Json -Compress
 ```
 
-Run: `Invoke-Pester scripts/casdoor-phone-idp-preflight.Tests.ps1 -Output Detailed`
+Run: `Invoke-Pester -Path scripts/casdoor-phone-idp-preflight.Tests.ps1 -Verbose`
 
 Expected: PASS; output has endpoints only.
 
@@ -178,7 +178,7 @@ Static Pester checks must require the fixed issuer, phone-verification gate and 
 
 - [ ] **Step 2: Run the failing static test, then add the action and preflight.**
 
-Run: `Invoke-Pester scripts/zitadel-casdoor-federation-preflight.Tests.ps1 -Output Detailed`
+Run: `Invoke-Pester -Path scripts/zitadel-casdoor-federation-preflight.Tests.ps1 -Verbose`
 
 Expected: FAIL until action and preflight exist.
 
@@ -206,7 +206,7 @@ Verify a new phone user gets a ZITADEL subject but no ListingKit role, and that 
 
 - [ ] **Step 5: Run all federation checks and commit.**
 
-Run: `Invoke-Pester scripts/zitadel-casdoor-federation-preflight.Tests.ps1 -Output Detailed; ./scripts/casdoor-phone-idp-preflight.ps1 -IssuerURL https://id.staging.shuomiai.com`
+Run: `Invoke-Pester -Path scripts/zitadel-casdoor-federation-preflight.Tests.ps1 -Verbose; pwsh -NoProfile -File ./scripts/casdoor-phone-idp-preflight.ps1 -IssuerURL https://id.staging.shuomiai.com`
 
 Expected: PASS; staging evidence proves no automatic linking and no default grant.
 
