@@ -29,3 +29,25 @@ Using a non-production phone, prove new registration, repeat login, resend
 cooldown, five incorrect codes causing temporary lockout, expired-code
 rejection, and equivalent error responses for known and unknown numbers.
 Record no number or code.
+
+## Production gated acceptance
+
+Apply only after explicit production authorization, with ZITADEL core and
+Login V2 on v4.17.1:
+
+- [ ] ZITADEL core and Login V2 are v4.17.1 and healthy.
+- [ ] Casdoor backup restore, phone-code limits, OIDC claims, no-link and no-grant tests are recorded.
+- [ ] DNS, TLS, ExternalSecret and Ingress readiness are verified without Secret values.
+- [ ] Generic OIDC linking/update are disabled; OTP SMS is permitted but not globally required.
+
+```bash
+kustomize build deployments/kubernetes/casdoor/overlays/prod | kubectl apply -f -
+kubectl -n casdoor rollout status deployment/casdoor --timeout=10m
+```
+
+Stop on failed readiness, ExternalSecret or preflight. Then execute a
+disposable real-device acceptance: register one disposable phone identity,
+verify its final ZITADEL token is denied ListingKit access with no role, grant
+one existing allowed role through member management, verify only the intended
+tenant becomes accessible, record redacted evidence, then remove the
+disposable user through normal identity administration.
