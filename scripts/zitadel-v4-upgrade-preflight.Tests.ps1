@@ -8,4 +8,10 @@ Describe "zitadel-v4-upgrade-preflight" {
   It "pins the approved target" {
     (Get-Content -Raw scripts/zitadel-v4-upgrade-preflight.ps1) | Should Match 'v4\.17\.1'
   }
+  It "compares the deployed image tag exactly" {
+    $content = Get-Content -Raw scripts/zitadel-v4-upgrade-preflight.ps1
+    $content | Should Match 'Get-ExactImageTag'
+    $content | Should Not Match '-notmatch'
+    $content | Should Match 'coreTag -ne \$TargetVersion'
+  }
 }

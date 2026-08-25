@@ -22,6 +22,22 @@ Describe "zitadel-casdoor-federation-preflight" {
     $action | Should Not Match 'api\.userGrants|fetch\(|console\.log'
   }
 
+  It "parses the serialized claims value" {
+    $action | Should Match 'JSON\.parse\(ctx\.claimsJSON\)'
+    $action | Should Not Match 'ctx\.claimsJSON\(\)'
+  }
+
+  It "fails closed on an unexpected issuer and allows staging" {
+    $action | Should Match 'untrusted Casdoor issuer'
+    $action | Should Match 'id\.staging\.shuomiai\.com'
+  }
+
+  It "separates the ZITADEL API URL from the expected provider issuer" {
+    $preflight | Should Match '\[uri\]\$ZitadelURL'
+    $preflight | Should Match '\[uri\]\$ExpectedIssuer'
+    $preflight | Should Match '\$expectedIssuer'
+  }
+
   It "preflight reads provider policy without printing secrets" {
     $preflight | Should Match 'idps/_search'
     $preflight | Should Match 'ZITADEL_ADMIN_TOKEN'

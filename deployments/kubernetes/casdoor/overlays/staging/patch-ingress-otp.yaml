@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: casdoor-otp
+spec:
+  rules:
+    - host: id.staging.shuomiai.com
+      http:
+        paths:
+          - path: /api/send-verification-code
+            pathType: Prefix
+            backend:
+              service:
+                name: casdoor
+                port:
+                  name: http
+          - path: /api/login
+            pathType: Prefix
+            backend:
+              service:
+                name: casdoor
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - id.staging.shuomiai.com
+      secretName: id-staging-shuomiai-tls

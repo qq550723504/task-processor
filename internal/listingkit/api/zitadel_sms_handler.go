@@ -30,8 +30,10 @@ func (h *handler) DeliverZitadelSMS(c *gin.Context) {
 	switch {
 	case err == nil:
 		c.Status(http.StatusNoContent)
-	case errors.Is(err, zitadelsms.ErrUnauthorizedWebhook), errors.Is(err, zitadelsms.ErrInvalidPayload):
+	case errors.Is(err, zitadelsms.ErrUnauthorizedWebhook):
 		c.Status(http.StatusUnauthorized)
+	case errors.Is(err, zitadelsms.ErrInvalidPayload):
+		c.Status(http.StatusBadRequest)
 	case errors.Is(err, zitadelsms.ErrInvalidConfiguration):
 		c.Status(http.StatusServiceUnavailable)
 	default:

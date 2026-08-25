@@ -3,6 +3,19 @@ kind: Middleware
 metadata:
   name: casdoor-auth-rate-limit
 spec:
+  # Strict limiter for OTP endpoints only (send-verification-code and login);
+  # attached by ingress-otp.yaml, never to the whole router.
   rateLimit:
     average: 5
     burst: 10
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: casdoor-web-rate-limit
+spec:
+  # Looser limit suitable for normal Casdoor traffic: pages, static assets,
+  # OIDC discovery and callbacks.
+  rateLimit:
+    average: 50
+    burst: 100

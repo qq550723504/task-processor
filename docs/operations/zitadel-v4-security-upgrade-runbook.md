@@ -20,7 +20,7 @@ Run only inside the approved change window, after the backup and restore-rehears
 
 ```bash
 kubectl -n zitadel set image deployment/zitadel zitadel=ghcr.io/zitadel/zitadel:v4.17.1
-kubectl -n zitadel set image deployment/zitadel zitadel-login=ghcr.io/zitadel/zitadel-login:v4.17.1
+kubectl -n zitadel set image deployment/zitadel-login zitadel-login=ghcr.io/zitadel/zitadel-login:v4.17.1
 kubectl -n zitadel rollout status deployment/zitadel --timeout=10m
 kubectl -n zitadel rollout status deployment/zitadel-login --timeout=10m
 curl --fail --silent --show-error https://auth.shuomiai.com/.well-known/openid-configuration >/dev/null
