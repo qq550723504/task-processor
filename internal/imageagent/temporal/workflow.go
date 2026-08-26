@@ -29,12 +29,19 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 	projection := WorkflowResult{Status: imageagent.RunStatusPlanning, Plan: input.Plan, Slots: slotProjections(input.Plan, nil)}
 	var updates *workflowUpdateState
 	cancelAndProject := func(results []SlotWorkflowResult) (WorkflowResult, error) {
-		result, err := cancelledResult(ctx, input, results)
-		if err == nil {
-			projection = result
-			if updates != nil && updates.cancelRequested {
-				err = workflow.Await(ctx, func() bool { return workflow.AllHandlersFinished(ctx) })
-			}
+		var result WorkflowResult
+		var err error
+		if updates != nil && updates.cancelCommitted {
+			result = cancelledProjection(input, results)
+		} else {
+			result, err = cancelledResult(ctx, input, results)
+		}
+		if err != nil {
+			return result, err
+		}
+		projection = result
+		if updates != nil && updates.cancelRequested {
+			err = workflow.Await(ctx, func() bool { return workflow.AllHandlersFinished(ctx) })
 		}
 		return result, err
 	}
@@ -263,10 +270,29 @@ func imageAgentActivityContext(ctx workflow.Context) workflow.Context {
 	})
 }
 
+type workflowUpdatePhase string
+
+const (
+	updatePhaseReplacePersistPlan       workflowUpdatePhase = "replace.persist_plan"
+	updatePhaseReplacePersistTransition workflowUpdatePhase = "replace.persist_transition"
+	updatePhaseRetryExecuteChild        workflowUpdatePhase = "retry.execute_child"
+	updatePhaseRetryPersistResult       workflowUpdatePhase = "retry.persist_result"
+	updatePhaseRetryPersistTransition   workflowUpdatePhase = "retry.persist_transition"
+	updatePhaseApprovalPublish          workflowUpdatePhase = "approval.publish"
+	updatePhaseApprovalPersistComplete  workflowUpdatePhase = "approval.persist_complete"
+	updatePhaseCancelPersist            workflowUpdatePhase = "cancel.persist"
+	updatePhaseCompleted                workflowUpdatePhase = "completed"
+)
+
 type workflowUpdateRecord struct {
-	fingerprint string
-	future      workflow.Future
-	setter      workflow.Settable
+	fingerprint     string
+	phase           workflowUpdatePhase
+	running         bool
+	future          workflow.Future
+	setter          workflow.Settable
+	retryResult     *SlotWorkflowResult
+	acknowledgement CommandAcknowledgement
+	completed       bool
 }
 
 type workflowUpdateState struct {
@@ -274,16 +300,17 @@ type workflowUpdateState struct {
 	projection      *WorkflowResult
 	results         *[]SlotWorkflowResult
 	wake            workflow.Channel
-	actions         map[string]workflowUpdateRecord
-	inFlight        bool
+	actions         map[string]*workflowUpdateRecord
+	pendingActionID string
 	restartPlan     bool
 	cancelRequested bool
+	cancelCommitted bool
 }
 
 func newWorkflowUpdateState(ctx workflow.Context, input *WorkflowInput, projection *WorkflowResult, results *[]SlotWorkflowResult) *workflowUpdateState {
 	return &workflowUpdateState{
 		input: input, projection: projection, results: results,
-		wake: workflow.NewBufferedChannel(ctx, 8), actions: make(map[string]workflowUpdateRecord),
+		wake: workflow.NewBufferedChannel(ctx, 8), actions: make(map[string]*workflowUpdateRecord),
 	}
 }
 
@@ -311,9 +338,6 @@ func (s *workflowUpdateState) validateReplacePlan(signal ReplacePlanSignal) erro
 	if err := validateUpdateIdentity(*s.input, signal.RunID, signal.ExpectedRevision, signal.ActorID, signal.ActionID); err != nil {
 		return err
 	}
-	if s.inFlight {
-		return updateBlockedError("another image agent command is in progress")
-	}
 	if s.projection.Status != imageagent.RunStatusBlocked {
 		return updateBlockedError("replacement plan is only valid while blocked")
 	}
@@ -332,33 +356,32 @@ func (s *workflowUpdateState) handleReplacePlan(ctx workflow.Context, signal Rep
 	if err != nil {
 		return CommandAcknowledgement{}, updateBlockedError("replacement command cannot be encoded")
 	}
-	if record, ok := s.actions[signal.ActionID]; ok {
-		if record.fingerprint != fingerprint {
-			return CommandAcknowledgement{}, updateBlockedError("action ID was reused for a different command")
-		}
-		var acknowledgement CommandAcknowledgement
-		return acknowledgement, record.future.Get(ctx, &acknowledgement)
-	}
 	if err := s.validateReplacePlan(signal); err != nil {
 		return CommandAcknowledgement{}, err
 	}
-	record := s.beginAction(ctx, signal.ActionID, fingerprint)
-	s.inFlight = true
-	acknowledgement, commandErr := s.applyReplacePlan(ctx, signal)
-	s.inFlight = false
-	record.setter.Set(acknowledgement, commandErr)
-	return acknowledgement, commandErr
+	record := s.actions[signal.ActionID]
+	if record == nil {
+		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseReplacePersistPlan)
+	}
+	return s.runActionAttempt(ctx, signal.ActionID, record, func() (CommandAcknowledgement, error) {
+		return s.applyReplacePlan(ctx, signal, record)
+	})
 }
 
-func (s *workflowUpdateState) applyReplacePlan(ctx workflow.Context, signal ReplacePlanSignal) (CommandAcknowledgement, error) {
-	if err := persistPlanRevision(ctx, *s.input, signal); err != nil {
+func (s *workflowUpdateState) applyReplacePlan(ctx workflow.Context, signal ReplacePlanSignal, record *workflowUpdateRecord) (CommandAcknowledgement, error) {
+	if record.phase == updatePhaseReplacePersistPlan || record.phase == updatePhaseReplacePersistTransition {
+		if err := persistPlanRevision(ctx, *s.input, signal); err != nil {
+			return CommandAcknowledgement{}, err
+		}
+		record.phase = updatePhaseReplacePersistTransition
+	}
+	transitionInput := *s.input
+	transitionInput.Plan = signal.Plan
+	if err := persistRunState(ctx, transitionInput, imageagent.RunStatusExecuting, "execute_slots", nil); err != nil {
 		return CommandAcknowledgement{}, err
 	}
 	s.input.Plan = signal.Plan
 	*s.results = nil
-	if err := persistRunState(ctx, *s.input, imageagent.RunStatusExecuting, "execute_slots", nil); err != nil {
-		return CommandAcknowledgement{}, err
-	}
 	*s.projection = executingProjection(signal.Plan, nil)
 	s.restartPlan = true
 	s.wake.SendAsync(struct{}{})
@@ -378,9 +401,6 @@ func (s *workflowUpdateState) validateRetrySlot(signal RetrySlotSignal) error {
 	if err := validateUpdateIdentity(*s.input, signal.RunID, signal.PlanRevision, signal.ActorID, signal.ActionID); err != nil {
 		return err
 	}
-	if s.inFlight {
-		return updateBlockedError("another image agent command is in progress")
-	}
 	if s.projection.Status != imageagent.RunStatusBlocked || s.projection.Block == nil || s.projection.Block.SlotID != signal.SlotID {
 		return updateBlockedError("retry is not valid for the current blocked slot")
 	}
@@ -397,57 +417,64 @@ func (s *workflowUpdateState) handleRetrySlot(ctx workflow.Context, signal Retry
 	if err != nil {
 		return CommandAcknowledgement{}, updateBlockedError("retry command cannot be encoded")
 	}
-	if record, ok := s.actions[signal.ActionID]; ok {
-		if record.fingerprint != fingerprint {
-			return CommandAcknowledgement{}, updateBlockedError("action ID was reused for a different command")
-		}
-		var acknowledgement CommandAcknowledgement
-		return acknowledgement, record.future.Get(ctx, &acknowledgement)
-	}
 	if err := s.validateRetrySlot(signal); err != nil {
 		return CommandAcknowledgement{}, err
 	}
-	record := s.beginAction(ctx, signal.ActionID, fingerprint)
-	s.inFlight = true
-	acknowledgement, commandErr := s.applyRetrySlot(ctx, signal)
-	s.inFlight = false
-	record.setter.Set(acknowledgement, commandErr)
-	return acknowledgement, commandErr
+	record := s.actions[signal.ActionID]
+	if record == nil {
+		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseRetryExecuteChild)
+	}
+	return s.runActionAttempt(ctx, signal.ActionID, record, func() (CommandAcknowledgement, error) {
+		return s.applyRetrySlot(ctx, signal, record)
+	})
 }
 
-func (s *workflowUpdateState) applyRetrySlot(ctx workflow.Context, signal RetrySlotSignal) (CommandAcknowledgement, error) {
+func (s *workflowUpdateState) applyRetrySlot(ctx workflow.Context, signal RetrySlotSignal, record *workflowUpdateRecord) (CommandAcknowledgement, error) {
 	index := slotIndex(s.input.Plan, signal.SlotID)
-	attempt := (*s.results)[index].Execution.Attempt + 1
-	completionChannel := workflow.NewBufferedChannel(ctx, 1)
-	startChild(ctx, *s.input, index, attempt, completionChannel)
-	var completion childCompletion
-	completionChannel.Receive(ctx, &completion)
-	if completion.Failed {
-		completion.Result = SlotWorkflowResult{
-			Execution: imageagent.SlotExecutionResult{SlotID: signal.SlotID, Attempt: attempt},
-			Status:    imageagent.SlotStatusBlocked, ErrorCode: "slot_workflow_failed",
+	if record.phase == updatePhaseRetryExecuteChild {
+		attempt := (*s.results)[index].Execution.Attempt + 1
+		completionChannel := workflow.NewBufferedChannel(ctx, 1)
+		startChild(ctx, *s.input, index, attempt, completionChannel)
+		var completion childCompletion
+		completionChannel.Receive(ctx, &completion)
+		if completion.Failed {
+			completion.Result = SlotWorkflowResult{
+				Execution: imageagent.SlotExecutionResult{SlotID: signal.SlotID, Attempt: attempt},
+				Status:    imageagent.SlotStatusBlocked, ErrorCode: "slot_workflow_failed",
+			}
 		}
+		pendingResult := completion.Result
+		record.retryResult = &pendingResult
+		record.phase = updatePhaseRetryPersistResult
 	}
-	(*s.results)[index] = completion.Result
-	if err := persistSlotResult(ctx, *s.input, completion.Result); err != nil {
-		return CommandAcknowledgement{}, err
+	if record.retryResult == nil {
+		return CommandAcknowledgement{}, fmt.Errorf("retry update is missing its deterministic child result")
 	}
-	result := summarizeResults(s.input.Plan, *s.results)
+	if record.phase == updatePhaseRetryPersistResult {
+		if err := persistSlotResult(ctx, *s.input, *record.retryResult); err != nil {
+			return CommandAcknowledgement{}, err
+		}
+		record.phase = updatePhaseRetryPersistTransition
+	}
+	stagedResults := append([]SlotWorkflowResult(nil), (*s.results)...)
+	stagedResults[index] = *record.retryResult
+	result := summarizeResults(s.input.Plan, stagedResults)
 	if result.Block != nil {
 		if err := persistRunState(ctx, *s.input, imageagent.RunStatusBlocked, "retry_slot", result.Block); err != nil {
 			return CommandAcknowledgement{}, err
 		}
 	} else {
-		if err := persistRunState(ctx, *s.input, imageagent.RunStatusAwaitingFinalApproval, "approve_results", nil); err != nil {
-			return CommandAcknowledgement{}, err
-		}
-		digest, err := resultDigest(s.input.Plan, *s.results)
+		digest, err := resultDigest(s.input.Plan, stagedResults)
 		if err != nil {
 			return CommandAcknowledgement{}, err
 		}
 		result.Status = imageagent.RunStatusAwaitingFinalApproval
 		result.ResultDigest = digest
+		if err := persistRunState(ctx, *s.input, imageagent.RunStatusAwaitingFinalApproval, "approve_results", nil); err != nil {
+			return CommandAcknowledgement{}, err
+		}
 	}
+	*s.results = stagedResults
 	*s.projection = result
 	s.wake.SendAsync(struct{}{})
 	return CommandAcknowledgement{
@@ -466,9 +493,6 @@ func (s *workflowUpdateState) validateApproveResults(signal ApproveResultsSignal
 	if err := validateUpdateIdentity(*s.input, signal.RunID, signal.PlanRevision, signal.ActorID, signal.ActionID); err != nil {
 		return err
 	}
-	if s.inFlight {
-		return updateBlockedError("another image agent command is in progress")
-	}
 	if s.projection.Status != imageagent.RunStatusAwaitingFinalApproval {
 		return updateBlockedError("approval is not valid in the current state")
 	}
@@ -484,32 +508,29 @@ func (s *workflowUpdateState) handleApproveResults(ctx workflow.Context, signal 
 	if err != nil {
 		return CommandAcknowledgement{}, updateBlockedError("approval command cannot be encoded")
 	}
-	if record, ok := s.actions[signal.ActionID]; ok {
-		if record.fingerprint != fingerprint {
-			return CommandAcknowledgement{}, updateBlockedError("action ID was reused for a different command")
-		}
-		var acknowledgement CommandAcknowledgement
-		return acknowledgement, record.future.Get(ctx, &acknowledgement)
-	}
 	if err := s.validateApproveResults(signal); err != nil {
 		return CommandAcknowledgement{}, err
 	}
-	record := s.beginAction(ctx, signal.ActionID, fingerprint)
-	s.inFlight = true
-	acknowledgement, commandErr := s.applyApproveResults(ctx, signal)
-	s.inFlight = false
-	record.setter.Set(acknowledgement, commandErr)
-	return acknowledgement, commandErr
+	record := s.actions[signal.ActionID]
+	if record == nil {
+		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseApprovalPublish)
+	}
+	return s.runActionAttempt(ctx, signal.ActionID, record, func() (CommandAcknowledgement, error) {
+		return s.applyApproveResults(ctx, signal, record)
+	})
 }
 
-func (s *workflowUpdateState) applyApproveResults(ctx workflow.Context, signal ApproveResultsSignal) (CommandAcknowledgement, error) {
-	publishInput := PublishApprovedActivityInput{
-		RunID: s.input.RunID, Identity: s.input.Identity, PlanRevision: s.input.Plan.Revision,
-		CandidateAssetIDs: candidateAssetIDs(s.input.Plan, *s.results),
-		IdempotencyKey:    publicationKey(s.input.RunID, s.input.Plan.Revision),
-	}
-	if err := workflow.ExecuteActivity(ctx, activityPublishApproved, publishInput).Get(ctx, nil); err != nil {
-		return CommandAcknowledgement{}, fmt.Errorf("publish approved assets: %w", err)
+func (s *workflowUpdateState) applyApproveResults(ctx workflow.Context, signal ApproveResultsSignal, record *workflowUpdateRecord) (CommandAcknowledgement, error) {
+	if record.phase == updatePhaseApprovalPublish {
+		publishInput := PublishApprovedActivityInput{
+			RunID: s.input.RunID, Identity: s.input.Identity, PlanRevision: s.input.Plan.Revision,
+			CandidateAssetIDs: candidateAssetIDs(s.input.Plan, *s.results),
+			IdempotencyKey:    publicationKey(s.input.RunID, s.input.Plan.Revision),
+		}
+		if err := workflow.ExecuteActivity(ctx, activityPublishApproved, publishInput).Get(ctx, nil); err != nil {
+			return CommandAcknowledgement{}, fmt.Errorf("publish approved assets: %w", err)
+		}
+		record.phase = updatePhaseApprovalPersistComplete
 	}
 	if err := persistRunState(ctx, *s.input, imageagent.RunStatusCompleted, "complete", nil); err != nil {
 		return CommandAcknowledgement{}, err
@@ -534,9 +555,6 @@ func (s *workflowUpdateState) validateCancel(signal CancelSignal) error {
 	if err := validateUpdateIdentity(*s.input, signal.RunID, signal.PlanRevision, signal.ActorID, signal.ActionID); err != nil {
 		return err
 	}
-	if s.inFlight {
-		return updateBlockedError("another image agent command is in progress")
-	}
 	switch s.projection.Status {
 	case imageagent.RunStatusCompleted, imageagent.RunStatusFailed, imageagent.RunStatusCancelled:
 		return updateBlockedError("cancel is not valid for a terminal run")
@@ -545,42 +563,69 @@ func (s *workflowUpdateState) validateCancel(signal CancelSignal) error {
 }
 
 func (s *workflowUpdateState) handleCancel(ctx workflow.Context, signal CancelSignal) (CommandAcknowledgement, error) {
+	ctx = imageAgentActivityContext(ctx)
 	fingerprint, err := updateFingerprint(signalCancel, signal)
 	if err != nil {
 		return CommandAcknowledgement{}, updateBlockedError("cancel command cannot be encoded")
 	}
-	if record, ok := s.actions[signal.ActionID]; ok {
-		if record.fingerprint != fingerprint {
-			return CommandAcknowledgement{}, updateBlockedError("action ID was reused for a different command")
-		}
-		var acknowledgement CommandAcknowledgement
-		return acknowledgement, record.future.Get(ctx, &acknowledgement)
-	}
 	if err := s.validateCancel(signal); err != nil {
 		return CommandAcknowledgement{}, err
 	}
-	record := s.beginAction(ctx, signal.ActionID, fingerprint)
-	s.inFlight = true
-	s.cancelRequested = true
-	s.wake.SendAsync(struct{}{})
-	if err := workflow.Await(ctx, func() bool { return s.projection.Status == imageagent.RunStatusCancelled }); err != nil {
-		s.inFlight = false
-		record.setter.Set(nil, err)
-		return CommandAcknowledgement{}, err
+	record := s.actions[signal.ActionID]
+	if record == nil {
+		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseCancelPersist)
 	}
-	acknowledgement := CommandAcknowledgement{
-		RunID: signal.RunID, PlanRevision: signal.PlanRevision, ActionID: signal.ActionID, Status: imageagent.RunStatusCancelled,
-	}
-	s.inFlight = false
-	record.setter.Set(acknowledgement, nil)
-	return acknowledgement, nil
+	return s.runActionAttempt(ctx, signal.ActionID, record, func() (CommandAcknowledgement, error) {
+		return s.applyCancel(ctx, signal)
+	})
 }
 
-func (s *workflowUpdateState) beginAction(ctx workflow.Context, actionID, fingerprint string) workflowUpdateRecord {
-	future, setter := workflow.NewFuture(ctx)
-	record := workflowUpdateRecord{fingerprint: fingerprint, future: future, setter: setter}
+func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSignal) (CommandAcknowledgement, error) {
+	if err := persistRunState(ctx, *s.input, imageagent.RunStatusCancelled, "cancelled", nil); err != nil {
+		return CommandAcknowledgement{}, err
+	}
+	result := *s.projection
+	result.Status = imageagent.RunStatusCancelled
+	result.Block = nil
+	result.ResultDigest = ""
+	*s.projection = result
+	s.cancelCommitted = true
+	s.cancelRequested = true
+	s.wake.SendAsync(struct{}{})
+	return CommandAcknowledgement{RunID: signal.RunID, PlanRevision: signal.PlanRevision, ActionID: signal.ActionID, Status: imageagent.RunStatusCancelled}, nil
+}
+
+func (s *workflowUpdateState) beginAction(actionID, fingerprint string, phase workflowUpdatePhase) *workflowUpdateRecord {
+	record := &workflowUpdateRecord{fingerprint: fingerprint, phase: phase}
 	s.actions[actionID] = record
+	s.pendingActionID = actionID
 	return record
+}
+
+func (s *workflowUpdateState) runActionAttempt(ctx workflow.Context, actionID string, record *workflowUpdateRecord, apply func() (CommandAcknowledgement, error)) (CommandAcknowledgement, error) {
+	if record.completed {
+		return record.acknowledgement, nil
+	}
+	if record.running {
+		var acknowledgement CommandAcknowledgement
+		return acknowledgement, record.future.Get(ctx, &acknowledgement)
+	}
+	record.future, record.setter = workflow.NewFuture(ctx)
+	record.running = true
+	acknowledgement, err := apply()
+	record.running = false
+	if err == nil {
+		record.phase = updatePhaseCompleted
+		record.acknowledgement = acknowledgement
+		record.completed = true
+		if s.pendingActionID == actionID {
+			s.pendingActionID = ""
+		}
+	}
+	record.setter.Set(acknowledgement, err)
+	record.future = nil
+	record.setter = nil
+	return acknowledgement, err
 }
 
 func (s *workflowUpdateState) validateAction(actionID, fingerprint string) (bool, error) {
@@ -588,13 +633,16 @@ func (s *workflowUpdateState) validateAction(actionID, fingerprint string) (bool
 		return false, updateBlockedError("action ID is required")
 	}
 	record, ok := s.actions[actionID]
-	if !ok {
-		return false, nil
-	}
-	if record.fingerprint != fingerprint {
+	if ok && record.fingerprint != fingerprint {
 		return true, updateBlockedError("action ID was reused for a different command")
 	}
-	return true, nil
+	if ok {
+		return true, nil
+	}
+	if s.pendingActionID != "" {
+		return false, updateBlockedError("another image agent command is pending")
+	}
+	return false, nil
 }
 
 func validateUpdateIdentity(input WorkflowInput, runID string, revision int64, actorID, actionID string) error {
@@ -669,6 +717,10 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, c
 			})
 		}
 		selector.Select(ctx)
+		if updates != nil && updates.cancelRequested {
+			cancelled = true
+			cancelChildren()
+		}
 		if !gotCompletion {
 			continue
 		}
@@ -861,6 +913,10 @@ func cancelledResult(ctx workflow.Context, input WorkflowInput, results []SlotWo
 	if err := persistRunState(ctx, input, imageagent.RunStatusCancelled, "cancelled", nil); err != nil {
 		return WorkflowResult{}, err
 	}
+	return cancelledProjection(input, results), nil
+}
+
+func cancelledProjection(input WorkflowInput, results []SlotWorkflowResult) WorkflowResult {
 	result := WorkflowResult{
 		Status: imageagent.RunStatusCancelled,
 		Plan:   input.Plan,
@@ -871,7 +927,7 @@ func cancelledResult(ctx workflow.Context, input WorkflowInput, results []SlotWo
 			result.CompletedSlotIDs = append(result.CompletedSlotIDs, slot.ID)
 		}
 	}
-	return result, nil
+	return result
 }
 
 func persistSlotResult(ctx workflow.Context, input WorkflowInput, result SlotWorkflowResult) error {
