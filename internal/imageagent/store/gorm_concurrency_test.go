@@ -3,11 +3,15 @@ package store
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -20,6 +24,7 @@ type gormConcurrencyContextKey string
 const (
 	saveSlotBarrierKey   gormConcurrencyContextKey = "save-slot-barrier"
 	appendPlanBarrierKey gormConcurrencyContextKey = "append-plan-barrier"
+	appendAttemptKey     gormConcurrencyContextKey = "append-attempt-barrier"
 )
 
 func TestGormSaveSlotResultAndAppendPlanSerialize(t *testing.T) {
@@ -92,18 +97,62 @@ func TestGormSaveSlotResultAndAppendPlanSerialize(t *testing.T) {
 	})
 }
 
-func TestGormAppendAttemptConcurrentIdenticalRetries(t *testing.T) {
-	db := newConcurrentSQLite(t)
-	sqlDB, err := db.DB()
+func TestGormAppendAttemptPostgresConcurrentIdenticalRetries(t *testing.T) {
+	const callers = 8
+
+	sqlDB, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	sqlDB.SetMaxOpenConns(callers)
+	sqlDB.SetMaxIdleConns(callers)
+	mock.MatchExpectationsInOrder(false)
+
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB, WithoutReturning: true}), &gorm.Config{
+		DisableAutomaticPing: true,
+		Logger:               logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
 	repo := NewGormRepository(db)
 	ctx := context.Background()
 	attempt := imageagent.StepAttempt{TenantID: "tenant-a", RunID: "run-1", SlotID: "slot-1", Node: "generate", IdempotencyKey: "attempt-1", Attempt: 1, Outcome: "succeeded"}
-	require.NoError(t, repo.CreateRun(ctx, manualRun(attempt.RunID, attempt.TenantID)))
-	require.NoError(t, repo.AppendAttempt(ctx, attempt))
 
-	const callers = 8
+	for range callers {
+		mock.ExpectBegin()
+		expectAppendAttemptRunLookup(mock, attempt)
+	}
+	for caller := range callers {
+		result := sqlmock.NewResult(0, 0)
+		if caller == 0 {
+			result = sqlmock.NewResult(0, 1)
+		}
+		mock.ExpectExec(postgresAttemptInsertSQL()).
+			WithArgs(attempt.TenantID, attempt.RunID, attempt.SlotID, attempt.Attempt, attempt.Node, attempt.IdempotencyKey, attempt.Outcome, attempt.ErrorCategory, sqlmock.AnyArg()).
+			WillReturnResult(result)
+	}
+	for range callers - 1 {
+		expectAppendAttemptEqualityLookup(mock, attempt)
+	}
+	for range callers {
+		mock.ExpectCommit()
+	}
+
+	arrived := make(chan struct{})
+	release := make(chan struct{})
+	var barrier sync.Mutex
+	reached := 0
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("test:round3:barrier-attempt-insert", func(tx *gorm.DB) {
+		if tx.Statement.Table != "image_agent_attempts" || tx.Statement.Context.Value(appendAttemptKey) != true {
+			return
+		}
+		barrier.Lock()
+		reached++
+		if reached == callers {
+			close(arrived)
+		}
+		barrier.Unlock()
+		<-release
+	}))
+
 	start := make(chan struct{})
 	errs := make(chan error, callers)
 	var workers sync.WaitGroup
@@ -112,19 +161,79 @@ func TestGormAppendAttemptConcurrentIdenticalRetries(t *testing.T) {
 		go func() {
 			defer workers.Done()
 			<-start
-			errs <- repo.AppendAttempt(ctx, attempt)
+			errs <- repo.AppendAttempt(context.WithValue(ctx, appendAttemptKey, true), attempt)
 		}()
 	}
 	close(start)
+	workersDone := make(chan struct{})
+	go func() {
+		workers.Wait()
+		close(workersDone)
+	}()
+	for {
+		select {
+		case <-arrived:
+			goto insertReady
+		case err := <-errs:
+			if err != nil {
+				close(release)
+				workers.Wait()
+				t.Fatalf("AppendAttempt returned before reaching the insert barrier: %v", err)
+			}
+		case <-workersDone:
+			close(release)
+			close(errs)
+			for err := range errs {
+				t.Logf("AppendAttempt returned before reaching the insert barrier: %v", err)
+			}
+			t.Fatal("not every caller reached the PostgreSQL INSERT path")
+		}
+	}
+
+insertReady:
+	close(release)
 	workers.Wait()
 	close(errs)
 	for err := range errs {
 		require.NoError(t, err)
 	}
+	require.Equal(t, callers, reached, "all callers reached the PostgreSQL INSERT path before release")
 
-	var count int64
-	require.NoError(t, db.Model(&attemptRecord{}).Where("tenant_id = ? AND run_id = ? AND slot_id = ? AND attempt = ? AND idempotency_key = ?", attempt.TenantID, attempt.RunID, attempt.SlotID, attempt.Attempt, attempt.IdempotencyKey).Count(&count).Error)
-	require.EqualValues(t, 1, count)
+	conflicting := attempt
+	conflicting.Outcome = "failed"
+	mock.ExpectBegin()
+	expectAppendAttemptRunLookup(mock, conflicting)
+	mock.ExpectExec(postgresAttemptInsertSQL()).
+		WithArgs(conflicting.TenantID, conflicting.RunID, conflicting.SlotID, conflicting.Attempt, conflicting.Node, conflicting.IdempotencyKey, conflicting.Outcome, conflicting.ErrorCategory, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	expectAppendAttemptEqualityLookup(mock, attempt)
+	mock.ExpectRollback()
+	require.ErrorIs(t, repo.AppendAttempt(ctx, conflicting), imageagent.ErrRevisionConflict)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func expectAppendAttemptRunLookup(mock sqlmock.Sqlmock, attempt imageagent.StepAttempt) {
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "image_agent_runs" WHERE tenant_id = $1 AND id = $2 ORDER BY "image_agent_runs"."id" LIMIT $3`)).
+		WithArgs(attempt.TenantID, attempt.RunID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"tenant_id", "id", "business_task_id", "user_id", "mode", "idempotency_key", "status", "current_node", "active_plan_revision", "version", "budget_json", "usage_json", "block_json", "created_at", "updated_at",
+		}).AddRow(
+			attempt.TenantID, attempt.RunID, "task-1", "user-1", imageagent.RunModeManual, "run-key", imageagent.RunStatusPlanning, "", 0, 1, []byte(`{}`), []byte(`{}`), []byte(`null`), time.Unix(0, 0), time.Unix(0, 0),
+		))
+}
+
+func expectAppendAttemptEqualityLookup(mock sqlmock.Sqlmock, attempt imageagent.StepAttempt) {
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "image_agent_attempts" WHERE tenant_id = $1 AND run_id = $2 AND slot_id = $3 AND (attempt = $4 OR idempotency_key = $5)`)).
+		WithArgs(attempt.TenantID, attempt.RunID, attempt.SlotID, attempt.Attempt, attempt.IdempotencyKey).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"tenant_id", "run_id", "slot_id", "attempt", "node", "idempotency_key", "outcome", "error_category", "created_at",
+		}).AddRow(
+			attempt.TenantID, attempt.RunID, attempt.SlotID, attempt.Attempt, attempt.Node, attempt.IdempotencyKey, attempt.Outcome, attempt.ErrorCategory, time.Unix(0, 0),
+		))
+}
+
+func postgresAttemptInsertSQL() string {
+	return regexp.QuoteMeta(`INSERT INTO "image_agent_attempts" ("tenant_id","run_id","slot_id","attempt","node","idempotency_key","outcome","error_category","created_at") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`)
 }
 
 func newConcurrentSQLite(t *testing.T) *gorm.DB {
