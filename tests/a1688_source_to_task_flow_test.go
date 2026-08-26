@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authidentity"
 	a1688 "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
 	sourcea1688 "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
@@ -34,7 +35,7 @@ func TestAlibaba1688HTTPReplayCreatesTaskAndPreservesSourceFacts(t *testing.T) {
 		Country:         " US ",
 		Language:        " en_US ",
 		SheinStoreID:    168811,
-	}, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
+	}, authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -116,7 +117,7 @@ func TestAlibaba1688HTTPReplayRejectsMissingFacts(t *testing.T) {
 		SourceAccountID: 3001,
 		Platforms:       []string{"shein"},
 		SheinStoreID:    168811,
-	}, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
+	}, authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -153,7 +154,7 @@ func TestAlibaba1688HTTPReplayPreservesSourceError(t *testing.T) {
 		SourceAccountID: 3001,
 		Platforms:       []string{"shein"},
 		SheinStoreID:    168811,
-	}, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
+	}, authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -253,7 +254,7 @@ func TestAlibaba1688HTTPReplayRejectsUnavailableSourceAccountAndPreservesSheinTa
 				SourceAccountID: 3001,
 				Platforms:       []string{"shein"},
 				SheinStoreID:    168811,
-			}, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
+			}, authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
 
 			if rec.Code != http.StatusForbidden {
 				t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -317,7 +318,7 @@ func newAlibaba1688ReplayRouterWithValidator(creator *replayGenerateTaskCreator,
 	return router
 }
 
-func performAuthenticatedReplayRequest(t *testing.T, router http.Handler, body sourcea1688.CreateListingKitTaskRequest, identity listingkit.AuthenticatedIdentity) *httptest.ResponseRecorder {
+func performAuthenticatedReplayRequest(t *testing.T, router http.Handler, body sourcea1688.CreateListingKitTaskRequest, identity authidentity.AuthenticatedIdentity) *httptest.ResponseRecorder {
 	t.Helper()
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -325,7 +326,7 @@ func performAuthenticatedReplayRequest(t *testing.T, router http.Handler, body s
 	}
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/product-sourcing/1688/listingkit/tasks", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), identity))
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(req.Context(), identity))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	return rec

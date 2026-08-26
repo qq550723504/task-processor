@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"task-processor/internal/authidentity"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
-	"task-processor/internal/listingkit"
 )
 
 type routeDescriptor = httproute.Descriptor
@@ -90,7 +90,7 @@ func TestListingKitZitadelAuthStoresIdentityForProductImageRoute(t *testing.T) {
 	mountRoutes(router, []routeDescriptor{{
 		Method: http.MethodPost, Path: "/api/v1/images/process", Module: "images",
 		Handler: func(c *gin.Context) {
-			identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+			identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 			if !ok {
 				c.JSON(http.StatusForbidden, gin.H{"error": "missing_identity"})
 				return
@@ -361,7 +361,7 @@ func TestListingKitZitadelAuthStoresVerifiedIdentityInContext(t *testing.T) {
 	mountRoutes(router, []routeDescriptor{{
 		Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks", Module: "listing-kit",
 		Handler: func(c *gin.Context) {
-			identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+			identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 			if !ok {
 				c.JSON(http.StatusForbidden, gin.H{"error": "missing_identity"})
 				return
@@ -467,7 +467,7 @@ func TestListingKitZitadelAuthUsesSubjectWhenClaimsDiffer(t *testing.T) {
 			Path:   "/api/v1/listing-kits/tasks",
 			Module: "listing-kit",
 			Handler: func(c *gin.Context) {
-				identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+				identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 				require.True(t, ok)
 				assert.Equal(t, "tenant-789", identity.TenantID)
 				assert.Equal(t, "zitadel-subject-123", identity.UserID)

@@ -38,7 +38,7 @@ func TestCreateListingKitTaskReturnsCreatedTask(t *testing.T) {
 		Language:        "en_US",
 		SheinStoreID:    168811,
 	}
-	rec := performJSONRequestWithAuthenticatedIdentity(t, router, http.MethodPost, "/tasks", body, map[string]string{"X-Tenant-ID": " tenant-http ", "X-User-ID": " user-http "}, listingkit.AuthenticatedIdentity{TenantID: "tenant-http", UserID: "user-http"})
+	rec := performJSONRequestWithAuthenticatedIdentity(t, router, http.MethodPost, "/tasks", body, map[string]string{"X-Tenant-ID": " tenant-http ", "X-User-ID": " user-http "}, authidentity.AuthenticatedIdentity{TenantID: "tenant-http", UserID: "user-http"})
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -72,7 +72,7 @@ func TestCreateListingKitTaskReturnsBadRequestWithHandoff(t *testing.T) {
 	router := gin.New()
 	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
 
-	rec := performJSONRequestWithAuthenticatedIdentity(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1000.html", SourceError: "crawler failed"}, map[string]string{"X-Tenant-ID": "tenant-http", "X-User-ID": "user-http"}, listingkit.AuthenticatedIdentity{TenantID: "tenant-http", UserID: "user-http"})
+	rec := performJSONRequestWithAuthenticatedIdentity(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1000.html", SourceError: "crawler failed"}, map[string]string{"X-Tenant-ID": "tenant-http", "X-User-ID": "user-http"}, authidentity.AuthenticatedIdentity{TenantID: "tenant-http", UserID: "user-http"})
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -102,7 +102,7 @@ func TestCreateListingKitTaskReturnsStableStoreAccessError(t *testing.T) {
 		SourceAccountID: 3001,
 		SheinStoreID:    168811,
 		Platforms:       []string{"shein"},
-	}, nil, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-http"})
+	}, nil, authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-http"})
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403: %s", rec.Code, rec.Body.String())
@@ -127,7 +127,7 @@ func TestCreateListingKitTaskReturnsStableSourceAccountAccessError(t *testing.T)
 		SourceAccountID: 3001,
 		SheinStoreID:    168811,
 		Platforms:       []string{"shein"},
-	}, nil, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-http"})
+	}, nil, authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-http"})
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403: %s", rec.Code, rec.Body.String())
@@ -168,7 +168,7 @@ func TestCreateListingKitTaskRejectsLegacySourceStoreID(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/tasks", bytes.NewBufferString(`{"url":"https://detail.1688.com/offer/1005.html","source_store_id":3001}`))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-http"}))
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(req.Context(), authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-http"}))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -204,7 +204,7 @@ func TestCreateListingKitTaskIgnoresForgedBodyIdentity(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", "verified-tenant")
 	req.Header.Set("X-User-ID", "verified-user")
-	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "verified-tenant", UserID: "verified-user"}))
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(req.Context(), authidentity.AuthenticatedIdentity{TenantID: "verified-tenant", UserID: "verified-user"}))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || service.command.TenantID != "verified-tenant" || service.command.UserID != "verified-user" {
@@ -226,7 +226,7 @@ func TestCreateListingKitTaskPrefersAuthenticatedIdentityOverHeaders(t *testing.
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", "tenant-b")
 	req.Header.Set("X-User-ID", "user-b")
-	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"}))
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(req.Context(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"}))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 

@@ -13,7 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/listingkit"
+	"task-processor/internal/authidentity"
 	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/tenantdirectory"
 	"task-processor/internal/listingsubscription"
@@ -472,7 +472,7 @@ func invitationRequest(tenantID, role, actorID string) *http.Request {
 }
 
 func withAuthenticatedIdentity(request *http.Request, tenantID, userID string, roles ...string) *http.Request {
-	return request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{
+	return request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{
 		TenantID: tenantID,
 		UserID:   userID,
 		Roles:    roles,
