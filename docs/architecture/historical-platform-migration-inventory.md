@@ -112,12 +112,21 @@ Near-term direction:
 
 ### Recent SHEIN boundary slices
 
-The low-risk SHEIN slices are now complete for this phase. In particular,
-ProductFetcher ownership, SourceAccount request construction, Studio policy
-helpers, variant image normalization, and workspace display-title fallback
-semantics now have canonical owners outside the ListingKit facade. The merged
-changes are deliberately kept as thin adapters and do not authorize a broad
-`internal/publishing/shein` or `internal/shein` rewrite.
+The low-risk SHEIN policy and facade slices are now complete for this phase. In
+particular, the Studio policy helpers, variant image normalization, and
+workspace display-title fallback semantics now have canonical owners outside
+the ListingKit facade. These policy changes are deliberately kept as thin
+adapters and do not authorize a broad `internal/publishing/shein` or
+`internal/shein` rewrite.
+
+Two adjacent migrations must remain separate from this SHEIN inventory:
+
+- `SourceAccount` request construction belongs to the 1688 crawler/source-
+  handoff path, not to SHEIN ownership or evidence that the SHEIN split is
+  complete.
+- ProductFetcher ownership was a cross-platform runtime contract change across
+  pipeline and processor modules. It is Tier 3 historical context, not a
+  precedent for Tier 1 thin-adapter migrations.
 
 The current decision is to freeze the SHEIN directory split and enforce it with
 depguard and focused semantic tests. A new SHEIN move should require a concrete
