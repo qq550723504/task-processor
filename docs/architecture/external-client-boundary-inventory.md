@@ -58,6 +58,9 @@ Current direct dependency hotspots are:
     management DTO and legacy SHEIN activity bridge compatibility
   - 2026-08-26 update: asynchronous SHEIN sync request context now uses the
     neutral `internal/shared/aiidentity` package instead of the OpenAI client
+  - 2026-08-26 update: SHEIN review-content optimization now accepts the
+    neutral `internal/ai` chat contract instead of concrete OpenAI request and
+    response types; `sheinadapter` no longer imports the OpenAI adapter
   - should shrink behind ListingKit-owned AI interfaces before new features add
     more concrete OpenAI types
   - `internal/listingkit` root OpenAI seams are guarded by
