@@ -45,5 +45,31 @@ func MergeSceneGenerationOptions(base, override *SceneGenerationOptions) *SceneG
 	if value := strings.TrimSpace(override.CustomSceneHint); value != "" {
 		merged.CustomSceneHint = value
 	}
+	if value := strings.TrimSpace(override.SlotRole); value != "" {
+		merged.SlotRole = value
+	}
+	if value := strings.TrimSpace(override.SlotBrief); value != "" {
+		merged.SlotBrief = value
+	}
+	if styleReferenceIDs := normalizedSceneStyleReferenceIDs(override.StyleReferenceIDs); len(styleReferenceIDs) > 0 {
+		merged.StyleReferenceIDs = styleReferenceIDs
+	}
 	return merged
+}
+
+func normalizedSceneStyleReferenceIDs(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	normalized := make([]string, 0, len(ids))
+	for _, rawID := range ids {
+		id := strings.TrimSpace(rawID)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+	return normalized
 }

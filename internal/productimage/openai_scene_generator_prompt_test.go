@@ -196,3 +196,26 @@ func TestBuildSceneGenerationResolvedPromptUsesRequestAndContextCustomizations(t
 		t.Fatalf("prompt = %q", resolved.Text)
 	}
 }
+
+func TestBuildSceneGenerationResolvedPromptUsesSlotControlledOptions(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = nil
+	t.Cleanup(func() {
+		prompt.GlobalRegistry = previous
+	})
+
+	resolved := buildSceneGenerationResolvedPrompt(&SceneGenerationRequest{
+		SceneIntent: "gallery_scene",
+		ProductContext: &ProductContext{Attributes: map[string]string{
+			"slot_role":           "selling_point",
+			"slot_brief":          "highlight waterproof coating",
+			"style_reference_ids": "style-1,style-2",
+		}},
+	})
+
+	if !containsInsensitive(resolved.Text, "slot role: selling_point") ||
+		!containsInsensitive(resolved.Text, "slot brief: highlight waterproof coating") ||
+		!containsInsensitive(resolved.Text, "authorized style references: style-1,style-2") {
+		t.Fatalf("prompt = %q", resolved.Text)
+	}
+}

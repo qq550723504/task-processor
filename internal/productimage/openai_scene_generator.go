@@ -153,18 +153,30 @@ func buildSceneGenerationResolvedPrompt(req *SceneGenerationRequest) resolvedPro
 	if options.CustomSceneHint != "" {
 		base += " Custom scene hint: " + options.CustomSceneHint + "."
 	}
+	if options.SlotRole != "" {
+		base += " Slot role: " + options.SlotRole + "."
+	}
+	if options.SlotBrief != "" {
+		base += " Slot brief: " + options.SlotBrief + "."
+	}
+	if options.StyleReferenceIDs != "" {
+		base += " Authorized style references: " + options.StyleReferenceIDs + "."
+	}
 	base += " Produce a premium marketplace-ready gallery image with clean composition and no overlaid text."
 	vars := map[string]any{
-		"product_type":      productType,
-		"title":             title,
-		"scene_intent":      strings.TrimSpace(req.SceneIntent),
-		"scene_category":    options.Category,
-		"scene_style":       options.SceneStyle,
-		"background_tone":   options.BackgroundTone,
-		"composition":       options.Composition,
-		"props_level":       options.PropsLevel,
-		"audience_hint":     options.AudienceHint,
-		"custom_scene_hint": options.CustomSceneHint,
+		"product_type":        productType,
+		"title":               title,
+		"scene_intent":        strings.TrimSpace(req.SceneIntent),
+		"scene_category":      options.Category,
+		"scene_style":         options.SceneStyle,
+		"background_tone":     options.BackgroundTone,
+		"composition":         options.Composition,
+		"props_level":         options.PropsLevel,
+		"audience_hint":       options.AudienceHint,
+		"custom_scene_hint":   options.CustomSceneHint,
+		"slot_role":           options.SlotRole,
+		"slot_brief":          options.SlotBrief,
+		"style_reference_ids": options.StyleReferenceIDs,
 	}
 	resolved := resolveSceneGenerationPrompt(req, vars, base, options)
 	if strings.TrimSpace(resolved.Text) == "" {
