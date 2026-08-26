@@ -56,6 +56,15 @@ func (commandRepository) SaveSlotResult(context.Context, imageagent.RunScope, in
 }
 func (commandRepository) AppendAttempt(context.Context, imageagent.StepAttempt) error { return nil }
 func (commandRepository) AppendEvent(context.Context, imageagent.RunEvent) error      { return nil }
+func (commandRepository) AppendProjectionEvent(_ context.Context, event imageagent.RunEvent) (imageagent.RunEvent, error) {
+	return event, nil
+}
+func (commandRepository) SaveAssetCatalog(context.Context, imageagent.RunScope, imageagent.AssetCatalog) error {
+	return nil
+}
+func (commandRepository) GetAssetCatalog(context.Context, imageagent.RunScope) (imageagent.AssetCatalog, error) {
+	return imageagent.AssetCatalog{}, nil
+}
 func (commandRepository) ListEvents(context.Context, imageagent.RunScope, int64, int) ([]imageagent.RunEvent, error) {
 	return nil, nil
 }

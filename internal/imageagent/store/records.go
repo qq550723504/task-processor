@@ -81,3 +81,17 @@ type eventRecord struct {
 }
 
 func (eventRecord) TableName() string { return "image_agent_events" }
+
+type assetCatalogRecord struct {
+	TenantID   string `gorm:"primaryKey;type:varchar(64)"`
+	RunID      string `gorm:"primaryKey;type:varchar(64)"`
+	ID         string `gorm:"primaryKey;type:varchar(128)"`
+	Type       string `gorm:"type:varchar(16);not null"`
+	DisplayURL string `gorm:"type:text"`
+	Label      string `gorm:"type:varchar(256)"`
+	Width      int
+	Height     int
+	CreatedAt  time.Time `gorm:"not null"`
+}
+
+func (assetCatalogRecord) TableName() string { return "image_agent_asset_catalog" }

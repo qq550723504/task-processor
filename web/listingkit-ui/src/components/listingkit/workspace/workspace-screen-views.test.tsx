@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { vi } from "vitest";
 
-import { WorkspaceReviewView } from "@/components/listingkit/workspace/workspace-screen-views";
+import { WorkspaceAgentSurface, WorkspaceReviewView } from "@/components/listingkit/workspace/workspace-screen-views";
 
 vi.mock("@/components/listingkit/shared/preview-canvas", () => ({
   PreviewCanvas: () => <div>预览画布内容</div>,
@@ -53,12 +53,24 @@ vi.mock("@/components/listingkit/workspace/workspace-preview-suggestion", () => 
 vi.mock("@/components/listingkit/image-agent/image-agent-workbench", () => ({
   ImageAgentWorkbench: ({ taskId, runId }: { taskId: string; runId: string }) => (
     <div data-testid="image-agent-workbench">
-      图片 Agent {taskId} {runId}
+      场景图 scene-2 生成失败 仅重试 scene-2 {taskId} {runId}
     </div>
   ),
 }));
 
 describe("WorkspaceReviewView", () => {
+  it.each(["旧预览加载中", "旧预览加载失败", "旧预览数据缺失"])(
+    "keeps the explicit blocked Agent surface visible with %s",
+    (legacyState) => {
+      render(
+        <WorkspaceAgentSurface context={{ taskId: "task-1", runId: "run-1" }}>
+          <div>{legacyState}</div>
+        </WorkspaceAgentSurface>,
+      );
+      expect(screen.getByText(/场景图 scene-2 生成失败/)).toBeInTheDocument();
+      expect(screen.getByText(legacyState)).toBeInTheDocument();
+    },
+  );
   it("organizes shein general review into three primary stages", () => {
     const { container } = render(
       <WorkspaceReviewView
@@ -133,9 +145,7 @@ describe("WorkspaceReviewView", () => {
       />,
     );
 
-    expect(screen.getByTestId("image-agent-workbench")).toHaveTextContent(
-      "图片 Agent task-1 run-1",
-    );
+    expect(screen.getByTestId("image-agent-workbench")).toHaveTextContent("task-1 run-1");
     expect(screen.getByText("工具栏动作")).toBeInTheDocument();
     expect(screen.getByText("更多诊断")).toBeInTheDocument();
   });

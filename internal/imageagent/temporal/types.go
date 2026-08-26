@@ -22,6 +22,7 @@ const (
 	signalRetrySlot             = "retry_slot"
 	signalReplacePlan           = "replace_plan"
 	signalCancel                = "cancel"
+	updateResumeCommand         = "resume_command"
 	updateErrorRevisionConflict = "imageagent_revision_conflict"
 	updateErrorCommandBlocked   = "imageagent_command_blocked"
 	updateErrorRunNotFound      = "imageagent_run_not_found"
@@ -36,6 +37,7 @@ type WorkflowInput struct {
 	Plan               imageagent.Plan
 	MaxConcurrentSlots int
 	WaitForCommands    bool
+	AssetCatalog       imageagent.AssetCatalog
 }
 
 type WorkflowResult struct {
@@ -45,6 +47,7 @@ type WorkflowResult struct {
 	Slots            []imageagent.SlotProjection
 	CompletedSlotIDs []string
 	ResultDigest     string
+	PendingCommand   *imageagent.PendingCommandReceipt
 }
 
 type SlotWorkflowInput struct {
@@ -53,6 +56,7 @@ type SlotWorkflowInput struct {
 	PlanRevision int64
 	Slot         imageagent.Slot
 	Attempt      int
+	AssetCatalog imageagent.AssetCatalog
 }
 
 type SlotWorkflowResult struct {
@@ -68,6 +72,7 @@ type ExecuteSlotActivityInput struct {
 	Slot           imageagent.Slot
 	Attempt        int
 	IdempotencyKey string
+	AssetCatalog   imageagent.AssetCatalog
 }
 
 type PersistSlotResultActivityInput struct {
@@ -133,12 +138,13 @@ type CancelSignal struct {
 	ActionID     string
 }
 
-type CommandAcknowledgement struct {
-	RunID        string
-	PlanRevision int64
-	ActionID     string
-	Status       imageagent.RunStatus
+type ResumeCommandInput struct {
+	RunID    string
+	ActorID  string
+	ActionID string
 }
+
+type CommandAcknowledgement = imageagent.CommandAcknowledgement
 
 func TaskQueueName() string {
 	if configured := strings.TrimSpace(os.Getenv(EnvTaskQueue)); configured != "" {

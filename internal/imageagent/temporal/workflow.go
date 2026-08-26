@@ -43,17 +43,17 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 		}
 		return result, nil
 	}
-	if err := workflow.SetQueryHandler(ctx, QueryWorkflowProjection, func() (WorkflowResult, error) {
-		return projection, nil
-	}); err != nil {
-		return WorkflowResult{}, fmt.Errorf("register image agent projection query: %w", err)
-	}
 	cancelChannel := workflow.GetSignalChannel(ctx, signalCancel)
 	retryChannel := workflow.GetSignalChannel(ctx, signalRetrySlot)
 	replaceChannel := workflow.GetSignalChannel(ctx, signalReplacePlan)
 	approveChannel := workflow.GetSignalChannel(ctx, signalApproveResults)
 	var results []SlotWorkflowResult
 	updates = newWorkflowUpdateState(ctx, &input, &projection, &results, effects)
+	if err := workflow.SetQueryHandler(ctx, QueryWorkflowProjection, func() (WorkflowResult, error) {
+		return updates.projectionSnapshot(), nil
+	}); err != nil {
+		return WorkflowResult{}, fmt.Errorf("register image agent projection query: %w", err)
+	}
 	if err := updates.register(ctx); err != nil {
 		return WorkflowResult{}, fmt.Errorf("register image agent update handlers: %w", err)
 	}
@@ -340,6 +340,8 @@ const (
 
 type workflowUpdateRecord struct {
 	fingerprint     string
+	kind            string
+	command         interface{}
 	phase           workflowUpdatePhase
 	running         bool
 	future          workflow.Future
@@ -403,7 +405,10 @@ func (s *workflowUpdateState) register(ctx workflow.Context) error {
 	if err := workflow.SetUpdateHandlerWithOptions(ctx, signalApproveResults, s.handleApproveResults, workflow.UpdateHandlerOptions{Validator: s.validateApproveResults}); err != nil {
 		return err
 	}
-	return workflow.SetUpdateHandlerWithOptions(ctx, signalCancel, s.handleCancel, workflow.UpdateHandlerOptions{Validator: s.validateCancel})
+	if err := workflow.SetUpdateHandlerWithOptions(ctx, signalCancel, s.handleCancel, workflow.UpdateHandlerOptions{Validator: s.validateCancel}); err != nil {
+		return err
+	}
+	return workflow.SetUpdateHandlerWithOptions(ctx, updateResumeCommand, s.handleResume, workflow.UpdateHandlerOptions{Validator: s.validateResume})
 }
 
 func (s *workflowUpdateState) startSignalHandlers(
@@ -507,21 +512,16 @@ func (s *workflowUpdateState) acceptSignal(
 	if err != nil {
 		return false
 	}
-	if ingress, exists := s.signalActions[actionID]; exists {
-		if ingress.fingerprint != fingerprint || ingress.state != signalIngressAccepted {
-			return false
-		}
-		action := s.actions[actionID]
-		return action != nil && action.fingerprint == fingerprint
+	if _, exists := s.signalActions[actionID]; exists {
+		// Signals are ingress-only compatibility commands. Once observed, neither
+		// a duplicate nor a reconstructed signal may resume a pending saga.
+		return false
 	}
 	ingress := &signalIngressRecord{fingerprint: fingerprint, state: signalIngressRejected}
 	s.signalActions[actionID] = ingress
-	if action := s.actions[actionID]; action != nil {
-		if action.fingerprint != fingerprint {
-			return false
-		}
-		ingress.state = signalIngressAccepted
-		return true
+	if s.actions[actionID] != nil {
+		// Existing action records are recoverable only through resume_command.
+		return false
 	}
 	if s.pendingActionID != "" || validate() != nil {
 		return false
@@ -607,7 +607,7 @@ func (s *workflowUpdateState) handleReplacePlan(ctx workflow.Context, signal Rep
 	}
 	record := s.actions[signal.ActionID]
 	if record == nil {
-		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseReplacePersistPlan)
+		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseReplacePersistPlan, signalReplacePlan, signal)
 	}
 	return s.runActionAttempt(ctx, signal.ActionID, record, func() (CommandAcknowledgement, error) {
 		return s.applyReplacePlan(ctx, signal, record)
@@ -668,7 +668,7 @@ func (s *workflowUpdateState) handleRetrySlot(ctx workflow.Context, signal Retry
 	}
 	record := s.actions[signal.ActionID]
 	if record == nil {
-		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseRetryExecuteChild)
+		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseRetryExecuteChild, signalRetrySlot, signal)
 	}
 	return s.runActionAttempt(ctx, signal.ActionID, record, func() (CommandAcknowledgement, error) {
 		return s.applyRetrySlot(ctx, signal, record)
@@ -759,7 +759,7 @@ func (s *workflowUpdateState) handleApproveResults(ctx workflow.Context, signal 
 	}
 	record := s.actions[signal.ActionID]
 	if record == nil {
-		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseApprovalPublish)
+		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseApprovalPublish, signalApproveResults, signal)
 	}
 	return s.runActionAttempt(ctx, signal.ActionID, record, func() (CommandAcknowledgement, error) {
 		return s.applyApproveResults(ctx, signal, record)
@@ -820,7 +820,7 @@ func (s *workflowUpdateState) handleCancel(ctx workflow.Context, signal CancelSi
 	}
 	record := s.actions[signal.ActionID]
 	if record == nil {
-		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseCancelPersist)
+		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseCancelPersist, signalCancel, signal)
 	}
 	return s.runActionAttempt(ctx, signal.ActionID, record, func() (CommandAcknowledgement, error) {
 		return s.applyCancel(ctx, signal, record)
@@ -843,11 +843,66 @@ func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSig
 	return CommandAcknowledgement{RunID: signal.RunID, PlanRevision: signal.PlanRevision, ActionID: signal.ActionID, Status: imageagent.RunStatusCancelled}, nil
 }
 
-func (s *workflowUpdateState) beginAction(actionID, fingerprint string, phase workflowUpdatePhase) *workflowUpdateRecord {
-	record := &workflowUpdateRecord{fingerprint: fingerprint, phase: phase}
+func (s *workflowUpdateState) beginAction(actionID, fingerprint string, phase workflowUpdatePhase, kind string, command interface{}) *workflowUpdateRecord {
+	record := &workflowUpdateRecord{fingerprint: fingerprint, phase: phase, kind: kind, command: command}
 	s.actions[actionID] = record
 	s.pendingActionID = actionID
 	return record
+}
+
+func (s *workflowUpdateState) projectionSnapshot() WorkflowResult {
+	result := *s.projection
+	result.PendingCommand = nil
+	if s.pendingActionID == "" {
+		return result
+	}
+	record := s.actions[s.pendingActionID]
+	if record == nil || record.completed {
+		return result
+	}
+	receipt := &imageagent.PendingCommandReceipt{ActionID: s.pendingActionID, Kind: record.kind, Phase: string(record.phase), Status: "pending", PlanRevision: s.input.Plan.Revision}
+	if command, ok := record.command.(RetrySlotSignal); ok {
+		receipt.SlotID = command.SlotID
+		receipt.PlanRevision = command.PlanRevision
+	}
+	if command, ok := record.command.(ReplacePlanSignal); ok {
+		receipt.PlanRevision = command.ExpectedRevision
+	}
+	result.PendingCommand = receipt
+	return result
+}
+
+func (s *workflowUpdateState) validateResume(input ResumeCommandInput) error {
+	if strings.TrimSpace(input.ActionID) == "" || input.RunID != s.input.RunID || input.ActorID != s.input.Identity.UserID {
+		return updateBlockedError("workflow resume identity does not match")
+	}
+	record := s.actions[input.ActionID]
+	if record == nil || record.completed || s.pendingActionID != input.ActionID {
+		return updateBlockedError("pending image agent command was not found")
+	}
+	return nil
+}
+
+func (s *workflowUpdateState) handleResume(ctx workflow.Context, input ResumeCommandInput) (CommandAcknowledgement, error) {
+	ctx = imageAgentActivityContext(ctx)
+	if err := s.validateResume(input); err != nil {
+		return CommandAcknowledgement{}, err
+	}
+	record := s.actions[input.ActionID]
+	return s.runActionAttempt(ctx, input.ActionID, record, func() (CommandAcknowledgement, error) {
+		switch command := record.command.(type) {
+		case ReplacePlanSignal:
+			return s.applyReplacePlan(ctx, command, record)
+		case RetrySlotSignal:
+			return s.applyRetrySlot(ctx, command, record)
+		case ApproveResultsSignal:
+			return s.applyApproveResults(ctx, command, record)
+		case CancelSignal:
+			return s.applyCancel(ctx, command, record)
+		default:
+			return CommandAcknowledgement{}, updateBlockedError("pending image agent command payload is unavailable")
+		}
+	})
 }
 
 func (s *workflowUpdateState) runActionAttempt(ctx workflow.Context, actionID string, record *workflowUpdateRecord, apply func() (CommandAcknowledgement, error)) (CommandAcknowledgement, error) {
@@ -989,7 +1044,7 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 }
 
 func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, completionChannel workflow.SendChannel) {
-	slotInput := SlotWorkflowInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision, Slot: input.Plan.Slots[index], Attempt: attempt}
+	slotInput := SlotWorkflowInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision, Slot: input.Plan.Slots[index], Attempt: attempt, AssetCatalog: input.AssetCatalog}
 	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
 		WorkflowID: childWorkflowID(slotInput), ParentClosePolicy: enums.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
 	})

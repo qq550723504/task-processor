@@ -24,6 +24,7 @@ func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkf
 		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
 		Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey: slotAttemptKey(input.Slot, input.Attempt),
+		AssetCatalog:   input.AssetCatalog,
 	}
 	var execution imageagent.SlotExecutionResult
 	if err := workflow.ExecuteActivity(ctx, activityExecuteSlot, activityInput).Get(ctx, &execution); err != nil {

@@ -18,6 +18,7 @@ func ValidatePlan(plan Plan) error {
 	}
 
 	sources := make(map[string]struct{}, len(plan.SourceAssetIDs))
+	styles := make(map[string]struct{}, len(plan.StyleReferenceIDs))
 	for _, rawID := range plan.SourceAssetIDs {
 		id := strings.TrimSpace(rawID)
 		if id == "" {
@@ -27,6 +28,12 @@ func ValidatePlan(plan Plan) error {
 	}
 	if len(sources) == 0 {
 		return fmt.Errorf("plan requires at least one source asset")
+	}
+	for _, rawID := range plan.StyleReferenceIDs {
+		id := strings.TrimSpace(rawID)
+		if id != "" {
+			styles[id] = struct{}{}
+		}
 	}
 	if len(plan.Slots) == 0 {
 		return fmt.Errorf("plan requires at least one slot")
@@ -63,6 +70,15 @@ func ValidatePlan(plan Plan) error {
 			}
 			if _, contained := sources[sourceID]; !contained {
 				return fmt.Errorf("source asset reference %q is not in plan", sourceID)
+			}
+		}
+		for _, rawStyleID := range slot.StyleReferenceIDs {
+			styleID := strings.TrimSpace(rawStyleID)
+			if styleID == "" {
+				continue
+			}
+			if _, contained := styles[styleID]; !contained {
+				return fmt.Errorf("style reference %q is not in plan", styleID)
 			}
 		}
 	}

@@ -23,6 +23,21 @@ type SheinSubmissionTimelineProps = ComponentProps<
   typeof SheinSubmissionTimeline
 >;
 
+export function WorkspaceAgentSurface({
+  context,
+  children,
+}: {
+  context: { taskId: string; runId: string };
+  children: ReactNode;
+}) {
+  return (
+    <div className="min-w-0 space-y-6">
+      <ImageAgentWorkbench taskId={context.taskId} runId={context.runId} />
+      {children}
+    </div>
+  );
+}
+
 function WorkspaceStageSection({
   eyebrow,
   title,

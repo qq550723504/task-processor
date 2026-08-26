@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useImageAgentRun } from "@/components/listingkit/image-agent/use-image-agent-run";
 import type {
   ImageAgentProjection,
+  ImageAgentAuthorizedAsset,
   ImageAgentSlot,
   ImageAgentSlotProjection,
   ImageAgentSlotRole,
@@ -21,6 +22,10 @@ export function ImageAgentWorkbench({
 }) {
   const agent = useImageAgentRun({ runId, initialRun });
   const projection = agent.projection;
+  const [draftState, setDraftState] = useState(() => initialRun ? {
+    revision: initialRun.plan.revision,
+    draft: draftFromProjection(initialRun),
+  } : undefined);
 
   if (agent.isLoading && !projection) {
     return (
@@ -40,10 +45,17 @@ export function ImageAgentWorkbench({
     );
   }
 
-  if (
-    projection.run.business_task_id &&
-    projection.run.business_task_id !== taskId
-  ) {
+  if (!projection.run.business_task_id?.trim()) {
+    return (
+      <section className="rounded-[1.75rem] border border-destructive/40 bg-destructive/5 p-6">
+        <p role="alert" className="text-sm text-destructive">
+          当前图片 Agent 运行缺少业务任务归属，已停止展示
+        </p>
+      </section>
+    );
+  }
+
+  if (projection.run.business_task_id !== taskId) {
     return (
       <section className="rounded-[1.75rem] border border-destructive/40 bg-destructive/5 p-6">
         <p role="alert" className="text-sm text-destructive">
@@ -66,6 +78,36 @@ export function ImageAgentWorkbench({
   const completedSlots = projection.slots.filter(
     (slot) => slot.slot.status === "accepted",
   ).length;
+  const commandPending = Boolean(agent.pendingAction || projection.pending_command);
+  const currentDraft = draftState?.revision === projection.plan.revision
+    ? draftState.draft
+    : draftFromProjection(projection);
+  const sourceAssets = projection.asset_catalog.filter((asset) => asset.type === "source");
+  const styleAssets = projection.asset_catalog.filter((asset) => asset.type === "style");
+
+  const togglePlanAsset = (type: "source" | "style", id: string) => {
+    setDraftState((previous) => {
+      const current = previous?.revision === projection.plan.revision
+        ? previous.draft
+        : draftFromProjection(projection);
+      const field = type === "source" ? "source_asset_ids" : "style_reference_ids";
+      const selected = current[field] ?? [];
+      const next = selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id];
+      return { revision: projection.plan.revision, draft: {
+        ...current,
+        [field]: next,
+        slots: current.slots.map((slot) => ({
+          ...slot,
+          ...(type === "source" && !next.includes(id)
+            ? { source_asset_ids: slot.source_asset_ids.filter((value) => value !== id) }
+            : {}),
+          ...(type === "style" && !next.includes(id)
+            ? { style_reference_ids: slot.style_reference_ids?.filter((value) => value !== id) }
+            : {}),
+        })),
+      }};
+    });
+  };
 
   return (
     <section className="space-y-4" aria-label="图片 Agent 工作台">
@@ -98,16 +140,22 @@ export function ImageAgentWorkbench({
 
       <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_20rem]">
         <aside className="min-w-0 space-y-4">
-          <AssetList
+          <AssetSelector
             title="商品来源素材"
             description="只用于确认商品身份，不会被当作生成成功结果。"
-            ids={projection.plan.source_asset_ids}
+            assets={sourceAssets}
+            selectedIds={currentDraft.source_asset_ids}
+            editable={canEditPlan}
+            onToggle={(id) => togglePlanAsset("source", id)}
             testId="image-agent-source-materials"
           />
-          <AssetList
+          <AssetSelector
             title="风格参考"
             description="只影响表现方式，与商品来源素材严格分开。"
-            ids={projection.plan.style_reference_ids ?? []}
+            assets={styleAssets}
+            selectedIds={currentDraft.style_reference_ids ?? []}
+            editable={canEditPlan}
+            onToggle={(id) => togglePlanAsset("style", id)}
             emptyLabel="当前计划未选择风格参考"
             testId="image-agent-style-references"
           />
@@ -115,11 +163,14 @@ export function ImageAgentWorkbench({
 
         <PlanBoard
           key={projection.plan.revision}
-          slots={projection.plan.slots}
+          slots={currentDraft.slots}
           projections={slotProjectionByID}
           editable={canEditPlan}
-          pending={Boolean(agent.pendingAction)}
-          onSave={agent.replacePlan}
+          pending={commandPending}
+          sourceAssets={sourceAssets.filter((asset) => currentDraft.source_asset_ids.includes(asset.id))}
+          styleAssets={styleAssets.filter((asset) => currentDraft.style_reference_ids?.includes(asset.id))}
+          onChange={(slots) => setDraftState({ revision: projection.plan.revision, draft: { ...currentDraft, slots } })}
+          onSave={() => agent.replacePlan(currentDraft)}
         />
 
         <aside className="min-w-0 space-y-4 xl:sticky xl:top-6">
@@ -162,7 +213,7 @@ export function ImageAgentWorkbench({
                 <button
                   type="button"
                   className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-xl bg-amber-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-200 dark:text-amber-950"
-                  disabled={Boolean(agent.pendingAction)}
+                  disabled={commandPending}
                   onClick={() => void agent.retrySlot(blockedSlotID)}
                 >
                   仅重试 {blockedSlotID}
@@ -174,11 +225,21 @@ export function ImageAgentWorkbench({
           <section className="rounded-[1.5rem] border border-border bg-card p-4 shadow-sm">
             <h3 className="font-semibold text-foreground">可执行操作</h3>
             <div className="mt-3 space-y-2">
+              {projection.pending_command ? (
+                <button
+                  type="button"
+                  className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-amber-950 px-4 text-sm font-medium text-white disabled:opacity-50"
+                  disabled={Boolean(agent.pendingAction)}
+                  onClick={() => void agent.resumePending()}
+                >
+                  恢复上次操作
+                </button>
+              ) : null}
               {projection.actions.includes("approve_results") ? (
                 <button
                   type="button"
                   className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-foreground px-4 text-sm font-medium text-background disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!projection.result_digest || Boolean(agent.pendingAction)}
+                  disabled={!projection.result_digest || commandPending}
                   onClick={() => void agent.approveResults()}
                 >
                   批准当前结果
@@ -188,7 +249,7 @@ export function ImageAgentWorkbench({
                 <button
                   type="button"
                   className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-border bg-background px-4 text-sm font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={Boolean(agent.pendingAction)}
+                  disabled={commandPending}
                   onClick={() => void agent.cancel()}
                 >
                   取消运行
@@ -210,15 +271,32 @@ function PlanBoard({
   projections,
   editable,
   pending,
+  sourceAssets,
+  styleAssets,
+  onChange,
   onSave,
 }: {
   slots: ImageAgentSlot[];
   projections: Map<string, ImageAgentSlotProjection>;
   editable: boolean;
   pending: boolean;
-  onSave: (slots: ImageAgentSlot[]) => Promise<void>;
+  sourceAssets: ImageAgentAuthorizedAsset[];
+  styleAssets: ImageAgentAuthorizedAsset[];
+  onChange: (slots: ImageAgentSlot[]) => void;
+  onSave: () => Promise<void>;
 }) {
-  const [draftSlots, setDraftSlots] = useState(() => slots.map(cloneSlot));
+  const updateSlot = (index: number, update: Partial<ImageAgentSlot>) =>
+    onChange(slots.map((slot, itemIndex) => itemIndex === index ? { ...slot, ...update } : slot));
+  const addSlot = () => {
+    let number = 1;
+    while (slots.some((slot) => slot.id === `scene-${number}`)) number += 1;
+    const id = `scene-${number}`;
+    onChange([...slots, {
+      id, role: "scene", source_asset_ids: sourceAssets[0] ? [sourceAssets[0].id] : [],
+      style_reference_ids: styleAssets.map((asset) => asset.id), brief: "",
+      idempotency_key: `slot-key-${id}`, status: "pending",
+    }]);
+  };
   return (
     <main className="min-w-0 space-y-3">
       {slots.map((slot, index) => (
@@ -226,41 +304,42 @@ function PlanBoard({
           key={slot.id}
           slot={slot}
           projection={projections.get(slot.id)}
-          draft={draftSlots[index] ?? slot}
+          draft={slot}
           editable={editable}
-          onBriefChange={(brief) =>
-            setDraftSlots((current) =>
-              current.map((item, itemIndex) =>
-                itemIndex === index ? { ...item, brief } : item,
-              ),
-            )
-          }
+          sourceAssets={sourceAssets}
+          styleAssets={styleAssets}
+          onBriefChange={(brief) => updateSlot(index, { brief })}
+          onSourcesChange={(source_asset_ids) => updateSlot(index, { source_asset_ids })}
+          onStylesChange={(style_reference_ids) => updateSlot(index, { style_reference_ids })}
+          onDelete={() => onChange(slots.filter((_, itemIndex) => itemIndex !== index))}
         />
       ))}
       {editable ? (
-        <button
-          type="button"
-          className="inline-flex h-10 items-center justify-center rounded-xl bg-foreground px-4 text-sm font-medium text-background disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={pending}
-          onClick={() => void onSave(draftSlots)}
-        >
-          保存计划修改
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="inline-flex h-10 items-center justify-center rounded-xl border border-border px-4 text-sm font-medium" disabled={pending} onClick={addSlot}>新增槽位</button>
+          <button type="button" className="inline-flex h-10 items-center justify-center rounded-xl bg-foreground px-4 text-sm font-medium text-background disabled:cursor-not-allowed disabled:opacity-50" disabled={pending} onClick={() => void onSave()}>保存计划修改</button>
+        </div>
       ) : null}
     </main>
   );
 }
 
-function AssetList({
+function AssetSelector({
   title,
   description,
-  ids,
+  assets,
+  selectedIds,
+  editable,
+  onToggle,
   emptyLabel,
   testId,
 }: {
   title: string;
   description: string;
-  ids: string[];
+  assets: ImageAgentAuthorizedAsset[];
+  selectedIds: string[];
+  editable: boolean;
+  onToggle: (id: string) => void;
   emptyLabel?: string;
   testId: string;
 }) {
@@ -272,13 +351,20 @@ function AssetList({
       <h3 className="font-semibold text-foreground">{title}</h3>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
       <ul className="mt-3 space-y-2">
-        {ids.length > 0 ? (
-          ids.map((id) => (
+        {assets.length > 0 ? (
+          assets.map((asset) => (
             <li
-              key={id}
+              key={asset.id}
               className="break-all rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
             >
-              {id}
+              <label className="flex items-start gap-2">
+                <input type="checkbox" disabled={!editable} checked={selectedIds.includes(asset.id)} onChange={() => onToggle(asset.id)} />
+                <span>{asset.label || asset.id}</span>
+              </label>
+              {safeDisplayURL(asset.display_url) ? (
+                // eslint-disable-next-line @next/next/no-img-element -- authorized backend catalog URL
+                <img className="mt-2 aspect-square w-full rounded-lg object-cover" src={asset.display_url} alt={asset.label || asset.id} />
+              ) : null}
             </li>
           ))
         ) : (
@@ -294,13 +380,23 @@ function SlotCard({
   projection,
   draft,
   editable,
+  sourceAssets,
+  styleAssets,
   onBriefChange,
+  onSourcesChange,
+  onStylesChange,
+  onDelete,
 }: {
   slot: ImageAgentSlot;
   projection?: ImageAgentSlotProjection;
   draft: ImageAgentSlot;
   editable: boolean;
+  sourceAssets: ImageAgentAuthorizedAsset[];
+  styleAssets: ImageAgentAuthorizedAsset[];
   onBriefChange: (brief: string) => void;
+  onSourcesChange: (ids: string[]) => void;
+  onStylesChange: (ids: string[]) => void;
+  onDelete: () => void;
 }) {
   return (
     <article
@@ -319,8 +415,14 @@ function SlotCard({
         </span>
       </div>
       <div className="mt-3 grid gap-3 text-xs text-muted-foreground sm:grid-cols-2">
-        <p>来源：{slot.source_asset_ids.join("、") || "未选择"}</p>
-        <p>风格：{slot.style_reference_ids?.join("、") || "未选择"}</p>
+        <fieldset disabled={!editable}>
+          <legend>槽位来源</legend>
+          {sourceAssets.map((asset) => <label key={asset.id} className="mt-1 flex gap-1"><input type="checkbox" checked={draft.source_asset_ids.includes(asset.id)} onChange={() => onSourcesChange(toggleID(draft.source_asset_ids, asset.id))} />{asset.label || asset.id}</label>)}
+        </fieldset>
+        <fieldset disabled={!editable}>
+          <legend>槽位风格</legend>
+          {styleAssets.map((asset) => <label key={asset.id} className="mt-1 flex gap-1"><input type="checkbox" checked={draft.style_reference_ids?.includes(asset.id) ?? false} onChange={() => onStylesChange(toggleID(draft.style_reference_ids ?? [], asset.id))} />{asset.label || asset.id}</label>)}
+        </fieldset>
       </div>
       <label className="mt-3 block text-sm text-foreground">
         <span className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -334,6 +436,7 @@ function SlotCard({
           onChange={(event) => onBriefChange(event.target.value)}
         />
       </label>
+      {editable ? <button type="button" className="mt-2 text-xs text-destructive" onClick={onDelete}>删除 {slot.id}</button> : null}
       {projection?.candidates.length ? (
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {projection.candidates.map((candidate, index) => (
@@ -430,4 +533,26 @@ function cloneSlot(slot: ImageAgentSlot): ImageAgentSlot {
       ? [...slot.style_reference_ids]
       : undefined,
   };
+}
+
+function draftFromProjection(projection: ImageAgentProjection) {
+  return {
+    source_asset_ids: [...projection.plan.source_asset_ids],
+    style_reference_ids: projection.plan.style_reference_ids ? [...projection.plan.style_reference_ids] : [],
+    slots: projection.plan.slots.map(cloneSlot),
+  };
+}
+
+function toggleID(values: string[], id: string) {
+  return values.includes(id) ? values.filter((value) => value !== id) : [...values, id];
+}
+
+function safeDisplayURL(value?: string) {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
 }

@@ -23,6 +23,29 @@ func TestExecutorCallsSceneRendererOncePerSceneSlot(t *testing.T) {
 	require.Equal(t, 4, renderer.calls)
 }
 
+func TestExecutorRejectsSourceURLsAndReferencesOutsideWorkflowCatalog(t *testing.T) {
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: "asset://generated"}}}})
+	input := sceneSlotInput("scene-1")
+	input.Slot.SourceAssetIDs = []string{"https://attacker.example/source.png"}
+	_, err := executor.ExecuteSlot(context.Background(), input)
+	require.ErrorContains(t, err, "not authorized")
+	input.Slot.SourceAssetIDs = []string{"source-not-authorized"}
+	_, err = executor.ExecuteSlot(context.Background(), input)
+	require.ErrorContains(t, err, "not authorized")
+}
+
+func TestExecutorResolvesAuthorizedSourceIDWhenCatalogDisplayURLIsOmitted(t *testing.T) {
+	executor := NewProductImageSlotExecutor(Dependencies{
+		SceneRenderer: &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: "asset://generated"}}},
+		SourceAssets:  defaultSourceAssets(),
+	})
+	input := sceneSlotInput("scene-1")
+	input.AssetCatalog.Assets[0].DisplayURL = ""
+	result, err := executor.ExecuteSlot(context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+}
+
 func TestExecutorUsesSubjectExtractionAndWhiteBackgroundForMainSlot(t *testing.T) {
 	extractor := &recordingSubjectExtractor{result: &productimage.ImageAsset{URL: "asset://subject"}}
 	whiteBackground := &recordingWhiteBackgroundRenderer{result: &productimage.ImageAsset{URL: "asset://main"}}
@@ -44,15 +67,16 @@ func TestExecutorUsesSubjectExtractionAndWhiteBackgroundForMainSlot(t *testing.T
 func TestExecutorMapsSceneRoleBriefAndAuthorizedStyleReferencesToSceneContext(t *testing.T) {
 	renderer := &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: "asset://scene"}}}
 	executor := NewProductImageSlotExecutor(Dependencies{
-		SceneRenderer:               renderer,
-		ProductContext:              &productimage.ProductContext{Title: "Example product"},
-		AuthorizedStyleReferenceIDs: map[string]struct{}{"style-1": {}},
-		SourceAssets:                defaultSourceAssets(),
+		SceneRenderer:  renderer,
+		ProductContext: &productimage.ProductContext{Title: "Example product"},
+		SourceAssets:   defaultSourceAssets(),
 	})
 	input := sceneSlotInput("detail-1")
 	input.Slot.Role = imageagent.SlotRoleDetail
 	input.Slot.Brief = "  show material texture  "
 	input.Slot.StyleReferenceIDs = []string{" style-1 ", "unapproved-style"}
+	input.Slot.StyleReferenceIDs = []string{" style-1 "}
+	input.AssetCatalog.Assets = append(input.AssetCatalog.Assets, imageagent.AuthorizedAsset{ID: "style-1", Type: imageagent.AuthorizedAssetStyle})
 
 	_, err := executor.ExecuteSlot(context.Background(), input)
 
@@ -158,7 +182,9 @@ func TestExecutorRejectsSourceEquivalentURLs(t *testing.T) {
 			executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: tt.outputURL}}}, SourceAssets: map[string]productimage.ImageAsset{
 				"source-1": {URL: tt.sourceURL, SourceURL: tt.sourceURL},
 			}})
-			result, err := executor.ExecuteSlot(context.Background(), sceneSlotInput("scene-1"))
+			input := sceneSlotInput("scene-1")
+			input.AssetCatalog.Assets[0].DisplayURL = tt.sourceURL
+			result, err := executor.ExecuteSlot(context.Background(), input)
 			require.Error(t, err)
 			require.Empty(t, result.Candidates)
 		})
@@ -178,20 +204,15 @@ func TestExecutorAcceptsUnrelatedMetadataDescriptions(t *testing.T) {
 	require.Len(t, result.Candidates, 1)
 }
 
-func TestExecutorFailsClosedForUnresolvedOpaqueSourceAndAllowsDirectHTTPSource(t *testing.T) {
+func TestExecutorRejectsDirectURLSourceIDsEvenWhenReadable(t *testing.T) {
 	renderer := &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: "https://example.test/generated.jpg"}}}
 	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer})
-
-	_, err := executor.ExecuteSlot(context.Background(), sceneSlotInput("scene-1"))
-	require.ErrorContains(t, err, "not resolved")
-	require.Zero(t, renderer.calls)
 
 	input := sceneSlotInput("scene-1")
 	input.Slot.SourceAssetIDs = []string{"https://example.test/source.jpg"}
 	result, err := executor.ExecuteSlot(context.Background(), input)
-	require.NoError(t, err)
-	require.Len(t, result.Candidates, 1)
-	require.Equal(t, "https://example.test/source.jpg", result.Candidates[0].SourceAssetID)
+	require.ErrorContains(t, err, "not authorized")
+	require.Empty(t, result.Candidates)
 }
 
 func TestExecutorRejectsSemanticFallbacksAndAcceptsModelLocalOutput(t *testing.T) {
@@ -228,6 +249,7 @@ func TestExecutorDoesNotMutateInputsOrDependencySourceAssets(t *testing.T) {
 	input := sceneSlotInput(" scene-1 ")
 	input.Slot.SourceAssetIDs = []string{" source-1 ", " source-2 "}
 	input.Slot.StyleReferenceIDs = []string{" style-1 "}
+	input.AssetCatalog.Assets = append(input.AssetCatalog.Assets, imageagent.AuthorizedAsset{ID: "style-1", Type: imageagent.AuthorizedAssetStyle})
 	before := input
 	before.Slot.SourceAssetIDs = append([]string(nil), input.Slot.SourceAssetIDs...)
 	before.Slot.StyleReferenceIDs = append([]string(nil), input.Slot.StyleReferenceIDs...)
@@ -306,6 +328,8 @@ func TestExecutorSizeSlotRequiresReliableDimensions(t *testing.T) {
 			"source-1": {URL: "https://example.test/source.jpg", SourceURL: "https://example.test/source.jpg", Width: 1200, Height: 900},
 		},
 	})
+	input.AssetCatalog.Assets[0].Width = 1200
+	input.AssetCatalog.Assets[0].Height = 900
 	result, err := executor.ExecuteSlot(context.Background(), input)
 	require.NoError(t, err)
 	require.Len(t, result.Candidates, 1)
@@ -319,7 +343,8 @@ func sceneSlotInput(id string) imageagent.SlotExecutionInput {
 func slotInput(id string, role imageagent.SlotRole) imageagent.SlotExecutionInput {
 	return imageagent.SlotExecutionInput{
 		RunID: "run-1", TenantID: "tenant-1", UserID: "user-1", PlanRevision: 1, Attempt: 1, IdempotencyKey: "attempt-1",
-		Slot: imageagent.Slot{ID: id, Role: role, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-1"},
+		Slot:         imageagent.Slot{ID: id, Role: role, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-1"},
+		AssetCatalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://example.test/source.jpg"}}},
 	}
 }
 

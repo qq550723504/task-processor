@@ -94,6 +94,37 @@ type AssetRef struct {
 	Kind string
 }
 
+type AuthorizedAssetType string
+
+const (
+	AuthorizedAssetSource AuthorizedAssetType = "source"
+	AuthorizedAssetStyle  AuthorizedAssetType = "style"
+)
+
+// AuthorizedAsset is a server-resolved, run-scoped selectable input. It is
+// deliberately separate from generated candidates.
+type AuthorizedAsset struct {
+	ID         string
+	Type       AuthorizedAssetType
+	DisplayURL string
+	Label      string
+	Width      int
+	Height     int
+}
+
+type AssetCatalog struct {
+	Assets []AuthorizedAsset
+}
+
+type PendingCommandReceipt struct {
+	ActionID     string
+	Kind         string
+	Phase        string
+	Status       string
+	PlanRevision int64
+	SlotID       string
+}
+
 type ProductContextRef struct {
 	ProductID   string
 	Title       string

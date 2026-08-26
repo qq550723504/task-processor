@@ -54,9 +54,52 @@ func TestRepositoryContract(t *testing.T) {
 			testSlotResultRequiresCurrentPlanRevision(t, tt.new(t))
 			testSlotResultRetryAndAttemptOrdering(t, tt.new(t))
 			testAppendedEventIsVisibleInCursorOrder(t, tt.new(t))
+			testProjectionEventsAllocateOneDurableCursorPerChange(t, tt.new(t))
+			testAuthorizedAssetCatalogRoundTripsAndCannotBeReplaced(t, tt.new(t))
 			testAttemptIdentitiesAreIdempotentAndNonAliasing(t, tt.new(t))
 		})
 	}
+}
+
+func testProjectionEventsAllocateOneDurableCursorPerChange(t *testing.T, repo imageagent.Repository) {
+	t.Helper()
+	ctx := context.Background()
+	require.NoError(t, repo.CreateRun(ctx, manualRun("run-cursor", "tenant-a")))
+	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-cursor"}
+	first, err := repo.AppendProjectionEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "slot.result.persisted", Payload: json.RawMessage(`{}`)})
+	require.NoError(t, err)
+	second, err := repo.AppendProjectionEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "slot.result.persisted", Payload: json.RawMessage(`{}`)})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, first.Cursor)
+	require.Equal(t, first.Cursor, first.ProjectionVersion)
+	require.EqualValues(t, 2, second.Cursor)
+	require.Equal(t, second.Cursor, second.ProjectionVersion)
+	require.NoError(t, repo.UpdateRun(ctx, scope, 0, imageagent.RunMutation{Status: imageagent.RunStatusExecuting, CurrentNode: "execute"}))
+	events, err := repo.ListEvents(ctx, scope, 0, 10)
+	require.NoError(t, err)
+	require.Len(t, events, 3)
+	require.EqualValues(t, 3, events[2].Cursor)
+	require.Equal(t, events[2].Cursor, events[2].ProjectionVersion)
+}
+
+func testAuthorizedAssetCatalogRoundTripsAndCannotBeReplaced(t *testing.T, repo imageagent.Repository) {
+	t.Helper()
+	ctx := context.Background()
+	require.NoError(t, repo.CreateRun(ctx, manualRun("run-catalog", "tenant-a")))
+	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-catalog"}
+	catalog := imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+		{ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example/source.png", Width: 1200, Height: 900},
+		{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, Label: "Style"},
+	}}
+	require.NoError(t, repo.SaveAssetCatalog(ctx, scope, catalog))
+	require.NoError(t, repo.SaveAssetCatalog(ctx, scope, catalog))
+	got, err := repo.GetAssetCatalog(ctx, scope)
+	require.NoError(t, err)
+	require.Equal(t, catalog, got)
+	changed := catalog
+	changed.Assets = append([]imageagent.AuthorizedAsset(nil), catalog.Assets...)
+	changed.Assets[0].DisplayURL = "https://attacker.example/injected.png"
+	require.ErrorIs(t, repo.SaveAssetCatalog(ctx, scope, changed), imageagent.ErrRevisionConflict)
 }
 
 func testOnlyManualRunsAreAccepted(t *testing.T, repo imageagent.Repository) {

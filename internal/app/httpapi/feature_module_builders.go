@@ -13,6 +13,7 @@ import (
 	imageagentstore "task-processor/internal/imageagent/store"
 	"task-processor/internal/infra/database"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	listingkitstore "task-processor/internal/listingkit/store"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	"task-processor/internal/sourceaccount"
@@ -71,7 +72,7 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 		return nil, fmt.Errorf("build image agent repository: %w", err)
 	}
 	databaseCloser := func() error { return database.CloseSharedDatabase(cfg.Database, db) }
-	service, err := imageagent.NewService(imageagentstore.NewGormRepository(db), workflowClient)
+	service, err := imageagent.NewService(imageagentstore.NewGormRepository(db), workflowClient, newListingKitAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db)))
 	if err != nil {
 		_ = databaseCloser()
 		closeWorkflowOnError()

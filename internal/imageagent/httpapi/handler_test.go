@@ -40,6 +40,18 @@ func TestHandlersRequireVerifiedIdentity(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, response.Code)
 }
 
+func TestResumeCommandRequiresIdentityAndReturnsWorkflowAcknowledgement(t *testing.T) {
+	application := &stubApplication{resumeAck: imageagent.CommandAcknowledgement{RunID: "run-1", PlanRevision: 2, ActionID: "action-1", Status: imageagent.RunStatusExecuting}}
+	handler := requireHandler(t, application)
+	unauthorized := performRequest(t, handler, http.MethodPost, "/api/v1/image-agent/runs/run-1/commands/action-1/resume", "", nil, nil)
+	require.Equal(t, http.StatusUnauthorized, unauthorized.Code)
+	response := performRequest(t, handler, http.MethodPost, "/api/v1/image-agent/runs/run-1/commands/action-1/resume", "", verifiedIdentity("tenant-a", "user-a"), nil)
+	require.Equal(t, http.StatusOK, response.Code)
+	require.JSONEq(t, `{"run_id":"run-1","plan_revision":2,"action_id":"action-1","status":"executing"}`, response.Body.String())
+	require.Equal(t, "run-1", application.resumeRunID)
+	require.Equal(t, "action-1", application.resumeActionID)
+}
+
 func TestCreateAcceptsManualOnlyAndRejectsIdentityFields(t *testing.T) {
 	validBody := `{
 		"run_id":"run-1","business_task_id":"task-1","mode":"manual","idempotency_key":"run-key-1",
@@ -60,6 +72,13 @@ func TestCreateAcceptsManualOnlyAndRejectsIdentityFields(t *testing.T) {
 		body := strings.Replace(validBody, `"mode":"manual"`, `"mode":"assisted"`, 1)
 		response := performRequest(t, requireHandler(t, application), http.MethodPost, "/api/v1/image-agent/runs", body, verifiedIdentity("tenant-a", "user-a"), nil)
 		require.Equal(t, http.StatusBadRequest, response.Code)
+	})
+	t.Run("blank business task", func(t *testing.T) {
+		application := &stubApplication{startErr: imageagent.ErrValidation}
+		body := strings.Replace(validBody, `"business_task_id":"task-1"`, `"business_task_id":"   "`, 1)
+		response := performRequest(t, requireHandler(t, application), http.MethodPost, "/api/v1/image-agent/runs", body, verifiedIdentity("tenant-a", "user-a"), nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Equal(t, "   ", application.startInput.BusinessTaskID)
 	})
 	t.Run("spoofed tenant field", func(t *testing.T) {
 		application := &stubApplication{}
@@ -88,14 +107,21 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 			Attempt: 2, Candidates: []imageagent.AssetCandidate{{AssetID: "candidate-1", SourceAssetID: "source-1"}}, ErrorCode: "provider_failed",
 		}},
 		Actions: []imageagent.Action{imageagent.ActionRetrySlot}, LastEventID: 9,
+		ProjectionVersion: 9,
+		AssetCatalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example.test/source.png", Label: "Source"},
+			{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, DisplayURL: "javascript:alert(1)", Label: "Unsafe URL omitted"},
+		}},
+		PendingCommand: &imageagent.PendingCommandReceipt{ActionID: "retry-pending", Kind: "retry_slot", Phase: "retry.persist_result", Status: "pending", PlanRevision: 2, SlotID: "slot-1"},
 	}}
 
 	response := performRequest(t, requireHandler(t, application), http.MethodGet, "/api/v1/image-agent/runs/run-1", "", verifiedIdentity("tenant-a", "user-a"), nil)
 
 	require.Equal(t, http.StatusOK, response.Code)
-	for _, field := range []string{`"business_task_id":"task-1"`, `"active_plan_revision":2`, `"source_asset_ids":["source-1"]`, `"idempotency_key":"plan-key-2"`, `"source_asset_id":"source-1"`, `"last_event_id":9`, `"max_images":12`, `"model_calls":3`} {
+	for _, field := range []string{`"business_task_id":"task-1"`, `"active_plan_revision":2`, `"source_asset_ids":["source-1"]`, `"idempotency_key":"plan-key-2"`, `"source_asset_id":"source-1"`, `"last_event_id":9`, `"projection_version":9`, `"max_images":12`, `"model_calls":3`, `"asset_catalog"`, `"action_id":"retry-pending"`, `"slot_id":"slot-1"`} {
 		require.Contains(t, response.Body.String(), field)
 	}
+	require.NotContains(t, response.Body.String(), "javascript:alert")
 	for _, forbidden := range []string{"BusinessTaskID", "ActivePlanRevision", "SourceAssetIDs", "IdempotencyKey", "LastEventID"} {
 		require.NotContains(t, response.Body.String(), forbidden)
 	}
@@ -163,7 +189,7 @@ func TestSSEEventDTORejectsHostileDurablePayloadFields(t *testing.T) {
 	application := &stubApplication{
 		projection: imageagent.RunProjection{Run: imageagent.Run{ID: "run-1"}, LastEventID: 1},
 		events: []imageagent.RunEvent{{
-			TenantID: "tenant-a", RunID: "run-1", Type: "slot.result.persisted", Cursor: 1, ProjectionVersion: 7,
+			TenantID: "tenant-a", RunID: "run-1", Type: "slot.result.persisted", Cursor: 1, ProjectionVersion: 1,
 			Payload: json.RawMessage(`{"tenant_id":"tenant-secret","user_id":"user-secret","idempotency_key":"action-secret","internal_metadata":{"token":"raw-secret"}}`),
 		}},
 	}
@@ -178,7 +204,7 @@ func TestSSEEventDTORejectsHostileDurablePayloadFields(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code)
 	require.Contains(t, response.Body.String(), `"type":"slot.result.persisted"`)
-	require.Contains(t, response.Body.String(), `"projection_version":7`)
+	require.Contains(t, response.Body.String(), `"projection_version":1`)
 	for _, forbidden := range []string{"payload", "tenant-secret", "user-secret", "action-secret", "raw-secret", "internal_metadata"} {
 		require.NotContains(t, response.Body.String(), forbidden)
 	}
@@ -247,6 +273,7 @@ func performRequest(t *testing.T, handler *Handler, method, target, body string,
 	router.POST("/api/v1/image-agent/runs/:run_id/slots/:slot_id/retry", handler.RetrySlot)
 	router.POST("/api/v1/image-agent/runs/:run_id/results/approve", handler.ApproveResults)
 	router.POST("/api/v1/image-agent/runs/:run_id/cancel", handler.Cancel)
+	router.POST("/api/v1/image-agent/runs/:run_id/commands/:action_id/resume", handler.Resume)
 	router.GET("/api/v1/image-agent/runs/:run_id/events", handler.Events)
 	request := httptest.NewRequest(method, target, bytes.NewBufferString(body))
 	if body != "" {
@@ -280,6 +307,10 @@ type stubApplication struct {
 	startErr, replaceErr         error
 	retryErr, approveErr         error
 	cancelErr                    error
+	resumeAck                    imageagent.CommandAcknowledgement
+	resumeErr                    error
+	resumeRunID                  string
+	resumeActionID               string
 }
 
 func (s *stubApplication) Start(ctx context.Context, input imageagent.StartRunInput) error {
@@ -301,6 +332,10 @@ func (s *stubApplication) ApproveResults(context.Context, string, int64, string,
 	return s.approveErr
 }
 func (s *stubApplication) Cancel(context.Context, string, int64, string) error { return s.cancelErr }
+func (s *stubApplication) Resume(_ context.Context, runID, actionID string) (imageagent.CommandAcknowledgement, error) {
+	s.resumeRunID, s.resumeActionID = runID, actionID
+	return s.resumeAck, s.resumeErr
+}
 func (s *stubApplication) ListEvents(_ context.Context, _ string, after int64, _ int) ([]imageagent.RunEvent, error) {
 	s.mu.Lock()
 	s.listCalls++

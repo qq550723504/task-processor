@@ -20,6 +20,7 @@ type memoryRepository struct {
 	attempts map[string]imageagent.StepAttempt
 	byNumber map[string]imageagent.StepAttempt
 	events   map[string][]imageagent.RunEvent
+	catalogs map[string]imageagent.AssetCatalog
 }
 
 type slotResultRecord struct {
@@ -35,6 +36,7 @@ func NewMemoryRepository() imageagent.Repository {
 		attempts: map[string]imageagent.StepAttempt{},
 		byNumber: map[string]imageagent.StepAttempt{},
 		events:   map[string][]imageagent.RunEvent{},
+		catalogs: map[string]imageagent.AssetCatalog{},
 	}
 }
 
@@ -102,7 +104,7 @@ func (r *memoryRepository) UpdateRun(_ context.Context, scope imageagent.RunScop
 	cursor := nextCursor(r.events[key])
 	r.events[key] = append(r.events[key], imageagent.RunEvent{
 		TenantID: scope.TenantID, RunID: scope.RunID, Type: "run.updated", Cursor: cursor,
-		ProjectionVersion: run.Version, Payload: append(json.RawMessage(nil), payload...),
+		ProjectionVersion: cursor, Payload: append(json.RawMessage(nil), payload...),
 	})
 	return nil
 }
@@ -230,6 +232,54 @@ func (r *memoryRepository) AppendEvent(_ context.Context, event imageagent.RunEv
 	return nil
 }
 
+func (r *memoryRepository) AppendProjectionEvent(_ context.Context, event imageagent.RunEvent) (imageagent.RunEvent, error) {
+	if strings.TrimSpace(event.TenantID) == "" || strings.TrimSpace(event.RunID) == "" || strings.TrimSpace(event.Type) == "" {
+		return imageagent.RunEvent{}, fmt.Errorf("event tenant, run, and type are required")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := runKey(event.TenantID, event.RunID)
+	if _, exists := r.runs[key]; !exists {
+		return imageagent.RunEvent{}, imageagent.ErrRunNotFound
+	}
+	event.Cursor = nextCursor(r.events[key])
+	event.ProjectionVersion = event.Cursor
+	event.Payload = append(json.RawMessage(nil), event.Payload...)
+	r.events[key] = append(r.events[key], event)
+	return event, nil
+}
+
+func (r *memoryRepository) SaveAssetCatalog(_ context.Context, scope imageagent.RunScope, catalog imageagent.AssetCatalog) error {
+	if err := validateScope(scope); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := runKey(scope.TenantID, scope.RunID)
+	if _, exists := r.runs[key]; !exists {
+		return imageagent.ErrRunNotFound
+	}
+	cloned := cloneCatalog(catalog)
+	if existing, exists := r.catalogs[key]; exists && !reflect.DeepEqual(existing, cloned) {
+		return imageagent.ErrRevisionConflict
+	}
+	r.catalogs[key] = cloned
+	return nil
+}
+
+func (r *memoryRepository) GetAssetCatalog(_ context.Context, scope imageagent.RunScope) (imageagent.AssetCatalog, error) {
+	if err := validateScope(scope); err != nil {
+		return imageagent.AssetCatalog{}, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	catalog, exists := r.catalogs[runKey(scope.TenantID, scope.RunID)]
+	if !exists {
+		return imageagent.AssetCatalog{}, imageagent.ErrRunNotFound
+	}
+	return cloneCatalog(catalog), nil
+}
+
 func (r *memoryRepository) ListEvents(_ context.Context, scope imageagent.RunScope, afterCursor int64, limit int) ([]imageagent.RunEvent, error) {
 	if err := validateScope(scope); err != nil {
 		return nil, err
@@ -347,6 +397,11 @@ func cloneBlock(block *imageagent.Block) *imageagent.Block {
 	}
 	cloned := *block
 	return &cloned
+}
+
+func cloneCatalog(catalog imageagent.AssetCatalog) imageagent.AssetCatalog {
+	catalog.Assets = append([]imageagent.AuthorizedAsset(nil), catalog.Assets...)
+	return catalog
 }
 
 func sameRun(left, right imageagent.Run) bool { return reflect.DeepEqual(left, right) }

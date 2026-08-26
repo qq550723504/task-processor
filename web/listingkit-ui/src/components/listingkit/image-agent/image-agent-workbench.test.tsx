@@ -65,6 +65,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   globalThis.EventSource = originalEventSource;
   vi.restoreAllMocks();
 });
@@ -101,10 +102,10 @@ describe("ImageAgentWorkbench", () => {
 
     const sources = screen.getByTestId("image-agent-source-materials");
     const styles = screen.getByTestId("image-agent-style-references");
-    expect(within(sources).getByText("source-1")).toBeInTheDocument();
-    expect(within(sources).queryByText("style-1")).not.toBeInTheDocument();
-    expect(within(styles).getByText("style-1")).toBeInTheDocument();
-    expect(within(styles).queryByText("source-1")).not.toBeInTheDocument();
+    expect(within(sources).getByRole("checkbox", { name: "来源 source-1" })).toBeInTheDocument();
+    expect(within(sources).queryByRole("checkbox", { name: "风格 style-1" })).not.toBeInTheDocument();
+    expect(within(styles).getByRole("checkbox", { name: "风格 style-1" })).toBeInTheDocument();
+    expect(within(styles).queryByRole("checkbox", { name: "来源 source-1" })).not.toBeInTheDocument();
     expect(within(sources).queryByAltText("scene-1 候选图 1")).not.toBeInTheDocument();
     expect(screen.getByAltText("scene-1 候选图 1")).toHaveAttribute(
       "src",
@@ -130,8 +131,28 @@ describe("ImageAgentWorkbench", () => {
     expect(screen.queryByTestId("image-slot-card")).not.toBeInTheDocument();
   });
 
-  it("keeps one action id when the user retries a failed slot command", async () => {
+  it("fails closed when the run projection has no business task owner", () => {
+    const projection = projectionWithSlots(7);
+    projection.run.business_task_id = "";
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("缺少业务任务归属");
+    expect(screen.queryByTestId("image-slot-card")).not.toBeInTheDocument();
+  });
+
+  it("recovers an ambiguous command from the server receipt after a client reload", async () => {
     const projection = projectionWithSlots(7, "scene-2");
+    const pending = structuredClone(projection);
+    pending.pending_command = {
+      action_id: "server-action-1",
+      kind: "retry_slot",
+      phase: "persist_transition",
+      status: "pending",
+      plan_revision: 3,
+      slot_id: "scene-2",
+    };
+    const completed = structuredClone(projection);
+    completed.pending_command = undefined;
+    completed.run.status = "executing";
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
@@ -140,16 +161,22 @@ describe("ImageAgentWorkbench", () => {
           headers: { "content-type": "application/json" },
         }),
       )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(pending), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
       .mockResolvedValueOnce(new Response(null, { status: 202 }))
       .mockResolvedValueOnce(
-        new Response(JSON.stringify(projection), {
+        new Response(JSON.stringify(completed), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
       );
     const user = userEvent.setup();
 
-    render(
+    const firstClient = render(
       <ImageAgentWorkbench
         taskId="task-1"
         runId="run-1"
@@ -162,20 +189,75 @@ describe("ImageAgentWorkbench", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "provider unavailable",
     );
-    await user.click(button);
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    firstClient.unmount();
 
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(3));
+    render(
+      <ImageAgentWorkbench
+        taskId="task-1"
+        runId="run-1"
+        initialRun={pending}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "恢复上次操作" }));
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(4));
     const commandCalls = fetchSpy.mock.calls.filter(
       (call) => call[1]?.method === "POST",
     );
-    const first = JSON.parse(String(commandCalls[0]?.[1]?.body));
-    const second = JSON.parse(String(commandCalls[1]?.[1]?.body));
     expect(commandCalls[0]?.[0]).toBe(
       "/api/listing-kits/image-agent/runs/run-1/slots/scene-2/retry",
     );
-    expect(first).toMatchObject({ plan_revision: 3 });
-    expect(first.action_id).toBeTruthy();
-    expect(second.action_id).toBe(first.action_id);
+    expect(commandCalls[1]?.[0]).toBe(
+      "/api/listing-kits/image-agent/runs/run-1/commands/server-action-1/resume",
+    );
+    expect(commandCalls[1]?.[1]?.body).toBeUndefined();
+  });
+
+  it("builds a plan only from controlled catalog selections and supports eleven slots", async () => {
+    const projection = projectionWithSlots(10, "scene-2");
+    projection.actions = ["edit_plan", "retry_slot", "cancel"];
+    const updated = structuredClone(projection);
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(null, { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(updated), {
+        status: 200, headers: { "content-type": "application/json" },
+      }));
+    const user = userEvent.setup();
+
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
+    await user.click(within(screen.getByTestId("image-agent-source-materials")).getByRole("checkbox", { name: "来源 source-9" }));
+    await user.click(within(screen.getByTestId("image-agent-style-references")).getByRole("checkbox", { name: "风格 style-2" }));
+    const sceneOne = screen.getByRole("heading", { name: "scene-1" }).closest("article");
+    expect(sceneOne).not.toBeNull();
+    await user.click(within(sceneOne!).getByRole("checkbox", { name: "来源 source-2" }));
+    await user.click(within(sceneOne!).getByRole("checkbox", { name: "风格 style-2" }));
+    await user.click(screen.getByRole("button", { name: "删除 scene-9" }));
+    await user.click(screen.getByRole("button", { name: "新增槽位" }));
+    await user.click(screen.getByRole("button", { name: "新增槽位" }));
+    expect(screen.getAllByTestId("image-slot-card")).toHaveLength(11);
+    await user.click(screen.getByRole("button", { name: "保存计划修改" }));
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    const put = fetchSpy.mock.calls.find((call) => call[1]?.method === "PUT");
+    const body = JSON.parse(String(put?.[1]?.body));
+    expect(body.expected_revision).toBe(3);
+    expect(body.plan.source_asset_ids).not.toContain("source-9");
+    expect(body.plan.style_reference_ids).toContain("style-2");
+    expect(body.plan.slots).toHaveLength(11);
+    expect(body.plan.slots.flatMap((slot: ImageAgentSlot) => slot.source_asset_ids)).not.toContain("source-9");
+    const sceneOnePlan = body.plan.slots.find((slot: ImageAgentSlot) => slot.id === "scene-1");
+    expect(sceneOnePlan.source_asset_ids).not.toContain("source-2");
+    expect(sceneOnePlan.style_reference_ids).toContain("style-2");
+  });
+
+  it("never renders unsafe catalog display URLs", () => {
+    const projection = projectionWithSlots(7);
+    projection.asset_catalog.push({
+      id: "unsafe-source", type: "source", label: "unsafe", display_url: "javascript:alert(1)",
+    });
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
+    expect(screen.queryByRole("img", { name: "unsafe" })).not.toBeInTheDocument();
   });
 
   it("sends the current plan revision and exact projection digest for final approval", async () => {
@@ -259,10 +341,10 @@ describe("ImageAgentWorkbench", () => {
 
   it("refetches a full snapshot on a version gap and never leaks parallel EventSources", async () => {
     const initial = projectionWithSlots(7);
-    initial.run.version = 4;
+    initial.projection_version = 4;
     initial.last_event_id = 4;
     const recovered = structuredClone(initial);
-    recovered.run.version = 7;
+    recovered.projection_version = 7;
     recovered.last_event_id = 7;
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -296,7 +378,7 @@ describe("ImageAgentWorkbench", () => {
 
   it("ignores duplicate or retrograde event cursors and projection versions", async () => {
     const initial = projectionWithSlots(7);
-    initial.run.version = 4;
+    initial.projection_version = 4;
     initial.last_event_id = 4;
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
@@ -318,15 +400,34 @@ describe("ImageAgentWorkbench", () => {
     expect(FakeEventSource.active).toBe(1);
   });
 
+  it("refetches every consecutive slot-result cursor even when run.version does not change", async () => {
+    const initial = projectionWithSlots(7);
+    const slotSix = structuredClone(initial);
+    slotSix.last_event_id = 6;
+    slotSix.projection_version = 6;
+    const slotSeven = structuredClone(initial);
+    slotSeven.last_event_id = 7;
+    slotSeven.projection_version = 7;
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify(slotSix), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(slotSeven), { status: 200, headers: { "content-type": "application/json" } }));
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={initial} />);
+    act(() => FakeEventSource.instances[0]?.emit(6, 6));
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    act(() => FakeEventSource.instances[1]?.emit(7, 7));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    expect(slotSix.run.version).toBe(slotSeven.run.version);
+  });
+
   it("resets an ahead browser cursor from the server snapshot after disconnect", async () => {
     const initial = projectionWithSlots(7);
-    initial.run.version = 8;
+    initial.projection_version = 8;
     initial.last_event_id = 8;
     const recovered = structuredClone(initial);
-    recovered.run.version = 4;
+    recovered.projection_version = 4;
     recovered.last_event_id = 4;
     const advanced = structuredClone(recovered);
-    advanced.run.version = 5;
+    advanced.projection_version = 5;
     advanced.last_event_id = 5;
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -357,6 +458,48 @@ describe("ImageAgentWorkbench", () => {
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(3));
     expect(FakeEventSource.active).toBe(1);
+  });
+
+  it("backs off exponentially after snapshot network failures and resets after success", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const initial = projectionWithSlots(7);
+    const recovered = structuredClone(initial);
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "down" }), { status: 503, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "still down" }), { status: 503, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(recovered), { status: 200, headers: { "content-type": "application/json" } }));
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={initial} />);
+
+    await act(async () => { FakeEventSource.instances[0]?.fail(); await Promise.resolve(); });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(499); });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(999); });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(FakeEventSource.active).toBe(1);
+  });
+
+  it("stops reconnecting on authentication failures", async () => {
+    vi.useFakeTimers();
+    const projection = projectionWithSlots(7);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ message: "denied" }), { status: 401, headers: { "content-type": "application/json" } }),
+    );
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
+    await act(async () => {
+      FakeEventSource.instances[0]?.fail();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("需要重新认证");
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(FakeEventSource.active).toBe(0);
   });
 });
 
@@ -442,5 +585,16 @@ function projectionWithSlots(
       ? ["edit_plan", "retry_slot", "cancel"]
       : ["cancel"],
     last_event_id: 5,
+    projection_version: 5,
+    asset_catalog: [
+      ...Array.from({ length: 9 }, (_, index) => ({
+        id: `source-${index + 1}`,
+        type: "source" as const,
+        label: `来源 source-${index + 1}`,
+        display_url: `https://source.example/source-${index + 1}.png`,
+      })),
+      { id: "style-1", type: "style", label: "风格 style-1", display_url: "https://style.example/1.png" },
+      { id: "style-2", type: "style", label: "风格 style-2", display_url: "https://style.example/2.png" },
+    ],
   };
 }

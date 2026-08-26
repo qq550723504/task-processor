@@ -22,5 +22,6 @@ func AppendRouteDescriptors(routes []httproute.Descriptor, handler *Handler) []h
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/image-agent/runs/:run_id/results/approve", Module: ModuleName, Permission: authz.PermissionImageAgentWrite, AuthPolicy: verified, Handler: handler.ApproveResults},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/image-agent/runs/:run_id/cancel", Module: ModuleName, Permission: authz.PermissionImageAgentWrite, AuthPolicy: verified, Handler: handler.Cancel},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/image-agent/runs/:run_id/events", Module: ModuleName, Permission: authz.PermissionImageAgentRead, AuthPolicy: verified, Handler: handler.Events},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/image-agent/runs/:run_id/commands/:action_id/resume", Module: ModuleName, Permission: authz.PermissionImageAgentWrite, AuthPolicy: verified, Handler: handler.Resume},
 	)
 }

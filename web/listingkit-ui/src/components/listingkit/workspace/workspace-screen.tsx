@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { PlatformCardRail } from "@/components/listingkit/shared/platform-card-rail";
 import { SheinFlowNav } from "@/components/listingkit/shein/shein-flow-nav";
@@ -14,6 +14,7 @@ import { WorkspaceOverviewPanel } from "@/components/listingkit/workspace/worksp
 import { SDSRepairPanel } from "@/components/listingkit/workspace/sds-repair-panel";
 import {
   SheinFinalReviewWorkspaceView,
+  WorkspaceAgentSurface,
   WorkspaceReviewView,
 } from "@/components/listingkit/workspace/workspace-screen-views";
 import { SheinAdvancedReviewDetails } from "@/components/listingkit/workspace/shein-advanced-review-details";
@@ -47,7 +48,10 @@ import {
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
   const searchParams = useSearchParams();
-  const imageAgentRunId = searchParams.get("image_agent_run_id")?.trim();
+  const requestedImageAgentRunId = searchParams.get("image_agent_run_id")?.trim();
+  const imageAgentRunId = requestedImageAgentRunId && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestedImageAgentRunId)
+    ? requestedImageAgentRunId
+    : undefined;
   const workspaceData = useWorkspaceData({ taskId, searchParams });
   const {
     baseQuery,
@@ -156,6 +160,15 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const refetchWorkspace = () =>
     Promise.all([preview.refetch(), session.refetch(), taskResult.refetch()]);
 
+  const withAgentSurface = (legacyPanel: ReactNode) =>
+    imageAgentRunId ? (
+      <WorkspaceAgentSurface context={{ taskId, runId: imageAgentRunId }}>
+        {legacyPanel}
+      </WorkspaceAgentSurface>
+    ) : (
+      legacyPanel
+    );
+
   const handleRunStandardProductTemporal = () => {
     layerAction.mutate({
       action_key: "run_standard_product_temporal",
@@ -175,15 +188,15 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   };
 
   if (preview.isLoading || session.isLoading) {
-    return <WorkspaceLoadingState />;
+    return withAgentSurface(<WorkspaceLoadingState />);
   }
 
   if (preview.isError || session.isError || taskResult.isError) {
-    return <WorkspaceLoadErrorState onRetry={refetchWorkspace} />;
+    return withAgentSurface(<WorkspaceLoadErrorState onRetry={refetchWorkspace} />);
   }
 
   if (!preview.data || !sessionData) {
-    return <WorkspacePendingDataState onRetry={refetchWorkspace} />;
+    return withAgentSurface(<WorkspacePendingDataState onRetry={refetchWorkspace} />);
   }
 
   const sheinAdvancedReviewDetails = sheinAdvancedReviewDetailsProps ? (
@@ -191,12 +204,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   ) : null;
   const shouldShowPlatformRail = platformCards.length > 1;
   const workspaceReviewViewProps = buildWorkspaceReviewViewProps({
-    imageAgentContext: imageAgentRunId
-      ? {
-          taskId,
-          runId: imageAgentRunId,
-        }
-      : undefined,
     selectedPlatform,
     previewSuggestion,
     sessionData,
@@ -213,7 +220,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     onRecovery: workspaceActions.handleRecovery,
   });
 
-  return (
+  return withAgentSurface(
     <div className="min-w-0 space-y-6 overflow-x-hidden">
       <WorkspaceHeader
         title={workspaceTitle}
@@ -296,6 +303,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         reviewSummary={sessionData.review_summary}
       />
       <TaskRevisionHistoryPanel taskId={taskId} defaultCollapsed />
-    </div>
+    </div>,
   );
 }

@@ -57,15 +57,14 @@ func executeAcceptanceWorkflow(t *testing.T, plan imageagent.Plan, invalidSlotID
 	require.NoError(t, repository.CreateRun(context.Background(), run))
 	scope := imageagent.RunScope{TenantID: run.TenantID, RunID: run.ID}
 	require.NoError(t, repository.AppendPlan(context.Background(), scope, 0, plan))
+	catalog := acceptanceAssetCatalog(9)
+	require.NoError(t, repository.SaveAssetCatalog(context.Background(), scope, catalog))
 
 	delegate := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
 		SubjectExtractor:        acceptanceSubjectExtractor{},
 		WhiteBackgroundRenderer: acceptanceWhiteRenderer{},
 		SceneRenderer:           acceptanceSceneRenderer{},
 		SourceAssets:            acceptanceSourceAssets(9),
-		AuthorizedStyleReferenceIDs: map[string]struct{}{
-			"style-modern": {},
-		},
 	})
 	executor := &recordingAcceptanceExecutor{delegate: delegate, invalidSlotID: invalidSlotID}
 	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
@@ -81,7 +80,7 @@ func executeAcceptanceWorkflow(t *testing.T, plan imageagent.Plan, invalidSlotID
 	env.ExecuteWorkflow(imageagenttemporal.ImageAgentWorkflow, imageagenttemporal.WorkflowInput{
 		RunID: run.ID, Mode: imageagent.RunModeManual,
 		Identity: imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID},
-		Plan:     plan, MaxConcurrentSlots: 4, WaitForCommands: false,
+		Plan:     plan, AssetCatalog: catalog, MaxConcurrentSlots: 4, WaitForCommands: false,
 	})
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
@@ -90,6 +89,20 @@ func executeAcceptanceWorkflow(t *testing.T, plan imageagent.Plan, invalidSlotID
 	events, err := repository.ListEvents(context.Background(), scope, 0, 100)
 	require.NoError(t, err)
 	return result, executor.calledIDs(), events
+}
+
+func acceptanceAssetCatalog(count int) imageagent.AssetCatalog {
+	assets := make([]imageagent.AuthorizedAsset, 0, count+1)
+	for index := 1; index <= count; index++ {
+		id := fmt.Sprintf("source-%d", index)
+		assets = append(assets, imageagent.AuthorizedAsset{
+			ID: id, Type: imageagent.AuthorizedAssetSource,
+			DisplayURL: fmt.Sprintf("https://source.example/%s.png", id),
+			Width:      1200, Height: 1200,
+		})
+	}
+	assets = append(assets, imageagent.AuthorizedAsset{ID: "style-modern", Type: imageagent.AuthorizedAssetStyle})
+	return imageagent.AssetCatalog{Assets: assets}
 }
 
 func acceptancePlan(slotCount, sourceCount int) imageagent.Plan {

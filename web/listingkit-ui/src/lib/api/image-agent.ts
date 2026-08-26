@@ -70,7 +70,7 @@ const projectionSchema = z
     run: z
       .object({
         id: z.string(),
-        business_task_id: z.string().optional(),
+        business_task_id: z.string(),
         tenant_id: z.string(),
         user_id: z.string(),
         mode: z.literal("manual"),
@@ -133,6 +133,18 @@ const projectionSchema = z
       ]),
     ),
     last_event_id: z.number().int().nonnegative(),
+    projection_version: z.number().int().nonnegative(),
+    asset_catalog: z.array(z.object({
+      id: z.string(),
+      type: z.enum(["source", "style"]),
+      display_url: z.string().optional(),
+      label: z.string().optional(),
+    }).passthrough()),
+    pending_command: z.object({
+      action_id: z.string(), kind: z.string(), phase: z.string(),
+      status: z.literal("pending"), plan_revision: z.number().int().positive(),
+      slot_id: z.string().optional(),
+    }).passthrough().optional(),
   })
   .passthrough();
 
@@ -199,6 +211,13 @@ export function cancelImageAgentRun(
     plan_revision: planRevision,
     action_id: actionId,
   });
+}
+
+export function resumeImageAgentCommand(runId: string, actionId: string) {
+  return imageAgentRequest<{ run_id: string; plan_revision: number; action_id: string; status: string }>(
+    `${encodeId(runId)}/commands/${encodeId(actionId)}/resume`,
+    { method: "POST" },
+  );
 }
 
 export function imageAgentEventsUrl(runId: string) {

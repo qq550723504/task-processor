@@ -33,6 +33,7 @@ type Application interface {
 	RetrySlot(context.Context, string, string, int64, string) error
 	ApproveResults(context.Context, string, int64, string, string) error
 	Cancel(context.Context, string, int64, string) error
+	Resume(context.Context, string, string) (imageagent.CommandAcknowledgement, error)
 	ListEvents(context.Context, string, int64, int) ([]imageagent.RunEvent, error)
 }
 
@@ -172,6 +173,21 @@ func (h *Handler) Cancel(c *gin.Context) {
 	c.Status(http.StatusAccepted)
 }
 
+func (h *Handler) Resume(c *gin.Context) {
+	if !requireVerifiedIdentity(c) {
+		return
+	}
+	acknowledgement, err := h.application.Resume(c.Request.Context(), c.Param("run_id"), c.Param("action_id"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"run_id": acknowledgement.RunID, "plan_revision": acknowledgement.PlanRevision,
+		"action_id": acknowledgement.ActionID, "status": acknowledgement.Status,
+	})
+}
+
 type projectionEventEnvelope struct {
 	SchemaVersion     string `json:"schema_version"`
 	Type              string `json:"type"`
@@ -215,7 +231,7 @@ func (h *Handler) Events(c *gin.Context) {
 				return false
 			}
 			for _, event := range events {
-				if event.Cursor <= cursor {
+				if event.Cursor <= cursor || event.ProjectionVersion != event.Cursor {
 					return false
 				}
 				encoded, encodeErr := json.Marshal(projectionEventEnvelope{

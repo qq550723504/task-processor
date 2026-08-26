@@ -175,19 +175,50 @@ func newSlotProjectionDTO(value imageagent.SlotProjection) slotProjectionDTO {
 }
 
 type runProjectionResponse struct {
-	Run          runDTO              `json:"run"`
-	Plan         planDTO             `json:"plan"`
-	Slots        []slotProjectionDTO `json:"slots"`
-	ResultDigest string              `json:"result_digest,omitempty"`
-	Actions      []imageagent.Action `json:"actions"`
-	LastEventID  int64               `json:"last_event_id"`
+	Run               runDTO               `json:"run"`
+	Plan              planDTO              `json:"plan"`
+	Slots             []slotProjectionDTO  `json:"slots"`
+	ResultDigest      string               `json:"result_digest,omitempty"`
+	Actions           []imageagent.Action  `json:"actions"`
+	LastEventID       int64                `json:"last_event_id"`
+	ProjectionVersion int64                `json:"projection_version"`
+	AssetCatalog      []authorizedAssetDTO `json:"asset_catalog"`
+	PendingCommand    *pendingCommandDTO   `json:"pending_command,omitempty"`
+}
+
+type authorizedAssetDTO struct {
+	ID         string                         `json:"id"`
+	Type       imageagent.AuthorizedAssetType `json:"type"`
+	DisplayURL string                         `json:"display_url,omitempty"`
+	Label      string                         `json:"label,omitempty"`
+}
+
+type pendingCommandDTO struct {
+	ActionID     string `json:"action_id"`
+	Kind         string `json:"kind"`
+	Phase        string `json:"phase"`
+	Status       string `json:"status"`
+	PlanRevision int64  `json:"plan_revision"`
+	SlotID       string `json:"slot_id,omitempty"`
 }
 
 func newRunProjectionResponse(value imageagent.RunProjection) runProjectionResponse {
 	response := runProjectionResponse{
 		Run: newRunDTO(value.Run), Plan: newPlanDTO(value.Plan), ResultDigest: value.ResultDigest,
 		Actions: append([]imageagent.Action(nil), value.Actions...), LastEventID: value.LastEventID,
-		Slots: make([]slotProjectionDTO, len(value.Slots)),
+		ProjectionVersion: value.ProjectionVersion,
+		Slots:             make([]slotProjectionDTO, len(value.Slots)),
+	}
+	normalized, err := imageagent.NormalizeAssetCatalog(value.AssetCatalog)
+	if err == nil {
+		response.AssetCatalog = make([]authorizedAssetDTO, 0, len(normalized.Assets))
+		for _, asset := range normalized.Assets {
+			response.AssetCatalog = append(response.AssetCatalog, authorizedAssetDTO{ID: asset.ID, Type: asset.Type, DisplayURL: asset.DisplayURL, Label: asset.Label})
+		}
+	}
+	if value.PendingCommand != nil {
+		receipt := value.PendingCommand
+		response.PendingCommand = &pendingCommandDTO{ActionID: receipt.ActionID, Kind: receipt.Kind, Phase: receipt.Phase, Status: receipt.Status, PlanRevision: receipt.PlanRevision, SlotID: receipt.SlotID}
 	}
 	for index, slot := range value.Slots {
 		response.Slots[index] = newSlotProjectionDTO(slot)

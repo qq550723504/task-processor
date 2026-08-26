@@ -26,7 +26,7 @@ func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is nil")
 	}
-	return db.AutoMigrate(&runRecord{}, &planRecord{}, &slotRecord{}, &attemptRecord{}, &eventRecord{})
+	return db.AutoMigrate(&runRecord{}, &planRecord{}, &slotRecord{}, &attemptRecord{}, &eventRecord{}, &assetCatalogRecord{})
 }
 
 func (r *gormRepository) CreateRun(ctx context.Context, run *imageagent.Run) error {
@@ -112,7 +112,7 @@ func (r *gormRepository) UpdateRun(ctx context.Context, scope imageagent.RunScop
 		}
 		return tx.Create(&eventRecord{
 			TenantID: scope.TenantID, RunID: scope.RunID, Type: "run.updated", Cursor: cursor,
-			ProjectionVersion: expectedVersion + 1, Payload: payload,
+			ProjectionVersion: cursor, Payload: payload,
 		}).Error
 	})
 }

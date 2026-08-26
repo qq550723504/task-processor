@@ -79,7 +79,7 @@ export type ImageAgentBlock = {
 
 export type ImageAgentRun = {
   id: string;
-  business_task_id?: string;
+  business_task_id: string;
   tenant_id: string;
   user_id: string;
   mode: ImageAgentRunMode;
@@ -91,6 +91,22 @@ export type ImageAgentRun = {
   budget: ImageAgentBudget;
   usage: ImageAgentBudgetUsage;
   block?: ImageAgentBlock;
+};
+
+export type ImageAgentAuthorizedAsset = {
+  id: string;
+  type: "source" | "style";
+  display_url?: string;
+  label?: string;
+};
+
+export type ImageAgentPendingCommand = {
+  action_id: string;
+  kind: string;
+  phase: string;
+  status: "pending";
+  plan_revision: number;
+  slot_id?: string;
 };
 
 export type ImageAgentCandidate = {
@@ -114,6 +130,9 @@ export type ImageAgentProjection = {
   result_digest?: string;
   actions: ImageAgentAction[];
   last_event_id: number;
+  projection_version: number;
+  asset_catalog: ImageAgentAuthorizedAsset[];
+  pending_command?: ImageAgentPendingCommand;
 };
 
 export type ImageAgentProjectionEvent = {

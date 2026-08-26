@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -32,6 +33,30 @@ func (r *gormRepository) AppendEvent(ctx context.Context, event imageagent.RunEv
 		}
 		return nil
 	})
+}
+
+func (r *gormRepository) AppendProjectionEvent(ctx context.Context, event imageagent.RunEvent) (imageagent.RunEvent, error) {
+	if strings.TrimSpace(event.TenantID) == "" || strings.TrimSpace(event.RunID) == "" || strings.TrimSpace(event.Type) == "" {
+		return imageagent.RunEvent{}, fmt.Errorf("event tenant, run, and type are required")
+	}
+	scope := imageagent.RunScope{TenantID: event.TenantID, RunID: event.RunID}
+	stored := event
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, err := r.findRunForUpdate(ctx, tx, scope); err != nil {
+			return err
+		}
+		cursor, err := nextEventCursor(ctx, tx, scope)
+		if err != nil {
+			return err
+		}
+		stored.Cursor = cursor
+		stored.ProjectionVersion = cursor
+		return tx.Create(&eventRecord{TenantID: stored.TenantID, RunID: stored.RunID, Type: stored.Type, Cursor: cursor, ProjectionVersion: cursor, Payload: append([]byte(nil), stored.Payload...)}).Error
+	})
+	if err != nil {
+		return imageagent.RunEvent{}, fmt.Errorf("append image agent projection event: %w", err)
+	}
+	return stored, nil
 }
 
 func (r *gormRepository) ListEvents(ctx context.Context, scope imageagent.RunScope, afterCursor int64, limit int) ([]imageagent.RunEvent, error) {

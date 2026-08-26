@@ -44,7 +44,7 @@ export async function buildListingKitProxyResponse({
     });
   }
 
-  if (isImageAgentEventStream(upstream, routePath)) {
+  if (isImageAgentEventStream(upstream, routePath, method)) {
     logListingKitProxyResponse({
       durationMs,
       method,
@@ -128,8 +128,9 @@ function buildProxyResponseHeaders(upstream: Response) {
   return responseHeaders;
 }
 
-function isImageAgentEventStream(upstream: Response, routePath: string[]) {
+function isImageAgentEventStream(upstream: Response, routePath: string[], method: string) {
   return (
+    method === "GET" &&
     routePath.length === 4 &&
     routePath[0] === "image-agent" &&
     routePath[1] === "runs" &&

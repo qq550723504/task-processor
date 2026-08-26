@@ -12,16 +12,20 @@ import (
 type Service struct {
 	repository Repository
 	workflows  WorkflowClient
+	catalogs   AuthorizedAssetCatalog
 }
 
-func NewService(repository Repository, workflows WorkflowClient) (*Service, error) {
+func NewService(repository Repository, workflows WorkflowClient, catalogs AuthorizedAssetCatalog) (*Service, error) {
 	if repository == nil {
 		return nil, fmt.Errorf("image agent repository is required")
 	}
 	if workflows == nil {
 		return nil, fmt.Errorf("image agent workflow client is required")
 	}
-	return &Service{repository: repository, workflows: workflows}, nil
+	if catalogs == nil {
+		return nil, fmt.Errorf("image agent authorized asset catalog is required")
+	}
+	return &Service{repository: repository, workflows: workflows, catalogs: catalogs}, nil
 }
 
 func (s *Service) Start(ctx context.Context, input StartRunInput) error {
@@ -35,12 +39,23 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	input.RunID = strings.TrimSpace(input.RunID)
 	input.BusinessTaskID = strings.TrimSpace(input.BusinessTaskID)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
-	if input.RunID == "" || input.IdempotencyKey == "" {
-		return fmt.Errorf("%w: image agent run ID and idempotency key are required", ErrValidation)
+	if input.RunID == "" || input.BusinessTaskID == "" || input.IdempotencyKey == "" {
+		return fmt.Errorf("%w: image agent run ID, business task ID, and idempotency key are required", ErrValidation)
 	}
 	input.Plan.CreatedBy = identity.UserID
 	if err := ValidatePlan(input.Plan); err != nil {
 		return fmt.Errorf("%w: validate image agent plan: %v", ErrValidation, err)
+	}
+	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{TenantID: identity.TenantID, BusinessTaskID: input.BusinessTaskID, RunID: input.RunID})
+	if err != nil {
+		return fmt.Errorf("%w: resolve authorized image assets: %v", ErrValidation, err)
+	}
+	catalog, err = NormalizeAssetCatalog(catalog)
+	if err != nil {
+		return fmt.Errorf("%w: normalize authorized image assets: %v", ErrValidation, err)
+	}
+	if err := ValidatePlanAgainstCatalog(input.Plan, catalog); err != nil {
+		return fmt.Errorf("%w: validate authorized image assets: %v", ErrValidation, err)
 	}
 	run := Run{
 		ID: input.RunID, BusinessTaskID: input.BusinessTaskID,
@@ -53,6 +68,9 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		return fmt.Errorf("create image agent run: %w", err)
 	}
 	scope := RunScope{TenantID: identity.TenantID, RunID: run.ID}
+	if err := s.repository.SaveAssetCatalog(ctx, scope, catalog); err != nil {
+		return fmt.Errorf("save image agent asset catalog: %w", err)
+	}
 	if err := s.repository.AppendPlan(ctx, scope, 0, input.Plan); err != nil {
 		return fmt.Errorf("append image agent plan: %w", err)
 	}
@@ -60,6 +78,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	return s.workflows.StartManual(ctx, WorkflowStart{
 		Run: run, Plan: input.Plan, Identity: identity,
 		MaxConcurrentSlots: input.MaxConcurrentSlots,
+		AssetCatalog:       catalog,
 	})
 }
 
@@ -84,15 +103,22 @@ func (s *Service) Get(ctx context.Context, runID string) (RunProjection, error) 
 	if err != nil {
 		return RunProjection{}, err
 	}
+	catalog, err := s.repository.GetAssetCatalog(ctx, scope)
+	if err != nil {
+		return RunProjection{}, fmt.Errorf("load image agent asset catalog: %w", err)
+	}
 	projectedRun := *run
 	projectedRun.Status = workflowProjection.Status
 	projectedRun.Block = cloneBlock(workflowProjection.Block)
 	return RunProjection{
 		Run: projectedRun, Plan: workflowProjection.Plan,
-		Slots:        append([]SlotProjection(nil), workflowProjection.Slots...),
-		ResultDigest: workflowProjection.ResultDigest,
-		Actions:      AllowedActions(projectedRun),
-		LastEventID:  lastEventID,
+		Slots:             append([]SlotProjection(nil), workflowProjection.Slots...),
+		ResultDigest:      workflowProjection.ResultDigest,
+		Actions:           AllowedActions(projectedRun),
+		LastEventID:       lastEventID,
+		ProjectionVersion: lastEventID,
+		AssetCatalog:      catalog,
+		PendingCommand:    clonePendingCommand(workflowProjection.PendingCommand),
 	}, nil
 }
 
@@ -107,6 +133,13 @@ func (s *Service) ReplacePlan(ctx context.Context, runID string, expectedRevisio
 	}
 	if err := ValidatePlan(plan); err != nil {
 		return fmt.Errorf("%w: validate replacement plan: %v", ErrValidation, err)
+	}
+	catalog, err := s.repository.GetAssetCatalog(ctx, RunScope{TenantID: identity.TenantID, RunID: strings.TrimSpace(runID)})
+	if err != nil {
+		return err
+	}
+	if err := ValidatePlanAgainstCatalog(plan, catalog); err != nil {
+		return fmt.Errorf("%w: validate authorized image assets: %v", ErrValidation, err)
 	}
 	return s.workflows.ReplacePlan(ctx, ReplacePlanCommand{
 		RunID: strings.TrimSpace(runID), ExpectedRevision: expectedRevision, Plan: plan,
@@ -163,6 +196,21 @@ func (s *Service) Cancel(ctx context.Context, runID string, planRevision int64, 
 	return s.workflows.Cancel(ctx, CancelRunCommand{RunID: strings.TrimSpace(runID), PlanRevision: planRevision, ActorID: identity.UserID, ActionID: strings.TrimSpace(actionID), Identity: identity})
 }
 
+func (s *Service) Resume(ctx context.Context, runID, actionID string) (CommandAcknowledgement, error) {
+	identity, err := verifiedExecutionIdentity(ctx)
+	if err != nil {
+		return CommandAcknowledgement{}, err
+	}
+	runID, actionID = strings.TrimSpace(runID), strings.TrimSpace(actionID)
+	if runID == "" || actionID == "" {
+		return CommandAcknowledgement{}, fmt.Errorf("%w: run ID and action ID are required", ErrValidation)
+	}
+	if _, err := s.repository.GetRun(ctx, RunScope{TenantID: identity.TenantID, RunID: runID}); err != nil {
+		return CommandAcknowledgement{}, err
+	}
+	return s.workflows.Resume(ctx, ResumeCommand{RunID: runID, ActorID: identity.UserID, ActionID: actionID, Identity: identity})
+}
+
 func (s *Service) ListEvents(ctx context.Context, runID string, afterCursor int64, limit int) ([]RunEvent, error) {
 	identity, err := verifiedExecutionIdentity(ctx)
 	if err != nil {
@@ -178,7 +226,7 @@ func (s *Service) ListEvents(ctx context.Context, runID string, afterCursor int6
 	}
 	last := afterCursor
 	for _, event := range events {
-		if event.TenantID != scope.TenantID || event.RunID != scope.RunID || event.Cursor <= last {
+		if event.TenantID != scope.TenantID || event.RunID != scope.RunID || event.Cursor <= last || event.ProjectionVersion != event.Cursor {
 			return nil, ErrRevisionConflict
 		}
 		last = event.Cursor
@@ -237,5 +285,13 @@ func cloneBlock(block *Block) *Block {
 		return nil
 	}
 	cloned := *block
+	return &cloned
+}
+
+func clonePendingCommand(receipt *PendingCommandReceipt) *PendingCommandReceipt {
+	if receipt == nil {
+		return nil
+	}
+	cloned := *receipt
 	return &cloned
 }

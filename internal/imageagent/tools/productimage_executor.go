@@ -18,12 +18,11 @@ import (
 // Dependencies are the ProductImage capabilities and explicitly authorized
 // inputs available to a single image-agent slot execution.
 type Dependencies struct {
-	SubjectExtractor            productimage.SubjectExtractor
-	WhiteBackgroundRenderer     productimage.WhiteBackgroundRenderer
-	SceneRenderer               productimage.SceneRenderer
-	ProductContext              *productimage.ProductContext
-	SourceAssets                map[string]productimage.ImageAsset
-	AuthorizedStyleReferenceIDs map[string]struct{}
+	SubjectExtractor        productimage.SubjectExtractor
+	WhiteBackgroundRenderer productimage.WhiteBackgroundRenderer
+	SceneRenderer           productimage.SceneRenderer
+	ProductContext          *productimage.ProductContext
+	SourceAssets            map[string]productimage.ImageAsset
 }
 
 // ProductImageSlotExecutor adapts ProductImage capabilities to the
@@ -42,7 +41,11 @@ func (e *ProductImageSlotExecutor) ExecuteSlot(ctx context.Context, input imagea
 		return imageagent.SlotExecutionResult{}, err
 	}
 
-	productContext := productContextForSlot(e.dependencies.ProductContext, slot, e.authorizedStyleReferences(slot.StyleReferenceIDs))
+	styleReferences, err := authorizedStyleReferences(slot.StyleReferenceIDs, input.AssetCatalog)
+	if err != nil {
+		return imageagent.SlotExecutionResult{}, err
+	}
+	productContext := productContextForSlot(e.dependencies.ProductContext, slot, styleReferences)
 	var assets []productimage.ImageAsset
 	switch slot.Role {
 	case imageagent.SlotRoleMain:
@@ -94,13 +97,24 @@ func (e *ProductImageSlotExecutor) validateAndResolve(input imageagent.SlotExecu
 	if sourceAssetID == "" {
 		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("slot %q requires a source asset", slot.ID)
 	}
-	source, ok := e.dependencies.SourceAssets[sourceAssetID]
-	if ok {
-		source = cloneImageAsset(source)
-	} else if isReadableCompatibilityURL(sourceAssetID) {
-		source = productimage.ImageAsset{URL: sourceAssetID, SourceURL: sourceAssetID, Type: productimage.AssetTypeSourceImage}
-	} else {
-		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("source asset %q is not resolved to a readable asset", sourceAssetID)
+	if len(input.AssetCatalog.Assets) == 0 {
+		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("slot %q requires an authorized catalog", slot.ID)
+	}
+	var authorized *imageagent.AuthorizedAsset
+	for index := range input.AssetCatalog.Assets {
+		candidate := &input.AssetCatalog.Assets[index]
+		if strings.TrimSpace(candidate.ID) == sourceAssetID && candidate.Type == imageagent.AuthorizedAssetSource {
+			authorized = candidate
+			break
+		}
+	}
+	if authorized == nil {
+		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("source asset %q is not authorized", sourceAssetID)
+	}
+	sourceURL := strings.TrimSpace(authorized.DisplayURL)
+	source := productimage.ImageAsset{URL: sourceURL, SourceURL: sourceURL, Type: productimage.AssetTypeSourceImage, Width: authorized.Width, Height: authorized.Height, Metadata: map[string]string{}}
+	if detailed, ok := e.dependencies.SourceAssets[sourceAssetID]; ok {
+		source = cloneImageAsset(detailed)
 	}
 	source.URL = strings.TrimSpace(source.URL)
 	source.SourceURL = strings.TrimSpace(source.SourceURL)
@@ -125,19 +139,6 @@ func cloneImageAsset(asset productimage.ImageAsset) productimage.ImageAsset {
 	cloned.Operations = append([]string(nil), asset.Operations...)
 	cloned.Metadata = cloneMetadata(asset.Metadata)
 	return cloned
-}
-
-func isReadableCompatibilityURL(value string) bool {
-	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
-	if err != nil || parsed.Host == "" {
-		return false
-	}
-	switch strings.ToLower(parsed.Scheme) {
-	case "http", "https":
-		return true
-	default:
-		return false
-	}
 }
 
 func (e *ProductImageSlotExecutor) executeMain(ctx context.Context, source productimage.ImageAsset, productContext *productimage.ProductContext) ([]productimage.ImageAsset, error) {
@@ -171,9 +172,12 @@ func (e *ProductImageSlotExecutor) executeScene(ctx context.Context, source prod
 	return e.dependencies.SceneRenderer.Render(ctx, &source, productContext)
 }
 
-func (e *ProductImageSlotExecutor) authorizedStyleReferences(ids []string) []string {
-	if len(e.dependencies.AuthorizedStyleReferenceIDs) == 0 {
-		return nil
+func authorizedStyleReferences(ids []string, catalog imageagent.AssetCatalog) ([]string, error) {
+	allowed := make(map[string]struct{}, len(catalog.Assets))
+	for _, asset := range catalog.Assets {
+		if asset.Type == imageagent.AuthorizedAssetStyle {
+			allowed[strings.TrimSpace(asset.ID)] = struct{}{}
+		}
 	}
 	seen := make(map[string]struct{}, len(ids))
 	authorized := make([]string, 0, len(ids))
@@ -182,8 +186,8 @@ func (e *ProductImageSlotExecutor) authorizedStyleReferences(ids []string) []str
 		if id == "" {
 			continue
 		}
-		if _, allowed := e.dependencies.AuthorizedStyleReferenceIDs[id]; !allowed {
-			continue
+		if _, ok := allowed[id]; !ok {
+			return nil, fmt.Errorf("style reference %q is not authorized", id)
 		}
 		if _, duplicate := seen[id]; duplicate {
 			continue
@@ -191,7 +195,7 @@ func (e *ProductImageSlotExecutor) authorizedStyleReferences(ids []string) []str
 		seen[id] = struct{}{}
 		authorized = append(authorized, id)
 	}
-	return authorized
+	return authorized, nil
 }
 
 func productContextForSlot(base *productimage.ProductContext, slot imageagent.Slot, styleReferenceIDs []string) *productimage.ProductContext {

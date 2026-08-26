@@ -90,6 +90,7 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 	}, workflowNameImageAgent, WorkflowInput{
 		RunID: start.Run.ID, Mode: imageagent.RunModeManual, Identity: start.Identity,
 		Plan: start.Plan, MaxConcurrentSlots: start.MaxConcurrentSlots, WaitForCommands: true,
+		AssetCatalog: start.AssetCatalog,
 	})
 	return err
 }
@@ -128,6 +129,33 @@ func (c *Client) Cancel(ctx context.Context, command imageagent.CancelRunCommand
 		RunID: command.RunID, PlanRevision: command.PlanRevision,
 		ActorID: command.ActorID, ActionID: command.ActionID,
 	})
+}
+
+func (c *Client) Resume(ctx context.Context, command imageagent.ResumeCommand) (imageagent.CommandAcknowledgement, error) {
+	if c == nil || c.client == nil {
+		return imageagent.CommandAcknowledgement{}, fmt.Errorf("image agent temporal client is not configured")
+	}
+	if err := validateCommandIdentity(command.Identity, command.RunID); err != nil {
+		return imageagent.CommandAcknowledgement{}, err
+	}
+	if strings.TrimSpace(command.ActorID) != strings.TrimSpace(command.Identity.UserID) || strings.TrimSpace(command.ActionID) == "" {
+		return imageagent.CommandAcknowledgement{}, fmt.Errorf("image agent resume actor and action must match verified identity")
+	}
+	input := ResumeCommandInput{RunID: command.RunID, ActorID: command.ActorID, ActionID: command.ActionID}
+	handle, err := c.client.UpdateWorkflow(ctx, sdkclient.UpdateWorkflowOptions{
+		UpdateID:   "resume:" + command.ActionID,
+		WorkflowID: WorkflowID(command.Identity.TenantID, command.RunID),
+		UpdateName: updateResumeCommand, Args: []interface{}{input},
+		WaitForStage: sdkclient.WorkflowUpdateStageCompleted,
+	})
+	if err != nil {
+		return imageagent.CommandAcknowledgement{}, mapCommandUpdateError(err)
+	}
+	var acknowledgement imageagent.CommandAcknowledgement
+	if err := handle.Get(ctx, &acknowledgement); err != nil {
+		return imageagent.CommandAcknowledgement{}, mapCommandUpdateError(err)
+	}
+	return acknowledgement, nil
 }
 
 func (c *Client) executeCommandUpdate(ctx context.Context, identity imageagent.ExecutionIdentity, runID, updateName, actionID string, arg interface{}) error {

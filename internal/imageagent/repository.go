@@ -62,5 +62,8 @@ type Repository interface {
 	SaveSlotResult(context.Context, RunScope, int64, SlotResult) error
 	AppendAttempt(context.Context, StepAttempt) error
 	AppendEvent(context.Context, RunEvent) error
+	AppendProjectionEvent(context.Context, RunEvent) (RunEvent, error)
 	ListEvents(context.Context, RunScope, int64, int) ([]RunEvent, error)
+	SaveAssetCatalog(context.Context, RunScope, AssetCatalog) error
+	GetAssetCatalog(context.Context, RunScope) (AssetCatalog, error)
 }

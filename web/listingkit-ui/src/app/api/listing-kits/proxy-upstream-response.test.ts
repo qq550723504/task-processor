@@ -64,6 +64,23 @@ describe("buildListingKitProxyResponse", () => {
     await expect(response.text()).resolves.toContain("id: 1");
   });
 
+  it("does not select streaming mode for a non-GET events-shaped response", async () => {
+    const upstream = new Response("event: projection\n\ndata: {}\n\n", {
+      headers: { "content-type": "text/event-stream" },
+    });
+    const textSpy = vi.spyOn(upstream, "text");
+    const response = await buildListingKitProxyResponse({
+      durationMs: 1,
+      method: "POST",
+      path: "/image-agent/runs/run-1/events",
+      requestId: "req-not-sse",
+      routePath: ["image-agent", "runs", "run-1", "events"],
+      upstream,
+    });
+    expect(textSpy).toHaveBeenCalledOnce();
+    await expect(response.text()).resolves.toContain("event: projection");
+  });
+
   it("proxies binary uploaded files as array buffers", async () => {
     const response = await buildListingKitProxyResponse({
       durationMs: 12,

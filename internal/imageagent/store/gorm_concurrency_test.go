@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -238,9 +239,11 @@ func postgresAttemptInsertSQL() string {
 
 func newConcurrentSQLite(t *testing.T) *gorm.DB {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_busy_timeout=5000", strings.ReplaceAll(t.Name(), "/", "_"))
+	dsn := fmt.Sprintf("file:%s_%d?mode=memory&cache=shared&_busy_timeout=5000", strings.ReplaceAll(t.Name(), "/", "_"), concurrentSQLiteSequence.Add(1))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	require.NoError(t, AutoMigrate(db))
 	return db
 }
+
+var concurrentSQLiteSequence atomic.Uint64

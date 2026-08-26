@@ -51,6 +51,7 @@ func (a *Activities) ExecuteSlot(ctx context.Context, input ExecuteSlotActivityI
 		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey: input.IdempotencyKey,
+		AssetCatalog:   input.AssetCatalog,
 	})
 }
 
@@ -105,11 +106,7 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 	if err != nil {
 		return fmt.Errorf("encode terminal slot result event: %w", err)
 	}
-	run, err := a.repository.GetRun(ctx, scope)
-	if err != nil {
-		return fmt.Errorf("get image agent run for slot result event: %w", err)
-	}
-	if err := appendSlotResultEvent(ctx, a.repository, scope, run.Version, eventPayload); err != nil {
+	if err := appendSlotResultEvent(ctx, a.repository, scope, eventPayload); err != nil {
 		return err
 	}
 	return nil
@@ -125,7 +122,7 @@ type slotResultPersistedEventPayload struct {
 	ErrorCode         string                `json:"error_code,omitempty"`
 }
 
-func appendSlotResultEvent(ctx context.Context, repository imageagent.Repository, scope imageagent.RunScope, projectionVersion int64, payload json.RawMessage) error {
+func appendSlotResultEvent(ctx context.Context, repository imageagent.Repository, scope imageagent.RunScope, payload json.RawMessage) error {
 	const pageSize = 100
 	var afterCursor int64
 	for {
@@ -146,9 +143,9 @@ func appendSlotResultEvent(ctx context.Context, repository imageagent.Repository
 			break
 		}
 	}
-	err := repository.AppendEvent(ctx, imageagent.RunEvent{
+	_, err := repository.AppendProjectionEvent(ctx, imageagent.RunEvent{
 		TenantID: scope.TenantID, RunID: scope.RunID, Type: slotResultPersistedEventType,
-		Cursor: afterCursor + 1, ProjectionVersion: projectionVersion, Payload: append(json.RawMessage(nil), payload...),
+		Payload: append(json.RawMessage(nil), payload...),
 	})
 	if errors.Is(err, imageagent.ErrRevisionConflict) {
 		events, listErr := repository.ListEvents(ctx, scope, afterCursor, pageSize)
