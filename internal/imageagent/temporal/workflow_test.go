@@ -897,20 +897,26 @@ func TestManualWorkflowIgnoresApprovalForStaleRevision(t *testing.T) {
 		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).Return(successfulSlotResult(slot.ID, 1), nil).Once()
 	}
 	published := 0
+	freshSent := false
 	env.OnActivity(activityPublishApproved, mock.Anything, mock.Anything).Run(func(mock.Arguments) { published++ }).Return(nil).Once()
+	stale := validApproval("approve-stale")
+	stale.PlanRevision = 2
 	env.RegisterDelayedCallback(func() {
-		stale := validApproval("approve-stale")
-		stale.PlanRevision = 2
 		env.SignalWorkflow(signalApproveResults, stale)
 	}, time.Second)
 	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalApproveResults, validApproval("approve-stale"))
+	}, 1500*time.Millisecond)
+	env.RegisterDelayedCallback(func() {
 		require.Zero(t, published)
+		freshSent = true
 		env.SignalWorkflow(signalApproveResults, validApproval("approve-final-1"))
 	}, 2*time.Second)
 
 	env.ExecuteWorkflow(ImageAgentWorkflow, manualWorkflowInput(plan))
 
 	require.NoError(t, env.GetWorkflowError())
+	require.True(t, freshSent, "a stale legacy approval action ID must remain consumed after its revision is corrected")
 	require.Equal(t, 1, published)
 }
 
@@ -922,6 +928,7 @@ func TestManualWorkflowRejectsEarlyApprovalEvenWhenLaterResent(t *testing.T) {
 		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).Return(successfulSlotResult(slot.ID, 1), nil).Once()
 	}
 	published := 0
+	freshSent := false
 	env.OnActivity(activityPublishApproved, mock.Anything, mock.Anything).Run(func(mock.Arguments) { published++ }).Return(nil).Once()
 	early := validApproval("approve-too-early")
 	env.RegisterDelayedCallback(func() {
@@ -933,13 +940,47 @@ func TestManualWorkflowRejectsEarlyApprovalEvenWhenLaterResent(t *testing.T) {
 	}, time.Second)
 	env.RegisterDelayedCallback(func() {
 		require.Zero(t, published)
+		freshSent = true
 		env.SignalWorkflow(signalApproveResults, validApproval("approve-after-review"))
 	}, 2*time.Second)
 
 	env.ExecuteWorkflow(ImageAgentWorkflow, manualWorkflowInput(plan))
 
 	require.NoError(t, env.GetWorkflowError())
+	require.True(t, freshSent, "the rejected legacy action ID must not complete the workflow before the fresh approval")
 	require.Equal(t, 1, published)
+}
+
+func TestManualWorkflowRejectedLegacySignalDoesNotTombstoneWorkflowUpdate(t *testing.T) {
+	env := newWorkflowEnv(t)
+	plan := sevenSlotPlan()
+	for _, slot := range plan.Slots {
+		slot := slot
+		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).Return(successfulSlotResult(slot.ID, 1), nil).Once()
+	}
+	env.OnActivity(activityPublishApproved, mock.Anything, mock.Anything).Return(nil).Once()
+	command := validApproval("approval-shared-with-update")
+	var rejected, completedErr error
+	env.RegisterDelayedCallback(func() { env.SignalWorkflow(signalApproveResults, command) }, 0)
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalApproveResults, "approval-after-rejected-signal", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { rejected = err },
+			OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) {
+				completedErr = err
+			},
+		}, command)
+	}, time.Second)
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, manualWorkflowInput(plan))
+
+	require.NoError(t, env.GetWorkflowError())
+	require.NoError(t, rejected)
+	require.NoError(t, completedErr)
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusCompleted, result.Status)
+	env.AssertExpectations(t)
 }
 
 func TestManualWorkflowRejectsApprovalQueuedWhileBlocked(t *testing.T) {
@@ -958,6 +999,7 @@ func TestManualWorkflowRejectsApprovalQueuedWhileBlocked(t *testing.T) {
 		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).Return(successfulSlotResult(slot.ID, 1), nil).Once()
 	}
 	published := 0
+	freshSent := false
 	env.OnActivity(activityPublishApproved, mock.Anything, mock.Anything).Run(func(mock.Arguments) { published++ }).Return(nil).Once()
 	blockedApproval := validApproval("approve-while-blocked")
 	env.RegisterDelayedCallback(func() {
@@ -972,13 +1014,135 @@ func TestManualWorkflowRejectsApprovalQueuedWhileBlocked(t *testing.T) {
 	}, 3*time.Second)
 	env.RegisterDelayedCallback(func() {
 		require.Zero(t, published)
+		freshSent = true
 		env.SignalWorkflow(signalApproveResults, validApproval("approve-after-review"))
 	}, 4*time.Second)
 
 	env.ExecuteWorkflow(ImageAgentWorkflow, input)
 
 	require.NoError(t, env.GetWorkflowError())
+	require.True(t, freshSent, "the blocked legacy action ID must not complete the workflow before the fresh approval")
 	require.Equal(t, 1, published)
+	env.AssertExpectations(t)
+}
+
+func TestManualWorkflowConsumesRejectedReplaceSignalActionID(t *testing.T) {
+	env := newWorkflowEnv(t)
+	initial := sevenSlotPlan()
+	replacement := sevenSlotPlan()
+	replacement.Revision = 2
+	replacement.ParentRevision = 1
+	replacement.IdempotencyKey = "plan-key-2"
+	for _, slot := range initial.Slots {
+		slot := slot
+		if slot.ID == "scene-2" {
+			env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlotRevision(slot.ID, 1, 1)).
+				Return(imageagent.SlotExecutionResult{}, sdktemporal.NewNonRetryableApplicationError("failed", "slot_rejected", nil)).Once()
+		} else {
+			env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlotRevision(slot.ID, 1, 1)).
+				Return(successfulSlotResult(slot.ID, 1), nil).Once()
+		}
+		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlotRevision(slot.ID, 1, 2)).
+			Return(successfulSlotResult(slot.ID, 1), nil).Once()
+	}
+	planWrites := 0
+	env.OnActivity(activityPersistPlanRevision, mock.Anything, mock.Anything).
+		Run(func(mock.Arguments) { planWrites++ }).Return(nil).Once()
+	env.OnActivity(activityPublishApproved, mock.Anything, mock.Anything).Return(nil).Once()
+	rejected := ReplacePlanSignal{
+		RunID: "run-1", ExpectedRevision: 1, Plan: replacement, ActorID: "user-a", ActionID: "replace-too-early",
+	}
+	oldActionApplied := false
+	freshSent := false
+	env.RegisterDelayedCallback(func() { env.SignalWorkflow(signalReplacePlan, rejected) }, 0)
+	env.RegisterDelayedCallback(func() { env.SignalWorkflow(signalReplacePlan, rejected) }, time.Second)
+	env.RegisterDelayedCallback(func() {
+		encoded, err := env.QueryWorkflow(QueryWorkflowProjection)
+		require.NoError(t, err)
+		var projection WorkflowResult
+		require.NoError(t, encoded.Get(&projection))
+		oldActionApplied = projection.Plan.Revision == 2
+		fresh := rejected
+		fresh.ActionID = "replace-after-block"
+		freshSent = true
+		env.SignalWorkflow(signalReplacePlan, fresh)
+	}, 2*time.Second)
+	env.RegisterDelayedCallback(func() {
+		encoded, err := env.QueryWorkflow(QueryWorkflowProjection)
+		require.NoError(t, err)
+		var projection WorkflowResult
+		require.NoError(t, encoded.Get(&projection))
+		env.SignalWorkflow(signalApproveResults, ApproveResultsSignal{
+			RunID: "run-1", PlanRevision: 2, ResultDigest: projection.ResultDigest,
+			ActorID: "user-a", ActionID: "approve-replacement-after-tombstone",
+		})
+	}, 3*time.Second)
+	input := manualWorkflowInput(initial)
+	input.WaitForCommands = true
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	require.True(t, freshSent)
+	require.False(t, oldActionApplied, "a replacement Signal rejected before blocked must remain consumed")
+	require.Equal(t, 1, planWrites)
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusCompleted, result.Status)
+	require.EqualValues(t, 2, result.Plan.Revision)
+	env.AssertExpectations(t)
+}
+
+func TestManualWorkflowConsumesRejectedRetrySignalActionID(t *testing.T) {
+	env := newWorkflowEnv(t)
+	plan := sevenSlotPlan()
+	for _, slot := range plan.Slots {
+		slot := slot
+		if slot.ID == "scene-2" {
+			env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).
+				Return(imageagent.SlotExecutionResult{}, sdktemporal.NewNonRetryableApplicationError("failed", "slot_rejected", nil)).Once()
+			continue
+		}
+		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).Return(successfulSlotResult(slot.ID, 1), nil).Once()
+	}
+	providerRetryCalls := 0
+	env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot("scene-2", 2)).
+		Run(func(mock.Arguments) { providerRetryCalls++ }).Return(successfulSlotResult("scene-2", 2), nil).Once()
+	env.OnActivity(activityPublishApproved, mock.Anything, mock.Anything).Return(nil).Once()
+	rejected := RetrySlotSignal{
+		RunID: "run-1", PlanRevision: 1, SlotID: "scene-2", ActorID: "attacker", ActionID: "retry-rejected-actor",
+	}
+	oldActionApplied := false
+	freshSent := false
+	env.RegisterDelayedCallback(func() { env.SignalWorkflow(signalRetrySlot, rejected) }, time.Second)
+	env.RegisterDelayedCallback(func() {
+		corrected := rejected
+		corrected.ActorID = "user-a"
+		env.SignalWorkflow(signalRetrySlot, corrected)
+	}, 2*time.Second)
+	env.RegisterDelayedCallback(func() {
+		oldActionApplied = providerRetryCalls != 0
+		fresh := rejected
+		fresh.ActorID = "user-a"
+		fresh.ActionID = "retry-fresh-action"
+		freshSent = true
+		env.SignalWorkflow(signalRetrySlot, fresh)
+	}, 3*time.Second)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalApproveResults, validApproval("approve-after-retry-tombstone"))
+	}, 4*time.Second)
+	input := manualWorkflowInput(plan)
+	input.WaitForCommands = true
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	require.True(t, freshSent)
+	require.False(t, oldActionApplied, "a rejected retry Signal action ID must not become valid after its actor changes")
+	require.Equal(t, 1, providerRetryCalls)
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusCompleted, result.Status)
 	env.AssertExpectations(t)
 }
 
@@ -999,20 +1163,26 @@ func TestManualWorkflowRejectsApprovalWithWrongActorOrDigest(t *testing.T) {
 				env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).Return(successfulSlotResult(slot.ID, 1), nil).Once()
 			}
 			published := 0
+			freshSent := false
 			env.OnActivity(activityPublishApproved, mock.Anything, mock.Anything).Run(func(mock.Arguments) { published++ }).Return(nil).Once()
+			invalid := validApproval("approve-invalid")
+			test.mutate(&invalid)
 			env.RegisterDelayedCallback(func() {
-				invalid := validApproval("approve-invalid")
-				test.mutate(&invalid)
 				env.SignalWorkflow(signalApproveResults, invalid)
 			}, time.Second)
 			env.RegisterDelayedCallback(func() {
+				env.SignalWorkflow(signalApproveResults, validApproval("approve-invalid"))
+			}, 1500*time.Millisecond)
+			env.RegisterDelayedCallback(func() {
 				require.Zero(t, published)
+				freshSent = true
 				env.SignalWorkflow(signalApproveResults, validApproval("approve-valid"))
 			}, 2*time.Second)
 
 			env.ExecuteWorkflow(ImageAgentWorkflow, manualWorkflowInput(plan))
 
 			require.NoError(t, env.GetWorkflowError())
+			require.True(t, freshSent, "a rejected approval action ID must remain consumed after its fields are corrected")
 			require.Equal(t, 1, published)
 		})
 	}
@@ -1168,6 +1338,39 @@ func TestManualWorkflowRejectsCancelSignalFromDifferentActor(t *testing.T) {
 	env.AssertExpectations(t)
 }
 
+func TestManualWorkflowConsumesRejectedCancelSignalActionID(t *testing.T) {
+	env := newWorkflowEnv(t)
+	plan := sevenSlotPlan()
+	input := manualWorkflowInput(plan)
+	input.MaxConcurrentSlots = 1
+	env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot("slot-1", 1)).
+		After(10*time.Minute).Return(successfulSlotResult("slot-1", 1), nil).Once()
+	rejected := CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "attacker", ActionID: "cancel-rejected-actor"}
+	freshSent := false
+	env.RegisterDelayedCallback(func() { env.SignalWorkflow(signalCancel, rejected) }, 0)
+	env.RegisterDelayedCallback(func() {
+		corrected := rejected
+		corrected.ActorID = "user-a"
+		env.SignalWorkflow(signalCancel, corrected)
+	}, time.Second)
+	env.RegisterDelayedCallback(func() {
+		fresh := rejected
+		fresh.ActorID = "user-a"
+		fresh.ActionID = "cancel-fresh-action"
+		freshSent = true
+		env.SignalWorkflow(signalCancel, fresh)
+	}, 2*time.Second)
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	require.True(t, freshSent, "the rejected cancel action ID must not cancel before the fresh action arrives")
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusCancelled, result.Status)
+	env.AssertExpectations(t)
+}
+
 func TestManualWorkflowDrainsQueuedDuplicateCancelBeforeStartingChildren(t *testing.T) {
 	env := newWorkflowEnv(t)
 	input := manualWorkflowInput(sevenSlotPlan())
@@ -1195,6 +1398,48 @@ func TestManualWorkflowDrainsQueuedDuplicateCancelBeforeStartingChildren(t *test
 	require.Empty(t, result.CompletedSlotIDs)
 	require.Zero(t, started)
 	require.Equal(t, 1, cancelledWrites)
+	env.AssertExpectations(t)
+}
+
+func TestManualWorkflowSerializesCancelAfterInFlightParentTransition(t *testing.T) {
+	env := newWorkflowEnv(t)
+	input := manualWorkflowInput(sevenSlotPlan())
+	input.MaxConcurrentSlots = 1
+	started := 0
+	var mu sync.Mutex
+	durableStatus := imageagent.RunStatusPlanning
+	persisted := []imageagent.RunStatus{}
+	env.SetOnChildWorkflowStartedListener(func(*workflow.Info, workflow.Context, sdkconverter.EncodedValues) { started++ })
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
+		return input.Status == imageagent.RunStatusExecuting
+	})).After(time.Minute).Run(func(mock.Arguments) {
+		mu.Lock()
+		defer mu.Unlock()
+		durableStatus = imageagent.RunStatusExecuting
+		persisted = append(persisted, imageagent.RunStatusExecuting)
+	}).Return(nil).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
+		return input.Status == imageagent.RunStatusCancelled
+	})).Run(func(mock.Arguments) {
+		mu.Lock()
+		defer mu.Unlock()
+		durableStatus = imageagent.RunStatusCancelled
+		persisted = append(persisted, imageagent.RunStatusCancelled)
+	}).Return(nil).Once()
+	cancel := CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-during-executing-persist"}
+	env.RegisterDelayedCallback(func() { env.SignalWorkflow(signalCancel, cancel) }, 0)
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusCancelled, result.Status)
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, imageagent.RunStatusCancelled, durableStatus)
+	require.Equal(t, []imageagent.RunStatus{imageagent.RunStatusExecuting, imageagent.RunStatusCancelled}, persisted)
+	require.Zero(t, started)
 	env.AssertExpectations(t)
 }
 
