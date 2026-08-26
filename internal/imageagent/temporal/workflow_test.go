@@ -257,14 +257,24 @@ func TestManualWorkflowReplaceUpdateResumesAfterRunTransitionFailure(t *testing.
 				logicalPlanWrites++
 				durablePlanRevision = 2
 			}
-		}).Return(nil).Twice()
+		}).Return(nil).Times(3)
 	transition := mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
 		return input.PlanRevision == 2 && input.Status == imageagent.RunStatusExecuting
 	})
+	transitionCalls := 0
 	env.OnActivity(activityPersistRunState, mock.Anything, transition).
+		Run(func(mock.Arguments) { transitionCalls++ }).
 		Return(sdktemporal.NewNonRetryableApplicationError("transition write failed after plan persisted", "terminal_test_failure", nil)).Once()
 	env.OnActivity(activityPersistRunState, mock.Anything, transition).
-		Run(func(mock.Arguments) { durableStatus = imageagent.RunStatusExecuting }).Return(nil).Once()
+		Run(func(mock.Arguments) { transitionCalls++ }).
+		Return(sdktemporal.NewNonRetryableApplicationError("transition write still unavailable during signal resume", "terminal_test_failure", nil)).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, transition).
+		Run(func(mock.Arguments) {
+			transitionCalls++
+			durableStatus = imageagent.RunStatusExecuting
+		}).Return(nil).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, transition).
+		Return(sdktemporal.NewNonRetryableApplicationError("redundant parent executing write must not run", "unexpected_duplicate_transition", nil)).Maybe()
 	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).Return(nil)
 	command := ReplacePlanSignal{RunID: "run-1", ExpectedRevision: 1, Plan: replacement, ActorID: "user-a", ActionID: "replace-resume"}
 	var firstErr, resumedErr, conflictingErr, competingErr error
@@ -299,6 +309,15 @@ func TestManualWorkflowReplaceUpdateResumesAfterRunTransitionFailure(t *testing.
 		}, competing)
 	}, 2*time.Second)
 	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalReplacePlan, command)
+		conflictingReuse := command
+		conflictingReuse.Plan.IdempotencyKey = "signal-conflicting-plan-key"
+		env.SignalWorkflow(signalReplacePlan, conflictingReuse)
+		competing := command
+		competing.ActionID = "replace-signal-competing"
+		env.SignalWorkflow(signalReplacePlan, competing)
+	}, 2500*time.Millisecond)
+	env.RegisterDelayedCallback(func() {
 		env.UpdateWorkflow(signalReplacePlan, "replace-resume-second", &testsuite.TestUpdateCallback{
 			OnReject: func(err error) { resumedErr = err }, OnAccept: func() {},
 			OnComplete: func(_ interface{}, errorValue error) {
@@ -328,8 +347,9 @@ func TestManualWorkflowReplaceUpdateResumesAfterRunTransitionFailure(t *testing.
 	require.NoError(t, resumedErr)
 	require.Error(t, conflictingErr)
 	require.Error(t, competingErr)
-	require.Equal(t, 2, planPersistCalls)
+	require.Equal(t, 3, planPersistCalls)
 	require.Equal(t, 1, logicalPlanWrites)
+	require.Equal(t, 3, transitionCalls)
 	var result WorkflowResult
 	require.NoError(t, env.GetWorkflowResult(&result))
 	require.EqualValues(t, 2, result.Plan.Revision)
@@ -454,13 +474,20 @@ func TestManualWorkflowRetryUpdateResumesWithoutRerunningProviderAfterPersistenc
 	approvalTransition := mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
 		return input.Status == imageagent.RunStatusAwaitingFinalApproval
 	})
+	approvalTransitionCalls := 0
 	env.OnActivity(activityPersistRunState, mock.Anything, approvalTransition).
+		Run(func(mock.Arguments) { approvalTransitionCalls++ }).
 		Return(sdktemporal.NewNonRetryableApplicationError("approval transition write failed after slot persisted", "terminal_test_failure", nil)).Once()
 	env.OnActivity(activityPersistRunState, mock.Anything, approvalTransition).
-		Run(func(mock.Arguments) { durableStatus = imageagent.RunStatusAwaitingFinalApproval }).Return(nil).Once()
+		Run(func(mock.Arguments) {
+			approvalTransitionCalls++
+			durableStatus = imageagent.RunStatusAwaitingFinalApproval
+		}).Return(nil).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, approvalTransition).
+		Return(sdktemporal.NewNonRetryableApplicationError("redundant parent approval write must not run", "unexpected_duplicate_transition", nil)).Maybe()
 	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).Return(nil)
 	command := RetrySlotSignal{RunID: "run-1", PlanRevision: 1, SlotID: "scene-2", ActorID: "user-a", ActionID: "retry-resume"}
-	var firstErr, transitionErr, resumedErr, conflictingErr error
+	var firstErr, resumedErr, conflictingErr error
 	env.RegisterDelayedCallback(func() {
 		env.UpdateWorkflow(signalRetrySlot, "retry-resume-first", &testsuite.TestUpdateCallback{
 			OnReject: func(err error) { firstErr = err }, OnAccept: func() {},
@@ -485,21 +512,16 @@ func TestManualWorkflowRetryUpdateResumesWithoutRerunningProviderAfterPersistenc
 		}, conflict)
 	}, 2*time.Second)
 	env.RegisterDelayedCallback(func() {
-		env.UpdateWorkflow(signalRetrySlot, "retry-resume-second", &testsuite.TestUpdateCallback{
-			OnReject: func(err error) { transitionErr = err }, OnAccept: func() {},
-			OnComplete: func(_ interface{}, errorValue error) {
-				transitionErr = errorValue
-				encoded, queryErr := env.QueryWorkflow(QueryWorkflowProjection)
-				require.NoError(t, queryErr)
-				var projection WorkflowResult
-				require.NoError(t, encoded.Get(&projection))
-				require.Equal(t, imageagent.RunStatusBlocked, projection.Status)
-				require.Equal(t, imageagent.SlotStatusBlocked, projection.Slots[2].Slot.Status)
-			},
-		}, command)
-	}, 3*time.Second)
+		env.SignalWorkflow(signalRetrySlot, command)
+		conflictingReuse := command
+		conflictingReuse.SlotID = "slot-1"
+		env.SignalWorkflow(signalRetrySlot, conflictingReuse)
+		competing := command
+		competing.ActionID = "retry-signal-competing"
+		env.SignalWorkflow(signalRetrySlot, competing)
+	}, 2500*time.Millisecond)
 	env.RegisterDelayedCallback(func() {
-		env.UpdateWorkflow(signalRetrySlot, "retry-resume-third", &testsuite.TestUpdateCallback{
+		env.UpdateWorkflow(signalRetrySlot, "retry-resume-after-signal", &testsuite.TestUpdateCallback{
 			OnReject: func(err error) { resumedErr = err }, OnAccept: func() {},
 			OnComplete: func(_ interface{}, errorValue error) {
 				resumedErr = errorValue
@@ -511,10 +533,10 @@ func TestManualWorkflowRetryUpdateResumesWithoutRerunningProviderAfterPersistenc
 				require.Equal(t, durableSlotStatus, projection.Slots[2].Slot.Status)
 			},
 		}, command)
-	}, 4*time.Second)
+	}, 3*time.Second)
 	env.RegisterDelayedCallback(func() {
 		env.SignalWorkflow(signalApproveResults, validApproval("approve-after-retry-resume"))
-	}, 5*time.Second)
+	}, 4*time.Second)
 	input := manualWorkflowInput(plan)
 	input.WaitForCommands = true
 
@@ -522,11 +544,11 @@ func TestManualWorkflowRetryUpdateResumesWithoutRerunningProviderAfterPersistenc
 
 	require.NoError(t, env.GetWorkflowError())
 	require.Error(t, firstErr)
-	require.Error(t, transitionErr)
 	require.NoError(t, resumedErr)
 	require.Error(t, conflictingErr)
 	require.Equal(t, 1, providerRetryCalls)
 	require.Equal(t, 1, logicalSlotWrites)
+	require.Equal(t, 2, approvalTransitionCalls)
 	var result WorkflowResult
 	require.NoError(t, env.GetWorkflowResult(&result))
 	require.Equal(t, imageagent.RunStatusCompleted, result.Status)
@@ -778,6 +800,8 @@ func TestManualWorkflowApprovalUpdateResumesAfterCompletedStateFailureWithoutRep
 	env.OnActivity(activityPersistRunState, mock.Anything, completed).
 		Return(sdktemporal.NewNonRetryableApplicationError("completed state write failed after publication", "terminal_test_failure", nil)).Once()
 	env.OnActivity(activityPersistRunState, mock.Anything, completed).
+		Return(sdktemporal.NewNonRetryableApplicationError("completed state write still unavailable during signal resume", "terminal_test_failure", nil)).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, completed).
 		Run(func(mock.Arguments) { durableStatus = imageagent.RunStatusCompleted }).Return(nil).Once()
 	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).Return(nil)
 	command := validApproval("approve-resume")
@@ -804,6 +828,15 @@ func TestManualWorkflowApprovalUpdateResumesAfterCompletedStateFailureWithoutRep
 			OnComplete: func(interface{}, error) {},
 		}, conflict)
 	}, 2*time.Second)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalApproveResults, command)
+		conflictingReuse := command
+		conflictingReuse.ResultDigest = "different-digest"
+		env.SignalWorkflow(signalApproveResults, conflictingReuse)
+		competing := command
+		competing.ActionID = "approve-signal-competing"
+		env.SignalWorkflow(signalApproveResults, competing)
+	}, 2500*time.Millisecond)
 	env.RegisterDelayedCallback(func() {
 		env.UpdateWorkflow(signalApproveResults, "approve-resume-second", &testsuite.TestUpdateCallback{
 			OnReject: func(err error) { resumedErr = err }, OnAccept: func() {},
@@ -1292,6 +1325,9 @@ func TestManualWorkflowCancelUpdateResumesAfterTerminalPersistenceFailure(t *tes
 		}).
 		Return(sdktemporal.NewNonRetryableApplicationError("cancel write reported failure", "terminal_test_failure", nil)).Once()
 	env.OnActivity(activityPersistRunState, mock.Anything, cancelled).
+		Run(func(mock.Arguments) { cancelPersistCalls++ }).
+		Return(sdktemporal.NewNonRetryableApplicationError("cancel write still unavailable during signal resume", "terminal_test_failure", nil)).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, cancelled).
 		Run(func(mock.Arguments) { cancelPersistCalls++ }).Return(nil).Once()
 	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).Return(nil)
 	command := CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-resume"}
@@ -1319,6 +1355,15 @@ func TestManualWorkflowCancelUpdateResumesAfterTerminalPersistenceFailure(t *tes
 		}, conflict)
 	}, 2*time.Second)
 	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalCancel, command)
+		conflictingReuse := command
+		conflictingReuse.PlanRevision = 2
+		env.SignalWorkflow(signalCancel, conflictingReuse)
+		competing := command
+		competing.ActionID = "cancel-signal-competing"
+		env.SignalWorkflow(signalCancel, competing)
+	}, 2500*time.Millisecond)
+	env.RegisterDelayedCallback(func() {
 		env.UpdateWorkflow(signalCancel, "cancel-resume-second", &testsuite.TestUpdateCallback{
 			OnReject: func(err error) { resumedErr = err }, OnAccept: func() {},
 			OnComplete: func(_ interface{}, errorValue error) {
@@ -1338,7 +1383,7 @@ func TestManualWorkflowCancelUpdateResumesAfterTerminalPersistenceFailure(t *tes
 	require.Error(t, firstErr)
 	require.NoError(t, resumedErr)
 	require.Error(t, conflictingErr)
-	require.Equal(t, 2, cancelPersistCalls)
+	require.Equal(t, 3, cancelPersistCalls)
 	require.Equal(t, 1, logicalCancelledWrites)
 	var result WorkflowResult
 	require.NoError(t, env.GetWorkflowResult(&result))
