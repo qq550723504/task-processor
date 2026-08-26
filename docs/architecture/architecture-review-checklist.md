@@ -97,6 +97,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestSheinLoginReadsIdentityFromNeutralContext`
 - `TestListingKitIdentityReadersUseNeutralContext`
 - `TestZitadelAuthMiddlewareWritesNeutralIdentityContext`
+- `TestZitadelAuthRuntimeDoesNotImportListingKit`
 - `TestAuthenticatedIdentityRootImportsStayRestricted`
 - `TestAuthenticatedIdentityRootImportScannerResolvesAliases`
 - `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`

@@ -1,4 +1,4 @@
-package httpapi
+package zitadel
 
 import (
 	"encoding/base64"
@@ -15,7 +15,7 @@ import (
 	"task-processor/internal/authidentity"
 )
 
-func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
+func (m *middleware) Handle(c *gin.Context) {
 	if m.cfg.IssuerURL == "" || m.cfg.ClientID == "" {
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
 			"error":   "zitadel_auth_not_configured",
@@ -41,6 +41,7 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 		})
 		return
 	}
+
 	tenantID := strings.TrimSpace(identity.ResourceID)
 	userID := strings.TrimSpace(identity.Subject)
 	if tenantID == "" {
@@ -57,10 +58,11 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 		})
 		return
 	}
+
 	trustedIdentity := authidentity.AuthenticatedIdentity{
 		TenantID: tenantID,
 		UserID:   userID,
-		Roles:    append([]string{}, identity.Roles...),
+		Roles:    append([]string(nil), identity.Roles...),
 	}
 	for _, header := range []string{
 		"X-User-ID",
@@ -74,8 +76,8 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 	} {
 		c.Request.Header.Del(header)
 	}
-	c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), trustedIdentity))
 
+	c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), trustedIdentity))
 	c.Request.Header.Set("X-Tenant-ID", tenantID)
 	c.Request.Header.Set("tenant-id", tenantID)
 	c.Request.Header.Set("X-User-ID", userID)
@@ -83,8 +85,9 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 	if len(trustedIdentity.Roles) > 0 {
 		c.Request.Header.Set("X-User-Roles", strings.Join(trustedIdentity.Roles, ","))
 	}
-	if m.authz.Required {
-		if ok, reason := authorizeZitadelIdentity(identity, m.authz); !ok {
+
+	if m.authzCfg.Required {
+		if ok, reason := authorizeIdentity(identity, m.authzCfg); !ok {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error":   "zitadel_access_denied",
 				"message": reason,
@@ -92,10 +95,11 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 			return
 		}
 	}
+
 	c.Next()
 }
 
-func (m *zitadelAuthMiddleware) verifyToken(r *http.Request, token string) (*zitadelIntrospectionResponse, error) {
+func (m *middleware) verifyToken(r *http.Request, token string) (*IntrospectionResponse, error) {
 	discovery, err := m.getDiscovery(r)
 	if err != nil {
 		return nil, err
@@ -107,6 +111,7 @@ func (m *zitadelAuthMiddleware) verifyToken(r *http.Request, token string) (*zit
 	form := url.Values{}
 	form.Set("token", token)
 	form.Set("token_type_hint", "access_token")
+
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, discovery.IntrospectionEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
@@ -126,24 +131,24 @@ func (m *zitadelAuthMiddleware) verifyToken(r *http.Request, token string) (*zit
 	if err != nil {
 		return nil, fmt.Errorf("ZITADEL token introspection response is invalid: %w", err)
 	}
-	var payload zitadelIntrospectionResponse
+
+	var payload IntrospectionResponse
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, fmt.Errorf("ZITADEL token introspection response is invalid: %w", err)
 	}
 	payload.Extra = data
-	payload.Roles = parseZitadelRoles(data)
+	payload.Roles = ParseRoles(data)
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("ZITADEL token introspection failed: %d", resp.StatusCode)
 	}
 	if !payload.Active {
-		return nil, errors.New(
-			"ZITADEL token introspection returned an inactive token; check whether the UI and API are using the same ZITADEL issuer/client configuration",
-		)
+		return nil, errors.New("ZITADEL token introspection returned an inactive token; check whether the UI and API are using the same ZITADEL issuer/client configuration")
 	}
 	return &payload, nil
 }
 
-func (m *zitadelAuthMiddleware) getDiscovery(r *http.Request) (zitadelDiscovery, error) {
+func (m *middleware) getDiscovery(r *http.Request) (discoveryDocument, error) {
 	m.mu.Lock()
 	cached := m.discovery
 	m.mu.Unlock()
@@ -153,20 +158,24 @@ func (m *zitadelAuthMiddleware) getDiscovery(r *http.Request) (zitadelDiscovery,
 
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, m.cfg.IssuerURL+"/.well-known/openid-configuration", nil)
 	if err != nil {
-		return zitadelDiscovery{}, err
+		return discoveryDocument{}, err
 	}
+
 	resp, err := m.cfg.HTTPClient.Do(req)
 	if err != nil {
-		return zitadelDiscovery{}, fmt.Errorf("ZITADEL discovery failed: %w", err)
+		return discoveryDocument{}, fmt.Errorf("ZITADEL discovery failed: %w", err)
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return zitadelDiscovery{}, fmt.Errorf("ZITADEL discovery failed: %d", resp.StatusCode)
+		return discoveryDocument{}, fmt.Errorf("ZITADEL discovery failed: %d", resp.StatusCode)
 	}
-	var discovery zitadelDiscovery
+
+	var discovery discoveryDocument
 	if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
-		return zitadelDiscovery{}, fmt.Errorf("ZITADEL discovery response is invalid: %w", err)
+		return discoveryDocument{}, fmt.Errorf("ZITADEL discovery response is invalid: %w", err)
 	}
+
 	m.mu.Lock()
 	m.discovery = discovery
 	m.mu.Unlock()
@@ -179,4 +188,28 @@ func bearerToken(authorization string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])
+}
+
+func authorizeIdentity(identity *IntrospectionResponse, cfg AuthorizationConfig) (bool, string) {
+	if cfg.LegacyUsernameAllowlistConfigured {
+		return false, "ZITADEL username allowlists are obsolete; configure canonical allowlists"
+	}
+	if identity == nil {
+		return false, "ZITADEL identity is missing"
+	}
+	if len(cfg.AllowedTenantIDs) == 0 && len(cfg.AllowedUserIDs) == 0 && len(cfg.AllowedRoles) == 0 {
+		return false, "ZITADEL authorization is required but no allowlist is configured"
+	}
+	if valueInSet(firstNonEmptyValue(identity.ResourceID), cfg.AllowedTenantIDs) {
+		return true, ""
+	}
+	if valueInSet(identity.Subject, cfg.AllowedUserIDs) {
+		return true, ""
+	}
+	for _, role := range identity.Roles {
+		if valueInSet(role, cfg.AllowedRoles) {
+			return true, ""
+		}
+	}
+	return false, "ZITADEL identity is not allowed to access ListingKit"
 }

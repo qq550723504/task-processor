@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
@@ -1236,7 +1237,7 @@ func TestListingKitZitadelAuthRejectsOperatorForPlatformRoutes(t *testing.T) {
 }
 
 func TestParseZitadelRoles(t *testing.T) {
-	roles := parseZitadelRoles([]byte(`{
+	roles := zitadelruntime.ParseRoles([]byte(`{
 		"urn:zitadel:iam:org:project:roles": {"listingkit_admin": {}, "platform_admin": {}},
 		"roles": ["platform_admin", "billing_admin"],
 		"role": "admin, listingkit_admin"

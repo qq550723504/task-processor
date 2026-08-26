@@ -301,7 +301,7 @@ func TestListingKitIdentityReadersUseNeutralContext(t *testing.T) {
 }
 
 func TestZitadelAuthMiddlewareWritesNeutralIdentityContext(t *testing.T) {
-	path := filepath.Join("..", "internal", "listingkit", "httpapi", "zitadel_auth_middleware.go")
+	path := filepath.Join("..", "internal", "authruntime", "zitadel", "middleware.go")
 	source, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -339,6 +339,12 @@ func TestZitadelAuthMiddlewareWritesNeutralIdentityContext(t *testing.T) {
 		}
 		return true
 	})
+}
+
+func TestZitadelAuthRuntimeDoesNotImportListingKit(t *testing.T) {
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "authruntime", "zitadel"), []string{
+		"task-processor/internal/listingkit",
+	}, nil)
 }
 
 func TestAuthenticatedIdentityRootImportsStayRestricted(t *testing.T) {
@@ -3592,6 +3598,7 @@ func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
 func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 	root := filepath.Join("..", "internal")
 	allowedHTTPPackages := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "authruntime", "zitadel")) + string(os.PathSeparator):    {},
 		filepath.Clean(filepath.Join(root, "app", "httpapi")) + string(os.PathSeparator):            {},
 		filepath.Clean(filepath.Join(root, "amazonlisting", "api")) + string(os.PathSeparator):      {},
 		filepath.Clean(filepath.Join(root, "amazonlisting", "httpapi")) + string(os.PathSeparator):  {},

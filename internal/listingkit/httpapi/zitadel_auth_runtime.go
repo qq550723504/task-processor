@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 )
@@ -26,9 +27,9 @@ func ConfigureListingKitZitadelAuth(cfg config.ListingKitZitadelConfig) {
 		AuthzConfig: zitadelAuthorizationConfig{
 			Required:                          authzRequired,
 			LegacyUsernameAllowlistConfigured: legacyUsernameAllowlistConfigured,
-			AllowedTenantIDs:                  stringSliceToSet(cfg.AllowedTenantIDs),
-			AllowedUserIDs:                    stringSliceToSet(cfg.AllowedUserIDs),
-			AllowedRoles:                      stringSliceToSet(cfg.AllowedRoles),
+			AllowedTenantIDs:                  zitadelruntime.StringSliceToSet(cfg.AllowedTenantIDs),
+			AllowedUserIDs:                    zitadelruntime.StringSliceToSet(cfg.AllowedUserIDs),
+			AllowedRoles:                      zitadelruntime.StringSliceToSet(cfg.AllowedRoles),
 		},
 	}
 }
@@ -78,14 +79,5 @@ func NewZitadelAuthMiddlewareFromEnv() gin.HandlerFunc {
 	if runtimeCfg == nil {
 		runtimeCfg = &listingKitZitadelRuntimeConfig{}
 	}
-	return newListingKitZitadelAuthMiddleware(runtimeCfg.AuthConfig, runtimeCfg.AuthzConfig).Handle
-}
-
-func newListingKitZitadelAuthMiddleware(cfg zitadelAuthConfig, authz zitadelAuthorizationConfig) *zitadelAuthMiddleware {
-	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
-	}
-	cfg.IssuerURL = strings.TrimRight(strings.TrimSpace(cfg.IssuerURL), "/")
-	cfg.ClientID = strings.TrimSpace(cfg.ClientID)
-	return &zitadelAuthMiddleware{cfg: cfg, authz: authz}
+	return zitadelruntime.NewMiddleware(runtimeCfg.AuthConfig, runtimeCfg.AuthzConfig)
 }
