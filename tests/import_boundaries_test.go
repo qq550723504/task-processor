@@ -348,14 +348,24 @@ func TestZitadelAuthRuntimeDoesNotImportListingKit(t *testing.T) {
 }
 
 func TestListingKitAuthenticatedIdentityCompatibilityFacadeIsRetired(t *testing.T) {
-	facadePath := filepath.Join("..", "internal", "listingkit", "authenticated_identity.go")
-	if _, err := os.Stat(facadePath); err == nil {
-		t.Fatalf("%s still exists; use internal/authidentity directly", facadePath)
-	} else if !os.IsNotExist(err) {
-		t.Fatalf("stat %s: %v", facadePath, err)
+	index, err := loadGoFileIndex(filepath.Join("..", "internal", "listingkit"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		declarations, err := findListingKitAuthenticatedIdentityDeclarations(path, facts.source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, declaration := range declarations {
+			t.Errorf("%s", declaration)
+		}
 	}
 
-	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	index, err = loadGoFileIndex(filepath.Join("..", "internal"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,6 +381,46 @@ func TestListingKitAuthenticatedIdentityCompatibilityFacadeIsRetired(t *testing.
 			t.Errorf("%s", violation)
 		}
 	}
+}
+
+func findListingKitAuthenticatedIdentityDeclarations(path string, source []byte) ([]string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	retiredNames := map[string]struct{}{
+		"AuthenticatedIdentity":            {},
+		"WithAuthenticatedIdentity":        {},
+		"AuthenticatedIdentityFromContext": {},
+	}
+	var violations []string
+	for _, declaration := range file.Decls {
+		switch declaration := declaration.(type) {
+		case *ast.FuncDecl:
+			if declaration.Recv == nil {
+				if _, retired := retiredNames[declaration.Name.Name]; retired {
+					violations = append(violations, path+": declares retired identity API "+declaration.Name.Name)
+				}
+			}
+		case *ast.GenDecl:
+			for _, specification := range declaration.Specs {
+				switch specification := specification.(type) {
+				case *ast.TypeSpec:
+					if _, retired := retiredNames[specification.Name.Name]; retired {
+						violations = append(violations, path+": declares retired identity API "+specification.Name.Name)
+					}
+				case *ast.ValueSpec:
+					for _, name := range specification.Names {
+						if _, retired := retiredNames[name.Name]; retired {
+							violations = append(violations, path+": declares retired identity API "+name.Name)
+						}
+					}
+				}
+			}
+		}
+	}
+	return violations, nil
 }
 
 func TestAuthenticatedIdentityRootImportsStayRestricted(t *testing.T) {
@@ -406,6 +456,23 @@ func readIdentity(ctx any) {
 	}
 	if len(violations) != 1 {
 		t.Fatalf("violations = %v, want one alias violation", violations)
+	}
+}
+
+func TestListingKitAuthenticatedIdentityDeclarationScannerRejectsMovedFacade(t *testing.T) {
+	violations, err := findListingKitAuthenticatedIdentityDeclarations("synthetic.go", []byte(`package listingkit
+
+type AuthenticatedIdentity struct{}
+
+var WithAuthenticatedIdentity = func() {}
+
+func AuthenticatedIdentityFromContext() {}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 3 {
+		t.Fatalf("violations = %v, want three retired identity declarations", violations)
 	}
 }
 
