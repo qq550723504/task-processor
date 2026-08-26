@@ -56,6 +56,8 @@ Current direct dependency hotspots are:
   - a separate legacy promotion bridge seam remains in
     `internal/listingkit/sheinsync/promotion_bridge_legacy_adapter.go` for
     management DTO and legacy SHEIN activity bridge compatibility
+  - 2026-08-26 update: asynchronous SHEIN sync request context now uses the
+    neutral `internal/shared/aiidentity` package instead of the OpenAI client
   - should shrink behind ListingKit-owned AI interfaces before new features add
     more concrete OpenAI types
   - `internal/listingkit` root OpenAI seams are guarded by

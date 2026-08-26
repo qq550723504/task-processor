@@ -5,10 +5,26 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/shared/aiidentity"
+	"task-processor/internal/shared/tenantctx"
 	sheinproduct "task-processor/internal/shein/api/product"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestDetachedSheinSyncContextPreservesTenantAndUserScope(t *testing.T) {
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{
+		TenantID:       "tenant-a",
+		UserID:         "user-a",
+		BusinessTaskID: "task-1",
+		TraceID:        "trace-1",
+	})
+
+	detached := detachedSheinSyncContext(tenantctx.WithTenantID(ctx, "tenant-a"))
+
+	require.Equal(t, "tenant-a", tenantctx.TenantIDFromContext(detached))
+	require.Equal(t, aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"}, aiidentity.FromContext(detached))
+}
 
 func TestAsyncSheinSyncServiceReturnsPendingJobBeforeBackgroundSyncCompletes(t *testing.T) {
 	t.Parallel()
