@@ -153,15 +153,6 @@ func buildSceneGenerationResolvedPrompt(req *SceneGenerationRequest) resolvedPro
 	if options.CustomSceneHint != "" {
 		base += " Custom scene hint: " + options.CustomSceneHint + "."
 	}
-	if options.SlotRole != "" {
-		base += " Slot role: " + options.SlotRole + "."
-	}
-	if options.SlotBrief != "" {
-		base += " Slot brief: " + options.SlotBrief + "."
-	}
-	if options.StyleReferenceIDs != "" {
-		base += " Authorized style references: " + options.StyleReferenceIDs + "."
-	}
 	base += " Produce a premium marketplace-ready gallery image with clean composition and no overlaid text."
 	vars := map[string]any{
 		"product_type":        productType,
@@ -182,7 +173,22 @@ func buildSceneGenerationResolvedPrompt(req *SceneGenerationRequest) resolvedPro
 	if strings.TrimSpace(resolved.Text) == "" {
 		resolved.Text = base
 	}
+	resolved.Text = appendControlledScenePromptSuffix(resolved.Text, options)
 	return resolved
+}
+
+func appendControlledScenePromptSuffix(rendered string, options scenePromptOptions) string {
+	suffix := ""
+	if role := strings.TrimSpace(options.SlotRole); role != "" {
+		suffix += " Slot role: " + role + "."
+	}
+	if brief := strings.TrimSpace(options.SlotBrief); brief != "" {
+		suffix += " Slot brief: " + brief + "."
+	}
+	if styleReferences := strings.TrimSpace(options.StyleReferenceIDs); styleReferences != "" {
+		suffix += " Authorized style references: " + styleReferences + "."
+	}
+	return rendered + suffix
 }
 
 func resolveSceneGenerationPrompt(req *SceneGenerationRequest, vars map[string]any, fallback string, options scenePromptOptions) resolvedProductImagePrompt {

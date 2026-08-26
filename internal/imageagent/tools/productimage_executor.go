@@ -2,7 +2,13 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
+	"path"
 	"strings"
 
 	"task-processor/internal/imageagent"
@@ -55,7 +61,7 @@ func (e *ProductImageSlotExecutor) ExecuteSlot(ctx context.Context, input imagea
 		return imageagent.SlotExecutionResult{}, fmt.Errorf("execute slot %q: %w", slot.ID, err)
 	}
 
-	candidates, err := generatedCandidates(slot.ID, sourceAssetID, source, assets)
+	candidates, err := generatedCandidates(input, slot, sourceAssetID, source, assets)
 	if err != nil {
 		return imageagent.SlotExecutionResult{}, err
 	}
@@ -63,7 +69,7 @@ func (e *ProductImageSlotExecutor) ExecuteSlot(ctx context.Context, input imagea
 }
 
 func (e *ProductImageSlotExecutor) validateAndResolve(input imageagent.SlotExecutionInput) (imageagent.Slot, string, productimage.ImageAsset, error) {
-	slot := input.Slot
+	slot := cloneSlot(input.Slot)
 	slot.ID = strings.TrimSpace(slot.ID)
 	slot.Brief = strings.TrimSpace(slot.Brief)
 	if slot.ID == "" {
@@ -71,6 +77,9 @@ func (e *ProductImageSlotExecutor) validateAndResolve(input imageagent.SlotExecu
 	}
 	if input.Attempt <= 0 {
 		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("slot %q requires a positive attempt", slot.ID)
+	}
+	if strings.TrimSpace(input.RunID) == "" || input.PlanRevision <= 0 || strings.TrimSpace(input.IdempotencyKey) == "" || strings.TrimSpace(slot.IdempotencyKey) == "" {
+		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("slot %q requires stable execution identity", slot.ID)
 	}
 	for i := range slot.SourceAssetIDs {
 		slot.SourceAssetIDs[i] = strings.TrimSpace(slot.SourceAssetIDs[i])
@@ -86,8 +95,12 @@ func (e *ProductImageSlotExecutor) validateAndResolve(input imageagent.SlotExecu
 		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("slot %q requires a source asset", slot.ID)
 	}
 	source, ok := e.dependencies.SourceAssets[sourceAssetID]
-	if !ok {
+	if ok {
+		source = cloneImageAsset(source)
+	} else if isReadableCompatibilityURL(sourceAssetID) {
 		source = productimage.ImageAsset{URL: sourceAssetID, SourceURL: sourceAssetID, Type: productimage.AssetTypeSourceImage}
+	} else {
+		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("source asset %q is not resolved to a readable asset", sourceAssetID)
 	}
 	source.URL = strings.TrimSpace(source.URL)
 	source.SourceURL = strings.TrimSpace(source.SourceURL)
@@ -98,6 +111,33 @@ func (e *ProductImageSlotExecutor) validateAndResolve(input imageagent.SlotExecu
 		source.SourceURL = source.URL
 	}
 	return slot, sourceAssetID, source, nil
+}
+
+func cloneSlot(slot imageagent.Slot) imageagent.Slot {
+	cloned := slot
+	cloned.SourceAssetIDs = append([]string(nil), slot.SourceAssetIDs...)
+	cloned.StyleReferenceIDs = append([]string(nil), slot.StyleReferenceIDs...)
+	return cloned
+}
+
+func cloneImageAsset(asset productimage.ImageAsset) productimage.ImageAsset {
+	cloned := asset
+	cloned.Operations = append([]string(nil), asset.Operations...)
+	cloned.Metadata = cloneMetadata(asset.Metadata)
+	return cloned
+}
+
+func isReadableCompatibilityURL(value string) bool {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
+		return true
+	default:
+		return false
+	}
 }
 
 func (e *ProductImageSlotExecutor) executeMain(ctx context.Context, source productimage.ImageAsset, productContext *productimage.ProductContext) ([]productimage.ImageAsset, error) {
@@ -179,28 +219,53 @@ func slotRoleName(role imageagent.SlotRole) string {
 	return string(role)
 }
 
-func generatedCandidates(slotID, sourceAssetID string, source productimage.ImageAsset, assets []productimage.ImageAsset) ([]imageagent.AssetCandidate, error) {
+func generatedCandidates(input imageagent.SlotExecutionInput, slot imageagent.Slot, sourceAssetID string, source productimage.ImageAsset, assets []productimage.ImageAsset) ([]imageagent.AssetCandidate, error) {
 	candidates := make([]imageagent.AssetCandidate, 0, len(assets))
-	for _, asset := range assets {
+	for providerOutputIndex, asset := range assets {
 		url := strings.TrimSpace(asset.URL)
 		if !isGeneratedAsset(url, source, asset) {
 			continue
 		}
 		candidates = append(candidates, imageagent.AssetCandidate{
-			AssetID:       fmt.Sprintf("%s-candidate-%d", slotID, len(candidates)+1),
+			AssetID:       candidateAssetID(input, slot, providerOutputIndex),
 			URL:           url,
 			SourceAssetID: sourceAssetID,
 			Metadata:      cloneMetadata(asset.Metadata),
 		})
 	}
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("slot %q provider returned no generated candidates", slotID)
+		return nil, fmt.Errorf("slot %q provider returned no generated candidates", slot.ID)
 	}
 	return candidates, nil
 }
 
+type candidateIdentity struct {
+	RunID               string `json:"run_id"`
+	PlanRevision        int64  `json:"plan_revision"`
+	SlotID              string `json:"slot_id"`
+	SlotIdempotencyKey  string `json:"slot_idempotency_key"`
+	Attempt             int    `json:"attempt"`
+	ProviderOutputIndex int    `json:"provider_output_index"`
+}
+
+func candidateAssetID(input imageagent.SlotExecutionInput, slot imageagent.Slot, providerOutputIndex int) string {
+	payload, err := json.Marshal(candidateIdentity{
+		RunID: strings.TrimSpace(input.RunID), PlanRevision: input.PlanRevision,
+		SlotID: strings.TrimSpace(slot.ID), SlotIdempotencyKey: strings.TrimSpace(slot.IdempotencyKey),
+		Attempt: input.Attempt, ProviderOutputIndex: providerOutputIndex,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("marshal candidate identity: %v", err))
+	}
+	sum := sha256.Sum256(payload)
+	return "imageagent-candidate-" + hex.EncodeToString(sum[:])
+}
+
 func isGeneratedAsset(url string, source productimage.ImageAsset, asset productimage.ImageAsset) bool {
-	if url == "" || url == strings.TrimSpace(source.URL) || url == strings.TrimSpace(source.SourceURL) {
+	if url == "" || canonicalHTTPURLEqual(url, source.URL) || canonicalHTTPURLEqual(url, source.SourceURL) {
+		return false
+	}
+	if strings.EqualFold(string(asset.Type), string(productimage.AssetTypeSourceImage)) || hasFallbackProvenance(asset) {
 		return false
 	}
 	if strings.EqualFold(strings.TrimSpace(asset.Metadata["scene_mode"]), "local_canvas") ||
@@ -213,6 +278,65 @@ func isGeneratedAsset(url string, source productimage.ImageAsset, asset producti
 		}
 	}
 	return true
+}
+
+func hasFallbackProvenance(asset productimage.ImageAsset) bool {
+	for _, operation := range asset.Operations {
+		normalized := normalizeProvenance(operation)
+		if strings.Contains(normalized, "pass_through") || strings.Contains(normalized, "placeholder") {
+			return true
+		}
+	}
+	for rawKey, rawValue := range asset.Metadata {
+		key, value := normalizeProvenance(rawKey), normalizeProvenance(rawValue)
+		if strings.Contains(key, "pass_through") || strings.Contains(value, "pass_through") ||
+			strings.Contains(key, "fallback_reason") || strings.Contains(value, "placeholder") {
+			return true
+		}
+		if (key == "mode" && value == "placeholder") ||
+			(key == "tenant_model_gate" && value == "true") {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeProvenance(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.NewReplacer("-", "_", " ", "_", ".", "_").Replace(normalized)
+	return normalized
+}
+
+func canonicalHTTPURLEqual(left, right string) bool {
+	leftCanonical, rightCanonical := canonicalHTTPURL(left), canonicalHTTPURL(right)
+	return leftCanonical != "" && leftCanonical == rightCanonical
+}
+
+func canonicalHTTPURL(value string) string {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Host == "" {
+		return ""
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return ""
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		return ""
+	}
+	port := parsed.Port()
+	if port != "" && !((scheme == "http" && port == "80") || (scheme == "https" && port == "443")) {
+		host = net.JoinHostPort(host, port)
+	}
+	cleanPath := path.Clean(parsed.Path)
+	if cleanPath == "." {
+		cleanPath = ""
+	}
+	if cleanPath != "" && !strings.HasPrefix(cleanPath, "/") {
+		cleanPath = "/" + cleanPath
+	}
+	return (&url.URL{Scheme: scheme, Host: host, Path: cleanPath, RawQuery: parsed.Query().Encode()}).String()
 }
 
 func cloneMetadata(metadata map[string]string) map[string]string {

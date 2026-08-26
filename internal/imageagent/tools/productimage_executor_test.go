@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"errors"
+	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,7 +15,7 @@ import (
 
 func TestExecutorCallsSceneRendererOncePerSceneSlot(t *testing.T) {
 	renderer := &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: "asset://scene-1"}}}
-	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer, SubjectExtractor: stubSubjectExtractor()})
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer, SubjectExtractor: stubSubjectExtractor(), SourceAssets: defaultSourceAssets()})
 	for _, id := range []string{"scene-1", "scene-2", "scene-3", "scene-4"} {
 		_, err := executor.ExecuteSlot(context.Background(), sceneSlotInput(id))
 		require.NoError(t, err)
@@ -24,7 +26,7 @@ func TestExecutorCallsSceneRendererOncePerSceneSlot(t *testing.T) {
 func TestExecutorUsesSubjectExtractionAndWhiteBackgroundForMainSlot(t *testing.T) {
 	extractor := &recordingSubjectExtractor{result: &productimage.ImageAsset{URL: "asset://subject"}}
 	whiteBackground := &recordingWhiteBackgroundRenderer{result: &productimage.ImageAsset{URL: "asset://main"}}
-	executor := NewProductImageSlotExecutor(Dependencies{SubjectExtractor: extractor, WhiteBackgroundRenderer: whiteBackground})
+	executor := NewProductImageSlotExecutor(Dependencies{SubjectExtractor: extractor, WhiteBackgroundRenderer: whiteBackground, SourceAssets: defaultSourceAssets()})
 
 	result, err := executor.ExecuteSlot(context.Background(), slotInput(" main-1 ", imageagent.SlotRoleMain))
 
@@ -33,9 +35,10 @@ func TestExecutorUsesSubjectExtractionAndWhiteBackgroundForMainSlot(t *testing.T
 	require.Equal(t, 1, whiteBackground.calls)
 	require.Equal(t, "main-1", result.SlotID)
 	require.Equal(t, 1, result.Attempt)
-	require.Equal(t, []imageagent.AssetCandidate{{
-		AssetID: "main-1-candidate-1", URL: "asset://main", SourceAssetID: "source-1",
-	}}, result.Candidates)
+	require.Len(t, result.Candidates, 1)
+	require.NotEmpty(t, result.Candidates[0].AssetID)
+	require.Equal(t, "asset://main", result.Candidates[0].URL)
+	require.Equal(t, "source-1", result.Candidates[0].SourceAssetID)
 }
 
 func TestExecutorMapsSceneRoleBriefAndAuthorizedStyleReferencesToSceneContext(t *testing.T) {
@@ -44,6 +47,7 @@ func TestExecutorMapsSceneRoleBriefAndAuthorizedStyleReferencesToSceneContext(t 
 		SceneRenderer:               renderer,
 		ProductContext:              &productimage.ProductContext{Title: "Example product"},
 		AuthorizedStyleReferenceIDs: map[string]struct{}{"style-1": {}},
+		SourceAssets:                defaultSourceAssets(),
 	})
 	input := sceneSlotInput("detail-1")
 	input.Slot.Role = imageagent.SlotRoleDetail
@@ -65,18 +69,158 @@ func TestExecutorKeepsProviderOutputsAsCandidatesForDeclaredSlot(t *testing.T) {
 		assets[index] = productimage.ImageAsset{URL: "asset://candidate-" + string(rune('a'+index))}
 	}
 	renderer := &recordingSceneRenderer{result: assets}
-	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer})
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer, SourceAssets: defaultSourceAssets()})
 
 	result, err := executor.ExecuteSlot(context.Background(), sceneSlotInput("scene-1"))
 
 	require.NoError(t, err)
 	require.Equal(t, "scene-1", result.SlotID)
 	require.Len(t, result.Candidates, 11)
-	require.Equal(t, "scene-1-candidate-1", result.Candidates[0].AssetID)
-	require.Equal(t, "scene-1-candidate-11", result.Candidates[10].AssetID)
+	require.NotEmpty(t, result.Candidates[0].AssetID)
+	require.NotEqual(t, result.Candidates[0].AssetID, result.Candidates[10].AssetID)
 	for _, candidate := range result.Candidates {
 		require.Equal(t, "source-1", candidate.SourceAssetID)
 	}
+}
+
+func TestExecutorCandidateIdentityBindsAttemptAndOriginalProviderIndex(t *testing.T) {
+	source := productimage.ImageAsset{URL: "https://example.test/source.jpg", SourceURL: "https://example.test/source.jpg"}
+	generated := productimage.ImageAsset{URL: "https://example.test/generated.jpg"}
+	input := sceneSlotInput("scene-1")
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: &recordingSceneRenderer{
+		result: []productimage.ImageAsset{source, generated},
+	}, SourceAssets: map[string]productimage.ImageAsset{"source-1": source}})
+
+	first, err := executor.ExecuteSlot(context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, first.Candidates, 1)
+
+	input.Attempt = 2
+	second, err := executor.ExecuteSlot(context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, second.Candidates, 1)
+	require.NotEqual(t, first.Candidates[0].AssetID, second.Candidates[0].AssetID)
+
+	executor = NewProductImageSlotExecutor(Dependencies{SceneRenderer: &recordingSceneRenderer{
+		result: []productimage.ImageAsset{source, source, generated},
+	}, SourceAssets: map[string]productimage.ImageAsset{"source-1": source}})
+	withTwoRejected, err := executor.ExecuteSlot(context.Background(), sceneSlotInput("scene-1"))
+	require.NoError(t, err)
+	require.Len(t, withTwoRejected.Candidates, 1)
+	require.NotEqual(t, first.Candidates[0].AssetID, withTwoRejected.Candidates[0].AssetID)
+}
+
+func TestCandidateAssetIDBindsStableExecutionIdentity(t *testing.T) {
+	input := sceneSlotInput("scene-1")
+	slot := input.Slot
+	baseline := candidateAssetID(input, slot, 2)
+	require.Equal(t, baseline, candidateAssetID(input, slot, 2))
+
+	variants := []struct {
+		name  string
+		input imageagent.SlotExecutionInput
+		slot  imageagent.Slot
+		index int
+	}{
+		{name: "run", input: func() imageagent.SlotExecutionInput { cloned := input; cloned.RunID = "run-2"; return cloned }(), slot: slot, index: 2},
+		{name: "plan revision", input: func() imageagent.SlotExecutionInput { cloned := input; cloned.PlanRevision = 2; return cloned }(), slot: slot, index: 2},
+		{name: "slot id", input: input, slot: func() imageagent.Slot { cloned := slot; cloned.ID = "scene-2"; return cloned }(), index: 2},
+		{name: "slot idempotency key", input: input, slot: func() imageagent.Slot { cloned := slot; cloned.IdempotencyKey = "slot-2"; return cloned }(), index: 2},
+		{name: "attempt", input: func() imageagent.SlotExecutionInput { cloned := input; cloned.Attempt = 2; return cloned }(), slot: slot, index: 2},
+		{name: "provider output index", input: input, slot: slot, index: 3},
+	}
+	for _, tt := range variants {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NotEqual(t, baseline, candidateAssetID(tt.input, tt.slot, tt.index))
+		})
+	}
+}
+
+func TestExecutorFailsClosedForUnresolvedOpaqueSourceAndAllowsDirectHTTPSource(t *testing.T) {
+	renderer := &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: "https://example.test/generated.jpg"}}}
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer})
+
+	_, err := executor.ExecuteSlot(context.Background(), sceneSlotInput("scene-1"))
+	require.ErrorContains(t, err, "not resolved")
+	require.Zero(t, renderer.calls)
+
+	input := sceneSlotInput("scene-1")
+	input.Slot.SourceAssetIDs = []string{"https://example.test/source.jpg"}
+	result, err := executor.ExecuteSlot(context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+	require.Equal(t, "https://example.test/source.jpg", result.Candidates[0].SourceAssetID)
+}
+
+func TestExecutorRejectsSemanticFallbacksAndAcceptsModelLocalOutput(t *testing.T) {
+	source := productimage.ImageAsset{URL: "https://example.test/source.jpg", SourceURL: "https://example.test/source.jpg"}
+	tests := []struct {
+		name  string
+		asset productimage.ImageAsset
+		valid bool
+	}{
+		{name: "source type", asset: productimage.ImageAsset{URL: "https://example.test/other.jpg", Type: productimage.AssetTypeSourceImage}},
+		{name: "pass through operation", asset: productimage.ImageAsset{URL: "https://example.test/other.jpg", Operations: []string{"pass_through_gallery"}}},
+		{name: "placeholder metadata", asset: productimage.ImageAsset{URL: "https://example.test/other.jpg", Metadata: map[string]string{"mode": "placeholder"}}},
+		{name: "tenant fallback metadata", asset: productimage.ImageAsset{URL: "https://example.test/other.jpg", Metadata: map[string]string{"tenant_model_gate": "true"}}},
+		{name: "canonical source url", asset: productimage.ImageAsset{URL: "HTTPS://EXAMPLE.TEST:443/assets/../source.jpg#fragment"}},
+		{name: "model local output", asset: productimage.ImageAsset{URL: `C:\\work\\generated.png`, Type: productimage.AssetTypeGalleryImage, Metadata: map[string]string{"scene_mode": "model", "local_path": `C:\\work\\generated.png`}}, valid: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: &recordingSceneRenderer{result: []productimage.ImageAsset{tt.asset}}, SourceAssets: map[string]productimage.ImageAsset{"source-1": source}})
+			result, err := executor.ExecuteSlot(context.Background(), sceneSlotInput("scene-1"))
+			if tt.valid {
+				require.NoError(t, err)
+				require.Len(t, result.Candidates, 1)
+				return
+			}
+			require.Error(t, err)
+			require.Empty(t, result.Candidates)
+		})
+	}
+}
+
+func TestExecutorDoesNotMutateInputsOrDependencySourceAssets(t *testing.T) {
+	input := sceneSlotInput(" scene-1 ")
+	input.Slot.SourceAssetIDs = []string{" source-1 ", " source-2 "}
+	input.Slot.StyleReferenceIDs = []string{" style-1 "}
+	before := input
+	before.Slot.SourceAssetIDs = append([]string(nil), input.Slot.SourceAssetIDs...)
+	before.Slot.StyleReferenceIDs = append([]string(nil), input.Slot.StyleReferenceIDs...)
+	source := productimage.ImageAsset{URL: "https://example.test/source.jpg", SourceURL: "https://example.test/source.jpg", Operations: []string{"source"}, Metadata: map[string]string{"owner": "test"}}
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: mutatingSceneRenderer{}, SourceAssets: map[string]productimage.ImageAsset{"source-1": source}})
+
+	_, err := executor.ExecuteSlot(context.Background(), input)
+
+	require.NoError(t, err)
+	require.True(t, reflect.DeepEqual(before, input), "slot execution mutated caller input: before=%+v after=%+v", before, input)
+	require.Equal(t, []string{"source"}, source.Operations)
+	require.Equal(t, map[string]string{"owner": "test"}, source.Metadata)
+}
+
+func TestExecutorConcurrentReuseDoesNotShareMutableInputs(t *testing.T) {
+	input := sceneSlotInput("scene-1")
+	source := productimage.ImageAsset{URL: "https://example.test/source.jpg", SourceURL: "https://example.test/source.jpg", Operations: []string{"source"}, Metadata: map[string]string{"owner": "test"}}
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: mutatingSceneRenderer{}, SourceAssets: map[string]productimage.ImageAsset{"source-1": source}})
+	var group sync.WaitGroup
+	errors := make(chan error, 32)
+	for range 32 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			_, err := executor.ExecuteSlot(context.Background(), input)
+			errors <- err
+		}()
+	}
+	group.Wait()
+	close(errors)
+	for err := range errors {
+		require.NoError(t, err)
+	}
+	require.Equal(t, []string{"source"}, source.Operations)
+	require.Equal(t, map[string]string{"owner": "test"}, source.Metadata)
 }
 
 func TestExecutorFailsClosedForProviderFailureAndNonGeneratedOutput(t *testing.T) {
@@ -107,7 +251,7 @@ func TestExecutorFailsClosedForProviderFailureAndNonGeneratedOutput(t *testing.T
 
 func TestExecutorSizeSlotRequiresReliableDimensions(t *testing.T) {
 	renderer := &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: "asset://size"}}}
-	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer})
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer, SourceAssets: defaultSourceAssets()})
 	input := slotInput("size-1", imageagent.SlotRoleSize)
 
 	_, err := executor.ExecuteSlot(context.Background(), input)
@@ -134,6 +278,12 @@ func slotInput(id string, role imageagent.SlotRole) imageagent.SlotExecutionInpu
 	return imageagent.SlotExecutionInput{
 		RunID: "run-1", TenantID: "tenant-1", UserID: "user-1", PlanRevision: 1, Attempt: 1, IdempotencyKey: "attempt-1",
 		Slot: imageagent.Slot{ID: id, Role: role, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-1"},
+	}
+}
+
+func defaultSourceAssets() map[string]productimage.ImageAsset {
+	return map[string]productimage.ImageAsset{
+		"source-1": {URL: "https://example.test/source.jpg", SourceURL: "https://example.test/source.jpg"},
 	}
 }
 
@@ -165,6 +315,14 @@ func (r *recordingSubjectExtractor) Extract(_ context.Context, _ string, _ *prod
 type recordingWhiteBackgroundRenderer struct {
 	calls  int
 	result *productimage.ImageAsset
+}
+
+type mutatingSceneRenderer struct{}
+
+func (mutatingSceneRenderer) Render(_ context.Context, asset *productimage.ImageAsset, _ *productimage.ProductContext) ([]productimage.ImageAsset, error) {
+	asset.Operations = append(asset.Operations, "renderer_mutation")
+	asset.Metadata["renderer_mutation"] = "true"
+	return []productimage.ImageAsset{{URL: "https://example.test/generated.jpg", Type: productimage.AssetTypeGalleryImage}}, nil
 }
 
 func (r *recordingWhiteBackgroundRenderer) Render(_ context.Context, _ *productimage.ImageAsset, _ *productimage.ProductContext) (*productimage.ImageAsset, error) {
