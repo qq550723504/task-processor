@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"task-processor/internal/imageagent"
 )
@@ -35,10 +37,25 @@ func (r *gormRepository) CreateRun(ctx context.Context, run *imageagent.Run) err
 	if err != nil {
 		return err
 	}
-	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
-		return fmt.Errorf("create image agent run: %w", err)
+	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+	if result.Error != nil {
+		return fmt.Errorf("create image agent run: %w", result.Error)
 	}
-	return nil
+	if result.RowsAffected > 0 {
+		return nil
+	}
+	var existing runRecord
+	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND (id = ? OR idempotency_key = ?)", row.TenantID, row.ID, row.IdempotencyKey).First(&existing).Error; err != nil {
+		return fmt.Errorf("lookup image agent run retry: %w", err)
+	}
+	existingRun, err := recordToRun(existing)
+	if err != nil {
+		return err
+	}
+	if sameRun(existingRun, *run) {
+		return nil
+	}
+	return imageagent.ErrRevisionConflict
 }
 
 func (r *gormRepository) GetRun(ctx context.Context, scope imageagent.RunScope) (*imageagent.Run, error) {
@@ -113,6 +130,14 @@ func (r *gormRepository) AppendPlan(ctx context.Context, scope imageagent.RunSco
 	}
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if existing, found, err := findPlanByIdentity(ctx, tx, scope, planRow); err != nil {
+			return err
+		} else if found {
+			if samePlanDefinition(existing, planRow, slotRows) {
+				return nil
+			}
+			return imageagent.ErrRevisionConflict
+		}
 		result := tx.Model(&runRecord{}).
 			Where("tenant_id = ? AND id = ? AND active_plan_revision = ?", scope.TenantID, scope.RunID, expectedActiveRevision).
 			Update("active_plan_revision", plan.Revision)
@@ -120,6 +145,11 @@ func (r *gormRepository) AppendPlan(ctx context.Context, scope imageagent.RunSco
 			return fmt.Errorf("advance image agent plan revision: %w", result.Error)
 		}
 		if result.RowsAffected == 0 {
+			if existing, found, err := findPlanByIdentity(ctx, tx, scope, planRow); err != nil {
+				return err
+			} else if found && samePlanDefinition(existing, planRow, slotRows) {
+				return nil
+			}
 			if _, err := r.findRun(ctx, tx, scope); err != nil {
 				return err
 			}
@@ -145,21 +175,46 @@ func (r *gormRepository) SaveSlotResult(ctx context.Context, scope imageagent.Ru
 	if strings.TrimSpace(result.SlotID) == "" {
 		return fmt.Errorf("slot ID cannot be empty")
 	}
+	if result.Attempt <= 0 {
+		return fmt.Errorf("slot result attempt must be positive")
+	}
 	candidates, err := marshalJSON(result.CandidateAssetIDs)
 	if err != nil {
 		return fmt.Errorf("marshal slot candidate asset IDs: %w", err)
 	}
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		run, err := r.findRun(ctx, tx, scope)
+		run, err := r.findRunForUpdate(ctx, tx, scope)
 		if err != nil {
 			return err
 		}
 		if run.ActivePlanRevision != expectedActiveRevision {
 			return imageagent.ErrRevisionConflict
 		}
+		var existing slotRecord
+		err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND run_id = ? AND plan_revision = ? AND id = ?", scope.TenantID, scope.RunID, expectedActiveRevision, result.SlotID).First(&existing).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return imageagent.ErrRevisionConflict
+		}
+		if err != nil {
+			return fmt.Errorf("get image agent slot result: %w", err)
+		}
+		existingResult, err := slotResultFromRecord(existing)
+		if err != nil {
+			return err
+		}
+		if existingResult.Attempt == result.Attempt {
+			if sameSlotResult(existingResult, result) {
+				return nil
+			}
+			return imageagent.ErrRevisionConflict
+		}
+		if existingResult.Attempt > result.Attempt {
+			return imageagent.ErrRevisionConflict
+		}
 		update := tx.Model(&slotRecord{}).
 			Where("tenant_id = ? AND run_id = ? AND plan_revision = ? AND id = ?", scope.TenantID, scope.RunID, expectedActiveRevision, result.SlotID).
+			Where("EXISTS (SELECT 1 FROM image_agent_runs AS image_agent_active_runs WHERE image_agent_active_runs.tenant_id = ? AND image_agent_active_runs.id = ? AND image_agent_active_runs.active_plan_revision = ?)", scope.TenantID, scope.RunID, expectedActiveRevision).
 			Updates(map[string]any{
 				"attempt":             result.Attempt,
 				"status":              string(result.Status),
@@ -190,21 +245,23 @@ func (r *gormRepository) AppendAttempt(ctx context.Context, attempt imageagent.S
 		if _, err := r.findRun(ctx, tx, scope); err != nil {
 			return err
 		}
-		var existing attemptRecord
-		err := tx.Where("tenant_id = ? AND run_id = ? AND slot_id = ? AND idempotency_key = ?", row.TenantID, row.RunID, row.SlotID, row.IdempotencyKey).First(&existing).Error
-		switch {
-		case err == nil:
-			if sameAttempt(existing, row) {
+		result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+		if result.Error != nil {
+			return fmt.Errorf("append image agent attempt: %w", result.Error)
+		}
+		if result.RowsAffected > 0 {
+			return nil
+		}
+		var existing []attemptRecord
+		if err := tx.Where("tenant_id = ? AND run_id = ? AND slot_id = ? AND (attempt = ? OR idempotency_key = ?)", row.TenantID, row.RunID, row.SlotID, row.Attempt, row.IdempotencyKey).Find(&existing).Error; err != nil {
+			return fmt.Errorf("lookup image agent attempt retry: %w", err)
+		}
+		for _, item := range existing {
+			if sameAttempt(item, row) {
 				return nil
 			}
-			return fmt.Errorf("attempt idempotency key already exists")
-		case !errors.Is(err, gorm.ErrRecordNotFound):
-			return fmt.Errorf("lookup image agent attempt: %w", err)
 		}
-		if err := tx.Create(&row).Error; err != nil {
-			return fmt.Errorf("append image agent attempt: %w", err)
-		}
-		return nil
+		return imageagent.ErrRevisionConflict
 	})
 }
 
@@ -216,6 +273,18 @@ func (r *gormRepository) findRun(ctx context.Context, db *gorm.DB, scope imageag
 	}
 	if err != nil {
 		return runRecord{}, fmt.Errorf("get image agent run: %w", err)
+	}
+	return row, nil
+}
+
+func (r *gormRepository) findRunForUpdate(ctx context.Context, db *gorm.DB, scope imageagent.RunScope) (runRecord, error) {
+	var row runRecord
+	err := db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND id = ?", scope.TenantID, scope.RunID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return runRecord{}, imageagent.ErrRunNotFound
+	}
+	if err != nil {
+		return runRecord{}, fmt.Errorf("lock image agent run: %w", err)
 	}
 	return row, nil
 }
@@ -296,4 +365,50 @@ func unmarshalJSON(raw []byte, target any) error {
 
 func sameAttempt(left, right attemptRecord) bool {
 	return left.TenantID == right.TenantID && left.RunID == right.RunID && left.SlotID == right.SlotID && left.Node == right.Node && left.IdempotencyKey == right.IdempotencyKey && left.Attempt == right.Attempt && left.Outcome == right.Outcome && left.ErrorCategory == right.ErrorCategory
+}
+
+type existingPlan struct {
+	plan  planRecord
+	slots []slotRecord
+}
+
+func findPlanByIdentity(ctx context.Context, db *gorm.DB, scope imageagent.RunScope, wanted planRecord) (existingPlan, bool, error) {
+	var plan planRecord
+	err := db.WithContext(ctx).Where("tenant_id = ? AND run_id = ? AND (revision = ? OR idempotency_key = ?)", scope.TenantID, scope.RunID, wanted.Revision, wanted.IdempotencyKey).First(&plan).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return existingPlan{}, false, nil
+	}
+	if err != nil {
+		return existingPlan{}, false, fmt.Errorf("lookup image agent plan retry: %w", err)
+	}
+	var slots []slotRecord
+	if err := db.WithContext(ctx).Where("tenant_id = ? AND run_id = ? AND plan_revision = ?", scope.TenantID, scope.RunID, plan.Revision).Order("id ASC").Find(&slots).Error; err != nil {
+		return existingPlan{}, false, fmt.Errorf("lookup image agent plan slots: %w", err)
+	}
+	return existingPlan{plan: plan, slots: slots}, true, nil
+}
+
+func samePlanDefinition(existing existingPlan, wanted planRecord, wantedSlots []slotRecord) bool {
+	if existing.plan.TenantID != wanted.TenantID || existing.plan.RunID != wanted.RunID || existing.plan.Revision != wanted.Revision || existing.plan.ParentRevision != wanted.ParentRevision || existing.plan.IdempotencyKey != wanted.IdempotencyKey || existing.plan.CreatedBy != wanted.CreatedBy || !reflect.DeepEqual(existing.plan.SourceAssetIDs, wanted.SourceAssetIDs) || !reflect.DeepEqual(existing.plan.StyleReferenceIDs, wanted.StyleReferenceIDs) || len(existing.slots) != len(wantedSlots) {
+		return false
+	}
+	existingByID := make(map[string]slotRecord, len(existing.slots))
+	for _, slot := range existing.slots {
+		existingByID[slot.ID] = slot
+	}
+	for _, wantedSlot := range wantedSlots {
+		stored, ok := existingByID[wantedSlot.ID]
+		if !ok || stored.Role != wantedSlot.Role || stored.IdempotencyKey != wantedSlot.IdempotencyKey || stored.Brief != wantedSlot.Brief || !reflect.DeepEqual(stored.SourceAssetIDs, wantedSlot.SourceAssetIDs) || !reflect.DeepEqual(stored.StyleReferenceIDs, wantedSlot.StyleReferenceIDs) {
+			return false
+		}
+	}
+	return true
+}
+
+func slotResultFromRecord(record slotRecord) (imageagent.SlotResult, error) {
+	var candidates []string
+	if err := unmarshalJSON(record.CandidateAssetIDs, &candidates); err != nil {
+		return imageagent.SlotResult{}, fmt.Errorf("decode slot candidate asset IDs: %w", err)
+	}
+	return imageagent.SlotResult{SlotID: record.ID, Attempt: record.Attempt, Status: imageagent.SlotStatus(record.Status), CandidateAssetIDs: candidates, ErrorCode: record.ErrorCode}, nil
 }

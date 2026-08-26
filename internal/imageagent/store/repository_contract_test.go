@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -43,14 +44,61 @@ func TestRepositoryContract(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			testOnlyManualRunsAreAccepted(t, tt.new(t))
+			testRunCreateRetriesAreIdempotent(t, tt.new(t))
+			testRunJSONRoundTrips(t, tt.new(t))
 			testStalePlanRevisionIsRejected(t, tt.new(t))
+			testPlanAppendRetriesAreIdempotent(t, tt.new(t))
 			testCrossTenantRunLookupIsHidden(t, tt.new(t))
 			testRunMutationAppendsDeterministicProjectionEvent(t, tt.new(t))
 			testSlotResultRequiresCurrentPlanRevision(t, tt.new(t))
+			testSlotResultRetryAndAttemptOrdering(t, tt.new(t))
 			testAppendedEventIsVisibleInCursorOrder(t, tt.new(t))
-			testDuplicateAttemptIsIdempotent(t, tt.new(t))
+			testAttemptIdentitiesAreIdempotentAndNonAliasing(t, tt.new(t))
 		})
 	}
+}
+
+func testOnlyManualRunsAreAccepted(t *testing.T, repo imageagent.Repository) {
+	t.Helper()
+	ctx := context.Background()
+	for _, mode := range []imageagent.RunMode{"", imageagent.RunModeAssisted, imageagent.RunModeAutomatic} {
+		run := manualRun("run-"+string(mode), "tenant-a")
+		run.Mode = mode
+		require.Error(t, repo.CreateRun(ctx, run))
+	}
+}
+
+func testRunCreateRetriesAreIdempotent(t *testing.T, repo imageagent.Repository) {
+	t.Helper()
+	ctx := context.Background()
+	run := manualRun("run-1", "tenant-a")
+	require.NoError(t, repo.CreateRun(ctx, run))
+	require.NoError(t, repo.CreateRun(ctx, run))
+
+	conflictingRun := *run
+	conflictingRun.Status = imageagent.RunStatusExecuting
+	require.ErrorIs(t, repo.CreateRun(ctx, &conflictingRun), imageagent.ErrRevisionConflict)
+
+	conflictingKey := manualRun("run-2", "tenant-a")
+	conflictingKey.IdempotencyKey = run.IdempotencyKey
+	require.ErrorIs(t, repo.CreateRun(ctx, conflictingKey), imageagent.ErrRevisionConflict)
+}
+
+func testRunJSONRoundTrips(t *testing.T, repo imageagent.Repository) {
+	t.Helper()
+	ctx := context.Background()
+	run := manualRun("run-1", "tenant-a")
+	run.Budget = imageagent.Budget{MaxImages: 7, MaxAgentSteps: 11, MaxModelCalls: 13, MaxRepairAttemptsPerSlot: 2, MaxCostMicros: 17, MaxElapsed: 19 * time.Minute}
+	run.Usage = imageagent.BudgetUsage{Images: 3, AgentSteps: 5, ModelCalls: 7, EstimatedCostMicros: 9, Elapsed: 11 * time.Second}
+	run.Block = &imageagent.Block{Code: "awaiting_input", Message: "need source", SlotID: "slot-1"}
+	require.NoError(t, repo.CreateRun(ctx, run))
+
+	stored, err := repo.GetRun(ctx, imageagent.RunScope{TenantID: run.TenantID, RunID: run.ID})
+	require.NoError(t, err)
+	require.Equal(t, run.Budget, stored.Budget)
+	require.Equal(t, run.Usage, stored.Usage)
+	require.Equal(t, run.Block, stored.Block)
 }
 
 func testSlotResultRequiresCurrentPlanRevision(t *testing.T, repo imageagent.Repository) {
@@ -63,6 +111,29 @@ func testSlotResultRequiresCurrentPlanRevision(t *testing.T, repo imageagent.Rep
 	result := imageagent.SlotResult{SlotID: "slot-1", Attempt: 1, Status: imageagent.SlotStatusAccepted, CandidateAssetIDs: []string{"asset-1"}}
 	require.ErrorIs(t, repo.SaveSlotResult(ctx, scope, 0, result), imageagent.ErrRevisionConflict)
 	require.NoError(t, repo.SaveSlotResult(ctx, scope, 1, result))
+	require.NoError(t, repo.AppendPlan(ctx, scope, 1, planRevision(2)))
+	require.ErrorIs(t, repo.SaveSlotResult(ctx, scope, 1, result), imageagent.ErrRevisionConflict)
+}
+
+func testSlotResultRetryAndAttemptOrdering(t *testing.T, repo imageagent.Repository) {
+	t.Helper()
+	ctx := context.Background()
+	require.NoError(t, repo.CreateRun(ctx, manualRun("run-1", "tenant-a")))
+	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}
+	require.NoError(t, repo.AppendPlan(ctx, scope, 0, planRevision(1)))
+
+	first := imageagent.SlotResult{SlotID: "slot-1", Attempt: 1, Status: imageagent.SlotStatusAccepted, CandidateAssetIDs: []string{"asset-1"}}
+	require.NoError(t, repo.SaveSlotResult(ctx, scope, 1, first))
+	require.NoError(t, repo.SaveSlotResult(ctx, scope, 1, first))
+	conflicting := first
+	conflicting.ErrorCode = "different"
+	require.ErrorIs(t, repo.SaveSlotResult(ctx, scope, 1, conflicting), imageagent.ErrRevisionConflict)
+
+	higher := first
+	higher.Attempt = 2
+	higher.CandidateAssetIDs = []string{"asset-2"}
+	require.NoError(t, repo.SaveSlotResult(ctx, scope, 1, higher))
+	require.ErrorIs(t, repo.SaveSlotResult(ctx, scope, 1, first), imageagent.ErrRevisionConflict)
 }
 
 func testAppendedEventIsVisibleInCursorOrder(t *testing.T, repo imageagent.Repository) {
@@ -72,6 +143,8 @@ func testAppendedEventIsVisibleInCursorOrder(t *testing.T, repo imageagent.Repos
 	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}
 	require.NoError(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "run.created", Cursor: 2, ProjectionVersion: 0, Payload: json.RawMessage(`{"run_id":"run-1"}`)}))
 	require.NoError(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "plan.requested", Cursor: 3, ProjectionVersion: 0, Payload: json.RawMessage(`{"revision":1}`)}))
+	require.ErrorIs(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "retrograde", Cursor: 1}), imageagent.ErrRevisionConflict)
+	require.ErrorIs(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "duplicate", Cursor: 3}), imageagent.ErrRevisionConflict)
 
 	events, err := repo.ListEvents(ctx, scope, 2, 10)
 	require.NoError(t, err)
@@ -88,6 +161,24 @@ func testStalePlanRevisionIsRejected(t *testing.T, repo imageagent.Repository) {
 	require.NoError(t, repo.AppendPlan(ctx, scope, 0, planRevision(1)))
 	err := repo.AppendPlan(ctx, scope, 0, planRevision(2))
 	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+}
+
+func testPlanAppendRetriesAreIdempotent(t *testing.T, repo imageagent.Repository) {
+	t.Helper()
+	ctx := context.Background()
+	require.NoError(t, repo.CreateRun(ctx, manualRun("run-1", "tenant-a")))
+	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}
+	plan := planRevision(1)
+	require.NoError(t, repo.AppendPlan(ctx, scope, 0, plan))
+	require.NoError(t, repo.AppendPlan(ctx, scope, 0, plan))
+
+	conflicting := plan
+	conflicting.CreatedBy = "another-user"
+	require.ErrorIs(t, repo.AppendPlan(ctx, scope, 0, conflicting), imageagent.ErrRevisionConflict)
+
+	conflictingKey := planRevision(2)
+	conflictingKey.IdempotencyKey = plan.IdempotencyKey
+	require.ErrorIs(t, repo.AppendPlan(ctx, scope, 1, conflictingKey), imageagent.ErrRevisionConflict)
 }
 
 func testCrossTenantRunLookupIsHidden(t *testing.T, repo imageagent.Repository) {
@@ -132,7 +223,7 @@ func testRunMutationAppendsDeterministicProjectionEvent(t *testing.T, repo image
 	require.JSONEq(t, string(wantPayload), string(events[0].Payload))
 }
 
-func testDuplicateAttemptIsIdempotent(t *testing.T, repo imageagent.Repository) {
+func testAttemptIdentitiesAreIdempotentAndNonAliasing(t *testing.T, repo imageagent.Repository) {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, repo.CreateRun(ctx, manualRun("run-1", "tenant-a")))
@@ -147,6 +238,14 @@ func testDuplicateAttemptIsIdempotent(t *testing.T, repo imageagent.Repository) 
 	}
 	require.NoError(t, repo.AppendAttempt(ctx, attempt))
 	require.NoError(t, repo.AppendAttempt(ctx, attempt))
+
+	conflictingNumber := attempt
+	conflictingNumber.IdempotencyKey = "attempt-2"
+	require.ErrorIs(t, repo.AppendAttempt(ctx, conflictingNumber), imageagent.ErrRevisionConflict)
+
+	conflictingKey := attempt
+	conflictingKey.Attempt = 2
+	require.ErrorIs(t, repo.AppendAttempt(ctx, conflictingKey), imageagent.ErrRevisionConflict)
 }
 
 func manualRun(runID, tenantID string) *imageagent.Run {

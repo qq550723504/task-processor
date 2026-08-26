@@ -16,8 +16,15 @@ func (r *gormRepository) AppendEvent(ctx context.Context, event imageagent.RunEv
 	}
 	scope := imageagent.RunScope{TenantID: event.TenantID, RunID: event.RunID}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if _, err := r.findRun(ctx, tx, scope); err != nil {
+		if _, err := r.findRunForUpdate(ctx, tx, scope); err != nil {
 			return err
+		}
+		nextCursor, err := nextEventCursor(ctx, tx, scope)
+		if err != nil {
+			return err
+		}
+		if event.Cursor < nextCursor {
+			return imageagent.ErrRevisionConflict
 		}
 		row := eventRecord{TenantID: event.TenantID, RunID: event.RunID, Type: event.Type, Cursor: event.Cursor, ProjectionVersion: event.ProjectionVersion, Payload: append([]byte(nil), event.Payload...)}
 		if err := tx.Create(&row).Error; err != nil {

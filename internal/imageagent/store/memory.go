@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ type memoryRepository struct {
 	plans    map[string]map[int64]imageagent.Plan
 	slots    map[string]slotResultRecord
 	attempts map[string]imageagent.StepAttempt
+	byNumber map[string]imageagent.StepAttempt
 	events   map[string][]imageagent.RunEvent
 }
 
@@ -31,6 +33,7 @@ func NewMemoryRepository() imageagent.Repository {
 		plans:    map[string]map[int64]imageagent.Plan{},
 		slots:    map[string]slotResultRecord{},
 		attempts: map[string]imageagent.StepAttempt{},
+		byNumber: map[string]imageagent.StepAttempt{},
 		events:   map[string][]imageagent.RunEvent{},
 	}
 }
@@ -42,12 +45,15 @@ func (r *memoryRepository) CreateRun(_ context.Context, run *imageagent.Run) err
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	key := runKey(run.TenantID, run.ID)
-	if _, exists := r.runs[key]; exists {
-		return fmt.Errorf("image agent run already exists")
+	if existing, exists := r.runs[key]; exists {
+		if sameRun(existing, *run) {
+			return nil
+		}
+		return imageagent.ErrRevisionConflict
 	}
 	for _, existing := range r.runs {
 		if existing.TenantID == run.TenantID && existing.IdempotencyKey == run.IdempotencyKey {
-			return fmt.Errorf("image agent run idempotency key already exists")
+			return imageagent.ErrRevisionConflict
 		}
 	}
 	r.runs[key] = cloneRun(*run)
@@ -115,19 +121,19 @@ func (r *memoryRepository) AppendPlan(_ context.Context, scope imageagent.RunSco
 	if !exists {
 		return imageagent.ErrRunNotFound
 	}
-	if run.ActivePlanRevision != expectedActiveRevision {
-		return imageagent.ErrRevisionConflict
-	}
 	if r.plans[key] == nil {
 		r.plans[key] = map[int64]imageagent.Plan{}
 	}
-	if _, exists := r.plans[key][plan.Revision]; exists {
-		return imageagent.ErrRevisionConflict
-	}
 	for _, existing := range r.plans[key] {
-		if existing.IdempotencyKey == plan.IdempotencyKey {
-			return fmt.Errorf("plan idempotency key already exists")
+		if existing.Revision == plan.Revision || existing.IdempotencyKey == plan.IdempotencyKey {
+			if samePlan(existing, plan) {
+				return nil
+			}
+			return imageagent.ErrRevisionConflict
 		}
+	}
+	if run.ActivePlanRevision != expectedActiveRevision {
+		return imageagent.ErrRevisionConflict
 	}
 	r.plans[key][plan.Revision] = clonePlan(plan)
 	for _, slot := range plan.Slots {
@@ -145,6 +151,9 @@ func (r *memoryRepository) SaveSlotResult(_ context.Context, scope imageagent.Ru
 	if strings.TrimSpace(result.SlotID) == "" {
 		return fmt.Errorf("slot ID cannot be empty")
 	}
+	if result.Attempt <= 0 {
+		return fmt.Errorf("slot result attempt must be positive")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	key := runKey(scope.TenantID, scope.RunID)
@@ -158,6 +167,15 @@ func (r *memoryRepository) SaveSlotResult(_ context.Context, scope imageagent.Ru
 	slotKey := slotKey(scope, expectedActiveRevision, result.SlotID)
 	stored, exists := r.slots[slotKey]
 	if !exists {
+		return imageagent.ErrRevisionConflict
+	}
+	if stored.result.Attempt == result.Attempt {
+		if sameSlotResult(stored.result, result) {
+			return nil
+		}
+		return imageagent.ErrRevisionConflict
+	}
+	if stored.result.Attempt > result.Attempt {
 		return imageagent.ErrRevisionConflict
 	}
 	stored.result = cloneSlotResult(result)
@@ -177,12 +195,20 @@ func (r *memoryRepository) AppendAttempt(_ context.Context, attempt imageagent.S
 	}
 	key := attemptKey(attempt)
 	if existing, exists := r.attempts[key]; exists {
-		if existing == attempt {
+		if sameStepAttempt(existing, attempt) {
 			return nil
 		}
-		return fmt.Errorf("attempt idempotency key already exists")
+		return imageagent.ErrRevisionConflict
+	}
+	numberKey := attemptNumberKey(attempt)
+	if existing, exists := r.byNumber[numberKey]; exists {
+		if sameStepAttempt(existing, attempt) {
+			return nil
+		}
+		return imageagent.ErrRevisionConflict
 	}
 	r.attempts[key] = attempt
+	r.byNumber[numberKey] = attempt
 	return nil
 }
 
@@ -196,10 +222,8 @@ func (r *memoryRepository) AppendEvent(_ context.Context, event imageagent.RunEv
 	if _, exists := r.runs[key]; !exists {
 		return imageagent.ErrRunNotFound
 	}
-	for _, existing := range r.events[key] {
-		if existing.Cursor == event.Cursor {
-			return fmt.Errorf("event cursor already exists")
-		}
+	if event.Cursor < nextCursor(r.events[key]) {
+		return imageagent.ErrRevisionConflict
 	}
 	event.Payload = append(json.RawMessage(nil), event.Payload...)
 	r.events[key] = append(r.events[key], event)
@@ -239,6 +263,9 @@ func validateRun(run *imageagent.Run) error {
 	if run == nil || strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.TenantID) == "" || strings.TrimSpace(run.IdempotencyKey) == "" {
 		return fmt.Errorf("run ID, tenant ID, and idempotency key are required")
 	}
+	if run.Mode != imageagent.RunModeManual {
+		return fmt.Errorf("image agent run mode must be manual")
+	}
 	return nil
 }
 
@@ -273,6 +300,10 @@ func attemptKey(attempt imageagent.StepAttempt) string {
 	return fmt.Sprintf("%s\x00%s\x00%s", runKey(attempt.TenantID, attempt.RunID), attempt.SlotID, attempt.IdempotencyKey)
 }
 
+func attemptNumberKey(attempt imageagent.StepAttempt) string {
+	return fmt.Sprintf("%s\x00%s\x00%d", runKey(attempt.TenantID, attempt.RunID), attempt.SlotID, attempt.Attempt)
+}
+
 func nextCursor(events []imageagent.RunEvent) int64 {
 	var cursor int64
 	for _, event := range events {
@@ -291,10 +322,11 @@ func cloneRun(run imageagent.Run) imageagent.Run {
 func clonePlan(plan imageagent.Plan) imageagent.Plan {
 	plan.SourceAssetIDs = append([]string(nil), plan.SourceAssetIDs...)
 	plan.StyleReferenceIDs = append([]string(nil), plan.StyleReferenceIDs...)
-	plan.Slots = make([]imageagent.Slot, len(plan.Slots))
+	slots := make([]imageagent.Slot, len(plan.Slots))
 	for i, slot := range plan.Slots {
-		plan.Slots[i] = cloneSlot(slot)
+		slots[i] = cloneSlot(slot)
 	}
+	plan.Slots = slots
 	return plan
 }
 
@@ -316,3 +348,11 @@ func cloneBlock(block *imageagent.Block) *imageagent.Block {
 	cloned := *block
 	return &cloned
 }
+
+func sameRun(left, right imageagent.Run) bool { return reflect.DeepEqual(left, right) }
+
+func samePlan(left, right imageagent.Plan) bool { return reflect.DeepEqual(left, right) }
+
+func sameSlotResult(left, right imageagent.SlotResult) bool { return reflect.DeepEqual(left, right) }
+
+func sameStepAttempt(left, right imageagent.StepAttempt) bool { return left == right }
