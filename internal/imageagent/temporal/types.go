@@ -22,6 +22,9 @@ const (
 	signalRetrySlot             = "retry_slot"
 	signalReplacePlan           = "replace_plan"
 	signalCancel                = "cancel"
+	updateErrorRevisionConflict = "imageagent_revision_conflict"
+	updateErrorCommandBlocked   = "imageagent_command_blocked"
+	updateErrorRunNotFound      = "imageagent_run_not_found"
 	defaultMaxConcurrentSlots   = 4
 	QueryWorkflowProjection     = "image_agent_projection"
 )
@@ -36,12 +39,12 @@ type WorkflowInput struct {
 }
 
 type WorkflowResult struct {
-	Status           imageagent.RunStatus        `json:"status"`
-	Block            *imageagent.Block           `json:"block,omitempty"`
-	Plan             imageagent.Plan             `json:"plan"`
-	Slots            []imageagent.SlotProjection `json:"slots"`
-	CompletedSlotIDs []string                    `json:"completed_slot_ids"`
-	ResultDigest     string                      `json:"result_digest,omitempty"`
+	Status           imageagent.RunStatus
+	Block            *imageagent.Block
+	Plan             imageagent.Plan
+	Slots            []imageagent.SlotProjection
+	CompletedSlotIDs []string
+	ResultDigest     string
 }
 
 type SlotWorkflowInput struct {
@@ -128,6 +131,13 @@ type CancelSignal struct {
 	PlanRevision int64
 	ActorID      string
 	ActionID     string
+}
+
+type CommandAcknowledgement struct {
+	RunID        string
+	PlanRevision int64
+	ActionID     string
+	Status       imageagent.RunStatus
 }
 
 func TaskQueueName() string {

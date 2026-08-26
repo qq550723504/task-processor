@@ -43,6 +43,7 @@ func TestHandlersRequireVerifiedIdentity(t *testing.T) {
 func TestCreateAcceptsManualOnlyAndRejectsIdentityFields(t *testing.T) {
 	validBody := `{
 		"run_id":"run-1","business_task_id":"task-1","mode":"manual","idempotency_key":"run-key-1",
+		"budget":{"max_images":12,"max_agent_steps":20,"max_model_calls":30,"max_repair_attempts_per_slot":2,"max_cost_micros":4000,"max_elapsed":5000000000},
 		"plan":{"revision":1,"idempotency_key":"plan-key-1","source_asset_ids":["source-1"],
 		"slots":[{"id":"slot-1","role":"scene","source_asset_ids":["source-1"],"idempotency_key":"slot-key-1"}]}}`
 	t.Run("manual", func(t *testing.T) {
@@ -50,6 +51,8 @@ func TestCreateAcceptsManualOnlyAndRejectsIdentityFields(t *testing.T) {
 		response := performRequest(t, requireHandler(t, application), http.MethodPost, "/api/v1/image-agent/runs", validBody, verifiedIdentity("tenant-a", "user-a"), nil)
 		require.Equal(t, http.StatusAccepted, response.Code)
 		require.Equal(t, imageagent.RunModeManual, application.startInput.Mode)
+		require.Equal(t, 12, application.startInput.Budget.MaxImages)
+		require.Equal(t, 5*time.Second, application.startInput.Budget.MaxElapsed)
 		require.Equal(t, "tenant-a", application.startIdentity.TenantID)
 	})
 	t.Run("assisted", func(t *testing.T) {
@@ -65,6 +68,50 @@ func TestCreateAcceptsManualOnlyAndRejectsIdentityFields(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Empty(t, application.startInput.RunID)
 	})
+}
+
+func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
+	application := &stubApplication{projection: imageagent.RunProjection{
+		Run: imageagent.Run{
+			ID: "run-1", BusinessTaskID: "task-1", TenantID: "tenant-a", UserID: "user-a",
+			Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-1", Status: imageagent.RunStatusBlocked,
+			CurrentNode: "retry_slot", ActivePlanRevision: 2, Version: 7,
+			Budget: imageagent.Budget{MaxImages: 12}, Usage: imageagent.BudgetUsage{ModelCalls: 3},
+			Block: &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"},
+		},
+		Plan: imageagent.Plan{
+			Revision: 2, ParentRevision: 1, IdempotencyKey: "plan-key-2", SourceAssetIDs: []string{"source-1"},
+			Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusBlocked}},
+		},
+		Slots: []imageagent.SlotProjection{{
+			Slot:    imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleScene, Status: imageagent.SlotStatusBlocked},
+			Attempt: 2, Candidates: []imageagent.AssetCandidate{{AssetID: "candidate-1", SourceAssetID: "source-1"}}, ErrorCode: "provider_failed",
+		}},
+		Actions: []imageagent.Action{imageagent.ActionRetrySlot}, LastEventID: 9,
+	}}
+
+	response := performRequest(t, requireHandler(t, application), http.MethodGet, "/api/v1/image-agent/runs/run-1", "", verifiedIdentity("tenant-a", "user-a"), nil)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	for _, field := range []string{`"business_task_id":"task-1"`, `"active_plan_revision":2`, `"source_asset_ids":["source-1"]`, `"idempotency_key":"plan-key-2"`, `"source_asset_id":"source-1"`, `"last_event_id":9`, `"max_images":12`, `"model_calls":3`} {
+		require.Contains(t, response.Body.String(), field)
+	}
+	for _, forbidden := range []string{"BusinessTaskID", "ActivePlanRevision", "SourceAssetIDs", "IdempotencyKey", "LastEventID"} {
+		require.NotContains(t, response.Body.String(), forbidden)
+	}
+}
+
+func TestCreateRejectsValidOneMiBPrefixWithHiddenOverflow(t *testing.T) {
+	prefix := `{"run_id":"run-1","mode":"manual","idempotency_key":"`
+	suffix := `"}`
+	padding := strings.Repeat("a", (1<<20)-len(prefix)-len(suffix))
+	body := prefix + padding + suffix + `{"tenant_id":"tenant-b"}`
+	application := &stubApplication{}
+
+	response := performRequest(t, requireHandler(t, application), http.MethodPost, "/api/v1/image-agent/runs", body, verifiedIdentity("tenant-a", "user-a"), nil)
+
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Empty(t, application.startInput.RunID)
 }
 
 func TestCommandErrorMapping(t *testing.T) {
@@ -110,6 +157,31 @@ func TestSSEReplaysMonotonicVersionedProjectionEventsAfterLastEventID(t *testing
 	require.Contains(t, response.Body.String(), "id: 3\n")
 	require.Contains(t, response.Body.String(), `"schema_version":"image-agent.projection.v1"`)
 	require.NotContains(t, response.Body.String(), "tenant-a")
+}
+
+func TestSSEEventDTORejectsHostileDurablePayloadFields(t *testing.T) {
+	application := &stubApplication{
+		projection: imageagent.RunProjection{Run: imageagent.Run{ID: "run-1"}, LastEventID: 1},
+		events: []imageagent.RunEvent{{
+			TenantID: "tenant-a", RunID: "run-1", Type: "slot.result.persisted", Cursor: 1, ProjectionVersion: 7,
+			Payload: json.RawMessage(`{"tenant_id":"tenant-secret","user_id":"user-secret","idempotency_key":"action-secret","internal_metadata":{"token":"raw-secret"}}`),
+		}},
+	}
+	handler := requireHandler(t, application)
+	handler.pollInterval = time.Millisecond
+	handler.heartbeatInterval = time.Hour
+	response := performRequest(t, handler, http.MethodGet, "/api/v1/image-agent/runs/run-1/events", "", verifiedIdentity("tenant-a", "user-a"), func(request *http.Request) *http.Request {
+		ctx, cancel := context.WithCancel(request.Context())
+		application.afterList = cancel
+		return request.WithContext(ctx)
+	})
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Contains(t, response.Body.String(), `"type":"slot.result.persisted"`)
+	require.Contains(t, response.Body.String(), `"projection_version":7`)
+	for _, forbidden := range []string{"payload", "tenant-secret", "user-secret", "action-secret", "raw-secret", "internal_metadata"} {
+		require.NotContains(t, response.Body.String(), forbidden)
+	}
 }
 
 func TestSSECursorInputFailsClosed(t *testing.T) {

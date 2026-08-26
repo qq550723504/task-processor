@@ -23,6 +23,7 @@ const (
 	defaultSSEPollInterval      = 500 * time.Millisecond
 	defaultSSEHeartbeatInterval = 15 * time.Second
 	eventPageSize               = 100
+	maxRequestBodyBytes         = 1 << 20
 )
 
 type Application interface {
@@ -53,8 +54,8 @@ type createRunRequest struct {
 	BusinessTaskID     string             `json:"business_task_id"`
 	Mode               imageagent.RunMode `json:"mode"`
 	IdempotencyKey     string             `json:"idempotency_key"`
-	Plan               imageagent.Plan    `json:"plan"`
-	Budget             imageagent.Budget  `json:"budget"`
+	Plan               planDTO            `json:"plan"`
+	Budget             budgetDTO          `json:"budget"`
 	MaxConcurrentSlots int                `json:"max_concurrent_slots"`
 }
 
@@ -69,7 +70,7 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 	if err := h.application.Start(c.Request.Context(), imageagent.StartRunInput{
 		RunID: request.RunID, BusinessTaskID: request.BusinessTaskID, Mode: request.Mode,
-		IdempotencyKey: request.IdempotencyKey, Plan: request.Plan, Budget: request.Budget,
+		IdempotencyKey: request.IdempotencyKey, Plan: request.Plan.domain(), Budget: request.Budget.domain(),
 		MaxConcurrentSlots: request.MaxConcurrentSlots,
 	}); err != nil {
 		writeError(c, err)
@@ -87,13 +88,13 @@ func (h *Handler) Get(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, projection)
+	c.JSON(http.StatusOK, newRunProjectionResponse(projection))
 }
 
 type replacePlanRequest struct {
-	ExpectedRevision int64           `json:"expected_revision"`
-	ActionID         string          `json:"action_id"`
-	Plan             imageagent.Plan `json:"plan"`
+	ExpectedRevision int64   `json:"expected_revision"`
+	ActionID         string  `json:"action_id"`
+	Plan             planDTO `json:"plan"`
 }
 
 func (h *Handler) ReplacePlan(c *gin.Context) {
@@ -105,7 +106,7 @@ func (h *Handler) ReplacePlan(c *gin.Context) {
 		writeInvalidJSON(c, err)
 		return
 	}
-	if err := h.application.ReplacePlan(c.Request.Context(), c.Param("run_id"), request.ExpectedRevision, request.Plan, request.ActionID); err != nil {
+	if err := h.application.ReplacePlan(c.Request.Context(), c.Param("run_id"), request.ExpectedRevision, request.Plan.domain(), request.ActionID); err != nil {
 		writeError(c, err)
 		return
 	}
@@ -172,10 +173,9 @@ func (h *Handler) Cancel(c *gin.Context) {
 }
 
 type projectionEventEnvelope struct {
-	SchemaVersion     string          `json:"schema_version"`
-	Type              string          `json:"type"`
-	ProjectionVersion int64           `json:"projection_version"`
-	Payload           json.RawMessage `json:"payload"`
+	SchemaVersion     string `json:"schema_version"`
+	Type              string `json:"type"`
+	ProjectionVersion int64  `json:"projection_version"`
 }
 
 func (h *Handler) Events(c *gin.Context) {
@@ -220,7 +220,7 @@ func (h *Handler) Events(c *gin.Context) {
 				}
 				encoded, encodeErr := json.Marshal(projectionEventEnvelope{
 					SchemaVersion: projectionEventSchemaVersion, Type: event.Type,
-					ProjectionVersion: event.ProjectionVersion, Payload: append(json.RawMessage(nil), event.Payload...),
+					ProjectionVersion: event.ProjectionVersion,
 				})
 				if encodeErr != nil {
 					return false
@@ -287,7 +287,8 @@ func requireVerifiedIdentity(c *gin.Context) bool {
 }
 
 func decodeStrictJSON(c *gin.Context, target any) error {
-	decoder := json.NewDecoder(io.LimitReader(c.Request.Body, 1<<20))
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRequestBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return err

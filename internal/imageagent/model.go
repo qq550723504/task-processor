@@ -47,45 +47,45 @@ const (
 )
 
 type Slot struct {
-	ID                string     `json:"id"`
-	Role              SlotRole   `json:"role"`
-	SourceAssetIDs    []string   `json:"source_asset_ids"`
-	StyleReferenceIDs []string   `json:"style_reference_ids,omitempty"`
-	Brief             string     `json:"brief,omitempty"`
-	IdempotencyKey    string     `json:"idempotency_key"`
-	Status            SlotStatus `json:"status"`
+	ID                string
+	Role              SlotRole
+	SourceAssetIDs    []string
+	StyleReferenceIDs []string
+	Brief             string
+	IdempotencyKey    string
+	Status            SlotStatus
 }
 
 type Plan struct {
-	Revision          int64    `json:"revision"`
-	ParentRevision    int64    `json:"parent_revision"`
-	IdempotencyKey    string   `json:"idempotency_key"`
-	SourceAssetIDs    []string `json:"source_asset_ids"`
-	StyleReferenceIDs []string `json:"style_reference_ids,omitempty"`
-	Slots             []Slot   `json:"slots"`
-	CreatedBy         string   `json:"created_by,omitempty"`
+	Revision          int64
+	ParentRevision    int64
+	IdempotencyKey    string
+	SourceAssetIDs    []string
+	StyleReferenceIDs []string
+	Slots             []Slot
+	CreatedBy         string
 }
 
 type Run struct {
-	ID                 string      `json:"id"`
-	BusinessTaskID     string      `json:"business_task_id,omitempty"`
-	TenantID           string      `json:"tenant_id"`
-	UserID             string      `json:"user_id"`
-	Mode               RunMode     `json:"mode"`
-	IdempotencyKey     string      `json:"idempotency_key"`
-	Status             RunStatus   `json:"status"`
-	CurrentNode        string      `json:"current_node"`
-	ActivePlanRevision int64       `json:"active_plan_revision"`
-	Version            int64       `json:"version"`
-	Budget             Budget      `json:"budget"`
-	Usage              BudgetUsage `json:"usage"`
-	Block              *Block      `json:"block,omitempty"`
+	ID                 string
+	BusinessTaskID     string
+	TenantID           string
+	UserID             string
+	Mode               RunMode
+	IdempotencyKey     string
+	Status             RunStatus
+	CurrentNode        string
+	ActivePlanRevision int64
+	Version            int64
+	Budget             Budget
+	Usage              BudgetUsage
+	Block              *Block
 }
 
 type Block struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	SlotID  string `json:"slot_id,omitempty"`
+	Code    string
+	Message string
+	SlotID  string
 }
 
 type AssetRef struct {
@@ -102,10 +102,10 @@ type ProductContextRef struct {
 }
 
 type AssetCandidate struct {
-	AssetID       string            `json:"asset_id"`
-	URL           string            `json:"url"`
-	SourceAssetID string            `json:"source_asset_id,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	AssetID       string
+	URL           string
+	SourceAssetID string
+	Metadata      map[string]string
 }
 
 type Budget struct {

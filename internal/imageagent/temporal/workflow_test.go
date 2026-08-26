@@ -13,6 +13,7 @@ import (
 	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
 	historypb "go.temporal.io/api/history/v1"
+	"go.temporal.io/api/serviceerror"
 	taskqueuepb "go.temporal.io/api/taskqueue/v1"
 	sdkactivity "go.temporal.io/sdk/activity"
 	sdkclient "go.temporal.io/sdk/client"
@@ -144,6 +145,304 @@ func TestManualWorkflowReplacesBlockedPlanAtExactRevision(t *testing.T) {
 	env.AssertExpectations(t)
 }
 
+func TestManualWorkflowReplaceUpdatesRejectLostCommandWindowAndAckAfterPersistence(t *testing.T) {
+	env := newWorkflowEnv(t)
+	initial := sevenSlotPlan()
+	replacement := sevenSlotPlan()
+	replacement.Revision = 2
+	replacement.ParentRevision = 1
+	replacement.IdempotencyKey = "plan-key-2"
+	for _, slot := range initial.Slots {
+		slot := slot
+		if slot.ID == "scene-2" {
+			env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlotRevision(slot.ID, 1, 1)).
+				Return(imageagent.SlotExecutionResult{}, sdktemporal.NewNonRetryableApplicationError("provider rejected slot", "slot_rejected", nil)).Once()
+		} else {
+			env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlotRevision(slot.ID, 1, 1)).
+				Return(successfulSlotResult(slot.ID, 1), nil).Once()
+		}
+		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlotRevision(slot.ID, 1, 2)).
+			Return(successfulSlotResult(slot.ID, 1), nil).Once()
+	}
+	persisted := false
+	env.OnActivity(activityPersistPlanRevision, mock.Anything, mock.Anything).
+		After(time.Minute).
+		Run(func(mock.Arguments) { persisted = true }).
+		Return(nil).
+		Once()
+	firstCompleted := false
+	var firstRejected, firstErr, secondRejected error
+	replacementUpdate := ReplacePlanSignal{
+		RunID: "run-1", ExpectedRevision: 1, Plan: replacement, ActorID: "user-a", ActionID: "replace-update-1",
+	}
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalReplacePlan, "replace-request-1", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { firstRejected = err },
+			OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) {
+				firstCompleted = true
+				firstErr = err
+				require.True(t, persisted)
+				encoded, queryErr := env.QueryWorkflow(QueryWorkflowProjection)
+				require.NoError(t, queryErr)
+				var projection WorkflowResult
+				require.NoError(t, encoded.Get(&projection))
+				require.EqualValues(t, 2, projection.Plan.Revision)
+			},
+		}, replacementUpdate)
+	}, time.Second)
+	env.RegisterDelayedCallback(func() {
+		second := replacementUpdate
+		second.ActionID = "replace-update-2"
+		env.UpdateWorkflow(signalReplacePlan, "replace-request-2", &testsuite.TestUpdateCallback{
+			OnReject:   func(err error) { secondRejected = err },
+			OnAccept:   func() { require.Fail(t, "second replace must not be accepted during transition") },
+			OnComplete: func(interface{}, error) {},
+		}, second)
+	}, 2*time.Second)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalApproveResults, ApproveResultsSignal{
+			RunID: "run-1", PlanRevision: 2, ResultDigest: sevenSlotResultDigest, ActorID: "user-a", ActionID: "approve-replacement-update",
+		})
+	}, 3*time.Minute)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalCancel, CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "red-cleanup"})
+	}, 4*time.Minute)
+	input := manualWorkflowInput(initial)
+	input.WaitForCommands = true
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	require.Nil(t, firstRejected)
+	require.True(t, firstCompleted)
+	require.NoError(t, firstErr)
+	require.Error(t, secondRejected)
+	var applicationError *sdktemporal.ApplicationError
+	require.ErrorAs(t, secondRejected, &applicationError)
+	require.Equal(t, updateErrorCommandBlocked, applicationError.Type())
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusCompleted, result.Status)
+	require.EqualValues(t, 2, result.Plan.Revision)
+}
+
+func TestManualWorkflowRetryUpdatesRejectLostCommandWindowAndAckAfterProjectionPersistence(t *testing.T) {
+	env := newWorkflowEnv(t)
+	plan := sevenSlotPlan()
+	for _, slot := range plan.Slots {
+		slot := slot
+		if slot.ID == "scene-2" {
+			env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).
+				Return(imageagent.SlotExecutionResult{}, sdktemporal.NewNonRetryableApplicationError("provider rejected slot", "slot_rejected", nil)).Once()
+			continue
+		}
+		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).
+			Return(successfulSlotResult(slot.ID, 1), nil).Once()
+	}
+	env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot("scene-2", 2)).
+		After(time.Minute).
+		Return(successfulSlotResult("scene-2", 2), nil).
+		Once()
+	retryPersisted := false
+	env.OnActivity(activityPersistSlotResult, mock.Anything, mock.MatchedBy(func(input PersistSlotResultActivityInput) bool {
+		return input.Result.Execution.SlotID == "scene-2" && input.Result.Execution.Attempt == 2
+	})).Run(func(mock.Arguments) { retryPersisted = true }).Return(nil).Once()
+	env.OnActivity(activityPersistSlotResult, mock.Anything, mock.Anything).Return(nil)
+	approvalStatePersisted := false
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
+		return input.Status == imageagent.RunStatusAwaitingFinalApproval
+	})).Run(func(mock.Arguments) { approvalStatePersisted = true }).Return(nil).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).Return(nil)
+	firstCompleted := false
+	var firstRejected, firstErr, secondRejected error
+	retryUpdate := RetrySlotSignal{
+		RunID: "run-1", PlanRevision: 1, SlotID: "scene-2", ActorID: "user-a", ActionID: "retry-update-1",
+	}
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalRetrySlot, "retry-request-1", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { firstRejected = err },
+			OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) {
+				firstCompleted = true
+				firstErr = err
+				require.True(t, retryPersisted)
+				require.True(t, approvalStatePersisted)
+				encoded, queryErr := env.QueryWorkflow(QueryWorkflowProjection)
+				require.NoError(t, queryErr)
+				var projection WorkflowResult
+				require.NoError(t, encoded.Get(&projection))
+				require.Equal(t, imageagent.RunStatusAwaitingFinalApproval, projection.Status)
+				require.Equal(t, sevenSlotResultDigest, projection.ResultDigest)
+			},
+		}, retryUpdate)
+	}, time.Second)
+	env.RegisterDelayedCallback(func() {
+		second := retryUpdate
+		second.ActionID = "retry-update-2"
+		env.UpdateWorkflow(signalRetrySlot, "retry-request-2", &testsuite.TestUpdateCallback{
+			OnReject:   func(err error) { secondRejected = err },
+			OnAccept:   func() { require.Fail(t, "second retry must not be accepted during transition") },
+			OnComplete: func(interface{}, error) {},
+		}, second)
+	}, 2*time.Second)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalApproveResults, validApproval("approve-after-retry-update"))
+	}, 3*time.Minute)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalCancel, CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "retry-red-cleanup"})
+	}, 4*time.Minute)
+	input := manualWorkflowInput(plan)
+	input.WaitForCommands = true
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	require.Nil(t, firstRejected)
+	require.True(t, firstCompleted)
+	require.NoError(t, firstErr)
+	require.Error(t, secondRejected)
+	var applicationError *sdktemporal.ApplicationError
+	require.ErrorAs(t, secondRejected, &applicationError)
+	require.Equal(t, updateErrorCommandBlocked, applicationError.Type())
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusCompleted, result.Status)
+}
+
+func TestManualWorkflowUpdateActionIDIsIdempotentAndRejectsConflictingReuse(t *testing.T) {
+	env := newWorkflowEnv(t)
+	plan := sevenSlotPlan()
+	for _, slot := range plan.Slots {
+		slot := slot
+		if slot.ID == "scene-2" {
+			env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).
+				Return(imageagent.SlotExecutionResult{}, sdktemporal.NewNonRetryableApplicationError("provider rejected slot", "slot_rejected", nil)).Once()
+			continue
+		}
+		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).
+			Return(successfulSlotResult(slot.ID, 1), nil).Once()
+	}
+	env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot("scene-2", 2)).
+		Return(imageagent.SlotExecutionResult{}, sdktemporal.NewNonRetryableApplicationError("provider rejected retry", "slot_rejected", nil)).Once()
+	retry := RetrySlotSignal{RunID: "run-1", PlanRevision: 1, SlotID: "scene-2", ActorID: "user-a", ActionID: "retry-idempotent"}
+	var firstAck, duplicateAck CommandAcknowledgement
+	var firstErr, duplicateErr, conflictingRejected error
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalRetrySlot, "retry-idempotent-request-1", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { firstErr = err },
+			OnAccept: func() {},
+			OnComplete: func(result interface{}, err error) {
+				firstErr = err
+				firstAck = result.(CommandAcknowledgement)
+			},
+		}, retry)
+	}, time.Second)
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalRetrySlot, "retry-idempotent-request-2", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { duplicateErr = err },
+			OnAccept: func() {},
+			OnComplete: func(result interface{}, err error) {
+				duplicateErr = err
+				duplicateAck = result.(CommandAcknowledgement)
+			},
+		}, retry)
+	}, 2*time.Second)
+	env.RegisterDelayedCallback(func() {
+		conflict := retry
+		conflict.SlotID = "slot-1"
+		env.UpdateWorkflow(signalRetrySlot, "retry-idempotent-request-conflict", &testsuite.TestUpdateCallback{
+			OnReject:   func(err error) { conflictingRejected = err },
+			OnAccept:   func() { require.Fail(t, "conflicting action-ID reuse must be rejected") },
+			OnComplete: func(interface{}, error) {},
+		}, conflict)
+	}, 3*time.Second)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalCancel, CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "idempotency-cleanup"})
+	}, 4*time.Second)
+	input := manualWorkflowInput(plan)
+	input.WaitForCommands = true
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	require.NoError(t, firstErr)
+	require.NoError(t, duplicateErr)
+	require.Equal(t, firstAck, duplicateAck)
+	require.Equal(t, "retry-idempotent", firstAck.ActionID)
+	require.Error(t, conflictingRejected)
+	var applicationError *sdktemporal.ApplicationError
+	require.ErrorAs(t, conflictingRejected, &applicationError)
+	require.Equal(t, updateErrorCommandBlocked, applicationError.Type())
+	env.AssertExpectations(t)
+}
+
+func TestWorkflowUpdateValidatorsBindRunRevisionActorActionStateAndDigest(t *testing.T) {
+	plan := sevenSlotPlan()
+	input := manualWorkflowInput(plan)
+	results := make([]SlotWorkflowResult, len(plan.Slots))
+	projection := WorkflowResult{
+		Status:       imageagent.RunStatusAwaitingFinalApproval,
+		Plan:         plan,
+		Slots:        slotProjections(plan, results),
+		ResultDigest: sevenSlotResultDigest,
+	}
+	state := &workflowUpdateState{
+		input: &input, projection: &projection, results: &results,
+		actions: make(map[string]workflowUpdateRecord),
+	}
+
+	assertType := func(t *testing.T, err error, expected string) {
+		t.Helper()
+		require.Error(t, err)
+		var applicationError *sdktemporal.ApplicationError
+		require.ErrorAs(t, err, &applicationError)
+		require.Equal(t, expected, applicationError.Type())
+	}
+	newApproval := func(actionID string) ApproveResultsSignal {
+		return ApproveResultsSignal{
+			RunID: "run-1", PlanRevision: 1, ResultDigest: sevenSlotResultDigest,
+			ActorID: "user-a", ActionID: actionID,
+		}
+	}
+
+	t.Run("run", func(t *testing.T) {
+		signal := newApproval("approve-wrong-run")
+		signal.RunID = "run-other"
+		assertType(t, state.validateApproveResults(signal), updateErrorCommandBlocked)
+	})
+	t.Run("revision", func(t *testing.T) {
+		signal := newApproval("approve-stale")
+		signal.PlanRevision = 2
+		assertType(t, state.validateApproveResults(signal), updateErrorRevisionConflict)
+	})
+	t.Run("actor", func(t *testing.T) {
+		signal := newApproval("approve-wrong-actor")
+		signal.ActorID = "attacker"
+		assertType(t, state.validateApproveResults(signal), updateErrorCommandBlocked)
+	})
+	t.Run("action", func(t *testing.T) {
+		signal := newApproval(" ")
+		assertType(t, state.validateApproveResults(signal), updateErrorCommandBlocked)
+	})
+	t.Run("state", func(t *testing.T) {
+		signal := newApproval("approve-wrong-state")
+		projection.Status = imageagent.RunStatusExecuting
+		assertType(t, state.validateApproveResults(signal), updateErrorCommandBlocked)
+		projection.Status = imageagent.RunStatusAwaitingFinalApproval
+	})
+	t.Run("digest whitespace", func(t *testing.T) {
+		signal := newApproval("approve-spaced-digest")
+		signal.ResultDigest = " " + sevenSlotResultDigest
+		assertType(t, state.validateApproveResults(signal), updateErrorCommandBlocked)
+	})
+	t.Run("digest mismatch", func(t *testing.T) {
+		signal := newApproval("approve-wrong-digest")
+		signal.ResultDigest = "wrong"
+		assertType(t, state.validateApproveResults(signal), updateErrorCommandBlocked)
+	})
+}
+
 func TestManualWorkflowWaitsForFinalApprovalBeforePublishing(t *testing.T) {
 	env := newWorkflowEnv(t)
 	plan := sevenSlotPlan()
@@ -168,6 +467,69 @@ func TestManualWorkflowWaitsForFinalApprovalBeforePublishing(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	require.Equal(t, 1, publishedCalls)
 	env.AssertExpectations(t)
+}
+
+func TestManualWorkflowApprovalUpdateRequiresCanonicalDigestAndAcksAfterPublication(t *testing.T) {
+	env := newWorkflowEnv(t)
+	plan := sevenSlotPlan()
+	for _, slot := range plan.Slots {
+		slot := slot
+		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).
+			Return(successfulSlotResult(slot.ID, 1), nil).Once()
+	}
+	published := false
+	env.OnActivity(activityPublishApproved, mock.Anything, mock.Anything).
+		After(time.Minute).
+		Run(func(mock.Arguments) { published = true }).
+		Return(nil).
+		Once()
+	completedPersisted := false
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
+		return input.Status == imageagent.RunStatusCompleted
+	})).Run(func(mock.Arguments) { completedPersisted = true }).Return(nil).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).Return(nil)
+	var nonCanonicalRejected, validRejected, validErr error
+	validCompleted := false
+	env.RegisterDelayedCallback(func() {
+		nonCanonical := validApproval("approve-update-space")
+		nonCanonical.ResultDigest = " " + nonCanonical.ResultDigest
+		env.UpdateWorkflow(signalApproveResults, "approve-space-request", &testsuite.TestUpdateCallback{
+			OnReject:   func(err error) { nonCanonicalRejected = err },
+			OnAccept:   func() { require.Fail(t, "non-canonical digest must not be accepted") },
+			OnComplete: func(interface{}, error) {},
+		}, nonCanonical)
+	}, time.Second)
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalApproveResults, "approve-request", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { validRejected = err },
+			OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) {
+				validCompleted = true
+				validErr = err
+				require.True(t, published)
+				require.True(t, completedPersisted)
+				encoded, queryErr := env.QueryWorkflow(QueryWorkflowProjection)
+				require.NoError(t, queryErr)
+				var projection WorkflowResult
+				require.NoError(t, encoded.Get(&projection))
+				require.Equal(t, imageagent.RunStatusCompleted, projection.Status)
+			},
+		}, validApproval("approve-update-1"))
+	}, 2*time.Second)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalApproveResults, validApproval("approval-red-cleanup"))
+	}, 4*time.Minute)
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, manualWorkflowInput(plan))
+
+	require.NoError(t, env.GetWorkflowError())
+	require.Error(t, nonCanonicalRejected)
+	require.Nil(t, validRejected)
+	require.True(t, validCompleted)
+	require.NoError(t, validErr)
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusCompleted, result.Status)
 }
 
 func TestManualWorkflowDuplicateApprovalPublishesOnceWithStableKey(t *testing.T) {
@@ -548,6 +910,64 @@ func TestManualWorkflowCancellationStartsNoThirdChildAndKeepsCompletedSibling(t 
 	defer mu.Unlock()
 	require.Equal(t, []string{"slot-1", "slot-2"}, started)
 	require.Equal(t, []string{"slot-1"}, persisted)
+	encoded, err := env.QueryWorkflow(QueryWorkflowProjection)
+	require.NoError(t, err)
+	var projection WorkflowResult
+	require.NoError(t, encoded.Get(&projection))
+	require.Equal(t, imageagent.RunStatusCancelled, projection.Status)
+	require.Equal(t, plan, projection.Plan)
+	require.Equal(t, []string{"slot-1"}, projection.CompletedSlotIDs)
+}
+
+func TestManualWorkflowCancelUpdateAcksAfterCancelledProjectionPersistence(t *testing.T) {
+	env := newWorkflowEnv(t)
+	plan := sevenSlotPlan()
+	input := manualWorkflowInput(plan)
+	input.MaxConcurrentSlots = 1
+	env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot("slot-1", 1)).
+		After(10*time.Minute).
+		Return(successfulSlotResult("slot-1", 1), nil).
+		Once()
+	cancelledPersisted := false
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
+		return input.Status == imageagent.RunStatusCancelled
+	})).Run(func(mock.Arguments) { cancelledPersisted = true }).Return(nil).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).Return(nil)
+	var rejected, completedErr error
+	completed := false
+	cancelUpdate := CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-update-1"}
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalCancel, "cancel-request-1", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { rejected = err },
+			OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) {
+				completed = true
+				completedErr = err
+				require.True(t, cancelledPersisted)
+				encoded, queryErr := env.QueryWorkflow(QueryWorkflowProjection)
+				require.NoError(t, queryErr)
+				var projection WorkflowResult
+				require.NoError(t, encoded.Get(&projection))
+				require.Equal(t, imageagent.RunStatusCancelled, projection.Status)
+				require.Equal(t, plan, projection.Plan)
+				require.Empty(t, imageagent.AllowedActions(imageagent.Run{Mode: imageagent.RunModeManual, Status: projection.Status}))
+			},
+		}, cancelUpdate)
+	}, time.Second)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalCancel, CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-red-cleanup"})
+	}, 2*time.Second)
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	require.Nil(t, rejected)
+	require.True(t, completed)
+	require.NoError(t, completedErr)
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusCancelled, result.Status)
+	require.Equal(t, plan, result.Plan)
 }
 
 func TestManualWorkflowRejectsNonManualModesBeforeActivities(t *testing.T) {
@@ -784,12 +1204,14 @@ func TestServiceCapturesVerifiedIdentityAndRejectsNonManualStarts(t *testing.T) 
 		Status: imageagent.RunStatusAwaitingFinalApproval, CurrentNode: "approve_results", ActivePlanRevision: 1,
 	}))
 	workflows.projection = imageagent.WorkflowProjection{Status: imageagent.RunStatusAwaitingFinalApproval, Plan: workflows.starts[0].Plan, ResultDigest: sevenSlotResultDigest}
-	require.NoError(t, service.ApproveResults(ctx, "run-1", 1, "  "+sevenSlotResultDigest+" ", "approve-service-1"))
+	require.ErrorIs(t, service.ApproveResults(ctx, "run-1", 1, "  "+sevenSlotResultDigest+" ", "approve-service-space"), imageagent.ErrCommandBlocked)
+	require.Empty(t, workflows.approvals)
+	require.NoError(t, service.ApproveResults(ctx, "run-1", 1, sevenSlotResultDigest, "approve-service-1"))
 	require.Len(t, workflows.approvals, 1)
 	require.Equal(t, sevenSlotResultDigest, workflows.approvals[0].ResultDigest)
 }
 
-func TestTemporalClientUsesStableWorkflowAndRevisionBoundSignals(t *testing.T) {
+func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 	raw := &recordingSDKClient{queryValue: imageagent.WorkflowProjection{Status: imageagent.RunStatusBlocked, Plan: sevenSlotPlan()}}
 	client := NewClient(raw)
 	start := imageagent.WorkflowStart{
@@ -810,27 +1232,67 @@ func TestTemporalClientUsesStableWorkflowAndRevisionBoundSignals(t *testing.T) {
 	require.Equal(t, "image-agent:tenant-a:run-1", raw.queryWorkflowID)
 	require.Equal(t, QueryWorkflowProjection, raw.queryType)
 
+	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ResultDigest: sevenSlotResultDigest, ActorID: "attacker", ActionID: "spoofed", Identity: start.Identity}), "actor")
+	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "missing-digest", Identity: start.Identity}), "digest")
+	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ResultDigest: " " + sevenSlotResultDigest, ActorID: "user-a", ActionID: "spaced-digest", Identity: start.Identity}), "digest")
+}
+
+func TestTemporalClientCommandsWaitForCompletedWorkflowUpdates(t *testing.T) {
+	raw := &recordingSDKClient{}
+	client := NewClient(raw)
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
 	replacement := sevenSlotPlan()
 	replacement.Revision = 2
 	replacement.ParentRevision = 1
 	replacement.IdempotencyKey = "plan-key-2"
-	require.NoError(t, client.ReplacePlan(context.Background(), imageagent.ReplacePlanCommand{
-		RunID: "run-1", ExpectedRevision: 1, Plan: replacement, ActorID: "user-a", ActionID: "replace-1", Identity: start.Identity,
-	}))
-	require.Equal(t, signalReplacePlan, raw.signalName)
-	require.Equal(t, ReplacePlanSignal{RunID: "run-1", ExpectedRevision: 1, Plan: replacement, ActorID: "user-a", ActionID: "replace-1"}, raw.signalArg)
 
-	require.NoError(t, client.RetrySlot(context.Background(), imageagent.RetrySlotCommand{RunID: "run-1", PlanRevision: 1, SlotID: "scene-2", ActorID: "user-a", ActionID: "retry-1", Identity: start.Identity}))
-	require.Equal(t, "image-agent:tenant-a:run-1", raw.signalWorkflowID)
-	require.Equal(t, signalRetrySlot, raw.signalName)
-	require.Equal(t, RetrySlotSignal{RunID: "run-1", PlanRevision: 1, SlotID: "scene-2", ActorID: "user-a", ActionID: "retry-1"}, raw.signalArg)
-	require.NoError(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ResultDigest: sevenSlotResultDigest, ActorID: "user-a", ActionID: "approve-1", Identity: start.Identity}))
-	require.Equal(t, signalApproveResults, raw.signalName)
-	require.Equal(t, ApproveResultsSignal{RunID: "run-1", PlanRevision: 1, ResultDigest: sevenSlotResultDigest, ActorID: "user-a", ActionID: "approve-1"}, raw.signalArg)
-	require.NoError(t, client.Cancel(context.Background(), imageagent.CancelRunCommand{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-1", Identity: start.Identity}))
-	require.Equal(t, signalCancel, raw.signalName)
-	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ResultDigest: sevenSlotResultDigest, ActorID: "attacker", ActionID: "spoofed", Identity: start.Identity}), "actor")
-	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "missing-digest", Identity: start.Identity}), "digest")
+	require.NoError(t, client.ReplacePlan(context.Background(), imageagent.ReplacePlanCommand{
+		RunID: "run-1", ExpectedRevision: 1, Plan: replacement, ActorID: "user-a", ActionID: "replace-1", Identity: identity,
+	}))
+	require.NoError(t, client.RetrySlot(context.Background(), imageagent.RetrySlotCommand{
+		RunID: "run-1", PlanRevision: 2, SlotID: "scene-2", ActorID: "user-a", ActionID: "retry-1", Identity: identity,
+	}))
+	require.NoError(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{
+		RunID: "run-1", PlanRevision: 2, ResultDigest: sevenSlotResultDigest, ActorID: "user-a", ActionID: "approve-1", Identity: identity,
+	}))
+	require.NoError(t, client.Cancel(context.Background(), imageagent.CancelRunCommand{
+		RunID: "run-1", PlanRevision: 2, ActorID: "user-a", ActionID: "cancel-1", Identity: identity,
+	}))
+
+	require.Len(t, raw.updateOptions, 4)
+	require.Equal(t, []string{"replace_plan", "retry_slot", "approve_results", "cancel"}, []string{
+		raw.updateOptions[0].UpdateName, raw.updateOptions[1].UpdateName, raw.updateOptions[2].UpdateName, raw.updateOptions[3].UpdateName,
+	})
+	for _, options := range raw.updateOptions {
+		require.Equal(t, "image-agent:tenant-a:run-1", options.WorkflowID)
+		require.Equal(t, sdkclient.WorkflowUpdateStageCompleted, options.WaitForStage)
+		require.NotEmpty(t, options.UpdateID)
+		require.Len(t, options.Args, 1)
+	}
+	require.Equal(t, 4, raw.updateGetCalls)
+	require.Empty(t, raw.signalName)
+}
+
+func TestTemporalClientMapsWorkflowUpdateErrorsToApplicationContracts(t *testing.T) {
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+	command := imageagent.CancelRunCommand{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-1", Identity: identity}
+	for _, tt := range []struct {
+		name      string
+		directErr error
+		resultErr error
+		want      error
+	}{
+		{name: "missing run", directErr: serviceerror.NewNotFound("missing"), want: imageagent.ErrRunNotFound},
+		{name: "closed workflow", directErr: serviceerror.NewFailedPrecondition("workflow completed"), want: imageagent.ErrCommandBlocked},
+		{name: "revision", resultErr: sdktemporal.NewNonRetryableApplicationError("stale", "imageagent_revision_conflict", nil), want: imageagent.ErrRevisionConflict},
+		{name: "blocked", resultErr: sdktemporal.NewNonRetryableApplicationError("blocked", "imageagent_command_blocked", nil), want: imageagent.ErrCommandBlocked},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := &recordingSDKClient{updateErr: tt.directErr, updateResultErr: tt.resultErr}
+			err := NewClient(raw).Cancel(context.Background(), command)
+			require.ErrorIs(t, err, tt.want)
+		})
+	}
 }
 
 func TestTemporalProjectionContractRoundTripsIntoApplicationProjection(t *testing.T) {
@@ -848,6 +1310,28 @@ func TestTemporalProjectionContractRoundTripsIntoApplicationProjection(t *testin
 	require.Equal(t, workflowProjection.Slots, applicationProjection.Slots)
 	require.Equal(t, workflowProjection.CompletedSlotIDs, applicationProjection.CompletedSlotIDs)
 	require.Equal(t, workflowProjection.ResultDigest, applicationProjection.ResultDigest)
+}
+
+func TestTemporalPayloadEncodingPreservesLegacyDefaultGoKeys(t *testing.T) {
+	input := manualWorkflowInput(sevenSlotPlan())
+	payloads, err := sdkconverter.GetDefaultDataConverter().ToPayloads(input)
+	require.NoError(t, err)
+	require.Len(t, payloads.Payloads, 1)
+	encoded := string(payloads.Payloads[0].Data)
+	require.Contains(t, encoded, `"Plan":{"Revision":1`)
+	require.Contains(t, encoded, `"Slots":[{"ID":"slot-1"`)
+	require.NotContains(t, encoded, `"revision":1`)
+
+	legacy := []byte(`{"RunID":"run-legacy","Mode":"manual","Identity":{"TenantID":"tenant-a","UserID":"user-a"},"Plan":{"Revision":1,"IdempotencyKey":"plan-key-1","SourceAssetIDs":["source-1"],"Slots":[{"ID":"slot-1","Role":"scene","SourceAssetIDs":["source-1"],"IdempotencyKey":"slot-key-1","Status":"pending"}],"CreatedBy":"user-a"},"MaxConcurrentSlots":1,"WaitForCommands":true}`)
+	legacyPayloads := &commonpb.Payloads{Payloads: []*commonpb.Payload{{
+		Metadata: map[string][]byte{"encoding": []byte("json/plain")},
+		Data:     legacy,
+	}}}
+	var decoded WorkflowInput
+	require.NoError(t, sdkconverter.GetDefaultDataConverter().FromPayloads(legacyPayloads, &decoded))
+	require.Equal(t, "run-legacy", decoded.RunID)
+	require.EqualValues(t, 1, decoded.Plan.Revision)
+	require.Equal(t, "slot-1", decoded.Plan.Slots[0].ID)
 }
 
 func TestRegisterWorkerRegistersParentChildAndActivities(t *testing.T) {
@@ -1062,6 +1546,10 @@ type recordingSDKClient struct {
 	queryWorkflowID  string
 	queryType        string
 	queryValue       imageagent.WorkflowProjection
+	updateOptions    []sdkclient.UpdateWorkflowOptions
+	updateGetCalls   int
+	updateErr        error
+	updateResultErr  error
 }
 
 func (c *recordingSDKClient) ExecuteWorkflow(_ context.Context, options sdkclient.StartWorkflowOptions, workflow interface{}, args ...interface{}) (sdkclient.WorkflowRun, error) {
@@ -1082,6 +1570,28 @@ func (c *recordingSDKClient) QueryWorkflow(_ context.Context, workflowID, _ stri
 	c.queryWorkflowID = workflowID
 	c.queryType = queryType
 	return projectionEncodedValue{value: c.queryValue}, nil
+}
+
+func (c *recordingSDKClient) UpdateWorkflow(_ context.Context, options sdkclient.UpdateWorkflowOptions) (sdkclient.WorkflowUpdateHandle, error) {
+	c.updateOptions = append(c.updateOptions, options)
+	if c.updateErr != nil {
+		return nil, c.updateErr
+	}
+	return &recordingWorkflowUpdateHandle{client: c, workflowID: options.WorkflowID, updateID: options.UpdateID}, nil
+}
+
+type recordingWorkflowUpdateHandle struct {
+	client     *recordingSDKClient
+	workflowID string
+	updateID   string
+}
+
+func (h *recordingWorkflowUpdateHandle) WorkflowID() string { return h.workflowID }
+func (*recordingWorkflowUpdateHandle) RunID() string        { return "" }
+func (h *recordingWorkflowUpdateHandle) UpdateID() string   { return h.updateID }
+func (h *recordingWorkflowUpdateHandle) Get(context.Context, interface{}) error {
+	h.client.updateGetCalls++
+	return h.client.updateResultErr
 }
 
 type projectionEncodedValue struct{ value imageagent.WorkflowProjection }

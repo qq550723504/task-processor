@@ -97,7 +97,7 @@ func (s *Service) Get(ctx context.Context, runID string) (RunProjection, error) 
 }
 
 func (s *Service) ReplacePlan(ctx context.Context, runID string, expectedRevision int64, plan Plan, actionID string) error {
-	identity, run, err := s.commandRun(ctx, runID, expectedRevision, actionID)
+	identity, err := s.commandIdentity(ctx, runID, expectedRevision, actionID)
 	if err != nil {
 		return err
 	}
@@ -107,9 +107,6 @@ func (s *Service) ReplacePlan(ctx context.Context, runID string, expectedRevisio
 	}
 	if err := ValidatePlan(plan); err != nil {
 		return fmt.Errorf("%w: validate replacement plan: %v", ErrValidation, err)
-	}
-	if run.Status != RunStatusBlocked {
-		return ErrCommandBlocked
 	}
 	return s.workflows.ReplacePlan(ctx, ReplacePlanCommand{
 		RunID: strings.TrimSpace(runID), ExpectedRevision: expectedRevision, Plan: plan,
@@ -136,7 +133,7 @@ func (s *Service) ensureRun(ctx context.Context, desired *Run) error {
 }
 
 func (s *Service) RetrySlot(ctx context.Context, runID, slotID string, planRevision int64, actionID string) error {
-	identity, run, err := s.commandRun(ctx, runID, planRevision, actionID)
+	identity, err := s.commandIdentity(ctx, runID, planRevision, actionID)
 	if err != nil {
 		return err
 	}
@@ -144,39 +141,24 @@ func (s *Service) RetrySlot(ctx context.Context, runID, slotID string, planRevis
 	if slotID == "" {
 		return fmt.Errorf("%w: retry slot ID is required", ErrValidation)
 	}
-	if run.Status != RunStatusBlocked || run.Block == nil || strings.TrimSpace(run.Block.SlotID) != slotID {
-		return ErrCommandBlocked
-	}
 	return s.workflows.RetrySlot(ctx, RetrySlotCommand{RunID: strings.TrimSpace(runID), SlotID: slotID, PlanRevision: planRevision, ActorID: identity.UserID, ActionID: strings.TrimSpace(actionID), Identity: identity})
 }
 
 func (s *Service) ApproveResults(ctx context.Context, runID string, planRevision int64, resultDigest, actionID string) error {
-	identity, run, err := s.commandRun(ctx, runID, planRevision, actionID)
+	identity, err := s.commandIdentity(ctx, runID, planRevision, actionID)
 	if err != nil {
 		return err
 	}
-	resultDigest = strings.TrimSpace(resultDigest)
-	if resultDigest == "" || run.Status != RunStatusAwaitingFinalApproval {
-		return ErrCommandBlocked
-	}
-	projection, err := s.workflows.GetProjection(ctx, RunScope{TenantID: identity.TenantID, RunID: strings.TrimSpace(runID)}, identity)
-	if err != nil {
-		return fmt.Errorf("query image agent workflow projection for approval: %w", err)
-	}
-	if projection.Status != RunStatusAwaitingFinalApproval || projection.Plan.Revision != planRevision || strings.TrimSpace(projection.ResultDigest) == "" || strings.TrimSpace(projection.ResultDigest) != resultDigest {
+	if resultDigest == "" || resultDigest != strings.TrimSpace(resultDigest) {
 		return ErrCommandBlocked
 	}
 	return s.workflows.ApproveResults(ctx, ApproveResultsCommand{RunID: strings.TrimSpace(runID), PlanRevision: planRevision, ResultDigest: resultDigest, ActorID: identity.UserID, ActionID: strings.TrimSpace(actionID), Identity: identity})
 }
 
 func (s *Service) Cancel(ctx context.Context, runID string, planRevision int64, actionID string) error {
-	identity, run, err := s.commandRun(ctx, runID, planRevision, actionID)
+	identity, err := s.commandIdentity(ctx, runID, planRevision, actionID)
 	if err != nil {
 		return err
-	}
-	switch run.Status {
-	case RunStatusCompleted, RunStatusFailed, RunStatusCancelled:
-		return ErrCommandBlocked
 	}
 	return s.workflows.Cancel(ctx, CancelRunCommand{RunID: strings.TrimSpace(runID), PlanRevision: planRevision, ActorID: identity.UserID, ActionID: strings.TrimSpace(actionID), Identity: identity})
 }
@@ -204,25 +186,22 @@ func (s *Service) ListEvents(ctx context.Context, runID string, afterCursor int6
 	return events, nil
 }
 
-func (s *Service) commandRun(ctx context.Context, runID string, revision int64, actionID string) (ExecutionIdentity, *Run, error) {
+func (s *Service) commandIdentity(ctx context.Context, runID string, revision int64, actionID string) (ExecutionIdentity, error) {
 	identity, err := verifiedExecutionIdentity(ctx)
 	if err != nil {
-		return ExecutionIdentity{}, nil, err
+		return ExecutionIdentity{}, err
 	}
-	if strings.TrimSpace(actionID) == "" {
-		return ExecutionIdentity{}, nil, fmt.Errorf("%w: action ID is required", ErrValidation)
-	}
-	run, err := s.repository.GetRun(ctx, RunScope{TenantID: identity.TenantID, RunID: strings.TrimSpace(runID)})
-	if err != nil {
-		return ExecutionIdentity{}, nil, err
-	}
-	if run.ActivePlanRevision != revision {
-		return ExecutionIdentity{}, nil, ErrRevisionConflict
+	runID = strings.TrimSpace(runID)
+	if runID == "" || strings.TrimSpace(actionID) == "" {
+		return ExecutionIdentity{}, fmt.Errorf("%w: run ID and action ID are required", ErrValidation)
 	}
 	if revision <= 0 {
-		return ExecutionIdentity{}, nil, fmt.Errorf("%w: positive plan revision is required", ErrValidation)
+		return ExecutionIdentity{}, fmt.Errorf("%w: positive plan revision is required", ErrValidation)
 	}
-	return identity, run, nil
+	if _, err := s.repository.GetRun(ctx, RunScope{TenantID: identity.TenantID, RunID: runID}); err != nil {
+		return ExecutionIdentity{}, err
+	}
+	return identity, nil
 }
 
 func (s *Service) latestEventCursor(ctx context.Context, scope RunScope) (int64, error) {

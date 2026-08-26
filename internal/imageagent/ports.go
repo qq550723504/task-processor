@@ -61,30 +61,30 @@ type WorkflowStart struct {
 // RunProjection is the complete application snapshot exposed to transports.
 // It deliberately contains only image-agent application contracts.
 type RunProjection struct {
-	Run          Run              `json:"run"`
-	Plan         Plan             `json:"plan"`
-	Slots        []SlotProjection `json:"slots"`
-	ResultDigest string           `json:"result_digest,omitempty"`
-	Actions      []Action         `json:"actions"`
-	LastEventID  int64            `json:"last_event_id"`
+	Run          Run
+	Plan         Plan
+	Slots        []SlotProjection
+	ResultDigest string
+	Actions      []Action
+	LastEventID  int64
 }
 
 type SlotProjection struct {
-	Slot       Slot             `json:"slot"`
-	Attempt    int              `json:"attempt"`
-	Candidates []AssetCandidate `json:"candidates"`
-	ErrorCode  string           `json:"error_code,omitempty"`
+	Slot       Slot
+	Attempt    int
+	Candidates []AssetCandidate
+	ErrorCode  string
 }
 
 // WorkflowProjection is the workflow-owned portion of the application
 // snapshot. Temporal adapters map query results into this contract.
 type WorkflowProjection struct {
-	Status           RunStatus        `json:"status"`
-	Block            *Block           `json:"block,omitempty"`
-	Plan             Plan             `json:"plan"`
-	Slots            []SlotProjection `json:"slots"`
-	CompletedSlotIDs []string         `json:"completed_slot_ids"`
-	ResultDigest     string           `json:"result_digest,omitempty"`
+	Status           RunStatus
+	Block            *Block
+	Plan             Plan
+	Slots            []SlotProjection
+	CompletedSlotIDs []string
+	ResultDigest     string
 }
 
 type ReplacePlanCommand struct {

@@ -2,12 +2,18 @@ package temporal
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/serviceerror"
 	sdkclient "go.temporal.io/sdk/client"
 	sdkconverter "go.temporal.io/sdk/converter"
+	sdktemporal "go.temporal.io/sdk/temporal"
 	sdkworker "go.temporal.io/sdk/worker"
 	sdkworkflow "go.temporal.io/sdk/workflow"
 
@@ -18,6 +24,7 @@ type sdkWorkflowClient interface {
 	ExecuteWorkflow(context.Context, sdkclient.StartWorkflowOptions, interface{}, ...interface{}) (sdkclient.WorkflowRun, error)
 	QueryWorkflow(context.Context, string, string, string, ...interface{}) (sdkconverter.EncodedValue, error)
 	SignalWorkflow(context.Context, string, string, string, interface{}) error
+	UpdateWorkflow(context.Context, sdkclient.UpdateWorkflowOptions) (sdkclient.WorkflowUpdateHandle, error)
 }
 
 func (c *Client) GetProjection(ctx context.Context, scope imageagent.RunScope, identity imageagent.ExecutionIdentity) (imageagent.WorkflowProjection, error) {
@@ -51,7 +58,7 @@ func (c *Client) ReplacePlan(ctx context.Context, command imageagent.ReplacePlan
 	if err := imageagent.ValidatePlan(command.Plan); err != nil {
 		return fmt.Errorf("validate image agent replacement plan: %w", err)
 	}
-	return c.client.SignalWorkflow(ctx, WorkflowID(command.Identity.TenantID, command.RunID), "", signalReplacePlan, ReplacePlanSignal{
+	return c.executeCommandUpdate(ctx, command.Identity, command.RunID, signalReplacePlan, command.ActionID, ReplacePlanSignal{
 		RunID: command.RunID, ExpectedRevision: command.ExpectedRevision, Plan: command.Plan,
 		ActorID: command.ActorID, ActionID: command.ActionID,
 	})
@@ -94,7 +101,7 @@ func (c *Client) RetrySlot(ctx context.Context, command imageagent.RetrySlotComm
 	if strings.TrimSpace(command.SlotID) == "" {
 		return fmt.Errorf("image agent retry slot ID is required")
 	}
-	return c.client.SignalWorkflow(ctx, WorkflowID(command.Identity.TenantID, command.RunID), "", signalRetrySlot, RetrySlotSignal{
+	return c.executeCommandUpdate(ctx, command.Identity, command.RunID, signalRetrySlot, command.ActionID, RetrySlotSignal{
 		RunID: command.RunID, PlanRevision: command.PlanRevision, SlotID: command.SlotID,
 		ActorID: command.ActorID, ActionID: command.ActionID,
 	})
@@ -104,11 +111,10 @@ func (c *Client) ApproveResults(ctx context.Context, command imageagent.ApproveR
 	if err := c.validateSignal(command.Identity, command.RunID, command.PlanRevision, command.ActorID, command.ActionID); err != nil {
 		return err
 	}
-	command.ResultDigest = strings.TrimSpace(command.ResultDigest)
-	if command.ResultDigest == "" {
+	if command.ResultDigest == "" || command.ResultDigest != strings.TrimSpace(command.ResultDigest) {
 		return fmt.Errorf("image agent approval result digest is required")
 	}
-	return c.client.SignalWorkflow(ctx, WorkflowID(command.Identity.TenantID, command.RunID), "", signalApproveResults, ApproveResultsSignal{
+	return c.executeCommandUpdate(ctx, command.Identity, command.RunID, signalApproveResults, command.ActionID, ApproveResultsSignal{
 		RunID: command.RunID, PlanRevision: command.PlanRevision, ResultDigest: command.ResultDigest,
 		ActorID: command.ActorID, ActionID: command.ActionID,
 	})
@@ -118,10 +124,58 @@ func (c *Client) Cancel(ctx context.Context, command imageagent.CancelRunCommand
 	if err := c.validateSignal(command.Identity, command.RunID, command.PlanRevision, command.ActorID, command.ActionID); err != nil {
 		return err
 	}
-	return c.client.SignalWorkflow(ctx, WorkflowID(command.Identity.TenantID, command.RunID), "", signalCancel, CancelSignal{
+	return c.executeCommandUpdate(ctx, command.Identity, command.RunID, signalCancel, command.ActionID, CancelSignal{
 		RunID: command.RunID, PlanRevision: command.PlanRevision,
 		ActorID: command.ActorID, ActionID: command.ActionID,
 	})
+}
+
+func (c *Client) executeCommandUpdate(ctx context.Context, identity imageagent.ExecutionIdentity, runID, updateName, actionID string, arg interface{}) error {
+	encoded, err := json.Marshal(arg)
+	if err != nil {
+		return fmt.Errorf("encode image agent workflow update: %w", err)
+	}
+	sum := sha256.Sum256(append([]byte(updateName+":"), encoded...))
+	handle, err := c.client.UpdateWorkflow(ctx, sdkclient.UpdateWorkflowOptions{
+		UpdateID:   actionID + ":" + hex.EncodeToString(sum[:]),
+		WorkflowID: WorkflowID(identity.TenantID, runID),
+		UpdateName: updateName, Args: []interface{}{arg},
+		WaitForStage: sdkclient.WorkflowUpdateStageCompleted,
+	})
+	if err != nil {
+		return mapCommandUpdateError(err)
+	}
+	var acknowledgement CommandAcknowledgement
+	if err := handle.Get(ctx, &acknowledgement); err != nil {
+		return mapCommandUpdateError(err)
+	}
+	return nil
+}
+
+func mapCommandUpdateError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var notFound *serviceerror.NotFound
+	if errors.As(err, &notFound) {
+		return fmt.Errorf("%w: %v", imageagent.ErrRunNotFound, err)
+	}
+	var failedPrecondition *serviceerror.FailedPrecondition
+	if errors.As(err, &failedPrecondition) {
+		return fmt.Errorf("%w: %v", imageagent.ErrCommandBlocked, err)
+	}
+	var applicationError *sdktemporal.ApplicationError
+	if errors.As(err, &applicationError) {
+		switch applicationError.Type() {
+		case updateErrorRevisionConflict:
+			return fmt.Errorf("%w: %v", imageagent.ErrRevisionConflict, err)
+		case updateErrorCommandBlocked:
+			return fmt.Errorf("%w: %v", imageagent.ErrCommandBlocked, err)
+		case updateErrorRunNotFound:
+			return fmt.Errorf("%w: %v", imageagent.ErrRunNotFound, err)
+		}
+	}
+	return err
 }
 
 func (c *Client) validateSignal(identity imageagent.ExecutionIdentity, runID string, revision int64, actorID, actionID string) error {
