@@ -176,6 +176,10 @@ func testPlanAppendRetriesAreIdempotent(t *testing.T, repo imageagent.Repository
 	conflicting.CreatedBy = "another-user"
 	require.ErrorIs(t, repo.AppendPlan(ctx, scope, 0, conflicting), imageagent.ErrRevisionConflict)
 
+	conflictingStatus := plan
+	conflictingStatus.Slots[0].Status = imageagent.SlotStatusAccepted
+	require.ErrorIs(t, repo.AppendPlan(ctx, scope, 0, conflictingStatus), imageagent.ErrRevisionConflict)
+
 	conflictingKey := planRevision(2)
 	conflictingKey.IdempotencyKey = plan.IdempotencyKey
 	require.ErrorIs(t, repo.AppendPlan(ctx, scope, 1, conflictingKey), imageagent.ErrRevisionConflict)

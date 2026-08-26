@@ -398,7 +398,7 @@ func samePlanDefinition(existing existingPlan, wanted planRecord, wantedSlots []
 	}
 	for _, wantedSlot := range wantedSlots {
 		stored, ok := existingByID[wantedSlot.ID]
-		if !ok || stored.Role != wantedSlot.Role || stored.IdempotencyKey != wantedSlot.IdempotencyKey || stored.Brief != wantedSlot.Brief || !reflect.DeepEqual(stored.SourceAssetIDs, wantedSlot.SourceAssetIDs) || !reflect.DeepEqual(stored.StyleReferenceIDs, wantedSlot.StyleReferenceIDs) {
+		if !ok || stored.Role != wantedSlot.Role || stored.IdempotencyKey != wantedSlot.IdempotencyKey || stored.Brief != wantedSlot.Brief || stored.Status != wantedSlot.Status || !reflect.DeepEqual(stored.SourceAssetIDs, wantedSlot.SourceAssetIDs) || !reflect.DeepEqual(stored.StyleReferenceIDs, wantedSlot.StyleReferenceIDs) {
 			return false
 		}
 	}
