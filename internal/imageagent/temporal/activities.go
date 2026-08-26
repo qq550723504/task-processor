@@ -192,6 +192,23 @@ func (a *Activities) PersistRunState(ctx context.Context, input PersistRunStateA
 	return nil
 }
 
+func (a *Activities) PersistPlanRevision(ctx context.Context, input PersistPlanRevisionActivityInput) error {
+	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	if err != nil {
+		return err
+	}
+	if input.Plan.ParentRevision != input.ExpectedRevision || input.Plan.Revision <= input.ExpectedRevision || strings.TrimSpace(input.Plan.CreatedBy) != input.Identity.UserID {
+		return fmt.Errorf("replacement plan revision, parent, and actor are invalid")
+	}
+	if err := imageagent.ValidatePlan(input.Plan); err != nil {
+		return fmt.Errorf("validate replacement plan: %w", err)
+	}
+	if err := a.repository.AppendPlan(ctx, imageagent.RunScope{TenantID: input.Identity.TenantID, RunID: input.RunID}, input.ExpectedRevision, input.Plan); err != nil {
+		return fmt.Errorf("append replacement plan: %w", err)
+	}
+	return nil
+}
+
 func (a *Activities) PublishApproved(ctx context.Context, input PublishApprovedActivityInput) error {
 	ctx, err := restoreActivityIdentity(ctx, input.Identity)
 	if err != nil {
@@ -218,6 +235,7 @@ func RegisterActivities(registrar activityRegistrar, activities *Activities) err
 	registrar.RegisterActivityWithOptions(activities.ExecuteSlot, sdkactivity.RegisterOptions{Name: activityExecuteSlot})
 	registrar.RegisterActivityWithOptions(activities.PersistSlotResult, sdkactivity.RegisterOptions{Name: activityPersistSlotResult})
 	registrar.RegisterActivityWithOptions(activities.PersistRunState, sdkactivity.RegisterOptions{Name: activityPersistRunState})
+	registrar.RegisterActivityWithOptions(activities.PersistPlanRevision, sdkactivity.RegisterOptions{Name: activityPersistPlanRevision})
 	registrar.RegisterActivityWithOptions(activities.PublishApproved, sdkactivity.RegisterOptions{Name: activityPublishApproved})
 	return nil
 }

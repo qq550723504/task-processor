@@ -14,6 +14,7 @@ func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 		c.productHTTPModule(),
 		c.amazonListingHTTPModule(),
 		c.listingKitHTTPModule(),
+		c.imageAgentHTTPModule(),
 		c.productSourcingHTTPModule(),
 		c.promptHTTPModule(),
 		c.listingKitStudioHTTPModule(),
@@ -23,6 +24,13 @@ func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 		c.crawler1688Module,
 		c.localAgentHTTPModule(),
 	}
+}
+
+func (c httpFeatureComposition) imageAgentHTTPModule() kernelmodule.Module {
+	if c.imageAgentModule == nil {
+		return nil
+	}
+	return c.imageAgentModule.Module
 }
 
 func (c httpFeatureComposition) localAgentHTTPModule() kernelmodule.Module {

@@ -22,6 +22,8 @@ func AllowedActions(run Run) []Action {
 			return []Action{ActionCancel}
 		}
 		return []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}
+	case RunStatusAwaitingFinalApproval:
+		return []Action{ActionApproveResults, ActionCancel}
 	case RunStatusCompleted, RunStatusFailed, RunStatusCancelled:
 		return nil
 	default:

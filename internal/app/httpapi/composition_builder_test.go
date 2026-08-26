@@ -11,6 +11,7 @@ import (
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/core/config"
+	imageagenthttpapi "task-processor/internal/imageagent/httpapi"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
@@ -47,6 +48,10 @@ func TestNewHTTPFeatureCompositionBuilderUsesFeatureOwnedRuntimeBuilders(t *test
 	require.Equal(t,
 		runtime.FuncForPC(reflect.ValueOf(buildListingKitModuleResult).Pointer()).Name(),
 		runtime.FuncForPC(reflect.ValueOf(builder.buildListingKit).Pointer()).Name(),
+	)
+	require.Equal(t,
+		runtime.FuncForPC(reflect.ValueOf(buildImageAgentModuleResult).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(builder.buildImageAgent).Pointer()).Name(),
 	)
 }
 
@@ -123,6 +128,10 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 				Pool:                 stubWorkerPool{},
 			}, nil
 		},
+		buildImageAgent: func(*config.Config, *logrus.Logger) (*imageagenthttpapi.BuildResult, error) {
+			order = append(order, "image-agent")
+			return &imageagenthttpapi.BuildResult{}, nil
+		},
 		buildPrompt: func(prompt.TenantPromptStore) *promptmgmtapi.BuildResult {
 			order = append(order, "prompt")
 			return &promptmgmtapi.BuildResult{}
@@ -150,6 +159,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	require.NotNil(t, composition.imageModule)
 	require.NotNil(t, composition.amazonListingModule)
 	require.NotNil(t, composition.listingKitModule)
+	require.NotNil(t, composition.imageAgentModule)
 	require.NotNil(t, composition.productSourcingModule)
 	require.NotNil(t, composition.promptModule)
 	require.NotNil(t, composition.taskRPCResult)
@@ -161,6 +171,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 		"shein-login",
 		"sds-login",
 		"listingkit",
+		"image-agent",
 		"prompt",
 		"taskrpc",
 		"sds",
@@ -170,6 +181,12 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	require.NoError(t, deps.shared.closers[1]())
 	require.True(t, sheinClosed)
 	require.True(t, sdsClosed)
+}
+
+func TestHTTPFeatureCompositionIncludesImageAgentRouteModule(t *testing.T) {
+	module := imageagenthttpapi.NewHTTPModule(nil)
+	composition := httpFeatureComposition{imageAgentModule: &imageagenthttpapi.BuildResult{Module: module}}
+	require.Equal(t, imageagenthttpapi.ModuleName, composition.imageAgentHTTPModule().Name())
 }
 
 type stubCompositionTaskLifecycleService struct {

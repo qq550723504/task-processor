@@ -9,19 +9,21 @@ import (
 )
 
 const (
-	TaskQueue                 = "image-agent-manual"
-	EnvTaskQueue              = "IMAGE_AGENT_TEMPORAL_TASK_QUEUE"
-	workflowNameImageAgent    = "ImageAgentWorkflow"
-	workflowNameImageSlot     = "ImageSlotWorkflow"
-	activityExecuteSlot       = "imageagent.execute_slot"
-	activityPersistSlotResult = "imageagent.persist_slot_result"
-	activityPersistRunState   = "imageagent.persist_run_state"
-	activityPublishApproved   = "imageagent.publish_approved"
-	signalApproveResults      = "approve_results"
-	signalRetrySlot           = "retry_slot"
-	signalCancel              = "cancel"
-	defaultMaxConcurrentSlots = 4
-	QueryWorkflowProjection   = "image_agent_projection"
+	TaskQueue                   = "image-agent-manual"
+	EnvTaskQueue                = "IMAGE_AGENT_TEMPORAL_TASK_QUEUE"
+	workflowNameImageAgent      = "ImageAgentWorkflow"
+	workflowNameImageSlot       = "ImageSlotWorkflow"
+	activityExecuteSlot         = "imageagent.execute_slot"
+	activityPersistSlotResult   = "imageagent.persist_slot_result"
+	activityPersistRunState     = "imageagent.persist_run_state"
+	activityPersistPlanRevision = "imageagent.persist_plan_revision"
+	activityPublishApproved     = "imageagent.publish_approved"
+	signalApproveResults        = "approve_results"
+	signalRetrySlot             = "retry_slot"
+	signalReplacePlan           = "replace_plan"
+	signalCancel                = "cancel"
+	defaultMaxConcurrentSlots   = 4
+	QueryWorkflowProjection     = "image_agent_projection"
 )
 
 type WorkflowInput struct {
@@ -34,10 +36,12 @@ type WorkflowInput struct {
 }
 
 type WorkflowResult struct {
-	Status           imageagent.RunStatus
-	Block            *imageagent.Block
-	CompletedSlotIDs []string
-	ResultDigest     string
+	Status           imageagent.RunStatus        `json:"status"`
+	Block            *imageagent.Block           `json:"block,omitempty"`
+	Plan             imageagent.Plan             `json:"plan"`
+	Slots            []imageagent.SlotProjection `json:"slots"`
+	CompletedSlotIDs []string                    `json:"completed_slot_ids"`
+	ResultDigest     string                      `json:"result_digest,omitempty"`
 }
 
 type SlotWorkflowInput struct {
@@ -80,6 +84,13 @@ type PersistRunStateActivityInput struct {
 	Block        *imageagent.Block
 }
 
+type PersistPlanRevisionActivityInput struct {
+	RunID            string
+	Identity         imageagent.ExecutionIdentity
+	ExpectedRevision int64
+	Plan             imageagent.Plan
+}
+
 type PublishApprovedActivityInput struct {
 	RunID             string
 	Identity          imageagent.ExecutionIdentity
@@ -102,6 +113,14 @@ type RetrySlotSignal struct {
 	SlotID       string
 	ActorID      string
 	ActionID     string
+}
+
+type ReplacePlanSignal struct {
+	RunID            string
+	ExpectedRevision int64
+	Plan             imageagent.Plan
+	ActorID          string
+	ActionID         string
 }
 
 type CancelSignal struct {

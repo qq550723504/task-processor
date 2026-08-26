@@ -30,6 +30,16 @@ func TestRouteRequiresZitadelAuthProtectsProductImageRoutes(t *testing.T) {
 	}
 }
 
+func TestRouteRequiresZitadelAuthProtectsImageAgentCatalogRoutes(t *testing.T) {
+	for _, route := range []routeDescriptor{
+		{Method: http.MethodGet, Path: "/api/v1/image-agent/runs/run-1", Module: "image-agent", Permission: "listingkit.image_agent.read"},
+		{Method: http.MethodPost, Path: "/api/v1/image-agent/runs", Module: "image-agent", Permission: "listingkit.image_agent.write"},
+	} {
+		require.True(t, RouteRequiresZitadelAuth(route))
+		require.Equal(t, route.Permission, listingKitRouteRequiredPermission(route))
+	}
+}
+
 func TestRouteRequiresZitadelAuthProtectsProductAndAmazonRoutes(t *testing.T) {
 	routes := []routeDescriptor{
 		{Method: http.MethodPost, Path: "/api/v1/products/generate", Module: "products", AuthPolicy: httproute.AuthPolicyVerifiedIdentity},

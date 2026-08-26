@@ -18,6 +18,19 @@ func TestListingKitAuthorizerAllowsOperationalRolesToWriteProductSourcing(t *tes
 	require.False(t, authorizer.Authorize("", []string{"viewer"}, PermissionProductSourcingWrite))
 }
 
+func TestListingKitAuthorizerEnforcesImageAgentReadAndWritePermissions(t *testing.T) {
+	authorizer, err := NewListingKitAuthorizer([]string{"configured-user"}, []string{"configured-role"})
+	require.NoError(t, err)
+	for _, role := range []string{"listingkit_operator", "listingkit_admin", "platform_admin", "admin", "configured-role"} {
+		require.True(t, authorizer.Authorize("", []string{role}, PermissionImageAgentRead), role)
+		require.True(t, authorizer.Authorize("", []string{role}, PermissionImageAgentWrite), role)
+	}
+	require.True(t, authorizer.Authorize("configured-user", nil, PermissionImageAgentRead))
+	require.True(t, authorizer.Authorize("configured-user", nil, PermissionImageAgentWrite))
+	require.False(t, authorizer.Authorize("", []string{"viewer"}, PermissionImageAgentRead))
+	require.False(t, authorizer.Authorize("", []string{"viewer"}, PermissionImageAgentWrite))
+}
+
 func TestListingKitAuthorizerGrantsLocalAgentToConfiguredAdmins(t *testing.T) {
 	authorizer, err := NewListingKitAuthorizer([]string{"user-1"}, []string{"custom_platform_admin"})
 	require.NoError(t, err)

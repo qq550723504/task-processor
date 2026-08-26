@@ -30,6 +30,11 @@ func TestAllowedActionsForBlockedRunAreExplicit(t *testing.T) {
 	require.Equal(t, []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}, AllowedActions(run))
 }
 
+func TestAllowedActionsExposeFinalApprovalAndCancellation(t *testing.T) {
+	run := Run{Mode: RunModeManual, Status: RunStatusAwaitingFinalApproval}
+	require.Equal(t, []Action{ActionApproveResults, ActionCancel}, AllowedActions(run))
+}
+
 func TestAllowedActionsForTerminalRunAreEmpty(t *testing.T) {
 	for _, status := range []RunStatus{RunStatusCompleted, RunStatusFailed, RunStatusCancelled} {
 		require.Empty(t, AllowedActions(Run{Status: status}))

@@ -9,6 +9,9 @@ import (
 var (
 	ErrRunNotFound      = errors.New("image agent run not found")
 	ErrRevisionConflict = errors.New("image agent revision conflict")
+	ErrCommandBlocked   = errors.New("image agent command blocked")
+	ErrIdentityRequired = errors.New("verified image agent identity is required")
+	ErrValidation       = errors.New("invalid image agent request")
 )
 
 type RunScope struct {

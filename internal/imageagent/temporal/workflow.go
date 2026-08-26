@@ -32,7 +32,7 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 			MaximumInterval: 10 * time.Second, MaximumAttempts: 5,
 		},
 	})
-	projection := WorkflowResult{Status: imageagent.RunStatusPlanning}
+	projection := WorkflowResult{Status: imageagent.RunStatusPlanning, Plan: input.Plan, Slots: slotProjections(input.Plan, nil)}
 	if err := workflow.SetQueryHandler(ctx, QueryWorkflowProjection, func() (WorkflowResult, error) {
 		return projection, nil
 	}); err != nil {
@@ -40,137 +40,168 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 	}
 	cancelChannel := workflow.GetSignalChannel(ctx, signalCancel)
 	retryChannel := workflow.GetSignalChannel(ctx, signalRetrySlot)
+	replaceChannel := workflow.GetSignalChannel(ctx, signalReplacePlan)
 	approveChannel := workflow.GetSignalChannel(ctx, signalApproveResults)
 	seenActions := map[string]bool{}
 	rejectQueuedApprovals(approveChannel, seenActions)
+	rejectQueuedReplacements(replaceChannel, seenActions)
 	if receiveQueuedCancel(cancelChannel, input, seenActions) {
 		return cancelledResult(ctx, input, nil)
 	}
-	projection.Status = imageagent.RunStatusExecuting
-	if err := persistRunState(ctx, input, imageagent.RunStatusExecuting, "execute_slots", nil); err != nil {
-		return WorkflowResult{}, err
-	}
 
-	limit := input.MaxConcurrentSlots
-	if limit <= 0 {
-		limit = defaultMaxConcurrentSlots
-	}
-	results, cancelled, err := executeInitialSlots(ctx, input, limit, cancelChannel, seenActions)
-	if err != nil {
-		return WorkflowResult{}, err
-	}
-	if cancelled {
-		completed := summarizeResults(input.Plan, results).CompletedSlotIDs
-		return cancelledResult(ctx, input, completed)
-	}
-	rejectQueuedApprovals(approveChannel, seenActions)
-
-	result := summarizeResults(input.Plan, results)
-	if result.Block != nil {
-		if err := persistRunState(ctx, input, imageagent.RunStatusBlocked, "retry_slot", result.Block); err != nil {
+runPlan:
+	for {
+		projection = WorkflowResult{Status: imageagent.RunStatusExecuting, Plan: input.Plan, Slots: slotProjections(input.Plan, nil)}
+		if err := persistRunState(ctx, input, imageagent.RunStatusExecuting, "execute_slots", nil); err != nil {
 			return WorkflowResult{}, err
 		}
-		projection = result
-		for result.Block != nil {
-			rejectQueuedApprovals(approveChannel, seenActions)
-			results, cancelled, err = applyQueuedRetries(ctx, input, results, retryChannel, cancelChannel, seenActions)
-			if err != nil {
+
+		limit := input.MaxConcurrentSlots
+		if limit <= 0 {
+			limit = defaultMaxConcurrentSlots
+		}
+		results, cancelled, err := executeInitialSlots(ctx, input, limit, cancelChannel, seenActions, func(results []SlotWorkflowResult) {
+			projection = executingProjection(input.Plan, results)
+		})
+		if err != nil {
+			return WorkflowResult{}, err
+		}
+		if cancelled {
+			return cancelledResult(ctx, input, results)
+		}
+		rejectQueuedApprovals(approveChannel, seenActions)
+
+		result := summarizeResults(input.Plan, results)
+		if result.Block != nil {
+			rejectQueuedReplacements(replaceChannel, seenActions)
+			if err := persistRunState(ctx, input, imageagent.RunStatusBlocked, "retry_slot", result.Block); err != nil {
 				return WorkflowResult{}, err
 			}
-			result = summarizeResults(input.Plan, results)
 			projection = result
-			if cancelled {
-				return cancelledResult(ctx, input, result.CompletedSlotIDs)
-			}
-			if result.Block == nil {
-				break
-			}
-			if !input.WaitForCommands {
-				return result, nil
-			}
-			var retry RetrySlotSignal
-			gotRetry := false
-			selector := workflow.NewSelector(ctx)
-			selector.AddReceive(retryChannel, func(channel workflow.ReceiveChannel, _ bool) {
-				channel.Receive(ctx, &retry)
-				gotRetry = true
-			})
-			selector.AddReceive(cancelChannel, func(channel workflow.ReceiveChannel, _ bool) {
-				var cancelSignal CancelSignal
-				channel.Receive(ctx, &cancelSignal)
-				if validCancel(input, cancelSignal, seenActions) {
-					cancelled = true
+			for result.Block != nil {
+				rejectQueuedApprovals(approveChannel, seenActions)
+				if replacement, ok := receiveQueuedReplacement(replaceChannel, input, seenActions); ok {
+					if err := persistPlanRevision(ctx, input, replacement); err != nil {
+						return WorkflowResult{}, err
+					}
+					input.Plan = replacement.Plan
+					continue runPlan
 				}
-			})
-			selector.Select(ctx)
-			if cancelled {
-				return cancelledResult(ctx, input, result.CompletedSlotIDs)
-			}
-			if gotRetry {
-				oneRetry := workflow.NewBufferedChannel(ctx, 1)
-				oneRetry.SendAsync(retry)
-				results, cancelled, err = applyQueuedRetries(ctx, input, results, oneRetry, cancelChannel, seenActions)
+				results, cancelled, err = applyQueuedRetries(ctx, input, results, retryChannel, cancelChannel, seenActions)
 				if err != nil {
 					return WorkflowResult{}, err
 				}
 				result = summarizeResults(input.Plan, results)
 				projection = result
+				if cancelled {
+					return cancelledResult(ctx, input, results)
+				}
+				if result.Block == nil {
+					break
+				}
+				if !input.WaitForCommands {
+					return result, nil
+				}
+				var retry RetrySlotSignal
+				var replacement ReplacePlanSignal
+				gotRetry := false
+				gotReplacement := false
+				selector := workflow.NewSelector(ctx)
+				selector.AddReceive(retryChannel, func(channel workflow.ReceiveChannel, _ bool) {
+					channel.Receive(ctx, &retry)
+					gotRetry = true
+				})
+				selector.AddReceive(cancelChannel, func(channel workflow.ReceiveChannel, _ bool) {
+					var cancelSignal CancelSignal
+					channel.Receive(ctx, &cancelSignal)
+					if validCancel(input, cancelSignal, seenActions) {
+						cancelled = true
+					}
+				})
+				selector.AddReceive(replaceChannel, func(channel workflow.ReceiveChannel, _ bool) {
+					channel.Receive(ctx, &replacement)
+					gotReplacement = true
+				})
+				selector.Select(ctx)
+				if cancelled {
+					return cancelledResult(ctx, input, results)
+				}
+				if gotReplacement {
+					if !validReplacement(input, replacement, seenActions) {
+						continue
+					}
+					if err := persistPlanRevision(ctx, input, replacement); err != nil {
+						return WorkflowResult{}, err
+					}
+					input.Plan = replacement.Plan
+					continue runPlan
+				}
+				if gotRetry {
+					oneRetry := workflow.NewBufferedChannel(ctx, 1)
+					oneRetry.SendAsync(retry)
+					results, cancelled, err = applyQueuedRetries(ctx, input, results, oneRetry, cancelChannel, seenActions)
+					if err != nil {
+						return WorkflowResult{}, err
+					}
+					result = summarizeResults(input.Plan, results)
+					projection = result
+				}
 			}
 		}
-	}
 
-	rejectQueuedApprovals(approveChannel, seenActions)
-	if err := persistRunState(ctx, input, imageagent.RunStatusAwaitingFinalApproval, "approve_results", nil); err != nil {
-		return WorkflowResult{}, err
-	}
-	rejectQueuedApprovals(approveChannel, seenActions)
-	digest, err := resultDigest(input.Plan, results)
-	if err != nil {
-		return WorkflowResult{}, err
-	}
-	result.Status = imageagent.RunStatusAwaitingFinalApproval
-	result.Block = nil
-	result.ResultDigest = digest
-	projection = result
-	for {
-		selector := workflow.NewSelector(ctx)
-		approved := false
-		cancelled = false
-		selector.AddReceive(approveChannel, func(channel workflow.ReceiveChannel, _ bool) {
-			var signal ApproveResultsSignal
-			channel.Receive(ctx, &signal)
-			if validApprovalSignal(input, signal, projection.Status, digest, seenActions) {
-				approved = true
-			}
-		})
-		selector.AddReceive(cancelChannel, func(channel workflow.ReceiveChannel, _ bool) {
-			var signal CancelSignal
-			channel.Receive(ctx, &signal)
-			if validCancel(input, signal, seenActions) {
-				cancelled = true
-			}
-		})
-		selector.Select(ctx)
-		if cancelled {
-			return cancelledResult(ctx, input, result.CompletedSlotIDs)
-		}
-		if !approved {
-			continue
-		}
-		publishInput := PublishApprovedActivityInput{
-			RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
-			CandidateAssetIDs: candidateAssetIDs(input.Plan, results),
-			IdempotencyKey:    publicationKey(input.RunID, input.Plan.Revision),
-		}
-		if err := workflow.ExecuteActivity(ctx, activityPublishApproved, publishInput).Get(ctx, nil); err != nil {
-			return WorkflowResult{}, fmt.Errorf("publish approved assets: %w", err)
-		}
-		if err := persistRunState(ctx, input, imageagent.RunStatusCompleted, "complete", nil); err != nil {
+		rejectQueuedApprovals(approveChannel, seenActions)
+		if err := persistRunState(ctx, input, imageagent.RunStatusAwaitingFinalApproval, "approve_results", nil); err != nil {
 			return WorkflowResult{}, err
 		}
-		result.Status = imageagent.RunStatusCompleted
+		rejectQueuedApprovals(approveChannel, seenActions)
+		digest, err := resultDigest(input.Plan, results)
+		if err != nil {
+			return WorkflowResult{}, err
+		}
+		result.Status = imageagent.RunStatusAwaitingFinalApproval
+		result.Block = nil
+		result.ResultDigest = digest
 		projection = result
-		return result, nil
+		for {
+			selector := workflow.NewSelector(ctx)
+			approved := false
+			cancelled = false
+			selector.AddReceive(approveChannel, func(channel workflow.ReceiveChannel, _ bool) {
+				var signal ApproveResultsSignal
+				channel.Receive(ctx, &signal)
+				if validApprovalSignal(input, signal, projection.Status, digest, seenActions) {
+					approved = true
+				}
+			})
+			selector.AddReceive(cancelChannel, func(channel workflow.ReceiveChannel, _ bool) {
+				var signal CancelSignal
+				channel.Receive(ctx, &signal)
+				if validCancel(input, signal, seenActions) {
+					cancelled = true
+				}
+			})
+			selector.Select(ctx)
+			if cancelled {
+				return cancelledResult(ctx, input, results)
+			}
+			if !approved {
+				continue
+			}
+			publishInput := PublishApprovedActivityInput{
+				RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
+				CandidateAssetIDs: candidateAssetIDs(input.Plan, results),
+				IdempotencyKey:    publicationKey(input.RunID, input.Plan.Revision),
+			}
+			if err := workflow.ExecuteActivity(ctx, activityPublishApproved, publishInput).Get(ctx, nil); err != nil {
+				return WorkflowResult{}, fmt.Errorf("publish approved assets: %w", err)
+			}
+			if err := persistRunState(ctx, input, imageagent.RunStatusCompleted, "complete", nil); err != nil {
+				return WorkflowResult{}, err
+			}
+			result.Status = imageagent.RunStatusCompleted
+			projection = result
+			return result, nil
+		}
 	}
 }
 
@@ -180,7 +211,7 @@ type childCompletion struct {
 	Failed bool
 }
 
-func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, cancelChannel workflow.ReceiveChannel, seenActions map[string]bool) ([]SlotWorkflowResult, bool, error) {
+func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, cancelChannel workflow.ReceiveChannel, seenActions map[string]bool, progress func([]SlotWorkflowResult)) ([]SlotWorkflowResult, bool, error) {
 	results := make([]SlotWorkflowResult, len(input.Plan.Slots))
 	if receiveQueuedCancel(cancelChannel, input, seenActions) {
 		return results, true, nil
@@ -226,6 +257,9 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, c
 			results[completion.Index] = completion.Result
 			if err := persistSlotResult(ctx, input, completion.Result); err != nil {
 				return nil, false, err
+			}
+			if progress != nil {
+				progress(results)
 			}
 		}
 		if !cancelled && receiveQueuedCancel(cancelChannel, input, seenActions) {
@@ -330,6 +364,39 @@ func validRetry(input WorkflowInput, signal RetrySlotSignal, seenActions map[str
 	return signal.RunID == input.RunID && signal.PlanRevision == input.Plan.Revision && signal.SlotID != "" && signal.ActorID == input.Identity.UserID
 }
 
+func validReplacement(input WorkflowInput, signal ReplacePlanSignal, seenActions map[string]bool) bool {
+	if !consumeAction(signal.ActionID, seenActions) {
+		return false
+	}
+	if signal.RunID != input.RunID || signal.ExpectedRevision != input.Plan.Revision || signal.ActorID != input.Identity.UserID ||
+		signal.Plan.ParentRevision != signal.ExpectedRevision || signal.Plan.Revision <= signal.ExpectedRevision || signal.Plan.CreatedBy != input.Identity.UserID {
+		return false
+	}
+	return imageagent.ValidatePlan(signal.Plan) == nil
+}
+
+func receiveQueuedReplacement(channel workflow.ReceiveChannel, input WorkflowInput, seenActions map[string]bool) (ReplacePlanSignal, bool) {
+	for {
+		var signal ReplacePlanSignal
+		if !channel.ReceiveAsync(&signal) {
+			return ReplacePlanSignal{}, false
+		}
+		if validReplacement(input, signal, seenActions) {
+			return signal, true
+		}
+	}
+}
+
+func rejectQueuedReplacements(channel workflow.ReceiveChannel, seenActions map[string]bool) {
+	for {
+		var signal ReplacePlanSignal
+		if !channel.ReceiveAsync(&signal) {
+			return
+		}
+		consumeAction(signal.ActionID, seenActions)
+	}
+}
+
 func validApprovalSignal(input WorkflowInput, signal ApproveResultsSignal, status imageagent.RunStatus, digest string, seenActions map[string]bool) bool {
 	if !consumeAction(signal.ActionID, seenActions) {
 		return false
@@ -366,11 +433,21 @@ func slotIndex(plan imageagent.Plan, slotID string) int {
 	return -1
 }
 
-func cancelledResult(ctx workflow.Context, input WorkflowInput, completed []string) (WorkflowResult, error) {
+func cancelledResult(ctx workflow.Context, input WorkflowInput, results []SlotWorkflowResult) (WorkflowResult, error) {
 	if err := persistRunState(ctx, input, imageagent.RunStatusCancelled, "cancelled", nil); err != nil {
 		return WorkflowResult{}, err
 	}
-	return WorkflowResult{Status: imageagent.RunStatusCancelled, CompletedSlotIDs: completed}, nil
+	result := WorkflowResult{
+		Status: imageagent.RunStatusCancelled,
+		Plan:   input.Plan,
+		Slots:  slotProjections(input.Plan, results),
+	}
+	for index, slot := range input.Plan.Slots {
+		if index < len(results) && results[index].Status == imageagent.SlotStatusAccepted {
+			result.CompletedSlotIDs = append(result.CompletedSlotIDs, slot.ID)
+		}
+	}
+	return result, nil
 }
 
 func persistSlotResult(ctx workflow.Context, input WorkflowInput, result SlotWorkflowResult) error {
@@ -395,8 +472,18 @@ func persistRunState(ctx workflow.Context, input WorkflowInput, status imageagen
 	return nil
 }
 
+func persistPlanRevision(ctx workflow.Context, input WorkflowInput, replacement ReplacePlanSignal) error {
+	err := workflow.ExecuteActivity(ctx, activityPersistPlanRevision, PersistPlanRevisionActivityInput{
+		RunID: input.RunID, Identity: input.Identity, ExpectedRevision: replacement.ExpectedRevision, Plan: replacement.Plan,
+	}).Get(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("persist image agent replacement plan: %w", err)
+	}
+	return nil
+}
+
 func summarizeResults(plan imageagent.Plan, results []SlotWorkflowResult) WorkflowResult {
-	result := WorkflowResult{Status: imageagent.RunStatusAwaitingFinalApproval}
+	result := WorkflowResult{Status: imageagent.RunStatusAwaitingFinalApproval, Plan: plan, Slots: slotProjections(plan, results)}
 	for index, slot := range plan.Slots {
 		if results[index].Status == imageagent.SlotStatusAccepted {
 			result.CompletedSlotIDs = append(result.CompletedSlotIDs, slot.ID)
@@ -408,6 +495,33 @@ func summarizeResults(plan imageagent.Plan, results []SlotWorkflowResult) Workfl
 		}
 	}
 	return result
+}
+
+func executingProjection(plan imageagent.Plan, results []SlotWorkflowResult) WorkflowResult {
+	projection := WorkflowResult{Status: imageagent.RunStatusExecuting, Plan: plan, Slots: slotProjections(plan, results)}
+	for index, slot := range plan.Slots {
+		if index < len(results) && results[index].Status == imageagent.SlotStatusAccepted {
+			projection.CompletedSlotIDs = append(projection.CompletedSlotIDs, slot.ID)
+		}
+	}
+	return projection
+}
+
+func slotProjections(plan imageagent.Plan, results []SlotWorkflowResult) []imageagent.SlotProjection {
+	projections := make([]imageagent.SlotProjection, 0, len(plan.Slots))
+	for index, declared := range plan.Slots {
+		slot := declared
+		projection := imageagent.SlotProjection{Slot: slot}
+		if index < len(results) && results[index].Execution.SlotID != "" {
+			result := results[index]
+			projection.Attempt = result.Execution.Attempt
+			projection.Candidates = append([]imageagent.AssetCandidate(nil), result.Execution.Candidates...)
+			projection.ErrorCode = result.ErrorCode
+			projection.Slot.Status = result.Status
+		}
+		projections = append(projections, projection)
+	}
+	return projections
 }
 
 func candidateAssetIDs(plan imageagent.Plan, results []SlotWorkflowResult) []string {

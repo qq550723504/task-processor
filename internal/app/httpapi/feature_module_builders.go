@@ -1,10 +1,17 @@
 package httpapi
 
 import (
+	"fmt"
+
 	"github.com/sirupsen/logrus"
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/core/config"
+	"task-processor/internal/imageagent"
+	imageagenthttpapi "task-processor/internal/imageagent/httpapi"
+	imageagentstore "task-processor/internal/imageagent/store"
+	"task-processor/internal/infra/database"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
@@ -23,6 +30,8 @@ type amazonListingModuleBuilder func(input amazonlistinghttpapi.RuntimeBuildInpu
 
 type listingKitModuleBuilder func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)
 
+type imageAgentModuleBuilder func(*config.Config, *logrus.Logger) (*imageagenthttpapi.BuildResult, error)
+
 func buildProductModuleResult(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error) {
 	return productenrichhttpapi.BuildRuntimeModule(input)
 }
@@ -37,4 +46,46 @@ func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput
 
 func buildListingKitModuleResult(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
 	return listingkithttpapi.BuildRuntimeModule(input)
+}
+
+func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*imageagenthttpapi.BuildResult, error) {
+	workflowClient, workflowCloser, err := appruntime.DialImageAgentTemporalWorkflowClient(logger)
+	if err != nil {
+		return nil, err
+	}
+	if workflowClient == nil {
+		return nil, nil
+	}
+	closeWorkflowOnError := func() {
+		if workflowCloser != nil {
+			_ = workflowCloser()
+		}
+	}
+	if cfg == nil || cfg.Database == nil {
+		closeWorkflowOnError()
+		return nil, fmt.Errorf("build image agent HTTP module: database config is required")
+	}
+	db, err := database.NewSharedDatabaseFromConfig(cfg.Database)
+	if err != nil {
+		closeWorkflowOnError()
+		return nil, fmt.Errorf("build image agent repository: %w", err)
+	}
+	databaseCloser := func() error { return database.CloseSharedDatabase(cfg.Database, db) }
+	service, err := imageagent.NewService(imageagentstore.NewGormRepository(db), workflowClient)
+	if err != nil {
+		_ = databaseCloser()
+		closeWorkflowOnError()
+		return nil, err
+	}
+	built, err := imageagenthttpapi.BuildModule(service)
+	if err != nil {
+		_ = databaseCloser()
+		closeWorkflowOnError()
+		return nil, err
+	}
+	built.Closers = append(built.Closers, databaseCloser)
+	if workflowCloser != nil {
+		built.Closers = append(built.Closers, workflowCloser)
+	}
+	return built, nil
 }

@@ -7,6 +7,7 @@ import (
 
 	"go.temporal.io/api/enums/v1"
 	sdkclient "go.temporal.io/sdk/client"
+	sdkconverter "go.temporal.io/sdk/converter"
 	sdkworker "go.temporal.io/sdk/worker"
 	sdkworkflow "go.temporal.io/sdk/workflow"
 
@@ -15,7 +16,45 @@ import (
 
 type sdkWorkflowClient interface {
 	ExecuteWorkflow(context.Context, sdkclient.StartWorkflowOptions, interface{}, ...interface{}) (sdkclient.WorkflowRun, error)
+	QueryWorkflow(context.Context, string, string, string, ...interface{}) (sdkconverter.EncodedValue, error)
 	SignalWorkflow(context.Context, string, string, string, interface{}) error
+}
+
+func (c *Client) GetProjection(ctx context.Context, scope imageagent.RunScope, identity imageagent.ExecutionIdentity) (imageagent.WorkflowProjection, error) {
+	if c == nil || c.client == nil {
+		return imageagent.WorkflowProjection{}, fmt.Errorf("image agent temporal client is not configured")
+	}
+	if err := validateCommandIdentity(identity, scope.RunID); err != nil {
+		return imageagent.WorkflowProjection{}, err
+	}
+	if strings.TrimSpace(scope.TenantID) != strings.TrimSpace(identity.TenantID) {
+		return imageagent.WorkflowProjection{}, imageagent.ErrRunNotFound
+	}
+	encoded, err := c.client.QueryWorkflow(ctx, WorkflowID(identity.TenantID, scope.RunID), "", QueryWorkflowProjection)
+	if err != nil {
+		return imageagent.WorkflowProjection{}, err
+	}
+	var projection imageagent.WorkflowProjection
+	if err := encoded.Get(&projection); err != nil {
+		return imageagent.WorkflowProjection{}, fmt.Errorf("decode image agent workflow projection: %w", err)
+	}
+	return projection, nil
+}
+
+func (c *Client) ReplacePlan(ctx context.Context, command imageagent.ReplacePlanCommand) error {
+	if err := c.validateSignal(command.Identity, command.RunID, command.ExpectedRevision, command.ActorID, command.ActionID); err != nil {
+		return err
+	}
+	if command.Plan.ParentRevision != command.ExpectedRevision || command.Plan.Revision <= command.ExpectedRevision {
+		return fmt.Errorf("image agent replacement plan must advance expected revision")
+	}
+	if err := imageagent.ValidatePlan(command.Plan); err != nil {
+		return fmt.Errorf("validate image agent replacement plan: %w", err)
+	}
+	return c.client.SignalWorkflow(ctx, WorkflowID(command.Identity.TenantID, command.RunID), "", signalReplacePlan, ReplacePlanSignal{
+		RunID: command.RunID, ExpectedRevision: command.ExpectedRevision, Plan: command.Plan,
+		ActorID: command.ActorID, ActionID: command.ActionID,
+	})
 }
 
 type Client struct {
