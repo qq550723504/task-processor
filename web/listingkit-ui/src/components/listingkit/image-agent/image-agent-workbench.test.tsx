@@ -14,6 +14,7 @@ class FakeEventSource {
   readonly url: string;
   onmessage: ((event: MessageEvent<string>) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
+  onopen: ((event: Event) => void) | null = null;
   closed = false;
   private listeners = new Map<string, EventListener>();
 
@@ -53,6 +54,10 @@ class FakeEventSource {
 
   fail() {
     this.onerror?.(new Event("error"));
+  }
+
+  open() {
+    this.onopen?.(new Event("open"));
   }
 }
 
@@ -111,6 +116,28 @@ describe("ImageAgentWorkbench", () => {
       "src",
       "https://assets.example/scene-1.png",
     );
+  });
+
+  it("does not render unsafe provider candidate URLs", () => {
+    const projection = projectionWithSlots(1);
+    projection.slots[0]!.candidates[0]!.url = "javascript:alert(document.domain)";
+
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
+
+    expect(screen.queryByAltText("main-1 候选图 1")).not.toBeInTheDocument();
+    expect(screen.getByText("candidate-main-1")).toBeInTheDocument();
+  });
+
+  it("states that style references are unavailable when the run catalog has no styles", () => {
+    const projection = projectionWithSlots(1);
+    projection.asset_catalog = projection.asset_catalog.filter((asset) => asset.type === "source");
+    projection.plan.style_reference_ids = [];
+    projection.plan.slots[0]!.style_reference_ids = [];
+
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
+
+    expect(within(screen.getByTestId("image-agent-style-references")).getByText("当前任务没有可用风格库/风格参考不可用")).toBeInTheDocument();
+    expect(within(screen.getAllByTestId("image-slot-card")[0]!).getByText("当前任务没有可用风格库/风格参考不可用")).toBeInTheDocument();
   });
 
   it("refuses to render a run that belongs to another business task", () => {
@@ -481,6 +508,61 @@ describe("ImageAgentWorkbench", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(fetchSpy).toHaveBeenCalledTimes(3);
+	await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(FakeEventSource.active).toBe(1);
+  });
+
+  it("backs off EventSource failures even when every recovery snapshot succeeds", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const initial = projectionWithSlots(7);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(initial), { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={initial} />);
+
+    await act(async () => { FakeEventSource.instances[0]?.fail(); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(499); });
+    expect(FakeEventSource.instances).toHaveLength(1);
+	await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    expect(FakeEventSource.instances).toHaveLength(2);
+
+    await act(async () => { FakeEventSource.instances[1]?.fail(); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+	await act(async () => { await vi.advanceTimersByTimeAsync(0); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(999); });
+    expect(FakeEventSource.instances).toHaveLength(2);
+	await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(FakeEventSource.instances).toHaveLength(3);
+    expect(FakeEventSource.active).toBe(1);
+  });
+
+  it("isolates delayed snapshots and stale EventSource callbacks when runId changes", async () => {
+    const runOne = projectionWithSlots(1);
+    const runTwo = structuredClone(runOne);
+    runTwo.run.id = "run-2";
+    runTwo.slots[0]!.candidates[0]!.url = "https://assets.example/run-2.png";
+    let resolveRunOne!: (response: Response) => void;
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveRunOne = resolve; }));
+    const rendered = render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={runOne} />);
+    await act(async () => { FakeEventSource.instances[0]?.fail(); await Promise.resolve(); });
+
+    rendered.rerender(<ImageAgentWorkbench taskId="task-1" runId="run-2" initialRun={runTwo} />);
+    expect(screen.getByAltText("main-1 候选图 1")).toHaveAttribute("src", "https://assets.example/run-2.png");
+    const oldSource = FakeEventSource.instances[0]!;
+    const instanceCountAfterSwitch = FakeEventSource.instances.length;
+
+    await act(async () => {
+      resolveRunOne(new Response(JSON.stringify(runOne), { status: 200, headers: { "content-type": "application/json" } }));
+      await Promise.resolve();
+      oldSource.fail();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByAltText("main-1 候选图 1")).toHaveAttribute("src", "https://assets.example/run-2.png");
+    expect(FakeEventSource.instances).toHaveLength(instanceCountAfterSwitch);
     expect(FakeEventSource.active).toBe(1);
   });
 

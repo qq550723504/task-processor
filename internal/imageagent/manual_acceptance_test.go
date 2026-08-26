@@ -54,17 +54,26 @@ func executeAcceptanceWorkflow(t *testing.T, plan imageagent.Plan, invalidSlotID
 		IdempotencyKey: "run-key-acceptance", Status: imageagent.RunStatusPlanning,
 		CurrentNode: "plan", Version: 1,
 	}
-	require.NoError(t, repository.CreateRun(context.Background(), run))
-	scope := imageagent.RunScope{TenantID: run.TenantID, RunID: run.ID}
-	require.NoError(t, repository.AppendPlan(context.Background(), scope, 0, plan))
+	scope := imageagent.RunScope{TenantID: run.TenantID, OwnerUserID: run.UserID, RunID: run.ID}
 	catalog := acceptanceAssetCatalog(9)
-	require.NoError(t, repository.SaveAssetCatalog(context.Background(), scope, catalog))
+	normalizedCatalog, err := imageagent.NormalizeAssetCatalog(catalog)
+	require.NoError(t, err)
+	run.ActivePlanRevision = plan.Revision
+	initialSlots := make([]imageagent.SlotProjection, len(plan.Slots))
+	for index, slot := range plan.Slots {
+		initialSlots[index] = imageagent.SlotProjection{Slot: slot}
+	}
+	_, err = repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{
+		Scope: scope, Run: *run, Plan: plan, Catalog: normalizedCatalog,
+		Snapshot: imageagent.RunProjection{Run: *run, Plan: plan, Slots: initialSlots, AssetCatalog: normalizedCatalog, ProjectionVersion: 1, LastEventID: 1},
+		CommitID: "start:run-key-acceptance", EventType: "run.created", EventPayload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
 
 	delegate := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
 		SubjectExtractor:        acceptanceSubjectExtractor{},
 		WhiteBackgroundRenderer: acceptanceWhiteRenderer{},
 		SceneRenderer:           acceptanceSceneRenderer{},
-		SourceAssets:            acceptanceSourceAssets(9),
 	})
 	executor := &recordingAcceptanceExecutor{delegate: delegate, invalidSlotID: invalidSlotID}
 	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
@@ -80,7 +89,7 @@ func executeAcceptanceWorkflow(t *testing.T, plan imageagent.Plan, invalidSlotID
 	env.ExecuteWorkflow(imageagenttemporal.ImageAgentWorkflow, imageagenttemporal.WorkflowInput{
 		RunID: run.ID, Mode: imageagent.RunModeManual,
 		Identity: imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID},
-		Plan:     plan, AssetCatalog: catalog, MaxConcurrentSlots: 4, WaitForCommands: false,
+		Plan:     plan, AssetCatalog: normalizedCatalog, MaxConcurrentSlots: 4, WaitForCommands: false,
 	})
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
@@ -132,19 +141,6 @@ func acceptancePlan(slotCount, sourceCount int) imageagent.Plan {
 		SourceAssetIDs: sourceIDs, StyleReferenceIDs: []string{"style-modern"},
 		Slots: slots, CreatedBy: "user-a",
 	}
-}
-
-func acceptanceSourceAssets(count int) map[string]productimage.ImageAsset {
-	assets := make(map[string]productimage.ImageAsset, count)
-	for index := 1; index <= count; index++ {
-		id := fmt.Sprintf("source-%d", index)
-		url := fmt.Sprintf("https://source.example/%s.png", id)
-		assets[id] = productimage.ImageAsset{
-			URL: url, SourceURL: url, Type: productimage.AssetTypeSourceImage,
-			Width: 1200, Height: 1200,
-		}
-	}
-	return assets
 }
 
 type recordingAcceptanceExecutor struct {

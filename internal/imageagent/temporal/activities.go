@@ -1,10 +1,8 @@
 package temporal
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -64,7 +62,8 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 	if strings.TrimSpace(result.Execution.SlotID) == "" || result.Execution.Attempt <= 0 {
 		return fmt.Errorf("terminal slot result requires slot ID and positive attempt")
 	}
-	candidateIDs := make([]string, 0, len(result.Execution.Candidates))
+	var candidateIDs []string
+	var candidates []imageagent.AssetCandidate
 	for _, candidate := range result.Execution.Candidates {
 		id := strings.TrimSpace(candidate.AssetID)
 		if id == "" {
@@ -73,7 +72,13 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 			}
 			continue
 		}
+		validatedURL, validateErr := imageagent.ValidateSafeImageURL(candidate.URL)
+		if validateErr != nil {
+			return fmt.Errorf("candidate %q has unsafe URL: %w", id, validateErr)
+		}
+		candidate.URL = validatedURL
 		candidateIDs = append(candidateIDs, id)
+		candidates = append(candidates, candidate)
 	}
 	if result.Status == imageagent.SlotStatusAccepted && len(candidateIDs) == 0 {
 		return fmt.Errorf("accepted slot result requires at least one candidate asset ID")
@@ -83,21 +88,36 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 		outcome = "blocked"
 	}
 	attempt := imageagent.StepAttempt{
-		TenantID: input.Identity.TenantID, RunID: input.RunID,
+		TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID,
 		SlotID: result.Execution.SlotID, Node: "execute_slot",
 		IdempotencyKey: input.AttemptKey, Attempt: result.Execution.Attempt,
 		Outcome: outcome, ErrorCategory: result.ErrorCode,
 	}
-	if err := a.repository.AppendAttempt(ctx, attempt); err != nil {
-		return fmt.Errorf("append slot attempt: %w", err)
+	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}
+	current, err := a.repository.GetProjection(ctx, scope)
+	if err != nil {
+		return fmt.Errorf("load image agent projection: %w", err)
 	}
-	if err := a.repository.SaveSlotResult(ctx, imageagent.RunScope{TenantID: input.Identity.TenantID, RunID: input.RunID}, input.PlanRevision, imageagent.SlotResult{
+	if slotProjectionAlreadyPersisted(current.Slots, result.Execution.SlotID, result.Execution.Attempt, result.Status, candidates, result.ErrorCode) {
+		return nil
+	}
+	storedResult := imageagent.SlotResult{
 		SlotID: result.Execution.SlotID, Attempt: result.Execution.Attempt,
 		Status: result.Status, CandidateAssetIDs: candidateIDs, ErrorCode: result.ErrorCode,
-	}); err != nil {
-		return fmt.Errorf("save terminal slot result: %w", err)
 	}
-	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, RunID: input.RunID}
+	updated := current
+	found := false
+	for index := range updated.Slots {
+		if updated.Slots[index].Slot.ID != result.Execution.SlotID {
+			continue
+		}
+		updated.Slots[index] = imageagent.SlotProjection{Slot: updated.Slots[index].Slot, Attempt: result.Execution.Attempt, Candidates: candidates, ErrorCode: result.ErrorCode}
+		updated.Slots[index].Slot.Status = result.Status
+		found = true
+	}
+	if !found {
+		return imageagent.ErrRevisionConflict
+	}
 	eventPayload, err := json.Marshal(slotResultPersistedEventPayload{
 		PlanRevision: input.PlanRevision, SlotID: result.Execution.SlotID,
 		Attempt: result.Execution.Attempt, AttemptKey: input.AttemptKey,
@@ -106,10 +126,20 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 	if err != nil {
 		return fmt.Errorf("encode terminal slot result event: %w", err)
 	}
-	if err := appendSlotResultEvent(ctx, a.repository, scope, eventPayload); err != nil {
-		return err
+	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: "slot:" + input.AttemptKey, ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: slotResultPersistedEventType, EventPayload: eventPayload, SlotMutation: &imageagent.SlotProjectionMutation{PlanRevision: input.PlanRevision, Result: storedResult, Projection: updated.Slots[slotProjectionIndex(updated.Slots, result.Execution.SlotID)], Attempt: attempt}})
+	if err != nil {
+		return fmt.Errorf("commit terminal slot projection: %w", err)
 	}
 	return nil
+}
+
+func slotProjectionAlreadyPersisted(slots []imageagent.SlotProjection, slotID string, attempt int, status imageagent.SlotStatus, candidates []imageagent.AssetCandidate, errorCode string) bool {
+	for _, slot := range slots {
+		if slot.Slot.ID == slotID {
+			return slot.Attempt == attempt && slot.Slot.Status == status && slot.ErrorCode == errorCode && reflect.DeepEqual(slot.Candidates, candidates)
+		}
+	}
+	return false
 }
 
 type slotResultPersistedEventPayload struct {
@@ -122,69 +152,37 @@ type slotResultPersistedEventPayload struct {
 	ErrorCode         string                `json:"error_code,omitempty"`
 }
 
-func appendSlotResultEvent(ctx context.Context, repository imageagent.Repository, scope imageagent.RunScope, payload json.RawMessage) error {
-	const pageSize = 100
-	var afterCursor int64
-	for {
-		events, err := repository.ListEvents(ctx, scope, afterCursor, pageSize)
-		if err != nil {
-			return fmt.Errorf("list terminal slot result events: %w", err)
-		}
-		for _, event := range events {
-			if event.Type == slotResultPersistedEventType && bytes.Equal(event.Payload, payload) {
-				return nil
-			}
-		}
-		if len(events) == 0 {
-			break
-		}
-		afterCursor = events[len(events)-1].Cursor
-		if len(events) < pageSize {
-			break
-		}
-	}
-	_, err := repository.AppendProjectionEvent(ctx, imageagent.RunEvent{
-		TenantID: scope.TenantID, RunID: scope.RunID, Type: slotResultPersistedEventType,
-		Payload: append(json.RawMessage(nil), payload...),
-	})
-	if errors.Is(err, imageagent.ErrRevisionConflict) {
-		events, listErr := repository.ListEvents(ctx, scope, afterCursor, pageSize)
-		if listErr != nil {
-			return fmt.Errorf("verify terminal slot result event after cursor conflict: %w", listErr)
-		}
-		for _, event := range events {
-			if event.Type == slotResultPersistedEventType && bytes.Equal(event.Payload, payload) {
-				return nil
-			}
-		}
-	}
-	if err != nil {
-		return fmt.Errorf("append terminal slot result event: %w", err)
-	}
-	return nil
-}
-
 func (a *Activities) PersistRunState(ctx context.Context, input PersistRunStateActivityInput) error {
 	ctx, err := restoreActivityIdentity(ctx, input.Identity)
 	if err != nil {
 		return err
 	}
-	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, RunID: input.RunID}
-	run, err := a.repository.GetRun(ctx, scope)
+	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}
+	current, err := a.repository.GetProjection(ctx, scope)
 	if err != nil {
-		return fmt.Errorf("get image agent run: %w", err)
+		return fmt.Errorf("get image agent projection: %w", err)
 	}
-	if run.ActivePlanRevision != input.PlanRevision {
+	if current.Run.ActivePlanRevision != input.PlanRevision {
 		return imageagent.ErrRevisionConflict
 	}
-	if run.Status == input.Status && run.CurrentNode == input.CurrentNode && reflect.DeepEqual(run.Block, input.Block) {
+	if current.Run.Status == input.Projection.Status && current.Run.CurrentNode == input.CurrentNode &&
+		reflect.DeepEqual(current.Run.Block, input.Projection.Block) && reflect.DeepEqual(current.Plan, input.Projection.Plan) &&
+		reflect.DeepEqual(current.Slots, input.Projection.Slots) && current.ResultDigest == input.Projection.ResultDigest &&
+		reflect.DeepEqual(current.PendingCommand, input.Projection.PendingCommand) {
 		return nil
 	}
-	if err := a.repository.UpdateRun(ctx, scope, run.Version, imageagent.RunMutation{
-		Status: input.Status, CurrentNode: input.CurrentNode,
-		ActivePlanRevision: input.PlanRevision, Block: input.Block,
-	}); err != nil {
-		return fmt.Errorf("update image agent run: %w", err)
+	updated := current
+	updated.Run.Status = input.Projection.Status
+	updated.Run.CurrentNode = input.CurrentNode
+	updated.Run.Block = cloneTemporalBlock(input.Projection.Block)
+	updated.Run.Version++
+	updated.Plan = input.Projection.Plan
+	updated.Slots = append([]imageagent.SlotProjection(nil), input.Projection.Slots...)
+	updated.ResultDigest = input.Projection.ResultDigest
+	updated.PendingCommand = clonePendingReceipt(input.Projection.PendingCommand)
+	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: input.CommitID, ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: "run.updated", EventPayload: json.RawMessage(`{}`), ExpectedRunVersion: current.Run.Version, RunMutation: &imageagent.RunMutation{Status: updated.Run.Status, CurrentNode: input.CurrentNode, ActivePlanRevision: input.PlanRevision, Block: updated.Run.Block}})
+	if err != nil {
+		return fmt.Errorf("commit image agent run projection: %w", err)
 	}
 	return nil
 }
@@ -200,10 +198,79 @@ func (a *Activities) PersistPlanRevision(ctx context.Context, input PersistPlanR
 	if err := imageagent.ValidatePlan(input.Plan); err != nil {
 		return fmt.Errorf("validate replacement plan: %w", err)
 	}
-	if err := a.repository.AppendPlan(ctx, imageagent.RunScope{TenantID: input.Identity.TenantID, RunID: input.RunID}, input.ExpectedRevision, input.Plan); err != nil {
-		return fmt.Errorf("append replacement plan: %w", err)
+	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}
+	current, err := a.repository.GetProjection(ctx, scope)
+	if err != nil {
+		return err
+	}
+	if current.Plan.Revision == input.Plan.Revision && current.Run.ActivePlanRevision == input.Plan.Revision &&
+		current.Run.Status == imageagent.RunStatusExecuting && reflect.DeepEqual(current.Plan, input.Plan) {
+		return nil
+	}
+	updated := current
+	updated.Plan = input.Plan
+	updated.Run.ActivePlanRevision = input.Plan.Revision
+	updated.Run.Status = imageagent.RunStatusExecuting
+	updated.Run.CurrentNode = "execute_slots"
+	updated.Run.Block = nil
+	updated.Run.Version++
+	updated.ResultDigest = ""
+	updated.PendingCommand = nil
+	updated.Slots = make([]imageagent.SlotProjection, len(input.Plan.Slots))
+	for index, slot := range input.Plan.Slots {
+		updated.Slots[index] = imageagent.SlotProjection{Slot: slot}
+	}
+	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: "plan:" + input.Plan.IdempotencyKey, ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: "plan.replaced", EventPayload: json.RawMessage(`{}`), ExpectedRunVersion: current.Run.Version, RunMutation: &imageagent.RunMutation{Status: imageagent.RunStatusExecuting, CurrentNode: "execute_slots", ActivePlanRevision: input.Plan.Revision}, PlanMutation: &imageagent.PlanProjectionMutation{ExpectedActiveRevision: input.ExpectedRevision, Plan: input.Plan}})
+	if err != nil {
+		return fmt.Errorf("commit replacement plan projection: %w", err)
 	}
 	return nil
+}
+
+func slotProjectionIndex(slots []imageagent.SlotProjection, slotID string) int {
+	for index := range slots {
+		if slots[index].Slot.ID == slotID {
+			return index
+		}
+	}
+	return -1
+}
+func cloneTemporalBlock(block *imageagent.Block) *imageagent.Block {
+	if block == nil {
+		return nil
+	}
+	cloned := *block
+	return &cloned
+}
+
+func (a *Activities) PersistPendingCommand(ctx context.Context, input PersistPendingCommandActivityInput) error {
+	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(input.CommitID) == "" {
+		return fmt.Errorf("pending command projection commit ID is required")
+	}
+	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}
+	current, err := a.repository.GetProjection(ctx, scope)
+	if err != nil {
+		return err
+	}
+	if reflect.DeepEqual(current.PendingCommand, input.Receipt) {
+		return nil
+	}
+	updated := current
+	updated.PendingCommand = clonePendingReceipt(input.Receipt)
+	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: input.CommitID, ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: "command.receipt.updated", EventPayload: json.RawMessage(`{}`)})
+	return err
+}
+
+func clonePendingReceipt(receipt *imageagent.PendingCommandReceipt) *imageagent.PendingCommandReceipt {
+	if receipt == nil {
+		return nil
+	}
+	cloned := *receipt
+	return &cloned
 }
 
 func (a *Activities) PublishApproved(ctx context.Context, input PublishApprovedActivityInput) error {
@@ -233,6 +300,7 @@ func RegisterActivities(registrar activityRegistrar, activities *Activities) err
 	registrar.RegisterActivityWithOptions(activities.PersistSlotResult, sdkactivity.RegisterOptions{Name: activityPersistSlotResult})
 	registrar.RegisterActivityWithOptions(activities.PersistRunState, sdkactivity.RegisterOptions{Name: activityPersistRunState})
 	registrar.RegisterActivityWithOptions(activities.PersistPlanRevision, sdkactivity.RegisterOptions{Name: activityPersistPlanRevision})
+	registrar.RegisterActivityWithOptions(activities.PersistPendingCommand, sdkactivity.RegisterOptions{Name: activityPersistPendingCommand})
 	registrar.RegisterActivityWithOptions(activities.PublishApproved, sdkactivity.RegisterOptions{Name: activityPublishApproved})
 	return nil
 }

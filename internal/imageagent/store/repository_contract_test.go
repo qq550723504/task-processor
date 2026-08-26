@@ -20,23 +20,23 @@ func TestRepositoryContract(t *testing.T) {
 
 	tests := []struct {
 		name string
-		new  func(t *testing.T) imageagent.Repository
+		new  func(t *testing.T) repositoryContract
 	}{
 		{
 			name: "memory",
-			new: func(t *testing.T) imageagent.Repository {
+			new: func(t *testing.T) repositoryContract {
 				t.Helper()
-				return NewMemoryRepository()
+				return NewMemoryRepository().(repositoryContract)
 			},
 		},
 		{
 			name: "gorm sqlite",
-			new: func(t *testing.T) imageagent.Repository {
+			new: func(t *testing.T) repositoryContract {
 				t.Helper()
 				db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 				require.NoError(t, err)
 				require.NoError(t, AutoMigrate(db))
-				return NewGormRepository(db)
+				return NewGormRepository(db).(repositoryContract)
 			},
 		},
 	}
@@ -56,19 +56,108 @@ func TestRepositoryContract(t *testing.T) {
 			testAppendedEventIsVisibleInCursorOrder(t, tt.new(t))
 			testProjectionEventsAllocateOneDurableCursorPerChange(t, tt.new(t))
 			testAuthorizedAssetCatalogRoundTripsAndCannotBeReplaced(t, tt.new(t))
+			testMissingCatalogManifestDiffersFromLegitimateEmptyCatalog(t, tt.new(t))
+			testProjectionCommitRollbackHidesEventSnapshotAndNormalizedWrites(t, tt.new(t))
 			testAttemptIdentitiesAreIdempotentAndNonAliasing(t, tt.new(t))
 		})
 	}
 }
 
-func testProjectionEventsAllocateOneDurableCursorPerChange(t *testing.T, repo imageagent.Repository) {
+// repositoryContract keeps Task 1 compatibility storage methods under test
+// without exposing them through the production imageagent.Repository. Public
+// code can mutate run/plan/slot/event state only through CommitProjection.
+type repositoryContract interface {
+	imageagent.Repository
+	CreateRun(context.Context, *imageagent.Run) error
+	GetRun(context.Context, imageagent.RunScope) (*imageagent.Run, error)
+	UpdateRun(context.Context, imageagent.RunScope, int64, imageagent.RunMutation) error
+	AppendPlan(context.Context, imageagent.RunScope, int64, imageagent.Plan) error
+	SaveSlotResult(context.Context, imageagent.RunScope, int64, imageagent.SlotResult) error
+	AppendAttempt(context.Context, imageagent.StepAttempt) error
+	AppendEvent(context.Context, imageagent.RunEvent) error
+	AppendProjectionEvent(context.Context, imageagent.RunEvent) (imageagent.RunEvent, error)
+	SaveAssetCatalog(context.Context, imageagent.RunScope, imageagent.AssetCatalog) error
+}
+
+func testProjectionCommitRollbackHidesEventSnapshotAndNormalizedWrites(t *testing.T, repo repositoryContract) {
+	t.Helper()
+	ctx := context.Background()
+	run := manualRun("run-projection-rollback", "tenant-a")
+	plan := planRevision(1)
+	scope := imageagent.ScopeForRun(*run)
+	catalog := imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+		{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source-1.png"},
+		{ID: "style-1", Type: imageagent.AuthorizedAssetStyle},
+	}}
+	initial, err := repo.InitializeRun(ctx, imageagent.ProjectionInitialization{
+		Scope: scope, Run: *run, Plan: plan, Catalog: catalog,
+		Snapshot: imageagent.RunProjection{Run: *run, Plan: plan},
+		CommitID: "start:rollback", EventType: "run.created", EventPayload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+	tamperedCatalog := initial
+	tamperedCatalog.AssetCatalog.Assets[0].URL = "https://attacker.example/rebind.png"
+	_, err = repo.CommitProjection(ctx, imageagent.ProjectionCommit{
+		Scope: scope, CommitID: "catalog:tamper", ExpectedProjectionVersion: initial.ProjectionVersion,
+		Snapshot: tamperedCatalog, EventType: "catalog.tampered", EventPayload: json.RawMessage(`{}`),
+	})
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict, "a projection commit cannot replace the immutable run catalog")
+
+	bad := initial
+	bad.Slots[0] = imageagent.SlotProjection{
+		Slot:       bad.Slots[0].Slot,
+		Attempt:    1,
+		Candidates: []imageagent.AssetCandidate{{AssetID: "candidate-unsafe", URL: "javascript:alert(1)"}},
+	}
+	bad.Slots[0].Slot.Status = imageagent.SlotStatusAccepted
+	attempt := imageagent.StepAttempt{
+		TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID,
+		SlotID: "slot-1", Node: "execute_slot", IdempotencyKey: "attempt-unsafe", Attempt: 1, Outcome: "accepted",
+	}
+	_, err = repo.CommitProjection(ctx, imageagent.ProjectionCommit{
+		Scope: scope, CommitID: "slot:unsafe", ExpectedProjectionVersion: initial.ProjectionVersion,
+		Snapshot: bad, EventType: "slot.result.persisted", EventPayload: json.RawMessage(`{}`),
+		SlotMutation: &imageagent.SlotProjectionMutation{
+			PlanRevision: 1,
+			Result:       imageagent.SlotResult{SlotID: "slot-1", Attempt: 1, Status: imageagent.SlotStatusAccepted, CandidateAssetIDs: []string{"candidate-unsafe"}},
+			Projection:   bad.Slots[0], Attempt: attempt,
+		},
+	})
+	require.Error(t, err)
+
+	stored, err := repo.GetProjection(ctx, scope)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, stored.ProjectionVersion)
+	require.Empty(t, stored.Slots[0].Candidates)
+	events, err := repo.ListEvents(ctx, scope, 0, 10)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+
+	attempt.Outcome = "independent-retry"
+	require.NoError(t, repo.AppendAttempt(ctx, attempt), "failed projection transaction must not leave an attempt behind")
+}
+
+func testMissingCatalogManifestDiffersFromLegitimateEmptyCatalog(t *testing.T, repo repositoryContract) {
+	t.Helper()
+	ctx := context.Background()
+	require.NoError(t, repo.CreateRun(ctx, manualRun("run-catalog-missing", "tenant-a")))
+	scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-catalog-missing"}
+	_, err := repo.GetAssetCatalog(ctx, scope)
+	require.ErrorIs(t, err, imageagent.ErrCatalogSnapshotMissing)
+	require.NoError(t, repo.SaveAssetCatalog(ctx, scope, imageagent.AssetCatalog{}))
+	got, err := repo.GetAssetCatalog(ctx, scope)
+	require.NoError(t, err)
+	require.Empty(t, got.Assets)
+}
+
+func testProjectionEventsAllocateOneDurableCursorPerChange(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, repo.CreateRun(ctx, manualRun("run-cursor", "tenant-a")))
-	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-cursor"}
-	first, err := repo.AppendProjectionEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "slot.result.persisted", Payload: json.RawMessage(`{}`)})
+	scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-cursor"}
+	first, err := repo.AppendProjectionEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, Type: "slot.result.persisted", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
-	second, err := repo.AppendProjectionEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "slot.result.persisted", Payload: json.RawMessage(`{}`)})
+	second, err := repo.AppendProjectionEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, Type: "slot.result.persisted", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, first.Cursor)
 	require.Equal(t, first.Cursor, first.ProjectionVersion)
@@ -82,11 +171,11 @@ func testProjectionEventsAllocateOneDurableCursorPerChange(t *testing.T, repo im
 	require.Equal(t, events[2].Cursor, events[2].ProjectionVersion)
 }
 
-func testAuthorizedAssetCatalogRoundTripsAndCannotBeReplaced(t *testing.T, repo imageagent.Repository) {
+func testAuthorizedAssetCatalogRoundTripsAndCannotBeReplaced(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, repo.CreateRun(ctx, manualRun("run-catalog", "tenant-a")))
-	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-catalog"}
+	scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-catalog"}
 	catalog := imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
 		{ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example/source.png", Width: 1200, Height: 900},
 		{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, Label: "Style"},
@@ -95,14 +184,18 @@ func testAuthorizedAssetCatalogRoundTripsAndCannotBeReplaced(t *testing.T, repo 
 	require.NoError(t, repo.SaveAssetCatalog(ctx, scope, catalog))
 	got, err := repo.GetAssetCatalog(ctx, scope)
 	require.NoError(t, err)
-	require.Equal(t, catalog, got)
+	normalized, err := imageagent.NormalizeAssetCatalog(catalog)
+	require.NoError(t, err)
+	require.Equal(t, normalized.Manifest.Version, got.Manifest.Version)
+	require.Equal(t, normalized.Manifest.Hash, got.Manifest.Hash)
+	require.Equal(t, normalized.Assets, got.Assets)
 	changed := catalog
 	changed.Assets = append([]imageagent.AuthorizedAsset(nil), catalog.Assets...)
 	changed.Assets[0].DisplayURL = "https://attacker.example/injected.png"
 	require.ErrorIs(t, repo.SaveAssetCatalog(ctx, scope, changed), imageagent.ErrRevisionConflict)
 }
 
-func testOnlyManualRunsAreAccepted(t *testing.T, repo imageagent.Repository) {
+func testOnlyManualRunsAreAccepted(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	for _, mode := range []imageagent.RunMode{"", imageagent.RunModeAssisted, imageagent.RunModeAutomatic} {
@@ -112,7 +205,7 @@ func testOnlyManualRunsAreAccepted(t *testing.T, repo imageagent.Repository) {
 	}
 }
 
-func testRunCreateRetriesAreIdempotent(t *testing.T, repo imageagent.Repository) {
+func testRunCreateRetriesAreIdempotent(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	run := manualRun("run-1", "tenant-a")
@@ -128,7 +221,7 @@ func testRunCreateRetriesAreIdempotent(t *testing.T, repo imageagent.Repository)
 	require.ErrorIs(t, repo.CreateRun(ctx, conflictingKey), imageagent.ErrRevisionConflict)
 }
 
-func testRunJSONRoundTrips(t *testing.T, repo imageagent.Repository) {
+func testRunJSONRoundTrips(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	run := manualRun("run-1", "tenant-a")
@@ -137,18 +230,18 @@ func testRunJSONRoundTrips(t *testing.T, repo imageagent.Repository) {
 	run.Block = &imageagent.Block{Code: "awaiting_input", Message: "need source", SlotID: "slot-1"}
 	require.NoError(t, repo.CreateRun(ctx, run))
 
-	stored, err := repo.GetRun(ctx, imageagent.RunScope{TenantID: run.TenantID, RunID: run.ID})
+	stored, err := repo.GetRun(ctx, imageagent.RunScope{TenantID: run.TenantID, OwnerUserID: run.UserID, RunID: run.ID})
 	require.NoError(t, err)
 	require.Equal(t, run.Budget, stored.Budget)
 	require.Equal(t, run.Usage, stored.Usage)
 	require.Equal(t, run.Block, stored.Block)
 }
 
-func testSlotResultRequiresCurrentPlanRevision(t *testing.T, repo imageagent.Repository) {
+func testSlotResultRequiresCurrentPlanRevision(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, repo.CreateRun(ctx, manualRun("run-1", "tenant-a")))
-	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}
+	scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-1"}
 	require.NoError(t, repo.AppendPlan(ctx, scope, 0, planRevision(1)))
 
 	result := imageagent.SlotResult{SlotID: "slot-1", Attempt: 1, Status: imageagent.SlotStatusAccepted, CandidateAssetIDs: []string{"asset-1"}}
@@ -158,11 +251,11 @@ func testSlotResultRequiresCurrentPlanRevision(t *testing.T, repo imageagent.Rep
 	require.ErrorIs(t, repo.SaveSlotResult(ctx, scope, 1, result), imageagent.ErrRevisionConflict)
 }
 
-func testSlotResultRetryAndAttemptOrdering(t *testing.T, repo imageagent.Repository) {
+func testSlotResultRetryAndAttemptOrdering(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, repo.CreateRun(ctx, manualRun("run-1", "tenant-a")))
-	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}
+	scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-1"}
 	require.NoError(t, repo.AppendPlan(ctx, scope, 0, planRevision(1)))
 
 	first := imageagent.SlotResult{SlotID: "slot-1", Attempt: 1, Status: imageagent.SlotStatusAccepted, CandidateAssetIDs: []string{"asset-1"}}
@@ -179,15 +272,15 @@ func testSlotResultRetryAndAttemptOrdering(t *testing.T, repo imageagent.Reposit
 	require.ErrorIs(t, repo.SaveSlotResult(ctx, scope, 1, first), imageagent.ErrRevisionConflict)
 }
 
-func testAppendedEventIsVisibleInCursorOrder(t *testing.T, repo imageagent.Repository) {
+func testAppendedEventIsVisibleInCursorOrder(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, repo.CreateRun(ctx, manualRun("run-1", "tenant-a")))
-	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}
-	require.NoError(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "run.created", Cursor: 2, ProjectionVersion: 0, Payload: json.RawMessage(`{"run_id":"run-1"}`)}))
-	require.NoError(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "plan.requested", Cursor: 3, ProjectionVersion: 0, Payload: json.RawMessage(`{"revision":1}`)}))
-	require.ErrorIs(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "retrograde", Cursor: 1}), imageagent.ErrRevisionConflict)
-	require.ErrorIs(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, RunID: scope.RunID, Type: "duplicate", Cursor: 3}), imageagent.ErrRevisionConflict)
+	scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-1"}
+	require.NoError(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, Type: "run.created", Cursor: 2, ProjectionVersion: 0, Payload: json.RawMessage(`{"run_id":"run-1"}`)}))
+	require.NoError(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, Type: "plan.requested", Cursor: 3, ProjectionVersion: 0, Payload: json.RawMessage(`{"revision":1}`)}))
+	require.ErrorIs(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, Type: "retrograde", Cursor: 1}), imageagent.ErrRevisionConflict)
+	require.ErrorIs(t, repo.AppendEvent(ctx, imageagent.RunEvent{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, Type: "duplicate", Cursor: 3}), imageagent.ErrRevisionConflict)
 
 	events, err := repo.ListEvents(ctx, scope, 2, 10)
 	require.NoError(t, err)
@@ -196,21 +289,21 @@ func testAppendedEventIsVisibleInCursorOrder(t *testing.T, repo imageagent.Repos
 	require.EqualValues(t, 3, events[0].Cursor)
 }
 
-func testStalePlanRevisionIsRejected(t *testing.T, repo imageagent.Repository) {
+func testStalePlanRevisionIsRejected(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, repo.CreateRun(ctx, manualRun("run-1", "tenant-a")))
-	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}
+	scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-1"}
 	require.NoError(t, repo.AppendPlan(ctx, scope, 0, planRevision(1)))
 	err := repo.AppendPlan(ctx, scope, 0, planRevision(2))
 	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
 }
 
-func testPlanAppendRetriesAreIdempotent(t *testing.T, repo imageagent.Repository) {
+func testPlanAppendRetriesAreIdempotent(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, repo.CreateRun(ctx, manualRun("run-1", "tenant-a")))
-	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}
+	scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-1"}
 	plan := planRevision(1)
 	require.NoError(t, repo.AppendPlan(ctx, scope, 0, plan))
 	require.NoError(t, repo.AppendPlan(ctx, scope, 0, plan))
@@ -228,20 +321,40 @@ func testPlanAppendRetriesAreIdempotent(t *testing.T, repo imageagent.Repository
 	require.ErrorIs(t, repo.AppendPlan(ctx, scope, 1, conflictingKey), imageagent.ErrRevisionConflict)
 }
 
-func testCrossTenantRunLookupIsHidden(t *testing.T, repo imageagent.Repository) {
+func testCrossTenantRunLookupIsHidden(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
-	require.NoError(t, repo.CreateRun(ctx, manualRun("run-1", "tenant-a")))
+	run := manualRun("run-1", "tenant-a")
+	run.BusinessTaskID = "task-1"
+	plan := planRevision(1)
+	_, err := repo.InitializeRun(ctx, imageagent.ProjectionInitialization{
+		Scope: imageagent.ScopeForRun(*run), Run: *run, Plan: plan,
+		Catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source.png"},
+			{ID: "style-1", Type: imageagent.AuthorizedAssetStyle},
+		}},
+		Snapshot: imageagent.RunProjection{Run: *run, Plan: plan}, CommitID: "start:owner", EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
 
-	_, err := repo.GetRun(ctx, imageagent.RunScope{TenantID: "tenant-b", RunID: "run-1"})
+	_, err = repo.GetRun(ctx, imageagent.RunScope{TenantID: "tenant-b", OwnerUserID: "user-1", RunID: "run-1"})
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	wrongOwner := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-2", RunID: "run-1"}
+	_, err = repo.GetRun(ctx, wrongOwner)
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = repo.GetProjection(ctx, wrongOwner)
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = repo.GetAssetCatalog(ctx, wrongOwner)
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = repo.ListEvents(ctx, wrongOwner, 0, 10)
 	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
 }
 
-func testRunMutationAppendsDeterministicProjectionEvent(t *testing.T, repo imageagent.Repository) {
+func testRunMutationAppendsDeterministicProjectionEvent(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, repo.CreateRun(ctx, manualRun("run-1", "tenant-a")))
-	scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}
+	scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-1"}
 	require.NoError(t, repo.AppendPlan(ctx, scope, 0, planRevision(1)))
 
 	mutation := imageagent.RunMutation{
@@ -270,12 +383,13 @@ func testRunMutationAppendsDeterministicProjectionEvent(t *testing.T, repo image
 	require.JSONEq(t, string(wantPayload), string(events[0].Payload))
 }
 
-func testAttemptIdentitiesAreIdempotentAndNonAliasing(t *testing.T, repo imageagent.Repository) {
+func testAttemptIdentitiesAreIdempotentAndNonAliasing(t *testing.T, repo repositoryContract) {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, repo.CreateRun(ctx, manualRun("run-1", "tenant-a")))
 	attempt := imageagent.StepAttempt{
 		TenantID:       "tenant-a",
+		OwnerUserID:    "user-1",
 		RunID:          "run-1",
 		SlotID:         "slot-1",
 		Node:           "generate",
@@ -299,6 +413,7 @@ func manualRun(runID, tenantID string) *imageagent.Run {
 	return &imageagent.Run{
 		ID:             runID,
 		TenantID:       tenantID,
+		UserID:         "user-1",
 		Mode:           imageagent.RunModeManual,
 		IdempotencyKey: "run-key-" + runID,
 		Status:         imageagent.RunStatusPlanning,

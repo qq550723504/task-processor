@@ -30,6 +30,7 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
   const mountedRef = useRef(true);
   const requestSequenceRef = useRef(0);
   const committedRequestRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | undefined>(undefined);
 
   const commitSnapshot = useCallback((next: ImageAgentProjection, requestSequence = 0) => {
     if (!mountedRef.current || next.run.id !== runId) return;
@@ -44,14 +45,20 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
 
   const refreshSnapshot = useCallback(async () => {
     const requestSequence = ++requestSequenceRef.current;
-    const next = await getImageAgentRun(runId);
+    const next = await getImageAgentRun(runId, abortControllerRef.current?.signal);
     commitSnapshot(next, requestSequence);
     return next;
   }, [commitSnapshot, runId]);
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    return () => {
+      mountedRef.current = false;
+      controller.abort();
+      if (abortControllerRef.current === controller) abortControllerRef.current = undefined;
+    };
   }, []);
 
   useEffect(() => {
@@ -62,65 +69,101 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
     let disposed = false;
     let source: EventSource | undefined;
     let listener: EventListener | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let streamTimer: ReturnType<typeof setTimeout> | undefined;
+    let snapshotTimer: ReturnType<typeof setTimeout> | undefined;
     let recovering = false;
-    let failureCount = 0;
+    let streamFailures = 0;
+    let snapshotFailures = 0;
 
     const closeSource = () => {
       if (!source) return;
       if (listener) source.removeEventListener("projection", listener);
+      source.onerror = null;
+      source.onopen = null;
       source.close();
       source = undefined;
       listener = undefined;
     };
-    const clearTimer = () => {
-      if (timer) clearTimeout(timer);
-      timer = undefined;
+    const clearStreamTimer = () => {
+      if (streamTimer) clearTimeout(streamTimer);
+      streamTimer = undefined;
+    };
+    const clearSnapshotTimer = () => {
+      if (snapshotTimer) clearTimeout(snapshotTimer);
+      snapshotTimer = undefined;
     };
     const connect = () => {
       if (disposed || source) return;
       source = new EventSource(imageAgentEventsUrl(runId));
+      source.onopen = () => {
+        streamFailures = 0;
+        clearStreamTimer();
+      };
       listener = (raw: Event) => {
         const event = raw as MessageEvent<string>;
         const cursor = Number.parseInt(event.lastEventId, 10);
         const envelope = parseProjectionEvent(event.data);
         if (!envelope || !Number.isSafeInteger(cursor) || cursor <= 0) return;
         if (cursor <= cursorRef.current || envelope.projection_version <= versionRef.current) return;
-        void recover();
+        streamFailures = 0;
+        clearStreamTimer();
+        void recover(true, true);
       };
       source.addEventListener("projection", listener);
-      source.onerror = () => { void recover(); };
+      source.onerror = () => {
+        closeSource();
+        streamFailures += 1;
+        scheduleStreamReconnect(streamFailures);
+        void recover(false, false);
+      };
     };
-    const scheduleRetry = () => {
-      if (disposed || timer) return;
-      const exponential = Math.min(maxReconnectDelayMs, baseReconnectDelayMs * 2 ** failureCount);
-      const jittered = Math.min(maxReconnectDelayMs, Math.round(exponential * (0.5 + Math.random())));
-      failureCount += 1;
-      timer = setTimeout(() => {
-        timer = undefined;
-        void recover();
-      }, jittered);
+    const retryDelay = (failures: number) => {
+      const exponential = Math.min(maxReconnectDelayMs, baseReconnectDelayMs * 2 ** Math.max(0, failures - 1));
+      return Math.min(maxReconnectDelayMs, Math.round(exponential * (0.5 + Math.random())));
     };
-    async function recover() {
+    const scheduleStreamReconnect = (failures: number) => {
+      if (disposed || streamTimer) return;
+      streamTimer = setTimeout(() => {
+        streamTimer = undefined;
+        connect();
+      }, retryDelay(failures));
+    };
+    const scheduleSnapshotRetry = (failures: number, task: () => void) => {
+      if (disposed || snapshotTimer) return;
+      snapshotTimer = setTimeout(() => {
+        snapshotTimer = undefined;
+        task();
+      }, retryDelay(failures));
+    };
+    async function recover(connectImmediately: boolean, healthyEvent: boolean) {
       if (disposed || recovering) return;
       recovering = true;
-      closeSource();
-      clearTimer();
+      if (healthyEvent) {
+        closeSource();
+        clearStreamTimer();
+      }
       try {
         await refreshSnapshot();
-        failureCount = 0;
+        snapshotFailures = 0;
+        clearSnapshotTimer();
         if (!disposed) {
+          recovering = false;
           setError(undefined);
-          connect();
+          if (connectImmediately) connect();
         }
       } catch (cause) {
         if (!disposed) {
+          recovering = false;
           setIsLoading(false);
           if (isAuthenticationError(cause)) {
+            closeSource();
+            clearStreamTimer();
+            clearSnapshotTimer();
             setError("图片 Agent 会话需要重新认证，请登录后重试");
           } else {
             setError(errorMessage(cause));
-            scheduleRetry();
+            snapshotFailures += 1;
+            scheduleSnapshotRetry(snapshotFailures, () => { void recover(connectImmediately, healthyEvent); });
           }
         }
       } finally {
@@ -129,11 +172,12 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
     }
 
     if (projectionRef.current?.run.id === runId) connect();
-    else void recover();
+    else void recover(true, false);
     return () => {
       disposed = true;
       closeSource();
-      clearTimer();
+      clearStreamTimer();
+      clearSnapshotTimer();
     };
   }, [refreshSnapshot, runId]);
 
@@ -159,19 +203,19 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
   const retrySlot = useCallback(async (slotID: string) => {
     const current = projectionRef.current;
     if (!current) return;
-    await executeCommand(`retry:${slotID}`, (actionID) => retryImageAgentSlot(runId, slotID, current.plan.revision, actionID));
+    await executeCommand(`retry:${slotID}`, (actionID) => retryImageAgentSlot(runId, slotID, current.plan.revision, actionID, abortControllerRef.current?.signal));
   }, [executeCommand, runId]);
 
   const approveResults = useCallback(async () => {
     const current = projectionRef.current;
     if (!current?.result_digest) return;
-    await executeCommand("approve", (actionID) => approveImageAgentResults(runId, current.plan.revision, current.result_digest!, actionID));
+    await executeCommand("approve", (actionID) => approveImageAgentResults(runId, current.plan.revision, current.result_digest!, actionID, abortControllerRef.current?.signal));
   }, [executeCommand, runId]);
 
   const cancel = useCallback(async () => {
     const current = projectionRef.current;
     if (!current) return;
-    await executeCommand("cancel", (actionID) => cancelImageAgentRun(runId, current.plan.revision, actionID));
+    await executeCommand("cancel", (actionID) => cancelImageAgentRun(runId, current.plan.revision, actionID, abortControllerRef.current?.signal));
   }, [executeCommand, runId]);
 
   const replacePlan = useCallback(async (draft: PlanDraft) => {
@@ -188,7 +232,7 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
         style_reference_ids: draft.style_reference_ids ? [...draft.style_reference_ids] : undefined,
         slots: draft.slots.map(cloneSlot),
       };
-      return replaceImageAgentPlan(runId, expectedRevision, plan, actionID);
+      return replaceImageAgentPlan(runId, expectedRevision, plan, actionID, abortControllerRef.current?.signal);
     });
   }, [executeCommand, runId]);
 
@@ -198,7 +242,7 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
     setPendingAction(`resume:${receipt.action_id}`);
     setError(undefined);
     try {
-      await resumeImageAgentCommand(runId, receipt.action_id);
+      await resumeImageAgentCommand(runId, receipt.action_id, abortControllerRef.current?.signal);
       await refreshSnapshot();
     } catch (cause) {
       if (mountedRef.current) setError(errorMessage(cause));

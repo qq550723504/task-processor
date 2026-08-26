@@ -31,9 +31,9 @@ const (
 func TestGormSaveSlotResultAndAppendPlanSerialize(t *testing.T) {
 	t.Run("slot write loses revision race without mutating inactive revision", func(t *testing.T) {
 		db := newConcurrentSQLite(t)
-		repo := NewGormRepository(db)
+		repo := NewGormRepository(db).(repositoryContract)
 		ctx := context.Background()
-		scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}
+		scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-1"}
 		require.NoError(t, repo.CreateRun(ctx, manualRun(scope.RunID, scope.TenantID)))
 		require.NoError(t, repo.AppendPlan(ctx, scope, 0, planRevision(1)))
 
@@ -65,9 +65,9 @@ func TestGormSaveSlotResultAndAppendPlanSerialize(t *testing.T) {
 
 	t.Run("slot write commits before revision advance", func(t *testing.T) {
 		db := newConcurrentSQLite(t)
-		repo := NewGormRepository(db)
+		repo := NewGormRepository(db).(repositoryContract)
 		ctx := context.Background()
-		scope := imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}
+		scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-1"}
 		require.NoError(t, repo.CreateRun(ctx, manualRun(scope.RunID, scope.TenantID)))
 		require.NoError(t, repo.AppendPlan(ctx, scope, 0, planRevision(1)))
 
@@ -113,9 +113,9 @@ func TestGormAppendAttemptPostgresConcurrentIdenticalRetries(t *testing.T) {
 		Logger:               logger.Default.LogMode(logger.Silent),
 	})
 	require.NoError(t, err)
-	repo := NewGormRepository(db)
+	repo := NewGormRepository(db).(repositoryContract)
 	ctx := context.Background()
-	attempt := imageagent.StepAttempt{TenantID: "tenant-a", RunID: "run-1", SlotID: "slot-1", Node: "generate", IdempotencyKey: "attempt-1", Attempt: 1, Outcome: "succeeded"}
+	attempt := imageagent.StepAttempt{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-1", SlotID: "slot-1", Node: "generate", IdempotencyKey: "attempt-1", Attempt: 1, Outcome: "succeeded"}
 
 	for range callers {
 		mock.ExpectBegin()
@@ -127,7 +127,7 @@ func TestGormAppendAttemptPostgresConcurrentIdenticalRetries(t *testing.T) {
 			result = sqlmock.NewResult(0, 1)
 		}
 		mock.ExpectExec(postgresAttemptInsertSQL()).
-			WithArgs(attempt.TenantID, attempt.RunID, attempt.SlotID, attempt.Attempt, attempt.Node, attempt.IdempotencyKey, attempt.Outcome, attempt.ErrorCategory, sqlmock.AnyArg()).
+			WithArgs(attempt.TenantID, attempt.OwnerUserID, attempt.RunID, attempt.SlotID, attempt.Attempt, attempt.Node, attempt.IdempotencyKey, attempt.Outcome, attempt.ErrorCategory, sqlmock.AnyArg()).
 			WillReturnResult(result)
 	}
 	for range callers - 1 {
@@ -205,7 +205,7 @@ insertReady:
 	mock.ExpectBegin()
 	expectAppendAttemptRunLookup(mock, conflicting)
 	mock.ExpectExec(postgresAttemptInsertSQL()).
-		WithArgs(conflicting.TenantID, conflicting.RunID, conflicting.SlotID, conflicting.Attempt, conflicting.Node, conflicting.IdempotencyKey, conflicting.Outcome, conflicting.ErrorCategory, sqlmock.AnyArg()).
+		WithArgs(conflicting.TenantID, conflicting.OwnerUserID, conflicting.RunID, conflicting.SlotID, conflicting.Attempt, conflicting.Node, conflicting.IdempotencyKey, conflicting.Outcome, conflicting.ErrorCategory, sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	expectAppendAttemptEqualityLookup(mock, attempt)
 	mock.ExpectRollback()
@@ -214,8 +214,8 @@ insertReady:
 }
 
 func expectAppendAttemptRunLookup(mock sqlmock.Sqlmock, attempt imageagent.StepAttempt) {
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "image_agent_runs" WHERE tenant_id = $1 AND id = $2 ORDER BY "image_agent_runs"."id" LIMIT $3`)).
-		WithArgs(attempt.TenantID, attempt.RunID, 1).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "image_agent_runs" WHERE tenant_id = $1 AND user_id = $2 AND id = $3 ORDER BY "image_agent_runs"."id" LIMIT $4`)).
+		WithArgs(attempt.TenantID, attempt.OwnerUserID, attempt.RunID, 1).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"tenant_id", "id", "business_task_id", "user_id", "mode", "idempotency_key", "status", "current_node", "active_plan_revision", "version", "budget_json", "usage_json", "block_json", "created_at", "updated_at",
 		}).AddRow(
@@ -224,17 +224,17 @@ func expectAppendAttemptRunLookup(mock sqlmock.Sqlmock, attempt imageagent.StepA
 }
 
 func expectAppendAttemptEqualityLookup(mock sqlmock.Sqlmock, attempt imageagent.StepAttempt) {
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "image_agent_attempts" WHERE tenant_id = $1 AND run_id = $2 AND slot_id = $3 AND (attempt = $4 OR idempotency_key = $5)`)).
-		WithArgs(attempt.TenantID, attempt.RunID, attempt.SlotID, attempt.Attempt, attempt.IdempotencyKey).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "image_agent_attempts" WHERE tenant_id = $1 AND owner_user_id = $2 AND run_id = $3 AND slot_id = $4 AND (attempt = $5 OR idempotency_key = $6)`)).
+		WithArgs(attempt.TenantID, attempt.OwnerUserID, attempt.RunID, attempt.SlotID, attempt.Attempt, attempt.IdempotencyKey).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"tenant_id", "run_id", "slot_id", "attempt", "node", "idempotency_key", "outcome", "error_category", "created_at",
+			"tenant_id", "owner_user_id", "run_id", "slot_id", "attempt", "node", "idempotency_key", "outcome", "error_category", "created_at",
 		}).AddRow(
-			attempt.TenantID, attempt.RunID, attempt.SlotID, attempt.Attempt, attempt.Node, attempt.IdempotencyKey, attempt.Outcome, attempt.ErrorCategory, time.Unix(0, 0),
+			attempt.TenantID, attempt.OwnerUserID, attempt.RunID, attempt.SlotID, attempt.Attempt, attempt.Node, attempt.IdempotencyKey, attempt.Outcome, attempt.ErrorCategory, time.Unix(0, 0),
 		))
 }
 
 func postgresAttemptInsertSQL() string {
-	return regexp.QuoteMeta(`INSERT INTO "image_agent_attempts" ("tenant_id","run_id","slot_id","attempt","node","idempotency_key","outcome","error_category","created_at") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`)
+	return regexp.QuoteMeta(`INSERT INTO "image_agent_attempts" ("tenant_id","owner_user_id","run_id","slot_id","attempt","node","idempotency_key","outcome","error_category","created_at") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING`)
 }
 
 func newConcurrentSQLite(t *testing.T) *gorm.DB {

@@ -22,7 +22,6 @@ type Dependencies struct {
 	WhiteBackgroundRenderer productimage.WhiteBackgroundRenderer
 	SceneRenderer           productimage.SceneRenderer
 	ProductContext          *productimage.ProductContext
-	SourceAssets            map[string]productimage.ImageAsset
 }
 
 // ProductImageSlotExecutor adapts ProductImage capabilities to the
@@ -111,11 +110,23 @@ func (e *ProductImageSlotExecutor) validateAndResolve(input imageagent.SlotExecu
 	if authorized == nil {
 		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("source asset %q is not authorized", sourceAssetID)
 	}
-	sourceURL := strings.TrimSpace(authorized.DisplayURL)
-	source := productimage.ImageAsset{URL: sourceURL, SourceURL: sourceURL, Type: productimage.AssetTypeSourceImage, Width: authorized.Width, Height: authorized.Height, Metadata: map[string]string{}}
-	if detailed, ok := e.dependencies.SourceAssets[sourceAssetID]; ok {
-		source = cloneImageAsset(detailed)
+	sourceURL := strings.TrimSpace(authorized.URL)
+	if sourceURL == "" {
+		sourceURL = strings.TrimSpace(authorized.DisplayURL)
 	}
+	sourceProvenanceURL := strings.TrimSpace(authorized.SourceURL)
+	if sourceProvenanceURL == "" {
+		sourceProvenanceURL = sourceURL
+	}
+	validatedURL, err := imageagent.ValidateSafeImageURL(sourceURL)
+	if err != nil {
+		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("source asset %q has unsafe URL: %w", sourceAssetID, err)
+	}
+	validatedSourceURL, err := imageagent.ValidateSafeImageURL(sourceProvenanceURL)
+	if err != nil {
+		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("source asset %q has unsafe source URL: %w", sourceAssetID, err)
+	}
+	source := productimage.ImageAsset{URL: validatedURL, SourceURL: validatedSourceURL, Type: productimage.AssetTypeSourceImage, Width: authorized.Width, Height: authorized.Height, Metadata: cloneMetadata(authorized.Metadata)}
 	source.URL = strings.TrimSpace(source.URL)
 	source.SourceURL = strings.TrimSpace(source.SourceURL)
 	if source.URL == "" {
@@ -227,12 +238,16 @@ func generatedCandidates(input imageagent.SlotExecutionInput, slot imageagent.Sl
 	candidates := make([]imageagent.AssetCandidate, 0, len(assets))
 	for providerOutputIndex, asset := range assets {
 		url := strings.TrimSpace(asset.URL)
+		validatedURL, err := imageagent.ValidateSafeImageURL(url)
+		if err != nil {
+			continue
+		}
 		if !isGeneratedAsset(url, source, asset) {
 			continue
 		}
 		candidates = append(candidates, imageagent.AssetCandidate{
 			AssetID:       candidateAssetID(input, slot, providerOutputIndex),
-			URL:           url,
+			URL:           validatedURL,
 			SourceAssetID: sourceAssetID,
 			Metadata:      cloneMetadata(asset.Metadata),
 		})

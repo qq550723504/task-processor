@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"strings"
 	"time"
 
 	"task-processor/internal/imageagent"
@@ -167,9 +168,14 @@ type slotProjectionDTO struct {
 }
 
 func newSlotProjectionDTO(value imageagent.SlotProjection) slotProjectionDTO {
-	dto := slotProjectionDTO{Slot: newSlotDTO(value.Slot), Attempt: value.Attempt, ErrorCode: value.ErrorCode, Candidates: make([]assetCandidateDTO, len(value.Candidates))}
-	for index, candidate := range value.Candidates {
-		dto.Candidates[index] = newAssetCandidateDTO(candidate)
+	dto := slotProjectionDTO{Slot: newSlotDTO(value.Slot), Attempt: value.Attempt, ErrorCode: value.ErrorCode, Candidates: make([]assetCandidateDTO, 0, len(value.Candidates))}
+	for _, candidate := range value.Candidates {
+		url, err := imageagent.ValidateSafeImageURL(candidate.URL)
+		if err != nil {
+			continue
+		}
+		candidate.URL = url
+		dto.Candidates = append(dto.Candidates, newAssetCandidateDTO(candidate))
 	}
 	return dto
 }
@@ -209,12 +215,18 @@ func newRunProjectionResponse(value imageagent.RunProjection) runProjectionRespo
 		ProjectionVersion: value.ProjectionVersion,
 		Slots:             make([]slotProjectionDTO, len(value.Slots)),
 	}
-	normalized, err := imageagent.NormalizeAssetCatalog(value.AssetCatalog)
-	if err == nil {
-		response.AssetCatalog = make([]authorizedAssetDTO, 0, len(normalized.Assets))
-		for _, asset := range normalized.Assets {
-			response.AssetCatalog = append(response.AssetCatalog, authorizedAssetDTO{ID: asset.ID, Type: asset.Type, DisplayURL: asset.DisplayURL, Label: asset.Label})
+	response.AssetCatalog = make([]authorizedAssetDTO, 0, len(value.AssetCatalog.Assets))
+	for _, asset := range value.AssetCatalog.Assets {
+		if strings.TrimSpace(asset.ID) == "" || (asset.Type != imageagent.AuthorizedAssetSource && asset.Type != imageagent.AuthorizedAssetStyle) {
+			continue
 		}
+		displayURL := ""
+		if strings.TrimSpace(asset.DisplayURL) != "" {
+			if safeURL, err := imageagent.ValidateSafeImageURL(asset.DisplayURL); err == nil {
+				displayURL = safeURL
+			}
+		}
+		response.AssetCatalog = append(response.AssetCatalog, authorizedAssetDTO{ID: strings.TrimSpace(asset.ID), Type: asset.Type, DisplayURL: displayURL, Label: strings.TrimSpace(asset.Label)})
 	}
 	if value.PendingCommand != nil {
 		receipt := value.PendingCommand

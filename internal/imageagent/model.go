@@ -106,14 +106,24 @@ const (
 type AuthorizedAsset struct {
 	ID         string
 	Type       AuthorizedAssetType
+	URL        string
+	SourceURL  string
 	DisplayURL string
 	Label      string
 	Width      int
 	Height     int
+	Metadata   map[string]string
 }
 
 type AssetCatalog struct {
-	Assets []AuthorizedAsset
+	Manifest CatalogManifest
+	Assets   []AuthorizedAsset
+}
+
+type CatalogManifest struct {
+	Version   int64
+	Hash      string
+	CreatedAt time.Time
 }
 
 type PendingCommandReceipt struct {

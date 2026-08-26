@@ -95,6 +95,7 @@ type WorkflowProjection struct {
 
 type AssetCatalogScope struct {
 	TenantID       string
+	OwnerUserID    string
 	BusinessTaskID string
 	RunID          string
 }

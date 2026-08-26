@@ -41,26 +41,14 @@ func TestRunPassesResolvedDependenciesToTemporalRuntime(t *testing.T) {
 
 type commandRepository struct{}
 
-func (commandRepository) CreateRun(context.Context, *imageagent.Run) error { return nil }
-func (commandRepository) GetRun(context.Context, imageagent.RunScope) (*imageagent.Run, error) {
-	return nil, imageagent.ErrRunNotFound
+func (commandRepository) InitializeRun(context.Context, imageagent.ProjectionInitialization) (imageagent.RunProjection, error) {
+	return imageagent.RunProjection{}, nil
 }
-func (commandRepository) UpdateRun(context.Context, imageagent.RunScope, int64, imageagent.RunMutation) error {
-	return nil
+func (commandRepository) GetProjection(context.Context, imageagent.RunScope) (imageagent.RunProjection, error) {
+	return imageagent.RunProjection{}, imageagent.ErrRunNotFound
 }
-func (commandRepository) AppendPlan(context.Context, imageagent.RunScope, int64, imageagent.Plan) error {
-	return nil
-}
-func (commandRepository) SaveSlotResult(context.Context, imageagent.RunScope, int64, imageagent.SlotResult) error {
-	return nil
-}
-func (commandRepository) AppendAttempt(context.Context, imageagent.StepAttempt) error { return nil }
-func (commandRepository) AppendEvent(context.Context, imageagent.RunEvent) error      { return nil }
-func (commandRepository) AppendProjectionEvent(_ context.Context, event imageagent.RunEvent) (imageagent.RunEvent, error) {
-	return event, nil
-}
-func (commandRepository) SaveAssetCatalog(context.Context, imageagent.RunScope, imageagent.AssetCatalog) error {
-	return nil
+func (commandRepository) CommitProjection(context.Context, imageagent.ProjectionCommit) (imageagent.RunProjection, error) {
+	return imageagent.RunProjection{}, nil
 }
 func (commandRepository) GetAssetCatalog(context.Context, imageagent.RunScope) (imageagent.AssetCatalog, error) {
 	return imageagent.AssetCatalog{}, nil

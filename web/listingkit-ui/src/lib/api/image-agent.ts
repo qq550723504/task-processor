@@ -159,8 +159,8 @@ export async function createImageAgentRun(input: CreateImageAgentRunInput) {
   });
 }
 
-export async function getImageAgentRun(runId: string) {
-  const payload = await imageAgentRequest<unknown>(encodeId(runId));
+export async function getImageAgentRun(runId: string, signal?: AbortSignal) {
+	const payload = await imageAgentRequest<unknown>(encodeId(runId), { signal });
   return parseImageAgentProjection(payload);
 }
 
@@ -168,55 +168,59 @@ export function replaceImageAgentPlan(
   runId: string,
   expectedRevision: number,
   plan: ImageAgentPlan,
-  actionId: string,
+	actionId: string,
+	signal?: AbortSignal,
 ) {
   return command(`${encodeId(runId)}/plan`, "PUT", {
     expected_revision: expectedRevision,
     action_id: actionId,
     plan,
-  });
+	}, signal);
 }
 
 export function retryImageAgentSlot(
   runId: string,
   slotId: string,
   planRevision: number,
-  actionId: string,
+	actionId: string,
+	signal?: AbortSignal,
 ) {
   return command(`${encodeId(runId)}/slots/${encodeId(slotId)}/retry`, "POST", {
     plan_revision: planRevision,
     action_id: actionId,
-  });
+	}, signal);
 }
 
 export function approveImageAgentResults(
   runId: string,
   planRevision: number,
   resultDigest: string,
-  actionId: string,
+	actionId: string,
+	signal?: AbortSignal,
 ) {
   return command(`${encodeId(runId)}/results/approve`, "POST", {
     plan_revision: planRevision,
     result_digest: resultDigest,
     action_id: actionId,
-  });
+	}, signal);
 }
 
 export function cancelImageAgentRun(
   runId: string,
   planRevision: number,
-  actionId: string,
+	actionId: string,
+	signal?: AbortSignal,
 ) {
   return command(`${encodeId(runId)}/cancel`, "POST", {
     plan_revision: planRevision,
     action_id: actionId,
-  });
+	}, signal);
 }
 
-export function resumeImageAgentCommand(runId: string, actionId: string) {
+export function resumeImageAgentCommand(runId: string, actionId: string, signal?: AbortSignal) {
   return imageAgentRequest<{ run_id: string; plan_revision: number; action_id: string; status: string }>(
     `${encodeId(runId)}/commands/${encodeId(actionId)}/resume`,
-    { method: "POST" },
+		{ method: "POST", signal },
   );
 }
 
@@ -227,17 +231,18 @@ export function imageAgentEventsUrl(runId: string) {
 async function command(
   path: string,
   method: "POST" | "PUT",
-  body: unknown,
+	body: unknown,
+	signal?: AbortSignal,
 ) {
   await imageAgentRequest(path, {
     method,
-    body,
+		body, signal,
   });
 }
 
 async function imageAgentRequest<T>(
   path: string,
-  { method = "GET", body }: { method?: "GET" | "POST" | "PUT"; body?: unknown } = {},
+	{ method = "GET", body, signal }: { method?: "GET" | "POST" | "PUT"; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<T> {
   const response = await fetch(
     path ? `${imageAgentBffBase}/${path}` : imageAgentBffBase,
@@ -247,7 +252,8 @@ async function imageAgentRequest<T>(
         Accept: "application/json",
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+		body: body === undefined ? undefined : JSON.stringify(body),
+		signal,
     },
   );
   if (response.ok) {

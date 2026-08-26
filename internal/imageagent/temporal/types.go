@@ -9,25 +9,26 @@ import (
 )
 
 const (
-	TaskQueue                   = "image-agent-manual"
-	EnvTaskQueue                = "IMAGE_AGENT_TEMPORAL_TASK_QUEUE"
-	workflowNameImageAgent      = "ImageAgentWorkflow"
-	workflowNameImageSlot       = "ImageSlotWorkflow"
-	activityExecuteSlot         = "imageagent.execute_slot"
-	activityPersistSlotResult   = "imageagent.persist_slot_result"
-	activityPersistRunState     = "imageagent.persist_run_state"
-	activityPersistPlanRevision = "imageagent.persist_plan_revision"
-	activityPublishApproved     = "imageagent.publish_approved"
-	signalApproveResults        = "approve_results"
-	signalRetrySlot             = "retry_slot"
-	signalReplacePlan           = "replace_plan"
-	signalCancel                = "cancel"
-	updateResumeCommand         = "resume_command"
-	updateErrorRevisionConflict = "imageagent_revision_conflict"
-	updateErrorCommandBlocked   = "imageagent_command_blocked"
-	updateErrorRunNotFound      = "imageagent_run_not_found"
-	defaultMaxConcurrentSlots   = 4
-	QueryWorkflowProjection     = "image_agent_projection"
+	TaskQueue                     = "image-agent-manual"
+	EnvTaskQueue                  = "IMAGE_AGENT_TEMPORAL_TASK_QUEUE"
+	workflowNameImageAgent        = "ImageAgentWorkflow"
+	workflowNameImageSlot         = "ImageSlotWorkflow"
+	activityExecuteSlot           = "imageagent.execute_slot"
+	activityPersistSlotResult     = "imageagent.persist_slot_result"
+	activityPersistRunState       = "imageagent.persist_run_state"
+	activityPersistPlanRevision   = "imageagent.persist_plan_revision"
+	activityPersistPendingCommand = "imageagent.persist_pending_command"
+	activityPublishApproved       = "imageagent.publish_approved"
+	signalApproveResults          = "approve_results"
+	signalRetrySlot               = "retry_slot"
+	signalReplacePlan             = "replace_plan"
+	signalCancel                  = "cancel"
+	updateResumeCommand           = "resume_command"
+	updateErrorRevisionConflict   = "imageagent_revision_conflict"
+	updateErrorCommandBlocked     = "imageagent_command_blocked"
+	updateErrorRunNotFound        = "imageagent_run_not_found"
+	defaultMaxConcurrentSlots     = 4
+	QueryWorkflowProjection       = "image_agent_projection"
 )
 
 type WorkflowInput struct {
@@ -87,9 +88,9 @@ type PersistRunStateActivityInput struct {
 	RunID        string
 	Identity     imageagent.ExecutionIdentity
 	PlanRevision int64
-	Status       imageagent.RunStatus
+	Projection   WorkflowResult
 	CurrentNode  string
-	Block        *imageagent.Block
+	CommitID     string
 }
 
 type PersistPlanRevisionActivityInput struct {
@@ -97,6 +98,13 @@ type PersistPlanRevisionActivityInput struct {
 	Identity         imageagent.ExecutionIdentity
 	ExpectedRevision int64
 	Plan             imageagent.Plan
+}
+
+type PersistPendingCommandActivityInput struct {
+	RunID    string
+	Identity imageagent.ExecutionIdentity
+	Receipt  *imageagent.PendingCommandReceipt
+	CommitID string
 }
 
 type PublishApprovedActivityInput struct {
@@ -153,8 +161,8 @@ func TaskQueueName() string {
 	return TaskQueue
 }
 
-func WorkflowID(tenantID, runID string) string {
-	return fmt.Sprintf("image-agent:%s:%s", strings.TrimSpace(tenantID), strings.TrimSpace(runID))
+func WorkflowID(tenantID, ownerUserID, runID string) string {
+	return fmt.Sprintf("image-agent:%s:%s:%s", strings.TrimSpace(tenantID), strings.TrimSpace(ownerUserID), strings.TrimSpace(runID))
 }
 
 func slotAttemptKey(slot imageagent.Slot, attempt int) string {
@@ -166,5 +174,5 @@ func publicationKey(runID string, revision int64) string {
 }
 
 func childWorkflowID(input SlotWorkflowInput) string {
-	return fmt.Sprintf("%s:plan:%d:slot:%s:attempt:%d", WorkflowID(input.Identity.TenantID, input.RunID), input.PlanRevision, input.Slot.ID, input.Attempt)
+	return fmt.Sprintf("%s:plan:%d:slot:%s:attempt:%d", WorkflowID(input.Identity.TenantID, input.Identity.UserID, input.RunID), input.PlanRevision, input.Slot.ID, input.Attempt)
 }

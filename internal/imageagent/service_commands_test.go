@@ -145,12 +145,8 @@ func TestServiceRetryAndCancelRejectBlockedOrTerminalCommands(t *testing.T) {
 	require.Len(t, terminalWorkflows.cancellations, 1)
 }
 
-func TestServiceGetProjectionUsesVerifiedTenantAndDurableCursor(t *testing.T) {
+func TestServiceGetProjectionUsesVerifiedOwnerAndOnlyDurableSnapshot(t *testing.T) {
 	repository := seededRepository(t, imageagent.RunStatusBlocked, &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"})
-	require.NoError(t, repository.AppendEvent(context.Background(), imageagent.RunEvent{
-		TenantID: "tenant-a", RunID: "run-1", Type: "slot.result.persisted", Cursor: 2,
-		ProjectionVersion: 2, Payload: json.RawMessage(`{"slot_id":"slot-1"}`),
-	}))
 	workflows := &recordingWorkflowClient{projection: imageagent.WorkflowProjection{
 		Status: imageagent.RunStatusBlocked, Plan: commandPlan(1),
 		Block: &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"},
@@ -161,13 +157,42 @@ func TestServiceGetProjectionUsesVerifiedTenantAndDurableCursor(t *testing.T) {
 
 	projection, err := service.Get(verifiedContext("tenant-a", "user-a"), "run-1")
 	require.NoError(t, err)
-	require.EqualValues(t, 2, projection.LastEventID)
+	require.EqualValues(t, 1, projection.LastEventID)
 	require.Equal(t, imageagent.RunStatusBlocked, projection.Run.Status)
 	require.Equal(t, commandPlan(1), projection.Plan)
 	require.Equal(t, []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionRetrySlot, imageagent.ActionCancel}, projection.Actions)
+	require.Zero(t, workflows.projectionCalls, "public GET must not query Temporal")
 
 	_, err = service.Get(verifiedContext("tenant-b", "user-a"), "run-1")
 	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = service.Get(verifiedContext("tenant-a", "user-b"), "run-1")
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+}
+
+func TestServiceSameTenantDifferentOwnerCannotReadOrCommandRun(t *testing.T) {
+	repository := seededRepository(t, imageagent.RunStatusBlocked, &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"})
+	workflows := &recordingWorkflowClient{}
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
+	require.NoError(t, err)
+	ctx := verifiedContext("tenant-a", "user-b")
+
+	_, err = service.Get(ctx, "run-1")
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = service.ListEvents(ctx, "run-1", 0, 10)
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = service.Resume(ctx, "run-1", "pending-action")
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	replacement := commandPlan(2)
+	replacement.ParentRevision = 1
+	require.ErrorIs(t, service.ReplacePlan(ctx, "run-1", 1, replacement, "replace-owner-b"), imageagent.ErrRunNotFound)
+	require.ErrorIs(t, service.RetrySlot(ctx, "run-1", "slot-1", 1, "retry-owner-b"), imageagent.ErrRunNotFound)
+	require.ErrorIs(t, service.ApproveResults(ctx, "run-1", 1, "digest-1", "approve-owner-b"), imageagent.ErrRunNotFound)
+	require.ErrorIs(t, service.Cancel(ctx, "run-1", 1, "cancel-owner-b"), imageagent.ErrRunNotFound)
+	require.Empty(t, workflows.replacements)
+	require.Empty(t, workflows.retries)
+	require.Empty(t, workflows.approvals)
+	require.Empty(t, workflows.cancellations)
+	require.Empty(t, workflows.resumes)
 }
 
 func seededRepository(t *testing.T, status imageagent.RunStatus, block *imageagent.Block) imageagent.Repository {
@@ -175,16 +200,16 @@ func seededRepository(t *testing.T, status imageagent.RunStatus, block *imageage
 	repository := store.NewMemoryRepository()
 	run := &imageagent.Run{
 		ID: "run-1", BusinessTaskID: "task-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual,
-		IdempotencyKey: "run-key-1", Status: imageagent.RunStatusPlanning, CurrentNode: "plan", Version: 1,
+		IdempotencyKey: "run-key-1", Status: status, CurrentNode: "command", Version: 1, Block: block, ActivePlanRevision: 1,
 	}
-	require.NoError(t, repository.CreateRun(context.Background(), run))
-	require.NoError(t, repository.SaveAssetCatalog(context.Background(), imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}, authorizedCatalog()))
-	require.NoError(t, repository.AppendPlan(context.Background(), imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}, 0, commandPlan(1)))
-	if status != imageagent.RunStatusPlanning || block != nil {
-		require.NoError(t, repository.UpdateRun(context.Background(), imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}, 1, imageagent.RunMutation{
-			Status: status, CurrentNode: "command", ActivePlanRevision: 1, Block: block,
-		}))
-	}
+	plan := commandPlan(1)
+	_, err := repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{Scope: imageagent.ScopeForRun(*run), Run: *run, Plan: plan, Catalog: authorizedCatalog(), Snapshot: imageagent.RunProjection{Run: *run, Plan: plan, Slots: []imageagent.SlotProjection{{Slot: plan.Slots[0], ErrorCode: func() string {
+		if block != nil {
+			return "provider_failed"
+		}
+		return ""
+	}()}}, ResultDigest: "digest-1"}, CommitID: "seed", EventType: "run.initialized", EventPayload: json.RawMessage(`{}`)})
+	require.NoError(t, err)
 	return repository
 }
 
@@ -208,20 +233,21 @@ func verifiedContext(tenantID, userID string) context.Context {
 }
 
 type recordingWorkflowClient struct {
-	projection    imageagent.WorkflowProjection
-	projectionErr error
-	starts        []imageagent.WorkflowStart
-	replacements  []imageagent.ReplacePlanCommand
-	retries       []imageagent.RetrySlotCommand
-	approvals     []imageagent.ApproveResultsCommand
-	cancellations []imageagent.CancelRunCommand
-	replaceErr    error
-	retryErr      error
-	approveErr    error
-	cancelErr     error
-	resumes       []imageagent.ResumeCommand
-	resumeAck     imageagent.CommandAcknowledgement
-	resumeErr     error
+	projection      imageagent.WorkflowProjection
+	projectionErr   error
+	projectionCalls int
+	starts          []imageagent.WorkflowStart
+	replacements    []imageagent.ReplacePlanCommand
+	retries         []imageagent.RetrySlotCommand
+	approvals       []imageagent.ApproveResultsCommand
+	cancellations   []imageagent.CancelRunCommand
+	replaceErr      error
+	retryErr        error
+	approveErr      error
+	cancelErr       error
+	resumes         []imageagent.ResumeCommand
+	resumeAck       imageagent.CommandAcknowledgement
+	resumeErr       error
 }
 
 func TestServiceStartRequiresBusinessTaskAndAuthorizedCatalogSubset(t *testing.T) {
@@ -240,9 +266,26 @@ func TestServiceStartRequiresBusinessTaskAndAuthorizedCatalogSubset(t *testing.T
 	require.Empty(t, workflows.starts)
 }
 
+func TestServiceStartRetryUsesImmutablePersistedCatalogInsteadOfMutableTaskCatalog(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	resolver := &mutableCatalogResolver{catalog: authorizedCatalog()}
+	service, err := imageagent.NewService(repository, workflows, resolver)
+	require.NoError(t, err)
+	ctx := verifiedContext("tenant-a", "user-a")
+	input := imageagent.StartRunInput{RunID: "run-start-retry", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-start-retry-key", Plan: commandPlan(1)}
+
+	require.NoError(t, service.Start(ctx, input))
+	resolver.catalog = imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{ID: "source-replaced", Type: imageagent.AuthorizedAssetSource, URL: "https://mutated.example/source.png"}}}
+	require.NoError(t, service.Start(ctx, input))
+	require.Equal(t, 1, resolver.calls, "idempotent Start must not re-read mutable business-task assets")
+	require.Len(t, workflows.starts, 2)
+	require.Equal(t, workflows.starts[0].AssetCatalog, workflows.starts[1].AssetCatalog)
+	require.Equal(t, "source-1", workflows.starts[1].AssetCatalog.Assets[0].ID)
+}
+
 func TestServiceReplacePlanValidatesPlanAndSlotAssetsAgainstPersistedRunCatalog(t *testing.T) {
 	repository := seededRepository(t, imageagent.RunStatusBlocked, &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"})
-	require.NoError(t, repository.SaveAssetCatalog(context.Background(), imageagent.RunScope{TenantID: "tenant-a", RunID: "run-1"}, authorizedCatalog()))
 	workflows := &recordingWorkflowClient{}
 	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
 	require.NoError(t, err)
@@ -273,12 +316,23 @@ func (r staticCatalogResolver) Resolve(context.Context, imageagent.AssetCatalogS
 	return r.catalog, nil
 }
 
+type mutableCatalogResolver struct {
+	catalog imageagent.AssetCatalog
+	calls   int
+}
+
+func (r *mutableCatalogResolver) Resolve(context.Context, imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
+	r.calls++
+	return r.catalog, nil
+}
+
 func (c *recordingWorkflowClient) StartManual(_ context.Context, start imageagent.WorkflowStart) error {
 	c.starts = append(c.starts, start)
 	return nil
 }
 
 func (c *recordingWorkflowClient) GetProjection(context.Context, imageagent.RunScope, imageagent.ExecutionIdentity) (imageagent.WorkflowProjection, error) {
+	c.projectionCalls++
 	return c.projection, c.projectionErr
 }
 

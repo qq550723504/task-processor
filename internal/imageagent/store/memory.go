@@ -13,14 +13,22 @@ import (
 )
 
 type memoryRepository struct {
-	mu       sync.Mutex
-	runs     map[string]imageagent.Run
-	plans    map[string]map[int64]imageagent.Plan
-	slots    map[string]slotResultRecord
-	attempts map[string]imageagent.StepAttempt
-	byNumber map[string]imageagent.StepAttempt
-	events   map[string][]imageagent.RunEvent
-	catalogs map[string]imageagent.AssetCatalog
+	mu                sync.Mutex
+	runs              map[string]imageagent.Run
+	plans             map[string]map[int64]imageagent.Plan
+	slots             map[string]slotResultRecord
+	attempts          map[string]imageagent.StepAttempt
+	byNumber          map[string]imageagent.StepAttempt
+	events            map[string][]imageagent.RunEvent
+	catalogs          map[string]imageagent.AssetCatalog
+	projections       map[string]imageagent.RunProjection
+	projectionCommits map[string]map[string]projectionCommitMemory
+}
+
+type projectionCommitMemory struct {
+	fingerprint string
+	version     int64
+	snapshot    imageagent.RunProjection
 }
 
 type slotResultRecord struct {
@@ -30,13 +38,15 @@ type slotResultRecord struct {
 
 func NewMemoryRepository() imageagent.Repository {
 	return &memoryRepository{
-		runs:     map[string]imageagent.Run{},
-		plans:    map[string]map[int64]imageagent.Plan{},
-		slots:    map[string]slotResultRecord{},
-		attempts: map[string]imageagent.StepAttempt{},
-		byNumber: map[string]imageagent.StepAttempt{},
-		events:   map[string][]imageagent.RunEvent{},
-		catalogs: map[string]imageagent.AssetCatalog{},
+		runs:              map[string]imageagent.Run{},
+		plans:             map[string]map[int64]imageagent.Plan{},
+		slots:             map[string]slotResultRecord{},
+		attempts:          map[string]imageagent.StepAttempt{},
+		byNumber:          map[string]imageagent.StepAttempt{},
+		events:            map[string][]imageagent.RunEvent{},
+		catalogs:          map[string]imageagent.AssetCatalog{},
+		projections:       map[string]imageagent.RunProjection{},
+		projectionCommits: map[string]map[string]projectionCommitMemory{},
 	}
 }
 
@@ -46,7 +56,7 @@ func (r *memoryRepository) CreateRun(_ context.Context, run *imageagent.Run) err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := runKey(run.TenantID, run.ID)
+	key := runKey(run.TenantID, run.UserID, run.ID)
 	if existing, exists := r.runs[key]; exists {
 		if sameRun(existing, *run) {
 			return nil
@@ -54,7 +64,7 @@ func (r *memoryRepository) CreateRun(_ context.Context, run *imageagent.Run) err
 		return imageagent.ErrRevisionConflict
 	}
 	for _, existing := range r.runs {
-		if existing.TenantID == run.TenantID && existing.IdempotencyKey == run.IdempotencyKey {
+		if existing.TenantID == run.TenantID && existing.UserID == run.UserID && existing.IdempotencyKey == run.IdempotencyKey {
 			return imageagent.ErrRevisionConflict
 		}
 	}
@@ -68,7 +78,7 @@ func (r *memoryRepository) GetRun(_ context.Context, scope imageagent.RunScope) 
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	run, exists := r.runs[runKey(scope.TenantID, scope.RunID)]
+	run, exists := r.runs[scopeKey(scope)]
 	if !exists {
 		return nil, imageagent.ErrRunNotFound
 	}
@@ -82,7 +92,7 @@ func (r *memoryRepository) UpdateRun(_ context.Context, scope imageagent.RunScop
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := runKey(scope.TenantID, scope.RunID)
+	key := scopeKey(scope)
 	run, exists := r.runs[key]
 	if !exists {
 		return imageagent.ErrRunNotFound
@@ -103,7 +113,7 @@ func (r *memoryRepository) UpdateRun(_ context.Context, scope imageagent.RunScop
 
 	cursor := nextCursor(r.events[key])
 	r.events[key] = append(r.events[key], imageagent.RunEvent{
-		TenantID: scope.TenantID, RunID: scope.RunID, Type: "run.updated", Cursor: cursor,
+		TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, Type: "run.updated", Cursor: cursor,
 		ProjectionVersion: cursor, Payload: append(json.RawMessage(nil), payload...),
 	})
 	return nil
@@ -118,7 +128,7 @@ func (r *memoryRepository) AppendPlan(_ context.Context, scope imageagent.RunSco
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := runKey(scope.TenantID, scope.RunID)
+	key := scopeKey(scope)
 	run, exists := r.runs[key]
 	if !exists {
 		return imageagent.ErrRunNotFound
@@ -158,7 +168,7 @@ func (r *memoryRepository) SaveSlotResult(_ context.Context, scope imageagent.Ru
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := runKey(scope.TenantID, scope.RunID)
+	key := scopeKey(scope)
 	run, exists := r.runs[key]
 	if !exists {
 		return imageagent.ErrRunNotFound
@@ -192,7 +202,7 @@ func (r *memoryRepository) AppendAttempt(_ context.Context, attempt imageagent.S
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, exists := r.runs[runKey(attempt.TenantID, attempt.RunID)]; !exists {
+	if _, exists := r.runs[runKey(attempt.TenantID, attempt.OwnerUserID, attempt.RunID)]; !exists {
 		return imageagent.ErrRunNotFound
 	}
 	key := attemptKey(attempt)
@@ -220,7 +230,7 @@ func (r *memoryRepository) AppendEvent(_ context.Context, event imageagent.RunEv
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := runKey(event.TenantID, event.RunID)
+	key := runKey(event.TenantID, event.OwnerUserID, event.RunID)
 	if _, exists := r.runs[key]; !exists {
 		return imageagent.ErrRunNotFound
 	}
@@ -233,12 +243,12 @@ func (r *memoryRepository) AppendEvent(_ context.Context, event imageagent.RunEv
 }
 
 func (r *memoryRepository) AppendProjectionEvent(_ context.Context, event imageagent.RunEvent) (imageagent.RunEvent, error) {
-	if strings.TrimSpace(event.TenantID) == "" || strings.TrimSpace(event.RunID) == "" || strings.TrimSpace(event.Type) == "" {
-		return imageagent.RunEvent{}, fmt.Errorf("event tenant, run, and type are required")
+	if strings.TrimSpace(event.TenantID) == "" || strings.TrimSpace(event.OwnerUserID) == "" || strings.TrimSpace(event.RunID) == "" || strings.TrimSpace(event.Type) == "" {
+		return imageagent.RunEvent{}, fmt.Errorf("event tenant, owner, run, and type are required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := runKey(event.TenantID, event.RunID)
+	key := runKey(event.TenantID, event.OwnerUserID, event.RunID)
 	if _, exists := r.runs[key]; !exists {
 		return imageagent.RunEvent{}, imageagent.ErrRunNotFound
 	}
@@ -253,15 +263,22 @@ func (r *memoryRepository) SaveAssetCatalog(_ context.Context, scope imageagent.
 	if err := validateScope(scope); err != nil {
 		return err
 	}
+	normalized, err := imageagent.NormalizeAssetCatalog(catalog)
+	if err != nil {
+		return err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := runKey(scope.TenantID, scope.RunID)
+	key := scopeKey(scope)
 	if _, exists := r.runs[key]; !exists {
 		return imageagent.ErrRunNotFound
 	}
-	cloned := cloneCatalog(catalog)
-	if existing, exists := r.catalogs[key]; exists && !reflect.DeepEqual(existing, cloned) {
-		return imageagent.ErrRevisionConflict
+	cloned := cloneCatalog(normalized)
+	if existing, exists := r.catalogs[key]; exists {
+		if existing.Manifest.Version != cloned.Manifest.Version || existing.Manifest.Hash != cloned.Manifest.Hash || !reflect.DeepEqual(existing.Assets, cloned.Assets) {
+			return imageagent.ErrRevisionConflict
+		}
+		return nil
 	}
 	r.catalogs[key] = cloned
 	return nil
@@ -273,9 +290,12 @@ func (r *memoryRepository) GetAssetCatalog(_ context.Context, scope imageagent.R
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	catalog, exists := r.catalogs[runKey(scope.TenantID, scope.RunID)]
+	catalog, exists := r.catalogs[scopeKey(scope)]
 	if !exists {
-		return imageagent.AssetCatalog{}, imageagent.ErrRunNotFound
+		if _, runExists := r.runs[scopeKey(scope)]; !runExists {
+			return imageagent.AssetCatalog{}, imageagent.ErrRunNotFound
+		}
+		return imageagent.AssetCatalog{}, imageagent.ErrCatalogSnapshotMissing
 	}
 	return cloneCatalog(catalog), nil
 }
@@ -286,7 +306,7 @@ func (r *memoryRepository) ListEvents(_ context.Context, scope imageagent.RunSco
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := runKey(scope.TenantID, scope.RunID)
+	key := scopeKey(scope)
 	if _, exists := r.runs[key]; !exists {
 		return nil, imageagent.ErrRunNotFound
 	}
@@ -310,8 +330,8 @@ func (r *memoryRepository) ListEvents(_ context.Context, scope imageagent.RunSco
 }
 
 func validateRun(run *imageagent.Run) error {
-	if run == nil || strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.TenantID) == "" || strings.TrimSpace(run.IdempotencyKey) == "" {
-		return fmt.Errorf("run ID, tenant ID, and idempotency key are required")
+	if run == nil || strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.TenantID) == "" || strings.TrimSpace(run.UserID) == "" || strings.TrimSpace(run.IdempotencyKey) == "" {
+		return fmt.Errorf("run ID, tenant ID, owner user ID, and idempotency key are required")
 	}
 	if run.Mode != imageagent.RunModeManual {
 		return fmt.Errorf("image agent run mode must be manual")
@@ -320,38 +340,44 @@ func validateRun(run *imageagent.Run) error {
 }
 
 func validateScope(scope imageagent.RunScope) error {
-	if strings.TrimSpace(scope.TenantID) == "" || strings.TrimSpace(scope.RunID) == "" {
+	if strings.TrimSpace(scope.TenantID) == "" || strings.TrimSpace(scope.OwnerUserID) == "" || strings.TrimSpace(scope.RunID) == "" {
 		return imageagent.ErrRunNotFound
 	}
 	return nil
 }
 
 func validateAttempt(attempt imageagent.StepAttempt) error {
-	if strings.TrimSpace(attempt.TenantID) == "" || strings.TrimSpace(attempt.RunID) == "" || strings.TrimSpace(attempt.SlotID) == "" || strings.TrimSpace(attempt.Node) == "" || strings.TrimSpace(attempt.IdempotencyKey) == "" || attempt.Attempt <= 0 {
-		return fmt.Errorf("attempt tenant, run, slot, node, idempotency key, and positive attempt are required")
+	if strings.TrimSpace(attempt.TenantID) == "" || strings.TrimSpace(attempt.OwnerUserID) == "" || strings.TrimSpace(attempt.RunID) == "" || strings.TrimSpace(attempt.SlotID) == "" || strings.TrimSpace(attempt.Node) == "" || strings.TrimSpace(attempt.IdempotencyKey) == "" || attempt.Attempt <= 0 {
+		return fmt.Errorf("attempt tenant, owner, run, slot, node, idempotency key, and positive attempt are required")
 	}
 	return nil
 }
 
 func validateEvent(event imageagent.RunEvent) error {
-	if strings.TrimSpace(event.TenantID) == "" || strings.TrimSpace(event.RunID) == "" || strings.TrimSpace(event.Type) == "" || event.Cursor <= 0 {
-		return fmt.Errorf("event tenant, run, type, and positive cursor are required")
+	if strings.TrimSpace(event.TenantID) == "" || strings.TrimSpace(event.OwnerUserID) == "" || strings.TrimSpace(event.RunID) == "" || strings.TrimSpace(event.Type) == "" || event.Cursor <= 0 {
+		return fmt.Errorf("event tenant, owner, run, type, and positive cursor are required")
 	}
 	return nil
 }
 
-func runKey(tenantID, runID string) string { return tenantID + "\x00" + runID }
+func runKey(tenantID, ownerUserID, runID string) string {
+	return tenantID + "\x00" + ownerUserID + "\x00" + runID
+}
+
+func scopeKey(scope imageagent.RunScope) string {
+	return runKey(scope.TenantID, scope.OwnerUserID, scope.RunID)
+}
 
 func slotKey(scope imageagent.RunScope, revision int64, slotID string) string {
-	return fmt.Sprintf("%s\x00%d\x00%s", runKey(scope.TenantID, scope.RunID), revision, slotID)
+	return fmt.Sprintf("%s\x00%d\x00%s", scopeKey(scope), revision, slotID)
 }
 
 func attemptKey(attempt imageagent.StepAttempt) string {
-	return fmt.Sprintf("%s\x00%s\x00%s", runKey(attempt.TenantID, attempt.RunID), attempt.SlotID, attempt.IdempotencyKey)
+	return fmt.Sprintf("%s\x00%s\x00%s", runKey(attempt.TenantID, attempt.OwnerUserID, attempt.RunID), attempt.SlotID, attempt.IdempotencyKey)
 }
 
 func attemptNumberKey(attempt imageagent.StepAttempt) string {
-	return fmt.Sprintf("%s\x00%s\x00%d", runKey(attempt.TenantID, attempt.RunID), attempt.SlotID, attempt.Attempt)
+	return fmt.Sprintf("%s\x00%s\x00%d", runKey(attempt.TenantID, attempt.OwnerUserID, attempt.RunID), attempt.SlotID, attempt.Attempt)
 }
 
 func nextCursor(events []imageagent.RunEvent) int64 {
@@ -400,8 +426,24 @@ func cloneBlock(block *imageagent.Block) *imageagent.Block {
 }
 
 func cloneCatalog(catalog imageagent.AssetCatalog) imageagent.AssetCatalog {
-	catalog.Assets = append([]imageagent.AuthorizedAsset(nil), catalog.Assets...)
+	assets := make([]imageagent.AuthorizedAsset, len(catalog.Assets))
+	for index, asset := range catalog.Assets {
+		asset.Metadata = cloneMetadata(asset.Metadata)
+		assets[index] = asset
+	}
+	catalog.Assets = assets
 	return catalog
+}
+
+func cloneMetadata(value map[string]string) map[string]string {
+	if value == nil {
+		return nil
+	}
+	cloned := make(map[string]string, len(value))
+	for key, item := range value {
+		cloned[key] = item
+	}
+	return cloned
 }
 
 func sameRun(left, right imageagent.Run) bool { return reflect.DeepEqual(left, right) }
@@ -410,4 +452,4 @@ func samePlan(left, right imageagent.Plan) bool { return reflect.DeepEqual(left,
 
 func sameSlotResult(left, right imageagent.SlotResult) bool { return reflect.DeepEqual(left, right) }
 
-func sameStepAttempt(left, right imageagent.StepAttempt) bool { return left == right }
+func sameStepAttempt(left, right imageagent.StepAttempt) bool { return reflect.DeepEqual(left, right) }

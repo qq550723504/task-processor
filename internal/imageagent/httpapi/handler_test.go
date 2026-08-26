@@ -104,7 +104,10 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 		},
 		Slots: []imageagent.SlotProjection{{
 			Slot:    imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleScene, Status: imageagent.SlotStatusBlocked},
-			Attempt: 2, Candidates: []imageagent.AssetCandidate{{AssetID: "candidate-1", SourceAssetID: "source-1"}}, ErrorCode: "provider_failed",
+			Attempt: 2, Candidates: []imageagent.AssetCandidate{
+				{AssetID: "candidate-1", URL: "https://generated.example/candidate-1.png", SourceAssetID: "source-1"},
+				{AssetID: "candidate-unsafe", URL: "data:image/png;base64,AAAA", SourceAssetID: "source-1"},
+			}, ErrorCode: "provider_failed",
 		}},
 		Actions: []imageagent.Action{imageagent.ActionRetrySlot}, LastEventID: 9,
 		ProjectionVersion: 9,
@@ -122,6 +125,8 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 		require.Contains(t, response.Body.String(), field)
 	}
 	require.NotContains(t, response.Body.String(), "javascript:alert")
+	require.NotContains(t, response.Body.String(), "data:image")
+	require.NotContains(t, response.Body.String(), "candidate-unsafe")
 	for _, forbidden := range []string{"BusinessTaskID", "ActivePlanRevision", "SourceAssetIDs", "IdempotencyKey", "LastEventID"} {
 		require.NotContains(t, response.Body.String(), forbidden)
 	}

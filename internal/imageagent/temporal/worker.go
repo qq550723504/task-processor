@@ -2,9 +2,8 @@ package temporal
 
 import (
 	"context"
-	"crypto/sha256"
+	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -37,7 +36,10 @@ func (c *Client) GetProjection(ctx context.Context, scope imageagent.RunScope, i
 	if strings.TrimSpace(scope.TenantID) != strings.TrimSpace(identity.TenantID) {
 		return imageagent.WorkflowProjection{}, imageagent.ErrRunNotFound
 	}
-	encoded, err := c.client.QueryWorkflow(ctx, WorkflowID(identity.TenantID, scope.RunID), "", QueryWorkflowProjection)
+	if strings.TrimSpace(scope.OwnerUserID) != strings.TrimSpace(identity.UserID) {
+		return imageagent.WorkflowProjection{}, imageagent.ErrRunNotFound
+	}
+	encoded, err := c.client.QueryWorkflow(ctx, WorkflowID(identity.TenantID, identity.UserID, scope.RunID), "", QueryWorkflowProjection)
 	if err != nil {
 		return imageagent.WorkflowProjection{}, err
 	}
@@ -83,7 +85,7 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 		return err
 	}
 	_, err := c.client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
-		ID:                       WorkflowID(start.Identity.TenantID, start.Run.ID),
+		ID:                       WorkflowID(start.Identity.TenantID, start.Identity.UserID, start.Run.ID),
 		TaskQueue:                TaskQueueName(),
 		WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 		WorkflowIDReusePolicy:    enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
@@ -142,9 +144,13 @@ func (c *Client) Resume(ctx context.Context, command imageagent.ResumeCommand) (
 		return imageagent.CommandAcknowledgement{}, fmt.Errorf("image agent resume actor and action must match verified identity")
 	}
 	input := ResumeCommandInput{RunID: command.RunID, ActorID: command.ActorID, ActionID: command.ActionID}
+	transportID, err := newTransportUpdateID("resume")
+	if err != nil {
+		return imageagent.CommandAcknowledgement{}, err
+	}
 	handle, err := c.client.UpdateWorkflow(ctx, sdkclient.UpdateWorkflowOptions{
-		UpdateID:   "resume:" + command.ActionID,
-		WorkflowID: WorkflowID(command.Identity.TenantID, command.RunID),
+		UpdateID:   transportID,
+		WorkflowID: WorkflowID(command.Identity.TenantID, command.Identity.UserID, command.RunID),
 		UpdateName: updateResumeCommand, Args: []interface{}{input},
 		WaitForStage: sdkclient.WorkflowUpdateStageCompleted,
 	})
@@ -159,14 +165,13 @@ func (c *Client) Resume(ctx context.Context, command imageagent.ResumeCommand) (
 }
 
 func (c *Client) executeCommandUpdate(ctx context.Context, identity imageagent.ExecutionIdentity, runID, updateName, actionID string, arg interface{}) error {
-	encoded, err := json.Marshal(arg)
+	transportID, err := newTransportUpdateID(updateName)
 	if err != nil {
-		return fmt.Errorf("encode image agent workflow update: %w", err)
+		return err
 	}
-	sum := sha256.Sum256(append([]byte(updateName+":"), encoded...))
 	handle, err := c.client.UpdateWorkflow(ctx, sdkclient.UpdateWorkflowOptions{
-		UpdateID:   actionID + ":" + hex.EncodeToString(sum[:]),
-		WorkflowID: WorkflowID(identity.TenantID, runID),
+		UpdateID:   transportID,
+		WorkflowID: WorkflowID(identity.TenantID, identity.UserID, runID),
 		UpdateName: updateName, Args: []interface{}{arg},
 		WaitForStage: sdkclient.WorkflowUpdateStageCompleted,
 	})
@@ -178,6 +183,14 @@ func (c *Client) executeCommandUpdate(ctx context.Context, identity imageagent.E
 		return mapCommandUpdateError(err)
 	}
 	return nil
+}
+
+func newTransportUpdateID(prefix string) (string, error) {
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", fmt.Errorf("generate temporal update transport ID: %w", err)
+	}
+	return strings.TrimSpace(prefix) + ":" + hex.EncodeToString(random[:]), nil
 }
 
 func mapCommandUpdateError(err error) error {

@@ -23,7 +23,7 @@ func newListingKitAuthorizedAssetCatalog(tasks listingTaskSource) imageagent.Aut
 
 func (c *listingKitAuthorizedAssetCatalog) Resolve(ctx context.Context, scope imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	if !ok || strings.TrimSpace(scope.TenantID) == "" || identity.TenantID != scope.TenantID || strings.TrimSpace(scope.BusinessTaskID) == "" {
+	if !ok || strings.TrimSpace(scope.TenantID) == "" || identity.TenantID != scope.TenantID || strings.TrimSpace(scope.OwnerUserID) == "" || identity.UserID != scope.OwnerUserID || strings.TrimSpace(scope.BusinessTaskID) == "" {
 		return imageagent.AssetCatalog{}, fmt.Errorf("verified task ownership is required")
 	}
 	if c == nil || c.tasks == nil {
@@ -33,7 +33,7 @@ func (c *listingKitAuthorizedAssetCatalog) Resolve(ctx context.Context, scope im
 	if err != nil {
 		return imageagent.AssetCatalog{}, fmt.Errorf("load business task: %w", err)
 	}
-	if task == nil || strings.TrimSpace(task.ID) != strings.TrimSpace(scope.BusinessTaskID) || strings.TrimSpace(task.TenantID) != identity.TenantID {
+	if task == nil || strings.TrimSpace(task.ID) != strings.TrimSpace(scope.BusinessTaskID) || strings.TrimSpace(task.TenantID) != identity.TenantID || listingkit.ResolveTaskUserID(task) != identity.UserID {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task is not owned by verified tenant")
 	}
 	assets := sourceAssetsFromTask(task)
@@ -51,11 +51,25 @@ func sourceAssetsFromTask(task *listingkit.Task) []imageagent.AuthorizedAsset {
 			if item.Kind != asset.KindSourceImage || strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.URL) == "" {
 				continue
 			}
+			url, err := imageagent.ValidateSafeImageURL(item.URL)
+			if err != nil {
+				continue
+			}
+			sourceURL := strings.TrimSpace(item.SourceURL)
+			if sourceURL == "" {
+				sourceURL = url
+			} else if sourceURL, err = imageagent.ValidateSafeImageURL(sourceURL); err != nil {
+				continue
+			}
 			label := "Source image"
 			if len(item.Labels) > 0 && strings.TrimSpace(item.Labels[0]) != "" {
 				label = strings.TrimSpace(item.Labels[0])
 			}
-			out = append(out, imageagent.AuthorizedAsset{ID: strings.TrimSpace(item.ID), Type: imageagent.AuthorizedAssetSource, DisplayURL: strings.TrimSpace(item.URL), Label: label, Width: item.Width, Height: item.Height})
+			// ProductImage slot execution needs only canonical URLs and dimensions.
+			// Task metadata is intentionally not copied into the run authorization
+			// snapshot because the canonical asset contract does not classify it as
+			// safe provider input.
+			out = append(out, imageagent.AuthorizedAsset{ID: strings.TrimSpace(item.ID), Type: imageagent.AuthorizedAssetSource, URL: url, SourceURL: sourceURL, DisplayURL: url, Label: label, Width: item.Width, Height: item.Height})
 		}
 		if len(out) > 0 {
 			return out

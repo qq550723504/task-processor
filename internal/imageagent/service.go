@@ -2,8 +2,10 @@ package imageagent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"task-processor/internal/authidentity"
@@ -46,7 +48,16 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	if err := ValidatePlan(input.Plan); err != nil {
 		return fmt.Errorf("%w: validate image agent plan: %v", ErrValidation, err)
 	}
-	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{TenantID: identity.TenantID, BusinessTaskID: input.BusinessTaskID, RunID: input.RunID})
+	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: input.RunID}
+	if existing, getErr := s.repository.GetProjection(ctx, scope); getErr == nil {
+		if existing.Run.BusinessTaskID != input.BusinessTaskID || existing.Run.IdempotencyKey != input.IdempotencyKey || existing.Run.Budget != input.Budget || !reflect.DeepEqual(existing.Plan, input.Plan) {
+			return ErrRevisionConflict
+		}
+		return s.workflows.StartManual(ctx, WorkflowStart{Run: existing.Run, Plan: existing.Plan, Identity: identity, MaxConcurrentSlots: input.MaxConcurrentSlots, AssetCatalog: existing.AssetCatalog})
+	} else if !errors.Is(getErr, ErrRunNotFound) {
+		return getErr
+	}
+	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: input.BusinessTaskID, RunID: input.RunID})
 	if err != nil {
 		return fmt.Errorf("%w: resolve authorized image assets: %v", ErrValidation, err)
 	}
@@ -61,24 +72,21 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		ID: input.RunID, BusinessTaskID: input.BusinessTaskID,
 		TenantID: identity.TenantID, UserID: identity.UserID,
 		Mode: RunModeManual, IdempotencyKey: input.IdempotencyKey,
-		Status: RunStatusPlanning, CurrentNode: "plan", Version: 1,
+		Status: RunStatusPlanning, CurrentNode: "plan", Version: 1, ActivePlanRevision: input.Plan.Revision,
 		Budget: input.Budget,
 	}
-	if err := s.ensureRun(ctx, &run); err != nil {
-		return fmt.Errorf("create image agent run: %w", err)
+	projection, err := s.repository.InitializeRun(ctx, ProjectionInitialization{
+		Scope: scope, Run: run, Plan: input.Plan, Catalog: catalog,
+		Snapshot: RunProjection{Run: run, Plan: input.Plan}, CommitID: "start:" + input.IdempotencyKey,
+		EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		return fmt.Errorf("initialize image agent run: %w", err)
 	}
-	scope := RunScope{TenantID: identity.TenantID, RunID: run.ID}
-	if err := s.repository.SaveAssetCatalog(ctx, scope, catalog); err != nil {
-		return fmt.Errorf("save image agent asset catalog: %w", err)
-	}
-	if err := s.repository.AppendPlan(ctx, scope, 0, input.Plan); err != nil {
-		return fmt.Errorf("append image agent plan: %w", err)
-	}
-	run.ActivePlanRevision = input.Plan.Revision
 	return s.workflows.StartManual(ctx, WorkflowStart{
-		Run: run, Plan: input.Plan, Identity: identity,
+		Run: projection.Run, Plan: projection.Plan, Identity: identity,
 		MaxConcurrentSlots: input.MaxConcurrentSlots,
-		AssetCatalog:       catalog,
+		AssetCatalog:       projection.AssetCatalog,
 	})
 }
 
@@ -87,39 +95,8 @@ func (s *Service) Get(ctx context.Context, runID string) (RunProjection, error) 
 	if err != nil {
 		return RunProjection{}, err
 	}
-	scope := RunScope{TenantID: identity.TenantID, RunID: strings.TrimSpace(runID)}
-	run, err := s.repository.GetRun(ctx, scope)
-	if err != nil {
-		return RunProjection{}, err
-	}
-	workflowProjection, err := s.workflows.GetProjection(ctx, scope, identity)
-	if err != nil {
-		return RunProjection{}, fmt.Errorf("query image agent workflow projection: %w", err)
-	}
-	if workflowProjection.Plan.Revision != run.ActivePlanRevision {
-		return RunProjection{}, ErrRevisionConflict
-	}
-	lastEventID, err := s.latestEventCursor(ctx, scope)
-	if err != nil {
-		return RunProjection{}, err
-	}
-	catalog, err := s.repository.GetAssetCatalog(ctx, scope)
-	if err != nil {
-		return RunProjection{}, fmt.Errorf("load image agent asset catalog: %w", err)
-	}
-	projectedRun := *run
-	projectedRun.Status = workflowProjection.Status
-	projectedRun.Block = cloneBlock(workflowProjection.Block)
-	return RunProjection{
-		Run: projectedRun, Plan: workflowProjection.Plan,
-		Slots:             append([]SlotProjection(nil), workflowProjection.Slots...),
-		ResultDigest:      workflowProjection.ResultDigest,
-		Actions:           AllowedActions(projectedRun),
-		LastEventID:       lastEventID,
-		ProjectionVersion: lastEventID,
-		AssetCatalog:      catalog,
-		PendingCommand:    clonePendingCommand(workflowProjection.PendingCommand),
-	}, nil
+	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: strings.TrimSpace(runID)}
+	return s.repository.GetProjection(ctx, scope)
 }
 
 func (s *Service) ReplacePlan(ctx context.Context, runID string, expectedRevision int64, plan Plan, actionID string) error {
@@ -134,7 +111,7 @@ func (s *Service) ReplacePlan(ctx context.Context, runID string, expectedRevisio
 	if err := ValidatePlan(plan); err != nil {
 		return fmt.Errorf("%w: validate replacement plan: %v", ErrValidation, err)
 	}
-	catalog, err := s.repository.GetAssetCatalog(ctx, RunScope{TenantID: identity.TenantID, RunID: strings.TrimSpace(runID)})
+	catalog, err := s.repository.GetAssetCatalog(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: strings.TrimSpace(runID)})
 	if err != nil {
 		return err
 	}
@@ -145,24 +122,6 @@ func (s *Service) ReplacePlan(ctx context.Context, runID string, expectedRevisio
 		RunID: strings.TrimSpace(runID), ExpectedRevision: expectedRevision, Plan: plan,
 		ActorID: identity.UserID, ActionID: strings.TrimSpace(actionID), Identity: identity,
 	})
-}
-
-func (s *Service) ensureRun(ctx context.Context, desired *Run) error {
-	err := s.repository.CreateRun(ctx, desired)
-	if err == nil || !errors.Is(err, ErrRevisionConflict) {
-		return err
-	}
-	existing, getErr := s.repository.GetRun(ctx, RunScope{TenantID: desired.TenantID, RunID: desired.ID})
-	if getErr != nil {
-		return err
-	}
-	if existing.ID != desired.ID || existing.BusinessTaskID != desired.BusinessTaskID ||
-		existing.TenantID != desired.TenantID || existing.UserID != desired.UserID ||
-		existing.Mode != desired.Mode || existing.IdempotencyKey != desired.IdempotencyKey ||
-		existing.Budget != desired.Budget {
-		return err
-	}
-	return nil
 }
 
 func (s *Service) RetrySlot(ctx context.Context, runID, slotID string, planRevision int64, actionID string) error {
@@ -205,7 +164,7 @@ func (s *Service) Resume(ctx context.Context, runID, actionID string) (CommandAc
 	if runID == "" || actionID == "" {
 		return CommandAcknowledgement{}, fmt.Errorf("%w: run ID and action ID are required", ErrValidation)
 	}
-	if _, err := s.repository.GetRun(ctx, RunScope{TenantID: identity.TenantID, RunID: runID}); err != nil {
+	if _, err := s.repository.GetProjection(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID}); err != nil {
 		return CommandAcknowledgement{}, err
 	}
 	return s.workflows.Resume(ctx, ResumeCommand{RunID: runID, ActorID: identity.UserID, ActionID: actionID, Identity: identity})
@@ -219,14 +178,14 @@ func (s *Service) ListEvents(ctx context.Context, runID string, afterCursor int6
 	if afterCursor < 0 || limit <= 0 {
 		return nil, fmt.Errorf("%w: event cursor and limit are invalid", ErrValidation)
 	}
-	scope := RunScope{TenantID: identity.TenantID, RunID: strings.TrimSpace(runID)}
+	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: strings.TrimSpace(runID)}
 	events, err := s.repository.ListEvents(ctx, scope, afterCursor, limit)
 	if err != nil {
 		return nil, err
 	}
 	last := afterCursor
 	for _, event := range events {
-		if event.TenantID != scope.TenantID || event.RunID != scope.RunID || event.Cursor <= last || event.ProjectionVersion != event.Cursor {
+		if event.TenantID != scope.TenantID || event.OwnerUserID != scope.OwnerUserID || event.RunID != scope.RunID || event.Cursor <= last || event.ProjectionVersion != event.Cursor {
 			return nil, ErrRevisionConflict
 		}
 		last = event.Cursor
@@ -246,30 +205,10 @@ func (s *Service) commandIdentity(ctx context.Context, runID string, revision in
 	if revision <= 0 {
 		return ExecutionIdentity{}, fmt.Errorf("%w: positive plan revision is required", ErrValidation)
 	}
-	if _, err := s.repository.GetRun(ctx, RunScope{TenantID: identity.TenantID, RunID: runID}); err != nil {
+	if _, err := s.repository.GetProjection(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID}); err != nil {
 		return ExecutionIdentity{}, err
 	}
 	return identity, nil
-}
-
-func (s *Service) latestEventCursor(ctx context.Context, scope RunScope) (int64, error) {
-	const pageSize = 100
-	var cursor int64
-	for {
-		events, err := s.repository.ListEvents(ctx, scope, cursor, pageSize)
-		if err != nil {
-			return 0, err
-		}
-		for _, event := range events {
-			if event.TenantID != scope.TenantID || event.RunID != scope.RunID || event.Cursor <= cursor {
-				return 0, ErrRevisionConflict
-			}
-			cursor = event.Cursor
-		}
-		if len(events) < pageSize {
-			return cursor, nil
-		}
-	}
 }
 
 func verifiedExecutionIdentity(ctx context.Context) (ExecutionIdentity, error) {

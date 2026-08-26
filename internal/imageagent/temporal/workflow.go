@@ -77,7 +77,7 @@ runPlan:
 	for {
 		executing := WorkflowResult{Status: imageagent.RunStatusExecuting, Plan: input.Plan, Slots: slotProjections(input.Plan, nil)}
 		if !updates.consumeExecutingHandoff(input.Plan.Revision) {
-			if err := effects.persistRunState(ctx, input, imageagent.RunStatusExecuting, "execute_slots", nil); err != nil {
+			if err := effects.persistRunState(ctx, input, executing, "execute_slots"); err != nil {
 				if errors.Is(err, errWorkflowEffectFenced) {
 					return awaitTerminalIntent(nil)
 				}
@@ -117,7 +117,7 @@ runPlan:
 		}
 		result := summarizeResults(input.Plan, results)
 		if result.Block != nil {
-			if err := effects.persistRunState(ctx, input, imageagent.RunStatusBlocked, "retry_slot", result.Block); err != nil {
+			if err := effects.persistRunState(ctx, input, result, "retry_slot"); err != nil {
 				if errors.Is(err, errWorkflowEffectFenced) {
 					return awaitTerminalIntent(results)
 				}
@@ -142,14 +142,6 @@ runPlan:
 			}
 		}
 
-		if !updates.consumeAwaitingApprovalHandoff(input.Plan.Revision) {
-			if err := effects.persistRunState(ctx, input, imageagent.RunStatusAwaitingFinalApproval, "approve_results", nil); err != nil {
-				if errors.Is(err, errWorkflowEffectFenced) {
-					return awaitTerminalIntent(results)
-				}
-				return WorkflowResult{}, err
-			}
-		}
 		digest, err := resultDigest(input.Plan, results)
 		if err != nil {
 			return WorkflowResult{}, err
@@ -157,6 +149,14 @@ runPlan:
 		result.Status = imageagent.RunStatusAwaitingFinalApproval
 		result.Block = nil
 		result.ResultDigest = digest
+		if !updates.consumeAwaitingApprovalHandoff(input.Plan.Revision) {
+			if err := effects.persistRunState(ctx, input, result, "approve_results"); err != nil {
+				if errors.Is(err, errWorkflowEffectFenced) {
+					return awaitTerminalIntent(results)
+				}
+				return WorkflowResult{}, err
+			}
+		}
 		projection = result
 		for {
 			updates.wake.Receive(ctx, nil)
@@ -186,6 +186,7 @@ func imageAgentActivityContext(ctx workflow.Context) workflow.Context {
 type workflowEffectRequest struct {
 	execute          func(workflow.Context) error
 	terminalIdentity string
+	allowAfterIntent bool
 	done             workflow.Channel
 }
 
@@ -207,7 +208,7 @@ func newWorkflowEffectOwner(ctx workflow.Context) *workflowEffectOwner {
 		for {
 			var request workflowEffectRequest
 			owner.requests.Receive(ownerCtx, &request)
-			if terminalIntentIdentity != "" && request.terminalIdentity != terminalIntentIdentity {
+			if terminalIntentIdentity != "" && request.terminalIdentity != terminalIntentIdentity && !request.allowAfterIntent {
 				request.done.Send(ownerCtx, workflowEffectResult{err: fmt.Errorf(
 					"%w: terminal intent %s does not match request %s",
 					errWorkflowEffectFenced, terminalIntentIdentity, request.terminalIdentity,
@@ -232,8 +233,12 @@ func newWorkflowEffectOwner(ctx workflow.Context) *workflowEffectOwner {
 }
 
 func (o *workflowEffectOwner) execute(ctx workflow.Context, terminalIdentity string, effect func(workflow.Context) error) error {
+	return o.executeRequest(ctx, terminalIdentity, false, effect)
+}
+
+func (o *workflowEffectOwner) executeRequest(ctx workflow.Context, terminalIdentity string, allowAfterIntent bool, effect func(workflow.Context) error) error {
 	done := workflow.NewBufferedChannel(ctx, 1)
-	o.requests.Send(ctx, workflowEffectRequest{execute: effect, terminalIdentity: terminalIdentity, done: done})
+	o.requests.Send(ctx, workflowEffectRequest{execute: effect, terminalIdentity: terminalIdentity, allowAfterIntent: allowAfterIntent, done: done})
 	var result workflowEffectResult
 	done.Receive(ctx, &result)
 	return result.err
@@ -248,41 +253,68 @@ func (o *workflowEffectOwner) persistSlotResult(ctx workflow.Context, input Work
 func (o *workflowEffectOwner) persistRunState(
 	ctx workflow.Context,
 	input WorkflowInput,
-	status imageagent.RunStatus,
+	projection WorkflowResult,
 	node string,
-	block *imageagent.Block,
+	commitIdentity ...string,
 ) error {
-	if isTerminalRunStatus(status) {
-		return fmt.Errorf("terminal run-state effect %s requires a stable action identity", status)
+	if isTerminalRunStatus(projection.Status) {
+		return fmt.Errorf("terminal run-state effect %s requires a stable action identity", projection.Status)
+	}
+	commitID, err := runProjectionCommitID(input, projection, node, commitIdentity...)
+	if err != nil {
+		return err
 	}
 	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
-		return executePersistRunState(ownerCtx, input, status, node, block)
+		return executePersistRunState(ownerCtx, input, projection, node, commitID)
 	})
 }
 
 func (o *workflowEffectOwner) persistTerminalRunState(
 	ctx workflow.Context,
 	input WorkflowInput,
-	status imageagent.RunStatus,
+	projection WorkflowResult,
 	node string,
-	block *imageagent.Block,
 	actionFingerprint string,
 ) error {
-	if !isTerminalRunStatus(status) || actionFingerprint == "" {
+	if !isTerminalRunStatus(projection.Status) || actionFingerprint == "" {
 		return fmt.Errorf("terminal run-state effect requires terminal status and stable action identity")
 	}
-	identity, err := terminalRunStateEffectIdentity(input, status, node, block, actionFingerprint)
+	identity, err := terminalRunStateEffectIdentity(input, projection.Status, node, projection.Block, actionFingerprint)
 	if err != nil {
 		return err
 	}
 	return o.execute(ctx, identity, func(ownerCtx workflow.Context) error {
-		return executePersistRunState(ownerCtx, input, status, node, block)
+		return executePersistRunState(ownerCtx, input, projection, node, identity)
 	})
+}
+
+func runProjectionCommitID(input WorkflowInput, projection WorkflowResult, node string, identities ...string) (string, error) {
+	identity := ""
+	if len(identities) > 0 {
+		identity = identities[0]
+	}
+	return updateFingerprint("public_projection", struct {
+		RunID    string
+		Revision int64
+		Status   imageagent.RunStatus
+		Node     string
+		Block    *imageagent.Block
+		Identity string
+	}{input.RunID, input.Plan.Revision, projection.Status, node, projection.Block, identity})
 }
 
 func (o *workflowEffectOwner) persistPlanRevision(ctx workflow.Context, input WorkflowInput, replacement ReplacePlanSignal) error {
 	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
 		return executePersistPlanRevision(ownerCtx, input, replacement)
+	})
+}
+
+func (o *workflowEffectOwner) persistPendingCommand(ctx workflow.Context, input WorkflowInput, receipt *imageagent.PendingCommandReceipt, commitID string) error {
+	return o.executeRequest(ctx, "", true, func(ownerCtx workflow.Context) error {
+		if err := workflow.ExecuteActivity(ownerCtx, activityPersistPendingCommand, PersistPendingCommandActivityInput{RunID: input.RunID, Identity: input.Identity, Receipt: receipt, CommitID: commitID}).Get(ownerCtx, nil); err != nil {
+			return fmt.Errorf("persist pending command projection: %w", err)
+		}
+		return nil
 	})
 }
 
@@ -349,6 +381,7 @@ type workflowUpdateRecord struct {
 	retryResult     *SlotWorkflowResult
 	acknowledgement CommandAcknowledgement
 	completed       bool
+	ingressState    signalIngressState
 }
 
 type signalIngressState string
@@ -359,10 +392,7 @@ const (
 	signalIngressAccepted signalIngressState = "accepted"
 )
 
-type signalIngressRecord struct {
-	fingerprint string
-	state       signalIngressState
-}
+const maxActionLedgerEntries = 1024
 
 type workflowUpdateState struct {
 	input                           *WorkflowInput
@@ -371,7 +401,6 @@ type workflowUpdateState struct {
 	effects                         *workflowEffectOwner
 	wake                            workflow.Channel
 	actions                         map[string]*workflowUpdateRecord
-	signalActions                   map[string]*signalIngressRecord
 	pendingActionID                 string
 	deferredRetries                 []RetrySlotSignal
 	restartPlan                     bool
@@ -391,7 +420,6 @@ func newWorkflowUpdateState(
 	return &workflowUpdateState{
 		input: input, projection: projection, results: results, effects: effects,
 		wake: workflow.NewBufferedChannel(ctx, 8), actions: make(map[string]*workflowUpdateRecord),
-		signalActions: make(map[string]*signalIngressRecord),
 	}
 }
 
@@ -460,14 +488,14 @@ func (s *workflowUpdateState) dispatchRetrySignal(ctx workflow.Context, signal R
 	if err != nil || strings.TrimSpace(signal.ActionID) == "" {
 		return
 	}
-	if _, exists := s.signalActions[signal.ActionID]; !exists && s.actions[signal.ActionID] == nil && s.pendingActionID == "" &&
+	if _, exists := s.actions[signal.ActionID]; !exists && s.pendingActionID == "" && len(s.actions) < maxActionLedgerEntries &&
 		(s.projection.Status == imageagent.RunStatusPlanning || s.projection.Status == imageagent.RunStatusExecuting) {
-		record := &signalIngressRecord{fingerprint: fingerprint, state: signalIngressRejected}
-		s.signalActions[signal.ActionID] = record
+		record := &workflowUpdateRecord{fingerprint: fingerprint, kind: signalRetrySlot, command: signal, phase: updatePhaseRetryExecuteChild, ingressState: signalIngressRejected}
+		s.actions[signal.ActionID] = record
 		if validateUpdateIdentity(*s.input, signal.RunID, signal.PlanRevision, signal.ActorID, signal.ActionID) != nil || strings.TrimSpace(signal.SlotID) == "" {
 			return
 		}
-		record.state = signalIngressDeferred
+		record.ingressState = signalIngressDeferred
 		s.deferredRetries = append(s.deferredRetries, signal)
 		return
 	}
@@ -512,22 +540,42 @@ func (s *workflowUpdateState) acceptSignal(
 	if err != nil {
 		return false
 	}
-	if _, exists := s.signalActions[actionID]; exists {
+	if _, exists := s.actions[actionID]; exists {
 		// Signals are ingress-only compatibility commands. Once observed, neither
 		// a duplicate nor a reconstructed signal may resume a pending saga.
 		return false
 	}
-	ingress := &signalIngressRecord{fingerprint: fingerprint, state: signalIngressRejected}
-	s.signalActions[actionID] = ingress
-	if s.actions[actionID] != nil {
-		// Existing action records are recoverable only through resume_command.
+	if len(s.actions) >= maxActionLedgerEntries {
 		return false
 	}
-	if s.pendingActionID != "" || validate() != nil {
+	validationErr := error(nil)
+	if s.pendingActionID != "" {
+		validationErr = updateBlockedError("another image agent command is pending")
+	} else {
+		validationErr = validate()
+	}
+	ingress := &workflowUpdateRecord{fingerprint: fingerprint, kind: name, command: command, phase: initialActionPhase(name), ingressState: signalIngressRejected}
+	s.actions[actionID] = ingress
+	if validationErr != nil {
 		return false
 	}
-	ingress.state = signalIngressAccepted
+	ingress.ingressState = signalIngressAccepted
 	return true
+}
+
+func initialActionPhase(kind string) workflowUpdatePhase {
+	switch kind {
+	case signalReplacePlan:
+		return updatePhaseReplacePersistPlan
+	case signalRetrySlot:
+		return updatePhaseRetryExecuteChild
+	case signalApproveResults:
+		return updatePhaseApprovalPublish
+	case signalCancel:
+		return updatePhaseCancelPersist
+	default:
+		return ""
+	}
 }
 
 func (s *workflowUpdateState) dispatchDeferredRetries(ctx workflow.Context) bool {
@@ -539,15 +587,18 @@ func (s *workflowUpdateState) dispatchDeferredRetries(ctx workflow.Context) bool
 		if err != nil {
 			continue
 		}
-		ingress := s.signalActions[signal.ActionID]
-		if ingress == nil || ingress.fingerprint != fingerprint || ingress.state != signalIngressDeferred {
+		ingress := s.actions[signal.ActionID]
+		if ingress == nil || ingress.fingerprint != fingerprint || ingress.ingressState != signalIngressDeferred {
 			continue
 		}
+		// Promotion is the one valid transition for a deferred ingress record.
+		// Mark it accepted before normal validation so the global tombstone rule
+		// still rejects external attempts to reuse a deferred ActionID.
+		ingress.ingressState = signalIngressAccepted
 		if err := s.validateRetrySlot(signal); err != nil {
-			ingress.state = signalIngressRejected
+			ingress.ingressState = signalIngressRejected
 			continue
 		}
-		ingress.state = signalIngressAccepted
 		command := signal
 		workflow.Go(ctx, func(commandCtx workflow.Context) {
 			_, _ = s.handleRetrySlot(commandCtx, command)
@@ -619,16 +670,12 @@ func (s *workflowUpdateState) applyReplacePlan(ctx workflow.Context, signal Repl
 		if err := s.effects.persistPlanRevision(ctx, *s.input, signal); err != nil {
 			return CommandAcknowledgement{}, err
 		}
-		record.phase = updatePhaseReplacePersistTransition
+		record.phase = updatePhaseCompleted
 	}
-	transitionInput := *s.input
-	transitionInput.Plan = signal.Plan
-	if err := s.effects.persistRunState(ctx, transitionInput, imageagent.RunStatusExecuting, "execute_slots", nil); err != nil {
-		return CommandAcknowledgement{}, err
-	}
+	nextProjection := executingProjection(signal.Plan, nil)
 	s.input.Plan = signal.Plan
 	*s.results = nil
-	*s.projection = executingProjection(signal.Plan, nil)
+	*s.projection = nextProjection
 	s.executingHandoffRevision = signal.Plan.Revision
 	s.restartPlan = true
 	return CommandAcknowledgement{
@@ -706,7 +753,7 @@ func (s *workflowUpdateState) applyRetrySlot(ctx workflow.Context, signal RetryS
 	stagedResults[index] = *record.retryResult
 	result := summarizeResults(s.input.Plan, stagedResults)
 	if result.Block != nil {
-		if err := s.effects.persistRunState(ctx, *s.input, imageagent.RunStatusBlocked, "retry_slot", result.Block); err != nil {
+		if err := s.effects.persistRunState(ctx, *s.input, result, "retry_slot", record.fingerprint); err != nil {
 			return CommandAcknowledgement{}, err
 		}
 	} else {
@@ -716,7 +763,7 @@ func (s *workflowUpdateState) applyRetrySlot(ctx workflow.Context, signal RetryS
 		}
 		result.Status = imageagent.RunStatusAwaitingFinalApproval
 		result.ResultDigest = digest
-		if err := s.effects.persistRunState(ctx, *s.input, imageagent.RunStatusAwaitingFinalApproval, "approve_results", nil); err != nil {
+		if err := s.effects.persistRunState(ctx, *s.input, result, "approve_results", record.fingerprint); err != nil {
 			return CommandAcknowledgement{}, err
 		}
 		s.awaitingApprovalHandoffRevision = s.input.Plan.Revision
@@ -778,13 +825,12 @@ func (s *workflowUpdateState) applyApproveResults(ctx workflow.Context, signal A
 		}
 		record.phase = updatePhaseApprovalPersistComplete
 	}
-	if err := s.effects.persistTerminalRunState(
-		ctx, *s.input, imageagent.RunStatusCompleted, "complete", nil, record.fingerprint,
-	); err != nil {
-		return CommandAcknowledgement{}, err
-	}
 	result := *s.projection
 	result.Status = imageagent.RunStatusCompleted
+	result.Block = nil
+	if err := s.effects.persistTerminalRunState(ctx, *s.input, result, "complete", record.fingerprint); err != nil {
+		return CommandAcknowledgement{}, err
+	}
 	*s.projection = result
 	return CommandAcknowledgement{
 		RunID: signal.RunID, PlanRevision: signal.PlanRevision, ActionID: signal.ActionID, Status: imageagent.RunStatusCompleted,
@@ -828,15 +874,13 @@ func (s *workflowUpdateState) handleCancel(ctx workflow.Context, signal CancelSi
 }
 
 func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSignal, record *workflowUpdateRecord) (CommandAcknowledgement, error) {
-	if err := s.effects.persistTerminalRunState(
-		ctx, *s.input, imageagent.RunStatusCancelled, "cancelled", nil, record.fingerprint,
-	); err != nil {
-		return CommandAcknowledgement{}, err
-	}
 	result := *s.projection
 	result.Status = imageagent.RunStatusCancelled
 	result.Block = nil
 	result.ResultDigest = ""
+	if err := s.effects.persistTerminalRunState(ctx, *s.input, result, "cancelled", record.fingerprint); err != nil {
+		return CommandAcknowledgement{}, err
+	}
 	*s.projection = result
 	s.cancelCommitted = true
 	s.cancelRequested = true
@@ -844,7 +888,7 @@ func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSig
 }
 
 func (s *workflowUpdateState) beginAction(actionID, fingerprint string, phase workflowUpdatePhase, kind string, command interface{}) *workflowUpdateRecord {
-	record := &workflowUpdateRecord{fingerprint: fingerprint, phase: phase, kind: kind, command: command}
+	record := &workflowUpdateRecord{fingerprint: fingerprint, phase: phase, kind: kind, command: command, ingressState: signalIngressAccepted}
 	s.actions[actionID] = record
 	s.pendingActionID = actionID
 	return record
@@ -913,16 +957,41 @@ func (s *workflowUpdateState) runActionAttempt(ctx workflow.Context, actionID st
 		var acknowledgement CommandAcknowledgement
 		return acknowledgement, record.future.Get(ctx, &acknowledgement)
 	}
+	if record.ingressState == signalIngressRejected || record.ingressState == signalIngressDeferred {
+		return CommandAcknowledgement{}, updateBlockedError("action ID is a rejected workflow tombstone")
+	}
+	if s.pendingActionID == "" {
+		s.pendingActionID = actionID
+	}
+	record.ingressState = signalIngressAccepted
 	record.future, record.setter = workflow.NewFuture(ctx)
 	record.running = true
+	receipt := s.pendingReceipt(actionID, record)
+	if err := s.effects.persistPendingCommand(ctx, *s.input, receipt, fmt.Sprintf("command:%s:pending:%s", actionID, record.phase)); err != nil {
+		record.running = false
+		record.setter.Set(CommandAcknowledgement{}, err)
+		record.future = nil
+		record.setter = nil
+		return CommandAcknowledgement{}, err
+	}
 	acknowledgement, err := apply()
 	record.running = false
 	if err == nil {
 		record.phase = updatePhaseCompleted
 		record.acknowledgement = acknowledgement
 		record.completed = true
+		record.ingressState = signalIngressAccepted
+		record.command = nil
+		record.retryResult = nil
+		record.kind = ""
 		if s.pendingActionID == actionID {
 			s.pendingActionID = ""
+		}
+	}
+	if err != nil {
+		receipt = s.pendingReceipt(actionID, record)
+		if persistErr := s.effects.persistPendingCommand(ctx, *s.input, receipt, fmt.Sprintf("command:%s:pending:%s", actionID, record.phase)); persistErr != nil {
+			err = fmt.Errorf("%v; persist pending receipt: %w", err, persistErr)
 		}
 	}
 	record.setter.Set(acknowledgement, err)
@@ -934,6 +1003,18 @@ func (s *workflowUpdateState) runActionAttempt(ctx workflow.Context, actionID st
 	return acknowledgement, err
 }
 
+func (s *workflowUpdateState) pendingReceipt(actionID string, record *workflowUpdateRecord) *imageagent.PendingCommandReceipt {
+	receipt := &imageagent.PendingCommandReceipt{ActionID: actionID, Kind: record.kind, Phase: string(record.phase), Status: "pending", PlanRevision: s.input.Plan.Revision}
+	if command, ok := record.command.(RetrySlotSignal); ok {
+		receipt.SlotID = command.SlotID
+		receipt.PlanRevision = command.PlanRevision
+	}
+	if command, ok := record.command.(ReplacePlanSignal); ok {
+		receipt.PlanRevision = command.ExpectedRevision
+	}
+	return receipt
+}
+
 func (s *workflowUpdateState) validateAction(actionID, fingerprint string) (bool, error) {
 	if strings.TrimSpace(actionID) == "" {
 		return false, updateBlockedError("action ID is required")
@@ -943,7 +1024,13 @@ func (s *workflowUpdateState) validateAction(actionID, fingerprint string) (bool
 		return true, updateBlockedError("action ID was reused for a different command")
 	}
 	if ok {
+		if record.ingressState == signalIngressRejected || record.ingressState == signalIngressDeferred {
+			return true, updateBlockedError("action ID was already consumed by rejected ingress")
+		}
 		return true, nil
+	}
+	if len(s.actions) >= maxActionLedgerEntries {
+		return false, updateBlockedError("image agent action ledger capacity is exhausted")
 	}
 	if s.pendingActionID != "" {
 		return false, updateBlockedError("another image agent command is pending")
@@ -1090,13 +1177,13 @@ func executePersistSlotResult(ctx workflow.Context, input WorkflowInput, result 
 	return nil
 }
 
-func executePersistRunState(ctx workflow.Context, input WorkflowInput, status imageagent.RunStatus, node string, block *imageagent.Block) error {
+func executePersistRunState(ctx workflow.Context, input WorkflowInput, projection WorkflowResult, node, commitID string) error {
 	err := workflow.ExecuteActivity(ctx, activityPersistRunState, PersistRunStateActivityInput{
 		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
-		Status: status, CurrentNode: node, Block: block,
+		Projection: projection, CurrentNode: node, CommitID: commitID,
 	}).Get(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("persist run state %s: %w", status, err)
+		return fmt.Errorf("persist run state %s: %w", projection.Status, err)
 	}
 	return nil
 }

@@ -20,6 +20,10 @@ export function ImageAgentWorkbench({
   runId: string;
   initialRun?: ImageAgentProjection;
 }) {
+  return <ImageAgentWorkbenchSession key={runId} taskId={taskId} runId={runId} initialRun={initialRun} />;
+}
+
+function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: string; runId: string; initialRun?: ImageAgentProjection }) {
   const agent = useImageAgentRun({ runId, initialRun });
   const projection = agent.projection;
   const [draftState, setDraftState] = useState(() => initialRun ? {
@@ -156,7 +160,7 @@ export function ImageAgentWorkbench({
             selectedIds={currentDraft.style_reference_ids ?? []}
             editable={canEditPlan}
             onToggle={(id) => togglePlanAsset("style", id)}
-            emptyLabel="当前计划未选择风格参考"
+            emptyLabel="当前任务没有可用风格库/风格参考不可用"
             testId="image-agent-style-references"
           />
         </aside>
@@ -421,7 +425,7 @@ function SlotCard({
         </fieldset>
         <fieldset disabled={!editable}>
           <legend>槽位风格</legend>
-          {styleAssets.map((asset) => <label key={asset.id} className="mt-1 flex gap-1"><input type="checkbox" checked={draft.style_reference_ids?.includes(asset.id) ?? false} onChange={() => onStylesChange(toggleID(draft.style_reference_ids ?? [], asset.id))} />{asset.label || asset.id}</label>)}
+          {styleAssets.length > 0 ? styleAssets.map((asset) => <label key={asset.id} className="mt-1 flex gap-1"><input type="checkbox" checked={draft.style_reference_ids?.includes(asset.id) ?? false} onChange={() => onStylesChange(toggleID(draft.style_reference_ids ?? [], asset.id))} />{asset.label || asset.id}</label>) : <p className="mt-1">当前任务没有可用风格库/风格参考不可用</p>}
         </fieldset>
       </div>
       <label className="mt-3 block text-sm text-foreground">
@@ -444,12 +448,10 @@ function SlotCard({
               key={candidate.asset_id}
               className="overflow-hidden rounded-xl border border-border bg-muted"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element -- provider asset hosts are tenant-configured at runtime */}
-              <img
-                alt={`${slot.id} 候选图 ${index + 1}`}
-                className="aspect-square w-full object-cover"
-                src={candidate.url}
-              />
+              {safeDisplayURL(candidate.url) ? (
+                // eslint-disable-next-line @next/next/no-img-element -- URL is revalidated at the rendering boundary
+                <img alt={`${slot.id} 候选图 ${index + 1}`} className="aspect-square w-full object-cover" src={safeDisplayURL(candidate.url)} />
+              ) : null}
               <figcaption className="break-all px-3 py-2 text-xs text-muted-foreground">
                 {candidate.asset_id}
               </figcaption>

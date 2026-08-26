@@ -7,16 +7,19 @@ import (
 )
 
 var (
-	ErrRunNotFound      = errors.New("image agent run not found")
-	ErrRevisionConflict = errors.New("image agent revision conflict")
-	ErrCommandBlocked   = errors.New("image agent command blocked")
-	ErrIdentityRequired = errors.New("verified image agent identity is required")
-	ErrValidation       = errors.New("invalid image agent request")
+	ErrRunNotFound               = errors.New("image agent run not found")
+	ErrRevisionConflict          = errors.New("image agent revision conflict")
+	ErrCommandBlocked            = errors.New("image agent command blocked")
+	ErrIdentityRequired          = errors.New("verified image agent identity is required")
+	ErrValidation                = errors.New("invalid image agent request")
+	ErrCatalogSnapshotMissing    = errors.New("image agent catalog snapshot is missing")
+	ErrProjectionSnapshotMissing = errors.New("image agent projection snapshot is missing")
 )
 
 type RunScope struct {
-	TenantID string
-	RunID    string
+	TenantID    string
+	OwnerUserID string
+	RunID       string
 }
 
 type RunMutation struct {
@@ -36,6 +39,7 @@ type SlotResult struct {
 
 type StepAttempt struct {
 	TenantID       string
+	OwnerUserID    string
 	RunID          string
 	SlotID         string
 	Node           string
@@ -47,6 +51,7 @@ type StepAttempt struct {
 
 type RunEvent struct {
 	TenantID          string
+	OwnerUserID       string
 	RunID             string
 	Type              string
 	Cursor            int64
@@ -55,15 +60,9 @@ type RunEvent struct {
 }
 
 type Repository interface {
-	CreateRun(context.Context, *Run) error
-	GetRun(context.Context, RunScope) (*Run, error)
-	UpdateRun(context.Context, RunScope, int64, RunMutation) error
-	AppendPlan(context.Context, RunScope, int64, Plan) error
-	SaveSlotResult(context.Context, RunScope, int64, SlotResult) error
-	AppendAttempt(context.Context, StepAttempt) error
-	AppendEvent(context.Context, RunEvent) error
-	AppendProjectionEvent(context.Context, RunEvent) (RunEvent, error)
+	InitializeRun(context.Context, ProjectionInitialization) (RunProjection, error)
+	GetProjection(context.Context, RunScope) (RunProjection, error)
+	CommitProjection(context.Context, ProjectionCommit) (RunProjection, error)
 	ListEvents(context.Context, RunScope, int64, int) ([]RunEvent, error)
-	SaveAssetCatalog(context.Context, RunScope, AssetCatalog) error
 	GetAssetCatalog(context.Context, RunScope) (AssetCatalog, error)
 }
