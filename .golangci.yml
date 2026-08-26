@@ -63,6 +63,21 @@ linters-settings:
           - pkg: "task-processor/internal/platform"
             desc: "SHEIN publishing policies must not depend on root runtime wiring"
 
+      temu_marketplace_publishing:
+        # Keep the first TEMU policy owner independent from the historical TEMU runtime.
+        files:
+          - "**/internal/marketplace/temu/publishing/*.go"
+          - "**/internal/marketplace/temu/publishing/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/temu"
+            desc: "TEMU publishing policies must not depend on historical TEMU runtime"
+          - pkg: "task-processor/internal/listingkit"
+            desc: "TEMU publishing policies must not depend on ListingKit"
+          - pkg: "task-processor/internal/app"
+            desc: "TEMU publishing policies must not depend on root runtime wiring"
+          - pkg: "task-processor/internal/infra"
+            desc: "TEMU publishing policies must not depend on root runtime wiring"
+
       listingkit_marketplace_publishing:
         # This package direction is stable and has no compatibility exceptions.
         files:
