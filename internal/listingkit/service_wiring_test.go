@@ -3415,9 +3415,12 @@ func TestSubmitIdentityHelperFileOwnsTaskIdentityContextHelper(t *testing.T) {
 	for _, needle := range []string{
 		"type RequestIdentity struct {",
 		"func WithRequestIdentity(ctx context.Context, identity RequestIdentity) context.Context {",
-		"return openaiclient.WithIdentity(ctx, openaiclient.Identity{",
+		"current := aiidentity.FromContext(ctx)",
+		"current.TenantID = identity.TenantID",
+		"current.UserID = identity.UserID",
+		"return aiidentity.WithIdentity(ctx, current)",
 		"func RequestIdentityFromContext(ctx context.Context) RequestIdentity {",
-		"identity := openaiclient.IdentityFromContext(ctx)",
+		"identity := aiidentity.FromContext(ctx)",
 	} {
 		if !strings.Contains(requestIdentityContent, needle) {
 			t.Fatalf("request_identity.go should contain %q", needle)

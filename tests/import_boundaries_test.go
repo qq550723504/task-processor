@@ -3429,8 +3429,7 @@ func TestListingRuntimeLocalManagementImportsStayRetiredAcrossBuildTargets(t *te
 func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "ai_contracts.go")):     {},
-		filepath.Clean(filepath.Join(root, "request_identity.go")): {},
+		filepath.Clean(filepath.Join(root, "ai_contracts.go")): {},
 	}
 
 	index, err := loadGoFileIndex(root, "")
@@ -3448,7 +3447,7 @@ func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
 			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
-				t.Errorf("%s imports %s; keep ListingKit root concrete OpenAI client dependencies limited to current facade, settings, service, studio, and task seams", path, importPath)
+				t.Errorf("%s imports %s; keep ListingKit root concrete OpenAI client dependencies limited to the remaining AI contract seam", path, importPath)
 			}
 		}
 	}
