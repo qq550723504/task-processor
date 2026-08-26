@@ -300,6 +300,14 @@ async function refreshZitadelToken(
     throw new Error("Refreshed ZITADEL ID token is missing a canonical subject");
   }
 
+  // A refresh token issued before the current authorization contract cannot
+  // gain the newly requested project-role scopes. Keep that session stale so
+  // the proxy forces a fresh authorization request instead of upgrading it.
+  const identityVersion =
+    identity && token.identityVersion === ZITADEL_IDENTITY_VERSION
+      ? ZITADEL_IDENTITY_VERSION
+      : undefined;
+
   return {
     accessToken: payload.access_token,
     refreshToken: payload.refresh_token ?? token.refreshToken,
@@ -308,7 +316,7 @@ async function refreshZitadelToken(
       ? Math.floor(Date.now() / 1000) + payload.expires_in
       : token.expiresAt,
     identity,
-    identityVersion: identity ? ZITADEL_IDENTITY_VERSION : undefined,
+    identityVersion,
   } satisfies Partial<JWT>;
 }
 

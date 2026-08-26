@@ -109,6 +109,26 @@ describe("ListingKit Auth.js canonical ZITADEL identity", () => {
     expect(result.error).toBe("Refreshed ZITADEL ID token is missing a canonical subject");
   });
 
+  it("does not upgrade a legacy session during refresh", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+
+    const result = await refreshSession(expiredToken({ identityVersion: 1 }), {
+      access_token: "new-access-token",
+      id_token: encodeIDToken({
+        sub: "zitadel-subject-123",
+        preferred_username: "admin",
+        "urn:zitadel:iam:user:resourceowner:id": "org-286",
+        "urn:zitadel:iam:org:project:roles": {
+          listingkit_admin: {},
+        },
+      }),
+    });
+
+    expect(result.identity).toMatchObject({ userId: "zitadel-subject-123" });
+    expect(result.identityVersion).toBeUndefined();
+  });
+
   it("retains identity only when a refresh omits ID token and the JWT is marked", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
