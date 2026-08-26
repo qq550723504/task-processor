@@ -133,6 +133,16 @@ depguard and focused semantic tests. A new SHEIN move should require a concrete
 ownership defect, a failing regression test, and a separately reviewable target
 package; directory symmetry alone is not sufficient.
 
+### Recent TEMU boundary slices
+
+The first TEMU publishing policies now have canonical owners under
+`internal/marketplace/temu/publishing`: numeric weight/dimension formatting and
+minimum-price rule evaluation. The historical `internal/temu` packages keep
+thin compatibility adapters, while depguard prevents the canonical package
+from depending on the historical TEMU runtime. This is the intended shape for
+future policy slices; it does not authorize moving TEMU pipeline, scheduler, or
+API client code.
+
 ## Next Slice Candidates
 
 Good candidates for the next framework slice:
