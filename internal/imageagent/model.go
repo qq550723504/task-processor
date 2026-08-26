@@ -59,6 +59,7 @@ type Slot struct {
 type Plan struct {
 	Revision          int64
 	ParentRevision    int64
+	IdempotencyKey    string
 	SourceAssetIDs    []string
 	StyleReferenceIDs []string
 	Slots             []Slot
@@ -71,6 +72,7 @@ type Run struct {
 	TenantID           string
 	UserID             string
 	Mode               RunMode
+	IdempotencyKey     string
 	Status             RunStatus
 	CurrentNode        string
 	ActivePlanRevision int64

@@ -13,6 +13,9 @@ const (
 )
 
 func AllowedActions(run Run) []Action {
+	if run.Mode != RunModeManual {
+		return nil
+	}
 	switch run.Status {
 	case RunStatusBlocked:
 		if run.Block == nil || strings.TrimSpace(run.Block.Code) == "" || strings.TrimSpace(run.Block.SlotID) == "" {

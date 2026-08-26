@@ -13,6 +13,9 @@ func ValidatePlan(plan Plan) error {
 	if plan.Revision <= 0 {
 		return fmt.Errorf("revision must be positive")
 	}
+	if strings.TrimSpace(plan.IdempotencyKey) == "" {
+		return fmt.Errorf("plan idempotency key must not be empty")
+	}
 
 	sources := make(map[string]struct{}, len(plan.SourceAssetIDs))
 	for _, rawID := range plan.SourceAssetIDs {
@@ -45,12 +48,13 @@ func ValidatePlan(plan Plan) error {
 		}
 
 		key := strings.TrimSpace(slot.IdempotencyKey)
-		if key != "" {
-			if _, exists := idempotencyKeys[key]; exists {
-				return fmt.Errorf("duplicate idempotency key %q", key)
-			}
-			idempotencyKeys[key] = struct{}{}
+		if key == "" {
+			return fmt.Errorf("slot idempotency key must not be empty")
 		}
+		if _, exists := idempotencyKeys[key]; exists {
+			return fmt.Errorf("duplicate idempotency key %q", key)
+		}
+		idempotencyKeys[key] = struct{}{}
 
 		for _, rawSourceID := range slot.SourceAssetIDs {
 			sourceID := strings.TrimSpace(rawSourceID)
