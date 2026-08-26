@@ -26,6 +26,19 @@ func TestDetachedSheinSyncContextPreservesTenantAndUserScope(t *testing.T) {
 	require.Equal(t, aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"}, aiidentity.FromContext(detached))
 }
 
+func TestDetachedSheinSyncContextKeepsTenantContextIndependentFromAIIdentity(t *testing.T) {
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{
+		TenantID: "ai-tenant",
+		UserID:   "user-a",
+	})
+	ctx = tenantctx.WithTenantID(ctx, "resource-tenant")
+
+	detached := detachedSheinSyncContext(ctx)
+
+	require.Equal(t, "resource-tenant", tenantctx.TenantIDFromContext(detached))
+	require.Equal(t, aiidentity.Identity{TenantID: "ai-tenant", UserID: "user-a"}, aiidentity.FromContext(detached))
+}
+
 func TestAsyncSheinSyncServiceReturnsPendingJobBeforeBackgroundSyncCompletes(t *testing.T) {
 	t.Parallel()
 

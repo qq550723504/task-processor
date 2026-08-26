@@ -93,7 +93,7 @@ func (s *asyncSheinSyncService) ResolveProductAPI(ctx context.Context, storeID i
 
 func detachedSheinSyncContext(ctx context.Context) context.Context {
 	identity := aiidentity.FromContext(ctx)
-	detached := tenantctx.WithTenantID(context.Background(), identity.TenantID)
+	detached := tenantctx.WithTenantID(context.Background(), tenantctx.TenantIDFromContext(ctx))
 	return aiidentity.WithIdentity(detached, aiidentity.Identity{
 		TenantID: identity.TenantID,
 		UserID:   identity.UserID,
