@@ -42,8 +42,10 @@ Current direct dependency hotspots are:
 - `internal/listingkit`
   - broad `openai` coupling across facade, studio, task, and settings code
   - 2026-08-26 update: root ListingKit request identity now uses the neutral
-    `internal/shared/aiidentity` context; the root OpenAI allowlist is limited
-    to the remaining AI contract seam
+    `internal/shared/aiidentity` context
+  - 2026-08-26 update: the root ListingKit AI chat contract now uses
+    `internal/ai`; the root package no longer imports the concrete OpenAI
+    adapter directly
   - Studio AI capability direction is `ListingKit local AI port -> Studio
     capability adapter -> aicapability router -> existing provider seam`.
     `internal/listingkit/httpapi` keeps the compatibility credential/provider
