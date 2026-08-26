@@ -35,7 +35,9 @@ func (c *PricingRuleCalculator) CalculateMinAcceptablePrice(
 		c.logger.Warnf("未知的规则类型: %s，使用默认倍率计算", pricingRule.RuleType)
 	}
 
-	return temupublishing.CalculateMinAcceptablePrice(originCostPrice, pricingRule)
+	result := temupublishing.CalculateMinAcceptablePrice(originCostPrice, pricingRule)
+	c.logCalculation(originCostPrice, pricingRule, result)
+	return result
 }
 
 // GetDefaultPricingRules delegates the pure price-range selection policy.
@@ -61,4 +63,29 @@ func float64OrZero(value *float64) float64 {
 		return 0
 	}
 	return *value
+}
+
+func (c *PricingRuleCalculator) logCalculation(originCostPrice float64, rule *api.PricingRuleRespDTO, result float64) {
+	if originCostPrice <= 0 || rule == nil || rule.RuleValue == nil {
+		c.logger.Infof("使用默认利润率 %.2f: %.2f * %.2f = %.2f", 1.5, originCostPrice, 1.5, result)
+		return
+	}
+
+	switch rule.RuleType {
+	case "multiple_fixed":
+		fixedValue := float64OrZero(rule.FixedValue)
+		c.logger.Infof("使用核价规则 %s (倍率加固定值): %.2f * %.2f + %.2f = %.2f",
+			rule.Name, originCostPrice, *rule.RuleValue, fixedValue, result)
+	case "multiple":
+		c.logger.Infof("使用核价规则 %s (倍率): %.2f * %.2f = %.2f",
+			rule.Name, originCostPrice, *rule.RuleValue, result)
+	case "fixed":
+		c.logger.Infof("使用核价规则 %s (固定加价): %.2f + %.2f = %.2f",
+			rule.Name, originCostPrice, *rule.RuleValue, result)
+	case "fixed_price":
+		c.logger.Infof("使用核价规则 %s (固定价格): %.2f", rule.Name, result)
+	default:
+		c.logger.Infof("使用核价规则 %s (倍率): %.2f * %.2f = %.2f",
+			rule.Name, originCostPrice, *rule.RuleValue, result)
+	}
 }
