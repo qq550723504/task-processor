@@ -92,15 +92,19 @@ func (s *Service) RetrySlot(ctx context.Context, runID, slotID string, planRevis
 	return s.workflows.RetrySlot(ctx, RetrySlotCommand{RunID: strings.TrimSpace(runID), SlotID: strings.TrimSpace(slotID), PlanRevision: planRevision, ActorID: identity.UserID, ActionID: strings.TrimSpace(actionID), Identity: identity})
 }
 
-func (s *Service) ApproveResults(ctx context.Context, runID string, planRevision int64, actionID string) error {
+func (s *Service) ApproveResults(ctx context.Context, runID string, planRevision int64, resultDigest, actionID string) error {
 	identity, err := verifiedExecutionIdentity(ctx)
 	if err != nil {
 		return err
 	}
+	resultDigest = strings.TrimSpace(resultDigest)
+	if resultDigest == "" {
+		return fmt.Errorf("image agent result digest is required")
+	}
 	if err := s.requireActiveRevision(ctx, identity, runID, planRevision); err != nil {
 		return err
 	}
-	return s.workflows.ApproveResults(ctx, ApproveResultsCommand{RunID: strings.TrimSpace(runID), PlanRevision: planRevision, ActorID: identity.UserID, ActionID: strings.TrimSpace(actionID), Identity: identity})
+	return s.workflows.ApproveResults(ctx, ApproveResultsCommand{RunID: strings.TrimSpace(runID), PlanRevision: planRevision, ResultDigest: resultDigest, ActorID: identity.UserID, ActionID: strings.TrimSpace(actionID), Identity: identity})
 }
 
 func (s *Service) Cancel(ctx context.Context, runID string, planRevision int64, actionID string) error {

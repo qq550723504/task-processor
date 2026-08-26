@@ -65,8 +65,12 @@ func (c *Client) ApproveResults(ctx context.Context, command imageagent.ApproveR
 	if err := c.validateSignal(command.Identity, command.RunID, command.PlanRevision, command.ActorID, command.ActionID); err != nil {
 		return err
 	}
+	command.ResultDigest = strings.TrimSpace(command.ResultDigest)
+	if command.ResultDigest == "" {
+		return fmt.Errorf("image agent approval result digest is required")
+	}
 	return c.client.SignalWorkflow(ctx, WorkflowID(command.Identity.TenantID, command.RunID), "", signalApproveResults, ApproveResultsSignal{
-		RunID: command.RunID, PlanRevision: command.PlanRevision,
+		RunID: command.RunID, PlanRevision: command.PlanRevision, ResultDigest: command.ResultDigest,
 		ActorID: command.ActorID, ActionID: command.ActionID,
 	})
 }

@@ -21,6 +21,7 @@ const (
 	signalRetrySlot           = "retry_slot"
 	signalCancel              = "cancel"
 	defaultMaxConcurrentSlots = 4
+	QueryWorkflowProjection   = "image_agent_projection"
 )
 
 type WorkflowInput struct {
@@ -36,6 +37,7 @@ type WorkflowResult struct {
 	Status           imageagent.RunStatus
 	Block            *imageagent.Block
 	CompletedSlotIDs []string
+	ResultDigest     string
 }
 
 type SlotWorkflowInput struct {
@@ -89,6 +91,7 @@ type PublishApprovedActivityInput struct {
 type ApproveResultsSignal struct {
 	RunID        string
 	PlanRevision int64
+	ResultDigest string
 	ActorID      string
 	ActionID     string
 }

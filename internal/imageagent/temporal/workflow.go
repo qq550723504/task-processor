@@ -1,7 +1,11 @@
 package temporal
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.temporal.io/api/enums/v1"
@@ -28,9 +32,21 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 			MaximumInterval: 10 * time.Second, MaximumAttempts: 5,
 		},
 	})
+	projection := WorkflowResult{Status: imageagent.RunStatusPlanning}
+	if err := workflow.SetQueryHandler(ctx, QueryWorkflowProjection, func() (WorkflowResult, error) {
+		return projection, nil
+	}); err != nil {
+		return WorkflowResult{}, fmt.Errorf("register image agent projection query: %w", err)
+	}
 	cancelChannel := workflow.GetSignalChannel(ctx, signalCancel)
 	retryChannel := workflow.GetSignalChannel(ctx, signalRetrySlot)
+	approveChannel := workflow.GetSignalChannel(ctx, signalApproveResults)
 	seenActions := map[string]bool{}
+	rejectQueuedApprovals(approveChannel, seenActions)
+	if receiveQueuedCancel(cancelChannel, input, seenActions) {
+		return cancelledResult(ctx, input, nil)
+	}
+	projection.Status = imageagent.RunStatusExecuting
 	if err := persistRunState(ctx, input, imageagent.RunStatusExecuting, "execute_slots", nil); err != nil {
 		return WorkflowResult{}, err
 	}
@@ -47,18 +63,22 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 		completed := summarizeResults(input.Plan, results).CompletedSlotIDs
 		return cancelledResult(ctx, input, completed)
 	}
+	rejectQueuedApprovals(approveChannel, seenActions)
 
 	result := summarizeResults(input.Plan, results)
 	if result.Block != nil {
 		if err := persistRunState(ctx, input, imageagent.RunStatusBlocked, "retry_slot", result.Block); err != nil {
 			return WorkflowResult{}, err
 		}
+		projection = result
 		for result.Block != nil {
+			rejectQueuedApprovals(approveChannel, seenActions)
 			results, cancelled, err = applyQueuedRetries(ctx, input, results, retryChannel, cancelChannel, seenActions)
 			if err != nil {
 				return WorkflowResult{}, err
 			}
 			result = summarizeResults(input.Plan, results)
+			projection = result
 			if cancelled {
 				return cancelledResult(ctx, input, result.CompletedSlotIDs)
 			}
@@ -94,14 +114,24 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 					return WorkflowResult{}, err
 				}
 				result = summarizeResults(input.Plan, results)
+				projection = result
 			}
 		}
 	}
 
+	rejectQueuedApprovals(approveChannel, seenActions)
 	if err := persistRunState(ctx, input, imageagent.RunStatusAwaitingFinalApproval, "approve_results", nil); err != nil {
 		return WorkflowResult{}, err
 	}
-	approveChannel := workflow.GetSignalChannel(ctx, signalApproveResults)
+	rejectQueuedApprovals(approveChannel, seenActions)
+	digest, err := resultDigest(input.Plan, results)
+	if err != nil {
+		return WorkflowResult{}, err
+	}
+	result.Status = imageagent.RunStatusAwaitingFinalApproval
+	result.Block = nil
+	result.ResultDigest = digest
+	projection = result
 	for {
 		selector := workflow.NewSelector(ctx)
 		approved := false
@@ -109,8 +139,7 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 		selector.AddReceive(approveChannel, func(channel workflow.ReceiveChannel, _ bool) {
 			var signal ApproveResultsSignal
 			channel.Receive(ctx, &signal)
-			if signal.RunID == input.RunID && signal.PlanRevision == input.Plan.Revision && signal.ActionID != "" && !seenActions[signal.ActionID] {
-				seenActions[signal.ActionID] = true
+			if validApprovalSignal(input, signal, projection.Status, digest, seenActions) {
 				approved = true
 			}
 		})
@@ -140,6 +169,7 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 			return WorkflowResult{}, err
 		}
 		result.Status = imageagent.RunStatusCompleted
+		projection = result
 		return result, nil
 	}
 }
@@ -152,6 +182,9 @@ type childCompletion struct {
 
 func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, cancelChannel workflow.ReceiveChannel, seenActions map[string]bool) ([]SlotWorkflowResult, bool, error) {
 	results := make([]SlotWorkflowResult, len(input.Plan.Slots))
+	if receiveQueuedCancel(cancelChannel, input, seenActions) {
+		return results, true, nil
+	}
 	completionChannel := workflow.NewBufferedChannel(ctx, len(input.Plan.Slots))
 	childrenCtx, cancelChildren := workflow.WithCancel(ctx)
 	next, inFlight := 0, 0
@@ -271,30 +304,56 @@ func applyQueuedRetries(ctx workflow.Context, input WorkflowInput, results []Slo
 }
 
 func receiveQueuedCancel(channel workflow.ReceiveChannel, input WorkflowInput, seenActions map[string]bool) bool {
+	cancelled := false
 	for {
 		var signal CancelSignal
 		if !channel.ReceiveAsync(&signal) {
-			return false
+			return cancelled
 		}
 		if validCancel(input, signal, seenActions) {
-			return true
+			cancelled = true
 		}
 	}
 }
 
 func validCancel(input WorkflowInput, signal CancelSignal, seenActions map[string]bool) bool {
-	if signal.RunID != input.RunID || signal.PlanRevision != input.Plan.Revision || signal.ActionID == "" || seenActions[signal.ActionID] {
+	if !consumeAction(signal.ActionID, seenActions) {
 		return false
 	}
-	seenActions[signal.ActionID] = true
-	return true
+	return signal.RunID == input.RunID && signal.PlanRevision == input.Plan.Revision && signal.ActorID == input.Identity.UserID
 }
 
 func validRetry(input WorkflowInput, signal RetrySlotSignal, seenActions map[string]bool) bool {
-	if signal.RunID != input.RunID || signal.PlanRevision != input.Plan.Revision || signal.SlotID == "" || signal.ActionID == "" || seenActions[signal.ActionID] {
+	if !consumeAction(signal.ActionID, seenActions) {
 		return false
 	}
-	seenActions[signal.ActionID] = true
+	return signal.RunID == input.RunID && signal.PlanRevision == input.Plan.Revision && signal.SlotID != "" && signal.ActorID == input.Identity.UserID
+}
+
+func validApprovalSignal(input WorkflowInput, signal ApproveResultsSignal, status imageagent.RunStatus, digest string, seenActions map[string]bool) bool {
+	if !consumeAction(signal.ActionID, seenActions) {
+		return false
+	}
+	return status == imageagent.RunStatusAwaitingFinalApproval &&
+		signal.RunID == input.RunID && signal.PlanRevision == input.Plan.Revision &&
+		signal.ActorID == input.Identity.UserID && signal.ResultDigest != "" && signal.ResultDigest == digest
+}
+
+func rejectQueuedApprovals(channel workflow.ReceiveChannel, seenActions map[string]bool) {
+	for {
+		var signal ApproveResultsSignal
+		if !channel.ReceiveAsync(&signal) {
+			return
+		}
+		consumeAction(signal.ActionID, seenActions)
+	}
+}
+
+func consumeAction(actionID string, seenActions map[string]bool) bool {
+	if actionID == "" || seenActions[actionID] {
+		return false
+	}
+	seenActions[actionID] = true
 	return true
 }
 
@@ -356,14 +415,44 @@ func candidateAssetIDs(plan imageagent.Plan, results []SlotWorkflowResult) []str
 	var ids []string
 	for index := range plan.Slots {
 		for _, candidate := range results[index].Execution.Candidates {
-			if candidate.AssetID == "" || seen[candidate.AssetID] {
+			id := strings.TrimSpace(candidate.AssetID)
+			if id == "" || seen[id] {
 				continue
 			}
-			seen[candidate.AssetID] = true
-			ids = append(ids, candidate.AssetID)
+			seen[id] = true
+			ids = append(ids, id)
 		}
 	}
 	return ids
+}
+
+type digestSlotResult struct {
+	SlotID            string   `json:"slot_id"`
+	CandidateAssetIDs []string `json:"candidate_asset_ids"`
+}
+
+func resultDigest(plan imageagent.Plan, results []SlotWorkflowResult) (string, error) {
+	if len(results) != len(plan.Slots) {
+		return "", fmt.Errorf("final image agent results do not match declared slots")
+	}
+	payload := make([]digestSlotResult, 0, len(plan.Slots))
+	for index, slot := range plan.Slots {
+		candidateIDs := make([]string, 0, len(results[index].Execution.Candidates))
+		for _, candidate := range results[index].Execution.Candidates {
+			id := strings.TrimSpace(candidate.AssetID)
+			if id == "" {
+				return "", fmt.Errorf("slot %s final result contains an empty candidate asset ID", slot.ID)
+			}
+			candidateIDs = append(candidateIDs, id)
+		}
+		payload = append(payload, digestSlotResult{SlotID: strings.TrimSpace(slot.ID), CandidateAssetIDs: candidateIDs})
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encode final image agent result digest: %w", err)
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func findSlot(plan imageagent.Plan, slotID string) imageagent.Slot {

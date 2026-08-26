@@ -70,6 +70,7 @@ type RetrySlotCommand struct {
 type ApproveResultsCommand struct {
 	RunID        string
 	PlanRevision int64
+	ResultDigest string
 	ActorID      string
 	ActionID     string
 	Identity     ExecutionIdentity

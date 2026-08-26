@@ -1,7 +1,10 @@
 package temporal
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -11,6 +14,8 @@ import (
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
 )
+
+const slotResultPersistedEventType = "slot.result.persisted"
 
 type ActivityDependencies struct {
 	Repository   imageagent.Repository
@@ -58,6 +63,20 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 	if strings.TrimSpace(result.Execution.SlotID) == "" || result.Execution.Attempt <= 0 {
 		return fmt.Errorf("terminal slot result requires slot ID and positive attempt")
 	}
+	candidateIDs := make([]string, 0, len(result.Execution.Candidates))
+	for _, candidate := range result.Execution.Candidates {
+		id := strings.TrimSpace(candidate.AssetID)
+		if id == "" {
+			if result.Status == imageagent.SlotStatusAccepted {
+				return fmt.Errorf("accepted slot result contains an empty candidate asset ID")
+			}
+			continue
+		}
+		candidateIDs = append(candidateIDs, id)
+	}
+	if result.Status == imageagent.SlotStatusAccepted && len(candidateIDs) == 0 {
+		return fmt.Errorf("accepted slot result requires at least one candidate asset ID")
+	}
 	outcome := "accepted"
 	if result.Status != imageagent.SlotStatusAccepted {
 		outcome = "blocked"
@@ -71,17 +90,79 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 	if err := a.repository.AppendAttempt(ctx, attempt); err != nil {
 		return fmt.Errorf("append slot attempt: %w", err)
 	}
-	candidateIDs := make([]string, 0, len(result.Execution.Candidates))
-	for _, candidate := range result.Execution.Candidates {
-		if id := strings.TrimSpace(candidate.AssetID); id != "" {
-			candidateIDs = append(candidateIDs, id)
-		}
-	}
 	if err := a.repository.SaveSlotResult(ctx, imageagent.RunScope{TenantID: input.Identity.TenantID, RunID: input.RunID}, input.PlanRevision, imageagent.SlotResult{
 		SlotID: result.Execution.SlotID, Attempt: result.Execution.Attempt,
 		Status: result.Status, CandidateAssetIDs: candidateIDs, ErrorCode: result.ErrorCode,
 	}); err != nil {
 		return fmt.Errorf("save terminal slot result: %w", err)
+	}
+	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, RunID: input.RunID}
+	eventPayload, err := json.Marshal(slotResultPersistedEventPayload{
+		PlanRevision: input.PlanRevision, SlotID: result.Execution.SlotID,
+		Attempt: result.Execution.Attempt, AttemptKey: input.AttemptKey,
+		Status: result.Status, CandidateAssetIDs: candidateIDs, ErrorCode: result.ErrorCode,
+	})
+	if err != nil {
+		return fmt.Errorf("encode terminal slot result event: %w", err)
+	}
+	run, err := a.repository.GetRun(ctx, scope)
+	if err != nil {
+		return fmt.Errorf("get image agent run for slot result event: %w", err)
+	}
+	if err := appendSlotResultEvent(ctx, a.repository, scope, run.Version, eventPayload); err != nil {
+		return err
+	}
+	return nil
+}
+
+type slotResultPersistedEventPayload struct {
+	PlanRevision      int64                 `json:"plan_revision"`
+	SlotID            string                `json:"slot_id"`
+	Attempt           int                   `json:"attempt"`
+	AttemptKey        string                `json:"attempt_key"`
+	Status            imageagent.SlotStatus `json:"status"`
+	CandidateAssetIDs []string              `json:"candidate_asset_ids"`
+	ErrorCode         string                `json:"error_code,omitempty"`
+}
+
+func appendSlotResultEvent(ctx context.Context, repository imageagent.Repository, scope imageagent.RunScope, projectionVersion int64, payload json.RawMessage) error {
+	const pageSize = 100
+	var afterCursor int64
+	for {
+		events, err := repository.ListEvents(ctx, scope, afterCursor, pageSize)
+		if err != nil {
+			return fmt.Errorf("list terminal slot result events: %w", err)
+		}
+		for _, event := range events {
+			if event.Type == slotResultPersistedEventType && bytes.Equal(event.Payload, payload) {
+				return nil
+			}
+		}
+		if len(events) == 0 {
+			break
+		}
+		afterCursor = events[len(events)-1].Cursor
+		if len(events) < pageSize {
+			break
+		}
+	}
+	err := repository.AppendEvent(ctx, imageagent.RunEvent{
+		TenantID: scope.TenantID, RunID: scope.RunID, Type: slotResultPersistedEventType,
+		Cursor: afterCursor + 1, ProjectionVersion: projectionVersion, Payload: append(json.RawMessage(nil), payload...),
+	})
+	if errors.Is(err, imageagent.ErrRevisionConflict) {
+		events, listErr := repository.ListEvents(ctx, scope, afterCursor, pageSize)
+		if listErr != nil {
+			return fmt.Errorf("verify terminal slot result event after cursor conflict: %w", listErr)
+		}
+		for _, event := range events {
+			if event.Type == slotResultPersistedEventType && bytes.Equal(event.Payload, payload) {
+				return nil
+			}
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("append terminal slot result event: %w", err)
 	}
 	return nil
 }

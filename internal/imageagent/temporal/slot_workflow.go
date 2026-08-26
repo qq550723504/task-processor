@@ -1,6 +1,7 @@
 package temporal
 
 import (
+	"strings"
 	"time"
 
 	sdktemporal "go.temporal.io/sdk/temporal"
@@ -41,10 +42,13 @@ func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkf
 }
 
 func hasCandidateAsset(candidates []imageagent.AssetCandidate) bool {
+	if len(candidates) == 0 {
+		return false
+	}
 	for _, candidate := range candidates {
-		if candidate.AssetID != "" {
-			return true
+		if strings.TrimSpace(candidate.AssetID) == "" {
+			return false
 		}
 	}
-	return false
+	return true
 }
