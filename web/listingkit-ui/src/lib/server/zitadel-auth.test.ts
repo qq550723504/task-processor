@@ -178,7 +178,7 @@ describe("readZitadelIdentityFromSession", () => {
       readZitadelIdentityFromSession({
         expires: "2026-05-17T00:00:00.000Z",
         accessToken: "access-token-1",
-        identityVersion: 1,
+        identityVersion: 2,
         identity: {
           tenantId: "org-1",
           userId: "user-1",

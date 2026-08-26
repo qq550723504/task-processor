@@ -1,6 +1,8 @@
  const RESOURCE_OWNER_CLAIM =
   "urn:zitadel:iam:user:resourceowner:id";
-export const ZITADEL_IDENTITY_VERSION = 1;
+// Bump when the OIDC authorization contract changes so existing Auth.js
+// sessions are forced through a fresh authorization request.
+export const ZITADEL_IDENTITY_VERSION = 2;
 
 export type ListingKitSessionIdentity = {
   tenantId?: string | number;

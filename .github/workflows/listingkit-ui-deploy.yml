@@ -121,9 +121,31 @@ jobs:
           printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
-      - name: Update only the UI deployment image
+      - name: Apply ListingKit UI authorization scopes
+        env:
+          LISTINGKIT_UI_ZITADEL_SCOPES: >-
+            openid profile email urn:zitadel:iam:user:resourceowner
+            urn:zitadel:iam:org:project:id:zitadel:aud
+            urn:zitadel:iam:org:project:role:listingkit_viewer
+            urn:zitadel:iam:org:project:role:listingkit_operator
+            urn:zitadel:iam:org:project:role:listingkit_admin
+            urn:zitadel:iam:org:project:role:platform_admin
+        run: |
+          set -euo pipefail
+          patch_payload="$(jq -cn \
+            --arg scopes "$LISTINGKIT_UI_ZITADEL_SCOPES" \
+            '{data:{ZITADEL_SCOPES:$scopes}}')"
+          kubectl -n "${K8S_NAMESPACE}" patch configmap listingkit-workbench-config \
+            --type merge \
+            --patch "$patch_payload"
+
+      - name: Update UI deployment image
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/listingkit-ui listingkit-ui=${{ needs.prepare.outputs.ui_image }}
+
+      - name: Restart UI pods for authorization configuration
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/listingkit-ui
 
       - name: Wait for UI rollout
         run: |

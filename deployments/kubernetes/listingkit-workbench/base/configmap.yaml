@@ -59,5 +59,6 @@ data:
   LISTINGKIT_TEMPORAL_START_WORKER: "1"
   # Set ZITADEL_ISSUER_URL and ZITADEL_CLIENT_ID to enable ZITADEL OIDC login.
   # These env vars are bound into Go API core config at listingkit.zitadel.*.
-  # The resourceowner scope is required so the Go API can scope ListingKit data by ZITADEL tenant.
-  ZITADEL_SCOPES: "openid profile email urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:zitadel:aud"
+  # The resourceowner scope scopes ListingKit data by ZITADEL tenant; the project role scopes
+  # make the assigned ListingKit roles available to the UI and Go API authorization checks.
+  ZITADEL_SCOPES: "openid profile email urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:zitadel:aud urn:zitadel:iam:org:project:role:listingkit_viewer urn:zitadel:iam:org:project:role:listingkit_operator urn:zitadel:iam:org:project:role:listingkit_admin urn:zitadel:iam:org:project:role:platform_admin"

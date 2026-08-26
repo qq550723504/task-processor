@@ -367,7 +367,7 @@ describe("verifyListingKitRequestIdentity", () => {
       accessToken: "session-token-1",
       issuerUrl: "https://issuer.example.com",
       clientId: "client-1",
-      identityVersion: 1,
+      identityVersion: 2,
       identity: {
         tenantId: "org-286",
         userId: "user-42",
@@ -399,7 +399,7 @@ describe("verifyListingKitRequestIdentity", () => {
       accessToken: "session-token-1",
       issuerUrl: "https://issuer.example.com",
       clientId: "client-1",
-      identityVersion: 1,
+      identityVersion: 2,
       identity: {
         tenantId: "org-286",
         userId: "user-42",
