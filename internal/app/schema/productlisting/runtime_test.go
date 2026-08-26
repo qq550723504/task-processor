@@ -31,6 +31,11 @@ func TestAutoMigrateRuntimeCreatesExecutionEnvelopeColumns(t *testing.T) {
 			}
 		}
 	}
+	for _, table := range []string{"image_agent_runs", "image_agent_plans", "image_agent_slots", "image_agent_attempts", "image_agent_events"} {
+		if !db.Migrator().HasTable(table) {
+			t.Fatalf("missing table %s", table)
+		}
+	}
 
 	columns, err := db.Migrator().ColumnTypes("ai_invocations")
 	if err != nil {
