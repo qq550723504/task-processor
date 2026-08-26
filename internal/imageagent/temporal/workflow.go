@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -57,15 +58,33 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 		return WorkflowResult{}, fmt.Errorf("register image agent update handlers: %w", err)
 	}
 	updates.startSignalHandlers(ctx, cancelChannel, retryChannel, replaceChannel, approveChannel)
+	awaitTerminalIntent := func(results []SlotWorkflowResult) (WorkflowResult, error) {
+		if err := workflow.Await(ctx, func() bool {
+			return updates.cancelCommitted || isTerminalRunStatus(projection.Status)
+		}); err != nil {
+			return WorkflowResult{}, err
+		}
+		if updates.cancelCommitted {
+			return cancelAndProject(results)
+		}
+		if err := workflow.Await(ctx, func() bool { return workflow.AllHandlersFinished(ctx) }); err != nil {
+			return WorkflowResult{}, err
+		}
+		return projection, nil
+	}
 
 runPlan:
 	for {
-		projection = WorkflowResult{Status: imageagent.RunStatusExecuting, Plan: input.Plan, Slots: slotProjections(input.Plan, nil)}
+		executing := WorkflowResult{Status: imageagent.RunStatusExecuting, Plan: input.Plan, Slots: slotProjections(input.Plan, nil)}
 		if !updates.consumeExecutingHandoff(input.Plan.Revision) {
 			if err := effects.persistRunState(ctx, input, imageagent.RunStatusExecuting, "execute_slots", nil); err != nil {
+				if errors.Is(err, errWorkflowEffectFenced) {
+					return awaitTerminalIntent(nil)
+				}
 				return WorkflowResult{}, err
 			}
 		}
+		projection = executing
 		if updates.pendingActionID != "" {
 			if err := workflow.Await(ctx, func() bool {
 				record := updates.actions[updates.pendingActionID]
@@ -88,6 +107,9 @@ runPlan:
 			projection = executingProjection(input.Plan, results)
 		})
 		if err != nil {
+			if errors.Is(err, errWorkflowEffectFenced) {
+				return awaitTerminalIntent(results)
+			}
 			return WorkflowResult{}, err
 		}
 		if cancelled {
@@ -96,6 +118,9 @@ runPlan:
 		result := summarizeResults(input.Plan, results)
 		if result.Block != nil {
 			if err := effects.persistRunState(ctx, input, imageagent.RunStatusBlocked, "retry_slot", result.Block); err != nil {
+				if errors.Is(err, errWorkflowEffectFenced) {
+					return awaitTerminalIntent(results)
+				}
 				return WorkflowResult{}, err
 			}
 			projection = result
@@ -119,6 +144,9 @@ runPlan:
 
 		if !updates.consumeAwaitingApprovalHandoff(input.Plan.Revision) {
 			if err := effects.persistRunState(ctx, input, imageagent.RunStatusAwaitingFinalApproval, "approve_results", nil); err != nil {
+				if errors.Is(err, errWorkflowEffectFenced) {
+					return awaitTerminalIntent(results)
+				}
 				return WorkflowResult{}, err
 			}
 		}
@@ -156,9 +184,9 @@ func imageAgentActivityContext(ctx workflow.Context) workflow.Context {
 }
 
 type workflowEffectRequest struct {
-	execute  func(workflow.Context) error
-	terminal bool
-	done     workflow.Channel
+	execute          func(workflow.Context) error
+	terminalIdentity string
+	done             workflow.Channel
 }
 
 type workflowEffectResult struct {
@@ -169,20 +197,33 @@ type workflowEffectOwner struct {
 	requests workflow.Channel
 }
 
+var errWorkflowEffectFenced = errors.New("workflow terminal effect fence rejected request")
+
 func newWorkflowEffectOwner(ctx workflow.Context) *workflowEffectOwner {
 	owner := &workflowEffectOwner{requests: workflow.NewChannel(ctx)}
 	workflow.Go(ctx, func(ownerCtx workflow.Context) {
-		terminalCommitted := false
+		terminalIntentIdentity := ""
+		terminalSucceeded := false
 		for {
 			var request workflowEffectRequest
 			owner.requests.Receive(ownerCtx, &request)
-			if terminalCommitted {
+			if terminalIntentIdentity != "" && request.terminalIdentity != terminalIntentIdentity {
+				request.done.Send(ownerCtx, workflowEffectResult{err: fmt.Errorf(
+					"%w: terminal intent %s does not match request %s",
+					errWorkflowEffectFenced, terminalIntentIdentity, request.terminalIdentity,
+				)})
+				continue
+			}
+			if request.terminalIdentity != "" && terminalIntentIdentity == "" {
+				terminalIntentIdentity = request.terminalIdentity
+			}
+			if terminalSucceeded {
 				request.done.Send(ownerCtx, workflowEffectResult{})
 				continue
 			}
 			err := request.execute(ownerCtx)
-			if err == nil && request.terminal {
-				terminalCommitted = true
+			if err == nil && request.terminalIdentity != "" {
+				terminalSucceeded = true
 			}
 			request.done.Send(ownerCtx, workflowEffectResult{err: err})
 		}
@@ -190,16 +231,16 @@ func newWorkflowEffectOwner(ctx workflow.Context) *workflowEffectOwner {
 	return owner
 }
 
-func (o *workflowEffectOwner) execute(ctx workflow.Context, terminal bool, effect func(workflow.Context) error) error {
+func (o *workflowEffectOwner) execute(ctx workflow.Context, terminalIdentity string, effect func(workflow.Context) error) error {
 	done := workflow.NewBufferedChannel(ctx, 1)
-	o.requests.Send(ctx, workflowEffectRequest{execute: effect, terminal: terminal, done: done})
+	o.requests.Send(ctx, workflowEffectRequest{execute: effect, terminalIdentity: terminalIdentity, done: done})
 	var result workflowEffectResult
 	done.Receive(ctx, &result)
 	return result.err
 }
 
 func (o *workflowEffectOwner) persistSlotResult(ctx workflow.Context, input WorkflowInput, result SlotWorkflowResult) error {
-	return o.execute(ctx, false, func(ownerCtx workflow.Context) error {
+	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
 		return executePersistSlotResult(ownerCtx, input, result)
 	})
 }
@@ -211,25 +252,76 @@ func (o *workflowEffectOwner) persistRunState(
 	node string,
 	block *imageagent.Block,
 ) error {
-	terminal := status == imageagent.RunStatusCompleted || status == imageagent.RunStatusFailed || status == imageagent.RunStatusCancelled
-	return o.execute(ctx, terminal, func(ownerCtx workflow.Context) error {
+	if isTerminalRunStatus(status) {
+		return fmt.Errorf("terminal run-state effect %s requires a stable action identity", status)
+	}
+	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
+		return executePersistRunState(ownerCtx, input, status, node, block)
+	})
+}
+
+func (o *workflowEffectOwner) persistTerminalRunState(
+	ctx workflow.Context,
+	input WorkflowInput,
+	status imageagent.RunStatus,
+	node string,
+	block *imageagent.Block,
+	actionFingerprint string,
+) error {
+	if !isTerminalRunStatus(status) || actionFingerprint == "" {
+		return fmt.Errorf("terminal run-state effect requires terminal status and stable action identity")
+	}
+	identity, err := terminalRunStateEffectIdentity(input, status, node, block, actionFingerprint)
+	if err != nil {
+		return err
+	}
+	return o.execute(ctx, identity, func(ownerCtx workflow.Context) error {
 		return executePersistRunState(ownerCtx, input, status, node, block)
 	})
 }
 
 func (o *workflowEffectOwner) persistPlanRevision(ctx workflow.Context, input WorkflowInput, replacement ReplacePlanSignal) error {
-	return o.execute(ctx, false, func(ownerCtx workflow.Context) error {
+	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
 		return executePersistPlanRevision(ownerCtx, input, replacement)
 	})
 }
 
 func (o *workflowEffectOwner) publishApproved(ctx workflow.Context, input PublishApprovedActivityInput) error {
-	return o.execute(ctx, false, func(ownerCtx workflow.Context) error {
+	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
 		if err := workflow.ExecuteActivity(ownerCtx, activityPublishApproved, input).Get(ownerCtx, nil); err != nil {
 			return fmt.Errorf("publish approved assets: %w", err)
 		}
 		return nil
 	})
+}
+
+func isTerminalRunStatus(status imageagent.RunStatus) bool {
+	return status == imageagent.RunStatusCompleted || status == imageagent.RunStatusFailed || status == imageagent.RunStatusCancelled
+}
+
+func terminalRunStateEffectIdentity(
+	input WorkflowInput,
+	status imageagent.RunStatus,
+	node string,
+	block *imageagent.Block,
+	actionFingerprint string,
+) (string, error) {
+	identity, err := updateFingerprint("terminal_run_state", struct {
+		RunID             string
+		Identity          imageagent.ExecutionIdentity
+		PlanRevision      int64
+		Status            imageagent.RunStatus
+		Node              string
+		Block             *imageagent.Block
+		ActionFingerprint string
+	}{
+		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
+		Status: status, Node: node, Block: block, ActionFingerprint: actionFingerprint,
+	})
+	if err != nil {
+		return "", fmt.Errorf("fingerprint terminal run-state effect: %w", err)
+	}
+	return identity, nil
 }
 
 type workflowUpdatePhase string
@@ -686,7 +778,9 @@ func (s *workflowUpdateState) applyApproveResults(ctx workflow.Context, signal A
 		}
 		record.phase = updatePhaseApprovalPersistComplete
 	}
-	if err := s.effects.persistRunState(ctx, *s.input, imageagent.RunStatusCompleted, "complete", nil); err != nil {
+	if err := s.effects.persistTerminalRunState(
+		ctx, *s.input, imageagent.RunStatusCompleted, "complete", nil, record.fingerprint,
+	); err != nil {
 		return CommandAcknowledgement{}, err
 	}
 	result := *s.projection
@@ -729,12 +823,14 @@ func (s *workflowUpdateState) handleCancel(ctx workflow.Context, signal CancelSi
 		record = s.beginAction(signal.ActionID, fingerprint, updatePhaseCancelPersist)
 	}
 	return s.runActionAttempt(ctx, signal.ActionID, record, func() (CommandAcknowledgement, error) {
-		return s.applyCancel(ctx, signal)
+		return s.applyCancel(ctx, signal, record)
 	})
 }
 
-func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSignal) (CommandAcknowledgement, error) {
-	if err := s.effects.persistRunState(ctx, *s.input, imageagent.RunStatusCancelled, "cancelled", nil); err != nil {
+func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSignal, record *workflowUpdateRecord) (CommandAcknowledgement, error) {
+	if err := s.effects.persistTerminalRunState(
+		ctx, *s.input, imageagent.RunStatusCancelled, "cancelled", nil, record.fingerprint,
+	); err != nil {
 		return CommandAcknowledgement{}, err
 	}
 	result := *s.projection
@@ -877,10 +973,10 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 				slot := input.Plan.Slots[completion.Index]
 				completion.Result = SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: slot.ID, Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: "slot_workflow_failed"}
 			}
-			results[completion.Index] = completion.Result
 			if err := updates.effects.persistSlotResult(ctx, input, completion.Result); err != nil {
-				return nil, false, err
+				return results, false, err
 			}
+			results[completion.Index] = completion.Result
 			if progress != nil {
 				progress(results)
 			}

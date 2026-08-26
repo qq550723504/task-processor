@@ -1552,29 +1552,53 @@ func TestManualWorkflowCancelUpdateResumesAfterTerminalPersistenceFailure(t *tes
 	env := newWorkflowEnv(t)
 	plan := sevenSlotPlan()
 	input := manualWorkflowInput(plan)
-	input.MaxConcurrentSlots = 1
-	env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot("slot-1", 1)).
-		After(10*time.Minute).
-		Return(successfulSlotResult("slot-1", 1), nil).Once()
+	input.MaxConcurrentSlots = len(plan.Slots)
+	var mu sync.Mutex
+	childCompletions := 0
+	env.SetOnChildWorkflowCompletedListener(func(_ *workflow.Info, _ sdkconverter.EncodedValue, _ error) {
+		mu.Lock()
+		defer mu.Unlock()
+		childCompletions++
+	})
+	for _, slot := range plan.Slots {
+		slot := slot
+		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).
+			After(time.Second).
+			Return(successfulSlotResult(slot.ID, 1), nil).Once()
+	}
 	cancelled := mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
 		return input.Status == imageagent.RunStatusCancelled
 	})
 	cancelPersistCalls := 0
 	logicalCancelledWrites := 0
 	durableStatus := imageagent.RunStatusExecuting
+	forbiddenTransitions := 0
 	env.OnActivity(activityPersistRunState, mock.Anything, cancelled).
 		Run(func(mock.Arguments) {
+			mu.Lock()
+			defer mu.Unlock()
 			cancelPersistCalls++
 			logicalCancelledWrites = 1
 			durableStatus = imageagent.RunStatusCancelled
 		}).
 		Return(sdktemporal.NewNonRetryableApplicationError("cancel write reported failure", "terminal_test_failure", nil)).Once()
 	env.OnActivity(activityPersistRunState, mock.Anything, cancelled).
-		Run(func(mock.Arguments) { cancelPersistCalls++ }).
-		Return(sdktemporal.NewNonRetryableApplicationError("cancel write still unavailable during signal resume", "terminal_test_failure", nil)).Once()
-	env.OnActivity(activityPersistRunState, mock.Anything, cancelled).
-		Run(func(mock.Arguments) { cancelPersistCalls++ }).Return(nil).Once()
-	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).Return(nil)
+		Run(func(mock.Arguments) {
+			mu.Lock()
+			defer mu.Unlock()
+			cancelPersistCalls++
+			durableStatus = imageagent.RunStatusCancelled
+		}).Return(nil).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			persist := activityInputFromArgs[PersistRunStateActivityInput](t, args)
+			mu.Lock()
+			defer mu.Unlock()
+			if persist.Status == imageagent.RunStatusBlocked || persist.Status == imageagent.RunStatusAwaitingFinalApproval {
+				forbiddenTransitions++
+			}
+			durableStatus = persist.Status
+		}).Return(nil)
 	command := CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-resume"}
 	var firstErr, resumedErr, conflictingErr error
 	env.RegisterDelayedCallback(func() {
@@ -1589,7 +1613,23 @@ func TestManualWorkflowCancelUpdateResumesAfterTerminalPersistenceFailure(t *tes
 				require.NotEqual(t, imageagent.RunStatusCancelled, projection.Status)
 			},
 		}, command)
-	}, time.Second)
+	}, 100*time.Millisecond)
+	env.RegisterDelayedCallback(func() {
+		require.Error(t, firstErr)
+		mu.Lock()
+		completedChildren := childCompletions
+		persistedStatus := durableStatus
+		blockedTransitions := forbiddenTransitions
+		mu.Unlock()
+		require.Equal(t, len(plan.Slots), completedChildren, "all children must finish before the exact terminal retry")
+		require.Equal(t, imageagent.RunStatusCancelled, persistedStatus)
+		require.Zero(t, blockedTransitions, "parent must not overwrite ambiguous durable cancellation")
+		encoded, queryErr := env.QueryWorkflow(QueryWorkflowProjection)
+		require.NoError(t, queryErr)
+		var projection WorkflowResult
+		require.NoError(t, encoded.Get(&projection))
+		require.NotEqual(t, imageagent.RunStatusCancelled, projection.Status, "ambiguous failure must not commit the public projection")
+	}, 2*time.Second)
 	env.RegisterDelayedCallback(func() {
 		conflict := command
 		conflict.PlanRevision = 2
@@ -1598,26 +1638,28 @@ func TestManualWorkflowCancelUpdateResumesAfterTerminalPersistenceFailure(t *tes
 			OnAccept:   func() { require.Fail(t, "conflicting pending cancel must be rejected") },
 			OnComplete: func(interface{}, error) {},
 		}, conflict)
-	}, 2*time.Second)
+	}, 2100*time.Millisecond)
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(signalCancel, command)
 		conflictingReuse := command
 		conflictingReuse.PlanRevision = 2
 		env.SignalWorkflow(signalCancel, conflictingReuse)
 		competing := command
 		competing.ActionID = "cancel-signal-competing"
 		env.SignalWorkflow(signalCancel, competing)
-	}, 2500*time.Millisecond)
+	}, 2200*time.Millisecond)
 	env.RegisterDelayedCallback(func() {
 		env.UpdateWorkflow(signalCancel, "cancel-resume-second", &testsuite.TestUpdateCallback{
 			OnReject: func(err error) { resumedErr = err }, OnAccept: func() {},
 			OnComplete: func(_ interface{}, errorValue error) {
 				resumedErr = errorValue
+				mu.Lock()
+				persistedStatus := durableStatus
+				mu.Unlock()
 				encoded, queryErr := env.QueryWorkflow(QueryWorkflowProjection)
 				require.NoError(t, queryErr)
 				var projection WorkflowResult
 				require.NoError(t, encoded.Get(&projection))
-				require.Equal(t, durableStatus, projection.Status)
+				require.Equal(t, persistedStatus, projection.Status)
 			},
 		}, command)
 	}, 3*time.Second)
@@ -1628,13 +1670,58 @@ func TestManualWorkflowCancelUpdateResumesAfterTerminalPersistenceFailure(t *tes
 	require.Error(t, firstErr)
 	require.NoError(t, resumedErr)
 	require.Error(t, conflictingErr)
-	require.Equal(t, 3, cancelPersistCalls)
+	mu.Lock()
+	require.Equal(t, 2, cancelPersistCalls)
 	require.Equal(t, 1, logicalCancelledWrites)
+	require.Zero(t, forbiddenTransitions)
+	require.Equal(t, len(plan.Slots), childCompletions)
+	require.Equal(t, imageagent.RunStatusCancelled, durableStatus)
+	mu.Unlock()
 	var result WorkflowResult
 	require.NoError(t, env.GetWorkflowResult(&result))
 	require.Equal(t, imageagent.RunStatusCancelled, result.Status)
 	require.Equal(t, plan, result.Plan)
+	require.Empty(t, result.CompletedSlotIDs, "a slot result rejected by the terminal fence must not enter the projection")
 	env.AssertExpectations(t)
+}
+
+func TestWorkflowEffectOwnerFencesEveryTerminalRunStatusBeforeExecution(t *testing.T) {
+	for _, status := range []imageagent.RunStatus{
+		imageagent.RunStatusCompleted,
+		imageagent.RunStatusFailed,
+		imageagent.RunStatusCancelled,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			env := newWorkflowEnv(t)
+			terminalCalls := 0
+			forbiddenCalls := 0
+			env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
+				return input.Status == status
+			})).Run(func(mock.Arguments) { terminalCalls++ }).
+				After(time.Second).
+				Return(sdktemporal.NewNonRetryableApplicationError("durable terminal write returned an ambiguous error", "terminal_test_failure", nil)).Once()
+			env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
+				return input.Status == status
+			})).Run(func(mock.Arguments) { terminalCalls++ }).Return(nil).Once()
+			env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).
+				Run(func(mock.Arguments) { forbiddenCalls++ }).Return(nil)
+
+			env.ExecuteWorkflow(workflowEffectOwnerFenceWorkflow, status)
+
+			require.NoError(t, env.GetWorkflowError())
+			var result workflowEffectOwnerFenceResult
+			require.NoError(t, env.GetWorkflowResult(&result))
+			require.ErrorContains(t, errors.New(result.FirstError), "ambiguous error")
+			require.ErrorContains(t, errors.New(result.NonTerminalError), "terminal effect fence")
+			require.ErrorContains(t, errors.New(result.DifferentActionError), "terminal effect fence")
+			require.ErrorContains(t, errors.New(result.DifferentTerminalError), "terminal effect fence")
+			require.Empty(t, result.ExactRetryError)
+			require.ErrorContains(t, errors.New(result.AfterSuccessError), "terminal effect fence")
+			require.Equal(t, 2, terminalCalls)
+			require.Zero(t, forbiddenCalls)
+			env.AssertExpectations(t)
+		})
+	}
 }
 
 func TestManualWorkflowRejectsNonManualModesBeforeActivities(t *testing.T) {
@@ -2060,6 +2147,57 @@ func TestImageAgentWorkflowReplaysAfterPersistStateWorkflowTaskRestart(t *testin
 	replayer.RegisterWorkflowWithOptions(ImageAgentWorkflow, workflow.RegisterOptions{Name: workflowNameImageAgent})
 
 	require.NoError(t, replayer.ReplayWorkflowHistory(nil, history))
+}
+
+type workflowEffectOwnerFenceResult struct {
+	FirstError             string
+	NonTerminalError       string
+	DifferentActionError   string
+	DifferentTerminalError string
+	ExactRetryError        string
+	AfterSuccessError      string
+}
+
+func workflowEffectOwnerFenceWorkflow(ctx workflow.Context, status imageagent.RunStatus) (workflowEffectOwnerFenceResult, error) {
+	ctx = imageAgentActivityContext(ctx)
+	owner := newWorkflowEffectOwner(ctx)
+	input := manualWorkflowInput(sevenSlotPlan())
+	node := string(status)
+	firstDone := workflow.NewBufferedChannel(ctx, 1)
+	workflow.Go(ctx, func(effectCtx workflow.Context) {
+		firstDone.Send(effectCtx, workflowTestErrorString(
+			owner.persistTerminalRunState(effectCtx, input, status, node, nil, "action-a"),
+		))
+	})
+	if err := workflow.Sleep(ctx, 100*time.Millisecond); err != nil {
+		return workflowEffectOwnerFenceResult{}, err
+	}
+	nonTerminalErr := owner.persistRunState(ctx, input, imageagent.RunStatusBlocked, "retry_slot", nil)
+	var firstErr string
+	firstDone.Receive(ctx, &firstErr)
+	differentActionErr := owner.persistTerminalRunState(ctx, input, status, node, nil, "action-b")
+	differentStatus := imageagent.RunStatusCancelled
+	if status == imageagent.RunStatusCancelled {
+		differentStatus = imageagent.RunStatusCompleted
+	}
+	differentTerminalErr := owner.persistTerminalRunState(ctx, input, differentStatus, string(differentStatus), nil, "action-a")
+	exactRetryErr := owner.persistTerminalRunState(ctx, input, status, node, nil, "action-a")
+	afterSuccessErr := owner.persistRunState(ctx, input, imageagent.RunStatusAwaitingFinalApproval, "approve_results", nil)
+	return workflowEffectOwnerFenceResult{
+		FirstError:             firstErr,
+		NonTerminalError:       workflowTestErrorString(nonTerminalErr),
+		DifferentActionError:   workflowTestErrorString(differentActionErr),
+		DifferentTerminalError: workflowTestErrorString(differentTerminalErr),
+		ExactRetryError:        workflowTestErrorString(exactRetryErr),
+		AfterSuccessError:      workflowTestErrorString(afterSuccessErr),
+	}, nil
+}
+
+func workflowTestErrorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func newWorkflowEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
