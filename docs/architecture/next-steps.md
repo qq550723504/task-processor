@@ -110,6 +110,10 @@ Every next-step reference must resolve to an existing repository document.
 
 稳定的 marketplace、publishing/SHEIN 与 legacy pipeline import 方向由 `.golangci.yml` 的 `depguard` rules 承担，迁移例外仍由专项语义测试覆盖。
 
+ListingKit 外部客户端边界护栏的具体清单继续由
+`docs/architecture/architecture-review-checklist.md` 统一维护；后续同类迁移
+应继续沿用局部接口和行为回归测试，而不是扩大一次性禁用范围。
+
 后续重点不是增加很多测试，而是给还没有被守住、且最容易回退的边界补“护栏”。新增护栏前先确认现有测试没有已经覆盖同一个风险。
 
 ### 5. 收口长期有效的装配文档
