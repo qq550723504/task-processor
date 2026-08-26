@@ -50,6 +50,14 @@ vi.mock("@/components/listingkit/workspace/workspace-preview-suggestion", () => 
     suggestion ? <div>预览建议卡</div> : null,
 }));
 
+vi.mock("@/components/listingkit/image-agent/image-agent-workbench", () => ({
+  ImageAgentWorkbench: ({ taskId, runId }: { taskId: string; runId: string }) => (
+    <div data-testid="image-agent-workbench">
+      图片 Agent {taskId} {runId}
+    </div>
+  ),
+}));
+
 describe("WorkspaceReviewView", () => {
   it("organizes shein general review into three primary stages", () => {
     const { container } = render(
@@ -104,5 +112,31 @@ describe("WorkspaceReviewView", () => {
     expect(container.firstElementChild).not.toHaveClass("lg:grid-cols-[minmax(0,1fr)_21rem]");
     expect(container.firstElementChild).toHaveClass("2xl:grid-cols-[minmax(0,1fr)_24rem]");
     expect(screen.getByText("最终确认草稿").closest("summary")).toHaveClass("flex-col");
+    expect(screen.queryByTestId("image-agent-workbench")).not.toBeInTheDocument();
+  });
+
+  it("adds the image-agent workbench without replacing the existing review for an explicit run context", () => {
+    render(
+      <WorkspaceReviewView
+        imageAgentContext={{ taskId: "task-1", runId: "run-1" }}
+        previewSuggestionProps={{ onSelect: vi.fn() }}
+        reviewSectionTabsProps={{ onSelect: vi.fn() } as never}
+        sheinImageGalleryProps={{} as never}
+        sheinFinalReviewProps={{} as never}
+        previewCanvasProps={{} as never}
+        slotNavigationProps={{ onSelect: vi.fn() } as never}
+        reviewToolbarProps={{} as never}
+        sheinReadinessProps={{} as never}
+        sheinTimelineProps={{} as never}
+        scenePresetPanelProps={{} as never}
+        recoveryActionListProps={{} as never}
+      />,
+    );
+
+    expect(screen.getByTestId("image-agent-workbench")).toHaveTextContent(
+      "图片 Agent task-1 run-1",
+    );
+    expect(screen.getByText("工具栏动作")).toBeInTheDocument();
+    expect(screen.getByText("更多诊断")).toBeInTheDocument();
   });
 });

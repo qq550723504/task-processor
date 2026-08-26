@@ -14,6 +14,7 @@ import type {
 type WorkspaceReviewViewProps = ComponentProps<typeof WorkspaceReviewView>;
 
 export function buildWorkspaceReviewViewProps({
+  imageAgentContext,
   selectedPlatform,
   previewSuggestion,
   sessionData,
@@ -27,6 +28,7 @@ export function buildWorkspaceReviewViewProps({
   onToolbarAction,
   onRecovery,
 }: {
+  imageAgentContext?: WorkspaceReviewViewProps["imageAgentContext"];
   selectedPlatform?: string;
   previewSuggestion: WorkspaceReviewViewProps["previewSuggestionProps"]["suggestion"];
   sessionData: ReviewSession;
@@ -47,6 +49,7 @@ export function buildWorkspaceReviewViewProps({
   onRecovery: WorkspaceReviewViewProps["recoveryActionListProps"]["onSelect"];
 }): WorkspaceReviewViewProps {
   return {
+    imageAgentContext,
     selectedPlatform,
     previewSuggestionProps: {
       suggestion: previewSuggestion,

@@ -24,4 +24,35 @@ describe("buildListingKitProxyUrl", () => {
       "http://localhost:8080/api/v1/listing-kits/tasks/task_123/preview",
     );
   });
+
+  it("maps only the explicit image-agent prefix to the sibling API", () => {
+    const result = buildListingKitProxyUrl(
+      "http://localhost:8080/api/v1/listing-kits",
+      ["image-agent", "runs", "run-1", "events"],
+      "",
+    );
+
+    expect(result).toBe(
+      "http://localhost:8080/api/v1/image-agent/runs/run-1/events",
+    );
+  });
+
+  it("does not treat similar or traversal-like prefixes as an upstream route", () => {
+    expect(
+      buildListingKitProxyUrl(
+        "http://localhost:8080/api/v1/listing-kits",
+        ["image-agent-evil", "runs"],
+        "",
+      ),
+    ).toBe(
+      "http://localhost:8080/api/v1/listing-kits/image-agent-evil/runs",
+    );
+    expect(() =>
+      buildListingKitProxyUrl(
+        "http://localhost:8080/api/v1/listing-kits",
+        ["image-agent", "..", "admin"],
+        "",
+      ),
+    ).toThrow("invalid proxy path segment");
+  });
 });

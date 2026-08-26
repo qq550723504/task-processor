@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 
+import { ImageAgentWorkbench } from "@/components/listingkit/image-agent/image-agent-workbench";
 import { PreviewCanvas } from "@/components/listingkit/shared/preview-canvas";
 import { RecoveryActionList } from "@/components/listingkit/review/recovery-action-list";
 import { ReviewSectionTabs } from "@/components/listingkit/review/review-section-tabs";
@@ -108,6 +109,7 @@ export function SheinFinalReviewWorkspaceView({
 }
 
 export function WorkspaceReviewView({
+  imageAgentContext,
   selectedPlatform,
   previewSuggestionProps,
   reviewSectionTabsProps,
@@ -121,6 +123,7 @@ export function WorkspaceReviewView({
   scenePresetPanelProps,
   recoveryActionListProps,
 }: {
+  imageAgentContext?: { taskId: string; runId: string };
   selectedPlatform?: string;
   previewSuggestionProps: ComponentProps<typeof WorkspacePreviewSuggestionCard>;
   reviewSectionTabsProps: ComponentProps<typeof ReviewSectionTabs>;
@@ -147,7 +150,7 @@ export function WorkspaceReviewView({
   );
   const hasSubmitPreparation = selectedPlatform === "shein";
 
-  return (
+  const reviewView = (
     <div className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_24rem]">
       <main className="min-w-0 space-y-4">
         {hasRepairGuidance ? (
@@ -252,6 +255,18 @@ export function WorkspaceReviewView({
           </div>
         </details>
       </aside>
+    </div>
+  );
+
+  const imageAgentTaskID = imageAgentContext?.taskId.trim();
+  const imageAgentRunID = imageAgentContext?.runId.trim();
+  if (!imageAgentTaskID || !imageAgentRunID) {
+    return reviewView;
+  }
+  return (
+    <div className="min-w-0 space-y-6">
+      <ImageAgentWorkbench taskId={imageAgentTaskID} runId={imageAgentRunID} />
+      {reviewView}
     </div>
   );
 }

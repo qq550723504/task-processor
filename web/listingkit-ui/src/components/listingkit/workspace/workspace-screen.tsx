@@ -45,8 +45,9 @@ import {
 } from "@/lib/query/use-child-task-retry";
 
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
-	const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
+  const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
   const searchParams = useSearchParams();
+  const imageAgentRunId = searchParams.get("image_agent_run_id")?.trim();
   const workspaceData = useWorkspaceData({ taskId, searchParams });
   const {
     baseQuery,
@@ -190,6 +191,12 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   ) : null;
   const shouldShowPlatformRail = platformCards.length > 1;
   const workspaceReviewViewProps = buildWorkspaceReviewViewProps({
+    imageAgentContext: imageAgentRunId
+      ? {
+          taskId,
+          runId: imageAgentRunId,
+        }
+      : undefined,
     selectedPlatform,
     previewSuggestion,
     sessionData,
