@@ -347,6 +347,32 @@ func TestZitadelAuthRuntimeDoesNotImportListingKit(t *testing.T) {
 	}, nil)
 }
 
+func TestListingKitAuthenticatedIdentityCompatibilityFacadeIsRetired(t *testing.T) {
+	facadePath := filepath.Join("..", "internal", "listingkit", "authenticated_identity.go")
+	if _, err := os.Stat(facadePath); err == nil {
+		t.Fatalf("%s still exists; use internal/authidentity directly", facadePath)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", facadePath, err)
+	}
+
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		violations, err := findListingKitAuthenticatedIdentityImports(path, facts.source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, violation := range violations {
+			t.Errorf("%s", violation)
+		}
+	}
+}
+
 func TestAuthenticatedIdentityRootImportsStayRestricted(t *testing.T) {
 	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
 	if err != nil {

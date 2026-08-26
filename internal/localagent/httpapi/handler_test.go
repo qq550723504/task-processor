@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/authidentity"
-	"task-processor/internal/listingkit"
 	"task-processor/internal/localagent"
 )
 
@@ -41,7 +40,7 @@ func TestSubmitResultAcknowledgesCleanDeclaredPayload(t *testing.T) {
 	clock := func() time.Time { return time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC) }
 	service := localagent.NewService(clock)
 	handler := NewHandler(service)
-	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	actorCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
 
 	create := httptest.NewRecorder()
 	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/local-agent/1688-jobs", strings.NewReader(`{"url":"https://detail.1688.com/offer/1052008074197.html"}`)).WithContext(actorCtx)
@@ -80,7 +79,7 @@ func TestSubmitResultRejectsUndeclaredSourceAccountID(t *testing.T) {
 	clock := func() time.Time { return time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC) }
 	service := localagent.NewService(clock)
 	handler := NewHandler(service)
-	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	actorCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
 
 	job, err := service.Create(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/1052008074197.html")
 	require.NoError(t, err)
@@ -105,7 +104,7 @@ func TestSubmitResultExposesInvalidSnapshotError(t *testing.T) {
 	clock := func() time.Time { return time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC) }
 	service := localagent.NewService(clock)
 	handler := NewHandler(service)
-	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	actorCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
 	job, err := service.Create(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/1052008074197.html")
 	require.NoError(t, err)
 	claim, err := service.Claim(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"})
@@ -143,7 +142,7 @@ func TestSubmitResultRejectsUndeclaredPriceRangeCountInSnapshot(t *testing.T) {
 	clock := func() time.Time { return time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC) }
 	service := localagent.NewService(clock)
 	handler := NewHandler(service)
-	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	actorCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
 	job, err := service.Create(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/1052008074197.html")
 	require.NoError(t, err)
 	claim, err := service.Claim(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"})
@@ -167,7 +166,7 @@ func TestSubmitResultDuplicateSubmissionOriginalTokenReturnsConflict(t *testing.
 	clock := func() time.Time { return time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC) }
 	service := localagent.NewService(clock)
 	handler := NewHandler(service)
-	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	actorCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
 
 	job, err := service.Create(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/1052008074197.html")
 	require.NoError(t, err)
@@ -209,7 +208,7 @@ func TestSubmitResultDuplicateSubmissionWrongTokenReturnsForbidden(t *testing.T)
 	clock := func() time.Time { return time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC) }
 	service := localagent.NewService(clock)
 	handler := NewHandler(service)
-	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	actorCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
 
 	job, err := service.Create(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/1052008074197.html")
 	require.NoError(t, err)
@@ -276,7 +275,7 @@ func TestDecodeStrictJSONRejectsTrailingValuesForReadersAndRawMessages(t *testin
 func TestCreateRejectsOversizedRequestBodyBeforeBinding(t *testing.T) {
 	service := localagent.NewService(nil)
 	handler := NewHandler(service)
-	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	actorCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
 	r := gin.New()
 	r.POST("/api/v1/local-agent/1688-jobs", handler.Create)
 	response := httptest.NewRecorder()
@@ -297,7 +296,7 @@ func TestHandlersRequireVerifiedIdentity(t *testing.T) {
 func TestSubmitResultRejectsOversizedRequestBodyBeforeBinding(t *testing.T) {
 	service := localagent.NewService(nil)
 	handler := NewHandler(service)
-	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	actorCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
 	r := gin.New()
 	r.POST("/api/v1/local-agent/1688-jobs/:job_id/result", handler.SubmitResult)
 	response := httptest.NewRecorder()

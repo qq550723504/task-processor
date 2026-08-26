@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"task-processor/internal/listingkit"
+	"task-processor/internal/authidentity"
 )
 
 func TestWrapZitadelAuthMiddlewareForwardsVerifiedIdentity(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		identity, ok := listingkit.AuthenticatedIdentityFromContext(r.Context())
+		identity, ok := authidentity.AuthenticatedIdentityFromContext(r.Context())
 		if !ok || identity.TenantID != "101" {
 			http.Error(w, "verified identity missing", http.StatusUnauthorized)
 			return
@@ -19,7 +19,7 @@ func TestWrapZitadelAuthMiddlewareForwardsVerifiedIdentity(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	middleware := func(c *gin.Context) {
-		c.Request = c.Request.WithContext(listingkit.WithAuthenticatedIdentity(c.Request.Context(), listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-101"}))
+		c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-101"}))
 		c.Next()
 	}
 

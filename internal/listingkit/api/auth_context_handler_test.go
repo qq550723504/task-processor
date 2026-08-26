@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"task-processor/internal/listingkit"
+	"task-processor/internal/authidentity"
 )
 
 func TestGetAuthContextReturnsVerifiedIdentity(t *testing.T) {
@@ -20,7 +20,7 @@ func TestGetAuthContextReturnsVerifiedIdentity(t *testing.T) {
 	router.GET("/auth-context", (&handler{}).GetAuthContext)
 
 	request := httptest.NewRequest(http.MethodGet, "/auth-context", nil).WithContext(
-		listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{
+		authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{
 			TenantID: "373211199677923496",
 			UserID:   "zitadel-user-1",
 			Roles:    []string{"listingkit_operator"},

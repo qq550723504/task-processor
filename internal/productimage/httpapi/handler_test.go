@@ -12,7 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/listingkit"
+	"task-processor/internal/authidentity"
 	productimage "task-processor/internal/productimage"
 )
 
@@ -90,7 +90,7 @@ func TestProcessImagesPropagatesVerifiedIdentityToTaskCreation(t *testing.T) {
 	body := `{"image_urls":["http://example.com/img.jpg"],"target_platform":"amazon","marketplace":"amazon"}`
 	req := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"}))
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(req.Context(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"}))
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 

@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"task-processor/internal/authidentity"
 	"task-processor/internal/listingkit/core"
 	"testing"
 	"time"
@@ -130,7 +131,7 @@ func TestTaskLifecycleServiceUsesAuthenticatedTenantForSheinStoreValidation(t *t
 			return nil
 		},
 	})
-	ctx := WithAuthenticatedIdentity(WithTenantID(context.Background(), "202"), AuthenticatedIdentity{TenantID: "101", UserID: "user-1"})
+	ctx := authidentity.WithAuthenticatedIdentity(WithTenantID(context.Background(), "202"), authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-1"})
 
 	task, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{
 		TenantID:     "202",

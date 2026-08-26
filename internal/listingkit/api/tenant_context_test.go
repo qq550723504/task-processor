@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/aicapability"
+	"task-processor/internal/authidentity"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit"
 )
@@ -60,7 +61,7 @@ func TestRequestContextPrefersAuthenticatedIdentityOverCallerInputs(t *testing.T
 	}
 	req.Header.Set("X-Tenant-ID", "tenant-b")
 	req.Header.Set("X-User-ID", "user-b")
-	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(req.Context(), authidentity.AuthenticatedIdentity{
 		TenantID: "tenant-a",
 		UserID:   "user-a",
 		Roles:    []string{"listingkit_operator"},
@@ -87,7 +88,7 @@ func TestDetachedHandlerContextPreservesSafeIdentityForCredentialResolution(t *t
 		t.Fatal(err)
 	}
 	req.Header.Set("Authorization", "Bearer raw-token-must-not-be-copied")
-	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(req.Context(), authidentity.AuthenticatedIdentity{
 		TenantID: "tenant-a",
 		UserID:   "user-a",
 		Roles:    []string{"listingkit_operator"},
@@ -102,7 +103,7 @@ func TestDetachedHandlerContextPreservesSafeIdentityForCredentialResolution(t *t
 	default:
 	}
 
-	verified, ok := listingkit.AuthenticatedIdentityFromContext(detached)
+	verified, ok := authidentity.AuthenticatedIdentityFromContext(detached)
 	if !ok || verified.TenantID != "tenant-a" || verified.UserID != "user-a" {
 		t.Fatalf("verified identity = %+v, %v", verified, ok)
 	}
