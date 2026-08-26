@@ -2,9 +2,9 @@ package product
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
+	temupublishing "task-processor/internal/marketplace/temu/publishing"
 	types "task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/strx"
@@ -31,19 +31,9 @@ func (h *CommitCreateHandler) Name() string {
 	return "提交创建处理器"
 }
 
-// ensureParenthesesSpacing 确保括号前后有正确的空格（TEMU API要求）
+// ensureParenthesesSpacing keeps the historical handler API as a compatibility adapter.
 func (h *CommitCreateHandler) ensureParenthesesSpacing(name string) string {
-	// 1. 确保左括号前有空格（TEMU强制要求）
-	name = regexp.MustCompile(`(\S)\(`).ReplaceAllString(name, "$1 (")
-
-	// 2. 确保右括号后有空格（如果后面是字母或数字，但不是标点符号）
-	name = regexp.MustCompile(`\)([a-zA-Z0-9])`).ReplaceAllString(name, ") $1")
-
-	// 3. 清理多余的空格
-	name = regexp.MustCompile(`\s+`).ReplaceAllString(name, " ")
-	name = strings.TrimSpace(name)
-
-	return name
+	return temupublishing.NormalizeParenthesesSpacing(name)
 }
 
 // Handle 处理任务（兼容pipeline.Handler接口）
