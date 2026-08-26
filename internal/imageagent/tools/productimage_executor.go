@@ -244,6 +244,7 @@ type candidateIdentity struct {
 	PlanRevision        int64  `json:"plan_revision"`
 	SlotID              string `json:"slot_id"`
 	SlotIdempotencyKey  string `json:"slot_idempotency_key"`
+	InputIdempotencyKey string `json:"input_idempotency_key"`
 	Attempt             int    `json:"attempt"`
 	ProviderOutputIndex int    `json:"provider_output_index"`
 }
@@ -252,7 +253,8 @@ func candidateAssetID(input imageagent.SlotExecutionInput, slot imageagent.Slot,
 	payload, err := json.Marshal(candidateIdentity{
 		RunID: strings.TrimSpace(input.RunID), PlanRevision: input.PlanRevision,
 		SlotID: strings.TrimSpace(slot.ID), SlotIdempotencyKey: strings.TrimSpace(slot.IdempotencyKey),
-		Attempt: input.Attempt, ProviderOutputIndex: providerOutputIndex,
+		InputIdempotencyKey: strings.TrimSpace(input.IdempotencyKey),
+		Attempt:             input.Attempt, ProviderOutputIndex: providerOutputIndex,
 	})
 	if err != nil {
 		panic(fmt.Sprintf("marshal candidate identity: %v", err))
@@ -262,7 +264,7 @@ func candidateAssetID(input imageagent.SlotExecutionInput, slot imageagent.Slot,
 }
 
 func isGeneratedAsset(url string, source productimage.ImageAsset, asset productimage.ImageAsset) bool {
-	if url == "" || canonicalHTTPURLEqual(url, source.URL) || canonicalHTTPURLEqual(url, source.SourceURL) {
+	if url == "" || sourceURLEquivalent(url, source.URL) || sourceURLEquivalent(url, source.SourceURL) {
 		return false
 	}
 	if strings.EqualFold(string(asset.Type), string(productimage.AssetTypeSourceImage)) || hasFallbackProvenance(asset) {
@@ -289,22 +291,44 @@ func hasFallbackProvenance(asset productimage.ImageAsset) bool {
 	}
 	for rawKey, rawValue := range asset.Metadata {
 		key, value := normalizeProvenance(rawKey), normalizeProvenance(rawValue)
-		if strings.Contains(key, "pass_through") || strings.Contains(value, "pass_through") ||
-			strings.Contains(key, "fallback_reason") || strings.Contains(value, "placeholder") {
-			return true
-		}
-		if (key == "mode" && value == "placeholder") ||
-			(key == "tenant_model_gate" && value == "true") {
-			return true
+		switch key {
+		case "mode", "scene_mode", "background_mode", "generation_mode", "operation":
+			if isFallbackProvenanceValue(value) {
+				return true
+			}
+		case "origin":
+			if value == "source" || isFallbackProvenanceValue(value) {
+				return true
+			}
+		case "fallback_reason":
+			if strings.TrimSpace(rawValue) != "" {
+				return true
+			}
+		case "fallback", "is_fallback", "tenant_model_gate":
+			if value == "true" || value == "1" || value == "yes" {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func isFallbackProvenanceValue(value string) bool {
+	return strings.Contains(value, "pass_through") || strings.Contains(value, "placeholder") || value == "local_canvas" || value == "white_canvas"
 }
 
 func normalizeProvenance(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	normalized = strings.NewReplacer("-", "_", " ", "_", ".", "_").Replace(normalized)
 	return normalized
+}
+
+func sourceURLEquivalent(left, right string) bool {
+	left, right = strings.TrimSpace(left), strings.TrimSpace(right)
+	if left != "" && left == right {
+		return true
+	}
+	return canonicalHTTPURLEqual(left, right)
 }
 
 func canonicalHTTPURLEqual(left, right string) bool {
@@ -330,7 +354,7 @@ func canonicalHTTPURL(value string) string {
 		host = net.JoinHostPort(host, port)
 	}
 	cleanPath := path.Clean(parsed.Path)
-	if cleanPath == "." {
+	if cleanPath == "." || cleanPath == "/" {
 		cleanPath = ""
 	}
 	if cleanPath != "" && !strings.HasPrefix(cleanPath, "/") {

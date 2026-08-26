@@ -110,7 +110,7 @@ func TestExecutorCandidateIdentityBindsAttemptAndOriginalProviderIndex(t *testin
 	require.NotEqual(t, first.Candidates[0].AssetID, withTwoRejected.Candidates[0].AssetID)
 }
 
-func TestCandidateAssetIDBindsStableExecutionIdentity(t *testing.T) {
+func TestCandidateIdentityBindsStableExecutionIdentity(t *testing.T) {
 	input := sceneSlotInput("scene-1")
 	slot := input.Slot
 	baseline := candidateAssetID(input, slot, 2)
@@ -126,6 +126,11 @@ func TestCandidateAssetIDBindsStableExecutionIdentity(t *testing.T) {
 		{name: "plan revision", input: func() imageagent.SlotExecutionInput { cloned := input; cloned.PlanRevision = 2; return cloned }(), slot: slot, index: 2},
 		{name: "slot id", input: input, slot: func() imageagent.Slot { cloned := slot; cloned.ID = "scene-2"; return cloned }(), index: 2},
 		{name: "slot idempotency key", input: input, slot: func() imageagent.Slot { cloned := slot; cloned.IdempotencyKey = "slot-2"; return cloned }(), index: 2},
+		{name: "input idempotency key", input: func() imageagent.SlotExecutionInput {
+			cloned := input
+			cloned.IdempotencyKey = "attempt-2"
+			return cloned
+		}(), slot: slot, index: 2},
 		{name: "attempt", input: func() imageagent.SlotExecutionInput { cloned := input; cloned.Attempt = 2; return cloned }(), slot: slot, index: 2},
 		{name: "provider output index", input: input, slot: slot, index: 3},
 	}
@@ -134,6 +139,43 @@ func TestCandidateAssetIDBindsStableExecutionIdentity(t *testing.T) {
 			require.NotEqual(t, baseline, candidateAssetID(tt.input, tt.slot, tt.index))
 		})
 	}
+}
+
+func TestExecutorRejectsSourceEquivalentURLs(t *testing.T) {
+	tests := []struct {
+		name      string
+		sourceURL string
+		outputURL string
+	}{
+		{name: "local path", sourceURL: `C:\\work\\source.png`, outputURL: `C:\\work\\source.png`},
+		{name: "asset URL", sourceURL: "asset://source-1/image", outputURL: "asset://source-1/image"},
+		{name: "HTTP root slash", sourceURL: "https://example.test", outputURL: "https://example.test/"},
+		{name: "HTTP query ordering and fragments", sourceURL: "https://example.test/source.jpg?b=2&a=1#source", outputURL: "HTTPS://EXAMPLE.TEST:443/source.jpg?a=1&b=2#generated"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: tt.outputURL}}}, SourceAssets: map[string]productimage.ImageAsset{
+				"source-1": {URL: tt.sourceURL, SourceURL: tt.sourceURL},
+			}})
+			result, err := executor.ExecuteSlot(context.Background(), sceneSlotInput("scene-1"))
+			require.Error(t, err)
+			require.Empty(t, result.Candidates)
+		})
+	}
+}
+
+func TestExecutorAcceptsUnrelatedMetadataDescriptions(t *testing.T) {
+	source := productimage.ImageAsset{URL: "https://example.test/source.jpg", SourceURL: "https://example.test/source.jpg"}
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: &recordingSceneRenderer{result: []productimage.ImageAsset{{
+		URL: "https://example.test/generated.jpg", Type: productimage.AssetTypeGalleryImage,
+		Metadata: map[string]string{"model_note": "the prompt says placeholder and pass_through only as prohibited examples"},
+	}}}, SourceAssets: map[string]productimage.ImageAsset{"source-1": source}})
+
+	result, err := executor.ExecuteSlot(context.Background(), sceneSlotInput("scene-1"))
+
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
 }
 
 func TestExecutorFailsClosedForUnresolvedOpaqueSourceAndAllowsDirectHTTPSource(t *testing.T) {
