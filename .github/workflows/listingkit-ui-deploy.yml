@@ -108,6 +108,11 @@ jobs:
       name: production
       url: https://pod.shuomiai.com
     steps:
+      - name: Checkout UI release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_ref }}
+
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
         with:
@@ -120,6 +125,11 @@ jobs:
           mkdir -p "$HOME/.kube"
           printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
+
+      - name: Apply ListingKit runtime configuration
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} apply \
+            -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 
       - name: Update only the UI deployment image
         run: |

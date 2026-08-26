@@ -20,7 +20,7 @@ function expiredToken(overrides: Record<string, unknown> = {}) {
     refreshToken: "refresh-token",
     expiresAt: Math.floor(Date.now() / 1000) - 60,
     identity: canonicalIdentity,
-    identityVersion: 1,
+    identityVersion: 2,
     ...overrides,
   };
 }
@@ -89,7 +89,7 @@ describe("ListingKit Auth.js canonical ZITADEL identity", () => {
     }
 
     expect(result.identity).toMatchObject({ userId: "zitadel-subject-123" });
-    expect(result.identityVersion).toBe(1);
+    expect(result.identityVersion).toBe(2);
   });
 
   it("invalidates identity when a refreshed ID token lacks sub", async () => {
@@ -122,7 +122,7 @@ describe("ListingKit Auth.js canonical ZITADEL identity", () => {
     );
 
     expect(marked.identity).toEqual(canonicalIdentity);
-    expect(marked.identityVersion).toBe(1);
+    expect(marked.identityVersion).toBe(2);
     expect(unmarked.identity).toBeNull();
     expect(unmarked.identityVersion).toBeUndefined();
   });
