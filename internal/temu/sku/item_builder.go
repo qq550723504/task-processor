@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	temupublishing "task-processor/internal/marketplace/temu/publishing"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/skugen"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
-	temuformat "task-processor/internal/temu/format"
 	"task-processor/internal/temu/image"
 	"task-processor/internal/temu/product"
 
@@ -253,28 +253,28 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 
 // buildProductExpressInfo 构建产品物流信息（重量和尺寸）
 func (ib *SkuItemBuilder) buildProductExpressInfo(variant *model.Product, aiSku temucontext.AIGeneratedSku) (weight, length, width, height string) {
-	weight = temuformat.Weight(aiSku.Weight)
+	weight = temupublishing.FormatWeight(aiSku.Weight)
 	if aiSku.Weight == "" || aiSku.Weight == "0.22" {
 		ib.logger.Errorf("❌ AI未能估算重量（ASIN: %s），使用兜底默认值: %slb - 这可能不准确！", variant.Asin, weight)
 	} else {
 		ib.logger.Infof("✅ AI提取/估算重量: %slb -> 格式化为: %slb (ASIN: %s)", aiSku.Weight, weight, variant.Asin)
 	}
 
-	length = temuformat.Dimension(aiSku.Length)
+	length = temupublishing.FormatDimension(aiSku.Length)
 	if aiSku.Length == "" || aiSku.Length == "3.94" {
 		ib.logger.Errorf("❌ AI未能估算长度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, length)
 	} else {
 		ib.logger.Infof("✅ AI提取/估算长度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Length, length, variant.Asin)
 	}
 
-	width = temuformat.Dimension(aiSku.Width)
+	width = temupublishing.FormatDimension(aiSku.Width)
 	if aiSku.Width == "" || aiSku.Width == "5.91" {
 		ib.logger.Errorf("❌ AI未能估算宽度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, width)
 	} else {
 		ib.logger.Infof("✅ AI提取/估算宽度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Width, width, variant.Asin)
 	}
 
-	height = temuformat.Dimension(aiSku.Height)
+	height = temupublishing.FormatDimension(aiSku.Height)
 	if aiSku.Height == "" || aiSku.Height == "7.87" {
 		ib.logger.Errorf("❌ AI未能估算高度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, height)
 	} else {
