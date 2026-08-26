@@ -9,6 +9,18 @@ import (
 func TestSheinPreviewSupportBoundary(t *testing.T) {
 	t.Parallel()
 
+	t.Run("display title delegates policy to workspace", func(t *testing.T) {
+		t.Parallel()
+
+		source := readNamedFunctionSource(t, "preview_builder_shein_payload.go", "sheinDisplayTitle")
+		callNames := readNamedFunctionCallNames(t, "preview_builder_shein_payload.go", "sheinDisplayTitle")
+		assertSourceContainsAll(t, source, []string{
+			"return sheinworkspace.ResolveDisplayTitle(",
+			"sheinworkspace.DisplayTitleInput{",
+		})
+		assertFunctionCallsContainAll(t, callNames, []string{"ResolveDisplayTitle"})
+	})
+
 	t.Run("resolution cache summary delegates to workspace", func(t *testing.T) {
 		t.Parallel()
 

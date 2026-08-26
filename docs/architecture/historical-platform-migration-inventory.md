@@ -13,14 +13,14 @@ about current ownership or dependency direction. This inventory is the follow-up
 document for cost triage and slice selection; it should not replace the stable
 boundary entrypoints as the source of current policy.
 
-Snapshot date: 2026-06-17.
+Snapshot date: 2026-08-26.
 
 ## Current Scale
 
 | Package | Go files | Test files | Cost signal |
 | --- | ---: | ---: | --- |
-| `internal/shein` | 329 | 73 | Highest cost: broad API, pipeline, submit, content, category, pricing, and product responsibilities. |
-| `internal/temu` | 245 | 7 | High cost: broad platform runtime with relatively thin direct test coverage. |
+| `internal/shein` | 394 | 111 | Highest cost: broad API, pipeline, submit, content, category, pricing, and product responsibilities. The historical package remains runtime-heavy; keep it stable and avoid opportunistic moves. |
+| `internal/temu` | 263 | 17 | High cost: broad platform runtime with relatively thin direct test coverage. Treat this as an inventory-first candidate, not a migration target yet. |
 | `internal/amazon` | 70 | 8 | Medium cost: more concentrated crawler/listing/model/pipeline responsibilities. |
 
 The file counts come from `git ls-files` and are meant as a coarse ownership
@@ -110,6 +110,29 @@ Near-term direction:
 - avoid using Amazon as the template for all platform convergence until SHEIN
   and TEMU ownership is clearer
 
+### Recent SHEIN boundary slices
+
+The low-risk SHEIN policy and facade slices are now complete for this phase. In
+particular, the Studio policy helpers, variant image normalization, and
+workspace display-title fallback semantics now have canonical owners outside
+the ListingKit facade. These policy changes are deliberately kept as thin
+adapters and do not authorize a broad `internal/publishing/shein` or
+`internal/shein` rewrite.
+
+Two adjacent migrations must remain separate from this SHEIN inventory:
+
+- `SourceAccount` request construction belongs to the 1688 crawler/source-
+  handoff path, not to SHEIN ownership or evidence that the SHEIN split is
+  complete.
+- ProductFetcher ownership was a cross-platform runtime contract change across
+  pipeline and processor modules. It is Tier 3 historical context, not a
+  precedent for Tier 1 thin-adapter migrations.
+
+The current decision is to freeze the SHEIN directory split and enforce it with
+depguard and focused semantic tests. A new SHEIN move should require a concrete
+ownership defect, a failing regression test, and a separately reviewable target
+package; directory symmetry alone is not sufficient.
+
 ## Next Slice Candidates
 
 Good candidates for the next framework slice:
@@ -120,12 +143,13 @@ Good candidates for the next framework slice:
    `TestPlatformRegistrationPackagesStayThin`. Local-artifact drift in
    platform registration packages should stay blocked by
    `TestPlatformRegistrationPackagesContainNoLocalArtifacts`.
-2. Identify one SHEIN publishing helper still living in a root or runtime-heavy
-   package and move it only if tests can pin the behavior.
-3. Add a focused TEMU inventory before moving code, because test coverage is
-   thin relative to package size.
-4. Catalog legacy facade-only files that can be retired without touching runtime
-   behavior.
+2. Add a focused TEMU inventory before moving code, because test coverage is
+   thin relative to package size. Start with one policy or payload seam and
+   record its callers before proposing a target package.
+3. Keep cataloging legacy facade-only files, but retire one only after proving
+   zero repository references and an externally safe compatibility window.
+4. Prefer additional import/structure guards over another opportunistic SHEIN
+   move while the current split remains stable.
 
 ## Non-goals
 
