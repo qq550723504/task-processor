@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -140,10 +142,11 @@ type releaseWorkflow struct {
 }
 
 type releaseWorkflowJob struct {
-	Needs   interface{}           `yaml:"needs"`
-	If      string                `yaml:"if"`
-	Outputs map[string]string     `yaml:"outputs"`
-	Steps   []releaseWorkflowStep `yaml:"steps"`
+	Needs       interface{}           `yaml:"needs"`
+	If          string                `yaml:"if"`
+	Environment interface{}           `yaml:"environment"`
+	Outputs     map[string]string     `yaml:"outputs"`
+	Steps       []releaseWorkflowStep `yaml:"steps"`
 }
 
 type releaseWorkflowStep struct {
@@ -306,84 +309,681 @@ func TestListingKitUIDeployRequiresVerifiedExactAPIReleaseGate(t *testing.T) {
 }
 
 func TestListingKitSupportedProductionMutationEntryPointsAreGated(t *testing.T) {
-	workstationScriptPath := filepath.Join("..", "scripts", "build-push-deploy-listingkit-workbench.ps1")
-	workstationScript, err := os.ReadFile(workstationScriptPath)
+	violations := auditListingKitProductionMutationOwnership(t, "..")
+	if len(violations) != 0 {
+		t.Fatalf("unsupported or unclassified ListingKit production mutation entries:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
+func TestListingKitProductionMutationClassifierNormalizesEquivalentEntries(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		text string
+		want []string
+	}{
+		{name: "documented API restart", text: "then restart only `product-listing-api`", want: []string{"rollout_restart|deployment/product-listing-api"}},
+		{name: "alternate API rollout wording", text: "Roll product-listing-api after the configuration change.", want: []string{"rollout_restart|deployment/product-listing-api"}},
+		{name: "config map prose", text: "Apply the updated ConfigMap before the API rollout.", want: []string{"apply|configmap/listingkit-workbench-config"}},
+		{name: "kubectl patch variant", text: "kubectl -n task-processor patch deployment product-listing-api --type merge", want: []string{"patch|deployment/product-listing-api"}},
+		{name: "kustomize apply variant", text: "kubectl apply -k deployments/kubernetes/listingkit-workbench/overlays/prod", want: []string{"apply|bundle/listingkit-production"}},
+		{name: "set image variant", text: "kubectl set image deploy/listingkit-ui listingkit-ui=image@sha256:abc", want: []string{"set_image|deployment/listingkit-ui"}},
+		{name: "delete API variant", text: "kubectl -n task-processor delete deployment product-listing-api", want: []string{"delete|deployment/product-listing-api"}},
+		{name: "replace ingress variant", text: "kubectl -n task-processor replace -f overlays/prod/patch-ingress.yaml", want: []string{"replace|ingress/listingkit-sms-webhook"}},
+		{name: "scale UI variant", text: "kubectl -n task-processor scale deployment listingkit-ui --replicas=0", want: []string{"scale|deployment/listingkit-ui"}},
+		{name: "Chinese operator wording", text: "更新生产 ConfigMap，然后重启 product-listing-api。", want: []string{"apply|configmap/listingkit-workbench-config", "rollout_restart|deployment/product-listing-api"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := classifyListingKitMutationText(test.text)
+			if strings.Join(got, ",") != strings.Join(test.want, ",") {
+				t.Fatalf("classified mutations=%v want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestListingKitProductionMutationClassifierIgnoresReadOnlyAndUnrelatedText(t *testing.T) {
+	for _, text := range []string{
+		"kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m",
+		"kubectl -n task-processor get deployment listingkit-ui -o wide",
+		"Inspect the ConfigMap before the API rollout.",
+		"Apply the updated ConfigMap for an unrelated service.",
+		"The ListingKit API Deploy workflow reports the API rollout status.",
+	} {
+		t.Run(text, func(t *testing.T) {
+			if got := classifyListingKitMutationText(text); len(got) != 0 {
+				t.Fatalf("read-only or unrelated text classified as production mutation: %v", got)
+			}
+		})
+	}
+}
+
+func TestListingKitProductionMutationOwnerCannotCoverDirectFallbackInSameParagraph(t *testing.T) {
+	paragraph := "Run ListingKit API Deploy for the candidate. Alternatively, restart product-listing-api from the workstation."
+	mutations := classifyListingKitMutationText(listingKitPositiveInstructionText(paragraph))
+	if len(mutations) == 0 {
+		t.Fatal("fixture must contain a classified production mutation")
+	}
+	if listingKitParagraphUsesGatedOwner(paragraph, mutations) {
+		t.Fatal("a gated workflow name must not cover a separate direct production fallback")
+	}
+}
+
+func TestListingKitWorkflowMutationClassifierResolvesStepLocalTargets(t *testing.T) {
+	for _, step := range []releaseWorkflowStep{
+		{Run: "target=product-listing-api\nkubectl -n task-processor patch deployment \"$target\" --type merge"},
+		{Env: map[string]string{"TARGET": "product-listing-api"}, Run: `kubectl -n task-processor patch deployment "$TARGET" --type merge`},
+	} {
+		if got := classifyListingKitWorkflowStep(step); strings.Join(got, ",") != "patch|deployment/product-listing-api" {
+			t.Fatalf("step-local target must be paired with its mutation intent, got %v", got)
+		}
+	}
+}
+
+func TestListingKitSupportedDocumentInventoryDiscoversNewRunbooks(t *testing.T) {
+	repoRoot := t.TempDir()
+	paths := []string{
+		"deployments/kubernetes/listingkit-workbench/README.md",
+		"deployments/kubernetes/listingkit-workbench/nested/operator.md",
+		"docs/operations/listingkit-new-release.md",
+	}
+	for _, relativePath := range paths {
+		absolutePath := filepath.Join(repoRoot, filepath.FromSlash(relativePath))
+		if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(absolutePath, []byte("supported"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := listingKitSupportedDocumentPaths(t, repoRoot)
+	if strings.Join(got, ",") != strings.Join(paths, ",") {
+		t.Fatalf("supported document inventory=%v want %v", got, paths)
+	}
+}
+
+func TestListingKitLegacyIdentityCleanupProductionMisuseGuard(t *testing.T) {
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "kubectl.log")
+	writePreflightFake(t, filepath.Join(binDir, "kubectl"), `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$FAKE_KUBECTL_LOG"
+exit 9
+`)
+	scriptPath, err := filepath.Abs(filepath.Join("..", "scripts", "listingkit-clean-legacy-identity-secret.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	workstationText := string(workstationScript)
-	guardOffset := strings.Index(workstationText, `-not $SkipApply`)
-	firstExternalCommandOffset := strings.Index(workstationText, "git rev-parse")
-	if guardOffset < 0 || firstExternalCommandOffset < 0 || guardOffset > firstExternalCommandOffset ||
-		!strings.Contains(workstationText, `[string]::Equals($Namespace.Trim(), $ProductionNamespace`) {
-		t.Fatal("workstation entry point must reject production apply before resolving source or invoking external commands")
-	}
-	if strings.Contains(workstationText, "$ProductionIngressManifest") {
-		t.Fatal("workstation entry point must not retain a production ingress mutation path")
+	run := func(namespace, workflowRef, job, runID, runAttempt string) ([]byte, error) {
+		command := exec.Command(preflightBash(t), filepath.ToSlash(scriptPath), namespace, "listingkit-workbench-secret", "product-listing-api")
+		command.Env = append(os.Environ(),
+			"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"FAKE_KUBECTL_LOG="+filepath.ToSlash(logPath),
+			"GITHUB_ACTIONS=true",
+			"GITHUB_WORKFLOW_REF="+workflowRef,
+			"GITHUB_JOB="+job,
+			"GITHUB_RUN_ID="+runID,
+			"GITHUB_RUN_ATTEMPT="+runAttempt,
+		)
+		return command.CombinedOutput()
 	}
 
-	workflowDir := filepath.Join("..", ".github", "workflows")
-	entries, err := os.ReadDir(workflowDir)
-	if err != nil {
+	for _, test := range []struct {
+		name        string
+		workflowRef string
+		job         string
+		runID       string
+		runAttempt  string
+	}{
+		{name: "direct caller"},
+		{name: "wrong workflow", workflowRef: "octo/task-processor/.github/workflows/other.yml@refs/heads/main", job: "deploy-api", runID: "424242", runAttempt: "2"},
+		{name: "missing exact attempt", workflowRef: "octo/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main", job: "deploy-api", runID: "424242"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_ = os.Remove(logPath)
+			if output, runErr := run("task-processor", test.workflowRef, test.job, test.runID, test.runAttempt); runErr == nil {
+				t.Fatalf("unsupported production cleanup unexpectedly passed: %s", output)
+			}
+			if content, readErr := os.ReadFile(logPath); readErr == nil && len(content) != 0 {
+				t.Fatalf("unsupported production caller reached kubectl before the misuse guard: %s", content)
+			}
+		})
+	}
+
+	_ = os.Remove(logPath)
+	if _, runErr := run(
+		"task-processor",
+		"octo/task-processor/.github/workflows/listingkit-deploy.yml@refs/tags/listingkit-api-v-test",
+		"deploy-api",
+		"424242",
+		"2",
+	); runErr == nil {
+		t.Fatal("workflow-shaped production probe unexpectedly completed against the failing fake kubectl")
+	}
+	if content, readErr := os.ReadFile(logPath); readErr != nil || len(content) == 0 {
+		t.Fatalf("exact API workflow run and attempt must retain the internal helper path; readErr=%v content=%q", readErr, content)
+	}
+
+	_ = os.Remove(logPath)
+	if _, runErr := run("listingkit-nonprod", "", "", "", ""); runErr == nil {
+		t.Fatal("non-production probe unexpectedly completed against the failing fake kubectl")
+	}
+	if content, readErr := os.ReadFile(logPath); readErr != nil || len(content) == 0 {
+		t.Fatalf("explicit non-production caller must retain the helper path; readErr=%v content=%q", readErr, content)
+	}
+}
+
+func TestListingKitKubectlMutationIntentClassifierIgnoresObservations(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		text string
+		want []string
+	}{
+		{name: "apply", text: `kubectl -n "$ns" apply -f "$manifest"`, want: []string{"apply"}},
+		{name: "patch", text: `kubectl -n "$ns" patch deployment "$name"`, want: []string{"patch"}},
+		{name: "restart", text: `kubectl -n "$ns" rollout restart deployment/api`, want: []string{"rollout_restart"}},
+		{name: "create", text: `kubectl create -n "$ns" -f "$manifest"`, want: []string{"create"}},
+		{name: "client dry run", text: `kubectl create --dry-run=client -f manifest.yaml`, want: nil},
+		{name: "rollout status", text: `kubectl -n "$ns" rollout status deployment/api`, want: nil},
+		{name: "get", text: `kubectl -n "$ns" get deployment api`, want: nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := listingKitKubectlMutationIntents(test.text); strings.Join(got, ",") != strings.Join(test.want, ",") {
+				t.Fatalf("kubectl mutation intents=%v want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestListingKitMutationHelperInventoryFailsClosedOnNewWriter(t *testing.T) {
+	scriptDir := t.TempDir()
+	path := filepath.Join(scriptDir, "listingkit-direct-production-bypass.sh")
+	if err := os.WriteFile(path, []byte("#!/usr/bin/env bash\nkubectl -n task-processor patch deployment product-listing-api\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	allowedWorkflowOwners := map[string]bool{
-		"listingkit-deploy.yml":    true,
-		"listingkit-ui-deploy.yml": true,
+	violations := unclassifiedListingKitMutationHelpers(t, scriptDir, map[string]bool{})
+	if len(violations) != 1 || !strings.Contains(violations[0], "listingkit-direct-production-bypass.sh") {
+		t.Fatalf("new mutation helper must fail closed, got %v", violations)
 	}
-	productionTargets := []string{
-		"deployment/product-listing-api",
-		"deployment/listingkit-ui",
-		"configmap listingkit-workbench-config",
-		"base/product-listing-api-deployment.yaml",
-		"base/listingkit-ui-deployment.yaml",
-		"overlays/prod/patch-ingress.yaml",
+}
+
+var listingKitMutationWhitespace = regexp.MustCompile(`\s+`)
+
+func classifyListingKitMutationText(text string) []string {
+	normalized := strings.ToLower(text)
+	normalized = strings.NewReplacer("`", "", "_", " ", "\\", "/", "\r", " ", "\n", " ").Replace(normalized)
+	normalized = listingKitMutationWhitespace.ReplaceAllString(normalized, " ")
+
+	targets := map[string]bool{
+		"deployment/product-listing-api": strings.Contains(normalized, "product-listing-api") ||
+			regexp.MustCompile(`\bapi (pods?|deployment|rollout)\b`).MatchString(normalized),
+		"deployment/listingkit-ui": strings.Contains(normalized, "listingkit-ui") ||
+			regexp.MustCompile(`\bui (pods?|deployment)\b`).MatchString(normalized),
+		"configmap/listingkit-workbench-config": strings.Contains(normalized, "listingkit-workbench-config") ||
+			(strings.Contains(normalized, "configmap") &&
+				(strings.Contains(normalized, "listingkit") || strings.Contains(normalized, "product-listing-api") ||
+					strings.Contains(normalized, "api rollout") || strings.Contains(normalized, "task-processor"))),
+		"ingress/listingkit-sms-webhook": strings.Contains(normalized, "ingress"),
+		"bundle/listingkit-production":   regexp.MustCompile(`\bapply\s+-k\b.*(?:overlays/prod|listingkit-production)`).MatchString(normalized),
+		"secret/listingkit-workbench-secret": strings.Contains(normalized, "listingkit-workbench-secret") ||
+			strings.Contains(normalized, "shared secret"),
 	}
-	for _, entry := range entries {
-		if entry.IsDir() || (!strings.HasSuffix(entry.Name(), ".yml") && !strings.HasSuffix(entry.Name(), ".yaml")) {
+
+	entries := map[string]bool{}
+	add := func(intent, target string) {
+		if targets[target] {
+			entries[intent+"|"+target] = true
+		}
+	}
+
+	setImage := regexp.MustCompile(`\bkubectl\b.*\bset[- ]image\b`).MatchString(normalized)
+	patch := regexp.MustCompile(`\bpatch\s+(?:deployment|deploy|configmap|ingress|secret)\b`).MatchString(normalized)
+	deleteResource := regexp.MustCompile(`\bkubectl\b.*\bdelete\s+(?:deployment|deploy|configmap|ingress|secret)\b`).MatchString(normalized)
+	replaceResource := regexp.MustCompile(`\bkubectl\b.*\breplace\b`).MatchString(normalized)
+	scaleResource := regexp.MustCompile(`\bkubectl\b.*\bscale\s+(?:deployment|deploy)\b`).MatchString(normalized)
+	apply := regexp.MustCompile(`\bapply\s+(?:the\b|an?\b|updated\b|immutable\b|production\b|-[fk]\b)`).MatchString(normalized) ||
+		regexp.MustCompile(`\bkubectl\b.*\bapply\b`).MatchString(normalized) ||
+		strings.Contains(normalized, "应用") || strings.Contains(normalized, "更新")
+	applyAPI := regexp.MustCompile(`\bapply(?:ing)?\s+(?:the\s+)?(?:api|product-listing-api)(?:\s+deployment)?\b`).MatchString(normalized) ||
+		regexp.MustCompile(`\bkubectl\b.*\bapply\b.*product-listing-api`).MatchString(normalized)
+	applyUI := regexp.MustCompile(`\bapply(?:ing)?\s+(?:the\s+)?(?:ui|listingkit-ui)(?:\s+deployment)?\b`).MatchString(normalized) ||
+		regexp.MustCompile(`\bkubectl\b.*\bapply\b.*listingkit-ui`).MatchString(normalized)
+	restart := strings.Contains(normalized, "rollout restart") || strings.Contains(normalized, "restart") ||
+		strings.Contains(normalized, "重启") || regexp.MustCompile(`(?:^|[ .:;])roll\s+(?:only\s+)?`).MatchString(normalized) ||
+		strings.Contains(normalized, "roll the api") || strings.Contains(normalized, "roll the ui")
+
+	if setImage {
+		add("set_image", "deployment/product-listing-api")
+		add("set_image", "deployment/listingkit-ui")
+	}
+	if patch && !setImage {
+		add("patch", "deployment/product-listing-api")
+		add("patch", "deployment/listingkit-ui")
+		add("patch", "configmap/listingkit-workbench-config")
+		add("patch", "ingress/listingkit-sms-webhook")
+		add("patch", "secret/listingkit-workbench-secret")
+	}
+	if deleteResource {
+		add("delete", "deployment/product-listing-api")
+		add("delete", "deployment/listingkit-ui")
+		add("delete", "configmap/listingkit-workbench-config")
+		add("delete", "ingress/listingkit-sms-webhook")
+		add("delete", "secret/listingkit-workbench-secret")
+	}
+	if replaceResource {
+		add("replace", "deployment/product-listing-api")
+		add("replace", "deployment/listingkit-ui")
+		add("replace", "configmap/listingkit-workbench-config")
+		add("replace", "ingress/listingkit-sms-webhook")
+		add("replace", "secret/listingkit-workbench-secret")
+	}
+	if scaleResource {
+		add("scale", "deployment/product-listing-api")
+		add("scale", "deployment/listingkit-ui")
+	}
+	if apply && !setImage {
+		if applyAPI {
+			add("apply", "deployment/product-listing-api")
+		}
+		if applyUI {
+			add("apply", "deployment/listingkit-ui")
+		}
+		add("apply", "configmap/listingkit-workbench-config")
+		add("apply", "ingress/listingkit-sms-webhook")
+		add("apply", "bundle/listingkit-production")
+	}
+	if restart {
+		add("rollout_restart", "deployment/product-listing-api")
+		add("rollout_restart", "deployment/listingkit-ui")
+	}
+
+	result := make([]string, 0, len(entries))
+	for entry := range entries {
+		result = append(result, entry)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func listingKitKubectlMutationIntents(text string) []string {
+	intents := map[string]bool{}
+	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		normalized := strings.ToLower(listingKitMutationWhitespace.ReplaceAllString(line, " "))
+		if !regexp.MustCompile(`\bkubectl(?:\.exe)?\b`).MatchString(normalized) {
 			continue
 		}
-		content, readErr := os.ReadFile(filepath.Join(workflowDir, entry.Name()))
+		switch {
+		case regexp.MustCompile(`\brollout\s+restart\b`).MatchString(normalized):
+			intents["rollout_restart"] = true
+		case regexp.MustCompile(`\bset[- ]image\b`).MatchString(normalized):
+			intents["set_image"] = true
+		case regexp.MustCompile(`\bapply\b`).MatchString(normalized):
+			intents["apply"] = true
+		case regexp.MustCompile(`\bpatch\b`).MatchString(normalized):
+			intents["patch"] = true
+		case regexp.MustCompile(`\breplace\b`).MatchString(normalized):
+			intents["replace"] = true
+		case regexp.MustCompile(`\bdelete\b`).MatchString(normalized):
+			intents["delete"] = true
+		case regexp.MustCompile(`\bscale\b`).MatchString(normalized):
+			intents["scale"] = true
+		case regexp.MustCompile(`\bcreate\b`).MatchString(normalized) &&
+			!strings.Contains(normalized, "--dry-run=client") && !strings.Contains(normalized, "--dry-run client"):
+			intents["create"] = true
+		}
+	}
+	result := make([]string, 0, len(intents))
+	for intent := range intents {
+		result = append(result, intent)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func unclassifiedListingKitMutationHelpers(t *testing.T, scriptDir string, known map[string]bool) []string {
+	t.Helper()
+	entries, err := os.ReadDir(scriptDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var violations []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || (!strings.HasSuffix(name, ".sh") && !strings.HasSuffix(name, ".ps1")) ||
+			(!strings.HasPrefix(name, "listingkit-") && name != "build-push-deploy-listingkit-workbench.ps1") || known[name] {
+			continue
+		}
+		content, readErr := os.ReadFile(filepath.Join(scriptDir, name))
 		if readErr != nil {
 			t.Fatal(readErr)
 		}
-		for _, target := range productionTargets {
-			if strings.Contains(string(content), target) && !allowedWorkflowOwners[entry.Name()] {
-				t.Errorf("workflow %s advertises or owns ListingKit production mutation target %q outside the gated API/UI workflows", entry.Name(), target)
+		if intents := listingKitKubectlMutationIntents(string(content)); len(intents) > 0 {
+			violations = append(violations, fmt.Sprintf("unclassified ListingKit mutation helper %s has intents %v", name, intents))
+		}
+	}
+	sort.Strings(violations)
+	return violations
+}
+
+func classifyListingKitWorkflowStep(step releaseWorkflowStep) []string {
+	context := step.Run
+	envKeys := make([]string, 0, len(step.Env))
+	for key := range step.Env {
+		envKeys = append(envKeys, key)
+	}
+	sort.Strings(envKeys)
+	for _, key := range envKeys {
+		context += "\n" + key + "=" + step.Env[key]
+	}
+	entries := classifyListingKitMutationText(context)
+	add := func(entry string) {
+		for _, existing := range entries {
+			if existing == entry {
+				return
+			}
+		}
+		entries = append(entries, entry)
+	}
+	if strings.Contains(step.Run, ".workflow-tools/scripts/listingkit-clean-legacy-identity-secret.sh") {
+		add("patch|secret/listingkit-workbench-secret")
+		add("rollout_restart|deployment/product-listing-api")
+	}
+	if strings.Contains(step.Run, ".workflow-tools/scripts/listingkit-apply-api-deployment.sh") &&
+		strings.Contains(step.Run, "product-listing-api-deployment.yaml") {
+		add("apply|deployment/product-listing-api")
+	}
+	return uniqueSortedListingKitMutations(entries)
+}
+
+func auditListingKitProductionMutationOwnership(t *testing.T, repoRoot string) []string {
+	t.Helper()
+	allowedOwners := map[string]bool{
+		".github/workflows/listingkit-deploy.yml|deploy-api|Remove deprecated ListingKit identity keys from shared Secret|patch|secret/listingkit-workbench-secret":       true,
+		".github/workflows/listingkit-deploy.yml|deploy-api|Remove deprecated ListingKit identity keys from shared Secret|rollout_restart|deployment/product-listing-api": true,
+		".github/workflows/listingkit-deploy.yml|deploy-api|Apply ListingKit runtime configuration for candidate|apply|configmap/listingkit-workbench-config":             true,
+		".github/workflows/listingkit-deploy.yml|deploy-api|Apply immutable API deployment after image agent compatibility gates|apply|deployment/product-listing-api":    true,
+		".github/workflows/listingkit-deploy.yml|deploy-api|Restart API Pods for Secret changes and v3 new-start routing|rollout_restart|deployment/product-listing-api":  true,
+		".github/workflows/listingkit-deploy.yml|deploy-api|Apply production ListingKit SMS webhook ingress|apply|ingress/listingkit-sms-webhook":                         true,
+		".github/workflows/listingkit-ui-deploy.yml|deploy-ui|Apply ListingKit UI authorization scopes|patch|configmap/listingkit-workbench-config":                       true,
+		".github/workflows/listingkit-ui-deploy.yml|deploy-ui|Update UI deployment image|set_image|deployment/listingkit-ui":                                              true,
+		".github/workflows/listingkit-ui-deploy.yml|deploy-ui|Restart UI pods for authorization configuration|rollout_restart|deployment/listingkit-ui":                   true,
+	}
+
+	var violations []string
+	workflowDir := filepath.Join(repoRoot, ".github", "workflows")
+	workflowEntries, err := os.ReadDir(workflowDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range workflowEntries {
+		if file.IsDir() || (!strings.HasSuffix(file.Name(), ".yml") && !strings.HasSuffix(file.Name(), ".yaml")) {
+			continue
+		}
+		relativePath := filepath.ToSlash(filepath.Join(".github", "workflows", file.Name()))
+		workflow := loadReleaseWorkflow(t, filepath.Join(workflowDir, file.Name()))
+		for jobName, job := range workflow.Jobs {
+			for _, step := range job.Steps {
+				for _, mutation := range classifyListingKitWorkflowStep(step) {
+					owner := strings.Join([]string{relativePath, jobName, step.Name, mutation}, "|")
+					if !allowedOwners[owner] {
+						violations = append(violations, "workflow mutation has no exact gated owner: "+owner)
+					}
+				}
 			}
 		}
 	}
 
-	for _, relativePath := range []string{
-		filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "README.md"),
-		filepath.Join("..", "docs", "operations", "listingkit-release-candidate-runbook.md"),
-	} {
-		content, readErr := os.ReadFile(relativePath)
+	for _, relativePath := range listingKitSupportedDocumentPaths(t, repoRoot) {
+		content, readErr := os.ReadFile(filepath.Join(repoRoot, relativePath))
 		if readErr != nil {
 			t.Fatal(readErr)
 		}
-		text := string(content)
-		for _, forbidden := range []string{
-			"kubectl apply -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml",
-			"kubectl -n task-processor set image deployment/product-listing-api",
-			"kubectl -n task-processor set image deployment/listingkit-ui",
-			"kubectl -n task-processor rollout restart deployment/product-listing-api",
-			"kubectl -n task-processor rollout restart deployment/listingkit-ui",
-			"scripts/listingkit-apply-api-deployment.sh",
-			"scripts/listingkit-apply-ui-deployment.sh",
-			"kubectl -n task-processor apply -f deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml",
-			"workstation `kubectl set image` procedure remains",
-		} {
-			if strings.Contains(text, forbidden) {
-				t.Errorf("supported production document %s advertises forbidden bypass %q", relativePath, forbidden)
+		for _, paragraph := range listingKitMarkdownParagraphs(string(content)) {
+			positiveText := listingKitPositiveInstructionText(paragraph.text)
+			mutations := classifyListingKitMutationText(positiveText)
+			if len(mutations) == 0 {
+				continue
+			}
+			if listingKitParagraphUsesGatedOwner(paragraph.text, mutations) {
+				continue
+			}
+			violations = append(violations, fmt.Sprintf("supported document %s:%d has mutation %v without exact gated call path", filepath.ToSlash(relativePath), paragraph.line, mutations))
+		}
+	}
+
+	violations = append(violations, auditListingKitMutationHelpers(t, repoRoot)...)
+	sort.Strings(violations)
+	return violations
+}
+
+func listingKitSupportedDocumentPaths(t *testing.T, repoRoot string) []string {
+	t.Helper()
+	var paths []string
+	for _, relativeRoot := range []string{
+		filepath.Join("deployments", "kubernetes", "listingkit-workbench"),
+		filepath.Join("docs", "operations"),
+	} {
+		absoluteRoot := filepath.Join(repoRoot, relativeRoot)
+		if err := filepath.WalkDir(absoluteRoot, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".md") {
+				return nil
+			}
+			relativePath, relativeErr := filepath.Rel(repoRoot, path)
+			if relativeErr != nil {
+				return relativeErr
+			}
+			paths = append(paths, filepath.ToSlash(relativePath))
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+type listingKitMarkdownParagraph struct {
+	line int
+	text string
+}
+
+func listingKitMarkdownParagraphs(document string) []listingKitMarkdownParagraph {
+	lines := strings.Split(strings.ReplaceAll(document, "\r\n", "\n"), "\n")
+	var paragraphs []listingKitMarkdownParagraph
+	start := 0
+	var current []string
+	flush := func() {
+		if len(current) == 0 {
+			return
+		}
+		paragraphs = append(paragraphs, listingKitMarkdownParagraph{line: start, text: strings.Join(current, "\n")})
+		current = nil
+	}
+	for index, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			flush()
+			continue
+		}
+		if len(current) == 0 {
+			start = index + 1
+		}
+		current = append(current, line)
+	}
+	flush()
+	return paragraphs
+}
+
+func listingKitPositiveInstructionText(paragraph string) string {
+	var positive []string
+	for _, sentence := range listingKitInstructionClauses(paragraph) {
+		if listingKitClauseIsNegated(sentence) {
+			continue
+		}
+		positive = append(positive, sentence)
+	}
+	return strings.Join(positive, "\n")
+}
+
+func listingKitParagraphUsesGatedOwner(paragraph string, mutations []string) bool {
+	if len(mutations) == 0 {
+		return true
+	}
+	activeOwner := ""
+	for _, clause := range listingKitInstructionClauses(paragraph) {
+		if listingKitClauseIsNegated(clause) {
+			continue
+		}
+		normalized := listingKitMutationWhitespace.ReplaceAllString(strings.ReplaceAll(clause, "**", ""), " ")
+		lower := strings.ToLower(normalized)
+		mentionsAPIOwner := strings.Contains(normalized, "ListingKit API Deploy")
+		mentionsUIOwner := strings.Contains(normalized, "ListingKit UI Deploy")
+		clauseMutations := classifyListingKitMutationText(clause)
+		if len(clauseMutations) == 0 {
+			if mentionsAPIOwner {
+				activeOwner = "ListingKit API Deploy"
+			}
+			if mentionsUIOwner {
+				activeOwner = "ListingKit UI Deploy"
+			}
+			continue
+		}
+		directFallback := strings.Contains(lower, "alternatively") || strings.Contains(lower, "fallback") ||
+			strings.Contains(lower, "from the workstation") || strings.Contains(lower, "standalone helper") ||
+			regexp.MustCompile(`\bkubectl\b.*\b(apply|patch|rollout\s+restart|set[- ]image)\b`).MatchString(lower)
+		if directFallback {
+			return false
+		}
+		for _, mutation := range clauseMutations {
+			requiredOwner := "ListingKit API Deploy"
+			if strings.HasSuffix(mutation, "|deployment/listingkit-ui") {
+				requiredOwner = "ListingKit UI Deploy"
+			}
+			exactOwner := strings.Contains(normalized, requiredOwner)
+			actorReference := strings.Contains(lower, "workflow") || strings.Contains(lower, "gate") ||
+				strings.Contains(lower, "its run") || strings.Contains(lower, "that run") ||
+				strings.Contains(lower, "that exact") || strings.Contains(lower, "it applies") ||
+				strings.Contains(lower, "it restarts") || strings.Contains(lower, "alone")
+			if !exactOwner && !(activeOwner == requiredOwner && actorReference) {
+				return false
+			}
+			if requiredOwner == "ListingKit UI Deploy" &&
+				!(strings.Contains(normalized, "workflow_run") ||
+					(strings.Contains(normalized, "release_gate_run_id") && strings.Contains(normalized, "release_gate_run_attempt"))) {
+				return false
 			}
 		}
-		for _, required := range []string{"ListingKit API Deploy", "ListingKit UI Deploy", "release_gate_run_id", "release_gate_run_attempt"} {
-			if !strings.Contains(text, required) {
-				t.Errorf("supported production document %s must route release/rollback through exact attempt-bound workflows; missing %q", relativePath, required)
+		if mentionsAPIOwner {
+			activeOwner = "ListingKit API Deploy"
+		}
+		if mentionsUIOwner {
+			activeOwner = "ListingKit UI Deploy"
+		}
+	}
+	return true
+}
+
+func listingKitInstructionClauses(paragraph string) []string {
+	normalized := strings.ReplaceAll(paragraph, "\r", "")
+	normalized = listingKitMutationWhitespace.ReplaceAllString(normalized, " ")
+	return regexp.MustCompile(`[.!?。！？]\s+`).Split(normalized, -1)
+}
+
+func listingKitClauseIsNegated(clause string) bool {
+	lower := strings.ToLower(clause)
+	return strings.Contains(lower, "must not") || strings.Contains(lower, "do not") || strings.Contains(lower, "never") ||
+		strings.Contains(lower, "not supported") || strings.Contains(lower, "not a release") || strings.Contains(clause, "不得") || strings.Contains(clause, "不可") ||
+		strings.Contains(clause, "禁止") || strings.Contains(clause, "不能")
+}
+
+func auditListingKitMutationHelpers(t *testing.T, repoRoot string) []string {
+	t.Helper()
+	directIntentPolicies := map[string][]string{
+		"listingkit-clean-legacy-identity-secret.sh": {"patch", "rollout_restart"},
+		"listingkit-apply-api-deployment.sh":         {"apply", "patch"},
+		"listingkit-schema-migrate-job.sh":           {"create"},
+		"listingkit-identity-preflight-job.sh":       {"create"},
+		"build-push-deploy-listingkit-workbench.ps1": {"rollout_restart"},
+	}
+	scriptDir := filepath.Join(repoRoot, "scripts")
+	known := make(map[string]bool, len(directIntentPolicies))
+	for name := range directIntentPolicies {
+		known[name] = true
+	}
+	violations := unclassifiedListingKitMutationHelpers(t, scriptDir, known)
+	for name, want := range directIntentPolicies {
+		content, readErr := os.ReadFile(filepath.Join(scriptDir, name))
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		got := listingKitKubectlMutationIntents(string(content))
+		want = uniqueSortedListingKitMutations(want)
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			violations = append(violations, fmt.Sprintf("helper scripts/%s direct mutation intents=%v want %v", name, got, want))
+		}
+	}
+
+	cleanHelper := "listingkit-clean-legacy-identity-secret.sh"
+	allowedCallers := map[string]bool{
+		".github/workflows/listingkit-deploy.yml|deploy-api|Remove deprecated ListingKit identity keys from shared Secret": true,
+		"scripts/build-push-deploy-listingkit-workbench.ps1|nonproduction-workstation":                                     true,
+	}
+	workflow := loadReleaseWorkflow(t, filepath.Join(repoRoot, ".github", "workflows", "listingkit-deploy.yml"))
+	for jobName, job := range workflow.Jobs {
+		for _, step := range job.Steps {
+			if strings.Contains(step.Run, cleanHelper) {
+				caller := ".github/workflows/listingkit-deploy.yml|" + jobName + "|" + step.Name
+				if !allowedCallers[caller] {
+					violations = append(violations, "legacy cleanup helper has unsupported workflow caller: "+caller)
+				}
 			}
 		}
 	}
+	scriptEntries, err := os.ReadDir(scriptDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range scriptEntries {
+		if entry.IsDir() || entry.Name() == cleanHelper {
+			continue
+		}
+		content, readErr := os.ReadFile(filepath.Join(scriptDir, entry.Name()))
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if !strings.Contains(string(content), cleanHelper) {
+			continue
+		}
+		caller := filepath.ToSlash(filepath.Join("scripts", entry.Name())) + "|nonproduction-workstation"
+		if !allowedCallers[caller] {
+			violations = append(violations, "legacy cleanup helper has unsupported script caller: "+caller)
+		}
+	}
+	for _, relativePath := range listingKitSupportedDocumentPaths(t, repoRoot) {
+		content, readErr := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(relativePath)))
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if strings.Contains(string(content), cleanHelper) {
+			violations = append(violations, "internal legacy cleanup helper is advertised by supported document: "+relativePath)
+		}
+	}
+	sort.Strings(violations)
+	return violations
+}
+
+func uniqueSortedListingKitMutations(entries []string) []string {
+	set := map[string]bool{}
+	for _, entry := range entries {
+		set[entry] = true
+	}
+	result := make([]string, 0, len(set))
+	for entry := range set {
+		result = append(result, entry)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func TestListingKitReleaseAttestationAllowsResolvedSourceDifferentFromWorkflowHead(t *testing.T) {

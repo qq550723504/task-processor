@@ -25,37 +25,82 @@ trap 'rm -rf -- "$work_dir"' EXIT
 
 collect_open_executions() {
   local workflow_type="$1"
+  local query="WorkflowType = '${workflow_type}' AND ExecutionStatus = 'Running'"
   local list_json="$work_dir/${workflow_type}.json"
+  local count_json="$work_dir/${workflow_type}.count.json"
   local list_tsv="$work_dir/${workflow_type}.tsv"
+  local authoritative_count list_count
 
   if ! temporal workflow list \
     --address "$TEMPORAL_ADDRESS" \
     --namespace "$TEMPORAL_NAMESPACE" \
     --output json \
-    --query "WorkflowType = '${workflow_type}' AND ExecutionStatus = 'Running'" \
+    --query "$query" \
     >"$list_json"; then
     fail "Temporal list failed for ${workflow_type}"
   fi
 
+  if ! temporal workflow count \
+    --address "$TEMPORAL_ADDRESS" \
+    --namespace "$TEMPORAL_NAMESPACE" \
+    --output json \
+    --query "$query" \
+    >"$count_json"; then
+    fail "Temporal count failed for ${workflow_type}"
+  fi
+
+  if ! authoritative_count="$(jq -er '
+    # listingkit-count
+    if type == "object" and length == 0 then "0"
+    elif
+      type == "object" and
+      (keys | sort) == ["count"] and
+      (.count | type == "string" and test("^[1-9][0-9]*$"))
+    then .count
+    else error("invalid Temporal count response")
+    end
+  ' "$count_json")"; then
+    fail "Temporal count JSON is malformed for ${workflow_type}"
+  fi
+  [[ "$authoritative_count" =~ ^(0|[1-9][0-9]*)$ ]] || \
+    fail "Temporal count is not a non-negative integer for ${workflow_type}"
+
+  if [[ ! -s "$list_json" ]]; then
+    [[ "$authoritative_count" == "0" ]] || \
+      fail "Temporal count/list evidence disagrees for ${workflow_type}"
+    : >"$list_tsv"
+    return 0
+  fi
+  if ! grep -q '[^[:space:]]' "$list_json"; then
+    fail "Temporal list output is whitespace-only for ${workflow_type}"
+  fi
+
   if ! jq -e -s '
     # listingkit-list-shape
-    def records: .[] | if type == "array" then .[] else . end;
-    . as $documents |
-    ($documents | length) > 0 and
-    all($documents[]; type == "array" or type == "object") and
-    ([records] | all(.[];
+    length > 0 and
+    all(.[];
       type == "object" and
       (.execution.workflowId | type == "string" and length > 0) and
       (.execution.runId | type == "string" and length > 0) and
-      (.type.name | type == "string" and length > 0)))
+      (.type.name | type == "string" and length > 0))
   ' "$list_json" >/dev/null; then
     fail "Temporal list JSON is malformed for ${workflow_type}"
   fi
 
+  if ! list_count="$(jq -er -s '
+    # listingkit-list-count
+    length
+  ' "$list_json")"; then
+    fail "Temporal list count could not be normalized for ${workflow_type}"
+  fi
+  [[ "$list_count" =~ ^(0|[1-9][0-9]*)$ ]] || \
+    fail "Temporal normalized list count is malformed for ${workflow_type}"
+  [[ "$list_count" == "$authoritative_count" ]] || \
+    fail "Temporal count/list evidence disagrees for ${workflow_type}"
+
   if ! jq -r -s '
     # listingkit-list-rows
-    def records: .[] | if type == "array" then .[] else . end;
-    records | [.execution.workflowId, .execution.runId, .type.name] | @tsv
+    .[] | [.execution.workflowId, .execution.runId, .type.name] | @tsv
   ' "$list_json" >"$list_tsv"; then
     fail "Temporal list JSON could not be normalized for ${workflow_type}"
   fi

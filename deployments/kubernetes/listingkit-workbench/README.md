@@ -281,8 +281,10 @@ message. Do not build or operate a second OTP system.
 3. Have the approved secret manager materialize a Kubernetes Secret named
    `listingkit-tencent-sms-secret` from
    `base/tencent-sms-secret.example.yaml`, including the signing key returned
-   in step 2 and the five Tencent SMS values. Apply the Secret before applying
-   the API Deployment. Never place these values in
+   in step 2 and the five Tencent SMS values. Apply the Secret through the
+   approved secret-management path, then start **ListingKit API Deploy** with
+   the exact source and immutable candidate; that workflow alone applies and
+   restarts the production API Deployment. Never place these values in
    `listingkit-workbench-secret`, a ConfigMap, UI, worker, imgproxy, or a
    migration Job. Inspect only key names, never decode or print values:
 
@@ -326,10 +328,14 @@ message. Do not build or operate a second OTP system.
 
 Rotate the Tencent credentials and ZITADEL signing key through the secret
 manager. Update both the API Secret and ZITADEL Provider for the signing-key
-change within the approved maintenance window, then restart only
-`product-listing-api` and repeat the rendered-manifest and controlled-device
-checks above. Do not roll the UI, workers, imgproxy, or migration Jobs: they
-must never consume this Secret.
+change within the approved maintenance window, then start **ListingKit API
+Deploy** with the exact source and immutable API candidate. That exact workflow
+run and attempt alone restarts `product-listing-api`; after it succeeds, allow
+the automatic **ListingKit UI Deploy** gate to finish or supply that API
+execution's `release_gate_run_id` and `release_gate_run_attempt`. A workstation
+or standalone helper must not restart the production API. Do not roll the UI,
+workers, imgproxy, or migration Jobs merely to consume this Secret; they must
+never receive it.
 
 ## CI/CD deploy
 
@@ -669,7 +675,7 @@ candidate image, but each process receives an explicit `-wire-mode` and
 `-task-queue`. Keep both Deployments present. The v2 worker is removed only
 after the live drain evidence below reaches zero.
 
-The deploy workflow preserves the identity preflight, ingress, and
+**ListingKit API Deploy** preserves the identity preflight, ingress, and
 digest-pinned image gates, then performs this order:
 
 1. Run the additive Product Listing and ListingKit schema migrations.
@@ -687,8 +693,9 @@ address/namespace config, and receives no Secret.
 ### Live preflight and v2 drain evidence
 
 Use Temporal CLI v1.8.1 for this evidence procedure. Set address and namespace
-without printing credentials, verify the pinned CLI version, and list both the
-parent and child workflow types. `ImageAgentWorkflow` parents own run-state,
+without printing credentials, verify the pinned CLI version, and collect a
+paired `workflow count` and `workflow list` using the same exact query for both
+the parent and child workflow types. `ImageAgentWorkflow` parents own run-state,
 plan, pending-command, and approval Activities. Each `ImageSlotWorkflow` child
 owns the slot execution and slot-result persistence Activities, so parent-only
 describes are not drain evidence.
@@ -700,8 +707,9 @@ set -euo pipefail
 bash scripts/listingkit-image-agent-v2-drain-check.sh
 ```
 
-The checked-in script pins Temporal CLI 1.8.1, validates every list/describe
-command and JSON shape, enumerates `ImageAgentWorkflow` and
+The checked-in script pins Temporal CLI 1.8.1, validates every count/list/describe
+command and JSON shape, requires count/list query identity and record-count
+parity, enumerates `ImageAgentWorkflow` and
 `ImageSlotWorkflow`, describes their exact workflow/run IDs, and reads each
 execution's queue, `pendingChildren`, and `pendingActivities`. It counts only
 the exact `image-agent-manual` queue and exact frozen legacy/`.v2` Activity
@@ -720,10 +728,13 @@ pending_v2_activity_attempt_sum=0
 
 The script exits zero only when the first four counters are explicitly zero.
 Any nonzero inventory, malformed/missing identity or queue, unexpected v2-queue
-Activity, Temporal/jq failure, or unpinned CLI version exits nonzero. Retain the
-v2 Deployment unless this executable gate exits zero; empty or partial output
-is never drain evidence. Output contains counts only, never credentials,
-object metadata, or presigned URLs.
+Activity, Temporal/jq failure, or unpinned CLI version exits nonzero. Temporal
+CLI 1.8.1 emits no list document at a genuine zero: the script accepts that
+zero-byte list only when the paired official count response is exactly zero.
+Whitespace-only output, a nonzero count with an empty list, or any count/list
+disagreement fails closed. Retain the v2 Deployment unless this executable gate
+exits zero; empty or partial stdout is never drain evidence. Output contains
+counts only, never credentials, object metadata, or presigned URLs.
 
 Identify the `702d76631` rebound window from deployment records, not from Git
 commit time: record the instant that image first became active and the instant
@@ -843,13 +854,18 @@ Before rollout, confirm:
 2. `LISTINGKIT_TEMPORAL_NAMESPACE` exists in Temporal.
 3. `product-listing-api` pods can reach Temporal on port `7233`.
 
-Recommended rollout order:
+Recommended production rollout order is owned by **ListingKit API Deploy**:
 
-1. Apply the updated ConfigMap.
-2. Roll `product-listing-api`.
-3. Confirm API logs contain:
+1. Start **ListingKit API Deploy** with the exact source and immutable API
+   candidate; its run and attempt apply the updated ConfigMap and roll
+   `product-listing-api`.
+2. Confirm API logs contain:
    - `connected listingkit shein publish temporal client`
    - `started listingkit shein publish temporal worker`
+3. After the API workflow succeeds, let the automatic **ListingKit UI Deploy**
+   gate finish or supply the same `release_gate_run_id` and
+   `release_gate_run_attempt`; do not perform either production mutation from a
+   workstation or standalone helper.
 4. Create one new ListingKit task and confirm logs contain:
    - `WorkflowType StandardProductWorkflow`
    - `WorkflowType PlatformAdaptWorkflow`
