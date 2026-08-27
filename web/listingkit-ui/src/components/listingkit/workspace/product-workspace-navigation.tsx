@@ -8,6 +8,14 @@ const STATUS_MARKERS: Record<NonNullable<ProductWorkspaceNavItem["status"]>, str
   idle: "○",
 };
 
+const STATUS_LABELS: Record<NonNullable<ProductWorkspaceNavItem["status"]>, string> = {
+  ready: "已就绪",
+  processing: "处理中",
+  attention: "需关注",
+  failed: "失败",
+  idle: "未开始",
+};
+
 export function ProductWorkspaceNavigation({
   canonicalItems,
   platformItems,
@@ -94,10 +102,13 @@ function NavigationButton({
   onSelect: (item: ProductWorkspaceNavItem) => void;
   showStatus?: boolean;
 }) {
+  const status = item.status ?? "idle";
+  const accessibleLabel = showStatus ? `${item.label} · ${STATUS_LABELS[status]}` : item.label;
+
   return (
     <button
       aria-current={item.selected ? "page" : undefined}
-      aria-label={item.label}
+      aria-label={accessibleLabel}
       className={navigationButtonClass(Boolean(item.selected))}
       onClick={() => onSelect(item)}
       type="button"
@@ -105,7 +116,7 @@ function NavigationButton({
       <span className="truncate">{item.label}</span>
       {showStatus ? (
         <span aria-hidden="true" className="ml-auto text-xs text-muted-foreground">
-          {STATUS_MARKERS[item.status ?? "idle"]}
+          {STATUS_MARKERS[status]}
         </span>
       ) : null}
     </button>
