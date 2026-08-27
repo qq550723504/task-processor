@@ -157,7 +157,8 @@ export function useWorkspaceData({
       : undefined) ||
     sheinPreviewPayload?.final_review?.title ||
     sheinPreviewPayload?.source_product?.title ||
-    `任务 ${taskId.slice(0, 8)}`;
+    taskResult.data?.result?.canonical_product?.title ||
+    "未命名商品";
   const workspaceStatusLabel = workspaceTaskStatusLabel(taskResult.data?.status);
   const workspaceUpdatedAt = formatWorkspaceDate(
     taskResult.data?.result?.updated_at ??
@@ -166,10 +167,10 @@ export function useWorkspaceData({
   );
   const workspaceSubtitle =
     selectedPlatform === "shein"
-      ? `SHEIN · ${isSheinFinalReviewMode ? "最终确认" : "审核工作台"} · ${taskId}`
+      ? `SHEIN · ${isSheinFinalReviewMode ? "最终确认" : "商品审核"}`
       : workspacePlatformProjection.kind === "amazon"
-        ? `Amazon · ${workspacePlatformProjection.subtitle ?? "审核工作台"} · ${taskId}`
-      : `任务标识 · ${taskId}`;
+        ? `Amazon · ${workspacePlatformProjection.subtitle ?? "商品审核"}`
+        : "商品资料";
 
   return {
     baseQuery,
