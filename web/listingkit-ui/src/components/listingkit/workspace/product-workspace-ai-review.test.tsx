@@ -55,7 +55,7 @@ describe("ProductWorkspaceAIReview", () => {
       severity: "blocking" as const,
       title: "类目需要确认",
       description: "AI 无法安全确定目标类目。",
-      actionKey: "category",
+      actionKey: "category" as const,
     };
 
     render(
