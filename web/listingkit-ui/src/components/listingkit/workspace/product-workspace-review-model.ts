@@ -50,7 +50,7 @@ export function buildProductWorkspaceReviewIssues(
     return workflowIssues;
   }
 
-  const fallbackIssues = buildFallbackReviewIssues(task, selectedPlatform);
+  const fallbackIssues = buildFallbackReviewIssues(task);
   if (workflowIssues.length === 0) {
     return fallbackIssues;
   }
@@ -64,17 +64,18 @@ export function buildProductWorkspaceReviewIssues(
 
 function buildFallbackReviewIssues(
   task: ListingKitTaskResult | null | undefined,
-  selectedPlatform: string | undefined,
 ) {
   return extractTaskReviewReasons(task).map((reason, index) => {
-    const actionKey = resolveIssueActionKey(selectedPlatform, [reason]);
     return {
       id: `fallback-review-${index + 1}`,
-      severity: task?.status === "needs_review" ? "blocking" : "warning",
+      severity: isReviewRequiredTaskStatus(task?.status) ? "blocking" : "warning",
       title: reason,
-      ...(actionKey ? { actionKey } : {}),
     } satisfies ProductWorkspaceReviewIssue;
   });
+}
+
+function isReviewRequiredTaskStatus(status?: string) {
+  return status === "needs_review" || status === "review_ready";
 }
 
 function workflowIssueID(

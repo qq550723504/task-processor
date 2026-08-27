@@ -394,6 +394,19 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     expect(within(work).getByText("历史记录内容")).toBeInTheDocument();
   });
 
+  it("leaves history before dispatching an AI issue action", async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    await user.click(screen.getByRole("button", { name: "历史" }));
+    await user.click(screen.getByRole("button", { name: "处理：Material 缺失" }));
+
+    expect(mocks.handleRunSheinPrimaryAction).toHaveBeenCalledWith("attributes");
+    expect(within(screen.getByRole("region", { name: "商品工作区" })).getByText(
+      "现有 SHEIN 审核内容",
+    )).toBeInTheDocument();
+  });
+
   it.each(["processing", "pending", "queued", "running"])(
     "keeps AI review in a checking state while the task is %s",
     (status) => {

@@ -19,6 +19,7 @@ import { shouldSyncPlatformOnRecovery } from "@/components/listingkit/workspace/
 import {
   buildProductWorkspaceHref,
   buildWorkspaceSearch,
+  shouldSyncFocusedTargetToRoute,
 } from "@/components/listingkit/workspace/workspace-routing";
 import { scrollSheinWorkspaceTarget } from "@/components/listingkit/workspace/workspace-screen-helpers";
 import { useExecuteAction } from "@/lib/query/use-action";
@@ -74,7 +75,7 @@ export function useWorkspaceNavigationActions({
     const currentParams = new URLSearchParams(
       typeof window === "undefined" ? searchParams.toString() : window.location.search,
     );
-    if (currentParams.get("section_key") === "final_review") {
+    if (!shouldSyncFocusedTargetToRoute(currentParams.toString())) {
       return;
     }
 

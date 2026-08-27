@@ -1,6 +1,7 @@
 import {
   buildProductWorkspaceHref,
   buildWorkspaceSearch,
+  shouldSyncFocusedTargetToRoute,
 } from "@/components/listingkit/workspace/workspace-routing";
 
 describe("buildWorkspaceSearch", () => {
@@ -39,5 +40,12 @@ describe("buildProductWorkspaceHref", () => {
         "images",
       ),
     ).toBe("/listing-kits/task-1/workspace?foo=bar&product_section=images");
+  });
+});
+
+describe("shouldSyncFocusedTargetToRoute", () => {
+  it("does not overwrite a canonical product route with the focused platform target", () => {
+    expect(shouldSyncFocusedTargetToRoute("product_section=images")).toBe(false);
+    expect(shouldSyncFocusedTargetToRoute("platform=shein")).toBe(true);
   });
 });

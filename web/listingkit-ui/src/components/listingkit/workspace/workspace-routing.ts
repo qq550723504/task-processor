@@ -57,3 +57,8 @@ export function buildProductWorkspaceHref(
   const search = params.toString();
   return `/listing-kits/${taskId}/workspace${search ? `?${search}` : ""}`;
 }
+
+export function shouldSyncFocusedTargetToRoute(currentSearch: string) {
+  const params = new URLSearchParams(currentSearch);
+  return params.get("section_key") !== "final_review" && !params.has("product_section");
+}

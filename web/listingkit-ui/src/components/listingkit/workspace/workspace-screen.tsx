@@ -443,6 +443,11 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             issues={reviewIssues}
             onSelectIssue={(issue) => {
               if (issue.actionKey) {
+                setHistorySelected(false);
+                setLocalNavigation({
+                  workspaceDestination: "platform",
+                  selectedProductSection: "overview",
+                });
                 workspaceActions.handleRunSheinPrimaryAction(issue.actionKey);
               }
             }}

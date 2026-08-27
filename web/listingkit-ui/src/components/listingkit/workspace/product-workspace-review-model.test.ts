@@ -16,7 +16,6 @@ describe("Product Workspace review model", () => {
         id: "fallback-review-1",
         severity: "blocking",
         title: "类目需要人工确认",
-        actionKey: "category",
       },
     ]);
   });
@@ -29,7 +28,7 @@ describe("Product Workspace review model", () => {
           {
             kind: "source_product_enrich",
             status: "failed",
-            error: "源数据转换失败",
+            error: "SDS 登录状态已失效，请重新登录",
           },
         ],
       },
@@ -39,7 +38,23 @@ describe("Product Workspace review model", () => {
       {
         id: "fallback-review-1",
         severity: "blocking",
-        title: "源数据转换失败",
+        title: "SDS 登录状态已失效，请重新登录",
+      },
+    ]);
+  });
+
+  it("treats review-ready fallback reasons as mandatory", () => {
+    const task = {
+      status: "review_ready",
+      review_reasons: ["类目需要人工确认"],
+      result: {},
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task, "shein")).toEqual([
+      {
+        id: "fallback-review-1",
+        severity: "blocking",
+        title: "类目需要人工确认",
       },
     ]);
   });
@@ -165,7 +180,6 @@ describe("Product Workspace review model", () => {
     expect(issues[1]).toEqual(
       expect.objectContaining({
         severity: "blocking",
-        actionKey: "category",
       }),
     );
   });
