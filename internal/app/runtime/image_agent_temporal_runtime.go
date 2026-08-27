@@ -21,9 +21,11 @@ const (
 )
 
 type ImageAgentTemporalDependencies struct {
-	Repository   imageagent.Repository
-	SlotExecutor imageagent.RecoverableSlotExecutor
-	Publisher    imageagent.ApprovedAssetPublisher
+	Repository         imageagent.Repository
+	SlotExecutor       imageagent.RecoverableSlotExecutor
+	Publisher          imageagent.ApprovedAssetPublisher
+	StagedSlotExecutor imageagent.StagedSlotExecutor
+	ArtifactStore      imageagenttemporal.DurableArtifactStore
 }
 
 type imageAgentWorker interface {
@@ -85,6 +87,7 @@ func startImageAgentTemporalWorkerWithDependencies(dependencies ImageAgentTempor
 	}
 	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
 		Repository: dependencies.Repository, SlotExecutor: dependencies.SlotExecutor, Publisher: dependencies.Publisher,
+		StagedSlotExecutor: dependencies.StagedSlotExecutor, ArtifactStore: dependencies.ArtifactStore,
 	})
 	if err != nil {
 		return nil, err

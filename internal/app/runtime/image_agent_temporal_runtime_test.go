@@ -9,6 +9,7 @@ import (
 	sdkclient "go.temporal.io/sdk/client"
 
 	"task-processor/internal/imageagent"
+	"task-processor/internal/imageagent/objectstore"
 	"task-processor/internal/imageagent/store"
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 )
@@ -37,6 +38,7 @@ func TestImageAgentTemporalRuntimeComposesAndClosesWorker(t *testing.T) {
 	var gotConfig imageagenttemporal.WorkerConfig
 	closeFn, err := startImageAgentTemporalWorkerWithDependencies(ImageAgentTemporalDependencies{
 		Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{},
+		StagedSlotExecutor: runtimeSlotExecutor{}, ArtifactStore: runtimeArtifactStore{},
 	}, imageAgentTemporalRuntimeDependencies{
 		Dial: func(address, namespace string) (sdkclient.Client, func() error, error) {
 			gotAddress, gotNamespace = address, namespace
@@ -65,6 +67,15 @@ func TestImageAgentTemporalRuntimeFailsClosedWithoutProductPorts(t *testing.T) {
 	require.ErrorContains(t, err, "slot executor")
 }
 
+func TestImageAgentTemporalRuntimeFailsClosedWithPartialV3Ports(t *testing.T) {
+	t.Setenv(envImageAgentTemporalEnabled, "true")
+	_, err := startImageAgentTemporalWorkerWithDependencies(ImageAgentTemporalDependencies{
+		Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{},
+		StagedSlotExecutor: runtimeSlotExecutor{},
+	}, imageAgentTemporalRuntimeDependencies{})
+	require.ErrorContains(t, err, "durable artifact store")
+}
+
 type recordingImageAgentWorker struct {
 	started bool
 	stopped bool
@@ -85,6 +96,22 @@ func (runtimeSlotExecutor) GenerateSlot(_ context.Context, input imageagent.Slot
 
 func (runtimeSlotExecutor) PublishSlot(_ context.Context, input imageagent.SlotExecutionInput, _ imageagent.SlotGeneratedOutput) (imageagent.SlotExecutionResult, error) {
 	return imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, nil
+}
+
+func (runtimeSlotExecutor) BuildSlotResult(_ context.Context, input imageagent.SlotExecutionInput, _ imageagent.PublishedSlotOutput) (imageagent.SlotExecutionResult, error) {
+	return imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, nil
+}
+
+type runtimeArtifactStore struct{}
+
+func (runtimeArtifactStore) PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
+	return objectstore.PreparedSlotArtifacts{}, nil
+}
+func (runtimeArtifactStore) EnsureStaged(context.Context, objectstore.PreparedSlotArtifacts) error {
+	return nil
+}
+func (runtimeArtifactStore) Finalize(context.Context, imageagent.StagingManifest) (imageagent.FinalManifest, error) {
+	return imageagent.FinalManifest{}, nil
 }
 
 type runtimePublisher struct{}

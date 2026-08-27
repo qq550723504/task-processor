@@ -2103,13 +2103,14 @@ func TestSlotWorkflowUsesTemporalTechnicalRetryWithoutChangingSemanticAttempt(t 
 
 func TestImageSlotWorkflowFailsClosedForMismatchedOrEmptyExecutorResult(t *testing.T) {
 	for _, test := range []struct {
-		name   string
-		result imageagent.SlotExecutionResult
+		name     string
+		result   imageagent.SlotExecutionResult
+		wantCode string
 	}{
-		{name: "wrong slot", result: successfulSlotResult("different-slot", 1)},
-		{name: "wrong attempt", result: successfulSlotResult("slot-1", 2)},
-		{name: "empty candidates", result: imageagent.SlotExecutionResult{SlotID: "slot-1", Attempt: 1}},
-		{name: "whitespace candidate ID", result: imageagent.SlotExecutionResult{SlotID: "slot-1", Attempt: 1, Candidates: []imageagent.AssetCandidate{{AssetID: " \t "}}}},
+		{name: "wrong slot", result: successfulSlotResult("different-slot", 1), wantCode: "invalid_slot_result"},
+		{name: "wrong attempt", result: successfulSlotResult("slot-1", 2), wantCode: "invalid_slot_result"},
+		{name: "empty candidates", result: imageagent.SlotExecutionResult{SlotID: "slot-1", Attempt: 1}, wantCode: invalidMainCandidateCountCode},
+		{name: "whitespace candidate ID", result: imageagent.SlotExecutionResult{SlotID: "slot-1", Attempt: 1, Candidates: []imageagent.AssetCandidate{{AssetID: " \t "}}}, wantCode: "invalid_slot_result"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			env := newWorkflowEnv(t)
@@ -2122,7 +2123,7 @@ func TestImageSlotWorkflowFailsClosedForMismatchedOrEmptyExecutorResult(t *testi
 			var result SlotWorkflowResult
 			require.NoError(t, env.GetWorkflowResult(&result))
 			require.Equal(t, imageagent.SlotStatusBlocked, result.Status)
-			require.Equal(t, "invalid_slot_result", result.ErrorCode)
+			require.Equal(t, test.wantCode, result.ErrorCode)
 			require.Equal(t, "slot-1", result.Execution.SlotID)
 			require.Equal(t, 1, result.Execution.Attempt)
 		})

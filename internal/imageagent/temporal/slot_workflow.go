@@ -35,6 +35,12 @@ func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkf
 			Status:    imageagent.SlotStatusBlocked, ErrorCode: slotExecutionErrorCode(err),
 		}, nil
 	}
+	if input.Slot.Role == imageagent.SlotRoleMain && len(execution.Candidates) != 1 {
+		return SlotWorkflowResult{
+			Execution: imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+			Status:    imageagent.SlotStatusBlocked, ErrorCode: invalidMainCandidateCountCode,
+		}, nil
+	}
 	if execution.SlotID != input.Slot.ID || execution.Attempt != input.Attempt || !hasCandidateAsset(execution.Candidates) {
 		return SlotWorkflowResult{
 			Execution: imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
@@ -46,8 +52,15 @@ func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkf
 
 func slotExecutionErrorCode(err error) string {
 	var applicationError *sdktemporal.ApplicationError
-	if errors.As(err, &applicationError) && applicationError.Type() == slotProviderOutcomeUnknownErrorType {
-		return "slot_provider_outcome_unknown"
+	if errors.As(err, &applicationError) {
+		switch applicationError.Type() {
+		case slotProviderOutcomeUnknownErrorType, slotProviderOutcomeUnknownCode:
+			return slotProviderOutcomeUnknownCode
+		case slotStagingOutcomeUnknownCode:
+			return slotStagingOutcomeUnknownCode
+		case slotPublicationOutcomeUnknownCode:
+			return slotPublicationOutcomeUnknownCode
+		}
 	}
 	return "slot_execution_failed"
 }

@@ -1,11 +1,13 @@
 package temporal
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
 	"task-processor/internal/imageagent"
+	"task-processor/internal/imageagent/objectstore"
 )
 
 const (
@@ -82,6 +84,27 @@ type ExecuteSlotActivityInput struct {
 	Attempt        int
 	IdempotencyKey string
 	AssetCatalog   imageagent.AssetCatalog
+}
+
+// ExecuteSlotV3ActivityInput is additive until Task 6 selects the v3 wire.
+// Keep ExecuteSlotActivityInput frozen for imageagent.execute_slot.v2 replay.
+type ExecuteSlotV3ActivityInput struct {
+	RunID          string
+	Identity       imageagent.ExecutionIdentity
+	PlanRevision   int64
+	Slot           imageagent.Slot
+	Attempt        int
+	IdempotencyKey string
+	AssetCatalog   imageagent.AssetCatalog
+}
+
+// DurableArtifactStore is the production/recovery boundary around deterministic
+// staging and publication objects. Prepared bytes are intentionally transient;
+// only PreparedSlotArtifacts.Manifest is durable.
+type DurableArtifactStore interface {
+	PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error)
+	EnsureStaged(context.Context, objectstore.PreparedSlotArtifacts) error
+	Finalize(context.Context, imageagent.StagingManifest) (imageagent.FinalManifest, error)
 }
 
 type PersistSlotResultActivityInput struct {
