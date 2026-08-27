@@ -714,17 +714,89 @@ after fixing the cause; upserts are idempotent. Verify a known full SKU through
 then inspect API/proxy logs for errors. Owner filtering remains enabled while
 you complete backfill and tenant/user sampling.
 
-## Temporal rollout
+## Image-agent Temporal v2/v3 recovery rollout
 
-The manual image-agent workflow has a dedicated production worker deployment,
-`image-agent-temporal-worker`. It uses the same immutable API image so the
-schema/domain contracts cannot drift, but runs `/app/image-agent-temporal-worker`
-as a separate process. The worker loads the shared production config/database,
-reuses the canonical ProductImage provider and publisher builders, and writes
-approved candidates through ListingKit's locked task-result mutation path. It
-fails startup when those real dependencies are absent; no local generation
-fallback is enabled. The ListingKit deploy workflow applies the worker with the
-same immutable API digest and waits for its rollout.
+Manual image generation has two long-lived, capability-isolated worker
+Deployments. `image-agent-temporal-worker` runs the frozen v2 registrations on
+`image-agent-manual`; `image-agent-temporal-worker-v3` runs only v3
+registrations on `image-agent-manual-v3`. Both use the same immutable API
+candidate image, but each process receives an explicit `-wire-mode` and
+`-task-queue`. Keep both Deployments present. The v2 worker is removed only
+after the live drain evidence below reaches zero.
+
+The deploy workflow preserves the identity preflight, ingress, and
+digest-pinned image gates, then performs this order:
+
+1. Run the additive Product Listing and ListingKit schema migrations.
+2. Apply, restart, and wait for the v2 compatibility worker.
+3. Apply, restart, and wait for the v3 recovery worker.
+4. Delete and recreate the finite `image-agent-temporal-v3-canary` Job with the
+   same candidate image, then require `Complete` within its deadline.
+5. Only after those gates apply/restart the API so new starts route to v3.
+
+The canary runs `/app/image-agent-temporal-worker -canary` on the v3 queue. It
+registers and executes only the side-effect-free compatibility workflow, has
+`restartPolicy: Never`, bounded deadline/backoff, receives only Temporal
+address/namespace config, and receives no Secret.
+
+### Live preflight and v2 drain evidence
+
+The `temporal` CLI is an operator prerequisite and is not bundled in this
+repository. Set its address/namespace options for the target environment, then
+capture the open image-agent workflow set before replacing either worker:
+
+```bash
+temporal workflow list --output json \
+  --query "WorkflowType = 'ImageAgentWorkflow' AND ExecutionStatus = 'Running'" \
+  > image-agent-open-workflows.json
+```
+
+For every returned workflow ID/run ID, run `temporal workflow describe` and
+record its task queue plus every pending Activity name/attempt. Treat any
+`.v2` Activity or a workflow assigned to `image-agent-manual` as v2 drain
+inventory. Do not infer activity safety from workflow count alone: the
+describe output is the activity evidence. Repeat the same query after rollout
+and retain the v2 Deployment until the v2 workflow count and pending v2
+activity count are both zero.
+
+Identify the `702d76631` rebound window from deployment records, not from Git
+commit time: record the instant that image first became active and the instant
+the correcting image became active. Query `image_agent_v2_runs.created_at`
+inside that half-open interval and reconcile every resulting run ID with the
+Temporal list/describe evidence. Keep ambiguous runs on the v2 inventory for
+manual reconciliation; never silently move an in-flight history to v3.
+
+### Rollback and durable staging retention
+
+A rollback stops new v3 starts by rolling the API routing image/configuration
+back through the gated workflow. It does **not** delete, scale down, or retarget
+`image-agent-temporal-worker-v3`; that worker must finish histories already
+started on `image-agent-manual-v3`. Keep the v2 worker too. The additive schema
+migration is not rolled back while either worker can reference v3 records.
+
+Configure the object store's lifecycle policy on `image-agent/staging/` outside
+the application. Its retention must exceed the documented maximum workflow
+recovery window, including operator investigation time. Record the configured
+duration and policy version as live evidence. Application request paths do not
+synchronously delete staging objects.
+
+Operational evidence must never print Secret values, S3/COS credentials,
+presigned URLs, provider headers, or full object metadata. Record only safe
+counts, workflow/run IDs, activity names/attempts, phases, image digests,
+rollout conditions, canary status, and redacted lifecycle-policy identity.
+
+Keep evidence categories separate:
+
+- Local evidence: Go/frontend tests, structural manifest tests, Kustomize
+  render, immutable-image driver tests, and diff/Secret allowlist inspection.
+- Live evidence: schema Job completion, both worker rollouts, canary Job
+  completion/log outcome, Temporal v2 drain and pending activities, rebound
+  reconciliation, lifecycle policy, and one end-to-end business acceptance.
+
+Local GREEN is not proof of live drain, canary completion, deployment, or
+business acceptance.
+
+## Other ListingKit Temporal workflows
 
 ListingKit now runs three Temporal-backed workflow paths:
 
@@ -732,9 +804,9 @@ ListingKit now runs three Temporal-backed workflow paths:
 - `PlatformAdaptWorkflow`
 - existing SHEIN publish workflow
 
-Current production wiring keeps them on the same task queue and starts the
-worker inside `product-listing-api`. This is the smallest rollout shape and
-matches the current runtime implementation.
+These three non-image-agent workflows keep their existing production task queue
+and API-process worker wiring; the dual image-agent queues above do not change
+them.
 
 Temporal env is prepared in:
 

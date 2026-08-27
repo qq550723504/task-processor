@@ -49,8 +49,6 @@ func TestRunForwardsV2AndV3ProcessConfigurationWithoutAmbientDefaults(t *testing
 	}{
 		{name: "v2", options: appruntime.ImageAgentTemporalWorkerOptions{WireMode: "v2", TaskQueue: "image-agent-manual"}},
 		{name: "v3", options: appruntime.ImageAgentTemporalWorkerOptions{WireMode: "v3", TaskQueue: "image-agent-manual-v3"}},
-		{name: "missing mode", options: appruntime.ImageAgentTemporalWorkerOptions{TaskQueue: "image-agent-manual-v3"}},
-		{name: "opposite queue", options: appruntime.ImageAgentTemporalWorkerOptions{WireMode: "v2", TaskQueue: "image-agent-manual-v3"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			called := false
@@ -63,6 +61,29 @@ func TestRunForwardsV2AndV3ProcessConfigurationWithoutAmbientDefaults(t *testing
 			}, test.options, logrus.New())
 			require.NoError(t, err)
 			require.True(t, called)
+		})
+	}
+}
+
+func TestRunRejectsMissingExplicitProcessWorkerConfigurationBeforeResolvingDependencies(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		options appruntime.ImageAgentTemporalWorkerOptions
+		want    string
+	}{
+		{name: "missing mode", options: appruntime.ImageAgentTemporalWorkerOptions{TaskQueue: "image-agent-manual-v3"}, want: "wire mode is required"},
+		{name: "missing queue", options: appruntime.ImageAgentTemporalWorkerOptions{WireMode: "v3"}, want: "task queue is required"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			resolved := false
+			err := run(context.Background(), func() (resolvedDependencies, error) {
+				resolved = true
+				return resolvedDependencies{}, nil
+			}, func(context.Context, appruntime.ImageAgentTemporalDependencies, appruntime.ImageAgentTemporalWorkerOptions, *logrus.Logger) error {
+				return nil
+			}, test.options, logrus.New())
+			require.ErrorContains(t, err, test.want)
+			require.False(t, resolved)
 		})
 	}
 }

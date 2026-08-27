@@ -150,6 +150,21 @@ func TestListingKitDeployOrdersImageAgentGatesBeforeAPIRouting(t *testing.T) {
 		}
 		previous = index
 	}
+	for _, expected := range []struct {
+		key       string
+		container string
+	}{
+		{key: "v2_apply", container: "image-agent-temporal-worker"},
+		{key: "v3_apply", container: "image-agent-temporal-worker-v3"},
+		{key: "canary_apply", container: "image-agent-temporal-v3-canary"},
+	} {
+		run := steps[indexes[expected.key]].Run
+		if !strings.Contains(run, "listingkit-apply-image-agent-worker-deployment.sh") ||
+			!strings.Contains(run, "--container "+expected.container) ||
+			!strings.Contains(run, "--image \"$API_CANDIDATE_IMAGE\"") {
+			t.Errorf("deploy gate %q must apply its named container with the immutable candidate image, run=%q", expected.key, run)
+		}
+	}
 	for _, step := range steps {
 		if !strings.Contains(step.Run, "image-agent-temporal-worker") {
 			continue

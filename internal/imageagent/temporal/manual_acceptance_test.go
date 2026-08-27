@@ -6,14 +6,20 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/worker"
@@ -23,6 +29,7 @@ import (
 	imageagentstore "task-processor/internal/imageagent/store"
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	imageagenttools "task-processor/internal/imageagent/tools"
+	"task-processor/internal/infra/storage"
 	"task-processor/internal/productimage"
 )
 
@@ -32,6 +39,8 @@ type podLossRecoveryAcceptanceResult struct {
 	PersistedJSON       []byte
 	FirstPodDiscarded   bool
 	RecoveryGenerations int
+	ApprovedAssetIDs    []string
+	PublishedObjects    int
 }
 
 func TestManualImageAgentAcceptanceRecoversAfterPodLossAndApprovesAllAssets(t *testing.T) {
@@ -41,8 +50,169 @@ func TestManualImageAgentAcceptanceRecoversAfterPodLossAndApprovesAllAssets(t *t
 	require.Zero(t, result.RecoveryGenerations, "the replacement activity must not invoke the provider again")
 	require.NotEmpty(t, result.MainAssetID)
 	require.Len(t, result.GalleryAssetIDs, 2)
+	require.Equal(t, append([]string{result.MainAssetID}, result.GalleryAssetIDs...), result.ApprovedAssetIDs)
+	require.Equal(t, 3, result.PublishedObjects)
 	require.NotContains(t, string(result.PersistedJSON), "local_path")
 	require.NotContains(t, string(result.PersistedJSON), "authorization")
+}
+
+func executePodLossRecoveryAcceptance(t *testing.T) podLossRecoveryAcceptanceResult {
+	t.Helper()
+	ctx := context.Background()
+	repository := imageagentstore.NewMemoryRepository()
+	plan := acceptancePlan(3, 3)
+	run := imageagent.Run{
+		ID: "run-pod-loss", BusinessTaskID: "task-pod-loss", TenantID: "tenant-a", UserID: "user-a",
+		Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-pod-loss", Status: imageagent.RunStatusExecuting,
+		CurrentNode: "execute_slots", ActivePlanRevision: plan.Revision, Version: 1,
+	}
+	scope := imageagent.RunScope{TenantID: run.TenantID, OwnerUserID: run.UserID, RunID: run.ID}
+	catalog, err := imageagent.NormalizeAssetCatalog(acceptanceAssetCatalog(3))
+	require.NoError(t, err)
+	slots := make([]imageagent.SlotProjection, len(plan.Slots))
+	for index, slot := range plan.Slots {
+		slots[index] = imageagent.SlotProjection{Slot: slot}
+	}
+	_, err = repository.InitializeRun(ctx, imageagent.ProjectionInitialization{
+		Scope: scope, Run: run, Plan: plan, Catalog: catalog,
+		Snapshot: imageagent.RunProjection{Run: run, Plan: plan, Slots: slots, AssetCatalog: catalog, ProjectionVersion: 1, LastEventID: 1},
+		CommitID: "start:run-key-pod-loss", EventType: "run.created", EventPayload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+
+	transientDir := t.TempDir()
+	transientPath := filepath.Join(transientDir, "generated.png")
+	require.NoError(t, os.WriteFile(transientPath, acceptancePNG, 0o600))
+	firstExecutor := newAcceptanceProductImageExecutor(transientPath)
+	durableAPI := &podLossAcceptanceS3{objects: map[string]podLossAcceptanceS3Object{}}
+	uploader := storage.NewS3UploaderWithAPI(durableAPI, storage.S3UploaderOptions{
+		Bucket: "acceptance-assets", PublicBase: "https://cdn.example.test",
+		ArtifactCapabilities: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeAWS},
+	})
+	durableStore, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{
+		MaxArtifactBytes: 1 << 20, OperationTimeout: 5 * time.Second,
+	})
+	require.NoError(t, err)
+	podLost := errors.New("original activity process lost after artifact_staged")
+	firstActivities := newPodLossAcceptanceActivities(t, repository, firstExecutor, durableStore, acceptancePublisher{}, func(context.Context) (string, error) {
+		return "", podLost
+	})
+	firstActivityIdentity := fmt.Sprintf("%p", firstActivities)
+
+	for _, slot := range plan.Slots {
+		input := podLossAcceptanceActivityInput(run, plan, catalog, slot)
+		_, executeErr := firstActivities.ExecuteSlotV3(ctx, input)
+		require.ErrorIs(t, executeErr, podLost)
+		effect, effectErr := repository.(imageagent.SlotExternalEffectV3Repository).GetSlotExternalEffectV3(ctx, imageagent.SlotExternalEffectIdentity{
+			RunScope: scope, PlanRevision: plan.Revision, SlotID: slot.ID, Attempt: 1,
+		})
+		require.NoError(t, effectErr)
+		require.Equal(t, imageagent.SlotEffectV3ArtifactStaged, effect.Phase)
+	}
+
+	require.NoError(t, os.RemoveAll(transientDir))
+	_, statErr := os.Stat(transientPath)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	firstActivities = nil
+	firstExecutor = nil
+
+	recoveryExecutor := newAcceptanceProductImageExecutor(transientPath)
+	approvalPublisher := &recordingAcceptanceApprovalPublisher{}
+	recoveryActivities := newPodLossAcceptanceActivities(t, repository, recoveryExecutor, durableStore, approvalPublisher, func(context.Context) (string, error) {
+		return "recovered-workflow-run/execute-slot-v3/2", nil
+	})
+	require.NotEqual(t, firstActivityIdentity, fmt.Sprintf("%p", recoveryActivities))
+
+	for _, slot := range plan.Slots {
+		input := podLossAcceptanceActivityInput(run, plan, catalog, slot)
+		published, executeErr := recoveryActivities.ExecuteSlotV3(ctx, input)
+		require.NoError(t, executeErr)
+		require.Len(t, published.Candidates, 1)
+		require.NoError(t, recoveryActivities.PersistSlotResultV3(ctx, imageagenttemporal.PersistSlotResultV3ActivityInput{
+			RunID: run.ID, Identity: input.Identity, PlanRevision: plan.Revision,
+			Result:     imageagenttemporal.SlotWorkflowV3Result{Published: published, Status: imageagent.SlotStatusAccepted},
+			AttemptKey: input.IdempotencyKey,
+		}))
+	}
+
+	projection, err := repository.GetProjection(ctx, scope)
+	require.NoError(t, err)
+	approvedIDs := make([]string, 0, len(projection.Slots))
+	mainID := ""
+	galleryIDs := make([]string, 0, len(projection.Slots)-1)
+	for _, slot := range projection.Slots {
+		require.Equal(t, imageagent.SlotStatusAccepted, slot.Slot.Status)
+		require.Len(t, slot.Candidates, 1)
+		candidateID := slot.Candidates[0].AssetID
+		approvedIDs = append(approvedIDs, candidateID)
+		if slot.Slot.Role == imageagent.SlotRoleMain {
+			require.Empty(t, mainID, "acceptance plan must have exactly one main candidate")
+			mainID = candidateID
+		} else {
+			galleryIDs = append(galleryIDs, candidateID)
+		}
+	}
+	require.NotEmpty(t, mainID)
+	require.NoError(t, recoveryActivities.PublishApprovedV3(ctx, imageagenttemporal.PublishApprovedV3ActivityInput{
+		RunID: run.ID, Identity: imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID},
+		PlanRevision: plan.Revision, CandidateAssetIDs: approvedIDs, IdempotencyKey: "approve-pod-loss-v3",
+	}))
+	require.Equal(t, approvedIDs, approvalPublisher.input.CandidateAssetIDs)
+
+	effects := make([]imageagent.SlotEffectV3Attempt, 0, len(plan.Slots))
+	for _, slot := range plan.Slots {
+		effect, effectErr := repository.(imageagent.SlotExternalEffectV3Repository).GetSlotExternalEffectV3(ctx, imageagent.SlotExternalEffectIdentity{
+			RunScope: scope, PlanRevision: plan.Revision, SlotID: slot.ID, Attempt: 1,
+		})
+		require.NoError(t, effectErr)
+		require.Equal(t, imageagent.SlotEffectV3PublicationComplete, effect.Phase)
+		effects = append(effects, effect)
+	}
+	persistedJSON, err := json.Marshal(struct {
+		Projection imageagent.RunProjection         `json:"projection"`
+		Effects    []imageagent.SlotEffectV3Attempt `json:"effects"`
+	}{Projection: projection, Effects: effects})
+	require.NoError(t, err)
+
+	return podLossRecoveryAcceptanceResult{
+		MainAssetID: mainID, GalleryAssetIDs: galleryIDs, PersistedJSON: persistedJSON,
+		FirstPodDiscarded: true, RecoveryGenerations: len(recoveryExecutor.calledIDs()),
+		ApprovedAssetIDs: append([]string(nil), approvalPublisher.input.CandidateAssetIDs...),
+		PublishedObjects: durableAPI.countPrefix("image-agent/public/"),
+	}
+}
+
+func newAcceptanceProductImageExecutor(artifactPath string) *recordingAcceptanceExecutor {
+	return &recordingAcceptanceExecutor{delegate: imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
+		SubjectExtractor: acceptanceSubjectExtractor{}, WhiteBackgroundRenderer: acceptanceWhiteRenderer{artifactPath: artifactPath},
+		SceneRenderer: acceptanceSceneRenderer{artifactPath: artifactPath},
+	})}
+}
+
+func newPodLossAcceptanceActivities(
+	t *testing.T,
+	repository imageagent.Repository,
+	executor *recordingAcceptanceExecutor,
+	durableStore imageagenttemporal.DurableArtifactStore,
+	publisherV3 imageagent.ApprovedAssetPublisherV3,
+	publicationOwner func(context.Context) (string, error),
+) *imageagenttemporal.Activities {
+	t.Helper()
+	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
+		Repository: repository, SlotExecutor: executor, Publisher: acceptancePublisher{}, PublisherV3: publisherV3,
+		SlotEffectsV3: repository.(imageagent.SlotExternalEffectV3Repository), StagedSlotExecutor: executor,
+		ArtifactStore: durableStore, PublicationOwner: publicationOwner, PublicationLeaseDuration: time.Minute,
+	})
+	require.NoError(t, err)
+	return activities
+}
+
+func podLossAcceptanceActivityInput(run imageagent.Run, plan imageagent.Plan, catalog imageagent.AssetCatalog, slot imageagent.Slot) imageagenttemporal.ExecuteSlotV3ActivityInput {
+	return imageagenttemporal.ExecuteSlotV3ActivityInput{
+		RunID: run.ID, Identity: imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID},
+		PlanRevision: plan.Revision, Slot: slot, Attempt: 1,
+		IdempotencyKey: "attempt:" + slot.IdempotencyKey, AssetCatalog: catalog,
+	}
 }
 
 func TestManualImageAgentAcceptancePreservesSixSuccessfulSlotsWhenOneBlocks(t *testing.T) {
@@ -256,6 +426,99 @@ func (acceptancePublisher) PublishApproved(context.Context, imageagent.PublishAp
 
 func (acceptancePublisher) PublishApprovedV3(context.Context, imageagent.PublishApprovedV3Input) (imageagent.PublicationAcknowledgement, error) {
 	return imageagent.PublicationAcknowledgement{}, nil
+}
+
+type recordingAcceptanceApprovalPublisher struct {
+	input imageagent.PublishApprovedV3Input
+}
+
+func (p *recordingAcceptanceApprovalPublisher) PublishApprovedV3(_ context.Context, input imageagent.PublishApprovedV3Input) (imageagent.PublicationAcknowledgement, error) {
+	p.input = input
+	return imageagent.PublicationAcknowledgement{IdempotencyKey: input.IdempotencyKey}, nil
+}
+
+type podLossAcceptanceS3Object struct {
+	data        []byte
+	contentType string
+	metadata    map[string]string
+	checksum    string
+}
+
+type podLossAcceptanceS3 struct {
+	mu      sync.Mutex
+	objects map[string]podLossAcceptanceS3Object
+}
+
+func (s *podLossAcceptanceS3) PutObject(_ context.Context, input *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	data, err := io.ReadAll(input.Body)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := aws.ToString(input.Key)
+	if _, exists := s.objects[key]; exists {
+		return nil, objectstore.ErrObjectConflict
+	}
+	s.objects[key] = podLossAcceptanceS3Object{
+		data: append([]byte(nil), data...), contentType: aws.ToString(input.ContentType),
+		metadata: cloneAcceptanceMetadata(input.Metadata), checksum: aws.ToString(input.ChecksumSHA256),
+	}
+	return &s3.PutObjectOutput{}, nil
+}
+
+func (s *podLossAcceptanceS3) HeadObject(_ context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	object, exists := s.objects[aws.ToString(input.Key)]
+	if !exists {
+		return nil, &types.NotFound{}
+	}
+	return &s3.HeadObjectOutput{
+		ContentLength: aws.Int64(int64(len(object.data))), ContentType: aws.String(object.contentType),
+		Metadata: cloneAcceptanceMetadata(object.metadata), ChecksumSHA256: aws.String(object.checksum),
+	}, nil
+}
+
+func (s *podLossAcceptanceS3) CopyObject(_ context.Context, input *s3.CopyObjectInput, _ ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sourceKey := strings.TrimPrefix(aws.ToString(input.CopySource), "acceptance-assets/")
+	source, exists := s.objects[sourceKey]
+	if !exists {
+		return nil, &types.NotFound{}
+	}
+	destinationKey := aws.ToString(input.Key)
+	if _, exists := s.objects[destinationKey]; !exists {
+		source.contentType = aws.ToString(input.ContentType)
+		source.metadata = cloneAcceptanceMetadata(input.Metadata)
+		s.objects[destinationKey] = source
+	}
+	return &s3.CopyObjectOutput{}, nil
+}
+
+func (*podLossAcceptanceS3) DeleteObject(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
+	return nil, errors.New("acceptance does not delete durable recovery objects")
+}
+
+func (s *podLossAcceptanceS3) countPrefix(prefix string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	count := 0
+	for key := range s.objects {
+		if strings.HasPrefix(key, prefix) {
+			count++
+		}
+	}
+	return count
+}
+
+func cloneAcceptanceMetadata(metadata map[string]string) map[string]string {
+	cloned := make(map[string]string, len(metadata))
+	for key, value := range metadata {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 var acceptancePNG, _ = base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")

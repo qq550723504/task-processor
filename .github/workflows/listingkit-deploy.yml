@@ -237,10 +237,12 @@ jobs:
             deployments/kubernetes/listingkit-workbench/base/configmap.yaml
             deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml
             deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml
+            deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-v3-deployment.yaml
             deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml
             deployments/kubernetes/listingkit-workbench/jobs/product-listing-api-schema-migrate-job.yaml
             deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml
             deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml
+            deployments/kubernetes/listingkit-workbench/jobs/image-agent-temporal-v3-canary-job.yaml
           sparse-checkout-cone-mode: false
 
       - name: Set up kubectl
@@ -379,7 +381,56 @@ jobs:
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} apply -f .workflow-tools/deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 
-      - name: Apply immutable API deployment
+      - name: Apply immutable image agent v2 compatibility worker deployment
+        shell: bash
+        run: |
+          .workflow-tools/scripts/listingkit-apply-image-agent-worker-deployment.sh \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml \
+            --namespace "$K8S_NAMESPACE" \
+            --container image-agent-temporal-worker \
+            --image "$API_CANDIDATE_IMAGE"
+
+      - name: Restart image agent v2 compatibility worker Pods
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/image-agent-temporal-worker
+
+      - name: Wait for image agent v2 compatibility worker rollout
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/image-agent-temporal-worker --timeout=5m
+
+      - name: Apply immutable image agent v3 recovery worker deployment
+        shell: bash
+        run: |
+          .workflow-tools/scripts/listingkit-apply-image-agent-worker-deployment.sh \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-v3-deployment.yaml \
+            --namespace "$K8S_NAMESPACE" \
+            --container image-agent-temporal-worker-v3 \
+            --image "$API_CANDIDATE_IMAGE"
+
+      - name: Restart image agent v3 recovery worker Pods
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/image-agent-temporal-worker-v3
+
+      - name: Wait for image agent v3 recovery worker rollout
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m
+
+      - name: Recreate finite image agent v3 compatibility canary
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl -n "$K8S_NAMESPACE" delete job image-agent-temporal-v3-canary --ignore-not-found=true --wait=true
+          .workflow-tools/scripts/listingkit-apply-image-agent-worker-deployment.sh \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/jobs/image-agent-temporal-v3-canary-job.yaml \
+            --namespace "$K8S_NAMESPACE" \
+            --container image-agent-temporal-v3-canary \
+            --image "$API_CANDIDATE_IMAGE"
+
+      - name: Require image agent v3 compatibility canary success
+        run: |
+          kubectl -n "$K8S_NAMESPACE" wait --for=condition=complete job/image-agent-temporal-v3-canary --timeout=5m
+
+      - name: Apply immutable API deployment after image agent compatibility gates
         shell: bash
         run: |
           .workflow-tools/scripts/listingkit-apply-api-deployment.sh \
@@ -387,29 +438,13 @@ jobs:
             --namespace "$K8S_NAMESPACE" \
             --image "$API_CANDIDATE_IMAGE"
 
-      - name: Apply immutable image agent worker deployment
-        shell: bash
-        run: |
-          .workflow-tools/scripts/listingkit-apply-image-agent-worker-deployment.sh \
-            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml \
-            --namespace "$K8S_NAMESPACE" \
-            --image "$API_CANDIDATE_IMAGE"
-
-      - name: Restart API Pods for Secret changes
+      - name: Restart API Pods for Secret changes and v3 new-start routing
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/product-listing-api
-
-      - name: Restart image agent worker Pods for configuration and Secret changes
-        run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/image-agent-temporal-worker
 
       - name: Wait for API rollout
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/product-listing-api --timeout=5m
-
-      - name: Wait for image agent worker rollout
-        run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/image-agent-temporal-worker --timeout=5m
 
       - name: Apply production ListingKit SMS webhook ingress
         run: |

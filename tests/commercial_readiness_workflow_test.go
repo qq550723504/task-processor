@@ -56,8 +56,16 @@ func TestListingKitCommercialImageAgentWorkersUseExactSecretAndConfigScope(t *te
 			actualSecrets := map[string]string{}
 			actualConfig := map[string]string{}
 			for _, variable := range container.Env {
+				for _, forbidden := range []string{"ZITADEL", "INVITATION", "TENCENT_SMS", "SMS_WEBHOOK"} {
+					if strings.Contains(variable.Name, forbidden) {
+						t.Fatalf("%s must not receive forbidden credential/config %q", relativePath, variable.Name)
+					}
+				}
 				if variable.ValueFrom == nil {
-					continue
+					t.Fatalf("%s must not contain literal environment value %q", relativePath, variable.Name)
+				}
+				if (variable.ValueFrom.SecretKeyRef == nil) == (variable.ValueFrom.ConfigMapKeyRef == nil) {
+					t.Fatalf("%s environment %q must reference exactly one approved source", relativePath, variable.Name)
 				}
 				if ref := variable.ValueFrom.SecretKeyRef; ref != nil {
 					if ref.Name != listingKitSharedSecret {
@@ -82,8 +90,14 @@ func TestListingKitCommercialImageAgentWorkersUseExactSecretAndConfigScope(t *te
 	}
 
 	canary := onlyImageAgentContainer(t, loadImageAgentWorkloadManifest(t, filepath.Join(base, "jobs", "image-agent-temporal-v3-canary-job.yaml")))
+	if len(canary.EnvFrom) != 0 {
+		t.Fatalf("canary must not use envFrom, got %#v", canary.EnvFrom)
+	}
 	actualCanaryConfig := map[string]string{}
 	for _, variable := range canary.Env {
+		if variable.ValueFrom == nil || variable.ValueFrom.ConfigMapKeyRef == nil || variable.ValueFrom.SecretKeyRef != nil {
+			t.Fatalf("canary environment %q must be a Temporal ConfigMap key only", variable.Name)
+		}
 		if variable.ValueFrom != nil && variable.ValueFrom.SecretKeyRef != nil {
 			t.Fatalf("canary must not receive Secret key %q", variable.ValueFrom.SecretKeyRef.Key)
 		}

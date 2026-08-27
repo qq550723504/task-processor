@@ -31,6 +31,14 @@ type ImageAgentTemporalDependencies struct {
 	PublicationLeaseDuration time.Duration
 }
 
+// ImageAgentTemporalWorkerOptions is process-owned configuration. Deployments
+// pass it explicitly so a compatibility worker cannot silently become a v3
+// worker (or vice versa) through ambient defaults.
+type ImageAgentTemporalWorkerOptions struct {
+	WireMode  imageagenttemporal.WorkerWireMode
+	TaskQueue string
+}
+
 type imageAgentWorker interface {
 	Start() error
 	Stop()
@@ -47,15 +55,24 @@ type imageAgentCompatibilityCanaryDependencies struct {
 }
 
 func StartImageAgentTemporalWorker(dependencies ImageAgentTemporalDependencies, logger *logrus.Logger) (func() error, error) {
-	closeFn, err := startImageAgentTemporalWorkerWithDependencies(dependencies, defaultImageAgentTemporalRuntimeDependencies())
+	return StartImageAgentTemporalWorkerWithOptions(dependencies, ImageAgentTemporalWorkerOptions{WireMode: imageagenttemporal.WorkerWireModeV3}, logger)
+}
+
+func StartImageAgentTemporalWorkerWithOptions(dependencies ImageAgentTemporalDependencies, options ImageAgentTemporalWorkerOptions, logger *logrus.Logger) (func() error, error) {
+	closeFn, err := startImageAgentTemporalWorkerWithOptionsAndDependencies(dependencies, options, defaultImageAgentTemporalRuntimeDependencies())
 	if err != nil {
 		return nil, err
 	}
 	if closeFn != nil && logger != nil {
+		taskQueue := strings.TrimSpace(options.TaskQueue)
+		if taskQueue == "" {
+			taskQueue, _ = options.WireMode.DefaultTaskQueue()
+		}
 		logger.WithFields(logrus.Fields{
 			"address":   envOrDefault(envImageAgentTemporalAddress, "localhost:7233"),
 			"namespace": envOrDefault(envImageAgentTemporalNamespace, "default"),
-			"taskQueue": imageagenttemporal.TaskQueueV3,
+			"taskQueue": taskQueue,
+			"wireMode":  options.WireMode,
 		}).Info("started image agent temporal worker")
 	}
 	return closeFn, nil
@@ -78,7 +95,11 @@ func DialImageAgentTemporalWorkflowClient(logger *logrus.Logger) (imageagent.Wor
 }
 
 func RunImageAgentTemporalWorker(ctx context.Context, dependencies ImageAgentTemporalDependencies, logger *logrus.Logger) error {
-	closeFn, err := StartImageAgentTemporalWorker(dependencies, logger)
+	return RunImageAgentTemporalWorkerWithOptions(ctx, dependencies, ImageAgentTemporalWorkerOptions{WireMode: imageagenttemporal.WorkerWireModeV3}, logger)
+}
+
+func RunImageAgentTemporalWorkerWithOptions(ctx context.Context, dependencies ImageAgentTemporalDependencies, options ImageAgentTemporalWorkerOptions, logger *logrus.Logger) error {
+	closeFn, err := StartImageAgentTemporalWorkerWithOptions(dependencies, options, logger)
 	if err != nil {
 		return err
 	}
@@ -90,6 +111,10 @@ func RunImageAgentTemporalWorker(ctx context.Context, dependencies ImageAgentTem
 }
 
 func startImageAgentTemporalWorkerWithDependencies(dependencies ImageAgentTemporalDependencies, runtimeDependencies imageAgentTemporalRuntimeDependencies) (func() error, error) {
+	return startImageAgentTemporalWorkerWithOptionsAndDependencies(dependencies, ImageAgentTemporalWorkerOptions{WireMode: imageagenttemporal.WorkerWireModeV3}, runtimeDependencies)
+}
+
+func startImageAgentTemporalWorkerWithOptionsAndDependencies(dependencies ImageAgentTemporalDependencies, options ImageAgentTemporalWorkerOptions, runtimeDependencies imageAgentTemporalRuntimeDependencies) (func() error, error) {
 	if !envBool(envImageAgentTemporalEnabled) {
 		return nil, nil
 	}
@@ -114,7 +139,7 @@ func startImageAgentTemporalWorkerWithDependencies(dependencies ImageAgentTempor
 	if err != nil {
 		return nil, fmt.Errorf("dial image agent temporal: %w", err)
 	}
-	worker, err := runtimeDependencies.NewWorker(imageagenttemporal.WorkerConfig{Client: client, Activities: activities, WireMode: imageagenttemporal.WorkerWireModeV3})
+	worker, err := runtimeDependencies.NewWorker(imageagenttemporal.WorkerConfig{Client: client, Activities: activities, WireMode: options.WireMode, TaskQueue: options.TaskQueue})
 	if err != nil {
 		_ = closeClient()
 		return nil, err

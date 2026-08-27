@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: image-agent-temporal-v3-canary
+  labels:
+    app: image-agent-temporal-v3-canary
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: image-agent-temporal-v3-canary
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: image-agent-temporal-v3-canary
+          image: xuwei190/task-processor-product-listing-api:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/app/image-agent-temporal-worker"]
+          args: ["-canary", "-canary-task-queue", "image-agent-manual-v3", "-log-level", "info"]
+          env:
+            - name: IMAGE_AGENT_TEMPORAL_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: listingkit-workbench-config
+                  key: IMAGE_AGENT_TEMPORAL_ADDRESS
+            - name: IMAGE_AGENT_TEMPORAL_NAMESPACE
+              valueFrom:
+                configMapKeyRef:
+                  name: listingkit-workbench-config
+                  key: IMAGE_AGENT_TEMPORAL_NAMESPACE
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
