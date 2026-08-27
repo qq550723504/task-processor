@@ -379,6 +379,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         work={centralWork}
         aiReview={
           <ProductWorkspaceAIReview
+            checking={
+              taskResult.data?.status === "processing" ||
+              taskResult.data?.status === "pending"
+            }
             issues={reviewIssues}
             onSelectIssue={(issue) => {
               if (issue.actionKey) {
