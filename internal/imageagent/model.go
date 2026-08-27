@@ -169,7 +169,7 @@ type AssetCandidate struct {
 	URL           string
 	SourceAssetID string
 	Metadata      map[string]string
-	DurableAsset  DurableAssetIdentity
+	DurableAsset  DurableAssetIdentity `json:"-"`
 }
 
 type Budget struct {

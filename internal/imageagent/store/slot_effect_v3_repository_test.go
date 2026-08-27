@@ -2,12 +2,17 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"task-processor/internal/imageagent"
 )
@@ -53,7 +58,7 @@ func TestSlotEffectV3RepositoryContract(t *testing.T) {
 				Owner:                  "worker-a",
 				LeaseDuration:          time.Minute,
 				PublicationFingerprint: "publication-fingerprint-1",
-				FinalManifest:          imageagent.FinalManifest{Assets: manifest.Assets},
+				FinalManifest:          v3FinalManifest(),
 			}
 			attempt, claim, claimed, err := effects.ClaimSlotPublicationV3(context.Background(), claimRequest)
 			require.NoError(t, err)
@@ -67,9 +72,7 @@ func TestSlotEffectV3RepositoryContract(t *testing.T) {
 				Fence:                  claim.Fence,
 				PublicationFingerprint: claimRequest.PublicationFingerprint,
 				ResultFingerprint:      "result-fingerprint-1",
-				Published: imageagent.SlotExecutionResult{SlotID: reservation.Identity.SlotID, Attempt: reservation.Identity.Attempt,
-					Candidates: []imageagent.AssetCandidate{{AssetID: "candidate-1", SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256}}},
-				},
+				Published:              v3PublishedResult(reservation),
 			}
 			attempt, err = effects.CompleteSlotPublicationV3(context.Background(), completion)
 			require.NoError(t, err)
@@ -99,6 +102,11 @@ func TestSlotEffectV3RejectsLocalPathsAndUnknownMetadata(t *testing.T) {
 	relativeWindowsPath := v3StagingManifest()
 	relativeWindowsPath.Assets[0].ObjectKey = `worker\generated.png`
 	_, err = effects.PrepareSlotStagingV3(context.Background(), reservation, relativeWindowsPath)
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+
+	whitespaceKey := v3StagingManifest()
+	whitespaceKey.Assets[0].ObjectKey = " image-agent/staging/tenant-a/run/asset.png"
+	_, err = effects.PrepareSlotStagingV3(context.Background(), reservation, whitespaceKey)
 	require.ErrorIs(t, err, imageagent.ErrValidation)
 
 	metadata := v3StagingManifest()
@@ -133,7 +141,7 @@ func TestSlotEffectV3RejectsIllegalPhaseTransitions(t *testing.T) {
 
 	_, err = effects.CommitSlotStagedV3(context.Background(), reservation, "not-prepared")
 	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
-	_, _, _, err = effects.ClaimSlotPublicationV3(context.Background(), imageagent.PublicationClaimRequest{Reservation: reservation, Owner: "worker-a", LeaseDuration: time.Minute, PublicationFingerprint: "fp", FinalManifest: imageagent.FinalManifest{Assets: v3StagingManifest().Assets}})
+	_, _, _, err = effects.ClaimSlotPublicationV3(context.Background(), imageagent.PublicationClaimRequest{Reservation: reservation, Owner: "worker-a", LeaseDuration: time.Minute, PublicationFingerprint: "fp", FinalManifest: v3FinalManifest()})
 	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
 	_, err = effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{Reservation: reservation, Phase: imageagent.SlotEffectV3StagingUnknown, Code: "slot_staging_outcome_unknown"})
 	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
@@ -147,7 +155,7 @@ func TestSlotEffectV3StalePublicationFenceCannotCommit(t *testing.T) {
 	reservation := v3Reservation("stale-fence")
 	stageV3Attempt(t, effects, reservation)
 
-	request := imageagent.PublicationClaimRequest{Reservation: reservation, Owner: "worker-a", LeaseDuration: time.Minute, PublicationFingerprint: "publication-fingerprint-1", FinalManifest: imageagent.FinalManifest{Assets: v3StagingManifest().Assets}}
+	request := v3PublicationRequest(reservation, "worker-a")
 	_, first, claimed, err := effects.ClaimSlotPublicationV3(context.Background(), request)
 	require.NoError(t, err)
 	require.True(t, claimed)
@@ -218,8 +226,9 @@ func TestGormSlotEffectV3ConcurrentClaimsAndFencing(t *testing.T) {
 
 	stageV3Attempt(t, effects, reservation)
 	type publicationOutcome struct {
-		claim imageagent.PublicationClaim
-		err   error
+		claim   imageagent.PublicationClaim
+		claimed bool
+		err     error
 	}
 	publicationClaims := make(chan publicationOutcome, callers)
 	start = make(chan struct{})
@@ -228,27 +237,35 @@ func TestGormSlotEffectV3ConcurrentClaimsAndFencing(t *testing.T) {
 		go func(owner string) {
 			defer workers.Done()
 			<-start
-			_, claim, _, err := effects.ClaimSlotPublicationV3(context.Background(), imageagent.PublicationClaimRequest{Reservation: reservation, Owner: owner, LeaseDuration: time.Minute, PublicationFingerprint: "publication-fingerprint-concurrent", FinalManifest: imageagent.FinalManifest{Assets: v3StagingManifest().Assets}})
-			publicationClaims <- publicationOutcome{claim: claim, err: err}
+			_, claim, claimed, err := effects.ClaimSlotPublicationV3(context.Background(), v3PublicationRequest(reservation, owner))
+			publicationClaims <- publicationOutcome{claim: claim, claimed: claimed, err: err}
 		}(string(rune('a' + worker)))
 	}
 	close(start)
 	workers.Wait()
 	close(publicationClaims)
 	var winner imageagent.PublicationClaim
+	publicationOwners := 0
+	claimedOwner := ""
 	for outcome := range publicationClaims {
 		require.NoError(t, outcome.err)
 		claim := outcome.claim
+		if outcome.claimed {
+			publicationOwners++
+			claimedOwner = claim.Owner
+		}
 		if winner.Owner == "" {
 			winner = claim
 		}
 		require.Equal(t, winner.Owner, claim.Owner)
 		require.Equal(t, winner.Fence, claim.Fence)
 	}
+	require.Equal(t, 1, publicationOwners)
+	require.Equal(t, winner.Owner, claimedOwner)
 	require.EqualValues(t, 1, winner.Fence)
 
 	require.NoError(t, slotEffectV3IdentityWhere(db.Model(&slotExternalEffectV3Record{}), reservation.Identity).Update("publication_lease_expires_at", time.Now().UTC().Add(-time.Hour)).Error)
-	successorRequest := imageagent.PublicationClaimRequest{Reservation: reservation, Owner: "worker-successor", LeaseDuration: time.Minute, PublicationFingerprint: "publication-fingerprint-concurrent", FinalManifest: imageagent.FinalManifest{Assets: v3StagingManifest().Assets}}
+	successorRequest := v3PublicationRequest(reservation, "worker-successor")
 	_, successor, claimed, err := effects.ClaimSlotPublicationV3(context.Background(), successorRequest)
 	require.NoError(t, err)
 	require.True(t, claimed)
@@ -275,6 +292,243 @@ func TestDatabaseNowReadsSQLiteCurrentTimestamp(t *testing.T) {
 	require.False(t, now.IsZero())
 }
 
+func TestDatabaseNowUsesPostgresWallClock(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB, WithoutReturning: true}), &gorm.Config{DisableAutomaticPing: true, Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT clock_timestamp()")).WillReturnRows(sqlmock.NewRows([]string{"clock_timestamp"}).AddRow("2026-08-27 12:00:00"))
+	now, err := databaseNow(context.Background(), db)
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC), now)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGormPostgresPublicationClaimLocksBeforeReadingWallClock(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB, WithoutReturning: true}), &gorm.Config{DisableAutomaticPing: true, Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+
+	reservation := v3Reservation("postgres-lock-order")
+	claimedAt := time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT \* FROM "image_agent_v3_slot_external_effects".*FOR UPDATE`).
+		WithArgs(reservation.Identity.TenantID, reservation.Identity.OwnerUserID, reservation.Identity.RunID, reservation.Identity.PlanRevision, reservation.Identity.SlotID, reservation.Identity.Attempt, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "owner_user_id", "run_id", "plan_revision", "slot_id", "attempt", "idempotency_key", "input_fingerprint", "phase", "staging_manifest_json", "staging_manifest_fingerprint", "publication_owner", "publication_lease_expires_at", "publication_fence", "publication_fingerprint", "result_fingerprint", "final_manifest_json", "published_json", "blocked_code", "provider_claimed_at", "staging_prepared_at", "staged_at", "published_at", "created_at", "updated_at"}).AddRow(reservation.Identity.TenantID, reservation.Identity.OwnerUserID, reservation.Identity.RunID, reservation.Identity.PlanRevision, reservation.Identity.SlotID, reservation.Identity.Attempt, reservation.IdempotencyKey, reservation.InputFingerprint, imageagent.SlotEffectV3ArtifactStaged, nil, nil, "", nil, 0, "", "", nil, nil, "", claimedAt, nil, claimedAt, nil, claimedAt, claimedAt))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT clock_timestamp()")).WillReturnRows(sqlmock.NewRows([]string{"clock_timestamp"}).AddRow("2026-08-27 12:00:05"))
+	mock.ExpectExec(`UPDATE "image_agent_v3_slot_external_effects"`).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	effects := NewGormRepository(db).(imageagent.SlotExternalEffectV3Repository)
+	_, claim, claimed, err := effects.ClaimSlotPublicationV3(context.Background(), v3PublicationRequest(reservation, "worker-a"))
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.Equal(t, time.Date(2026, time.August, 27, 12, 1, 5, 0, time.UTC), claim.LeaseExpiresAt)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSlotExecutionResultV2JSONRemainsFrozen(t *testing.T) {
+	result := imageagent.SlotExecutionResult{
+		SlotID:  "slot-1",
+		Attempt: 1,
+		Candidates: []imageagent.AssetCandidate{{
+			AssetID:       "candidate-1",
+			URL:           "https://cdn.example.test/candidate.png",
+			SourceAssetID: "source-1",
+			Metadata:      map[string]string{"legacy": "kept"},
+			DurableAsset:  imageagent.DurableAssetIdentity{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256},
+		}},
+	}
+	encoded, err := json.Marshal(result)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"SlotID":"slot-1","Attempt":1,"Candidates":[{"AssetID":"candidate-1","URL":"https://cdn.example.test/candidate.png","SourceAssetID":"source-1","Metadata":{"legacy":"kept"}}]}`, string(encoded))
+}
+
+func TestSlotEffectV3PublishedResultRejectsLegacyCandidateFields(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		candidate imageagent.AssetCandidate
+	}{
+		{name: "URL", candidate: imageagent.AssetCandidate{AssetID: "candidate-1", URL: "file:///tmp/generated.png", SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256}}},
+		{name: "metadata", candidate: imageagent.AssetCandidate{AssetID: "candidate-1", SourceAssetID: "source-1", Metadata: map[string]string{"authorization": "secret"}, DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := imageagent.NewSlotEffectV3PublishedResult(imageagent.SlotExecutionResult{SlotID: "slot-1", Attempt: 1, Candidates: []imageagent.AssetCandidate{test.candidate}})
+			require.ErrorIs(t, err, imageagent.ErrValidation)
+		})
+	}
+}
+
+func TestSlotEffectV3ReviewContract(t *testing.T) {
+	for _, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			fixture := factory.new(t)
+			ctx := context.Background()
+			reservation := fixture.reservation
+			_, _, err := fixture.effects.ReserveSlotProviderV3(ctx, reservation)
+			require.NoError(t, err)
+
+			changed := v3StagingManifest()
+			changed.Assets[0].ObjectKey = "image-agent/staging/tenant-a/run/replacement.png"
+			_, err = fixture.effects.PrepareSlotStagingV3(ctx, reservation, v3StagingManifest())
+			require.NoError(t, err)
+			_, err = fixture.effects.PrepareSlotStagingV3(ctx, reservation, changed)
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			_, err = fixture.effects.CommitSlotStagedV3(ctx, reservation, "wrong-fingerprint")
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+
+			attempt, err := fixture.effects.GetSlotExternalEffectV3(ctx, reservation.Identity)
+			require.NoError(t, err)
+			_, err = fixture.effects.CommitSlotStagedV3(ctx, reservation, attempt.StagingManifestFingerprint)
+			require.NoError(t, err)
+			request := v3PublicationRequest(reservation, "worker-a")
+			_, first, claimed, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+			require.NoError(t, err)
+			require.True(t, claimed)
+			outsideFinalManifest := v3PublishedResult(reservation)
+			outsideFinalManifest.Candidates[0].DurableAsset.ObjectKey = "image-agent/final/tenant-a/run/unclaimed.png"
+			_, err = fixture.effects.CompleteSlotPublicationV3(ctx, imageagent.PublicationCompletion{Reservation: reservation, Owner: first.Owner, Fence: first.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: "result-fingerprint-unclaimed", Published: outsideFinalManifest})
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+
+			fixture.expireLease(t, reservation.Identity)
+			request.Owner = "worker-b"
+			_, second, claimed, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+			require.NoError(t, err)
+			require.True(t, claimed)
+			require.Greater(t, second.Fence, first.Fence)
+
+			_, err = fixture.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{Reservation: reservation, Phase: imageagent.SlotEffectV3PublicationUnknown, Code: "slot_publication_outcome_unknown", Owner: first.Owner, Fence: first.Fence})
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			_, err = fixture.effects.CompleteSlotPublicationV3(ctx, imageagent.PublicationCompletion{Reservation: reservation, Owner: first.Owner, Fence: first.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: "result-fingerprint-1", Published: v3PublishedResult(reservation)})
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+
+			otherOwner := reservation.Identity
+			otherOwner.OwnerUserID = "user-b"
+			_, err = fixture.effects.GetSlotExternalEffectV3(ctx, otherOwner)
+			require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+			otherTenant := reservation.Identity
+			otherTenant.TenantID = "tenant-b"
+			_, err = fixture.effects.GetSlotExternalEffectV3(ctx, otherTenant)
+			require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+		})
+	}
+}
+
+func TestSlotEffectV3RejectsScopedIdempotencyCollisionAcrossAdapters(t *testing.T) {
+	for _, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			fixture := factory.new(t)
+			ctx := context.Background()
+			_, _, err := fixture.effects.ReserveSlotProviderV3(ctx, fixture.reservation)
+			require.NoError(t, err)
+			collision := fixture.reservation
+			collision.Identity.Attempt++
+			_, _, err = fixture.effects.ReserveSlotProviderV3(ctx, collision)
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+		})
+	}
+}
+
+func TestSlotEffectV3PublishedJSONIsAllowlistedAcrossAdapters(t *testing.T) {
+	for _, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			fixture := factory.new(t)
+			ctx := context.Background()
+			stageV3Attempt(t, fixture.effects, fixture.reservation)
+			request := v3PublicationRequest(fixture.reservation, "worker-a")
+			_, claim, claimed, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+			require.NoError(t, err)
+			require.True(t, claimed)
+			published := v3PublishedResult(fixture.reservation)
+			published.Candidates[0].DurableAsset.SHA256 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+			attempt, err := fixture.effects.CompleteSlotPublicationV3(ctx, imageagent.PublicationCompletion{Reservation: fixture.reservation, Owner: claim.Owner, Fence: claim.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: "result-fingerprint-allowlisted", Published: published})
+			require.NoError(t, err)
+			require.Equal(t, v3SHA256, attempt.Published.Candidates[0].DurableAsset.SHA256)
+
+			encoded, err := fixture.publishedJSON(fixture.reservation.Identity)
+			require.NoError(t, err)
+			require.NotContains(t, string(encoded), "URL")
+			require.NotContains(t, string(encoded), "Metadata")
+			require.NotContains(t, string(encoded), "authorization")
+			require.Contains(t, string(encoded), "object_key")
+			require.Contains(t, string(encoded), v3SHA256)
+			require.NotContains(t, string(encoded), "AAAAAAAA")
+		})
+	}
+}
+
+type v3ReviewFixture struct {
+	name          string
+	effects       imageagent.SlotExternalEffectV3Repository
+	reservation   imageagent.SlotEffectV3Reservation
+	expireLease   func(*testing.T, imageagent.SlotExternalEffectIdentity)
+	publishedJSON func(imageagent.SlotExternalEffectIdentity) ([]byte, error)
+}
+
+type v3ReviewFixtureFactory struct {
+	name string
+	new  func(*testing.T) v3ReviewFixture
+}
+
+func newV3ReviewFixtures() []v3ReviewFixtureFactory {
+	return []v3ReviewFixtureFactory{
+		{
+			name: "memory",
+			new: func(t *testing.T) v3ReviewFixture {
+				clock := time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC)
+				repository := newMemoryRepositoryWithClock(func() time.Time { return clock })
+				reservation := v3Reservation("review-memory")
+				initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+				memory := repository.(*memoryRepository)
+				return v3ReviewFixture{
+					name:        "memory",
+					effects:     repository.(imageagent.SlotExternalEffectV3Repository),
+					reservation: reservation,
+					expireLease: func(t *testing.T, _ imageagent.SlotExternalEffectIdentity) {
+						t.Helper()
+						clock = clock.Add(2 * time.Minute)
+					},
+					publishedJSON: func(identity imageagent.SlotExternalEffectIdentity) ([]byte, error) {
+						memory.mu.Lock()
+						defer memory.mu.Unlock()
+						record, ok := memory.slotEffectsV3[slotEffectKey(identity)]
+						if !ok {
+							return nil, imageagent.ErrRunNotFound
+						}
+						return json.Marshal(record.Published)
+					},
+				}
+			},
+		},
+		{
+			name: "gorm",
+			new: func(t *testing.T) v3ReviewFixture {
+				db := newConcurrentSQLite(t)
+				repository := NewGormRepository(db)
+				reservation := v3Reservation("review-gorm")
+				initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+				return v3ReviewFixture{
+					name:        "gorm",
+					effects:     repository.(imageagent.SlotExternalEffectV3Repository),
+					reservation: reservation,
+					expireLease: func(t *testing.T, identity imageagent.SlotExternalEffectIdentity) {
+						t.Helper()
+						require.NoError(t, slotEffectV3IdentityWhere(db.Model(&slotExternalEffectV3Record{}), identity).Update("publication_lease_expires_at", time.Now().UTC().Add(-time.Hour)).Error)
+					},
+					publishedJSON: func(identity imageagent.SlotExternalEffectIdentity) ([]byte, error) {
+						var record slotExternalEffectV3Record
+						err := slotEffectV3IdentityWhere(db, identity).First(&record).Error
+						return record.PublishedJSON, err
+					},
+				}
+			},
+		},
+	}
+}
+
 const v3SHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 func v3Reservation(suffix string) imageagent.SlotEffectV3Reservation {
@@ -285,8 +539,16 @@ func v3StagingManifest() imageagent.StagingManifest {
 	return imageagent.StagingManifest{Assets: []imageagent.StagedAssetRef{{ObjectKey: "image-agent/staging/tenant-a/run/asset.png", SHA256: v3SHA256, SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", Operations: []string{"resize"}, ProviderReceiptID: "receipt-1"}}}
 }
 
-func v3PublishedResult(reservation imageagent.SlotEffectV3Reservation) imageagent.SlotExecutionResult {
-	return imageagent.SlotExecutionResult{SlotID: reservation.Identity.SlotID, Attempt: reservation.Identity.Attempt, Candidates: []imageagent.AssetCandidate{{AssetID: "candidate-1", SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256}}}}
+func v3FinalManifest() imageagent.FinalManifest {
+	return imageagent.FinalManifest{Assets: []imageagent.StagedAssetRef{{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256, SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", Operations: []string{"resize"}, ProviderReceiptID: "receipt-1"}}}
+}
+
+func v3PublicationRequest(reservation imageagent.SlotEffectV3Reservation, owner string) imageagent.PublicationClaimRequest {
+	return imageagent.PublicationClaimRequest{Reservation: reservation, Owner: owner, LeaseDuration: time.Minute, PublicationFingerprint: "publication-fingerprint-1", FinalManifest: v3FinalManifest()}
+}
+
+func v3PublishedResult(reservation imageagent.SlotEffectV3Reservation) imageagent.SlotEffectV3PublishedResult {
+	return imageagent.SlotEffectV3PublishedResult{SlotID: reservation.Identity.SlotID, Attempt: reservation.Identity.Attempt, Candidates: []imageagent.SlotEffectV3AssetCandidate{{AssetID: "candidate-1", SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256}}}}
 }
 
 func stageV3Attempt(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, reservation imageagent.SlotEffectV3Reservation) imageagent.SlotEffectV3Attempt {

@@ -2,6 +2,7 @@ package imageagent
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -35,7 +36,7 @@ type SlotEffectV3Attempt struct {
 	PublicationFingerprint     string
 	FinalManifest              FinalManifest
 	ResultFingerprint          string
-	Published                  SlotExecutionResult
+	Published                  SlotEffectV3PublishedResult
 	BlockedCode                string
 }
 
@@ -66,13 +67,66 @@ type PublicationCompletion struct {
 	Fence                  int64
 	PublicationFingerprint string
 	ResultFingerprint      string
-	Published              SlotExecutionResult
+	Published              SlotEffectV3PublishedResult
 }
 
 type SlotEffectV3BlockTransition struct {
 	Reservation SlotEffectV3Reservation
 	Phase       SlotEffectV3Phase
 	Code        string
+	Owner       string
+	Fence       int64
+}
+
+// SlotEffectV3PublishedResult is the allowlisted persisted v3 result. It is
+// separate from the frozen v2 SlotExecutionResult wire contract.
+type SlotEffectV3PublishedResult struct {
+	SlotID     string                       `json:"slot_id"`
+	Attempt    int                          `json:"attempt"`
+	Candidates []SlotEffectV3AssetCandidate `json:"candidates"`
+}
+
+type SlotEffectV3AssetCandidate struct {
+	AssetID       string               `json:"asset_id"`
+	SourceAssetID string               `json:"source_asset_id"`
+	DurableAsset  DurableAssetIdentity `json:"durable_asset"`
+}
+
+// NewSlotEffectV3PublishedResult is the explicit adapter from an in-process
+// executor result. Legacy URL and arbitrary metadata are not eligible for v3
+// persistence and therefore fail closed.
+func NewSlotEffectV3PublishedResult(result SlotExecutionResult) (SlotEffectV3PublishedResult, error) {
+	candidates := make([]SlotEffectV3AssetCandidate, len(result.Candidates))
+	for index, candidate := range result.Candidates {
+		if candidate.URL != "" || len(candidate.Metadata) != 0 {
+			return SlotEffectV3PublishedResult{}, ErrValidation
+		}
+		candidates[index] = SlotEffectV3AssetCandidate{AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset}
+	}
+	return NormalizeSlotEffectV3PublishedResult(SlotEffectV3PublishedResult{SlotID: result.SlotID, Attempt: result.Attempt, Candidates: candidates})
+}
+
+func NormalizeSlotEffectV3PublishedResult(result SlotEffectV3PublishedResult) (SlotEffectV3PublishedResult, error) {
+	if result.SlotID == "" || result.SlotID != strings.TrimSpace(result.SlotID) || result.Attempt <= 0 || len(result.Candidates) == 0 {
+		return SlotEffectV3PublishedResult{}, ErrValidation
+	}
+	seen := make(map[string]struct{}, len(result.Candidates))
+	for index, candidate := range result.Candidates {
+		if candidate.AssetID == "" || candidate.AssetID != strings.TrimSpace(candidate.AssetID) || candidate.SourceAssetID == "" || candidate.SourceAssetID != strings.TrimSpace(candidate.SourceAssetID) {
+			return SlotEffectV3PublishedResult{}, ErrValidation
+		}
+		identity, err := NormalizeDurableAssetIdentity(candidate.DurableAsset)
+		if err != nil {
+			return SlotEffectV3PublishedResult{}, err
+		}
+		if _, ok := seen[candidate.AssetID]; ok {
+			return SlotEffectV3PublishedResult{}, ErrValidation
+		}
+		seen[candidate.AssetID] = struct{}{}
+		candidate.DurableAsset = identity
+		result.Candidates[index] = candidate
+	}
+	return result, nil
 }
 
 type SlotExternalEffectV3Repository interface {

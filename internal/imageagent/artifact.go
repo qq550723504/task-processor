@@ -41,26 +41,45 @@ type DurableAssetIdentity struct {
 	SHA256    string `json:"sha256"`
 }
 
-var sha256Pattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var sha256Pattern = regexp.MustCompile(`^[a-fA-F0-9]{64}$`)
 
 func ValidateStagingManifest(manifest StagingManifest) error {
+	_, err := NormalizeStagingManifest(manifest)
+	return err
+}
+
+func NormalizeStagingManifest(manifest StagingManifest) (StagingManifest, error) {
 	if len(manifest.ProviderMetadata) != 0 {
-		return ErrValidation
+		return StagingManifest{}, ErrValidation
 	}
-	return validateArtifactRefs(manifest.Assets)
+	assets, err := normalizeArtifactRefs(manifest.Assets)
+	if err != nil {
+		return StagingManifest{}, err
+	}
+	return StagingManifest{Assets: assets}, nil
 }
 
 func ValidateFinalManifest(manifest FinalManifest) error {
-	return validateArtifactRefs(manifest.Assets)
+	_, err := NormalizeFinalManifest(manifest)
+	return err
+}
+
+func NormalizeFinalManifest(manifest FinalManifest) (FinalManifest, error) {
+	assets, err := normalizeArtifactRefs(manifest.Assets)
+	if err != nil {
+		return FinalManifest{}, err
+	}
+	return FinalManifest{Assets: assets}, nil
 }
 
 func StagingManifestFingerprint(manifest StagingManifest) (string, error) {
-	if err := ValidateStagingManifest(manifest); err != nil {
+	normalized, err := NormalizeStagingManifest(manifest)
+	if err != nil {
 		return "", err
 	}
 	encoded, err := json.Marshal(struct {
 		Assets []StagedAssetRef `json:"assets"`
-	}{Assets: manifest.Assets})
+	}{Assets: normalized.Assets})
 	if err != nil {
 		return "", err
 	}
@@ -69,10 +88,11 @@ func StagingManifestFingerprint(manifest StagingManifest) (string, error) {
 }
 
 func FinalManifestFingerprint(manifest FinalManifest) (string, error) {
-	if err := ValidateFinalManifest(manifest); err != nil {
+	normalized, err := NormalizeFinalManifest(manifest)
+	if err != nil {
 		return "", err
 	}
-	encoded, err := json.Marshal(manifest)
+	encoded, err := json.Marshal(normalized)
 	if err != nil {
 		return "", err
 	}
@@ -80,43 +100,56 @@ func FinalManifestFingerprint(manifest FinalManifest) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-func validateArtifactRefs(assets []StagedAssetRef) error {
+func normalizeArtifactRefs(assets []StagedAssetRef) ([]StagedAssetRef, error) {
 	if len(assets) == 0 {
-		return ErrValidation
+		return nil, ErrValidation
 	}
 	seen := make(map[string]struct{}, len(assets))
-	for _, asset := range assets {
-		if err := validateStagedAssetRef(asset); err != nil {
-			return err
+	normalized := make([]StagedAssetRef, len(assets))
+	for index, asset := range assets {
+		var err error
+		asset, err = normalizeStagedAssetRef(asset)
+		if err != nil {
+			return nil, err
 		}
 		if _, exists := seen[asset.ObjectKey]; exists {
-			return ErrValidation
+			return nil, ErrValidation
 		}
 		seen[asset.ObjectKey] = struct{}{}
+		normalized[index] = asset
 	}
-	return nil
+	return normalized, nil
 }
 
-func validateStagedAssetRef(asset StagedAssetRef) error {
-	if !isCanonicalObjectKey(asset.ObjectKey) || !sha256Pattern.MatchString(asset.SHA256) || asset.SizeBytes <= 0 || asset.Width <= 0 || asset.Height <= 0 || strings.TrimSpace(asset.SourceAssetID) == "" {
-		return ErrValidation
+func normalizeStagedAssetRef(asset StagedAssetRef) (StagedAssetRef, error) {
+	identity, err := NormalizeDurableAssetIdentity(DurableAssetIdentity{ObjectKey: asset.ObjectKey, SHA256: asset.SHA256})
+	if err != nil || asset.SizeBytes <= 0 || asset.Width <= 0 || asset.Height <= 0 || asset.SourceAssetID == "" || asset.SourceAssetID != strings.TrimSpace(asset.SourceAssetID) || asset.ProviderReceiptID != strings.TrimSpace(asset.ProviderReceiptID) {
+		return StagedAssetRef{}, ErrValidation
 	}
 	switch asset.ContentType {
 	case "image/jpeg", "image/png", "image/webp":
 	default:
-		return ErrValidation
+		return StagedAssetRef{}, ErrValidation
 	}
 	for _, operation := range asset.Operations {
-		if strings.TrimSpace(operation) == "" {
-			return ErrValidation
+		if operation == "" || operation != strings.TrimSpace(operation) {
+			return StagedAssetRef{}, ErrValidation
 		}
 	}
-	return nil
+	asset.ObjectKey = identity.ObjectKey
+	asset.SHA256 = identity.SHA256
+	return asset, nil
+}
+
+func NormalizeDurableAssetIdentity(asset DurableAssetIdentity) (DurableAssetIdentity, error) {
+	if !isCanonicalObjectKey(asset.ObjectKey) || !sha256Pattern.MatchString(asset.SHA256) {
+		return DurableAssetIdentity{}, ErrValidation
+	}
+	return DurableAssetIdentity{ObjectKey: asset.ObjectKey, SHA256: strings.ToLower(asset.SHA256)}, nil
 }
 
 func isCanonicalObjectKey(value string) bool {
-	value = strings.TrimSpace(value)
-	if value == "" || strings.Contains(value, "\\") || strings.Contains(value, ":") || strings.HasPrefix(value, "/") || path.IsAbs(value) {
+	if value == "" || value != strings.TrimSpace(value) || strings.Contains(value, "\\") || strings.Contains(value, ":") || strings.HasPrefix(value, "/") || path.IsAbs(value) {
 		return false
 	}
 	for _, segment := range strings.Split(value, "/") {
