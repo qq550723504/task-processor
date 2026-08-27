@@ -229,6 +229,16 @@ type PublishApprovedActivityInput struct {
 	IdempotencyKey    string
 }
 
+// PublishApprovedV3ActivityInput is a distinct durable-approval wire payload.
+// Task 6 owns its Temporal registration and workflow routing.
+type PublishApprovedV3ActivityInput struct {
+	RunID             string
+	Identity          imageagent.ExecutionIdentity
+	PlanRevision      int64
+	CandidateAssetIDs []string
+	IdempotencyKey    string
+}
+
 type ApproveResultsSignal struct {
 	RunID        string
 	PlanRevision int64

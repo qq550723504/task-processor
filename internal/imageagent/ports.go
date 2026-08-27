@@ -29,6 +29,19 @@ type ApprovedAssetPublisher interface {
 	PublishApproved(context.Context, PublishApprovedInput) (PublicationAcknowledgement, error)
 }
 
+// ApprovedAssetPublisherV3 is deliberately separate from the frozen v2
+// publication port so Temporal can select its wire contract explicitly.
+type ApprovedAssetPublisherV3 interface {
+	PublishApprovedV3(context.Context, PublishApprovedV3Input) (PublicationAcknowledgement, error)
+}
+
+// DurableAssetPublicURLResolver turns a durable public object key into the
+// readable URL stored in ListingKit. Storage adapters own the endpoint and
+// public-base rules; the domain only defines this narrow boundary.
+type DurableAssetPublicURLResolver interface {
+	PublicURL(string) string
+}
+
 type PublicationAcknowledgement struct {
 	TaskID            string
 	RunID             string
@@ -66,6 +79,17 @@ type PublishedSlotOutput struct {
 }
 
 type PublishApprovedInput struct {
+	RunID             string
+	TenantID          string
+	UserID            string
+	PlanRevision      int64
+	CandidateAssetIDs []string
+	IdempotencyKey    string
+}
+
+// PublishApprovedV3Input is the additive durable-approval payload. Keep the
+// v2 input above unchanged for frozen Temporal histories.
+type PublishApprovedV3Input struct {
 	RunID             string
 	TenantID          string
 	UserID            string

@@ -28,6 +28,7 @@ type ActivityDependencies struct {
 	SlotEffects              imageagent.SlotExternalEffectRepository
 	SlotExecutor             imageagent.RecoverableSlotExecutor
 	Publisher                imageagent.ApprovedAssetPublisher
+	PublisherV3              imageagent.ApprovedAssetPublisherV3
 	SlotEffectsV3            imageagent.SlotExternalEffectV3Repository
 	StagedSlotExecutor       imageagent.StagedSlotExecutor
 	ArtifactStore            DurableArtifactStore
@@ -40,6 +41,7 @@ type Activities struct {
 	slotEffects              imageagent.SlotExternalEffectRepository
 	slotExecutor             imageagent.RecoverableSlotExecutor
 	publisher                imageagent.ApprovedAssetPublisher
+	publisherV3              imageagent.ApprovedAssetPublisherV3
 	slotEffectsV3            imageagent.SlotExternalEffectV3Repository
 	stagedSlotExecutor       imageagent.StagedSlotExecutor
 	artifactStore            DurableArtifactStore
@@ -89,7 +91,7 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 		}
 	}
 	return &Activities{
-		repository: dependencies.Repository, slotEffects: dependencies.SlotEffects, slotExecutor: dependencies.SlotExecutor, publisher: dependencies.Publisher,
+		repository: dependencies.Repository, slotEffects: dependencies.SlotEffects, slotExecutor: dependencies.SlotExecutor, publisher: dependencies.Publisher, publisherV3: dependencies.PublisherV3,
 		slotEffectsV3: dependencies.SlotEffectsV3, stagedSlotExecutor: dependencies.StagedSlotExecutor, artifactStore: dependencies.ArtifactStore,
 		publicationOwner: dependencies.PublicationOwner, publicationLeaseDuration: dependencies.PublicationLeaseDuration,
 	}, nil
@@ -766,6 +768,24 @@ func (a *Activities) PublishApproved(ctx context.Context, input PublishApprovedA
 		return err
 	}
 	_, err = a.publisher.PublishApproved(ctx, imageagent.PublishApprovedInput{
+		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+		PlanRevision: input.PlanRevision, CandidateAssetIDs: append([]string(nil), input.CandidateAssetIDs...),
+		IdempotencyKey: input.IdempotencyKey,
+	})
+	return err
+}
+
+// PublishApprovedV3 is additive and intentionally not registered here. Task 6
+// owns selecting and registering imageagent.publish_approved.v3.
+func (a *Activities) PublishApprovedV3(ctx context.Context, input PublishApprovedV3ActivityInput) error {
+	if a.publisherV3 == nil {
+		return fmt.Errorf("image agent v3 approved asset publisher is required")
+	}
+	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	if err != nil {
+		return err
+	}
+	_, err = a.publisherV3.PublishApprovedV3(ctx, imageagent.PublishApprovedV3Input{
 		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		PlanRevision: input.PlanRevision, CandidateAssetIDs: append([]string(nil), input.CandidateAssetIDs...),
 		IdempotencyKey: input.IdempotencyKey,

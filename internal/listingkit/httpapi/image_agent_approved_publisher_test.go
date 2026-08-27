@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -92,6 +93,79 @@ func TestImageAgentApprovedPublisherRejectsStateDigestCandidateAndScopeInjection
 	}
 }
 
+func TestPublishApprovedV3RejectsZeroMainCandidates(t *testing.T) {
+	projection := approvedV3Projection(t)
+	projection.Plan.Slots[0].Role = imageagent.SlotRoleScene
+	projection.Slots[0].Slot.Role = imageagent.SlotRoleScene
+	projection.ResultDigest = mustResultDigestV3(t, projection)
+	assertV3PublicationRejectedWithoutMutation(t, projection, approvedV3PublicationInput(projection))
+}
+
+func TestPublishApprovedV3RejectsMultipleMainCandidates(t *testing.T) {
+	projection := approvedV3Projection(t)
+	projection.Slots[0].Candidates = append(projection.Slots[0].Candidates, imageagent.AssetCandidate{
+		AssetID: "candidate-main-2", SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/public/tenant-a/run-1/1/main/1/1-" + strings.Repeat("b", 64) + ".png", SHA256: strings.Repeat("b", 64)},
+	})
+	projection.ResultDigest = mustResultDigestV3(t, projection)
+	assertV3PublicationRejectedWithoutMutation(t, projection, approvedV3PublicationInput(projection))
+}
+
+func TestPublishApprovedV3CommitsExactlyOneMainAndAllGalleryAssets(t *testing.T) {
+	ctx, db, transactionStore := newApprovedPublisherDatabase(t)
+	require.NoError(t, db.Create(approvedPublisherTask()).Error)
+	projection := approvedV3Projection(t)
+	publisher, err := NewImageAgentApprovedPublisherV3(staticProjectionSource{projection: projection}, transactionStore, staticPublicURLResolver{base: "https://cdn.example"})
+	require.NoError(t, err)
+
+	ack, err := publisher.PublishApprovedV3(ctx, approvedV3PublicationInput(projection))
+	require.NoError(t, err)
+	require.Equal(t, projection.ResultDigest, ack.ResultDigest)
+
+	var task listingkit.Task
+	require.NoError(t, db.First(&task, "id = ?", "task-1").Error)
+	bundle := task.Result.StandardProductSnapshot.AssetBundle
+	require.Len(t, bundle.Assets, 13, "source + main + eleven scene assets must survive without a ten-image cap")
+	require.Equal(t, "candidate-main", bundle.Selection.MainAssetID)
+	require.Len(t, bundle.Selection.GalleryAssetIDs, 11)
+	for _, generated := range bundle.Assets[1:] {
+		require.True(t, strings.HasPrefix(generated.URL, "https://cdn.example/image-agent/public/"))
+	}
+}
+
+func TestPublishApprovedV3RejectsCandidateWithoutDurableIdentity(t *testing.T) {
+	projection := approvedV3Projection(t)
+	projection.Slots[1].Candidates[0].DurableAsset = imageagent.DurableAssetIdentity{}
+	assertV3PublicationRejectedWithoutMutation(t, projection, approvedV3PublicationInput(projection))
+}
+
+func TestPublishApprovedV3PreflightsEveryResolvedURLBeforeMutation(t *testing.T) {
+	projection := approvedV3Projection(t)
+	input := approvedV3PublicationInput(projection)
+	ctx, db, transactionStore := newApprovedPublisherDatabase(t)
+	require.NoError(t, db.Create(approvedPublisherTask()).Error)
+	publisher, err := NewImageAgentApprovedPublisherV3(staticProjectionSource{projection: projection}, transactionStore, staticPublicURLResolver{base: "javascript:alert(1)"})
+	require.NoError(t, err)
+
+	_, err = publisher.PublishApprovedV3(ctx, input)
+	require.Error(t, err)
+	var task listingkit.Task
+	require.NoError(t, db.First(&task, "id = ?", "task-1").Error)
+	require.Len(t, task.Result.StandardProductSnapshot.AssetBundle.Assets, 1)
+}
+
+func assertV3PublicationRejectedWithoutMutation(t *testing.T, projection imageagent.RunProjection, input imageagent.PublishApprovedV3Input) {
+	t.Helper()
+	ctx, db, transactionStore := newApprovedPublisherDatabase(t)
+	require.NoError(t, db.Create(approvedPublisherTask()).Error)
+	publisher, err := NewImageAgentApprovedPublisherV3(staticProjectionSource{projection: projection}, transactionStore, staticPublicURLResolver{base: "https://cdn.example"})
+	require.NoError(t, err)
+	_, err = publisher.PublishApprovedV3(ctx, input)
+	require.Error(t, err)
+	var task listingkit.Task
+	require.NoError(t, db.First(&task, "id = ?", "task-1").Error)
+	require.Len(t, task.Result.StandardProductSnapshot.AssetBundle.Assets, 1)
+}
+
 func newApprovedPublisherDatabase(t *testing.T) (context.Context, *gorm.DB, listingkit.ImageAgentPublicationTransactionRepository) {
 	t.Helper()
 	dsn := fmt.Sprintf("file:image-agent-approved-%s-%d?mode=memory&cache=shared", t.Name(), approvedPublisherDatabaseCounter.Add(1))
@@ -130,6 +204,44 @@ func approvedPublicationInput(projection imageagent.RunProjection) imageagent.Pu
 		ids = append(ids, candidate.AssetID)
 	}
 	return imageagent.PublishApprovedInput{RunID: "run-1", TenantID: "tenant-a", UserID: "user-a", PlanRevision: 1, CandidateAssetIDs: ids, IdempotencyKey: "approve-action-1"}
+}
+
+func approvedV3Projection(t *testing.T) imageagent.RunProjection {
+	t.Helper()
+	projection := approvedProjection()
+	for slotIndex := range projection.Slots {
+		for candidateIndex := range projection.Slots[slotIndex].Candidates {
+			candidate := &projection.Slots[slotIndex].Candidates[candidateIndex]
+			hash := fmt.Sprintf("%064x", slotIndex*100+candidateIndex+1)
+			candidate.URL = ""
+			candidate.DurableAsset = imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/run-1/1/%s/1/%d-%s.png", projection.Plan.Slots[slotIndex].ID, candidateIndex, hash), SHA256: hash}
+		}
+	}
+	projection.ResultDigest = mustResultDigestV3(t, projection)
+	return projection
+}
+
+func mustResultDigestV3(t *testing.T, projection imageagent.RunProjection) string {
+	t.Helper()
+	digest, err := imageagent.ResultDigestV3(projection.Plan, projection.Slots)
+	require.NoError(t, err)
+	return digest
+}
+
+func approvedV3PublicationInput(projection imageagent.RunProjection) imageagent.PublishApprovedV3Input {
+	ids := make([]string, 0)
+	for _, slot := range projection.Slots {
+		for _, candidate := range slot.Candidates {
+			ids = append(ids, candidate.AssetID)
+		}
+	}
+	return imageagent.PublishApprovedV3Input{RunID: projection.Run.ID, TenantID: projection.Run.TenantID, UserID: projection.Run.UserID, PlanRevision: projection.Plan.Revision, CandidateAssetIDs: ids, IdempotencyKey: "approve-v3-action-1"}
+}
+
+type staticPublicURLResolver struct{ base string }
+
+func (r staticPublicURLResolver) PublicURL(key string) string {
+	return strings.TrimRight(r.base, "/") + "/" + key
 }
 
 type staticProjectionSource struct{ projection imageagent.RunProjection }

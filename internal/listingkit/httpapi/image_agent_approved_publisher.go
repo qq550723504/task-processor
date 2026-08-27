@@ -21,13 +21,35 @@ type ImageAgentProjectionSource interface {
 type imageAgentApprovedPublisher struct {
 	projections ImageAgentProjectionSource
 	tasks       listingkit.ImageAgentPublicationTransactionRepository
+	publicURLs  imageagent.DurableAssetPublicURLResolver
 }
 
 func NewImageAgentApprovedPublisher(projections ImageAgentProjectionSource, tasks listingkit.ImageAgentPublicationTransactionRepository) (imageagent.ApprovedAssetPublisher, error) {
+	publisher, err := newImageAgentApprovedPublisher(projections, tasks, nil)
+	if err != nil {
+		return nil, err
+	}
+	return publisher, nil
+}
+
+// NewImageAgentApprovedPublisherV3 adds only the durable public-URL boundary
+// required by v3. The v2 constructor and its wire contract remain unchanged.
+func NewImageAgentApprovedPublisherV3(projections ImageAgentProjectionSource, tasks listingkit.ImageAgentPublicationTransactionRepository, publicURLs imageagent.DurableAssetPublicURLResolver) (imageagent.ApprovedAssetPublisherV3, error) {
+	if publicURLs == nil {
+		return nil, fmt.Errorf("image agent durable asset public URL resolver is required")
+	}
+	publisher, err := newImageAgentApprovedPublisher(projections, tasks, publicURLs)
+	if err != nil {
+		return nil, err
+	}
+	return publisher, nil
+}
+
+func newImageAgentApprovedPublisher(projections ImageAgentProjectionSource, tasks listingkit.ImageAgentPublicationTransactionRepository, publicURLs imageagent.DurableAssetPublicURLResolver) (*imageAgentApprovedPublisher, error) {
 	if projections == nil || tasks == nil {
 		return nil, fmt.Errorf("image agent projection source and ListingKit publication transaction store are required")
 	}
-	return &imageAgentApprovedPublisher{projections: projections, tasks: tasks}, nil
+	return &imageAgentApprovedPublisher{projections: projections, tasks: tasks, publicURLs: publicURLs}, nil
 }
 
 func (p *imageAgentApprovedPublisher) PublishApproved(ctx context.Context, input imageagent.PublishApprovedInput) (imageagent.PublicationAcknowledgement, error) {
@@ -43,7 +65,45 @@ func (p *imageAgentApprovedPublisher) PublishApproved(ctx context.Context, input
 	if err != nil {
 		return imageagent.PublicationAcknowledgement{}, err
 	}
-	digest, err := approvedResultDigest(projection.Slots)
+	digest, err := imageagent.ResultDigestV2(projection.Plan, projection.Slots)
+	if err != nil || projection.ResultDigest == "" || projection.ResultDigest != digest {
+		return imageagent.PublicationAcknowledgement{}, imageagent.ErrRevisionConflict
+	}
+	fingerprint, err := imageAgentPublicationFingerprint(scope, projection.Run.BusinessTaskID, input.PlanRevision, digest, approvedIDs)
+	if err != nil {
+		return imageagent.PublicationAcknowledgement{}, err
+	}
+	ack := listingkit.ImageAgentPublicationAcknowledgement{TaskID: projection.Run.BusinessTaskID, RunID: scope.RunID, PlanRevision: input.PlanRevision, ResultDigest: digest, IdempotencyKey: input.IdempotencyKey, CandidateAssetIDs: append([]string(nil), approvedIDs...)}
+	stored, err := p.tasks.CommitImageAgentPublication(ctx, listingkit.ImageAgentPublicationCommit{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, TaskID: projection.Run.BusinessTaskID, IdempotencyKey: input.IdempotencyKey, Fingerprint: fingerprint, Acknowledgement: ack}, func(task *listingkit.Task) error {
+		if task == nil || task.TenantID != scope.TenantID || listingkit.ResolveTaskUserID(task) != scope.OwnerUserID || task.Result == nil || task.Result.StandardProductSnapshot == nil {
+			return imageagent.ErrRunNotFound
+		}
+		applyApprovedAssetRecords(task.Result, records)
+		return nil
+	})
+	if err != nil {
+		return imageagent.PublicationAcknowledgement{}, fmt.Errorf("persist approved image agent candidates: %w", err)
+	}
+	return imageagent.PublicationAcknowledgement{TaskID: stored.TaskID, RunID: stored.RunID, PlanRevision: stored.PlanRevision, ResultDigest: stored.ResultDigest, IdempotencyKey: stored.IdempotencyKey, CandidateAssetIDs: append([]string(nil), stored.CandidateAssetIDs...)}, nil
+}
+
+func (p *imageAgentApprovedPublisher) PublishApprovedV3(ctx context.Context, input imageagent.PublishApprovedV3Input) (imageagent.PublicationAcknowledgement, error) {
+	if p.publicURLs == nil {
+		return imageagent.PublicationAcknowledgement{}, imageagent.ErrValidation
+	}
+	scope := imageagent.RunScope{TenantID: strings.TrimSpace(input.TenantID), OwnerUserID: strings.TrimSpace(input.UserID), RunID: strings.TrimSpace(input.RunID)}
+	projection, err := p.projections.GetProjection(ctx, scope)
+	if err != nil {
+		return imageagent.PublicationAcknowledgement{}, fmt.Errorf("load approved image agent projection: %w", err)
+	}
+	if projection.Run.TenantID != scope.TenantID || projection.Run.UserID != scope.OwnerUserID || projection.Run.ID != scope.RunID || projection.Run.Status != imageagent.RunStatusAwaitingFinalApproval || projection.Run.ActivePlanRevision != input.PlanRevision || projection.Plan.Revision != input.PlanRevision || strings.TrimSpace(projection.Run.BusinessTaskID) == "" || strings.TrimSpace(input.IdempotencyKey) == "" {
+		return imageagent.PublicationAcknowledgement{}, imageagent.ErrRevisionConflict
+	}
+	approvedIDs, records, err := validateApprovedProjectionAndCandidatesV3(projection, input.CandidateAssetIDs, p.publicURLs)
+	if err != nil {
+		return imageagent.PublicationAcknowledgement{}, err
+	}
+	digest, err := imageagent.ResultDigestV3(projection.Plan, projection.Slots)
 	if err != nil || projection.ResultDigest == "" || projection.ResultDigest != digest {
 		return imageagent.PublicationAcknowledgement{}, imageagent.ErrRevisionConflict
 	}
@@ -108,31 +168,56 @@ func validateApprovedProjectionAndCandidates(projection imageagent.RunProjection
 	return orderedIDs, records, nil
 }
 
-func approvedResultDigest(slots []imageagent.SlotProjection) (string, error) {
-	type digestSlot struct {
-		SlotID            string   `json:"slot_id"`
-		CandidateAssetIDs []string `json:"candidate_asset_ids"`
+func validateApprovedProjectionAndCandidatesV3(projection imageagent.RunProjection, requested []string, publicURLs imageagent.DurableAssetPublicURLResolver) ([]string, []asset.AssetRecord, error) {
+	if publicURLs == nil || len(projection.Slots) != len(projection.Plan.Slots) || len(requested) == 0 {
+		return nil, nil, imageagent.ErrRevisionConflict
 	}
-	payload := make([]digestSlot, 0, len(slots))
-	for _, slot := range slots {
-		if slot.Slot.Status != imageagent.SlotStatusAccepted || len(slot.Candidates) == 0 {
-			return "", imageagent.ErrRevisionConflict
+	requestedSet := make(map[string]struct{}, len(requested))
+	for _, rawID := range requested {
+		id := strings.TrimSpace(rawID)
+		if id == "" {
+			return nil, nil, imageagent.ErrValidation
 		}
-		ids := make([]string, 0, len(slot.Candidates))
+		if _, duplicate := requestedSet[id]; duplicate {
+			return nil, nil, imageagent.ErrRevisionConflict
+		}
+		requestedSet[id] = struct{}{}
+	}
+	orderedIDs := make([]string, 0, len(requested))
+	records := make([]asset.AssetRecord, 0, len(requested))
+	mainCount := 0
+	for index, declared := range projection.Plan.Slots {
+		slot := projection.Slots[index]
+		if slot.Slot.ID != declared.ID || slot.Slot.Role != declared.Role || slot.Slot.Status != imageagent.SlotStatusAccepted || slot.Attempt <= 0 || len(slot.Candidates) == 0 {
+			return nil, nil, imageagent.ErrRevisionConflict
+		}
 		for _, candidate := range slot.Candidates {
-			if strings.TrimSpace(candidate.AssetID) == "" {
-				return "", imageagent.ErrRevisionConflict
+			id := strings.TrimSpace(candidate.AssetID)
+			if _, ok := requestedSet[id]; !ok || strings.TrimSpace(candidate.URL) != "" || len(candidate.Metadata) != 0 || strings.TrimSpace(candidate.SourceAssetID) == "" {
+				return nil, nil, imageagent.ErrRevisionConflict
 			}
-			ids = append(ids, strings.TrimSpace(candidate.AssetID))
+			identity, err := imageagent.NormalizeDurableAssetIdentity(candidate.DurableAsset)
+			if err != nil {
+				return nil, nil, err
+			}
+			resolvedURL, err := imageagent.ValidateSafeImageURL(publicURLs.PublicURL(identity.ObjectKey))
+			if err != nil {
+				return nil, nil, imageagent.ErrValidation
+			}
+			candidate.DurableAsset = identity
+			candidate.URL = resolvedURL
+			if declared.Role == imageagent.SlotRoleMain {
+				mainCount++
+			}
+			orderedIDs = append(orderedIDs, id)
+			records = append(records, approvedAssetRecord(projection.Run.BusinessTaskID, slot.Slot, candidate))
+			delete(requestedSet, id)
 		}
-		payload = append(payload, digestSlot{SlotID: strings.TrimSpace(slot.Slot.ID), CandidateAssetIDs: ids})
 	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
+	if len(requestedSet) != 0 || !slices.Equal(orderedIDs, requested) || mainCount != 1 {
+		return nil, nil, imageagent.ErrRevisionConflict
 	}
-	sum := sha256.Sum256(encoded)
-	return hex.EncodeToString(sum[:]), nil
+	return orderedIDs, records, nil
 }
 
 func imageAgentPublicationFingerprint(scope imageagent.RunScope, taskID string, revision int64, digest string, candidateIDs []string) (string, error) {

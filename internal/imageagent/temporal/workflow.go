@@ -1482,33 +1482,12 @@ func candidateAssetIDs(plan imageagent.Plan, results []SlotWorkflowResult) []str
 	return ids
 }
 
-type digestSlotResult struct {
-	SlotID            string   `json:"slot_id"`
-	CandidateAssetIDs []string `json:"candidate_asset_ids"`
-}
-
 func resultDigest(plan imageagent.Plan, results []SlotWorkflowResult) (string, error) {
-	if len(results) != len(plan.Slots) {
-		return "", fmt.Errorf("final image agent results do not match declared slots")
+	slots := make([]imageagent.SlotProjection, len(results))
+	for index := range results {
+		slots[index].Candidates = append([]imageagent.AssetCandidate(nil), results[index].Execution.Candidates...)
 	}
-	payload := make([]digestSlotResult, 0, len(plan.Slots))
-	for index, slot := range plan.Slots {
-		candidateIDs := make([]string, 0, len(results[index].Execution.Candidates))
-		for _, candidate := range results[index].Execution.Candidates {
-			id := strings.TrimSpace(candidate.AssetID)
-			if id == "" {
-				return "", fmt.Errorf("slot %s final result contains an empty candidate asset ID", slot.ID)
-			}
-			candidateIDs = append(candidateIDs, id)
-		}
-		payload = append(payload, digestSlotResult{SlotID: strings.TrimSpace(slot.ID), CandidateAssetIDs: candidateIDs})
-	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("encode final image agent result digest: %w", err)
-	}
-	sum := sha256.Sum256(encoded)
-	return hex.EncodeToString(sum[:]), nil
+	return imageagent.ResultDigestV2(plan, slots)
 }
 
 func findSlot(plan imageagent.Plan, slotID string) imageagent.Slot {
