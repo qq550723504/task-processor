@@ -266,6 +266,18 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     sessionData?.overview?.recovery_summary ??
     session.data?.recovery_summary ??
     preview.data.asset_generation_overview?.recovery_summary;
+  const overviewActionCards = (
+    <div className="grid min-w-0 gap-3 2xl:grid-cols-2">
+      <ResolvedActionCard
+        summary={suppressResolvedActionSummary ? undefined : resolvedActionSummary}
+        onSelect={(summary) => workspaceActions.handleAction(summary)}
+      />
+      <RecoverySummaryCard
+        summary={recoverySummary}
+        onSelect={workspaceActions.handleRecovery}
+      />
+    </div>
+  );
   const canRepairSDS =
     taskResult.data?.status === "needs_review" &&
     taskResult.data?.result?.child_tasks?.some(
@@ -318,22 +330,24 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       section={selectedProductSection}
     />
   ) : !platformReviewSelected ? (
-    <WorkspaceOverviewPanel
-      overview={sessionData.overview}
-      reviewSummary={sessionData.review_summary}
-    />
+    <div className="min-w-0 space-y-4">
+      {overviewActionCards}
+      <WorkspaceOverviewPanel
+        emptyState={
+          <Card className="p-5">
+            <h2 className="text-base font-semibold text-foreground">商品概览</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              当前任务暂无生成指标或审核汇总，仍可从左侧栏目查看商品资料。
+            </p>
+          </Card>
+        }
+        overview={sessionData.overview}
+        reviewSummary={sessionData.review_summary}
+      />
+    </div>
   ) : (
     <div className="min-w-0 space-y-4">
-      <div className="grid min-w-0 gap-3 2xl:grid-cols-2">
-        <ResolvedActionCard
-          summary={suppressResolvedActionSummary ? undefined : resolvedActionSummary}
-          onSelect={(summary) => workspaceActions.handleAction(summary)}
-        />
-        <RecoverySummaryCard
-          summary={recoverySummary}
-          onSelect={workspaceActions.handleRecovery}
-        />
-      </div>
+      {overviewActionCards}
 
       {selectedPlatform === "shein" ? (
         <SheinFlowNav
@@ -373,10 +387,14 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         onGeneratePlatformData={handleRunPlatformAdaptTemporal}
         onGenerateProduct={handleRunStandardProductTemporal}
         isCanonicalTask={Boolean(taskResult.data?.result?.canonical_product)}
+        subtitle={platformReviewSelected ? workspaceSubtitle : "商品资料"}
         statusLabel={workspaceStatusLabel}
-        subtitle={workspaceSubtitle}
         taskId={taskId}
-        title={workspaceTitle}
+        title={
+          platformReviewSelected
+            ? workspaceTitle
+            : taskResult.data?.result?.canonical_product?.title || workspaceTitle
+        }
         updatedAtLabel={workspaceUpdatedAt}
       />
 
