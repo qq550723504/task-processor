@@ -117,4 +117,56 @@ describe("Product Workspace review model", () => {
     expect(issues).toHaveLength(2);
     expect(new Set(issues.map((issue) => issue.id)).size).toBe(2);
   });
+
+  it("preserves structured review reasons alongside warning-only workflow issues", () => {
+    const task = {
+      status: "needs_review",
+      review_reasons: ["类目需要人工确认"],
+      result: {
+        workflow_issues: [
+          {
+            code: "copy_warning",
+            severity: "warning",
+            message: "标题建议优化",
+          },
+        ],
+      },
+    } as ListingKitTaskResult;
+
+    const issues = buildProductWorkspaceReviewIssues(task, "shein");
+
+    expect(issues.map((issue) => issue.title)).toEqual([
+      "标题建议优化",
+      "类目需要人工确认",
+    ]);
+    expect(issues[1]).toEqual(
+      expect.objectContaining({
+        severity: "blocking",
+        actionKey: "category",
+      }),
+    );
+  });
+
+  it("does not route unrelated SDS login issues into SHEIN store login", () => {
+    const task = {
+      status: "needs_review",
+      result: {
+        workflow_issues: [
+          {
+            code: "sds_auth_required",
+            severity: "blocking",
+            message: "SDS 登录状态已失效，请重新登录",
+          },
+        ],
+      },
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task, "shein")).toEqual([
+      {
+        id: "sds_auth_required",
+        severity: "blocking",
+        title: "SDS 登录状态已失效，请重新登录",
+      },
+    ]);
+  });
 });
