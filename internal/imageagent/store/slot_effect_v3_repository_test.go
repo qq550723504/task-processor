@@ -135,6 +135,116 @@ func TestSlotEffectV3RejectsManifestReplacement(t *testing.T) {
 	}
 }
 
+func TestSlotEffectV3HistoricalNilOperationManifestReplaysAcrossAdapters(t *testing.T) {
+	for _, factory := range []struct {
+		name string
+		run  func(*testing.T)
+	}{
+		{name: "memory", run: testMemoryHistoricalNilOperationReplay},
+		{name: "gorm", run: testGormHistoricalNilOperationReplay},
+	} {
+		t.Run(factory.name, factory.run)
+	}
+}
+
+const (
+	historicalNilOperationStagingJSON = `{"assets":[{"object_key":"image-agent/staging/tenant-a/run/asset.png","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size_bytes":42,"content_type":"image/png","width":1200,"height":1200,"source_asset_id":"source-1","operations":null,"provider_receipt_id":"receipt-1"}]}`
+	historicalNilOperationStagingFP   = "d567351ea12b329121705ff34e42e5e9b4c9c660eda7fee964a04a43bd4de3b7"
+	historicalNilOperationFinalJSON   = `{"assets":[{"object_key":"image-agent/final/tenant-a/run/asset.png","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size_bytes":42,"content_type":"image/png","width":1200,"height":1200,"source_asset_id":"source-1","operations":null,"provider_receipt_id":"receipt-1"}]}`
+)
+
+func testMemoryHistoricalNilOperationReplay(t *testing.T) {
+	t.Run("staging", func(t *testing.T) {
+		repository := NewMemoryRepository()
+		reservation := v3Reservation("historical-nil-memory-staging")
+		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+		memory := repository.(*memoryRepository)
+		memory.mu.Lock()
+		memory.slotEffectsV3[slotEffectKey(reservation.Identity)] = imageagent.SlotEffectV3Attempt{Identity: reservation.Identity, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint, Phase: imageagent.SlotEffectV3StagingPrepared, StagingManifest: v3NilOperationStagingManifest(), StagingManifestFingerprint: historicalNilOperationStagingFP}
+		memory.mu.Unlock()
+
+		attempt, err := repository.(imageagent.SlotExternalEffectV3Repository).PrepareSlotStagingV3(context.Background(), reservation, v3NilOperationStagingManifest())
+		require.NoError(t, err)
+		require.Equal(t, historicalNilOperationStagingFP, attempt.StagingManifestFingerprint)
+		require.Nil(t, attempt.StagingManifest.Assets[0].Operations)
+	})
+
+	t.Run("final", func(t *testing.T) {
+		repository := NewMemoryRepository()
+		reservation := v3Reservation("historical-nil-memory-final")
+		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+		request := v3NilOperationPublicationRequest(reservation)
+		memory := repository.(*memoryRepository)
+		memory.mu.Lock()
+		memory.slotEffectsV3[slotEffectKey(reservation.Identity)] = historicalNilOperationPublicationAttempt(reservation, request)
+		memory.mu.Unlock()
+
+		attempt, claim, claimed, err := repository.(imageagent.SlotExternalEffectV3Repository).ClaimSlotPublicationV3(context.Background(), request)
+		require.NoError(t, err)
+		require.False(t, claimed)
+		require.Equal(t, int64(1), claim.Fence)
+		require.Nil(t, attempt.FinalManifest.Assets[0].Operations)
+	})
+}
+
+func testGormHistoricalNilOperationReplay(t *testing.T) {
+	t.Run("staging", func(t *testing.T) {
+		db := newConcurrentSQLite(t)
+		repository := NewGormRepository(db)
+		reservation := v3Reservation("historical-nil-gorm-staging")
+		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+		row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+		row.Phase = string(imageagent.SlotEffectV3StagingPrepared)
+		row.StagingManifestJSON = []byte(historicalNilOperationStagingJSON)
+		row.StagingManifestFingerprint = historicalNilOperationStagingFP
+		require.NoError(t, db.Create(&row).Error)
+
+		attempt, err := repository.(imageagent.SlotExternalEffectV3Repository).PrepareSlotStagingV3(context.Background(), reservation, v3NilOperationStagingManifest())
+		require.NoError(t, err)
+		require.Equal(t, historicalNilOperationStagingFP, attempt.StagingManifestFingerprint)
+		require.Nil(t, attempt.StagingManifest.Assets[0].Operations)
+	})
+
+	t.Run("final", func(t *testing.T) {
+		db := newConcurrentSQLite(t)
+		repository := NewGormRepository(db)
+		reservation := v3Reservation("historical-nil-gorm-final")
+		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+		request := v3NilOperationPublicationRequest(reservation)
+		row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+		row.Phase = string(imageagent.SlotEffectV3PublicationClaimed)
+		row.PublicationOwner = request.Owner
+		row.PublicationFence = 1
+		row.PublicationFingerprint = request.PublicationFingerprint
+		lease := time.Now().UTC().Add(time.Hour)
+		row.PublicationLeaseExpiresAt = &lease
+		row.FinalManifestJSON = []byte(historicalNilOperationFinalJSON)
+		require.NoError(t, db.Create(&row).Error)
+
+		attempt, claim, claimed, err := repository.(imageagent.SlotExternalEffectV3Repository).ClaimSlotPublicationV3(context.Background(), request)
+		require.NoError(t, err)
+		require.False(t, claimed)
+		require.Equal(t, int64(1), claim.Fence)
+		require.Nil(t, attempt.FinalManifest.Assets[0].Operations)
+	})
+}
+
+func v3NilOperationStagingManifest() imageagent.StagingManifest {
+	return imageagent.StagingManifest{Assets: []imageagent.StagedAssetRef{{ObjectKey: "image-agent/staging/tenant-a/run/asset.png", SHA256: v3SHA256, SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", ProviderReceiptID: "receipt-1"}}}
+}
+
+func v3NilOperationFinalManifest() imageagent.FinalManifest {
+	return imageagent.FinalManifest{Assets: []imageagent.StagedAssetRef{{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256, SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", ProviderReceiptID: "receipt-1"}}}
+}
+
+func v3NilOperationPublicationRequest(reservation imageagent.SlotEffectV3Reservation) imageagent.PublicationClaimRequest {
+	return imageagent.PublicationClaimRequest{Reservation: reservation, Owner: "worker-a", LeaseDuration: time.Hour, PublicationFingerprint: "historical-nil-publication", FinalManifest: v3NilOperationFinalManifest()}
+}
+
+func historicalNilOperationPublicationAttempt(reservation imageagent.SlotEffectV3Reservation, request imageagent.PublicationClaimRequest) imageagent.SlotEffectV3Attempt {
+	return imageagent.SlotEffectV3Attempt{Identity: reservation.Identity, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint, Phase: imageagent.SlotEffectV3PublicationClaimed, Publication: imageagent.PublicationClaim{Owner: request.Owner, Fence: 1, LeaseExpiresAt: time.Now().UTC().Add(time.Hour)}, PublicationFingerprint: request.PublicationFingerprint, FinalManifest: v3NilOperationFinalManifest()}
+}
+
 func TestSlotEffectV3RejectsIllegalPhaseTransitions(t *testing.T) {
 	for _, factory := range newV3ReviewFixtures() {
 		t.Run(factory.name, func(t *testing.T) {

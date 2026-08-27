@@ -168,6 +168,9 @@ func NormalizeArtifactOperations(operations []string) ([]string, error) {
 	if len(operations) > maxArtifactOperations {
 		return nil, ErrValidation
 	}
+	if operations == nil {
+		return nil, nil
+	}
 	normalized := make([]string, len(operations))
 	for index, operation := range operations {
 		if len(operation) == 0 || len(operation) > maxArtifactOperationLength {
