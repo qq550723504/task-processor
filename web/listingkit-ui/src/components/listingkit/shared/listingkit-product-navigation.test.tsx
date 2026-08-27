@@ -77,12 +77,11 @@ describe("ListingKit product-oriented navigation", () => {
 
   it("expands the product group when navigation activates a child route", () => {
     navigation.pathname = "/listing-kits/home";
-    const shell = (
+    const { rerender } = render(
       <ListingKitAppShell identity={{ roles: ["listingkit_admin"] }}>
         <div>workspace content</div>
-      </ListingKitAppShell>
+      </ListingKitAppShell>,
     );
-    const { rerender } = render(shell);
 
     expect(screen.getByRole("button", { name: "商品" })).toHaveAttribute(
       "aria-expanded",
@@ -91,7 +90,11 @@ describe("ListingKit product-oriented navigation", () => {
     expect(screen.queryByRole("link", { name: "商品中心" })).not.toBeInTheDocument();
 
     navigation.pathname = "/listing-kits/canonical-products";
-    rerender(shell);
+    rerender(
+      <ListingKitAppShell identity={{ roles: ["listingkit_admin"] }}>
+        <div>workspace content</div>
+      </ListingKitAppShell>,
+    );
 
     expect(screen.getByRole("button", { name: "商品" })).toHaveAttribute(
       "aria-expanded",
