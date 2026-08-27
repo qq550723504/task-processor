@@ -456,19 +456,14 @@ function NavSectionItem({
 }) {
   const active = isActiveNavTreeItem(pathname, item);
   const [open, setOpen] = useState(active);
+  const expanded = active || open;
   const { open: sidebarOpen } = useSidebar();
   const Icon = item.icon;
-
-  useEffect(() => {
-    if (active) {
-      setOpen(true);
-    }
-  }, [active]);
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        aria-expanded={open}
+        aria-expanded={expanded}
         isActive={active}
         onClick={() => setOpen((current) => !current)}
         type="button"
@@ -478,11 +473,11 @@ function NavSectionItem({
         <ChevronRight
           aria-hidden="true"
           className={`ml-auto size-4 shrink-0 transition-transform group-data-[state=collapsed]/sidebar:sr-only ${
-            open ? "rotate-90" : ""
+            expanded ? "rotate-90" : ""
           }`}
         />
       </SidebarMenuButton>
-      {open && sidebarOpen ? (
+      {expanded && sidebarOpen ? (
         <ul className="ml-4 mt-1 flex min-w-0 flex-col gap-1 border-l border-sidebar-border pl-2 group-data-[state=collapsed]/sidebar:hidden">
           {item.children.map((child) => (
             <NavTreeNode key={child.label} item={child} pathname={pathname} />
