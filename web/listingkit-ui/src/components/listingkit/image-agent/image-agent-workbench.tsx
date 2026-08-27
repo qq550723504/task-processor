@@ -83,6 +83,8 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
     (slot) => slot.slot.status === "accepted",
   ).length;
   const commandPending = Boolean(agent.pendingAction || projection.pending_command);
+  const commandExhausted = projection.command_ingress?.exhausted === true;
+  const newCommandDisabled = commandPending || commandExhausted;
   const currentDraft = draftState?.revision === projection.plan.revision
     ? draftState.draft
     : draftFromProjection(projection);
@@ -170,7 +172,7 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
           slots={currentDraft.slots}
           projections={slotProjectionByID}
           editable={canEditPlan}
-          pending={commandPending}
+          pending={newCommandDisabled}
           sourceAssets={sourceAssets.filter((asset) => currentDraft.source_asset_ids.includes(asset.id))}
           styleAssets={styleAssets.filter((asset) => currentDraft.style_reference_ids?.includes(asset.id))}
           onChange={(slots) => setDraftState({ revision: projection.plan.revision, draft: { ...currentDraft, slots } })}
@@ -198,6 +200,18 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
             </dl>
           </section>
 
+          {commandExhausted ? (
+            <section
+              role="alert"
+              className="rounded-[1.5rem] border border-destructive/40 bg-destructive/5 p-4 text-destructive"
+            >
+              <h3 className="font-semibold">命令容量已耗尽，需要创建新运行</h3>
+              <p className="mt-2 text-sm opacity-80">
+                已使用 {projection.command_ingress?.used}/{projection.command_ingress?.limit} 个命令记录；已知操作仍可恢复。
+              </p>
+            </section>
+          ) : null}
+
           {projection.run.status === "blocked" ? (
             <section className="rounded-[1.5rem] border border-amber-400/60 bg-amber-50 p-4 text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
               <p className="text-xs font-semibold uppercase tracking-[0.18em]">
@@ -217,7 +231,7 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
                 <button
                   type="button"
                   className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-xl bg-amber-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-200 dark:text-amber-950"
-                  disabled={commandPending}
+                  disabled={newCommandDisabled}
                   onClick={() => void agent.retrySlot(blockedSlotID)}
                 >
                   仅重试 {blockedSlotID}
@@ -230,20 +244,33 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
             <h3 className="font-semibold text-foreground">可执行操作</h3>
             <div className="mt-3 space-y-2">
               {projection.pending_command ? (
-                <button
-                  type="button"
-                  className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-amber-950 px-4 text-sm font-medium text-white disabled:opacity-50"
-                  disabled={Boolean(agent.pendingAction)}
-                  onClick={() => void agent.resumePending()}
-                >
-                  恢复上次操作
-                </button>
+                <div className="space-y-2">
+                  {projection.pending_command.failure_message ? (
+                    <div className="rounded-xl border border-amber-400/60 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
+                      <p className="font-medium">{projection.pending_command.failure_message}</p>
+                      {projection.pending_command.failure_code ? (
+                        <p className="mt-1 text-xs opacity-75">
+                          {projection.pending_command.failure_category || "technical"} · {projection.pending_command.failure_code}
+                          {projection.pending_command.attempt ? ` · 第 ${projection.pending_command.attempt} 次尝试` : ""}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-amber-950 px-4 text-sm font-medium text-white disabled:opacity-50"
+                    disabled={Boolean(agent.pendingAction)}
+                    onClick={() => void agent.resumePending()}
+                  >
+                    恢复上次操作
+                  </button>
+                </div>
               ) : null}
               {projection.actions.includes("approve_results") ? (
                 <button
                   type="button"
                   className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-foreground px-4 text-sm font-medium text-background disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!projection.result_digest || commandPending}
+                  disabled={!projection.result_digest || newCommandDisabled}
                   onClick={() => void agent.approveResults()}
                 >
                   批准当前结果
@@ -253,7 +280,7 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
                 <button
                   type="button"
                   className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-border bg-background px-4 text-sm font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={commandPending}
+                  disabled={newCommandDisabled}
                   onClick={() => void agent.cancel()}
                 >
                   取消运行

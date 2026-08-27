@@ -11,6 +11,7 @@ import (
 )
 
 func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkflowResult, error) {
+	activityWire := activityWireForWorkflow(ctx)
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 10 * time.Minute,
 		RetryPolicy: &sdktemporal.RetryPolicy{
@@ -23,11 +24,11 @@ func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkf
 	activityInput := ExecuteSlotActivityInput{
 		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
 		Slot: input.Slot, Attempt: input.Attempt,
-		IdempotencyKey: slotAttemptKey(input.Slot, input.Attempt),
+		IdempotencyKey: slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
 		AssetCatalog:   input.AssetCatalog,
 	}
 	var execution imageagent.SlotExecutionResult
-	if err := workflow.ExecuteActivity(ctx, activityExecuteSlot, activityInput).Get(ctx, &execution); err != nil {
+	if err := workflow.ExecuteActivity(ctx, activityWire.executeSlot, activityInput).Get(ctx, &execution); err != nil {
 		return SlotWorkflowResult{
 			Execution: imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
 			Status:    imageagent.SlotStatusBlocked, ErrorCode: "slot_execution_failed",

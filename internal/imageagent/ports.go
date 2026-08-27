@@ -72,6 +72,7 @@ type RunProjection struct {
 	ProjectionVersion int64
 	AssetCatalog      AssetCatalog
 	PendingCommand    *PendingCommandReceipt
+	CommandIngress    CommandIngress
 }
 
 type SlotProjection struct {
@@ -91,6 +92,7 @@ type WorkflowProjection struct {
 	CompletedSlotIDs []string
 	ResultDigest     string
 	PendingCommand   *PendingCommandReceipt
+	CommandIngress   CommandIngress
 }
 
 type AssetCatalogScope struct {

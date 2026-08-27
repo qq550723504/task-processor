@@ -347,8 +347,8 @@ func validateScope(scope imageagent.RunScope) error {
 }
 
 func validateAttempt(attempt imageagent.StepAttempt) error {
-	if strings.TrimSpace(attempt.TenantID) == "" || strings.TrimSpace(attempt.OwnerUserID) == "" || strings.TrimSpace(attempt.RunID) == "" || strings.TrimSpace(attempt.SlotID) == "" || strings.TrimSpace(attempt.Node) == "" || strings.TrimSpace(attempt.IdempotencyKey) == "" || attempt.Attempt <= 0 {
-		return fmt.Errorf("attempt tenant, owner, run, slot, node, idempotency key, and positive attempt are required")
+	if strings.TrimSpace(attempt.TenantID) == "" || strings.TrimSpace(attempt.OwnerUserID) == "" || strings.TrimSpace(attempt.RunID) == "" || strings.TrimSpace(attempt.SlotID) == "" || strings.TrimSpace(attempt.Node) == "" || strings.TrimSpace(attempt.IdempotencyKey) == "" || attempt.PlanRevision <= 0 || attempt.Attempt <= 0 {
+		return fmt.Errorf("attempt tenant, owner, run, slot, positive plan revision, node, idempotency key, and positive attempt are required")
 	}
 	return nil
 }
@@ -373,11 +373,11 @@ func slotKey(scope imageagent.RunScope, revision int64, slotID string) string {
 }
 
 func attemptKey(attempt imageagent.StepAttempt) string {
-	return fmt.Sprintf("%s\x00%s\x00%s", runKey(attempt.TenantID, attempt.OwnerUserID, attempt.RunID), attempt.SlotID, attempt.IdempotencyKey)
+	return fmt.Sprintf("%s\x00%d\x00%s\x00%s", runKey(attempt.TenantID, attempt.OwnerUserID, attempt.RunID), attempt.PlanRevision, attempt.SlotID, attempt.IdempotencyKey)
 }
 
 func attemptNumberKey(attempt imageagent.StepAttempt) string {
-	return fmt.Sprintf("%s\x00%s\x00%d", runKey(attempt.TenantID, attempt.OwnerUserID, attempt.RunID), attempt.SlotID, attempt.Attempt)
+	return fmt.Sprintf("%s\x00%d\x00%s\x00%d", runKey(attempt.TenantID, attempt.OwnerUserID, attempt.RunID), attempt.PlanRevision, attempt.SlotID, attempt.Attempt)
 }
 
 func nextCursor(events []imageagent.RunEvent) int64 {

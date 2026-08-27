@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -102,6 +103,9 @@ func (r *memoryRepository) CommitProjection(_ context.Context, input imageagent.
 	if current.ProjectionVersion != input.ExpectedProjectionVersion {
 		return imageagent.RunProjection{}, imageagent.ErrRevisionConflict
 	}
+	if err := validateProjectionPreconditions(current, r.runs[key], input); err != nil {
+		return imageagent.RunProjection{}, err
+	}
 	if err := validateProjectionMutation(current, input); err != nil {
 		return imageagent.RunProjection{}, err
 	}
@@ -190,9 +194,6 @@ func (r *memoryRepository) applyMemoryProjectionMutation(input imageagent.Projec
 	if input.PlanMutation != nil {
 		run := r.runs[key]
 		mutation := input.PlanMutation
-		if run.ActivePlanRevision != mutation.ExpectedActiveRevision {
-			return imageagent.ErrRevisionConflict
-		}
 		if r.plans[key] == nil {
 			r.plans[key] = map[int64]imageagent.Plan{}
 		}
@@ -242,7 +243,7 @@ func (r *gormRepository) InitializeRun(ctx context.Context, input imageagent.Pro
 		return imageagent.RunProjection{}, err
 	}
 	var result imageagent.RunProjection
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
 		if existing, found, err := findProjectionCommit(ctx, tx, prepared.Scope, prepared.CommitID); err != nil {
 			return err
 		} else if found {
@@ -299,6 +300,13 @@ func (r *gormRepository) InitializeRun(ctx context.Context, input imageagent.Pro
 		result = prepared.Snapshot
 		return nil
 	})
+	if err != nil {
+		if recovered, found, recoverErr := r.recoverProjectionCommit(ctx, prepared.Scope, prepared.CommitID, fingerprint); recoverErr != nil {
+			return imageagent.RunProjection{}, recoverErr
+		} else if found {
+			return recovered, nil
+		}
+	}
 	return result, err
 }
 
@@ -339,7 +347,7 @@ func (r *gormRepository) CommitProjection(ctx context.Context, input imageagent.
 		return imageagent.RunProjection{}, fmt.Errorf("projection commit ID and event type are required")
 	}
 	var result imageagent.RunProjection
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
 		if existing, found, err := findProjectionCommit(ctx, tx, input.Scope, input.CommitID); err != nil {
 			return err
 		} else if found {
@@ -348,22 +356,38 @@ func (r *gormRepository) CommitProjection(ctx context.Context, input imageagent.
 			}
 			return decodeProjection(existing.SnapshotJSON, &result)
 		}
-		if _, err := r.findRunForUpdate(ctx, tx, input.Scope); err != nil {
+		lockedRun, err := r.findRunForUpdate(ctx, tx, input.Scope)
+		if err != nil {
 			return err
 		}
 		var current projectionRecord
-		err := scopedWhere(tx.Clauses(clause.Locking{Strength: "UPDATE"}), input.Scope).First(&current).Error
+		err = scopedWhere(tx.Clauses(clause.Locking{Strength: "UPDATE"}), input.Scope).First(&current).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return imageagent.ErrProjectionSnapshotMissing
 		}
 		if err != nil {
 			return err
 		}
+		if existing, found, err := findProjectionCommit(ctx, tx, input.Scope, input.CommitID); err != nil {
+			return err
+		} else if found {
+			if existing.Fingerprint != fingerprint {
+				return imageagent.ErrRevisionConflict
+			}
+			return decodeProjection(existing.SnapshotJSON, &result)
+		}
 		if current.Version != input.ExpectedProjectionVersion {
 			return imageagent.ErrRevisionConflict
 		}
 		var currentSnapshot imageagent.RunProjection
 		if err := decodeProjection(current.SnapshotJSON, &currentSnapshot); err != nil {
+			return err
+		}
+		persistedRun, err := recordToRun(lockedRun)
+		if err != nil {
+			return err
+		}
+		if err := validateProjectionPreconditions(currentSnapshot, persistedRun, input); err != nil {
 			return err
 		}
 		if err := validateProjectionMutation(currentSnapshot, input); err != nil {
@@ -399,7 +423,54 @@ func (r *gormRepository) CommitProjection(ctx context.Context, input imageagent.
 		result = next
 		return nil
 	})
+	if err != nil {
+		if recovered, found, recoverErr := r.recoverProjectionCommit(ctx, input.Scope, input.CommitID, fingerprint); recoverErr != nil {
+			return imageagent.RunProjection{}, recoverErr
+		} else if found {
+			return recovered, nil
+		}
+	}
 	return result, err
+}
+
+func (r *gormRepository) recoverProjectionCommit(ctx context.Context, scope imageagent.RunScope, commitID, fingerprint string) (imageagent.RunProjection, bool, error) {
+	for attempt := 0; attempt < 8; attempt++ {
+		existing, found, err := findProjectionCommit(ctx, r.db, scope, commitID)
+		if err == nil && found {
+			if existing.Fingerprint != fingerprint {
+				return imageagent.RunProjection{}, false, imageagent.ErrRevisionConflict
+			}
+			var projection imageagent.RunProjection
+			if err := decodeProjection(existing.SnapshotJSON, &projection); err != nil {
+				return imageagent.RunProjection{}, false, err
+			}
+			return projection, true, nil
+		}
+		if err != nil && !isConcurrentProjectionError(err) {
+			return imageagent.RunProjection{}, false, err
+		}
+		if attempt < 7 {
+			time.Sleep(time.Duration(attempt+1) * time.Millisecond)
+		}
+	}
+	return imageagent.RunProjection{}, false, nil
+}
+
+func isConcurrentProjectionError(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "locked") || strings.Contains(message, "busy") || strings.Contains(message, "serialization")
+}
+
+func withProjectionTransaction(ctx context.Context, db *gorm.DB, transaction func(*gorm.DB) error) error {
+	var err error
+	for attempt := 0; attempt < 8; attempt++ {
+		err = db.WithContext(ctx).Transaction(transaction)
+		if err == nil || !isConcurrentProjectionError(err) {
+			return err
+		}
+		time.Sleep(time.Duration(attempt+1) * time.Millisecond)
+	}
+	return err
 }
 
 func validateProjectionMutation(current imageagent.RunProjection, input imageagent.ProjectionCommit) error {
@@ -443,6 +514,30 @@ func validateProjectionMutation(current imageagent.RunProjection, input imageage
 	if !reflect.DeepEqual(input.Snapshot.AssetCatalog, current.AssetCatalog) {
 		return fmt.Errorf("%w: catalog snapshot is immutable", imageagent.ErrRevisionConflict)
 	}
+	if err := imageagent.ValidatePlanAgainstCatalog(input.Snapshot.Plan, current.AssetCatalog); err != nil {
+		return fmt.Errorf("%w: projection plan is outside the persisted catalog: %v", imageagent.ErrRevisionConflict, err)
+	}
+	return nil
+}
+
+func validateProjectionPreconditions(current imageagent.RunProjection, persistedRun imageagent.Run, input imageagent.ProjectionCommit) error {
+	if current.Run.Version != persistedRun.Version || current.Run.ActivePlanRevision != persistedRun.ActivePlanRevision {
+		return fmt.Errorf("%w: normalized run and public projection disagree", imageagent.ErrRevisionConflict)
+	}
+	if input.RunMutation != nil && persistedRun.Version != input.ExpectedRunVersion {
+		return imageagent.ErrRevisionConflict
+	}
+	if input.PlanMutation != nil {
+		if persistedRun.ActivePlanRevision != input.PlanMutation.ExpectedActiveRevision {
+			return imageagent.ErrRevisionConflict
+		}
+		if err := imageagent.ValidatePlan(input.PlanMutation.Plan); err != nil {
+			return err
+		}
+		if err := imageagent.ValidatePlanAgainstCatalog(input.PlanMutation.Plan, current.AssetCatalog); err != nil {
+			return fmt.Errorf("%w: replacement plan is outside the persisted catalog: %v", imageagent.ErrRevisionConflict, err)
+		}
+	}
 	return nil
 }
 
@@ -462,7 +557,7 @@ func (r *gormRepository) applyGormProjectionMutation(ctx context.Context, tx *go
 	}
 	if input.PlanMutation != nil {
 		mutation := input.PlanMutation
-		updated := scopedRunWhere(tx.Model(&runRecord{}), input.Scope).Where("active_plan_revision = ?", mutation.ExpectedActiveRevision).Update("active_plan_revision", mutation.Plan.Revision)
+		updated := scopedRunWhere(tx.Model(&runRecord{}), input.Scope).Update("active_plan_revision", mutation.Plan.Revision)
 		if updated.Error != nil {
 			return updated.Error
 		}
@@ -496,7 +591,7 @@ func (r *gormRepository) applyGormProjectionMutation(ctx context.Context, tx *go
 		if updated.RowsAffected != 1 {
 			return imageagent.ErrRevisionConflict
 		}
-		row := attemptRecord{TenantID: mutation.Attempt.TenantID, OwnerUserID: mutation.Attempt.OwnerUserID, RunID: mutation.Attempt.RunID, SlotID: mutation.Attempt.SlotID, Attempt: mutation.Attempt.Attempt, Node: mutation.Attempt.Node, IdempotencyKey: mutation.Attempt.IdempotencyKey, Outcome: mutation.Attempt.Outcome, ErrorCategory: mutation.Attempt.ErrorCategory}
+		row := attemptRecord{TenantID: mutation.Attempt.TenantID, OwnerUserID: mutation.Attempt.OwnerUserID, RunID: mutation.Attempt.RunID, PlanRevision: mutation.Attempt.PlanRevision, SlotID: mutation.Attempt.SlotID, Attempt: mutation.Attempt.Attempt, Node: mutation.Attempt.Node, IdempotencyKey: mutation.Attempt.IdempotencyKey, Outcome: mutation.Attempt.Outcome, ErrorCategory: mutation.Attempt.ErrorCategory}
 		if err := tx.Create(&row).Error; err != nil {
 			return err
 		}
@@ -601,7 +696,7 @@ func scopedWhere(db *gorm.DB, scope imageagent.RunScope) *gorm.DB {
 	return db.Where("tenant_id = ? AND owner_user_id = ? AND run_id = ?", scope.TenantID, scope.OwnerUserID, scope.RunID)
 }
 func scopedRunWhere(db *gorm.DB, scope imageagent.RunScope) *gorm.DB {
-	return db.Where("tenant_id = ? AND user_id = ? AND id = ?", scope.TenantID, scope.OwnerUserID, scope.RunID)
+	return db.Where("tenant_id = ? AND owner_user_id = ? AND id = ?", scope.TenantID, scope.OwnerUserID, scope.RunID)
 }
 func mapCreateConflict(err error) error {
 	if err == nil {

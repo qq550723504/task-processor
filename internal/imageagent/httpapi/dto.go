@@ -190,6 +190,7 @@ type runProjectionResponse struct {
 	ProjectionVersion int64                `json:"projection_version"`
 	AssetCatalog      []authorizedAssetDTO `json:"asset_catalog"`
 	PendingCommand    *pendingCommandDTO   `json:"pending_command,omitempty"`
+	CommandIngress    commandIngressDTO    `json:"command_ingress"`
 }
 
 type authorizedAssetDTO struct {
@@ -200,12 +201,24 @@ type authorizedAssetDTO struct {
 }
 
 type pendingCommandDTO struct {
-	ActionID     string `json:"action_id"`
-	Kind         string `json:"kind"`
-	Phase        string `json:"phase"`
-	Status       string `json:"status"`
-	PlanRevision int64  `json:"plan_revision"`
-	SlotID       string `json:"slot_id,omitempty"`
+	ActionID        string     `json:"action_id"`
+	Kind            string     `json:"kind"`
+	Phase           string     `json:"phase"`
+	Status          string     `json:"status"`
+	PlanRevision    int64      `json:"plan_revision"`
+	SlotID          string     `json:"slot_id,omitempty"`
+	FailureCode     string     `json:"failure_code,omitempty"`
+	FailureCategory string     `json:"failure_category,omitempty"`
+	FailureMessage  string     `json:"failure_message,omitempty"`
+	LastFailedAt    *time.Time `json:"last_failed_at,omitempty"`
+	Attempt         int        `json:"attempt,omitempty"`
+}
+
+type commandIngressDTO struct {
+	Used      int    `json:"used"`
+	Limit     int    `json:"limit"`
+	Exhausted bool   `json:"exhausted"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 func newRunProjectionResponse(value imageagent.RunProjection) runProjectionResponse {
@@ -214,6 +227,7 @@ func newRunProjectionResponse(value imageagent.RunProjection) runProjectionRespo
 		Actions: append([]imageagent.Action(nil), value.Actions...), LastEventID: value.LastEventID,
 		ProjectionVersion: value.ProjectionVersion,
 		Slots:             make([]slotProjectionDTO, len(value.Slots)),
+		CommandIngress:    commandIngressDTO{Used: value.CommandIngress.Used, Limit: value.CommandIngress.Limit, Exhausted: value.CommandIngress.Exhausted, Reason: value.CommandIngress.Reason},
 	}
 	response.AssetCatalog = make([]authorizedAssetDTO, 0, len(value.AssetCatalog.Assets))
 	for _, asset := range value.AssetCatalog.Assets {
@@ -230,7 +244,7 @@ func newRunProjectionResponse(value imageagent.RunProjection) runProjectionRespo
 	}
 	if value.PendingCommand != nil {
 		receipt := value.PendingCommand
-		response.PendingCommand = &pendingCommandDTO{ActionID: receipt.ActionID, Kind: receipt.Kind, Phase: receipt.Phase, Status: receipt.Status, PlanRevision: receipt.PlanRevision, SlotID: receipt.SlotID}
+		response.PendingCommand = &pendingCommandDTO{ActionID: receipt.ActionID, Kind: receipt.Kind, Phase: receipt.Phase, Status: receipt.Status, PlanRevision: receipt.PlanRevision, SlotID: receipt.SlotID, FailureCode: receipt.FailureCode, FailureCategory: receipt.FailureCategory, FailureMessage: receipt.FailureMessage, LastFailedAt: receipt.LastFailedAt, Attempt: receipt.Attempt}
 	}
 	for index, slot := range value.Slots {
 		response.Slots[index] = newSlotProjectionDTO(slot)

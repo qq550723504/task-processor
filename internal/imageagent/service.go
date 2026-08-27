@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"task-processor/internal/authidentity"
 )
@@ -67,6 +68,9 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	if err := ValidatePlanAgainstCatalog(input.Plan, catalog); err != nil {
 		return fmt.Errorf("%w: validate authorized image assets: %v", ErrValidation, err)
+	}
+	if catalog.Manifest.CreatedAt.IsZero() {
+		catalog.Manifest.CreatedAt = time.Now().UTC()
 	}
 	run := Run{
 		ID: input.RunID, BusinessTaskID: input.BusinessTaskID,

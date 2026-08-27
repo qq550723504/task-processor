@@ -42,6 +42,7 @@ type StepAttempt struct {
 	OwnerUserID    string
 	RunID          string
 	SlotID         string
+	PlanRevision   int64
 	Node           string
 	IdempotencyKey string
 	Attempt        int

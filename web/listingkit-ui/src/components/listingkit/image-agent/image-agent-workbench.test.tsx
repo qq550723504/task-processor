@@ -94,6 +94,55 @@ describe("ImageAgentWorkbench", () => {
     ).toBeEnabled();
   });
 
+  it("shows durable safe command failure details after refresh", () => {
+    const projection = projectionWithSlots(7, "scene-2");
+    projection.pending_command = {
+      action_id: "retry-failed",
+      kind: "retry_slot",
+      phase: "retry.persist_result",
+      status: "pending",
+      plan_revision: 3,
+      slot_id: "scene-2",
+      failure_code: "persistence_failed",
+      failure_category: "persistence",
+      failure_message: "运行状态保存暂时失败",
+      last_failed_at: "2026-08-27T00:00:00Z",
+      attempt: 2,
+    };
+
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
+
+    expect(screen.getByText("运行状态保存暂时失败")).toBeInTheDocument();
+    expect(screen.getByText(/persistence_failed/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "恢复上次操作" })).toBeEnabled();
+  });
+
+  it("shows durable command exhaustion and disables only new commands", () => {
+    const projection = projectionWithSlots(7, "scene-2");
+    projection.command_ingress = {
+      used: 1024,
+      limit: 1024,
+      exhausted: true,
+      reason: "command_capacity_exhausted",
+    };
+    projection.pending_command = {
+      action_id: "retry-at-cap",
+      kind: "retry_slot",
+      phase: "retry.persist_result",
+      status: "pending",
+      plan_revision: 3,
+      slot_id: "scene-2",
+    };
+
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("命令容量已耗尽，需要创建新运行");
+    expect(screen.getByRole("button", { name: "仅重试 scene-2" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存计划修改" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消运行" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "恢复上次操作" })).toBeEnabled();
+  });
+
   it("keeps source materials and style references separate from generated candidates", () => {
     const projection = projectionWithSlots(7, "scene-2");
 

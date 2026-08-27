@@ -107,6 +107,18 @@ export type ImageAgentPendingCommand = {
   status: "pending";
   plan_revision: number;
   slot_id?: string;
+  failure_code?: string;
+  failure_category?: string;
+  failure_message?: string;
+  last_failed_at?: string;
+  attempt?: number;
+};
+
+export type ImageAgentCommandIngress = {
+  used: number;
+  limit: number;
+  exhausted: boolean;
+  reason?: string;
 };
 
 export type ImageAgentCandidate = {
@@ -133,6 +145,7 @@ export type ImageAgentProjection = {
   projection_version: number;
   asset_catalog: ImageAgentAuthorizedAsset[];
   pending_command?: ImageAgentPendingCommand;
+  command_ingress?: ImageAgentCommandIngress;
 };
 
 export type ImageAgentProjectionEvent = {

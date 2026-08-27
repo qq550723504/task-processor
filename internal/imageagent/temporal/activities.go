@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	sdkactivity "go.temporal.io/sdk/activity"
+	sdktemporal "go.temporal.io/sdk/temporal"
 
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
@@ -89,7 +90,7 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 	}
 	attempt := imageagent.StepAttempt{
 		TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID,
-		SlotID: result.Execution.SlotID, Node: "execute_slot",
+		PlanRevision: input.PlanRevision, SlotID: result.Execution.SlotID, Node: "execute_slot",
 		IdempotencyKey: input.AttemptKey, Attempt: result.Execution.Attempt,
 		Outcome: outcome, ErrorCategory: result.ErrorCode,
 	}
@@ -180,6 +181,7 @@ func (a *Activities) PersistRunState(ctx context.Context, input PersistRunStateA
 	updated.Slots = append([]imageagent.SlotProjection(nil), input.Projection.Slots...)
 	updated.ResultDigest = input.Projection.ResultDigest
 	updated.PendingCommand = clonePendingReceipt(input.Projection.PendingCommand)
+	updated.CommandIngress = input.Projection.CommandIngress
 	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: input.CommitID, ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: "run.updated", EventPayload: json.RawMessage(`{}`), ExpectedRunVersion: current.Run.Version, RunMutation: &imageagent.RunMutation{Status: updated.Run.Status, CurrentNode: input.CurrentNode, ActivePlanRevision: input.PlanRevision, Block: updated.Run.Block}})
 	if err != nil {
 		return fmt.Errorf("commit image agent run projection: %w", err)
@@ -256,12 +258,17 @@ func (a *Activities) PersistPendingCommand(ctx context.Context, input PersistPen
 	if err != nil {
 		return err
 	}
-	if reflect.DeepEqual(current.PendingCommand, input.Receipt) {
+	if reflect.DeepEqual(current.PendingCommand, input.Receipt) && reflect.DeepEqual(current.CommandIngress, input.CommandIngress) {
 		return nil
 	}
 	updated := current
 	updated.PendingCommand = clonePendingReceipt(input.Receipt)
-	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: input.CommitID, ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: "command.receipt.updated", EventPayload: json.RawMessage(`{}`)})
+	updated.CommandIngress = input.CommandIngress
+	eventType := "command.receipt.updated"
+	if input.CommandIngress.Exhausted && !current.CommandIngress.Exhausted {
+		eventType = "command.ingress.exhausted"
+	}
+	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: input.CommitID, ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: eventType, EventPayload: json.RawMessage(`{}`)})
 	return err
 }
 
@@ -285,6 +292,38 @@ func (a *Activities) PublishApproved(ctx context.Context, input PublishApprovedA
 	})
 }
 
+func legacyMigrationRequiredError() error {
+	return sdktemporal.NewNonRetryableApplicationError(
+		"legacy image agent workflow requires an explicit v2 migration or a new run",
+		updateErrorLegacyMigrationRequired,
+		nil,
+	)
+}
+
+func (a *Activities) LegacyExecuteSlot(context.Context, LegacyExecuteSlotActivityInput) (imageagent.SlotExecutionResult, error) {
+	return imageagent.SlotExecutionResult{}, legacyMigrationRequiredError()
+}
+
+func (a *Activities) LegacyPersistSlotResult(context.Context, LegacyPersistSlotResultActivityInput) error {
+	return legacyMigrationRequiredError()
+}
+
+func (a *Activities) LegacyPersistRunState(context.Context, LegacyPersistRunStateActivityInput) error {
+	return legacyMigrationRequiredError()
+}
+
+func (a *Activities) LegacyPersistPlanRevision(context.Context, LegacyPersistPlanRevisionActivityInput) error {
+	return legacyMigrationRequiredError()
+}
+
+func (a *Activities) LegacyPersistPendingCommand(context.Context, LegacyPersistPendingCommandActivityInput) error {
+	return legacyMigrationRequiredError()
+}
+
+func (a *Activities) LegacyPublishApproved(context.Context, LegacyPublishApprovedActivityInput) error {
+	return legacyMigrationRequiredError()
+}
+
 type activityRegistrar interface {
 	RegisterActivityWithOptions(interface{}, sdkactivity.RegisterOptions)
 }
@@ -296,6 +335,12 @@ func RegisterActivities(registrar activityRegistrar, activities *Activities) err
 	if activities == nil {
 		return fmt.Errorf("image agent activities are required")
 	}
+	registrar.RegisterActivityWithOptions(activities.LegacyExecuteSlot, sdkactivity.RegisterOptions{Name: activityExecuteSlotLegacy})
+	registrar.RegisterActivityWithOptions(activities.LegacyPersistSlotResult, sdkactivity.RegisterOptions{Name: activityPersistSlotResultLegacy})
+	registrar.RegisterActivityWithOptions(activities.LegacyPersistRunState, sdkactivity.RegisterOptions{Name: activityPersistRunStateLegacy})
+	registrar.RegisterActivityWithOptions(activities.LegacyPersistPlanRevision, sdkactivity.RegisterOptions{Name: activityPersistPlanRevisionLegacy})
+	registrar.RegisterActivityWithOptions(activities.LegacyPersistPendingCommand, sdkactivity.RegisterOptions{Name: activityPersistPendingCommandLegacy})
+	registrar.RegisterActivityWithOptions(activities.LegacyPublishApproved, sdkactivity.RegisterOptions{Name: activityPublishApprovedLegacy})
 	registrar.RegisterActivityWithOptions(activities.ExecuteSlot, sdkactivity.RegisterOptions{Name: activityExecuteSlot})
 	registrar.RegisterActivityWithOptions(activities.PersistSlotResult, sdkactivity.RegisterOptions{Name: activityPersistSlotResult})
 	registrar.RegisterActivityWithOptions(activities.PersistRunState, sdkactivity.RegisterOptions{Name: activityPersistRunState})

@@ -127,12 +127,24 @@ type CatalogManifest struct {
 }
 
 type PendingCommandReceipt struct {
-	ActionID     string
-	Kind         string
-	Phase        string
-	Status       string
-	PlanRevision int64
-	SlotID       string
+	ActionID        string
+	Kind            string
+	Phase           string
+	Status          string
+	PlanRevision    int64
+	SlotID          string
+	FailureCode     string
+	FailureCategory string
+	FailureMessage  string
+	LastFailedAt    *time.Time
+	Attempt         int
+}
+
+type CommandIngress struct {
+	Used      int
+	Limit     int
+	Exhausted bool
+	Reason    string
 }
 
 type ProductContextRef struct {

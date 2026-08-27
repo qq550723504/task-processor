@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"time"
 
 	"task-processor/internal/pkg/safeimagehttp"
 )
@@ -65,17 +64,18 @@ func NormalizeAssetCatalog(catalog AssetCatalog) (AssetCatalog, error) {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	normalized := AssetCatalog{Assets: make([]AuthorizedAsset, 0, len(ids))}
+	normalized := AssetCatalog{Manifest: catalog.Manifest, Assets: make([]AuthorizedAsset, 0, len(ids))}
 	for _, id := range ids {
 		normalized.Assets = append(normalized.Assets, byID[id])
 	}
 	if normalized.Manifest.Version <= 0 {
 		normalized.Manifest.Version = 1
 	}
-	if normalized.Manifest.CreatedAt.IsZero() {
-		normalized.Manifest.CreatedAt = time.Now().UTC()
+	computedHash := CatalogHash(normalized.Assets)
+	if normalized.Manifest.Hash != "" && normalized.Manifest.Hash != computedHash {
+		return AssetCatalog{}, fmt.Errorf("authorized asset catalog manifest hash does not match canonical assets")
 	}
-	normalized.Manifest.Hash = CatalogHash(normalized.Assets)
+	normalized.Manifest.Hash = computedHash
 	return normalized, nil
 }
 

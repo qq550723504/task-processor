@@ -45,7 +45,7 @@ func (r *gormRepository) CreateRun(ctx context.Context, run *imageagent.Run) err
 		return nil
 	}
 	var existing runRecord
-	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND user_id = ? AND (id = ? OR idempotency_key = ?)", row.TenantID, row.UserID, row.ID, row.IdempotencyKey).First(&existing).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND owner_user_id = ? AND (id = ? OR idempotency_key = ?)", row.TenantID, row.UserID, row.ID, row.IdempotencyKey).First(&existing).Error; err != nil {
 		return fmt.Errorf("lookup image agent run retry: %w", err)
 	}
 	existingRun, err := recordToRun(existing)
@@ -88,7 +88,7 @@ func (r *gormRepository) UpdateRun(ctx context.Context, scope imageagent.RunScop
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&runRecord{}).
-			Where("tenant_id = ? AND user_id = ? AND id = ? AND version = ?", scope.TenantID, scope.OwnerUserID, scope.RunID, expectedVersion).
+			Where("tenant_id = ? AND owner_user_id = ? AND id = ? AND version = ?", scope.TenantID, scope.OwnerUserID, scope.RunID, expectedVersion).
 			Updates(map[string]any{
 				"status":               string(mutation.Status),
 				"current_node":         mutation.CurrentNode,
@@ -139,7 +139,7 @@ func (r *gormRepository) AppendPlan(ctx context.Context, scope imageagent.RunSco
 			return imageagent.ErrRevisionConflict
 		}
 		result := tx.Model(&runRecord{}).
-			Where("tenant_id = ? AND user_id = ? AND id = ? AND active_plan_revision = ?", scope.TenantID, scope.OwnerUserID, scope.RunID, expectedActiveRevision).
+			Where("tenant_id = ? AND owner_user_id = ? AND id = ? AND active_plan_revision = ?", scope.TenantID, scope.OwnerUserID, scope.RunID, expectedActiveRevision).
 			Update("active_plan_revision", plan.Revision)
 		if result.Error != nil {
 			return fmt.Errorf("advance image agent plan revision: %w", result.Error)
@@ -214,7 +214,7 @@ func (r *gormRepository) SaveSlotResult(ctx context.Context, scope imageagent.Ru
 		}
 		update := tx.Model(&slotRecord{}).
 			Where("tenant_id = ? AND owner_user_id = ? AND run_id = ? AND plan_revision = ? AND id = ?", scope.TenantID, scope.OwnerUserID, scope.RunID, expectedActiveRevision, result.SlotID).
-			Where("EXISTS (SELECT 1 FROM image_agent_runs AS image_agent_active_runs WHERE image_agent_active_runs.tenant_id = ? AND image_agent_active_runs.user_id = ? AND image_agent_active_runs.id = ? AND image_agent_active_runs.active_plan_revision = ?)", scope.TenantID, scope.OwnerUserID, scope.RunID, expectedActiveRevision).
+			Where("EXISTS (SELECT 1 FROM image_agent_v2_runs AS image_agent_active_runs WHERE image_agent_active_runs.tenant_id = ? AND image_agent_active_runs.owner_user_id = ? AND image_agent_active_runs.id = ? AND image_agent_active_runs.active_plan_revision = ?)", scope.TenantID, scope.OwnerUserID, scope.RunID, expectedActiveRevision).
 			Updates(map[string]any{
 				"attempt":             result.Attempt,
 				"status":              string(result.Status),
@@ -236,7 +236,7 @@ func (r *gormRepository) AppendAttempt(ctx context.Context, attempt imageagent.S
 		return err
 	}
 	row := attemptRecord{
-		TenantID: attempt.TenantID, OwnerUserID: attempt.OwnerUserID, RunID: attempt.RunID, SlotID: attempt.SlotID, Node: attempt.Node,
+		TenantID: attempt.TenantID, OwnerUserID: attempt.OwnerUserID, RunID: attempt.RunID, PlanRevision: attempt.PlanRevision, SlotID: attempt.SlotID, Node: attempt.Node,
 		IdempotencyKey: attempt.IdempotencyKey, Attempt: attempt.Attempt, Outcome: attempt.Outcome, ErrorCategory: attempt.ErrorCategory,
 	}
 	scope := imageagent.RunScope{TenantID: attempt.TenantID, OwnerUserID: attempt.OwnerUserID, RunID: attempt.RunID}
@@ -253,7 +253,7 @@ func (r *gormRepository) AppendAttempt(ctx context.Context, attempt imageagent.S
 			return nil
 		}
 		var existing []attemptRecord
-		if err := tx.Where("tenant_id = ? AND owner_user_id = ? AND run_id = ? AND slot_id = ? AND (attempt = ? OR idempotency_key = ?)", row.TenantID, row.OwnerUserID, row.RunID, row.SlotID, row.Attempt, row.IdempotencyKey).Find(&existing).Error; err != nil {
+		if err := tx.Where("tenant_id = ? AND owner_user_id = ? AND run_id = ? AND plan_revision = ? AND slot_id = ? AND (attempt = ? OR idempotency_key = ?)", row.TenantID, row.OwnerUserID, row.RunID, row.PlanRevision, row.SlotID, row.Attempt, row.IdempotencyKey).Find(&existing).Error; err != nil {
 			return fmt.Errorf("lookup image agent attempt retry: %w", err)
 		}
 		for _, item := range existing {
@@ -267,7 +267,7 @@ func (r *gormRepository) AppendAttempt(ctx context.Context, attempt imageagent.S
 
 func (r *gormRepository) findRun(ctx context.Context, db *gorm.DB, scope imageagent.RunScope) (runRecord, error) {
 	var row runRecord
-	err := db.WithContext(ctx).Where("tenant_id = ? AND user_id = ? AND id = ?", scope.TenantID, scope.OwnerUserID, scope.RunID).First(&row).Error
+	err := db.WithContext(ctx).Where("tenant_id = ? AND owner_user_id = ? AND id = ?", scope.TenantID, scope.OwnerUserID, scope.RunID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return runRecord{}, imageagent.ErrRunNotFound
 	}
@@ -279,7 +279,7 @@ func (r *gormRepository) findRun(ctx context.Context, db *gorm.DB, scope imageag
 
 func (r *gormRepository) findRunForUpdate(ctx context.Context, db *gorm.DB, scope imageagent.RunScope) (runRecord, error) {
 	var row runRecord
-	err := db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND user_id = ? AND id = ?", scope.TenantID, scope.OwnerUserID, scope.RunID).First(&row).Error
+	err := db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND owner_user_id = ? AND id = ?", scope.TenantID, scope.OwnerUserID, scope.RunID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return runRecord{}, imageagent.ErrRunNotFound
 	}
@@ -364,7 +364,7 @@ func unmarshalJSON(raw []byte, target any) error {
 }
 
 func sameAttempt(left, right attemptRecord) bool {
-	return left.TenantID == right.TenantID && left.OwnerUserID == right.OwnerUserID && left.RunID == right.RunID && left.SlotID == right.SlotID && left.Node == right.Node && left.IdempotencyKey == right.IdempotencyKey && left.Attempt == right.Attempt && left.Outcome == right.Outcome && left.ErrorCategory == right.ErrorCategory
+	return left.TenantID == right.TenantID && left.OwnerUserID == right.OwnerUserID && left.RunID == right.RunID && left.PlanRevision == right.PlanRevision && left.SlotID == right.SlotID && left.Node == right.Node && left.IdempotencyKey == right.IdempotencyKey && left.Attempt == right.Attempt && left.Outcome == right.Outcome && left.ErrorCategory == right.ErrorCategory
 }
 
 type existingPlan struct {

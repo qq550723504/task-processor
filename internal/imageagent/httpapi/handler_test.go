@@ -115,13 +115,17 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example.test/source.png", Label: "Source"},
 			{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, DisplayURL: "javascript:alert(1)", Label: "Unsafe URL omitted"},
 		}},
-		PendingCommand: &imageagent.PendingCommandReceipt{ActionID: "retry-pending", Kind: "retry_slot", Phase: "retry.persist_result", Status: "pending", PlanRevision: 2, SlotID: "slot-1"},
+		PendingCommand: &imageagent.PendingCommandReceipt{
+			ActionID: "retry-pending", Kind: "retry_slot", Phase: "retry.persist_result", Status: "pending", PlanRevision: 2, SlotID: "slot-1",
+			FailureCode: "provider_unavailable", FailureCategory: "provider", FailureMessage: "图片生成服务暂时不可用", Attempt: 2,
+		},
+		CommandIngress: imageagent.CommandIngress{Used: 1024, Limit: 1024, Exhausted: true, Reason: "command_capacity_exhausted"},
 	}}
 
 	response := performRequest(t, requireHandler(t, application), http.MethodGet, "/api/v1/image-agent/runs/run-1", "", verifiedIdentity("tenant-a", "user-a"), nil)
 
 	require.Equal(t, http.StatusOK, response.Code)
-	for _, field := range []string{`"business_task_id":"task-1"`, `"active_plan_revision":2`, `"source_asset_ids":["source-1"]`, `"idempotency_key":"plan-key-2"`, `"source_asset_id":"source-1"`, `"last_event_id":9`, `"projection_version":9`, `"max_images":12`, `"model_calls":3`, `"asset_catalog"`, `"action_id":"retry-pending"`, `"slot_id":"slot-1"`} {
+	for _, field := range []string{`"business_task_id":"task-1"`, `"active_plan_revision":2`, `"source_asset_ids":["source-1"]`, `"idempotency_key":"plan-key-2"`, `"source_asset_id":"source-1"`, `"last_event_id":9`, `"projection_version":9`, `"max_images":12`, `"model_calls":3`, `"asset_catalog"`, `"action_id":"retry-pending"`, `"slot_id":"slot-1"`, `"failure_code":"provider_unavailable"`, `"failure_category":"provider"`, `"failure_message":"图片生成服务暂时不可用"`, `"command_ingress":{"used":1024,"limit":1024,"exhausted":true,"reason":"command_capacity_exhausted"}`} {
 		require.Contains(t, response.Body.String(), field)
 	}
 	require.NotContains(t, response.Body.String(), "javascript:alert")

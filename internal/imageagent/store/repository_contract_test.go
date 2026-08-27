@@ -58,9 +58,121 @@ func TestRepositoryContract(t *testing.T) {
 			testAuthorizedAssetCatalogRoundTripsAndCannotBeReplaced(t, tt.new(t))
 			testMissingCatalogManifestDiffersFromLegitimateEmptyCatalog(t, tt.new(t))
 			testProjectionCommitRollbackHidesEventSnapshotAndNormalizedWrites(t, tt.new(t))
+			testCombinedPlanAndRunProjectionCommitUsesPreMutationRevision(t, tt.new(t))
+			testProjectionCommitRejectsPlanOutsidePersistedCatalog(t, tt.new(t))
 			testAttemptIdentitiesAreIdempotentAndNonAliasing(t, tt.new(t))
 		})
 	}
+}
+
+func testProjectionCommitRejectsPlanOutsidePersistedCatalog(t *testing.T, repo repositoryContract) {
+	t.Helper()
+	ctx := context.Background()
+	run := manualRun("run-malicious-plan", "tenant-a")
+	plan := planRevision(1)
+	scope := imageagent.ScopeForRun(*run)
+	initial, err := repo.InitializeRun(ctx, imageagent.ProjectionInitialization{
+		Scope: scope, Run: *run, Plan: plan,
+		Catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source.png"},
+			{ID: "style-1", Type: imageagent.AuthorizedAssetStyle},
+		}},
+		Snapshot: imageagent.RunProjection{Run: *run, Plan: plan}, CommitID: "start:malicious-plan",
+		EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+
+	maliciousPlan := planRevision(2)
+	maliciousPlan.ParentRevision = 1
+	maliciousPlan.SourceAssetIDs = []string{"source-attacker"}
+	maliciousPlan.Slots[0].SourceAssetIDs = []string{"source-attacker"}
+	malicious := initial
+	malicious.Plan = maliciousPlan
+	malicious.Run.ActivePlanRevision = 2
+	malicious.Run.Version++
+	malicious.Slots = []imageagent.SlotProjection{{Slot: maliciousPlan.Slots[0]}}
+	_, err = repo.CommitProjection(ctx, imageagent.ProjectionCommit{
+		Scope: scope, CommitID: "plan:malicious", ExpectedProjectionVersion: initial.ProjectionVersion,
+		ExpectedRunVersion: initial.Run.Version, Snapshot: malicious, EventType: "plan.replaced", EventPayload: json.RawMessage(`{}`),
+		RunMutation:  &imageagent.RunMutation{Status: initial.Run.Status, CurrentNode: initial.Run.CurrentNode, ActivePlanRevision: 2},
+		PlanMutation: &imageagent.PlanProjectionMutation{ExpectedActiveRevision: 1, Plan: maliciousPlan},
+	})
+	require.Error(t, err)
+
+	stored, getErr := repo.GetProjection(ctx, scope)
+	require.NoError(t, getErr)
+	require.EqualValues(t, 1, stored.ProjectionVersion)
+	require.EqualValues(t, 1, stored.Plan.Revision)
+	require.EqualValues(t, 1, stored.Run.ActivePlanRevision)
+	events, eventsErr := repo.ListEvents(ctx, scope, 0, 10)
+	require.NoError(t, eventsErr)
+	require.Len(t, events, 1)
+}
+
+func testCombinedPlanAndRunProjectionCommitUsesPreMutationRevision(t *testing.T, repo repositoryContract) {
+	t.Helper()
+	ctx := context.Background()
+	run := manualRun("run-replace-atomic", "tenant-a")
+	run.Status = imageagent.RunStatusBlocked
+	run.CurrentNode = "blocked"
+	run.Block = &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"}
+	run.Version = 1
+	plan1 := planRevision(1)
+	plan2 := planRevision(2)
+	plan2.ParentRevision = 1
+	scope := imageagent.ScopeForRun(*run)
+	initial, err := repo.InitializeRun(ctx, imageagent.ProjectionInitialization{
+		Scope: scope, Run: *run, Plan: plan1,
+		Catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source.png"},
+			{ID: "style-1", Type: imageagent.AuthorizedAssetStyle},
+		}},
+		Snapshot: imageagent.RunProjection{Run: *run, Plan: plan1}, CommitID: "start:replace-atomic",
+		EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+
+	next := initial
+	next.Run.Status = imageagent.RunStatusExecuting
+	next.Run.CurrentNode = "execute_slots"
+	next.Run.ActivePlanRevision = 2
+	next.Run.Block = nil
+	next.Run.Version = 2
+	next.Plan = plan2
+	next.Slots = []imageagent.SlotProjection{{Slot: plan2.Slots[0]}}
+	commit := imageagent.ProjectionCommit{
+		Scope: scope, CommitID: "plan:" + plan2.IdempotencyKey,
+		ExpectedProjectionVersion: initial.ProjectionVersion,
+		ExpectedRunVersion:        initial.Run.Version,
+		Snapshot:                  next, EventType: "plan.replaced", EventPayload: json.RawMessage(`{"revision":2}`),
+		RunMutation:  &imageagent.RunMutation{Status: imageagent.RunStatusExecuting, CurrentNode: "execute_slots", ActivePlanRevision: 2},
+		PlanMutation: &imageagent.PlanProjectionMutation{ExpectedActiveRevision: 1, Plan: plan2},
+	}
+	stored, err := repo.CommitProjection(ctx, commit)
+	require.NoError(t, err, "all preconditions must be checked against revision 1 before either mutation is applied")
+	require.EqualValues(t, 2, stored.Plan.Revision)
+	require.EqualValues(t, 2, stored.Run.ActivePlanRevision)
+	require.EqualValues(t, 2, stored.Run.Version)
+	require.EqualValues(t, 2, stored.ProjectionVersion)
+	require.Equal(t, imageagent.RunStatusExecuting, stored.Run.Status)
+	require.Nil(t, stored.Run.Block)
+
+	retried, err := repo.CommitProjection(ctx, commit)
+	require.NoError(t, err)
+	require.Equal(t, stored, retried, "exact CommitID retry returns the stored acknowledgement")
+	conflict := commit
+	conflict.Snapshot.Run.CurrentNode = "different"
+	_, err = repo.CommitProjection(ctx, conflict)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+
+	normalizedRun, err := repo.GetRun(ctx, scope)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, normalizedRun.ActivePlanRevision)
+	require.EqualValues(t, 2, normalizedRun.Version)
+	events, err := repo.ListEvents(ctx, scope, 0, 10)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	require.Equal(t, int64(2), events[1].Cursor)
 }
 
 // repositoryContract keeps Task 1 compatibility storage methods under test
@@ -112,7 +224,7 @@ func testProjectionCommitRollbackHidesEventSnapshotAndNormalizedWrites(t *testin
 	bad.Slots[0].Slot.Status = imageagent.SlotStatusAccepted
 	attempt := imageagent.StepAttempt{
 		TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID,
-		SlotID: "slot-1", Node: "execute_slot", IdempotencyKey: "attempt-unsafe", Attempt: 1, Outcome: "accepted",
+		PlanRevision: 1, SlotID: "slot-1", Node: "execute_slot", IdempotencyKey: "attempt-unsafe", Attempt: 1, Outcome: "accepted",
 	}
 	_, err = repo.CommitProjection(ctx, imageagent.ProjectionCommit{
 		Scope: scope, CommitID: "slot:unsafe", ExpectedProjectionVersion: initial.ProjectionVersion,
@@ -391,6 +503,7 @@ func testAttemptIdentitiesAreIdempotentAndNonAliasing(t *testing.T, repo reposit
 		TenantID:       "tenant-a",
 		OwnerUserID:    "user-1",
 		RunID:          "run-1",
+		PlanRevision:   1,
 		SlotID:         "slot-1",
 		Node:           "generate",
 		IdempotencyKey: "attempt-1",

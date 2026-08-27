@@ -9,26 +9,33 @@ import (
 )
 
 const (
-	TaskQueue                     = "image-agent-manual"
-	EnvTaskQueue                  = "IMAGE_AGENT_TEMPORAL_TASK_QUEUE"
-	workflowNameImageAgent        = "ImageAgentWorkflow"
-	workflowNameImageSlot         = "ImageSlotWorkflow"
-	activityExecuteSlot           = "imageagent.execute_slot"
-	activityPersistSlotResult     = "imageagent.persist_slot_result"
-	activityPersistRunState       = "imageagent.persist_run_state"
-	activityPersistPlanRevision   = "imageagent.persist_plan_revision"
-	activityPersistPendingCommand = "imageagent.persist_pending_command"
-	activityPublishApproved       = "imageagent.publish_approved"
-	signalApproveResults          = "approve_results"
-	signalRetrySlot               = "retry_slot"
-	signalReplacePlan             = "replace_plan"
-	signalCancel                  = "cancel"
-	updateResumeCommand           = "resume_command"
-	updateErrorRevisionConflict   = "imageagent_revision_conflict"
-	updateErrorCommandBlocked     = "imageagent_command_blocked"
-	updateErrorRunNotFound        = "imageagent_run_not_found"
-	defaultMaxConcurrentSlots     = 4
-	QueryWorkflowProjection       = "image_agent_projection"
+	TaskQueue                           = "image-agent-manual"
+	EnvTaskQueue                        = "IMAGE_AGENT_TEMPORAL_TASK_QUEUE"
+	workflowNameImageAgent              = "ImageAgentWorkflow"
+	workflowNameImageSlot               = "ImageSlotWorkflow"
+	activityExecuteSlotLegacy           = "imageagent.execute_slot"
+	activityPersistSlotResultLegacy     = "imageagent.persist_slot_result"
+	activityPersistRunStateLegacy       = "imageagent.persist_run_state"
+	activityPersistPlanRevisionLegacy   = "imageagent.persist_plan_revision"
+	activityPersistPendingCommandLegacy = "imageagent.persist_pending_command"
+	activityPublishApprovedLegacy       = "imageagent.publish_approved"
+	activityExecuteSlot                 = "imageagent.execute_slot.v2"
+	activityPersistSlotResult           = "imageagent.persist_slot_result.v2"
+	activityPersistRunState             = "imageagent.persist_run_state.v2"
+	activityPersistPlanRevision         = "imageagent.persist_plan_revision.v2"
+	activityPersistPendingCommand       = "imageagent.persist_pending_command.v2"
+	activityPublishApproved             = "imageagent.publish_approved.v2"
+	signalApproveResults                = "approve_results"
+	signalRetrySlot                     = "retry_slot"
+	signalReplacePlan                   = "replace_plan"
+	signalCancel                        = "cancel"
+	updateResumeCommand                 = "resume_command"
+	updateErrorRevisionConflict         = "imageagent_revision_conflict"
+	updateErrorCommandBlocked           = "imageagent_command_blocked"
+	updateErrorRunNotFound              = "imageagent_run_not_found"
+	updateErrorLegacyMigrationRequired  = "imageagent_legacy_migration_required"
+	defaultMaxConcurrentSlots           = 4
+	QueryWorkflowProjection             = "image_agent_projection"
 )
 
 type WorkflowInput struct {
@@ -49,6 +56,7 @@ type WorkflowResult struct {
 	CompletedSlotIDs []string
 	ResultDigest     string
 	PendingCommand   *imageagent.PendingCommandReceipt
+	CommandIngress   imageagent.CommandIngress
 }
 
 type SlotWorkflowInput struct {
@@ -101,10 +109,62 @@ type PersistPlanRevisionActivityInput struct {
 }
 
 type PersistPendingCommandActivityInput struct {
+	RunID          string
+	Identity       imageagent.ExecutionIdentity
+	Receipt        *imageagent.PendingCommandReceipt
+	CommitID       string
+	CommandIngress imageagent.CommandIngress
+}
+
+// Legacy activity payloads are frozen wire contracts. Their handlers never
+// write owner-scoped v2 state; they fail with an explicit migration error.
+type LegacyExecuteSlotActivityInput struct {
+	RunID          string
+	Identity       imageagent.ExecutionIdentity
+	PlanRevision   int64
+	Slot           imageagent.Slot
+	Attempt        int
+	IdempotencyKey string
+	AssetCatalog   imageagent.AssetCatalog
+}
+
+type LegacyPersistSlotResultActivityInput struct {
+	RunID        string
+	Identity     imageagent.ExecutionIdentity
+	PlanRevision int64
+	Result       SlotWorkflowResult
+	AttemptKey   string
+}
+
+type LegacyPersistRunStateActivityInput struct {
+	RunID        string
+	Identity     imageagent.ExecutionIdentity
+	PlanRevision int64
+	Status       imageagent.RunStatus
+	CurrentNode  string
+	Block        *imageagent.Block
+}
+
+type LegacyPersistPlanRevisionActivityInput struct {
+	RunID            string
+	Identity         imageagent.ExecutionIdentity
+	ExpectedRevision int64
+	Plan             imageagent.Plan
+}
+
+type LegacyPersistPendingCommandActivityInput struct {
 	RunID    string
 	Identity imageagent.ExecutionIdentity
 	Receipt  *imageagent.PendingCommandReceipt
 	CommitID string
+}
+
+type LegacyPublishApprovedActivityInput struct {
+	RunID             string
+	Identity          imageagent.ExecutionIdentity
+	PlanRevision      int64
+	CandidateAssetIDs []string
+	IdempotencyKey    string
 }
 
 type PublishApprovedActivityInput struct {
@@ -165,8 +225,8 @@ func WorkflowID(tenantID, ownerUserID, runID string) string {
 	return fmt.Sprintf("image-agent:%s:%s:%s", strings.TrimSpace(tenantID), strings.TrimSpace(ownerUserID), strings.TrimSpace(runID))
 }
 
-func slotAttemptKey(slot imageagent.Slot, attempt int) string {
-	return fmt.Sprintf("%s:attempt:%d", slot.IdempotencyKey, attempt)
+func slotAttemptKey(planRevision int64, slot imageagent.Slot, attempt int) string {
+	return fmt.Sprintf("%s:plan:%d:attempt:%d", slot.IdempotencyKey, planRevision, attempt)
 }
 
 func publicationKey(runID string, revision int64) string {

@@ -3,9 +3,27 @@ package imageagent
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestNormalizeAssetCatalogPreservesExplicitStableManifest(t *testing.T) {
+	createdAt := time.Date(2026, 8, 27, 1, 2, 3, 0, time.UTC)
+	assets := []AuthorizedAsset{{ID: "source-1", Type: AuthorizedAssetSource, URL: "https://source.example/source.png", SourceURL: "https://source.example/source.png"}}
+	manifest := CatalogManifest{Version: 7, Hash: CatalogHash(assets), CreatedAt: createdAt}
+
+	first, err := NormalizeAssetCatalog(AssetCatalog{Manifest: manifest, Assets: assets})
+	require.NoError(t, err)
+	second, err := NormalizeAssetCatalog(first)
+	require.NoError(t, err)
+	require.Equal(t, manifest, first.Manifest)
+	require.Equal(t, first, second)
+
+	withoutCreationTime, err := NormalizeAssetCatalog(AssetCatalog{Assets: assets})
+	require.NoError(t, err)
+	require.True(t, withoutCreationTime.Manifest.CreatedAt.IsZero(), "normalization must not manufacture a repository-local clock")
+}
 
 func TestValidatePlanAllowsMoreThanTenIndependentSlots(t *testing.T) {
 	slots := make([]Slot, 11)
