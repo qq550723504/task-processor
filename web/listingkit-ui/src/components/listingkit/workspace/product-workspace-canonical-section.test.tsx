@@ -41,6 +41,7 @@ const product: CanonicalProduct = {
   variants: [
     {
       sku: "TOTE-BLK-M",
+      price: { amount: 29.9, currency: "CNY" },
       attributes: {
         Color: { value: "Black" },
         Size: { value: "M" },
@@ -76,6 +77,7 @@ describe("ProductWorkspaceCanonicalSection", () => {
     expect(screen.getByRole("heading", { name: "SKU" })).toBeInTheDocument();
     expect(screen.getByText("TOTE-BLK-M")).toBeInTheDocument();
     expect(screen.getByText("Color: Black · Size: M")).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: /CNY.*29\.90/ })).toBeInTheDocument();
     expect(screen.getByText("0")).toBeInTheDocument();
   });
 

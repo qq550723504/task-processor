@@ -61,6 +61,9 @@ describe("Product Workspace presentation model", () => {
     expect(productWorkspaceStatusForPlatformCard({ status: "processing" })).toBe("processing");
     expect(productWorkspaceStatusForPlatformCard({ status: "pending" })).toBe("processing");
     expect(productWorkspaceStatusForPlatformCard({ status: "ready" })).toBe("ready");
+    expect(
+      productWorkspaceStatusForPlatformCard({ status: "ready", needs_review: true }),
+    ).toBe("attention");
     expect(productWorkspaceStatusForPlatformCard({ status: "completed" })).toBe("ready");
     expect(productWorkspaceStatusForPlatformCard({ status: "unknown" })).toBe("idle");
   });

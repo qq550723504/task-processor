@@ -17,6 +17,7 @@ import {
 } from "@/components/listingkit/workspace/workspace-action-routing";
 import { shouldSyncPlatformOnRecovery } from "@/components/listingkit/workspace/workspace-recovery-routing";
 import {
+  buildPlatformWorkspaceHref,
   buildProductWorkspaceHref,
   buildWorkspaceSearch,
   shouldSyncFocusedTargetToRoute,
@@ -35,7 +36,6 @@ import type {
   ToolbarAction,
 } from "@/lib/types/listingkit";
 import type { ProductWorkspaceSectionKey } from "@/components/listingkit/workspace/product-workspace-model";
-import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 
 type SearchParamsLike = {
   toString(): string;
@@ -157,10 +157,9 @@ export function useWorkspaceNavigationActions({
   };
 
   const handlePlatformSelect = (platform: string) => {
-    const params = sanitizedNavigationSearchParams(searchParams);
-    params.delete("product_section");
-    params.set("platform", platform);
-    router.replace(`/listing-kits/${taskId}/workspace?${params.toString()}`);
+    router.replace(
+      buildPlatformWorkspaceHref(taskId, searchParams.toString(), platform),
+    );
   };
 
   const handleProductSelect = (section: ProductWorkspaceSectionKey) => {

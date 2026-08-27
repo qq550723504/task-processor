@@ -4,7 +4,7 @@ import {
 } from "@/components/listingkit/shein/shein-workspace-actions";
 import { extractTaskReviewReasons } from "@/components/listingkit/tasks/task-review-reasons";
 import type { ProductWorkspaceAttentionSeverity } from "@/components/listingkit/workspace/product-workspace-model";
-import type { ListingKitTaskResult } from "@/lib/types/listingkit";
+import type { CanonicalProduct, ListingKitTaskResult } from "@/lib/types/listingkit";
 
 export type ProductWorkspaceReviewIssue = {
   id: string;
@@ -16,6 +16,35 @@ export type ProductWorkspaceReviewIssue = {
   confidence?: number;
   actionKey?: SheinWorkspaceActionKey;
 };
+
+const SHEIN_EXPLICIT_ACTION_CODES = new Set([
+  "store_login",
+  "store",
+  "shein_online_auth",
+  "category",
+  "category_review",
+  "attributes",
+  "attribute",
+  "attribute_review",
+  "sale_attributes",
+  "sale_attribute",
+  "variants",
+  "sku",
+  "images",
+  "image",
+  "preview_product",
+  "final_images",
+  "pod_platform",
+  "pricing",
+  "price",
+  "inventory",
+  "variant_mapping",
+  "required_attribute",
+  "shein_category_template_freshness",
+  "shein_attribute_template_freshness",
+  "shein_sale_attribute_template_freshness",
+  "shein_sale_attribute_freshness",
+]);
 
 export function buildProductWorkspaceReviewIssues(
   task?: ListingKitTaskResult | null,
@@ -29,7 +58,7 @@ export function buildProductWorkspaceReviewIssues(
   );
   const issueCodeOccurrences = new Map<string, number>();
   const workflowIssues = relevantWorkflowIssues.map((issue, index) => {
-    const actionKey = resolveIssueActionKey(selectedPlatform, [issue.code]);
+    const actionKey = resolveIssueActionKey(selectedPlatform, [issue.code], issue.stage);
     const id = workflowIssueID(issue.code, index, issueCodeOccurrences);
     return {
       id,
@@ -65,17 +94,51 @@ export function buildProductWorkspaceReviewIssues(
 function buildFallbackReviewIssues(
   task: ListingKitTaskResult | null | undefined,
 ) {
-  return extractTaskReviewReasons(task).map((reason, index) => {
+  const reasons = [
+    ...extractTaskReviewReasons(task),
+    ...canonicalProductReviewReasons(task?.result?.canonical_product),
+  ].filter((reason, index, values) => values.indexOf(reason) === index);
+
+  return reasons.map((reason, index) => {
     return {
       id: `fallback-review-${index + 1}`,
-      severity: isReviewRequiredTaskStatus(task?.status) ? "blocking" : "warning",
+      severity: isMandatoryFallbackReview(task) ? "blocking" : "warning",
       title: reason,
     } satisfies ProductWorkspaceReviewIssue;
   });
 }
 
 function isReviewRequiredTaskStatus(status?: string) {
-  return status === "needs_review" || status === "review_ready";
+  return (
+    status === "needs_review" ||
+    status === "review_ready" ||
+    status === "failed" ||
+    status === "error"
+  );
+}
+
+function isMandatoryFallbackReview(task?: ListingKitTaskResult | null) {
+  return (
+    isReviewRequiredTaskStatus(task?.status) ||
+    Boolean(task?.result?.canonical_product?.needs_review)
+  );
+}
+
+function canonicalProductReviewReasons(
+  product?: CanonicalProduct | null,
+) {
+  if (!product) {
+    return [];
+  }
+
+  const fieldReasons = Object.entries(product.field_traces ?? {})
+    .filter(([, trace]) => trace.needs_review)
+    .map(([field, trace]) => trace.review_reason?.trim() || `${field}需要确认`);
+
+  if (fieldReasons.length > 0) {
+    return fieldReasons;
+  }
+  return product.needs_review ? ["商品资料需要确认"] : [];
 }
 
 function workflowIssueID(
@@ -95,8 +158,24 @@ function workflowIssueID(
 function resolveIssueActionKey(
   selectedPlatform: string | undefined,
   candidates: Array<string | undefined>,
+  stage?: string,
 ): SheinWorkspaceActionKey | undefined {
   if (selectedPlatform !== "shein") {
+    return undefined;
+  }
+
+  const normalizedStage = stage?.trim().toLowerCase();
+  const isSheinStage =
+    normalizedStage === "shein" ||
+    normalizedStage === "shein_review" ||
+    normalizedStage?.startsWith("shein_") === true ||
+    normalizedStage?.endsWith(":shein") === true;
+  if (
+    !isSheinStage &&
+    !candidates.some((candidate) =>
+      SHEIN_EXPLICIT_ACTION_CODES.has(candidate?.trim().toLowerCase() ?? ""),
+    )
+  ) {
     return undefined;
   }
 

@@ -206,4 +206,69 @@ describe("Product Workspace review model", () => {
       },
     ]);
   });
+
+  it("does not route non-SHEIN workflow issues into SHEIN actions", () => {
+    const task = {
+      status: "needs_review",
+      result: {
+        workflow_issues: [
+          {
+            code: "image_review_required",
+            stage: "product_image:amazon",
+            severity: "review",
+            message: "Amazon 图片需要确认",
+          },
+        ],
+      },
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task, "shein")).toEqual([
+      {
+        id: "image_review_required",
+        severity: "blocking",
+        title: "Amazon 图片需要确认",
+      },
+    ]);
+  });
+
+  it("surfaces canonical field review flags when no textual reason exists", () => {
+    const task = {
+      status: "needs_review",
+      result: {
+        canonical_product: {
+          needs_review: true,
+          field_traces: {
+            title: {
+              needs_review: true,
+              review_reason: "商品标题需要确认",
+            },
+          },
+        },
+      },
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task)).toEqual([
+      {
+        id: "fallback-review-1",
+        severity: "blocking",
+        title: "商品标题需要确认",
+      },
+    ]);
+  });
+
+  it("marks failed task error fallbacks as mandatory", () => {
+    const task = {
+      status: "failed",
+      error: "商品生成失败",
+      result: {},
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task)).toEqual([
+      {
+        id: "fallback-review-1",
+        severity: "blocking",
+        title: "商品生成失败",
+      },
+    ]);
+  });
 });

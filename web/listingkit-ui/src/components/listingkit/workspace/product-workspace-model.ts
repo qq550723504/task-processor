@@ -76,7 +76,7 @@ export function productWorkspaceStatusForPlatformCard(card: {
       return "processing";
     case "ready":
     case "completed":
-      return "ready";
+      return card.needs_review ? "attention" : "ready";
     default:
       return card.needs_review ? "attention" : "idle";
   }

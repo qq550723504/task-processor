@@ -110,6 +110,7 @@ function SKUSection({ product }: { product?: CanonicalProduct | null }) {
               <TableRow>
                 <TableHead>SKU</TableHead>
                 <TableHead>规格</TableHead>
+                <TableHead>价格</TableHead>
                 <TableHead>库存</TableHead>
               </TableRow>
             </TableHeader>
@@ -118,6 +119,7 @@ function SKUSection({ product }: { product?: CanonicalProduct | null }) {
                 <TableRow key={`${variant.sku ?? "variant"}-${index}`}>
                   <TableCell className="font-mono text-xs">{variant.sku || "-"}</TableCell>
                   <TableCell>{formatVariantAttributes(variant.attributes)}</TableCell>
+                  <TableCell>{formatVariantPrice(variant.price)}</TableCell>
                   <TableCell>{variant.stock ?? 0}</TableCell>
                 </TableRow>
               ))}
@@ -206,6 +208,30 @@ function formatVariantAttributes(attributes?: Record<string, CanonicalAttribute>
     .filter(Boolean);
 
   return entries.join(" · ") || "-";
+}
+
+function formatVariantPrice(price?: Record<string, unknown>) {
+  const amount = Number(price?.amount);
+  if (!Number.isFinite(amount)) {
+    return "-";
+  }
+
+  const currency = typeof price?.currency === "string" ? price.currency.trim() : "";
+  if (!currency) {
+    return amount.toFixed(2);
+  }
+
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      currencyDisplay: "code",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`;
+  }
 }
 
 function formatCanonicalAttributeValue(attribute: CanonicalAttribute) {

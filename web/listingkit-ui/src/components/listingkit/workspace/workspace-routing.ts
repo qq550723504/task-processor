@@ -48,11 +48,25 @@ export function buildProductWorkspaceHref(
   params.delete("preview_capability");
   params.delete("section_key");
 
-  if (section === "overview") {
-    params.delete("product_section");
-  } else {
-    params.set("product_section", section);
-  }
+  params.set("product_section", section);
+
+  const search = params.toString();
+  return `/listing-kits/${taskId}/workspace${search ? `?${search}` : ""}`;
+}
+
+export function buildPlatformWorkspaceHref(
+  taskId: string,
+  currentSearch: string,
+  platform: string,
+) {
+  const params = sanitizedNavigationSearchParams(
+    new URLSearchParams(currentSearch),
+  );
+  params.delete("product_section");
+  params.delete("slot");
+  params.delete("preview_capability");
+  params.delete("section_key");
+  params.set("platform", platform);
 
   const search = params.toString();
   return `/listing-kits/${taskId}/workspace${search ? `?${search}` : ""}`;
