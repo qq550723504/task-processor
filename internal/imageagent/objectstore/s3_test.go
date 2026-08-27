@@ -13,6 +13,7 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -75,6 +76,29 @@ func TestEnsureStagedReconcilesLostPutResponseWithHead(t *testing.T) {
 	}
 	if api.putCalls != 1 || api.headCalls < 1 {
 		t.Fatalf("calls: put=%d head=%d, want a put followed by HEAD reconciliation", api.putCalls, api.headCalls)
+	}
+}
+
+func TestFinalizeWithProgressRenewsBeforeEachBoundedAsset(t *testing.T) {
+	api := &fakeS3API{objects: map[string]fakeObject{}}
+	store := newTestStore(t, api)
+	prepared, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{Identity: testIdentity(), Assets: []ArtifactInput{validAsset(t, 3, 2), withReceipt(validAsset(t, 2, 2), "receipt-2")}})
+	if err != nil {
+		t.Fatalf("PrepareSlotArtifacts() error = %v", err)
+	}
+	if err := store.EnsureStaged(context.Background(), prepared); err != nil {
+		t.Fatalf("EnsureStaged() error = %v", err)
+	}
+	var indexes []int
+	final, err := store.FinalizeWithProgress(context.Background(), prepared.Manifest, func(_ context.Context, index int) error {
+		indexes = append(indexes, index)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("FinalizeWithProgress() error = %v", err)
+	}
+	if len(final.Assets) != 2 || !reflect.DeepEqual(indexes, []int{0, 1}) {
+		t.Fatalf("final assets/indexes = %d/%v, want 2/[0 1]", len(final.Assets), indexes)
 	}
 }
 

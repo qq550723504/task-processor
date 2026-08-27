@@ -76,6 +76,26 @@ type SlotWorkflowResult struct {
 	ErrorCode string
 }
 
+// SlotWorkflowV3Input is additive and is not registered by the Task 4 worker.
+// Task 6 owns selecting this child workflow on the production wire.
+type SlotWorkflowV3Input struct {
+	RunID        string
+	Identity     imageagent.ExecutionIdentity
+	PlanRevision int64
+	Slot         imageagent.Slot
+	Attempt      int
+	AssetCatalog imageagent.AssetCatalog
+	// ExecuteActivityName is supplied by the Task 6 wire-selection gate. Task 4
+	// deliberately defines no production v3 activity name or registration.
+	ExecuteActivityName string
+}
+
+type SlotWorkflowV3Result struct {
+	Published imageagent.SlotEffectV3PublishedResult
+	Status    imageagent.SlotStatus
+	ErrorCode string
+}
+
 type ExecuteSlotActivityInput struct {
 	RunID          string
 	Identity       imageagent.ExecutionIdentity
@@ -105,6 +125,7 @@ type DurableArtifactStore interface {
 	PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error)
 	EnsureStaged(context.Context, objectstore.PreparedSlotArtifacts) error
 	Finalize(context.Context, imageagent.StagingManifest) (imageagent.FinalManifest, error)
+	FinalizeWithProgress(context.Context, imageagent.StagingManifest, func(context.Context, int) error) (imageagent.FinalManifest, error)
 }
 
 type PersistSlotResultActivityInput struct {
@@ -112,6 +133,16 @@ type PersistSlotResultActivityInput struct {
 	Identity     imageagent.ExecutionIdentity
 	PlanRevision int64
 	Result       SlotWorkflowResult
+	AttemptKey   string
+}
+
+// PersistSlotResultV3ActivityInput is an additive durable-result contract. It
+// is deliberately not registered under imageagent.persist_slot_result.v2.
+type PersistSlotResultV3ActivityInput struct {
+	RunID        string
+	Identity     imageagent.ExecutionIdentity
+	PlanRevision int64
+	Result       SlotWorkflowV3Result
 	AttemptKey   string
 }
 

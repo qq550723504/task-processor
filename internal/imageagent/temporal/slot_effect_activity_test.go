@@ -16,6 +16,9 @@ import (
 	"task-processor/internal/imageagent/store"
 )
 
+const v3SHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+const testExecuteSlotV3ActivityName = "test.imageagent.execute_slot.v3"
+
 func TestExecuteSlotActivityReplaysPublicationCompleteWithoutRepeatingEffects(t *testing.T) {
 	repository, input := initializedSlotEffectActivity(t, "run-activity-replay")
 	executor := &recordingRecoverableSlotExecutor{}
@@ -110,13 +113,21 @@ func TestSlotWorkflowPreservesUnknownProviderOutcomeBlockerCode(t *testing.T) {
 	require.Equal(t, "slot_provider_outcome_unknown", slotExecutionErrorCode(err))
 	for _, code := range []string{slotProviderOutcomeUnknownCode, slotStagingOutcomeUnknownCode, slotPublicationOutcomeUnknownCode} {
 		err = sdktemporal.NewNonRetryableApplicationError("unknown", code, nil)
-		require.Equal(t, code, slotExecutionErrorCode(err))
+		require.Equal(t, code, slotExecutionV3ErrorCode(err))
 	}
 	require.Equal(t, "slot_execution_failed", slotExecutionErrorCode(errors.New("transport failed")))
 }
 
-func TestImageSlotWorkflowRejectsInvalidMainCandidateCount(t *testing.T) {
-	for _, count := range []int{0, 2} {
+func TestImageSlotWorkflowV2PreservesHistoricalMainCandidateSemantics(t *testing.T) {
+	for _, tc := range []struct {
+		count      int
+		wantStatus imageagent.SlotStatus
+		wantCode   string
+	}{
+		{count: 0, wantStatus: imageagent.SlotStatusBlocked, wantCode: "invalid_slot_result"},
+		{count: 2, wantStatus: imageagent.SlotStatusAccepted},
+	} {
+		count := tc.count
 		t.Run(fmt.Sprintf("count-%d", count), func(t *testing.T) {
 			var suite testsuite.WorkflowTestSuite
 			env := suite.NewTestWorkflowEnvironment()
@@ -134,14 +145,49 @@ func TestImageSlotWorkflowRejectsInvalidMainCandidateCount(t *testing.T) {
 			require.NoError(t, env.GetWorkflowError())
 			var result SlotWorkflowResult
 			require.NoError(t, env.GetWorkflowResult(&result))
+			require.Equal(t, tc.wantStatus, result.Status)
+			require.Equal(t, tc.wantCode, result.ErrorCode)
+		})
+	}
+}
+
+func TestImageSlotWorkflowV3RejectsInvalidMainCandidateCount(t *testing.T) {
+	for _, count := range []int{0, 2} {
+		t.Run(fmt.Sprintf("count-%d", count), func(t *testing.T) {
+			var suite testsuite.WorkflowTestSuite
+			env := suite.NewTestWorkflowEnvironment()
+			env.RegisterWorkflow(ImageSlotWorkflowV3)
+			env.RegisterActivityWithOptions(func(_ context.Context, input ExecuteSlotV3ActivityInput) (imageagent.SlotEffectV3PublishedResult, error) {
+				candidates := make([]imageagent.SlotEffectV3AssetCandidate, count)
+				for index := range candidates {
+					candidates[index] = imageagent.SlotEffectV3AssetCandidate{
+						AssetID: fmt.Sprintf("candidate-%d", index), SourceAssetID: "source-1",
+						DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/run-main-count/1/main-1/1/%d-%s.png", index, v3SHA256), SHA256: v3SHA256},
+					}
+				}
+				return imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt, Candidates: candidates}, nil
+			}, sdkactivity.RegisterOptions{Name: testExecuteSlotV3ActivityName})
+			input := SlotWorkflowV3Input{RunID: "run-main-count", Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}, PlanRevision: 1, Slot: imageagent.Slot{ID: "main-1", Role: imageagent.SlotRoleMain, IdempotencyKey: "main-key", SourceAssetIDs: []string{"source-1"}}, Attempt: 1, ExecuteActivityName: testExecuteSlotV3ActivityName}
+
+			env.ExecuteWorkflow(ImageSlotWorkflowV3, input)
+			require.NoError(t, env.GetWorkflowError())
+			var result SlotWorkflowV3Result
+			require.NoError(t, env.GetWorkflowResult(&result))
 			require.Equal(t, imageagent.SlotStatusBlocked, result.Status)
 			require.Equal(t, invalidMainCandidateCountCode, result.ErrorCode)
 		})
 	}
 }
 
-func TestPersistSlotResultCannotAcceptInvalidMainCandidateCount(t *testing.T) {
-	for _, count := range []int{0, 2} {
+func TestPersistSlotResultV2PreservesInflightMainCandidateSemantics(t *testing.T) {
+	for _, tc := range []struct {
+		count   int
+		wantErr bool
+	}{
+		{count: 0, wantErr: true},
+		{count: 2},
+	} {
+		count := tc.count
 		t.Run(fmt.Sprintf("count-%d", count), func(t *testing.T) {
 			repository := store.NewMemoryRepository()
 			identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
@@ -158,6 +204,39 @@ func TestPersistSlotResultCannotAcceptInvalidMainCandidateCount(t *testing.T) {
 			err = activities.PersistSlotResult(context.Background(), PersistSlotResultActivityInput{
 				RunID: run.ID, Identity: identity, PlanRevision: 1, AttemptKey: "main-key:plan:1:attempt:1",
 				Result: SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: "main-1", Attempt: 1, Candidates: candidates}, Status: imageagent.SlotStatusAccepted},
+			})
+			if tc.wantErr {
+				require.ErrorContains(t, err, "at least one candidate")
+				return
+			}
+			require.NoError(t, err)
+			projection, err := repository.GetProjection(context.Background(), imageagent.ScopeForRun(run))
+			require.NoError(t, err)
+			require.Equal(t, imageagent.SlotStatusAccepted, projection.Slots[0].Slot.Status)
+			require.Empty(t, projection.Slots[0].ErrorCode)
+			require.Len(t, projection.Slots[0].Candidates, 2)
+		})
+	}
+}
+
+func TestPersistSlotResultV3CannotAcceptInvalidMainCandidateCount(t *testing.T) {
+	for _, count := range []int{0, 2} {
+		t.Run(fmt.Sprintf("count-%d", count), func(t *testing.T) {
+			repository := store.NewMemoryRepository()
+			identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+			plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-main-count", SourceAssetIDs: []string{"source-1"}, CreatedBy: identity.UserID, Slots: []imageagent.Slot{{ID: "main-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "main-key"}}}
+			run := imageagent.Run{ID: "run-persist-main-count-v3", BusinessTaskID: "task-main-count", TenantID: identity.TenantID, UserID: identity.UserID, Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-main-count", Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1}
+			initializeActivityProjection(t, repository, run, plan)
+			activities, err := NewActivities(ActivityDependencies{Repository: repository, SlotExecutor: &recordingRecoverableSlotExecutor{}, Publisher: &identityCheckingPublisher{t: t}})
+			require.NoError(t, err)
+			candidates := make([]imageagent.SlotEffectV3AssetCandidate, count)
+			for index := range candidates {
+				candidates[index] = imageagent.SlotEffectV3AssetCandidate{AssetID: fmt.Sprintf("candidate-%d", index), SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/%s/1/main-1/1/%d-%s.png", run.ID, index, v3SHA256), SHA256: v3SHA256}}
+			}
+
+			err = activities.PersistSlotResultV3(context.Background(), PersistSlotResultV3ActivityInput{
+				RunID: run.ID, Identity: identity, PlanRevision: 1, AttemptKey: "main-key:plan:1:attempt:1",
+				Result: SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: "main-1", Attempt: 1, Candidates: candidates}, Status: imageagent.SlotStatusAccepted},
 			})
 			require.NoError(t, err)
 			projection, err := repository.GetProjection(context.Background(), imageagent.ScopeForRun(run))

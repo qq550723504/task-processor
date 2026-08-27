@@ -736,6 +736,9 @@ func (s *workflowUpdateState) validateRetrySlotBusiness(signal RetrySlotSignal) 
 	if s.projection.Status != imageagent.RunStatusBlocked || s.projection.Block == nil || s.projection.Block.SlotID != signal.SlotID {
 		return updateBlockedError("retry is not valid for the current blocked slot")
 	}
+	if !imageagent.BlockAllowsAction(s.projection.Block, imageagent.ActionRetrySlot) {
+		return updateBlockedError("retry is not permitted for the current blocked effect")
+	}
 	index := slotIndex(s.input.Plan, signal.SlotID)
 	if index < 0 || index >= len(*s.results) || (*s.results)[index].Status != imageagent.SlotStatusBlocked {
 		return updateBlockedError("retry slot is not blocked")
@@ -1400,6 +1403,39 @@ func summarizeResults(plan imageagent.Plan, results []SlotWorkflowResult) Workfl
 		}
 	}
 	return result
+}
+
+func summarizeResultsV3(plan imageagent.Plan, results []SlotWorkflowV3Result) WorkflowResult {
+	result := WorkflowResult{Status: imageagent.RunStatusAwaitingFinalApproval, Plan: plan, Slots: slotProjectionsV3(plan, results)}
+	for index, slot := range plan.Slots {
+		if results[index].Status == imageagent.SlotStatusAccepted {
+			result.CompletedSlotIDs = append(result.CompletedSlotIDs, slot.ID)
+			continue
+		}
+		if result.Block == nil {
+			result.Status = imageagent.RunStatusBlocked
+			result.Block = &imageagent.Block{Code: results[index].ErrorCode, Message: results[index].ErrorCode, SlotID: slot.ID}
+		}
+	}
+	return result
+}
+
+func slotProjectionsV3(plan imageagent.Plan, results []SlotWorkflowV3Result) []imageagent.SlotProjection {
+	projections := make([]imageagent.SlotProjection, 0, len(plan.Slots))
+	for index, declared := range plan.Slots {
+		projection := imageagent.SlotProjection{Slot: declared}
+		if index < len(results) && results[index].Published.SlotID != "" {
+			result := results[index]
+			projection.Attempt = result.Published.Attempt
+			projection.ErrorCode = result.ErrorCode
+			projection.Slot.Status = result.Status
+			for _, candidate := range result.Published.Candidates {
+				projection.Candidates = append(projection.Candidates, imageagent.AssetCandidate{AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset})
+			}
+		}
+		projections = append(projections, projection)
+	}
+	return projections
 }
 
 func executingProjection(plan imageagent.Plan, results []SlotWorkflowResult) WorkflowResult {

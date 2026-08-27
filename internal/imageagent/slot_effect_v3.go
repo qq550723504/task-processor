@@ -2,6 +2,10 @@ package imageagent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -18,6 +22,71 @@ const (
 	SlotEffectV3StagingUnknown      SlotEffectV3Phase = "staging_outcome_unknown"
 	SlotEffectV3PublicationUnknown  SlotEffectV3Phase = "publication_outcome_unknown"
 )
+
+const (
+	SlotProviderOutcomeUnknownCode    = "slot_provider_outcome_unknown"
+	SlotStagingOutcomeUnknownCode     = "slot_staging_outcome_unknown"
+	SlotPublicationOutcomeUnknownCode = "slot_publication_outcome_unknown"
+)
+
+type SlotEffectV3BlockedPolicy struct {
+	Phase            SlotEffectV3Phase
+	Code             string
+	PermittedActions []Action
+}
+
+func SlotEffectV3BlockedPolicyFor(phase SlotEffectV3Phase, code string) (SlotEffectV3BlockedPolicy, error) {
+	var policy SlotEffectV3BlockedPolicy
+	switch phase {
+	case SlotEffectV3ProviderUnknown:
+		policy = SlotEffectV3BlockedPolicy{Phase: phase, Code: SlotProviderOutcomeUnknownCode, PermittedActions: []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}}
+	case SlotEffectV3StagingUnknown:
+		policy = SlotEffectV3BlockedPolicy{Phase: phase, Code: SlotStagingOutcomeUnknownCode, PermittedActions: []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}}
+	case SlotEffectV3PublicationUnknown:
+		policy = SlotEffectV3BlockedPolicy{Phase: phase, Code: SlotPublicationOutcomeUnknownCode, PermittedActions: []Action{ActionEditPlan, ActionCancel}}
+	default:
+		return SlotEffectV3BlockedPolicy{}, fmt.Errorf("%w: unsupported v3 blocked phase %q", ErrInvalidPersistedPolicy, phase)
+	}
+	if code != policy.Code {
+		return SlotEffectV3BlockedPolicy{}, fmt.Errorf("%w: phase %q requires code %q", ErrInvalidPersistedPolicy, phase, policy.Code)
+	}
+	policy.PermittedActions = append([]Action(nil), policy.PermittedActions...)
+	return policy, nil
+}
+
+func SlotEffectV3BlockedPolicyForCode(code string) (SlotEffectV3BlockedPolicy, bool) {
+	var phase SlotEffectV3Phase
+	switch code {
+	case SlotProviderOutcomeUnknownCode:
+		phase = SlotEffectV3ProviderUnknown
+	case SlotStagingOutcomeUnknownCode:
+		phase = SlotEffectV3StagingUnknown
+	case SlotPublicationOutcomeUnknownCode:
+		phase = SlotEffectV3PublicationUnknown
+	default:
+		return SlotEffectV3BlockedPolicy{}, false
+	}
+	policy, err := SlotEffectV3BlockedPolicyFor(phase, code)
+	return policy, err == nil
+}
+
+// ValidateSlotEffectV3AttemptPolicy fails closed on unknown phases and on any
+// phase/code mismatch. It is shared by repositories and the activity replay
+// interpreter so persisted authorization cannot be silently reclassified.
+func ValidateSlotEffectV3AttemptPolicy(attempt SlotEffectV3Attempt) error {
+	switch attempt.Phase {
+	case SlotEffectV3ProviderUnknown, SlotEffectV3StagingUnknown, SlotEffectV3PublicationUnknown:
+		_, err := SlotEffectV3BlockedPolicyFor(attempt.Phase, attempt.BlockedCode)
+		return err
+	case SlotEffectV3ProviderClaimed, SlotEffectV3StagingPrepared, SlotEffectV3ArtifactStaged, SlotEffectV3PublicationClaimed, SlotEffectV3PublicationComplete:
+		if attempt.BlockedCode != "" {
+			return fmt.Errorf("%w: executable phase %q cannot carry blocked code", ErrInvalidPersistedPolicy, attempt.Phase)
+		}
+		return nil
+	default:
+		return fmt.Errorf("%w: unsupported v3 phase %q", ErrInvalidPersistedPolicy, attempt.Phase)
+	}
+}
 
 type SlotEffectV3Reservation struct {
 	Identity         SlotExternalEffectIdentity
@@ -127,6 +196,56 @@ func NormalizeSlotEffectV3PublishedResult(result SlotEffectV3PublishedResult) (S
 		result.Candidates[index] = candidate
 	}
 	return result, nil
+}
+
+func SlotEffectV3PublishedResultFingerprint(result SlotEffectV3PublishedResult) (string, error) {
+	normalized, err := NormalizeSlotEffectV3PublishedResult(result)
+	if err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// ValidateSlotEffectV3Completion binds a published result to the exact ordered
+// final manifest. Every final reference is consumed once, at the same index,
+// with the same durable key, hash, and source lineage.
+func ValidateSlotEffectV3Completion(result SlotEffectV3PublishedResult, manifest FinalManifest, fingerprint string) error {
+	normalizedResult, err := NormalizeSlotEffectV3PublishedResult(result)
+	if err != nil {
+		return err
+	}
+	normalizedManifest, err := NormalizeFinalManifest(manifest)
+	if err != nil {
+		return err
+	}
+	if len(normalizedResult.Candidates) != len(normalizedManifest.Assets) {
+		return ErrRevisionConflict
+	}
+	consumed := make(map[string]struct{}, len(normalizedResult.Candidates))
+	for index, candidate := range normalizedResult.Candidates {
+		asset := normalizedManifest.Assets[index]
+		identity := candidate.DurableAsset.ObjectKey + "\x00" + candidate.DurableAsset.SHA256
+		if _, duplicate := consumed[identity]; duplicate {
+			return ErrRevisionConflict
+		}
+		consumed[identity] = struct{}{}
+		if candidate.DurableAsset.ObjectKey != asset.ObjectKey || candidate.DurableAsset.SHA256 != asset.SHA256 || candidate.SourceAssetID != asset.SourceAssetID {
+			return ErrRevisionConflict
+		}
+	}
+	expected, err := SlotEffectV3PublishedResultFingerprint(normalizedResult)
+	if err != nil {
+		return err
+	}
+	if fingerprint != expected {
+		return ErrRevisionConflict
+	}
+	return nil
 }
 
 type SlotExternalEffectV3Repository interface {

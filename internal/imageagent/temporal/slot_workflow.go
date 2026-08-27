@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -35,12 +36,6 @@ func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkf
 			Status:    imageagent.SlotStatusBlocked, ErrorCode: slotExecutionErrorCode(err),
 		}, nil
 	}
-	if input.Slot.Role == imageagent.SlotRoleMain && len(execution.Candidates) != 1 {
-		return SlotWorkflowResult{
-			Execution: imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
-			Status:    imageagent.SlotStatusBlocked, ErrorCode: invalidMainCandidateCountCode,
-		}, nil
-	}
 	if execution.SlotID != input.Slot.ID || execution.Attempt != input.Attempt || !hasCandidateAsset(execution.Candidates) {
 		return SlotWorkflowResult{
 			Execution: imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
@@ -52,14 +47,53 @@ func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkf
 
 func slotExecutionErrorCode(err error) string {
 	var applicationError *sdktemporal.ApplicationError
+	if errors.As(err, &applicationError) && applicationError.Type() == slotProviderOutcomeUnknownErrorType {
+		return "slot_provider_outcome_unknown"
+	}
+	return "slot_execution_failed"
+}
+
+// ImageSlotWorkflowV3 is additive and intentionally not registered by Task 4.
+// The v2 child workflow above remains byte-for-byte compatible with histories
+// that execute imageagent.execute_slot.v2.
+func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotWorkflowV3Result, error) {
+	activityName := strings.TrimSpace(input.ExecuteActivityName)
+	if activityName == "" {
+		return SlotWorkflowV3Result{}, fmt.Errorf("v3 execute activity name is required")
+	}
+	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 10 * time.Minute,
+		RetryPolicy: &sdktemporal.RetryPolicy{
+			InitialInterval: time.Second, BackoffCoefficient: 2,
+			MaximumInterval: 30 * time.Second, MaximumAttempts: 3,
+		},
+	})
+	activityInput := ExecuteSlotV3ActivityInput{
+		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
+		Slot: input.Slot, Attempt: input.Attempt,
+		IdempotencyKey: slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
+		AssetCatalog:   input.AssetCatalog,
+	}
+	var published imageagent.SlotEffectV3PublishedResult
+	if err := workflow.ExecuteActivity(ctx, activityName, activityInput).Get(ctx, &published); err != nil {
+		return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: slotExecutionV3ErrorCode(err)}, nil
+	}
+	if input.Slot.Role == imageagent.SlotRoleMain && len(published.Candidates) != 1 {
+		return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: invalidMainCandidateCountCode}, nil
+	}
+	normalized, err := imageagent.NormalizeSlotEffectV3PublishedResult(published)
+	if err != nil || normalized.SlotID != input.Slot.ID || normalized.Attempt != input.Attempt {
+		return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: "invalid_slot_result"}, nil
+	}
+	return SlotWorkflowV3Result{Published: normalized, Status: imageagent.SlotStatusAccepted}, nil
+}
+
+func slotExecutionV3ErrorCode(err error) string {
+	var applicationError *sdktemporal.ApplicationError
 	if errors.As(err, &applicationError) {
 		switch applicationError.Type() {
-		case slotProviderOutcomeUnknownErrorType, slotProviderOutcomeUnknownCode:
-			return slotProviderOutcomeUnknownCode
-		case slotStagingOutcomeUnknownCode:
-			return slotStagingOutcomeUnknownCode
-		case slotPublicationOutcomeUnknownCode:
-			return slotPublicationOutcomeUnknownCode
+		case slotProviderOutcomeUnknownCode, slotStagingOutcomeUnknownCode, slotPublicationOutcomeUnknownCode:
+			return applicationError.Type()
 		}
 	}
 	return "slot_execution_failed"

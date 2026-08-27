@@ -63,8 +63,30 @@ func TestRepositoryContract(t *testing.T) {
 			testProjectionCommitRejectsMismatchedSlotAttemptIdentityAtomically(t, tt.new(t))
 			testAttemptIdentitiesAreIdempotentAndNonAliasing(t, tt.new(t))
 			testInitializationConcurrencyIdentityIncludesMaxConcurrentSlots(t, tt.new(t))
+			testPublicationUnknownActionsSurviveProjectionRefresh(t, tt.new(t))
 		})
 	}
+}
+
+func testPublicationUnknownActionsSurviveProjectionRefresh(t *testing.T, repo repositoryContract) {
+	t.Helper()
+	ctx := context.Background()
+	run := manualRun("run-publication-unknown-refresh", "tenant-a")
+	run.Status = imageagent.RunStatusBlocked
+	run.Block = &imageagent.Block{Code: imageagent.SlotPublicationOutcomeUnknownCode, SlotID: "slot-1"}
+	plan := planRevision(1)
+	catalog, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+		{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source.png"},
+		{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style.png"},
+	}})
+	require.NoError(t, err)
+	snapshot := imageagent.RunProjection{Run: *run, Plan: plan, Actions: imageagent.AllowedActions(*run)}
+	_, err = repo.InitializeRun(ctx, imageagent.ProjectionInitialization{Scope: imageagent.ScopeForRun(*run), Run: *run, Plan: plan, Catalog: catalog, Snapshot: snapshot, CommitID: "start:publication-unknown", EventType: "run.initialized", EventPayload: []byte(`{}`)})
+	require.NoError(t, err)
+	refreshed, err := repo.GetProjection(ctx, imageagent.ScopeForRun(*run))
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotPublicationOutcomeUnknownCode, refreshed.Run.Block.Code)
+	require.Equal(t, []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionCancel}, refreshed.Actions)
 }
 
 func testInitializationConcurrencyIdentityIncludesMaxConcurrentSlots(t *testing.T, repo repositoryContract) {

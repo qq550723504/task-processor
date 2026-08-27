@@ -77,6 +77,9 @@ func TestArtifactStorageCapabilitiesFromConfigFailsClosed(t *testing.T) {
 		{name: "missing bucket", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.Bucket = "" }, wantErr: "bucket"},
 		{name: "missing region", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.Region = "" }, wantErr: "region"},
 		{name: "missing public URL", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.PublicBase = "" }, wantErr: "public base"},
+		{name: "missing credentials", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.AccessKeyID = ""; cfg.S3.SecretAccessKey = "" }, wantErr: "access key ID and secret access key"},
+		{name: "missing access key", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.AccessKeyID = "" }, wantErr: "access key ID and secret access key"},
+		{name: "missing secret key", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.SecretAccessKey = "" }, wantErr: "access key ID and secret access key"},
 		{name: "empty mode", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.ArtifactMode = "" }, wantErr: "artifact mode"},
 		{name: "unknown mode", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.ArtifactMode = "minio" }, wantErr: "artifact mode"},
 		{name: "COS missing endpoint", mutate: func(cfg *config.ProductImagePublisherConfig) { *cfg = validCOS; cfg.S3.Endpoint = "" }, wantErr: "COS endpoint"},
@@ -102,6 +105,43 @@ func TestArtifactStorageCapabilitiesFromConfigFailsClosed(t *testing.T) {
 	}
 }
 
+func TestResolveImageAgentTemporalDependenciesRejectsCredentialsBeforeDatabaseOpen(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		access string
+		secret string
+	}{
+		{name: "both missing"},
+		{name: "access missing", secret: "do-not-leak-secret"},
+		{name: "secret missing", access: "do-not-leak-access"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{Database: &config.DatabaseConfig{}}
+			cfg.ProductImage.Publisher = durablePublisherConfig("aws", true)
+			cfg.ProductImage.Publisher.S3.AccessKeyID = tc.access
+			cfg.ProductImage.Publisher.S3.SecretAccessKey = tc.secret
+			dbOpens, storeBuilds := 0, 0
+			_, _, err := resolveImageAgentTemporalDependencies("config/worker.yaml", nil, imageAgentWorkerDependencyResolver{
+				LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
+				OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { dbOpens++; return &gorm.DB{}, nil },
+				BuildArtifactStore: func(*config.Config) (imageagenttemporal.DurableArtifactStore, error) {
+					storeBuilds++
+					return workerArtifactStore{}, nil
+				},
+			})
+			require.ErrorContains(t, err, "access key ID and secret access key")
+			if tc.access != "" {
+				require.NotContains(t, err.Error(), tc.access)
+			}
+			if tc.secret != "" {
+				require.NotContains(t, err.Error(), tc.secret)
+			}
+			require.Zero(t, dbOpens)
+			require.Zero(t, storeBuilds)
+		})
+	}
+}
+
 func TestBuildImageAgentDurableArtifactStoreUsesConfiguredS3ClientPath(t *testing.T) {
 	cfg := &config.Config{ProductImage: config.ProductImageConfig{Publisher: durablePublisherConfig("aws", true)}}
 	artifactStore, err := buildImageAgentDurableArtifactStore(cfg)
@@ -112,7 +152,7 @@ func TestBuildImageAgentDurableArtifactStoreUsesConfiguredS3ClientPath(t *testin
 func durablePublisherConfig(mode string, cosPolicy bool) config.ProductImagePublisherConfig {
 	return config.ProductImagePublisherConfig{
 		Enabled: true, Provider: "s3", PublicBase: "https://cdn.example.test/images",
-		S3: config.ProductImagePublisherS3Config{Bucket: "image-assets", Region: "ap-southeast-1", Endpoint: "https://s3.example.test", ArtifactMode: mode, COSImmutableNonVersionedBucketPolicy: cosPolicy},
+		S3: config.ProductImagePublisherS3Config{Bucket: "image-assets", Region: "ap-southeast-1", Endpoint: "https://s3.example.test", AccessKeyID: "test-access", SecretAccessKey: "test-secret", ArtifactMode: mode, COSImmutableNonVersionedBucketPolicy: cosPolicy},
 	}
 }
 
@@ -125,6 +165,9 @@ func (workerArtifactStore) EnsureStaged(context.Context, objectstore.PreparedSlo
 	return nil
 }
 func (workerArtifactStore) Finalize(context.Context, imageagent.StagingManifest) (imageagent.FinalManifest, error) {
+	return imageagent.FinalManifest{}, nil
+}
+func (workerArtifactStore) FinalizeWithProgress(context.Context, imageagent.StagingManifest, func(context.Context, int) error) (imageagent.FinalManifest, error) {
 	return imageagent.FinalManifest{}, nil
 }
 

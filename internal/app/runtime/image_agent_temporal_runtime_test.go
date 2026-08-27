@@ -113,6 +113,9 @@ func (runtimeArtifactStore) EnsureStaged(context.Context, objectstore.PreparedSl
 func (runtimeArtifactStore) Finalize(context.Context, imageagent.StagingManifest) (imageagent.FinalManifest, error) {
 	return imageagent.FinalManifest{}, nil
 }
+func (runtimeArtifactStore) FinalizeWithProgress(context.Context, imageagent.StagingManifest, func(context.Context, int) error) (imageagent.FinalManifest, error) {
+	return imageagent.FinalManifest{}, nil
+}
 
 type runtimePublisher struct{}
 

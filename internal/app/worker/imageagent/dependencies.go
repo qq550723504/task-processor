@@ -61,6 +61,9 @@ func resolveImageAgentTemporalDependencies(configPath string, logger *logrus.Log
 	if cfg == nil || cfg.Database == nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent worker database configuration is required")
 	}
+	if _, err := artifactStorageCapabilitiesFromConfig(cfg.ProductImage.Publisher); err != nil {
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact configuration: %w", err)
+	}
 	if resolver.BuildArtifactStore == nil {
 		resolver.BuildArtifactStore = buildImageAgentDurableArtifactStore
 	}
@@ -125,6 +128,9 @@ func artifactStorageCapabilitiesFromConfig(publisher config.ProductImagePublishe
 	}
 	if strings.TrimSpace(publisher.PublicBase) == "" {
 		return storage.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact public base URL is required")
+	}
+	if strings.TrimSpace(publisher.S3.AccessKeyID) == "" || strings.TrimSpace(publisher.S3.SecretAccessKey) == "" {
+		return storage.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact access key ID and secret access key are both required")
 	}
 	switch strings.TrimSpace(publisher.S3.ArtifactMode) {
 	case string(storage.ArtifactStorageModeAWS):

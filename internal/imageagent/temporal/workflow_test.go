@@ -797,6 +797,42 @@ func TestSafeCommandFailureClassificationNeverExposesRawErrors(t *testing.T) {
 	}
 }
 
+func TestSummarizeV3ResultsPreservesPublicationUnknownBlockCode(t *testing.T) {
+	plan := imageagent.Plan{Revision: 1, Slots: []imageagent.Slot{{ID: "scene-1", Role: imageagent.SlotRoleScene}}}
+	projection := summarizeResultsV3(plan, []SlotWorkflowV3Result{{Published: imageagent.SlotEffectV3PublishedResult{SlotID: "scene-1", Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: imageagent.SlotPublicationOutcomeUnknownCode}})
+	require.Equal(t, imageagent.SlotPublicationOutcomeUnknownCode, projection.Block.Code)
+	require.Equal(t, []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{Mode: imageagent.RunModeManual, Status: projection.Status, Block: projection.Block}))
+}
+
+func TestRetrySlotBusinessRejectsPublicationUnknownButKeepsLegacyAndNewAttemptPolicies(t *testing.T) {
+	for _, tc := range []struct {
+		code    string
+		wantErr bool
+	}{
+		{code: "slot_failed"},
+		{code: imageagent.SlotProviderOutcomeUnknownCode},
+		{code: imageagent.SlotStagingOutcomeUnknownCode},
+		{code: imageagent.SlotPublicationOutcomeUnknownCode, wantErr: true},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			input := manualWorkflowInput(sevenSlotPlan())
+			results := make([]SlotWorkflowResult, len(input.Plan.Slots))
+			results[1] = SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: input.Plan.Slots[1].ID, Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: tc.code}
+			projection := WorkflowResult{Status: imageagent.RunStatusBlocked, Plan: input.Plan, Block: &imageagent.Block{Code: tc.code, SlotID: input.Plan.Slots[1].ID}, Slots: slotProjections(input.Plan, results)}
+			state := workflowUpdateState{input: &input, projection: &projection, results: &results}
+			err := state.validateRetrySlotBusiness(RetrySlotSignal{RunID: input.RunID, PlanRevision: input.Plan.Revision, SlotID: input.Plan.Slots[1].ID})
+			if tc.wantErr {
+				require.Error(t, err)
+				var applicationError *sdktemporal.ApplicationError
+				require.ErrorAs(t, err, &applicationError)
+				require.Equal(t, updateErrorCommandBlocked, applicationError.Type())
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 type commandIngressExhaustionResult struct {
 	UnknownError   string
 	PendingError   string
@@ -2109,7 +2145,7 @@ func TestImageSlotWorkflowFailsClosedForMismatchedOrEmptyExecutorResult(t *testi
 	}{
 		{name: "wrong slot", result: successfulSlotResult("different-slot", 1), wantCode: "invalid_slot_result"},
 		{name: "wrong attempt", result: successfulSlotResult("slot-1", 2), wantCode: "invalid_slot_result"},
-		{name: "empty candidates", result: imageagent.SlotExecutionResult{SlotID: "slot-1", Attempt: 1}, wantCode: invalidMainCandidateCountCode},
+		{name: "empty candidates", result: imageagent.SlotExecutionResult{SlotID: "slot-1", Attempt: 1}, wantCode: "invalid_slot_result"},
 		{name: "whitespace candidate ID", result: imageagent.SlotExecutionResult{SlotID: "slot-1", Attempt: 1, Candidates: []imageagent.AssetCandidate{{AssetID: " \t "}}}, wantCode: "invalid_slot_result"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

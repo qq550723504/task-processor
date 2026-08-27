@@ -16,6 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
 	sdkactivity "go.temporal.io/sdk/activity"
 	sdktemporal "go.temporal.io/sdk/temporal"
@@ -23,6 +26,8 @@ import (
 
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
+	"task-processor/internal/imageagent/store"
+	storageinfra "task-processor/internal/infra/storage"
 )
 
 func TestExecuteSlotV3DoesNotRegenerateAnUnownedProviderClaim(t *testing.T) {
@@ -255,6 +260,14 @@ func TestExecuteSlotV3PublicationOwnerIncludesTemporalRunActivityAndAttempt(t *t
 	require.Equal(t, "workflow-run-7/activity-12/3", owner)
 }
 
+func TestTemporalPublicationOwnerRejectsDirectContextWithoutPanic(t *testing.T) {
+	require.NotPanics(t, func() {
+		owner, err := temporalPublicationOwner(context.Background())
+		require.Empty(t, owner)
+		require.ErrorIs(t, err, errPublicationOwnerRequiresActivity)
+	})
+}
+
 func TestExecuteSlotV3FailsClosedForUnknownPersistedPhase(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-unknown-phase")
 	baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
@@ -263,6 +276,194 @@ func TestExecuteSlotV3FailsClosedForUnknownPersistedPhase(t *testing.T) {
 
 	_, err := activities.ExecuteSlotV3(context.Background(), input)
 	requireV3ApplicationErrorType(t, err, slotEffectPhaseInvalidCode)
+}
+
+func TestExecuteSlotV3FailsClosedForMismatchedPersistedBlockedPolicy(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-mismatched-policy")
+	baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
+	effects := &attemptOverrideV3Repository{SlotExternalEffectV3Repository: baseEffects, mutate: func(attempt *imageagent.SlotEffectV3Attempt) {
+		attempt.Phase = imageagent.SlotEffectV3PublicationUnknown
+		attempt.BlockedCode = imageagent.SlotProviderOutcomeUnknownCode
+	}}
+	activities := newV3Activities(t, repository, effects, &recordingStagedExecutor{}, &recordingArtifactStore{})
+
+	_, err := activities.ExecuteSlotV3(context.Background(), input)
+	requireV3ApplicationErrorType(t, err, slotEffectPolicyInvalidCode)
+}
+
+func TestExecuteSlotV3RejectsFaultyExecutorCompletionBijection(t *testing.T) {
+	mutations := []struct {
+		name   string
+		mutate func(*imageagent.SlotExecutionResult)
+	}{
+		{name: "missing", mutate: func(result *imageagent.SlotExecutionResult) { result.Candidates = result.Candidates[:1] }},
+		{name: "duplicate", mutate: func(result *imageagent.SlotExecutionResult) {
+			result.Candidates[1].DurableAsset = result.Candidates[0].DurableAsset
+		}},
+		{name: "reordered", mutate: func(result *imageagent.SlotExecutionResult) {
+			result.Candidates[0], result.Candidates[1] = result.Candidates[1], result.Candidates[0]
+		}},
+		{name: "false lineage", mutate: func(result *imageagent.SlotExecutionResult) { result.Candidates[1].SourceAssetID = "source-false" }},
+	}
+	for _, mutation := range mutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			repository, input := initializedSlotEffectV3Activity(t, "run-v3-faulty-"+strings.ReplaceAll(mutation.name, " ", "-"))
+			effects := repository.(imageagent.SlotExternalEffectV3Repository)
+			manifest := v3StagingManifest(input, tinyPNGBytes(t))
+			second := manifest.Assets[0]
+			second.ObjectKey = strings.Replace(second.ObjectKey, "/0-", "/1-", 1)
+			manifest.Assets = append(manifest.Assets, second)
+			seedV3ArtifactStaged(t, effects, input, manifest)
+			executor := &recordingStagedExecutor{mutateResult: mutation.mutate}
+			activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
+
+			_, err := activities.ExecuteSlotV3(context.Background(), input)
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			stored, getErr := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+			require.NoError(t, getErr)
+			require.Equal(t, imageagent.SlotEffectV3PublicationClaimed, stored.Phase)
+		})
+	}
+}
+
+func TestExecuteSlotV3RenewsLeaseBetweenAssetsToPreventTakeover(t *testing.T) {
+	clock := time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC)
+	repository := store.NewMemoryRepositoryWithClock(func() time.Time { return clock })
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+	run := imageagent.Run{ID: "run-v3-progress-renewal", BusinessTaskID: "task-progress", TenantID: identity.TenantID, UserID: identity.UserID, Mode: imageagent.RunModeManual, IdempotencyKey: "run-progress", Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1}
+	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-progress", SourceAssetIDs: []string{"source-1"}, CreatedBy: identity.UserID, Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-progress"}}}
+	initializeActivityProjection(t, repository, run, plan)
+	input := ExecuteSlotV3ActivityInput{RunID: run.ID, Identity: identity, PlanRevision: 1, Slot: plan.Slots[0], Attempt: 1, IdempotencyKey: "slot-progress:plan:1:attempt:1"}
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	manifest := v3StagingManifest(input, tinyPNGBytes(t))
+	second := manifest.Assets[0]
+	second.ObjectKey = strings.Replace(second.ObjectKey, "/0-", "/1-", 1)
+	manifest.Assets = append(manifest.Assets, second)
+	seedV3ArtifactStaged(t, effects, input, manifest)
+	artifacts := &recordingArtifactStore{}
+	var takeoverClaims int
+	artifacts.onProgress = func(index int) {
+		clock = clock.Add(40 * time.Second)
+		final := v3FinalManifest(manifest)
+		fingerprint, err := imageagent.FinalManifestFingerprint(final)
+		require.NoError(t, err)
+		_, _, claimed, err := effects.ClaimSlotPublicationV3(context.Background(), imageagent.PublicationClaimRequest{Reservation: v3Reservation(input), Owner: fmt.Sprintf("successor-%d", index), LeaseDuration: time.Minute, PublicationFingerprint: fingerprint, FinalManifest: final})
+		require.NoError(t, err)
+		if claimed {
+			takeoverClaims++
+		}
+	}
+	activities := newV3Activities(t, repository, effects, &recordingStagedExecutor{}, artifacts)
+	activities.publicationLeaseDuration = time.Minute
+
+	_, err := activities.ExecuteSlotV3(context.Background(), input)
+	require.NoError(t, err)
+	require.Zero(t, takeoverClaims)
+	require.Equal(t, 2, artifacts.ProgressCalls())
+	require.True(t, clock.After(time.Date(2026, time.August, 27, 12, 1, 0, 0, time.UTC)), "whole finalization exceeded the original lease")
+}
+
+func TestExecuteSlotV3UsesProductionStoreToReconcileLostPutAndCopyResponses(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-production-lost-responses")
+	path := writeTinyPNG(t)
+	api := &statefulActivityS3API{objects: map[string]activityS3Object{}, loseNextPutAfterWrite: true, loseNextCopyAfterWrite: true}
+	artifacts := newProductionArtifactStore(t, api)
+	executor := &recordingStagedExecutor{generated: generatedV3Output(input, path)}
+	activities := newV3Activities(t, repository, repository.(imageagent.SlotExternalEffectV3Repository), executor, artifacts)
+
+	result, err := activities.ExecuteSlotV3(context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+	require.Equal(t, 1, api.putCalls)
+	require.Equal(t, 1, api.copyCalls)
+	stored, err := repository.(imageagent.SlotExternalEffectV3Repository).GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
+}
+
+func TestExecuteSlotV3ProductionStoreReconcilesMultiAssetAfterLocalBytesVanish(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		configure func(*statefulActivityS3API, *failOnceStagedCommitRepository)
+		wantPhase imageagent.SlotEffectV3Phase
+		wantError string
+	}{
+		{name: "all matching", configure: func(_ *statefulActivityS3API, repository *failOnceStagedCommitRepository) { repository.fail = true }, wantPhase: imageagent.SlotEffectV3PublicationComplete},
+		{name: "partial missing", configure: func(api *statefulActivityS3API, _ *failOnceStagedCommitRepository) { api.failPutCall = 2 }, wantPhase: imageagent.SlotEffectV3StagingUnknown, wantError: slotStagingOutcomeUnknownCode},
+		{name: "mismatch", configure: func(_ *statefulActivityS3API, repository *failOnceStagedCommitRepository) { repository.fail = true }, wantPhase: imageagent.SlotEffectV3StagingUnknown, wantError: slotStagingOutcomeUnknownCode},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repository, input := initializedSlotEffectV3Activity(t, "run-v3-production-"+strings.ReplaceAll(tc.name, " ", "-"))
+			baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
+			effects := &failOnceStagedCommitRepository{SlotExternalEffectV3Repository: baseEffects}
+			api := &statefulActivityS3API{objects: map[string]activityS3Object{}}
+			tc.configure(api, effects)
+			paths := []string{writeTinyPNG(t), writeTinyPNG(t)}
+			generated := generatedV3Output(input, paths[0])
+			generated.Assets = append(generated.Assets, generated.Assets[0])
+			generated.Assets[1].URL = paths[1]
+			executor := &recordingStagedExecutor{generated: generated}
+			artifacts := newProductionArtifactStore(t, api)
+			first := newV3Activities(t, repository, effects, executor, artifacts)
+			_, firstErr := first.ExecuteSlotV3(context.Background(), input)
+			require.Error(t, firstErr)
+			for _, path := range paths {
+				require.NoError(t, os.Remove(path))
+			}
+			if tc.name == "mismatch" {
+				for key, object := range api.objects {
+					if strings.Contains(key, "/1-") {
+						object.metadata["sha256"] = strings.Repeat("c", 64)
+						object.checksumSHA = "invalid-checksum"
+						api.objects[key] = object
+					}
+				}
+			}
+			second := newV3Activities(t, repository, baseEffects, executor, artifacts)
+			_, secondErr := second.ExecuteSlotV3(context.Background(), input)
+			if tc.wantError == "" {
+				require.NoError(t, secondErr)
+			} else {
+				requireV3ApplicationErrorType(t, secondErr, tc.wantError)
+			}
+			require.Equal(t, 1, executor.GenerateCalls(), "activity retry must never regenerate")
+			stored, err := baseEffects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantPhase, stored.Phase)
+		})
+	}
+}
+
+func TestExecuteSlotV3ProductionStoreCompletionCrashTakesOverWithoutRecopy(t *testing.T) {
+	clock := time.Date(2026, time.August, 27, 15, 0, 0, 0, time.UTC)
+	repository := store.NewMemoryRepositoryWithClock(func() time.Time { return clock })
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+	run := imageagent.Run{ID: "run-v3-completion-crash", BusinessTaskID: "task-crash", TenantID: identity.TenantID, UserID: identity.UserID, Mode: imageagent.RunModeManual, IdempotencyKey: "run-crash", Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1}
+	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-crash", SourceAssetIDs: []string{"source-1"}, CreatedBy: identity.UserID, Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-crash"}}}
+	initializeActivityProjection(t, repository, run, plan)
+	input := ExecuteSlotV3ActivityInput{RunID: run.ID, Identity: identity, PlanRevision: 1, Slot: plan.Slots[0], Attempt: 1, IdempotencyKey: "slot-crash:plan:1:attempt:1"}
+	baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
+	effects := &failOnceCompletionRepository{SlotExternalEffectV3Repository: baseEffects, fail: true}
+	api := &statefulActivityS3API{objects: map[string]activityS3Object{}}
+	artifacts := newProductionArtifactStore(t, api)
+	executor := &recordingStagedExecutor{generated: generatedV3Output(input, writeTinyPNG(t))}
+	first := newV3ActivitiesWithOwner(t, repository, effects, executor, artifacts, "workflow-run/activity/1")
+	first.publicationLeaseDuration = time.Minute
+
+	_, err := first.ExecuteSlotV3(context.Background(), input)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+	require.Equal(t, 1, api.copyCalls)
+	clock = clock.Add(2 * time.Minute)
+	second := newV3ActivitiesWithOwner(t, repository, baseEffects, executor, artifacts, "workflow-run/activity/2")
+	second.publicationLeaseDuration = time.Minute
+	result, err := second.ExecuteSlotV3(context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+	require.Equal(t, 1, api.copyCalls, "takeover must reconcile the deterministic final object")
+	stored, err := baseEffects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
+	require.EqualValues(t, 2, stored.Publication.Fence)
 }
 
 func initializedSlotEffectV3Activity(t *testing.T, runID string) (imageagent.Repository, ExecuteSlotV3ActivityInput) {
@@ -275,14 +476,26 @@ func initializedSlotEffectV3Activity(t *testing.T, runID string) (imageagent.Rep
 }
 
 func newV3Activities(t *testing.T, repository imageagent.Repository, effects imageagent.SlotExternalEffectV3Repository, executor *recordingStagedExecutor, artifacts DurableArtifactStore) *Activities {
+	return newV3ActivitiesWithOwner(t, repository, effects, executor, artifacts, "workflow-run/activity/1")
+}
+
+func newV3ActivitiesWithOwner(t *testing.T, repository imageagent.Repository, effects imageagent.SlotExternalEffectV3Repository, executor *recordingStagedExecutor, artifacts DurableArtifactStore, owner string) *Activities {
 	t.Helper()
 	activities, err := NewActivities(ActivityDependencies{
 		Repository: repository, SlotEffects: repository.(imageagent.SlotExternalEffectRepository), SlotExecutor: executor,
 		SlotEffectsV3: effects, StagedSlotExecutor: executor, ArtifactStore: artifacts,
-		Publisher: &identityCheckingPublisher{t: t}, PublicationOwner: func(context.Context) (string, error) { return "workflow-run/activity/1", nil },
+		Publisher: &identityCheckingPublisher{t: t}, PublicationOwner: func(context.Context) (string, error) { return owner, nil },
 	})
 	require.NoError(t, err)
 	return activities
+}
+
+func newProductionArtifactStore(t *testing.T, api *statefulActivityS3API) *objectstore.S3DurableArtifactStore {
+	t.Helper()
+	uploader := storageinfra.NewS3UploaderWithAPI(api, storageinfra.S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: storageinfra.ArtifactStorageCapabilities{Mode: storageinfra.ArtifactStorageModeAWS}})
+	artifacts, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{MaxArtifactBytes: 1 << 20, MaxArtifactCount: 16, MaxAggregateBytes: 16 << 20})
+	require.NoError(t, err)
+	return artifacts
 }
 
 func v3Reservation(input ExecuteSlotV3ActivityInput) imageagent.SlotEffectV3Reservation {
@@ -376,6 +589,7 @@ type recordingStagedExecutor struct {
 	generated     imageagent.SlotGeneratedOutput
 	generateCalls int
 	buildCalls    int
+	mutateResult  func(*imageagent.SlotExecutionResult)
 }
 
 func (e *recordingStagedExecutor) GenerateSlot(_ context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
@@ -396,7 +610,11 @@ func (e *recordingStagedExecutor) BuildSlotResult(_ context.Context, input image
 	for index, asset := range published.Assets {
 		candidates[index] = imageagent.AssetCandidate{AssetID: fmt.Sprintf("candidate-%d", index), SourceAssetID: asset.SourceAssetID, DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: asset.ObjectKey, SHA256: asset.SHA256}}
 	}
-	return imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt, Candidates: candidates}, nil
+	result := imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt, Candidates: candidates}
+	if e.mutateResult != nil {
+		e.mutateResult(&result)
+	}
+	return result, nil
 }
 
 func (e *recordingStagedExecutor) PublishSlot(context.Context, imageagent.SlotExecutionInput, imageagent.SlotGeneratedOutput) (imageagent.SlotExecutionResult, error) {
@@ -424,6 +642,8 @@ type recordingArtifactStore struct {
 	prepared      imageagent.StagingManifest
 	ensured       imageagent.StagingManifest
 	onFinalize    func()
+	onProgress    func(int)
+	progressCalls int
 }
 
 func (s *recordingArtifactStore) PrepareSlotArtifacts(input objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
@@ -457,6 +677,10 @@ func (s *recordingArtifactStore) EnsureStaged(_ context.Context, prepared object
 }
 
 func (s *recordingArtifactStore) Finalize(_ context.Context, manifest imageagent.StagingManifest) (imageagent.FinalManifest, error) {
+	return s.FinalizeWithProgress(context.Background(), manifest, nil)
+}
+
+func (s *recordingArtifactStore) FinalizeWithProgress(ctx context.Context, manifest imageagent.StagingManifest, progress func(context.Context, int) error) (imageagent.FinalManifest, error) {
 	s.mu.Lock()
 	s.finalizeCalls++
 	err := s.finalizeError
@@ -467,6 +691,20 @@ func (s *recordingArtifactStore) Finalize(_ context.Context, manifest imageagent
 	}
 	if err != nil {
 		return imageagent.FinalManifest{}, err
+	}
+	if progress != nil {
+		for index := range manifest.Assets {
+			if progressErr := progress(ctx, index); progressErr != nil {
+				return imageagent.FinalManifest{}, progressErr
+			}
+			s.mu.Lock()
+			s.progressCalls++
+			hook := s.onProgress
+			s.mu.Unlock()
+			if hook != nil {
+				hook(index)
+			}
+		}
 	}
 	return v3FinalManifest(manifest), nil
 }
@@ -486,6 +724,11 @@ func (s *recordingArtifactStore) FinalizeCalls() int {
 	defer s.mu.Unlock()
 	return s.finalizeCalls
 }
+func (s *recordingArtifactStore) ProgressCalls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.progressCalls
+}
 func (s *recordingArtifactStore) EnsuredManifest() imageagent.StagingManifest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -500,6 +743,110 @@ type lostResponseV3Repository struct {
 	loseClaim        bool
 	loseCompletion   bool
 	renewCalls       int
+}
+
+type failOnceStagedCommitRepository struct {
+	imageagent.SlotExternalEffectV3Repository
+	fail bool
+}
+
+func (r *failOnceStagedCommitRepository) CommitSlotStagedV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation, fingerprint string) (imageagent.SlotEffectV3Attempt, error) {
+	if r.fail {
+		r.fail = false
+		return imageagent.SlotEffectV3Attempt{}, errors.New("staged commit unavailable before write")
+	}
+	return r.SlotExternalEffectV3Repository.CommitSlotStagedV3(ctx, reservation, fingerprint)
+}
+
+type failOnceCompletionRepository struct {
+	imageagent.SlotExternalEffectV3Repository
+	fail bool
+}
+
+func (r *failOnceCompletionRepository) CompleteSlotPublicationV3(ctx context.Context, completion imageagent.PublicationCompletion) (imageagent.SlotEffectV3Attempt, error) {
+	if r.fail {
+		r.fail = false
+		return imageagent.SlotEffectV3Attempt{}, errors.New("completion unavailable before write")
+	}
+	return r.SlotExternalEffectV3Repository.CompleteSlotPublicationV3(ctx, completion)
+}
+
+type statefulActivityS3API struct {
+	objects                map[string]activityS3Object
+	putCalls               int
+	headCalls              int
+	copyCalls              int
+	failPutCall            int
+	loseNextPutAfterWrite  bool
+	loseNextCopyAfterWrite bool
+}
+
+type activityS3Object struct {
+	contentType   string
+	contentLength int64
+	metadata      map[string]string
+	checksumSHA   string
+}
+
+func (f *statefulActivityS3API) PutObject(_ context.Context, input *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	f.putCalls++
+	if f.failPutCall == f.putCalls {
+		return nil, errors.New("put failed before write")
+	}
+	f.savePut(input)
+	if f.loseNextPutAfterWrite {
+		f.loseNextPutAfterWrite = false
+		return nil, errors.New("put response lost after write")
+	}
+	return &s3.PutObjectOutput{}, nil
+}
+
+func (f *statefulActivityS3API) HeadObject(_ context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+	f.headCalls++
+	object, ok := f.objects[aws.ToString(input.Key)]
+	if !ok {
+		return nil, &types.NotFound{}
+	}
+	return &s3.HeadObjectOutput{ContentType: aws.String(object.contentType), ContentLength: aws.Int64(object.contentLength), Metadata: object.metadata, ChecksumSHA256: aws.String(object.checksumSHA)}, nil
+}
+
+func (f *statefulActivityS3API) CopyObject(_ context.Context, input *s3.CopyObjectInput, _ ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
+	f.copyCalls++
+	f.saveCopy(input)
+	if f.loseNextCopyAfterWrite {
+		f.loseNextCopyAfterWrite = false
+		return nil, errors.New("copy response lost after write")
+	}
+	return &s3.CopyObjectOutput{}, nil
+}
+
+func (f *statefulActivityS3API) DeleteObject(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *statefulActivityS3API) savePut(input *s3.PutObjectInput) {
+	metadata := make(map[string]string, len(input.Metadata))
+	for key, value := range input.Metadata {
+		metadata[key] = value
+	}
+	f.objects[aws.ToString(input.Key)] = activityS3Object{contentType: aws.ToString(input.ContentType), contentLength: aws.ToInt64(input.ContentLength), metadata: metadata, checksumSHA: aws.ToString(input.ChecksumSHA256)}
+}
+
+func (f *statefulActivityS3API) saveCopy(input *s3.CopyObjectInput) {
+	if _, exists := f.objects[aws.ToString(input.Key)]; exists {
+		return
+	}
+	source := strings.TrimPrefix(aws.ToString(input.CopySource), "assets/")
+	object, ok := f.objects[source]
+	if !ok {
+		return
+	}
+	object.contentType = aws.ToString(input.ContentType)
+	object.metadata = make(map[string]string, len(input.Metadata))
+	for key, value := range input.Metadata {
+		object.metadata[key] = value
+	}
+	f.objects[aws.ToString(input.Key)] = object
 }
 
 func (r *lostResponseV3Repository) PrepareSlotStagingV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (imageagent.SlotEffectV3Attempt, error) {
@@ -527,6 +874,19 @@ func (r *lostResponseV3Repository) ClaimSlotPublicationV3(ctx context.Context, r
 type phaseOverrideV3Repository struct {
 	imageagent.SlotExternalEffectV3Repository
 	phase imageagent.SlotEffectV3Phase
+}
+
+type attemptOverrideV3Repository struct {
+	imageagent.SlotExternalEffectV3Repository
+	mutate func(*imageagent.SlotEffectV3Attempt)
+}
+
+func (r *attemptOverrideV3Repository) ReserveSlotProviderV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, bool, error) {
+	attempt, claimed, err := r.SlotExternalEffectV3Repository.ReserveSlotProviderV3(ctx, reservation)
+	if err == nil {
+		r.mutate(&attempt)
+	}
+	return attempt, claimed, err
 }
 
 func (r *phaseOverrideV3Repository) ReserveSlotProviderV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, bool, error) {

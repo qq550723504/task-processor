@@ -14,6 +14,7 @@ var (
 	ErrValidation                = errors.New("invalid image agent request")
 	ErrCatalogSnapshotMissing    = errors.New("image agent catalog snapshot is missing")
 	ErrProjectionSnapshotMissing = errors.New("image agent projection snapshot is missing")
+	ErrInvalidPersistedPolicy    = errors.New("invalid persisted image agent policy")
 )
 
 type RunScope struct {

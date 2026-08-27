@@ -2,8 +2,6 @@ package temporal
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +20,8 @@ import (
 )
 
 const slotResultPersistedEventType = "slot.result.persisted"
+
+var errPublicationOwnerRequiresActivity = errors.New("publication owner requires a Temporal activity context")
 
 type ActivityDependencies struct {
 	Repository               imageagent.Repository
@@ -98,10 +98,11 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 const slotProviderOutcomeUnknownErrorType = "imageagent_slot_provider_outcome_unknown"
 
 const (
-	slotProviderOutcomeUnknownCode    = "slot_provider_outcome_unknown"
-	slotStagingOutcomeUnknownCode     = "slot_staging_outcome_unknown"
-	slotPublicationOutcomeUnknownCode = "slot_publication_outcome_unknown"
+	slotProviderOutcomeUnknownCode    = imageagent.SlotProviderOutcomeUnknownCode
+	slotStagingOutcomeUnknownCode     = imageagent.SlotStagingOutcomeUnknownCode
+	slotPublicationOutcomeUnknownCode = imageagent.SlotPublicationOutcomeUnknownCode
 	slotEffectPhaseInvalidCode        = "imageagent_slot_effect_phase_invalid"
+	slotEffectPolicyInvalidCode       = "imageagent_slot_effect_policy_invalid"
 	invalidMainCandidateCountCode     = "invalid_main_candidate_count"
 )
 
@@ -165,6 +166,9 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	reservation := slotEffectReservationV3(executionInput)
 	effect, claimed, err := a.slotEffectsV3.ReserveSlotProviderV3(ctx, reservation)
 	if err != nil {
+		return v3Result, persistedSlotEffectV3RepositoryError(err)
+	}
+	if err := validatePersistedSlotEffectV3(effect); err != nil {
 		return v3Result, err
 	}
 
@@ -185,7 +189,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		if err != nil {
 			effect, err = a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
 			if err != nil {
-				return v3Result, fmt.Errorf("reconcile persisted staging manifest: %w", err)
+				return v3Result, fmt.Errorf("reconcile persisted staging manifest: %w", persistedSlotEffectV3RepositoryError(err))
 			}
 			if effect.Phase == imageagent.SlotEffectV3ProviderClaimed {
 				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
@@ -207,7 +211,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		if err != nil {
 			effect, err = a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
 			if err != nil {
-				return v3Result, fmt.Errorf("reconcile staged commit: %w", err)
+				return v3Result, fmt.Errorf("reconcile staged commit: %w", persistedSlotEffectV3RepositoryError(err))
 			}
 			if effect.Phase == imageagent.SlotEffectV3StagingPrepared {
 				return v3Result, fmt.Errorf("commit staged artifacts: %w", imageagent.ErrRevisionConflict)
@@ -238,7 +242,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		if claimErr != nil {
 			reconciled, getErr := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
 			if getErr != nil {
-				return v3Result, fmt.Errorf("claim slot publication: %w", claimErr)
+				return v3Result, fmt.Errorf("claim slot publication: %w", persistedSlotEffectV3RepositoryError(getErr))
 			}
 			if reconciled.Phase == imageagent.SlotEffectV3PublicationComplete {
 				return reconciled.Published, nil
@@ -258,7 +262,13 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		if _, err := a.renewPublicationV3(ctx, reservation.Identity, publication); err != nil {
 			return v3Result, err
 		}
-		actualFinal, finalizeErr := a.artifactStore.Finalize(ctx, effect.StagingManifest)
+		actualFinal, finalizeErr := a.artifactStore.FinalizeWithProgress(ctx, effect.StagingManifest, func(progressCtx context.Context, _ int) error {
+			renewed, renewErr := a.renewPublicationV3(progressCtx, reservation.Identity, publication)
+			if renewErr == nil {
+				publication = renewed
+			}
+			return renewErr
+		})
 		if finalizeErr != nil {
 			if errors.Is(finalizeErr, objectstore.ErrArtifactUnavailable) || errors.Is(finalizeErr, objectstore.ErrObjectConflict) {
 				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3PublicationUnknown, slotPublicationOutcomeUnknownCode, publication)
@@ -280,7 +290,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		if publishedErr != nil {
 			return v3Result, fmt.Errorf("normalize durable slot result: %w", publishedErr)
 		}
-		resultFingerprint, resultFingerprintErr := slotEffectV3ResultFingerprint(published)
+		resultFingerprint, resultFingerprintErr := imageagent.SlotEffectV3PublishedResultFingerprint(published)
 		if resultFingerprintErr != nil {
 			return v3Result, resultFingerprintErr
 		}
@@ -291,7 +301,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		if err != nil {
 			reconciled, getErr := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
 			if getErr != nil {
-				return v3Result, fmt.Errorf("reconcile publication completion: %w", getErr)
+				return v3Result, fmt.Errorf("reconcile publication completion: %w", persistedSlotEffectV3RepositoryError(getErr))
 			}
 			if reconciled.Phase != imageagent.SlotEffectV3PublicationComplete || reconciled.ResultFingerprint != resultFingerprint || !reflect.DeepEqual(reconciled.Published, published) {
 				return v3Result, imageagent.ErrRevisionConflict
@@ -300,6 +310,9 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		}
 	}
 
+	if err := validatePersistedSlotEffectV3(effect); err != nil {
+		return v3Result, err
+	}
 	switch effect.Phase {
 	case imageagent.SlotEffectV3PublicationComplete:
 		return effect.Published, nil
@@ -314,6 +327,28 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			fmt.Sprintf("unsupported persisted slot effect phase %q", effect.Phase), slotEffectPhaseInvalidCode, nil,
 		)
 	}
+}
+
+func validatePersistedSlotEffectV3(effect imageagent.SlotEffectV3Attempt) error {
+	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(effect); err != nil {
+		code := slotEffectPolicyInvalidCode
+		switch effect.Phase {
+		case imageagent.SlotEffectV3ProviderClaimed, imageagent.SlotEffectV3StagingPrepared, imageagent.SlotEffectV3ArtifactStaged,
+			imageagent.SlotEffectV3PublicationClaimed, imageagent.SlotEffectV3PublicationComplete,
+			imageagent.SlotEffectV3ProviderUnknown, imageagent.SlotEffectV3StagingUnknown, imageagent.SlotEffectV3PublicationUnknown:
+		default:
+			code = slotEffectPhaseInvalidCode
+		}
+		return sdktemporal.NewNonRetryableApplicationError("invalid persisted slot effect policy", code, err)
+	}
+	return nil
+}
+
+func persistedSlotEffectV3RepositoryError(err error) error {
+	if errors.Is(err, imageagent.ErrInvalidPersistedPolicy) {
+		return sdktemporal.NewNonRetryableApplicationError("invalid persisted slot effect policy", slotEffectPolicyInvalidCode, err)
+	}
+	return err
 }
 
 func slotExecutionInputV3(input ExecuteSlotV3ActivityInput) imageagent.SlotExecutionInput {
@@ -403,7 +438,7 @@ func (a *Activities) renewPublicationV3(ctx context.Context, identity imageagent
 		Identity: identity, Owner: publication.Owner, Fence: publication.Fence, LeaseDuration: a.publicationLeaseDuration,
 	})
 	if err != nil {
-		return imageagent.PublicationClaim{}, fmt.Errorf("renew slot publication claim: %w", err)
+		return imageagent.PublicationClaim{}, fmt.Errorf("renew slot publication claim: %w", persistedSlotEffectV3RepositoryError(err))
 	}
 	return claim, nil
 }
@@ -413,7 +448,7 @@ func (a *Activities) blockSlotEffectV3(ctx context.Context, reservation imageage
 		Reservation: reservation, Phase: phase, Code: code, Owner: publication.Owner, Fence: publication.Fence,
 	})
 	if err != nil {
-		return fmt.Errorf("persist blocked slot effect: %w", err)
+		return fmt.Errorf("persist blocked slot effect: %w", persistedSlotEffectV3RepositoryError(err))
 	}
 	return blockedSlotEffectV3Error(code)
 }
@@ -422,20 +457,10 @@ func blockedSlotEffectV3Error(code string) error {
 	return sdktemporal.NewNonRetryableApplicationError("slot external effect outcome requires a new user attempt or operator reconciliation", code, nil)
 }
 
-func slotEffectV3ResultFingerprint(result imageagent.SlotEffectV3PublishedResult) (string, error) {
-	normalized, err := imageagent.NormalizeSlotEffectV3PublishedResult(result)
-	if err != nil {
-		return "", err
-	}
-	encoded, err := json.Marshal(normalized)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(encoded)
-	return hex.EncodeToString(sum[:]), nil
-}
-
 func temporalPublicationOwner(ctx context.Context) (string, error) {
+	if !sdkactivity.IsActivity(ctx) {
+		return "", errPublicationOwnerRequiresActivity
+	}
 	return publicationOwnerFromActivityInfo(sdkactivity.GetInfo(ctx))
 }
 
@@ -456,20 +481,6 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 	if strings.TrimSpace(result.Execution.SlotID) == "" || result.Execution.Attempt <= 0 {
 		return fmt.Errorf("terminal slot result requires slot ID and positive attempt")
 	}
-	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}
-	current, err := a.repository.GetProjection(ctx, scope)
-	if err != nil {
-		return fmt.Errorf("load image agent projection: %w", err)
-	}
-	slotIndex := slotProjectionIndex(current.Slots, result.Execution.SlotID)
-	if slotIndex < 0 {
-		return imageagent.ErrRevisionConflict
-	}
-	if result.Status == imageagent.SlotStatusAccepted && current.Slots[slotIndex].Slot.Role == imageagent.SlotRoleMain && len(result.Execution.Candidates) != 1 {
-		result.Status = imageagent.SlotStatusBlocked
-		result.ErrorCode = invalidMainCandidateCountCode
-		result.Execution.Candidates = nil
-	}
 	var candidateIDs []string
 	var candidates []imageagent.AssetCandidate
 	for _, candidate := range result.Execution.Candidates {
@@ -480,19 +491,11 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 			}
 			continue
 		}
-		if strings.TrimSpace(candidate.URL) == "" {
-			durable, validateErr := imageagent.NormalizeDurableAssetIdentity(candidate.DurableAsset)
-			if validateErr != nil {
-				return fmt.Errorf("candidate %q has invalid durable asset identity: %w", id, validateErr)
-			}
-			candidate.DurableAsset = durable
-		} else {
-			validatedURL, validateErr := imageagent.ValidateSafeImageURL(candidate.URL)
-			if validateErr != nil {
-				return fmt.Errorf("candidate %q has unsafe URL: %w", id, validateErr)
-			}
-			candidate.URL = validatedURL
+		validatedURL, validateErr := imageagent.ValidateSafeImageURL(candidate.URL)
+		if validateErr != nil {
+			return fmt.Errorf("candidate %q has unsafe URL: %w", id, validateErr)
 		}
+		candidate.URL = validatedURL
 		candidateIDs = append(candidateIDs, id)
 		candidates = append(candidates, candidate)
 	}
@@ -509,6 +512,11 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 		IdempotencyKey: input.AttemptKey, Attempt: result.Execution.Attempt,
 		Outcome: outcome, ErrorCategory: result.ErrorCode,
 	}
+	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}
+	current, err := a.repository.GetProjection(ctx, scope)
+	if err != nil {
+		return fmt.Errorf("load image agent projection: %w", err)
+	}
 	if slotProjectionAlreadyPersisted(current.Slots, result.Execution.SlotID, result.Execution.Attempt, result.Status, candidates, result.ErrorCode) {
 		return nil
 	}
@@ -517,12 +525,17 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 		Status: result.Status, CandidateAssetIDs: candidateIDs, ErrorCode: result.ErrorCode,
 	}
 	updated := current
+	found := false
 	for index := range updated.Slots {
 		if updated.Slots[index].Slot.ID != result.Execution.SlotID {
 			continue
 		}
 		updated.Slots[index] = imageagent.SlotProjection{Slot: updated.Slots[index].Slot, Attempt: result.Execution.Attempt, Candidates: candidates, ErrorCode: result.ErrorCode}
 		updated.Slots[index].Slot.Status = result.Status
+		found = true
+	}
+	if !found {
+		return imageagent.ErrRevisionConflict
 	}
 	eventPayload, err := json.Marshal(slotResultPersistedEventPayload{
 		PlanRevision: input.PlanRevision, SlotID: result.Execution.SlotID,
@@ -535,6 +548,68 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: "slot:" + input.AttemptKey, ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: slotResultPersistedEventType, EventPayload: eventPayload, SlotMutation: &imageagent.SlotProjectionMutation{PlanRevision: input.PlanRevision, Result: storedResult, Projection: updated.Slots[slotProjectionIndex(updated.Slots, result.Execution.SlotID)], Attempt: attempt}})
 	if err != nil {
 		return fmt.Errorf("commit terminal slot projection: %w", err)
+	}
+	return nil
+}
+
+// PersistSlotResultV3 persists only the additive v3 durable result contract.
+// It is intentionally absent from RegisterActivities until Task 6 selects the
+// final production wire.
+func (a *Activities) PersistSlotResultV3(ctx context.Context, input PersistSlotResultV3ActivityInput) error {
+	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	if err != nil {
+		return err
+	}
+	result := input.Result
+	if strings.TrimSpace(result.Published.SlotID) == "" || result.Published.Attempt <= 0 {
+		return fmt.Errorf("terminal v3 slot result requires slot ID and positive attempt")
+	}
+	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}
+	current, err := a.repository.GetProjection(ctx, scope)
+	if err != nil {
+		return fmt.Errorf("load image agent projection: %w", err)
+	}
+	slotIndex := slotProjectionIndex(current.Slots, result.Published.SlotID)
+	if slotIndex < 0 {
+		return imageagent.ErrRevisionConflict
+	}
+	if result.Status == imageagent.SlotStatusAccepted && current.Slots[slotIndex].Slot.Role == imageagent.SlotRoleMain && len(result.Published.Candidates) != 1 {
+		result.Status = imageagent.SlotStatusBlocked
+		result.ErrorCode = invalidMainCandidateCountCode
+		result.Published.Candidates = nil
+	}
+	var candidateIDs []string
+	var candidates []imageagent.AssetCandidate
+	if result.Status == imageagent.SlotStatusAccepted {
+		normalized, normalizeErr := imageagent.NormalizeSlotEffectV3PublishedResult(result.Published)
+		if normalizeErr != nil {
+			return fmt.Errorf("normalize terminal v3 slot result: %w", normalizeErr)
+		}
+		result.Published = normalized
+		for _, candidate := range normalized.Candidates {
+			candidateIDs = append(candidateIDs, candidate.AssetID)
+			candidates = append(candidates, imageagent.AssetCandidate{AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset})
+		}
+	}
+	outcome := "accepted"
+	if result.Status != imageagent.SlotStatusAccepted {
+		outcome = "blocked"
+	}
+	attempt := imageagent.StepAttempt{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID, PlanRevision: input.PlanRevision, SlotID: result.Published.SlotID, Node: "execute_slot_v3", IdempotencyKey: input.AttemptKey, Attempt: result.Published.Attempt, Outcome: outcome, ErrorCategory: result.ErrorCode}
+	if slotProjectionAlreadyPersisted(current.Slots, result.Published.SlotID, result.Published.Attempt, result.Status, candidates, result.ErrorCode) {
+		return nil
+	}
+	storedResult := imageagent.SlotResult{SlotID: result.Published.SlotID, Attempt: result.Published.Attempt, Status: result.Status, CandidateAssetIDs: candidateIDs, ErrorCode: result.ErrorCode}
+	updated := current
+	updated.Slots[slotIndex] = imageagent.SlotProjection{Slot: updated.Slots[slotIndex].Slot, Attempt: result.Published.Attempt, Candidates: candidates, ErrorCode: result.ErrorCode}
+	updated.Slots[slotIndex].Slot.Status = result.Status
+	eventPayload, err := json.Marshal(slotResultPersistedEventPayload{PlanRevision: input.PlanRevision, SlotID: result.Published.SlotID, Attempt: result.Published.Attempt, AttemptKey: input.AttemptKey, Status: result.Status, CandidateAssetIDs: candidateIDs, ErrorCode: result.ErrorCode})
+	if err != nil {
+		return fmt.Errorf("encode terminal v3 slot result event: %w", err)
+	}
+	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: "slot-v3:" + input.AttemptKey, ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: slotResultPersistedEventType, EventPayload: eventPayload, SlotMutation: &imageagent.SlotProjectionMutation{PlanRevision: input.PlanRevision, Result: storedResult, Projection: updated.Slots[slotIndex], Attempt: attempt}})
+	if err != nil {
+		return fmt.Errorf("commit terminal v3 slot projection: %w", err)
 	}
 	return nil
 }

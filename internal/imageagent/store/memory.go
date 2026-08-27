@@ -44,6 +44,13 @@ func NewMemoryRepository() imageagent.Repository {
 	return newMemoryRepositoryWithClock(time.Now)
 }
 
+// NewMemoryRepositoryWithClock provides deterministic database-time semantics
+// for lease and fencing verification while retaining the production repository
+// contract.
+func NewMemoryRepositoryWithClock(clock func() time.Time) imageagent.Repository {
+	return newMemoryRepositoryWithClock(clock)
+}
+
 func newMemoryRepositoryWithClock(clock func() time.Time) imageagent.Repository {
 	if clock == nil {
 		clock = time.Now

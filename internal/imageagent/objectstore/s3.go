@@ -173,6 +173,13 @@ func (s *S3DurableArtifactStore) EnsureStaged(ctx context.Context, prepared Prep
 }
 
 func (s *S3DurableArtifactStore) Finalize(ctx context.Context, manifest imageagent.StagingManifest) (imageagent.FinalManifest, error) {
+	return s.FinalizeWithProgress(ctx, manifest, nil)
+}
+
+// FinalizeWithProgress invokes progress immediately before each bounded
+// per-asset reconciliation. Callers use it to renew a publication lease between
+// objects without weakening whole-manifest preflight.
+func (s *S3DurableArtifactStore) FinalizeWithProgress(ctx context.Context, manifest imageagent.StagingManifest, progress func(context.Context, int) error) (imageagent.FinalManifest, error) {
 	manifest, err := imageagent.NormalizeStagingManifest(manifest)
 	if err != nil {
 		return imageagent.FinalManifest{}, err
@@ -183,6 +190,11 @@ func (s *S3DurableArtifactStore) Finalize(ctx context.Context, manifest imageage
 	}
 	finalAssets := make([]imageagent.PublishedAssetRef, len(validated))
 	for index, staged := range validated {
+		if progress != nil {
+			if err := progress(ctx, index); err != nil {
+				return imageagent.FinalManifest{}, err
+			}
+		}
 		if err := s.verifyExistingObject(ctx, staged.ref); err != nil {
 			return imageagent.FinalManifest{}, err
 		}

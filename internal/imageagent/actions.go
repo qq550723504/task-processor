@@ -21,6 +21,9 @@ func AllowedActions(run Run) []Action {
 		if run.Block == nil || strings.TrimSpace(run.Block.Code) == "" || strings.TrimSpace(run.Block.SlotID) == "" {
 			return []Action{ActionCancel}
 		}
+		if policy, ok := SlotEffectV3BlockedPolicyForCode(run.Block.Code); ok {
+			return append([]Action(nil), policy.PermittedActions...)
+		}
 		return []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}
 	case RunStatusAwaitingFinalApproval:
 		return []Action{ActionApproveResults, ActionCancel}
@@ -29,4 +32,16 @@ func AllowedActions(run Run) []Action {
 	default:
 		return nil
 	}
+}
+
+func BlockAllowsAction(block *Block, action Action) bool {
+	if block == nil {
+		return false
+	}
+	for _, allowed := range AllowedActions(Run{Mode: RunModeManual, Status: RunStatusBlocked, Block: block}) {
+		if allowed == action {
+			return true
+		}
+	}
+	return false
 }

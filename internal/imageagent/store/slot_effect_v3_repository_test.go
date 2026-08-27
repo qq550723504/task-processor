@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -66,13 +67,14 @@ func TestSlotEffectV3RepositoryContract(t *testing.T) {
 			require.Equal(t, imageagent.SlotEffectV3PublicationClaimed, attempt.Phase)
 			require.EqualValues(t, 1, claim.Fence)
 
+			published := v3PublishedResult(reservation)
 			completion := imageagent.PublicationCompletion{
 				Reservation:            reservation,
 				Owner:                  claimRequest.Owner,
 				Fence:                  claim.Fence,
 				PublicationFingerprint: claimRequest.PublicationFingerprint,
-				ResultFingerprint:      "result-fingerprint-1",
-				Published:              v3PublishedResult(reservation),
+				ResultFingerprint:      mustV3ResultFingerprint(t, published),
+				Published:              published,
 			}
 			attempt, err = effects.CompleteSlotPublicationV3(context.Background(), completion)
 			require.NoError(t, err)
@@ -84,6 +86,96 @@ func TestSlotEffectV3RepositoryContract(t *testing.T) {
 			require.Equal(t, attempt, replayed)
 		})
 	}
+}
+
+func TestSlotEffectV3CompletionRequiresOrderedBijectionAcrossAdapters(t *testing.T) {
+	mutations := []struct {
+		name   string
+		mutate func(*imageagent.SlotEffectV3PublishedResult, *string)
+	}{
+		{name: "missing", mutate: func(result *imageagent.SlotEffectV3PublishedResult, _ *string) {
+			result.Candidates = result.Candidates[:1]
+		}},
+		{name: "duplicate ref", mutate: func(result *imageagent.SlotEffectV3PublishedResult, _ *string) {
+			result.Candidates[1].DurableAsset = result.Candidates[0].DurableAsset
+			result.Candidates[1].SourceAssetID = result.Candidates[0].SourceAssetID
+		}},
+		{name: "reordered", mutate: func(result *imageagent.SlotEffectV3PublishedResult, _ *string) {
+			result.Candidates[0], result.Candidates[1] = result.Candidates[1], result.Candidates[0]
+		}},
+		{name: "key", mutate: func(result *imageagent.SlotEffectV3PublishedResult, _ *string) {
+			result.Candidates[1].DurableAsset.ObjectKey = "image-agent/final/tenant-a/run/other.png"
+		}},
+		{name: "hash", mutate: func(result *imageagent.SlotEffectV3PublishedResult, _ *string) {
+			result.Candidates[1].DurableAsset.SHA256 = strings.Repeat("c", 64)
+		}},
+		{name: "false lineage", mutate: func(result *imageagent.SlotEffectV3PublishedResult, _ *string) {
+			result.Candidates[1].SourceAssetID = "source-false"
+		}},
+		{name: "fingerprint", mutate: func(_ *imageagent.SlotEffectV3PublishedResult, fingerprint *string) {
+			*fingerprint = "wrong-fingerprint"
+		}},
+	}
+	for _, factory := range newV3ReviewFixtures() {
+		for _, mutation := range mutations {
+			t.Run(factory.name+"/"+mutation.name, func(t *testing.T) {
+				fixture := factory.new(t)
+				ctx := context.Background()
+				stageV3Attempt(t, fixture.effects, fixture.reservation)
+				final := v3TwoAssetFinalManifest()
+				publicationFingerprint, err := imageagent.FinalManifestFingerprint(final)
+				require.NoError(t, err)
+				request := imageagent.PublicationClaimRequest{Reservation: fixture.reservation, Owner: "worker-a", LeaseDuration: time.Minute, PublicationFingerprint: publicationFingerprint, FinalManifest: final}
+				_, claim, claimed, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+				require.NoError(t, err)
+				require.True(t, claimed)
+				published := v3TwoAssetPublishedResult(fixture.reservation)
+				fingerprint, err := imageagent.SlotEffectV3PublishedResultFingerprint(published)
+				require.NoError(t, err)
+				mutation.mutate(&published, &fingerprint)
+				_, err = fixture.effects.CompleteSlotPublicationV3(ctx, imageagent.PublicationCompletion{Reservation: fixture.reservation, Owner: claim.Owner, Fence: claim.Fence, PublicationFingerprint: publicationFingerprint, ResultFingerprint: fingerprint, Published: published})
+				require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			})
+		}
+	}
+}
+
+func TestSlotEffectV3RepositoryRejectsMismatchedBlockedPolicyOnWrite(t *testing.T) {
+	for _, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			fixture := factory.new(t)
+			_, _, err := fixture.effects.ReserveSlotProviderV3(context.Background(), fixture.reservation)
+			require.NoError(t, err)
+			_, err = fixture.effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{Reservation: fixture.reservation, Phase: imageagent.SlotEffectV3ProviderUnknown, Code: imageagent.SlotPublicationOutcomeUnknownCode})
+			require.ErrorIs(t, err, imageagent.ErrInvalidPersistedPolicy)
+		})
+	}
+}
+
+func TestSlotEffectV3RepositoryRejectsMismatchedBlockedPolicyOnRead(t *testing.T) {
+	t.Run("memory", func(t *testing.T) {
+		reservation := v3Reservation("invalid-policy-read-memory")
+		repository := NewMemoryRepository()
+		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+		memory := repository.(*memoryRepository)
+		memory.mu.Lock()
+		memory.slotEffectsV3[slotEffectKey(reservation.Identity)] = imageagent.SlotEffectV3Attempt{Identity: reservation.Identity, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint, Phase: imageagent.SlotEffectV3PublicationUnknown, BlockedCode: imageagent.SlotProviderOutcomeUnknownCode}
+		memory.mu.Unlock()
+		_, err := repository.(imageagent.SlotExternalEffectV3Repository).GetSlotExternalEffectV3(context.Background(), reservation.Identity)
+		require.ErrorIs(t, err, imageagent.ErrInvalidPersistedPolicy)
+	})
+	t.Run("gorm", func(t *testing.T) {
+		reservation := v3Reservation("invalid-policy-read-gorm")
+		db := newConcurrentSQLite(t)
+		repository := NewGormRepository(db)
+		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+		row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+		row.Phase = string(imageagent.SlotEffectV3PublicationUnknown)
+		row.BlockedCode = imageagent.SlotProviderOutcomeUnknownCode
+		require.NoError(t, db.Create(&row).Error)
+		_, err := repository.(imageagent.SlotExternalEffectV3Repository).GetSlotExternalEffectV3(context.Background(), reservation.Identity)
+		require.ErrorIs(t, err, imageagent.ErrInvalidPersistedPolicy)
+	})
 }
 
 func TestSlotEffectV3RejectsLocalPathsAndUnknownMetadata(t *testing.T) {
@@ -439,7 +531,8 @@ func TestGormSlotEffectV3ConcurrentClaimsAndFencing(t *testing.T) {
 
 	_, err = effects.CompleteSlotPublicationV3(context.Background(), imageagent.PublicationCompletion{Reservation: reservation, Owner: winner.Owner, Fence: winner.Fence, PublicationFingerprint: successorRequest.PublicationFingerprint, ResultFingerprint: "result-fingerprint-concurrent", Published: v3PublishedResult(reservation)})
 	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
-	completion := imageagent.PublicationCompletion{Reservation: reservation, Owner: successor.Owner, Fence: successor.Fence, PublicationFingerprint: successorRequest.PublicationFingerprint, ResultFingerprint: "result-fingerprint-concurrent", Published: v3PublishedResult(reservation)}
+	published := v3PublishedResult(reservation)
+	completion := imageagent.PublicationCompletion{Reservation: reservation, Owner: successor.Owner, Fence: successor.Fence, PublicationFingerprint: successorRequest.PublicationFingerprint, ResultFingerprint: mustV3ResultFingerprint(t, published), Published: published}
 	completed, err := effects.CompleteSlotPublicationV3(context.Background(), completion)
 	require.NoError(t, err)
 	replayed, err := effects.CompleteSlotPublicationV3(context.Background(), completion)
@@ -610,7 +703,7 @@ func TestSlotEffectV3PublishedJSONIsAllowlistedAcrossAdapters(t *testing.T) {
 			require.True(t, claimed)
 			published := v3PublishedResult(fixture.reservation)
 			published.Candidates[0].DurableAsset.SHA256 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-			attempt, err := fixture.effects.CompleteSlotPublicationV3(ctx, imageagent.PublicationCompletion{Reservation: fixture.reservation, Owner: claim.Owner, Fence: claim.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: "result-fingerprint-allowlisted", Published: published})
+			attempt, err := fixture.effects.CompleteSlotPublicationV3(ctx, imageagent.PublicationCompletion{Reservation: fixture.reservation, Owner: claim.Owner, Fence: claim.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: mustV3ResultFingerprint(t, published), Published: published})
 			require.NoError(t, err)
 			require.Equal(t, v3SHA256, attempt.Published.Candidates[0].DurableAsset.SHA256)
 
@@ -731,6 +824,28 @@ func v3PublicationRequest(reservation imageagent.SlotEffectV3Reservation, owner 
 
 func v3PublishedResult(reservation imageagent.SlotEffectV3Reservation) imageagent.SlotEffectV3PublishedResult {
 	return imageagent.SlotEffectV3PublishedResult{SlotID: reservation.Identity.SlotID, Attempt: reservation.Identity.Attempt, Candidates: []imageagent.SlotEffectV3AssetCandidate{{AssetID: "candidate-1", SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256}}}}
+}
+
+func mustV3ResultFingerprint(t *testing.T, result imageagent.SlotEffectV3PublishedResult) string {
+	t.Helper()
+	fingerprint, err := imageagent.SlotEffectV3PublishedResultFingerprint(result)
+	require.NoError(t, err)
+	return fingerprint
+}
+
+func v3TwoAssetFinalManifest() imageagent.FinalManifest {
+	return imageagent.FinalManifest{Assets: []imageagent.PublishedAssetRef{
+		{ObjectKey: "image-agent/final/tenant-a/run/asset-a.png", SHA256: v3SHA256, SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", Operations: []string{"resize"}},
+		{ObjectKey: "image-agent/final/tenant-a/run/asset-b.png", SHA256: strings.Repeat("b", 64), SizeBytes: 84, ContentType: "image/png", Width: 800, Height: 800, SourceAssetID: "source-2", Operations: []string{"resize"}},
+	}}
+}
+
+func v3TwoAssetPublishedResult(reservation imageagent.SlotEffectV3Reservation) imageagent.SlotEffectV3PublishedResult {
+	final := v3TwoAssetFinalManifest()
+	return imageagent.SlotEffectV3PublishedResult{SlotID: reservation.Identity.SlotID, Attempt: reservation.Identity.Attempt, Candidates: []imageagent.SlotEffectV3AssetCandidate{
+		{AssetID: "candidate-a", SourceAssetID: final.Assets[0].SourceAssetID, DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: final.Assets[0].ObjectKey, SHA256: final.Assets[0].SHA256}},
+		{AssetID: "candidate-b", SourceAssetID: final.Assets[1].SourceAssetID, DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: final.Assets[1].ObjectKey, SHA256: final.Assets[1].SHA256}},
+	}}
 }
 
 func stageV3Attempt(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, reservation imageagent.SlotEffectV3Reservation) imageagent.SlotEffectV3Attempt {

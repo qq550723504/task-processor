@@ -48,6 +48,43 @@ func TestAllowedActionsForBlockedRunAreExplicit(t *testing.T) {
 	require.Equal(t, []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}, AllowedActions(run))
 }
 
+func TestSlotEffectV3BlockedPolicyMapsExactPhaseCodeAndActions(t *testing.T) {
+	for _, tc := range []struct {
+		phase   SlotEffectV3Phase
+		code    string
+		actions []Action
+	}{
+		{SlotEffectV3ProviderUnknown, SlotProviderOutcomeUnknownCode, []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}},
+		{SlotEffectV3StagingUnknown, SlotStagingOutcomeUnknownCode, []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}},
+		{SlotEffectV3PublicationUnknown, SlotPublicationOutcomeUnknownCode, []Action{ActionEditPlan, ActionCancel}},
+	} {
+		policy, err := SlotEffectV3BlockedPolicyFor(tc.phase, tc.code)
+		require.NoError(t, err)
+		require.Equal(t, tc.actions, policy.PermittedActions)
+		run := Run{Mode: RunModeManual, Status: RunStatusBlocked, Block: &Block{Code: tc.code, SlotID: "scene-2"}}
+		require.Equal(t, tc.actions, AllowedActions(run))
+	}
+}
+
+func TestSlotEffectV3BlockedPolicyRejectsUnknownAndMismatchedCodes(t *testing.T) {
+	for _, tc := range []struct {
+		phase SlotEffectV3Phase
+		code  string
+	}{
+		{SlotEffectV3PublicationUnknown, SlotProviderOutcomeUnknownCode},
+		{SlotEffectV3ProviderUnknown, "future_policy"},
+		{SlotEffectV3Phase("future_phase"), SlotProviderOutcomeUnknownCode},
+	} {
+		_, err := SlotEffectV3BlockedPolicyFor(tc.phase, tc.code)
+		require.ErrorIs(t, err, ErrInvalidPersistedPolicy)
+	}
+}
+
+func TestAllowedActionsKeepsLegacySlotFailedBehavior(t *testing.T) {
+	run := Run{Mode: RunModeManual, Status: RunStatusBlocked, Block: &Block{Code: "slot_failed", SlotID: "scene-2"}}
+	require.Equal(t, []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}, AllowedActions(run))
+}
+
 func TestAllowedActionsExposeFinalApprovalAndCancellation(t *testing.T) {
 	run := Run{Mode: RunModeManual, Status: RunStatusAwaitingFinalApproval}
 	require.Equal(t, []Action{ActionApproveResults, ActionCancel}, AllowedActions(run))
