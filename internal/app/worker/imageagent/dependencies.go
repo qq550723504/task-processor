@@ -123,13 +123,18 @@ func resolveImageAgentTemporalDependencies(configPath string, logger *logrus.Log
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, err
 	}
+	publisherV3, err := listingkithttpapi.NewImageAgentApprovedPublisherV3(repository, listingkitstore.NewImageAgentPublicationTransactionRepository(db), artifactStore)
+	if err != nil {
+		_ = closeDB()
+		return appruntime.ImageAgentTemporalDependencies{}, nil, err
+	}
 	executor := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
 		SubjectExtractor: capabilities.SubjectExtractor, WhiteBackgroundRenderer: capabilities.WhiteBackgroundRenderer,
 		SceneRenderer: capabilities.SceneRenderer, AssetPublisher: capabilities.AssetPublisher,
 	})
 	return appruntime.ImageAgentTemporalDependencies{
 		Repository: repository, SlotExecutor: executor, StagedSlotExecutor: executor,
-		ArtifactStore: artifactStore, Publisher: publisher, PublicationLeaseDuration: timing.PublicationLeaseDuration,
+		ArtifactStore: artifactStore, Publisher: publisher, PublisherV3: publisherV3, PublicationLeaseDuration: timing.PublicationLeaseDuration,
 	}, closeDB, nil
 }
 

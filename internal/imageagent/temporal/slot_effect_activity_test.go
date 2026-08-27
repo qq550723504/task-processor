@@ -11,6 +11,7 @@ import (
 	sdkactivity "go.temporal.io/sdk/activity"
 	sdktemporal "go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
+	sdkworkflow "go.temporal.io/sdk/workflow"
 
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/store"
@@ -19,93 +20,16 @@ import (
 const v3SHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const testExecuteSlotV3ActivityName = "test.imageagent.execute_slot.v3"
 
-func TestExecuteSlotActivityReplaysPublicationCompleteWithoutRepeatingEffects(t *testing.T) {
-	repository, input := initializedSlotEffectActivity(t, "run-activity-replay")
-	executor := &recordingRecoverableSlotExecutor{}
-	activities, err := NewActivities(ActivityDependencies{Repository: repository, SlotEffects: repository.(imageagent.SlotExternalEffectRepository), SlotExecutor: executor, Publisher: &identityCheckingPublisher{t: t}})
-	require.NoError(t, err)
-
-	first, err := activities.ExecuteSlot(context.Background(), input)
-	require.NoError(t, err)
-	second, err := activities.ExecuteSlot(context.Background(), input)
-	require.NoError(t, err)
-	require.Equal(t, first, second)
-	require.Equal(t, 1, executor.GenerateCalls())
-	require.Equal(t, 1, executor.PublishCalls())
-	require.Len(t, first.Candidates, 1)
-}
-
-func TestExecuteSlotActivityProviderStartedWithoutOutputFailsUnknownWithoutRegeneration(t *testing.T) {
-	repository, input := initializedSlotEffectActivity(t, "run-activity-unknown")
-	effects := repository.(imageagent.SlotExternalEffectRepository)
-	reservation := slotEffectReservationForActivity(input)
-	_, claimed, err := effects.ReserveSlotExternalEffect(context.Background(), reservation)
-	require.NoError(t, err)
-	require.True(t, claimed)
-	executor := &recordingRecoverableSlotExecutor{}
-	activities, err := NewActivities(ActivityDependencies{Repository: repository, SlotEffects: effects, SlotExecutor: executor, Publisher: &identityCheckingPublisher{t: t}})
-	require.NoError(t, err)
-
-	_, err = activities.ExecuteSlot(context.Background(), input)
-	var applicationError *sdktemporal.ApplicationError
-	require.ErrorAs(t, err, &applicationError)
-	require.Equal(t, slotProviderOutcomeUnknownErrorType, applicationError.Type())
-	require.True(t, applicationError.NonRetryable())
-	require.Zero(t, executor.GenerateCalls())
-	require.Zero(t, executor.PublishCalls())
-}
-
-func TestExecuteSlotActivityResumesGeneratedOutputAtDurablePublicationOnly(t *testing.T) {
-	repository, input := initializedSlotEffectActivity(t, "run-activity-resume-publication")
-	effects := repository.(imageagent.SlotExternalEffectRepository)
-	reservation := slotEffectReservationForActivity(input)
-	_, claimed, err := effects.ReserveSlotExternalEffect(context.Background(), reservation)
-	require.NoError(t, err)
-	require.True(t, claimed)
-	_, err = effects.StoreSlotGeneratedOutput(context.Background(), reservation, activityGeneratedOutput())
-	require.NoError(t, err)
-	executor := &recordingRecoverableSlotExecutor{}
-	activities, err := NewActivities(ActivityDependencies{Repository: repository, SlotEffects: effects, SlotExecutor: executor, Publisher: &identityCheckingPublisher{t: t}})
+func TestExecuteSlotV2CallsFrozenOneShotExecutor(t *testing.T) {
+	repository, input := initializedSlotEffectActivity(t, "run-v2-one-shot")
+	executor := &identityCheckingExecutor{t: t}
+	activities, err := NewActivities(ActivityDependencies{Repository: repository, SlotExecutor: executor, Publisher: &identityCheckingPublisher{t: t}})
 	require.NoError(t, err)
 
 	result, err := activities.ExecuteSlot(context.Background(), input)
 	require.NoError(t, err)
-	require.Zero(t, executor.GenerateCalls())
-	require.Equal(t, 1, executor.PublishCalls())
-	require.Equal(t, "candidate-1", result.Candidates[0].AssetID)
-}
-
-func TestExecuteSlotActivityConcurrentExactCallsHaveOneProviderAndOneDurableCandidate(t *testing.T) {
-	repository, input := initializedSlotEffectActivity(t, "run-activity-concurrent")
-	executor := &recordingRecoverableSlotExecutor{generateStarted: make(chan struct{}), releaseGenerate: make(chan struct{})}
-	activities, err := NewActivities(ActivityDependencies{Repository: repository, SlotEffects: repository.(imageagent.SlotExternalEffectRepository), SlotExecutor: executor, Publisher: &identityCheckingPublisher{t: t}})
-	require.NoError(t, err)
-
-	type outcome struct {
-		result imageagent.SlotExecutionResult
-		err    error
-	}
-	firstDone := make(chan outcome, 1)
-	go func() {
-		result, err := activities.ExecuteSlot(context.Background(), input)
-		firstDone <- outcome{result: result, err: err}
-	}()
-	<-executor.generateStarted
-	_, secondErr := activities.ExecuteSlot(context.Background(), input)
-	var applicationError *sdktemporal.ApplicationError
-	require.ErrorAs(t, secondErr, &applicationError)
-	require.Equal(t, slotProviderOutcomeUnknownErrorType, applicationError.Type())
-	close(executor.releaseGenerate)
-	first := <-firstDone
-	require.NoError(t, first.err)
-	require.Equal(t, 1, executor.GenerateCalls())
-	require.Equal(t, 1, executor.PublishCalls())
-
-	stored, err := repository.(imageagent.SlotExternalEffectRepository).GetSlotExternalEffect(context.Background(), slotEffectReservationForActivity(input).Identity)
-	require.NoError(t, err)
-	require.Equal(t, imageagent.SlotExternalEffectPublicationComplete, stored.Phase)
-	require.Equal(t, first.result, stored.Published)
-	require.Len(t, stored.Published.Candidates, 1)
+	require.Equal(t, input.Slot.ID, result.SlotID)
+	require.Equal(t, 1, executor.calls)
 }
 
 func TestSlotWorkflowPreservesUnknownProviderOutcomeBlockerCode(t *testing.T) {
@@ -164,6 +88,8 @@ func TestImageSlotWorkflowV2PreservesHistoricalMainCandidateSemantics(t *testing
 		t.Run(fmt.Sprintf("count-%d", count), func(t *testing.T) {
 			var suite testsuite.WorkflowTestSuite
 			env := suite.NewTestWorkflowEnvironment()
+			env.OnGetVersion(activityWireV2Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1))
+			env.OnGetVersion(slotExecutionWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion)
 			env.RegisterWorkflow(ImageSlotWorkflow)
 			env.RegisterActivityWithOptions(func(_ context.Context, input ExecuteSlotActivityInput) (imageagent.SlotExecutionResult, error) {
 				candidates := make([]imageagent.AssetCandidate, count)
@@ -307,6 +233,14 @@ type recordingRecoverableSlotExecutor struct {
 	publishCalls    int
 	generateStarted chan struct{}
 	releaseGenerate chan struct{}
+}
+
+func (e *recordingRecoverableSlotExecutor) ExecuteSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotExecutionResult, error) {
+	generated, err := e.GenerateSlot(ctx, input)
+	if err != nil {
+		return imageagent.SlotExecutionResult{}, err
+	}
+	return e.PublishSlot(ctx, input, generated)
 }
 
 func (e *recordingRecoverableSlotExecutor) GenerateSlot(context.Context, imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {

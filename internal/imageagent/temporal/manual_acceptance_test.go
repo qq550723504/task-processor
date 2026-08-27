@@ -2,8 +2,13 @@ package temporal_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"testing"
@@ -14,6 +19,7 @@ import (
 	"go.temporal.io/sdk/worker"
 
 	"task-processor/internal/imageagent"
+	"task-processor/internal/imageagent/objectstore"
 	imageagentstore "task-processor/internal/imageagent/store"
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	imageagenttools "task-processor/internal/imageagent/tools"
@@ -70,14 +76,18 @@ func executeAcceptanceWorkflow(t *testing.T, plan imageagent.Plan, invalidSlotID
 	})
 	require.NoError(t, err)
 
+	artifactPath := filepath.Join(t.TempDir(), "generated.png")
+	require.NoError(t, os.WriteFile(artifactPath, acceptancePNG, 0o600))
 	delegate := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
 		SubjectExtractor:        acceptanceSubjectExtractor{},
-		WhiteBackgroundRenderer: acceptanceWhiteRenderer{},
-		SceneRenderer:           acceptanceSceneRenderer{},
+		WhiteBackgroundRenderer: acceptanceWhiteRenderer{artifactPath: artifactPath},
+		SceneRenderer:           acceptanceSceneRenderer{artifactPath: artifactPath},
 	})
 	executor := &recordingAcceptanceExecutor{delegate: delegate, invalidSlotID: invalidSlotID}
 	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
-		Repository: repository, SlotExecutor: executor, Publisher: acceptancePublisher{},
+		Repository: repository, SlotExecutor: executor, Publisher: acceptancePublisher{}, PublisherV3: acceptancePublisher{},
+		SlotEffectsV3: repository.(imageagent.SlotExternalEffectV3Repository), StagedSlotExecutor: executor,
+		ArtifactStore: acceptanceDurableArtifactStore{},
 	})
 	require.NoError(t, err)
 
@@ -85,6 +95,7 @@ func executeAcceptanceWorkflow(t *testing.T, plan imageagent.Plan, invalidSlotID
 	env := suite.NewTestWorkflowEnvironment()
 	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
 	env.RegisterWorkflow(imageagenttemporal.ImageSlotWorkflow)
+	env.RegisterWorkflow(imageagenttemporal.ImageSlotWorkflowV3)
 	require.NoError(t, imageagenttemporal.RegisterActivities(env, activities))
 	env.ExecuteWorkflow(imageagenttemporal.ImageAgentWorkflow, imageagenttemporal.WorkflowInput{
 		RunID: run.ID, Mode: imageagent.RunModeManual,
@@ -144,10 +155,15 @@ func acceptancePlan(slotCount, sourceCount int) imageagent.Plan {
 }
 
 type recordingAcceptanceExecutor struct {
-	delegate      imageagent.RecoverableSlotExecutor
+	delegate      acceptanceExecutorDelegate
 	invalidSlotID string
 	mu            sync.Mutex
 	calls         []string
+}
+
+type acceptanceExecutorDelegate interface {
+	imageagent.StagedSlotExecutor
+	imageagent.RecoverableSlotExecutor
 }
 
 func (e *recordingAcceptanceExecutor) ExecuteSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotExecutionResult, error) {
@@ -163,6 +179,9 @@ func (e *recordingAcceptanceExecutor) GenerateSlot(ctx context.Context, input im
 	e.mu.Lock()
 	e.calls = append(e.calls, input.Slot.ID)
 	e.mu.Unlock()
+	if err == nil && input.Slot.ID == e.invalidSlotID {
+		return imageagent.SlotGeneratedOutput{}, fmt.Errorf("intentional acceptance provider failure for %s", input.Slot.ID)
+	}
 	return result, err
 }
 
@@ -172,6 +191,10 @@ func (e *recordingAcceptanceExecutor) PublishSlot(ctx context.Context, input ima
 		return imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, nil
 	}
 	return result, err
+}
+
+func (e *recordingAcceptanceExecutor) BuildSlotResult(ctx context.Context, input imageagent.SlotExecutionInput, published imageagent.PublishedSlotOutput) (imageagent.SlotExecutionResult, error) {
+	return e.delegate.BuildSlotResult(ctx, input, published)
 }
 
 func (e *recordingAcceptanceExecutor) calledIDs() []string {
@@ -189,20 +212,20 @@ func (acceptanceSubjectExtractor) Extract(_ context.Context, imageURL string, _ 
 	}, nil
 }
 
-type acceptanceWhiteRenderer struct{}
+type acceptanceWhiteRenderer struct{ artifactPath string }
 
-func (acceptanceWhiteRenderer) Render(_ context.Context, _ *productimage.ImageAsset, context *productimage.ProductContext) (*productimage.ImageAsset, error) {
+func (r acceptanceWhiteRenderer) Render(_ context.Context, _ *productimage.ImageAsset, context *productimage.ProductContext) (*productimage.ImageAsset, error) {
 	return &productimage.ImageAsset{
-		URL:  "https://generated.example/" + context.Attributes["slot_brief"] + ".png",
+		URL:  r.artifactPath,
 		Type: productimage.AssetTypeWhiteBgImage,
 	}, nil
 }
 
-type acceptanceSceneRenderer struct{}
+type acceptanceSceneRenderer struct{ artifactPath string }
 
-func (acceptanceSceneRenderer) Render(_ context.Context, _ *productimage.ImageAsset, context *productimage.ProductContext) ([]productimage.ImageAsset, error) {
+func (r acceptanceSceneRenderer) Render(_ context.Context, _ *productimage.ImageAsset, context *productimage.ProductContext) ([]productimage.ImageAsset, error) {
 	return []productimage.ImageAsset{{
-		URL:  "https://generated.example/" + context.Attributes["slot_brief"] + ".png",
+		URL:  r.artifactPath,
 		Type: productimage.AssetTypeGalleryImage,
 	}}, nil
 }
@@ -211,6 +234,69 @@ type acceptancePublisher struct{}
 
 func (acceptancePublisher) PublishApproved(context.Context, imageagent.PublishApprovedInput) (imageagent.PublicationAcknowledgement, error) {
 	return imageagent.PublicationAcknowledgement{}, nil
+}
+
+func (acceptancePublisher) PublishApprovedV3(context.Context, imageagent.PublishApprovedV3Input) (imageagent.PublicationAcknowledgement, error) {
+	return imageagent.PublicationAcknowledgement{}, nil
+}
+
+var acceptancePNG, _ = base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+
+type acceptanceDurableArtifactStore struct{}
+
+func (acceptanceDurableArtifactStore) PublicURL(key string) string {
+	return "https://cdn.example.test/" + key
+}
+
+func (acceptanceDurableArtifactStore) PrepareSlotArtifacts(input objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
+	assets := make([]imageagent.StagedAssetRef, len(input.Assets))
+	for index, asset := range input.Assets {
+		operations, err := imageagent.NormalizeArtifactOperations(asset.Operations)
+		if err != nil {
+			return objectstore.PreparedSlotArtifacts{}, err
+		}
+		sum := sha256.Sum256(asset.Bytes)
+		hash := hex.EncodeToString(sum[:])
+		assets[index] = imageagent.StagedAssetRef{
+			ObjectKey: fmt.Sprintf("image-agent/staging/%s/%s/%d/%s/%d/%d-%s.png", input.Identity.TenantID, input.Identity.RunID, input.Identity.PlanRevision, input.Identity.SlotID, input.Identity.Attempt, index, hash),
+			SHA256:    hash, SizeBytes: int64(len(asset.Bytes)), ContentType: asset.ContentType, Width: asset.Width, Height: asset.Height,
+			SourceAssetID: asset.SourceAssetID, Operations: operations, ProviderReceiptID: asset.ProviderReceiptID,
+		}
+	}
+	manifest, err := imageagent.NormalizeStagingManifest(imageagent.StagingManifest{Assets: assets})
+	if err != nil {
+		return objectstore.PreparedSlotArtifacts{}, err
+	}
+	return objectstore.PreparedSlotArtifacts{Manifest: manifest}, nil
+}
+
+func (acceptanceDurableArtifactStore) EnsureStaged(_ context.Context, prepared objectstore.PreparedSlotArtifacts) error {
+	return imageagent.ValidateStagingManifest(prepared.Manifest)
+}
+
+func (acceptanceDurableArtifactStore) Finalize(ctx context.Context, manifest imageagent.StagingManifest) (imageagent.FinalManifest, error) {
+	return acceptanceDurableArtifactStore{}.FinalizeWithProgress(ctx, manifest, nil)
+}
+
+func (acceptanceDurableArtifactStore) FinalizeWithProgress(ctx context.Context, manifest imageagent.StagingManifest, progress func(context.Context, int) error) (imageagent.FinalManifest, error) {
+	manifest, err := imageagent.NormalizeStagingManifest(manifest)
+	if err != nil {
+		return imageagent.FinalManifest{}, err
+	}
+	assets := make([]imageagent.PublishedAssetRef, len(manifest.Assets))
+	for index, asset := range manifest.Assets {
+		if progress != nil {
+			if err := progress(ctx, index); err != nil {
+				return imageagent.FinalManifest{}, err
+			}
+		}
+		assets[index] = imageagent.PublishedAssetRef{
+			ObjectKey: "image-agent/public/" + asset.ObjectKey[len("image-agent/staging/"):],
+			SHA256:    asset.SHA256, SizeBytes: asset.SizeBytes, ContentType: asset.ContentType, Width: asset.Width, Height: asset.Height,
+			SourceAssetID: asset.SourceAssetID, Operations: asset.Operations, ProviderReceiptID: asset.ProviderReceiptID,
+		}
+	}
+	return imageagent.NormalizeFinalManifest(imageagent.FinalManifest{Assets: assets})
 }
 
 func acceptedSlotEventCount(t *testing.T, events []imageagent.RunEvent) int {

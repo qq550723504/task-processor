@@ -194,6 +194,8 @@ func durablePublisherConfig(mode string, cosPolicy bool) config.ProductImagePubl
 
 type workerArtifactStore struct{}
 
+func (workerArtifactStore) PublicURL(key string) string { return "https://cdn.example.test/" + key }
+
 func (workerArtifactStore) PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
 	return objectstore.PreparedSlotArtifacts{}, nil
 }

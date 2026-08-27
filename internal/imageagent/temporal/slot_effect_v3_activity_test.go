@@ -500,7 +500,7 @@ func newV3ActivitiesWithOwner(t *testing.T, repository imageagent.Repository, ef
 	activities, err := NewActivities(ActivityDependencies{
 		Repository: repository, SlotEffects: repository.(imageagent.SlotExternalEffectRepository), SlotExecutor: executor,
 		SlotEffectsV3: effects, StagedSlotExecutor: executor, ArtifactStore: artifacts,
-		Publisher: &identityCheckingPublisher{t: t}, PublicationOwner: func(context.Context) (string, error) { return owner, nil },
+		Publisher: &identityCheckingPublisher{t: t}, PublisherV3: &identityCheckingPublisher{t: t}, PublicationOwner: func(context.Context) (string, error) { return owner, nil },
 	})
 	require.NoError(t, err)
 	return activities
@@ -608,6 +608,10 @@ type recordingStagedExecutor struct {
 	mutateResult  func(*imageagent.SlotExecutionResult)
 }
 
+func (e *recordingStagedExecutor) ExecuteSlot(context.Context, imageagent.SlotExecutionInput) (imageagent.SlotExecutionResult, error) {
+	return imageagent.SlotExecutionResult{}, errors.New("v2 execute must not be used by ExecuteSlotV3")
+}
+
 func (e *recordingStagedExecutor) GenerateSlot(_ context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -661,6 +665,8 @@ type recordingArtifactStore struct {
 	onProgress    func(int)
 	progressCalls int
 }
+
+func (*recordingArtifactStore) PublicURL(key string) string { return "https://cdn.example.test/" + key }
 
 func (s *recordingArtifactStore) PrepareSlotArtifacts(input objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
 	s.mu.Lock()

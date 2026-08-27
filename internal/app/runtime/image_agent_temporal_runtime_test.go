@@ -37,7 +37,7 @@ func TestImageAgentTemporalRuntimeComposesAndClosesWorker(t *testing.T) {
 	var gotAddress, gotNamespace string
 	var gotConfig imageagenttemporal.WorkerConfig
 	closeFn, err := startImageAgentTemporalWorkerWithDependencies(ImageAgentTemporalDependencies{
-		Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{},
+		Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{}, PublisherV3: runtimePublisher{},
 		StagedSlotExecutor: runtimeSlotExecutor{}, ArtifactStore: runtimeArtifactStore{},
 	}, imageAgentTemporalRuntimeDependencies{
 		Dial: func(address, namespace string) (sdkclient.Client, func() error, error) {
@@ -76,6 +76,28 @@ func TestImageAgentTemporalRuntimeFailsClosedWithPartialV3Ports(t *testing.T) {
 	require.ErrorContains(t, err, "durable artifact store")
 }
 
+func TestImageAgentCompatibilityCanaryDialsWithoutProductDependencies(t *testing.T) {
+	dialed, ran, closed := false, false, false
+	err := runImageAgentCompatibilityCanaryWithDependencies(context.Background(), nil, "image-agent-manual-v3-canary", imageAgentCompatibilityCanaryDependencies{
+		Dial: func(address, namespace string) (sdkclient.Client, func() error, error) {
+			dialed = true
+			require.Equal(t, "localhost:7233", address)
+			require.Equal(t, "default", namespace)
+			return nil, func() error { closed = true; return nil }, nil
+		},
+		RunCanary: func(_ context.Context, client sdkclient.Client, queue string) error {
+			ran = true
+			require.Nil(t, client)
+			require.Equal(t, "image-agent-manual-v3-canary", queue)
+			return nil
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, dialed)
+	require.True(t, ran)
+	require.True(t, closed)
+}
+
 type recordingImageAgentWorker struct {
 	started bool
 	stopped bool
@@ -104,6 +126,8 @@ func (runtimeSlotExecutor) BuildSlotResult(_ context.Context, input imageagent.S
 
 type runtimeArtifactStore struct{}
 
+func (runtimeArtifactStore) PublicURL(key string) string { return "https://cdn.example.test/" + key }
+
 func (runtimeArtifactStore) PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
 	return objectstore.PreparedSlotArtifacts{}, nil
 }
@@ -120,5 +144,9 @@ func (runtimeArtifactStore) FinalizeWithProgress(context.Context, imageagent.Sta
 type runtimePublisher struct{}
 
 func (runtimePublisher) PublishApproved(context.Context, imageagent.PublishApprovedInput) (imageagent.PublicationAcknowledgement, error) {
+	return imageagent.PublicationAcknowledgement{}, nil
+}
+
+func (runtimePublisher) PublishApprovedV3(context.Context, imageagent.PublishApprovedV3Input) (imageagent.PublicationAcknowledgement, error) {
 	return imageagent.PublicationAcknowledgement{}, nil
 }

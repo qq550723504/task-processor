@@ -1169,7 +1169,7 @@ func TestManualWorkflowApprovalUpdateResumesAfterCompletedStateFailureWithoutRep
 	publishCalls := 0
 	logicalPublications := 0
 	env.OnActivity(activityPublishApproved, mock.Anything, mock.MatchedBy(func(input PublishApprovedActivityInput) bool {
-		return input.IdempotencyKey == "approve-resume"
+		return input.IdempotencyKey == "image-agent:run-1:plan:1:publication"
 	})).Run(func(mock.Arguments) {
 		publishCalls++
 		logicalPublications = 1
@@ -1254,7 +1254,7 @@ func TestManualWorkflowDuplicateApprovalPublishesOnceWithStableKey(t *testing.T)
 			Once()
 	}
 	env.OnActivity(activityPublishApproved, mock.Anything, mock.MatchedBy(func(in PublishApprovedActivityInput) bool {
-		return in.IdempotencyKey == "approve-final-1" &&
+		return in.IdempotencyKey == "image-agent:run-1:plan:1:publication" &&
 			requireCandidateIDs(in.CandidateAssetIDs, plan)
 	})).Return(nil).Once()
 	env.RegisterDelayedCallback(func() {
@@ -2477,6 +2477,11 @@ func TestManualWorkflowReplacePathUsesRealProjectionActivityAndRepository(t *tes
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
 	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(approvalActionIDV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(approvalPublicationWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(resultDigestV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	env.RegisterWorkflow(ImageSlotWorkflow)
 	env.RegisterActivityWithOptions(activities.ExecuteSlot, sdkactivity.RegisterOptions{Name: activityExecuteSlot})
 	env.RegisterActivityWithOptions(activities.PersistSlotResult, sdkactivity.RegisterOptions{Name: activityPersistSlotResult})
@@ -2620,7 +2625,7 @@ func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 
 	require.NoError(t, client.StartManual(context.Background(), start))
 	require.Equal(t, "image-agent:tenant-a:user-a:run-1", raw.startOptions.ID)
-	require.Equal(t, TaskQueueName(), raw.startOptions.TaskQueue)
+	require.Equal(t, TaskQueueV3, raw.startOptions.TaskQueue)
 	require.Equal(t, workflowNameImageAgent, raw.workflowName)
 	require.Equal(t, imageagent.RunModeManual, raw.workflowInput.Mode)
 	require.True(t, raw.workflowInput.WaitForCommands)
@@ -2766,11 +2771,34 @@ func TestRegisterWorkerRegistersParentChildAndActivities(t *testing.T) {
 
 	require.NoError(t, RegisterWorker(registrar, activities))
 
-	require.Equal(t, []string{workflowNameImageAgent, workflowNameImageSlot}, registrar.workflows)
+	require.Equal(t, []string{workflowNameImageAgent, workflowNameImageSlot, "ImageSlotWorkflowV3", workflowNameCompatibilityCanary}, registrar.workflows)
 	require.Equal(t, []string{
 		"imageagent.execute_slot", "imageagent.persist_slot_result", "imageagent.persist_run_state", "imageagent.persist_plan_revision", "imageagent.persist_pending_command", "imageagent.publish_approved",
-		"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_run_state.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
+		"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_slot_result.v3", "imageagent.persist_run_state.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
+		"imageagent.execute_slot.v3", "imageagent.publish_approved.v3",
 	}, registrar.activities)
+}
+
+func TestWorkerConfigSelectsExplicitV2AndDefaultV3Queues(t *testing.T) {
+	tests := []struct {
+		name   string
+		config WorkerConfig
+		queue  string
+	}{
+		{name: "v2", config: WorkerConfig{WireMode: WorkerWireModeV2}, queue: TaskQueue},
+		{name: "v3", config: WorkerConfig{WireMode: WorkerWireModeV3}, queue: TaskQueueV3},
+		{name: "default v3", config: WorkerConfig{}, queue: TaskQueueV3},
+		{name: "explicit queue", config: WorkerConfig{WireMode: WorkerWireModeV3, TaskQueue: "image-agent-manual-v3-custom"}, queue: "image-agent-manual-v3-custom"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			queue, err := test.config.selectedTaskQueue()
+			require.NoError(t, err)
+			require.Equal(t, test.queue, queue)
+		})
+	}
+	_, err := (WorkerConfig{WireMode: "invalid"}).selectedTaskQueue()
+	require.ErrorContains(t, err, "unsupported image agent temporal wire mode")
 }
 
 func TestLegacyPersistRunStateDecodesFrozenPayloadAndFailsWithoutWritingV2State(t *testing.T) {
@@ -2909,6 +2937,11 @@ func newWorkflowEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
 	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(approvalActionIDV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(approvalPublicationWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(resultDigestV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	env.RegisterWorkflow(ImageSlotWorkflow)
 	env.RegisterActivityWithOptions(
 		func(context.Context, ExecuteSlotActivityInput) (imageagent.SlotExecutionResult, error) {
@@ -3061,6 +3094,15 @@ type identityCheckingPublisher struct {
 }
 
 func (p *identityCheckingPublisher) PublishApproved(ctx context.Context, input imageagent.PublishApprovedInput) (imageagent.PublicationAcknowledgement, error) {
+	p.calls++
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	require.True(p.t, ok)
+	require.Equal(p.t, input.TenantID, identity.TenantID)
+	require.Equal(p.t, "user-a", identity.UserID)
+	return imageagent.PublicationAcknowledgement{}, nil
+}
+
+func (p *identityCheckingPublisher) PublishApprovedV3(ctx context.Context, input imageagent.PublishApprovedV3Input) (imageagent.PublicationAcknowledgement, error) {
 	p.calls++
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	require.True(p.t, ok)

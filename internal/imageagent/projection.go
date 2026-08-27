@@ -63,11 +63,39 @@ func ValidateProjectionSnapshot(scope RunScope, snapshot RunProjection) error {
 		return ErrRevisionConflict
 	}
 	for _, slot := range snapshot.Slots {
-		for _, candidate := range slot.Candidates {
-			if _, err := ValidateSafeImageURL(candidate.URL); err != nil {
-				return fmt.Errorf("slot %q candidate %q has unsafe URL: %w", slot.Slot.ID, candidate.AssetID, err)
+		for index, candidate := range slot.Candidates {
+			if err := validateProjectionCandidate(scope, snapshot.Plan.Revision, slot, index, candidate); err != nil {
+				return fmt.Errorf("slot %q candidate %q is invalid: %w", slot.Slot.ID, candidate.AssetID, err)
 			}
 		}
+	}
+	return nil
+}
+
+// validateProjectionCandidate keeps the legacy URL projection representation
+// valid for frozen v2 histories while allowing the v3 durable-identity
+// representation. A candidate may use exactly one representation.
+func validateProjectionCandidate(scope RunScope, planRevision int64, slot SlotProjection, index int, candidate AssetCandidate) error {
+	if candidate.DurableAsset.ObjectKey == "" && candidate.DurableAsset.SHA256 == "" {
+		if _, err := ValidateSafeImageURL(candidate.URL); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	published, err := NewSlotEffectV3PublishedResult(SlotExecutionResult{SlotID: slot.Slot.ID, Attempt: slot.Attempt, Candidates: []AssetCandidate{candidate}})
+	if err != nil {
+		return err
+	}
+	if err := ValidatePublishedAssetIdentityForSlot(SlotExecutionInput{
+		RunID:        scope.RunID,
+		TenantID:     scope.TenantID,
+		UserID:       scope.OwnerUserID,
+		PlanRevision: planRevision,
+		Slot:         slot.Slot,
+		Attempt:      slot.Attempt,
+	}, published.Candidates[0].DurableAsset, index); err != nil {
+		return err
 	}
 	return nil
 }

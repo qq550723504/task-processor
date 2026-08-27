@@ -41,6 +41,17 @@ func TestRunPassesResolvedDependenciesToTemporalRuntime(t *testing.T) {
 	require.True(t, closed)
 }
 
+func TestRunCanaryDoesNotResolveProductDependenciesAndForwardsV3Queue(t *testing.T) {
+	called := false
+	err := runCanary(context.Background(), func(_ context.Context, _ *logrus.Logger, queue string) error {
+		called = true
+		require.Equal(t, "image-agent-manual-v3-canary", queue)
+		return nil
+	}, logrus.New(), "image-agent-manual-v3-canary")
+	require.NoError(t, err)
+	require.True(t, called)
+}
+
 type commandRepository struct{}
 
 func (commandRepository) InitializeRun(context.Context, imageagent.ProjectionInitialization) (imageagent.RunProjection, error) {

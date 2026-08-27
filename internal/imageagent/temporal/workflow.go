@@ -16,10 +16,17 @@ import (
 	"task-processor/internal/imageagent"
 )
 
-const activityWireV2Patch = "image-agent-atomic-command-boundaries-v2"
+const (
+	activityWireV2Patch            = "image-agent-atomic-command-boundaries-v2"
+	slotExecutionWireV3Patch       = "image-agent-slot-execution-wire-v3"
+	approvalActionIDV3Patch        = "image-agent-approval-action-id-v3"
+	approvalPublicationWireV3Patch = "image-agent-approval-publication-wire-v3"
+	resultDigestV3Patch            = "image-agent-result-digest-v3"
+)
 
 type workflowActivityWire struct {
 	executeSlot, persistSlotResult, persistRunState, persistPlanRevision, persistPendingCommand, publishApproved string
+	useV3Slot, useV3ApprovalActionID, useV3ApprovalPublication, useV3ResultDigest                                bool
 }
 
 func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
@@ -31,11 +38,25 @@ func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
 			persistPendingCommand: activityPersistPendingCommandLegacy, publishApproved: activityPublishApprovedLegacy,
 		}
 	}
-	return workflowActivityWire{
+	wire := workflowActivityWire{
 		executeSlot: activityExecuteSlot, persistSlotResult: activityPersistSlotResult,
 		persistRunState: activityPersistRunState, persistPlanRevision: activityPersistPlanRevision,
 		persistPendingCommand: activityPersistPendingCommand, publishApproved: activityPublishApproved,
 	}
+	if workflow.GetVersion(ctx, slotExecutionWireV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion {
+		wire.executeSlot = activityExecuteSlotV3
+		wire.persistSlotResult = activityPersistSlotResultV3
+		wire.useV3Slot = true
+	}
+	if workflow.GetVersion(ctx, approvalPublicationWireV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion {
+		wire.publishApproved = activityPublishApprovedV3
+		wire.useV3ApprovalPublication = true
+	}
+	// These independent markers are deliberately evaluated here for every v2
+	// execution so their absence selects the frozen branch during replay.
+	wire.useV3ApprovalActionID = workflow.GetVersion(ctx, approvalActionIDV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	wire.useV3ResultDigest = workflow.GetVersion(ctx, resultDigestV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	return wire
 }
 
 func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResult, error) {
@@ -175,7 +196,7 @@ runPlan:
 			}
 		}
 
-		digest, err := resultDigest(input.Plan, results)
+		digest, err := resultDigestForWire(input.Plan, results, effects.activities)
 		if err != nil {
 			return WorkflowResult{}, err
 		}
@@ -285,6 +306,19 @@ func (o *workflowEffectOwner) persistSlotResult(ctx workflow.Context, input Work
 	})
 }
 
+func (o *workflowEffectOwner) persistSlotResultV3(ctx workflow.Context, input WorkflowInput, result SlotWorkflowV3Result) error {
+	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
+		activityInput := PersistSlotResultV3ActivityInput{
+			RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision, Result: result,
+			AttemptKey: slotAttemptKey(input.Plan.Revision, findSlot(input.Plan, result.Published.SlotID), result.Published.Attempt),
+		}
+		if err := workflow.ExecuteActivity(ownerCtx, o.activities.persistSlotResult, activityInput).Get(ownerCtx, nil); err != nil {
+			return fmt.Errorf("persist v3 slot %s result: %w", result.Published.SlotID, err)
+		}
+		return nil
+	})
+}
+
 func (o *workflowEffectOwner) persistRunState(
 	ctx workflow.Context,
 	input WorkflowInput,
@@ -355,6 +389,16 @@ func (o *workflowEffectOwner) persistPendingCommand(ctx workflow.Context, input 
 
 func (o *workflowEffectOwner) publishApproved(ctx workflow.Context, input PublishApprovedActivityInput) error {
 	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
+		if o.activities.useV3ApprovalPublication {
+			v3Input := PublishApprovedV3ActivityInput{
+				RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
+				CandidateAssetIDs: append([]string(nil), input.CandidateAssetIDs...), IdempotencyKey: input.IdempotencyKey,
+			}
+			if err := workflow.ExecuteActivity(ownerCtx, o.activities.publishApproved, v3Input).Get(ownerCtx, nil); err != nil {
+				return fmt.Errorf("publish approved assets: %w", err)
+			}
+			return nil
+		}
 		if err := workflow.ExecuteActivity(ownerCtx, o.activities.publishApproved, input).Get(ownerCtx, nil); err != nil {
 			return fmt.Errorf("publish approved assets: %w", err)
 		}
@@ -414,6 +458,7 @@ type workflowUpdateRecord struct {
 	future            workflow.Future
 	setter            workflow.Settable
 	retryResult       *SlotWorkflowResult
+	retryResultV3     *SlotWorkflowV3Result
 	acknowledgement   CommandAcknowledgement
 	completed         bool
 	ingressState      signalIngressState
@@ -779,7 +824,7 @@ func (s *workflowUpdateState) applyRetrySlot(ctx workflow.Context, signal RetryS
 	if record.phase == updatePhaseRetryExecuteChild {
 		attempt := (*s.results)[index].Execution.Attempt + 1
 		completionChannel := workflow.NewBufferedChannel(ctx, 1)
-		startChild(ctx, *s.input, index, attempt, completionChannel)
+		startChild(ctx, *s.input, index, attempt, completionChannel, s.effects.activities)
 		var completion childCompletion
 		completionChannel.Receive(ctx, &completion)
 		if completion.Failed {
@@ -787,16 +832,28 @@ func (s *workflowUpdateState) applyRetrySlot(ctx workflow.Context, signal RetryS
 				Execution: imageagent.SlotExecutionResult{SlotID: signal.SlotID, Attempt: attempt},
 				Status:    imageagent.SlotStatusBlocked, ErrorCode: "slot_workflow_failed",
 			}
+			completion.V3Result = &SlotWorkflowV3Result{
+				Published: imageagent.SlotEffectV3PublishedResult{SlotID: signal.SlotID, Attempt: attempt},
+				Status:    imageagent.SlotStatusBlocked, ErrorCode: "slot_workflow_failed",
+			}
 		}
 		pendingResult := completion.Result
 		record.retryResult = &pendingResult
+		if s.effects.activities.useV3Slot && completion.V3Result != nil {
+			pendingV3Result := *completion.V3Result
+			record.retryResultV3 = &pendingV3Result
+		}
 		record.phase = updatePhaseRetryPersistResult
 	}
 	if record.retryResult == nil {
 		return CommandAcknowledgement{}, fmt.Errorf("retry update is missing its deterministic child result")
 	}
 	if record.phase == updatePhaseRetryPersistResult {
-		if err := s.effects.persistSlotResult(ctx, *s.input, *record.retryResult); err != nil {
+		if record.retryResultV3 != nil {
+			if err := s.effects.persistSlotResultV3(ctx, *s.input, *record.retryResultV3); err != nil {
+				return CommandAcknowledgement{}, err
+			}
+		} else if err := s.effects.persistSlotResult(ctx, *s.input, *record.retryResult); err != nil {
 			return CommandAcknowledgement{}, err
 		}
 		record.phase = updatePhaseRetryPersistTransition
@@ -810,7 +867,7 @@ func (s *workflowUpdateState) applyRetrySlot(ctx workflow.Context, signal RetryS
 			return CommandAcknowledgement{}, err
 		}
 	} else {
-		digest, err := resultDigest(s.input.Plan, stagedResults)
+		digest, err := resultDigestForWire(s.input.Plan, stagedResults, s.effects.activities)
 		if err != nil {
 			return CommandAcknowledgement{}, err
 		}
@@ -881,7 +938,7 @@ func (s *workflowUpdateState) applyApproveResults(ctx workflow.Context, signal A
 		publishInput := PublishApprovedActivityInput{
 			RunID: s.input.RunID, Identity: s.input.Identity, PlanRevision: s.input.Plan.Revision,
 			CandidateAssetIDs: candidateAssetIDs(s.input.Plan, *s.results),
-			IdempotencyKey:    signal.ActionID,
+			IdempotencyKey:    approvalPublicationKeyForWire(signal.ActionID, s.input.RunID, s.input.Plan.Revision, s.effects.activities),
 		}
 		if err := s.effects.publishApproved(ctx, publishInput); err != nil {
 			return CommandAcknowledgement{}, err
@@ -1017,6 +1074,7 @@ func (s *workflowUpdateState) rejectPreparedAction(actionID string, record *work
 	record.ingressState = signalIngressRejected
 	record.command = nil
 	record.retryResult = nil
+	record.retryResultV3 = nil
 	record.readyAttempt = false
 	if s.pendingActionID == actionID {
 		s.pendingActionID = ""
@@ -1140,6 +1198,7 @@ func (s *workflowUpdateState) runActionAttempt(ctx workflow.Context, actionID st
 		record.ingressState = signalIngressAccepted
 		record.command = nil
 		record.retryResult = nil
+		record.retryResultV3 = nil
 		record.kind = ""
 		if s.pendingActionID == actionID {
 			s.pendingActionID = ""
@@ -1254,9 +1313,10 @@ func updateBlockedError(message string) error {
 }
 
 type childCompletion struct {
-	Index  int
-	Result SlotWorkflowResult
-	Failed bool
+	Index    int
+	Result   SlotWorkflowResult
+	V3Result *SlotWorkflowV3Result
+	Failed   bool
 }
 
 func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, updates *workflowUpdateState, progress func([]SlotWorkflowResult)) ([]SlotWorkflowResult, bool, error) {
@@ -1268,7 +1328,7 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 	childrenCtx, cancelChildren := workflow.WithCancel(ctx)
 	next, inFlight := 0, 0
 	launch := func(index int) {
-		startChild(childrenCtx, input, index, 1, completionChannel)
+		startChild(childrenCtx, input, index, 1, completionChannel, updates.effects.activities)
 		next++
 		inFlight++
 	}
@@ -1307,7 +1367,11 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 				slot := input.Plan.Slots[completion.Index]
 				completion.Result = SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: slot.ID, Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: "slot_workflow_failed"}
 			}
-			if err := updates.effects.persistSlotResult(ctx, input, completion.Result); err != nil {
+			if updates.effects.activities.useV3Slot && completion.V3Result != nil {
+				if err := updates.effects.persistSlotResultV3(ctx, input, *completion.V3Result); err != nil {
+					return results, false, err
+				}
+			} else if err := updates.effects.persistSlotResult(ctx, input, completion.Result); err != nil {
 				return results, false, err
 			}
 			results[completion.Index] = completion.Result
@@ -1322,11 +1386,37 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 	return results, cancelled, nil
 }
 
-func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, completionChannel workflow.SendChannel) {
+func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, completionChannel workflow.SendChannel, activityWire workflowActivityWire) {
 	slotInput := SlotWorkflowInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision, Slot: input.Plan.Slots[index], Attempt: attempt, AssetCatalog: input.AssetCatalog}
 	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
 		WorkflowID: childWorkflowID(slotInput), ParentClosePolicy: enums.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
 	})
+	if activityWire.useV3Slot {
+		future := workflow.ExecuteChildWorkflow(childCtx, ImageSlotWorkflowV3, SlotWorkflowV3Input{
+			RunID: slotInput.RunID, Identity: slotInput.Identity, PlanRevision: slotInput.PlanRevision,
+			Slot: slotInput.Slot, Attempt: slotInput.Attempt, AssetCatalog: slotInput.AssetCatalog,
+			ExecuteActivityName: activityWire.executeSlot,
+		})
+		workflow.Go(ctx, func(goroutineCtx workflow.Context) {
+			var v3Result SlotWorkflowV3Result
+			err := future.Get(goroutineCtx, &v3Result)
+			result := SlotWorkflowResult{
+				Execution: imageagent.SlotExecutionResult{SlotID: slotInput.Slot.ID, Attempt: slotInput.Attempt},
+				Status:    v3Result.Status, ErrorCode: v3Result.ErrorCode,
+			}
+			if err == nil {
+				result.Execution.SlotID = v3Result.Published.SlotID
+				result.Execution.Attempt = v3Result.Published.Attempt
+				for _, candidate := range v3Result.Published.Candidates {
+					result.Execution.Candidates = append(result.Execution.Candidates, imageagent.AssetCandidate{
+						AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset,
+					})
+				}
+			}
+			completionChannel.Send(goroutineCtx, childCompletion{Index: index, Result: result, V3Result: &v3Result, Failed: err != nil})
+		})
+		return
+	}
 	future := workflow.ExecuteChildWorkflow(childCtx, ImageSlotWorkflow, slotInput)
 	workflow.Go(ctx, func(goroutineCtx workflow.Context) {
 		var result SlotWorkflowResult
@@ -1488,6 +1578,29 @@ func resultDigest(plan imageagent.Plan, results []SlotWorkflowResult) (string, e
 		slots[index].Candidates = append([]imageagent.AssetCandidate(nil), results[index].Execution.Candidates...)
 	}
 	return imageagent.ResultDigestV2(plan, slots)
+}
+
+func resultDigestForWorkflow(ctx workflow.Context, plan imageagent.Plan, results []SlotWorkflowResult) (string, error) {
+	return resultDigestForWire(plan, results, workflowActivityWire{useV3ResultDigest: workflow.GetVersion(ctx, resultDigestV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion})
+}
+
+func approvalPublicationKeyForWorkflow(ctx workflow.Context, actionID, runID string, revision int64) string {
+	return approvalPublicationKeyForWire(actionID, runID, revision, workflowActivityWire{useV3ApprovalActionID: workflow.GetVersion(ctx, approvalActionIDV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion})
+}
+
+func resultDigestForWire(plan imageagent.Plan, results []SlotWorkflowResult, activityWire workflowActivityWire) (string, error) {
+	slots := slotProjections(plan, results)
+	if activityWire.useV3ResultDigest {
+		return imageagent.ResultDigestV3(plan, slots)
+	}
+	return imageagent.ResultDigestV2(plan, slots)
+}
+
+func approvalPublicationKeyForWire(actionID, runID string, revision int64, activityWire workflowActivityWire) string {
+	if activityWire.useV3ApprovalActionID {
+		return actionID
+	}
+	return publicationKey(runID, revision)
 }
 
 func findSlot(plan imageagent.Plan, slotID string) imageagent.Slot {

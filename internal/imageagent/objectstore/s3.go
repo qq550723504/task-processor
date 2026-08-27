@@ -107,6 +107,15 @@ func NewS3DurableArtifactStore(uploader *storage.S3Uploader, cfg S3DurableArtifa
 	return &S3DurableArtifactStore{uploader: uploader, maxArtifactBytes: cfg.MaxArtifactBytes, maxArtifactCount: cfg.MaxArtifactCount, maxAggregateBytes: cfg.MaxAggregateBytes, maxImageDimension: cfg.MaxImageDimension, maxImagePixels: cfg.MaxImagePixels, operationTimeout: cfg.OperationTimeout, inspectImage: imagex.Inspect}, nil
 }
 
+// PublicURL delegates to the configured uploader so v3 approval uses the same
+// public-base and endpoint rules as durable artifact publication.
+func (s *S3DurableArtifactStore) PublicURL(key string) string {
+	if s == nil || s.uploader == nil {
+		return ""
+	}
+	return s.uploader.PublicURL(key)
+}
+
 func (s *S3DurableArtifactStore) PrepareSlotArtifacts(input PrepareSlotArtifactsInput) (PreparedSlotArtifacts, error) {
 	if err := validateIdentity(input.Identity); err != nil || len(input.Assets) == 0 || len(input.Assets) > s.maxArtifactCount {
 		return PreparedSlotArtifacts{}, imageagent.ErrValidation

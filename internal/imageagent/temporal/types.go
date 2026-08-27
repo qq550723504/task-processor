@@ -12,6 +12,7 @@ import (
 
 const (
 	TaskQueue                           = "image-agent-manual"
+	TaskQueueV3                         = "image-agent-manual-v3"
 	EnvTaskQueue                        = "IMAGE_AGENT_TEMPORAL_TASK_QUEUE"
 	workflowNameImageAgent              = "ImageAgentWorkflow"
 	workflowNameImageSlot               = "ImageSlotWorkflow"
@@ -23,10 +24,14 @@ const (
 	activityPublishApprovedLegacy       = "imageagent.publish_approved"
 	activityExecuteSlot                 = "imageagent.execute_slot.v2"
 	activityPersistSlotResult           = "imageagent.persist_slot_result.v2"
+	activityPersistSlotResultV3         = "imageagent.persist_slot_result.v3"
 	activityPersistRunState             = "imageagent.persist_run_state.v2"
 	activityPersistPlanRevision         = "imageagent.persist_plan_revision.v2"
 	activityPersistPendingCommand       = "imageagent.persist_pending_command.v2"
 	activityPublishApproved             = "imageagent.publish_approved.v2"
+	activityExecuteSlotV3               = "imageagent.execute_slot.v3"
+	activityPublishApprovedV3           = "imageagent.publish_approved.v3"
+	workflowNameCompatibilityCanary     = "ImageAgentCompatibilityCanaryWorkflow"
 	signalApproveResults                = "approve_results"
 	signalRetrySlot                     = "retry_slot"
 	signalReplacePlan                   = "replace_plan"
@@ -39,6 +44,24 @@ const (
 	defaultMaxConcurrentSlots           = 4
 	QueryWorkflowProjection             = "image_agent_projection"
 )
+
+type WorkerWireMode string
+
+const (
+	WorkerWireModeV2 WorkerWireMode = "v2"
+	WorkerWireModeV3 WorkerWireMode = "v3"
+)
+
+func (mode WorkerWireMode) DefaultTaskQueue() (string, error) {
+	switch mode {
+	case WorkerWireModeV2:
+		return TaskQueue, nil
+	case "", WorkerWireModeV3:
+		return TaskQueueV3, nil
+	default:
+		return "", fmt.Errorf("unsupported image agent temporal wire mode %q", mode)
+	}
+}
 
 type WorkflowInput struct {
 	RunID              string
@@ -122,6 +145,7 @@ type ExecuteSlotV3ActivityInput struct {
 // staging and publication objects. Prepared bytes are intentionally transient;
 // only PreparedSlotArtifacts.Manifest is durable.
 type DurableArtifactStore interface {
+	imageagent.DurableAssetPublicURLResolver
 	PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error)
 	EnsureStaged(context.Context, objectstore.PreparedSlotArtifacts) error
 	Finalize(context.Context, imageagent.StagingManifest) (imageagent.FinalManifest, error)
