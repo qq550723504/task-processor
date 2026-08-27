@@ -37,7 +37,7 @@ func TestBuildImagesFromBundleWithSelectionUsesSelectedAssets(t *testing.T) {
 	}
 }
 
-func TestBuildImagesFromBundleWithSelectionKeepsSourceImagesSeparate(t *testing.T) {
+func TestBuildImagesFromBundleWithSelectionFallsBackToRemainingSourceImages(t *testing.T) {
 	bundle := &asset.Bundle{
 		Assets: []asset.Asset{
 			{ID: "source-1", Kind: asset.KindSourceImage, URL: "source-1.jpg"},
@@ -49,8 +49,8 @@ func TestBuildImagesFromBundleWithSelectionKeepsSourceImagesSeparate(t *testing.
 	if images == nil || images.MainImage != "source-1.jpg" {
 		t.Fatalf("images = %#v, want first source as main image", images)
 	}
-	if len(images.Gallery) != 0 {
-		t.Fatalf("gallery = %#v, want no implicit source-image fallback", images.Gallery)
+	if len(images.Gallery) != 1 || images.Gallery[0] != "source-2.jpg" {
+		t.Fatalf("gallery = %#v, want remaining source image fallback", images.Gallery)
 	}
 	if len(images.SourceImages) != 2 || images.SourceImages[0] != "source-1.jpg" || images.SourceImages[1] != "source-2.jpg" {
 		t.Fatalf("source images = %#v, want original source images preserved separately", images.SourceImages)

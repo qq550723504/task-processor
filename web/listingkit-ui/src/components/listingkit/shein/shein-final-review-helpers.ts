@@ -150,7 +150,11 @@ export function buildFinalReviewModel({
       allBlockingItems.every(isPublishOnlySizeChartBlocker));
   const blockingCount = customerBlockingCount || visibleBlockers.length;
   const imageCounts = imageRoleCounts(finalReview?.images);
-  const availableImageCount = collectSheinPreviewImageGroups(shein).availableImages.length;
+  const imageGroups = collectSheinPreviewImageGroups(shein);
+  const selectedImageURLs = new Set(imageGroups.productImages.map((image) => image.url));
+  const availableImageCount = imageGroups.availableImages.filter(
+    (image) => !selectedImageURLs.has(image.url),
+  ).length;
   const finalImages = (finalReview?.images ?? []).filter(
     (image) => image.final !== false && image.url,
   );

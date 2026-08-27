@@ -70,6 +70,8 @@ export function createSheinWorkspaceAdapter({
               ? `，另有 ${imageGroups.availableImages.length} 张可选来源图，需人工选择后才提交`
               : ""
           }，SDS mockup 会单独作为渲染参考展示。`
+        : imageGroups.availableImages.length
+          ? `暂未生成 SHEIN 成品图，另有 ${imageGroups.availableImages.length} 张可选来源图，需打开图片区域人工选择后才提交；SDS mockup 仅作为渲染参考。`
         : "检查 SHEIN 成品图是否已经生成；SDS mockup 仅作为渲染参考。";
       const projection: SheinWorkspaceProjection = {
         images: imageGroups.productImages,

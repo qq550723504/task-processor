@@ -110,6 +110,9 @@ func buildImagesFromBundle(bundle *asset.Bundle, useSelection bool) *ImageSet {
 		if set.MainImage == "" && len(set.SourceImages) > 0 {
 			set.MainImage = set.SourceImages[0]
 		}
+		if len(set.Gallery) == 0 && len(set.SourceImages) > 1 {
+			set.Gallery = append(set.Gallery, set.SourceImages[1:]...)
+		}
 	} else if set.MainImage == "" && len(set.Gallery) > 0 {
 		set.MainImage = set.Gallery[0]
 	}

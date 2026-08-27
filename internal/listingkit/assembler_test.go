@@ -442,7 +442,7 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 	}
 }
 
-func TestBuildPlatformImagesUsesCanonicalFirstImageAsMainWithoutGalleryFallback(t *testing.T) {
+func TestBuildSelectedPlatformImagesFallsBackToCanonicalGallery(t *testing.T) {
 	t.Parallel()
 
 	canonical := &canonical.Product{
@@ -459,11 +459,32 @@ func TestBuildPlatformImagesUsesCanonicalFirstImageAsMainWithoutGalleryFallback(
 	if images.MainImage != "https://example.com/1.jpg" {
 		t.Fatalf("main image = %q, want canonical first image", images.MainImage)
 	}
-	if len(images.Gallery) != 0 {
-		t.Fatalf("gallery = %#v, want no implicit canonical-image fallback", images.Gallery)
+	if len(images.Gallery) != 1 || images.Gallery[0] != "https://example.com/2.jpg" {
+		t.Fatalf("gallery = %#v, want second canonical image", images.Gallery)
 	}
 	if len(images.SourceImages) != 2 || images.SourceImages[0] != "https://example.com/1.jpg" || images.SourceImages[1] != "https://example.com/2.jpg" {
 		t.Fatalf("source images = %#v, want canonical images preserved separately", images.SourceImages)
+	}
+}
+
+func TestBuildTemuPackageKeepsCanonicalGalleryWhenGeneratedGalleryIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	product := &canonical.Product{
+		Title: "Desk Lamp",
+		Images: []canonical.Image{
+			{URL: "https://example.com/source-1.jpg"},
+			{URL: "https://example.com/source-2.jpg"},
+		},
+		Variants: []canonical.Variant{{SKU: "SKU-1"}},
+	}
+
+	pkg := buildTemuPackage(&GenerateRequest{}, product, nil)
+	if pkg == nil || len(pkg.SkcList) != 1 {
+		t.Fatalf("temu package = %#v, want one SKC", pkg)
+	}
+	if got := pkg.SkcList[0].CarouselGallery; len(got) != 1 || got[0] != "https://example.com/source-2.jpg" {
+		t.Fatalf("carousel gallery = %#v, want second canonical image", got)
 	}
 }
 

@@ -222,6 +222,37 @@ describe("SheinFinalReviewPanel", () => {
     );
   });
 
+  it("does not count already selected source images as available", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          source_product: {
+            image_urls: ["https://1688.example.com/source-1.jpg"],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [
+              { url: "https://cdn.example.com/main.jpg", role: "main", final: true },
+              {
+                url: "https://1688.example.com/source-1.jpg",
+                role: "gallery",
+                origin: "source",
+                requires_review: true,
+                final: true,
+              },
+            ],
+          },
+        }}
+        onSelectBlockingItem={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText(/可选来源图/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "选择来源图" })).not.toBeInTheDocument();
+  });
+
   it("shows resolved store explanation when preview includes store resolution", () => {
     render(
       <SheinFinalReviewPanel

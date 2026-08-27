@@ -82,6 +82,33 @@ describe("resolveWorkspacePlatformAdapter", () => {
 });
 
 describe("createSheinWorkspaceAdapter", () => {
+  it("mentions selectable source images when no SHEIN product image exists", () => {
+    const projection = createSheinWorkspaceAdapter({
+      taskId: "task-123",
+      isFinalReviewMode: false,
+      shein: {
+        request_draft: {
+          image_info: {
+            source: [
+              "https://1688.example.com/source-1.jpg",
+              "https://1688.example.com/source-2.jpg",
+            ],
+          },
+        },
+      },
+    }).project();
+
+    expect(projection.kind).toBe("shein");
+    if (projection.kind !== "shein") {
+      return;
+    }
+
+    expect(projection.projection.flowSteps[0]).toMatchObject({
+      key: "preview",
+      description: expect.stringContaining("另有 2 张可选来源图"),
+    });
+  });
+
   it("projects the SHEIN review flow inside the SHEIN adapter", () => {
     const projection = createSheinWorkspaceAdapter({
       taskId: "task-123",
