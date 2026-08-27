@@ -64,14 +64,37 @@ describe("CanonicalProductDetailPage", () => {
     );
   });
 
-  it("links back to the task status and platform workspace", () => {
+  it("uses product language and keeps execution identity secondary", () => {
     render(<CanonicalProductDetailPage taskId="task-1" />);
 
-    expect(screen.getByRole("link", { name: "查看原任务" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "返回商品中心" })).toHaveAttribute(
+      "href",
+      "/listing-kits/canonical-products",
+    );
+    expect(screen.getByText("商品详情")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "编辑商品" })).toHaveAttribute(
+      "href",
+      "/listing-kits/task-1/workspace?platform=shein",
+    );
+    expect(screen.getByRole("link", { name: "查看执行记录" })).toHaveAttribute(
       "href",
       "/listing-kits/task-1/status",
     );
-    expect(screen.getByRole("link", { name: "进入工作台" })).toHaveAttribute(
+    expect(screen.getByText("需确认字段")).toBeInTheDocument();
+    expect(screen.getByText("已校验")).toBeInTheDocument();
+    expect(screen.getByText("字段依据")).toBeInTheDocument();
+    expect(screen.queryByText("task-1")).not.toBeInTheDocument();
+    expect(screen.queryByText(/canonical_product/i)).not.toBeInTheDocument();
+  });
+
+  it("preserves the existing workspace and execution routes", () => {
+    render(<CanonicalProductDetailPage taskId="task-1" />);
+
+    expect(screen.getByRole("link", { name: "查看执行记录" })).toHaveAttribute(
+      "href",
+      "/listing-kits/task-1/status",
+    );
+    expect(screen.getByRole("link", { name: "编辑商品" })).toHaveAttribute(
       "href",
       "/listing-kits/task-1/workspace?platform=shein",
     );
