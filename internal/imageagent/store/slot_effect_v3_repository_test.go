@@ -87,105 +87,161 @@ func TestSlotEffectV3RepositoryContract(t *testing.T) {
 }
 
 func TestSlotEffectV3RejectsLocalPathsAndUnknownMetadata(t *testing.T) {
-	repository := NewMemoryRepository()
-	initializeSlotEffectRun(t, repository, "run-slot-effect-v3-invalid-artifact")
-	effects := repository.(imageagent.SlotExternalEffectV3Repository)
-	reservation := v3Reservation("invalid-artifact")
-	_, _, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
-	require.NoError(t, err)
+	for _, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			fixture := factory.new(t)
+			ctx := context.Background()
+			_, _, err := fixture.effects.ReserveSlotProviderV3(ctx, fixture.reservation)
+			require.NoError(t, err)
 
-	local := v3StagingManifest()
-	local.Assets[0].ObjectKey = `C:\\worker\\generated.png`
-	_, err = effects.PrepareSlotStagingV3(context.Background(), reservation, local)
-	require.ErrorIs(t, err, imageagent.ErrValidation)
+			local := v3StagingManifest()
+			local.Assets[0].ObjectKey = `C:\\worker\\generated.png`
+			_, err = fixture.effects.PrepareSlotStagingV3(ctx, fixture.reservation, local)
+			require.ErrorIs(t, err, imageagent.ErrValidation)
 
-	relativeWindowsPath := v3StagingManifest()
-	relativeWindowsPath.Assets[0].ObjectKey = `worker\generated.png`
-	_, err = effects.PrepareSlotStagingV3(context.Background(), reservation, relativeWindowsPath)
-	require.ErrorIs(t, err, imageagent.ErrValidation)
+			relativeWindowsPath := v3StagingManifest()
+			relativeWindowsPath.Assets[0].ObjectKey = `worker\generated.png`
+			_, err = fixture.effects.PrepareSlotStagingV3(ctx, fixture.reservation, relativeWindowsPath)
+			require.ErrorIs(t, err, imageagent.ErrValidation)
 
-	whitespaceKey := v3StagingManifest()
-	whitespaceKey.Assets[0].ObjectKey = " image-agent/staging/tenant-a/run/asset.png"
-	_, err = effects.PrepareSlotStagingV3(context.Background(), reservation, whitespaceKey)
-	require.ErrorIs(t, err, imageagent.ErrValidation)
+			whitespaceKey := v3StagingManifest()
+			whitespaceKey.Assets[0].ObjectKey = " image-agent/staging/tenant-a/run/asset.png"
+			_, err = fixture.effects.PrepareSlotStagingV3(ctx, fixture.reservation, whitespaceKey)
+			require.ErrorIs(t, err, imageagent.ErrValidation)
 
-	metadata := v3StagingManifest()
-	metadata.ProviderMetadata = map[string]string{"authorization": "secret"}
-	_, err = effects.PrepareSlotStagingV3(context.Background(), reservation, metadata)
-	require.ErrorIs(t, err, imageagent.ErrValidation)
+			metadata := v3StagingManifest()
+			metadata.ProviderMetadata = map[string]string{"authorization": "secret"}
+			_, err = fixture.effects.PrepareSlotStagingV3(ctx, fixture.reservation, metadata)
+			require.ErrorIs(t, err, imageagent.ErrValidation)
+		})
+	}
 }
 
 func TestSlotEffectV3RejectsManifestReplacement(t *testing.T) {
-	repository := NewMemoryRepository()
-	initializeSlotEffectRun(t, repository, "run-slot-effect-v3-manifest")
-	effects := repository.(imageagent.SlotExternalEffectV3Repository)
-	reservation := v3Reservation("manifest")
-	_, _, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
-	require.NoError(t, err)
-	_, err = effects.PrepareSlotStagingV3(context.Background(), reservation, v3StagingManifest())
-	require.NoError(t, err)
+	for _, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			fixture := factory.new(t)
+			ctx := context.Background()
+			_, _, err := fixture.effects.ReserveSlotProviderV3(ctx, fixture.reservation)
+			require.NoError(t, err)
+			_, err = fixture.effects.PrepareSlotStagingV3(ctx, fixture.reservation, v3StagingManifest())
+			require.NoError(t, err)
 
-	replacement := v3StagingManifest()
-	replacement.Assets[0].ObjectKey = "image-agent/staging/tenant-a/run/replaced.png"
-	_, err = effects.PrepareSlotStagingV3(context.Background(), reservation, replacement)
-	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			replacement := v3StagingManifest()
+			replacement.Assets[0].ObjectKey = "image-agent/staging/tenant-a/run/replaced.png"
+			_, err = fixture.effects.PrepareSlotStagingV3(ctx, fixture.reservation, replacement)
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+		})
+	}
 }
 
 func TestSlotEffectV3RejectsIllegalPhaseTransitions(t *testing.T) {
-	repository := NewMemoryRepository()
-	initializeSlotEffectRun(t, repository, "run-slot-effect-v3-phases")
-	effects := repository.(imageagent.SlotExternalEffectV3Repository)
-	reservation := v3Reservation("phases")
-	_, _, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
-	require.NoError(t, err)
+	for _, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			fixture := factory.new(t)
+			ctx := context.Background()
+			_, _, err := fixture.effects.ReserveSlotProviderV3(ctx, fixture.reservation)
+			require.NoError(t, err)
 
-	_, err = effects.CommitSlotStagedV3(context.Background(), reservation, "not-prepared")
-	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
-	_, _, _, err = effects.ClaimSlotPublicationV3(context.Background(), imageagent.PublicationClaimRequest{Reservation: reservation, Owner: "worker-a", LeaseDuration: time.Minute, PublicationFingerprint: "fp", FinalManifest: v3FinalManifest()})
-	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
-	_, err = effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{Reservation: reservation, Phase: imageagent.SlotEffectV3StagingUnknown, Code: "slot_staging_outcome_unknown"})
-	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			_, err = fixture.effects.CommitSlotStagedV3(ctx, fixture.reservation, "not-prepared")
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			_, _, _, err = fixture.effects.ClaimSlotPublicationV3(ctx, imageagent.PublicationClaimRequest{Reservation: fixture.reservation, Owner: "worker-a", LeaseDuration: time.Minute, PublicationFingerprint: "fp", FinalManifest: v3FinalManifest()})
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			_, err = fixture.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{Reservation: fixture.reservation, Phase: imageagent.SlotEffectV3StagingUnknown, Code: "slot_staging_outcome_unknown"})
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+		})
+	}
 }
 
 func TestSlotEffectV3StalePublicationFenceCannotCommit(t *testing.T) {
-	clock := time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC)
-	repository := newMemoryRepositoryWithClock(func() time.Time { return clock })
-	initializeSlotEffectRun(t, repository, "run-slot-effect-v3-stale-fence")
-	effects := repository.(imageagent.SlotExternalEffectV3Repository)
-	reservation := v3Reservation("stale-fence")
-	stageV3Attempt(t, effects, reservation)
+	for _, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			fixture := factory.new(t)
+			ctx := context.Background()
+			stageV3Attempt(t, fixture.effects, fixture.reservation)
 
-	request := v3PublicationRequest(reservation, "worker-a")
-	_, first, claimed, err := effects.ClaimSlotPublicationV3(context.Background(), request)
-	require.NoError(t, err)
-	require.True(t, claimed)
-	clock = clock.Add(2 * time.Minute)
-	request.Owner = "worker-b"
-	_, second, claimed, err := effects.ClaimSlotPublicationV3(context.Background(), request)
-	require.NoError(t, err)
-	require.True(t, claimed)
-	require.Greater(t, second.Fence, first.Fence)
+			request := v3PublicationRequest(fixture.reservation, "worker-a")
+			_, first, claimed, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+			require.NoError(t, err)
+			require.True(t, claimed)
+			fixture.expireLease(t, fixture.reservation.Identity)
+			request.Owner = "worker-b"
+			_, second, claimed, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+			require.NoError(t, err)
+			require.True(t, claimed)
+			require.Greater(t, second.Fence, first.Fence)
 
-	_, err = effects.CompleteSlotPublicationV3(context.Background(), imageagent.PublicationCompletion{Reservation: reservation, Owner: "worker-a", Fence: first.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: "result-fingerprint-1", Published: v3PublishedResult(reservation)})
-	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			_, err = fixture.effects.CompleteSlotPublicationV3(ctx, imageagent.PublicationCompletion{Reservation: fixture.reservation, Owner: "worker-a", Fence: first.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: "result-fingerprint-1", Published: v3PublishedResult(fixture.reservation)})
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+		})
+	}
 }
 
 func TestSlotEffectV3IsolatesTenantAndOwner(t *testing.T) {
-	repository := NewMemoryRepository()
-	initializeSlotEffectRun(t, repository, "run-slot-effect-v3-isolation")
-	effects := repository.(imageagent.SlotExternalEffectV3Repository)
-	reservation := v3Reservation("isolation")
-	_, _, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
-	require.NoError(t, err)
+	for _, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			fixture := factory.new(t)
+			ctx := context.Background()
+			stageV3Attempt(t, fixture.effects, fixture.reservation)
+			request := v3PublicationRequest(fixture.reservation, "worker-a")
+			_, claim, claimed, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+			require.NoError(t, err)
+			require.True(t, claimed)
 
-	otherOwner := reservation.Identity
-	otherOwner.OwnerUserID = "user-b"
-	_, err = effects.GetSlotExternalEffectV3(context.Background(), otherOwner)
-	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
-	otherTenant := reservation.Identity
-	otherTenant.TenantID = "tenant-b"
-	_, err = effects.GetSlotExternalEffectV3(context.Background(), otherTenant)
-	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+			operations := []struct {
+				name   string
+				invoke func(imageagent.SlotEffectV3Reservation) error
+			}{
+				{name: "reserve_provider", invoke: func(reservation imageagent.SlotEffectV3Reservation) error {
+					_, _, err := fixture.effects.ReserveSlotProviderV3(ctx, reservation)
+					return err
+				}},
+				{name: "prepare_staging", invoke: func(reservation imageagent.SlotEffectV3Reservation) error {
+					_, err := fixture.effects.PrepareSlotStagingV3(ctx, reservation, v3StagingManifest())
+					return err
+				}},
+				{name: "commit_staged", invoke: func(reservation imageagent.SlotEffectV3Reservation) error {
+					_, err := fixture.effects.CommitSlotStagedV3(ctx, reservation, "staging-fingerprint")
+					return err
+				}},
+				{name: "claim_publication", invoke: func(reservation imageagent.SlotEffectV3Reservation) error {
+					_, _, _, err := fixture.effects.ClaimSlotPublicationV3(ctx, v3PublicationRequest(reservation, "worker-b"))
+					return err
+				}},
+				{name: "renew_publication", invoke: func(reservation imageagent.SlotEffectV3Reservation) error {
+					_, err := fixture.effects.RenewSlotPublicationV3(ctx, imageagent.PublicationLeaseRenewal{Identity: reservation.Identity, Owner: claim.Owner, Fence: claim.Fence, LeaseDuration: time.Minute})
+					return err
+				}},
+				{name: "complete_publication", invoke: func(reservation imageagent.SlotEffectV3Reservation) error {
+					_, err := fixture.effects.CompleteSlotPublicationV3(ctx, imageagent.PublicationCompletion{Reservation: reservation, Owner: claim.Owner, Fence: claim.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: "result-fingerprint-isolation", Published: v3PublishedResult(reservation)})
+					return err
+				}},
+				{name: "block_effect", invoke: func(reservation imageagent.SlotEffectV3Reservation) error {
+					_, err := fixture.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{Reservation: reservation, Phase: imageagent.SlotEffectV3PublicationUnknown, Code: "slot_publication_outcome_unknown", Owner: claim.Owner, Fence: claim.Fence})
+					return err
+				}},
+				{name: "get_effect", invoke: func(reservation imageagent.SlotEffectV3Reservation) error {
+					_, err := fixture.effects.GetSlotExternalEffectV3(ctx, reservation.Identity)
+					return err
+				}},
+			}
+			for _, operation := range operations {
+				for _, mismatch := range v3MismatchedReservations(fixture.reservation) {
+					t.Run(operation.name+"/"+mismatch.name, func(t *testing.T) {
+						before, err := fixture.effects.GetSlotExternalEffectV3(ctx, fixture.reservation.Identity)
+						require.NoError(t, err)
+						err = operation.invoke(mismatch.reservation)
+						require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+						_, err = fixture.effects.GetSlotExternalEffectV3(ctx, mismatch.reservation.Identity)
+						require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+						after, err := fixture.effects.GetSlotExternalEffectV3(ctx, fixture.reservation.Identity)
+						require.NoError(t, err)
+						require.Equal(t, before, after)
+					})
+				}
+			}
+		})
+	}
 }
 
 func TestGormSlotEffectV3ConcurrentClaimsAndFencing(t *testing.T) {
@@ -471,6 +527,22 @@ type v3ReviewFixture struct {
 type v3ReviewFixtureFactory struct {
 	name string
 	new  func(*testing.T) v3ReviewFixture
+}
+
+type v3MismatchedReservation struct {
+	name        string
+	reservation imageagent.SlotEffectV3Reservation
+}
+
+func v3MismatchedReservations(reservation imageagent.SlotEffectV3Reservation) []v3MismatchedReservation {
+	otherOwner := reservation
+	otherOwner.Identity.OwnerUserID = "user-b"
+	otherTenant := reservation
+	otherTenant.Identity.TenantID = "tenant-b"
+	return []v3MismatchedReservation{
+		{name: "owner", reservation: otherOwner},
+		{name: "tenant", reservation: otherTenant},
+	}
 }
 
 func newV3ReviewFixtures() []v3ReviewFixtureFactory {
