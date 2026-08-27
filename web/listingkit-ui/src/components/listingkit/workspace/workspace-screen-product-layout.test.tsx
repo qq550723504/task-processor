@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspaceScreen } from "@/components/listingkit/workspace/workspace-screen";
 
@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   handleRecovery: vi.fn(),
   handlePlatformRecovery: vi.fn(),
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("platform=shein"),
