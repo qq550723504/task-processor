@@ -13,6 +13,44 @@ const defaultWorkflowIssues = [
   },
 ];
 
+function canonicalProductFixture() {
+  return {
+    title: "Canvas Tote",
+    brand: "ListingKit",
+    category_path: ["Bags", "Totes"],
+    images: [
+      {
+        url: "https://example.com/canvas-tote-front.jpg",
+        alt: "Canvas Tote front",
+        role: "主图",
+      },
+    ],
+    variants: [],
+    attributes: {},
+  };
+}
+
+function sheinPlatformCardFixture() {
+  return {
+    platform: "shein",
+    primary_navigation_target: {
+      preview_query: { platform: "shein", section_key: "general_review" },
+    },
+    recovery_summary: {
+      title: "Retry SHEIN preparation",
+      severity: "high",
+      urgency: "now",
+      primary_descriptor: {
+        platform: "shein",
+        recovery_hint: "retry_dispatch",
+        recovery_severity: "high",
+        recovery_urgency: "now",
+        recovery_cta_kind: "retry",
+      },
+    },
+  };
+}
+
 const mocks = vi.hoisted(() => ({
   executeActionMutate: vi.fn(),
   handlePlatformSelect: vi.fn(),
@@ -24,6 +62,11 @@ const mocks = vi.hoisted(() => ({
   handleRecovery: vi.fn(),
   handlePlatformRecovery: vi.fn(),
   taskStatus: "needs_review" as string,
+  canonicalProduct: undefined as ReturnType<typeof canonicalProductFixture> | undefined,
+  navigationPlatformCards: [] as Array<ReturnType<typeof sheinPlatformCardFixture> | {
+    platform: string;
+    status?: string;
+  }>,
   workflowIssues: [
     {
       code: "attributes",
@@ -42,6 +85,8 @@ const mocks = vi.hoisted(() => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.taskStatus = "needs_review";
+  mocks.canonicalProduct = canonicalProductFixture();
+  mocks.navigationPlatformCards = [sheinPlatformCardFixture()];
   mocks.workflowIssues = defaultWorkflowIssues.map((issue) => ({ ...issue }));
 });
 
@@ -63,20 +108,7 @@ vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
         task_id: "task-1",
         status: mocks.taskStatus,
         result: {
-          canonical_product: {
-            title: "Canvas Tote",
-            brand: "ListingKit",
-            category_path: ["Bags", "Totes"],
-            images: [
-              {
-                url: "https://example.com/canvas-tote-front.jpg",
-                alt: "Canvas Tote front",
-                role: "主图",
-              },
-            ],
-            variants: [],
-            attributes: {},
-          },
+          canonical_product: mocks.canonicalProduct,
           summary: { blocking_count: 1, warning_count: 0 },
           workflow_issues: mocks.workflowIssues,
         },
@@ -96,26 +128,8 @@ vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
       overview: {},
       review_summary: { approved_sections: 2 },
     },
-    platformCards: [
-      {
-        platform: "shein",
-        primary_navigation_target: {
-          preview_query: { platform: "shein", section_key: "general_review" },
-        },
-        recovery_summary: {
-          title: "Retry SHEIN preparation",
-          severity: "high",
-          urgency: "now",
-          primary_descriptor: {
-            platform: "shein",
-            recovery_hint: "retry_dispatch",
-            recovery_severity: "high",
-            recovery_urgency: "now",
-            recovery_cta_kind: "retry",
-          },
-        },
-      },
-    ],
+    platformCards: [sheinPlatformCardFixture()],
+    navigationPlatformCards: mocks.navigationPlatformCards,
     focusedPreview: undefined,
     selectedPlatform: "shein",
     focusedScenePreset: undefined,
@@ -301,7 +315,7 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     const user = userEvent.setup();
     render(<WorkspaceScreen taskId="task-1" />);
 
-    const recoveryButton = screen.getByRole("button", { name: "立即重试" });
+    const recoveryButton = screen.getByRole("button", { name: "SHEIN · 立即重试" });
     expect(recoveryButton).toBeInTheDocument();
 
     await user.click(recoveryButton);
@@ -362,5 +376,30 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     expect(
       within(aiReview).queryByText("AI 检查已完成，可以继续当前操作。"),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps all target platforms in navigation when the focused session has only one card", () => {
+    mocks.navigationPlatformCards = [
+      sheinPlatformCardFixture(),
+      { platform: "temu", status: "ready" },
+    ];
+
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    const navigation = screen.getByRole("navigation", { name: "商品工作台导航" });
+    expect(within(navigation).getByRole("button", { name: /SHEIN/ })).toBeInTheDocument();
+    expect(within(navigation).getByRole("button", { name: /TEMU/ })).toBeInTheDocument();
+  });
+
+  it("returns non-canonical tasks to the task list instead of the product center", () => {
+    mocks.canonicalProduct = undefined;
+
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    expect(screen.getByRole("link", { name: "返回任务列表" })).toHaveAttribute(
+      "href",
+      "/listing-kits",
+    );
+    expect(screen.queryByRole("link", { name: "返回商品中心" })).not.toBeInTheDocument();
   });
 });
