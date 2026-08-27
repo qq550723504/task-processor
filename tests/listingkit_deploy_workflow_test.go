@@ -3,11 +3,201 @@ package tests
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
+
+type imageAgentWorkloadManifest struct {
+	Kind     string `yaml:"kind"`
+	Metadata struct {
+		Name string `yaml:"name"`
+	} `yaml:"metadata"`
+	Spec struct {
+		Selector struct {
+			MatchLabels map[string]string `yaml:"matchLabels"`
+		} `yaml:"selector"`
+		ActiveDeadlineSeconds int `yaml:"activeDeadlineSeconds"`
+		BackoffLimit          int `yaml:"backoffLimit"`
+		Template              struct {
+			Metadata struct {
+				Labels map[string]string `yaml:"labels"`
+			} `yaml:"metadata"`
+			Spec struct {
+				RestartPolicy string                        `yaml:"restartPolicy"`
+				Containers    []imageAgentWorkloadContainer `yaml:"containers"`
+			} `yaml:"spec"`
+		} `yaml:"template"`
+	} `yaml:"spec"`
+}
+
+type imageAgentWorkloadContainer struct {
+	Name    string   `yaml:"name"`
+	Image   string   `yaml:"image"`
+	Command []string `yaml:"command"`
+	Args    []string `yaml:"args"`
+	EnvFrom []struct {
+		ConfigMapRef *struct {
+			Name string `yaml:"name"`
+		} `yaml:"configMapRef"`
+		SecretRef *struct {
+			Name string `yaml:"name"`
+		} `yaml:"secretRef"`
+	} `yaml:"envFrom"`
+	Env []struct {
+		Name      string `yaml:"name"`
+		ValueFrom *struct {
+			ConfigMapKeyRef *struct {
+				Name string `yaml:"name"`
+				Key  string `yaml:"key"`
+			} `yaml:"configMapKeyRef"`
+			SecretKeyRef *struct {
+				Name string `yaml:"name"`
+				Key  string `yaml:"key"`
+			} `yaml:"secretKeyRef"`
+		} `yaml:"valueFrom"`
+	} `yaml:"env"`
+}
+
+func TestListingKitImageAgentDeploymentsAndCanaryAreCapabilityIsolated(t *testing.T) {
+	base := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench")
+	v2 := loadImageAgentWorkloadManifest(t, filepath.Join(base, "base", "image-agent-temporal-worker-deployment.yaml"))
+	v3 := loadImageAgentWorkloadManifest(t, filepath.Join(base, "base", "image-agent-temporal-worker-v3-deployment.yaml"))
+	canary := loadImageAgentWorkloadManifest(t, filepath.Join(base, "jobs", "image-agent-temporal-v3-canary-job.yaml"))
+
+	assertImageAgentDeployment(t, v2, "image-agent-temporal-worker", "image-agent-temporal-worker", "v2", "image-agent-manual")
+	assertImageAgentDeployment(t, v3, "image-agent-temporal-worker-v3", "image-agent-temporal-worker-v3", "v3", "image-agent-manual-v3")
+	if v2.Spec.Selector.MatchLabels["app"] == v3.Spec.Selector.MatchLabels["app"] {
+		t.Fatal("v2 and v3 image-agent workers must have distinct selectors")
+	}
+	if got, want := onlyImageAgentContainer(t, v3).Image, onlyImageAgentContainer(t, v2).Image; got != want {
+		t.Fatalf("v2 and v3 workers must start from the same application image, v2=%q v3=%q", want, got)
+	}
+
+	if canary.Kind != "Job" || canary.Metadata.Name != "image-agent-temporal-v3-canary" {
+		t.Fatalf("v3 compatibility canary must be a fixed-name Job, got kind=%q name=%q", canary.Kind, canary.Metadata.Name)
+	}
+	if canary.Spec.ActiveDeadlineSeconds <= 0 || canary.Spec.BackoffLimit != 0 || canary.Spec.Template.Spec.RestartPolicy != "Never" {
+		t.Fatalf("canary must be finite and fail closed, deadline=%d backoff=%d restart=%q", canary.Spec.ActiveDeadlineSeconds, canary.Spec.BackoffLimit, canary.Spec.Template.Spec.RestartPolicy)
+	}
+	canaryContainer := onlyImageAgentContainer(t, canary)
+	if !reflect.DeepEqual(canaryContainer.Command, []string{"/app/image-agent-temporal-worker"}) ||
+		!reflect.DeepEqual(canaryContainer.Args, []string{"-canary", "-canary-task-queue", "image-agent-manual-v3", "-log-level", "info"}) {
+		t.Fatalf("canary must invoke only the side-effect-free v3 compatibility mode, command=%#v args=%#v", canaryContainer.Command, canaryContainer.Args)
+	}
+	for _, source := range canaryContainer.EnvFrom {
+		if source.SecretRef != nil {
+			t.Fatalf("compatibility canary must not import Secret %q", source.SecretRef.Name)
+		}
+	}
+	for _, variable := range canaryContainer.Env {
+		if variable.ValueFrom != nil && variable.ValueFrom.SecretKeyRef != nil {
+			t.Fatalf("compatibility canary must not receive Secret key %q", variable.ValueFrom.SecretKeyRef.Key)
+		}
+	}
+}
+
+func TestListingKitDeployOrdersImageAgentGatesBeforeAPIRouting(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				Run  string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+	steps := workflow.Jobs["deploy-api"].Steps
+	indexes := map[string]int{}
+	for index, step := range steps {
+		for key, fragment := range map[string]string{
+			"schema":        "product-listing-api-schema-migrate-job.yaml",
+			"v2_apply":      "image-agent-temporal-worker-deployment.yaml",
+			"v2_restart":    "rollout restart deployment/image-agent-temporal-worker\n",
+			"v2_wait":       "rollout status deployment/image-agent-temporal-worker --timeout=5m",
+			"v3_apply":      "image-agent-temporal-worker-v3-deployment.yaml",
+			"v3_restart":    "rollout restart deployment/image-agent-temporal-worker-v3",
+			"v3_wait":       "rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m",
+			"canary_delete": "delete job image-agent-temporal-v3-canary",
+			"canary_apply":  "image-agent-temporal-v3-canary-job.yaml",
+			"canary_wait":   "wait --for=condition=complete job/image-agent-temporal-v3-canary",
+			"api_apply":     "product-listing-api-deployment.yaml",
+			"api_restart":   "rollout restart deployment/product-listing-api",
+			"api_wait":      "rollout status deployment/product-listing-api --timeout=5m",
+		} {
+			if strings.Contains(step.Run, fragment) {
+				indexes[key] = index
+			}
+		}
+	}
+	ordered := []string{"schema", "v2_apply", "v2_restart", "v2_wait", "v3_apply", "v3_restart", "v3_wait", "canary_delete", "canary_apply", "canary_wait", "api_apply", "api_restart", "api_wait"}
+	previous := -1
+	for _, key := range ordered {
+		index, ok := indexes[key]
+		if !ok {
+			t.Fatalf("deploy workflow is missing ordered image-agent gate %q", key)
+		}
+		if index < previous {
+			t.Fatalf("deploy workflow gate %q at step %d must follow previous gate at step %d", key, index, previous)
+		}
+		previous = index
+	}
+	for _, step := range steps {
+		if !strings.Contains(step.Run, "image-agent-temporal-worker") {
+			continue
+		}
+		if strings.Contains(step.Run, "listingkit-apply-image-agent-worker-deployment.sh") && !strings.Contains(step.Run, "--image \"$API_CANDIDATE_IMAGE\"") {
+			t.Errorf("image-agent apply step %q must use the immutable API candidate image", step.Name)
+		}
+	}
+}
+
+func loadImageAgentWorkloadManifest(t *testing.T, path string) imageAgentWorkloadManifest {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read image-agent workload %s: %v", path, err)
+	}
+	var manifest imageAgentWorkloadManifest
+	if err := yaml.Unmarshal(content, &manifest); err != nil {
+		t.Fatalf("parse image-agent workload %s: %v", path, err)
+	}
+	return manifest
+}
+
+func onlyImageAgentContainer(t *testing.T, manifest imageAgentWorkloadManifest) imageAgentWorkloadContainer {
+	t.Helper()
+	if len(manifest.Spec.Template.Spec.Containers) != 1 {
+		t.Fatalf("%s has %d containers, want one", manifest.Metadata.Name, len(manifest.Spec.Template.Spec.Containers))
+	}
+	return manifest.Spec.Template.Spec.Containers[0]
+}
+
+func assertImageAgentDeployment(t *testing.T, manifest imageAgentWorkloadManifest, name, containerName, wireMode, taskQueue string) {
+	t.Helper()
+	if manifest.Kind != "Deployment" || manifest.Metadata.Name != name {
+		t.Fatalf("image-agent worker must be Deployment %q, got kind=%q name=%q", name, manifest.Kind, manifest.Metadata.Name)
+	}
+	if manifest.Spec.Selector.MatchLabels["app"] != name || manifest.Spec.Template.Metadata.Labels["app"] != name {
+		t.Fatalf("deployment %s selector and pod label must both be %q", name, name)
+	}
+	container := onlyImageAgentContainer(t, manifest)
+	if container.Name != containerName {
+		t.Fatalf("deployment %s container=%q want=%q", name, container.Name, containerName)
+	}
+	wantArgs := []string{"-config", "config/config-prod.yaml", "-log-level", "info", "-wire-mode", wireMode, "-task-queue", taskQueue}
+	if !reflect.DeepEqual(container.Args, wantArgs) {
+		t.Fatalf("deployment %s args=%#v want=%#v", name, container.Args, wantArgs)
+	}
+}
 
 func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
@@ -98,20 +288,26 @@ func TestListingKitDeployOwnsImageAgentWorkerBuildManifestAndImmutableRollout(t 
 	for _, required := range []string{
 		"scripts/listingkit-apply-image-agent-worker-deployment.sh",
 		"deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml",
+		"deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-v3-deployment.yaml",
+		"deployments/kubernetes/listingkit-workbench/jobs/image-agent-temporal-v3-canary-job.yaml",
 		"--image \"$API_CANDIDATE_IMAGE\"",
 		"rollout restart deployment/image-agent-temporal-worker",
 		"rollout status deployment/image-agent-temporal-worker --timeout=5m",
+		"rollout restart deployment/image-agent-temporal-worker-v3",
+		"rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m",
+		"wait --for=condition=complete job/image-agent-temporal-v3-canary",
 	} {
 		if !strings.Contains(workflow, required) {
 			t.Errorf("ListingKit deploy workflow missing image-agent worker ownership %q", required)
 		}
 	}
+	v2Wait := strings.Index(workflow, "rollout status deployment/image-agent-temporal-worker --timeout=5m")
+	v3Wait := strings.Index(workflow, "rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m")
+	canaryWait := strings.Index(workflow, "wait --for=condition=complete job/image-agent-temporal-v3-canary")
 	apiRestart := strings.Index(workflow, "rollout restart deployment/product-listing-api")
-	workerRestart := strings.Index(workflow, "rollout restart deployment/image-agent-temporal-worker")
 	apiWait := strings.Index(workflow, "rollout status deployment/product-listing-api --timeout=5m")
-	workerWait := strings.Index(workflow, "rollout status deployment/image-agent-temporal-worker --timeout=5m")
-	if apiRestart < 0 || workerRestart < 0 || apiWait < 0 || workerWait < 0 || !(apiRestart < workerRestart && workerRestart < apiWait && workerRestart < workerWait) {
-		t.Fatalf("API and image-agent worker must both restart for config/Secret rotation before rollout waits: apiRestart=%d workerRestart=%d apiWait=%d workerWait=%d", apiRestart, workerRestart, apiWait, workerWait)
+	if v2Wait < 0 || v3Wait < 0 || canaryWait < 0 || apiRestart < 0 || apiWait < 0 || !(v2Wait < v3Wait && v3Wait < canaryWait && canaryWait < apiRestart && apiRestart < apiWait) {
+		t.Fatalf("v2, v3, and canary gates must complete before API routing restarts: v2Wait=%d v3Wait=%d canaryWait=%d apiRestart=%d apiWait=%d", v2Wait, v3Wait, canaryWait, apiRestart, apiWait)
 	}
 	dockerfileBytes, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "Dockerfile.product-listing-api"))
 	if err != nil {

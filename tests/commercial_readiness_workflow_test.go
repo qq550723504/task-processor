@@ -3,11 +3,102 @@ package tests
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
+
+func TestListingKitCommercialImageAgentWorkersUseExactSecretAndConfigScope(t *testing.T) {
+	base := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench")
+	wantSecrets := map[string]string{
+		"TASK_PROCESSOR_DATABASE_HOST":                             "TASK_PROCESSOR_DATABASE_HOST",
+		"TASK_PROCESSOR_DATABASE_PORT":                             "TASK_PROCESSOR_DATABASE_PORT",
+		"TASK_PROCESSOR_DATABASE_USER":                             "TASK_PROCESSOR_DATABASE_USER",
+		"TASK_PROCESSOR_DATABASE_PASSWORD":                         "TASK_PROCESSOR_DATABASE_PASSWORD",
+		"TASK_PROCESSOR_DATABASE_NAME":                             "TASK_PROCESSOR_DATABASE_NAME",
+		"TASK_PROCESSOR_OPENAI_API_KEY":                            "TASK_PROCESSOR_OPENAI_API_KEY",
+		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY":              "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY",
+		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE":            "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE",
+		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL":             "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL",
+		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL":                "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID":     "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY": "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY",
+	}
+	wantConfig := map[string]string{
+		"IMAGE_AGENT_TEMPORAL_ENABLED":                                                  "IMAGE_AGENT_TEMPORAL_ENABLED",
+		"IMAGE_AGENT_TEMPORAL_ADDRESS":                                                  "IMAGE_AGENT_TEMPORAL_ADDRESS",
+		"IMAGE_AGENT_TEMPORAL_NAMESPACE":                                                "IMAGE_AGENT_TEMPORAL_NAMESPACE",
+		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED":                      "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED",
+		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS":           "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED":                                 "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER":                                "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE":                              "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET":                               "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION":                               "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT":                             "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE":                         "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE":                         "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY": "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY",
+	}
+
+	for _, relativePath := range []string{
+		filepath.Join("base", "image-agent-temporal-worker-deployment.yaml"),
+		filepath.Join("base", "image-agent-temporal-worker-v3-deployment.yaml"),
+	} {
+		t.Run(relativePath, func(t *testing.T) {
+			manifest := loadImageAgentWorkloadManifest(t, filepath.Join(base, relativePath))
+			container := onlyImageAgentContainer(t, manifest)
+			if len(container.EnvFrom) != 0 {
+				t.Fatalf("%s must use per-key configuration and Secret references, got envFrom=%#v", relativePath, container.EnvFrom)
+			}
+			actualSecrets := map[string]string{}
+			actualConfig := map[string]string{}
+			for _, variable := range container.Env {
+				if variable.ValueFrom == nil {
+					continue
+				}
+				if ref := variable.ValueFrom.SecretKeyRef; ref != nil {
+					if ref.Name != listingKitSharedSecret {
+						t.Fatalf("%s references unexpected Secret %q", relativePath, ref.Name)
+					}
+					actualSecrets[variable.Name] = ref.Key
+				}
+				if ref := variable.ValueFrom.ConfigMapKeyRef; ref != nil {
+					if ref.Name != "listingkit-workbench-config" {
+						t.Fatalf("%s references unexpected ConfigMap %q", relativePath, ref.Name)
+					}
+					actualConfig[variable.Name] = ref.Key
+				}
+			}
+			if !reflect.DeepEqual(actualSecrets, wantSecrets) {
+				t.Fatalf("%s Secret allowlist=%#v want=%#v", relativePath, actualSecrets, wantSecrets)
+			}
+			if !reflect.DeepEqual(actualConfig, wantConfig) {
+				t.Fatalf("%s ConfigMap allowlist=%#v want=%#v", relativePath, actualConfig, wantConfig)
+			}
+		})
+	}
+
+	canary := onlyImageAgentContainer(t, loadImageAgentWorkloadManifest(t, filepath.Join(base, "jobs", "image-agent-temporal-v3-canary-job.yaml")))
+	actualCanaryConfig := map[string]string{}
+	for _, variable := range canary.Env {
+		if variable.ValueFrom != nil && variable.ValueFrom.SecretKeyRef != nil {
+			t.Fatalf("canary must not receive Secret key %q", variable.ValueFrom.SecretKeyRef.Key)
+		}
+		if variable.ValueFrom != nil && variable.ValueFrom.ConfigMapKeyRef != nil {
+			actualCanaryConfig[variable.Name] = variable.ValueFrom.ConfigMapKeyRef.Key
+		}
+	}
+	wantCanaryConfig := map[string]string{
+		"IMAGE_AGENT_TEMPORAL_ADDRESS":   "IMAGE_AGENT_TEMPORAL_ADDRESS",
+		"IMAGE_AGENT_TEMPORAL_NAMESPACE": "IMAGE_AGENT_TEMPORAL_NAMESPACE",
+	}
+	if !reflect.DeepEqual(actualCanaryConfig, wantCanaryConfig) {
+		t.Fatalf("canary ConfigMap allowlist=%#v want=%#v", actualCanaryConfig, wantCanaryConfig)
+	}
+}
 
 func TestCommercialReadinessWorkflowCollectsPinnedReleaseEvidence(t *testing.T) {
 	path := filepath.Join("..", ".github", "workflows", "commercial-readiness.yml")

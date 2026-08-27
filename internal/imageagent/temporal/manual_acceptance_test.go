@@ -26,6 +26,25 @@ import (
 	"task-processor/internal/productimage"
 )
 
+type podLossRecoveryAcceptanceResult struct {
+	MainAssetID         string
+	GalleryAssetIDs     []string
+	PersistedJSON       []byte
+	FirstPodDiscarded   bool
+	RecoveryGenerations int
+}
+
+func TestManualImageAgentAcceptanceRecoversAfterPodLossAndApprovesAllAssets(t *testing.T) {
+	result := executePodLossRecoveryAcceptance(t)
+
+	require.True(t, result.FirstPodDiscarded, "acceptance must remove the original temp directory and activity/executor instance")
+	require.Zero(t, result.RecoveryGenerations, "the replacement activity must not invoke the provider again")
+	require.NotEmpty(t, result.MainAssetID)
+	require.Len(t, result.GalleryAssetIDs, 2)
+	require.NotContains(t, string(result.PersistedJSON), "local_path")
+	require.NotContains(t, string(result.PersistedJSON), "authorization")
+}
+
 func TestManualImageAgentAcceptancePreservesSixSuccessfulSlotsWhenOneBlocks(t *testing.T) {
 	plan := acceptancePlan(7, 9)
 	result, calledSlotIDs, events := executeAcceptanceWorkflow(t, plan, "scene-2")
