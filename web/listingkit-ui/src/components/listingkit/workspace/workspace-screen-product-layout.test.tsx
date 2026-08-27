@@ -34,6 +34,20 @@ vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
         task_id: "task-1",
         status: "needs_review",
         result: {
+          canonical_product: {
+            title: "Canvas Tote",
+            brand: "ListingKit",
+            category_path: ["Bags", "Totes"],
+            images: [
+              {
+                url: "https://example.com/canvas-tote-front.jpg",
+                alt: "Canvas Tote front",
+                role: "主图",
+              },
+            ],
+            variants: [],
+            attributes: {},
+          },
           summary: { blocking_count: 1, warning_count: 0 },
           workflow_issues: [
             {
@@ -246,5 +260,28 @@ describe("WorkspaceScreen Product Workspace composition", () => {
         queue_query: { platform: "all" },
       },
     });
+  });
+
+  it("switches the central work area between canonical product content and platform review", async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    const work = screen.getByRole("region", { name: "商品工作区" });
+    expect(within(work).getByText("现有 SHEIN 审核内容")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "图片" }));
+
+    expect(
+      within(work).getByRole("img", { name: "Canvas Tote front" }),
+    ).toHaveAttribute("src", "https://example.com/canvas-tote-front.jpg");
+    expect(within(work).queryByText("现有 SHEIN 审核内容")).not.toBeInTheDocument();
+    expect(within(work).queryByText("SHEIN 流程状态")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /SHEIN/ }));
+
+    expect(within(work).getByText("现有 SHEIN 审核内容")).toBeInTheDocument();
+    expect(
+      within(work).queryByRole("img", { name: "Canvas Tote front" }),
+    ).not.toBeInTheDocument();
   });
 });
