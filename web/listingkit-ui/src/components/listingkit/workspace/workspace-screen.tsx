@@ -65,11 +65,14 @@ import {
 } from "@/lib/query/use-submit-task";
 
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
+  const searchParams = useSearchParams();
   const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
   const [selectedProductSection, setSelectedProductSection] =
     useState<ProductWorkspaceSectionKey>("overview");
   const [historySelected, setHistorySelected] = useState(false);
-  const searchParams = useSearchParams();
+  const [workspaceDestination, setWorkspaceDestination] = useState<
+    "product" | "platform"
+  >(() => (searchParams.get("platform") ? "platform" : "product"));
   const workspaceData = useWorkspaceData({ taskId, searchParams });
   const {
     baseQuery,
@@ -79,6 +82,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     reviewPreview,
     sessionData,
     platformCards,
+    navigationPlatformCards,
     focusedPreview,
     selectedPlatform,
     focusedScenePreset,
@@ -228,11 +232,14 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     onRecovery: workspaceActions.handleRecovery,
   });
 
+  const platformReviewSelected =
+    workspaceDestination === "platform" && Boolean(selectedPlatform);
   const canonicalNavigation = buildProductWorkspaceCanonicalNavigation(
-    selectedProductSection,
+    historySelected ? undefined : selectedProductSection,
+    platformReviewSelected,
   );
   const platformNavigation = buildProductWorkspacePlatformNavigation(
-    platformCards.map((card) => {
+    navigationPlatformCards.map((card) => {
       const recovery = derivePlatformRecoveryPresentation(card);
       return {
         platform: card.platform,
@@ -241,7 +248,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         recoveryLabel: recovery?.presentation.ctaLabel,
       };
     }),
-    selectedProductSection === "overview" ? selectedPlatform : undefined,
+    platformReviewSelected ? selectedPlatform : undefined,
   );
   const reviewIssues = buildProductWorkspaceReviewIssues(
     taskResult.data,
@@ -268,10 +275,11 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const handleNavigationSelect = (item: ProductWorkspaceNavItem) => {
     setHistorySelected(false);
     if (item.platform) {
+      setWorkspaceDestination("platform");
       setSelectedProductSection("overview");
-      const platformCard = platformCards.find(
+      const platformCard = navigationPlatformCards.find(
         (card) => card.platform === item.platform,
-      );
+      ) ?? platformCards.find((card) => card.platform === item.platform);
       workspaceActions.dispatchTarget(
         platformCard?.primary_navigation_target ??
           platformCard?.resolved_action_summary?.navigation_target,
@@ -280,6 +288,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       return;
     }
     if (isProductSectionKey(item.key)) {
+      setWorkspaceDestination("product");
       setSelectedProductSection(item.key);
     }
   };
@@ -288,9 +297,9 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     if (!item.platform) {
       return;
     }
-    const platformCard = platformCards.find(
+    const platformCard = navigationPlatformCards.find(
       (card) => card.platform === item.platform,
-    );
+    ) ?? platformCards.find((card) => card.platform === item.platform);
     if (!platformCard) {
       return;
     }
@@ -307,6 +316,11 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     <ProductWorkspaceCanonicalSection
       product={taskResult.data?.result?.canonical_product}
       section={selectedProductSection}
+    />
+  ) : !platformReviewSelected ? (
+    <WorkspaceOverviewPanel
+      overview={sessionData.overview}
+      reviewSummary={sessionData.review_summary}
     />
   ) : (
     <div className="min-w-0 space-y-4">
@@ -358,6 +372,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         layerActionsPending={layerAction.isPending}
         onGeneratePlatformData={handleRunPlatformAdaptTemporal}
         onGenerateProduct={handleRunStandardProductTemporal}
+        isCanonicalTask={Boolean(taskResult.data?.result?.canonical_product)}
         statusLabel={workspaceStatusLabel}
         subtitle={workspaceSubtitle}
         taskId={taskId}
@@ -372,7 +387,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             historySelected={historySelected}
             onRecoverPlatform={handlePlatformRecovery}
             onSelect={handleNavigationSelect}
-            onSelectHistory={() => setHistorySelected(true)}
+            onSelectHistory={() => {
+              setHistorySelected(true);
+              setWorkspaceDestination("product");
+            }}
             platformItems={platformNavigation}
           />
         }
@@ -445,6 +463,7 @@ function ProductWorkspaceHeader({
   statusLabel,
   updatedAtLabel,
   taskId,
+  isCanonicalTask,
   layerActionsPending,
   onGenerateProduct,
   onGeneratePlatformData,
@@ -454,6 +473,7 @@ function ProductWorkspaceHeader({
   statusLabel?: string;
   updatedAtLabel?: string;
   taskId: string;
+  isCanonicalTask: boolean;
   layerActionsPending: boolean;
   onGenerateProduct: () => void;
   onGeneratePlatformData: () => void;
@@ -465,9 +485,9 @@ function ProductWorkspaceHeader({
           <div className="flex flex-wrap items-center gap-2">
             <Link
               className="text-sm font-medium text-muted-foreground transition hover:text-foreground"
-              href="/listing-kits/canonical-products"
+              href={isCanonicalTask ? "/listing-kits/canonical-products" : "/listing-kits"}
             >
-              返回商品中心
+              {isCanonicalTask ? "返回商品中心" : "返回任务列表"}
             </Link>
             {statusLabel ? <Badge variant="neutral">{statusLabel}</Badge> : null}
             {updatedAtLabel ? (

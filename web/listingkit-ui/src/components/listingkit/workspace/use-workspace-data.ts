@@ -61,6 +61,10 @@ export function useWorkspaceData({
   const sessionData = session.data?.session;
   const platformCards =
     sessionData?.platform_cards ?? preview.data?.overview?.platform_cards ?? [];
+  const navigationPlatformCards =
+    preview.data?.overview?.platform_cards?.length
+      ? preview.data.overview.platform_cards
+      : platformCards;
   const focusedPreview =
     reviewPreview.data?.preview ?? sessionData?.focused_render_preview;
   const selectedPlatform =
@@ -180,6 +184,7 @@ export function useWorkspaceData({
     reviewPreview,
     sessionData,
     platformCards,
+    navigationPlatformCards,
     focusedPreview,
     selectedPlatform,
     focusedScenePreset,

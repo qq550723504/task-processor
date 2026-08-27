@@ -52,11 +52,12 @@ const CANONICAL_NAVIGATION: ReadonlyArray<{
 ];
 
 export function buildProductWorkspaceCanonicalNavigation(
-  selectedSection: ProductWorkspaceSectionKey,
+  selectedSection?: ProductWorkspaceSectionKey,
+  platformSelected = false,
 ): ProductWorkspaceNavItem[] {
   return CANONICAL_NAVIGATION.map((item) => ({
     ...item,
-    selected: item.key === selectedSection,
+    selected: !platformSelected && item.key === selectedSection,
   }));
 }
 
@@ -73,6 +74,7 @@ export function productWorkspaceStatusForPlatformCard(card: {
     case "processing":
     case "pending":
       return "processing";
+    case "ready":
     case "completed":
       return "ready";
     default:

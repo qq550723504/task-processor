@@ -266,7 +266,9 @@ describe("WorkspaceScreen Product Workspace composition", () => {
 
     const navigation = screen.getByRole("navigation", { name: "商品工作台导航" });
     expect(within(navigation).getByRole("button", { name: "概览" })).toBeInTheDocument();
-    expect(within(navigation).getByRole("button", { name: /SHEIN/ })).toBeInTheDocument();
+    expect(
+      within(navigation).getByRole("button", { name: "SHEIN · 未开始" }),
+    ).toBeInTheDocument();
 
     const work = screen.getByRole("region", { name: "商品工作区" });
     expect(within(work).getByText("现有 SHEIN 审核内容")).toBeInTheDocument();
@@ -287,7 +289,7 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     const user = userEvent.setup();
     render(<WorkspaceScreen taskId="task-1" />);
 
-    await user.click(screen.getByRole("button", { name: /SHEIN/ }));
+    await user.click(screen.getByRole("button", { name: "SHEIN · 未开始" }));
     expect(mocks.dispatchTarget).toHaveBeenCalledWith({
       preview_query: { platform: "shein", section_key: "general_review" },
     });
@@ -345,12 +347,35 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     expect(within(work).queryByText("现有 SHEIN 审核内容")).not.toBeInTheDocument();
     expect(within(work).queryByText("SHEIN 流程状态")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /SHEIN/ }));
+    await user.click(screen.getByRole("button", { name: "SHEIN · 未开始" }));
 
     expect(within(work).getByText("现有 SHEIN 审核内容")).toBeInTheDocument();
     expect(
       within(work).queryByRole("img", { name: "Canvas Tote front" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps product overview and platform review as mutually exclusive destinations", async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    await user.click(screen.getByRole("button", { name: "SHEIN · 未开始" }));
+    expect(screen.getAllByRole("button", { current: "page" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "SHEIN · 未开始" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+
+    await user.click(screen.getByRole("button", { name: "概览" }));
+
+    expect(screen.getAllByRole("button", { current: "page" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "概览" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("region", { name: "商品工作区" })).toHaveTextContent(
+      "商品概览内容",
+    );
   });
 
   it("shows revision history in the central work area when history is selected", async () => {
@@ -387,7 +412,9 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     render(<WorkspaceScreen taskId="task-1" />);
 
     const navigation = screen.getByRole("navigation", { name: "商品工作台导航" });
-    expect(within(navigation).getByRole("button", { name: /SHEIN/ })).toBeInTheDocument();
+    expect(
+      within(navigation).getByRole("button", { name: "SHEIN · 未开始" }),
+    ).toBeInTheDocument();
     expect(within(navigation).getByRole("button", { name: /TEMU/ })).toBeInTheDocument();
   });
 

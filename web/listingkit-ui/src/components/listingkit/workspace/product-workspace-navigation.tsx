@@ -48,6 +48,7 @@ export function ProductWorkspaceNavigation({
               </div>
               {item.recoveryLabel ? (
                 <button
+                  aria-label={`${item.label} · ${item.recoveryLabel}`}
                   className="shrink-0 rounded-md border border-border px-2 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
                   onClick={() => onRecoverPlatform?.(item)}
                   type="button"
