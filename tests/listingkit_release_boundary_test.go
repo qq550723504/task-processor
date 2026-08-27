@@ -173,6 +173,8 @@ func TestListingKitDeployEmitsExactReleaseAttestationAfterAPIRollout(t *testing.
 				"${{ needs.prepare.outputs.source_ref }}",
 				"$API_CANDIDATE_IMAGE",
 				"$GITHUB_RUN_ID",
+				"$GITHUB_RUN_ATTEMPT",
+				"api_workflow_run_attempt",
 				"expires_at",
 				"@sha256:",
 			} {
@@ -185,8 +187,11 @@ func TestListingKitDeployEmitsExactReleaseAttestationAfterAPIRollout(t *testing.
 			if step.Uses != "actions/upload-artifact@v4" {
 				t.Errorf("release attestation must use upload-artifact@v4, got %q", step.Uses)
 			}
-			if got := stringValue(step.With["name"]); !strings.Contains(got, "${{ github.run_id }}") {
-				t.Errorf("attestation artifact name must be scoped to exact API run ID, got %q", got)
+			if got := stringValue(step.With["name"]); got != "listingkit-api-release-gate-${{ github.run_id }}-${{ github.run_attempt }}" {
+				t.Errorf("attestation artifact name must be scoped to exact API run ID and attempt, got %q", got)
+			}
+			if _, overwrites := step.With["overwrite"]; overwrites {
+				t.Error("attempt evidence must remain immutable; upload must not overwrite prior artifacts")
 			}
 		}
 	}
@@ -206,8 +211,8 @@ func TestListingKitUIDeployRequiresVerifiedExactAPIReleaseGate(t *testing.T) {
 	}
 	dispatch := workflow.On["workflow_dispatch"]
 	dispatchInputs := strings.ReplaceAll(stringValue(dispatch["inputs"]), " ", "")
-	if !strings.Contains(dispatchInputs, "release_gate_run_id") || !strings.Contains(dispatchInputs, "required:true") {
-		t.Fatalf("manual UI production deploy must require explicit release_gate_run_id, got %#v", dispatch)
+	if !strings.Contains(dispatchInputs, "release_gate_run_id") || !strings.Contains(dispatchInputs, "release_gate_run_attempt") || strings.Count(dispatchInputs, "required:true") < 2 {
+		t.Fatalf("manual UI production deploy must require explicit release_gate_run_id and release_gate_run_attempt, got %#v", dispatch)
 	}
 
 	gate, ok := workflow.Jobs["verify-release-gate"]
@@ -234,6 +239,8 @@ func TestListingKitUIDeployRequiresVerifiedExactAPIReleaseGate(t *testing.T) {
 		"source_sha",
 		"api_candidate_image",
 		"api_workflow_run_id",
+		"api_workflow_run_attempt",
+		"run_attempt",
 		"@sha256:",
 	} {
 		if !strings.Contains(gateScript, required) {
@@ -252,8 +259,8 @@ func TestListingKitUIDeployRequiresVerifiedExactAPIReleaseGate(t *testing.T) {
 		if got := stringValue(step.With["run-id"]); got != "${{ steps.select-gate.outputs.gate_run_id }}" {
 			t.Errorf("release gate artifact must come from the selected exact run ID, got %q", got)
 		}
-		if got := stringValue(step.With["name"]); got != "listingkit-api-release-gate-${{ steps.select-gate.outputs.gate_run_id }}" {
-			t.Errorf("release gate artifact name must bind the selected exact run ID, got %q", got)
+		if got := stringValue(step.With["name"]); got != "listingkit-api-release-gate-${{ steps.select-gate.outputs.gate_run_id }}-${{ steps.select-gate.outputs.gate_run_attempt }}" {
+			t.Errorf("release gate artifact name must bind the selected exact run ID and attempt, got %q", got)
 		}
 		if got := stringValue(step.With["github-token"]); got != "${{ github.token }}" {
 			t.Errorf("cross-run artifact download must use the scoped GitHub token, got %q", got)
@@ -298,16 +305,153 @@ func TestListingKitUIDeployRequiresVerifiedExactAPIReleaseGate(t *testing.T) {
 	}
 }
 
+func TestListingKitSupportedProductionMutationEntryPointsAreGated(t *testing.T) {
+	workstationScriptPath := filepath.Join("..", "scripts", "build-push-deploy-listingkit-workbench.ps1")
+	workstationScript, err := os.ReadFile(workstationScriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workstationText := string(workstationScript)
+	guardOffset := strings.Index(workstationText, `-not $SkipApply`)
+	firstExternalCommandOffset := strings.Index(workstationText, "git rev-parse")
+	if guardOffset < 0 || firstExternalCommandOffset < 0 || guardOffset > firstExternalCommandOffset ||
+		!strings.Contains(workstationText, `[string]::Equals($Namespace.Trim(), $ProductionNamespace`) {
+		t.Fatal("workstation entry point must reject production apply before resolving source or invoking external commands")
+	}
+	if strings.Contains(workstationText, "$ProductionIngressManifest") {
+		t.Fatal("workstation entry point must not retain a production ingress mutation path")
+	}
+
+	workflowDir := filepath.Join("..", ".github", "workflows")
+	entries, err := os.ReadDir(workflowDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowedWorkflowOwners := map[string]bool{
+		"listingkit-deploy.yml":    true,
+		"listingkit-ui-deploy.yml": true,
+	}
+	productionTargets := []string{
+		"deployment/product-listing-api",
+		"deployment/listingkit-ui",
+		"configmap listingkit-workbench-config",
+		"base/product-listing-api-deployment.yaml",
+		"base/listingkit-ui-deployment.yaml",
+		"overlays/prod/patch-ingress.yaml",
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || (!strings.HasSuffix(entry.Name(), ".yml") && !strings.HasSuffix(entry.Name(), ".yaml")) {
+			continue
+		}
+		content, readErr := os.ReadFile(filepath.Join(workflowDir, entry.Name()))
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		for _, target := range productionTargets {
+			if strings.Contains(string(content), target) && !allowedWorkflowOwners[entry.Name()] {
+				t.Errorf("workflow %s advertises or owns ListingKit production mutation target %q outside the gated API/UI workflows", entry.Name(), target)
+			}
+		}
+	}
+
+	for _, relativePath := range []string{
+		filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "README.md"),
+		filepath.Join("..", "docs", "operations", "listingkit-release-candidate-runbook.md"),
+	} {
+		content, readErr := os.ReadFile(relativePath)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		text := string(content)
+		for _, forbidden := range []string{
+			"kubectl apply -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml",
+			"kubectl -n task-processor set image deployment/product-listing-api",
+			"kubectl -n task-processor set image deployment/listingkit-ui",
+			"kubectl -n task-processor rollout restart deployment/product-listing-api",
+			"kubectl -n task-processor rollout restart deployment/listingkit-ui",
+			"scripts/listingkit-apply-api-deployment.sh",
+			"scripts/listingkit-apply-ui-deployment.sh",
+			"kubectl -n task-processor apply -f deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml",
+			"workstation `kubectl set image` procedure remains",
+		} {
+			if strings.Contains(text, forbidden) {
+				t.Errorf("supported production document %s advertises forbidden bypass %q", relativePath, forbidden)
+			}
+		}
+		for _, required := range []string{"ListingKit API Deploy", "ListingKit UI Deploy", "release_gate_run_id", "release_gate_run_attempt"} {
+			if !strings.Contains(text, required) {
+				t.Errorf("supported production document %s must route release/rollback through exact attempt-bound workflows; missing %q", relativePath, required)
+			}
+		}
+	}
+}
+
 func TestListingKitReleaseAttestationAllowsResolvedSourceDifferentFromWorkflowHead(t *testing.T) {
-	binDir := t.TempDir()
 	attestedSource := strings.Repeat("a", 40)
 	runHead := strings.Repeat("b", 40)
+	output, err := runListingKitReleaseAttestationVerifier(t, releaseAttestationScenario{
+		selectedAttempt: "2",
+		runAttempt:      "2",
+		attestedAttempt: "2",
+		attestedSource:  attestedSource,
+		runHead:         runHead,
+		includeAttempt:  true,
+	})
+	if err != nil {
+		t.Fatalf("verify attestation with independent resolved source: %v\n%s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != attestedSource {
+		t.Fatalf("verified source=%q want attested source %q (workflow head was %q)", got, attestedSource, runHead)
+	}
+}
+
+func TestListingKitReleaseAttestationRequiresExactRunAttempt(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		scenario releaseAttestationScenario
+		wantPass bool
+	}{
+		{name: "attempt_1", scenario: releaseAttestationScenario{selectedAttempt: "1", runAttempt: "1", attestedAttempt: "1", includeAttempt: true}, wantPass: true},
+		{name: "attempt_2", scenario: releaseAttestationScenario{selectedAttempt: "2", runAttempt: "2", attestedAttempt: "2", includeAttempt: true}, wantPass: true},
+		{name: "REST_attempt_does_not_match_selection", scenario: releaseAttestationScenario{selectedAttempt: "2", runAttempt: "1", attestedAttempt: "2", includeAttempt: true}},
+		{name: "same_run_artifact_from_another_attempt", scenario: releaseAttestationScenario{selectedAttempt: "2", runAttempt: "2", attestedAttempt: "1", includeAttempt: true}},
+		{name: "missing_attempt_selection", scenario: releaseAttestationScenario{runAttempt: "1", attestedAttempt: "1", includeAttempt: false}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			output, err := runListingKitReleaseAttestationVerifier(t, test.scenario)
+			if test.wantPass && err != nil {
+				t.Fatalf("exact attempt verification failed: %v\n%s", err, output)
+			}
+			if !test.wantPass && err == nil {
+				t.Fatalf("attempt mismatch unexpectedly passed: %s", output)
+			}
+		})
+	}
+}
+
+type releaseAttestationScenario struct {
+	selectedAttempt string
+	runAttempt      string
+	attestedAttempt string
+	attestedSource  string
+	runHead         string
+	includeAttempt  bool
+}
+
+func runListingKitReleaseAttestationVerifier(t *testing.T, scenario releaseAttestationScenario) ([]byte, error) {
+	t.Helper()
+	if scenario.attestedSource == "" {
+		scenario.attestedSource = strings.Repeat("a", 40)
+	}
+	if scenario.runHead == "" {
+		scenario.runHead = strings.Repeat("b", 40)
+	}
+	binDir := t.TempDir()
 	apiDigest := strings.Repeat("c", 64)
-	runID := "424242"
 	now := time.Now().UTC()
-	runJSON := fmt.Sprintf(`{"id":424242,"repository":{"full_name":"octo/task-processor"},"name":"ListingKit API Deploy","path":".github/workflows/listingkit-deploy.yml@refs/heads/main","conclusion":"success","head_sha":%q}`, runHead)
-	attestationJSON := fmt.Sprintf(`{"gate_version":"listingkit-api-release-gate/v1","repository":"octo/task-processor","workflow_name":"ListingKit API Deploy","workflow_path":".github/workflows/listingkit-deploy.yml","source_sha":%q,"api_candidate_image":"docker.io/xuwei190/task-processor-product-listing-api@sha256:%s","api_workflow_run_id":424242,"issued_at":%q,"expires_at":%q}`,
-		attestedSource, apiDigest, now.Add(-time.Minute).Format(time.RFC3339), now.Add(time.Hour).Format(time.RFC3339))
+	runJSON := fmt.Sprintf(`{"id":424242,"run_attempt":%s,"repository":{"full_name":"octo/task-processor"},"name":"ListingKit API Deploy","path":".github/workflows/listingkit-deploy.yml@refs/heads/main","conclusion":"success","head_sha":%q}`, scenario.runAttempt, scenario.runHead)
+	attestationJSON := fmt.Sprintf(`{"gate_version":"listingkit-api-release-gate/v1","repository":"octo/task-processor","workflow_name":"ListingKit API Deploy","workflow_path":".github/workflows/listingkit-deploy.yml","source_sha":%q,"api_candidate_image":"docker.io/xuwei190/task-processor-product-listing-api@sha256:%s","api_workflow_run_id":424242,"api_workflow_run_attempt":%s,"issued_at":%q,"expires_at":%q}`,
+		scenario.attestedSource, apiDigest, scenario.attestedAttempt, now.Add(-time.Minute).Format(time.RFC3339), now.Add(time.Hour).Format(time.RFC3339))
 	runPath := filepath.Join(t.TempDir(), "run.json")
 	attestationPath := filepath.Join(t.TempDir(), "attestation.json")
 	if err := os.WriteFile(runPath, []byte(runJSON), 0o600); err != nil {
@@ -323,7 +467,7 @@ if [[ "$*" == *"repos/octo/task-processor/commits/%s"* ]]; then
   exit 0
 fi
 exit 1
-`, attestedSource, attestedSource))
+`, scenario.attestedSource, scenario.attestedSource))
 	writePreflightFake(t, filepath.Join(binDir, "jq"), fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
 filter="${2:-}"
@@ -331,6 +475,7 @@ case "$filter" in
   *'keys == '*) exit 0 ;;
   *'.repository.full_name'*) printf 'octo/task-processor\n' ;;
   *'.id | select'*) printf '424242\n' ;;
+  *'.run_attempt | select'*) printf '%s\n' ;;
   *'.name | select'*) printf 'ListingKit API Deploy\n' ;;
   *'.path | select'*) printf '.github/workflows/listingkit-deploy.yml@refs/heads/main\n' ;;
   *'.conclusion | select'*) printf 'success\n' ;;
@@ -342,30 +487,30 @@ case "$filter" in
   *'.source_sha | select'*) printf '%s\n' ;;
   *'.api_candidate_image | select'*) printf 'docker.io/xuwei190/task-processor-product-listing-api@sha256:%s\n' ;;
   *'.api_workflow_run_id | select'*) printf '424242\n' ;;
+  *'.api_workflow_run_attempt | select'*) printf '%s\n' ;;
   *'.issued_at | select'*) printf '%s\n' ;;
   *'.expires_at | select'*) printf '%s\n' ;;
   *) exit 1 ;;
 esac
-`, runHead, attestedSource, apiDigest, now.Add(-time.Minute).Format(time.RFC3339), now.Add(time.Hour).Format(time.RFC3339)))
+`, scenario.runAttempt, scenario.runHead, scenario.attestedSource, apiDigest, scenario.attestedAttempt, now.Add(-time.Minute).Format(time.RFC3339), now.Add(time.Hour).Format(time.RFC3339)))
 
 	verifierPath, err := filepath.Abs(filepath.Join("..", "scripts", "verify-listingkit-api-release-attestation.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(preflightBash(t), filepath.ToSlash(verifierPath),
+	args := []string{filepath.ToSlash(verifierPath),
 		"--attestation", attestationPath,
 		"--run-json", runPath,
-		"--run-id", runID,
+		"--run-id", "424242"}
+	if scenario.includeAttempt {
+		args = append(args, "--run-attempt", scenario.selectedAttempt)
+	}
+	args = append(args,
 		"--repository", "octo/task-processor",
 		"--api-repository", "docker.io/xuwei190/task-processor-product-listing-api")
+	command := exec.Command(preflightBash(t), args...)
 	command.Env = append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("verify attestation with independent resolved source: %v\n%s", err, output)
-	}
-	if got := strings.TrimSpace(string(output)); got != attestedSource {
-		t.Fatalf("verified source=%q want attested source %q (workflow head was %q)", got, attestedSource, runHead)
-	}
+	return command.CombinedOutput()
 }
 
 func TestListingKitImageAgentDrainRunbookDefinesCompleteSafeInventoryAndRecoveryHorizon(t *testing.T) {
@@ -377,13 +522,17 @@ func TestListingKitImageAgentDrainRunbookDefinesCompleteSafeInventoryAndRecovery
 	for _, required := range []string{
 		"ImageAgentWorkflow",
 		"ImageSlotWorkflow",
-		"required_temporal_cli=1.8.1",
-		"temporal workflow describe",
+		"listingkit-image-agent-v2-drain-check.sh",
+		"Temporal CLI 1.8.1",
 		"pendingChildren",
 		"pendingActivities",
-		"image-agent-open-executions.tsv",
 		"imageagent.execute_slot",
 		"imageagent.execute_slot.v2",
+		"open_v2_parent_count",
+		"open_v2_child_count",
+		"pending_v2_child_count",
+		"pending_v2_activity_count",
+		"pending_v2_activity_attempt_sum",
 		"tenant_id, owner_user_id, id, created_at",
 		"created_at >=",
 		"created_at <",

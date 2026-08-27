@@ -15,6 +15,10 @@ on:
         description: "Successful ListingKit API Deploy run ID for the exact UI source commit."
         required: true
         type: string
+      release_gate_run_attempt:
+        description: "Successful ListingKit API Deploy run attempt for the exact attestation artifact."
+        required: true
+        type: string
       image_tag:
         description: "Optional UI image tag. Defaults to the first twelve source-SHA characters."
         required: false
@@ -55,15 +59,19 @@ jobs:
         shell: bash
         env:
           MANUAL_GATE_RUN_ID: ${{ inputs.release_gate_run_id }}
+          MANUAL_GATE_RUN_ATTEMPT: ${{ inputs.release_gate_run_attempt }}
           AUTOMATIC_GATE_RUN_ID: ${{ github.event.workflow_run.id }}
+          AUTOMATIC_GATE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           set -euo pipefail
           case "$GITHUB_EVENT_NAME" in
             workflow_run)
               gate_run_id="$AUTOMATIC_GATE_RUN_ID"
+              gate_run_attempt="$AUTOMATIC_GATE_RUN_ATTEMPT"
               ;;
             workflow_dispatch)
               gate_run_id="$MANUAL_GATE_RUN_ID"
+              gate_run_attempt="$MANUAL_GATE_RUN_ATTEMPT"
               ;;
             *)
               echo "::error::release gate verification is unavailable for $GITHUB_EVENT_NAME"
@@ -74,7 +82,12 @@ jobs:
             echo "::error::release_gate_run_id must be an explicit positive workflow run ID"
             exit 1
           fi
+          if [[ ! "$gate_run_attempt" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::release_gate_run_attempt must be an explicit positive workflow run attempt"
+            exit 1
+          fi
           echo "gate_run_id=$gate_run_id" >> "$GITHUB_OUTPUT"
+          echo "gate_run_attempt=$gate_run_attempt" >> "$GITHUB_OUTPUT"
 
       - name: Checkout trusted release gate verifier
         uses: actions/checkout@v4
@@ -91,13 +104,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GATE_RUN_ID: ${{ steps.select-gate.outputs.gate_run_id }}
+          GATE_RUN_ATTEMPT: ${{ steps.select-gate.outputs.gate_run_attempt }}
           EVENT_GATE_RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_GATE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           EVENT_GATE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           EVENT_GATE_SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           run_json="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs/${GATE_RUN_ID}")"
           run_id="$(jq -er '.id' <<<"$run_json")"
+          run_attempt="$(jq -er '.run_attempt' <<<"$run_json")"
           run_repository="$(jq -er '.repository.full_name' <<<"$run_json")"
           run_name="$(jq -er '.name' <<<"$run_json")"
           run_path="$(jq -er '.path' <<<"$run_json")"
@@ -105,8 +121,8 @@ jobs:
           run_conclusion="$(jq -er '.conclusion' <<<"$run_json")"
           run_source_sha="$(jq -er '.head_sha' <<<"$run_json")"
 
-          if [[ "$run_id" != "$GATE_RUN_ID" || "$run_repository" != "$GITHUB_REPOSITORY" ]]; then
-            echo "::error::release gate run identity does not match this repository and requested run"
+          if [[ "$run_id" != "$GATE_RUN_ID" || "$run_attempt" != "$GATE_RUN_ATTEMPT" || "$run_repository" != "$GITHUB_REPOSITORY" ]]; then
+            echo "::error::release gate run identity does not match this repository and requested run attempt"
             exit 1
           fi
           if [[ "$run_name" != "ListingKit API Deploy" || "$run_path" != ".github/workflows/listingkit-deploy.yml" ]]; then
@@ -122,7 +138,7 @@ jobs:
             exit 1
           fi
           if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
-            if [[ "$EVENT_GATE_RUN_ID" != "$GATE_RUN_ID" || "$EVENT_GATE_CONCLUSION" != "success" || "$EVENT_GATE_SOURCE_SHA" != "$run_source_sha" ]]; then
+            if [[ "$EVENT_GATE_RUN_ID" != "$GATE_RUN_ID" || "$EVENT_GATE_RUN_ATTEMPT" != "$GATE_RUN_ATTEMPT" || "$EVENT_GATE_CONCLUSION" != "success" || "$EVENT_GATE_SOURCE_SHA" != "$run_source_sha" ]]; then
               echo "::error::workflow_run payload does not match the verified API release run"
               exit 1
             fi
@@ -133,7 +149,7 @@ jobs:
       - name: Download exact API release attestation
         uses: actions/download-artifact@v5
         with:
-          name: listingkit-api-release-gate-${{ steps.select-gate.outputs.gate_run_id }}
+          name: listingkit-api-release-gate-${{ steps.select-gate.outputs.gate_run_id }}-${{ steps.select-gate.outputs.gate_run_attempt }}
           path: .release-gate/artifact
           repository: ${{ github.repository }}
           run-id: ${{ steps.select-gate.outputs.gate_run_id }}
@@ -145,6 +161,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GATE_RUN_ID: ${{ steps.select-gate.outputs.gate_run_id }}
+          GATE_RUN_ATTEMPT: ${{ steps.select-gate.outputs.gate_run_attempt }}
         run: |
           set -euo pipefail
           expected_api_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
@@ -152,6 +169,7 @@ jobs:
             --attestation .release-gate/artifact/listingkit-api-release-attestation.json \
             --run-json .release-gate/api-workflow-run.json \
             --run-id "$GATE_RUN_ID" \
+            --run-attempt "$GATE_RUN_ATTEMPT" \
             --repository "$GITHUB_REPOSITORY" \
             --api-repository "$expected_api_repository")"
           echo "verified=true" >> "$GITHUB_OUTPUT"

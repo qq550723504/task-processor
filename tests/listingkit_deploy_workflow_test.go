@@ -604,7 +604,7 @@ func TestListingKitAPIImageDeclaresCandidateIdentityCompatibilityLabel(t *testin
 	}
 }
 
-func TestListingKitManualDeployPublishesSMSWebhookIngressAfterAPIRollout(t *testing.T) {
+func TestListingKitManualDeployPreservesNonProductionGateOrderingWithoutProductionIngress(t *testing.T) {
 	scriptPath := filepath.Join("..", "scripts", "build-push-deploy-listingkit-workbench.ps1")
 	content, err := os.ReadFile(scriptPath)
 	if err != nil {
@@ -616,23 +616,25 @@ func TestListingKitManualDeployPublishesSMSWebhookIngressAfterAPIRollout(t *test
 	apiApplyCall := strings.Index(text, "& $BashExecutable $ImmutableApiApplyDriver")
 	apiRestart := strings.Index(text, "kubectl -n $Namespace rollout restart deployment/product-listing-api")
 	apiRollout := strings.Index(text, "kubectl -n $Namespace rollout status deployment/product-listing-api --timeout=5m")
-	ingressApply := strings.Index(text, "kubectl -n $Namespace apply -f $ProductionIngressManifest")
 	uiRollout := strings.Index(text, "kubectl -n $Namespace rollout status deployment/listingkit-ui --timeout=5m")
-	if preflightCall < 0 || cleanupCall < 0 || apiApplyCall < 0 || apiRestart < 0 || apiRollout < 0 || ingressApply < 0 || uiRollout < 0 {
-		t.Fatalf("manual deploy must invoke preflight, cleanup, API apply, API restart, API rollout, ingress apply, and UI rollout: preflight=%d cleanup=%d api=%d apiRestart=%d apiRollout=%d ingress=%d uiRollout=%d", preflightCall, cleanupCall, apiApplyCall, apiRestart, apiRollout, ingressApply, uiRollout)
+	if preflightCall < 0 || cleanupCall < 0 || apiApplyCall < 0 || apiRestart < 0 || apiRollout < 0 || uiRollout < 0 {
+		t.Fatalf("non-production deploy must invoke preflight, cleanup, API apply, API restart, API rollout, and UI rollout: preflight=%d cleanup=%d api=%d apiRestart=%d apiRollout=%d uiRollout=%d", preflightCall, cleanupCall, apiApplyCall, apiRestart, apiRollout, uiRollout)
 	}
 	if !(preflightCall < cleanupCall && cleanupCall < apiApplyCall) {
 		t.Fatalf("manual deploy must clean the Secret after preflight and before API apply: preflight=%d cleanup=%d api=%d", preflightCall, cleanupCall, apiApplyCall)
 	}
-	if !(apiApplyCall < apiRestart && apiRestart < apiRollout && apiRollout < ingressApply && ingressApply < uiRollout) {
-		t.Fatalf("manual deploy must restart API Pods after the immutable apply, wait for their rollout, then apply the SMS webhook ingress before waiting for the UI: api=%d apiRestart=%d apiRollout=%d ingress=%d uiRollout=%d", apiApplyCall, apiRestart, apiRollout, ingressApply, uiRollout)
+	if !(apiApplyCall < apiRestart && apiRestart < apiRollout && apiRollout < uiRollout) {
+		t.Fatalf("non-production deploy must restart API Pods after the immutable apply and wait before the UI: api=%d apiRestart=%d apiRollout=%d uiRollout=%d", apiApplyCall, apiRestart, apiRollout, uiRollout)
 	}
 	if !strings.Contains(text, "listingkit-workbench-secret") {
 		t.Error("manual deploy cleanup must target the shared ListingKit Secret")
 	}
+	if strings.Contains(text, "$ProductionIngressManifest") || strings.Contains(text, "overlays/prod/patch-ingress.yaml") {
+		t.Fatal("workstation deploy must not own or advertise the production ingress mutation")
+	}
 }
 
-func TestListingKitManualDeployLimitsProductionSMSWebhookIngressToProductionNamespace(t *testing.T) {
+func TestListingKitManualDeployFailsClosedForProductionBeforeExternalCommands(t *testing.T) {
 	scriptPath := filepath.Join("..", "scripts", "build-push-deploy-listingkit-workbench.ps1")
 	content, err := os.ReadFile(scriptPath)
 	if err != nil {
@@ -640,16 +642,13 @@ func TestListingKitManualDeployLimitsProductionSMSWebhookIngressToProductionName
 	}
 
 	text := string(content)
-	const productionNamespace = `$ProductionNamespace = "task-processor"`
-	const productionIngressGate = `if ($Namespace -eq $ProductionNamespace) {`
-	productionNamespaceIndex := strings.Index(text, productionNamespace)
-	gateIndex := strings.Index(text, productionIngressGate)
-	ingressApplyIndex := strings.Index(text, "kubectl -n $Namespace apply -f $ProductionIngressManifest")
-	if productionNamespaceIndex < 0 || gateIndex < 0 || ingressApplyIndex < 0 {
-		t.Fatalf("manual deploy must define and gate the production SMS webhook ingress by namespace: productionNamespace=%d gate=%d ingress=%d", productionNamespaceIndex, gateIndex, ingressApplyIndex)
+	guardIndex := strings.Index(text, "workstation deployment to production namespace task-processor is forbidden")
+	firstExternalIndex := strings.Index(text, "git rev-parse")
+	if guardIndex < 0 || firstExternalIndex < 0 {
+		t.Fatalf("manual deploy must contain the production fail-closed guard before tag resolution: guard=%d firstExternal=%d", guardIndex, firstExternalIndex)
 	}
-	if gateIndex >= ingressApplyIndex {
-		t.Fatal("manual deploy must apply the production SMS webhook ingress only inside the production namespace gate")
+	if guardIndex >= firstExternalIndex {
+		t.Fatalf("production guard must run before any external command: guard=%d firstExternal=%d", guardIndex, firstExternalIndex)
 	}
 }
 
@@ -716,7 +715,7 @@ func TestProductListingAPISchemaMigrationJobDeadlineMatchesDriverWait(t *testing
 	}
 }
 
-func TestListingKitFirstControlledDeploymentUsesSchemaMigrationDriver(t *testing.T) {
+func TestListingKitFirstControlledDeploymentRoutesProductionMigrationsThroughWorkflow(t *testing.T) {
 	readmePath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "README.md")
 	content, err := os.ReadFile(readmePath)
 	if err != nil {
@@ -724,22 +723,30 @@ func TestListingKitFirstControlledDeploymentUsesSchemaMigrationDriver(t *testing
 	}
 	text := string(content)
 	start := strings.Index(text, "### First controlled deployment")
-	end := strings.Index(text, "The two Jobs import the production ConfigMap")
+	end := strings.Index(text, "### Identity preflight release gate")
 	if start < 0 || end <= start {
 		t.Fatal("could not isolate the first controlled deployment procedure")
 	}
 	procedure := text[start:end]
 	for _, required := range []string{
-		"bash scripts/listingkit-schema-migrate-job.sh",
-		"--manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml",
-		"--image \"$apiCandidateImage\"",
+		"ListingKit API Deploy",
+		"ListingKit UI Deploy",
+		"release_gate_run_id",
+		"release_gate_run_attempt",
+		"both schema migrations",
 	} {
 		if !strings.Contains(procedure, required) {
-			t.Errorf("first controlled deployment procedure must contain %q", required)
+			t.Errorf("first controlled deployment must route production release through the exact attempt-bound workflows; missing %q", required)
 		}
 	}
-	if strings.Contains(procedure, `"listingkit-schema-migrate-job.yaml"`) {
-		t.Error("first controlled deployment must not render the ListingKit schema manifest with the legacy tag replacement loop")
+	for _, forbidden := range []string{
+		"kubectl apply -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml",
+		"bash scripts/listingkit-schema-migrate-job.sh",
+		"kubectl create -n task-processor",
+	} {
+		if strings.Contains(procedure, forbidden) {
+			t.Errorf("first controlled deployment must not advertise workstation production mutation %q", forbidden)
+		}
 	}
 }
 

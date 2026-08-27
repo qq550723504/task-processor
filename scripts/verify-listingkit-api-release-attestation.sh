@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat >&2 <<'USAGE'
 usage: verify-listingkit-api-release-attestation.sh \
-  --attestation PATH --run-json PATH --run-id ID \
+  --attestation PATH --run-json PATH --run-id ID --run-attempt ATTEMPT \
   --repository OWNER/REPO --api-repository IMAGE_REPOSITORY
 USAGE
 }
@@ -18,6 +18,7 @@ fail() {
 attestation=""
 run_json_path=""
 run_id=""
+run_attempt=""
 repository=""
 api_repository=""
 while [[ $# -gt 0 ]]; do
@@ -35,6 +36,11 @@ while [[ $# -gt 0 ]]; do
     --run-id)
       [[ $# -ge 2 ]] || fail "--run-id requires an ID"
       run_id="$2"
+      shift 2
+      ;;
+    --run-attempt)
+      [[ $# -ge 2 ]] || fail "--run-attempt requires an attempt"
+      run_attempt="$2"
       shift 2
       ;;
     --repository)
@@ -61,6 +67,7 @@ done
 [[ -n "$attestation" && -f "$attestation" ]] || fail "attestation is missing or expired"
 [[ -n "$run_json_path" && -f "$run_json_path" ]] || fail "workflow run metadata is missing"
 [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || fail "run ID must be a positive integer"
+[[ "$run_attempt" =~ ^[1-9][0-9]*$ ]] || fail "run attempt must be a positive integer"
 [[ "$repository" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]] || fail "repository must be OWNER/REPO"
 [[ -n "$api_repository" && "$api_repository" != *@* ]] || fail "API repository must not contain a digest"
 for command in jq gh date; do
@@ -68,6 +75,7 @@ for command in jq gh date; do
 done
 
 actual_run_id="$(jq -er '.id | select(type == "number")' "$run_json_path")"
+actual_run_attempt="$(jq -er '.run_attempt | select(type == "number")' "$run_json_path")"
 actual_repository="$(jq -er '.repository.full_name | select(type == "string")' "$run_json_path")"
 actual_workflow_name="$(jq -er '.name | select(type == "string")' "$run_json_path")"
 actual_workflow_path="$(jq -er '.path | select(type == "string")' "$run_json_path")"
@@ -76,6 +84,7 @@ actual_conclusion="$(jq -er '.conclusion | select(type == "string")' "$run_json_
 workflow_head_sha="$(jq -er '.head_sha | select(type == "string")' "$run_json_path")"
 
 [[ "$actual_run_id" == "$run_id" ]] || fail "workflow run ID does not match"
+[[ "$actual_run_attempt" == "$run_attempt" ]] || fail "workflow run attempt does not match"
 [[ "$actual_repository" == "$repository" ]] || fail "workflow run repository does not match"
 [[ "$actual_workflow_name" == "ListingKit API Deploy" ]] || fail "workflow name does not match"
 [[ "$actual_workflow_path" == ".github/workflows/listingkit-deploy.yml" ]] || fail "workflow path does not match"
@@ -84,7 +93,7 @@ workflow_head_sha="$(jq -er '.head_sha | select(type == "string")' "$run_json_pa
 
 if ! jq -e '
   type == "object" and
-  keys == ["api_candidate_image","api_workflow_run_id","expires_at","gate_version","issued_at","repository","source_sha","workflow_name","workflow_path"]
+  keys == ["api_candidate_image","api_workflow_run_attempt","api_workflow_run_id","expires_at","gate_version","issued_at","repository","source_sha","workflow_name","workflow_path"]
 ' "$attestation" >/dev/null; then
   fail "attestation schema is malformed"
 fi
@@ -96,6 +105,7 @@ attested_workflow_path="$(jq -er '.workflow_path | select(type == "string")' "$a
 source_sha="$(jq -er '.source_sha | select(type == "string")' "$attestation")"
 api_candidate_image="$(jq -er '.api_candidate_image | select(type == "string")' "$attestation")"
 attested_run_id="$(jq -er '.api_workflow_run_id | select(type == "number")' "$attestation")"
+attested_run_attempt="$(jq -er '.api_workflow_run_attempt | select(type == "number")' "$attestation")"
 issued_at="$(jq -er '.issued_at | select(type == "string")' "$attestation")"
 expires_at="$(jq -er '.expires_at | select(type == "string")' "$attestation")"
 
@@ -104,6 +114,7 @@ expires_at="$(jq -er '.expires_at | select(type == "string")' "$attestation")"
 [[ "$attested_workflow_name" == "ListingKit API Deploy" ]] || fail "attested workflow name does not match"
 [[ "$attested_workflow_path" == ".github/workflows/listingkit-deploy.yml" ]] || fail "attested workflow path does not match"
 [[ "$attested_run_id" == "$run_id" ]] || fail "attested workflow run ID does not match"
+[[ "$attested_run_attempt" == "$run_attempt" ]] || fail "attested workflow run attempt does not match"
 [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || fail "attested source is not an exact lowercase commit SHA"
 
 resolved_source_sha="$(gh api --method GET "repos/${repository}/commits/${source_sha}" --jq .sha)"

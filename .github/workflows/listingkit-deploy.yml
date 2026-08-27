@@ -468,6 +468,10 @@ jobs:
             echo "::error::API candidate is not a digest-pinned image from the release repository"
             exit 1
           fi
+          if [[ ! "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::workflow run attempt is not a positive integer"
+            exit 1
+          fi
           issued_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           expires_at="$(date -u -d '+24 hours' +'%Y-%m-%dT%H:%M:%SZ')"
           mkdir -p release-attestation
@@ -479,15 +483,16 @@ jobs:
             --arg source_sha "$source_sha" \
             --arg api_candidate_image "$API_CANDIDATE_IMAGE" \
             --argjson api_workflow_run_id "$GITHUB_RUN_ID" \
+            --argjson api_workflow_run_attempt "$GITHUB_RUN_ATTEMPT" \
             --arg issued_at "$issued_at" \
             --arg expires_at "$expires_at" \
-            '{gate_version:$gate_version,repository:$repository,workflow_name:$workflow_name,workflow_path:$workflow_path,source_sha:$source_sha,api_candidate_image:$api_candidate_image,api_workflow_run_id:$api_workflow_run_id,issued_at:$issued_at,expires_at:$expires_at}' \
+            '{gate_version:$gate_version,repository:$repository,workflow_name:$workflow_name,workflow_path:$workflow_path,source_sha:$source_sha,api_candidate_image:$api_candidate_image,api_workflow_run_id:$api_workflow_run_id,api_workflow_run_attempt:$api_workflow_run_attempt,issued_at:$issued_at,expires_at:$expires_at}' \
             > release-attestation/listingkit-api-release-attestation.json
 
       - name: Upload ListingKit API release attestation
         uses: actions/upload-artifact@v4
         with:
-          name: listingkit-api-release-gate-${{ github.run_id }}
+          name: listingkit-api-release-gate-${{ github.run_id }}-${{ github.run_attempt }}
           path: release-attestation/listingkit-api-release-attestation.json
           if-no-files-found: error
           retention-days: 2
