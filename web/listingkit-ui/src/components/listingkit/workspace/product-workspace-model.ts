@@ -7,7 +7,7 @@ export type ProductWorkspaceSectionKey =
   | "attributes"
   | "description";
 
-export type ProductWorkspaceItemStatus =
+type ProductWorkspaceItemStatus =
   | "ready"
   | "processing"
   | "attention"
