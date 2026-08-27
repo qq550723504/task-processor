@@ -66,6 +66,19 @@ func TestSlotEffectV3BlockedPolicyMapsExactPhaseCodeAndActions(t *testing.T) {
 	}
 }
 
+func TestProviderAndStagingUnknownPermitNewAttempt(t *testing.T) {
+	for _, code := range []string{SlotProviderOutcomeUnknownCode, SlotStagingOutcomeUnknownCode} {
+		run := Run{Mode: RunModeManual, Status: RunStatusBlocked, Block: &Block{Code: code, SlotID: "scene-2"}}
+		require.True(t, BlockAllowsAction(run.Block, ActionRetrySlot), code)
+	}
+}
+
+func TestPublicationUnknownDoesNotPermitBlindRetry(t *testing.T) {
+	run := Run{Mode: RunModeManual, Status: RunStatusBlocked, Block: &Block{Code: SlotPublicationOutcomeUnknownCode, SlotID: "scene-2"}}
+	require.False(t, BlockAllowsAction(run.Block, ActionRetrySlot))
+	require.Equal(t, []Action{ActionEditPlan, ActionCancel}, AllowedActions(run))
+}
+
 func TestAllowedActionsForInvalidOrUnknownV3PolicyFailClosed(t *testing.T) {
 	for _, code := range []string{
 		"slot_effect_phase_invalid",

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ImageAgentWorkbench } from "@/components/listingkit/image-agent/image-agent-workbench";
 import type {
+  ImageAgentAction,
   ImageAgentProjection,
   ImageAgentSlot,
 } from "@/lib/types/image-agent";
@@ -63,6 +64,36 @@ class FakeEventSource {
 
 const originalEventSource = globalThis.EventSource;
 
+const blockedUnknownCases: Array<{
+  name: string;
+  code: string;
+  guidance: string;
+  initialActions: ImageAgentAction[];
+  refreshedActions: ImageAgentAction[];
+}> = [
+  {
+    name: "provider outcome unknown",
+    code: "slot_provider_outcome_unknown",
+    guidance: "生成结果状态不确定",
+    initialActions: ["edit_plan", "retry_slot", "cancel"],
+    refreshedActions: ["edit_plan", "cancel"],
+  },
+  {
+    name: "staging outcome unknown",
+    code: "slot_staging_outcome_unknown",
+    guidance: "持久化字节状态不完整",
+    initialActions: ["edit_plan", "cancel"],
+    refreshedActions: ["edit_plan", "retry_slot", "cancel"],
+  },
+  {
+    name: "publication outcome unknown",
+    code: "slot_publication_outcome_unknown",
+    guidance: "发布结果需要验证",
+    initialActions: ["edit_plan", "cancel"],
+    refreshedActions: ["edit_plan", "cancel"],
+  },
+];
+
 beforeEach(() => {
   FakeEventSource.instances = [];
   FakeEventSource.active = 0;
@@ -92,6 +123,47 @@ describe("ImageAgentWorkbench", () => {
     expect(
       screen.getByRole("button", { name: "仅重试 scene-2" }),
     ).toBeEnabled();
+  });
+
+  it.each(blockedUnknownCases)("renders $name guidance from server actions on initial render and SSE refresh", async ({ code, guidance, initialActions, refreshedActions }) => {
+    const initial = projectionWithSlots(7, "scene-2");
+    initial.run.max_concurrent_slots = 3;
+    initial.run.block = { code, message: "server detail before refresh", slot_id: "scene-2" };
+    initial.actions = [...initialActions];
+    initial.projection_version = 4;
+    initial.last_event_id = 4;
+    const refreshed = structuredClone(initial);
+    refreshed.actions = [...refreshedActions];
+    refreshed.run.block = { code, message: "server detail after refresh", slot_id: "scene-2" };
+    refreshed.projection_version = 5;
+    refreshed.last_event_id = 5;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(refreshed), { status: 200, headers: { "content-type": "application/json" } }),
+    );
+
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={initial} />);
+
+    expect(screen.getByText(guidance)).toBeInTheDocument();
+    expect(screen.getByText("server detail before refresh")).toBeInTheDocument();
+    expect(screen.getByText("有效并发").parentElement).toHaveTextContent("3 个槽位");
+    if (initialActions.includes("retry_slot")) {
+      expect(screen.getByRole("button", { name: "创建新尝试" })).toBeEnabled();
+    } else {
+      expect(screen.queryByRole("button", { name: "创建新尝试" })).not.toBeInTheDocument();
+    }
+
+    act(() => FakeEventSource.instances[0]?.emit(5, 5));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(guidance)).toBeInTheDocument();
+    expect(screen.getByText("server detail after refresh")).toBeInTheDocument();
+    if (refreshedActions.includes("retry_slot")) {
+      expect(screen.getByRole("button", { name: "创建新尝试" })).toBeEnabled();
+    } else {
+      expect(screen.queryByRole("button", { name: "创建新尝试" })).not.toBeInTheDocument();
+    }
+    if (code === "slot_publication_outcome_unknown") {
+      expect(screen.queryByRole("button", { name: /重试/ })).not.toBeInTheDocument();
+    }
   });
 
   it("shows durable safe command failure details after refresh", () => {
@@ -662,6 +734,7 @@ function projectionWithSlots(
       current_node: blockedSlotId ? "retry_slot" : "execute_slots",
       active_plan_revision: 3,
       version: 5,
+      max_concurrent_slots: 4,
       budget: {
         max_images: 20,
         max_agent_steps: 0,

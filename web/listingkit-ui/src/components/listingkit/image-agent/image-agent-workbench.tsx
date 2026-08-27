@@ -76,6 +76,7 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
   const blockedSlot = projection.plan.slots.find(
     (slot) => slot.id === blockedSlotID,
   );
+  const blockedGuidance = guidanceForBlockedCode(projection.run.block?.code);
   const canRetryBlockedSlot =
     Boolean(blockedSlotID) && projection.actions.includes("retry_slot");
   const canEditPlan = projection.actions.includes("edit_plan");
@@ -185,6 +186,7 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
             <dl className="mt-3 space-y-3 text-sm">
               <Metric label="状态" value={runStatusLabel(projection.run.status)} />
               <Metric label="当前节点" value={projection.run.current_node || "—"} />
+              <Metric label="有效并发" value={`${projection.run.max_concurrent_slots} 个槽位`} />
               <Metric
                 label="图片预算"
                 value={`${projection.run.usage.images}/${projection.run.budget.max_images}`}
@@ -218,10 +220,13 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
                 需要处理
               </p>
               <h3 className="mt-2 font-semibold">
-                {blockedSlot
+                {blockedGuidance?.title ?? (blockedSlot
                   ? `${slotRoleLabel(blockedSlot.role)} ${blockedSlot.id} 生成失败`
-                  : projection.run.block?.message || "图片生成流程已阻断"}
+                  : projection.run.block?.message || "图片生成流程已阻断")}
               </h3>
+              {blockedGuidance ? (
+                <p className="mt-2 text-sm opacity-80">{blockedGuidance.description}</p>
+              ) : null}
               {projection.run.block?.message ? (
                 <p className="mt-2 text-sm opacity-80">
                   {projection.run.block.message}
@@ -234,7 +239,7 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
                   disabled={newCommandDisabled}
                   onClick={() => void agent.retrySlot(blockedSlotID)}
                 >
-                  仅重试 {blockedSlotID}
+                  {blockedGuidance ? "创建新尝试" : `仅重试 ${blockedSlotID}`}
                 </button>
               ) : null}
             </section>
@@ -295,6 +300,28 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
       </div>
     </section>
   );
+}
+
+function guidanceForBlockedCode(code: string | undefined) {
+  switch (code) {
+    case "slot_provider_outcome_unknown":
+      return {
+        title: "生成结果状态不确定",
+        description: "生成请求的结果无法确认；如服务端允许，可创建新尝试。",
+      };
+    case "slot_staging_outcome_unknown":
+      return {
+        title: "持久化字节状态不完整",
+        description: "生成结果的持久化字节未完成；如服务端允许，可创建新尝试。",
+      };
+    case "slot_publication_outcome_unknown":
+      return {
+        title: "发布结果需要验证",
+        description: "目标位置的发布状态尚未确认，必须先验证目标位置，不能盲目重试。",
+      };
+    default:
+      return undefined;
+  }
 }
 
 function PlanBoard({

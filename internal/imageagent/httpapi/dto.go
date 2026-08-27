@@ -131,6 +131,7 @@ type runDTO struct {
 	CurrentNode        string               `json:"current_node"`
 	ActivePlanRevision int64                `json:"active_plan_revision"`
 	Version            int64                `json:"version"`
+	MaxConcurrentSlots int                  `json:"max_concurrent_slots"`
 	Budget             budgetDTO            `json:"budget"`
 	Usage              budgetUsageDTO       `json:"usage"`
 	Block              *blockDTO            `json:"block,omitempty"`
@@ -140,8 +141,9 @@ func newRunDTO(run imageagent.Run) runDTO {
 	return runDTO{
 		ID: run.ID, BusinessTaskID: run.BusinessTaskID, TenantID: run.TenantID, UserID: run.UserID,
 		Mode: run.Mode, IdempotencyKey: run.IdempotencyKey, Status: run.Status, CurrentNode: run.CurrentNode,
-		ActivePlanRevision: run.ActivePlanRevision, Version: run.Version, Budget: newBudgetDTO(run.Budget),
-		Usage: newBudgetUsageDTO(run.Usage), Block: newBlockDTO(run.Block),
+		ActivePlanRevision: run.ActivePlanRevision, Version: run.Version, MaxConcurrentSlots: run.MaxConcurrentSlots,
+		Budget: newBudgetDTO(run.Budget),
+		Usage:  newBudgetUsageDTO(run.Usage), Block: newBlockDTO(run.Block),
 	}
 }
 

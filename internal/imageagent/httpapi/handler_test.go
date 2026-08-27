@@ -94,7 +94,7 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 		Run: imageagent.Run{
 			ID: "run-1", BusinessTaskID: "task-1", TenantID: "tenant-a", UserID: "user-a",
 			Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-1", Status: imageagent.RunStatusBlocked,
-			CurrentNode: "retry_slot", ActivePlanRevision: 2, Version: 7,
+			CurrentNode: "retry_slot", ActivePlanRevision: 2, Version: 7, MaxConcurrentSlots: 3,
 			Budget: imageagent.Budget{MaxImages: 12}, Usage: imageagent.BudgetUsage{ModelCalls: 3},
 			Block: &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"},
 		},
@@ -125,7 +125,7 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 	response := performRequest(t, requireHandler(t, application), http.MethodGet, "/api/v1/image-agent/runs/run-1", "", verifiedIdentity("tenant-a", "user-a"), nil)
 
 	require.Equal(t, http.StatusOK, response.Code)
-	for _, field := range []string{`"business_task_id":"task-1"`, `"active_plan_revision":2`, `"source_asset_ids":["source-1"]`, `"idempotency_key":"plan-key-2"`, `"source_asset_id":"source-1"`, `"last_event_id":9`, `"projection_version":9`, `"max_images":12`, `"model_calls":3`, `"asset_catalog"`, `"action_id":"retry-pending"`, `"slot_id":"slot-1"`, `"failure_code":"provider_unavailable"`, `"failure_category":"provider"`, `"failure_message":"图片生成服务暂时不可用"`, `"command_ingress":{"used":1024,"limit":1024,"exhausted":true,"reason":"command_capacity_exhausted"}`} {
+	for _, field := range []string{`"business_task_id":"task-1"`, `"active_plan_revision":2`, `"max_concurrent_slots":3`, `"source_asset_ids":["source-1"]`, `"idempotency_key":"plan-key-2"`, `"source_asset_id":"source-1"`, `"last_event_id":9`, `"projection_version":9`, `"max_images":12`, `"model_calls":3`, `"asset_catalog"`, `"action_id":"retry-pending"`, `"slot_id":"slot-1"`, `"failure_code":"provider_unavailable"`, `"failure_category":"provider"`, `"failure_message":"图片生成服务暂时不可用"`, `"command_ingress":{"used":1024,"limit":1024,"exhausted":true,"reason":"command_capacity_exhausted"}`} {
 		require.Contains(t, response.Body.String(), field)
 	}
 	require.NotContains(t, response.Body.String(), "javascript:alert")
@@ -134,6 +134,11 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 	for _, forbidden := range []string{"BusinessTaskID", "ActivePlanRevision", "SourceAssetIDs", "IdempotencyKey", "LastEventID"} {
 		require.NotContains(t, response.Body.String(), forbidden)
 	}
+}
+
+func TestRunDTOIncludesNormalizedMaxConcurrentSlots(t *testing.T) {
+	dto := newRunDTO(imageagent.Run{ID: "run-1", MaxConcurrentSlots: 3})
+	require.Equal(t, 3, dto.MaxConcurrentSlots)
 }
 
 func TestCreateRejectsValidOneMiBPrefixWithHiddenOverflow(t *testing.T) {
