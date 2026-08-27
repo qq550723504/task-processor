@@ -459,6 +459,12 @@ function NavSectionItem({
   const { open: sidebarOpen } = useSidebar();
   const Icon = item.icon;
 
+  useEffect(() => {
+    if (active) {
+      setOpen(true);
+    }
+  }, [active]);
+
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
