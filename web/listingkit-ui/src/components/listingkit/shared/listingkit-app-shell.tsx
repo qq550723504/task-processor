@@ -18,7 +18,6 @@ import {
   PackageCheck,
   PackagePlus,
   PanelTop,
-  Timer,
   Search,
   Settings,
   ShieldAlert,
@@ -26,6 +25,7 @@ import {
   SlidersHorizontal,
   Store,
   Tags,
+  Timer,
   UserCog,
   type LucideIcon,
 } from "lucide-react";
@@ -91,23 +91,39 @@ type NavSection = {
 type NavTreeItem = NavItem | ExternalNavItem | NavSection;
 
 const PRIMARY_NAV_ITEMS = [
-  { label: "首页", href: "/listing-kits/home", icon: Home, match: "exact" },
-  { label: "新建任务", href: "/listing-kits/new", icon: PackagePlus, match: "exact" },
-  { label: "POD", href: "/listing-kits/sds", icon: Boxes, match: "prefix" },
+  { label: "工作台", href: "/listing-kits/home", icon: Home, match: "exact" },
   {
-    label: "款式图库",
-    href: "/listing-kits/style-gallery",
-    icon: GalleryHorizontal,
-    match: "prefix",
-  },
-  {
-    label: "标准商品",
-    href: "/listing-kits/canonical-products",
+    label: "商品",
     icon: PackageCheck,
-    match: "prefix",
+    children: [
+      {
+        label: "商品中心",
+        href: "/listing-kits/canonical-products",
+        icon: PackageCheck,
+        match: "prefix",
+      },
+      {
+        label: "导入商品",
+        href: "/listing-kits/new",
+        icon: PackagePlus,
+        match: "exact",
+      },
+      { label: "POD", href: "/listing-kits/sds", icon: Boxes, match: "prefix" },
+      {
+        label: "款式图库",
+        href: "/listing-kits/style-gallery",
+        icon: GalleryHorizontal,
+        match: "prefix",
+      },
+    ],
   },
-  { label: "任务列表", href: "/listing-kits", icon: ClipboardList, match: "exact" },
-] as const satisfies readonly NavItem[];
+  {
+    label: "执行记录",
+    href: "/listing-kits",
+    icon: ClipboardList,
+    match: "exact",
+  },
+] as const satisfies readonly NavTreeItem[];
 
 const MENU_ROLES = {
   operator: ["listingkit_operator", "listingkit_admin", "platform_admin", "admin"],
@@ -317,8 +333,8 @@ const ADMIN_NAV_ITEMS = [
 ] as const satisfies readonly NavSection[];
 
 const NAV_GROUPS = [
-  { label: "主流程", items: PRIMARY_NAV_ITEMS },
-  { label: "管理后台", items: ADMIN_NAV_ITEMS },
+  { label: "工作", items: PRIMARY_NAV_ITEMS },
+  { label: "管理", items: ADMIN_NAV_ITEMS },
 ] as const satisfies readonly { label: string; items: readonly NavTreeItem[] }[];
 
 const APP_RAIL_CLASS = "mx-auto w-full max-w-[1600px] px-4 sm:px-6 lg:px-8";
@@ -586,6 +602,7 @@ export function ListingKitAppShell({
     setTenantInput("");
     replaceVisitTenant();
   }
+
   const navGroups = NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items
@@ -602,12 +619,8 @@ export function ListingKitAppShell({
               <ShoppingBag data-icon="inline-start" />
             </div>
             <div className="min-w-0 group-data-[state=collapsed]/sidebar:sr-only">
-              <p className="truncate text-sm font-semibold text-foreground">
-                ListingKit
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
-                源信息 -&gt; 标准商品 -&gt; 平台资料
-              </p>
+              <p className="truncate text-sm font-semibold text-foreground">ListingKit</p>
+              <p className="truncate text-xs text-muted-foreground">商品 → 平台 → 上架</p>
             </div>
             <SidebarTrigger className="ml-auto hidden md:inline-flex group-data-[state=collapsed]/sidebar:ml-0" />
           </div>
@@ -712,7 +725,11 @@ export function ListingKitAppShell({
                           </Label>
                           <datalist id="listingkit-visit-tenant-options">
                             {tenantDirectory.map((tenant) => (
-                              <option key={tenant.tenant_id} value={tenant.tenant_id} label={tenant.tenant_display_name} />
+                              <option
+                                key={tenant.tenant_id}
+                                value={tenant.tenant_id}
+                                label={tenant.tenant_display_name}
+                              />
                             ))}
                           </datalist>
                           <div className="flex gap-2">
