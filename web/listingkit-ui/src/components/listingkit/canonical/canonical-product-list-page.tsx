@@ -41,13 +41,13 @@ export function CanonicalProductListPage() {
       <section className="grid gap-4 border-b border-border pb-6 xl:grid-cols-[1fr_auto] xl:items-end">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-teal-700">
-            标准商品
+            商品中心
           </p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-            标准商品
+            商品中心
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            从最近的 ListingKit 任务结果中聚合标准商品，用于检查 1688、POD 到 SHEIN 前的统一商品事实。
+            管理 ListingKit 已整理的商品资料，并查看审核与平台准备情况。
           </p>
         </div>
         <Button className="w-full sm:w-auto" variant="secondary" onClick={() => products.refetch()}>
@@ -59,11 +59,9 @@ export function CanonicalProductListPage() {
       <Card className="border-border bg-card p-4">
         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
           <Database className="h-4 w-4 text-teal-700" />
-          <span>当前页 {items.length} 个标准商品</span>
+          <span>当前页 {items.length} 个商品</span>
           <span className="text-border">/</span>
-          <span>共 {total} 个标准商品</span>
-          <span className="text-border">/</span>
-          <span>来源：ListingKit task result canonical_product</span>
+          <span>共 {total} 个商品</span>
         </div>
       </Card>
 
@@ -73,8 +71,8 @@ export function CanonicalProductListPage() {
         </Card>
       ) : products.isError ? (
         <EmptyState
-          title="标准商品加载失败"
-          description="任务列表或任务详情接口暂时不可用。"
+          title="商品加载失败"
+          description="商品资料暂时无法加载，请稍后重试。"
           action={
             <Button variant="secondary" onClick={() => products.refetch()}>
               <RefreshCw className="mr-2 h-4 w-4" />
@@ -84,9 +82,16 @@ export function CanonicalProductListPage() {
         />
       ) : items.length === 0 ? (
         <EmptyState
-          title="暂无标准商品"
-          description="完成或待审核的 ListingKit 任务产出标准商品后会出现在这里。"
-          action={<Link className="text-sm font-medium text-foreground underline" href="/listing-kits">查看任务列表</Link>}
+          title="你的商品中心还是空的"
+          description="导入第一个商品，ListingKit 会自动整理图片、属性、SKU 和平台所需资料。"
+          action={
+            <Link
+              className="text-sm font-medium text-foreground underline"
+              href="/listing-kits/new"
+            >
+              导入商品
+            </Link>
+          }
         />
       ) : (
         <div className="grid gap-3">
@@ -160,7 +165,7 @@ function CanonicalProductRow({ item }: { item: CanonicalProductListItem }) {
           href={`/listing-kits/canonical-products/${item.taskId}`}
           className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:opacity-90 sm:w-auto"
         >
-          详情
+          打开商品
           <ArrowRight className="ml-2 h-4 w-4" />
         </Link>
       </div>
