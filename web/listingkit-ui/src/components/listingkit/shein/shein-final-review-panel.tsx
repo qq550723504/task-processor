@@ -128,6 +128,7 @@ export function SheinFinalReviewPanel({
   }
 
   const {
+    availableImageCount,
     blockingCount,
     confirmed,
     finalImages,
@@ -193,6 +194,7 @@ export function SheinFinalReviewPanel({
       />
 
       <ImageSubmitSummary
+        availableCount={availableImageCount}
         finalCount={imageCounts.final}
         galleryCount={imageCounts.gallery}
         imageBlocked={imageBlocked}
@@ -201,13 +203,15 @@ export function SheinFinalReviewPanel({
         skcCount={imageCounts.skc}
         swatchCount={imageCounts.swatch}
         onSelectImages={
-          imageBlocked && onSelectBlockingItem
+          onSelectBlockingItem && (imageBlocked || availableImageCount > 0)
             ? () =>
                 handleSelectSummaryItem({
                   key: "images",
                   title: "图片资料",
-                  message: "请检查最终提交图片角色。",
-                  status: "blocked",
+                  message: imageBlocked
+                    ? "请检查最终提交图片角色。"
+                    : "请在图片区域选择需要提交的来源图；来源图默认不会自动提交。",
+                  status: imageBlocked ? "blocked" : "warning",
                 })
             : undefined
         }

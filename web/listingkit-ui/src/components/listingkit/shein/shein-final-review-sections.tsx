@@ -141,6 +141,7 @@ export function ReviewSummaryGrid({
 }
 
 export function ImageSubmitSummary({
+  availableCount,
   finalCount,
   galleryCount,
   imageBlocked,
@@ -150,6 +151,7 @@ export function ImageSubmitSummary({
   swatchCount,
   onSelectImages,
 }: {
+  availableCount: number;
   finalCount: number;
   galleryCount: number;
   imageBlocked: boolean;
@@ -167,18 +169,28 @@ export function ImageSubmitSummary({
             图片提交摘要
           </p>
           <p className="mt-1 text-sm leading-6 text-zinc-700">
-            最终图片 {finalCount} 张 · 主图 {mainCount} 张 · 色块图{" "}
-            {swatchCount} 张 · SKC 图 {skcCount} 张 · 尺寸图 {sizeMapCount} 张 · 图库{" "}
-            {galleryCount} 张
+            {availableCount > 0 ? (
+              <>
+                最终图片 {finalCount} 张 · 可选来源图 {availableCount} 张 · 主图{" "}
+                {mainCount} 张 · 色块图 {swatchCount} 张 · SKC 图 {skcCount} 张 · 尺寸图{" "}
+                {sizeMapCount} 张 · 图库 {galleryCount} 张
+              </>
+            ) : (
+              <>
+                最终图片 {finalCount} 张 · 主图 {mainCount} 张 · 色块图{" "}
+                {swatchCount} 张 · SKC 图 {skcCount} 张 · 尺寸图 {sizeMapCount} 张 · 图库{" "}
+                {galleryCount} 张
+              </>
+            )}
           </p>
         </div>
-        {imageBlocked && onSelectImages ? (
+        {onSelectImages ? (
           <Button
             className="h-8 w-full px-3 text-xs sm:w-auto"
             variant="secondary"
             onClick={onSelectImages}
           >
-            去检查图片
+            {imageBlocked ? "去检查图片" : "选择来源图"}
           </Button>
         ) : null}
       </div>

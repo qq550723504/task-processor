@@ -442,7 +442,7 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 	}
 }
 
-func TestBuildPlatformImagesFallsBackToCanonicalImages(t *testing.T) {
+func TestBuildPlatformImagesUsesCanonicalFirstImageAsMainWithoutGalleryFallback(t *testing.T) {
 	t.Parallel()
 
 	canonical := &canonical.Product{
@@ -459,8 +459,11 @@ func TestBuildPlatformImagesFallsBackToCanonicalImages(t *testing.T) {
 	if images.MainImage != "https://example.com/1.jpg" {
 		t.Fatalf("main image = %q, want canonical first image", images.MainImage)
 	}
-	if len(images.Gallery) != 1 || images.Gallery[0] != "https://example.com/2.jpg" {
-		t.Fatalf("gallery = %#v, want second canonical image", images.Gallery)
+	if len(images.Gallery) != 0 {
+		t.Fatalf("gallery = %#v, want no implicit canonical-image fallback", images.Gallery)
+	}
+	if len(images.SourceImages) != 2 || images.SourceImages[0] != "https://example.com/1.jpg" || images.SourceImages[1] != "https://example.com/2.jpg" {
+		t.Fatalf("source images = %#v, want canonical images preserved separately", images.SourceImages)
 	}
 }
 

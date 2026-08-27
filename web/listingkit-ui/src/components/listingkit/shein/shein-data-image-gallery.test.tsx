@@ -86,6 +86,7 @@ describe("SheinDataImageGallery", () => {
     );
 
     expect(screen.getByText("最终提交 1 / 1 张")).toBeInTheDocument();
+    expect(screen.getByText("可选来源图 1 张")).toBeInTheDocument();
     expect(screen.getByText("来源图 1")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "加入提交图片" }));

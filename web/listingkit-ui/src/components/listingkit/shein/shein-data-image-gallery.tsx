@@ -195,9 +195,16 @@ export function SheinDataImageGallery({
               这里展示最终会提交到 SHEIN 的图片。提交前请确认主图、色块图、尺寸图和排序。
             </p>
           </div>
-          <span className="text-xs font-medium text-zinc-500">
-            最终提交 {visibleImages.length} / {workingImages.length} 张
-          </span>
+          <div className="flex flex-col items-start gap-1 text-xs font-medium text-zinc-500 sm:items-end">
+            <span>
+              最终提交 {visibleImages.length} / {workingImages.length} 张
+            </span>
+            {availableImages.length > 0 ? (
+              <span className="text-amber-800">
+                可选来源图 {availableImages.length} 张
+              </span>
+            ) : null}
+          </div>
         </div>
 
         {workingImages.length === 0 ? (

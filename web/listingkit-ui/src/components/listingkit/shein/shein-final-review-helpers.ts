@@ -3,6 +3,7 @@ import type {
   SheinPreviewPayload,
   SheinReadinessItem,
 } from "@/lib/types/listingkit";
+import { collectSheinPreviewImageGroups } from "@/components/listingkit/shein/shein-preview-image";
 
 export type ReviewSummaryItem = {
   key: "category" | "attributes" | "sale_attributes" | "variants" | "images";
@@ -149,6 +150,7 @@ export function buildFinalReviewModel({
       allBlockingItems.every(isPublishOnlySizeChartBlocker));
   const blockingCount = customerBlockingCount || visibleBlockers.length;
   const imageCounts = imageRoleCounts(finalReview?.images);
+  const availableImageCount = collectSheinPreviewImageGroups(shein).availableImages.length;
   const finalImages = (finalReview?.images ?? []).filter(
     (image) => image.final !== false && image.url,
   );
@@ -247,6 +249,7 @@ export function buildFinalReviewModel({
   return {
     blockingCount,
     confirmed,
+    availableImageCount,
     finalImages,
     finalReview,
     imageBlocked,

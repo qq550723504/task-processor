@@ -64,6 +64,13 @@ export function createSheinWorkspaceAdapter({
         readiness.attributeBlocked ||
         readiness.saleAttributeBlocked ||
         readiness.previewBlocked;
+      const imageStepDescription = imageGroups.productImages.length
+        ? `已准备 ${imageGroups.productImages.length} 张 SHEIN 成品图${
+            imageGroups.availableImages.length
+              ? `，另有 ${imageGroups.availableImages.length} 张可选来源图，需人工选择后才提交`
+              : ""
+          }，SDS mockup 会单独作为渲染参考展示。`
+        : "检查 SHEIN 成品图是否已经生成；SDS mockup 仅作为渲染参考。";
       const projection: SheinWorkspaceProjection = {
         images: imageGroups.productImages,
         availableImages: imageGroups.availableImages,
@@ -83,9 +90,7 @@ export function createSheinWorkspaceAdapter({
           {
             key: "preview",
             label: "检查图片",
-            description: imageGroups.productImages.length
-              ? `已准备 ${imageGroups.productImages.length} 张 SHEIN 成品图，SDS mockup 会单独作为渲染参考展示。`
-              : "检查 SHEIN 成品图是否已经生成；SDS mockup 仅作为渲染参考。",
+            description: imageStepDescription,
             href: "#shein-preview-images",
             state:
               readiness.previewBlocked || !imageGroups.productImages.length

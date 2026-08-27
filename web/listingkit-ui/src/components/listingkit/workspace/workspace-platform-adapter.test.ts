@@ -43,6 +43,42 @@ describe("resolveWorkspacePlatformAdapter", () => {
       platform: "temu",
     });
   });
+
+  it("keeps available source image count visible in the SHEIN image step", () => {
+    const projection = createSheinWorkspaceAdapter({
+      taskId: "task-123",
+      isFinalReviewMode: false,
+      shein: {
+        request_draft: {
+          image_info: {
+            source: Array.from(
+              { length: 9 },
+              (_, index) => `https://1688.example.com/source-${index + 1}.jpg`,
+            ),
+          },
+        },
+        final_review: {
+          images: [
+            {
+              url: "https://cdn.example.com/generated.jpg",
+              final: true,
+              role: "main",
+            },
+          ],
+        },
+      },
+    }).project();
+
+    expect(projection.kind).toBe("shein");
+    if (projection.kind !== "shein") {
+      return;
+    }
+
+    expect(projection.projection.flowSteps[0]).toMatchObject({
+      key: "preview",
+      description: expect.stringContaining("另有 9 张可选来源图"),
+    });
+  });
 });
 
 describe("createSheinWorkspaceAdapter", () => {
