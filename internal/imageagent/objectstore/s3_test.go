@@ -135,6 +135,81 @@ func TestFinalizeUsesDeterministicPublicKey(t *testing.T) {
 	}
 }
 
+func TestCloneOperationsPreservingNilPreservesRepresentationAndDefensivelyCopies(t *testing.T) {
+	if got := cloneOperationsPreservingNil(nil); got != nil {
+		t.Fatalf("clone nil operations = %#v, want nil", got)
+	}
+	empty := []string{}
+	clonedEmpty := cloneOperationsPreservingNil(empty)
+	if clonedEmpty == nil || len(clonedEmpty) != 0 {
+		t.Fatalf("clone empty operations = %#v, want non-nil empty slice", clonedEmpty)
+	}
+	nonEmpty := []string{"extract_subject"}
+	clonedNonEmpty := cloneOperationsPreservingNil(nonEmpty)
+	clonedNonEmpty[0] = "resize"
+	if got := nonEmpty[0]; got != "extract_subject" {
+		t.Fatalf("source operations were mutated through clone: %q", got)
+	}
+}
+
+func TestFinalizePreservesOperationsWireRepresentationAndFingerprint(t *testing.T) {
+	t.Parallel()
+
+	const finalKey = "image-agent/public/tenant-a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
+	const nilOperationsJSON = `{"assets":[{"object_key":"image-agent/public/tenant-a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size_bytes":42,"content_type":"image/png","width":1200,"height":1200,"source_asset_id":"source-1","operations":null,"provider_receipt_id":"receipt-1"}]}`
+	const emptyOperationsJSON = `{"assets":[{"object_key":"image-agent/public/tenant-a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size_bytes":42,"content_type":"image/png","width":1200,"height":1200,"source_asset_id":"source-1","operations":[],"provider_receipt_id":"receipt-1"}]}`
+
+	for _, tc := range []struct {
+		name            string
+		operations      []string
+		wantJSON        string
+		wantFingerprint string
+	}{
+		{name: "nil", wantJSON: nilOperationsJSON, wantFingerprint: "2ffa06c1184ad5af8337ba56c88bdc1974f02710a694aefd68cf0be83aa54e92"},
+		{name: "non-nil empty", operations: []string{}, wantJSON: emptyOperationsJSON, wantFingerprint: "98f7284ff7d68a311dc78cf5d5566f70883b94c9fa2f70bc4bdc68399e429a47"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &fakeS3API{objects: map[string]fakeObject{}}
+			store := newTestStore(t, api)
+			staged := imageagent.StagedAssetRef{
+				ObjectKey: "image-agent/staging/tenant-a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+				SHA256:    strings.Repeat("a", 64), SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200,
+				SourceAssetID: "source-1", Operations: tc.operations, ProviderReceiptID: "receipt-1",
+			}
+			api.objects[staged.ObjectKey] = fakeObject{contentType: staged.ContentType, contentLength: staged.SizeBytes, metadata: map[string]string{"sha256": staged.SHA256, "size-bytes": strconv.FormatInt(staged.SizeBytes, 10)}}
+
+			final, err := store.Finalize(context.Background(), imageagent.StagingManifest{Assets: []imageagent.StagedAssetRef{staged}})
+			if err != nil {
+				t.Fatalf("Finalize() error = %v", err)
+			}
+			if got := final.Assets[0].ObjectKey; got != finalKey {
+				t.Fatalf("final object key = %q, want %q", got, finalKey)
+			}
+			if tc.operations == nil {
+				if final.Assets[0].Operations != nil {
+					t.Fatalf("final operations = %#v, want nil", final.Assets[0].Operations)
+				}
+			} else if final.Assets[0].Operations == nil || len(final.Assets[0].Operations) != 0 {
+				t.Fatalf("final operations = %#v, want non-nil empty slice", final.Assets[0].Operations)
+			}
+			encoded, err := json.Marshal(final)
+			if err != nil {
+				t.Fatalf("marshal final manifest: %v", err)
+			}
+			if got := string(encoded); got != tc.wantJSON {
+				t.Fatalf("final JSON = %s, want %s", got, tc.wantJSON)
+			}
+			fingerprint, err := imageagent.FinalManifestFingerprint(final)
+			if err != nil {
+				t.Fatalf("FinalManifestFingerprint() error = %v", err)
+			}
+			if got := fingerprint; got != tc.wantFingerprint {
+				t.Fatalf("final fingerprint = %q, want %q", got, tc.wantFingerprint)
+			}
+		})
+	}
+}
+
 func TestInspectNeverTreatsETagAsSHA256(t *testing.T) {
 	t.Parallel()
 

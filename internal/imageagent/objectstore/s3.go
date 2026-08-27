@@ -215,10 +215,17 @@ func (s *S3DurableArtifactStore) Finalize(ctx context.Context, manifest imageage
 		finalAssets[index] = imageagent.PublishedAssetRef{
 			ObjectKey: finalAsset.ObjectKey, SHA256: finalAsset.SHA256, SizeBytes: finalAsset.SizeBytes,
 			ContentType: finalAsset.ContentType, Width: finalAsset.Width, Height: finalAsset.Height,
-			SourceAssetID: finalAsset.SourceAssetID, Operations: append([]string(nil), finalAsset.Operations...), ProviderReceiptID: finalAsset.ProviderReceiptID,
+			SourceAssetID: finalAsset.SourceAssetID, Operations: cloneOperationsPreservingNil(finalAsset.Operations), ProviderReceiptID: finalAsset.ProviderReceiptID,
 		}
 	}
 	return imageagent.NormalizeFinalManifest(imageagent.FinalManifest{Assets: finalAssets})
+}
+
+func cloneOperationsPreservingNil(operations []string) []string {
+	if operations == nil {
+		return nil
+	}
+	return append([]string{}, operations...)
 }
 
 func (s *S3DurableArtifactStore) ensureObject(ctx context.Context, asset imageagent.StagedAssetRef, data []byte) error {
