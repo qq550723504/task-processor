@@ -21,34 +21,48 @@ export function buildProductWorkspaceReviewIssues(
   task?: ListingKitTaskResult | null,
   selectedPlatform?: string,
 ): ProductWorkspaceReviewIssue[] {
+  const relevantWorkflowIssues = (task?.result?.workflow_issues ?? []).filter(
+    (issue) =>
+      issue.severity === "blocking" ||
+      issue.severity === "warning" ||
+      issue.severity === "review",
+  );
   const issueCodeOccurrences = new Map<string, number>();
-  const workflowIssues = (task?.result?.workflow_issues ?? [])
-    .filter(
-      (issue) =>
-        issue.severity === "blocking" ||
-        issue.severity === "warning" ||
-        issue.severity === "review",
-    )
-    .map((issue, index) => {
-      const actionKey = resolveIssueActionKey(selectedPlatform, [
-        issue.code,
-        issue.message,
-        issue.detail,
-      ]);
-      const id = workflowIssueID(issue.code, index, issueCodeOccurrences);
-      return {
-        id,
-        severity: issue.severity === "blocking" ? "blocking" : "warning",
-        title: issue.message || issue.code || "需要确认",
-        description: issue.detail,
-        ...(actionKey ? { actionKey } : {}),
-      } satisfies ProductWorkspaceReviewIssue;
-    });
+  const workflowIssues = relevantWorkflowIssues.map((issue, index) => {
+    const actionKey = resolveIssueActionKey(selectedPlatform, [issue.code]);
+    const id = workflowIssueID(issue.code, index, issueCodeOccurrences);
+    return {
+      id,
+      severity: issue.severity === "blocking" ? "blocking" : "warning",
+      title: issue.message || issue.code || "需要确认",
+      ...(issue.detail ? { description: issue.detail } : {}),
+      ...(actionKey ? { actionKey } : {}),
+    } satisfies ProductWorkspaceReviewIssue;
+  });
 
-  if (workflowIssues.length > 0) {
+  const hasAuthoritativeWorkflowIssue = relevantWorkflowIssues.some(
+    (issue) => issue.severity === "blocking" || issue.severity === "review",
+  );
+  if (hasAuthoritativeWorkflowIssue) {
     return workflowIssues;
   }
 
+  const fallbackIssues = buildFallbackReviewIssues(task, selectedPlatform);
+  if (workflowIssues.length === 0) {
+    return fallbackIssues;
+  }
+
+  const workflowTitles = new Set(workflowIssues.map((issue) => issue.title.trim()));
+  return [
+    ...workflowIssues,
+    ...fallbackIssues.filter((issue) => !workflowTitles.has(issue.title.trim())),
+  ];
+}
+
+function buildFallbackReviewIssues(
+  task: ListingKitTaskResult | null | undefined,
+  selectedPlatform: string | undefined,
+) {
   return extractTaskReviewReasons(task).map((reason, index) => {
     const actionKey = resolveIssueActionKey(selectedPlatform, [reason]);
     return {
