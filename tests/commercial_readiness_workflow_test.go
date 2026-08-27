@@ -26,65 +26,74 @@ func TestListingKitCommercialImageAgentWorkersUseExactSecretAndConfigScope(t *te
 		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID":     "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID",
 		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY": "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY",
 	}
-	wantConfig := map[string]string{
-		"IMAGE_AGENT_TEMPORAL_ENABLED":                                                  "IMAGE_AGENT_TEMPORAL_ENABLED",
-		"IMAGE_AGENT_TEMPORAL_ADDRESS":                                                  "IMAGE_AGENT_TEMPORAL_ADDRESS",
-		"IMAGE_AGENT_TEMPORAL_NAMESPACE":                                                "IMAGE_AGENT_TEMPORAL_NAMESPACE",
-		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED":                      "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED",
-		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS":           "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED":                                 "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER":                                "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE":                              "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET":                               "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION":                               "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT":                             "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE":                         "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE":                         "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY": "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY",
+	sharedConfig := map[string]string{
+		"IMAGE_AGENT_TEMPORAL_ENABLED":                                        "IMAGE_AGENT_TEMPORAL_ENABLED",
+		"IMAGE_AGENT_TEMPORAL_ADDRESS":                                        "IMAGE_AGENT_TEMPORAL_ADDRESS",
+		"IMAGE_AGENT_TEMPORAL_NAMESPACE":                                      "IMAGE_AGENT_TEMPORAL_NAMESPACE",
+		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED":            "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED",
+		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS": "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED":                       "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER":                      "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE":                    "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET":                     "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION":                     "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT":                   "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT",
+		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE":               "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE",
 	}
 
-	for _, relativePath := range []string{
-		filepath.Join("base", "image-agent-temporal-worker-deployment.yaml"),
-		filepath.Join("base", "image-agent-temporal-worker-v3-deployment.yaml"),
+	for _, test := range []struct {
+		relativePath string
+		wantConfig   map[string]string
+	}{
+		{relativePath: filepath.Join("base", "image-agent-temporal-worker-deployment.yaml"), wantConfig: sharedConfig},
+		{relativePath: filepath.Join("base", "image-agent-temporal-worker-v3-deployment.yaml"), wantConfig: func() map[string]string {
+			result := map[string]string{}
+			for key, value := range sharedConfig {
+				result[key] = value
+			}
+			result["TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE"] = "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE"
+			result["TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY"] = "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY"
+			return result
+		}()},
 	} {
-		t.Run(relativePath, func(t *testing.T) {
-			manifest := loadImageAgentWorkloadManifest(t, filepath.Join(base, relativePath))
+		t.Run(test.relativePath, func(t *testing.T) {
+			manifest := loadImageAgentWorkloadManifest(t, filepath.Join(base, test.relativePath))
 			container := onlyImageAgentContainer(t, manifest)
 			if len(container.EnvFrom) != 0 {
-				t.Fatalf("%s must use per-key configuration and Secret references, got envFrom=%#v", relativePath, container.EnvFrom)
+				t.Fatalf("%s must use per-key configuration and Secret references, got envFrom=%#v", test.relativePath, container.EnvFrom)
 			}
 			actualSecrets := map[string]string{}
 			actualConfig := map[string]string{}
 			for _, variable := range container.Env {
 				for _, forbidden := range []string{"ZITADEL", "INVITATION", "TENCENT_SMS", "SMS_WEBHOOK"} {
 					if strings.Contains(variable.Name, forbidden) {
-						t.Fatalf("%s must not receive forbidden credential/config %q", relativePath, variable.Name)
+						t.Fatalf("%s must not receive forbidden credential/config %q", test.relativePath, variable.Name)
 					}
 				}
 				if variable.ValueFrom == nil {
-					t.Fatalf("%s must not contain literal environment value %q", relativePath, variable.Name)
+					t.Fatalf("%s must not contain literal environment value %q", test.relativePath, variable.Name)
 				}
 				if (variable.ValueFrom.SecretKeyRef == nil) == (variable.ValueFrom.ConfigMapKeyRef == nil) {
-					t.Fatalf("%s environment %q must reference exactly one approved source", relativePath, variable.Name)
+					t.Fatalf("%s environment %q must reference exactly one approved source", test.relativePath, variable.Name)
 				}
 				if ref := variable.ValueFrom.SecretKeyRef; ref != nil {
 					if ref.Name != listingKitSharedSecret {
-						t.Fatalf("%s references unexpected Secret %q", relativePath, ref.Name)
+						t.Fatalf("%s references unexpected Secret %q", test.relativePath, ref.Name)
 					}
 					actualSecrets[variable.Name] = ref.Key
 				}
 				if ref := variable.ValueFrom.ConfigMapKeyRef; ref != nil {
 					if ref.Name != "listingkit-workbench-config" {
-						t.Fatalf("%s references unexpected ConfigMap %q", relativePath, ref.Name)
+						t.Fatalf("%s references unexpected ConfigMap %q", test.relativePath, ref.Name)
 					}
 					actualConfig[variable.Name] = ref.Key
 				}
 			}
 			if !reflect.DeepEqual(actualSecrets, wantSecrets) {
-				t.Fatalf("%s Secret allowlist=%#v want=%#v", relativePath, actualSecrets, wantSecrets)
+				t.Fatalf("%s Secret allowlist=%#v want=%#v", test.relativePath, actualSecrets, wantSecrets)
 			}
-			if !reflect.DeepEqual(actualConfig, wantConfig) {
-				t.Fatalf("%s ConfigMap allowlist=%#v want=%#v", relativePath, actualConfig, wantConfig)
+			if !reflect.DeepEqual(actualConfig, test.wantConfig) {
+				t.Fatalf("%s ConfigMap allowlist=%#v want=%#v", test.relativePath, actualConfig, test.wantConfig)
 			}
 		})
 	}

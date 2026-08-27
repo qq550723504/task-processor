@@ -10,12 +10,13 @@ import (
 
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/imageagent"
+	imageagenttemporal "task-processor/internal/imageagent/temporal"
 )
 
 func TestRunFailsClosedWhenProductDependenciesAreUnavailable(t *testing.T) {
 	want := errors.New("image agent provider runtime unavailable")
 	started := false
-	err := run(context.Background(), func() (resolvedDependencies, error) {
+	err := run(context.Background(), func(imageagenttemporal.WorkerWireMode) (resolvedDependencies, error) {
 		return resolvedDependencies{}, want
 	}, func(context.Context, appruntime.ImageAgentTemporalDependencies, appruntime.ImageAgentTemporalWorkerOptions, *logrus.Logger) error {
 		started = true
@@ -29,7 +30,8 @@ func TestRunPassesResolvedDependenciesToTemporalRuntime(t *testing.T) {
 	want := appruntime.ImageAgentTemporalDependencies{Repository: commandRepository{}}
 	called := false
 	closed := false
-	err := run(context.Background(), func() (resolvedDependencies, error) {
+	err := run(context.Background(), func(mode imageagenttemporal.WorkerWireMode) (resolvedDependencies, error) {
+		require.Equal(t, imageagenttemporal.WorkerWireModeV2, mode)
 		return resolvedDependencies{dependencies: want, close: func() error { closed = true; return nil }}, nil
 	}, func(_ context.Context, got appruntime.ImageAgentTemporalDependencies, options appruntime.ImageAgentTemporalWorkerOptions, _ *logrus.Logger) error {
 		called = true
@@ -52,7 +54,8 @@ func TestRunForwardsV2AndV3ProcessConfigurationWithoutAmbientDefaults(t *testing
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			called := false
-			err := run(context.Background(), func() (resolvedDependencies, error) {
+			err := run(context.Background(), func(mode imageagenttemporal.WorkerWireMode) (resolvedDependencies, error) {
+				require.Equal(t, test.options.WireMode, mode)
 				return resolvedDependencies{dependencies: appruntime.ImageAgentTemporalDependencies{Repository: commandRepository{}}}, nil
 			}, func(_ context.Context, _ appruntime.ImageAgentTemporalDependencies, got appruntime.ImageAgentTemporalWorkerOptions, _ *logrus.Logger) error {
 				called = true
@@ -76,7 +79,7 @@ func TestRunRejectsMissingExplicitProcessWorkerConfigurationBeforeResolvingDepen
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			resolved := false
-			err := run(context.Background(), func() (resolvedDependencies, error) {
+			err := run(context.Background(), func(imageagenttemporal.WorkerWireMode) (resolvedDependencies, error) {
 				resolved = true
 				return resolvedDependencies{}, nil
 			}, func(context.Context, appruntime.ImageAgentTemporalDependencies, appruntime.ImageAgentTemporalWorkerOptions, *logrus.Logger) error {

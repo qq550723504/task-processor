@@ -453,3 +453,41 @@ jobs:
       - name: Show running API image
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} get deployment product-listing-api -o jsonpath='{.metadata.name}{" => "}{range .spec.template.spec.containers[*]}{.image}{end}{"\n"}'
+
+      - name: Emit ListingKit API release attestation
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="${{ needs.prepare.outputs.source_ref }}"
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::resolved source SHA is not an exact lowercase commit"
+            exit 1
+          fi
+          expected_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
+          if [[ ! "$API_CANDIDATE_IMAGE" =~ ^${expected_repository}@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::API candidate is not a digest-pinned image from the release repository"
+            exit 1
+          fi
+          issued_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          expires_at="$(date -u -d '+24 hours' +'%Y-%m-%dT%H:%M:%SZ')"
+          mkdir -p release-attestation
+          jq -n \
+            --arg gate_version "listingkit-api-release-gate/v1" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow_name "ListingKit API Deploy" \
+            --arg workflow_path ".github/workflows/listingkit-deploy.yml" \
+            --arg source_sha "$source_sha" \
+            --arg api_candidate_image "$API_CANDIDATE_IMAGE" \
+            --argjson api_workflow_run_id "$GITHUB_RUN_ID" \
+            --arg issued_at "$issued_at" \
+            --arg expires_at "$expires_at" \
+            '{gate_version:$gate_version,repository:$repository,workflow_name:$workflow_name,workflow_path:$workflow_path,source_sha:$source_sha,api_candidate_image:$api_candidate_image,api_workflow_run_id:$api_workflow_run_id,issued_at:$issued_at,expires_at:$expires_at}' \
+            > release-attestation/listingkit-api-release-attestation.json
+
+      - name: Upload ListingKit API release attestation
+        uses: actions/upload-artifact@v4
+        with:
+          name: listingkit-api-release-gate-${{ github.run_id }}
+          path: release-attestation/listingkit-api-release-attestation.json
+          if-no-files-found: error
+          retention-days: 2

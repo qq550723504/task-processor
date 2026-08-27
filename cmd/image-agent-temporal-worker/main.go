@@ -21,7 +21,7 @@ type resolvedDependencies struct {
 	close        func() error
 }
 
-type dependencyResolver func() (resolvedDependencies, error)
+type dependencyResolver func(imageagenttemporal.WorkerWireMode) (resolvedDependencies, error)
 type temporalWorkerRunner func(context.Context, appruntime.ImageAgentTemporalDependencies, appruntime.ImageAgentTemporalWorkerOptions, *logrus.Logger) error
 type compatibilityCanaryRunner func(context.Context, *logrus.Logger, string) error
 
@@ -29,7 +29,7 @@ func run(ctx context.Context, resolve dependencyResolver, start temporalWorkerRu
 	if err := validateProcessWorkerOptions(options); err != nil {
 		return err
 	}
-	resolved, err := resolve()
+	resolved, err := resolve(options.WireMode)
 	if err != nil {
 		return err
 	}
@@ -54,8 +54,8 @@ func runCanary(ctx context.Context, start compatibilityCanaryRunner, logger *log
 }
 
 func resolveImageAgentTemporalDependencies(configPath string, logger *logrus.Logger) dependencyResolver {
-	return func() (resolvedDependencies, error) {
-		dependencies, closeFn, err := imageagentworker.ResolveImageAgentTemporalDependencies(configPath, logger)
+	return func(mode imageagenttemporal.WorkerWireMode) (resolvedDependencies, error) {
+		dependencies, closeFn, err := imageagentworker.ResolveImageAgentTemporalDependenciesForMode(configPath, logger, mode)
 		return resolvedDependencies{dependencies: dependencies, close: closeFn}, err
 	}
 }

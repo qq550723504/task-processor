@@ -2626,6 +2626,9 @@ func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 	require.NoError(t, client.StartManual(context.Background(), start))
 	require.Equal(t, "image-agent:tenant-a:user-a:run-1", raw.startOptions.ID)
 	require.Equal(t, TaskQueueV3, raw.startOptions.TaskQueue)
+	require.Equal(t, 30*24*time.Hour, raw.startOptions.WorkflowExecutionTimeout)
+	require.Equal(t, enumspb.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, raw.startOptions.WorkflowIDConflictPolicy)
+	require.Equal(t, enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY, raw.startOptions.WorkflowIDReusePolicy)
 	require.Equal(t, workflowNameImageAgent, raw.workflowName)
 	require.Equal(t, imageagent.RunModeManual, raw.workflowInput.Mode)
 	require.True(t, raw.workflowInput.WaitForCommands)
@@ -2639,6 +2642,15 @@ func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ResultDigest: sevenSlotResultDigest, ActorID: "attacker", ActionID: "spoofed", Identity: start.Identity}), "actor")
 	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "missing-digest", Identity: start.Identity}), "digest")
 	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ResultDigest: " " + sevenSlotResultDigest, ActorID: "user-a", ActionID: "spaced-digest", Identity: start.Identity}), "digest")
+}
+
+func TestV3DurableRecoveryWindowExceedsExecutionAndOperatorHorizons(t *testing.T) {
+	require.Equal(t, 30*24*time.Hour, V3WorkflowExecutionTimeout)
+	require.Equal(t, 7*24*time.Hour, V3OperatorReconciliationAllowance)
+	require.Equal(t, 37*24*time.Hour, V3MaximumDurableRecoveryWindow)
+	require.Equal(t, V3WorkflowExecutionTimeout+V3OperatorReconciliationAllowance, V3MaximumDurableRecoveryWindow)
+	require.Equal(t, 45*24*time.Hour, V3MinimumStagingLifecycleRetention)
+	require.Greater(t, V3MinimumStagingLifecycleRetention, V3MaximumDurableRecoveryWindow)
 }
 
 func TestTemporalClientCommandsWaitForCompletedWorkflowUpdates(t *testing.T) {

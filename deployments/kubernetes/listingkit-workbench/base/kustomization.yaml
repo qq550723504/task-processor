@@ -10,7 +10,6 @@ resources:
   - imgproxy-service.yaml
   - image-agent-temporal-worker-deployment.yaml
   - image-agent-temporal-worker-v3-deployment.yaml
-  - ../jobs
   - product-listing-api-deployment.yaml
   - product-listing-api-service.yaml
   - shein-login-worker-deployment.yaml

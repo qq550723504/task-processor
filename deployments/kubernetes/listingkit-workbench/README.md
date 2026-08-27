@@ -546,10 +546,14 @@ ALTER TABLE "listing_product_data"
 This validation is a separate operational change. It is not run by the
 deployment workflow and must not be used to bypass the identity preflight.
 
-For a new cluster, render the existing production overlay from a temporary
-copy, pin both image names to the same immutable tag, and apply that rendered
-manifest only after the Job succeeds. This prevents the overlay's development
-`latest` defaults from being used during bootstrap.
+The production overlay is steady-state desired state only. It contains the two
+long-lived image-agent workers and contains no finite canary Job. A generic
+`kubectl apply -k` is therefore not a release procedure: it cannot prove the
+ordered migrations, worker rollouts, finite canary, API rollout, and UI
+attestation gates. For a new cluster, render an immutable copy locally for
+review and client-side validation, then run the API release workflow. That
+workflow exclusively deletes, applies, and waits for the canary; the matching UI
+release is admitted only by its uploaded exact-source attestation.
 
 ```powershell
 $source = Resolve-Path deployments/kubernetes/listingkit-workbench
@@ -561,7 +565,9 @@ Push-Location (Join-Path $staging "overlays/prod")
 try {
   kustomize edit set image "xuwei190/task-processor-product-listing-api=docker.io/xuwei190/task-processor-product-listing-api:$tag"
   kustomize edit set image "xuwei190/task-processor-listingkit-ui=docker.io/xuwei190/task-processor-listingkit-ui:$tag"
-  kustomize build . | kubectl apply -f -
+  kustomize build . > rendered-listingkit-production.yaml
+  kubectl create --dry-run=client --validate=false \
+    -f rendered-listingkit-production.yaml -o name
 } finally {
   Pop-Location
   if ((Resolve-Path (Split-Path $staging -Parent)).Path -ne $stagingRoot) {
@@ -571,9 +577,10 @@ try {
 }
 ```
 
-Record the source SHA, image tags, migration Job name, and rollout output in
-the Release Candidate Runbook. Subsequent releases must use the independent
-GitHub Actions workflows below rather than reapplying an unpinned overlay.
+This command does not contact or mutate a cluster. Record the source SHA, image
+digests, API workflow run ID, migration Job name, canary result, and rollout
+output in the Release Candidate Runbook. All production mutations use the
+GitHub Actions release workflows below rather than a generic overlay apply.
 
 ### Release workflows
 
@@ -582,10 +589,19 @@ GitHub Actions workflows below rather than reapplying an unpinned overlay.
 
 Trigger rules:
 
-- API tag `listingkit-api-v*` deploys only `product-listing-api`.
-- UI tag `listingkit-ui-v*` deploys only `listingkit-ui`.
-- For an RC, use `workflow_dispatch` for both workflows and set the same
-  immutable `source_ref` and `image_tag` explicitly.
+- API tag `listingkit-api-v*` runs migrations, both worker rollouts, the finite
+  canary, and API rollout, then uploads a 24-hour exact-source release
+  attestation scoped to that API workflow run ID.
+- A successful `ListingKit API Deploy` run automatically starts the gated UI
+  path for the exact attested source SHA.
+- UI tag `listingkit-ui-v*` may build and push an image only; it never mutates
+  production.
+- Manual UI production release requires the explicit successful API
+  `release_gate_run_id`. It downloads only that run's artifact and fails closed
+  for a missing/expired/malformed attestation, wrong workflow/conclusion/run or
+  source, or non-digest API candidate.
+- Branch, tag, image-tag convention, and "latest successful run" are not
+  release evidence.
 - `publish_latest` is not a release or rollback target.
 
 Required GitHub repository secrets:
@@ -631,8 +647,9 @@ Standard rollback path:
 3. Run `ListingKit API Deploy` with its prior immutable digest, then wait for the
    API rollout and readiness probe. The workflow then reapplies the standalone
    production SMS webhook Ingress only after that rollout succeeds.
-4. Run `ListingKit UI Deploy` with its prior immutable tag, then wait for the
-   UI rollout.
+4. Run `ListingKit UI Deploy` with the API rollback run's explicit
+   `release_gate_run_id`; it builds the exact attested source and waits for the
+   digest-pinned UI rollout.
 5. Record the rollback decision, deployed tags, probe results, and any data
    recovery action in the validation run.
 
@@ -741,30 +758,137 @@ address/namespace config, and receives no Secret.
 
 ### Live preflight and v2 drain evidence
 
-The `temporal` CLI is an operator prerequisite and is not bundled in this
-repository. Set its address/namespace options for the target environment, then
-capture the open image-agent workflow set before replacing either worker:
+Use Temporal CLI v1.8.1 for this evidence procedure. Set address and namespace
+without printing credentials, verify the pinned CLI version, and list both the
+parent and child workflow types. `ImageAgentWorkflow` parents own run-state,
+plan, pending-command, and approval Activities. Each `ImageSlotWorkflow` child
+owns the slot execution and slot-result persistence Activities, so parent-only
+describes are not drain evidence.
 
 ```bash
-temporal workflow list --output json \
-  --query "WorkflowType = 'ImageAgentWorkflow' AND ExecutionStatus = 'Running'" \
-  > image-agent-open-workflows.json
+set -euo pipefail
+required_temporal_cli=1.8.1
+temporal_version="$(temporal --version)"
+grep -Eq "(^|[[:space:]])v?${required_temporal_cli}([[:space:]]|$)" \
+  <<<"$temporal_version" || {
+    echo "Temporal CLI ${required_temporal_cli} is required" >&2
+    exit 1
+  }
+: "${TEMPORAL_ADDRESS:?set the target Temporal address}"
+: "${TEMPORAL_NAMESPACE:?set the target Temporal namespace}"
+
+for workflow_type in ImageAgentWorkflow ImageSlotWorkflow; do
+  temporal workflow list \
+    --address "$TEMPORAL_ADDRESS" \
+    --namespace "$TEMPORAL_NAMESPACE" \
+    --output json \
+    --query "WorkflowType = '${workflow_type}' AND ExecutionStatus = 'Running'" \
+    > "${workflow_type}.open.json"
+done
+
+: > image-agent-pending-activities.tsv
+: > image-agent-pending-children.tsv
+: > image-agent-open-executions.tsv
+for list_file in ImageAgentWorkflow.open.json ImageSlotWorkflow.open.json; do
+  jq -r '
+    (if type == "array" then .[] else . end) |
+    [.execution.workflowId, .execution.runId, .type.name] | @tsv
+  ' \
+    "$list_file" |
+  while IFS=$'\t' read -r workflow_id temporal_run_id workflow_type; do
+    description="$(temporal workflow describe \
+      --address "$TEMPORAL_ADDRESS" \
+      --namespace "$TEMPORAL_NAMESPACE" \
+      --workflow-id "$workflow_id" \
+      --run-id "$temporal_run_id" \
+      --output json)"
+    jq -r \
+      --arg workflow_id "$workflow_id" \
+      --arg temporal_run_id "$temporal_run_id" \
+      --arg workflow_type "$workflow_type" \
+      '[$workflow_id, $temporal_run_id, $workflow_type,
+        (.workflowExecutionInfo.taskQueue //
+         .executionConfig.taskQueue.name // "")] | @tsv' \
+      <<<"$description" >> image-agent-open-executions.tsv
+    jq -r \
+      --arg workflow_id "$workflow_id" \
+      --arg temporal_run_id "$temporal_run_id" \
+      --arg workflow_type "$workflow_type" \
+      '.pendingActivities[]? |
+       [$workflow_id, $temporal_run_id, $workflow_type,
+        .activityType.name, (.attempt | tostring)] | @tsv' \
+      <<<"$description" >> image-agent-pending-activities.tsv
+    jq -r \
+      --arg workflow_id "$workflow_id" \
+      --arg temporal_run_id "$temporal_run_id" \
+      '.pendingChildren[]? |
+       [$workflow_id, $temporal_run_id, .workflowId, .runId,
+        (.workflowTypeName // .workflowType.name // "")] | @tsv' \
+      <<<"$description" >> image-agent-pending-children.tsv
+  done
+done
+
+awk -F '\t' '
+  function is_v2_activity(name) {
+    return name == "imageagent.execute_slot" ||
+      name == "imageagent.execute_slot.v2" ||
+      name == "imageagent.persist_slot_result" ||
+      name == "imageagent.persist_slot_result.v2" ||
+      name == "imageagent.persist_run_state" ||
+      name == "imageagent.persist_run_state.v2" ||
+      name == "imageagent.persist_plan_revision" ||
+      name == "imageagent.persist_plan_revision.v2" ||
+      name == "imageagent.persist_pending_command" ||
+      name == "imageagent.persist_pending_command.v2" ||
+      name == "imageagent.publish_approved" ||
+      name == "imageagent.publish_approved.v2"
+  }
+  is_v2_activity($4) {
+    pending[$4]++
+    attempts[$4] += $5
+    print "pending", $1, $2, $3, $4, "attempt=" $5
+  }
+  END {
+    for (name in pending) {
+      print "summary", name, "pending=" pending[name],
+        "attempt_sum=" attempts[name]
+    }
+  }
+' image-agent-pending-activities.tsv | sort
 ```
 
-For every returned workflow ID/run ID, run `temporal workflow describe` and
-record its task queue plus every pending Activity name/attempt. Treat any
-`.v2` Activity or a workflow assigned to `image-agent-manual` as v2 drain
-inventory. Do not infer activity safety from workflow count alone: the
-describe output is the activity evidence. Repeat the same query after rollout
-and retain the v2 Deployment until the v2 workflow count and pending v2
-activity count are both zero.
+The two list files enumerate all open parents and children. The describe loop
+also records every parent's `pendingChildren` and every execution's
+`pendingActivities`; reconcile each pending child row to the independently
+listed `ImageSlotWorkflow`. The AWK allowlist counts only exact frozen legacy
+and `.v2` names and preserves each current attempt. Treat every listed v2
+Activity and every open execution assigned to `image-agent-manual` as drain
+inventory. Retain the v2 Deployment until open parent count, open child count,
+pending child count, and exact pending legacy/v2 Activity count are all zero.
 
 Identify the `702d76631` rebound window from deployment records, not from Git
 commit time: record the instant that image first became active and the instant
-the correcting image became active. Query `image_agent_v2_runs.created_at`
-inside that half-open interval and reconcile every resulting run ID with the
-Temporal list/describe evidence. Keep ambiguous runs on the v2 inventory for
-manual reconciliation; never silently move an in-flight history to v3.
+the correcting image became active. Use parameterized UTC timestamps and this
+half-open query; it selects the complete persisted identity and constructs the
+same full workflow ID used by production code:
+
+```sql
+\set rebound_start '2026-08-27T00:00:00Z'
+\set rebound_end   '2026-08-28T00:00:00Z'
+
+SELECT tenant_id, owner_user_id, id, created_at,
+       format('image-agent:%s:%s:%s', tenant_id, owner_user_id, id) AS workflow_id
+FROM image_agent_v2_runs
+WHERE created_at >= :'rebound_start'::timestamptz
+  AND created_at <  :'rebound_end'::timestamptz
+ORDER BY created_at, tenant_id, owner_user_id, id;
+```
+
+For each row, the equivalent shell construction is
+`workflow_id="image-agent:${tenant_id}:${owner_user_id}:${run_id}"`. Reconcile
+that full ID, never bare `run_id`, against both list/describe inventories. Keep
+ambiguous rows on the v2 inventory for manual reconciliation; never silently
+move an in-flight history to v3.
 
 ### Rollback and durable staging retention
 
@@ -774,11 +898,44 @@ back through the gated workflow. It does **not** delete, scale down, or retarget
 started on `image-agent-manual-v3`. Keep the v2 worker too. The additive schema
 migration is not rolled back while either worker can reference v3 records.
 
+Only newly started v3 manual workflows receive the production-owned Temporal
+`WorkflowExecutionTimeout` of 30 days. Timeout ends that workflow execution; it
+does not authorize regeneration or deletion of staged bytes. Operators then
+have a 7-day reconciliation allowance. The authoritative maximum durable
+recovery window is therefore `30 days + 7 days = 37 days`. Existing/live
+histories retain the options recorded when they were started, and committed old
+histories remain replayed without a new workflow-history branch.
+
 Configure the object store's lifecycle policy on `image-agent/staging/` outside
-the application. Its retention must exceed the documented maximum workflow
-recovery window, including operator investigation time. Record the configured
-duration and policy version as live evidence. Application request paths do not
-synchronously delete staging objects.
+the application with a minimum retention of 45 days, which is strictly greater
+than 37 days. Application request paths do not synchronously delete staging
+objects. Run this redacted check with the same S3-compatible endpoint settings
+used by operations; it prints only policy identity, status, prefix, and days:
+
+```bash
+set -euo pipefail
+: "${STAGING_BUCKET:?set the staging bucket name without printing credentials}"
+lifecycle_args=(s3api get-bucket-lifecycle-configuration --bucket "$STAGING_BUCKET")
+if [[ -n "${S3_ENDPOINT:-}" ]]; then
+  lifecycle_args+=(--endpoint-url "$S3_ENDPOINT")
+fi
+lifecycle_json="$(AWS_PAGER='' aws "${lifecycle_args[@]}")"
+jq -e '
+  [.Rules[] |
+    select(.Status == "Enabled") |
+    select((.Filter.Prefix // .Prefix // "") == "image-agent/staging/") |
+    select((.Expiration.Days // 0) >= 45)] |
+  length == 1
+' <<<"$lifecycle_json" >/dev/null
+jq -c '
+  .Rules[] |
+  select((.Filter.Prefix // .Prefix // "") == "image-agent/staging/") |
+  {policy_id: .ID, status: .Status,
+   prefix: (.Filter.Prefix // .Prefix), expiration_days: .Expiration.Days}
+' <<<"$lifecycle_json"
+```
+
+Record the redacted output and infrastructure-policy revision as live evidence.
 
 Operational evidence must never print Secret values, S3/COS credentials,
 presigned URLs, provider headers, or full object metadata. Record only safe

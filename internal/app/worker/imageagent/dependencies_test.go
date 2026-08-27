@@ -63,6 +63,122 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 	require.Equal(t, 1, closed)
 }
 
+func TestResolveImageAgentTemporalDependenciesForV2SkipsV3ValidationAndDurableComposition(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-v2-runtime?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	cfg := &config.Config{Database: &config.DatabaseConfig{}}
+	cfg.ProductImage.Publisher = durablePublisherConfig("invalid-v3-mode", false)
+	storeBuilds := 0
+	resolver := imageAgentWorkerDependencyResolver{
+		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
+		OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
+		CloseDB:    func(*config.DatabaseConfig, *gorm.DB) error { return nil },
+		BuildAI: func(*config.Config, *gorm.DB) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
+			return nil, nil, nil, nil
+		},
+		BuildCapabilities: func(productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error) {
+			return productimagehttpapi.ImageAgentCapabilities{
+				SubjectExtractor: runtimeSubjectExtractor{}, WhiteBackgroundRenderer: runtimeWhiteBackgroundRenderer{},
+				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
+			}, nil
+		},
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
+			storeBuilds++
+			return workerArtifactStore{}, nil
+		},
+		ArtifactTiming: imageAgentArtifactTiming{OperationTimeout: 2 * time.Minute, PublicationLeaseDuration: time.Minute},
+	}
+
+	dependencies, closeFn, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV2, resolver)
+	require.NoError(t, err)
+	require.NotNil(t, closeFn)
+	require.NotNil(t, dependencies.Repository)
+	require.NotNil(t, dependencies.SlotExecutor)
+	require.NotNil(t, dependencies.Publisher)
+	require.Nil(t, dependencies.StagedSlotExecutor)
+	require.Nil(t, dependencies.ArtifactStore)
+	require.Nil(t, dependencies.PublisherV3)
+	require.Zero(t, dependencies.PublicationLeaseDuration)
+	require.Zero(t, storeBuilds)
+}
+
+func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-v2-no-v3-fields?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	cfg := &config.Config{Database: &config.DatabaseConfig{}}
+	cfg.ProductImage.Publisher = durablePublisherConfig("", false)
+	storeBuilds := 0
+	dependencies, closeFn, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV2, imageAgentWorkerDependencyResolver{
+		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
+		OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
+		CloseDB:    func(*config.DatabaseConfig, *gorm.DB) error { return nil },
+		BuildAI: func(*config.Config, *gorm.DB) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
+			return nil, nil, nil, nil
+		},
+		BuildCapabilities: func(productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error) {
+			return productimagehttpapi.ImageAgentCapabilities{
+				SubjectExtractor: runtimeSubjectExtractor{}, WhiteBackgroundRenderer: runtimeWhiteBackgroundRenderer{},
+				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
+			}, nil
+		},
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
+			storeBuilds++
+			return workerArtifactStore{}, nil
+		},
+		ArtifactTiming: imageAgentArtifactTiming{},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, closeFn)
+	require.NotNil(t, dependencies.Repository)
+	require.NotNil(t, dependencies.SlotExecutor)
+	require.NotNil(t, dependencies.Publisher)
+	require.Nil(t, dependencies.StagedSlotExecutor)
+	require.Nil(t, dependencies.ArtifactStore)
+	require.Nil(t, dependencies.PublisherV3)
+	require.Zero(t, dependencies.PublicationLeaseDuration)
+	require.Zero(t, storeBuilds)
+}
+
+func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseOnInvalidPolicy(t *testing.T) {
+	cfg := &config.Config{Database: &config.DatabaseConfig{}}
+	cfg.ProductImage.Publisher = durablePublisherConfig("cos", false)
+	databaseOpens, storeBuilds := 0, 0
+	_, _, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV3, imageAgentWorkerDependencyResolver{
+		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
+		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			databaseOpens++
+			return &gorm.DB{}, nil
+		},
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
+			storeBuilds++
+			return workerArtifactStore{}, nil
+		},
+	})
+	require.ErrorContains(t, err, "immutable non-versioned")
+	require.Zero(t, databaseOpens)
+	require.Zero(t, storeBuilds)
+}
+
+func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseWhenArtifactModeIsAbsent(t *testing.T) {
+	cfg := &config.Config{Database: &config.DatabaseConfig{}}
+	cfg.ProductImage.Publisher = durablePublisherConfig("", false)
+	databaseOpens, storeBuilds := 0, 0
+	_, _, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV3, imageAgentWorkerDependencyResolver{
+		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
+		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			databaseOpens++
+			return &gorm.DB{}, nil
+		},
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
+			storeBuilds++
+			return workerArtifactStore{}, nil
+		},
+	})
+	require.ErrorContains(t, err, "artifact mode")
+	require.Zero(t, databaseOpens)
+	require.Zero(t, storeBuilds)
+}
+
 func TestArtifactStorageCapabilitiesFromConfigFailsClosed(t *testing.T) {
 	validAWS := durablePublisherConfig("aws", true)
 	validCOS := durablePublisherConfig("cos", true)

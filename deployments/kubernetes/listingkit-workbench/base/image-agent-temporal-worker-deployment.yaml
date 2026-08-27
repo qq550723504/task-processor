@@ -83,16 +83,6 @@ spec:
                 configMapKeyRef:
                   name: listingkit-workbench-config
                   key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE
-            - name: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE
-              valueFrom:
-                configMapKeyRef:
-                  name: listingkit-workbench-config
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE
-            - name: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY
-              valueFrom:
-                configMapKeyRef:
-                  name: listingkit-workbench-config
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY
             - name: TASK_PROCESSOR_DATABASE_HOST
               valueFrom:
                 secretKeyRef:

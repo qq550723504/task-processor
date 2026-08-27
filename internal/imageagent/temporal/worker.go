@@ -87,6 +87,7 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 	_, err := c.client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
 		ID:                       WorkflowID(start.Identity.TenantID, start.Identity.UserID, start.Run.ID),
 		TaskQueue:                TaskQueueV3,
+		WorkflowExecutionTimeout: V3WorkflowExecutionTimeout,
 		WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 		WorkflowIDReusePolicy:    enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
 	}, workflowNameImageAgent, WorkflowInput{

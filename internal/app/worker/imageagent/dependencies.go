@@ -59,13 +59,27 @@ func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResol
 // from the same database, ProductImage provider/storage, and ListingKit result
 // ownership adapters used by the API runtime.
 func ResolveImageAgentTemporalDependencies(configPath string, logger *logrus.Logger) (appruntime.ImageAgentTemporalDependencies, func() error, error) {
-	return resolveImageAgentTemporalDependencies(configPath, logger, defaultImageAgentWorkerDependencyResolver())
+	return ResolveImageAgentTemporalDependenciesForMode(configPath, logger, imageagenttemporal.WorkerWireModeV3)
+}
+
+// ResolveImageAgentTemporalDependenciesForMode composes only the capabilities
+// registered by the selected worker process. The legacy public resolver above
+// remains v3-compatible for existing callers.
+func ResolveImageAgentTemporalDependenciesForMode(configPath string, logger *logrus.Logger, mode imageagenttemporal.WorkerWireMode) (appruntime.ImageAgentTemporalDependencies, func() error, error) {
+	return resolveImageAgentTemporalDependenciesForMode(configPath, logger, mode, defaultImageAgentWorkerDependencyResolver())
 }
 
 func resolveImageAgentTemporalDependencies(configPath string, logger *logrus.Logger, resolver imageAgentWorkerDependencyResolver) (appruntime.ImageAgentTemporalDependencies, func() error, error) {
+	return resolveImageAgentTemporalDependenciesForMode(configPath, logger, imageagenttemporal.WorkerWireModeV3, resolver)
+}
+
+func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *logrus.Logger, mode imageagenttemporal.WorkerWireMode, resolver imageAgentWorkerDependencyResolver) (appruntime.ImageAgentTemporalDependencies, func() error, error) {
 	configPath = strings.TrimSpace(configPath)
 	if configPath == "" {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent worker config path is required")
+	}
+	if _, err := mode.DefaultTaskQueue(); err != nil {
+		return appruntime.ImageAgentTemporalDependencies{}, nil, err
 	}
 	cfg, err := resolver.LoadConfig(configPath)
 	if err != nil {
@@ -74,22 +88,26 @@ func resolveImageAgentTemporalDependencies(configPath string, logger *logrus.Log
 	if cfg == nil || cfg.Database == nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent worker database configuration is required")
 	}
-	timing := resolver.ArtifactTiming
-	if timing == (imageAgentArtifactTiming{}) {
-		timing = defaultImageAgentArtifactTiming
-	}
-	if err := timing.validate(); err != nil {
-		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact timing: %w", err)
-	}
-	if _, err := artifactStorageCapabilitiesFromConfig(cfg.ProductImage.Publisher); err != nil {
-		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact configuration: %w", err)
-	}
-	if resolver.BuildArtifactStore == nil {
-		resolver.BuildArtifactStore = buildImageAgentDurableArtifactStore
-	}
-	artifactStore, err := resolver.BuildArtifactStore(cfg, timing)
-	if err != nil {
-		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent durable artifact store: %w", err)
+	var timing imageAgentArtifactTiming
+	var artifactStore imageagenttemporal.DurableArtifactStore
+	if mode == imageagenttemporal.WorkerWireModeV3 {
+		timing = resolver.ArtifactTiming
+		if timing == (imageAgentArtifactTiming{}) {
+			timing = defaultImageAgentArtifactTiming
+		}
+		if err := timing.validate(); err != nil {
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact timing: %w", err)
+		}
+		if _, err := artifactStorageCapabilitiesFromConfig(cfg.ProductImage.Publisher); err != nil {
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact configuration: %w", err)
+		}
+		if resolver.BuildArtifactStore == nil {
+			resolver.BuildArtifactStore = buildImageAgentDurableArtifactStore
+		}
+		artifactStore, err = resolver.BuildArtifactStore(cfg, timing)
+		if err != nil {
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent durable artifact store: %w", err)
+		}
 	}
 	db, err := resolver.OpenDB(cfg.Database)
 	if err != nil {
@@ -123,19 +141,24 @@ func resolveImageAgentTemporalDependencies(configPath string, logger *logrus.Log
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, err
 	}
+	executor := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
+		SubjectExtractor: capabilities.SubjectExtractor, WhiteBackgroundRenderer: capabilities.WhiteBackgroundRenderer,
+		SceneRenderer: capabilities.SceneRenderer, AssetPublisher: capabilities.AssetPublisher,
+	})
+	dependencies := appruntime.ImageAgentTemporalDependencies{Repository: repository, SlotExecutor: executor, Publisher: publisher}
+	if mode == imageagenttemporal.WorkerWireModeV2 {
+		return dependencies, closeDB, nil
+	}
 	publisherV3, err := listingkithttpapi.NewImageAgentApprovedPublisherV3(repository, listingkitstore.NewImageAgentPublicationTransactionRepository(db), artifactStore)
 	if err != nil {
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, err
 	}
-	executor := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
-		SubjectExtractor: capabilities.SubjectExtractor, WhiteBackgroundRenderer: capabilities.WhiteBackgroundRenderer,
-		SceneRenderer: capabilities.SceneRenderer, AssetPublisher: capabilities.AssetPublisher,
-	})
-	return appruntime.ImageAgentTemporalDependencies{
-		Repository: repository, SlotExecutor: executor, StagedSlotExecutor: executor,
-		ArtifactStore: artifactStore, Publisher: publisher, PublisherV3: publisherV3, PublicationLeaseDuration: timing.PublicationLeaseDuration,
-	}, closeDB, nil
+	dependencies.StagedSlotExecutor = executor
+	dependencies.ArtifactStore = artifactStore
+	dependencies.PublisherV3 = publisherV3
+	dependencies.PublicationLeaseDuration = timing.PublicationLeaseDuration
+	return dependencies, closeDB, nil
 }
 
 func artifactStorageCapabilitiesFromConfig(publisher config.ProductImagePublisherConfig) (storage.ArtifactStorageCapabilities, error) {

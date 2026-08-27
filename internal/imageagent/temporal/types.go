@@ -5,9 +5,20 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
+)
+
+const (
+	// V3WorkflowExecutionTimeout is applied by Client.StartManual only when a
+	// new v3 execution is requested. It is not read from workflow history and
+	// does not alter already-running or replayed executions.
+	V3WorkflowExecutionTimeout         = 30 * 24 * time.Hour
+	V3OperatorReconciliationAllowance  = 7 * 24 * time.Hour
+	V3MaximumDurableRecoveryWindow     = V3WorkflowExecutionTimeout + V3OperatorReconciliationAllowance
+	V3MinimumStagingLifecycleRetention = 45 * 24 * time.Hour
 )
 
 const (
