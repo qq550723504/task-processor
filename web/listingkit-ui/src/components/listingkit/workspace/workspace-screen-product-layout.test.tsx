@@ -4,6 +4,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspaceScreen } from "@/components/listingkit/workspace/workspace-screen";
 
+const defaultWorkflowIssues = [
+  {
+    code: "attributes",
+    severity: "blocking",
+    message: "Material 缺失",
+    detail: "SHEIN 提交前必须补充材质。",
+  },
+];
+
 const mocks = vi.hoisted(() => ({
   executeActionMutate: vi.fn(),
   handlePlatformSelect: vi.fn(),
@@ -14,10 +23,26 @@ const mocks = vi.hoisted(() => ({
   handleToolbarAction: vi.fn(),
   handleRecovery: vi.fn(),
   handlePlatformRecovery: vi.fn(),
+  taskStatus: "needs_review" as string,
+  workflowIssues: [
+    {
+      code: "attributes",
+      severity: "blocking",
+      message: "Material 缺失",
+      detail: "SHEIN 提交前必须补充材质。",
+    },
+  ] as Array<{
+    code: string;
+    severity: string;
+    message: string;
+    detail?: string;
+  }>,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.taskStatus = "needs_review";
+  mocks.workflowIssues = defaultWorkflowIssues.map((issue) => ({ ...issue }));
 });
 
 vi.mock("next/navigation", () => ({
@@ -36,7 +61,7 @@ vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
     taskResult: {
       data: {
         task_id: "task-1",
-        status: "needs_review",
+        status: mocks.taskStatus,
         result: {
           canonical_product: {
             title: "Canvas Tote",
@@ -53,14 +78,7 @@ vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
             attributes: {},
           },
           summary: { blocking_count: 1, warning_count: 0 },
-          workflow_issues: [
-            {
-              code: "attributes",
-              severity: "blocking",
-              message: "Material 缺失",
-              detail: "SHEIN 提交前必须补充材质。",
-            },
-          ],
+          workflow_issues: mocks.workflowIssues,
         },
       },
       isError: false,
@@ -331,5 +349,18 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     await user.click(screen.getByRole("button", { name: "历史" }));
 
     expect(within(work).getByText("历史记录内容")).toBeInTheDocument();
+  });
+
+  it("keeps AI review in a checking state while the task is still processing", () => {
+    mocks.taskStatus = "processing";
+    mocks.workflowIssues = [];
+
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    const aiReview = screen.getByRole("complementary", { name: "AI 审核" });
+    expect(within(aiReview).getByText("AI 正在检查商品")).toBeInTheDocument();
+    expect(
+      within(aiReview).queryByText("AI 检查已完成，可以继续当前操作。"),
+    ).not.toBeInTheDocument();
   });
 });
