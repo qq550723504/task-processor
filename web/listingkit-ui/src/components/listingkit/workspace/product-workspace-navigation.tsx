@@ -12,12 +12,14 @@ export function ProductWorkspaceNavigation({
   canonicalItems,
   platformItems,
   onSelect,
+  onRecoverPlatform,
   onSelectHistory,
   historySelected = false,
 }: {
   canonicalItems: readonly ProductWorkspaceNavItem[];
   platformItems: readonly ProductWorkspaceNavItem[];
   onSelect: (item: ProductWorkspaceNavItem) => void;
+  onRecoverPlatform?: (item: ProductWorkspaceNavItem) => void;
   onSelectHistory: () => void;
   historySelected?: boolean;
 }) {
@@ -32,7 +34,20 @@ export function ProductWorkspaceNavigation({
       <NavigationGroup label="平台资料">
         {platformItems.length > 0 ? (
           platformItems.map((item) => (
-            <NavigationButton item={item} key={item.key} onSelect={onSelect} showStatus />
+            <div className="flex items-center gap-1" key={item.key}>
+              <div className="min-w-0 flex-1">
+                <NavigationButton item={item} onSelect={onSelect} showStatus />
+              </div>
+              {item.recoveryLabel ? (
+                <button
+                  className="shrink-0 rounded-md border border-border px-2 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                  onClick={() => onRecoverPlatform?.(item)}
+                  type="button"
+                >
+                  {item.recoveryLabel}
+                </button>
+              ) : null}
+            </div>
           ))
         ) : (
           <p className="px-2 text-xs leading-5 text-muted-foreground">尚未生成平台资料</p>
