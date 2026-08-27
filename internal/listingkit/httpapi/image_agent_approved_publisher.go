@@ -191,10 +191,17 @@ func validateApprovedProjectionAndCandidatesV3(projection imageagent.RunProjecti
 		if slot.Slot.ID != declared.ID || slot.Slot.Role != declared.Role || slot.Slot.Status != imageagent.SlotStatusAccepted || slot.Attempt <= 0 || len(slot.Candidates) == 0 {
 			return nil, nil, imageagent.ErrRevisionConflict
 		}
-		for _, candidate := range slot.Candidates {
+		for candidateIndex, candidate := range slot.Candidates {
 			id := strings.TrimSpace(candidate.AssetID)
 			if _, ok := requestedSet[id]; !ok || strings.TrimSpace(candidate.URL) != "" || len(candidate.Metadata) != 0 || strings.TrimSpace(candidate.SourceAssetID) == "" {
 				return nil, nil, imageagent.ErrRevisionConflict
+			}
+			keyScope := imageagent.SlotExecutionInput{
+				RunID: projection.Run.ID, TenantID: projection.Run.TenantID, UserID: projection.Run.UserID,
+				PlanRevision: projection.Plan.Revision, Slot: declared, Attempt: slot.Attempt,
+			}
+			if err := imageagent.ValidatePublishedAssetIdentityForSlot(keyScope, candidate.DurableAsset, candidateIndex); err != nil {
+				return nil, nil, err
 			}
 			identity, err := imageagent.NormalizeDurableAssetIdentity(candidate.DurableAsset)
 			if err != nil {

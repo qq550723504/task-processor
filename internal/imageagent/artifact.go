@@ -116,27 +116,58 @@ func NormalizeFinalManifest(manifest FinalManifest) (FinalManifest, error) {
 // ValidatePublishedAssetRefForSlot verifies that a final reference belongs to
 // this exact slot attempt and uses the deterministic public object-key grammar.
 func ValidatePublishedAssetRefForSlot(input SlotExecutionInput, asset PublishedAssetRef, expectedIndex int) error {
-	tenantID, userID := strings.TrimSpace(input.TenantID), strings.TrimSpace(input.UserID)
-	runID, slotID := strings.TrimSpace(input.RunID), strings.TrimSpace(input.Slot.ID)
-	if tenantID == "" || userID == "" || runID == "" || slotID == "" || input.PlanRevision <= 0 || input.Attempt <= 0 || expectedIndex < 0 {
+	if strings.TrimSpace(input.UserID) == "" {
 		return ErrValidation
 	}
 	normalized, err := normalizePublishedAssetRef(asset)
 	if err != nil {
 		return err
 	}
-	segments := strings.Split(normalized.ObjectKey, "/")
-	if len(segments) != 8 || strings.Join(segments[:2], "/") != PublishedArtifactPrefix || !artifactKeyIdentifierPattern.MatchString(segments[2]) || !artifactKeyIdentifierPattern.MatchString(segments[3]) || !artifactKeyIdentifierPattern.MatchString(segments[5]) {
-		return ErrValidation
+	_, extension, err := validatePublishedAssetIdentityForSlot(input, DurableAssetIdentity{ObjectKey: normalized.ObjectKey, SHA256: normalized.SHA256}, expectedIndex)
+	if err != nil {
+		return err
 	}
-	if segments[2] != tenantID || segments[3] != runID || segments[4] != strconv.FormatInt(input.PlanRevision, 10) || segments[5] != slotID || segments[6] != strconv.Itoa(input.Attempt) {
-		return ErrValidation
-	}
-	extension, ok := publishedArtifactExtensions[normalized.ContentType]
-	if !ok || segments[7] != strconv.Itoa(expectedIndex)+"-"+normalized.SHA256+"."+extension {
+	expectedExtension, ok := publishedArtifactExtensions[normalized.ContentType]
+	if !ok || extension != expectedExtension {
 		return ErrValidation
 	}
 	return nil
+}
+
+// ValidatePublishedAssetIdentityForSlot verifies the compact durable identity
+// used after publication against the same deterministic public-key grammar as
+// the full PublishedAssetRef validator.
+func ValidatePublishedAssetIdentityForSlot(input SlotExecutionInput, asset DurableAssetIdentity, expectedIndex int) error {
+	_, _, err := validatePublishedAssetIdentityForSlot(input, asset, expectedIndex)
+	return err
+}
+
+func validatePublishedAssetIdentityForSlot(input SlotExecutionInput, asset DurableAssetIdentity, expectedIndex int) (DurableAssetIdentity, string, error) {
+	tenantID := strings.TrimSpace(input.TenantID)
+	runID, slotID := strings.TrimSpace(input.RunID), strings.TrimSpace(input.Slot.ID)
+	if tenantID == "" || runID == "" || slotID == "" || input.PlanRevision <= 0 || input.Attempt <= 0 || expectedIndex < 0 {
+		return DurableAssetIdentity{}, "", ErrValidation
+	}
+	normalized, err := NormalizeDurableAssetIdentity(asset)
+	if err != nil {
+		return DurableAssetIdentity{}, "", err
+	}
+	segments := strings.Split(normalized.ObjectKey, "/")
+	if len(segments) != 8 || strings.Join(segments[:2], "/") != PublishedArtifactPrefix || !artifactKeyIdentifierPattern.MatchString(segments[2]) || !artifactKeyIdentifierPattern.MatchString(segments[3]) || !artifactKeyIdentifierPattern.MatchString(segments[5]) {
+		return DurableAssetIdentity{}, "", ErrValidation
+	}
+	if segments[2] != tenantID || segments[3] != runID || segments[4] != strconv.FormatInt(input.PlanRevision, 10) || segments[5] != slotID || segments[6] != strconv.Itoa(input.Attempt) {
+		return DurableAssetIdentity{}, "", ErrValidation
+	}
+	filenamePrefix := strconv.Itoa(expectedIndex) + "-" + normalized.SHA256 + "."
+	if !strings.HasPrefix(segments[7], filenamePrefix) {
+		return DurableAssetIdentity{}, "", ErrValidation
+	}
+	extension := strings.TrimPrefix(segments[7], filenamePrefix)
+	if !isPublishedArtifactExtension(extension) {
+		return DurableAssetIdentity{}, "", ErrValidation
+	}
+	return normalized, extension, nil
 }
 
 func StagingManifestFingerprint(manifest StagingManifest) (string, error) {
@@ -282,6 +313,15 @@ var publishedArtifactExtensions = map[string]string{
 	"image/jpeg": "jpg",
 	"image/png":  "png",
 	"image/webp": "webp",
+}
+
+func isPublishedArtifactExtension(extension string) bool {
+	for _, allowed := range publishedArtifactExtensions {
+		if extension == allowed {
+			return true
+		}
+	}
+	return false
 }
 
 func isCanonicalObjectKey(value string) bool {

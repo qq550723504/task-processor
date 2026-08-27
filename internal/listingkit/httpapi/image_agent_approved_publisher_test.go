@@ -138,6 +138,25 @@ func TestPublishApprovedV3RejectsCandidateWithoutDurableIdentity(t *testing.T) {
 	assertV3PublicationRejectedWithoutMutation(t, projection, approvedV3PublicationInput(projection))
 }
 
+func TestPublishApprovedV3RejectsUnscopedPublishedKeysBeforeTransaction(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(string) string
+	}{
+		{name: "staging key", mutate: func(key string) string { return strings.Replace(key, "image-agent/public/", "image-agent/staging/", 1) }},
+		{name: "foreign tenant", mutate: func(key string) string { return strings.Replace(key, "/tenant-a/", "/tenant-b/", 1) }},
+		{name: "foreign run", mutate: func(key string) string { return strings.Replace(key, "/run-1/", "/run-b/", 1) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			projection := approvedV3Projection(t)
+			candidate := &projection.Slots[1].Candidates[0]
+			candidate.DurableAsset.ObjectKey = test.mutate(candidate.DurableAsset.ObjectKey)
+			projection.ResultDigest = mustResultDigestV3(t, projection)
+			assertV3PublicationRejectedWithoutMutation(t, projection, approvedV3PublicationInput(projection))
+		})
+	}
+}
+
 func TestPublishApprovedV3PreflightsEveryResolvedURLBeforeMutation(t *testing.T) {
 	projection := approvedV3Projection(t)
 	input := approvedV3PublicationInput(projection)
@@ -157,13 +176,25 @@ func assertV3PublicationRejectedWithoutMutation(t *testing.T, projection imageag
 	t.Helper()
 	ctx, db, transactionStore := newApprovedPublisherDatabase(t)
 	require.NoError(t, db.Create(approvedPublisherTask()).Error)
-	publisher, err := NewImageAgentApprovedPublisherV3(staticProjectionSource{projection: projection}, transactionStore, staticPublicURLResolver{base: "https://cdn.example"})
+	countingStore := &countingImageAgentPublicationRepository{delegate: transactionStore}
+	publisher, err := NewImageAgentApprovedPublisherV3(staticProjectionSource{projection: projection}, countingStore, staticPublicURLResolver{base: "https://cdn.example"})
 	require.NoError(t, err)
 	_, err = publisher.PublishApprovedV3(ctx, input)
 	require.Error(t, err)
+	require.Zero(t, countingStore.calls, "invalid v3 projection must be rejected before the publication transaction")
 	var task listingkit.Task
 	require.NoError(t, db.First(&task, "id = ?", "task-1").Error)
 	require.Len(t, task.Result.StandardProductSnapshot.AssetBundle.Assets, 1)
+}
+
+type countingImageAgentPublicationRepository struct {
+	delegate listingkit.ImageAgentPublicationTransactionRepository
+	calls    int
+}
+
+func (r *countingImageAgentPublicationRepository) CommitImageAgentPublication(ctx context.Context, command listingkit.ImageAgentPublicationCommit, mutate listingkit.TaskResultMutation) (listingkit.ImageAgentPublicationAcknowledgement, error) {
+	r.calls++
+	return r.delegate.CommitImageAgentPublication(ctx, command, mutate)
 }
 
 func newApprovedPublisherDatabase(t *testing.T) (context.Context, *gorm.DB, listingkit.ImageAgentPublicationTransactionRepository) {
