@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"task-processor/internal/imageagent"
 )
@@ -24,6 +25,8 @@ type memoryRepository struct {
 	projections       map[string]imageagent.RunProjection
 	projectionCommits map[string]map[string]projectionCommitMemory
 	slotEffects       map[string]imageagent.SlotExternalEffectAttempt
+	slotEffectsV3     map[string]imageagent.SlotEffectV3Attempt
+	clock             func() time.Time
 }
 
 type projectionCommitMemory struct {
@@ -38,6 +41,13 @@ type slotResultRecord struct {
 }
 
 func NewMemoryRepository() imageagent.Repository {
+	return newMemoryRepositoryWithClock(time.Now)
+}
+
+func newMemoryRepositoryWithClock(clock func() time.Time) imageagent.Repository {
+	if clock == nil {
+		clock = time.Now
+	}
 	return &memoryRepository{
 		runs:              map[string]imageagent.Run{},
 		plans:             map[string]map[int64]imageagent.Plan{},
@@ -49,6 +59,8 @@ func NewMemoryRepository() imageagent.Repository {
 		projections:       map[string]imageagent.RunProjection{},
 		projectionCommits: map[string]map[string]projectionCommitMemory{},
 		slotEffects:       map[string]imageagent.SlotExternalEffectAttempt{},
+		slotEffectsV3:     map[string]imageagent.SlotEffectV3Attempt{},
+		clock:             clock,
 	}
 }
 

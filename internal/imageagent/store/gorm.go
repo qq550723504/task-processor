@@ -26,7 +26,7 @@ func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is nil")
 	}
-	return db.AutoMigrate(&runRecord{}, &planRecord{}, &slotRecord{}, &attemptRecord{}, &eventRecord{}, &assetCatalogManifestRecord{}, &assetCatalogRecord{}, &projectionRecord{}, &projectionCommitRecord{}, &slotExternalEffectRecord{})
+	return db.AutoMigrate(&runRecord{}, &planRecord{}, &slotRecord{}, &attemptRecord{}, &eventRecord{}, &assetCatalogManifestRecord{}, &assetCatalogRecord{}, &projectionRecord{}, &projectionCommitRecord{}, &slotExternalEffectRecord{}, &slotExternalEffectV3Record{})
 }
 
 func (r *gormRepository) CreateRun(ctx context.Context, run *imageagent.Run) error {

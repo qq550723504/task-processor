@@ -41,6 +41,7 @@ func TestAutoMigrateCreatesOwnerScopedV2TablesWithoutTouchingLegacySchema(t *tes
 		"image_agent_v2_projection_snapshots",
 		"image_agent_v2_projection_commits",
 		"image_agent_v2_slot_external_effects",
+		"image_agent_v3_slot_external_effects",
 	} {
 		require.True(t, db.Migrator().HasTable(table), table)
 	}

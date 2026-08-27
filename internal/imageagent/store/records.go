@@ -162,3 +162,33 @@ type slotExternalEffectRecord struct {
 }
 
 func (slotExternalEffectRecord) TableName() string { return "image_agent_v2_slot_external_effects" }
+
+type slotExternalEffectV3Record struct {
+	TenantID                   string `gorm:"primaryKey;type:varchar(64);uniqueIndex:idx_image_agent_v3_slot_effects_idempotency,priority:1"`
+	OwnerUserID                string `gorm:"primaryKey;type:varchar(128);uniqueIndex:idx_image_agent_v3_slot_effects_idempotency,priority:2"`
+	RunID                      string `gorm:"primaryKey;type:varchar(64);uniqueIndex:idx_image_agent_v3_slot_effects_idempotency,priority:3"`
+	PlanRevision               int64  `gorm:"primaryKey"`
+	SlotID                     string `gorm:"primaryKey;type:varchar(64)"`
+	Attempt                    int    `gorm:"primaryKey"`
+	IdempotencyKey             string `gorm:"type:varchar(192);not null;uniqueIndex:idx_image_agent_v3_slot_effects_idempotency,priority:4"`
+	InputFingerprint           string `gorm:"type:varchar(64);not null"`
+	Phase                      string `gorm:"type:varchar(32);not null"`
+	StagingManifestJSON        []byte
+	StagingManifestFingerprint string `gorm:"type:varchar(64)"`
+	PublicationOwner           string `gorm:"type:varchar(192)"`
+	PublicationLeaseExpiresAt  *time.Time
+	PublicationFence           int64  `gorm:"not null;default:0"`
+	PublicationFingerprint     string `gorm:"type:varchar(64)"`
+	ResultFingerprint          string `gorm:"type:varchar(64)"`
+	FinalManifestJSON          []byte
+	PublishedJSON              []byte
+	BlockedCode                string    `gorm:"type:varchar(128)"`
+	ProviderClaimedAt          time.Time `gorm:"not null"`
+	StagingPreparedAt          *time.Time
+	StagedAt                   *time.Time
+	PublishedAt                *time.Time
+	CreatedAt                  time.Time `gorm:"not null"`
+	UpdatedAt                  time.Time `gorm:"not null"`
+}
+
+func (slotExternalEffectV3Record) TableName() string { return "image_agent_v3_slot_external_effects" }

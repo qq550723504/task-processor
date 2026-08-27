@@ -169,6 +169,7 @@ type AssetCandidate struct {
 	URL           string
 	SourceAssetID string
 	Metadata      map[string]string
+	DurableAsset  DurableAssetIdentity
 }
 
 type Budget struct {
