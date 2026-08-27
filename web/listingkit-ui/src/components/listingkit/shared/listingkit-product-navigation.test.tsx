@@ -106,6 +106,53 @@ describe("ListingKit product-oriented navigation", () => {
     );
   });
 
+  it("allows an active product group to be collapsed manually", async () => {
+    const user = userEvent.setup();
+    navigation.pathname = "/listing-kits/canonical-products";
+
+    render(
+      <ListingKitAppShell identity={{ roles: ["listingkit_admin"] }}>
+        <div>workspace content</div>
+      </ListingKitAppShell>,
+    );
+
+    const productSection = screen.getByRole("button", { name: "商品" });
+    expect(productSection).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(productSection);
+
+    expect(productSection).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("link", { name: "商品中心" })).not.toBeInTheDocument();
+  });
+
+  it("reveals product destinations when the collapsed sidebar product button is used", async () => {
+    const user = userEvent.setup();
+    navigation.pathname = "/listing-kits/home";
+
+    render(
+      <ListingKitAppShell identity={{ roles: ["listingkit_admin"] }}>
+        <div>workspace content</div>
+      </ListingKitAppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Toggle sidebar" }));
+    expect(screen.queryByRole("link", { name: "商品中心" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "商品" }));
+
+    expect(screen.getByRole("button", { name: "商品" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByRole("link", { name: "商品中心" })).toHaveAttribute(
+      "href",
+      "/listing-kits/canonical-products",
+    );
+    expect(screen.getByRole("link", { name: "导入商品" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "POD" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "款式图库" })).toBeInTheDocument();
+  });
+
   it("preserves tenant context while navigation language changes", async () => {
     const user = userEvent.setup();
 
