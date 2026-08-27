@@ -58,6 +58,26 @@ export function buildProductWorkspaceCanonicalNavigation(
   }));
 }
 
+export function productWorkspaceStatusForPlatformCard(card: {
+  status?: string;
+  needs_review?: boolean;
+}): ProductWorkspaceItemStatus {
+  switch (card.status) {
+    case "failed":
+    case "retry_needed":
+      return "failed";
+    case "review_ready":
+      return "attention";
+    case "processing":
+    case "pending":
+      return "processing";
+    case "completed":
+      return "ready";
+    default:
+      return card.needs_review ? "attention" : "idle";
+  }
+}
+
 export function buildProductWorkspacePlatformNavigation(
   platforms: readonly ProductWorkspacePlatformInput[],
   selectedPlatform?: string,
