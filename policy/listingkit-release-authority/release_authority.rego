@@ -87,6 +87,13 @@ action_uses(owner) := {step.name: step.uses |
 
 expected_action_uses(owner) := policy.oidc.identities[owner].allowedActions
 
+release_identity_steps := [step |
+  some step in deploy_job("api").steps
+  step.name == policy.releaseIdentity.step
+]
+
+release_identity_step := release_identity_steps[0] if count(release_identity_steps) == 1
+
 rule_signatures(owner) := {signature |
   some rule in role(owner).rules
   some resource in rule.resources
@@ -168,6 +175,38 @@ deny contains "machine policy repository or namespace drifted" if {
 deny contains "machine policy must pin Conftest and OPA" if {
   count(release_policies) == 1
   policy.tools.conftestVersion != "0.68.2"
+}
+
+deny contains "release identity policy drifted" if {
+  policy.releaseIdentity != {
+    "owner": "api",
+    "deployment": "product-listing-api",
+    "step": "Stamp API release identity and restart Pods",
+    "annotations": {
+      "runId": "listingkit.sh/api-release-run-id",
+      "runAttempt": "listingkit.sh/api-release-run-attempt",
+      "image": "listingkit.sh/api-release-image",
+    },
+  }
+}
+
+deny contains "API release identity stamp owner drifted" if count(release_identity_steps) != 1
+
+deny contains "API release identity stamp owner drifted" if {
+  policy.releaseIdentity.step in step_names("ui")
+}
+
+deny contains "API release identity stamp target drifted" if {
+  not contains(release_identity_step.run, sprintf("patch deployment %v", [policy.releaseIdentity.deployment]))
+}
+
+deny contains "API release identity annotation drifted" if {
+  annotation := [
+    policy.releaseIdentity.annotations.runId,
+    policy.releaseIdentity.annotations.runAttempt,
+    policy.releaseIdentity.annotations.image,
+  ][_]
+  not contains(release_identity_step.run, annotation)
 }
 
 deny contains "machine policy must pin Conftest and OPA" if {

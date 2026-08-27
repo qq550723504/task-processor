@@ -195,6 +195,49 @@ func TestListingKitDeployEmitsExactReleaseAttestationAfterAPIRollout(t *testing.
 	}
 }
 
+func TestListingKitDeployStampsExactAPIReleaseIdentityBeforeRolloutAcceptance(t *testing.T) {
+	workflow := loadReleaseWorkflow(t, filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
+	steps := workflow.Jobs["deploy-api"].Steps
+	apply, stamp, wait, attest := -1, -1, -1, -1
+	for index, step := range steps {
+		switch step.Name {
+		case "Apply immutable API deployment after image agent compatibility gates":
+			apply = index
+		case "Stamp API release identity and restart Pods":
+			stamp = index
+			for _, required := range []string{
+				"listingkit.sh/api-release-run-id",
+				"listingkit.sh/api-release-run-attempt",
+				"listingkit.sh/api-release-image",
+				"$GITHUB_RUN_ID",
+				"$GITHUB_RUN_ATTEMPT",
+				"$API_CANDIDATE_IMAGE",
+				"metadata",
+				"spec",
+				"template",
+				"kubectl",
+				"patch",
+			} {
+				if !strings.Contains(step.Run, required) {
+					t.Errorf("API release identity stamp is missing %q", required)
+				}
+			}
+			for _, validation := range []string{"^[1-9][0-9]*$", "@sha256:[0-9a-f]{64}"} {
+				if !strings.Contains(step.Run, validation) {
+					t.Errorf("API release identity stamp is missing validation %q", validation)
+				}
+			}
+		case "Wait for API rollout":
+			wait = index
+		case "Emit ListingKit API release attestation":
+			attest = index
+		}
+	}
+	if apply < 0 || stamp < 0 || wait < 0 || attest < 0 || !(apply < stamp && stamp < wait && wait < attest) {
+		t.Fatalf("release identity must be stamped after immutable apply and before rollout acceptance/attestation: apply=%d stamp=%d wait=%d attest=%d", apply, stamp, wait, attest)
+	}
+}
+
 func TestListingKitUIDeployRequiresVerifiedExactAPIReleaseGate(t *testing.T) {
 	workflow := loadReleaseWorkflow(t, filepath.Join("..", ".github", "workflows", "listingkit-ui-deploy.yml"))
 	if workflow.Permissions["actions"] != "read" {
@@ -509,6 +552,23 @@ func TestListingKitImageAgentDrainRunbookDefinesCompleteSafeInventoryAndRecovery
 		"ImageSlotWorkflow",
 		"listingkit-image-agent-v2-drain-check.sh",
 		"Temporal CLI 1.8.1",
+		"--expected-run-id",
+		"--expected-run-attempt",
+		"--expected-api-image",
+		"--namespace",
+		"PGHOST",
+		"PGPORT",
+		"PGDATABASE",
+		"PGUSER",
+		"exactly three complete samples",
+		"300 seconds",
+		"10-minute first-to-final window",
+		"ListingKit operational policy, not a Temporal SLA",
+		"listingkit.sh/api-release-run-id",
+		"listingkit.sh/api-release-run-attempt",
+		"listingkit.sh/api-release-image",
+		"status NOT IN ('completed', 'failed', 'cancelled')",
+		"Local test evidence is not live acceptance",
 		"pendingChildren",
 		"pendingActivities",
 		"imageagent.execute_slot",

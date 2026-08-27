@@ -148,7 +148,7 @@ func TestListingKitDeployOrdersImageAgentGatesBeforeAPIRouting(t *testing.T) {
 			"v3_wait":     "rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m",
 			"canary_gate": "--deployment image-agent-temporal-v3-canary-runner",
 			"api_apply":   "product-listing-api-deployment.yaml",
-			"api_restart": "rollout restart deployment/product-listing-api",
+			"api_stamp":   "patch deployment product-listing-api",
 			"api_wait":    "rollout status deployment/product-listing-api --timeout=5m",
 		} {
 			if strings.Contains(step.Run, fragment) {
@@ -156,7 +156,7 @@ func TestListingKitDeployOrdersImageAgentGatesBeforeAPIRouting(t *testing.T) {
 			}
 		}
 	}
-	ordered := []string{"schema", "v2_apply", "v2_restart", "v2_wait", "v3_apply", "v3_restart", "v3_wait", "canary_gate", "api_apply", "api_restart", "api_wait"}
+	ordered := []string{"schema", "v2_apply", "v2_restart", "v2_wait", "v3_apply", "v3_restart", "v3_wait", "canary_gate", "api_apply", "api_stamp", "api_wait"}
 	previous := -1
 	for _, key := range ordered {
 		index, ok := indexes[key]
@@ -237,7 +237,7 @@ func assertImageAgentDeployment(t *testing.T, manifest imageAgentWorkloadManifes
 	}
 }
 
-func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T) {
+func TestListingKitDeployPreflightsBeforeItsAuthorizedDeploymentMutations(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
 	content, err := os.ReadFile(workflowPath)
 	if err != nil {
@@ -264,7 +264,8 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 	}
 
 	preflightIndex := -1
-	deploymentMutationIndexes := make([]int, 0, 1)
+	immutableDeploymentIndexes := make([]int, 0, 1)
+	releaseIdentityStampIndexes := make([]int, 0, 1)
 	for index, step := range deployJob.Steps {
 		if strings.Contains(step.Run, "--deployment listingkit-identity-preflight-runner") {
 			preflightIndex = index
@@ -279,7 +280,7 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 			}
 		}
 		if strings.Contains(step.Run, "scripts/listingkit-apply-api-deployment.sh") {
-			deploymentMutationIndexes = append(deploymentMutationIndexes, index)
+			immutableDeploymentIndexes = append(immutableDeploymentIndexes, index)
 			if step.If != "" && step.If != "${{ success() }}" {
 				t.Errorf("immutable deployment step must require prior success, got if: %q", step.If)
 			}
@@ -289,6 +290,18 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 			} {
 				if !strings.Contains(step.Run, required) {
 					t.Errorf("immutable deployment step must contain %q", required)
+				}
+			}
+		}
+		if strings.Contains(step.Run, "patch deployment product-listing-api") {
+			releaseIdentityStampIndexes = append(releaseIdentityStampIndexes, index)
+			for _, required := range []string{
+				"listingkit.sh/api-release-run-id",
+				"listingkit.sh/api-release-run-attempt",
+				"listingkit.sh/api-release-image",
+			} {
+				if !strings.Contains(step.Run, required) {
+					t.Errorf("release identity stamp must contain %q", required)
 				}
 			}
 		}
@@ -305,11 +318,17 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 	if preflightIndex < 0 {
 		t.Fatal("deploy-api job is missing the identity preflight driver")
 	}
-	if len(deploymentMutationIndexes) != 1 {
-		t.Fatalf("deploy-api job must contain exactly one immutable deployment mutation, got %d", len(deploymentMutationIndexes))
+	if len(immutableDeploymentIndexes) != 1 {
+		t.Fatalf("deploy-api job must contain exactly one immutable deployment mutation, got %d", len(immutableDeploymentIndexes))
 	}
-	if deploymentMutationIndexes[0] <= preflightIndex {
-		t.Fatalf("deployment mutation step %d must run after identity preflight step %d", deploymentMutationIndexes[0], preflightIndex)
+	if len(releaseIdentityStampIndexes) != 1 {
+		t.Fatalf("deploy-api job must contain exactly one API-owned release identity stamp, got %d", len(releaseIdentityStampIndexes))
+	}
+	if immutableDeploymentIndexes[0] <= preflightIndex {
+		t.Fatalf("immutable deployment step %d must run after identity preflight step %d", immutableDeploymentIndexes[0], preflightIndex)
+	}
+	if releaseIdentityStampIndexes[0] <= immutableDeploymentIndexes[0] {
+		t.Fatalf("release identity stamp step %d must run after immutable deployment step %d", releaseIdentityStampIndexes[0], immutableDeploymentIndexes[0])
 	}
 }
 
@@ -340,10 +359,10 @@ func TestListingKitDeployOwnsImageAgentWorkerBuildManifestAndImmutableRollout(t 
 	v2Wait := strings.Index(workflow, "rollout status deployment/image-agent-temporal-worker --timeout=5m")
 	v3Wait := strings.Index(workflow, "rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m")
 	canaryWait := strings.Index(workflow, "--deployment image-agent-temporal-v3-canary-runner")
-	apiRestart := strings.Index(workflow, "rollout restart deployment/product-listing-api")
+	apiStamp := strings.Index(workflow, "patch deployment product-listing-api")
 	apiWait := strings.Index(workflow, "rollout status deployment/product-listing-api --timeout=5m")
-	if v2Wait < 0 || v3Wait < 0 || canaryWait < 0 || apiRestart < 0 || apiWait < 0 || !(v2Wait < v3Wait && v3Wait < canaryWait && canaryWait < apiRestart && apiRestart < apiWait) {
-		t.Fatalf("v2, v3, and canary gates must complete before API routing restarts: v2Wait=%d v3Wait=%d canaryWait=%d apiRestart=%d apiWait=%d", v2Wait, v3Wait, canaryWait, apiRestart, apiWait)
+	if v2Wait < 0 || v3Wait < 0 || canaryWait < 0 || apiStamp < 0 || apiWait < 0 || !(v2Wait < v3Wait && v3Wait < canaryWait && canaryWait < apiStamp && apiStamp < apiWait) {
+		t.Fatalf("v2, v3, and canary gates must complete before the API release identity stamp: v2Wait=%d v3Wait=%d canaryWait=%d apiStamp=%d apiWait=%d", v2Wait, v3Wait, canaryWait, apiStamp, apiWait)
 	}
 	dockerfileBytes, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "Dockerfile.product-listing-api"))
 	if err != nil {
@@ -389,14 +408,14 @@ func TestListingKitDeployPublishesProductionSMSWebhookIngressAfterAPIRollout(t *
 	}
 
 	apiApplyIndex := strings.Index(deployJob, "scripts/listingkit-apply-api-deployment.sh")
-	restartIndex := strings.Index(deployJob, "kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/product-listing-api")
+	stampIndex := strings.Index(deployJob, "kubectl -n \"${{ env.K8S_NAMESPACE }}\" patch deployment product-listing-api")
 	rolloutIndex := strings.Index(deployJob, "kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/product-listing-api --timeout=5m")
 	ingressApplyIndex := strings.Index(deployJob, "kubectl -n ${{ env.K8S_NAMESPACE }} apply -f .workflow-tools/"+productionIngress)
-	if apiApplyIndex < 0 || restartIndex < 0 || rolloutIndex < 0 || ingressApplyIndex < 0 {
-		t.Fatalf("ListingKit deploy workflow must apply the API, restart it, wait for its rollout, and then apply the production SMS webhook ingress, api=%d restart=%d rollout=%d ingress=%d", apiApplyIndex, restartIndex, rolloutIndex, ingressApplyIndex)
+	if apiApplyIndex < 0 || stampIndex < 0 || rolloutIndex < 0 || ingressApplyIndex < 0 {
+		t.Fatalf("ListingKit deploy workflow must apply the API, stamp its release identity, wait for its rollout, and then apply the production SMS webhook ingress, api=%d stamp=%d rollout=%d ingress=%d", apiApplyIndex, stampIndex, rolloutIndex, ingressApplyIndex)
 	}
-	if !(apiApplyIndex < restartIndex && restartIndex < rolloutIndex && rolloutIndex < ingressApplyIndex) {
-		t.Fatal("ListingKit deploy workflow must restart API Pods after the immutable apply, wait for the rollout, then publish the SMS webhook ingress")
+	if !(apiApplyIndex < stampIndex && stampIndex < rolloutIndex && rolloutIndex < ingressApplyIndex) {
+		t.Fatal("ListingKit deploy workflow must stamp API release identity after the immutable apply, wait for the rollout, then publish the SMS webhook ingress")
 	}
 
 	ingressPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "overlays", "prod", "patch-ingress.yaml")

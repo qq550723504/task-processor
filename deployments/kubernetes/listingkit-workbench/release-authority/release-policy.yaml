@@ -38,7 +38,7 @@ releaseAuthority:
           - Wait for image agent v3 recovery worker rollout
           - Run finite image agent v3 compatibility canary
           - Apply immutable API deployment after image agent compatibility gates
-          - Restart API Pods for Secret changes and v3 new-start routing
+          - Stamp API release identity and restart Pods
           - Wait for API rollout
           - Apply production ListingKit SMS webhook ingress
           - Show running API image
@@ -77,6 +77,14 @@ releaseAuthority:
     conftestVersion: 0.68.2
     conftestImage: openpolicyagent/conftest@sha256:5fd81e332d7e4bc01daf3ef35371800a9a9720a30c0c37a78de0c5fbe4b6d622
     opaVersion: 1.15.2
+  releaseIdentity:
+    owner: api
+    deployment: product-listing-api
+    step: Stamp API release identity and restart Pods
+    annotations:
+      runId: listingkit.sh/api-release-run-id
+      runAttempt: listingkit.sh/api-release-run-attempt
+      image: listingkit.sh/api-release-image
   rbac:
     kustomization: deployments/kubernetes/listingkit-workbench/release-authority/kustomization.yaml
     paths:

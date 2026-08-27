@@ -463,9 +463,33 @@ jobs:
             --namespace "$K8S_NAMESPACE" \
             --image "$API_CANDIDATE_IMAGE"
 
-      - name: Restart API Pods for Secret changes and v3 new-start routing
+      - name: Stamp API release identity and restart Pods
+        shell: bash
         run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/product-listing-api
+          set -euo pipefail
+          if [[ ! "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::workflow run ID is not a positive integer"
+            exit 1
+          fi
+          if [[ ! "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::workflow run attempt is not a positive integer"
+            exit 1
+          fi
+          expected_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
+          if [[ ! "$API_CANDIDATE_IMAGE" =~ ^${expected_repository}@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::API candidate is not a digest-pinned image from the release repository"
+            exit 1
+          fi
+          release_patch="$(jq -cn \
+            --arg run_id_key "listingkit.sh/api-release-run-id" \
+            --arg run_attempt_key "listingkit.sh/api-release-run-attempt" \
+            --arg image_key "listingkit.sh/api-release-image" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg image "$API_CANDIDATE_IMAGE" \
+            '{metadata:{annotations:{($run_id_key):$run_id,($run_attempt_key):$run_attempt,($image_key):$image}},spec:{template:{metadata:{annotations:{($run_id_key):$run_id,($run_attempt_key):$run_attempt,($image_key):$image}}}}}')"
+          kubectl -n "${{ env.K8S_NAMESPACE }}" patch deployment product-listing-api \
+            --type merge --patch "$release_patch"
 
       - name: Wait for API rollout
         run: |

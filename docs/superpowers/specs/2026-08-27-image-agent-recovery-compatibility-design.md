@@ -384,10 +384,14 @@ query. Every sample must re-prove all of the following:
    identities for any nonzero/manual reconciliation result;
 3. the paired Temporal CLI 1.8.1 count/list evidence for parent and child types
    agrees, and exact describes contain no v2 queue child/activity work; and
-4. the fixed convergence interval has elapsed before the next sample.
+4. the fixed 300-second convergence interval has elapsed before the next
+   sample.
 
 Any producer, database, Temporal, parsing, command, or cross-source disagreement
 is nonzero evidence. The final sample repeats producer quiescence, so Visibility
 zero is only a convergence signal corroborated by serving-image and database
-authority. Tests replace `sleep` through `PATH` while retaining the production
-interval value; production has no zero-interval override.
+authority. The exactly three complete samples are separated by two 300-second
+waits, yielding a 10-minute first-to-final proof window. This duration is a
+ListingKit operational policy, not a Temporal SLA. Tests replace `sleep`
+through `PATH` while retaining the production interval value; production has no
+sample-count or zero-interval override.

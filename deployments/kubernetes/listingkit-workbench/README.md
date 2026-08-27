@@ -692,49 +692,97 @@ address/namespace config, and receives no Secret.
 
 ### Live preflight and v2 drain evidence
 
-Use Temporal CLI v1.8.1 for this evidence procedure. Set address and namespace
-without printing credentials, verify the pinned CLI version, and collect a
-paired `workflow count` and `workflow list` using the same exact query for both
-the parent and child workflow types. `ImageAgentWorkflow` parents own run-state,
-plan, pending-command, and approval Activities. Each `ImageSlotWorkflow` child
-owns the slot execution and slot-result persistence Activities, so parent-only
-describes are not drain evidence.
+Use Temporal CLI v1.8.1 for this evidence procedure. Take the expected API run
+ID, run attempt, and digest-pinned image from the selected release attestation;
+do not infer them from a tag or from the latest workflow run. Configure standard
+Temporal and PostgreSQL clients without printing credentials. `PGPASSWORD` or a
+protected `.pgpass` may supply PostgreSQL authentication, but neither belongs in
+the command line or captured output.
 
 ```bash
 set -euo pipefail
 : "${TEMPORAL_ADDRESS:?set the target Temporal address}"
 : "${TEMPORAL_NAMESPACE:?set the target Temporal namespace}"
-bash scripts/listingkit-image-agent-v2-drain-check.sh
+: "${PGHOST:?set the target PostgreSQL host}"
+: "${PGPORT:?set the target PostgreSQL port}"
+: "${PGDATABASE:?set the target PostgreSQL database}"
+: "${PGUSER:?set the target PostgreSQL user}"
+: "${K8S_NAMESPACE:?set the target Kubernetes namespace}"
+: "${API_RELEASE_RUN_ID:?set the attested API workflow run ID}"
+: "${API_RELEASE_RUN_ATTEMPT:?set the attested API workflow run attempt}"
+: "${API_RELEASE_IMAGE:?set the attested digest-pinned API image}"
+bash scripts/listingkit-image-agent-v2-drain-check.sh \
+  --expected-run-id "$API_RELEASE_RUN_ID" \
+  --expected-run-attempt "$API_RELEASE_RUN_ATTEMPT" \
+  --expected-api-image "$API_RELEASE_IMAGE" \
+  --namespace "$K8S_NAMESPACE"
 ```
 
-The checked-in script pins Temporal CLI 1.8.1, validates every count/list/describe
-command and JSON shape, requires count/list query identity and record-count
-parity, enumerates `ImageAgentWorkflow` and
-`ImageSlotWorkflow`, describes their exact workflow/run IDs, and reads each
-execution's queue, `pendingChildren`, and `pendingActivities`. It counts only
-the exact `image-agent-manual` queue and exact frozen legacy/`.v2` Activity
-allowlist, including `imageagent.execute_slot` and
-`imageagent.execute_slot.v2`.
+The checked-in script takes exactly three complete samples separated by exactly
+300 seconds: two non-overridable waits create a 10-minute first-to-final window.
+This is a ListingKit operational policy, not a Temporal SLA. Every sample
+freshly verifies the `product-listing-api` Deployment and every selected ready
+Pod against the digest-pinned image and all three release annotations:
+`listingkit.sh/api-release-run-id`,
+`listingkit.sh/api-release-run-attempt`, and
+`listingkit.sh/api-release-image`. A missing annotation, old or mixed image,
+unready/empty serving set, malformed Kubernetes response, or command failure is
+nonzero evidence.
 
-Its stdout is exactly these deterministic safe counters:
+Every sample also queries PostgreSQL for the complete authoritative producer
+inventory using `status NOT IN ('completed', 'failed', 'cancelled')`, preserves
+each full `(tenant_id, owner_user_id, id)` tuple in a private mode-0700 evidence
+directory, and maps it to
+`image-agent:${tenant_id}:${owner_user_id}:${run_id}`. It then pins Temporal CLI
+1.8.1, validates every count/list/describe command and JSON shape, requires
+count/list query identity and record-count parity, enumerates
+`ImageAgentWorkflow` and `ImageSlotWorkflow`, and describes exact workflow/run
+IDs. `ImageAgentWorkflow` parents own run-state, plan, pending-command, and
+approval Activities. Each `ImageSlotWorkflow` child owns slot execution and
+slot-result persistence Activities, so parent-only describes are not drain
+evidence. The script reads each execution's queue, `pendingChildren`, and
+`pendingActivities`, and counts only the exact `image-agent-manual` queue and
+exact frozen legacy/`.v2` Activity allowlist, including
+`imageagent.execute_slot` and `imageagent.execute_slot.v2`.
+
+Its stdout contains only deterministic safe counters: one block for each of the
+three samples followed by the fixed policy summary. For a two-Pod serving API,
+a successful final block and summary look like:
 
 ```text
+sample=3
+api_ready_pod_count=2
+db_nonterminal_run_count=0
+temporal_parent_identity_count=0
 open_v2_parent_count=0
 open_v2_child_count=0
 pending_v2_child_count=0
 pending_v2_activity_count=0
 pending_v2_activity_attempt_sum=0
+stable_sample_count=3
+convergence_interval_seconds=300
+first_to_final_window_seconds=600
 ```
 
-The script exits zero only when the first four counters are explicitly zero.
-Any nonzero inventory, malformed/missing identity or queue, unexpected v2-queue
-Activity, Temporal/jq failure, or unpinned CLI version exits nonzero. Temporal
-CLI 1.8.1 emits no list document at a genuine zero: the script accepts that
-zero-byte list only when the paired official count response is exactly zero.
-Whitespace-only output, a nonzero count with an empty list, or any count/list
-disagreement fails closed. Retain the v2 Deployment unless this executable gate
-exits zero; empty or partial stdout is never drain evidence. Output contains
-counts only, never credentials, object metadata, or presigned URLs.
+The script exits zero only when all three samples prove exact API release
+identity, a ready serving set, exact PostgreSQL/Temporal parent-identity parity,
+and explicit zero for every v2 retirement class. A database-only or
+Temporal-only identity, a producer appearing after an earlier zero, a stale
+first or second Visibility zero followed by nonzero, malformed/missing identity
+or queue, unexpected v2-queue Activity, command failure, or unpinned CLI version
+fails closed. Temporal CLI 1.8.1 emits no list document at a genuine zero: the
+script accepts that zero-byte list only when the paired official count response
+is exactly zero. Whitespace-only output, a nonzero count with an empty list, or
+any count/list disagreement also fails closed. Retain the v2 Deployment unless
+this executable gate exits zero; empty or partial stdout is never drain
+evidence. Full identities remain in private temporary evidence and stdout never
+contains credentials, object metadata, or presigned URLs.
+
+Local test evidence is not live acceptance. Unit tests replace `kubectl`,
+`psql`, Temporal, `jq`, and `sleep`; they prove fail-closed control flow and the
+fixed waits without contacting production. Only an explicitly authorized live
+run against the selected release identity can provide operational drain
+acceptance, and this repository procedure does not authorize that live run.
 
 Identify the `702d76631` rebound window from deployment records, not from Git
 commit time: record the instant that image first became active and the instant

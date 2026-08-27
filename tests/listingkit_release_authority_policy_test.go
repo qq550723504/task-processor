@@ -62,6 +62,16 @@ func TestListingKitReleaseAuthorityMachinePolicyOwnsAllSecurityInputs(t *testing
 				ConftestVersion string `yaml:"conftestVersion"`
 				OPAVersion      string `yaml:"opaVersion"`
 			} `yaml:"tools"`
+			ReleaseIdentity struct {
+				Owner       string `yaml:"owner"`
+				Deployment  string `yaml:"deployment"`
+				Step        string `yaml:"step"`
+				Annotations struct {
+					RunID      string `yaml:"runId"`
+					RunAttempt string `yaml:"runAttempt"`
+					Image      string `yaml:"image"`
+				} `yaml:"annotations"`
+			} `yaml:"releaseIdentity"`
 			RBAC struct {
 				Kustomization string   `yaml:"kustomization"`
 				Paths         []string `yaml:"paths"`
@@ -98,6 +108,13 @@ func TestListingKitReleaseAuthorityMachinePolicyOwnsAllSecurityInputs(t *testing
 	}
 	if authority.Tools.ConftestVersion == "" || authority.Tools.OPAVersion == "" || strings.Contains(authority.Tools.ConftestVersion, "latest") || strings.Contains(authority.Tools.OPAVersion, "latest") {
 		t.Fatalf("release policy must pin Conftest and embedded OPA versions: %#v", authority.Tools)
+	}
+	if authority.ReleaseIdentity.Owner != "api" || authority.ReleaseIdentity.Deployment != "product-listing-api" ||
+		authority.ReleaseIdentity.Step != "Stamp API release identity and restart Pods" ||
+		authority.ReleaseIdentity.Annotations.RunID != "listingkit.sh/api-release-run-id" ||
+		authority.ReleaseIdentity.Annotations.RunAttempt != "listingkit.sh/api-release-run-attempt" ||
+		authority.ReleaseIdentity.Annotations.Image != "listingkit.sh/api-release-image" {
+		t.Fatalf("release policy must own the exact API release identity stamp: %#v", authority.ReleaseIdentity)
 	}
 	if authority.RBAC.Kustomization == "" || len(authority.RBAC.Paths) < 6 || len(authority.ProtectedResources) == 0 {
 		t.Fatalf("release policy must own RBAC paths and protected resources: %#v", authority.RBAC)
@@ -203,6 +220,7 @@ func TestListingKitReleaseAuthorityNegativeFixturesAreCheckedIn(t *testing.T) {
 		"excess-rbac-resources.yaml",
 		"excess-rbac-resource-names.yaml",
 		"policy-drift.yaml",
+		"release-identity-owner-drift.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
 			t.Errorf("missing release-authority negative fixture %s: %v", name, err)

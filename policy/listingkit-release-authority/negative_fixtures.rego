@@ -16,3 +16,4 @@ deny contains "excess RBAC verbs" if input.rbac.verbs[_] == input.excessVerb
 deny contains "excess RBAC resources" if input.rbac.resources[_] == input.excessResource
 deny contains "excess RBAC resource names" if input.rbac.resourceNames[_] == input.excessResourceName
 deny contains "machine policy drift" if input.policy.repository != "qq550723504/task-processor"
+deny contains "release identity owner drift" if input.releaseIdentity.owner != "api"

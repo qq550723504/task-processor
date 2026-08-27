@@ -717,38 +717,40 @@ Passing local checks do not prove production drain or canary acceptance. Record 
 
 ### Task 8 round-4 design correction: enforce authority and stable drain
 
-- [ ] Replace both production jobs' long-lived `KUBE_CONFIG` setup with distinct
+- [x] Replace both production jobs' long-lived `KUBE_CONFIG` setup with distinct
   `listingkit-api-production` / `listingkit-ui-production` GitHub environments,
   `id-token: write`, distinct OIDC audiences, and fail-closed ephemeral
   kubeconfig construction from the GitHub OIDC token plus non-credential cluster
   endpoint/CA configuration.
-- [ ] Add one-time Kubernetes Roles and RoleBindings for the exact OIDC subjects.
+- [x] Add one-time Kubernetes Roles and RoleBindings for the exact OIDC subjects.
   Split API and UI protected resource names/verbs; release workflows may verify
   but may not create or widen their own RBAC.
-- [ ] Replace dynamically created migration, identity-preflight, and canary Jobs
+- [x] Replace dynamically created migration, identity-preflight, and canary Jobs
   with four administrator-installed, zero-replica runner Deployments whose init
   containers execute the gates. The API release may patch/scale/get only those
   exact Deployments; the native Deployment controller owns transient Pods and
   the driver always scales runners back to zero. Do not grant top-level
   `create jobs`, because Kubernetes cannot constrain it by `resourceNames`.
-- [ ] Add one machine-readable release policy and pinned OPA/Conftest checks for
+- [x] Add one machine-readable release policy and pinned OPA/Conftest checks for
   workflow identity, exact owner steps, OIDC configuration, RBAC resources, and
   verbs. Remove the handwritten workflow/helper/Markdown regex security grammar.
   Keep only AST-based Markdown code-block lint as non-authoritative defense in
   depth.
-- [ ] Annotate the API Deployment/Pods with exact release run ID, run attempt,
+- [x] Annotate the API Deployment/Pods with exact release run ID, run attempt,
   and immutable digest before emitting release attestation.
-- [ ] Extend the checked-in v2 drain executable to require three stable samples
-  across a fixed convergence interval. Every sample verifies all serving API
+- [x] Extend the checked-in v2 drain executable to require exactly three stable
+  samples across two fixed 300-second convergence waits (a 10-minute
+  first-to-final ListingKit operational-policy window, not a Temporal SLA).
+  Every sample verifies all serving API
   images/annotations, queries the complete non-terminal database run inventory
   by full identity, and repeats exact Temporal parent/child count/list/describe
   checks. Any disagreement fails closed.
-- [ ] Add negative fixtures for wrong/mixed API image, missing/wrong run attempt,
+- [x] Add negative fixtures for wrong/mixed API image, missing/wrong run attempt,
   a database-only run, a Temporal-only run, a producer appearing after the first
   zero, stale Visibility, OIDC/KUBE_CONFIG fallback, shared identity, excessive
   RBAC verbs/resources, reusable workflow/action bypass, and altered machine
   policy ownership.
-- [ ] Run pinned Conftest, actionlint, focused/full/race/vet, Pester, frontend,
+- [x] Run pinned Conftest, actionlint, focused/full/race/vet, Pester, frontend,
   Bash, Kustomize/client dry-run, replay, Pod-loss, credential, mode, and diff
   gates before an independent round-4 review.
 
