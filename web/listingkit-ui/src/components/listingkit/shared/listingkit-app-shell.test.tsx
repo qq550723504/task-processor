@@ -17,7 +17,7 @@ describe("ListingKitAppShell", () => {
     cleanup();
   });
 
-  it("renders the main ListingKit workflow navigation", () => {
+  it("renders the main ListingKit product navigation", () => {
     render(
       <ListingKitAppShell
         identity={{
@@ -32,28 +32,34 @@ describe("ListingKitAppShell", () => {
     );
 
     expect(screen.getByText("ListingKit")).toBeInTheDocument();
-    expect(screen.getByText("源信息 -> 标准商品 -> 平台资料")).toBeInTheDocument();
+    expect(screen.getByText("商品 → 平台 → 上架")).toBeInTheDocument();
     const sidebarNav = screen.getByRole("navigation", {
       name: "ListingKit 侧边栏导航",
     });
 
     expect(sidebarNav).toBeInTheDocument();
     expect(sidebarNav.closest("[data-slot='sidebar']")).toBeInTheDocument();
-    expect(screen.getByText("主流程")).toBeInTheDocument();
-    expect(screen.getByText("管理后台")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "首页" })).toHaveAttribute(
+    expect(screen.getByText("工作")).toBeInTheDocument();
+    expect(screen.getByText("管理")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "工作台" })).toHaveAttribute(
       "href",
       "/listing-kits/home",
     );
-    expect(screen.getByRole("link", { name: "新建任务" })).toHaveAttribute("href", "/listing-kits/new");
+
+    const productSection = screen.getByRole("button", { name: "商品" });
+    expect(productSection).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "商品中心" })).toHaveAttribute(
+      "href",
+      "/listing-kits/canonical-products",
+    );
+    expect(screen.getByRole("link", { name: "导入商品" })).toHaveAttribute(
+      "href",
+      "/listing-kits/new",
+    );
     expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute("href", "/listing-kits/sds");
     expect(screen.getByRole("link", { name: "款式图库" })).toHaveAttribute(
       "href",
       "/listing-kits/style-gallery",
-    );
-    expect(screen.getByRole("link", { name: "标准商品" })).toHaveAttribute(
-      "href",
-      "/listing-kits/canonical-products",
     );
     expect(screen.getByRole("button", { name: "业务运营" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "调度与导入" })).toBeInTheDocument();
@@ -67,7 +73,7 @@ describe("ListingKitAppShell", () => {
     expect(screen.queryByRole("link", { name: "提示词" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "租户订阅管理" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "SHEIN 上架" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "任务列表" })).toHaveAttribute("href", "/listing-kits");
+    expect(screen.getByRole("link", { name: "执行记录" })).toHaveAttribute("href", "/listing-kits");
     expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute(
       "aria-current",
       "page",
@@ -274,8 +280,9 @@ describe("ListingKitAppShell", () => {
       </ListingKitAppShell>,
     );
 
+    expect(screen.getByRole("button", { name: "商品" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "POD" })).toBeInTheDocument();
-    expect(screen.getByText("管理后台")).toBeInTheDocument();
+    expect(screen.getByText("管理")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "业务运营" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "账号与系统" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "调度与导入" })).not.toBeInTheDocument();
@@ -327,19 +334,19 @@ describe("ListingKitAppShell", () => {
     const toggle = within(sidebar).getByRole("button", { name: "折叠菜单" });
 
     expect(sidebar).toHaveAttribute("data-state", "expanded");
+    expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute("aria-current", "page");
 
     await user.click(toggle);
 
     expect(sidebar).toHaveAttribute("data-state", "collapsed");
-    expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(screen.queryByRole("link", { name: "POD" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "商品" })).toBeInTheDocument();
     expect(toggle).toHaveAccessibleName("展开菜单");
 
     await user.click(toggle);
 
     expect(sidebar).toHaveAttribute("data-state", "expanded");
+    expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute("aria-current", "page");
     expect(toggle).toHaveAccessibleName("折叠菜单");
   });
 

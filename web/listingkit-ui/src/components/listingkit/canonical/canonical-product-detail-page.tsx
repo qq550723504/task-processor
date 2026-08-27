@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ApiError } from "@/lib/api/api-error";
 import { useCanonicalProductDetail } from "@/lib/query/use-canonical-products";
 import type { CanonicalAttribute, CanonicalProduct } from "@/lib/types/listingkit";
 
@@ -35,13 +36,30 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
     );
   }
 
-  if (detail.isError || !detail.data) {
+  if (detail.isError) {
+    const isNotFound = detail.error instanceof ApiError && detail.error.status === 404;
     return (
       <ListingKitPageShell backgroundClassName="bg-background">
         <EmptyState
-          title="未找到标准商品"
-          description="这个任务结果中没有 canonical_product，或接口暂时不可用。"
-          action={<Link href="/listing-kits/canonical-products" className="text-sm font-medium text-foreground underline">返回列表</Link>}
+          title={isNotFound ? "未找到商品" : "商品加载失败"}
+          description={
+            isNotFound
+              ? "商品不存在或链接已失效，请返回商品中心重新选择。"
+              : "暂时无法读取这份商品资料，请稍后重试。"
+          }
+          action={<Link href="/listing-kits/canonical-products" className="text-sm font-medium text-foreground underline">返回商品中心</Link>}
+        />
+      </ListingKitPageShell>
+    );
+  }
+
+  if (!detail.data) {
+    return (
+      <ListingKitPageShell backgroundClassName="bg-background">
+        <EmptyState
+          title="未找到商品"
+          description="这份商品资料不存在或尚未生成，请返回商品中心重新选择。"
+          action={<Link href="/listing-kits/canonical-products" className="text-sm font-medium text-foreground underline">返回商品中心</Link>}
         />
       </ListingKitPageShell>
     );
@@ -53,26 +71,26 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
     <ListingKitPageShell backgroundClassName="bg-background" contentClassName="gap-5">
       <Link href="/listing-kits/canonical-products" className="inline-flex w-fit items-center text-sm font-medium text-muted-foreground hover:text-foreground">
         <ArrowLeft className="mr-2 h-4 w-4" />
-        返回标准商品列表
+        返回商品中心
       </Link>
 
       <section className="grid gap-5 border-b border-border pb-6 xl:grid-cols-[1fr_320px]">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-teal-700">
-            标准商品详情
+            商品详情
           </p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-            {product.title || detail.data.taskId}
+            {product.title || "未命名商品"}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {product.brand || "未知品牌"} · {product.category_path?.join(" / ") || "未分类"}
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <Button asChild>
-              <Link href={detail.data.workspaceHref}>进入工作台</Link>
+              <Link href={detail.data.workspaceHref}>编辑商品</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href={`/listing-kits/${detail.data.taskId}/status`}>查看原任务</Link>
+              <Link href={`/listing-kits/${detail.data.taskId}/status`}>查看执行记录</Link>
             </Button>
           </div>
         </div>
@@ -80,7 +98,7 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
           <div className="grid gap-3 text-center sm:grid-cols-3">
             <Metric label="图片" value={detail.data.summary.imageCount} />
             <Metric label="变体" value={detail.data.summary.variantCount} />
-            <Metric label="需审核字段" value={detail.data.reviewFieldCount} />
+            <Metric label="需确认字段" value={detail.data.reviewFieldCount} />
           </div>
         </Card>
       </section>
@@ -91,17 +109,16 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
         <Card className="overflow-hidden">
           <CanonicalImages product={product} />
           <div className="p-4 text-sm text-muted-foreground">
-            <div className="break-all font-mono text-xs text-muted-foreground">{detail.data.taskId}</div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               {detail.data.summary.needsReview ? (
                 <Badge className="gap-1 rounded-full" variant="warning">
                   <ShieldAlert className="mr-1 h-3.5 w-3.5" />
-                  需要人工审核
+                  需要确认
                 </Badge>
               ) : (
                 <Badge className="gap-1 rounded-full" variant="success">
                   <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                  字段可信
+                  已校验
                 </Badge>
               )}
             </div>
@@ -280,10 +297,10 @@ function CanonicalFieldTraces({
 }) {
   return (
     <Card className="p-5">
-      <h2 className="text-base font-semibold text-foreground">字段证据</h2>
+      <h2 className="text-base font-semibold text-foreground">字段依据</h2>
       <div className="mt-4 grid gap-2">
         {traces.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无字段追踪</p>
+          <p className="text-sm text-muted-foreground">暂无字段依据</p>
         ) : traces.map(({ field, trace }) => (
           <div key={field} className="flex flex-col gap-3 rounded-lg border border-border bg-background px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <div>
@@ -293,7 +310,7 @@ function CanonicalFieldTraces({
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{Math.round((trace.confidence ?? 0) * 100)}%</span>
               <span className={trace.needs_review ? "text-amber-700" : "text-emerald-700"}>
-                {trace.needs_review ? "需审核" : "可信"}
+                {trace.needs_review ? "需确认" : "已校验"}
               </span>
             </div>
           </div>
