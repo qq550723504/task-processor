@@ -3,25 +3,64 @@ package storage
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"task-processor/internal/core/logger"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/sirupsen/logrus"
 )
 
 // S3Uploader S3上传器
 type S3Uploader struct {
-	s3Client     *s3.Client
+	s3Client     S3ObjectAPI
 	bucket       string
 	publicBase   string
 	endpoint     string
 	usePathStyle bool
 	logger       *logrus.Entry
+}
+
+// S3ObjectAPI is the narrow AWS SDK v2 call boundary used by S3Uploader. The
+// production constructor still receives the configured *s3.Client; this
+// interface permits focused tests to fake only Put/Head/Copy calls.
+type S3ObjectAPI interface {
+	PutObject(context.Context, *s3.PutObjectInput, ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	HeadObject(context.Context, *s3.HeadObjectInput, ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
+	CopyObject(context.Context, *s3.CopyObjectInput, ...func(*s3.Options)) (*s3.CopyObjectOutput, error)
+	DeleteObject(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
+}
+
+type ObjectInspection struct {
+	Exists               bool
+	ContentLength        int64
+	ContentType          string
+	Metadata             map[string]string
+	ServerChecksumSHA256 string
+	ETag                 string
+}
+
+type ImmutableObjectPut struct {
+	Key         string
+	Data        []byte
+	ContentType string
+	SHA256      string
+	SizeBytes   int64
+}
+
+type ImmutableObjectCopy struct {
+	SourceKey   string
+	Destination ImmutableObjectPut
 }
 
 // S3Config S3配置
@@ -43,6 +82,12 @@ func NewS3Uploader(s3Client *s3.Client, bucket string) *S3Uploader {
 }
 
 func NewS3UploaderWithOptions(s3Client *s3.Client, opts S3UploaderOptions) *S3Uploader {
+	return NewS3UploaderWithAPI(s3Client, opts)
+}
+
+// NewS3UploaderWithAPI is intended for tests that need to fake the AWS SDK
+// request boundary. Runtime composition should use NewS3UploaderWithOptions.
+func NewS3UploaderWithAPI(s3Client S3ObjectAPI, opts S3UploaderOptions) *S3Uploader {
 	return &S3Uploader{
 		s3Client:     s3Client,
 		bucket:       opts.Bucket,
@@ -51,6 +96,95 @@ func NewS3UploaderWithOptions(s3Client *s3.Client, opts S3UploaderOptions) *S3Up
 		usePathStyle: opts.UsePathStyle,
 		logger:       logger.GetGlobalLogger("S3Uploader"),
 	}
+}
+
+// PutImmutable writes an object only when its deterministic key is unused. It
+// records application metadata as a fallback for S3-compatible endpoints that
+// do not expose a server checksum through HeadObject.
+func (u *S3Uploader) PutImmutable(ctx context.Context, object ImmutableObjectPut) error {
+	if err := validateImmutableObjectIdentity(object); err != nil {
+		return err
+	}
+	if int64(len(object.Data)) != object.SizeBytes {
+		return fmt.Errorf("immutable S3 object body length does not match metadata")
+	}
+	checksum, err := sha256Base64(object.SHA256)
+	if err != nil {
+		return err
+	}
+	_, err = u.s3Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:            aws.String(u.bucket),
+		Key:               aws.String(object.Key),
+		Body:              bytes.NewReader(object.Data),
+		ContentLength:     aws.Int64(object.SizeBytes),
+		ContentType:       aws.String(object.ContentType),
+		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+		ChecksumSHA256:    aws.String(checksum),
+		IfNoneMatch:       aws.String("*"),
+		Metadata: map[string]string{
+			"sha256":     strings.ToLower(object.SHA256),
+			"size-bytes": strconv.FormatInt(object.SizeBytes, 10),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("put immutable S3 object %q: %w", object.Key, err)
+	}
+	return nil
+}
+
+// InspectObject returns typed object metadata. Only explicit AWS/Smithy
+// not-found errors become Exists=false; every other HeadObject error remains
+// observable to recovery callers.
+func (u *S3Uploader) InspectObject(ctx context.Context, key string) (ObjectInspection, error) {
+	output, err := u.s3Client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket:       aws.String(u.bucket),
+		Key:          aws.String(key),
+		ChecksumMode: types.ChecksumModeEnabled,
+	})
+	if err != nil {
+		if isS3NotFound(err) {
+			return ObjectInspection{}, nil
+		}
+		return ObjectInspection{}, fmt.Errorf("head S3 object %q: %w", key, err)
+	}
+	metadata := make(map[string]string, len(output.Metadata))
+	for name, value := range output.Metadata {
+		metadata[strings.ToLower(name)] = value
+	}
+	return ObjectInspection{
+		Exists:               true,
+		ContentLength:        aws.ToInt64(output.ContentLength),
+		ContentType:          aws.ToString(output.ContentType),
+		Metadata:             metadata,
+		ServerChecksumSHA256: aws.ToString(output.ChecksumSHA256),
+		ETag:                 aws.ToString(output.ETag),
+	}, nil
+}
+
+// CopyImmutable copies a verified staged object to an unused deterministic
+// destination. Destination preconditions prevent it from overwriting a key
+// created by a concurrent or external writer.
+func (u *S3Uploader) CopyImmutable(ctx context.Context, object ImmutableObjectCopy) error {
+	if err := validateImmutableObjectIdentity(object.Destination); err != nil {
+		return err
+	}
+	_, err := u.s3Client.CopyObject(ctx, &s3.CopyObjectInput{
+		Bucket:            aws.String(u.bucket),
+		Key:               aws.String(object.Destination.Key),
+		CopySource:        aws.String(copySource(u.bucket, object.SourceKey)),
+		ContentType:       aws.String(object.Destination.ContentType),
+		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+		IfNoneMatch:       aws.String("*"),
+		MetadataDirective: types.MetadataDirectiveReplace,
+		Metadata: map[string]string{
+			"sha256":     strings.ToLower(object.Destination.SHA256),
+			"size-bytes": strconv.FormatInt(object.Destination.SizeBytes, 10),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("copy immutable S3 object %q to %q: %w", object.SourceKey, object.Destination.Key, err)
+	}
+	return nil
 }
 
 // Upload 上传图片到S3
@@ -199,18 +333,11 @@ func (u *S3Uploader) Delete(ctx context.Context, key string) error {
 
 // Exists 检查S3对象是否存在
 func (u *S3Uploader) Exists(ctx context.Context, key string) (bool, error) {
-	input := &s3.HeadObjectInput{
-		Bucket: aws.String(u.bucket),
-		Key:    aws.String(key),
-	}
-
-	_, err := u.s3Client.HeadObject(ctx, input)
+	inspection, err := u.InspectObject(ctx, key)
 	if err != nil {
-		// 如果是NotFound错误，返回false
-		return false, nil
+		return false, err
 	}
-
-	return true, nil
+	return inspection.Exists, nil
 }
 
 // generateKey 生成S3 key
@@ -268,4 +395,42 @@ func (u *S3Uploader) resolveObjectURL(key string) string {
 		fallbackURL = fmt.Sprintf("https://%s.s3.amazonaws.com/%s", u.bucket, key)
 	}
 	return ResolveObjectURL(u.publicBase, key, fallbackURL)
+}
+
+func validateImmutableObjectIdentity(object ImmutableObjectPut) error {
+	if strings.TrimSpace(object.Key) == "" || object.Key != strings.TrimSpace(object.Key) || object.SizeBytes <= 0 || strings.TrimSpace(object.ContentType) == "" || strings.TrimSpace(object.SHA256) == "" {
+		return fmt.Errorf("invalid immutable S3 object")
+	}
+	return nil
+}
+
+func sha256Base64(value string) (string, error) {
+	decoded, err := hex.DecodeString(value)
+	if err != nil || len(decoded) != 32 {
+		return "", fmt.Errorf("invalid SHA-256")
+	}
+	return base64.StdEncoding.EncodeToString(decoded), nil
+}
+
+func copySource(bucket, key string) string {
+	return bucket + "/" + key
+}
+
+func isS3NotFound(err error) bool {
+	var noSuchKey *types.NoSuchKey
+	if errors.As(err, &noSuchKey) {
+		return true
+	}
+	var notFound *types.NotFound
+	if errors.As(err, &notFound) {
+		return true
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "NoSuchKey", "NotFound":
+			return true
+		}
+	}
+	return false
 }
