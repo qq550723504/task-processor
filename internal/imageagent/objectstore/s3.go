@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"task-processor/internal/imageagent"
 	"task-processor/internal/infra/storage"
@@ -42,6 +43,7 @@ type S3DurableArtifactStoreConfig struct {
 	MaxAggregateBytes int64
 	MaxImageDimension int
 	MaxImagePixels    int64
+	OperationTimeout  time.Duration
 }
 
 // S3DurableArtifactStore is the S3/COS adapter for deterministic, durable
@@ -54,6 +56,7 @@ type S3DurableArtifactStore struct {
 	maxAggregateBytes int64
 	maxImageDimension int
 	maxImagePixels    int64
+	operationTimeout  time.Duration
 	inspectImage      func([]byte) (*imagex.ImageInfo, error)
 }
 
@@ -86,8 +89,8 @@ func (prepared PreparedSlotArtifacts) MarshalJSON() ([]byte, error) {
 }
 
 func NewS3DurableArtifactStore(uploader *storage.S3Uploader, cfg S3DurableArtifactStoreConfig) (*S3DurableArtifactStore, error) {
-	if uploader == nil || cfg.MaxArtifactBytes <= 0 {
-		return nil, fmt.Errorf("durable S3 artifact store requires uploader and positive artifact limit")
+	if uploader == nil || cfg.MaxArtifactBytes <= 0 || cfg.OperationTimeout <= 0 {
+		return nil, fmt.Errorf("durable S3 artifact store requires uploader, positive artifact limit, and positive operation timeout")
 	}
 	if cfg.MaxArtifactCount <= 0 {
 		cfg.MaxArtifactCount = defaultMaxArtifactCount
@@ -101,7 +104,7 @@ func NewS3DurableArtifactStore(uploader *storage.S3Uploader, cfg S3DurableArtifa
 	if cfg.MaxImagePixels <= 0 {
 		cfg.MaxImagePixels = defaultMaxImagePixels
 	}
-	return &S3DurableArtifactStore{uploader: uploader, maxArtifactBytes: cfg.MaxArtifactBytes, maxArtifactCount: cfg.MaxArtifactCount, maxAggregateBytes: cfg.MaxAggregateBytes, maxImageDimension: cfg.MaxImageDimension, maxImagePixels: cfg.MaxImagePixels, inspectImage: imagex.Inspect}, nil
+	return &S3DurableArtifactStore{uploader: uploader, maxArtifactBytes: cfg.MaxArtifactBytes, maxArtifactCount: cfg.MaxArtifactCount, maxAggregateBytes: cfg.MaxAggregateBytes, maxImageDimension: cfg.MaxImageDimension, maxImagePixels: cfg.MaxImagePixels, operationTimeout: cfg.OperationTimeout, inspectImage: imagex.Inspect}, nil
 }
 
 func (s *S3DurableArtifactStore) PrepareSlotArtifacts(input PrepareSlotArtifactsInput) (PreparedSlotArtifacts, error) {
@@ -201,7 +204,7 @@ func (s *S3DurableArtifactStore) FinalizeWithProgress(ctx context.Context, manif
 		finalKey := staged.identity.publicKey()
 		finalAsset := staged.ref
 		finalAsset.ObjectKey = finalKey
-		inspection, err := s.uploader.InspectObject(ctx, finalKey)
+		inspection, err := s.inspectObject(ctx, finalKey)
 		if err != nil {
 			return imageagent.FinalManifest{}, err
 		}
@@ -210,9 +213,9 @@ func (s *S3DurableArtifactStore) FinalizeWithProgress(ctx context.Context, manif
 				return imageagent.FinalManifest{}, err
 			}
 		} else {
-			copyErr := s.uploader.CopyImmutable(ctx, storage.ImmutableObjectCopy{SourceKey: staged.ref.ObjectKey, Destination: immutablePut(finalAsset, nil)})
+			copyErr := s.copyImmutable(ctx, storage.ImmutableObjectCopy{SourceKey: staged.ref.ObjectKey, Destination: immutablePut(finalAsset, nil)})
 			if copyErr != nil {
-				inspection, err = s.uploader.InspectObject(ctx, finalKey)
+				inspection, err = s.inspectObject(ctx, finalKey)
 				if err != nil {
 					return imageagent.FinalManifest{}, err
 				}
@@ -241,7 +244,7 @@ func cloneOperationsPreservingNil(operations []string) []string {
 }
 
 func (s *S3DurableArtifactStore) ensureObject(ctx context.Context, asset imageagent.StagedAssetRef, data []byte) error {
-	inspection, err := s.uploader.InspectObject(ctx, asset.ObjectKey)
+	inspection, err := s.inspectObject(ctx, asset.ObjectKey)
 	if err != nil {
 		return err
 	}
@@ -251,9 +254,9 @@ func (s *S3DurableArtifactStore) ensureObject(ctx context.Context, asset imageag
 	if int64(len(data)) != asset.SizeBytes {
 		return ErrArtifactUnavailable
 	}
-	putErr := s.uploader.PutImmutable(ctx, immutablePut(asset, data))
+	putErr := s.putImmutable(ctx, immutablePut(asset, data))
 	if putErr != nil {
-		inspection, err = s.uploader.InspectObject(ctx, asset.ObjectKey)
+		inspection, err = s.inspectObject(ctx, asset.ObjectKey)
 		if err != nil {
 			return err
 		}
@@ -297,7 +300,7 @@ func (s *S3DurableArtifactStore) withinImageLimits(width, height int) bool {
 }
 
 func (s *S3DurableArtifactStore) verifyExistingObject(ctx context.Context, asset imageagent.StagedAssetRef) error {
-	inspection, err := s.uploader.InspectObject(ctx, asset.ObjectKey)
+	inspection, err := s.inspectObject(ctx, asset.ObjectKey)
 	if err != nil {
 		return err
 	}
@@ -305,6 +308,24 @@ func (s *S3DurableArtifactStore) verifyExistingObject(ctx context.Context, asset
 		return ErrArtifactUnavailable
 	}
 	return verifyInspection(inspection, asset)
+}
+
+func (s *S3DurableArtifactStore) inspectObject(ctx context.Context, key string) (storage.ObjectInspection, error) {
+	operationCtx, cancel := context.WithTimeout(ctx, s.operationTimeout)
+	defer cancel()
+	return s.uploader.InspectObject(operationCtx, key)
+}
+
+func (s *S3DurableArtifactStore) putImmutable(ctx context.Context, object storage.ImmutableObjectPut) error {
+	operationCtx, cancel := context.WithTimeout(ctx, s.operationTimeout)
+	defer cancel()
+	return s.uploader.PutImmutable(operationCtx, object)
+}
+
+func (s *S3DurableArtifactStore) copyImmutable(ctx context.Context, object storage.ImmutableObjectCopy) error {
+	operationCtx, cancel := context.WithTimeout(ctx, s.operationTimeout)
+	defer cancel()
+	return s.uploader.CopyImmutable(operationCtx, object)
 }
 
 func immutablePut(asset imageagent.StagedAssetRef, data []byte) storage.ImmutableObjectPut {

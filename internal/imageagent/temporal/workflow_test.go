@@ -804,6 +804,68 @@ func TestSummarizeV3ResultsPreservesPublicationUnknownBlockCode(t *testing.T) {
 	require.Equal(t, []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{Mode: imageagent.RunModeManual, Status: projection.Status, Block: projection.Block}))
 }
 
+func TestInvalidPersistedV3PolicySurvivesProjectionRefreshAndRejectsDirectRetry(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		code string
+		want string
+	}{
+		{name: "phase", code: "slot_effect_phase_invalid", want: "slot_effect_phase_invalid"},
+		{name: "policy", code: "slot_effect_policy_invalid", want: "slot_effect_policy_invalid"},
+		{name: "unknown v3 policy", code: "slot_effect_future_policy_invalid", want: "slot_effect_policy_invalid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := imageagent.Plan{
+				Revision: 1, IdempotencyKey: "plan-invalid-policy", SourceAssetIDs: []string{"source-1"}, CreatedBy: "user-a",
+				Slots: []imageagent.Slot{{ID: "scene-1", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "scene-key"}},
+			}
+			result := SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: "scene-1", Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: tc.code}
+			summarized := summarizeResultsV3(plan, []SlotWorkflowV3Result{result})
+			require.Equal(t, tc.want, summarized.Block.Code)
+
+			for _, repository := range []struct {
+				name string
+				new  func(t *testing.T) imageagent.Repository
+			}{
+				{name: "memory", new: func(*testing.T) imageagent.Repository { return store.NewMemoryRepository() }},
+				{name: "gorm", new: func(t *testing.T) imageagent.Repository {
+					db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+					require.NoError(t, err)
+					require.NoError(t, store.AutoMigrate(db))
+					return store.NewGormRepository(db)
+				}},
+			} {
+				t.Run(repository.name, func(t *testing.T) {
+					repo := repository.new(t)
+					run := imageagent.Run{
+						ID: "run-invalid-policy-" + tc.name + "-" + repository.name, BusinessTaskID: "task-invalid-policy",
+						TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-" + tc.name + "-" + repository.name,
+						Status: summarized.Status, ActivePlanRevision: plan.Revision, Version: 1, Block: summarized.Block,
+					}
+					snapshot := imageagent.RunProjection{Run: run, Plan: plan, Slots: summarized.Slots, Actions: imageagent.AllowedActions(run)}
+					_, err := repo.InitializeRun(context.Background(), imageagent.ProjectionInitialization{
+						Scope: imageagent.ScopeForRun(run), Run: run, Plan: plan,
+						Catalog:  imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source.png"}}},
+						Snapshot: snapshot, CommitID: "start:" + run.IdempotencyKey, EventType: "run.initialized", EventPayload: []byte(`{}`),
+					})
+					require.NoError(t, err)
+					refreshed, err := repo.GetProjection(context.Background(), imageagent.ScopeForRun(run))
+					require.NoError(t, err)
+					require.Equal(t, tc.want, refreshed.Run.Block.Code)
+					require.Equal(t, []imageagent.Action{imageagent.ActionCancel}, refreshed.Actions)
+
+					input := WorkflowInput{RunID: run.ID, Mode: run.Mode, Identity: imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID}, Plan: refreshed.Plan}
+					results := []SlotWorkflowResult{{Execution: imageagent.SlotExecutionResult{SlotID: "scene-1", Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: tc.want}}
+					projection := WorkflowResult{Status: refreshed.Run.Status, Block: refreshed.Run.Block, Plan: refreshed.Plan, Slots: refreshed.Slots}
+					state := workflowUpdateState{input: &input, projection: &projection, results: &results}
+					err = state.validateRetrySlotBusiness(RetrySlotSignal{RunID: run.ID, PlanRevision: plan.Revision, SlotID: "scene-1"})
+					require.Error(t, err)
+				})
+			}
+		})
+	}
+}
+
 func TestRetrySlotBusinessRejectsPublicationUnknownButKeepsLegacyAndNewAttemptPolicies(t *testing.T) {
 	for _, tc := range []struct {
 		code    string

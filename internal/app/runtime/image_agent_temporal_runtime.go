@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	sdkclient "go.temporal.io/sdk/client"
@@ -21,11 +22,12 @@ const (
 )
 
 type ImageAgentTemporalDependencies struct {
-	Repository         imageagent.Repository
-	SlotExecutor       imageagent.RecoverableSlotExecutor
-	Publisher          imageagent.ApprovedAssetPublisher
-	StagedSlotExecutor imageagent.StagedSlotExecutor
-	ArtifactStore      imageagenttemporal.DurableArtifactStore
+	Repository               imageagent.Repository
+	SlotExecutor             imageagent.RecoverableSlotExecutor
+	Publisher                imageagent.ApprovedAssetPublisher
+	StagedSlotExecutor       imageagent.StagedSlotExecutor
+	ArtifactStore            imageagenttemporal.DurableArtifactStore
+	PublicationLeaseDuration time.Duration
 }
 
 type imageAgentWorker interface {
@@ -88,6 +90,7 @@ func startImageAgentTemporalWorkerWithDependencies(dependencies ImageAgentTempor
 	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
 		Repository: dependencies.Repository, SlotExecutor: dependencies.SlotExecutor, Publisher: dependencies.Publisher,
 		StagedSlotExecutor: dependencies.StagedSlotExecutor, ArtifactStore: dependencies.ArtifactStore,
+		PublicationLeaseDuration: dependencies.PublicationLeaseDuration,
 	})
 	if err != nil {
 		return nil, err

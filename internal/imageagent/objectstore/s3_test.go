@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/imageagent"
@@ -26,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -77,6 +79,41 @@ func TestEnsureStagedReconcilesLostPutResponseWithHead(t *testing.T) {
 	if api.putCalls != 1 || api.headCalls < 1 {
 		t.Fatalf("calls: put=%d head=%d, want a put followed by HEAD reconciliation", api.putCalls, api.headCalls)
 	}
+}
+
+func TestNewS3DurableArtifactStoreRequiresPositiveOperationTimeout(t *testing.T) {
+	uploader := storage.NewS3UploaderWithAPI(&fakeS3API{}, storage.S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeAWS}})
+
+	_, err := NewS3DurableArtifactStore(uploader, S3DurableArtifactStoreConfig{MaxArtifactBytes: 2048})
+	require.ErrorContains(t, err, "positive operation timeout")
+}
+
+func TestDurableStoreBoundsEveryHeadPutAndCopyCall(t *testing.T) {
+	api := &fakeS3API{objects: map[string]fakeObject{}}
+	type observedCall struct {
+		operation   string
+		hasDeadline bool
+		remaining   time.Duration
+	}
+	var observed []observedCall
+	api.observeContext = func(operation string, ctx context.Context) {
+		deadline, ok := ctx.Deadline()
+		observed = append(observed, observedCall{operation: operation, hasDeadline: ok, remaining: time.Until(deadline)})
+	}
+	store := newTestStore(t, api)
+	prepared := mustPrepare(t, store)
+	require.NoError(t, store.EnsureStaged(context.Background(), prepared))
+	_, err := store.Finalize(context.Background(), prepared.Manifest)
+	require.NoError(t, err)
+
+	seen := map[string]bool{}
+	for _, call := range observed {
+		seen[call.operation] = true
+		require.True(t, call.hasDeadline, "%s SDK call must carry a deadline", call.operation)
+		require.Positive(t, call.remaining, call.operation)
+		require.Less(t, call.remaining, time.Minute, call.operation)
+	}
+	require.Equal(t, map[string]bool{"HEAD": true, "PUT": true, "COPY": true}, seen)
 }
 
 func TestFinalizeWithProgressRenewsBeforeEachBoundedAsset(t *testing.T) {
@@ -307,7 +344,7 @@ func TestPrepareRejectsHostileDimensionsBeforeFullDecode(t *testing.T) {
 func newTestStore(t *testing.T, api *fakeS3API) *S3DurableArtifactStore {
 	t.Helper()
 	uploader := storage.NewS3UploaderWithAPI(api, storage.S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeAWS}})
-	store, err := NewS3DurableArtifactStore(uploader, S3DurableArtifactStoreConfig{MaxArtifactBytes: 2048, MaxArtifactCount: 2, MaxAggregateBytes: 3072})
+	store, err := NewS3DurableArtifactStore(uploader, S3DurableArtifactStoreConfig{MaxArtifactBytes: 2048, MaxArtifactCount: 2, MaxAggregateBytes: 3072, OperationTimeout: time.Second})
 	if err != nil {
 		t.Fatalf("NewS3DurableArtifactStore() error = %v", err)
 	}
@@ -541,12 +578,13 @@ func TestPreparedJSONExcludesEveryTransientSentinel(t *testing.T) {
 }
 
 type fakeS3API struct {
-	objects   map[string]fakeObject
-	put       func(*s3.PutObjectInput) error
-	copy      func(*s3.CopyObjectInput) error
-	putCalls  int
-	headCalls int
-	copyCalls int
+	objects        map[string]fakeObject
+	put            func(*s3.PutObjectInput) error
+	copy           func(*s3.CopyObjectInput) error
+	observeContext func(string, context.Context)
+	putCalls       int
+	headCalls      int
+	copyCalls      int
 }
 
 type fakeObject struct {
@@ -557,8 +595,11 @@ type fakeObject struct {
 	eTag          string
 }
 
-func (f *fakeS3API) PutObject(_ context.Context, input *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+func (f *fakeS3API) PutObject(ctx context.Context, input *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	f.putCalls++
+	if f.observeContext != nil {
+		f.observeContext("PUT", ctx)
+	}
 	if f.put != nil {
 		if err := f.put(input); err != nil {
 			return nil, err
@@ -568,8 +609,11 @@ func (f *fakeS3API) PutObject(_ context.Context, input *s3.PutObjectInput, _ ...
 	return &s3.PutObjectOutput{}, nil
 }
 
-func (f *fakeS3API) HeadObject(_ context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+func (f *fakeS3API) HeadObject(ctx context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
 	f.headCalls++
+	if f.observeContext != nil {
+		f.observeContext("HEAD", ctx)
+	}
 	object, ok := f.objects[aws.ToString(input.Key)]
 	if !ok {
 		return nil, &types.NotFound{}
@@ -577,8 +621,11 @@ func (f *fakeS3API) HeadObject(_ context.Context, input *s3.HeadObjectInput, _ .
 	return &s3.HeadObjectOutput{ContentType: aws.String(object.contentType), ContentLength: aws.Int64(object.contentLength), Metadata: object.metadata, ChecksumSHA256: aws.String(object.checksumSHA), ETag: aws.String(object.eTag)}, nil
 }
 
-func (f *fakeS3API) CopyObject(_ context.Context, input *s3.CopyObjectInput, _ ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
+func (f *fakeS3API) CopyObject(ctx context.Context, input *s3.CopyObjectInput, _ ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
 	f.copyCalls++
+	if f.observeContext != nil {
+		f.observeContext("COPY", ctx)
+	}
 	if f.copy != nil {
 		if err := f.copy(input); err != nil {
 			return nil, err

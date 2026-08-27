@@ -118,6 +118,39 @@ func TestSlotWorkflowPreservesUnknownProviderOutcomeBlockerCode(t *testing.T) {
 	require.Equal(t, "slot_execution_failed", slotExecutionErrorCode(errors.New("transport failed")))
 }
 
+func TestImageSlotWorkflowV3PreservesInvalidPersistedPolicyClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		activityType  string
+		wantBlockCode string
+	}{
+		{name: "phase", activityType: slotEffectPhaseInvalidCode, wantBlockCode: "slot_effect_phase_invalid"},
+		{name: "policy", activityType: slotEffectPolicyInvalidCode, wantBlockCode: "slot_effect_policy_invalid"},
+		{name: "future v3 policy", activityType: "imageagent_slot_effect_future_policy_invalid", wantBlockCode: "slot_effect_policy_invalid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var suite testsuite.WorkflowTestSuite
+			env := suite.NewTestWorkflowEnvironment()
+			env.RegisterWorkflow(ImageSlotWorkflowV3)
+			env.RegisterActivityWithOptions(func(context.Context, ExecuteSlotV3ActivityInput) (imageagent.SlotEffectV3PublishedResult, error) {
+				return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("invalid persisted effect", tc.activityType, nil)
+			}, sdkactivity.RegisterOptions{Name: testExecuteSlotV3ActivityName})
+			input := SlotWorkflowV3Input{
+				RunID: "run-invalid-policy", Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}, PlanRevision: 1,
+				Slot:    imageagent.Slot{ID: "scene-1", Role: imageagent.SlotRoleScene, IdempotencyKey: "scene-key", SourceAssetIDs: []string{"source-1"}},
+				Attempt: 1, ExecuteActivityName: testExecuteSlotV3ActivityName,
+			}
+
+			env.ExecuteWorkflow(ImageSlotWorkflowV3, input)
+			require.NoError(t, env.GetWorkflowError())
+			var result SlotWorkflowV3Result
+			require.NoError(t, env.GetWorkflowResult(&result))
+			require.Equal(t, imageagent.SlotStatusBlocked, result.Status)
+			require.Equal(t, tc.wantBlockCode, result.ErrorCode)
+		})
+	}
+}
+
 func TestImageSlotWorkflowV2PreservesHistoricalMainCandidateSemantics(t *testing.T) {
 	for _, tc := range []struct {
 		count      int

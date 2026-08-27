@@ -27,6 +27,8 @@ const (
 	SlotProviderOutcomeUnknownCode    = "slot_provider_outcome_unknown"
 	SlotStagingOutcomeUnknownCode     = "slot_staging_outcome_unknown"
 	SlotPublicationOutcomeUnknownCode = "slot_publication_outcome_unknown"
+	SlotEffectPhaseInvalidCode        = "slot_effect_phase_invalid"
+	SlotEffectPolicyInvalidCode       = "slot_effect_policy_invalid"
 )
 
 type SlotEffectV3BlockedPolicy struct {
@@ -63,11 +65,28 @@ func SlotEffectV3BlockedPolicyForCode(code string) (SlotEffectV3BlockedPolicy, b
 		phase = SlotEffectV3StagingUnknown
 	case SlotPublicationOutcomeUnknownCode:
 		phase = SlotEffectV3PublicationUnknown
+	case SlotEffectPhaseInvalidCode, SlotEffectPolicyInvalidCode:
+		return SlotEffectV3BlockedPolicy{Code: code, PermittedActions: []Action{ActionCancel}}, true
 	default:
+		if strings.HasPrefix(code, "slot_effect_") {
+			return SlotEffectV3BlockedPolicy{Code: SlotEffectPolicyInvalidCode, PermittedActions: []Action{ActionCancel}}, true
+		}
 		return SlotEffectV3BlockedPolicy{}, false
 	}
 	policy, err := SlotEffectV3BlockedPolicyFor(phase, code)
 	return policy, err == nil
+}
+
+// NormalizeSlotEffectV3BlockCode is used only by the additive v3 projection.
+// It preserves known provider-neutral policy codes and collapses every unknown
+// v3 classification to an explicit fail-closed policy instead of allowing the
+// legacy blocked-run retry fallback to reinterpret it.
+func NormalizeSlotEffectV3BlockCode(code string) string {
+	policy, ok := SlotEffectV3BlockedPolicyForCode(strings.TrimSpace(code))
+	if !ok {
+		return SlotEffectPolicyInvalidCode
+	}
+	return policy.Code
 }
 
 // ValidateSlotEffectV3AttemptPolicy fails closed on unknown phases and on any

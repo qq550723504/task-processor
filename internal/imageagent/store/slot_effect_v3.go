@@ -26,6 +26,9 @@ func (r *memoryRepository) ReserveSlotProviderV3(_ context.Context, reservation 
 	}
 	key := slotEffectKey(reservation.Identity)
 	if existing, ok := r.slotEffectsV3[key]; ok {
+		if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+			return imageagent.SlotEffectV3Attempt{}, false, err
+		}
 		if !sameSlotEffectV3Reservation(existing, reservation) {
 			return imageagent.SlotEffectV3Attempt{}, false, imageagent.ErrRevisionConflict
 		}
@@ -33,6 +36,9 @@ func (r *memoryRepository) ReserveSlotProviderV3(_ context.Context, reservation 
 	}
 	for _, existing := range r.slotEffectsV3 {
 		if existing.Identity.RunScope == reservation.Identity.RunScope && existing.IdempotencyKey == reservation.IdempotencyKey {
+			if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+				return imageagent.SlotEffectV3Attempt{}, false, err
+			}
 			return imageagent.SlotEffectV3Attempt{}, false, imageagent.ErrRevisionConflict
 		}
 	}
@@ -59,6 +65,9 @@ func (r *memoryRepository) PrepareSlotStagingV3(_ context.Context, reservation i
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
 	}
+	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
 	if !sameSlotEffectV3Reservation(existing, reservation) {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
 	}
@@ -84,6 +93,9 @@ func (r *memoryRepository) CommitSlotStagedV3(_ context.Context, reservation ima
 	existing, ok := r.slotEffectsV3[slotEffectKey(reservation.Identity)]
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
+	}
+	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
 	}
 	if !sameSlotEffectV3Reservation(existing, reservation) || existing.StagingManifestFingerprint != fingerprint {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
@@ -114,6 +126,9 @@ func (r *memoryRepository) ClaimSlotPublicationV3(_ context.Context, request ima
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, imageagent.ErrRunNotFound
 	}
+	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, err
+	}
 	if !sameSlotEffectV3Reservation(existing, request.Reservation) {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, imageagent.ErrRevisionConflict
 	}
@@ -131,6 +146,9 @@ func (r *memoryRepository) RenewSlotPublicationV3(_ context.Context, renewal ima
 	existing, ok := r.slotEffectsV3[slotEffectKey(renewal.Identity)]
 	if !ok {
 		return imageagent.PublicationClaim{}, imageagent.ErrRunNotFound
+	}
+	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+		return imageagent.PublicationClaim{}, err
 	}
 	return renewSlotPublicationV3(existing, renewal, r.clock().UTC(), func(updated imageagent.SlotEffectV3Attempt) {
 		r.slotEffectsV3[slotEffectKey(updated.Identity)] = cloneSlotEffectV3(updated)
@@ -151,6 +169,9 @@ func (r *memoryRepository) CompleteSlotPublicationV3(_ context.Context, completi
 	existing, ok := r.slotEffectsV3[slotEffectKey(completion.Reservation.Identity)]
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
+	}
+	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
 	}
 	if !sameSlotEffectV3Reservation(existing, completion.Reservation) {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
@@ -183,6 +204,9 @@ func (r *memoryRepository) BlockSlotEffectV3(_ context.Context, transition image
 	existing, ok := r.slotEffectsV3[slotEffectKey(transition.Reservation.Identity)]
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
+	}
+	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
 	}
 	if !sameSlotEffectV3Reservation(existing, transition.Reservation) || existing.Phase == imageagent.SlotEffectV3PublicationComplete {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict

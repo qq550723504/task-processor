@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -31,7 +32,18 @@ type imageAgentWorkerDependencyResolver struct {
 	CloseDB            func(*config.DatabaseConfig, *gorm.DB) error
 	BuildAI            func(*config.Config, *gorm.DB) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error)
 	BuildCapabilities  func(productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error)
-	BuildArtifactStore func(*config.Config) (imageagenttemporal.DurableArtifactStore, error)
+	BuildArtifactStore func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error)
+	ArtifactTiming     imageAgentArtifactTiming
+}
+
+type imageAgentArtifactTiming struct {
+	PublicationLeaseDuration time.Duration
+	OperationTimeout         time.Duration
+}
+
+var defaultImageAgentArtifactTiming = imageAgentArtifactTiming{
+	PublicationLeaseDuration: 2 * time.Minute,
+	OperationTimeout:         time.Minute,
 }
 
 func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResolver {
@@ -39,6 +51,7 @@ func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResol
 		LoadConfig: config.LoadConfigFromFile, OpenDB: database.NewSharedDatabaseFromConfig, CloseDB: database.CloseSharedDatabase,
 		BuildAI: buildImageAgentWorkerAI, BuildCapabilities: productimagehttpapi.BuildImageAgentCapabilities,
 		BuildArtifactStore: buildImageAgentDurableArtifactStore,
+		ArtifactTiming:     defaultImageAgentArtifactTiming,
 	}
 }
 
@@ -61,13 +74,20 @@ func resolveImageAgentTemporalDependencies(configPath string, logger *logrus.Log
 	if cfg == nil || cfg.Database == nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent worker database configuration is required")
 	}
+	timing := resolver.ArtifactTiming
+	if timing == (imageAgentArtifactTiming{}) {
+		timing = defaultImageAgentArtifactTiming
+	}
+	if err := timing.validate(); err != nil {
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact timing: %w", err)
+	}
 	if _, err := artifactStorageCapabilitiesFromConfig(cfg.ProductImage.Publisher); err != nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact configuration: %w", err)
 	}
 	if resolver.BuildArtifactStore == nil {
 		resolver.BuildArtifactStore = buildImageAgentDurableArtifactStore
 	}
-	artifactStore, err := resolver.BuildArtifactStore(cfg)
+	artifactStore, err := resolver.BuildArtifactStore(cfg, timing)
 	if err != nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent durable artifact store: %w", err)
 	}
@@ -109,7 +129,7 @@ func resolveImageAgentTemporalDependencies(configPath string, logger *logrus.Log
 	})
 	return appruntime.ImageAgentTemporalDependencies{
 		Repository: repository, SlotExecutor: executor, StagedSlotExecutor: executor,
-		ArtifactStore: artifactStore, Publisher: publisher,
+		ArtifactStore: artifactStore, Publisher: publisher, PublicationLeaseDuration: timing.PublicationLeaseDuration,
 	}, closeDB, nil
 }
 
@@ -148,9 +168,12 @@ func artifactStorageCapabilitiesFromConfig(publisher config.ProductImagePublishe
 	}
 }
 
-func buildImageAgentDurableArtifactStore(cfg *config.Config) (imageagenttemporal.DurableArtifactStore, error) {
+func buildImageAgentDurableArtifactStore(cfg *config.Config, timing imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("image agent configuration is required")
+	}
+	if err := timing.validate(); err != nil {
+		return nil, err
 	}
 	publisher := cfg.ProductImage.Publisher
 	capabilities, err := artifactStorageCapabilitiesFromConfig(publisher)
@@ -169,11 +192,18 @@ func buildImageAgentDurableArtifactStore(cfg *config.Config) (imageagenttemporal
 		Bucket: s3Config.Bucket, PublicBase: publisher.PublicBase, Endpoint: s3Config.Endpoint,
 		UsePathStyle: s3Config.UsePathStyle, ArtifactCapabilities: capabilities,
 	})
-	store, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{MaxArtifactBytes: safeimagehttp.DefaultMaxBodyBytes})
+	store, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{MaxArtifactBytes: safeimagehttp.DefaultMaxBodyBytes, OperationTimeout: timing.OperationTimeout})
 	if err != nil {
 		return nil, fmt.Errorf("build durable image artifact object store: %w", err)
 	}
 	return store, nil
+}
+
+func (timing imageAgentArtifactTiming) validate() error {
+	if timing.PublicationLeaseDuration <= 0 || timing.OperationTimeout <= 0 || timing.OperationTimeout >= timing.PublicationLeaseDuration {
+		return fmt.Errorf("durable image artifact operation timeout must be positive and strictly shorter than the publication lease")
+	}
+	return nil
 }
 
 func buildImageAgentWorkerAI(cfg *config.Config, db *gorm.DB) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {

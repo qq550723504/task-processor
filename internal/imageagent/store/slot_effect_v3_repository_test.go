@@ -178,6 +178,22 @@ func TestSlotEffectV3RepositoryRejectsMismatchedBlockedPolicyOnRead(t *testing.T
 	})
 }
 
+func TestMemoryReserveSlotProviderV3RejectsCorruptExistingAttempt(t *testing.T) {
+	reservation := v3Reservation("invalid-policy-reserve-memory")
+	repository := NewMemoryRepository()
+	initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+	memory := repository.(*memoryRepository)
+	memory.mu.Lock()
+	memory.slotEffectsV3[slotEffectKey(reservation.Identity)] = imageagent.SlotEffectV3Attempt{
+		Identity: reservation.Identity, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint,
+		Phase: imageagent.SlotEffectV3PublicationUnknown, BlockedCode: imageagent.SlotProviderOutcomeUnknownCode,
+	}
+	memory.mu.Unlock()
+
+	_, _, err := repository.(imageagent.SlotExternalEffectV3Repository).ReserveSlotProviderV3(context.Background(), reservation)
+	require.ErrorIs(t, err, imageagent.ErrInvalidPersistedPolicy)
+}
+
 func TestSlotEffectV3RejectsLocalPathsAndUnknownMetadata(t *testing.T) {
 	for _, factory := range newV3ReviewFixtures() {
 		t.Run(factory.name, func(t *testing.T) {

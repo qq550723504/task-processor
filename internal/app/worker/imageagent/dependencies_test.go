@@ -2,7 +2,9 @@ package imageagentworker
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -44,7 +46,7 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
 			}, nil
 		},
-		BuildArtifactStore: func(*config.Config) (imageagenttemporal.DurableArtifactStore, error) {
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
 			return workerArtifactStore{}, nil
 		},
 	}
@@ -124,7 +126,7 @@ func TestResolveImageAgentTemporalDependenciesRejectsCredentialsBeforeDatabaseOp
 			_, _, err := resolveImageAgentTemporalDependencies("config/worker.yaml", nil, imageAgentWorkerDependencyResolver{
 				LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
 				OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { dbOpens++; return &gorm.DB{}, nil },
-				BuildArtifactStore: func(*config.Config) (imageagenttemporal.DurableArtifactStore, error) {
+				BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
 					storeBuilds++
 					return workerArtifactStore{}, nil
 				},
@@ -142,9 +144,43 @@ func TestResolveImageAgentTemporalDependenciesRejectsCredentialsBeforeDatabaseOp
 	}
 }
 
+func TestResolveImageAgentTemporalDependenciesRejectsOperationTimeoutOutsidePublicationLeaseBeforeStoreOrDatabase(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		timing imageAgentArtifactTiming
+	}{
+		{name: "zero operation timeout", timing: imageAgentArtifactTiming{PublicationLeaseDuration: time.Minute}},
+		{name: "zero publication lease", timing: imageAgentArtifactTiming{OperationTimeout: time.Second}},
+		{name: "equal to publication lease", timing: imageAgentArtifactTiming{PublicationLeaseDuration: time.Minute, OperationTimeout: time.Minute}},
+		{name: "longer than publication lease", timing: imageAgentArtifactTiming{PublicationLeaseDuration: time.Minute, OperationTimeout: time.Minute + time.Second}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{Database: &config.DatabaseConfig{}}
+			cfg.ProductImage.Publisher = durablePublisherConfig("aws", true)
+			storeBuilds, databaseOpens := 0, 0
+			_, _, err := resolveImageAgentTemporalDependencies("config/worker.yaml", nil, imageAgentWorkerDependencyResolver{
+				ArtifactTiming: tc.timing,
+				LoadConfig:     func(string) (*config.Config, error) { return cfg, nil },
+				BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
+					storeBuilds++
+					return workerArtifactStore{}, nil
+				},
+				OpenDB:  func(*config.DatabaseConfig) (*gorm.DB, error) { databaseOpens++; return &gorm.DB{}, nil },
+				CloseDB: func(*config.DatabaseConfig, *gorm.DB) error { return nil },
+				BuildAI: func(*config.Config, *gorm.DB) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
+					return nil, nil, nil, errors.New("test must stop before AI composition")
+				},
+			})
+			require.ErrorContains(t, err, "operation timeout")
+			require.Zero(t, storeBuilds)
+			require.Zero(t, databaseOpens)
+		})
+	}
+}
+
 func TestBuildImageAgentDurableArtifactStoreUsesConfiguredS3ClientPath(t *testing.T) {
 	cfg := &config.Config{ProductImage: config.ProductImageConfig{Publisher: durablePublisherConfig("aws", true)}}
-	artifactStore, err := buildImageAgentDurableArtifactStore(cfg)
+	artifactStore, err := buildImageAgentDurableArtifactStore(cfg, defaultImageAgentArtifactTiming)
 	require.NoError(t, err)
 	require.NotNil(t, artifactStore)
 }

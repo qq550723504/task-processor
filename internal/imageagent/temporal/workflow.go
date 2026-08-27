@@ -1414,7 +1414,8 @@ func summarizeResultsV3(plan imageagent.Plan, results []SlotWorkflowV3Result) Wo
 		}
 		if result.Block == nil {
 			result.Status = imageagent.RunStatusBlocked
-			result.Block = &imageagent.Block{Code: results[index].ErrorCode, Message: results[index].ErrorCode, SlotID: slot.ID}
+			code := imageagent.NormalizeSlotEffectV3BlockCode(results[index].ErrorCode)
+			result.Block = &imageagent.Block{Code: code, Message: code, SlotID: slot.ID}
 		}
 	}
 	return result

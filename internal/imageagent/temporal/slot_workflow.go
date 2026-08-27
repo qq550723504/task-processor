@@ -94,6 +94,14 @@ func slotExecutionV3ErrorCode(err error) string {
 		switch applicationError.Type() {
 		case slotProviderOutcomeUnknownCode, slotStagingOutcomeUnknownCode, slotPublicationOutcomeUnknownCode:
 			return applicationError.Type()
+		case slotEffectPhaseInvalidCode:
+			return imageagent.SlotEffectPhaseInvalidCode
+		case slotEffectPolicyInvalidCode:
+			return imageagent.SlotEffectPolicyInvalidCode
+		default:
+			if strings.HasPrefix(applicationError.Type(), "imageagent_slot_effect_") {
+				return imageagent.SlotEffectPolicyInvalidCode
+			}
 		}
 	}
 	return "slot_execution_failed"

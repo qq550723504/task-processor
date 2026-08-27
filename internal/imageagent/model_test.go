@@ -66,6 +66,18 @@ func TestSlotEffectV3BlockedPolicyMapsExactPhaseCodeAndActions(t *testing.T) {
 	}
 }
 
+func TestAllowedActionsForInvalidOrUnknownV3PolicyFailClosed(t *testing.T) {
+	for _, code := range []string{
+		"slot_effect_phase_invalid",
+		"slot_effect_policy_invalid",
+		"slot_effect_future_policy_invalid",
+	} {
+		run := Run{Mode: RunModeManual, Status: RunStatusBlocked, Block: &Block{Code: code, SlotID: "scene-2"}}
+		require.Equal(t, []Action{ActionCancel}, AllowedActions(run), code)
+		require.False(t, BlockAllowsAction(run.Block, ActionRetrySlot), code)
+	}
+}
+
 func TestSlotEffectV3BlockedPolicyRejectsUnknownAndMismatchedCodes(t *testing.T) {
 	for _, tc := range []struct {
 		phase SlotEffectV3Phase

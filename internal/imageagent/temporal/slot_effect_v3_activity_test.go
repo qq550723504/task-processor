@@ -340,6 +340,45 @@ func TestExecuteSlotV3RenewsLeaseBetweenAssetsToPreventTakeover(t *testing.T) {
 	require.True(t, clock.After(time.Date(2026, time.August, 27, 12, 1, 0, 0, time.UTC)), "whole finalization exceeded the original lease")
 }
 
+func TestExecuteSlotV3CancelsBlockingSDKCallBeforeLeaseExpiryWithoutTakeover(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-blocking-sdk")
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	manifest := v3StagingManifest(input, tinyPNGBytes(t))
+	seedV3ArtifactStaged(t, effects, input, manifest)
+	staged := manifest.Assets[0]
+	api := &statefulActivityS3API{
+		objects: map[string]activityS3Object{
+			staged.ObjectKey: {contentType: staged.ContentType, contentLength: staged.SizeBytes, metadata: map[string]string{"sha256": staged.SHA256, "size-bytes": fmt.Sprint(staged.SizeBytes)}},
+		},
+		blockHead: true,
+	}
+	artifacts := newProductionArtifactStore(t, api)
+	activities := newV3Activities(t, repository, effects, &recordingStagedExecutor{}, artifacts)
+	const lease = 200 * time.Millisecond
+	activities.publicationLeaseDuration = lease
+
+	started := time.Now()
+	_, err := activities.ExecuteSlotV3(context.Background(), input)
+	elapsed := time.Since(started)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Less(t, elapsed, lease)
+	require.False(t, api.headDeadline.IsZero(), "blocking SDK call must receive a deadline")
+	require.True(t, api.headDeadline.Before(started.Add(lease)), "SDK deadline must be strictly before lease expiry")
+
+	stored, err := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3PublicationClaimed, stored.Phase, "timeout is ambiguous and must remain reconcilable")
+	final := v3FinalManifest(manifest)
+	fingerprint, err := imageagent.FinalManifestFingerprint(final)
+	require.NoError(t, err)
+	_, _, tookOver, err := effects.ClaimSlotPublicationV3(context.Background(), imageagent.PublicationClaimRequest{
+		Reservation: v3Reservation(input), Owner: "workflow-run/activity/2", LeaseDuration: lease,
+		PublicationFingerprint: fingerprint, FinalManifest: final,
+	})
+	require.NoError(t, err)
+	require.False(t, tookOver)
+}
+
 func TestExecuteSlotV3UsesProductionStoreToReconcileLostPutAndCopyResponses(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-production-lost-responses")
 	path := writeTinyPNG(t)
@@ -470,7 +509,7 @@ func newV3ActivitiesWithOwner(t *testing.T, repository imageagent.Repository, ef
 func newProductionArtifactStore(t *testing.T, api *statefulActivityS3API) *objectstore.S3DurableArtifactStore {
 	t.Helper()
 	uploader := storageinfra.NewS3UploaderWithAPI(api, storageinfra.S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: storageinfra.ArtifactStorageCapabilities{Mode: storageinfra.ArtifactStorageModeAWS}})
-	artifacts, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{MaxArtifactBytes: 1 << 20, MaxArtifactCount: 16, MaxAggregateBytes: 16 << 20})
+	artifacts, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{MaxArtifactBytes: 1 << 20, MaxArtifactCount: 16, MaxAggregateBytes: 16 << 20, OperationTimeout: 100 * time.Millisecond})
 	require.NoError(t, err)
 	return artifacts
 }
@@ -756,6 +795,8 @@ type statefulActivityS3API struct {
 	failPutCall            int
 	loseNextPutAfterWrite  bool
 	loseNextCopyAfterWrite bool
+	blockHead              bool
+	headDeadline           time.Time
 }
 
 type activityS3Object struct {
@@ -778,8 +819,17 @@ func (f *statefulActivityS3API) PutObject(_ context.Context, input *s3.PutObject
 	return &s3.PutObjectOutput{}, nil
 }
 
-func (f *statefulActivityS3API) HeadObject(_ context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+func (f *statefulActivityS3API) HeadObject(ctx context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
 	f.headCalls++
+	if f.blockHead {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			return nil, errors.New("blocking SDK HEAD call has no deadline")
+		}
+		f.headDeadline = deadline
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	object, ok := f.objects[aws.ToString(input.Key)]
 	if !ok {
 		return nil, &types.NotFound{}
