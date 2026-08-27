@@ -35,6 +35,7 @@ export function CanonicalProductListPage() {
   const items = products.data?.items ?? [];
   const total = products.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / 30));
+  const recoveryPage = Math.max(1, Math.min(totalPages, page - 1));
 
   return (
     <ListingKitPageShell backgroundClassName="bg-background">
@@ -80,7 +81,7 @@ export function CanonicalProductListPage() {
             </Button>
           }
         />
-      ) : items.length === 0 ? (
+      ) : total === 0 ? (
         <EmptyState
           title="你的商品中心还是空的"
           description="导入第一个商品，ListingKit 会自动整理图片、属性、SKU 和平台所需资料。"
@@ -90,6 +91,19 @@ export function CanonicalProductListPage() {
               href="/listing-kits/new"
             >
               导入商品
+            </Link>
+          }
+        />
+      ) : items.length === 0 ? (
+        <EmptyState
+          title="当前页没有商品"
+          description="当前分页可能已经失效，请返回仍有商品的页面继续浏览。"
+          action={
+            <Link
+              className="text-sm font-medium text-foreground underline"
+              href={`/listing-kits/canonical-products?page=${recoveryPage}`}
+            >
+              返回有效页面
             </Link>
           }
         />
