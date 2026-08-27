@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ApiError } from "@/lib/api/api-error";
 import { useCanonicalProductDetail } from "@/lib/query/use-canonical-products";
 import type { CanonicalAttribute, CanonicalProduct } from "@/lib/types/listingkit";
 
@@ -35,12 +36,29 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
     );
   }
 
-  if (detail.isError || !detail.data) {
+  if (detail.isError) {
+    const isNotFound = detail.error instanceof ApiError && detail.error.status === 404;
+    return (
+      <ListingKitPageShell backgroundClassName="bg-background">
+        <EmptyState
+          title={isNotFound ? "未找到商品" : "商品加载失败"}
+          description={
+            isNotFound
+              ? "商品不存在或链接已失效，请返回商品中心重新选择。"
+              : "暂时无法读取这份商品资料，请稍后重试。"
+          }
+          action={<Link href="/listing-kits/canonical-products" className="text-sm font-medium text-foreground underline">返回商品中心</Link>}
+        />
+      </ListingKitPageShell>
+    );
+  }
+
+  if (!detail.data) {
     return (
       <ListingKitPageShell backgroundClassName="bg-background">
         <EmptyState
           title="未找到商品"
-          description="暂时无法读取这份商品资料，请稍后重试。"
+          description="这份商品资料不存在或尚未生成，请返回商品中心重新选择。"
           action={<Link href="/listing-kits/canonical-products" className="text-sm font-medium text-foreground underline">返回商品中心</Link>}
         />
       </ListingKitPageShell>
