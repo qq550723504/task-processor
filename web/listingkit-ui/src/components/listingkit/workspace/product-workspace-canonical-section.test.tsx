@@ -27,13 +27,24 @@ const product: CanonicalProduct = {
     dimensions: {
       width: 38,
       height: 42,
+      unit: "cm",
+    },
+    package: {
+      dimensions: {
+        width: 40,
+        height: 44,
+        unit: "cm",
+      },
+      quantity: 1,
     },
   },
   variants: [
     {
-      sku: "TOTE-BLK",
-      title: "Black",
-      stock: 12,
+      sku: "TOTE-BLK-M",
+      attributes: {
+        Color: { value: "Black" },
+        Size: { value: "M" },
+      },
     },
   ],
 };
@@ -59,16 +70,16 @@ describe("ProductWorkspaceCanonicalSection", () => {
     expect(screen.getByText("Bags / Totes")).toBeInTheDocument();
   });
 
-  it("shows canonical sku rows", () => {
+  it("shows backend-shaped canonical sku attributes and treats omitted stock as zero", () => {
     render(<ProductWorkspaceCanonicalSection product={product} section="sku" />);
 
     expect(screen.getByRole("heading", { name: "SKU" })).toBeInTheDocument();
-    expect(screen.getByText("TOTE-BLK")).toBeInTheDocument();
-    expect(screen.getByText("Black")).toBeInTheDocument();
-    expect(screen.getByText("12")).toBeInTheDocument();
+    expect(screen.getByText("TOTE-BLK-M")).toBeInTheDocument();
+    expect(screen.getByText("Color: Black · Size: M")).toBeInTheDocument();
+    expect(screen.getByText("0")).toBeInTheDocument();
   });
 
-  it("shows specifications and attributes without exposing raw json", () => {
+  it("preserves product and package specification context without exposing raw json", () => {
     const { rerender } = render(
       <ProductWorkspaceCanonicalSection product={product} section="specs" />,
     );
@@ -76,6 +87,8 @@ describe("ProductWorkspaceCanonicalSection", () => {
     expect(screen.getByRole("heading", { name: "规格" })).toBeInTheDocument();
     expect(screen.getByText("closure")).toBeInTheDocument();
     expect(screen.getByText("Zip")).toBeInTheDocument();
+    expect(screen.getByText("商品尺寸 · width")).toBeInTheDocument();
+    expect(screen.getByText("包装尺寸 · width")).toBeInTheDocument();
     expect(screen.queryByText(/\{"/)).not.toBeInTheDocument();
 
     rerender(<ProductWorkspaceCanonicalSection product={product} section="attributes" />);
