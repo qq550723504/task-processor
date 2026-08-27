@@ -60,7 +60,14 @@ vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
       overview: {},
       review_summary: {},
     },
-    platformCards: [{ platform: "shein" }],
+    platformCards: [
+      {
+        platform: "shein",
+        primary_navigation_target: {
+          preview_query: { platform: "shein", section_key: "general_review" },
+        },
+      },
+    ],
     focusedPreview: undefined,
     selectedPlatform: "shein",
     focusedScenePreset: undefined,
@@ -218,6 +225,9 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     render(<WorkspaceScreen taskId="task-1" />);
 
     await user.click(screen.getByRole("button", { name: /SHEIN/ }));
+    expect(mocks.dispatchTarget).toHaveBeenCalledWith({
+      preview_query: { platform: "shein", section_key: "general_review" },
+    });
     expect(mocks.handlePlatformSelect).toHaveBeenCalledWith("shein");
 
     await user.click(screen.getByRole("button", { name: "处理：Material 缺失" }));
