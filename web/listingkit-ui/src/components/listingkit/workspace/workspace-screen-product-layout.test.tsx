@@ -206,7 +206,7 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     expect(within(navigation).getByRole("button", { name: "概览" })).toBeInTheDocument();
     expect(within(navigation).getByRole("button", { name: /SHEIN/ })).toBeInTheDocument();
 
-    const work = screen.getByRole("main", { name: "商品工作区" });
+    const work = screen.getByRole("region", { name: "商品工作区" });
     expect(within(work).getByText("现有 SHEIN 审核内容")).toBeInTheDocument();
 
     const aiReview = screen.getByRole("complementary", { name: "AI 审核" });
