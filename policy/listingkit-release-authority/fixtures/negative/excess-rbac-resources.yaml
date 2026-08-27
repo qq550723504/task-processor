@@ -1,0 +1,2 @@
+excessResource: roles
+rbac: {resources: [deployments, roles]}

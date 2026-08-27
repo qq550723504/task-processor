@@ -266,26 +266,63 @@ jobs:
   deploy-ui:
     name: Deploy ListingKit UI
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     needs:
       - verify-release-gate
       - build-ui
     if: ${{ always() && (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch') && needs.verify-release-gate.result == 'success' && needs.verify-release-gate.outputs.verified == 'true' && needs.build-ui.result == 'success' }}
     environment:
-      name: production
+      name: listingkit-ui-production
       url: https://pod.shuomiai.com
     steps:
+      - name: Checkout release identity tooling
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-tools
+          sparse-checkout: scripts/listingkit-configure-github-oidc-kubeconfig.sh
+          sparse-checkout-cone-mode: false
+
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
         with:
           version: latest
 
-      - name: Write kubeconfig
+      - name: Request short-lived UI release identity
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          LISTINGKIT_OIDC_AUDIENCE: api://listingkit-ui-production
+          LISTINGKIT_OIDC_TOKEN_FILE: ${{ runner.temp }}/listingkit-ui-oidc-token
+        with:
+          script: |
+            const fs = require('fs');
+            const token = await core.getIDToken(process.env.LISTINGKIT_OIDC_AUDIENCE);
+            core.setSecret(token);
+            fs.writeFileSync(process.env.LISTINGKIT_OIDC_TOKEN_FILE, token, { mode: 0o600 });
+
+      - name: Configure ephemeral UI release kubeconfig
         shell: bash
+        env:
+          K8S_CLUSTER_SERVER: ${{ vars.K8S_CLUSTER_SERVER }}
+          K8S_CLUSTER_CA_B64: ${{ vars.K8S_CLUSTER_CA_B64 }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.kube"
-          printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
+          token_file="${RUNNER_TEMP}/listingkit-ui-oidc-token"
+          trap 'rm -f "$token_file"' EXIT
+          .workflow-tools/scripts/listingkit-configure-github-oidc-kubeconfig.sh \
+            --token-file "$token_file" \
+            --kubeconfig "$HOME/.kube/config" \
+            --cluster-server "$K8S_CLUSTER_SERVER" \
+            --cluster-ca-b64 "$K8S_CLUSTER_CA_B64" \
+            --issuer https://token.actions.githubusercontent.com \
+            --audience api://listingkit-ui-production \
+            --subject repo:${{ github.repository }}:environment:listingkit-ui-production \
+            --repository "${{ github.repository }}" \
+            --environment listingkit-ui-production \
+            --workflow-path .github/workflows/listingkit-ui-deploy.yml
 
       - name: Apply ListingKit UI authorization scopes
         env:

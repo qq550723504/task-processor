@@ -1,0 +1,3 @@
+identities:
+  api: {subject: repo:example}
+  ui: {subject: repo:example}

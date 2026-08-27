@@ -16,6 +16,7 @@ type imageAgentWorkloadManifest struct {
 		Name string `yaml:"name"`
 	} `yaml:"metadata"`
 	Spec struct {
+		Replicas int `yaml:"replicas"`
 		Selector struct {
 			MatchLabels map[string]string `yaml:"matchLabels"`
 		} `yaml:"selector"`
@@ -26,8 +27,9 @@ type imageAgentWorkloadManifest struct {
 				Labels map[string]string `yaml:"labels"`
 			} `yaml:"metadata"`
 			Spec struct {
-				RestartPolicy string                        `yaml:"restartPolicy"`
-				Containers    []imageAgentWorkloadContainer `yaml:"containers"`
+				RestartPolicy  string                        `yaml:"restartPolicy"`
+				InitContainers []imageAgentWorkloadContainer `yaml:"initContainers"`
+				Containers     []imageAgentWorkloadContainer `yaml:"containers"`
 			} `yaml:"spec"`
 		} `yaml:"template"`
 	} `yaml:"spec"`
@@ -65,7 +67,7 @@ func TestListingKitImageAgentDeploymentsAndCanaryAreCapabilityIsolated(t *testin
 	base := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench")
 	v2 := loadImageAgentWorkloadManifest(t, filepath.Join(base, "base", "image-agent-temporal-worker-deployment.yaml"))
 	v3 := loadImageAgentWorkloadManifest(t, filepath.Join(base, "base", "image-agent-temporal-worker-v3-deployment.yaml"))
-	canary := loadImageAgentWorkloadManifest(t, filepath.Join(base, "jobs", "image-agent-temporal-v3-canary-job.yaml"))
+	canary := loadImageAgentWorkloadFromMultiDoc(t, filepath.Join(base, "release-authority", "listingkit-release-gate-runners.yaml"), "image-agent-temporal-v3-canary-runner")
 
 	assertImageAgentDeployment(t, v2, "image-agent-temporal-worker", "image-agent-temporal-worker", "v2", "image-agent-manual")
 	assertImageAgentDeployment(t, v3, "image-agent-temporal-worker-v3", "image-agent-temporal-worker-v3", "v3", "image-agent-manual-v3")
@@ -76,13 +78,13 @@ func TestListingKitImageAgentDeploymentsAndCanaryAreCapabilityIsolated(t *testin
 		t.Fatalf("v2 and v3 workers must start from the same application image, v2=%q v3=%q", want, got)
 	}
 
-	if canary.Kind != "Job" || canary.Metadata.Name != "image-agent-temporal-v3-canary" {
-		t.Fatalf("v3 compatibility canary must be a fixed-name Job, got kind=%q name=%q", canary.Kind, canary.Metadata.Name)
+	if canary.Kind != "Deployment" || canary.Metadata.Name != "image-agent-temporal-v3-canary-runner" || canary.Spec.Replicas != 0 {
+		t.Fatalf("v3 compatibility canary must be a fixed zero-replica Deployment, got kind=%q name=%q replicas=%d", canary.Kind, canary.Metadata.Name, canary.Spec.Replicas)
 	}
-	if canary.Spec.ActiveDeadlineSeconds <= 0 || canary.Spec.BackoffLimit != 0 || canary.Spec.Template.Spec.RestartPolicy != "Never" {
-		t.Fatalf("canary must be finite and fail closed, deadline=%d backoff=%d restart=%q", canary.Spec.ActiveDeadlineSeconds, canary.Spec.BackoffLimit, canary.Spec.Template.Spec.RestartPolicy)
+	if len(canary.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("canary runner must contain one release-gate init container")
 	}
-	canaryContainer := onlyImageAgentContainer(t, canary)
+	canaryContainer := canary.Spec.Template.Spec.InitContainers[0]
 	if !reflect.DeepEqual(canaryContainer.Command, []string{"/app/image-agent-temporal-worker"}) ||
 		!reflect.DeepEqual(canaryContainer.Args, []string{"-canary", "-canary-task-queue", "image-agent-manual-v3", "-log-level", "info"}) {
 		t.Fatalf("canary must invoke only the side-effect-free v3 compatibility mode, command=%#v args=%#v", canaryContainer.Command, canaryContainer.Args)
@@ -95,6 +97,24 @@ func TestListingKitImageAgentDeploymentsAndCanaryAreCapabilityIsolated(t *testin
 	for _, variable := range canaryContainer.Env {
 		if variable.ValueFrom != nil && variable.ValueFrom.SecretKeyRef != nil {
 			t.Fatalf("compatibility canary must not receive Secret key %q", variable.ValueFrom.SecretKeyRef.Key)
+		}
+	}
+}
+
+func loadImageAgentWorkloadFromMultiDoc(t *testing.T, path, name string) imageAgentWorkloadManifest {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read image-agent workload %s: %v", path, err)
+	}
+	decoder := yaml.NewDecoder(strings.NewReader(string(content)))
+	for {
+		var manifest imageAgentWorkloadManifest
+		if err := decoder.Decode(&manifest); err != nil {
+			t.Fatalf("find workload %s in %s: %v", name, path, err)
+		}
+		if manifest.Metadata.Name == name {
+			return manifest
 		}
 	}
 }
@@ -119,26 +139,24 @@ func TestListingKitDeployOrdersImageAgentGatesBeforeAPIRouting(t *testing.T) {
 	indexes := map[string]int{}
 	for index, step := range steps {
 		for key, fragment := range map[string]string{
-			"schema":        "product-listing-api-schema-migrate-job.yaml",
-			"v2_apply":      "image-agent-temporal-worker-deployment.yaml",
-			"v2_restart":    "rollout restart deployment/image-agent-temporal-worker\n",
-			"v2_wait":       "rollout status deployment/image-agent-temporal-worker --timeout=5m",
-			"v3_apply":      "image-agent-temporal-worker-v3-deployment.yaml",
-			"v3_restart":    "rollout restart deployment/image-agent-temporal-worker-v3",
-			"v3_wait":       "rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m",
-			"canary_delete": "delete job image-agent-temporal-v3-canary",
-			"canary_apply":  "image-agent-temporal-v3-canary-job.yaml",
-			"canary_wait":   "wait --for=condition=complete job/image-agent-temporal-v3-canary",
-			"api_apply":     "product-listing-api-deployment.yaml",
-			"api_restart":   "rollout restart deployment/product-listing-api",
-			"api_wait":      "rollout status deployment/product-listing-api --timeout=5m",
+			"schema":      "--deployment product-listing-api-schema-migrate-runner",
+			"v2_apply":    "image-agent-temporal-worker-deployment.yaml",
+			"v2_restart":  "rollout restart deployment/image-agent-temporal-worker\n",
+			"v2_wait":     "rollout status deployment/image-agent-temporal-worker --timeout=5m",
+			"v3_apply":    "image-agent-temporal-worker-v3-deployment.yaml",
+			"v3_restart":  "rollout restart deployment/image-agent-temporal-worker-v3",
+			"v3_wait":     "rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m",
+			"canary_gate": "--deployment image-agent-temporal-v3-canary-runner",
+			"api_apply":   "product-listing-api-deployment.yaml",
+			"api_restart": "rollout restart deployment/product-listing-api",
+			"api_wait":    "rollout status deployment/product-listing-api --timeout=5m",
 		} {
 			if strings.Contains(step.Run, fragment) {
 				indexes[key] = index
 			}
 		}
 	}
-	ordered := []string{"schema", "v2_apply", "v2_restart", "v2_wait", "v3_apply", "v3_restart", "v3_wait", "canary_delete", "canary_apply", "canary_wait", "api_apply", "api_restart", "api_wait"}
+	ordered := []string{"schema", "v2_apply", "v2_restart", "v2_wait", "v3_apply", "v3_restart", "v3_wait", "canary_gate", "api_apply", "api_restart", "api_wait"}
 	previous := -1
 	for _, key := range ordered {
 		index, ok := indexes[key]
@@ -156,13 +174,18 @@ func TestListingKitDeployOrdersImageAgentGatesBeforeAPIRouting(t *testing.T) {
 	}{
 		{key: "v2_apply", container: "image-agent-temporal-worker"},
 		{key: "v3_apply", container: "image-agent-temporal-worker-v3"},
-		{key: "canary_apply", container: "image-agent-temporal-v3-canary"},
 	} {
 		run := steps[indexes[expected.key]].Run
 		if !strings.Contains(run, "listingkit-apply-image-agent-worker-deployment.sh") ||
 			!strings.Contains(run, "--container "+expected.container) ||
 			!strings.Contains(run, "--image \"$API_CANDIDATE_IMAGE\"") {
 			t.Errorf("deploy gate %q must apply its named container with the immutable candidate image, run=%q", expected.key, run)
+		}
+	}
+	canaryRun := steps[indexes["canary_gate"]].Run
+	for _, required := range []string{"listingkit-run-release-gate-deployment.sh", "--container release-gate", "--image \"$API_CANDIDATE_IMAGE\"", "--timeout-seconds 300"} {
+		if !strings.Contains(canaryRun, required) {
+			t.Errorf("canary runner must contain %q", required)
 		}
 	}
 	for _, step := range steps {
@@ -243,15 +266,12 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 	preflightIndex := -1
 	deploymentMutationIndexes := make([]int, 0, 1)
 	for index, step := range deployJob.Steps {
-		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+		if strings.Contains(step.Run, "--deployment listingkit-identity-preflight-runner") {
 			preflightIndex = index
 			if step.ContinueOnError {
 				t.Error("identity preflight step must block deployment when its caller returns failure")
 			}
-			if !strings.Contains(step.Run, "--image \"$API_CANDIDATE_IMAGE\"") {
-				t.Error("identity preflight must receive the exact immutable API image that will be deployed")
-			}
-			if !strings.Contains(step.Run, "--runner-image \"$PREFLIGHT_RUNNER_IMAGE\"") {
+			if !strings.Contains(step.Run, "--image \"$PREFLIGHT_RUNNER_IMAGE\"") {
 				t.Error("identity preflight must run in its distinct digest-pinned runner image")
 			}
 			if strings.Contains(step.Run, "--image-tag") {
@@ -302,15 +322,16 @@ func TestListingKitDeployOwnsImageAgentWorkerBuildManifestAndImmutableRollout(t 
 	workflow := string(workflowBytes)
 	for _, required := range []string{
 		"scripts/listingkit-apply-image-agent-worker-deployment.sh",
+		"scripts/listingkit-run-release-gate-deployment.sh",
 		"deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml",
 		"deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-v3-deployment.yaml",
-		"deployments/kubernetes/listingkit-workbench/jobs/image-agent-temporal-v3-canary-job.yaml",
+		"--deployment image-agent-temporal-v3-canary-runner",
 		"--image \"$API_CANDIDATE_IMAGE\"",
 		"rollout restart deployment/image-agent-temporal-worker",
 		"rollout status deployment/image-agent-temporal-worker --timeout=5m",
 		"rollout restart deployment/image-agent-temporal-worker-v3",
 		"rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m",
-		"wait --for=condition=complete job/image-agent-temporal-v3-canary",
+		"--timeout-seconds 300",
 	} {
 		if !strings.Contains(workflow, required) {
 			t.Errorf("ListingKit deploy workflow missing image-agent worker ownership %q", required)
@@ -318,7 +339,7 @@ func TestListingKitDeployOwnsImageAgentWorkerBuildManifestAndImmutableRollout(t 
 	}
 	v2Wait := strings.Index(workflow, "rollout status deployment/image-agent-temporal-worker --timeout=5m")
 	v3Wait := strings.Index(workflow, "rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m")
-	canaryWait := strings.Index(workflow, "wait --for=condition=complete job/image-agent-temporal-v3-canary")
+	canaryWait := strings.Index(workflow, "--deployment image-agent-temporal-v3-canary-runner")
 	apiRestart := strings.Index(workflow, "rollout restart deployment/product-listing-api")
 	apiWait := strings.Index(workflow, "rollout status deployment/product-listing-api --timeout=5m")
 	if v2Wait < 0 || v3Wait < 0 || canaryWait < 0 || apiRestart < 0 || apiWait < 0 || !(v2Wait < v3Wait && v3Wait < canaryWait && canaryWait < apiRestart && apiRestart < apiWait) {
@@ -441,20 +462,20 @@ func TestListingKitSchemaMigrationRunsBeforeIdentityPreflight(t *testing.T) {
 	deployJob := workflow.Jobs["deploy-api"]
 	schemaIndex, productSchemaIndex, preflightIndex := -1, -1, -1
 	for index, step := range deployJob.Steps {
-		if strings.Contains(step.Run, "scripts/listingkit-schema-migrate-job.sh") {
-			if strings.Contains(step.Run, "product-listing-api-schema-migrate-job.yaml") {
+		if strings.Contains(step.Run, "scripts/listingkit-run-release-gate-deployment.sh") {
+			if strings.Contains(step.Run, "--deployment product-listing-api-schema-migrate-runner") {
 				productSchemaIndex = index
 				if !strings.Contains(step.Run, "--image \"$API_CANDIDATE_IMAGE\"") {
 					t.Errorf("product-listing schema migration must use the immutable API candidate")
 				}
-			} else if strings.Contains(step.Run, "listingkit-schema-migrate-job.yaml") {
+			} else if strings.Contains(step.Run, "--deployment listingkit-schema-migrate-runner") {
 				schemaIndex = index
 				if !strings.Contains(step.Run, "--image \"$API_CANDIDATE_IMAGE\"") {
 					t.Errorf("ListingKit schema migration must use the immutable API candidate")
 				}
 			}
 		}
-		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+		if strings.Contains(step.Run, "--deployment listingkit-identity-preflight-runner") {
 			preflightIndex = index
 		}
 	}
@@ -493,7 +514,7 @@ func TestListingKitDeployRemovesDeprecatedIdentityKeysBeforePreflight(t *testing
 				t.Fatal("legacy identity Secret cleanup must target the shared ListingKit Secret")
 			}
 		}
-		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+		if strings.Contains(step.Run, "--deployment listingkit-identity-preflight-runner") {
 			preflightIndex = index
 		}
 	}
@@ -543,7 +564,7 @@ func TestListingKitDeployInspectsCandidateCompatibilityBeforeSecretCleanup(t *te
 	steps := workflow.Jobs["deploy-api"].Steps
 	preflightIndex, compatibilityIndex, cleanupIndex, applyIndex := -1, -1, -1, -1
 	for index, step := range steps {
-		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+		if strings.Contains(step.Run, "--deployment listingkit-identity-preflight-runner") {
 			preflightIndex = index
 		}
 		if step.ID == "candidate-identity-compatibility" {
@@ -751,10 +772,21 @@ func TestListingKitFirstControlledDeploymentRoutesProductionMigrationsThroughWor
 }
 
 func TestListingKitPreflightDocumentationUsesDigestPinnedCandidateAndRunner(t *testing.T) {
-	for _, path := range []string{
-		filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "README.md"),
-		filepath.Join("..", "docs", "development", "listingkit-local-debug.md"),
-	} {
+	readmePath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "README.md")
+	readme, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"listingkit-identity-preflight-runner", "exact digest-pinned preflight image", "no top-level `create`"} {
+		if !strings.Contains(string(readme), required) {
+			t.Errorf("ListingKit production preflight documentation must contain %q", required)
+		}
+	}
+	if strings.Contains(string(readme), "listingkit-identity-preflight-job.sh") {
+		t.Error("production documentation must not advertise the legacy direct Job driver")
+	}
+
+	for _, path := range []string{filepath.Join("..", "docs", "development", "listingkit-local-debug.md")} {
 		content, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read ListingKit preflight documentation %q: %v", path, err)
@@ -889,7 +921,7 @@ func TestListingKitDeployWorkflowPassesOnlyDigestsAcrossBuildJobBoundaries(t *te
 
 	deployJob := workflow.Jobs["deploy-api"]
 	for _, step := range deployJob.Steps {
-		if !strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+		if !strings.Contains(step.Run, "--deployment listingkit-identity-preflight-runner") {
 			continue
 		}
 		if got, want := step.Env["PREFLIGHT_RUNNER_DIGEST"], "${{ needs.build-preflight-runner.outputs.runner_digest }}"; got != want {
@@ -897,8 +929,8 @@ func TestListingKitDeployWorkflowPassesOnlyDigestsAcrossBuildJobBoundaries(t *te
 		}
 		for _, required := range []string{
 			"listingkit_compose_immutable_image",
-			"--image \"$API_CANDIDATE_IMAGE\"",
-			"--runner-image \"$PREFLIGHT_RUNNER_IMAGE\"",
+			"--image \"$PREFLIGHT_RUNNER_IMAGE\"",
+			"--container release-gate",
 		} {
 			if !strings.Contains(step.Run, required) {
 				t.Errorf("preflight step must contain %q", required)

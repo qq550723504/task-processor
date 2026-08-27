@@ -1,0 +1,230 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-listing-api-schema-migrate-runner
+  labels:
+    app: product-listing-api-schema-migrate-runner
+spec:
+  replicas: 0
+  revisionHistoryLimit: 1
+  progressDeadlineSeconds: 900
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: product-listing-api-schema-migrate-runner
+  template:
+    metadata:
+      labels:
+        app: product-listing-api-schema-migrate-runner
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+        - name: release-gate
+          image: xuwei190/task-processor-product-listing-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          command: ["/app/product-listing-api-schema-migrate"]
+          args: ["-config", "/app/config/config-prod.yaml"]
+          envFrom:
+            - configMapRef:
+                name: listingkit-workbench-config
+          env:
+            - name: TASK_PROCESSOR_DATABASE_HOST
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_HOST}
+            - name: TASK_PROCESSOR_DATABASE_PORT
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_PORT}
+            - name: TASK_PROCESSOR_DATABASE_USER
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_USER}
+            - name: TASK_PROCESSOR_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_PASSWORD}
+            - name: TASK_PROCESSOR_DATABASE_NAME
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_NAME}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+      containers:
+        - name: hold-after-gate
+          image: registry.k8s.io/pause@sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          resources:
+            requests: {cpu: 1m, memory: 4Mi}
+            limits: {cpu: 10m, memory: 16Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: listingkit-schema-migrate-runner
+  labels:
+    app: listingkit-schema-migrate-runner
+spec:
+  replicas: 0
+  revisionHistoryLimit: 1
+  progressDeadlineSeconds: 900
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: listingkit-schema-migrate-runner}
+  template:
+    metadata:
+      labels: {app: listingkit-schema-migrate-runner}
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+        - name: release-gate
+          image: xuwei190/task-processor-product-listing-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          command: ["/app/listingkit-schema-migrate"]
+          args: ["-config", "/app/config/config-prod.yaml", "-scope", "all", "-log-level", "info"]
+          envFrom:
+            - configMapRef: {name: listingkit-workbench-config}
+          env:
+            - name: TASK_PROCESSOR_DATABASE_HOST
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_HOST}
+            - name: TASK_PROCESSOR_DATABASE_PORT
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_PORT}
+            - name: TASK_PROCESSOR_DATABASE_USER
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_USER}
+            - name: TASK_PROCESSOR_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_PASSWORD}
+            - name: TASK_PROCESSOR_DATABASE_NAME
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_NAME}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+      containers:
+        - name: hold-after-gate
+          image: registry.k8s.io/pause@sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          resources:
+            requests: {cpu: 1m, memory: 4Mi}
+            limits: {cpu: 10m, memory: 16Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: listingkit-identity-preflight-runner
+  labels:
+    app: listingkit-identity-preflight-runner
+spec:
+  replicas: 0
+  revisionHistoryLimit: 1
+  progressDeadlineSeconds: 900
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: listingkit-identity-preflight-runner}
+  template:
+    metadata:
+      labels: {app: listingkit-identity-preflight-runner}
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+        - name: release-gate
+          image: xuwei190/task-processor-listingkit-identity-preflight@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          command: ["/app/listingkit-identity-preflight"]
+          args: ["-config", "/app/config/config-prod.yaml", "-log-level", "info"]
+          envFrom:
+            - configMapRef: {name: listingkit-workbench-config}
+          env:
+            - name: TASK_PROCESSOR_DATABASE_HOST
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_HOST}
+            - name: TASK_PROCESSOR_DATABASE_PORT
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_PORT}
+            - name: TASK_PROCESSOR_DATABASE_USER
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_USER}
+            - name: TASK_PROCESSOR_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_PASSWORD}
+            - name: TASK_PROCESSOR_DATABASE_NAME
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_NAME}
+            - name: ZITADEL_ISSUER_URL
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: ZITADEL_ISSUER_URL}
+            - name: TASK_PROCESSOR_LISTINGKIT_ZITADEL_TENANT_DIRECTORY_TOKEN
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_TENANT_DIRECTORY_TOKEN}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+      containers:
+        - name: hold-after-gate
+          image: registry.k8s.io/pause@sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          resources:
+            requests: {cpu: 1m, memory: 4Mi}
+            limits: {cpu: 10m, memory: 16Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-agent-temporal-v3-canary-runner
+  labels:
+    app: image-agent-temporal-v3-canary-runner
+spec:
+  replicas: 0
+  revisionHistoryLimit: 1
+  progressDeadlineSeconds: 300
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: image-agent-temporal-v3-canary-runner}
+  template:
+    metadata:
+      labels: {app: image-agent-temporal-v3-canary-runner}
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+        - name: release-gate
+          image: xuwei190/task-processor-product-listing-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          command: ["/app/image-agent-temporal-worker"]
+          args: ["-canary", "-canary-task-queue", "image-agent-manual-v3", "-log-level", "info"]
+          env:
+            - name: IMAGE_AGENT_TEMPORAL_ADDRESS
+              valueFrom:
+                configMapKeyRef: {name: listingkit-workbench-config, key: IMAGE_AGENT_TEMPORAL_ADDRESS}
+            - name: IMAGE_AGENT_TEMPORAL_NAMESPACE
+              valueFrom:
+                configMapKeyRef: {name: listingkit-workbench-config, key: IMAGE_AGENT_TEMPORAL_NAMESPACE}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+      containers:
+        - name: hold-after-gate
+          image: registry.k8s.io/pause@sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          resources:
+            requests: {cpu: 1m, memory: 4Mi}
+            limits: {cpu: 10m, memory: 16Mi}

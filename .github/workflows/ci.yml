@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - ".github/workflows/ci.yml"
+      - ".github/workflows/listingkit-deploy.yml"
+      - ".github/workflows/listingkit-ui-deploy.yml"
       - "cmd/product-listing-api/**"
       - "cmd/**"
       - "config/**"
@@ -13,6 +15,7 @@ on:
       - "deployments/docker/Dockerfile.listingkit-ui"
       - "deployments/kubernetes/listingkit-workbench/base/**"
       - "deployments/kubernetes/listingkit-workbench/overlays/prod/**"
+      - "deployments/kubernetes/listingkit-workbench/release-authority/**"
       - "go.mod"
       - "go.sum"
       - "tools/go.mod"
@@ -26,6 +29,7 @@ on:
       - "internal/promptmgmt/**"
       - "internal/listingsubscription/**"
       - "prompts/**"
+      - "policy/listingkit-release-authority/**"
       - "scripts/**"
       - "Makefile"
       - "docs/refactoring/code-health-decisions.md"
@@ -34,6 +38,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ci.yml"
+      - ".github/workflows/listingkit-deploy.yml"
+      - ".github/workflows/listingkit-ui-deploy.yml"
       - "cmd/product-listing-api/**"
       - "cmd/**"
       - "config/**"
@@ -41,6 +47,7 @@ on:
       - "deployments/docker/Dockerfile.listingkit-ui"
       - "deployments/kubernetes/listingkit-workbench/base/**"
       - "deployments/kubernetes/listingkit-workbench/overlays/prod/**"
+      - "deployments/kubernetes/listingkit-workbench/release-authority/**"
       - "go.mod"
       - "go.sum"
       - "tools/go.mod"
@@ -54,6 +61,7 @@ on:
       - "internal/promptmgmt/**"
       - "internal/listingsubscription/**"
       - "prompts/**"
+      - "policy/listingkit-release-authority/**"
       - "scripts/**"
       - "Makefile"
       - "docs/refactoring/code-health-decisions.md"
@@ -68,6 +76,16 @@ env:
   NODE_VERSION: "22"
 
 jobs:
+  release-authority:
+    name: Release Authority Policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify OIDC, workflow, and RBAC authority
+        run: scripts/verify-listingkit-release-authority-policy.sh
+
   backend:
     name: Backend Checks
     runs-on: ubuntu-latest

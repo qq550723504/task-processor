@@ -1,0 +1,2 @@
+workflow:
+  stepUses: ./unowned-release-action

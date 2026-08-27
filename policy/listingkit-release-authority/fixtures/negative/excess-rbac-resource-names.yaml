@@ -1,0 +1,2 @@
+excessResourceName: arbitrary-production-workload
+rbac: {resourceNames: [product-listing-api, arbitrary-production-workload]}

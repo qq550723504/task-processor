@@ -98,7 +98,11 @@ func TestListingKitCommercialImageAgentWorkersUseExactSecretAndConfigScope(t *te
 		})
 	}
 
-	canary := onlyImageAgentContainer(t, loadImageAgentWorkloadManifest(t, filepath.Join(base, "jobs", "image-agent-temporal-v3-canary-job.yaml")))
+	canaryManifest := loadImageAgentWorkloadFromMultiDoc(t, filepath.Join(base, "release-authority", "listingkit-release-gate-runners.yaml"), "image-agent-temporal-v3-canary-runner")
+	if len(canaryManifest.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatal("canary runner must have one release-gate init container")
+	}
+	canary := canaryManifest.Spec.Template.Spec.InitContainers[0]
 	if len(canary.EnvFrom) != 0 {
 		t.Fatalf("canary must not use envFrom, got %#v", canary.EnvFrom)
 	}

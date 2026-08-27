@@ -333,3 +333,61 @@ Passing tests are necessary but do not replace a v3 canary, old-history replay, 
 Phase one includes manual image workflow v3 recovery, S3/COS durable staging, publication claim and fencing, Temporal compatibility migration, final approval invariants, effective-concurrency projection, and actionable blocked states.
 
 Agent planning, automatic repair, database blobs, PVC storage, synchronous object cleanup, and exactly-once claims for non-reconcilable external platforms remain outside this slice.
+
+## 15. Release-authority and drain addendum (round-4 design correction)
+
+Repository text and shell regexes are not a production authorization boundary.
+The production release path therefore uses two distinct GitHub environments,
+`listingkit-api-production` and `listingkit-ui-production`. Each job requests a
+short-lived GitHub OIDC token with a distinct audience and never consumes a
+long-lived kubeconfig credential. The Kubernetes API server is configured once
+to trust `https://token.actions.githubusercontent.com`; RoleBindings bind only
+the exact repository/environment subjects, and separate least-privilege Roles
+limit the API and UI owners to their named resources and required verbs.
+The API server and local fail-fast check bind ordinary workflow tokens through
+GitHub's standard `workflow_ref` claim. They do not require
+`job_workflow_ref`, which GitHub documents only for called reusable workflows.
+Production release fails closed until this external trust and RBAC prerequisite
+is installed. Repository deployment workflows never bootstrap or widen their
+own authority.
+
+The API release previously created schema-migration, identity-preflight, and
+canary Jobs dynamically. Kubernetes RBAC cannot constrain a top-level `create`
+request with `resourceNames`, so granting `create jobs` would reopen the same
+authority gap. Those gates therefore run as init containers in four
+administrator-installed, zero-replica Deployments. The release identity may
+patch only those named Deployments, scale one to one replica, and observe the
+Deployment result; the Deployment controller creates the transient Pod. A
+digest-pinned `pause` container becomes ready only after the one-shot init
+container succeeds, and the release driver always scales the runner back to
+zero. Production release Roles contain no top-level `create`, wildcard, or
+RBAC-management verb. Initial workload/RBAC installation remains an explicit
+administrator prerequisite.
+
+One machine-readable release-policy document is the source of truth for OIDC
+issuer/audiences/subjects, protected Kubernetes resource identities, verbs,
+GitHub workflow/job/step owners, and RBAC manifest locations. Pinned
+OPA/Conftest evaluates structured workflow, policy, and RBAC YAML. Actionlint
+continues to validate workflow syntax. Supported Markdown is parsed with a
+Markdown AST only to reject executable direct-production examples and link the
+canonical workflow invocation; prose lint is defense in depth and is never
+reported as authorization. The handwritten workflow/helper/prose mutation
+grammar is removed.
+
+Retiring the v2 worker requires a stable three-sample quorum, not one Visibility
+query. Every sample must re-prove all of the following:
+
+1. the serving API Deployment and every API Pod carry the exact attested
+   `run_id`, `run_attempt`, and digest annotations and no old/mixed image exists;
+2. a parameterized authoritative database query returns zero non-terminal
+   `image_agent_v2_runs`, preserving full `(tenant_id, owner_user_id, id)`
+   identities for any nonzero/manual reconciliation result;
+3. the paired Temporal CLI 1.8.1 count/list evidence for parent and child types
+   agrees, and exact describes contain no v2 queue child/activity work; and
+4. the fixed convergence interval has elapsed before the next sample.
+
+Any producer, database, Temporal, parsing, command, or cross-source disagreement
+is nonzero evidence. The final sample repeats producer quiescence, so Visibility
+zero is only a convergence signal corroborated by serving-image and database
+authority. Tests replace `sleep` through `PATH` while retaining the production
+interval value; production has no zero-interval override.

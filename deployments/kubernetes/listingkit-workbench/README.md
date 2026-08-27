@@ -53,7 +53,7 @@ configuration. Every other manifest has an explicit key allowlist:
 - `shein-login-worker`: the five database keys and four SHEIN cookie Redis
   keys only. Each queued account already supplies its tenant and store id.
 - `imgproxy`: signing key/salt and the two ProductImage S3 credential keys.
-- both schema migration Jobs: the five database keys only.
+- both schema migration runner init containers: the five database keys only.
 
 None of those five workloads receives the read-only directory token or the
 member-invitation write token. The worker and migration binaries use scoped
@@ -361,7 +361,7 @@ automatic `workflow_run` gate. If a manual UI gate is required, supply both
 `release_gate_run_id` and `release_gate_run_attempt` from that exact successful
 API attempt. UI tag events build and push only; they never mutate production.
 
-The ListingKit deployment workflow runs the ListingKit schema migration Job
+The ListingKit deployment workflow runs the ListingKit schema migration gate
 before the identity preflight. For an environment carrying the reviewed
 system-owned exception set, run the one-shot
 `scripts/listingkit-owner-scope-exceptions.ps1` seeder after that migration and
@@ -375,7 +375,7 @@ Every API release must pass the read-only identity preflight in the target
 environment before either the API or its matching UI is updated. The directory
 credential needs read access sufficient to query `POST /v2/users` for every
 ZITADEL organization represented by persisted tenant-owned rows. It does not
-need user-create, update, invitation, or membership-write permission. The Job
+need user-create, update, invitation, or membership-write permission. The gate
 uses the shared ConfigMap and shared Secret for the database and read-only
 directory credential; it never references the API-only member-invitation
 Secret.
@@ -384,34 +384,21 @@ Legacy ListingAdmin owner rows use numeric tenant IDs. For those rows, the
 preflight must find both `projections.org_metadata2` and
 `projections.user_metadata5` in exactly one of the `zitadel_auth` or `zitadel`
 PostgreSQL databases that share the configured database host and credentials.
-Grant the Job account only `CONNECT` plus `SELECT` on both projection tables in
+Grant the preflight database account only `CONNECT` plus `SELECT` on both projection tables in
 the selected database. Neither candidate, both candidates, or an unreadable
 metadata table blocks the release without printing database connection details;
 verify the one intended metadata database and both read-only grants before
 retrying.
 
-Run the tested driver with the exact full immutable API and preflight-runner
-images. Copy each digest from the release build output; do not substitute a
-mutable tag.
-
-```bash
-API_CANDIDATE_IMAGE="docker.io/xuwei190/task-processor-product-listing-api@sha256:<64-hex-api-digest>"
-PREFLIGHT_RUNNER_IMAGE="docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:<64-hex-runner-digest>"
-
-bash scripts/listingkit-identity-preflight-job.sh \
-  --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
-  --namespace task-processor \
-  --image "$API_CANDIDATE_IMAGE" \
-  --runner-image "$PREFLIGHT_RUNNER_IMAGE"
-```
-
-The driver renders a temporary manifest, creates one generated Job, waits up to
-15 minutes, and prints its logs. The Job's 900-second active deadline matches
-that driver wait, so a timed-out release gate cannot leave the preflight
-running indefinitely. A failure or timeout also prints `describe` output and
-returns non-zero before any Deployment image update. The Job only reads owner
-identifiers from the database and users from ZITADEL; it never mutates either
-system.
+`ListingKit API Deploy` composes the exact digest-pinned preflight image and
+runs it only through the administrator-installed
+`listingkit-identity-preflight-runner` Deployment. The Deployment starts at
+zero replicas; the release patches only its `release-gate` init-container
+image, scales it to one, waits for the hold container to become available, and
+always returns it to zero. Availability therefore proves the init container
+completed successfully. The release identity has no top-level `create`
+permission, and the gate only reads owner identifiers from the database and
+users from ZITADEL; it never mutates either system.
 
 Successful output ends with:
 
@@ -508,12 +495,12 @@ This validation is a separate operational change. It is not run by the
 deployment workflow and must not be used to bypass the identity preflight.
 
 The production overlay is steady-state desired state only. It contains the two
-long-lived image-agent workers and contains no finite canary Job. A generic
+long-lived image-agent workers and contains no finite canary workload. A generic
 `kubectl apply -k` is therefore not a release procedure: it cannot prove the
 ordered migrations, worker rollouts, finite canary, API rollout, and UI
 attestation gates. For a new cluster, render an immutable copy locally for
 review and client-side validation, then run the API release workflow. That
-workflow exclusively deletes, applies, and waits for the canary; the matching UI
+workflow exclusively runs the preinstalled zero-replica canary runner; the matching UI
 release is admitted only by its uploaded exact-source attestation.
 
 ```powershell
@@ -539,7 +526,7 @@ try {
 ```
 
 This command does not contact or mutate a cluster. Record the source SHA, image
-digests, API workflow run ID, migration Job name, canary result, and rollout
+digests, API workflow run ID, migration gate result, canary result, and rollout
 output in the Release Candidate Runbook. All production mutations use the
 GitHub Actions release workflows below rather than a generic overlay apply.
 
@@ -571,19 +558,32 @@ Required GitHub repository secrets:
 ```text
 DOCKERHUB_USERNAME
 DOCKERHUB_TOKEN
-KUBE_CONFIG
 ```
 
-`KUBE_CONFIG` should be the full kubeconfig content for the target cluster, not a path.
+Required non-secret variables in both production environments:
+
+```text
+K8S_CLUSTER_SERVER
+K8S_CLUSTER_CA_B64
+```
+
+The cluster endpoint and public CA chain are not credentials. The workflows
+request short-lived GitHub OIDC tokens and construct ephemeral kubeconfigs;
+there is no long-lived kubeconfig fallback.
 
 Recommended GitHub environment setup:
 
 ```text
-Environment name: production
-Environment URL:  https://pod.shuomiai.com
+API environment: listingkit-api-production
+UI environment:  listingkit-ui-production
+Environment URL: https://pod.shuomiai.com
 ```
 
-If you want manual approval before production deployment, add protection rules to the `production` environment in GitHub.
+Configure protection rules independently on both production environments.
+Before the first release, a cluster administrator must configure
+`kubernetes-authentication-config.example.yaml` in kube-apiserver and install
+the standalone `release-authority` Kustomization. Release workflows never
+install or widen their own Roles, RoleBindings, or runner Deployments.
 
 The workflow uses:
 
@@ -816,7 +816,7 @@ Keep evidence categories separate:
 
 - Local evidence: Go/frontend tests, structural manifest tests, Kustomize
   render, immutable-image driver tests, and diff/Secret allowlist inspection.
-- Live evidence: schema Job completion, both worker rollouts, canary Job
+- Live evidence: schema gate completion, both worker rollouts, canary runner
   completion/log outcome, Temporal v2 drain and pending activities, rebound
   reconciliation, lifecycle policy, and one end-to-end business acceptance.
 

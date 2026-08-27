@@ -1,0 +1,145 @@
+releaseAuthority:
+  repository: qq550723504/task-processor
+  namespace: task-processor
+  oidc:
+    issuer: https://token.actions.githubusercontent.com
+    usernamePrefix: "github:"
+    authenticationConfig: deployments/kubernetes/listingkit-workbench/release-authority/kubernetes-authentication-config.example.yaml
+    identities:
+      api:
+        environment: listingkit-api-production
+        audience: api://listingkit-api-production
+        subject: repo:qq550723504/task-processor:environment:listingkit-api-production
+        workflowPath: .github/workflows/listingkit-deploy.yml
+        job: deploy-api
+        role: listingkit-api-release
+        oidcTokenStep: Request short-lived API release identity
+        kubeconfigStep: Configure ephemeral API release kubeconfig
+        allowedSteps:
+          - Checkout workflow tooling
+          - Set up kubectl
+          - Request short-lived API release identity
+          - Configure ephemeral API release kubeconfig
+          - Reject legacy invitation credentials in shared Secret
+          - Validate dedicated member invitation Secret
+          - Prepare immutable API candidate image
+          - Log in to Docker Hub for candidate inspection
+          - Inspect candidate identity compatibility
+          - Migrate Product Listing API schema before ListingKit rollout
+          - Migrate ListingKit schema before owner exception seeding and preflight
+          - Run identity preflight release gate
+          - Remove deprecated ListingKit identity keys from shared Secret
+          - Apply ListingKit runtime configuration for candidate
+          - Apply immutable image agent v2 compatibility worker deployment
+          - Restart image agent v2 compatibility worker Pods
+          - Wait for image agent v2 compatibility worker rollout
+          - Apply immutable image agent v3 recovery worker deployment
+          - Restart image agent v3 recovery worker Pods
+          - Wait for image agent v3 recovery worker rollout
+          - Run finite image agent v3 compatibility canary
+          - Apply immutable API deployment after image agent compatibility gates
+          - Restart API Pods for Secret changes and v3 new-start routing
+          - Wait for API rollout
+          - Apply production ListingKit SMS webhook ingress
+          - Show running API image
+          - Emit ListingKit API release attestation
+          - Upload ListingKit API release attestation
+        allowedActions:
+          Checkout workflow tooling: actions/checkout@v4
+          Set up kubectl: azure/setup-kubectl@v4
+          Request short-lived API release identity: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+          Log in to Docker Hub for candidate inspection: docker/login-action@v3
+          Upload ListingKit API release attestation: actions/upload-artifact@v4
+      ui:
+        environment: listingkit-ui-production
+        audience: api://listingkit-ui-production
+        subject: repo:qq550723504/task-processor:environment:listingkit-ui-production
+        workflowPath: .github/workflows/listingkit-ui-deploy.yml
+        job: deploy-ui
+        role: listingkit-ui-release
+        oidcTokenStep: Request short-lived UI release identity
+        kubeconfigStep: Configure ephemeral UI release kubeconfig
+        allowedSteps:
+          - Checkout release identity tooling
+          - Set up kubectl
+          - Request short-lived UI release identity
+          - Configure ephemeral UI release kubeconfig
+          - Apply ListingKit UI authorization scopes
+          - Update UI deployment image
+          - Restart UI pods for authorization configuration
+          - Wait for UI rollout
+          - Show running UI image
+        allowedActions:
+          Checkout release identity tooling: actions/checkout@v4
+          Set up kubectl: azure/setup-kubectl@v4
+          Request short-lived UI release identity: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+  tools:
+    conftestVersion: 0.68.2
+    conftestImage: openpolicyagent/conftest@sha256:5fd81e332d7e4bc01daf3ef35371800a9a9720a30c0c37a78de0c5fbe4b6d622
+    opaVersion: 1.15.2
+  rbac:
+    kustomization: deployments/kubernetes/listingkit-workbench/release-authority/kustomization.yaml
+    paths:
+      - deployments/kubernetes/listingkit-workbench/release-authority/kustomization.yaml
+      - deployments/kubernetes/listingkit-workbench/release-authority/kubernetes-authentication-config.example.yaml
+      - deployments/kubernetes/listingkit-workbench/release-authority/listingkit-api-release-role.yaml
+      - deployments/kubernetes/listingkit-workbench/release-authority/listingkit-api-release-rolebinding.yaml
+      - deployments/kubernetes/listingkit-workbench/release-authority/listingkit-ui-release-role.yaml
+      - deployments/kubernetes/listingkit-workbench/release-authority/listingkit-ui-release-rolebinding.yaml
+  releaseGateRunners:
+    manifest: deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml
+    holdImage: registry.k8s.io/pause@sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a
+    names:
+      - product-listing-api-schema-migrate-runner
+      - listingkit-schema-migrate-runner
+      - listingkit-identity-preflight-runner
+      - image-agent-temporal-v3-canary-runner
+  protectedResources:
+    - owner: api
+      apiGroups: [""]
+      resource: configmaps
+      resourceNames: [listingkit-workbench-config]
+      verbs: [get, patch, update]
+    - owner: api
+      apiGroups: [""]
+      resource: secrets
+      resourceNames: [listingkit-workbench-secret]
+      verbs: [get, patch, update]
+    - owner: api
+      apiGroups: [""]
+      resource: secrets
+      resourceNames: [listingkit-member-invitation-secret]
+      verbs: [get]
+    - owner: api
+      apiGroups: [apps]
+      resource: deployments
+      resourceNames:
+        - product-listing-api
+        - image-agent-temporal-worker
+        - image-agent-temporal-worker-v3
+        - product-listing-api-schema-migrate-runner
+        - listingkit-schema-migrate-runner
+        - listingkit-identity-preflight-runner
+        - image-agent-temporal-v3-canary-runner
+      verbs: [get, patch, update, watch]
+    - owner: api
+      apiGroups: [networking.k8s.io]
+      resource: ingresses
+      resourceNames: [listingkit-workbench]
+      verbs: [get, patch, update]
+    - owner: ui
+      apiGroups: [""]
+      resource: configmaps
+      resourceNames: [listingkit-workbench-config]
+      verbs: [get, patch, update]
+    - owner: ui
+      apiGroups: [apps]
+      resource: deployments
+      resourceNames: [listingkit-ui]
+      verbs: [get, patch, update, watch]
+  documentation:
+    paths:
+      - deployments/kubernetes/listingkit-workbench/README.md
+    canonicalWorkflows:
+      - .github/workflows/listingkit-deploy.yml
+      - .github/workflows/listingkit-ui-deploy.yml
