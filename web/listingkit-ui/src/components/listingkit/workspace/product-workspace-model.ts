@@ -20,12 +20,14 @@ export type ProductWorkspaceNavItem = {
   platform?: string;
   selected?: boolean;
   status?: ProductWorkspaceItemStatus;
+  recoveryLabel?: string;
 };
 
 export type ProductWorkspacePlatformInput = {
   platform: string;
   label: string;
   status?: ProductWorkspaceItemStatus;
+  recoveryLabel?: string;
 };
 
 export type ProductWorkspaceAttentionSeverity = "blocking" | "warning" | "passed";
@@ -88,6 +90,7 @@ export function buildProductWorkspacePlatformNavigation(
     platform: platform.platform,
     selected: platform.platform === selectedPlatform,
     status: platform.status ?? "idle",
+    recoveryLabel: platform.recoveryLabel,
   }));
 }
 
