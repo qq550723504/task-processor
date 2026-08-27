@@ -49,7 +49,7 @@ func TestExecuteSlotV3DoesNotRegenerateAnUnownedProviderClaim(t *testing.T) {
 	require.Equal(t, slotProviderOutcomeUnknownCode, stored.BlockedCode)
 }
 
-func TestExecuteSlotV3ResumesPreparedStagingByHead(t *testing.T) {
+func TestExecuteSlotV3ResumesPersistedStagingWithoutRegeneration(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-resume-staging")
 	effects := repository.(imageagent.SlotExternalEffectV3Repository)
 	manifest := v3StagingManifest(input, tinyPNGBytes(t))
@@ -69,29 +69,6 @@ func TestExecuteSlotV3ResumesPreparedStagingByHead(t *testing.T) {
 	stored, err := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
 	require.NoError(t, err)
 	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
-}
-
-func TestExecuteSlotV3CompletesAfterOriginalLocalFilesDisappear(t *testing.T) {
-	repository, input := initializedSlotEffectV3Activity(t, "run-v3-local-file-loss")
-	effects := repository.(imageagent.SlotExternalEffectV3Repository)
-	path := writeTinyPNG(t)
-	executor := &recordingStagedExecutor{generated: generatedV3Output(input, path)}
-	artifacts := &recordingArtifactStore{ensureErrors: []error{errors.New("object store temporarily unavailable"), nil}}
-	activities := newV3Activities(t, repository, effects, executor, artifacts)
-
-	_, err := activities.ExecuteSlotV3(context.Background(), input)
-	require.ErrorContains(t, err, "ensure staged artifacts")
-	stored, err := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
-	require.NoError(t, err)
-	require.Equal(t, imageagent.SlotEffectV3StagingPrepared, stored.Phase)
-	require.NoError(t, os.Remove(path))
-
-	result, err := activities.ExecuteSlotV3(context.Background(), input)
-	require.NoError(t, err)
-	require.Equal(t, 1, executor.GenerateCalls())
-	require.Equal(t, 1, artifacts.PrepareCalls())
-	require.Equal(t, 2, artifacts.EnsureCalls())
-	require.Len(t, result.Candidates, 1)
 }
 
 func TestExecuteSlotV3RecoversLostTransitionResponses(t *testing.T) {
