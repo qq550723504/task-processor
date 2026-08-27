@@ -67,4 +67,38 @@ describe("ProductWorkspaceNavigation", () => {
     await user.click(screen.getByRole("button", { name: "历史" }));
     expect(onSelectHistory).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps platform recovery separate from selecting the platform", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onRecoverPlatform = vi.fn();
+
+    render(
+      <ProductWorkspaceNavigation
+        canonicalItems={buildProductWorkspaceCanonicalNavigation("overview")}
+        platformItems={[
+          {
+            key: "platform:temu",
+            label: "TEMU",
+            platform: "temu",
+            status: "failed",
+            recoveryLabel: "立即重试",
+          },
+        ]}
+        onSelect={onSelect}
+        onRecoverPlatform={onRecoverPlatform}
+        onSelectHistory={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /TEMU/ }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onRecoverPlatform).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "立即重试" }));
+    expect(onRecoverPlatform).toHaveBeenCalledWith(
+      expect.objectContaining({ platform: "temu", recoveryLabel: "立即重试" }),
+    );
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
 });
