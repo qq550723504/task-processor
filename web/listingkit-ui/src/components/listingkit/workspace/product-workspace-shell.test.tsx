@@ -17,7 +17,8 @@ describe("ProductWorkspaceShell", () => {
     expect(screen.getByRole("navigation", { name: "商品工作台导航" })).toHaveTextContent(
       "navigation content",
     );
-    expect(screen.getByRole("main", { name: "商品工作区" })).toHaveTextContent("work content");
+    expect(screen.getByRole("region", { name: "商品工作区" })).toHaveTextContent("work content");
+    expect(screen.queryByRole("main", { name: "商品工作区" })).not.toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "AI 审核" })).toHaveTextContent(
       "review content",
     );
