@@ -13,10 +13,7 @@ import { TaskProgressNotice } from "@/components/listingkit/tasks/task-progress-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  ProductWorkspaceAIReview,
-  type ProductWorkspaceReviewIssue,
-} from "@/components/listingkit/workspace/product-workspace-ai-review";
+import { ProductWorkspaceAIReview } from "@/components/listingkit/workspace/product-workspace-ai-review";
 import {
   buildProductWorkspaceAttentionSummary,
   buildProductWorkspaceCanonicalNavigation,
@@ -25,6 +22,10 @@ import {
   type ProductWorkspaceSectionKey,
 } from "@/components/listingkit/workspace/product-workspace-model";
 import { ProductWorkspaceNavigation } from "@/components/listingkit/workspace/product-workspace-navigation";
+import {
+  buildProductWorkspaceReviewIssues,
+  type ProductWorkspaceReviewIssue,
+} from "@/components/listingkit/workspace/product-workspace-review-model";
 import { ProductWorkspaceShell } from "@/components/listingkit/workspace/product-workspace-shell";
 import { SDSRepairPanel } from "@/components/listingkit/workspace/sds-repair-panel";
 import { SheinAdvancedReviewDetails } from "@/components/listingkit/workspace/shein-advanced-review-details";
@@ -236,7 +237,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     })),
     selectedPlatform,
   );
-  const reviewIssues = buildProductWorkspaceReviewIssues(taskResult.data);
+  const reviewIssues = buildProductWorkspaceReviewIssues(
+    taskResult.data,
+    selectedPlatform,
+  );
   const issueSummary = buildProductWorkspaceAttentionSummary({
     blockingCount: countIssueSeverity(reviewIssues, "blocking"),
     warningCount: countIssueSeverity(reviewIssues, "warning"),
@@ -344,8 +348,8 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           <ProductWorkspaceAIReview
             issues={reviewIssues}
             onSelectIssue={(issue) => {
-              if (selectedPlatform === "shein") {
-                workspaceActions.handleRunSheinPrimaryAction(issue.id);
+              if (issue.actionKey) {
+                workspaceActions.handleRunSheinPrimaryAction(issue.actionKey);
               }
             }}
             summary={issueSummary}
@@ -462,24 +466,6 @@ function ProductWorkspaceHeader({
       </div>
     </section>
   );
-}
-
-function buildProductWorkspaceReviewIssues(
-  task?: ListingKitTaskResult | null,
-): ProductWorkspaceReviewIssue[] {
-  return (task?.result?.workflow_issues ?? [])
-    .filter(
-      (issue) =>
-        issue.severity === "blocking" ||
-        issue.severity === "warning" ||
-        issue.severity === "review",
-    )
-    .map((issue, index) => ({
-      id: issue.code || `issue-${index + 1}`,
-      severity: issue.severity === "blocking" ? "blocking" : "warning",
-      title: issue.message || issue.code || "需要确认",
-      description: issue.detail,
-    }));
 }
 
 function countIssueSeverity(
