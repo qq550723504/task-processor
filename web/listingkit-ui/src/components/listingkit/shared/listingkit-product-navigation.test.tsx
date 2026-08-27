@@ -1,16 +1,24 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ListingKitAppShell } from "@/components/listingkit/shared/listingkit-app-shell";
 
+const navigation = vi.hoisted(() => ({
+  pathname: "/listing-kits/sds",
+}));
+
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/listing-kits/sds",
+  usePathname: () => navigation.pathname,
   useRouter: () => ({ replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
 describe("ListingKit product-oriented navigation", () => {
+  beforeEach(() => {
+    navigation.pathname = "/listing-kits/sds";
+  });
+
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();
@@ -64,6 +72,34 @@ describe("ListingKit product-oriented navigation", () => {
     expect(screen.getByRole("link", { name: "执行记录" })).toHaveAttribute(
       "href",
       "/listing-kits",
+    );
+  });
+
+  it("expands the product group when navigation activates a child route", () => {
+    navigation.pathname = "/listing-kits/home";
+    const shell = (
+      <ListingKitAppShell identity={{ roles: ["listingkit_admin"] }}>
+        <div>workspace content</div>
+      </ListingKitAppShell>
+    );
+    const { rerender } = render(shell);
+
+    expect(screen.getByRole("button", { name: "商品" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByRole("link", { name: "商品中心" })).not.toBeInTheDocument();
+
+    navigation.pathname = "/listing-kits/canonical-products";
+    rerender(shell);
+
+    expect(screen.getByRole("button", { name: "商品" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByRole("link", { name: "商品中心" })).toHaveAttribute(
+      "aria-current",
+      "page",
     );
   });
 
