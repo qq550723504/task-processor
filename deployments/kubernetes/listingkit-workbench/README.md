@@ -716,6 +716,16 @@ you complete backfill and tenant/user sampling.
 
 ## Temporal rollout
 
+The manual image-agent workflow has a dedicated production worker deployment,
+`image-agent-temporal-worker`. It uses the same immutable API image so the
+schema/domain contracts cannot drift, but runs `/app/image-agent-temporal-worker`
+as a separate process. The worker loads the shared production config/database,
+reuses the canonical ProductImage provider and publisher builders, and writes
+approved candidates through ListingKit's locked task-result mutation path. It
+fails startup when those real dependencies are absent; no local generation
+fallback is enabled. The ListingKit deploy workflow applies the worker with the
+same immutable API digest and waits for its rollout.
+
 ListingKit now runs three Temporal-backed workflow paths:
 
 - `StandardProductWorkflow`

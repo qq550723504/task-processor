@@ -60,7 +60,62 @@ func TestRepositoryContract(t *testing.T) {
 			testProjectionCommitRollbackHidesEventSnapshotAndNormalizedWrites(t, tt.new(t))
 			testCombinedPlanAndRunProjectionCommitUsesPreMutationRevision(t, tt.new(t))
 			testProjectionCommitRejectsPlanOutsidePersistedCatalog(t, tt.new(t))
+			testProjectionCommitRejectsMismatchedSlotAttemptIdentityAtomically(t, tt.new(t))
 			testAttemptIdentitiesAreIdempotentAndNonAliasing(t, tt.new(t))
+		})
+	}
+}
+
+func testProjectionCommitRejectsMismatchedSlotAttemptIdentityAtomically(t *testing.T, repo repositoryContract) {
+	t.Helper()
+	tests := []struct {
+		name   string
+		mutate func(*imageagent.SlotProjectionMutation)
+	}{
+		{name: "mutation revision", mutate: func(m *imageagent.SlotProjectionMutation) { m.PlanRevision = 2 }},
+		{name: "attempt revision", mutate: func(m *imageagent.SlotProjectionMutation) { m.Attempt.PlanRevision = 2 }},
+		{name: "attempt tenant", mutate: func(m *imageagent.SlotProjectionMutation) { m.Attempt.TenantID = "tenant-b" }},
+		{name: "attempt owner", mutate: func(m *imageagent.SlotProjectionMutation) { m.Attempt.OwnerUserID = "user-b" }},
+		{name: "attempt run", mutate: func(m *imageagent.SlotProjectionMutation) { m.Attempt.RunID = "other-run" }},
+		{name: "attempt slot", mutate: func(m *imageagent.SlotProjectionMutation) { m.Attempt.SlotID = "other-slot" }},
+		{name: "attempt number", mutate: func(m *imageagent.SlotProjectionMutation) { m.Attempt.Attempt = 2 }},
+		{name: "projection slot", mutate: func(m *imageagent.SlotProjectionMutation) { m.Projection.Slot.ID = "other-slot" }},
+		{name: "projection attempt", mutate: func(m *imageagent.SlotProjectionMutation) { m.Projection.Attempt = 2 }},
+	}
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			run := manualRun(fmt.Sprintf("run-slot-identity-%d", index), "tenant-a")
+			plan := planRevision(1)
+			scope := imageagent.ScopeForRun(*run)
+			initial, err := repo.InitializeRun(ctx, imageagent.ProjectionInitialization{
+				Scope: scope, Run: *run, Plan: plan,
+				Catalog:  imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source-1.png"}, {ID: "style-1", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style-1.png"}}},
+				Snapshot: imageagent.RunProjection{Run: *run, Plan: plan}, CommitID: "start", EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+			})
+			require.NoError(t, err)
+			updated := initial
+			candidate := imageagent.AssetCandidate{AssetID: "candidate-1", URL: "https://generated.example/candidate-1.png", SourceAssetID: "source-1"}
+			updated.Slots[0] = imageagent.SlotProjection{Slot: updated.Slots[0].Slot, Attempt: 1, Candidates: []imageagent.AssetCandidate{candidate}}
+			updated.Slots[0].Slot.Status = imageagent.SlotStatusAccepted
+			mutation := imageagent.SlotProjectionMutation{
+				PlanRevision: 1,
+				Result:       imageagent.SlotResult{SlotID: "slot-1", Attempt: 1, Status: imageagent.SlotStatusAccepted, CandidateAssetIDs: []string{"candidate-1"}},
+				Projection:   updated.Slots[0],
+				Attempt:      imageagent.StepAttempt{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: 1, SlotID: "slot-1", Attempt: 1, Node: "execute_slot", IdempotencyKey: "attempt-1", Outcome: "accepted"},
+			}
+			tt.mutate(&mutation)
+			_, err = repo.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: "malicious", ExpectedProjectionVersion: initial.ProjectionVersion, Snapshot: updated, EventType: "slot.result.persisted", EventPayload: json.RawMessage(`{}`), SlotMutation: &mutation})
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+
+			stored, err := repo.GetProjection(ctx, scope)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, stored.ProjectionVersion)
+			require.Zero(t, stored.Slots[0].Attempt)
+			require.Empty(t, stored.Slots[0].Candidates)
+			events, err := repo.ListEvents(ctx, scope, 0, 10)
+			require.NoError(t, err)
+			require.Len(t, events, 1)
 		})
 	}
 }

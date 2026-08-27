@@ -88,6 +88,34 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 	}
 }
 
+func TestListingKitDeployOwnsImageAgentWorkerBuildManifestAndImmutableRollout(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	workflowBytes, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	workflow := string(workflowBytes)
+	for _, required := range []string{
+		"scripts/listingkit-apply-image-agent-worker-deployment.sh",
+		"deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml",
+		"--image \"$API_CANDIDATE_IMAGE\"",
+		"rollout status deployment/image-agent-temporal-worker --timeout=5m",
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Errorf("ListingKit deploy workflow missing image-agent worker ownership %q", required)
+		}
+	}
+	dockerfileBytes, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "Dockerfile.product-listing-api"))
+	if err != nil {
+		t.Fatalf("read API Dockerfile: %v", err)
+	}
+	for _, required := range []string{"./cmd/image-agent-temporal-worker", "/app/image-agent-temporal-worker"} {
+		if !strings.Contains(string(dockerfileBytes), required) {
+			t.Errorf("API image must own image-agent worker binary %q", required)
+		}
+	}
+}
+
 func TestListingKitDeployPublishesProductionSMSWebhookIngressAfterAPIRollout(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
 	content, err := os.ReadFile(workflowPath)

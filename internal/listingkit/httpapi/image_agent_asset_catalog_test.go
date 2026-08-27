@@ -22,7 +22,7 @@ func TestListingKitImageAgentCatalogUsesOwnedCanonicalSourceAssetsAndNoSynthetic
 			{ID: "generated-1", Kind: asset.KindSceneImage, URL: "https://cdn.example.test/generated.png"},
 		}}}},
 	}}
-	catalog := newListingKitAuthorizedAssetCatalog(tasks)
+	catalog := NewImageAgentAuthorizedAssetCatalog(tasks)
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
 
 	got, err := catalog.Resolve(ctx, imageagent.AssetCatalogScope{TenantID: "tenant-a", OwnerUserID: "user-a", BusinessTaskID: "task-1", RunID: "run-1"})
@@ -35,7 +35,7 @@ func TestListingKitImageAgentCatalogUsesOwnedCanonicalSourceAssetsAndNoSynthetic
 	_, err = catalog.Resolve(ctx, imageagent.AssetCatalogScope{TenantID: "tenant-a", OwnerUserID: "user-b", BusinessTaskID: "task-1", RunID: "run-1"})
 	require.Error(t, err)
 
-	requestOnly := newListingKitAuthorizedAssetCatalog(listingTaskSourceStub{task: &listingkit.Task{
+	requestOnly := NewImageAgentAuthorizedAssetCatalog(listingTaskSourceStub{task: &listingkit.Task{
 		ID: "task-request-only", TenantID: "tenant-a", UserID: "user-a",
 		Request: &listingkit.GenerateRequest{ImageURLs: []string{"https://source.example/request-only.png"}},
 	}})

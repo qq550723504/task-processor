@@ -1,4 +1,4 @@
-package imageagent_test
+package temporal_test
 
 import (
 	"context"

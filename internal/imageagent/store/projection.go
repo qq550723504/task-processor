@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -41,6 +42,7 @@ func (r *memoryRepository) InitializeRun(_ context.Context, input imageagent.Pro
 			return imageagent.RunProjection{}, imageagent.ErrRevisionConflict
 		}
 	}
+	prepared = materializeRepositoryCatalogTimestamp(prepared, time.Now().UTC())
 	r.runs[key] = cloneRun(prepared.Run)
 	r.plans[key] = map[int64]imageagent.Plan{prepared.Plan.Revision: clonePlan(prepared.Plan)}
 	for _, slot := range prepared.Plan.Slots {
@@ -252,6 +254,7 @@ func (r *gormRepository) InitializeRun(ctx context.Context, input imageagent.Pro
 			}
 			return decodeProjection(existing.SnapshotJSON, &result)
 		}
+		prepared = materializeRepositoryCatalogTimestamp(prepared, time.Now().UTC())
 		runRow, err := runToRecord(prepared.Run)
 		if err != nil {
 			return err
@@ -474,6 +477,9 @@ func withProjectionTransaction(ctx context.Context, db *gorm.DB, transaction fun
 }
 
 func validateProjectionMutation(current imageagent.RunProjection, input imageagent.ProjectionCommit) error {
+	if err := validateSlotProjectionMutationIdentity(current, input); err != nil {
+		return err
+	}
 	expectedRun := current.Run
 	if input.RunMutation != nil {
 		expectedRun.Status = input.RunMutation.Status
@@ -516,6 +522,43 @@ func validateProjectionMutation(current imageagent.RunProjection, input imageage
 	}
 	if err := imageagent.ValidatePlanAgainstCatalog(input.Snapshot.Plan, current.AssetCatalog); err != nil {
 		return fmt.Errorf("%w: projection plan is outside the persisted catalog: %v", imageagent.ErrRevisionConflict, err)
+	}
+	return nil
+}
+
+func validateSlotProjectionMutationIdentity(current imageagent.RunProjection, input imageagent.ProjectionCommit) error {
+	mutation := input.SlotMutation
+	if mutation == nil {
+		return nil
+	}
+	if mutation.PlanRevision != current.Run.ActivePlanRevision || mutation.PlanRevision != current.Plan.Revision ||
+		mutation.Attempt.PlanRevision != mutation.PlanRevision ||
+		mutation.Attempt.TenantID != input.Scope.TenantID || mutation.Attempt.OwnerUserID != input.Scope.OwnerUserID || mutation.Attempt.RunID != input.Scope.RunID ||
+		mutation.Result.SlotID == "" || mutation.Result.SlotID != mutation.Attempt.SlotID || mutation.Result.SlotID != mutation.Projection.Slot.ID ||
+		mutation.Result.Attempt <= 0 || mutation.Result.Attempt != mutation.Attempt.Attempt || mutation.Result.Attempt != mutation.Projection.Attempt {
+		return fmt.Errorf("%w: slot mutation identity does not match the active run", imageagent.ErrRevisionConflict)
+	}
+	var currentSlot *imageagent.SlotProjection
+	for index := range current.Slots {
+		if current.Slots[index].Slot.ID == mutation.Result.SlotID {
+			currentSlot = &current.Slots[index]
+			break
+		}
+	}
+	if currentSlot == nil || mutation.Result.Attempt != currentSlot.Attempt+1 {
+		return fmt.Errorf("%w: slot mutation attempt does not follow the current slot", imageagent.ErrRevisionConflict)
+	}
+	expectedSlot := cloneSlot(currentSlot.Slot)
+	expectedSlot.Status = mutation.Result.Status
+	if !reflect.DeepEqual(mutation.Projection.Slot, expectedSlot) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode {
+		return fmt.Errorf("%w: slot mutation projection does not match the current slot", imageagent.ErrRevisionConflict)
+	}
+	candidateIDs := make([]string, 0, len(mutation.Projection.Candidates))
+	for _, candidate := range mutation.Projection.Candidates {
+		candidateIDs = append(candidateIDs, candidate.AssetID)
+	}
+	if !slices.Equal(candidateIDs, mutation.Result.CandidateAssetIDs) {
+		return fmt.Errorf("%w: slot mutation candidate identity does not match", imageagent.ErrRevisionConflict)
 	}
 	return nil
 }
@@ -638,6 +681,15 @@ func prepareInitialization(input imageagent.ProjectionInitialization) (imageagen
 	}
 	fingerprint, err := initializationFingerprint(input)
 	return input, fingerprint, err
+}
+
+func materializeRepositoryCatalogTimestamp(input imageagent.ProjectionInitialization, createdAt time.Time) imageagent.ProjectionInitialization {
+	if !input.Catalog.Manifest.CreatedAt.IsZero() {
+		return input
+	}
+	input.Catalog.Manifest.CreatedAt = createdAt
+	input.Snapshot.AssetCatalog.Manifest.CreatedAt = createdAt
+	return input
 }
 
 func initialSlotProjections(plan imageagent.Plan) []imageagent.SlotProjection {

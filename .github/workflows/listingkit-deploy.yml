@@ -232,9 +232,11 @@ jobs:
             scripts/listingkit-clean-legacy-identity-secret.sh
             scripts/listingkit-identity-preflight-job.sh
             scripts/listingkit-apply-api-deployment.sh
+            scripts/listingkit-apply-image-agent-worker-deployment.sh
             scripts/lib/listingkit-immutable-image.sh
             deployments/kubernetes/listingkit-workbench/base/configmap.yaml
             deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml
+            deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml
             deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml
             deployments/kubernetes/listingkit-workbench/jobs/product-listing-api-schema-migrate-job.yaml
             deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml
@@ -385,6 +387,14 @@ jobs:
             --namespace "$K8S_NAMESPACE" \
             --image "$API_CANDIDATE_IMAGE"
 
+      - name: Apply immutable image agent worker deployment
+        shell: bash
+        run: |
+          .workflow-tools/scripts/listingkit-apply-image-agent-worker-deployment.sh \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml \
+            --namespace "$K8S_NAMESPACE" \
+            --image "$API_CANDIDATE_IMAGE"
+
       - name: Restart API Pods for Secret changes
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/product-listing-api
@@ -392,6 +402,10 @@ jobs:
       - name: Wait for API rollout
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/product-listing-api --timeout=5m
+
+      - name: Wait for image agent worker rollout
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/image-agent-temporal-worker --timeout=5m
 
       - name: Apply production ListingKit SMS webhook ingress
         run: |

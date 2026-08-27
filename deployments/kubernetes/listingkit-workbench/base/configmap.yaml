@@ -57,6 +57,9 @@ data:
   LISTINGKIT_TEMPORAL_ADDRESS: "temporal-frontend.temporal.svc.cluster.local:7233"
   LISTINGKIT_TEMPORAL_NAMESPACE: "default"
   LISTINGKIT_TEMPORAL_START_WORKER: "1"
+  IMAGE_AGENT_TEMPORAL_ENABLED: "1"
+  IMAGE_AGENT_TEMPORAL_ADDRESS: "temporal-frontend.temporal.svc.cluster.local:7233"
+  IMAGE_AGENT_TEMPORAL_NAMESPACE: "default"
   # Set ZITADEL_ISSUER_URL and ZITADEL_CLIENT_ID to enable ZITADEL OIDC login.
   # These env vars are bound into Go API core config at listingkit.zitadel.*.
   # The resourceowner scope scopes ListingKit data by ZITADEL tenant; the project role scopes

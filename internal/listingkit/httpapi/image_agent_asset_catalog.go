@@ -11,13 +11,17 @@ import (
 	"task-processor/internal/listingkit"
 )
 
-type listingTaskSource interface {
+// ImageAgentTaskSource is the minimal ListingKit task read port required to
+// snapshot run-authorized source assets.
+type ImageAgentTaskSource interface {
 	GetTask(context.Context, string) (*listingkit.Task, error)
 }
 
-type listingKitAuthorizedAssetCatalog struct{ tasks listingTaskSource }
+type listingKitAuthorizedAssetCatalog struct{ tasks ImageAgentTaskSource }
 
-func newListingKitAuthorizedAssetCatalog(tasks listingTaskSource) imageagent.AuthorizedAssetCatalog {
+// NewImageAgentAuthorizedAssetCatalog keeps ListingKit task ownership and
+// canonical asset translation inside the ListingKit HTTP adapter boundary.
+func NewImageAgentAuthorizedAssetCatalog(tasks ImageAgentTaskSource) imageagent.AuthorizedAssetCatalog {
 	return &listingKitAuthorizedAssetCatalog{tasks: tasks}
 }
 

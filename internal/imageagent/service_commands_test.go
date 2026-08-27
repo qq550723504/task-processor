@@ -3,7 +3,9 @@ package imageagent_test
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -284,6 +286,30 @@ func TestServiceStartRetryUsesImmutablePersistedCatalogInsteadOfMutableTaskCatal
 	require.Equal(t, "source-1", workflows.starts[1].AssetCatalog.Assets[0].ID)
 }
 
+func TestServiceConcurrentIdenticalStartWithRepositoryOwnedCatalogTimestampConverges(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &concurrentStartWorkflowClient{}
+	resolver := newConcurrentCatalogResolver(authorizedCatalog(), 2)
+	service, err := imageagent.NewService(repository, workflows, resolver)
+	require.NoError(t, err)
+	input := imageagent.StartRunInput{RunID: "run-concurrent-start", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-concurrent-start-key", Plan: commandPlan(1)}
+
+	errs := make(chan error, 2)
+	for range 2 {
+		go func() {
+			errs <- service.Start(verifiedContext("tenant-a", "user-a"), input)
+		}()
+	}
+	require.NoError(t, <-errs)
+	require.NoError(t, <-errs)
+	require.Equal(t, 2, resolver.Calls())
+	require.Equal(t, 2, workflows.Count())
+
+	projection, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: input.RunID})
+	require.NoError(t, err)
+	require.False(t, projection.AssetCatalog.Manifest.CreatedAt.IsZero(), "repository winner must assign the durable catalog creation time")
+}
+
 func TestServiceReplacePlanValidatesPlanAndSlotAssetsAgainstPersistedRunCatalog(t *testing.T) {
 	repository := seededRepository(t, imageagent.RunStatusBlocked, &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"})
 	workflows := &recordingWorkflowClient{}
@@ -319,6 +345,62 @@ func (r staticCatalogResolver) Resolve(context.Context, imageagent.AssetCatalogS
 type mutableCatalogResolver struct {
 	catalog imageagent.AssetCatalog
 	calls   int
+}
+
+type concurrentCatalogResolver struct {
+	catalog imageagent.AssetCatalog
+	ready   sync.WaitGroup
+	release chan struct{}
+	mu      sync.Mutex
+	calls   int
+}
+
+func newConcurrentCatalogResolver(catalog imageagent.AssetCatalog, callers int) *concurrentCatalogResolver {
+	resolver := &concurrentCatalogResolver{catalog: catalog, release: make(chan struct{})}
+	resolver.ready.Add(callers)
+	go func() {
+		resolver.ready.Wait()
+		close(resolver.release)
+	}()
+	return resolver
+}
+
+func (r *concurrentCatalogResolver) Resolve(context.Context, imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
+	r.mu.Lock()
+	r.calls++
+	call := r.calls
+	r.mu.Unlock()
+	r.ready.Done()
+	<-r.release
+	if call == 2 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	return r.catalog, nil
+}
+
+func (r *concurrentCatalogResolver) Calls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
+}
+
+type concurrentStartWorkflowClient struct {
+	recordingWorkflowClient
+	mu    sync.Mutex
+	count int
+}
+
+func (c *concurrentStartWorkflowClient) StartManual(context.Context, imageagent.WorkflowStart) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.count++
+	return nil
+}
+
+func (c *concurrentStartWorkflowClient) Count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.count
 }
 
 func (r *mutableCatalogResolver) Resolve(context.Context, imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {

@@ -43,72 +43,20 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create watermark-aware image cleaner: %w", err)
 	}
-	modelProvider, err := buildModelProvider(input.Options.modelProvider, input.LLMManager, input.OpenAIManager, input.ImageWorkDir)
+	generation, err := buildGenerationCapabilities(input)
 	if err != nil {
-		return nil, fmt.Errorf("create productimage model provider: %w", err)
+		return nil, err
 	}
-	if input.Options.sceneGovernance.enabled {
-		if input.OpenAIManager == nil || !input.OpenAIManager.HasConfigResolver() {
-			return nil, fmt.Errorf("create governed productimage scene generator: resolver-backed OpenAI manager is not configured")
-		}
-		if modelProvider == nil {
-			return nil, fmt.Errorf("create governed productimage scene generator: model provider is not configured")
-		}
-		governedScene, governanceErr := buildGovernedProductImageSceneGenerator(input.Options.sceneGovernance, modelProvider.SceneGenerator(), input.AICredentialResolver, input.AIInvocationRecorder, input.Logger)
-		if governanceErr != nil {
-			return nil, fmt.Errorf("create governed productimage scene generator: %w", governanceErr)
-		}
-		allowed := tenantIDSet(input.Options.sceneGovernance.allowedTenantIDs)
-		var faithfulEditor productimage.FaithfulEditor
-		if editor := modelProvider.FaithfulEditor(); editor != nil {
-			faithfulEditor = &tenantAllowlistedFaithfulEditor{
-				inner: &governedFaithfulEditor{
-					inner: editor, router: BuildProductImageSceneCapabilityRouter(input.AICredentialResolver, input.Options.sceneGovernance.allowedTenantIDs), recorder: input.AIInvocationRecorder, logger: input.Logger,
-				},
-				allowed: allowed,
-			}
-		}
-		var reviewModel productimage.ImageReviewModel
-		if review := modelProvider.ReviewModel(); review != nil {
-			reviewModel = &tenantAllowlistedReviewModel{
-				inner: &governedReviewModel{
-					inner: review, router: BuildProductImageReviewCapabilityRouter(input.AICredentialResolver, input.Options.sceneGovernance.allowedTenantIDs), recorder: input.AIInvocationRecorder, logger: input.Logger,
-				},
-				allowed: allowed,
-			}
-		}
-		modelProvider = productimage.NewModelProvider(faithfulEditor, &tenantAllowlistedSceneGenerator{inner: governedScene, allowed: allowed}, reviewModel)
-		contextAnalyzer = &tenantAllowlistedContextAnalyzer{inner: contextAnalyzer, allowed: allowed}
+	modelProvider := generation.modelProvider
+	subjectExtractor := generation.subjectExtractor
+	whiteBgRenderer := generation.whiteBackgroundRenderer
+	sceneRenderer := generation.sceneRenderer
+	if generation.allowedTenants != nil {
+		contextAnalyzer = &tenantAllowlistedContextAnalyzer{inner: contextAnalyzer, allowed: generation.allowedTenants}
 	}
-
-	var subjectExtractor productimage.SubjectExtractor
-	var whiteBgRenderer productimage.WhiteBackgroundRenderer
-	var sceneRenderer productimage.SceneRenderer
-	if !shouldUseModelBackedImagePipeline(modelProvider) || modelProvider.FaithfulEditor() == nil {
-		subjectExtractor, err = buildSubjectExtractor(input.Options.imagePipelineComponents, input.ImageWorkDir)
-		if err != nil {
-			return nil, fmt.Errorf("create subject extractor: %w", err)
-		}
-		whiteBgRenderer, err = buildWhiteBackgroundRenderer(input.Options.imagePipelineComponents, input.ImageWorkDir)
-		if err != nil {
-			return nil, fmt.Errorf("create white background renderer: %w", err)
-		}
-	}
-	if modelProvider == nil || modelProvider.SceneGenerator() == nil {
-		if !shouldUseModelBackedImagePipeline(modelProvider) {
-			sceneRenderer, err = buildSceneRenderer(input.ImageWorkDir)
-			if err != nil {
-				return nil, fmt.Errorf("create scene renderer: %w", err)
-			}
-		}
-	}
-	resolvedComponents := resolveImagePipelineComponents(modelProvider, subjectExtractor, whiteBgRenderer, sceneRenderer)
-	subjectExtractor = resolvedComponents.subjectExtractor
-	whiteBgRenderer = resolvedComponents.whiteBgRenderer
-	sceneRenderer = resolvedComponents.sceneRenderer
 
 	imageCapabilities := productimage.StrictServiceCapabilities()
-	assetPublisher := buildAssetPublisher(input.Options.assetPublisher, input.Logger)
+	assetPublisher := generation.assetPublisher
 	imageSvc, err := productimage.NewService(&productimage.ServiceConfig{
 		QueueName:             "product_image_tasks",
 		TaskRepo:              imageRepo,

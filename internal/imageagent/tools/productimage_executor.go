@@ -21,6 +21,7 @@ type Dependencies struct {
 	SubjectExtractor        productimage.SubjectExtractor
 	WhiteBackgroundRenderer productimage.WhiteBackgroundRenderer
 	SceneRenderer           productimage.SceneRenderer
+	AssetPublisher          productimage.AssetPublisher
 	ProductContext          *productimage.ProductContext
 }
 
@@ -61,6 +62,14 @@ func (e *ProductImageSlotExecutor) ExecuteSlot(ctx context.Context, input imagea
 	}
 	if err != nil {
 		return imageagent.SlotExecutionResult{}, fmt.Errorf("execute slot %q: %w", slot.ID, err)
+	}
+	if e.dependencies.AssetPublisher != nil {
+		published := &productimage.ImageProcessResult{GalleryImages: append([]productimage.ImageAsset(nil), assets...)}
+		request := &productimage.ImageProcessRequest{Text: fmt.Sprintf("image-agent:%s:%d:%s:%d", strings.TrimSpace(input.RunID), input.PlanRevision, slot.ID, input.Attempt)}
+		if err := e.dependencies.AssetPublisher.Publish(ctx, request, published); err != nil {
+			return imageagent.SlotExecutionResult{}, fmt.Errorf("publish slot %q generated assets: %w", slot.ID, err)
+		}
+		assets = published.GalleryImages
 	}
 
 	candidates, err := generatedCandidates(input, slot, sourceAssetID, source, assets)

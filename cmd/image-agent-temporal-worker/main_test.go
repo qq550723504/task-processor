@@ -13,10 +13,10 @@ import (
 )
 
 func TestRunFailsClosedWhenProductDependenciesAreUnavailable(t *testing.T) {
-	want := errors.New("product image slot executor is not composed")
+	want := errors.New("image agent provider runtime unavailable")
 	started := false
-	err := run(context.Background(), func() (appruntime.ImageAgentTemporalDependencies, error) {
-		return appruntime.ImageAgentTemporalDependencies{}, want
+	err := run(context.Background(), func() (resolvedDependencies, error) {
+		return resolvedDependencies{}, want
 	}, func(context.Context, appruntime.ImageAgentTemporalDependencies, *logrus.Logger) error {
 		started = true
 		return nil
@@ -28,8 +28,9 @@ func TestRunFailsClosedWhenProductDependenciesAreUnavailable(t *testing.T) {
 func TestRunPassesResolvedDependenciesToTemporalRuntime(t *testing.T) {
 	want := appruntime.ImageAgentTemporalDependencies{Repository: commandRepository{}}
 	called := false
-	err := run(context.Background(), func() (appruntime.ImageAgentTemporalDependencies, error) {
-		return want, nil
+	closed := false
+	err := run(context.Background(), func() (resolvedDependencies, error) {
+		return resolvedDependencies{dependencies: want, close: func() error { closed = true; return nil }}, nil
 	}, func(_ context.Context, got appruntime.ImageAgentTemporalDependencies, _ *logrus.Logger) error {
 		called = true
 		require.Equal(t, want.Repository, got.Repository)
@@ -37,6 +38,7 @@ func TestRunPassesResolvedDependenciesToTemporalRuntime(t *testing.T) {
 	}, logrus.New())
 	require.EqualError(t, err, "worker stopped")
 	require.True(t, called)
+	require.True(t, closed)
 }
 
 type commandRepository struct{}

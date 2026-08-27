@@ -124,6 +124,21 @@ func TestExecutorKeepsProviderOutputsAsCandidatesForDeclaredSlot(t *testing.T) {
 	}
 }
 
+func TestExecutorPublishesModelLocalOutputsBeforeCandidateProjection(t *testing.T) {
+	publisher := &recordingAssetPublisher{}
+	executor := NewProductImageSlotExecutor(Dependencies{
+		SceneRenderer:  &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: `C:\work\generated.png`, Metadata: map[string]string{"local_path": `C:\work\generated.png`}}}},
+		AssetPublisher: publisher,
+	})
+
+	result, err := executor.ExecuteSlot(context.Background(), sceneSlotInput("scene-1"))
+
+	require.NoError(t, err)
+	require.Equal(t, 1, publisher.calls)
+	require.Len(t, result.Candidates, 1)
+	require.Equal(t, "https://cdn.example.test/generated.png", result.Candidates[0].URL)
+}
+
 func TestExecutorCandidateIdentityBindsAttemptAndOriginalProviderIndex(t *testing.T) {
 	source := productimage.ImageAsset{URL: "https://example.test/source.jpg", SourceURL: "https://example.test/source.jpg"}
 	generated := productimage.ImageAsset{URL: "https://example.test/generated.jpg"}
@@ -369,6 +384,16 @@ type recordingSceneRenderer struct {
 	err     error
 	asset   *productimage.ImageAsset
 	context *productimage.ProductContext
+}
+
+type recordingAssetPublisher struct{ calls int }
+
+func (p *recordingAssetPublisher) Publish(_ context.Context, _ *productimage.ImageProcessRequest, result *productimage.ImageProcessResult) error {
+	p.calls++
+	for index := range result.GalleryImages {
+		result.GalleryImages[index].URL = "https://cdn.example.test/generated.png"
+	}
+	return nil
 }
 
 func (r *recordingSceneRenderer) Render(_ context.Context, asset *productimage.ImageAsset, productContext *productimage.ProductContext) ([]productimage.ImageAsset, error) {

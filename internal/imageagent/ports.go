@@ -37,6 +37,7 @@ type SlotExecutionResult struct {
 type PublishApprovedInput struct {
 	RunID             string
 	TenantID          string
+	UserID            string
 	PlanRevision      int64
 	CandidateAssetIDs []string
 	IdempotencyKey    string

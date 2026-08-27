@@ -8,6 +8,7 @@ resources:
   - configmap.yaml
   - imgproxy-deployment.yaml
   - imgproxy-service.yaml
+  - image-agent-temporal-worker-deployment.yaml
   - product-listing-api-deployment.yaml
   - product-listing-api-service.yaml
   - shein-login-worker-deployment.yaml

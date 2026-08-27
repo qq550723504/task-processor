@@ -246,7 +246,7 @@ func TestGormInitializeRunConcurrentExactCommitIDReturnsWinnerReceipt(t *testing
 	plan := planRevision(1)
 	input := imageagent.ProjectionInitialization{
 		Scope: imageagent.ScopeForRun(*run), Run: *run, Plan: plan,
-		Catalog: imageagent.AssetCatalog{Manifest: imageagent.CatalogManifest{Version: 1, CreatedAt: time.Unix(123, 0).UTC()}, Assets: []imageagent.AuthorizedAsset{
+		Catalog: imageagent.AssetCatalog{Manifest: imageagent.CatalogManifest{Version: 1}, Assets: []imageagent.AuthorizedAsset{
 			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source.png"},
 			{ID: "style-1", Type: imageagent.AuthorizedAssetStyle},
 		}},
@@ -268,11 +268,16 @@ func TestGormInitializeRunConcurrentExactCommitIDReturnsWinnerReceipt(t *testing
 		}()
 	}
 	close(start)
+	var winnerCreatedAt time.Time
 	for range callers {
 		result := <-outcomes
 		require.NoError(t, result.err)
 		require.EqualValues(t, 1, result.projection.ProjectionVersion)
-		require.Equal(t, input.Catalog.Manifest.CreatedAt, result.projection.AssetCatalog.Manifest.CreatedAt)
+		require.False(t, result.projection.AssetCatalog.Manifest.CreatedAt.IsZero())
+		if winnerCreatedAt.IsZero() {
+			winnerCreatedAt = result.projection.AssetCatalog.Manifest.CreatedAt
+		}
+		require.Equal(t, winnerCreatedAt, result.projection.AssetCatalog.Manifest.CreatedAt)
 	}
 
 	conflict := input

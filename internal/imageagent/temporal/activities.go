@@ -286,7 +286,7 @@ func (a *Activities) PublishApproved(ctx context.Context, input PublishApprovedA
 		return err
 	}
 	return a.publisher.PublishApproved(ctx, imageagent.PublishApprovedInput{
-		RunID: input.RunID, TenantID: input.Identity.TenantID,
+		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		PlanRevision: input.PlanRevision, CandidateAssetIDs: append([]string(nil), input.CandidateAssetIDs...),
 		IdempotencyKey: input.IdempotencyKey,
 	})
