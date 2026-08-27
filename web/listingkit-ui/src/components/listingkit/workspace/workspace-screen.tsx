@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { RecoverySummaryCard } from "@/components/listingkit/review/recovery-summary-card";
 import { ResolvedActionCard } from "@/components/listingkit/review/resolved-action-card";
+import { derivePlatformRecoveryPresentation } from "@/components/listingkit/shared/platform-recovery";
 import { SheinFlowNav } from "@/components/listingkit/shein/shein-flow-nav";
 import { TaskRevisionHistoryPanel } from "@/components/listingkit/tasks/task-revision-history-panel";
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
@@ -231,11 +232,15 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     selectedProductSection,
   );
   const platformNavigation = buildProductWorkspacePlatformNavigation(
-    platformCards.map((card) => ({
-      platform: card.platform,
-      label: card.platform.toUpperCase(),
-      status: productWorkspaceStatusForPlatformCard(card),
-    })),
+    platformCards.map((card) => {
+      const recovery = derivePlatformRecoveryPresentation(card);
+      return {
+        platform: card.platform,
+        label: card.platform.toUpperCase(),
+        status: productWorkspaceStatusForPlatformCard(card),
+        recoveryLabel: recovery?.presentation.ctaLabel,
+      };
+    }),
     selectedProductSection === "overview" ? selectedPlatform : undefined,
   );
   const reviewIssues = buildProductWorkspaceReviewIssues(
@@ -274,6 +279,23 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     if (isProductSectionKey(item.key)) {
       setSelectedProductSection(item.key);
     }
+  };
+
+  const handlePlatformRecovery = (item: ProductWorkspaceNavItem) => {
+    if (!item.platform) {
+      return;
+    }
+    const platformCard = platformCards.find(
+      (card) => card.platform === item.platform,
+    );
+    if (!platformCard) {
+      return;
+    }
+    const recovery = derivePlatformRecoveryPresentation(platformCard);
+    if (!recovery?.descriptor) {
+      return;
+    }
+    workspaceActions.handlePlatformRecovery(recovery.descriptor, item.platform);
   };
 
   const centralWork =
@@ -344,6 +366,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           <ProductWorkspaceNavigation
             canonicalItems={canonicalNavigation}
             historySelected={historySelected}
+            onRecoverPlatform={handlePlatformRecovery}
             onSelect={handleNavigationSelect}
             onSelectHistory={() => setHistorySelected(true)}
             platformItems={platformNavigation}
