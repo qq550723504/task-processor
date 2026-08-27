@@ -1,6 +1,7 @@
 package objectstore
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -8,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"regexp"
 	"strconv"
 	"strings"
@@ -24,8 +26,6 @@ const (
 	defaultMaxAggregateBytes int64 = 64 << 20
 	defaultMaxImageDimension       = 8192
 	defaultMaxImagePixels    int64 = 32 << 20
-	maxOperationCount              = 8
-	maxOperationLength             = 64
 )
 
 var canonicalID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
@@ -54,6 +54,7 @@ type S3DurableArtifactStore struct {
 	maxAggregateBytes int64
 	maxImageDimension int
 	maxImagePixels    int64
+	inspectImage      func([]byte) (*imagex.ImageInfo, error)
 }
 
 type PrepareSlotArtifactsInput struct {
@@ -100,7 +101,7 @@ func NewS3DurableArtifactStore(uploader *storage.S3Uploader, cfg S3DurableArtifa
 	if cfg.MaxImagePixels <= 0 {
 		cfg.MaxImagePixels = defaultMaxImagePixels
 	}
-	return &S3DurableArtifactStore{uploader: uploader, maxArtifactBytes: cfg.MaxArtifactBytes, maxArtifactCount: cfg.MaxArtifactCount, maxAggregateBytes: cfg.MaxAggregateBytes, maxImageDimension: cfg.MaxImageDimension, maxImagePixels: cfg.MaxImagePixels}, nil
+	return &S3DurableArtifactStore{uploader: uploader, maxArtifactBytes: cfg.MaxArtifactBytes, maxArtifactCount: cfg.MaxArtifactCount, maxAggregateBytes: cfg.MaxAggregateBytes, maxImageDimension: cfg.MaxImageDimension, maxImagePixels: cfg.MaxImagePixels, inspectImage: imagex.Inspect}, nil
 }
 
 func (s *S3DurableArtifactStore) PrepareSlotArtifacts(input PrepareSlotArtifactsInput) (PreparedSlotArtifacts, error) {
@@ -121,15 +122,19 @@ func (s *S3DurableArtifactStore) PrepareSlotArtifacts(input PrepareSlotArtifacts
 		if !safePersistedID(asset.SourceAssetID) || (asset.ProviderReceiptID != "" && !safePersistedID(asset.ProviderReceiptID)) {
 			return PreparedSlotArtifacts{}, imageagent.ErrValidation
 		}
-		info, err := imagex.Inspect(asset.Bytes)
+		config, format, err := image.DecodeConfig(bytes.NewReader(asset.Bytes))
 		if err != nil {
 			return PreparedSlotArtifacts{}, imageagent.ErrValidation
 		}
-		contentType, ok := imageContentTypes[info.Format]
-		if !ok || asset.ContentType != contentType || asset.Width != info.Width || asset.Height != info.Height || info.Width > s.maxImageDimension || info.Height > s.maxImageDimension || int64(info.Width) > s.maxImagePixels/int64(info.Height) {
+		contentType, ok := imageContentTypes[format]
+		if !ok || asset.ContentType != contentType || asset.Width != config.Width || asset.Height != config.Height || !s.withinImageLimits(config.Width, config.Height) {
 			return PreparedSlotArtifacts{}, imageagent.ErrValidation
 		}
-		operations, err := trustedOperations(asset.Operations)
+		info, err := s.inspectImage(asset.Bytes)
+		if err != nil || info.Width != config.Width || info.Height != config.Height || info.Format != format {
+			return PreparedSlotArtifacts{}, imageagent.ErrValidation
+		}
+		operations, err := imageagent.NormalizeArtifactOperations(asset.Operations)
 		if err != nil {
 			return PreparedSlotArtifacts{}, imageagent.ErrValidation
 		}
@@ -155,14 +160,12 @@ func (s *S3DurableArtifactStore) EnsureStaged(ctx context.Context, prepared Prep
 	if err != nil {
 		return err
 	}
-	if err := s.validatePersistedManifest(manifest); err != nil {
+	validated, err := s.prevalidateManifest(manifest)
+	if err != nil {
 		return err
 	}
-	for index, asset := range manifest.Assets {
-		if _, err := parseStagingKey(asset, index); err != nil {
-			return err
-		}
-		if err := s.ensureObject(ctx, asset, prepared.contents[asset.ObjectKey]); err != nil {
+	for _, asset := range validated {
+		if err := s.ensureObject(ctx, asset.ref, prepared.contents[asset.ref.ObjectKey]); err != nil {
 			return err
 		}
 	}
@@ -174,20 +177,17 @@ func (s *S3DurableArtifactStore) Finalize(ctx context.Context, manifest imageage
 	if err != nil {
 		return imageagent.FinalManifest{}, err
 	}
-	if err := s.validatePersistedManifest(imageagent.StagingManifest{Assets: manifest.Assets}); err != nil {
+	validated, err := s.prevalidateManifest(imageagent.StagingManifest{Assets: manifest.Assets})
+	if err != nil {
 		return imageagent.FinalManifest{}, err
 	}
-	finalAssets := make([]imageagent.StagedAssetRef, len(manifest.Assets))
-	for index, staged := range manifest.Assets {
-		parsed, err := parseStagingKey(staged, index)
-		if err != nil {
+	finalAssets := make([]imageagent.StagedAssetRef, len(validated))
+	for index, staged := range validated {
+		if err := s.verifyExistingObject(ctx, staged.ref); err != nil {
 			return imageagent.FinalManifest{}, err
 		}
-		if err := s.verifyExistingObject(ctx, staged); err != nil {
-			return imageagent.FinalManifest{}, err
-		}
-		finalKey := parsed.publicKey()
-		finalAsset := staged
+		finalKey := staged.identity.publicKey()
+		finalAsset := staged.ref
 		finalAsset.ObjectKey = finalKey
 		inspection, err := s.uploader.InspectObject(ctx, finalKey)
 		if err != nil {
@@ -198,7 +198,7 @@ func (s *S3DurableArtifactStore) Finalize(ctx context.Context, manifest imageage
 				return imageagent.FinalManifest{}, err
 			}
 		} else {
-			copyErr := s.uploader.CopyImmutable(ctx, storage.ImmutableObjectCopy{SourceKey: staged.ObjectKey, Destination: immutablePut(finalAsset, nil)})
+			copyErr := s.uploader.CopyImmutable(ctx, storage.ImmutableObjectCopy{SourceKey: staged.ref.ObjectKey, Destination: immutablePut(finalAsset, nil)})
 			if copyErr != nil {
 				inspection, err = s.uploader.InspectObject(ctx, finalKey)
 				if err != nil {
@@ -241,21 +241,36 @@ func (s *S3DurableArtifactStore) ensureObject(ctx context.Context, asset imageag
 	return s.verifyExistingObject(ctx, asset)
 }
 
-func (s *S3DurableArtifactStore) validatePersistedManifest(manifest imageagent.StagingManifest) error {
+type prevalidatedStagedAsset struct {
+	ref      imageagent.StagedAssetRef
+	identity stagingKeyIdentity
+}
+
+func (s *S3DurableArtifactStore) prevalidateManifest(manifest imageagent.StagingManifest) ([]prevalidatedStagedAsset, error) {
 	if len(manifest.Assets) == 0 || len(manifest.Assets) > s.maxArtifactCount {
-		return imageagent.ErrValidation
+		return nil, imageagent.ErrValidation
 	}
 	var aggregateBytes int64
-	for _, asset := range manifest.Assets {
-		if asset.SizeBytes <= 0 || asset.SizeBytes > s.maxArtifactBytes || aggregateBytes > s.maxAggregateBytes-asset.SizeBytes || asset.Width > s.maxImageDimension || asset.Height > s.maxImageDimension || int64(asset.Width) > s.maxImagePixels/int64(asset.Height) || !safePersistedID(asset.SourceAssetID) || (asset.ProviderReceiptID != "" && !safePersistedID(asset.ProviderReceiptID)) {
-			return imageagent.ErrValidation
+	validated := make([]prevalidatedStagedAsset, len(manifest.Assets))
+	for index, asset := range manifest.Assets {
+		if asset.SizeBytes <= 0 || asset.SizeBytes > s.maxArtifactBytes || aggregateBytes > s.maxAggregateBytes-asset.SizeBytes || !s.withinImageLimits(asset.Width, asset.Height) || !safePersistedID(asset.SourceAssetID) || (asset.ProviderReceiptID != "" && !safePersistedID(asset.ProviderReceiptID)) {
+			return nil, imageagent.ErrValidation
 		}
-		if _, err := trustedOperations(asset.Operations); err != nil {
-			return err
+		if _, err := imageagent.NormalizeArtifactOperations(asset.Operations); err != nil {
+			return nil, err
+		}
+		identity, err := parseStagingKey(asset, index)
+		if err != nil {
+			return nil, err
 		}
 		aggregateBytes += asset.SizeBytes
+		validated[index] = prevalidatedStagedAsset{ref: asset, identity: identity}
 	}
-	return nil
+	return validated, nil
+}
+
+func (s *S3DurableArtifactStore) withinImageLimits(width, height int) bool {
+	return width > 0 && height > 0 && width <= s.maxImageDimension && height <= s.maxImageDimension && int64(width) <= s.maxImagePixels/int64(height)
 }
 
 func (s *S3DurableArtifactStore) verifyExistingObject(ctx context.Context, asset imageagent.StagedAssetRef) error {
@@ -322,44 +337,8 @@ var imageContentTypes = map[string]string{
 	"webp": "image/webp",
 }
 
-var trustedProductImageOperations = map[string]struct{}{
-	"select_subject": {}, "extract_subject_placeholder": {}, "cleanup_placeholder": {},
-	"remove_overlay_text_placeholder": {}, "remove_promo_badge_placeholder": {},
-	"remove_logo_overlay_placeholder": {}, "render_white_bg_placeholder": {},
-	"extract_subject": {}, "cleanup_image": {}, "render_white_bg": {},
-	"extract_subject_bbox": {}, "extract_subject_segmenter": {}, "render_white_bg_model": {},
-	"compose_on_white_canvas": {}, "cleanup_overlay_signal": {}, "cleanup_quality": {},
-	"remove_overlay_regions": {},
-}
-
-func trustedOperations(operations []string) ([]string, error) {
-	if len(operations) > maxOperationCount {
-		return nil, imageagent.ErrValidation
-	}
-	validated := make([]string, len(operations))
-	for index, operation := range operations {
-		if len(operation) == 0 || len(operation) > maxOperationLength {
-			return nil, imageagent.ErrValidation
-		}
-		if _, ok := trustedProductImageOperations[operation]; !ok {
-			return nil, imageagent.ErrValidation
-		}
-		validated[index] = operation
-	}
-	return validated, nil
-}
-
 func safePersistedID(value string) bool {
-	if !canonicalID.MatchString(value) {
-		return false
-	}
-	lower := strings.ToLower(value)
-	for _, marker := range []string{"authorization", "credential", "password", "secret", "token", "api_key", "apikey"} {
-		if strings.Contains(lower, marker) {
-			return false
-		}
-	}
-	return true
+	return canonicalID.MatchString(value)
 }
 
 type stagingKeyIdentity struct {

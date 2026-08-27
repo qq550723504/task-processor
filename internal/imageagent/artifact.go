@@ -43,6 +43,27 @@ type DurableAssetIdentity struct {
 
 var sha256Pattern = regexp.MustCompile(`^[a-fA-F0-9]{64}$`)
 
+const (
+	maxArtifactOperations      = 8
+	maxArtifactOperationLength = 64
+)
+
+// trustedArtifactOperations is the provider-neutral persistence vocabulary for
+// generated-image provenance. It deliberately stores only finite operation
+// names, never provider metadata or free-form descriptions.
+var trustedArtifactOperations = map[string]struct{}{
+	"select_subject": {}, "extract_subject_placeholder": {}, "cleanup_placeholder": {},
+	"remove_overlay_text_placeholder": {}, "remove_promo_badge_placeholder": {},
+	"remove_logo_overlay_placeholder": {}, "render_white_bg_placeholder": {},
+	"extract_subject": {}, "cleanup_image": {}, "render_white_bg": {},
+	"extract_subject_bbox": {}, "extract_subject_segmenter": {}, "render_white_bg_model": {},
+	"compose_on_white_canvas": {}, "cleanup_overlay_signal": {}, "cleanup_quality": {},
+	"remove_overlay_regions": {}, "resize": {},
+	"render_scene_model": {}, "render_image_model": {}, "extract_subject_model": {},
+	"normalize_for_amazon": {}, "download_source": {}, "optimize_for_amazon": {},
+	"render_scene_canvas": {},
+}
+
 func ValidateStagingManifest(manifest StagingManifest) error {
 	_, err := NormalizeStagingManifest(manifest)
 	return err
@@ -131,14 +152,33 @@ func normalizeStagedAssetRef(asset StagedAssetRef) (StagedAssetRef, error) {
 	default:
 		return StagedAssetRef{}, ErrValidation
 	}
-	for _, operation := range asset.Operations {
-		if operation == "" || operation != strings.TrimSpace(operation) {
-			return StagedAssetRef{}, ErrValidation
-		}
+	operations, err := NormalizeArtifactOperations(asset.Operations)
+	if err != nil {
+		return StagedAssetRef{}, err
 	}
 	asset.ObjectKey = identity.ObjectKey
 	asset.SHA256 = identity.SHA256
+	asset.Operations = operations
 	return asset, nil
+}
+
+// NormalizeArtifactOperations validates and defensively copies the only
+// operation values permitted in a persisted artifact manifest.
+func NormalizeArtifactOperations(operations []string) ([]string, error) {
+	if len(operations) > maxArtifactOperations {
+		return nil, ErrValidation
+	}
+	normalized := make([]string, len(operations))
+	for index, operation := range operations {
+		if len(operation) == 0 || len(operation) > maxArtifactOperationLength {
+			return nil, ErrValidation
+		}
+		if _, ok := trustedArtifactOperations[operation]; !ok {
+			return nil, ErrValidation
+		}
+		normalized[index] = operation
+	}
+	return normalized, nil
 }
 
 func NormalizeDurableAssetIdentity(asset DurableAssetIdentity) (DurableAssetIdentity, error) {

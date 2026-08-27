@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
@@ -18,6 +20,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/infra/storage"
+	"task-processor/internal/pkg/imagex"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -170,6 +173,37 @@ func TestPrepareRejectsOversizeUnsupportedOrEscapingArtifacts(t *testing.T) {
 	}
 }
 
+func TestPrepareAllowsCanonicalOpaqueIDsContainingTokenOrSecret(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t, &fakeS3API{})
+	asset := validAsset(t, 1, 1)
+	asset.SourceAssetID = "tokenized-source-1"
+	asset.ProviderReceiptID = "secretary-receipt-1"
+	if _, err := store.PrepareSlotArtifacts(prepareInputWith(testIdentity(), asset)); err != nil {
+		t.Fatalf("PrepareSlotArtifacts() error = %v, want canonical opaque IDs to remain valid", err)
+	}
+}
+
+func TestPrepareRejectsHostileDimensionsBeforeFullDecode(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t, &fakeS3API{})
+	fullDecodeCalled := false
+	store.inspectImage = func([]byte) (*imagex.ImageInfo, error) {
+		fullDecodeCalled = true
+		return nil, errors.New("full decode must not run")
+	}
+	asset := validAsset(t, 1, 1)
+	asset.Bytes = hostilePNGHeader(8193, 1)
+	asset.Width = 8193
+	asset.Height = 1
+	if _, err := store.PrepareSlotArtifacts(prepareInputWith(testIdentity(), asset)); err == nil {
+		t.Fatal("PrepareSlotArtifacts() error = nil, want hostile dimensions rejection")
+	}
+	if fullDecodeCalled {
+		t.Fatal("full image decode ran after DecodeConfig exceeded the configured dimension cap")
+	}
+}
+
 func newTestStore(t *testing.T, api *fakeS3API) *S3DurableArtifactStore {
 	t.Helper()
 	uploader := storage.NewS3UploaderWithAPI(api, storage.S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeAWS}})
@@ -216,6 +250,19 @@ func validPNG(t *testing.T, width, height int) []byte {
 		t.Fatalf("encode PNG: %v", err)
 	}
 	return encoded.Bytes()
+}
+
+func hostilePNGHeader(width, height uint32) []byte {
+	data := make([]byte, 8+4+4+13+4)
+	copy(data, "\x89PNG\r\n\x1a\n")
+	binary.BigEndian.PutUint32(data[8:12], 13)
+	copy(data[12:16], "IHDR")
+	binary.BigEndian.PutUint32(data[16:20], width)
+	binary.BigEndian.PutUint32(data[20:24], height)
+	data[24] = 8
+	data[25] = 2
+	binary.BigEndian.PutUint32(data[29:33], crc32.ChecksumIEEE(data[12:29]))
+	return data
 }
 
 func withReceipt(asset ArtifactInput, receipt string) ArtifactInput {
@@ -272,6 +319,48 @@ func TestRecoveryRejectsNonCanonicalPersistedStagingKeysBeforeSDKCalls(t *testin
 		}
 		if api.headCalls != 0 || api.putCalls != 0 || api.copyCalls != 0 {
 			t.Fatalf("SDK calls occurred for malformed manifest: head=%d put=%d copy=%d", api.headCalls, api.putCalls, api.copyCalls)
+		}
+	}
+}
+
+func TestPersistedManifestPreflightsEveryAssetBeforeStorageCalls(t *testing.T) {
+	t.Parallel()
+	for _, operation := range []struct {
+		name string
+		run  func(context.Context, *S3DurableArtifactStore, PreparedSlotArtifacts) error
+	}{
+		{name: "ensure", run: func(ctx context.Context, store *S3DurableArtifactStore, prepared PreparedSlotArtifacts) error {
+			return store.EnsureStaged(ctx, prepared)
+		}},
+		{name: "finalize", run: func(ctx context.Context, store *S3DurableArtifactStore, prepared PreparedSlotArtifacts) error {
+			_, err := store.Finalize(ctx, prepared.Manifest)
+			return err
+		}},
+	} {
+		for _, mutate := range []struct {
+			name  string
+			apply func(*imageagent.StagedAssetRef)
+		}{
+			{name: "malformed later key", apply: func(ref *imageagent.StagedAssetRef) {
+				ref.ObjectKey = "image-agent/staging/tenant-a/run-1/03/slot-1/2/1-" + ref.SHA256 + ".png"
+			}},
+			{name: "unsafe later operation", apply: func(ref *imageagent.StagedAssetRef) { ref.Operations = []string{"provider=https://transient.example"} }},
+		} {
+			t.Run(operation.name+"/"+mutate.name, func(t *testing.T) {
+				api := &fakeS3API{objects: map[string]fakeObject{}}
+				store := newTestStore(t, api)
+				prepared, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{Identity: testIdentity(), Assets: []ArtifactInput{validAsset(t, 1, 1), validAsset(t, 2, 1)}})
+				if err != nil {
+					t.Fatalf("PrepareSlotArtifacts() error = %v", err)
+				}
+				mutate.apply(&prepared.Manifest.Assets[1])
+				if err := operation.run(context.Background(), store, prepared); err == nil {
+					t.Fatal("storage call error = nil, want preflight validation failure")
+				}
+				if api.headCalls != 0 || api.putCalls != 0 || api.copyCalls != 0 {
+					t.Fatalf("storage calls occurred before complete manifest preflight: head=%d put=%d copy=%d", api.headCalls, api.putCalls, api.copyCalls)
+				}
+			})
 		}
 	}
 }
