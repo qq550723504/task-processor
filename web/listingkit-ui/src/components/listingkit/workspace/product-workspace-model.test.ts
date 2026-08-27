@@ -4,6 +4,7 @@ import {
   buildProductWorkspaceAttentionSummary,
   buildProductWorkspaceCanonicalNavigation,
   buildProductWorkspacePlatformNavigation,
+  productWorkspaceStatusForPlatformCard,
 } from "@/components/listingkit/workspace/product-workspace-model";
 
 describe("Product Workspace presentation model", () => {
@@ -48,6 +49,19 @@ describe("Product Workspace presentation model", () => {
         status: "ready",
       },
     ]);
+  });
+
+  it("derives navigation status from each platform card instead of the aggregate task", () => {
+    expect(productWorkspaceStatusForPlatformCard({ status: "failed" })).toBe("failed");
+    expect(productWorkspaceStatusForPlatformCard({ status: "retry_needed" })).toBe("failed");
+    expect(productWorkspaceStatusForPlatformCard({ status: "review_ready" })).toBe("attention");
+    expect(
+      productWorkspaceStatusForPlatformCard({ status: "unknown", needs_review: true }),
+    ).toBe("attention");
+    expect(productWorkspaceStatusForPlatformCard({ status: "processing" })).toBe("processing");
+    expect(productWorkspaceStatusForPlatformCard({ status: "pending" })).toBe("processing");
+    expect(productWorkspaceStatusForPlatformCard({ status: "completed" })).toBe("ready");
+    expect(productWorkspaceStatusForPlatformCard({ status: "unknown" })).toBe("idle");
   });
 
   it("maps review counts into operator-facing AI attention language", () => {
