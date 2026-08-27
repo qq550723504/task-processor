@@ -61,6 +61,7 @@ const mocks = vi.hoisted(() => ({
   handleToolbarAction: vi.fn(),
   handleRecovery: vi.fn(),
   handlePlatformRecovery: vi.fn(),
+  handleProductSelect: vi.fn(),
   taskStatus: "needs_review" as string,
   canonicalProduct: undefined as ReturnType<typeof canonicalProductFixture> | undefined,
   navigationPlatformCards: [] as Array<ReturnType<typeof sheinPlatformCardFixture> | {
@@ -171,6 +172,7 @@ vi.mock("@/components/listingkit/workspace/use-workspace-navigation-actions", ()
     handleRecovery: mocks.handleRecovery,
     handlePlatformSelect: mocks.handlePlatformSelect,
     handlePlatformRecovery: mocks.handlePlatformRecovery,
+    handleProductSelect: mocks.handleProductSelect,
     handleSelectSheinBlockingItem: mocks.handleSelectSheinBlockingItem,
     handleRunSheinPrimaryAction: mocks.handleRunSheinPrimaryAction,
   }),
@@ -341,6 +343,8 @@ describe("WorkspaceScreen Product Workspace composition", () => {
 
     await user.click(screen.getByRole("button", { name: "图片" }));
 
+    expect(mocks.handleProductSelect).toHaveBeenCalledWith("images");
+
     expect(
       within(work).getByRole("img", { name: "Canvas Tote front" }),
     ).toHaveAttribute("src", "https://example.com/canvas-tote-front.jpg");
@@ -390,18 +394,21 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     expect(within(work).getByText("历史记录内容")).toBeInTheDocument();
   });
 
-  it("keeps AI review in a checking state while the task is still processing", () => {
-    mocks.taskStatus = "processing";
-    mocks.workflowIssues = [];
+  it.each(["processing", "pending", "queued", "running"])(
+    "keeps AI review in a checking state while the task is %s",
+    (status) => {
+      mocks.taskStatus = status;
+      mocks.workflowIssues = [];
 
-    render(<WorkspaceScreen taskId="task-1" />);
+      render(<WorkspaceScreen taskId="task-1" />);
 
-    const aiReview = screen.getByRole("complementary", { name: "AI 审核" });
-    expect(within(aiReview).getByText("AI 正在检查商品")).toBeInTheDocument();
-    expect(
-      within(aiReview).queryByText("AI 检查已完成，可以继续当前操作。"),
-    ).not.toBeInTheDocument();
-  });
+      const aiReview = screen.getByRole("complementary", { name: "AI 审核" });
+      expect(within(aiReview).getByText("AI 正在检查商品")).toBeInTheDocument();
+      expect(
+        within(aiReview).queryByText("AI 检查已完成，可以继续当前操作。"),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("keeps all target platforms in navigation when the focused session has only one card", () => {
     mocks.navigationPlatformCards = [

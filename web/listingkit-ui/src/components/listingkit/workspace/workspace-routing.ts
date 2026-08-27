@@ -1,5 +1,6 @@
 import type { ReviewTarget } from "@/lib/types/listingkit";
 import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
+import type { ProductWorkspaceSectionKey } from "@/components/listingkit/workspace/product-workspace-model";
 
 function selectedPlatformFromTarget(target?: ReviewTarget | null) {
   const panelState = (target as ReviewTarget & {
@@ -32,4 +33,27 @@ export function buildWorkspaceSearch(
   });
 
   return params.toString();
+}
+
+export function buildProductWorkspaceHref(
+  taskId: string,
+  currentSearch: string,
+  section: ProductWorkspaceSectionKey,
+) {
+  const params = sanitizedNavigationSearchParams(
+    new URLSearchParams(currentSearch),
+  );
+  params.delete("platform");
+  params.delete("slot");
+  params.delete("preview_capability");
+  params.delete("section_key");
+
+  if (section === "overview") {
+    params.delete("product_section");
+  } else {
+    params.set("product_section", section);
+  }
+
+  const search = params.toString();
+  return `/listing-kits/${taskId}/workspace${search ? `?${search}` : ""}`;
 }

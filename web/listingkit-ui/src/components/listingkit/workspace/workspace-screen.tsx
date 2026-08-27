@@ -50,6 +50,7 @@ import {
   WorkspaceLoadErrorState,
   WorkspacePendingDataState,
 } from "@/components/listingkit/workspace/workspace-screen-states";
+import { shouldPollTaskResult } from "@/components/listingkit/tasks/task-status-query";
 import { buildWorkspaceReviewViewProps } from "@/components/listingkit/workspace/workspace-review-view-props";
 import { useApplyRevision } from "@/lib/query/use-apply-revision";
 import { useExecuteAction } from "@/lib/query/use-action";
@@ -66,13 +67,28 @@ import {
 
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const searchParams = useSearchParams();
+  const routeSearch = searchParams.toString();
+  const routeParams = new URLSearchParams(routeSearch);
+  const routeNavigationState = {
+    routeSearch,
+    selectedProductSection: productWorkspaceSectionFromSearch(routeSearch),
+    workspaceDestination: routeParams.get("platform") ? "platform" : "product",
+  } as const;
   const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
-  const [selectedProductSection, setSelectedProductSection] =
-    useState<ProductWorkspaceSectionKey>("overview");
   const [historySelected, setHistorySelected] = useState(false);
-  const [workspaceDestination, setWorkspaceDestination] = useState<
-    "product" | "platform"
-  >(() => (searchParams.get("platform") ? "platform" : "product"));
+  const [localNavigationState, setLocalNavigationState] = useState(
+    routeNavigationState,
+  );
+  const navigationState =
+    localNavigationState.routeSearch === routeSearch
+      ? localNavigationState
+      : routeNavigationState;
+  const { selectedProductSection, workspaceDestination } = navigationState;
+  const setLocalNavigation = (
+    next: Pick<typeof routeNavigationState, "selectedProductSection" | "workspaceDestination">,
+  ) => {
+    setLocalNavigationState({ routeSearch, ...next });
+  };
   const workspaceData = useWorkspaceData({ taskId, searchParams });
   const {
     baseQuery,
@@ -287,8 +303,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const handleNavigationSelect = (item: ProductWorkspaceNavItem) => {
     setHistorySelected(false);
     if (item.platform) {
-      setWorkspaceDestination("platform");
-      setSelectedProductSection("overview");
+      setLocalNavigation({
+        workspaceDestination: "platform",
+        selectedProductSection: "overview",
+      });
       const platformCard = navigationPlatformCards.find(
         (card) => card.platform === item.platform,
       ) ?? platformCards.find((card) => card.platform === item.platform);
@@ -300,8 +318,11 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       return;
     }
     if (isProductSectionKey(item.key)) {
-      setWorkspaceDestination("product");
-      setSelectedProductSection(item.key);
+      setLocalNavigation({
+        workspaceDestination: "product",
+        selectedProductSection: item.key,
+      });
+      workspaceActions.handleProductSelect(item.key);
     }
   };
 
@@ -407,7 +428,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             onSelect={handleNavigationSelect}
             onSelectHistory={() => {
               setHistorySelected(true);
-              setWorkspaceDestination("product");
+              setLocalNavigation({
+                workspaceDestination: "product",
+                selectedProductSection: "overview",
+              });
             }}
             platformItems={platformNavigation}
           />
@@ -415,10 +439,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         work={centralWork}
         aiReview={
           <ProductWorkspaceAIReview
-            checking={
-              taskResult.data?.status === "processing" ||
-              taskResult.data?.status === "pending"
-            }
+            checking={shouldPollTaskResult(taskResult.data?.status)}
             issues={reviewIssues}
             onSelectIssue={(issue) => {
               if (issue.actionKey) {
@@ -552,8 +573,10 @@ function countIssueSeverity(
   return issues.filter((issue) => issue.severity === severity).length;
 }
 
-function isProductSectionKey(value: string): value is ProductWorkspaceSectionKey {
-  return [
+function isProductSectionKey(value: string | null): value is ProductWorkspaceSectionKey {
+  return (
+    typeof value === "string" &&
+    [
     "overview",
     "images",
     "basic",
@@ -561,5 +584,14 @@ function isProductSectionKey(value: string): value is ProductWorkspaceSectionKey
     "specs",
     "attributes",
     "description",
-  ].includes(value);
+    ].includes(value)
+  );
+}
+
+function productWorkspaceSectionFromSearch(search: string): ProductWorkspaceSectionKey {
+  const params = new URLSearchParams(search);
+  const section = params.get("product_section");
+  return !params.get("platform") && isProductSectionKey(section)
+    ? section
+    : "overview";
 }

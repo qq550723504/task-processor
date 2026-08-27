@@ -16,7 +16,10 @@ import {
   deriveRecoveryNavigationTarget,
 } from "@/components/listingkit/workspace/workspace-action-routing";
 import { shouldSyncPlatformOnRecovery } from "@/components/listingkit/workspace/workspace-recovery-routing";
-import { buildWorkspaceSearch } from "@/components/listingkit/workspace/workspace-routing";
+import {
+  buildProductWorkspaceHref,
+  buildWorkspaceSearch,
+} from "@/components/listingkit/workspace/workspace-routing";
 import { scrollSheinWorkspaceTarget } from "@/components/listingkit/workspace/workspace-screen-helpers";
 import { useExecuteAction } from "@/lib/query/use-action";
 import { useDispatchNavigation } from "@/lib/query/use-dispatch";
@@ -30,6 +33,7 @@ import type {
   SheinReadinessItem,
   ToolbarAction,
 } from "@/lib/types/listingkit";
+import type { ProductWorkspaceSectionKey } from "@/components/listingkit/workspace/product-workspace-model";
 import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 
 type SearchParamsLike = {
@@ -153,8 +157,13 @@ export function useWorkspaceNavigationActions({
 
   const handlePlatformSelect = (platform: string) => {
     const params = sanitizedNavigationSearchParams(searchParams);
+    params.delete("product_section");
     params.set("platform", platform);
     router.replace(`/listing-kits/${taskId}/workspace?${params.toString()}`);
+  };
+
+  const handleProductSelect = (section: ProductWorkspaceSectionKey) => {
+    router.replace(buildProductWorkspaceHref(taskId, searchParams.toString(), section));
   };
 
   const handlePlatformRecovery = (
@@ -196,6 +205,7 @@ export function useWorkspaceNavigationActions({
     handleToolbarAction,
     handleRecovery,
     handlePlatformSelect,
+    handleProductSelect,
     handlePlatformRecovery,
     handleSelectSheinBlockingItem,
     handleRunSheinPrimaryAction,

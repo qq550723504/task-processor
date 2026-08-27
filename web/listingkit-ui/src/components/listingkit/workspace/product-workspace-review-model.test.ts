@@ -93,6 +93,29 @@ describe("Product Workspace review model", () => {
     ]);
   });
 
+  it("treats review-severity workflow issues as mandatory", () => {
+    const task = {
+      status: "completed",
+      result: {
+        workflow_issues: [
+          {
+            code: "shein_review_required",
+            severity: "review",
+            message: "属性需要确认",
+          },
+        ],
+      },
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task, "shein")).toEqual([
+      {
+        id: "shein_review_required",
+        severity: "blocking",
+        title: "属性需要确认",
+      },
+    ]);
+  });
+
   it("keeps repeated workflow issue codes as unique render identities", () => {
     const task = {
       status: "needs_review",

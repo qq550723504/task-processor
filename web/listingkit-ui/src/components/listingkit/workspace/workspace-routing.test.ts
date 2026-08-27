@@ -1,4 +1,7 @@
-import { buildWorkspaceSearch } from "@/components/listingkit/workspace/workspace-routing";
+import {
+  buildProductWorkspaceHref,
+  buildWorkspaceSearch,
+} from "@/components/listingkit/workspace/workspace-routing";
 
 describe("buildWorkspaceSearch", () => {
   it("derives search params from focused target", () => {
@@ -24,5 +27,17 @@ describe("buildWorkspaceSearch", () => {
     });
 
     expect(result).toBe("foo=bar&platform=temu");
+  });
+});
+
+describe("buildProductWorkspaceHref", () => {
+  it("clears platform review params and persists the product section", () => {
+    expect(
+      buildProductWorkspaceHref(
+        "task-1",
+        "foo=bar&platform=shein&slot=main&preview_capability=detail_preview&section_key=general_review",
+        "images",
+      ),
+    ).toBe("/listing-kits/task-1/workspace?foo=bar&product_section=images");
   });
 });

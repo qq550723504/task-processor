@@ -33,7 +33,10 @@ export function buildProductWorkspaceReviewIssues(
     const id = workflowIssueID(issue.code, index, issueCodeOccurrences);
     return {
       id,
-      severity: issue.severity === "blocking" ? "blocking" : "warning",
+      severity:
+        issue.severity === "blocking" || issue.severity === "review"
+          ? "blocking"
+          : "warning",
       title: issue.message || issue.code || "需要确认",
       ...(issue.detail ? { description: issue.detail } : {}),
       ...(actionKey ? { actionKey } : {}),
