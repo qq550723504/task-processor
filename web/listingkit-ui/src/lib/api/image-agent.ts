@@ -90,7 +90,7 @@ const projectionSchema = z
         current_node: z.string(),
         active_plan_revision: z.number().int().nonnegative(),
         version: z.number().int().nonnegative(),
-        max_concurrent_slots: z.number().int().positive(),
+        max_concurrent_slots: z.number().int().positive().optional(),
         budget: budgetSchema,
         usage: usageSchema,
         block: z

@@ -88,7 +88,7 @@ export type ImageAgentRun = {
   current_node: string;
   active_plan_revision: number;
   version: number;
-  max_concurrent_slots: number;
+  max_concurrent_slots?: number;
   budget: ImageAgentBudget;
   usage: ImageAgentBudgetUsage;
   block?: ImageAgentBlock;

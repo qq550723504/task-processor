@@ -77,8 +77,12 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
     (slot) => slot.id === blockedSlotID,
   );
   const blockedGuidance = guidanceForBlockedCode(projection.run.block?.code);
+  const publicationOutcomeUnknown =
+    projection.run.block?.code === "slot_publication_outcome_unknown";
   const canRetryBlockedSlot =
-    Boolean(blockedSlotID) && projection.actions.includes("retry_slot");
+    !publicationOutcomeUnknown &&
+    Boolean(blockedSlotID) &&
+    projection.actions.includes("retry_slot");
   const canEditPlan = projection.actions.includes("edit_plan");
   const completedSlots = projection.slots.filter(
     (slot) => slot.slot.status === "accepted",
@@ -186,7 +190,12 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
             <dl className="mt-3 space-y-3 text-sm">
               <Metric label="状态" value={runStatusLabel(projection.run.status)} />
               <Metric label="当前节点" value={projection.run.current_node || "—"} />
-              <Metric label="有效并发" value={`${projection.run.max_concurrent_slots} 个槽位`} />
+              <Metric
+                label="有效并发"
+                value={projection.run.max_concurrent_slots === undefined
+                  ? "未提供"
+                  : `${projection.run.max_concurrent_slots} 个槽位`}
+              />
               <Metric
                 label="图片预算"
                 value={`${projection.run.usage.images}/${projection.run.budget.max_images}`}

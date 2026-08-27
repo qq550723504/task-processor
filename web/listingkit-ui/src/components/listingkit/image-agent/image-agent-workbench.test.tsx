@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ImageAgentWorkbench } from "@/components/listingkit/image-agent/image-agent-workbench";
+import { parseImageAgentProjection } from "@/lib/api/image-agent";
 import type {
   ImageAgentAction,
   ImageAgentProjection,
@@ -70,6 +71,8 @@ const blockedUnknownCases: Array<{
   guidance: string;
   initialActions: ImageAgentAction[];
   refreshedActions: ImageAgentAction[];
+  initialCanCreate: boolean;
+  refreshedCanCreate: boolean;
 }> = [
   {
     name: "provider outcome unknown",
@@ -77,6 +80,8 @@ const blockedUnknownCases: Array<{
     guidance: "生成结果状态不确定",
     initialActions: ["edit_plan", "retry_slot", "cancel"],
     refreshedActions: ["edit_plan", "cancel"],
+    initialCanCreate: true,
+    refreshedCanCreate: false,
   },
   {
     name: "staging outcome unknown",
@@ -84,13 +89,17 @@ const blockedUnknownCases: Array<{
     guidance: "持久化字节状态不完整",
     initialActions: ["edit_plan", "cancel"],
     refreshedActions: ["edit_plan", "retry_slot", "cancel"],
+    initialCanCreate: false,
+    refreshedCanCreate: true,
   },
   {
     name: "publication outcome unknown",
     code: "slot_publication_outcome_unknown",
     guidance: "发布结果需要验证",
-    initialActions: ["edit_plan", "cancel"],
-    refreshedActions: ["edit_plan", "cancel"],
+    initialActions: ["edit_plan", "retry_slot", "cancel"],
+    refreshedActions: ["edit_plan", "retry_slot", "cancel"],
+    initialCanCreate: false,
+    refreshedCanCreate: false,
   },
 ];
 
@@ -107,6 +116,24 @@ afterEach(() => {
 });
 
 describe("ImageAgentWorkbench", () => {
+  it("parses legacy concurrency absence and strict positive persisted concurrency", () => {
+    const legacy = projectionWithSlots(7);
+    Reflect.deleteProperty(legacy.run, "max_concurrent_slots");
+    const parsedLegacy = parseImageAgentProjection(legacy);
+    expect(parsedLegacy.run.max_concurrent_slots).toBeUndefined();
+    expect(Object.hasOwn(parsedLegacy.run, "max_concurrent_slots")).toBe(false);
+
+    const current = projectionWithSlots(7);
+    current.run.max_concurrent_slots = 6;
+    expect(parseImageAgentProjection(current).run.max_concurrent_slots).toBe(6);
+
+    for (const malformed of [0, -1, 1.5, "6"]) {
+      const projection = projectionWithSlots(7);
+      projection.run.max_concurrent_slots = malformed as number;
+      expect(() => parseImageAgentProjection(projection)).toThrow();
+    }
+  });
+
   it("shows the exact blocked slot and keeps every planned slot", () => {
     const projection = projectionWithSlots(11, "scene-2");
 
@@ -125,7 +152,7 @@ describe("ImageAgentWorkbench", () => {
     ).toBeEnabled();
   });
 
-  it.each(blockedUnknownCases)("renders $name guidance from server actions on initial render and SSE refresh", async ({ code, guidance, initialActions, refreshedActions }) => {
+  it.each(blockedUnknownCases)("renders $name guidance from server actions on initial render and SSE refresh", async ({ code, guidance, initialActions, refreshedActions, initialCanCreate, refreshedCanCreate }) => {
     const initial = projectionWithSlots(7, "scene-2");
     initial.run.max_concurrent_slots = 3;
     initial.run.block = { code, message: "server detail before refresh", slot_id: "scene-2" };
@@ -133,6 +160,7 @@ describe("ImageAgentWorkbench", () => {
     initial.projection_version = 4;
     initial.last_event_id = 4;
     const refreshed = structuredClone(initial);
+    refreshed.run.max_concurrent_slots = 6;
     refreshed.actions = [...refreshedActions];
     refreshed.run.block = { code, message: "server detail after refresh", slot_id: "scene-2" };
     refreshed.projection_version = 5;
@@ -146,7 +174,7 @@ describe("ImageAgentWorkbench", () => {
     expect(screen.getByText(guidance)).toBeInTheDocument();
     expect(screen.getByText("server detail before refresh")).toBeInTheDocument();
     expect(screen.getByText("有效并发").parentElement).toHaveTextContent("3 个槽位");
-    if (initialActions.includes("retry_slot")) {
+    if (initialCanCreate) {
       expect(screen.getByRole("button", { name: "创建新尝试" })).toBeEnabled();
     } else {
       expect(screen.queryByRole("button", { name: "创建新尝试" })).not.toBeInTheDocument();
@@ -156,14 +184,46 @@ describe("ImageAgentWorkbench", () => {
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     expect(screen.getByText(guidance)).toBeInTheDocument();
     expect(screen.getByText("server detail after refresh")).toBeInTheDocument();
-    if (refreshedActions.includes("retry_slot")) {
+    expect(screen.getByText("有效并发").parentElement).toHaveTextContent("6 个槽位");
+    if (refreshedCanCreate) {
       expect(screen.getByRole("button", { name: "创建新尝试" })).toBeEnabled();
     } else {
       expect(screen.queryByRole("button", { name: "创建新尝试" })).not.toBeInTheDocument();
     }
-    if (code === "slot_publication_outcome_unknown") {
-      expect(screen.queryByRole("button", { name: /重试/ })).not.toBeInTheDocument();
-    }
+  });
+
+  it("commits legacy absence and a later supplied concurrency across SSE refreshes", async () => {
+    const initial = projectionWithSlots(7);
+    initial.run.max_concurrent_slots = 3;
+    initial.projection_version = 4;
+    initial.last_event_id = 4;
+    const legacy = structuredClone(initial);
+    Reflect.deleteProperty(legacy.run, "max_concurrent_slots");
+    legacy.projection_version = 5;
+    legacy.last_event_id = 5;
+    const current = structuredClone(legacy);
+    current.run.max_concurrent_slots = 5;
+    current.projection_version = 6;
+    current.last_event_id = 6;
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(legacy), { status: 200, headers: { "content-type": "application/json" } }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(current), { status: 200, headers: { "content-type": "application/json" } }),
+      );
+
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={initial} />);
+    expect(screen.getByText("有效并发").parentElement).toHaveTextContent("3 个槽位");
+
+    act(() => FakeEventSource.instances[0]?.emit(5, 5));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("有效并发").parentElement).toHaveTextContent("未提供");
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+
+    act(() => FakeEventSource.instances[1]?.emit(6, 6));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("有效并发").parentElement).toHaveTextContent("5 个槽位");
   });
 
   it("shows durable safe command failure details after refresh", () => {
