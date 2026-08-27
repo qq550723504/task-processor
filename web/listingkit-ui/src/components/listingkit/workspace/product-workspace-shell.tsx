@@ -23,9 +23,9 @@ export function ProductWorkspaceShell({
         >
           {navigation}
         </nav>
-        <main aria-label="商品工作区" className="min-w-0">
+        <section aria-label="商品工作区" className="min-w-0">
           {work}
-        </main>
+        </section>
         <aside
           aria-label="AI 审核"
           className="min-w-0 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto"
