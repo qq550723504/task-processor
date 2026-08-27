@@ -456,16 +456,25 @@ function NavSectionItem({
 }) {
   const active = isActiveNavTreeItem(pathname, item);
   const [open, setOpen] = useState(active);
-  const expanded = active || open;
-  const { open: sidebarOpen } = useSidebar();
+  const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar();
+  const expanded = sidebarOpen && open;
   const Icon = item.icon;
+
+  function toggleSection() {
+    if (!sidebarOpen) {
+      setSidebarOpen(true);
+      setOpen(true);
+      return;
+    }
+    setOpen((current) => !current);
+  }
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         aria-expanded={expanded}
         isActive={active}
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggleSection}
         type="button"
       >
         <Icon data-icon="inline-start" />
@@ -477,7 +486,7 @@ function NavSectionItem({
           }`}
         />
       </SidebarMenuButton>
-      {expanded && sidebarOpen ? (
+      {expanded ? (
         <ul className="ml-4 mt-1 flex min-w-0 flex-col gap-1 border-l border-sidebar-border pl-2 group-data-[state=collapsed]/sidebar:hidden">
           {item.children.map((child) => (
             <NavTreeNode key={child.label} item={child} pathname={pathname} />
@@ -501,7 +510,14 @@ function NavTreeNode({
   if (isNavItem(item)) {
     return <NavLink item={item} pathname={pathname} />;
   }
-  return <NavSectionItem item={item} pathname={pathname} />;
+  const active = isActiveNavTreeItem(pathname, item);
+  return (
+    <NavSectionItem
+      key={`${item.label}:${active ? "active" : "inactive"}`}
+      item={item}
+      pathname={pathname}
+    />
+  );
 }
 
 function summarizeIdentity(identity: ZitadelClientIdentity | null | undefined) {
