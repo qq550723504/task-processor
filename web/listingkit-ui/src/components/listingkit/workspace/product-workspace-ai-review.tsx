@@ -58,6 +58,8 @@ function IssueCard({
   issue: ProductWorkspaceReviewIssue;
   onSelect: (issue: ProductWorkspaceReviewIssue) => void;
 }) {
+  const severityLabel = issue.severity === "blocking" ? "必须处理" : "建议确认";
+
   return (
     <div className="rounded-lg border border-border bg-background p-3">
       <div className="flex items-start gap-2">
@@ -70,7 +72,10 @@ function IssueCard({
           }
         />
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-foreground">{issue.title}</h3>
+          <div className="text-[11px] font-medium leading-4 text-muted-foreground">
+            {severityLabel}
+          </div>
+          <h3 className="mt-1 text-sm font-semibold text-foreground">{issue.title}</h3>
           {issue.description ? (
             <p className="mt-1 text-xs leading-5 text-muted-foreground">{issue.description}</p>
           ) : null}
