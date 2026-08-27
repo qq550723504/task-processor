@@ -72,7 +72,7 @@ vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
     sessionData: {
       selected_platform: "shein",
       overview: {},
-      review_summary: {},
+      review_summary: { approved_sections: 2 },
     },
     platformCards: [
       {
@@ -237,6 +237,7 @@ describe("WorkspaceScreen Product Workspace composition", () => {
 
     const aiReview = screen.getByRole("complementary", { name: "AI 审核" });
     expect(within(aiReview).getByText("Material 缺失")).toBeInTheDocument();
+    expect(within(aiReview).getByText("已通过").parentElement).toHaveTextContent("2");
 
     const actions = screen.getByRole("region", { name: "商品操作" });
     expect(within(actions).getByText("执行状态详情")).toBeInTheDocument();
@@ -314,5 +315,17 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     expect(
       within(work).queryByRole("img", { name: "Canvas Tote front" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows revision history in the central work area when history is selected", async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    const work = screen.getByRole("region", { name: "商品工作区" });
+    expect(within(work).queryByText("历史记录内容")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "历史" }));
+
+    expect(within(work).getByText("历史记录内容")).toBeInTheDocument();
   });
 });
