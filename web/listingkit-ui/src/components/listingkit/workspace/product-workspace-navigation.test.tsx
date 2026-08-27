@@ -101,4 +101,24 @@ describe("ProductWorkspaceNavigation", () => {
     );
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
+
+  it("announces each platform status in the accessible button name", () => {
+    render(
+      <ProductWorkspaceNavigation
+        canonicalItems={buildProductWorkspaceCanonicalNavigation("overview")}
+        platformItems={buildProductWorkspacePlatformNavigation(
+          [
+            { platform: "shein", label: "SHEIN", status: "attention" },
+            { platform: "temu", label: "TEMU", status: "failed" },
+          ],
+          "shein",
+        )}
+        onSelect={vi.fn()}
+        onSelectHistory={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "SHEIN · 需关注" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "TEMU · 失败" })).toBeInTheDocument();
+  });
 });
