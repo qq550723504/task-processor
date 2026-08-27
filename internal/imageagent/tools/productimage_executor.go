@@ -36,14 +36,22 @@ func NewProductImageSlotExecutor(dependencies Dependencies) *ProductImageSlotExe
 }
 
 func (e *ProductImageSlotExecutor) ExecuteSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotExecutionResult, error) {
-	slot, sourceAssetID, source, err := e.validateAndResolve(input)
+	generated, err := e.GenerateSlot(ctx, input)
 	if err != nil {
 		return imageagent.SlotExecutionResult{}, err
+	}
+	return e.PublishSlot(ctx, input, generated)
+}
+
+func (e *ProductImageSlotExecutor) GenerateSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
+	slot, sourceAssetID, source, err := e.validateAndResolve(input)
+	if err != nil {
+		return imageagent.SlotGeneratedOutput{}, err
 	}
 
 	styleReferences, err := authorizedStyleReferences(slot.StyleReferenceIDs, input.AssetCatalog)
 	if err != nil {
-		return imageagent.SlotExecutionResult{}, err
+		return imageagent.SlotGeneratedOutput{}, err
 	}
 	productContext := productContextForSlot(e.dependencies.ProductContext, slot, styleReferences)
 	var assets []productimage.ImageAsset
@@ -54,14 +62,33 @@ func (e *ProductImageSlotExecutor) ExecuteSlot(ctx context.Context, input imagea
 		assets, err = e.executeScene(ctx, source, productContext)
 	case imageagent.SlotRoleSize:
 		if source.Width <= 0 || source.Height <= 0 {
-			return imageagent.SlotExecutionResult{}, fmt.Errorf("size slot %q requires reliable dimensions", slot.ID)
+			return imageagent.SlotGeneratedOutput{}, fmt.Errorf("size slot %q requires reliable dimensions", slot.ID)
 		}
 		assets, err = e.executeScene(ctx, source, productContext)
 	default:
-		return imageagent.SlotExecutionResult{}, fmt.Errorf("slot %q has unsupported role %q", slot.ID, slot.Role)
+		return imageagent.SlotGeneratedOutput{}, fmt.Errorf("slot %q has unsupported role %q", slot.ID, slot.Role)
 	}
 	if err != nil {
-		return imageagent.SlotExecutionResult{}, fmt.Errorf("execute slot %q: %w", slot.ID, err)
+		return imageagent.SlotGeneratedOutput{}, fmt.Errorf("execute slot %q: %w", slot.ID, err)
+	}
+	generated := make([]imageagent.GeneratedAsset, len(assets))
+	for index, asset := range assets {
+		generated[index] = imageagent.GeneratedAsset{URL: asset.URL, Type: string(asset.Type), SourceURL: asset.SourceURL, Operations: append([]string(nil), asset.Operations...), Width: asset.Width, Height: asset.Height, Metadata: cloneMetadata(asset.Metadata)}
+	}
+	return imageagent.SlotGeneratedOutput{SlotID: slot.ID, Attempt: input.Attempt, SourceAssetID: sourceAssetID, Assets: generated}, nil
+}
+
+func (e *ProductImageSlotExecutor) PublishSlot(ctx context.Context, input imageagent.SlotExecutionInput, generated imageagent.SlotGeneratedOutput) (imageagent.SlotExecutionResult, error) {
+	slot, sourceAssetID, source, err := e.validateAndResolve(input)
+	if err != nil {
+		return imageagent.SlotExecutionResult{}, err
+	}
+	if generated.SlotID != slot.ID || generated.Attempt != input.Attempt || generated.SourceAssetID != sourceAssetID || len(generated.Assets) == 0 {
+		return imageagent.SlotExecutionResult{}, imageagent.ErrRevisionConflict
+	}
+	assets := make([]productimage.ImageAsset, len(generated.Assets))
+	for index, asset := range generated.Assets {
+		assets[index] = productimage.ImageAsset{URL: asset.URL, Type: productimage.AssetType(asset.Type), SourceURL: asset.SourceURL, Operations: append([]string(nil), asset.Operations...), Width: asset.Width, Height: asset.Height, Metadata: cloneMetadata(asset.Metadata)}
 	}
 	if e.dependencies.AssetPublisher != nil {
 		published := &productimage.ImageProcessResult{GalleryImages: append([]productimage.ImageAsset(nil), assets...)}
@@ -403,3 +430,4 @@ func cloneMetadata(metadata map[string]string) map[string]string {
 }
 
 var _ imageagent.SlotExecutor = (*ProductImageSlotExecutor)(nil)
+var _ imageagent.RecoverableSlotExecutor = (*ProductImageSlotExecutor)(nil)

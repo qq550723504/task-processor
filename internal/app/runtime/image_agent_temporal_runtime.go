@@ -22,7 +22,7 @@ const (
 
 type ImageAgentTemporalDependencies struct {
 	Repository   imageagent.Repository
-	SlotExecutor imageagent.SlotExecutor
+	SlotExecutor imageagent.RecoverableSlotExecutor
 	Publisher    imageagent.ApprovedAssetPublisher
 }
 

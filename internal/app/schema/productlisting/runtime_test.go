@@ -31,12 +31,12 @@ func TestAutoMigrateRuntimeCreatesExecutionEnvelopeColumns(t *testing.T) {
 			}
 		}
 	}
-	for _, table := range []string{"image_agent_v2_runs", "image_agent_v2_plans", "image_agent_v2_slots", "image_agent_v2_attempts", "image_agent_v2_events", "image_agent_v2_asset_catalog", "image_agent_v2_asset_catalog_manifests", "image_agent_v2_projection_snapshots", "image_agent_v2_projection_commits"} {
+	for _, table := range []string{"image_agent_v2_runs", "image_agent_v2_plans", "image_agent_v2_slots", "image_agent_v2_attempts", "image_agent_v2_events", "image_agent_v2_asset_catalog", "image_agent_v2_asset_catalog_manifests", "image_agent_v2_projection_snapshots", "image_agent_v2_projection_commits", "image_agent_v2_slot_external_effects"} {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("missing table %s", table)
 		}
 	}
-	for _, table := range []string{"image_agent_runs", "image_agent_plans", "image_agent_slots", "image_agent_attempts", "image_agent_events", "image_agent_asset_catalog", "image_agent_asset_catalog_manifests", "image_agent_projection_snapshots", "image_agent_projection_commits"} {
+	for _, table := range []string{"image_agent_runs", "image_agent_plans", "image_agent_slots", "image_agent_attempts", "image_agent_events", "image_agent_asset_catalog", "image_agent_asset_catalog_manifests", "image_agent_projection_snapshots", "image_agent_projection_commits", "image_agent_slot_external_effects"} {
 		if db.Migrator().HasTable(table) {
 			t.Fatalf("clean bootstrap must not manufacture legacy table %s", table)
 		}

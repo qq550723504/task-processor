@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"fmt"
+	"strings"
 
+	"task-processor/internal/core/config"
 	productimage "task-processor/internal/productimage"
 )
 
@@ -29,6 +31,9 @@ type generationCapabilities struct {
 // governance, renderer, and storage builders while failing closed unless all
 // standard image-agent slot roles have real provider-backed capabilities.
 func BuildImageAgentCapabilities(input RuntimeBuildInput) (ImageAgentCapabilities, error) {
+	if err := validateImageAgentWorkerCapabilities(input); err != nil {
+		return ImageAgentCapabilities{}, err
+	}
 	built, err := buildGenerationCapabilities(BuildModuleInput{
 		Logger: input.Logger, LLMManager: input.LLMManager, OpenAIManager: input.OpenAIManager,
 		AICredentialResolver: input.AICredentialResolver, AIInvocationRecorder: input.AIInvocationRecorder,
@@ -47,6 +52,58 @@ func BuildImageAgentCapabilities(input RuntimeBuildInput) (ImageAgentCapabilitie
 		SubjectExtractor: built.subjectExtractor, WhiteBackgroundRenderer: built.whiteBackgroundRenderer,
 		SceneRenderer: built.sceneRenderer, AssetPublisher: built.assetPublisher,
 	}, nil
+}
+
+// validateImageAgentWorkerCapabilities is intentionally stricter than the
+// legacy ProductImage runtime builder. Image-agent workers may only execute
+// tenant-routed, ledger-recorded model invocations and may only publish to the
+// durable object-storage implementation.
+func validateImageAgentWorkerCapabilities(input RuntimeBuildInput) error {
+	return validateImageAgentWorkerCapabilityPolicy(imageAgentWorkerCapabilityPolicyInput{
+		config: input.Config, hasCredentialResolver: input.AICredentialResolver != nil,
+		hasResolverBackedManager: input.OpenAIManager != nil && input.OpenAIManager.HasConfigResolver(),
+		hasInvocationRecorder:    input.AIInvocationRecorder != nil,
+	})
+}
+
+type imageAgentWorkerCapabilityPolicyInput struct {
+	config                   *config.Config
+	hasCredentialResolver    bool
+	hasResolverBackedManager bool
+	hasInvocationRecorder    bool
+}
+
+func validateImageAgentWorkerCapabilityPolicy(input imageAgentWorkerCapabilityPolicyInput) error {
+	if input.config == nil || !input.config.AICapability.ProductImageSceneEnabled {
+		return fmt.Errorf("image agent requires governed tenant credential routing")
+	}
+	allowed := false
+	for _, tenantID := range input.config.AICapability.ProductImageSceneAllowedTenantIDs {
+		if strings.TrimSpace(tenantID) != "" {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return fmt.Errorf("image agent requires a non-empty tenant allowlist")
+	}
+	if !input.hasCredentialResolver {
+		return fmt.Errorf("image agent requires a tenant credential resolver")
+	}
+	if !input.hasResolverBackedManager {
+		return fmt.Errorf("image agent requires a resolver-backed OpenAI manager")
+	}
+	if !input.hasInvocationRecorder {
+		return fmt.Errorf("image agent requires an invocation recorder")
+	}
+	publisher := input.config.ProductImage.Publisher
+	if !publisher.Enabled || !strings.EqualFold(strings.TrimSpace(publisher.Provider), "s3") {
+		return fmt.Errorf("image agent requires an enabled durable s3 publisher")
+	}
+	if strings.TrimSpace(publisher.S3.Bucket) == "" {
+		return fmt.Errorf("image agent requires a durable s3 bucket")
+	}
+	return nil
 }
 
 func buildGenerationCapabilities(input BuildModuleInput) (generationCapabilities, error) {

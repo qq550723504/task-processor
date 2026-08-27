@@ -29,6 +29,7 @@ type OwnerTable struct {
 
 var ownerTableInventory = [...]OwnerTable{
 	{Table: "listing_kit_tasks", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},
+	{Table: "listingkit_image_agent_publication_receipts", TenantColumn: "tenant_id", UserColumn: "owner_user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyBlock},
 	{Table: "listingkit_shein_pod_image_indexes", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},
 	{Table: "listingkit_studio_async_jobs", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},
 	{Table: "listingkit_studio_batches", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},

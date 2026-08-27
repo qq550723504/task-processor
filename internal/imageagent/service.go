@@ -41,6 +41,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	input.RunID = strings.TrimSpace(input.RunID)
 	input.BusinessTaskID = strings.TrimSpace(input.BusinessTaskID)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	input.MaxConcurrentSlots = NormalizeMaxConcurrentSlots(input.MaxConcurrentSlots)
 	if input.RunID == "" || input.BusinessTaskID == "" || input.IdempotencyKey == "" {
 		return fmt.Errorf("%w: image agent run ID, business task ID, and idempotency key are required", ErrValidation)
 	}
@@ -50,10 +51,10 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: input.RunID}
 	if existing, getErr := s.repository.GetProjection(ctx, scope); getErr == nil {
-		if existing.Run.BusinessTaskID != input.BusinessTaskID || existing.Run.IdempotencyKey != input.IdempotencyKey || existing.Run.Budget != input.Budget || !reflect.DeepEqual(existing.Plan, input.Plan) {
+		if existing.Run.BusinessTaskID != input.BusinessTaskID || existing.Run.IdempotencyKey != input.IdempotencyKey || existing.Run.Budget != input.Budget || existing.Run.MaxConcurrentSlots != input.MaxConcurrentSlots || !reflect.DeepEqual(existing.Plan, input.Plan) {
 			return ErrRevisionConflict
 		}
-		return s.workflows.StartManual(ctx, WorkflowStart{Run: existing.Run, Plan: existing.Plan, Identity: identity, MaxConcurrentSlots: input.MaxConcurrentSlots, AssetCatalog: existing.AssetCatalog})
+		return s.workflows.StartManual(ctx, WorkflowStart{Run: existing.Run, Plan: existing.Plan, Identity: identity, MaxConcurrentSlots: existing.Run.MaxConcurrentSlots, AssetCatalog: existing.AssetCatalog})
 	} else if !errors.Is(getErr, ErrRunNotFound) {
 		return getErr
 	}
@@ -73,7 +74,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		TenantID: identity.TenantID, UserID: identity.UserID,
 		Mode: RunModeManual, IdempotencyKey: input.IdempotencyKey,
 		Status: RunStatusPlanning, CurrentNode: "plan", Version: 1, ActivePlanRevision: input.Plan.Revision,
-		Budget: input.Budget,
+		Budget: input.Budget, MaxConcurrentSlots: input.MaxConcurrentSlots,
 	}
 	projection, err := s.repository.InitializeRun(ctx, ProjectionInitialization{
 		Scope: scope, Run: run, Plan: input.Plan, Catalog: catalog,
@@ -85,7 +86,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	return s.workflows.StartManual(ctx, WorkflowStart{
 		Run: projection.Run, Plan: projection.Plan, Identity: identity,
-		MaxConcurrentSlots: input.MaxConcurrentSlots,
+		MaxConcurrentSlots: projection.Run.MaxConcurrentSlots,
 		AssetCatalog:       projection.AssetCatalog,
 	})
 }

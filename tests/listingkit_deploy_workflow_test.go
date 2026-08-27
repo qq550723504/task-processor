@@ -99,11 +99,19 @@ func TestListingKitDeployOwnsImageAgentWorkerBuildManifestAndImmutableRollout(t 
 		"scripts/listingkit-apply-image-agent-worker-deployment.sh",
 		"deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml",
 		"--image \"$API_CANDIDATE_IMAGE\"",
+		"rollout restart deployment/image-agent-temporal-worker",
 		"rollout status deployment/image-agent-temporal-worker --timeout=5m",
 	} {
 		if !strings.Contains(workflow, required) {
 			t.Errorf("ListingKit deploy workflow missing image-agent worker ownership %q", required)
 		}
+	}
+	apiRestart := strings.Index(workflow, "rollout restart deployment/product-listing-api")
+	workerRestart := strings.Index(workflow, "rollout restart deployment/image-agent-temporal-worker")
+	apiWait := strings.Index(workflow, "rollout status deployment/product-listing-api --timeout=5m")
+	workerWait := strings.Index(workflow, "rollout status deployment/image-agent-temporal-worker --timeout=5m")
+	if apiRestart < 0 || workerRestart < 0 || apiWait < 0 || workerWait < 0 || !(apiRestart < workerRestart && workerRestart < apiWait && workerRestart < workerWait) {
+		t.Fatalf("API and image-agent worker must both restart for config/Secret rotation before rollout waits: apiRestart=%d workerRestart=%d apiWait=%d workerWait=%d", apiRestart, workerRestart, apiWait, workerWait)
 	}
 	dockerfileBytes, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "Dockerfile.product-listing-api"))
 	if err != nil {

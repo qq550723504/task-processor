@@ -399,6 +399,10 @@ jobs:
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/product-listing-api
 
+      - name: Restart image agent worker Pods for configuration and Secret changes
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/image-agent-temporal-worker
+
       - name: Wait for API rollout
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/product-listing-api --timeout=5m

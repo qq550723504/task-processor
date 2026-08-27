@@ -144,17 +144,30 @@ func acceptancePlan(slotCount, sourceCount int) imageagent.Plan {
 }
 
 type recordingAcceptanceExecutor struct {
-	delegate      imageagent.SlotExecutor
+	delegate      imageagent.RecoverableSlotExecutor
 	invalidSlotID string
 	mu            sync.Mutex
 	calls         []string
 }
 
 func (e *recordingAcceptanceExecutor) ExecuteSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotExecutionResult, error) {
-	result, err := e.delegate.ExecuteSlot(ctx, input)
+	generated, err := e.GenerateSlot(ctx, input)
+	if err != nil {
+		return imageagent.SlotExecutionResult{}, err
+	}
+	return e.PublishSlot(ctx, input, generated)
+}
+
+func (e *recordingAcceptanceExecutor) GenerateSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
+	result, err := e.delegate.GenerateSlot(ctx, input)
 	e.mu.Lock()
 	e.calls = append(e.calls, input.Slot.ID)
 	e.mu.Unlock()
+	return result, err
+}
+
+func (e *recordingAcceptanceExecutor) PublishSlot(ctx context.Context, input imageagent.SlotExecutionInput, generated imageagent.SlotGeneratedOutput) (imageagent.SlotExecutionResult, error) {
+	result, err := e.delegate.PublishSlot(ctx, input, generated)
 	if err == nil && input.Slot.ID == e.invalidSlotID {
 		return imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, nil
 	}
@@ -196,8 +209,8 @@ func (acceptanceSceneRenderer) Render(_ context.Context, _ *productimage.ImageAs
 
 type acceptancePublisher struct{}
 
-func (acceptancePublisher) PublishApproved(context.Context, imageagent.PublishApprovedInput) error {
-	return nil
+func (acceptancePublisher) PublishApproved(context.Context, imageagent.PublishApprovedInput) (imageagent.PublicationAcknowledgement, error) {
+	return imageagent.PublicationAcknowledgement{}, nil
 }
 
 func acceptedSlotEventCount(t *testing.T, events []imageagent.RunEvent) int {

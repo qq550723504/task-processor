@@ -62,8 +62,43 @@ func TestRepositoryContract(t *testing.T) {
 			testProjectionCommitRejectsPlanOutsidePersistedCatalog(t, tt.new(t))
 			testProjectionCommitRejectsMismatchedSlotAttemptIdentityAtomically(t, tt.new(t))
 			testAttemptIdentitiesAreIdempotentAndNonAliasing(t, tt.new(t))
+			testInitializationConcurrencyIdentityIncludesMaxConcurrentSlots(t, tt.new(t))
 		})
 	}
+}
+
+func testInitializationConcurrencyIdentityIncludesMaxConcurrentSlots(t *testing.T, repo repositoryContract) {
+	t.Helper()
+	ctx := context.Background()
+	run := manualRun("run-concurrency-identity", "tenant-a")
+	run.BusinessTaskID = "task-concurrency-identity"
+	run.MaxConcurrentSlots = 2
+	plan := planRevision(1)
+	input := imageagent.ProjectionInitialization{
+		Scope: imageagent.ScopeForRun(*run), Run: *run, Plan: plan,
+		Catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source.png"},
+			{ID: "style-1", Type: imageagent.AuthorizedAssetStyle},
+		}},
+		Snapshot: imageagent.RunProjection{Run: *run, Plan: plan}, CommitID: "start:concurrency-identity",
+		EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+	}
+
+	winner, err := repo.InitializeRun(ctx, input)
+	require.NoError(t, err)
+	require.Equal(t, 2, winner.Run.MaxConcurrentSlots)
+	replayed, err := repo.InitializeRun(ctx, input)
+	require.NoError(t, err)
+	require.Equal(t, winner.Run.MaxConcurrentSlots, replayed.Run.MaxConcurrentSlots)
+
+	conflict := input
+	conflict.Run.MaxConcurrentSlots = 3
+	conflict.Snapshot.Run = conflict.Run
+	_, err = repo.InitializeRun(ctx, conflict)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+	stored, err := repo.GetProjection(ctx, input.Scope)
+	require.NoError(t, err)
+	require.Equal(t, 2, stored.Run.MaxConcurrentSlots)
 }
 
 func testProjectionCommitRejectsMismatchedSlotAttemptIdentityAtomically(t *testing.T, repo repositoryContract) {

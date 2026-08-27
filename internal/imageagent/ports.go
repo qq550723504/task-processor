@@ -14,7 +14,16 @@ type SlotExecutor interface {
 }
 
 type ApprovedAssetPublisher interface {
-	PublishApproved(context.Context, PublishApprovedInput) error
+	PublishApproved(context.Context, PublishApprovedInput) (PublicationAcknowledgement, error)
+}
+
+type PublicationAcknowledgement struct {
+	TaskID            string
+	RunID             string
+	PlanRevision      int64
+	ResultDigest      string
+	IdempotencyKey    string
+	CandidateAssetIDs []string
 }
 
 type SlotExecutionInput struct {

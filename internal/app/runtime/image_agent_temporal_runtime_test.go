@@ -79,8 +79,16 @@ func (runtimeSlotExecutor) ExecuteSlot(_ context.Context, input imageagent.SlotE
 	return imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, nil
 }
 
+func (runtimeSlotExecutor) GenerateSlot(_ context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
+	return imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: "source-1", Assets: []imageagent.GeneratedAsset{{URL: "C:/generated.png"}}}, nil
+}
+
+func (runtimeSlotExecutor) PublishSlot(_ context.Context, input imageagent.SlotExecutionInput, _ imageagent.SlotGeneratedOutput) (imageagent.SlotExecutionResult, error) {
+	return imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, nil
+}
+
 type runtimePublisher struct{}
 
-func (runtimePublisher) PublishApproved(context.Context, imageagent.PublishApprovedInput) error {
-	return nil
+func (runtimePublisher) PublishApproved(context.Context, imageagent.PublishApprovedInput) (imageagent.PublicationAcknowledgement, error) {
+	return imageagent.PublicationAcknowledgement{}, nil
 }

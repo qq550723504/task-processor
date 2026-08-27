@@ -1071,7 +1071,7 @@ func TestManualWorkflowApprovalUpdateResumesAfterCompletedStateFailureWithoutRep
 	publishCalls := 0
 	logicalPublications := 0
 	env.OnActivity(activityPublishApproved, mock.Anything, mock.MatchedBy(func(input PublishApprovedActivityInput) bool {
-		return input.IdempotencyKey == "image-agent:run-1:plan:1:publication"
+		return input.IdempotencyKey == "approve-resume"
 	})).Run(func(mock.Arguments) {
 		publishCalls++
 		logicalPublications = 1
@@ -1156,7 +1156,7 @@ func TestManualWorkflowDuplicateApprovalPublishesOnceWithStableKey(t *testing.T)
 			Once()
 	}
 	env.OnActivity(activityPublishApproved, mock.Anything, mock.MatchedBy(func(in PublishApprovedActivityInput) bool {
-		return in.IdempotencyKey == "image-agent:run-1:plan:1:publication" &&
+		return in.IdempotencyKey == "approve-final-1" &&
 			requireCandidateIDs(in.CandidateAssetIDs, plan)
 	})).Return(nil).Once()
 	env.RegisterDelayedCallback(func() {
@@ -2225,7 +2225,12 @@ func TestActivitiesRestoreCapturedIdentityForExecutorAndPublisher(t *testing.T) 
 	activities, err := NewActivities(ActivityDependencies{Repository: repository, SlotExecutor: executor, Publisher: publisher})
 	require.NoError(t, err)
 	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
-	slot := sevenSlotPlan().Slots[0]
+	plan := sevenSlotPlan()
+	slot := plan.Slots[0]
+	initializeActivityProjection(t, repository, imageagent.Run{
+		ID: "run-1", BusinessTaskID: "task-1", TenantID: identity.TenantID, UserID: identity.UserID,
+		Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-1", Status: imageagent.RunStatusExecuting, Version: 1,
+	}, plan)
 
 	result, err := activities.ExecuteSlot(context.Background(), ExecuteSlotActivityInput{
 		RunID: "run-1", Identity: identity, PlanRevision: 1, Slot: slot, Attempt: 1, IdempotencyKey: "slot-key-slot-1:attempt:1",
@@ -2912,6 +2917,19 @@ func (e *revisionFailingExecutor) ExecuteSlot(_ context.Context, input imageagen
 	return successfulSlotResult(input.Slot.ID, input.Attempt), nil
 }
 
+func (e *revisionFailingExecutor) GenerateSlot(_ context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
+	if input.PlanRevision == e.failedRevision && input.Slot.ID == e.failedSlotID {
+		e.failedCalls.Add(1)
+		return imageagent.SlotGeneratedOutput{}, sdktemporal.NewNonRetryableApplicationError("provider rejected slot", "slot_rejected", nil)
+	}
+	e.successCalls.Add(1)
+	return testGeneratedOutput(input), nil
+}
+
+func (e *revisionFailingExecutor) PublishSlot(_ context.Context, input imageagent.SlotExecutionInput, _ imageagent.SlotGeneratedOutput) (imageagent.SlotExecutionResult, error) {
+	return successfulSlotResult(input.Slot.ID, input.Attempt), nil
+}
+
 func (e *identityCheckingExecutor) ExecuteSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotExecutionResult, error) {
 	e.calls++
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
@@ -2921,18 +2939,35 @@ func (e *identityCheckingExecutor) ExecuteSlot(ctx context.Context, input imagea
 	return successfulSlotResult(input.Slot.ID, input.Attempt), nil
 }
 
+func (e *identityCheckingExecutor) GenerateSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
+	e.calls++
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	require.True(e.t, ok)
+	require.Equal(e.t, input.TenantID, identity.TenantID)
+	require.Equal(e.t, input.UserID, identity.UserID)
+	return testGeneratedOutput(input), nil
+}
+
+func (e *identityCheckingExecutor) PublishSlot(_ context.Context, input imageagent.SlotExecutionInput, _ imageagent.SlotGeneratedOutput) (imageagent.SlotExecutionResult, error) {
+	return successfulSlotResult(input.Slot.ID, input.Attempt), nil
+}
+
+func testGeneratedOutput(input imageagent.SlotExecutionInput) imageagent.SlotGeneratedOutput {
+	return imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: input.Slot.SourceAssetIDs[0], Assets: []imageagent.GeneratedAsset{{URL: "C:/generated/" + input.Slot.ID + ".png", Metadata: map[string]string{"local_path": "C:/generated/" + input.Slot.ID + ".png"}}}}
+}
+
 type identityCheckingPublisher struct {
 	t     *testing.T
 	calls int
 }
 
-func (p *identityCheckingPublisher) PublishApproved(ctx context.Context, input imageagent.PublishApprovedInput) error {
+func (p *identityCheckingPublisher) PublishApproved(ctx context.Context, input imageagent.PublishApprovedInput) (imageagent.PublicationAcknowledgement, error) {
 	p.calls++
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	require.True(p.t, ok)
 	require.Equal(p.t, input.TenantID, identity.TenantID)
 	require.Equal(p.t, "user-a", identity.UserID)
-	return nil
+	return imageagent.PublicationAcknowledgement{}, nil
 }
 
 type recordingDomainWorkflowClient struct {

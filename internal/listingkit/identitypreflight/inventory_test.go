@@ -212,6 +212,7 @@ func productionNonPersistentOwnerModelExclusions(repositoryRoot string) map[owne
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "AIAsyncImageQueryContext"}:        "request context value, never passed to GORM as a model",
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "AIClientCredential"}:              "service contract mapped to the infrastructure credential store",
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "GenerateRequest"}:                 "orchestration request input, never passed to GORM as a model",
+		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "ImageAgentPublicationCommit"}:     "atomic publication command mapped to the private image-agent publication receipt row before persistence",
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "RequestIdentity"}:                 "request context value, never passed to GORM as a model",
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "SourceFactsGenerateRequestInput"}: "source-facts bridge input, never passed to GORM as a model",
 		{Directory: memberInviteDirectory, Package: "memberinvite", TypeName: "AuditRecord"}:                 "repository command mapped to memberInvitationAuditRow before persistence",

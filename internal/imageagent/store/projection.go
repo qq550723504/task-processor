@@ -655,6 +655,7 @@ func prepareInitialization(input imageagent.ProjectionInitialization) (imageagen
 	if err := validateRun(&input.Run); err != nil {
 		return input, "", err
 	}
+	input.Run.MaxConcurrentSlots = imageagent.NormalizeMaxConcurrentSlots(input.Run.MaxConcurrentSlots)
 	if err := imageagent.ValidatePlan(input.Plan); err != nil {
 		return input, "", err
 	}
@@ -725,12 +726,14 @@ func cloneProjection(value imageagent.RunProjection) imageagent.RunProjection {
 	encoded, _ := json.Marshal(value)
 	var cloned imageagent.RunProjection
 	_ = json.Unmarshal(encoded, &cloned)
+	cloned.Run.MaxConcurrentSlots = imageagent.NormalizeMaxConcurrentSlots(cloned.Run.MaxConcurrentSlots)
 	return cloned
 }
 func decodeProjection(raw []byte, target *imageagent.RunProjection) error {
 	if err := json.Unmarshal(raw, target); err != nil {
 		return fmt.Errorf("decode image agent projection: %w", err)
 	}
+	target.Run.MaxConcurrentSlots = imageagent.NormalizeMaxConcurrentSlots(target.Run.MaxConcurrentSlots)
 	return nil
 }
 func findProjectionCommit(ctx context.Context, db *gorm.DB, scope imageagent.RunScope, commitID string) (projectionCommitRecord, bool, error) {

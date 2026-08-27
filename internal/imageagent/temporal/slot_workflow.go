@@ -1,6 +1,7 @@
 package temporal
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -31,7 +32,7 @@ func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkf
 	if err := workflow.ExecuteActivity(ctx, activityWire.executeSlot, activityInput).Get(ctx, &execution); err != nil {
 		return SlotWorkflowResult{
 			Execution: imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
-			Status:    imageagent.SlotStatusBlocked, ErrorCode: "slot_execution_failed",
+			Status:    imageagent.SlotStatusBlocked, ErrorCode: slotExecutionErrorCode(err),
 		}, nil
 	}
 	if execution.SlotID != input.Slot.ID || execution.Attempt != input.Attempt || !hasCandidateAsset(execution.Candidates) {
@@ -41,6 +42,14 @@ func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkf
 		}, nil
 	}
 	return SlotWorkflowResult{Execution: execution, Status: imageagent.SlotStatusAccepted}, nil
+}
+
+func slotExecutionErrorCode(err error) string {
+	var applicationError *sdktemporal.ApplicationError
+	if errors.As(err, &applicationError) && applicationError.Type() == slotProviderOutcomeUnknownErrorType {
+		return "slot_provider_outcome_unknown"
+	}
+	return "slot_execution_failed"
 }
 
 func hasCandidateAsset(candidates []imageagent.AssetCandidate) bool {

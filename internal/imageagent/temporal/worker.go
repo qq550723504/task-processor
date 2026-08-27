@@ -91,7 +91,7 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 		WorkflowIDReusePolicy:    enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
 	}, workflowNameImageAgent, WorkflowInput{
 		RunID: start.Run.ID, Mode: imageagent.RunModeManual, Identity: start.Identity,
-		Plan: start.Plan, MaxConcurrentSlots: start.MaxConcurrentSlots, WaitForCommands: true,
+		Plan: start.Plan, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(start.Run.MaxConcurrentSlots), WaitForCommands: true,
 		AssetCatalog: start.AssetCatalog,
 	})
 	return err

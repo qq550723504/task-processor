@@ -82,7 +82,7 @@ func resolveImageAgentTemporalDependencies(configPath string, logger *logrus.Log
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent ProductImage capabilities are incomplete")
 	}
 	repository := imageagentstore.NewGormRepository(db)
-	publisher, err := listingkithttpapi.NewImageAgentApprovedPublisher(repository, listingkitstore.NewTaskResultTransactionRepository(db))
+	publisher, err := listingkithttpapi.NewImageAgentApprovedPublisher(repository, listingkitstore.NewImageAgentPublicationTransactionRepository(db))
 	if err != nil {
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, err

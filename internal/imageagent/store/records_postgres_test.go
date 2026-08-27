@@ -28,6 +28,7 @@ func TestImageAgentV2RecordsUseOwnerScopedPrimaryKeys(t *testing.T) {
 		{name: "catalog manifest", model: &assetCatalogManifestRecord{}, table: "image_agent_v2_asset_catalog_manifests", primaryKey: []string{"TenantID", "OwnerUserID", "RunID"}},
 		{name: "projection", model: &projectionRecord{}, table: "image_agent_v2_projection_snapshots", primaryKey: []string{"TenantID", "OwnerUserID", "RunID"}},
 		{name: "projection commit", model: &projectionCommitRecord{}, table: "image_agent_v2_projection_commits", primaryKey: []string{"TenantID", "OwnerUserID", "RunID", "CommitID"}},
+		{name: "slot external effect", model: &slotExternalEffectRecord{}, table: "image_agent_v2_slot_external_effects", primaryKey: []string{"TenantID", "OwnerUserID", "RunID", "PlanRevision", "SlotID", "Attempt"}},
 	}
 
 	for _, test := range tests {
@@ -66,6 +67,7 @@ func TestImageAgentBinaryRecordsUsePostgresBytea(t *testing.T) {
 		{name: "plan", model: &planRecord{}, fields: []string{"SourceAssetIDs", "StyleReferenceIDs"}},
 		{name: "slot", model: &slotRecord{}, fields: []string{"SourceAssetIDs", "StyleReferenceIDs", "CandidateAssetIDs"}},
 		{name: "event", model: &eventRecord{}, fields: []string{"Payload"}},
+		{name: "slot external effect", model: &slotExternalEffectRecord{}, fields: []string{"GeneratedJSON", "PublishedJSON"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			parsed, err := schema.Parse(test.model, &sync.Map{}, schema.NamingStrategy{})

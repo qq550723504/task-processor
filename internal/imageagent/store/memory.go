@@ -23,6 +23,7 @@ type memoryRepository struct {
 	catalogs          map[string]imageagent.AssetCatalog
 	projections       map[string]imageagent.RunProjection
 	projectionCommits map[string]map[string]projectionCommitMemory
+	slotEffects       map[string]imageagent.SlotExternalEffectAttempt
 }
 
 type projectionCommitMemory struct {
@@ -47,6 +48,7 @@ func NewMemoryRepository() imageagent.Repository {
 		catalogs:          map[string]imageagent.AssetCatalog{},
 		projections:       map[string]imageagent.RunProjection{},
 		projectionCommits: map[string]map[string]projectionCommitMemory{},
+		slotEffects:       map[string]imageagent.SlotExternalEffectAttempt{},
 	}
 }
 
@@ -54,21 +56,23 @@ func (r *memoryRepository) CreateRun(_ context.Context, run *imageagent.Run) err
 	if err := validateRun(run); err != nil {
 		return err
 	}
+	prepared := cloneRun(*run)
+	prepared.MaxConcurrentSlots = imageagent.NormalizeMaxConcurrentSlots(prepared.MaxConcurrentSlots)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := runKey(run.TenantID, run.UserID, run.ID)
+	key := runKey(prepared.TenantID, prepared.UserID, prepared.ID)
 	if existing, exists := r.runs[key]; exists {
-		if sameRun(existing, *run) {
+		if sameRun(existing, prepared) {
 			return nil
 		}
 		return imageagent.ErrRevisionConflict
 	}
 	for _, existing := range r.runs {
-		if existing.TenantID == run.TenantID && existing.UserID == run.UserID && existing.IdempotencyKey == run.IdempotencyKey {
+		if existing.TenantID == prepared.TenantID && existing.UserID == prepared.UserID && existing.IdempotencyKey == prepared.IdempotencyKey {
 			return imageagent.ErrRevisionConflict
 		}
 	}
-	r.runs[key] = cloneRun(*run)
+	r.runs[key] = prepared
 	return nil
 }
 

@@ -3,6 +3,7 @@ package imageagent_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -292,7 +293,7 @@ func TestServiceConcurrentIdenticalStartWithRepositoryOwnedCatalogTimestampConve
 	resolver := newConcurrentCatalogResolver(authorizedCatalog(), 2)
 	service, err := imageagent.NewService(repository, workflows, resolver)
 	require.NoError(t, err)
-	input := imageagent.StartRunInput{RunID: "run-concurrent-start", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-concurrent-start-key", Plan: commandPlan(1)}
+	input := imageagent.StartRunInput{RunID: "run-concurrent-start", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-concurrent-start-key", Plan: commandPlan(1), MaxConcurrentSlots: 0}
 
 	errs := make(chan error, 2)
 	for range 2 {
@@ -304,10 +305,66 @@ func TestServiceConcurrentIdenticalStartWithRepositoryOwnedCatalogTimestampConve
 	require.NoError(t, <-errs)
 	require.Equal(t, 2, resolver.Calls())
 	require.Equal(t, 2, workflows.Count())
+	for _, start := range workflows.Starts() {
+		require.Equal(t, 4, start.MaxConcurrentSlots)
+	}
 
 	projection, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: input.RunID})
 	require.NoError(t, err)
 	require.False(t, projection.AssetCatalog.Manifest.CreatedAt.IsZero(), "repository winner must assign the durable catalog creation time")
+	require.Equal(t, 4, projection.Run.MaxConcurrentSlots)
+}
+
+func TestServiceStartUsesRepositoryWinnerConcurrencyForReplayAndRejectsConflictingUseExisting(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	resolver := &mutableCatalogResolver{catalog: authorizedCatalog()}
+	service, err := imageagent.NewService(repository, workflows, resolver)
+	require.NoError(t, err)
+	ctx := verifiedContext("tenant-a", "user-a")
+	input := imageagent.StartRunInput{RunID: "run-start-concurrency", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-start-concurrency-key", Plan: commandPlan(1), MaxConcurrentSlots: 2}
+
+	require.NoError(t, service.Start(ctx, input))
+	require.NoError(t, service.Start(ctx, input))
+	require.Len(t, workflows.starts, 2)
+	require.Equal(t, 2, workflows.starts[0].MaxConcurrentSlots)
+	require.Equal(t, 2, workflows.starts[1].MaxConcurrentSlots)
+
+	conflict := input
+	conflict.MaxConcurrentSlots = 3
+	require.ErrorIs(t, service.Start(ctx, conflict), imageagent.ErrRevisionConflict)
+	require.Len(t, workflows.starts, 2, "conflicting USE_EXISTING must not start or signal Temporal")
+
+	projection, err := repository.GetProjection(ctx, imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: input.RunID})
+	require.NoError(t, err)
+	require.Equal(t, 2, projection.Run.MaxConcurrentSlots)
+}
+
+func TestServiceConcurrentConflictingStartConcurrencyKeepsRepositoryWinnerValue(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &concurrentStartWorkflowClient{}
+	resolver := newConcurrentCatalogResolver(authorizedCatalog(), 2)
+	service, err := imageagent.NewService(repository, workflows, resolver)
+	require.NoError(t, err)
+	base := imageagent.StartRunInput{RunID: "run-concurrent-conflict", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-concurrent-conflict-key", Plan: commandPlan(1)}
+	inputs := []imageagent.StartRunInput{base, base}
+	inputs[0].MaxConcurrentSlots = 2
+	inputs[1].MaxConcurrentSlots = 3
+
+	errs := make(chan error, 2)
+	for _, input := range inputs {
+		input := input
+		go func() { errs <- service.Start(verifiedContext("tenant-a", "user-a"), input) }()
+	}
+	first, second := <-errs, <-errs
+	require.True(t, (first == nil && errors.Is(second, imageagent.ErrRevisionConflict)) || (second == nil && errors.Is(first, imageagent.ErrRevisionConflict)), "results = %v, %v", first, second)
+	require.Equal(t, 1, workflows.Count())
+
+	projection, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: base.RunID})
+	require.NoError(t, err)
+	starts := workflows.Starts()
+	require.Len(t, starts, 1)
+	require.Equal(t, projection.Run.MaxConcurrentSlots, starts[0].MaxConcurrentSlots, "Temporal must use repository winner value")
 }
 
 func TestServiceReplacePlanValidatesPlanAndSlotAssetsAgainstPersistedRunCatalog(t *testing.T) {
@@ -386,21 +443,27 @@ func (r *concurrentCatalogResolver) Calls() int {
 
 type concurrentStartWorkflowClient struct {
 	recordingWorkflowClient
-	mu    sync.Mutex
-	count int
+	mu     sync.Mutex
+	starts []imageagent.WorkflowStart
 }
 
-func (c *concurrentStartWorkflowClient) StartManual(context.Context, imageagent.WorkflowStart) error {
+func (c *concurrentStartWorkflowClient) StartManual(_ context.Context, start imageagent.WorkflowStart) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.count++
+	c.starts = append(c.starts, start)
 	return nil
 }
 
 func (c *concurrentStartWorkflowClient) Count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.count
+	return len(c.starts)
+}
+
+func (c *concurrentStartWorkflowClient) Starts() []imageagent.WorkflowStart {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]imageagent.WorkflowStart(nil), c.starts...)
 }
 
 func (r *mutableCatalogResolver) Resolve(context.Context, imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {

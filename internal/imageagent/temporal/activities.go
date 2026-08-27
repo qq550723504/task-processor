@@ -18,13 +18,15 @@ const slotResultPersistedEventType = "slot.result.persisted"
 
 type ActivityDependencies struct {
 	Repository   imageagent.Repository
-	SlotExecutor imageagent.SlotExecutor
+	SlotEffects  imageagent.SlotExternalEffectRepository
+	SlotExecutor imageagent.RecoverableSlotExecutor
 	Publisher    imageagent.ApprovedAssetPublisher
 }
 
 type Activities struct {
 	repository   imageagent.Repository
-	slotExecutor imageagent.SlotExecutor
+	slotEffects  imageagent.SlotExternalEffectRepository
+	slotExecutor imageagent.RecoverableSlotExecutor
 	publisher    imageagent.ApprovedAssetPublisher
 }
 
@@ -32,26 +34,71 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 	if dependencies.Repository == nil {
 		return nil, fmt.Errorf("image agent repository is required")
 	}
+	if dependencies.SlotEffects == nil {
+		if slotEffects, ok := dependencies.Repository.(imageagent.SlotExternalEffectRepository); ok {
+			dependencies.SlotEffects = slotEffects
+		}
+	}
 	if dependencies.SlotExecutor == nil {
 		return nil, fmt.Errorf("image agent slot executor is required")
+	}
+	if dependencies.SlotEffects == nil {
+		return nil, fmt.Errorf("image agent slot external effect repository is required")
 	}
 	if dependencies.Publisher == nil {
 		return nil, fmt.Errorf("image agent approved asset publisher is required")
 	}
-	return &Activities{repository: dependencies.Repository, slotExecutor: dependencies.SlotExecutor, publisher: dependencies.Publisher}, nil
+	return &Activities{repository: dependencies.Repository, slotEffects: dependencies.SlotEffects, slotExecutor: dependencies.SlotExecutor, publisher: dependencies.Publisher}, nil
 }
+
+const slotProviderOutcomeUnknownErrorType = "imageagent_slot_provider_outcome_unknown"
 
 func (a *Activities) ExecuteSlot(ctx context.Context, input ExecuteSlotActivityInput) (imageagent.SlotExecutionResult, error) {
 	ctx, err := restoreActivityIdentity(ctx, input.Identity)
 	if err != nil {
 		return imageagent.SlotExecutionResult{}, err
 	}
-	return a.slotExecutor.ExecuteSlot(ctx, imageagent.SlotExecutionInput{
+	executionInput := imageagent.SlotExecutionInput{
 		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey: input.IdempotencyKey,
 		AssetCatalog:   input.AssetCatalog,
-	})
+	}
+	reservation := imageagent.SlotExternalEffectReservation{
+		Identity:       imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}, PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt},
+		IdempotencyKey: input.IdempotencyKey, InputFingerprint: imageagent.SlotExecutionFingerprint(executionInput),
+	}
+	effect, claimed, err := a.slotEffects.ReserveSlotExternalEffect(ctx, reservation)
+	if err != nil {
+		return imageagent.SlotExecutionResult{}, err
+	}
+	if effect.Phase == imageagent.SlotExternalEffectProviderStarted {
+		if !claimed {
+			return imageagent.SlotExecutionResult{}, sdktemporal.NewNonRetryableApplicationError("slot provider outcome is unknown; start a new manual attempt", slotProviderOutcomeUnknownErrorType, nil)
+		}
+		generated, generateErr := a.slotExecutor.GenerateSlot(ctx, executionInput)
+		if generateErr != nil {
+			return imageagent.SlotExecutionResult{}, sdktemporal.NewNonRetryableApplicationError("slot provider generation failed", "imageagent_slot_provider_failed", generateErr)
+		}
+		effect, err = a.slotEffects.StoreSlotGeneratedOutput(ctx, reservation, generated)
+		if err != nil {
+			return imageagent.SlotExecutionResult{}, fmt.Errorf("persist generated slot output: %w", err)
+		}
+	}
+	if effect.Phase == imageagent.SlotExternalEffectGeneratedComplete {
+		published, publishErr := a.slotExecutor.PublishSlot(ctx, executionInput, effect.Generated)
+		if publishErr != nil {
+			return imageagent.SlotExecutionResult{}, fmt.Errorf("publish generated slot output: %w", publishErr)
+		}
+		effect, err = a.slotEffects.CompleteSlotPublication(ctx, reservation, published)
+		if err != nil {
+			return imageagent.SlotExecutionResult{}, fmt.Errorf("persist slot publication completion: %w", err)
+		}
+	}
+	if effect.Phase != imageagent.SlotExternalEffectPublicationComplete {
+		return imageagent.SlotExecutionResult{}, imageagent.ErrRevisionConflict
+	}
+	return effect.Published, nil
 }
 
 func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotResultActivityInput) error {
@@ -285,11 +332,12 @@ func (a *Activities) PublishApproved(ctx context.Context, input PublishApprovedA
 	if err != nil {
 		return err
 	}
-	return a.publisher.PublishApproved(ctx, imageagent.PublishApprovedInput{
+	_, err = a.publisher.PublishApproved(ctx, imageagent.PublishApprovedInput{
 		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		PlanRevision: input.PlanRevision, CandidateAssetIDs: append([]string(nil), input.CandidateAssetIDs...),
 		IdempotencyKey: input.IdempotencyKey,
 	})
+	return err
 }
 
 func legacyMigrationRequiredError() error {

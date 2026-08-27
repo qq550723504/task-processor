@@ -26,14 +26,16 @@ func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is nil")
 	}
-	return db.AutoMigrate(&runRecord{}, &planRecord{}, &slotRecord{}, &attemptRecord{}, &eventRecord{}, &assetCatalogManifestRecord{}, &assetCatalogRecord{}, &projectionRecord{}, &projectionCommitRecord{})
+	return db.AutoMigrate(&runRecord{}, &planRecord{}, &slotRecord{}, &attemptRecord{}, &eventRecord{}, &assetCatalogManifestRecord{}, &assetCatalogRecord{}, &projectionRecord{}, &projectionCommitRecord{}, &slotExternalEffectRecord{})
 }
 
 func (r *gormRepository) CreateRun(ctx context.Context, run *imageagent.Run) error {
 	if err := validateRun(run); err != nil {
 		return err
 	}
-	row, err := runToRecord(*run)
+	prepared := cloneRun(*run)
+	prepared.MaxConcurrentSlots = imageagent.NormalizeMaxConcurrentSlots(prepared.MaxConcurrentSlots)
+	row, err := runToRecord(prepared)
 	if err != nil {
 		return err
 	}
@@ -52,7 +54,7 @@ func (r *gormRepository) CreateRun(ctx context.Context, run *imageagent.Run) err
 	if err != nil {
 		return err
 	}
-	if sameRun(existingRun, *run) {
+	if sameRun(existingRun, prepared) {
 		return nil
 	}
 	return imageagent.ErrRevisionConflict
@@ -305,7 +307,7 @@ func runToRecord(run imageagent.Run) (runRecord, error) {
 	return runRecord{
 		TenantID: run.TenantID, ID: run.ID, BusinessTaskID: run.BusinessTaskID, UserID: run.UserID,
 		Mode: string(run.Mode), IdempotencyKey: run.IdempotencyKey, Status: string(run.Status), CurrentNode: run.CurrentNode,
-		ActivePlanRevision: run.ActivePlanRevision, Version: run.Version, BudgetJSON: budgetJSON, UsageJSON: usageJSON, BlockJSON: blockJSON,
+		ActivePlanRevision: run.ActivePlanRevision, Version: run.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(run.MaxConcurrentSlots), BudgetJSON: budgetJSON, UsageJSON: usageJSON, BlockJSON: blockJSON,
 	}, nil
 }
 
@@ -325,7 +327,7 @@ func recordToRun(row runRecord) (imageagent.Run, error) {
 	return imageagent.Run{
 		ID: row.ID, TenantID: row.TenantID, BusinessTaskID: row.BusinessTaskID, UserID: row.UserID, Mode: imageagent.RunMode(row.Mode),
 		IdempotencyKey: row.IdempotencyKey, Status: imageagent.RunStatus(row.Status), CurrentNode: row.CurrentNode,
-		ActivePlanRevision: row.ActivePlanRevision, Version: row.Version, Budget: budget, Usage: usage, Block: block,
+		ActivePlanRevision: row.ActivePlanRevision, Version: row.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(row.MaxConcurrentSlots), Budget: budget, Usage: usage, Block: block,
 	}, nil
 }
 

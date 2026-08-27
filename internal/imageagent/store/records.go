@@ -13,6 +13,7 @@ type runRecord struct {
 	CurrentNode        string `gorm:"type:varchar(128)"`
 	ActivePlanRevision int64  `gorm:"not null;default:0"`
 	Version            int64  `gorm:"not null;default:0"`
+	MaxConcurrentSlots int    `gorm:"not null;default:4"`
 	BudgetJSON         []byte
 	UsageJSON          []byte
 	BlockJSON          []byte
@@ -140,3 +141,24 @@ type projectionCommitRecord struct {
 }
 
 func (projectionCommitRecord) TableName() string { return "image_agent_v2_projection_commits" }
+
+type slotExternalEffectRecord struct {
+	TenantID          string `gorm:"primaryKey;type:varchar(64);uniqueIndex:idx_image_agent_v2_slot_effects_idempotency,priority:1"`
+	OwnerUserID       string `gorm:"primaryKey;type:varchar(128);uniqueIndex:idx_image_agent_v2_slot_effects_idempotency,priority:2"`
+	RunID             string `gorm:"primaryKey;type:varchar(64);uniqueIndex:idx_image_agent_v2_slot_effects_idempotency,priority:3"`
+	PlanRevision      int64  `gorm:"primaryKey"`
+	SlotID            string `gorm:"primaryKey;type:varchar(64)"`
+	Attempt           int    `gorm:"primaryKey"`
+	IdempotencyKey    string `gorm:"type:varchar(192);not null;uniqueIndex:idx_image_agent_v2_slot_effects_idempotency,priority:4"`
+	InputFingerprint  string `gorm:"type:varchar(64);not null"`
+	Phase             string `gorm:"type:varchar(32);not null"`
+	GeneratedJSON     []byte
+	PublishedJSON     []byte
+	ProviderStartedAt time.Time `gorm:"not null"`
+	GeneratedAt       *time.Time
+	PublishedAt       *time.Time
+	CreatedAt         time.Time `gorm:"not null"`
+	UpdatedAt         time.Time `gorm:"not null"`
+}
+
+func (slotExternalEffectRecord) TableName() string { return "image_agent_v2_slot_external_effects" }

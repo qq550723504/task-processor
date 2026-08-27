@@ -878,7 +878,7 @@ func (s *workflowUpdateState) applyApproveResults(ctx workflow.Context, signal A
 		publishInput := PublishApprovedActivityInput{
 			RunID: s.input.RunID, Identity: s.input.Identity, PlanRevision: s.input.Plan.Revision,
 			CandidateAssetIDs: candidateAssetIDs(s.input.Plan, *s.results),
-			IdempotencyKey:    publicationKey(s.input.RunID, s.input.Plan.Revision),
+			IdempotencyKey:    signal.ActionID,
 		}
 		if err := s.effects.publishApproved(ctx, publishInput); err != nil {
 			return CommandAcknowledgement{}, err

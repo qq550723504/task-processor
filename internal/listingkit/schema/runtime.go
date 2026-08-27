@@ -148,5 +148,8 @@ func autoMigrateTaskRepository(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
+	if err := listingkitstore.AutoMigrateImageAgentPublicationReceipts(db); err != nil {
+		return err
+	}
 	return listingkitstore.AutoMigrateSheinPODImageLookupIndex(db)
 }

@@ -80,6 +80,16 @@ type Run struct {
 	Budget             Budget
 	Usage              BudgetUsage
 	Block              *Block
+	MaxConcurrentSlots int
+}
+
+const DefaultMaxConcurrentSlots = 4
+
+func NormalizeMaxConcurrentSlots(value int) int {
+	if value <= 0 {
+		return DefaultMaxConcurrentSlots
+	}
+	return value
 }
 
 type Block struct {
