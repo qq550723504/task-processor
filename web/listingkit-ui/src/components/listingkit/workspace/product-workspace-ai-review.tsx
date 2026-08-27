@@ -1,21 +1,9 @@
 import { CheckCircle2, ShieldAlert, Sparkles } from "lucide-react";
 
-import type {
-  ProductWorkspaceAttentionItem,
-  ProductWorkspaceAttentionSeverity,
-} from "@/components/listingkit/workspace/product-workspace-model";
+import type { ProductWorkspaceAttentionItem } from "@/components/listingkit/workspace/product-workspace-model";
+import type { ProductWorkspaceReviewIssue } from "@/components/listingkit/workspace/product-workspace-review-model";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-
-export type ProductWorkspaceReviewIssue = {
-  id: string;
-  severity: Exclude<ProductWorkspaceAttentionSeverity, "passed">;
-  title: string;
-  description?: string;
-  suggestion?: string;
-  evidence?: string;
-  confidence?: number;
-};
 
 export function ProductWorkspaceAIReview({
   summary,
@@ -99,16 +87,18 @@ function IssueCard({
           ) : null}
         </div>
       </div>
-      <Button
-        aria-label={`处理：${issue.title}`}
-        className="mt-3 w-full"
-        onClick={() => onSelect(issue)}
-        size="sm"
-        type="button"
-        variant="secondary"
-      >
-        处理
-      </Button>
+      {issue.actionKey ? (
+        <Button
+          aria-label={`处理：${issue.title}`}
+          className="mt-3 w-full"
+          onClick={() => onSelect(issue)}
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          处理
+        </Button>
+      ) : null}
     </div>
   );
 }
