@@ -18,6 +18,7 @@ import {
   buildProductWorkspaceAttentionSummary,
   buildProductWorkspaceCanonicalNavigation,
   buildProductWorkspacePlatformNavigation,
+  productWorkspaceStatusForPlatformCard,
   type ProductWorkspaceNavItem,
   type ProductWorkspaceSectionKey,
 } from "@/components/listingkit/workspace/product-workspace-model";
@@ -60,7 +61,6 @@ import {
   useRefreshSubmissionStatus,
   useSubmitTask,
 } from "@/lib/query/use-submit-task";
-import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
@@ -233,7 +233,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     platformCards.map((card) => ({
       platform: card.platform,
       label: card.platform.toUpperCase(),
-      status: platformStatusForTask(card.platform, selectedPlatform, taskResult.data),
+      status: productWorkspaceStatusForPlatformCard(card),
     })),
     selectedPlatform,
   );
@@ -473,29 +473,6 @@ function countIssueSeverity(
   severity: ProductWorkspaceReviewIssue["severity"],
 ) {
   return issues.filter((issue) => issue.severity === severity).length;
-}
-
-function platformStatusForTask(
-  platform: string,
-  selectedPlatform: string | undefined,
-  task?: ListingKitTaskResult | null,
-): "ready" | "processing" | "attention" | "failed" | "idle" {
-  if (platform !== selectedPlatform) {
-    return "idle";
-  }
-  if (task?.status === "failed") {
-    return "failed";
-  }
-  if ((task?.result?.summary?.blocking_count ?? 0) > 0 || task?.status === "needs_review") {
-    return "attention";
-  }
-  if (task?.status === "processing") {
-    return "processing";
-  }
-  if (task?.status === "completed") {
-    return "ready";
-  }
-  return "idle";
 }
 
 function isProductSectionKey(value: string): value is ProductWorkspaceSectionKey {
