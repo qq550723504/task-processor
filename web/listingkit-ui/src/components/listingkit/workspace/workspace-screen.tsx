@@ -255,6 +255,13 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const handleNavigationSelect = (item: ProductWorkspaceNavItem) => {
     setHistorySelected(false);
     if (item.platform) {
+      const platformCard = platformCards.find(
+        (card) => card.platform === item.platform,
+      );
+      workspaceActions.dispatchTarget(
+        platformCard?.primary_navigation_target ??
+          platformCard?.resolved_action_summary?.navigation_target,
+      );
       workspaceActions.handlePlatformSelect(item.platform);
       return;
     }
