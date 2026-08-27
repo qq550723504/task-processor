@@ -1,12 +1,17 @@
 package objectstore
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -30,21 +35,13 @@ func TestPrepareSlotArtifactsBuildsContentAddressedManifestWithoutLocalPath(t *t
 	store := newTestStore(t, &fakeS3API{})
 	prepared, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{
 		Identity: testIdentity(),
-		Assets: []ArtifactInput{{
-			Bytes:             []byte("png bytes"),
-			ContentType:       "image/png",
-			Width:             1200,
-			Height:            800,
-			SourceAssetID:     "source-1",
-			Operations:        []string{"resize"},
-			ProviderReceiptID: "receipt-1",
-		}},
+		Assets:   []ArtifactInput{validAsset(t, 3, 2)},
 	})
 	if err != nil {
 		t.Fatalf("PrepareSlotArtifacts() error = %v", err)
 	}
 
-	wantSHA := sha256Hex([]byte("png bytes"))
+	wantSHA := sha256Hex(validAsset(t, 3, 2).Bytes)
 	if got, want := prepared.Manifest.Assets[0].ObjectKey, "image-agent/staging/tenant-a/run-1/3/slot-1/2/0-"+wantSHA+".png"; got != want {
 		t.Fatalf("object key = %q, want %q", got, want)
 	}
@@ -52,8 +49,10 @@ func TestPrepareSlotArtifactsBuildsContentAddressedManifestWithoutLocalPath(t *t
 	if err != nil {
 		t.Fatalf("marshal prepared artifacts: %v", err)
 	}
-	if strings.Contains(string(encoded), "png bytes") || strings.Contains(string(encoded), "local_path") {
-		t.Fatalf("persisted JSON leaked transient material: %s", encoded)
+	for _, sentinel := range []string{"local_path", "C:/worker", "https://transient.example", "authorization=secret", "png bytes"} {
+		if strings.Contains(string(encoded), sentinel) {
+			t.Fatalf("persisted JSON leaked transient material %q: %s", sentinel, encoded)
+		}
 	}
 }
 
@@ -83,13 +82,30 @@ func TestEnsureStagedRejectsSameKeyWithDifferentMetadata(t *testing.T) {
 	store := newTestStore(t, api)
 	prepared := mustPrepare(t, store)
 	ref := prepared.Manifest.Assets[0]
-	api.objects[ref.ObjectKey] = fakeObject{contentType: ref.ContentType, contentLength: ref.SizeBytes, metadata: map[string]string{"sha256": strings.Repeat("a", 64), "size-bytes": "9"}}
+	api.objects[ref.ObjectKey] = fakeObject{contentType: ref.ContentType, contentLength: ref.SizeBytes, metadata: map[string]string{"sha256": strings.Repeat("a", 64), "size-bytes": strconv.FormatInt(ref.SizeBytes, 10)}}
 
 	if err := store.EnsureStaged(context.Background(), prepared); err == nil {
 		t.Fatal("EnsureStaged() error = nil, want conflicting object error")
 	}
 	if api.putCalls != 0 {
 		t.Fatalf("put calls = %d, want 0 for an existing conflicting object", api.putCalls)
+	}
+}
+
+func TestEnsureStagedAcceptsMatchingExistingObjectWithoutPut(t *testing.T) {
+	t.Parallel()
+
+	api := &fakeS3API{objects: map[string]fakeObject{}}
+	store := newTestStore(t, api)
+	prepared := mustPrepare(t, store)
+	ref := prepared.Manifest.Assets[0]
+	api.objects[ref.ObjectKey] = fakeObject{contentType: ref.ContentType, contentLength: ref.SizeBytes, metadata: map[string]string{"sha256": ref.SHA256, "size-bytes": strconv.FormatInt(ref.SizeBytes, 10)}}
+
+	if err := store.EnsureStaged(context.Background(), prepared); err != nil {
+		t.Fatalf("EnsureStaged() error = %v", err)
+	}
+	if api.putCalls != 0 {
+		t.Fatalf("put calls = %d, want 0 for a matching existing object", api.putCalls)
 	}
 }
 
@@ -100,7 +116,7 @@ func TestFinalizeUsesDeterministicPublicKey(t *testing.T) {
 	store := newTestStore(t, api)
 	prepared := mustPrepare(t, store)
 	staged := prepared.Manifest.Assets[0]
-	api.objects[staged.ObjectKey] = fakeObject{contentType: staged.ContentType, contentLength: staged.SizeBytes, metadata: map[string]string{"sha256": staged.SHA256, "size-bytes": "9"}}
+	api.objects[staged.ObjectKey] = fakeObject{contentType: staged.ContentType, contentLength: staged.SizeBytes, metadata: map[string]string{"sha256": staged.SHA256, "size-bytes": strconv.FormatInt(staged.SizeBytes, 10)}}
 
 	final, err := store.Finalize(context.Background(), prepared.Manifest)
 	if err != nil {
@@ -122,7 +138,7 @@ func TestInspectNeverTreatsETagAsSHA256(t *testing.T) {
 	store := newTestStore(t, api)
 	prepared := mustPrepare(t, store)
 	ref := prepared.Manifest.Assets[0]
-	api.objects[ref.ObjectKey] = fakeObject{contentType: ref.ContentType, contentLength: ref.SizeBytes, eTag: ref.SHA256, metadata: map[string]string{"sha256": strings.Repeat("b", 64), "size-bytes": "9"}}
+	api.objects[ref.ObjectKey] = fakeObject{contentType: ref.ContentType, contentLength: ref.SizeBytes, eTag: ref.SHA256, metadata: map[string]string{"sha256": strings.Repeat("b", 64), "size-bytes": strconv.FormatInt(ref.SizeBytes, 10)}}
 
 	if err := store.EnsureStaged(context.Background(), prepared); err == nil {
 		t.Fatal("EnsureStaged() error = nil, want ETag to be ignored as a SHA-256 proof")
@@ -137,10 +153,14 @@ func TestPrepareRejectsOversizeUnsupportedOrEscapingArtifacts(t *testing.T) {
 		name  string
 		input PrepareSlotArtifactsInput
 	}{
-		{name: "oversize", input: prepareInputWith(testIdentity(), ArtifactInput{Bytes: []byte("0123456789"), ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1"})},
-		{name: "unsupported type", input: prepareInputWith(testIdentity(), ArtifactInput{Bytes: []byte("jpeg"), ContentType: "image/gif", Width: 1, Height: 1, SourceAssetID: "source-1"})},
-		{name: "escaping run ID", input: prepareInputWith(imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "../run"}, PlanRevision: 3, SlotID: "slot-1", Attempt: 2}, ArtifactInput{Bytes: []byte("png bytes"), ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1"})},
-		{name: "local provider receipt", input: prepareInputWith(testIdentity(), ArtifactInput{Bytes: []byte("png bytes"), ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1", ProviderReceiptID: "C:/worker/generated.png"})},
+		{name: "oversize", input: prepareInputWith(testIdentity(), ArtifactInput{Bytes: bytes.Repeat([]byte("x"), 2049), ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1"})},
+		{name: "unsupported type", input: prepareInputWith(testIdentity(), ArtifactInput{Bytes: validAsset(t, 1, 1).Bytes, ContentType: "image/gif", Width: 1, Height: 1, SourceAssetID: "source-1"})},
+		{name: "fake image", input: prepareInputWith(testIdentity(), ArtifactInput{Bytes: []byte("not an image"), ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1"})},
+		{name: "declared dimensions differ", input: prepareInputWith(testIdentity(), ArtifactInput{Bytes: validAsset(t, 2, 1).Bytes, ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1"})},
+		{name: "escaping run ID", input: prepareInputWith(imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "../run"}, PlanRevision: 3, SlotID: "slot-1", Attempt: 2}, validAsset(t, 1, 1))},
+		{name: "local provider receipt", input: prepareInputWith(testIdentity(), withReceipt(validAsset(t, 1, 1), "C:/worker/generated.png"))},
+		{name: "URL operation", input: prepareInputWith(testIdentity(), withOperations(validAsset(t, 1, 1), "https://transient.example/image"))},
+		{name: "credential operation", input: prepareInputWith(testIdentity(), withOperations(validAsset(t, 1, 1), "authorization=secret"))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := store.PrepareSlotArtifacts(tc.input); err == nil {
@@ -152,8 +172,8 @@ func TestPrepareRejectsOversizeUnsupportedOrEscapingArtifacts(t *testing.T) {
 
 func newTestStore(t *testing.T, api *fakeS3API) *S3DurableArtifactStore {
 	t.Helper()
-	uploader := storage.NewS3UploaderWithAPI(api, storage.S3UploaderOptions{Bucket: "assets"})
-	store, err := NewS3DurableArtifactStore(uploader, S3DurableArtifactStoreConfig{MaxArtifactBytes: 9})
+	uploader := storage.NewS3UploaderWithAPI(api, storage.S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeAWS}})
+	store, err := NewS3DurableArtifactStore(uploader, S3DurableArtifactStoreConfig{MaxArtifactBytes: 2048, MaxArtifactCount: 2, MaxAggregateBytes: 3072})
 	if err != nil {
 		t.Fatalf("NewS3DurableArtifactStore() error = %v", err)
 	}
@@ -162,7 +182,7 @@ func newTestStore(t *testing.T, api *fakeS3API) *S3DurableArtifactStore {
 
 func mustPrepare(t *testing.T, store *S3DurableArtifactStore) PreparedSlotArtifacts {
 	t.Helper()
-	prepared, err := store.PrepareSlotArtifacts(prepareInputWith(testIdentity(), ArtifactInput{Bytes: []byte("png bytes"), ContentType: "image/png", Width: 1200, Height: 800, SourceAssetID: "source-1", Operations: []string{"resize"}, ProviderReceiptID: "receipt-1"}))
+	prepared, err := store.PrepareSlotArtifacts(prepareInputWith(testIdentity(), ArtifactInput{Bytes: validPNG(t, 3, 2), ContentType: "image/png", Width: 3, Height: 2, SourceAssetID: "source-1", Operations: []string{"extract_subject"}, ProviderReceiptID: "receipt-1"}))
 	if err != nil {
 		t.Fatalf("PrepareSlotArtifacts() error = %v", err)
 	}
@@ -182,9 +202,159 @@ func sha256Hex(value []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func validAsset(t *testing.T, width, height int) ArtifactInput {
+	t.Helper()
+	return ArtifactInput{Bytes: validPNG(t, width, height), ContentType: "image/png", Width: width, Height: height, SourceAssetID: "source-1", Operations: []string{"extract_subject"}, ProviderReceiptID: "receipt-1"}
+}
+
+func validPNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	img.Set(0, 0, color.RGBA{R: 0x40, G: 0x80, B: 0xc0, A: 0xff})
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, img); err != nil {
+		t.Fatalf("encode PNG: %v", err)
+	}
+	return encoded.Bytes()
+}
+
+func withReceipt(asset ArtifactInput, receipt string) ArtifactInput {
+	asset.ProviderReceiptID = receipt
+	return asset
+}
+
+func withOperations(asset ArtifactInput, operations ...string) ArtifactInput {
+	asset.Operations = operations
+	return asset
+}
+
+func TestPrepareSlotArtifactsRejectsAggregateAndCountLimits(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t, &fakeS3API{})
+	asset := validAsset(t, 1, 1)
+	asset.Bytes = bytes.Repeat([]byte("x"), 1600)
+	if _, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{Identity: testIdentity(), Assets: []ArtifactInput{asset, asset}}); err == nil {
+		t.Fatal("PrepareSlotArtifacts() error = nil, want aggregate limit failure")
+	}
+	if _, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{Identity: testIdentity(), Assets: []ArtifactInput{validAsset(t, 1, 1), validAsset(t, 1, 1), validAsset(t, 1, 1)}}); err == nil {
+		t.Fatal("PrepareSlotArtifacts() error = nil, want count limit failure")
+	}
+}
+
+func TestRecoveryRejectsNonCanonicalPersistedStagingKeysBeforeSDKCalls(t *testing.T) {
+	t.Parallel()
+	for _, mutate := range []func(*imageagent.StagedAssetRef){
+		func(ref *imageagent.StagedAssetRef) {
+			ref.ObjectKey = "image-agent/staging/tenant-a/run-1/03/slot-1/2/0-" + ref.SHA256 + ".png"
+		},
+		func(ref *imageagent.StagedAssetRef) {
+			ref.ObjectKey = "image-agent/staging/tenant-a/run-1/3/slot-1/2/1-" + ref.SHA256 + ".png"
+		},
+		func(ref *imageagent.StagedAssetRef) {
+			ref.ObjectKey = "image-agent/staging/tenant-a/run-1/3/slot-1/2/0-" + strings.ToUpper(ref.SHA256) + ".png"
+		},
+		func(ref *imageagent.StagedAssetRef) {
+			ref.ObjectKey = "image-agent/staging/tenant-a/run-1/3/slot-1/2/0-" + ref.SHA256 + ".jpg"
+		},
+		func(ref *imageagent.StagedAssetRef) {
+			ref.ObjectKey = "image-agent/staging/tenant a/run-1/3/slot-1/2/0-" + ref.SHA256 + ".png"
+		},
+		func(ref *imageagent.StagedAssetRef) {
+			ref.Operations = []string{"provider=https://transient.example"}
+		},
+	} {
+		api := &fakeS3API{objects: map[string]fakeObject{}}
+		store := newTestStore(t, api)
+		prepared := mustPrepare(t, store)
+		mutate(&prepared.Manifest.Assets[0])
+		if err := store.EnsureStaged(context.Background(), prepared); err == nil {
+			t.Fatal("EnsureStaged() error = nil, want malformed manifest rejection")
+		}
+		if api.headCalls != 0 || api.putCalls != 0 || api.copyCalls != 0 {
+			t.Fatalf("SDK calls occurred for malformed manifest: head=%d put=%d copy=%d", api.headCalls, api.putCalls, api.copyCalls)
+		}
+	}
+}
+
+func TestFinalizeRejectsNonCanonicalPersistedStagingKeysBeforeSDKCalls(t *testing.T) {
+	t.Parallel()
+	api := &fakeS3API{objects: map[string]fakeObject{}}
+	store := newTestStore(t, api)
+	prepared := mustPrepare(t, store)
+	prepared.Manifest.Assets[0].ObjectKey = "image-agent/staging/tenant-a/run-1/03/slot-1/2/0-" + prepared.Manifest.Assets[0].SHA256 + ".png"
+	if _, err := store.Finalize(context.Background(), prepared.Manifest); err == nil {
+		t.Fatal("Finalize() error = nil, want malformed manifest rejection")
+	}
+	if api.headCalls != 0 || api.putCalls != 0 || api.copyCalls != 0 {
+		t.Fatalf("SDK calls occurred for malformed manifest: head=%d put=%d copy=%d", api.headCalls, api.putCalls, api.copyCalls)
+	}
+}
+
+func TestFinalizeReconcilesLostCopyAndRejectsConflictingFinal(t *testing.T) {
+	t.Parallel()
+	t.Run("lost copy", func(t *testing.T) {
+		api := &fakeS3API{objects: map[string]fakeObject{}}
+		store := newTestStore(t, api)
+		prepared := mustPrepare(t, store)
+		staged := prepared.Manifest.Assets[0]
+		api.objects[staged.ObjectKey] = fakeObject{contentType: staged.ContentType, contentLength: staged.SizeBytes, metadata: map[string]string{"sha256": staged.SHA256, "size-bytes": strconv.FormatInt(staged.SizeBytes, 10)}}
+		api.copy = func(input *s3.CopyObjectInput) error { api.saveCopy(input); return errors.New("copy response lost") }
+		if _, err := store.Finalize(context.Background(), prepared.Manifest); err != nil {
+			t.Fatalf("Finalize() error = %v", err)
+		}
+	})
+	t.Run("conflicting final", func(t *testing.T) {
+		api := &fakeS3API{objects: map[string]fakeObject{}}
+		store := newTestStore(t, api)
+		prepared := mustPrepare(t, store)
+		staged := prepared.Manifest.Assets[0]
+		api.objects[staged.ObjectKey] = fakeObject{contentType: staged.ContentType, contentLength: staged.SizeBytes, metadata: map[string]string{"sha256": staged.SHA256, "size-bytes": strconv.FormatInt(staged.SizeBytes, 10)}}
+		api.objects[strings.Replace(staged.ObjectKey, "image-agent/staging/", "image-agent/public/", 1)] = fakeObject{contentType: staged.ContentType, contentLength: staged.SizeBytes, metadata: map[string]string{"sha256": strings.Repeat("a", 64), "size-bytes": strconv.FormatInt(staged.SizeBytes, 10)}}
+		if _, err := store.Finalize(context.Background(), prepared.Manifest); err == nil {
+			t.Fatal("Finalize() error = nil, want conflicting final error")
+		}
+	})
+}
+
+func TestEnsureStagedRejectsMissingRetryBytes(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t, &fakeS3API{objects: map[string]fakeObject{}})
+	prepared := mustPrepare(t, store)
+	encoded, err := json.Marshal(prepared)
+	if err != nil {
+		t.Fatalf("marshal prepared: %v", err)
+	}
+	var recovered PreparedSlotArtifacts
+	if err := json.Unmarshal(encoded, &recovered); err != nil {
+		t.Fatalf("unmarshal prepared: %v", err)
+	}
+	if err := store.EnsureStaged(context.Background(), recovered); !errors.Is(err, ErrArtifactUnavailable) {
+		t.Fatalf("EnsureStaged() error = %v, want ErrArtifactUnavailable", err)
+	}
+}
+
+func TestPreparedJSONExcludesEveryTransientSentinel(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t, &fakeS3API{})
+	prepared := mustPrepare(t, store)
+	prepared.contents[prepared.Manifest.Assets[0].ObjectKey] = []byte("C:/worker/private.png https://transient.example authorization=secret")
+	prepared.Manifest.ProviderMetadata = map[string]string{"provider_metadata": "C:/worker/private.png https://transient.example authorization=secret"}
+
+	encoded, err := json.Marshal(prepared)
+	if err != nil {
+		t.Fatalf("marshal prepared: %v", err)
+	}
+	for _, sentinel := range []string{"C:/worker", "https://transient.example", "authorization=secret", "provider_metadata"} {
+		if strings.Contains(string(encoded), sentinel) {
+			t.Fatalf("persisted JSON leaked %q: %s", sentinel, encoded)
+		}
+	}
+}
+
 type fakeS3API struct {
 	objects   map[string]fakeObject
 	put       func(*s3.PutObjectInput) error
+	copy      func(*s3.CopyObjectInput) error
 	putCalls  int
 	headCalls int
 	copyCalls int
@@ -220,18 +390,27 @@ func (f *fakeS3API) HeadObject(_ context.Context, input *s3.HeadObjectInput, _ .
 
 func (f *fakeS3API) CopyObject(_ context.Context, input *s3.CopyObjectInput, _ ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
 	f.copyCalls++
+	if f.copy != nil {
+		if err := f.copy(input); err != nil {
+			return nil, err
+		}
+	}
+	f.saveCopy(input)
+	return &s3.CopyObjectOutput{}, nil
+}
+
+func (f *fakeS3API) saveCopy(input *s3.CopyObjectInput) {
 	if _, ok := f.objects[aws.ToString(input.Key)]; ok {
-		return nil, errors.New("destination exists")
+		return
 	}
 	source := strings.TrimPrefix(aws.ToString(input.CopySource), "assets/")
 	object, ok := f.objects[source]
 	if !ok {
-		return nil, &types.NoSuchKey{}
+		return
 	}
 	object.contentType = aws.ToString(input.ContentType)
 	object.metadata = input.Metadata
 	f.objects[aws.ToString(input.Key)] = object
-	return &s3.CopyObjectOutput{}, nil
 }
 
 func (f *fakeS3API) DeleteObject(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {

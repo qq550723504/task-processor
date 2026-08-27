@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,17 +19,20 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	"github.com/aws/smithy-go/middleware"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/sirupsen/logrus"
 )
 
 // S3Uploader S3上传器
 type S3Uploader struct {
-	s3Client     S3ObjectAPI
-	bucket       string
-	publicBase   string
-	endpoint     string
-	usePathStyle bool
-	logger       *logrus.Entry
+	s3Client             S3ObjectAPI
+	bucket               string
+	publicBase           string
+	endpoint             string
+	usePathStyle         bool
+	artifactCapabilities ArtifactStorageCapabilities
+	logger               *logrus.Entry
 }
 
 // S3ObjectAPI is the narrow AWS SDK v2 call boundary used by S3Uploader. The
@@ -63,6 +67,21 @@ type ImmutableObjectCopy struct {
 	Destination ImmutableObjectPut
 }
 
+type ArtifactStorageMode string
+
+const (
+	ArtifactStorageModeAWS ArtifactStorageMode = "aws"
+	ArtifactStorageModeCOS ArtifactStorageMode = "cos"
+)
+
+// ArtifactStorageCapabilities must be explicit for the new durable artifact
+// path. COS requires an operator-confirmed immutable policy on a non-versioned
+// bucket because x-cos-forbid-overwrite is not sufficient for versioned buckets.
+type ArtifactStorageCapabilities struct {
+	Mode                                 ArtifactStorageMode
+	COSImmutableNonVersionedBucketPolicy bool
+}
+
 // S3Config S3配置
 type S3Config struct {
 	Bucket string `json:"bucket"`
@@ -70,10 +89,11 @@ type S3Config struct {
 }
 
 type S3UploaderOptions struct {
-	Bucket       string
-	PublicBase   string
-	Endpoint     string
-	UsePathStyle bool
+	Bucket               string
+	PublicBase           string
+	Endpoint             string
+	UsePathStyle         bool
+	ArtifactCapabilities ArtifactStorageCapabilities
 }
 
 // NewS3Uploader 创建S3上传器
@@ -89,12 +109,13 @@ func NewS3UploaderWithOptions(s3Client *s3.Client, opts S3UploaderOptions) *S3Up
 // request boundary. Runtime composition should use NewS3UploaderWithOptions.
 func NewS3UploaderWithAPI(s3Client S3ObjectAPI, opts S3UploaderOptions) *S3Uploader {
 	return &S3Uploader{
-		s3Client:     s3Client,
-		bucket:       opts.Bucket,
-		publicBase:   opts.PublicBase,
-		endpoint:     opts.Endpoint,
-		usePathStyle: opts.UsePathStyle,
-		logger:       logger.GetGlobalLogger("S3Uploader"),
+		s3Client:             s3Client,
+		bucket:               opts.Bucket,
+		publicBase:           opts.PublicBase,
+		endpoint:             opts.Endpoint,
+		usePathStyle:         opts.UsePathStyle,
+		artifactCapabilities: opts.ArtifactCapabilities,
+		logger:               logger.GetGlobalLogger("S3Uploader"),
 	}
 }
 
@@ -108,24 +129,31 @@ func (u *S3Uploader) PutImmutable(ctx context.Context, object ImmutableObjectPut
 	if int64(len(object.Data)) != object.SizeBytes {
 		return fmt.Errorf("immutable S3 object body length does not match metadata")
 	}
-	checksum, err := sha256Base64(object.SHA256)
+	checksumEnabled, options, err := u.immutableWriteOptions()
 	if err != nil {
 		return err
 	}
-	_, err = u.s3Client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:            aws.String(u.bucket),
-		Key:               aws.String(object.Key),
-		Body:              bytes.NewReader(object.Data),
-		ContentLength:     aws.Int64(object.SizeBytes),
-		ContentType:       aws.String(object.ContentType),
-		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
-		ChecksumSHA256:    aws.String(checksum),
-		IfNoneMatch:       aws.String("*"),
+	input := &s3.PutObjectInput{
+		Bucket:        aws.String(u.bucket),
+		Key:           aws.String(object.Key),
+		Body:          bytes.NewReader(object.Data),
+		ContentLength: aws.Int64(object.SizeBytes),
+		ContentType:   aws.String(object.ContentType),
+		IfNoneMatch:   aws.String("*"),
 		Metadata: map[string]string{
 			"sha256":     strings.ToLower(object.SHA256),
 			"size-bytes": strconv.FormatInt(object.SizeBytes, 10),
 		},
-	})
+	}
+	if checksumEnabled {
+		checksum, err := sha256Base64(object.SHA256)
+		if err != nil {
+			return err
+		}
+		input.ChecksumAlgorithm = types.ChecksumAlgorithmSha256
+		input.ChecksumSHA256 = aws.String(checksum)
+	}
+	_, err = u.s3Client.PutObject(ctx, input, options...)
 	if err != nil {
 		return fmt.Errorf("put immutable S3 object %q: %w", object.Key, err)
 	}
@@ -136,11 +164,18 @@ func (u *S3Uploader) PutImmutable(ctx context.Context, object ImmutableObjectPut
 // not-found errors become Exists=false; every other HeadObject error remains
 // observable to recovery callers.
 func (u *S3Uploader) InspectObject(ctx context.Context, key string) (ObjectInspection, error) {
-	output, err := u.s3Client.HeadObject(ctx, &s3.HeadObjectInput{
-		Bucket:       aws.String(u.bucket),
-		Key:          aws.String(key),
-		ChecksumMode: types.ChecksumModeEnabled,
-	})
+	checksumEnabled, err := u.strictArtifactCapability()
+	if err != nil {
+		return ObjectInspection{}, err
+	}
+	input := &s3.HeadObjectInput{
+		Bucket: aws.String(u.bucket),
+		Key:    aws.String(key),
+	}
+	if checksumEnabled {
+		input.ChecksumMode = types.ChecksumModeEnabled
+	}
+	output, err := u.s3Client.HeadObject(ctx, input)
 	if err != nil {
 		if isS3NotFound(err) {
 			return ObjectInspection{}, nil
@@ -168,19 +203,26 @@ func (u *S3Uploader) CopyImmutable(ctx context.Context, object ImmutableObjectCo
 	if err := validateImmutableObjectIdentity(object.Destination); err != nil {
 		return err
 	}
-	_, err := u.s3Client.CopyObject(ctx, &s3.CopyObjectInput{
+	checksumEnabled, options, err := u.immutableWriteOptions()
+	if err != nil {
+		return err
+	}
+	input := &s3.CopyObjectInput{
 		Bucket:            aws.String(u.bucket),
 		Key:               aws.String(object.Destination.Key),
 		CopySource:        aws.String(copySource(u.bucket, object.SourceKey)),
 		ContentType:       aws.String(object.Destination.ContentType),
-		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
 		IfNoneMatch:       aws.String("*"),
 		MetadataDirective: types.MetadataDirectiveReplace,
 		Metadata: map[string]string{
 			"sha256":     strings.ToLower(object.Destination.SHA256),
 			"size-bytes": strconv.FormatInt(object.Destination.SizeBytes, 10),
 		},
-	})
+	}
+	if checksumEnabled {
+		input.ChecksumAlgorithm = types.ChecksumAlgorithmSha256
+	}
+	_, err = u.s3Client.CopyObject(ctx, input, options...)
 	if err != nil {
 		return fmt.Errorf("copy immutable S3 object %q to %q: %w", object.SourceKey, object.Destination.Key, err)
 	}
@@ -333,11 +375,11 @@ func (u *S3Uploader) Delete(ctx context.Context, key string) error {
 
 // Exists 检查S3对象是否存在
 func (u *S3Uploader) Exists(ctx context.Context, key string) (bool, error) {
-	inspection, err := u.InspectObject(ctx, key)
+	_, err := u.s3Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(u.bucket), Key: aws.String(key)})
 	if err != nil {
-		return false, err
+		return false, nil
 	}
-	return inspection.Exists, nil
+	return true, nil
 }
 
 // generateKey 生成S3 key
@@ -413,7 +455,48 @@ func sha256Base64(value string) (string, error) {
 }
 
 func copySource(bucket, key string) string {
-	return bucket + "/" + key
+	segments := strings.Split(key, "/")
+	for index, segment := range segments {
+		segments[index] = strictPathEscape(segment)
+	}
+	return strictPathEscape(bucket) + "/" + strings.Join(segments, "/")
+}
+
+func strictPathEscape(value string) string {
+	return strings.ReplaceAll(url.PathEscape(value), "+", "%2B")
+}
+
+func (u *S3Uploader) strictArtifactCapability() (bool, error) {
+	switch u.artifactCapabilities.Mode {
+	case ArtifactStorageModeAWS:
+		return true, nil
+	case ArtifactStorageModeCOS:
+		if !u.artifactCapabilities.COSImmutableNonVersionedBucketPolicy {
+			return false, fmt.Errorf("COS durable artifacts require an explicit immutable non-versioned bucket policy")
+		}
+		return false, nil
+	default:
+		return false, fmt.Errorf("durable artifacts require explicit S3/COS storage capabilities")
+	}
+}
+
+func (u *S3Uploader) immutableWriteOptions() (bool, []func(*s3.Options), error) {
+	checksumEnabled, err := u.strictArtifactCapability()
+	if err != nil || u.artifactCapabilities.Mode != ArtifactStorageModeCOS {
+		return checksumEnabled, nil, err
+	}
+	return false, []func(*s3.Options){s3.WithAPIOptions(cosForbidOverwriteMiddleware)}, nil
+}
+
+func cosForbidOverwriteMiddleware(stack *middleware.Stack) error {
+	return stack.Build.Add(middleware.BuildMiddlewareFunc("cosForbidOverwrite", func(ctx context.Context, input middleware.BuildInput, next middleware.BuildHandler) (middleware.BuildOutput, middleware.Metadata, error) {
+		request, ok := input.Request.(*smithyhttp.Request)
+		if !ok {
+			return middleware.BuildOutput{}, middleware.Metadata{}, fmt.Errorf("COS forbid-overwrite requires HTTP request")
+		}
+		request.Header.Set("x-cos-forbid-overwrite", "true")
+		return next.HandleBuild(ctx, input)
+	}), middleware.After)
 }
 
 func isS3NotFound(err error) bool {
