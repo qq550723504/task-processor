@@ -2764,41 +2764,83 @@ func TestTemporalPayloadEncodingPreservesLegacyDefaultGoKeys(t *testing.T) {
 	require.Equal(t, "slot-1", decoded.Plan.Slots[0].ID)
 }
 
-func TestRegisterWorkerRegistersParentChildAndActivities(t *testing.T) {
+func TestRegisterWorkerPreservesFrozenV2Compatibility(t *testing.T) {
 	activities, err := NewActivities(ActivityDependencies{Repository: store.NewMemoryRepository(), SlotExecutor: &identityCheckingExecutor{t: t}, Publisher: &identityCheckingPublisher{t: t}})
 	require.NoError(t, err)
 	registrar := &recordingWorkerRegistrar{}
 
 	require.NoError(t, RegisterWorker(registrar, activities))
 
-	require.Equal(t, []string{workflowNameImageAgent, workflowNameImageSlot, "ImageSlotWorkflowV3", workflowNameCompatibilityCanary}, registrar.workflows)
+	require.Equal(t, []string{workflowNameImageAgent, workflowNameImageSlot}, registrar.workflows)
 	require.Equal(t, []string{
 		"imageagent.execute_slot", "imageagent.persist_slot_result", "imageagent.persist_run_state", "imageagent.persist_plan_revision", "imageagent.persist_pending_command", "imageagent.publish_approved",
-		"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_slot_result.v3", "imageagent.persist_run_state.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
-		"imageagent.execute_slot.v3", "imageagent.publish_approved.v3",
+		"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_run_state.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
 	}, registrar.activities)
 }
 
-func TestWorkerConfigSelectsExplicitV2AndDefaultV3Queues(t *testing.T) {
+func TestRegisterWorkerUsesExactModeBoundWorkflowAndActivitySets(t *testing.T) {
+	activities, err := NewActivities(ActivityDependencies{Repository: store.NewMemoryRepository(), SlotExecutor: &identityCheckingExecutor{t: t}, Publisher: &identityCheckingPublisher{t: t}})
+	require.NoError(t, err)
 	tests := []struct {
-		name   string
-		config WorkerConfig
-		queue  string
+		name           string
+		mode           WorkerWireMode
+		wantWorkflows  []string
+		wantActivities []string
+	}{
+		{
+			name: "v2", mode: WorkerWireModeV2,
+			wantWorkflows: []string{workflowNameImageAgent, workflowNameImageSlot},
+			wantActivities: []string{
+				"imageagent.execute_slot", "imageagent.persist_slot_result", "imageagent.persist_run_state", "imageagent.persist_plan_revision", "imageagent.persist_pending_command", "imageagent.publish_approved",
+				"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_run_state.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
+			},
+		},
+		{
+			name: "v3", mode: WorkerWireModeV3,
+			wantWorkflows: []string{workflowNameImageAgent, "ImageSlotWorkflowV3", workflowNameCompatibilityCanary},
+			wantActivities: []string{
+				"imageagent.persist_run_state.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2",
+				"imageagent.execute_slot.v3", "imageagent.persist_slot_result.v3", "imageagent.publish_approved.v3",
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			registrar := &recordingWorkerRegistrar{}
+			require.NoError(t, RegisterWorkerForMode(registrar, activities, test.mode))
+			require.Equal(t, test.wantWorkflows, registrar.workflows)
+			require.Equal(t, test.wantActivities, registrar.activities)
+		})
+	}
+}
+
+func TestWorkerConfigBindsExplicitModesToCompatibleQueues(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  WorkerConfig
+		queue   string
+		wantErr string
 	}{
 		{name: "v2", config: WorkerConfig{WireMode: WorkerWireModeV2}, queue: TaskQueue},
 		{name: "v3", config: WorkerConfig{WireMode: WorkerWireModeV3}, queue: TaskQueueV3},
-		{name: "default v3", config: WorkerConfig{}, queue: TaskQueueV3},
-		{name: "explicit queue", config: WorkerConfig{WireMode: WorkerWireModeV3, TaskQueue: "image-agent-manual-v3-custom"}, queue: "image-agent-manual-v3-custom"},
+		{name: "custom v2", config: WorkerConfig{WireMode: WorkerWireModeV2, TaskQueue: "image-agent-manual-v2-custom"}, queue: "image-agent-manual-v2-custom"},
+		{name: "custom v3", config: WorkerConfig{WireMode: WorkerWireModeV3, TaskQueue: "image-agent-manual-v3-custom"}, queue: "image-agent-manual-v3-custom"},
+		{name: "v2 rejects v3 default", config: WorkerConfig{WireMode: WorkerWireModeV2, TaskQueue: TaskQueueV3}, wantErr: "v2 wire mode cannot use v3 task queue"},
+		{name: "v3 rejects v2 default", config: WorkerConfig{WireMode: WorkerWireModeV3, TaskQueue: TaskQueue}, wantErr: "v3 wire mode cannot use v2 task queue"},
+		{name: "missing explicit mode", config: WorkerConfig{TaskQueue: "image-agent-custom"}, wantErr: "wire mode is required"},
+		{name: "invalid mode", config: WorkerConfig{WireMode: "invalid"}, wantErr: "unsupported image agent temporal wire mode"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			queue, err := test.config.selectedTaskQueue()
+			if test.wantErr != "" {
+				require.ErrorContains(t, err, test.wantErr)
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, test.queue, queue)
 		})
 	}
-	_, err := (WorkerConfig{WireMode: "invalid"}).selectedTaskQueue()
-	require.ErrorContains(t, err, "unsupported image agent temporal wire mode")
 }
 
 func TestLegacyPersistRunStateDecodesFrozenPayloadAndFailsWithoutWritingV2State(t *testing.T) {

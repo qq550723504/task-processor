@@ -798,27 +798,39 @@ type activityRegistrar interface {
 }
 
 func RegisterActivities(registrar activityRegistrar, activities *Activities) error {
+	return RegisterActivitiesForMode(registrar, activities, WorkerWireModeV2)
+}
+
+func RegisterActivitiesForMode(registrar activityRegistrar, activities *Activities, mode WorkerWireMode) error {
 	if registrar == nil {
 		return fmt.Errorf("temporal activity registrar is required")
 	}
 	if activities == nil {
 		return fmt.Errorf("image agent activities are required")
 	}
-	registrar.RegisterActivityWithOptions(activities.LegacyExecuteSlot, sdkactivity.RegisterOptions{Name: activityExecuteSlotLegacy})
-	registrar.RegisterActivityWithOptions(activities.LegacyPersistSlotResult, sdkactivity.RegisterOptions{Name: activityPersistSlotResultLegacy})
-	registrar.RegisterActivityWithOptions(activities.LegacyPersistRunState, sdkactivity.RegisterOptions{Name: activityPersistRunStateLegacy})
-	registrar.RegisterActivityWithOptions(activities.LegacyPersistPlanRevision, sdkactivity.RegisterOptions{Name: activityPersistPlanRevisionLegacy})
-	registrar.RegisterActivityWithOptions(activities.LegacyPersistPendingCommand, sdkactivity.RegisterOptions{Name: activityPersistPendingCommandLegacy})
-	registrar.RegisterActivityWithOptions(activities.LegacyPublishApproved, sdkactivity.RegisterOptions{Name: activityPublishApprovedLegacy})
-	registrar.RegisterActivityWithOptions(activities.ExecuteSlot, sdkactivity.RegisterOptions{Name: activityExecuteSlot})
-	registrar.RegisterActivityWithOptions(activities.PersistSlotResult, sdkactivity.RegisterOptions{Name: activityPersistSlotResult})
-	registrar.RegisterActivityWithOptions(activities.PersistSlotResultV3, sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3})
+	if err := validateWorkerWireMode(mode); err != nil {
+		return err
+	}
+	if mode == WorkerWireModeV2 {
+		registrar.RegisterActivityWithOptions(activities.LegacyExecuteSlot, sdkactivity.RegisterOptions{Name: activityExecuteSlotLegacy})
+		registrar.RegisterActivityWithOptions(activities.LegacyPersistSlotResult, sdkactivity.RegisterOptions{Name: activityPersistSlotResultLegacy})
+		registrar.RegisterActivityWithOptions(activities.LegacyPersistRunState, sdkactivity.RegisterOptions{Name: activityPersistRunStateLegacy})
+		registrar.RegisterActivityWithOptions(activities.LegacyPersistPlanRevision, sdkactivity.RegisterOptions{Name: activityPersistPlanRevisionLegacy})
+		registrar.RegisterActivityWithOptions(activities.LegacyPersistPendingCommand, sdkactivity.RegisterOptions{Name: activityPersistPendingCommandLegacy})
+		registrar.RegisterActivityWithOptions(activities.LegacyPublishApproved, sdkactivity.RegisterOptions{Name: activityPublishApprovedLegacy})
+		registrar.RegisterActivityWithOptions(activities.ExecuteSlot, sdkactivity.RegisterOptions{Name: activityExecuteSlot})
+		registrar.RegisterActivityWithOptions(activities.PersistSlotResult, sdkactivity.RegisterOptions{Name: activityPersistSlotResult})
+	}
 	registrar.RegisterActivityWithOptions(activities.PersistRunState, sdkactivity.RegisterOptions{Name: activityPersistRunState})
 	registrar.RegisterActivityWithOptions(activities.PersistPlanRevision, sdkactivity.RegisterOptions{Name: activityPersistPlanRevision})
 	registrar.RegisterActivityWithOptions(activities.PersistPendingCommand, sdkactivity.RegisterOptions{Name: activityPersistPendingCommand})
-	registrar.RegisterActivityWithOptions(activities.PublishApproved, sdkactivity.RegisterOptions{Name: activityPublishApproved})
-	registrar.RegisterActivityWithOptions(activities.ExecuteSlotV3, sdkactivity.RegisterOptions{Name: activityExecuteSlotV3})
-	registrar.RegisterActivityWithOptions(activities.PublishApprovedV3, sdkactivity.RegisterOptions{Name: activityPublishApprovedV3})
+	if mode == WorkerWireModeV2 {
+		registrar.RegisterActivityWithOptions(activities.PublishApproved, sdkactivity.RegisterOptions{Name: activityPublishApproved})
+	} else {
+		registrar.RegisterActivityWithOptions(activities.ExecuteSlotV3, sdkactivity.RegisterOptions{Name: activityExecuteSlotV3})
+		registrar.RegisterActivityWithOptions(activities.PersistSlotResultV3, sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3})
+		registrar.RegisterActivityWithOptions(activities.PublishApprovedV3, sdkactivity.RegisterOptions{Name: activityPublishApprovedV3})
+	}
 	return nil
 }
 

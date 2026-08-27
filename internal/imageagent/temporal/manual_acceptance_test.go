@@ -94,9 +94,8 @@ func executeAcceptanceWorkflow(t *testing.T, plan imageagent.Plan, invalidSlotID
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
 	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
-	env.RegisterWorkflow(imageagenttemporal.ImageSlotWorkflow)
 	env.RegisterWorkflow(imageagenttemporal.ImageSlotWorkflowV3)
-	require.NoError(t, imageagenttemporal.RegisterActivities(env, activities))
+	require.NoError(t, imageagenttemporal.RegisterActivitiesForMode(env, activities, imageagenttemporal.WorkerWireModeV3))
 	env.ExecuteWorkflow(imageagenttemporal.ImageAgentWorkflow, imageagenttemporal.WorkflowInput{
 		RunID: run.ID, Mode: imageagent.RunModeManual,
 		Identity: imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID},

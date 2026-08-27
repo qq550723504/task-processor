@@ -1,12 +1,16 @@
 package temporal
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	historypb "go.temporal.io/api/history/v1"
+	sdkactivity "go.temporal.io/sdk/activity"
 	sdkconverter "go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/testsuite"
 	sdkworker "go.temporal.io/sdk/worker"
@@ -14,7 +18,6 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"task-processor/internal/imageagent"
-	"task-processor/internal/imageagent/store"
 )
 
 func TestReplayV2SlotInflightHistory(t *testing.T) {
@@ -30,6 +33,36 @@ func TestReplayV2AwaitingApprovalHistory(t *testing.T) {
 	replayer.RegisterWorkflowWithOptions(ImageSlotWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageSlot})
 
 	require.NoError(t, replayer.ReplayWorkflowHistory(nil, readHistoryFixture(t, "v2-awaiting-approval.json")))
+}
+
+func TestReplayV2PreAtomicAwaitingApprovalHistory(t *testing.T) {
+	history := readHistoryFixture(t, "v2-pre-atomic-awaiting-approval.json")
+	require.NotContains(t, historyVersionChangeIDs(t, history), activityWireV2Patch)
+
+	replayer := sdkworker.NewWorkflowReplayer()
+	replayer.RegisterWorkflowWithOptions(ImageAgentWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageAgent})
+	replayer.RegisterWorkflowWithOptions(ImageSlotWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageSlot})
+
+	require.NoError(t, replayer.ReplayWorkflowHistory(nil, history))
+}
+
+func historyVersionChangeIDs(t *testing.T, history *historypb.History) []string {
+	t.Helper()
+	var changeIDs []string
+	for _, event := range history.Events {
+		attributes := event.GetMarkerRecordedEventAttributes()
+		if attributes == nil || attributes.GetMarkerName() != "Version" {
+			continue
+		}
+		payloads := attributes.GetDetails()["change-id"]
+		if payloads == nil {
+			continue
+		}
+		var changeID string
+		require.NoError(t, sdkconverter.GetDefaultDataConverter().FromPayloads(payloads, &changeID))
+		changeIDs = append(changeIDs, changeID)
+	}
+	return changeIDs
 }
 
 func TestOldApprovalHistoryRetainsPlanDerivedKeyAndV2Digest(t *testing.T) {
@@ -73,6 +106,108 @@ type wireProbeResult struct {
 	ResultDigest     string
 }
 
+func TestTask6MarkersAreEvaluatedBeforePreAtomicSelection(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(workflowWireProbe)
+	slot := env.OnGetVersion(slotExecutionWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	action := env.OnGetVersion(approvalActionIDV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	publication := env.OnGetVersion(approvalPublicationWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	digest := env.OnGetVersion(resultDigestV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	env.OnGetVersion(activityWireV2Patch, sdkworkflow.DefaultVersion, 1).
+		Return(sdkworkflow.DefaultVersion).Once().NotBefore(slot, action, publication, digest)
+
+	env.ExecuteWorkflow(workflowWireProbe)
+	require.NoError(t, env.GetWorkflowError())
+	require.True(t, env.AssertExpectations(t))
+}
+
+type approvalProtocolProbeResult struct {
+	PublishActivity string
+	IdempotencyKey  string
+	ResultDigest    string
+}
+
+func approvalProtocolProbe(ctx sdkworkflow.Context) (approvalProtocolProbeResult, error) {
+	ctx = imageAgentActivityContext(ctx)
+	effects := newWorkflowEffectOwner(ctx)
+	plan, results := wireProbePlanAndResults()
+	digest, err := resultDigestForWire(plan, results, effects.activities)
+	if err != nil {
+		return approvalProtocolProbeResult{}, err
+	}
+	key := approvalPublicationKeyForWire("capture-action", "capture-run", 1, effects.activities)
+	err = effects.publishApproved(ctx, PublishApprovedActivityInput{
+		RunID: "capture-run", Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+		PlanRevision: 1, CandidateAssetIDs: []string{"candidate-1"}, IdempotencyKey: key,
+	})
+	if err != nil {
+		return approvalProtocolProbeResult{}, err
+	}
+	return approvalProtocolProbeResult{PublishActivity: effects.activities.publishApproved, IdempotencyKey: key, ResultDigest: digest}, nil
+}
+
+func TestApprovalMarkerCombinationsSelectOnlyCompleteProtocols(t *testing.T) {
+	for mask := 0; mask < 8; mask++ {
+		actionV3 := mask&1 != 0
+		publicationV3 := mask&2 != 0
+		digestV3 := mask&4 != 0
+		name := fmt.Sprintf("action=%t/publication=%t/digest=%t", actionV3, publicationV3, digestV3)
+		t.Run(name, func(t *testing.T) {
+			var suite testsuite.WorkflowTestSuite
+			env := suite.NewTestWorkflowEnvironment()
+			env.RegisterWorkflow(approvalProtocolProbe)
+			env.RegisterActivityWithOptions(
+				func(context.Context, PublishApprovedActivityInput) error { return nil },
+				sdkactivity.RegisterOptions{Name: activityPublishApproved},
+			)
+			env.RegisterActivityWithOptions(
+				func(context.Context, PublishApprovedV3ActivityInput) error { return nil },
+				sdkactivity.RegisterOptions{Name: activityPublishApprovedV3},
+			)
+			env.OnGetVersion(slotExecutionWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+			env.OnGetVersion(approvalActionIDV3Patch, sdkworkflow.DefaultVersion, 1).Return(markerVersion(actionV3)).Once()
+			env.OnGetVersion(approvalPublicationWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(markerVersion(publicationV3)).Once()
+			env.OnGetVersion(resultDigestV3Patch, sdkworkflow.DefaultVersion, 1).Return(markerVersion(digestV3)).Once()
+			env.OnGetVersion(activityWireV2Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+
+			allV3 := actionV3 && publicationV3 && digestV3
+			wantActivity := activityPublishApproved
+			wantKey := publicationKey("capture-run", 1)
+			plan, results := wireProbePlanAndResults()
+			wantDigest, err := imageagent.ResultDigestV2(plan, slotProjections(plan, results))
+			require.NoError(t, err)
+			if allV3 {
+				wantActivity = activityPublishApprovedV3
+				wantKey = "capture-action"
+				wantDigest, err = imageagent.ResultDigestV3(plan, slotProjections(plan, results))
+				require.NoError(t, err)
+				env.OnActivity(wantActivity, mock.Anything, mock.MatchedBy(func(input PublishApprovedV3ActivityInput) bool {
+					return input.IdempotencyKey == wantKey
+				})).Return(nil).Once()
+			} else {
+				env.OnActivity(wantActivity, mock.Anything, mock.MatchedBy(func(input PublishApprovedActivityInput) bool {
+					return input.IdempotencyKey == wantKey
+				})).Return(nil).Once()
+			}
+
+			env.ExecuteWorkflow(approvalProtocolProbe)
+			require.NoError(t, env.GetWorkflowError())
+			var got approvalProtocolProbeResult
+			require.NoError(t, env.GetWorkflowResult(&got))
+			require.Equal(t, approvalProtocolProbeResult{PublishActivity: wantActivity, IdempotencyKey: wantKey, ResultDigest: wantDigest}, got)
+			require.True(t, env.AssertExpectations(t))
+		})
+	}
+}
+
+func markerVersion(enabled bool) sdkworkflow.Version {
+	if enabled {
+		return sdkworkflow.Version(1)
+	}
+	return sdkworkflow.DefaultVersion
+}
+
 func workflowWireProbe(ctx sdkworkflow.Context) (wireProbeResult, error) {
 	wire := activityWireForWorkflow(ctx)
 	plan, results := wireProbePlanAndResults()
@@ -83,7 +218,7 @@ func workflowWireProbe(ctx sdkworkflow.Context) (wireProbeResult, error) {
 	return wireProbeResult{
 		ExecuteSlot:      wire.executeSlot,
 		PublishApproved:  wire.publishApproved,
-		ApprovalActionID: approvalPublicationKeyForWorkflow(ctx, "capture-action", "capture-run", 1),
+		ApprovalActionID: approvalPublicationKeyForWire("capture-action", "capture-run", 1, wire),
 		ResultDigest:     digest,
 	}, nil
 }
@@ -127,19 +262,6 @@ func wireProbePlanAndResults() (imageagent.Plan, []SlotWorkflowResult) {
 		Status: imageagent.SlotStatusAccepted,
 	}}
 	return plan, results
-}
-
-func TestWorkerRegistersFrozenV2AndV3Activities(t *testing.T) {
-	activities, err := NewActivities(ActivityDependencies{
-		Repository: store.NewMemoryRepository(), SlotExecutor: &identityCheckingExecutor{t: t}, Publisher: &identityCheckingPublisher{t: t},
-	})
-	require.NoError(t, err)
-	registrar := &recordingWorkerRegistrar{}
-	require.NoError(t, RegisterWorker(registrar, activities))
-	require.Contains(t, registrar.activities, "imageagent.execute_slot.v2")
-	require.Contains(t, registrar.activities, "imageagent.publish_approved.v2")
-	require.Contains(t, registrar.activities, "imageagent.execute_slot.v3")
-	require.Contains(t, registrar.activities, "imageagent.publish_approved.v3")
 }
 
 func readHistoryFixture(t *testing.T, name string) *historypb.History {

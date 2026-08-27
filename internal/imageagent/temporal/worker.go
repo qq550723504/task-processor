@@ -261,20 +261,37 @@ func NewWorker(config WorkerConfig) (sdkworker.Worker, error) {
 		return nil, err
 	}
 	worker := sdkworker.New(config.Client, queue, sdkworker.Options{})
-	if err := registerWorker(worker, config.Activities, config.WireMode); err != nil {
+	if err := RegisterWorkerForMode(worker, config.Activities, config.WireMode); err != nil {
 		return nil, err
 	}
 	return worker, nil
 }
 
 func (config WorkerConfig) selectedTaskQueue() (string, error) {
+	if err := validateWorkerWireMode(config.WireMode); err != nil {
+		return "", err
+	}
 	if queue := strings.TrimSpace(config.TaskQueue); queue != "" {
-		if config.WireMode != "" && config.WireMode != WorkerWireModeV2 && config.WireMode != WorkerWireModeV3 {
-			return "", fmt.Errorf("unsupported image agent temporal wire mode %q", config.WireMode)
+		if config.WireMode == WorkerWireModeV2 && queue == TaskQueueV3 {
+			return "", fmt.Errorf("image agent v2 wire mode cannot use v3 task queue %q", queue)
+		}
+		if config.WireMode == WorkerWireModeV3 && queue == TaskQueue {
+			return "", fmt.Errorf("image agent v3 wire mode cannot use v2 task queue %q", queue)
 		}
 		return queue, nil
 	}
 	return config.WireMode.DefaultTaskQueue()
+}
+
+func validateWorkerWireMode(mode WorkerWireMode) error {
+	switch mode {
+	case WorkerWireModeV2, WorkerWireModeV3:
+		return nil
+	case "":
+		return fmt.Errorf("image agent temporal wire mode is required")
+	default:
+		return fmt.Errorf("unsupported image agent temporal wire mode %q", mode)
+	}
 }
 
 type workerRegistrar interface {
@@ -283,27 +300,25 @@ type workerRegistrar interface {
 }
 
 func RegisterWorker(registrar workerRegistrar, activities *Activities) error {
-	return registerWorker(registrar, activities, WorkerWireModeV3)
+	return RegisterWorkerForMode(registrar, activities, WorkerWireModeV2)
 }
 
-func registerWorker(registrar workerRegistrar, activities *Activities, mode WorkerWireMode) error {
+func RegisterWorkerForMode(registrar workerRegistrar, activities *Activities, mode WorkerWireMode) error {
 	if registrar == nil {
 		return fmt.Errorf("temporal worker registrar is required")
 	}
 	if activities == nil {
 		return fmt.Errorf("image agent activities are required")
 	}
+	if err := validateWorkerWireMode(mode); err != nil {
+		return err
+	}
 	registrar.RegisterWorkflowWithOptions(ImageAgentWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageAgent})
-	registrar.RegisterWorkflowWithOptions(ImageSlotWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageSlot})
-	if mode == "" {
-		mode = WorkerWireModeV3
-	}
-	if mode != WorkerWireModeV2 && mode != WorkerWireModeV3 {
-		return fmt.Errorf("unsupported image agent temporal wire mode %q", mode)
-	}
-	if mode == WorkerWireModeV3 {
+	if mode == WorkerWireModeV2 {
+		registrar.RegisterWorkflowWithOptions(ImageSlotWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageSlot})
+	} else {
 		registrar.RegisterWorkflowWithOptions(ImageSlotWorkflowV3, sdkworkflow.RegisterOptions{Name: "ImageSlotWorkflowV3"})
 		registrar.RegisterWorkflowWithOptions(ImageAgentCompatibilityCanaryWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameCompatibilityCanary})
 	}
-	return RegisterActivities(registrar, activities)
+	return RegisterActivitiesForMode(registrar, activities, mode)
 }

@@ -26,10 +26,14 @@ const (
 
 type workflowActivityWire struct {
 	executeSlot, persistSlotResult, persistRunState, persistPlanRevision, persistPendingCommand, publishApproved string
-	useV3Slot, useV3ApprovalActionID, useV3ApprovalPublication, useV3ResultDigest                                bool
+	useV3Slot, useV3Approval                                                                                     bool
 }
 
 func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
+	useV3Slot := workflow.GetVersion(ctx, slotExecutionWireV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	useV3ApprovalActionID := workflow.GetVersion(ctx, approvalActionIDV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	useV3ApprovalPublication := workflow.GetVersion(ctx, approvalPublicationWireV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	useV3ResultDigest := workflow.GetVersion(ctx, resultDigestV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 	version := workflow.GetVersion(ctx, activityWireV2Patch, workflow.DefaultVersion, 1)
 	if version == workflow.DefaultVersion {
 		return workflowActivityWire{
@@ -43,19 +47,15 @@ func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
 		persistRunState: activityPersistRunState, persistPlanRevision: activityPersistPlanRevision,
 		persistPendingCommand: activityPersistPendingCommand, publishApproved: activityPublishApproved,
 	}
-	if workflow.GetVersion(ctx, slotExecutionWireV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion {
+	if useV3Slot {
 		wire.executeSlot = activityExecuteSlotV3
 		wire.persistSlotResult = activityPersistSlotResultV3
 		wire.useV3Slot = true
 	}
-	if workflow.GetVersion(ctx, approvalPublicationWireV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion {
+	if useV3ApprovalActionID && useV3ApprovalPublication && useV3ResultDigest {
 		wire.publishApproved = activityPublishApprovedV3
-		wire.useV3ApprovalPublication = true
+		wire.useV3Approval = true
 	}
-	// These independent markers are deliberately evaluated here for every v2
-	// execution so their absence selects the frozen branch during replay.
-	wire.useV3ApprovalActionID = workflow.GetVersion(ctx, approvalActionIDV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
-	wire.useV3ResultDigest = workflow.GetVersion(ctx, resultDigestV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 	return wire
 }
 
@@ -389,7 +389,7 @@ func (o *workflowEffectOwner) persistPendingCommand(ctx workflow.Context, input 
 
 func (o *workflowEffectOwner) publishApproved(ctx workflow.Context, input PublishApprovedActivityInput) error {
 	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
-		if o.activities.useV3ApprovalPublication {
+		if o.activities.useV3Approval {
 			v3Input := PublishApprovedV3ActivityInput{
 				RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
 				CandidateAssetIDs: append([]string(nil), input.CandidateAssetIDs...), IdempotencyKey: input.IdempotencyKey,
@@ -1580,24 +1580,16 @@ func resultDigest(plan imageagent.Plan, results []SlotWorkflowResult) (string, e
 	return imageagent.ResultDigestV2(plan, slots)
 }
 
-func resultDigestForWorkflow(ctx workflow.Context, plan imageagent.Plan, results []SlotWorkflowResult) (string, error) {
-	return resultDigestForWire(plan, results, workflowActivityWire{useV3ResultDigest: workflow.GetVersion(ctx, resultDigestV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion})
-}
-
-func approvalPublicationKeyForWorkflow(ctx workflow.Context, actionID, runID string, revision int64) string {
-	return approvalPublicationKeyForWire(actionID, runID, revision, workflowActivityWire{useV3ApprovalActionID: workflow.GetVersion(ctx, approvalActionIDV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion})
-}
-
 func resultDigestForWire(plan imageagent.Plan, results []SlotWorkflowResult, activityWire workflowActivityWire) (string, error) {
 	slots := slotProjections(plan, results)
-	if activityWire.useV3ResultDigest {
+	if activityWire.useV3Approval {
 		return imageagent.ResultDigestV3(plan, slots)
 	}
 	return imageagent.ResultDigestV2(plan, slots)
 }
 
 func approvalPublicationKeyForWire(actionID, runID string, revision int64, activityWire workflowActivityWire) string {
-	if activityWire.useV3ApprovalActionID {
+	if activityWire.useV3Approval {
 		return actionID
 	}
 	return publicationKey(runID, revision)

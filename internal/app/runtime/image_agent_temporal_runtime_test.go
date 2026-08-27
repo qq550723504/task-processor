@@ -54,6 +54,8 @@ func TestImageAgentTemporalRuntimeComposesAndClosesWorker(t *testing.T) {
 	require.Equal(t, "temporal.internal:7233", gotAddress)
 	require.Equal(t, "listingkit", gotNamespace)
 	require.NotNil(t, gotConfig.Activities)
+	require.Equal(t, imageagenttemporal.WorkerWireModeV3, gotConfig.WireMode)
+	require.Empty(t, gotConfig.TaskQueue)
 	require.True(t, worker.started)
 
 	require.NoError(t, closeFn())

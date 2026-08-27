@@ -56,8 +56,10 @@ func (mode WorkerWireMode) DefaultTaskQueue() (string, error) {
 	switch mode {
 	case WorkerWireModeV2:
 		return TaskQueue, nil
-	case "", WorkerWireModeV3:
+	case WorkerWireModeV3:
 		return TaskQueueV3, nil
+	case "":
+		return "", fmt.Errorf("image agent temporal wire mode is required")
 	default:
 		return "", fmt.Errorf("unsupported image agent temporal wire mode %q", mode)
 	}
