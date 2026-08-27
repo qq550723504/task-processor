@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ProductWorkspaceAIReview } from "@/components/listingkit/workspace/product-workspace-ai-review";
 import { buildProductWorkspaceAttentionSummary } from "@/components/listingkit/workspace/product-workspace-model";
+import type { ProductWorkspaceReviewIssue } from "@/components/listingkit/workspace/product-workspace-review-model";
 
 describe("ProductWorkspaceAIReview", () => {
   it("presents blocking, warning, and passed counts with contextual issue details", () => {
@@ -52,11 +53,11 @@ describe("ProductWorkspaceAIReview", () => {
     const onSelectIssue = vi.fn();
     const issue = {
       id: "category",
-      severity: "blocking" as const,
+      severity: "blocking",
       title: "类目需要确认",
       description: "AI 无法安全确定目标类目。",
-      actionKey: "category" as const,
-    };
+      actionKey: "category",
+    } satisfies ProductWorkspaceReviewIssue;
 
     render(
       <ProductWorkspaceAIReview
