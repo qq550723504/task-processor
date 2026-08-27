@@ -21,6 +21,7 @@ export function buildProductWorkspaceReviewIssues(
   task?: ListingKitTaskResult | null,
   selectedPlatform?: string,
 ): ProductWorkspaceReviewIssue[] {
+  const issueCodeOccurrences = new Map<string, number>();
   const workflowIssues = (task?.result?.workflow_issues ?? [])
     .filter(
       (issue) =>
@@ -34,8 +35,9 @@ export function buildProductWorkspaceReviewIssues(
         issue.message,
         issue.detail,
       ]);
+      const id = workflowIssueID(issue.code, index, issueCodeOccurrences);
       return {
-        id: issue.code || `workflow-issue-${index + 1}`,
+        id,
         severity: issue.severity === "blocking" ? "blocking" : "warning",
         title: issue.message || issue.code || "需要确认",
         description: issue.detail,
@@ -56,6 +58,20 @@ export function buildProductWorkspaceReviewIssues(
       ...(actionKey ? { actionKey } : {}),
     } satisfies ProductWorkspaceReviewIssue;
   });
+}
+
+function workflowIssueID(
+  code: string | undefined,
+  index: number,
+  occurrences: Map<string, number>,
+) {
+  if (!code) {
+    return `workflow-issue-${index + 1}`;
+  }
+
+  const occurrence = (occurrences.get(code) ?? 0) + 1;
+  occurrences.set(code, occurrence);
+  return occurrence === 1 ? code : `${code}-${occurrence}`;
 }
 
 function resolveIssueActionKey(
