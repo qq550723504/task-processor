@@ -96,6 +96,9 @@ The workflow adds separate `workflow.GetVersion` patches for independent decisio
 3. Approval publication wire selection:
    - histories without the marker retain `publish_approved.v2`;
    - new histories select `publish_approved.v3`.
+4. Result-digest algorithm selection:
+   - histories without the marker retain the historical candidate-ID-only digest;
+   - new histories use the v3 digest covering plan revision, role, durable object identity, and content hash.
 
 These decisions must not be collapsed into the existing v2 patch. Each marker has one meaning so future maintenance cannot accidentally change an unrelated replay branch.
 
@@ -106,6 +109,7 @@ Tests commit serialized workflow histories captured from the pre-change code pat
 - an in-flight v2 slot activity;
 - a completed slot followed by approval;
 - an approval command whose old key is plan-derived;
+- an awaiting-approval history whose stored result digest uses the historical algorithm;
 - workflow histories both with and without the existing atomic-command v2 marker.
 
 Constructing a new history using only the new workflow implementation is not sufficient evidence of compatibility.
@@ -234,7 +238,7 @@ Approval is accepted only when all of the following are true:
 
 A main-role slot that returns zero or multiple candidates is rejected when its slot result is persisted. Final approval validates the same invariant again at the ListingKit transaction boundary. It never selects the last main candidate implicitly.
 
-The digest covers plan revision and, in declared slot order, slot ID, role, candidate ID, durable object key, and content hash. Changing any approved content or ordering invalidates approval.
+The v3 digest covers plan revision and, in declared slot order, slot ID, role, candidate ID, durable object key, and content hash. Changing any approved content or ordering invalidates approval. The workflow records an independent digest-algorithm version marker before computing this value; old histories and the frozen v2 approval handler continue to use the historical candidate-ID-only digest.
 
 Applying asset records, selecting the main asset, updating gallery selection, and writing the publication acknowledgement remain one ListingKit database transaction. Idempotent replay returns the stored acknowledgement only when its fingerprint is identical.
 
