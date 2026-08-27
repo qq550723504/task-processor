@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	temupublishing "task-processor/internal/marketplace/temu/publishing"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
@@ -191,27 +192,7 @@ func (h *ProductNameValidator) validateAllowedChars(text string, violations *[]s
 
 // cleanSpaces 清理多余的空格
 func (h *ProductNameValidator) cleanSpaces(text string) string {
-	// 移除首尾空格
-	text = strings.TrimSpace(text)
-
-	// 将多个连续空格替换为单个空格
-	spacePattern := regexp.MustCompile(`\s+`)
-	text = spacePattern.ReplaceAllString(text, " ")
-
-	// 确保左括号前有空格（TEMU要求：左括号前必须有空格）
-	// 注意：这个必须在移除标点符号前的空格之前执行
-	text = regexp.MustCompile(`(\S)\(`).ReplaceAllString(text, "$1 (")
-
-	// 确保右括号后有空格（如果后面还有字符的话）
-	text = regexp.MustCompile(`\)(\S)`).ReplaceAllString(text, ") $1")
-
-	// 移除逗号前的空格（TEMU要求：逗号前不能有空格）
-	text = regexp.MustCompile(`\s+,`).ReplaceAllString(text, ",")
-
-	// 移除其他标点符号前的空格（但不包括括号）
-	text = regexp.MustCompile(`\s+([.!?;:])`).ReplaceAllString(text, "$1")
-
-	return text
+	return temupublishing.NormalizeProductSubmissionName(text)
 }
 
 // ValidateProductNameAPI 调用TEMU API验证产品名称（如果需要）
