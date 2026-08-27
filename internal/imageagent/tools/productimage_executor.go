@@ -106,6 +106,42 @@ func (e *ProductImageSlotExecutor) PublishSlot(ctx context.Context, input imagea
 	return imageagent.SlotExecutionResult{SlotID: slot.ID, Attempt: input.Attempt, Candidates: candidates}, nil
 }
 
+// BuildSlotResult projects only artifact-store final references into the v3
+// candidate contract. ProductImage's transient URLs, local paths, bytes, and
+// provider metadata are deliberately not accepted at this boundary.
+func (e *ProductImageSlotExecutor) BuildSlotResult(_ context.Context, input imageagent.SlotExecutionInput, published imageagent.PublishedSlotOutput) (imageagent.SlotExecutionResult, error) {
+	slot, sourceAssetID, _, err := e.validateAndResolve(input)
+	if err != nil {
+		return imageagent.SlotExecutionResult{}, err
+	}
+	if published.SlotID != slot.ID || published.Attempt != input.Attempt {
+		return imageagent.SlotExecutionResult{}, imageagent.ErrRevisionConflict
+	}
+	manifest, err := imageagent.NormalizeFinalManifest(imageagent.FinalManifest{Assets: published.Assets})
+	if err != nil {
+		return imageagent.SlotExecutionResult{}, err
+	}
+	if slot.Role == imageagent.SlotRoleMain && len(manifest.Assets) != 1 {
+		return imageagent.SlotExecutionResult{}, fmt.Errorf("main slot %q requires exactly one durable result: %w", slot.ID, imageagent.ErrValidation)
+	}
+
+	candidates := make([]imageagent.AssetCandidate, len(manifest.Assets))
+	for index, asset := range manifest.Assets {
+		if asset.SourceAssetID != sourceAssetID {
+			return imageagent.SlotExecutionResult{}, imageagent.ErrRevisionConflict
+		}
+		candidates[index] = imageagent.AssetCandidate{
+			AssetID:       durableCandidateAssetID(input, slot, asset),
+			SourceAssetID: asset.SourceAssetID,
+			DurableAsset: imageagent.DurableAssetIdentity{
+				ObjectKey: asset.ObjectKey,
+				SHA256:    asset.SHA256,
+			},
+		}
+	}
+	return imageagent.SlotExecutionResult{SlotID: slot.ID, Attempt: input.Attempt, Candidates: candidates}, nil
+}
+
 func (e *ProductImageSlotExecutor) validateAndResolve(input imageagent.SlotExecutionInput) (imageagent.Slot, string, productimage.ImageAsset, error) {
 	slot := cloneSlot(input.Slot)
 	slot.ID = strings.TrimSpace(slot.ID)
@@ -318,6 +354,31 @@ func candidateAssetID(input imageagent.SlotExecutionInput, slot imageagent.Slot,
 	return "imageagent-candidate-" + hex.EncodeToString(sum[:])
 }
 
+type durableCandidateIdentity struct {
+	RunID               string `json:"run_id"`
+	PlanRevision        int64  `json:"plan_revision"`
+	SlotID              string `json:"slot_id"`
+	SlotIdempotencyKey  string `json:"slot_idempotency_key"`
+	InputIdempotencyKey string `json:"input_idempotency_key"`
+	Attempt             int    `json:"attempt"`
+	ObjectKey           string `json:"object_key"`
+	SHA256              string `json:"sha256"`
+}
+
+func durableCandidateAssetID(input imageagent.SlotExecutionInput, slot imageagent.Slot, asset imageagent.StagedAssetRef) string {
+	payload, err := json.Marshal(durableCandidateIdentity{
+		RunID: strings.TrimSpace(input.RunID), PlanRevision: input.PlanRevision,
+		SlotID: strings.TrimSpace(slot.ID), SlotIdempotencyKey: strings.TrimSpace(slot.IdempotencyKey),
+		InputIdempotencyKey: strings.TrimSpace(input.IdempotencyKey), Attempt: input.Attempt,
+		ObjectKey: asset.ObjectKey, SHA256: asset.SHA256,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("marshal durable candidate identity: %v", err))
+	}
+	sum := sha256.Sum256(payload)
+	return "imageagent-candidate-" + hex.EncodeToString(sum[:])
+}
+
 func isGeneratedAsset(url string, source productimage.ImageAsset, asset productimage.ImageAsset) bool {
 	if url == "" || sourceURLEquivalent(url, source.URL) || sourceURLEquivalent(url, source.SourceURL) {
 		return false
@@ -431,3 +492,4 @@ func cloneMetadata(metadata map[string]string) map[string]string {
 
 var _ imageagent.SlotExecutor = (*ProductImageSlotExecutor)(nil)
 var _ imageagent.RecoverableSlotExecutor = (*ProductImageSlotExecutor)(nil)
+var _ imageagent.StagedSlotExecutor = (*ProductImageSlotExecutor)(nil)

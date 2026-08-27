@@ -2,8 +2,10 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -12,6 +14,109 @@ import (
 	"task-processor/internal/imageagent"
 	productimage "task-processor/internal/productimage"
 )
+
+func TestProductImageV3GenerationReturnsTransientMaterialOnly(t *testing.T) {
+	publisher := &recordingAssetPublisher{}
+	executor := NewProductImageSlotExecutor(Dependencies{
+		SceneRenderer: &recordingSceneRenderer{result: []productimage.ImageAsset{{
+			URL:        `C:\\worker\\generated.png`,
+			Operations: []string{"render_scene_model"},
+			Metadata:   map[string]string{"local_path": `C:\\worker\\generated.png`, "authorization": "secret"},
+		}}},
+		AssetPublisher: publisher,
+	})
+
+	generated, err := executor.GenerateSlot(context.Background(), sceneSlotInput("scene-1"))
+
+	require.NoError(t, err)
+	require.Zero(t, publisher.calls, "v3 generation must not publish or construct candidates")
+	require.Equal(t, `C:\\worker\\generated.png`, generated.Assets[0].URL)
+	require.Equal(t, map[string]string{"local_path": `C:\\worker\\generated.png`, "authorization": "secret"}, generated.Assets[0].Metadata)
+}
+
+func TestProductImageV3BuildResultRequiresDurablePublishedReferences(t *testing.T) {
+	executor := NewProductImageSlotExecutor(Dependencies{})
+	input := sceneSlotInput("scene-1")
+
+	_, err := executor.BuildSlotResult(context.Background(), input, imageagent.PublishedSlotOutput{
+		SlotID:  input.Slot.ID,
+		Attempt: input.Attempt,
+		Assets: []imageagent.StagedAssetRef{{
+			ObjectKey:     `C:\\worker\\generated.png`,
+			SHA256:        strings.Repeat("a", 64),
+			SizeBytes:     1,
+			ContentType:   "image/png",
+			Width:         1,
+			Height:        1,
+			SourceAssetID: "source-1",
+		}},
+	})
+
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+}
+
+func TestProductImageV3BuildResultUsesMetadataAllowlist(t *testing.T) {
+	executor := NewProductImageSlotExecutor(Dependencies{})
+	input := sceneSlotInput("scene-1")
+	published := durablePublishedOutput(input, []imageagent.StagedAssetRef{{
+		ObjectKey:     "image-agent/final/tenant-1/run-1/1/scene-1/1/0.png",
+		SHA256:        strings.Repeat("a", 64),
+		SizeBytes:     42,
+		ContentType:   "image/png",
+		Width:         1200,
+		Height:        1200,
+		SourceAssetID: "source-1",
+		Operations:    []string{"extract_subject", "render_scene_model"},
+	}})
+
+	result, err := executor.BuildSlotResult(context.Background(), input, published)
+
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+	candidate := result.Candidates[0]
+	require.Empty(t, candidate.URL)
+	require.Nil(t, candidate.Metadata)
+	require.Equal(t, "source-1", candidate.SourceAssetID)
+	require.Equal(t, imageagent.DurableAssetIdentity{ObjectKey: published.Assets[0].ObjectKey, SHA256: published.Assets[0].SHA256}, candidate.DurableAsset)
+
+	again, err := executor.BuildSlotResult(context.Background(), input, published)
+	require.NoError(t, err)
+	require.Equal(t, candidate.AssetID, again.Candidates[0].AssetID)
+
+	published.Assets[0].SHA256 = strings.Repeat("b", 64)
+	changed, err := executor.BuildSlotResult(context.Background(), input, published)
+	require.NoError(t, err)
+	require.NotEqual(t, candidate.AssetID, changed.Candidates[0].AssetID)
+}
+
+func TestProductImageV3MainSlotRequiresExactlyOneCandidate(t *testing.T) {
+	executor := NewProductImageSlotExecutor(Dependencies{})
+	input := slotInput("main-1", imageagent.SlotRoleMain)
+	published := durablePublishedOutput(input, []imageagent.StagedAssetRef{
+		{ObjectKey: "image-agent/final/tenant-1/run-1/1/main-1/1/0.png", SHA256: strings.Repeat("a", 64), SizeBytes: 1, ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1"},
+		{ObjectKey: "image-agent/final/tenant-1/run-1/1/main-1/1/1.png", SHA256: strings.Repeat("b", 64), SizeBytes: 1, ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1"},
+	})
+
+	_, err := executor.BuildSlotResult(context.Background(), input, published)
+
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+}
+
+func TestProductImageLegacyExecuteSlotRetainsV2Shape(t *testing.T) {
+	publisher := &recordingAssetPublisher{}
+	executor := NewProductImageSlotExecutor(Dependencies{
+		SceneRenderer:  &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: `C:\\worker\\generated.png`, Metadata: map[string]string{"local_path": `C:\\worker\\generated.png`}}}},
+		AssetPublisher: publisher,
+	})
+
+	result, err := executor.ExecuteSlot(context.Background(), sceneSlotInput("scene-1"))
+
+	require.NoError(t, err)
+	require.Equal(t, 1, publisher.calls)
+	encoded, err := json.Marshal(result)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"SlotID":"scene-1","Attempt":1,"Candidates":[{"AssetID":"`+result.Candidates[0].AssetID+`","URL":"https://cdn.example.test/generated.png","SourceAssetID":"source-1","Metadata":{"local_path":"C:\\\\worker\\\\generated.png"}}]}`, string(encoded))
+}
 
 func TestExecutorCallsSceneRendererOncePerSceneSlot(t *testing.T) {
 	renderer := &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: "https://generated.example/scene-1.jpg"}}}
@@ -376,6 +481,10 @@ func slotInput(id string, role imageagent.SlotRole) imageagent.SlotExecutionInpu
 		Slot:         imageagent.Slot{ID: id, Role: role, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-1"},
 		AssetCatalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://example.test/source.jpg", SourceURL: "https://example.test/source.jpg", DisplayURL: "https://example.test/source.jpg", Metadata: map[string]string{}}}},
 	}
+}
+
+func durablePublishedOutput(input imageagent.SlotExecutionInput, assets []imageagent.StagedAssetRef) imageagent.PublishedSlotOutput {
+	return imageagent.PublishedSlotOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, Assets: assets}
 }
 
 type recordingSceneRenderer struct {
