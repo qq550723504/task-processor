@@ -47,7 +47,7 @@ describe("ProductWorkspaceAIReview", () => {
     expect(screen.queryByText(/chat|ask ai|task-1|temporal/i)).not.toBeInTheDocument();
   });
 
-  it("delegates issue actions through callbacks", async () => {
+  it("delegates actionable issue actions through callbacks", async () => {
     const user = userEvent.setup();
     const onSelectIssue = vi.fn();
     const issue = {
@@ -55,6 +55,7 @@ describe("ProductWorkspaceAIReview", () => {
       severity: "blocking" as const,
       title: "类目需要确认",
       description: "AI 无法安全确定目标类目。",
+      actionKey: "category",
     };
 
     render(
@@ -71,6 +72,30 @@ describe("ProductWorkspaceAIReview", () => {
 
     await user.click(screen.getByRole("button", { name: "处理：类目需要确认" }));
     expect(onSelectIssue).toHaveBeenCalledWith(issue);
+  });
+
+  it("does not render a dead action button for non-actionable issues", () => {
+    render(
+      <ProductWorkspaceAIReview
+        summary={buildProductWorkspaceAttentionSummary({
+          blockingCount: 1,
+          warningCount: 0,
+          passedCount: 0,
+        })}
+        issues={[
+          {
+            id: "product_enrich_failed",
+            severity: "blocking",
+            title: "商品补全失败",
+            description: "请检查源数据。",
+          },
+        ]}
+        onSelectIssue={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("商品补全失败")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "处理：商品补全失败" })).not.toBeInTheDocument();
   });
 
   it("shows a clear success state when no unresolved issues remain", () => {
