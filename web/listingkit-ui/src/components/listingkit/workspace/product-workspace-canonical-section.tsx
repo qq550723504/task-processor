@@ -109,7 +109,7 @@ function SKUSection({ product }: { product?: CanonicalProduct | null }) {
             <TableHeader className="bg-muted/60">
               <TableRow>
                 <TableHead>SKU</TableHead>
-                <TableHead>标题</TableHead>
+                <TableHead>规格</TableHead>
                 <TableHead>库存</TableHead>
               </TableRow>
             </TableHeader>
@@ -117,8 +117,8 @@ function SKUSection({ product }: { product?: CanonicalProduct | null }) {
               {variants.map((variant, index) => (
                 <TableRow key={`${variant.sku ?? "variant"}-${index}`}>
                   <TableCell className="font-mono text-xs">{variant.sku || "-"}</TableCell>
-                  <TableCell>{variant.title || "-"}</TableCell>
-                  <TableCell>{variant.stock ?? "-"}</TableCell>
+                  <TableCell>{formatVariantAttributes(variant.attributes)}</TableCell>
+                  <TableCell>{variant.stock ?? 0}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -180,9 +180,7 @@ function AttributeFact({
   name: string;
   attribute: CanonicalAttribute;
 }) {
-  const value = attribute.value
-    ? `${attribute.value}${attribute.unit ? ` ${attribute.unit}` : ""}`
-    : "暂无值";
+  const value = formatCanonicalAttributeValue(attribute) || "暂无值";
   return <Fact label={name} value={value} />;
 }
 
@@ -199,6 +197,24 @@ function EmptyCopy({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
 }
 
+function formatVariantAttributes(attributes?: Record<string, CanonicalAttribute>) {
+  const entries = Object.entries(attributes ?? {})
+    .map(([name, attribute]) => {
+      const value = formatCanonicalAttributeValue(attribute);
+      return value ? `${name}: ${value}` : "";
+    })
+    .filter(Boolean);
+
+  return entries.join(" · ") || "-";
+}
+
+function formatCanonicalAttributeValue(attribute: CanonicalAttribute) {
+  if (!attribute.value) {
+    return "";
+  }
+  return `${attribute.value}${attribute.unit ? ` ${attribute.unit}` : ""}`;
+}
+
 function flattenSpecifications(
   value: CanonicalProduct["specifications"] | undefined,
 ): Array<{ path: string; label: string; value: string }> {
@@ -211,7 +227,11 @@ function flattenSpecifications(
     if (Array.isArray(current)) {
       const formatted = current.map(formatScalar).filter(Boolean).join(", ");
       if (formatted) {
-        output.push({ path: path.join("."), label: path.at(-1) ?? "规格", value: formatted });
+        output.push({
+          path: path.join("."),
+          label: specificationLabel(path),
+          value: formatted,
+        });
       }
       return;
     }
@@ -223,13 +243,36 @@ function flattenSpecifications(
     }
     output.push({
       path: path.join("."),
-      label: path.at(-1) ?? "规格",
+      label: specificationLabel(path),
       value: formatScalar(current),
     });
   }
 
   visit(value, []);
   return output.filter((entry) => entry.value);
+}
+
+function specificationLabel(path: string[]) {
+  const [scope, nested, leaf] = path;
+  if (scope === "dimensions") {
+    return `商品尺寸 · ${nested ?? "规格"}`;
+  }
+  if (scope === "weight") {
+    return `商品重量 · ${nested ?? "规格"}`;
+  }
+  if (scope === "package" && nested === "dimensions") {
+    return `包装尺寸 · ${leaf ?? "规格"}`;
+  }
+  if (scope === "package" && nested === "weight") {
+    return `包装重量 · ${leaf ?? "规格"}`;
+  }
+  if (scope === "package") {
+    return `包装 · ${nested ?? "规格"}`;
+  }
+  if (scope === "technical") {
+    return nested ?? "技术参数";
+  }
+  return path.join(" · ") || "规格";
 }
 
 function formatScalar(value: unknown) {
