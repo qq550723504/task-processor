@@ -201,10 +201,12 @@ describe("SheinDataImageGallery", () => {
     );
 
     expect(screen.queryByRole("button", { name: "加入提交图片" })).not.toBeInTheDocument();
+    expect(screen.queryByText("可选来源图 1 张")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "从提交中移除" })[1]);
 
     expect(screen.getByRole("button", { name: "加入提交图片" })).toBeInTheDocument();
+    expect(screen.getByText("可选来源图 1 张")).toBeInTheDocument();
   });
 
   it("clears a source deletion when the image is added again", () => {

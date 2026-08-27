@@ -3,7 +3,10 @@ import type {
   SheinPreviewPayload,
   SheinReadinessItem,
 } from "@/lib/types/listingkit";
-import { collectSheinPreviewImageGroups } from "@/components/listingkit/shein/shein-preview-image";
+import {
+  collectSheinPreviewImageGroups,
+  getSelectableSheinPreviewImages,
+} from "@/components/listingkit/shein/shein-preview-image";
 
 export type ReviewSummaryItem = {
   key: "category" | "attributes" | "sale_attributes" | "variants" | "images";
@@ -151,9 +154,9 @@ export function buildFinalReviewModel({
   const blockingCount = customerBlockingCount || visibleBlockers.length;
   const imageCounts = imageRoleCounts(finalReview?.images);
   const imageGroups = collectSheinPreviewImageGroups(shein);
-  const selectedImageURLs = new Set(imageGroups.productImages.map((image) => image.url));
-  const availableImageCount = imageGroups.availableImages.filter(
-    (image) => !selectedImageURLs.has(image.url),
+  const availableImageCount = getSelectableSheinPreviewImages(
+    imageGroups.productImages,
+    imageGroups.availableImages,
   ).length;
   const finalImages = (finalReview?.images ?? []).filter(
     (image) => image.final !== false && image.url,

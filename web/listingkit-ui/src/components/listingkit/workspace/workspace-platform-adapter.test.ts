@@ -109,6 +109,37 @@ describe("createSheinWorkspaceAdapter", () => {
     });
   });
 
+  it("does not advertise a source image that is already selected", () => {
+    const projection = createSheinWorkspaceAdapter({
+      taskId: "task-123",
+      isFinalReviewMode: false,
+      shein: {
+        source_product: {
+          image_urls: ["https://1688.example.com/source-1.jpg"],
+        },
+        final_review: {
+          images: [
+            {
+              url: "https://1688.example.com/source-1.jpg",
+              final: true,
+              role: "gallery",
+              origin: "source",
+            },
+          ],
+        },
+      },
+    }).project();
+
+    expect(projection.kind).toBe("shein");
+    if (projection.kind !== "shein") {
+      return;
+    }
+
+    expect(projection.projection.flowSteps[0].description).not.toContain(
+      "可选来源图",
+    );
+  });
+
   it("projects the SHEIN review flow inside the SHEIN adapter", () => {
     const projection = createSheinWorkspaceAdapter({
       taskId: "task-123",

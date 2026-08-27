@@ -10,7 +10,10 @@ import {
   MockupReferenceGrid,
 } from "@/components/listingkit/shein/shein-data-image-gallery-grid";
 import { ImageRoleStatus } from "@/components/listingkit/shein/shein-data-image-gallery-sections";
-import type { SheinPreviewImage } from "@/components/listingkit/shein/shein-preview-image";
+import {
+  getSelectableSheinPreviewImages,
+  type SheinPreviewImage,
+} from "@/components/listingkit/shein/shein-preview-image";
 import { toThumbnailPreviewUrl } from "@/lib/utils/imgproxy-url";
 import {
   hasSavedImageRole,
@@ -172,11 +175,13 @@ export function SheinDataImageGallery({
     regenerationPrompt.trim().length > 0 &&
     !isRegenerating;
 
-  const selectedImageUrls = new Set(images.map((image) => image.url));
-  const unselectedAvailableImages = availableImages.filter(
+  const selectableAvailableImages = getSelectableSheinPreviewImages(
+    images.filter((image) => !deletedUrls.includes(image.url)),
+    availableImages,
+  );
+  const unselectedAvailableImages = selectableAvailableImages.filter(
     (image) =>
-      (!includedAvailableUrls.includes(image.url) || deletedUrls.includes(image.url)) &&
-      (!selectedImageUrls.has(image.url) || deletedUrls.includes(image.url)),
+      !includedAvailableUrls.includes(image.url) || deletedUrls.includes(image.url),
   );
 
   if (workingImages.length === 0 && unselectedAvailableImages.length === 0 && mockupImages.length === 0) {
@@ -199,9 +204,9 @@ export function SheinDataImageGallery({
             <span>
               最终提交 {visibleImages.length} / {workingImages.length} 张
             </span>
-            {availableImages.length > 0 ? (
+            {unselectedAvailableImages.length > 0 ? (
               <span className="text-amber-800">
-                可选来源图 {availableImages.length} 张
+                可选来源图 {unselectedAvailableImages.length} 张
               </span>
             ) : null}
           </div>
