@@ -21,7 +21,7 @@ import (
 
 const (
 	defaultStagingPrefix           = "image-agent/staging"
-	defaultPublicPrefix            = "image-agent/public"
+	defaultPublicPrefix            = imageagent.PublishedArtifactPrefix
 	defaultMaxArtifactCount        = 16
 	defaultMaxAggregateBytes int64 = 64 << 20
 	defaultMaxImageDimension       = 8192
@@ -181,7 +181,7 @@ func (s *S3DurableArtifactStore) Finalize(ctx context.Context, manifest imageage
 	if err != nil {
 		return imageagent.FinalManifest{}, err
 	}
-	finalAssets := make([]imageagent.StagedAssetRef, len(validated))
+	finalAssets := make([]imageagent.PublishedAssetRef, len(validated))
 	for index, staged := range validated {
 		if err := s.verifyExistingObject(ctx, staged.ref); err != nil {
 			return imageagent.FinalManifest{}, err
@@ -212,7 +212,11 @@ func (s *S3DurableArtifactStore) Finalize(ctx context.Context, manifest imageage
 				return imageagent.FinalManifest{}, err
 			}
 		}
-		finalAssets[index] = finalAsset
+		finalAssets[index] = imageagent.PublishedAssetRef{
+			ObjectKey: finalAsset.ObjectKey, SHA256: finalAsset.SHA256, SizeBytes: finalAsset.SizeBytes,
+			ContentType: finalAsset.ContentType, Width: finalAsset.Width, Height: finalAsset.Height,
+			SourceAssetID: finalAsset.SourceAssetID, Operations: append([]string(nil), finalAsset.Operations...), ProviderReceiptID: finalAsset.ProviderReceiptID,
+		}
 	}
 	return imageagent.NormalizeFinalManifest(imageagent.FinalManifest{Assets: finalAssets})
 }

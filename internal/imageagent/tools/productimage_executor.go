@@ -114,6 +114,9 @@ func (e *ProductImageSlotExecutor) BuildSlotResult(_ context.Context, input imag
 	if err != nil {
 		return imageagent.SlotExecutionResult{}, err
 	}
+	if strings.TrimSpace(input.TenantID) == "" || strings.TrimSpace(input.UserID) == "" {
+		return imageagent.SlotExecutionResult{}, imageagent.ErrValidation
+	}
 	if published.SlotID != slot.ID || published.Attempt != input.Attempt {
 		return imageagent.SlotExecutionResult{}, imageagent.ErrRevisionConflict
 	}
@@ -127,11 +130,14 @@ func (e *ProductImageSlotExecutor) BuildSlotResult(_ context.Context, input imag
 
 	candidates := make([]imageagent.AssetCandidate, len(manifest.Assets))
 	for index, asset := range manifest.Assets {
+		if err := imageagent.ValidatePublishedAssetRefForSlot(input, asset, index); err != nil {
+			return imageagent.SlotExecutionResult{}, err
+		}
 		if asset.SourceAssetID != sourceAssetID {
 			return imageagent.SlotExecutionResult{}, imageagent.ErrRevisionConflict
 		}
 		candidates[index] = imageagent.AssetCandidate{
-			AssetID:       durableCandidateAssetID(input, slot, asset),
+			AssetID:       durableCandidateAssetID(input, slot, asset, index),
 			SourceAssetID: asset.SourceAssetID,
 			DurableAsset: imageagent.DurableAssetIdentity{
 				ObjectKey: asset.ObjectKey,
@@ -355,22 +361,27 @@ func candidateAssetID(input imageagent.SlotExecutionInput, slot imageagent.Slot,
 }
 
 type durableCandidateIdentity struct {
+	TenantID            string `json:"tenant_id"`
+	UserID              string `json:"user_id"`
 	RunID               string `json:"run_id"`
 	PlanRevision        int64  `json:"plan_revision"`
 	SlotID              string `json:"slot_id"`
 	SlotIdempotencyKey  string `json:"slot_idempotency_key"`
 	InputIdempotencyKey string `json:"input_idempotency_key"`
 	Attempt             int    `json:"attempt"`
+	AssetIndex          int    `json:"asset_index"`
 	ObjectKey           string `json:"object_key"`
 	SHA256              string `json:"sha256"`
+	SourceAssetID       string `json:"source_asset_id"`
 }
 
-func durableCandidateAssetID(input imageagent.SlotExecutionInput, slot imageagent.Slot, asset imageagent.StagedAssetRef) string {
+func durableCandidateAssetID(input imageagent.SlotExecutionInput, slot imageagent.Slot, asset imageagent.PublishedAssetRef, assetIndex int) string {
 	payload, err := json.Marshal(durableCandidateIdentity{
+		TenantID: strings.TrimSpace(input.TenantID), UserID: strings.TrimSpace(input.UserID),
 		RunID: strings.TrimSpace(input.RunID), PlanRevision: input.PlanRevision,
 		SlotID: strings.TrimSpace(slot.ID), SlotIdempotencyKey: strings.TrimSpace(slot.IdempotencyKey),
 		InputIdempotencyKey: strings.TrimSpace(input.IdempotencyKey), Attempt: input.Attempt,
-		ObjectKey: asset.ObjectKey, SHA256: asset.SHA256,
+		AssetIndex: assetIndex, ObjectKey: asset.ObjectKey, SHA256: asset.SHA256, SourceAssetID: asset.SourceAssetID,
 	})
 	if err != nil {
 		panic(fmt.Sprintf("marshal durable candidate identity: %v", err))

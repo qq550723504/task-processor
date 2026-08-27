@@ -84,11 +84,15 @@ func historicalNilOperationsStagingManifest() StagingManifest {
 }
 
 func historicalNilOperationsFinalManifest() FinalManifest {
-	return FinalManifest{Assets: []StagedAssetRef{historicalNilOperationsAsset("image-agent/final/tenant-a/run/asset.png")}}
+	return FinalManifest{Assets: []PublishedAssetRef{historicalNilOperationsPublishedAsset("image-agent/final/tenant-a/run/asset.png")}}
 }
 
 func historicalNilOperationsAsset(objectKey string) StagedAssetRef {
 	return StagedAssetRef{ObjectKey: objectKey, SHA256: strings.Repeat("a", 64), SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", ProviderReceiptID: "receipt-1"}
+}
+
+func historicalNilOperationsPublishedAsset(objectKey string) PublishedAssetRef {
+	return PublishedAssetRef{ObjectKey: objectKey, SHA256: strings.Repeat("a", 64), SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", ProviderReceiptID: "receipt-1"}
 }
 
 func historicalVectorFingerprint(jsonDocument string) string {

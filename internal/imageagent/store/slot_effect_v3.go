@@ -807,8 +807,17 @@ func cloneStagingManifest(manifest imageagent.StagingManifest) imageagent.Stagin
 }
 
 func cloneFinalManifest(manifest imageagent.FinalManifest) imageagent.FinalManifest {
-	manifest.Assets = cloneStagedAssetRefs(manifest.Assets)
+	manifest.Assets = clonePublishedAssetRefs(manifest.Assets)
 	return manifest
+}
+
+func clonePublishedAssetRefs(assets []imageagent.PublishedAssetRef) []imageagent.PublishedAssetRef {
+	cloned := make([]imageagent.PublishedAssetRef, len(assets))
+	for index, asset := range assets {
+		asset.Operations = append([]string(nil), asset.Operations...)
+		cloned[index] = asset
+	}
+	return cloned
 }
 
 func cloneStagedAssetRefs(assets []imageagent.StagedAssetRef) []imageagent.StagedAssetRef {

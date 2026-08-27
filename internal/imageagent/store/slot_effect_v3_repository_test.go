@@ -234,7 +234,7 @@ func v3NilOperationStagingManifest() imageagent.StagingManifest {
 }
 
 func v3NilOperationFinalManifest() imageagent.FinalManifest {
-	return imageagent.FinalManifest{Assets: []imageagent.StagedAssetRef{{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256, SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", ProviderReceiptID: "receipt-1"}}}
+	return imageagent.FinalManifest{Assets: []imageagent.PublishedAssetRef{{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256, SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", ProviderReceiptID: "receipt-1"}}}
 }
 
 func v3NilOperationPublicationRequest(reservation imageagent.SlotEffectV3Reservation) imageagent.PublicationClaimRequest {
@@ -722,7 +722,7 @@ func v3StagingManifest() imageagent.StagingManifest {
 }
 
 func v3FinalManifest() imageagent.FinalManifest {
-	return imageagent.FinalManifest{Assets: []imageagent.StagedAssetRef{{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256, SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", Operations: []string{"resize"}, ProviderReceiptID: "receipt-1"}}}
+	return imageagent.FinalManifest{Assets: []imageagent.PublishedAssetRef{{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256, SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", Operations: []string{"resize"}, ProviderReceiptID: "receipt-1"}}}
 }
 
 func v3PublicationRequest(reservation imageagent.SlotEffectV3Reservation, owner string) imageagent.PublicationClaimRequest {

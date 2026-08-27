@@ -125,6 +125,7 @@ func TestFinalizeUsesDeterministicPublicKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Finalize() error = %v", err)
 	}
+	var _ imageagent.PublishedAssetRef = final.Assets[0]
 	want := strings.Replace(staged.ObjectKey, "image-agent/staging/", "image-agent/public/", 1)
 	if got := final.Assets[0].ObjectKey; got != want {
 		t.Fatalf("final object key = %q, want %q", got, want)

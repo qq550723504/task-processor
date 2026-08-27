@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -13,6 +14,21 @@ import (
 // It intentionally excludes local paths, transient URLs, credentials, and
 // provider-defined metadata.
 type StagedAssetRef struct {
+	ObjectKey         string   `json:"object_key"`
+	SHA256            string   `json:"sha256"`
+	SizeBytes         int64    `json:"size_bytes"`
+	ContentType       string   `json:"content_type"`
+	Width             int      `json:"width"`
+	Height            int      `json:"height"`
+	SourceAssetID     string   `json:"source_asset_id"`
+	Operations        []string `json:"operations"`
+	ProviderReceiptID string   `json:"provider_receipt_id,omitempty"`
+}
+
+// PublishedAssetRef is the final/public counterpart to StagedAssetRef. It
+// retains the established manifest JSON representation while making a staged
+// reference ineligible for v3 candidate construction by type.
+type PublishedAssetRef struct {
 	ObjectKey         string   `json:"object_key"`
 	SHA256            string   `json:"sha256"`
 	SizeBytes         int64    `json:"size_bytes"`
@@ -33,7 +49,7 @@ type StagingManifest struct {
 }
 
 type FinalManifest struct {
-	Assets []StagedAssetRef `json:"assets"`
+	Assets []PublishedAssetRef `json:"assets"`
 }
 
 type DurableAssetIdentity struct {
@@ -42,6 +58,10 @@ type DurableAssetIdentity struct {
 }
 
 var sha256Pattern = regexp.MustCompile(`^[a-fA-F0-9]{64}$`)
+var artifactKeyIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+
+// PublishedArtifactPrefix is the deterministic Task 2 public-object prefix.
+const PublishedArtifactPrefix = "image-agent/public"
 
 const (
 	maxArtifactOperations      = 8
@@ -86,11 +106,37 @@ func ValidateFinalManifest(manifest FinalManifest) error {
 }
 
 func NormalizeFinalManifest(manifest FinalManifest) (FinalManifest, error) {
-	assets, err := normalizeArtifactRefs(manifest.Assets)
+	assets, err := normalizePublishedAssetRefs(manifest.Assets)
 	if err != nil {
 		return FinalManifest{}, err
 	}
 	return FinalManifest{Assets: assets}, nil
+}
+
+// ValidatePublishedAssetRefForSlot verifies that a final reference belongs to
+// this exact slot attempt and uses the deterministic public object-key grammar.
+func ValidatePublishedAssetRefForSlot(input SlotExecutionInput, asset PublishedAssetRef, expectedIndex int) error {
+	tenantID, userID := strings.TrimSpace(input.TenantID), strings.TrimSpace(input.UserID)
+	runID, slotID := strings.TrimSpace(input.RunID), strings.TrimSpace(input.Slot.ID)
+	if tenantID == "" || userID == "" || runID == "" || slotID == "" || input.PlanRevision <= 0 || input.Attempt <= 0 || expectedIndex < 0 {
+		return ErrValidation
+	}
+	normalized, err := normalizePublishedAssetRef(asset)
+	if err != nil {
+		return err
+	}
+	segments := strings.Split(normalized.ObjectKey, "/")
+	if len(segments) != 8 || strings.Join(segments[:2], "/") != PublishedArtifactPrefix || !artifactKeyIdentifierPattern.MatchString(segments[2]) || !artifactKeyIdentifierPattern.MatchString(segments[3]) || !artifactKeyIdentifierPattern.MatchString(segments[5]) {
+		return ErrValidation
+	}
+	if segments[2] != tenantID || segments[3] != runID || segments[4] != strconv.FormatInt(input.PlanRevision, 10) || segments[5] != slotID || segments[6] != strconv.Itoa(input.Attempt) {
+		return ErrValidation
+	}
+	extension, ok := publishedArtifactExtensions[normalized.ContentType]
+	if !ok || segments[7] != strconv.Itoa(expectedIndex)+"-"+normalized.SHA256+"."+extension {
+		return ErrValidation
+	}
+	return nil
 }
 
 func StagingManifestFingerprint(manifest StagingManifest) (string, error) {
@@ -142,6 +188,27 @@ func normalizeArtifactRefs(assets []StagedAssetRef) ([]StagedAssetRef, error) {
 	return normalized, nil
 }
 
+func normalizePublishedAssetRefs(assets []PublishedAssetRef) ([]PublishedAssetRef, error) {
+	if len(assets) == 0 {
+		return nil, ErrValidation
+	}
+	seen := make(map[string]struct{}, len(assets))
+	normalized := make([]PublishedAssetRef, len(assets))
+	for index, asset := range assets {
+		var err error
+		asset, err = normalizePublishedAssetRef(asset)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := seen[asset.ObjectKey]; exists {
+			return nil, ErrValidation
+		}
+		seen[asset.ObjectKey] = struct{}{}
+		normalized[index] = asset
+	}
+	return normalized, nil
+}
+
 func normalizeStagedAssetRef(asset StagedAssetRef) (StagedAssetRef, error) {
 	identity, err := NormalizeDurableAssetIdentity(DurableAssetIdentity{ObjectKey: asset.ObjectKey, SHA256: asset.SHA256})
 	if err != nil || asset.SizeBytes <= 0 || asset.Width <= 0 || asset.Height <= 0 || asset.SourceAssetID == "" || asset.SourceAssetID != strings.TrimSpace(asset.SourceAssetID) || asset.ProviderReceiptID != strings.TrimSpace(asset.ProviderReceiptID) {
@@ -155,6 +222,26 @@ func normalizeStagedAssetRef(asset StagedAssetRef) (StagedAssetRef, error) {
 	operations, err := NormalizeArtifactOperations(asset.Operations)
 	if err != nil {
 		return StagedAssetRef{}, err
+	}
+	asset.ObjectKey = identity.ObjectKey
+	asset.SHA256 = identity.SHA256
+	asset.Operations = operations
+	return asset, nil
+}
+
+func normalizePublishedAssetRef(asset PublishedAssetRef) (PublishedAssetRef, error) {
+	identity, err := NormalizeDurableAssetIdentity(DurableAssetIdentity{ObjectKey: asset.ObjectKey, SHA256: asset.SHA256})
+	if err != nil || asset.SizeBytes <= 0 || asset.Width <= 0 || asset.Height <= 0 || asset.SourceAssetID == "" || asset.SourceAssetID != strings.TrimSpace(asset.SourceAssetID) || asset.ProviderReceiptID != strings.TrimSpace(asset.ProviderReceiptID) {
+		return PublishedAssetRef{}, ErrValidation
+	}
+	switch asset.ContentType {
+	case "image/jpeg", "image/png", "image/webp":
+	default:
+		return PublishedAssetRef{}, ErrValidation
+	}
+	operations, err := NormalizeArtifactOperations(asset.Operations)
+	if err != nil {
+		return PublishedAssetRef{}, err
 	}
 	asset.ObjectKey = identity.ObjectKey
 	asset.SHA256 = identity.SHA256
@@ -189,6 +276,12 @@ func NormalizeDurableAssetIdentity(asset DurableAssetIdentity) (DurableAssetIden
 		return DurableAssetIdentity{}, ErrValidation
 	}
 	return DurableAssetIdentity{ObjectKey: asset.ObjectKey, SHA256: strings.ToLower(asset.SHA256)}, nil
+}
+
+var publishedArtifactExtensions = map[string]string{
+	"image/jpeg": "jpg",
+	"image/png":  "png",
+	"image/webp": "webp",
 }
 
 func isCanonicalObjectKey(value string) bool {

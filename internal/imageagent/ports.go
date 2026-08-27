@@ -62,7 +62,7 @@ type SlotExecutionResult struct {
 type PublishedSlotOutput struct {
 	SlotID  string
 	Attempt int
-	Assets  []StagedAssetRef
+	Assets  []PublishedAssetRef
 }
 
 type PublishApprovedInput struct {
