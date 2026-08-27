@@ -91,11 +91,13 @@ describe("ProductWorkspaceNavigation", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /TEMU/ }));
+    await user.click(screen.getByRole("button", { name: /TEMU · 失败/ }));
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onRecoverPlatform).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "立即重试" }));
+    const recoveryButton = screen.getByRole("button", { name: "TEMU · 立即重试" });
+    expect(recoveryButton).toBeInTheDocument();
+    await user.click(recoveryButton);
     expect(onRecoverPlatform).toHaveBeenCalledWith(
       expect.objectContaining({ platform: "temu", recoveryLabel: "立即重试" }),
     );
