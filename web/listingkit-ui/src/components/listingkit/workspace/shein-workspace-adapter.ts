@@ -1,4 +1,7 @@
-import { collectSheinPreviewImageGroups } from "@/components/listingkit/shein/shein-preview-image";
+import {
+  collectSheinPreviewImageGroups,
+  getSelectableSheinPreviewImages,
+} from "@/components/listingkit/shein/shein-preview-image";
 import type { SheinFlowStep } from "@/components/listingkit/shein/shein-flow-nav";
 import {
   projectSheinReadinessActions,
@@ -48,6 +51,10 @@ export function createSheinWorkspaceAdapter({
     platform: "shein",
     project: () => {
       const imageGroups = collectSheinPreviewImageGroups(shein, sdsDesignResult);
+      const selectableAvailableImages = getSelectableSheinPreviewImages(
+        imageGroups.productImages,
+        imageGroups.availableImages,
+      );
       const readiness = projectSheinReadinessActions(
         shein?.submit_readiness?.blocking_items,
       );
@@ -64,6 +71,15 @@ export function createSheinWorkspaceAdapter({
         readiness.attributeBlocked ||
         readiness.saleAttributeBlocked ||
         readiness.previewBlocked;
+      const imageStepDescription = imageGroups.productImages.length
+        ? `已准备 ${imageGroups.productImages.length} 张 SHEIN 成品图${
+            selectableAvailableImages.length
+              ? `，另有 ${selectableAvailableImages.length} 张可选来源图，需人工选择后才提交`
+              : ""
+          }，SDS mockup 会单独作为渲染参考展示。`
+        : selectableAvailableImages.length
+          ? `暂未生成 SHEIN 成品图，另有 ${selectableAvailableImages.length} 张可选来源图，需打开图片区域人工选择后才提交；SDS mockup 仅作为渲染参考。`
+        : "检查 SHEIN 成品图是否已经生成；SDS mockup 仅作为渲染参考。";
       const projection: SheinWorkspaceProjection = {
         images: imageGroups.productImages,
         availableImages: imageGroups.availableImages,
@@ -83,9 +99,7 @@ export function createSheinWorkspaceAdapter({
           {
             key: "preview",
             label: "检查图片",
-            description: imageGroups.productImages.length
-              ? `已准备 ${imageGroups.productImages.length} 张 SHEIN 成品图，SDS mockup 会单独作为渲染参考展示。`
-              : "检查 SHEIN 成品图是否已经生成；SDS mockup 仅作为渲染参考。",
+            description: imageStepDescription,
             href: "#shein-preview-images",
             state:
               readiness.previewBlocked || !imageGroups.productImages.length

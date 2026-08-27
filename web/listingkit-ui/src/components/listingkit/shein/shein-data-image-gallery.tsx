@@ -10,7 +10,10 @@ import {
   MockupReferenceGrid,
 } from "@/components/listingkit/shein/shein-data-image-gallery-grid";
 import { ImageRoleStatus } from "@/components/listingkit/shein/shein-data-image-gallery-sections";
-import type { SheinPreviewImage } from "@/components/listingkit/shein/shein-preview-image";
+import {
+  getSelectableSheinPreviewImages,
+  type SheinPreviewImage,
+} from "@/components/listingkit/shein/shein-preview-image";
 import { toThumbnailPreviewUrl } from "@/lib/utils/imgproxy-url";
 import {
   hasSavedImageRole,
@@ -172,11 +175,13 @@ export function SheinDataImageGallery({
     regenerationPrompt.trim().length > 0 &&
     !isRegenerating;
 
-  const selectedImageUrls = new Set(images.map((image) => image.url));
-  const unselectedAvailableImages = availableImages.filter(
+  const selectableAvailableImages = getSelectableSheinPreviewImages(
+    images.filter((image) => !deletedUrls.includes(image.url)),
+    availableImages,
+  );
+  const unselectedAvailableImages = selectableAvailableImages.filter(
     (image) =>
-      (!includedAvailableUrls.includes(image.url) || deletedUrls.includes(image.url)) &&
-      (!selectedImageUrls.has(image.url) || deletedUrls.includes(image.url)),
+      !includedAvailableUrls.includes(image.url) || deletedUrls.includes(image.url),
   );
 
   if (workingImages.length === 0 && unselectedAvailableImages.length === 0 && mockupImages.length === 0) {
@@ -195,9 +200,16 @@ export function SheinDataImageGallery({
               这里展示最终会提交到 SHEIN 的图片。提交前请确认主图、色块图、尺寸图和排序。
             </p>
           </div>
-          <span className="text-xs font-medium text-zinc-500">
-            最终提交 {visibleImages.length} / {workingImages.length} 张
-          </span>
+          <div className="flex flex-col items-start gap-1 text-xs font-medium text-zinc-500 sm:items-end">
+            <span>
+              最终提交 {visibleImages.length} / {workingImages.length} 张
+            </span>
+            {unselectedAvailableImages.length > 0 ? (
+              <span className="text-amber-800">
+                可选来源图 {unselectedAvailableImages.length} 张
+              </span>
+            ) : null}
+          </div>
         </div>
 
         {workingImages.length === 0 ? (
