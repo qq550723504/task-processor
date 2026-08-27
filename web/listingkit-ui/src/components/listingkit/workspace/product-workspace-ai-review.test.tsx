@@ -38,8 +38,8 @@ describe("ProductWorkspaceAIReview", () => {
     );
 
     expect(screen.getByText("AI 审核")).toBeInTheDocument();
-    expect(screen.getByText("必须处理")).toBeInTheDocument();
-    expect(screen.getByText("建议确认")).toBeInTheDocument();
+    expect(screen.getAllByText("必须处理")).toHaveLength(2);
+    expect(screen.getAllByText("建议确认")).toHaveLength(2);
     expect(screen.getByText("已通过")).toBeInTheDocument();
     expect(screen.getByText("Material 缺失")).toBeInTheDocument();
     expect(screen.getByText("AI 建议：Cotton")).toBeInTheDocument();
