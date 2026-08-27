@@ -80,6 +80,18 @@ vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
         primary_navigation_target: {
           preview_query: { platform: "shein", section_key: "general_review" },
         },
+        recovery_summary: {
+          title: "Retry SHEIN preparation",
+          severity: "high",
+          urgency: "now",
+          primary_descriptor: {
+            platform: "shein",
+            recovery_hint: "retry_dispatch",
+            recovery_severity: "high",
+            recovery_urgency: "now",
+            recovery_cta_kind: "retry",
+          },
+        },
       },
     ],
     focusedPreview: undefined,
@@ -260,6 +272,25 @@ describe("WorkspaceScreen Product Workspace composition", () => {
         queue_query: { platform: "all" },
       },
     });
+  });
+
+  it("keeps a platform recovery action separate from opening platform review", async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    const recoveryButton = screen.getByRole("button", { name: "立即重试" });
+    expect(recoveryButton).toBeInTheDocument();
+
+    await user.click(recoveryButton);
+
+    expect(mocks.handlePlatformRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "shein",
+        recovery_hint: "retry_dispatch",
+      }),
+      "shein",
+    );
+    expect(mocks.handlePlatformSelect).not.toHaveBeenCalled();
   });
 
   it("switches the central work area between canonical product content and platform review", async () => {
