@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ProductWorkspaceAIReview } from "@/components/listingkit/workspace/product-workspace-ai-review";
+import { ProductWorkspaceCanonicalSection } from "@/components/listingkit/workspace/product-workspace-canonical-section";
 import {
   buildProductWorkspaceAttentionSummary,
   buildProductWorkspaceCanonicalNavigation,
@@ -235,7 +236,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       label: card.platform.toUpperCase(),
       status: productWorkspaceStatusForPlatformCard(card),
     })),
-    selectedPlatform,
+    selectedProductSection === "overview" ? selectedPlatform : undefined,
   );
   const reviewIssues = buildProductWorkspaceReviewIssues(
     taskResult.data,
@@ -259,6 +260,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const handleNavigationSelect = (item: ProductWorkspaceNavItem) => {
     setHistorySelected(false);
     if (item.platform) {
+      setSelectedProductSection("overview");
       const platformCard = platformCards.find(
         (card) => card.platform === item.platform,
       );
@@ -274,51 +276,55 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     }
   };
 
-  const centralWork = (
-    <div className="min-w-0 space-y-4">
-      <div className="grid min-w-0 gap-3 2xl:grid-cols-2">
-        <ResolvedActionCard
-          summary={suppressResolvedActionSummary ? undefined : resolvedActionSummary}
-          onSelect={(summary) => workspaceActions.handleAction(summary)}
-        />
-        <RecoverySummaryCard
-          summary={recoverySummary}
-          onSelect={workspaceActions.handleRecovery}
-        />
-      </div>
+  const centralWork =
+    selectedProductSection !== "overview" ? (
+      <ProductWorkspaceCanonicalSection
+        product={taskResult.data?.result?.canonical_product}
+        section={selectedProductSection}
+      />
+    ) : (
+      <div className="min-w-0 space-y-4">
+        <div className="grid min-w-0 gap-3 2xl:grid-cols-2">
+          <ResolvedActionCard
+            summary={suppressResolvedActionSummary ? undefined : resolvedActionSummary}
+            onSelect={(summary) => workspaceActions.handleAction(summary)}
+          />
+          <RecoverySummaryCard
+            summary={recoverySummary}
+            onSelect={workspaceActions.handleRecovery}
+          />
+        </div>
 
-      {selectedPlatform === "shein" ? (
-        <SheinFlowNav
-          eyebrow="SHEIN 流程状态"
-          steps={sheinFlowSteps}
-          title="准备资料 → 校验 → 待提交 → 已发布"
-        />
-      ) : null}
+        {selectedPlatform === "shein" ? (
+          <SheinFlowNav
+            eyebrow="SHEIN 流程状态"
+            steps={sheinFlowSteps}
+            title="准备资料 → 校验 → 待提交 → 已发布"
+          />
+        ) : null}
 
-      {shouldOpenSheinAdvancedDetails ? sheinAdvancedReviewDetails : null}
+        {shouldOpenSheinAdvancedDetails ? sheinAdvancedReviewDetails : null}
 
-      {isSheinFinalReviewMode ? (
-        <SheinFinalReviewWorkspaceView
-          taskId={taskId}
-          imageGalleryProps={sheinViewProps.imageGalleryProps}
-          finalReviewProps={sheinViewProps.finalReviewProps}
-          readinessProps={sheinViewProps.finalModeReadinessProps}
-          timelineProps={sheinViewProps.timelineProps}
-        />
-      ) : (
-        <WorkspaceReviewView {...workspaceReviewViewProps} />
-      )}
+        {isSheinFinalReviewMode ? (
+          <SheinFinalReviewWorkspaceView
+            taskId={taskId}
+            imageGalleryProps={sheinViewProps.imageGalleryProps}
+            finalReviewProps={sheinViewProps.finalReviewProps}
+            readinessProps={sheinViewProps.finalModeReadinessProps}
+            timelineProps={sheinViewProps.timelineProps}
+          />
+        ) : (
+          <WorkspaceReviewView {...workspaceReviewViewProps} />
+        )}
 
-      {!shouldOpenSheinAdvancedDetails ? sheinAdvancedReviewDetails : null}
+        {!shouldOpenSheinAdvancedDetails ? sheinAdvancedReviewDetails : null}
 
-      {selectedProductSection === "overview" ? (
         <WorkspaceOverviewPanel
           overview={sessionData.overview}
           reviewSummary={sessionData.review_summary}
         />
-      ) : null}
-    </div>
-  );
+      </div>
+    );
 
   return (
     <div className="min-w-0 space-y-5 overflow-x-hidden">
