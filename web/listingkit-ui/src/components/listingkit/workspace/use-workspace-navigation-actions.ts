@@ -176,7 +176,10 @@ export function useWorkspaceNavigationActions({
     platform: string,
   ) => {
     handleRecovery(descriptor);
-    if (shouldSyncPlatformOnRecovery(descriptor)) {
+    if (
+      shouldSyncPlatformOnRecovery(descriptor) ||
+      new URLSearchParams(searchParams.toString()).get("workspace_view") === "history"
+    ) {
       handlePlatformSelect(platform);
     }
   };

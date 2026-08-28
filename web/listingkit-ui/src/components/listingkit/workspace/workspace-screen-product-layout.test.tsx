@@ -494,6 +494,22 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     ).toBeInTheDocument();
   });
 
+  it("uses the returned browser route after an optimistic product selection", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<WorkspaceScreen taskId="task-1" />);
+
+    await user.click(screen.getByRole("button", { name: "图片" }));
+    expect(screen.getByRole("img", { name: "Canvas Tote front" })).toBeInTheDocument();
+
+    mocks.routeSearch = "product_section=images";
+    rerender(<WorkspaceScreen taskId="task-1" />);
+    expect(screen.getByRole("img", { name: "Canvas Tote front" })).toBeInTheDocument();
+
+    mocks.routeSearch = "platform=shein";
+    rerender(<WorkspaceScreen taskId="task-1" />);
+    expect(screen.getByText("现有 SHEIN 审核内容")).toBeInTheDocument();
+  });
+
   it.each(["processing", "pending", "queued", "running"])(
     "keeps AI review in a checking state while the task is %s",
     (status) => {

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveWorkspaceTitle } from "@/components/listingkit/workspace/use-workspace-data";
+import {
+  mergeNavigationPlatformCards,
+  resolveWorkspaceTitle,
+} from "@/components/listingkit/workspace/use-workspace-data";
+import type { PlatformCard } from "@/lib/types/listingkit";
 
 describe("resolveWorkspaceTitle", () => {
   it("does not leak a SHEIN-adapted title into another platform workspace", () => {
@@ -12,5 +16,25 @@ describe("resolveWorkspaceTitle", () => {
         canonicalTitle: "Canonical Tote",
       }),
     ).toBe("Canonical Tote");
+  });
+});
+
+describe("mergeNavigationPlatformCards", () => {
+  it("uses the live session card for a platform while preserving preview-only platforms", () => {
+    const previewCards: PlatformCard[] = [
+      { platform: "shein", status: "ready", summary: "stale preview" },
+      { platform: "temu", status: "ready", summary: "preview only" },
+    ];
+    const sessionCards: PlatformCard[] = [
+      { platform: "shein", status: "failed", summary: "live recovery required" },
+    ];
+
+    const merged = mergeNavigationPlatformCards(previewCards, sessionCards);
+
+    expect(merged).toEqual([
+      { platform: "shein", status: "failed", summary: "live recovery required" },
+      { platform: "temu", status: "ready", summary: "preview only" },
+    ]);
+    expect(merged[0]).toBe(sessionCards[0]);
   });
 });

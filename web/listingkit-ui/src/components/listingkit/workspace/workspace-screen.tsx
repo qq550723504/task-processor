@@ -68,6 +68,24 @@ import {
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const searchParams = useSearchParams();
   const routeSearch = searchParams.toString();
+
+  return (
+    <WorkspaceScreenContent
+      key={routeSearch}
+      taskId={taskId}
+      searchParams={searchParams}
+    />
+  );
+}
+
+function WorkspaceScreenContent({
+  taskId,
+  searchParams,
+}: {
+  taskId: string;
+  searchParams: ReturnType<typeof useSearchParams>;
+}) {
+  const routeSearch = searchParams.toString();
   const routeParams = new URLSearchParams(routeSearch);
   const routeHistorySelected = routeParams.get("workspace_view") === "history";
   const routeNavigationState = {
@@ -78,13 +96,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       !routeHistorySelected && routeParams.get("platform") ? "platform" : "product",
   } as const;
   const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
-  const [localNavigationState, setLocalNavigationState] = useState(
-    routeNavigationState,
-  );
-  const navigationState =
-    localNavigationState.routeSearch === routeSearch
-      ? localNavigationState
-      : routeNavigationState;
+  const [localNavigationState, setLocalNavigationState] = useState<
+    typeof routeNavigationState
+  >(routeNavigationState);
+  const navigationState = localNavigationState;
   const { historySelected, selectedProductSection, workspaceDestination } = navigationState;
   const setLocalNavigation = (
     next: Pick<typeof routeNavigationState, "selectedProductSection" | "workspaceDestination"> &

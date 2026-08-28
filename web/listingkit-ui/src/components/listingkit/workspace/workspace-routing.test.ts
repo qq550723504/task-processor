@@ -83,6 +83,7 @@ describe("shouldSyncFocusedTargetToRoute", () => {
     expect(shouldSyncFocusedTargetToRoute("product_section=overview")).toBe(false);
     expect(shouldSyncFocusedTargetToRoute("product_section=images")).toBe(false);
     expect(shouldSyncFocusedTargetToRoute("platform=shein")).toBe(true);
+    expect(shouldSyncFocusedTargetToRoute("platform=shein&section_key=general_review")).toBe(false);
     expect(shouldSyncFocusedTargetToRoute("workspace_view=history")).toBe(false);
   });
 });

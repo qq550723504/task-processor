@@ -30,6 +30,7 @@ import { useListingKitPreview } from "@/lib/query/use-preview";
 import { useReviewPreview } from "@/lib/query/use-review-preview";
 import { useReviewSession } from "@/lib/query/use-review-session";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
+import type { PlatformCard } from "@/lib/types/listingkit";
 
 export function resolveWorkspaceTitle({
   selectedPlatform,
@@ -52,6 +53,25 @@ export function resolveWorkspaceTitle({
     canonicalTitle ||
     "未命名商品"
   );
+}
+
+export function mergeNavigationPlatformCards(
+  previewCards?: PlatformCard[],
+  sessionCards?: PlatformCard[],
+) {
+  const preview = previewCards ?? [];
+  const session = sessionCards ?? [];
+  const sessionCardsByPlatform = new Map(
+    session.map((card) => [card.platform, card]),
+  );
+  const previewPlatforms = new Set(preview.map((card) => card.platform));
+
+  return [
+    ...preview.map(
+      (card) => sessionCardsByPlatform.get(card.platform) ?? card,
+    ),
+    ...session.filter((card) => !previewPlatforms.has(card.platform)),
+  ];
 }
 
 export function useWorkspaceData({
@@ -84,10 +104,10 @@ export function useWorkspaceData({
   const sessionData = session.data?.session;
   const platformCards =
     sessionData?.platform_cards ?? preview.data?.overview?.platform_cards ?? [];
-  const navigationPlatformCards =
-    preview.data?.overview?.platform_cards?.length
-      ? preview.data.overview.platform_cards
-      : platformCards;
+  const navigationPlatformCards = mergeNavigationPlatformCards(
+    preview.data?.overview?.platform_cards,
+    sessionData?.platform_cards,
+  );
   const focusedPreview =
     reviewPreview.data?.preview ?? sessionData?.focused_render_preview;
   const selectedPlatform =

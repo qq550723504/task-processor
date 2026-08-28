@@ -95,6 +95,7 @@ export function shouldSyncFocusedTargetToRoute(currentSearch: string) {
   const params = new URLSearchParams(currentSearch);
   return (
     params.get("section_key") !== "final_review" &&
+    params.get("section_key") !== "general_review" &&
     !params.has("product_section") &&
     params.get("workspace_view") !== "history"
   );

@@ -98,4 +98,30 @@ describe("useWorkspaceNavigationActions", () => {
       "/listing-kits/task-1/workspace?workspace_view=history",
     );
   });
+
+  it("routes action recovery out of History even when the platform is already selected", () => {
+    const { result } = renderHook(() =>
+      useWorkspaceNavigationActions({
+        taskId: "task-1",
+        baseQuery: {},
+        searchParams: new URLSearchParams("workspace_view=history"),
+      }),
+    );
+
+    act(() => {
+      result.current.handlePlatformRecovery(
+        {
+          recovery_target: {
+            dispatch_kind: "action",
+            action_target: { action_key: "retry_dispatch" },
+          },
+        },
+        "shein",
+      );
+    });
+
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/listing-kits/task-1/workspace?platform=shein",
+    );
+  });
 });
