@@ -29,7 +29,23 @@ import (
 	"task-processor/internal/imageagent/objectstore"
 	"task-processor/internal/imageagent/store"
 	storageinfra "task-processor/internal/infra/storage"
+	"task-processor/internal/productimage"
 )
+
+func TestExecuteSlotV3RestoresProductImageBusinessIdentity(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-product-image-identity")
+	input.Identity.BusinessTaskID = "task-product-image"
+	input.Identity.TraceID = "trace-product-image"
+	executor := &recordingStagedExecutor{generated: generatedV3Output(input, writeTinyPNG(t))}
+	activities := newV3Activities(t, repository, repository.(imageagent.SlotExternalEffectV3Repository), executor, &recordingArtifactStore{})
+
+	_, err := activities.ExecuteSlotV3(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Equal(t, productimage.AIIdentity{
+		TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "task-product-image", TraceID: "trace-product-image",
+	}, executor.ProductImageIdentity())
+}
 
 func TestExecuteSlotV3DoesNotRegenerateAnUnownedProviderClaim(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-unowned-provider")
@@ -664,16 +680,18 @@ type recordingStagedExecutor struct {
 	generateCalls int
 	buildCalls    int
 	mutateResult  func(*imageagent.SlotExecutionResult)
+	identity      productimage.AIIdentity
 }
 
 func (e *recordingStagedExecutor) ExecuteSlot(context.Context, imageagent.SlotExecutionInput) (imageagent.SlotExecutionResult, error) {
 	return imageagent.SlotExecutionResult{}, errors.New("v2 execute must not be used by ExecuteSlotV3")
 }
 
-func (e *recordingStagedExecutor) GenerateSlot(_ context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
+func (e *recordingStagedExecutor) GenerateSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.generateCalls++
+	e.identity = productimage.AIIdentityFromContext(ctx)
 	if e.generated.SlotID == "" {
 		return imageagent.SlotGeneratedOutput{}, errors.New("generated output fixture is required")
 	}
@@ -708,6 +726,12 @@ func (e *recordingStagedExecutor) BuildCalls() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.buildCalls
+}
+
+func (e *recordingStagedExecutor) ProductImageIdentity() productimage.AIIdentity {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.identity
 }
 
 type recordingArtifactStore struct {

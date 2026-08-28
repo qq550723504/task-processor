@@ -42,9 +42,16 @@ func ValidatePlan(plan Plan) error {
 	slotIDs := make(map[string]struct{}, len(plan.Slots))
 	idempotencyKeys := make(map[string]struct{}, len(plan.Slots))
 	for _, slot := range plan.Slots {
-		id := strings.TrimSpace(slot.ID)
+		rawID := slot.ID
+		id := strings.TrimSpace(rawID)
 		if id == "" {
 			return fmt.Errorf("slot id must not be empty")
+		}
+		if rawID != id {
+			return fmt.Errorf("%w: slot id %q must be canonical", ErrValidation, rawID)
+		}
+		if err := ValidateArtifactKeyIdentifier(rawID); err != nil {
+			return fmt.Errorf("%w: slot id %q cannot be used in a durable artifact key", err, id)
 		}
 		if _, exists := slotIDs[id]; exists {
 			return fmt.Errorf("duplicate slot id %q", id)

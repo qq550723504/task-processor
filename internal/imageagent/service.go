@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"task-processor/internal/authidentity"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type Service struct {
@@ -45,6 +46,10 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	if input.RunID == "" || input.BusinessTaskID == "" || input.IdempotencyKey == "" {
 		return fmt.Errorf("%w: image agent run ID, business task ID, and idempotency key are required", ErrValidation)
 	}
+	if err := ValidateArtifactKeyIdentifier(input.RunID); err != nil {
+		return fmt.Errorf("%w: image agent run ID cannot be used in a durable artifact key", err)
+	}
+	identity.BusinessTaskID = input.BusinessTaskID
 	input.Plan.CreatedBy = identity.UserID
 	if err := ValidatePlan(input.Plan); err != nil {
 		return fmt.Errorf("%w: validate image agent plan: %v", ErrValidation, err)
@@ -134,6 +139,9 @@ func (s *Service) RetrySlot(ctx context.Context, runID, slotID string, planRevis
 	if slotID == "" {
 		return fmt.Errorf("%w: retry slot ID is required", ErrValidation)
 	}
+	if err := ValidateArtifactKeyIdentifier(slotID); err != nil {
+		return fmt.Errorf("%w: retry slot ID cannot be used in a durable artifact key", err)
+	}
 	return s.workflows.RetrySlot(ctx, RetrySlotCommand{RunID: strings.TrimSpace(runID), SlotID: slotID, PlanRevision: planRevision, ActorID: identity.UserID, ActionID: strings.TrimSpace(actionID), Identity: identity})
 }
 
@@ -206,9 +214,11 @@ func (s *Service) commandIdentity(ctx context.Context, runID string, revision in
 	if revision <= 0 {
 		return ExecutionIdentity{}, fmt.Errorf("%w: positive plan revision is required", ErrValidation)
 	}
-	if _, err := s.repository.GetProjection(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID}); err != nil {
+	projection, err := s.repository.GetProjection(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID})
+	if err != nil {
 		return ExecutionIdentity{}, err
 	}
+	identity.BusinessTaskID = projection.Run.BusinessTaskID
 	return identity, nil
 }
 
@@ -217,7 +227,8 @@ func verifiedExecutionIdentity(ctx context.Context) (ExecutionIdentity, error) {
 	if !ok {
 		return ExecutionIdentity{}, ErrIdentityRequired
 	}
-	return ExecutionIdentity{TenantID: identity.TenantID, UserID: identity.UserID}, nil
+	ai := aiidentity.FromContext(ctx)
+	return ExecutionIdentity{TenantID: identity.TenantID, UserID: identity.UserID, TraceID: ai.TraceID}, nil
 }
 
 func cloneBlock(block *Block) *Block {

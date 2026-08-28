@@ -60,6 +60,15 @@ type DurableAssetIdentity struct {
 var sha256Pattern = regexp.MustCompile(`^[a-fA-F0-9]{64}$`)
 var artifactKeyIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
+// ValidateArtifactKeyIdentifier enforces the canonical identifier grammar
+// shared by run/slot commands and deterministic durable object keys.
+func ValidateArtifactKeyIdentifier(value string) error {
+	if !artifactKeyIdentifierPattern.MatchString(value) {
+		return ErrValidation
+	}
+	return nil
+}
+
 // PublishedArtifactPrefix is the deterministic Task 2 public-object prefix.
 const PublishedArtifactPrefix = "image-agent/public"
 
@@ -153,7 +162,7 @@ func validatePublishedAssetIdentityForSlot(input SlotExecutionInput, asset Durab
 		return DurableAssetIdentity{}, "", err
 	}
 	segments := strings.Split(normalized.ObjectKey, "/")
-	if len(segments) != 8 || strings.Join(segments[:2], "/") != PublishedArtifactPrefix || !artifactKeyIdentifierPattern.MatchString(segments[2]) || !artifactKeyIdentifierPattern.MatchString(segments[3]) || !artifactKeyIdentifierPattern.MatchString(segments[5]) {
+	if len(segments) != 8 || strings.Join(segments[:2], "/") != PublishedArtifactPrefix || ValidateArtifactKeyIdentifier(segments[2]) != nil || ValidateArtifactKeyIdentifier(segments[3]) != nil || ValidateArtifactKeyIdentifier(segments[5]) != nil {
 		return DurableAssetIdentity{}, "", ErrValidation
 	}
 	if segments[2] != tenantID || segments[3] != runID || segments[4] != strconv.FormatInt(input.PlanRevision, 10) || segments[5] != slotID || segments[6] != strconv.Itoa(input.Attempt) {

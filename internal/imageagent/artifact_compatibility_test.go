@@ -34,6 +34,22 @@ func TestNormalizeArtifactOperationsPreservesNilAndEmptySliceRepresentations(t *
 	require.Equal(t, []string{"resize"}, input)
 }
 
+func TestValidatePlanRejectsSlotIDOutsideArtifactGrammar(t *testing.T) {
+	for name, slotID := range map[string]string{
+		"path separator":         "slot/1",
+		"surrounding whitespace": " slot-1 ",
+	} {
+		t.Run(name, func(t *testing.T) {
+			plan := Plan{
+				Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"},
+				Slots: []Slot{{ID: slotID, Role: SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1"}},
+			}
+
+			require.ErrorIs(t, ValidatePlan(plan), ErrValidation)
+		})
+	}
+}
+
 func TestNilOperationsRemainTask1CompatibleAcrossManifestNormalizationJSONAndFingerprints(t *testing.T) {
 	staging := historicalNilOperationsStagingManifest()
 	final := historicalNilOperationsFinalManifest()

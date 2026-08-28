@@ -2718,7 +2718,7 @@ func TestServiceCapturesVerifiedIdentityAndRejectsNonManualStarts(t *testing.T) 
 	require.NoError(t, service.Start(ctx, input))
 	require.NoError(t, service.Start(ctx, input))
 	require.Len(t, workflows.starts, 2)
-	require.Equal(t, imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}, workflows.starts[0].Identity)
+	require.Equal(t, imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "task-1"}, workflows.starts[0].Identity)
 	require.Equal(t, "user-a", workflows.starts[0].Plan.CreatedBy)
 	scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-1"}
 	projection, err := repository.GetProjection(context.Background(), scope)

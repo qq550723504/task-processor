@@ -5,8 +5,10 @@ import "context"
 // ExecutionIdentity is the tenant/user identity verified at the command edge
 // and durably captured in workflow input.
 type ExecutionIdentity struct {
-	TenantID string
-	UserID   string
+	TenantID       string
+	UserID         string
+	BusinessTaskID string
+	TraceID        string
 }
 
 type SlotExecutor interface {

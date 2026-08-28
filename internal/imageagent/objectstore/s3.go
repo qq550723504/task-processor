@@ -29,7 +29,6 @@ const (
 	defaultMaxImagePixels    int64 = 32 << 20
 )
 
-var canonicalID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 var canonicalSHA256 = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 var (
@@ -368,7 +367,7 @@ func serverChecksumHex(value string) (string, error) {
 
 func validateIdentity(identity imageagent.SlotExternalEffectIdentity) error {
 	for _, value := range []string{identity.TenantID, identity.OwnerUserID, identity.RunID, identity.SlotID} {
-		if !canonicalID.MatchString(value) {
+		if imageagent.ValidateArtifactKeyIdentifier(value) != nil {
 			return imageagent.ErrValidation
 		}
 	}
@@ -391,7 +390,7 @@ var imageContentTypes = map[string]string{
 }
 
 func safePersistedID(value string) bool {
-	return canonicalID.MatchString(value)
+	return imageagent.ValidateArtifactKeyIdentifier(value) == nil
 }
 
 type stagingKeyIdentity struct {
@@ -411,7 +410,7 @@ func (identity stagingKeyIdentity) publicKey() string {
 
 func parseStagingKey(asset imageagent.StagedAssetRef, expectedIndex int) (stagingKeyIdentity, error) {
 	segments := strings.Split(asset.ObjectKey, "/")
-	if len(segments) != 8 || strings.Join(segments[:2], "/") != defaultStagingPrefix || !canonicalID.MatchString(segments[2]) || !canonicalID.MatchString(segments[3]) || !canonicalID.MatchString(segments[5]) {
+	if len(segments) != 8 || strings.Join(segments[:2], "/") != defaultStagingPrefix || imageagent.ValidateArtifactKeyIdentifier(segments[2]) != nil || imageagent.ValidateArtifactKeyIdentifier(segments[3]) != nil || imageagent.ValidateArtifactKeyIdentifier(segments[5]) != nil {
 		return stagingKeyIdentity{}, imageagent.ErrValidation
 	}
 	planRevision, ok := canonicalPositiveDecimal(segments[4])

@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/store"
+	"task-processor/internal/shared/aiidentity"
 )
 
 func TestServiceApprovalRequiresExactCurrentProjectionDigestAndState(t *testing.T) {
@@ -267,6 +268,59 @@ func TestServiceStartRequiresBusinessTaskAndAuthorizedCatalogSubset(t *testing.T
 	input.Plan.Slots[0].SourceAssetIDs = []string{"source-not-authorized"}
 	require.ErrorIs(t, service.Start(ctx, input), imageagent.ErrValidation)
 	require.Empty(t, workflows.starts)
+}
+
+func TestServiceStartRejectsRunIDOutsideArtifactGrammarBeforeWorkflowStart(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
+	require.NoError(t, err)
+
+	err = service.Start(verifiedContext("tenant-a", "user-a"), imageagent.StartRunInput{
+		RunID: "run:1", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
+		IdempotencyKey: "run-start-key", Plan: commandPlan(1),
+	})
+
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+	require.Empty(t, workflows.starts)
+}
+
+func TestServiceStartCapturesBusinessTaskInExecutionIdentity(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
+	require.NoError(t, err)
+
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TraceID: "trace-identity"})
+	ctx = authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	err = service.Start(ctx, imageagent.StartRunInput{
+		RunID: "run-identity", BusinessTaskID: "task-identity", Mode: imageagent.RunModeManual,
+		IdempotencyKey: "run-identity-key", Plan: commandPlan(1),
+	})
+
+	require.NoError(t, err)
+	require.Len(t, workflows.starts, 1)
+	require.Equal(t, "task-identity", workflows.starts[0].Identity.BusinessTaskID)
+	require.Equal(t, "trace-identity", workflows.starts[0].Identity.TraceID)
+}
+
+func TestServiceRetryRejectsSlotIDOutsideArtifactGrammarBeforeWorkflowUpdate(t *testing.T) {
+	service, workflows := commandService(t, imageagent.RunStatusBlocked, &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"})
+
+	err := service.RetrySlot(verifiedContext("tenant-a", "user-a"), "run-1", "slot/1", 1, "retry-invalid-slot")
+
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+	require.Empty(t, workflows.retries)
+}
+
+func TestServiceRetryCarriesPersistedBusinessTaskIdentity(t *testing.T) {
+	service, workflows := commandService(t, imageagent.RunStatusBlocked, &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"})
+
+	err := service.RetrySlot(verifiedContext("tenant-a", "user-a"), "run-1", "slot-1", 1, "retry-identity")
+
+	require.NoError(t, err)
+	require.Len(t, workflows.retries, 1)
+	require.Equal(t, "task-1", workflows.retries[0].Identity.BusinessTaskID)
 }
 
 func TestServiceStartRetryUsesImmutablePersistedCatalogInsteadOfMutableTaskCatalog(t *testing.T) {

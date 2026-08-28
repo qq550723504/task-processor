@@ -17,6 +17,7 @@ import (
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
 	"task-processor/internal/pkg/imagex"
+	"task-processor/internal/shared/aiidentity"
 )
 
 const slotResultPersistedEventType = "slot.result.persisted"
@@ -870,8 +871,13 @@ func RegisterActivitiesForMode(registrar activityRegistrar, activities *Activiti
 func restoreActivityIdentity(ctx context.Context, identity imageagent.ExecutionIdentity) (context.Context, error) {
 	identity.TenantID = strings.TrimSpace(identity.TenantID)
 	identity.UserID = strings.TrimSpace(identity.UserID)
+	identity.BusinessTaskID = strings.TrimSpace(identity.BusinessTaskID)
+	identity.TraceID = strings.TrimSpace(identity.TraceID)
 	if identity.TenantID == "" || identity.UserID == "" {
 		return nil, fmt.Errorf("captured image agent tenant and user identity are required")
 	}
-	return authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{TenantID: identity.TenantID, UserID: identity.UserID}), nil
+	ctx = authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{TenantID: identity.TenantID, UserID: identity.UserID})
+	return aiidentity.WithIdentity(ctx, aiidentity.Identity{
+		TenantID: identity.TenantID, UserID: identity.UserID, BusinessTaskID: identity.BusinessTaskID, TraceID: identity.TraceID,
+	}), nil
 }
