@@ -345,6 +345,9 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       workspaceDestination: "platform",
       selectedProductSection: "overview",
     });
+    if (item.platform !== selectedPlatform) {
+      workspaceActions.handlePlatformSelect(item.platform);
+    }
     workspaceActions.handlePlatformRecovery(recovery.descriptor, item.platform);
   };
 
@@ -419,7 +422,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         title={
           platformReviewSelected
             ? workspaceTitle
-            : taskResult.data?.result?.canonical_product?.title || workspaceTitle
+            : taskResult.data?.result?.canonical_product?.title?.trim() || workspaceTitle
         }
         updatedAtLabel={workspaceUpdatedAt}
       />
@@ -444,7 +447,9 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         work={centralWork}
         aiReview={
           <ProductWorkspaceAIReview
-            checking={shouldPollTaskResult(taskResult.data?.status)}
+            checking={
+              taskResult.isLoading || shouldPollTaskResult(taskResult.data?.status)
+            }
             issues={reviewIssues}
             onSelectIssue={(issue) => {
               if (issue.actionKey) {

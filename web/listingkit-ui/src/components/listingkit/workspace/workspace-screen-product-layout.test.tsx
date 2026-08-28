@@ -51,6 +51,25 @@ function sheinPlatformCardFixture() {
   };
 }
 
+function temuPlatformCardFixture() {
+  return {
+    platform: "temu",
+    status: "failed",
+    recovery_summary: {
+      title: "Retry TEMU preparation",
+      severity: "high",
+      urgency: "now",
+      primary_descriptor: {
+        platform: "temu",
+        recovery_hint: "retry_dispatch",
+        recovery_severity: "high",
+        recovery_urgency: "now",
+        recovery_cta_kind: "retry",
+      },
+    },
+  };
+}
+
 const mocks = vi.hoisted(() => ({
   executeActionMutate: vi.fn(),
   handlePlatformSelect: vi.fn(),
@@ -63,11 +82,16 @@ const mocks = vi.hoisted(() => ({
   handlePlatformRecovery: vi.fn(),
   handleProductSelect: vi.fn(),
   taskStatus: "needs_review" as string,
+  taskResultLoading: false,
   canonicalProduct: undefined as ReturnType<typeof canonicalProductFixture> | undefined,
-  navigationPlatformCards: [] as Array<ReturnType<typeof sheinPlatformCardFixture> | {
-    platform: string;
-    status?: string;
-  }>,
+  navigationPlatformCards: [] as Array<
+    | ReturnType<typeof sheinPlatformCardFixture>
+    | ReturnType<typeof temuPlatformCardFixture>
+    | {
+        platform: string;
+        status?: string;
+      }
+  >,
   workflowIssues: [
     {
       code: "attributes",
@@ -86,6 +110,7 @@ const mocks = vi.hoisted(() => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.taskStatus = "needs_review";
+  mocks.taskResultLoading = false;
   mocks.canonicalProduct = canonicalProductFixture();
   mocks.navigationPlatformCards = [sheinPlatformCardFixture()];
   mocks.workflowIssues = defaultWorkflowIssues.map((issue) => ({ ...issue }));
@@ -105,15 +130,18 @@ vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
       refetch: vi.fn(),
     },
     taskResult: {
-      data: {
-        task_id: "task-1",
-        status: mocks.taskStatus,
-        result: {
-          canonical_product: mocks.canonicalProduct,
-          summary: { blocking_count: 1, warning_count: 0 },
-          workflow_issues: mocks.workflowIssues,
-        },
-      },
+      data: mocks.taskResultLoading
+        ? undefined
+        : {
+            task_id: "task-1",
+            status: mocks.taskStatus,
+            result: {
+              canonical_product: mocks.canonicalProduct,
+              summary: { blocking_count: 1, warning_count: 0 },
+              workflow_issues: mocks.workflowIssues,
+            },
+          },
+      isLoading: mocks.taskResultLoading,
       isError: false,
       refetch: vi.fn(),
     },
@@ -334,6 +362,26 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     expect(mocks.handlePlatformSelect).not.toHaveBeenCalled();
   });
 
+  it("selects the clicked platform before running its action-style recovery", async () => {
+    mocks.navigationPlatformCards = [
+      sheinPlatformCardFixture(),
+      temuPlatformCardFixture(),
+    ];
+    const user = userEvent.setup();
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    await user.click(screen.getByRole("button", { name: "TEMU · 立即重试" }));
+
+    expect(mocks.handlePlatformSelect).toHaveBeenCalledWith("temu");
+    expect(mocks.handlePlatformRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "temu",
+        recovery_hint: "retry_dispatch",
+      }),
+      "temu",
+    );
+  });
+
   it("switches the central work area between canonical product content and platform review", async () => {
     const user = userEvent.setup();
     render(<WorkspaceScreen taskId="task-1" />);
@@ -444,6 +492,32 @@ describe("WorkspaceScreen Product Workspace composition", () => {
       ).not.toBeInTheDocument();
     },
   );
+
+  it("keeps AI review checking while task-result data is loading", () => {
+    mocks.taskResultLoading = true;
+    mocks.workflowIssues = [];
+
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    const aiReview = screen.getByRole("complementary", { name: "AI 审核" });
+    expect(within(aiReview).getByText("AI 正在检查商品")).toBeInTheDocument();
+    expect(
+      within(aiReview).queryByText("AI 检查已完成，可以继续当前操作。"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("falls back to the workspace title when the canonical title is blank", async () => {
+    mocks.canonicalProduct = {
+      ...canonicalProductFixture(),
+      title: "   ",
+    };
+    const user = userEvent.setup();
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    await user.click(screen.getByRole("button", { name: "概览" }));
+
+    expect(screen.getByRole("heading", { name: "Canvas Tote" })).toBeInTheDocument();
+  });
 
   it("keeps all target platforms in navigation when the focused session has only one card", () => {
     mocks.navigationPlatformCards = [
