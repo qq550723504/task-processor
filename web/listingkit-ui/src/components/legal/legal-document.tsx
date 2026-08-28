@@ -41,8 +41,11 @@ export function LegalDocument({ title, summary, sections }: LegalDocumentProps) 
             {paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
           </section>
         ))}
-        <aside className={styles.notice}>
-          本文为当前上线版本的基础文本。运营主体名称、联系地址、适用法律与备案信息应在正式上线前由运营及法务团队核对、补充并确认。
+        <aside className={styles.notice} aria-label="运营信息及争议处理">
+          <p><strong>运营主体：</strong>武汉市硕米科技有限公司</p>
+          <p><strong>联系地址：</strong>武汉市洪山区吴家湾大厦 1808</p>
+          <p><strong>联系邮箱：</strong><a href="mailto:support@shuomiai.com">support@shuomiai.com</a></p>
+          <p><strong>适用法律与争议处理：</strong>本文件适用中华人民共和国法律。因本文件引起或与本文件有关的争议，双方应先友好协商；协商不成的，任何一方可向依法有管辖权的人民法院提起诉讼。</p>
         </aside>
       </article>
     </main>
