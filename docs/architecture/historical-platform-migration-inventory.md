@@ -144,6 +144,11 @@ depending on the historical TEMU runtime. This is the intended shape for
 future policy slices; it does not authorize moving TEMU pipeline, scheduler, or
 API client code.
 
+The retired `internal/temu/format` numeric facade had no repository callers and
+was removed after its behavior was covered by the canonical publishing policy.
+The `temu_historical_facades` depguard rule prevents that forwarding package
+from being recreated under the historical tree.
+
 ## Next Slice Candidates
 
 Good candidates for the next framework slice:
