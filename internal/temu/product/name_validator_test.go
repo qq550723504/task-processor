@@ -22,3 +22,14 @@ func TestProductNameValidatorCleanSpacesNormalizesSubmissionFormatting(t *testin
 		})
 	}
 }
+
+func TestProductNameValidatorNormalizesOptimizedNameWithSubmissionPolicy(t *testing.T) {
+	validator := &ProductNameValidator{}
+
+	got := validator.normalizeOptimizedName("Widget(Blue) , Size")
+	want := "Widget (Blue), Size"
+
+	if got != want {
+		t.Fatalf("normalizeOptimizedName() = %q, want %q", got, want)
+	}
+}
