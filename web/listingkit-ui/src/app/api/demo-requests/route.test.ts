@@ -42,4 +42,19 @@ describe("demo request webhook route", () => {
     expect(response.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("forwards a compact contact-panel request to the configured webhook", async () => {
+    vi.stubEnv("LISTINGKIT_DEMO_WEBHOOK_URL", "https://webhook.example.test/send");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ errcode: 0 }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(new Request("http://localhost/api/demo-requests", {
+      method: "POST",
+      body: JSON.stringify({ type: "contact", contact: "13800138000", message: "想了解供应链接入。" }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+  });
 });

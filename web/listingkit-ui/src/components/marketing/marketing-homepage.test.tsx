@@ -1,0 +1,123 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+
+import { MarketingHomepage } from "@/components/marketing/marketing-homepage";
+
+describe("MarketingHomepage", () => {
+  it("presents the public site as 硕米智能引擎", () => {
+    render(<MarketingHomepage />);
+
+    const banner = screen.getByRole("banner");
+    expect(within(banner).getByRole("link", { name: "硕米智能引擎首页" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("硕米智能引擎");
+    expect(screen.queryByText("ListingKit", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("connects the navigation and primary calls to action to the right destinations", () => {
+    render(<MarketingHomepage />);
+
+    const nav = screen.getByRole("navigation", { name: "官网导航" });
+    const expectedLinks = [
+      ["首页", "#home"],
+      ["电商智能体", "#agents"],
+      ["供应链与数据", "#supply-chain"],
+      ["解决方案", "#solutions"],
+      ["服务生态", "#services"],
+      ["应用实践", "#practices"],
+      ["价格与服务", "#pricing"],
+    ];
+
+    for (const [name, href] of expectedLinks) {
+      expect(within(nav).getByRole("link", { name })).toHaveAttribute("href", href);
+    }
+
+    expect(screen.getByRole("link", { name: "进入硕米" })).toHaveAttribute(
+      "href",
+      "/login?returnTo=%2Flisting-kits%2Fhome",
+    );
+    const hero = document.getElementById("home");
+    expect(hero).not.toBeNull();
+    expect(within(hero!).getByRole("link", { name: /了解平台能力/ })).toHaveAttribute("href", "#agents");
+    expect(within(hero!).getByRole("link", { name: /查看解决方案/ })).toHaveAttribute("href", "#solutions");
+  });
+
+  it("renders the Figma hero motion layers as decorative content", () => {
+    render(<MarketingHomepage />);
+
+    const hero = document.getElementById("home");
+    expect(hero).not.toBeNull();
+    const decorativeMotion = hero!.querySelector('[aria-hidden="true"]');
+    expect(decorativeMotion).not.toBeNull();
+
+    for (const nodeId of ["356:303", "356:304", "356:306", "356:308", "356:310", "356:311", "356:312"]) {
+      const layer = hero!.querySelector(`[data-node-id="${nodeId}"]`);
+      expect(layer).not.toBeNull();
+      expect(decorativeMotion).toContainElement(layer as HTMLElement);
+    }
+  });
+
+  it("brings the wide-screen hero copy closer to the commerce network without changing narrower breakpoints", () => {
+    const styles = readFileSync("src/components/marketing/marketing-homepage.module.css", "utf8");
+
+    expect(styles).toMatch(
+      /@media \(min-width: 1200px\) \{[\s\S]*?\.heroContent \{ left: 120px; width: 570px; \}/,
+    );
+    expect(styles).toMatch(/@media \(max-width: 1180px\) \{[\s\S]*?\.heroContent \{ left: 48px; \}/);
+  });
+
+  it("includes the complete long-form Figma story", () => {
+    render(<MarketingHomepage />);
+
+    expect(screen.getByText("电商正在进入AI时代")).toBeInTheDocument();
+    expect(screen.getByText("每一个电商岗位，都可以拥有一位 AI 员工")).toBeInTheDocument();
+    expect(screen.getByText("连接商品、货盘与工厂，让好产品快速进入市场")).toBeInTheDocument();
+    expect(screen.getByText("不同的业务起点，同一套 AI 增长能力")).toBeInTheDocument();
+    expect(screen.getByText("价格与服务")).toBeInTheDocument();
+    expect(screen.queryByText("让每个人，都拥有一支智能电商团队")).not.toBeInTheDocument();
+    expect(document.getElementById("contact")).toBeNull();
+  });
+
+  it("opens and closes the Figma contact panel without restoring a duplicate page section", async () => {
+    const user = userEvent.setup();
+    render(<MarketingHomepage />);
+
+    expect(screen.queryByRole("link", { name: "联系我们" })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("link", { name: /咨询方案/ })).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: "联系硕米" }));
+    expect(screen.getByRole("dialog", { name: "联系我们" })).toBeInTheDocument();
+    expect(screen.getByLabelText("电话号码")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "关闭联系浮层" }));
+    expect(screen.queryByRole("dialog", { name: "联系我们" })).not.toBeInTheDocument();
+  });
+
+  it("switches the role solution panel when a user selects a different role", async () => {
+    const user = userEvent.setup();
+    render(<MarketingHomepage />);
+    const roleTabs = within(screen.getByRole("tablist", { name: "角色解决方案" }));
+
+    await user.click(roleTabs.getByRole("tab", { name: /工厂与供应商/ }));
+
+    expect(roleTabs.getByRole("tab", { name: /工厂与供应商/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel", { name: /工厂与供应商/ })).toHaveTextContent(
+      "把产品和生产能力转化为全球销售机会",
+    );
+    expect(screen.getByRole("link", { name: /查看供应商解决方案/ })).toBeInTheDocument();
+  });
+
+  it("switches the practice case when a user selects a different scenario", async () => {
+    const user = userEvent.setup();
+    render(<MarketingHomepage />);
+    const practiceTabs = within(screen.getByRole("tablist", { name: "实践场景" }));
+
+    await user.click(practiceTabs.getByRole("tab", { name: /跨境电商卖家/ }));
+
+    expect(practiceTabs.getByRole("tab", { name: /跨境电商卖家/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel", { name: /跨境电商卖家/ })).toHaveTextContent(
+      "AI诊断店铺，找到被忽略的增长机会",
+    );
+  });
+
+});
