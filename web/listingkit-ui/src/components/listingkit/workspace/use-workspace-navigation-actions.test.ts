@@ -290,4 +290,43 @@ describe("useWorkspaceNavigationActions", () => {
       "/listing-kits/task-1/workspace?platform=shein&section_key=detail_preview-gallery&slot=gallery&preview_capability=detail_preview",
     );
   });
+
+  it("routes an explicit dispatch from final review to its focused target", () => {
+    mocks.dispatchMutate.mockImplementation((_target, options) => {
+      options?.onSuccess?.({
+        panel_update: {
+          focused_target: {
+            platform: "shein",
+            slot: "gallery",
+            capability: "detail_preview",
+            section_key: "detail_preview-gallery",
+          },
+        },
+      });
+    });
+    const { result } = renderHook(() =>
+      useWorkspaceNavigationActions({
+        taskId: "task-1",
+        baseQuery: {},
+        searchParams: new URLSearchParams(
+          "platform=shein&section_key=final_review",
+        ),
+      }),
+    );
+
+    act(() => {
+      result.current.dispatchTarget({
+        dispatch_kind: "review_session",
+        session_query: {
+          platform: "shein",
+          slot: "gallery",
+          preview_capability: "detail_preview",
+        },
+      });
+    });
+
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/listing-kits/task-1/workspace?platform=shein&section_key=detail_preview-gallery&slot=gallery&preview_capability=detail_preview",
+    );
+  });
 });

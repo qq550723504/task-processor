@@ -264,7 +264,9 @@ export function useWorkspaceNavigationActions({
 function shouldRouteExplicitNavigation(search: string) {
   const params = new URLSearchParams(search);
   return (
-    params.has("product_section") || params.get("section_key") === "general_review"
+    params.has("product_section") ||
+    params.get("section_key") === "general_review" ||
+    params.get("section_key") === "final_review"
   );
 }
 
