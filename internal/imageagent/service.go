@@ -65,6 +65,9 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		if existing.Run.BusinessTaskID != input.BusinessTaskID || existing.Run.IdempotencyKey != input.IdempotencyKey || existing.Run.Budget != input.Budget || existing.Run.MaxConcurrentSlots != input.MaxConcurrentSlots || !reflect.DeepEqual(existing.Plan, input.Plan) {
 			return ErrRevisionConflict
 		}
+		if existing.Run.Status == RunStatusCompleted {
+			return nil
+		}
 		return s.workflows.StartManual(ctx, WorkflowStart{Run: existing.Run, Plan: existing.Plan, Identity: identity, MaxConcurrentSlots: existing.Run.MaxConcurrentSlots, AssetCatalog: existing.AssetCatalog})
 	} else if !errors.Is(getErr, ErrRunNotFound) {
 		return getErr

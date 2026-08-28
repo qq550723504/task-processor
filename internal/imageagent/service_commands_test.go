@@ -241,6 +241,7 @@ type recordingWorkflowClient struct {
 	projectionErr   error
 	projectionCalls int
 	starts          []imageagent.WorkflowStart
+	startErr        error
 	replacements    []imageagent.ReplacePlanCommand
 	retries         []imageagent.RetrySlotCommand
 	approvals       []imageagent.ApproveResultsCommand
@@ -385,6 +386,38 @@ func TestServiceStartRetryUsesImmutablePersistedCatalogInsteadOfMutableTaskCatal
 	require.Len(t, workflows.starts, 2)
 	require.Equal(t, workflows.starts[0].AssetCatalog, workflows.starts[1].AssetCatalog)
 	require.Equal(t, "source-1", workflows.starts[1].AssetCatalog.Assets[0].ID)
+}
+
+func TestServiceCompletedStartReplayReturnsOriginalSuccessWithoutRestartingTemporal(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
+	require.NoError(t, err)
+	input := imageagent.StartRunInput{
+		RunID: "run-1", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
+		IdempotencyKey: "run-key-1", Plan: commandPlan(1),
+	}
+	ctx := verifiedContext("tenant-a", "user-a")
+	require.NoError(t, service.Start(ctx, input))
+	current, err := repository.GetProjection(ctx, imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-1"})
+	require.NoError(t, err)
+	completed := current
+	completed.Run.Status = imageagent.RunStatusCompleted
+	completed.Run.CurrentNode = "complete"
+	completed.Run.Version++
+	_, err = repository.CommitProjection(ctx, imageagent.ProjectionCommit{
+		Scope: imageagent.ScopeForRun(current.Run), CommitID: "complete", ExpectedProjectionVersion: current.ProjectionVersion,
+		Snapshot: completed, EventType: "run.completed", EventPayload: json.RawMessage(`{}`), ExpectedRunVersion: current.Run.Version,
+		RunMutation: &imageagent.RunMutation{Status: imageagent.RunStatusCompleted, CurrentNode: "complete", ActivePlanRevision: current.Run.ActivePlanRevision},
+	})
+	require.NoError(t, err)
+	workflows.starts = nil
+	workflows.startErr = errors.New("completed workflow cannot be started again")
+
+	err = service.Start(ctx, input)
+
+	require.NoError(t, err)
+	require.Empty(t, workflows.starts)
 }
 
 func TestServiceConcurrentIdenticalStartWithRepositoryOwnedCatalogTimestampConverges(t *testing.T) {
@@ -573,7 +606,7 @@ func (r *mutableCatalogResolver) Resolve(context.Context, imageagent.AssetCatalo
 
 func (c *recordingWorkflowClient) StartManual(_ context.Context, start imageagent.WorkflowStart) error {
 	c.starts = append(c.starts, start)
-	return nil
+	return c.startErr
 }
 
 func (c *recordingWorkflowClient) GetProjection(context.Context, imageagent.RunScope, imageagent.ExecutionIdentity) (imageagent.WorkflowProjection, error) {

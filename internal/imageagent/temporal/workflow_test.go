@@ -948,7 +948,7 @@ func TestInvalidPersistedV3PolicySurvivesProjectionRefreshAndRejectsDirectRetry(
 		t.Run(tc.name, func(t *testing.T) {
 			plan := imageagent.Plan{
 				Revision: 1, IdempotencyKey: "plan-invalid-policy", SourceAssetIDs: []string{"source-1"}, CreatedBy: "user-a",
-				Slots: []imageagent.Slot{{ID: "scene-1", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "scene-key"}},
+				Slots: []imageagent.Slot{{ID: "scene-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "scene-key"}},
 			}
 			result := SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: "scene-1", Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: tc.code}
 			summarized := summarizeResultsV3(plan, []SlotWorkflowV3Result{result})
@@ -2297,6 +2297,35 @@ func TestWorkflowEffectOwnerFencesEveryTerminalRunStatusBeforeExecution(t *testi
 	}
 }
 
+type workflowFailureProjectionProbeInput struct {
+	RunID          string
+	Identity       imageagent.ExecutionIdentity
+	FailureCode    string
+	FailureMessage string
+}
+
+func TestManualWorkflowProjectsFailureBeforeReturningWorkflowLevelError(t *testing.T) {
+	env := newWorkflowEnv(t)
+	input := manualWorkflowInput(sevenSlotPlan())
+	persistedFailures := 0
+	env.RegisterActivityWithOptions(func(_ context.Context, failure workflowFailureProjectionProbeInput) error {
+		persistedFailures++
+		require.Equal(t, input.RunID, failure.RunID)
+		require.Equal(t, input.Identity, failure.Identity)
+		require.Equal(t, "workflow_failed", failure.FailureCode)
+		require.Equal(t, "图像任务执行失败，可使用相同请求重试", failure.FailureMessage)
+		return nil
+	}, sdkactivity.RegisterOptions{Name: "imageagent.persist_workflow_failure.v1"})
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
+		return input.Projection.Status == imageagent.RunStatusExecuting
+	})).Return(sdktemporal.NewNonRetryableApplicationError("database write exhausted", "persistence_exhausted", nil)).Once()
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.ErrorContains(t, env.GetWorkflowError(), "database write exhausted")
+	require.Equal(t, 1, persistedFailures)
+}
+
 func TestManualWorkflowRejectsNonManualModesBeforeActivities(t *testing.T) {
 	for _, mode := range []imageagent.RunMode{imageagent.RunModeAssisted, imageagent.RunModeAutomatic} {
 		t.Run(string(mode), func(t *testing.T) {
@@ -2472,6 +2501,41 @@ func TestActivitiesRestoreCapturedIdentityForExecutorAndPublisher(t *testing.T) 
 	}))
 	require.Equal(t, 1, executor.calls)
 	require.Equal(t, 1, publisher.calls)
+}
+
+func TestPersistWorkflowFailureProjectsTerminalStateIdempotently(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+	plan := sevenSlotPlan()
+	run := imageagent.Run{
+		ID: "run-1", BusinessTaskID: "task-1", TenantID: identity.TenantID, UserID: identity.UserID,
+		Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-1", Status: imageagent.RunStatusPlanning, Version: 1,
+	}
+	initializeActivityProjection(t, repository, run, plan)
+	activities, err := NewActivities(ActivityDependencies{Repository: repository, SlotExecutor: &identityCheckingExecutor{t: t}, Publisher: &identityCheckingPublisher{t: t}})
+	require.NoError(t, err)
+	input := PersistWorkflowFailureActivityInput{
+		RunID: "run-1", Identity: identity, FailureCode: "workflow_failed",
+		FailureMessage: "图像任务执行失败，可使用相同请求重试",
+	}
+
+	require.NoError(t, activities.PersistWorkflowFailure(context.Background(), input))
+	require.NoError(t, activities.PersistWorkflowFailure(context.Background(), input))
+
+	projection, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-1"})
+	require.NoError(t, err)
+	require.Equal(t, imageagent.RunStatusFailed, projection.Run.Status)
+	require.Equal(t, "workflow_failed", projection.Run.CurrentNode)
+	require.Equal(t, &imageagent.Block{Code: "workflow_failed", Message: "图像任务执行失败，可使用相同请求重试"}, projection.Run.Block)
+	events, err := repository.ListEvents(context.Background(), imageagent.ScopeForRun(projection.Run), 0, 100)
+	require.NoError(t, err)
+	failureEvents := 0
+	for _, event := range events {
+		if event.Type == "run.failed" {
+			failureEvents++
+		}
+	}
+	require.Equal(t, 1, failureEvents)
 }
 
 func TestActivitiesPersistTerminalSlotResultIdempotently(t *testing.T) {
@@ -2775,6 +2839,25 @@ func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ResultDigest: " " + sevenSlotResultDigest, ActorID: "user-a", ActionID: "spaced-digest", Identity: start.Identity}), "digest")
 }
 
+func TestTemporalClientRejectsUnsafeConcurrencyBeforeStartingWorkflow(t *testing.T) {
+	raw := &recordingSDKClient{}
+	client := NewClient(raw)
+	start := imageagent.WorkflowStart{
+		Run: imageagent.Run{
+			ID:                 "run-1",
+			TenantID:           "tenant-a",
+			UserID:             "user-a",
+			Mode:               imageagent.RunModeManual,
+			MaxConcurrentSlots: imageagent.MaxConcurrentSlots + 1,
+		},
+		Plan:     sevenSlotPlan(),
+		Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+	}
+
+	require.ErrorIs(t, client.StartManual(context.Background(), start), imageagent.ErrValidation)
+	require.Empty(t, raw.workflowName)
+}
+
 func TestV3DurableRecoveryWindowExceedsExecutionAndOperatorHorizons(t *testing.T) {
 	require.Equal(t, 30*24*time.Hour, V3WorkflowExecutionTimeout)
 	require.Equal(t, 7*24*time.Hour, V3OperatorReconciliationAllowance)
@@ -2936,7 +3019,7 @@ func TestRegisterWorkerPreservesFrozenV2Compatibility(t *testing.T) {
 	require.Equal(t, []string{workflowNameImageAgent, workflowNameImageSlot}, registrar.workflows)
 	require.Equal(t, []string{
 		"imageagent.execute_slot", "imageagent.persist_slot_result", "imageagent.persist_run_state", "imageagent.persist_plan_revision", "imageagent.persist_pending_command", "imageagent.publish_approved",
-		"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_run_state.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
+		"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_run_state.v2", "imageagent.persist_workflow_failure.v1", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
 	}, registrar.activities)
 }
 
@@ -2954,14 +3037,14 @@ func TestRegisterWorkerUsesExactModeBoundWorkflowAndActivitySets(t *testing.T) {
 			wantWorkflows: []string{workflowNameImageAgent, workflowNameImageSlot},
 			wantActivities: []string{
 				"imageagent.execute_slot", "imageagent.persist_slot_result", "imageagent.persist_run_state", "imageagent.persist_plan_revision", "imageagent.persist_pending_command", "imageagent.publish_approved",
-				"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_run_state.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
+				"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_run_state.v2", "imageagent.persist_workflow_failure.v1", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
 			},
 		},
 		{
 			name: "v3", mode: WorkerWireModeV3,
 			wantWorkflows: []string{workflowNameImageAgent, "ImageSlotWorkflowV3", workflowNameCompatibilityCanary},
 			wantActivities: []string{
-				"imageagent.persist_run_state.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2",
+				"imageagent.persist_run_state.v2", "imageagent.persist_workflow_failure.v1", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2",
 				"imageagent.execute_slot.v3", "imageagent.persist_slot_result.v3", "imageagent.publish_approved.v3",
 			},
 		},

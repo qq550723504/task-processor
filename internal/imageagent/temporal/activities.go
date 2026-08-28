@@ -720,6 +720,43 @@ func (a *Activities) PersistRunState(ctx context.Context, input PersistRunStateA
 	return nil
 }
 
+func (a *Activities) PersistWorkflowFailure(ctx context.Context, input PersistWorkflowFailureActivityInput) error {
+	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(input.RunID) == "" || input.FailureCode != "workflow_failed" || strings.TrimSpace(input.FailureMessage) == "" {
+		return fmt.Errorf("persist workflow failure input is invalid")
+	}
+	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}
+	current, err := a.repository.GetProjection(ctx, scope)
+	if err != nil {
+		return fmt.Errorf("get failed image agent projection: %w", err)
+	}
+	if isTerminalRunStatus(current.Run.Status) {
+		return nil
+	}
+	block := &imageagent.Block{Code: input.FailureCode, Message: input.FailureMessage}
+	updated := current
+	updated.Run.Status = imageagent.RunStatusFailed
+	updated.Run.CurrentNode = "workflow_failed"
+	updated.Run.Block = block
+	updated.Run.Version++
+	eventPayload, err := json.Marshal(block)
+	if err != nil {
+		return fmt.Errorf("encode image agent workflow failure: %w", err)
+	}
+	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{
+		Scope: scope, CommitID: "workflow-failed", ExpectedProjectionVersion: current.ProjectionVersion,
+		Snapshot: updated, EventType: "run.failed", EventPayload: eventPayload, ExpectedRunVersion: current.Run.Version,
+		RunMutation: &imageagent.RunMutation{Status: imageagent.RunStatusFailed, CurrentNode: "workflow_failed", ActivePlanRevision: current.Run.ActivePlanRevision, Block: block},
+	})
+	if err != nil {
+		return fmt.Errorf("commit failed image agent projection: %w", err)
+	}
+	return nil
+}
+
 func (a *Activities) PersistPlanRevision(ctx context.Context, input PersistPlanRevisionActivityInput) error {
 	ctx, err := restoreActivityIdentity(ctx, input.Identity)
 	if err != nil {
@@ -903,6 +940,7 @@ func RegisterActivitiesForMode(registrar activityRegistrar, activities *Activiti
 		registrar.RegisterActivityWithOptions(activities.PersistSlotResult, sdkactivity.RegisterOptions{Name: activityPersistSlotResult})
 	}
 	registrar.RegisterActivityWithOptions(activities.PersistRunState, sdkactivity.RegisterOptions{Name: activityPersistRunState})
+	registrar.RegisterActivityWithOptions(activities.PersistWorkflowFailure, sdkactivity.RegisterOptions{Name: activityPersistWorkflowFailure})
 	registrar.RegisterActivityWithOptions(activities.PersistPlanRevision, sdkactivity.RegisterOptions{Name: activityPersistPlanRevision})
 	registrar.RegisterActivityWithOptions(activities.PersistPendingCommand, sdkactivity.RegisterOptions{Name: activityPersistPendingCommand})
 	if mode == WorkerWireModeV2 {

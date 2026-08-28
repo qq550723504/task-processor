@@ -150,7 +150,7 @@ func TestImageSlotWorkflowV3StartsFreshActivityAfterFinalInnerAttemptLosesPublic
 	repository := store.NewMemoryRepositoryWithClock(func() time.Time { return env.Now().UTC() })
 	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
 	run := imageagent.Run{ID: "run-v3-delayed-takeover", BusinessTaskID: "task-delayed-takeover", TenantID: identity.TenantID, UserID: identity.UserID, Mode: imageagent.RunModeManual, IdempotencyKey: "run-delayed-takeover", Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1}
-	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-delayed-takeover", SourceAssetIDs: []string{"source-1"}, CreatedBy: identity.UserID, Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-delayed-takeover"}}}
+	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-delayed-takeover", SourceAssetIDs: []string{"source-1"}, CreatedBy: identity.UserID, Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-delayed-takeover"}}}
 	initializeActivityProjection(t, repository, run, plan)
 	input := ExecuteSlotV3ActivityInput{RunID: run.ID, Identity: identity, PlanRevision: plan.Revision, Slot: plan.Slots[0], Attempt: 1, IdempotencyKey: "slot-delayed-takeover:plan:1:attempt:1"}
 	baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
@@ -382,7 +382,7 @@ func TestExecuteSlotV3RenewsLeaseBetweenAssetsToPreventTakeover(t *testing.T) {
 	repository := store.NewMemoryRepositoryWithClock(func() time.Time { return clock })
 	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
 	run := imageagent.Run{ID: "run-v3-progress-renewal", BusinessTaskID: "task-progress", TenantID: identity.TenantID, UserID: identity.UserID, Mode: imageagent.RunModeManual, IdempotencyKey: "run-progress", Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1}
-	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-progress", SourceAssetIDs: []string{"source-1"}, CreatedBy: identity.UserID, Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-progress"}}}
+	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-progress", SourceAssetIDs: []string{"source-1"}, CreatedBy: identity.UserID, Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-progress"}}}
 	initializeActivityProjection(t, repository, run, plan)
 	input := ExecuteSlotV3ActivityInput{RunID: run.ID, Identity: identity, PlanRevision: 1, Slot: plan.Slots[0], Attempt: 1, IdempotencyKey: "slot-progress:plan:1:attempt:1"}
 	effects := repository.(imageagent.SlotExternalEffectV3Repository)
@@ -529,7 +529,7 @@ func TestExecuteSlotV3ProductionStoreCompletionCrashTakesOverWithoutRecopy(t *te
 	repository := store.NewMemoryRepositoryWithClock(func() time.Time { return clock })
 	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
 	run := imageagent.Run{ID: "run-v3-completion-crash", BusinessTaskID: "task-crash", TenantID: identity.TenantID, UserID: identity.UserID, Mode: imageagent.RunModeManual, IdempotencyKey: "run-crash", Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1}
-	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-crash", SourceAssetIDs: []string{"source-1"}, CreatedBy: identity.UserID, Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-crash"}}}
+	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-crash", SourceAssetIDs: []string{"source-1"}, CreatedBy: identity.UserID, Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-crash"}}}
 	initializeActivityProjection(t, repository, run, plan)
 	input := ExecuteSlotV3ActivityInput{RunID: run.ID, Identity: identity, PlanRevision: 1, Slot: plan.Slots[0], Attempt: 1, IdempotencyKey: "slot-crash:plan:1:attempt:1"}
 	baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)

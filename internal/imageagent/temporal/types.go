@@ -37,6 +37,7 @@ const (
 	activityPersistSlotResult           = "imageagent.persist_slot_result.v2"
 	activityPersistSlotResultV3         = "imageagent.persist_slot_result.v3"
 	activityPersistRunState             = "imageagent.persist_run_state.v2"
+	activityPersistWorkflowFailure      = "imageagent.persist_workflow_failure.v1"
 	activityPersistPlanRevision         = "imageagent.persist_plan_revision.v2"
 	activityPersistPendingCommand       = "imageagent.persist_pending_command.v2"
 	activityPublishApproved             = "imageagent.publish_approved.v2"
@@ -200,6 +201,13 @@ type PersistRunStateActivityInput struct {
 	Projection   WorkflowResult
 	CurrentNode  string
 	CommitID     string
+}
+
+type PersistWorkflowFailureActivityInput struct {
+	RunID          string
+	Identity       imageagent.ExecutionIdentity
+	FailureCode    string
+	FailureMessage string
 }
 
 type PersistPlanRevisionActivityInput struct {

@@ -82,6 +82,9 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 	if start.Run.Mode != imageagent.RunModeManual {
 		return fmt.Errorf("image agent workflow mode must be manual")
 	}
+	if err := imageagent.ValidateMaxConcurrentSlots(start.Run.MaxConcurrentSlots); err != nil {
+		return err
+	}
 	if err := validateCommandIdentity(start.Identity, start.Run.ID); err != nil {
 		return err
 	}

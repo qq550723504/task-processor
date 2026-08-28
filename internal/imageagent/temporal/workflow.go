@@ -23,6 +23,7 @@ const (
 	approvalPublicationWireV3Patch = "image-agent-approval-publication-wire-v3"
 	resultDigestV3Patch            = "image-agent-result-digest-v3"
 	budgetAuthorizationPatch       = "image-agent-budget-authorization-v1"
+	workflowFailureProjectionPatch = "image-agent-workflow-failure-projection-v1"
 )
 
 type workflowActivityWire struct {
@@ -87,6 +88,20 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 			return WorkflowResult{}, fmt.Errorf("validate workflow budget deadline: %w", imageagent.ErrValidation)
 		}
 	}
+	result, runErr := runImageAgentWorkflow(ctx, input)
+	if runErr == nil {
+		return result, nil
+	}
+	if workflow.GetVersion(ctx, workflowFailureProjectionPatch, workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+		return result, runErr
+	}
+	if failureErr := persistWorkflowFailure(ctx, input); failureErr != nil {
+		return result, fmt.Errorf("%w: persist workflow failure: %v", runErr, failureErr)
+	}
+	return result, runErr
+}
+
+func runImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResult, error) {
 	ctx = imageAgentActivityContext(ctx)
 	effects := newWorkflowEffectOwner(ctx)
 	projection := WorkflowResult{Status: imageagent.RunStatusPlanning, Plan: input.Plan, Slots: slotProjections(input.Plan, nil), CommandIngress: imageagent.CommandIngress{Limit: maxActionLedgerEntries}}
@@ -236,6 +251,20 @@ runPlan:
 			}
 		}
 	}
+}
+
+func persistWorkflowFailure(ctx workflow.Context, input WorkflowInput) error {
+	failureCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: time.Minute,
+		RetryPolicy: &sdktemporal.RetryPolicy{
+			InitialInterval: time.Second, BackoffCoefficient: 2,
+			MaximumInterval: 30 * time.Second, MaximumAttempts: 0,
+		},
+	})
+	return workflow.ExecuteActivity(failureCtx, activityPersistWorkflowFailure, PersistWorkflowFailureActivityInput{
+		RunID: input.RunID, Identity: input.Identity, FailureCode: "workflow_failed",
+		FailureMessage: "图像任务执行失败，可使用相同请求重试",
+	}).Get(failureCtx, nil)
 }
 
 func imageAgentActivityContext(ctx workflow.Context) workflow.Context {
