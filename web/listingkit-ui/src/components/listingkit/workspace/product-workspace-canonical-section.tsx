@@ -51,28 +51,28 @@ function SectionCard({
 }
 
 function ImagesSection({ product }: { product?: CanonicalProduct | null }) {
-  const images = (product?.images ?? []).filter((image) => Boolean(image.url?.trim()));
+  const images = collectCanonicalImages(product);
   return (
     <SectionCard title="图片">
       {images.length === 0 ? (
         <EmptyCopy>暂无商品图片</EmptyCopy>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {images.map((image, index) => (
+          {images.map(({ image, alt, label, key }) => (
             <div
               className="overflow-hidden rounded-lg border border-border bg-muted/30"
-              key={`${image.url}-${index}`}
+              key={key}
             >
               <div className="aspect-square bg-muted">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  alt={image.alt || product?.title || `商品图片 ${index + 1}`}
+                  alt={alt}
                   className="h-full w-full object-cover"
                   src={image.url}
                 />
               </div>
               <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
-                {image.role || `图片 ${index + 1}`}
+                {label}
               </div>
             </div>
           ))}
@@ -91,6 +91,14 @@ function BasicSection({ product }: { product?: CanonicalProduct | null }) {
         <Fact
           label="分类"
           value={product?.category_path?.length ? product.category_path.join(" / ") : "暂无分类"}
+        />
+        <Fact
+          label="商品卖点"
+          value={formatStringList(product?.selling_points, "暂无商品卖点")}
+        />
+        <Fact
+          label="SEO 关键词"
+          value={formatStringList(product?.seo_keywords, "暂无 SEO 关键词")}
         />
       </div>
     </SectionCard>
@@ -197,6 +205,36 @@ function Fact({ label, value }: { label: string; value: string }) {
 
 function EmptyCopy({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
+}
+
+function collectCanonicalImages(product?: CanonicalProduct | null) {
+  const productImages = (product?.images ?? []).map((image, index) => ({
+    image,
+    alt: image.alt || product?.title || `商品图片 ${index + 1}`,
+    label: image.role || `图片 ${index + 1}`,
+    key: `product-${image.url ?? "image"}-${index}`,
+  }));
+  const variantImages = (product?.variants ?? []).flatMap((variant, variantIndex) => {
+    const variantLabel = variant.sku?.trim() || `变体 ${variantIndex + 1}`;
+    return (variant.images ?? []).map((image, imageIndex) => ({
+      image,
+      alt: image.alt || `${product?.title || "商品图片"} - ${variantLabel}`,
+      label: [variantLabel, image.role].filter(Boolean).join(" · "),
+      key: `variant-${variantLabel}-${image.url ?? "image"}-${imageIndex}`,
+    }));
+  });
+
+  return [...productImages, ...variantImages].filter(({ image }) =>
+    Boolean(image.url?.trim()),
+  );
+}
+
+function formatStringList(values: string[] | undefined, emptyValue: string) {
+  const formatted = (values ?? [])
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(" · ");
+  return formatted || emptyValue;
 }
 
 function formatVariantAttributes(attributes?: Record<string, CanonicalAttribute>) {

@@ -407,6 +407,28 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     )).toBeInTheDocument();
   });
 
+  it("leaves history and selects the platform work area before recovery", async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    await user.click(screen.getByRole("button", { name: "图片" }));
+    await user.click(screen.getByRole("button", { name: "历史" }));
+    await user.click(screen.getByRole("button", { name: "SHEIN · 立即重试" }));
+
+    expect(mocks.handlePlatformRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "shein",
+        recovery_hint: "retry_dispatch",
+      }),
+      "shein",
+    );
+    expect(
+      within(screen.getByRole("region", { name: "商品工作区" })).getByText(
+        "现有 SHEIN 审核内容",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it.each(["processing", "pending", "queued", "running"])(
     "keeps AI review in a checking state while the task is %s",
     (status) => {

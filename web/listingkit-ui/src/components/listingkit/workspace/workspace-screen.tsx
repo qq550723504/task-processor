@@ -340,6 +340,11 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     if (!recovery?.descriptor) {
       return;
     }
+    setHistorySelected(false);
+    setLocalNavigation({
+      workspaceDestination: "platform",
+      selectedProductSection: "overview",
+    });
     workspaceActions.handlePlatformRecovery(recovery.descriptor, item.platform);
   };
 

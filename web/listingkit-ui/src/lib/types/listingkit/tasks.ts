@@ -436,6 +436,8 @@ export type CanonicalProduct = {
   title?: string;
   brand?: string;
   description?: string;
+  selling_points?: string[];
+  seo_keywords?: string[];
   category_path?: string[];
   images?: Array<{
     url?: string;

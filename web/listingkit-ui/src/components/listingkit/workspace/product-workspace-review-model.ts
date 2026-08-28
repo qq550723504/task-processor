@@ -72,13 +72,6 @@ export function buildProductWorkspaceReviewIssues(
     } satisfies ProductWorkspaceReviewIssue;
   });
 
-  const hasAuthoritativeWorkflowIssue = relevantWorkflowIssues.some(
-    (issue) => issue.severity === "blocking" || issue.severity === "review",
-  );
-  if (hasAuthoritativeWorkflowIssue) {
-    return workflowIssues;
-  }
-
   const fallbackIssues = buildFallbackReviewIssues(task);
   if (workflowIssues.length === 0) {
     return fallbackIssues;

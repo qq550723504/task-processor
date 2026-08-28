@@ -62,6 +62,35 @@ describe("ProductWorkspaceCanonicalSection", () => {
     expect(screen.getByText("main")).toBeInTheDocument();
   });
 
+  it("shows variant-only images with their SKU context", () => {
+    render(
+      <ProductWorkspaceCanonicalSection
+        product={{
+          title: "Variant Tote",
+          variants: [
+            {
+              sku: "TOTE-RED",
+              images: [
+                {
+                  url: "https://cdn.example.com/tote-red.jpg",
+                  role: "swatch",
+                },
+              ],
+            },
+          ],
+        }}
+        section="images"
+      />,
+    );
+
+    expect(screen.queryByText("暂无商品图片")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Variant Tote - TOTE-RED" })).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/tote-red.jpg",
+    );
+    expect(screen.getByText("TOTE-RED · swatch")).toBeInTheDocument();
+  });
+
   it("shows canonical basic product facts", () => {
     render(<ProductWorkspaceCanonicalSection product={product} section="basic" />);
 
@@ -69,6 +98,24 @@ describe("ProductWorkspaceCanonicalSection", () => {
     expect(screen.getByText("Canvas Tote")).toBeInTheDocument();
     expect(screen.getByText("Demo Brand")).toBeInTheDocument();
     expect(screen.getByText("Bags / Totes")).toBeInTheDocument();
+  });
+
+  it("shows canonical selling points and SEO keywords in basic information", () => {
+    render(
+      <ProductWorkspaceCanonicalSection
+        product={{
+          ...product,
+          selling_points: ["Foldable", "Water resistant"],
+          seo_keywords: ["canvas tote", "reusable bag"],
+        }}
+        section="basic"
+      />,
+    );
+
+    expect(screen.getByText("商品卖点")).toBeInTheDocument();
+    expect(screen.getByText("Foldable · Water resistant")).toBeInTheDocument();
+    expect(screen.getByText("SEO 关键词")).toBeInTheDocument();
+    expect(screen.getByText("canvas tote · reusable bag")).toBeInTheDocument();
   });
 
   it("shows backend-shaped canonical sku attributes and treats omitted stock as zero", () => {

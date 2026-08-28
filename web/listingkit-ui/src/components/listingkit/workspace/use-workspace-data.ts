@@ -31,6 +31,29 @@ import { useReviewPreview } from "@/lib/query/use-review-preview";
 import { useReviewSession } from "@/lib/query/use-review-session";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
 
+export function resolveWorkspaceTitle({
+  selectedPlatform,
+  amazonTitle,
+  sheinFinalTitle,
+  sheinSourceTitle,
+  canonicalTitle,
+}: {
+  selectedPlatform?: string;
+  amazonTitle?: string;
+  sheinFinalTitle?: string;
+  sheinSourceTitle?: string;
+  canonicalTitle?: string;
+}) {
+  return (
+    amazonTitle ||
+    (selectedPlatform === "shein"
+      ? sheinFinalTitle || sheinSourceTitle
+      : undefined) ||
+    canonicalTitle ||
+    "未命名商品"
+  );
+}
+
 export function useWorkspaceData({
   taskId,
   searchParams,
@@ -155,14 +178,16 @@ export function useWorkspaceData({
       : previewSuggestionCandidate;
   const sheinFlowSteps = sheinWorkspaceProjection?.flowSteps ?? [];
 
-  const workspaceTitle =
-    (workspacePlatformProjection.kind === "amazon"
-      ? workspacePlatformProjection.title
-      : undefined) ||
-    sheinPreviewPayload?.final_review?.title ||
-    sheinPreviewPayload?.source_product?.title ||
-    taskResult.data?.result?.canonical_product?.title ||
-    "未命名商品";
+  const workspaceTitle = resolveWorkspaceTitle({
+    selectedPlatform,
+    amazonTitle:
+      workspacePlatformProjection.kind === "amazon"
+        ? workspacePlatformProjection.title
+        : undefined,
+    sheinFinalTitle: sheinPreviewPayload?.final_review?.title,
+    sheinSourceTitle: sheinPreviewPayload?.source_product?.title,
+    canonicalTitle: taskResult.data?.result?.canonical_product?.title,
+  });
   const workspaceStatusLabel = workspaceTaskStatusLabel(taskResult.data?.status);
   const workspaceUpdatedAt = formatWorkspaceDate(
     taskResult.data?.result?.updated_at ??

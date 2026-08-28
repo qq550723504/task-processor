@@ -271,4 +271,45 @@ describe("Product Workspace review model", () => {
       },
     ]);
   });
+
+  it("merges canonical review reasons with blocking workflow issues without duplicates", () => {
+    const task = {
+      status: "needs_review",
+      result: {
+        workflow_issues: [
+          {
+            code: "title_review_required",
+            severity: "blocking",
+            message: "商品标题需要确认",
+          },
+        ],
+        canonical_product: {
+          needs_review: true,
+          field_traces: {
+            title: {
+              needs_review: true,
+              review_reason: "商品标题需要确认",
+            },
+            selling_points: {
+              needs_review: true,
+              review_reason: "商品卖点需要确认",
+            },
+          },
+        },
+      },
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task)).toEqual([
+      {
+        id: "title_review_required",
+        severity: "blocking",
+        title: "商品标题需要确认",
+      },
+      {
+        id: "fallback-review-2",
+        severity: "blocking",
+        title: "商品卖点需要确认",
+      },
+    ]);
+  });
 });
