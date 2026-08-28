@@ -71,7 +71,7 @@ export function extractTaskReviewReasons(task?: ListingKitTaskResult | null) {
   );
 }
 
-type SheinReviewActionKey = "category" | "attributes" | "sale_attributes";
+export type SheinReviewActionKey = "category" | "attributes" | "sale_attributes";
 
 export type TaskReviewActionLink = {
   key: SheinReviewActionKey;
@@ -111,6 +111,16 @@ function inferSheinReviewActionKeys(reasons: string[]) {
   }
 
   return keys;
+}
+
+export function inferSheinReviewActionKey(reason: string) {
+  const keys = inferSheinReviewActionKeys([reason]);
+  const orderedKeys: SheinReviewActionKey[] = [
+    "category",
+    "attributes",
+    "sale_attributes",
+  ];
+  return orderedKeys.find((key) => keys.has(key));
 }
 
 export function buildTaskReviewActionLinks(

@@ -16,6 +16,7 @@ describe("Product Workspace review model", () => {
         id: "fallback-review-1",
         severity: "blocking",
         title: "类目需要人工确认",
+        actionKey: "category",
       },
     ]);
   });
@@ -55,6 +56,7 @@ describe("Product Workspace review model", () => {
         id: "fallback-review-1",
         severity: "blocking",
         title: "类目需要人工确认",
+        actionKey: "category",
       },
     ]);
   });
@@ -108,7 +110,7 @@ describe("Product Workspace review model", () => {
     ]);
   });
 
-  it("treats review-severity workflow issues as mandatory", () => {
+  it("treats review-severity workflow issues as suggestions", () => {
     const task = {
       status: "completed",
       result: {
@@ -125,8 +127,126 @@ describe("Product Workspace review model", () => {
     expect(buildProductWorkspaceReviewIssues(task, "shein")).toEqual([
       {
         id: "shein_review_required",
-        severity: "blocking",
+        severity: "warning",
         title: "属性需要确认",
+      },
+    ]);
+  });
+
+  it("includes active SHEIN submit readiness items", () => {
+    const task = { status: "completed", result: {} } as ListingKitTaskResult;
+
+    expect(
+      buildProductWorkspaceReviewIssues(task, "shein", {
+        blocking_items: [
+          { key: "category_review", label: "类目未确认", message: "请确认类目。" },
+        ],
+        warning_items: [
+          { key: "attribute_review", label: "属性建议确认", message: "请复核属性。" },
+          {
+            key: "shein_attribute_template_freshness",
+            label: "属性模板已过期",
+            message: "请刷新属性模板。",
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        id: "readiness-blocking-1",
+        severity: "blocking",
+        title: "类目未确认",
+        description: "请确认类目。",
+        actionKey: "category_review",
+      },
+      {
+        id: "readiness-warning-1",
+        severity: "warning",
+        title: "属性建议确认",
+        description: "请复核属性。",
+        actionKey: "attribute_review",
+      },
+      {
+        id: "readiness-warning-2",
+        severity: "warning",
+        title: "属性模板已过期",
+        description: "请刷新属性模板。",
+        actionKey: "shein_attribute_template_freshness",
+      },
+    ]);
+  });
+
+  it("does not attach SHEIN fallback actions to non-SHEIN platforms", () => {
+    const task = {
+      status: "needs_review",
+      review_reasons: ["TEMU 类目需要确认"],
+      result: {},
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task, "temu")).toEqual([
+      {
+        id: "fallback-review-1",
+        severity: "blocking",
+        title: "TEMU 类目需要确认",
+      },
+    ]);
+  });
+
+  it("deduplicates readiness items that target the same workspace surface", () => {
+    const task = { status: "completed", result: {} } as ListingKitTaskResult;
+
+    expect(
+      buildProductWorkspaceReviewIssues(task, "shein", {
+        blocking_items: [
+          { key: "attributes", label: "属性未确认", message: "请确认属性。" },
+          { key: "attribute_review", label: "属性需要确认", message: "请确认属性。" },
+        ],
+      }),
+    ).toEqual([
+      {
+        id: "readiness-blocking-1",
+        severity: "blocking",
+        title: "属性未确认",
+        description: "请确认属性。",
+        actionKey: "attributes",
+      },
+    ]);
+  });
+
+  it("adds safe repair actions to legacy SHEIN fallback reasons", () => {
+    const task = {
+      status: "needs_review",
+      review_reasons: [
+        "SHEIN 类目解析尚未命中真实 category_id",
+        "SHEIN 属性模板尚未完成真实 attribute_id 映射",
+        "SHEIN 销售属性尚未完成真实 sale attribute 映射",
+        "SDS 登录状态已失效，请重新登录",
+      ],
+      result: {},
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task, "shein")).toEqual([
+      {
+        id: "fallback-review-1",
+        severity: "blocking",
+        title: "SHEIN 类目解析尚未命中真实 category_id",
+        actionKey: "category",
+      },
+      {
+        id: "fallback-review-2",
+        severity: "blocking",
+        title: "SHEIN 属性模板尚未完成真实 attribute_id 映射",
+        actionKey: "attributes",
+      },
+      {
+        id: "fallback-review-3",
+        severity: "blocking",
+        title: "SHEIN 销售属性尚未完成真实 sale attribute 映射",
+        actionKey: "sale_attributes",
+      },
+      {
+        id: "fallback-review-4",
+        severity: "blocking",
+        title: "SDS 登录状态已失效，请重新登录",
       },
     ]);
   });
@@ -275,7 +395,7 @@ describe("Product Workspace review model", () => {
     expect(buildProductWorkspaceReviewIssues(task, "shein")).toEqual([
       {
         id: "image_review_required",
-        severity: "blocking",
+        severity: "warning",
         title: "Amazon 图片需要确认",
       },
     ]);

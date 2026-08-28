@@ -198,7 +198,7 @@ function normalizeSheinReadinessItemFreshnessActionKey(
   );
 }
 
-function normalizeSheinReadinessItemWorkspaceActionKey(
+export function normalizeSheinReadinessItemWorkspaceActionKey(
   item: SheinReadinessItem,
 ): SheinWorkspaceActionKey | false {
   return (
