@@ -113,6 +113,16 @@ function inferSheinReviewActionKeys(reasons: string[]) {
   return keys;
 }
 
+export function inferSheinReviewActionKey(reason: string) {
+  const keys = inferSheinReviewActionKeys([reason]);
+  const orderedKeys: SheinReviewActionKey[] = [
+    "category",
+    "sale_attributes",
+    "attributes",
+  ];
+  return orderedKeys.find((key) => keys.has(key));
+}
+
 export function buildTaskReviewActionLinks(
   taskId: string,
   task?: ListingKitTaskResult | null,

@@ -1,13 +1,22 @@
 import {
+  normalizeSheinFreshnessActionKey,
   normalizeSheinWorkspaceActionKey,
+  normalizeSheinReadinessItemWorkspaceActionKey,
+  sheinWorkspaceTargetIdForKey,
+  type SheinFreshnessActionKey,
   type SheinWorkspaceActionKey,
 } from "@/components/listingkit/shein/shein-workspace-actions";
-import { extractTaskReviewReasons } from "@/components/listingkit/tasks/task-review-reasons";
+import {
+  extractTaskReviewReasons,
+  inferSheinReviewActionKey,
+} from "@/components/listingkit/tasks/task-review-reasons";
 import type { ProductWorkspaceAttentionSeverity } from "@/components/listingkit/workspace/product-workspace-model";
 import type {
   CanonicalFieldTrace,
   CanonicalProduct,
   ListingKitTaskResult,
+  SheinReadinessItem,
+  SheinSubmitReadiness,
 } from "@/lib/types/listingkit";
 
 export type ProductWorkspaceReviewIssue = {
@@ -18,7 +27,7 @@ export type ProductWorkspaceReviewIssue = {
   suggestion?: string;
   evidence?: string;
   confidence?: number;
-  actionKey?: SheinWorkspaceActionKey;
+  actionKey?: SheinWorkspaceActionKey | SheinFreshnessActionKey;
 };
 
 const SHEIN_EXPLICIT_ACTION_CODES = new Set([
@@ -53,6 +62,7 @@ const SHEIN_EXPLICIT_ACTION_CODES = new Set([
 export function buildProductWorkspaceReviewIssues(
   task?: ListingKitTaskResult | null,
   selectedPlatform?: string,
+  readiness?: SheinSubmitReadiness | null,
 ): ProductWorkspaceReviewIssue[] {
   const relevantWorkflowIssues = (task?.result?.workflow_issues ?? []).filter(
     (issue) =>
@@ -70,30 +80,72 @@ export function buildProductWorkspaceReviewIssues(
     const id = workflowIssueID(issue.code, index, issueCodeOccurrences);
     return {
       id,
-      severity:
-        issue.severity === "blocking" || issue.severity === "review"
-          ? "blocking"
-          : "warning",
+      severity: issue.severity === "blocking" ? "blocking" : "warning",
       title: issue.message || issue.code || "需要确认",
       ...(issue.detail ? { description: issue.detail } : {}),
       ...(actionKey ? { actionKey } : {}),
     } satisfies ProductWorkspaceReviewIssue;
   });
 
-  const fallbackIssues = buildFallbackReviewIssues(task);
-  if (workflowIssues.length === 0) {
+  const readinessIssues = buildReadinessIssues(readiness);
+  const fallbackIssues = buildFallbackReviewIssues(task, selectedPlatform);
+  const existingTitles = new Set(
+    [...workflowIssues, ...readinessIssues].map((issue) => issue.title.trim()),
+  );
+  if (workflowIssues.length === 0 && readinessIssues.length === 0) {
     return fallbackIssues;
   }
 
-  const workflowTitles = new Set(workflowIssues.map((issue) => issue.title.trim()));
   return [
     ...workflowIssues,
-    ...fallbackIssues.filter((issue) => !workflowTitles.has(issue.title.trim())),
+    ...readinessIssues,
+    ...fallbackIssues.filter((issue) => !existingTitles.has(issue.title.trim())),
   ];
+}
+
+function buildReadinessIssues(readiness?: SheinSubmitReadiness | null) {
+  const issues = [
+    ...mapReadinessItems(readiness?.blocking_items, "blocking"),
+    ...mapReadinessItems(readiness?.warning_items, "warning"),
+  ];
+  const seenTargets = new Set<string>();
+  return issues.filter((issue) => {
+    const freshnessActionKey = normalizeSheinFreshnessActionKey(issue.actionKey);
+    const workspaceActionKey = normalizeSheinWorkspaceActionKey(issue.actionKey);
+    const identity = freshnessActionKey
+      ? `freshness:${freshnessActionKey}`
+      : workspaceActionKey
+      ? `target:${sheinWorkspaceTargetIdForKey(workspaceActionKey)}`
+      : `issue:${issue.severity}:${issue.title}`;
+    if (seenTargets.has(identity)) {
+      return false;
+    }
+    seenTargets.add(identity);
+    return true;
+  });
+}
+
+function mapReadinessItems(
+  items: SheinReadinessItem[] | undefined,
+  severity: ProductWorkspaceReviewIssue["severity"],
+) {
+  return (items ?? []).map((item, index) => {
+    const actionKey = readinessItemActionKey(item);
+    const title = item.label?.trim() || item.message?.trim() || item.key?.trim() || "需要处理";
+    const description = item.message?.trim() || item.reason?.summary?.trim();
+    return {
+      id: `readiness-${severity}-${index + 1}`,
+      severity,
+      title,
+      ...(description ? { description } : {}),
+      ...(actionKey ? { actionKey } : {}),
+    } satisfies ProductWorkspaceReviewIssue;
+  });
 }
 
 function buildFallbackReviewIssues(
   task: ListingKitTaskResult | null | undefined,
+  selectedPlatform?: string,
 ) {
   const reasons = [
     ...extractTaskReviewReasons(task),
@@ -101,12 +153,34 @@ function buildFallbackReviewIssues(
   ].filter((reason, index, values) => values.indexOf(reason) === index);
 
   return reasons.map((reason, index) => {
+    const actionKey =
+      selectedPlatform?.trim().toLowerCase() === "shein"
+        ? inferSheinReviewActionKey(reason)
+        : undefined;
     return {
       id: `fallback-review-${index + 1}`,
       severity: isMandatoryFallbackReview(task) ? "blocking" : "warning",
       title: reason,
+      ...(actionKey ? { actionKey } : {}),
     } satisfies ProductWorkspaceReviewIssue;
   });
+}
+
+function readinessItemActionKey(
+  item: SheinReadinessItem,
+): SheinWorkspaceActionKey | SheinFreshnessActionKey | false {
+  const freshnessActionKey = [
+    item.taxonomy?.repair_target,
+    item.suggested_action,
+    item.taxonomy?.blocker_key,
+    item.key,
+  ]
+    .map((key) => normalizeSheinFreshnessActionKey(key))
+    .find(
+      (key): key is Exclude<SheinFreshnessActionKey, "shein_online_auth"> =>
+        Boolean(key) && key !== "shein_online_auth",
+    );
+  return freshnessActionKey || normalizeSheinReadinessItemWorkspaceActionKey(item);
 }
 
 function isReviewRequiredTaskStatus(status?: string) {

@@ -287,6 +287,9 @@ function WorkspaceScreenContent({
   const reviewIssues = buildProductWorkspaceReviewIssues(
     taskResult.data,
     selectedPlatform,
+    platformReviewSelected && selectedPlatform === "shein"
+      ? preview.data?.shein?.submit_readiness
+      : undefined,
   );
   const issueSummary = buildProductWorkspaceAttentionSummary({
     blockingCount: countIssueSeverity(reviewIssues, "blocking"),
