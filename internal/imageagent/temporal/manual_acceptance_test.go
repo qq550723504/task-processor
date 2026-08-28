@@ -493,6 +493,19 @@ func (s *podLossAcceptanceS3) HeadObject(_ context.Context, input *s3.HeadObject
 	}, nil
 }
 
+func (s *podLossAcceptanceS3) GetObject(_ context.Context, input *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	object, exists := s.objects[aws.ToString(input.Key)]
+	if !exists {
+		return nil, &types.NoSuchKey{}
+	}
+	return &s3.GetObjectOutput{
+		Body: io.NopCloser(strings.NewReader(string(object.data))), ContentLength: aws.Int64(int64(len(object.data))),
+		ContentType: aws.String(object.contentType), Metadata: cloneAcceptanceMetadata(object.metadata), ChecksumSHA256: aws.String(object.checksum),
+	}, nil
+}
+
 func (s *podLossAcceptanceS3) CopyObject(_ context.Context, input *s3.CopyObjectInput, _ ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -566,6 +579,17 @@ func (acceptanceDurableArtifactStore) PrepareSlotArtifacts(input objectstore.Pre
 		return objectstore.PreparedSlotArtifacts{}, err
 	}
 	return objectstore.PreparedSlotArtifacts{Manifest: manifest}, nil
+}
+
+func (acceptanceDurableArtifactStore) PreserveSlotArtifacts(context.Context, imageagent.SlotExternalEffectIdentity, objectstore.PreparedSlotArtifacts) error {
+	return nil
+}
+
+func (acceptanceDurableArtifactStore) RecoverSlotArtifacts(_ context.Context, _ imageagent.SlotExternalEffectIdentity, expected imageagent.StagingManifest) (objectstore.PreparedSlotArtifacts, error) {
+	if len(expected.Assets) == 0 {
+		return objectstore.PreparedSlotArtifacts{}, objectstore.ErrArtifactUnavailable
+	}
+	return objectstore.PreparedSlotArtifacts{Manifest: expected}, nil
 }
 
 func (acceptanceDurableArtifactStore) EnsureStaged(_ context.Context, prepared objectstore.PreparedSlotArtifacts) error {

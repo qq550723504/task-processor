@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -37,10 +38,11 @@ type S3Uploader struct {
 
 // S3ObjectAPI is the narrow AWS SDK v2 call boundary used by S3Uploader. The
 // production constructor still receives the configured *s3.Client; this
-// interface permits focused tests to fake only Put/Head/Copy calls.
+// interface permits focused tests to fake only Put/Head/Get/Copy calls.
 type S3ObjectAPI interface {
 	PutObject(context.Context, *s3.PutObjectInput, ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	HeadObject(context.Context, *s3.HeadObjectInput, ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
+	GetObject(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 	CopyObject(context.Context, *s3.CopyObjectInput, ...func(*s3.Options)) (*s3.CopyObjectOutput, error)
 	DeleteObject(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
 }
@@ -189,6 +191,57 @@ func (u *S3Uploader) InspectObject(ctx context.Context, key string) (ObjectInspe
 	return ObjectInspection{
 		Exists:               true,
 		ContentLength:        aws.ToInt64(output.ContentLength),
+		ContentType:          aws.ToString(output.ContentType),
+		Metadata:             metadata,
+		ServerChecksumSHA256: aws.ToString(output.ChecksumSHA256),
+		ETag:                 aws.ToString(output.ETag),
+	}, nil
+}
+
+// ReadObject returns a bounded object body together with the same integrity
+// metadata exposed by InspectObject. Durable recovery callers validate that
+// metadata against their content-addressed identity before trusting the bytes.
+func (u *S3Uploader) ReadObject(ctx context.Context, key string, maxBytes int64) ([]byte, ObjectInspection, error) {
+	if strings.TrimSpace(key) == "" || key != strings.TrimSpace(key) || maxBytes <= 0 {
+		return nil, ObjectInspection{}, fmt.Errorf("invalid bounded S3 object read")
+	}
+	checksumEnabled, err := u.strictArtifactCapability()
+	if err != nil {
+		return nil, ObjectInspection{}, err
+	}
+	input := &s3.GetObjectInput{Bucket: aws.String(u.bucket), Key: aws.String(key)}
+	if checksumEnabled {
+		input.ChecksumMode = types.ChecksumModeEnabled
+	}
+	output, err := u.s3Client.GetObject(ctx, input)
+	if err != nil {
+		if isS3NotFound(err) {
+			return nil, ObjectInspection{}, nil
+		}
+		return nil, ObjectInspection{}, fmt.Errorf("get S3 object %q: %w", key, err)
+	}
+	if output.Body == nil {
+		return nil, ObjectInspection{}, fmt.Errorf("get S3 object %q returned an empty body", key)
+	}
+	defer output.Body.Close()
+	contentLength := aws.ToInt64(output.ContentLength)
+	if contentLength <= 0 || contentLength > maxBytes {
+		return nil, ObjectInspection{}, fmt.Errorf("S3 object %q exceeds the bounded read contract", key)
+	}
+	data, err := io.ReadAll(io.LimitReader(output.Body, maxBytes+1))
+	if err != nil {
+		return nil, ObjectInspection{}, fmt.Errorf("read S3 object %q: %w", key, err)
+	}
+	if int64(len(data)) != contentLength || int64(len(data)) > maxBytes {
+		return nil, ObjectInspection{}, fmt.Errorf("S3 object %q body length does not match metadata", key)
+	}
+	metadata := make(map[string]string, len(output.Metadata))
+	for name, value := range output.Metadata {
+		metadata[strings.ToLower(name)] = value
+	}
+	return data, ObjectInspection{
+		Exists:               true,
+		ContentLength:        contentLength,
 		ContentType:          aws.ToString(output.ContentType),
 		Metadata:             metadata,
 		ServerChecksumSHA256: aws.ToString(output.ChecksumSHA256),

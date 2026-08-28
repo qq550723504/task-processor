@@ -315,6 +315,12 @@ func (workerArtifactStore) PublicURL(key string) string { return "https://cdn.ex
 func (workerArtifactStore) PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
 	return objectstore.PreparedSlotArtifacts{}, nil
 }
+func (workerArtifactStore) PreserveSlotArtifacts(context.Context, imageagent.SlotExternalEffectIdentity, objectstore.PreparedSlotArtifacts) error {
+	return nil
+}
+func (workerArtifactStore) RecoverSlotArtifacts(_ context.Context, _ imageagent.SlotExternalEffectIdentity, expected imageagent.StagingManifest) (objectstore.PreparedSlotArtifacts, error) {
+	return objectstore.PreparedSlotArtifacts{Manifest: expected}, nil
+}
 func (workerArtifactStore) EnsureStaged(context.Context, objectstore.PreparedSlotArtifacts) error {
 	return nil
 }

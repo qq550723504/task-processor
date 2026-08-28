@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // StagedAssetRef is the complete allowlist for durable generated-artifact data.
@@ -62,11 +64,28 @@ var artifactKeyIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-
 
 const maxArtifactOwnerIDLength = 128
 
+// MaxProvenanceAssetIDLength mirrors the upstream varchar(128) business-asset
+// identity contract. Provenance IDs are JSON metadata, not object-key path
+// segments, so they deliberately do not use ValidateArtifactKeyIdentifier.
+const MaxProvenanceAssetIDLength = 128
+
 // ValidateArtifactKeyIdentifier enforces the canonical identifier grammar
 // shared by run/slot commands and deterministic durable object keys.
 func ValidateArtifactKeyIdentifier(value string) error {
 	if !artifactKeyIdentifierPattern.MatchString(value) {
 		return ErrValidation
+	}
+	return nil
+}
+
+func ValidateProvenanceAssetID(value string) error {
+	if value == "" || value != strings.TrimSpace(value) || !utf8.ValidString(value) || utf8.RuneCountInString(value) > MaxProvenanceAssetIDLength {
+		return ErrValidation
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return ErrValidation
+		}
 	}
 	return nil
 }
@@ -266,7 +285,7 @@ func normalizePublishedAssetRefs(assets []PublishedAssetRef) ([]PublishedAssetRe
 
 func normalizeStagedAssetRef(asset StagedAssetRef) (StagedAssetRef, error) {
 	identity, err := NormalizeDurableAssetIdentity(DurableAssetIdentity{ObjectKey: asset.ObjectKey, SHA256: asset.SHA256})
-	if err != nil || asset.SizeBytes <= 0 || asset.Width <= 0 || asset.Height <= 0 || asset.SourceAssetID == "" || asset.SourceAssetID != strings.TrimSpace(asset.SourceAssetID) || asset.ProviderReceiptID != strings.TrimSpace(asset.ProviderReceiptID) {
+	if err != nil || asset.SizeBytes <= 0 || asset.Width <= 0 || asset.Height <= 0 || ValidateProvenanceAssetID(asset.SourceAssetID) != nil || asset.ProviderReceiptID != strings.TrimSpace(asset.ProviderReceiptID) {
 		return StagedAssetRef{}, ErrValidation
 	}
 	switch asset.ContentType {
@@ -286,7 +305,7 @@ func normalizeStagedAssetRef(asset StagedAssetRef) (StagedAssetRef, error) {
 
 func normalizePublishedAssetRef(asset PublishedAssetRef) (PublishedAssetRef, error) {
 	identity, err := NormalizeDurableAssetIdentity(DurableAssetIdentity{ObjectKey: asset.ObjectKey, SHA256: asset.SHA256})
-	if err != nil || asset.SizeBytes <= 0 || asset.Width <= 0 || asset.Height <= 0 || asset.SourceAssetID == "" || asset.SourceAssetID != strings.TrimSpace(asset.SourceAssetID) || asset.ProviderReceiptID != strings.TrimSpace(asset.ProviderReceiptID) {
+	if err != nil || asset.SizeBytes <= 0 || asset.Width <= 0 || asset.Height <= 0 || ValidateProvenanceAssetID(asset.SourceAssetID) != nil || asset.ProviderReceiptID != strings.TrimSpace(asset.ProviderReceiptID) {
 		return PublishedAssetRef{}, ErrValidation
 	}
 	switch asset.ContentType {

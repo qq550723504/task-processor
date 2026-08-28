@@ -12,6 +12,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"os"
 	"reflect"
 	"strconv"
@@ -62,6 +63,43 @@ func TestPrepareSlotArtifactsBuildsContentAddressedManifestWithoutLocalPath(t *t
 			t.Fatalf("persisted JSON leaked transient material %q: %s", sentinel, encoded)
 		}
 	}
+}
+
+func TestPrepareSlotArtifactsKeepsBusinessSourceIDOutOfObjectKeyGrammar(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t, &fakeS3API{})
+	sourceID := "source:" + strings.Repeat("x", 121)
+	asset := validAsset(t, 1, 1)
+	asset.SourceAssetID = sourceID
+
+	prepared, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{Identity: testIdentity(), Assets: []ArtifactInput{asset}})
+
+	require.NoError(t, err)
+	require.Equal(t, sourceID, prepared.Manifest.Assets[0].SourceAssetID)
+	require.NotContains(t, prepared.Manifest.Assets[0].ObjectKey, sourceID)
+}
+
+func TestRecoveryBundleRehydratesGeneratedBytesAndBindsExactManifest(t *testing.T) {
+	t.Parallel()
+	api := &fakeS3API{objects: map[string]fakeObject{}}
+	store := newTestStore(t, api)
+	prepared := mustPrepare(t, store)
+
+	require.NoError(t, store.PreserveSlotArtifacts(context.Background(), testIdentity(), prepared))
+	require.Equal(t, 1, api.putCalls, "preservation must use one atomic recovery object")
+
+	recovered, err := store.RecoverSlotArtifacts(context.Background(), testIdentity(), prepared.Manifest)
+	require.NoError(t, err)
+	require.Equal(t, prepared.Manifest, recovered.Manifest)
+	require.Equal(t, prepared.contents, recovered.contents)
+	require.NoError(t, store.EnsureStaged(context.Background(), recovered))
+	require.Equal(t, 2, api.putCalls, "rehydrated bytes must upload the missing staged object")
+
+	conflicting := prepared.Manifest
+	conflicting.Assets = append([]imageagent.StagedAssetRef(nil), prepared.Manifest.Assets...)
+	conflicting.Assets[0].SourceAssetID = "source-conflict"
+	_, err = store.RecoverSlotArtifacts(context.Background(), testIdentity(), conflicting)
+	require.ErrorIs(t, err, ErrObjectConflict)
 }
 
 func TestPrepareSlotArtifactsSeparatesSameTenantRunByOwner(t *testing.T) {
@@ -607,6 +645,7 @@ type fakeS3API struct {
 }
 
 type fakeObject struct {
+	data          []byte
 	contentType   string
 	contentLength int64
 	metadata      map[string]string
@@ -638,6 +677,18 @@ func (f *fakeS3API) HeadObject(ctx context.Context, input *s3.HeadObjectInput, _
 		return nil, &types.NotFound{}
 	}
 	return &s3.HeadObjectOutput{ContentType: aws.String(object.contentType), ContentLength: aws.Int64(object.contentLength), Metadata: object.metadata, ChecksumSHA256: aws.String(object.checksumSHA), ETag: aws.String(object.eTag)}, nil
+}
+
+func (f *fakeS3API) GetObject(_ context.Context, input *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	object, ok := f.objects[aws.ToString(input.Key)]
+	if !ok {
+		return nil, &types.NoSuchKey{}
+	}
+	return &s3.GetObjectOutput{
+		Body: io.NopCloser(bytes.NewReader(object.data)), ContentType: aws.String(object.contentType),
+		ContentLength: aws.Int64(object.contentLength), Metadata: object.metadata,
+		ChecksumSHA256: aws.String(object.checksumSHA), ETag: aws.String(object.eTag),
+	}, nil
 }
 
 func (f *fakeS3API) CopyObject(ctx context.Context, input *s3.CopyObjectInput, _ ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
@@ -676,5 +727,6 @@ func (f *fakeS3API) savePut(input *s3.PutObjectInput) {
 	if f.objects == nil {
 		f.objects = make(map[string]fakeObject)
 	}
-	f.objects[aws.ToString(input.Key)] = fakeObject{contentType: aws.ToString(input.ContentType), contentLength: aws.ToInt64(input.ContentLength), metadata: input.Metadata, checksumSHA: aws.ToString(input.ChecksumSHA256)}
+	data, _ := io.ReadAll(input.Body)
+	f.objects[aws.ToString(input.Key)] = fakeObject{data: data, contentType: aws.ToString(input.ContentType), contentLength: aws.ToInt64(input.ContentLength), metadata: input.Metadata, checksumSHA: aws.ToString(input.ChecksumSHA256)}
 }

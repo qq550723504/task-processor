@@ -41,6 +41,13 @@ func TestNormalizeAssetCatalogRejectsPlainHTTPSourceImages(t *testing.T) {
 	require.ErrorContains(t, err, "public https url is required")
 }
 
+func TestNormalizeAssetCatalogRejectsSourceIDBeyondPersistenceContract(t *testing.T) {
+	_, err := NormalizeAssetCatalog(AssetCatalog{Assets: []AuthorizedAsset{{
+		ID: strings.Repeat("s", 129), Type: AuthorizedAssetSource, URL: "https://source.example/source.png",
+	}}})
+	require.ErrorIs(t, err, ErrValidation)
+}
+
 func TestNormalizeAssetCatalogBindsCanonicalProductContextToManifest(t *testing.T) {
 	assets := []AuthorizedAsset{{ID: "source-1", Type: AuthorizedAssetSource, URL: "https://source.example/source.png"}}
 	catalog, err := NormalizeAssetCatalog(AssetCatalog{Assets: assets, ProductContext: ProductContextRef{

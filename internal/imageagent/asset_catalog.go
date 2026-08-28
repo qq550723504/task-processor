@@ -28,6 +28,9 @@ func NormalizeAssetCatalog(catalog AssetCatalog) (AssetCatalog, error) {
 		if asset.ID == "" {
 			return AssetCatalog{}, fmt.Errorf("authorized asset ID is required")
 		}
+		if err := ValidateProvenanceAssetID(asset.ID); err != nil {
+			return AssetCatalog{}, fmt.Errorf("%w: authorized asset ID is invalid", err)
+		}
 		if asset.Type != AuthorizedAssetSource && asset.Type != AuthorizedAssetStyle {
 			return AssetCatalog{}, fmt.Errorf("authorized asset %q has invalid type", asset.ID)
 		}

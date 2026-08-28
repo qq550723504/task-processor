@@ -217,6 +217,10 @@ func (f *fakeS3API) HeadObject(_ context.Context, input *s3.HeadObjectInput, _ .
 	return nil, f.headErr
 }
 
+func (f *fakeS3API) GetObject(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (f *fakeS3API) CopyObject(context.Context, *s3.CopyObjectInput, ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
 	return nil, errors.New("not implemented")
 }

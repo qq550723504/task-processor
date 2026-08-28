@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,6 +13,23 @@ import (
 	"task-processor/internal/imageagent"
 	"task-processor/internal/listingkit"
 )
+
+func TestListingKitImageAgentCatalogPreservesBusinessSourceIDOutsideObjectKeyGrammar(t *testing.T) {
+	sourceID := "source:" + strings.Repeat("x", 121)
+	tasks := listingTaskSourceStub{task: &listingkit.Task{
+		ID: "task-1", TenantID: "tenant-a", UserID: "user-a",
+		Result: &listingkit.ListingKitResult{StandardProductSnapshot: &listingkit.StandardProductSnapshot{AssetBundle: &asset.Bundle{Assets: []asset.Asset{{
+			ID: sourceID, Kind: asset.KindSourceImage, URL: "https://cdn.example.test/source.png",
+		}}}}},
+	}}
+	resolver := NewImageAgentAuthorizedAssetCatalog(tasks)
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+
+	got, err := resolver.Resolve(ctx, imageagent.AssetCatalogScope{TenantID: "tenant-a", OwnerUserID: "user-a", BusinessTaskID: "task-1", RunID: "run-1"})
+
+	require.NoError(t, err)
+	require.Equal(t, sourceID, got.Assets[0].ID)
+}
 
 func TestListingKitImageAgentCatalogUsesOwnedCanonicalSourceAssetsAndNoSyntheticStyles(t *testing.T) {
 	tasks := listingTaskSourceStub{task: &listingkit.Task{

@@ -187,6 +187,12 @@ func (runtimeArtifactStore) PublicURL(key string) string { return "https://cdn.e
 func (runtimeArtifactStore) PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
 	return objectstore.PreparedSlotArtifacts{}, nil
 }
+func (runtimeArtifactStore) PreserveSlotArtifacts(context.Context, imageagent.SlotExternalEffectIdentity, objectstore.PreparedSlotArtifacts) error {
+	return nil
+}
+func (runtimeArtifactStore) RecoverSlotArtifacts(_ context.Context, _ imageagent.SlotExternalEffectIdentity, expected imageagent.StagingManifest) (objectstore.PreparedSlotArtifacts, error) {
+	return objectstore.PreparedSlotArtifacts{Manifest: expected}, nil
+}
 func (runtimeArtifactStore) EnsureStaged(context.Context, objectstore.PreparedSlotArtifacts) error {
 	return nil
 }
