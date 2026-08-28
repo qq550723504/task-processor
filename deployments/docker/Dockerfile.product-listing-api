@@ -34,6 +34,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/listingkit-shein-
 FROM ${API_RUNTIME_BASE_IMAGE}
 
 LABEL org.opencontainers.image.listingkit.identity="canonical-subject-v1"
+LABEL org.opencontainers.image.listingkit.image-agent-routing="image-agent-v3-new-starts-v1"
 
 WORKDIR /app
 

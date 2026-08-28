@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'Usage: %s --token-file PATH --kubeconfig PATH --cluster-server URL --cluster-ca-b64 BASE64 --issuer URL --audience VALUE --subject VALUE --repository OWNER/REPO --environment NAME --workflow-path PATH\n' "$0" >&2
+  printf 'Usage: %s --token-file PATH --kubeconfig PATH --cluster-server URL --cluster-ca-b64 BASE64 --issuer URL --audience VALUE --subject VALUE --repository OWNER/REPO --environment NAME --workflow-ref OWNER/REPO/PATH@REF\n' "$0" >&2
 }
 
 token_file=""
@@ -15,7 +15,7 @@ audience=""
 subject=""
 repository=""
 environment=""
-workflow_path=""
+workflow_ref=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -28,12 +28,12 @@ while [[ $# -gt 0 ]]; do
     --subject) subject="${2:-}"; shift 2 ;;
     --repository) repository="${2:-}"; shift 2 ;;
     --environment) environment="${2:-}"; shift 2 ;;
-    --workflow-path) workflow_path="${2:-}"; shift 2 ;;
+    --workflow-ref) workflow_ref="${2:-}"; shift 2 ;;
     *) usage; exit 2 ;;
   esac
 done
 
-for required in token_file kubeconfig cluster_server cluster_ca_b64 issuer audience subject repository environment workflow_path; do
+for required in token_file kubeconfig cluster_server cluster_ca_b64 issuer audience subject repository environment workflow_ref; do
   if [[ -z "${!required}" ]]; then
     usage
     exit 2
@@ -51,9 +51,9 @@ fi
 # This local claim check is fail-fast defense in depth only. It deliberately
 # does not authenticate the JWT signature; kube-apiserver performs OIDC
 # discovery, signature verification, issuer/audience validation, and RBAC.
-node - "$token_file" "$issuer" "$audience" "$subject" "$repository" "$environment" "$workflow_path" <<'NODE'
+node - "$token_file" "$issuer" "$audience" "$subject" "$repository" "$environment" "$workflow_ref" <<'NODE'
 const fs = require('fs');
-const [tokenPath, issuer, audience, subject, repository, environment, workflowPath] = process.argv.slice(2);
+const [tokenPath, issuer, audience, subject, repository, environment, workflowRef] = process.argv.slice(2);
 const token = fs.readFileSync(tokenPath, 'utf8').trim();
 const parts = token.split('.');
 if (parts.length !== 3 || !parts.every(Boolean)) throw new Error('OIDC token is not a compact JWT');
@@ -64,12 +64,11 @@ try {
   throw new Error('OIDC token payload is not valid base64url JSON');
 }
 const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-const workflowPrefix = `${repository}/${workflowPath}@`;
 const now = Math.floor(Date.now() / 1000);
 const exact = claims.iss === issuer && audiences.includes(audience) &&
   claims.sub === subject && claims.repository === repository &&
   claims.environment === environment && typeof claims.workflow_ref === 'string' &&
-  claims.workflow_ref.startsWith(workflowPrefix);
+  claims.workflow_ref === workflowRef;
 const bounded = Number.isInteger(claims.nbf) && Number.isInteger(claims.exp) &&
   claims.nbf <= now + 60 && claims.exp > now && claims.exp - claims.nbf <= 900;
 if (!exact || !bounded) throw new Error('OIDC release claims do not match the approved short-lived identity');

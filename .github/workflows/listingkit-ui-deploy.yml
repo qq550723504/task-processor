@@ -322,7 +322,7 @@ jobs:
             --subject repo:${{ github.repository }}:environment:listingkit-ui-production \
             --repository "${{ github.repository }}" \
             --environment listingkit-ui-production \
-            --workflow-path .github/workflows/listingkit-ui-deploy.yml
+            --workflow-ref qq550723504/task-processor/.github/workflows/listingkit-ui-deploy.yml@refs/heads/main
 
       - name: Apply ListingKit UI authorization scopes
         env:

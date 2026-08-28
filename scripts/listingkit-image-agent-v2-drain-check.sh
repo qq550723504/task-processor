@@ -26,6 +26,8 @@ convergence_interval_seconds=300
 run_id_annotation="listingkit.sh/api-release-run-id"
 run_attempt_annotation="listingkit.sh/api-release-run-attempt"
 image_annotation="listingkit.sh/api-release-image"
+routing_annotation="listingkit.sh/image-agent-routing-contract"
+routing_contract="image-agent-v3-new-starts-v1"
 
 expected_run_id=""
 expected_run_attempt=""
@@ -112,12 +114,15 @@ collect_api_evidence() {
     --arg run_attempt "$expected_run_attempt" \
     --arg run_id_key "$run_id_annotation" \
     --arg run_attempt_key "$run_attempt_annotation" \
-    --arg image_key "$image_annotation" '
+    --arg image_key "$image_annotation" \
+    --arg routing_key "$routing_annotation" \
+    --arg routing_contract "$routing_contract" '
       # listingkit-api-deployment-shape
       def exact_annotations:
         .[$run_id_key] == $run_id and
         .[$run_attempt_key] == $run_attempt and
-        .[$image_key] == $image;
+        .[$image_key] == $image and
+        .[$routing_key] == $routing_contract;
       type == "object" and
       .metadata.name == "product-listing-api" and
       (.metadata.annotations | type == "object" and exact_annotations) and
@@ -146,12 +151,15 @@ collect_api_evidence() {
     --arg run_attempt "$expected_run_attempt" \
     --arg run_id_key "$run_id_annotation" \
     --arg run_attempt_key "$run_attempt_annotation" \
-    --arg image_key "$image_annotation" '
+    --arg image_key "$image_annotation" \
+    --arg routing_key "$routing_annotation" \
+    --arg routing_contract "$routing_contract" '
       # listingkit-api-pods-shape
       def exact_annotations:
         .[$run_id_key] == $run_id and
         .[$run_attempt_key] == $run_attempt and
-        .[$image_key] == $image;
+        .[$image_key] == $image and
+        .[$routing_key] == $routing_contract;
       type == "object" and
       (.items | type == "array" and length > 0) and
       all(.items[];

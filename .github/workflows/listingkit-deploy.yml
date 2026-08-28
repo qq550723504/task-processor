@@ -233,6 +233,7 @@ jobs:
             scripts/validate-listingkit-invitation-secret.sh
             scripts/listingkit-configure-github-oidc-kubeconfig.sh
             scripts/listingkit-run-release-gate-deployment.sh
+            deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml
             scripts/listingkit-clean-legacy-identity-secret.sh
             scripts/listingkit-apply-api-deployment.sh
             scripts/listingkit-apply-image-agent-worker-deployment.sh
@@ -280,7 +281,7 @@ jobs:
             --subject repo:${{ github.repository }}:environment:listingkit-api-production \
             --repository "${{ github.repository }}" \
             --environment listingkit-api-production \
-            --workflow-path .github/workflows/listingkit-deploy.yml
+            --workflow-ref qq550723504/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main
 
       - name: Reject legacy invitation credentials in shared Secret
         shell: bash
@@ -358,6 +359,11 @@ jobs:
               exit 1
               ;;
           esac
+          routing_contract="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.listingkit.image-agent-routing" }}' "$API_CANDIDATE_IMAGE")"
+          if [[ "$routing_contract" != "image-agent-v3-new-starts-v1" ]]; then
+            echo "::error::API candidate is not eligible for production v3 new-run routing; use an image built with the reviewed routing contract"
+            exit 1
+          fi
 
       - name: Migrate Product Listing API schema before ListingKit rollout
         shell: bash
@@ -365,8 +371,8 @@ jobs:
           set -euo pipefail
           .workflow-tools/scripts/listingkit-run-release-gate-deployment.sh \
             --namespace "$K8S_NAMESPACE" \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
             --deployment product-listing-api-schema-migrate-runner \
-            --container release-gate \
             --image "$API_CANDIDATE_IMAGE" \
             --timeout-seconds 900
 
@@ -376,8 +382,8 @@ jobs:
           set -euo pipefail
           .workflow-tools/scripts/listingkit-run-release-gate-deployment.sh \
             --namespace "$K8S_NAMESPACE" \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
             --deployment listingkit-schema-migrate-runner \
-            --container release-gate \
             --image "$API_CANDIDATE_IMAGE" \
             --timeout-seconds 900
 
@@ -392,8 +398,8 @@ jobs:
           PREFLIGHT_RUNNER_IMAGE="$(listingkit_compose_immutable_image "$runner_repository" "$PREFLIGHT_RUNNER_DIGEST")"
           .workflow-tools/scripts/listingkit-run-release-gate-deployment.sh \
             --namespace "$K8S_NAMESPACE" \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
             --deployment listingkit-identity-preflight-runner \
-            --container release-gate \
             --image "$PREFLIGHT_RUNNER_IMAGE" \
             --timeout-seconds 900
 
@@ -450,8 +456,8 @@ jobs:
           set -euo pipefail
           .workflow-tools/scripts/listingkit-run-release-gate-deployment.sh \
             --namespace "$K8S_NAMESPACE" \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
             --deployment image-agent-temporal-v3-canary-runner \
-            --container release-gate \
             --image "$API_CANDIDATE_IMAGE" \
             --timeout-seconds 300
 
@@ -484,10 +490,12 @@ jobs:
             --arg run_id_key "listingkit.sh/api-release-run-id" \
             --arg run_attempt_key "listingkit.sh/api-release-run-attempt" \
             --arg image_key "listingkit.sh/api-release-image" \
+            --arg routing_contract_key "listingkit.sh/image-agent-routing-contract" \
             --arg run_id "$GITHUB_RUN_ID" \
             --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
             --arg image "$API_CANDIDATE_IMAGE" \
-            '{metadata:{annotations:{($run_id_key):$run_id,($run_attempt_key):$run_attempt,($image_key):$image}},spec:{template:{metadata:{annotations:{($run_id_key):$run_id,($run_attempt_key):$run_attempt,($image_key):$image}}}}}')"
+            --arg routing_contract "image-agent-v3-new-starts-v1" \
+            '{metadata:{annotations:{($run_id_key):$run_id,($run_attempt_key):$run_attempt,($image_key):$image,($routing_contract_key):$routing_contract}},spec:{template:{metadata:{annotations:{($run_id_key):$run_id,($run_attempt_key):$run_attempt,($image_key):$image,($routing_contract_key):$routing_contract}}}}}')"
           kubectl -n "${{ env.K8S_NAMESPACE }}" patch deployment product-listing-api \
             --type merge --patch "$release_patch"
 

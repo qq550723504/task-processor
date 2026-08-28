@@ -14,11 +14,11 @@ jwt:
           (claims.sub == 'repo:qq550723504/task-processor:environment:listingkit-api-production' &&
            claims.environment == 'listingkit-api-production' &&
            claims.aud == 'api://listingkit-api-production' &&
-           claims.workflow_ref.startsWith('qq550723504/task-processor/.github/workflows/listingkit-deploy.yml@')) ||
+           claims.workflow_ref == 'qq550723504/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main') ||
           (claims.sub == 'repo:qq550723504/task-processor:environment:listingkit-ui-production' &&
            claims.environment == 'listingkit-ui-production' &&
            claims.aud == 'api://listingkit-ui-production' &&
-           claims.workflow_ref.startsWith('qq550723504/task-processor/.github/workflows/listingkit-ui-deploy.yml@'))
+           claims.workflow_ref == 'qq550723504/task-processor/.github/workflows/listingkit-ui-deploy.yml@refs/heads/main')
         message: token environment, audience, subject, and workflow must be an approved release identity
       - expression: claims.exp - claims.nbf <= 900
         message: release token lifetime must not exceed fifteen minutes

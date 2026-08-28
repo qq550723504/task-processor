@@ -345,7 +345,9 @@ to trust `https://token.actions.githubusercontent.com`; RoleBindings bind only
 the exact repository/environment subjects, and separate least-privilege Roles
 limit the API and UI owners to their named resources and required verbs.
 The API server and local fail-fast check bind ordinary workflow tokens through
-GitHub's standard `workflow_ref` claim. They do not require
+GitHub's standard `workflow_ref` claim to the exact repository, workflow path,
+and `refs/heads/main` ref for the API or UI identity; path-prefix, feature,
+tag, and missing-ref claims fail closed. They do not require
 `job_workflow_ref`, which GitHub documents only for called reusable workflows.
 Production release fails closed until this external trust and RBAC prerequisite
 is installed. Repository deployment workflows never bootstrap or widen their
@@ -356,29 +358,44 @@ canary Jobs dynamically. Kubernetes RBAC cannot constrain a top-level `create`
 request with `resourceNames`, so granting `create jobs` would reopen the same
 authority gap. Those gates therefore run as init containers in four
 administrator-installed, zero-replica Deployments. The release identity may
-patch only those named Deployments, scale one to one replica, and observe the
-Deployment result; the Deployment controller creates the transient Pod. A
-digest-pinned `pause` container becomes ready only after the one-shot init
-container succeeds, and the release driver always scales the runner back to
-zero. Production release Roles contain no top-level `create`, wildcard, or
-RBAC-management verb. Initial workload/RBAC installation remains an explicit
-administrator prerequisite.
+patch only those named Deployments. Each invocation client-renders the reviewed
+aggregate manifest, selects one exact zero-replica Deployment, verifies that a
+live object already exists, reapplies only that selected object, patches only
+the `release-gate` init-container image, and scales it to one. Before success,
+the helper compares a deterministic live projection of command, arguments,
+credential/config scope, service-account settings, volumes, security contexts,
+resources, images, selectors, and labels against the reviewed object after the
+single image and replica changes. It then requires the exact init container to
+have terminated with `Completed` and exit code zero; Deployment availability
+alone is insufficient. A digest-pinned `pause` container holds the successful
+Pod, and the driver always scales the runner back to zero. Production release
+Roles contain no top-level `create`, wildcard, or RBAC-management verb. Initial
+workload/RBAC installation remains an explicit administrator prerequisite.
 
 One machine-readable release-policy document is the source of truth for OIDC
 issuer/audiences/subjects, protected Kubernetes resource identities, verbs,
 GitHub workflow/job/step owners, and RBAC manifest locations. Pinned
 OPA/Conftest evaluates structured workflow, policy, and RBAC YAML. Actionlint
 continues to validate workflow syntax. Supported Markdown is parsed with a
-Markdown AST only to reject executable direct-production examples and link the
-canonical workflow invocation; prose lint is defense in depth and is never
-reported as authorization. The handwritten workflow/helper/prose mutation
-grammar is removed.
+Markdown AST across every fenced block to reject executable direct-production
+examples and link the canonical workflow invocation. CI path filters include
+the supported README; prose lint is defense in depth and is never reported as
+authorization. The handwritten workflow/helper/prose mutation grammar is
+removed.
+
+Every API image eligible for this release path carries the immutable OCI label
+`org.opencontainers.image.listingkit.image-agent-routing=image-agent-v3-new-starts-v1`.
+The API workflow inspects that exact label for built and supplied digests before
+any production mutation, exposes no caller override, and stamps the same fixed
+contract beside run ID, run attempt, and image on the Deployment and Pod
+template. A prior v2-producing digest is ineligible for this release path.
 
 Retiring the v2 worker requires a stable three-sample quorum, not one Visibility
 query. Every sample must re-prove all of the following:
 
 1. the serving API Deployment and every API Pod carry the exact attested
-   `run_id`, `run_attempt`, and digest annotations and no old/mixed image exists;
+   `run_id`, `run_attempt`, digest, and v3-new-starts routing annotations and no
+   old/mixed or v2-producing image exists;
 2. a parameterized authoritative database query returns zero non-terminal
    `image_agent_v2_runs`, preserving full `(tenant_id, owner_user_id, id)`
    identities for any nonzero/manual reconciliation result;
@@ -395,3 +412,11 @@ waits, yielding a 10-minute first-to-final proof window. This duration is a
 ListingKit operational policy, not a Temporal SLA. Tests replace `sleep`
 through `PATH` while retaining the production interval value; production has no
 sample-count or zero-interval override.
+
+## 16. Final round-5 closure
+
+The trusted workflow ref, immutable v3 producer label/stamp, reviewed live
+runner projection, and all-fence README lint close the four final review gaps
+as one release contract. None is a live rollout claim: production drain,
+canary, deployment, Temporal state, and business acceptance remain separate
+operator evidence and require explicit authorization outside this task.

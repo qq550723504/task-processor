@@ -754,6 +754,26 @@ Passing local checks do not prove production drain or canary acceptance. Record 
   Bash, Kustomize/client dry-run, replay, Pod-loss, credential, mode, and diff
   gates before an independent round-4 review.
 
+### Task 8 round-5 final correction: trusted identity and durable v3 lock
+
+- [x] Bind API and UI OIDC validation, AuthenticationConfiguration, machine
+  policy, workflows, and negative fixtures to their exact
+  `@refs/heads/main` workflow refs rather than a path prefix.
+- [x] Make `image-agent-v3-new-starts-v1` an immutable OCI image eligibility
+  label, require it for built and supplied digests before mutation, stamp it on
+  the API Deployment/Pods, require it in every drain sample, and reject a
+  v2-producing rollback without adding a bypass.
+- [x] Preserve the existing release-gate helper entry point while requiring the
+  reviewed aggregate manifest and exact Deployment, fail if the live object is
+  absent, reapply only the selected object, patch only the init image, compare
+  the canonical live/reviewed contract, prove successful init termination, and
+  clean up to zero on every exit.
+- [x] Scan every fenced block in the supported README, add README-only push/PR
+  CI coverage, and keep Markdown lint explicitly non-authoritative.
+- [ ] Run every fresh round-5 focused/full/race/vet, policy, workflow, manifest,
+  replay, Pod-loss, no-cap, frontend, Pester, credential, mode, and diff gate;
+  record local evidence separately from live acceptance.
+
 - [ ] **Step 7: Commit**
 
 ```powershell

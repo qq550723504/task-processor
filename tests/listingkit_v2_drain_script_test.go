@@ -14,6 +14,8 @@ const (
 	drainRunIDAnnotation      = "listingkit.sh/api-release-run-id"
 	drainRunAttemptAnnotation = "listingkit.sh/api-release-run-attempt"
 	drainImageAnnotation      = "listingkit.sh/api-release-image"
+	drainRoutingAnnotation    = "listingkit.sh/image-agent-routing-contract"
+	drainRoutingContract      = "image-agent-v3-new-starts-v1"
 )
 
 const zeroDrainSampleOutput = `api_ready_pod_count=1
@@ -190,6 +192,8 @@ func TestListingKitV2DrainCheckFailsClosedOnServingAPIIdentityOrReadiness(t *tes
 		{name: "wrong_run_attempt_annotation", fixture: drainFixture{podsJSON: apiPodsJSON([]string{expectedImage}, []map[string]string{wrong(validAnnotations, drainRunAttemptAnnotation, "3")}, []bool{true})}},
 		{name: "missing_digest_annotation", fixture: drainFixture{deploymentJSON: apiDeploymentJSON(expectedImage, without(validAnnotations, drainImageAnnotation), 1)}},
 		{name: "wrong_digest_annotation", fixture: drainFixture{podsJSON: apiPodsJSON([]string{expectedImage}, []map[string]string{wrong(validAnnotations, drainImageAnnotation, "docker.io/example/api@sha256:"+strings.Repeat("c", 64))}, []bool{true})}},
+		{name: "missing_routing_annotation", fixture: drainFixture{deploymentJSON: apiDeploymentJSON(expectedImage, without(validAnnotations, drainRoutingAnnotation), 1)}},
+		{name: "wrong_routing_annotation", fixture: drainFixture{podsJSON: apiPodsJSON([]string{expectedImage}, []map[string]string{wrong(validAnnotations, drainRoutingAnnotation, "image-agent-v2-new-starts")}, []bool{true})}},
 		{name: "no_serving_pods", fixture: drainFixture{podsJSON: apiPodsJSON(nil, nil, nil)}},
 		{name: "pod_not_ready", fixture: drainFixture{podsJSON: apiPodsJSON([]string{expectedImage}, []map[string]string{validAnnotations}, []bool{false})}},
 		{name: "malformed_deployment_json", fixture: drainFixture{deploymentJSON: "{"}},
@@ -203,6 +207,22 @@ func TestListingKitV2DrainCheckFailsClosedOnServingAPIIdentityOrReadiness(t *tes
 				t.Fatalf("invalid serving API evidence must fail closed: %s", result.output)
 			}
 		})
+	}
+}
+
+func TestListingKitV2DrainCheckRequiresV3RoutingContractForEverySample(t *testing.T) {
+	expectedImage := drainExpectedAPIImage()
+	validAnnotations := drainReleaseAnnotations("424242", "2", expectedImage)
+	missingRouting := cloneStringMap(validAnnotations)
+	delete(missingRouting, drainRoutingAnnotation)
+	zero := zeroDrainSampleFixture()
+	result := runListingKitV2DrainCheck(t, drainFixture{samples: []drainSampleFixture{
+		zero,
+		{deploymentJSON: apiDeploymentJSON(expectedImage, missingRouting, 1)},
+		zero,
+	}})
+	if result.err == nil {
+		t.Fatalf("a sample without the immutable v3 routing contract must invalidate drain: %s", result.output)
 	}
 }
 
@@ -504,6 +524,7 @@ func drainExpectedAPIImage() string {
 func drainReleaseAnnotations(runID, runAttempt, image string) map[string]string {
 	return map[string]string{
 		drainRunIDAnnotation: runID, drainRunAttemptAnnotation: runAttempt, drainImageAnnotation: image,
+		drainRoutingAnnotation: drainRoutingContract,
 	}
 }
 
@@ -631,7 +652,8 @@ try:
         return isinstance(annotations, dict) \
             and annotations.get(values.get("run_id_key")) == values.get("run_id") \
             and annotations.get(values.get("run_attempt_key")) == values.get("run_attempt") \
-            and annotations.get(values.get("image_key")) == values.get("image")
+            and annotations.get(values.get("image_key")) == values.get("image") \
+            and annotations.get(values.get("routing_key")) == values.get("routing_contract")
     if "listingkit-api-deployment-shape" in marker:
         data = json.loads(raw)
         metadata = data.get("metadata") if isinstance(data, dict) else None

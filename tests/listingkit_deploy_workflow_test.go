@@ -183,7 +183,7 @@ func TestListingKitDeployOrdersImageAgentGatesBeforeAPIRouting(t *testing.T) {
 		}
 	}
 	canaryRun := steps[indexes["canary_gate"]].Run
-	for _, required := range []string{"listingkit-run-release-gate-deployment.sh", "--container release-gate", "--image \"$API_CANDIDATE_IMAGE\"", "--timeout-seconds 300"} {
+	for _, required := range []string{"listingkit-run-release-gate-deployment.sh", "--manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml", "--image \"$API_CANDIDATE_IMAGE\"", "--timeout-seconds 300"} {
 		if !strings.Contains(canaryRun, required) {
 			t.Errorf("canary runner must contain %q", required)
 		}
@@ -342,6 +342,7 @@ func TestListingKitDeployOwnsImageAgentWorkerBuildManifestAndImmutableRollout(t 
 	for _, required := range []string{
 		"scripts/listingkit-apply-image-agent-worker-deployment.sh",
 		"scripts/listingkit-run-release-gate-deployment.sh",
+		"deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml",
 		"deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml",
 		"deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-v3-deployment.yaml",
 		"--deployment image-agent-temporal-v3-canary-runner",
@@ -849,6 +850,151 @@ func TestListingKitDeployWorkflowSupportsDigestPinnedRollbackWithoutRebuild(t *t
 	}
 }
 
+func TestListingKitProductListingAPIImageCarriesV3NewStartsContract(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "Dockerfile.product-listing-api"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const label = `org.opencontainers.image.listingkit.image-agent-routing="image-agent-v3-new-starts-v1"`
+	if !strings.Contains(string(content), label) {
+		t.Fatalf("product-listing API image must carry immutable v3 new-start routing label %q", label)
+	}
+}
+
+func TestListingKitDeployRequiresV3NewStartsLabelBeforeAnyProductionMutation(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				Run  string `yaml:"run"`
+				If   string `yaml:"if"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	steps := workflow.Jobs["deploy-api"].Steps
+	inspectionIndex := -1
+	firstMutationIndex := len(steps)
+	for index, step := range steps {
+		if step.Name == "Inspect candidate identity compatibility" {
+			inspectionIndex = index
+			if step.If != "" {
+				t.Fatalf("candidate routing inspection must apply to built and supplied digests, got if=%q", step.If)
+			}
+			for _, required := range []string{
+				`org.opencontainers.image.listingkit.image-agent-routing`,
+				`image-agent-v3-new-starts-v1`,
+				`docker image inspect`,
+			} {
+				if !strings.Contains(step.Run, required) {
+					t.Errorf("candidate routing inspection is missing %q", required)
+				}
+			}
+		}
+		if containsAny(step.Run,
+			"listingkit-run-release-gate-deployment.sh",
+			"listingkit-apply-image-agent-worker-deployment.sh",
+			"listingkit-apply-api-deployment.sh",
+			"kubectl -n ${{ env.K8S_NAMESPACE }} apply",
+			"patch deployment product-listing-api") && index < firstMutationIndex {
+			firstMutationIndex = index
+		}
+	}
+	if inspectionIndex < 0 || inspectionIndex >= firstMutationIndex {
+		t.Fatalf("candidate v3 routing label must be required before every production mutation, inspect=%d mutation=%d", inspectionIndex, firstMutationIndex)
+	}
+}
+
+func TestListingKitDeployValidatesSuppliedDigestV3NewStartsLabel(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(content)
+	for _, required := range []string{
+		`API_CANDIDATE_IMAGE="$(listingkit_compose_immutable_image`,
+		`docker pull "$API_CANDIDATE_IMAGE"`,
+		`org.opencontainers.image.listingkit.image-agent-routing`,
+		`image-agent-v3-new-starts-v1`,
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Errorf("built and supplied digest candidates must share routing-contract inspection %q", required)
+		}
+	}
+}
+
+func TestListingKitDeployStampsV3RoutingContractOnDeploymentAndPodTemplate(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployJob := listingKitDeployAPIJob(t, string(content))
+	stampStart := strings.Index(deployJob, "- name: Stamp API release identity and restart Pods")
+	if stampStart < 0 {
+		t.Fatal("API release identity stamp step is missing")
+	}
+	stamp := deployJob[stampStart:]
+	if next := strings.Index(stamp[1:], "\n      - name:"); next >= 0 {
+		stamp = stamp[:next+1]
+	}
+	for _, required := range []string{
+		`listingkit.sh/image-agent-routing-contract`,
+		`--arg routing_contract "image-agent-v3-new-starts-v1"`,
+	} {
+		if !strings.Contains(stamp, required) {
+			t.Errorf("API release stamp is missing %q", required)
+		}
+	}
+	if got := strings.Count(stamp, "($routing_contract_key):$routing_contract"); got != 2 {
+		t.Fatalf("routing contract must be stamped on Deployment and Pod template exactly once each, got %d", got)
+	}
+}
+
+func TestListingKitReleasePathHasNoCallerControlledRoutingContract(t *testing.T) {
+	t.Parallel()
+
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lower := strings.ToLower(string(content))
+	for _, forbidden := range []string{
+		"routing_contract:",
+		"route_contract:",
+		"inputs.image_agent_routing",
+		"inputs.routing_contract",
+		"release_routing_contract",
+	} {
+		if strings.Contains(lower, forbidden) {
+			t.Errorf("production workflow exposes caller-controlled routing contract %q", forbidden)
+		}
+	}
+	drain, err := os.ReadFile(filepath.Join("..", "scripts", "listingkit-image-agent-v2-drain-check.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"--routing-contract", "--expected-routing-contract", "ROUTING_CONTRACT:-"} {
+		if strings.Contains(string(drain), forbidden) {
+			t.Errorf("drain executable exposes routing-contract override %q", forbidden)
+		}
+	}
+}
+
 func TestListingKitDeployWorkflowPassesDispatchInputsThroughStepEnvironment(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
 	content, err := os.ReadFile(workflowPath)
@@ -949,7 +1095,7 @@ func TestListingKitDeployWorkflowPassesOnlyDigestsAcrossBuildJobBoundaries(t *te
 		for _, required := range []string{
 			"listingkit_compose_immutable_image",
 			"--image \"$PREFLIGHT_RUNNER_IMAGE\"",
-			"--container release-gate",
+			"--manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml",
 		} {
 			if !strings.Contains(step.Run, required) {
 				t.Errorf("preflight step must contain %q", required)

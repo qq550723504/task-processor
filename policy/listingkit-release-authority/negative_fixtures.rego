@@ -17,3 +17,6 @@ deny contains "excess RBAC resources" if input.rbac.resources[_] == input.excess
 deny contains "excess RBAC resource names" if input.rbac.resourceNames[_] == input.excessResourceName
 deny contains "machine policy drift" if input.policy.repository != "qq550723504/task-processor"
 deny contains "release identity owner drift" if input.releaseIdentity.owner != "api"
+deny contains "untrusted workflow ref" if input.token.workflowRef != input.identity.workflowRef
+deny contains "missing workflow ref" if not input.token.workflowRef
+deny contains "trusted workflow-ref policy drift" if input.policy.workflowRef != input.expectedWorkflowRef

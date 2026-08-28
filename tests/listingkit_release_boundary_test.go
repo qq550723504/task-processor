@@ -567,6 +567,8 @@ func TestListingKitImageAgentDrainRunbookDefinesCompleteSafeInventoryAndRecovery
 		"listingkit.sh/api-release-run-id",
 		"listingkit.sh/api-release-run-attempt",
 		"listingkit.sh/api-release-image",
+		"listingkit.sh/image-agent-routing-contract",
+		"image-agent-v3-new-starts-v1",
 		"status NOT IN ('completed', 'failed', 'cancelled')",
 		"Local test evidence is not live acceptance",
 		"pendingChildren",
@@ -611,6 +613,29 @@ func TestListingKitImageAgentDrainRunbookDefinesCompleteSafeInventoryAndRecovery
 		if output, syntaxErr := command.CombinedOutput(); syntaxErr != nil {
 			t.Fatalf("bash block %d is not syntactically executable: %v\n%s", index+1, syntaxErr, output)
 		}
+	}
+}
+
+func TestListingKitRunbookRejectsV2ProducingRollback(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile(filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runbook := string(content)
+	for _, required := range []string{
+		"Only prior API digests carrying `image-agent-v3-new-starts-v1`",
+		"A v2-producing API rollback is unsupported",
+		"invalidates the v2 drain evidence",
+		"separately designed recovery procedure",
+	} {
+		if !strings.Contains(runbook, required) {
+			t.Errorf("rollback contract is missing %q", required)
+		}
+	}
+	if strings.Contains(runbook, "A rollback stops new v3 starts") {
+		t.Error("supported rollback prose must not reopen v2 starts")
 	}
 }
 

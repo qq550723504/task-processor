@@ -10,7 +10,7 @@ releaseAuthority:
         environment: listingkit-api-production
         audience: api://listingkit-api-production
         subject: repo:qq550723504/task-processor:environment:listingkit-api-production
-        workflowPath: .github/workflows/listingkit-deploy.yml
+        workflowRef: qq550723504/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main
         job: deploy-api
         role: listingkit-api-release
         oidcTokenStep: Request short-lived API release identity
@@ -54,7 +54,7 @@ releaseAuthority:
         environment: listingkit-ui-production
         audience: api://listingkit-ui-production
         subject: repo:qq550723504/task-processor:environment:listingkit-ui-production
-        workflowPath: .github/workflows/listingkit-ui-deploy.yml
+        workflowRef: qq550723504/task-processor/.github/workflows/listingkit-ui-deploy.yml@refs/heads/main
         job: deploy-ui
         role: listingkit-ui-release
         oidcTokenStep: Request short-lived UI release identity
@@ -77,6 +77,10 @@ releaseAuthority:
     conftestVersion: 0.68.2
     conftestImage: openpolicyagent/conftest@sha256:5fd81e332d7e4bc01daf3ef35371800a9a9720a30c0c37a78de0c5fbe4b6d622
     opaVersion: 1.15.2
+  producerRouting:
+    imageLabel: org.opencontainers.image.listingkit.image-agent-routing
+    annotation: listingkit.sh/image-agent-routing-contract
+    contract: image-agent-v3-new-starts-v1
   releaseIdentity:
     owner: api
     deployment: product-listing-api
@@ -85,6 +89,7 @@ releaseAuthority:
       runId: listingkit.sh/api-release-run-id
       runAttempt: listingkit.sh/api-release-run-attempt
       image: listingkit.sh/api-release-image
+      routingContract: listingkit.sh/image-agent-routing-contract
   rbac:
     kustomization: deployments/kubernetes/listingkit-workbench/release-authority/kustomization.yaml
     paths:
