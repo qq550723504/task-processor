@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -54,6 +55,38 @@ func TestOldV2ParentCanStartFreshSlotChildWithExactV2Registrations(t *testing.T)
 	require.NoError(t, env.GetWorkflowResult(&result))
 	require.Equal(t, imageagent.SlotStatusAccepted, result.Status)
 	require.Empty(t, result.ErrorCode)
+}
+
+func TestImageWorkflowReplaysPreFinalizationHistory(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(preFinalizationHistoryProbe)
+	env.RegisterWorkflow(ImageSlotWorkflowV3)
+	var observedStartToCloseTimeout time.Duration
+	env.SetOnActivityStartedListener(func(info *sdkactivity.Info, _ context.Context, _ sdkconverter.EncodedValues) {
+		observedStartToCloseTimeout = info.StartToCloseTimeout
+	})
+	env.RegisterActivityWithOptions(func(context.Context, ExecuteSlotV3ActivityInput) (imageagent.SlotEffectV3PublishedResult, error) {
+		return imageagent.SlotEffectV3PublishedResult{}, nil
+	}, sdkactivity.RegisterOptions{Name: activityExecuteSlotV3})
+	env.OnGetVersion(externalEffectFinalizationPatch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+
+	env.ExecuteWorkflow(preFinalizationHistoryProbe, env.Now().Add(2*time.Minute))
+
+	require.NoError(t, env.GetWorkflowError())
+	require.Equal(t, 2*time.Minute, observedStartToCloseTimeout)
+	require.True(t, env.AssertExpectations(t))
+}
+
+func preFinalizationHistoryProbe(ctx sdkworkflow.Context, deadline time.Time) error {
+	finalizationEnabled := sdkworkflow.GetVersion(ctx, externalEffectFinalizationPatch, sdkworkflow.DefaultVersion, 1) != sdkworkflow.DefaultVersion
+	var result SlotWorkflowV3Result
+	return sdkworkflow.ExecuteChildWorkflow(ctx, ImageSlotWorkflowV3, SlotWorkflowV3Input{
+		RunID: "run-pre-finalization", Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+		PlanRevision: 1, Slot: imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleScene}, Attempt: 1,
+		ExecuteActivityName: activityExecuteSlotV3, BudgetAuthorization: true, DeadlineAt: deadline,
+		ExternalEffectFinalization: finalizationEnabled,
+	}).Get(ctx, &result)
 }
 
 func oldV2ParentContinuationProbe(ctx sdkworkflow.Context, input SlotWorkflowInput) (SlotWorkflowResult, error) {

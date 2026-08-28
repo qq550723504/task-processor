@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	sdkactivity "go.temporal.io/sdk/activity"
+	sdkconverter "go.temporal.io/sdk/converter"
 	sdktemporal "go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
@@ -188,6 +189,29 @@ func TestImageSlotWorkflowV3BudgetDeadlineBlocksWithoutActivity(t *testing.T) {
 	require.NoError(t, env.GetWorkflowResult(&result))
 	require.Equal(t, imageagent.BudgetElapsedCode, result.ErrorCode)
 	require.Zero(t, activityCalls)
+}
+
+func TestImageSlotWorkflowV3ReservesFinalizationGraceAfterBudgetDeadline(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(ImageSlotWorkflowV3)
+	var observedStartToCloseTimeout time.Duration
+	env.SetOnActivityStartedListener(func(info *sdkactivity.Info, _ context.Context, _ sdkconverter.EncodedValues) {
+		observedStartToCloseTimeout = info.StartToCloseTimeout
+	})
+	env.RegisterActivityWithOptions(func(context.Context, ExecuteSlotV3ActivityInput) (imageagent.SlotEffectV3PublishedResult, error) {
+		return imageagent.SlotEffectV3PublishedResult{}, nil
+	}, sdkactivity.RegisterOptions{Name: activityExecuteSlotV3})
+
+	env.ExecuteWorkflow(ImageSlotWorkflowV3, SlotWorkflowV3Input{
+		RunID: "run-finalization-grace", Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+		PlanRevision: 1, Slot: imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleScene}, Attempt: 1,
+		ExecuteActivityName: activityExecuteSlotV3, BudgetAuthorization: true,
+		DeadlineAt: env.Now().Add(2 * time.Minute), ExternalEffectFinalization: true,
+	})
+
+	require.NoError(t, env.GetWorkflowError())
+	require.Equal(t, 3*time.Minute, observedStartToCloseTimeout)
 }
 
 func TestImageAgentWorkflowBudgetDeniesRepairBeforeChild(t *testing.T) {

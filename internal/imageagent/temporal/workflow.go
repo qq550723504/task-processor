@@ -17,16 +17,17 @@ import (
 )
 
 const (
-	activityWireV2Patch            = "image-agent-atomic-command-boundaries-v2"
-	slotExecutionWireV3Patch       = "image-agent-slot-execution-wire-v3"
-	approvalActionIDV3Patch        = "image-agent-approval-action-id-v3"
-	approvalPublicationWireV3Patch = "image-agent-approval-publication-wire-v3"
-	resultDigestV3Patch            = "image-agent-result-digest-v3"
-	budgetAuthorizationPatch       = "image-agent-budget-authorization-v1"
-	workflowFailureProjectionPatch = "image-agent-workflow-failure-projection-v1"
-	projectionExecutionCommitPatch = "image-agent-projection-execution-commit-v1"
-	commandIngressPlanPolicyPatch  = "image-agent-command-ingress-plan-policy-v1"
-	approvalPublicationScopePatch  = "image-agent-approval-publication-scope-v1"
+	activityWireV2Patch             = "image-agent-atomic-command-boundaries-v2"
+	slotExecutionWireV3Patch        = "image-agent-slot-execution-wire-v3"
+	approvalActionIDV3Patch         = "image-agent-approval-action-id-v3"
+	approvalPublicationWireV3Patch  = "image-agent-approval-publication-wire-v3"
+	resultDigestV3Patch             = "image-agent-result-digest-v3"
+	budgetAuthorizationPatch        = "image-agent-budget-authorization-v1"
+	workflowFailureProjectionPatch  = "image-agent-workflow-failure-projection-v1"
+	projectionExecutionCommitPatch  = "image-agent-projection-execution-commit-v1"
+	commandIngressPlanPolicyPatch   = "image-agent-command-ingress-plan-policy-v1"
+	approvalPublicationScopePatch   = "image-agent-approval-publication-scope-v1"
+	externalEffectFinalizationPatch = "image-agent-external-effect-finalization-v1"
 )
 
 type workflowActivityWire struct {
@@ -91,6 +92,7 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 	}
 	input.AssetCatalog = catalog
 	input.BudgetAuthorization = workflow.GetVersion(ctx, budgetAuthorizationPatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	input.externalEffectFinalization = workflow.GetVersion(ctx, externalEffectFinalizationPatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 	if workflow.GetVersion(ctx, projectionExecutionCommitPatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion {
 		input.projectionExecutionID = strings.TrimSpace(workflow.GetInfo(ctx).WorkflowExecution.RunID)
 		if input.projectionExecutionID == "" {
@@ -1563,6 +1565,7 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 			Slot: slotInput.Slot, Attempt: slotInput.Attempt, AssetCatalog: slotInput.AssetCatalog,
 			ExecuteActivityName: activityWire.executeSlot,
 			BudgetAuthorization: input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy, DeadlineAt: input.DeadlineAt,
+			ExternalEffectFinalization: input.externalEffectFinalization,
 		})
 		workflow.Go(ctx, func(goroutineCtx workflow.Context) {
 			var v3Result SlotWorkflowV3Result

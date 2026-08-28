@@ -70,12 +70,16 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 	}
 	startToClose := 10 * time.Minute
 	if input.BudgetAuthorization && !input.DeadlineAt.IsZero() {
-		remaining := input.DeadlineAt.Sub(workflow.Now(ctx))
-		if remaining <= 0 {
+		providerWindow := input.DeadlineAt.Sub(workflow.Now(ctx))
+		if providerWindow <= 0 {
 			return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: imageagent.BudgetElapsedCode}, nil
 		}
-		if remaining < startToClose {
-			startToClose = remaining
+		activityWindow := providerWindow
+		if input.ExternalEffectFinalization {
+			activityWindow += providerFinalizationTimeout
+		}
+		if activityWindow < startToClose {
+			startToClose = activityWindow
 		}
 	}
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{

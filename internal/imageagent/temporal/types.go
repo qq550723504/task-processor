@@ -88,6 +88,9 @@ type WorkflowInput struct {
 	StartedAt           time.Time
 	DeadlineAt          time.Time
 	BudgetAuthorization bool
+	// externalEffectFinalization is runtime-only versioned behavior selected by
+	// the parent workflow before it launches v3 slot children.
+	externalEffectFinalization bool
 	// enforceIngressPlanPolicy is runtime-only versioned behavior for new
 	// workflow histories. It is never serialized from clients.
 	enforceIngressPlanPolicy bool
@@ -133,10 +136,11 @@ type SlotWorkflowV3Input struct {
 	AssetCatalog imageagent.AssetCatalog
 	// ExecuteActivityName is supplied by the Task 6 wire-selection gate. Task 4
 	// deliberately defines no production v3 activity name or registration.
-	ExecuteActivityName string
-	BudgetAuthorization bool
-	BudgetPolicy        imageagent.BudgetPolicy
-	DeadlineAt          time.Time
+	ExecuteActivityName        string
+	BudgetAuthorization        bool
+	BudgetPolicy               imageagent.BudgetPolicy
+	DeadlineAt                 time.Time
+	ExternalEffectFinalization bool
 }
 
 type SlotWorkflowV3Result struct {
