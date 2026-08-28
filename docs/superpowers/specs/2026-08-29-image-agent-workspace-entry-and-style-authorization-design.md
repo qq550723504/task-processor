@@ -71,6 +71,8 @@ The run’s existing catalog snapshot is authoritative after creation; later tas
 - `internal/imageagent` remains the owner of run lifecycle, validation, repository writes, and Temporal workflow start. Its generic HTTP API remains available for trusted callers and is not repurposed as a browser orchestration API.
 - The catalog translation accepts an explicit style-ID set. It never reads arbitrary metadata or uses `asset.Kind` as a style heuristic.
 - New route descriptors and ZITADEL authorization tests register the two task-scoped endpoints with the existing image-agent read/write permissions.
+- `imageagent.Service.Start` receives an injected provider-eligibility port and rejects an ineligible tenant before catalog resolution, projection initialization, or Temporal start. The ListingKit adapter implements the port from the same configured product-image-scene tenant allowlist used by the provider runtime; route permissions remain necessary but are not treated as capability entitlement.
+- Catalog display labels are normalized at the adapter boundary to at most 256 Unicode code points before the existing `varchar(256)` catalog persistence contract. The bound applies to source and selected style labels; it does not change source URL or provider identity.
 
 ## Frontend Flow
 
@@ -92,6 +94,8 @@ The Next BFF allow-list is extended only for the two explicit task-scoped image-
 - Tasks with only source assets can create a run with an empty style selection; the style panel remains empty by design.
 - Existing task bundles have no implicit styles, preserving current behavior until a user explicitly selects an eligible style candidate at run creation.
 - The server checks identity, tenant, task ownership, canonical asset membership, ID uniqueness, and safe URLs before starting a run.
+- The server also checks provider tenant eligibility before allocating a run. An eligible permission alone cannot create a run that the configured provider will deterministically block.
+- Labels longer than 256 Unicode code points are safely truncated for display before persistence; they remain non-authoritative metadata.
 - A failed duplicate click is safe through server-generated idempotency handling; the UI also disables the creation control while the request is pending.
 
 ## Tests and Acceptance
@@ -100,8 +104,10 @@ Backend tests prove:
 
 - owned task preflight returns safe source assets and safe non-source style candidates;
 - create rejects unauthorized ownership, unsafe/unknown/source style IDs, and client attempts to supply server-owned fields;
+- create rejects a verified but provider-ineligible tenant before any run/projection write;
 - create snapshots only selected styles, starts the existing application with revision 1, one main slot, and `max_images=1` enabled;
 - changing the task bundle after creation does not alter the started run input;
+- source and style labels longer than 256 Unicode code points persist as bounded display labels without rejecting an otherwise valid task;
 - route descriptors enforce existing read/write permissions.
 
 Frontend tests prove:
