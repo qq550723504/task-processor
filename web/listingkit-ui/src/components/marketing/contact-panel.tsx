@@ -45,6 +45,11 @@ export function ContactPanel() {
       const first = focusable[0];
       const last = focusable.at(-1);
       if (!first || !last) return;
+      if (!panel.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();

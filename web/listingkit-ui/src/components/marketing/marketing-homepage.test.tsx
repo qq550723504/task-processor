@@ -130,6 +130,29 @@ describe("MarketingHomepage", () => {
     expect(launcher).toHaveFocus();
   });
 
+  it("returns focus to the contact dialog when a pending submission disables the focused control", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<MarketingHomepage />);
+
+    await user.click(screen.getByRole("button", { name: "联系硕米" }));
+    const closeButton = screen.getByRole("button", { name: "关闭联系浮层" });
+    const launcher = screen.getByRole("button", { name: "联系硕米" });
+    await user.type(screen.getByLabelText("电话号码"), "13800138000");
+    await user.click(screen.getByRole("button", { name: "提交联系信息" }));
+
+    launcher.focus();
+    await user.keyboard("{Tab}");
+    expect(closeButton).toHaveFocus();
+  });
+
+  it("keeps the contact overlay usable on short mobile viewports", () => {
+    const styles = readFileSync("src/components/marketing/marketing-homepage.module.css", "utf8");
+
+    expect(styles).toMatch(/\.contactOverlay \{[^}]*overflow-y: auto;/);
+    expect(styles).toMatch(/\.contactPanel \{[^}]*max-height: calc\(100dvh - 40px\);[^}]*overflow-y: auto;/);
+  });
+
   it("switches the role solution panel when a user selects a different role", async () => {
     const user = userEvent.setup();
     render(<MarketingHomepage />);
