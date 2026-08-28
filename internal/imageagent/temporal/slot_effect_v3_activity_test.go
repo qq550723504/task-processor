@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	sdkactivity "go.temporal.io/sdk/activity"
 	sdktemporal "go.temporal.io/sdk/temporal"
+	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 
 	"task-processor/internal/imageagent"
@@ -124,6 +125,63 @@ func TestExecuteSlotV3RecoversLostPublicationClaimResponse(t *testing.T) {
 	stored, err := baseEffects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, stored.Publication.Fence)
+}
+
+func TestImageSlotWorkflowV3StartsFreshActivityAfterFinalInnerAttemptLosesPublicationResponse(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	leaseDuration := 30 * time.Second
+	repository := store.NewMemoryRepositoryWithClock(func() time.Time { return env.Now().UTC() })
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+	run := imageagent.Run{ID: "run-v3-delayed-takeover", BusinessTaskID: "task-delayed-takeover", TenantID: identity.TenantID, UserID: identity.UserID, Mode: imageagent.RunModeManual, IdempotencyKey: "run-delayed-takeover", Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1}
+	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-delayed-takeover", SourceAssetIDs: []string{"source-1"}, CreatedBy: identity.UserID, Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-delayed-takeover"}}}
+	initializeActivityProjection(t, repository, run, plan)
+	input := ExecuteSlotV3ActivityInput{RunID: run.ID, Identity: identity, PlanRevision: plan.Revision, Slot: plan.Slots[0], Attempt: 1, IdempotencyKey: "slot-delayed-takeover:plan:1:attempt:1"}
+	baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
+	seedV3ArtifactStaged(t, baseEffects, input, v3StagingManifest(input, tinyPNGBytes(t)))
+	effects := &delayedTakeoverV3Repository{SlotExternalEffectV3Repository: baseEffects, reserveFailures: 4}
+	executor := &recordingStagedExecutor{}
+	artifacts := &lostPublicationResponseArtifactStore{recordingArtifactStore: &recordingArtifactStore{}, loseFirstResponse: true}
+	activities, err := NewActivities(ActivityDependencies{
+		Repository: repository, SlotEffects: repository.(imageagent.SlotExternalEffectRepository), SlotExecutor: executor,
+		SlotEffectsV3: effects, StagedSlotExecutor: executor, ArtifactStore: artifacts,
+		Publisher: &identityCheckingPublisher{t: t}, PublisherV3: &identityCheckingPublisher{t: t}, PublicationLeaseDuration: leaseDuration,
+	})
+	require.NoError(t, err)
+	env.RegisterWorkflow(ImageSlotWorkflowV3)
+	env.RegisterActivityWithOptions(activities.ExecuteSlotV3, sdkactivity.RegisterOptions{Name: activityExecuteSlotV3})
+	startedAt := env.Now()
+
+	env.ExecuteWorkflow(ImageSlotWorkflowV3, SlotWorkflowV3Input{
+		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision, Slot: input.Slot,
+		Attempt: input.Attempt, AssetCatalog: input.AssetCatalog, ExecuteActivityName: activityExecuteSlotV3,
+	})
+
+	require.NoError(t, env.GetWorkflowError())
+	var result SlotWorkflowV3Result
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.SlotStatusAccepted, result.Status)
+	require.GreaterOrEqual(t, env.Now().Sub(startedAt), leaseDuration)
+	require.Zero(t, executor.GenerateCalls(), "activity retries must resume staged artifacts without regeneration")
+	require.Equal(t, 2, artifacts.FinalizeCalls(), "takeover may reconcile publication but must not multiply completion")
+	require.Equal(t, 1, effects.CompletionCalls())
+	owners, claims, acquired := effects.ClaimHistory()
+	require.Len(t, owners, 2)
+	require.True(t, strings.HasSuffix(owners[0], "/5"), owners)
+	require.True(t, strings.HasSuffix(owners[1], "/1"), owners)
+	firstOwner := strings.Split(owners[0], "/")
+	secondOwner := strings.Split(owners[1], "/")
+	require.Len(t, firstOwner, 3)
+	require.Len(t, secondOwner, 3)
+	require.NotEqual(t, firstOwner[1], secondOwner[1], "takeover must use a fresh activity execution with a reset inner retry budget")
+	require.Equal(t, []bool{true, true}, acquired)
+	require.EqualValues(t, 1, claims[0].Fence)
+	require.EqualValues(t, 2, claims[1].Fence)
+	stored, err := baseEffects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
+	require.Equal(t, owners[1], stored.Publication.Owner)
+	require.EqualValues(t, 2, stored.Publication.Fence)
 }
 
 func TestExecuteSlotV3FencesLatePublicationOwner(t *testing.T) {
@@ -765,6 +823,78 @@ type lostResponseV3Repository struct {
 	loseClaim        bool
 	loseCompletion   bool
 	renewCalls       int
+}
+
+type delayedTakeoverV3Repository struct {
+	imageagent.SlotExternalEffectV3Repository
+	mu              sync.Mutex
+	reserveFailures int
+	owners          []string
+	claims          []imageagent.PublicationClaim
+	acquired        []bool
+	completionCalls int
+}
+
+func (r *delayedTakeoverV3Repository) ReserveSlotProviderV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, bool, error) {
+	r.mu.Lock()
+	if r.reserveFailures > 0 {
+		r.reserveFailures--
+		r.mu.Unlock()
+		return imageagent.SlotEffectV3Attempt{}, false, errors.New("transient repository read failure")
+	}
+	r.mu.Unlock()
+	return r.SlotExternalEffectV3Repository.ReserveSlotProviderV3(ctx, reservation)
+}
+
+func (r *delayedTakeoverV3Repository) ClaimSlotPublicationV3(ctx context.Context, request imageagent.PublicationClaimRequest) (imageagent.SlotEffectV3Attempt, imageagent.PublicationClaim, bool, error) {
+	attempt, claim, acquired, err := r.SlotExternalEffectV3Repository.ClaimSlotPublicationV3(ctx, request)
+	if err == nil {
+		r.mu.Lock()
+		r.owners = append(r.owners, request.Owner)
+		r.claims = append(r.claims, claim)
+		r.acquired = append(r.acquired, acquired)
+		r.mu.Unlock()
+	}
+	return attempt, claim, acquired, err
+}
+
+func (r *delayedTakeoverV3Repository) CompleteSlotPublicationV3(ctx context.Context, completion imageagent.PublicationCompletion) (imageagent.SlotEffectV3Attempt, error) {
+	r.mu.Lock()
+	r.completionCalls++
+	r.mu.Unlock()
+	return r.SlotExternalEffectV3Repository.CompleteSlotPublicationV3(ctx, completion)
+}
+
+func (r *delayedTakeoverV3Repository) ClaimHistory() ([]string, []imageagent.PublicationClaim, []bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.owners...), append([]imageagent.PublicationClaim(nil), r.claims...), append([]bool(nil), r.acquired...)
+}
+
+func (r *delayedTakeoverV3Repository) CompletionCalls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.completionCalls
+}
+
+type lostPublicationResponseArtifactStore struct {
+	*recordingArtifactStore
+	mu                sync.Mutex
+	loseFirstResponse bool
+}
+
+func (s *lostPublicationResponseArtifactStore) FinalizeWithProgress(ctx context.Context, manifest imageagent.StagingManifest, progress func(context.Context, int) error) (imageagent.FinalManifest, error) {
+	final, err := s.recordingArtifactStore.FinalizeWithProgress(ctx, manifest, progress)
+	if err != nil {
+		return final, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.loseFirstResponse {
+		s.loseFirstResponse = false
+		return imageagent.FinalManifest{}, errors.New("publication response lost after deterministic finalize")
+	}
+	return final, nil
 }
 
 type failOnceStagedCommitRepository struct {

@@ -804,6 +804,137 @@ func TestSummarizeV3ResultsPreservesPublicationUnknownBlockCode(t *testing.T) {
 	require.Equal(t, []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{Mode: imageagent.RunModeManual, Status: projection.Status, Block: projection.Block}))
 }
 
+func TestV3InitialProductionSummaryPreservesExactBlockCodesAndActions(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		activityType string
+		wantCode     string
+		wantActions  []imageagent.Action
+	}{
+		{name: "provider unknown", activityType: slotProviderOutcomeUnknownCode, wantCode: imageagent.SlotProviderOutcomeUnknownCode, wantActions: []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionRetrySlot, imageagent.ActionCancel}},
+		{name: "staging unknown", activityType: slotStagingOutcomeUnknownCode, wantCode: imageagent.SlotStagingOutcomeUnknownCode, wantActions: []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionRetrySlot, imageagent.ActionCancel}},
+		{name: "publication unknown", activityType: slotPublicationOutcomeUnknownCode, wantCode: imageagent.SlotPublicationOutcomeUnknownCode, wantActions: []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionCancel}},
+		{name: "phase invalid", activityType: slotEffectPhaseInvalidCode, wantCode: imageagent.SlotEffectPhaseInvalidCode, wantActions: []imageagent.Action{imageagent.ActionCancel}},
+		{name: "policy invalid", activityType: slotEffectPolicyInvalidCode, wantCode: imageagent.SlotEffectPolicyInvalidCode, wantActions: []imageagent.Action{imageagent.ActionCancel}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newV3BlockWorkflowEnv(t, func(input ExecuteSlotV3ActivityInput) error {
+				if input.Slot.ID == "scene-2" {
+					return sdktemporal.NewNonRetryableApplicationError("blocked v3 slot", tc.activityType, nil)
+				}
+				return nil
+			})
+			var persistedBlock *imageagent.Block
+			env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
+				if input.Projection.Status == imageagent.RunStatusBlocked {
+					persistedBlock = input.Projection.Block
+				}
+				return true
+			})).Return(nil)
+
+			env.ExecuteWorkflow(ImageAgentWorkflow, manualWorkflowInput(sevenSlotPlan()))
+
+			require.NoError(t, env.GetWorkflowError())
+			var result WorkflowResult
+			require.NoError(t, env.GetWorkflowResult(&result))
+			require.NotNil(t, persistedBlock)
+			require.Equal(t, tc.wantCode, persistedBlock.Code)
+			require.Equal(t, tc.wantCode, result.Block.Code)
+			require.Equal(t, tc.wantActions, imageagent.AllowedActions(imageagent.Run{Mode: imageagent.RunModeManual, Status: result.Status, Block: result.Block}))
+		})
+	}
+}
+
+func TestV3RetryProductionSummaryPreservesPublicationUnknownAndDeniesDirectRetry(t *testing.T) {
+	env := newV3BlockWorkflowEnv(t, func(input ExecuteSlotV3ActivityInput) error {
+		if input.Slot.ID != "scene-2" {
+			return nil
+		}
+		if input.Attempt == 1 {
+			return sdktemporal.NewNonRetryableApplicationError("provider outcome unknown", slotProviderOutcomeUnknownCode, nil)
+		}
+		return sdktemporal.NewNonRetryableApplicationError("publication outcome unknown", slotPublicationOutcomeUnknownCode, nil)
+	})
+	var blocksMu sync.Mutex
+	var persistedBlockCodes []string
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
+		if input.Projection.Status == imageagent.RunStatusBlocked && input.Projection.Block != nil {
+			blocksMu.Lock()
+			persistedBlockCodes = append(persistedBlockCodes, input.Projection.Block.Code)
+			blocksMu.Unlock()
+		}
+		return true
+	})).Return(nil)
+
+	firstCompleted := false
+	var firstRejected, firstErr, secondRejected error
+	retry := RetrySlotSignal{RunID: "run-1", PlanRevision: 1, SlotID: "scene-2", ActorID: "user-a", ActionID: "retry-v3-publication-unknown"}
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalRetrySlot, "retry-v3-publication-unknown-1", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { firstRejected = err }, OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) { firstCompleted, firstErr = true, err },
+		}, retry)
+	}, time.Second)
+	env.RegisterDelayedCallback(func() {
+		second := retry
+		second.ActionID = "retry-v3-publication-unknown-again"
+		env.UpdateWorkflow(signalRetrySlot, "retry-v3-publication-unknown-2", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { secondRejected = err }, OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) { secondRejected = err },
+		}, second)
+	}, 2*time.Second)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(signalCancel, CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-v3-retry-test"})
+	}, 3*time.Second)
+	input := manualWorkflowInput(sevenSlotPlan())
+	input.WaitForCommands = true
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	require.Nil(t, firstRejected)
+	require.True(t, firstCompleted)
+	require.NoError(t, firstErr)
+	require.Error(t, secondRejected)
+	var applicationError *sdktemporal.ApplicationError
+	require.ErrorAs(t, secondRejected, &applicationError)
+	require.Equal(t, updateErrorCommandBlocked, applicationError.Type())
+	blocksMu.Lock()
+	require.Contains(t, persistedBlockCodes, imageagent.SlotProviderOutcomeUnknownCode)
+	require.Contains(t, persistedBlockCodes, imageagent.SlotPublicationOutcomeUnknownCode)
+	require.NotContains(t, persistedBlockCodes, "slot_failed")
+	blocksMu.Unlock()
+}
+
+func newV3BlockWorkflowEnv(t *testing.T, blocked func(ExecuteSlotV3ActivityInput) error) *testsuite.TestWorkflowEnvironment {
+	t.Helper()
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(approvalActionIDV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(approvalPublicationWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(resultDigestV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.RegisterWorkflow(ImageSlotWorkflowV3)
+	env.RegisterActivityWithOptions(func(_ context.Context, input ExecuteSlotV3ActivityInput) (imageagent.SlotEffectV3PublishedResult, error) {
+		if err := blocked(input); err != nil {
+			return imageagent.SlotEffectV3PublishedResult{}, err
+		}
+		return imageagent.SlotEffectV3PublishedResult{
+			SlotID: input.Slot.ID, Attempt: input.Attempt,
+			Candidates: []imageagent.SlotEffectV3AssetCandidate{{
+				AssetID: "candidate-" + input.Slot.ID, SourceAssetID: "source-1",
+				DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/run-1/1/%s/%d/0-%s.png", input.Slot.ID, input.Attempt, v3SHA256), SHA256: v3SHA256},
+			}},
+		}, nil
+	}, sdkactivity.RegisterOptions{Name: activityExecuteSlotV3})
+	env.RegisterActivityWithOptions(func(context.Context, PersistSlotResultV3ActivityInput) error { return nil }, sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3})
+	env.RegisterActivityWithOptions(func(context.Context, PersistRunStateActivityInput) error { return nil }, sdkactivity.RegisterOptions{Name: activityPersistRunState})
+	env.RegisterActivityWithOptions(func(context.Context, PersistPendingCommandActivityInput) error { return nil }, sdkactivity.RegisterOptions{Name: activityPersistPendingCommand})
+	return env
+}
+
 func TestInvalidPersistedV3PolicySurvivesProjectionRefreshAndRejectsDirectRetry(t *testing.T) {
 	for _, tc := range []struct {
 		name string

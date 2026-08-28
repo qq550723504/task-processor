@@ -88,6 +88,80 @@ func TestSlotEffectV3RepositoryContract(t *testing.T) {
 	}
 }
 
+func TestSlotEffectV3RepositoryPreservesNilAndEmptyOperationsAcrossReplay(t *testing.T) {
+	for _, factory := range newV3ReviewFixtures() {
+		for _, operations := range []struct {
+			name  string
+			value []string
+		}{
+			{name: "nil", value: nil},
+			{name: "empty", value: []string{}},
+		} {
+			t.Run(factory.name+"/"+operations.name, func(t *testing.T) {
+				fixture := factory.new(t)
+				ctx := context.Background()
+				_, _, err := fixture.effects.ReserveSlotProviderV3(ctx, fixture.reservation)
+				require.NoError(t, err)
+
+				staging := v3StagingManifest()
+				staging.Assets[0].Operations = operations.value
+				stagingFingerprint, err := imageagent.StagingManifestFingerprint(staging)
+				require.NoError(t, err)
+				prepared, err := fixture.effects.PrepareSlotStagingV3(ctx, fixture.reservation, staging)
+				require.NoError(t, err)
+				require.Equal(t, stagingFingerprint, prepared.StagingManifestFingerprint)
+				require.Equal(t, operations.value == nil, prepared.StagingManifest.Assets[0].Operations == nil)
+
+				staged, err := fixture.effects.CommitSlotStagedV3(ctx, fixture.reservation, stagingFingerprint)
+				require.NoError(t, err)
+				require.Equal(t, operations.value == nil, staged.StagingManifest.Assets[0].Operations == nil)
+
+				final := v3FinalManifest()
+				final.Assets[0].Operations = operations.value
+				publicationFingerprint, err := imageagent.FinalManifestFingerprint(final)
+				require.NoError(t, err)
+				request := imageagent.PublicationClaimRequest{
+					Reservation: fixture.reservation, Owner: "worker-a", LeaseDuration: time.Minute,
+					PublicationFingerprint: publicationFingerprint, FinalManifest: final,
+				}
+				claimedAttempt, firstClaim, claimed, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+				require.NoError(t, err)
+				require.True(t, claimed)
+				require.Equal(t, operations.value == nil, claimedAttempt.FinalManifest.Assets[0].Operations == nil)
+
+				replayedAttempt, replayedClaim, claimed, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+				require.NoError(t, err)
+				require.False(t, claimed)
+				require.Equal(t, firstClaim, replayedClaim)
+				require.Equal(t, operations.value == nil, replayedAttempt.FinalManifest.Assets[0].Operations == nil)
+
+				got, err := fixture.effects.GetSlotExternalEffectV3(ctx, fixture.reservation.Identity)
+				require.NoError(t, err)
+				require.Equal(t, operations.value == nil, got.StagingManifest.Assets[0].Operations == nil)
+				require.Equal(t, operations.value == nil, got.FinalManifest.Assets[0].Operations == nil)
+				gotStagingFingerprint, err := imageagent.StagingManifestFingerprint(got.StagingManifest)
+				require.NoError(t, err)
+				require.Equal(t, stagingFingerprint, gotStagingFingerprint)
+				gotFinalFingerprint, err := imageagent.FinalManifestFingerprint(got.FinalManifest)
+				require.NoError(t, err)
+				require.Equal(t, publicationFingerprint, gotFinalFingerprint)
+
+				stagingJSON, err := json.Marshal(got.StagingManifest)
+				require.NoError(t, err)
+				finalJSON, err := json.Marshal(got.FinalManifest)
+				require.NoError(t, err)
+				if operations.value == nil {
+					require.Contains(t, string(stagingJSON), `"operations":null`)
+					require.Contains(t, string(finalJSON), `"operations":null`)
+				} else {
+					require.Contains(t, string(stagingJSON), `"operations":[]`)
+					require.Contains(t, string(finalJSON), `"operations":[]`)
+				}
+			})
+		}
+	}
+}
+
 func TestSlotEffectV3CompletionRequiresOrderedBijectionAcrossAdapters(t *testing.T) {
 	mutations := []struct {
 		name   string

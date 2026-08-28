@@ -27,6 +27,40 @@ func TestReplayV2SlotInflightHistory(t *testing.T) {
 	require.NoError(t, replayer.ReplayWorkflowHistory(nil, readHistoryFixture(t, "v2-slot-inflight.json")))
 }
 
+func TestOldV2ParentCanStartFreshSlotChildWithExactV2Registrations(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(oldV2ParentContinuationProbe)
+	env.RegisterWorkflowWithOptions(ImageSlotWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageSlot})
+	env.RegisterActivityWithOptions(
+		func(_ context.Context, input ExecuteSlotActivityInput) (imageagent.SlotExecutionResult, error) {
+			return imageagent.SlotExecutionResult{
+				SlotID: input.Slot.ID, Attempt: input.Attempt,
+				Candidates: []imageagent.AssetCandidate{{AssetID: "candidate-1"}},
+			}, nil
+		},
+		sdkactivity.RegisterOptions{Name: activityExecuteSlot},
+	)
+	input := SlotWorkflowInput{
+		RunID: "run-old-v2-parent", Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+		PlanRevision: 1, Slot: imageagent.Slot{ID: "scene-1", Role: imageagent.SlotRoleScene, IdempotencyKey: "scene-key"}, Attempt: 1,
+	}
+
+	env.ExecuteWorkflow(oldV2ParentContinuationProbe, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	var result SlotWorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.SlotStatusAccepted, result.Status)
+	require.Empty(t, result.ErrorCode)
+}
+
+func oldV2ParentContinuationProbe(ctx sdkworkflow.Context, input SlotWorkflowInput) (SlotWorkflowResult, error) {
+	var result SlotWorkflowResult
+	err := sdkworkflow.ExecuteChildWorkflow(ctx, workflowNameImageSlot, input).Get(ctx, &result)
+	return result, err
+}
+
 func TestReplayV2AwaitingApprovalHistory(t *testing.T) {
 	replayer := sdkworker.NewWorkflowReplayer()
 	replayer.RegisterWorkflowWithOptions(ImageAgentWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageAgent})

@@ -168,7 +168,7 @@ runPlan:
 		if cancelled {
 			return cancelAndProject(results)
 		}
-		result := summarizeResults(input.Plan, results)
+		result := summarizeResultsForWire(input.Plan, results, effects.activities)
 		result.CommandIngress = updates.commandIngress()
 		if result.Block != nil {
 			if err := effects.persistRunState(ctx, input, result, "retry_slot"); err != nil {
@@ -860,7 +860,7 @@ func (s *workflowUpdateState) applyRetrySlot(ctx workflow.Context, signal RetryS
 	}
 	stagedResults := append([]SlotWorkflowResult(nil), (*s.results)...)
 	stagedResults[index] = *record.retryResult
-	result := summarizeResults(s.input.Plan, stagedResults)
+	result := summarizeResultsForWire(s.input.Plan, stagedResults, s.effects.activities)
 	result.CommandIngress = s.commandIngress()
 	if result.Block != nil {
 		if err := s.effects.persistRunState(ctx, *s.input, result, "retry_slot", record.fingerprint); err != nil {
@@ -1492,6 +1492,17 @@ func summarizeResults(plan imageagent.Plan, results []SlotWorkflowResult) Workfl
 			result.Block = &imageagent.Block{Code: "slot_failed", Message: results[index].ErrorCode, SlotID: slot.ID}
 		}
 	}
+	return result
+}
+
+func summarizeResultsForWire(plan imageagent.Plan, results []SlotWorkflowResult, activityWire workflowActivityWire) WorkflowResult {
+	result := summarizeResults(plan, results)
+	if !activityWire.useV3Slot || result.Block == nil {
+		return result
+	}
+	code := imageagent.NormalizeSlotEffectV3BlockCode(result.Block.Message)
+	result.Block.Code = code
+	result.Block.Message = code
 	return result
 }
 

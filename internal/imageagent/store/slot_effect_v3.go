@@ -834,7 +834,9 @@ func cloneFinalManifest(manifest imageagent.FinalManifest) imageagent.FinalManif
 func clonePublishedAssetRefs(assets []imageagent.PublishedAssetRef) []imageagent.PublishedAssetRef {
 	cloned := make([]imageagent.PublishedAssetRef, len(assets))
 	for index, asset := range assets {
-		asset.Operations = append([]string(nil), asset.Operations...)
+		if asset.Operations != nil {
+			asset.Operations = append([]string{}, asset.Operations...)
+		}
 		cloned[index] = asset
 	}
 	return cloned
@@ -843,7 +845,9 @@ func clonePublishedAssetRefs(assets []imageagent.PublishedAssetRef) []imageagent
 func cloneStagedAssetRefs(assets []imageagent.StagedAssetRef) []imageagent.StagedAssetRef {
 	cloned := make([]imageagent.StagedAssetRef, len(assets))
 	for index, asset := range assets {
-		asset.Operations = append([]string(nil), asset.Operations...)
+		if asset.Operations != nil {
+			asset.Operations = append([]string{}, asset.Operations...)
+		}
 		cloned[index] = asset
 	}
 	return cloned

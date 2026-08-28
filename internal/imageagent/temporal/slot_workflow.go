@@ -13,7 +13,7 @@ import (
 )
 
 func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkflowResult, error) {
-	activityWire := activityWireForWorkflow(ctx)
+	activityName := activityWireForFrozenSlotWorkflow(ctx)
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 10 * time.Minute,
 		RetryPolicy: &sdktemporal.RetryPolicy{
@@ -30,7 +30,7 @@ func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkf
 		AssetCatalog:   input.AssetCatalog,
 	}
 	var execution imageagent.SlotExecutionResult
-	if err := workflow.ExecuteActivity(ctx, activityWire.executeSlot, activityInput).Get(ctx, &execution); err != nil {
+	if err := workflow.ExecuteActivity(ctx, activityName, activityInput).Get(ctx, &execution); err != nil {
 		return SlotWorkflowResult{
 			Execution: imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
 			Status:    imageagent.SlotStatusBlocked, ErrorCode: slotExecutionErrorCode(err),
@@ -43,6 +43,13 @@ func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkf
 		}, nil
 	}
 	return SlotWorkflowResult{Execution: execution, Status: imageagent.SlotStatusAccepted}, nil
+}
+
+func activityWireForFrozenSlotWorkflow(ctx workflow.Context) string {
+	if workflow.GetVersion(ctx, activityWireV2Patch, workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+		return activityExecuteSlotLegacy
+	}
+	return activityExecuteSlot
 }
 
 func slotExecutionErrorCode(err error) string {
@@ -65,7 +72,8 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 		StartToCloseTimeout: 10 * time.Minute,
 		RetryPolicy: &sdktemporal.RetryPolicy{
 			InitialInterval: time.Second, BackoffCoefficient: 2,
-			MaximumInterval: 30 * time.Second, MaximumAttempts: 3,
+			MaximumInterval: 30 * time.Second, MaximumAttempts: 5,
+			NonRetryableErrorTypes: []string{slotPublicationRecoveryErrorType},
 		},
 	})
 	activityInput := ExecuteSlotV3ActivityInput{
@@ -75,8 +83,18 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 		AssetCatalog:   input.AssetCatalog,
 	}
 	var published imageagent.SlotEffectV3PublishedResult
-	if err := workflow.ExecuteActivity(ctx, activityName, activityInput).Get(ctx, &published); err != nil {
-		return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: slotExecutionV3ErrorCode(err)}, nil
+	for {
+		err := workflow.ExecuteActivity(ctx, activityName, activityInput).Get(ctx, &published)
+		if err == nil {
+			break
+		}
+		retryDelay, recoverPublication := slotPublicationRecoveryDelay(err)
+		if !recoverPublication {
+			return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: slotExecutionV3ErrorCode(err)}, nil
+		}
+		if err := workflow.Sleep(ctx, retryDelay); err != nil {
+			return SlotWorkflowV3Result{}, err
+		}
 	}
 	if input.Slot.Role == imageagent.SlotRoleMain && len(published.Candidates) != 1 {
 		return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: invalidMainCandidateCountCode}, nil
@@ -86,6 +104,18 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 		return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: "invalid_slot_result"}, nil
 	}
 	return SlotWorkflowV3Result{Published: normalized, Status: imageagent.SlotStatusAccepted}, nil
+}
+
+func slotPublicationRecoveryDelay(err error) (time.Duration, bool) {
+	var applicationError *sdktemporal.ApplicationError
+	if !errors.As(err, &applicationError) || applicationError.Type() != slotPublicationRecoveryErrorType {
+		return 0, false
+	}
+	var details slotPublicationRecoveryDetails
+	if detailsErr := applicationError.Details(&details); detailsErr != nil || details.RetryDelay <= 0 {
+		return 0, false
+	}
+	return details.RetryDelay, true
 }
 
 func slotExecutionV3ErrorCode(err error) string {

@@ -106,10 +106,19 @@ const (
 	slotProviderOutcomeUnknownCode    = imageagent.SlotProviderOutcomeUnknownCode
 	slotStagingOutcomeUnknownCode     = imageagent.SlotStagingOutcomeUnknownCode
 	slotPublicationOutcomeUnknownCode = imageagent.SlotPublicationOutcomeUnknownCode
+	slotPublicationRecoveryErrorType  = "imageagent_slot_publication_recovery"
 	slotEffectPhaseInvalidCode        = "imageagent_slot_effect_phase_invalid"
 	slotEffectPolicyInvalidCode       = "imageagent_slot_effect_policy_invalid"
 	invalidMainCandidateCountCode     = "invalid_main_candidate_count"
+	publicationLeaseRetrySafetyMargin = time.Second
 )
+
+type slotPublicationRecoveryDetails struct {
+	RetryDelay     time.Duration `json:"retry_delay"`
+	LeaseExpiresAt time.Time     `json:"lease_expires_at"`
+	Owner          string        `json:"owner"`
+	Fence          int64         `json:"fence"`
+}
 
 func (a *Activities) ExecuteSlot(ctx context.Context, input ExecuteSlotActivityInput) (imageagent.SlotExecutionResult, error) {
 	ctx, err := restoreActivityIdentity(ctx, input.Identity)
@@ -227,10 +236,10 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			return effect.Published, nil
 		}
 		if !acquired {
-			return v3Result, fmt.Errorf("slot publication is owned by another activity attempt: %w", imageagent.ErrRevisionConflict)
+			return v3Result, a.publicationRecoveryError("slot publication is owned by another activity attempt", publication, imageagent.ErrRevisionConflict)
 		}
 		if _, err := a.renewPublicationV3(ctx, reservation.Identity, publication); err != nil {
-			return v3Result, err
+			return v3Result, a.publicationRecoveryError("renew slot publication lease", publication, err)
 		}
 		actualFinal, finalizeErr := a.artifactStore.FinalizeWithProgress(ctx, effect.StagingManifest, func(progressCtx context.Context, _ int) error {
 			renewed, renewErr := a.renewPublicationV3(progressCtx, reservation.Identity, publication)
@@ -243,15 +252,16 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			if errors.Is(finalizeErr, objectstore.ErrArtifactUnavailable) || errors.Is(finalizeErr, objectstore.ErrObjectConflict) {
 				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3PublicationUnknown, slotPublicationOutcomeUnknownCode, publication)
 			}
-			return v3Result, fmt.Errorf("finalize slot artifacts: %w", finalizeErr)
+			return v3Result, a.publicationRecoveryError("finalize slot artifacts after publication claim", publication, finalizeErr)
 		}
 		if !reflect.DeepEqual(actualFinal, effect.FinalManifest) {
 			return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3PublicationUnknown, slotPublicationOutcomeUnknownCode, publication)
 		}
-		publication, err = a.renewPublicationV3(ctx, reservation.Identity, publication)
-		if err != nil {
-			return v3Result, err
+		renewedPublication, renewErr := a.renewPublicationV3(ctx, reservation.Identity, publication)
+		if renewErr != nil {
+			return v3Result, a.publicationRecoveryError("renew slot publication lease after finalize", publication, renewErr)
 		}
+		publication = renewedPublication
 		result, buildErr := a.stagedSlotExecutor.BuildSlotResult(ctx, executionInput, imageagent.PublishedSlotOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, Assets: actualFinal.Assets})
 		if buildErr != nil {
 			return v3Result, fmt.Errorf("build durable slot result: %w", buildErr)
@@ -297,6 +307,29 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			fmt.Sprintf("unsupported persisted slot effect phase %q", effect.Phase), slotEffectPhaseInvalidCode, nil,
 		)
 	}
+}
+
+func (a *Activities) publicationRecoveryError(message string, publication imageagent.PublicationClaim, cause error) error {
+	delay := time.Until(publication.LeaseExpiresAt)
+	if delay < 0 {
+		delay = 0
+	}
+	delay += publicationLeaseRetrySafetyMargin
+	maxDelay := a.publicationLeaseDuration + publicationLeaseRetrySafetyMargin
+	if delay > maxDelay {
+		delay = maxDelay
+	}
+	details := slotPublicationRecoveryDetails{
+		RetryDelay: delay, LeaseExpiresAt: publication.LeaseExpiresAt,
+		Owner: publication.Owner, Fence: publication.Fence,
+	}
+	return sdktemporal.NewApplicationErrorWithOptions(
+		message,
+		slotPublicationRecoveryErrorType,
+		sdktemporal.ApplicationErrorOptions{
+			NonRetryable: true, Cause: cause, Details: []interface{}{details}, NextRetryDelay: delay,
+		},
+	)
 }
 
 func validatePersistedSlotEffectV3(effect imageagent.SlotEffectV3Attempt) error {
