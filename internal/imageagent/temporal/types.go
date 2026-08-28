@@ -12,12 +12,10 @@ import (
 )
 
 const (
-	// V3WorkflowExecutionTimeout is applied by Client.StartManual only when a
-	// new v3 execution is requested. It is not read from workflow history and
-	// does not alter already-running or replayed executions.
-	V3WorkflowExecutionTimeout         = 30 * 24 * time.Hour
-	V3OperatorReconciliationAllowance  = 7 * 24 * time.Hour
-	V3MaximumDurableRecoveryWindow     = V3WorkflowExecutionTimeout + V3OperatorReconciliationAllowance
+	// V3WorkflowExecutionTimeout deliberately leaves Temporal's optional server
+	// execution deadline unset. Manual runs can wait for operator approval for
+	// an unbounded period; configured MaxElapsed remains the business budget.
+	V3WorkflowExecutionTimeout         = time.Duration(0)
 	V3MinimumStagingLifecycleRetention = 45 * 24 * time.Hour
 )
 

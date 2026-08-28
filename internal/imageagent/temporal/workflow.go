@@ -513,9 +513,10 @@ type workflowUpdateRecord struct {
 type signalIngressState string
 
 const (
-	signalIngressRejected signalIngressState = "rejected"
-	signalIngressDeferred signalIngressState = "deferred"
-	signalIngressAccepted signalIngressState = "accepted"
+	signalIngressRejected   signalIngressState = "rejected"
+	signalIngressDeferred   signalIngressState = "deferred"
+	signalIngressAccepted   signalIngressState = "accepted"
+	signalIngressSuperseded signalIngressState = "superseded"
 )
 
 const maxActionLedgerEntries = 1024
@@ -810,7 +811,18 @@ func (s *workflowUpdateState) validateRetrySlot(signal RetrySlotSignal) error {
 	if strings.TrimSpace(signal.RunID) == "" || strings.TrimSpace(signal.ActorID) == "" || strings.TrimSpace(signal.ActionID) == "" || strings.TrimSpace(signal.SlotID) == "" || signal.PlanRevision <= 0 {
 		return updateBlockedError("retry command shape is invalid")
 	}
-	return nil
+	if err := validateCommandOwner(*s.input, signal.RunID, signal.ActorID, signal.ActionID); err != nil {
+		return err
+	}
+	fingerprint, err := updateFingerprint(signalRetrySlot, signal)
+	if err != nil {
+		return updateBlockedError("retry command cannot be encoded")
+	}
+	known, err := s.validateAction(signal.ActionID, fingerprint)
+	if err != nil || known {
+		return err
+	}
+	return s.validateRetrySlotBusiness(signal)
 }
 
 func (s *workflowUpdateState) validateRetrySlotBusiness(signal RetrySlotSignal) error {
@@ -864,7 +876,7 @@ func (s *workflowUpdateState) applyRetrySlot(ctx workflow.Context, signal RetryS
 		attempt := (*s.results)[index].Execution.Attempt + 1
 		completionChannel := workflow.NewBufferedChannel(ctx, 1)
 		if s.input.BudgetAuthorization && s.input.BudgetPolicy.AllowsRepairAttempt(attempt-1) != nil {
-			completionChannel.Send(ctx, budgetBlockedCompletion(*s.input, index, attempt, imageagent.BudgetExhaustedCode, s.effects.activities.useV3Slot))
+			completionChannel.Send(ctx, blockedSlotCompletion(*s.input, index, attempt, imageagent.BudgetExhaustedCode, s.effects.activities.useV3Slot))
 		} else {
 			startChild(ctx, *s.input, index, attempt, completionChannel, s.effects.activities)
 		}
@@ -1027,15 +1039,16 @@ func (s *workflowUpdateState) handleCancel(ctx workflow.Context, signal CancelSi
 	if err := validateCommandOwner(*s.input, signal.RunID, signal.ActorID, signal.ActionID); err != nil {
 		return CommandAcknowledgement{}, err
 	}
+	if s.actions[signal.ActionID] == nil {
+		if err := s.validateCancelBusiness(signal); err != nil {
+			return CommandAcknowledgement{}, err
+		}
+	}
 	record, created, err := s.prepareAction(ctx, signal.ActionID, fingerprint, updatePhaseCancelPersist, signalCancel, signal)
 	if err != nil {
 		return CommandAcknowledgement{}, err
 	}
 	if created {
-		if err := s.validateCancelBusiness(signal); err != nil {
-			s.rejectPreparedAction(signal.ActionID, record)
-			return CommandAcknowledgement{}, err
-		}
 		record.businessValidated = true
 		if err := s.startReservedAction(ctx, signal.ActionID, record, "start"); err != nil {
 			return CommandAcknowledgement{}, err
@@ -1065,7 +1078,7 @@ func (s *workflowUpdateState) prepareAction(ctx workflow.Context, actionID, fing
 		if existing.fingerprint != fingerprint {
 			return nil, false, updateBlockedError("action ID was reused for a different command")
 		}
-		if existing.ingressState == signalIngressRejected || existing.ingressState == signalIngressDeferred {
+		if existing.ingressState == signalIngressRejected || existing.ingressState == signalIngressDeferred || existing.ingressState == signalIngressSuperseded {
 			return nil, false, updateBlockedError("action ID was already consumed by rejected ingress")
 		}
 		if existing.completed {
@@ -1097,12 +1110,30 @@ func (s *workflowUpdateState) prepareAction(ctx workflow.Context, actionID, fing
 	s.actions[actionID] = record
 	s.projection.CommandIngress = s.commandIngress()
 	if s.pendingActionID != "" {
+		if kind == signalCancel && s.supersedeFailedPendingAction() {
+			s.pendingActionID = actionID
+			return record, true, nil
+		}
 		record.ingressState = signalIngressRejected
 		record.command = nil
 		return nil, false, updateBlockedError("another image agent command is pending")
 	}
 	s.pendingActionID = actionID
 	return record, true, nil
+}
+
+func (s *workflowUpdateState) supersedeFailedPendingAction() bool {
+	pending := s.actions[s.pendingActionID]
+	if pending == nil || pending.kind == signalCancel || pending.completed || pending.running || pending.lastFailedAt == nil {
+		return false
+	}
+	pending.ingressState = signalIngressSuperseded
+	pending.command = nil
+	pending.retryResult = nil
+	pending.retryResultV3 = nil
+	pending.readyAttempt = false
+	s.pendingActionID = ""
+	return true
 }
 
 func (s *workflowUpdateState) startReservedAction(ctx workflow.Context, actionID string, record *workflowUpdateRecord, transition string) error {
@@ -1219,7 +1250,7 @@ func (s *workflowUpdateState) runActionAttempt(ctx workflow.Context, actionID st
 		var acknowledgement CommandAcknowledgement
 		return acknowledgement, record.future.Get(ctx, &acknowledgement)
 	}
-	if record.ingressState == signalIngressRejected || record.ingressState == signalIngressDeferred {
+	if record.ingressState == signalIngressRejected || record.ingressState == signalIngressDeferred || record.ingressState == signalIngressSuperseded {
 		return CommandAcknowledgement{}, updateBlockedError("action ID is a rejected workflow tombstone")
 	}
 	if s.pendingActionID != actionID {
@@ -1307,7 +1338,7 @@ func (s *workflowUpdateState) validateAction(actionID, fingerprint string) (bool
 		return true, updateBlockedError("action ID was reused for a different command")
 	}
 	if ok {
-		if record.ingressState == signalIngressRejected || record.ingressState == signalIngressDeferred {
+		if record.ingressState == signalIngressRejected || record.ingressState == signalIngressDeferred || record.ingressState == signalIngressSuperseded {
 			return true, updateBlockedError("action ID was already consumed by rejected ingress")
 		}
 		return true, nil
@@ -1407,8 +1438,7 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 		inFlight--
 		if !cancelled {
 			if completion.Failed {
-				slot := input.Plan.Slots[completion.Index]
-				completion.Result = SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: slot.ID, Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: "slot_workflow_failed"}
+				completion = blockedSlotCompletion(input, completion.Index, 1, "slot_workflow_failed", updates.effects.activities.useV3Slot)
 			}
 			if updates.effects.activities.useV3Slot && completion.V3Result != nil {
 				if err := updates.effects.persistSlotResultV3(ctx, input, *completion.V3Result); err != nil {
@@ -1431,7 +1461,7 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 
 func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, completionChannel workflow.SendChannel, activityWire workflowActivityWire) {
 	if input.BudgetAuthorization && !input.DeadlineAt.IsZero() && !workflow.Now(ctx).Before(input.DeadlineAt) {
-		completionChannel.Send(ctx, budgetBlockedCompletion(input, index, attempt, imageagent.BudgetElapsedCode, activityWire.useV3Slot))
+		completionChannel.Send(ctx, blockedSlotCompletion(input, index, attempt, imageagent.BudgetElapsedCode, activityWire.useV3Slot))
 		return
 	}
 	slotInput := SlotWorkflowInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision, Slot: input.Plan.Slots[index], Attempt: attempt, AssetCatalog: input.AssetCatalog}
@@ -1473,7 +1503,7 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 	})
 }
 
-func budgetBlockedCompletion(input WorkflowInput, index, attempt int, code string, useV3 bool) childCompletion {
+func blockedSlotCompletion(input WorkflowInput, index, attempt int, code string, useV3 bool) childCompletion {
 	slot := input.Plan.Slots[index]
 	result := SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: slot.ID, Attempt: attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: code}
 	completion := childCompletion{Index: index, Result: result}
