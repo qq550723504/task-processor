@@ -14,7 +14,7 @@ func TestValidateProjectionSnapshotAcceptsOnlyValidatedDurableV3Candidates(t *te
 		runID    = "run-a"
 	)
 	sha := strings.Repeat("a", 64)
-	plan := Plan{Revision: 1, IdempotencyKey: "plan-key", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{{ID: "scene-1", Role: SlotRoleMain, IdempotencyKey: "scene-key", SourceAssetIDs: []string{"source-1"}}}}
+	plan := Plan{Revision: 1, IdempotencyKey: "plan-key", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{{ID: "scene-1", Role: SlotRoleMain, IdempotencyKey: "scene-key", SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending}}}
 	run := Run{ID: runID, TenantID: tenantID, UserID: "user-a", ActivePlanRevision: 1}
 	snapshot := RunProjection{
 		Run:               run,

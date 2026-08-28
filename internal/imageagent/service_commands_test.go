@@ -228,7 +228,7 @@ func commandService(t *testing.T, status imageagent.RunStatus, block *imageagent
 func commandPlan(revision int64) imageagent.Plan {
 	return imageagent.Plan{
 		Revision: revision, IdempotencyKey: "plan-key-" + string(rune('0'+revision)), SourceAssetIDs: []string{"source-1"},
-		Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1"}},
+		Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusPending}},
 	}
 }
 

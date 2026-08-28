@@ -57,7 +57,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	identity.BusinessTaskID = input.BusinessTaskID
 	input.Plan.CreatedBy = identity.UserID
-	if err := ValidatePlan(input.Plan); err != nil {
+	if err := ValidateSubmittedPlan(input.Plan); err != nil {
 		return fmt.Errorf("%w: validate image agent plan: %v", ErrValidation, err)
 	}
 	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: input.RunID}
@@ -123,7 +123,7 @@ func (s *Service) ReplacePlan(ctx context.Context, runID string, expectedRevisio
 	if plan.ParentRevision != expectedRevision || plan.Revision <= expectedRevision {
 		return fmt.Errorf("%w: replacement plan must advance and name its parent revision", ErrValidation)
 	}
-	if err := ValidatePlan(plan); err != nil {
+	if err := ValidateSubmittedPlan(plan); err != nil {
 		return fmt.Errorf("%w: validate replacement plan: %v", ErrValidation, err)
 	}
 	catalog, err := s.repository.GetAssetCatalog(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: strings.TrimSpace(runID)})

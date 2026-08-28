@@ -538,7 +538,7 @@ func testPlanAppendRetriesAreIdempotent(t *testing.T, repo repositoryContract) {
 
 	conflictingStatus := plan
 	conflictingStatus.Slots[0].Status = imageagent.SlotStatusAccepted
-	require.ErrorIs(t, repo.AppendPlan(ctx, scope, 0, conflictingStatus), imageagent.ErrRevisionConflict)
+	require.ErrorContains(t, repo.AppendPlan(ctx, scope, 0, conflictingStatus), "slot status must be pending")
 
 	conflictingKey := planRevision(2)
 	conflictingKey.IdempotencyKey = plan.IdempotencyKey

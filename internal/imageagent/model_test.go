@@ -39,7 +39,7 @@ func TestValidatePlanAllowsMoreThanTenIndependentSlots(t *testing.T) {
 		if i == 0 {
 			role = SlotRoleMain
 		}
-		slots[i] = Slot{ID: fmt.Sprintf("slot-%d", i), Role: role, IdempotencyKey: fmt.Sprintf("slot-key-%d", i), SourceAssetIDs: []string{"source-1"}}
+		slots[i] = Slot{ID: fmt.Sprintf("slot-%d", i), Role: role, IdempotencyKey: fmt.Sprintf("slot-key-%d", i), SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending}
 	}
 	err := ValidatePlan(Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, Slots: slots})
 	require.NoError(t, err)
@@ -48,12 +48,12 @@ func TestValidatePlanAllowsMoreThanTenIndependentSlots(t *testing.T) {
 func TestValidatePlanRequiresExactlyOneMainSlot(t *testing.T) {
 	base := Plan{
 		Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"},
-		Slots: []Slot{{ID: "main-1", Role: SlotRoleMain, IdempotencyKey: "main-key-1", SourceAssetIDs: []string{"source-1"}}},
+		Slots: []Slot{{ID: "main-1", Role: SlotRoleMain, IdempotencyKey: "main-key-1", SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending}},
 	}
 	withoutMain := base
-	withoutMain.Slots = []Slot{{ID: "scene-1", Role: SlotRoleScene, IdempotencyKey: "scene-key-1", SourceAssetIDs: []string{"source-1"}}}
+	withoutMain.Slots = []Slot{{ID: "scene-1", Role: SlotRoleScene, IdempotencyKey: "scene-key-1", SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending}}
 	withTwoMain := base
-	withTwoMain.Slots = append(append([]Slot(nil), base.Slots...), Slot{ID: "main-2", Role: SlotRoleMain, IdempotencyKey: "main-key-2", SourceAssetIDs: []string{"source-1"}})
+	withTwoMain.Slots = append(append([]Slot(nil), base.Slots...), Slot{ID: "main-2", Role: SlotRoleMain, IdempotencyKey: "main-key-2", SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending})
 
 	for name, plan := range map[string]Plan{"missing": withoutMain, "duplicate": withTwoMain} {
 		t.Run(name, func(t *testing.T) {
@@ -64,8 +64,8 @@ func TestValidatePlanRequiresExactlyOneMainSlot(t *testing.T) {
 
 func TestValidatePlanRejectsDuplicateSlotIDs(t *testing.T) {
 	plan := Plan{Revision: 1, SourceAssetIDs: []string{"source-1"}, Slots: []Slot{
-		{ID: "scene-1", Role: SlotRoleScene, IdempotencyKey: "scene-key-1", SourceAssetIDs: []string{"source-1"}},
-		{ID: "scene-1", Role: SlotRoleScene, IdempotencyKey: "scene-key-2", SourceAssetIDs: []string{"source-1"}},
+		{ID: "scene-1", Role: SlotRoleScene, IdempotencyKey: "scene-key-1", SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending},
+		{ID: "scene-1", Role: SlotRoleScene, IdempotencyKey: "scene-key-2", SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending},
 	}}
 	plan.IdempotencyKey = "plan-key-1"
 	require.ErrorContains(t, ValidatePlan(plan), "duplicate slot id")
@@ -171,6 +171,14 @@ func TestValidatePlanRejectsMissingSlotIdempotencyKey(t *testing.T) {
 	require.ErrorContains(t, ValidatePlan(plan), "slot idempotency key")
 }
 
+func TestValidateSubmittedPlanRequiresExplicitPendingSlotStatus(t *testing.T) {
+	plan := Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{{ID: "main-1", Role: SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1"}}}
+	require.NoError(t, ValidatePlan(plan), "legacy histories may omit the formerly implicit pending status")
+	require.ErrorContains(t, ValidateSubmittedPlan(plan), "slot status must be pending")
+	plan.Slots[0].Status = SlotStatusPending
+	require.NoError(t, ValidateSubmittedPlan(plan))
+}
+
 func TestValidatePlanRejectsInvalidPlanInvariants(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -182,9 +190,11 @@ func TestValidatePlanRejectsInvalidPlanInvariants(t *testing.T) {
 		{name: "slots", plan: Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}}, message: "at least one slot"},
 		{name: "empty slot id", plan: Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{{Role: SlotRoleScene, IdempotencyKey: "slot-key-1", SourceAssetIDs: []string{"source-1"}}}}, message: "slot id must not be empty"},
 		{name: "unknown role", plan: Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{{ID: "slot-1", Role: "unknown", IdempotencyKey: "slot-key-1", SourceAssetIDs: []string{"source-1"}}}}, message: "unknown slot role"},
+		{name: "slot source assets", plan: Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{{ID: "main-1", Role: SlotRoleMain, IdempotencyKey: "slot-key-1", SourceAssetIDs: []string{"", "  "}}}}, message: "slot requires at least one source asset"},
+		{name: "slot status", plan: Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{{ID: "main-1", Role: SlotRoleMain, IdempotencyKey: "slot-key-1", SourceAssetIDs: []string{"source-1"}, Status: SlotStatusAccepted}}}, message: "slot status must be pending"},
 		{name: "duplicate idempotency key", plan: Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{
-			{ID: "slot-1", Role: SlotRoleScene, IdempotencyKey: "same", SourceAssetIDs: []string{"source-1"}},
-			{ID: "slot-2", Role: SlotRoleScene, IdempotencyKey: "same", SourceAssetIDs: []string{"source-1"}},
+			{ID: "slot-1", Role: SlotRoleScene, IdempotencyKey: "same", SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending},
+			{ID: "slot-2", Role: SlotRoleScene, IdempotencyKey: "same", SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending},
 		}}, message: "duplicate idempotency key"},
 		{name: "unknown source reference", plan: Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{{ID: "slot-1", Role: SlotRoleScene, IdempotencyKey: "slot-key-1", SourceAssetIDs: []string{"source-2"}}}}, message: "source asset reference"},
 	}

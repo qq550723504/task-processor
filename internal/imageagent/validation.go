@@ -74,6 +74,7 @@ func ValidatePlan(plan Plan) error {
 		}
 		idempotencyKeys[key] = struct{}{}
 
+		slotSources := 0
 		for _, rawSourceID := range slot.SourceAssetIDs {
 			sourceID := strings.TrimSpace(rawSourceID)
 			if sourceID == "" {
@@ -82,6 +83,10 @@ func ValidatePlan(plan Plan) error {
 			if _, contained := sources[sourceID]; !contained {
 				return fmt.Errorf("source asset reference %q is not in plan", sourceID)
 			}
+			slotSources++
+		}
+		if slotSources == 0 {
+			return fmt.Errorf("slot requires at least one source asset")
 		}
 		for _, rawStyleID := range slot.StyleReferenceIDs {
 			styleID := strings.TrimSpace(rawStyleID)
@@ -92,9 +97,27 @@ func ValidatePlan(plan Plan) error {
 				return fmt.Errorf("style reference %q is not in plan", styleID)
 			}
 		}
+		if slot.Status != "" && slot.Status != SlotStatusPending {
+			return fmt.Errorf("slot status must be pending")
+		}
 	}
 	if mainSlots != 1 {
 		return fmt.Errorf("plan requires exactly one main slot")
+	}
+	return nil
+}
+
+// ValidateSubmittedPlan applies the stricter command-ingress contract while
+// ValidatePlan remains able to read pre-contract workflow histories whose
+// pending status was omitted from the serialized plan.
+func ValidateSubmittedPlan(plan Plan) error {
+	if err := ValidatePlan(plan); err != nil {
+		return err
+	}
+	for _, slot := range plan.Slots {
+		if slot.Status != SlotStatusPending {
+			return fmt.Errorf("slot status must be pending")
+		}
 	}
 	return nil
 }
