@@ -4,11 +4,11 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import {
-  buildSheinGeneralReviewHref,
+  buildSheinWorkspaceHrefForAction,
   normalizeSheinFreshnessActionKey,
   isSheinWorkspaceActionKey,
-  isSheinAdvancedRepairKey,
   normalizeSheinWorkspaceActionKey,
+  sheinWorkspaceSectionForAction,
   type SheinFreshnessActionKey,
   sheinWorkspaceTargetIdForKey,
 } from "@/components/listingkit/shein/shein-workspace-actions";
@@ -19,6 +19,7 @@ import { shouldSyncPlatformOnRecovery } from "@/components/listingkit/workspace/
 import {
   buildPlatformWorkspaceHref,
   buildProductWorkspaceHref,
+  buildWorkspaceHistoryHref,
   buildWorkspaceSearch,
   shouldSyncFocusedTargetToRoute,
 } from "@/components/listingkit/workspace/workspace-routing";
@@ -166,6 +167,10 @@ export function useWorkspaceNavigationActions({
     router.replace(buildProductWorkspaceHref(taskId, searchParams.toString(), section));
   };
 
+  const handleHistorySelect = () => {
+    router.replace(buildWorkspaceHistoryHref(taskId, searchParams.toString()));
+  };
+
   const handlePlatformRecovery = (
     descriptor: RecoveryDescriptor,
     platform: string,
@@ -206,6 +211,7 @@ export function useWorkspaceNavigationActions({
     handleRecovery,
     handlePlatformSelect,
     handleProductSelect,
+    handleHistorySelect,
     handlePlatformRecovery,
     handleSelectSheinBlockingItem,
     handleRunSheinPrimaryAction,
@@ -245,12 +251,12 @@ function navigateOrScrollSheinActionTarget({
   }
   const targetId = sheinWorkspaceTargetIdForKey(normalizedKey);
   const currentParams = new URLSearchParams(searchParams);
-  const sectionKey = currentParams.get("section_key");
-  const needsGeneralReviewRoute =
-    isSheinAdvancedRepairKey(normalizedKey) &&
-    (sectionKey === "final_review" || !document.getElementById(targetId));
-  if (needsGeneralReviewRoute) {
-    router.replace(buildSheinGeneralReviewHref(taskId, targetId));
+  const isOnTargetWorkspaceSurface =
+    currentParams.get("platform") === "shein" &&
+    currentParams.get("section_key") ===
+      sheinWorkspaceSectionForAction(normalizedKey);
+  if (!isOnTargetWorkspaceSurface) {
+    router.replace(buildSheinWorkspaceHrefForAction(taskId, normalizedKey));
     return;
   }
   scrollSheinWorkspaceTarget(normalizedKey, targetId);

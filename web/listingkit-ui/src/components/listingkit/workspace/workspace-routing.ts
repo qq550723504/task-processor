@@ -32,6 +32,8 @@ export function buildWorkspaceSearch(
     params.set(key, value);
   });
 
+  params.delete("workspace_view");
+
   return params.toString();
 }
 
@@ -47,6 +49,7 @@ export function buildProductWorkspaceHref(
   params.delete("slot");
   params.delete("preview_capability");
   params.delete("section_key");
+  params.delete("workspace_view");
 
   params.set("product_section", section);
 
@@ -66,7 +69,23 @@ export function buildPlatformWorkspaceHref(
   params.delete("slot");
   params.delete("preview_capability");
   params.delete("section_key");
+  params.delete("workspace_view");
   params.set("platform", platform);
+
+  const search = params.toString();
+  return `/listing-kits/${taskId}/workspace${search ? `?${search}` : ""}`;
+}
+
+export function buildWorkspaceHistoryHref(taskId: string, currentSearch: string) {
+  const params = sanitizedNavigationSearchParams(
+    new URLSearchParams(currentSearch),
+  );
+  params.delete("platform");
+  params.delete("slot");
+  params.delete("preview_capability");
+  params.delete("section_key");
+  params.delete("product_section");
+  params.set("workspace_view", "history");
 
   const search = params.toString();
   return `/listing-kits/${taskId}/workspace${search ? `?${search}` : ""}`;
@@ -74,5 +93,9 @@ export function buildPlatformWorkspaceHref(
 
 export function shouldSyncFocusedTargetToRoute(currentSearch: string) {
   const params = new URLSearchParams(currentSearch);
-  return params.get("section_key") !== "final_review" && !params.has("product_section");
+  return (
+    params.get("section_key") !== "final_review" &&
+    !params.has("product_section") &&
+    params.get("workspace_view") !== "history"
+  );
 }

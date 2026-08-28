@@ -69,13 +69,15 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const searchParams = useSearchParams();
   const routeSearch = searchParams.toString();
   const routeParams = new URLSearchParams(routeSearch);
+  const routeHistorySelected = routeParams.get("workspace_view") === "history";
   const routeNavigationState = {
     routeSearch,
+    historySelected: routeHistorySelected,
     selectedProductSection: productWorkspaceSectionFromSearch(routeSearch),
-    workspaceDestination: routeParams.get("platform") ? "platform" : "product",
+    workspaceDestination:
+      !routeHistorySelected && routeParams.get("platform") ? "platform" : "product",
   } as const;
   const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
-  const [historySelected, setHistorySelected] = useState(false);
   const [localNavigationState, setLocalNavigationState] = useState(
     routeNavigationState,
   );
@@ -83,11 +85,12 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     localNavigationState.routeSearch === routeSearch
       ? localNavigationState
       : routeNavigationState;
-  const { selectedProductSection, workspaceDestination } = navigationState;
+  const { historySelected, selectedProductSection, workspaceDestination } = navigationState;
   const setLocalNavigation = (
-    next: Pick<typeof routeNavigationState, "selectedProductSection" | "workspaceDestination">,
+    next: Pick<typeof routeNavigationState, "selectedProductSection" | "workspaceDestination"> &
+      Partial<Pick<typeof routeNavigationState, "historySelected">>,
   ) => {
-    setLocalNavigationState({ routeSearch, ...next });
+    setLocalNavigationState({ routeSearch, historySelected: false, ...next });
   };
   const workspaceData = useWorkspaceData({ taskId, searchParams });
   const {
@@ -301,7 +304,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     );
 
   const handleNavigationSelect = (item: ProductWorkspaceNavItem) => {
-    setHistorySelected(false);
     if (item.platform) {
       setLocalNavigation({
         workspaceDestination: "platform",
@@ -340,7 +342,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     if (!recovery?.descriptor) {
       return;
     }
-    setHistorySelected(false);
     setLocalNavigation({
       workspaceDestination: "platform",
       selectedProductSection: "overview",
@@ -435,11 +436,12 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             onRecoverPlatform={handlePlatformRecovery}
             onSelect={handleNavigationSelect}
             onSelectHistory={() => {
-              setHistorySelected(true);
               setLocalNavigation({
+                historySelected: true,
                 workspaceDestination: "product",
                 selectedProductSection: "overview",
               });
+              workspaceActions.handleHistorySelect();
             }}
             platformItems={platformNavigation}
           />
@@ -453,7 +455,6 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             issues={reviewIssues}
             onSelectIssue={(issue) => {
               if (issue.actionKey) {
-                setHistorySelected(false);
                 setLocalNavigation({
                   workspaceDestination: "platform",
                   selectedProductSection: "overview",

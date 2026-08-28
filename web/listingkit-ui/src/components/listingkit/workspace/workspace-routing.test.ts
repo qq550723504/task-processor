@@ -1,6 +1,7 @@
 import {
   buildPlatformWorkspaceHref,
   buildProductWorkspaceHref,
+  buildWorkspaceHistoryHref,
   buildWorkspaceSearch,
   shouldSyncFocusedTargetToRoute,
 } from "@/components/listingkit/workspace/workspace-routing";
@@ -66,10 +67,22 @@ describe("buildPlatformWorkspaceHref", () => {
   });
 });
 
+describe("buildWorkspaceHistoryHref", () => {
+  it("uses a dedicated history route instead of retaining a product or platform destination", () => {
+    expect(
+      buildWorkspaceHistoryHref(
+        "task-1",
+        "foo=bar&platform=shein&slot=main&preview_capability=detail_preview&section_key=general_review&product_section=images",
+      ),
+    ).toBe("/listing-kits/task-1/workspace?foo=bar&workspace_view=history");
+  });
+});
+
 describe("shouldSyncFocusedTargetToRoute", () => {
   it("does not overwrite a canonical product route with the focused platform target", () => {
     expect(shouldSyncFocusedTargetToRoute("product_section=overview")).toBe(false);
     expect(shouldSyncFocusedTargetToRoute("product_section=images")).toBe(false);
     expect(shouldSyncFocusedTargetToRoute("platform=shein")).toBe(true);
+    expect(shouldSyncFocusedTargetToRoute("workspace_view=history")).toBe(false);
   });
 });

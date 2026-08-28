@@ -81,6 +81,8 @@ const mocks = vi.hoisted(() => ({
   handleRecovery: vi.fn(),
   handlePlatformRecovery: vi.fn(),
   handleProductSelect: vi.fn(),
+  handleHistorySelect: vi.fn(),
+  routeSearch: "platform=shein",
   taskStatus: "needs_review" as string,
   taskResultLoading: false,
   canonicalProduct: undefined as ReturnType<typeof canonicalProductFixture> | undefined,
@@ -111,13 +113,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.taskStatus = "needs_review";
   mocks.taskResultLoading = false;
+  mocks.routeSearch = "platform=shein";
   mocks.canonicalProduct = canonicalProductFixture();
   mocks.navigationPlatformCards = [sheinPlatformCardFixture()];
   mocks.workflowIssues = defaultWorkflowIssues.map((issue) => ({ ...issue }));
 });
 
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams("platform=shein"),
+  useSearchParams: () => new URLSearchParams(mocks.routeSearch),
 }));
 
 vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
@@ -201,6 +204,7 @@ vi.mock("@/components/listingkit/workspace/use-workspace-navigation-actions", ()
     handlePlatformSelect: mocks.handlePlatformSelect,
     handlePlatformRecovery: mocks.handlePlatformRecovery,
     handleProductSelect: mocks.handleProductSelect,
+    handleHistorySelect: mocks.handleHistorySelect,
     handleSelectSheinBlockingItem: mocks.handleSelectSheinBlockingItem,
     handleRunSheinPrimaryAction: mocks.handleRunSheinPrimaryAction,
   }),
@@ -439,7 +443,20 @@ describe("WorkspaceScreen Product Workspace composition", () => {
 
     await user.click(screen.getByRole("button", { name: "历史" }));
 
+    expect(mocks.handleHistorySelect).toHaveBeenCalledTimes(1);
     expect(within(work).getByText("历史记录内容")).toBeInTheDocument();
+  });
+
+  it("derives the history destination from the workspace route", () => {
+    mocks.routeSearch = "workspace_view=history";
+
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    expect(
+      within(screen.getByRole("region", { name: "商品工作区" })).getByText(
+        "历史记录内容",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("leaves history before dispatching an AI issue action", async () => {
