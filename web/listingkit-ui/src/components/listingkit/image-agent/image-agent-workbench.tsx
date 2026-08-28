@@ -198,11 +198,11 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
               />
               <Metric
                 label="图片预算"
-                value={`${projection.run.usage.images}/${projection.run.budget.max_images}`}
+                value={formatBudgetUsage(projection.run.usage.images, projection.run.budget, "max_images")}
               />
               <Metric
                 label="模型调用"
-                value={`${projection.run.usage.model_calls}/${projection.run.budget.max_model_calls}`}
+                value={formatBudgetUsage(projection.run.usage.model_calls, projection.run.budget, "max_model_calls")}
               />
               <Metric
                 label="预估成本"
@@ -588,6 +588,21 @@ function statusBadgeClass(status: ImageAgentProjection["run"]["status"]) {
 
 function formatCost(micros: number) {
   return `${(micros / 1_000_000).toFixed(4)} 计费单位`;
+}
+
+type ImageAgentBudgetLimit = NonNullable<
+  ImageAgentProjection["run"]["budget"]["enabled_limits"]
+>[number];
+
+function formatBudgetUsage(
+  used: number,
+  budget: ImageAgentProjection["run"]["budget"],
+  limit: ImageAgentBudgetLimit,
+) {
+  const enabled = budget.enabled_limits === undefined
+    ? budget[limit] > 0
+    : budget.enabled_limits.includes(limit);
+  return `${used}/${enabled ? budget[limit] : "不限"}`;
 }
 
 function cloneSlot(slot: ImageAgentSlot): ImageAgentSlot {

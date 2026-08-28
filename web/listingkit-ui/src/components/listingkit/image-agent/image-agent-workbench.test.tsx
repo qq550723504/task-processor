@@ -147,6 +147,53 @@ describe("ImageAgentWorkbench", () => {
     expect(() => parseImageAgentProjection(invalid)).toThrow();
   });
 
+  it.each([
+    {
+      name: "current disabled limits",
+      enabledLimits: [] as string[],
+      maxImages: 0,
+      maxModelCalls: 0,
+      expectedImages: "7/不限",
+      expectedModelCalls: "7/不限",
+    },
+    {
+      name: "current explicit zero limits",
+      enabledLimits: ["max_images", "max_model_calls"],
+      maxImages: 0,
+      maxModelCalls: 0,
+      expectedImages: "7/0",
+      expectedModelCalls: "7/0",
+    },
+    {
+      name: "legacy positive limits",
+      enabledLimits: undefined,
+      maxImages: 20,
+      maxModelCalls: 20,
+      expectedImages: "7/20",
+      expectedModelCalls: "7/20",
+    },
+  ])("renders $name without treating disabled zero values as hard caps", ({
+    enabledLimits,
+    maxImages,
+    maxModelCalls,
+    expectedImages,
+    expectedModelCalls,
+  }) => {
+    const projection = projectionWithSlots(7);
+    projection.run.budget.max_images = maxImages;
+    projection.run.budget.max_model_calls = maxModelCalls;
+    if (enabledLimits === undefined) {
+      Reflect.deleteProperty(projection.run.budget, "enabled_limits");
+    } else {
+      Reflect.set(projection.run.budget, "enabled_limits", enabledLimits);
+    }
+
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
+
+    expect(screen.getByText("图片预算").parentElement).toHaveTextContent(expectedImages);
+    expect(screen.getByText("模型调用").parentElement).toHaveTextContent(expectedModelCalls);
+  });
+
   it("shows the exact blocked slot and keeps every planned slot", () => {
     const projection = projectionWithSlots(11, "scene-2");
 
