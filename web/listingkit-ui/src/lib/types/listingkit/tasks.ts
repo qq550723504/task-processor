@@ -459,6 +459,8 @@ export type CanonicalProduct = {
   variants?: Array<{
     sku?: string;
     title?: string;
+    barcode?: string;
+    is_default?: boolean;
     price?: Record<string, unknown>;
     stock?: number;
     attributes?: Record<string, CanonicalAttribute>;

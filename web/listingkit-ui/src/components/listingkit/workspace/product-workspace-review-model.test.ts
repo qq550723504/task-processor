@@ -131,6 +131,31 @@ describe("Product Workspace review model", () => {
     ]);
   });
 
+  it("infers a SHEIN category action from a generic review issue message", () => {
+    const task = {
+      status: "needs_review",
+      result: {
+        workflow_issues: [
+          {
+            code: "shein_review_required",
+            stage: "shein_review",
+            severity: "blocking",
+            message: "建议复核 SHEIN 类目",
+          },
+        ],
+      },
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task, "shein")).toEqual([
+      {
+        id: "shein_review_required",
+        severity: "blocking",
+        title: "建议复核 SHEIN 类目",
+        actionKey: "category",
+      },
+    ]);
+  });
+
   it("keeps repeated workflow issue codes as unique render identities", () => {
     const task = {
       status: "needs_review",

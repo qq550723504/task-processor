@@ -139,6 +139,29 @@ describe("ProductWorkspaceCanonicalSection", () => {
     expect(screen.getByText("0")).toBeInTheDocument();
   });
 
+  it("shows canonical barcode and default variant metadata", () => {
+    render(
+      <ProductWorkspaceCanonicalSection
+        product={{
+          ...product,
+          variants: [
+            {
+              ...product.variants?.[0],
+              barcode: "6901234567890",
+              is_default: true,
+            },
+          ],
+        }}
+        section="sku"
+      />,
+    );
+
+    expect(screen.getByRole("columnheader", { name: "条码" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "默认" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "6901234567890" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "是" })).toBeInTheDocument();
+  });
+
   it("preserves product and package specification context without exposing raw json", () => {
     const { rerender } = render(
       <ProductWorkspaceCanonicalSection product={product} section="specs" />,

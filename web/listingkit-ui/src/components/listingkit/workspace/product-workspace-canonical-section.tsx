@@ -117,7 +117,9 @@ function SKUSection({ product }: { product?: CanonicalProduct | null }) {
             <TableHeader className="bg-muted/60">
               <TableRow>
                 <TableHead>SKU</TableHead>
+                <TableHead>条码</TableHead>
                 <TableHead>规格</TableHead>
+                <TableHead>默认</TableHead>
                 <TableHead>价格</TableHead>
                 <TableHead>库存</TableHead>
               </TableRow>
@@ -126,7 +128,9 @@ function SKUSection({ product }: { product?: CanonicalProduct | null }) {
               {variants.map((variant, index) => (
                 <TableRow key={`${variant.sku ?? "variant"}-${index}`}>
                   <TableCell className="font-mono text-xs">{variant.sku || "-"}</TableCell>
+                  <TableCell className="font-mono text-xs">{variant.barcode || "-"}</TableCell>
                   <TableCell>{formatVariantAttributes(variant.attributes)}</TableCell>
+                  <TableCell>{variant.is_default ? "是" : "否"}</TableCell>
                   <TableCell>{formatVariantPrice(variant.price)}</TableCell>
                   <TableCell>{variant.stock ?? 0}</TableCell>
                 </TableRow>

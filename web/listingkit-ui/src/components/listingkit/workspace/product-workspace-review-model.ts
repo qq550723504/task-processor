@@ -58,7 +58,11 @@ export function buildProductWorkspaceReviewIssues(
   );
   const issueCodeOccurrences = new Map<string, number>();
   const workflowIssues = relevantWorkflowIssues.map((issue, index) => {
-    const actionKey = resolveIssueActionKey(selectedPlatform, [issue.code], issue.stage);
+    const actionKey = resolveIssueActionKey(
+      selectedPlatform,
+      [issue.code, issue.message, issue.detail],
+      issue.stage,
+    );
     const id = workflowIssueID(issue.code, index, issueCodeOccurrences);
     return {
       id,

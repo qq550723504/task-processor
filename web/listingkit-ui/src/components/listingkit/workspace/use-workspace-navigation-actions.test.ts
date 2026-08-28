@@ -252,6 +252,73 @@ describe("useWorkspaceNavigationActions", () => {
     );
   });
 
+  it("derives a product recovery route from an action navigation target", () => {
+    mocks.dispatchMutate.mockImplementation((_target, options) => {
+      options?.onSuccess?.({});
+    });
+    const { result } = renderHook(() =>
+      useWorkspaceNavigationActions({
+        taskId: "task-1",
+        baseQuery: {},
+        searchParams: new URLSearchParams("product_section=overview"),
+      }),
+    );
+
+    act(() => {
+      result.current.handleRecovery({
+        recovery_target: {
+          dispatch_kind: "action",
+          action_target: {
+            navigation_target: {
+              dispatch_kind: "review_session",
+              session_query: {
+                platform: "shein",
+                slot: "main",
+                preview_capability: "detail_preview",
+              },
+            },
+          },
+        },
+      });
+    });
+
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/listing-kits/task-1/workspace?platform=shein&slot=main&preview_capability=detail_preview",
+    );
+  });
+
+  it("derives a product recovery route from an action queue query", () => {
+    mocks.dispatchMutate.mockImplementation((_target, options) => {
+      options?.onSuccess?.({});
+    });
+    const { result } = renderHook(() =>
+      useWorkspaceNavigationActions({
+        taskId: "task-1",
+        baseQuery: {},
+        searchParams: new URLSearchParams("product_section=overview"),
+      }),
+    );
+
+    act(() => {
+      result.current.handleRecovery({
+        recovery_target: {
+          dispatch_kind: "action",
+          action_target: {
+            queue_query: {
+              platform: "shein",
+              slot: "main",
+              preview_capability: "detail_preview",
+            },
+          },
+        },
+      });
+    });
+
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/listing-kits/task-1/workspace?platform=shein&slot=main&preview_capability=detail_preview",
+    );
+  });
+
   it("routes an explicit dispatch from general review to its focused target", () => {
     mocks.dispatchMutate.mockImplementation((_target, options) => {
       options?.onSuccess?.({

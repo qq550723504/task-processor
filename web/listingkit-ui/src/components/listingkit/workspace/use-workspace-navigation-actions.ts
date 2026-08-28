@@ -288,7 +288,18 @@ function focusedTargetFromDispatchResponse(
 function reviewTargetFromNavigationTarget(
   target: NavigationTarget,
 ): ReviewTarget | undefined {
-  const query = target.preview_query ?? target.session_query;
+  const nestedTarget = target.action_target?.navigation_target;
+  if (nestedTarget) {
+    const nestedReviewTarget = reviewTargetFromNavigationTarget(nestedTarget);
+    if (nestedReviewTarget) {
+      return nestedReviewTarget;
+    }
+  }
+  const query =
+    target.preview_query ??
+    target.session_query ??
+    target.action_target?.queue_query ??
+    target.queue_query;
   if (!query?.platform) {
     return undefined;
   }
