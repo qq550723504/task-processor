@@ -177,6 +177,9 @@ provider_claimed
   → artifact_staged
   → publication_claimed
   → publication_complete
+
+provider_not_dispatched
+  → provider_claimed
 ```
 
 Explicit blocked outcomes are:
@@ -195,6 +198,8 @@ When budget authorization is active, only an attempt with no persisted effect as
 
 If an activity retry observes `provider_claimed` but did not create the claim, it must not invoke generation again. It may continue only by loading the verified recovery bundle for that exact attempt; an absent or conflicting bundle becomes the typed `provider_outcome_unknown` block.
 
+`provider_not_dispatched` is the only provider-side state that permits the same attempt to claim generation again. It is written only after the provider adapter explicitly proves that it did not dispatch a request (including a local rejection before effect). If a budget quote was reserved, that transition releases it atomically; the subsequent claim reauthorizes the same persisted quote. All timeout, transport, and unclassified provider errors remain `provider_outcome_unknown`.
+
 ### 8.3 Staging preparation and upload
 
 After provider generation returns in the owning activity:
@@ -208,7 +213,7 @@ After provider generation returns in the owning activity:
 7. Confirm every object with HEAD metadata.
 8. Commit `artifact_staged` with a compare-and-swap from `staging_prepared`.
 
-If the process fails before the recovery bundle is durable, the provider outcome is unknown and the owning attempt retains its worker-local files while it can still retry preservation. Once preservation succeeds, those local files are deleted before any further retryable boundary. A retry can then rehydrate the exact manifest and bytes even when `staging_prepared` was not committed or individual uploads are incomplete. Matching objects are reconciled without rewriting; missing objects are uploaded from the bundle; conflicting objects or a missing/conflicting bundle fail closed as an unknown outcome.
+If the process fails before the recovery bundle is durable, the provider outcome is unknown and the owning attempt retries bundle preservation with bounded backoff while its worker-local files are still available. Once that bounded retry is exhausted, the activity cleans those local files and durably blocks as `provider_outcome_unknown`; no later Temporal retry may assume those bytes still exist. Once preservation succeeds, those local files are deleted before any further retryable boundary. A retry can then rehydrate the exact manifest and bytes even when `staging_prepared` was not committed or individual uploads are incomplete. Matching objects are reconciled without rewriting; missing objects are uploaded from the bundle; conflicting objects or a missing/conflicting bundle fail closed as an unknown outcome.
 
 ### 8.4 Publication claim and fencing
 
@@ -256,7 +261,7 @@ The run DTO and frontend `ImageAgentRun` include `max_concurrent_slots`, using t
 
 Blocked v3 effects project stable reason codes and permitted actions:
 
-- `provider_outcome_unknown`: explain that generation may have happened and offer a new manual attempt.
+- `provider_outcome_unknown`: explain that generation may have happened and permit cancellation only. Automatic retries, plan edits, and replacement attempts are forbidden because they can duplicate a paid provider effect. A future reconciliation action needs a provider-neutral result lookup/idempotency contract and explicit UI/authorization; it is intentionally not simulated by a retry action.
 - `staging_outcome_unknown`: explain that durable bytes are incomplete and offer a new manual attempt.
 - `publication_outcome_unknown`: require an operator or user to verify the destination before another publication command.
 

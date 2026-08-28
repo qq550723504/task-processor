@@ -16,6 +16,7 @@ import (
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
+	"task-processor/internal/infra/resilience"
 	"task-processor/internal/pkg/imagex"
 	"task-processor/internal/productimage"
 	"task-processor/internal/shared/aiidentity"
@@ -105,14 +106,17 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 const slotProviderOutcomeUnknownErrorType = "imageagent_slot_provider_outcome_unknown"
 
 const (
-	slotProviderOutcomeUnknownCode    = imageagent.SlotProviderOutcomeUnknownCode
-	slotStagingOutcomeUnknownCode     = imageagent.SlotStagingOutcomeUnknownCode
-	slotPublicationOutcomeUnknownCode = imageagent.SlotPublicationOutcomeUnknownCode
-	slotPublicationRecoveryErrorType  = "imageagent_slot_publication_recovery"
-	slotEffectPhaseInvalidCode        = "imageagent_slot_effect_phase_invalid"
-	slotEffectPolicyInvalidCode       = "imageagent_slot_effect_policy_invalid"
-	invalidMainCandidateCountCode     = "invalid_main_candidate_count"
-	publicationLeaseRetrySafetyMargin = time.Second
+	slotProviderOutcomeUnknownCode        = imageagent.SlotProviderOutcomeUnknownCode
+	slotStagingOutcomeUnknownCode         = imageagent.SlotStagingOutcomeUnknownCode
+	slotPublicationOutcomeUnknownCode     = imageagent.SlotPublicationOutcomeUnknownCode
+	slotPublicationRecoveryErrorType      = "imageagent_slot_publication_recovery"
+	slotEffectPhaseInvalidCode            = "imageagent_slot_effect_phase_invalid"
+	slotEffectPolicyInvalidCode           = "imageagent_slot_effect_policy_invalid"
+	invalidMainCandidateCountCode         = "invalid_main_candidate_count"
+	publicationLeaseRetrySafetyMargin     = time.Second
+	recoveryBundlePersistenceAttempts     = 3
+	recoveryBundlePersistenceInitialDelay = 100 * time.Millisecond
+	recoveryBundlePersistenceMaxDelay     = time.Second
 )
 
 type slotPublicationRecoveryDetails struct {
@@ -165,7 +169,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		reservation.Policy = persisted.Policy
 		reservation.Quote = persisted.Quote
 	}
-	providerDispatchPossible := !hasPersistedEffect || (persisted.Phase == imageagent.SlotEffectV3ProviderClaimed && persisted.BudgetStatus == imageagent.SlotBudgetReleased)
+	providerDispatchPossible := !hasPersistedEffect || persisted.Phase == imageagent.SlotEffectV3ProviderNotDispatched || (persisted.Phase == imageagent.SlotEffectV3ProviderClaimed && persisted.BudgetStatus == imageagent.SlotBudgetReleased)
 	if input.BudgetAuthorization && providerDispatchPossible {
 		var ok bool
 		budgeted, ok = a.stagedSlotExecutor.(imageagent.BudgetedStagedSlotExecutor)
@@ -213,14 +217,14 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 				generated, generateErr = a.stagedSlotExecutor.GenerateSlot(ctx, executionInput)
 			}
 			if generateErr != nil {
-				if budgeted != nil {
-					switch imageagent.ProviderDispatchStateOf(generateErr) {
-					case imageagent.ProviderNotDispatched, imageagent.ProviderRejectedBeforeEffect:
-						if _, releaseErr := a.slotEffectsV3.ReleaseSlotProviderBudgetV3(ctx, reservation); releaseErr != nil {
-							return v3Result, fmt.Errorf("release rejected provider reservation: %w", persistedSlotEffectV3RepositoryError(releaseErr))
-						}
-						return v3Result, generateErr
-					default:
+				switch imageagent.ProviderDispatchStateOf(generateErr) {
+				case imageagent.ProviderNotDispatched, imageagent.ProviderRejectedBeforeEffect:
+					if _, recordErr := a.slotEffectsV3.RecordSlotProviderNotDispatchedV3(ctx, reservation); recordErr != nil {
+						return v3Result, fmt.Errorf("record provider rejection before dispatch: %w", persistedSlotEffectV3RepositoryError(recordErr))
+					}
+					return v3Result, sdktemporal.NewApplicationError("image agent provider did not dispatch", imageagent.SlotProviderNotDispatchedCode, generateErr)
+				default:
+					if budgeted != nil {
 						if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(ctx, reservation); unknownErr != nil {
 							return v3Result, fmt.Errorf("retain unknown provider reservation: %w", persistedSlotEffectV3RepositoryError(unknownErr))
 						}
@@ -240,11 +244,13 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			if err != nil {
 				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 			}
-			if err := a.artifactStore.PreserveSlotArtifacts(ctx, reservation.Identity, prepared); err != nil {
+			if err := a.preserveSlotRecoveryBundle(ctx, reservation.Identity, prepared); err != nil {
 				if errors.Is(err, objectstore.ErrArtifactUnavailable) || errors.Is(err, objectstore.ErrObjectConflict) {
+					cleanupGeneratedSlotTemporaryAssets(&generated)
 					return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 				}
-				return v3Result, fmt.Errorf("preserve generated artifact recovery bundle: %w", err)
+				cleanupGeneratedSlotTemporaryAssets(&generated)
+				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 			}
 			cleanupGeneratedSlotTemporaryAssets(&generated)
 		} else {
@@ -435,6 +441,19 @@ func (a *Activities) publicationRecoveryError(message string, publication imagea
 			NonRetryable: true, Cause: cause, Details: []interface{}{details}, NextRetryDelay: delay,
 		},
 	)
+}
+
+func (a *Activities) preserveSlotRecoveryBundle(ctx context.Context, identity imageagent.SlotExternalEffectIdentity, prepared objectstore.PreparedSlotArtifacts) error {
+	return resilience.Retry(ctx, resilience.RetryConfig{
+		MaxAttempts: recoveryBundlePersistenceAttempts, InitialDelay: recoveryBundlePersistenceInitialDelay,
+		MaxDelay: recoveryBundlePersistenceMaxDelay, Multiplier: 2, RandomizationFactor: 0,
+		IsRetryable: func(err error) bool {
+			return !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) &&
+				!errors.Is(err, objectstore.ErrArtifactUnavailable) && !errors.Is(err, objectstore.ErrObjectConflict)
+		},
+	}, func(retryCtx context.Context) error {
+		return a.artifactStore.PreserveSlotArtifacts(retryCtx, identity, prepared)
+	})
 }
 
 func validatePersistedSlotEffectV3(effect imageagent.SlotEffectV3Attempt) error {

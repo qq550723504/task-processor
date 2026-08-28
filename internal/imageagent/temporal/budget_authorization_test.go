@@ -143,6 +143,34 @@ func TestExecuteSlotV3BudgetRetainsReservationForAmbiguousProvider(t *testing.T)
 	require.Zero(t, projection.Run.Usage.Images, "unknown usage is reserved, not falsely committed")
 }
 
+func TestExecuteSlotV3MarksProvenPreDispatchFailureRetryable(t *testing.T) {
+	repository, input, policy := initializedBudgetedV3Activity(t, "run-budget-pre-dispatch", 1)
+	quote := budgetActivityQuote("quote-pre-dispatch")
+	generated := generatedV3Output(input, writeTinyPNG(t))
+	generated.UsageReceipt = imageagent.SlotUsageReceipt{Actual: quote.Maximum, CostBasis: imageagent.UsageCostReservedUpperBound}
+	executor := &budgetedRecordingExecutor{
+		recordingStagedExecutor: &recordingStagedExecutor{generated: generated}, quote: quote,
+		generateErr: &imageagent.ProviderDispatchError{State: imageagent.ProviderRejectedBeforeEffect, Err: errors.New("rate limited before request")},
+	}
+	activities := newBudgetV3Activities(t, repository, executor, &recordingArtifactStore{})
+	input.BudgetAuthorization, input.BudgetPolicy = true, policy
+
+	_, err := activities.ExecuteSlotV3(context.Background(), input)
+
+	var applicationError *sdktemporal.ApplicationError
+	require.ErrorAs(t, err, &applicationError)
+	require.Equal(t, "slot_provider_not_dispatched", applicationError.Type())
+	require.False(t, applicationError.NonRetryable())
+	effect, getErr := repository.(imageagent.SlotExternalEffectV3Repository).GetSlotExternalEffectV3(context.Background(), slotEffectReservationV3(slotExecutionInputV3(input)).Identity)
+	require.NoError(t, getErr)
+	require.Equal(t, imageagent.SlotEffectV3Phase("provider_not_dispatched"), effect.Phase)
+
+	executor.generateErr = nil
+	result, err := activities.ExecuteSlotV3(context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+}
+
 func TestImageSlotWorkflowV3BudgetDeadlineBlocksWithoutActivity(t *testing.T) {
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()

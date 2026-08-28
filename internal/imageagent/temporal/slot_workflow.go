@@ -133,7 +133,7 @@ func slotExecutionV3ErrorCode(err error) string {
 	var applicationError *sdktemporal.ApplicationError
 	if errors.As(err, &applicationError) {
 		switch applicationError.Type() {
-		case slotProviderOutcomeUnknownCode, slotStagingOutcomeUnknownCode, slotPublicationOutcomeUnknownCode:
+		case imageagent.SlotProviderNotDispatchedCode, slotProviderOutcomeUnknownCode, slotStagingOutcomeUnknownCode, slotPublicationOutcomeUnknownCode:
 			return applicationError.Type()
 		case slotEffectPhaseInvalidCode:
 			return imageagent.SlotEffectPhaseInvalidCode

@@ -13,18 +13,20 @@ import (
 type SlotEffectV3Phase string
 
 const (
-	SlotEffectV3ProviderClaimed     SlotEffectV3Phase = "provider_claimed"
-	SlotEffectV3StagingPrepared     SlotEffectV3Phase = "staging_prepared"
-	SlotEffectV3ArtifactStaged      SlotEffectV3Phase = "artifact_staged"
-	SlotEffectV3PublicationClaimed  SlotEffectV3Phase = "publication_claimed"
-	SlotEffectV3PublicationComplete SlotEffectV3Phase = "publication_complete"
-	SlotEffectV3ProviderUnknown     SlotEffectV3Phase = "provider_outcome_unknown"
-	SlotEffectV3StagingUnknown      SlotEffectV3Phase = "staging_outcome_unknown"
-	SlotEffectV3PublicationUnknown  SlotEffectV3Phase = "publication_outcome_unknown"
+	SlotEffectV3ProviderClaimed       SlotEffectV3Phase = "provider_claimed"
+	SlotEffectV3ProviderNotDispatched SlotEffectV3Phase = "provider_not_dispatched"
+	SlotEffectV3StagingPrepared       SlotEffectV3Phase = "staging_prepared"
+	SlotEffectV3ArtifactStaged        SlotEffectV3Phase = "artifact_staged"
+	SlotEffectV3PublicationClaimed    SlotEffectV3Phase = "publication_claimed"
+	SlotEffectV3PublicationComplete   SlotEffectV3Phase = "publication_complete"
+	SlotEffectV3ProviderUnknown       SlotEffectV3Phase = "provider_outcome_unknown"
+	SlotEffectV3StagingUnknown        SlotEffectV3Phase = "staging_outcome_unknown"
+	SlotEffectV3PublicationUnknown    SlotEffectV3Phase = "publication_outcome_unknown"
 )
 
 const (
 	SlotProviderOutcomeUnknownCode    = "slot_provider_outcome_unknown"
+	SlotProviderNotDispatchedCode     = "slot_provider_not_dispatched"
 	SlotStagingOutcomeUnknownCode     = "slot_staging_outcome_unknown"
 	SlotPublicationOutcomeUnknownCode = "slot_publication_outcome_unknown"
 	SlotEffectPhaseInvalidCode        = "slot_effect_phase_invalid"
@@ -44,7 +46,7 @@ func SlotEffectV3BlockedPolicyFor(phase SlotEffectV3Phase, code string) (SlotEff
 	var policy SlotEffectV3BlockedPolicy
 	switch phase {
 	case SlotEffectV3ProviderUnknown:
-		policy = SlotEffectV3BlockedPolicy{Phase: phase, Code: SlotProviderOutcomeUnknownCode, PermittedActions: []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}}
+		policy = SlotEffectV3BlockedPolicy{Phase: phase, Code: SlotProviderOutcomeUnknownCode, PermittedActions: []Action{ActionCancel}}
 	case SlotEffectV3StagingUnknown:
 		policy = SlotEffectV3BlockedPolicy{Phase: phase, Code: SlotStagingOutcomeUnknownCode, PermittedActions: []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}}
 	case SlotEffectV3PublicationUnknown:
@@ -62,6 +64,8 @@ func SlotEffectV3BlockedPolicyFor(phase SlotEffectV3Phase, code string) (SlotEff
 func SlotEffectV3BlockedPolicyForCode(code string) (SlotEffectV3BlockedPolicy, bool) {
 	var phase SlotEffectV3Phase
 	switch code {
+	case SlotProviderNotDispatchedCode:
+		return SlotEffectV3BlockedPolicy{Code: code, PermittedActions: []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}}, true
 	case SlotProviderOutcomeUnknownCode:
 		phase = SlotEffectV3ProviderUnknown
 	case SlotStagingOutcomeUnknownCode:
@@ -104,7 +108,7 @@ func ValidateSlotEffectV3AttemptPolicy(attempt SlotEffectV3Attempt) error {
 	case SlotEffectV3ProviderUnknown, SlotEffectV3StagingUnknown, SlotEffectV3PublicationUnknown:
 		_, err := SlotEffectV3BlockedPolicyFor(attempt.Phase, attempt.BlockedCode)
 		return err
-	case SlotEffectV3ProviderClaimed, SlotEffectV3StagingPrepared, SlotEffectV3ArtifactStaged, SlotEffectV3PublicationClaimed, SlotEffectV3PublicationComplete:
+	case SlotEffectV3ProviderClaimed, SlotEffectV3ProviderNotDispatched, SlotEffectV3StagingPrepared, SlotEffectV3ArtifactStaged, SlotEffectV3PublicationClaimed, SlotEffectV3PublicationComplete:
 		if attempt.BlockedCode != "" {
 			return fmt.Errorf("%w: executable phase %q cannot carry blocked code", ErrInvalidPersistedPolicy, attempt.Phase)
 		}
@@ -298,6 +302,7 @@ type SlotExternalEffectV3Repository interface {
 	CompleteSlotPublicationV3(context.Context, PublicationCompletion) (SlotEffectV3Attempt, error)
 	BlockSlotEffectV3(context.Context, SlotEffectV3BlockTransition) (SlotEffectV3Attempt, error)
 	SettleSlotProviderV3(context.Context, SlotEffectV3Reservation, SlotUsageReceipt) (SlotEffectV3Attempt, error)
+	RecordSlotProviderNotDispatchedV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
 	ReleaseSlotProviderBudgetV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
 	MarkSlotProviderBudgetUnknownV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
 	GetSlotExternalEffectV3(context.Context, SlotExternalEffectIdentity) (SlotEffectV3Attempt, error)

@@ -856,7 +856,7 @@ func TestV3InitialProductionSummaryPreservesExactBlockCodesAndActions(t *testing
 		wantCode     string
 		wantActions  []imageagent.Action
 	}{
-		{name: "provider unknown", activityType: slotProviderOutcomeUnknownCode, wantCode: imageagent.SlotProviderOutcomeUnknownCode, wantActions: []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionRetrySlot, imageagent.ActionCancel}},
+		{name: "provider unknown", activityType: slotProviderOutcomeUnknownCode, wantCode: imageagent.SlotProviderOutcomeUnknownCode, wantActions: []imageagent.Action{imageagent.ActionCancel}},
 		{name: "staging unknown", activityType: slotStagingOutcomeUnknownCode, wantCode: imageagent.SlotStagingOutcomeUnknownCode, wantActions: []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionRetrySlot, imageagent.ActionCancel}},
 		{name: "publication unknown", activityType: slotPublicationOutcomeUnknownCode, wantCode: imageagent.SlotPublicationOutcomeUnknownCode, wantActions: []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionCancel}},
 		{name: "phase invalid", activityType: slotEffectPhaseInvalidCode, wantCode: imageagent.SlotEffectPhaseInvalidCode, wantActions: []imageagent.Action{imageagent.ActionCancel}},
@@ -941,15 +941,12 @@ func TestV3InitialChildFailurePersistsRecoverableBlockedSlotIdentity(t *testing.
 	persistedMu.Unlock()
 }
 
-func TestV3RetryProductionSummaryPreservesPublicationUnknownAndDeniesDirectRetry(t *testing.T) {
+func TestV3ProviderUnknownDeniesDirectRetry(t *testing.T) {
 	env := newV3BlockWorkflowEnv(t, func(input ExecuteSlotV3ActivityInput) error {
 		if input.Slot.ID != "scene-2" {
 			return nil
 		}
-		if input.Attempt == 1 {
-			return sdktemporal.NewNonRetryableApplicationError("provider outcome unknown", slotProviderOutcomeUnknownCode, nil)
-		}
-		return sdktemporal.NewNonRetryableApplicationError("publication outcome unknown", slotPublicationOutcomeUnknownCode, nil)
+		return sdktemporal.NewNonRetryableApplicationError("provider outcome unknown", slotProviderOutcomeUnknownCode, nil)
 	})
 	var blocksMu sync.Mutex
 	var persistedBlockCodes []string
@@ -962,44 +959,29 @@ func TestV3RetryProductionSummaryPreservesPublicationUnknownAndDeniesDirectRetry
 		return true
 	})).Return(nil)
 
-	firstCompleted := false
-	secondAccepted := false
-	var firstRejected, firstErr, secondRejected error
+	var retryRejected error
 	retry := RetrySlotSignal{RunID: "run-1", PlanRevision: 1, SlotID: "scene-2", ActorID: "user-a", ActionID: "retry-v3-publication-unknown"}
 	env.RegisterDelayedCallback(func() {
 		env.UpdateWorkflow(signalRetrySlot, "retry-v3-publication-unknown-1", &testsuite.TestUpdateCallback{
-			OnReject: func(err error) { firstRejected = err }, OnAccept: func() {},
-			OnComplete: func(_ interface{}, err error) { firstCompleted, firstErr = true, err },
+			OnReject: func(err error) { retryRejected = err }, OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) { retryRejected = err },
 		}, retry)
 	}, time.Second)
 	env.RegisterDelayedCallback(func() {
-		second := retry
-		second.ActionID = "retry-v3-publication-unknown-again"
-		env.UpdateWorkflow(signalRetrySlot, "retry-v3-publication-unknown-2", &testsuite.TestUpdateCallback{
-			OnReject: func(err error) { secondRejected = err }, OnAccept: func() { secondAccepted = true },
-			OnComplete: func(_ interface{}, err error) { secondRejected = err },
-		}, second)
-	}, 2*time.Second)
-	env.RegisterDelayedCallback(func() {
 		env.SignalWorkflow(signalCancel, CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-v3-retry-test"})
-	}, 3*time.Second)
+	}, 2*time.Second)
 	input := manualWorkflowInput(sevenSlotPlan())
 	input.WaitForCommands = true
 
 	env.ExecuteWorkflow(ImageAgentWorkflow, input)
 
 	require.NoError(t, env.GetWorkflowError())
-	require.Nil(t, firstRejected)
-	require.True(t, firstCompleted)
-	require.NoError(t, firstErr)
-	require.Error(t, secondRejected)
-	require.False(t, secondAccepted)
+	require.Error(t, retryRejected)
 	var applicationError *sdktemporal.ApplicationError
-	require.ErrorAs(t, secondRejected, &applicationError)
+	require.ErrorAs(t, retryRejected, &applicationError)
 	require.Equal(t, updateErrorCommandBlocked, applicationError.Type())
 	blocksMu.Lock()
 	require.Contains(t, persistedBlockCodes, imageagent.SlotProviderOutcomeUnknownCode)
-	require.Contains(t, persistedBlockCodes, imageagent.SlotPublicationOutcomeUnknownCode)
 	require.NotContains(t, persistedBlockCodes, "slot_failed")
 	blocksMu.Unlock()
 }
@@ -1097,13 +1079,13 @@ func TestInvalidPersistedV3PolicySurvivesProjectionRefreshAndRejectsDirectRetry(
 	}
 }
 
-func TestRetrySlotBusinessRejectsPublicationUnknownButKeepsLegacyAndNewAttemptPolicies(t *testing.T) {
+func TestRetrySlotBusinessRejectsUnknownExternalEffectsButKeepsSafeRetryPolicies(t *testing.T) {
 	for _, tc := range []struct {
 		code    string
 		wantErr bool
 	}{
 		{code: "slot_failed"},
-		{code: imageagent.SlotProviderOutcomeUnknownCode},
+		{code: imageagent.SlotProviderOutcomeUnknownCode, wantErr: true},
 		{code: imageagent.SlotStagingOutcomeUnknownCode},
 		{code: imageagent.SlotPublicationOutcomeUnknownCode, wantErr: true},
 	} {

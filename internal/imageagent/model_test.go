@@ -186,7 +186,7 @@ func TestSlotEffectV3BlockedPolicyMapsExactPhaseCodeAndActions(t *testing.T) {
 		code    string
 		actions []Action
 	}{
-		{SlotEffectV3ProviderUnknown, SlotProviderOutcomeUnknownCode, []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}},
+		{SlotEffectV3ProviderUnknown, SlotProviderOutcomeUnknownCode, []Action{ActionCancel}},
 		{SlotEffectV3StagingUnknown, SlotStagingOutcomeUnknownCode, []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}},
 		{SlotEffectV3PublicationUnknown, SlotPublicationOutcomeUnknownCode, []Action{ActionEditPlan, ActionCancel}},
 	} {
@@ -198,11 +198,16 @@ func TestSlotEffectV3BlockedPolicyMapsExactPhaseCodeAndActions(t *testing.T) {
 	}
 }
 
-func TestProviderAndStagingUnknownPermitNewAttempt(t *testing.T) {
-	for _, code := range []string{SlotProviderOutcomeUnknownCode, SlotStagingOutcomeUnknownCode} {
-		run := Run{Mode: RunModeManual, Status: RunStatusBlocked, Block: &Block{Code: code, SlotID: "scene-2"}}
-		require.True(t, BlockAllowsAction(run.Block, ActionRetrySlot), code)
-	}
+func TestProviderUnknownDoesNotPermitBlindRetryOrReplacement(t *testing.T) {
+	run := Run{Mode: RunModeManual, Status: RunStatusBlocked, Block: &Block{Code: SlotProviderOutcomeUnknownCode, SlotID: "scene-2"}}
+	require.False(t, BlockAllowsAction(run.Block, ActionRetrySlot))
+	require.False(t, BlockAllowsAction(run.Block, ActionEditPlan))
+	require.Equal(t, []Action{ActionCancel}, AllowedActions(run))
+}
+
+func TestStagingUnknownPermitsNewAttempt(t *testing.T) {
+	run := Run{Mode: RunModeManual, Status: RunStatusBlocked, Block: &Block{Code: SlotStagingOutcomeUnknownCode, SlotID: "scene-2"}}
+	require.True(t, BlockAllowsAction(run.Block, ActionRetrySlot))
 }
 
 func TestPublicationUnknownDoesNotPermitBlindRetry(t *testing.T) {

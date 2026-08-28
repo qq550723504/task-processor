@@ -165,6 +165,35 @@ func TestSlotEffectV3BudgetReleaseAndUnknownAdmission(t *testing.T) {
 	}
 }
 
+func TestSlotEffectV3ProviderNotDispatchedReclaimsOnlyAfterProvenNoEffect(t *testing.T) {
+	for _, factory := range []struct {
+		name string
+		new  func(*testing.T) imageagent.Repository
+	}{{"memory", func(*testing.T) imageagent.Repository { return NewMemoryRepository() }}, {"gorm", func(t *testing.T) imageagent.Repository { return NewGormRepository(newConcurrentSQLite(t)) }}} {
+		t.Run(factory.name, func(t *testing.T) {
+			ctx := context.Background()
+			repository := factory.new(t)
+			scope, policy := initializeBudgetedSlotEffectRun(t, repository, "run-provider-not-dispatched-"+factory.name)
+			effects := repository.(imageagent.SlotExternalEffectV3Repository)
+			reservation := budgetedV3Reservation(scope, policy, 1, "quote-not-dispatched")
+			_, claimed, err := effects.ReserveSlotProviderV3(ctx, reservation)
+			require.NoError(t, err)
+			require.True(t, claimed)
+
+			effect, err := effects.RecordSlotProviderNotDispatchedV3(ctx, reservation)
+			require.NoError(t, err)
+			require.Equal(t, imageagent.SlotEffectV3ProviderNotDispatched, effect.Phase)
+			require.Equal(t, imageagent.SlotBudgetReleased, effect.BudgetStatus)
+
+			effect, claimed, err = effects.ReserveSlotProviderV3(ctx, reservation)
+			require.NoError(t, err)
+			require.True(t, claimed)
+			require.Equal(t, imageagent.SlotEffectV3ProviderClaimed, effect.Phase)
+			require.Equal(t, imageagent.SlotBudgetReserved, effect.BudgetStatus)
+		})
+	}
+}
+
 func initializeBudgetedSlotEffectRun(t *testing.T, repository imageagent.Repository, runID string) (imageagent.RunScope, imageagent.BudgetPolicy) {
 	t.Helper()
 	run := manualRun(runID, "tenant-a")

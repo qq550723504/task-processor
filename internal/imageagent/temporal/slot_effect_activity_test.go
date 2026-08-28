@@ -35,7 +35,7 @@ func TestExecuteSlotV2CallsFrozenOneShotExecutor(t *testing.T) {
 func TestSlotWorkflowPreservesUnknownProviderOutcomeBlockerCode(t *testing.T) {
 	err := sdktemporal.NewNonRetryableApplicationError("unknown", slotProviderOutcomeUnknownErrorType, nil)
 	require.Equal(t, "slot_provider_outcome_unknown", slotExecutionErrorCode(err))
-	for _, code := range []string{slotProviderOutcomeUnknownCode, slotStagingOutcomeUnknownCode, slotPublicationOutcomeUnknownCode} {
+	for _, code := range []string{"slot_provider_not_dispatched", slotProviderOutcomeUnknownCode, slotStagingOutcomeUnknownCode, slotPublicationOutcomeUnknownCode} {
 		err = sdktemporal.NewNonRetryableApplicationError("unknown", code, nil)
 		require.Equal(t, code, slotExecutionV3ErrorCode(err))
 	}
