@@ -156,6 +156,31 @@ describe("Product Workspace review model", () => {
     ]);
   });
 
+  it("keeps a SHEIN issue actionable when another platform is selected", () => {
+    const task = {
+      status: "needs_review",
+      result: {
+        workflow_issues: [
+          {
+            code: "shein_review_required",
+            stage: "shein_review",
+            severity: "blocking",
+            message: "建议复核 SHEIN 类目",
+          },
+        ],
+      },
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task, "temu")).toEqual([
+      {
+        id: "shein_review_required",
+        severity: "blocking",
+        title: "建议复核 SHEIN 类目",
+        actionKey: "category",
+      },
+    ]);
+  });
+
   it("keeps repeated workflow issue codes as unique render identities", () => {
     const task = {
       status: "needs_review",

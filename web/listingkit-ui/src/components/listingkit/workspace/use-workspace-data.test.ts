@@ -17,6 +17,24 @@ describe("resolveWorkspaceTitle", () => {
       }),
     ).toBe("Canonical Tote");
   });
+
+  it("skips whitespace-only platform title candidates", () => {
+    expect(
+      resolveWorkspaceTitle({
+        selectedPlatform: "amazon",
+        amazonTitle: "   ",
+        canonicalTitle: "Canonical Tote",
+      }),
+    ).toBe("Canonical Tote");
+    expect(
+      resolveWorkspaceTitle({
+        selectedPlatform: "shein",
+        sheinFinalTitle: "\t",
+        sheinSourceTitle: "SHEIN Source Tote",
+        canonicalTitle: "Canonical Tote",
+      }),
+    ).toBe("SHEIN Source Tote");
+  });
 });
 
 describe("mergeNavigationPlatformCards", () => {

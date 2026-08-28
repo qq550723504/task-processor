@@ -46,13 +46,17 @@ export function resolveWorkspaceTitle({
   canonicalTitle?: string;
 }) {
   return (
-    amazonTitle ||
-    (selectedPlatform === "shein"
-      ? sheinFinalTitle || sheinSourceTitle
-      : undefined) ||
-    canonicalTitle ||
-    "未命名商品"
+    firstWorkspaceTitle(
+      amazonTitle,
+      selectedPlatform === "shein" ? sheinFinalTitle : undefined,
+      selectedPlatform === "shein" ? sheinSourceTitle : undefined,
+      canonicalTitle,
+    ) ?? "未命名商品"
   );
+}
+
+function firstWorkspaceTitle(...candidates: Array<string | undefined>) {
+  return candidates.map((candidate) => candidate?.trim()).find(Boolean);
 }
 
 export function mergeNavigationPlatformCards(

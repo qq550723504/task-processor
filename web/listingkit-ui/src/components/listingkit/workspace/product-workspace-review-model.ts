@@ -164,16 +164,18 @@ function resolveIssueActionKey(
   candidates: Array<string | undefined>,
   stage?: string,
 ): SheinWorkspaceActionKey | undefined {
-  if (selectedPlatform !== "shein") {
-    return undefined;
-  }
-
   const normalizedStage = stage?.trim().toLowerCase();
   const isSheinStage =
     normalizedStage === "shein" ||
     normalizedStage === "shein_review" ||
     normalizedStage?.startsWith("shein_") === true ||
     normalizedStage?.endsWith(":shein") === true;
+  const isSheinCode = candidates.some((candidate) =>
+    candidate?.trim().toLowerCase().startsWith("shein_")
+  );
+  if (selectedPlatform?.trim().toLowerCase() !== "shein" && !isSheinStage && !isSheinCode) {
+    return undefined;
+  }
   if (
     !isSheinStage &&
     !candidates.some((candidate) =>
