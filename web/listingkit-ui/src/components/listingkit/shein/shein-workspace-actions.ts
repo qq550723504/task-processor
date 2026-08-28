@@ -67,7 +67,8 @@ export function normalizeSheinFreshnessActionKey(
         return "shein_category_template_freshness";
       }
       if (
-        normalized.includes("sale_attribute") ||
+        normalized.includes("sale_attribute_template_freshness") ||
+        normalized.includes("sale_attribute_freshness") ||
         normalized.includes("刷新销售属性")
       ) {
         return "shein_sale_attribute_freshness";

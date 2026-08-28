@@ -175,6 +175,36 @@ describe("Product Workspace review model", () => {
     ]);
   });
 
+  it("preserves ordinary sale-attribute readiness actions", () => {
+    const task = { status: "completed", result: {} } as ListingKitTaskResult;
+
+    expect(
+      buildProductWorkspaceReviewIssues(task, "shein", {
+        blocking_items: [],
+        warning_items: [
+          {
+            key: "sale_attributes",
+            label: "销售属性需要确认",
+            message: "请复核销售属性。",
+            taxonomy: {
+              domain: "sale_attribute",
+              repair_target: "sale_attribute_review",
+              repair_route: "workspace.sale_attributes",
+            },
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        id: "readiness-warning-1",
+        severity: "warning",
+        title: "销售属性需要确认",
+        description: "请复核销售属性。",
+        actionKey: "sale_attributes",
+      },
+    ]);
+  });
+
   it("does not attach SHEIN fallback actions to non-SHEIN platforms", () => {
     const task = {
       status: "needs_review",
