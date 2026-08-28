@@ -53,6 +53,18 @@ const budgetSchema = z
     max_repair_attempts_per_slot: z.number(),
     max_cost_micros: z.number(),
     max_elapsed: z.number(),
+    enabled_limits: z
+      .array(
+        z.enum([
+          "max_images",
+          "max_agent_steps",
+          "max_model_calls",
+          "max_repair_attempts_per_slot",
+          "max_cost_micros",
+          "max_elapsed",
+        ]),
+      )
+      .optional(),
   })
   .passthrough();
 const usageSchema = z

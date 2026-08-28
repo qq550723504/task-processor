@@ -304,6 +304,33 @@ func TestServiceStartCapturesBusinessTaskInExecutionIdentity(t *testing.T) {
 	require.Equal(t, "trace-identity", workflows.starts[0].Identity.TraceID)
 }
 
+func TestServiceStartValidatesAndPersistsPresenceAwareBudget(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
+	require.NoError(t, err)
+	input := imageagent.StartRunInput{
+		RunID: "run-budget", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
+		IdempotencyKey: "run-budget-key", Plan: commandPlan(1),
+		Budget: imageagent.Budget{EnabledLimits: imageagent.BudgetLimitImages},
+	}
+
+	require.NoError(t, service.Start(verifiedContext("tenant-a", "user-a"), input))
+	projection, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-budget"})
+	require.NoError(t, err)
+	policy, err := projection.Run.Budget.Policy()
+	require.NoError(t, err)
+	require.Equal(t, imageagent.Limit{Enabled: true, Value: 0}, policy.Images)
+	require.Len(t, workflows.starts, 1)
+
+	invalid := input
+	invalid.RunID = "run-budget-invalid"
+	invalid.IdempotencyKey = "run-budget-invalid-key"
+	invalid.Budget = imageagent.Budget{MaxImages: -1}
+	require.ErrorIs(t, service.Start(verifiedContext("tenant-a", "user-a"), invalid), imageagent.ErrValidation)
+	require.Len(t, workflows.starts, 1)
+}
+
 func TestServiceRetryRejectsSlotIDOutsideArtifactGrammarBeforeWorkflowUpdate(t *testing.T) {
 	service, workflows := commandService(t, imageagent.RunStatusBlocked, &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"})
 

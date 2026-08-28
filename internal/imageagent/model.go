@@ -179,6 +179,7 @@ type Budget struct {
 	MaxRepairAttemptsPerSlot int
 	MaxCostMicros            int64
 	MaxElapsed               time.Duration
+	EnabledLimits            BudgetLimitSet
 }
 
 type BudgetUsage struct {

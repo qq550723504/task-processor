@@ -56,7 +56,7 @@ type createRunRequest struct {
 	Mode               imageagent.RunMode `json:"mode"`
 	IdempotencyKey     string             `json:"idempotency_key"`
 	Plan               planDTO            `json:"plan"`
-	Budget             budgetDTO          `json:"budget"`
+	Budget             budgetInputDTO     `json:"budget"`
 	MaxConcurrentSlots int                `json:"max_concurrent_slots"`
 }
 
@@ -69,9 +69,14 @@ func (h *Handler) Create(c *gin.Context) {
 		writeInvalidJSON(c, err)
 		return
 	}
+	budget, err := request.Budget.domain()
+	if err != nil {
+		writeInvalidJSON(c, err)
+		return
+	}
 	if err := h.application.Start(c.Request.Context(), imageagent.StartRunInput{
 		RunID: request.RunID, BusinessTaskID: request.BusinessTaskID, Mode: request.Mode,
-		IdempotencyKey: request.IdempotencyKey, Plan: request.Plan.domain(), Budget: request.Budget.domain(),
+		IdempotencyKey: request.IdempotencyKey, Plan: request.Plan.domain(), Budget: budget,
 		MaxConcurrentSlots: request.MaxConcurrentSlots,
 	}); err != nil {
 		writeError(c, err)

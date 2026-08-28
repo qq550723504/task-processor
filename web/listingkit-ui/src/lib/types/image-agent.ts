@@ -61,6 +61,14 @@ type ImageAgentBudget = {
   max_repair_attempts_per_slot: number;
   max_cost_micros: number;
   max_elapsed: number;
+  enabled_limits?: Array<
+    | "max_images"
+    | "max_agent_steps"
+    | "max_model_calls"
+    | "max_repair_attempts_per_slot"
+    | "max_cost_micros"
+    | "max_elapsed"
+  >;
 };
 
 type ImageAgentBudgetUsage = {

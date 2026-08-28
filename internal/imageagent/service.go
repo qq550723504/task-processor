@@ -49,6 +49,9 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	if err := ValidateArtifactKeyIdentifier(input.RunID); err != nil {
 		return fmt.Errorf("%w: image agent run ID cannot be used in a durable artifact key", err)
 	}
+	if _, err := input.Budget.Policy(); err != nil {
+		return fmt.Errorf("%w: validate image agent budget: %v", ErrValidation, err)
+	}
 	identity.BusinessTaskID = input.BusinessTaskID
 	input.Plan.CreatedBy = identity.UserID
 	if err := ValidatePlan(input.Plan); err != nil {

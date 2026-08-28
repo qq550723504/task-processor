@@ -134,6 +134,19 @@ describe("ImageAgentWorkbench", () => {
     }
   });
 
+  it("parses optional budget presence metadata and rejects unknown limit names", () => {
+    const current = projectionWithSlots(7);
+    Reflect.set(current.run.budget, "enabled_limits", ["max_images", "max_elapsed"]);
+    expect(Reflect.get(parseImageAgentProjection(current).run.budget, "enabled_limits")).toEqual([
+      "max_images",
+      "max_elapsed",
+    ]);
+
+    const invalid = projectionWithSlots(7);
+    Reflect.set(invalid.run.budget, "enabled_limits", ["provider_magic_tokens"]);
+    expect(() => parseImageAgentProjection(invalid)).toThrow();
+  });
+
   it("shows the exact blocked slot and keeps every planned slot", () => {
     const projection = projectionWithSlots(11, "scene-2");
 

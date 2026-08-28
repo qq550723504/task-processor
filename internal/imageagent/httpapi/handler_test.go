@@ -89,6 +89,28 @@ func TestCreateAcceptsManualOnlyAndRejectsIdentityFields(t *testing.T) {
 	})
 }
 
+func TestCreatePreservesBudgetLimitPresenceAndRejectsNegativeValuesBeforeStart(t *testing.T) {
+	requestBody := func(budget string) string {
+		return `{"run_id":"run-budget","business_task_id":"task-1","mode":"manual","idempotency_key":"run-budget-key","budget":` + budget + `,"plan":{"revision":1,"idempotency_key":"plan-key-1","source_asset_ids":["source-1"],"slots":[{"id":"slot-1","role":"scene","source_asset_ids":["source-1"],"idempotency_key":"slot-key-1"}]}}`
+	}
+
+	omittedApplication := &stubApplication{}
+	omitted := performRequest(t, requireHandler(t, omittedApplication), http.MethodPost, "/api/v1/image-agent/runs", requestBody(`{}`), verifiedIdentity("tenant-a", "user-a"), nil)
+	require.Equal(t, http.StatusAccepted, omitted.Code)
+	require.Zero(t, omittedApplication.startInput.Budget.EnabledLimits&imageagent.BudgetLimitImages)
+
+	zeroApplication := &stubApplication{}
+	explicitZero := performRequest(t, requireHandler(t, zeroApplication), http.MethodPost, "/api/v1/image-agent/runs", requestBody(`{"max_images":0}`), verifiedIdentity("tenant-a", "user-a"), nil)
+	require.Equal(t, http.StatusAccepted, explicitZero.Code)
+	require.Equal(t, imageagent.BudgetLimitImages, zeroApplication.startInput.Budget.EnabledLimits&imageagent.BudgetLimitImages)
+	require.Zero(t, zeroApplication.startInput.Budget.MaxImages)
+
+	negativeApplication := &stubApplication{}
+	negative := performRequest(t, requireHandler(t, negativeApplication), http.MethodPost, "/api/v1/image-agent/runs", requestBody(`{"max_images":-1}`), verifiedIdentity("tenant-a", "user-a"), nil)
+	require.Equal(t, http.StatusBadRequest, negative.Code)
+	require.Empty(t, negativeApplication.startInput.RunID)
+}
+
 func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 	application := &stubApplication{projection: imageagent.RunProjection{
 		Run: imageagent.Run{
@@ -128,6 +150,7 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 	for _, field := range []string{`"business_task_id":"task-1"`, `"active_plan_revision":2`, `"max_concurrent_slots":3`, `"source_asset_ids":["source-1"]`, `"idempotency_key":"plan-key-2"`, `"source_asset_id":"source-1"`, `"last_event_id":9`, `"projection_version":9`, `"max_images":12`, `"model_calls":3`, `"asset_catalog"`, `"action_id":"retry-pending"`, `"slot_id":"slot-1"`, `"failure_code":"provider_unavailable"`, `"failure_category":"provider"`, `"failure_message":"图片生成服务暂时不可用"`, `"command_ingress":{"used":1024,"limit":1024,"exhausted":true,"reason":"command_capacity_exhausted"}`} {
 		require.Contains(t, response.Body.String(), field)
 	}
+	require.Contains(t, response.Body.String(), `"enabled_limits":["max_images"]`)
 	require.NotContains(t, response.Body.String(), "javascript:alert")
 	require.NotContains(t, response.Body.String(), "data:image")
 	require.NotContains(t, response.Body.String(), "candidate-unsafe")

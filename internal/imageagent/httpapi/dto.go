@@ -69,6 +69,41 @@ func newPlanDTO(plan imageagent.Plan) planDTO {
 	return dto
 }
 
+type budgetInputDTO struct {
+	MaxImages                *int           `json:"max_images"`
+	MaxAgentSteps            *int           `json:"max_agent_steps"`
+	MaxModelCalls            *int           `json:"max_model_calls"`
+	MaxRepairAttemptsPerSlot *int           `json:"max_repair_attempts_per_slot"`
+	MaxCostMicros            *int64         `json:"max_cost_micros"`
+	MaxElapsed               *time.Duration `json:"max_elapsed"`
+}
+
+func (d budgetInputDTO) domain() (imageagent.Budget, error) {
+	var budget imageagent.Budget
+	if d.MaxImages != nil {
+		budget.MaxImages, budget.EnabledLimits = *d.MaxImages, budget.EnabledLimits|imageagent.BudgetLimitImages
+	}
+	if d.MaxAgentSteps != nil {
+		budget.MaxAgentSteps, budget.EnabledLimits = *d.MaxAgentSteps, budget.EnabledLimits|imageagent.BudgetLimitAgentSteps
+	}
+	if d.MaxModelCalls != nil {
+		budget.MaxModelCalls, budget.EnabledLimits = *d.MaxModelCalls, budget.EnabledLimits|imageagent.BudgetLimitModelCalls
+	}
+	if d.MaxRepairAttemptsPerSlot != nil {
+		budget.MaxRepairAttemptsPerSlot, budget.EnabledLimits = *d.MaxRepairAttemptsPerSlot, budget.EnabledLimits|imageagent.BudgetLimitRepairAttemptsPerSlot
+	}
+	if d.MaxCostMicros != nil {
+		budget.MaxCostMicros, budget.EnabledLimits = *d.MaxCostMicros, budget.EnabledLimits|imageagent.BudgetLimitCostMicros
+	}
+	if d.MaxElapsed != nil {
+		budget.MaxElapsed, budget.EnabledLimits = *d.MaxElapsed, budget.EnabledLimits|imageagent.BudgetLimitElapsed
+	}
+	if _, err := budget.Policy(); err != nil {
+		return imageagent.Budget{}, err
+	}
+	return budget, nil
+}
+
 type budgetDTO struct {
 	MaxImages                int           `json:"max_images"`
 	MaxAgentSteps            int           `json:"max_agent_steps"`
@@ -76,19 +111,15 @@ type budgetDTO struct {
 	MaxRepairAttemptsPerSlot int           `json:"max_repair_attempts_per_slot"`
 	MaxCostMicros            int64         `json:"max_cost_micros"`
 	MaxElapsed               time.Duration `json:"max_elapsed"`
-}
-
-func (d budgetDTO) domain() imageagent.Budget {
-	return imageagent.Budget{
-		MaxImages: d.MaxImages, MaxAgentSteps: d.MaxAgentSteps, MaxModelCalls: d.MaxModelCalls,
-		MaxRepairAttemptsPerSlot: d.MaxRepairAttemptsPerSlot, MaxCostMicros: d.MaxCostMicros, MaxElapsed: d.MaxElapsed,
-	}
+	EnabledLimits            []string      `json:"enabled_limits"`
 }
 
 func newBudgetDTO(value imageagent.Budget) budgetDTO {
+	enabledLimits, _ := value.EnabledLimitNames()
 	return budgetDTO{
 		MaxImages: value.MaxImages, MaxAgentSteps: value.MaxAgentSteps, MaxModelCalls: value.MaxModelCalls,
 		MaxRepairAttemptsPerSlot: value.MaxRepairAttemptsPerSlot, MaxCostMicros: value.MaxCostMicros, MaxElapsed: value.MaxElapsed,
+		EnabledLimits: enabledLimits,
 	}
 }
 
