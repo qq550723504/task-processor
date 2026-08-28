@@ -741,6 +741,39 @@ func TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted(t *testing.T) 
 	}
 }
 
+func TestListingKitSheinSyncAsyncIdentityContextDoesNotImportOpenAI(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingkit", "sheinsync")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/openai"`]; ok {
+			t.Errorf("%s imports the concrete OpenAI client; use shared aiidentity for SHEIN sync request context", path)
+		}
+	}
+}
+
+func TestListingKitSheinAdapterReviewContentOptimizerDoesNotImportOpenAI(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingkit", "sheinadapter")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/openai"`]; ok {
+			t.Errorf("%s imports the concrete OpenAI client; use the neutral internal/ai contract for SHEIN review content", path)
+		}
+	}
+}
+
 func TestListingKitAmazonListingImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedFiles := map[string]struct{}{

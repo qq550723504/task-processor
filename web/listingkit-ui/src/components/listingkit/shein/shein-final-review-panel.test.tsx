@@ -185,6 +185,74 @@ describe("SheinFinalReviewPanel", () => {
     expect(onSelectBlockingItem).not.toHaveBeenCalled();
   });
 
+  it("shows available source images when generated final images are fewer than the source set", async () => {
+    const user = userEvent.setup();
+    const onSelectBlockingItem = vi.fn();
+
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          request_draft: {
+            image_info: {
+              source: Array.from(
+                { length: 9 },
+                (_, index) => `https://1688.example.com/source-${index + 1}.jpg`,
+              ),
+            },
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [
+              { url: "https://cdn.example.com/main.jpg", role: "main", final: true },
+              { url: "https://cdn.example.com/gallery.jpg", role: "gallery", final: true },
+              { url: "https://cdn.example.com/white-bg.jpg", role: "white_bg", final: true },
+            ],
+          },
+        }}
+        onSelectBlockingItem={onSelectBlockingItem}
+      />,
+    );
+
+    expect(screen.getByText(/可选来源图 9 张/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "选择来源图" }));
+    expect(onSelectBlockingItem).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "images" }),
+    );
+  });
+
+  it("does not count already selected source images as available", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          source_product: {
+            image_urls: ["https://1688.example.com/source-1.jpg"],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [
+              { url: "https://cdn.example.com/main.jpg", role: "main", final: true },
+              {
+                url: "https://1688.example.com/source-1.jpg",
+                role: "gallery",
+                origin: "source",
+                requires_review: true,
+                final: true,
+              },
+            ],
+          },
+        }}
+        onSelectBlockingItem={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText(/可选来源图/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "选择来源图" })).not.toBeInTheDocument();
+  });
+
   it("shows resolved store explanation when preview includes store resolution", () => {
     render(
       <SheinFinalReviewPanel

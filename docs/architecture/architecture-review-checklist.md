@@ -328,11 +328,15 @@ At minimum, structural review should consider representative guards such as:
 - `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted`
 - `TestListingKitHTTPAPIRetiredManagementImportsStayBlocked`
 - `TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted`
+- `TestListingKitSheinSyncAsyncIdentityContextDoesNotImportOpenAI`
+- `TestListingKitSheinAdapterReviewContentOptimizerDoesNotImportOpenAI`
 - `TestListingKitRootOpenAIImportsStayAllowlisted`
 - `TestTEMUSyncAndPricingRetiredManagementImportsStayBlocked`
 - `TestTEMUProductStoreAndSchedulerRetiredManagementImportsStayBlocked`
 - `TestTEMURuntimeAndBridgeRetiredManagementImportsStayBlocked`
 - `TestTEMUOpenAIImportsStayAllowlisted`
+- `depguard: temu_historical_facades`
+- `TestHistoricalTemuFormattingFacadeStaysRetired`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
 - `depguard: listing_preview_platform_neutral`

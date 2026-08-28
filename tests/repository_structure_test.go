@@ -173,6 +173,12 @@ func TestPlatformRegistrationPackagesContainNoLocalArtifacts(t *testing.T) {
 	assertNoLocalArtifactPaths(t, filepath.Join("..", "internal", "platforms"))
 }
 
+func TestHistoricalTemuFormattingFacadeStaysRetired(t *testing.T) {
+	if files := trackedFiles(t, "internal/temu/format"); len(files) > 0 {
+		t.Fatalf("internal/temu/format is a retired compatibility facade; keep TEMU numeric formatting in internal/marketplace/temu/publishing: %v", files)
+	}
+}
+
 func TestLocalArtifactPathDetectionCoversLocalRuntimeDirectories(t *testing.T) {
 	if !containsLocalArtifactPathPart(filepath.Join("internal", "sdslogin", ".local", "auth_state.json")) {
 		t.Fatal("expected .local runtime directory to be detected as a local artifact path")

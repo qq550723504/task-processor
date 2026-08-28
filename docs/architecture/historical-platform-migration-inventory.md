@@ -137,11 +137,17 @@ package; directory symmetry alone is not sufficient.
 
 The first TEMU publishing policies now have canonical owners under
 `internal/marketplace/temu/publishing`: numeric weight/dimension formatting and
-minimum-price rule evaluation. The historical `internal/temu` packages keep
-thin compatibility adapters, while depguard prevents the canonical package
-from depending on the historical TEMU runtime. This is the intended shape for
+minimum-price rule evaluation, plus product-name parentheses and submission
+punctuation spacing. The historical `internal/temu` packages keep thin
+compatibility adapters, while depguard prevents the canonical package from
+depending on the historical TEMU runtime. This is the intended shape for
 future policy slices; it does not authorize moving TEMU pipeline, scheduler, or
 API client code.
+
+The retired `internal/temu/format` numeric facade had no repository callers and
+was removed after its behavior was covered by the canonical publishing policy.
+The `temu_historical_facades` depguard rule prevents that forwarding package
+from being recreated under the historical tree.
 
 ## Next Slice Candidates
 

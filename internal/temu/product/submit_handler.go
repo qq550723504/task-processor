@@ -2,10 +2,9 @@ package product
 
 import (
 	"fmt"
-	"regexp"
-	"strings"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/listingadmin"
+	temupublishing "task-processor/internal/marketplace/temu/publishing"
 	"task-processor/internal/pipeline"
 	temuapi "task-processor/internal/temu/api"
 	temucontext "task-processor/internal/temu/context"
@@ -51,25 +50,9 @@ func (h *ProductSubmitHandler) Name() string {
 	return "产品提交处理器"
 }
 
-// ensureProperFormatting 确保产品名称格式正确（提交前的最后检查）
+// ensureProperFormatting keeps the historical handler API as a compatibility adapter.
 func (h *ProductSubmitHandler) ensureProperFormatting(name string) string {
-	// 1. 确保左括号前有空格（TEMU要求）
-	name = regexp.MustCompile(`(\S)\(`).ReplaceAllString(name, "$1 (")
-
-	// 2. 确保右括号后有空格（如果后面还有字符）
-	name = regexp.MustCompile(`\)(\S)`).ReplaceAllString(name, ") $1")
-
-	// 3. 移除逗号前的空格
-	name = regexp.MustCompile(`\s+,`).ReplaceAllString(name, ",")
-
-	// 4. 移除其他标点符号前的空格
-	name = regexp.MustCompile(`\s+([.!?;:])`).ReplaceAllString(name, "$1")
-
-	// 5. 清理多余的空格
-	name = strings.TrimSpace(name)
-	name = regexp.MustCompile(`\s+`).ReplaceAllString(name, " ")
-
-	return name
+	return temupublishing.NormalizeProductSubmissionName(name)
 }
 
 // HandleTemu 处理TEMU任务（实现TemuHandler接口）

@@ -35,24 +35,31 @@ export async function POST(request: Request) {
   }
 
   const input = payload as Record<string, unknown>;
+  const type = text(input.type, 32);
   const name = text(input.name, 80);
   const company = text(input.company, 120);
   const contact = text(input.contact, 160);
   const platforms = list(input.platforms);
   const message = text(input.message, MAX_MESSAGE_LENGTH);
 
-  if (!name || !company || !contact || platforms.length === 0) {
+  if (type === "contact" && !contact) {
+    return NextResponse.json({ error: "Please provide a contact method." }, { status: 400 });
+  }
+
+  if (type !== "contact" && (!name || !company || !contact || platforms.length === 0)) {
     return NextResponse.json({ error: "Please complete the required fields." }, { status: 400 });
   }
 
-  const content = [
-    "【ListingKit 预约演示】",
-    `联系人：${name}`,
-    `公司/店铺：${company}`,
-    `联系方式：${contact}`,
-    `目标渠道：${platforms.join("、")}`,
-    `需求说明：${message || "未填写"}`,
-  ].join("\n");
+  const content = type === "contact"
+    ? ["【硕米智能引擎 联系咨询】", `联系方式：${contact}`, `需求说明：${message || "未填写"}`].join("\n")
+    : [
+      "【ListingKit 预约演示】",
+      `联系人：${name}`,
+      `公司/店铺：${company}`,
+      `联系方式：${contact}`,
+      `目标渠道：${platforms.join("、")}`,
+      `需求说明：${message || "未填写"}`,
+    ].join("\n");
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);

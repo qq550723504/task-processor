@@ -1,6 +1,7 @@
 import {
   collectSheinPreviewImageGroups,
   collectSheinPreviewImages,
+  getSelectableSheinPreviewImages,
 } from "@/components/listingkit/shein/shein-preview-image";
 import type { SheinPreviewPayload } from "@/lib/types/listingkit";
 
@@ -217,5 +218,27 @@ describe("collectSheinPreviewImages", () => {
 
     expect(images.map((image) => image.url)).toEqual(["http://local/source.png"]);
     expect(images[0]?.label).toBe("Source product 1");
+  });
+});
+
+describe("getSelectableSheinPreviewImages", () => {
+  it("excludes available images already present in product images", () => {
+    const selected = {
+      id: "selected",
+      label: "Selected source",
+      url: "https://1688.example.com/source-1.jpg",
+    };
+    const available = [
+      selected,
+      {
+        id: "unselected",
+        label: "Unselected source",
+        url: "https://1688.example.com/source-2.jpg",
+      },
+    ];
+
+    expect(getSelectableSheinPreviewImages([selected], available)).toEqual([
+      available[1],
+    ]);
   });
 });

@@ -39,9 +39,11 @@ const reviewMetrics = [
 ] as const;
 
 export function WorkspaceOverviewPanel({
+  emptyState,
   overview,
   reviewSummary,
 }: {
+  emptyState?: React.ReactNode;
   overview?: AssetGenerationOverview | null;
   reviewSummary?: ReviewSummary | null;
 }) {
@@ -62,7 +64,7 @@ export function WorkspaceOverviewPanel({
     !hasResolvedAction &&
     !hasRecoverySummary
   ) {
-    return null;
+    return emptyState ?? null;
   }
 
   return (

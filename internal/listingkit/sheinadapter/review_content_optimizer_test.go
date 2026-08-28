@@ -4,18 +4,18 @@ import (
 	"context"
 	"testing"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/ai"
 )
 
 type stubMultimodalChatClient struct {
-	lastReq *openaiclient.ChatCompletionRequest
+	lastReq *ai.ChatCompletionRequest
 }
 
-func (s *stubMultimodalChatClient) CreateChatCompletion(_ context.Context, req *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
+func (s *stubMultimodalChatClient) CreateChatCompletion(_ context.Context, req *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
 	s.lastReq = req
-	return &openaiclient.ChatCompletionResponse{
-		Choices: []openaiclient.ChatCompletionChoice{{
-			Message: openaiclient.ChatCompletionMessage{Content: `{"title":"Optimized","description":"Optimized description"}`},
+	return &ai.ChatCompletionResponse{
+		Choices: []ai.ChatCompletionChoice{{
+			Message: ai.ChatCompletionMessage{Content: `{"title":"Optimized","description":"Optimized description"}`},
 		}},
 	}, nil
 }
@@ -24,7 +24,7 @@ func (s *stubMultimodalChatClient) GetDefaultModel() string {
 	return "test-model"
 }
 
-func TestMultimodalTextGeneratorBuildsOpenAIImageRequest(t *testing.T) {
+func TestMultimodalTextGeneratorBuildsMultimodalImageRequest(t *testing.T) {
 	client := &stubMultimodalChatClient{}
 	generator := multimodalTextGenerator{client: client}
 

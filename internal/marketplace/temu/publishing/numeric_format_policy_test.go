@@ -10,6 +10,7 @@ func TestFormatWeightUsesTEMUBoundsAndPrecision(t *testing.T) {
 	}{
 		{name: "blank defaults", input: "", want: "0.22"},
 		{name: "unit is removed", input: "2.345 lb", want: "2.35"},
+		{name: "localized unit is removed", input: "2.5磅", want: "2.50"},
 		{name: "upper bound is enforced", input: "1000.5", want: "999.99"},
 	}
 	for _, tt := range tests {
@@ -29,6 +30,7 @@ func TestFormatDimensionUsesTEMUBoundsAndPrecision(t *testing.T) {
 	}{
 		{name: "blank defaults", input: "", want: "3.9"},
 		{name: "unit is removed", input: "15.67 in", want: "15.7"},
+		{name: "localized unit is removed", input: "12.3英寸", want: "12.3"},
 		{name: "non-positive defaults", input: "0", want: "3.9"},
 	}
 	for _, tt := range tests {

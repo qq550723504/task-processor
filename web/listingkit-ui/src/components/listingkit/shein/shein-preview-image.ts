@@ -22,6 +22,14 @@ export type SheinPreviewImageGroups = {
   mockupImages: SheinPreviewImage[];
 };
 
+export function getSelectableSheinPreviewImages(
+  productImages: SheinPreviewImage[],
+  availableImages: SheinPreviewImage[],
+): SheinPreviewImage[] {
+  const selectedURLs = new Set(productImages.map((image) => image.url));
+  return availableImages.filter((image) => !selectedURLs.has(image.url));
+}
+
 function pushImage(
   images: SheinPreviewImage[],
   seen: Set<string>,

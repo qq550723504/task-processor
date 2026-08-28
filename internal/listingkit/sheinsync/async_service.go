@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/shared/aiidentity"
 	"task-processor/internal/shared/tenantctx"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -92,6 +92,10 @@ func (s *asyncSheinSyncService) ResolveProductAPI(ctx context.Context, storeID i
 }
 
 func detachedSheinSyncContext(ctx context.Context) context.Context {
+	identity := aiidentity.FromContext(ctx)
 	detached := tenantctx.WithTenantID(context.Background(), tenantctx.TenantIDFromContext(ctx))
-	return openaiclient.WithIdentity(detached, openaiclient.IdentityFromContext(ctx))
+	return aiidentity.WithIdentity(detached, aiidentity.Identity{
+		TenantID: identity.TenantID,
+		UserID:   identity.UserID,
+	})
 }

@@ -4,11 +4,11 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import {
-  buildSheinGeneralReviewHref,
+  buildSheinWorkspaceHrefForAction,
   normalizeSheinFreshnessActionKey,
   isSheinWorkspaceActionKey,
-  isSheinAdvancedRepairKey,
   normalizeSheinWorkspaceActionKey,
+  sheinWorkspaceSectionForAction,
   type SheinFreshnessActionKey,
   sheinWorkspaceTargetIdForKey,
 } from "@/components/listingkit/shein/shein-workspace-actions";
@@ -16,12 +16,21 @@ import {
   deriveRecoveryNavigationTarget,
 } from "@/components/listingkit/workspace/workspace-action-routing";
 import { shouldSyncPlatformOnRecovery } from "@/components/listingkit/workspace/workspace-recovery-routing";
-import { buildWorkspaceSearch } from "@/components/listingkit/workspace/workspace-routing";
+import {
+  buildPlatformWorkspaceHref,
+  buildProductWorkspaceHref,
+  buildWorkspaceHistoryHref,
+  buildWorkspaceSearch,
+  shouldSyncFocusedTargetToRoute,
+} from "@/components/listingkit/workspace/workspace-routing";
 import { scrollSheinWorkspaceTarget } from "@/components/listingkit/workspace/workspace-screen-helpers";
 import { useExecuteAction } from "@/lib/query/use-action";
 import { useDispatchNavigation } from "@/lib/query/use-dispatch";
 import type {
+  ActionTarget,
+  ActionExecutionResult,
   ActionExecutionRequest,
+  NavigationDispatchResponse,
   NavigationTarget,
   QueueQuery,
   RecoveryDescriptor,
@@ -30,7 +39,7 @@ import type {
   SheinReadinessItem,
   ToolbarAction,
 } from "@/lib/types/listingkit";
-import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
+import type { ProductWorkspaceSectionKey } from "@/components/listingkit/workspace/product-workspace-model";
 
 type SearchParamsLike = {
   toString(): string;
@@ -70,7 +79,7 @@ export function useWorkspaceNavigationActions({
     const currentParams = new URLSearchParams(
       typeof window === "undefined" ? searchParams.toString() : window.location.search,
     );
-    if (currentParams.get("section_key") === "final_review") {
+    if (!shouldSyncFocusedTargetToRoute(currentParams.toString())) {
       return;
     }
 
@@ -85,11 +94,49 @@ export function useWorkspaceNavigationActions({
     );
   }, [focusedTarget, router, searchParams, taskId]);
 
+  const routeExplicitFocusedTarget = (target?: ReviewTarget) => {
+    const currentSearch = searchParams.toString();
+    if (!shouldRouteExplicitNavigation(currentSearch)) {
+      return;
+    }
+    if (!target?.platform) {
+      return;
+    }
+    const nextSearch = buildWorkspaceSearch(currentSearch, target);
+    if (nextSearch === currentSearch) {
+      return;
+    }
+    router.replace(
+      `/listing-kits/${taskId}/workspace${nextSearch ? `?${nextSearch}` : ""}`,
+    );
+  };
+
   const dispatchTarget = (target?: NavigationTarget | null) => {
     if (!target) {
       return;
     }
-    dispatch.mutate(target);
+    dispatch.mutate(target, {
+      onSuccess: (result) => {
+        routeExplicitFocusedTarget(
+          focusedTargetFromDispatchResponse(result) ??
+            reviewTargetFromNavigationTarget(target),
+        );
+      },
+    });
+  };
+
+  const routeActionResult = (result: ActionExecutionResult) => {
+    routeExplicitFocusedTarget(
+      result.review_session?.focused_target ??
+        result.review_patch?.focused_target ??
+        reviewTargetFromActionTarget(result.resolved_target),
+    );
+  };
+
+  const executeAction = (request: ActionExecutionRequest) => {
+    action.mutate(request, {
+      onSuccess: routeActionResult,
+    });
   };
 
   const handleAction = (
@@ -97,7 +144,7 @@ export function useWorkspaceNavigationActions({
     request?: ActionExecutionRequest,
   ) => {
     if (request) {
-      action.mutate(request);
+      executeAction(request);
       return;
     }
 
@@ -118,7 +165,7 @@ export function useWorkspaceNavigationActions({
     }
 
     if (actionSummary?.action_target || actionSummary?.action_key) {
-      action.mutate({
+      executeAction({
         action_key: actionSummary.action_key,
         response_mode: "patch_only",
         target: actionSummary.action_target,
@@ -131,7 +178,7 @@ export function useWorkspaceNavigationActions({
 
   const handleToolbarAction = (toolbarAction: ToolbarAction) => {
     if (toolbarAction.action_target || toolbarAction.kind === "workflow") {
-      action.mutate({
+      executeAction({
         action_key: toolbarAction.action_target?.action_key,
         response_mode: "patch_only",
         target: toolbarAction.action_target,
@@ -152,9 +199,17 @@ export function useWorkspaceNavigationActions({
   };
 
   const handlePlatformSelect = (platform: string) => {
-    const params = sanitizedNavigationSearchParams(searchParams);
-    params.set("platform", platform);
-    router.replace(`/listing-kits/${taskId}/workspace?${params.toString()}`);
+    router.replace(
+      buildPlatformWorkspaceHref(taskId, searchParams.toString(), platform),
+    );
+  };
+
+  const handleProductSelect = (section: ProductWorkspaceSectionKey) => {
+    router.replace(buildProductWorkspaceHref(taskId, searchParams.toString(), section));
+  };
+
+  const handleHistorySelect = () => {
+    router.replace(buildWorkspaceHistoryHref(taskId, searchParams.toString()));
   };
 
   const handlePlatformRecovery = (
@@ -162,7 +217,12 @@ export function useWorkspaceNavigationActions({
     platform: string,
   ) => {
     handleRecovery(descriptor);
-    if (shouldSyncPlatformOnRecovery(descriptor)) {
+    const currentParams = new URLSearchParams(searchParams.toString());
+    if (
+      shouldSyncPlatformOnRecovery(descriptor) ||
+      currentParams.get("workspace_view") === "history" ||
+      currentParams.has("product_section")
+    ) {
       handlePlatformSelect(platform);
     }
   };
@@ -196,9 +256,80 @@ export function useWorkspaceNavigationActions({
     handleToolbarAction,
     handleRecovery,
     handlePlatformSelect,
+    handleProductSelect,
+    handleHistorySelect,
     handlePlatformRecovery,
     handleSelectSheinBlockingItem,
     handleRunSheinPrimaryAction,
+  };
+}
+
+function shouldRouteExplicitNavigation(search: string) {
+  const params = new URLSearchParams(search);
+  return (
+    params.has("product_section") ||
+    params.get("section_key") === "general_review" ||
+    params.get("section_key") === "final_review"
+  );
+}
+
+function focusedTargetFromDispatchResponse(
+  result: NavigationDispatchResponse,
+): ReviewTarget | undefined {
+  return (
+    result.panel_update?.focused_target ??
+    result.review_session?.session?.focused_target ??
+    result.review_session?.patch?.focused_target ??
+    result.review_preview?.review_target ??
+    result.panel_update?.review_patch?.focused_target ??
+    result.panel_update?.review_session?.session?.focused_target ??
+    result.panel_update?.review_session?.patch?.focused_target ??
+    result.panel_update?.review_preview?.review_target
+  );
+}
+
+function reviewTargetFromNavigationTarget(
+  target: NavigationTarget,
+): ReviewTarget | undefined {
+  const nestedTarget = target.action_target?.navigation_target;
+  if (nestedTarget) {
+    const nestedReviewTarget = reviewTargetFromNavigationTarget(nestedTarget);
+    if (nestedReviewTarget) {
+      return nestedReviewTarget;
+    }
+  }
+  const query =
+    target.preview_query ??
+    target.session_query ??
+    target.action_target?.queue_query ??
+    target.queue_query;
+  return reviewTargetFromQueueQuery(query);
+}
+
+function reviewTargetFromActionTarget(
+  target?: ActionTarget,
+): ReviewTarget | undefined {
+  if (target?.navigation_target) {
+    const navigationTarget = reviewTargetFromNavigationTarget(
+      target.navigation_target,
+    );
+    if (navigationTarget) {
+      return navigationTarget;
+    }
+  }
+  return reviewTargetFromQueueQuery(target?.queue_query);
+}
+
+function reviewTargetFromQueueQuery(
+  query?: QueueQuery,
+): ReviewTarget | undefined {
+  if (!query?.platform) {
+    return undefined;
+  }
+  return {
+    platform: query.platform,
+    slot: query.slot,
+    capability: query.preview_capability,
   };
 }
 
@@ -235,12 +366,12 @@ function navigateOrScrollSheinActionTarget({
   }
   const targetId = sheinWorkspaceTargetIdForKey(normalizedKey);
   const currentParams = new URLSearchParams(searchParams);
-  const sectionKey = currentParams.get("section_key");
-  const needsGeneralReviewRoute =
-    isSheinAdvancedRepairKey(normalizedKey) &&
-    (sectionKey === "final_review" || !document.getElementById(targetId));
-  if (needsGeneralReviewRoute) {
-    router.replace(buildSheinGeneralReviewHref(taskId, targetId));
+  const isOnTargetWorkspaceSurface =
+    currentParams.get("platform") === "shein" &&
+    currentParams.get("section_key") ===
+      sheinWorkspaceSectionForAction(normalizedKey);
+  if (!isOnTargetWorkspaceSurface) {
+    router.replace(buildSheinWorkspaceHrefForAction(taskId, normalizedKey));
     return;
   }
   scrollSheinWorkspaceTarget(normalizedKey, targetId);
