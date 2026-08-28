@@ -125,20 +125,23 @@ func runImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowR
 	effects := newWorkflowEffectOwner(ctx)
 	projection := WorkflowResult{Status: imageagent.RunStatusPlanning, Plan: input.Plan, Slots: slotProjections(input.Plan, nil), CommandIngress: imageagent.CommandIngress{Limit: maxActionLedgerEntries}}
 	var updates *workflowUpdateState
-	cancelAndProject := func(results []SlotWorkflowResult) (WorkflowResult, error) {
+	cancelAndProject := func(results []SlotWorkflowResult) (WorkflowResult, bool, error) {
 		if updates == nil || !updates.cancelRequested {
-			return WorkflowResult{}, fmt.Errorf("image agent cancellation was not committed by the command saga")
+			return WorkflowResult{}, false, fmt.Errorf("image agent cancellation was not committed by the command saga")
 		}
 		for !updates.cancelCommitted {
 			if updates.cancelPending {
 				updates.commitPendingCancellation(ctx, results)
 				continue
 			}
-			if updates.cancelBlocked && updates.cancelCommitErr != nil {
-				if err := workflow.Await(ctx, func() bool { return workflow.AllHandlersFinished(ctx) }); err != nil {
-					return projection, err
+			if updates.cancelBlocked && updates.cancelCommitErr == nil {
+				if err := workflow.Await(ctx, func() bool {
+					return !updates.cancelRequested && updates.pendingActionID == ""
+				}); err != nil {
+					return projection, false, err
 				}
-				return projection, nil
+				updates.cancelBlocked = false
+				return projection, false, nil
 			}
 			updates.wake.Receive(ctx, nil)
 		}
@@ -147,10 +150,10 @@ func runImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowR
 		projection = result
 		if updates.cancelRequested {
 			if err := workflow.Await(ctx, func() bool { return workflow.AllHandlersFinished(ctx) }); err != nil {
-				return result, err
+				return result, true, err
 			}
 		}
-		return result, nil
+		return result, true, nil
 	}
 	cancelChannel := workflow.GetSignalChannel(ctx, signalCancel)
 	retryChannel := workflow.GetSignalChannel(ctx, signalRetrySlot)
@@ -174,7 +177,8 @@ func runImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowR
 			return WorkflowResult{}, err
 		}
 		if updates.cancelCommitted {
-			return cancelAndProject(results)
+			result, _, err := cancelAndProject(results)
+			return result, err
 		}
 		if err := workflow.Await(ctx, func() bool { return workflow.AllHandlersFinished(ctx) }); err != nil {
 			return WorkflowResult{}, err
@@ -203,7 +207,8 @@ runPlan:
 			}
 		}
 		if updates.cancelRequested {
-			return cancelAndProject(nil)
+			result, _, err := cancelAndProject(nil)
+			return result, err
 		}
 
 		limit := input.MaxConcurrentSlots
@@ -222,28 +227,44 @@ runPlan:
 			}
 			return WorkflowResult{}, err
 		}
+		var result WorkflowResult
+		cancellationBlocked := false
 		if cancelled {
-			return cancelAndProject(results)
+			cancelResult, terminal, cancelErr := cancelAndProject(results)
+			if cancelErr != nil || terminal {
+				return cancelResult, cancelErr
+			}
+			result = cancelResult
+			cancellationBlocked = true
+		} else {
+			result = summarizeResultsForWire(input.Plan, results, effects.activities)
+			result.CommandIngress = updates.commandIngress()
 		}
-		result := summarizeResultsForWire(input.Plan, results, effects.activities)
-		result.CommandIngress = updates.commandIngress()
 		if result.Block != nil {
-			if err := effects.persistRunState(ctx, input, result, "retry_slot"); err != nil {
-				if errors.Is(err, errWorkflowEffectFenced) {
-					return awaitTerminalIntent(results)
+			if !cancellationBlocked {
+				if err := effects.persistRunState(ctx, input, result, "retry_slot"); err != nil {
+					if errors.Is(err, errWorkflowEffectFenced) {
+						return awaitTerminalIntent(results)
+					}
+					return WorkflowResult{}, err
 				}
-				return WorkflowResult{}, err
 			}
 			projection = result
 			legacyRetryPending := updates.dispatchDeferredRetries(ctx)
 			for result.Block != nil {
-				if !input.WaitForCommands && !legacyRetryPending {
+				if !input.WaitForCommands && !legacyRetryPending && !cancellationBlocked {
 					return result, nil
 				}
 				updates.wake.Receive(ctx, nil)
 				legacyRetryPending = false
 				if updates.cancelRequested {
-					return cancelAndProject(results)
+					cancelResult, terminal, cancelErr := cancelAndProject(results)
+					if cancelErr != nil || terminal {
+						return cancelResult, cancelErr
+					}
+					result = cancelResult
+					cancellationBlocked = true
+					continue
 				}
 				if updates.restartPlan {
 					updates.restartPlan = false
@@ -273,7 +294,12 @@ runPlan:
 		for {
 			updates.wake.Receive(ctx, nil)
 			if updates.cancelRequested {
-				return cancelAndProject(results)
+				cancelResult, terminal, cancelErr := cancelAndProject(results)
+				if cancelErr != nil || terminal {
+					return cancelResult, cancelErr
+				}
+				result = cancelResult
+				continue
 			}
 			if projection.Status == imageagent.RunStatusCompleted {
 				if err := workflow.Await(ctx, func() bool { return workflow.AllHandlersFinished(ctx) }); err != nil {
@@ -1166,12 +1192,17 @@ func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSig
 		s.cancelActionFingerprint = record.fingerprint
 		s.wake.SendAsync(struct{}{})
 		if err := workflow.Await(ctx, func() bool {
-			return s.cancelCommitted || (!s.cancelPending && s.cancelCommitErr != nil)
+			return s.cancelCommitted || s.cancelBlocked || (!s.cancelPending && s.cancelCommitErr != nil)
 		}); err != nil {
 			return CommandAcknowledgement{}, err
 		}
 		if s.cancelCommitErr != nil {
 			return CommandAcknowledgement{}, s.cancelCommitErr
+		}
+		if s.cancelBlocked {
+			s.cancelRequested = false
+			s.cancelActionFingerprint = ""
+			return CommandAcknowledgement{RunID: signal.RunID, PlanRevision: signal.PlanRevision, ActionID: signal.ActionID, Status: imageagent.RunStatusBlocked}, nil
 		}
 		return CommandAcknowledgement{RunID: signal.RunID, PlanRevision: signal.PlanRevision, ActionID: signal.ActionID, Status: imageagent.RunStatusCancelled}, nil
 	}
@@ -1198,7 +1229,6 @@ func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, re
 		s.cancelBlocked = false
 		if err == nil {
 			*s.projection = result
-			s.cancelCommitErr = updateBlockedError("image agent cancellation is waiting for durable effect terminalization")
 			s.cancelBlocked = true
 		}
 		s.wake.SendAsync(struct{}{})
@@ -1618,10 +1648,7 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 			continue
 		}
 		inFlight--
-		persistCompletion := !cancelled
-		if cancelled && updates.effects.activities.useV3Slot && completion.V3Result != nil && completion.V3Result.Published.SlotID != "" {
-			persistCompletion = true
-		}
+		persistCompletion := !cancelled || input.externalEffectFinalization
 		if persistCompletion {
 			if completion.Failed {
 				completion = blockedSlotCompletion(input, completion.Index, 1, "slot_workflow_failed", updates.effects.activities.useV3Slot)
@@ -1668,7 +1695,7 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 			err := future.Get(goroutineCtx, &v3Result)
 			result := SlotWorkflowResult{
 				Execution: imageagent.SlotExecutionResult{SlotID: slotInput.Slot.ID, Attempt: slotInput.Attempt},
-				Status:    v3Result.Status, ErrorCode: v3Result.ErrorCode,
+				Status:    v3Result.Status, ErrorCode: v3Result.ErrorCode, EffectPhase: v3Result.EffectPhase,
 			}
 			if err == nil {
 				result.Execution.SlotID = v3Result.Published.SlotID
@@ -1693,10 +1720,14 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 
 func blockedSlotCompletion(input WorkflowInput, index, attempt int, code string, useV3 bool) childCompletion {
 	slot := input.Plan.Slots[index]
-	result := SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: slot.ID, Attempt: attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: code}
+	phase := imageagent.SlotEffectV3Phase("")
+	if useV3 && input.externalEffectFinalization {
+		phase = terminalEffectPhaseForErrorCode(code)
+	}
+	result := SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: slot.ID, Attempt: attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: code, EffectPhase: phase}
 	completion := childCompletion{Index: index, Result: result}
 	if useV3 {
-		v3 := SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: slot.ID, Attempt: attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: code}
+		v3 := SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: slot.ID, Attempt: attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: code, EffectPhase: phase}
 		completion.V3Result = &v3
 	}
 	return completion
@@ -1735,7 +1766,7 @@ func blockedCancellationProjection(input WorkflowInput, results []SlotWorkflowRe
 		if index < len(results) && results[index].Status == imageagent.SlotStatusAccepted {
 			result.CompletedSlotIDs = append(result.CompletedSlotIDs, slot.ID)
 		}
-		if result.Block != nil || index >= len(results) || strings.TrimSpace(results[index].Execution.SlotID) == "" || results[index].Status == imageagent.SlotStatusAccepted {
+		if result.Block != nil || index >= len(results) || strings.TrimSpace(results[index].Execution.SlotID) == "" || cancellationResultTerminalized(results[index]) {
 			continue
 		}
 		code, message := "slot_failed", "slot_failed"
@@ -1755,11 +1786,36 @@ func cancellationResultsTerminalized(results []SlotWorkflowResult) bool {
 		if strings.TrimSpace(result.Execution.SlotID) == "" {
 			continue
 		}
-		if result.Status != imageagent.SlotStatusAccepted && result.Status != imageagent.SlotStatusBlocked {
+		if !cancellationResultTerminalized(result) {
 			return false
 		}
 	}
 	return true
+}
+
+func cancellationResultTerminalized(result SlotWorkflowResult) bool {
+	switch result.EffectPhase {
+	case imageagent.SlotEffectV3PublicationComplete:
+		return result.Status == imageagent.SlotStatusAccepted || result.Status == imageagent.SlotStatusBlocked
+	case imageagent.SlotEffectV3ProviderNotDispatched:
+		if result.Status != imageagent.SlotStatusBlocked {
+			return false
+		}
+		switch result.ErrorCode {
+		case imageagent.SlotProviderNotDispatchedCode, imageagent.BudgetExhaustedCode, imageagent.BudgetQuoteUnavailableCode, imageagent.BudgetElapsedCode:
+			return true
+		default:
+			return false
+		}
+	case imageagent.SlotEffectV3ProviderUnknown:
+		return result.Status == imageagent.SlotStatusBlocked && result.ErrorCode == imageagent.SlotProviderOutcomeUnknownCode
+	case imageagent.SlotEffectV3StagingUnknown:
+		return result.Status == imageagent.SlotStatusBlocked && result.ErrorCode == imageagent.SlotStagingOutcomeUnknownCode
+	case imageagent.SlotEffectV3PublicationUnknown:
+		return result.Status == imageagent.SlotStatusBlocked && result.ErrorCode == imageagent.SlotPublicationOutcomeUnknownCode
+	default:
+		return false
+	}
 }
 
 func executePersistSlotResult(ctx workflow.Context, activityName string, input WorkflowInput, result SlotWorkflowResult) error {

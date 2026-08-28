@@ -140,11 +140,12 @@ func TestImageSlotWorkflowV3RejectsInvalidMainCandidateCount(t *testing.T) {
 
 func TestImageSlotWorkflowV3ThreadsExternalEffectFinalizationToActivityInput(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		flag bool
+		name      string
+		flag      bool
+		wantPhase imageagent.SlotEffectV3Phase
 	}{
 		{name: "legacy history", flag: false},
-		{name: "new history", flag: true},
+		{name: "new history", flag: true, wantPhase: imageagent.SlotEffectV3PublicationComplete},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var suite testsuite.WorkflowTestSuite
@@ -175,6 +176,7 @@ func TestImageSlotWorkflowV3ThreadsExternalEffectFinalizationToActivityInput(t *
 			var result SlotWorkflowV3Result
 			require.NoError(t, env.GetWorkflowResult(&result))
 			require.Equal(t, imageagent.SlotStatusAccepted, result.Status)
+			require.Equal(t, tc.wantPhase, result.EffectPhase)
 			require.Equal(t, tc.flag, observed)
 		})
 	}

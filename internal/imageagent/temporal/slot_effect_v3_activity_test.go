@@ -218,6 +218,36 @@ func TestExecuteSlotV3CancellationTerminalizesSuccessfulProviderEffect(t *testin
 	require.NotEqual(t, imageagent.SlotEffectV3ProviderClaimed, stored.Phase)
 }
 
+func TestExecuteSlotV3StartsOneFinalizationWindowAfterProviderReturns(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-lazy-finalization-window")
+	input.ExternalEffectFinalization = true
+	path := writeTinyPNG(t)
+	var providerReturnedAt time.Time
+	executor := &recordingStagedExecutor{
+		generated: generatedV3Output(input, path),
+		onGenerate: func() {
+			time.Sleep(250 * time.Millisecond)
+			providerReturnedAt = time.Now()
+		},
+	}
+	effects := &finalizationDeadlineObservingV3Repository{SlotExternalEffectV3Repository: repository.(imageagent.SlotExternalEffectV3Repository)}
+	activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
+
+	result, err := activities.ExecuteSlotV3(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+	prepareDeadline, claimDeadline, completionDeadline := effects.FinalizationDeadlines()
+	require.False(t, providerReturnedAt.IsZero())
+	require.False(t, prepareDeadline.IsZero(), "staging must receive the bounded finalization context")
+	require.False(t, claimDeadline.IsZero(), "publication claim must remain inside the same bounded context")
+	require.False(t, completionDeadline.IsZero(), "publication completion must remain inside the same bounded context")
+	require.GreaterOrEqual(t, prepareDeadline.Sub(providerReturnedAt), providerFinalizationTimeout-100*time.Millisecond,
+		"provider execution must not consume the post-outcome finalization grace")
+	require.True(t, prepareDeadline.Equal(claimDeadline), "publication must not create a second independent grace window")
+	require.True(t, prepareDeadline.Equal(completionDeadline), "completion must use the original post-provider grace window")
+}
+
 func TestExecuteSlotV3CancellationPreservesLegacySuccessfulProviderBehaviorWithoutPatch(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-provider-success-legacy-cancelled")
 	path := writeTinyPNG(t)
@@ -356,6 +386,48 @@ func TestExecuteSlotV3RecoversLostPublicationClaimResponse(t *testing.T) {
 	stored, err := baseEffects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, stored.Publication.Fence)
+}
+
+func TestExecuteSlotV3CancellationReconcilesLostPublicationResponsesWithinFinalizationWindow(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		loseClaim      bool
+		loseCompletion bool
+	}{
+		{name: "claim", loseClaim: true},
+		{name: "completion", loseCompletion: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository, input := initializedSlotEffectV3Activity(t, "run-v3-cancelled-lost-publication-"+test.name)
+			input.ExternalEffectFinalization = true
+			baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
+			seedV3ArtifactStaged(t, baseEffects, input, v3StagingManifest(input, tinyPNGBytes(t)))
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			effects := &lostResponseV3Repository{
+				SlotExternalEffectV3Repository: baseEffects,
+				loseClaim:                      test.loseClaim,
+				loseCompletion:                 test.loseCompletion,
+				rejectCancelledGet:             true,
+			}
+			if test.loseClaim {
+				effects.onLostClaim = cancel
+			} else {
+				effects.onLostCompletion = cancel
+			}
+			activities := newV3Activities(t, repository, effects, &recordingStagedExecutor{}, &recordingArtifactStore{})
+
+			result, err := activities.ExecuteSlotV3(ctx, input)
+
+			require.NoError(t, err)
+			require.Len(t, result.Candidates, 1)
+			require.False(t, effects.ReconciliationGetSawCancelledContext(), "lost-response reconciliation must not fall back to the cancelled activity context")
+			operationDeadline, reconciliationDeadline := effects.PublicationReconciliationDeadlines(test.loseClaim)
+			require.False(t, operationDeadline.IsZero(), "publication operation must be bounded")
+			require.False(t, reconciliationDeadline.IsZero(), "publication reconciliation must be bounded")
+			require.True(t, operationDeadline.Equal(reconciliationDeadline), "lost-response reconciliation must share the one finalization window")
+		})
+	}
 }
 
 func TestImageSlotWorkflowV3StartsFreshActivityAfterFinalInnerAttemptLosesPublicationResponse(t *testing.T) {
@@ -1360,12 +1432,27 @@ func (s *recordingArtifactStore) EnsuredManifest() imageagent.StagingManifest {
 
 type lostResponseV3Repository struct {
 	imageagent.SlotExternalEffectV3Repository
-	mu               sync.Mutex
-	losePreparation  bool
-	loseStagedCommit bool
-	loseClaim        bool
-	loseCompletion   bool
-	renewCalls       int
+	mu                               sync.Mutex
+	losePreparation                  bool
+	loseStagedCommit                 bool
+	loseClaim                        bool
+	loseCompletion                   bool
+	rejectCancelledGet               bool
+	onLostClaim                      func()
+	onLostCompletion                 func()
+	claimDeadline                    time.Time
+	completionDeadline               time.Time
+	reconciliationDeadlines          []time.Time
+	reconciliationGetSawCancelledCtx bool
+	renewCalls                       int
+}
+
+type finalizationDeadlineObservingV3Repository struct {
+	imageagent.SlotExternalEffectV3Repository
+	mu                 sync.Mutex
+	prepareDeadline    time.Time
+	claimDeadline      time.Time
+	completionDeadline time.Time
 }
 
 type delayedTakeoverV3Repository struct {
@@ -1581,14 +1668,37 @@ func (r *lostResponseV3Repository) PrepareSlotStagingV3(ctx context.Context, res
 }
 
 func (r *lostResponseV3Repository) ClaimSlotPublicationV3(ctx context.Context, request imageagent.PublicationClaimRequest) (imageagent.SlotEffectV3Attempt, imageagent.PublicationClaim, bool, error) {
+	deadline, _ := ctx.Deadline()
 	result, claim, claimed, err := r.SlotExternalEffectV3Repository.ClaimSlotPublicationV3(ctx, request)
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.claimDeadline = deadline
 	if err == nil && r.loseClaim {
 		r.loseClaim = false
+		onLostClaim := r.onLostClaim
+		r.mu.Unlock()
+		if onLostClaim != nil {
+			onLostClaim()
+		}
 		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, errors.New("lost publication claim response")
 	}
+	r.mu.Unlock()
 	return result, claim, claimed, err
+}
+
+func (r *lostResponseV3Repository) GetSlotExternalEffectV3(ctx context.Context, identity imageagent.SlotExternalEffectIdentity) (imageagent.SlotEffectV3Attempt, error) {
+	r.mu.Lock()
+	rejectCancelled := r.rejectCancelledGet && ctx.Err() != nil
+	if rejectCancelled {
+		r.reconciliationGetSawCancelledCtx = true
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		r.reconciliationDeadlines = append(r.reconciliationDeadlines, deadline)
+	}
+	r.mu.Unlock()
+	if rejectCancelled {
+		return imageagent.SlotEffectV3Attempt{}, ctx.Err()
+	}
+	return r.SlotExternalEffectV3Repository.GetSlotExternalEffectV3(ctx, identity)
 }
 
 type phaseOverrideV3Repository struct {
@@ -1634,14 +1744,70 @@ func (r *lostResponseV3Repository) RenewSlotPublicationV3(ctx context.Context, r
 }
 
 func (r *lostResponseV3Repository) CompleteSlotPublicationV3(ctx context.Context, completion imageagent.PublicationCompletion) (imageagent.SlotEffectV3Attempt, error) {
+	deadline, _ := ctx.Deadline()
 	result, err := r.SlotExternalEffectV3Repository.CompleteSlotPublicationV3(ctx, completion)
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.completionDeadline = deadline
 	if err == nil && r.loseCompletion {
 		r.loseCompletion = false
+		onLostCompletion := r.onLostCompletion
+		r.mu.Unlock()
+		if onLostCompletion != nil {
+			onLostCompletion()
+		}
 		return imageagent.SlotEffectV3Attempt{}, errors.New("lost publication completion response")
 	}
+	r.mu.Unlock()
 	return result, err
+}
+
+func (r *lostResponseV3Repository) ReconciliationGetSawCancelledContext() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.reconciliationGetSawCancelledCtx
+}
+
+func (r *lostResponseV3Repository) PublicationReconciliationDeadlines(claim bool) (time.Time, time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	operationDeadline := r.completionDeadline
+	if claim {
+		operationDeadline = r.claimDeadline
+	}
+	if len(r.reconciliationDeadlines) == 0 {
+		return operationDeadline, time.Time{}
+	}
+	return operationDeadline, r.reconciliationDeadlines[len(r.reconciliationDeadlines)-1]
+}
+
+func (r *finalizationDeadlineObservingV3Repository) PrepareSlotStagingV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (imageagent.SlotEffectV3Attempt, error) {
+	deadline, _ := ctx.Deadline()
+	r.mu.Lock()
+	r.prepareDeadline = deadline
+	r.mu.Unlock()
+	return r.SlotExternalEffectV3Repository.PrepareSlotStagingV3(ctx, reservation, manifest)
+}
+
+func (r *finalizationDeadlineObservingV3Repository) ClaimSlotPublicationV3(ctx context.Context, request imageagent.PublicationClaimRequest) (imageagent.SlotEffectV3Attempt, imageagent.PublicationClaim, bool, error) {
+	deadline, _ := ctx.Deadline()
+	r.mu.Lock()
+	r.claimDeadline = deadline
+	r.mu.Unlock()
+	return r.SlotExternalEffectV3Repository.ClaimSlotPublicationV3(ctx, request)
+}
+
+func (r *finalizationDeadlineObservingV3Repository) CompleteSlotPublicationV3(ctx context.Context, completion imageagent.PublicationCompletion) (imageagent.SlotEffectV3Attempt, error) {
+	deadline, _ := ctx.Deadline()
+	r.mu.Lock()
+	r.completionDeadline = deadline
+	r.mu.Unlock()
+	return r.SlotExternalEffectV3Repository.CompleteSlotPublicationV3(ctx, completion)
+}
+
+func (r *finalizationDeadlineObservingV3Repository) FinalizationDeadlines() (time.Time, time.Time, time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.prepareDeadline, r.claimDeadline, r.completionDeadline
 }
 
 func (r *lostResponseV3Repository) RenewCalls() int {

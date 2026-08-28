@@ -626,6 +626,7 @@ func TestManualWorkflowMixedCommandsAtOneTickReserveExactlyOnePendingOwner(t *te
 
 func TestManualWorkflowUpdateActionIDIsIdempotentAndRejectsConflictingReuse(t *testing.T) {
 	env := newWorkflowEnv(t)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	plan := sevenSlotPlan()
 	for _, slot := range plan.Slots {
 		slot := slot
@@ -1584,6 +1585,7 @@ func TestManualWorkflowRejectsCancelAfterApprovalPublicationBeforeProjection(t *
 
 func TestManualWorkflowCancelSupersedesFailedApprovalCommand(t *testing.T) {
 	env := newWorkflowEnv(t)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	plan := sevenSlotPlan()
 	for _, slot := range plan.Slots {
 		slot := slot
@@ -2364,6 +2366,7 @@ func TestManualWorkflowV3CancellationWaitsForStartedSlotFinalization(t *testing.
 			return SlotWorkflowV3Result{
 				Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
 				Status:    imageagent.SlotStatusBlocked, ErrorCode: imageagent.SlotProviderOutcomeUnknownCode,
+				EffectPhase: imageagent.SlotEffectV3ProviderUnknown,
 			}, nil
 		},
 		workflow.RegisterOptions{Name: "ImageSlotWorkflowV3"},
@@ -2415,12 +2418,99 @@ func TestManualWorkflowV3CancellationWaitsForStartedSlotFinalization(t *testing.
 	terminalMu.Unlock()
 }
 
+func TestCancellationResultsRequireExplicitEffectTerminalizationProof(t *testing.T) {
+	results := []SlotWorkflowResult{{
+		Execution:   imageagent.SlotExecutionResult{SlotID: "slot-1", Attempt: 1},
+		Status:      imageagent.SlotStatusBlocked,
+		ErrorCode:   "slot_execution_failed",
+		EffectPhase: imageagent.SlotEffectV3ProviderClaimed,
+	}}
+
+	require.False(t, cancellationResultsTerminalized(results),
+		"a generic blocked child result is not proof that a claimed external effect reached a durable terminal phase")
+}
+
+func TestManualWorkflowKeepsBlockedCancellationOpenWithAccurateReceipt(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	env.RegisterWorkflowWithOptions(
+		func(_ workflow.Context, input SlotWorkflowV3Input) (SlotWorkflowV3Result, error) {
+			return SlotWorkflowV3Result{
+				Published:   imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+				Status:      imageagent.SlotStatusBlocked,
+				ErrorCode:   "slot_execution_failed",
+				EffectPhase: imageagent.SlotEffectV3ProviderClaimed,
+			}, nil
+		},
+		workflow.RegisterOptions{Name: "ImageSlotWorkflowV3"},
+	)
+	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	var persistedStatuses []imageagent.RunStatus
+	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
+		persistedStatuses = append(persistedStatuses, input.Projection.Status)
+		return nil
+	}, sdkactivity.RegisterOptions{Name: activityPersistRunState})
+	env.RegisterActivityWithOptions(
+		func(context.Context, PersistSlotResultV3ActivityInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3},
+	)
+	var receipts []*imageagent.PendingCommandReceipt
+	env.RegisterActivityWithOptions(func(_ context.Context, input PersistPendingCommandActivityInput) error {
+		receipts = append(receipts, clonePendingReceipt(input.Receipt))
+		return nil
+	}, sdkactivity.RegisterOptions{Name: activityPersistPendingCommand})
+	var cancelAck CommandAcknowledgement
+	var cancelErr error
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalCancel, "cancel-generic-blocked", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { cancelErr = err },
+			OnAccept: func() {},
+			OnComplete: func(result interface{}, err error) {
+				cancelErr = err
+				if err == nil {
+					cancelAck = result.(CommandAcknowledgement)
+				}
+			},
+		}, CancelSignal{
+			RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-generic-blocked",
+		})
+	}, time.Second)
+	env.RegisterDelayedCallback(env.CancelWorkflow, 2*time.Second)
+
+	plan := sevenSlotPlan()
+	plan.Slots = plan.Slots[:1]
+	input := manualWorkflowInput(plan)
+	input.MaxConcurrentSlots = 1
+	input.WaitForCommands = true
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.Error(t, env.GetWorkflowError(), "the test cancellation should stop an otherwise-open recovery workflow")
+	require.NoError(t, cancelErr)
+	require.Equal(t, imageagent.RunStatusBlocked, cancelAck.Status)
+	require.NotContains(t, persistedStatuses, imageagent.RunStatusCancelled)
+	require.NotEmpty(t, receipts)
+	for _, receipt := range receipts {
+		if receipt == nil || receipt.ActionID != "cancel-generic-blocked" {
+			continue
+		}
+		require.Empty(t, receipt.FailureCode)
+		require.Empty(t, receipt.FailureCategory,
+			"a durably blocked effect outcome is not a run-state persistence failure")
+	}
+}
+
 func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing.T) {
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
 	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
 	var childStarted atomic.Bool
 	var cancelErr error
+	var cancelAck CommandAcknowledgement
+	var liveProjection WorkflowResult
+	var projectionErr error
 	var pendingMu sync.Mutex
 	var pendingReceipts []PersistPendingCommandActivityInput
 	var blockedMu sync.Mutex
@@ -2471,13 +2561,22 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 		env.UpdateWorkflow(signalCancel, "cancel-unterminalized-effect", &testsuite.TestUpdateCallback{
 			OnReject: func(err error) { cancelErr = err },
 			OnAccept: func() {},
-			OnComplete: func(_ interface{}, err error) {
+			OnComplete: func(result interface{}, err error) {
 				cancelErr = err
+				if err == nil {
+					cancelAck = result.(CommandAcknowledgement)
+					encoded, queryErr := env.QueryWorkflow(QueryWorkflowProjection)
+					projectionErr = queryErr
+					if queryErr == nil {
+						projectionErr = encoded.Get(&liveProjection)
+					}
+				}
 			},
 		}, CancelSignal{
 			RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-unterminalized-effect",
 		})
 	}, time.Second)
+	env.RegisterDelayedCallback(env.CancelWorkflow, 2*time.Second)
 
 	plan := sevenSlotPlan()
 	plan.Slots = plan.Slots[:1]
@@ -2485,24 +2584,24 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 	input.MaxConcurrentSlots = 1
 	env.ExecuteWorkflow(ImageAgentWorkflow, input)
 
-	require.NoError(t, env.GetWorkflowError())
-	require.Error(t, cancelErr)
-	var result WorkflowResult
-	require.NoError(t, env.GetWorkflowResult(&result))
-	require.Equal(t, imageagent.RunStatusBlocked, result.Status)
-	require.NotEqual(t, imageagent.RunStatusCancelled, result.Status)
-	require.NotNil(t, result.Block)
-	require.Equal(t, "slot-1", result.Block.SlotID)
-	require.Equal(t, "slot_failed", result.Block.Code)
-	require.Equal(t, []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionRetrySlot, imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{
-		Mode: imageagent.RunModeManual, Status: result.Status, Block: result.Block,
+	require.Error(t, env.GetWorkflowError(), "the test cancellation should stop the recoverable workflow after the blocked cancel acknowledgement")
+	require.NoError(t, cancelErr)
+	require.Equal(t, imageagent.RunStatusBlocked, cancelAck.Status)
+	require.NoError(t, projectionErr)
+	require.Equal(t, imageagent.RunStatusBlocked, liveProjection.Status)
+	require.NotEqual(t, imageagent.RunStatusCancelled, liveProjection.Status)
+	require.NotNil(t, liveProjection.Block)
+	require.Equal(t, "slot-1", liveProjection.Block.SlotID)
+	require.Equal(t, imageagent.SlotEffectPolicyInvalidCode, liveProjection.Block.Code)
+	require.Equal(t, []imageagent.Action{imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{
+		Mode: imageagent.RunModeManual, Status: liveProjection.Status, Block: liveProjection.Block,
 	}))
 	blockedMu.Lock()
 	require.Len(t, blockedStates, 1)
 	require.Equal(t, imageagent.RunStatusBlocked, blockedStates[0].Projection.Status)
 	require.NotNil(t, blockedStates[0].Projection.Block)
 	require.Equal(t, "slot-1", blockedStates[0].Projection.Block.SlotID)
-	require.Equal(t, "slot_failed", blockedStates[0].Projection.Block.Code)
+	require.Equal(t, imageagent.SlotEffectPolicyInvalidCode, blockedStates[0].Projection.Block.Code)
 	blockedMu.Unlock()
 	terminalMu.Lock()
 	require.Empty(t, terminalStatuses)
@@ -2515,9 +2614,9 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 	require.Equal(t, "cancel-unterminalized-effect", last.Receipt.ActionID)
 	require.Equal(t, signalCancel, last.Receipt.Kind)
 	require.Equal(t, string(updatePhaseCancelPersist), last.Receipt.Phase)
-	require.Equal(t, "persistence_failed", last.Receipt.FailureCode)
-	require.Equal(t, "persistence", last.Receipt.FailureCategory)
-	require.NotNil(t, last.Receipt.LastFailedAt)
+	require.Empty(t, last.Receipt.FailureCode)
+	require.Empty(t, last.Receipt.FailureCategory)
+	require.Nil(t, last.Receipt.LastFailedAt)
 }
 
 func TestManualWorkflowMixedHistoryCancellationBlocksStartedLegacyChild(t *testing.T) {
@@ -2526,12 +2625,18 @@ func TestManualWorkflowMixedHistoryCancellationBlocksStartedLegacyChild(t *testi
 	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
 	var childStarted atomic.Bool
 	var cancelErr error
+	var cancelAck CommandAcknowledgement
+	var retryErr error
+	var retryAck CommandAcknowledgement
 	var blockedMu sync.Mutex
 	var blockedStates []PersistRunStateActivityInput
 	cancelledStates := 0
 	env.RegisterWorkflowWithOptions(
 		func(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkflowResult, error) {
 			childStarted.Store(true)
+			if input.Attempt > 1 {
+				return SlotWorkflowResult{Execution: successfulSlotResult(input.Slot.ID, input.Attempt), Status: imageagent.SlotStatusAccepted}, nil
+			}
 			if err := workflow.NewTimer(ctx, time.Hour).Get(ctx, nil); err != nil {
 				return SlotWorkflowResult{}, err
 			}
@@ -2541,6 +2646,7 @@ func TestManualWorkflowMixedHistoryCancellationBlocksStartedLegacyChild(t *testi
 	)
 	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(resultDigestV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
 		if input.Projection.Status == imageagent.RunStatusBlocked {
@@ -2554,19 +2660,44 @@ func TestManualWorkflowMixedHistoryCancellationBlocksStartedLegacyChild(t *testi
 		return nil
 	}, sdkactivity.RegisterOptions{Name: activityPersistRunState})
 	env.RegisterActivityWithOptions(
+		func(context.Context, PersistSlotResultActivityInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityPersistSlotResult},
+	)
+	env.RegisterActivityWithOptions(
 		func(context.Context, PersistPendingCommandActivityInput) error { return nil },
 		sdkactivity.RegisterOptions{Name: activityPersistPendingCommand},
 	)
 	env.RegisterDelayedCallback(func() {
 		require.True(t, childStarted.Load())
 		env.UpdateWorkflow(signalCancel, "cancel-mixed-history", &testsuite.TestUpdateCallback{
-			OnReject:   func(err error) { cancelErr = err },
-			OnAccept:   func() {},
-			OnComplete: func(_ interface{}, err error) { cancelErr = err },
+			OnReject: func(err error) { cancelErr = err },
+			OnAccept: func() {},
+			OnComplete: func(result interface{}, err error) {
+				cancelErr = err
+				if err == nil {
+					cancelAck = result.(CommandAcknowledgement)
+				}
+			},
 		}, CancelSignal{
 			RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-mixed-history",
 		})
 	}, time.Second)
+	env.RegisterDelayedCallback(func() {
+		require.NoError(t, cancelErr)
+		env.UpdateWorkflow(signalRetrySlot, "retry-mixed-history", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { retryErr = err },
+			OnAccept: func() {},
+			OnComplete: func(result interface{}, err error) {
+				retryErr = err
+				if err == nil {
+					retryAck = result.(CommandAcknowledgement)
+				}
+			},
+		}, RetrySlotSignal{
+			RunID: "run-1", PlanRevision: 1, SlotID: "slot-1", ActorID: "user-a", ActionID: "retry-mixed-history",
+		})
+	}, 2*time.Second)
+	env.RegisterDelayedCallback(env.CancelWorkflow, 3*time.Second)
 
 	plan := sevenSlotPlan()
 	plan.Slots = plan.Slots[:1]
@@ -2574,17 +2705,11 @@ func TestManualWorkflowMixedHistoryCancellationBlocksStartedLegacyChild(t *testi
 	input.MaxConcurrentSlots = 1
 	env.ExecuteWorkflow(ImageAgentWorkflow, input)
 
-	require.NoError(t, env.GetWorkflowError())
-	require.Error(t, cancelErr)
-	var result WorkflowResult
-	require.NoError(t, env.GetWorkflowResult(&result))
-	require.Equal(t, imageagent.RunStatusBlocked, result.Status)
-	require.NotNil(t, result.Block)
-	require.Equal(t, "slot-1", result.Block.SlotID)
-	require.Equal(t, "slot_failed", result.Block.Code)
-	require.Equal(t, []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionRetrySlot, imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{
-		Mode: imageagent.RunModeManual, Status: result.Status, Block: result.Block,
-	}))
+	require.Error(t, env.GetWorkflowError(), "the test cancellation should stop the workflow after proving retry remains operational")
+	require.NoError(t, cancelErr)
+	require.Equal(t, imageagent.RunStatusBlocked, cancelAck.Status)
+	require.NoError(t, retryErr)
+	require.Equal(t, imageagent.RunStatusAwaitingFinalApproval, retryAck.Status)
 	blockedMu.Lock()
 	require.Len(t, blockedStates, 1)
 	require.Equal(t, imageagent.RunStatusBlocked, blockedStates[0].Projection.Status)

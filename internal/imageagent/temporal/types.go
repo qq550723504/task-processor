@@ -123,6 +123,9 @@ type SlotWorkflowResult struct {
 	Execution imageagent.SlotExecutionResult
 	Status    imageagent.SlotStatus
 	ErrorCode string
+	// EffectPhase is additive v3 evidence used only by the versioned parent
+	// cancellation gate. Frozen v2 and old-history results leave it empty.
+	EffectPhase imageagent.SlotEffectV3Phase
 }
 
 // SlotWorkflowV3Input is additive and is not registered by the Task 4 worker.
@@ -147,6 +150,9 @@ type SlotWorkflowV3Result struct {
 	Published imageagent.SlotEffectV3PublishedResult
 	Status    imageagent.SlotStatus
 	ErrorCode string
+	// EffectPhase proves the durable external-effect phase observed by the child.
+	// SlotStatusBlocked alone is deliberately not terminalization evidence.
+	EffectPhase imageagent.SlotEffectV3Phase
 }
 
 type ExecuteSlotActivityInput struct {

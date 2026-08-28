@@ -243,6 +243,11 @@ func TestImageSlotWorkflowV3UsesProviderWindowPlusGraceBeyondTenMinutes(t *testi
 	require.Equal(t, externalEffectHeartbeatTimeout, observedHeartbeatTimeout)
 }
 
+func TestImageSlotWorkflowV3SaturatesProviderWindowPlusGraceOnDurationOverflow(t *testing.T) {
+	const maxDuration = time.Duration(1<<63 - 1)
+	require.Equal(t, maxDuration, addFinalizationGrace(maxDuration-30*time.Second))
+}
+
 func TestImageSlotWorkflowV3VersionsCancellationDrainActivityOptions(t *testing.T) {
 	for _, test := range []struct {
 		name                       string
@@ -263,6 +268,7 @@ func TestImageSlotWorkflowV3VersionsCancellationDrainActivityOptions(t *testing.
 
 func TestImageAgentWorkflowBudgetDeniesRepairBeforeChild(t *testing.T) {
 	env := newWorkflowEnv(t)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	env.OnGetVersion(budgetAuthorizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	plan := sevenSlotPlan()
 	for _, slot := range plan.Slots {

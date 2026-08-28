@@ -243,13 +243,22 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 
 	var prepared objectstore.PreparedSlotArtifacts
 	var generated imageagent.SlotGeneratedOutput
-	providerStagingCtx := ctx
-	cancelProviderStaging := func() {}
-	if input.ExternalEffectFinalization &&
-		(effect.Phase == imageagent.SlotEffectV3ProviderClaimed || effect.Phase == imageagent.SlotEffectV3StagingPrepared) {
-		providerStagingCtx, cancelProviderStaging = providerFinalizationContext(ctx)
-		defer cancelProviderStaging()
+	var finalizationCtx context.Context
+	var cancelFinalization context.CancelFunc
+	postProviderContext := func() context.Context {
+		if !input.ExternalEffectFinalization {
+			return ctx
+		}
+		if finalizationCtx == nil {
+			finalizationCtx, cancelFinalization = providerFinalizationContext(ctx)
+		}
+		return finalizationCtx
 	}
+	defer func() {
+		if cancelFinalization != nil {
+			cancelFinalization()
+		}
+	}()
 	if effect.Phase == imageagent.SlotEffectV3ProviderClaimed {
 		if claimed {
 			var generateErr error
@@ -278,6 +287,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 					return v3Result, a.blockSlotEffectV3(finalizationCtx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 				}
 			}
+			providerStagingCtx := postProviderContext()
 			if budgeted != nil {
 				if _, settleErr := a.slotEffectsV3.SettleSlotProviderV3(providerStagingCtx, reservation, generated.UsageReceipt); settleErr != nil {
 					if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(providerStagingCtx, reservation); unknownErr != nil {
@@ -300,6 +310,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			}
 			cleanupGeneratedSlotTemporaryAssets(&generated)
 		} else {
+			providerStagingCtx := postProviderContext()
 			prepared, err = a.artifactStore.RecoverSlotArtifacts(providerStagingCtx, reservation.Identity, imageagent.StagingManifest{})
 			if err != nil {
 				if errors.Is(err, objectstore.ErrArtifactUnavailable) || errors.Is(err, objectstore.ErrObjectConflict) {
@@ -308,6 +319,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 				return v3Result, fmt.Errorf("recover generated artifact bundle before staging transition: %w", err)
 			}
 		}
+		providerStagingCtx := postProviderContext()
 		effect, err = a.slotEffectsV3.PrepareSlotStagingV3(providerStagingCtx, reservation, prepared.Manifest)
 		if err != nil {
 			transitionErr := err
@@ -322,6 +334,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	}
 
 	if effect.Phase == imageagent.SlotEffectV3StagingPrepared {
+		providerStagingCtx := postProviderContext()
 		if len(prepared.Manifest.Assets) == 0 {
 			prepared = objectstore.PreparedSlotArtifacts{Manifest: effect.StagingManifest}
 		}
@@ -356,7 +369,8 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	}
 
 	if effect.Phase == imageagent.SlotEffectV3ArtifactStaged || effect.Phase == imageagent.SlotEffectV3PublicationClaimed {
-		owner, ownerErr := a.publicationOwner(ctx)
+		publicationFinalizationCtx := postProviderContext()
+		owner, ownerErr := a.publicationOwner(publicationFinalizationCtx)
 		if ownerErr != nil {
 			return v3Result, fmt.Errorf("derive publication owner: %w", ownerErr)
 		}
@@ -371,12 +385,12 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		var publication imageagent.PublicationClaim
 		var acquired bool
 		var claimErr error
-		effect, publication, acquired, claimErr = a.slotEffectsV3.ClaimSlotPublicationV3(ctx, imageagent.PublicationClaimRequest{
+		effect, publication, acquired, claimErr = a.slotEffectsV3.ClaimSlotPublicationV3(publicationFinalizationCtx, imageagent.PublicationClaimRequest{
 			Reservation: reservation, Owner: owner, LeaseDuration: a.publicationLeaseDuration,
 			PublicationFingerprint: publicationFingerprint, FinalManifest: finalManifest,
 		})
 		if claimErr != nil {
-			reconciled, getErr := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
+			reconciled, getErr := a.slotEffectsV3.GetSlotExternalEffectV3(publicationFinalizationCtx, reservation.Identity)
 			if getErr != nil {
 				return v3Result, fmt.Errorf("claim slot publication: %w", persistedSlotEffectV3RepositoryError(getErr))
 			}
@@ -394,12 +408,6 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		}
 		if !acquired {
 			return v3Result, a.publicationRecoveryError("slot publication is owned by another activity attempt", publication, imageagent.ErrRevisionConflict)
-		}
-		publicationFinalizationCtx := ctx
-		cancelPublicationFinalization := func() {}
-		if input.ExternalEffectFinalization {
-			publicationFinalizationCtx, cancelPublicationFinalization = providerFinalizationContext(ctx)
-			defer cancelPublicationFinalization()
 		}
 		if _, err := a.renewPublicationV3(publicationFinalizationCtx, reservation.Identity, publication); err != nil {
 			return v3Result, a.publicationRecoveryError("renew slot publication lease", publication, err)
@@ -442,7 +450,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			PublicationFingerprint: publicationFingerprint, ResultFingerprint: resultFingerprint, Published: published,
 		})
 		if err != nil {
-			reconciled, getErr := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
+			reconciled, getErr := a.slotEffectsV3.GetSlotExternalEffectV3(publicationFinalizationCtx, reservation.Identity)
 			if getErr != nil {
 				return v3Result, fmt.Errorf("reconcile publication completion: %w", persistedSlotEffectV3RepositoryError(getErr))
 			}

@@ -72,10 +72,14 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 	if input.BudgetAuthorization && !input.DeadlineAt.IsZero() {
 		providerWindow := input.DeadlineAt.Sub(workflow.Now(ctx))
 		if providerWindow <= 0 {
-			return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: imageagent.BudgetElapsedCode}, nil
+			return SlotWorkflowV3Result{
+				Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+				Status:    imageagent.SlotStatusBlocked, ErrorCode: imageagent.BudgetElapsedCode,
+				EffectPhase: effectPhaseForFinalizationWire(input.ExternalEffectFinalization, imageagent.SlotEffectV3ProviderNotDispatched),
+			}, nil
 		}
 		if input.ExternalEffectFinalization {
-			startToClose = providerWindow + providerFinalizationTimeout
+			startToClose = addFinalizationGrace(providerWindow)
 		} else if providerWindow < startToClose {
 			startToClose = providerWindow
 		}
@@ -97,20 +101,73 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 		}
 		retryDelay, recoverPublication := slotPublicationRecoveryDelay(err)
 		if !recoverPublication {
-			return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: slotExecutionV3ErrorCode(err)}, nil
+			code := slotExecutionV3ErrorCode(err)
+			return SlotWorkflowV3Result{
+				Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+				Status:    imageagent.SlotStatusBlocked, ErrorCode: code,
+				EffectPhase: effectPhaseForFinalizationWire(input.ExternalEffectFinalization, terminalEffectPhaseForErrorCode(code)),
+			}, nil
 		}
 		if err := workflow.Sleep(ctx, retryDelay); err != nil {
+			if input.ExternalEffectFinalization {
+				return SlotWorkflowV3Result{
+					Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+					Status:    imageagent.SlotStatusBlocked, ErrorCode: "slot_execution_failed",
+					EffectPhase: imageagent.SlotEffectV3PublicationClaimed,
+				}, nil
+			}
 			return SlotWorkflowV3Result{}, err
 		}
 	}
 	if input.Slot.Role == imageagent.SlotRoleMain && len(published.Candidates) != 1 {
-		return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: invalidMainCandidateCountCode}, nil
+		return SlotWorkflowV3Result{
+			Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+			Status:    imageagent.SlotStatusBlocked, ErrorCode: invalidMainCandidateCountCode,
+			EffectPhase: effectPhaseForFinalizationWire(input.ExternalEffectFinalization, imageagent.SlotEffectV3PublicationComplete),
+		}, nil
 	}
 	normalized, err := imageagent.NormalizeSlotEffectV3PublishedResult(published)
 	if err != nil || normalized.SlotID != input.Slot.ID || normalized.Attempt != input.Attempt {
-		return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: "invalid_slot_result"}, nil
+		return SlotWorkflowV3Result{
+			Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+			Status:    imageagent.SlotStatusBlocked, ErrorCode: "invalid_slot_result",
+			EffectPhase: effectPhaseForFinalizationWire(input.ExternalEffectFinalization, imageagent.SlotEffectV3PublicationComplete),
+		}, nil
 	}
-	return SlotWorkflowV3Result{Published: normalized, Status: imageagent.SlotStatusAccepted}, nil
+	return SlotWorkflowV3Result{
+		Published: normalized, Status: imageagent.SlotStatusAccepted,
+		EffectPhase: effectPhaseForFinalizationWire(input.ExternalEffectFinalization, imageagent.SlotEffectV3PublicationComplete),
+	}, nil
+}
+
+func effectPhaseForFinalizationWire(enabled bool, phase imageagent.SlotEffectV3Phase) imageagent.SlotEffectV3Phase {
+	if !enabled {
+		return ""
+	}
+	return phase
+}
+
+func terminalEffectPhaseForErrorCode(code string) imageagent.SlotEffectV3Phase {
+	switch code {
+	case imageagent.SlotProviderNotDispatchedCode, imageagent.BudgetExhaustedCode, imageagent.BudgetQuoteUnavailableCode, imageagent.BudgetElapsedCode:
+		return imageagent.SlotEffectV3ProviderNotDispatched
+	case imageagent.SlotProviderOutcomeUnknownCode:
+		return imageagent.SlotEffectV3ProviderUnknown
+	case imageagent.SlotStagingOutcomeUnknownCode:
+		return imageagent.SlotEffectV3StagingUnknown
+	case imageagent.SlotPublicationOutcomeUnknownCode:
+		return imageagent.SlotEffectV3PublicationUnknown
+	default:
+		return ""
+	}
+}
+
+func addFinalizationGrace(providerWindow time.Duration) time.Duration {
+	const maxDuration = time.Duration(1<<63 - 1)
+	if providerWindow > maxDuration-providerFinalizationTimeout {
+		return maxDuration
+	}
+	return providerWindow + providerFinalizationTimeout
 }
 
 func slotWorkflowV3ActivityOptions(startToClose time.Duration, externalEffectFinalization bool) workflow.ActivityOptions {
