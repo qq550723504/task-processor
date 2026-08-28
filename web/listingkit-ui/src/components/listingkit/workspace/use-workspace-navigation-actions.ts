@@ -27,6 +27,7 @@ import { scrollSheinWorkspaceTarget } from "@/components/listingkit/workspace/wo
 import { useExecuteAction } from "@/lib/query/use-action";
 import { useDispatchNavigation } from "@/lib/query/use-dispatch";
 import type {
+  ActionExecutionResult,
   ActionExecutionRequest,
   NavigationTarget,
   QueueQuery,
@@ -98,12 +99,39 @@ export function useWorkspaceNavigationActions({
     dispatch.mutate(target);
   };
 
+  const routeActionResultFromProductDestination = (
+    result: ActionExecutionResult,
+  ) => {
+    const currentSearch = searchParams.toString();
+    if (!new URLSearchParams(currentSearch).has("product_section")) {
+      return;
+    }
+    const target =
+      result.review_session?.focused_target ?? result.review_patch?.focused_target;
+    if (!target?.platform) {
+      return;
+    }
+    const nextSearch = buildWorkspaceSearch(currentSearch, target);
+    if (nextSearch === currentSearch) {
+      return;
+    }
+    router.replace(
+      `/listing-kits/${taskId}/workspace${nextSearch ? `?${nextSearch}` : ""}`,
+    );
+  };
+
+  const executeAction = (request: ActionExecutionRequest) => {
+    action.mutate(request, {
+      onSuccess: routeActionResultFromProductDestination,
+    });
+  };
+
   const handleAction = (
     actionSummary?: ResolvedActionSummary | null,
     request?: ActionExecutionRequest,
   ) => {
     if (request) {
-      action.mutate(request);
+      executeAction(request);
       return;
     }
 
@@ -124,7 +152,7 @@ export function useWorkspaceNavigationActions({
     }
 
     if (actionSummary?.action_target || actionSummary?.action_key) {
-      action.mutate({
+      executeAction({
         action_key: actionSummary.action_key,
         response_mode: "patch_only",
         target: actionSummary.action_target,
@@ -137,7 +165,7 @@ export function useWorkspaceNavigationActions({
 
   const handleToolbarAction = (toolbarAction: ToolbarAction) => {
     if (toolbarAction.action_target || toolbarAction.kind === "workflow") {
-      action.mutate({
+      executeAction({
         action_key: toolbarAction.action_target?.action_key,
         response_mode: "patch_only",
         target: toolbarAction.action_target,
@@ -176,9 +204,11 @@ export function useWorkspaceNavigationActions({
     platform: string,
   ) => {
     handleRecovery(descriptor);
+    const currentParams = new URLSearchParams(searchParams.toString());
     if (
       shouldSyncPlatformOnRecovery(descriptor) ||
-      new URLSearchParams(searchParams.toString()).get("workspace_view") === "history"
+      currentParams.get("workspace_view") === "history" ||
+      currentParams.has("product_section")
     ) {
       handlePlatformSelect(platform);
     }

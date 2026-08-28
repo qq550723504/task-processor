@@ -32,6 +32,7 @@ export function buildWorkspaceSearch(
     params.set(key, value);
   });
 
+  params.delete("product_section");
   params.delete("workspace_view");
 
   return params.toString();

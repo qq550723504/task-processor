@@ -31,6 +31,19 @@ describe("buildWorkspaceSearch", () => {
 
     expect(result).toBe("foo=bar&platform=temu");
   });
+
+  it("replaces a product destination when a focused review target is selected", () => {
+    expect(
+      buildWorkspaceSearch("foo=bar&product_section=overview", {
+        platform: "shein",
+        slot: "main",
+        capability: "detail_preview",
+        section_key: "detail_preview-main",
+      }),
+    ).toBe(
+      "foo=bar&platform=shein&slot=main&preview_capability=detail_preview&section_key=detail_preview-main",
+    );
+  });
 });
 
 describe("buildProductWorkspaceHref", () => {

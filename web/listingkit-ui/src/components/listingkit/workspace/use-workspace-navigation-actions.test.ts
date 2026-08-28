@@ -124,4 +124,60 @@ describe("useWorkspaceNavigationActions", () => {
       "/listing-kits/task-1/workspace?platform=shein",
     );
   });
+
+  it("routes action recovery out of a product section when the platform is already selected", () => {
+    const { result } = renderHook(() =>
+      useWorkspaceNavigationActions({
+        taskId: "task-1",
+        baseQuery: {},
+        searchParams: new URLSearchParams("product_section=images"),
+      }),
+    );
+
+    act(() => {
+      result.current.handlePlatformRecovery(
+        {
+          recovery_target: {
+            dispatch_kind: "action",
+            action_target: { action_key: "retry_dispatch" },
+          },
+        },
+        "shein",
+      );
+    });
+
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/listing-kits/task-1/workspace?platform=shein",
+    );
+  });
+
+  it("routes an overview review action to its returned focused target", () => {
+    mocks.actionMutate.mockImplementation((_request, options) => {
+      options?.onSuccess?.({
+        review_session: {
+          focused_target: {
+            platform: "shein",
+            slot: "main",
+            capability: "detail_preview",
+            section_key: "detail_preview-main",
+          },
+        },
+      });
+    });
+    const { result } = renderHook(() =>
+      useWorkspaceNavigationActions({
+        taskId: "task-1",
+        baseQuery: {},
+        searchParams: new URLSearchParams("product_section=overview"),
+      }),
+    );
+
+    act(() => {
+      result.current.handleAction({ action_key: "review_detail_previews" });
+    });
+
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/listing-kits/task-1/workspace?platform=shein&slot=main&preview_capability=detail_preview&section_key=detail_preview-main",
+    );
+  });
 });
