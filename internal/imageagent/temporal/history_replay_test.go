@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -148,8 +149,9 @@ func TestTask6MarkersAreEvaluatedBeforePreAtomicSelection(t *testing.T) {
 	action := env.OnGetVersion(approvalActionIDV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
 	publication := env.OnGetVersion(approvalPublicationWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
 	digest := env.OnGetVersion(resultDigestV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	scope := env.OnGetVersion(approvalPublicationScopePatch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
 	env.OnGetVersion(activityWireV2Patch, sdkworkflow.DefaultVersion, 1).
-		Return(sdkworkflow.DefaultVersion).Once().NotBefore(slot, action, publication, digest)
+		Return(sdkworkflow.DefaultVersion).Once().NotBefore(slot, action, publication, digest, scope)
 
 	env.ExecuteWorkflow(workflowWireProbe)
 	require.NoError(t, env.GetWorkflowError())
@@ -203,6 +205,7 @@ func TestApprovalMarkerCombinationsSelectOnlyCompleteProtocols(t *testing.T) {
 			env.OnGetVersion(approvalActionIDV3Patch, sdkworkflow.DefaultVersion, 1).Return(markerVersion(actionV3)).Once()
 			env.OnGetVersion(approvalPublicationWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(markerVersion(publicationV3)).Once()
 			env.OnGetVersion(resultDigestV3Patch, sdkworkflow.DefaultVersion, 1).Return(markerVersion(digestV3)).Once()
+			env.OnGetVersion(approvalPublicationScopePatch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
 			env.OnGetVersion(activityWireV2Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
 
 			allV3 := actionV3 && publicationV3 && digestV3
@@ -269,7 +272,7 @@ func TestNewWorkflowSelectsExecuteSlotV3(t *testing.T) {
 	require.Equal(t, "imageagent.execute_slot.v3", got.ExecuteSlot)
 }
 
-func TestNewApprovalUsesActionIDV3DigestAndPublishV3(t *testing.T) {
+func TestNewApprovalScopesActionIDByRunAndRevisionWithV3DigestAndPublishV3(t *testing.T) {
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
 	env.RegisterWorkflow(workflowWireProbe)
@@ -279,11 +282,18 @@ func TestNewApprovalUsesActionIDV3DigestAndPublishV3(t *testing.T) {
 	var got wireProbeResult
 	require.NoError(t, env.GetWorkflowResult(&got))
 	require.Equal(t, "imageagent.publish_approved.v3", got.PublishApproved)
-	require.Equal(t, "capture-action", got.ApprovalActionID)
+	require.Equal(t, approvalActionPublicationKey("capture-action", "capture-run", 1), got.ApprovalActionID)
+	require.NotEqual(t, got.ApprovalActionID, approvalActionPublicationKey("capture-action", "other-run", 1))
+	require.NotEqual(t, got.ApprovalActionID, approvalActionPublicationKey("capture-action", "capture-run", 2))
 	plan, results := wireProbePlanAndResults()
 	wantDigest, err := imageagent.ResultDigestV3(plan, slotProjections(plan, results))
 	require.NoError(t, err)
 	require.Equal(t, wantDigest, got.ResultDigest)
+}
+
+func TestRunScopedApprovalPublicationKeyFitsReceiptSchema(t *testing.T) {
+	key := approvalActionPublicationKey(strings.Repeat("a", imageagent.MaxActionIDLength), strings.Repeat("r", 64), imageagent.MaxJSONSafePlanRevision)
+	require.LessOrEqual(t, len(key), 192)
 }
 
 func wireProbePlanAndResults() (imageagent.Plan, []SlotWorkflowResult) {

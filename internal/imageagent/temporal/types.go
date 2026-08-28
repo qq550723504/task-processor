@@ -88,6 +88,9 @@ type WorkflowInput struct {
 	StartedAt           time.Time
 	DeadlineAt          time.Time
 	BudgetAuthorization bool
+	// enforceIngressPlanPolicy is runtime-only versioned behavior for new
+	// workflow histories. It is never serialized from clients.
+	enforceIngressPlanPolicy bool
 	// projectionExecutionID is runtime-only state populated deterministically
 	// from Temporal's workflow execution RunID, never serialized from clients.
 	projectionExecutionID string

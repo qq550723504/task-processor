@@ -357,12 +357,14 @@ describe("ImageAgentWorkbench", () => {
     const user = userEvent.setup();
 
     render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
+    expect(FakeEventSource.instances).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "重新启动失败运行" }));
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
     expect(fetchSpy.mock.calls[0]?.[0]).toBe("/api/listing-kits/image-agent/runs/run-1/restart");
     expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
     expect(screen.getAllByText("计划中")).toHaveLength(2);
+    expect(FakeEventSource.instances).toHaveLength(1);
   });
 
   it("keeps source materials and style references separate from generated candidates", () => {
@@ -672,6 +674,31 @@ describe("ImageAgentWorkbench", () => {
 
     rendered.unmount();
     expect(FakeEventSource.active).toBe(0);
+  });
+
+  it("does not subscribe for terminal runs and closes an active stream after a terminal snapshot", async () => {
+    const completed = projectionWithSlots(7);
+    completed.run.status = "completed";
+    const rendered = render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={completed} />);
+    expect(FakeEventSource.instances).toHaveLength(0);
+    rendered.unmount();
+
+    const executing = projectionWithSlots(7);
+    executing.run.status = "executing";
+    const failed = structuredClone(executing);
+    failed.run.status = "failed";
+    failed.projection_version += 1;
+    failed.last_event_id += 1;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(failed), { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={executing} />);
+    expect(FakeEventSource.active).toBe(1);
+
+    act(() => FakeEventSource.instances[0]?.emit(failed.last_event_id, failed.projection_version));
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(FakeEventSource.active).toBe(0));
   });
 
   it("ignores duplicate or retrograde event cursors and projection versions", async () => {

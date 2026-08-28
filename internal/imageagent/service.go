@@ -60,7 +60,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	identity.BusinessTaskID = input.BusinessTaskID
 	input.Plan.CreatedBy = identity.UserID
-	if err := ValidateSubmittedPlan(input.Plan); err != nil {
+	if err := ValidatePlan(input.Plan); err != nil {
 		return fmt.Errorf("%w: validate image agent plan: %v", ErrValidation, err)
 	}
 	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: input.RunID}
@@ -74,6 +74,9 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		return s.startExistingProjection(ctx, existing, identity)
 	} else if !errors.Is(getErr, ErrRunNotFound) {
 		return getErr
+	}
+	if err := ValidateInitialSubmittedPlan(input.Plan); err != nil {
+		return fmt.Errorf("%w: validate image agent plan: %v", ErrValidation, err)
 	}
 	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: input.BusinessTaskID, RunID: input.RunID})
 	if err != nil {
@@ -149,11 +152,15 @@ func (s *Service) ReplacePlan(ctx context.Context, runID string, expectedRevisio
 		return err
 	}
 	plan.CreatedBy = identity.UserID
-	if plan.ParentRevision != expectedRevision || plan.Revision <= expectedRevision {
-		return fmt.Errorf("%w: replacement plan must advance and name its parent revision", ErrValidation)
-	}
-	if err := ValidateSubmittedPlan(plan); err != nil {
+	if err := ValidateReplacementSubmittedPlan(expectedRevision, plan); err != nil {
 		return fmt.Errorf("%w: validate replacement plan: %v", ErrValidation, err)
+	}
+	projection, err := s.repository.GetProjection(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: strings.TrimSpace(runID)})
+	if err != nil {
+		return err
+	}
+	if projection.Run.Status == RunStatusBlocked && !BlockAllowsAction(projection.Run.Block, ActionEditPlan) {
+		return fmt.Errorf("%w: the current block permits cancellation only", ErrCommandBlocked)
 	}
 	catalog, err := s.repository.GetAssetCatalog(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: strings.TrimSpace(runID)})
 	if err != nil {
@@ -249,8 +256,8 @@ func (s *Service) commandIdentity(ctx context.Context, runID string, revision in
 	if runID == "" || ValidateActionID(actionID) != nil {
 		return ExecutionIdentity{}, fmt.Errorf("%w: run ID and action ID are required", ErrValidation)
 	}
-	if revision <= 0 {
-		return ExecutionIdentity{}, fmt.Errorf("%w: positive plan revision is required", ErrValidation)
+	if revision <= 0 || revision > MaxJSONSafePlanRevision {
+		return ExecutionIdentity{}, fmt.Errorf("%w: positive JSON-safe plan revision is required", ErrValidation)
 	}
 	projection, err := s.repository.GetProjection(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID})
 	if err != nil {

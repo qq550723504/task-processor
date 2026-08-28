@@ -95,6 +95,46 @@ func TestValidatePlanAllowsMoreThanTenIndependentSlots(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestValidateSubmittedPlanCapsTotalSlotsWithoutBreakingHistoricalReads(t *testing.T) {
+	slots := make([]Slot, MaxPlanSlots+1)
+	for i := range slots {
+		role := SlotRoleScene
+		if i == 0 {
+			role = SlotRoleMain
+		}
+		slots[i] = Slot{ID: fmt.Sprintf("slot-%d", i), Role: role, IdempotencyKey: fmt.Sprintf("slot-key-%d", i), SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending}
+	}
+	plan := Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, Slots: slots}
+
+	require.NoError(t, ValidatePlan(plan), "historical workflow plans retain their original readable contract")
+	require.ErrorContains(t, ValidateSubmittedPlan(plan), "at most")
+}
+
+func TestSubmittedPlanRevisionContractIsJSONSafeAndSingleStep(t *testing.T) {
+	plan := Plan{
+		Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"},
+		Slots: []Slot{{ID: "main-1", Role: SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: SlotStatusPending}},
+	}
+	require.NoError(t, ValidateInitialSubmittedPlan(plan))
+
+	unsafe := plan
+	unsafe.Revision = MaxJSONSafePlanRevision + 1
+	require.NoError(t, ValidatePlan(unsafe), "historical workflow plans retain their original readable contract")
+	require.ErrorContains(t, ValidateSubmittedPlan(unsafe), "JSON-safe")
+
+	nonInitial := plan
+	nonInitial.Revision = 2
+	require.ErrorContains(t, ValidateInitialSubmittedPlan(nonInitial), "revision 1")
+
+	replacement := plan
+	replacement.Revision = 2
+	replacement.ParentRevision = 1
+	replacement.IdempotencyKey = "plan-key-2"
+	require.NoError(t, ValidateReplacementSubmittedPlan(1, replacement))
+	replacement.Revision = 3
+	require.ErrorContains(t, ValidateReplacementSubmittedPlan(1, replacement), "single step")
+}
+
 func TestValidatePlanRequiresExactlyOneMainSlot(t *testing.T) {
 	base := Plan{
 		Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"},

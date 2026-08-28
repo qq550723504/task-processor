@@ -25,11 +25,14 @@ const (
 	budgetAuthorizationPatch       = "image-agent-budget-authorization-v1"
 	workflowFailureProjectionPatch = "image-agent-workflow-failure-projection-v1"
 	projectionExecutionCommitPatch = "image-agent-projection-execution-commit-v1"
+	commandIngressPlanPolicyPatch  = "image-agent-command-ingress-plan-policy-v1"
+	approvalPublicationScopePatch  = "image-agent-approval-publication-scope-v1"
 )
 
 type workflowActivityWire struct {
 	executeSlot, persistSlotResult, persistRunState, persistPlanRevision, persistPendingCommand, publishApproved string
 	useV3Slot, useV3Approval                                                                                     bool
+	useRunScopedApprovalKey                                                                                      bool
 }
 
 func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
@@ -37,6 +40,7 @@ func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
 	useV3ApprovalActionID := workflow.GetVersion(ctx, approvalActionIDV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 	useV3ApprovalPublication := workflow.GetVersion(ctx, approvalPublicationWireV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 	useV3ResultDigest := workflow.GetVersion(ctx, resultDigestV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	useRunScopedApprovalKey := workflow.GetVersion(ctx, approvalPublicationScopePatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 	version := workflow.GetVersion(ctx, activityWireV2Patch, workflow.DefaultVersion, 1)
 	if version == workflow.DefaultVersion {
 		return workflowActivityWire{
@@ -58,6 +62,7 @@ func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
 	if useV3ApprovalActionID && useV3ApprovalPublication && useV3ResultDigest {
 		wire.publishApproved = activityPublishApprovedV3
 		wire.useV3Approval = true
+		wire.useRunScopedApprovalKey = useRunScopedApprovalKey
 	}
 	return wire
 }
@@ -69,7 +74,12 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 	if input.RunID == "" || input.Identity.TenantID == "" || input.Identity.UserID == "" {
 		return WorkflowResult{}, fmt.Errorf("run ID and verified execution identity are required")
 	}
-	if err := imageagent.ValidatePlan(input.Plan); err != nil {
+	input.enforceIngressPlanPolicy = workflow.GetVersion(ctx, commandIngressPlanPolicyPatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	validatePlan := imageagent.ValidatePlan
+	if input.enforceIngressPlanPolicy {
+		validatePlan = imageagent.ValidateInitialSubmittedPlan
+	}
+	if err := validatePlan(input.Plan); err != nil {
 		return WorkflowResult{}, fmt.Errorf("validate plan: %w", err)
 	}
 	catalog, err := imageagent.NormalizeAssetCatalog(input.AssetCatalog)
@@ -574,6 +584,7 @@ type workflowUpdateState struct {
 	cancelRequested                 bool
 	cancelCommitted                 bool
 	ingressExhausted                bool
+	enforceIngressPlanPolicy        bool
 }
 
 func newWorkflowUpdateState(
@@ -586,6 +597,7 @@ func newWorkflowUpdateState(
 	return &workflowUpdateState{
 		input: input, projection: projection, results: results, effects: effects,
 		wake: workflow.NewBufferedChannel(ctx, 8), actions: make(map[string]*workflowUpdateRecord),
+		enforceIngressPlanPolicy: input.enforceIngressPlanPolicy,
 	}
 }
 
@@ -786,10 +798,22 @@ func (s *workflowUpdateState) validateReplacePlanBusiness(signal ReplacePlanSign
 	if s.projection.Status != imageagent.RunStatusBlocked {
 		return updateBlockedError("replacement plan is only valid while blocked")
 	}
-	if signal.Plan.ParentRevision != signal.ExpectedRevision || signal.Plan.Revision <= signal.ExpectedRevision || signal.Plan.CreatedBy != s.input.Identity.UserID {
+	if s.enforceIngressPlanPolicy && !imageagent.BlockAllowsAction(s.projection.Block, imageagent.ActionEditPlan) {
+		return updateBlockedError("the current block does not permit plan replacement")
+	}
+	if signal.Plan.CreatedBy != s.input.Identity.UserID {
 		return updateBlockedError("replacement plan revision, parent, or actor is invalid")
 	}
-	if err := imageagent.ValidatePlan(signal.Plan); err != nil {
+	var err error
+	if s.enforceIngressPlanPolicy {
+		err = imageagent.ValidateReplacementSubmittedPlan(signal.ExpectedRevision, signal.Plan)
+	} else {
+		if signal.Plan.ParentRevision != signal.ExpectedRevision || signal.Plan.Revision <= signal.ExpectedRevision {
+			return updateBlockedError("replacement plan revision, parent, or actor is invalid")
+		}
+		err = imageagent.ValidatePlan(signal.Plan)
+	}
+	if err != nil {
 		return updateBlockedError("replacement plan is invalid")
 	}
 	if err := imageagent.ValidatePlanAgainstCatalog(signal.Plan, s.input.AssetCatalog); err != nil {
@@ -1755,9 +1779,17 @@ func resultDigestForWire(plan imageagent.Plan, results []SlotWorkflowResult, act
 
 func approvalPublicationKeyForWire(actionID, runID string, revision int64, activityWire workflowActivityWire) string {
 	if activityWire.useV3Approval {
+		if activityWire.useRunScopedApprovalKey {
+			return approvalActionPublicationKey(actionID, runID, revision)
+		}
 		return actionID
 	}
 	return publicationKey(runID, revision)
+}
+
+func approvalActionPublicationKey(actionID, runID string, revision int64) string {
+	digest := sha256.Sum256([]byte(strings.TrimSpace(actionID)))
+	return fmt.Sprintf("image-agent:%s:plan:%d:approval:%s", strings.TrimSpace(runID), revision, hex.EncodeToString(digest[:]))
 }
 
 func findSlot(plan imageagent.Plan, slotID string) imageagent.Slot {

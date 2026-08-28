@@ -14,6 +14,14 @@ const MaxActionIDLength = 128
 // by run, plan, and slot idempotency keys.
 const MaxIdempotencyKeyLength = 128
 
+// MaxJSONSafePlanRevision is the largest integer that can round-trip through
+// JavaScript clients without precision loss.
+const MaxJSONSafePlanRevision int64 = 1<<53 - 1
+
+// MaxPlanSlots bounds provider fan-out and parent workflow history growth for
+// newly submitted plans. Historical snapshots remain readable via ValidatePlan.
+const MaxPlanSlots = 32
+
 func ValidateActionID(value string) error {
 	if value == "" || value != strings.TrimSpace(value) || len(value) > MaxActionIDLength {
 		return fmt.Errorf("action ID must be canonical and at most %d bytes", MaxActionIDLength)
@@ -140,10 +148,39 @@ func ValidateSubmittedPlan(plan Plan) error {
 	if err := ValidatePlan(plan); err != nil {
 		return err
 	}
+	if plan.Revision > MaxJSONSafePlanRevision || plan.ParentRevision < 0 || plan.ParentRevision > MaxJSONSafePlanRevision {
+		return fmt.Errorf("plan revision and parent revision must be JSON-safe integers")
+	}
+	if len(plan.Slots) > MaxPlanSlots {
+		return fmt.Errorf("plan requires at most %d slots", MaxPlanSlots)
+	}
 	for _, slot := range plan.Slots {
 		if slot.Status != SlotStatusPending {
 			return fmt.Errorf("slot status must be pending")
 		}
+	}
+	return nil
+}
+
+func ValidateInitialSubmittedPlan(plan Plan) error {
+	if err := ValidateSubmittedPlan(plan); err != nil {
+		return err
+	}
+	if plan.Revision != 1 || plan.ParentRevision != 0 {
+		return fmt.Errorf("initial plan must use revision 1 with no parent revision")
+	}
+	return nil
+}
+
+func ValidateReplacementSubmittedPlan(expectedRevision int64, plan Plan) error {
+	if expectedRevision <= 0 || expectedRevision > MaxJSONSafePlanRevision {
+		return fmt.Errorf("expected revision must be a positive JSON-safe integer")
+	}
+	if err := ValidateSubmittedPlan(plan); err != nil {
+		return err
+	}
+	if expectedRevision == MaxJSONSafePlanRevision || plan.ParentRevision != expectedRevision || plan.Revision != expectedRevision+1 {
+		return fmt.Errorf("replacement plan must advance its parent revision by a single step")
 	}
 	return nil
 }

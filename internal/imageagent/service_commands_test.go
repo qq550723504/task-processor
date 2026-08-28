@@ -140,6 +140,19 @@ func TestServiceReplacePlanIsBlockedUnlessCurrentRunIsBlockedAtExpectedRevision(
 	}
 }
 
+func TestServiceReplacePlanRejectsCancelOnlyBlockBeforeWorkflowUpdate(t *testing.T) {
+	service, workflows := commandService(t, imageagent.RunStatusBlocked, &imageagent.Block{
+		Code: imageagent.BudgetQuoteUnavailableCode, SlotID: "slot-1",
+	})
+	replacement := commandPlan(2)
+	replacement.ParentRevision = 1
+
+	err := service.ReplacePlan(verifiedContext("tenant-a", "user-a"), "run-1", 1, replacement, "replace-cancel-only")
+
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+	require.Empty(t, workflows.replacements)
+}
+
 func TestServiceRetryAndCancelRejectBlockedOrTerminalCommands(t *testing.T) {
 	repository := seededRepository(t, imageagent.RunStatusBlocked, &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"})
 	workflows := &recordingWorkflowClient{retryErr: imageagent.ErrCommandBlocked}

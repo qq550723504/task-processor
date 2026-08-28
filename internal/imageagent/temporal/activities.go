@@ -17,6 +17,7 @@ import (
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
 	"task-processor/internal/pkg/imagex"
+	"task-processor/internal/productimage"
 	"task-processor/internal/shared/aiidentity"
 )
 
@@ -183,11 +184,11 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	}
 
 	var prepared objectstore.PreparedSlotArtifacts
+	var generated imageagent.SlotGeneratedOutput
 	if effect.Phase == imageagent.SlotEffectV3ProviderClaimed {
 		if !claimed {
 			return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 		}
-		var generated imageagent.SlotGeneratedOutput
 		var generateErr error
 		if budgeted != nil {
 			generated, generateErr = budgeted.GenerateQuotedSlot(providerCtx, executionInput, reservation.Quote)
@@ -244,6 +245,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			}
 			return v3Result, fmt.Errorf("ensure staged artifacts: %w", err)
 		}
+		cleanupGeneratedSlotTemporaryAssets(&generated)
 		effect, err = a.slotEffectsV3.CommitSlotStagedV3(ctx, reservation, effect.StagingManifestFingerprint)
 		if err != nil {
 			effect, err = a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
@@ -461,6 +463,18 @@ func prepareGeneratedSlotArtifacts(input imageagent.SlotExecutionInput, generate
 		}
 	}
 	return store.PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput{Identity: slotEffectReservationV3(input).Identity, Assets: assets})
+}
+
+func cleanupGeneratedSlotTemporaryAssets(generated *imageagent.SlotGeneratedOutput) {
+	if generated == nil {
+		return
+	}
+	for index := range generated.Assets {
+		asset := &generated.Assets[index]
+		transient := productimage.ImageAsset{URL: asset.URL, Metadata: asset.Metadata}
+		productimage.CleanupTemporaryAsset(&transient)
+		asset.Metadata = transient.Metadata
+	}
 }
 
 func expectedFinalManifestV3(input imageagent.SlotExecutionInput, staging imageagent.StagingManifest) (imageagent.FinalManifest, error) {

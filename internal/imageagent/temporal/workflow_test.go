@@ -918,7 +918,9 @@ func TestV3InitialChildFailurePersistsRecoverableBlockedSlotIdentity(t *testing.
 	env.OnGetVersion(approvalActionIDV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(approvalPublicationWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(resultDigestV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(approvalPublicationScopePatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(commandIngressPlanPolicyPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 
 	plan := imageagent.Plan{
 		Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, CreatedBy: "user-a",
@@ -1011,7 +1013,9 @@ func newV3BlockWorkflowEnv(t *testing.T, blocked func(ExecuteSlotV3ActivityInput
 	env.OnGetVersion(approvalActionIDV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(approvalPublicationWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(resultDigestV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(approvalPublicationScopePatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(commandIngressPlanPolicyPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.RegisterWorkflow(ImageSlotWorkflowV3)
 	env.RegisterActivityWithOptions(func(_ context.Context, input ExecuteSlotV3ActivityInput) (imageagent.SlotEffectV3PublishedResult, error) {
 		if err := blocked(input); err != nil {
@@ -1912,6 +1916,26 @@ func TestManualWorkflowReplacementRejectsAssetsOutsideImmutableCatalogAndConsume
 	require.EqualValues(t, 2, result.Plan.Revision)
 	require.Equal(t, imageagent.RunStatusCompleted, result.Status)
 	env.AssertExpectations(t)
+}
+
+func TestReplacementBusinessValidationEnforcesBlockedActionPolicyForNewHistories(t *testing.T) {
+	input := manualWorkflowInput(sevenSlotPlan())
+	projection := WorkflowResult{
+		Status: imageagent.RunStatusBlocked,
+		Plan:   input.Plan,
+		Block:  &imageagent.Block{Code: imageagent.BudgetQuoteUnavailableCode, SlotID: "scene-2"},
+	}
+	results := []SlotWorkflowResult(nil)
+	replacement := sevenSlotPlan()
+	replacement.Revision = 2
+	replacement.ParentRevision = 1
+	replacement.IdempotencyKey = "plan-key-2"
+	signal := ReplacePlanSignal{RunID: input.RunID, ExpectedRevision: 1, Plan: replacement, ActorID: input.Identity.UserID, ActionID: "replace-cancel-only"}
+	state := workflowUpdateState{input: &input, projection: &projection, results: &results, enforceIngressPlanPolicy: true}
+
+	require.Error(t, state.validateReplacePlanBusiness(signal))
+	state.enforceIngressPlanPolicy = false
+	require.NoError(t, state.validateReplacePlanBusiness(signal), "historical workflows retain their recorded validation contract")
 }
 
 func TestManualWorkflowRejectsApprovalWithWrongActorOrDigest(t *testing.T) {
@@ -2912,6 +2936,7 @@ func TestManualWorkflowReplacePathUsesRealProjectionActivityAndRepository(t *tes
 	env.OnGetVersion(approvalActionIDV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	env.OnGetVersion(approvalPublicationWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	env.OnGetVersion(resultDigestV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(approvalPublicationScopePatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.RegisterWorkflow(ImageSlotWorkflow)
 	env.RegisterActivityWithOptions(activities.ExecuteSlot, sdkactivity.RegisterOptions{Name: activityExecuteSlot})
 	env.RegisterActivityWithOptions(activities.PersistSlotResult, sdkactivity.RegisterOptions{Name: activityPersistSlotResult})
@@ -3488,6 +3513,7 @@ func newWorkflowEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 	env.OnGetVersion(approvalActionIDV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	env.OnGetVersion(approvalPublicationWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	env.OnGetVersion(resultDigestV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(approvalPublicationScopePatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.RegisterWorkflow(ImageSlotWorkflow)
 	env.RegisterActivityWithOptions(
 		func(context.Context, ExecuteSlotActivityInput) (imageagent.SlotExecutionResult, error) {

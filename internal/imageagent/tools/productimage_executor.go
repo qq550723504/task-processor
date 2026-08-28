@@ -367,8 +367,17 @@ func (e *ProductImageSlotExecutor) executeMain(ctx context.Context, source produ
 	if subject == nil || strings.TrimSpace(subject.URL) == "" {
 		return nil, imageagent.SlotUsageReceipt{}, dispatchedContractError("subject extractor returned no generated asset")
 	}
+	var main *productimage.ImageAsset
+	defer func() {
+		if main != nil && subject.Metadata != nil {
+			if replacementPath := generatedLocalPath(main); replacementPath != "" {
+				subject.Metadata["published_path"] = replacementPath
+			}
+		}
+		productimage.CleanupTemporaryAsset(subject)
+	}()
 	whiteCtx := operationQuoteContext(ctx, quoted, 1)
-	main, err := e.dependencies.WhiteBackgroundRenderer.Render(whiteCtx, subject, productContext)
+	main, err = e.dependencies.WhiteBackgroundRenderer.Render(whiteCtx, subject, productContext)
 	if err != nil {
 		return nil, imageagent.SlotUsageReceipt{}, dispatchedAfterPriorEffect("render white background", err)
 	}
@@ -377,6 +386,21 @@ func (e *ProductImageSlotExecutor) executeMain(ctx context.Context, source produ
 	}
 	receipt := receiptForQuote(quoted, 2)
 	return []productimage.ImageAsset{*main}, receipt, nil
+}
+
+func generatedLocalPath(asset *productimage.ImageAsset) string {
+	if asset == nil {
+		return ""
+	}
+	if asset.Metadata != nil {
+		if localPath := strings.TrimSpace(asset.Metadata["local_path"]); localPath != "" {
+			return localPath
+		}
+	}
+	if value := strings.TrimSpace(asset.URL); value != "" && !strings.Contains(value, "://") {
+		return value
+	}
+	return ""
 }
 
 func (e *ProductImageSlotExecutor) executeScene(ctx context.Context, source productimage.ImageAsset, productContext *productimage.ProductContext, quoted *quotedSlotExecution) ([]productimage.ImageAsset, imageagent.SlotUsageReceipt, error) {

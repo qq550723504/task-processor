@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -329,6 +331,24 @@ func TestExecutorUsesSubjectExtractionAndWhiteBackgroundForMainSlot(t *testing.T
 	require.NotEmpty(t, result.Candidates[0].AssetID)
 	require.Equal(t, "https://generated.example/main.png", result.Candidates[0].URL)
 	require.Equal(t, "source-1", result.Candidates[0].SourceAssetID)
+}
+
+func TestExecutorCleansMainSlotIntermediateSubject(t *testing.T) {
+	tempDir := t.TempDir()
+	subjectPath := filepath.Join(tempDir, "subject.png")
+	mainPath := filepath.Join(tempDir, "main.png")
+	require.NoError(t, os.WriteFile(subjectPath, []byte("subject"), 0o600))
+	require.NoError(t, os.WriteFile(mainPath, []byte("main"), 0o600))
+	extractor := &recordingSubjectExtractor{result: &productimage.ImageAsset{URL: subjectPath, Metadata: map[string]string{"local_path": subjectPath}}}
+	whiteBackground := &recordingWhiteBackgroundRenderer{result: &productimage.ImageAsset{URL: mainPath, Metadata: map[string]string{"local_path": mainPath}}}
+	executor := NewProductImageSlotExecutor(Dependencies{SubjectExtractor: extractor, WhiteBackgroundRenderer: whiteBackground})
+
+	generated, err := executor.GenerateSlot(context.Background(), slotInput("main-1", imageagent.SlotRoleMain))
+
+	require.NoError(t, err)
+	require.NoFileExists(t, subjectPath)
+	require.FileExists(t, mainPath, "the final output remains until durable staging")
+	require.Equal(t, mainPath, generated.Assets[0].Metadata["local_path"])
 }
 
 func TestExecutorMapsSceneRoleBriefAndAuthorizedStyleReferencesToSceneContext(t *testing.T) {

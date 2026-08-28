@@ -47,6 +47,33 @@ func TestExecuteSlotV3RestoresProductImageBusinessIdentity(t *testing.T) {
 	}, executor.ProductImageIdentity())
 }
 
+func TestExecuteSlotV3CleansGeneratedLocalFileOnlyAfterDurableStaging(t *testing.T) {
+	t.Run("durably staged", func(t *testing.T) {
+		repository, input := initializedSlotEffectV3Activity(t, "run-v3-cleanup-staged")
+		path := writeTinyPNG(t)
+		executor := &recordingStagedExecutor{generated: generatedV3Output(input, path)}
+		activities := newV3Activities(t, repository, repository.(imageagent.SlotExternalEffectV3Repository), executor, &recordingArtifactStore{})
+
+		_, err := activities.ExecuteSlotV3(context.Background(), input)
+
+		require.NoError(t, err)
+		require.NoFileExists(t, path)
+	})
+
+	t.Run("staging failed", func(t *testing.T) {
+		repository, input := initializedSlotEffectV3Activity(t, "run-v3-cleanup-not-staged")
+		path := writeTinyPNG(t)
+		executor := &recordingStagedExecutor{generated: generatedV3Output(input, path)}
+		artifacts := &recordingArtifactStore{ensureErrors: []error{errors.New("staging unavailable")}}
+		activities := newV3Activities(t, repository, repository.(imageagent.SlotExternalEffectV3Repository), executor, artifacts)
+
+		_, err := activities.ExecuteSlotV3(context.Background(), input)
+
+		require.Error(t, err)
+		require.FileExists(t, path, "a retry still needs the only local copy")
+	})
+}
+
 func TestExecuteSlotV3DoesNotRegenerateAnUnownedProviderClaim(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-unowned-provider")
 	effects := repository.(imageagent.SlotExternalEffectV3Repository)
@@ -492,13 +519,18 @@ func TestExecuteSlotV3ProductionStoreReconcilesMultiAssetAfterLocalBytesVanish(t
 			generated := generatedV3Output(input, paths[0])
 			generated.Assets = append(generated.Assets, generated.Assets[0])
 			generated.Assets[1].URL = paths[1]
+			generated.Assets[1].Metadata = map[string]string{"local_path": paths[1], "authorization": "must-not-persist"}
 			executor := &recordingStagedExecutor{generated: generated}
 			artifacts := newProductionArtifactStore(t, api)
 			first := newV3Activities(t, repository, effects, executor, artifacts)
 			_, firstErr := first.ExecuteSlotV3(context.Background(), input)
 			require.Error(t, firstErr)
 			for _, path := range paths {
-				require.NoError(t, os.Remove(path))
+				if tc.name == "partial missing" {
+					require.NoError(t, os.Remove(path), "failed staging must retain retryable local bytes")
+				} else {
+					require.NoFileExists(t, path, "durably staged bytes are cleaned automatically")
+				}
 			}
 			if tc.name == "mismatch" {
 				for key, object := range api.objects {

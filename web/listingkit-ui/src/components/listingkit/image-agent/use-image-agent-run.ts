@@ -32,6 +32,8 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
   const requestSequenceRef = useRef(0);
   const committedRequestRef = useRef(0);
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
+  const observeCommittedSnapshotRef = useRef<(next: ImageAgentProjection) => void>(() => {});
+  const ensureEventStreamRef = useRef<() => void>(() => {});
 
   const commitSnapshot = useCallback((next: ImageAgentProjection, requestSequence = 0) => {
     if (!mountedRef.current || next.run.id !== runId) return;
@@ -42,6 +44,7 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
     versionRef.current = next.projection_version;
     setProjection(next);
     setIsLoading(false);
+    observeCommittedSnapshotRef.current(next);
   }, [runId]);
 
   const refreshSnapshot = useCallback(async () => {
@@ -95,8 +98,9 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
       if (snapshotTimer) clearTimeout(snapshotTimer);
       snapshotTimer = undefined;
     };
-    const connect = (resumeFromCursor = false) => {
+    const connect = (resumeFromCursor = false, allowTerminal = false) => {
       if (disposed || source) return;
+      if (!allowTerminal && isTerminalRunStatus(projectionRef.current?.run.status)) return;
       source = new EventSource(imageAgentEventsUrl(runId, resumeFromCursor ? cursorRef.current : undefined));
       source.onopen = () => {
         streamFailures = 0;
@@ -148,12 +152,12 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
       recovering = true;
       let allowQueuedRecovery = true;
       try {
-        await refreshSnapshot();
+        const next = await refreshSnapshot();
         snapshotFailures = 0;
         clearSnapshotTimer();
         if (!disposed) {
           setError(undefined);
-          if (connectImmediately) connect();
+          if (connectImmediately && !isTerminalRunStatus(next.run.status)) connect();
         }
       } catch (cause) {
         if (!disposed) {
@@ -183,10 +187,25 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
       }
     }
 
-    if (projectionRef.current?.run.id === runId) connect();
-    else void recover(true);
+    observeCommittedSnapshotRef.current = (next) => {
+      if (!isTerminalRunStatus(next.run.status)) return;
+      recoveryQueued = false;
+      queuedConnectImmediately = false;
+      closeSource();
+      clearStreamTimer();
+      clearSnapshotTimer();
+    };
+    ensureEventStreamRef.current = () => connect(true, true);
+
+    if (projectionRef.current?.run.id === runId) {
+      if (!isTerminalRunStatus(projectionRef.current.run.status)) connect();
+    } else {
+      void recover(true);
+    }
     return () => {
       disposed = true;
+      observeCommittedSnapshotRef.current = () => {};
+      ensureEventStreamRef.current = () => {};
       closeSource();
       clearStreamTimer();
       clearSnapshotTimer();
@@ -256,6 +275,7 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
     try {
       await restartFailedImageAgentRun(runId, abortControllerRef.current?.signal);
       await refreshSnapshot();
+      ensureEventStreamRef.current();
     } catch (cause) {
       if (mountedRef.current) setError(errorMessage(cause));
     } finally {
@@ -289,6 +309,10 @@ function parseProjectionEvent(value: string): ImageAgentProjectionEvent | undefi
         !Number.isSafeInteger(parsed.projection_version) || Number(parsed.projection_version) <= 0) return undefined;
     return parsed as ImageAgentProjectionEvent;
   } catch { return undefined; }
+}
+
+function isTerminalRunStatus(status: ImageAgentProjection["run"]["status"] | undefined) {
+  return status === "completed" || status === "failed" || status === "cancelled";
 }
 
 function cloneSlot(slot: ImageAgentSlot): ImageAgentSlot {
