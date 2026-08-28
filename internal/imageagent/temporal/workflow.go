@@ -126,8 +126,15 @@ func runImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowR
 	projection := WorkflowResult{Status: imageagent.RunStatusPlanning, Plan: input.Plan, Slots: slotProjections(input.Plan, nil), CommandIngress: imageagent.CommandIngress{Limit: maxActionLedgerEntries}}
 	var updates *workflowUpdateState
 	cancelAndProject := func(results []SlotWorkflowResult) (WorkflowResult, error) {
-		if updates == nil || !updates.cancelCommitted {
+		if updates == nil || !updates.cancelRequested {
 			return WorkflowResult{}, fmt.Errorf("image agent cancellation was not committed by the command saga")
+		}
+		for !updates.cancelCommitted {
+			if updates.cancelPending {
+				updates.commitPendingCancellation(ctx, results)
+				continue
+			}
+			updates.wake.Receive(ctx, nil)
 		}
 		result := cancelledProjection(input, results)
 		result.CommandIngress = updates.commandIngress()
@@ -184,7 +191,7 @@ runPlan:
 		projection = executing
 		if updates.pendingActionID != "" {
 			if err := workflow.Await(ctx, func() bool {
-				return updates.pendingActionID == ""
+				return updates.pendingActionID == "" || updates.cancelRequested
 			}); err != nil {
 				return WorkflowResult{}, err
 			}
@@ -584,7 +591,10 @@ type workflowUpdateState struct {
 	executingHandoffRevision        int64
 	awaitingApprovalHandoffRevision int64
 	cancelRequested                 bool
+	cancelPending                   bool
 	cancelCommitted                 bool
+	cancelCommitErr                 error
+	cancelActionFingerprint         string
 	ingressExhausted                bool
 	enforceIngressPlanPolicy        bool
 }
@@ -1087,6 +1097,9 @@ func (s *workflowUpdateState) validateCancelBusiness(signal CancelSignal) error 
 	if err := validateCommandRevision(*s.input, signal.PlanRevision); err != nil {
 		return err
 	}
+	if s.input.externalEffectFinalization && s.cancelRequested {
+		return updateBlockedError("cancel is already pending")
+	}
 	switch s.projection.Status {
 	case imageagent.RunStatusCompleted, imageagent.RunStatusFailed, imageagent.RunStatusCancelled:
 		return updateBlockedError("cancel is not valid for a terminal run")
@@ -1124,6 +1137,22 @@ func (s *workflowUpdateState) handleCancel(ctx workflow.Context, signal CancelSi
 }
 
 func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSignal, record *workflowUpdateRecord) (CommandAcknowledgement, error) {
+	if s.input.externalEffectFinalization {
+		s.cancelRequested = true
+		s.cancelPending = true
+		s.cancelCommitErr = nil
+		s.cancelActionFingerprint = record.fingerprint
+		s.wake.SendAsync(struct{}{})
+		if err := workflow.Await(ctx, func() bool {
+			return s.cancelCommitted || (!s.cancelPending && s.cancelCommitErr != nil)
+		}); err != nil {
+			return CommandAcknowledgement{}, err
+		}
+		if s.cancelCommitErr != nil {
+			return CommandAcknowledgement{}, s.cancelCommitErr
+		}
+		return CommandAcknowledgement{RunID: signal.RunID, PlanRevision: signal.PlanRevision, ActionID: signal.ActionID, Status: imageagent.RunStatusCancelled}, nil
+	}
 	result := *s.projection
 	result.Status = imageagent.RunStatusCancelled
 	result.Block = nil
@@ -1135,6 +1164,19 @@ func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSig
 	s.cancelCommitted = true
 	s.cancelRequested = true
 	return CommandAcknowledgement{RunID: signal.RunID, PlanRevision: signal.PlanRevision, ActionID: signal.ActionID, Status: imageagent.RunStatusCancelled}, nil
+}
+
+func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, results []SlotWorkflowResult) {
+	result := cancelledProjection(*s.input, results)
+	result.CommandIngress = s.commandIngress()
+	err := s.effects.persistTerminalRunState(ctx, *s.input, result, "cancelled", s.cancelActionFingerprint)
+	s.cancelPending = false
+	s.cancelCommitErr = err
+	if err == nil {
+		*s.projection = result
+		s.cancelCommitted = true
+	}
+	s.wake.SendAsync(struct{}{})
 }
 
 func (s *workflowUpdateState) prepareAction(ctx workflow.Context, actionID, fingerprint string, phase workflowUpdatePhase, kind string, command interface{}) (*workflowUpdateRecord, bool, error) {
@@ -1160,6 +1202,9 @@ func (s *workflowUpdateState) prepareAction(ctx workflow.Context, actionID, fing
 			existing.readyAttempt = true
 		}
 		return existing, !existing.businessValidated, nil
+	}
+	if s.input.externalEffectFinalization && s.cancelRequested {
+		return nil, false, updateBlockedError("image agent cancellation is pending")
 	}
 	if !s.canAdmitNewAction(kind) {
 		if err := s.persistIngressExhaustion(ctx); err != nil {
@@ -1558,6 +1603,7 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 	slotInput := SlotWorkflowInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision, Slot: input.Plan.Slots[index], Attempt: attempt, AssetCatalog: input.AssetCatalog}
 	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
 		WorkflowID: childWorkflowID(slotInput), ParentClosePolicy: enums.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
+		WaitForCancellation: input.externalEffectFinalization,
 	})
 	if activityWire.useV3Slot {
 		future := workflow.ExecuteChildWorkflow(childCtx, ImageSlotWorkflowV3, SlotWorkflowV3Input{

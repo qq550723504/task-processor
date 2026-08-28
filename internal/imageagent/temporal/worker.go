@@ -148,7 +148,7 @@ func (c *Client) Cancel(ctx context.Context, command imageagent.CancelRunCommand
 	if err := c.validateSignal(command.Identity, command.RunID, command.PlanRevision, command.ActorID, command.ActionID); err != nil {
 		return err
 	}
-	return c.executeCommandUpdate(ctx, command.Identity, command.RunID, signalCancel, command.ActionID, CancelSignal{
+	return c.executeAcceptedCommandUpdate(ctx, command.Identity, command.RunID, signalCancel, CancelSignal{
 		RunID: command.RunID, PlanRevision: command.PlanRevision,
 		ActorID: command.ActorID, ActionID: command.ActionID,
 	})

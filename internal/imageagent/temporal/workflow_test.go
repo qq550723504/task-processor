@@ -2276,6 +2276,77 @@ func TestManualWorkflowCancellationStartsNoThirdChildAndKeepsCompletedSibling(t 
 	require.Equal(t, []string{"slot-1"}, projection.CompletedSlotIDs)
 }
 
+func TestManualWorkflowCancellationWaitsForStartedSlotFinalization(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	var childStarted atomic.Bool
+	var childFinalized atomic.Bool
+	var eventMu sync.Mutex
+	var events []string
+	env.RegisterWorkflowWithOptions(
+		func(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkflowResult, error) {
+			childStarted.Store(true)
+			_ = workflow.NewTimer(ctx, time.Hour).Get(ctx, nil)
+			finalizationCtx, cancelFinalization := workflow.NewDisconnectedContext(ctx)
+			defer cancelFinalization()
+			if err := workflow.NewTimer(finalizationCtx, time.Second).Get(finalizationCtx, nil); err != nil {
+				return SlotWorkflowResult{}, err
+			}
+			childFinalized.Store(true)
+			eventMu.Lock()
+			events = append(events, "child_finalized")
+			eventMu.Unlock()
+			return SlotWorkflowResult{
+				Execution: imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+				Status:    imageagent.SlotStatusBlocked, ErrorCode: imageagent.SlotProviderOutcomeUnknownCode,
+			}, nil
+		},
+		workflow.RegisterOptions{Name: "ImageSlotWorkflow"},
+	)
+	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	var terminalMu sync.Mutex
+	var terminalStatuses []imageagent.RunStatus
+	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
+		if isTerminalRunStatus(input.Projection.Status) {
+			terminalMu.Lock()
+			terminalStatuses = append(terminalStatuses, input.Projection.Status)
+			terminalMu.Unlock()
+			eventMu.Lock()
+			events = append(events, "terminal_cancelled")
+			eventMu.Unlock()
+		}
+		return nil
+	}, sdkactivity.RegisterOptions{Name: activityPersistRunState})
+	env.RegisterActivityWithOptions(
+		func(context.Context, PersistPendingCommandActivityInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityPersistPendingCommand},
+	)
+	env.RegisterDelayedCallback(func() {
+		require.True(t, childStarted.Load())
+		env.SignalWorkflow(signalCancel, CancelSignal{
+			RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-after-provider-dispatch",
+		})
+	}, time.Second)
+
+	plan := sevenSlotPlan()
+	plan.Slots = plan.Slots[:1]
+	input := manualWorkflowInput(plan)
+	input.MaxConcurrentSlots = 1
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	require.True(t, childFinalized.Load(), "the started child must report its provider outcome before the parent returns")
+	eventMu.Lock()
+	require.Equal(t, []string{"child_finalized", "terminal_cancelled"}, events)
+	eventMu.Unlock()
+	terminalMu.Lock()
+	require.Equal(t, []imageagent.RunStatus{imageagent.RunStatusCancelled}, terminalStatuses)
+	terminalMu.Unlock()
+}
+
 func TestManualWorkflowCancelUpdateAcksAfterCancelledProjectionPersistence(t *testing.T) {
 	env := newWorkflowEnv(t)
 	plan := sevenSlotPlan()
@@ -3181,7 +3252,7 @@ func TestTemporalClientRetryWaitsForAcceptedWhileOtherCommandsWaitForCompleted(t
 	})
 	for index, options := range raw.updateOptions {
 		require.Equal(t, "image-agent:tenant-a:user-a:run-1", options.WorkflowID)
-		if index == 1 {
+		if index == 1 || index == 3 {
 			require.Equal(t, sdkclient.WorkflowUpdateStageAccepted, options.WaitForStage)
 		} else {
 			require.Equal(t, sdkclient.WorkflowUpdateStageCompleted, options.WaitForStage)
@@ -3189,7 +3260,7 @@ func TestTemporalClientRetryWaitsForAcceptedWhileOtherCommandsWaitForCompleted(t
 		require.NotEmpty(t, options.UpdateID)
 		require.Len(t, options.Args, 1)
 	}
-	require.Equal(t, 4, raw.updateGetCalls)
+	require.Equal(t, 3, raw.updateGetCalls)
 	require.Empty(t, raw.signalName)
 }
 
@@ -3218,19 +3289,29 @@ func TestTemporalClientMapsWorkflowUpdateErrorsToApplicationContracts(t *testing
 	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
 	command := imageagent.CancelRunCommand{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-1", Identity: identity}
 	for _, tt := range []struct {
-		name      string
-		directErr error
-		resultErr error
-		want      error
+		name             string
+		directErr        error
+		resultErr        error
+		completedCommand bool
+		want             error
 	}{
 		{name: "missing run", directErr: serviceerror.NewNotFound("missing"), want: imageagent.ErrRunNotFound},
 		{name: "closed workflow", directErr: serviceerror.NewFailedPrecondition("workflow completed"), want: imageagent.ErrCommandBlocked},
-		{name: "revision", resultErr: sdktemporal.NewNonRetryableApplicationError("stale", "imageagent_revision_conflict", nil), want: imageagent.ErrRevisionConflict},
-		{name: "blocked", resultErr: sdktemporal.NewNonRetryableApplicationError("blocked", "imageagent_command_blocked", nil), want: imageagent.ErrCommandBlocked},
+		{name: "revision", resultErr: sdktemporal.NewNonRetryableApplicationError("stale", "imageagent_revision_conflict", nil), completedCommand: true, want: imageagent.ErrRevisionConflict},
+		{name: "blocked", resultErr: sdktemporal.NewNonRetryableApplicationError("blocked", "imageagent_command_blocked", nil), completedCommand: true, want: imageagent.ErrCommandBlocked},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			raw := &recordingSDKClient{updateErr: tt.directErr, updateResultErr: tt.resultErr}
-			err := NewClient(raw).Cancel(context.Background(), command)
+			client := NewClient(raw)
+			var err error
+			if tt.completedCommand {
+				err = client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{
+					RunID: "run-1", PlanRevision: 1, ResultDigest: sevenSlotResultDigest,
+					ActorID: "user-a", ActionID: "approve-1", Identity: identity,
+				})
+			} else {
+				err = client.Cancel(context.Background(), command)
+			}
 			require.ErrorIs(t, err, tt.want)
 		})
 	}
