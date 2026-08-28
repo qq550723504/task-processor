@@ -1,0 +1,113 @@
+export type ProductWorkspaceSectionKey =
+  | "overview"
+  | "images"
+  | "basic"
+  | "sku"
+  | "specs"
+  | "attributes"
+  | "description";
+
+type ProductWorkspaceItemStatus =
+  | "ready"
+  | "processing"
+  | "attention"
+  | "failed"
+  | "idle";
+
+export type ProductWorkspaceNavItem = {
+  key: string;
+  label: string;
+  platform?: string;
+  selected?: boolean;
+  status?: ProductWorkspaceItemStatus;
+  recoveryLabel?: string;
+};
+
+export type ProductWorkspacePlatformInput = {
+  platform: string;
+  label: string;
+  status?: ProductWorkspaceItemStatus;
+  recoveryLabel?: string;
+};
+
+export type ProductWorkspaceAttentionSeverity = "blocking" | "warning" | "passed";
+
+export type ProductWorkspaceAttentionItem = {
+  severity: ProductWorkspaceAttentionSeverity;
+  label: string;
+  count: number;
+};
+
+const CANONICAL_NAVIGATION: ReadonlyArray<{
+  key: ProductWorkspaceSectionKey;
+  label: string;
+}> = [
+  { key: "overview", label: "概览" },
+  { key: "images", label: "图片" },
+  { key: "basic", label: "基础信息" },
+  { key: "sku", label: "SKU" },
+  { key: "specs", label: "规格" },
+  { key: "attributes", label: "属性" },
+  { key: "description", label: "描述" },
+];
+
+export function buildProductWorkspaceCanonicalNavigation(
+  selectedSection?: ProductWorkspaceSectionKey,
+  platformSelected = false,
+): ProductWorkspaceNavItem[] {
+  return CANONICAL_NAVIGATION.map((item) => ({
+    ...item,
+    selected: !platformSelected && item.key === selectedSection,
+  }));
+}
+
+export function productWorkspaceStatusForPlatformCard(card: {
+  status?: string;
+  needs_review?: boolean;
+}): ProductWorkspaceItemStatus {
+  switch (card.status) {
+    case "failed":
+    case "retry_needed":
+      return "failed";
+    case "review_ready":
+      return "attention";
+    case "processing":
+    case "pending":
+      return "processing";
+    case "ready":
+    case "completed":
+      return card.needs_review ? "attention" : "ready";
+    default:
+      return card.needs_review ? "attention" : "idle";
+  }
+}
+
+export function buildProductWorkspacePlatformNavigation(
+  platforms: readonly ProductWorkspacePlatformInput[],
+  selectedPlatform?: string,
+): ProductWorkspaceNavItem[] {
+  return platforms.map((platform) => ({
+    key: `platform:${platform.platform}`,
+    label: platform.label,
+    platform: platform.platform,
+    selected: platform.platform === selectedPlatform,
+    status: platform.status ?? "idle",
+    recoveryLabel: platform.recoveryLabel,
+  }));
+}
+
+export function buildProductWorkspaceAttentionSummary({
+  blockingCount,
+  warningCount,
+  passedCount,
+}: {
+  blockingCount: number;
+  warningCount: number;
+  passedCount: number;
+}): ProductWorkspaceAttentionItem[] {
+  return [
+    { severity: "blocking", label: "必须处理", count: blockingCount },
+    { severity: "warning", label: "建议确认", count: warningCount },
+    { severity: "passed", label: "已通过", count: passedCount },
+  ];
+}

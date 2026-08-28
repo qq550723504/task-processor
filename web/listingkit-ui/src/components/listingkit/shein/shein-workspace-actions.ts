@@ -175,6 +175,7 @@ export function normalizeSheinWorkspaceActionKey(
     return "category";
   }
   if (
+    normalized === "pricing" ||
     normalized.includes("price") ||
     normalized.includes("价格") ||
     normalized.includes("stock") ||
@@ -377,6 +378,20 @@ export function isSheinAdvancedRepairKey(key: SheinWorkspaceActionKey) {
     key === "attribute_review" ||
     key === "sale_attributes"
   );
+}
+
+export function sheinWorkspaceSectionForAction(key: SheinWorkspaceActionKey) {
+  return sheinWorkspaceTargetIdForKey(key).startsWith("shein-final-review-")
+    ? "final_review"
+    : "general_review";
+}
+
+export function buildSheinWorkspaceHrefForAction(
+  taskId: string,
+  key: SheinWorkspaceActionKey,
+) {
+  const targetId = sheinWorkspaceTargetIdForKey(key);
+  return `/listing-kits/${taskId}/workspace?platform=shein&section_key=${sheinWorkspaceSectionForAction(key)}#${targetId}`;
 }
 
 export function buildSheinGeneralReviewHref(

@@ -30,6 +30,53 @@ import { useListingKitPreview } from "@/lib/query/use-preview";
 import { useReviewPreview } from "@/lib/query/use-review-preview";
 import { useReviewSession } from "@/lib/query/use-review-session";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
+import type { PlatformCard } from "@/lib/types/listingkit";
+
+export function resolveWorkspaceTitle({
+  selectedPlatform,
+  amazonTitle,
+  sheinFinalTitle,
+  sheinSourceTitle,
+  canonicalTitle,
+}: {
+  selectedPlatform?: string;
+  amazonTitle?: string;
+  sheinFinalTitle?: string;
+  sheinSourceTitle?: string;
+  canonicalTitle?: string;
+}) {
+  return (
+    firstWorkspaceTitle(
+      amazonTitle,
+      selectedPlatform === "shein" ? sheinFinalTitle : undefined,
+      selectedPlatform === "shein" ? sheinSourceTitle : undefined,
+      canonicalTitle,
+    ) ?? "未命名商品"
+  );
+}
+
+function firstWorkspaceTitle(...candidates: Array<string | undefined>) {
+  return candidates.map((candidate) => candidate?.trim()).find(Boolean);
+}
+
+export function mergeNavigationPlatformCards(
+  previewCards?: PlatformCard[],
+  sessionCards?: PlatformCard[],
+) {
+  const preview = previewCards ?? [];
+  const session = sessionCards ?? [];
+  const sessionCardsByPlatform = new Map(
+    session.map((card) => [card.platform, card]),
+  );
+  const previewPlatforms = new Set(preview.map((card) => card.platform));
+
+  return [
+    ...preview.map(
+      (card) => sessionCardsByPlatform.get(card.platform) ?? card,
+    ),
+    ...session.filter((card) => !previewPlatforms.has(card.platform)),
+  ];
+}
 
 export function useWorkspaceData({
   taskId,
@@ -61,6 +108,10 @@ export function useWorkspaceData({
   const sessionData = session.data?.session;
   const platformCards =
     sessionData?.platform_cards ?? preview.data?.overview?.platform_cards ?? [];
+  const navigationPlatformCards = mergeNavigationPlatformCards(
+    preview.data?.overview?.platform_cards,
+    sessionData?.platform_cards,
+  );
   const focusedPreview =
     reviewPreview.data?.preview ?? sessionData?.focused_render_preview;
   const selectedPlatform =
@@ -151,13 +202,16 @@ export function useWorkspaceData({
       : previewSuggestionCandidate;
   const sheinFlowSteps = sheinWorkspaceProjection?.flowSteps ?? [];
 
-  const workspaceTitle =
-    (workspacePlatformProjection.kind === "amazon"
-      ? workspacePlatformProjection.title
-      : undefined) ||
-    sheinPreviewPayload?.final_review?.title ||
-    sheinPreviewPayload?.source_product?.title ||
-    `任务 ${taskId.slice(0, 8)}`;
+  const workspaceTitle = resolveWorkspaceTitle({
+    selectedPlatform,
+    amazonTitle:
+      workspacePlatformProjection.kind === "amazon"
+        ? workspacePlatformProjection.title
+        : undefined,
+    sheinFinalTitle: sheinPreviewPayload?.final_review?.title,
+    sheinSourceTitle: sheinPreviewPayload?.source_product?.title,
+    canonicalTitle: taskResult.data?.result?.canonical_product?.title,
+  });
   const workspaceStatusLabel = workspaceTaskStatusLabel(taskResult.data?.status);
   const workspaceUpdatedAt = formatWorkspaceDate(
     taskResult.data?.result?.updated_at ??
@@ -166,10 +220,10 @@ export function useWorkspaceData({
   );
   const workspaceSubtitle =
     selectedPlatform === "shein"
-      ? `SHEIN · ${isSheinFinalReviewMode ? "最终确认" : "审核工作台"} · ${taskId}`
+      ? `SHEIN · ${isSheinFinalReviewMode ? "最终确认" : "商品审核"}`
       : workspacePlatformProjection.kind === "amazon"
-        ? `Amazon · ${workspacePlatformProjection.subtitle ?? "审核工作台"} · ${taskId}`
-      : `任务标识 · ${taskId}`;
+        ? `Amazon · ${workspacePlatformProjection.subtitle ?? "商品审核"}`
+        : "商品资料";
 
   return {
     baseQuery,
@@ -179,6 +233,7 @@ export function useWorkspaceData({
     reviewPreview,
     sessionData,
     platformCards,
+    navigationPlatformCards,
     focusedPreview,
     selectedPlatform,
     focusedScenePreset,

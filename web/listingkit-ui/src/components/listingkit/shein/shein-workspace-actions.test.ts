@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSheinWorkspaceHrefForAction,
   buildSheinGeneralReviewHref,
   buildSheinBlockingActionSummary,
   canSelectSheinReadinessItem,
@@ -21,6 +22,7 @@ describe("shein workspace actions", () => {
     expect(normalizeSheinWorkspaceActionKey("shein_sale_attribute_freshness")).toBe("sale_attributes");
     expect(normalizeSheinWorkspaceActionKey("variant_mapping")).toBe("sale_attributes");
     expect(normalizeSheinWorkspaceActionKey("required_attribute")).toBe("attributes");
+    expect(normalizeSheinWorkspaceActionKey("pricing")).toBe("pricing");
     expect(normalizeSheinWorkspaceActionKey("price")).toBe("pricing");
     expect(normalizeSheinWorkspaceActionKey("inventory")).toBe("pricing");
   });
@@ -159,6 +161,21 @@ describe("shein workspace actions", () => {
       ),
     ).toBe(
       "/listing-kits/task-123/workspace?platform=shein&section_key=general_review#shein-attribute-review-card",
+    );
+  });
+
+  it("routes every repair action to the workspace surface that mounts its target", () => {
+    expect(buildSheinWorkspaceHrefForAction("task-123", "attributes")).toBe(
+      "/listing-kits/task-123/workspace?platform=shein&section_key=general_review#shein-attribute-review-card",
+    );
+    expect(buildSheinWorkspaceHrefForAction("task-123", "images")).toBe(
+      "/listing-kits/task-123/workspace?platform=shein&section_key=general_review#shein-preview-images",
+    );
+    expect(buildSheinWorkspaceHrefForAction("task-123", "variants")).toBe(
+      "/listing-kits/task-123/workspace?platform=shein&section_key=final_review#shein-final-review-size-chart",
+    );
+    expect(buildSheinWorkspaceHrefForAction("task-123", "pricing")).toBe(
+      "/listing-kits/task-123/workspace?platform=shein&section_key=final_review#shein-final-review-pricing",
     );
   });
 });

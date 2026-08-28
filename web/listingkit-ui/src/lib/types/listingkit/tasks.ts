@@ -436,6 +436,8 @@ export type CanonicalProduct = {
   title?: string;
   brand?: string;
   description?: string;
+  selling_points?: string[];
+  seo_keywords?: string[];
   category_path?: string[];
   images?: Array<{
     url?: string;
@@ -450,11 +452,20 @@ export type CanonicalProduct = {
     technical?: Record<string, string>;
     [key: string]: unknown;
   };
+  variant_dimensions?: Array<{
+    name?: string;
+    values?: string[];
+  }>;
   variants?: Array<{
     sku?: string;
     title?: string;
+    barcode?: string;
+    is_default?: boolean;
+    dimensions?: Record<string, unknown>;
+    weight?: Record<string, unknown>;
     price?: Record<string, unknown>;
     stock?: number;
+    trace?: CanonicalFieldTrace;
     attributes?: Record<string, CanonicalAttribute>;
     images?: Array<{ url?: string; alt?: string; role?: string }>;
     [key: string]: unknown;
