@@ -425,7 +425,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			return v3Result, a.publicationRecoveryError("renew slot publication lease after finalize", publication, renewErr)
 		}
 		publication = renewedPublication
-		result, buildErr := a.stagedSlotExecutor.BuildSlotResult(ctx, executionInput, imageagent.PublishedSlotOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, Assets: actualFinal.Assets})
+		result, buildErr := a.stagedSlotExecutor.BuildSlotResult(publicationFinalizationCtx, executionInput, imageagent.PublishedSlotOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, Assets: actualFinal.Assets})
 		if buildErr != nil {
 			return v3Result, fmt.Errorf("build durable slot result: %w", buildErr)
 		}

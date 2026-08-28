@@ -484,7 +484,8 @@ func TestExecuteSlotV3CancellationTerminalizesPublicationClaim(t *testing.T) {
 			},
 		},
 	}
-	activities := newV3Activities(t, repository, effects, &recordingStagedExecutor{}, artifacts)
+	executor := &recordingStagedExecutor{failBuildOnCancelledContext: true}
+	activities := newV3Activities(t, repository, effects, executor, artifacts)
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	cancel = cancelCtx
 	defer cancel()
@@ -496,6 +497,7 @@ func TestExecuteSlotV3CancellationTerminalizesPublicationClaim(t *testing.T) {
 	require.False(t, artifacts.FinalizeSawCancelledContext(), "publication finalization must use the detached finalization context")
 	require.False(t, effects.RenewSawCancelledContext(), "publication lease renewal must use the detached finalization context")
 	require.False(t, effects.CompleteSawCancelledContext(), "publication completion must use the detached finalization context")
+	require.False(t, executor.BuildSawCancelledContext(), "result construction must use the detached finalization context")
 
 	stored, getErr := baseEffects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
 	require.NoError(t, getErr)
@@ -934,16 +936,18 @@ func requireV3ApplicationErrorType(t *testing.T, err error, want string) {
 }
 
 type recordingStagedExecutor struct {
-	mu                  sync.Mutex
-	generated           imageagent.SlotGeneratedOutput
-	generateErr         error
-	generateCalls       int
-	buildCalls          int
-	mutateResult        func(*imageagent.SlotExecutionResult)
-	identity            productimage.AIIdentity
-	started             chan struct{}
-	onGenerate          func()
-	waitForCancellation bool
+	mu                          sync.Mutex
+	generated                   imageagent.SlotGeneratedOutput
+	generateErr                 error
+	generateCalls               int
+	buildCalls                  int
+	mutateResult                func(*imageagent.SlotExecutionResult)
+	identity                    productimage.AIIdentity
+	started                     chan struct{}
+	onGenerate                  func()
+	waitForCancellation         bool
+	buildSawCancelledContext    bool
+	failBuildOnCancelledContext bool
 }
 
 func (e *recordingStagedExecutor) QuoteSlot(context.Context, imageagent.SlotExecutionInput, imageagent.BudgetPolicy) (imageagent.SlotUsageQuote, error) {
@@ -1106,10 +1110,16 @@ func (r *cancellationObservingV3Repository) CompleteSawCancelledContext() bool {
 	return r.completeSawCancelledContext
 }
 
-func (e *recordingStagedExecutor) BuildSlotResult(_ context.Context, input imageagent.SlotExecutionInput, published imageagent.PublishedSlotOutput) (imageagent.SlotExecutionResult, error) {
+func (e *recordingStagedExecutor) BuildSlotResult(ctx context.Context, input imageagent.SlotExecutionInput, published imageagent.PublishedSlotOutput) (imageagent.SlotExecutionResult, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.buildCalls++
+	if ctx.Err() != nil {
+		e.buildSawCancelledContext = true
+		if e.failBuildOnCancelledContext {
+			return imageagent.SlotExecutionResult{}, ctx.Err()
+		}
+	}
 	candidates := make([]imageagent.AssetCandidate, len(published.Assets))
 	for index, asset := range published.Assets {
 		candidates[index] = imageagent.AssetCandidate{AssetID: fmt.Sprintf("candidate-%d", index), SourceAssetID: asset.SourceAssetID, DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: asset.ObjectKey, SHA256: asset.SHA256}}
@@ -1134,6 +1144,12 @@ func (e *recordingStagedExecutor) BuildCalls() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.buildCalls
+}
+
+func (e *recordingStagedExecutor) BuildSawCancelledContext() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.buildSawCancelledContext
 }
 
 func (e *recordingStagedExecutor) ProductImageIdentity() productimage.AIIdentity {
