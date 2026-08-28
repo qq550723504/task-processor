@@ -333,6 +333,7 @@ var errWorkflowEffectFenced = errors.New("workflow terminal effect fence rejecte
 
 func newWorkflowEffectOwner(ctx workflow.Context) *workflowEffectOwner {
 	owner := &workflowEffectOwner{requests: workflow.NewChannel(ctx), activities: activityWireForWorkflow(ctx)}
+	commitTerminalIntentAfterSuccess := workflow.GetVersion(ctx, externalEffectFinalizationPatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 	workflow.Go(ctx, func(ownerCtx workflow.Context) {
 		terminalIntentIdentity := ""
 		terminalSucceeded := false
@@ -346,7 +347,7 @@ func newWorkflowEffectOwner(ctx workflow.Context) *workflowEffectOwner {
 				)})
 				continue
 			}
-			if request.terminalIdentity != "" && terminalIntentIdentity == "" {
+			if !commitTerminalIntentAfterSuccess && request.terminalIdentity != "" && terminalIntentIdentity == "" {
 				terminalIntentIdentity = request.terminalIdentity
 			}
 			if terminalSucceeded {
@@ -355,6 +356,9 @@ func newWorkflowEffectOwner(ctx workflow.Context) *workflowEffectOwner {
 			}
 			err := request.execute(ownerCtx)
 			if err == nil && request.terminalIdentity != "" {
+				if terminalIntentIdentity == "" {
+					terminalIntentIdentity = request.terminalIdentity
+				}
 				terminalSucceeded = true
 			}
 			request.done.Send(ownerCtx, workflowEffectResult{err: err})
@@ -1086,6 +1090,10 @@ func (s *workflowUpdateState) applyApproveResults(ctx workflow.Context, signal A
 	}, nil
 }
 
+func approvalPublicationCommitted(record workflowUpdateRecord) bool {
+	return record.kind == signalApproveResults && record.phase == updatePhaseApprovalPersistComplete
+}
+
 func (s *workflowUpdateState) validateCancel(signal CancelSignal) error {
 	if strings.TrimSpace(signal.RunID) == "" || strings.TrimSpace(signal.ActorID) == "" || strings.TrimSpace(signal.ActionID) == "" || signal.PlanRevision <= 0 {
 		return updateBlockedError("cancel command shape is invalid")
@@ -1099,6 +1107,12 @@ func (s *workflowUpdateState) validateCancelBusiness(signal CancelSignal) error 
 	}
 	if s.input.externalEffectFinalization && s.cancelRequested {
 		return updateBlockedError("cancel is already pending")
+	}
+	if s.input.externalEffectFinalization && s.pendingActionID != "" {
+		pending := s.actions[s.pendingActionID]
+		if pending != nil && approvalPublicationCommitted(*pending) {
+			return updateBlockedError("approval publication is already committed")
+		}
 	}
 	switch s.projection.Status {
 	case imageagent.RunStatusCompleted, imageagent.RunStatusFailed, imageagent.RunStatusCancelled:
@@ -1246,7 +1260,9 @@ func (s *workflowUpdateState) canAdmitNewAction(kind string) bool {
 
 func (s *workflowUpdateState) failedPendingActionCanBeSuperseded() bool {
 	pending := s.actions[s.pendingActionID]
-	return pending != nil && pending.kind != signalCancel && !pending.completed && !pending.running && pending.lastFailedAt != nil
+	return pending != nil && pending.kind != signalCancel &&
+		(!s.input.externalEffectFinalization || !approvalPublicationCommitted(*pending)) &&
+		!pending.completed && !pending.running && pending.lastFailedAt != nil
 }
 
 func (s *workflowUpdateState) supersedeFailedPendingAction() bool {

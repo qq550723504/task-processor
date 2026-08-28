@@ -1520,6 +1520,68 @@ func TestManualWorkflowApprovalUpdateResumesAfterCompletedStateFailureWithoutRep
 	env.AssertExpectations(t)
 }
 
+func TestManualWorkflowRejectsCancelAfterApprovalPublicationBeforeProjection(t *testing.T) {
+	env := newWorkflowEnv(t)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	plan := sevenSlotPlan()
+	for _, slot := range plan.Slots {
+		slot := slot
+		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).
+			Return(successfulSlotResult(slot.ID, 1), nil).Once()
+	}
+	publishCalls := 0
+	env.OnActivity(activityPublishApproved, mock.Anything, mock.Anything).
+		Run(func(mock.Arguments) { publishCalls++ }).Return(nil).Once()
+	completed := mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
+		return input.Projection.Status == imageagent.RunStatusCompleted
+	})
+	env.OnActivity(activityPersistRunState, mock.Anything, completed).
+		Return(sdktemporal.NewNonRetryableApplicationError("completed state write failed after publication", "terminal_test_failure", nil)).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, completed).Return(nil).Once()
+	cancelledWrites := 0
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		if activityInputFromArgs[PersistRunStateActivityInput](t, args).Projection.Status == imageagent.RunStatusCancelled {
+			cancelledWrites++
+		}
+	}).Return(nil)
+
+	command := validApproval("approve-after-publication")
+	var approveErr, cancelErr, resumeErr error
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalApproveResults, "approve-after-publication", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { approveErr = err }, OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) { approveErr = err },
+		}, command)
+	}, time.Second)
+	env.RegisterDelayedCallback(func() {
+		require.Error(t, approveErr)
+		env.UpdateWorkflow(signalCancel, "cancel-after-publication", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { cancelErr = err }, OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) { cancelErr = err },
+		}, CancelSignal{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-after-publication"})
+	}, 2*time.Second)
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(updateResumeCommand, "resume-approval-after-rejected-cancel", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { resumeErr = err }, OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) { resumeErr = err },
+		}, ResumeCommandInput{RunID: "run-1", ActorID: "user-a", ActionID: command.ActionID})
+	}, 3*time.Second)
+	env.RegisterDelayedCallback(func() { env.CancelWorkflow() }, 5*time.Second)
+
+	env.ExecuteWorkflow(ImageAgentWorkflow, manualWorkflowInput(plan))
+
+	require.NoError(t, env.GetWorkflowError())
+	require.Error(t, approveErr)
+	require.ErrorContains(t, cancelErr, "approval publication is already committed")
+	require.NoError(t, resumeErr)
+	require.Equal(t, 1, publishCalls)
+	require.Zero(t, cancelledWrites)
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusCompleted, result.Status)
+	env.AssertExpectations(t)
+}
+
 func TestManualWorkflowCancelSupersedesFailedApprovalCommand(t *testing.T) {
 	env := newWorkflowEnv(t)
 	plan := sevenSlotPlan()
@@ -2543,6 +2605,7 @@ func TestWorkflowEffectOwnerFencesEveryTerminalRunStatusBeforeExecution(t *testi
 	} {
 		t.Run(string(status), func(t *testing.T) {
 			env := newWorkflowEnv(t)
+			env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 			terminalCalls := 0
 			forbiddenCalls := 0
 			env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
@@ -2572,6 +2635,27 @@ func TestWorkflowEffectOwnerFencesEveryTerminalRunStatusBeforeExecution(t *testi
 			env.AssertExpectations(t)
 		})
 	}
+}
+
+func TestWorkflowEffectOwnerDoesNotFenceFailedTerminalPersistence(t *testing.T) {
+	env := newWorkflowEnv(t)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	terminalCalls := 0
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).
+		Run(func(mock.Arguments) { terminalCalls++ }).
+		Return(sdktemporal.NewNonRetryableApplicationError("durable terminal write returned an ambiguous error", "terminal_test_failure", nil)).Once()
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).
+		Run(func(mock.Arguments) { terminalCalls++ }).Return(nil).Once()
+
+	env.ExecuteWorkflow(workflowEffectOwnerFailedTerminalWorkflow)
+
+	require.NoError(t, env.GetWorkflowError())
+	var result workflowEffectOwnerFailedTerminalResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.ErrorContains(t, errors.New(result.FirstError), "ambiguous error")
+	require.Empty(t, result.FollowUpError)
+	require.Equal(t, 2, terminalCalls)
+	env.AssertExpectations(t)
 }
 
 func TestManualWorkflowProjectsFailureBeforeReturningWorkflowLevelError(t *testing.T) {
@@ -3522,6 +3606,27 @@ type workflowEffectOwnerFenceResult struct {
 	DifferentTerminalError string
 	ExactRetryError        string
 	AfterSuccessError      string
+}
+
+type workflowEffectOwnerFailedTerminalResult struct {
+	FirstError    string
+	FollowUpError string
+}
+
+func workflowEffectOwnerFailedTerminalWorkflow(ctx workflow.Context) (workflowEffectOwnerFailedTerminalResult, error) {
+	ctx = imageAgentActivityContext(ctx)
+	owner := newWorkflowEffectOwner(ctx)
+	input := manualWorkflowInput(sevenSlotPlan())
+	firstErr := owner.persistTerminalRunState(
+		ctx, input, WorkflowResult{Status: imageagent.RunStatusCompleted, Plan: input.Plan}, "complete", "approval-action",
+	)
+	followUpErr := owner.persistTerminalRunState(
+		ctx, input, WorkflowResult{Status: imageagent.RunStatusCancelled, Plan: input.Plan}, "cancelled", "cancel-action",
+	)
+	return workflowEffectOwnerFailedTerminalResult{
+		FirstError:    workflowTestErrorString(firstErr),
+		FollowUpError: workflowTestErrorString(followUpErr),
+	}, nil
 }
 
 func workflowEffectOwnerFenceWorkflow(ctx workflow.Context, status imageagent.RunStatus) (workflowEffectOwnerFenceResult, error) {
