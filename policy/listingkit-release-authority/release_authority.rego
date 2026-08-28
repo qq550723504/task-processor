@@ -185,6 +185,30 @@ deny contains msg if {
   msg := sprintf("release-gate step %v exposes caller-controlled container selection", [step.name])
 }
 
+deny contains msg if {
+  some step in release_gate_steps
+  count(split(step.run, "--run-id")) != 2
+  msg := sprintf("release-gate step %v must pass exactly one trusted --run-id", [step.name])
+}
+
+deny contains msg if {
+  some step in release_gate_steps
+  count(split(step.run, "--run-id \"$GITHUB_RUN_ID\"")) != 2
+  msg := sprintf("release-gate step %v must use $GITHUB_RUN_ID as its only --run-id value", [step.name])
+}
+
+deny contains msg if {
+  some step in release_gate_steps
+  count(split(step.run, "--run-attempt")) != 2
+  msg := sprintf("release-gate step %v must pass exactly one trusted --run-attempt", [step.name])
+}
+
+deny contains msg if {
+  some step in release_gate_steps
+  count(split(step.run, "--run-attempt \"$GITHUB_RUN_ATTEMPT\"")) != 2
+  msg := sprintf("release-gate step %v must use $GITHUB_RUN_ATTEMPT as its only --run-attempt value", [step.name])
+}
+
 deny contains "API release Role must not grant Pod permissions" if {
   some rule in role("api").rules
   startswith(rule.resources[_], "pods")

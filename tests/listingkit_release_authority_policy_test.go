@@ -149,6 +149,36 @@ func TestListingKitReleaseAuthorityMachinePolicyOwnsAllSecurityInputs(t *testing
 	}
 }
 
+func TestListingKitReleaseAuthorityCrossFilePolicyRejectsReleaseGateInvocationOverrides(t *testing.T) {
+	t.Parallel()
+
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	workflow, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name string
+		from string
+		to   string
+	}{
+		{name: "missing run ID", from: "            --run-id \"$GITHUB_RUN_ID\" \\\n", to: ""},
+		{name: "static run ID override", from: "            --run-id \"$GITHUB_RUN_ID\" \\\n", to: "            --run-id \"$GITHUB_RUN_ID\" \\\n            --run-id \"424242\" \\\n"},
+		{name: "duplicate run attempt", from: "            --run-attempt \"$GITHUB_RUN_ATTEMPT\" \\\n", to: "            --run-attempt \"$GITHUB_RUN_ATTEMPT\" \\\n            --run-attempt \"$GITHUB_RUN_ATTEMPT\" \\\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			mutated := strings.Replace(string(workflow), test.from, test.to, 1)
+			if mutated == string(workflow) {
+				t.Fatalf("test fixture did not mutate %q", test.name)
+			}
+			output, runErr := runReleaseAuthorityCrossFilePolicy(t, mutated)
+			if runErr == nil {
+				t.Fatalf("cross-file release-authority policy accepted %s:\n%s", test.name, output)
+			}
+		})
+	}
+}
+
 func TestListingKitReleaseAuthorityOIDCConfiguratorFailsClosedOnClaimMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -438,6 +468,48 @@ type releaseAuthorityWorkflow struct {
 			Env  map[string]string `yaml:"env"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
+}
+
+func runReleaseAuthorityCrossFilePolicy(t *testing.T, mutatedWorkflow string) (string, error) {
+	t.Helper()
+
+	repoRoot, err := filepath.Abs(filepath.Join(".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtureRoot := t.TempDir()
+	workflowPath := filepath.Join(fixtureRoot, ".github", "workflows", "listingkit-deploy.yml")
+	if err := os.MkdirAll(filepath.Dir(workflowPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workflowPath, []byte(mutatedWorkflow), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	arguments := []string{
+		"run", "--rm",
+		"--volume", repoRoot + ":/project",
+		"--volume", fixtureRoot + ":/fixture",
+		"--workdir", "/project",
+		"openpolicyagent/conftest@sha256:5fd81e332d7e4bc01daf3ef35371800a9a9720a30c0c37a78de0c5fbe4b6d622",
+		"test", "--combine",
+		"--namespace", "listingkit_release_authority",
+		"--policy", "policy/listingkit-release-authority",
+		"deployments/kubernetes/listingkit-workbench/release-authority/release-policy.yaml",
+		"deployments/kubernetes/listingkit-workbench/release-authority/kubernetes-authentication-config.example.yaml",
+		"deployments/kubernetes/listingkit-workbench/release-authority/listingkit-api-release-role.yaml",
+		"deployments/kubernetes/listingkit-workbench/release-authority/listingkit-api-release-rolebinding.yaml",
+		"deployments/kubernetes/listingkit-workbench/release-authority/listingkit-ui-release-role.yaml",
+		"deployments/kubernetes/listingkit-workbench/release-authority/listingkit-ui-release-rolebinding.yaml",
+		"deployments/kubernetes/listingkit-workbench/release-authority/kustomization.yaml",
+		"deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml",
+		"/fixture/.github/workflows/listingkit-deploy.yml",
+		".github/workflows/listingkit-ui-deploy.yml",
+	}
+	command := exec.Command("docker", arguments...)
+	command.Dir = repoRoot
+	output, runErr := command.CombinedOutput()
+	return string(output), runErr
 }
 
 func loadReleaseAuthorityWorkflow(t *testing.T, name string) releaseAuthorityWorkflow {

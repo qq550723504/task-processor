@@ -116,13 +116,38 @@ func TestListingKitReleaseGateRunnerCanonicalContract(t *testing.T) {
 func TestListingKitReleaseGateRunnerBindsReadinessToCurrentInvocation(t *testing.T) {
 	t.Parallel()
 
-	firstOutput, firstLog, firstErr := runReleaseGateScenario(t, releaseGateScenario{runID: "424242", runAttempt: "1", rejectPods: true})
+	shared := &releaseGateSharedState{}
+	firstOutput, firstLog, firstErr := runReleaseGateScenario(t, releaseGateScenario{runID: "424242", runAttempt: "1", rejectPods: true, sharedState: shared})
 	if firstErr != nil {
 		t.Fatalf("first current-rollout invocation failed: %v\n%s", firstErr, firstOutput)
 	}
-	secondOutput, secondLog, secondErr := runReleaseGateScenario(t, releaseGateScenario{runID: "424242", runAttempt: "2", rejectPods: true})
+	firstInvocation := "listingkit-release-gate-v1:listingkit-schema-migrate-runner:424242:1"
+	secondInvocation := "listingkit-release-gate-v1:listingkit-schema-migrate-runner:424242:2"
+	firstGeneration := releaseGateLatestAvailableGeneration(t, shared)
+
+	blockedOutput, blockedLog, blockedErr := runReleaseGateScenario(t, releaseGateScenario{
+		runID:           "424242",
+		runAttempt:      "2",
+		rejectPods:      true,
+		invocationDrift: firstInvocation,
+		sharedState:     shared,
+	})
+	if blockedErr == nil || !strings.Contains(blockedOutput, "live release-gate runner contract differs from reviewed manifest") {
+		t.Fatalf("attempt 2 must not accept attempt 1 availability before its template identity changes, err=%v output=%s", blockedErr, blockedOutput)
+	}
+	if got := releaseGateLatestAvailableInvocation(t, shared); got != firstInvocation {
+		t.Fatalf("blocked attempt 2 availability retained invocation=%q, want prior attempt %q", got, firstInvocation)
+	}
+
+	secondOutput, secondLog, secondErr := runReleaseGateScenario(t, releaseGateScenario{runID: "424242", runAttempt: "2", rejectPods: true, sharedState: shared})
 	if secondErr != nil {
 		t.Fatalf("second current-rollout invocation failed: %v\n%s", secondErr, secondOutput)
+	}
+	if got := releaseGateLatestAvailableInvocation(t, shared); got != secondInvocation {
+		t.Fatalf("attempt 2 must become available only after its annotation changes, got %q want %q", got, secondInvocation)
+	}
+	if got := releaseGateLatestAvailableGeneration(t, shared); got <= firstGeneration {
+		t.Fatalf("attempt 2 must wait for a new Deployment generation, got %d after %d", got, firstGeneration)
 	}
 
 	for _, check := range []struct {
@@ -130,8 +155,9 @@ func TestListingKitReleaseGateRunnerBindsReadinessToCurrentInvocation(t *testing
 		log        string
 		invocation string
 	}{
-		{name: "first", log: firstLog, invocation: "listingkit-release-gate-v1:listingkit-schema-migrate-runner:424242:1"},
-		{name: "second", log: secondLog, invocation: "listingkit-release-gate-v1:listingkit-schema-migrate-runner:424242:2"},
+		{name: "first", log: firstLog, invocation: firstInvocation},
+		{name: "blocked second", log: blockedLog, invocation: secondInvocation},
+		{name: "second", log: secondLog, invocation: secondInvocation},
 	} {
 		if strings.Contains(check.log, "get pods") {
 			t.Errorf("%s current-rollout proof must not query Pod collections:\n%s", check.name, check.log)
@@ -387,6 +413,12 @@ type releaseGateScenario struct {
 	invocationDrift          string
 	initImageDrift           string
 	mutateDeployment         func(map[string]any)
+	sharedState              *releaseGateSharedState
+}
+
+type releaseGateSharedState struct {
+	livePath    string
+	historyPath string
 }
 
 func assertReleaseGateContractRejected(t *testing.T, mutate func(map[string]any)) {
@@ -455,6 +487,16 @@ func runReleaseGateScenario(t *testing.T, scenario releaseGateScenario) (string,
 		scenario.mutateDeployment(reviewed)
 	}
 	livePath := writeReleaseGateJSON(t, dir, "live-deployment.json", reviewed)
+	historyPath := filepath.Join(dir, "available-generation-history.jsonl")
+	if scenario.sharedState != nil {
+		if scenario.sharedState.livePath == "" {
+			scenario.sharedState.livePath = livePath
+			scenario.sharedState.historyPath = historyPath
+		} else {
+			livePath = scenario.sharedState.livePath
+			historyPath = scenario.sharedState.historyPath
+		}
+	}
 
 	logPath := filepath.Join(dir, "kubectl.log")
 	stateProgramPath := filepath.Join(dir, "fake-kubectl-state.py")
@@ -526,6 +568,7 @@ set -euo pipefail
 		fmt.Sprintf("FAKE_STALE_AVAILABLE_GENERATION=%t", scenario.staleAvailableGeneration),
 		"FAKE_INVOCATION_DRIFT="+scenario.invocationDrift,
 		"FAKE_INIT_IMAGE_DRIFT="+scenario.initImageDrift,
+		"FAKE_STATE_HISTORY="+historyPath,
 		"FAKE_PYTHON="+pythonPath,
 		"FAKE_KUBECTL_STATE="+stateProgramPath,
 		"FAKE_JQ_PROGRAM="+jqProgramPath)
@@ -583,6 +626,35 @@ func writeReleaseGateJSON(t *testing.T, dir, name string, value any) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func releaseGateLatestAvailableInvocation(t *testing.T, shared *releaseGateSharedState) string {
+	t.Helper()
+	entry := releaseGateLatestAvailableState(t, shared)
+	return entry["invocation"].(string)
+}
+
+func releaseGateLatestAvailableGeneration(t *testing.T, shared *releaseGateSharedState) int {
+	t.Helper()
+	entry := releaseGateLatestAvailableState(t, shared)
+	return int(entry["generation"].(float64))
+}
+
+func releaseGateLatestAvailableState(t *testing.T, shared *releaseGateSharedState) map[string]any {
+	t.Helper()
+	content, err := os.ReadFile(shared.historyPath)
+	if err != nil {
+		t.Fatalf("read release-gate state history: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	if len(lines) == 0 {
+		t.Fatal("release-gate state history has no available Deployment generation")
+	}
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &entry); err != nil {
+		t.Fatalf("decode latest release-gate state: %v", err)
+	}
+	return entry
 }
 
 func runnerPodSpec(deployment map[string]any) map[string]any {
@@ -794,6 +866,11 @@ elif mode == "scale":
             "availableReplicas": 1,
             "unavailableReplicas": 0,
         }
+        history_path = os.environ.get("FAKE_STATE_HISTORY")
+        if history_path:
+            annotation = deployment["spec"]["template"].get("metadata", {}).get("annotations", {}).get("listingkit.sh/release-gate-invocation")
+            with open(history_path, "a", encoding="utf-8") as history:
+                history.write(json.dumps({"generation": generation, "invocation": annotation}, sort_keys=True) + "\n")
     else:
         deployment["status"] = {
             "observedGeneration": deployment["metadata"]["generation"],
