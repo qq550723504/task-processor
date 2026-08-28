@@ -695,11 +695,14 @@ func prepareInitialization(input imageagent.ProjectionInitialization) (imageagen
 }
 
 func materializeRepositoryCatalogTimestamp(input imageagent.ProjectionInitialization, createdAt time.Time) imageagent.ProjectionInitialization {
-	if !input.Catalog.Manifest.CreatedAt.IsZero() {
-		return input
+	if input.Catalog.Manifest.CreatedAt.IsZero() {
+		input.Catalog.Manifest.CreatedAt = createdAt
+		input.Snapshot.AssetCatalog.Manifest.CreatedAt = createdAt
 	}
-	input.Catalog.Manifest.CreatedAt = createdAt
-	input.Snapshot.AssetCatalog.Manifest.CreatedAt = createdAt
+	if input.Run.StartedAt.IsZero() {
+		input.Run.StartedAt = createdAt
+		input.Snapshot.Run.StartedAt = createdAt
+	}
 	return input
 }
 

@@ -57,6 +57,10 @@ type UsageVector struct {
 	CostMicros int64
 }
 
+func (policy BudgetPolicy) HasProviderLimits() bool {
+	return policy.Images.Enabled || policy.AgentSteps.Enabled || policy.ModelCalls.Enabled || policy.CostMicros.Enabled
+}
+
 func (budget Budget) Policy() (BudgetPolicy, error) {
 	if budget.EnabledLimits&^allBudgetLimits != 0 {
 		return BudgetPolicy{}, fmt.Errorf("%w: budget contains unknown enabled limits", ErrValidation)

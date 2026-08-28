@@ -22,6 +22,7 @@ const (
 	approvalActionIDV3Patch        = "image-agent-approval-action-id-v3"
 	approvalPublicationWireV3Patch = "image-agent-approval-publication-wire-v3"
 	resultDigestV3Patch            = "image-agent-result-digest-v3"
+	budgetAuthorizationPatch       = "image-agent-budget-authorization-v1"
 )
 
 type workflowActivityWire struct {
@@ -77,6 +78,15 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 		return WorkflowResult{}, fmt.Errorf("validate plan against immutable asset catalog: %w", err)
 	}
 	input.AssetCatalog = catalog
+	input.BudgetAuthorization = workflow.GetVersion(ctx, budgetAuthorizationPatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	if input.BudgetAuthorization {
+		if err := input.BudgetPolicy.Allows(imageagent.UsageVector{}, imageagent.UsageVector{}, imageagent.UsageVector{}); err != nil {
+			return WorkflowResult{}, fmt.Errorf("validate workflow budget policy: %w", err)
+		}
+		if input.BudgetPolicy.MaxElapsed.Enabled && (input.StartedAt.IsZero() || input.DeadlineAt.IsZero() || !input.DeadlineAt.Equal(input.StartedAt.Add(time.Duration(input.BudgetPolicy.MaxElapsed.Value)))) {
+			return WorkflowResult{}, fmt.Errorf("validate workflow budget deadline: %w", imageagent.ErrValidation)
+		}
+	}
 	ctx = imageAgentActivityContext(ctx)
 	effects := newWorkflowEffectOwner(ctx)
 	projection := WorkflowResult{Status: imageagent.RunStatusPlanning, Plan: input.Plan, Slots: slotProjections(input.Plan, nil), CommandIngress: imageagent.CommandIngress{Limit: maxActionLedgerEntries}}
@@ -824,7 +834,11 @@ func (s *workflowUpdateState) applyRetrySlot(ctx workflow.Context, signal RetryS
 	if record.phase == updatePhaseRetryExecuteChild {
 		attempt := (*s.results)[index].Execution.Attempt + 1
 		completionChannel := workflow.NewBufferedChannel(ctx, 1)
-		startChild(ctx, *s.input, index, attempt, completionChannel, s.effects.activities)
+		if s.input.BudgetAuthorization && s.input.BudgetPolicy.AllowsRepairAttempt(attempt-1) != nil {
+			completionChannel.Send(ctx, budgetBlockedCompletion(*s.input, index, attempt, imageagent.BudgetExhaustedCode, s.effects.activities.useV3Slot))
+		} else {
+			startChild(ctx, *s.input, index, attempt, completionChannel, s.effects.activities)
+		}
 		var completion childCompletion
 		completionChannel.Receive(ctx, &completion)
 		if completion.Failed {
@@ -1387,6 +1401,10 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 }
 
 func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, completionChannel workflow.SendChannel, activityWire workflowActivityWire) {
+	if input.BudgetAuthorization && !input.DeadlineAt.IsZero() && !workflow.Now(ctx).Before(input.DeadlineAt) {
+		completionChannel.Send(ctx, budgetBlockedCompletion(input, index, attempt, imageagent.BudgetElapsedCode, activityWire.useV3Slot))
+		return
+	}
 	slotInput := SlotWorkflowInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision, Slot: input.Plan.Slots[index], Attempt: attempt, AssetCatalog: input.AssetCatalog}
 	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
 		WorkflowID: childWorkflowID(slotInput), ParentClosePolicy: enums.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
@@ -1396,6 +1414,7 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 			RunID: slotInput.RunID, Identity: slotInput.Identity, PlanRevision: slotInput.PlanRevision,
 			Slot: slotInput.Slot, Attempt: slotInput.Attempt, AssetCatalog: slotInput.AssetCatalog,
 			ExecuteActivityName: activityWire.executeSlot,
+			BudgetAuthorization: input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy, DeadlineAt: input.DeadlineAt,
 		})
 		workflow.Go(ctx, func(goroutineCtx workflow.Context) {
 			var v3Result SlotWorkflowV3Result
@@ -1423,6 +1442,17 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 		err := future.Get(goroutineCtx, &result)
 		completionChannel.Send(goroutineCtx, childCompletion{Index: index, Result: result, Failed: err != nil})
 	})
+}
+
+func budgetBlockedCompletion(input WorkflowInput, index, attempt int, code string, useV3 bool) childCompletion {
+	slot := input.Plan.Slots[index]
+	result := SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: slot.ID, Attempt: attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: code}
+	completion := childCompletion{Index: index, Result: result}
+	if useV3 {
+		v3 := SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: slot.ID, Attempt: attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: code}
+		completion.V3Result = &v3
+	}
+	return completion
 }
 
 func slotIndex(plan imageagent.Plan, slotID string) int {

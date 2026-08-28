@@ -471,7 +471,12 @@ func cloneMetadata(value map[string]string) map[string]string {
 	return cloned
 }
 
-func sameRun(left, right imageagent.Run) bool { return reflect.DeepEqual(left, right) }
+func sameRun(left, right imageagent.Run) bool {
+	if left.StartedAt.IsZero() || right.StartedAt.IsZero() {
+		left.StartedAt, right.StartedAt = time.Time{}, time.Time{}
+	}
+	return reflect.DeepEqual(left, right)
+}
 
 func samePlan(left, right imageagent.Plan) bool { return reflect.DeepEqual(left, right) }
 

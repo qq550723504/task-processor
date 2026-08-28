@@ -68,8 +68,18 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 	if activityName == "" {
 		return SlotWorkflowV3Result{}, fmt.Errorf("v3 execute activity name is required")
 	}
+	startToClose := 10 * time.Minute
+	if input.BudgetAuthorization && !input.DeadlineAt.IsZero() {
+		remaining := input.DeadlineAt.Sub(workflow.Now(ctx))
+		if remaining <= 0 {
+			return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: imageagent.BudgetElapsedCode}, nil
+		}
+		if remaining < startToClose {
+			startToClose = remaining
+		}
+	}
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-		StartToCloseTimeout: 10 * time.Minute,
+		StartToCloseTimeout: startToClose,
 		RetryPolicy: &sdktemporal.RetryPolicy{
 			InitialInterval: time.Second, BackoffCoefficient: 2,
 			MaximumInterval: 30 * time.Second, MaximumAttempts: 5,
@@ -79,8 +89,9 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 	activityInput := ExecuteSlotV3ActivityInput{
 		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
 		Slot: input.Slot, Attempt: input.Attempt,
-		IdempotencyKey: slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
-		AssetCatalog:   input.AssetCatalog,
+		IdempotencyKey:      slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
+		AssetCatalog:        input.AssetCatalog,
+		BudgetAuthorization: input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy, DeadlineAt: input.DeadlineAt,
 	}
 	var published imageagent.SlotEffectV3PublishedResult
 	for {
@@ -128,6 +139,8 @@ func slotExecutionV3ErrorCode(err error) string {
 			return imageagent.SlotEffectPhaseInvalidCode
 		case slotEffectPolicyInvalidCode:
 			return imageagent.SlotEffectPolicyInvalidCode
+		case imageagent.BudgetExhaustedCode, imageagent.BudgetQuoteUnavailableCode, imageagent.BudgetElapsedCode:
+			return applicationError.Type()
 		default:
 			if strings.HasPrefix(applicationError.Type(), "imageagent_slot_effect_") {
 				return imageagent.SlotEffectPolicyInvalidCode

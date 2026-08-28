@@ -81,6 +81,7 @@ type Run struct {
 	Usage              BudgetUsage
 	Block              *Block
 	MaxConcurrentSlots int
+	StartedAt          time.Time
 }
 
 const DefaultMaxConcurrentSlots = 4

@@ -144,8 +144,28 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	}
 	executionInput := slotExecutionInputV3(input)
 	reservation := slotEffectReservationV3(executionInput)
+	var budgeted imageagent.BudgetedStagedSlotExecutor
+	if input.BudgetAuthorization && !input.DeadlineAt.IsZero() && !time.Now().UTC().Before(input.DeadlineAt) {
+		return v3Result, sdktemporal.NewNonRetryableApplicationError("image agent budget deadline elapsed", imageagent.BudgetElapsedCode, imageagent.ErrBudgetExceeded)
+	}
+	if input.BudgetAuthorization && input.BudgetPolicy.HasProviderLimits() {
+		var ok bool
+		budgeted, ok = a.stagedSlotExecutor.(imageagent.BudgetedStagedSlotExecutor)
+		if !ok {
+			return v3Result, sdktemporal.NewNonRetryableApplicationError("image agent provider cannot produce a conservative usage quote", imageagent.BudgetQuoteUnavailableCode, imageagent.ErrBudgetQuoteUnavailable)
+		}
+		quote, quoteErr := budgeted.QuoteSlot(ctx, executionInput, input.BudgetPolicy)
+		if quoteErr != nil {
+			return v3Result, sdktemporal.NewNonRetryableApplicationError("image agent provider usage quote is unavailable", imageagent.BudgetQuoteUnavailableCode, quoteErr)
+		}
+		reservation.Policy = input.BudgetPolicy
+		reservation.Quote = quote
+	}
 	effect, claimed, err := a.slotEffectsV3.ReserveSlotProviderV3(ctx, reservation)
 	if err != nil {
+		if errors.Is(err, imageagent.ErrBudgetExceeded) || errors.Is(err, imageagent.ErrBudgetOverflow) {
+			return v3Result, sdktemporal.NewNonRetryableApplicationError("image agent budget is exhausted", imageagent.BudgetExhaustedCode, err)
+		}
 		return v3Result, persistedSlotEffectV3RepositoryError(err)
 	}
 	if err := validatePersistedSlotEffectV3(effect); err != nil {
@@ -157,9 +177,36 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		if !claimed {
 			return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 		}
-		generated, generateErr := a.stagedSlotExecutor.GenerateSlot(ctx, executionInput)
+		var generated imageagent.SlotGeneratedOutput
+		var generateErr error
+		if budgeted != nil {
+			generated, generateErr = budgeted.GenerateQuotedSlot(ctx, executionInput, reservation.Quote)
+		} else {
+			generated, generateErr = a.stagedSlotExecutor.GenerateSlot(ctx, executionInput)
+		}
 		if generateErr != nil {
+			if budgeted != nil {
+				switch imageagent.ProviderDispatchStateOf(generateErr) {
+				case imageagent.ProviderNotDispatched, imageagent.ProviderRejectedBeforeEffect:
+					if _, releaseErr := a.slotEffectsV3.ReleaseSlotProviderBudgetV3(ctx, reservation); releaseErr != nil {
+						return v3Result, fmt.Errorf("release rejected provider reservation: %w", persistedSlotEffectV3RepositoryError(releaseErr))
+					}
+					return v3Result, generateErr
+				default:
+					if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(ctx, reservation); unknownErr != nil {
+						return v3Result, fmt.Errorf("retain unknown provider reservation: %w", persistedSlotEffectV3RepositoryError(unknownErr))
+					}
+				}
+			}
 			return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
+		}
+		if budgeted != nil {
+			if _, settleErr := a.slotEffectsV3.SettleSlotProviderV3(ctx, reservation, generated.UsageReceipt); settleErr != nil {
+				if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(ctx, reservation); unknownErr != nil {
+					return v3Result, fmt.Errorf("retain unsettled provider reservation: %w", persistedSlotEffectV3RepositoryError(unknownErr))
+				}
+				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
+			}
 		}
 		prepared, err = prepareGeneratedSlotArtifacts(executionInput, generated, a.artifactStore)
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
@@ -84,7 +85,19 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 	if err := validateCommandIdentity(start.Identity, start.Run.ID); err != nil {
 		return err
 	}
-	_, err := c.client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
+	policy, err := start.Run.Budget.Policy()
+	if err != nil {
+		return fmt.Errorf("validate image agent workflow budget: %w", err)
+	}
+	startedAt := start.Run.StartedAt.UTC()
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	var deadlineAt time.Time
+	if policy.MaxElapsed.Enabled {
+		deadlineAt = startedAt.Add(time.Duration(policy.MaxElapsed.Value))
+	}
+	_, err = c.client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
 		ID:                       WorkflowID(start.Identity.TenantID, start.Identity.UserID, start.Run.ID),
 		TaskQueue:                TaskQueueV3,
 		WorkflowExecutionTimeout: V3WorkflowExecutionTimeout,
@@ -94,6 +107,7 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 		RunID: start.Run.ID, Mode: imageagent.RunModeManual, Identity: start.Identity,
 		Plan: start.Plan, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(start.Run.MaxConcurrentSlots), WaitForCommands: true,
 		AssetCatalog: start.AssetCatalog,
+		BudgetPolicy: policy, StartedAt: startedAt, DeadlineAt: deadlineAt,
 	})
 	return err
 }

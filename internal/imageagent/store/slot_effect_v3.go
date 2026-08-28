@@ -33,6 +33,17 @@ func (r *memoryRepository) ReserveSlotProviderV3(_ context.Context, reservation 
 		if !sameSlotEffectV3Reservation(existing, reservation) {
 			return imageagent.SlotEffectV3Attempt{}, false, imageagent.ErrRevisionConflict
 		}
+		if existing.BudgetStatus == imageagent.SlotBudgetReleased && reservation.Quote.Fingerprint != "" {
+			run := r.runs[runKey]
+			nextReserved, err := authorizeSlotBudget(run, r.reservedUsage[runKey], reservation)
+			if err != nil {
+				return imageagent.SlotEffectV3Attempt{}, false, err
+			}
+			r.reservedUsage[runKey] = nextReserved
+			existing.BudgetStatus = imageagent.SlotBudgetReserved
+			r.slotEffectsV3[key] = cloneSlotEffectV3(existing)
+			return cloneSlotEffectV3(existing), true, nil
+		}
 		return cloneSlotEffectV3(existing), false, nil
 	}
 	for _, existing := range r.slotEffectsV3 {
@@ -46,18 +57,7 @@ func (r *memoryRepository) ReserveSlotProviderV3(_ context.Context, reservation 
 	created := imageagent.SlotEffectV3Attempt{Identity: reservation.Identity, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint, Phase: imageagent.SlotEffectV3ProviderClaimed, Policy: reservation.Policy, Quote: cloneSlotUsageQuote(reservation.Quote)}
 	if reservation.Quote.Fingerprint != "" {
 		run := r.runs[runKey]
-		persistedPolicy, err := run.Budget.Policy()
-		if err != nil || persistedPolicy != reservation.Policy {
-			return imageagent.SlotEffectV3Attempt{}, false, imageagent.ErrRevisionConflict
-		}
-		committed, err := imageagent.UsageVectorFromBudgetUsage(run.Usage)
-		if err != nil {
-			return imageagent.SlotEffectV3Attempt{}, false, err
-		}
-		if err := persistedPolicy.Allows(committed, r.reservedUsage[runKey], reservation.Quote.Maximum); err != nil {
-			return imageagent.SlotEffectV3Attempt{}, false, err
-		}
-		reserved, err := imageagent.CheckedAddUsage(r.reservedUsage[runKey], reservation.Quote.Maximum)
+		reserved, err := authorizeSlotBudget(run, r.reservedUsage[runKey], reservation)
 		if err != nil {
 			return imageagent.SlotEffectV3Attempt{}, false, err
 		}
@@ -358,6 +358,34 @@ func (r *gormRepository) ReserveSlotProviderV3(ctx context.Context, reservation 
 			if !sameSlotEffectV3Reservation(existing, reservation) {
 				return imageagent.ErrRevisionConflict
 			}
+			if existing.BudgetStatus == imageagent.SlotBudgetReleased && reservation.Quote.Fingerprint != "" {
+				run, decodeRunErr := recordToRun(lockedRun)
+				if decodeRunErr != nil {
+					return decodeRunErr
+				}
+				reserved, decodeUsageErr := decodeReservedUsage(lockedRun.ReservedUsageJSON)
+				if decodeUsageErr != nil {
+					return decodeUsageErr
+				}
+				nextReserved, authorizeErr := authorizeSlotBudget(run, reserved, reservation)
+				if authorizeErr != nil {
+					return authorizeErr
+				}
+				encoded, marshalErr := json.Marshal(nextReserved)
+				if marshalErr != nil {
+					return marshalErr
+				}
+				if updateErr := runScopeWhere(tx.Model(&runRecord{}), reservation.Identity.RunScope).Update("reserved_usage_json", encoded).Error; updateErr != nil {
+					return updateErr
+				}
+				if updateErr := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Updates(map[string]any{"budget_status": string(imageagent.SlotBudgetReserved), "budget_released_at": nil}).Error; updateErr != nil {
+					return updateErr
+				}
+				existing.BudgetStatus = imageagent.SlotBudgetReserved
+				result = existing
+				claimed = true
+				return nil
+			}
 			result = existing
 			return nil
 		} else if !errors.Is(findErr, imageagent.ErrRunNotFound) {
@@ -439,6 +467,21 @@ func (r *gormRepository) ReserveSlotProviderV3(ctx context.Context, reservation 
 		return nil
 	})
 	return result, claimed, err
+}
+
+func authorizeSlotBudget(run imageagent.Run, reserved imageagent.UsageVector, reservation imageagent.SlotEffectV3Reservation) (imageagent.UsageVector, error) {
+	persistedPolicy, err := run.Budget.Policy()
+	if err != nil || persistedPolicy != reservation.Policy {
+		return imageagent.UsageVector{}, imageagent.ErrRevisionConflict
+	}
+	committed, err := imageagent.UsageVectorFromBudgetUsage(run.Usage)
+	if err != nil {
+		return imageagent.UsageVector{}, err
+	}
+	if err := persistedPolicy.Allows(committed, reserved, reservation.Quote.Maximum); err != nil {
+		return imageagent.UsageVector{}, err
+	}
+	return imageagent.CheckedAddUsage(reserved, reservation.Quote.Maximum)
 }
 
 func (r *gormRepository) SettleSlotProviderV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation, receipt imageagent.SlotUsageReceipt) (imageagent.SlotEffectV3Attempt, error) {
