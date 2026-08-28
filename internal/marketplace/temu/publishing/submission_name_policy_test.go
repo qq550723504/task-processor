@@ -10,6 +10,7 @@ func TestNormalizeProductSubmissionName(t *testing.T) {
 	}{
 		{name: "parentheses and whitespace", input: "  Widget(Blue)   Size  ", want: "Widget (Blue) Size"},
 		{name: "comma and punctuation spacing", input: "Widget(Blue) , Size . Next", want: "Widget (Blue), Size. Next"},
+		{name: "unicode whitespace", input: "  Widget\u00a0(Blue)\u00a0,\u00a0Size  ", want: "Widget (Blue), Size"},
 		{name: "already normalized", input: "Widget (Blue), Size", want: "Widget (Blue), Size"},
 	}
 

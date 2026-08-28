@@ -2,8 +2,8 @@ package product
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
+	temupublishing "task-processor/internal/marketplace/temu/publishing"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
@@ -120,23 +120,7 @@ func (h *BrandClearHandler) removeBrandFromText(text, brandName string) string {
 		result = strings.ReplaceAll(result, variant, "")
 	}
 
-	// 清理多余的空格
-	result = strings.TrimSpace(result)
-	result = strings.Join(strings.Fields(result), " ")
-
-	// 移除逗号前的空格（TEMU要求：逗号前不能有空格）
-	result = regexp.MustCompile(`\s+,`).ReplaceAllString(result, ",")
-
-	// 移除其他标点符号前的空格
-	result = regexp.MustCompile(`\s+([.!?;:])`).ReplaceAllString(result, "$1")
-
-	// 确保左括号前有空格（TEMU要求：左括号前必须有空格）
-	result = regexp.MustCompile(`(\S)\(`).ReplaceAllString(result, "$1 (")
-
-	// 确保右括号后有空格（如果后面还有字符的话）
-	result = regexp.MustCompile(`\)(\S)`).ReplaceAllString(result, ") $1")
-
-	return result
+	return temupublishing.NormalizeProductSubmissionName(result)
 }
 
 // Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
