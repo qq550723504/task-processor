@@ -11,8 +11,8 @@ type BuildResult struct {
 	Closers []func() error
 }
 
-func BuildModule(application Application) (*BuildResult, error) {
-	handler, err := NewHandler(application)
+func BuildModule(application Application, options ...HandlerOption) (*BuildResult, error) {
+	handler, err := NewHandler(application, options...)
 	if err != nil {
 		return nil, err
 	}

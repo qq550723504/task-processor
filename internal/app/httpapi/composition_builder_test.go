@@ -189,6 +189,19 @@ func TestHTTPFeatureCompositionIncludesImageAgentRouteModule(t *testing.T) {
 	require.Equal(t, imageagenthttpapi.ModuleName, composition.imageAgentHTTPModule().Name())
 }
 
+func TestImageAgentDurableAssetPublicURLResolverUsesPublisherConfiguration(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.ProductImage.Publisher.Enabled = true
+	cfg.ProductImage.Publisher.Provider = "s3"
+	cfg.ProductImage.Publisher.PublicBase = "https://cdn.example.test/assets"
+	cfg.ProductImage.Publisher.S3.Bucket = "listingkit-assets"
+
+	resolver := imageAgentDurableAssetPublicURLResolver(cfg)
+
+	require.NotNil(t, resolver)
+	require.Equal(t, "https://cdn.example.test/assets/image-agent/public/tenant-a/run-1/result.png", resolver.PublicURL("image-agent/public/tenant-a/run-1/result.png"))
+}
+
 type stubCompositionTaskLifecycleService struct {
 	listingkit.TaskLifecycleService
 }

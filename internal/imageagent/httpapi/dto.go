@@ -200,10 +200,18 @@ type slotProjectionDTO struct {
 	ErrorCode  string              `json:"error_code,omitempty"`
 }
 
-func newSlotProjectionDTO(value imageagent.SlotProjection) slotProjectionDTO {
+func newSlotProjectionDTO(value imageagent.SlotProjection, publicURLs imageagent.DurableAssetPublicURLResolver) slotProjectionDTO {
 	dto := slotProjectionDTO{Slot: newSlotDTO(value.Slot), Attempt: value.Attempt, ErrorCode: value.ErrorCode, Candidates: make([]assetCandidateDTO, 0, len(value.Candidates))}
 	for _, candidate := range value.Candidates {
-		url, err := imageagent.ValidateSafeImageURL(candidate.URL)
+		rawURL := candidate.URL
+		if strings.TrimSpace(rawURL) == "" && publicURLs != nil {
+			identity, err := imageagent.NormalizeDurableAssetIdentity(candidate.DurableAsset)
+			if err != nil {
+				continue
+			}
+			rawURL = publicURLs.PublicURL(identity.ObjectKey)
+		}
+		url, err := imageagent.ValidateSafeImageURL(rawURL)
 		if err != nil {
 			continue
 		}
@@ -254,7 +262,7 @@ type commandIngressDTO struct {
 	Reason    string `json:"reason,omitempty"`
 }
 
-func newRunProjectionResponse(value imageagent.RunProjection) runProjectionResponse {
+func newRunProjectionResponse(value imageagent.RunProjection, publicURLs imageagent.DurableAssetPublicURLResolver) runProjectionResponse {
 	response := runProjectionResponse{
 		Run: newRunDTO(value.Run), Plan: newPlanDTO(value.Plan), ResultDigest: value.ResultDigest,
 		Actions: append([]imageagent.Action(nil), value.Actions...), LastEventID: value.LastEventID,
@@ -280,7 +288,7 @@ func newRunProjectionResponse(value imageagent.RunProjection) runProjectionRespo
 		response.PendingCommand = &pendingCommandDTO{ActionID: receipt.ActionID, Kind: receipt.Kind, Phase: receipt.Phase, Status: receipt.Status, PlanRevision: receipt.PlanRevision, SlotID: receipt.SlotID, FailureCode: receipt.FailureCode, FailureCategory: receipt.FailureCategory, FailureMessage: receipt.FailureMessage, LastFailedAt: receipt.LastFailedAt, Attempt: receipt.Attempt}
 	}
 	for index, slot := range value.Slots {
-		response.Slots[index] = newSlotProjectionDTO(slot)
+		response.Slots[index] = newSlotProjectionDTO(slot, publicURLs)
 	}
 	return response
 }

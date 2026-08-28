@@ -162,6 +162,29 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 	}
 }
 
+func TestGetRunResolvesDurableCandidateURLBeforeSafeURLFiltering(t *testing.T) {
+	const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	application := &stubApplication{projection: imageagent.RunProjection{
+		Run:  imageagent.Run{ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual},
+		Plan: imageagent.Plan{Revision: 1, Slots: []imageagent.Slot{{ID: "main-1", Role: imageagent.SlotRoleMain, Status: imageagent.SlotStatusPending}}},
+		Slots: []imageagent.SlotProjection{{
+			Slot: imageagent.Slot{ID: "main-1", Role: imageagent.SlotRoleMain, Status: imageagent.SlotStatusAccepted}, Attempt: 1,
+			Candidates: []imageagent.AssetCandidate{{
+				AssetID: "candidate-v3", SourceAssetID: "source-1",
+				DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/public/tenant-a/run-1/1/main-1/1/0-" + sha + ".png", SHA256: sha},
+			}},
+		}},
+	}}
+	handler, err := NewHandler(application, WithDurableAssetPublicURLResolver(staticPublicURLResolver{"https://cdn.example.test/"}))
+	require.NoError(t, err)
+
+	response := performRequest(t, handler, http.MethodGet, "/api/v1/image-agent/runs/run-1", "", verifiedIdentity("tenant-a", "user-a"), nil)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Contains(t, response.Body.String(), `"asset_id":"candidate-v3"`)
+	require.Contains(t, response.Body.String(), `"url":"https://cdn.example.test/image-agent/public/tenant-a/run-1/1/main-1/1/0-`+sha+`.png"`)
+}
+
 func TestRunDTOIncludesNormalizedMaxConcurrentSlots(t *testing.T) {
 	dto := newRunDTO(imageagent.Run{ID: "run-1", MaxConcurrentSlots: 3})
 	require.Equal(t, 3, dto.MaxConcurrentSlots)
@@ -387,6 +410,10 @@ type stubApplication struct {
 	resumeRunID                  string
 	resumeActionID               string
 }
+
+type staticPublicURLResolver struct{ base string }
+
+func (r staticPublicURLResolver) PublicURL(key string) string { return r.base + key }
 
 func (s *stubApplication) Start(ctx context.Context, input imageagent.StartRunInput) error {
 	s.startIdentity, _ = authidentity.AuthenticatedIdentityFromContext(ctx)

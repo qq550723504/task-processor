@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -12,6 +13,7 @@ import (
 	imageagenthttpapi "task-processor/internal/imageagent/httpapi"
 	imageagentstore "task-processor/internal/imageagent/store"
 	"task-processor/internal/infra/database"
+	storageinfra "task-processor/internal/infra/storage"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
@@ -78,7 +80,11 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 		closeWorkflowOnError()
 		return nil, err
 	}
-	built, err := imageagenthttpapi.BuildModule(service)
+	var handlerOptions []imageagenthttpapi.HandlerOption
+	if publicURLs := imageAgentDurableAssetPublicURLResolver(cfg); publicURLs != nil {
+		handlerOptions = append(handlerOptions, imageagenthttpapi.WithDurableAssetPublicURLResolver(publicURLs))
+	}
+	built, err := imageagenthttpapi.BuildModule(service, handlerOptions...)
 	if err != nil {
 		_ = databaseCloser()
 		closeWorkflowOnError()
@@ -89,4 +95,18 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 		built.Closers = append(built.Closers, workflowCloser)
 	}
 	return built, nil
+}
+
+func imageAgentDurableAssetPublicURLResolver(cfg *config.Config) imageagent.DurableAssetPublicURLResolver {
+	if cfg == nil {
+		return nil
+	}
+	publisher := cfg.ProductImage.Publisher
+	if !publisher.Enabled || !strings.EqualFold(strings.TrimSpace(publisher.Provider), "s3") || strings.TrimSpace(publisher.PublicBase) == "" || strings.TrimSpace(publisher.S3.Bucket) == "" {
+		return nil
+	}
+	return storageinfra.NewS3UploaderWithOptions(nil, storageinfra.S3UploaderOptions{
+		Bucket: publisher.S3.Bucket, PublicBase: publisher.PublicBase,
+		Endpoint: publisher.S3.Endpoint, UsePathStyle: publisher.S3.UsePathStyle,
+	})
 }

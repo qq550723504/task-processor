@@ -39,15 +39,37 @@ type Application interface {
 
 type Handler struct {
 	application       Application
+	publicURLs        imageagent.DurableAssetPublicURLResolver
 	pollInterval      time.Duration
 	heartbeatInterval time.Duration
 }
 
-func NewHandler(application Application) (*Handler, error) {
+type HandlerOption func(*Handler) error
+
+func WithDurableAssetPublicURLResolver(resolver imageagent.DurableAssetPublicURLResolver) HandlerOption {
+	return func(handler *Handler) error {
+		if resolver == nil {
+			return fmt.Errorf("image agent durable asset public URL resolver is required")
+		}
+		handler.publicURLs = resolver
+		return nil
+	}
+}
+
+func NewHandler(application Application, options ...HandlerOption) (*Handler, error) {
 	if application == nil {
 		return nil, fmt.Errorf("image agent application is required")
 	}
-	return &Handler{application: application, pollInterval: defaultSSEPollInterval, heartbeatInterval: defaultSSEHeartbeatInterval}, nil
+	handler := &Handler{application: application, pollInterval: defaultSSEPollInterval, heartbeatInterval: defaultSSEHeartbeatInterval}
+	for _, option := range options {
+		if option == nil {
+			return nil, fmt.Errorf("image agent handler option is required")
+		}
+		if err := option(handler); err != nil {
+			return nil, err
+		}
+	}
+	return handler, nil
 }
 
 type createRunRequest struct {
@@ -94,7 +116,7 @@ func (h *Handler) Get(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, newRunProjectionResponse(projection))
+	c.JSON(http.StatusOK, newRunProjectionResponse(projection, h.publicURLs))
 }
 
 type replacePlanRequest struct {
