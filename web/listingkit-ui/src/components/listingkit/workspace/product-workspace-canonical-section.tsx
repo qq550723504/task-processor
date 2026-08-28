@@ -140,7 +140,10 @@ function SKUSection({ product }: { product?: CanonicalProduct | null }) {
 }
 
 function SpecificationsSection({ product }: { product?: CanonicalProduct | null }) {
-  const entries = flattenSpecifications(product?.specifications);
+  const entries = [
+    ...flattenSpecifications(product?.specifications),
+    ...flattenVariantDimensions(product?.variant_dimensions),
+  ];
   return (
     <SectionCard title="规格">
       {entries.length === 0 ? (
@@ -318,6 +321,16 @@ function flattenSpecifications(
 
   visit(value, []);
   return output.filter((entry) => entry.value);
+}
+
+function flattenVariantDimensions(
+  dimensions: CanonicalProduct["variant_dimensions"] | undefined,
+): Array<{ path: string; label: string; value: string }> {
+  return (dimensions ?? []).map((dimension, index) => ({
+    path: `variant_dimensions.${index}`,
+    label: canonicalTextOrFallback(dimension.name, `规格 ${index + 1}`),
+    value: formatStringList(dimension.values, "暂无可选值"),
+  }));
 }
 
 function specificationLabel(path: string[]) {

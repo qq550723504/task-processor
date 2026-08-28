@@ -158,6 +158,28 @@ describe("ProductWorkspaceCanonicalSection", () => {
     expect(screen.getByText("320 g")).toBeInTheDocument();
   });
 
+  it("shows canonical variation options when physical specifications are absent", () => {
+    render(
+      <ProductWorkspaceCanonicalSection
+        product={{
+          ...product,
+          specifications: undefined,
+          variant_dimensions: [
+            { name: "Color", values: ["Black", "Red"] },
+            { name: "Size", values: ["M", "L"] },
+          ],
+        } as CanonicalProduct}
+        section="specs"
+      />,
+    );
+
+    expect(screen.getByText("Color")).toBeInTheDocument();
+    expect(screen.getByText("Black · Red")).toBeInTheDocument();
+    expect(screen.getByText("Size")).toBeInTheDocument();
+    expect(screen.getByText("M · L")).toBeInTheDocument();
+    expect(screen.queryByText("暂无规格信息")).not.toBeInTheDocument();
+  });
+
   it("shows the canonical description and an explicit empty state", () => {
     const { rerender } = render(
       <ProductWorkspaceCanonicalSection product={product} section="description" />,

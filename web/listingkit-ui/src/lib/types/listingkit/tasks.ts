@@ -452,6 +452,10 @@ export type CanonicalProduct = {
     technical?: Record<string, string>;
     [key: string]: unknown;
   };
+  variant_dimensions?: Array<{
+    name?: string;
+    values?: string[];
+  }>;
   variants?: Array<{
     sku?: string;
     title?: string;
