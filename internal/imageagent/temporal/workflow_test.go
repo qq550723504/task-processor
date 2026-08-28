@@ -2784,7 +2784,22 @@ func TestV3DurableRecoveryWindowExceedsExecutionAndOperatorHorizons(t *testing.T
 	require.Greater(t, V3MinimumStagingLifecycleRetention, V3MaximumDurableRecoveryWindow)
 }
 
-func TestTemporalClientCommandsWaitForCompletedWorkflowUpdates(t *testing.T) {
+func TestTemporalClientRetryReturnsAfterWorkflowUpdateIsAccepted(t *testing.T) {
+	raw := &recordingSDKClient{updateResultErr: errors.New("accepted retry must not wait for workflow completion")}
+	client := NewClient(raw)
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+
+	err := client.RetrySlot(context.Background(), imageagent.RetrySlotCommand{
+		RunID: "run-1", PlanRevision: 2, SlotID: "scene-2", ActorID: "user-a", ActionID: "retry-accepted", Identity: identity,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, raw.updateOptions, 1)
+	require.Equal(t, sdkclient.WorkflowUpdateStageAccepted, raw.updateOptions[0].WaitForStage)
+	require.Zero(t, raw.updateGetCalls)
+}
+
+func TestTemporalClientRetryWaitsForAcceptedWhileOtherCommandsWaitForCompleted(t *testing.T) {
 	raw := &recordingSDKClient{updateAck: imageagent.CommandAcknowledgement{RunID: "run-1", PlanRevision: 2, ActionID: "retry-1", Status: imageagent.RunStatusExecuting}}
 	client := NewClient(raw)
 	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
@@ -2815,13 +2830,17 @@ func TestTemporalClientCommandsWaitForCompletedWorkflowUpdates(t *testing.T) {
 	require.Equal(t, []string{"replace_plan", "retry_slot", "approve_results", "cancel", "resume_command"}, []string{
 		raw.updateOptions[0].UpdateName, raw.updateOptions[1].UpdateName, raw.updateOptions[2].UpdateName, raw.updateOptions[3].UpdateName, raw.updateOptions[4].UpdateName,
 	})
-	for _, options := range raw.updateOptions {
+	for index, options := range raw.updateOptions {
 		require.Equal(t, "image-agent:tenant-a:user-a:run-1", options.WorkflowID)
-		require.Equal(t, sdkclient.WorkflowUpdateStageCompleted, options.WaitForStage)
+		if index == 1 {
+			require.Equal(t, sdkclient.WorkflowUpdateStageAccepted, options.WaitForStage)
+		} else {
+			require.Equal(t, sdkclient.WorkflowUpdateStageCompleted, options.WaitForStage)
+		}
 		require.NotEmpty(t, options.UpdateID)
 		require.Len(t, options.Args, 1)
 	}
-	require.Equal(t, 5, raw.updateGetCalls)
+	require.Equal(t, 4, raw.updateGetCalls)
 	require.Empty(t, raw.signalName)
 }
 

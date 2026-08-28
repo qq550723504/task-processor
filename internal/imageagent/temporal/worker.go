@@ -105,7 +105,7 @@ func (c *Client) RetrySlot(ctx context.Context, command imageagent.RetrySlotComm
 	if strings.TrimSpace(command.SlotID) == "" {
 		return fmt.Errorf("image agent retry slot ID is required")
 	}
-	return c.executeCommandUpdate(ctx, command.Identity, command.RunID, signalRetrySlot, command.ActionID, RetrySlotSignal{
+	return c.executeAcceptedCommandUpdate(ctx, command.Identity, command.RunID, signalRetrySlot, RetrySlotSignal{
 		RunID: command.RunID, PlanRevision: command.PlanRevision, SlotID: command.SlotID,
 		ActorID: command.ActorID, ActionID: command.ActionID,
 	})
@@ -163,6 +163,20 @@ func (c *Client) Resume(ctx context.Context, command imageagent.ResumeCommand) (
 		return imageagent.CommandAcknowledgement{}, mapCommandUpdateError(err)
 	}
 	return acknowledgement, nil
+}
+
+func (c *Client) executeAcceptedCommandUpdate(ctx context.Context, identity imageagent.ExecutionIdentity, runID, updateName string, arg interface{}) error {
+	transportID, err := newTransportUpdateID(updateName)
+	if err != nil {
+		return err
+	}
+	_, err = c.client.UpdateWorkflow(ctx, sdkclient.UpdateWorkflowOptions{
+		UpdateID:   transportID,
+		WorkflowID: WorkflowID(identity.TenantID, identity.UserID, runID),
+		UpdateName: updateName, Args: []interface{}{arg},
+		WaitForStage: sdkclient.WorkflowUpdateStageAccepted,
+	})
+	return mapCommandUpdateError(err)
 }
 
 func (c *Client) executeCommandUpdate(ctx context.Context, identity imageagent.ExecutionIdentity, runID, updateName, actionID string, arg interface{}) error {

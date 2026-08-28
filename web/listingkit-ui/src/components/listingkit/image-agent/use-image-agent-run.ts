@@ -92,9 +92,9 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
       if (snapshotTimer) clearTimeout(snapshotTimer);
       snapshotTimer = undefined;
     };
-    const connect = () => {
+    const connect = (resumeFromCursor = false) => {
       if (disposed || source) return;
-      source = new EventSource(imageAgentEventsUrl(runId));
+      source = new EventSource(imageAgentEventsUrl(runId, resumeFromCursor ? cursorRef.current : undefined));
       source.onopen = () => {
         streamFailures = 0;
         clearStreamTimer();
@@ -107,14 +107,14 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
         if (cursor <= cursorRef.current || envelope.projection_version <= versionRef.current) return;
         streamFailures = 0;
         clearStreamTimer();
-        void recover(true, true);
+        void recover(false);
       };
       source.addEventListener("projection", listener);
       source.onerror = () => {
         closeSource();
         streamFailures += 1;
         scheduleStreamReconnect(streamFailures);
-        void recover(false, false);
+        void recover(false);
       };
     };
     const retryDelay = (failures: number) => {
@@ -125,7 +125,7 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
       if (disposed || streamTimer) return;
       streamTimer = setTimeout(() => {
         streamTimer = undefined;
-        connect();
+        connect(true);
       }, retryDelay(failures));
     };
     const scheduleSnapshotRetry = (failures: number, task: () => void) => {
@@ -135,13 +135,9 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
         task();
       }, retryDelay(failures));
     };
-    async function recover(connectImmediately: boolean, healthyEvent: boolean) {
+    async function recover(connectImmediately: boolean) {
       if (disposed || recovering) return;
       recovering = true;
-      if (healthyEvent) {
-        closeSource();
-        clearStreamTimer();
-      }
       try {
         await refreshSnapshot();
         snapshotFailures = 0;
@@ -163,7 +159,7 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
           } else {
             setError(errorMessage(cause));
             snapshotFailures += 1;
-            scheduleSnapshotRetry(snapshotFailures, () => { void recover(connectImmediately, healthyEvent); });
+            scheduleSnapshotRetry(snapshotFailures, () => { void recover(connectImmediately); });
           }
         }
       } finally {
@@ -172,7 +168,7 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
     }
 
     if (projectionRef.current?.run.id === runId) connect();
-    else void recover(true, false);
+    else void recover(true);
     return () => {
       disposed = true;
       closeSource();

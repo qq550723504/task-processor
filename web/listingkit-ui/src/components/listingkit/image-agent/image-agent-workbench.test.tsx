@@ -215,15 +215,19 @@ describe("ImageAgentWorkbench", () => {
 
     render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={initial} />);
     expect(screen.getByText("有效并发").parentElement).toHaveTextContent("3 个槽位");
+    const source = FakeEventSource.instances[0]!;
 
-    act(() => FakeEventSource.instances[0]?.emit(5, 5));
+    act(() => source.emit(5, 5));
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     expect(screen.getByText("有效并发").parentElement).toHaveTextContent("未提供");
-    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    expect(FakeEventSource.instances).toHaveLength(1);
+    expect(source.closed).toBe(false);
 
-    act(() => FakeEventSource.instances[1]?.emit(6, 6));
+    act(() => source.emit(6, 6));
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
     expect(screen.getByText("有效并发").parentElement).toHaveTextContent("5 个槽位");
+    expect(FakeEventSource.instances).toHaveLength(1);
+    expect(source.closed).toBe(false);
   });
 
   it("shows durable safe command failure details after refresh", () => {
@@ -547,7 +551,7 @@ describe("ImageAgentWorkbench", () => {
     ).toBe("放在自然光客厅中");
   });
 
-  it("refetches a full snapshot on a version gap and never leaks parallel EventSources", async () => {
+  it("refetches a full snapshot on a version gap without replacing the healthy EventSource", async () => {
     const initial = projectionWithSlots(7);
     initial.projection_version = 4;
     initial.last_event_id = 4;
@@ -576,8 +580,8 @@ describe("ImageAgentWorkbench", () => {
     act(() => FakeEventSource.instances[0]?.emit(7, 7));
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
-    expect(FakeEventSource.instances[0]?.closed).toBe(true);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    expect(FakeEventSource.instances[0]?.closed).toBe(false);
     expect(FakeEventSource.active).toBe(1);
 
     rendered.unmount();
@@ -620,11 +624,14 @@ describe("ImageAgentWorkbench", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(slotSix), { status: 200, headers: { "content-type": "application/json" } }))
       .mockResolvedValueOnce(new Response(JSON.stringify(slotSeven), { status: 200, headers: { "content-type": "application/json" } }));
     render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={initial} />);
-    act(() => FakeEventSource.instances[0]?.emit(6, 6));
-    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
-    act(() => FakeEventSource.instances[1]?.emit(7, 7));
+    const source = FakeEventSource.instances[0]!;
+    act(() => source.emit(6, 6));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    act(() => source.emit(7, 7));
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
     expect(slotSix.run.version).toBe(slotSeven.run.version);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    expect(source.closed).toBe(false);
   });
 
   it("resets an ahead browser cursor from the server snapshot after disconnect", async () => {
@@ -661,10 +668,12 @@ describe("ImageAgentWorkbench", () => {
     );
     act(() => FakeEventSource.instances[0]?.fail());
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    expect(FakeEventSource.instances[1]?.url).toBe("/api/listing-kits/image-agent/runs/run-1/events?after_cursor=4");
 
     act(() => FakeEventSource.instances[1]?.emit(5, 5));
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(3));
+    expect(FakeEventSource.instances).toHaveLength(2);
+    expect(FakeEventSource.instances[1]?.closed).toBe(false);
     expect(FakeEventSource.active).toBe(1);
   });
 

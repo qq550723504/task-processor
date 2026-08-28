@@ -199,6 +199,28 @@ func TestSSEReplaysMonotonicVersionedProjectionEventsAfterLastEventID(t *testing
 	require.NotContains(t, response.Body.String(), "tenant-a")
 }
 
+func TestSSEReplaysAfterQueryCursorForwardedByListingKitProxy(t *testing.T) {
+	application := &stubApplication{
+		projection: imageagent.RunProjection{Run: imageagent.Run{ID: "run-1"}, LastEventID: 2},
+		events: []imageagent.RunEvent{
+			{TenantID: "tenant-a", RunID: "run-1", Type: "run.started", Cursor: 1, ProjectionVersion: 1},
+			{TenantID: "tenant-a", RunID: "run-1", Type: "run.updated", Cursor: 2, ProjectionVersion: 2},
+		},
+	}
+	handler := requireHandler(t, application)
+	handler.pollInterval = time.Millisecond
+	handler.heartbeatInterval = time.Hour
+	response := performRequest(t, handler, http.MethodGet, "/api/v1/image-agent/runs/run-1/events?after_cursor=1", "", verifiedIdentity("tenant-a", "user-a"), func(request *http.Request) *http.Request {
+		ctx, cancel := context.WithCancel(request.Context())
+		application.afterList = cancel
+		return request.WithContext(ctx)
+	})
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.NotContains(t, response.Body.String(), "id: 1\n")
+	require.Contains(t, response.Body.String(), "id: 2\n")
+}
+
 func TestSSEEventDTORejectsHostileDurablePayloadFields(t *testing.T) {
 	application := &stubApplication{
 		projection: imageagent.RunProjection{Run: imageagent.Run{ID: "run-1"}, LastEventID: 1},
@@ -236,6 +258,19 @@ func TestSSECursorInputFailsClosed(t *testing.T) {
 			require.Zero(t, application.listCalls)
 		})
 	}
+}
+
+func TestSSERejectsConflictingHeaderAndQueryCursors(t *testing.T) {
+	application := &stubApplication{projection: imageagent.RunProjection{Run: imageagent.Run{ID: "run-1"}, LastEventID: 3}}
+	response := performRequest(t, requireHandler(t, application), http.MethodGet, "/api/v1/image-agent/runs/run-1/events?after_cursor=2", "", verifiedIdentity("tenant-a", "user-a"), func(request *http.Request) *http.Request {
+		ctx, cancel := context.WithCancel(request.Context())
+		application.afterList = cancel
+		request.Header.Set("Last-Event-ID", "1")
+		return request.WithContext(ctx)
+	})
+
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Zero(t, application.listCalls)
 }
 
 func TestSSERetrogradeRepositoryEventDisconnectsWithoutEmission(t *testing.T) {

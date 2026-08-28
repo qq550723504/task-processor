@@ -198,7 +198,7 @@ func (h *Handler) Events(c *gin.Context) {
 	if !requireVerifiedIdentity(c) {
 		return
 	}
-	after, err := parseLastEventID(c.Request)
+	after, err := parseEventCursor(c.Request)
 	if err != nil {
 		writeInvalidJSON(c, err)
 		return
@@ -322,18 +322,36 @@ func writeInvalidJSON(c *gin.Context, err error) {
 	c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 }
 
-func parseLastEventID(request *http.Request) (int64, error) {
-	values := request.Header.Values("Last-Event-ID")
-	if len(values) > 1 {
+func parseEventCursor(request *http.Request) (int64, error) {
+	headerValues := request.Header.Values("Last-Event-ID")
+	if len(headerValues) > 1 {
 		return 0, fmt.Errorf("multiple Last-Event-ID values are not allowed")
 	}
-	value := strings.TrimSpace(request.Header.Get("Last-Event-ID"))
+	queryValues, queryPresent := request.URL.Query()["after_cursor"]
+	if queryPresent && len(queryValues) != 1 {
+		return 0, fmt.Errorf("multiple after_cursor values are not allowed")
+	}
+	headerValue := strings.TrimSpace(request.Header.Get("Last-Event-ID"))
+	queryValue := ""
+	if queryPresent {
+		queryValue = strings.TrimSpace(queryValues[0])
+		if queryValue == "" {
+			return 0, fmt.Errorf("after_cursor must be a non-negative integer")
+		}
+	}
+	if headerValue != "" && queryValue != "" && headerValue != queryValue {
+		return 0, fmt.Errorf("Last-Event-ID and after_cursor must match when both are provided")
+	}
+	value, label := headerValue, "Last-Event-ID"
+	if queryValue != "" {
+		value, label = queryValue, "after_cursor"
+	}
 	if value == "" {
 		return 0, nil
 	}
 	cursor, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || cursor < 0 {
-		return 0, fmt.Errorf("Last-Event-ID must be a non-negative integer")
+		return 0, fmt.Errorf("%s must be a non-negative integer", label)
 	}
 	return cursor, nil
 }

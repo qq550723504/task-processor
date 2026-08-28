@@ -217,8 +217,10 @@ export function resumeImageAgentCommand(runId: string, actionId: string, signal?
   );
 }
 
-export function imageAgentEventsUrl(runId: string) {
-  return `${imageAgentBffBase}/${encodeId(runId)}/events`;
+export function imageAgentEventsUrl(runId: string, afterCursor?: number) {
+  const base = `${imageAgentBffBase}/${encodeId(runId)}/events`;
+  if (!Number.isSafeInteger(afterCursor) || Number(afterCursor) <= 0) return base;
+  return `${base}?after_cursor=${afterCursor}`;
 }
 
 async function command(
