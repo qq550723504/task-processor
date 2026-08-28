@@ -2,10 +2,10 @@ package rules
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"unicode"
 
+	temupublishing "task-processor/internal/marketplace/temu/publishing"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
@@ -199,26 +199,7 @@ func (h *BulletPointsValidator) optimizePointFormat(point string) string {
 	// 移除末尾的句号（要点通常不需要句号）
 	point = strings.TrimSuffix(point, ".")
 
-	// 清理多余的空格
-	spacePattern := regexp.MustCompile(`\s+`)
-	point = spacePattern.ReplaceAllString(point, " ")
-
-	// 移除逗号前的空格（TEMU要求：逗号前不能有空格）
-	point = regexp.MustCompile(`\s+,`).ReplaceAllString(point, ",")
-
-	// 移除其他标点符号前的空格
-	point = regexp.MustCompile(`\s+([.!?;:])`).ReplaceAllString(point, "$1")
-
-	// 确保左括号前有空格（TEMU要求：左括号前必须有空格）
-	point = regexp.MustCompile(`(\S)\(`).ReplaceAllString(point, "$1 (")
-
-	// 确保右括号后有空格（如果后面还有字符的话）
-	point = regexp.MustCompile(`\)(\S)`).ReplaceAllString(point, ") $1")
-
-	// 移除首尾空格
-	point = strings.TrimSpace(point)
-
-	return point
+	return temupublishing.NormalizeProductSubmissionName(point)
 }
 
 // calculateTotalLength 计算总长度
