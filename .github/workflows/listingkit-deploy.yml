@@ -374,6 +374,8 @@ jobs:
             --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
             --deployment product-listing-api-schema-migrate-runner \
             --image "$API_CANDIDATE_IMAGE" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --timeout-seconds 900
 
       - name: Migrate ListingKit schema before owner exception seeding and preflight
@@ -385,6 +387,8 @@ jobs:
             --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
             --deployment listingkit-schema-migrate-runner \
             --image "$API_CANDIDATE_IMAGE" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --timeout-seconds 900
 
       - name: Run identity preflight release gate
@@ -401,6 +405,8 @@ jobs:
             --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
             --deployment listingkit-identity-preflight-runner \
             --image "$PREFLIGHT_RUNNER_IMAGE" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --timeout-seconds 900
 
       - name: Remove deprecated ListingKit identity keys from shared Secret
@@ -459,6 +465,8 @@ jobs:
             --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
             --deployment image-agent-temporal-v3-canary-runner \
             --image "$API_CANDIDATE_IMAGE" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --timeout-seconds 300
 
       - name: Apply immutable API deployment after image agent compatibility gates

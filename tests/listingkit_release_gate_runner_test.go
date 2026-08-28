@@ -100,9 +100,8 @@ func TestListingKitReleaseGateRunnerCanonicalContract(t *testing.T) {
 		"create --dry-run=client --validate=false",
 		"get deployment/" + releaseGateTestDeployment + " -o json",
 		"apply -f",
-		"patch deployment/" + releaseGateTestDeployment + " --type=json --patch-file",
+		"patch deployment/" + releaseGateTestDeployment + " --type=strategic --patch-file",
 		"scale deployment/" + releaseGateTestDeployment + " --replicas=1",
-		"get pods -l app=" + releaseGateTestDeployment + " -o json",
 	} {
 		if !strings.Contains(logText, required) {
 			t.Errorf("canonical runner log missing %q:\n%s", required, logText)
@@ -112,47 +111,125 @@ func TestListingKitReleaseGateRunnerCanonicalContract(t *testing.T) {
 		t.Errorf("runner must scale down before and after execution, got %d:\n%s", got, logText)
 	}
 
-	script := readReleaseGateFile(t, filepath.Join("..", "scripts", "listingkit-run-release-gate-deployment.sh"))
-	for _, required := range []string{
-		"--manifest",
-		"listingkit-runner-select-v1",
-		"listingkit-runner-canonical-v1",
-		"listingkit-runner-init-result-v1",
-		"automountServiceAccountToken",
-		"serviceAccountName",
-		"envFrom",
-		"volumeMounts",
-		"securityContext",
-		"resources",
-		"imagePullPolicy",
-	} {
-		if !strings.Contains(script, required) {
-			t.Errorf("release-gate helper canonical contract missing %q", required)
-		}
+}
+
+func TestListingKitReleaseGateRunnerBindsReadinessToCurrentInvocation(t *testing.T) {
+	t.Parallel()
+
+	firstOutput, firstLog, firstErr := runReleaseGateScenario(t, releaseGateScenario{runID: "424242", runAttempt: "1", rejectPods: true})
+	if firstErr != nil {
+		t.Fatalf("first current-rollout invocation failed: %v\n%s", firstErr, firstOutput)
 	}
-	for _, forbidden := range []string{"--container", "kubectl create -f", "kubectl delete"} {
-		if strings.Contains(script, forbidden) {
-			t.Errorf("release-gate helper must not contain %q", forbidden)
-		}
+	secondOutput, secondLog, secondErr := runReleaseGateScenario(t, releaseGateScenario{runID: "424242", runAttempt: "2", rejectPods: true})
+	if secondErr != nil {
+		t.Fatalf("second current-rollout invocation failed: %v\n%s", secondErr, secondOutput)
 	}
 
-	workflow := readReleaseGateFile(t, filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
-	manifestArgument := "--manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml"
-	if got := strings.Count(workflow, manifestArgument); got != 4 {
-		t.Errorf("all four release-gate invocations must pass the reviewed aggregate manifest, got %d", got)
-	}
-	for _, deployment := range []string{
-		"product-listing-api-schema-migrate-runner",
-		"listingkit-schema-migrate-runner",
-		"listingkit-identity-preflight-runner",
-		"image-agent-temporal-v3-canary-runner",
+	for _, check := range []struct {
+		name       string
+		log        string
+		invocation string
+	}{
+		{name: "first", log: firstLog, invocation: "listingkit-release-gate-v1:listingkit-schema-migrate-runner:424242:1"},
+		{name: "second", log: secondLog, invocation: "listingkit-release-gate-v1:listingkit-schema-migrate-runner:424242:2"},
 	} {
-		if !strings.Contains(workflow, "--deployment "+deployment) {
-			t.Errorf("release workflow is missing exact reviewed runner %q", deployment)
+		if strings.Contains(check.log, "get pods") {
+			t.Errorf("%s current-rollout proof must not query Pod collections:\n%s", check.name, check.log)
+		}
+		if !strings.Contains(check.log, `"listingkit.sh/release-gate-invocation":"`+check.invocation+`"`) {
+			t.Errorf("%s invocation must patch the trusted Pod-template annotation %q:\n%s", check.name, check.invocation, check.log)
 		}
 	}
-	if strings.Contains(workflow, "--container release-gate") {
-		t.Error("release workflow must not choose the release-gate container")
+}
+
+func TestListingKitReleaseGateWorkflowUsesTrustedInvocationIdentity(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				Run  string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+	var releaseGateSteps []string
+	for _, step := range workflow.Jobs["deploy-api"].Steps {
+		if strings.Contains(step.Run, "listingkit-run-release-gate-deployment.sh") {
+			releaseGateSteps = append(releaseGateSteps, step.Run)
+		}
+	}
+	if len(releaseGateSteps) != 4 {
+		t.Fatalf("release-gate invocation count=%d, want 4", len(releaseGateSteps))
+	}
+	for index, run := range releaseGateSteps {
+		if strings.Count(run, `--run-id "$GITHUB_RUN_ID"`) != 1 || strings.Count(run, `--run-attempt "$GITHUB_RUN_ATTEMPT"`) != 1 {
+			t.Errorf("release-gate invocation %d must pass only the trusted GitHub run identity, run=%q", index, run)
+		}
+	}
+}
+
+func TestListingKitReleaseGateRoleForbidsPodPermissions(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile(filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "release-authority", "listingkit-api-release-role.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var role struct {
+		Rules []struct {
+			Resources []string `yaml:"resources"`
+		} `yaml:"rules"`
+	}
+	if err := yaml.Unmarshal(content, &role); err != nil {
+		t.Fatalf("parse API release Role: %v", err)
+	}
+	for _, rule := range role.Rules {
+		for _, resource := range rule.Resources {
+			if resource == "pods" || resource == "pods/status" {
+				t.Fatalf("API release Role must not grant Pod permissions: %#v", rule.Resources)
+			}
+		}
+	}
+}
+
+func TestListingKitReleaseGateRunnerRejectsStaleAvailableDeploymentGeneration(t *testing.T) {
+	t.Parallel()
+
+	output, logText, err := runReleaseGateScenario(t, releaseGateScenario{runID: "424242", runAttempt: "2", staleAvailableGeneration: true, rejectPods: true})
+	if err == nil || !strings.Contains(output, "release-gate Deployment rollout did not become available") {
+		t.Fatalf("a later attempt must reject the previous generation's available state, err=%v output=%s", err, output)
+	}
+	if strings.Contains(logText, "get pods") {
+		t.Fatalf("stale-generation rejection must not fall back to Pod discovery:\n%s", logText)
+	}
+}
+
+func TestListingKitReleaseGateRunnerRejectsMissingInvocationIdentityBeforeMutation(t *testing.T) {
+	t.Parallel()
+
+	for _, scenario := range []releaseGateScenario{
+		{runID: "", runAttempt: "1"},
+		{runID: "424242", runAttempt: ""},
+		{runID: "not-a-decimal", runAttempt: "1"},
+		{runID: "424242", runAttempt: "0"},
+	} {
+		output, logText, err := runReleaseGateScenario(t, scenario)
+		if err == nil || !strings.Contains(output, "release-gate runner requires non-empty decimal --run-id and --run-attempt") {
+			t.Fatalf("invalid invocation identity must fail before mutation, scenario=%+v err=%v output=%s", scenario, err, output)
+		}
+		for _, forbidden := range []string{" apply ", " patch ", "--replicas=1"} {
+			if strings.Contains(" "+logText+" ", forbidden) {
+				t.Errorf("invalid invocation identity must fail before mutation %q:\n%s", forbidden, logText)
+			}
+		}
 	}
 }
 
@@ -161,6 +238,73 @@ func TestListingKitReleaseGateRunnerRejectsCommandDrift(t *testing.T) {
 	assertReleaseGateContractRejected(t, func(deployment map[string]any) {
 		runnerInitContainer(deployment)["command"] = []any{"/bin/true"}
 	})
+}
+
+func TestListingKitReleaseGateRunnerRejectsArgsDrift(t *testing.T) {
+	t.Parallel()
+	assertReleaseGateContractRejected(t, func(deployment map[string]any) {
+		runnerInitContainer(deployment)["args"] = []any{"--unreviewed"}
+	})
+}
+
+func TestListingKitReleaseGateRunnerRejectsEnvironmentDrift(t *testing.T) {
+	t.Parallel()
+	assertReleaseGateContractRejected(t, func(deployment map[string]any) {
+		runnerInitContainer(deployment)["env"] = []any{map[string]any{"name": "UNREVIEWED", "value": "true"}}
+	})
+}
+
+func TestListingKitReleaseGateRunnerRejectsEnvironmentFromDrift(t *testing.T) {
+	t.Parallel()
+	assertReleaseGateContractRejected(t, func(deployment map[string]any) {
+		runnerInitContainer(deployment)["envFrom"] = []any{map[string]any{"secretRef": map[string]any{"name": "unreviewed-secret"}}}
+	})
+}
+
+func TestListingKitReleaseGateRunnerRejectsVolumeDrift(t *testing.T) {
+	t.Parallel()
+	assertReleaseGateContractRejected(t, func(deployment map[string]any) {
+		runnerPodSpec(deployment)["volumes"] = []any{map[string]any{"name": "unreviewed", "emptyDir": map[string]any{}}}
+	})
+}
+
+func TestListingKitReleaseGateRunnerRejectsVolumeMountDrift(t *testing.T) {
+	t.Parallel()
+	assertReleaseGateContractRejected(t, func(deployment map[string]any) {
+		runnerInitContainer(deployment)["volumeMounts"] = []any{map[string]any{"name": "unreviewed", "mountPath": "/tmp/unreviewed"}}
+	})
+}
+
+func TestListingKitReleaseGateRunnerRejectsServiceAccountDrift(t *testing.T) {
+	t.Parallel()
+	assertReleaseGateContractRejected(t, func(deployment map[string]any) {
+		runnerPodSpec(deployment)["serviceAccountName"] = "unreviewed"
+	})
+}
+
+func TestListingKitReleaseGateRunnerRejectsSecurityContextDrift(t *testing.T) {
+	t.Parallel()
+	assertReleaseGateContractRejected(t, func(deployment map[string]any) {
+		runnerPodSpec(deployment)["securityContext"] = map[string]any{"runAsNonRoot": false}
+	})
+}
+
+func TestListingKitReleaseGateRunnerRejectsResourceDrift(t *testing.T) {
+	t.Parallel()
+	assertReleaseGateContractRejected(t, func(deployment map[string]any) {
+		runnerInitContainer(deployment)["resources"] = map[string]any{"requests": map[string]any{"cpu": "1"}}
+	})
+}
+
+func TestListingKitReleaseGateRunnerRejectsInvocationAnnotationDrift(t *testing.T) {
+	t.Parallel()
+	output, logText, err := runReleaseGateScenario(t, releaseGateScenario{invocationDrift: "listingkit-release-gate-v1:listingkit-schema-migrate-runner:424242:999"})
+	if err == nil || !strings.Contains(output, "live release-gate runner contract differs from reviewed manifest") {
+		t.Fatalf("invocation annotation drift must fail canonical comparison, err=%v output=%s", err, output)
+	}
+	if strings.Contains(logText, "get pods") {
+		t.Fatalf("invocation annotation drift must fail before Pod discovery:\n%s", logText)
+	}
 }
 
 func TestListingKitReleaseGateRunnerRejectsExtraContainer(t *testing.T) {
@@ -213,27 +357,36 @@ func TestListingKitReleaseGateRunnerFailsWhenReviewedDeploymentIsMissing(t *test
 
 func TestListingKitReleaseGateRunnerRejectsImagePatchDrift(t *testing.T) {
 	t.Parallel()
-	assertReleaseGateContractRejected(t, func(deployment map[string]any) {
-		runnerInitContainer(deployment)["image"] = "docker.io/example/api@sha256:" + strings.Repeat("b", 64)
-	})
+	output, logText, err := runReleaseGateScenario(t, releaseGateScenario{initImageDrift: "docker.io/example/api@sha256:" + strings.Repeat("b", 64)})
+	if err == nil || !strings.Contains(output, "live release-gate runner contract differs from reviewed manifest") {
+		t.Fatalf("post-patch init image drift must fail canonical comparison, err=%v output=%s", err, output)
+	}
+	if strings.Contains(logText, "get pods") {
+		t.Fatalf("post-patch init image drift must fail before Pod discovery:\n%s", logText)
+	}
 }
 
-func TestListingKitReleaseGateRunnerRequiresSuccessfulInitTermination(t *testing.T) {
+func TestListingKitReleaseGateRunnerProvesCurrentRolloutWithoutPodAccess(t *testing.T) {
 	t.Parallel()
 
-	output, logText, err := runReleaseGateScenario(t, releaseGateScenario{failedInit: true})
-	if err == nil || !strings.Contains(output, "release-gate init container terminated unsuccessfully") {
-		t.Fatalf("failed init termination must fail, err=%v output=%s", err, output)
+	output, logText, err := runReleaseGateScenario(t, releaseGateScenario{runID: "424242", runAttempt: "1", rejectPods: true})
+	if err != nil {
+		t.Fatalf("Deployment availability must prove init completion without Pod access, err=%v output=%s", err, output)
 	}
-	if !strings.Contains(logText, "get pods -l app="+releaseGateTestDeployment+" -o json") {
-		t.Fatalf("runner must inspect Pod init termination, log:\n%s", logText)
+	if strings.Contains(logText, "get pods") {
+		t.Fatalf("runner must not inspect Pod init termination directly, log:\n%s", logText)
 	}
 }
 
 type releaseGateScenario struct {
-	missing          bool
-	failedInit       bool
-	mutateDeployment func(map[string]any)
+	missing                  bool
+	runID                    string
+	runAttempt               string
+	rejectPods               bool
+	staleAvailableGeneration bool
+	invocationDrift          string
+	initImageDrift           string
+	mutateDeployment         func(map[string]any)
 }
 
 func assertReleaseGateContractRejected(t *testing.T, mutate func(map[string]any)) {
@@ -242,7 +395,7 @@ func assertReleaseGateContractRejected(t *testing.T, mutate func(map[string]any)
 	if err == nil || !strings.Contains(output, "live release-gate runner contract differs from reviewed manifest") {
 		t.Fatalf("drifted live runner must fail canonical comparison, err=%v output=%s", err, output)
 	}
-	for _, required := range []string{"apply -f", "patch deployment/" + releaseGateTestDeployment + " --type=json --patch-file"} {
+	for _, required := range []string{"apply -f", "patch deployment/" + releaseGateTestDeployment + " --type=strategic --patch-file"} {
 		if !strings.Contains(logText, required) {
 			t.Errorf("drift test must reach reviewed re-apply and narrow image patch %q:\n%s", required, logText)
 		}
@@ -251,6 +404,10 @@ func assertReleaseGateContractRejected(t *testing.T, mutate func(map[string]any)
 
 func runReleaseGateScenario(t *testing.T, scenario releaseGateScenario) (string, string, error) {
 	t.Helper()
+	if scenario.runID == "" && scenario.runAttempt == "" {
+		scenario.runID = "424242"
+		scenario.runAttempt = "1"
+	}
 
 	dir := t.TempDir()
 	manifestPath, err := filepath.Abs(filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "release-authority", "listingkit-release-gate-runners.yaml"))
@@ -291,34 +448,19 @@ func runReleaseGateScenario(t *testing.T, scenario releaseGateScenario) (string,
 		"availableReplicas":   1,
 		"unavailableReplicas": 0,
 	}
+	if scenario.staleAvailableGeneration {
+		reviewed["status"].(map[string]any)["observedGeneration"] = 2
+	}
 	if scenario.mutateDeployment != nil {
 		scenario.mutateDeployment(reviewed)
 	}
 	livePath := writeReleaseGateJSON(t, dir, "live-deployment.json", reviewed)
 
-	exitCode := 0
-	reason := "Completed"
-	if scenario.failedInit {
-		exitCode = 17
-		reason = "Error"
-	}
-	pods := map[string]any{"items": []any{map[string]any{
-		"metadata": map[string]any{"name": "release-gate-pod"},
-		"spec": map[string]any{
-			"initContainers": []any{map[string]any{"name": "release-gate", "image": releaseGateTestImage}},
-			"containers":     []any{map[string]any{"name": "hold-after-gate", "image": releaseGateHoldImage}},
-		},
-		"status": map[string]any{
-			"initContainerStatuses": []any{map[string]any{
-				"name":  "release-gate",
-				"state": map[string]any{"terminated": map[string]any{"exitCode": exitCode, "reason": reason}},
-			}},
-			"containerStatuses": []any{map[string]any{"name": "hold-after-gate", "ready": true}},
-		},
-	}}}
-	podsPath := writeReleaseGateJSON(t, dir, "pods.json", pods)
-
 	logPath := filepath.Join(dir, "kubectl.log")
+	stateProgramPath := filepath.Join(dir, "fake-kubectl-state.py")
+	if err := os.WriteFile(stateProgramPath, []byte(fakeReleaseGateKubectlState), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	writePreflightFake(t, filepath.Join(dir, "kubectl"), `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_KUBECTL_LOG"
@@ -328,7 +470,16 @@ case "$*" in
     if [[ "$FAKE_MISSING" == "true" ]]; then exit 1; fi
     cat "$FAKE_LIVE_DEPLOYMENT"
     ;;
-  *" get pods -l "*" -o json"*) cat "$FAKE_PODS" ;;
+  *" get pods "*)
+    if [[ "$FAKE_REJECT_PODS" == "true" ]]; then exit 91; fi
+    ;;
+  *" patch deployment/"*" --type=strategic --patch-file "*)
+    cat "${!#}" >> "$FAKE_KUBECTL_LOG"
+    "$FAKE_PYTHON" "$FAKE_KUBECTL_STATE" patch "$FAKE_LIVE_DEPLOYMENT" "${!#}"
+    ;;
+  *" scale deployment/"*" --replicas="*)
+    "$FAKE_PYTHON" "$FAKE_KUBECTL_STATE" scale "$FAKE_LIVE_DEPLOYMENT" "${!#}" "$FAKE_STALE_AVAILABLE_GENERATION"
+    ;;
   *) : ;;
 esac
 `)
@@ -339,6 +490,10 @@ esac
 	writePreflightFake(t, filepath.Join(dir, "jq"), `#!/usr/bin/env bash
 set -euo pipefail
 exec "$FAKE_PYTHON" "$FAKE_JQ_PROGRAM" "$@"
+`)
+	writePreflightFake(t, filepath.Join(dir, "sleep"), `#!/usr/bin/env bash
+set -euo pipefail
+"$FAKE_PYTHON" -c 'import time; time.sleep(1)'
 `)
 	pythonPath, err := exec.LookPath("python3")
 	if err != nil {
@@ -357,16 +512,22 @@ exec "$FAKE_PYTHON" "$FAKE_JQ_PROGRAM" "$@"
 		"--manifest", filepath.ToSlash(manifestPath),
 		"--deployment", releaseGateTestDeployment,
 		"--image", releaseGateTestImage,
-		"--timeout-seconds", "30")
+		"--run-id", scenario.runID,
+		"--run-attempt", scenario.runAttempt,
+		"--timeout-seconds", "1")
 	command.Env = append(os.Environ(),
 		"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"FAKE_KUBECTL_LOG="+logPath,
 		"FAKE_RENDERED_JSON="+renderedPath,
 		"FAKE_LIVE_DEPLOYMENT="+livePath,
-		"FAKE_PODS="+podsPath,
 		"FAKE_DEPLOYMENT="+releaseGateTestDeployment,
 		fmt.Sprintf("FAKE_MISSING=%t", scenario.missing),
+		fmt.Sprintf("FAKE_REJECT_PODS=%t", scenario.rejectPods),
+		fmt.Sprintf("FAKE_STALE_AVAILABLE_GENERATION=%t", scenario.staleAvailableGeneration),
+		"FAKE_INVOCATION_DRIFT="+scenario.invocationDrift,
+		"FAKE_INIT_IMAGE_DRIFT="+scenario.initImageDrift,
 		"FAKE_PYTHON="+pythonPath,
+		"FAKE_KUBECTL_STATE="+stateProgramPath,
 		"FAKE_JQ_PROGRAM="+jqProgramPath)
 	output, runErr := command.CombinedOutput()
 	logBytes, readErr := os.ReadFile(logPath)
@@ -523,7 +684,10 @@ def canonical(obj):
             "strategy": spec.get("strategy"),
             "selector": spec.get("selector"),
             "template": {
-                "metadata": {"labels": template.get("metadata", {}).get("labels", {})},
+                "metadata": {
+                    "labels": template.get("metadata", {}).get("labels", {}),
+                    "annotations": template.get("metadata", {}).get("annotations", {}),
+                },
                 "spec": {
                     "automountServiceAccountToken": pod.get("automountServiceAccountToken"),
                     "serviceAccountName": pod.get("serviceAccountName", "default"),
@@ -556,13 +720,16 @@ if "listingkit-runner-select-v1" in filter_text:
     if not valid:
         raise SystemExit(6)
     write(selected)
-elif "listingkit-runner-image-patch-v1" in filter_text:
-    write([{"op": "replace", "path": "/spec/template/spec/initContainers/0/image", "value": values["image"]}])
-elif "listingkit-runner-expected-v1" in filter_text:
+elif "listingkit-runner-release-gate-patch-v2" in filter_text:
+    write({"spec": {"template": {"metadata": {"annotations": {
+        "listingkit.sh/release-gate-invocation": values["invocation"]
+    }}, "spec": {"initContainers": [{"name": "release-gate", "image": values["image"]}]}}}})
+elif "listingkit-runner-expected-v2" in filter_text:
     selected = json.loads(read_text())
     selected.setdefault("metadata", {})["namespace"] = values["namespace"]
     selected["spec"]["replicas"] = 1
     selected["spec"]["template"]["spec"]["initContainers"][0]["image"] = values["image"]
+    selected["spec"]["template"].setdefault("metadata", {}).setdefault("annotations", {})["listingkit.sh/release-gate-invocation"] = values["invocation"]
     write(selected)
 elif "listingkit-runner-canonical-v1" in filter_text:
     write(canonical(json.loads(read_text())))
@@ -577,33 +744,65 @@ elif "listingkit-runner-available-v1" in filter_text:
     if not ok:
         raise SystemExit(1)
     write(True)
-elif "listingkit-runner-selector-v1" in filter_text:
-    obj = json.loads(read_text())
-    labels = obj["spec"]["selector"]["matchLabels"]
-    write(",".join(f"{key}={labels[key]}" for key in sorted(labels)))
-elif "listingkit-runner-init-result-v1" in filter_text:
-    items = json.loads(read_text()).get("items", [])
-    result = "pending"
-    if len(items) == 1 and items[0].get("metadata", {}).get("deletionTimestamp") is None:
-        pod = items[0]
-        init_spec = pod.get("spec", {}).get("initContainers", [])
-        hold_spec = pod.get("spec", {}).get("containers", [])
-        init_status = pod.get("status", {}).get("initContainerStatuses", [])
-        hold_status = pod.get("status", {}).get("containerStatuses", [])
-        if (len(init_spec) == 1 and init_spec[0].get("name") == "release-gate"
-                and init_spec[0].get("image") == values.get("image")
-                and len(hold_spec) == 1 and hold_spec[0].get("name") == "hold-after-gate"
-                and hold_spec[0].get("image") == values.get("hold_image")
-                and len(init_status) == 1 and init_status[0].get("name") == "release-gate"):
-            terminated = init_status[0].get("state", {}).get("terminated")
-            if terminated:
-                if (terminated.get("exitCode") == 0 and terminated.get("reason") == "Completed"
-                        and len(hold_status) == 1 and hold_status[0].get("name") == "hold-after-gate"
-                        and hold_status[0].get("ready") is True):
-                    result = "success"
-                else:
-                    result = "failed"
-    write(result)
 else:
     raise SystemExit("unsupported jq operation")
+`
+
+const fakeReleaseGateKubectlState = `import json
+import os
+import sys
+
+mode, state_path, *rest = sys.argv[1:]
+
+with open(state_path, "r", encoding="utf-8") as source:
+    deployment = json.load(source)
+
+def write_state():
+    with open(state_path, "w", encoding="utf-8") as destination:
+        json.dump(deployment, destination, sort_keys=True, separators=(",", ":"))
+
+if mode == "patch":
+    patch_path, = rest
+    with open(patch_path, "r", encoding="utf-8") as source:
+        patch = json.load(source)
+    template = deployment["spec"]["template"]
+    annotations = template.setdefault("metadata", {}).setdefault("annotations", {})
+    annotations.update(patch["spec"]["template"]["metadata"]["annotations"])
+    if os.environ.get("FAKE_INVOCATION_DRIFT"):
+        annotations["listingkit.sh/release-gate-invocation"] = os.environ["FAKE_INVOCATION_DRIFT"]
+    requested = patch["spec"]["template"]["spec"]["initContainers"]
+    for requested_container in requested:
+        for live_container in template["spec"]["initContainers"]:
+            if live_container.get("name") == requested_container.get("name"):
+                live_container.update(requested_container)
+                if os.environ.get("FAKE_INIT_IMAGE_DRIFT"):
+                    live_container["image"] = os.environ["FAKE_INIT_IMAGE_DRIFT"]
+                break
+        else:
+            raise SystemExit("requested init container was not found")
+    deployment["metadata"]["generation"] = deployment["metadata"].get("generation", 0) + 1
+elif mode == "scale":
+    replicas_arg, stale = rest
+    replicas = int(replicas_arg.removeprefix("--replicas="))
+    deployment["spec"]["replicas"] = replicas
+    deployment["metadata"]["generation"] = deployment["metadata"].get("generation", 0) + 1
+    if replicas == 1:
+        generation = deployment["metadata"]["generation"]
+        deployment["status"] = {
+            "observedGeneration": generation - 1 if stale == "true" else generation,
+            "updatedReplicas": 1,
+            "availableReplicas": 1,
+            "unavailableReplicas": 0,
+        }
+    else:
+        deployment["status"] = {
+            "observedGeneration": deployment["metadata"]["generation"],
+            "updatedReplicas": 0,
+            "availableReplicas": 0,
+            "unavailableReplicas": 0,
+        }
+else:
+    raise SystemExit("unsupported kubectl state operation")
+
+write_state()
 `

@@ -361,14 +361,18 @@ administrator-installed, zero-replica Deployments. The release identity may
 patch only those named Deployments. Each invocation client-renders the reviewed
 aggregate manifest, selects one exact zero-replica Deployment, verifies that a
 live object already exists, reapplies only that selected object, patches only
-the `release-gate` init-container image, and scales it to one. Before success,
+the `release-gate` init-container image and a fixed Pod-template invocation
+annotation derived from the trusted GitHub run ID, run attempt, and runner
+name, and scales it to one. Before success,
 the helper compares a deterministic live projection of command, arguments,
 credential/config scope, service-account settings, volumes, security contexts,
 resources, images, selectors, and labels against the reviewed object after the
-single image and replica changes. It then requires the exact init container to
-have terminated with `Completed` and exit code zero; Deployment availability
-alone is insufficient. A digest-pinned `pause` container holds the successful
-Pod, and the driver always scales the runner back to zero. Production release
+single image, invocation annotation, and replica changes. It then requires the
+current Deployment generation, one updated replica, one available replica, and
+zero unavailable replicas. The changed template makes this a proof for the
+current invocation's init completion without listing Pods. A digest-pinned
+`pause` container holds the successful Pod, and the driver always scales the
+runner back to zero. Production release
 Roles contain no top-level `create`, wildcard, or RBAC-management verb. Initial
 workload/RBAC installation remains an explicit administrator prerequisite.
 

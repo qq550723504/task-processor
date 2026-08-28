@@ -774,6 +774,19 @@ Passing local checks do not prove production drain or canary acceptance. Record 
   replay, Pod-loss, no-cap, frontend, Pester, credential, mode, and diff gate;
   record local evidence separately from live acceptance.
 
+### Task 8 exception round-6: current-rollout release-gate proof
+
+- [x] Require trusted GitHub run ID and run attempt for every release-gate
+  invocation and stamp their deterministic runner-specific identity only on
+  the runner Pod template alongside the requested digest-pinned init image.
+- [x] Compare that annotation in the canonical reviewed/live Deployment
+  projection and accept only the current generation with one updated and
+  available replica and none unavailable; do not discover or read Pods and do
+  not grant Pod permission.
+- [x] Keep the pinned Conftest policy and Go boundary tests rejecting Pod
+  permission/query drift. Markdown lint remains non-authoritative defense in
+  depth.
+
 - [ ] **Step 7: Commit**
 
 ```powershell

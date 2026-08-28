@@ -391,11 +391,14 @@ runs it only through the administrator-installed
 zero replicas. The release helper client-renders the reviewed aggregate runner
 manifest, selects exactly that Deployment, fails if the live object is absent,
 scales it to zero, reapplies only the selected reviewed object, and patches only
-the `release-gate` init-container image before scaling to one. It compares the
-live security, command, credential, resource, and hold-container projection to
-the reviewed contract and requires an exact successful init termination plus a
-ready hold container; Deployment availability alone is not accepted. Every
-exit scales the runner back to zero. The release identity has no top-level `create`
+the `release-gate` init-container image plus a fixed Pod-template invocation
+annotation derived from the trusted GitHub run ID and run attempt before
+scaling to one. It compares the live security, command, credential, resource,
+hold-container, and template-annotation projection to the reviewed contract,
+then requires its current generation with exactly one updated and available
+replica and none unavailable. The unique template annotation proves the
+current invocation without querying Pods. Every exit scales the runner back to
+zero. The release identity has no top-level `create`
 permission, and the gate only reads owner identifiers from the database and
 users from ZITADEL; it never mutates either system.
 

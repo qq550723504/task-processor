@@ -15,6 +15,8 @@ deny contains "with target bypass" if input.workflow.with.target != input.identi
 deny contains "excess RBAC verbs" if input.rbac.verbs[_] == input.excessVerb
 deny contains "excess RBAC resources" if input.rbac.resources[_] == input.excessResource
 deny contains "excess RBAC resource names" if input.rbac.resourceNames[_] == input.excessResourceName
+deny contains "Pod RBAC is forbidden" if input.rbac.resources[_] == input.forbiddenResource
+deny contains "release-gate Pod query is forbidden" if contains(input.releaseGateCommand, "get pods")
 deny contains "machine policy drift" if input.policy.repository != "qq550723504/task-processor"
 deny contains "release identity owner drift" if input.releaseIdentity.owner != "api"
 deny contains "untrusted workflow ref" if input.token.workflowRef != input.identity.workflowRef

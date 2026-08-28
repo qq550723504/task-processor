@@ -185,6 +185,17 @@ deny contains msg if {
   msg := sprintf("release-gate step %v exposes caller-controlled container selection", [step.name])
 }
 
+deny contains "API release Role must not grant Pod permissions" if {
+  some rule in role("api").rules
+  startswith(rule.resources[_], "pods")
+}
+
+deny contains msg if {
+  some step in release_gate_steps
+  contains(step.run, "get pods")
+  msg := sprintf("release-gate step %v must prove the Deployment rollout without Pod queries", [step.name])
+}
+
 deny contains msg if {
   some runner in runner_deployments
   runner.spec.replicas != 0

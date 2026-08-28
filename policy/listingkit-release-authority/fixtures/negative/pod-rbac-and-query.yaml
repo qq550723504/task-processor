@@ -1,0 +1,3 @@
+forbiddenResource: pods
+rbac: {resources: [deployments, pods]}
+releaseGateCommand: kubectl -n task-processor get pods -l app=listingkit-schema-migrate-runner -o json

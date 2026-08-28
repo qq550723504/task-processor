@@ -6,13 +6,15 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$script_dir/lib/listingkit-immutable-image.sh"
 
 usage() {
-  printf 'Usage: %s --namespace NAMESPACE --manifest PATH --deployment NAME --image DIGEST_IMAGE --timeout-seconds N\n' "$0" >&2
+  printf 'Usage: %s --namespace NAMESPACE --manifest PATH --deployment NAME --image DIGEST_IMAGE --run-id RUN_ID --run-attempt RUN_ATTEMPT --timeout-seconds N\n' "$0" >&2
 }
 
 namespace=""
 manifest=""
 deployment=""
 image=""
+run_id=""
+run_attempt=""
 timeout_seconds=""
 
 while [[ $# -gt 0 ]]; do
@@ -21,6 +23,8 @@ while [[ $# -gt 0 ]]; do
     --manifest) manifest="${2:-}"; shift 2 ;;
     --deployment) deployment="${2:-}"; shift 2 ;;
     --image) image="${2:-}"; shift 2 ;;
+    --run-id) run_id="${2:-}"; shift 2 ;;
+    --run-attempt) run_attempt="${2:-}"; shift 2 ;;
     --timeout-seconds) timeout_seconds="${2:-}"; shift 2 ;;
     *) usage; exit 2 ;;
   esac
@@ -28,6 +32,10 @@ done
 
 if [[ -z "$namespace" || -z "$manifest" || -z "$deployment" || -z "$image" || -z "$timeout_seconds" ]]; then
   usage
+  exit 2
+fi
+if [[ ! "$run_id" =~ ^[1-9][0-9]*$ ]] || [[ ! "$run_attempt" =~ ^[1-9][0-9]*$ ]]; then
+  printf 'release-gate runner requires non-empty decimal --run-id and --run-attempt\n' >&2
   exit 2
 fi
 for value in "$namespace" "$deployment"; do
@@ -56,6 +64,7 @@ for command_name in kubectl jq cmp mktemp; do
 done
 
 hold_image="registry.k8s.io/pause@sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a"
+invocation="listingkit-release-gate-v1:${deployment}:${run_id}:${run_attempt}"
 temporary_dir="$(mktemp -d)"
 selected_manifest="$temporary_dir/selected.json"
 image_patch="$temporary_dir/image-patch.json"
@@ -63,7 +72,6 @@ expected_deployment="$temporary_dir/expected.json"
 expected_canonical="$temporary_dir/expected-canonical.json"
 live_deployment="$temporary_dir/live.json"
 live_canonical="$temporary_dir/live-canonical.json"
-pods_json="$temporary_dir/pods.json"
 
 cleanup() {
   local status=$?
@@ -120,20 +128,37 @@ fi
 
 kubectl -n "$namespace" scale "deployment/$deployment" --replicas=0 >/dev/null
 kubectl -n "$namespace" apply -f "$selected_manifest" >/dev/null
-jq -n --arg image "$image" '
-  # listingkit-runner-image-patch-v1
-  [{"op":"replace","path":"/spec/template/spec/initContainers/0/image","value":$image}]
+jq -n --arg image "$image" --arg invocation "$invocation" '
+  # listingkit-runner-release-gate-patch-v2
+  {
+    spec: {
+      template: {
+        metadata: {
+          annotations: {
+            "listingkit.sh/release-gate-invocation": $invocation
+          }
+        },
+        spec: {
+          initContainers: [
+            {name: "release-gate", image: $image}
+          ]
+        }
+      }
+    }
+  }
 ' >"$image_patch"
-kubectl -n "$namespace" patch "deployment/$deployment" --type=json --patch-file "$image_patch" >/dev/null
+kubectl -n "$namespace" patch "deployment/$deployment" --type=strategic --patch-file "$image_patch" >/dev/null
 kubectl -n "$namespace" scale "deployment/$deployment" --replicas=1 >/dev/null
 
 jq \
   --arg namespace "$namespace" \
-  --arg image "$image" '
-    # listingkit-runner-expected-v1
+  --arg image "$image" \
+  --arg invocation "$invocation" '
+    # listingkit-runner-expected-v2
     .metadata.namespace = $namespace |
     .spec.replicas = 1 |
-    .spec.template.spec.initContainers[0].image = $image
+    .spec.template.spec.initContainers[0].image = $image |
+    .spec.template.metadata.annotations["listingkit.sh/release-gate-invocation"] = $invocation
   ' "$selected_manifest" >"$expected_deployment"
 
 canonical_filter='
@@ -166,7 +191,10 @@ canonical_filter='
       strategy: .spec.strategy,
       selector: .spec.selector,
       template: {
-        metadata: {labels: (.spec.template.metadata.labels // {})},
+        metadata: {
+          labels: (.spec.template.metadata.labels // {}),
+          annotations: (.spec.template.metadata.annotations // {})
+        },
         spec: {
           automountServiceAccountToken: .spec.template.spec.automountServiceAccountToken,
           serviceAccountName: (.spec.template.spec.serviceAccountName // "default"),
@@ -185,19 +213,6 @@ canonical_filter='
   }
 '
 jq -S --arg namespace "$namespace" "$canonical_filter" "$expected_deployment" >"$expected_canonical"
-
-selector="$(jq -r '
-  # listingkit-runner-selector-v1
-  (.spec.selector.matchLabels // {}) |
-  to_entries |
-  sort_by(.key) |
-  map("\(.key)=\(.value)") |
-  join(",")
-' "$expected_deployment")"
-if [[ -z "$selector" ]]; then
-  printf 'reviewed release-gate Deployment has no exact Pod selector\n' >&2
-  exit 1
-fi
 
 deadline=$((SECONDS + timeout_seconds))
 while (( SECONDS < deadline )); do
@@ -219,56 +234,12 @@ while (( SECONDS < deadline )); do
     (.status.availableReplicas == 1) and
     ((.status.unavailableReplicas // 0) == 0)
   ' "$live_deployment" >/dev/null; then
-    if kubectl -n "$namespace" get pods -l "$selector" -o json >"$pods_json" 2>/dev/null; then
-      init_result="$(jq -r \
-        --arg image "$image" \
-        --arg hold_image "$hold_image" '
-          # listingkit-runner-init-result-v1
-          .items as $items |
-          if (($items | type) != "array" or ($items | length) != 1) then
-            "pending"
-          else
-            $items[0] as $pod |
-            [$pod.spec.initContainers[]? | select(.name == "release-gate")] as $init_specs |
-            [$pod.spec.containers[]? | select(.name == "hold-after-gate")] as $hold_specs |
-            [$pod.status.initContainerStatuses[]? | select(.name == "release-gate")] as $init_statuses |
-            [$pod.status.containerStatuses[]? | select(.name == "hold-after-gate")] as $hold_statuses |
-            ($init_statuses[0].state.terminated // null) as $terminated |
-            if (
-              ($pod.metadata.deletionTimestamp // null) == null and
-              ($init_specs | length) == 1 and
-              $init_specs[0].image == $image and
-              ($hold_specs | length) == 1 and
-              $hold_specs[0].image == $hold_image and
-              ($init_statuses | length) == 1 and
-              $terminated != null
-            ) then
-              if (
-                $terminated.exitCode == 0 and
-                $terminated.reason == "Completed" and
-                ($hold_statuses | length) == 1 and
-                $hold_statuses[0].ready == true
-              ) then "success" else "failed" end
-            else
-              "pending"
-            end
-          end
-        ' "$pods_json")"
-      case "$init_result" in
-        success)
-          printf 'release gate %s completed with reviewed contract and image %s\n' "$deployment" "$image"
-          exit 0
-          ;;
-        failed)
-          printf 'release-gate init container terminated unsuccessfully\n' >&2
-          exit 1
-          ;;
-      esac
-    fi
+    printf 'release gate %s completed with reviewed current rollout and image %s\n' "$deployment" "$image"
+    exit 0
   fi
   sleep 5
 done
 
 kubectl -n "$namespace" describe "deployment/$deployment" >&2 || true
-printf 'release gate %s did not complete within %s seconds\n' "$deployment" "$timeout_seconds" >&2
+printf 'release-gate Deployment rollout did not become available within %s seconds\n' "$timeout_seconds" >&2
 exit 1
