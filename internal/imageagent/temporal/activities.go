@@ -115,6 +115,8 @@ const (
 	invalidMainCandidateCountCode         = "invalid_main_candidate_count"
 	publicationLeaseRetrySafetyMargin     = time.Second
 	providerFinalizationTimeout           = time.Minute
+	externalEffectHeartbeatInterval       = time.Second
+	externalEffectHeartbeatTimeout        = 5 * time.Second
 	recoveryBundlePersistenceAttempts     = 3
 	recoveryBundlePersistenceInitialDelay = 100 * time.Millisecond
 	recoveryBundlePersistenceMaxDelay     = time.Second
@@ -122,6 +124,32 @@ const (
 
 func providerFinalizationContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), providerFinalizationTimeout)
+}
+
+func startExternalEffectHeartbeat(ctx context.Context) func() {
+	if !sdkactivity.IsActivity(ctx) || sdkactivity.GetInfo(ctx).HeartbeatTimeout <= 0 {
+		return func() {}
+	}
+	heartbeatCtx := context.WithoutCancel(ctx)
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(externalEffectHeartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				sdkactivity.RecordHeartbeat(heartbeatCtx)
+			case <-stop:
+				return
+			}
+		}
+	}()
+	return func() {
+		close(stop)
+		<-done
+	}
 }
 
 type slotPublicationRecoveryDetails struct {
@@ -153,6 +181,8 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	if err != nil {
 		return v3Result, err
 	}
+	stopHeartbeat := startExternalEffectHeartbeat(ctx)
+	defer stopHeartbeat()
 	executionInput := slotExecutionInputV3(input)
 	reservation := slotEffectReservationV3(executionInput)
 	var budgeted imageagent.BudgetedStagedSlotExecutor

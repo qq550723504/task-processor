@@ -82,14 +82,7 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 			startToClose = activityWindow
 		}
 	}
-	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-		StartToCloseTimeout: startToClose,
-		RetryPolicy: &sdktemporal.RetryPolicy{
-			InitialInterval: time.Second, BackoffCoefficient: 2,
-			MaximumInterval: 30 * time.Second, MaximumAttempts: 5,
-			NonRetryableErrorTypes: []string{slotPublicationRecoveryErrorType},
-		},
-	})
+	ctx = workflow.WithActivityOptions(ctx, slotWorkflowV3ActivityOptions(startToClose, input.ExternalEffectFinalization))
 	activityInput := ExecuteSlotV3ActivityInput{
 		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
 		Slot: input.Slot, Attempt: input.Attempt,
@@ -119,6 +112,22 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 		return SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt}, Status: imageagent.SlotStatusBlocked, ErrorCode: "invalid_slot_result"}, nil
 	}
 	return SlotWorkflowV3Result{Published: normalized, Status: imageagent.SlotStatusAccepted}, nil
+}
+
+func slotWorkflowV3ActivityOptions(startToClose time.Duration, externalEffectFinalization bool) workflow.ActivityOptions {
+	options := workflow.ActivityOptions{
+		StartToCloseTimeout: startToClose,
+		RetryPolicy: &sdktemporal.RetryPolicy{
+			InitialInterval: time.Second, BackoffCoefficient: 2,
+			MaximumInterval: 30 * time.Second, MaximumAttempts: 5,
+			NonRetryableErrorTypes: []string{slotPublicationRecoveryErrorType},
+		},
+	}
+	if externalEffectFinalization {
+		options.HeartbeatTimeout = externalEffectHeartbeatTimeout
+		options.WaitForCancellation = true
+	}
+	return options
 }
 
 func slotPublicationRecoveryDelay(err error) (time.Duration, bool) {

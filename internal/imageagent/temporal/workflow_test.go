@@ -2338,7 +2338,7 @@ func TestManualWorkflowCancellationStartsNoThirdChildAndKeepsCompletedSibling(t 
 	require.Equal(t, []string{"slot-1"}, projection.CompletedSlotIDs)
 }
 
-func TestManualWorkflowCancellationWaitsForStartedSlotFinalization(t *testing.T) {
+func TestManualWorkflowV3CancellationWaitsForStartedSlotFinalization(t *testing.T) {
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
 	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
@@ -2347,27 +2347,27 @@ func TestManualWorkflowCancellationWaitsForStartedSlotFinalization(t *testing.T)
 	var eventMu sync.Mutex
 	var events []string
 	env.RegisterWorkflowWithOptions(
-		func(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkflowResult, error) {
+		func(ctx workflow.Context, input SlotWorkflowV3Input) (SlotWorkflowV3Result, error) {
 			childStarted.Store(true)
 			_ = workflow.NewTimer(ctx, time.Hour).Get(ctx, nil)
 			finalizationCtx, cancelFinalization := workflow.NewDisconnectedContext(ctx)
 			defer cancelFinalization()
 			if err := workflow.NewTimer(finalizationCtx, time.Second).Get(finalizationCtx, nil); err != nil {
-				return SlotWorkflowResult{}, err
+				return SlotWorkflowV3Result{}, err
 			}
 			childFinalized.Store(true)
 			eventMu.Lock()
 			events = append(events, "child_finalized")
 			eventMu.Unlock()
-			return SlotWorkflowResult{
-				Execution: imageagent.SlotExecutionResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+			return SlotWorkflowV3Result{
+				Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
 				Status:    imageagent.SlotStatusBlocked, ErrorCode: imageagent.SlotProviderOutcomeUnknownCode,
 			}, nil
 		},
-		workflow.RegisterOptions{Name: "ImageSlotWorkflow"},
+		workflow.RegisterOptions{Name: "ImageSlotWorkflowV3"},
 	)
 	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
-	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	var terminalMu sync.Mutex
 	var terminalStatuses []imageagent.RunStatus
@@ -2407,6 +2407,52 @@ func TestManualWorkflowCancellationWaitsForStartedSlotFinalization(t *testing.T)
 	terminalMu.Lock()
 	require.Equal(t, []imageagent.RunStatus{imageagent.RunStatusCancelled}, terminalStatuses)
 	terminalMu.Unlock()
+}
+
+func TestImageSlotWorkflowV3RealActivityHeartbeatsWhileProviderIsInFlight(t *testing.T) {
+	const runID = "run-v3-temporal-heartbeat"
+	repository, activityInput := initializedSlotEffectV3Activity(t, runID)
+	effects := &cancellationRejectingV3Repository{SlotExternalEffectV3Repository: repository.(imageagent.SlotExternalEffectV3Repository)}
+	provider := &temporalCancellationStagedExecutor{
+		recordingStagedExecutor: &recordingStagedExecutor{},
+		waitTimeout:             2 * time.Second,
+	}
+	activities, err := NewActivities(ActivityDependencies{
+		Repository: repository, SlotEffects: repository.(imageagent.SlotExternalEffectRepository), SlotExecutor: provider,
+		SlotEffectsV3: effects, StagedSlotExecutor: provider, ArtifactStore: &recordingArtifactStore{},
+		Publisher: &identityCheckingPublisher{t: t}, PublisherV3: &identityCheckingPublisher{t: t},
+		PublicationOwner: func(context.Context) (string, error) { return "workflow-run/activity/1", nil },
+	})
+	require.NoError(t, err)
+
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	env.RegisterWorkflow(ImageSlotWorkflowV3)
+	env.RegisterActivityWithOptions(activities.ExecuteSlotV3, sdkactivity.RegisterOptions{Name: activityExecuteSlotV3})
+	var heartbeatCount atomic.Int32
+	env.SetOnActivityHeartbeatListener(func(info *sdkactivity.Info, _ sdkconverter.EncodedValues) {
+		if info.ActivityType.Name == activityExecuteSlotV3 {
+			heartbeatCount.Add(1)
+		}
+	})
+	env.ExecuteWorkflow(ImageSlotWorkflowV3, SlotWorkflowV3Input{
+		RunID: activityInput.RunID, Identity: activityInput.Identity, PlanRevision: activityInput.PlanRevision,
+		Slot: activityInput.Slot, Attempt: activityInput.Attempt, AssetCatalog: activityInput.AssetCatalog,
+		ExecuteActivityName: activityExecuteSlotV3, ExternalEffectFinalization: true,
+	})
+
+	require.NoError(t, env.GetWorkflowError())
+	var result SlotWorkflowV3Result
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.True(t, provider.Called(), "the real v3 activity must invoke the blocking provider")
+	require.Positive(t, heartbeatCount.Load(), "the real Temporal activity must heartbeat while the provider is in flight")
+	require.Equal(t, imageagent.SlotStatusBlocked, result.Status)
+	require.Equal(t, imageagent.SlotProviderOutcomeUnknownCode, result.ErrorCode)
+	require.False(t, effects.WriteSawCancelledContext(), "provider finalization must use a detached context")
+	stored, err := repository.(imageagent.SlotExternalEffectV3Repository).GetSlotExternalEffectV3(context.Background(), v3Reservation(activityInput).Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3ProviderUnknown, stored.Phase)
 }
 
 func TestManualWorkflowCancelUpdateAcksAfterCancelledProjectionPersistence(t *testing.T) {
@@ -3782,6 +3828,35 @@ func activityInputFromArgs[T any](t *testing.T, args mock.Arguments) T {
 type identityCheckingExecutor struct {
 	t     *testing.T
 	calls int
+}
+
+type temporalCancellationStagedExecutor struct {
+	*recordingStagedExecutor
+	mu          sync.Mutex
+	waitTimeout time.Duration
+	called      bool
+}
+
+func (e *temporalCancellationStagedExecutor) GenerateSlot(ctx context.Context, _ imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
+	e.mu.Lock()
+	e.called = true
+	e.mu.Unlock()
+	timer := time.NewTimer(e.waitTimeout)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-timer.C:
+	}
+	return imageagent.SlotGeneratedOutput{}, &imageagent.ProviderDispatchError{
+		State: imageagent.ProviderDispatchedUnknown,
+		Err:   errors.New("provider request may have been dispatched"),
+	}
+}
+
+func (e *temporalCancellationStagedExecutor) Called() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.called
 }
 
 type revisionFailingExecutor struct {

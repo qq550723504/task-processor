@@ -196,8 +196,10 @@ func TestImageSlotWorkflowV3ReservesFinalizationGraceAfterBudgetDeadline(t *test
 	env := suite.NewTestWorkflowEnvironment()
 	env.RegisterWorkflow(ImageSlotWorkflowV3)
 	var observedStartToCloseTimeout time.Duration
+	var observedHeartbeatTimeout time.Duration
 	env.SetOnActivityStartedListener(func(info *sdkactivity.Info, _ context.Context, _ sdkconverter.EncodedValues) {
 		observedStartToCloseTimeout = info.StartToCloseTimeout
+		observedHeartbeatTimeout = info.HeartbeatTimeout
 	})
 	env.RegisterActivityWithOptions(func(context.Context, ExecuteSlotV3ActivityInput) (imageagent.SlotEffectV3PublishedResult, error) {
 		return imageagent.SlotEffectV3PublishedResult{}, nil
@@ -212,6 +214,25 @@ func TestImageSlotWorkflowV3ReservesFinalizationGraceAfterBudgetDeadline(t *test
 
 	require.NoError(t, env.GetWorkflowError())
 	require.Equal(t, 3*time.Minute, observedStartToCloseTimeout)
+	require.Equal(t, externalEffectHeartbeatTimeout, observedHeartbeatTimeout)
+}
+
+func TestImageSlotWorkflowV3VersionsCancellationDrainActivityOptions(t *testing.T) {
+	for _, test := range []struct {
+		name                       string
+		externalEffectFinalization bool
+		wantHeartbeatTimeout       time.Duration
+		wantWaitForCancellation    bool
+	}{
+		{name: "legacy history", externalEffectFinalization: false},
+		{name: "new history", externalEffectFinalization: true, wantHeartbeatTimeout: externalEffectHeartbeatTimeout, wantWaitForCancellation: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			options := slotWorkflowV3ActivityOptions(10*time.Minute, test.externalEffectFinalization)
+			require.Equal(t, test.wantHeartbeatTimeout, options.HeartbeatTimeout)
+			require.Equal(t, test.wantWaitForCancellation, options.WaitForCancellation)
+		})
+	}
 }
 
 func TestImageAgentWorkflowBudgetDeniesRepairBeforeChild(t *testing.T) {
