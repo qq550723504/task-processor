@@ -29,6 +29,7 @@ import { useDispatchNavigation } from "@/lib/query/use-dispatch";
 import type {
   ActionExecutionResult,
   ActionExecutionRequest,
+  NavigationDispatchResponse,
   NavigationTarget,
   QueueQuery,
   RecoveryDescriptor,
@@ -92,22 +93,11 @@ export function useWorkspaceNavigationActions({
     );
   }, [focusedTarget, router, searchParams, taskId]);
 
-  const dispatchTarget = (target?: NavigationTarget | null) => {
-    if (!target) {
-      return;
-    }
-    dispatch.mutate(target);
-  };
-
-  const routeActionResultFromProductDestination = (
-    result: ActionExecutionResult,
-  ) => {
+  const routeExplicitFocusedTarget = (target?: ReviewTarget) => {
     const currentSearch = searchParams.toString();
-    if (!new URLSearchParams(currentSearch).has("product_section")) {
+    if (!shouldRouteExplicitNavigation(currentSearch)) {
       return;
     }
-    const target =
-      result.review_session?.focused_target ?? result.review_patch?.focused_target;
     if (!target?.platform) {
       return;
     }
@@ -120,9 +110,29 @@ export function useWorkspaceNavigationActions({
     );
   };
 
+  const dispatchTarget = (target?: NavigationTarget | null) => {
+    if (!target) {
+      return;
+    }
+    dispatch.mutate(target, {
+      onSuccess: (result) => {
+        routeExplicitFocusedTarget(
+          focusedTargetFromDispatchResponse(result) ??
+            reviewTargetFromNavigationTarget(target),
+        );
+      },
+    });
+  };
+
+  const routeActionResult = (result: ActionExecutionResult) => {
+    routeExplicitFocusedTarget(
+      result.review_session?.focused_target ?? result.review_patch?.focused_target,
+    );
+  };
+
   const executeAction = (request: ActionExecutionRequest) => {
     action.mutate(request, {
-      onSuccess: routeActionResultFromProductDestination,
+      onSuccess: routeActionResult,
     });
   };
 
@@ -248,6 +258,42 @@ export function useWorkspaceNavigationActions({
     handlePlatformRecovery,
     handleSelectSheinBlockingItem,
     handleRunSheinPrimaryAction,
+  };
+}
+
+function shouldRouteExplicitNavigation(search: string) {
+  const params = new URLSearchParams(search);
+  return (
+    params.has("product_section") || params.get("section_key") === "general_review"
+  );
+}
+
+function focusedTargetFromDispatchResponse(
+  result: NavigationDispatchResponse,
+): ReviewTarget | undefined {
+  return (
+    result.panel_update?.focused_target ??
+    result.review_session?.session?.focused_target ??
+    result.review_session?.patch?.focused_target ??
+    result.review_preview?.review_target ??
+    result.panel_update?.review_patch?.focused_target ??
+    result.panel_update?.review_session?.session?.focused_target ??
+    result.panel_update?.review_session?.patch?.focused_target ??
+    result.panel_update?.review_preview?.review_target
+  );
+}
+
+function reviewTargetFromNavigationTarget(
+  target: NavigationTarget,
+): ReviewTarget | undefined {
+  const query = target.preview_query ?? target.session_query;
+  if (!query?.platform) {
+    return undefined;
+  }
+  return {
+    platform: query.platform,
+    slot: query.slot,
+    capability: query.preview_capability,
   };
 }
 
