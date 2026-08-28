@@ -1,8 +1,10 @@
-import type { Metadata } from "next";
-
 import { LegalDocument } from "@/components/legal/legal-document";
+import { createSumiLegalMetadata } from "@/components/legal/legal-metadata";
 
-export const metadata: Metadata = { title: "用户协议 | 硕米智能引擎" };
+export const metadata = createSumiLegalMetadata(
+  "用户协议",
+  "本协议约定您使用硕米智能引擎网站、智能体、数据与相关服务时应遵守的基本规则。",
+);
 
 export default function UserAgreementPage() {
   return <LegalDocument title="用户协议" summary="本协议约定您使用硕米智能引擎网站、智能体、数据与相关服务时应遵守的基本规则。" sections={[

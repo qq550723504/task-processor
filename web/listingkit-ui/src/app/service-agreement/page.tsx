@@ -1,8 +1,10 @@
-import type { Metadata } from "next";
-
 import { LegalDocument } from "@/components/legal/legal-document";
+import { createSumiLegalMetadata } from "@/components/legal/legal-metadata";
 
-export const metadata: Metadata = { title: "服务协议 | 硕米智能引擎" };
+export const metadata = createSumiLegalMetadata(
+  "服务协议",
+  "本协议适用于通过硕米智能引擎咨询、采购或接受专项落地服务时双方的基本合作规则。",
+);
 
 export default function ServiceAgreementPage() {
   return <LegalDocument title="服务协议" summary="本协议适用于通过硕米智能引擎咨询、采购或接受专项落地服务时双方的基本合作规则。" sections={[

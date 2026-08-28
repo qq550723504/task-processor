@@ -97,6 +97,14 @@ describe("MarketingHomepage", () => {
     expect(screen.queryByRole("dialog", { name: "联系我们" })).not.toBeInTheDocument();
   });
 
+  it("defines a visible focus ring around active contact fields", () => {
+    const styles = readFileSync("src/components/marketing/marketing-homepage.module.css", "utf8");
+
+    expect(styles).toMatch(
+      /\.contactForm label:focus-within \{[^}]*outline: 2px solid #8abbff;[^}]*box-shadow:/,
+    );
+  });
+
   it("keeps contact-panel focus in the dialog and ignores a request that finishes after closing", async () => {
     const user = userEvent.setup();
     let resolveRequest!: (response: Response) => void;

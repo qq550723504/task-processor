@@ -1,8 +1,10 @@
-import type { Metadata } from "next";
-
 import { LegalDocument } from "@/components/legal/legal-document";
+import { createSumiLegalMetadata } from "@/components/legal/legal-metadata";
 
-export const metadata: Metadata = { title: "算力计费说明 | 硕米智能引擎" };
+export const metadata = createSumiLegalMetadata(
+  "算力计费说明",
+  "本说明解释硕米智能引擎中 AI 算力与店铺接入服务的计费原则；具体价格以您下单时展示的页面或订单为准。",
+);
 
 export default function AiComputeBillingPage() {
   return <LegalDocument title="算力计费说明" summary="本说明解释硕米智能引擎中 AI 算力与店铺接入服务的计费原则；具体价格以您下单时展示的页面或订单为准。" sections={[

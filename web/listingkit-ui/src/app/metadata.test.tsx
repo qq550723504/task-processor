@@ -29,4 +29,26 @@ describe("application metadata", () => {
       },
     });
   });
+
+  it("keeps Sumi branding in the social previews for every public legal document", async () => {
+    const legalPages = await Promise.all([
+      import("./privacy-policy/page"),
+      import("./user-agreement/page"),
+      import("./ai-compute-billing/page"),
+      import("./service-agreement/page"),
+    ]);
+
+    for (const page of legalPages) {
+      expect(page.metadata).toMatchObject({
+        openGraph: {
+          siteName: "硕米智能引擎",
+          images: ["/sumi/fd824975-1e65-4585-9ebf-212d68cb1507.png"],
+        },
+        twitter: {
+          card: "summary_large_image",
+          images: ["/sumi/fd824975-1e65-4585-9ebf-212d68cb1507.png"],
+        },
+      });
+    }
+  });
 });

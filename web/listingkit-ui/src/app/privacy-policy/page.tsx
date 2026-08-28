@@ -1,8 +1,10 @@
-import type { Metadata } from "next";
-
 import { LegalDocument } from "@/components/legal/legal-document";
+import { createSumiLegalMetadata } from "@/components/legal/legal-metadata";
 
-export const metadata: Metadata = { title: "隐私政策 | 硕米智能引擎" };
+export const metadata = createSumiLegalMetadata(
+  "隐私政策",
+  "本政策说明我们如何收集、使用、保存和保护您在使用硕米智能引擎时提供的个人信息。",
+);
 
 export default function PrivacyPolicyPage() {
   return <LegalDocument title="隐私政策" summary="本政策说明我们如何收集、使用、保存和保护您在使用硕米智能引擎时提供的个人信息。" sections={[
