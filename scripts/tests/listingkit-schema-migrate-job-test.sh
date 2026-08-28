@@ -28,8 +28,12 @@ grep -q 'activeDeadlineSeconds: 900' "$product_manifest" || {
   printf 'product-listing API migration manifest must bound execution to the driver wait\n' >&2
   exit 1
 }
-grep -q 'product-listing-api-schema-migrate-job.yaml' "$workflow" || {
-  printf 'deployment workflow does not run the product-listing API migration Job\n' >&2
+grep -q 'listingkit-release-gate-runners.yaml' "$workflow" || {
+  printf 'deployment workflow does not select the reviewed release-gate runner manifest\n' >&2
+  exit 1
+}
+grep -q -- '--deployment product-listing-api-schema-migrate-runner' "$workflow" || {
+  printf 'deployment workflow does not run the product-listing API schema migration gate\n' >&2
   exit 1
 }
 

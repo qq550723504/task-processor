@@ -29,6 +29,9 @@ run_conftest test --combine \
   "$authority_dir/listingkit-ui-release-rolebinding.yaml" \
   "$authority_dir/kustomization.yaml" \
   "$authority_dir/listingkit-release-gate-runners.yaml" \
+  deployments/kubernetes/listingkit-workbench/base/configmap.yaml \
+  deployments/kubernetes/listingkit-workbench/base/listingkit-ui-auth-config.yaml \
+  deployments/kubernetes/listingkit-workbench/base/listingkit-ui-deployment.yaml \
   .github/workflows/listingkit-deploy.yml \
   .github/workflows/listingkit-ui-deploy.yml
 

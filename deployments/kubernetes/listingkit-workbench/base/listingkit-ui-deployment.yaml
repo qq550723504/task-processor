@@ -24,6 +24,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: listingkit-workbench-config
+            - configMapRef:
+                name: listingkit-ui-auth-config
           # These public OIDC addresses must not be overridden by an
           # externally recreated Secret with stale or Pod-local values.
           env:

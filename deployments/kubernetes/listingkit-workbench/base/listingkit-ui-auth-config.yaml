@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: listingkit-ui-auth-config
+data:
+  # UI-only OAuth request scopes. API and image-agent workers intentionally do
+  # not consume this ConfigMap or receive RBAC to mutate it.
+  ZITADEL_SCOPES: "openid profile email urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:zitadel:aud urn:zitadel:iam:org:project:role:listingkit_viewer urn:zitadel:iam:org:project:role:listingkit_operator urn:zitadel:iam:org:project:role:listingkit_admin urn:zitadel:iam:org:project:role:platform_admin"

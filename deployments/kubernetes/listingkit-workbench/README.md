@@ -103,8 +103,10 @@ write-capable service-account token; never copy the OIDC client secret or the
 tenant-directory token into
 `TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN`.
 
-Keep `urn:zitadel:iam:user:resourceowner` in `ZITADEL_SCOPES`; ListingKit uses
-that claim as the tenant id. The Go API reads ZITADEL settings from core
+Keep `urn:zitadel:iam:user:resourceowner` in the UI-only
+`listingkit-ui-auth-config` `ZITADEL_SCOPES`; ListingKit uses that claim as the
+tenant id. Do not store this public OAuth request-scope list in the shared
+Secret or shared API/worker ConfigMap. The Go API reads ZITADEL settings from core
 config `listingkit.zitadel.*`; in Kubernetes we currently populate those config
 keys through env binding such as `ZITADEL_ISSUER_URL` and
 `ZITADEL_CLIENT_ID`. Authentication is mandatory; missing issuer/client
@@ -147,16 +149,20 @@ listingkit_admin
 platform_admin
 ```
 
-Copy the command output into the workbench shared Secret/config:
+Copy the project and authorization values into the workbench Secrets as
+documented below:
 
 ```text
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<project-id>
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS=
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS=
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES=listingkit_admin,listingkit_operator,listingkit_viewer,platform_admin
-ZITADEL_SCOPES=<printed scope string>
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED=1
 ```
+
+Apply the printed `ZITADEL_SCOPES` value only to
+`listingkit-ui-auth-config`. The gated UI release identity owns that single key;
+it cannot patch `listingkit-workbench-config` or any API/worker Deployment.
 
 `listingkit_viewer` users see the main workflow menu only.
 `listingkit_operator` users also see operational data menus.
@@ -164,8 +170,9 @@ TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED=1
 `platform_admin` is kept for platform administration compatibility.
 
 The Go API enforces the same role model as the sidebar. If a user can sign in
-but receives `listingkit_role_denied`, confirm the OIDC runtime uses the printed
-`ZITADEL_SCOPES` value so access tokens contain the ZITADEL project role claim.
+but receives `listingkit_role_denied`, confirm the UI OIDC runtime uses the
+printed `ZITADEL_SCOPES` value from `listingkit-ui-auth-config` so access tokens
+contain the ZITADEL project role claim.
 
 ## Configure member invitations
 
@@ -324,8 +331,9 @@ message. Do not build or operate a second OTP system.
 Rotate the Tencent credentials and ZITADEL signing key through the secret
 manager. Update both the API Secret and ZITADEL Provider for the signing-key
 change within the approved maintenance window, then start **ListingKit API
-Deploy** with the exact source and immutable API candidate. That exact workflow
-run and attempt alone restarts `product-listing-api`; after it succeeds, allow
+Deploy** from the canonical `main` workflow without rollback inputs. The workflow
+binds the build to its own exact `github.workflow_sha`; that run and attempt alone
+restart `product-listing-api`. After it succeeds, allow
 the automatic **ListingKit UI Deploy** gate to finish or supply that API
 execution's `release_gate_run_id` and `release_gate_run_attempt`. A workstation
 or standalone helper must not restart the production API. Do not roll the UI,
@@ -345,7 +353,7 @@ checks, and recovery decision, follow the
 Provision the namespace and real Secrets through the approved infrastructure
 and secret-management paths. A workstation must not apply the production
 ConfigMap, migration Jobs, API, UI, or Ingress. Start **ListingKit API Deploy**
-with the exact `source_ref` and immutable API candidate; it owns the ordered
+from the canonical `main` workflow with both rollback inputs empty; it owns the ordered
 ConfigMap apply, both schema migrations, identity preflight, v2/v3 worker
 rollouts, finite canary, API rollout, and Ingress. A failed migration or gate is
 a No-Go: investigate and use an approved roll-forward or restore procedure
@@ -539,9 +547,11 @@ GitHub Actions release workflows below rather than a generic overlay apply.
 
 Trigger rules:
 
-- API tag `listingkit-api-v*` runs migrations, both worker rollouts, the finite
-  canary, and API rollout, then uploads a 24-hour exact-source release
-  attestation scoped to that API workflow run ID and run attempt.
+- A canonical `main` execution of `ListingKit API Deploy` builds the exact
+  workflow commit, runs migrations, both worker rollouts, the finite canary, and
+  the API rollout, then uploads an immutable v2 release attestation scoped to
+  that API workflow run ID and run attempt. API tag events cannot enter the
+  production deploy job.
 - A successful `ListingKit API Deploy` run automatically starts the gated UI
   path for the exact attested source SHA.
 - UI tag `listingkit-ui-v*` may build and push an image only; it never mutates
@@ -584,12 +594,17 @@ Environment URL: https://pod.shuomiai.com
 Configure protection rules independently on both production environments.
 Before the first release, a cluster administrator must configure
 `kubernetes-authentication-config.example.yaml` in kube-apiserver and install
-the standalone `release-authority` Kustomization. Release workflows never
-install or widen their own Roles, RoleBindings, or runner Deployments.
+the standalone `release-authority` Kustomization. On an existing cluster, that
+same separately reviewed bootstrap must also create the new
+`base/listingkit-ui-auth-config.yaml` ConfigMap before the first gated UI release;
+the create-free UI Role can only patch an object that already exists. Release
+workflows never install or widen their own ConfigMaps, Roles, RoleBindings, or
+runner Deployments.
 
 The workflow uses:
 
-- image tag: current commit short SHA by default
+- build tag: the canonical workflow commit's first 12 hexadecimal characters;
+  production deployment and attestation always use the resolved image digest
 - Docker Hub namespace: `xuwei190`
 - Kubernetes namespace: `task-processor`
 - release overlays must be rendered with immutable image tags as shown above.
@@ -611,24 +626,27 @@ Standard rollback path:
    Also identify the current `task-processor-listingkit-identity-preflight`
    runner digest; the gate runner is deliberately separate from the rollback
    candidate and must be available even when that candidate predates preflight.
-3. Run `ListingKit API Deploy` with its prior immutable digest, then wait for the
-   API rollout and readiness probe. The workflow then reapplies the standalone
-   production SMS webhook Ingress only after that rollout succeeds.
-4. Run `ListingKit UI Deploy` with the API rollback execution's explicit
-   `release_gate_run_id` and `release_gate_run_attempt`; it downloads only that
-   attempt's attestation, builds the exact attested source, and waits for the
-   digest-pinned UI rollout.
+3. Run `ListingKit API Deploy` with the prior successful API release
+   attestation's exact `rollback_run_id` and `rollback_run_attempt`. The workflow
+   downloads and verifies only that attempt, reapplies only its attested API
+   digest, and retains both current image-agent worker Deployments. It does not
+   rerun migrations, worker rollouts, the canary, or Ingress mutation.
+4. Run `ListingKit UI Deploy` with the same original successful release
+   attestation's `release_gate_run_id` and `release_gate_run_attempt` selected in
+   step 3, not the newer API rollback execution (which intentionally emits no
+   replacement attestation). It builds that exact attested source and waits for
+   the digest-pinned UI rollout.
 5. Record the rollback decision, deployed tags, probe results, and any data
    recovery action in the validation run.
 
 This reuses the same deployment logic as a normal release and keeps the
 rollback auditable.
 
-To find a rollback target:
-
-- Check prior successful runs of `ListingKit API Deploy` and `ListingKit UI Deploy`.
-- Or inspect the currently deployed / previously deployed image tags in Docker
-  Hub or Kubernetes rollout history.
+To find a rollback target, select a prior successful `ListingKit API Deploy`
+run and its exact attempt that still has the immutable v2 release-attestation
+artifact. Docker tags, Kubernetes rollout history, direct digests, source refs,
+and a "latest successful" lookup are diagnostic context only and are never
+rollback authority.
 
 If GitHub Actions is unavailable, pause production mutation and restore the
 gated release service. Internal rendering/apply helpers remain available to CI
@@ -686,13 +704,18 @@ digest-pinned image gates, then performs this order:
 1. Run the additive Product Listing and ListingKit schema migrations.
 2. Apply, restart, and wait for the v2 compatibility worker.
 3. Apply, restart, and wait for the v3 recovery worker.
-4. Delete and recreate the finite `image-agent-temporal-v3-canary` Job with the
-   same candidate image, then require `Complete` within its deadline.
+4. Invoke the administrator-installed zero-replica
+   `image-agent-temporal-v3-canary-runner` Deployment through
+   `listingkit-run-release-gate-deployment.sh`. The helper selects the reviewed
+   Deployment template, stamps a per-invocation run-ID/attempt annotation,
+   patches only the digest-pinned gate image, proves the current generation has
+   one updated and available replica without querying Pods, and always cleans
+   the runner back to zero.
 5. Only after those gates apply/restart the API so new starts route to v3.
 
 The canary runs `/app/image-agent-temporal-worker -canary` on the v3 queue. It
-registers and executes only the side-effect-free compatibility workflow, has
-`restartPolicy: Never`, bounded deadline/backoff, receives only Temporal
+registers and executes only the side-effect-free compatibility workflow as the
+release-gate init container in that Deployment template, receives only Temporal
 address/namespace config, and receives no Secret.
 
 ### Live preflight and v2 drain evidence
@@ -817,15 +840,24 @@ move an in-flight history to v3.
 
 ### Rollback and durable staging retention
 
-Only prior API digests carrying `image-agent-v3-new-starts-v1` may pass the
-production rollback workflow. Such a rollback preserves v3 routing for new
-starts and does **not** delete, scale down, or retarget
+Only a prior successful immutable API release attestation carrying
+`image-agent-v3-new-starts-v1` may pass the production rollback workflow. The
+operator supplies its exact workflow run ID and attempt; an image digest, tag,
+source ref, or “latest successful” run is never rollback authority. Such a
+rollback preserves v3 routing for new starts and does **not** delete, scale down, or retarget
 `image-agent-temporal-worker-v3`; that worker must finish histories already
 started on `image-agent-manual-v3`. A v2-producing API rollback is unsupported,
 invalidates the v2 drain evidence, and requires retaining or restoring the v2
 compatibility worker through a separately designed recovery procedure. This
 release path provides no bypass. The additive schema migration is not rolled
 back while either worker can reference v3 records.
+
+Frozen v2 publication may retain legacy publisher storage credentials required
+by historical execution. Do not remove those credentials merely to enforce the
+v3 durable-artifact policy. V3-only artifact mode and immutable COS bucket
+policy/config remain isolated to the v3 worker contract. Any worker image,
+wire/replay, schema, or durable-artifact policy change requires the normal main
+build and worker gates; rollback only reapplies the attested API image.
 
 Only newly started v3 manual workflows receive the production-owned Temporal
 `WorkflowExecutionTimeout` of 30 days. Timeout ends that workflow execution; it

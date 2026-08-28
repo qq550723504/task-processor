@@ -74,6 +74,18 @@ authentication_configs := [entry.contents |
   entry.contents.kind == "AuthenticationConfiguration"
 ]
 
+configmap_documents(name) := [entry.contents |
+  some entry in documents
+  entry.contents.kind == "ConfigMap"
+  entry.contents.metadata.name == name
+]
+
+deployment_documents(name) := [entry.contents |
+  some entry in documents
+  entry.contents.kind == "Deployment"
+  entry.contents.metadata.name == name
+]
+
 runner_deployments := [entry.contents |
   some entry in documents
   entry.contents.kind == "Deployment"
@@ -89,6 +101,42 @@ expected_step_names(owner) := {name | some name in policy.oidc.identities[owner]
 action_uses(owner) := {step.name: step.uses |
   some step in deploy_job(owner).steps
   step.uses
+}
+
+workflow_steps(owner) := [step |
+  some job_name
+  job := workflow(owner).jobs[job_name]
+  some step in job.steps
+]
+
+step_positions(owner, name) := [index |
+  some index
+  deploy_job(owner).steps[index].name == name
+]
+
+protected_group_refresh_step(owner, group) := step if {
+  positions := step_positions(owner, group.refreshStep)
+  count(positions) == 1
+  step := deploy_job(owner).steps[positions[0]]
+}
+
+protected_operation_names(owner) := {name |
+  identity := policy.oidc.identities[owner]
+  some group in identity.protectedGroups
+  some name in group.operationSteps
+}
+
+cluster_operation_steps(owner) := {step.name |
+  some step in deploy_job(owner).steps
+  marker := [
+    "kubectl ",
+    "validate-listingkit-invitation-secret.sh",
+    "listingkit-run-release-gate-deployment.sh",
+    "listingkit-clean-legacy-identity-secret.sh",
+    "listingkit-apply-api-deployment.sh",
+    "listingkit-apply-image-agent-worker-deployment.sh",
+  ][_]
+  contains(step.run, marker)
 }
 
 expected_action_uses(owner) := policy.oidc.identities[owner].allowedActions
@@ -164,7 +212,7 @@ deny contains msg if {
   identity := policy.oidc.identities[owner]
   some step in deploy_job(owner).steps
   step.name == identity.kubeconfigStep
-  not contains(step.run, sprintf("--workflow-ref %v", [identity.workflowRef]))
+  not contains(step.run, "--workflow-ref \"$CANONICAL_WORKFLOW_REF\"")
   msg := sprintf("%v kubeconfig step does not bind the trusted workflow ref", [owner])
 }
 
@@ -289,6 +337,61 @@ deny contains "release identity policy drifted" if {
   }
 }
 
+deny contains "UI authorization ownership policy drifted" if {
+  policy.uiAuthorization != {
+    "owner": "ui",
+    "sharedConfigMap": "listingkit-workbench-config",
+    "configMap": "listingkit-ui-auth-config",
+    "deployment": "listingkit-ui",
+    "container": "listingkit-ui",
+    "scopesKey": "ZITADEL_SCOPES",
+  }
+}
+
+deny contains "UI authorization ConfigMap inventory drifted" if {
+  count(configmap_documents(policy.uiAuthorization.sharedConfigMap)) != 1
+}
+
+deny contains "UI authorization ConfigMap inventory drifted" if {
+  count(configmap_documents(policy.uiAuthorization.configMap)) != 1
+}
+
+deny contains "UI authorization scopes leaked into shared runtime configuration" if {
+  shared := configmap_documents(policy.uiAuthorization.sharedConfigMap)[0]
+  policy.uiAuthorization.scopesKey in object.keys(shared.data)
+}
+
+deny contains "UI authorization scopes are missing from the UI-owned ConfigMap" if {
+  ui := configmap_documents(policy.uiAuthorization.configMap)[0]
+  object.get(ui.data, policy.uiAuthorization.scopesKey, "") == ""
+}
+
+deny contains "UI deployment authorization ConfigMap ownership drifted" if {
+  count(deployment_documents(policy.uiAuthorization.deployment)) != 1
+}
+
+deny contains "UI deployment authorization ConfigMap ownership drifted" if {
+  deployment := deployment_documents(policy.uiAuthorization.deployment)[0]
+  containers := [container |
+    some container in deployment.spec.template.spec.containers
+    container.name == policy.uiAuthorization.container
+  ]
+  count(containers) != 1
+}
+
+deny contains "UI deployment authorization ConfigMap ownership drifted" if {
+  deployment := deployment_documents(policy.uiAuthorization.deployment)[0]
+  container := [candidate |
+    some candidate in deployment.spec.template.spec.containers
+    candidate.name == policy.uiAuthorization.container
+  ][0]
+  configmap_refs := {source.configMapRef.name |
+    some source in container.envFrom
+    source.configMapRef
+  }
+  configmap_refs != {policy.uiAuthorization.sharedConfigMap, policy.uiAuthorization.configMap}
+}
+
 deny contains "API release identity stamp owner drifted" if count(release_identity_steps) != 1
 
 deny contains "API release identity stamp owner drifted" if {
@@ -362,10 +465,18 @@ deny contains msg if {
 deny contains msg if {
   owner := ["api", "ui"][_]
   identity := policy.oidc.identities[owner]
-  some step in deploy_job(owner).steps
+  some step in workflow_steps(owner)
   step.name == identity.oidcTokenStep
-  step.env.LISTINGKIT_OIDC_AUDIENCE != identity.audience
+  not contains(step.run, sprintf("--audience %v", [identity.audience]))
   msg := sprintf("%v OIDC audience drifted", [owner])
+}
+
+deny contains msg if {
+  owner := ["api", "ui"][_]
+  some step in deploy_job(owner).steps
+  step.name == "Set up kubectl"
+  step.with.version != "v1.31.4"
+  msg := sprintf("%v release kubectl version is not explicit", [owner])
 }
 
 deny contains msg if {
@@ -414,6 +525,116 @@ deny contains "API and UI release identities must be distinct" if {
 
 deny contains "API and UI release identities must be distinct" if {
   policy.oidc.identities.api.subject == policy.oidc.identities.ui.subject
+}
+
+# A tag is human-readable metadata, never executable release authority. All
+# third-party actions on either production workflow path must be immutable commits.
+deny contains msg if {
+  owner := ["api", "ui"][_]
+  some step in workflow_steps(owner)
+  action := step.uses
+  not regex.match("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$", action)
+  msg := sprintf("%v release action is not pinned to a full commit SHA", [owner])
+}
+
+# The release workflow must acquire a new GitHub-issued credential instead of
+# carrying one kubeconfig across sequential 900-second gates.
+deny contains msg if {
+  owner := ["api", "ui"][_]
+  identity := policy.oidc.identities[owner]
+  refresh_steps := [step | some step in deploy_job(owner).steps; contains(step.run, "listingkit-refresh-github-oidc-kubeconfig.sh")]
+  count(refresh_steps) == 0
+  msg := sprintf("%v release has no checked-in OIDC refresh owner", [owner])
+}
+
+deny contains msg if {
+  owner := ["api", "ui"][_]
+  some step in deploy_job(owner).steps
+  contains(step.run, "listingkit-configure-github-oidc-kubeconfig.sh")
+  msg := sprintf("%v release bypasses the checked-in OIDC refresh helper", [owner])
+}
+
+deny contains msg if {
+  owner := ["api", "ui"][_]
+  identity := policy.oidc.identities[owner]
+  some group in identity.protectedGroups
+  count(step_positions(owner, group.refreshStep)) != 1
+  msg := sprintf("%v fresh OIDC protected-group owner drifted", [owner])
+}
+
+deny contains msg if {
+  owner := ["api", "ui"][_]
+  identity := policy.oidc.identities[owner]
+  some group in identity.protectedGroups
+  count(group.operationSteps) == 0
+  msg := sprintf("%v fresh OIDC protected group has no operations", [owner])
+}
+
+deny contains msg if {
+  owner := ["api", "ui"][_]
+  identity := policy.oidc.identities[owner]
+  some group in identity.protectedGroups
+  refresh_positions := step_positions(owner, group.refreshStep)
+  count(refresh_positions) == 1
+  some operation_index
+  operation_name := group.operationSteps[operation_index]
+  operation_positions := step_positions(owner, operation_name)
+  count(operation_positions) == 1
+  operation_positions[0] != refresh_positions[0] + operation_index + 1
+  msg := sprintf("%v fresh OIDC group order drifted before %v", [owner, operation_name])
+}
+
+deny contains msg if {
+  owner := ["api", "ui"][_]
+  identity := policy.oidc.identities[owner]
+  some group in identity.protectedGroups
+  some operation_name in group.operationSteps
+  count(step_positions(owner, operation_name)) != 1
+  msg := sprintf("%v fresh OIDC protected-group owner drifted", [owner])
+}
+
+deny contains msg if {
+  owner := ["api", "ui"][_]
+  identity := policy.oidc.identities[owner]
+  operations := [name |
+    some group in identity.protectedGroups
+    some name in group.operationSteps
+  ]
+  count(operations) != count({name | some name in operations})
+  msg := sprintf("%v protected operation belongs to multiple fresh OIDC groups", [owner])
+}
+
+deny contains msg if {
+  owner := ["api", "ui"][_]
+  cluster_operation_steps(owner) != protected_operation_names(owner)
+  msg := sprintf("%v cluster operations are not exactly owned by fresh OIDC groups", [owner])
+}
+
+deny contains msg if {
+  owner := ["api", "ui"][_]
+  identity := policy.oidc.identities[owner]
+  some group in identity.protectedGroups
+  step := protected_group_refresh_step(owner, group)
+  required := [
+    policy.oidc.refreshHelper,
+    sprintf("--audience %v", [identity.audience]),
+    "--workflow-ref \"$CANONICAL_WORKFLOW_REF\"",
+    "KUBECONFIG=",
+  ][_]
+  not contains(step.run, required)
+  msg := sprintf("%v fresh OIDC step %v is missing %v", [owner, group.refreshStep, required])
+}
+
+# Owner overlap would allow the UI identity to alter API or worker state.
+deny contains "API and UI protected resources overlap" if {
+  api := policy.protectedResources[_]
+  ui := policy.protectedResources[_]
+  api.owner == "api"
+  ui.owner == "ui"
+  api.apiGroups == ui.apiGroups
+  api.resource == ui.resource
+  name := api.resourceNames[_]
+  name == ui.resourceNames[_]
 }
 
 deny contains "Kubernetes authentication issuer or audience drifted" if {

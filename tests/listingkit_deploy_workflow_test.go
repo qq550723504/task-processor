@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -527,7 +528,7 @@ func TestListingKitDeployRemovesDeprecatedIdentityKeysBeforePreflight(t *testing
 	for index, step := range steps {
 		if strings.Contains(step.Run, "scripts/listingkit-clean-legacy-identity-secret.sh") {
 			cleanupIndex = index
-			if got, want := step.If, "${{ steps.candidate-identity-compatibility.outputs.cleanup_legacy_identity == 'true' }}"; got != want {
+			if got, want := step.If, "${{ needs.prepare.outputs.mode == 'normal' && steps.candidate-identity-compatibility.outputs.cleanup_legacy_identity == 'true' }}"; got != want {
 				t.Errorf("legacy identity Secret cleanup must require candidate compatibility, got if: %q", got)
 			}
 			if !strings.Contains(step.Run, "listingkit-workbench-secret") {
@@ -611,7 +612,7 @@ func TestListingKitDeployInspectsCandidateCompatibilityBeforeSecretCleanup(t *te
 	}
 }
 
-func TestListingKitDeployUsesSelectedSourceCompatibilityForUnlabeledBuilds(t *testing.T) {
+func TestListingKitDeployUsesCanonicalCandidateCompatibilityForIdentityCleanup(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
 	content, err := os.ReadFile(workflowPath)
 	if err != nil {
@@ -619,18 +620,19 @@ func TestListingKitDeployUsesSelectedSourceCompatibilityForUnlabeledBuilds(t *te
 	}
 	workflow := string(content)
 	for _, required := range []string{
-		"source_identity_compatibility",
-		"internal/core/config/validator_listingkit.go",
-		"obsolete ZITADEL username allowlist configuration",
-		"SOURCE_IDENTITY_COMPATIBILITY: ${{ needs.prepare.outputs.source_identity_compatibility }}",
-		"source build declares canonical-subject compatibility; cleaning legacy identity keys",
+		"org.opencontainers.image.listingkit.identity",
+		"canonical-subject-v1",
+		"cleanup_legacy_identity=true",
+		"needs.prepare.outputs.mode == 'normal' && steps.candidate-identity-compatibility.outputs.cleanup_legacy_identity == 'true'",
 	} {
 		if !strings.Contains(workflow, required) {
-			t.Errorf("ListingKit deploy workflow must contain source compatibility check %q", required)
+			t.Errorf("ListingKit deploy workflow must contain canonical candidate compatibility check %q", required)
 		}
 	}
-	if !strings.Contains(workflow, "if [[ \"$SOURCE_IDENTITY_COMPATIBILITY\" == \"true\" ]]") {
-		t.Error("unlabeled source builds must use the selected source compatibility result")
+	for _, forbidden := range []string{"source_identity_compatibility", "inputs.source_ref", "internal/core/config/validator_listingkit.go"} {
+		if strings.Contains(workflow, forbidden) {
+			t.Errorf("canonical workflow-bound builds must not restore caller/source compatibility authority %q", forbidden)
+		}
 	}
 }
 
@@ -828,7 +830,7 @@ func TestListingKitPreflightDocumentationUsesDigestPinnedCandidateAndRunner(t *t
 	}
 }
 
-func TestListingKitDeployWorkflowSupportsDigestPinnedRollbackWithoutRebuild(t *testing.T) {
+func TestListingKitDeployWorkflowSupportsAttestedRollbackWithoutRebuild(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
 	content, err := os.ReadFile(workflowPath)
 	if err != nil {
@@ -836,16 +838,22 @@ func TestListingKitDeployWorkflowSupportsDigestPinnedRollbackWithoutRebuild(t *t
 	}
 	workflow := string(content)
 	for _, required := range []string{
-		"api_image_digest:",
-		"candidate_api_digest",
-		"expected_api_repository=\"${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}\"",
-		"api_image_digest must reference $expected_api_repository",
-		"api_image_digest cannot be combined with source or build-image inputs",
-		"needs.prepare.outputs.candidate_api_digest == ''",
-		"needs.prepare.outputs.candidate_api_digest || needs.build-api.outputs.api_digest",
+		"rollback_run_id:",
+		"rollback_run_attempt:",
+		"verify-rollback-attestation:",
+		"actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0",
+		"verify-listingkit-api-release-attestation.sh",
+		"needs.prepare.outputs.mode == 'rollback'",
+		"needs.verify-rollback-attestation.outputs.api_image",
+		"needs.prepare.outputs.mode == 'normal'",
 	} {
 		if !strings.Contains(workflow, required) {
-			t.Errorf("ListingKit workflow must contain digest rollback behavior %q", required)
+			t.Errorf("ListingKit workflow must contain exact-attestation rollback behavior %q", required)
+		}
+	}
+	for _, forbidden := range []string{"api_image_digest:", "inputs.api_image_digest", "candidate_api_digest"} {
+		if strings.Contains(workflow, forbidden) {
+			t.Errorf("ListingKit rollback must not restore direct digest authority %q", forbidden)
 		}
 	}
 }
@@ -915,7 +923,7 @@ func TestListingKitDeployRequiresV3NewStartsLabelBeforeAnyProductionMutation(t *
 	}
 }
 
-func TestListingKitDeployValidatesSuppliedDigestV3NewStartsLabel(t *testing.T) {
+func TestListingKitDeployValidatesAttestedRollbackV3NewStartsContract(t *testing.T) {
 	t.Parallel()
 
 	content, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
@@ -924,14 +932,19 @@ func TestListingKitDeployValidatesSuppliedDigestV3NewStartsLabel(t *testing.T) {
 	}
 	workflow := string(content)
 	for _, required := range []string{
-		`API_CANDIDATE_IMAGE="$(listingkit_compose_immutable_image`,
+		`verify-listingkit-api-release-attestation.sh`,
+		`ROLLBACK_API_IMAGE`,
+		`needs.verify-rollback-attestation.outputs.api_image`,
 		`docker pull "$API_CANDIDATE_IMAGE"`,
 		`org.opencontainers.image.listingkit.image-agent-routing`,
 		`image-agent-v3-new-starts-v1`,
 	} {
 		if !strings.Contains(workflow, required) {
-			t.Errorf("built and supplied digest candidates must share routing-contract inspection %q", required)
+			t.Errorf("built and attested rollback candidates must share routing-contract inspection %q", required)
 		}
+	}
+	if strings.Contains(workflow, "inputs.api_image_digest") {
+		t.Error("rollback routing validation must not accept a caller-provided digest")
 	}
 }
 
@@ -968,20 +981,25 @@ func TestListingKitReleasePathHasNoCallerControlledRoutingContract(t *testing.T)
 	t.Parallel()
 
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	workflow := loadReleaseWorkflow(t, workflowPath)
 	content, err := os.ReadFile(workflowPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	lower := strings.ToLower(string(content))
-	for _, forbidden := range []string{
-		"routing_contract:",
-		"route_contract:",
+	dispatchInputs := strings.ToLower(fmt.Sprint(workflow.On["workflow_dispatch"]["inputs"]))
+	for _, forbiddenInput := range []string{"routing_contract", "route_contract", "image_agent_routing", "release_routing_contract"} {
+		if strings.Contains(dispatchInputs, forbiddenInput) {
+			t.Errorf("production workflow exposes caller-controlled routing input %q", forbiddenInput)
+		}
+	}
+	for _, forbiddenExpression := range []string{
 		"inputs.image_agent_routing",
 		"inputs.routing_contract",
 		"release_routing_contract",
 	} {
-		if strings.Contains(lower, forbidden) {
-			t.Errorf("production workflow exposes caller-controlled routing contract %q", forbidden)
+		if strings.Contains(lower, forbiddenExpression) {
+			t.Errorf("production workflow exposes caller-controlled routing expression %q", forbiddenExpression)
 		}
 	}
 	drain, err := os.ReadFile(filepath.Join("..", "scripts", "listingkit-image-agent-v2-drain-check.sh"))
@@ -995,7 +1013,7 @@ func TestListingKitReleasePathHasNoCallerControlledRoutingContract(t *testing.T)
 	}
 }
 
-func TestListingKitDeployWorkflowPassesDispatchInputsThroughStepEnvironment(t *testing.T) {
+func TestListingKitDeployWorkflowPassesRollbackInputsThroughStepEnvironment(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
 	content, err := os.ReadFile(workflowPath)
 	if err != nil {
@@ -1024,11 +1042,8 @@ func TestListingKitDeployWorkflowPassesDispatchInputsThroughStepEnvironment(t *t
 			continue
 		}
 		for name, want := range map[string]string{
-			"RELEASE_SOURCE_REF":             "${{ inputs.source_ref }}",
-			"RELEASE_IMAGE_TAG":              "${{ inputs.image_tag }}",
-			"RELEASE_API_IMAGE_DIGEST":       "${{ inputs.api_image_digest }}",
-			"RELEASE_API_RUNTIME_BASE_IMAGE": "${{ inputs.api_runtime_base_image }}",
-			"RELEASE_PUBLISH_LATEST":         "${{ inputs.publish_latest }}",
+			"ROLLBACK_RUN_ID":      "${{ inputs.rollback_run_id }}",
+			"ROLLBACK_RUN_ATTEMPT": "${{ inputs.rollback_run_attempt }}",
 		} {
 			if got := step.Env[name]; got != want {
 				t.Errorf("prepare metadata step environment %s = %q, want %q", name, got, want)
@@ -1106,7 +1121,7 @@ func TestListingKitDeployWorkflowPassesOnlyDigestsAcrossBuildJobBoundaries(t *te
 	t.Fatal("ListingKit deploy workflow is missing the identity preflight driver")
 }
 
-func TestListingKitDeployWorkflowDerivesDefaultTagFromResolvedCommit(t *testing.T) {
+func TestListingKitDeployWorkflowDerivesDefaultTagFromCanonicalWorkflowCommit(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
 	content, err := os.ReadFile(workflowPath)
 	if err != nil {
@@ -1114,22 +1129,26 @@ func TestListingKitDeployWorkflowDerivesDefaultTagFromResolvedCommit(t *testing.
 	}
 	workflow := string(content)
 	for _, required := range []string{
-		"GH_TOKEN: ${{ github.token }}",
-		"source_ref=\"$(gh api \"repos/${GITHUB_REPOSITORY}/commits/$source_ref\" --jq .sha)\"",
+		"WORKFLOW_SOURCE_REF: ${{ github.workflow_sha }}",
+		"GITHUB_REF\" == \"refs/heads/main",
+		"GITHUB_WORKFLOW_REF\" == \"$CANONICAL_WORKFLOW_REF",
+		"source_ref=\"$WORKFLOW_SOURCE_REF\"",
 		"runner_source_ref=\"$source_ref\"",
 		"tag=\"${source_ref:0:12}\"",
-		"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$",
+		"^[0-9a-f]{40}$",
 	} {
 		if !strings.Contains(workflow, required) {
-			t.Errorf("ListingKit deploy workflow must contain %q", required)
+			t.Errorf("ListingKit canonical source binding must contain %q", required)
 		}
 	}
-	if strings.Contains(workflow, "tag=\"${source_ref:0:8}\"") {
-		t.Error("ListingKit deploy workflow must not derive a Docker tag directly from an arbitrary ref")
+	for _, forbidden := range []string{"inputs.source_ref", "repos/${GITHUB_REPOSITORY}/commits/$source_ref"} {
+		if strings.Contains(workflow, forbidden) {
+			t.Errorf("ListingKit deploy workflow must not resolve caller-selected source %q", forbidden)
+		}
 	}
 }
 
-func TestListingKitPreflightRunnerUsesCandidateSourceExceptDigestRollback(t *testing.T) {
+func TestListingKitPreflightRunnerUsesCanonicalSourceOnlyForNormalRelease(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
 	content, err := os.ReadFile(workflowPath)
 	if err != nil {
@@ -1139,8 +1158,9 @@ func TestListingKitPreflightRunnerUsesCandidateSourceExceptDigestRollback(t *tes
 	for _, required := range []string{
 		"runner_source_ref: ${{ steps.meta.outputs.runner_source_ref }}",
 		"runner_source_ref=\"$source_ref\"",
-		"runner_source_ref=\"$WORKFLOW_SOURCE_REF\"",
 		"ref: ${{ needs.prepare.outputs.runner_source_ref }}",
+		"build-preflight-runner:",
+		"if: ${{ needs.prepare.outputs.mode == 'normal' }}",
 	} {
 		if !strings.Contains(workflow, required) {
 			t.Errorf("ListingKit runner source selection is missing %q", required)

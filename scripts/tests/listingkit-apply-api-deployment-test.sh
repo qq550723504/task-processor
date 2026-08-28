@@ -137,7 +137,7 @@ run_ui_success_case() {
       --namespace test-namespace \
       --image "$immutable_image"
 
-  assert_file_equals $'-n|test-namespace|patch|deployment|listingkit-ui|--type=strategic|--patch|{"spec":{"template":{"spec":{"containers":[{"name":"listingkit-ui","envFrom":[{"configMapRef":{"name":"listingkit-workbench-config"}}]}]}}}}\n-n|test-namespace|apply|-f|<rendered-manifest>' "$command_log"
+  assert_file_equals $'-n|test-namespace|patch|deployment|listingkit-ui|--type=strategic|--patch|{"spec":{"template":{"spec":{"containers":[{"name":"listingkit-ui","envFrom":[{"configMapRef":{"name":"listingkit-workbench-config"}},{"configMapRef":{"name":"listingkit-ui-auth-config"}}]}]}}}}\n-n|test-namespace|apply|-f|<rendered-manifest>' "$command_log"
   assert_contains "$(cat "$rendered_manifest")" "image: $immutable_image"
   assert_not_contains "$(cat "$rendered_manifest")" 'task-processor-listingkit-ui:latest'
   assert_temporary_manifest_removed "$rendered_path_log"

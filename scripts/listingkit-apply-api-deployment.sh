@@ -7,7 +7,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$script_dir/lib/listingkit-immutable-image.sh"
 
 usage() {
-  printf 'Usage: %s --manifest PATH --namespace NAMESPACE --image IMMUTABLE_IMAGE [--container NAME] [--deployment NAME --enforce-env-from-configmap NAME]\n' "$0" >&2
+  printf 'Usage: %s --manifest PATH --namespace NAMESPACE --image IMMUTABLE_IMAGE [--container NAME] [--deployment NAME --enforce-env-from-configmap NAME]...\n' "$0" >&2
 }
 
 MANIFEST=""
@@ -15,7 +15,7 @@ K8S_NAMESPACE=""
 IMAGE=""
 CONTAINER="product-listing-api"
 DEPLOYMENT=""
-ENV_FROM_CONFIGMAP=""
+ENV_FROM_CONFIGMAPS=()
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -46,7 +46,7 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --enforce-env-from-configmap)
       [[ "$#" -ge 2 ]] || { usage; exit 2; }
-      ENV_FROM_CONFIGMAP="$2"
+      ENV_FROM_CONFIGMAPS+=("$2")
       shift 2
       ;;
     *)
@@ -71,17 +71,22 @@ if ! listingkit_is_immutable_image "$IMAGE"; then
   exit 2
 fi
 
-if [[ -n "$DEPLOYMENT" || -n "$ENV_FROM_CONFIGMAP" ]] && [[ -z "$DEPLOYMENT" || -z "$ENV_FROM_CONFIGMAP" ]]; then
+if [[ -n "$DEPLOYMENT" || ${#ENV_FROM_CONFIGMAPS[@]} -gt 0 ]] && [[ -z "$DEPLOYMENT" || ${#ENV_FROM_CONFIGMAPS[@]} -eq 0 ]]; then
   printf 'ListingKit Deployment envFrom enforcement requires both --deployment and --enforce-env-from-configmap\n' >&2
   exit 2
 fi
 
 if [[ ! "$CONTAINER" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] ||
-  { [[ -n "$DEPLOYMENT" ]] && [[ ! "$DEPLOYMENT" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; } ||
-  { [[ -n "$ENV_FROM_CONFIGMAP" ]] && [[ ! "$ENV_FROM_CONFIGMAP" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; }; then
+  { [[ -n "$DEPLOYMENT" ]] && [[ ! "$DEPLOYMENT" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; }; then
   printf 'ListingKit Deployment container and Kubernetes resource names must be DNS labels\n' >&2
   exit 2
 fi
+for env_from_configmap in "${ENV_FROM_CONFIGMAPS[@]}"; do
+  if [[ ! "$env_from_configmap" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+    printf 'ListingKit Deployment ConfigMap names must be DNS labels\n' >&2
+    exit 2
+  fi
+done
 
 rendered_manifest="$(mktemp "${TMPDIR:-/tmp}/listingkit-deployment.XXXXXX.yaml")"
 trap 'rm -f "$rendered_manifest"' EXIT
@@ -106,8 +111,13 @@ if ! awk -v image="$IMAGE" -v container="$CONTAINER" '
   exit 2
 fi
 
-if [[ -n "$ENV_FROM_CONFIGMAP" ]]; then
-  env_from_patch="$(printf '{"spec":{"template":{"spec":{"containers":[{"name":"%s","envFrom":[{"configMapRef":{"name":"%s"}}]}]}}}}' "$CONTAINER" "$ENV_FROM_CONFIGMAP")"
+if (( ${#ENV_FROM_CONFIGMAPS[@]} > 0 )); then
+  env_from_refs=""
+  for env_from_configmap in "${ENV_FROM_CONFIGMAPS[@]}"; do
+    env_from_refs+="$(printf '{"configMapRef":{"name":"%s"}},' "$env_from_configmap")"
+  done
+  env_from_refs="${env_from_refs%,}"
+  env_from_patch="$(printf '{"spec":{"template":{"spec":{"containers":[{"name":"%s","envFrom":[%s]}]}}}}' "$CONTAINER" "$env_from_refs")"
   kubectl -n "$K8S_NAMESPACE" patch deployment "$DEPLOYMENT" --type=strategic --patch "$env_from_patch"
 fi
 

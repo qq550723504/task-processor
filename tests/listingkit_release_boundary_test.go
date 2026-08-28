@@ -164,23 +164,30 @@ func TestListingKitDeployEmitsExactReleaseAttestationAfterAPIRollout(t *testing.
 		case "Emit ListingKit API release attestation":
 			emit = index
 			for _, required := range []string{
-				"listingkit-api-release-gate/v1",
+				"listingkit-api-release-gate/v2",
 				"${{ needs.prepare.outputs.source_ref }}",
 				"$API_CANDIDATE_IMAGE",
 				"$GITHUB_RUN_ID",
 				"$GITHUB_RUN_ATTEMPT",
 				"api_workflow_run_attempt",
-				"expires_at",
+				"workflow_ref",
+				"routing_contract",
+				"worker_wire_contract",
+				"worker_replay_contract",
+				"schema_contract",
 				"@sha256:",
 			} {
 				if !strings.Contains(step.Run, required) {
 					t.Errorf("release attestation emitter is missing %q", required)
 				}
 			}
+			if strings.Contains(step.Run, "expires_at") {
+				t.Error("immutable v2 release attestations must not reintroduce an expiry field")
+			}
 		case "Upload ListingKit API release attestation":
 			upload = index
-			if step.Uses != "actions/upload-artifact@v4" {
-				t.Errorf("release attestation must use upload-artifact@v4, got %q", step.Uses)
+			if step.Uses != "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" {
+				t.Errorf("release attestation must use the official upload-artifact v4.6.2 commit, got %q", step.Uses)
 			}
 			if got := stringValue(step.With["name"]); got != "listingkit-api-release-gate-${{ github.run_id }}-${{ github.run_attempt }}" {
 				t.Errorf("attestation artifact name must be scoped to exact API run ID and attempt, got %q", got)
@@ -265,20 +272,25 @@ func TestListingKitUIDeployRequiresVerifiedExactAPIReleaseGate(t *testing.T) {
 	gateScript += "\n" + string(verifier)
 	for _, required := range []string{
 		"ListingKit API Deploy",
-		".github/workflows/listingkit-deploy.yml",
-		"listingkit-api-release-gate/v1",
+		".github/workflows/listingkit-deploy.yml@refs/heads/main",
+		"listingkit-api-release-gate/v2",
 		"release_gate_run_id",
 		"workflow_run.id",
 		"conclusion",
 		"success",
 		"gh api",
-		"expires_at",
 		"issued_at",
 		"source_sha",
 		"api_candidate_image",
 		"api_workflow_run_id",
 		"api_workflow_run_attempt",
 		"run_attempt",
+		"workflow_ref",
+		"routing_contract",
+		"worker_wire_contract",
+		"worker_replay_contract",
+		"schema_contract",
+		"workflow head SHA does not match attested source",
 		"@sha256:",
 	} {
 		if !strings.Contains(gateScript, required) {
@@ -290,7 +302,7 @@ func TestListingKitUIDeployRequiresVerifiedExactAPIReleaseGate(t *testing.T) {
 	}
 	downloads := 0
 	for _, step := range gate.Steps {
-		if step.Uses != "actions/download-artifact@v5" {
+		if step.Uses != "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0" {
 			continue
 		}
 		downloads++
@@ -414,7 +426,7 @@ exit 9
 	}
 }
 
-func TestListingKitReleaseAttestationAllowsResolvedSourceDifferentFromWorkflowHead(t *testing.T) {
+func TestListingKitReleaseAttestationRequiresExactWorkflowHeadSource(t *testing.T) {
 	attestedSource := strings.Repeat("a", 40)
 	runHead := strings.Repeat("b", 40)
 	output, err := runListingKitReleaseAttestationVerifier(t, releaseAttestationScenario{
@@ -425,11 +437,11 @@ func TestListingKitReleaseAttestationAllowsResolvedSourceDifferentFromWorkflowHe
 		runHead:         runHead,
 		includeAttempt:  true,
 	})
-	if err != nil {
-		t.Fatalf("verify attestation with independent resolved source: %v\n%s", err, output)
+	if err == nil {
+		t.Fatalf("attestation source %q unexpectedly passed with workflow head %q: %s", attestedSource, runHead, output)
 	}
-	if got := strings.TrimSpace(string(output)); got != attestedSource {
-		t.Fatalf("verified source=%q want attested source %q (workflow head was %q)", got, attestedSource, runHead)
+	if !strings.Contains(string(output), "workflow head SHA does not match attested source") {
+		t.Fatalf("source mismatch must fail for the exact workflow-head contract, got: %s", output)
 	}
 }
 
@@ -472,14 +484,14 @@ func runListingKitReleaseAttestationVerifier(t *testing.T, scenario releaseAttes
 		scenario.attestedSource = strings.Repeat("a", 40)
 	}
 	if scenario.runHead == "" {
-		scenario.runHead = strings.Repeat("b", 40)
+		scenario.runHead = scenario.attestedSource
 	}
 	binDir := t.TempDir()
 	apiDigest := strings.Repeat("c", 64)
 	now := time.Now().UTC()
 	runJSON := fmt.Sprintf(`{"id":424242,"run_attempt":%s,"repository":{"full_name":"octo/task-processor"},"name":"ListingKit API Deploy","path":".github/workflows/listingkit-deploy.yml@refs/heads/main","conclusion":"success","head_sha":%q}`, scenario.runAttempt, scenario.runHead)
-	attestationJSON := fmt.Sprintf(`{"gate_version":"listingkit-api-release-gate/v1","repository":"octo/task-processor","workflow_name":"ListingKit API Deploy","workflow_path":".github/workflows/listingkit-deploy.yml","source_sha":%q,"api_candidate_image":"docker.io/xuwei190/task-processor-product-listing-api@sha256:%s","api_workflow_run_id":424242,"api_workflow_run_attempt":%s,"issued_at":%q,"expires_at":%q}`,
-		scenario.attestedSource, apiDigest, scenario.attestedAttempt, now.Add(-time.Minute).Format(time.RFC3339), now.Add(time.Hour).Format(time.RFC3339))
+	attestationJSON := fmt.Sprintf(`{"gate_version":"listingkit-api-release-gate/v2","repository":"octo/task-processor","workflow_name":"ListingKit API Deploy","workflow_ref":"octo/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main","source_sha":%q,"api_candidate_image":"docker.io/xuwei190/task-processor-product-listing-api@sha256:%s","api_workflow_run_id":424242,"api_workflow_run_attempt":%s,"issued_at":%q,"routing_contract":"image-agent-v3-new-starts-v1","worker_wire_contract":"image-agent-workers-v2-v3","worker_replay_contract":"image-agent-replay-v2-v3","schema_contract":"listingkit-schema-additive-v1"}`,
+		scenario.attestedSource, apiDigest, scenario.attestedAttempt, now.Add(-time.Minute).Format(time.RFC3339))
 	runPath := filepath.Join(t.TempDir(), "run.json")
 	attestationPath := filepath.Join(t.TempDir(), "attestation.json")
 	if err := os.WriteFile(runPath, []byte(runJSON), 0o600); err != nil {
@@ -508,19 +520,22 @@ case "$filter" in
   *'.path | select'*) printf '.github/workflows/listingkit-deploy.yml@refs/heads/main\n' ;;
   *'.conclusion | select'*) printf 'success\n' ;;
   *'.head_sha | select'*) printf '%s\n' ;;
-  *'.gate_version | select'*) printf 'listingkit-api-release-gate/v1\n' ;;
+  *'.gate_version | select'*) printf 'listingkit-api-release-gate/v2\n' ;;
   *'.repository | select'*) printf 'octo/task-processor\n' ;;
   *'.workflow_name | select'*) printf 'ListingKit API Deploy\n' ;;
-  *'.workflow_path | select'*) printf '.github/workflows/listingkit-deploy.yml\n' ;;
+  *'.workflow_ref | select'*) printf 'octo/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main\n' ;;
   *'.source_sha | select'*) printf '%s\n' ;;
   *'.api_candidate_image | select'*) printf 'docker.io/xuwei190/task-processor-product-listing-api@sha256:%s\n' ;;
   *'.api_workflow_run_id | select'*) printf '424242\n' ;;
   *'.api_workflow_run_attempt | select'*) printf '%s\n' ;;
   *'.issued_at | select'*) printf '%s\n' ;;
-  *'.expires_at | select'*) printf '%s\n' ;;
+  *'.routing_contract | select'*) printf 'image-agent-v3-new-starts-v1\n' ;;
+  *'.worker_wire_contract | select'*) printf 'image-agent-workers-v2-v3\n' ;;
+  *'.worker_replay_contract | select'*) printf 'image-agent-replay-v2-v3\n' ;;
+  *'.schema_contract | select'*) printf 'listingkit-schema-additive-v1\n' ;;
   *) exit 1 ;;
 esac
-`, scenario.runAttempt, scenario.runHead, scenario.attestedSource, apiDigest, scenario.attestedAttempt, now.Add(-time.Minute).Format(time.RFC3339), now.Add(time.Hour).Format(time.RFC3339)))
+`, scenario.runAttempt, scenario.runHead, scenario.attestedSource, apiDigest, scenario.attestedAttempt, now.Add(-time.Minute).Format(time.RFC3339)))
 
 	verifierPath, err := filepath.Abs(filepath.Join("..", "scripts", "verify-listingkit-api-release-attestation.sh"))
 	if err != nil {
@@ -625,7 +640,8 @@ func TestListingKitRunbookRejectsV2ProducingRollback(t *testing.T) {
 	}
 	runbook := string(content)
 	for _, required := range []string{
-		"Only prior API digests carrying `image-agent-v3-new-starts-v1`",
+		"Only a prior successful immutable API release attestation carrying",
+		"image-agent-v3-new-starts-v1",
 		"A v2-producing API rollback is unsupported",
 		"invalidates the v2 drain evidence",
 		"separately designed recovery procedure",

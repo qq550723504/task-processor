@@ -22,3 +22,4 @@ deny contains "release identity owner drift" if input.releaseIdentity.owner != "
 deny contains "untrusted workflow ref" if input.token.workflowRef != input.identity.workflowRef
 deny contains "missing workflow ref" if not input.token.workflowRef
 deny contains "trusted workflow-ref policy drift" if input.policy.workflowRef != input.expectedWorkflowRef
+deny contains "mutable third-party action ref" if not regex.match("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$", input.workflow.actionUses)

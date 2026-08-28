@@ -5,7 +5,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
-    resourceNames: ["listingkit-workbench-config"]
+    resourceNames: ["listingkit-ui-auth-config"]
     verbs: ["get", "patch", "update"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
