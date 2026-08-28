@@ -40,6 +40,19 @@ describe("buildListingKitProxyUrl", () => {
     );
   });
 
+  it("forwards every backend-valid action ID on the resume route", () => {
+    const result = buildListingKitProxyUrl(
+      "http://localhost:8080/api/v1/listing-kits",
+      ["image-agent", "runs", "run-1", "commands", "approval+1", "resume"],
+      "",
+      "POST",
+    );
+
+    expect(result).toBe(
+      "http://localhost:8080/api/v1/image-agent/runs/run-1/commands/approval%2B1/resume",
+    );
+  });
+
   it("does not treat similar or traversal-like prefixes as an upstream route", () => {
     expect(
       buildListingKitProxyUrl(

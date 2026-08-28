@@ -39,6 +39,42 @@ func TestExecuteSlotV3BudgetQuoteReserveGenerateAndSettle(t *testing.T) {
 	require.Equal(t, 1, projection.Run.Usage.AgentSteps)
 }
 
+func TestExecuteSlotV3ReusesPersistedQuoteAcrossProviderConfigurationChange(t *testing.T) {
+	repository, input, policy := initializedBudgetedV3Activity(t, "run-budget-persisted-quote", 1)
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	persistedQuote := budgetActivityQuote("quote-before-rollout")
+	reservation := slotEffectReservationV3(slotExecutionInputV3(input))
+	reservation.Policy = policy
+	reservation.Quote = persistedQuote
+	_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	_, err = effects.SettleSlotProviderV3(context.Background(), reservation, imageagent.SlotUsageReceipt{
+		Actual: persistedQuote.Maximum, CostBasis: imageagent.UsageCostReservedUpperBound,
+	})
+	require.NoError(t, err)
+	manifest := v3StagingManifest(input, tinyPNGBytes(t))
+	prepared, err := effects.PrepareSlotStagingV3(context.Background(), reservation, manifest)
+	require.NoError(t, err)
+	_, err = effects.CommitSlotStagedV3(context.Background(), reservation, prepared.StagingManifestFingerprint)
+	require.NoError(t, err)
+
+	executor := &budgetedRecordingExecutor{
+		recordingStagedExecutor: &recordingStagedExecutor{},
+		quote:                   budgetActivityQuote("quote-after-rollout"),
+	}
+	activities := newBudgetV3Activities(t, repository, executor, &recordingArtifactStore{})
+	input.BudgetAuthorization, input.BudgetPolicy = true, policy
+	input.DeadlineAt = time.Now().UTC().Add(-time.Minute)
+
+	result, err := activities.ExecuteSlotV3(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+	require.Zero(t, executor.QuoteCalls(), "recovery must not ask the current router for a new quote")
+	require.Zero(t, executor.GenerateCalls(), "recovery must not dispatch the provider again")
+}
+
 func TestExecuteSlotV3AccountsProviderUsageWhenOnlyElapsedLimitIsEnabled(t *testing.T) {
 	budget := imageagent.Budget{MaxElapsed: time.Hour, EnabledLimits: imageagent.BudgetLimitElapsed}
 	repository, input, policy := initializedBudgetedV3ActivityWithBudget(t, "run-budget-elapsed-only", budget)

@@ -17,6 +17,13 @@ func TestMaxActionIDFitsLongestProjectionCommitIdentity(t *testing.T) {
 	require.LessOrEqual(t, len(commitID), 192)
 }
 
+func TestValidateActionIDMatchesResumePathSegmentContract(t *testing.T) {
+	require.NoError(t, ValidateActionID("approval+1"))
+	for _, actionID := range []string{"approval/1", `approval\\1`, "approval?1", "approval 1", "审批-1"} {
+		require.Error(t, ValidateActionID(actionID), actionID)
+	}
+}
+
 func TestNormalizeAssetCatalogPreservesExplicitStableManifest(t *testing.T) {
 	createdAt := time.Date(2026, 8, 27, 1, 2, 3, 0, time.UTC)
 	assets := []AuthorizedAsset{{ID: "source-1", Type: AuthorizedAssetSource, URL: "https://source.example/source.png", SourceURL: "https://source.example/source.png"}}

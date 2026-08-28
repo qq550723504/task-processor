@@ -102,6 +102,8 @@ The workflow adds separate `workflow.GetVersion` patches for independent decisio
 
 These decisions must not be collapsed into the existing v2 patch. Each marker has one meaning so future maintenance cannot accidentally change an unrelated replay branch.
 
+Every new command `ActionID` is also a resume-route path segment. Command ingress, workflow validation, and the ListingKit BFF therefore share one canonical ASCII contract: 1-128 bytes, beginning with an alphanumeric character, followed only by alphanumerics or `._:+-`. The client percent-encodes that value for transport. Identifiers that require path separators, whitespace, query delimiters, or non-ASCII normalization are rejected before they can become durable pending commands.
+
 ### 6.3 Real-history replay
 
 Tests commit serialized workflow histories captured from the pre-change code paths. Replay must cover:
@@ -189,6 +191,8 @@ A blocked outcome is durable and actionable. It cannot be converted back to an e
 
 The attempt identity is `(tenant, owner user, run, plan revision, slot, attempt)`. A compare-and-swap reservation creates one provider owner for that identity and binds it to the input fingerprint and idempotency key.
 
+When budget authorization is active, only an attempt with no persisted effect asks the selected provider route for a quote. The reservation persists that quote and policy as part of the effect contract. Every later activity attempt loads the effect before consulting current provider configuration and reuses the persisted quote; a rollout, routing change, expired provider deadline, or missing quote capability must not prevent staging or publication recovery for work that has already crossed the provider boundary.
+
 If an activity retry observes `provider_claimed` but did not create the claim, it must not invoke generation again. It may continue only by loading the verified recovery bundle for that exact attempt; an absent or conflicting bundle becomes the typed `provider_outcome_unknown` block.
 
 ### 8.3 Staging preparation and upload
@@ -204,7 +208,7 @@ After provider generation returns in the owning activity:
 7. Confirm every object with HEAD metadata.
 8. Commit `artifact_staged` with a compare-and-swap from `staging_prepared`.
 
-If the process fails before the recovery bundle is durable, the provider outcome is unknown. After the bundle is durable, a retry can rehydrate the exact manifest and bytes even when `staging_prepared` was not committed or individual uploads are incomplete. Matching objects are reconciled without rewriting; missing objects are uploaded from the bundle; conflicting objects or a missing/conflicting bundle fail closed as an unknown outcome.
+If the process fails before the recovery bundle is durable, the provider outcome is unknown and the owning attempt retains its worker-local files while it can still retry preservation. Once preservation succeeds, those local files are deleted before any further retryable boundary. A retry can then rehydrate the exact manifest and bytes even when `staging_prepared` was not committed or individual uploads are incomplete. Matching objects are reconciled without rewriting; missing objects are uploaded from the bundle; conflicting objects or a missing/conflicting bundle fail closed as an unknown outcome.
 
 ### 8.4 Publication claim and fencing
 

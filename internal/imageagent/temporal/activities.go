@@ -149,19 +149,38 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	var budgeted imageagent.BudgetedStagedSlotExecutor
 	providerCtx := ctx
 	var cancelProvider context.CancelFunc
-	if input.BudgetAuthorization && !input.DeadlineAt.IsZero() && !time.Now().UTC().Before(input.DeadlineAt) {
-		return v3Result, sdktemporal.NewNonRetryableApplicationError("image agent budget deadline elapsed", imageagent.BudgetElapsedCode, imageagent.ErrBudgetExceeded)
+	persisted, getErr := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
+	hasPersistedEffect := getErr == nil
+	if getErr != nil && !errors.Is(getErr, imageagent.ErrRunNotFound) {
+		return v3Result, persistedSlotEffectV3RepositoryError(getErr)
 	}
-	if input.BudgetAuthorization && !input.DeadlineAt.IsZero() {
-		providerCtx, cancelProvider = context.WithDeadline(ctx, input.DeadlineAt)
-		defer cancelProvider()
+	if hasPersistedEffect {
+		if err := validatePersistedSlotEffectV3(persisted); err != nil {
+			return v3Result, err
+		}
+		persistedBudgetAuthorization := persisted.Quote.Fingerprint != ""
+		if persistedBudgetAuthorization != input.BudgetAuthorization {
+			return v3Result, imageagent.ErrRevisionConflict
+		}
+		reservation.Policy = persisted.Policy
+		reservation.Quote = persisted.Quote
 	}
-	if input.BudgetAuthorization {
+	providerDispatchPossible := !hasPersistedEffect || (persisted.Phase == imageagent.SlotEffectV3ProviderClaimed && persisted.BudgetStatus == imageagent.SlotBudgetReleased)
+	if input.BudgetAuthorization && providerDispatchPossible {
 		var ok bool
 		budgeted, ok = a.stagedSlotExecutor.(imageagent.BudgetedStagedSlotExecutor)
 		if !ok {
 			return v3Result, sdktemporal.NewNonRetryableApplicationError("image agent provider cannot produce a conservative usage quote", imageagent.BudgetQuoteUnavailableCode, imageagent.ErrBudgetQuoteUnavailable)
 		}
+	}
+	if input.BudgetAuthorization && providerDispatchPossible && !input.DeadlineAt.IsZero() && !time.Now().UTC().Before(input.DeadlineAt) {
+		return v3Result, sdktemporal.NewNonRetryableApplicationError("image agent budget deadline elapsed", imageagent.BudgetElapsedCode, imageagent.ErrBudgetExceeded)
+	}
+	if input.BudgetAuthorization && providerDispatchPossible && !input.DeadlineAt.IsZero() {
+		providerCtx, cancelProvider = context.WithDeadline(ctx, input.DeadlineAt)
+		defer cancelProvider()
+	}
+	if input.BudgetAuthorization && !hasPersistedEffect {
 		quote, quoteErr := budgeted.QuoteSlot(providerCtx, executionInput, input.BudgetPolicy)
 		if quoteErr != nil {
 			if errors.Is(quoteErr, context.DeadlineExceeded) {
@@ -227,6 +246,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 				}
 				return v3Result, fmt.Errorf("preserve generated artifact recovery bundle: %w", err)
 			}
+			cleanupGeneratedSlotTemporaryAssets(&generated)
 		} else {
 			prepared, err = a.artifactStore.RecoverSlotArtifacts(ctx, reservation.Identity, imageagent.StagingManifest{})
 			if err != nil {
@@ -271,7 +291,6 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			}
 			return v3Result, fmt.Errorf("ensure staged artifacts: %w", ensureErr)
 		}
-		cleanupGeneratedSlotTemporaryAssets(&generated)
 		effect, err = a.slotEffectsV3.CommitSlotStagedV3(ctx, reservation, effect.StagingManifestFingerprint)
 		if err != nil {
 			effect, err = a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)

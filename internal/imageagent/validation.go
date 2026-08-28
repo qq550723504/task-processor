@@ -2,6 +2,7 @@ package imageagent
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 )
@@ -22,9 +23,11 @@ const MaxJSONSafePlanRevision int64 = 1<<53 - 1
 // newly submitted plans. Historical snapshots remain readable via ValidatePlan.
 const MaxPlanSlots = 32
 
+var actionIDPattern = regexp.MustCompile(fmt.Sprintf(`^[A-Za-z0-9][A-Za-z0-9._:+-]{0,%d}$`, MaxActionIDLength-1))
+
 func ValidateActionID(value string) error {
-	if value == "" || value != strings.TrimSpace(value) || len(value) > MaxActionIDLength {
-		return fmt.Errorf("action ID must be canonical and at most %d bytes", MaxActionIDLength)
+	if len(value) > MaxActionIDLength || !actionIDPattern.MatchString(value) {
+		return fmt.Errorf("action ID must be a canonical path-safe identifier of at most %d bytes", MaxActionIDLength)
 	}
 	return nil
 }

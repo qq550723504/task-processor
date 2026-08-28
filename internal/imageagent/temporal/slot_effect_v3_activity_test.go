@@ -62,7 +62,7 @@ func TestExecuteSlotV3CleansGeneratedLocalFileOnlyAfterDurableStaging(t *testing
 		require.NoFileExists(t, path)
 	})
 
-	t.Run("staging failed", func(t *testing.T) {
+	t.Run("staging failed after recovery preservation", func(t *testing.T) {
 		repository, input := initializedSlotEffectV3Activity(t, "run-v3-cleanup-not-staged")
 		path := writeTinyPNG(t)
 		executor := &recordingStagedExecutor{generated: generatedV3Output(input, path)}
@@ -72,7 +72,20 @@ func TestExecuteSlotV3CleansGeneratedLocalFileOnlyAfterDurableStaging(t *testing
 		_, err := activities.ExecuteSlotV3(context.Background(), input)
 
 		require.Error(t, err)
-		require.FileExists(t, path, "a retry still needs the only local copy")
+		require.NoFileExists(t, path, "the durable recovery bundle replaces the local copy")
+	})
+
+	t.Run("recovery preservation failed", func(t *testing.T) {
+		repository, input := initializedSlotEffectV3Activity(t, "run-v3-cleanup-preserve-failed")
+		path := writeTinyPNG(t)
+		executor := &recordingStagedExecutor{generated: generatedV3Output(input, path)}
+		artifacts := &recordingArtifactStore{preserveError: errors.New("recovery storage unavailable")}
+		activities := newV3Activities(t, repository, repository.(imageagent.SlotExternalEffectV3Repository), executor, artifacts)
+
+		_, err := activities.ExecuteSlotV3(context.Background(), input)
+
+		require.Error(t, err)
+		require.FileExists(t, path, "the local copy remains necessary until preservation succeeds")
 	})
 }
 
@@ -535,11 +548,7 @@ func TestExecuteSlotV3ProductionStoreReconcilesMultiAssetAfterLocalBytesVanish(t
 			_, firstErr := first.ExecuteSlotV3(context.Background(), input)
 			require.Error(t, firstErr)
 			for _, path := range paths {
-				if tc.name == "partial missing" {
-					require.NoError(t, os.Remove(path), "failed staging must retain retryable local bytes")
-				} else {
-					require.NoFileExists(t, path, "durably staged bytes are cleaned automatically")
-				}
+				require.NoFileExists(t, path, "the durable recovery bundle replaces worker-local retry bytes")
 			}
 			if tc.name == "mismatch" {
 				for key, object := range api.objects {
@@ -797,6 +806,7 @@ type recordingArtifactStore struct {
 	prepareCalls  int
 	ensureCalls   int
 	finalizeCalls int
+	preserveError error
 	ensureErrors  []error
 	recoverError  error
 	finalizeError error
@@ -831,8 +841,10 @@ func (s *recordingArtifactStore) PrepareSlotArtifacts(input objectstore.PrepareS
 	return objectstore.PreparedSlotArtifacts{Manifest: s.prepared}, nil
 }
 
-func (*recordingArtifactStore) PreserveSlotArtifacts(context.Context, imageagent.SlotExternalEffectIdentity, objectstore.PreparedSlotArtifacts) error {
-	return nil
+func (s *recordingArtifactStore) PreserveSlotArtifacts(context.Context, imageagent.SlotExternalEffectIdentity, objectstore.PreparedSlotArtifacts) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.preserveError
 }
 
 func (s *recordingArtifactStore) RecoverSlotArtifacts(_ context.Context, _ imageagent.SlotExternalEffectIdentity, expected imageagent.StagingManifest) (objectstore.PreparedSlotArtifacts, error) {
