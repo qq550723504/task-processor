@@ -168,6 +168,7 @@ canonical_filter='
       name: .name,
       image: .image,
       imagePullPolicy: .imagePullPolicy,
+      restartPolicy: (.restartPolicy // null),
       command: (.command // []),
       args: (.args // []),
       env: (.env // []),

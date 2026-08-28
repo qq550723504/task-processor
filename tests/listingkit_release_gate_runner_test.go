@@ -392,6 +392,18 @@ func TestListingKitReleaseGateRunnerRejectsImagePatchDrift(t *testing.T) {
 	}
 }
 
+func TestListingKitReleaseGateRunnerRejectsNativeSidecarInitContainerDrift(t *testing.T) {
+	t.Parallel()
+
+	output, logText, err := runReleaseGateScenario(t, releaseGateScenario{initRestartPolicyDrift: "Always"})
+	if err == nil || !strings.Contains(output, "live release-gate runner contract differs from reviewed manifest") {
+		t.Fatalf("native-sidecar restartPolicy drift must fail canonical comparison, err=%v output=%s", err, output)
+	}
+	if strings.Contains(logText, "get pods") {
+		t.Fatalf("native-sidecar restartPolicy drift must fail before Pod discovery:\n%s", logText)
+	}
+}
+
 func TestListingKitReleaseGateRunnerProvesCurrentRolloutWithoutPodAccess(t *testing.T) {
 	t.Parallel()
 
@@ -412,6 +424,7 @@ type releaseGateScenario struct {
 	staleAvailableGeneration bool
 	invocationDrift          string
 	initImageDrift           string
+	initRestartPolicyDrift   string
 	mutateDeployment         func(map[string]any)
 	sharedState              *releaseGateSharedState
 }
@@ -568,6 +581,7 @@ set -euo pipefail
 		fmt.Sprintf("FAKE_STALE_AVAILABLE_GENERATION=%t", scenario.staleAvailableGeneration),
 		"FAKE_INVOCATION_DRIFT="+scenario.invocationDrift,
 		"FAKE_INIT_IMAGE_DRIFT="+scenario.initImageDrift,
+		"FAKE_INIT_RESTART_POLICY_DRIFT="+scenario.initRestartPolicyDrift,
 		"FAKE_STATE_HISTORY="+historyPath,
 		"FAKE_PYTHON="+pythonPath,
 		"FAKE_KUBECTL_STATE="+stateProgramPath,
@@ -728,6 +742,7 @@ def canonical_container(container):
         "name": container.get("name"),
         "image": container.get("image"),
         "imagePullPolicy": container.get("imagePullPolicy"),
+        "restartPolicy": container.get("restartPolicy"),
         "command": container.get("command", []),
         "args": container.get("args", []),
         "env": container.get("env", []),
@@ -849,6 +864,8 @@ if mode == "patch":
                 live_container.update(requested_container)
                 if os.environ.get("FAKE_INIT_IMAGE_DRIFT"):
                     live_container["image"] = os.environ["FAKE_INIT_IMAGE_DRIFT"]
+                if os.environ.get("FAKE_INIT_RESTART_POLICY_DRIFT"):
+                    live_container["restartPolicy"] = os.environ["FAKE_INIT_RESTART_POLICY_DRIFT"]
                 break
         else:
             raise SystemExit("requested init container was not found")

@@ -234,6 +234,14 @@ deny contains msg if {
 
 deny contains msg if {
   some runner in runner_deployments
+  some init in runner.spec.template.spec.initContainers
+  init.name == "release-gate"
+  "restartPolicy" in object.keys(init)
+  msg := sprintf("release-gate runner %v init container must not set restartPolicy", [runner.metadata.name])
+}
+
+deny contains msg if {
+  some runner in runner_deployments
   count(runner.spec.template.spec.containers) != 1
   msg := sprintf("release-gate runner %v must have exactly one hold container", [runner.metadata.name])
 }

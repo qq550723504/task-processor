@@ -171,11 +171,34 @@ func TestListingKitReleaseAuthorityCrossFilePolicyRejectsReleaseGateInvocationOv
 			if mutated == string(workflow) {
 				t.Fatalf("test fixture did not mutate %q", test.name)
 			}
-			output, runErr := runReleaseAuthorityCrossFilePolicy(t, mutated)
+			output, runErr := runReleaseAuthorityCrossFilePolicy(t, mutated, "")
 			if runErr == nil {
 				t.Fatalf("cross-file release-authority policy accepted %s:\n%s", test.name, output)
 			}
 		})
+	}
+}
+
+func TestListingKitReleaseAuthorityCrossFilePolicyRejectsNativeSidecarRunner(t *testing.T) {
+	t.Parallel()
+
+	workflow, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runnerPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "release-authority", "listingkit-release-gate-runners.yaml")
+	runners, err := os.ReadFile(runnerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutatedRunners := strings.Replace(string(runners), "        - name: release-gate\n          image:", "        - name: release-gate\n          restartPolicy: Always\n          image:", 1)
+	if mutatedRunners == string(runners) {
+		t.Fatal("test fixture did not add restartPolicy to release-gate init container")
+	}
+
+	output, runErr := runReleaseAuthorityCrossFilePolicy(t, string(workflow), mutatedRunners)
+	if runErr == nil {
+		t.Fatalf("cross-file release-authority policy accepted a native-sidecar release-gate runner:\n%s", output)
 	}
 }
 
@@ -470,7 +493,7 @@ type releaseAuthorityWorkflow struct {
 	} `yaml:"jobs"`
 }
 
-func runReleaseAuthorityCrossFilePolicy(t *testing.T, mutatedWorkflow string) (string, error) {
+func runReleaseAuthorityCrossFilePolicy(t *testing.T, mutatedWorkflow, mutatedRunnerManifest string) (string, error) {
 	t.Helper()
 
 	repoRoot, err := filepath.Abs(filepath.Join(".."))
@@ -484,6 +507,17 @@ func runReleaseAuthorityCrossFilePolicy(t *testing.T, mutatedWorkflow string) (s
 	}
 	if err := os.WriteFile(workflowPath, []byte(mutatedWorkflow), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	runnerManifestPath := "deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml"
+	if mutatedRunnerManifest != "" {
+		runnerFixturePath := filepath.Join(fixtureRoot, "deployments", "kubernetes", "listingkit-workbench", "release-authority", "listingkit-release-gate-runners.yaml")
+		if err := os.MkdirAll(filepath.Dir(runnerFixturePath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(runnerFixturePath, []byte(mutatedRunnerManifest), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		runnerManifestPath = "/fixture/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml"
 	}
 
 	arguments := []string{
@@ -502,7 +536,7 @@ func runReleaseAuthorityCrossFilePolicy(t *testing.T, mutatedWorkflow string) (s
 		"deployments/kubernetes/listingkit-workbench/release-authority/listingkit-ui-release-role.yaml",
 		"deployments/kubernetes/listingkit-workbench/release-authority/listingkit-ui-release-rolebinding.yaml",
 		"deployments/kubernetes/listingkit-workbench/release-authority/kustomization.yaml",
-		"deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml",
+		runnerManifestPath,
 		"/fixture/.github/workflows/listingkit-deploy.yml",
 		".github/workflows/listingkit-ui-deploy.yml",
 	}
