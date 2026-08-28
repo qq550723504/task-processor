@@ -58,7 +58,7 @@ type DurableAssetIdentity struct {
 }
 
 var sha256Pattern = regexp.MustCompile(`^[a-fA-F0-9]{64}$`)
-var artifactKeyIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+var artifactKeyIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 // ValidateArtifactKeyIdentifier enforces the canonical identifier grammar
 // shared by run/slot commands and deterministic durable object keys.

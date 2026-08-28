@@ -228,7 +228,7 @@ func commandService(t *testing.T, status imageagent.RunStatus, block *imageagent
 func commandPlan(revision int64) imageagent.Plan {
 	return imageagent.Plan{
 		Revision: revision, IdempotencyKey: "plan-key-" + string(rune('0'+revision)), SourceAssetIDs: []string{"source-1"},
-		Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1"}},
+		Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1"}},
 	}
 }
 
@@ -283,6 +283,25 @@ func TestServiceStartRejectsRunIDOutsideArtifactGrammarBeforeWorkflowStart(t *te
 
 	require.ErrorIs(t, err, imageagent.ErrValidation)
 	require.Empty(t, workflows.starts)
+}
+
+func TestServiceStartRejectsUnsafeSlotConcurrencyBeforePersistence(t *testing.T) {
+	for _, maxConcurrentSlots := range []int{-1, 11} {
+		repository := store.NewMemoryRepository()
+		workflows := &recordingWorkflowClient{}
+		service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
+		require.NoError(t, err)
+
+		err = service.Start(verifiedContext("tenant-a", "user-a"), imageagent.StartRunInput{
+			RunID: "run-concurrency", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
+			IdempotencyKey: "run-concurrency-key", Plan: commandPlan(1), MaxConcurrentSlots: maxConcurrentSlots,
+		})
+
+		require.ErrorIs(t, err, imageagent.ErrValidation)
+		_, getErr := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-concurrency"})
+		require.ErrorIs(t, getErr, imageagent.ErrRunNotFound)
+		require.Empty(t, workflows.starts)
+	}
 }
 
 func TestServiceStartCapturesBusinessTaskInExecutionIdentity(t *testing.T) {

@@ -28,10 +28,31 @@ func TestNormalizeAssetCatalogPreservesExplicitStableManifest(t *testing.T) {
 func TestValidatePlanAllowsMoreThanTenIndependentSlots(t *testing.T) {
 	slots := make([]Slot, 11)
 	for i := range slots {
-		slots[i] = Slot{ID: fmt.Sprintf("slot-%d", i), Role: SlotRoleScene, IdempotencyKey: fmt.Sprintf("slot-key-%d", i), SourceAssetIDs: []string{"source-1"}}
+		role := SlotRoleScene
+		if i == 0 {
+			role = SlotRoleMain
+		}
+		slots[i] = Slot{ID: fmt.Sprintf("slot-%d", i), Role: role, IdempotencyKey: fmt.Sprintf("slot-key-%d", i), SourceAssetIDs: []string{"source-1"}}
 	}
 	err := ValidatePlan(Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, Slots: slots})
 	require.NoError(t, err)
+}
+
+func TestValidatePlanRequiresExactlyOneMainSlot(t *testing.T) {
+	base := Plan{
+		Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"},
+		Slots: []Slot{{ID: "main-1", Role: SlotRoleMain, IdempotencyKey: "main-key-1", SourceAssetIDs: []string{"source-1"}}},
+	}
+	withoutMain := base
+	withoutMain.Slots = []Slot{{ID: "scene-1", Role: SlotRoleScene, IdempotencyKey: "scene-key-1", SourceAssetIDs: []string{"source-1"}}}
+	withTwoMain := base
+	withTwoMain.Slots = append(append([]Slot(nil), base.Slots...), Slot{ID: "main-2", Role: SlotRoleMain, IdempotencyKey: "main-key-2", SourceAssetIDs: []string{"source-1"}})
+
+	for name, plan := range map[string]Plan{"missing": withoutMain, "duplicate": withTwoMain} {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorContains(t, ValidatePlan(plan), "exactly one main slot")
+		})
+	}
 }
 
 func TestValidatePlanRejectsDuplicateSlotIDs(t *testing.T) {

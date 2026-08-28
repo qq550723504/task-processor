@@ -1,6 +1,9 @@
 package imageagent
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type RunMode string
 
@@ -84,11 +87,24 @@ type Run struct {
 	StartedAt          time.Time
 }
 
-const DefaultMaxConcurrentSlots = 4
+const (
+	DefaultMaxConcurrentSlots = 4
+	MaxConcurrentSlots        = 10
+)
+
+func ValidateMaxConcurrentSlots(value int) error {
+	if value < 0 || value > MaxConcurrentSlots {
+		return fmt.Errorf("%w: max concurrent slots must be zero or between 1 and %d", ErrValidation, MaxConcurrentSlots)
+	}
+	return nil
+}
 
 func NormalizeMaxConcurrentSlots(value int) int {
 	if value <= 0 {
 		return DefaultMaxConcurrentSlots
+	}
+	if value > MaxConcurrentSlots {
+		return MaxConcurrentSlots
 	}
 	return value
 }

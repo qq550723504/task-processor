@@ -50,6 +50,11 @@ func TestValidatePlanRejectsSlotIDOutsideArtifactGrammar(t *testing.T) {
 	}
 }
 
+func TestValidateArtifactKeyIdentifierMatchesPersistenceLength(t *testing.T) {
+	require.NoError(t, ValidateArtifactKeyIdentifier("r"+strings.Repeat("a", 63)))
+	require.ErrorIs(t, ValidateArtifactKeyIdentifier("r"+strings.Repeat("a", 64)), ErrValidation)
+}
+
 func TestNilOperationsRemainTask1CompatibleAcrossManifestNormalizationJSONAndFingerprints(t *testing.T) {
 	staging := historicalNilOperationsStagingManifest()
 	final := historicalNilOperationsFinalManifest()

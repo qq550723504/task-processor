@@ -41,6 +41,7 @@ func ValidatePlan(plan Plan) error {
 
 	slotIDs := make(map[string]struct{}, len(plan.Slots))
 	idempotencyKeys := make(map[string]struct{}, len(plan.Slots))
+	mainSlots := 0
 	for _, slot := range plan.Slots {
 		rawID := slot.ID
 		id := strings.TrimSpace(rawID)
@@ -59,6 +60,9 @@ func ValidatePlan(plan Plan) error {
 		slotIDs[id] = struct{}{}
 		if _, known := knownSlotRoles[slot.Role]; !known {
 			return fmt.Errorf("unknown slot role %q", slot.Role)
+		}
+		if slot.Role == SlotRoleMain {
+			mainSlots++
 		}
 
 		key := strings.TrimSpace(slot.IdempotencyKey)
@@ -88,6 +92,9 @@ func ValidatePlan(plan Plan) error {
 				return fmt.Errorf("style reference %q is not in plan", styleID)
 			}
 		}
+	}
+	if mainSlots != 1 {
+		return fmt.Errorf("plan requires exactly one main slot")
 	}
 	return nil
 }

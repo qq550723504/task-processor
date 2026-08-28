@@ -42,6 +42,9 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	input.RunID = strings.TrimSpace(input.RunID)
 	input.BusinessTaskID = strings.TrimSpace(input.BusinessTaskID)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	if err := ValidateMaxConcurrentSlots(input.MaxConcurrentSlots); err != nil {
+		return err
+	}
 	input.MaxConcurrentSlots = NormalizeMaxConcurrentSlots(input.MaxConcurrentSlots)
 	if input.RunID == "" || input.BusinessTaskID == "" || input.IdempotencyKey == "" {
 		return fmt.Errorf("%w: image agent run ID, business task ID, and idempotency key are required", ErrValidation)
