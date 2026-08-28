@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Phone } from "lucide-react";
 
@@ -110,7 +111,7 @@ export function ContactPanel() {
             <label>电话号码<input autoComplete="tel" name="contact" placeholder="请输入您的手机号码" required type="tel" /></label>
             <label>留言内容<textarea maxLength={1000} name="message" placeholder="请简单描述您的需求…" rows={3} /></label>
             <button disabled={state === "submitting"} type="submit">{state === "submitting" ? "提交中…" : "提交联系信息"}</button>
-            <small>提交即表示同意我们与您取得联系，信息仅用于本次业务沟通</small>
+            <small>提交即表示同意我们为本次业务沟通使用您的信息。请阅读<Link href="/privacy-policy">隐私政策</Link>和<Link href="/user-agreement">用户协议</Link>。</small>
             {message ? <p className={state === "success" ? styles.contactSuccess : styles.contactError} role="status">{message}</p> : null}
           </form>
         </div>

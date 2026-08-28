@@ -110,7 +110,7 @@ describe("MarketingHomepage", () => {
     expect(screen.getByRole("img", { name: "微信扫码咨询客服" })).toBeInTheDocument();
 
     await user.keyboard("{Shift>}{Tab}{/Shift}");
-    expect(screen.getByRole("button", { name: "提交联系信息" })).toHaveFocus();
+    expect(within(screen.getByRole("dialog", { name: "联系我们" })).getByRole("link", { name: "用户协议" })).toHaveFocus();
     await user.keyboard("{Tab}");
     expect(closeButton).toHaveFocus();
 
@@ -128,6 +128,18 @@ describe("MarketingHomepage", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "联系我们" })).not.toBeInTheDocument();
     expect(launcher).toHaveFocus();
+  });
+
+  it("links the contact consent and footer labels to the published policy pages", async () => {
+    const user = userEvent.setup();
+    render(<MarketingHomepage />);
+
+    await user.click(screen.getByRole("button", { name: "联系硕米" }));
+    const dialog = screen.getByRole("dialog", { name: "联系我们" });
+    expect(within(dialog).getByRole("link", { name: "隐私政策" })).toHaveAttribute("href", "/privacy-policy");
+    expect(within(dialog).getByRole("link", { name: "用户协议" })).toHaveAttribute("href", "/user-agreement");
+    expect(screen.getAllByRole("link", { name: "算力计费说明" }).at(-1)).toHaveAttribute("href", "/ai-compute-billing");
+    expect(screen.getAllByRole("link", { name: "服务协议" }).at(-1)).toHaveAttribute("href", "/service-agreement");
   });
 
   it("returns focus to the contact dialog when a pending submission disables the focused control", async () => {
@@ -151,6 +163,14 @@ describe("MarketingHomepage", () => {
 
     expect(styles).toMatch(/\.contactOverlay \{[^}]*overflow-y: auto;/);
     expect(styles).toMatch(/\.contactPanel \{[^}]*max-height: calc\(100dvh - 40px\);[^}]*overflow-y: auto;/);
+  });
+
+  it("uses a mobile-specific team layout instead of shrinking the desktop diagram into overlapping nodes", () => {
+    const styles = readFileSync("src/components/marketing/marketing-homepage.module.css", "utf8");
+
+    expect(styles).toMatch(
+      /@media \(max-width: 620px\) \{[\s\S]*?\.teamStage \{[^}]*?width: 100%;[^}]*?transform: none;[^}]*?\}[\s\S]*?\.teamNodeOne \{ top: 20px; left: 0; \}/,
+    );
   });
 
   it("switches the role solution panel when a user selects a different role", async () => {

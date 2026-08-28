@@ -8,16 +8,26 @@ import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ToastProvider } from "@/components/providers/toast-provider";
 import { ZitadelAuthGate } from "@/components/providers/zitadel-auth-gate";
 
+const publicRoutes = new Set([
+  "/",
+  "/login",
+  "/unauthorized",
+  "/privacy-policy",
+  "/user-agreement",
+  "/ai-compute-billing",
+  "/service-agreement",
+]);
+
+export function isPublicRoute(pathname: string | null): boolean {
+  return pathname !== null && publicRoutes.has(pathname);
+}
+
 export function ApplicationFrame({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
 
-  // Public marketing and login routes must not initialize the authenticated
+  // Public marketing, legal, and login routes must not initialize the authenticated
   // workspace shell (which reads client-side navigation state).
-  if (
-    pathname === "/" ||
-    pathname === "/login" ||
-    pathname === "/unauthorized"
-  ) {
+  if (isPublicRoute(pathname)) {
     return <>{children}</>;
   }
 
