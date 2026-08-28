@@ -186,6 +186,7 @@ func TestExecuteSlotV3PersistsDispatchedOutcomeAfterCallerCancellation(t *testin
 
 func TestExecuteSlotV3CancellationTerminalizesSuccessfulProviderEffect(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-provider-success-cancelled")
+	input.ExternalEffectFinalization = true
 	path := writeTinyPNG(t)
 	var cancel context.CancelFunc
 	executor := &recordingStagedExecutor{
@@ -217,6 +218,38 @@ func TestExecuteSlotV3CancellationTerminalizesSuccessfulProviderEffect(t *testin
 	require.NotEqual(t, imageagent.SlotEffectV3ProviderClaimed, stored.Phase)
 }
 
+func TestExecuteSlotV3CancellationPreservesLegacySuccessfulProviderBehaviorWithoutPatch(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-provider-success-legacy-cancelled")
+	path := writeTinyPNG(t)
+	var cancel context.CancelFunc
+	executor := &recordingStagedExecutor{
+		generated: generatedV3Output(input, path),
+		onGenerate: func() {
+			cancel()
+		},
+	}
+	effects := &cancellationObservingV3Repository{SlotExternalEffectV3Repository: repository.(imageagent.SlotExternalEffectV3Repository)}
+	artifacts := &cancellationObservingArtifactStore{
+		recordingArtifactStore: &recordingArtifactStore{ensureErrors: []error{objectstore.ErrObjectConflict}},
+	}
+	activities := newV3Activities(t, repository, effects, executor, artifacts)
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	cancel = cancelCtx
+	defer cancel()
+
+	_, err := activities.ExecuteSlotV3(ctx, input)
+
+	require.ErrorContains(t, err, "ensure staged artifacts: context canceled")
+	require.True(t, artifacts.PreserveSawCancelledContext(), "legacy path still uses the caller context during recovery preservation")
+	require.True(t, artifacts.EnsureSawCancelledContext(), "legacy path still uses the caller context during staging")
+	require.True(t, effects.PrepareSawCancelledContext(), "legacy path still uses the caller context during staging transition")
+	require.False(t, effects.BlockSawCancelledContext(), "legacy path should not reach detached staging fallback")
+
+	stored, getErr := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, getErr)
+	require.Equal(t, imageagent.SlotEffectV3StagingPrepared, stored.Phase)
+}
+
 func TestExecuteSlotV3ResumesPersistedStagingWithoutRegeneration(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-resume-staging")
 	effects := repository.(imageagent.SlotExternalEffectV3Repository)
@@ -237,6 +270,37 @@ func TestExecuteSlotV3ResumesPersistedStagingWithoutRegeneration(t *testing.T) {
 	stored, err := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
 	require.NoError(t, err)
 	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
+}
+
+func TestExecuteSlotV3CancellationTerminalizesResumedStagingPreparedEffect(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-resume-staging-cancelled")
+	input.ExternalEffectFinalization = true
+	baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
+	manifest := v3StagingManifest(input, tinyPNGBytes(t))
+	seedV3StagingPrepared(t, baseEffects, input, manifest)
+	effects := &cancellationObservingV3Repository{SlotExternalEffectV3Repository: baseEffects}
+	var cancel context.CancelFunc
+	artifacts := &cancellationObservingArtifactStore{
+		recordingArtifactStore: &recordingArtifactStore{ensureErrors: []error{objectstore.ErrObjectConflict}},
+		onEnsure: func() {
+			cancel()
+		},
+	}
+	activities := newV3Activities(t, repository, effects, &recordingStagedExecutor{}, artifacts)
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	cancel = cancelCtx
+	defer cancel()
+
+	_, err := activities.ExecuteSlotV3(ctx, input)
+
+	requireV3ApplicationErrorType(t, err, slotStagingOutcomeUnknownCode)
+	require.Zero(t, artifacts.PreserveCalls(), "resumed staging must not regenerate or preserve again")
+	require.False(t, artifacts.EnsureSawCancelledContext(), "resumed staging must use detached finalization context")
+	require.False(t, effects.BlockSawCancelledContext(), "resumed staging fallback must use detached finalization context")
+
+	stored, getErr := baseEffects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, getErr)
+	require.Equal(t, imageagent.SlotEffectV3StagingUnknown, stored.Phase)
 }
 
 func TestExecuteSlotV3RecoversLostTransitionResponses(t *testing.T) {
@@ -1078,6 +1142,7 @@ type cancellationObservingArtifactStore struct {
 	mu                          sync.Mutex
 	preserveSawCancelledContext bool
 	ensureSawCancelledContext   bool
+	onEnsure                    func()
 }
 
 func (s *cancellationObservingArtifactStore) PreserveSlotArtifacts(ctx context.Context, identity imageagent.SlotExternalEffectIdentity, prepared objectstore.PreparedSlotArtifacts) error {
@@ -1090,6 +1155,9 @@ func (s *cancellationObservingArtifactStore) PreserveSlotArtifacts(ctx context.C
 }
 
 func (s *cancellationObservingArtifactStore) EnsureStaged(ctx context.Context, prepared objectstore.PreparedSlotArtifacts) error {
+	if s.onEnsure != nil {
+		s.onEnsure()
+	}
 	if ctx.Err() != nil {
 		s.mu.Lock()
 		s.ensureSawCancelledContext = true

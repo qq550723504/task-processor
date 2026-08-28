@@ -162,16 +162,17 @@ type ExecuteSlotActivityInput struct {
 // ExecuteSlotV3ActivityInput is additive until Task 6 selects the v3 wire.
 // Keep ExecuteSlotActivityInput frozen for imageagent.execute_slot.v2 replay.
 type ExecuteSlotV3ActivityInput struct {
-	RunID               string
-	Identity            imageagent.ExecutionIdentity
-	PlanRevision        int64
-	Slot                imageagent.Slot
-	Attempt             int
-	IdempotencyKey      string
-	AssetCatalog        imageagent.AssetCatalog
-	BudgetAuthorization bool
-	BudgetPolicy        imageagent.BudgetPolicy
-	DeadlineAt          time.Time
+	RunID                      string
+	Identity                   imageagent.ExecutionIdentity
+	PlanRevision               int64
+	Slot                       imageagent.Slot
+	Attempt                    int
+	IdempotencyKey             string
+	AssetCatalog               imageagent.AssetCatalog
+	ExternalEffectFinalization bool
+	BudgetAuthorization        bool
+	BudgetPolicy               imageagent.BudgetPolicy
+	DeadlineAt                 time.Time
 }
 
 // DurableArtifactStore is the production/recovery boundary around deterministic

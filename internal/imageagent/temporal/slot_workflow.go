@@ -86,9 +86,10 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 	activityInput := ExecuteSlotV3ActivityInput{
 		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
 		Slot: input.Slot, Attempt: input.Attempt,
-		IdempotencyKey:      slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
-		AssetCatalog:        input.AssetCatalog,
-		BudgetAuthorization: input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy, DeadlineAt: input.DeadlineAt,
+		IdempotencyKey:             slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
+		AssetCatalog:               input.AssetCatalog,
+		ExternalEffectFinalization: input.ExternalEffectFinalization,
+		BudgetAuthorization:        input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy, DeadlineAt: input.DeadlineAt,
 	}
 	var published imageagent.SlotEffectV3PublishedResult
 	for {

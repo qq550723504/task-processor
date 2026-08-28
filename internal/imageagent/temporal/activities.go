@@ -245,9 +245,12 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	var generated imageagent.SlotGeneratedOutput
 	providerStagingCtx := ctx
 	cancelProviderStaging := func() {}
-	if effect.Phase == imageagent.SlotEffectV3ProviderClaimed {
+	if input.ExternalEffectFinalization &&
+		(effect.Phase == imageagent.SlotEffectV3ProviderClaimed || effect.Phase == imageagent.SlotEffectV3StagingPrepared) {
 		providerStagingCtx, cancelProviderStaging = providerFinalizationContext(ctx)
 		defer cancelProviderStaging()
+	}
+	if effect.Phase == imageagent.SlotEffectV3ProviderClaimed {
 		if claimed {
 			var generateErr error
 			if budgeted != nil {

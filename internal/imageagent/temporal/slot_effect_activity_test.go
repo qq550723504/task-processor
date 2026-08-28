@@ -138,6 +138,48 @@ func TestImageSlotWorkflowV3RejectsInvalidMainCandidateCount(t *testing.T) {
 	}
 }
 
+func TestImageSlotWorkflowV3ThreadsExternalEffectFinalizationToActivityInput(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		flag bool
+	}{
+		{name: "legacy history", flag: false},
+		{name: "new history", flag: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var suite testsuite.WorkflowTestSuite
+			env := suite.NewTestWorkflowEnvironment()
+			env.RegisterWorkflow(ImageSlotWorkflowV3)
+			observed := false
+			env.RegisterActivityWithOptions(func(_ context.Context, input ExecuteSlotV3ActivityInput) (imageagent.SlotEffectV3PublishedResult, error) {
+				observed = input.ExternalEffectFinalization
+				return imageagent.SlotEffectV3PublishedResult{
+					SlotID: input.Slot.ID, Attempt: input.Attempt,
+					Candidates: []imageagent.SlotEffectV3AssetCandidate{{
+						AssetID: "candidate-0", SourceAssetID: "source-1",
+						DurableAsset: imageagent.DurableAssetIdentity{
+							ObjectKey: "image-agent/public/tenant-a/fc95297aa4f56781f0decb7d4bf59b1447f09b3611039b80188b1c6beb03ee6a/run-thread-flag/1/scene-1/1/0-" + v3SHA256 + ".png",
+							SHA256:    v3SHA256,
+						},
+					}},
+				}, nil
+			}, sdkactivity.RegisterOptions{Name: testExecuteSlotV3ActivityName})
+			input := SlotWorkflowV3Input{
+				RunID: "run-thread-flag", Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}, PlanRevision: 1,
+				Slot:    imageagent.Slot{ID: "scene-1", Role: imageagent.SlotRoleScene, IdempotencyKey: "scene-key", SourceAssetIDs: []string{"source-1"}},
+				Attempt: 1, ExecuteActivityName: testExecuteSlotV3ActivityName, ExternalEffectFinalization: tc.flag,
+			}
+
+			env.ExecuteWorkflow(ImageSlotWorkflowV3, input)
+			require.NoError(t, env.GetWorkflowError())
+			var result SlotWorkflowV3Result
+			require.NoError(t, env.GetWorkflowResult(&result))
+			require.Equal(t, imageagent.SlotStatusAccepted, result.Status)
+			require.Equal(t, tc.flag, observed)
+		})
+	}
+}
+
 func TestPersistSlotResultV2PreservesInflightMainCandidateSemantics(t *testing.T) {
 	for _, tc := range []struct {
 		count   int
