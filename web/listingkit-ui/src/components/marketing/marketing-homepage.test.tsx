@@ -70,6 +70,12 @@ describe("MarketingHomepage", () => {
     expect(styles).toMatch(/@media \(max-width: 980px\) \{[\s\S]*?\.nav \{ display: none; \}/);
   });
 
+  it("keeps anchored sections below the sticky site header", () => {
+    const styles = readFileSync("src/components/marketing/marketing-homepage.module.css", "utf8");
+
+    expect(styles).toMatch(/\.section\[id\] \{ scroll-margin-top: 104px; \}/);
+  });
+
   it("includes the complete long-form Figma story", () => {
     render(<MarketingHomepage />);
 

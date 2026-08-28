@@ -114,6 +114,7 @@
 }
 
 .section { position: relative; padding: 72px 96px 80px; background: var(--bg); }
+.section[id] { scroll-margin-top: 104px; }
 .sectionHeading { position: relative; z-index: 2; max-width: 1180px; margin: 0 auto 54px; }
 .sectionHeading.centered { text-align: center; }
 .sectionHeading > p { margin-bottom: 14px; color: var(--blue); font-size: 13px; letter-spacing: 1.4px; }
