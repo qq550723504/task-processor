@@ -109,6 +109,11 @@ describe("MarketingHomepage", () => {
     expect(closeButton).toHaveFocus();
     expect(screen.getByRole("img", { name: "微信扫码咨询客服" })).toBeInTheDocument();
 
+    await user.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(screen.getByRole("button", { name: "提交联系信息" })).toHaveFocus();
+    await user.keyboard("{Tab}");
+    expect(closeButton).toHaveFocus();
+
     await user.type(screen.getByLabelText("电话号码"), "13800138000");
     await user.click(screen.getByRole("button", { name: "提交联系信息" }));
     await user.click(closeButton);
