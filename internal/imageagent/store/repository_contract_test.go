@@ -654,7 +654,7 @@ func planRevision(revision int64) imageagent.Plan {
 		Slots: []imageagent.Slot{
 			{
 				ID:                "slot-1",
-				Role:              imageagent.SlotRoleScene,
+				Role:              imageagent.SlotRoleMain,
 				SourceAssetIDs:    []string{"source-1"},
 				StyleReferenceIDs: []string{"style-1"},
 				Brief:             "front view",
