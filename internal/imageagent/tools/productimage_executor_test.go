@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
@@ -59,7 +60,7 @@ func TestProductImageV3BuildResultUsesMetadataAllowlist(t *testing.T) {
 	executor := NewProductImageSlotExecutor(Dependencies{})
 	input := sceneSlotInput("scene-1")
 	published := durablePublishedOutput(input, []imageagent.PublishedAssetRef{{
-		ObjectKey:     "image-agent/public/tenant-1/run-1/1/scene-1/1/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+		ObjectKey:     "image-agent/public/tenant-1/c6c289e49e9c05b2145860387b73bcb18df43fb09a1e4a4a9713c76c88bb541b/run-1/1/scene-1/1/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
 		SHA256:        strings.Repeat("a", 64),
 		SizeBytes:     42,
 		ContentType:   "image/png",
@@ -84,7 +85,7 @@ func TestProductImageV3BuildResultUsesMetadataAllowlist(t *testing.T) {
 	require.Equal(t, candidate.AssetID, again.Candidates[0].AssetID)
 
 	published.Assets[0].SHA256 = strings.Repeat("b", 64)
-	published.Assets[0].ObjectKey = "image-agent/public/tenant-1/run-1/1/scene-1/1/0-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.png"
+	published.Assets[0].ObjectKey = "image-agent/public/tenant-1/c6c289e49e9c05b2145860387b73bcb18df43fb09a1e4a4a9713c76c88bb541b/run-1/1/scene-1/1/0-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.png"
 	changed, err := executor.BuildSlotResult(context.Background(), input, published)
 	require.NoError(t, err)
 	require.NotEqual(t, candidate.AssetID, changed.Candidates[0].AssetID)
@@ -94,8 +95,8 @@ func TestProductImageV3MainSlotRequiresExactlyOneCandidate(t *testing.T) {
 	executor := NewProductImageSlotExecutor(Dependencies{})
 	input := slotInput("main-1", imageagent.SlotRoleMain)
 	published := durablePublishedOutput(input, []imageagent.PublishedAssetRef{
-		{ObjectKey: "image-agent/public/tenant-1/run-1/1/main-1/1/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png", SHA256: strings.Repeat("a", 64), SizeBytes: 1, ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1"},
-		{ObjectKey: "image-agent/public/tenant-1/run-1/1/main-1/1/1-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.png", SHA256: strings.Repeat("b", 64), SizeBytes: 1, ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1"},
+		publishedAssetForInput(input, 0, strings.Repeat("a", 64)),
+		publishedAssetForInput(input, 1, strings.Repeat("b", 64)),
 	})
 
 	_, err := executor.BuildSlotResult(context.Background(), input, published)
@@ -123,14 +124,16 @@ func TestProductImageV3BuildResultRejectsNonPublicAndMismatchedPublishedKeys(t *
 	executor := NewProductImageSlotExecutor(Dependencies{})
 	input := sceneSlotInput("scene-1")
 	hash := strings.Repeat("a", 64)
+	ownerKey, err := imageagent.ArtifactOwnerKey(input.UserID)
+	require.NoError(t, err)
 	for _, objectKey := range []string{
-		"image-agent/staging/tenant-1/run-1/1/scene-1/1/0-" + hash + ".png",
+		"image-agent/staging/tenant-1/" + ownerKey + "/run-1/1/scene-1/1/0-" + hash + ".png",
 		"private/provider-output/0-" + hash + ".png",
-		"image-agent/public/tenant-2/run-1/1/scene-1/1/0-" + hash + ".png",
-		"image-agent/public/tenant-1/run-1/01/scene-1/1/0-" + hash + ".png",
-		"image-agent/public/tenant-1/run-1/1/scene-1/1/1-" + hash + ".png",
-		"image-agent/public/tenant-1/run-1/1/scene-1/1/0-" + strings.Repeat("b", 64) + ".png",
-		"image-agent/public/tenant-1/run-1/1/scene-1/1/0-" + hash + ".jpg",
+		"image-agent/public/tenant-2/" + ownerKey + "/run-1/1/scene-1/1/0-" + hash + ".png",
+		"image-agent/public/tenant-1/" + ownerKey + "/run-1/01/scene-1/1/0-" + hash + ".png",
+		"image-agent/public/tenant-1/" + ownerKey + "/run-1/1/scene-1/1/1-" + hash + ".png",
+		"image-agent/public/tenant-1/" + ownerKey + "/run-1/1/scene-1/1/0-" + strings.Repeat("b", 64) + ".png",
+		"image-agent/public/tenant-1/" + ownerKey + "/run-1/1/scene-1/1/0-" + hash + ".jpg",
 	} {
 		t.Run(objectKey, func(t *testing.T) {
 			_, err := executor.BuildSlotResult(context.Background(), input, durablePublishedOutput(input, []imageagent.PublishedAssetRef{{
@@ -158,8 +161,12 @@ func TestProductImageV3BuildResultAcceptsOpaqueAuthenticatedUserID(t *testing.T)
 	executor := NewProductImageSlotExecutor(Dependencies{})
 	input := sceneSlotInput("scene-1")
 	input.UserID = "auth0|opaque/user:1"
+	published := publicPublishedAsset()
+	ownerKey, err := imageagent.ArtifactOwnerKey(input.UserID)
+	require.NoError(t, err)
+	published.ObjectKey = strings.Replace(published.ObjectKey, "c6c289e49e9c05b2145860387b73bcb18df43fb09a1e4a4a9713c76c88bb541b", ownerKey, 1)
 
-	result, err := executor.BuildSlotResult(context.Background(), input, durablePublishedOutput(input, []imageagent.PublishedAssetRef{publicPublishedAsset()}))
+	result, err := executor.BuildSlotResult(context.Background(), input, durablePublishedOutput(input, []imageagent.PublishedAssetRef{published}))
 
 	require.NoError(t, err)
 	require.Len(t, result.Candidates, 1)
@@ -193,7 +200,7 @@ func TestProductImageV3CandidateIdentityBindsEveryAttemptDomain(t *testing.T) {
 		{name: "attempt", mutate: func(input *imageagent.SlotExecutionInput, _ *imageagent.PublishedAssetRef, _ *int) { input.Attempt = 2 }},
 		{name: "index and final key", mutate: func(_ *imageagent.SlotExecutionInput, asset *imageagent.PublishedAssetRef, index *int) {
 			*index = 1
-			asset.ObjectKey = "image-agent/public/tenant-1/run-1/1/scene-1/1/1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
+			asset.ObjectKey = "image-agent/public/tenant-1/c6c289e49e9c05b2145860387b73bcb18df43fb09a1e4a4a9713c76c88bb541b/run-1/1/scene-1/1/1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
 		}},
 		{name: "final hash", mutate: func(_ *imageagent.SlotExecutionInput, asset *imageagent.PublishedAssetRef, _ *int) {
 			asset.SHA256 = strings.Repeat("b", 64)
@@ -215,7 +222,7 @@ func TestProductImageV3BuildResultPreservesPublishedOrder(t *testing.T) {
 	input := sceneSlotInput("scene-1")
 	first := publicPublishedAsset()
 	second := first
-	second.ObjectKey = "image-agent/public/tenant-1/run-1/1/scene-1/1/1-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.png"
+	second.ObjectKey = "image-agent/public/tenant-1/c6c289e49e9c05b2145860387b73bcb18df43fb09a1e4a4a9713c76c88bb541b/run-1/1/scene-1/1/1-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.png"
 	second.SHA256 = strings.Repeat("b", 64)
 
 	result, err := executor.BuildSlotResult(context.Background(), input, durablePublishedOutput(input, []imageagent.PublishedAssetRef{first, second}))
@@ -344,6 +351,20 @@ func TestExecutorMapsSceneRoleBriefAndAuthorizedStyleReferencesToSceneContext(t 
 	require.Equal(t, "detail", renderer.context.Attributes["slot_role"])
 	require.Equal(t, "show material texture", renderer.context.Attributes["slot_brief"])
 	require.Equal(t, "style-1", renderer.context.Attributes["style_reference_ids"])
+}
+
+func TestExecutorUsesRunScopedProductContextInsteadOfProcessDefault(t *testing.T) {
+	renderer := &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: "https://generated.example/scene.jpg"}}}
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer, ProductContext: &productimage.ProductContext{Title: "stale process default"}})
+	input := sceneSlotInput("scene-1")
+	input.ProductContext = imageagent.ProductContextRef{ProductID: "task-1", Title: "Travel Bottle", ProductType: "Bottles", Attributes: map[string]string{"Material": "Steel"}}
+
+	_, err := executor.ExecuteSlot(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Equal(t, "Travel Bottle", renderer.context.Title)
+	require.Equal(t, "Bottles", renderer.context.ProductType)
+	require.Equal(t, "Steel", renderer.context.Attributes["Material"])
 }
 
 func TestExecutorKeepsProviderOutputsAsCandidatesForDeclaredSlot(t *testing.T) {
@@ -685,6 +706,26 @@ func TestProductImageSlotUsageRejectsOutputAboveQuote(t *testing.T) {
 	require.Equal(t, imageagent.ProviderDispatchedUnknown, imageagent.ProviderDispatchStateOf(err))
 }
 
+func TestProductImageMainRetainsAggregateReservationAfterEarlierOperationDispatches(t *testing.T) {
+	extractor := &quotedSubjectExtractor{quote: productimage.CapabilityUsageQuote{
+		Provider: "provider-a", Model: "subject", Fingerprint: "subject-v1", MaximumOutputs: 1, MaximumModelCalls: 1, CostUpperBoundKnown: true,
+	}, result: &productimage.ImageAsset{URL: "https://generated.example/subject.png"}}
+	white := &quotedWhiteBackgroundRenderer{quote: productimage.CapabilityUsageQuote{
+		Provider: "provider-a", Model: "white", Fingerprint: "white-v1", MaximumOutputs: 1, MaximumModelCalls: 1, CostUpperBoundKnown: true,
+	}, err: &productimage.CapabilityDispatchError{State: productimage.CapabilityRejectedBeforeEffect, Err: errors.New("white renderer rejected before its own effect")}}
+	executor := NewProductImageSlotExecutor(Dependencies{SubjectExtractor: extractor, WhiteBackgroundRenderer: white})
+	input := slotInput("main-1", imageagent.SlotRoleMain)
+	quote, err := executor.QuoteSlot(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+
+	_, err = executor.GenerateQuotedSlot(context.Background(), input, quote)
+
+	require.Error(t, err)
+	require.Equal(t, imageagent.ProviderDispatchedUnknown, imageagent.ProviderDispatchStateOf(err))
+	require.Equal(t, 1, extractor.calls)
+	require.Equal(t, 1, white.calls)
+}
+
 func sceneSlotInput(id string) imageagent.SlotExecutionInput {
 	return slotInput(id, imageagent.SlotRoleScene)
 }
@@ -702,9 +743,17 @@ func durablePublishedOutput(input imageagent.SlotExecutionInput, assets []imagea
 }
 
 func publicPublishedAsset() imageagent.PublishedAssetRef {
+	return publishedAssetForInput(sceneSlotInput("scene-1"), 0, strings.Repeat("a", 64))
+}
+
+func publishedAssetForInput(input imageagent.SlotExecutionInput, index int, hash string) imageagent.PublishedAssetRef {
+	ownerKey, err := imageagent.ArtifactOwnerKey(input.UserID)
+	if err != nil {
+		panic(err)
+	}
 	return imageagent.PublishedAssetRef{
-		ObjectKey:     "image-agent/public/tenant-1/run-1/1/scene-1/1/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
-		SHA256:        strings.Repeat("a", 64),
+		ObjectKey:     fmt.Sprintf("image-agent/public/%s/%s/%s/%d/%s/%d/%d-%s.png", input.TenantID, ownerKey, input.RunID, input.PlanRevision, strings.TrimSpace(input.Slot.ID), input.Attempt, index, hash),
+		SHA256:        hash,
 		SizeBytes:     1,
 		ContentType:   "image/png",
 		Width:         1,
@@ -773,6 +822,7 @@ func (q *quotedSubjectExtractor) Extract(_ context.Context, _ string, _ *product
 type quotedWhiteBackgroundRenderer struct {
 	quote  productimage.CapabilityUsageQuote
 	result *productimage.ImageAsset
+	err    error
 	calls  int
 }
 
@@ -784,7 +834,7 @@ func (q *quotedWhiteBackgroundRenderer) QuoteUsage(_ context.Context, request pr
 
 func (q *quotedWhiteBackgroundRenderer) Render(_ context.Context, _ *productimage.ImageAsset, _ *productimage.ProductContext) (*productimage.ImageAsset, error) {
 	q.calls++
-	return q.result, nil
+	return q.result, q.err
 }
 
 type quotedSceneRenderer struct {

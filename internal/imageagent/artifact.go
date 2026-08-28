@@ -60,6 +60,8 @@ type DurableAssetIdentity struct {
 var sha256Pattern = regexp.MustCompile(`^[a-fA-F0-9]{64}$`)
 var artifactKeyIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
+const maxArtifactOwnerIDLength = 128
+
 // ValidateArtifactKeyIdentifier enforces the canonical identifier grammar
 // shared by run/slot commands and deterministic durable object keys.
 func ValidateArtifactKeyIdentifier(value string) error {
@@ -67,6 +69,18 @@ func ValidateArtifactKeyIdentifier(value string) error {
 		return ErrValidation
 	}
 	return nil
+}
+
+// ArtifactOwnerKey turns the owner-scoped run identity into a fixed-width,
+// opaque object-key component. Owner IDs may use a wider grammar than object
+// keys, and must not be exposed verbatim in storage paths.
+func ArtifactOwnerKey(ownerUserID string) (string, error) {
+	canonical := strings.TrimSpace(ownerUserID)
+	if canonical == "" || canonical != ownerUserID || len(canonical) > maxArtifactOwnerIDLength {
+		return "", ErrValidation
+	}
+	sum := sha256.Sum256([]byte(canonical))
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // PublishedArtifactPrefix is the deterministic Task 2 public-object prefix.
@@ -154,7 +168,8 @@ func ValidatePublishedAssetIdentityForSlot(input SlotExecutionInput, asset Durab
 func validatePublishedAssetIdentityForSlot(input SlotExecutionInput, asset DurableAssetIdentity, expectedIndex int) (DurableAssetIdentity, string, error) {
 	tenantID := strings.TrimSpace(input.TenantID)
 	runID, slotID := strings.TrimSpace(input.RunID), strings.TrimSpace(input.Slot.ID)
-	if tenantID == "" || runID == "" || slotID == "" || input.PlanRevision <= 0 || input.Attempt <= 0 || expectedIndex < 0 {
+	ownerKey, err := ArtifactOwnerKey(input.UserID)
+	if tenantID == "" || runID == "" || slotID == "" || err != nil || input.PlanRevision <= 0 || input.Attempt <= 0 || expectedIndex < 0 {
 		return DurableAssetIdentity{}, "", ErrValidation
 	}
 	normalized, err := NormalizeDurableAssetIdentity(asset)
@@ -162,17 +177,17 @@ func validatePublishedAssetIdentityForSlot(input SlotExecutionInput, asset Durab
 		return DurableAssetIdentity{}, "", err
 	}
 	segments := strings.Split(normalized.ObjectKey, "/")
-	if len(segments) != 8 || strings.Join(segments[:2], "/") != PublishedArtifactPrefix || ValidateArtifactKeyIdentifier(segments[2]) != nil || ValidateArtifactKeyIdentifier(segments[3]) != nil || ValidateArtifactKeyIdentifier(segments[5]) != nil {
+	if len(segments) != 9 || strings.Join(segments[:2], "/") != PublishedArtifactPrefix || ValidateArtifactKeyIdentifier(segments[2]) != nil || !sha256Pattern.MatchString(segments[3]) || ValidateArtifactKeyIdentifier(segments[4]) != nil || ValidateArtifactKeyIdentifier(segments[6]) != nil {
 		return DurableAssetIdentity{}, "", ErrValidation
 	}
-	if segments[2] != tenantID || segments[3] != runID || segments[4] != strconv.FormatInt(input.PlanRevision, 10) || segments[5] != slotID || segments[6] != strconv.Itoa(input.Attempt) {
+	if segments[2] != tenantID || segments[3] != ownerKey || segments[4] != runID || segments[5] != strconv.FormatInt(input.PlanRevision, 10) || segments[6] != slotID || segments[7] != strconv.Itoa(input.Attempt) {
 		return DurableAssetIdentity{}, "", ErrValidation
 	}
 	filenamePrefix := strconv.Itoa(expectedIndex) + "-" + normalized.SHA256 + "."
-	if !strings.HasPrefix(segments[7], filenamePrefix) {
+	if !strings.HasPrefix(segments[8], filenamePrefix) {
 		return DurableAssetIdentity{}, "", ErrValidation
 	}
-	extension := strings.TrimPrefix(segments[7], filenamePrefix)
+	extension := strings.TrimPrefix(segments[8], filenamePrefix)
 	if !isPublishedArtifactExtension(extension) {
 		return DurableAssetIdentity{}, "", ErrValidation
 	}

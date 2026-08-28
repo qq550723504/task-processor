@@ -75,8 +75,8 @@ func (p *imageAgentApprovedPublisher) PublishApproved(ctx context.Context, input
 	}
 	ack := listingkit.ImageAgentPublicationAcknowledgement{TaskID: projection.Run.BusinessTaskID, RunID: scope.RunID, PlanRevision: input.PlanRevision, ResultDigest: digest, IdempotencyKey: input.IdempotencyKey, CandidateAssetIDs: append([]string(nil), approvedIDs...)}
 	stored, err := p.tasks.CommitImageAgentPublication(ctx, listingkit.ImageAgentPublicationCommit{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, TaskID: projection.Run.BusinessTaskID, IdempotencyKey: input.IdempotencyKey, Fingerprint: fingerprint, Acknowledgement: ack}, func(task *listingkit.Task) error {
-		if task == nil || task.TenantID != scope.TenantID || listingkit.ResolveTaskUserID(task) != scope.OwnerUserID || task.Result == nil || task.Result.StandardProductSnapshot == nil {
-			return imageagent.ErrRunNotFound
+		if err := validateImageAgentPublicationTask(task, scope, projection.AssetCatalog); err != nil {
+			return err
 		}
 		applyApprovedAssetRecords(task.Result, records)
 		return nil
@@ -113,8 +113,8 @@ func (p *imageAgentApprovedPublisher) PublishApprovedV3(ctx context.Context, inp
 	}
 	ack := listingkit.ImageAgentPublicationAcknowledgement{TaskID: projection.Run.BusinessTaskID, RunID: scope.RunID, PlanRevision: input.PlanRevision, ResultDigest: digest, IdempotencyKey: input.IdempotencyKey, CandidateAssetIDs: append([]string(nil), approvedIDs...)}
 	stored, err := p.tasks.CommitImageAgentPublication(ctx, listingkit.ImageAgentPublicationCommit{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, TaskID: projection.Run.BusinessTaskID, IdempotencyKey: input.IdempotencyKey, Fingerprint: fingerprint, Acknowledgement: ack}, func(task *listingkit.Task) error {
-		if task == nil || task.TenantID != scope.TenantID || listingkit.ResolveTaskUserID(task) != scope.OwnerUserID || task.Result == nil || task.Result.StandardProductSnapshot == nil {
-			return imageagent.ErrRunNotFound
+		if err := validateImageAgentPublicationTask(task, scope, projection.AssetCatalog); err != nil {
+			return err
 		}
 		applyApprovedAssetRecords(task.Result, records)
 		return nil
@@ -123,6 +123,33 @@ func (p *imageAgentApprovedPublisher) PublishApprovedV3(ctx context.Context, inp
 		return imageagent.PublicationAcknowledgement{}, fmt.Errorf("persist approved image agent candidates: %w", err)
 	}
 	return imageagent.PublicationAcknowledgement{TaskID: stored.TaskID, RunID: stored.RunID, PlanRevision: stored.PlanRevision, ResultDigest: stored.ResultDigest, IdempotencyKey: stored.IdempotencyKey, CandidateAssetIDs: append([]string(nil), stored.CandidateAssetIDs...)}, nil
+}
+
+func validateImageAgentPublicationTask(task *listingkit.Task, scope imageagent.RunScope, expected imageagent.AssetCatalog) error {
+	if task == nil || task.TenantID != scope.TenantID || listingkit.ResolveTaskUserID(task) != scope.OwnerUserID || task.Result == nil || task.Result.StandardProductSnapshot == nil {
+		return imageagent.ErrRunNotFound
+	}
+	expected, err := imageagent.NormalizeAssetCatalog(expected)
+	if err != nil || len(expected.Assets) == 0 {
+		return imageagent.ErrRevisionConflict
+	}
+	current, err := imageAgentCatalogFromTask(task)
+	if err != nil {
+		return imageagent.ErrRevisionConflict
+	}
+	// Historical v2 snapshots did not include product context. They can still
+	// prove source-asset consistency; new snapshots bind both assets and the
+	// provider-facing title/type/attributes through the catalog-v2 hash.
+	if imageagent.ProductContextRefIsZero(expected.ProductContext) {
+		if expected.Manifest.Hash != imageagent.CatalogHash(current.Assets) {
+			return imageagent.ErrRevisionConflict
+		}
+		return nil
+	}
+	if expected.Manifest.Hash != current.Manifest.Hash {
+		return imageagent.ErrRevisionConflict
+	}
+	return nil
 }
 
 func validateApprovedProjectionAndCandidates(projection imageagent.RunProjection, requested []string) ([]string, []asset.AssetRecord, error) {

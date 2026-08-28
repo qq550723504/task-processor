@@ -65,7 +65,7 @@ func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredR
 	}
 	productimage.ApplyScenePresetMetadata(inputAsset.Metadata, req.Task.RenderProfile)
 
-	rendered, err := r.renderer.Render(ctx, inputAsset, buildProductContext(req.Product))
+	rendered, err := r.renderer.Render(ctx, inputAsset, BuildProductContext(req.Product))
 	if err != nil {
 		return nil, err
 	}
@@ -108,13 +108,13 @@ func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredR
 		record.Metadata = map[string]string{}
 	}
 	productimage.ApplyScenePresetMetadata(record.Metadata, req.Task.RenderProfile)
-	productimage.ApplySellingPointContentPlanMetadata(record.Metadata, req.Task.RenderProfile, buildProductContext(req.Product))
-	productimage.ApplySellingPointFillInputMetadata(record.Metadata, req.Task.RenderProfile, buildProductContext(req.Product))
-	productimage.ApplySellingPointRenderBlocksMetadata(record.Metadata, req.Task.RenderProfile, buildProductContext(req.Product))
-	productimage.ApplySellingPointRenderPlanMetadata(record.Metadata, req.Task.RenderProfile, buildProductContext(req.Product))
-	productimage.ApplySellingPointRenderOutputMetadata(record.Metadata, req.Task.RenderProfile, buildProductContext(req.Product))
-	productimage.ApplySellingPointDrawOutputMetadata(record.Metadata, req.Task.RenderProfile, buildProductContext(req.Product))
-	productimage.ApplySellingPointDrawPreviewMetadata(record.Metadata, req.Task.RenderProfile, buildProductContext(req.Product))
+	productimage.ApplySellingPointContentPlanMetadata(record.Metadata, req.Task.RenderProfile, BuildProductContext(req.Product))
+	productimage.ApplySellingPointFillInputMetadata(record.Metadata, req.Task.RenderProfile, BuildProductContext(req.Product))
+	productimage.ApplySellingPointRenderBlocksMetadata(record.Metadata, req.Task.RenderProfile, BuildProductContext(req.Product))
+	productimage.ApplySellingPointRenderPlanMetadata(record.Metadata, req.Task.RenderProfile, BuildProductContext(req.Product))
+	productimage.ApplySellingPointRenderOutputMetadata(record.Metadata, req.Task.RenderProfile, BuildProductContext(req.Product))
+	productimage.ApplySellingPointDrawOutputMetadata(record.Metadata, req.Task.RenderProfile, BuildProductContext(req.Product))
+	productimage.ApplySellingPointDrawPreviewMetadata(record.Metadata, req.Task.RenderProfile, BuildProductContext(req.Product))
 	record.Metadata["execution_mode"] = ExecutionModeRendererBacked
 	record.Metadata["source_kind"] = string(req.BaseAsset.Kind)
 	if value := strings.TrimSpace(req.Task.RenderProfile); value != "" {

@@ -39,6 +39,44 @@ func TestExecuteSlotV3BudgetQuoteReserveGenerateAndSettle(t *testing.T) {
 	require.Equal(t, 1, projection.Run.Usage.AgentSteps)
 }
 
+func TestExecuteSlotV3AccountsProviderUsageWhenOnlyElapsedLimitIsEnabled(t *testing.T) {
+	budget := imageagent.Budget{MaxElapsed: time.Hour, EnabledLimits: imageagent.BudgetLimitElapsed}
+	repository, input, policy := initializedBudgetedV3ActivityWithBudget(t, "run-budget-elapsed-only", budget)
+	generated := generatedV3Output(input, writeTinyPNG(t))
+	quote := budgetActivityQuote("quote-elapsed-only")
+	generated.UsageReceipt = imageagent.SlotUsageReceipt{Actual: quote.Maximum, CostBasis: imageagent.UsageCostReservedUpperBound}
+	executor := &budgetedRecordingExecutor{recordingStagedExecutor: &recordingStagedExecutor{generated: generated}, quote: quote}
+	activities := newBudgetV3Activities(t, repository, executor, &recordingArtifactStore{})
+	input.BudgetAuthorization, input.BudgetPolicy = true, policy
+	input.DeadlineAt = time.Now().UTC().Add(time.Hour)
+
+	_, err := activities.ExecuteSlotV3(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, executor.QuoteCalls())
+	projection, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID})
+	require.NoError(t, err)
+	require.Equal(t, 1, projection.Run.Usage.Images)
+	require.Equal(t, 1, projection.Run.Usage.AgentSteps)
+}
+
+func TestExecuteSlotV3PassesAbsoluteRunDeadlineToProvider(t *testing.T) {
+	budget := imageagent.Budget{MaxElapsed: time.Hour, EnabledLimits: imageagent.BudgetLimitElapsed}
+	repository, input, policy := initializedBudgetedV3ActivityWithBudget(t, "run-budget-provider-deadline", budget)
+	base := &budgetedRecordingExecutor{recordingStagedExecutor: &recordingStagedExecutor{}, quote: budgetActivityQuote("quote-provider-deadline")}
+	executor := &deadlineBudgetedExecutor{budgetedRecordingExecutor: base}
+	activities := newBudgetV3Activities(t, repository, executor, &recordingArtifactStore{})
+	input.BudgetAuthorization, input.BudgetPolicy = true, policy
+	input.DeadlineAt = time.Now().UTC().Add(50 * time.Millisecond)
+	parent, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	_, err := activities.ExecuteSlotV3(parent, input)
+
+	requireV3ApplicationErrorType(t, err, imageagent.SlotProviderOutcomeUnknownCode)
+	require.WithinDuration(t, input.DeadlineAt, executor.ProviderDeadline(), 10*time.Millisecond)
+}
+
 func TestExecuteSlotV3BudgetDeniesBeforeProvider(t *testing.T) {
 	repository, input, policy := initializedBudgetedV3Activity(t, "run-budget-zero", 0)
 	executor := &budgetedRecordingExecutor{recordingStagedExecutor: &recordingStagedExecutor{}, quote: budgetActivityQuote("quote-denied")}
@@ -121,9 +159,13 @@ func TestImageAgentWorkflowBudgetDeniesRepairBeforeChild(t *testing.T) {
 }
 
 func initializedBudgetedV3Activity(t *testing.T, runID string, maxImages int) (imageagent.Repository, ExecuteSlotV3ActivityInput, imageagent.BudgetPolicy) {
+	return initializedBudgetedV3ActivityWithBudget(t, runID, imageagent.Budget{MaxImages: maxImages, EnabledLimits: imageagent.BudgetLimitImages})
+}
+
+func initializedBudgetedV3ActivityWithBudget(t *testing.T, runID string, budget imageagent.Budget) (imageagent.Repository, ExecuteSlotV3ActivityInput, imageagent.BudgetPolicy) {
 	t.Helper()
 	repository := store.NewMemoryRepository()
-	run := imageagent.Run{ID: runID, BusinessTaskID: "task-" + runID, TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-" + runID, Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1, Budget: imageagent.Budget{MaxImages: maxImages, EnabledLimits: imageagent.BudgetLimitImages}, StartedAt: time.Now().UTC()}
+	run := imageagent.Run{ID: runID, BusinessTaskID: "task-" + runID, TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-" + runID, Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1, Budget: budget, StartedAt: time.Now().UTC()}
 	policy, err := run.Budget.Policy()
 	require.NoError(t, err)
 	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, CreatedBy: "user-a", Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1"}}}
@@ -142,6 +184,27 @@ type budgetedRecordingExecutor struct {
 	quote       imageagent.SlotUsageQuote
 	quoteCalls  int
 	generateErr error
+}
+
+type deadlineBudgetedExecutor struct {
+	*budgetedRecordingExecutor
+	mu       sync.Mutex
+	deadline time.Time
+}
+
+func (e *deadlineBudgetedExecutor) GenerateQuotedSlot(ctx context.Context, _ imageagent.SlotExecutionInput, _ imageagent.SlotUsageQuote) (imageagent.SlotGeneratedOutput, error) {
+	deadline, _ := ctx.Deadline()
+	e.mu.Lock()
+	e.deadline = deadline
+	e.mu.Unlock()
+	<-ctx.Done()
+	return imageagent.SlotGeneratedOutput{}, &imageagent.ProviderDispatchError{State: imageagent.ProviderDispatchedUnknown, Err: ctx.Err()}
+}
+
+func (e *deadlineBudgetedExecutor) ProviderDeadline() time.Time {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.deadline
 }
 
 func (e *budgetedRecordingExecutor) QuoteSlot(context.Context, imageagent.SlotExecutionInput, imageagent.BudgetPolicy) (imageagent.SlotUsageQuote, error) {
@@ -170,7 +233,12 @@ func (e *budgetedRecordingExecutor) QuoteCalls() int {
 	return e.quoteCalls
 }
 
-func newBudgetV3Activities(t *testing.T, repository imageagent.Repository, executor *budgetedRecordingExecutor, artifacts DurableArtifactStore) *Activities {
+type budgetedSlotExecutor interface {
+	imageagent.SlotExecutor
+	imageagent.BudgetedStagedSlotExecutor
+}
+
+func newBudgetV3Activities(t *testing.T, repository imageagent.Repository, executor budgetedSlotExecutor, artifacts DurableArtifactStore) *Activities {
 	t.Helper()
 	activities, err := NewActivities(ActivityDependencies{
 		Repository: repository, SlotExecutor: executor, StagedSlotExecutor: executor, SlotEffectsV3: repository.(imageagent.SlotExternalEffectV3Repository), ArtifactStore: artifacts,

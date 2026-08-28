@@ -270,7 +270,10 @@ func (r *gormRepository) InitializeRun(ctx context.Context, input imageagent.Pro
 		if err := tx.Create(&runRow).Error; err != nil {
 			return mapCreateConflict(err)
 		}
-		manifest := catalogManifestRow(prepared.Scope, prepared.Catalog)
+		manifest, err := catalogManifestRow(prepared.Scope, prepared.Catalog)
+		if err != nil {
+			return err
+		}
 		if err := tx.Create(&manifest).Error; err != nil {
 			return fmt.Errorf("create image agent catalog manifest: %w", err)
 		}

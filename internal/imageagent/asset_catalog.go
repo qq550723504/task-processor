@@ -2,6 +2,7 @@ package imageagent
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"reflect"
@@ -12,6 +13,10 @@ import (
 )
 
 func NormalizeAssetCatalog(catalog AssetCatalog) (AssetCatalog, error) {
+	productContext, err := NormalizeProductContextRef(catalog.ProductContext)
+	if err != nil {
+		return AssetCatalog{}, err
+	}
 	byID := make(map[string]AuthorizedAsset, len(catalog.Assets))
 	for _, raw := range catalog.Assets {
 		asset := raw
@@ -63,19 +68,54 @@ func NormalizeAssetCatalog(catalog AssetCatalog) (AssetCatalog, error) {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	normalized := AssetCatalog{Manifest: catalog.Manifest, Assets: make([]AuthorizedAsset, 0, len(ids))}
+	normalized := AssetCatalog{Manifest: catalog.Manifest, Assets: make([]AuthorizedAsset, 0, len(ids)), ProductContext: productContext}
 	for _, id := range ids {
 		normalized.Assets = append(normalized.Assets, byID[id])
 	}
 	if normalized.Manifest.Version <= 0 {
 		normalized.Manifest.Version = 1
 	}
-	computedHash := CatalogHash(normalized.Assets)
+	computedHash := CatalogSnapshotHash(normalized.Assets, normalized.ProductContext)
 	if normalized.Manifest.Hash != "" && normalized.Manifest.Hash != computedHash {
 		return AssetCatalog{}, fmt.Errorf("authorized asset catalog manifest hash does not match canonical assets")
 	}
 	normalized.Manifest.Hash = computedHash
 	return normalized, nil
+}
+
+// NormalizeProductContextRef canonicalizes the immutable, owner-verified
+// product context that is safe to pass to provider adapters. A completely
+// empty value remains valid for historical catalog snapshots.
+func NormalizeProductContextRef(value ProductContextRef) (ProductContextRef, error) {
+	value.ProductID = strings.TrimSpace(value.ProductID)
+	value.Title = strings.TrimSpace(value.Title)
+	value.ProductType = strings.TrimSpace(value.ProductType)
+	normalizedAttributes := make(map[string]string, len(value.Attributes))
+	for rawKey, rawItem := range value.Attributes {
+		key, item := strings.TrimSpace(rawKey), strings.TrimSpace(rawItem)
+		if key == "" || item == "" {
+			continue
+		}
+		if existing, duplicate := normalizedAttributes[key]; duplicate && existing != item {
+			return ProductContextRef{}, fmt.Errorf("product context attribute %q is defined more than once", key)
+		}
+		normalizedAttributes[key] = item
+	}
+	value.Attributes = normalizedAttributes
+	if len(normalizedAttributes) == 0 {
+		value.Attributes = nil
+	}
+	if ProductContextRefIsZero(value) {
+		return ProductContextRef{}, nil
+	}
+	if value.ProductID == "" {
+		return ProductContextRef{}, fmt.Errorf("product context ID is required")
+	}
+	return value, nil
+}
+
+func ProductContextRefIsZero(value ProductContextRef) bool {
+	return strings.TrimSpace(value.ProductID) == "" && strings.TrimSpace(value.Title) == "" && strings.TrimSpace(value.ProductType) == "" && len(value.Attributes) == 0
 }
 
 func ValidatePlanAgainstCatalog(plan Plan, catalog AssetCatalog) error {
@@ -143,6 +183,20 @@ func CatalogHash(assets []AuthorizedAsset) string {
 		}
 	}
 	return fmt.Sprintf("catalog-v1:%x", sha256Sum([]byte(builder.String())))
+}
+
+// CatalogSnapshotHash extends the legacy asset-only manifest identity when a
+// product context snapshot is present. Empty historical contexts deliberately
+// retain catalog-v1 hashes for replay and persisted-row compatibility.
+func CatalogSnapshotHash(assets []AuthorizedAsset, productContext ProductContextRef) string {
+	if ProductContextRefIsZero(productContext) {
+		return CatalogHash(assets)
+	}
+	encoded, _ := json.Marshal(struct {
+		AssetsHash     string
+		ProductContext ProductContextRef
+	}{AssetsHash: CatalogHash(assets), ProductContext: productContext})
+	return fmt.Sprintf("catalog-v2:%x", sha256Sum(encoded))
 }
 
 func sha256Sum(value []byte) [32]byte { return sha256.Sum256(value) }

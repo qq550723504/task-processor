@@ -309,7 +309,7 @@ func testProjectionCommitRollbackHidesEventSnapshotAndNormalizedWrites(t *testin
 	run := manualRun("run-projection-rollback", "tenant-a")
 	plan := planRevision(1)
 	scope := imageagent.ScopeForRun(*run)
-	catalog := imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+	catalog := imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "task-catalog", Title: "Travel Bottle", ProductType: "Bottles", Attributes: map[string]string{"Material": "Steel"}}, Assets: []imageagent.AuthorizedAsset{
 		{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source-1.png"},
 		{ID: "style-1", Type: imageagent.AuthorizedAssetStyle},
 	}}
@@ -400,7 +400,7 @@ func testAuthorizedAssetCatalogRoundTripsAndCannotBeReplaced(t *testing.T, repo 
 	ctx := context.Background()
 	require.NoError(t, repo.CreateRun(ctx, manualRun("run-catalog", "tenant-a")))
 	scope := imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-catalog"}
-	catalog := imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+	catalog := imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "task-catalog", Title: "Travel Bottle", ProductType: "Bottles", Attributes: map[string]string{"Material": "Steel"}}, Assets: []imageagent.AuthorizedAsset{
 		{ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example/source.png", Width: 1200, Height: 900},
 		{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, Label: "Style"},
 	}}
@@ -413,9 +413,13 @@ func testAuthorizedAssetCatalogRoundTripsAndCannotBeReplaced(t *testing.T, repo 
 	require.Equal(t, normalized.Manifest.Version, got.Manifest.Version)
 	require.Equal(t, normalized.Manifest.Hash, got.Manifest.Hash)
 	require.Equal(t, normalized.Assets, got.Assets)
+	require.Equal(t, normalized.ProductContext, got.ProductContext)
 	changed := catalog
 	changed.Assets = append([]imageagent.AuthorizedAsset(nil), catalog.Assets...)
 	changed.Assets[0].DisplayURL = "https://attacker.example/injected.png"
+	require.ErrorIs(t, repo.SaveAssetCatalog(ctx, scope, changed), imageagent.ErrRevisionConflict)
+	changed = catalog
+	changed.ProductContext.Title = "Changed title"
 	require.ErrorIs(t, repo.SaveAssetCatalog(ctx, scope, changed), imageagent.ErrRevisionConflict)
 }
 

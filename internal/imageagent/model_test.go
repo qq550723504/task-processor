@@ -2,11 +2,20 @@ package imageagent
 
 import (
 	"fmt"
+	"math"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestMaxActionIDFitsLongestProjectionCommitIdentity(t *testing.T) {
+	actionID := strings.Repeat("a", MaxActionIDLength)
+	require.NoError(t, ValidateActionID(actionID))
+	commitID := fmt.Sprintf("command:%s:attempt:%d:%s", actionID, int64(math.MaxInt64), "approval.persist_complete")
+	require.LessOrEqual(t, len(commitID), 192)
+}
 
 func TestNormalizeAssetCatalogPreservesExplicitStableManifest(t *testing.T) {
 	createdAt := time.Date(2026, 8, 27, 1, 2, 3, 0, time.UTC)
@@ -30,6 +39,28 @@ func TestNormalizeAssetCatalogRejectsPlainHTTPSourceImages(t *testing.T) {
 		ID: "source-1", Type: AuthorizedAssetSource, URL: "http://images.example/source.png",
 	}}})
 	require.ErrorContains(t, err, "public https url is required")
+}
+
+func TestNormalizeAssetCatalogBindsCanonicalProductContextToManifest(t *testing.T) {
+	assets := []AuthorizedAsset{{ID: "source-1", Type: AuthorizedAssetSource, URL: "https://source.example/source.png"}}
+	catalog, err := NormalizeAssetCatalog(AssetCatalog{Assets: assets, ProductContext: ProductContextRef{
+		ProductID: " task-1 ", Title: " Travel Bottle ", ProductType: " Bottles ",
+		Attributes: map[string]string{" Material ": " Steel ", "ignored": " "},
+	}})
+	require.NoError(t, err)
+	require.Equal(t, ProductContextRef{ProductID: "task-1", Title: "Travel Bottle", ProductType: "Bottles", Attributes: map[string]string{"Material": "Steel"}}, catalog.ProductContext)
+	require.Contains(t, catalog.Manifest.Hash, "catalog-v2:")
+
+	changed := catalog
+	changed.Manifest.Hash = ""
+	changed.ProductContext.Title = "Changed title"
+	changed, err = NormalizeAssetCatalog(changed)
+	require.NoError(t, err)
+	require.NotEqual(t, catalog.Manifest.Hash, changed.Manifest.Hash)
+
+	legacy, err := NormalizeAssetCatalog(AssetCatalog{Assets: assets})
+	require.NoError(t, err)
+	require.Equal(t, CatalogHash(legacy.Assets), legacy.Manifest.Hash)
 }
 
 func TestValidatePlanAllowsMoreThanTenIndependentSlots(t *testing.T) {

@@ -354,6 +354,19 @@ type acceptanceExecutorDelegate interface {
 	imageagent.RecoverableSlotExecutor
 }
 
+func (e *recordingAcceptanceExecutor) QuoteSlot(context.Context, imageagent.SlotExecutionInput, imageagent.BudgetPolicy) (imageagent.SlotUsageQuote, error) {
+	maximum := imageagent.UsageVector{Images: 1, AgentSteps: 1}
+	return imageagent.SlotUsageQuote{Maximum: maximum, Operations: []imageagent.SlotUsageOperation{{Name: "acceptance_provider", Fingerprint: "acceptance-provider-v1", Maximum: maximum, MaximumOutputs: 1}}, Fingerprint: "acceptance-slot-quote-v1"}, nil
+}
+
+func (e *recordingAcceptanceExecutor) GenerateQuotedSlot(ctx context.Context, input imageagent.SlotExecutionInput, _ imageagent.SlotUsageQuote) (imageagent.SlotGeneratedOutput, error) {
+	generated, err := e.GenerateSlot(ctx, input)
+	if err == nil {
+		generated.UsageReceipt = imageagent.SlotUsageReceipt{Actual: imageagent.UsageVector{Images: int64(len(generated.Assets)), AgentSteps: 1}, CostBasis: imageagent.UsageCostReservedUpperBound}
+	}
+	return generated, err
+}
+
 func (e *recordingAcceptanceExecutor) ExecuteSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotExecutionResult, error) {
 	generated, err := e.GenerateSlot(ctx, input)
 	if err != nil {
@@ -531,6 +544,10 @@ func (acceptanceDurableArtifactStore) PublicURL(key string) string {
 
 func (acceptanceDurableArtifactStore) PrepareSlotArtifacts(input objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
 	assets := make([]imageagent.StagedAssetRef, len(input.Assets))
+	ownerKey, err := imageagent.ArtifactOwnerKey(input.Identity.OwnerUserID)
+	if err != nil {
+		return objectstore.PreparedSlotArtifacts{}, err
+	}
 	for index, asset := range input.Assets {
 		operations, err := imageagent.NormalizeArtifactOperations(asset.Operations)
 		if err != nil {
@@ -539,7 +556,7 @@ func (acceptanceDurableArtifactStore) PrepareSlotArtifacts(input objectstore.Pre
 		sum := sha256.Sum256(asset.Bytes)
 		hash := hex.EncodeToString(sum[:])
 		assets[index] = imageagent.StagedAssetRef{
-			ObjectKey: fmt.Sprintf("image-agent/staging/%s/%s/%d/%s/%d/%d-%s.png", input.Identity.TenantID, input.Identity.RunID, input.Identity.PlanRevision, input.Identity.SlotID, input.Identity.Attempt, index, hash),
+			ObjectKey: fmt.Sprintf("image-agent/staging/%s/%s/%s/%d/%s/%d/%d-%s.png", input.Identity.TenantID, ownerKey, input.Identity.RunID, input.Identity.PlanRevision, input.Identity.SlotID, input.Identity.Attempt, index, hash),
 			SHA256:    hash, SizeBytes: int64(len(asset.Bytes)), ContentType: asset.ContentType, Width: asset.Width, Height: asset.Height,
 			SourceAssetID: asset.SourceAssetID, Operations: operations, ProviderReceiptID: asset.ProviderReceiptID,
 		}

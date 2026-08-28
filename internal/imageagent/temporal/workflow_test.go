@@ -1019,7 +1019,7 @@ func newV3BlockWorkflowEnv(t *testing.T, blocked func(ExecuteSlotV3ActivityInput
 			SlotID: input.Slot.ID, Attempt: input.Attempt,
 			Candidates: []imageagent.SlotEffectV3AssetCandidate{{
 				AssetID: "candidate-" + input.Slot.ID, SourceAssetID: "source-1",
-				DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/run-1/1/%s/%d/0-%s.png", input.Slot.ID, input.Attempt, v3SHA256), SHA256: v3SHA256},
+				DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/fc95297aa4f56781f0decb7d4bf59b1447f09b3611039b80188b1c6beb03ee6a/run-1/1/%s/%d/0-%s.png", input.Slot.ID, input.Attempt, v3SHA256), SHA256: v3SHA256},
 			}},
 		}, nil
 	}, sdkactivity.RegisterOptions{Name: activityExecuteSlotV3})

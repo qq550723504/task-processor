@@ -70,6 +70,7 @@ type SlotExecutionInput struct {
 	Attempt        int
 	IdempotencyKey string
 	AssetCatalog   AssetCatalog
+	ProductContext ProductContextRef
 }
 
 type SlotExecutionResult struct {

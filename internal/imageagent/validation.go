@@ -5,6 +5,17 @@ import (
 	"strings"
 )
 
+// MaxActionIDLength leaves bounded headroom for the longest projection commit
+// suffix inside the PostgreSQL varchar(192) commit-key column.
+const MaxActionIDLength = 128
+
+func ValidateActionID(value string) error {
+	if value == "" || value != strings.TrimSpace(value) || len(value) > MaxActionIDLength {
+		return fmt.Errorf("action ID must be canonical and at most %d bytes", MaxActionIDLength)
+	}
+	return nil
+}
+
 var knownSlotRoles = map[SlotRole]struct{}{
 	SlotRoleMain: {}, SlotRoleScene: {}, SlotRoleDetail: {}, SlotRoleSellingPoint: {}, SlotRoleSize: {},
 }

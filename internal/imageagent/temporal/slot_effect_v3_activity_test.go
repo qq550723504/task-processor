@@ -647,8 +647,12 @@ func (w *stringWriter) Write(data []byte) (int, error) { return w.builder.WriteS
 func v3StagingManifest(input ExecuteSlotV3ActivityInput, data []byte) imageagent.StagingManifest {
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])
+	ownerKey, err := imageagent.ArtifactOwnerKey(input.Identity.UserID)
+	if err != nil {
+		panic(err)
+	}
 	return imageagent.StagingManifest{Assets: []imageagent.StagedAssetRef{{
-		ObjectKey: fmt.Sprintf("image-agent/staging/%s/%s/%d/%s/%d/0-%s.png", input.Identity.TenantID, input.RunID, input.PlanRevision, input.Slot.ID, input.Attempt, hash),
+		ObjectKey: fmt.Sprintf("image-agent/staging/%s/%s/%s/%d/%s/%d/0-%s.png", input.Identity.TenantID, ownerKey, input.RunID, input.PlanRevision, input.Slot.ID, input.Attempt, hash),
 		SHA256:    hash, SizeBytes: int64(len(data)), ContentType: "image/png", Width: 1, Height: 1,
 		SourceAssetID: input.Slot.SourceAssetIDs[0], Operations: []string{"render_scene_model"},
 	}}}
@@ -681,6 +685,19 @@ type recordingStagedExecutor struct {
 	buildCalls    int
 	mutateResult  func(*imageagent.SlotExecutionResult)
 	identity      productimage.AIIdentity
+}
+
+func (e *recordingStagedExecutor) QuoteSlot(context.Context, imageagent.SlotExecutionInput, imageagent.BudgetPolicy) (imageagent.SlotUsageQuote, error) {
+	maximum := imageagent.UsageVector{Images: 16, AgentSteps: 1}
+	return imageagent.SlotUsageQuote{Maximum: maximum, Operations: []imageagent.SlotUsageOperation{{Name: "recording_provider", Fingerprint: "recording-provider-v1", Maximum: maximum, MaximumOutputs: 16}}, Fingerprint: "recording-slot-quote-v1"}, nil
+}
+
+func (e *recordingStagedExecutor) GenerateQuotedSlot(ctx context.Context, input imageagent.SlotExecutionInput, _ imageagent.SlotUsageQuote) (imageagent.SlotGeneratedOutput, error) {
+	generated, err := e.GenerateSlot(ctx, input)
+	if err == nil {
+		generated.UsageReceipt = imageagent.SlotUsageReceipt{Actual: imageagent.UsageVector{Images: int64(len(generated.Assets)), AgentSteps: 1}, CostBasis: imageagent.UsageCostReservedUpperBound}
+	}
+	return generated, err
 }
 
 func (e *recordingStagedExecutor) ExecuteSlot(context.Context, imageagent.SlotExecutionInput) (imageagent.SlotExecutionResult, error) {
@@ -759,8 +776,12 @@ func (s *recordingArtifactStore) PrepareSlotArtifacts(input objectstore.PrepareS
 	}
 	sum := sha256.Sum256(input.Assets[0].Bytes)
 	hash := hex.EncodeToString(sum[:])
+	ownerKey, err := imageagent.ArtifactOwnerKey(input.Identity.OwnerUserID)
+	if err != nil {
+		return objectstore.PreparedSlotArtifacts{}, imageagent.ErrValidation
+	}
 	s.prepared = imageagent.StagingManifest{Assets: []imageagent.StagedAssetRef{{
-		ObjectKey: fmt.Sprintf("image-agent/staging/%s/%s/%d/%s/%d/0-%s.png", input.Identity.TenantID, input.Identity.RunID, input.Identity.PlanRevision, input.Identity.SlotID, input.Identity.Attempt, hash),
+		ObjectKey: fmt.Sprintf("image-agent/staging/%s/%s/%s/%d/%s/%d/0-%s.png", input.Identity.TenantID, ownerKey, input.Identity.RunID, input.Identity.PlanRevision, input.Identity.SlotID, input.Identity.Attempt, hash),
 		SHA256:    hash, SizeBytes: int64(len(input.Assets[0].Bytes)), ContentType: input.Assets[0].ContentType,
 		Width: input.Assets[0].Width, Height: input.Assets[0].Height, SourceAssetID: input.Assets[0].SourceAssetID,
 		Operations: append([]string(nil), input.Assets[0].Operations...), ProviderReceiptID: input.Assets[0].ProviderReceiptID,

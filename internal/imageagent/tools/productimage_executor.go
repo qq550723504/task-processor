@@ -167,7 +167,14 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 	if err != nil {
 		return imageagent.SlotGeneratedOutput{}, err
 	}
-	productContext := productContextForSlot(e.dependencies.ProductContext, slot, styleReferences)
+	baseProductContext := e.dependencies.ProductContext
+	if !imageagent.ProductContextRefIsZero(input.ProductContext) {
+		baseProductContext = &productimage.ProductContext{
+			Title: input.ProductContext.Title, ProductType: input.ProductContext.ProductType,
+			Attributes: cloneMetadata(input.ProductContext.Attributes),
+		}
+	}
+	productContext := productContextForSlot(baseProductContext, slot, styleReferences)
 	var assets []productimage.ImageAsset
 	var receipt imageagent.SlotUsageReceipt
 	switch slot.Role {
@@ -363,7 +370,7 @@ func (e *ProductImageSlotExecutor) executeMain(ctx context.Context, source produ
 	whiteCtx := operationQuoteContext(ctx, quoted, 1)
 	main, err := e.dependencies.WhiteBackgroundRenderer.Render(whiteCtx, subject, productContext)
 	if err != nil {
-		return nil, imageagent.SlotUsageReceipt{}, dispatchedError("render white background", err)
+		return nil, imageagent.SlotUsageReceipt{}, dispatchedAfterPriorEffect("render white background", err)
 	}
 	if main == nil {
 		return nil, imageagent.SlotUsageReceipt{}, dispatchedContractError("white background renderer returned no generated asset")
@@ -426,6 +433,15 @@ func dispatchedError(operation string, err error) error {
 		return &imageagent.ProviderDispatchError{State: state, ProviderRequestIDs: append([]string(nil), capabilityDispatch.ProviderRequestIDs...), Err: fmt.Errorf("%s: %w", operation, err)}
 	}
 	return &imageagent.ProviderDispatchError{State: imageagent.ProviderDispatchedUnknown, Err: fmt.Errorf("%s: %w", operation, err)}
+}
+
+func dispatchedAfterPriorEffect(operation string, err error) error {
+	wrapped := dispatchedError(operation, err)
+	var dispatch *imageagent.ProviderDispatchError
+	if errors.As(wrapped, &dispatch) {
+		return &imageagent.ProviderDispatchError{State: imageagent.ProviderDispatchedUnknown, ProviderRequestIDs: append([]string(nil), dispatch.ProviderRequestIDs...), Err: wrapped}
+	}
+	return &imageagent.ProviderDispatchError{State: imageagent.ProviderDispatchedUnknown, Err: wrapped}
 }
 
 func dispatchedContractError(message string) error {

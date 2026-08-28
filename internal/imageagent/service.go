@@ -178,8 +178,8 @@ func (s *Service) Resume(ctx context.Context, runID, actionID string) (CommandAc
 	if err != nil {
 		return CommandAcknowledgement{}, err
 	}
-	runID, actionID = strings.TrimSpace(runID), strings.TrimSpace(actionID)
-	if runID == "" || actionID == "" {
+	runID = strings.TrimSpace(runID)
+	if runID == "" || ValidateActionID(actionID) != nil {
 		return CommandAcknowledgement{}, fmt.Errorf("%w: run ID and action ID are required", ErrValidation)
 	}
 	if _, err := s.repository.GetProjection(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID}); err != nil {
@@ -217,7 +217,7 @@ func (s *Service) commandIdentity(ctx context.Context, runID string, revision in
 		return ExecutionIdentity{}, err
 	}
 	runID = strings.TrimSpace(runID)
-	if runID == "" || strings.TrimSpace(actionID) == "" {
+	if runID == "" || ValidateActionID(actionID) != nil {
 		return ExecutionIdentity{}, fmt.Errorf("%w: run ID and action ID are required", ErrValidation)
 	}
 	if revision <= 0 {

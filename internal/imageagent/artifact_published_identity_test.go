@@ -13,8 +13,10 @@ func TestValidatePublishedAssetIdentityForSlotBindsDeterministicPublicKey(t *tes
 		RunID: "run-1", TenantID: "tenant-a", UserID: "user-a", PlanRevision: 3,
 		Slot: Slot{ID: "scene-1"}, Attempt: 2,
 	}
+	ownerKey, err := ArtifactOwnerKey(input.UserID)
+	require.NoError(t, err)
 	valid := DurableAssetIdentity{
-		ObjectKey: "image-agent/public/tenant-a/run-1/3/scene-1/2/4-" + hash + ".png",
+		ObjectKey: "image-agent/public/tenant-a/" + ownerKey + "/run-1/3/scene-1/2/4-" + hash + ".png",
 		SHA256:    hash,
 	}
 	require.NoError(t, ValidatePublishedAssetIdentityForSlot(input, valid, 4))
@@ -28,6 +30,9 @@ func TestValidatePublishedAssetIdentityForSlotBindsDeterministicPublicKey(t *tes
 		}},
 		{name: "tenant", mutate: func(identity *DurableAssetIdentity) {
 			identity.ObjectKey = strings.Replace(identity.ObjectKey, "/tenant-a/", "/tenant-b/", 1)
+		}},
+		{name: "owner", mutate: func(identity *DurableAssetIdentity) {
+			identity.ObjectKey = strings.Replace(identity.ObjectKey, "/"+ownerKey+"/", "/"+strings.Repeat("b", 64)+"/", 1)
 		}},
 		{name: "run", mutate: func(identity *DurableAssetIdentity) {
 			identity.ObjectKey = strings.Replace(identity.ObjectKey, "/run-1/", "/run-b/", 1)

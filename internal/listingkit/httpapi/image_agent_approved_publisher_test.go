@@ -13,6 +13,7 @@ import (
 
 	"task-processor/internal/asset"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/catalog"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/listingkit"
 	listingkitstore "task-processor/internal/listingkit/store"
@@ -103,9 +104,12 @@ func TestPublishApprovedV3RejectsZeroMainCandidates(t *testing.T) {
 
 func TestPublishApprovedV3RejectsMultipleMainCandidates(t *testing.T) {
 	projection := approvedV3Projection(t)
-	projection.Slots[0].Candidates = append(projection.Slots[0].Candidates, imageagent.AssetCandidate{
-		AssetID: "candidate-main-2", SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/public/tenant-a/run-1/1/main/1/1-" + strings.Repeat("b", 64) + ".png", SHA256: strings.Repeat("b", 64)},
-	})
+	second := projection.Slots[0].Candidates[0]
+	second.AssetID = "candidate-main-2"
+	oldHash, newHash := second.DurableAsset.SHA256, strings.Repeat("b", 64)
+	second.DurableAsset.ObjectKey = strings.Replace(second.DurableAsset.ObjectKey, "/0-"+oldHash+".png", "/1-"+newHash+".png", 1)
+	second.DurableAsset.SHA256 = newHash
+	projection.Slots[0].Candidates = append(projection.Slots[0].Candidates, second)
 	projection.ResultDigest = mustResultDigestV3(t, projection)
 	assertV3PublicationRejectedWithoutMutation(t, projection, approvedV3PublicationInput(projection))
 }
@@ -172,6 +176,36 @@ func TestPublishApprovedV3PreflightsEveryResolvedURLBeforeMutation(t *testing.T)
 	require.Len(t, task.Result.StandardProductSnapshot.AssetBundle.Assets, 1)
 }
 
+func TestImageAgentApprovedPublisherRejectsChangedTaskSnapshotInsideTransaction(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*listingkit.Task)
+	}{
+		{name: "source asset", mutate: func(task *listingkit.Task) {
+			task.Result.StandardProductSnapshot.AssetBundle.Assets[0].URL = "https://source.example/changed.png"
+		}},
+		{name: "product context", mutate: func(task *listingkit.Task) {
+			task.Result.StandardProductSnapshot.CatalogProduct.Title = "Changed title"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, db, transactionStore := newApprovedPublisherDatabase(t)
+			task := approvedPublisherTask()
+			test.mutate(task)
+			require.NoError(t, db.Create(task).Error)
+			projection := approvedProjection()
+			publisher, err := NewImageAgentApprovedPublisher(staticProjectionSource{projection: projection}, transactionStore)
+			require.NoError(t, err)
+
+			_, err = publisher.PublishApproved(ctx, approvedPublicationInput(projection))
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			var stored listingkit.Task
+			require.NoError(t, db.First(&stored, "id = ?", "task-1").Error)
+			require.Len(t, stored.Result.StandardProductSnapshot.AssetBundle.Assets, 1)
+		})
+	}
+}
+
 func assertV3PublicationRejectedWithoutMutation(t *testing.T, projection imageagent.RunProjection, input imageagent.PublishApprovedV3Input) {
 	t.Helper()
 	ctx, db, transactionStore := newApprovedPublisherDatabase(t)
@@ -209,7 +243,7 @@ func newApprovedPublisherDatabase(t *testing.T) (context.Context, *gorm.DB, list
 }
 
 func approvedPublisherTask() *listingkit.Task {
-	return &listingkit.Task{ID: "task-1", TenantID: "tenant-a", UserID: "user-a", Result: &listingkit.ListingKitResult{Platforms: []string{"shein"}, StandardProductSnapshot: &listingkit.StandardProductSnapshot{AssetBundle: &asset.Bundle{Assets: []asset.Asset{{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://source.example/1.png"}}}}}}
+	return &listingkit.Task{ID: "task-1", TenantID: "tenant-a", UserID: "user-a", Result: &listingkit.ListingKitResult{Platforms: []string{"shein"}, StandardProductSnapshot: &listingkit.StandardProductSnapshot{CatalogProduct: &catalog.Product{Title: "Travel Bottle", CategoryPath: []string{"Outdoors", "Bottles"}, Attributes: []catalog.Attribute{{Name: "Material", Value: "Steel"}}}, AssetBundle: &asset.Bundle{Assets: []asset.Asset{{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://source.example/1.png"}}}}}}
 }
 
 func approvedProjection() imageagent.RunProjection {
@@ -217,9 +251,14 @@ func approvedProjection() imageagent.RunProjection {
 	for index := range sceneCandidates {
 		sceneCandidates[index] = imageagent.AssetCandidate{AssetID: fmt.Sprintf("candidate-scene-%02d", index+1), URL: fmt.Sprintf("https://cdn.example/scene-%02d.png", index+1), SourceAssetID: "source-1"}
 	}
+	catalogSnapshot, err := imageAgentCatalogFromTask(approvedPublisherTask())
+	if err != nil {
+		panic(err)
+	}
 	projection := imageagent.RunProjection{
-		Run:  imageagent.Run{ID: "run-1", BusinessTaskID: "task-1", TenantID: "tenant-a", UserID: "user-a", Status: imageagent.RunStatusAwaitingFinalApproval, ActivePlanRevision: 1},
-		Plan: imageagent.Plan{Revision: 1, Slots: []imageagent.Slot{{ID: "main", Role: imageagent.SlotRoleMain}, {ID: "scene", Role: imageagent.SlotRoleScene}}},
+		Run:          imageagent.Run{ID: "run-1", BusinessTaskID: "task-1", TenantID: "tenant-a", UserID: "user-a", Status: imageagent.RunStatusAwaitingFinalApproval, ActivePlanRevision: 1},
+		AssetCatalog: catalogSnapshot,
+		Plan:         imageagent.Plan{Revision: 1, Slots: []imageagent.Slot{{ID: "main", Role: imageagent.SlotRoleMain}, {ID: "scene", Role: imageagent.SlotRoleScene}}},
 		Slots: []imageagent.SlotProjection{
 			{Slot: imageagent.Slot{ID: "main", Role: imageagent.SlotRoleMain, Status: imageagent.SlotStatusAccepted}, Attempt: 1, Candidates: []imageagent.AssetCandidate{{AssetID: "candidate-main", URL: "https://cdn.example/main.png", SourceAssetID: "source-1"}}},
 			{Slot: imageagent.Slot{ID: "scene", Role: imageagent.SlotRoleScene, Status: imageagent.SlotStatusAccepted}, Attempt: 1, Candidates: sceneCandidates},
@@ -240,12 +279,14 @@ func approvedPublicationInput(projection imageagent.RunProjection) imageagent.Pu
 func approvedV3Projection(t *testing.T) imageagent.RunProjection {
 	t.Helper()
 	projection := approvedProjection()
+	ownerKey, err := imageagent.ArtifactOwnerKey(projection.Run.UserID)
+	require.NoError(t, err)
 	for slotIndex := range projection.Slots {
 		for candidateIndex := range projection.Slots[slotIndex].Candidates {
 			candidate := &projection.Slots[slotIndex].Candidates[candidateIndex]
 			hash := fmt.Sprintf("%064x", slotIndex*100+candidateIndex+1)
 			candidate.URL = ""
-			candidate.DurableAsset = imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/run-1/1/%s/1/%d-%s.png", projection.Plan.Slots[slotIndex].ID, candidateIndex, hash), SHA256: hash}
+			candidate.DurableAsset = imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/%s/run-1/1/%s/1/%d-%s.png", ownerKey, projection.Plan.Slots[slotIndex].ID, candidateIndex, hash), SHA256: hash}
 		}
 	}
 	projection.ResultDigest = mustResultDigestV3(t, projection)

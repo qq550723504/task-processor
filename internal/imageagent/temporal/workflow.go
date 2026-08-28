@@ -1353,7 +1353,10 @@ func (s *workflowUpdateState) validateAction(actionID, fingerprint string) (bool
 }
 
 func validateCommandOwner(input WorkflowInput, runID, actorID, actionID string) error {
-	if strings.TrimSpace(actionID) == "" || runID != input.RunID || actorID != input.Identity.UserID {
+	if imageagent.ValidateActionID(actionID) != nil {
+		return updateBlockedError("action ID is invalid")
+	}
+	if runID != input.RunID || actorID != input.Identity.UserID {
 		return sdktemporal.NewNonRetryableApplicationError("image agent run owner was not found", updateErrorRunNotFound, nil)
 	}
 	return nil

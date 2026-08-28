@@ -161,7 +161,7 @@ func (c *Client) Resume(ctx context.Context, command imageagent.ResumeCommand) (
 	if err := validateCommandIdentity(command.Identity, command.RunID); err != nil {
 		return imageagent.CommandAcknowledgement{}, err
 	}
-	if strings.TrimSpace(command.ActorID) != strings.TrimSpace(command.Identity.UserID) || strings.TrimSpace(command.ActionID) == "" {
+	if strings.TrimSpace(command.ActorID) != strings.TrimSpace(command.Identity.UserID) || imageagent.ValidateActionID(command.ActionID) != nil {
 		return imageagent.CommandAcknowledgement{}, fmt.Errorf("image agent resume actor and action must match verified identity")
 	}
 	input := ResumeCommandInput{RunID: command.RunID, ActorID: command.ActorID, ActionID: command.ActionID}
@@ -261,7 +261,7 @@ func (c *Client) validateSignal(identity imageagent.ExecutionIdentity, runID str
 	if err := validateCommandIdentity(identity, runID); err != nil {
 		return err
 	}
-	if revision <= 0 || strings.TrimSpace(actionID) == "" {
+	if revision <= 0 || imageagent.ValidateActionID(actionID) != nil {
 		return fmt.Errorf("image agent signal requires positive plan revision and action ID")
 	}
 	if strings.TrimSpace(actorID) != strings.TrimSpace(identity.UserID) {

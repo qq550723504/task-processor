@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -57,6 +58,17 @@ func TestServiceApprovalRejectsNonCanonicalDigestBeforeWorkflowUpdate(t *testing
 
 	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
 	require.Empty(t, workflows.approvals)
+}
+
+func TestServiceRejectsNonCanonicalOrOversizedActionIDBeforeWorkflowUpdate(t *testing.T) {
+	for _, actionID := range []string{" action-1 ", strings.Repeat("a", imageagent.MaxActionIDLength+1)} {
+		service, workflows := commandService(t, imageagent.RunStatusBlocked, &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"})
+
+		err := service.RetrySlot(verifiedContext("tenant-a", "user-a"), "run-1", "slot-1", 1, actionID)
+
+		require.ErrorIs(t, err, imageagent.ErrValidation)
+		require.Empty(t, workflows.retries)
+	}
 }
 
 func TestServiceDefersCommandRevisionAndStateAcceptanceToWorkflowUpdate(t *testing.T) {
@@ -651,6 +663,9 @@ func TestServiceResumeUsesVerifiedActorAndReturnsWorkflowAcknowledgement(t *test
 	require.Equal(t, want, got)
 	require.Equal(t, "user-a", workflows.resumes[0].ActorID)
 	require.Equal(t, imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}, workflows.resumes[0].Identity)
+	_, err = service.Resume(verifiedContext("tenant-a", "user-a"), "run-1", " retry-pending ")
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+	require.Len(t, workflows.resumes, 1)
 	_, err = service.Resume(verifiedContext("tenant-b", "user-a"), "run-1", "retry-pending")
 	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
 }

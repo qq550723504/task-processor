@@ -108,12 +108,13 @@ type assetCatalogRecord struct {
 func (assetCatalogRecord) TableName() string { return "image_agent_v2_asset_catalog" }
 
 type assetCatalogManifestRecord struct {
-	TenantID    string    `gorm:"primaryKey;type:varchar(64)"`
-	OwnerUserID string    `gorm:"primaryKey;type:varchar(128)"`
-	RunID       string    `gorm:"primaryKey;type:varchar(64)"`
-	Version     int64     `gorm:"not null"`
-	Hash        string    `gorm:"type:varchar(128);not null"`
-	CreatedAt   time.Time `gorm:"not null"`
+	TenantID           string `gorm:"primaryKey;type:varchar(64)"`
+	OwnerUserID        string `gorm:"primaryKey;type:varchar(128)"`
+	RunID              string `gorm:"primaryKey;type:varchar(64)"`
+	Version            int64  `gorm:"not null"`
+	Hash               string `gorm:"type:varchar(128);not null"`
+	ProductContextJSON []byte
+	CreatedAt          time.Time `gorm:"not null"`
 }
 
 func (assetCatalogManifestRecord) TableName() string { return "image_agent_v2_asset_catalog_manifests" }

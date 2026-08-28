@@ -23,7 +23,10 @@ func (r *gormRepository) SaveAssetCatalog(ctx context.Context, scope imageagent.
 	if err != nil {
 		return err
 	}
-	wantedManifest := catalogManifestRow(scope, normalized)
+	wantedManifest, err := catalogManifestRow(scope, normalized)
+	if err != nil {
+		return err
+	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if _, err := r.findRunForUpdate(ctx, tx, scope); err != nil {
 			return err
@@ -35,7 +38,7 @@ func (r *gormRepository) SaveAssetCatalog(ctx context.Context, scope imageagent.
 			return fmt.Errorf("load image agent asset catalog: %w", err)
 		}
 		if manifestErr == nil {
-			if existingManifest.Version == wantedManifest.Version && existingManifest.Hash == wantedManifest.Hash && sameCatalogRows(existing, wanted) {
+			if existingManifest.Version == wantedManifest.Version && existingManifest.Hash == wantedManifest.Hash && string(existingManifest.ProductContextJSON) == string(wantedManifest.ProductContextJSON) && sameCatalogRows(existing, wanted) {
 				return nil
 			}
 			return imageagent.ErrRevisionConflict
@@ -74,6 +77,12 @@ func (r *gormRepository) GetAssetCatalog(ctx context.Context, scope imageagent.R
 	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND owner_user_id = ? AND run_id = ?", scope.TenantID, scope.OwnerUserID, scope.RunID).Order("id ASC").Find(&rows).Error; err != nil {
 		return imageagent.AssetCatalog{}, fmt.Errorf("load image agent asset catalog: %w", err)
 	}
+	var productContext imageagent.ProductContextRef
+	if len(manifest.ProductContextJSON) > 0 {
+		if err := unmarshalJSON(manifest.ProductContextJSON, &productContext); err != nil {
+			return imageagent.AssetCatalog{}, err
+		}
+	}
 	assets := make([]imageagent.AuthorizedAsset, 0, len(rows))
 	for _, row := range rows {
 		var metadata map[string]string
@@ -82,7 +91,7 @@ func (r *gormRepository) GetAssetCatalog(ctx context.Context, scope imageagent.R
 		}
 		assets = append(assets, imageagent.AuthorizedAsset{ID: row.ID, Type: imageagent.AuthorizedAssetType(row.Type), URL: row.URL, SourceURL: row.SourceURL, DisplayURL: row.DisplayURL, Label: row.Label, Width: row.Width, Height: row.Height, Metadata: metadata})
 	}
-	return imageagent.AssetCatalog{Manifest: imageagent.CatalogManifest{Version: manifest.Version, Hash: manifest.Hash, CreatedAt: manifest.CreatedAt}, Assets: assets}, nil
+	return imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{Manifest: imageagent.CatalogManifest{Version: manifest.Version, Hash: manifest.Hash, CreatedAt: manifest.CreatedAt}, Assets: assets, ProductContext: productContext})
 }
 
 func catalogRows(scope imageagent.RunScope, catalog imageagent.AssetCatalog) ([]assetCatalogRecord, error) {
@@ -98,8 +107,16 @@ func catalogRows(scope imageagent.RunScope, catalog imageagent.AssetCatalog) ([]
 	return rows, nil
 }
 
-func catalogManifestRow(scope imageagent.RunScope, catalog imageagent.AssetCatalog) assetCatalogManifestRecord {
-	return assetCatalogManifestRecord{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, Version: catalog.Manifest.Version, Hash: catalog.Manifest.Hash, CreatedAt: catalog.Manifest.CreatedAt}
+func catalogManifestRow(scope imageagent.RunScope, catalog imageagent.AssetCatalog) (assetCatalogManifestRecord, error) {
+	var productContextJSON []byte
+	var err error
+	if !imageagent.ProductContextRefIsZero(catalog.ProductContext) {
+		productContextJSON, err = marshalJSON(catalog.ProductContext)
+		if err != nil {
+			return assetCatalogManifestRecord{}, err
+		}
+	}
+	return assetCatalogManifestRecord{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, Version: catalog.Manifest.Version, Hash: catalog.Manifest.Hash, ProductContextJSON: productContextJSON, CreatedAt: catalog.Manifest.CreatedAt}, nil
 }
 
 func sameCatalogRows(left, right []assetCatalogRecord) bool {

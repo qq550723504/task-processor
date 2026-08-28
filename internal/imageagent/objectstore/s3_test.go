@@ -48,7 +48,9 @@ func TestPrepareSlotArtifactsBuildsContentAddressedManifestWithoutLocalPath(t *t
 	}
 
 	wantSHA := sha256Hex(validAsset(t, 3, 2).Bytes)
-	if got, want := prepared.Manifest.Assets[0].ObjectKey, "image-agent/staging/tenant-a/run-1/3/slot-1/2/0-"+wantSHA+".png"; got != want {
+	ownerKey, err := imageagent.ArtifactOwnerKey("user-a")
+	require.NoError(t, err)
+	if got, want := prepared.Manifest.Assets[0].ObjectKey, "image-agent/staging/tenant-a/"+ownerKey+"/run-1/3/slot-1/2/0-"+wantSHA+".png"; got != want {
 		t.Fatalf("object key = %q, want %q", got, want)
 	}
 	encoded, err := json.Marshal(prepared)
@@ -60,6 +62,23 @@ func TestPrepareSlotArtifactsBuildsContentAddressedManifestWithoutLocalPath(t *t
 			t.Fatalf("persisted JSON leaked transient material %q: %s", sentinel, encoded)
 		}
 	}
+}
+
+func TestPrepareSlotArtifactsSeparatesSameTenantRunByOwner(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t, &fakeS3API{})
+	first := testIdentity()
+	second := first
+	second.OwnerUserID = "user-b"
+
+	firstPrepared, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{Identity: first, Assets: []ArtifactInput{validAsset(t, 1, 1)}})
+	require.NoError(t, err)
+	secondPrepared, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{Identity: second, Assets: []ArtifactInput{validAsset(t, 1, 1)}})
+	require.NoError(t, err)
+
+	require.NotEqual(t, firstPrepared.Manifest.Assets[0].ObjectKey, secondPrepared.Manifest.Assets[0].ObjectKey)
+	require.NotContains(t, firstPrepared.Manifest.Assets[0].ObjectKey, first.OwnerUserID)
+	require.NotContains(t, secondPrepared.Manifest.Assets[0].ObjectKey, second.OwnerUserID)
 }
 
 func TestEnsureStagedReconcilesLostPutResponseWithHead(t *testing.T) {
@@ -216,9 +235,9 @@ func TestCloneOperationsPreservingNilPreservesRepresentationAndDefensivelyCopies
 func TestFinalizePreservesOperationsWireRepresentationAndFingerprint(t *testing.T) {
 	t.Parallel()
 
-	const finalKey = "image-agent/public/tenant-a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
-	const nilOperationsJSON = `{"assets":[{"object_key":"image-agent/public/tenant-a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size_bytes":42,"content_type":"image/png","width":1200,"height":1200,"source_asset_id":"source-1","operations":null,"provider_receipt_id":"receipt-1"}]}`
-	const emptyOperationsJSON = `{"assets":[{"object_key":"image-agent/public/tenant-a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size_bytes":42,"content_type":"image/png","width":1200,"height":1200,"source_asset_id":"source-1","operations":[],"provider_receipt_id":"receipt-1"}]}`
+	const finalKey = "image-agent/public/tenant-a/fc95297aa4f56781f0decb7d4bf59b1447f09b3611039b80188b1c6beb03ee6a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
+	const nilOperationsJSON = `{"assets":[{"object_key":"image-agent/public/tenant-a/fc95297aa4f56781f0decb7d4bf59b1447f09b3611039b80188b1c6beb03ee6a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size_bytes":42,"content_type":"image/png","width":1200,"height":1200,"source_asset_id":"source-1","operations":null,"provider_receipt_id":"receipt-1"}]}`
+	const emptyOperationsJSON = `{"assets":[{"object_key":"image-agent/public/tenant-a/fc95297aa4f56781f0decb7d4bf59b1447f09b3611039b80188b1c6beb03ee6a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size_bytes":42,"content_type":"image/png","width":1200,"height":1200,"source_asset_id":"source-1","operations":[],"provider_receipt_id":"receipt-1"}]}`
 
 	for _, tc := range []struct {
 		name            string
@@ -226,14 +245,14 @@ func TestFinalizePreservesOperationsWireRepresentationAndFingerprint(t *testing.
 		wantJSON        string
 		wantFingerprint string
 	}{
-		{name: "nil", wantJSON: nilOperationsJSON, wantFingerprint: "2ffa06c1184ad5af8337ba56c88bdc1974f02710a694aefd68cf0be83aa54e92"},
-		{name: "non-nil empty", operations: []string{}, wantJSON: emptyOperationsJSON, wantFingerprint: "98f7284ff7d68a311dc78cf5d5566f70883b94c9fa2f70bc4bdc68399e429a47"},
+		{name: "nil", wantJSON: nilOperationsJSON, wantFingerprint: "00e407bebc7f82974a0d1055c16198b5b5a433c23c90523f25ff197e5a0482de"},
+		{name: "non-nil empty", operations: []string{}, wantJSON: emptyOperationsJSON, wantFingerprint: "e0dc66445d22e7e36962eacee7be4ec10a9c625c57578196705c3ab4523939a4"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			api := &fakeS3API{objects: map[string]fakeObject{}}
 			store := newTestStore(t, api)
 			staged := imageagent.StagedAssetRef{
-				ObjectKey: "image-agent/staging/tenant-a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+				ObjectKey: "image-agent/staging/tenant-a/fc95297aa4f56781f0decb7d4bf59b1447f09b3611039b80188b1c6beb03ee6a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
 				SHA256:    strings.Repeat("a", 64), SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200,
 				SourceAssetID: "source-1", Operations: tc.operations, ProviderReceiptID: "receipt-1",
 			}
@@ -429,19 +448,19 @@ func TestRecoveryRejectsNonCanonicalPersistedStagingKeysBeforeSDKCalls(t *testin
 	t.Parallel()
 	for _, mutate := range []func(*imageagent.StagedAssetRef){
 		func(ref *imageagent.StagedAssetRef) {
-			ref.ObjectKey = "image-agent/staging/tenant-a/run-1/03/slot-1/2/0-" + ref.SHA256 + ".png"
+			ref.ObjectKey = strings.Replace(ref.ObjectKey, "/run-1/3/", "/run-1/03/", 1)
 		},
 		func(ref *imageagent.StagedAssetRef) {
-			ref.ObjectKey = "image-agent/staging/tenant-a/run-1/3/slot-1/2/1-" + ref.SHA256 + ".png"
+			ref.ObjectKey = strings.Replace(ref.ObjectKey, "/2/0-", "/2/1-", 1)
 		},
 		func(ref *imageagent.StagedAssetRef) {
-			ref.ObjectKey = "image-agent/staging/tenant-a/run-1/3/slot-1/2/0-" + strings.ToUpper(ref.SHA256) + ".png"
+			ref.ObjectKey = strings.Replace(ref.ObjectKey, ref.SHA256, strings.ToUpper(ref.SHA256), 1)
 		},
 		func(ref *imageagent.StagedAssetRef) {
-			ref.ObjectKey = "image-agent/staging/tenant-a/run-1/3/slot-1/2/0-" + ref.SHA256 + ".jpg"
+			ref.ObjectKey = strings.TrimSuffix(ref.ObjectKey, ".png") + ".jpg"
 		},
 		func(ref *imageagent.StagedAssetRef) {
-			ref.ObjectKey = "image-agent/staging/tenant a/run-1/3/slot-1/2/0-" + ref.SHA256 + ".png"
+			ref.ObjectKey = strings.Replace(ref.ObjectKey, "/tenant-a/", "/tenant a/", 1)
 		},
 		func(ref *imageagent.StagedAssetRef) {
 			ref.Operations = []string{"provider=https://transient.example"}
@@ -479,7 +498,7 @@ func TestPersistedManifestPreflightsEveryAssetBeforeStorageCalls(t *testing.T) {
 			apply func(*imageagent.StagedAssetRef)
 		}{
 			{name: "malformed later key", apply: func(ref *imageagent.StagedAssetRef) {
-				ref.ObjectKey = "image-agent/staging/tenant-a/run-1/03/slot-1/2/1-" + ref.SHA256 + ".png"
+				ref.ObjectKey = strings.Replace(ref.ObjectKey, "/run-1/3/", "/run-1/03/", 1)
 			}},
 			{name: "unsafe later operation", apply: func(ref *imageagent.StagedAssetRef) { ref.Operations = []string{"provider=https://transient.example"} }},
 		} {
@@ -507,7 +526,7 @@ func TestFinalizeRejectsNonCanonicalPersistedStagingKeysBeforeSDKCalls(t *testin
 	api := &fakeS3API{objects: map[string]fakeObject{}}
 	store := newTestStore(t, api)
 	prepared := mustPrepare(t, store)
-	prepared.Manifest.Assets[0].ObjectKey = "image-agent/staging/tenant-a/run-1/03/slot-1/2/0-" + prepared.Manifest.Assets[0].SHA256 + ".png"
+	prepared.Manifest.Assets[0].ObjectKey = strings.Replace(prepared.Manifest.Assets[0].ObjectKey, "/run-1/3/", "/run-1/03/", 1)
 	if _, err := store.Finalize(context.Background(), prepared.Manifest); err == nil {
 		t.Fatal("Finalize() error = nil, want malformed manifest rejection")
 	}

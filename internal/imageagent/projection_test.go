@@ -27,7 +27,7 @@ func TestValidateProjectionSnapshotAcceptsOnlyValidatedDurableV3Candidates(t *te
 			Candidates: []AssetCandidate{{
 				AssetID:       "candidate-1",
 				SourceAssetID: "source-1",
-				DurableAsset:  DurableAssetIdentity{ObjectKey: "image-agent/public/tenant-a/run-a/1/scene-1/1/0-" + sha + ".png", SHA256: sha},
+				DurableAsset:  DurableAssetIdentity{ObjectKey: "image-agent/public/tenant-a/fc95297aa4f56781f0decb7d4bf59b1447f09b3611039b80188b1c6beb03ee6a/run-a/1/scene-1/1/0-" + sha + ".png", SHA256: sha},
 			}},
 		}},
 	}
@@ -42,7 +42,7 @@ func TestSlotProjectionJSONPreservesV3DurableIdentityWithoutChangingV2CandidateW
 	sha := strings.Repeat("a", 64)
 	v3 := SlotProjection{Candidates: []AssetCandidate{{
 		AssetID: "candidate-1", SourceAssetID: "source-1",
-		DurableAsset: DurableAssetIdentity{ObjectKey: "image-agent/public/tenant-a/run-a/1/scene-1/1/0-" + sha + ".png", SHA256: sha},
+		DurableAsset: DurableAssetIdentity{ObjectKey: "image-agent/public/tenant-a/fc95297aa4f56781f0decb7d4bf59b1447f09b3611039b80188b1c6beb03ee6a/run-a/1/scene-1/1/0-" + sha + ".png", SHA256: sha},
 	}}}
 	encoded, err := json.Marshal(v3)
 	require.NoError(t, err)

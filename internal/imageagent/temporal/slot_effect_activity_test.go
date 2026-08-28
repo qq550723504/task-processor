@@ -121,7 +121,7 @@ func TestImageSlotWorkflowV3RejectsInvalidMainCandidateCount(t *testing.T) {
 				for index := range candidates {
 					candidates[index] = imageagent.SlotEffectV3AssetCandidate{
 						AssetID: fmt.Sprintf("candidate-%d", index), SourceAssetID: "source-1",
-						DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/run-main-count/1/main-1/1/%d-%s.png", index, v3SHA256), SHA256: v3SHA256},
+						DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/fc95297aa4f56781f0decb7d4bf59b1447f09b3611039b80188b1c6beb03ee6a/run-main-count/1/main-1/1/%d-%s.png", index, v3SHA256), SHA256: v3SHA256},
 					}
 				}
 				return imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt, Candidates: candidates}, nil
@@ -190,7 +190,7 @@ func TestPersistSlotResultV3CannotAcceptInvalidMainCandidateCount(t *testing.T) 
 			require.NoError(t, err)
 			candidates := make([]imageagent.SlotEffectV3AssetCandidate, count)
 			for index := range candidates {
-				candidates[index] = imageagent.SlotEffectV3AssetCandidate{AssetID: fmt.Sprintf("candidate-%d", index), SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/%s/1/main-1/1/%d-%s.png", run.ID, index, v3SHA256), SHA256: v3SHA256}}
+				candidates[index] = imageagent.SlotEffectV3AssetCandidate{AssetID: fmt.Sprintf("candidate-%d", index), SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/fc95297aa4f56781f0decb7d4bf59b1447f09b3611039b80188b1c6beb03ee6a/%s/1/main-1/1/%d-%s.png", run.ID, index, v3SHA256), SHA256: v3SHA256}}
 			}
 
 			err = activities.PersistSlotResultV3(context.Background(), PersistSlotResultV3ActivityInput{

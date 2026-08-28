@@ -143,8 +143,9 @@ type AuthorizedAsset struct {
 }
 
 type AssetCatalog struct {
-	Manifest CatalogManifest
-	Assets   []AuthorizedAsset
+	Manifest       CatalogManifest
+	Assets         []AuthorizedAsset
+	ProductContext ProductContextRef
 }
 
 type CatalogManifest struct {

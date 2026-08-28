@@ -119,6 +119,10 @@ func (s *S3DurableArtifactStore) PrepareSlotArtifacts(input PrepareSlotArtifacts
 	if err := validateIdentity(input.Identity); err != nil || len(input.Assets) == 0 || len(input.Assets) > s.maxArtifactCount {
 		return PreparedSlotArtifacts{}, imageagent.ErrValidation
 	}
+	ownerKey, err := imageagent.ArtifactOwnerKey(input.Identity.OwnerUserID)
+	if err != nil {
+		return PreparedSlotArtifacts{}, imageagent.ErrValidation
+	}
 	var aggregateBytes int64
 	for _, asset := range input.Assets {
 		size := int64(len(asset.Bytes))
@@ -155,7 +159,7 @@ func (s *S3DurableArtifactStore) PrepareSlotArtifacts(input PrepareSlotArtifacts
 		}
 		sum := sha256.Sum256(asset.Bytes)
 		hash := hex.EncodeToString(sum[:])
-		key := fmt.Sprintf("%s/%s/%s/%d/%s/%d/%d-%s.%s", defaultStagingPrefix, input.Identity.TenantID, input.Identity.RunID, input.Identity.PlanRevision, input.Identity.SlotID, input.Identity.Attempt, index, hash, extension)
+		key := fmt.Sprintf("%s/%s/%s/%s/%d/%s/%d/%d-%s.%s", defaultStagingPrefix, input.Identity.TenantID, ownerKey, input.Identity.RunID, input.Identity.PlanRevision, input.Identity.SlotID, input.Identity.Attempt, index, hash, extension)
 		assets[index] = imageagent.StagedAssetRef{ObjectKey: key, SHA256: hash, SizeBytes: int64(len(asset.Bytes)), ContentType: contentType, Width: info.Width, Height: info.Height, SourceAssetID: asset.SourceAssetID, Operations: operations, ProviderReceiptID: asset.ProviderReceiptID}
 		contents[key] = append([]byte(nil), asset.Bytes...)
 	}
@@ -366,10 +370,13 @@ func serverChecksumHex(value string) (string, error) {
 }
 
 func validateIdentity(identity imageagent.SlotExternalEffectIdentity) error {
-	for _, value := range []string{identity.TenantID, identity.OwnerUserID, identity.RunID, identity.SlotID} {
+	for _, value := range []string{identity.TenantID, identity.RunID, identity.SlotID} {
 		if imageagent.ValidateArtifactKeyIdentifier(value) != nil {
 			return imageagent.ErrValidation
 		}
+	}
+	if _, err := imageagent.ArtifactOwnerKey(identity.OwnerUserID); err != nil {
+		return imageagent.ErrValidation
 	}
 	if identity.PlanRevision <= 0 || identity.Attempt <= 0 {
 		return imageagent.ErrValidation
@@ -395,6 +402,7 @@ func safePersistedID(value string) bool {
 
 type stagingKeyIdentity struct {
 	tenantID     string
+	ownerKey     string
 	runID        string
 	planRevision int64
 	slotID       string
@@ -405,23 +413,23 @@ type stagingKeyIdentity struct {
 }
 
 func (identity stagingKeyIdentity) publicKey() string {
-	return fmt.Sprintf("%s/%s/%s/%d/%s/%d/%d-%s.%s", defaultPublicPrefix, identity.tenantID, identity.runID, identity.planRevision, identity.slotID, identity.attempt, identity.assetIndex, identity.sha256, identity.extension)
+	return fmt.Sprintf("%s/%s/%s/%s/%d/%s/%d/%d-%s.%s", defaultPublicPrefix, identity.tenantID, identity.ownerKey, identity.runID, identity.planRevision, identity.slotID, identity.attempt, identity.assetIndex, identity.sha256, identity.extension)
 }
 
 func parseStagingKey(asset imageagent.StagedAssetRef, expectedIndex int) (stagingKeyIdentity, error) {
 	segments := strings.Split(asset.ObjectKey, "/")
-	if len(segments) != 8 || strings.Join(segments[:2], "/") != defaultStagingPrefix || imageagent.ValidateArtifactKeyIdentifier(segments[2]) != nil || imageagent.ValidateArtifactKeyIdentifier(segments[3]) != nil || imageagent.ValidateArtifactKeyIdentifier(segments[5]) != nil {
+	if len(segments) != 9 || strings.Join(segments[:2], "/") != defaultStagingPrefix || imageagent.ValidateArtifactKeyIdentifier(segments[2]) != nil || !canonicalSHA256.MatchString(segments[3]) || imageagent.ValidateArtifactKeyIdentifier(segments[4]) != nil || imageagent.ValidateArtifactKeyIdentifier(segments[6]) != nil {
 		return stagingKeyIdentity{}, imageagent.ErrValidation
 	}
-	planRevision, ok := canonicalPositiveDecimal(segments[4])
+	planRevision, ok := canonicalPositiveDecimal(segments[5])
 	if !ok {
 		return stagingKeyIdentity{}, imageagent.ErrValidation
 	}
-	attempt, ok := canonicalPositiveDecimal(segments[6])
+	attempt, ok := canonicalPositiveDecimal(segments[7])
 	if !ok {
 		return stagingKeyIdentity{}, imageagent.ErrValidation
 	}
-	filename := segments[7]
+	filename := segments[8]
 	if strings.Count(filename, "-") != 1 || strings.Count(filename, ".") != 1 {
 		return stagingKeyIdentity{}, imageagent.ErrValidation
 	}
@@ -434,7 +442,7 @@ func parseStagingKey(asset imageagent.StagedAssetRef, expectedIndex int) (stagin
 	if len(hashAndExtension) != 2 || !canonicalSHA256.MatchString(hashAndExtension[0]) || hashAndExtension[0] != asset.SHA256 || contentExtensions[asset.ContentType] != hashAndExtension[1] {
 		return stagingKeyIdentity{}, imageagent.ErrValidation
 	}
-	return stagingKeyIdentity{tenantID: segments[2], runID: segments[3], planRevision: planRevision, slotID: segments[5], attempt: attempt, assetIndex: int(assetIndex64), sha256: hashAndExtension[0], extension: hashAndExtension[1]}, nil
+	return stagingKeyIdentity{tenantID: segments[2], ownerKey: segments[3], runID: segments[4], planRevision: planRevision, slotID: segments[6], attempt: attempt, assetIndex: int(assetIndex64), sha256: hashAndExtension[0], extension: hashAndExtension[1]}, nil
 }
 
 func canonicalPositiveDecimal(value string) (int64, bool) {

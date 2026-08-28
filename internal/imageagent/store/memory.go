@@ -300,7 +300,7 @@ func (r *memoryRepository) SaveAssetCatalog(_ context.Context, scope imageagent.
 	}
 	cloned := cloneCatalog(normalized)
 	if existing, exists := r.catalogs[key]; exists {
-		if existing.Manifest.Version != cloned.Manifest.Version || existing.Manifest.Hash != cloned.Manifest.Hash || !reflect.DeepEqual(existing.Assets, cloned.Assets) {
+		if existing.Manifest.Version != cloned.Manifest.Version || existing.Manifest.Hash != cloned.Manifest.Hash || !reflect.DeepEqual(existing.Assets, cloned.Assets) || !reflect.DeepEqual(existing.ProductContext, cloned.ProductContext) {
 			return imageagent.ErrRevisionConflict
 		}
 		return nil
@@ -457,6 +457,7 @@ func cloneCatalog(catalog imageagent.AssetCatalog) imageagent.AssetCatalog {
 		assets[index] = asset
 	}
 	catalog.Assets = assets
+	catalog.ProductContext.Attributes = cloneMetadata(catalog.ProductContext.Attributes)
 	return catalog
 }
 

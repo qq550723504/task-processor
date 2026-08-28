@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"task-processor/internal/asset"
+	assetgeneration "task-processor/internal/asset/generation"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/catalog"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/listingkit"
 )
@@ -40,11 +42,22 @@ func (c *listingKitAuthorizedAssetCatalog) Resolve(ctx context.Context, scope im
 	if task == nil || strings.TrimSpace(task.ID) != strings.TrimSpace(scope.BusinessTaskID) || strings.TrimSpace(task.TenantID) != identity.TenantID || listingkit.ResolveTaskUserID(task) != identity.UserID {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task is not owned by verified tenant")
 	}
+	return imageAgentCatalogFromTask(task)
+}
+
+func imageAgentCatalogFromTask(task *listingkit.Task) (imageagent.AssetCatalog, error) {
 	assets := sourceAssetsFromTask(task)
 	if len(assets) == 0 {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task has no authorized source assets")
 	}
-	return imageagent.AssetCatalog{Assets: assets}, nil
+	context := imageagent.ProductContextRef{ProductID: strings.TrimSpace(task.ID)}
+	if product := taskCatalogProduct(task); product != nil {
+		providerContext := assetgeneration.BuildProductContext(product)
+		context.Title = providerContext.Title
+		context.ProductType = providerContext.ProductType
+		context.Attributes = providerContext.Attributes
+	}
+	return imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{Assets: assets, ProductContext: context})
 }
 
 func sourceAssetsFromTask(task *listingkit.Task) []imageagent.AuthorizedAsset {
@@ -90,4 +103,14 @@ func taskAssetBundle(task *listingkit.Task) *asset.Bundle {
 		return task.Result.StandardProductSnapshot.AssetBundle
 	}
 	return task.Result.AssetBundle
+}
+
+func taskCatalogProduct(task *listingkit.Task) *catalog.Product {
+	if task == nil || task.Result == nil {
+		return nil
+	}
+	if task.Result.StandardProductSnapshot != nil && task.Result.StandardProductSnapshot.CatalogProduct != nil {
+		return task.Result.StandardProductSnapshot.CatalogProduct
+	}
+	return task.Result.CatalogProduct
 }
