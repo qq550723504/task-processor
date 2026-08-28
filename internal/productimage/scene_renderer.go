@@ -21,6 +21,10 @@ func NewDefaultSceneRenderer(workDir string) (SceneRenderer, error) {
 	return &localSceneRenderer{runtime: rt}, nil
 }
 
+func (*localSceneRenderer) QuoteUsage(_ context.Context, request CapabilityUsageQuoteRequest) (CapabilityUsageQuote, error) {
+	return localCapabilityUsageQuote(request, 1), nil
+}
+
 func (r *localSceneRenderer) Render(ctx context.Context, asset *ImageAsset, productContext *ProductContext) ([]ImageAsset, error) {
 	if asset == nil {
 		return nil, fmt.Errorf("asset cannot be nil")

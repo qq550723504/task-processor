@@ -64,6 +64,37 @@ func NewGovernedSceneGenerator(config GovernedSceneGeneratorConfig) (SceneGenera
 	}, nil
 }
 
+func (g *governedSceneGenerator) QuoteUsage(ctx context.Context, request CapabilityUsageQuoteRequest) (CapabilityUsageQuote, error) {
+	if g == nil || g.router == nil || request.Operation != "render_scene" {
+		return CapabilityUsageQuote{}, ErrCapabilityUsageQuoteUnavailable
+	}
+	identity := g.identity(ctx)
+	identity.TenantID = strings.TrimSpace(identity.TenantID)
+	identity.UserID = strings.TrimSpace(identity.UserID)
+	if identity.TenantID == "" || identity.UserID == "" {
+		return CapabilityUsageQuote{}, ErrCapabilityUsageQuoteUnavailable
+	}
+	decision, err := g.router.Decide(ctx, aicapability.RouteRequest{
+		TenantID: identity.TenantID, UserID: identity.UserID, Capability: aicapability.CapabilityProductImageScene,
+		Operation: aicapability.OperationProductImageSceneGenerate, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureImageEdit}, TraceID: identity.TraceID,
+	})
+	if err != nil || !validGovernedSceneDecision(decision) {
+		return CapabilityUsageQuote{}, ErrCapabilityUsageQuoteUnavailable
+	}
+	quote := CapabilityUsageQuote{
+		Operation: request.Operation, Provider: decision.ProviderID, Model: decision.ModelID,
+		RoutingKey: decision.RoutingKey, CredentialReference: decision.CredentialReference,
+		ConfigurationVersion: decision.ConfigurationVersion, MaximumOutputs: 1, MaximumModelCalls: 1,
+		CostUpperBoundKnown: false,
+	}
+	quote.Fingerprint = capabilityQuoteFingerprint(struct {
+		Identity SceneAIIdentity
+		Request  CapabilityUsageQuoteRequest
+		Quote    CapabilityUsageQuote
+	}{identity, request, quote})
+	return quote, nil
+}
+
 func (g *governedSceneGenerator) GenerateScene(ctx context.Context, req *SceneGenerationRequest) (*SceneGenerationResult, error) {
 	if req == nil {
 		return nil, aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductImageSceneGenerate), nil)
@@ -80,26 +111,28 @@ func (g *governedSceneGenerator) GenerateScene(ctx context.Context, req *SceneGe
 		return nil, wrapped
 	}
 
-	decision, err := g.router.Decide(ctx, aicapability.RouteRequest{
-		TenantID:         identity.TenantID,
-		UserID:           identity.UserID,
-		Capability:       aicapability.CapabilityProductImageScene,
-		Operation:        aicapability.OperationProductImageSceneGenerate,
-		RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureImageEdit},
-		TraceID:          identity.TraceID,
-	})
-	if err != nil {
-		wrapped := err
-		g.record(ctx, g.newRecord(identity, startedAt, inputHash, promptHash, decision, nil, wrapped, true))
-		return nil, wrapped
+	var decision aicapability.RouteDecision
+	if quote, authorized := CapabilityUsageQuoteFromContext(ctx); authorized {
+		if quote.Operation != "render_scene" || strings.TrimSpace(quote.Provider) == "" || strings.TrimSpace(quote.Model) == "" || strings.TrimSpace(quote.RoutingKey) == "" || strings.TrimSpace(quote.CredentialReference) == "" || quote.MaximumOutputs != 1 || quote.MaximumModelCalls != 1 {
+			wrapped := aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductImageSceneGenerate), nil)
+			return nil, &CapabilityDispatchError{State: CapabilityRejectedBeforeEffect, Err: wrapped}
+		}
+		decision = aicapability.RouteDecision{Capability: aicapability.CapabilityProductImageScene, Operation: aicapability.OperationProductImageSceneGenerate, ProviderID: quote.Provider, ModelID: quote.Model, RoutingKey: quote.RoutingKey, CredentialReference: quote.CredentialReference, ConfigurationVersion: quote.ConfigurationVersion}
+	} else {
+		var err error
+		decision, err = g.router.Decide(ctx, aicapability.RouteRequest{
+			TenantID: identity.TenantID, UserID: identity.UserID, Capability: aicapability.CapabilityProductImageScene,
+			Operation: aicapability.OperationProductImageSceneGenerate, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureImageEdit}, TraceID: identity.TraceID,
+		})
+		if err != nil {
+			g.record(ctx, g.newRecord(identity, startedAt, inputHash, promptHash, decision, nil, err, true))
+			return nil, &CapabilityDispatchError{State: CapabilityRejectedBeforeEffect, Err: err}
+		}
 	}
-	if decision.Capability != aicapability.CapabilityProductImageScene ||
-		decision.Operation != aicapability.OperationProductImageSceneGenerate ||
-		strings.TrimSpace(decision.ProviderID) == "" || strings.TrimSpace(decision.RoutingKey) == "" ||
-		strings.TrimSpace(decision.ModelID) == "" || strings.TrimSpace(decision.CredentialReference) == "" {
+	if !validGovernedSceneDecision(decision) {
 		wrapped := aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(aicapability.OperationProductImageSceneGenerate), nil)
 		g.record(ctx, g.newRecord(identity, startedAt, inputHash, promptHash, decision, nil, wrapped, true))
-		return nil, wrapped
+		return nil, &CapabilityDispatchError{State: CapabilityRejectedBeforeEffect, Err: wrapped}
 	}
 
 	result, providerErr := g.provider.GenerateSceneWithRoute(ctx, req, SceneGenerationRoute{
@@ -111,16 +144,23 @@ func (g *governedSceneGenerator) GenerateScene(ctx context.Context, req *SceneGe
 	if providerErr != nil {
 		wrapped := aicapability.NewError(classifySceneError(providerErr), string(aicapability.OperationProductImageSceneGenerate), providerErr)
 		g.record(ctx, g.newRecord(identity, startedAt, inputHash, promptHash, decision, result, wrapped, false))
-		return result, wrapped
+		return result, &CapabilityDispatchError{State: CapabilityDispatchedUnknown, Err: wrapped}
 	}
 	if result == nil || len(result.Assets) == 0 {
 		wrapped := aicapability.NewError(aicapability.ErrorInvalidProviderResponse, string(aicapability.OperationProductImageSceneGenerate), nil)
 		g.record(ctx, g.newRecord(identity, startedAt, inputHash, promptHash, decision, result, wrapped, false))
-		return nil, wrapped
+		return nil, &CapabilityDispatchError{State: CapabilityDispatchedUnknown, Err: wrapped}
 	}
 
 	g.record(ctx, g.newRecord(identity, startedAt, inputHash, promptHash, decision, result, nil, false))
 	return result, nil
+}
+
+func validGovernedSceneDecision(decision aicapability.RouteDecision) bool {
+	return decision.Capability == aicapability.CapabilityProductImageScene &&
+		decision.Operation == aicapability.OperationProductImageSceneGenerate &&
+		strings.TrimSpace(decision.ProviderID) != "" && strings.TrimSpace(decision.RoutingKey) != "" &&
+		strings.TrimSpace(decision.ModelID) != "" && strings.TrimSpace(decision.CredentialReference) != ""
 }
 
 func (g *governedSceneGenerator) newRecord(identity SceneAIIdentity, startedAt time.Time, inputHash, promptHash string, decision aicapability.RouteDecision, result *SceneGenerationResult, callErr error, routeErr bool) aicapability.InvocationRecord {

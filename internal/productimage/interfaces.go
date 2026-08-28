@@ -18,3 +18,6 @@ type SceneRenderer = providers.SceneRenderer
 type MarketplaceValidator = providers.MarketplaceValidator
 type QualityAssessor = providers.QualityAssessor
 type ReviewAssessor = providers.ReviewAssessor
+type CapabilityUsageQuote = providers.CapabilityUsageQuote
+type CapabilityUsageQuoteRequest = providers.CapabilityUsageQuoteRequest
+type CapabilityUsageQuoter = providers.CapabilityUsageQuoter

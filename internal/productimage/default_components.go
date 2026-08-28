@@ -154,6 +154,10 @@ type defaultSubjectExtractor struct{}
 
 func NewDefaultSubjectExtractor() SubjectExtractor { return &defaultSubjectExtractor{} }
 
+func (*defaultSubjectExtractor) QuoteUsage(_ context.Context, request CapabilityUsageQuoteRequest) (CapabilityUsageQuote, error) {
+	return localCapabilityUsageQuote(request, 1), nil
+}
+
 func (e *defaultSubjectExtractor) Extract(_ context.Context, imageURL string, productContext *ProductContext) (*ImageAsset, error) {
 	if imageURL == "" {
 		return nil, fmt.Errorf("image URL cannot be empty")
@@ -201,6 +205,10 @@ type defaultWhiteBackgroundRenderer struct{}
 
 func NewDefaultWhiteBackgroundRenderer() WhiteBackgroundRenderer {
 	return &defaultWhiteBackgroundRenderer{}
+}
+
+func (*defaultWhiteBackgroundRenderer) QuoteUsage(_ context.Context, request CapabilityUsageQuoteRequest) (CapabilityUsageQuote, error) {
+	return localCapabilityUsageQuote(request, 1), nil
 }
 
 func (r *defaultWhiteBackgroundRenderer) Render(_ context.Context, asset *ImageAsset, _ *ProductContext) (*ImageAsset, error) {

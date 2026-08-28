@@ -27,6 +27,14 @@ type StagedSlotExecutor interface {
 	BuildSlotResult(context.Context, SlotExecutionInput, PublishedSlotOutput) (SlotExecutionResult, error)
 }
 
+// BudgetedStagedSlotExecutor is additive so frozen v2 and legacy uncapped v3
+// executors keep their historical wire behavior.
+type BudgetedStagedSlotExecutor interface {
+	StagedSlotExecutor
+	QuoteSlot(context.Context, SlotExecutionInput, BudgetPolicy) (SlotUsageQuote, error)
+	GenerateQuotedSlot(context.Context, SlotExecutionInput, SlotUsageQuote) (SlotGeneratedOutput, error)
+}
+
 type ApprovedAssetPublisher interface {
 	PublishApproved(context.Context, PublishApprovedInput) (PublicationAcknowledgement, error)
 }

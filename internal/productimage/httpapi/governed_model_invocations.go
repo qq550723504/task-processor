@@ -25,6 +25,38 @@ type governedFaithfulEditor struct {
 	logger   *logrus.Logger
 }
 
+func (e *governedFaithfulEditor) QuoteUsage(ctx context.Context, request productimage.CapabilityUsageQuoteRequest) (productimage.CapabilityUsageQuote, error) {
+	if e == nil || e.inner == nil || e.router == nil {
+		return productimage.CapabilityUsageQuote{}, productimage.ErrCapabilityUsageQuoteUnavailable
+	}
+	identity := productimage.AIIdentityFromContext(ctx)
+	operation := aicapability.OperationProductImageSubjectExtract
+	if request.Operation == "render_white_background" {
+		operation = aicapability.OperationProductImageWhiteBackground
+	} else if request.Operation != "extract_subject" {
+		return productimage.CapabilityUsageQuote{}, productimage.ErrCapabilityUsageQuoteUnavailable
+	}
+	decision, err := e.router.Decide(ctx, aicapability.RouteRequest{
+		TenantID: identity.TenantID, UserID: identity.UserID, Capability: aicapability.CapabilityProductImageScene,
+		Operation: operation, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureImageEdit}, TraceID: identity.TraceID,
+	})
+	if err != nil || !validGovernedDecision(decision, operation) {
+		return productimage.CapabilityUsageQuote{}, productimage.ErrCapabilityUsageQuoteUnavailable
+	}
+	quote := productimage.CapabilityUsageQuote{
+		Operation: request.Operation, Provider: decision.ProviderID, Model: decision.ModelID,
+		RoutingKey: decision.RoutingKey, CredentialReference: decision.CredentialReference,
+		ConfigurationVersion: decision.ConfigurationVersion, MaximumOutputs: 1, MaximumModelCalls: 1,
+		CostUpperBoundKnown: false,
+	}
+	quote.Fingerprint = hashGovernedValue(struct {
+		Identity productimage.AIIdentity
+		Request  productimage.CapabilityUsageQuoteRequest
+		Quote    productimage.CapabilityUsageQuote
+	}{identity, request, quote})
+	return quote, nil
+}
+
 func (e *governedFaithfulEditor) Edit(ctx context.Context, req *productimage.FaithfulEditRequest) (*productimage.FaithfulEditResult, error) {
 	if e == nil || e.inner == nil || req == nil {
 		return nil, aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductImageSubjectExtract), nil)
@@ -40,31 +72,41 @@ func (e *governedFaithfulEditor) Edit(ctx context.Context, req *productimage.Fai
 	startedAt := time.Now()
 	inputHash := hashGovernedValue(req)
 	promptHash := hashGovernedValue(productimage.FaithfulEditPromptText(req))
-	decision, err := e.router.Decide(ctx, aicapability.RouteRequest{
-		TenantID: identity.TenantID, UserID: identity.UserID,
-		Capability: aicapability.CapabilityProductImageScene, Operation: operation,
-		RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureImageEdit}, TraceID: identity.TraceID,
-	})
-	if err != nil {
-		e.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, nil, err, true)
-		return nil, err
+	var decision aicapability.RouteDecision
+	var err error
+	if quote, authorized := productimage.CapabilityUsageQuoteFromContext(ctx); authorized {
+		if quote.Operation != req.Operation || strings.TrimSpace(quote.Provider) == "" || strings.TrimSpace(quote.Model) == "" || strings.TrimSpace(quote.RoutingKey) == "" || strings.TrimSpace(quote.CredentialReference) == "" || quote.MaximumOutputs != 1 || quote.MaximumModelCalls != 1 {
+			err := aicapability.NewError(aicapability.ErrorInvalidInput, string(operation), nil)
+			return nil, &productimage.CapabilityDispatchError{State: productimage.CapabilityRejectedBeforeEffect, Err: err}
+		}
+		decision = aicapability.RouteDecision{Capability: aicapability.CapabilityProductImageScene, Operation: operation, ProviderID: quote.Provider, ModelID: quote.Model, RoutingKey: quote.RoutingKey, CredentialReference: quote.CredentialReference, ConfigurationVersion: quote.ConfigurationVersion}
+	} else {
+		decision, err = e.router.Decide(ctx, aicapability.RouteRequest{
+			TenantID: identity.TenantID, UserID: identity.UserID,
+			Capability: aicapability.CapabilityProductImageScene, Operation: operation,
+			RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureImageEdit}, TraceID: identity.TraceID,
+		})
+		if err != nil {
+			e.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, nil, err, true)
+			return nil, &productimage.CapabilityDispatchError{State: productimage.CapabilityRejectedBeforeEffect, Err: err}
+		}
 	}
 	if !validGovernedDecision(decision, operation) {
 		err = aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(operation), nil)
 		e.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, nil, err, true)
-		return nil, err
+		return nil, &productimage.CapabilityDispatchError{State: productimage.CapabilityRejectedBeforeEffect, Err: err}
 	}
 	routedEditor, routed := e.inner.(productimage.FaithfulEditorWithRoute)
 	if !routed {
 		err = aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(operation), nil)
 		e.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, nil, err, true)
-		return nil, err
+		return nil, &productimage.CapabilityDispatchError{State: productimage.CapabilityRejectedBeforeEffect, Err: err}
 	}
 	result, providerErr := routedEditor.EditWithRoute(ctx, req, productimage.FaithfulEditRoute{CredentialReference: decision.CredentialReference, ModelID: decision.ModelID, RoutingKey: decision.RoutingKey, ConfigurationVersion: decision.ConfigurationVersion})
 	if providerErr != nil {
 		wrapped := aicapability.NewError(classifyGovernedModelError(providerErr), string(operation), providerErr)
 		e.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, result, wrapped, false)
-		return result, wrapped
+		return result, &productimage.CapabilityDispatchError{State: productimage.CapabilityDispatchedUnknown, Err: wrapped}
 	}
 	e.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, result, nil, false)
 	return result, nil

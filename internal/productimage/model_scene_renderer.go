@@ -13,6 +13,14 @@ func NewModelSceneRenderer(generator SceneGenerator) SceneRenderer {
 	return &modelSceneRenderer{generator: generator}
 }
 
+func (r *modelSceneRenderer) QuoteUsage(ctx context.Context, request CapabilityUsageQuoteRequest) (CapabilityUsageQuote, error) {
+	quoter, ok := r.generator.(CapabilityUsageQuoter)
+	if !ok || quoter == nil {
+		return CapabilityUsageQuote{}, ErrCapabilityUsageQuoteUnavailable
+	}
+	return quoter.QuoteUsage(ctx, request)
+}
+
 func (r *modelSceneRenderer) Render(ctx context.Context, asset *ImageAsset, context *ProductContext) ([]ImageAsset, error) {
 	if r.generator == nil {
 		return nil, fmt.Errorf("scene generator is not configured")

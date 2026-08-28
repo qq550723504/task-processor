@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -35,6 +36,115 @@ func NewProductImageSlotExecutor(dependencies Dependencies) *ProductImageSlotExe
 	return &ProductImageSlotExecutor{dependencies: dependencies}
 }
 
+type quotedSlotOperation struct {
+	public     imageagent.SlotUsageOperation
+	capability productimage.CapabilityUsageQuote
+}
+
+type quotedSlotExecution struct {
+	quote      imageagent.SlotUsageQuote
+	operations []quotedSlotOperation
+}
+
+func (e *ProductImageSlotExecutor) quoteSlot(ctx context.Context, input imageagent.SlotExecutionInput, policy imageagent.BudgetPolicy) (quotedSlotExecution, error) {
+	slot, _, source, err := e.validateAndResolve(input)
+	if err != nil {
+		return quotedSlotExecution{}, err
+	}
+	if slot.Role == imageagent.SlotRoleSize && (source.Width <= 0 || source.Height <= 0) {
+		return quotedSlotExecution{}, fmt.Errorf("size slot %q requires reliable dimensions", slot.ID)
+	}
+	inputFingerprint := imageagent.SlotExecutionFingerprint(input)
+	type componentOperation struct {
+		name      string
+		component any
+	}
+	var components []componentOperation
+	switch slot.Role {
+	case imageagent.SlotRoleMain:
+		components = []componentOperation{{"extract_subject", e.dependencies.SubjectExtractor}, {"render_white_background", e.dependencies.WhiteBackgroundRenderer}}
+	case imageagent.SlotRoleScene, imageagent.SlotRoleDetail, imageagent.SlotRoleSellingPoint, imageagent.SlotRoleSize:
+		components = []componentOperation{{"render_scene", e.dependencies.SceneRenderer}}
+	default:
+		return quotedSlotExecution{}, fmt.Errorf("slot %q has unsupported role %q", slot.ID, slot.Role)
+	}
+	quoted := quotedSlotExecution{operations: make([]quotedSlotOperation, 0, len(components))}
+	pricingVersions := make([]string, 0, len(components))
+	for _, component := range components {
+		quoter, ok := component.component.(productimage.CapabilityUsageQuoter)
+		if !ok || quoter == nil {
+			return quotedSlotExecution{}, fmt.Errorf("%w: %s capability does not provide a conservative quote", imageagent.ErrBudgetQuoteUnavailable, component.name)
+		}
+		capability, quoteErr := quoter.QuoteUsage(ctx, productimage.CapabilityUsageQuoteRequest{Operation: component.name, InputFingerprint: inputFingerprint})
+		if quoteErr != nil {
+			return quotedSlotExecution{}, fmt.Errorf("%w: quote %s: %v", imageagent.ErrBudgetQuoteUnavailable, component.name, quoteErr)
+		}
+		if capability.Operation == "" {
+			capability.Operation = component.name
+		}
+		if capability.Operation != component.name || capability.Fingerprint == "" || capability.MaximumOutputs <= 0 || capability.MaximumModelCalls < 0 || capability.MaximumCostMicros < 0 {
+			return quotedSlotExecution{}, fmt.Errorf("%w: %s capability returned an invalid quote", imageagent.ErrBudgetQuoteUnavailable, component.name)
+		}
+		if policy.CostMicros.Enabled && !capability.CostUpperBoundKnown {
+			return quotedSlotExecution{}, fmt.Errorf("%w: %s capability has no trustworthy cost upper bound", imageagent.ErrBudgetQuoteUnavailable, component.name)
+		}
+		maximum := imageagent.UsageVector{Images: capability.MaximumOutputs, AgentSteps: 1, ModelCalls: capability.MaximumModelCalls}
+		if capability.CostUpperBoundKnown {
+			maximum.CostMicros = capability.MaximumCostMicros
+		}
+		public := imageagent.SlotUsageOperation{
+			Name: component.name, Provider: capability.Provider, Model: capability.Model,
+			PricingVersion: capability.PricingVersion, Fingerprint: capability.Fingerprint,
+			Maximum: maximum, MaximumOutputs: capability.MaximumOutputs,
+		}
+		quoted.quote.Maximum, err = imageagent.CheckedAddUsage(quoted.quote.Maximum, maximum)
+		if err != nil {
+			return quotedSlotExecution{}, err
+		}
+		quoted.operations = append(quoted.operations, quotedSlotOperation{public: public, capability: capability})
+		quoted.quote.Operations = append(quoted.quote.Operations, public)
+		pricingVersions = append(pricingVersions, capability.PricingVersion)
+	}
+	quoted.quote.PricingVersion = strings.Join(pricingVersions, "+")
+	fingerprintPayload := struct {
+		InputFingerprint string
+		Operations       []imageagent.SlotUsageOperation
+		PricingVersion   string
+	}{inputFingerprint, quoted.quote.Operations, quoted.quote.PricingVersion}
+	encoded, err := json.Marshal(fingerprintPayload)
+	if err != nil {
+		return quotedSlotExecution{}, err
+	}
+	sum := sha256.Sum256(encoded)
+	quoted.quote.Fingerprint = hex.EncodeToString(sum[:])
+	if err := imageagent.ValidateSlotUsageQuote(quoted.quote); err != nil {
+		return quotedSlotExecution{}, err
+	}
+	return quoted, nil
+}
+
+func (e *ProductImageSlotExecutor) QuoteSlot(ctx context.Context, input imageagent.SlotExecutionInput, policy imageagent.BudgetPolicy) (imageagent.SlotUsageQuote, error) {
+	quoted, err := e.quoteSlot(ctx, input, policy)
+	if err != nil {
+		return imageagent.SlotUsageQuote{}, err
+	}
+	return quoted.quote, nil
+}
+
+func (e *ProductImageSlotExecutor) GenerateQuotedSlot(ctx context.Context, input imageagent.SlotExecutionInput, expected imageagent.SlotUsageQuote) (imageagent.SlotGeneratedOutput, error) {
+	if err := imageagent.ValidateSlotUsageQuote(expected); err != nil {
+		return imageagent.SlotGeneratedOutput{}, &imageagent.ProviderDispatchError{State: imageagent.ProviderNotDispatched, Err: err}
+	}
+	quoted, err := e.quoteSlot(ctx, input, imageagent.BudgetPolicy{})
+	if err != nil {
+		return imageagent.SlotGeneratedOutput{}, &imageagent.ProviderDispatchError{State: imageagent.ProviderNotDispatched, Err: err}
+	}
+	if quoted.quote.Fingerprint != expected.Fingerprint {
+		return imageagent.SlotGeneratedOutput{}, &imageagent.ProviderDispatchError{State: imageagent.ProviderNotDispatched, Err: imageagent.ErrRevisionConflict}
+	}
+	return e.generateSlot(ctx, input, &quoted)
+}
+
 func (e *ProductImageSlotExecutor) ExecuteSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotExecutionResult, error) {
 	generated, err := e.GenerateSlot(ctx, input)
 	if err != nil {
@@ -44,6 +154,10 @@ func (e *ProductImageSlotExecutor) ExecuteSlot(ctx context.Context, input imagea
 }
 
 func (e *ProductImageSlotExecutor) GenerateSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
+	return e.generateSlot(ctx, input, nil)
+}
+
+func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input imageagent.SlotExecutionInput, quoted *quotedSlotExecution) (imageagent.SlotGeneratedOutput, error) {
 	slot, sourceAssetID, source, err := e.validateAndResolve(input)
 	if err != nil {
 		return imageagent.SlotGeneratedOutput{}, err
@@ -55,16 +169,17 @@ func (e *ProductImageSlotExecutor) GenerateSlot(ctx context.Context, input image
 	}
 	productContext := productContextForSlot(e.dependencies.ProductContext, slot, styleReferences)
 	var assets []productimage.ImageAsset
+	var receipt imageagent.SlotUsageReceipt
 	switch slot.Role {
 	case imageagent.SlotRoleMain:
-		assets, err = e.executeMain(ctx, source, productContext)
+		assets, receipt, err = e.executeMain(ctx, source, productContext, quoted)
 	case imageagent.SlotRoleScene, imageagent.SlotRoleDetail, imageagent.SlotRoleSellingPoint:
-		assets, err = e.executeScene(ctx, source, productContext)
+		assets, receipt, err = e.executeScene(ctx, source, productContext, quoted)
 	case imageagent.SlotRoleSize:
 		if source.Width <= 0 || source.Height <= 0 {
 			return imageagent.SlotGeneratedOutput{}, fmt.Errorf("size slot %q requires reliable dimensions", slot.ID)
 		}
-		assets, err = e.executeScene(ctx, source, productContext)
+		assets, receipt, err = e.executeScene(ctx, source, productContext, quoted)
 	default:
 		return imageagent.SlotGeneratedOutput{}, fmt.Errorf("slot %q has unsupported role %q", slot.ID, slot.Role)
 	}
@@ -75,7 +190,7 @@ func (e *ProductImageSlotExecutor) GenerateSlot(ctx context.Context, input image
 	for index, asset := range assets {
 		generated[index] = imageagent.GeneratedAsset{URL: asset.URL, Type: string(asset.Type), SourceURL: asset.SourceURL, Operations: append([]string(nil), asset.Operations...), Width: asset.Width, Height: asset.Height, Metadata: cloneMetadata(asset.Metadata)}
 	}
-	return imageagent.SlotGeneratedOutput{SlotID: slot.ID, Attempt: input.Attempt, SourceAssetID: sourceAssetID, Assets: generated}, nil
+	return imageagent.SlotGeneratedOutput{SlotID: slot.ID, Attempt: input.Attempt, SourceAssetID: sourceAssetID, Assets: generated, UsageReceipt: receipt}, nil
 }
 
 func (e *ProductImageSlotExecutor) PublishSlot(ctx context.Context, input imageagent.SlotExecutionInput, generated imageagent.SlotGeneratedOutput) (imageagent.SlotExecutionResult, error) {
@@ -230,35 +345,91 @@ func cloneImageAsset(asset productimage.ImageAsset) productimage.ImageAsset {
 	return cloned
 }
 
-func (e *ProductImageSlotExecutor) executeMain(ctx context.Context, source productimage.ImageAsset, productContext *productimage.ProductContext) ([]productimage.ImageAsset, error) {
+func (e *ProductImageSlotExecutor) executeMain(ctx context.Context, source productimage.ImageAsset, productContext *productimage.ProductContext, quoted *quotedSlotExecution) ([]productimage.ImageAsset, imageagent.SlotUsageReceipt, error) {
 	if e.dependencies.SubjectExtractor == nil {
-		return nil, fmt.Errorf("subject extractor is required for main slot")
+		return nil, imageagent.SlotUsageReceipt{}, fmt.Errorf("subject extractor is required for main slot")
 	}
 	if e.dependencies.WhiteBackgroundRenderer == nil {
-		return nil, fmt.Errorf("white background renderer is required for main slot")
+		return nil, imageagent.SlotUsageReceipt{}, fmt.Errorf("white background renderer is required for main slot")
 	}
-	subject, err := e.dependencies.SubjectExtractor.Extract(ctx, source.URL, productContext)
+	subjectCtx := operationQuoteContext(ctx, quoted, 0)
+	subject, err := e.dependencies.SubjectExtractor.Extract(subjectCtx, source.URL, productContext)
 	if err != nil {
-		return nil, fmt.Errorf("extract subject: %w", err)
+		return nil, imageagent.SlotUsageReceipt{}, dispatchedError("extract subject", err)
 	}
 	if subject == nil || strings.TrimSpace(subject.URL) == "" {
-		return nil, fmt.Errorf("subject extractor returned no generated asset")
+		return nil, imageagent.SlotUsageReceipt{}, dispatchedContractError("subject extractor returned no generated asset")
 	}
-	main, err := e.dependencies.WhiteBackgroundRenderer.Render(ctx, subject, productContext)
+	whiteCtx := operationQuoteContext(ctx, quoted, 1)
+	main, err := e.dependencies.WhiteBackgroundRenderer.Render(whiteCtx, subject, productContext)
 	if err != nil {
-		return nil, fmt.Errorf("render white background: %w", err)
+		return nil, imageagent.SlotUsageReceipt{}, dispatchedError("render white background", err)
 	}
 	if main == nil {
-		return nil, fmt.Errorf("white background renderer returned no generated asset")
+		return nil, imageagent.SlotUsageReceipt{}, dispatchedContractError("white background renderer returned no generated asset")
 	}
-	return []productimage.ImageAsset{*main}, nil
+	receipt := receiptForQuote(quoted, 2)
+	return []productimage.ImageAsset{*main}, receipt, nil
 }
 
-func (e *ProductImageSlotExecutor) executeScene(ctx context.Context, source productimage.ImageAsset, productContext *productimage.ProductContext) ([]productimage.ImageAsset, error) {
+func (e *ProductImageSlotExecutor) executeScene(ctx context.Context, source productimage.ImageAsset, productContext *productimage.ProductContext, quoted *quotedSlotExecution) ([]productimage.ImageAsset, imageagent.SlotUsageReceipt, error) {
 	if e.dependencies.SceneRenderer == nil {
-		return nil, fmt.Errorf("scene renderer is required")
+		return nil, imageagent.SlotUsageReceipt{}, fmt.Errorf("scene renderer is required")
 	}
-	return e.dependencies.SceneRenderer.Render(ctx, &source, productContext)
+	assets, err := e.dependencies.SceneRenderer.Render(operationQuoteContext(ctx, quoted, 0), &source, productContext)
+	if err != nil {
+		return nil, imageagent.SlotUsageReceipt{}, dispatchedError("render scene", err)
+	}
+	if quoted != nil && int64(len(assets)) > quoted.operations[0].public.MaximumOutputs {
+		return nil, imageagent.SlotUsageReceipt{}, dispatchedContractError(fmt.Sprintf("scene renderer returned %d outputs above quoted maximum %d", len(assets), quoted.operations[0].public.MaximumOutputs))
+	}
+	return assets, receiptForQuote(quoted, int64(len(assets))), nil
+}
+
+func operationQuoteContext(ctx context.Context, quoted *quotedSlotExecution, index int) context.Context {
+	if quoted == nil || index < 0 || index >= len(quoted.operations) {
+		return ctx
+	}
+	return productimage.WithCapabilityUsageQuote(ctx, quoted.operations[index].capability)
+}
+
+func receiptForQuote(quoted *quotedSlotExecution, actualImages int64) imageagent.SlotUsageReceipt {
+	if quoted == nil {
+		return imageagent.SlotUsageReceipt{}
+	}
+	receipt := imageagent.SlotUsageReceipt{Actual: quoted.quote.Maximum, CostBasis: imageagent.UsageCostReservedUpperBound}
+	receipt.Actual.Images = actualImages
+	for _, operation := range quoted.operations {
+		if !operation.capability.CostUpperBoundKnown {
+			receipt.Actual.CostMicros = 0
+			receipt.CostBasis = imageagent.UsageCostUnavailable
+			break
+		}
+	}
+	return receipt
+}
+
+func dispatchedError(operation string, err error) error {
+	var dispatch *imageagent.ProviderDispatchError
+	if errors.As(err, &dispatch) {
+		return fmt.Errorf("%s: %w", operation, err)
+	}
+	var capabilityDispatch *productimage.CapabilityDispatchError
+	if errors.As(err, &capabilityDispatch) {
+		state := imageagent.ProviderDispatchedUnknown
+		switch capabilityDispatch.State {
+		case productimage.CapabilityNotDispatched:
+			state = imageagent.ProviderNotDispatched
+		case productimage.CapabilityRejectedBeforeEffect:
+			state = imageagent.ProviderRejectedBeforeEffect
+		}
+		return &imageagent.ProviderDispatchError{State: state, ProviderRequestIDs: append([]string(nil), capabilityDispatch.ProviderRequestIDs...), Err: fmt.Errorf("%s: %w", operation, err)}
+	}
+	return &imageagent.ProviderDispatchError{State: imageagent.ProviderDispatchedUnknown, Err: fmt.Errorf("%s: %w", operation, err)}
+}
+
+func dispatchedContractError(message string) error {
+	return &imageagent.ProviderDispatchError{State: imageagent.ProviderDispatchedUnknown, Err: fmt.Errorf("%w: %s", imageagent.ErrProviderContractViolation, message)}
 }
 
 func authorizedStyleReferences(ids []string, catalog imageagent.AssetCatalog) ([]string, error) {

@@ -608,6 +608,83 @@ func TestExecutorSizeSlotRequiresReliableDimensions(t *testing.T) {
 	require.Equal(t, 1, renderer.calls)
 }
 
+func TestProductImageSlotUsageQuotesMainOperationGraph(t *testing.T) {
+	extractor := &quotedSubjectExtractor{quote: productimage.CapabilityUsageQuote{
+		Provider: "provider-a", Model: "model-subject", PricingVersion: "prices-v1",
+		Fingerprint: "subject-v1", MaximumOutputs: 1, MaximumModelCalls: 1,
+		MaximumCostMicros: 11, CostUpperBoundKnown: true,
+	}, result: &productimage.ImageAsset{URL: "https://generated.example/subject.png"}}
+	white := &quotedWhiteBackgroundRenderer{quote: productimage.CapabilityUsageQuote{
+		Provider: "provider-a", Model: "model-white", PricingVersion: "prices-v1",
+		Fingerprint: "white-v1", MaximumOutputs: 1, MaximumModelCalls: 1,
+		MaximumCostMicros: 13, CostUpperBoundKnown: true,
+	}, result: &productimage.ImageAsset{URL: "https://generated.example/main.png"}}
+	executor := NewProductImageSlotExecutor(Dependencies{SubjectExtractor: extractor, WhiteBackgroundRenderer: white})
+	input := slotInput("main-1", imageagent.SlotRoleMain)
+
+	quote, err := executor.QuoteSlot(context.Background(), input, imageagent.BudgetPolicy{CostMicros: imageagent.Limit{Enabled: true, Value: 100}})
+	require.NoError(t, err)
+	require.Equal(t, imageagent.UsageVector{Images: 2, AgentSteps: 2, ModelCalls: 2, CostMicros: 24}, quote.Maximum)
+	require.Equal(t, []string{"extract_subject", "render_white_background"}, []string{quote.Operations[0].Name, quote.Operations[1].Name})
+	require.NotEmpty(t, quote.Fingerprint)
+
+	generated, err := executor.GenerateQuotedSlot(context.Background(), input, quote)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.UsageVector{Images: 2, AgentSteps: 2, ModelCalls: 2, CostMicros: 24}, generated.UsageReceipt.Actual)
+	require.Equal(t, imageagent.UsageCostReservedUpperBound, generated.UsageReceipt.CostBasis)
+}
+
+func TestProductImageSlotUsageQuoteUsesFiniteSceneMaximum(t *testing.T) {
+	renderer := &quotedSceneRenderer{quote: productimage.CapabilityUsageQuote{
+		Provider: "provider-b", Model: "model-scene", PricingVersion: "prices-v2",
+		Fingerprint: "scene-v2", MaximumOutputs: 3, MaximumModelCalls: 1,
+		MaximumCostMicros: 17, CostUpperBoundKnown: true,
+	}, result: []productimage.ImageAsset{{URL: "https://generated.example/1.png"}, {URL: "https://generated.example/2.png"}}}
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer})
+
+	quote, err := executor.QuoteSlot(context.Background(), sceneSlotInput("scene-1"), imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	require.Equal(t, imageagent.UsageVector{Images: 3, AgentSteps: 1, ModelCalls: 1, CostMicros: 17}, quote.Maximum)
+	require.Equal(t, int64(3), quote.Operations[0].MaximumOutputs)
+}
+
+func TestProductImageSlotUsageQuoteFingerprintBindsInputAndPricing(t *testing.T) {
+	renderer := &quotedSceneRenderer{quote: productimage.CapabilityUsageQuote{Provider: "provider", Model: "model", PricingVersion: "v1", Fingerprint: "component-v1", MaximumOutputs: 1, MaximumModelCalls: 1, CostUpperBoundKnown: true}}
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer})
+	first, err := executor.QuoteSlot(context.Background(), sceneSlotInput("scene-1"), imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	changedInput := sceneSlotInput("scene-2")
+	second, err := executor.QuoteSlot(context.Background(), changedInput, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	require.NotEqual(t, first.Fingerprint, second.Fingerprint)
+	renderer.quote.PricingVersion = "v2"
+	renderer.quote.Fingerprint = "component-v2"
+	third, err := executor.QuoteSlot(context.Background(), sceneSlotInput("scene-1"), imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	require.NotEqual(t, first.Fingerprint, third.Fingerprint)
+}
+
+func TestProductImageSlotUsageCostCapFailsBeforeProviderWithoutUpperBound(t *testing.T) {
+	renderer := &quotedSceneRenderer{quote: productimage.CapabilityUsageQuote{Provider: "provider", Model: "model", Fingerprint: "component", MaximumOutputs: 1, MaximumModelCalls: 1}}
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer})
+
+	_, err := executor.QuoteSlot(context.Background(), sceneSlotInput("scene-1"), imageagent.BudgetPolicy{CostMicros: imageagent.Limit{Enabled: true, Value: 100}})
+	require.ErrorIs(t, err, imageagent.ErrBudgetQuoteUnavailable)
+	require.Zero(t, renderer.calls)
+}
+
+func TestProductImageSlotUsageRejectsOutputAboveQuote(t *testing.T) {
+	renderer := &quotedSceneRenderer{quote: productimage.CapabilityUsageQuote{Provider: "provider", Model: "model", Fingerprint: "component", MaximumOutputs: 1, MaximumModelCalls: 1, CostUpperBoundKnown: true}, result: []productimage.ImageAsset{{URL: "https://generated.example/1.png"}, {URL: "https://generated.example/2.png"}}}
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer})
+	input := sceneSlotInput("scene-1")
+	quote, err := executor.QuoteSlot(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+
+	_, err = executor.GenerateQuotedSlot(context.Background(), input, quote)
+	require.ErrorIs(t, err, imageagent.ErrProviderContractViolation)
+	require.Equal(t, imageagent.ProviderDispatchedUnknown, imageagent.ProviderDispatchStateOf(err))
+}
+
 func sceneSlotInput(id string) imageagent.SlotExecutionInput {
 	return slotInput(id, imageagent.SlotRoleScene)
 }
@@ -674,6 +751,57 @@ func (r *recordingSubjectExtractor) Extract(_ context.Context, _ string, _ *prod
 type recordingWhiteBackgroundRenderer struct {
 	calls  int
 	result *productimage.ImageAsset
+}
+
+type quotedSubjectExtractor struct {
+	quote  productimage.CapabilityUsageQuote
+	result *productimage.ImageAsset
+	calls  int
+}
+
+func (q *quotedSubjectExtractor) QuoteUsage(_ context.Context, request productimage.CapabilityUsageQuoteRequest) (productimage.CapabilityUsageQuote, error) {
+	result := q.quote
+	result.Operation = request.Operation
+	return result, nil
+}
+
+func (q *quotedSubjectExtractor) Extract(_ context.Context, _ string, _ *productimage.ProductContext) (*productimage.ImageAsset, error) {
+	q.calls++
+	return q.result, nil
+}
+
+type quotedWhiteBackgroundRenderer struct {
+	quote  productimage.CapabilityUsageQuote
+	result *productimage.ImageAsset
+	calls  int
+}
+
+func (q *quotedWhiteBackgroundRenderer) QuoteUsage(_ context.Context, request productimage.CapabilityUsageQuoteRequest) (productimage.CapabilityUsageQuote, error) {
+	result := q.quote
+	result.Operation = request.Operation
+	return result, nil
+}
+
+func (q *quotedWhiteBackgroundRenderer) Render(_ context.Context, _ *productimage.ImageAsset, _ *productimage.ProductContext) (*productimage.ImageAsset, error) {
+	q.calls++
+	return q.result, nil
+}
+
+type quotedSceneRenderer struct {
+	quote  productimage.CapabilityUsageQuote
+	result []productimage.ImageAsset
+	calls  int
+}
+
+func (q *quotedSceneRenderer) QuoteUsage(_ context.Context, request productimage.CapabilityUsageQuoteRequest) (productimage.CapabilityUsageQuote, error) {
+	result := q.quote
+	result.Operation = request.Operation
+	return result, nil
+}
+
+func (q *quotedSceneRenderer) Render(_ context.Context, _ *productimage.ImageAsset, _ *productimage.ProductContext) ([]productimage.ImageAsset, error) {
+	q.calls++
+	return q.result, nil
 }
 
 type mutatingSceneRenderer struct{}
