@@ -72,7 +72,7 @@ func TestListingKitInvitationSecretPreflight(t *testing.T) {
 func runListingKitInvitationSecretPreflight(t *testing.T, script, kubectlMode, tokenValue, projectIDValue string) (string, error) {
 	t.Helper()
 	binDir := t.TempDir()
-	writePreflightFake(t, filepath.Join(binDir, "kubectl"), `#!/usr/bin/env bash
+	writeBashPreflightFake(t, filepath.Join(binDir, "kubectl"), `#!/usr/bin/env bash
 if [[ "${FAKE_KUBECTL_MODE:-ready}" == "missing" ]]; then
   printf 'Error from server (NotFound): secrets "listingkit-member-invitation-secret" not found\n' >&2
   exit 1
@@ -117,18 +117,35 @@ func preflightBash(t *testing.T) string {
 	return ""
 }
 
-func writePreflightFake(t *testing.T, path, content string) {
+func writeBashPreflightFake(t *testing.T, path, content string) {
+	t.Helper()
+	writeExecutablePreflightFake(t, path, content)
+	output, err := exec.Command(preflightBash(t), "-n", path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("validate Bash fake %s: %v\n%s", filepath.Base(path), err, output)
+	}
+}
+
+func writePythonPreflightFake(t *testing.T, path, content string) {
+	t.Helper()
+	writeExecutablePreflightFake(t, path, content)
+	python, err := exec.LookPath("python")
+	if err != nil {
+		t.Fatalf("python is required to validate fake %s: %v", filepath.Base(path), err)
+	}
+	const compileScript = `import pathlib, sys; source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"); compile(source, sys.argv[1], "exec")`
+	output, err := exec.Command(python, "-c", compileScript, path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("validate Python fake %s: %v\n%s", filepath.Base(path), err, output)
+	}
+}
+
+func writeExecutablePreflightFake(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o700); err != nil {
 		t.Fatalf("write fake %s: %v", filepath.Base(path), err)
 	}
 	if err := os.Chmod(path, 0o700); err != nil {
 		t.Fatalf("chmod fake %s: %v", filepath.Base(path), err)
-	}
-	if runtime.GOOS == "windows" {
-		return
-	}
-	if _, err := exec.Command("/usr/bin/env", "bash", "-n", path).CombinedOutput(); err != nil {
-		t.Fatalf("validate fake %s: %v", filepath.Base(path), err)
 	}
 }

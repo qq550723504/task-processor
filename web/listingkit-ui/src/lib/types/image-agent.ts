@@ -1,6 +1,6 @@
-export type ImageAgentRunMode = "manual";
+type ImageAgentRunMode = "manual";
 
-export type ImageAgentRunStatus =
+type ImageAgentRunStatus =
   | "planning"
   | "awaiting_plan_approval"
   | "executing"
@@ -12,7 +12,7 @@ export type ImageAgentRunStatus =
   | "failed"
   | "cancelled";
 
-export type ImageAgentSlotStatus =
+type ImageAgentSlotStatus =
   | "pending"
   | "executing"
   | "evaluating"
@@ -54,7 +54,7 @@ export type ImageAgentPlan = {
   created_by?: string;
 };
 
-export type ImageAgentBudget = {
+type ImageAgentBudget = {
   max_images: number;
   max_agent_steps: number;
   max_model_calls: number;
@@ -63,7 +63,7 @@ export type ImageAgentBudget = {
   max_elapsed: number;
 };
 
-export type ImageAgentBudgetUsage = {
+type ImageAgentBudgetUsage = {
   images: number;
   agent_steps: number;
   model_calls: number;
@@ -71,13 +71,13 @@ export type ImageAgentBudgetUsage = {
   elapsed: number;
 };
 
-export type ImageAgentBlock = {
+type ImageAgentBlock = {
   code: string;
   message: string;
   slot_id?: string;
 };
 
-export type ImageAgentRun = {
+type ImageAgentRun = {
   id: string;
   business_task_id: string;
   tenant_id: string;
@@ -101,7 +101,7 @@ export type ImageAgentAuthorizedAsset = {
   label?: string;
 };
 
-export type ImageAgentPendingCommand = {
+type ImageAgentPendingCommand = {
   action_id: string;
   kind: string;
   phase: string;
@@ -115,14 +115,14 @@ export type ImageAgentPendingCommand = {
   attempt?: number;
 };
 
-export type ImageAgentCommandIngress = {
+type ImageAgentCommandIngress = {
   used: number;
   limit: number;
   exhausted: boolean;
   reason?: string;
 };
 
-export type ImageAgentCandidate = {
+type ImageAgentCandidate = {
   asset_id: string;
   url: string;
   source_asset_id?: string;
@@ -153,14 +153,4 @@ export type ImageAgentProjectionEvent = {
   schema_version: "image-agent.projection.v1";
   type: string;
   projection_version: number;
-};
-
-export type CreateImageAgentRunInput = {
-  run_id: string;
-  business_task_id: string;
-  mode: "manual";
-  idempotency_key: string;
-  plan: ImageAgentPlan;
-  budget: ImageAgentBudget;
-  max_concurrent_slots?: number;
 };

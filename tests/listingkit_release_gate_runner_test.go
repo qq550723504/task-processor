@@ -516,7 +516,7 @@ func runReleaseGateScenario(t *testing.T, scenario releaseGateScenario) (string,
 	if err := os.WriteFile(stateProgramPath, []byte(fakeReleaseGateKubectlState), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writePreflightFake(t, filepath.Join(dir, "kubectl"), `#!/usr/bin/env bash
+	writeBashPreflightFake(t, filepath.Join(dir, "kubectl"), `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_KUBECTL_LOG"
 case "$*" in
@@ -542,11 +542,11 @@ esac
 	if err := os.WriteFile(jqProgramPath, []byte(fakeReleaseGateJQ), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writePreflightFake(t, filepath.Join(dir, "jq"), `#!/usr/bin/env bash
+	writeBashPreflightFake(t, filepath.Join(dir, "jq"), `#!/usr/bin/env bash
 set -euo pipefail
 exec "$FAKE_PYTHON" "$FAKE_JQ_PROGRAM" "$@"
 `)
-	writePreflightFake(t, filepath.Join(dir, "sleep"), `#!/usr/bin/env bash
+	writeBashPreflightFake(t, filepath.Join(dir, "sleep"), `#!/usr/bin/env bash
 set -euo pipefail
 "$FAKE_PYTHON" -c 'import time; time.sleep(1)'
 `)

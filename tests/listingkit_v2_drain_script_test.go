@@ -345,7 +345,7 @@ func runListingKitV2DrainCheck(t *testing.T, fixture drainFixture) drainResult {
 			writeDrainFixture(t, filepath.Join(sampleDir, "describe-"+drainFixtureID(workflowID)+".json"), description)
 		}
 	}
-	writePreflightFake(t, filepath.Join(binDir, "temporal"), `#!/usr/bin/env bash
+	writeBashPreflightFake(t, filepath.Join(binDir, "temporal"), `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_TEMPORAL_LOG"
 if [[ "${1:-}" == "--version" ]]; then
@@ -395,7 +395,7 @@ case "${2:-}" in
   *) exit 2 ;;
 esac
 `)
-	writePreflightFake(t, filepath.Join(binDir, "kubectl"), `#!/usr/bin/env bash
+	writeBashPreflightFake(t, filepath.Join(binDir, "kubectl"), `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_KUBECTL_LOG"
 if [[ "$*" == *"get deployment product-listing-api"* ]]; then
@@ -411,7 +411,7 @@ else
   exit 2
 fi
 `)
-	writePreflightFake(t, filepath.Join(binDir, "psql"), `#!/usr/bin/env bash
+	writeBashPreflightFake(t, filepath.Join(binDir, "psql"), `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_PSQL_LOG"
 sample="$(( $(cat "$FAKE_DRAIN_STATE/psql-sample" 2>/dev/null || printf 0) + 1 ))"
@@ -419,7 +419,7 @@ printf '%s' "$sample" > "$FAKE_DRAIN_STATE/psql-sample"
 [[ "${FAKE_PSQL_FAILURE:-}" != "psql-${sample}" ]] || exit 9
 cat "$FAKE_TEMPORAL_FIXTURES/sample-${sample}/database.tsv"
 `)
-	writePreflightFake(t, filepath.Join(binDir, "jq"), fakeDrainJQ)
+	writePythonPreflightFake(t, filepath.Join(binDir, "jq"), fakeDrainJQ)
 
 	scriptPath, err := filepath.Abs(filepath.Join("..", "scripts", "listingkit-image-agent-v2-drain-check.sh"))
 	if err != nil {

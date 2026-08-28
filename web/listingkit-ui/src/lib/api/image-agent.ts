@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import { ApiError } from "@/lib/api/api-error";
 import type {
-  CreateImageAgentRunInput,
   ImageAgentPlan,
   ImageAgentProjection,
 } from "@/lib/types/image-agent";
@@ -151,13 +150,6 @@ const projectionSchema = z
 
 export function parseImageAgentProjection(payload: unknown): ImageAgentProjection {
   return projectionSchema.parse(payload) as ImageAgentProjection;
-}
-
-export async function createImageAgentRun(input: CreateImageAgentRunInput) {
-  return imageAgentRequest<{ run_id: string; status: "accepted" }>("", {
-    method: "POST",
-    body: input,
-  });
 }
 
 export async function getImageAgentRun(runId: string, signal?: AbortSignal) {

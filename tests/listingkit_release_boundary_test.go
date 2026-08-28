@@ -358,7 +358,7 @@ func TestListingKitUIDeployRequiresVerifiedExactAPIReleaseGate(t *testing.T) {
 func TestListingKitLegacyIdentityCleanupProductionMisuseGuard(t *testing.T) {
 	binDir := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "kubectl.log")
-	writePreflightFake(t, filepath.Join(binDir, "kubectl"), `#!/usr/bin/env bash
+	writeBashPreflightFake(t, filepath.Join(binDir, "kubectl"), `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_KUBECTL_LOG"
 exit 9
@@ -500,7 +500,7 @@ func runListingKitReleaseAttestationVerifier(t *testing.T, scenario releaseAttes
 	if err := os.WriteFile(attestationPath, []byte(attestationJSON), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writePreflightFake(t, filepath.Join(binDir, "gh"), fmt.Sprintf(`#!/usr/bin/env bash
+	writeBashPreflightFake(t, filepath.Join(binDir, "gh"), fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
 if [[ "$*" == *"repos/octo/task-processor/commits/%s"* ]]; then
   printf '%s\n'
@@ -508,7 +508,7 @@ if [[ "$*" == *"repos/octo/task-processor/commits/%s"* ]]; then
 fi
 exit 1
 `, scenario.attestedSource, scenario.attestedSource))
-	writePreflightFake(t, filepath.Join(binDir, "jq"), fmt.Sprintf(`#!/usr/bin/env bash
+	writeBashPreflightFake(t, filepath.Join(binDir, "jq"), fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
 filter="${2:-}"
 case "$filter" in
