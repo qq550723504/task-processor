@@ -184,6 +184,39 @@ func TestExecuteSlotV3PersistsDispatchedOutcomeAfterCallerCancellation(t *testin
 	require.False(t, effects.WriteSawCancelledContext())
 }
 
+func TestExecuteSlotV3CancellationTerminalizesSuccessfulProviderEffect(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-provider-success-cancelled")
+	path := writeTinyPNG(t)
+	var cancel context.CancelFunc
+	executor := &recordingStagedExecutor{
+		generated: generatedV3Output(input, path),
+		onGenerate: func() {
+			cancel()
+		},
+	}
+	effects := &cancellationObservingV3Repository{SlotExternalEffectV3Repository: repository.(imageagent.SlotExternalEffectV3Repository)}
+	artifacts := &cancellationObservingArtifactStore{
+		recordingArtifactStore: &recordingArtifactStore{ensureErrors: []error{objectstore.ErrObjectConflict}},
+	}
+	activities := newV3Activities(t, repository, effects, executor, artifacts)
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	cancel = cancelCtx
+	defer cancel()
+
+	_, err := activities.ExecuteSlotV3(ctx, input)
+
+	requireV3ApplicationErrorType(t, err, slotStagingOutcomeUnknownCode)
+	require.False(t, artifacts.PreserveSawCancelledContext(), "recovery preservation must use the detached finalization context")
+	require.False(t, artifacts.EnsureSawCancelledContext(), "staging must use the detached finalization context")
+	require.False(t, effects.PrepareSawCancelledContext(), "staging transition must use the detached finalization context")
+	require.False(t, effects.BlockSawCancelledContext(), "staging fallback must use the detached finalization context")
+
+	stored, getErr := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, getErr)
+	require.Equal(t, imageagent.SlotEffectV3StagingUnknown, stored.Phase)
+	require.NotEqual(t, imageagent.SlotEffectV3ProviderClaimed, stored.Phase)
+}
+
 func TestExecuteSlotV3ResumesPersistedStagingWithoutRegeneration(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-resume-staging")
 	effects := repository.(imageagent.SlotExternalEffectV3Repository)
@@ -813,6 +846,7 @@ type recordingStagedExecutor struct {
 	mutateResult        func(*imageagent.SlotExecutionResult)
 	identity            productimage.AIIdentity
 	started             chan struct{}
+	onGenerate          func()
 	waitForCancellation bool
 }
 
@@ -838,7 +872,7 @@ func (e *recordingStagedExecutor) GenerateSlot(ctx context.Context, input imagea
 	e.generateCalls++
 	e.identity = productimage.AIIdentityFromContext(ctx)
 	generated, generateErr := e.generated, e.generateErr
-	started, waitForCancellation := e.started, e.waitForCancellation
+	started, onGenerate, waitForCancellation := e.started, e.onGenerate, e.waitForCancellation
 	e.mu.Unlock()
 	if started != nil {
 		close(started)
@@ -851,6 +885,9 @@ func (e *recordingStagedExecutor) GenerateSlot(ctx context.Context, input imagea
 	}
 	if generated.SlotID == "" {
 		return imageagent.SlotGeneratedOutput{}, errors.New("generated output fixture is required")
+	}
+	if onGenerate != nil {
+		onGenerate()
 	}
 	return generated, nil
 }
@@ -902,6 +939,43 @@ func (r *cancellationRejectingV3Repository) WriteSawCancelledContext() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.writeSawCancelledContext
+}
+
+type cancellationObservingV3Repository struct {
+	imageagent.SlotExternalEffectV3Repository
+	mu                         sync.Mutex
+	prepareSawCancelledContext bool
+	blockSawCancelledContext   bool
+}
+
+func (r *cancellationObservingV3Repository) PrepareSlotStagingV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (imageagent.SlotEffectV3Attempt, error) {
+	if ctx.Err() != nil {
+		r.mu.Lock()
+		r.prepareSawCancelledContext = true
+		r.mu.Unlock()
+	}
+	return r.SlotExternalEffectV3Repository.PrepareSlotStagingV3(ctx, reservation, manifest)
+}
+
+func (r *cancellationObservingV3Repository) BlockSlotEffectV3(ctx context.Context, transition imageagent.SlotEffectV3BlockTransition) (imageagent.SlotEffectV3Attempt, error) {
+	if ctx.Err() != nil {
+		r.mu.Lock()
+		r.blockSawCancelledContext = true
+		r.mu.Unlock()
+	}
+	return r.SlotExternalEffectV3Repository.BlockSlotEffectV3(ctx, transition)
+}
+
+func (r *cancellationObservingV3Repository) PrepareSawCancelledContext() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.prepareSawCancelledContext
+}
+
+func (r *cancellationObservingV3Repository) BlockSawCancelledContext() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.blockSawCancelledContext
 }
 
 func (e *recordingStagedExecutor) BuildSlotResult(_ context.Context, input imageagent.SlotExecutionInput, published imageagent.PublishedSlotOutput) (imageagent.SlotExecutionResult, error) {
@@ -997,6 +1071,44 @@ func (s *recordingArtifactStore) PreserveCalls() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.preserveCalls
+}
+
+type cancellationObservingArtifactStore struct {
+	*recordingArtifactStore
+	mu                          sync.Mutex
+	preserveSawCancelledContext bool
+	ensureSawCancelledContext   bool
+}
+
+func (s *cancellationObservingArtifactStore) PreserveSlotArtifacts(ctx context.Context, identity imageagent.SlotExternalEffectIdentity, prepared objectstore.PreparedSlotArtifacts) error {
+	if ctx.Err() != nil {
+		s.mu.Lock()
+		s.preserveSawCancelledContext = true
+		s.mu.Unlock()
+	}
+	return s.recordingArtifactStore.PreserveSlotArtifacts(ctx, identity, prepared)
+}
+
+func (s *cancellationObservingArtifactStore) EnsureStaged(ctx context.Context, prepared objectstore.PreparedSlotArtifacts) error {
+	if ctx.Err() != nil {
+		s.mu.Lock()
+		s.ensureSawCancelledContext = true
+		s.mu.Unlock()
+		return context.Canceled
+	}
+	return s.recordingArtifactStore.EnsureStaged(ctx, prepared)
+}
+
+func (s *cancellationObservingArtifactStore) PreserveSawCancelledContext() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.preserveSawCancelledContext
+}
+
+func (s *cancellationObservingArtifactStore) EnsureSawCancelledContext() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ensureSawCancelledContext
 }
 
 func (s *recordingArtifactStore) RecoverSlotArtifacts(_ context.Context, _ imageagent.SlotExternalEffectIdentity, expected imageagent.StagingManifest) (objectstore.PreparedSlotArtifacts, error) {

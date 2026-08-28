@@ -243,7 +243,11 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 
 	var prepared objectstore.PreparedSlotArtifacts
 	var generated imageagent.SlotGeneratedOutput
+	providerStagingCtx := ctx
+	cancelProviderStaging := func() {}
 	if effect.Phase == imageagent.SlotEffectV3ProviderClaimed {
+		providerStagingCtx, cancelProviderStaging = providerFinalizationContext(ctx)
+		defer cancelProviderStaging()
 		if claimed {
 			var generateErr error
 			if budgeted != nil {
@@ -272,41 +276,39 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 				}
 			}
 			if budgeted != nil {
-				finalizationCtx, cancelFinalization := providerFinalizationContext(ctx)
-				defer cancelFinalization()
-				if _, settleErr := a.slotEffectsV3.SettleSlotProviderV3(finalizationCtx, reservation, generated.UsageReceipt); settleErr != nil {
-					if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(finalizationCtx, reservation); unknownErr != nil {
+				if _, settleErr := a.slotEffectsV3.SettleSlotProviderV3(providerStagingCtx, reservation, generated.UsageReceipt); settleErr != nil {
+					if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(providerStagingCtx, reservation); unknownErr != nil {
 						return v3Result, fmt.Errorf("retain unsettled provider reservation: %w", persistedSlotEffectV3RepositoryError(unknownErr))
 					}
-					return v3Result, a.blockSlotEffectV3(finalizationCtx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
+					return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 				}
 			}
 			prepared, err = prepareGeneratedSlotArtifacts(executionInput, generated, a.artifactStore)
 			if err != nil {
-				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
+				return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 			}
-			if err := a.preserveSlotRecoveryBundle(ctx, reservation.Identity, prepared); err != nil {
+			if err := a.preserveSlotRecoveryBundle(providerStagingCtx, reservation.Identity, prepared); err != nil {
 				if errors.Is(err, objectstore.ErrArtifactUnavailable) || errors.Is(err, objectstore.ErrObjectConflict) {
 					cleanupGeneratedSlotTemporaryAssets(&generated)
-					return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
+					return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 				}
 				cleanupGeneratedSlotTemporaryAssets(&generated)
-				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
+				return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 			}
 			cleanupGeneratedSlotTemporaryAssets(&generated)
 		} else {
-			prepared, err = a.artifactStore.RecoverSlotArtifacts(ctx, reservation.Identity, imageagent.StagingManifest{})
+			prepared, err = a.artifactStore.RecoverSlotArtifacts(providerStagingCtx, reservation.Identity, imageagent.StagingManifest{})
 			if err != nil {
 				if errors.Is(err, objectstore.ErrArtifactUnavailable) || errors.Is(err, objectstore.ErrObjectConflict) {
-					return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
+					return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 				}
 				return v3Result, fmt.Errorf("recover generated artifact bundle before staging transition: %w", err)
 			}
 		}
-		effect, err = a.slotEffectsV3.PrepareSlotStagingV3(ctx, reservation, prepared.Manifest)
+		effect, err = a.slotEffectsV3.PrepareSlotStagingV3(providerStagingCtx, reservation, prepared.Manifest)
 		if err != nil {
 			transitionErr := err
-			effect, err = a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
+			effect, err = a.slotEffectsV3.GetSlotExternalEffectV3(providerStagingCtx, reservation.Identity)
 			if err != nil {
 				return v3Result, fmt.Errorf("reconcile persisted staging manifest: %w", persistedSlotEffectV3RepositoryError(err))
 			}
@@ -320,27 +322,27 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		if len(prepared.Manifest.Assets) == 0 {
 			prepared = objectstore.PreparedSlotArtifacts{Manifest: effect.StagingManifest}
 		}
-		ensureErr := a.artifactStore.EnsureStaged(ctx, prepared)
+		ensureErr := a.artifactStore.EnsureStaged(providerStagingCtx, prepared)
 		if errors.Is(ensureErr, objectstore.ErrArtifactUnavailable) {
-			recovered, recoverErr := a.artifactStore.RecoverSlotArtifacts(ctx, reservation.Identity, effect.StagingManifest)
+			recovered, recoverErr := a.artifactStore.RecoverSlotArtifacts(providerStagingCtx, reservation.Identity, effect.StagingManifest)
 			if recoverErr == nil {
 				prepared = recovered
-				ensureErr = a.artifactStore.EnsureStaged(ctx, prepared)
+				ensureErr = a.artifactStore.EnsureStaged(providerStagingCtx, prepared)
 			} else if errors.Is(recoverErr, objectstore.ErrArtifactUnavailable) || errors.Is(recoverErr, objectstore.ErrObjectConflict) {
-				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3StagingUnknown, slotStagingOutcomeUnknownCode, imageagent.PublicationClaim{})
+				return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3StagingUnknown, slotStagingOutcomeUnknownCode, imageagent.PublicationClaim{})
 			} else {
 				return v3Result, fmt.Errorf("rehydrate prepared staging bytes: %w", recoverErr)
 			}
 		}
 		if ensureErr != nil {
 			if errors.Is(ensureErr, objectstore.ErrArtifactUnavailable) || errors.Is(ensureErr, objectstore.ErrObjectConflict) {
-				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3StagingUnknown, slotStagingOutcomeUnknownCode, imageagent.PublicationClaim{})
+				return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3StagingUnknown, slotStagingOutcomeUnknownCode, imageagent.PublicationClaim{})
 			}
 			return v3Result, fmt.Errorf("ensure staged artifacts: %w", ensureErr)
 		}
-		effect, err = a.slotEffectsV3.CommitSlotStagedV3(ctx, reservation, effect.StagingManifestFingerprint)
+		effect, err = a.slotEffectsV3.CommitSlotStagedV3(providerStagingCtx, reservation, effect.StagingManifestFingerprint)
 		if err != nil {
-			effect, err = a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
+			effect, err = a.slotEffectsV3.GetSlotExternalEffectV3(providerStagingCtx, reservation.Identity)
 			if err != nil {
 				return v3Result, fmt.Errorf("reconcile staged commit: %w", persistedSlotEffectV3RepositoryError(err))
 			}
