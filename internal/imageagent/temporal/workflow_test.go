@@ -2181,6 +2181,7 @@ func TestManualWorkflowRejectsCancelSignalFromDifferentActor(t *testing.T) {
 
 func TestManualWorkflowWrongActorCancelSignalDoesNotPoisonActionID(t *testing.T) {
 	env := newWorkflowEnv(t)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	plan := sevenSlotPlan()
 	input := manualWorkflowInput(plan)
 	input.MaxConcurrentSlots = 1
@@ -2286,6 +2287,7 @@ func TestManualWorkflowSerializesCancelAfterInFlightParentTransition(t *testing.
 
 func TestManualWorkflowCancellationStartsNoThirdChildAndKeepsCompletedSibling(t *testing.T) {
 	env := newWorkflowEnv(t)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	plan := sevenSlotPlan()
 	input := manualWorkflowInput(plan)
 	input.MaxConcurrentSlots = 1
@@ -2421,6 +2423,8 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 	var cancelErr error
 	var pendingMu sync.Mutex
 	var pendingReceipts []PersistPendingCommandActivityInput
+	var blockedMu sync.Mutex
+	var blockedStates []PersistRunStateActivityInput
 	var terminalMu sync.Mutex
 	var terminalStatuses []imageagent.RunStatus
 	env.RegisterWorkflowWithOptions(
@@ -2440,6 +2444,11 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
+		if input.Projection.Status == imageagent.RunStatusBlocked {
+			blockedMu.Lock()
+			blockedStates = append(blockedStates, input)
+			blockedMu.Unlock()
+		}
 		if isTerminalRunStatus(input.Projection.Status) {
 			terminalMu.Lock()
 			terminalStatuses = append(terminalStatuses, input.Projection.Status)
@@ -2482,6 +2491,19 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 	require.NoError(t, env.GetWorkflowResult(&result))
 	require.Equal(t, imageagent.RunStatusBlocked, result.Status)
 	require.NotEqual(t, imageagent.RunStatusCancelled, result.Status)
+	require.NotNil(t, result.Block)
+	require.Equal(t, "slot-1", result.Block.SlotID)
+	require.Equal(t, "slot_failed", result.Block.Code)
+	require.Equal(t, []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionRetrySlot, imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{
+		Mode: imageagent.RunModeManual, Status: result.Status, Block: result.Block,
+	}))
+	blockedMu.Lock()
+	require.Len(t, blockedStates, 1)
+	require.Equal(t, imageagent.RunStatusBlocked, blockedStates[0].Projection.Status)
+	require.NotNil(t, blockedStates[0].Projection.Block)
+	require.Equal(t, "slot-1", blockedStates[0].Projection.Block.SlotID)
+	require.Equal(t, "slot_failed", blockedStates[0].Projection.Block.Code)
+	blockedMu.Unlock()
 	terminalMu.Lock()
 	require.Empty(t, terminalStatuses)
 	terminalMu.Unlock()
@@ -2496,6 +2518,81 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 	require.Equal(t, "persistence_failed", last.Receipt.FailureCode)
 	require.Equal(t, "persistence", last.Receipt.FailureCategory)
 	require.NotNil(t, last.Receipt.LastFailedAt)
+}
+
+func TestManualWorkflowMixedHistoryCancellationBlocksStartedLegacyChild(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	var childStarted atomic.Bool
+	var cancelErr error
+	var blockedMu sync.Mutex
+	var blockedStates []PersistRunStateActivityInput
+	cancelledStates := 0
+	env.RegisterWorkflowWithOptions(
+		func(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkflowResult, error) {
+			childStarted.Store(true)
+			if err := workflow.NewTimer(ctx, time.Hour).Get(ctx, nil); err != nil {
+				return SlotWorkflowResult{}, err
+			}
+			return SlotWorkflowResult{Execution: successfulSlotResult(input.Slot.ID, input.Attempt), Status: imageagent.SlotStatusAccepted}, nil
+		},
+		workflow.RegisterOptions{Name: workflowNameImageSlot},
+	)
+	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
+		if input.Projection.Status == imageagent.RunStatusBlocked {
+			blockedMu.Lock()
+			blockedStates = append(blockedStates, input)
+			blockedMu.Unlock()
+		}
+		if input.Projection.Status == imageagent.RunStatusCancelled {
+			cancelledStates++
+		}
+		return nil
+	}, sdkactivity.RegisterOptions{Name: activityPersistRunState})
+	env.RegisterActivityWithOptions(
+		func(context.Context, PersistPendingCommandActivityInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityPersistPendingCommand},
+	)
+	env.RegisterDelayedCallback(func() {
+		require.True(t, childStarted.Load())
+		env.UpdateWorkflow(signalCancel, "cancel-mixed-history", &testsuite.TestUpdateCallback{
+			OnReject:   func(err error) { cancelErr = err },
+			OnAccept:   func() {},
+			OnComplete: func(_ interface{}, err error) { cancelErr = err },
+		}, CancelSignal{
+			RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-mixed-history",
+		})
+	}, time.Second)
+
+	plan := sevenSlotPlan()
+	plan.Slots = plan.Slots[:1]
+	input := manualWorkflowInput(plan)
+	input.MaxConcurrentSlots = 1
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	require.Error(t, cancelErr)
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusBlocked, result.Status)
+	require.NotNil(t, result.Block)
+	require.Equal(t, "slot-1", result.Block.SlotID)
+	require.Equal(t, "slot_failed", result.Block.Code)
+	require.Equal(t, []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionRetrySlot, imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{
+		Mode: imageagent.RunModeManual, Status: result.Status, Block: result.Block,
+	}))
+	blockedMu.Lock()
+	require.Len(t, blockedStates, 1)
+	require.Equal(t, imageagent.RunStatusBlocked, blockedStates[0].Projection.Status)
+	require.NotNil(t, blockedStates[0].Projection.Block)
+	require.Equal(t, "slot-1", blockedStates[0].Projection.Block.SlotID)
+	require.Equal(t, "slot_failed", blockedStates[0].Projection.Block.Code)
+	blockedMu.Unlock()
+	require.Zero(t, cancelledStates, "mixed-history cancellation must not persist cancelled while a started legacy child is unresolved")
 }
 
 func TestImageSlotWorkflowV3RealActivityHeartbeatsWhileProviderIsInFlight(t *testing.T) {
@@ -2546,6 +2643,7 @@ func TestImageSlotWorkflowV3RealActivityHeartbeatsWhileProviderIsInFlight(t *tes
 
 func TestManualWorkflowCancelUpdateAcksAfterCancelledProjectionPersistence(t *testing.T) {
 	env := newWorkflowEnv(t)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	plan := sevenSlotPlan()
 	input := manualWorkflowInput(plan)
 	input.MaxConcurrentSlots = 1
@@ -2597,6 +2695,7 @@ func TestManualWorkflowCancelUpdateAcksAfterCancelledProjectionPersistence(t *te
 
 func TestManualWorkflowCancelUpdateResumesAfterTerminalPersistenceFailure(t *testing.T) {
 	env := newWorkflowEnv(t)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	plan := sevenSlotPlan()
 	input := manualWorkflowInput(plan)
 	input.MaxConcurrentSlots = len(plan.Slots)
@@ -2880,6 +2979,7 @@ func TestImageSlotWorkflowFailsClosedForMismatchedOrEmptyExecutorResult(t *testi
 
 func TestManualWorkflowQueryRecoversPersistedPartialSlotProgress(t *testing.T) {
 	env := newWorkflowEnv(t)
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	plan := sevenSlotPlan()
 	input := manualWorkflowInput(plan)
 	input.MaxConcurrentSlots = 1

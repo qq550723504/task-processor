@@ -1190,12 +1190,17 @@ func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSig
 
 func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, results []SlotWorkflowResult) {
 	if s.input.externalEffectFinalization && !cancellationResultsTerminalized(results) {
-		result := blockedCancellationProjection(*s.input, results)
+		result := blockedCancellationProjection(*s.input, results, s.effects.activities)
 		result.CommandIngress = s.commandIngress()
-		*s.projection = result
+		err := s.effects.persistRunState(ctx, *s.input, result, "retry_slot")
 		s.cancelPending = false
-		s.cancelCommitErr = updateBlockedError("image agent cancellation is waiting for durable effect terminalization")
-		s.cancelBlocked = true
+		s.cancelCommitErr = err
+		s.cancelBlocked = false
+		if err == nil {
+			*s.projection = result
+			s.cancelCommitErr = updateBlockedError("image agent cancellation is waiting for durable effect terminalization")
+			s.cancelBlocked = true
+		}
 		s.wake.SendAsync(struct{}{})
 		return
 	}
@@ -1573,7 +1578,7 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 	childrenCtx, cancelChildren := workflow.WithCancel(ctx)
 	next, inFlight := 0, 0
 	launch := func(index int) {
-		if input.externalEffectFinalization && updates.effects.activities.useV3Slot {
+		if input.externalEffectFinalization {
 			results[index] = SlotWorkflowResult{
 				Execution: imageagent.SlotExecutionResult{SlotID: input.Plan.Slots[index].ID, Attempt: 1},
 				Status:    imageagent.SlotStatusPending,
@@ -1720,7 +1725,7 @@ func cancelledProjection(input WorkflowInput, results []SlotWorkflowResult) Work
 	return result
 }
 
-func blockedCancellationProjection(input WorkflowInput, results []SlotWorkflowResult) WorkflowResult {
+func blockedCancellationProjection(input WorkflowInput, results []SlotWorkflowResult, activityWire workflowActivityWire) WorkflowResult {
 	result := WorkflowResult{
 		Status: imageagent.RunStatusBlocked,
 		Plan:   input.Plan,
@@ -1730,6 +1735,17 @@ func blockedCancellationProjection(input WorkflowInput, results []SlotWorkflowRe
 		if index < len(results) && results[index].Status == imageagent.SlotStatusAccepted {
 			result.CompletedSlotIDs = append(result.CompletedSlotIDs, slot.ID)
 		}
+		if result.Block != nil || index >= len(results) || strings.TrimSpace(results[index].Execution.SlotID) == "" || results[index].Status == imageagent.SlotStatusAccepted {
+			continue
+		}
+		code, message := "slot_failed", "slot_failed"
+		if activityWire.useV3Slot && strings.TrimSpace(results[index].ErrorCode) != "" {
+			code = imageagent.NormalizeSlotEffectV3BlockCode(results[index].ErrorCode)
+			message = code
+		} else if strings.TrimSpace(results[index].ErrorCode) != "" {
+			message = results[index].ErrorCode
+		}
+		result.Block = &imageagent.Block{Code: code, Message: message, SlotID: slot.ID}
 	}
 	return result
 }
