@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { KeyboardEvent, useRef, useState } from "react";
 
 import styles from "./marketing-homepage.module.css";
 
@@ -31,13 +31,30 @@ const practices: Practice[] = [
 
 export function PracticeTabs() {
   const [activeIndex, setActiveIndex] = useState(4);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const activePractice = practices[activeIndex];
-  const panelId = `practice-panel-${activeIndex}`;
+  const panelId = "practice-panel";
+
+  function selectTab(index: number) {
+    setActiveIndex(index);
+    tabRefs.current[index]?.focus();
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number | undefined;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % practices.length;
+    if (event.key === "ArrowLeft") nextIndex = (index - 1 + practices.length) % practices.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = practices.length - 1;
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    selectTab(nextIndex);
+  }
 
   return <><div className={styles.practiceLayout}>
     <div className={styles.scenarioList} role="tablist" aria-label="实践场景">
       <h3>选择实践场景</h3><p>查看不同用户如何使用AI完成业务</p>
-      {practices.map((practice, index) => <button type="button" role="tab" id={`practice-tab-${index}`} aria-controls={panelId} aria-selected={activeIndex === index} className={activeIndex === index ? styles.activeScenario : ""} key={practice.title} onClick={() => setActiveIndex(index)}><span>{practice.number}</span><span><b>{practice.title}</b><small>{practice.detail}</small></span></button>)}
+      {practices.map((practice, index) => <button type="button" role="tab" id={`practice-tab-${index}`} aria-controls={panelId} aria-selected={activeIndex === index} tabIndex={activeIndex === index ? 0 : -1} className={activeIndex === index ? styles.activeScenario : ""} key={practice.title} ref={(element) => { tabRefs.current[index] = element; }} onClick={() => setActiveIndex(index)} onKeyDown={(event) => handleTabKeyDown(event, index)}><span>{practice.number}</span><span><b>{practice.title}</b><small>{practice.detail}</small></span></button>)}
     </div>
     <article className={styles.practiceCase} id={panelId} role="tabpanel" aria-labelledby={`practice-tab-${activeIndex}`}>
       <small>{activePractice.label}</small><h3>{activePractice.headline}</h3><p>{activePractice.description}</p>

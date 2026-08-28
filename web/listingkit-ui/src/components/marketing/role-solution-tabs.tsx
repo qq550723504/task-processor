@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { KeyboardEvent, useRef, useState } from "react";
 import { ArrowRight, Check } from "lucide-react";
 
 import styles from "./marketing-homepage.module.css";
@@ -58,8 +58,25 @@ const solutions: RoleSolution[] = [
 
 export function RoleSolutionTabs() {
   const [activeIndex, setActiveIndex] = useState(1);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const activeSolution = solutions[activeIndex];
-  const panelId = `role-solution-panel-${activeIndex}`;
+  const panelId = "role-solution-panel";
+
+  function selectTab(index: number) {
+    setActiveIndex(index);
+    tabRefs.current[index]?.focus();
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number | undefined;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % solutions.length;
+    if (event.key === "ArrowLeft") nextIndex = (index - 1 + solutions.length) % solutions.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = solutions.length - 1;
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    selectTab(nextIndex);
+  }
 
   return <div className={styles.roleLayout}>
     <div className={styles.roleList} role="tablist" aria-label="角色解决方案">
@@ -69,9 +86,12 @@ export function RoleSolutionTabs() {
         id={`role-solution-tab-${index}`}
         aria-controls={panelId}
         aria-selected={activeIndex === index}
+        tabIndex={activeIndex === index ? 0 : -1}
         className={activeIndex === index ? styles.activeRole : ""}
         key={solution.title}
+        ref={(element) => { tabRefs.current[index] = element; }}
         onClick={() => setActiveIndex(index)}
+        onKeyDown={(event) => handleTabKeyDown(event, index)}
       ><span className={styles.roleNumber}>{solution.number}</span><span className={styles.roleCopy}><strong>{solution.title}</strong><small>{solution.detail}</small></span><ArrowRight size={15} /></button>)}
     </div>
     <article className={styles.rolePanel} id={panelId} role="tabpanel" aria-labelledby={`role-solution-tab-${activeIndex}`} aria-label={`${activeSolution.title}解决方案`}>

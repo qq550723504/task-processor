@@ -1,8 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
+import { afterEach, vi } from "vitest";
 
 import { MarketingHomepage } from "@/components/marketing/marketing-homepage";
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("MarketingHomepage", () => {
   it("presents the public site as 硕米智能引擎", () => {
@@ -64,6 +67,7 @@ describe("MarketingHomepage", () => {
       /@media \(min-width: 1200px\) \{[\s\S]*?\.heroContent \{ left: 120px; width: 570px; \}/,
     );
     expect(styles).toMatch(/@media \(max-width: 1180px\) \{[\s\S]*?\.heroContent \{ left: 48px; \}/);
+    expect(styles).toMatch(/@media \(max-width: 980px\) \{[\s\S]*?\.nav \{ display: none; \}/);
   });
 
   it("includes the complete long-form Figma story", () => {
@@ -93,6 +97,34 @@ describe("MarketingHomepage", () => {
     expect(screen.queryByRole("dialog", { name: "联系我们" })).not.toBeInTheDocument();
   });
 
+  it("keeps contact-panel focus in the dialog and ignores a request that finishes after closing", async () => {
+    const user = userEvent.setup();
+    let resolveRequest!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { resolveRequest = resolve; })));
+    render(<MarketingHomepage />);
+
+    const launcher = screen.getByRole("button", { name: "联系硕米" });
+    await user.click(launcher);
+    const closeButton = screen.getByRole("button", { name: "关闭联系浮层" });
+    expect(closeButton).toHaveFocus();
+    expect(screen.getByRole("img", { name: "微信扫码咨询客服" })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("电话号码"), "13800138000");
+    await user.click(screen.getByRole("button", { name: "提交联系信息" }));
+    await user.click(closeButton);
+    expect(launcher).toHaveFocus();
+
+    resolveRequest(new Response(null, { status: 200 }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await user.click(launcher);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "联系我们" })).not.toBeInTheDocument();
+    expect(launcher).toHaveFocus();
+  });
+
   it("switches the role solution panel when a user selects a different role", async () => {
     const user = userEvent.setup();
     render(<MarketingHomepage />);
@@ -107,6 +139,29 @@ describe("MarketingHomepage", () => {
     expect(screen.getByRole("link", { name: /查看供应商解决方案/ })).toBeInTheDocument();
   });
 
+  it("uses roving focus and standard keyboard selection for role tabs", async () => {
+    const user = userEvent.setup();
+    render(<MarketingHomepage />);
+    const roleTabs = within(screen.getByRole("tablist", { name: "角色解决方案" }));
+    const seller = roleTabs.getByRole("tab", { name: /电商卖家/ });
+
+    seller.focus();
+    await user.keyboard("{ArrowRight}");
+    const supplier = roleTabs.getByRole("tab", { name: /工厂与供应商/ });
+    expect(supplier).toHaveFocus();
+    expect(supplier).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{Home}");
+    const starter = roleTabs.getByRole("tab", { name: /电商创业者/ });
+    expect(starter).toHaveFocus();
+    expect(starter).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{End}");
+    const opc = roleTabs.getByRole("tab", { name: /OPC电商社区/ });
+    expect(opc).toHaveFocus();
+    expect(opc).toHaveAttribute("aria-selected", "true");
+  });
+
   it("switches the practice case when a user selects a different scenario", async () => {
     const user = userEvent.setup();
     render(<MarketingHomepage />);
@@ -118,6 +173,19 @@ describe("MarketingHomepage", () => {
     expect(screen.getByRole("tabpanel", { name: /跨境电商卖家/ })).toHaveTextContent(
       "AI诊断店铺，找到被忽略的增长机会",
     );
+  });
+
+  it("uses roving focus and standard keyboard selection for practice tabs", async () => {
+    const user = userEvent.setup();
+    render(<MarketingHomepage />);
+    const practiceTabs = within(screen.getByRole("tablist", { name: "实践场景" }));
+    const opc = practiceTabs.getByRole("tab", { name: /OPC电商社区/ });
+
+    opc.focus();
+    await user.keyboard("{ArrowRight}");
+    const starter = practiceTabs.getByRole("tab", { name: /新手创业者/ });
+    expect(starter).toHaveFocus();
+    expect(starter).toHaveAttribute("aria-selected", "true");
   });
 
 });
