@@ -212,6 +212,10 @@ func TestServiceSameTenantDifferentOwnerCannotReadOrCommandRun(t *testing.T) {
 }
 
 func seededRepository(t *testing.T, status imageagent.RunStatus, block *imageagent.Block) imageagent.Repository {
+	return seededRepositoryWithCatalog(t, status, block, authorizedCatalog())
+}
+
+func seededRepositoryWithCatalog(t *testing.T, status imageagent.RunStatus, block *imageagent.Block, catalog imageagent.AssetCatalog) imageagent.Repository {
 	t.Helper()
 	repository := store.NewMemoryRepository()
 	run := &imageagent.Run{
@@ -219,7 +223,7 @@ func seededRepository(t *testing.T, status imageagent.RunStatus, block *imageage
 		IdempotencyKey: "run-key-1", Status: status, CurrentNode: "command", Version: 1, Block: block, ActivePlanRevision: 1,
 	}
 	plan := commandPlan(1)
-	_, err := repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{Scope: imageagent.ScopeForRun(*run), Run: *run, Plan: plan, Catalog: authorizedCatalog(), Snapshot: imageagent.RunProjection{Run: *run, Plan: plan, Slots: []imageagent.SlotProjection{{Slot: plan.Slots[0], ErrorCode: func() string {
+	_, err := repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{Scope: imageagent.ScopeForRun(*run), Run: *run, Plan: plan, Catalog: catalog, Snapshot: imageagent.RunProjection{Run: *run, Plan: plan, Slots: []imageagent.SlotProjection{{Slot: plan.Slots[0], ErrorCode: func() string {
 		if block != nil {
 			return "provider_failed"
 		}
@@ -281,6 +285,46 @@ func TestServiceStartRequiresBusinessTaskAndAuthorizedCatalogSubset(t *testing.T
 	input.Plan.Slots[0].SourceAssetIDs = []string{"source-not-authorized"}
 	require.ErrorIs(t, service.Start(ctx, input), imageagent.ErrValidation)
 	require.Empty(t, workflows.starts)
+}
+
+func TestServiceStartAndReplaceRejectUnmeasuredSizeSlotBeforeWorkflowIngress(t *testing.T) {
+	unmeasured := authorizedCatalog()
+	unmeasured.Assets[0].Width = 0
+	unmeasured.Assets[0].Height = 0
+	withSizeSlot := func(revision int64) imageagent.Plan {
+		plan := commandPlan(revision)
+		plan.Slots = append(plan.Slots, imageagent.Slot{
+			ID: "size-1", Role: imageagent.SlotRoleSize, SourceAssetIDs: []string{"source-1"},
+			IdempotencyKey: "slot-key-size-1", Status: imageagent.SlotStatusPending,
+		})
+		return plan
+	}
+
+	t.Run("start", func(t *testing.T) {
+		workflows := &recordingWorkflowClient{}
+		service, err := imageagent.NewService(store.NewMemoryRepository(), workflows, staticCatalogResolver{catalog: unmeasured})
+		require.NoError(t, err)
+		err = service.Start(verifiedContext("tenant-a", "user-a"), imageagent.StartRunInput{
+			RunID: "run-size", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
+			IdempotencyKey: "run-size-key", Plan: withSizeSlot(1),
+		})
+		require.ErrorIs(t, err, imageagent.ErrValidation)
+		require.ErrorContains(t, err, "reliable dimensions")
+		require.Empty(t, workflows.starts)
+	})
+
+	t.Run("replacement", func(t *testing.T) {
+		repository := seededRepositoryWithCatalog(t, imageagent.RunStatusBlocked, &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"}, unmeasured)
+		workflows := &recordingWorkflowClient{}
+		service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
+		require.NoError(t, err)
+		replacement := withSizeSlot(2)
+		replacement.ParentRevision = 1
+		err = service.ReplacePlan(verifiedContext("tenant-a", "user-a"), "run-1", 1, replacement, "replace-size")
+		require.ErrorIs(t, err, imageagent.ErrValidation)
+		require.ErrorContains(t, err, "reliable dimensions")
+		require.Empty(t, workflows.replacements)
+	})
 }
 
 func TestServiceStartRejectsRunIDOutsideArtifactGrammarBeforeWorkflowStart(t *testing.T) {
@@ -548,7 +592,7 @@ func TestServiceReplacePlanValidatesPlanAndSlotAssetsAgainstPersistedRunCatalog(
 
 func authorizedCatalog() imageagent.AssetCatalog {
 	return imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
-		{ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example.test/source-1.png", Label: "Source 1"},
+		{ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example.test/source-1.png", Label: "Source 1", Width: 1200, Height: 900},
 		{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, DisplayURL: "https://cdn.example.test/style-1.png", Label: "Style 1"},
 	}}
 }

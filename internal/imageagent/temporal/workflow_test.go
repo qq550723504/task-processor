@@ -1200,6 +1200,69 @@ func TestWorkflowLedgerExhaustionPersistsBlockerWithoutConsumingUnknownAction(t 
 	env.AssertExpectations(t)
 }
 
+type cancelAtFullLedgerResult struct {
+	Acknowledgement CommandAcknowledgement
+	Error           string
+	ActionCount     int
+	Superseded      bool
+	Cancelled       bool
+	Ingress         imageagent.CommandIngress
+}
+
+func cancelAtFullLedgerWorkflow(ctx workflow.Context, withFailedPending bool) (cancelAtFullLedgerResult, error) {
+	ctx = imageAgentActivityContext(ctx)
+	input := manualWorkflowInput(sevenSlotPlan())
+	projection := WorkflowResult{
+		Status: imageagent.RunStatusBlocked, Plan: input.Plan,
+		Block: &imageagent.Block{Code: "slot_failed", SlotID: "scene-2"},
+		Slots: slotProjections(input.Plan, nil),
+	}
+	results := make([]SlotWorkflowResult, len(input.Plan.Slots))
+	state := newWorkflowUpdateState(ctx, &input, &projection, &results, newWorkflowEffectOwner(ctx))
+	failedActionID := ""
+	if withFailedPending {
+		failedActionID = "failed-at-cap"
+		failedAt := workflow.Now(ctx).UTC()
+		state.pendingActionID = failedActionID
+		state.actions[failedActionID] = &workflowUpdateRecord{
+			fingerprint: "failed-fingerprint", kind: signalRetrySlot,
+			command: RetrySlotSignal{RunID: input.RunID, PlanRevision: 1, SlotID: "scene-2", ActorID: input.Identity.UserID, ActionID: failedActionID},
+			phase:   updatePhaseRetryPersistResult, ingressState: signalIngressAccepted,
+			attempt: 1, businessValidated: true, lastFailedAt: &failedAt,
+		}
+	}
+	for index := 0; len(state.actions) < maxActionLedgerEntries; index++ {
+		state.actions[fmt.Sprintf("tombstone-%d", index)] = &workflowUpdateRecord{fingerprint: "rejected", ingressState: signalIngressRejected}
+	}
+	signal := CancelSignal{RunID: input.RunID, PlanRevision: 1, ActorID: input.Identity.UserID, ActionID: "cancel-at-cap"}
+	acknowledgement, err := state.handleCancel(ctx, signal)
+	return cancelAtFullLedgerResult{
+		Acknowledgement: acknowledgement, Error: workflowTestErrorString(err), ActionCount: len(state.actions),
+		Superseded: failedActionID != "" && state.actions[failedActionID].ingressState == signalIngressSuperseded,
+		Cancelled:  state.cancelCommitted && state.cancelRequested, Ingress: state.commandIngress(),
+	}, nil
+}
+
+func TestCancellationCanTerminateRunAfterOrdinaryActionLedgerIsFull(t *testing.T) {
+	for _, withFailedPending := range []bool{false, true} {
+		t.Run(fmt.Sprintf("failed_pending_%t", withFailedPending), func(t *testing.T) {
+			env := newWorkflowEnv(t)
+			env.RegisterWorkflow(cancelAtFullLedgerWorkflow)
+			env.ExecuteWorkflow(cancelAtFullLedgerWorkflow, withFailedPending)
+
+			require.NoError(t, env.GetWorkflowError())
+			var result cancelAtFullLedgerResult
+			require.NoError(t, env.GetWorkflowResult(&result))
+			require.Empty(t, result.Error)
+			require.Equal(t, imageagent.RunStatusCancelled, result.Acknowledgement.Status)
+			require.Equal(t, maxActionLedgerEntries+1, result.ActionCount)
+			require.Equal(t, withFailedPending, result.Superseded)
+			require.True(t, result.Cancelled)
+			require.LessOrEqual(t, result.Ingress.Used, result.Ingress.Limit, "the terminal capacity exemption must not violate the public quota contract")
+		})
+	}
+}
+
 type rejectedUpdateTombstoneResult struct {
 	RejectedActionRecorded bool
 	RejectedActionState    signalIngressState
@@ -3641,7 +3704,7 @@ type workflowCatalogResolver struct{}
 func (workflowCatalogResolver) Resolve(context.Context, imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
 	assets := make([]imageagent.AuthorizedAsset, 0, 10)
 	for index := 1; index <= 9; index++ {
-		assets = append(assets, imageagent.AuthorizedAsset{ID: fmt.Sprintf("source-%d", index), Type: imageagent.AuthorizedAssetSource})
+		assets = append(assets, imageagent.AuthorizedAsset{ID: fmt.Sprintf("source-%d", index), Type: imageagent.AuthorizedAssetSource, Width: 1200, Height: 900})
 	}
 	assets = append(assets, imageagent.AuthorizedAsset{ID: "style-modern", Type: imageagent.AuthorizedAssetStyle})
 	return imageagent.AssetCatalog{Assets: assets}, nil

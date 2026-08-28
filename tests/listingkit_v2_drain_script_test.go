@@ -125,6 +125,27 @@ func TestListingKitV2DrainCheckRejectsEveryNonzeroRetirementClass(t *testing.T) 
 	}
 }
 
+func TestListingKitV2DrainCheckAcceptsV3ParentWithV3PendingChild(t *testing.T) {
+	workflowID := "image-agent:tenant-a:user-a:run-v3"
+	result := runListingKitV2DrainCheck(t, drainFixture{
+		parentList:  listExecutionJSON(workflowID, "parent-run-v3", "ImageAgentWorkflow"),
+		parentCount: workflowCountJSON(1),
+		dbRows:      "tenant-a\tuser-a\trun-v3\n",
+		descriptions: map[string]string{
+			workflowID: describeExecutionJSON("image-agent-manual-v3", []string{
+				`{"workflowId":"slot-v3","runId":"slot-run-v3","workflowType":{"name":"ImageSlotWorkflowV3"}}`,
+			}, nil),
+		},
+	})
+	if result.err != nil {
+		t.Fatalf("v3 inventory must not be rejected by the v2 drain check: %v\n%s", result.err, result.output)
+	}
+	if !strings.Contains(string(result.output), "temporal_parent_identity_count=1") ||
+		!strings.Contains(string(result.output), "open_v2_parent_count=0") {
+		t.Fatalf("v3 inventory must reconcile without entering v2 counts: %s", result.output)
+	}
+}
+
 func TestListingKitV2DrainCheckFailsClosedOnMalformedOrFailedEvidence(t *testing.T) {
 	parent := listExecutionJSON("parent-v2", "parent-run", "ImageAgentWorkflow")
 	for _, test := range []struct {
@@ -753,11 +774,16 @@ try:
         queue = info.get("taskQueue") if isinstance(info, dict) else None
         children = data.get("pendingChildren") if isinstance(data, dict) else None
         activities = data.get("pendingActivities") if isinstance(data, dict) else None
+        def child_type(c):
+            direct = c.get("workflowTypeName")
+            nested = c.get("workflowType")
+            return direct or (nested.get("name") if isinstance(nested, dict) else None)
+        accepts_v3_child = "shape" not in marker or '"ImageSlotWorkflowV3"' in marker
         child_valid = isinstance(children, list) and all(isinstance(c, dict)
             and isinstance(c.get("workflowId"), str) and c["workflowId"]
             and isinstance(c.get("runId"), str) and c["runId"]
-            and (c.get("workflowTypeName") == "ImageSlotWorkflow"
-                 or isinstance(c.get("workflowType"), dict) and c["workflowType"].get("name") == "ImageSlotWorkflow")
+            and (child_type(c) == "ImageSlotWorkflow"
+                 or child_type(c) == "ImageSlotWorkflowV3" and accepts_v3_child)
             for c in children)
         activity_valid = isinstance(activities, list) and all(isinstance(a, dict)
             and isinstance(a.get("activityType"), dict)

@@ -1135,7 +1135,7 @@ func (s *workflowUpdateState) prepareAction(ctx workflow.Context, actionID, fing
 		}
 		return existing, !existing.businessValidated, nil
 	}
-	if len(s.actions) >= maxActionLedgerEntries {
+	if !s.canAdmitNewAction(kind) {
 		if err := s.persistIngressExhaustion(ctx); err != nil {
 			return nil, false, err
 		}
@@ -1160,11 +1160,29 @@ func (s *workflowUpdateState) prepareAction(ctx workflow.Context, actionID, fing
 	return record, true, nil
 }
 
-func (s *workflowUpdateState) supersedeFailedPendingAction() bool {
-	pending := s.actions[s.pendingActionID]
-	if pending == nil || pending.kind == signalCancel || pending.completed || pending.running || pending.lastFailedAt == nil {
+func (s *workflowUpdateState) canAdmitNewAction(kind string) bool {
+	if len(s.actions) < maxActionLedgerEntries {
+		return true
+	}
+	if kind != signalCancel {
 		return false
 	}
+	if s.pendingActionID == "" {
+		return true
+	}
+	return s.failedPendingActionCanBeSuperseded()
+}
+
+func (s *workflowUpdateState) failedPendingActionCanBeSuperseded() bool {
+	pending := s.actions[s.pendingActionID]
+	return pending != nil && pending.kind != signalCancel && !pending.completed && !pending.running && pending.lastFailedAt != nil
+}
+
+func (s *workflowUpdateState) supersedeFailedPendingAction() bool {
+	if !s.failedPendingActionCanBeSuperseded() {
+		return false
+	}
+	pending := s.actions[s.pendingActionID]
 	pending.ingressState = signalIngressSuperseded
 	pending.command = nil
 	pending.retryResult = nil
@@ -1198,7 +1216,11 @@ func (s *workflowUpdateState) persistActionReceipt(ctx workflow.Context, actionI
 }
 
 func (s *workflowUpdateState) commandIngress() imageagent.CommandIngress {
-	return imageagent.CommandIngress{Used: len(s.actions), Limit: maxActionLedgerEntries, Exhausted: s.ingressExhausted, Reason: func() string {
+	used := len(s.actions)
+	if used > maxActionLedgerEntries {
+		used = maxActionLedgerEntries
+	}
+	return imageagent.CommandIngress{Used: used, Limit: maxActionLedgerEntries, Exhausted: s.ingressExhausted, Reason: func() string {
 		if s.ingressExhausted {
 			return "command_capacity_exhausted"
 		}
@@ -1210,7 +1232,9 @@ func (s *workflowUpdateState) persistIngressExhaustion(ctx workflow.Context) err
 	if s.ingressExhausted {
 		return nil
 	}
-	ingress := imageagent.CommandIngress{Used: len(s.actions), Limit: maxActionLedgerEntries, Exhausted: true, Reason: "command_capacity_exhausted"}
+	ingress := s.commandIngress()
+	ingress.Exhausted = true
+	ingress.Reason = "command_capacity_exhausted"
 	var receipt *imageagent.PendingCommandReceipt
 	if s.pendingActionID != "" {
 		if record := s.actions[s.pendingActionID]; record != nil && !record.completed {

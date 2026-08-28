@@ -83,7 +83,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	if err != nil {
 		return fmt.Errorf("%w: normalize authorized image assets: %v", ErrValidation, err)
 	}
-	if err := ValidatePlanAgainstCatalog(input.Plan, catalog); err != nil {
+	if err := ValidateSubmittedPlanAgainstCatalog(input.Plan, catalog); err != nil {
 		return fmt.Errorf("%w: validate authorized image assets: %v", ErrValidation, err)
 	}
 	run := Run{
@@ -133,7 +133,7 @@ func (s *Service) ReplacePlan(ctx context.Context, runID string, expectedRevisio
 	if err != nil {
 		return err
 	}
-	if err := ValidatePlanAgainstCatalog(plan, catalog); err != nil {
+	if err := ValidateSubmittedPlanAgainstCatalog(plan, catalog); err != nil {
 		return fmt.Errorf("%w: validate authorized image assets: %v", ErrValidation, err)
 	}
 	return s.workflows.ReplacePlan(ctx, ReplacePlanCommand{

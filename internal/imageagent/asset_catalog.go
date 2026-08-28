@@ -154,6 +154,37 @@ func ValidatePlanAgainstCatalog(plan Plan, catalog AssetCatalog) error {
 	return nil
 }
 
+// ValidateSubmittedPlanAgainstCatalog adds ingress-only execution prerequisites
+// without changing replay validation for historical workflow snapshots.
+func ValidateSubmittedPlanAgainstCatalog(plan Plan, catalog AssetCatalog) error {
+	if err := ValidatePlanAgainstCatalog(plan, catalog); err != nil {
+		return err
+	}
+	allowedSources := make(map[string]AuthorizedAsset, len(catalog.Assets))
+	for _, asset := range catalog.Assets {
+		if asset.Type == AuthorizedAssetSource {
+			allowedSources[strings.TrimSpace(asset.ID)] = asset
+		}
+	}
+	for _, slot := range plan.Slots {
+		if slot.Role != SlotRoleSize {
+			continue
+		}
+		for _, rawID := range slot.SourceAssetIDs {
+			id := strings.TrimSpace(rawID)
+			if id == "" {
+				continue
+			}
+			source := allowedSources[id]
+			if source.Width <= 0 || source.Height <= 0 {
+				return fmt.Errorf("size slot %q requires first source asset %q to have reliable dimensions", slot.ID, id)
+			}
+			break
+		}
+	}
+	return nil
+}
+
 func ValidateSafeImageURL(raw string) (string, error) {
 	validated, err := safeimagehttp.ValidatePublicHTTPSURL(raw)
 	if err != nil {

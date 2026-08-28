@@ -307,7 +307,8 @@ describe_execution() {
     ((.pendingChildren == null) or (.pendingChildren | type == "array")) and
     all((.pendingChildren // [])[]; (.workflowId | type == "string" and length > 0) and
       (.runId | type == "string" and length > 0) and
-      ((.workflowTypeName == "ImageSlotWorkflow") or (.workflowType.name == "ImageSlotWorkflow"))) and
+      ((.workflowTypeName == "ImageSlotWorkflow") or (.workflowType.name == "ImageSlotWorkflow") or
+       (.workflowTypeName == "ImageSlotWorkflowV3") or (.workflowType.name == "ImageSlotWorkflowV3"))) and
     ((.pendingActivities == null) or (.pendingActivities | type == "array")) and
     all((.pendingActivities // [])[]; (.activityType.name | type == "string" and length > 0) and
       (.attempt | type == "number" and . >= 1 and floor == .))

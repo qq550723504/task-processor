@@ -90,6 +90,8 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
   const commandPending = Boolean(agent.pendingAction || projection.pending_command);
   const commandExhausted = projection.command_ingress?.exhausted === true;
   const newCommandDisabled = commandPending || commandExhausted;
+  const cancelDisabled = Boolean(agent.pendingAction) ||
+    (Boolean(projection.pending_command) && !projection.pending_command?.failure_code);
   const currentDraft = draftState?.revision === projection.plan.revision
     ? draftState.draft
     : draftFromProjection(projection);
@@ -216,9 +218,9 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
               role="alert"
               className="rounded-[1.5rem] border border-destructive/40 bg-destructive/5 p-4 text-destructive"
             >
-              <h3 className="font-semibold">命令容量已耗尽，需要创建新运行</h3>
+              <h3 className="font-semibold">普通命令容量已耗尽</h3>
               <p className="mt-2 text-sm opacity-80">
-                已使用 {projection.command_ingress?.used}/{projection.command_ingress?.limit} 个命令记录；已知操作仍可恢复。
+                已使用 {projection.command_ingress?.used}/{projection.command_ingress?.limit} 个命令记录；失败操作仍可恢复，也可取消运行。
               </p>
             </section>
           ) : null}
@@ -294,7 +296,7 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
                 <button
                   type="button"
                   className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-border bg-background px-4 text-sm font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={newCommandDisabled}
+                  disabled={cancelDisabled}
                   onClick={() => void agent.cancel()}
                 >
                   取消运行

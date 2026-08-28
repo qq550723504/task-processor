@@ -46,9 +46,21 @@ func TestListingKitImageAgentCatalogUsesOwnedCanonicalSourceAssetsAndNoSynthetic
 	requestOnly := NewImageAgentAuthorizedAssetCatalog(listingTaskSourceStub{task: &listingkit.Task{
 		ID: "task-request-only", TenantID: "tenant-a", UserID: "user-a",
 		Request: &listingkit.GenerateRequest{ImageURLs: []string{"https://source.example/request-only.png"}},
+		Result:  &listingkit.ListingKitResult{StandardProductSnapshot: &listingkit.StandardProductSnapshot{}},
 	}})
 	_, err = requestOnly.Resolve(ctx, imageagent.AssetCatalogScope{TenantID: "tenant-a", OwnerUserID: "user-a", BusinessTaskID: "task-request-only", RunID: "run-2"})
 	require.ErrorContains(t, err, "no authorized source assets")
+
+	legacyOnly := NewImageAgentAuthorizedAssetCatalog(listingTaskSourceStub{task: &listingkit.Task{
+		ID: "task-legacy-only", TenantID: "tenant-a", UserID: "user-a",
+		Result: &listingkit.ListingKitResult{
+			AssetBundle: &asset.Bundle{Assets: []asset.Asset{{
+				ID: "legacy-source", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/legacy.png", Width: 1200, Height: 900,
+			}}},
+		},
+	}})
+	_, err = legacyOnly.Resolve(ctx, imageagent.AssetCatalogScope{TenantID: "tenant-a", OwnerUserID: "user-a", BusinessTaskID: "task-legacy-only", RunID: "run-3"})
+	require.ErrorContains(t, err, "standard product snapshot")
 }
 
 type listingTaskSourceStub struct{ task *listingkit.Task }

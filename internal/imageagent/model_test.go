@@ -63,6 +63,25 @@ func TestNormalizeAssetCatalogBindsCanonicalProductContextToManifest(t *testing.
 	require.Equal(t, CatalogHash(legacy.Assets), legacy.Manifest.Hash)
 }
 
+func TestValidateSubmittedPlanAgainstCatalogRequiresReliableDimensionsForSizeSlotFirstSource(t *testing.T) {
+	plan := Plan{
+		SourceAssetIDs: []string{"source-unmeasured", "source-measured"},
+		Slots: []Slot{{
+			ID: "size-1", Role: SlotRoleSize,
+			SourceAssetIDs: []string{"source-unmeasured", "source-measured"},
+		}},
+	}
+	catalog := AssetCatalog{Assets: []AuthorizedAsset{
+		{ID: "source-unmeasured", Type: AuthorizedAssetSource},
+		{ID: "source-measured", Type: AuthorizedAssetSource, Width: 1200, Height: 900},
+	}}
+
+	require.NoError(t, ValidatePlanAgainstCatalog(plan, catalog), "historical workflow snapshots retain the pre-ingress compatibility contract")
+	require.ErrorContains(t, ValidateSubmittedPlanAgainstCatalog(plan, catalog), "reliable dimensions")
+	plan.Slots[0].SourceAssetIDs = []string{"source-measured", "source-unmeasured"}
+	require.NoError(t, ValidateSubmittedPlanAgainstCatalog(plan, catalog), "the executor deterministically uses the first selected source")
+}
+
 func TestValidatePlanAllowsMoreThanTenIndependentSlots(t *testing.T) {
 	slots := make([]Slot, 11)
 	for i := range slots {

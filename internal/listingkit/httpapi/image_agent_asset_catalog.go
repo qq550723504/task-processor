@@ -8,7 +8,6 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	"task-processor/internal/authidentity"
-	"task-processor/internal/catalog"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/listingkit"
 )
@@ -46,12 +45,16 @@ func (c *listingKitAuthorizedAssetCatalog) Resolve(ctx context.Context, scope im
 }
 
 func imageAgentCatalogFromTask(task *listingkit.Task) (imageagent.AssetCatalog, error) {
-	assets := sourceAssetsFromTask(task)
+	if task == nil || task.Result == nil || task.Result.StandardProductSnapshot == nil {
+		return imageagent.AssetCatalog{}, fmt.Errorf("business task standard product snapshot is required")
+	}
+	snapshot := task.Result.StandardProductSnapshot
+	assets := sourceAssetsFromBundle(snapshot.AssetBundle)
 	if len(assets) == 0 {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task has no authorized source assets")
 	}
 	context := imageagent.ProductContextRef{ProductID: strings.TrimSpace(task.ID)}
-	if product := taskCatalogProduct(task); product != nil {
+	if product := snapshot.CatalogProduct; product != nil {
 		providerContext := assetgeneration.BuildProductContext(product)
 		context.Title = providerContext.Title
 		context.ProductType = providerContext.ProductType
@@ -60,8 +63,7 @@ func imageAgentCatalogFromTask(task *listingkit.Task) (imageagent.AssetCatalog, 
 	return imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{Assets: assets, ProductContext: context})
 }
 
-func sourceAssetsFromTask(task *listingkit.Task) []imageagent.AuthorizedAsset {
-	bundle := taskAssetBundle(task)
+func sourceAssetsFromBundle(bundle *asset.Bundle) []imageagent.AuthorizedAsset {
 	if bundle != nil {
 		var out []imageagent.AuthorizedAsset
 		for _, item := range bundle.Assets {
@@ -93,24 +95,4 @@ func sourceAssetsFromTask(task *listingkit.Task) []imageagent.AuthorizedAsset {
 		}
 	}
 	return nil
-}
-
-func taskAssetBundle(task *listingkit.Task) *asset.Bundle {
-	if task == nil || task.Result == nil {
-		return nil
-	}
-	if task.Result.StandardProductSnapshot != nil && task.Result.StandardProductSnapshot.AssetBundle != nil {
-		return task.Result.StandardProductSnapshot.AssetBundle
-	}
-	return task.Result.AssetBundle
-}
-
-func taskCatalogProduct(task *listingkit.Task) *catalog.Product {
-	if task == nil || task.Result == nil {
-		return nil
-	}
-	if task.Result.StandardProductSnapshot != nil && task.Result.StandardProductSnapshot.CatalogProduct != nil {
-		return task.Result.StandardProductSnapshot.CatalogProduct
-	}
-	return task.Result.CatalogProduct
 }

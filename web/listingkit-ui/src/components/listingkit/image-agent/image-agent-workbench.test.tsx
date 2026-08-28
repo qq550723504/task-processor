@@ -313,7 +313,7 @@ describe("ImageAgentWorkbench", () => {
     expect(screen.getByRole("button", { name: "恢复上次操作" })).toBeEnabled();
   });
 
-  it("shows durable command exhaustion and disables only new commands", () => {
+  it("shows durable command exhaustion but preserves terminal cancellation", () => {
     const projection = projectionWithSlots(7, "scene-2");
     projection.command_ingress = {
       used: 1024,
@@ -328,14 +328,15 @@ describe("ImageAgentWorkbench", () => {
       status: "pending",
       plan_revision: 3,
       slot_id: "scene-2",
+      failure_code: "persistence_failed",
     };
 
     render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent("命令容量已耗尽，需要创建新运行");
+    expect(screen.getByRole("alert")).toHaveTextContent("普通命令容量已耗尽");
     expect(screen.getByRole("button", { name: "仅重试 scene-2" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存计划修改" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "取消运行" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消运行" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "恢复上次操作" })).toBeEnabled();
   });
 
