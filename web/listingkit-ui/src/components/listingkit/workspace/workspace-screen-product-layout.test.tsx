@@ -107,6 +107,18 @@ const mocks = vi.hoisted(() => ({
     message: string;
     detail?: string;
   }>,
+  submitReadiness: undefined as {
+    blocking_items: Array<{
+      key: string;
+      label: string;
+      message: string;
+    }>;
+    warning_items?: Array<{
+      key: string;
+      label: string;
+      message: string;
+    }>;
+  } | undefined,
 }));
 
 beforeEach(() => {
@@ -117,6 +129,7 @@ beforeEach(() => {
   mocks.canonicalProduct = canonicalProductFixture();
   mocks.navigationPlatformCards = [sheinPlatformCardFixture()];
   mocks.workflowIssues = defaultWorkflowIssues.map((issue) => ({ ...issue }));
+  mocks.submitReadiness = undefined;
 });
 
 vi.mock("next/navigation", () => ({
@@ -127,7 +140,10 @@ vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
   useWorkspaceData: () => ({
     baseQuery: {},
     preview: {
-      data: { shein: {}, asset_generation_overview: {} },
+      data: {
+        shein: { submit_readiness: mocks.submitReadiness },
+        asset_generation_overview: {},
+      },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -345,6 +361,24 @@ describe("WorkspaceScreen Product Workspace composition", () => {
         queue_query: { platform: "all" },
       },
     });
+  });
+
+  it("does not show SHEIN readiness outside the active platform review view", () => {
+    mocks.routeSearch = "product_section=overview";
+    mocks.submitReadiness = {
+      blocking_items: [
+        {
+          key: "category_review",
+          label: "SHEIN 类目未确认",
+          message: "请确认 SHEIN 类目。",
+        },
+      ],
+    };
+
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    const aiReview = screen.getByRole("complementary", { name: "AI 审核" });
+    expect(within(aiReview).queryByText("SHEIN 类目未确认")).not.toBeInTheDocument();
   });
 
   it("keeps a platform recovery action separate from opening platform review", async () => {

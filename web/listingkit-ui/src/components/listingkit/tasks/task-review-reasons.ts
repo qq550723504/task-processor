@@ -117,8 +117,8 @@ export function inferSheinReviewActionKey(reason: string) {
   const keys = inferSheinReviewActionKeys([reason]);
   const orderedKeys: SheinReviewActionKey[] = [
     "category",
-    "attributes",
     "sale_attributes",
+    "attributes",
   ];
   return orderedKeys.find((key) => keys.has(key));
 }

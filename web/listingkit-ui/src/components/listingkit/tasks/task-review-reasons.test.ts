@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { extractTaskReviewReasons } from "@/components/listingkit/tasks/task-review-reasons";
+import {
+  extractTaskReviewReasons,
+  inferSheinReviewActionKey,
+} from "@/components/listingkit/tasks/task-review-reasons";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 describe("task review reasons", () => {
@@ -33,5 +36,13 @@ describe("task review reasons", () => {
       "Confirm SHEIN category",
       "Product enrichment failed",
     ]);
+  });
+
+  it("prioritizes sale attributes over generic attribute template wording", () => {
+    expect(
+      inferSheinReviewActionKey(
+        "生成阶段使用的销售属性模板和当前在线模板已经不一致",
+      ),
+    ).toBe("sale_attributes");
   });
 });
