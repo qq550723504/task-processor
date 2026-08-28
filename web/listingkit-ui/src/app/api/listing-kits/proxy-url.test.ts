@@ -68,6 +68,7 @@ describe("buildListingKitProxyUrl", () => {
     ["POST", ["image-agent", "runs", "run-1", "slots", "scene-2", "retry"]],
     ["POST", ["image-agent", "runs", "run-1", "results", "approve"]],
     ["POST", ["image-agent", "runs", "run-1", "cancel"]],
+    ["POST", ["image-agent", "runs", "run-1", "restart"]],
     ["GET", ["image-agent", "runs", "run-1", "events"]],
     ["POST", ["image-agent", "runs", "run-1", "commands", "action-1", "resume"]],
   ])("allows %s only for an exact image-agent route", (method, path) => {
@@ -80,6 +81,7 @@ describe("buildListingKitProxyUrl", () => {
     ["GET", ["image-agent", "admin"]],
     ["GET", ["image-agent", "runs", "run-1", "secrets"]],
     ["POST", ["image-agent", "runs", "run-1", "events"]],
+    ["GET", ["image-agent", "runs", "run-1", "restart"]],
     ["GET", ["image-agent", "runs", "run-1", "events", "extra"]],
     ["GET", ["image-agent", "runs", "run%2F1"]],
     ["GET", ["image-agent", "runs", "run%5C1"]],

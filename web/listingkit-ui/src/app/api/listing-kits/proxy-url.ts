@@ -51,7 +51,7 @@ function isAllowedImageAgentRoute(method: string, route: string[]) {
   if (route[0] !== "runs" || !safeID.test(route[1] ?? "")) return false;
   if (verb === "GET" && route.length === 2) return true;
   if (verb === "PUT" && route.length === 3 && route[2] === "plan") return true;
-  if (verb === "POST" && route.length === 3 && route[2] === "cancel") return true;
+  if (verb === "POST" && route.length === 3 && (route[2] === "cancel" || route[2] === "restart")) return true;
   if (verb === "GET" && route.length === 3 && route[2] === "events") return true;
   if (verb === "POST" && route.length === 4 && route[2] === "results" && route[3] === "approve") return true;
   if (verb === "POST" && route.length === 5 && route[2] === "slots" && safeID.test(route[3] ?? "") && route[4] === "retry") return true;
