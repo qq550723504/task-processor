@@ -83,4 +83,18 @@ describe("WorkspaceOverviewPanel", () => {
     expect(screen.queryByText("可重试")).not.toBeInTheDocument();
     expect(screen.queryByText("待处理")).not.toBeInTheDocument();
   });
+
+  it("renders an explicit empty state when the caller provides one", () => {
+    render(
+      <WorkspaceOverviewPanel
+        emptyState={<p>暂无商品概览数据，仍可从左侧栏目查看商品资料。</p>}
+        overview={{}}
+        reviewSummary={{}}
+      />,
+    );
+
+    expect(
+      screen.getByText("暂无商品概览数据，仍可从左侧栏目查看商品资料。"),
+    ).toBeInTheDocument();
+  });
 });
