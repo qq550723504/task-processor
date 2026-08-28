@@ -16,6 +16,7 @@ type runRecord struct {
 	MaxConcurrentSlots int    `gorm:"not null;default:4"`
 	BudgetJSON         []byte
 	UsageJSON          []byte
+	ReservedUsageJSON  []byte
 	BlockJSON          []byte
 	CreatedAt          time.Time `gorm:"not null"`
 	UpdatedAt          time.Time `gorm:"not null"`
@@ -182,7 +183,16 @@ type slotExternalEffectV3Record struct {
 	ResultFingerprint          string `gorm:"type:varchar(64)"`
 	FinalManifestJSON          []byte
 	PublishedJSON              []byte
-	BlockedCode                string    `gorm:"type:varchar(128)"`
+	BlockedCode                string `gorm:"type:varchar(128)"`
+	BudgetStatus               string `gorm:"type:varchar(32)"`
+	BudgetPolicyJSON           []byte
+	UsageQuoteJSON             []byte
+	UsageQuoteFingerprint      string `gorm:"type:varchar(64)"`
+	UsageReceiptJSON           []byte
+	PricingVersion             string `gorm:"type:varchar(128)"`
+	BudgetSettledAt            *time.Time
+	BudgetReleasedAt           *time.Time
+	BudgetUnknownAt            *time.Time
 	ProviderClaimedAt          time.Time `gorm:"not null"`
 	StagingPreparedAt          *time.Time
 	StagedAt                   *time.Time

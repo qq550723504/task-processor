@@ -61,7 +61,8 @@ func (r *memoryRepository) GetProjection(_ context.Context, scope imageagent.Run
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, exists := r.runs[scopeKey(scope)]; !exists {
+	run, exists := r.runs[scopeKey(scope)]
+	if !exists {
 		return imageagent.RunProjection{}, imageagent.ErrRunNotFound
 	}
 	projection, exists := r.projections[scopeKey(scope)]
@@ -69,6 +70,8 @@ func (r *memoryRepository) GetProjection(_ context.Context, scope imageagent.Run
 		return imageagent.RunProjection{}, imageagent.ErrProjectionSnapshotMissing
 	}
 	result := cloneProjection(projection)
+	result.Run.Budget = run.Budget
+	result.Run.Usage = run.Usage
 	if err := imageagent.ValidateProjectionSnapshot(scope, result); err != nil {
 		return imageagent.RunProjection{}, err
 	}
@@ -317,11 +320,12 @@ func (r *gormRepository) GetProjection(ctx context.Context, scope imageagent.Run
 	if err := validateScope(scope); err != nil {
 		return imageagent.RunProjection{}, err
 	}
-	if _, err := r.findRun(ctx, r.db, scope); err != nil {
+	runRow, err := r.findRun(ctx, r.db, scope)
+	if err != nil {
 		return imageagent.RunProjection{}, err
 	}
 	var row projectionRecord
-	err := scopedWhere(r.db.WithContext(ctx), scope).First(&row).Error
+	err = scopedWhere(r.db.WithContext(ctx), scope).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return imageagent.RunProjection{}, imageagent.ErrProjectionSnapshotMissing
 	}
@@ -332,6 +336,12 @@ func (r *gormRepository) GetProjection(ctx context.Context, scope imageagent.Run
 	if err := decodeProjection(row.SnapshotJSON, &result); err != nil {
 		return imageagent.RunProjection{}, err
 	}
+	authoritativeRun, err := recordToRun(runRow)
+	if err != nil {
+		return imageagent.RunProjection{}, err
+	}
+	result.Run.Budget = authoritativeRun.Budget
+	result.Run.Usage = authoritativeRun.Usage
 	if err := imageagent.ValidateProjectionSnapshot(scope, result); err != nil {
 		return imageagent.RunProjection{}, err
 	}

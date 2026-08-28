@@ -307,7 +307,7 @@ func runToRecord(run imageagent.Run) (runRecord, error) {
 	return runRecord{
 		TenantID: run.TenantID, ID: run.ID, BusinessTaskID: run.BusinessTaskID, UserID: run.UserID,
 		Mode: string(run.Mode), IdempotencyKey: run.IdempotencyKey, Status: string(run.Status), CurrentNode: run.CurrentNode,
-		ActivePlanRevision: run.ActivePlanRevision, Version: run.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(run.MaxConcurrentSlots), BudgetJSON: budgetJSON, UsageJSON: usageJSON, BlockJSON: blockJSON,
+		ActivePlanRevision: run.ActivePlanRevision, Version: run.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(run.MaxConcurrentSlots), BudgetJSON: budgetJSON, UsageJSON: usageJSON, ReservedUsageJSON: []byte("{}"), BlockJSON: blockJSON,
 	}, nil
 }
 

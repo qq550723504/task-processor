@@ -111,7 +111,18 @@ type SlotEffectV3Reservation struct {
 	Identity         SlotExternalEffectIdentity
 	IdempotencyKey   string
 	InputFingerprint string
+	Policy           BudgetPolicy
+	Quote            SlotUsageQuote
 }
+
+type SlotBudgetStatus string
+
+const (
+	SlotBudgetReserved  SlotBudgetStatus = "reserved"
+	SlotBudgetCommitted SlotBudgetStatus = "committed"
+	SlotBudgetReleased  SlotBudgetStatus = "released"
+	SlotBudgetUnknown   SlotBudgetStatus = "unknown"
+)
 
 type SlotEffectV3Attempt struct {
 	Identity                   SlotExternalEffectIdentity
@@ -126,6 +137,10 @@ type SlotEffectV3Attempt struct {
 	ResultFingerprint          string
 	Published                  SlotEffectV3PublishedResult
 	BlockedCode                string
+	BudgetStatus               SlotBudgetStatus
+	Policy                     BudgetPolicy
+	Quote                      SlotUsageQuote
+	Receipt                    SlotUsageReceipt
 }
 
 type PublicationClaim struct {
@@ -275,5 +290,8 @@ type SlotExternalEffectV3Repository interface {
 	RenewSlotPublicationV3(context.Context, PublicationLeaseRenewal) (PublicationClaim, error)
 	CompleteSlotPublicationV3(context.Context, PublicationCompletion) (SlotEffectV3Attempt, error)
 	BlockSlotEffectV3(context.Context, SlotEffectV3BlockTransition) (SlotEffectV3Attempt, error)
+	SettleSlotProviderV3(context.Context, SlotEffectV3Reservation, SlotUsageReceipt) (SlotEffectV3Attempt, error)
+	ReleaseSlotProviderBudgetV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
+	MarkSlotProviderBudgetUnknownV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
 	GetSlotExternalEffectV3(context.Context, SlotExternalEffectIdentity) (SlotEffectV3Attempt, error)
 }

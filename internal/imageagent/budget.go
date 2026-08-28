@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
+	"time"
 )
 
 var (
@@ -188,6 +190,41 @@ func CheckedAddUsage(left, right UsageVector) (UsageVector, error) {
 		return UsageVector{}, err
 	}
 	return UsageVector{Images: images, AgentSteps: agentSteps, ModelCalls: modelCalls, CostMicros: costMicros}, nil
+}
+
+func CheckedSubtractUsage(left, right UsageVector) (UsageVector, error) {
+	if err := validateUsageVector(left); err != nil {
+		return UsageVector{}, err
+	}
+	if err := validateUsageVector(right); err != nil {
+		return UsageVector{}, err
+	}
+	if right.Images > left.Images || right.AgentSteps > left.AgentSteps || right.ModelCalls > left.ModelCalls || right.CostMicros > left.CostMicros {
+		return UsageVector{}, fmt.Errorf("%w: reserved usage underflow", ErrBudgetOverflow)
+	}
+	return UsageVector{Images: left.Images - right.Images, AgentSteps: left.AgentSteps - right.AgentSteps, ModelCalls: left.ModelCalls - right.ModelCalls, CostMicros: left.CostMicros - right.CostMicros}, nil
+}
+
+func UsageVectorFromBudgetUsage(usage BudgetUsage) (UsageVector, error) {
+	vector := UsageVector{Images: int64(usage.Images), AgentSteps: int64(usage.AgentSteps), ModelCalls: int64(usage.ModelCalls), CostMicros: usage.EstimatedCostMicros}
+	if err := validateUsageVector(vector); err != nil {
+		return UsageVector{}, err
+	}
+	return vector, nil
+}
+
+func BudgetUsageFromUsageVector(vector UsageVector, elapsed time.Duration) (BudgetUsage, error) {
+	if err := validateUsageVector(vector); err != nil {
+		return BudgetUsage{}, err
+	}
+	maxInt := int64(math.MaxInt64)
+	if strconv.IntSize == 32 {
+		maxInt = math.MaxInt32
+	}
+	if vector.Images > maxInt || vector.AgentSteps > maxInt || vector.ModelCalls > maxInt {
+		return BudgetUsage{}, ErrBudgetOverflow
+	}
+	return BudgetUsage{Images: int(vector.Images), AgentSteps: int(vector.AgentSteps), ModelCalls: int(vector.ModelCalls), EstimatedCostMicros: vector.CostMicros, Elapsed: elapsed}, nil
 }
 
 func validateUsageVector(usage UsageVector) error {

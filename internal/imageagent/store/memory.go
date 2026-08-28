@@ -26,6 +26,7 @@ type memoryRepository struct {
 	projectionCommits map[string]map[string]projectionCommitMemory
 	slotEffects       map[string]imageagent.SlotExternalEffectAttempt
 	slotEffectsV3     map[string]imageagent.SlotEffectV3Attempt
+	reservedUsage     map[string]imageagent.UsageVector
 	clock             func() time.Time
 }
 
@@ -67,6 +68,7 @@ func newMemoryRepositoryWithClock(clock func() time.Time) imageagent.Repository 
 		projectionCommits: map[string]map[string]projectionCommitMemory{},
 		slotEffects:       map[string]imageagent.SlotExternalEffectAttempt{},
 		slotEffectsV3:     map[string]imageagent.SlotEffectV3Attempt{},
+		reservedUsage:     map[string]imageagent.UsageVector{},
 		clock:             clock,
 	}
 }
