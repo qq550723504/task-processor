@@ -371,6 +371,7 @@ function WorkspaceScreenContent({
     <TaskRevisionHistoryPanel taskId={taskId} />
   ) : selectedProductSection !== "overview" ? (
     <ProductWorkspaceCanonicalSection
+      isLoading={taskResult.isLoading || (!taskResult.data && !taskResult.isError)}
       product={taskResult.data?.result?.canonical_product}
       section={selectedProductSection}
     />

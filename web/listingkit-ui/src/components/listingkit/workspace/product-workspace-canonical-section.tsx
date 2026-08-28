@@ -15,10 +15,27 @@ type CanonicalSectionKey = Exclude<ProductWorkspaceSectionKey, "overview">;
 export function ProductWorkspaceCanonicalSection({
   section,
   product,
+  isLoading = false,
 }: {
   section: CanonicalSectionKey;
   product?: CanonicalProduct | null;
+  isLoading?: boolean;
 }) {
+  if (isLoading) {
+    return (
+      <SectionCard title={canonicalSectionTitle(section)}>
+        <div
+          aria-busy="true"
+          aria-label="正在加载商品资料"
+          className="text-sm text-muted-foreground"
+          role="status"
+        >
+          正在加载商品资料
+        </div>
+      </SectionCard>
+    );
+  }
+
   switch (section) {
     case "images":
       return <ImagesSection product={product} />;
@@ -135,7 +152,9 @@ function SKUSection({ product }: { product?: CanonicalProduct | null }) {
                   <TableCell>{variant.is_default ? "是" : "否"}</TableCell>
                   <TableCell>{formatVariantDimensions(variant.dimensions)}</TableCell>
                   <TableCell>{formatVariantWeight(variant.weight)}</TableCell>
-                  <TableCell>{formatVariantPrice(variant.price)}</TableCell>
+                  <TableCell>
+                    <VariantPrice price={variant.price} />
+                  </TableCell>
                   <TableCell>{variant.stock ?? 0}</TableCell>
                 </TableRow>
               ))}
@@ -218,6 +237,20 @@ function EmptyCopy({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
 }
 
+function VariantPrice({ price }: { price?: Record<string, unknown> }) {
+  const sellingPrice = formatVariantPrice(price);
+  const costPrice = formatVariantCostPrice(price);
+
+  return (
+    <div className="space-y-1 whitespace-nowrap">
+      <div>{`售价：${sellingPrice}`}</div>
+      {costPrice ? (
+        <div className="text-xs text-muted-foreground">{`成本价：${costPrice}`}</div>
+      ) : null}
+    </div>
+  );
+}
+
 function collectCanonicalImages(product?: CanonicalProduct | null) {
   const productImages = (product?.images ?? []).map((image, index) => ({
     image,
@@ -264,12 +297,25 @@ function formatVariantAttributes(attributes?: Record<string, CanonicalAttribute>
 }
 
 function formatVariantPrice(price?: Record<string, unknown>) {
-  const amount = Number(price?.amount);
+  return formatVariantAmount(price?.amount, price?.currency);
+}
+
+function formatVariantCostPrice(price?: Record<string, unknown>) {
+  const amount = Number(price?.cost_price);
+  if (!Number.isFinite(amount)) {
+    return "";
+  }
+
+  return formatVariantAmount(amount, price?.currency);
+}
+
+function formatVariantAmount(amountValue: unknown, currencyValue: unknown) {
+  const amount = Number(amountValue);
   if (!Number.isFinite(amount)) {
     return "-";
   }
 
-  const currency = typeof price?.currency === "string" ? price.currency.trim() : "";
+  const currency = typeof currencyValue === "string" ? currencyValue.trim() : "";
   if (!currency) {
     return amount.toFixed(2);
   }
@@ -285,6 +331,17 @@ function formatVariantPrice(price?: Record<string, unknown>) {
   } catch {
     return `${currency} ${amount.toFixed(2)}`;
   }
+}
+
+function canonicalSectionTitle(section: CanonicalSectionKey) {
+  return {
+    images: "图片",
+    basic: "基础信息",
+    sku: "SKU",
+    specs: "规格",
+    attributes: "属性",
+    description: "描述",
+  }[section];
 }
 
 function formatVariantDimensions(dimensions?: Record<string, unknown>) {

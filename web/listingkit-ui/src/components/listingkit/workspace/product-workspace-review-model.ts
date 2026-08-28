@@ -4,7 +4,11 @@ import {
 } from "@/components/listingkit/shein/shein-workspace-actions";
 import { extractTaskReviewReasons } from "@/components/listingkit/tasks/task-review-reasons";
 import type { ProductWorkspaceAttentionSeverity } from "@/components/listingkit/workspace/product-workspace-model";
-import type { CanonicalProduct, ListingKitTaskResult } from "@/lib/types/listingkit";
+import type {
+  CanonicalFieldTrace,
+  CanonicalProduct,
+  ListingKitTaskResult,
+} from "@/lib/types/listingkit";
 
 export type ProductWorkspaceReviewIssue = {
   id: string;
@@ -131,6 +135,23 @@ function canonicalProductReviewReasons(
   const fieldReasons = Object.entries(product.field_traces ?? {})
     .filter(([, trace]) => trace.needs_review)
     .map(([field, trace]) => trace.review_reason?.trim() || `${field}需要确认`);
+  const nestedTraceReasons = [
+    ...Object.entries(product.attributes ?? {}).map(([name, attribute]) =>
+      reviewReasonForTrace(attribute.trace, `属性 ${name}需要确认`),
+    ),
+    ...(product.variants ?? []).flatMap((variant, index) => {
+      const variantLabel = variant.sku?.trim() || `变体 ${index + 1}`;
+      return [
+        reviewReasonForTrace(variant.trace, `变体 ${variantLabel}需要确认`),
+        ...Object.entries(variant.attributes ?? {}).map(([name, attribute]) =>
+          reviewReasonForTrace(
+            attribute.trace,
+            `变体属性 ${variantLabel}/${name}需要确认`,
+          ),
+        ),
+      ];
+    }),
+  ].filter((reason): reason is string => Boolean(reason));
 
   const missingRequiredFieldReasons = product.needs_review
     ? [
@@ -139,10 +160,24 @@ function canonicalProductReviewReasons(
       ].filter((reason): reason is string => Boolean(reason))
     : [];
 
-  if (fieldReasons.length > 0 || missingRequiredFieldReasons.length > 0) {
-    return [...fieldReasons, ...missingRequiredFieldReasons];
+  if (
+    fieldReasons.length > 0 ||
+    nestedTraceReasons.length > 0 ||
+    missingRequiredFieldReasons.length > 0
+  ) {
+    return [...fieldReasons, ...nestedTraceReasons, ...missingRequiredFieldReasons];
   }
   return product.needs_review ? ["商品资料需要确认"] : [];
+}
+
+function reviewReasonForTrace(
+  trace: CanonicalFieldTrace | undefined,
+  fallback: string,
+) {
+  if (!trace?.needs_review) {
+    return undefined;
+  }
+  return trace.review_reason?.trim() || fallback;
 }
 
 function workflowIssueID(

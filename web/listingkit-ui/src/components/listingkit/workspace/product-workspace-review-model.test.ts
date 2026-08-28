@@ -372,6 +372,63 @@ describe("Product Workspace review model", () => {
     ]);
   });
 
+  it("surfaces nested attribute and variant trace blockers", () => {
+    const task = {
+      status: "needs_review",
+      result: {
+        canonical_product: {
+          title: "Canvas Tote",
+          description: "Reusable canvas tote for daily use.",
+          attributes: {
+            material: {
+              value: "Cotton",
+              trace: {
+                needs_review: true,
+                review_reason: "材质来源需要确认",
+              },
+            },
+          },
+          variants: [
+            {
+              sku: "TOTE-BLK-M",
+              trace: {
+                needs_review: true,
+                review_reason: "变体事实需要确认",
+              },
+              attributes: {
+                size: {
+                  value: "M",
+                  trace: {
+                    needs_review: true,
+                    review_reason: "变体尺码需要确认",
+                  },
+                },
+              },
+            },
+          ],
+        },
+      },
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task)).toEqual([
+      {
+        id: "fallback-review-1",
+        severity: "blocking",
+        title: "材质来源需要确认",
+      },
+      {
+        id: "fallback-review-2",
+        severity: "blocking",
+        title: "变体事实需要确认",
+      },
+      {
+        id: "fallback-review-3",
+        severity: "blocking",
+        title: "变体尺码需要确认",
+      },
+    ]);
+  });
+
   it("marks failed task error fallbacks as mandatory", () => {
     const task = {
       status: "failed",

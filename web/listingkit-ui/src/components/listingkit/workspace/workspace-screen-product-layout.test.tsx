@@ -536,7 +536,19 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     expect(within(aiReview).getByText("AI 正在检查商品")).toBeInTheDocument();
     expect(
       within(aiReview).queryByText("AI 检查已完成，可以继续当前操作。"),
-    ).not.toBeInTheDocument();
+      ).not.toBeInTheDocument();
+  });
+
+  it("keeps canonical sections in a loading state until task-result data arrives", () => {
+    mocks.routeSearch = "product_section=images";
+    mocks.taskResultLoading = true;
+    mocks.workflowIssues = [];
+
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    const work = screen.getByRole("region", { name: "商品工作区" });
+    expect(within(work).getByRole("status", { name: "正在加载商品资料" })).toBeInTheDocument();
+    expect(within(work).queryByText("暂无商品图片")).not.toBeInTheDocument();
   });
 
   it("falls back to the workspace title when the canonical title is blank", async () => {

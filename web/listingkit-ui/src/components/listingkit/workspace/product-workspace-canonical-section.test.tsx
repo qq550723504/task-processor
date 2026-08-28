@@ -139,6 +139,27 @@ describe("ProductWorkspaceCanonicalSection", () => {
     expect(screen.getByText("0")).toBeInTheDocument();
   });
 
+  it("shows the per-variant cost price separately from the selling price", () => {
+    render(
+      <ProductWorkspaceCanonicalSection
+        product={{
+          ...product,
+          variants: [
+            {
+              ...product.variants?.[0],
+              price: { amount: 29.9, cost_price: 12.5, currency: "CNY" },
+            },
+          ],
+        }}
+        section="sku"
+      />,
+    );
+
+    const priceCell = screen.getByRole("cell", { name: /售价.*CNY.*29\.90/ });
+    expect(priceCell).toHaveTextContent("售价：CNY 29.90");
+    expect(priceCell).toHaveTextContent("成本价：CNY 12.50");
+  });
+
   it("shows canonical barcode and default variant metadata", () => {
     render(
       <ProductWorkspaceCanonicalSection

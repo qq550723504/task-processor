@@ -465,6 +465,7 @@ export type CanonicalProduct = {
     weight?: Record<string, unknown>;
     price?: Record<string, unknown>;
     stock?: number;
+    trace?: CanonicalFieldTrace;
     attributes?: Record<string, CanonicalAttribute>;
     images?: Array<{ url?: string; alt?: string; role?: string }>;
     [key: string]: unknown;
