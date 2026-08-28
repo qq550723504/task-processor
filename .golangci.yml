@@ -78,6 +78,15 @@ linters-settings:
           - pkg: "task-processor/internal/infra"
             desc: "TEMU publishing policies must not depend on root runtime wiring"
 
+      temu_historical_facades:
+        # Numeric formatting now has one owner under marketplace publishing;
+        # do not recreate the retired forwarding package in the historical tree.
+        files:
+          - "**/internal/temu/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/temu/format"
+            desc: "TEMU numeric formatting belongs to marketplace publishing"
+
       listingkit_marketplace_publishing:
         # This package direction is stable and has no compatibility exceptions.
         files:
