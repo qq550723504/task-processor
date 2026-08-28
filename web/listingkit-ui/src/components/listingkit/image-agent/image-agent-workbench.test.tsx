@@ -340,6 +340,31 @@ describe("ImageAgentWorkbench", () => {
     expect(screen.getByRole("button", { name: "恢复上次操作" })).toBeEnabled();
   });
 
+  it("restarts a failed run through its stored immutable inputs", async () => {
+    const projection = projectionWithSlots(7);
+    projection.run.status = "failed";
+    projection.run.current_node = "workflow_failed";
+    projection.actions = ["restart"];
+    const restarted = structuredClone(projection);
+    restarted.run.status = "planning";
+    restarted.run.current_node = "plan";
+    restarted.actions = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(null, { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(restarted), {
+        status: 200, headers: { "content-type": "application/json" },
+      }));
+    const user = userEvent.setup();
+
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={projection} />);
+    await user.click(screen.getByRole("button", { name: "重新启动失败运行" }));
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/api/listing-kits/image-agent/runs/run-1/restart");
+    expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+    expect(screen.getAllByText("计划中")).toHaveLength(2);
+  });
+
   it("keeps source materials and style references separate from generated candidates", () => {
     const projection = projectionWithSlots(7, "scene-2");
 

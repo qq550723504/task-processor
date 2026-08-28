@@ -68,10 +68,10 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		if existing.Run.BusinessTaskID != input.BusinessTaskID || existing.Run.IdempotencyKey != input.IdempotencyKey || existing.Run.Budget != input.Budget || existing.Run.MaxConcurrentSlots != input.MaxConcurrentSlots || !reflect.DeepEqual(existing.Plan, input.Plan) {
 			return ErrRevisionConflict
 		}
-		if existing.Run.Status == RunStatusCompleted {
+		if existing.Run.Status == RunStatusCompleted || existing.Run.Status == RunStatusCancelled {
 			return nil
 		}
-		return s.workflows.StartManual(ctx, WorkflowStart{Run: existing.Run, Plan: existing.Plan, Identity: identity, MaxConcurrentSlots: existing.Run.MaxConcurrentSlots, AssetCatalog: existing.AssetCatalog})
+		return s.startExistingProjection(ctx, existing, identity)
 	} else if !errors.Is(getErr, ErrRunNotFound) {
 		return getErr
 	}
@@ -105,6 +105,32 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		Run: projection.Run, Plan: projection.Plan, Identity: identity,
 		MaxConcurrentSlots: projection.Run.MaxConcurrentSlots,
 		AssetCatalog:       projection.AssetCatalog,
+	})
+}
+
+// RestartFailed exposes the same-request recovery path using only immutable,
+// owner-scoped inputs already persisted with the run.
+func (s *Service) RestartFailed(ctx context.Context, runID string) error {
+	identity, err := verifiedExecutionIdentity(ctx)
+	if err != nil {
+		return err
+	}
+	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: strings.TrimSpace(runID)}
+	projection, err := s.repository.GetProjection(ctx, scope)
+	if err != nil {
+		return err
+	}
+	if projection.Run.Status != RunStatusFailed {
+		return fmt.Errorf("%w: only a failed image agent run can be restarted", ErrCommandBlocked)
+	}
+	identity.BusinessTaskID = projection.Run.BusinessTaskID
+	return s.startExistingProjection(ctx, projection, identity)
+}
+
+func (s *Service) startExistingProjection(ctx context.Context, projection RunProjection, identity ExecutionIdentity) error {
+	return s.workflows.StartManual(ctx, WorkflowStart{
+		Run: projection.Run, Plan: projection.Plan, Identity: identity,
+		MaxConcurrentSlots: projection.Run.MaxConcurrentSlots, AssetCatalog: projection.AssetCatalog,
 	})
 }
 

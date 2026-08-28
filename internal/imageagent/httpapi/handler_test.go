@@ -52,6 +52,17 @@ func TestResumeCommandRequiresIdentityAndReturnsWorkflowAcknowledgement(t *testi
 	require.Equal(t, "action-1", application.resumeActionID)
 }
 
+func TestRestartFailedRunRequiresIdentityAndUsesStoredRunID(t *testing.T) {
+	application := &stubApplication{}
+	handler := requireHandler(t, application)
+	unauthorized := performRequest(t, handler, http.MethodPost, "/api/v1/image-agent/runs/run-1/restart", "", nil, nil)
+	require.Equal(t, http.StatusUnauthorized, unauthorized.Code)
+	response := performRequest(t, handler, http.MethodPost, "/api/v1/image-agent/runs/run-1/restart", "", verifiedIdentity("tenant-a", "user-a"), nil)
+	require.Equal(t, http.StatusAccepted, response.Code)
+	require.Equal(t, "run-1", application.restartRunID)
+	require.Equal(t, "tenant-a", application.restartIdentity.TenantID)
+}
+
 func TestCreateAcceptsManualOnlyAndRejectsIdentityFields(t *testing.T) {
 	validBody := `{
 		"run_id":"run-1","business_task_id":"task-1","mode":"manual","idempotency_key":"run-key-1",
@@ -211,6 +222,7 @@ func TestCommandErrorMapping(t *testing.T) {
 	}{
 		{name: "validation", method: http.MethodPost, target: "/api/v1/image-agent/runs/run-1/cancel", body: `{}`, setup: func(app *stubApplication) { app.cancelErr = imageagent.ErrValidation }, status: http.StatusBadRequest},
 		{name: "blocked approval", method: http.MethodPost, target: "/api/v1/image-agent/runs/run-1/results/approve", body: `{"plan_revision":1,"action_id":"approve-1"}`, setup: func(app *stubApplication) { app.approveErr = imageagent.ErrCommandBlocked }, status: http.StatusConflict},
+		{name: "blocked restart", method: http.MethodPost, target: "/api/v1/image-agent/runs/run-1/restart", body: ``, setup: func(app *stubApplication) { app.restartErr = imageagent.ErrCommandBlocked }, status: http.StatusConflict},
 		{name: "missing run", method: http.MethodPost, target: "/api/v1/image-agent/runs/run-1/slots/slot-1/retry", body: `{"plan_revision":1,"action_id":"retry-1"}`, setup: func(app *stubApplication) { app.retryErr = imageagent.ErrRunNotFound }, status: http.StatusNotFound},
 	}
 	for _, tt := range tests {
@@ -371,6 +383,7 @@ func performRequest(t *testing.T, handler *Handler, method, target, body string,
 	router.POST("/api/v1/image-agent/runs/:run_id/slots/:slot_id/retry", handler.RetrySlot)
 	router.POST("/api/v1/image-agent/runs/:run_id/results/approve", handler.ApproveResults)
 	router.POST("/api/v1/image-agent/runs/:run_id/cancel", handler.Cancel)
+	router.POST("/api/v1/image-agent/runs/:run_id/restart", handler.RestartFailed)
 	router.POST("/api/v1/image-agent/runs/:run_id/commands/:action_id/resume", handler.Resume)
 	router.GET("/api/v1/image-agent/runs/:run_id/events", handler.Events)
 	request := httptest.NewRequest(method, target, bytes.NewBufferString(body))
@@ -409,6 +422,9 @@ type stubApplication struct {
 	resumeErr                    error
 	resumeRunID                  string
 	resumeActionID               string
+	restartIdentity              authidentity.AuthenticatedIdentity
+	restartRunID                 string
+	restartErr                   error
 }
 
 type staticPublicURLResolver struct{ base string }
@@ -419,6 +435,11 @@ func (s *stubApplication) Start(ctx context.Context, input imageagent.StartRunIn
 	s.startIdentity, _ = authidentity.AuthenticatedIdentityFromContext(ctx)
 	s.startInput = input
 	return s.startErr
+}
+func (s *stubApplication) RestartFailed(ctx context.Context, runID string) error {
+	s.restartIdentity, _ = authidentity.AuthenticatedIdentityFromContext(ctx)
+	s.restartRunID = runID
+	return s.restartErr
 }
 func (s *stubApplication) Get(ctx context.Context, _ string) (imageagent.RunProjection, error) {
 	s.getIdentity, _ = authidentity.AuthenticatedIdentityFromContext(ctx)

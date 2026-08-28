@@ -8,6 +8,7 @@ import {
   getImageAgentRun,
   imageAgentEventsUrl,
   replaceImageAgentPlan,
+  restartFailedImageAgentRun,
   resumeImageAgentCommand,
   retryImageAgentSlot,
 } from "@/lib/api/image-agent";
@@ -247,6 +248,21 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
     });
   }, [executeCommand, runId]);
 
+  const restartFailed = useCallback(async () => {
+    const current = projectionRef.current;
+    if (current?.run.status !== "failed" || !current.actions.includes("restart")) return;
+    setPendingAction("restart");
+    setError(undefined);
+    try {
+      await restartFailedImageAgentRun(runId, abortControllerRef.current?.signal);
+      await refreshSnapshot();
+    } catch (cause) {
+      if (mountedRef.current) setError(errorMessage(cause));
+    } finally {
+      if (mountedRef.current) setPendingAction(undefined);
+    }
+  }, [refreshSnapshot, runId]);
+
   const resumePending = useCallback(async () => {
     const receipt = projectionRef.current?.pending_command;
     if (!receipt) return;
@@ -263,7 +279,7 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
   }, [refreshSnapshot, runId]);
 
   return { projection, isLoading, error, pendingAction, refresh: refreshSnapshot,
-    retrySlot, approveResults, cancel, replacePlan, resumePending };
+    retrySlot, approveResults, cancel, replacePlan, restartFailed, resumePending };
 }
 
 function parseProjectionEvent(value: string): ImageAgentProjectionEvent | undefined {

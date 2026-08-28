@@ -9,6 +9,7 @@ const (
 	ActionRetrySlot      Action = "retry_slot"
 	ActionApproveResults Action = "approve_results"
 	ActionCancel         Action = "cancel"
+	ActionRestart        Action = "restart"
 	ActionSwitchManual   Action = "switch_manual"
 )
 
@@ -27,7 +28,9 @@ func AllowedActions(run Run) []Action {
 		return []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}
 	case RunStatusAwaitingFinalApproval:
 		return []Action{ActionApproveResults, ActionCancel}
-	case RunStatusCompleted, RunStatusFailed, RunStatusCancelled:
+	case RunStatusFailed:
+		return []Action{ActionRestart}
+	case RunStatusCompleted, RunStatusCancelled:
 		return nil
 	default:
 		return nil

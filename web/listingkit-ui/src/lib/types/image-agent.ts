@@ -32,6 +32,7 @@ export type ImageAgentAction =
   | "retry_slot"
   | "approve_results"
   | "cancel"
+  | "restart"
   | "switch_manual";
 
 export type ImageAgentSlot = {

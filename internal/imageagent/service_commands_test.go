@@ -459,36 +459,76 @@ func TestServiceStartRejectsRunIdempotencyKeyBeyondPersistenceLimit(t *testing.T
 	require.Empty(t, workflows.starts)
 }
 
-func TestServiceCompletedStartReplayReturnsOriginalSuccessWithoutRestartingTemporal(t *testing.T) {
+func TestServiceClosedStartReplayReturnsOriginalSuccessWithoutRestartingTemporal(t *testing.T) {
+	for _, status := range []imageagent.RunStatus{imageagent.RunStatusCompleted, imageagent.RunStatusCancelled} {
+		t.Run(string(status), func(t *testing.T) {
+			repository := store.NewMemoryRepository()
+			workflows := &recordingWorkflowClient{}
+			service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
+			require.NoError(t, err)
+			input := imageagent.StartRunInput{
+				RunID: "run-1", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
+				IdempotencyKey: "run-key-1", Plan: commandPlan(1),
+			}
+			ctx := verifiedContext("tenant-a", "user-a")
+			require.NoError(t, service.Start(ctx, input))
+			current, err := repository.GetProjection(ctx, imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-1"})
+			require.NoError(t, err)
+			closed := current
+			closed.Run.Status = status
+			closed.Run.CurrentNode = string(status)
+			closed.Run.Version++
+			_, err = repository.CommitProjection(ctx, imageagent.ProjectionCommit{
+				Scope: imageagent.ScopeForRun(current.Run), CommitID: "closed:" + string(status), ExpectedProjectionVersion: current.ProjectionVersion,
+				Snapshot: closed, EventType: "run." + string(status), EventPayload: json.RawMessage(`{}`), ExpectedRunVersion: current.Run.Version,
+				RunMutation: &imageagent.RunMutation{Status: status, CurrentNode: string(status), ActivePlanRevision: current.Run.ActivePlanRevision},
+			})
+			require.NoError(t, err)
+			workflows.starts = nil
+			workflows.startErr = errors.New("closed workflow cannot be started again")
+
+			err = service.Start(ctx, input)
+
+			require.NoError(t, err)
+			require.Empty(t, workflows.starts)
+		})
+	}
+}
+
+func TestServiceRestartFailedUsesPersistedImmutableInputs(t *testing.T) {
 	repository := store.NewMemoryRepository()
 	workflows := &recordingWorkflowClient{}
 	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
 	require.NoError(t, err)
 	input := imageagent.StartRunInput{
-		RunID: "run-1", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
-		IdempotencyKey: "run-key-1", Plan: commandPlan(1),
+		RunID: "run-restart", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
+		IdempotencyKey: "run-restart-key", Plan: commandPlan(1), MaxConcurrentSlots: 3,
 	}
 	ctx := verifiedContext("tenant-a", "user-a")
 	require.NoError(t, service.Start(ctx, input))
-	current, err := repository.GetProjection(ctx, imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-1"})
+	workflows.starts = nil
+	require.ErrorIs(t, service.RestartFailed(ctx, input.RunID), imageagent.ErrCommandBlocked)
+	require.Empty(t, workflows.starts)
+	current, err := repository.GetProjection(ctx, imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: input.RunID})
 	require.NoError(t, err)
-	completed := current
-	completed.Run.Status = imageagent.RunStatusCompleted
-	completed.Run.CurrentNode = "complete"
-	completed.Run.Version++
+	failed := current
+	failed.Run.Status = imageagent.RunStatusFailed
+	failed.Run.CurrentNode = "workflow_failed"
+	failed.Run.Version++
 	_, err = repository.CommitProjection(ctx, imageagent.ProjectionCommit{
-		Scope: imageagent.ScopeForRun(current.Run), CommitID: "complete", ExpectedProjectionVersion: current.ProjectionVersion,
-		Snapshot: completed, EventType: "run.completed", EventPayload: json.RawMessage(`{}`), ExpectedRunVersion: current.Run.Version,
-		RunMutation: &imageagent.RunMutation{Status: imageagent.RunStatusCompleted, CurrentNode: "complete", ActivePlanRevision: current.Run.ActivePlanRevision},
+		Scope: imageagent.ScopeForRun(current.Run), CommitID: "failed", ExpectedProjectionVersion: current.ProjectionVersion,
+		Snapshot: failed, EventType: "run.failed", EventPayload: json.RawMessage(`{}`), ExpectedRunVersion: current.Run.Version,
+		RunMutation: &imageagent.RunMutation{Status: imageagent.RunStatusFailed, CurrentNode: "workflow_failed", ActivePlanRevision: current.Run.ActivePlanRevision},
 	})
 	require.NoError(t, err)
-	workflows.starts = nil
-	workflows.startErr = errors.New("completed workflow cannot be started again")
 
-	err = service.Start(ctx, input)
-
-	require.NoError(t, err)
-	require.Empty(t, workflows.starts)
+	require.NoError(t, service.RestartFailed(ctx, input.RunID))
+	require.Len(t, workflows.starts, 1)
+	require.Equal(t, failed.Run, workflows.starts[0].Run)
+	require.Equal(t, failed.Plan, workflows.starts[0].Plan)
+	require.Equal(t, failed.AssetCatalog, workflows.starts[0].AssetCatalog)
+	require.Equal(t, imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "task-1"}, workflows.starts[0].Identity)
+	require.ErrorIs(t, service.RestartFailed(verifiedContext("tenant-b", "user-a"), input.RunID), imageagent.ErrRunNotFound)
 }
 
 func TestServiceConcurrentIdenticalStartWithRepositoryOwnedCatalogTimestampConverges(t *testing.T) {

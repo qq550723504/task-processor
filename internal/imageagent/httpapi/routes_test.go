@@ -14,7 +14,7 @@ import (
 
 func TestImageAgentRoutesDeclareExactZitadelPolicies(t *testing.T) {
 	routes := AppendRouteDescriptors(nil, requireHandler(t, &stubApplication{}))
-	require.Len(t, routes, 8)
+	require.Len(t, routes, 9)
 	want := map[string]string{
 		http.MethodPost + " /api/v1/image-agent/runs":                                    authz.PermissionImageAgentWrite,
 		http.MethodGet + " /api/v1/image-agent/runs/:run_id":                             authz.PermissionImageAgentRead,
@@ -22,6 +22,7 @@ func TestImageAgentRoutesDeclareExactZitadelPolicies(t *testing.T) {
 		http.MethodPost + " /api/v1/image-agent/runs/:run_id/slots/:slot_id/retry":       authz.PermissionImageAgentWrite,
 		http.MethodPost + " /api/v1/image-agent/runs/:run_id/results/approve":            authz.PermissionImageAgentWrite,
 		http.MethodPost + " /api/v1/image-agent/runs/:run_id/cancel":                     authz.PermissionImageAgentWrite,
+		http.MethodPost + " /api/v1/image-agent/runs/:run_id/restart":                    authz.PermissionImageAgentWrite,
 		http.MethodGet + " /api/v1/image-agent/runs/:run_id/events":                      authz.PermissionImageAgentRead,
 		http.MethodPost + " /api/v1/image-agent/runs/:run_id/commands/:action_id/resume": authz.PermissionImageAgentWrite,
 	}
@@ -40,5 +41,5 @@ func TestImageAgentModuleRegistersRoutes(t *testing.T) {
 	require.True(t, built.Module.Enabled(&config.Config{}))
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, built.Module.Register(registry))
-	require.Len(t, registry.Routes(), 8)
+	require.Len(t, registry.Routes(), 9)
 }

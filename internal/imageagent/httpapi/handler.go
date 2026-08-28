@@ -28,6 +28,7 @@ const (
 
 type Application interface {
 	Start(context.Context, imageagent.StartRunInput) error
+	RestartFailed(context.Context, string) error
 	Get(context.Context, string) (imageagent.RunProjection, error)
 	ReplacePlan(context.Context, string, int64, imageagent.Plan, string) error
 	RetrySlot(context.Context, string, string, int64, string) error
@@ -117,6 +118,17 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, newRunProjectionResponse(projection, h.publicURLs))
+}
+
+func (h *Handler) RestartFailed(c *gin.Context) {
+	if !requireVerifiedIdentity(c) {
+		return
+	}
+	if err := h.application.RestartFailed(c.Request.Context(), c.Param("run_id")); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"run_id": c.Param("run_id"), "status": "accepted"})
 }
 
 type replacePlanRequest struct {

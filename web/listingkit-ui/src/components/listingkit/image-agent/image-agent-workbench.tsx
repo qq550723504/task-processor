@@ -302,6 +302,16 @@ function ImageAgentWorkbenchSession({ taskId, runId, initialRun }: { taskId: str
                   取消运行
                 </button>
               ) : null}
+              {projection.actions.includes("restart") ? (
+                <button
+                  type="button"
+                  className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-foreground px-4 text-sm font-medium text-background disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={Boolean(agent.pendingAction)}
+                  onClick={() => void agent.restartFailed()}
+                >
+                  重新启动失败运行
+                </button>
+              ) : null}
               {projection.actions.length === 0 ? (
                 <p className="text-sm text-muted-foreground">当前没有可执行操作。</p>
               ) : null}

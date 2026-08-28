@@ -193,8 +193,12 @@ func TestAllowedActionsExposeFinalApprovalAndCancellation(t *testing.T) {
 	require.Equal(t, []Action{ActionApproveResults, ActionCancel}, AllowedActions(run))
 }
 
-func TestAllowedActionsForTerminalRunAreEmpty(t *testing.T) {
-	for _, status := range []RunStatus{RunStatusCompleted, RunStatusFailed, RunStatusCancelled} {
+func TestAllowedActionsExposeFailedRunRestart(t *testing.T) {
+	require.Equal(t, []Action{ActionRestart}, AllowedActions(Run{Mode: RunModeManual, Status: RunStatusFailed}))
+}
+
+func TestAllowedActionsForClosedRunAreEmpty(t *testing.T) {
+	for _, status := range []RunStatus{RunStatusCompleted, RunStatusCancelled} {
 		require.Empty(t, AllowedActions(Run{Status: status}))
 	}
 }

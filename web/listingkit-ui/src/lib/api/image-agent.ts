@@ -141,6 +141,7 @@ const projectionSchema = z
         "retry_slot",
         "approve_results",
         "cancel",
+        "restart",
         "switch_manual",
       ]),
     ),
@@ -222,6 +223,10 @@ export function cancelImageAgentRun(
 	}, signal);
 }
 
+export function restartFailedImageAgentRun(runId: string, signal?: AbortSignal) {
+  return command(`${encodeId(runId)}/restart`, "POST", undefined, signal);
+}
+
 export function resumeImageAgentCommand(runId: string, actionId: string, signal?: AbortSignal) {
   return imageAgentRequest<{ run_id: string; plan_revision: number; action_id: string; status: string }>(
     `${encodeId(runId)}/commands/${encodeId(actionId)}/resume`,
@@ -238,8 +243,8 @@ export function imageAgentEventsUrl(runId: string, afterCursor?: number) {
 async function command(
   path: string,
   method: "POST" | "PUT",
-	body: unknown,
-	signal?: AbortSignal,
+  body?: unknown,
+  signal?: AbortSignal,
 ) {
   await imageAgentRequest(path, {
     method,
