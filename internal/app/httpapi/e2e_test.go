@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -71,13 +73,14 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 	require.NoError(t, err)
 	deps.attachProductModule(productModule)
 	imageModule, err := productimagehttpapi.BuildRuntimeModule(productimagehttpapi.RuntimeBuildInput{
-		Logger:        logger,
-		Config:        deps.shared.cfg,
-		LLMManager:    deps.shared.llmMgr,
-		OpenAIManager: deps.shared.openaiMgr,
-		InputParser:   deps.shared.inputParser,
-		Understanding: deps.shared.understanding,
-		ImageWorkDir:  deps.shared.imageWorkDir,
+		Logger:             logger,
+		Config:             deps.shared.cfg,
+		LLMManager:         deps.shared.llmMgr,
+		OpenAIManager:      deps.shared.openaiMgr,
+		InputParser:        deps.shared.inputParser,
+		Understanding:      deps.shared.understanding,
+		ImageWorkDir:       deps.shared.imageWorkDir,
+		SourceImageFetcher: newE2ESourceImageFetcher(http.DefaultClient),
 	})
 	require.NoError(t, err)
 	deps.attachImageModule(imageModule)
@@ -422,6 +425,31 @@ func newE2EImageServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeE2EPNG(w)
 	}))
+}
+
+func newE2ESourceImageFetcher(client *http.Client) productimage.SourceImageFetcher {
+	return func(ctx context.Context, imageURL string, maxBytes int64) ([]byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return nil, fmt.Errorf("test image response status %d", resp.StatusCode)
+		}
+		data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(data)) > maxBytes {
+			return nil, fmt.Errorf("test image exceeds %d bytes", maxBytes)
+		}
+		return data, nil
+	}
 }
 
 func writeE2EPNG(w http.ResponseWriter) {

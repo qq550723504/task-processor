@@ -37,7 +37,7 @@ func BuildImageAgentCapabilities(input RuntimeBuildInput) (ImageAgentCapabilitie
 	built, err := buildGenerationCapabilities(BuildModuleInput{
 		Logger: input.Logger, LLMManager: input.LLMManager, OpenAIManager: input.OpenAIManager,
 		AICredentialResolver: input.AICredentialResolver, AIInvocationRecorder: input.AIInvocationRecorder,
-		ImageWorkDir: input.ImageWorkDir, Options: newProductImageRuntimeOptions(input.Config),
+		ImageWorkDir: input.ImageWorkDir, SourceImageFetcher: input.SourceImageFetcher, Options: newProductImageRuntimeOptions(input.Config),
 	})
 	if err != nil {
 		return ImageAgentCapabilities{}, err
@@ -107,7 +107,7 @@ func validateImageAgentWorkerCapabilityPolicy(input imageAgentWorkerCapabilityPo
 }
 
 func buildGenerationCapabilities(input BuildModuleInput) (generationCapabilities, error) {
-	modelProvider, err := buildModelProvider(input.Options.modelProvider, input.LLMManager, input.OpenAIManager, input.ImageWorkDir)
+	modelProvider, err := buildModelProvider(input.Options.modelProvider, input.LLMManager, input.OpenAIManager, input.ImageWorkDir, input.SourceImageFetcher)
 	if err != nil {
 		return generationCapabilities{}, fmt.Errorf("create productimage model provider: %w", err)
 	}
@@ -143,17 +143,17 @@ func buildGenerationCapabilities(input BuildModuleInput) (generationCapabilities
 	var whiteBackgroundRenderer productimage.WhiteBackgroundRenderer
 	var sceneRenderer productimage.SceneRenderer
 	if !shouldUseModelBackedImagePipeline(modelProvider) || modelProvider.FaithfulEditor() == nil {
-		subjectExtractor, err = buildSubjectExtractor(input.Options.imagePipelineComponents, input.ImageWorkDir)
+		subjectExtractor, err = buildSubjectExtractor(input.Options.imagePipelineComponents, input.ImageWorkDir, input.SourceImageFetcher)
 		if err != nil {
 			return generationCapabilities{}, fmt.Errorf("create subject extractor: %w", err)
 		}
-		whiteBackgroundRenderer, err = buildWhiteBackgroundRenderer(input.Options.imagePipelineComponents, input.ImageWorkDir)
+		whiteBackgroundRenderer, err = buildWhiteBackgroundRenderer(input.Options.imagePipelineComponents, input.ImageWorkDir, input.SourceImageFetcher)
 		if err != nil {
 			return generationCapabilities{}, fmt.Errorf("create white background renderer: %w", err)
 		}
 	}
 	if (modelProvider == nil || modelProvider.SceneGenerator() == nil) && !shouldUseModelBackedImagePipeline(modelProvider) {
-		sceneRenderer, err = buildSceneRenderer(input.ImageWorkDir)
+		sceneRenderer, err = buildSceneRenderer(input.ImageWorkDir, input.SourceImageFetcher)
 		if err != nil {
 			return generationCapabilities{}, fmt.Errorf("create scene renderer: %w", err)
 		}

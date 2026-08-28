@@ -13,11 +13,11 @@ type openAICompatibleSceneGenerator struct {
 	client  imageEditClient
 }
 
-func NewOpenAICompatibleSceneGenerator(workDir string, client openAICompatibleImageGenerator) (SceneGenerator, error) {
+func NewOpenAICompatibleSceneGenerator(workDir string, client openAICompatibleImageGenerator, options ...RealImageComponentOptions) (SceneGenerator, error) {
 	if client == nil {
 		return nil, fmt.Errorf("openai-compatible image client is not configured")
 	}
-	rt, err := newRealImageComponents(workDir)
+	rt, err := newRealImageComponents(workDir, options...)
 	if err != nil {
 		return nil, err
 	}

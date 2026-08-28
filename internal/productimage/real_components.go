@@ -25,33 +25,52 @@ import (
 
 const maxSourceImageBytes int64 = 10 << 20
 
-type realImageComponents struct {
-	workDir     string
-	imageClient *http.Client
-	processor   *amazonimage.AmazonImageProcessor
+// SourceImageFetcher is an explicit process-wiring seam. Production callers
+// leave it unset so real components use the SSRF-safe public HTTPS fetcher.
+type SourceImageFetcher func(context.Context, string, int64) ([]byte, error)
+
+type RealImageComponentOptions struct {
+	SourceImageFetcher SourceImageFetcher
 }
 
-func newRealImageComponents(workDir string) (*realImageComponents, error) {
+type realImageComponents struct {
+	workDir            string
+	imageClient        *http.Client
+	sourceImageFetcher SourceImageFetcher
+	processor          *amazonimage.AmazonImageProcessor
+}
+
+func newRealImageComponents(workDir string, options ...RealImageComponentOptions) (*realImageComponents, error) {
 	workDir = strings.TrimSpace(workDir)
 	if workDir == "" {
 		return nil, fmt.Errorf("work dir cannot be empty")
 	}
+	if len(options) > 1 {
+		return nil, fmt.Errorf("at most one real image component options value is allowed")
+	}
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create work dir: %w", err)
 	}
-	return &realImageComponents{
+	runtime := &realImageComponents{
 		workDir:     workDir,
 		imageClient: safeimagehttp.NewPublicImageHTTPClient(),
 		processor:   amazonimage.NewAmazonImageProcessor(),
-	}, nil
+	}
+	runtime.sourceImageFetcher = func(ctx context.Context, imageURL string, maxBytes int64) ([]byte, error) {
+		return safeimagehttp.Download(ctx, runtime.imageClient, imageURL, maxBytes)
+	}
+	if len(options) == 1 && options[0].SourceImageFetcher != nil {
+		runtime.sourceImageFetcher = options[0].SourceImageFetcher
+	}
+	return runtime, nil
 }
 
 type downloadedImageInspector struct {
 	runtime *realImageComponents
 }
 
-func NewDownloadedImageInspector(workDir string) (ImageInspector, error) {
-	rt, err := newRealImageComponents(workDir)
+func NewDownloadedImageInspector(workDir string, options ...RealImageComponentOptions) (ImageInspector, error) {
+	rt, err := newRealImageComponents(workDir, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -136,12 +155,12 @@ type optimizedSubjectExtractor struct {
 	segmenter SegmentationClient
 }
 
-func NewOptimizedSubjectExtractor(workDir string) (SubjectExtractor, error) {
-	return NewHybridSubjectExtractor(workDir, nil)
+func NewOptimizedSubjectExtractor(workDir string, options ...RealImageComponentOptions) (SubjectExtractor, error) {
+	return NewHybridSubjectExtractor(workDir, nil, options...)
 }
 
-func NewHybridSubjectExtractor(workDir string, segmenter SegmentationClient) (SubjectExtractor, error) {
-	rt, err := newRealImageComponents(workDir)
+func NewHybridSubjectExtractor(workDir string, segmenter SegmentationClient, options ...RealImageComponentOptions) (SubjectExtractor, error) {
+	rt, err := newRealImageComponents(workDir, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -166,12 +185,12 @@ type downloadedImageCleaner struct {
 	watermarkProcessor *watermark.Processor
 }
 
-func NewDownloadedImageCleaner(workDir string) (ImageCleaner, error) {
-	return NewWatermarkAwareImageCleaner(workDir, nil, nil)
+func NewDownloadedImageCleaner(workDir string, options ...RealImageComponentOptions) (ImageCleaner, error) {
+	return NewWatermarkAwareImageCleaner(workDir, nil, nil, options...)
 }
 
-func NewWatermarkAwareImageCleaner(workDir string, config *watermark.Config, logger *logrus.Logger) (ImageCleaner, error) {
-	rt, err := newRealImageComponents(workDir)
+func NewWatermarkAwareImageCleaner(workDir string, config *watermark.Config, logger *logrus.Logger, options ...RealImageComponentOptions) (ImageCleaner, error) {
+	rt, err := newRealImageComponents(workDir, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -256,12 +275,12 @@ type whiteCanvasRenderer struct {
 	renderer WhiteBackgroundClient
 }
 
-func NewWhiteCanvasRenderer(workDir string) (WhiteBackgroundRenderer, error) {
-	return NewHybridWhiteBackgroundRenderer(workDir, nil)
+func NewWhiteCanvasRenderer(workDir string, options ...RealImageComponentOptions) (WhiteBackgroundRenderer, error) {
+	return NewHybridWhiteBackgroundRenderer(workDir, nil, options...)
 }
 
-func NewHybridWhiteBackgroundRenderer(workDir string, renderer WhiteBackgroundClient) (WhiteBackgroundRenderer, error) {
-	rt, err := newRealImageComponents(workDir)
+func NewHybridWhiteBackgroundRenderer(workDir string, renderer WhiteBackgroundClient, options ...RealImageComponentOptions) (WhiteBackgroundRenderer, error) {
+	rt, err := newRealImageComponents(workDir, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +383,7 @@ func (r *whiteCanvasRenderer) renderWithClient(ctx context.Context, asset *Image
 }
 
 func (r *realImageComponents) download(ctx context.Context, imageURL string) ([]byte, string, error) {
-	data, err := safeimagehttp.Download(ctx, r.imageClient, imageURL, maxSourceImageBytes)
+	data, err := r.sourceImageFetcher(ctx, imageURL, maxSourceImageBytes)
 	if err != nil {
 		return nil, "", fmt.Errorf("download image %q: %w", imageURL, err)
 	}

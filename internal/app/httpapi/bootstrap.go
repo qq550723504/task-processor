@@ -16,6 +16,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 	if err != nil {
 		return nil, err
 	}
+	deps.shared.sourceImageFetcher = options.SourceImageFetcher
 
 	done = timer.phase("configureSheinLoginAccount")
 	configureSheinLoginAccount(deps)

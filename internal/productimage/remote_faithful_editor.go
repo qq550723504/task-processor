@@ -9,9 +9,10 @@ import (
 )
 
 type RemoteFaithfulEditorConfig struct {
-	WorkDir         string
-	Segmenter       SegmentationClient
-	WhiteBackground WhiteBackgroundClient
+	WorkDir            string
+	Segmenter          SegmentationClient
+	WhiteBackground    WhiteBackgroundClient
+	SourceImageFetcher SourceImageFetcher
 }
 
 type remoteFaithfulEditor struct {
@@ -24,7 +25,7 @@ func NewRemoteFaithfulEditor(config RemoteFaithfulEditorConfig) (FaithfulEditor,
 	if config.Segmenter == nil && config.WhiteBackground == nil {
 		return nil, fmt.Errorf("remote faithful editor requires at least one remote model client")
 	}
-	rt, err := newRealImageComponents(config.WorkDir)
+	rt, err := newRealImageComponents(config.WorkDir, RealImageComponentOptions{SourceImageFetcher: config.SourceImageFetcher})
 	if err != nil {
 		return nil, err
 	}

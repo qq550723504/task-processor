@@ -22,9 +22,10 @@ func newImagePipelineComponentOptions(cfg *config.Config) imagePipelineComponent
 	}
 }
 
-func buildSubjectExtractor(options imagePipelineComponentOptions, imageWorkDir string) (productimage.SubjectExtractor, error) {
+func buildSubjectExtractor(options imagePipelineComponentOptions, imageWorkDir string, sourceImageFetcher productimage.SourceImageFetcher) (productimage.SubjectExtractor, error) {
+	componentOptions := productimage.RealImageComponentOptions{SourceImageFetcher: sourceImageFetcher}
 	if options.segmenter == nil {
-		return productimage.NewHybridSubjectExtractor(imageWorkDir, nil)
+		return productimage.NewHybridSubjectExtractor(imageWorkDir, nil, componentOptions)
 	}
 
 	client, err := productimage.NewHTTPSegmentationClient(productimage.HTTPSegmentationClientConfig{
@@ -36,12 +37,13 @@ func buildSubjectExtractor(options imagePipelineComponentOptions, imageWorkDir s
 		return nil, err
 	}
 
-	return productimage.NewHybridSubjectExtractor(imageWorkDir, client)
+	return productimage.NewHybridSubjectExtractor(imageWorkDir, client, componentOptions)
 }
 
-func buildWhiteBackgroundRenderer(options imagePipelineComponentOptions, imageWorkDir string) (productimage.WhiteBackgroundRenderer, error) {
+func buildWhiteBackgroundRenderer(options imagePipelineComponentOptions, imageWorkDir string, sourceImageFetcher productimage.SourceImageFetcher) (productimage.WhiteBackgroundRenderer, error) {
+	componentOptions := productimage.RealImageComponentOptions{SourceImageFetcher: sourceImageFetcher}
 	if options.whiteBackground == nil {
-		return productimage.NewHybridWhiteBackgroundRenderer(imageWorkDir, nil)
+		return productimage.NewHybridWhiteBackgroundRenderer(imageWorkDir, nil, componentOptions)
 	}
 
 	client, err := productimage.NewHTTPWhiteBackgroundClient(productimage.HTTPWhiteBackgroundClientConfig{
@@ -53,11 +55,11 @@ func buildWhiteBackgroundRenderer(options imagePipelineComponentOptions, imageWo
 		return nil, err
 	}
 
-	return productimage.NewHybridWhiteBackgroundRenderer(imageWorkDir, client)
+	return productimage.NewHybridWhiteBackgroundRenderer(imageWorkDir, client, componentOptions)
 }
 
-func buildSceneRenderer(imageWorkDir string) (productimage.SceneRenderer, error) {
-	return productimage.NewDefaultSceneRenderer(imageWorkDir)
+func buildSceneRenderer(imageWorkDir string, sourceImageFetcher productimage.SourceImageFetcher) (productimage.SceneRenderer, error) {
+	return productimage.NewDefaultSceneRenderer(imageWorkDir, productimage.RealImageComponentOptions{SourceImageFetcher: sourceImageFetcher})
 }
 
 type resolvedImagePipelineComponents struct {

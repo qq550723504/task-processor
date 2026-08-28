@@ -35,11 +35,12 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		return nil, err
 	}
 
-	imageInspector, err := productimage.NewDownloadedImageInspector(input.ImageWorkDir)
+	componentOptions := productimage.RealImageComponentOptions{SourceImageFetcher: input.SourceImageFetcher}
+	imageInspector, err := productimage.NewDownloadedImageInspector(input.ImageWorkDir, componentOptions)
 	if err != nil {
 		return nil, fmt.Errorf("create downloaded image inspector: %w", err)
 	}
-	imageCleaner, err := productimage.NewWatermarkAwareImageCleaner(input.ImageWorkDir, input.Options.watermark, input.Logger)
+	imageCleaner, err := productimage.NewWatermarkAwareImageCleaner(input.ImageWorkDir, input.Options.watermark, input.Logger, componentOptions)
 	if err != nil {
 		return nil, fmt.Errorf("create watermark-aware image cleaner: %w", err)
 	}

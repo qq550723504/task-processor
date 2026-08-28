@@ -13,8 +13,8 @@ type localSceneRenderer struct {
 	runtime *realImageComponents
 }
 
-func NewDefaultSceneRenderer(workDir string) (SceneRenderer, error) {
-	rt, err := newRealImageComponents(workDir)
+func NewDefaultSceneRenderer(workDir string, options ...RealImageComponentOptions) (SceneRenderer, error) {
+	rt, err := newRealImageComponents(workDir, options...)
 	if err != nil {
 		return nil, err
 	}

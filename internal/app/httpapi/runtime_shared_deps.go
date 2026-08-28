@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
+	"task-processor/internal/productimage"
 	"task-processor/internal/prompt"
 )
 
@@ -28,5 +29,6 @@ type sharedRuntimeDeps struct {
 	scoringTextGenerator productenrichenrich.TextGenerator
 	scoringImageAnalyzer productenrichenrich.ImageAnalyzer
 	imageWorkDir         string
+	sourceImageFetcher   productimage.SourceImageFetcher
 	storeAPI             listingadmin.StoreAPI
 }
