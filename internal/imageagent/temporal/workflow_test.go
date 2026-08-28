@@ -2383,6 +2383,10 @@ func TestManualWorkflowV3CancellationWaitsForStartedSlotFinalization(t *testing.
 		return nil
 	}, sdkactivity.RegisterOptions{Name: activityPersistRunState})
 	env.RegisterActivityWithOptions(
+		func(context.Context, PersistSlotResultV3ActivityInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3},
+	)
+	env.RegisterActivityWithOptions(
 		func(context.Context, PersistPendingCommandActivityInput) error { return nil },
 		sdkactivity.RegisterOptions{Name: activityPersistPendingCommand},
 	)
@@ -2407,6 +2411,91 @@ func TestManualWorkflowV3CancellationWaitsForStartedSlotFinalization(t *testing.
 	terminalMu.Lock()
 	require.Equal(t, []imageagent.RunStatus{imageagent.RunStatusCancelled}, terminalStatuses)
 	terminalMu.Unlock()
+}
+
+func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	var childStarted atomic.Bool
+	var cancelErr error
+	var pendingMu sync.Mutex
+	var pendingReceipts []PersistPendingCommandActivityInput
+	var terminalMu sync.Mutex
+	var terminalStatuses []imageagent.RunStatus
+	env.RegisterWorkflowWithOptions(
+		func(ctx workflow.Context, input SlotWorkflowV3Input) (SlotWorkflowV3Result, error) {
+			childStarted.Store(true)
+			if err := workflow.NewTimer(ctx, time.Hour).Get(ctx, nil); err != nil {
+				return SlotWorkflowV3Result{}, err
+			}
+			return SlotWorkflowV3Result{
+				Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+				Status:    imageagent.SlotStatusAccepted,
+			}, nil
+		},
+		workflow.RegisterOptions{Name: "ImageSlotWorkflowV3"},
+	)
+	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
+		if isTerminalRunStatus(input.Projection.Status) {
+			terminalMu.Lock()
+			terminalStatuses = append(terminalStatuses, input.Projection.Status)
+			terminalMu.Unlock()
+		}
+		return nil
+	}, sdkactivity.RegisterOptions{Name: activityPersistRunState})
+	env.RegisterActivityWithOptions(
+		func(context.Context, PersistSlotResultV3ActivityInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3},
+	)
+	env.RegisterActivityWithOptions(func(_ context.Context, input PersistPendingCommandActivityInput) error {
+		pendingMu.Lock()
+		pendingReceipts = append(pendingReceipts, input)
+		pendingMu.Unlock()
+		return nil
+	}, sdkactivity.RegisterOptions{Name: activityPersistPendingCommand})
+	env.RegisterDelayedCallback(func() {
+		require.True(t, childStarted.Load())
+		env.UpdateWorkflow(signalCancel, "cancel-unterminalized-effect", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { cancelErr = err },
+			OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) {
+				cancelErr = err
+			},
+		}, CancelSignal{
+			RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-unterminalized-effect",
+		})
+	}, time.Second)
+
+	plan := sevenSlotPlan()
+	plan.Slots = plan.Slots[:1]
+	input := manualWorkflowInput(plan)
+	input.MaxConcurrentSlots = 1
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.NoError(t, env.GetWorkflowError())
+	require.Error(t, cancelErr)
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusBlocked, result.Status)
+	require.NotEqual(t, imageagent.RunStatusCancelled, result.Status)
+	terminalMu.Lock()
+	require.Empty(t, terminalStatuses)
+	terminalMu.Unlock()
+	pendingMu.Lock()
+	require.NotEmpty(t, pendingReceipts)
+	last := pendingReceipts[len(pendingReceipts)-1]
+	pendingMu.Unlock()
+	require.NotNil(t, last.Receipt)
+	require.Equal(t, "cancel-unterminalized-effect", last.Receipt.ActionID)
+	require.Equal(t, signalCancel, last.Receipt.Kind)
+	require.Equal(t, string(updatePhaseCancelPersist), last.Receipt.Phase)
+	require.Equal(t, "persistence_failed", last.Receipt.FailureCode)
+	require.Equal(t, "persistence", last.Receipt.FailureCategory)
+	require.NotNil(t, last.Receipt.LastFailedAt)
 }
 
 func TestImageSlotWorkflowV3RealActivityHeartbeatsWhileProviderIsInFlight(t *testing.T) {
