@@ -395,10 +395,16 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		if !acquired {
 			return v3Result, a.publicationRecoveryError("slot publication is owned by another activity attempt", publication, imageagent.ErrRevisionConflict)
 		}
-		if _, err := a.renewPublicationV3(ctx, reservation.Identity, publication); err != nil {
+		publicationFinalizationCtx := ctx
+		cancelPublicationFinalization := func() {}
+		if input.ExternalEffectFinalization {
+			publicationFinalizationCtx, cancelPublicationFinalization = providerFinalizationContext(ctx)
+			defer cancelPublicationFinalization()
+		}
+		if _, err := a.renewPublicationV3(publicationFinalizationCtx, reservation.Identity, publication); err != nil {
 			return v3Result, a.publicationRecoveryError("renew slot publication lease", publication, err)
 		}
-		actualFinal, finalizeErr := a.artifactStore.FinalizeWithProgress(ctx, effect.StagingManifest, func(progressCtx context.Context, _ int) error {
+		actualFinal, finalizeErr := a.artifactStore.FinalizeWithProgress(publicationFinalizationCtx, effect.StagingManifest, func(progressCtx context.Context, _ int) error {
 			renewed, renewErr := a.renewPublicationV3(progressCtx, reservation.Identity, publication)
 			if renewErr == nil {
 				publication = renewed
@@ -407,14 +413,14 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		})
 		if finalizeErr != nil {
 			if errors.Is(finalizeErr, objectstore.ErrArtifactUnavailable) || errors.Is(finalizeErr, objectstore.ErrObjectConflict) {
-				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3PublicationUnknown, slotPublicationOutcomeUnknownCode, publication)
+				return v3Result, a.blockSlotEffectV3(publicationFinalizationCtx, reservation, imageagent.SlotEffectV3PublicationUnknown, slotPublicationOutcomeUnknownCode, publication)
 			}
 			return v3Result, a.publicationRecoveryError("finalize slot artifacts after publication claim", publication, finalizeErr)
 		}
 		if !reflect.DeepEqual(actualFinal, effect.FinalManifest) {
-			return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3PublicationUnknown, slotPublicationOutcomeUnknownCode, publication)
+			return v3Result, a.blockSlotEffectV3(publicationFinalizationCtx, reservation, imageagent.SlotEffectV3PublicationUnknown, slotPublicationOutcomeUnknownCode, publication)
 		}
-		renewedPublication, renewErr := a.renewPublicationV3(ctx, reservation.Identity, publication)
+		renewedPublication, renewErr := a.renewPublicationV3(publicationFinalizationCtx, reservation.Identity, publication)
 		if renewErr != nil {
 			return v3Result, a.publicationRecoveryError("renew slot publication lease after finalize", publication, renewErr)
 		}
@@ -431,7 +437,7 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		if resultFingerprintErr != nil {
 			return v3Result, resultFingerprintErr
 		}
-		effect, err = a.slotEffectsV3.CompleteSlotPublicationV3(ctx, imageagent.PublicationCompletion{
+		effect, err = a.slotEffectsV3.CompleteSlotPublicationV3(publicationFinalizationCtx, imageagent.PublicationCompletion{
 			Reservation: reservation, Owner: publication.Owner, Fence: publication.Fence,
 			PublicationFingerprint: publicationFingerprint, ResultFingerprint: resultFingerprint, Published: published,
 		})

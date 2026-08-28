@@ -470,6 +470,38 @@ func TestExecuteSlotV3BlocksUnreconcilablePublication(t *testing.T) {
 	require.Equal(t, 1, artifacts.FinalizeCalls(), "publication unknown must not expose blind activity retry")
 }
 
+func TestExecuteSlotV3CancellationTerminalizesPublicationClaim(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-publication-cancelled")
+	input.ExternalEffectFinalization = true
+	baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
+	seedV3ArtifactStaged(t, baseEffects, input, v3StagingManifest(input, tinyPNGBytes(t)))
+	effects := &cancellationObservingV3Repository{SlotExternalEffectV3Repository: baseEffects}
+	var cancel context.CancelFunc
+	artifacts := &cancellationObservingArtifactStore{
+		recordingArtifactStore: &recordingArtifactStore{
+			onProgress: func(int) {
+				cancel()
+			},
+		},
+	}
+	activities := newV3Activities(t, repository, effects, &recordingStagedExecutor{}, artifacts)
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	cancel = cancelCtx
+	defer cancel()
+
+	result, err := activities.ExecuteSlotV3(ctx, input)
+
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+	require.False(t, artifacts.FinalizeSawCancelledContext(), "publication finalization must use the detached finalization context")
+	require.False(t, effects.RenewSawCancelledContext(), "publication lease renewal must use the detached finalization context")
+	require.False(t, effects.CompleteSawCancelledContext(), "publication completion must use the detached finalization context")
+
+	stored, getErr := baseEffects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, getErr)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
+}
+
 func TestExecuteSlotV3BlocksMissingPreparedBytesWithoutRegeneration(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-staging-unknown")
 	effects := repository.(imageagent.SlotExternalEffectV3Repository)
@@ -1007,9 +1039,11 @@ func (r *cancellationRejectingV3Repository) WriteSawCancelledContext() bool {
 
 type cancellationObservingV3Repository struct {
 	imageagent.SlotExternalEffectV3Repository
-	mu                         sync.Mutex
-	prepareSawCancelledContext bool
-	blockSawCancelledContext   bool
+	mu                          sync.Mutex
+	prepareSawCancelledContext  bool
+	blockSawCancelledContext    bool
+	renewSawCancelledContext    bool
+	completeSawCancelledContext bool
 }
 
 func (r *cancellationObservingV3Repository) PrepareSlotStagingV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (imageagent.SlotEffectV3Attempt, error) {
@@ -1030,6 +1064,24 @@ func (r *cancellationObservingV3Repository) BlockSlotEffectV3(ctx context.Contex
 	return r.SlotExternalEffectV3Repository.BlockSlotEffectV3(ctx, transition)
 }
 
+func (r *cancellationObservingV3Repository) RenewSlotPublicationV3(ctx context.Context, renewal imageagent.PublicationLeaseRenewal) (imageagent.PublicationClaim, error) {
+	if ctx.Err() != nil {
+		r.mu.Lock()
+		r.renewSawCancelledContext = true
+		r.mu.Unlock()
+	}
+	return r.SlotExternalEffectV3Repository.RenewSlotPublicationV3(ctx, renewal)
+}
+
+func (r *cancellationObservingV3Repository) CompleteSlotPublicationV3(ctx context.Context, completion imageagent.PublicationCompletion) (imageagent.SlotEffectV3Attempt, error) {
+	if ctx.Err() != nil {
+		r.mu.Lock()
+		r.completeSawCancelledContext = true
+		r.mu.Unlock()
+	}
+	return r.SlotExternalEffectV3Repository.CompleteSlotPublicationV3(ctx, completion)
+}
+
 func (r *cancellationObservingV3Repository) PrepareSawCancelledContext() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1040,6 +1092,18 @@ func (r *cancellationObservingV3Repository) BlockSawCancelledContext() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.blockSawCancelledContext
+}
+
+func (r *cancellationObservingV3Repository) RenewSawCancelledContext() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.renewSawCancelledContext
+}
+
+func (r *cancellationObservingV3Repository) CompleteSawCancelledContext() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.completeSawCancelledContext
 }
 
 func (e *recordingStagedExecutor) BuildSlotResult(_ context.Context, input imageagent.SlotExecutionInput, published imageagent.PublishedSlotOutput) (imageagent.SlotExecutionResult, error) {
@@ -1142,6 +1206,7 @@ type cancellationObservingArtifactStore struct {
 	mu                          sync.Mutex
 	preserveSawCancelledContext bool
 	ensureSawCancelledContext   bool
+	finalizeSawCancelledContext bool
 	onEnsure                    func()
 }
 
@@ -1167,6 +1232,15 @@ func (s *cancellationObservingArtifactStore) EnsureStaged(ctx context.Context, p
 	return s.recordingArtifactStore.EnsureStaged(ctx, prepared)
 }
 
+func (s *cancellationObservingArtifactStore) FinalizeWithProgress(ctx context.Context, manifest imageagent.StagingManifest, progress func(context.Context, int) error) (imageagent.FinalManifest, error) {
+	if ctx.Err() != nil {
+		s.mu.Lock()
+		s.finalizeSawCancelledContext = true
+		s.mu.Unlock()
+	}
+	return s.recordingArtifactStore.FinalizeWithProgress(ctx, manifest, progress)
+}
+
 func (s *cancellationObservingArtifactStore) PreserveSawCancelledContext() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1177,6 +1251,12 @@ func (s *cancellationObservingArtifactStore) EnsureSawCancelledContext() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.ensureSawCancelledContext
+}
+
+func (s *cancellationObservingArtifactStore) FinalizeSawCancelledContext() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.finalizeSawCancelledContext
 }
 
 func (s *recordingArtifactStore) RecoverSlotArtifacts(_ context.Context, _ imageagent.SlotExternalEffectIdentity, expected imageagent.StagingManifest) (objectstore.PreparedSlotArtifacts, error) {

@@ -217,6 +217,32 @@ func TestImageSlotWorkflowV3ReservesFinalizationGraceAfterBudgetDeadline(t *test
 	require.Equal(t, externalEffectHeartbeatTimeout, observedHeartbeatTimeout)
 }
 
+func TestImageSlotWorkflowV3UsesProviderWindowPlusGraceBeyondTenMinutes(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(ImageSlotWorkflowV3)
+	var observedStartToCloseTimeout time.Duration
+	var observedHeartbeatTimeout time.Duration
+	env.SetOnActivityStartedListener(func(info *sdkactivity.Info, _ context.Context, _ sdkconverter.EncodedValues) {
+		observedStartToCloseTimeout = info.StartToCloseTimeout
+		observedHeartbeatTimeout = info.HeartbeatTimeout
+	})
+	env.RegisterActivityWithOptions(func(context.Context, ExecuteSlotV3ActivityInput) (imageagent.SlotEffectV3PublishedResult, error) {
+		return imageagent.SlotEffectV3PublishedResult{}, nil
+	}, sdkactivity.RegisterOptions{Name: activityExecuteSlotV3})
+
+	env.ExecuteWorkflow(ImageSlotWorkflowV3, SlotWorkflowV3Input{
+		RunID: "run-provider-window-plus-grace", Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+		PlanRevision: 1, Slot: imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleScene}, Attempt: 1,
+		ExecuteActivityName: activityExecuteSlotV3, BudgetAuthorization: true, ExternalEffectFinalization: true,
+		DeadlineAt: env.Now().Add(20 * time.Minute),
+	})
+
+	require.NoError(t, env.GetWorkflowError())
+	require.Equal(t, 21*time.Minute, observedStartToCloseTimeout)
+	require.Equal(t, externalEffectHeartbeatTimeout, observedHeartbeatTimeout)
+}
+
 func TestImageSlotWorkflowV3VersionsCancellationDrainActivityOptions(t *testing.T) {
 	for _, test := range []struct {
 		name                       string
