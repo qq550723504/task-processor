@@ -181,6 +181,35 @@ describe("useWorkspaceNavigationActions", () => {
     );
   });
 
+  it("routes a protected action destination from its resolved navigation target", () => {
+    mocks.actionMutate.mockImplementation((_request, options) => {
+      options?.onSuccess?.({
+        resolved_target: {
+          queue_query: {
+            platform: "shein",
+            slot: "main",
+            preview_capability: "detail_preview",
+          },
+        },
+      });
+    });
+    const { result } = renderHook(() =>
+      useWorkspaceNavigationActions({
+        taskId: "task-1",
+        baseQuery: {},
+        searchParams: new URLSearchParams("product_section=overview"),
+      }),
+    );
+
+    act(() => {
+      result.current.handleAction({ action_key: "review_detail_previews" });
+    });
+
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/listing-kits/task-1/workspace?platform=shein&slot=main&preview_capability=detail_preview",
+    );
+  });
+
   it("routes a product recovery dispatch to its returned review target", () => {
     mocks.dispatchMutate.mockImplementation((_target, options) => {
       options?.onSuccess?.({

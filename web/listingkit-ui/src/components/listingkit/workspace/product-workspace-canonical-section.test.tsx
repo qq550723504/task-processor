@@ -162,6 +162,29 @@ describe("ProductWorkspaceCanonicalSection", () => {
     expect(screen.getByRole("cell", { name: "是" })).toBeInTheDocument();
   });
 
+  it("shows per-variant dimensions and weight", () => {
+    render(
+      <ProductWorkspaceCanonicalSection
+        product={{
+          ...product,
+          variants: [
+            {
+              ...product.variants?.[0],
+              dimensions: { length: 10, width: 20, height: 30, unit: "cm" },
+              weight: { value: 500, unit: "g" },
+            },
+          ],
+        }}
+        section="sku"
+      />,
+    );
+
+    expect(screen.getByRole("columnheader", { name: "尺寸" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "重量" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "10 × 20 × 30 cm" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "500 g" })).toBeInTheDocument();
+  });
+
   it("preserves product and package specification context without exposing raw json", () => {
     const { rerender } = render(
       <ProductWorkspaceCanonicalSection product={product} section="specs" />,

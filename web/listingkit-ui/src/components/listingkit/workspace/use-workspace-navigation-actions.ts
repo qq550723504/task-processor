@@ -27,6 +27,7 @@ import { scrollSheinWorkspaceTarget } from "@/components/listingkit/workspace/wo
 import { useExecuteAction } from "@/lib/query/use-action";
 import { useDispatchNavigation } from "@/lib/query/use-dispatch";
 import type {
+  ActionTarget,
   ActionExecutionResult,
   ActionExecutionRequest,
   NavigationDispatchResponse,
@@ -126,7 +127,9 @@ export function useWorkspaceNavigationActions({
 
   const routeActionResult = (result: ActionExecutionResult) => {
     routeExplicitFocusedTarget(
-      result.review_session?.focused_target ?? result.review_patch?.focused_target,
+      result.review_session?.focused_target ??
+        result.review_patch?.focused_target ??
+        reviewTargetFromActionTarget(result.resolved_target),
     );
   };
 
@@ -300,6 +303,26 @@ function reviewTargetFromNavigationTarget(
     target.session_query ??
     target.action_target?.queue_query ??
     target.queue_query;
+  return reviewTargetFromQueueQuery(query);
+}
+
+function reviewTargetFromActionTarget(
+  target?: ActionTarget,
+): ReviewTarget | undefined {
+  if (target?.navigation_target) {
+    const navigationTarget = reviewTargetFromNavigationTarget(
+      target.navigation_target,
+    );
+    if (navigationTarget) {
+      return navigationTarget;
+    }
+  }
+  return reviewTargetFromQueueQuery(target?.queue_query);
+}
+
+function reviewTargetFromQueueQuery(
+  query?: QueueQuery,
+): ReviewTarget | undefined {
   if (!query?.platform) {
     return undefined;
   }

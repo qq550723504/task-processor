@@ -120,6 +120,8 @@ function SKUSection({ product }: { product?: CanonicalProduct | null }) {
                 <TableHead>条码</TableHead>
                 <TableHead>规格</TableHead>
                 <TableHead>默认</TableHead>
+                <TableHead>尺寸</TableHead>
+                <TableHead>重量</TableHead>
                 <TableHead>价格</TableHead>
                 <TableHead>库存</TableHead>
               </TableRow>
@@ -131,6 +133,8 @@ function SKUSection({ product }: { product?: CanonicalProduct | null }) {
                   <TableCell className="font-mono text-xs">{variant.barcode || "-"}</TableCell>
                   <TableCell>{formatVariantAttributes(variant.attributes)}</TableCell>
                   <TableCell>{variant.is_default ? "是" : "否"}</TableCell>
+                  <TableCell>{formatVariantDimensions(variant.dimensions)}</TableCell>
+                  <TableCell>{formatVariantWeight(variant.weight)}</TableCell>
                   <TableCell>{formatVariantPrice(variant.price)}</TableCell>
                   <TableCell>{variant.stock ?? 0}</TableCell>
                 </TableRow>
@@ -281,6 +285,32 @@ function formatVariantPrice(price?: Record<string, unknown>) {
   } catch {
     return `${currency} ${amount.toFixed(2)}`;
   }
+}
+
+function formatVariantDimensions(dimensions?: Record<string, unknown>) {
+  if (!dimensions) {
+    return "-";
+  }
+  const values = ["length", "width", "height"]
+    .map((key) => formatScalar(dimensions[key]))
+    .filter(Boolean);
+  if (values.length === 0) {
+    return "-";
+  }
+  const unit = typeof dimensions.unit === "string" ? dimensions.unit.trim() : "";
+  return `${values.join(" × ")}${unit ? ` ${unit}` : ""}`;
+}
+
+function formatVariantWeight(weight?: Record<string, unknown>) {
+  if (!weight) {
+    return "-";
+  }
+  const value = formatScalar(weight.value);
+  if (!value) {
+    return "-";
+  }
+  const unit = typeof weight.unit === "string" ? weight.unit.trim() : "";
+  return `${value}${unit ? ` ${unit}` : ""}`;
 }
 
 function formatCanonicalAttributeValue(attribute: CanonicalAttribute) {

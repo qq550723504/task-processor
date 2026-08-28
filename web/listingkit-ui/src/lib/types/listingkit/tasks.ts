@@ -461,6 +461,8 @@ export type CanonicalProduct = {
     title?: string;
     barcode?: string;
     is_default?: boolean;
+    dimensions?: Record<string, unknown>;
+    weight?: Record<string, unknown>;
     price?: Record<string, unknown>;
     stock?: number;
     attributes?: Record<string, CanonicalAttribute>;
