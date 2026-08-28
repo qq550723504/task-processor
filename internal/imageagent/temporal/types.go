@@ -36,6 +36,7 @@ const (
 	activityPersistSlotResultV3         = "imageagent.persist_slot_result.v3"
 	activityPersistRunState             = "imageagent.persist_run_state.v2"
 	activityPersistWorkflowFailure      = "imageagent.persist_workflow_failure.v1"
+	activityPersistWorkflowFailureV2    = "imageagent.persist_workflow_failure.v2"
 	activityPersistPlanRevision         = "imageagent.persist_plan_revision.v2"
 	activityPersistPendingCommand       = "imageagent.persist_pending_command.v2"
 	activityPublishApproved             = "imageagent.publish_approved.v2"
@@ -87,6 +88,9 @@ type WorkflowInput struct {
 	StartedAt           time.Time
 	DeadlineAt          time.Time
 	BudgetAuthorization bool
+	// projectionExecutionID is runtime-only state populated deterministically
+	// from Temporal's workflow execution RunID, never serialized from clients.
+	projectionExecutionID string
 }
 
 type WorkflowResult struct {
@@ -206,6 +210,14 @@ type PersistWorkflowFailureActivityInput struct {
 	Identity       imageagent.ExecutionIdentity
 	FailureCode    string
 	FailureMessage string
+}
+
+type PersistWorkflowFailureV2ActivityInput struct {
+	RunID          string
+	Identity       imageagent.ExecutionIdentity
+	FailureCode    string
+	FailureMessage string
+	CommitID       string
 }
 
 type PersistPlanRevisionActivityInput struct {

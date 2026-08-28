@@ -24,6 +24,7 @@ const (
 	resultDigestV3Patch            = "image-agent-result-digest-v3"
 	budgetAuthorizationPatch       = "image-agent-budget-authorization-v1"
 	workflowFailureProjectionPatch = "image-agent-workflow-failure-projection-v1"
+	projectionExecutionCommitPatch = "image-agent-projection-execution-commit-v1"
 )
 
 type workflowActivityWire struct {
@@ -80,6 +81,12 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 	}
 	input.AssetCatalog = catalog
 	input.BudgetAuthorization = workflow.GetVersion(ctx, budgetAuthorizationPatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	if workflow.GetVersion(ctx, projectionExecutionCommitPatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion {
+		input.projectionExecutionID = strings.TrimSpace(workflow.GetInfo(ctx).WorkflowExecution.RunID)
+		if input.projectionExecutionID == "" {
+			return WorkflowResult{}, fmt.Errorf("temporal workflow execution identity is required")
+		}
+	}
 	if input.BudgetAuthorization {
 		if err := input.BudgetPolicy.Allows(imageagent.UsageVector{}, imageagent.UsageVector{}, imageagent.UsageVector{}); err != nil {
 			return WorkflowResult{}, fmt.Errorf("validate workflow budget policy: %w", err)
@@ -261,9 +268,19 @@ func persistWorkflowFailure(ctx workflow.Context, input WorkflowInput) error {
 			MaximumInterval: 30 * time.Second, MaximumAttempts: 0,
 		},
 	})
-	return workflow.ExecuteActivity(failureCtx, activityPersistWorkflowFailure, PersistWorkflowFailureActivityInput{
+	if input.projectionExecutionID == "" {
+		return workflow.ExecuteActivity(failureCtx, activityPersistWorkflowFailure, PersistWorkflowFailureActivityInput{
+			RunID: input.RunID, Identity: input.Identity, FailureCode: "workflow_failed",
+			FailureMessage: "图像任务执行失败，可使用相同请求重试",
+		}).Get(failureCtx, nil)
+	}
+	commitID, err := workflowFailureCommitID(input)
+	if err != nil {
+		return err
+	}
+	return workflow.ExecuteActivity(failureCtx, activityPersistWorkflowFailureV2, PersistWorkflowFailureV2ActivityInput{
 		RunID: input.RunID, Identity: input.Identity, FailureCode: "workflow_failed",
-		FailureMessage: "图像任务执行失败，可使用相同请求重试",
+		FailureMessage: "图像任务执行失败，可使用相同请求重试", CommitID: commitID,
 	}).Get(failureCtx, nil)
 }
 
@@ -401,14 +418,35 @@ func runProjectionCommitID(input WorkflowInput, projection WorkflowResult, node 
 	if len(identities) > 0 {
 		identity = identities[0]
 	}
+	if input.projectionExecutionID == "" {
+		return updateFingerprint("public_projection", struct {
+			RunID    string
+			Revision int64
+			Status   imageagent.RunStatus
+			Node     string
+			Block    *imageagent.Block
+			Identity string
+		}{input.RunID, input.Plan.Revision, projection.Status, node, projection.Block, identity})
+	}
 	return updateFingerprint("public_projection", struct {
-		RunID    string
-		Revision int64
-		Status   imageagent.RunStatus
-		Node     string
-		Block    *imageagent.Block
-		Identity string
-	}{input.RunID, input.Plan.Revision, projection.Status, node, projection.Block, identity})
+		RunID       string
+		Revision    int64
+		Status      imageagent.RunStatus
+		Node        string
+		Block       *imageagent.Block
+		Identity    string
+		ExecutionID string
+	}{input.RunID, input.Plan.Revision, projection.Status, node, projection.Block, identity, input.projectionExecutionID})
+}
+
+func workflowFailureCommitID(input WorkflowInput) (string, error) {
+	if input.projectionExecutionID == "" {
+		return "workflow-failed", nil
+	}
+	return updateFingerprint("workflow_failure_projection", struct {
+		RunID       string
+		ExecutionID string
+	}{input.RunID, input.projectionExecutionID})
 }
 
 func (o *workflowEffectOwner) persistPlanRevision(ctx workflow.Context, input WorkflowInput, replacement ReplacePlanSignal) error {

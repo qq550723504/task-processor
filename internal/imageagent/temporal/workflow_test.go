@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -912,6 +913,7 @@ func TestV3InitialChildFailurePersistsRecoverableBlockedSlotIdentity(t *testing.
 	}, sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3})
 	env.RegisterActivityWithOptions(func(context.Context, PersistRunStateActivityInput) error { return nil }, sdkactivity.RegisterOptions{Name: activityPersistRunState})
 	env.RegisterActivityWithOptions(func(context.Context, PersistWorkflowFailureActivityInput) error { return nil }, sdkactivity.RegisterOptions{Name: activityPersistWorkflowFailure})
+	env.RegisterActivityWithOptions(func(context.Context, PersistWorkflowFailureV2ActivityInput) error { return nil }, sdkactivity.RegisterOptions{Name: activityPersistWorkflowFailureV2})
 	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(approvalActionIDV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(approvalPublicationWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
@@ -2432,25 +2434,19 @@ func TestWorkflowEffectOwnerFencesEveryTerminalRunStatusBeforeExecution(t *testi
 	}
 }
 
-type workflowFailureProjectionProbeInput struct {
-	RunID          string
-	Identity       imageagent.ExecutionIdentity
-	FailureCode    string
-	FailureMessage string
-}
-
 func TestManualWorkflowProjectsFailureBeforeReturningWorkflowLevelError(t *testing.T) {
 	env := newWorkflowEnv(t)
 	input := manualWorkflowInput(sevenSlotPlan())
 	persistedFailures := 0
-	env.RegisterActivityWithOptions(func(_ context.Context, failure workflowFailureProjectionProbeInput) error {
+	env.RegisterActivityWithOptions(func(_ context.Context, failure PersistWorkflowFailureV2ActivityInput) error {
 		persistedFailures++
 		require.Equal(t, input.RunID, failure.RunID)
 		require.Equal(t, input.Identity, failure.Identity)
 		require.Equal(t, "workflow_failed", failure.FailureCode)
 		require.Equal(t, "图像任务执行失败，可使用相同请求重试", failure.FailureMessage)
+		require.NotEmpty(t, failure.CommitID)
 		return nil
-	}, sdkactivity.RegisterOptions{Name: "imageagent.persist_workflow_failure.v1"})
+	}, sdkactivity.RegisterOptions{Name: activityPersistWorkflowFailureV2})
 	env.OnActivity(activityPersistRunState, mock.Anything, mock.MatchedBy(func(input PersistRunStateActivityInput) bool {
 		return input.Projection.Status == imageagent.RunStatusExecuting
 	})).Return(sdktemporal.NewNonRetryableApplicationError("database write exhausted", "persistence_exhausted", nil)).Once()
@@ -2673,6 +2669,46 @@ func TestPersistWorkflowFailureProjectsTerminalStateIdempotently(t *testing.T) {
 	require.Equal(t, 1, failureEvents)
 }
 
+func TestRestartedExecutionCanRepersistProjectionAndReplayedSlotResult(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+	plan := sevenSlotPlan()
+	run := imageagent.Run{
+		ID: "run-restart", BusinessTaskID: "task-1", TenantID: identity.TenantID, UserID: identity.UserID,
+		Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-restart", Status: imageagent.RunStatusPlanning, Version: 1,
+	}
+	initializeActivityProjection(t, repository, run, plan)
+	activities, err := NewActivities(ActivityDependencies{Repository: repository, SlotExecutor: &identityCheckingExecutor{t: t}, Publisher: &identityCheckingPublisher{t: t}})
+	require.NoError(t, err)
+	projection := WorkflowResult{Status: imageagent.RunStatusExecuting, Plan: plan, Slots: slotProjections(plan, nil)}
+	result := SlotWorkflowResult{Execution: successfulSlotResult("slot-1", 1), Status: imageagent.SlotStatusAccepted}
+	attemptKey := slotAttemptKey(plan.Revision, plan.Slots[0], 1)
+
+	firstInput := manualWorkflowInput(plan)
+	firstInput.RunID = run.ID
+	firstInput.Identity = identity
+	firstInput.projectionExecutionID = "temporal-run-a"
+	firstRunCommit, err := runProjectionCommitID(firstInput, projection, "execute_slots")
+	require.NoError(t, err)
+	require.NoError(t, activities.PersistRunState(context.Background(), PersistRunStateActivityInput{RunID: run.ID, Identity: identity, PlanRevision: plan.Revision, Projection: projection, CurrentNode: "execute_slots", CommitID: firstRunCommit}))
+	require.NoError(t, activities.PersistSlotResult(context.Background(), PersistSlotResultActivityInput{RunID: run.ID, Identity: identity, PlanRevision: plan.Revision, Result: result, AttemptKey: attemptKey}))
+	firstFailureCommit, err := workflowFailureCommitID(firstInput)
+	require.NoError(t, err)
+	require.NoError(t, activities.PersistWorkflowFailureV2(context.Background(), PersistWorkflowFailureV2ActivityInput{RunID: run.ID, Identity: identity, FailureCode: "workflow_failed", FailureMessage: "retry", CommitID: firstFailureCommit}))
+
+	secondInput := firstInput
+	secondInput.projectionExecutionID = "temporal-run-b"
+	secondRunCommit, err := runProjectionCommitID(secondInput, projection, "execute_slots")
+	require.NoError(t, err)
+	require.NoError(t, activities.PersistRunState(context.Background(), PersistRunStateActivityInput{RunID: run.ID, Identity: identity, PlanRevision: plan.Revision, Projection: projection, CurrentNode: "execute_slots", CommitID: secondRunCommit}))
+	require.NoError(t, activities.PersistSlotResult(context.Background(), PersistSlotResultActivityInput{RunID: run.ID, Identity: identity, PlanRevision: plan.Revision, Result: result, AttemptKey: attemptKey}))
+
+	current, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: run.ID})
+	require.NoError(t, err)
+	require.Equal(t, imageagent.RunStatusExecuting, current.Run.Status)
+	require.Equal(t, imageagent.SlotStatusAccepted, current.Slots[0].Slot.Status)
+}
+
 func TestActivitiesPersistTerminalSlotResultIdempotently(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:image-agent-activity-%d?mode=memory&cache=shared", time.Now().UnixNano())), &gorm.Config{})
 	require.NoError(t, err)
@@ -2809,6 +2845,7 @@ func TestManualWorkflowReplacePathUsesRealProjectionActivityAndRepository(t *tes
 	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
 	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnGetVersion(projectionExecutionCommitPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(approvalActionIDV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	env.OnGetVersion(approvalPublicationWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
 	env.OnGetVersion(resultDigestV3Patch, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
@@ -2973,6 +3010,33 @@ func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ResultDigest: sevenSlotResultDigest, ActorID: "attacker", ActionID: "spoofed", Identity: start.Identity}), "actor")
 	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "missing-digest", Identity: start.Identity}), "digest")
 	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ResultDigest: " " + sevenSlotResultDigest, ActorID: "user-a", ActionID: "spaced-digest", Identity: start.Identity}), "digest")
+}
+
+func TestRunProjectionCommitIDIsScopedToTemporalExecution(t *testing.T) {
+	input := manualWorkflowInput(sevenSlotPlan())
+	projection := WorkflowResult{Status: imageagent.RunStatusExecuting, Plan: input.Plan}
+
+	input.projectionExecutionID = "temporal-run-a"
+	first, err := runProjectionCommitID(input, projection, "execute_slots")
+	require.NoError(t, err)
+	firstFailure, err := workflowFailureCommitID(input)
+	require.NoError(t, err)
+	input.projectionExecutionID = "temporal-run-b"
+	second, err := runProjectionCommitID(input, projection, "execute_slots")
+	require.NoError(t, err)
+	secondFailure, err := workflowFailureCommitID(input)
+	require.NoError(t, err)
+
+	require.NotEqual(t, first, second, "a failed workflow restart must not replay the prior execution's projection commit")
+	require.NotEqual(t, firstFailure, secondFailure, "each failed execution must own its terminal failure projection")
+}
+
+func TestMaximumSlotIdempotencyKeyFitsDerivedAttemptAndProjectionCommitColumns(t *testing.T) {
+	slot := imageagent.Slot{IdempotencyKey: fmt.Sprintf("%0128d", 0)}
+	attemptKey := slotAttemptKey(math.MaxInt64, slot, int(^uint(0)>>1))
+
+	require.LessOrEqual(t, len(attemptKey), 192)
+	require.LessOrEqual(t, len("slot-v3:"+attemptKey), 192)
 }
 
 func TestTemporalClientRejectsUnsafeConcurrencyBeforeStartingWorkflow(t *testing.T) {
@@ -3151,7 +3215,7 @@ func TestRegisterWorkerPreservesFrozenV2Compatibility(t *testing.T) {
 	require.Equal(t, []string{workflowNameImageAgent, workflowNameImageSlot}, registrar.workflows)
 	require.Equal(t, []string{
 		"imageagent.execute_slot", "imageagent.persist_slot_result", "imageagent.persist_run_state", "imageagent.persist_plan_revision", "imageagent.persist_pending_command", "imageagent.publish_approved",
-		"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_run_state.v2", "imageagent.persist_workflow_failure.v1", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
+		"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_run_state.v2", "imageagent.persist_workflow_failure.v1", "imageagent.persist_workflow_failure.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
 	}, registrar.activities)
 }
 
@@ -3169,14 +3233,14 @@ func TestRegisterWorkerUsesExactModeBoundWorkflowAndActivitySets(t *testing.T) {
 			wantWorkflows: []string{workflowNameImageAgent, workflowNameImageSlot},
 			wantActivities: []string{
 				"imageagent.execute_slot", "imageagent.persist_slot_result", "imageagent.persist_run_state", "imageagent.persist_plan_revision", "imageagent.persist_pending_command", "imageagent.publish_approved",
-				"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_run_state.v2", "imageagent.persist_workflow_failure.v1", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
+				"imageagent.execute_slot.v2", "imageagent.persist_slot_result.v2", "imageagent.persist_run_state.v2", "imageagent.persist_workflow_failure.v1", "imageagent.persist_workflow_failure.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2", "imageagent.publish_approved.v2",
 			},
 		},
 		{
 			name: "v3", mode: WorkerWireModeV3,
 			wantWorkflows: []string{workflowNameImageAgent, "ImageSlotWorkflowV3", workflowNameCompatibilityCanary},
 			wantActivities: []string{
-				"imageagent.persist_run_state.v2", "imageagent.persist_workflow_failure.v1", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2",
+				"imageagent.persist_run_state.v2", "imageagent.persist_workflow_failure.v1", "imageagent.persist_workflow_failure.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2",
 				"imageagent.execute_slot.v3", "imageagent.persist_slot_result.v3", "imageagent.publish_approved.v3",
 			},
 		},

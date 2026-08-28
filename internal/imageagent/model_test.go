@@ -202,6 +202,23 @@ func TestValidatePlanRejectsMissingSlotIdempotencyKey(t *testing.T) {
 	require.ErrorContains(t, ValidatePlan(plan), "slot idempotency key")
 }
 
+func TestValidatePlanBoundsPersistedIdempotencyKeys(t *testing.T) {
+	plan := Plan{
+		Revision: 1, IdempotencyKey: strings.Repeat("p", MaxIdempotencyKeyLength), SourceAssetIDs: []string{"source-1"},
+		Slots: []Slot{{ID: "main-1", Role: SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: strings.Repeat("s", MaxIdempotencyKeyLength), Status: SlotStatusPending}},
+	}
+	require.NoError(t, ValidateSubmittedPlan(plan))
+
+	tooLongPlan := plan
+	tooLongPlan.IdempotencyKey += "p"
+	require.ErrorContains(t, ValidateSubmittedPlan(tooLongPlan), "plan idempotency key")
+
+	tooLongSlot := plan
+	tooLongSlot.Slots = append([]Slot(nil), plan.Slots...)
+	tooLongSlot.Slots[0].IdempotencyKey += "s"
+	require.ErrorContains(t, ValidateSubmittedPlan(tooLongSlot), "slot idempotency key")
+}
+
 func TestValidateSubmittedPlanRequiresExplicitPendingSlotStatus(t *testing.T) {
 	plan := Plan{Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{{ID: "main-1", Role: SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1"}}}
 	require.NoError(t, ValidatePlan(plan), "legacy histories may omit the formerly implicit pending status")

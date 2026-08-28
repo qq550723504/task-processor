@@ -72,6 +72,8 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
     let streamTimer: ReturnType<typeof setTimeout> | undefined;
     let snapshotTimer: ReturnType<typeof setTimeout> | undefined;
     let recovering = false;
+    let recoveryQueued = false;
+    let queuedConnectImmediately = false;
     let streamFailures = 0;
     let snapshotFailures = 0;
 
@@ -136,22 +138,29 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
       }, retryDelay(failures));
     };
     async function recover(connectImmediately: boolean) {
-      if (disposed || recovering) return;
+      if (disposed) return;
+      if (recovering) {
+        recoveryQueued = true;
+        queuedConnectImmediately ||= connectImmediately;
+        return;
+      }
       recovering = true;
+      let allowQueuedRecovery = true;
       try {
         await refreshSnapshot();
         snapshotFailures = 0;
         clearSnapshotTimer();
         if (!disposed) {
-          recovering = false;
           setError(undefined);
           if (connectImmediately) connect();
         }
       } catch (cause) {
         if (!disposed) {
-          recovering = false;
           setIsLoading(false);
           if (isAuthenticationError(cause)) {
+            allowQueuedRecovery = false;
+            recoveryQueued = false;
+            queuedConnectImmediately = false;
             closeSource();
             clearStreamTimer();
             clearSnapshotTimer();
@@ -164,6 +173,12 @@ export function useImageAgentRun({ runId, initialRun }: { runId: string; initial
         }
       } finally {
         recovering = false;
+        if (!disposed && allowQueuedRecovery && recoveryQueued) {
+          const connectAfterRecovery = queuedConnectImmediately;
+          recoveryQueued = false;
+          queuedConnectImmediately = false;
+          void recover(connectAfterRecovery);
+        }
       }
     }
 

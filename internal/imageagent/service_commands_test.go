@@ -400,6 +400,21 @@ func TestServiceStartRetryUsesImmutablePersistedCatalogInsteadOfMutableTaskCatal
 	require.Equal(t, "source-1", workflows.starts[1].AssetCatalog.Assets[0].ID)
 }
 
+func TestServiceStartRejectsRunIdempotencyKeyBeyondPersistenceLimit(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
+	require.NoError(t, err)
+
+	err = service.Start(verifiedContext("tenant-a", "user-a"), imageagent.StartRunInput{
+		RunID: "run-long-key", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
+		IdempotencyKey: strings.Repeat("r", imageagent.MaxIdempotencyKeyLength+1), Plan: commandPlan(1),
+	})
+
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+	require.Empty(t, workflows.starts)
+}
+
 func TestServiceCompletedStartReplayReturnsOriginalSuccessWithoutRestartingTemporal(t *testing.T) {
 	repository := store.NewMemoryRepository()
 	workflows := &recordingWorkflowClient{}

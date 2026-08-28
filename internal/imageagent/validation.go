@@ -3,15 +3,30 @@ package imageagent
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // MaxActionIDLength leaves bounded headroom for the longest projection commit
 // suffix inside the PostgreSQL varchar(192) commit-key column.
 const MaxActionIDLength = 128
 
+// MaxIdempotencyKeyLength mirrors the varchar(128) persistence contract used
+// by run, plan, and slot idempotency keys.
+const MaxIdempotencyKeyLength = 128
+
 func ValidateActionID(value string) error {
 	if value == "" || value != strings.TrimSpace(value) || len(value) > MaxActionIDLength {
 		return fmt.Errorf("action ID must be canonical and at most %d bytes", MaxActionIDLength)
+	}
+	return nil
+}
+
+func validatePersistedIdempotencyKey(kind, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("%s idempotency key must not be empty", kind)
+	}
+	if !utf8.ValidString(value) || utf8.RuneCountInString(value) > MaxIdempotencyKeyLength {
+		return fmt.Errorf("%s idempotency key must be valid UTF-8 and at most %d characters", kind, MaxIdempotencyKeyLength)
 	}
 	return nil
 }
@@ -24,8 +39,8 @@ func ValidatePlan(plan Plan) error {
 	if plan.Revision <= 0 {
 		return fmt.Errorf("revision must be positive")
 	}
-	if strings.TrimSpace(plan.IdempotencyKey) == "" {
-		return fmt.Errorf("plan idempotency key must not be empty")
+	if err := validatePersistedIdempotencyKey("plan", plan.IdempotencyKey); err != nil {
+		return err
 	}
 
 	sources := make(map[string]struct{}, len(plan.SourceAssetIDs))
@@ -77,8 +92,8 @@ func ValidatePlan(plan Plan) error {
 		}
 
 		key := strings.TrimSpace(slot.IdempotencyKey)
-		if key == "" {
-			return fmt.Errorf("slot idempotency key must not be empty")
+		if err := validatePersistedIdempotencyKey("slot", slot.IdempotencyKey); err != nil {
+			return err
 		}
 		if _, exists := idempotencyKeys[key]; exists {
 			return fmt.Errorf("duplicate idempotency key %q", key)

@@ -694,6 +694,37 @@ describe("ImageAgentWorkbench", () => {
     expect(source.closed).toBe(false);
   });
 
+  it("queues a projection refresh that arrives while snapshot recovery is in flight", async () => {
+    const initial = projectionWithSlots(7);
+    initial.projection_version = 5;
+    initial.last_event_id = 5;
+    const recoveredSix = structuredClone(initial);
+    recoveredSix.projection_version = 6;
+    recoveredSix.last_event_id = 6;
+    const recoveredSeven = structuredClone(initial);
+    recoveredSeven.projection_version = 7;
+    recoveredSeven.last_event_id = 7;
+    let resolveFirst!: (response: Response) => void;
+    const firstSnapshot = new Promise<Response>((resolve) => { resolveFirst = resolve; });
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(firstSnapshot)
+      .mockResolvedValueOnce(new Response(JSON.stringify(recoveredSeven), { status: 200, headers: { "content-type": "application/json" } }));
+    render(<ImageAgentWorkbench taskId="task-1" runId="run-1" initialRun={initial} />);
+    const source = FakeEventSource.instances[0]!;
+
+    act(() => source.emit(6, 6));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    act(() => source.emit(7, 7));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFirst(new Response(JSON.stringify(recoveredSix), { status: 200, headers: { "content-type": "application/json" } }));
+      await firstSnapshot;
+    });
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    expect(source.closed).toBe(false);
+  });
+
   it("resets an ahead browser cursor from the server snapshot after disconnect", async () => {
     const initial = projectionWithSlots(7);
     initial.projection_version = 8;

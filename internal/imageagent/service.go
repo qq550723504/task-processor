@@ -49,6 +49,9 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	if input.RunID == "" || input.BusinessTaskID == "" || input.IdempotencyKey == "" {
 		return fmt.Errorf("%w: image agent run ID, business task ID, and idempotency key are required", ErrValidation)
 	}
+	if err := validatePersistedIdempotencyKey("run", input.IdempotencyKey); err != nil {
+		return fmt.Errorf("%w: %v", ErrValidation, err)
+	}
 	if err := ValidateArtifactKeyIdentifier(input.RunID); err != nil {
 		return fmt.Errorf("%w: image agent run ID cannot be used in a durable artifact key", err)
 	}
