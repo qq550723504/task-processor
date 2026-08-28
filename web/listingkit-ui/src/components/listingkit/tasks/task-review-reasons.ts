@@ -71,7 +71,7 @@ export function extractTaskReviewReasons(task?: ListingKitTaskResult | null) {
   );
 }
 
-export type SheinReviewActionKey = "category" | "attributes" | "sale_attributes";
+type SheinReviewActionKey = "category" | "attributes" | "sale_attributes";
 
 export type TaskReviewActionLink = {
   key: SheinReviewActionKey;
