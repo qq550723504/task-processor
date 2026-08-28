@@ -67,15 +67,7 @@ func (h *ProductNameValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) 
 		h.logger.Infof("最终名称: %s", optimizedName)
 	}
 
-	// 验证括号前是否有空格（TEMU要求）
-	if strings.Contains(optimizedName, "(") {
-		// 检查是否有括号前没有空格的情况
-		if regexp.MustCompile(`\S\(`).MatchString(optimizedName) {
-			h.logger.Warnf("⚠️ 检测到括号前缺少空格，正在修复...")
-			optimizedName = regexp.MustCompile(`(\S)\(`).ReplaceAllString(optimizedName, "$1 (")
-			h.logger.Infof("✅ 已修复括号前的空格问题")
-		}
-	}
+	optimizedName = h.normalizeOptimizedName(optimizedName)
 
 	// 更新产品名称
 	temuProduct.GoodsBasic.GoodsName = optimizedName
@@ -193,6 +185,19 @@ func (h *ProductNameValidator) validateAllowedChars(text string, violations *[]s
 // cleanSpaces 清理多余的空格
 func (h *ProductNameValidator) cleanSpaces(text string) string {
 	return temupublishing.NormalizeProductSubmissionName(text)
+}
+
+func (h *ProductNameValidator) normalizeOptimizedName(name string) string {
+	needsParenthesisFix := strings.Contains(name, "(") && regexp.MustCompile(`\S\(`).MatchString(name)
+	if needsParenthesisFix && h.logger != nil {
+		h.logger.Warnf("⚠️ 检测到括号前缺少空格，正在修复...")
+	}
+
+	normalized := temupublishing.NormalizeProductSubmissionName(name)
+	if needsParenthesisFix && h.logger != nil && normalized != name {
+		h.logger.Infof("✅ 已修复括号前的空格问题")
+	}
+	return normalized
 }
 
 // ValidateProductNameAPI 调用TEMU API验证产品名称（如果需要）
