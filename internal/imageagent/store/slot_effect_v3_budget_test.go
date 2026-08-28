@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -37,6 +38,39 @@ func TestSlotEffectV3BudgetConcurrentLastUnitHasOneOwner(t *testing.T) {
 	}
 	group.Wait()
 	require.Equal(t, 1, claimedCount)
+}
+
+func TestBudgetProjectionExposesCommittedAndElapsedUsageOnly(t *testing.T) {
+	now := time.Date(2026, 8, 28, 1, 2, 3, 0, time.UTC)
+	repository := NewMemoryRepositoryWithClock(func() time.Time { return now })
+	scope, policy := initializeBudgetedSlotEffectRun(t, repository, "run-budget-projection")
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	reservation := budgetedV3Reservation(scope, policy, 1, "quote-projection")
+	_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	before, err := repository.GetProjection(context.Background(), scope)
+	require.NoError(t, err)
+	require.Zero(t, before.Run.Usage.Images, "reserved usage must stay internal")
+	now = now.Add(3 * time.Second)
+	_, err = effects.SettleSlotProviderV3(context.Background(), reservation, imageagent.SlotUsageReceipt{Actual: imageagent.UsageVector{Images: 1, AgentSteps: 1}, CostBasis: imageagent.UsageCostReservedUpperBound})
+	require.NoError(t, err)
+	after, err := repository.GetProjection(context.Background(), scope)
+	require.NoError(t, err)
+	require.Equal(t, 1, after.Run.Usage.Images)
+	require.Equal(t, 3*time.Second, after.Run.Usage.Elapsed)
+	next := after
+	next.Run.Status = imageagent.RunStatusExecuting
+	next.Run.CurrentNode = "execute_slots"
+	next.Run.Version++
+	committed, err := repository.CommitProjection(context.Background(), imageagent.ProjectionCommit{
+		Scope: scope, CommitID: "run:after-budget-settlement", ExpectedProjectionVersion: after.ProjectionVersion,
+		Snapshot: next, EventType: "run.updated", EventPayload: []byte(`{}`), ExpectedRunVersion: after.Run.Version,
+		RunMutation: &imageagent.RunMutation{Status: next.Run.Status, CurrentNode: next.Run.CurrentNode, ActivePlanRevision: next.Run.ActivePlanRevision},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, committed.Run.Usage.Images, "projection commits must not erase authoritative usage")
 }
 
 func TestSlotEffectV3BudgetReservationLifecycle(t *testing.T) {
@@ -84,6 +118,17 @@ func TestSlotEffectV3BudgetReservationLifecycle(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, 1, projection.Run.Usage.Images)
 			require.Equal(t, 1, projection.Run.Usage.AgentSteps)
+			next := projection
+			next.Run.Status = imageagent.RunStatusExecuting
+			next.Run.CurrentNode = "execute_slots"
+			next.Run.Version++
+			committedProjection, err := repository.CommitProjection(ctx, imageagent.ProjectionCommit{
+				Scope: scope, CommitID: "run:after-budget-settlement", ExpectedProjectionVersion: projection.ProjectionVersion,
+				Snapshot: next, EventType: "run.updated", EventPayload: []byte(`{}`), ExpectedRunVersion: projection.Run.Version,
+				RunMutation: &imageagent.RunMutation{Status: next.Run.Status, CurrentNode: next.Run.CurrentNode, ActivePlanRevision: next.Run.ActivePlanRevision},
+			})
+			require.NoError(t, err)
+			require.Equal(t, 1, committedProjection.Run.Usage.Images)
 		})
 	}
 }

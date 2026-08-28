@@ -126,7 +126,13 @@ func (r *memoryRepository) transitionMemorySlotBudget(reservation imageagent.Slo
 		if err != nil {
 			return imageagent.SlotEffectV3Attempt{}, err
 		}
-		run.Usage, err = imageagent.BudgetUsageFromUsageVector(committed, run.Usage.Elapsed)
+		elapsed := run.Usage.Elapsed
+		if !run.StartedAt.IsZero() {
+			if observed := r.clock().UTC().Sub(run.StartedAt); observed > elapsed {
+				elapsed = observed
+			}
+		}
+		run.Usage, err = imageagent.BudgetUsageFromUsageVector(committed, elapsed)
 		if err != nil {
 			return imageagent.SlotEffectV3Attempt{}, err
 		}
@@ -577,7 +583,13 @@ func (r *gormRepository) transitionGormSlotBudget(ctx context.Context, reservati
 				if usageErr != nil {
 					return usageErr
 				}
-				run.Usage, usageErr = imageagent.BudgetUsageFromUsageVector(committed, run.Usage.Elapsed)
+				elapsed := run.Usage.Elapsed
+				if !run.StartedAt.IsZero() {
+					if observed := now.Sub(run.StartedAt); observed > elapsed {
+						elapsed = observed
+					}
+				}
+				run.Usage, usageErr = imageagent.BudgetUsageFromUsageVector(committed, elapsed)
 				if usageErr != nil {
 					return usageErr
 				}

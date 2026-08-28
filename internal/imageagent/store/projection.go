@@ -42,7 +42,7 @@ func (r *memoryRepository) InitializeRun(_ context.Context, input imageagent.Pro
 			return imageagent.RunProjection{}, imageagent.ErrRevisionConflict
 		}
 	}
-	prepared = materializeRepositoryCatalogTimestamp(prepared, time.Now().UTC())
+	prepared = materializeRepositoryCatalogTimestamp(prepared, r.clock().UTC())
 	r.runs[key] = cloneRun(prepared.Run)
 	r.plans[key] = map[int64]imageagent.Plan{prepared.Plan.Revision: clonePlan(prepared.Plan)}
 	for _, slot := range prepared.Plan.Slots {
@@ -72,6 +72,7 @@ func (r *memoryRepository) GetProjection(_ context.Context, scope imageagent.Run
 	result := cloneProjection(projection)
 	result.Run.Budget = run.Budget
 	result.Run.Usage = run.Usage
+	result.Run.StartedAt = run.StartedAt
 	if err := imageagent.ValidateProjectionSnapshot(scope, result); err != nil {
 		return imageagent.RunProjection{}, err
 	}
@@ -107,6 +108,10 @@ func (r *memoryRepository) CommitProjection(_ context.Context, input imageagent.
 	}
 	if current.ProjectionVersion != input.ExpectedProjectionVersion {
 		return imageagent.RunProjection{}, imageagent.ErrRevisionConflict
+	}
+	overlayAuthoritativeRun(&current, r.runs[key])
+	if !input.Snapshot.Run.StartedAt.IsZero() {
+		current.Run.StartedAt = r.runs[key].StartedAt
 	}
 	if err := validateProjectionPreconditions(current, r.runs[key], input); err != nil {
 		return imageagent.RunProjection{}, err
@@ -342,6 +347,7 @@ func (r *gormRepository) GetProjection(ctx context.Context, scope imageagent.Run
 	}
 	result.Run.Budget = authoritativeRun.Budget
 	result.Run.Usage = authoritativeRun.Usage
+	result.Run.StartedAt = authoritativeRun.StartedAt
 	if err := imageagent.ValidateProjectionSnapshot(scope, result); err != nil {
 		return imageagent.RunProjection{}, err
 	}
@@ -400,6 +406,10 @@ func (r *gormRepository) CommitProjection(ctx context.Context, input imageagent.
 		if err != nil {
 			return err
 		}
+		overlayAuthoritativeRun(&currentSnapshot, persistedRun)
+		if !input.Snapshot.Run.StartedAt.IsZero() {
+			currentSnapshot.Run.StartedAt = persistedRun.StartedAt
+		}
 		if err := validateProjectionPreconditions(currentSnapshot, persistedRun, input); err != nil {
 			return err
 		}
@@ -444,6 +454,14 @@ func (r *gormRepository) CommitProjection(ctx context.Context, input imageagent.
 		}
 	}
 	return result, err
+}
+
+func overlayAuthoritativeRun(projection *imageagent.RunProjection, run imageagent.Run) {
+	if projection == nil {
+		return
+	}
+	projection.Run.Budget = run.Budget
+	projection.Run.Usage = run.Usage
 }
 
 func (r *gormRepository) recoverProjectionCommit(ctx context.Context, scope imageagent.RunScope, commitID, fingerprint string) (imageagent.RunProjection, bool, error) {
