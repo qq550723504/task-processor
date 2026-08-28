@@ -3,7 +3,6 @@ package imageagent
 import (
 	"crypto/sha256"
 	"fmt"
-	"net"
 	"net/url"
 	"reflect"
 	"sort"
@@ -116,23 +115,13 @@ func ValidatePlanAgainstCatalog(plan Plan, catalog AssetCatalog) error {
 }
 
 func ValidateSafeImageURL(raw string) (string, error) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return "", fmt.Errorf("http(s) image URL is required")
+	validated, err := safeimagehttp.ValidatePublicHTTPSURL(raw)
+	if err != nil {
+		return "", err
 	}
-	parsed, err := url.ParseRequestURI(value)
-	if err != nil || parsed == nil || !parsed.IsAbs() || parsed.Host == "" {
-		return "", fmt.Errorf("absolute http(s) image URL is required")
-	}
-	if !strings.EqualFold(parsed.Scheme, "https") && !strings.EqualFold(parsed.Scheme, "http") {
-		return "", fmt.Errorf("http(s) image URL is required")
-	}
-	host := strings.TrimSpace(parsed.Hostname())
-	if host == "" || strings.EqualFold(host, "localhost") {
-		return "", fmt.Errorf("public image host is required")
-	}
-	if ip := net.ParseIP(host); ip != nil && safeimagehttp.IsPrivateIP(ip) {
-		return "", fmt.Errorf("public image host is required")
+	parsed, err := url.Parse(validated)
+	if err != nil {
+		return "", err
 	}
 	parsed.User = nil
 	return parsed.String(), nil

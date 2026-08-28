@@ -25,6 +25,13 @@ func TestNormalizeAssetCatalogPreservesExplicitStableManifest(t *testing.T) {
 	require.True(t, withoutCreationTime.Manifest.CreatedAt.IsZero(), "normalization must not manufacture a repository-local clock")
 }
 
+func TestNormalizeAssetCatalogRejectsPlainHTTPSourceImages(t *testing.T) {
+	_, err := NormalizeAssetCatalog(AssetCatalog{Assets: []AuthorizedAsset{{
+		ID: "source-1", Type: AuthorizedAssetSource, URL: "http://images.example/source.png",
+	}}})
+	require.ErrorContains(t, err, "public https url is required")
+}
+
 func TestValidatePlanAllowsMoreThanTenIndependentSlots(t *testing.T) {
 	slots := make([]Slot, 11)
 	for i := range slots {

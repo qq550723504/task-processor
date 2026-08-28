@@ -41,7 +41,7 @@ func (e *openAICompatibleFaithfulEditor) edit(ctx context.Context, req *Faithful
 	if req == nil || req.SourceAsset == nil {
 		return nil, fmt.Errorf("faithful edit request requires source asset")
 	}
-	data, filename, err := e.runtime.loadAssetBytes(req.SourceAsset)
+	data, filename, err := e.runtime.loadAssetBytes(ctx, req.SourceAsset)
 	if err != nil {
 		return nil, err
 	}

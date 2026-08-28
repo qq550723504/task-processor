@@ -8,14 +8,31 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/disintegration/imaging"
 )
+
+type productImageRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f productImageRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func staticImageHTTPClient(data []byte) *http.Client {
+	return &http.Client{Transport: productImageRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK, ContentLength: int64(len(data)),
+			Body: io.NopCloser(bytes.NewReader(data)), Header: make(http.Header), Request: req,
+		}, nil
+	})}
+}
 
 func TestDownloadedImageInspectorAndRenderers(t *testing.T) {
 	img := imaging.New(1200, 900, color.NRGBA{R: 248, G: 248, B: 248, A: 255})
@@ -24,12 +41,6 @@ func TestDownloadedImageInspectorAndRenderers(t *testing.T) {
 		t.Fatalf("encode image: %v", err)
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write(buf.Bytes())
-	}))
-	defer server.Close()
-
 	workDir := t.TempDir()
 	ctx := context.Background()
 
@@ -37,7 +48,8 @@ func TestDownloadedImageInspectorAndRenderers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDownloadedImageInspector: %v", err)
 	}
-	audit, err := inspector.Inspect(ctx, &SourceBundle{TitleHint: "White Mug"}, server.URL+"/hero_white.jpg")
+	inspector.(*downloadedImageInspector).runtime.imageClient = staticImageHTTPClient(buf.Bytes())
+	audit, err := inspector.Inspect(ctx, &SourceBundle{TitleHint: "White Mug"}, "https://images.example/hero_white.jpg")
 	if err != nil {
 		t.Fatalf("Inspect: %v", err)
 	}
@@ -55,7 +67,8 @@ func TestDownloadedImageInspectorAndRenderers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewOptimizedSubjectExtractor: %v", err)
 	}
-	subject, err := extractor.Extract(ctx, server.URL+"/hero_white.jpg", nil)
+	extractor.(*optimizedSubjectExtractor).runtime.imageClient = staticImageHTTPClient(buf.Bytes())
+	subject, err := extractor.Extract(ctx, "https://images.example/hero_white.jpg", nil)
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -110,17 +123,12 @@ func TestDownloadedImageInspector_GivesPassableScoreToCleanMediumImage(t *testin
 		t.Fatalf("encode image: %v", err)
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write(buf.Bytes())
-	}))
-	defer server.Close()
-
 	inspector, err := NewDownloadedImageInspector(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewDownloadedImageInspector: %v", err)
 	}
-	audit, err := inspector.Inspect(context.Background(), &SourceBundle{TitleHint: "Clean Product"}, server.URL+"/clean-medium.jpg")
+	inspector.(*downloadedImageInspector).runtime.imageClient = staticImageHTTPClient(buf.Bytes())
+	audit, err := inspector.Inspect(context.Background(), &SourceBundle{TitleHint: "Clean Product"}, "https://images.example/clean-medium.jpg")
 	if err != nil {
 		t.Fatalf("Inspect: %v", err)
 	}
@@ -205,17 +213,12 @@ func TestOptimizedSubjectExtractor_CropsPrimarySubjectOnWhiteBackground(t *testi
 		t.Fatalf("encode image: %v", err)
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write(buf.Bytes())
-	}))
-	defer server.Close()
-
 	extractor, err := NewOptimizedSubjectExtractor(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewOptimizedSubjectExtractor: %v", err)
 	}
-	asset, err := extractor.Extract(context.Background(), server.URL+"/subject_white.jpg", nil)
+	extractor.(*optimizedSubjectExtractor).runtime.imageClient = staticImageHTTPClient(buf.Bytes())
+	asset, err := extractor.Extract(context.Background(), "https://images.example/subject_white.jpg", nil)
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -263,12 +266,6 @@ func TestHybridSubjectExtractor_UsesSegmentationClientWhenAvailable(t *testing.T
 	if err := jpeg.Encode(&sourceBuf, source, &jpeg.Options{Quality: 92}); err != nil {
 		t.Fatalf("encode source image: %v", err)
 	}
-	sourceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write(sourceBuf.Bytes())
-	}))
-	defer sourceServer.Close()
-
 	client, err := NewHTTPSegmentationClient(HTTPSegmentationClientConfig{Endpoint: segmenter.URL})
 	if err != nil {
 		t.Fatalf("NewHTTPSegmentationClient: %v", err)
@@ -277,7 +274,8 @@ func TestHybridSubjectExtractor_UsesSegmentationClientWhenAvailable(t *testing.T
 	if err != nil {
 		t.Fatalf("NewHybridSubjectExtractor: %v", err)
 	}
-	asset, err := extractor.Extract(context.Background(), sourceServer.URL+"/complex_scene.jpg", nil)
+	extractor.(*optimizedSubjectExtractor).runtime.imageClient = staticImageHTTPClient(sourceBuf.Bytes())
+	asset, err := extractor.Extract(context.Background(), "https://images.example/complex_scene.jpg", nil)
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -292,6 +290,18 @@ func TestHybridSubjectExtractor_UsesSegmentationClientWhenAvailable(t *testing.T
 	}
 	if asset.Width != 700 || asset.Height != 700 {
 		t.Fatalf("segmenter subject dimensions = %dx%d, want 700x700", asset.Width, asset.Height)
+	}
+}
+
+func TestRealImageComponentsRejectsPrivateSourceURLBeforeNetwork(t *testing.T) {
+	runtime, err := newRealImageComponents(t.TempDir())
+	if err != nil {
+		t.Fatalf("newRealImageComponents: %v", err)
+	}
+
+	_, _, err = runtime.download(context.Background(), "https://127.0.0.1/source.jpg")
+	if err == nil || !strings.Contains(err.Error(), "public https url is required") {
+		t.Fatalf("download() error = %v, want public HTTPS validation error", err)
 	}
 }
 

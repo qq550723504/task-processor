@@ -29,7 +29,7 @@ func (r *localSceneRenderer) Render(ctx context.Context, asset *ImageAsset, prod
 	if asset == nil {
 		return nil, fmt.Errorf("asset cannot be nil")
 	}
-	data, sourceName, err := r.runtime.loadAssetBytes(asset)
+	data, sourceName, err := r.runtime.loadAssetBytes(ctx, asset)
 	if err != nil {
 		return nil, err
 	}

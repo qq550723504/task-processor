@@ -35,7 +35,7 @@ func (g *openAICompatibleSceneGenerator) GenerateSceneWithRoute(ctx context.Cont
 	if req == nil || req.SourceAsset == nil {
 		return nil, fmt.Errorf("scene generation request requires source asset")
 	}
-	data, filename, err := g.runtime.loadAssetBytes(req.SourceAsset)
+	data, filename, err := g.runtime.loadAssetBytes(ctx, req.SourceAsset)
 	if err != nil {
 		return nil, err
 	}

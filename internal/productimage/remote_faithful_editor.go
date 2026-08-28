@@ -57,7 +57,7 @@ func (e *remoteFaithfulEditor) extractSubject(ctx context.Context, req *Faithful
 	if sourceAsset == nil || sourceAsset.URL == "" {
 		return nil, fmt.Errorf("source asset is required for subject extraction")
 	}
-	data, filename, err := e.runtime.loadAssetBytes(sourceAsset)
+	data, filename, err := e.runtime.loadAssetBytes(ctx, sourceAsset)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (e *remoteFaithfulEditor) renderWhiteBackground(ctx context.Context, req *F
 	if sourceAsset == nil {
 		return nil, fmt.Errorf("source asset is required for white background rendering")
 	}
-	data, filename, err := e.runtime.loadAssetBytes(sourceAsset)
+	data, filename, err := e.runtime.loadAssetBytes(ctx, sourceAsset)
 	if err != nil {
 		return nil, err
 	}
