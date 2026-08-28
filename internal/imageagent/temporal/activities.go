@@ -114,10 +114,15 @@ const (
 	slotEffectPolicyInvalidCode           = "imageagent_slot_effect_policy_invalid"
 	invalidMainCandidateCountCode         = "invalid_main_candidate_count"
 	publicationLeaseRetrySafetyMargin     = time.Second
+	providerFinalizationTimeout           = time.Minute
 	recoveryBundlePersistenceAttempts     = 3
 	recoveryBundlePersistenceInitialDelay = 100 * time.Millisecond
 	recoveryBundlePersistenceMaxDelay     = time.Second
 )
+
+func providerFinalizationContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), providerFinalizationTimeout)
+}
 
 type slotPublicationRecoveryDetails struct {
 	RetryDelay     time.Duration `json:"retry_delay"`
@@ -219,25 +224,31 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			if generateErr != nil {
 				switch imageagent.ProviderDispatchStateOf(generateErr) {
 				case imageagent.ProviderNotDispatched, imageagent.ProviderRejectedBeforeEffect:
-					if _, recordErr := a.slotEffectsV3.RecordSlotProviderNotDispatchedV3(ctx, reservation); recordErr != nil {
+					finalizationCtx, cancelFinalization := providerFinalizationContext(ctx)
+					defer cancelFinalization()
+					if _, recordErr := a.slotEffectsV3.RecordSlotProviderNotDispatchedV3(finalizationCtx, reservation); recordErr != nil {
 						return v3Result, fmt.Errorf("record provider rejection before dispatch: %w", persistedSlotEffectV3RepositoryError(recordErr))
 					}
 					return v3Result, sdktemporal.NewApplicationError("image agent provider did not dispatch", imageagent.SlotProviderNotDispatchedCode, generateErr)
 				default:
+					finalizationCtx, cancelFinalization := providerFinalizationContext(ctx)
+					defer cancelFinalization()
 					if budgeted != nil {
-						if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(ctx, reservation); unknownErr != nil {
+						if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(finalizationCtx, reservation); unknownErr != nil {
 							return v3Result, fmt.Errorf("retain unknown provider reservation: %w", persistedSlotEffectV3RepositoryError(unknownErr))
 						}
 					}
+					return v3Result, a.blockSlotEffectV3(finalizationCtx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 				}
-				return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 			}
 			if budgeted != nil {
-				if _, settleErr := a.slotEffectsV3.SettleSlotProviderV3(ctx, reservation, generated.UsageReceipt); settleErr != nil {
-					if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(ctx, reservation); unknownErr != nil {
+				finalizationCtx, cancelFinalization := providerFinalizationContext(ctx)
+				defer cancelFinalization()
+				if _, settleErr := a.slotEffectsV3.SettleSlotProviderV3(finalizationCtx, reservation, generated.UsageReceipt); settleErr != nil {
+					if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(finalizationCtx, reservation); unknownErr != nil {
 						return v3Result, fmt.Errorf("retain unsettled provider reservation: %w", persistedSlotEffectV3RepositoryError(unknownErr))
 					}
-					return v3Result, a.blockSlotEffectV3(ctx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
+					return v3Result, a.blockSlotEffectV3(finalizationCtx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
 				}
 			}
 			prepared, err = prepareGeneratedSlotArtifacts(executionInput, generated, a.artifactStore)

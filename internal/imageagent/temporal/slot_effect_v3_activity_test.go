@@ -150,6 +150,40 @@ func TestExecuteSlotV3RetriesOnlyProvenUndispatchedProviderFailure(t *testing.T)
 	require.Equal(t, 2, executor.GenerateCalls())
 }
 
+func TestExecuteSlotV3PersistsDispatchedOutcomeAfterCallerCancellation(t *testing.T) {
+	repository, input, policy := initializedBudgetedV3Activity(t, "run-v3-provider-cancelled-after-dispatch", 16)
+	input.BudgetAuthorization, input.BudgetPolicy = true, policy
+	baseProvider := &recordingStagedExecutor{
+		started:             make(chan struct{}),
+		waitForCancellation: true,
+		generateErr: &imageagent.ProviderDispatchError{
+			State: imageagent.ProviderDispatchedUnknown,
+			Err:   errors.New("provider request may have been dispatched"),
+		},
+	}
+	provider := &budgetedRecordingExecutor{recordingStagedExecutor: baseProvider, quote: budgetActivityQuote("quote-cancelled-after-dispatch")}
+	effects := &cancellationRejectingV3Repository{SlotExternalEffectV3Repository: repository.(imageagent.SlotExternalEffectV3Repository)}
+	activities, newErr := NewActivities(ActivityDependencies{
+		Repository: repository, SlotEffects: repository.(imageagent.SlotExternalEffectRepository), SlotExecutor: provider,
+		SlotEffectsV3: effects, StagedSlotExecutor: provider, ArtifactStore: &recordingArtifactStore{},
+		Publisher: &identityCheckingPublisher{t: t}, PublisherV3: &identityCheckingPublisher{t: t}, PublicationOwner: func(context.Context) (string, error) { return "workflow-run/activity/1", nil },
+	})
+	require.NoError(t, newErr)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-baseProvider.started
+		cancel()
+	}()
+
+	_, err := activities.ExecuteSlotV3(ctx, input)
+
+	require.Error(t, err)
+	require.True(t, effects.RecordedUnknown())
+	require.False(t, effects.WriteSawCancelledContext())
+}
+
 func TestExecuteSlotV3ResumesPersistedStagingWithoutRegeneration(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-resume-staging")
 	effects := repository.(imageagent.SlotExternalEffectV3Repository)
@@ -771,13 +805,15 @@ func requireV3ApplicationErrorType(t *testing.T, err error, want string) {
 }
 
 type recordingStagedExecutor struct {
-	mu            sync.Mutex
-	generated     imageagent.SlotGeneratedOutput
-	generateErr   error
-	generateCalls int
-	buildCalls    int
-	mutateResult  func(*imageagent.SlotExecutionResult)
-	identity      productimage.AIIdentity
+	mu                  sync.Mutex
+	generated           imageagent.SlotGeneratedOutput
+	generateErr         error
+	generateCalls       int
+	buildCalls          int
+	mutateResult        func(*imageagent.SlotExecutionResult)
+	identity            productimage.AIIdentity
+	started             chan struct{}
+	waitForCancellation bool
 }
 
 func (e *recordingStagedExecutor) QuoteSlot(context.Context, imageagent.SlotExecutionInput, imageagent.BudgetPolicy) (imageagent.SlotUsageQuote, error) {
@@ -799,16 +835,73 @@ func (e *recordingStagedExecutor) ExecuteSlot(context.Context, imageagent.SlotEx
 
 func (e *recordingStagedExecutor) GenerateSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	e.generateCalls++
 	e.identity = productimage.AIIdentityFromContext(ctx)
-	if e.generateErr != nil {
-		return imageagent.SlotGeneratedOutput{}, e.generateErr
+	generated, generateErr := e.generated, e.generateErr
+	started, waitForCancellation := e.started, e.waitForCancellation
+	e.mu.Unlock()
+	if started != nil {
+		close(started)
 	}
-	if e.generated.SlotID == "" {
+	if waitForCancellation {
+		<-ctx.Done()
+	}
+	if generateErr != nil {
+		return imageagent.SlotGeneratedOutput{}, generateErr
+	}
+	if generated.SlotID == "" {
 		return imageagent.SlotGeneratedOutput{}, errors.New("generated output fixture is required")
 	}
-	return e.generated, nil
+	return generated, nil
+}
+
+type cancellationRejectingV3Repository struct {
+	imageagent.SlotExternalEffectV3Repository
+	mu                       sync.Mutex
+	recordedUnknown          bool
+	writeSawCancelledContext bool
+}
+
+func (r *cancellationRejectingV3Repository) MarkSlotProviderBudgetUnknownV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, error) {
+	if r.rejectCancelledWrite(ctx) {
+		return imageagent.SlotEffectV3Attempt{}, context.Canceled
+	}
+	attempt, err := r.SlotExternalEffectV3Repository.MarkSlotProviderBudgetUnknownV3(ctx, reservation)
+	if err == nil {
+		r.mu.Lock()
+		r.recordedUnknown = true
+		r.mu.Unlock()
+	}
+	return attempt, err
+}
+
+func (r *cancellationRejectingV3Repository) BlockSlotEffectV3(ctx context.Context, transition imageagent.SlotEffectV3BlockTransition) (imageagent.SlotEffectV3Attempt, error) {
+	if r.rejectCancelledWrite(ctx) {
+		return imageagent.SlotEffectV3Attempt{}, context.Canceled
+	}
+	return r.SlotExternalEffectV3Repository.BlockSlotEffectV3(ctx, transition)
+}
+
+func (r *cancellationRejectingV3Repository) rejectCancelledWrite(ctx context.Context) bool {
+	if ctx.Err() == nil {
+		return false
+	}
+	r.mu.Lock()
+	r.writeSawCancelledContext = true
+	r.mu.Unlock()
+	return true
+}
+
+func (r *cancellationRejectingV3Repository) RecordedUnknown() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.recordedUnknown
+}
+
+func (r *cancellationRejectingV3Repository) WriteSawCancelledContext() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.writeSawCancelledContext
 }
 
 func (e *recordingStagedExecutor) BuildSlotResult(_ context.Context, input imageagent.SlotExecutionInput, published imageagent.PublishedSlotOutput) (imageagent.SlotExecutionResult, error) {
