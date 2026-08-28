@@ -128,8 +128,15 @@ function canonicalProductReviewReasons(
     .filter(([, trace]) => trace.needs_review)
     .map(([field, trace]) => trace.review_reason?.trim() || `${field}需要确认`);
 
-  if (fieldReasons.length > 0) {
-    return fieldReasons;
+  const missingRequiredFieldReasons = product.needs_review
+    ? [
+        product.title?.trim() ? undefined : "商品标题缺失",
+        product.description?.trim() ? undefined : "商品描述缺失",
+      ].filter((reason): reason is string => Boolean(reason))
+    : [];
+
+  if (fieldReasons.length > 0 || missingRequiredFieldReasons.length > 0) {
+    return [...fieldReasons, ...missingRequiredFieldReasons];
   }
   return product.needs_review ? ["商品资料需要确认"] : [];
 }

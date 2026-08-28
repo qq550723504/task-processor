@@ -236,6 +236,8 @@ describe("Product Workspace review model", () => {
       status: "needs_review",
       result: {
         canonical_product: {
+          title: "Canvas Tote",
+          description: "Reusable canvas tote for daily use.",
           needs_review: true,
           field_traces: {
             title: {
@@ -252,6 +254,70 @@ describe("Product Workspace review model", () => {
         id: "fallback-review-1",
         severity: "blocking",
         title: "商品标题需要确认",
+      },
+    ]);
+  });
+
+  it("retains the missing-description blocker alongside an unrelated field trace", () => {
+    const task = {
+      status: "needs_review",
+      result: {
+        canonical_product: {
+          title: "Canvas Tote",
+          description: "   ",
+          needs_review: true,
+          field_traces: {
+            brand: {
+              needs_review: true,
+              review_reason: "品牌需要确认",
+            },
+          },
+        },
+      },
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task)).toEqual([
+      {
+        id: "fallback-review-1",
+        severity: "blocking",
+        title: "品牌需要确认",
+      },
+      {
+        id: "fallback-review-2",
+        severity: "blocking",
+        title: "商品描述缺失",
+      },
+    ]);
+  });
+
+  it("retains the missing-title blocker alongside an unrelated field trace", () => {
+    const task = {
+      status: "needs_review",
+      result: {
+        canonical_product: {
+          title: "   ",
+          description: "Reusable canvas tote for daily use.",
+          needs_review: true,
+          field_traces: {
+            brand: {
+              needs_review: true,
+              review_reason: "品牌需要确认",
+            },
+          },
+        },
+      },
+    } as ListingKitTaskResult;
+
+    expect(buildProductWorkspaceReviewIssues(task)).toEqual([
+      {
+        id: "fallback-review-1",
+        severity: "blocking",
+        title: "品牌需要确认",
+      },
+      {
+        id: "fallback-review-2",
+        severity: "blocking",
+        title: "商品标题缺失",
       },
     ]);
   });
@@ -284,6 +350,8 @@ describe("Product Workspace review model", () => {
           },
         ],
         canonical_product: {
+          title: "Canvas Tote",
+          description: "Reusable canvas tote for daily use.",
           needs_review: true,
           field_traces: {
             title: {

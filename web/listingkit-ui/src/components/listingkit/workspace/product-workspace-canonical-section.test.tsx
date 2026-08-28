@@ -100,6 +100,17 @@ describe("ProductWorkspaceCanonicalSection", () => {
     expect(screen.getByText("Bags / Totes")).toBeInTheDocument();
   });
 
+  it("shows the missing-title fallback when the canonical title is whitespace only", () => {
+    render(
+      <ProductWorkspaceCanonicalSection
+        product={{ ...product, title: "   " }}
+        section="basic"
+      />,
+    );
+
+    expect(screen.getByText("暂无标题")).toBeInTheDocument();
+  });
+
   it("shows canonical selling points and SEO keywords in basic information", () => {
     render(
       <ProductWorkspaceCanonicalSection
@@ -158,5 +169,16 @@ describe("ProductWorkspaceCanonicalSection", () => {
     rerender(<ProductWorkspaceCanonicalSection section="images" />);
     expect(screen.getByText("暂无商品图片")).toBeInTheDocument();
     expect(screen.queryByText(/Task|Temporal|Queue|任务 ID/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the missing-description fallback when the canonical description is whitespace only", () => {
+    render(
+      <ProductWorkspaceCanonicalSection
+        product={{ ...product, description: "   " }}
+        section="description"
+      />,
+    );
+
+    expect(screen.getByText("暂无商品描述")).toBeInTheDocument();
   });
 });

@@ -86,7 +86,7 @@ function BasicSection({ product }: { product?: CanonicalProduct | null }) {
   return (
     <SectionCard title="基础信息">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Fact label="商品标题" value={product?.title || "暂无标题"} />
+        <Fact label="商品标题" value={canonicalTextOrFallback(product?.title, "暂无标题")} />
         <Fact label="品牌" value={product?.brand || "暂无品牌"} />
         <Fact
           label="分类"
@@ -177,7 +177,7 @@ function DescriptionSection({ product }: { product?: CanonicalProduct | null }) 
   return (
     <SectionCard title="描述">
       <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-        {product?.description || "暂无商品描述"}
+        {canonicalTextOrFallback(product?.description, "暂无商品描述")}
       </p>
     </SectionCard>
   );
@@ -235,6 +235,10 @@ function formatStringList(values: string[] | undefined, emptyValue: string) {
     .filter(Boolean)
     .join(" · ");
   return formatted || emptyValue;
+}
+
+function canonicalTextOrFallback(value: string | undefined, fallback: string) {
+  return value?.trim() || fallback;
 }
 
 function formatVariantAttributes(attributes?: Record<string, CanonicalAttribute>) {
