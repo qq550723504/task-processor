@@ -309,8 +309,7 @@ type recordingWorkflowClient struct {
 }
 
 type recordedRecoverEffect struct {
-	command    imageagent.RecoverEffectCommand
-	projection imageagent.RunProjection
+	command imageagent.RecoverEffectCommand
 }
 
 func TestServiceStartRequiresBusinessTaskAndAuthorizedCatalogSubset(t *testing.T) {
@@ -482,11 +481,9 @@ func TestServiceRecoverEffectUsesVerifiedIdentityAndIgnoresClientWorkflowID(t *t
 	require.Len(t, workflows.recoveries, 1)
 	require.Equal(t, imageagent.RecoverEffectCommand{
 		RunID: "run-1", PlanRevision: 1, SlotID: "slot-1", Attempt: 2, ActionID: "recover-1",
-		Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "task-1"},
+		Identity:   imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "task-1"},
+		Projection: current,
 	}, workflows.recoveries[0].command)
-	require.Equal(t, "tenant-a", workflows.recoveries[0].projection.Run.TenantID)
-	require.Equal(t, "user-a", workflows.recoveries[0].projection.Run.UserID)
-	require.Equal(t, current.AssetCatalog, workflows.recoveries[0].projection.AssetCatalog)
 }
 
 func TestServiceStartRetryUsesImmutablePersistedCatalogInsteadOfMutableTaskCatalog(t *testing.T) {
@@ -788,8 +785,8 @@ func (c *recordingWorkflowClient) GetProjection(context.Context, imageagent.RunS
 	return c.projection, c.projectionErr
 }
 
-func (c *recordingWorkflowClient) RecoverEffect(_ context.Context, command imageagent.RecoverEffectCommand, projection imageagent.RunProjection) error {
-	c.recoveries = append(c.recoveries, recordedRecoverEffect{command: command, projection: projection})
+func (c *recordingWorkflowClient) RecoverEffect(_ context.Context, command imageagent.RecoverEffectCommand) error {
+	c.recoveries = append(c.recoveries, recordedRecoverEffect{command: command})
 	return c.recoverErr
 }
 

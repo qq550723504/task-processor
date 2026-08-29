@@ -118,36 +118,13 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 	return err
 }
 
-func (c *Client) RecoverEffect(ctx context.Context, command imageagent.RecoverEffectCommand, projection imageagent.RunProjection) error {
+func (c *Client) RecoverEffect(ctx context.Context, command imageagent.RecoverEffectCommand) error {
 	if c == nil || c.client == nil {
 		return fmt.Errorf("image agent temporal client is not configured")
 	}
-	if err := validateCommandIdentity(command.Identity, command.RunID); err != nil {
+	projection, slot, err := validateRecoverEffectProjection(command)
+	if err != nil {
 		return err
-	}
-	if command.PlanRevision <= 0 || command.PlanRevision > imageagent.MaxJSONSafePlanRevision || command.Attempt <= 0 || imageagent.ValidateActionID(command.ActionID) != nil {
-		return fmt.Errorf("image agent recovery requires a valid revision, attempt, and action ID")
-	}
-	if strings.TrimSpace(projection.Run.ID) != strings.TrimSpace(command.RunID) {
-		return imageagent.ErrRunNotFound
-	}
-	if strings.TrimSpace(projection.Run.TenantID) != strings.TrimSpace(command.Identity.TenantID) || strings.TrimSpace(projection.Run.UserID) != strings.TrimSpace(command.Identity.UserID) {
-		return imageagent.ErrRunNotFound
-	}
-	if projection.Plan.Revision != command.PlanRevision {
-		return imageagent.ErrRevisionConflict
-	}
-	var slot imageagent.Slot
-	found := false
-	for _, candidate := range projection.Plan.Slots {
-		if candidate.ID == strings.TrimSpace(command.SlotID) {
-			slot = candidate
-			found = true
-			break
-		}
-	}
-	if !found {
-		return imageagent.ErrCommandBlocked
 	}
 	return newRecoveryWorkflowStarter(c.client, TaskQueueV3)(ctx, EffectRecoveryWorkflowInput{
 		RunID: command.RunID, Identity: command.Identity, PlanRevision: command.PlanRevision,
@@ -312,6 +289,61 @@ func validateCommandIdentity(identity imageagent.ExecutionIdentity, runID string
 		return fmt.Errorf("image agent run and verified execution identity are required")
 	}
 	return nil
+}
+
+func validateRecoverEffectProjection(command imageagent.RecoverEffectCommand) (imageagent.RunProjection, imageagent.Slot, error) {
+	if err := validateCommandIdentity(command.Identity, command.RunID); err != nil {
+		return imageagent.RunProjection{}, imageagent.Slot{}, err
+	}
+	if command.PlanRevision <= 0 || command.PlanRevision > imageagent.MaxJSONSafePlanRevision || command.Attempt <= 0 || imageagent.ValidateActionID(command.ActionID) != nil {
+		return imageagent.RunProjection{}, imageagent.Slot{}, fmt.Errorf("image agent recovery requires a valid revision, attempt, and action ID")
+	}
+	slotID := strings.TrimSpace(command.SlotID)
+	projection := command.Projection
+	if strings.TrimSpace(projection.Run.ID) != strings.TrimSpace(command.RunID) {
+		return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrRunNotFound
+	}
+	if strings.TrimSpace(projection.Run.TenantID) != strings.TrimSpace(command.Identity.TenantID) || strings.TrimSpace(projection.Run.UserID) != strings.TrimSpace(command.Identity.UserID) {
+		return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrRunNotFound
+	}
+	if projection.Run.Status != imageagent.RunStatusBlocked || projection.Run.Block == nil || strings.TrimSpace(projection.Run.Block.SlotID) != slotID {
+		return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrCommandBlocked
+	}
+	if projection.Plan.Revision != command.PlanRevision || (projection.Run.ActivePlanRevision != 0 && projection.Run.ActivePlanRevision != command.PlanRevision) {
+		return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrRevisionConflict
+	}
+	if !isRecoverableBlockCode(projection.Run.Block.Code) {
+		return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrCommandBlocked
+	}
+	var slot imageagent.Slot
+	foundSlot := false
+	for _, candidate := range projection.Plan.Slots {
+		if candidate.ID == slotID {
+			slot = candidate
+			foundSlot = true
+			break
+		}
+	}
+	if !foundSlot {
+		return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrCommandBlocked
+	}
+	for _, candidate := range projection.Slots {
+		if candidate.Slot.ID == slotID && candidate.Attempt == command.Attempt && candidate.Slot.Status == imageagent.SlotStatusBlocked && strings.TrimSpace(candidate.ErrorCode) == strings.TrimSpace(projection.Run.Block.Code) {
+			return projection, slot, nil
+		}
+	}
+	return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrCommandBlocked
+}
+
+func isRecoverableBlockCode(code string) bool {
+	switch strings.TrimSpace(code) {
+	case "recovery_requested", "recovery_start_failed",
+		imageagent.SlotProviderOutcomeUnknownCode, imageagent.SlotStagingOutcomeUnknownCode, imageagent.SlotPublicationOutcomeUnknownCode,
+		imageagent.SlotRecoveryBlockedCode, imageagent.SlotEffectPhaseInvalidCode, imageagent.SlotEffectPolicyInvalidCode:
+		return true
+	default:
+		return false
+	}
 }
 
 type WorkerConfig struct {

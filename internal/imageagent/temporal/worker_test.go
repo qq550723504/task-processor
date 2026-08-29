@@ -49,8 +49,12 @@ func TestTemporalClientRecoverEffectUsesDeterministicWorkflowID(t *testing.T) {
 	raw := &recordingSDKClient{}
 	client := NewClient(raw)
 	projection := imageagent.RunProjection{
-		Run:  imageagent.Run{ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual},
+		Run:  imageagent.Run{ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual, Status: imageagent.RunStatusBlocked, Block: &imageagent.Block{Code: "recovery_start_failed", SlotID: "slot-1"}},
 		Plan: sevenSlotPlan(),
+		Slots: []imageagent.SlotProjection{{
+			Slot:    imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusBlocked},
+			Attempt: 1, ErrorCode: "recovery_start_failed",
+		}},
 		AssetCatalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
 			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example.test/source-1.png"},
 		}},
@@ -58,8 +62,8 @@ func TestTemporalClientRecoverEffectUsesDeterministicWorkflowID(t *testing.T) {
 
 	err := client.RecoverEffect(context.Background(), imageagent.RecoverEffectCommand{
 		RunID: "run-1", PlanRevision: 1, SlotID: "slot-1", Attempt: 1, ActionID: "recover-1",
-		Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
-	}, projection)
+		Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}, Projection: projection,
+	})
 
 	require.NoError(t, err)
 	require.Equal(t, "image-agent-effect-recovery:tenant-a:user-a:run-1:1:slot-1:1", raw.startOptions.ID)
@@ -70,4 +74,77 @@ func TestTemporalClientRecoverEffectUsesDeterministicWorkflowID(t *testing.T) {
 	require.Equal(t, projection.AssetCatalog, raw.effectRecoveryInput.AssetCatalog)
 	require.Equal(t, sevenSlotPlan().Slots[0], raw.effectRecoveryInput.Slot)
 	require.Equal(t, 1, raw.effectRecoveryInput.Attempt)
+}
+
+func TestTemporalClientRecoverEffectRejectsMismatchedProjectionBeforeStartingWorkflow(t *testing.T) {
+	tests := []struct {
+		name    string
+		command imageagent.RecoverEffectCommand
+		wantErr error
+	}{
+		{
+			name: "non blocked status",
+			command: imageagent.RecoverEffectCommand{
+				RunID: "run-1", PlanRevision: 1, SlotID: "slot-1", Attempt: 1, ActionID: "recover-1",
+				Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+				Projection: imageagent.RunProjection{
+					Run:   imageagent.Run{ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual, Status: imageagent.RunStatusExecuting, Block: &imageagent.Block{Code: "recovery_start_failed", SlotID: "slot-1"}},
+					Plan:  sevenSlotPlan(),
+					Slots: []imageagent.SlotProjection{{Slot: imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusBlocked}, Attempt: 1, ErrorCode: "recovery_start_failed"}},
+				},
+			},
+			wantErr: imageagent.ErrCommandBlocked,
+		},
+		{
+			name: "stale revision",
+			command: imageagent.RecoverEffectCommand{
+				RunID: "run-1", PlanRevision: 1, SlotID: "slot-1", Attempt: 1, ActionID: "recover-1",
+				Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+				Projection: imageagent.RunProjection{
+					Run:   imageagent.Run{ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual, Status: imageagent.RunStatusBlocked, Block: &imageagent.Block{Code: "recovery_start_failed", SlotID: "slot-1"}},
+					Plan:  imageagent.Plan{Revision: 2, IdempotencyKey: sevenSlotPlan().IdempotencyKey, SourceAssetIDs: sevenSlotPlan().SourceAssetIDs, Slots: sevenSlotPlan().Slots},
+					Slots: []imageagent.SlotProjection{{Slot: imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusBlocked}, Attempt: 1, ErrorCode: "recovery_start_failed"}},
+				},
+			},
+			wantErr: imageagent.ErrRevisionConflict,
+		},
+		{
+			name: "wrong attempt projection",
+			command: imageagent.RecoverEffectCommand{
+				RunID: "run-1", PlanRevision: 1, SlotID: "slot-1", Attempt: 1, ActionID: "recover-1",
+				Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+				Projection: imageagent.RunProjection{
+					Run:   imageagent.Run{ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual, Status: imageagent.RunStatusBlocked, Block: &imageagent.Block{Code: "recovery_start_failed", SlotID: "slot-1"}},
+					Plan:  sevenSlotPlan(),
+					Slots: []imageagent.SlotProjection{{Slot: imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusBlocked}, Attempt: 2, ErrorCode: "recovery_start_failed"}},
+				},
+			},
+			wantErr: imageagent.ErrCommandBlocked,
+		},
+		{
+			name: "non recovery block code",
+			command: imageagent.RecoverEffectCommand{
+				RunID: "run-1", PlanRevision: 1, SlotID: "slot-1", Attempt: 1, ActionID: "recover-1",
+				Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+				Projection: imageagent.RunProjection{
+					Run:   imageagent.Run{ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual, Status: imageagent.RunStatusBlocked, Block: &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"}},
+					Plan:  sevenSlotPlan(),
+					Slots: []imageagent.SlotProjection{{Slot: imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusBlocked}, Attempt: 1, ErrorCode: "slot_failed"}},
+				},
+			},
+			wantErr: imageagent.ErrCommandBlocked,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := &recordingSDKClient{}
+			client := NewClient(raw)
+
+			err := client.RecoverEffect(context.Background(), tt.command)
+
+			require.ErrorIs(t, err, tt.wantErr)
+			require.Empty(t, raw.workflowName)
+			require.Empty(t, raw.startOptions.ID)
+		})
+	}
 }

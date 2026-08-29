@@ -4480,6 +4480,9 @@ func (c *recordingDomainWorkflowClient) StartManual(_ context.Context, input ima
 func (c *recordingDomainWorkflowClient) GetProjection(context.Context, imageagent.RunScope, imageagent.ExecutionIdentity) (imageagent.WorkflowProjection, error) {
 	return c.projection, nil
 }
+func (*recordingDomainWorkflowClient) RecoverEffect(context.Context, imageagent.RecoverEffectCommand) error {
+	return nil
+}
 func (*recordingDomainWorkflowClient) ReplacePlan(context.Context, imageagent.ReplacePlanCommand) error {
 	return nil
 }

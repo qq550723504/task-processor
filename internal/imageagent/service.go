@@ -16,7 +16,6 @@ type Service struct {
 	repository Repository
 	workflows  WorkflowClient
 	catalogs   AuthorizedAssetCatalog
-	recoveries EffectRecoveryWorkflowClient
 }
 
 func NewService(repository Repository, workflows WorkflowClient, catalogs AuthorizedAssetCatalog) (*Service, error) {
@@ -29,8 +28,7 @@ func NewService(repository Repository, workflows WorkflowClient, catalogs Author
 	if catalogs == nil {
 		return nil, fmt.Errorf("image agent authorized asset catalog is required")
 	}
-	recoveries, _ := workflows.(EffectRecoveryWorkflowClient)
-	return &Service{repository: repository, workflows: workflows, catalogs: catalogs, recoveries: recoveries}, nil
+	return &Service{repository: repository, workflows: workflows, catalogs: catalogs}, nil
 }
 
 func (s *Service) Start(ctx context.Context, input StartRunInput) error {
@@ -230,13 +228,10 @@ func (s *Service) RecoverEffect(ctx context.Context, runID, slotID string, attem
 	}
 	for _, slot := range projection.Slots {
 		if slot.Slot.ID == slotID && slot.Attempt == attempt && slot.Slot.Status == SlotStatusBlocked {
-			if s.recoveries == nil {
-				return fmt.Errorf("image agent recovery workflow client is not configured")
-			}
-			return s.recoveries.RecoverEffect(ctx, RecoverEffectCommand{
+			return s.workflows.RecoverEffect(ctx, RecoverEffectCommand{
 				RunID: runID, PlanRevision: planRevision, SlotID: slotID, Attempt: attempt,
-				ActionID: strings.TrimSpace(actionID), Identity: identity,
-			}, projection)
+				ActionID: strings.TrimSpace(actionID), Identity: identity, Projection: projection,
+			})
 		}
 	}
 	return fmt.Errorf("%w: only the current blocked effect can be recovered", ErrCommandBlocked)

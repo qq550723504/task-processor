@@ -215,6 +215,7 @@ type RecoverEffectCommand struct {
 	Attempt      int
 	ActionID     string
 	Identity     ExecutionIdentity
+	Projection   RunProjection
 }
 
 type ResumeCommand struct {
@@ -235,12 +236,9 @@ type WorkflowClient interface {
 	StartManual(context.Context, WorkflowStart) error
 	GetProjection(context.Context, RunScope, ExecutionIdentity) (WorkflowProjection, error)
 	ReplacePlan(context.Context, ReplacePlanCommand) error
+	RecoverEffect(context.Context, RecoverEffectCommand) error
 	RetrySlot(context.Context, RetrySlotCommand) error
 	ApproveResults(context.Context, ApproveResultsCommand) error
 	Cancel(context.Context, CancelRunCommand) error
 	Resume(context.Context, ResumeCommand) (CommandAcknowledgement, error)
-}
-
-type EffectRecoveryWorkflowClient interface {
-	RecoverEffect(context.Context, RecoverEffectCommand, RunProjection) error
 }
