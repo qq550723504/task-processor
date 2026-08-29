@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -40,10 +39,9 @@ type discoveryDocument struct {
 }
 
 type middleware struct {
-	cfg       Config
-	authzCfg  AuthorizationConfig
-	mu        sync.Mutex
-	discovery discoveryDocument
+	cfg      Config
+	authzCfg AuthorizationConfig
+	verifier Verifier
 }
 
 func NewMiddleware(cfg Config, authzCfg AuthorizationConfig) gin.HandlerFunc {
@@ -51,11 +49,16 @@ func NewMiddleware(cfg Config, authzCfg AuthorizationConfig) gin.HandlerFunc {
 }
 
 func newMiddleware(cfg Config, authzCfg AuthorizationConfig) *middleware {
+	cfg = normalizeConfig(cfg)
+	return &middleware{cfg: cfg, authzCfg: authzCfg, verifier: newVerifier(cfg)}
+}
+
+func normalizeConfig(cfg Config) Config {
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
 	}
 	cfg.IssuerURL = strings.TrimRight(strings.TrimSpace(cfg.IssuerURL), "/")
 	cfg.ClientID = strings.TrimSpace(cfg.ClientID)
 	cfg.ClientSecret = strings.TrimSpace(cfg.ClientSecret)
-	return &middleware{cfg: cfg, authzCfg: authzCfg}
+	return cfg
 }
