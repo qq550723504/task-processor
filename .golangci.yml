@@ -212,6 +212,50 @@ linters-settings:
           - pkg: "task-processor/internal/workspace/"
             desc: "Platform registration must not own workspace business rules"
 
+      aicapability_boundaries:
+        # Keep the capability contract and routing model independent from app wiring, providers, and business domains.
+        # This is a stable package-direction rule; capability-specific semantics remain in package tests.
+        files:
+          - "**/internal/aicapability/*.go"
+          - "**/internal/aicapability/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/app$"
+          - pkg: "task-processor/internal/app/"
+            desc: "AI capability contracts must not depend on app runtime wiring"
+          - pkg: "task-processor/internal/asset$"
+          - pkg: "task-processor/internal/asset/"
+            desc: "AI capability contracts must not depend on asset business rules"
+          - pkg: "task-processor/internal/catalog$"
+          - pkg: "task-processor/internal/catalog/"
+            desc: "AI capability contracts must not depend on catalog business rules"
+          - pkg: "task-processor/internal/infra/clients$"
+          - pkg: "task-processor/internal/infra/clients/"
+            desc: "AI capability contracts must not depend on concrete provider clients"
+          - pkg: "task-processor/internal/listingkit$"
+          - pkg: "task-processor/internal/listingkit/"
+            desc: "AI capability contracts must not depend on ListingKit business rules"
+          - pkg: "task-processor/internal/marketplace$"
+          - pkg: "task-processor/internal/marketplace/"
+            desc: "AI capability contracts must not depend on marketplace business rules"
+          - pkg: "task-processor/internal/productenrich$"
+          - pkg: "task-processor/internal/productenrich/"
+            desc: "AI capability contracts must not depend on ProductEnrich compatibility runtime"
+          - pkg: "task-processor/internal/productimage$"
+          - pkg: "task-processor/internal/productimage/"
+            desc: "AI capability contracts must not depend on product-image business rules"
+          - pkg: "task-processor/internal/publishing$"
+          - pkg: "task-processor/internal/publishing/"
+            desc: "AI capability contracts must not depend on publishing business rules"
+          - pkg: "task-processor/internal/shein$"
+          - pkg: "task-processor/internal/shein/"
+            desc: "AI capability contracts must not depend on legacy SHEIN implementation"
+          - pkg: "task-processor/internal/temu$"
+          - pkg: "task-processor/internal/temu/"
+            desc: "AI capability contracts must not depend on legacy TEMU implementation"
+          - pkg: "task-processor/internal/workspace$"
+          - pkg: "task-processor/internal/workspace/"
+            desc: "AI capability contracts must not depend on workspace business rules"
+
       source_handoff_legacy_http:
         # The retired ProductEnrich HTTP owner must not regain production consumers.
         # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.

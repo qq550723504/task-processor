@@ -167,6 +167,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `depguard: platform_registration_boundaries`
 - `TestAICapabilityModuleDoesNotImportBusinessOrProviderPackages`
+- `depguard: aicapability_boundaries`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
