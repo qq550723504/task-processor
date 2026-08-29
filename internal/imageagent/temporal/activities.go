@@ -1033,7 +1033,8 @@ func (a *Activities) PersistRunState(ctx context.Context, input PersistRunStateA
 	if current.Run.Status == input.Projection.Status && current.Run.CurrentNode == input.CurrentNode &&
 		reflect.DeepEqual(current.Run.Block, input.Projection.Block) && reflect.DeepEqual(current.Plan, input.Projection.Plan) &&
 		reflect.DeepEqual(current.Slots, input.Projection.Slots) && current.ResultDigest == input.Projection.ResultDigest &&
-		reflect.DeepEqual(current.PendingCommand, input.Projection.PendingCommand) {
+		reflect.DeepEqual(current.PendingCommand, input.Projection.PendingCommand) &&
+		reflect.DeepEqual(current.RecoverableEffects, input.Projection.RecoverableEffects) {
 		return nil
 	}
 	updated := current
@@ -1052,6 +1053,7 @@ func (a *Activities) PersistRunState(ctx context.Context, input PersistRunStateA
 	}
 	updated.ResultDigest = input.Projection.ResultDigest
 	updated.PendingCommand = clonePendingReceipt(input.Projection.PendingCommand)
+	updated.RecoverableEffects = append([]imageagent.RecoverableEffect(nil), input.Projection.RecoverableEffects...)
 	updated.CommandIngress = input.Projection.CommandIngress
 	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: input.CommitID, ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: "run.updated", EventPayload: json.RawMessage(`{}`), ExpectedRunVersion: current.Run.Version, RunMutation: &imageagent.RunMutation{Status: updated.Run.Status, CurrentNode: input.CurrentNode, ActivePlanRevision: input.PlanRevision, Block: updated.Run.Block}})
 	if err != nil {

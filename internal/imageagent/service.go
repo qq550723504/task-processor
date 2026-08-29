@@ -207,34 +207,19 @@ func (s *Service) RecoverEffect(ctx context.Context, runID, slotID string, attem
 	if err != nil {
 		return err
 	}
-	if projection.Run.Status != RunStatusBlocked || projection.Run.Block == nil || strings.TrimSpace(projection.Run.Block.SlotID) != slotID {
+	if projection.Run.Status != RunStatusBlocked {
 		return fmt.Errorf("%w: only the current blocked effect can be recovered", ErrCommandBlocked)
 	}
 	if projection.Plan.Revision != planRevision {
 		return fmt.Errorf("%w: recover effect plan revision is stale", ErrRevisionConflict)
 	}
-	if !isRecoverableEffectBlockCode(projection.Run.Block.Code) {
+	if _, _, ok := FindRecoverableEffect(projection, slotID, attempt); !ok {
 		return fmt.Errorf("%w: only external-effect recovery blocks support re-drive", ErrCommandBlocked)
 	}
-	slotExists := false
-	for _, slot := range projection.Plan.Slots {
-		if slot.ID == slotID {
-			slotExists = true
-			break
-		}
-	}
-	if !slotExists {
-		return fmt.Errorf("%w: only the current blocked effect can be recovered", ErrCommandBlocked)
-	}
-	for _, slot := range projection.Slots {
-		if slot.Slot.ID == slotID && slot.Attempt == attempt && slot.Slot.Status == SlotStatusBlocked {
-			return s.workflows.RecoverEffect(ctx, RecoverEffectCommand{
-				RunID: runID, PlanRevision: planRevision, SlotID: slotID, Attempt: attempt,
-				ActionID: strings.TrimSpace(actionID), Identity: identity, Projection: projection,
-			})
-		}
-	}
-	return fmt.Errorf("%w: only the current blocked effect can be recovered", ErrCommandBlocked)
+	return s.workflows.RecoverEffect(ctx, RecoverEffectCommand{
+		RunID: runID, PlanRevision: planRevision, SlotID: slotID, Attempt: attempt,
+		ActionID: strings.TrimSpace(actionID), Identity: identity, Projection: projection,
+	})
 }
 
 func (s *Service) ApproveResults(ctx context.Context, runID string, planRevision int64, resultDigest, actionID string) error {
@@ -337,15 +322,4 @@ func clonePendingCommand(receipt *PendingCommandReceipt) *PendingCommandReceipt 
 	}
 	cloned := *receipt
 	return &cloned
-}
-
-func isRecoverableEffectBlockCode(code string) bool {
-	switch strings.TrimSpace(code) {
-	case "recovery_requested", "recovery_start_failed",
-		SlotProviderOutcomeUnknownCode, SlotStagingOutcomeUnknownCode, SlotPublicationOutcomeUnknownCode,
-		SlotRecoveryBlockedCode, SlotEffectPhaseInvalidCode, SlotEffectPolicyInvalidCode:
-		return true
-	default:
-		return false
-	}
 }

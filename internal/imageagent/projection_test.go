@@ -58,3 +58,39 @@ func TestSlotProjectionJSONPreservesV3DurableIdentityWithoutChangingV2CandidateW
 	require.NoError(t, err)
 	require.NotContains(t, string(v2), `"DurableAsset"`)
 }
+
+func TestNormalizeRecoverableEffectsDeduplicatesStableEntriesAndRejectsConflicts(t *testing.T) {
+	normalized, err := NormalizeRecoverableEffects([]RecoverableEffect{
+		{SlotID: "slot-1", Attempt: 1, Code: "recovery_requested"},
+		{SlotID: "slot-1", Attempt: 1, Code: "recovery_requested"},
+		{SlotID: "slot-2", Attempt: 2, Code: "recovery_start_failed"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []RecoverableEffect{
+		{SlotID: "slot-1", Attempt: 1, Code: "recovery_requested"},
+		{SlotID: "slot-2", Attempt: 2, Code: "recovery_start_failed"},
+	}, normalized)
+
+	_, err = NormalizeRecoverableEffects([]RecoverableEffect{
+		{SlotID: "slot-1", Attempt: 1, Code: "recovery_requested"},
+		{SlotID: "slot-1", Attempt: 1, Code: "recovery_start_failed"},
+	})
+	require.ErrorIs(t, err, ErrRevisionConflict)
+}
+
+func TestValidateProjectionSnapshotRejectsRecoverableEffectWithoutMatchingBlockedSlot(t *testing.T) {
+	run := Run{ID: "run-a", TenantID: "tenant-a", UserID: "user-a", ActivePlanRevision: 1, Status: RunStatusBlocked}
+	plan := Plan{Revision: 1, IdempotencyKey: "plan-key", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{{ID: "scene-1", Role: SlotRoleMain, IdempotencyKey: "scene-key", SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending}}}
+	snapshot := RunProjection{
+		Run:               run,
+		Plan:              plan,
+		ProjectionVersion: 1,
+		LastEventID:       1,
+		Slots:             []SlotProjection{{Slot: Slot{ID: "scene-1", Role: SlotRoleMain, Status: SlotStatusBlocked}, Attempt: 1, ErrorCode: "recovery_requested"}},
+		RecoverableEffects: []RecoverableEffect{
+			{SlotID: "scene-1", Attempt: 2, Code: "recovery_requested"},
+		},
+	}
+
+	require.ErrorIs(t, ValidateProjectionSnapshot(ScopeForRun(run), snapshot), ErrRevisionConflict)
+}

@@ -105,14 +105,15 @@ type WorkflowInput struct {
 }
 
 type WorkflowResult struct {
-	Status           imageagent.RunStatus
-	Block            *imageagent.Block
-	Plan             imageagent.Plan
-	Slots            []imageagent.SlotProjection
-	CompletedSlotIDs []string
-	ResultDigest     string
-	PendingCommand   *imageagent.PendingCommandReceipt
-	CommandIngress   imageagent.CommandIngress
+	Status             imageagent.RunStatus
+	Block              *imageagent.Block
+	Plan               imageagent.Plan
+	Slots              []imageagent.SlotProjection
+	RecoverableEffects []imageagent.RecoverableEffect
+	CompletedSlotIDs   []string
+	ResultDigest       string
+	PendingCommand     *imageagent.PendingCommandReceipt
+	CommandIngress     imageagent.CommandIngress
 }
 
 type SlotWorkflowInput struct {

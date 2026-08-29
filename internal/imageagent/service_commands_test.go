@@ -486,6 +486,56 @@ func TestServiceRecoverEffectUsesVerifiedIdentityAndIgnoresClientWorkflowID(t *t
 	}, workflows.recoveries[0].command)
 }
 
+func TestServiceRecoverEffectAllowsSecondaryRecoverableEffectOwner(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	run := imageagent.Run{
+		ID: "run-1", BusinessTaskID: "task-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual,
+		IdempotencyKey: "run-key-1", Status: imageagent.RunStatusBlocked, CurrentNode: "recover_effect", Version: 1,
+		Block: &imageagent.Block{Code: "recovery_requested", SlotID: "slot-1"}, ActivePlanRevision: 1,
+	}
+	plan := imageagent.Plan{
+		Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1", "source-2"},
+		Slots: []imageagent.Slot{
+			{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusPending},
+			{ID: "slot-2", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-2"}, IdempotencyKey: "slot-key-2", Status: imageagent.SlotStatusPending},
+		},
+	}
+	snapshot := imageagent.RunProjection{
+		Run: run, Plan: plan, AssetCatalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://cdn.example.test/source-1.png"},
+			{ID: "source-2", Type: imageagent.AuthorizedAssetSource, URL: "https://cdn.example.test/source-2.png"},
+		}},
+		Slots: []imageagent.SlotProjection{
+			{Slot: imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusBlocked}, Attempt: 1, ErrorCode: "recovery_requested"},
+			{Slot: imageagent.Slot{ID: "slot-2", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-2"}, IdempotencyKey: "slot-key-2", Status: imageagent.SlotStatusBlocked}, Attempt: 2, ErrorCode: "recovery_start_failed"},
+		},
+		RecoverableEffects: []imageagent.RecoverableEffect{
+			{SlotID: "slot-1", Attempt: 1, Code: "recovery_requested"},
+			{SlotID: "slot-2", Attempt: 2, Code: "recovery_start_failed"},
+		},
+	}
+	_, err := repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{
+		Scope: imageagent.ScopeForRun(run), Run: run, Plan: plan, Catalog: snapshot.AssetCatalog,
+		Snapshot: snapshot, CommitID: "seed-recovery-multi", EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+	workflows := &recordingWorkflowClient{}
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
+	require.NoError(t, err)
+	current, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-1"})
+	require.NoError(t, err)
+
+	err = service.RecoverEffect(verifiedContext("tenant-a", "user-a"), "run-1", "slot-2", 2, 1, "recover-secondary")
+
+	require.NoError(t, err)
+	require.Len(t, workflows.recoveries, 1)
+	require.Equal(t, imageagent.RecoverEffectCommand{
+		RunID: "run-1", PlanRevision: 1, SlotID: "slot-2", Attempt: 2, ActionID: "recover-secondary",
+		Identity:   imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "task-1"},
+		Projection: current,
+	}, workflows.recoveries[0].command)
+}
+
 func TestServiceStartRetryUsesImmutablePersistedCatalogInsteadOfMutableTaskCatalog(t *testing.T) {
 	repository := store.NewMemoryRepository()
 	workflows := &recordingWorkflowClient{}

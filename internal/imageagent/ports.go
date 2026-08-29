@@ -130,16 +130,17 @@ type WorkflowStart struct {
 // RunProjection is the complete application snapshot exposed to transports.
 // It deliberately contains only image-agent application contracts.
 type RunProjection struct {
-	Run               Run
-	Plan              Plan
-	Slots             []SlotProjection
-	ResultDigest      string
-	Actions           []Action
-	LastEventID       int64
-	ProjectionVersion int64
-	AssetCatalog      AssetCatalog
-	PendingCommand    *PendingCommandReceipt
-	CommandIngress    CommandIngress
+	Run                Run
+	Plan               Plan
+	Slots              []SlotProjection
+	RecoverableEffects []RecoverableEffect
+	ResultDigest       string
+	Actions            []Action
+	LastEventID        int64
+	ProjectionVersion  int64
+	AssetCatalog       AssetCatalog
+	PendingCommand     *PendingCommandReceipt
+	CommandIngress     CommandIngress
 }
 
 type SlotProjection struct {
@@ -152,14 +153,15 @@ type SlotProjection struct {
 // WorkflowProjection is the workflow-owned portion of the application
 // snapshot. Temporal adapters map query results into this contract.
 type WorkflowProjection struct {
-	Status           RunStatus
-	Block            *Block
-	Plan             Plan
-	Slots            []SlotProjection
-	CompletedSlotIDs []string
-	ResultDigest     string
-	PendingCommand   *PendingCommandReceipt
-	CommandIngress   CommandIngress
+	Status             RunStatus
+	Block              *Block
+	Plan               Plan
+	Slots              []SlotProjection
+	RecoverableEffects []RecoverableEffect
+	CompletedSlotIDs   []string
+	ResultDigest       string
+	PendingCommand     *PendingCommandReceipt
+	CommandIngress     CommandIngress
 }
 
 type AssetCatalogScope struct {

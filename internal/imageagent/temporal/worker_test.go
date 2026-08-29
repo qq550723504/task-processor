@@ -148,3 +148,44 @@ func TestTemporalClientRecoverEffectRejectsMismatchedProjectionBeforeStartingWor
 		})
 	}
 }
+
+func TestTemporalClientRecoverEffectAcceptsSecondaryRecoverableEffectOwner(t *testing.T) {
+	raw := &recordingSDKClient{}
+	client := NewClient(raw)
+	projection := imageagent.RunProjection{
+		Run: imageagent.Run{
+			ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual,
+			Status: imageagent.RunStatusBlocked, Block: &imageagent.Block{Code: "recovery_requested", SlotID: "slot-1"},
+		},
+		Plan: imageagent.Plan{
+			Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1", "source-2"},
+			Slots: []imageagent.Slot{
+				{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusPending},
+				{ID: "slot-2", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-2"}, IdempotencyKey: "slot-key-2", Status: imageagent.SlotStatusPending},
+			},
+		},
+		Slots: []imageagent.SlotProjection{
+			{Slot: imageagent.Slot{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusBlocked}, Attempt: 1, ErrorCode: "recovery_requested"},
+			{Slot: imageagent.Slot{ID: "slot-2", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-2"}, IdempotencyKey: "slot-key-2", Status: imageagent.SlotStatusBlocked}, Attempt: 2, ErrorCode: "recovery_start_failed"},
+		},
+		RecoverableEffects: []imageagent.RecoverableEffect{
+			{SlotID: "slot-1", Attempt: 1, Code: "recovery_requested"},
+			{SlotID: "slot-2", Attempt: 2, Code: "recovery_start_failed"},
+		},
+		AssetCatalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example.test/source-1.png"},
+			{ID: "source-2", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example.test/source-2.png"},
+		}},
+	}
+
+	err := client.RecoverEffect(context.Background(), imageagent.RecoverEffectCommand{
+		RunID: "run-1", PlanRevision: 1, SlotID: "slot-2", Attempt: 2, ActionID: "recover-2",
+		Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}, Projection: projection,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, EffectRecoveryWorkflowName, raw.workflowName)
+	require.Equal(t, projection.AssetCatalog, raw.effectRecoveryInput.AssetCatalog)
+	require.Equal(t, projection.Plan.Slots[1], raw.effectRecoveryInput.Slot)
+	require.Equal(t, 2, raw.effectRecoveryInput.Attempt)
+}

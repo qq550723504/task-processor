@@ -306,44 +306,17 @@ func validateRecoverEffectProjection(command imageagent.RecoverEffectCommand) (i
 	if strings.TrimSpace(projection.Run.TenantID) != strings.TrimSpace(command.Identity.TenantID) || strings.TrimSpace(projection.Run.UserID) != strings.TrimSpace(command.Identity.UserID) {
 		return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrRunNotFound
 	}
-	if projection.Run.Status != imageagent.RunStatusBlocked || projection.Run.Block == nil || strings.TrimSpace(projection.Run.Block.SlotID) != slotID {
+	if projection.Run.Status != imageagent.RunStatusBlocked {
 		return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrCommandBlocked
 	}
 	if projection.Plan.Revision != command.PlanRevision || (projection.Run.ActivePlanRevision != 0 && projection.Run.ActivePlanRevision != command.PlanRevision) {
 		return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrRevisionConflict
 	}
-	if !isRecoverableBlockCode(projection.Run.Block.Code) {
-		return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrCommandBlocked
-	}
-	var slot imageagent.Slot
-	foundSlot := false
-	for _, candidate := range projection.Plan.Slots {
-		if candidate.ID == slotID {
-			slot = candidate
-			foundSlot = true
-			break
-		}
-	}
-	if !foundSlot {
-		return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrCommandBlocked
-	}
-	for _, candidate := range projection.Slots {
-		if candidate.Slot.ID == slotID && candidate.Attempt == command.Attempt && candidate.Slot.Status == imageagent.SlotStatusBlocked && strings.TrimSpace(candidate.ErrorCode) == strings.TrimSpace(projection.Run.Block.Code) {
-			return projection, slot, nil
-		}
+	_, slot, ok := imageagent.FindRecoverableEffect(projection, slotID, command.Attempt)
+	if ok {
+		return projection, slot, nil
 	}
 	return imageagent.RunProjection{}, imageagent.Slot{}, imageagent.ErrCommandBlocked
-}
-
-func isRecoverableBlockCode(code string) bool {
-	switch strings.TrimSpace(code) {
-	case "recovery_requested", "recovery_start_failed",
-		imageagent.SlotProviderOutcomeUnknownCode, imageagent.SlotStagingOutcomeUnknownCode, imageagent.SlotPublicationOutcomeUnknownCode,
-		imageagent.SlotRecoveryBlockedCode, imageagent.SlotEffectPhaseInvalidCode, imageagent.SlotEffectPolicyInvalidCode:
-		return true
-	default:
-		return false
-	}
 }
 
 type WorkerConfig struct {

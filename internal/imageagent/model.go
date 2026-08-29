@@ -115,6 +115,12 @@ type Block struct {
 	SlotID  string
 }
 
+type RecoverableEffect struct {
+	SlotID  string
+	Attempt int
+	Code    string
+}
+
 type AssetRef struct {
 	ID   string
 	URL  string

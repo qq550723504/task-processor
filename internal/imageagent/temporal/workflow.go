@@ -1252,18 +1252,21 @@ func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, re
 		if err == nil {
 			*s.projection = result
 			if recoveryHandoffEnabled {
-				if recoveryInput, ok := effectRecoveryInputForCancellation(*s.input, results, result.Block); ok {
+				failed := cloneWorkflowResult(result)
+				failedAny := false
+				for _, recoveryInput := range effectRecoveryInputsForCancellation(*s.input, results, result.RecoverableEffects) {
 					if startErr := s.effects.startEffectRecoveryV3(ctx, recoveryInput); startErr != nil {
-						failed := result
-						failed.Block = cloneTemporalBlock(result.Block)
-						markBlockedProjectionCode(&failed, recoveryStartFailedBlockCode)
-						if persistErr := s.effects.persistRunState(ctx, *s.input, failed, "retry_slot"); persistErr != nil {
-							s.cancelCommitErr = persistErr
-							s.wake.SendAsync(struct{}{})
-							return
-						}
-						*s.projection = failed
+						markRecoverableEffectCode(&failed, recoveryInput.Slot.ID, recoveryInput.Attempt, recoveryStartFailedBlockCode)
+						failedAny = true
 					}
+				}
+				if failedAny {
+					if persistErr := s.effects.persistRunState(ctx, *s.input, failed, "retry_slot"); persistErr != nil {
+						s.cancelCommitErr = persistErr
+						s.wake.SendAsync(struct{}{})
+						return
+					}
+					*s.projection = failed
 				}
 			}
 			s.cancelBlocked = true
@@ -1799,6 +1802,7 @@ func blockedCancellationProjection(input WorkflowInput, results []SlotWorkflowRe
 		Plan:   input.Plan,
 		Slots:  slotProjections(input.Plan, results),
 	}
+	result.RecoverableEffects = recoverableEffectsForCancellation(results, activityWire)
 	for index, slot := range input.Plan.Slots {
 		if index < len(results) && results[index].Status == imageagent.SlotStatusAccepted {
 			result.CompletedSlotIDs = append(result.CompletedSlotIDs, slot.ID)
@@ -1818,20 +1822,25 @@ func blockedCancellationProjection(input WorkflowInput, results []SlotWorkflowRe
 	return result
 }
 
-func effectRecoveryInputForCancellation(input WorkflowInput, results []SlotWorkflowResult, block *imageagent.Block) (EffectRecoveryWorkflowInput, bool) {
-	if block == nil || strings.TrimSpace(block.SlotID) == "" {
-		return EffectRecoveryWorkflowInput{}, false
+func effectRecoveryInputsForCancellation(input WorkflowInput, results []SlotWorkflowResult, effects []imageagent.RecoverableEffect) []EffectRecoveryWorkflowInput {
+	normalized, err := imageagent.NormalizeRecoverableEffects(effects)
+	if err != nil || len(normalized) == 0 {
+		return nil
 	}
-	for index := range input.Plan.Slots {
-		if input.Plan.Slots[index].ID != block.SlotID || index >= len(results) || strings.TrimSpace(results[index].Execution.SlotID) == "" {
-			continue
+	inputs := make([]EffectRecoveryWorkflowInput, 0, len(normalized))
+	for _, effect := range normalized {
+		for index := range input.Plan.Slots {
+			if input.Plan.Slots[index].ID != effect.SlotID || index >= len(results) || strings.TrimSpace(results[index].Execution.SlotID) == "" || results[index].Execution.Attempt != effect.Attempt {
+				continue
+			}
+			inputs = append(inputs, EffectRecoveryWorkflowInput{
+				RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
+				Slot: input.Plan.Slots[index], Attempt: effect.Attempt, AssetCatalog: input.AssetCatalog,
+			})
+			break
 		}
-		return EffectRecoveryWorkflowInput{
-			RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
-			Slot: input.Plan.Slots[index], Attempt: results[index].Execution.Attempt, AssetCatalog: input.AssetCatalog,
-		}, true
 	}
-	return EffectRecoveryWorkflowInput{}, false
+	return inputs
 }
 
 func markBlockedProjectionCode(result *WorkflowResult, code string) {
@@ -1840,6 +1849,82 @@ func markBlockedProjectionCode(result *WorkflowResult, code string) {
 	}
 	result.Block.Code = code
 	result.Block.Message = code
+	for index := range result.RecoverableEffects {
+		result.RecoverableEffects[index].Code = code
+		markSlotProjectionRecoverableCode(&result.Slots, result.RecoverableEffects[index])
+	}
+	if len(result.RecoverableEffects) == 0 {
+		for index := range result.Slots {
+			if result.Slots[index].Slot.ID == result.Block.SlotID && result.Slots[index].Slot.Status == imageagent.SlotStatusBlocked {
+				result.Slots[index].ErrorCode = code
+			}
+		}
+	}
+}
+
+func markRecoverableEffectCode(result *WorkflowResult, slotID string, attempt int, code string) {
+	if result == nil {
+		return
+	}
+	slotID = strings.TrimSpace(slotID)
+	for index := range result.RecoverableEffects {
+		if result.RecoverableEffects[index].SlotID != slotID || result.RecoverableEffects[index].Attempt != attempt {
+			continue
+		}
+		result.RecoverableEffects[index].Code = code
+		markSlotProjectionRecoverableCode(&result.Slots, result.RecoverableEffects[index])
+		if result.Block != nil && strings.TrimSpace(result.Block.SlotID) == slotID {
+			result.Block.Code = code
+			result.Block.Message = code
+		}
+		return
+	}
+	if result.Block != nil && strings.TrimSpace(result.Block.SlotID) == slotID {
+		result.Block.Code = code
+		result.Block.Message = code
+	}
+}
+
+func markSlotProjectionRecoverableCode(slots *[]imageagent.SlotProjection, effect imageagent.RecoverableEffect) {
+	for index := range *slots {
+		if (*slots)[index].Slot.ID == effect.SlotID && (*slots)[index].Attempt == effect.Attempt && (*slots)[index].Slot.Status == imageagent.SlotStatusBlocked {
+			(*slots)[index].ErrorCode = effect.Code
+			return
+		}
+	}
+}
+
+func recoverableEffectsForCancellation(results []SlotWorkflowResult, activityWire workflowActivityWire) []imageagent.RecoverableEffect {
+	if !activityWire.useV3Slot {
+		return nil
+	}
+	effects := make([]imageagent.RecoverableEffect, 0, len(results))
+	for _, result := range results {
+		if strings.TrimSpace(result.Execution.SlotID) == "" || cancellationResultTerminalized(result) {
+			continue
+		}
+		code := strings.TrimSpace(result.ErrorCode)
+		if code == "" {
+			code = "slot_failed"
+		}
+		effects = append(effects, imageagent.RecoverableEffect{
+			SlotID: result.Execution.SlotID, Attempt: result.Execution.Attempt, Code: imageagent.NormalizeSlotEffectV3BlockCode(code),
+		})
+	}
+	normalized, err := imageagent.NormalizeRecoverableEffects(effects)
+	if err != nil {
+		return nil
+	}
+	return normalized
+}
+
+func cloneWorkflowResult(result WorkflowResult) WorkflowResult {
+	cloned := result
+	cloned.Block = cloneTemporalBlock(result.Block)
+	cloned.Slots = append([]imageagent.SlotProjection(nil), result.Slots...)
+	cloned.CompletedSlotIDs = append([]string(nil), result.CompletedSlotIDs...)
+	cloned.RecoverableEffects = append([]imageagent.RecoverableEffect(nil), result.RecoverableEffects...)
+	return cloned
 }
 
 func cancellationResultsTerminalized(results []SlotWorkflowResult) bool {

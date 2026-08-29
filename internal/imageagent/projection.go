@@ -62,6 +62,15 @@ func ValidateProjectionSnapshot(scope RunScope, snapshot RunProjection) error {
 	if snapshot.Plan.Revision != snapshot.Run.ActivePlanRevision {
 		return ErrRevisionConflict
 	}
+	recoverableEffects, err := NormalizeRecoverableEffects(snapshot.RecoverableEffects)
+	if err != nil {
+		return err
+	}
+	for _, effect := range recoverableEffects {
+		if _, _, ok := FindRecoverableEffect(snapshot, effect.SlotID, effect.Attempt); !ok {
+			return ErrRevisionConflict
+		}
+	}
 	for _, slot := range snapshot.Slots {
 		for index, candidate := range slot.Candidates {
 			if err := validateProjectionCandidate(scope, snapshot.Plan.Revision, slot, index, candidate); err != nil {
