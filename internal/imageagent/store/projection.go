@@ -607,6 +607,14 @@ func validateSlotProjectionMutationIdentity(input imageagent.ProjectionCommit, c
 		!imageagent.IsRecoverableEffectBlockCode(mutation.Result.ErrorCode) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode {
 		return fmt.Errorf("%w: recovery slot mutation may only refresh the existing blocked attempt code", imageagent.ErrRevisionConflict)
 	}
+	if err := validateAttempt(mutation.Attempt); err != nil {
+		return err
+	}
+	if input.RunMutation == nil || mutation.Attempt.Node != input.RunMutation.CurrentNode ||
+		mutation.Attempt.IdempotencyKey != fmt.Sprintf("%s:slot:%s:attempt:%d", input.CommitID, mutation.Result.SlotID, mutation.Result.Attempt) ||
+		mutation.Attempt.Outcome != "blocked" || mutation.Attempt.ErrorCategory != mutation.Result.ErrorCode {
+		return fmt.Errorf("%w: recovery slot mutation metadata does not match the projection commit", imageagent.ErrRevisionConflict)
+	}
 	return nil
 }
 

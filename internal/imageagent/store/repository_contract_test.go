@@ -62,6 +62,7 @@ func TestRepositoryContract(t *testing.T) {
 			testProjectionCommitRejectsPlanOutsidePersistedCatalog(t, tt.new(t))
 			testProjectionCommitRejectsMismatchedSlotAttemptIdentityAtomically(t, tt.new(t))
 			testProjectionCommitAtomicallyPersistsRecoveryRegistryAndOrderedSlotMutations(t, tt.new(t))
+			testProjectionCommitRejectsInvalidSameAttemptRecoveryMetadata(t, tt.new(t))
 			testAttemptIdentitiesAreIdempotentAndNonAliasing(t, tt.new(t))
 			testInitializationConcurrencyIdentityIncludesMaxConcurrentSlots(t, tt.new(t))
 			testPublicationUnknownActionsSurviveProjectionRefresh(t, tt.new(t))
@@ -130,7 +131,9 @@ func testProjectionCommitAtomicallyPersistsRecoveryRegistryAndOrderedSlotMutatio
 			Projection:   updated.Slots[index],
 			Attempt: imageagent.StepAttempt{
 				TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: 1,
-				SlotID: effect.SlotID, Attempt: effect.Attempt, Node: "recovery_handoff", IdempotencyKey: "recovery:" + effect.SlotID, Outcome: "blocked", ErrorCategory: effect.Code,
+				SlotID: effect.SlotID, Attempt: effect.Attempt, Node: "retry_slot",
+				IdempotencyKey: fmt.Sprintf("recovery:registry:slot:%s:attempt:%d", effect.SlotID, effect.Attempt),
+				Outcome:        "blocked", ErrorCategory: effect.Code,
 			},
 		})
 	}
@@ -164,6 +167,87 @@ func testProjectionCommitAtomicallyPersistsRecoveryRegistryAndOrderedSlotMutatio
 	conflict.SlotMutations[1].Projection.ErrorCode = "recovery_start_failed"
 	_, err = repo.CommitProjection(ctx, conflict)
 	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+}
+
+func testProjectionCommitRejectsInvalidSameAttemptRecoveryMetadata(t *testing.T, repo repositoryContract) {
+	t.Helper()
+	tests := []struct {
+		name   string
+		mutate func(*imageagent.StepAttempt)
+	}{
+		{name: "empty node", mutate: func(attempt *imageagent.StepAttempt) { attempt.Node = "" }},
+		{name: "drifted node", mutate: func(attempt *imageagent.StepAttempt) { attempt.Node = "other_node" }},
+		{name: "empty idempotency key", mutate: func(attempt *imageagent.StepAttempt) { attempt.IdempotencyKey = "" }},
+		{name: "drifted idempotency key", mutate: func(attempt *imageagent.StepAttempt) { attempt.IdempotencyKey = "other:key" }},
+		{name: "drifted outcome", mutate: func(attempt *imageagent.StepAttempt) { attempt.Outcome = "accepted" }},
+		{name: "drifted error category", mutate: func(attempt *imageagent.StepAttempt) { attempt.ErrorCategory = "other_code" }},
+	}
+	for index, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			run := manualRun(fmt.Sprintf("run-recovery-metadata-%d", index), "tenant-a")
+			plan := planRevision(1)
+			scope := imageagent.ScopeForRun(*run)
+			current, err := repo.InitializeRun(ctx, imageagent.ProjectionInitialization{
+				Scope: scope, Run: *run, Plan: plan,
+				Catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+					{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source-1.png"},
+					{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style-1.png"},
+				}},
+				Snapshot: imageagent.RunProjection{Run: *run, Plan: plan}, CommitID: "start:recovery-metadata",
+				EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+			})
+			require.NoError(t, err)
+			blocked := current
+			blocked.Slots = append([]imageagent.SlotProjection(nil), current.Slots...)
+			blocked.Slots[0] = imageagent.SlotProjection{Slot: blocked.Slots[0].Slot, Attempt: 1, ErrorCode: "slot_execution_failed"}
+			blocked.Slots[0].Slot.Status = imageagent.SlotStatusBlocked
+			initialAttempt := imageagent.StepAttempt{
+				TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: 1,
+				SlotID: "slot-1", Attempt: 1, Node: "execute_slot_v3", IdempotencyKey: "attempt:slot-1", Outcome: "blocked", ErrorCategory: "slot_execution_failed",
+			}
+			current, err = repo.CommitProjection(ctx, imageagent.ProjectionCommit{
+				Scope: scope, CommitID: "slot:slot-1", ExpectedProjectionVersion: current.ProjectionVersion,
+				Snapshot: blocked, EventType: "slot.result.persisted", EventPayload: json.RawMessage(`{}`),
+				SlotMutation: &imageagent.SlotProjectionMutation{
+					PlanRevision: 1,
+					Result:       imageagent.SlotResult{SlotID: "slot-1", Attempt: 1, Status: imageagent.SlotStatusBlocked, ErrorCode: "slot_execution_failed"},
+					Projection:   blocked.Slots[0], Attempt: initialAttempt,
+				},
+			})
+			require.NoError(t, err)
+
+			updated := current
+			updated.Run.Status = imageagent.RunStatusBlocked
+			updated.Run.CurrentNode = "retry_slot"
+			updated.Run.Block = &imageagent.Block{Code: "recovery_requested", Message: "recovery_requested", SlotID: "slot-1"}
+			updated.Run.Version++
+			updated.Slots = append([]imageagent.SlotProjection(nil), current.Slots...)
+			updated.Slots[0].ErrorCode = "recovery_requested"
+			updated.RecoverableEffects = []imageagent.RecoverableEffect{{SlotID: "slot-1", Attempt: 1, Code: "recovery_requested"}}
+			commitID := "recovery:invalid-metadata"
+			attempt := imageagent.StepAttempt{
+				TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: 1,
+				SlotID: "slot-1", Attempt: 1, Node: "retry_slot",
+				IdempotencyKey: commitID + ":slot:slot-1:attempt:1", Outcome: "blocked", ErrorCategory: "recovery_requested",
+			}
+			test.mutate(&attempt)
+			_, err = repo.CommitProjection(ctx, imageagent.ProjectionCommit{
+				Scope: scope, CommitID: commitID, ExpectedProjectionVersion: current.ProjectionVersion,
+				ExpectedRunVersion: current.Run.Version, Snapshot: updated, EventType: "run.updated", EventPayload: json.RawMessage(`{}`),
+				RunMutation: &imageagent.RunMutation{Status: imageagent.RunStatusBlocked, CurrentNode: "retry_slot", ActivePlanRevision: 1, Block: updated.Run.Block},
+				SlotMutations: []imageagent.SlotProjectionMutation{{
+					PlanRevision: 1,
+					Result:       imageagent.SlotResult{SlotID: "slot-1", Attempt: 1, Status: imageagent.SlotStatusBlocked, ErrorCode: "recovery_requested"},
+					Projection:   updated.Slots[0], Attempt: attempt,
+				}},
+			})
+			require.Error(t, err)
+			stored, getErr := repo.GetProjection(ctx, scope)
+			require.NoError(t, getErr)
+			require.Equal(t, current, stored)
+		})
+	}
 }
 
 func testPublicationUnknownActionsSurviveProjectionRefresh(t *testing.T, repo repositoryContract) {
