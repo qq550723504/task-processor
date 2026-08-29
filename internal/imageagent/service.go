@@ -94,6 +94,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	input.RunID = strings.TrimSpace(input.RunID)
 	input.BusinessTaskID = strings.TrimSpace(input.BusinessTaskID)
+	input.TargetPlatform = strings.TrimSpace(input.TargetPlatform)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
 	if err := ValidateMaxConcurrentSlots(input.MaxConcurrentSlots); err != nil {
 		return err
@@ -118,7 +119,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: input.RunID}
 	if existing, getErr := s.repository.GetProjection(ctx, scope); getErr == nil {
-		if existing.Run.BusinessTaskID != input.BusinessTaskID || existing.Run.IdempotencyKey != input.IdempotencyKey || existing.Run.Budget != input.Budget || existing.Run.MaxConcurrentSlots != input.MaxConcurrentSlots || !reflect.DeepEqual(existing.Plan, input.Plan) {
+		if existing.Run.BusinessTaskID != input.BusinessTaskID || existing.Run.TargetPlatform != input.TargetPlatform || existing.Run.IdempotencyKey != input.IdempotencyKey || existing.Run.Budget != input.Budget || existing.Run.MaxConcurrentSlots != input.MaxConcurrentSlots || !reflect.DeepEqual(existing.Plan, input.Plan) {
 			return ErrRevisionConflict
 		}
 		if existing.Run.Status == RunStatusCompleted || existing.Run.Status == RunStatusCancelled {
@@ -134,7 +135,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	if err := ValidateInitialSubmittedPlan(input.Plan); err != nil {
 		return fmt.Errorf("%w: validate image agent plan: %v", ErrValidation, err)
 	}
-	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: input.BusinessTaskID, RunID: input.RunID, StyleReferenceIDs: append([]string(nil), input.Plan.StyleReferenceIDs...)})
+	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: input.BusinessTaskID, RunID: input.RunID, TargetPlatform: input.TargetPlatform, StyleReferenceIDs: append([]string(nil), input.Plan.StyleReferenceIDs...)})
 	if err != nil {
 		return fmt.Errorf("%w: resolve authorized image assets: %v", ErrValidation, err)
 	}
@@ -146,7 +147,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		return fmt.Errorf("%w: validate authorized image assets: %v", ErrValidation, err)
 	}
 	run := Run{
-		ID: input.RunID, BusinessTaskID: input.BusinessTaskID,
+		ID: input.RunID, BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
 		TenantID: identity.TenantID, UserID: identity.UserID,
 		Mode: RunModeManual, IdempotencyKey: input.IdempotencyKey,
 		Status: RunStatusPlanning, CurrentNode: "plan", Version: 1, ActivePlanRevision: input.Plan.Revision,

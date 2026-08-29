@@ -121,6 +121,25 @@ func TestImageAgentCatalogRejectsTargetKeyedAssetBundlesWithoutTargetAuthorizati
 	require.ErrorIs(t, err, imageagent.ErrValidation)
 }
 
+func TestImageAgentCatalogUsesOnlyExplicitOwnedTargetBundle(t *testing.T) {
+	task := &listingkit.Task{Result: &listingkit.ListingKitResult{
+		StandardProductSnapshot: &listingkit.StandardProductSnapshot{},
+		AssetBundlesByTarget: map[string]*asset.Bundle{
+			"shein":  {Assets: []asset.Asset{{ID: "shein-source", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/shein.png"}}},
+			"amazon": {Assets: []asset.Asset{{ID: "amazon-source", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/amazon.png"}}},
+		},
+	}}
+
+	got, err := imageAgentCatalogFromTaskTarget(task, " SHEIN ")
+	require.NoError(t, err)
+	require.Equal(t, []imageagent.AuthorizedAsset{{ID: "shein-source", Type: imageagent.AuthorizedAssetSource, URL: "https://cdn.example.test/shein.png", SourceURL: "https://cdn.example.test/shein.png", DisplayURL: "https://cdn.example.test/shein.png", Label: "Source image"}}, got.Assets)
+
+	_, err = imageAgentCatalogFromTaskTarget(task, "temu")
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+	_, err = imageAgentCatalogFromTaskTarget(task, "")
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+}
+
 func TestListingKitImageAgentCatalogTruncatesDisplayLabelsAt256UnicodeCodePoints(t *testing.T) {
 	longLabel := strings.Repeat("界", 257)
 	task := &listingkit.Task{

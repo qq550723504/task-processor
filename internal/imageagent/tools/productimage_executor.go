@@ -290,15 +290,18 @@ func (e *ProductImageSlotExecutor) validateAndResolve(input imageagent.SlotExecu
 	for i := range slot.SourceAssetIDs {
 		slot.SourceAssetIDs[i] = strings.TrimSpace(slot.SourceAssetIDs[i])
 	}
-	var sourceAssetID string
+	sourceIDs := make(map[string]struct{}, len(slot.SourceAssetIDs))
 	for _, id := range slot.SourceAssetIDs {
 		if id != "" {
-			sourceAssetID = id
-			break
+			sourceIDs[id] = struct{}{}
 		}
 	}
-	if sourceAssetID == "" {
-		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("slot %q requires a source asset", slot.ID)
+	if len(sourceIDs) != 1 || len(slot.SourceAssetIDs) != 1 {
+		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("%w: slot %q requires exactly one source asset", imageagent.ErrValidation, slot.ID)
+	}
+	var sourceAssetID string
+	for id := range sourceIDs {
+		sourceAssetID = id
 	}
 	if len(input.AssetCatalog.Assets) == 0 {
 		return imageagent.Slot{}, "", productimage.ImageAsset{}, fmt.Errorf("slot %q requires an authorized catalog", slot.ID)

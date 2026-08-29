@@ -149,6 +149,27 @@ func TestSubmittedPlanRevisionContractIsJSONSafeAndSingleStep(t *testing.T) {
 	require.ErrorContains(t, ValidateReplacementSubmittedPlan(1, replacement), "single step")
 }
 
+func TestValidateInitialSubmittedPlanRequiresExactlyOneSharedSource(t *testing.T) {
+	base := Plan{
+		Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"},
+		Slots: []Slot{{ID: "main-1", Role: SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: SlotStatusPending}},
+	}
+	require.NoError(t, ValidateInitialSubmittedPlan(base))
+
+	noSource := base
+	noSource.SourceAssetIDs = nil
+	require.ErrorContains(t, ValidateInitialSubmittedPlan(noSource), "exactly one source")
+
+	multipleSources := base
+	multipleSources.SourceAssetIDs = []string{"source-1", "source-2"}
+	multipleSources.Slots = []Slot{{ID: "main-1", Role: SlotRoleMain, SourceAssetIDs: []string{"source-1", "source-2"}, IdempotencyKey: "slot-key-1", Status: SlotStatusPending}}
+	require.ErrorContains(t, ValidateInitialSubmittedPlan(multipleSources), "exactly one source")
+
+	multipleSlotSources := base
+	multipleSlotSources.Slots = []Slot{{ID: "main-1", Role: SlotRoleMain, SourceAssetIDs: []string{"source-1", "source-1"}, IdempotencyKey: "slot-key-1", Status: SlotStatusPending}}
+	require.ErrorContains(t, ValidateInitialSubmittedPlan(multipleSlotSources), "exactly one source")
+}
+
 func TestValidatePlanRequiresExactlyOneMainSlot(t *testing.T) {
 	base := Plan{
 		Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"},

@@ -112,6 +112,7 @@ type PublishApprovedV3Input struct {
 type StartRunInput struct {
 	RunID              string
 	BusinessTaskID     string
+	TargetPlatform     string
 	Mode               RunMode
 	IdempotencyKey     string
 	Plan               Plan
@@ -169,6 +170,7 @@ type AssetCatalogScope struct {
 	OwnerUserID    string
 	BusinessTaskID string
 	RunID          string
+	TargetPlatform string
 	// StyleReferenceIDs are the caller-selected, task-owned style assets that
 	// may be promoted into the run-scoped authorization snapshot.
 	StyleReferenceIDs []string

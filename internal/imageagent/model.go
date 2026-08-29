@@ -70,8 +70,11 @@ type Plan struct {
 }
 
 type Run struct {
-	ID                 string
-	BusinessTaskID     string
+	ID             string
+	BusinessTaskID string
+	// TargetPlatform is the immutable ListingKit target selected when a
+	// target-keyed task starts a run. Empty retains scalar-task compatibility.
+	TargetPlatform     string
 	TenantID           string
 	UserID             string
 	Mode               RunMode

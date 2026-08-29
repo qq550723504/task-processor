@@ -71,3 +71,28 @@ func TestAutoMigrateCreatesOwnerScopedV2TablesWithoutTouchingLegacySchema(t *tes
 	_, err = repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "legacy-user", RunID: "legacy-run"})
 	require.ErrorIs(t, err, imageagent.ErrRunNotFound, "v1 ownerless rows must be invisible to the v2 repository")
 }
+
+func TestRunTargetPlatformRoundTripsThroughV2Schema(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:image-agent-target-platform-%d?mode=memory&cache=shared", concurrentSQLiteSequence.Add(1))), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	require.NoError(t, AutoMigrate(db))
+	repository := NewGormRepository(db)
+	run := manualRun("run-target-platform", "tenant-a")
+	run.TargetPlatform = "shein"
+	plan := planRevision(1)
+	projection, err := repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{
+		Scope: imageagent.ScopeForRun(*run), Run: *run, Plan: plan,
+		Catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source.png"},
+			{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style.png"},
+		}},
+		Snapshot: imageagent.RunProjection{Run: *run, Plan: plan}, CommitID: "start:target-platform",
+		EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "shein", projection.Run.TargetPlatform)
+
+	stored, err := repository.GetProjection(context.Background(), imageagent.ScopeForRun(*run))
+	require.NoError(t, err)
+	require.Equal(t, "shein", stored.Run.TargetPlatform)
+}

@@ -567,7 +567,7 @@ func TestExecutorRejectsSemanticFallbacksAndAcceptsModelLocalOutput(t *testing.T
 
 func TestExecutorDoesNotMutateInputsOrCatalogAssets(t *testing.T) {
 	input := sceneSlotInput(" scene-1 ")
-	input.Slot.SourceAssetIDs = []string{" source-1 ", " source-2 "}
+	input.Slot.SourceAssetIDs = []string{" source-1 "}
 	input.Slot.StyleReferenceIDs = []string{" style-1 "}
 	input.AssetCatalog.Assets = append(input.AssetCatalog.Assets, imageagent.AuthorizedAsset{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style-1.png"})
 	before := input
@@ -583,6 +583,18 @@ func TestExecutorDoesNotMutateInputsOrCatalogAssets(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, reflect.DeepEqual(before, input), "slot execution mutated caller input: before=%+v after=%+v", before, input)
 	require.Equal(t, map[string]string{"owner": "test"}, input.AssetCatalog.Assets[0].Metadata)
+}
+
+func TestExecutorRejectsMultipleSourceAssetsBeforeProviderDispatch(t *testing.T) {
+	renderer := &recordingSceneRenderer{result: []productimage.ImageAsset{{URL: "https://generated.example/generated.jpg"}}}
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: renderer})
+	input := sceneSlotInput("scene-1")
+	input.Slot.SourceAssetIDs = []string{"source-1", "source-2"}
+
+	_, err := executor.ExecuteSlot(context.Background(), input)
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+	require.ErrorContains(t, err, "exactly one source")
+	require.Zero(t, renderer.calls)
 }
 
 func TestExecutorConcurrentReuseDoesNotShareMutableInputs(t *testing.T) {

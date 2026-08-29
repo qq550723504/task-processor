@@ -7,6 +7,7 @@ type runRecord struct {
 	UserID             string `gorm:"column:owner_user_id;primaryKey;type:varchar(128);index;uniqueIndex:idx_image_agent_v2_runs_owner_idempotency,priority:2"`
 	ID                 string `gorm:"primaryKey;type:varchar(64)"`
 	BusinessTaskID     string `gorm:"type:varchar(64);index"`
+	TargetPlatform     string `gorm:"type:varchar(64);not null;default:''"`
 	Mode               string `gorm:"type:varchar(32);not null"`
 	IdempotencyKey     string `gorm:"type:varchar(128);not null;uniqueIndex:idx_image_agent_v2_runs_owner_idempotency,priority:3"`
 	Status             string `gorm:"type:varchar(32);index;not null"`

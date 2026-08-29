@@ -11,6 +11,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
+	listingplatform "task-processor/internal/listing/platform"
 	"task-processor/internal/listingkit"
 )
 
@@ -43,22 +44,34 @@ func (c *listingKitAuthorizedAssetCatalog) Resolve(ctx context.Context, scope im
 	if task == nil || strings.TrimSpace(task.ID) != strings.TrimSpace(scope.BusinessTaskID) || strings.TrimSpace(task.TenantID) != identity.TenantID || listingkit.ResolveTaskUserID(task) != identity.UserID {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task is not owned by verified tenant")
 	}
-	return imageAgentCatalogFromTask(task, scope.StyleReferenceIDs)
+	return imageAgentCatalogFromTaskTarget(task, scope.TargetPlatform, scope.StyleReferenceIDs)
 }
 
 func imageAgentCatalogFromTask(task *listingkit.Task, selectedStyleIDs ...[]string) (imageagent.AssetCatalog, error) {
+	return imageAgentCatalogFromTaskTarget(task, "", selectedStyleIDs...)
+}
+
+func imageAgentCatalogFromTaskTarget(task *listingkit.Task, targetPlatform string, selectedStyleIDs ...[]string) (imageagent.AssetCatalog, error) {
 	if task == nil || task.Result == nil || task.Result.StandardProductSnapshot == nil {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task standard product snapshot is required")
 	}
+	bundle := task.Result.StandardProductSnapshot.AssetBundle
 	if len(task.Result.AssetBundlesByTarget) > 0 {
-		return imageagent.AssetCatalog{}, fmt.Errorf("%w: target-keyed asset bundles require explicit image-agent target authorization", imageagent.ErrValidation)
+		targetPlatform = listingplatform.Normalize(targetPlatform)
+		if targetPlatform == "" {
+			return imageagent.AssetCatalog{}, fmt.Errorf("%w: target-keyed asset bundles require explicit image-agent target authorization", imageagent.ErrValidation)
+		}
+		bundle = task.Result.AssetBundlesByTarget[targetPlatform]
+		if bundle == nil {
+			return imageagent.AssetCatalog{}, fmt.Errorf("%w: image-agent target %q has no asset bundle", imageagent.ErrValidation, targetPlatform)
+		}
 	}
 	snapshot := task.Result.StandardProductSnapshot
 	var styles []string
 	if len(selectedStyleIDs) > 0 {
 		styles = selectedStyleIDs[0]
 	}
-	assets, err := authorizedAssetsFromBundle(snapshot.AssetBundle, styles)
+	assets, err := authorizedAssetsFromBundle(bundle, styles)
 	if err != nil {
 		return imageagent.AssetCatalog{}, err
 	}
