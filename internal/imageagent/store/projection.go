@@ -217,8 +217,12 @@ func (r *memoryRepository) applyMemoryProjectionMutation(input imageagent.Projec
 		run.ActivePlanRevision = mutation.Plan.Revision
 		r.runs[key] = run
 	}
-	if input.SlotMutation != nil {
-		mutation := input.SlotMutation
+	mutations, err := orderedSlotProjectionMutations(input)
+	if err != nil {
+		return err
+	}
+	for index := range mutations {
+		mutation := &mutations[index]
 		run := r.runs[key]
 		if run.ActivePlanRevision != mutation.PlanRevision {
 			return imageagent.ErrRevisionConflict
@@ -228,12 +232,16 @@ func (r *memoryRepository) applyMemoryProjectionMutation(input imageagent.Projec
 		if !exists {
 			return imageagent.ErrRevisionConflict
 		}
-		if stored.result.Attempt >= mutation.Result.Attempt && !sameSlotResult(stored.result, mutation.Result) {
+		if stored.result.Attempt > mutation.Result.Attempt {
 			return imageagent.ErrRevisionConflict
 		}
+		sameAttempt := stored.result.Attempt == mutation.Result.Attempt
 		stored.result = cloneSlotResult(mutation.Result)
 		stored.slot.Status = mutation.Result.Status
 		r.slots[storedKey] = stored
+		if sameAttempt {
+			continue
+		}
 		attempt := mutation.Attempt
 		if err := validateAttempt(attempt); err != nil {
 			return err
@@ -508,7 +516,8 @@ func withProjectionTransaction(ctx context.Context, db *gorm.DB, transaction fun
 }
 
 func validateProjectionMutation(current imageagent.RunProjection, input imageagent.ProjectionCommit) error {
-	if err := validateSlotProjectionMutationIdentity(current, input); err != nil {
+	mutations, err := orderedSlotProjectionMutations(input)
+	if err != nil {
 		return err
 	}
 	expectedRun := current.Run
@@ -526,18 +535,20 @@ func validateProjectionMutation(current imageagent.RunProjection, input imageage
 		expectedRun.ActivePlanRevision = expectedPlan.Revision
 		expectedSlots = initialSlotProjections(expectedPlan)
 	}
-	if input.SlotMutation != nil {
-		found := false
-		for index := range expectedSlots {
-			if expectedSlots[index].Slot.ID == input.SlotMutation.Result.SlotID {
-				expectedSlots[index] = input.SlotMutation.Projection
-				found = true
-				break
-			}
+	seenSlots := make(map[string]struct{}, len(mutations))
+	for _, mutation := range mutations {
+		if _, exists := seenSlots[mutation.Result.SlotID]; exists {
+			return fmt.Errorf("%w: projection commit contains duplicate slot mutations", imageagent.ErrRevisionConflict)
 		}
-		if !found {
+		seenSlots[mutation.Result.SlotID] = struct{}{}
+		index := slotProjectionIndexByID(expectedSlots, mutation.Result.SlotID)
+		if index < 0 {
 			return imageagent.ErrRevisionConflict
 		}
+		if err := validateSlotProjectionMutationIdentity(input, expectedSlots[index], mutation); err != nil {
+			return err
+		}
+		expectedSlots[index] = mutation.Projection
 	}
 	if !reflect.DeepEqual(input.Snapshot.Run, expectedRun) {
 		return fmt.Errorf("%w: run snapshot does not match normalized mutation", imageagent.ErrRevisionConflict)
@@ -557,32 +568,23 @@ func validateProjectionMutation(current imageagent.RunProjection, input imageage
 	return nil
 }
 
-func validateSlotProjectionMutationIdentity(current imageagent.RunProjection, input imageagent.ProjectionCommit) error {
-	mutation := input.SlotMutation
-	if mutation == nil {
-		return nil
+func orderedSlotProjectionMutations(input imageagent.ProjectionCommit) ([]imageagent.SlotProjectionMutation, error) {
+	if input.SlotMutation != nil && len(input.SlotMutations) > 0 {
+		return nil, fmt.Errorf("%w: projection commit cannot mix legacy and ordered slot mutations", imageagent.ErrRevisionConflict)
 	}
-	if mutation.PlanRevision != current.Run.ActivePlanRevision || mutation.PlanRevision != current.Plan.Revision ||
+	if input.SlotMutation != nil {
+		return []imageagent.SlotProjectionMutation{*input.SlotMutation}, nil
+	}
+	return input.SlotMutations, nil
+}
+
+func validateSlotProjectionMutationIdentity(input imageagent.ProjectionCommit, currentSlot imageagent.SlotProjection, mutation imageagent.SlotProjectionMutation) error {
+	if mutation.PlanRevision != input.Snapshot.Plan.Revision || mutation.PlanRevision != input.Snapshot.Run.ActivePlanRevision ||
 		mutation.Attempt.PlanRevision != mutation.PlanRevision ||
 		mutation.Attempt.TenantID != input.Scope.TenantID || mutation.Attempt.OwnerUserID != input.Scope.OwnerUserID || mutation.Attempt.RunID != input.Scope.RunID ||
 		mutation.Result.SlotID == "" || mutation.Result.SlotID != mutation.Attempt.SlotID || mutation.Result.SlotID != mutation.Projection.Slot.ID ||
 		mutation.Result.Attempt <= 0 || mutation.Result.Attempt != mutation.Attempt.Attempt || mutation.Result.Attempt != mutation.Projection.Attempt {
 		return fmt.Errorf("%w: slot mutation identity does not match the active run", imageagent.ErrRevisionConflict)
-	}
-	var currentSlot *imageagent.SlotProjection
-	for index := range current.Slots {
-		if current.Slots[index].Slot.ID == mutation.Result.SlotID {
-			currentSlot = &current.Slots[index]
-			break
-		}
-	}
-	if currentSlot == nil || mutation.Result.Attempt != currentSlot.Attempt+1 {
-		return fmt.Errorf("%w: slot mutation attempt does not follow the current slot", imageagent.ErrRevisionConflict)
-	}
-	expectedSlot := cloneSlot(currentSlot.Slot)
-	expectedSlot.Status = mutation.Result.Status
-	if !reflect.DeepEqual(mutation.Projection.Slot, expectedSlot) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode {
-		return fmt.Errorf("%w: slot mutation projection does not match the current slot", imageagent.ErrRevisionConflict)
 	}
 	candidateIDs := make([]string, 0, len(mutation.Projection.Candidates))
 	for _, candidate := range mutation.Projection.Candidates {
@@ -591,7 +593,30 @@ func validateSlotProjectionMutationIdentity(current imageagent.RunProjection, in
 	if !slices.Equal(candidateIDs, mutation.Result.CandidateAssetIDs) {
 		return fmt.Errorf("%w: slot mutation candidate identity does not match", imageagent.ErrRevisionConflict)
 	}
+	if mutation.Result.Attempt == currentSlot.Attempt+1 {
+		expectedSlot := cloneSlot(currentSlot.Slot)
+		expectedSlot.Status = mutation.Result.Status
+		if !reflect.DeepEqual(mutation.Projection.Slot, expectedSlot) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode {
+			return fmt.Errorf("%w: slot mutation projection does not match the current slot", imageagent.ErrRevisionConflict)
+		}
+		return nil
+	}
+	if mutation.Result.Attempt != currentSlot.Attempt || currentSlot.Attempt <= 0 ||
+		currentSlot.Slot.Status != imageagent.SlotStatusBlocked || mutation.Result.Status != currentSlot.Slot.Status ||
+		!reflect.DeepEqual(mutation.Projection.Slot, currentSlot.Slot) || !reflect.DeepEqual(mutation.Projection.Candidates, currentSlot.Candidates) ||
+		!imageagent.IsRecoverableEffectBlockCode(mutation.Result.ErrorCode) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode {
+		return fmt.Errorf("%w: recovery slot mutation may only refresh the existing blocked attempt code", imageagent.ErrRevisionConflict)
+	}
 	return nil
+}
+
+func slotProjectionIndexByID(slots []imageagent.SlotProjection, slotID string) int {
+	for index := range slots {
+		if slots[index].Slot.ID == slotID {
+			return index
+		}
+	}
+	return -1
 }
 
 func validateProjectionPreconditions(current imageagent.RunProjection, persistedRun imageagent.Run, input imageagent.ProjectionCommit) error {
@@ -651,19 +676,37 @@ func (r *gormRepository) applyGormProjectionMutation(ctx context.Context, tx *go
 			}
 		}
 	}
-	if input.SlotMutation != nil {
-		mutation := input.SlotMutation
+	mutations, err := orderedSlotProjectionMutations(input)
+	if err != nil {
+		return err
+	}
+	for index := range mutations {
+		mutation := &mutations[index]
+		var stored slotRecord
+		if err := scopedWhere(tx, input.Scope).Where("plan_revision = ? AND id = ?", mutation.PlanRevision, mutation.Result.SlotID).First(&stored).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return imageagent.ErrRevisionConflict
+			}
+			return err
+		}
+		if stored.Attempt > mutation.Result.Attempt {
+			return imageagent.ErrRevisionConflict
+		}
+		sameAttempt := stored.Attempt == mutation.Result.Attempt
 		candidateIDs := make([]string, 0, len(mutation.Projection.Candidates))
 		for _, candidate := range mutation.Projection.Candidates {
 			candidateIDs = append(candidateIDs, candidate.AssetID)
 		}
 		candidates, _ := marshalJSON(candidateIDs)
-		updated := scopedWhere(tx.Model(&slotRecord{}), input.Scope).Where("plan_revision = ? AND id = ?", mutation.PlanRevision, mutation.Result.SlotID).Updates(map[string]any{"attempt": mutation.Result.Attempt, "status": string(mutation.Result.Status), "candidate_asset_ids": candidates, "error_code": mutation.Result.ErrorCode})
+		updated := scopedWhere(tx.Model(&slotRecord{}), input.Scope).Where("plan_revision = ? AND id = ? AND attempt = ?", mutation.PlanRevision, mutation.Result.SlotID, stored.Attempt).Updates(map[string]any{"attempt": mutation.Result.Attempt, "status": string(mutation.Result.Status), "candidate_asset_ids": candidates, "error_code": mutation.Result.ErrorCode})
 		if updated.Error != nil {
 			return updated.Error
 		}
 		if updated.RowsAffected != 1 {
 			return imageagent.ErrRevisionConflict
+		}
+		if sameAttempt {
+			continue
 		}
 		row := attemptRecord{TenantID: mutation.Attempt.TenantID, OwnerUserID: mutation.Attempt.OwnerUserID, RunID: mutation.Attempt.RunID, PlanRevision: mutation.Attempt.PlanRevision, SlotID: mutation.Attempt.SlotID, Attempt: mutation.Attempt.Attempt, Node: mutation.Attempt.Node, IdempotencyKey: mutation.Attempt.IdempotencyKey, Outcome: mutation.Attempt.Outcome, ErrorCategory: mutation.Attempt.ErrorCategory}
 		if err := tx.Create(&row).Error; err != nil {

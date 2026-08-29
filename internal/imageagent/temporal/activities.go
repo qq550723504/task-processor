@@ -1055,11 +1055,58 @@ func (a *Activities) PersistRunState(ctx context.Context, input PersistRunStateA
 	updated.PendingCommand = clonePendingReceipt(input.Projection.PendingCommand)
 	updated.RecoverableEffects = append([]imageagent.RecoverableEffect(nil), input.Projection.RecoverableEffects...)
 	updated.CommandIngress = input.Projection.CommandIngress
-	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: input.CommitID, ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: "run.updated", EventPayload: json.RawMessage(`{}`), ExpectedRunVersion: current.Run.Version, RunMutation: &imageagent.RunMutation{Status: updated.Run.Status, CurrentNode: input.CurrentNode, ActivePlanRevision: input.PlanRevision, Block: updated.Run.Block}})
+	slotMutations, err := recoverySlotCodeMutations(current.Slots, updated.Slots, scope, input.PlanRevision, input.CurrentNode, input.CommitID)
+	if err != nil {
+		return err
+	}
+	_, err = a.repository.CommitProjection(ctx, imageagent.ProjectionCommit{
+		Scope: scope, CommitID: input.CommitID, ExpectedProjectionVersion: current.ProjectionVersion,
+		Snapshot: updated, EventType: "run.updated", EventPayload: json.RawMessage(`{}`),
+		ExpectedRunVersion: current.Run.Version,
+		RunMutation:        &imageagent.RunMutation{Status: updated.Run.Status, CurrentNode: input.CurrentNode, ActivePlanRevision: input.PlanRevision, Block: updated.Run.Block},
+		SlotMutations:      slotMutations,
+	})
 	if err != nil {
 		return fmt.Errorf("commit image agent run projection: %w", err)
 	}
 	return nil
+}
+
+func recoverySlotCodeMutations(current, updated []imageagent.SlotProjection, scope imageagent.RunScope, planRevision int64, node, commitID string) ([]imageagent.SlotProjectionMutation, error) {
+	if len(current) != len(updated) {
+		return nil, imageagent.ErrRevisionConflict
+	}
+	mutations := make([]imageagent.SlotProjectionMutation, 0, len(updated))
+	for index := range updated {
+		before, after := current[index], updated[index]
+		if reflect.DeepEqual(before, after) {
+			continue
+		}
+		afterCode := after.ErrorCode
+		before.ErrorCode, after.ErrorCode = "", ""
+		if !reflect.DeepEqual(before, after) || after.Attempt <= 0 || after.Slot.Status != imageagent.SlotStatusBlocked || !imageagent.IsRecoverableEffectBlockCode(afterCode) {
+			return nil, fmt.Errorf("%w: run-state persistence may only refresh recoverable slot codes", imageagent.ErrRevisionConflict)
+		}
+		candidateIDs := make([]string, 0, len(after.Candidates))
+		for _, candidate := range after.Candidates {
+			candidateIDs = append(candidateIDs, candidate.AssetID)
+		}
+		mutations = append(mutations, imageagent.SlotProjectionMutation{
+			PlanRevision: planRevision,
+			Result: imageagent.SlotResult{
+				SlotID: after.Slot.ID, Attempt: after.Attempt, Status: after.Slot.Status,
+				CandidateAssetIDs: candidateIDs, ErrorCode: afterCode,
+			},
+			Projection: updated[index],
+			Attempt: imageagent.StepAttempt{
+				TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: planRevision,
+				SlotID: after.Slot.ID, Attempt: after.Attempt, Node: node,
+				IdempotencyKey: fmt.Sprintf("%s:slot:%s:attempt:%d", commitID, after.Slot.ID, after.Attempt),
+				Outcome:        "blocked", ErrorCategory: afterCode,
+			},
+		})
+	}
+	return mutations, nil
 }
 
 func (a *Activities) PersistWorkflowFailure(ctx context.Context, input PersistWorkflowFailureActivityInput) error {

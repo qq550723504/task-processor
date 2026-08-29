@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -1245,7 +1246,12 @@ func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, re
 			markBlockedProjectionCode(&result, recoveryRequestedBlockCode)
 		}
 		result.CommandIngress = s.commandIngress()
-		err := s.effects.persistRunState(ctx, *s.input, result, "retry_slot")
+		var err error
+		if recoveryHandoffEnabled {
+			err = s.persistRecoveryHandoff(ctx, result)
+		} else {
+			err = s.effects.persistRunState(ctx, *s.input, result, "retry_slot")
+		}
 		s.cancelPending = false
 		s.cancelCommitErr = err
 		s.cancelBlocked = false
@@ -1261,7 +1267,7 @@ func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, re
 					}
 				}
 				if failedAny {
-					if persistErr := s.effects.persistRunState(ctx, *s.input, failed, "retry_slot"); persistErr != nil {
+					if persistErr := s.persistRecoveryHandoff(ctx, failed); persistErr != nil {
 						s.cancelCommitErr = persistErr
 						s.wake.SendAsync(struct{}{})
 						return
@@ -1285,6 +1291,52 @@ func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, re
 		s.cancelCommitted = true
 	}
 	s.wake.SendAsync(struct{}{})
+}
+
+func (s *workflowUpdateState) persistRecoveryHandoff(ctx workflow.Context, result WorkflowResult) error {
+	identity, err := recoveryHandoffCommitIdentity(result)
+	if err != nil {
+		return err
+	}
+	return s.effects.persistRunState(ctx, *s.input, result, "retry_slot", identity)
+}
+
+func recoveryHandoffCommitIdentity(result WorkflowResult) (string, error) {
+	effects, err := imageagent.NormalizeRecoverableEffects(result.RecoverableEffects)
+	if err != nil {
+		return "", err
+	}
+	sort.Slice(effects, func(i, j int) bool {
+		if effects[i].SlotID != effects[j].SlotID {
+			return effects[i].SlotID < effects[j].SlotID
+		}
+		if effects[i].Attempt != effects[j].Attempt {
+			return effects[i].Attempt < effects[j].Attempt
+		}
+		return effects[i].Code < effects[j].Code
+	})
+	type slotCodeProjection struct {
+		SlotID    string
+		Attempt   int
+		ErrorCode string
+	}
+	slots := make([]slotCodeProjection, 0, len(result.Slots))
+	for _, slot := range result.Slots {
+		slots = append(slots, slotCodeProjection{SlotID: strings.TrimSpace(slot.Slot.ID), Attempt: slot.Attempt, ErrorCode: strings.TrimSpace(slot.ErrorCode)})
+	}
+	sort.Slice(slots, func(i, j int) bool {
+		if slots[i].SlotID != slots[j].SlotID {
+			return slots[i].SlotID < slots[j].SlotID
+		}
+		if slots[i].Attempt != slots[j].Attempt {
+			return slots[i].Attempt < slots[j].Attempt
+		}
+		return slots[i].ErrorCode < slots[j].ErrorCode
+	})
+	return updateFingerprint("recovery_handoff", struct {
+		Effects []imageagent.RecoverableEffect
+		Slots   []slotCodeProjection
+	}{effects, slots})
 }
 
 func (s *workflowUpdateState) prepareAction(ctx workflow.Context, actionID, fingerprint string, phase workflowUpdatePhase, kind string, command interface{}) (*workflowUpdateRecord, bool, error) {

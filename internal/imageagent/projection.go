@@ -44,6 +44,7 @@ type ProjectionCommit struct {
 	ExpectedRunVersion        int64
 	PlanMutation              *PlanProjectionMutation
 	SlotMutation              *SlotProjectionMutation
+	SlotMutations             []SlotProjectionMutation
 }
 
 func ValidateProjectionSnapshot(scope RunScope, snapshot RunProjection) error {

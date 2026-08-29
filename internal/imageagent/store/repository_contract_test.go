@@ -61,11 +61,109 @@ func TestRepositoryContract(t *testing.T) {
 			testCombinedPlanAndRunProjectionCommitUsesPreMutationRevision(t, tt.new(t))
 			testProjectionCommitRejectsPlanOutsidePersistedCatalog(t, tt.new(t))
 			testProjectionCommitRejectsMismatchedSlotAttemptIdentityAtomically(t, tt.new(t))
+			testProjectionCommitAtomicallyPersistsRecoveryRegistryAndOrderedSlotMutations(t, tt.new(t))
 			testAttemptIdentitiesAreIdempotentAndNonAliasing(t, tt.new(t))
 			testInitializationConcurrencyIdentityIncludesMaxConcurrentSlots(t, tt.new(t))
 			testPublicationUnknownActionsSurviveProjectionRefresh(t, tt.new(t))
 		})
 	}
+}
+
+func testProjectionCommitAtomicallyPersistsRecoveryRegistryAndOrderedSlotMutations(t *testing.T, repo repositoryContract) {
+	t.Helper()
+	ctx := context.Background()
+	run := manualRun("run-recovery-registry", "tenant-a")
+	plan := planRevision(1)
+	second := plan.Slots[0]
+	second.ID = "slot-2"
+	second.Role = imageagent.SlotRoleScene
+	second.IdempotencyKey = "slot-key-2"
+	plan.Slots = append(plan.Slots, second)
+	scope := imageagent.ScopeForRun(*run)
+	current, err := repo.InitializeRun(ctx, imageagent.ProjectionInitialization{
+		Scope: scope, Run: *run, Plan: plan,
+		Catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source-1.png"},
+			{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style-1.png"},
+		}},
+		Snapshot: imageagent.RunProjection{Run: *run, Plan: plan}, CommitID: "start:recovery-registry",
+		EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+	for index, slotID := range []string{"slot-1", "slot-2"} {
+		updated := current
+		updated.Slots = append([]imageagent.SlotProjection(nil), current.Slots...)
+		updated.Slots[index] = imageagent.SlotProjection{Slot: updated.Slots[index].Slot, Attempt: 1, ErrorCode: "slot_execution_failed"}
+		updated.Slots[index].Slot.Status = imageagent.SlotStatusBlocked
+		mutation := imageagent.SlotProjectionMutation{
+			PlanRevision: 1,
+			Result:       imageagent.SlotResult{SlotID: slotID, Attempt: 1, Status: imageagent.SlotStatusBlocked, ErrorCode: "slot_execution_failed"},
+			Projection:   updated.Slots[index],
+			Attempt: imageagent.StepAttempt{
+				TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: 1,
+				SlotID: slotID, Attempt: 1, Node: "execute_slot_v3", IdempotencyKey: "attempt:" + slotID, Outcome: "blocked", ErrorCategory: "slot_execution_failed",
+			},
+		}
+		current, err = repo.CommitProjection(ctx, imageagent.ProjectionCommit{
+			Scope: scope, CommitID: "slot:" + slotID, ExpectedProjectionVersion: current.ProjectionVersion,
+			Snapshot: updated, EventType: "slot.result.persisted", EventPayload: json.RawMessage(`{}`), SlotMutation: &mutation,
+		})
+		require.NoError(t, err)
+	}
+
+	updated := current
+	updated.Run.Status = imageagent.RunStatusBlocked
+	updated.Run.CurrentNode = "retry_slot"
+	updated.Run.Block = &imageagent.Block{Code: "recovery_requested", Message: "recovery_requested", SlotID: "slot-1"}
+	updated.Run.Version++
+	updated.Slots = append([]imageagent.SlotProjection(nil), current.Slots...)
+	updated.RecoverableEffects = []imageagent.RecoverableEffect{
+		{SlotID: "slot-1", Attempt: 1, Code: "recovery_requested"},
+		{SlotID: "slot-2", Attempt: 1, Code: "recovery_requested"},
+	}
+	mutations := make([]imageagent.SlotProjectionMutation, 0, len(updated.RecoverableEffects))
+	for index, effect := range updated.RecoverableEffects {
+		updated.Slots[index].ErrorCode = effect.Code
+		mutations = append(mutations, imageagent.SlotProjectionMutation{
+			PlanRevision: 1,
+			Result:       imageagent.SlotResult{SlotID: effect.SlotID, Attempt: effect.Attempt, Status: imageagent.SlotStatusBlocked, ErrorCode: effect.Code},
+			Projection:   updated.Slots[index],
+			Attempt: imageagent.StepAttempt{
+				TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: 1,
+				SlotID: effect.SlotID, Attempt: effect.Attempt, Node: "recovery_handoff", IdempotencyKey: "recovery:" + effect.SlotID, Outcome: "blocked", ErrorCategory: effect.Code,
+			},
+		})
+	}
+	commit := imageagent.ProjectionCommit{
+		Scope: scope, CommitID: "recovery:registry", ExpectedProjectionVersion: current.ProjectionVersion,
+		ExpectedRunVersion: current.Run.Version, Snapshot: updated, EventType: "run.updated", EventPayload: json.RawMessage(`{}`),
+		RunMutation:   &imageagent.RunMutation{Status: imageagent.RunStatusBlocked, CurrentNode: "retry_slot", ActivePlanRevision: 1, Block: updated.Run.Block},
+		SlotMutations: mutations,
+	}
+	committed, err := repo.CommitProjection(ctx, commit)
+	require.NoError(t, err)
+	require.EqualValues(t, current.ProjectionVersion+1, committed.ProjectionVersion)
+	require.Equal(t, updated.RecoverableEffects, committed.RecoverableEffects)
+	require.Equal(t, "recovery_requested", committed.Slots[0].ErrorCode)
+	require.Equal(t, "recovery_requested", committed.Slots[1].ErrorCode)
+
+	replayed, err := repo.CommitProjection(ctx, commit)
+	require.NoError(t, err)
+	require.Equal(t, committed, replayed)
+
+	conflict := commit
+	conflict.Snapshot = committed
+	conflict.Snapshot.ProjectionVersion = updated.ProjectionVersion
+	conflict.Snapshot.LastEventID = updated.LastEventID
+	conflict.Snapshot.RecoverableEffects = append([]imageagent.RecoverableEffect(nil), updated.RecoverableEffects...)
+	conflict.Snapshot.RecoverableEffects[1].Code = "recovery_start_failed"
+	conflict.Snapshot.Slots = append([]imageagent.SlotProjection(nil), updated.Slots...)
+	conflict.Snapshot.Slots[1].ErrorCode = "recovery_start_failed"
+	conflict.SlotMutations = append([]imageagent.SlotProjectionMutation(nil), mutations...)
+	conflict.SlotMutations[1].Result.ErrorCode = "recovery_start_failed"
+	conflict.SlotMutations[1].Projection.ErrorCode = "recovery_start_failed"
+	_, err = repo.CommitProjection(ctx, conflict)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
 }
 
 func testPublicationUnknownActionsSurviveProjectionRefresh(t *testing.T, repo repositoryContract) {

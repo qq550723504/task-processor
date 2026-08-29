@@ -2639,6 +2639,92 @@ func TestManualWorkflowKeepsBlockedWhenRecoveryStartFails(t *testing.T) {
 	require.Equal(t, []imageagent.RecoverableEffect{{SlotID: "slot-1", Attempt: 1, Code: "recovery_start_failed"}}, projection.RecoverableEffects)
 }
 
+func TestManualWorkflowPersistsSecondaryRecoveryStartFailureWithRealRepository(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+	plan := sevenSlotPlan()
+	plan.Slots = plan.Slots[:2]
+	run := imageagent.Run{
+		ID: "run-real-secondary-recovery-failure", BusinessTaskID: "task-1",
+		TenantID: identity.TenantID, UserID: identity.UserID,
+		Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-real-secondary-recovery-failure",
+		Status: imageagent.RunStatusPlanning,
+	}
+	initializeActivityProjection(t, repository, run, plan)
+	activities, err := NewActivities(ActivityDependencies{
+		Repository: repository, SlotExecutor: &identityCheckingExecutor{t: t}, Publisher: &identityCheckingPublisher{t: t},
+	})
+	require.NoError(t, err)
+
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	env.RegisterWorkflowWithOptions(
+		func(_ workflow.Context, input SlotWorkflowV3Input) (SlotWorkflowV3Result, error) {
+			return SlotWorkflowV3Result{
+				Published:   imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+				Status:      imageagent.SlotStatusBlocked,
+				ErrorCode:   "slot_execution_failed",
+				EffectPhase: imageagent.SlotEffectV3ProviderClaimed,
+			}, nil
+		},
+		workflow.RegisterOptions{Name: "ImageSlotWorkflowV3"},
+	)
+	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(effectRecoveryStartWireV1Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.RegisterActivityWithOptions(activities.PersistRunState, sdkactivity.RegisterOptions{Name: activityPersistRunState})
+	env.RegisterActivityWithOptions(activities.PersistSlotResultV3, sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3})
+	env.RegisterActivityWithOptions(
+		func(context.Context, PersistPendingCommandActivityInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityPersistPendingCommand},
+	)
+	startCalls := 0
+	env.RegisterActivityWithOptions(func(context.Context, EffectRecoveryWorkflowInput) error {
+		startCalls++
+		if startCalls == 1 {
+			return nil
+		}
+		return sdktemporal.NewNonRetryableApplicationError("temporal unavailable", "recovery_start_failed", nil)
+	}, sdkactivity.RegisterOptions{Name: activityStartEffectRecoveryV3})
+	var cancelErr error
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalCancel, "cancel-real-secondary-recovery-failure", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { cancelErr = err },
+			OnAccept: func() {},
+			OnComplete: func(_ interface{}, err error) {
+				cancelErr = err
+			},
+		}, CancelSignal{
+			RunID: run.ID, PlanRevision: plan.Revision, ActorID: identity.UserID, ActionID: "cancel-real-secondary-recovery-failure",
+		})
+	}, time.Second)
+	env.RegisterDelayedCallback(env.CancelWorkflow, 20*time.Second)
+
+	input := manualWorkflowInput(plan)
+	input.RunID = run.ID
+	input.MaxConcurrentSlots = 2
+	input.WaitForCommands = true
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.Error(t, env.GetWorkflowError(), "the test cancellation should stop an otherwise-open recovery workflow")
+	require.NoError(t, cancelErr)
+	require.Equal(t, 2, startCalls)
+	projection, err := repository.GetProjection(context.Background(), imageagent.ScopeForRun(run))
+	require.NoError(t, err)
+	require.Equal(t, imageagent.RunStatusBlocked, projection.Run.Status)
+	require.NotNil(t, projection.Run.Block)
+	require.Equal(t, "slot-1", projection.Run.Block.SlotID)
+	require.Equal(t, "recovery_requested", projection.Run.Block.Code)
+	require.Equal(t, []imageagent.RecoverableEffect{
+		{SlotID: "slot-1", Attempt: 1, Code: "recovery_requested"},
+		{SlotID: "slot-2", Attempt: 1, Code: "recovery_start_failed"},
+	}, projection.RecoverableEffects)
+	require.Equal(t, "recovery_requested", projection.Slots[0].ErrorCode)
+	require.Equal(t, "recovery_start_failed", projection.Slots[1].ErrorCode)
+}
+
 func TestManualWorkflowStartsIndependentRecoveryOwnersForEachBlockedEffect(t *testing.T) {
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
