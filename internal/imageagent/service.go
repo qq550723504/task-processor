@@ -16,9 +16,53 @@ type Service struct {
 	repository Repository
 	workflows  WorkflowClient
 	catalogs   AuthorizedAssetCatalog
+	startGate  TenantStartGate
 }
 
-func NewService(repository Repository, workflows WorkflowClient, catalogs AuthorizedAssetCatalog) (*Service, error) {
+// TenantStartGate admits a run before any durable run state or workflow is
+// created. It keeps provider governance at the service boundary rather than
+// allowing an ineligible tenant to create a run that must fail later.
+type TenantStartGate interface {
+	AllowTenantStart(context.Context, string) bool
+}
+
+// TenantAllowlistStartGate is the provider-neutral admission policy for the
+// ProductImage capability. Enabled and the allowlist must both be true for a
+// tenant to start an image-agent run.
+type TenantAllowlistStartGate struct {
+	Enabled          bool
+	AllowedTenantIDs []string
+}
+
+func (g TenantAllowlistStartGate) AllowTenantStart(_ context.Context, tenantID string) bool {
+	if !g.Enabled {
+		return false
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return false
+	}
+	for _, allowed := range g.AllowedTenantIDs {
+		if strings.TrimSpace(allowed) == tenantID {
+			return true
+		}
+	}
+	return false
+}
+
+type ServiceOption func(*Service) error
+
+func WithTenantStartGate(gate TenantStartGate) ServiceOption {
+	return func(service *Service) error {
+		if gate == nil {
+			return fmt.Errorf("image agent tenant start gate is required")
+		}
+		service.startGate = gate
+		return nil
+	}
+}
+
+func NewService(repository Repository, workflows WorkflowClient, catalogs AuthorizedAssetCatalog, options ...ServiceOption) (*Service, error) {
 	if repository == nil {
 		return nil, fmt.Errorf("image agent repository is required")
 	}
@@ -28,7 +72,16 @@ func NewService(repository Repository, workflows WorkflowClient, catalogs Author
 	if catalogs == nil {
 		return nil, fmt.Errorf("image agent authorized asset catalog is required")
 	}
-	return &Service{repository: repository, workflows: workflows, catalogs: catalogs}, nil
+	service := &Service{repository: repository, workflows: workflows, catalogs: catalogs}
+	for _, option := range options {
+		if option == nil {
+			return nil, fmt.Errorf("image agent service option is required")
+		}
+		if err := option(service); err != nil {
+			return nil, err
+		}
+	}
+	return service, nil
 }
 
 func (s *Service) Start(ctx context.Context, input StartRunInput) error {
@@ -74,6 +127,9 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		return s.startExistingProjection(ctx, existing, identity)
 	} else if !errors.Is(getErr, ErrRunNotFound) {
 		return getErr
+	}
+	if s.startGate != nil && !s.startGate.AllowTenantStart(ctx, identity.TenantID) {
+		return fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
 	}
 	if err := ValidateInitialSubmittedPlan(input.Plan); err != nil {
 		return fmt.Errorf("%w: validate image agent plan: %v", ErrValidation, err)

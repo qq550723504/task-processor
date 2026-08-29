@@ -422,10 +422,30 @@ jobs:
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/image-agent-temporal-worker --timeout=5m
 
+      - name: Refresh API OIDC for finite v3 canary gate
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-canary.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-canary.kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Run finite image agent v3 compatibility canary
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          .workflow-tools/scripts/listingkit-run-release-gate-deployment.sh \
+            --namespace "$K8S_NAMESPACE" \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
+            --deployment image-agent-temporal-v3-canary-runner \
+            --image "$API_CANDIDATE_IMAGE" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --timeout-seconds 300
+
       - name: Refresh API OIDC for v3 worker mutation group
         if: ${{ needs.prepare.outputs.mode == 'normal' }}
         shell: bash
         run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-v3.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-v3.kubeconfig" >> "$GITHUB_ENV"
+
       - name: Apply immutable image agent v3 recovery worker deployment
         if: ${{ needs.prepare.outputs.mode == 'normal' }}
         shell: bash
@@ -445,25 +465,6 @@ jobs:
         if: ${{ needs.prepare.outputs.mode == 'normal' }}
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m
-
-      - name: Refresh API OIDC for finite v3 canary gate
-        if: ${{ needs.prepare.outputs.mode == 'normal' }}
-        shell: bash
-        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-canary.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-canary.kubeconfig" >> "$GITHUB_ENV"
-
-      - name: Run finite image agent v3 compatibility canary
-        if: ${{ needs.prepare.outputs.mode == 'normal' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          .workflow-tools/scripts/listingkit-run-release-gate-deployment.sh \
-            --namespace "$K8S_NAMESPACE" \
-            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
-            --deployment image-agent-temporal-v3-canary-runner \
-            --image "$API_CANDIDATE_IMAGE" \
-            --run-id "$GITHUB_RUN_ID" \
-            --run-attempt "$GITHUB_RUN_ATTEMPT" \
-            --timeout-seconds 300
 
       - name: Refresh API OIDC for API mutation group
         shell: bash

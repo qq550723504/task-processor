@@ -74,7 +74,14 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 		return nil, fmt.Errorf("build image agent repository: %w", err)
 	}
 	databaseCloser := func() error { return database.CloseSharedDatabase(cfg.Database, db) }
-	service, err := imageagent.NewService(imageagentstore.NewGormRepository(db), workflowClient, listingkithttpapi.NewImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db)))
+	service, err := imageagent.NewService(
+		imageagentstore.NewGormRepository(db), workflowClient,
+		listingkithttpapi.NewImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db)),
+		imageagent.WithTenantStartGate(imageagent.TenantAllowlistStartGate{
+			Enabled:          cfg.AICapability.ProductImageSceneEnabled,
+			AllowedTenantIDs: cfg.AICapability.ProductImageSceneAllowedTenantIDs,
+		}),
+	)
 	if err != nil {
 		_ = databaseCloser()
 		closeWorkflowOnError()

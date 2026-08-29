@@ -328,6 +328,29 @@ func TestServiceStartRequiresBusinessTaskAndAuthorizedCatalogSubset(t *testing.T
 	require.Empty(t, workflows.starts)
 }
 
+func TestServiceStartRejectsTenantBeforeInitializeRunWhenProviderIneligible(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()}, imageagent.WithTenantStartGate(staticTenantStartGate{allowed: map[string]bool{"tenant-a": true}}))
+	require.NoError(t, err)
+
+	err = service.Start(verifiedContext("tenant-b", "user-a"), imageagent.StartRunInput{
+		RunID: "run-ineligible", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
+		IdempotencyKey: "run-ineligible-key", Plan: commandPlan(1),
+	})
+
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+	_, getErr := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-b", OwnerUserID: "user-a", RunID: "run-ineligible"})
+	require.ErrorIs(t, getErr, imageagent.ErrRunNotFound)
+	require.Empty(t, workflows.starts)
+}
+
+type staticTenantStartGate struct{ allowed map[string]bool }
+
+func (g staticTenantStartGate) AllowTenantStart(_ context.Context, tenantID string) bool {
+	return g.allowed[tenantID]
+}
+
 func TestServiceStartAndReplaceRejectUnmeasuredSizeSlotBeforeWorkflowIngress(t *testing.T) {
 	unmeasured := authorizedCatalog()
 	unmeasured.Assets[0].Width = 0

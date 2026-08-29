@@ -88,6 +88,9 @@ jobs:
       - name: Verify OIDC, workflow, and RBAC authority
         run: scripts/verify-listingkit-release-authority-policy.sh
 
+      - name: Verify image-agent canary precedes production worker rollout
+        run: scripts/tests/listingkit-image-agent-canary-order-test.sh
+
   backend:
     name: Backend Checks
     runs-on: ubuntu-latest
