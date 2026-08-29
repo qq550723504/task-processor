@@ -38,7 +38,7 @@ services:
       ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT}
       ZITADEL_EXTERNALSECURE: ${ZITADEL_EXTERNALSECURE}
       ZITADEL_TLS_ENABLED: false
-      ZITADEL_DATABASE_POSTGRES_DSN: ${ZITADEL_DATABASE_POSTGRES_DSN}
+      ZITADEL_DATABASE_POSTGRES_DSN: postgresql://${POSTGRES_ADMIN_USER}:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: false
       ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /zitadel/bootstrap/login-client.pat
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
@@ -67,7 +67,9 @@ services:
       - zitadel-bootstrap:/zitadel/bootstrap:rw
     networks:
       - local-zitadel
-      - docker_yudao-network
+    depends_on:
+      postgres:
+        condition: service_healthy
     labels:
       - traefik.enable=true
       - traefik.docker.network=local-zitadel
@@ -130,8 +132,6 @@ services:
       - traefik.http.routers.zitadel-login.priority=250
 
   postgres:
-    profiles:
-      - local-db
     image: ${POSTGRES_IMAGE}
     restart: unless-stopped
     environment:
@@ -154,8 +154,6 @@ services:
 networks:
   local-zitadel:
     name: local-zitadel
-  docker_yudao-network:
-    external: true
 
 volumes:
   postgres-data:
