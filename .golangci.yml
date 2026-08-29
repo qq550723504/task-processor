@@ -394,6 +394,16 @@ linters-settings:
           - pkg: "task-processor/internal/app/state/"
             desc: "Command entrypoints must not depend on retired app state subpackages"
 
+      alibaba1688_listingkit_root:
+        # The crawler must not depend on the ListingKit root facade; its reviewed HTTP adapter remains allowed.
+        # The repository-wide issues.exclude-files excludes _test.go; TestAlibaba1688CrawlerDoesNotImportListingKitRoot retains target-independent semantic coverage.
+        files:
+          - "**/internal/crawler/alibaba1688/*.go"
+          - "**/internal/crawler/alibaba1688/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit$"
+            desc: "1688 crawler production code must not depend on ListingKit root facade"
+
   govet:
     disable:
       - fieldalignment

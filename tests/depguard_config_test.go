@@ -86,3 +86,29 @@ func TestAICapabilityDepguardPatternsRespectPackageBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestAlibaba1688CrawlerDepguardPatternKeepsHTTPAPIAdapterException(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+
+	config := string(content)
+	start := strings.Index(config, "      alibaba1688_listingkit_root:\n")
+	if start == -1 {
+		t.Fatalf("%s must define alibaba1688_listingkit_root", configPath)
+	}
+	end := strings.Index(config[start+1:], "\n  govet:")
+	if end == -1 {
+		t.Fatalf("%s must keep alibaba1688_listingkit_root before govet", configPath)
+	}
+	config = config[start : start+1+end]
+
+	if !strings.Contains(config, `- pkg: "task-processor/internal/listingkit$"`) {
+		t.Errorf("%s must deny the exact ListingKit root facade", configPath)
+	}
+	if strings.Contains(config, `- pkg: "task-processor/internal/listingkit/"`) {
+		t.Errorf("%s must keep ListingKit subpackage adapters outside the root-facade guard", configPath)
+	}
+}

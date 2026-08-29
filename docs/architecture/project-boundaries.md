@@ -301,6 +301,8 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
 - `TestProductDomainDoesNotDependOnOuterAdapters`
+- `TestAlibaba1688CrawlerDoesNotImportListingKitRoot`
+- `depguard: alibaba1688_listingkit_root`
 - `depguard: listingkit_subdomains_root_facade`
 - `TestListingKitImportDirectionStaysRetiredAcrossBuildTargets`
 - `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`

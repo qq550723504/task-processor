@@ -90,6 +90,7 @@ At minimum, structural review should consider representative guards such as:
 - `depguard: source_handoff_legacy_http`
 - `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`
 - `TestAlibaba1688CrawlerDoesNotImportListingKitRoot`
+- `depguard: alibaba1688_listingkit_root`
 - `TestAlibaba1688CrawlerDoesNotImportListingKitHTTPAPIForSourceAccountBuilder`
 - `TestAlibaba1688CrawlerDoesNotConfigureLegacyTenantThroughListingKitHTTPAPI`
 - `TestA1688ListingKitCompatibilityReadsIdentityFromNeutralContext`
