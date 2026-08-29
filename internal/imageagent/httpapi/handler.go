@@ -31,6 +31,7 @@ type Application interface {
 	RestartFailed(context.Context, string) error
 	Get(context.Context, string) (imageagent.RunProjection, error)
 	ReplacePlan(context.Context, string, int64, imageagent.Plan, string) error
+	RecoverEffect(context.Context, string, string, int, int64, string) error
 	RetrySlot(context.Context, string, string, int64, string) error
 	ApproveResults(context.Context, string, int64, string, string) error
 	Cancel(context.Context, string, int64, string) error
@@ -174,6 +175,27 @@ func (h *Handler) RetrySlot(c *gin.Context) {
 		return
 	}
 	if err := h.application.RetrySlot(c.Request.Context(), c.Param("run_id"), c.Param("slot_id"), request.PlanRevision, request.ActionID); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusAccepted)
+}
+
+func (h *Handler) RecoverEffect(c *gin.Context) {
+	if !requireVerifiedIdentity(c) {
+		return
+	}
+	var request revisionCommandRequest
+	if err := decodeStrictJSON(c, &request); err != nil {
+		writeInvalidJSON(c, err)
+		return
+	}
+	attempt, err := strconv.Atoi(strings.TrimSpace(c.Param("attempt")))
+	if err != nil || attempt <= 0 {
+		writeInvalidJSON(c, fmt.Errorf("attempt must be a positive integer"))
+		return
+	}
+	if err := h.application.RecoverEffect(c.Request.Context(), c.Param("run_id"), c.Param("slot_id"), attempt, request.PlanRevision, request.ActionID); err != nil {
 		writeError(c, err)
 		return
 	}

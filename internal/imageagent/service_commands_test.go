@@ -228,6 +228,28 @@ func seededRepository(t *testing.T, status imageagent.RunStatus, block *imageage
 	return seededRepositoryWithCatalog(t, status, block, authorizedCatalog())
 }
 
+func seededRecoveryRepository(t *testing.T, block imageagent.Block, attempt int) imageagent.Repository {
+	t.Helper()
+	repository := store.NewMemoryRepository()
+	run := imageagent.Run{
+		ID: "run-1", BusinessTaskID: "task-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual,
+		IdempotencyKey: "run-key-1", Status: imageagent.RunStatusBlocked, CurrentNode: "recover_effect", Version: 1, Block: &block, ActivePlanRevision: 1,
+	}
+	plan := commandPlan(1)
+	snapshot := imageagent.RunProjection{
+		Run:          run,
+		Plan:         plan,
+		Slots:        []imageagent.SlotProjection{{Slot: imageagent.Slot{ID: plan.Slots[0].ID, Role: plan.Slots[0].Role, SourceAssetIDs: append([]string(nil), plan.Slots[0].SourceAssetIDs...), IdempotencyKey: plan.Slots[0].IdempotencyKey, Status: imageagent.SlotStatusBlocked}, Attempt: attempt, ErrorCode: block.Code}},
+		AssetCatalog: authorizedCatalog(),
+	}
+	_, err := repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{
+		Scope: imageagent.ScopeForRun(run), Run: run, Plan: plan, Catalog: authorizedCatalog(),
+		Snapshot: snapshot, CommitID: "seed-recovery", EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+	return repository
+}
+
 func seededRepositoryWithCatalog(t *testing.T, status imageagent.RunStatus, block *imageagent.Block, catalog imageagent.AssetCatalog) imageagent.Repository {
 	t.Helper()
 	repository := store.NewMemoryRepository()
@@ -271,6 +293,8 @@ type recordingWorkflowClient struct {
 	projectionCalls int
 	starts          []imageagent.WorkflowStart
 	startErr        error
+	recoveries      []recordedRecoverEffect
+	recoverErr      error
 	replacements    []imageagent.ReplacePlanCommand
 	retries         []imageagent.RetrySlotCommand
 	approvals       []imageagent.ApproveResultsCommand
@@ -282,6 +306,11 @@ type recordingWorkflowClient struct {
 	resumes         []imageagent.ResumeCommand
 	resumeAck       imageagent.CommandAcknowledgement
 	resumeErr       error
+}
+
+type recordedRecoverEffect struct {
+	command    imageagent.RecoverEffectCommand
+	projection imageagent.RunProjection
 }
 
 func TestServiceStartRequiresBusinessTaskAndAuthorizedCatalogSubset(t *testing.T) {
@@ -437,6 +466,27 @@ func TestServiceRetryCarriesPersistedBusinessTaskIdentity(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, workflows.retries, 1)
 	require.Equal(t, "task-1", workflows.retries[0].Identity.BusinessTaskID)
+}
+
+func TestServiceRecoverEffectUsesVerifiedIdentityAndIgnoresClientWorkflowID(t *testing.T) {
+	repository := seededRecoveryRepository(t, imageagent.Block{Code: "recovery_start_failed", SlotID: "slot-1"}, 2)
+	workflows := &recordingWorkflowClient{}
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
+	require.NoError(t, err)
+	current, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-1"})
+	require.NoError(t, err)
+
+	err = service.RecoverEffect(verifiedContext("tenant-a", "user-a"), "run-1", "slot-1", 2, 1, "recover-1")
+
+	require.NoError(t, err)
+	require.Len(t, workflows.recoveries, 1)
+	require.Equal(t, imageagent.RecoverEffectCommand{
+		RunID: "run-1", PlanRevision: 1, SlotID: "slot-1", Attempt: 2, ActionID: "recover-1",
+		Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "task-1"},
+	}, workflows.recoveries[0].command)
+	require.Equal(t, "tenant-a", workflows.recoveries[0].projection.Run.TenantID)
+	require.Equal(t, "user-a", workflows.recoveries[0].projection.Run.UserID)
+	require.Equal(t, current.AssetCatalog, workflows.recoveries[0].projection.AssetCatalog)
 }
 
 func TestServiceStartRetryUsesImmutablePersistedCatalogInsteadOfMutableTaskCatalog(t *testing.T) {
@@ -736,6 +786,11 @@ func (c *recordingWorkflowClient) StartManual(_ context.Context, start imageagen
 func (c *recordingWorkflowClient) GetProjection(context.Context, imageagent.RunScope, imageagent.ExecutionIdentity) (imageagent.WorkflowProjection, error) {
 	c.projectionCalls++
 	return c.projection, c.projectionErr
+}
+
+func (c *recordingWorkflowClient) RecoverEffect(_ context.Context, command imageagent.RecoverEffectCommand, projection imageagent.RunProjection) error {
+	c.recoveries = append(c.recoveries, recordedRecoverEffect{command: command, projection: projection})
+	return c.recoverErr
 }
 
 func (c *recordingWorkflowClient) ReplacePlan(_ context.Context, command imageagent.ReplacePlanCommand) error {

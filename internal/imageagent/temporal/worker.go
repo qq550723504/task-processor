@@ -118,6 +118,43 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 	return err
 }
 
+func (c *Client) RecoverEffect(ctx context.Context, command imageagent.RecoverEffectCommand, projection imageagent.RunProjection) error {
+	if c == nil || c.client == nil {
+		return fmt.Errorf("image agent temporal client is not configured")
+	}
+	if err := validateCommandIdentity(command.Identity, command.RunID); err != nil {
+		return err
+	}
+	if command.PlanRevision <= 0 || command.PlanRevision > imageagent.MaxJSONSafePlanRevision || command.Attempt <= 0 || imageagent.ValidateActionID(command.ActionID) != nil {
+		return fmt.Errorf("image agent recovery requires a valid revision, attempt, and action ID")
+	}
+	if strings.TrimSpace(projection.Run.ID) != strings.TrimSpace(command.RunID) {
+		return imageagent.ErrRunNotFound
+	}
+	if strings.TrimSpace(projection.Run.TenantID) != strings.TrimSpace(command.Identity.TenantID) || strings.TrimSpace(projection.Run.UserID) != strings.TrimSpace(command.Identity.UserID) {
+		return imageagent.ErrRunNotFound
+	}
+	if projection.Plan.Revision != command.PlanRevision {
+		return imageagent.ErrRevisionConflict
+	}
+	var slot imageagent.Slot
+	found := false
+	for _, candidate := range projection.Plan.Slots {
+		if candidate.ID == strings.TrimSpace(command.SlotID) {
+			slot = candidate
+			found = true
+			break
+		}
+	}
+	if !found {
+		return imageagent.ErrCommandBlocked
+	}
+	return newRecoveryWorkflowStarter(c.client, TaskQueueV3)(ctx, EffectRecoveryWorkflowInput{
+		RunID: command.RunID, Identity: command.Identity, PlanRevision: command.PlanRevision,
+		Slot: slot, Attempt: command.Attempt, AssetCatalog: projection.AssetCatalog,
+	})
+}
+
 func (c *Client) RetrySlot(ctx context.Context, command imageagent.RetrySlotCommand) error {
 	if err := c.validateSignal(command.Identity, command.RunID, command.PlanRevision, command.ActorID, command.ActionID); err != nil {
 		return err

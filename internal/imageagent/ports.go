@@ -208,6 +208,15 @@ type CancelRunCommand struct {
 	Identity     ExecutionIdentity
 }
 
+type RecoverEffectCommand struct {
+	RunID        string
+	PlanRevision int64
+	SlotID       string
+	Attempt      int
+	ActionID     string
+	Identity     ExecutionIdentity
+}
+
 type ResumeCommand struct {
 	RunID    string
 	ActorID  string
@@ -230,4 +239,8 @@ type WorkflowClient interface {
 	ApproveResults(context.Context, ApproveResultsCommand) error
 	Cancel(context.Context, CancelRunCommand) error
 	Resume(context.Context, ResumeCommand) (CommandAcknowledgement, error)
+}
+
+type EffectRecoveryWorkflowClient interface {
+	RecoverEffect(context.Context, RecoverEffectCommand, RunProjection) error
 }

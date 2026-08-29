@@ -16,6 +16,7 @@ type Service struct {
 	repository Repository
 	workflows  WorkflowClient
 	catalogs   AuthorizedAssetCatalog
+	recoveries EffectRecoveryWorkflowClient
 }
 
 func NewService(repository Repository, workflows WorkflowClient, catalogs AuthorizedAssetCatalog) (*Service, error) {
@@ -28,7 +29,8 @@ func NewService(repository Repository, workflows WorkflowClient, catalogs Author
 	if catalogs == nil {
 		return nil, fmt.Errorf("image agent authorized asset catalog is required")
 	}
-	return &Service{repository: repository, workflows: workflows, catalogs: catalogs}, nil
+	recoveries, _ := workflows.(EffectRecoveryWorkflowClient)
+	return &Service{repository: repository, workflows: workflows, catalogs: catalogs, recoveries: recoveries}, nil
 }
 
 func (s *Service) Start(ctx context.Context, input StartRunInput) error {
@@ -190,6 +192,56 @@ func (s *Service) RetrySlot(ctx context.Context, runID, slotID string, planRevis
 	return s.workflows.RetrySlot(ctx, RetrySlotCommand{RunID: strings.TrimSpace(runID), SlotID: slotID, PlanRevision: planRevision, ActorID: identity.UserID, ActionID: strings.TrimSpace(actionID), Identity: identity})
 }
 
+func (s *Service) RecoverEffect(ctx context.Context, runID, slotID string, attempt int, planRevision int64, actionID string) error {
+	identity, err := s.commandIdentity(ctx, runID, planRevision, actionID)
+	if err != nil {
+		return err
+	}
+	slotID = strings.TrimSpace(slotID)
+	if slotID == "" || attempt <= 0 {
+		return fmt.Errorf("%w: recover slot ID and attempt are required", ErrValidation)
+	}
+	if err := ValidateArtifactKeyIdentifier(slotID); err != nil {
+		return fmt.Errorf("%w: recover slot ID cannot be used in a durable artifact key", err)
+	}
+	runID = strings.TrimSpace(runID)
+	projection, err := s.repository.GetProjection(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID})
+	if err != nil {
+		return err
+	}
+	if projection.Run.Status != RunStatusBlocked || projection.Run.Block == nil || strings.TrimSpace(projection.Run.Block.SlotID) != slotID {
+		return fmt.Errorf("%w: only the current blocked effect can be recovered", ErrCommandBlocked)
+	}
+	if projection.Plan.Revision != planRevision {
+		return fmt.Errorf("%w: recover effect plan revision is stale", ErrRevisionConflict)
+	}
+	if !isRecoverableEffectBlockCode(projection.Run.Block.Code) {
+		return fmt.Errorf("%w: only external-effect recovery blocks support re-drive", ErrCommandBlocked)
+	}
+	slotExists := false
+	for _, slot := range projection.Plan.Slots {
+		if slot.ID == slotID {
+			slotExists = true
+			break
+		}
+	}
+	if !slotExists {
+		return fmt.Errorf("%w: only the current blocked effect can be recovered", ErrCommandBlocked)
+	}
+	for _, slot := range projection.Slots {
+		if slot.Slot.ID == slotID && slot.Attempt == attempt && slot.Slot.Status == SlotStatusBlocked {
+			if s.recoveries == nil {
+				return fmt.Errorf("image agent recovery workflow client is not configured")
+			}
+			return s.recoveries.RecoverEffect(ctx, RecoverEffectCommand{
+				RunID: runID, PlanRevision: planRevision, SlotID: slotID, Attempt: attempt,
+				ActionID: strings.TrimSpace(actionID), Identity: identity,
+			}, projection)
+		}
+	}
+	return fmt.Errorf("%w: only the current blocked effect can be recovered", ErrCommandBlocked)
+}
+
 func (s *Service) ApproveResults(ctx context.Context, runID string, planRevision int64, resultDigest, actionID string) error {
 	identity, err := s.commandIdentity(ctx, runID, planRevision, actionID)
 	if err != nil {
@@ -290,4 +342,15 @@ func clonePendingCommand(receipt *PendingCommandReceipt) *PendingCommandReceipt 
 	}
 	cloned := *receipt
 	return &cloned
+}
+
+func isRecoverableEffectBlockCode(code string) bool {
+	switch strings.TrimSpace(code) {
+	case "recovery_requested", "recovery_start_failed",
+		SlotProviderOutcomeUnknownCode, SlotStagingOutcomeUnknownCode, SlotPublicationOutcomeUnknownCode,
+		SlotRecoveryBlockedCode, SlotEffectPhaseInvalidCode, SlotEffectPolicyInvalidCode:
+		return true
+	default:
+		return false
+	}
 }

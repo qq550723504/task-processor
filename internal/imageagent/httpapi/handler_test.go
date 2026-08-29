@@ -63,6 +63,36 @@ func TestRestartFailedRunRequiresIdentityAndUsesStoredRunID(t *testing.T) {
 	require.Equal(t, "tenant-a", application.restartIdentity.TenantID)
 }
 
+func TestRecoverEffectHandlerRejectsCrossTenantAndNonBlockedEffect(t *testing.T) {
+	t.Run("cross tenant", func(t *testing.T) {
+		application := &stubApplication{recoverErr: imageagent.ErrRunNotFound}
+		handler := requireHandler(t, application)
+		response := performRequest(t, handler, http.MethodPost, "/api/v1/image-agent/runs/run-1/slots/slot-1/attempts/2/recover",
+			`{"plan_revision":1,"action_id":"recover-1"}`, verifiedIdentity("tenant-b", "user-a"), nil)
+		require.Equal(t, http.StatusNotFound, response.Code)
+		require.Equal(t, "tenant-b", application.recoverIdentity.TenantID)
+		require.Equal(t, 2, application.recoverAttempt)
+	})
+
+	t.Run("non blocked effect", func(t *testing.T) {
+		application := &stubApplication{recoverErr: imageagent.ErrCommandBlocked}
+		handler := requireHandler(t, application)
+		response := performRequest(t, handler, http.MethodPost, "/api/v1/image-agent/runs/run-1/slots/slot-1/attempts/2/recover",
+			`{"plan_revision":1,"action_id":"recover-1"}`, verifiedIdentity("tenant-a", "user-a"), nil)
+		require.Equal(t, http.StatusConflict, response.Code)
+		require.Equal(t, "slot-1", application.recoverSlotID)
+	})
+
+	t.Run("rejects spoofed workflow field", func(t *testing.T) {
+		application := &stubApplication{}
+		handler := requireHandler(t, application)
+		response := performRequest(t, handler, http.MethodPost, "/api/v1/image-agent/runs/run-1/slots/slot-1/attempts/2/recover",
+			`{"plan_revision":1,"action_id":"recover-1","workflow_id":"spoofed"}`, verifiedIdentity("tenant-a", "user-a"), nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Empty(t, application.recoverRunID)
+	})
+}
+
 func TestCreateAcceptsManualOnlyAndRejectsIdentityFields(t *testing.T) {
 	validBody := `{
 		"run_id":"run-1","business_task_id":"task-1","mode":"manual","idempotency_key":"run-key-1",
@@ -384,6 +414,7 @@ func performRequest(t *testing.T, handler *Handler, method, target, body string,
 	router.POST("/api/v1/image-agent/runs/:run_id/results/approve", handler.ApproveResults)
 	router.POST("/api/v1/image-agent/runs/:run_id/cancel", handler.Cancel)
 	router.POST("/api/v1/image-agent/runs/:run_id/restart", handler.RestartFailed)
+	router.POST("/api/v1/image-agent/runs/:run_id/slots/:slot_id/attempts/:attempt/recover", handler.RecoverEffect)
 	router.POST("/api/v1/image-agent/runs/:run_id/commands/:action_id/resume", handler.Resume)
 	router.GET("/api/v1/image-agent/runs/:run_id/events", handler.Events)
 	request := httptest.NewRequest(method, target, bytes.NewBufferString(body))
@@ -416,12 +447,19 @@ type stubApplication struct {
 	startIdentity                authidentity.AuthenticatedIdentity
 	startInput                   imageagent.StartRunInput
 	startErr, replaceErr         error
+	recoverErr                   error
 	retryErr, approveErr         error
 	cancelErr                    error
 	resumeAck                    imageagent.CommandAcknowledgement
 	resumeErr                    error
 	resumeRunID                  string
 	resumeActionID               string
+	recoverIdentity              authidentity.AuthenticatedIdentity
+	recoverRunID                 string
+	recoverSlotID                string
+	recoverAttempt               int
+	recoverPlanRevision          int64
+	recoverActionID              string
 	restartIdentity              authidentity.AuthenticatedIdentity
 	restartRunID                 string
 	restartErr                   error
@@ -447,6 +485,15 @@ func (s *stubApplication) Get(ctx context.Context, _ string) (imageagent.RunProj
 }
 func (s *stubApplication) ReplacePlan(context.Context, string, int64, imageagent.Plan, string) error {
 	return s.replaceErr
+}
+func (s *stubApplication) RecoverEffect(ctx context.Context, runID, slotID string, attempt int, planRevision int64, actionID string) error {
+	s.recoverIdentity, _ = authidentity.AuthenticatedIdentityFromContext(ctx)
+	s.recoverRunID = runID
+	s.recoverSlotID = slotID
+	s.recoverAttempt = attempt
+	s.recoverPlanRevision = planRevision
+	s.recoverActionID = actionID
+	return s.recoverErr
 }
 func (s *stubApplication) RetrySlot(context.Context, string, string, int64, string) error {
 	return s.retryErr
