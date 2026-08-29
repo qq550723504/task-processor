@@ -219,6 +219,9 @@ linters-settings:
           - "**/internal/aicapability/*.go"
           - "**/internal/aicapability/**/*.go"
         deny:
+          - pkg: "github.com/sashabaranov/go-openai$"
+          - pkg: "github.com/sashabaranov/go-openai/"
+            desc: "AI capability contracts must not depend on provider SDKs"
           - pkg: "task-processor/internal/app$"
           - pkg: "task-processor/internal/app/"
             desc: "AI capability contracts must not depend on app runtime wiring"

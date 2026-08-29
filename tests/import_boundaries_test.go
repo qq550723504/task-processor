@@ -4676,6 +4676,7 @@ func TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages(t *testing.T) 
 
 func TestAICapabilityModuleDoesNotImportBusinessOrProviderPackages(t *testing.T) {
 	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "aicapability"), []string{
+		"github.com/sashabaranov/go-openai",
 		"task-processor/internal/app",
 		"task-processor/internal/asset",
 		"task-processor/internal/catalog",

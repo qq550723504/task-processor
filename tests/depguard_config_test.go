@@ -20,9 +20,9 @@ func TestPlatformRegistrationDepguardPatternsRespectPackageBoundaries(t *testing
 	if start == -1 {
 		t.Fatalf("%s must define platform_registration_boundaries", configPath)
 	}
-	end := strings.Index(config[start+1:], "\n      source_handoff_legacy_http:")
+	end := strings.Index(config[start+1:], "\n      aicapability_boundaries:")
 	if end == -1 {
-		t.Fatalf("%s must keep platform_registration_boundaries before source_handoff_legacy_http", configPath)
+		t.Fatalf("%s must keep platform_registration_boundaries before aicapability_boundaries", configPath)
 	}
 	config = config[start : start+1+end]
 
@@ -64,6 +64,7 @@ func TestAICapabilityDepguardPatternsRespectPackageBoundaries(t *testing.T) {
 	config = config[start : start+1+end]
 
 	for _, packagePath := range []string{
+		"github.com/sashabaranov/go-openai",
 		"task-processor/internal/app",
 		"task-processor/internal/asset",
 		"task-processor/internal/catalog",
