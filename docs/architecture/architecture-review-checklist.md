@@ -183,6 +183,7 @@ At minimum, structural review should consider representative guards such as:
 - `depguard: publishing_common_platforms`
 - `TestCmdContainsOnlyOfficialEntrypoints`
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
+- `depguard: cmd_domain_dependencies`
 - `TestHackContainsOnlyManagedSupportAreas`
 - `TestHackSupportAreasContainNoLocalArtifacts`
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`

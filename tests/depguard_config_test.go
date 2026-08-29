@@ -131,6 +131,48 @@ func TestZitadelAuthRuntimeDepguardPatternCoversListingKitPackageTree(t *testing
 	}
 }
 
+func TestCmdProductionDepguardPatternCoversDomainAndInfraTrees(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+
+	config := string(content)
+	start := strings.Index(config, "      cmd_domain_dependencies:\n")
+	if start == -1 {
+		t.Fatalf("%s must define cmd_domain_dependencies", configPath)
+	}
+	end := strings.Index(config[start+1:], "\n      cmd_legacy_app_compatibility:")
+	if end == -1 {
+		t.Fatalf("%s must keep cmd_domain_dependencies before cmd_legacy_app_compatibility", configPath)
+	}
+	config = config[start : start+1+end]
+
+	for _, packagePath := range []string{
+		"task-processor/internal/amazon",
+		"task-processor/internal/amazonlisting",
+		"task-processor/internal/asset",
+		"task-processor/internal/catalog",
+		"task-processor/internal/infra",
+		"task-processor/internal/listingkit",
+		"task-processor/internal/marketplace",
+		"task-processor/internal/productenrich",
+		"task-processor/internal/productimage",
+		"task-processor/internal/publishing",
+		"task-processor/internal/shein",
+		"task-processor/internal/temu",
+		"task-processor/internal/workspace",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			pattern := fmt.Sprintf(`- pkg: "%s%s"`, packagePath, suffix)
+			if !strings.Contains(config, pattern) {
+				t.Errorf("%s must contain depguard package-tree pattern %s", configPath, pattern)
+			}
+		}
+	}
+}
+
 func TestTemporalRuntimeDepguardPatternCoversHTTPAPIPackageTrees(t *testing.T) {
 	configPath := filepath.Join("..", ".golangci.yml")
 	content, err := os.ReadFile(configPath)
