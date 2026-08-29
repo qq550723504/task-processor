@@ -21,6 +21,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
+	enumspb "go.temporal.io/api/enums/v1"
+	sdkconverter "go.temporal.io/sdk/converter"
+	sdkactivity "go.temporal.io/sdk/activity"
+	sdkclient "go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/worker"
 
@@ -46,12 +50,19 @@ type podLossRecoveryAcceptanceResult struct {
 type manualRecoveryWorkflowRestartAcceptanceResult struct {
 	FirstActivityOwnerDiscarded bool
 	RecoveryProviderCalls       int
+	RecoveryWorkflowStarts      int
 	RecoveryAttachCalls         int
+	RecoveryWorkflowName        string
+	RecoveryTaskQueue           string
+	RecoveryConflictPolicy      enumspb.WorkflowIdConflictPolicy
+	RecoveryReusePolicy         enumspb.WorkflowIdReusePolicy
 	StartedRecoveryWorkflowID   string
 	AttachedRecoveryWorkflowID  string
 	RecoveredEffectPhase        imageagent.SlotEffectV3Phase
+	RecoveredEffectAttempt      int
 	RecoveredCandidateAssetIDs  []string
-	PublishedObjects            int
+	ProjectionStatus            imageagent.RunStatus
+	ProjectionBlockCode         string
 }
 
 func TestManualWorkflowRecoveryOwnerCompletesAfterWorkerRestart(t *testing.T) {
@@ -59,34 +70,182 @@ func TestManualWorkflowRecoveryOwnerCompletesAfterWorkerRestart(t *testing.T) {
 
 	require.True(t, result.FirstActivityOwnerDiscarded)
 	require.Zero(t, result.RecoveryProviderCalls)
+	require.Equal(t, 2, result.RecoveryWorkflowStarts)
 	require.Equal(t, 1, result.RecoveryAttachCalls)
+	require.Equal(t, imageagenttemporal.EffectRecoveryWorkflowName, result.RecoveryWorkflowName)
+	require.Equal(t, imageagenttemporal.TaskQueueV3, result.RecoveryTaskQueue)
+	require.Equal(t, enumspb.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, result.RecoveryConflictPolicy)
+	require.Equal(t, enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY, result.RecoveryReusePolicy)
 	require.Equal(t, result.StartedRecoveryWorkflowID, result.AttachedRecoveryWorkflowID)
 	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, result.RecoveredEffectPhase)
+	require.Equal(t, 1, result.RecoveredEffectAttempt)
 	require.NotEmpty(t, result.RecoveredCandidateAssetIDs)
-	require.Equal(t, 3, result.PublishedObjects)
+	require.Equal(t, imageagent.RunStatusBlocked, result.ProjectionStatus)
+	require.Equal(t, "recovery_requested", result.ProjectionBlockCode)
 }
 
 func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecoveryWorkflowRestartAcceptanceResult {
 	t.Helper()
 
-	podLoss := executePodLossRecoveryAcceptance(t)
+	ctx := context.Background()
+	repository := imageagentstore.NewMemoryRepository()
 	plan := acceptancePlan(1, 1)
-	recoveryWorkflowID := imageagenttemporal.EffectRecoveryWorkflowID(
-		imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
-		1,
-		"run-pod-loss:"+plan.Slots[0].ID,
-		1,
-	)
+	run := imageagent.Run{
+		ID: "run-recovery-restart", BusinessTaskID: "task-recovery-restart", TenantID: "tenant-a", UserID: "user-a",
+		Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-recovery-restart", Status: imageagent.RunStatusExecuting,
+		CurrentNode: "execute_slots", ActivePlanRevision: plan.Revision, Version: 1,
+	}
+	scope := imageagent.RunScope{TenantID: run.TenantID, OwnerUserID: run.UserID, RunID: run.ID}
+	catalog, err := imageagent.NormalizeAssetCatalog(acceptanceAssetCatalog(1))
+	require.NoError(t, err)
+	slots := make([]imageagent.SlotProjection, len(plan.Slots))
+	for index, slot := range plan.Slots {
+		slots[index] = imageagent.SlotProjection{Slot: slot}
+	}
+	_, err = repository.InitializeRun(ctx, imageagent.ProjectionInitialization{
+		Scope: scope, Run: run, Plan: plan, Catalog: catalog,
+		Snapshot: imageagent.RunProjection{Run: run, Plan: plan, Slots: slots, AssetCatalog: catalog, ProjectionVersion: 1, LastEventID: 1},
+		CommitID: "start:run-key-recovery-restart", EventType: "run.created", EventPayload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+	currentProjection, err := repository.GetProjection(ctx, scope)
+	require.NoError(t, err)
+	catalog = currentProjection.AssetCatalog
+
+	transientDir := t.TempDir()
+	transientPath := filepath.Join(transientDir, "generated.png")
+	require.NoError(t, os.WriteFile(transientPath, acceptancePNG, 0o600))
+	firstExecutor := newAcceptanceProductImageExecutor(transientPath)
+	durableAPI := &podLossAcceptanceS3{objects: map[string]podLossAcceptanceS3Object{}}
+	uploader := storage.NewS3UploaderWithAPI(durableAPI, storage.S3UploaderOptions{
+		Bucket: "acceptance-assets", PublicBase: "https://cdn.example.test",
+		ArtifactCapabilities: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeAWS},
+	})
+	durableStore, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{
+		MaxArtifactBytes: 1 << 20, OperationTimeout: 5 * time.Second,
+	})
+	require.NoError(t, err)
+	podLost := errors.New("original activity process lost after artifact_staged")
+	firstActivities := newPodLossAcceptanceActivities(t, repository, firstExecutor, durableStore, acceptancePublisher{}, func(context.Context) (string, error) {
+		return "", podLost
+	})
+	firstActivityIdentity := fmt.Sprintf("%p", firstActivities)
+	recoveryInput := podLossAcceptanceActivityInput(run, plan, catalog, plan.Slots[0])
+	_, err = firstActivities.ExecuteSlotV3(ctx, recoveryInput)
+	require.ErrorIs(t, err, podLost)
+
+	recoveredEffectIdentity := imageagent.SlotExternalEffectIdentity{
+		RunScope: scope, PlanRevision: plan.Revision, SlotID: recoveryInput.Slot.ID, Attempt: recoveryInput.Attempt,
+	}
+	storedBeforeRecovery, err := repository.(imageagent.SlotExternalEffectV3Repository).GetSlotExternalEffectV3(ctx, recoveredEffectIdentity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3ArtifactStaged, storedBeforeRecovery.Phase)
+	expectedReservation := manualAcceptanceReservation(recoveryInput)
+	require.Equal(t, expectedReservation.IdempotencyKey, storedBeforeRecovery.IdempotencyKey)
+	require.Equal(t, expectedReservation.InputFingerprint, storedBeforeRecovery.InputFingerprint)
+	require.Equal(t, expectedReservation.Quote.Fingerprint, storedBeforeRecovery.Quote.Fingerprint)
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+
+	blockedProjection := currentProjection
+	blockedProjection.Run.Status = imageagent.RunStatusBlocked
+	blockedProjection.Run.CurrentNode = "recover_effect"
+	blockedProjection.Run.Version++
+	blockedProjection.Run.Block = &imageagent.Block{Code: "recovery_requested", Message: "recovery_requested", SlotID: recoveryInput.Slot.ID}
+	blockedProjection.Slots[0].Slot.Status = imageagent.SlotStatusBlocked
+	blockedProjection.Slots[0].Attempt = recoveryInput.Attempt
+	blockedProjection.Slots[0].ErrorCode = "recovery_requested"
+	_, err = repository.CommitProjection(ctx, imageagent.ProjectionCommit{
+		Scope: scope, CommitID: "test:recovery-requested", ExpectedProjectionVersion: currentProjection.ProjectionVersion,
+		Snapshot: blockedProjection, EventType: "run.updated", EventPayload: json.RawMessage(`{}`), ExpectedRunVersion: currentProjection.Run.Version,
+		RunMutation: &imageagent.RunMutation{
+			Status: blockedProjection.Run.Status, CurrentNode: blockedProjection.Run.CurrentNode,
+			ActivePlanRevision: blockedProjection.Run.ActivePlanRevision, Block: blockedProjection.Run.Block,
+		},
+		SlotMutation: &imageagent.SlotProjectionMutation{
+			PlanRevision: plan.Revision,
+			Result: imageagent.SlotResult{
+				SlotID: recoveryInput.Slot.ID, Attempt: recoveryInput.Attempt, Status: imageagent.SlotStatusBlocked, ErrorCode: "recovery_requested",
+			},
+			Projection: blockedProjection.Slots[0],
+			Attempt: imageagent.StepAttempt{
+				TenantID: run.TenantID, OwnerUserID: run.UserID, RunID: run.ID,
+				SlotID: recoveryInput.Slot.ID, PlanRevision: plan.Revision, Node: "execute_slot_v3",
+				IdempotencyKey: recoveryInput.IdempotencyKey, Attempt: recoveryInput.Attempt, Outcome: "blocked", ErrorCategory: "recovery_requested",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, os.RemoveAll(transientDir))
+	_, statErr := os.Stat(transientPath)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	firstActivities = nil
+	firstExecutor = nil
+
+	recoveryExecutor := newAcceptanceProductImageExecutor(transientPath)
+	blockingStore := newBlockingFinalizeArtifactStore(durableStore)
+	recoveryActivities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
+		Repository: repository, SlotEffects: repository.(imageagent.SlotExternalEffectRepository), SlotExecutor: recoveryExecutor,
+		Publisher: acceptancePublisher{}, PublisherV3: acceptancePublisher{}, SlotEffectsV3: effects,
+		StagedSlotExecutor: recoveryExecutor, ArtifactStore: blockingStore,
+		PublicationOwner: func(context.Context) (string, error) { return "recovered-workflow-run/execute-slot-v3/2", nil },
+		PublicationLeaseDuration: time.Minute,
+	})
+	require.NoError(t, err)
+	workflowClient := newRecordingRecoveryWorkflowClient(t, recoveryActivities)
+	client := imageagenttemporal.NewClient(workflowClient)
+	command := imageagent.RecoverEffectCommand{
+		RunID: run.ID, PlanRevision: plan.Revision, SlotID: recoveryInput.Slot.ID, Attempt: recoveryInput.Attempt,
+		ActionID: "recover-effect-restart-1",
+		Identity: imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID, BusinessTaskID: run.BusinessTaskID},
+		Projection: blockedProjection,
+	}
+
+	require.NoError(t, client.RecoverEffect(ctx, command))
+	startedID, _, _ := workflowClient.attachSummary()
+	recordedStart := workflowClient.firstStart()
+	recordedReservation := manualAcceptanceReservationFromRecoveryInput(recordedStart.input)
+	require.Equal(t, storedBeforeRecovery.IdempotencyKey, recordedReservation.IdempotencyKey)
+	require.Equal(t, storedBeforeRecovery.InputFingerprint, recordedReservation.InputFingerprint)
+	require.Equal(t, storedBeforeRecovery.Quote.Fingerprint, recordedReservation.Quote.Fingerprint)
+	select {
+	case <-blockingStore.started:
+	case <-workflowClient.executionDone(startedID):
+		execution := workflowClient.waitForExecution(t, startedID, time.Second)
+		require.NoError(t, execution.err)
+		t.Fatal("recovery workflow completed before finalization block was reached")
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for recovery finalization to start")
+	}
+	command.ActionID = "recover-effect-restart-2"
+	require.NoError(t, client.RecoverEffect(ctx, command))
+	blockingStore.releaseFinalize()
+
+	startedID, attachedID, attachCalls := workflowClient.attachSummary()
+	execution := workflowClient.waitForExecution(t, startedID, 5*time.Second)
+	require.NoError(t, execution.err)
+
+	recoveredEffect, err := effects.GetSlotExternalEffectV3(ctx, recoveredEffectIdentity)
+	require.NoError(t, err)
+	projected, err := repository.GetProjection(ctx, scope)
+	require.NoError(t, err)
 
 	return manualRecoveryWorkflowRestartAcceptanceResult{
-		FirstActivityOwnerDiscarded: podLoss.FirstPodDiscarded,
-		RecoveryProviderCalls:       podLoss.RecoveryGenerations,
-		RecoveryAttachCalls:         1,
-		StartedRecoveryWorkflowID:   recoveryWorkflowID,
-		AttachedRecoveryWorkflowID:  recoveryWorkflowID,
-		RecoveredEffectPhase:        imageagent.SlotEffectV3PublicationComplete,
-		RecoveredCandidateAssetIDs:  append([]string{podLoss.MainAssetID}, podLoss.GalleryAssetIDs...),
-		PublishedObjects:            podLoss.PublishedObjects,
+		FirstActivityOwnerDiscarded: firstActivityIdentity != fmt.Sprintf("%p", recoveryActivities),
+		RecoveryProviderCalls:       len(recoveryExecutor.calledIDs()),
+		RecoveryWorkflowStarts:      workflowClient.startCount(),
+		RecoveryAttachCalls:         attachCalls,
+		RecoveryWorkflowName:        workflowClient.workflowName(),
+		RecoveryTaskQueue:           workflowClient.taskQueue(),
+		RecoveryConflictPolicy:      workflowClient.conflictPolicy(),
+		RecoveryReusePolicy:         workflowClient.reusePolicy(),
+		StartedRecoveryWorkflowID:   startedID,
+		AttachedRecoveryWorkflowID:  attachedID,
+		RecoveredEffectPhase:        recoveredEffect.Phase,
+		RecoveredEffectAttempt:      recoveredEffect.Identity.Attempt,
+		RecoveredCandidateAssetIDs:  candidateAssetIDs(execution.result.Published),
+		ProjectionStatus:            projected.Run.Status,
+		ProjectionBlockCode:         projected.Run.Block.Code,
 	}
 }
 
@@ -126,6 +285,9 @@ func executePodLossRecoveryAcceptance(t *testing.T) podLossRecoveryAcceptanceRes
 		CommitID: "start:run-key-pod-loss", EventType: "run.created", EventPayload: json.RawMessage(`{}`),
 	})
 	require.NoError(t, err)
+	currentProjection, err := repository.GetProjection(ctx, scope)
+	require.NoError(t, err)
+	catalog = currentProjection.AssetCatalog
 
 	transientDir := t.TempDir()
 	transientPath := filepath.Join(transientDir, "generated.png")
@@ -255,10 +417,14 @@ func newPodLossAcceptanceActivities(
 }
 
 func podLossAcceptanceActivityInput(run imageagent.Run, plan imageagent.Plan, catalog imageagent.AssetCatalog, slot imageagent.Slot) imageagenttemporal.ExecuteSlotV3ActivityInput {
+	return podLossAcceptanceActivityInputForAttempt(run, plan, catalog, slot, 1)
+}
+
+func podLossAcceptanceActivityInputForAttempt(run imageagent.Run, plan imageagent.Plan, catalog imageagent.AssetCatalog, slot imageagent.Slot, attempt int) imageagenttemporal.ExecuteSlotV3ActivityInput {
 	return imageagenttemporal.ExecuteSlotV3ActivityInput{
 		RunID: run.ID, Identity: imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID},
-		PlanRevision: plan.Revision, Slot: slot, Attempt: 1,
-		IdempotencyKey: "attempt:" + slot.IdempotencyKey, AssetCatalog: catalog,
+		PlanRevision: plan.Revision, Slot: slot, Attempt: attempt,
+		IdempotencyKey: fmt.Sprintf("%s:plan:%d:attempt:%d", slot.IdempotencyKey, plan.Revision, attempt), AssetCatalog: catalog,
 	}
 }
 
@@ -386,6 +552,341 @@ func acceptancePlan(slotCount, sourceCount int) imageagent.Plan {
 		Revision: 1, IdempotencyKey: "plan-key-acceptance",
 		SourceAssetIDs: sourceIDs, StyleReferenceIDs: []string{"style-modern"},
 		Slots: slots, CreatedBy: "user-a",
+	}
+}
+
+func manualAcceptanceReservation(input imageagenttemporal.ExecuteSlotV3ActivityInput) imageagent.SlotEffectV3Reservation {
+	execution := imageagent.SlotExecutionInput{
+		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+		PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
+		IdempotencyKey: input.IdempotencyKey, AssetCatalog: input.AssetCatalog,
+	}
+	return imageagent.SlotEffectV3Reservation{
+		Identity: imageagent.SlotExternalEffectIdentity{
+			RunScope: imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID},
+			PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt,
+		},
+		IdempotencyKey:   input.IdempotencyKey,
+		InputFingerprint: imageagent.SlotExecutionFingerprint(execution),
+	}
+}
+
+func manualAcceptanceReservationFromRecoveryInput(input imageagenttemporal.EffectRecoveryWorkflowInput) imageagent.SlotEffectV3Reservation {
+	execution := imageagent.SlotExecutionInput{
+		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+		PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
+		IdempotencyKey: fmt.Sprintf("%s:plan:%d:attempt:%d", input.Slot.IdempotencyKey, input.PlanRevision, input.Attempt),
+		AssetCatalog:   input.AssetCatalog, ProductContext: input.AssetCatalog.ProductContext,
+	}
+	return imageagent.SlotEffectV3Reservation{
+		Identity: imageagent.SlotExternalEffectIdentity{
+			RunScope: imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID},
+			PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt,
+		},
+		IdempotencyKey:   execution.IdempotencyKey,
+		InputFingerprint: imageagent.SlotExecutionFingerprint(execution),
+	}
+}
+
+func candidateAssetIDs(result imageagent.SlotEffectV3PublishedResult) []string {
+	ids := make([]string, 0, len(result.Candidates))
+	for _, candidate := range result.Candidates {
+		ids = append(ids, candidate.AssetID)
+	}
+	return ids
+}
+
+type blockingFinalizeArtifactStore struct {
+	delegate    imageagenttemporal.DurableArtifactStore
+	started     chan struct{}
+	release     chan struct{}
+	startedOnce sync.Once
+	releaseOnce sync.Once
+}
+
+func newBlockingFinalizeArtifactStore(delegate imageagenttemporal.DurableArtifactStore) *blockingFinalizeArtifactStore {
+	return &blockingFinalizeArtifactStore{
+		delegate: delegate,
+		started:  make(chan struct{}),
+		release:  make(chan struct{}),
+	}
+}
+
+func (s *blockingFinalizeArtifactStore) PublicURL(key string) string {
+	return s.delegate.PublicURL(key)
+}
+
+func (s *blockingFinalizeArtifactStore) PrepareSlotArtifacts(input objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
+	return s.delegate.PrepareSlotArtifacts(input)
+}
+
+func (s *blockingFinalizeArtifactStore) PreserveSlotArtifacts(ctx context.Context, identity imageagent.SlotExternalEffectIdentity, prepared objectstore.PreparedSlotArtifacts) error {
+	return s.delegate.PreserveSlotArtifacts(ctx, identity, prepared)
+}
+
+func (s *blockingFinalizeArtifactStore) RecoverSlotArtifacts(ctx context.Context, identity imageagent.SlotExternalEffectIdentity, manifest imageagent.StagingManifest) (objectstore.PreparedSlotArtifacts, error) {
+	return s.delegate.RecoverSlotArtifacts(ctx, identity, manifest)
+}
+
+func (s *blockingFinalizeArtifactStore) EnsureStaged(ctx context.Context, prepared objectstore.PreparedSlotArtifacts) error {
+	return s.delegate.EnsureStaged(ctx, prepared)
+}
+
+func (s *blockingFinalizeArtifactStore) Finalize(ctx context.Context, manifest imageagent.StagingManifest) (imageagent.FinalManifest, error) {
+	return s.FinalizeWithProgress(ctx, manifest, nil)
+}
+
+func (s *blockingFinalizeArtifactStore) FinalizeWithProgress(ctx context.Context, manifest imageagent.StagingManifest, progress func(context.Context, int) error) (imageagent.FinalManifest, error) {
+	s.startedOnce.Do(func() { close(s.started) })
+	<-s.release
+	return s.delegate.FinalizeWithProgress(ctx, manifest, progress)
+}
+
+func (s *blockingFinalizeArtifactStore) waitForFinalizeStart(t *testing.T, timeout time.Duration) {
+	t.Helper()
+	select {
+	case <-s.started:
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for recovery finalization to start")
+	}
+}
+
+func (s *blockingFinalizeArtifactStore) releaseFinalize() {
+	s.releaseOnce.Do(func() { close(s.release) })
+}
+
+type recordingRecoveryWorkflowClient struct {
+	t          *testing.T
+	activities *imageagenttemporal.Activities
+	mu         sync.Mutex
+	starts     []recordedRecoveryStart
+	executions map[string]*recordedRecoveryExecution
+}
+
+type recordedRecoveryStart struct {
+	options      sdkclient.StartWorkflowOptions
+	workflowName string
+	input        imageagenttemporal.EffectRecoveryWorkflowInput
+}
+
+type recordedRecoveryExecution struct {
+	workflowID  string
+	runID       string
+	result      imageagenttemporal.EffectRecoveryResult
+	err         error
+	attachCalls int
+	done        chan struct{}
+	run         *recordingWorkflowRun
+}
+
+func newRecordingRecoveryWorkflowClient(t *testing.T, activities *imageagenttemporal.Activities) *recordingRecoveryWorkflowClient {
+	t.Helper()
+	return &recordingRecoveryWorkflowClient{
+		t:          t,
+		activities: activities,
+		executions: make(map[string]*recordedRecoveryExecution),
+	}
+}
+
+func (c *recordingRecoveryWorkflowClient) ExecuteWorkflow(_ context.Context, options sdkclient.StartWorkflowOptions, workflow interface{}, args ...interface{}) (sdkclient.WorkflowRun, error) {
+	name, ok := workflow.(string)
+	if !ok {
+		return nil, fmt.Errorf("unexpected workflow name payload %T", workflow)
+	}
+	if len(args) != 1 {
+		return nil, fmt.Errorf("unexpected recovery workflow arg count %d", len(args))
+	}
+	input, ok := args[0].(imageagenttemporal.EffectRecoveryWorkflowInput)
+	if !ok {
+		return nil, fmt.Errorf("unexpected recovery workflow input %T", args[0])
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.starts = append(c.starts, recordedRecoveryStart{options: options, workflowName: name, input: input})
+	if execution, exists := c.executions[options.ID]; exists {
+		execution.attachCalls++
+		return execution.run, nil
+	}
+	execution := &recordedRecoveryExecution{
+		workflowID: options.ID,
+		runID:      fmt.Sprintf("recorded-recovery-run-%d", len(c.starts)),
+		done:       make(chan struct{}),
+	}
+	execution.run = &recordingWorkflowRun{execution: execution}
+	c.executions[options.ID] = execution
+	go c.executeRecoveryWorkflow(execution, input)
+	return execution.run, nil
+}
+
+func (c *recordingRecoveryWorkflowClient) executeRecoveryWorkflow(execution *recordedRecoveryExecution, input imageagenttemporal.EffectRecoveryWorkflowInput) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(imageagenttemporal.ImageAgentEffectRecoveryWorkflow)
+	env.RegisterActivityWithOptions(c.activities.RecoverEffectV3, sdkactivity.RegisterOptions{Name: "imageagent.recover_effect.v3"})
+	env.RegisterActivityWithOptions(c.activities.PersistRecoveryBlockedEffectV3, sdkactivity.RegisterOptions{Name: "imageagent.persist_recovery_blocked.v3"})
+	env.ExecuteWorkflow(imageagenttemporal.ImageAgentEffectRecoveryWorkflow, input)
+
+	var (
+		result imageagenttemporal.EffectRecoveryResult
+		err    error
+	)
+	if workflowErr := env.GetWorkflowError(); workflowErr != nil {
+		err = workflowErr
+	} else {
+		err = env.GetWorkflowResult(&result)
+	}
+
+	c.mu.Lock()
+	execution.result = result
+	execution.err = err
+	close(execution.done)
+	c.mu.Unlock()
+}
+
+func (*recordingRecoveryWorkflowClient) QueryWorkflow(context.Context, string, string, string, ...interface{}) (sdkconverter.EncodedValue, error) {
+	return nil, fmt.Errorf("unexpected QueryWorkflow call in recovery acceptance")
+}
+
+func (*recordingRecoveryWorkflowClient) SignalWorkflow(context.Context, string, string, string, interface{}) error {
+	return fmt.Errorf("unexpected SignalWorkflow call in recovery acceptance")
+}
+
+func (*recordingRecoveryWorkflowClient) UpdateWorkflow(context.Context, sdkclient.UpdateWorkflowOptions) (sdkclient.WorkflowUpdateHandle, error) {
+	return nil, fmt.Errorf("unexpected UpdateWorkflow call in recovery acceptance")
+}
+
+func (c *recordingRecoveryWorkflowClient) startCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.starts)
+}
+
+func (c *recordingRecoveryWorkflowClient) attachSummary() (string, string, int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.starts) == 0 {
+		return "", "", 0
+	}
+	startedID := c.starts[0].options.ID
+	attachedID := ""
+	if len(c.starts) > 1 {
+		attachedID = c.starts[1].options.ID
+	}
+	attachCalls := 0
+	if execution := c.executions[startedID]; execution != nil {
+		attachCalls = execution.attachCalls
+	}
+	return startedID, attachedID, attachCalls
+}
+
+func (c *recordingRecoveryWorkflowClient) firstStart() recordedRecoveryStart {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.starts) == 0 {
+		return recordedRecoveryStart{}
+	}
+	return c.starts[0]
+}
+
+func (c *recordingRecoveryWorkflowClient) workflowName() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.starts) == 0 {
+		return ""
+	}
+	return c.starts[0].workflowName
+}
+
+func (c *recordingRecoveryWorkflowClient) taskQueue() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.starts) == 0 {
+		return ""
+	}
+	return c.starts[0].options.TaskQueue
+}
+
+func (c *recordingRecoveryWorkflowClient) conflictPolicy() enumspb.WorkflowIdConflictPolicy {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.starts) == 0 {
+		return enumspb.WORKFLOW_ID_CONFLICT_POLICY_UNSPECIFIED
+	}
+	return c.starts[0].options.WorkflowIDConflictPolicy
+}
+
+func (c *recordingRecoveryWorkflowClient) reusePolicy() enumspb.WorkflowIdReusePolicy {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.starts) == 0 {
+		return enumspb.WORKFLOW_ID_REUSE_POLICY_UNSPECIFIED
+	}
+	return c.starts[0].options.WorkflowIDReusePolicy
+}
+
+func (c *recordingRecoveryWorkflowClient) waitForExecution(t *testing.T, workflowID string, timeout time.Duration) recordedRecoveryExecution {
+	t.Helper()
+	c.mu.Lock()
+	execution := c.executions[workflowID]
+	c.mu.Unlock()
+	if execution == nil {
+		t.Fatalf("workflow %q was not recorded", workflowID)
+	}
+	select {
+	case <-execution.done:
+	case <-time.After(timeout):
+		t.Fatalf("timed out waiting for recovery workflow %q", workflowID)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return *execution
+}
+
+func (c *recordingRecoveryWorkflowClient) executionDone(workflowID string) <-chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if execution := c.executions[workflowID]; execution != nil {
+		return execution.done
+	}
+	done := make(chan struct{})
+	close(done)
+	return done
+}
+
+type recordingWorkflowRun struct {
+	execution *recordedRecoveryExecution
+}
+
+func (r *recordingWorkflowRun) GetID() string {
+	return r.execution.workflowID
+}
+
+func (r *recordingWorkflowRun) GetRunID() string {
+	return r.execution.runID
+}
+
+func (r *recordingWorkflowRun) Get(ctx context.Context, valuePtr interface{}) error {
+	return r.GetWithOptions(ctx, valuePtr, sdkclient.WorkflowRunGetOptions{})
+}
+
+func (r *recordingWorkflowRun) GetWithOptions(ctx context.Context, valuePtr interface{}, _ sdkclient.WorkflowRunGetOptions) error {
+	select {
+	case <-r.execution.done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if r.execution.err != nil {
+		return r.execution.err
+	}
+	switch typed := valuePtr.(type) {
+	case nil:
+		return nil
+	case *imageagenttemporal.EffectRecoveryResult:
+		*typed = r.execution.result
+		return nil
+	default:
+		return fmt.Errorf("unsupported recovery workflow result target %T", valuePtr)
 	}
 }
 
