@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -397,6 +399,25 @@ func (r *memoryRepository) GetSlotExternalEffectV3(_ context.Context, identity i
 	}
 	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(effect); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
+	}
+	return cloneSlotEffectV3(effect), nil
+}
+
+func (r *memoryRepository) BlockCorruptSlotEffectV3(_ context.Context, identity imageagent.SlotExternalEffectIdentity) (imageagent.SlotEffectV3Attempt, error) {
+	if err := validateSlotEffectIdentity(identity); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.runs[scopeKey(identity.RunScope)]; !ok {
+		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
+	}
+	effect, ok := r.slotEffectsV3[slotEffectKey(identity)]
+	if !ok {
+		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
+	}
+	if effect.Phase != imageagent.SlotEffectV3RecoveryBlocked || effect.BlockedCode != imageagent.SlotRecoveryBlockedCode || strings.TrimSpace(effect.CorruptionMarker) == "" {
+		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrCorruptPersistedEffect
 	}
 	return cloneSlotEffectV3(effect), nil
 }
@@ -1072,6 +1093,59 @@ func (r *gormRepository) GetSlotExternalEffectV3(ctx context.Context, identity i
 	return decodeSlotEffectV3Record(row)
 }
 
+func (r *gormRepository) BlockCorruptSlotEffectV3(ctx context.Context, identity imageagent.SlotExternalEffectIdentity) (imageagent.SlotEffectV3Attempt, error) {
+	if err := validateSlotEffectIdentity(identity); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
+	var result imageagent.SlotEffectV3Attempt
+	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
+		if _, err := r.findRunForUpdate(ctx, tx, identity.RunScope); err != nil {
+			return err
+		}
+		row, err := findSlotEffectV3ForUpdate(ctx, tx, identity)
+		if err != nil {
+			return err
+		}
+		if row.Phase == string(imageagent.SlotEffectV3RecoveryBlocked) && strings.TrimSpace(row.CorruptionMarker) != "" {
+			decoded, decodeErr := decodeSlotEffectV3Record(row)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			result = decoded
+			return nil
+		}
+		decoded, decodeErr := decodeSlotEffectV3Record(row)
+		if decodeErr == nil {
+			return imageagent.ErrCorruptPersistedEffect
+		}
+		if !errors.Is(decodeErr, imageagent.ErrCorruptPersistedEffect) {
+			return decodeErr
+		}
+		marker := decoded.CorruptionMarker
+		if strings.TrimSpace(marker) == "" {
+			return imageagent.ErrCorruptPersistedEffect
+		}
+		updated := tx.Model(&slotExternalEffectV3Record{}).Where(
+			"tenant_id = ? AND owner_user_id = ? AND run_id = ? AND plan_revision = ? AND slot_id = ? AND attempt = ?",
+			identity.TenantID, identity.OwnerUserID, identity.RunID, identity.PlanRevision, identity.SlotID, identity.Attempt,
+		).Updates(map[string]any{
+			"phase": string(imageagent.SlotEffectV3RecoveryBlocked), "blocked_code": imageagent.SlotRecoveryBlockedCode, "corruption_marker": marker,
+		})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return imageagent.ErrRevisionConflict
+		}
+		row.Phase = string(imageagent.SlotEffectV3RecoveryBlocked)
+		row.BlockedCode = imageagent.SlotRecoveryBlockedCode
+		row.CorruptionMarker = marker
+		result, err = decodeSlotEffectV3Record(row)
+		return err
+	})
+	return result, err
+}
+
 func claimSlotPublicationV3(current imageagent.SlotEffectV3Attempt, request imageagent.PublicationClaimRequest, now time.Time, persist func(imageagent.SlotEffectV3Attempt)) (imageagent.SlotEffectV3Attempt, imageagent.PublicationClaim, bool, error) {
 	result, claim, claimed, update, err := evaluatePublicationClaimV3(current, request, now)
 	if err != nil {
@@ -1277,6 +1351,13 @@ func slotEffectV3RecordFromReservation(reservation imageagent.SlotEffectV3Reserv
 
 func decodeSlotEffectV3Record(row slotExternalEffectV3Record) (imageagent.SlotEffectV3Attempt, error) {
 	result := slotEffectV3FromRecord(row)
+	result.CorruptionMarker = row.CorruptionMarker
+	if row.Phase == string(imageagent.SlotEffectV3RecoveryBlocked) && strings.TrimSpace(row.CorruptionMarker) != "" {
+		if row.BlockedCode != imageagent.SlotRecoveryBlockedCode {
+			return result, fmt.Errorf("%w: corrupt effect has invalid recovery block code", imageagent.ErrInvalidPersistedPolicy)
+		}
+		return result, nil
+	}
 	if len(row.StagingManifestJSON) > 0 {
 		if err := json.Unmarshal(row.StagingManifestJSON, &result.StagingManifest); err != nil {
 			return result, fmt.Errorf("decode v3 staging manifest: %w", err)
@@ -1294,12 +1375,14 @@ func decodeSlotEffectV3Record(row slotExternalEffectV3Record) (imageagent.SlotEf
 	}
 	if len(row.BudgetPolicyJSON) > 0 {
 		if err := json.Unmarshal(row.BudgetPolicyJSON, &result.Policy); err != nil {
-			return result, fmt.Errorf("decode v3 budget policy: %w", err)
+			result.CorruptionMarker = persistedEffectCorruptionMarker("budget_policy_json", row.BudgetPolicyJSON)
+			return result, fmt.Errorf("%w: decode v3 budget policy: %w", imageagent.ErrCorruptPersistedEffect, err)
 		}
 	}
 	if len(row.UsageQuoteJSON) > 0 {
 		if err := json.Unmarshal(row.UsageQuoteJSON, &result.Quote); err != nil {
-			return result, fmt.Errorf("decode v3 usage quote: %w", err)
+			result.CorruptionMarker = persistedEffectCorruptionMarker("usage_quote_json", row.UsageQuoteJSON)
+			return result, fmt.Errorf("%w: decode v3 usage quote: %w", imageagent.ErrCorruptPersistedEffect, err)
 		}
 	}
 	if len(row.UsageReceiptJSON) > 0 {
@@ -1313,12 +1396,17 @@ func decodeSlotEffectV3Record(row slotExternalEffectV3Record) (imageagent.SlotEf
 	return result, nil
 }
 
+func persistedEffectCorruptionMarker(field string, payload []byte) string {
+	digest := sha256.Sum256(payload)
+	return field + ":sha256:" + hex.EncodeToString(digest[:])
+}
+
 func slotEffectV3FromRecord(row slotExternalEffectV3Record) imageagent.SlotEffectV3Attempt {
 	claim := imageagent.PublicationClaim{Owner: row.PublicationOwner, Fence: row.PublicationFence}
 	if row.PublicationLeaseExpiresAt != nil {
 		claim.LeaseExpiresAt = row.PublicationLeaseExpiresAt.UTC()
 	}
-	return imageagent.SlotEffectV3Attempt{Identity: imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: row.TenantID, OwnerUserID: row.OwnerUserID, RunID: row.RunID}, PlanRevision: row.PlanRevision, SlotID: row.SlotID, Attempt: row.Attempt}, IdempotencyKey: row.IdempotencyKey, InputFingerprint: row.InputFingerprint, Phase: imageagent.SlotEffectV3Phase(row.Phase), StagingManifestFingerprint: row.StagingManifestFingerprint, Publication: claim, PublicationFingerprint: row.PublicationFingerprint, ResultFingerprint: row.ResultFingerprint, BlockedCode: row.BlockedCode, BudgetStatus: imageagent.SlotBudgetStatus(row.BudgetStatus)}
+	return imageagent.SlotEffectV3Attempt{Identity: imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: row.TenantID, OwnerUserID: row.OwnerUserID, RunID: row.RunID}, PlanRevision: row.PlanRevision, SlotID: row.SlotID, Attempt: row.Attempt}, IdempotencyKey: row.IdempotencyKey, InputFingerprint: row.InputFingerprint, Phase: imageagent.SlotEffectV3Phase(row.Phase), StagingManifestFingerprint: row.StagingManifestFingerprint, Publication: claim, PublicationFingerprint: row.PublicationFingerprint, ResultFingerprint: row.ResultFingerprint, BlockedCode: row.BlockedCode, CorruptionMarker: row.CorruptionMarker, BudgetStatus: imageagent.SlotBudgetStatus(row.BudgetStatus)}
 }
 
 func decodeReservedUsage(encoded []byte) (imageagent.UsageVector, error) {

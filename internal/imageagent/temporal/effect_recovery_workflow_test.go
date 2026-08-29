@@ -212,6 +212,33 @@ func TestEffectRecoveryWorkflowPersistsRecoveryBlockedForMissingEffectWithoutPro
 	require.Equal(t, imageagent.SlotRecoveryBlockedCode, stored.BlockedCode)
 }
 
+func TestEffectRecoveryFailsClosedCorruptPersistedBudgetWithoutProviderCall(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-recovery-corrupt-budget")
+	baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
+	identity := slotEffectReservationV3(slotExecutionInputV3(input)).Identity
+	effects := &corruptRecoveryV3Repository{
+		SlotExternalEffectV3Repository: baseEffects,
+		identity:                       identity,
+		blocked: imageagent.SlotEffectV3Attempt{
+			Identity: identity, IdempotencyKey: input.IdempotencyKey,
+			InputFingerprint: "corrupt-input", Phase: imageagent.SlotEffectV3RecoveryBlocked,
+			BlockedCode: imageagent.SlotRecoveryBlockedCode, CorruptionMarker: "budget_policy_json:sha256:corrupt",
+		},
+	}
+	executor := &recordingStagedExecutor{}
+	activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
+	result, err := activities.RecoverEffectV3(context.Background(), effectRecoveryWorkflowInput(input))
+	require.NoError(t, err)
+	require.Equal(t, EffectRecoveryOutcomeRecoveryBlocked, result.Outcome)
+	require.Equal(t, imageagent.SlotEffectV3RecoveryBlocked, result.EffectPhase)
+	require.Equal(t, imageagent.SlotRecoveryBlockedCode, result.BlockedCode)
+	require.Equal(t, identity, effects.blocked.Identity)
+	require.NotEmpty(t, effects.blocked.CorruptionMarker)
+	require.Zero(t, executor.GenerateCalls(), "corrupt persisted authorization must never redispatch the provider")
+	require.Zero(t, executor.BuildCalls(), "corrupt persisted authorization must not rebuild output")
+	require.Equal(t, 1, effects.blockCalls)
+}
+
 func TestEffectRecoveryWorkflowScopesToExactEffectIdentityWithoutProviderCall(t *testing.T) {
 	repository, firstAttempt := initializedSlotEffectV3Activity(t, "run-v3-recovery-exact-identity")
 	secondAttempt := firstAttempt
@@ -514,6 +541,31 @@ func effectRecoveryWorkflowInput(input ExecuteSlotV3ActivityInput) EffectRecover
 		Attempt:      input.Attempt,
 		AssetCatalog: input.AssetCatalog,
 	}
+}
+
+type corruptRecoveryV3Repository struct {
+	imageagent.SlotExternalEffectV3Repository
+	identity   imageagent.SlotExternalEffectIdentity
+	blocked    imageagent.SlotEffectV3Attempt
+	blockCalls int
+}
+
+func (r *corruptRecoveryV3Repository) GetSlotExternalEffectV3(_ context.Context, identity imageagent.SlotExternalEffectIdentity) (imageagent.SlotEffectV3Attempt, error) {
+	if identity != r.identity {
+		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
+	}
+	partial := r.blocked
+	partial.Phase = imageagent.SlotEffectV3ProviderClaimed
+	partial.BlockedCode = ""
+	return partial, fmt.Errorf("%w: corrupted budget payload", imageagent.ErrCorruptPersistedEffect)
+}
+
+func (r *corruptRecoveryV3Repository) BlockCorruptSlotEffectV3(_ context.Context, identity imageagent.SlotExternalEffectIdentity) (imageagent.SlotEffectV3Attempt, error) {
+	if identity != r.identity {
+		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
+	}
+	r.blockCalls++
+	return r.blocked, nil
 }
 
 func initializeEffectRecoveryV3Activity(t *testing.T, repository imageagent.Repository, runID string) ExecuteSlotV3ActivityInput {

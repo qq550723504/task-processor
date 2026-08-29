@@ -156,10 +156,14 @@ type SlotEffectV3Attempt struct {
 	ResultFingerprint          string
 	Published                  SlotEffectV3PublishedResult
 	BlockedCode                string
-	BudgetStatus               SlotBudgetStatus
-	Policy                     BudgetPolicy
-	Quote                      SlotUsageQuote
-	Receipt                    SlotUsageReceipt
+	// CorruptionMarker records a deterministic, non-sensitive marker for a
+	// persisted payload that could not be decoded. It is retained after the
+	// effect is durably fail-closed so recovery never needs the original JSON.
+	CorruptionMarker string
+	BudgetStatus     SlotBudgetStatus
+	Policy           BudgetPolicy
+	Quote            SlotUsageQuote
+	Receipt          SlotUsageReceipt
 }
 
 type PublicationClaim struct {
@@ -314,4 +318,12 @@ type SlotExternalEffectV3Repository interface {
 	ReleaseSlotProviderBudgetV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
 	MarkSlotProviderBudgetUnknownV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
 	GetSlotExternalEffectV3(context.Context, SlotExternalEffectIdentity) (SlotEffectV3Attempt, error)
+}
+
+// CorruptSlotEffectV3Repository is an optional repository capability used by
+// recovery to atomically fail closed when persisted authorization JSON is
+// corrupt. It intentionally remains separate from the execution repository
+// contract so existing adapters cannot accidentally authorize a new effect.
+type CorruptSlotEffectV3Repository interface {
+	BlockCorruptSlotEffectV3(context.Context, SlotExternalEffectIdentity) (SlotEffectV3Attempt, error)
 }

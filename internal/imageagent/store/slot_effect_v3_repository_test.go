@@ -252,6 +252,53 @@ func TestSlotEffectV3RepositoryRejectsMismatchedBlockedPolicyOnRead(t *testing.T
 	})
 }
 
+func TestGormSlotEffectV3CanFailClosedCorruptBudgetPayload(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		field string
+	}{
+		{name: "policy", field: "budget_policy_json"},
+		{name: "quote", field: "usage_quote_json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reservation := v3Reservation("corrupt-" + tc.name)
+			db := newConcurrentSQLite(t)
+			repository := NewGormRepository(db)
+			effects := repository.(imageagent.SlotExternalEffectV3Repository)
+			initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+			row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+			require.NoError(t, db.Create(&row).Error)
+			require.NoError(t, db.Model(&slotExternalEffectV3Record{}).
+				Where("tenant_id = ? AND owner_user_id = ? AND run_id = ? AND plan_revision = ? AND slot_id = ? AND attempt = ?",
+					reservation.Identity.TenantID, reservation.Identity.OwnerUserID, reservation.Identity.RunID,
+					reservation.Identity.PlanRevision, reservation.Identity.SlotID, reservation.Identity.Attempt).
+				Update(tc.field, []byte("{corrupt-json")).Error)
+
+			_, err := effects.GetSlotExternalEffectV3(context.Background(), reservation.Identity)
+			require.ErrorIs(t, err, imageagent.ErrCorruptPersistedEffect)
+
+			corruptor, ok := repository.(interface {
+				BlockCorruptSlotEffectV3(context.Context, imageagent.SlotExternalEffectIdentity) (imageagent.SlotEffectV3Attempt, error)
+			})
+			require.True(t, ok, "repository must expose an atomic fail-closed corruption transition")
+			blocked, err := corruptor.BlockCorruptSlotEffectV3(context.Background(), reservation.Identity)
+			require.NoError(t, err)
+			require.Equal(t, reservation.Identity, blocked.Identity)
+			require.Equal(t, reservation.Identity.Attempt, blocked.Identity.Attempt)
+			require.Equal(t, imageagent.SlotEffectV3RecoveryBlocked, blocked.Phase)
+			require.Equal(t, imageagent.SlotRecoveryBlockedCode, blocked.BlockedCode)
+			require.NotEmpty(t, blocked.CorruptionMarker)
+
+			replayed, err := effects.GetSlotExternalEffectV3(context.Background(), reservation.Identity)
+			require.NoError(t, err)
+			require.Equal(t, blocked, replayed)
+			again, err := corruptor.BlockCorruptSlotEffectV3(context.Background(), reservation.Identity)
+			require.NoError(t, err)
+			require.Equal(t, blocked, again, "recovery of the same corrupt identity must be idempotent")
+		})
+	}
+}
+
 func TestMemoryReserveSlotProviderV3RejectsCorruptExistingAttempt(t *testing.T) {
 	reservation := v3Reservation("invalid-policy-reserve-memory")
 	repository := NewMemoryRepository()

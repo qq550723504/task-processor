@@ -188,6 +188,7 @@ type slotExternalEffectV3Record struct {
 	FinalManifestJSON          []byte
 	PublishedJSON              []byte
 	BlockedCode                string `gorm:"type:varchar(128)"`
+	CorruptionMarker           string `gorm:"type:varchar(256)"`
 	BudgetStatus               string `gorm:"type:varchar(32)"`
 	BudgetPolicyJSON           []byte
 	UsageQuoteJSON             []byte

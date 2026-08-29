@@ -506,6 +506,9 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		if errors.Is(err, imageagent.ErrRunNotFound) {
 			return a.persistMissingEffectRecoveryBlockedV3(ctx, input, reservation)
 		}
+		if result, handled, blockErr := a.failClosedCorruptEffectRecovery(ctx, input, err); handled {
+			return result, blockErr
+		}
 		return EffectRecoveryResult{}, persistedSlotEffectV3RepositoryError(err)
 	}
 	if err := validatePersistedSlotEffectV3(effect); err != nil {
@@ -577,6 +580,9 @@ func (a *Activities) PersistRecoveryBlockedEffectV3(ctx context.Context, input E
 		if errors.Is(err, imageagent.ErrRunNotFound) {
 			return a.persistMissingEffectRecoveryBlockedV3(ctx, input, reservation)
 		}
+		if result, handled, blockErr := a.failClosedCorruptEffectRecovery(ctx, input, err); handled {
+			return result, blockErr
+		}
 		return EffectRecoveryResult{}, persistedSlotEffectV3RepositoryError(err)
 	}
 	if err := validatePersistedSlotEffectV3(effect); err != nil {
@@ -626,6 +632,9 @@ func (a *Activities) ReconcileEffectRecoveryV3(ctx context.Context, input Effect
 	}
 	effect, err := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, slotEffectReservationV3(execution).Identity)
 	if err != nil {
+		if result, handled, blockErr := a.failClosedCorruptEffectRecovery(ctx, input, err); handled {
+			return result, blockErr
+		}
 		return EffectRecoveryResult{}, persistedSlotEffectV3RepositoryError(err)
 	}
 	if err := validatePersistedSlotEffectV3(effect); err != nil {
@@ -639,6 +648,29 @@ func (a *Activities) ReconcileEffectRecoveryV3(ctx context.Context, input Effect
 		return EffectRecoveryResult{}, err
 	}
 	return result, nil
+}
+
+func (a *Activities) failClosedCorruptEffectRecovery(ctx context.Context, input EffectRecoveryWorkflowInput, cause error) (EffectRecoveryResult, bool, error) {
+	if !errors.Is(cause, imageagent.ErrCorruptPersistedEffect) {
+		return EffectRecoveryResult{}, false, nil
+	}
+	corruptor, ok := a.slotEffectsV3.(imageagent.CorruptSlotEffectV3Repository)
+	if !ok {
+		return EffectRecoveryResult{}, true, persistedSlotEffectV3RepositoryError(cause)
+	}
+	identity := imageagent.SlotExternalEffectIdentity{
+		RunScope:     imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID},
+		PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt,
+	}
+	blocked, err := corruptor.BlockCorruptSlotEffectV3(ctx, identity)
+	if err != nil {
+		return EffectRecoveryResult{}, true, persistedSlotEffectV3RepositoryError(err)
+	}
+	return EffectRecoveryResult{
+		Outcome:     EffectRecoveryOutcomeRecoveryBlocked,
+		Published:   imageagent.SlotEffectV3PublishedResult{SlotID: strings.TrimSpace(input.Slot.ID), Attempt: input.Attempt},
+		EffectPhase: blocked.Phase, BlockedCode: blocked.BlockedCode,
+	}, true, nil
 }
 
 func effectRecoveryResultFromDurableEffect(effect imageagent.SlotEffectV3Attempt) (EffectRecoveryResult, error) {
