@@ -29,6 +29,7 @@ const (
 	commandIngressPlanPolicyPatch   = "image-agent-command-ingress-plan-policy-v1"
 	approvalPublicationScopePatch   = "image-agent-approval-publication-scope-v1"
 	externalEffectFinalizationPatch = "image-agent-external-effect-finalization-v1"
+	activityTimeoutGracePatch       = "image-agent-activity-timeout-grace-v1"
 	effectRecoveryStartWireV1Patch  = "image-agent-effect-recovery-start-wire-v1"
 	recoveryRequestedBlockCode      = "recovery_requested"
 	recoveryStartFailedBlockCode    = "recovery_start_failed"

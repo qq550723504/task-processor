@@ -78,7 +78,12 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 				EffectPhase: effectPhaseForFinalizationWire(input.ExternalEffectFinalization, imageagent.SlotEffectV3ProviderNotDispatched),
 			}, nil
 		}
-		if input.ExternalEffectFinalization {
+		// New child histories always reserve reconciliation grace, even when the
+		// parent input was produced by an older wire. Existing child histories
+		// retain the old timeout through the version marker for replay safety.
+		if workflow.GetVersion(ctx, activityTimeoutGracePatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion {
+			startToClose = addFinalizationGrace(providerWindow)
+		} else if input.ExternalEffectFinalization {
 			startToClose = addFinalizationGrace(providerWindow)
 		} else if providerWindow < startToClose {
 			startToClose = providerWindow
