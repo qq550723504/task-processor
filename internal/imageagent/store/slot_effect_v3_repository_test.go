@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -108,6 +109,91 @@ func TestSlotEffectV3StagingRepositoryConformance(t *testing.T) {
 			}
 			require.Equal(t, baseline, trace)
 		})
+	}
+}
+
+func TestSlotEffectV3PublicationRepositoryConformance(t *testing.T) {
+	var baseline publicationConformanceTrace
+	for index, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			trace := runSlotEffectV3PublicationConformance(t, factory.new(t))
+			if index == 0 {
+				baseline = trace
+				return
+			}
+			require.Equal(t, baseline, trace)
+		})
+	}
+}
+
+type publicationConformanceTrace struct {
+	FirstPhase              imageagent.SlotEffectV3Phase
+	FirstOwner              string
+	FirstFence              int64
+	FirstAcquired           bool
+	NormalizedManifestSHA   string
+	ReplayAcquired          bool
+	ReplayFence             int64
+	ManifestConflict        bool
+	SuccessorOwner          string
+	SuccessorFence          int64
+	SuccessorAcquired       bool
+	StaleRenewalConflict    bool
+	StaleCompletionConflict bool
+	RenewedFence            int64
+	CompletedPhase          imageagent.SlotEffectV3Phase
+	CompletionRepeat        bool
+	PostCompletionAcquired  bool
+	PostCompletionPhase     imageagent.SlotEffectV3Phase
+}
+
+func runSlotEffectV3PublicationConformance(t *testing.T, fixture v3ReviewFixture) publicationConformanceTrace {
+	t.Helper()
+	ctx := context.Background()
+	stageV3Attempt(t, fixture.effects, fixture.reservation)
+	request := v3PublicationRequest(fixture.reservation, "worker-a")
+	request.FinalManifest.Assets[0].SHA256 = strings.ToUpper(request.FinalManifest.Assets[0].SHA256)
+	firstAttempt, first, firstAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+	require.NoError(t, err)
+	replayAttempt, replay, replayAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+	require.NoError(t, err)
+	require.Equal(t, firstAttempt, replayAttempt)
+
+	conflict := request
+	conflict.FinalManifest.Assets = append([]imageagent.PublishedAssetRef(nil), request.FinalManifest.Assets...)
+	conflict.FinalManifest.Assets[0].ObjectKey = "image-agent/final/tenant-a/run/conflict.png"
+	_, _, _, conflictErr := fixture.effects.ClaimSlotPublicationV3(ctx, conflict)
+
+	fixture.expireLease(t, fixture.reservation.Identity)
+	request.Owner = "worker-b"
+	successorAttempt, successor, successorAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+	require.NoError(t, err)
+	_, staleRenewalErr := fixture.effects.RenewSlotPublicationV3(ctx, imageagent.PublicationLeaseRenewal{Identity: fixture.reservation.Identity, Owner: first.Owner, Fence: first.Fence, LeaseDuration: time.Minute})
+	published := v3PublishedResult(fixture.reservation)
+	completion := imageagent.PublicationCompletion{Reservation: fixture.reservation, Owner: successor.Owner, Fence: successor.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: mustV3ResultFingerprint(t, published), Published: published}
+	staleCompletion := completion
+	staleCompletion.Owner = first.Owner
+	staleCompletion.Fence = first.Fence
+	_, staleCompletionErr := fixture.effects.CompleteSlotPublicationV3(ctx, staleCompletion)
+	renewed, err := fixture.effects.RenewSlotPublicationV3(ctx, imageagent.PublicationLeaseRenewal{Identity: fixture.reservation.Identity, Owner: successor.Owner, Fence: successor.Fence, LeaseDuration: time.Minute})
+	require.NoError(t, err)
+	completed, err := fixture.effects.CompleteSlotPublicationV3(ctx, completion)
+	require.NoError(t, err)
+	repeated, err := fixture.effects.CompleteSlotPublicationV3(ctx, completion)
+	require.NoError(t, err)
+	postComplete, postClaim, postAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+	require.NoError(t, err)
+	require.Equal(t, successorAttempt.Publication.Fence, successor.Fence)
+	require.Equal(t, completed, repeated)
+	require.Equal(t, completed, postComplete)
+	require.Equal(t, successor.Fence, postClaim.Fence)
+
+	return publicationConformanceTrace{
+		FirstPhase: firstAttempt.Phase, FirstOwner: first.Owner, FirstFence: first.Fence, FirstAcquired: firstAcquired,
+		NormalizedManifestSHA: firstAttempt.FinalManifest.Assets[0].SHA256, ReplayAcquired: replayAcquired, ReplayFence: replay.Fence,
+		ManifestConflict: errors.Is(conflictErr, imageagent.ErrRevisionConflict), SuccessorOwner: successor.Owner, SuccessorFence: successor.Fence, SuccessorAcquired: successorAcquired,
+		StaleRenewalConflict: errors.Is(staleRenewalErr, imageagent.ErrRevisionConflict), StaleCompletionConflict: errors.Is(staleCompletionErr, imageagent.ErrRevisionConflict),
+		RenewedFence: renewed.Fence, CompletedPhase: completed.Phase, CompletionRepeat: reflect.DeepEqual(completed, repeated), PostCompletionAcquired: postAcquired, PostCompletionPhase: postComplete.Phase,
 	}
 }
 

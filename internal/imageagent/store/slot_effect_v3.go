@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 
@@ -215,12 +214,8 @@ func (r *memoryRepository) CommitSlotStagedV3(_ context.Context, reservation ima
 }
 
 func (r *memoryRepository) ClaimSlotPublicationV3(_ context.Context, request imageagent.PublicationClaimRequest) (imageagent.SlotEffectV3Attempt, imageagent.PublicationClaim, bool, error) {
-	finalManifest, err := imageagent.NormalizeFinalManifest(request.FinalManifest)
+	request, err := effectpolicy.PreflightPublicationClaim(request)
 	if err != nil {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, err
-	}
-	request.FinalManifest = finalManifest
-	if err := validatePublicationClaimRequestV3(request); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, err
 	}
 	r.mu.Lock()
@@ -229,19 +224,18 @@ func (r *memoryRepository) ClaimSlotPublicationV3(_ context.Context, request ima
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, imageagent.ErrRunNotFound
 	}
-	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+	decision, err := effectpolicy.ClaimPublication(existing, request, r.clock().UTC())
+	if err != nil {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, err
 	}
-	if !sameSlotEffectV3Reservation(existing, request.Reservation) {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, imageagent.ErrRevisionConflict
+	if decision.Changed {
+		r.slotEffectsV3[slotEffectKey(decision.Attempt.Identity)] = cloneSlotEffectV3(decision.Attempt)
 	}
-	return claimSlotPublicationV3(existing, request, r.clock().UTC(), func(updated imageagent.SlotEffectV3Attempt) {
-		r.slotEffectsV3[slotEffectKey(updated.Identity)] = cloneSlotEffectV3(updated)
-	})
+	return cloneSlotEffectV3(decision.Attempt), decision.Claim, decision.Acquired, nil
 }
 
 func (r *memoryRepository) RenewSlotPublicationV3(_ context.Context, renewal imageagent.PublicationLeaseRenewal) (imageagent.PublicationClaim, error) {
-	if err := validatePublicationLeaseRenewalV3(renewal); err != nil {
+	if err := effectpolicy.PreflightPublicationLeaseRenewal(renewal); err != nil {
 		return imageagent.PublicationClaim{}, err
 	}
 	r.mu.Lock()
@@ -250,21 +244,19 @@ func (r *memoryRepository) RenewSlotPublicationV3(_ context.Context, renewal ima
 	if !ok {
 		return imageagent.PublicationClaim{}, imageagent.ErrRunNotFound
 	}
-	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+	decision, err := effectpolicy.RenewPublication(existing, renewal, r.clock().UTC())
+	if err != nil {
 		return imageagent.PublicationClaim{}, err
 	}
-	return renewSlotPublicationV3(existing, renewal, r.clock().UTC(), func(updated imageagent.SlotEffectV3Attempt) {
-		r.slotEffectsV3[slotEffectKey(updated.Identity)] = cloneSlotEffectV3(updated)
-	})
+	if decision.Changed {
+		r.slotEffectsV3[slotEffectKey(decision.Attempt.Identity)] = cloneSlotEffectV3(decision.Attempt)
+	}
+	return decision.Claim, nil
 }
 
 func (r *memoryRepository) CompleteSlotPublicationV3(_ context.Context, completion imageagent.PublicationCompletion) (imageagent.SlotEffectV3Attempt, error) {
-	published, err := imageagent.NormalizeSlotEffectV3PublishedResult(completion.Published)
+	completion, err := effectpolicy.PreflightPublicationCompletion(completion)
 	if err != nil {
-		return imageagent.SlotEffectV3Attempt{}, err
-	}
-	completion.Published = published
-	if err := validatePublicationCompletionV3(completion); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
 	r.mu.Lock()
@@ -273,29 +265,14 @@ func (r *memoryRepository) CompleteSlotPublicationV3(_ context.Context, completi
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
 	}
-	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+	decision, err := effectpolicy.CompletePublication(existing, completion)
+	if err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
-	if !sameSlotEffectV3Reservation(existing, completion.Reservation) {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
+	if decision.Changed {
+		r.slotEffectsV3[slotEffectKey(decision.Attempt.Identity)] = cloneSlotEffectV3(decision.Attempt)
 	}
-	if existing.Phase == imageagent.SlotEffectV3PublicationComplete {
-		if samePublicationCompletionV3(existing, completion) {
-			return cloneSlotEffectV3(existing), nil
-		}
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
-	}
-	if existing.Phase != imageagent.SlotEffectV3PublicationClaimed || existing.Publication.Owner != completion.Owner || existing.Publication.Fence != completion.Fence || existing.PublicationFingerprint != completion.PublicationFingerprint {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
-	}
-	if err := imageagent.ValidateSlotEffectV3Completion(completion.Published, existing.FinalManifest, completion.ResultFingerprint); err != nil {
-		return imageagent.SlotEffectV3Attempt{}, err
-	}
-	existing.Phase = imageagent.SlotEffectV3PublicationComplete
-	existing.ResultFingerprint = completion.ResultFingerprint
-	existing.Published = cloneSlotEffectV3PublishedResult(completion.Published)
-	r.slotEffectsV3[slotEffectKey(existing.Identity)] = cloneSlotEffectV3(existing)
-	return cloneSlotEffectV3(existing), nil
+	return cloneSlotEffectV3(decision.Attempt), nil
 }
 
 func (r *memoryRepository) BlockSlotEffectV3(_ context.Context, transition imageagent.SlotEffectV3BlockTransition) (imageagent.SlotEffectV3Attempt, error) {
@@ -747,12 +724,8 @@ func (r *gormRepository) CommitSlotStagedV3(ctx context.Context, reservation ima
 }
 
 func (r *gormRepository) ClaimSlotPublicationV3(ctx context.Context, request imageagent.PublicationClaimRequest) (imageagent.SlotEffectV3Attempt, imageagent.PublicationClaim, bool, error) {
-	finalManifest, err := imageagent.NormalizeFinalManifest(request.FinalManifest)
+	request, err := effectpolicy.PreflightPublicationClaim(request)
 	if err != nil {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, err
-	}
-	request.FinalManifest = finalManifest
-	if err := validatePublicationClaimRequestV3(request); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, err
 	}
 	var result imageagent.SlotEffectV3Attempt
@@ -771,22 +744,19 @@ func (r *gormRepository) ClaimSlotPublicationV3(ctx context.Context, request ima
 		if err != nil {
 			return err
 		}
-		if !sameSlotEffectV3Reservation(current, request.Reservation) {
-			return imageagent.ErrRevisionConflict
-		}
-		var update *imageagent.SlotEffectV3Attempt
-		result, claim, claimed, update, err = evaluatePublicationClaimV3(current, request, now)
+		decision, err := effectpolicy.ClaimPublication(current, request, now)
 		if err != nil {
 			return err
 		}
-		if update == nil {
+		result, claim, claimed = decision.Attempt, decision.Claim, decision.Acquired
+		if !decision.Changed {
 			return nil
 		}
-		finalJSON, err := json.Marshal(update.FinalManifest)
+		finalJSON, err := json.Marshal(decision.Attempt.FinalManifest)
 		if err != nil {
 			return err
 		}
-		updated := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), request.Reservation.Identity).Updates(map[string]any{"phase": string(update.Phase), "publication_owner": update.Publication.Owner, "publication_lease_expires_at": update.Publication.LeaseExpiresAt, "publication_fence": update.Publication.Fence, "publication_fingerprint": update.PublicationFingerprint, "final_manifest_json": finalJSON})
+		updated := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), request.Reservation.Identity).Updates(map[string]any{"phase": string(decision.Attempt.Phase), "publication_owner": decision.Attempt.Publication.Owner, "publication_lease_expires_at": decision.Attempt.Publication.LeaseExpiresAt, "publication_fence": decision.Attempt.Publication.Fence, "publication_fingerprint": decision.Attempt.PublicationFingerprint, "final_manifest_json": finalJSON})
 		if updated.Error != nil {
 			return updated.Error
 		}
@@ -799,7 +769,7 @@ func (r *gormRepository) ClaimSlotPublicationV3(ctx context.Context, request ima
 }
 
 func (r *gormRepository) RenewSlotPublicationV3(ctx context.Context, renewal imageagent.PublicationLeaseRenewal) (imageagent.PublicationClaim, error) {
-	if err := validatePublicationLeaseRenewalV3(renewal); err != nil {
+	if err := effectpolicy.PreflightPublicationLeaseRenewal(renewal); err != nil {
 		return imageagent.PublicationClaim{}, err
 	}
 	var claim imageagent.PublicationClaim
@@ -816,11 +786,14 @@ func (r *gormRepository) RenewSlotPublicationV3(ctx context.Context, renewal ima
 		if err != nil {
 			return err
 		}
-		if current.Phase != imageagent.SlotEffectV3PublicationClaimed || current.Publication.Owner != renewal.Owner || current.Publication.Fence != renewal.Fence || !now.Before(current.Publication.LeaseExpiresAt) {
-			return imageagent.ErrRevisionConflict
+		decision, err := effectpolicy.RenewPublication(current, renewal, now)
+		if err != nil {
+			return err
 		}
-		claim = current.Publication
-		claim.LeaseExpiresAt = now.Add(renewal.LeaseDuration)
+		claim = decision.Claim
+		if !decision.Changed {
+			return nil
+		}
 		updated := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), renewal.Identity).Where("phase = ? AND publication_owner = ? AND publication_fence = ?", string(imageagent.SlotEffectV3PublicationClaimed), renewal.Owner, renewal.Fence).Updates(map[string]any{"publication_lease_expires_at": claim.LeaseExpiresAt})
 		if updated.Error != nil {
 			return updated.Error
@@ -834,12 +807,8 @@ func (r *gormRepository) RenewSlotPublicationV3(ctx context.Context, renewal ima
 }
 
 func (r *gormRepository) CompleteSlotPublicationV3(ctx context.Context, completion imageagent.PublicationCompletion) (imageagent.SlotEffectV3Attempt, error) {
-	published, err := imageagent.NormalizeSlotEffectV3PublishedResult(completion.Published)
+	completion, err := effectpolicy.PreflightPublicationCompletion(completion)
 	if err != nil {
-		return imageagent.SlotEffectV3Attempt{}, err
-	}
-	completion.Published = published
-	if err := validatePublicationCompletionV3(completion); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
 	encoded, err := json.Marshal(completion.Published)
@@ -856,21 +825,13 @@ func (r *gormRepository) CompleteSlotPublicationV3(ctx context.Context, completi
 		if err != nil {
 			return err
 		}
-		if !sameSlotEffectV3Reservation(current, completion.Reservation) {
-			return imageagent.ErrRevisionConflict
-		}
-		if current.Phase == imageagent.SlotEffectV3PublicationComplete {
-			if samePublicationCompletionV3(current, completion) {
-				result = current
-				return nil
-			}
-			return imageagent.ErrRevisionConflict
-		}
-		if current.Phase != imageagent.SlotEffectV3PublicationClaimed || current.Publication.Owner != completion.Owner || current.Publication.Fence != completion.Fence || current.PublicationFingerprint != completion.PublicationFingerprint {
-			return imageagent.ErrRevisionConflict
-		}
-		if err := imageagent.ValidateSlotEffectV3Completion(completion.Published, current.FinalManifest, completion.ResultFingerprint); err != nil {
+		decision, err := effectpolicy.CompletePublication(current, completion)
+		if err != nil {
 			return err
+		}
+		result = decision.Attempt
+		if !decision.Changed {
+			return nil
 		}
 		now := time.Now().UTC()
 		updated := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), completion.Reservation.Identity).Where("phase = ? AND publication_owner = ? AND publication_fence = ?", string(imageagent.SlotEffectV3PublicationClaimed), completion.Owner, completion.Fence).Updates(map[string]any{"phase": string(imageagent.SlotEffectV3PublicationComplete), "result_fingerprint": completion.ResultFingerprint, "published_json": encoded, "published_at": now})
@@ -880,10 +841,6 @@ func (r *gormRepository) CompleteSlotPublicationV3(ctx context.Context, completi
 		if updated.RowsAffected != 1 {
 			return imageagent.ErrRevisionConflict
 		}
-		current.Phase = imageagent.SlotEffectV3PublicationComplete
-		current.ResultFingerprint = completion.ResultFingerprint
-		current.Published = cloneSlotEffectV3PublishedResult(completion.Published)
-		result = current
 		return nil
 	})
 	return result, err
@@ -1047,52 +1004,6 @@ func (r *gormRepository) BlockCorruptSlotEffectV3(ctx context.Context, identity 
 	return result, err
 }
 
-func claimSlotPublicationV3(current imageagent.SlotEffectV3Attempt, request imageagent.PublicationClaimRequest, now time.Time, persist func(imageagent.SlotEffectV3Attempt)) (imageagent.SlotEffectV3Attempt, imageagent.PublicationClaim, bool, error) {
-	result, claim, claimed, update, err := evaluatePublicationClaimV3(current, request, now)
-	if err != nil {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, err
-	}
-	if update != nil {
-		persist(*update)
-	}
-	return result, claim, claimed, nil
-}
-
-func evaluatePublicationClaimV3(current imageagent.SlotEffectV3Attempt, request imageagent.PublicationClaimRequest, now time.Time) (imageagent.SlotEffectV3Attempt, imageagent.PublicationClaim, bool, *imageagent.SlotEffectV3Attempt, error) {
-	if current.Phase == imageagent.SlotEffectV3ArtifactStaged {
-		current.Phase = imageagent.SlotEffectV3PublicationClaimed
-		current.Publication = imageagent.PublicationClaim{Owner: request.Owner, LeaseExpiresAt: now.Add(request.LeaseDuration), Fence: 1}
-		current.PublicationFingerprint = request.PublicationFingerprint
-		current.FinalManifest = cloneFinalManifest(request.FinalManifest)
-		result := cloneSlotEffectV3(current)
-		return result, result.Publication, true, &current, nil
-	}
-	if current.Phase != imageagent.SlotEffectV3PublicationClaimed && current.Phase != imageagent.SlotEffectV3PublicationComplete {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, nil, imageagent.ErrRevisionConflict
-	}
-	if current.PublicationFingerprint != request.PublicationFingerprint || !reflect.DeepEqual(current.FinalManifest, request.FinalManifest) {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.PublicationClaim{}, false, nil, imageagent.ErrRevisionConflict
-	}
-	if current.Phase == imageagent.SlotEffectV3PublicationComplete || now.Before(current.Publication.LeaseExpiresAt) {
-		result := cloneSlotEffectV3(current)
-		return result, result.Publication, false, nil, nil
-	}
-	current.Publication.Owner = request.Owner
-	current.Publication.Fence++
-	current.Publication.LeaseExpiresAt = now.Add(request.LeaseDuration)
-	result := cloneSlotEffectV3(current)
-	return result, result.Publication, true, &current, nil
-}
-
-func renewSlotPublicationV3(current imageagent.SlotEffectV3Attempt, renewal imageagent.PublicationLeaseRenewal, now time.Time, persist func(imageagent.SlotEffectV3Attempt)) (imageagent.PublicationClaim, error) {
-	if current.Phase != imageagent.SlotEffectV3PublicationClaimed || current.Publication.Owner != renewal.Owner || current.Publication.Fence != renewal.Fence || !now.Before(current.Publication.LeaseExpiresAt) {
-		return imageagent.PublicationClaim{}, imageagent.ErrRevisionConflict
-	}
-	current.Publication.LeaseExpiresAt = now.Add(renewal.LeaseDuration)
-	persist(current)
-	return current.Publication, nil
-}
-
 func validateSlotEffectV3Reservation(reservation imageagent.SlotEffectV3Reservation) error {
 	if err := validateSlotEffectIdentity(reservation.Identity); err != nil {
 		return err
@@ -1107,36 +1018,6 @@ func validateSlotEffectV3Reservation(reservation imageagent.SlotEffectV3Reservat
 		if err := reservation.Policy.Allows(imageagent.UsageVector{}, imageagent.UsageVector{}, imageagent.UsageVector{}); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func validatePublicationClaimRequestV3(request imageagent.PublicationClaimRequest) error {
-	if err := validateSlotEffectV3Reservation(request.Reservation); err != nil {
-		return err
-	}
-	if strings.TrimSpace(request.Owner) == "" || request.LeaseDuration <= 0 || strings.TrimSpace(request.PublicationFingerprint) == "" {
-		return imageagent.ErrValidation
-	}
-	return imageagent.ValidateFinalManifest(request.FinalManifest)
-}
-
-func validatePublicationLeaseRenewalV3(renewal imageagent.PublicationLeaseRenewal) error {
-	if err := validateSlotEffectIdentity(renewal.Identity); err != nil {
-		return err
-	}
-	if strings.TrimSpace(renewal.Owner) == "" || renewal.Fence <= 0 || renewal.LeaseDuration <= 0 {
-		return imageagent.ErrValidation
-	}
-	return nil
-}
-
-func validatePublicationCompletionV3(completion imageagent.PublicationCompletion) error {
-	if err := validateSlotEffectV3Reservation(completion.Reservation); err != nil {
-		return err
-	}
-	if strings.TrimSpace(completion.Owner) == "" || completion.Fence <= 0 || strings.TrimSpace(completion.PublicationFingerprint) == "" || strings.TrimSpace(completion.ResultFingerprint) == "" || completion.Published.SlotID != completion.Reservation.Identity.SlotID || completion.Published.Attempt != completion.Reservation.Identity.Attempt || len(completion.Published.Candidates) == 0 {
-		return imageagent.ErrValidation
 	}
 	return nil
 }
@@ -1196,10 +1077,6 @@ func canBlockV3(current, blocked imageagent.SlotEffectV3Phase) bool {
 
 func sameSlotEffectV3Reservation(effect imageagent.SlotEffectV3Attempt, reservation imageagent.SlotEffectV3Reservation) bool {
 	return effect.Identity == reservation.Identity && effect.IdempotencyKey == reservation.IdempotencyKey && effect.InputFingerprint == reservation.InputFingerprint && effect.Quote.Fingerprint == reservation.Quote.Fingerprint
-}
-
-func samePublicationCompletionV3(effect imageagent.SlotEffectV3Attempt, completion imageagent.PublicationCompletion) bool {
-	return effect.Publication.Owner == completion.Owner && effect.Publication.Fence == completion.Fence && effect.PublicationFingerprint == completion.PublicationFingerprint && effect.ResultFingerprint == completion.ResultFingerprint && reflect.DeepEqual(effect.Published, completion.Published)
 }
 
 func findSlotEffectV3ForUpdate(ctx context.Context, db *gorm.DB, identity imageagent.SlotExternalEffectIdentity) (slotExternalEffectV3Record, error) {
