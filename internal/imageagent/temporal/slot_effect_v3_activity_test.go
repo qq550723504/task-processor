@@ -302,6 +302,34 @@ func TestExecuteSlotV3ResumesPersistedStagingWithoutRegeneration(t *testing.T) {
 	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
 }
 
+func TestEffectRecoveryWorkflowReconcilesClaimWithoutProviderCall(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-recovery-publication")
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	manifest := v3StagingManifest(input, tinyPNGBytes(t))
+	seedV3ArtifactStaged(t, effects, input, manifest)
+	executor := &recordingStagedExecutor{}
+	artifacts := &recordingArtifactStore{}
+	activities := newV3Activities(t, repository, effects, executor, artifacts)
+	env := newEffectRecoveryWorkflowEnv(t, activities)
+
+	env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(input))
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	var result EffectRecoveryResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, EffectRecoveryOutcomePublished, result.Outcome)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, result.EffectPhase)
+	require.Len(t, result.Published.Candidates, 1)
+	require.Zero(t, executor.GenerateCalls(), "recovery must not regenerate the provider effect")
+	require.Equal(t, 1, executor.BuildCalls(), "recovery should rebuild only the durable result")
+	require.Equal(t, 1, artifacts.FinalizeCalls(), "recovery should finalize the durable staged artifacts")
+
+	stored, err := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
+}
+
 func TestExecuteSlotV3CancellationTerminalizesResumedStagingPreparedEffect(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-resume-staging-cancelled")
 	input.ExternalEffectFinalization = true

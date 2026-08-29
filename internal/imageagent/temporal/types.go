@@ -41,6 +41,7 @@ const (
 	activityPersistPendingCommand       = "imageagent.persist_pending_command.v2"
 	activityPublishApproved             = "imageagent.publish_approved.v2"
 	activityExecuteSlotV3               = "imageagent.execute_slot.v3"
+	activityRecoverEffectV3             = "imageagent.recover_effect.v3"
 	activityPublishApprovedV3           = "imageagent.publish_approved.v3"
 	workflowNameCompatibilityCanary     = "ImageAgentCompatibilityCanaryWorkflow"
 	signalApproveResults                = "approve_results"
@@ -54,6 +55,8 @@ const (
 	updateErrorLegacyMigrationRequired  = "imageagent_legacy_migration_required"
 	defaultMaxConcurrentSlots           = 4
 	QueryWorkflowProjection             = "image_agent_projection"
+	EffectRecoveryWorkflowName          = "ImageAgentEffectRecoveryWorkflow"
+	effectRecoveryBlockedCode           = "recovery_blocked"
 )
 
 type WorkerWireMode string
@@ -153,6 +156,32 @@ type SlotWorkflowV3Result struct {
 	// EffectPhase proves the durable external-effect phase observed by the child.
 	// SlotStatusBlocked alone is deliberately not terminalization evidence.
 	EffectPhase imageagent.SlotEffectV3Phase
+}
+
+type EffectRecoveryWorkflowInput struct {
+	RunID        string
+	Identity     imageagent.ExecutionIdentity
+	PlanRevision int64
+	Slot         imageagent.Slot
+	Attempt      int
+	AssetCatalog imageagent.AssetCatalog
+}
+
+type EffectRecoveryOutcome string
+
+const (
+	EffectRecoveryOutcomePublished          EffectRecoveryOutcome = "published"
+	EffectRecoveryOutcomeProviderUnknown    EffectRecoveryOutcome = "provider_unknown"
+	EffectRecoveryOutcomeStagingUnknown     EffectRecoveryOutcome = "staging_unknown"
+	EffectRecoveryOutcomePublicationUnknown EffectRecoveryOutcome = "publication_unknown"
+	EffectRecoveryOutcomeRecoveryBlocked    EffectRecoveryOutcome = "recovery_blocked"
+)
+
+type EffectRecoveryResult struct {
+	Outcome     EffectRecoveryOutcome
+	Published   imageagent.SlotEffectV3PublishedResult
+	EffectPhase imageagent.SlotEffectV3Phase
+	BlockedCode string
 }
 
 type ExecuteSlotActivityInput struct {
@@ -381,4 +410,25 @@ func publicationKey(runID string, revision int64) string {
 
 func childWorkflowID(input SlotWorkflowInput) string {
 	return fmt.Sprintf("%s:plan:%d:slot:%s:attempt:%d", WorkflowID(input.Identity.TenantID, input.Identity.UserID, input.RunID), input.PlanRevision, input.Slot.ID, input.Attempt)
+}
+
+// EffectRecoveryWorkflowID keeps the required Task 1 signature while still
+// encoding the spec-mandated run and slot identity. The combined string is
+// expected to be "<run-id>:<slot-id>" and is split on the last colon.
+func EffectRecoveryWorkflowID(identity imageagent.ExecutionIdentity, planRevision int64, runSlot string, attempt int) string {
+	runSlot = strings.TrimSpace(runSlot)
+	runID, slotID := runSlot, ""
+	if separator := strings.LastIndex(runSlot, ":"); separator >= 0 {
+		runID = strings.TrimSpace(runSlot[:separator])
+		slotID = strings.TrimSpace(runSlot[separator+1:])
+	}
+	return fmt.Sprintf(
+		"image-agent-effect-recovery:%s:%s:%s:%d:%s:%d",
+		strings.TrimSpace(identity.TenantID),
+		strings.TrimSpace(identity.UserID),
+		runID,
+		planRevision,
+		slotID,
+		attempt,
+	)
 }
