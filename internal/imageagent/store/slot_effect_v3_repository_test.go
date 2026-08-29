@@ -142,6 +142,8 @@ type publicationConformanceTrace struct {
 	StaleCompletionConflict bool
 	RenewedFence            int64
 	CompletedPhase          imageagent.SlotEffectV3Phase
+	CompletedFingerprint    string
+	CompletedPublished      imageagent.SlotEffectV3PublishedResult
 	CompletionRepeat        bool
 	PostCompletionAcquired  bool
 	PostCompletionPhase     imageagent.SlotEffectV3Phase
@@ -155,45 +157,79 @@ func runSlotEffectV3PublicationConformance(t *testing.T, fixture v3ReviewFixture
 	request.FinalManifest.Assets[0].SHA256 = strings.ToUpper(request.FinalManifest.Assets[0].SHA256)
 	firstAttempt, first, firstAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
 	require.NoError(t, err)
+	require.True(t, firstAcquired)
+	require.Equal(t, imageagent.SlotEffectV3PublicationClaimed, firstAttempt.Phase)
+	require.Equal(t, "worker-a", first.Owner)
+	require.EqualValues(t, 1, first.Fence)
+	require.False(t, first.LeaseExpiresAt.IsZero())
+	require.Equal(t, v3SHA256, firstAttempt.FinalManifest.Assets[0].SHA256)
+	require.Equal(t, request.PublicationFingerprint, firstAttempt.PublicationFingerprint)
 	replayAttempt, replay, replayAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
 	require.NoError(t, err)
+	require.False(t, replayAcquired)
+	require.Equal(t, first, replay)
 	require.Equal(t, firstAttempt, replayAttempt)
 
 	conflict := request
 	conflict.FinalManifest.Assets = append([]imageagent.PublishedAssetRef(nil), request.FinalManifest.Assets...)
 	conflict.FinalManifest.Assets[0].ObjectKey = "image-agent/final/tenant-a/run/conflict.png"
 	_, _, _, conflictErr := fixture.effects.ClaimSlotPublicationV3(ctx, conflict)
+	require.ErrorIs(t, conflictErr, imageagent.ErrRevisionConflict)
 
 	fixture.expireLease(t, fixture.reservation.Identity)
 	request.Owner = "worker-b"
 	successorAttempt, successor, successorAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
 	require.NoError(t, err)
+	require.True(t, successorAcquired)
+	require.Equal(t, imageagent.SlotEffectV3PublicationClaimed, successorAttempt.Phase)
+	require.Equal(t, "worker-b", successor.Owner)
+	require.EqualValues(t, 2, successor.Fence)
 	_, staleRenewalErr := fixture.effects.RenewSlotPublicationV3(ctx, imageagent.PublicationLeaseRenewal{Identity: fixture.reservation.Identity, Owner: first.Owner, Fence: first.Fence, LeaseDuration: time.Minute})
+	require.ErrorIs(t, staleRenewalErr, imageagent.ErrRevisionConflict)
 	published := v3PublishedResult(fixture.reservation)
-	completion := imageagent.PublicationCompletion{Reservation: fixture.reservation, Owner: successor.Owner, Fence: successor.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: mustV3ResultFingerprint(t, published), Published: published}
+	published.Candidates[0].DurableAsset.SHA256 = strings.ToUpper(published.Candidates[0].DurableAsset.SHA256)
+	fingerprintInput := cloneV3PublishedResultForTest(published)
+	resultFingerprint := mustV3ResultFingerprint(t, fingerprintInput)
+	completion := imageagent.PublicationCompletion{Reservation: fixture.reservation, Owner: successor.Owner, Fence: successor.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: resultFingerprint, Published: published}
+	originalCompletion := completion
+	originalCompletion.Published = cloneV3PublishedResultForTest(completion.Published)
 	staleCompletion := completion
 	staleCompletion.Owner = first.Owner
 	staleCompletion.Fence = first.Fence
 	_, staleCompletionErr := fixture.effects.CompleteSlotPublicationV3(ctx, staleCompletion)
+	require.ErrorIs(t, staleCompletionErr, imageagent.ErrRevisionConflict)
+	require.Equal(t, strings.ToUpper(v3SHA256), completion.Published.Candidates[0].DurableAsset.SHA256)
 	renewed, err := fixture.effects.RenewSlotPublicationV3(ctx, imageagent.PublicationLeaseRenewal{Identity: fixture.reservation.Identity, Owner: successor.Owner, Fence: successor.Fence, LeaseDuration: time.Minute})
 	require.NoError(t, err)
+	require.Equal(t, successor.Owner, renewed.Owner)
+	require.Equal(t, successor.Fence, renewed.Fence)
+	require.False(t, renewed.LeaseExpiresAt.Before(successor.LeaseExpiresAt))
 	completed, err := fixture.effects.CompleteSlotPublicationV3(ctx, completion)
 	require.NoError(t, err)
+	require.Equal(t, originalCompletion, completion)
+	require.Equal(t, strings.ToUpper(v3SHA256), completion.Published.Candidates[0].DurableAsset.SHA256)
+	expectedPublished := cloneV3PublishedResultForTest(published)
+	expectedPublished, err = imageagent.NormalizeSlotEffectV3PublishedResult(expectedPublished)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, completed.Phase)
+	require.Equal(t, resultFingerprint, completed.ResultFingerprint)
+	require.Equal(t, expectedPublished, completed.Published)
 	repeated, err := fixture.effects.CompleteSlotPublicationV3(ctx, completion)
 	require.NoError(t, err)
+	require.Equal(t, completed, repeated)
 	postComplete, postClaim, postAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
 	require.NoError(t, err)
-	require.Equal(t, successorAttempt.Publication.Fence, successor.Fence)
-	require.Equal(t, completed, repeated)
+	require.False(t, postAcquired)
 	require.Equal(t, completed, postComplete)
-	require.Equal(t, successor.Fence, postClaim.Fence)
+	require.Equal(t, successor, postClaim)
 
 	return publicationConformanceTrace{
 		FirstPhase: firstAttempt.Phase, FirstOwner: first.Owner, FirstFence: first.Fence, FirstAcquired: firstAcquired,
 		NormalizedManifestSHA: firstAttempt.FinalManifest.Assets[0].SHA256, ReplayAcquired: replayAcquired, ReplayFence: replay.Fence,
 		ManifestConflict: errors.Is(conflictErr, imageagent.ErrRevisionConflict), SuccessorOwner: successor.Owner, SuccessorFence: successor.Fence, SuccessorAcquired: successorAcquired,
 		StaleRenewalConflict: errors.Is(staleRenewalErr, imageagent.ErrRevisionConflict), StaleCompletionConflict: errors.Is(staleCompletionErr, imageagent.ErrRevisionConflict),
-		RenewedFence: renewed.Fence, CompletedPhase: completed.Phase, CompletionRepeat: reflect.DeepEqual(completed, repeated), PostCompletionAcquired: postAcquired, PostCompletionPhase: postComplete.Phase,
+		RenewedFence: renewed.Fence, CompletedPhase: completed.Phase, CompletedFingerprint: completed.ResultFingerprint, CompletedPublished: completed.Published,
+		CompletionRepeat: reflect.DeepEqual(completed, repeated), PostCompletionAcquired: postAcquired, PostCompletionPhase: postComplete.Phase,
 	}
 }
 
@@ -1473,6 +1509,11 @@ func v3PublicationRequest(reservation imageagent.SlotEffectV3Reservation, owner 
 
 func v3PublishedResult(reservation imageagent.SlotEffectV3Reservation) imageagent.SlotEffectV3PublishedResult {
 	return imageagent.SlotEffectV3PublishedResult{SlotID: reservation.Identity.SlotID, Attempt: reservation.Identity.Attempt, Candidates: []imageagent.SlotEffectV3AssetCandidate{{AssetID: "candidate-1", SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256}}}}
+}
+
+func cloneV3PublishedResultForTest(result imageagent.SlotEffectV3PublishedResult) imageagent.SlotEffectV3PublishedResult {
+	result.Candidates = append([]imageagent.SlotEffectV3AssetCandidate(nil), result.Candidates...)
+	return result
 }
 
 func mustV3ResultFingerprint(t *testing.T, result imageagent.SlotEffectV3PublishedResult) string {

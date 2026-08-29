@@ -17,7 +17,7 @@ func ClaimPublication(current imageagent.SlotEffectV3Attempt, request imageagent
 		return PublicationClaimDecision{}, err
 	}
 	attempt := cloneSlotEffectV3Attempt(current)
-	if err := validateProviderAttemptReservation(attempt, request.Reservation); err != nil {
+	if err := validatePublicationAttemptReservation(attempt, request.Reservation); err != nil {
 		return PublicationClaimDecision{}, err
 	}
 
@@ -77,7 +77,7 @@ func CompletePublication(current imageagent.SlotEffectV3Attempt, completion imag
 		return EffectDecision{}, err
 	}
 	attempt := cloneSlotEffectV3Attempt(current)
-	if err := validateProviderAttemptReservation(attempt, completion.Reservation); err != nil {
+	if err := validatePublicationAttemptReservation(attempt, completion.Reservation); err != nil {
 		return EffectDecision{}, err
 	}
 	normalizedManifest, err := imageagent.NormalizeFinalManifest(attempt.FinalManifest)
@@ -142,6 +142,7 @@ func PreflightPublicationLeaseRenewal(renewal imageagent.PublicationLeaseRenewal
 // PreflightPublicationCompletion validates and normalizes a completion
 // command without consulting persisted state.
 func PreflightPublicationCompletion(completion imageagent.PublicationCompletion) (imageagent.PublicationCompletion, error) {
+	completion.Published = clonePublishedResult(completion.Published)
 	normalized, err := imageagent.NormalizeSlotEffectV3PublishedResult(completion.Published)
 	if err != nil {
 		return imageagent.PublicationCompletion{}, err
@@ -154,6 +155,16 @@ func PreflightPublicationCompletion(completion imageagent.PublicationCompletion)
 		return imageagent.PublicationCompletion{}, imageagent.ErrValidation
 	}
 	return completion, nil
+}
+
+func validatePublicationAttemptReservation(current imageagent.SlotEffectV3Attempt, reservation imageagent.SlotEffectV3Reservation) error {
+	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(current); err != nil {
+		return err
+	}
+	if current.Identity != reservation.Identity || current.IdempotencyKey != reservation.IdempotencyKey || current.InputFingerprint != reservation.InputFingerprint || current.Quote.Fingerprint != reservation.Quote.Fingerprint {
+		return imageagent.ErrRevisionConflict
+	}
+	return nil
 }
 
 func samePublicationCompletion(attempt imageagent.SlotEffectV3Attempt, completion imageagent.PublicationCompletion) bool {

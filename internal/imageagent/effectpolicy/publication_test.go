@@ -28,6 +28,10 @@ func TestClaimPublicationDecisionMatrix(t *testing.T) {
 	conflictingFingerprint.PublicationFingerprint = "other-publication"
 	invalid := request
 	invalid.Owner = ""
+	policyMismatchCurrent := publicationPolicyAttempt(request.Reservation, imageagent.SlotEffectV3ArtifactStaged)
+	policyMismatchCurrent.Policy = imageagent.BudgetPolicy{Images: imageagent.Limit{Enabled: true, Value: 2}}
+	policyMismatchRequest := request
+	policyMismatchRequest.Reservation.Policy = imageagent.BudgetPolicy{Images: imageagent.Limit{Enabled: true, Value: 3}}
 
 	tests := []struct {
 		name         string
@@ -46,6 +50,7 @@ func TestClaimPublicationDecisionMatrix(t *testing.T) {
 		{name: "manifest conflict", current: active, request: conflictingManifest, wantErr: imageagent.ErrRevisionConflict},
 		{name: "fingerprint conflict", current: active, request: conflictingFingerprint, wantErr: imageagent.ErrRevisionConflict},
 		{name: "post completion claim is replay only", current: complete, request: request, wantOwner: "worker-a", wantFence: 7, wantExpiry: observedAt.Add(time.Minute)},
+		{name: "publication reservation ignores budget policy", current: policyMismatchCurrent, request: policyMismatchRequest, wantChanged: true, wantAcquired: true, wantOwner: "worker-b", wantFence: 1, wantExpiry: observedAt.Add(2 * time.Minute)},
 		{name: "invalid command precedes invalid persisted state", current: imageagent.SlotEffectV3Attempt{}, request: invalid, wantErr: imageagent.ErrValidation},
 	}
 
@@ -121,6 +126,10 @@ func TestCompletePublicationDecisionMatrix(t *testing.T) {
 	completed.Published = completion.Published
 	completed.Published.Candidates = append([]imageagent.SlotEffectV3AssetCandidate(nil), completion.Published.Candidates...)
 	completed.Published.Candidates[0].DurableAsset.SHA256 = strings.ToUpper(completed.Published.Candidates[0].DurableAsset.SHA256)
+	policyMismatchCurrent := cloneSlotEffectV3Attempt(current)
+	policyMismatchCurrent.Policy = imageagent.BudgetPolicy{Images: imageagent.Limit{Enabled: true, Value: 2}}
+	policyMismatchCompletion := clonePublicationCompletion(completion)
+	policyMismatchCompletion.Reservation.Policy = imageagent.BudgetPolicy{Images: imageagent.Limit{Enabled: true, Value: 3}}
 
 	tests := []struct {
 		name        string
@@ -139,12 +148,13 @@ func TestCompletePublicationDecisionMatrix(t *testing.T) {
 			return value
 		}(), wantErr: imageagent.ErrRevisionConflict},
 		{name: "reordered final manifest is rejected", current: current, completion: publicationPolicyReorderedCompletion(t, completion), wantErr: imageagent.ErrRevisionConflict},
+		{name: "publication completion ignores budget policy", current: policyMismatchCurrent, completion: policyMismatchCompletion, wantChanged: true},
 		{name: "invalid completion precedes invalid persisted state", current: imageagent.SlotEffectV3Attempt{}, completion: func() imageagent.PublicationCompletion { value := completion; value.Owner = ""; return value }(), wantErr: imageagent.ErrValidation},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			decision, err := CompletePublication(test.current, test.completion)
+			decision, err := CompletePublication(test.current, clonePublicationCompletion(test.completion))
 			if !errors.Is(err, test.wantErr) {
 				t.Fatalf("CompletePublication() error = %v, want errors.Is(_, %v)", err, test.wantErr)
 			}
@@ -194,8 +204,7 @@ func TestPublicationDecisionsDoNotMutateInputs(t *testing.T) {
 	completion := publicationPolicyCompletion(t, request.Reservation, renewed.Claim, request.PublicationFingerprint)
 	renewed.Attempt.FinalManifest = publicationPolicyTwoAssetFinalManifest(publicationPolicySHA256)
 	originalRenewed := cloneSlotEffectV3Attempt(renewed.Attempt)
-	originalCompletion := completion
-	originalCompletion.Published.Candidates = append([]imageagent.SlotEffectV3AssetCandidate(nil), completion.Published.Candidates...)
+	originalCompletion := clonePublicationCompletion(completion)
 	completed, err := CompletePublication(renewed.Attempt, completion)
 	if err != nil {
 		t.Fatalf("CompletePublication() error = %v", err)
@@ -206,6 +215,19 @@ func TestPublicationDecisionsDoNotMutateInputs(t *testing.T) {
 	completed.Attempt.Published.Candidates[0].AssetID = "changed"
 	if completion.Published.Candidates[0].AssetID != "candidate-a" {
 		t.Fatal("CompletePublication() returned a published-result alias")
+	}
+
+	preflightInput := publicationPolicyCompletion(t, request.Reservation, renewed.Claim, request.PublicationFingerprint)
+	originalPreflightInput := clonePublicationCompletion(preflightInput)
+	normalized, err := PreflightPublicationCompletion(preflightInput)
+	if err != nil {
+		t.Fatalf("PreflightPublicationCompletion() error = %v", err)
+	}
+	if !reflect.DeepEqual(preflightInput, originalPreflightInput) || preflightInput.Published.Candidates[0].DurableAsset.SHA256 != strings.ToUpper(publicationPolicySHA256) {
+		t.Fatal("PreflightPublicationCompletion() mutated caller-owned published candidates")
+	}
+	if normalized.Published.Candidates[0].DurableAsset.SHA256 != publicationPolicySHA256 {
+		t.Fatalf("PreflightPublicationCompletion() SHA256 = %q, want normalized %q", normalized.Published.Candidates[0].DurableAsset.SHA256, publicationPolicySHA256)
 	}
 }
 
@@ -236,15 +258,17 @@ func publicationPolicyTwoAssetFinalManifest(firstSHA string) imageagent.FinalMan
 
 func publicationPolicyCompletion(t *testing.T, reservation imageagent.SlotEffectV3Reservation, claim imageagent.PublicationClaim, publicationFingerprint string) imageagent.PublicationCompletion {
 	t.Helper()
-	published := imageagent.SlotEffectV3PublishedResult{SlotID: reservation.Identity.SlotID, Attempt: reservation.Identity.Attempt, Candidates: []imageagent.SlotEffectV3AssetCandidate{
+	completion := imageagent.PublicationCompletion{Reservation: reservation, Owner: claim.Owner, Fence: claim.Fence, PublicationFingerprint: publicationFingerprint, Published: imageagent.SlotEffectV3PublishedResult{SlotID: reservation.Identity.SlotID, Attempt: reservation.Identity.Attempt, Candidates: []imageagent.SlotEffectV3AssetCandidate{
 		{AssetID: "candidate-a", SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/final/tenant-a/run/asset-a.png", SHA256: strings.ToUpper(publicationPolicySHA256)}},
 		{AssetID: "candidate-b", SourceAssetID: "source-2", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/final/tenant-a/run/asset-b.png", SHA256: strings.Repeat("b", 64)}},
-	}}
-	fingerprint, err := imageagent.SlotEffectV3PublishedResultFingerprint(published)
+	}}}
+	fingerprintInput := clonePublicationCompletion(completion)
+	fingerprint, err := imageagent.SlotEffectV3PublishedResultFingerprint(fingerprintInput.Published)
 	if err != nil {
 		t.Fatalf("SlotEffectV3PublishedResultFingerprint() error = %v", err)
 	}
-	return imageagent.PublicationCompletion{Reservation: reservation, Owner: claim.Owner, Fence: claim.Fence, PublicationFingerprint: publicationFingerprint, ResultFingerprint: fingerprint, Published: published}
+	completion.ResultFingerprint = fingerprint
+	return completion
 }
 
 func publicationPolicyReorderedCompletion(t *testing.T, completion imageagent.PublicationCompletion) imageagent.PublicationCompletion {
@@ -262,4 +286,9 @@ func publicationPolicyReorderedCompletion(t *testing.T, completion imageagent.Pu
 func cloneFinalManifestForPublicationPolicy(manifest imageagent.FinalManifest) imageagent.FinalManifest {
 	manifest.Assets = clonePublishedAssetRefs(manifest.Assets)
 	return manifest
+}
+
+func clonePublicationCompletion(completion imageagent.PublicationCompletion) imageagent.PublicationCompletion {
+	completion.Published.Candidates = append([]imageagent.SlotEffectV3AssetCandidate(nil), completion.Published.Candidates...)
+	return completion
 }
