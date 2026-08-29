@@ -93,6 +93,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestAlibaba1688CrawlerDoesNotImportListingKitHTTPAPIForSourceAccountBuilder`
 - `TestAlibaba1688CrawlerDoesNotConfigureLegacyTenantThroughListingKitHTTPAPI`
 - `TestA1688ListingKitCompatibilityReadsIdentityFromNeutralContext`
+- `TestA1688ListingKitCommandReadsIdentityFromNeutralContext`
 - `TestLocalAgentHTTPAPIReadsIdentityFromNeutralContext`
 - `TestSheinLoginReadsIdentityFromNeutralContext`
 - `TestListingKitIdentityReadersUseNeutralContext`

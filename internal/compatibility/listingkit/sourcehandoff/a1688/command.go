@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/compatibility/listingkit/sourcehandoff"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	crawler1688 "task-processor/internal/integration/crawler/a1688"
@@ -117,7 +118,8 @@ func (s *TaskCommandService) validateStores(ctx context.Context, command CreateT
 	if s.storeAccessValidator == nil {
 		return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
 	}
-	tenantID := strings.TrimSpace(listingkit.TenantIDFromContext(ctx))
+	identity, _ := authidentity.AuthenticatedIdentityFromContext(ctx)
+	tenantID := strings.TrimSpace(identity.TenantID)
 	legacyTenantID, err := tenantbridge.ResolveLegacyTenantID(ctx, tenantID)
 	if err != nil || legacyTenantID <= 0 {
 		return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
@@ -150,10 +152,11 @@ func (s *TaskCommandService) validateStores(ctx context.Context, command CreateT
 }
 
 func validateRequestIdentity(ctx context.Context, command CreateTaskCommand) error {
-	tenantID := strings.TrimSpace(listingkit.TenantIDFromContext(ctx))
-	identity := listingkit.RequestIdentityFromContext(ctx)
-	if tenantID == "" || identity.TenantID != tenantID || identity.UserID == "" ||
-		strings.TrimSpace(command.TenantID) != tenantID || strings.TrimSpace(command.UserID) != identity.UserID {
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	tenantID := strings.TrimSpace(identity.TenantID)
+	userID := strings.TrimSpace(identity.UserID)
+	if !ok || tenantID == "" || userID == "" ||
+		strings.TrimSpace(command.TenantID) != tenantID || strings.TrimSpace(command.UserID) != userID {
 		return fmt.Errorf("verified request identity is required")
 	}
 	return nil
