@@ -111,6 +111,55 @@ func TestSlotEffectV3StagingRepositoryConformance(t *testing.T) {
 	}
 }
 
+func TestSlotEffectV3StagingInputValidationPrecedesStoredStateAcrossAdapters(t *testing.T) {
+	factories := []struct {
+		name string
+		new  func(*testing.T) imageagent.Repository
+	}{
+		{name: "memory", new: func(*testing.T) imageagent.Repository { return NewMemoryRepository() }},
+		{name: "gorm", new: func(t *testing.T) imageagent.Repository { return NewGormRepository(newConcurrentSQLite(t)) }},
+	}
+	for _, factory := range factories {
+		t.Run(factory.name+"/missing_effect", func(t *testing.T) {
+			repository := factory.new(t)
+			reservation := v3Reservation("staging-input-missing-" + factory.name)
+			initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+			_, err := repository.(imageagent.SlotExternalEffectV3Repository).PrepareSlotStagingV3(context.Background(), reservation, invalidV3StagingManifest())
+			require.ErrorIs(t, err, imageagent.ErrValidation)
+		})
+
+		t.Run(factory.name+"/invalid_or_corrupt_persisted_state", func(t *testing.T) {
+			repository := factory.new(t)
+			reservation := v3Reservation("staging-input-corrupt-" + factory.name)
+			initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+			effects := repository.(imageagent.SlotExternalEffectV3Repository)
+			_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
+			require.NoError(t, err)
+			require.True(t, claimed)
+			switch typed := repository.(type) {
+			case *memoryRepository:
+				typed.mu.Lock()
+				attempt := typed.slotEffectsV3[slotEffectKey(reservation.Identity)]
+				attempt.Phase = "invalid_persisted_phase"
+				typed.slotEffectsV3[slotEffectKey(reservation.Identity)] = attempt
+				typed.mu.Unlock()
+			case *gormRepository:
+				require.NoError(t, slotEffectV3IdentityWhere(typed.db.Model(&slotExternalEffectV3Record{}), reservation.Identity).Update("staging_manifest_json", []byte(`{`)).Error)
+			default:
+				t.Fatalf("unsupported repository type %T", repository)
+			}
+			_, err = effects.PrepareSlotStagingV3(context.Background(), reservation, invalidV3StagingManifest())
+			require.ErrorIs(t, err, imageagent.ErrValidation)
+		})
+	}
+}
+
+func invalidV3StagingManifest() imageagent.StagingManifest {
+	manifest := v3StagingManifest()
+	manifest.Assets[0].ObjectKey = `C:\\worker\\generated.png`
+	return manifest
+}
+
 type stagingConformanceTrace struct {
 	Prepared             imageagent.SlotEffectV3Attempt
 	PreparedRepeat       imageagent.SlotEffectV3Attempt

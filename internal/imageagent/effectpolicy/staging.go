@@ -5,11 +5,7 @@ import "task-processor/internal/imageagent"
 // PrepareStaging decides whether a provider-claimed attempt can record a
 // normalized staging manifest. It never mutates caller-owned state.
 func PrepareStaging(current imageagent.SlotEffectV3Attempt, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (EffectDecision, error) {
-	normalized, err := imageagent.NormalizeStagingManifest(manifest)
-	if err != nil {
-		return EffectDecision{}, err
-	}
-	fingerprint, err := imageagent.StagingManifestFingerprint(normalized)
+	normalized, fingerprint, err := PreflightStagingManifest(manifest)
 	if err != nil {
 		return EffectDecision{}, err
 	}
@@ -35,6 +31,20 @@ func PrepareStaging(current imageagent.SlotEffectV3Attempt, reservation imageage
 	decision.Attempt.StagingManifestFingerprint = fingerprint
 	decision.Changed = true
 	return decision, nil
+}
+
+// PreflightStagingManifest validates, normalizes, and fingerprints a staging
+// manifest without consulting persisted effect state.
+func PreflightStagingManifest(manifest imageagent.StagingManifest) (imageagent.StagingManifest, string, error) {
+	normalized, err := imageagent.NormalizeStagingManifest(manifest)
+	if err != nil {
+		return imageagent.StagingManifest{}, "", err
+	}
+	fingerprint, err := imageagent.StagingManifestFingerprint(normalized)
+	if err != nil {
+		return imageagent.StagingManifest{}, "", err
+	}
+	return normalized, fingerprint, nil
 }
 
 // CommitStaged decides whether a prepared staging manifest can be marked as

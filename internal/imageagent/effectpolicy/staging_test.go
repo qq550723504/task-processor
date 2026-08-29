@@ -63,6 +63,32 @@ func TestPrepareStagingDecisionMatrix(t *testing.T) {
 	}
 }
 
+func TestPreflightStagingManifestNormalizesFingerprintsAndDoesNotMutate(t *testing.T) {
+	manifest := stagingPolicyManifest()
+	original := manifest
+	original.Assets = append([]imageagent.StagedAssetRef(nil), manifest.Assets...)
+	original.Assets[0].Operations = append([]string(nil), manifest.Assets[0].Operations...)
+
+	normalized, fingerprint, err := PreflightStagingManifest(manifest)
+	if err != nil {
+		t.Fatalf("PreflightStagingManifest() error = %v", err)
+	}
+	wantFingerprint, err := imageagent.StagingManifestFingerprint(manifest)
+	if err != nil {
+		t.Fatalf("StagingManifestFingerprint() error = %v", err)
+	}
+	if fingerprint != wantFingerprint || normalized.Assets[0].SHA256 != strings.ToLower(manifest.Assets[0].SHA256) {
+		t.Fatalf("PreflightStagingManifest() = %+v, %q; want normalized SHA and fingerprint %q", normalized, fingerprint, wantFingerprint)
+	}
+	if !reflect.DeepEqual(manifest, original) {
+		t.Fatal("PreflightStagingManifest() mutated caller-owned manifest")
+	}
+	_, _, err = PreflightStagingManifest(imageagent.StagingManifest{})
+	if !errors.Is(err, imageagent.ErrValidation) {
+		t.Fatalf("PreflightStagingManifest() error = %v, want ErrValidation", err)
+	}
+}
+
 func TestCommitStagedDecisionMatrix(t *testing.T) {
 	reservation := stagingPolicyReservation()
 	manifest := stagingPolicyManifest()

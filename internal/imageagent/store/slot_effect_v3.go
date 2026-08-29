@@ -171,6 +171,10 @@ func (r *memoryRepository) persistMemoryProviderDecision(runKey, effectKey strin
 }
 
 func (r *memoryRepository) PrepareSlotStagingV3(_ context.Context, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (imageagent.SlotEffectV3Attempt, error) {
+	normalizedManifest, _, err := effectpolicy.PreflightStagingManifest(manifest)
+	if err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
 	if err := validateSlotEffectV3Reservation(reservation); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
@@ -180,7 +184,7 @@ func (r *memoryRepository) PrepareSlotStagingV3(_ context.Context, reservation i
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
 	}
-	decision, err := effectpolicy.PrepareStaging(existing, reservation, manifest)
+	decision, err := effectpolicy.PrepareStaging(existing, reservation, normalizedManifest)
 	if err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
@@ -663,11 +667,15 @@ func persistGormProviderAccounting(tx *gorm.DB, scope imageagent.RunScope, decis
 }
 
 func (r *gormRepository) PrepareSlotStagingV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (imageagent.SlotEffectV3Attempt, error) {
+	normalizedManifest, _, err := effectpolicy.PreflightStagingManifest(manifest)
+	if err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
 	if err := validateSlotEffectV3Reservation(reservation); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
 	var result imageagent.SlotEffectV3Attempt
-	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
+	err = withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
 		row, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
@@ -676,7 +684,7 @@ func (r *gormRepository) PrepareSlotStagingV3(ctx context.Context, reservation i
 		if err != nil {
 			return err
 		}
-		decision, err := effectpolicy.PrepareStaging(current, reservation, manifest)
+		decision, err := effectpolicy.PrepareStaging(current, reservation, normalizedManifest)
 		if err != nil {
 			return err
 		}
