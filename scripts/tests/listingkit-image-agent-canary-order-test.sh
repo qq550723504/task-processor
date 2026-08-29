@@ -19,10 +19,14 @@ production_apply_line="$(grep -n -- '--manifest .workflow-tools/deployments/kube
   printf 'v3 production worker rollout must follow the isolated canary gate\n' >&2
   exit 1
 }
-grep -q '"image-agent-manual-v3"' "$runner_manifest" || {
-  printf 'v3 canary runner must use the isolated image-agent-manual-v3 queue\n' >&2
+grep -q '"image-agent-manual-v3-canary"' "$runner_manifest" || {
+  printf 'v3 canary runner must use the isolated image-agent-manual-v3-canary queue\n' >&2
   exit 1
 }
+if grep -q -- '-canary-task-queue", "image-agent-manual-v3"' "$runner_manifest"; then
+  printf 'v3 canary runner must not share the production worker queue\n' >&2
+  exit 1
+fi
 grep -q '"image-agent-manual-v3"' "$worker_manifest" || {
   printf 'v3 production worker queue contract is missing\n' >&2
   exit 1

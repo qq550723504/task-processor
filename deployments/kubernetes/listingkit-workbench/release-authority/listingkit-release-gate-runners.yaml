@@ -205,7 +205,7 @@ spec:
           image: xuwei190/task-processor-product-listing-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
           imagePullPolicy: IfNotPresent
           command: ["/app/image-agent-temporal-worker"]
-          args: ["-canary", "-canary-task-queue", "image-agent-manual-v3", "-log-level", "info"]
+          args: ["-canary", "-canary-task-queue", "image-agent-manual-v3-canary", "-log-level", "info"]
           env:
             - name: IMAGE_AGENT_TEMPORAL_ADDRESS
               valueFrom:
