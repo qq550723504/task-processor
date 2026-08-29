@@ -30,8 +30,7 @@ func validateProviderAttemptReservation(current imageagent.SlotEffectV3Attempt, 
 		return err
 	}
 	if current.Identity != reservation.Identity || current.IdempotencyKey != reservation.IdempotencyKey ||
-		current.InputFingerprint != reservation.InputFingerprint || current.Policy != reservation.Policy ||
-		current.Quote.Fingerprint != reservation.Quote.Fingerprint {
+		current.InputFingerprint != reservation.InputFingerprint || current.Quote.Fingerprint != reservation.Quote.Fingerprint {
 		return imageagent.ErrRevisionConflict
 	}
 	if current.Quote.Fingerprint != "" {

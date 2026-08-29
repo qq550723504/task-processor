@@ -10,9 +10,6 @@ func ReserveProvider(current *imageagent.SlotEffectV3Attempt, reservation imagea
 	if err := validateProviderReservation(reservation); err != nil {
 		return ProviderReservationDecision{}, err
 	}
-	if err := validateProviderAccountingPolicy(reservation, accounting); err != nil {
-		return ProviderReservationDecision{}, err
-	}
 	if current == nil {
 		attempt := imageagent.SlotEffectV3Attempt{
 			Identity: reservation.Identity, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint,
@@ -183,13 +180,13 @@ func providerAccountingTransition(current imageagent.SlotEffectV3Attempt, reserv
 	if err := validateProviderAttemptReservation(current, reservation); err != nil {
 		return AccountingDecision{}, err
 	}
-	if err := validateProviderAccountingPolicy(reservation, accounting); err != nil {
-		return AccountingDecision{}, err
-	}
 	return AccountingDecision{EffectDecision: EffectDecision{Attempt: cloneSlotEffectV3Attempt(current)}, Accounting: accounting}, nil
 }
 
 func reserveProviderAccounting(reservation imageagent.SlotEffectV3Reservation, accounting AccountingSnapshot) (AccountingSnapshot, error) {
+	if err := validateProviderAccountingPolicy(reservation, accounting); err != nil {
+		return AccountingSnapshot{}, err
+	}
 	if err := accounting.Policy.Allows(accounting.Committed, accounting.Reserved, reservation.Quote.Maximum); err != nil {
 		return AccountingSnapshot{}, err
 	}

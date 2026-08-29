@@ -95,7 +95,7 @@ func TestRecordProviderNotDispatchedReleasesOnlyProvenReservation(t *testing.T) 
 		{name: "unproven released budget", current: unproven, reservation: reservation, accounting: AccountingSnapshot{Policy: reservation.Policy, Reserved: imageagent.UsageVector{Images: 3}}, wantErr: imageagent.ErrRevisionConflict},
 		{name: "unbudgeted provider", current: unbudgeted, reservation: unbudgetedReservation, accounting: AccountingSnapshot{}, wantChanged: true, wantPhase: imageagent.SlotEffectV3ProviderNotDispatched},
 		{name: "reservation mismatch", current: mismatch, reservation: reservation, accounting: providerAccounting(reservation.Policy), wantErr: imageagent.ErrRevisionConflict},
-		{name: "persisted policy mismatch", current: reserved, reservation: reservation, accounting: providerAccounting(imageagent.BudgetPolicy{Images: imageagent.Limit{Enabled: true, Value: 6}}), wantErr: imageagent.ErrRevisionConflict},
+		{name: "policy drift still releases reserved budget", current: reserved, reservation: reservation, accounting: AccountingSnapshot{Policy: imageagent.BudgetPolicy{Images: imageagent.Limit{Enabled: true, Value: 6}}, Reserved: imageagent.UsageVector{Images: 3, CostMicros: 80}}, wantChanged: true, wantAccounting: true, wantPhase: imageagent.SlotEffectV3ProviderNotDispatched, wantBudget: imageagent.SlotBudgetReleased, wantReserved: 1},
 		{name: "reserved accounting underflow", current: reserved, reservation: reservation, accounting: AccountingSnapshot{Policy: reservation.Policy, Reserved: imageagent.UsageVector{Images: 1}}, wantErr: imageagent.ErrBudgetOverflow},
 	}
 
