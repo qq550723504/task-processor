@@ -16,6 +16,7 @@ type imageEditRequest struct {
 	Prompt         string
 	Image          []byte
 	ImageURL       string
+	ImageURLs      []string
 	ResponseFormat string
 	N              int
 	Size           string

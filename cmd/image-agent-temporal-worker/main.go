@@ -64,7 +64,7 @@ func main() {
 	configPath := flag.String("config", "config/config-prod.yaml", "config file path")
 	logLevel := flag.String("log-level", "info", "log level")
 	canary := flag.Bool("canary", false, "run the side-effect-free v3 Temporal compatibility canary and exit")
-	canaryTaskQueue := flag.String("canary-task-queue", imageagenttemporal.TaskQueueV3, "v3 Temporal task queue for -canary")
+	canaryTaskQueue := flag.String("canary-task-queue", imageagenttemporal.TaskQueueV3Canary, "isolated v3 Temporal task queue for -canary")
 	wireMode := flag.String("wire-mode", "", "worker wire mode: v2 or v3 (required unless -canary)")
 	taskQueue := flag.String("task-queue", "", "Temporal task queue polled by the worker (required unless -canary)")
 	flag.Parse()
@@ -72,7 +72,7 @@ func main() {
 	defer stop()
 	logger := appenv.SetupLoggerWithLevel(*logLevel)
 	if *canary {
-		if err := runCanary(ctx, appruntime.RunImageAgentCompatibilityCanary, logger, *canaryTaskQueue); err != nil {
+		if err := runCanary(ctx, appruntime.RunImageAgentCompatibilityCanaryWithWorker, logger, *canaryTaskQueue); err != nil {
 			logger.Fatalf("image agent temporal compatibility canary failed: %v", err)
 		}
 		return

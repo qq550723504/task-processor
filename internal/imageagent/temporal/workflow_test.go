@@ -4809,7 +4809,7 @@ func (workflowCatalogResolver) Resolve(context.Context, imageagent.AssetCatalogS
 	for index := 1; index <= 9; index++ {
 		assets = append(assets, imageagent.AuthorizedAsset{ID: fmt.Sprintf("source-%d", index), Type: imageagent.AuthorizedAssetSource, Width: 1200, Height: 900})
 	}
-	assets = append(assets, imageagent.AuthorizedAsset{ID: "style-modern", Type: imageagent.AuthorizedAssetStyle})
+	assets = append(assets, imageagent.AuthorizedAsset{ID: "style-modern", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style-modern.png"})
 	return imageagent.AssetCatalog{Assets: assets}, nil
 }
 

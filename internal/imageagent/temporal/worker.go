@@ -347,6 +347,23 @@ func NewWorker(config WorkerConfig) (sdkworker.Worker, error) {
 	return worker, nil
 }
 
+// NewCompatibilityCanaryWorker creates the minimal v3 worker required by the
+// side-effect-free compatibility canary. It intentionally registers no
+// activities or business workflows, so release-gate pods do not need database,
+// provider, or artifact-store credentials just to prove queue reachability.
+func NewCompatibilityCanaryWorker(client sdkclient.Client, taskQueue string) (sdkworker.Worker, error) {
+	if client == nil {
+		return nil, fmt.Errorf("temporal client is required")
+	}
+	taskQueue = strings.TrimSpace(taskQueue)
+	if taskQueue == "" {
+		return nil, fmt.Errorf("image agent compatibility canary task queue is required")
+	}
+	worker := sdkworker.New(client, taskQueue, sdkworker.Options{})
+	worker.RegisterWorkflowWithOptions(ImageAgentCompatibilityCanaryWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameCompatibilityCanary})
+	return worker, nil
+}
+
 func (config WorkerConfig) selectedTaskQueue() (string, error) {
 	if err := validateWorkerWireMode(config.WireMode); err != nil {
 		return "", err

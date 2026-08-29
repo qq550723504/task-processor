@@ -44,6 +44,7 @@ export function buildListingKitProxyUrl(
 }
 
 const safeID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const safePositiveAttempt = /^[1-9][0-9]{0,8}$/;
 // Mirrors imageagent.ValidateActionID so a durable command is always resumable.
 const safeActionID = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/;
 
@@ -57,5 +58,14 @@ function isAllowedImageAgentRoute(method: string, route: string[]) {
   if (verb === "GET" && route.length === 3 && route[2] === "events") return true;
   if (verb === "POST" && route.length === 4 && route[2] === "results" && route[3] === "approve") return true;
   if (verb === "POST" && route.length === 5 && route[2] === "slots" && safeID.test(route[3] ?? "") && route[4] === "retry") return true;
+  if (
+    verb === "POST" &&
+    route.length === 7 &&
+    route[2] === "slots" &&
+    safeID.test(route[3] ?? "") &&
+    route[4] === "attempts" &&
+    safePositiveAttempt.test(route[5] ?? "") &&
+    route[6] === "recover"
+  ) return true;
   return verb === "POST" && route.length === 5 && route[2] === "commands" && safeActionID.test(route[3] ?? "") && route[4] === "resume";
 }

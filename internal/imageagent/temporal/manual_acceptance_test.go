@@ -546,7 +546,7 @@ func acceptanceAssetCatalog(count int) imageagent.AssetCatalog {
 			Width:      1200, Height: 1200,
 		})
 	}
-	assets = append(assets, imageagent.AuthorizedAsset{ID: "style-modern", Type: imageagent.AuthorizedAssetStyle})
+	assets = append(assets, imageagent.AuthorizedAsset{ID: "style-modern", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style-modern.png"})
 	return imageagent.AssetCatalog{Assets: assets}
 }
 

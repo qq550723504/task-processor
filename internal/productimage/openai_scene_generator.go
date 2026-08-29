@@ -50,6 +50,7 @@ func (g *openAICompatibleSceneGenerator) GenerateSceneWithRoute(ctx context.Cont
 		Prompt:         resolvedPrompt.Text,
 		Image:          data,
 		ImageURL:       editableAssetURL(req.SourceAsset),
+		ImageURLs:      styleReferenceURLs(req.ProductContext),
 		ResponseFormat: "b64_json",
 		N:              1,
 		Size:           "auto",
@@ -189,6 +190,13 @@ func appendControlledScenePromptSuffix(rendered string, options scenePromptOptio
 		suffix += " Authorized style references: " + styleReferences + "."
 	}
 	return rendered + suffix
+}
+
+func styleReferenceURLs(context *ProductContext) []string {
+	if context == nil {
+		return nil
+	}
+	return append([]string(nil), context.StyleReferenceURLs...)
 }
 
 func resolveSceneGenerationPrompt(req *SceneGenerationRequest, vars map[string]any, fallback string, options scenePromptOptions) resolvedProductImagePrompt {

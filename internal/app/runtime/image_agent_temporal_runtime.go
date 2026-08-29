@@ -54,6 +54,12 @@ type imageAgentCompatibilityCanaryDependencies struct {
 	RunCanary func(context.Context, sdkclient.Client, string) error
 }
 
+type imageAgentCompatibilityCanaryWorkerDependencies struct {
+	Dial      func(address, namespace string) (sdkclient.Client, func() error, error)
+	NewWorker func(sdkclient.Client, string) (imageAgentWorker, error)
+	RunCanary func(context.Context, sdkclient.Client, string) error
+}
+
 func StartImageAgentTemporalWorker(dependencies ImageAgentTemporalDependencies, logger *logrus.Logger) (func() error, error) {
 	return StartImageAgentTemporalWorkerWithOptions(dependencies, ImageAgentTemporalWorkerOptions{WireMode: imageagenttemporal.WorkerWireModeV3}, logger)
 }
@@ -164,6 +170,66 @@ func RunImageAgentCompatibilityCanary(ctx context.Context, logger *logrus.Logger
 	return runImageAgentCompatibilityCanaryWithDependencies(ctx, logger, taskQueue, imageAgentCompatibilityCanaryDependencies{
 		Dial: dialImageAgentTemporal, RunCanary: imageagenttemporal.RunImageAgentCompatibilityCanary,
 	})
+}
+
+// RunImageAgentCompatibilityCanaryWithWorker starts a minimal worker on the
+// requested queue before submitting the canary workflow. This keeps the
+// isolated release-gate queue executable without requiring product databases
+// or provider credentials in the gate pod.
+func RunImageAgentCompatibilityCanaryWithWorker(ctx context.Context, logger *logrus.Logger, taskQueue string) error {
+	return runImageAgentCompatibilityCanaryWithWorkerDependencies(ctx, logger, taskQueue, imageAgentCompatibilityCanaryWorkerDependencies{
+		Dial: dialImageAgentTemporal,
+		NewWorker: func(client sdkclient.Client, queue string) (imageAgentWorker, error) {
+			return imageagenttemporal.NewCompatibilityCanaryWorker(client, queue)
+		},
+		RunCanary: imageagenttemporal.RunImageAgentCompatibilityCanary,
+	})
+}
+
+func runImageAgentCompatibilityCanaryWithWorkerDependencies(ctx context.Context, logger *logrus.Logger, taskQueue string, dependencies imageAgentCompatibilityCanaryWorkerDependencies) error {
+	taskQueue = strings.TrimSpace(taskQueue)
+	if taskQueue == "" {
+		taskQueue = imageagenttemporal.TaskQueueV3Canary
+	}
+	if taskQueue == imageagenttemporal.TaskQueueV3 {
+		return fmt.Errorf("image agent compatibility canary must use an isolated task queue")
+	}
+	if dependencies.Dial == nil {
+		dependencies.Dial = dialImageAgentTemporal
+	}
+	if dependencies.NewWorker == nil {
+		dependencies.NewWorker = func(client sdkclient.Client, queue string) (imageAgentWorker, error) {
+			return imageagenttemporal.NewCompatibilityCanaryWorker(client, queue)
+		}
+	}
+	if dependencies.RunCanary == nil {
+		dependencies.RunCanary = imageagenttemporal.RunImageAgentCompatibilityCanary
+	}
+	address := envOrDefault(envImageAgentTemporalAddress, "localhost:7233")
+	namespace := envOrDefault(envImageAgentTemporalNamespace, "default")
+	client, closeClient, err := dependencies.Dial(address, namespace)
+	if err != nil {
+		return fmt.Errorf("dial image agent temporal for compatibility canary: %w", err)
+	}
+	if closeClient != nil {
+		defer closeClient()
+	}
+	worker, err := dependencies.NewWorker(client, taskQueue)
+	if err != nil {
+		return fmt.Errorf("build image agent compatibility canary worker: %w", err)
+	}
+	if worker == nil {
+		return fmt.Errorf("build image agent compatibility canary worker: worker is nil")
+	}
+	if err := worker.Start(); err != nil {
+		worker.Stop()
+		return fmt.Errorf("start image agent compatibility canary worker: %w", err)
+	}
+	defer worker.Stop()
+	if logger != nil {
+		logger.WithFields(logrus.Fields{"address": address, "namespace": namespace, "taskQueue": taskQueue}).Info("running image agent compatibility canary with isolated worker")
+	}
+	return dependencies.RunCanary(ctx, client, taskQueue)
 }
 
 func runImageAgentCompatibilityCanaryWithDependencies(ctx context.Context, logger *logrus.Logger, taskQueue string, dependencies imageAgentCompatibilityCanaryDependencies) error {

@@ -23,6 +23,7 @@ const (
 const (
 	TaskQueue                           = "image-agent-manual"
 	TaskQueueV3                         = "image-agent-manual-v3"
+	TaskQueueV3Canary                   = "image-agent-manual-v3-canary"
 	EnvTaskQueue                        = "IMAGE_AGENT_TEMPORAL_TASK_QUEUE"
 	workflowNameImageAgent              = "ImageAgentWorkflow"
 	workflowNameImageSlot               = "ImageSlotWorkflow"

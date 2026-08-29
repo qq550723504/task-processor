@@ -167,6 +167,10 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 	if err != nil {
 		return imageagent.SlotGeneratedOutput{}, err
 	}
+	styleReferenceURLs, err := authorizedStyleReferenceURLs(styleReferences, input.AssetCatalog)
+	if err != nil {
+		return imageagent.SlotGeneratedOutput{}, err
+	}
 	baseProductContext := e.dependencies.ProductContext
 	if !imageagent.ProductContextRefIsZero(input.ProductContext) {
 		baseProductContext = &productimage.ProductContext{
@@ -174,7 +178,7 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 			Attributes: cloneMetadata(input.ProductContext.Attributes),
 		}
 	}
-	productContext := productContextForSlot(baseProductContext, slot, styleReferences)
+	productContext := productContextForSlot(baseProductContext, slot, styleReferences, styleReferenceURLs)
 	var assets []productimage.ImageAsset
 	var receipt imageagent.SlotUsageReceipt
 	switch slot.Role {
@@ -498,8 +502,38 @@ func authorizedStyleReferences(ids []string, catalog imageagent.AssetCatalog) ([
 	return authorized, nil
 }
 
-func productContextForSlot(base *productimage.ProductContext, slot imageagent.Slot, styleReferenceIDs []string) *productimage.ProductContext {
+func authorizedStyleReferenceURLs(ids []string, catalog imageagent.AssetCatalog) ([]string, error) {
+	byID := make(map[string]imageagent.AuthorizedAsset, len(catalog.Assets))
+	for _, asset := range catalog.Assets {
+		if asset.Type == imageagent.AuthorizedAssetStyle {
+			byID[strings.TrimSpace(asset.ID)] = asset
+		}
+	}
+	urls := make([]string, 0, len(ids))
+	for _, id := range ids {
+		asset, ok := byID[strings.TrimSpace(id)]
+		if !ok {
+			return nil, fmt.Errorf("style reference %q is not authorized", id)
+		}
+		url := strings.TrimSpace(asset.URL)
+		if url == "" {
+			url = strings.TrimSpace(asset.DisplayURL)
+		}
+		validated, err := imageagent.ValidateSafeImageURL(url)
+		if err != nil {
+			return nil, fmt.Errorf("style reference %q has unsafe URL: %w", id, err)
+		}
+		if validated == "" {
+			return nil, fmt.Errorf("style reference %q has no readable URL", id)
+		}
+		urls = append(urls, validated)
+	}
+	return urls, nil
+}
+
+func productContextForSlot(base *productimage.ProductContext, slot imageagent.Slot, styleReferenceIDs, styleReferenceURLs []string) *productimage.ProductContext {
 	context := cloneProductContext(base)
+	context.StyleReferenceURLs = append([]string(nil), styleReferenceURLs...)
 	return productimage.ApplySceneOptionsToProductContext(context, &productimage.ImageProcessRequest{Scene: &productimage.SceneGenerationOptions{
 		SlotRole: slotRoleName(slot.Role), SlotBrief: slot.Brief, StyleReferenceIDs: styleReferenceIDs,
 	}})
@@ -516,6 +550,7 @@ func cloneProductContext(base *productimage.ProductContext) *productimage.Produc
 			cloned.Attributes[key] = value
 		}
 	}
+	cloned.StyleReferenceURLs = append([]string(nil), base.StyleReferenceURLs...)
 	return &cloned
 }
 

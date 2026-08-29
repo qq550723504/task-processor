@@ -362,7 +362,7 @@ func TestExecutorMapsSceneRoleBriefAndAuthorizedStyleReferencesToSceneContext(t 
 	input.Slot.Brief = "  show material texture  "
 	input.Slot.StyleReferenceIDs = []string{" style-1 ", "unapproved-style"}
 	input.Slot.StyleReferenceIDs = []string{" style-1 "}
-	input.AssetCatalog.Assets = append(input.AssetCatalog.Assets, imageagent.AuthorizedAsset{ID: "style-1", Type: imageagent.AuthorizedAssetStyle})
+	input.AssetCatalog.Assets = append(input.AssetCatalog.Assets, imageagent.AuthorizedAsset{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style-1.png"})
 
 	_, err := executor.ExecuteSlot(context.Background(), input)
 
@@ -371,6 +371,7 @@ func TestExecutorMapsSceneRoleBriefAndAuthorizedStyleReferencesToSceneContext(t 
 	require.Equal(t, "detail", renderer.context.Attributes["slot_role"])
 	require.Equal(t, "show material texture", renderer.context.Attributes["slot_brief"])
 	require.Equal(t, "style-1", renderer.context.Attributes["style_reference_ids"])
+	require.Equal(t, []string{"https://style.example/style-1.png"}, renderer.context.StyleReferenceURLs)
 }
 
 func TestExecutorUsesRunScopedProductContextInsteadOfProcessDefault(t *testing.T) {
@@ -568,7 +569,7 @@ func TestExecutorDoesNotMutateInputsOrCatalogAssets(t *testing.T) {
 	input := sceneSlotInput(" scene-1 ")
 	input.Slot.SourceAssetIDs = []string{" source-1 ", " source-2 "}
 	input.Slot.StyleReferenceIDs = []string{" style-1 "}
-	input.AssetCatalog.Assets = append(input.AssetCatalog.Assets, imageagent.AuthorizedAsset{ID: "style-1", Type: imageagent.AuthorizedAssetStyle})
+	input.AssetCatalog.Assets = append(input.AssetCatalog.Assets, imageagent.AuthorizedAsset{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style-1.png"})
 	before := input
 	before.Slot.SourceAssetIDs = append([]string(nil), input.Slot.SourceAssetIDs...)
 	before.Slot.StyleReferenceIDs = append([]string(nil), input.Slot.StyleReferenceIDs...)

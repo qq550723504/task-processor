@@ -154,6 +154,35 @@ func TestImageAgentCompatibilityCanaryDialsWithoutProductDependencies(t *testing
 	require.True(t, closed)
 }
 
+func TestImageAgentCompatibilityCanaryWithWorkerStartsIsolatedQueueWorker(t *testing.T) {
+	worker := &recordingImageAgentWorker{}
+	dialed, ran, closed := false, false, false
+	err := runImageAgentCompatibilityCanaryWithWorkerDependencies(context.Background(), nil, "image-agent-manual-v3-canary", imageAgentCompatibilityCanaryWorkerDependencies{
+		Dial: func(address, namespace string) (sdkclient.Client, func() error, error) {
+			dialed = true
+			require.Equal(t, "localhost:7233", address)
+			require.Equal(t, "default", namespace)
+			return nil, func() error { closed = true; return nil }, nil
+		},
+		NewWorker: func(_ sdkclient.Client, queue string) (imageAgentWorker, error) {
+			require.Equal(t, "image-agent-manual-v3-canary", queue)
+			return worker, nil
+		},
+		RunCanary: func(_ context.Context, client sdkclient.Client, queue string) error {
+			ran = true
+			require.Nil(t, client)
+			require.Equal(t, "image-agent-manual-v3-canary", queue)
+			return nil
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, dialed)
+	require.True(t, ran)
+	require.True(t, worker.started)
+	require.True(t, worker.stopped)
+	require.True(t, closed)
+}
+
 type recordingImageAgentWorker struct {
 	started bool
 	stopped bool
