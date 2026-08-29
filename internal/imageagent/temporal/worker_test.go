@@ -45,6 +45,60 @@ func TestRegisterWorkerIncludesEffectRecoveryWorkflowAndActivity(t *testing.T) {
 	require.Contains(t, registrar.activities, activityPersistRecoveryBlockedV3)
 }
 
+func TestRecoveryStarterUsesInjectiveWorkflowIDsForColonContainingRunAndSlotIDs(t *testing.T) {
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+	base := EffectRecoveryWorkflowInput{Identity: identity, PlanRevision: 1, Attempt: 1}
+
+	first := base
+	first.RunID = "run:a"
+	first.Slot = imageagent.Slot{ID: "slot"}
+	second := base
+	second.RunID = "run"
+	second.Slot = imageagent.Slot{ID: "a:slot"}
+
+	firstClient := &recordingSDKClient{}
+	secondClient := &recordingSDKClient{}
+	require.NoError(t, newRecoveryWorkflowStarter(firstClient, TaskQueueV3)(context.Background(), first))
+	require.NoError(t, newRecoveryWorkflowStarter(secondClient, TaskQueueV3)(context.Background(), second))
+
+	require.NotEqual(t, firstClient.startOptions.ID, secondClient.startOptions.ID)
+}
+
+func TestRecoveryStarterUsesActionIDToStartNewExecutionAfterClosedRun(t *testing.T) {
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+	input := EffectRecoveryWorkflowInput{
+		RunID: "run-1", Identity: identity, PlanRevision: 1,
+		Slot: imageagent.Slot{ID: "slot-1"}, Attempt: 1,
+	}
+
+	firstClient := &recordingSDKClient{}
+	first := input
+	first.ActionID = "recover-1"
+	require.NoError(t, newRecoveryWorkflowStarter(firstClient, TaskQueueV3)(context.Background(), first))
+
+	secondClient := &recordingSDKClient{}
+	second := input
+	second.ActionID = "recover-2"
+	require.NoError(t, newRecoveryWorkflowStarter(secondClient, TaskQueueV3)(context.Background(), second))
+
+	require.NotEqual(t, firstClient.startOptions.ID, secondClient.startOptions.ID)
+	require.Equal(t, first.ActionID, firstClient.effectRecoveryInput.ActionID)
+	require.Equal(t, second.ActionID, secondClient.effectRecoveryInput.ActionID)
+}
+
+func TestRecoveryStarterKeepsSameActionIDIdempotent(t *testing.T) {
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+	input := EffectRecoveryWorkflowInput{
+		RunID: "run-1", Identity: identity, PlanRevision: 1,
+		Slot: imageagent.Slot{ID: "slot-1"}, Attempt: 1, ActionID: "recover-1",
+	}
+	firstClient := &recordingSDKClient{}
+	secondClient := &recordingSDKClient{}
+	require.NoError(t, newRecoveryWorkflowStarter(firstClient, TaskQueueV3)(context.Background(), input))
+	require.NoError(t, newRecoveryWorkflowStarter(secondClient, TaskQueueV3)(context.Background(), input))
+	require.Equal(t, firstClient.startOptions.ID, secondClient.startOptions.ID)
+}
+
 func TestTemporalClientRecoverEffectUsesDeterministicWorkflowID(t *testing.T) {
 	raw := &recordingSDKClient{}
 	client := NewClient(raw)
@@ -66,7 +120,7 @@ func TestTemporalClientRecoverEffectUsesDeterministicWorkflowID(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, "image-agent-effect-recovery:tenant-a:user-a:run-1:1:slot-1:1", raw.startOptions.ID)
+	require.Equal(t, EffectRecoveryWorkflowIDForSlot(imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}, 1, "run-1", "slot-1", 1, "recover-1"), raw.startOptions.ID)
 	require.Equal(t, TaskQueueV3, raw.startOptions.TaskQueue)
 	require.Equal(t, enumspb.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, raw.startOptions.WorkflowIDConflictPolicy)
 	require.Equal(t, enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY, raw.startOptions.WorkflowIDReusePolicy)

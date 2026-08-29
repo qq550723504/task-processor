@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -168,6 +169,9 @@ type EffectRecoveryWorkflowInput struct {
 	PlanRevision int64
 	Slot         imageagent.Slot
 	Attempt      int
+	// ActionID is empty for automatic recovery and historical workflow inputs.
+	// Explicit redrives use it to scope a restartable workflow execution.
+	ActionID     string
 	AssetCatalog imageagent.AssetCatalog
 }
 
@@ -435,4 +439,27 @@ func EffectRecoveryWorkflowID(identity imageagent.ExecutionIdentity, planRevisio
 		slotID,
 		attempt,
 	)
+}
+
+// EffectRecoveryWorkflowIDForSlot builds an ID from structured fields. Empty
+// action IDs retain the original deterministic ID for automatic handoff and
+// historical replay compatibility.
+func EffectRecoveryWorkflowIDForSlot(identity imageagent.ExecutionIdentity, planRevision int64, runID, slotID string, attempt int, actionID string) string {
+	tenantID := strings.TrimSpace(identity.TenantID)
+	userID := strings.TrimSpace(identity.UserID)
+	runID = strings.TrimSpace(runID)
+	slotID = strings.TrimSpace(slotID)
+	base := ""
+	if strings.ContainsAny(tenantID+userID+runID+slotID, ":") {
+		encode := func(value string) string {
+			return base64.RawURLEncoding.EncodeToString([]byte(value))
+		}
+		base = fmt.Sprintf("image-agent-effect-recovery:v2:%s:%s:%s:%d:%s:%d", encode(tenantID), encode(userID), encode(runID), planRevision, encode(slotID), attempt)
+	} else {
+		base = fmt.Sprintf("image-agent-effect-recovery:%s:%s:%s:%d:%s:%d", tenantID, userID, runID, planRevision, slotID, attempt)
+	}
+	if strings.TrimSpace(actionID) == "" {
+		return base
+	}
+	return base + ":action:" + base64.RawURLEncoding.EncodeToString([]byte(actionID))
 }

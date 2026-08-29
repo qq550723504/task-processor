@@ -210,11 +210,8 @@ func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecovery
 		Identity:   imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID, BusinessTaskID: run.BusinessTaskID},
 		Projection: blockedProjection,
 	}
-	expectedRecoveryWorkflowID := imageagenttemporal.EffectRecoveryWorkflowID(
-		command.Identity,
-		command.PlanRevision,
-		command.RunID+":"+command.SlotID,
-		command.Attempt,
+	expectedRecoveryWorkflowID := imageagenttemporal.EffectRecoveryWorkflowIDForSlot(
+		command.Identity, command.PlanRevision, command.RunID, command.SlotID, command.Attempt, command.ActionID,
 	)
 
 	require.NoError(t, client.RecoverEffect(ctx, command))
@@ -233,7 +230,9 @@ func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecovery
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for recovery finalization to start")
 	}
-	command.ActionID = "recover-effect-restart-2"
+	// Reusing the same action ID models a worker restart: it must attach to the
+	// still-running execution instead of opening a concurrent recovery.
+	command.ActionID = "recover-effect-restart-1"
 	require.NoError(t, client.RecoverEffect(ctx, command))
 	blockingStore.releaseFinalize()
 

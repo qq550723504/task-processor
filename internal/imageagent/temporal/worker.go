@@ -128,7 +128,7 @@ func (c *Client) RecoverEffect(ctx context.Context, command imageagent.RecoverEf
 	}
 	return newRecoveryWorkflowStarter(c.client, TaskQueueV3)(ctx, EffectRecoveryWorkflowInput{
 		RunID: command.RunID, Identity: command.Identity, PlanRevision: command.PlanRevision,
-		Slot: slot, Attempt: command.Attempt, AssetCatalog: projection.AssetCatalog,
+		Slot: slot, Attempt: command.Attempt, ActionID: command.ActionID, AssetCatalog: projection.AssetCatalog,
 	})
 }
 
@@ -414,7 +414,7 @@ func newRecoveryWorkflowStarter(client sdkWorkflowClient, taskQueue string) Reco
 			return fmt.Errorf("image agent recovery workflow task queue is required")
 		}
 		_, err := client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
-			ID:                       EffectRecoveryWorkflowID(input.Identity, input.PlanRevision, input.RunID+":"+input.Slot.ID, input.Attempt),
+			ID:                       EffectRecoveryWorkflowIDForSlot(input.Identity, input.PlanRevision, input.RunID, input.Slot.ID, input.Attempt, input.ActionID),
 			TaskQueue:                taskQueue,
 			WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 			WorkflowIDReusePolicy:    enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
