@@ -4675,21 +4675,45 @@ func TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages(t *testing.T) 
 	}, nil)
 }
 
-func TestAICapabilityModuleDoesNotImportBusinessOrProviderPackages(t *testing.T) {
-	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "aicapability"), []string{
-		"task-processor/internal/app",
-		"task-processor/internal/asset",
-		"task-processor/internal/catalog",
-		"task-processor/internal/infra/clients",
-		"task-processor/internal/listingkit",
-		"task-processor/internal/marketplace",
-		"task-processor/internal/productenrich",
-		"task-processor/internal/productimage",
-		"task-processor/internal/publishing",
-		"task-processor/internal/shein",
-		"task-processor/internal/temu",
-		"task-processor/internal/workspace",
-	}, nil)
+func TestAICapabilityModuleUsesOnlyApprovedDependencies(t *testing.T) {
+	root := filepath.Join("..", "internal", "aicapability")
+	approvedExternal := []string{
+		"gorm.io/gorm",
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/aicapability") {
+				continue
+			}
+			if strings.HasPrefix(importPath, "task-processor/") {
+				t.Errorf("%s imports %s; AI capability contracts may depend only on their own internal package tree", path, importPath)
+				continue
+			}
+			if !strings.Contains(strings.Split(importPath, "/")[0], ".") {
+				continue
+			}
+
+			approved := false
+			for _, allowed := range approvedExternal {
+				if importMatchesPrefix(importPath, allowed) {
+					approved = true
+					break
+				}
+			}
+			if !approved {
+				t.Errorf("%s imports %s; AI capability contracts may depend only on the standard library, approved storage adapters, and their own package", path, importPath)
+			}
+		}
+	}
 }
 
 func TestPlatformModulesHistoricalImplementationImportsStayAllowlisted(t *testing.T) {

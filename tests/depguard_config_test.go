@@ -20,9 +20,9 @@ func TestPlatformRegistrationDepguardPatternsRespectPackageBoundaries(t *testing
 	if start == -1 {
 		t.Fatalf("%s must define platform_registration_boundaries", configPath)
 	}
-	end := strings.Index(config[start+1:], "\n      source_handoff_legacy_http:")
+	end := strings.Index(config[start+1:], "\n      aicapability_boundaries:")
 	if end == -1 {
-		t.Fatalf("%s must keep platform_registration_boundaries before source_handoff_legacy_http", configPath)
+		t.Fatalf("%s must keep platform_registration_boundaries before aicapability_boundaries", configPath)
 	}
 	config = config[start : start+1+end]
 
@@ -41,6 +41,40 @@ func TestPlatformRegistrationDepguardPatternsRespectPackageBoundaries(t *testing
 			if !strings.Contains(config, pattern) {
 				t.Errorf("%s must contain depguard package-boundary pattern %s", configPath, pattern)
 			}
+		}
+	}
+}
+
+func TestAICapabilityDepguardUsesStrictAllowlist(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+
+	config := string(content)
+	start := strings.Index(config, "      aicapability_boundaries:\n")
+	if start == -1 {
+		t.Fatalf("%s must define aicapability_boundaries", configPath)
+	}
+	end := strings.Index(config[start+1:], "\n      source_handoff_legacy_http:")
+	if end == -1 {
+		t.Fatalf("%s must keep aicapability_boundaries before source_handoff_legacy_http", configPath)
+	}
+	config = config[start : start+1+end]
+
+	if !strings.Contains(config, "list-mode: strict") {
+		t.Errorf("%s must make aicapability_boundaries a strict allowlist", configPath)
+	}
+
+	for _, packagePath := range []string{
+		"$gostd",
+		"gorm.io/gorm",
+		"task-processor/internal/aicapability",
+	} {
+		pattern := fmt.Sprintf(`- "%s"`, packagePath)
+		if !strings.Contains(config, pattern) {
+			t.Errorf("%s must allow %s for AI capability contracts", configPath, packagePath)
 		}
 	}
 }

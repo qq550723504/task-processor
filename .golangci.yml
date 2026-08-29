@@ -212,6 +212,20 @@ linters-settings:
           - pkg: "task-processor/internal/workspace/"
             desc: "Platform registration must not own workspace business rules"
 
+      aicapability_boundaries:
+        # AI capability contracts may use only the standard library, their own
+        # package tree, and the current persistence adapter. A strict allowlist
+        # prevents newly added business packages and provider SDKs from bypassing
+        # a growing blacklist.
+        list-mode: strict
+        files:
+          - "**/internal/aicapability/*.go"
+          - "**/internal/aicapability/**/*.go"
+        allow:
+          - "$gostd"
+          - "gorm.io/gorm"
+          - "task-processor/internal/aicapability"
+
       source_handoff_legacy_http:
         # The retired ProductEnrich HTTP owner must not regain production consumers.
         # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
