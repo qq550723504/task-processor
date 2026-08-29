@@ -81,6 +81,51 @@ func TestListingKitImageAgentCatalogUsesOwnedCanonicalSourceAssetsAndNoSynthetic
 	require.ErrorContains(t, err, "standard product snapshot")
 }
 
+func TestListingKitImageAgentCatalogIncludesOnlyExplicitNonSourceStyles(t *testing.T) {
+	task := &listingkit.Task{
+		ID: "task-styles", TenantID: "tenant-a", UserID: "user-a",
+		Result: &listingkit.ListingKitResult{StandardProductSnapshot: &listingkit.StandardProductSnapshot{AssetBundle: &asset.Bundle{Assets: []asset.Asset{
+			{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/source.png"},
+			{ID: "scene-1", Kind: asset.KindSceneImage, URL: "https://cdn.example.test/scene.png", Labels: []string{"Lifestyle"}},
+			{ID: "generated-1", Kind: asset.KindGalleryImage, URL: "https://cdn.example.test/generated.png"},
+		}}}},
+	}
+
+	got, err := imageAgentCatalogFromTask(task, []string{"scene-1"})
+	require.NoError(t, err)
+	require.Len(t, got.Assets, 2)
+	require.Equal(t, imageagent.AuthorizedAssetSource, got.Assets[0].Type)
+	require.Equal(t, imageagent.AuthorizedAssetStyle, got.Assets[1].Type)
+	require.Equal(t, "scene-1", got.Assets[1].ID)
+
+	_, err = imageAgentCatalogFromTask(task, []string{"source-1"})
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+	require.ErrorContains(t, err, "source asset cannot be selected as a style")
+
+	_, err = imageAgentCatalogFromTask(task, []string{"missing-style"})
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+	require.ErrorContains(t, err, "unknown style asset")
+}
+
+func TestListingKitImageAgentCatalogRejectsDisplayLabelsOver256UnicodeCodePoints(t *testing.T) {
+	longLabel := strings.Repeat("界", 257)
+	task := &listingkit.Task{
+		ID: "task-label", TenantID: "tenant-a", UserID: "user-a",
+		Result: &listingkit.ListingKitResult{StandardProductSnapshot: &listingkit.StandardProductSnapshot{AssetBundle: &asset.Bundle{Assets: []asset.Asset{
+			{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/source.png", Labels: []string{longLabel}},
+		}}}},
+	}
+
+	_, err := imageAgentCatalogFromTask(task, nil)
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+	require.ErrorContains(t, err, "label exceeds 256 Unicode code points")
+
+	task.Result.StandardProductSnapshot.AssetBundle.Assets[0].Labels[0] = strings.Repeat("界", 256)
+	got, err := imageAgentCatalogFromTask(task, nil)
+	require.NoError(t, err)
+	require.Equal(t, strings.Repeat("界", 256), got.Assets[0].Label)
+}
+
 type listingTaskSourceStub struct{ task *listingkit.Task }
 
 func (s listingTaskSourceStub) GetTask(context.Context, string) (*listingkit.Task, error) {
