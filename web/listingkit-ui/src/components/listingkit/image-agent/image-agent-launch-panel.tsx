@@ -19,21 +19,40 @@ export function ImageAgentLaunchPanel({
   onCreated: (runId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+
+  if (!open) {
+    return <Button onClick={() => setOpen(true)} type="button" variant="secondary">创建图片方案</Button>;
+  }
+
+  return <ImageAgentLaunchForm
+    key={`${taskId}:${targetPlatform ?? ""}`}
+    onCancel={() => setOpen(false)}
+    onCreated={onCreated}
+    targetPlatform={targetPlatform}
+    taskId={taskId}
+  />;
+}
+
+function ImageAgentLaunchForm({
+  taskId,
+  targetPlatform,
+  onCreated,
+  onCancel,
+}: {
+  taskId: string;
+  targetPlatform?: string;
+  onCreated: (runId: string) => void;
+  onCancel: () => void;
+}) {
   const [assets, setAssets] = useState<ImageAgentWorkspaceAssets>();
   const [sourceID, setSourceID] = useState("");
   const [styleIDs, setStyleIDs] = useState<string[]>([]);
   const [error, setError] = useState<string>();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
     const controller = new AbortController();
-    setLoading(true);
-    setError(undefined);
-    setAssets(undefined);
-    setSourceID("");
-    setStyleIDs([]);
     getImageAgentWorkspaceAssets(taskId, targetPlatform, controller.signal)
       .then(setAssets)
       .catch((reason: unknown) => {
@@ -43,7 +62,7 @@ export function ImageAgentLaunchPanel({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [open, targetPlatform, taskId]);
+  }, [targetPlatform, taskId]);
 
   const toggleStyle = (id: string) => setStyleIDs((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   const create = async () => {
@@ -64,10 +83,6 @@ export function ImageAgentLaunchPanel({
     }
   };
 
-  if (!open) {
-    return <Button onClick={() => setOpen(true)} type="button" variant="secondary">创建图片方案</Button>;
-  }
-
   return (
     <section className="space-y-4 rounded-2xl border border-border bg-card p-4" aria-label="创建图片方案">
       <div className="flex items-start justify-between gap-3">
@@ -75,7 +90,7 @@ export function ImageAgentLaunchPanel({
           <h2 className="font-semibold text-foreground">创建图片方案</h2>
           <p className="mt-1 text-sm text-muted-foreground">选择一个商品来源素材；风格参考可选。</p>
         </div>
-        <Button onClick={() => setOpen(false)} size="sm" type="button" variant="ghost">取消</Button>
+        <Button onClick={onCancel} size="sm" type="button" variant="ghost">取消</Button>
       </div>
       {loading ? <p className="text-sm text-muted-foreground">正在读取可用素材…</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
