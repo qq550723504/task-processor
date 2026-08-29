@@ -71,6 +71,19 @@ export FAKE_KUBECTL_LOG="$temp_dir/kubectl.log"
 export FAKE_KUBECTL_PATCH="$temp_dir/kubectl.patch"
 export FAKE_KUBECTL_ROLLOUT="$temp_dir/kubectl.rollout"
 
+if GITHUB_ACTIONS= GITHUB_WORKFLOW_REF= GITHUB_JOB= GITHUB_RUN_ID= GITHUB_RUN_ATTEMPT= \
+  "$driver" task-processor listingkit-workbench-secret >/dev/null 2>&1; then
+  printf '%s\n' 'direct production cleanup unexpectedly passed' >&2
+  exit 1
+fi
+[[ ! -s "$FAKE_KUBECTL_LOG" ]]
+
+export GITHUB_ACTIONS=true
+export GITHUB_WORKFLOW_REF='octo/task-processor/.github/workflows/listingkit-deploy.yml@refs/tags/listingkit-api-v-test'
+export GITHUB_JOB=deploy-api
+export GITHUB_RUN_ID=424242
+export GITHUB_RUN_ATTEMPT=2
+
 "$driver" task-processor listingkit-workbench-secret
 patch_call="$(cat "$FAKE_KUBECTL_PATCH")"
 [[ "$patch_call" == *'/metadata/resourceVersion'* ]]

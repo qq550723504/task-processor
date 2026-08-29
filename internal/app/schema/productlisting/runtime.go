@@ -7,6 +7,7 @@ import (
 
 	aicapabilitystore "task-processor/internal/aicapability/store"
 	"task-processor/internal/amazonlisting"
+	imageagentstore "task-processor/internal/imageagent/store"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"
@@ -27,6 +28,9 @@ func AutoMigrateRuntime(db *gorm.DB) error {
 	}
 	if err := aicapabilitystore.AutoMigrateAsyncJobBindings(db); err != nil {
 		return fmt.Errorf("ai async job binding auto-migrate failed: %w", err)
+	}
+	if err := imageagentstore.AutoMigrate(db); err != nil {
+		return fmt.Errorf("image agent auto-migrate failed: %w", err)
 	}
 	if err := db.AutoMigrate(&prompt.TenantPromptTemplate{}); err != nil {
 		return fmt.Errorf("tenant prompt auto-migrate failed: %w", err)

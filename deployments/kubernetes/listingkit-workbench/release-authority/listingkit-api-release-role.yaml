@@ -1,0 +1,32 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: listingkit-api-release
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["listingkit-workbench-config"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["listingkit-workbench-secret"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["listingkit-member-invitation-secret"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames:
+      - product-listing-api
+      - image-agent-temporal-worker
+      - image-agent-temporal-worker-v3
+      - product-listing-api-schema-migrate-runner
+      - listingkit-schema-migrate-runner
+      - listingkit-identity-preflight-runner
+      - image-agent-temporal-v3-canary-runner
+    verbs: ["get", "patch", "update", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    resourceNames: ["listingkit-workbench"]
+    verbs: ["get", "patch", "update"]

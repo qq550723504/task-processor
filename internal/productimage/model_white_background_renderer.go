@@ -15,6 +15,14 @@ func NewModelWhiteBackgroundRenderer(editor FaithfulEditor) WhiteBackgroundRende
 	return &modelWhiteBackgroundRenderer{editor: editor}
 }
 
+func (r *modelWhiteBackgroundRenderer) QuoteUsage(ctx context.Context, request CapabilityUsageQuoteRequest) (CapabilityUsageQuote, error) {
+	quoter, ok := r.editor.(CapabilityUsageQuoter)
+	if !ok || quoter == nil {
+		return CapabilityUsageQuote{}, ErrCapabilityUsageQuoteUnavailable
+	}
+	return quoter.QuoteUsage(ctx, request)
+}
+
 func (r *modelWhiteBackgroundRenderer) Render(ctx context.Context, asset *ImageAsset, context *ProductContext) (*ImageAsset, error) {
 	if r.editor == nil {
 		return nil, fmt.Errorf("faithful editor is not configured")

@@ -3,6 +3,7 @@ package httpapi
 import (
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	a1688httpapi "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi"
+	imageagenthttpapi "task-processor/internal/imageagent/httpapi"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
@@ -53,4 +54,5 @@ type httpFeatureComposition struct {
 	sdsLoginResult        *sdsloginbootstrap.BuildResult
 	crawler1688Module     kernelmodule.Module
 	localAgentModule      *localagenthttpapi.BuildResult
+	imageAgentModule      *imageagenthttpapi.BuildResult
 }

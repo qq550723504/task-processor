@@ -196,3 +196,60 @@ func TestBuildSceneGenerationResolvedPromptUsesRequestAndContextCustomizations(t
 		t.Fatalf("prompt = %q", resolved.Text)
 	}
 }
+
+func TestBuildSceneGenerationResolvedPromptUsesSlotControlledOptions(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = nil
+	t.Cleanup(func() {
+		prompt.GlobalRegistry = previous
+	})
+
+	resolved := buildSceneGenerationResolvedPrompt(&SceneGenerationRequest{
+		SceneIntent: "gallery_scene",
+		ProductContext: &ProductContext{Attributes: map[string]string{
+			"slot_role":           "selling_point",
+			"slot_brief":          "highlight waterproof coating",
+			"style_reference_ids": "style-1,style-2",
+		}},
+	})
+
+	if !containsInsensitive(resolved.Text, "slot role: selling_point") ||
+		!containsInsensitive(resolved.Text, "slot brief: highlight waterproof coating") ||
+		!containsInsensitive(resolved.Text, "authorized style references: style-1,style-2") {
+		t.Fatalf("prompt = %q", resolved.Text)
+	}
+}
+
+func TestBuildSceneGenerationResolvedPromptAppendsControlledSuffixToRegistryTemplates(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = &promptRegistryStub{templates: map[string]string{
+		prompt.KProductImageSceneDefault: "Default registry template",
+		"productimage.scene.shoes":       "Shoes registry template",
+	}}
+	t.Cleanup(func() {
+		prompt.GlobalRegistry = previous
+	})
+
+	for _, tt := range []struct {
+		name    string
+		product string
+		prefix  string
+	}{
+		{name: "default", prefix: "Default registry template"},
+		{name: "category", product: "running shoe", prefix: "Shoes registry template"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			resolved := buildSceneGenerationResolvedPrompt(&SceneGenerationRequest{
+				ProductContext: &ProductContext{ProductType: tt.product, Attributes: map[string]string{
+					"slot_role":           "selling_point",
+					"slot_brief":          "  show waterproof coating  ",
+					"style_reference_ids": " style-1, style-2 ",
+				}},
+			})
+			want := tt.prefix + " Slot role: selling_point. Slot brief: show waterproof coating. Authorized style references: style-1,style-2."
+			if resolved.Text != want {
+				t.Fatalf("prompt = %q, want %q", resolved.Text, want)
+			}
+		})
+	}
+}

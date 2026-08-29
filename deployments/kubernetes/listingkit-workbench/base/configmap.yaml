@@ -35,11 +35,14 @@ data:
   # not own long-lived browser profiles or verification-code waits.
   TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_EXECUTION_MODE: "worker"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER: "s3"
+  TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED: "true"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE: "https://oss.shuomiai.com"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET: "shuomi-1303159911"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION: "ap-hongkong"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT: "https://cos.ap-hongkong.myqcloud.com"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE: "false"
+  TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE: "cos"
+  TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY: "true"
   LISTINGKIT_IMGPROXY_BASE_URL: "https://listingkit.example.com/img"
   NEXT_PUBLIC_LISTINGKIT_IMGPROXY_BASE_URL: "https://listingkit.example.com/img"
   IMGPROXY_BIND: ":8080"
@@ -57,8 +60,7 @@ data:
   LISTINGKIT_TEMPORAL_ADDRESS: "temporal-frontend.temporal.svc.cluster.local:7233"
   LISTINGKIT_TEMPORAL_NAMESPACE: "default"
   LISTINGKIT_TEMPORAL_START_WORKER: "1"
+  IMAGE_AGENT_TEMPORAL_ENABLED: "1"
+  IMAGE_AGENT_TEMPORAL_ADDRESS: "temporal-frontend.temporal.svc.cluster.local:7233"
+  IMAGE_AGENT_TEMPORAL_NAMESPACE: "default"
   # Set ZITADEL_ISSUER_URL and ZITADEL_CLIENT_ID to enable ZITADEL OIDC login.
-  # These env vars are bound into Go API core config at listingkit.zitadel.*.
-  # The resourceowner scope scopes ListingKit data by ZITADEL tenant; the project role scopes
-  # make the assigned ListingKit roles available to the UI and Go API authorization checks.
-  ZITADEL_SCOPES: "openid profile email urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:zitadel:aud urn:zitadel:iam:org:project:role:listingkit_viewer urn:zitadel:iam:org:project:role:listingkit_operator urn:zitadel:iam:org:project:role:listingkit_admin urn:zitadel:iam:org:project:role:platform_admin"

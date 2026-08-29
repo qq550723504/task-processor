@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { vi } from "vitest";
 
-import { WorkspaceReviewView } from "@/components/listingkit/workspace/workspace-screen-views";
+import { WorkspaceAgentSurface, WorkspaceReviewView } from "@/components/listingkit/workspace/workspace-screen-views";
 
 vi.mock("@/components/listingkit/shared/preview-canvas", () => ({
   PreviewCanvas: () => <div>预览画布内容</div>,
@@ -50,7 +50,27 @@ vi.mock("@/components/listingkit/workspace/workspace-preview-suggestion", () => 
     suggestion ? <div>预览建议卡</div> : null,
 }));
 
+vi.mock("@/components/listingkit/image-agent/image-agent-workbench", () => ({
+  ImageAgentWorkbench: ({ taskId, runId }: { taskId: string; runId: string }) => (
+    <div data-testid="image-agent-workbench">
+      场景图 scene-2 生成失败 仅重试 scene-2 {taskId} {runId}
+    </div>
+  ),
+}));
+
 describe("WorkspaceReviewView", () => {
+  it.each(["旧预览加载中", "旧预览加载失败", "旧预览数据缺失"])(
+    "keeps the explicit blocked Agent surface visible with %s",
+    (legacyState) => {
+      render(
+        <WorkspaceAgentSurface context={{ taskId: "task-1", runId: "run-1" }}>
+          <div>{legacyState}</div>
+        </WorkspaceAgentSurface>,
+      );
+      expect(screen.getByText(/场景图 scene-2 生成失败/)).toBeInTheDocument();
+      expect(screen.getByText(legacyState)).toBeInTheDocument();
+    },
+  );
   it("organizes shein general review into three primary stages", () => {
     const { container } = render(
       <WorkspaceReviewView
@@ -104,5 +124,29 @@ describe("WorkspaceReviewView", () => {
     expect(container.firstElementChild).not.toHaveClass("lg:grid-cols-[minmax(0,1fr)_21rem]");
     expect(container.firstElementChild).toHaveClass("2xl:grid-cols-[minmax(0,1fr)_24rem]");
     expect(screen.getByText("最终确认草稿").closest("summary")).toHaveClass("flex-col");
+    expect(screen.queryByTestId("image-agent-workbench")).not.toBeInTheDocument();
+  });
+
+  it("adds the image-agent workbench without replacing the existing review for an explicit run context", () => {
+    render(
+      <WorkspaceReviewView
+        imageAgentContext={{ taskId: "task-1", runId: "run-1" }}
+        previewSuggestionProps={{ onSelect: vi.fn() }}
+        reviewSectionTabsProps={{ onSelect: vi.fn() } as never}
+        sheinImageGalleryProps={{} as never}
+        sheinFinalReviewProps={{} as never}
+        previewCanvasProps={{} as never}
+        slotNavigationProps={{ onSelect: vi.fn() } as never}
+        reviewToolbarProps={{} as never}
+        sheinReadinessProps={{} as never}
+        sheinTimelineProps={{} as never}
+        scenePresetPanelProps={{} as never}
+        recoveryActionListProps={{} as never}
+      />,
+    );
+
+    expect(screen.getByTestId("image-agent-workbench")).toHaveTextContent("task-1 run-1");
+    expect(screen.getByText("工具栏动作")).toBeInTheDocument();
+    expect(screen.getByText("更多诊断")).toBeInTheDocument();
   });
 });

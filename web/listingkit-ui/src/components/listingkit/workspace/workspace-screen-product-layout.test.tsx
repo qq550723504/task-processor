@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -134,6 +135,7 @@ beforeEach(() => {
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(mocks.routeSearch),
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 
 vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({
@@ -243,6 +245,21 @@ vi.mock("@/components/listingkit/workspace/workspace-review-view-props", () => (
 vi.mock("@/components/listingkit/workspace/workspace-screen-views", () => ({
   WorkspaceReviewView: () => <div>现有 SHEIN 审核内容</div>,
   SheinFinalReviewWorkspaceView: () => <div>SHEIN 最终审核内容</div>,
+  WorkspaceAgentSurface: ({
+    context,
+    children,
+  }: {
+    context: { taskId: string; runId: string };
+    children: ReactNode;
+  }) => (
+    <div
+      data-testid="workspace-agent-surface"
+      data-task-id={context.taskId}
+      data-run-id={context.runId}
+    >
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock("@/components/listingkit/tasks/task-status-panel", () => ({
@@ -301,6 +318,17 @@ vi.mock("@/lib/query/use-child-task-retry", () => ({
 }));
 
 describe("WorkspaceScreen Product Workspace composition", () => {
+  it("keeps the Image Agent surface around the merged Product Workspace", () => {
+    mocks.routeSearch = "platform=shein&image_agent_run_id=run:agent-1";
+
+    render(<WorkspaceScreen taskId="task-1" />);
+
+    const surface = screen.getByTestId("workspace-agent-surface");
+    expect(surface).toHaveAttribute("data-task-id", "task-1");
+    expect(surface).toHaveAttribute("data-run-id", "run:agent-1");
+    expect(within(surface).getByRole("heading", { name: "Canvas Tote" })).toBeInTheDocument();
+  });
+
   it("renders product-first header and three-column workspace while keeping existing review content", () => {
     render(<WorkspaceScreen taskId="task-1" />);
 

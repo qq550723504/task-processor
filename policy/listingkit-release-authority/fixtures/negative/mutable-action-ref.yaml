@@ -1,0 +1,26 @@
+identity:
+  workflowRef: qq550723504/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main
+  audience: api://listingkit-api-production
+  job: deploy-api
+  allowedSteps: []
+  target: listingkit-ui
+identities:
+  api: {environment: listingkit-api-production, subject: api}
+  ui: {environment: listingkit-ui-production, subject: ui}
+token:
+  workflowRef: qq550723504/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main
+workflow:
+  permissions: {id-token: write}
+  audience: api://listingkit-api-production
+  job: deploy-api
+  steps: []
+  stepUses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+  actionUses: actions/checkout@v4
+  with: {target: listingkit-ui}
+rbac: {verbs: [], resources: [], resourceNames: []}
+releaseGateCommand: release-gate
+policy:
+  repository: qq550723504/task-processor
+  workflowRef: qq550723504/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main
+expectedWorkflowRef: qq550723504/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main
+releaseIdentity: {owner: api}

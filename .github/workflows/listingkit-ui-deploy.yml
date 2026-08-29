@@ -4,14 +4,23 @@ on:
   push:
     tags:
       - "listingkit-ui-v*"
+  workflow_run:
+    workflows:
+      - "ListingKit API Deploy"
+    types:
+      - completed
   workflow_dispatch:
     inputs:
-      source_ref:
-        description: "UI source commit or ref. Defaults to the workflow commit."
-        required: false
+      release_gate_run_id:
+        description: "Successful ListingKit API Deploy run ID for the exact UI source commit."
+        required: true
+        type: string
+      release_gate_run_attempt:
+        description: "Successful ListingKit API Deploy run attempt for the exact attestation artifact."
+        required: true
         type: string
       image_tag:
-        description: "Optional UI image tag. Defaults to the first eight source-ref characters."
+        description: "Optional UI image tag. Defaults to the first twelve source-SHA characters."
         required: false
         type: string
       publish_latest:
@@ -22,6 +31,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: listingkit-ui-deploy-production
@@ -31,95 +41,261 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   REGISTRY: docker.io
   DOCKERHUB_NAMESPACE: xuwei190
+  API_IMAGE_NAME: task-processor-product-listing-api
   UI_IMAGE_NAME: task-processor-listingkit-ui
   K8S_NAMESPACE: task-processor
+  CANONICAL_WORKFLOW_REF: qq550723504/task-processor/.github/workflows/listingkit-ui-deploy.yml@refs/heads/main
 
 jobs:
-  prepare:
-    name: Prepare UI Release Metadata
+  verify-release-gate:
+    name: Verify Exact API Release Gate
+    if: ${{ github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     outputs:
-      source_ref: ${{ steps.meta.outputs.source_ref }}
-      ui_image: ${{ steps.meta.outputs.ui_image }}
-      ui_tags: ${{ steps.meta.outputs.ui_tags }}
+      verified: ${{ steps.verify-attestation.outputs.verified }}
+      source_sha: ${{ steps.verify-attestation.outputs.source_sha }}
     steps:
-      - name: Resolve UI source and image tag
-        id: meta
+      - name: Select exact API release gate run
+        id: select-gate
         shell: bash
+        env:
+          MANUAL_GATE_RUN_ID: ${{ inputs.release_gate_run_id }}
+          MANUAL_GATE_RUN_ATTEMPT: ${{ inputs.release_gate_run_attempt }}
+          AUTOMATIC_GATE_RUN_ID: ${{ github.event.workflow_run.id }}
+          AUTOMATIC_GATE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           set -euo pipefail
-          source_ref="${{ inputs.source_ref }}"
-          if [[ -z "$source_ref" ]]; then
-            source_ref="${GITHUB_SHA}"
+          case "$GITHUB_EVENT_NAME" in
+            workflow_run)
+              gate_run_id="$AUTOMATIC_GATE_RUN_ID"
+              gate_run_attempt="$AUTOMATIC_GATE_RUN_ATTEMPT"
+              ;;
+            workflow_dispatch)
+              gate_run_id="$MANUAL_GATE_RUN_ID"
+              gate_run_attempt="$MANUAL_GATE_RUN_ATTEMPT"
+              ;;
+            *)
+              echo "::error::release gate verification is unavailable for $GITHUB_EVENT_NAME"
+              exit 1
+              ;;
+          esac
+          if [[ ! "$gate_run_id" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::release_gate_run_id must be an explicit positive workflow run ID"
+            exit 1
           fi
-          tag="${{ inputs.image_tag }}"
-          if [[ -z "$tag" ]]; then
-            tag="${source_ref:0:8}"
+          if [[ ! "$gate_run_attempt" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::release_gate_run_attempt must be an explicit positive workflow run attempt"
+            exit 1
           fi
-          ui_image="${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.UI_IMAGE_NAME }}:$tag"
-          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
-          echo "ui_image=$ui_image" >> "$GITHUB_OUTPUT"
-          {
-            echo "ui_tags<<EOF"
-            echo "$ui_image"
-            if [[ "${{ inputs.publish_latest }}" == "true" ]]; then
-              echo "${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.UI_IMAGE_NAME }}:latest"
+          echo "gate_run_id=$gate_run_id" >> "$GITHUB_OUTPUT"
+          echo "gate_run_attempt=$gate_run_attempt" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout trusted release gate verifier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-tools
+          sparse-checkout: |
+            scripts/verify-listingkit-api-release-attestation.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Verify exact API workflow run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_RUN_ID: ${{ steps.select-gate.outputs.gate_run_id }}
+          GATE_RUN_ATTEMPT: ${{ steps.select-gate.outputs.gate_run_attempt }}
+          EVENT_GATE_RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_GATE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          EVENT_GATE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          EVENT_GATE_SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs/${GATE_RUN_ID}/attempts/${GATE_RUN_ATTEMPT}")"
+          run_id="$(jq -er '.id' <<<"$run_json")"
+          run_attempt="$(jq -er '.run_attempt' <<<"$run_json")"
+          run_repository="$(jq -er '.repository.full_name' <<<"$run_json")"
+          run_name="$(jq -er '.name' <<<"$run_json")"
+          run_workflow_ref="$(jq -er '.path' <<<"$run_json")"
+          run_conclusion="$(jq -er '.conclusion' <<<"$run_json")"
+          run_source_sha="$(jq -er '.head_sha' <<<"$run_json")"
+
+          if [[ "$run_id" != "$GATE_RUN_ID" || "$run_attempt" != "$GATE_RUN_ATTEMPT" || "$run_repository" != "$GITHUB_REPOSITORY" ]]; then
+            echo "::error::release gate run identity does not match this repository and requested run attempt"
+            exit 1
+          fi
+          if [[ "$run_name" != "ListingKit API Deploy" || "$run_workflow_ref" != ".github/workflows/listingkit-deploy.yml@refs/heads/main" ]]; then
+            echo "::error::release gate run is not the ListingKit API Deploy workflow"
+            exit 1
+          fi
+          if [[ "$run_conclusion" != "success" ]]; then
+            echo "::error::release gate run did not conclude successfully"
+            exit 1
+          fi
+          if [[ ! "$run_source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::release gate run source is not an exact lowercase commit SHA"
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
+            if [[ "$EVENT_GATE_RUN_ID" != "$GATE_RUN_ID" || "$EVENT_GATE_RUN_ATTEMPT" != "$GATE_RUN_ATTEMPT" || "$EVENT_GATE_CONCLUSION" != "success" || "$EVENT_GATE_SOURCE_SHA" != "$run_source_sha" ]]; then
+              echo "::error::workflow_run payload does not match the verified API release run"
+              exit 1
             fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          fi
+          mkdir -p .release-gate
+          printf '%s' "$run_json" > .release-gate/api-workflow-run.json
+
+      - name: Download exact API release attestation
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: listingkit-api-release-gate-${{ steps.select-gate.outputs.gate_run_id }}-${{ steps.select-gate.outputs.gate_run_attempt }}
+          path: .release-gate/artifact
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.select-gate.outputs.gate_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify exact-source release attestation
+        id: verify-attestation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_RUN_ID: ${{ steps.select-gate.outputs.gate_run_id }}
+          GATE_RUN_ATTEMPT: ${{ steps.select-gate.outputs.gate_run_attempt }}
+        run: |
+          set -euo pipefail
+          expected_api_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
+          source_sha="$(bash .workflow-tools/scripts/verify-listingkit-api-release-attestation.sh \
+            --attestation .release-gate/artifact/listingkit-api-release-attestation.json \
+            --run-json .release-gate/api-workflow-run.json \
+            --run-id "$GATE_RUN_ID" \
+            --run-attempt "$GATE_RUN_ATTEMPT" \
+            --repository "$GITHUB_REPOSITORY" \
+            --api-repository "$expected_api_repository")"
+          echo "verified=true" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
 
   build-ui:
     name: Build UI Image
     runs-on: ubuntu-latest
-    needs: prepare
+    needs:
+      - verify-release-gate
+    if: ${{ always() && (github.event_name == 'push' || (needs.verify-release-gate.result == 'success' && needs.verify-release-gate.outputs.verified == 'true')) }}
+    outputs:
+      ui_image: ${{ steps.export-image.outputs.ui_image }}
     steps:
+      - name: Resolve UI build metadata
+        id: meta
+        shell: bash
+        env:
+          TAG_SOURCE_SHA: ${{ github.sha }}
+          GATED_SOURCE_SHA: ${{ needs.verify-release-gate.outputs.source_sha }}
+          RELEASE_IMAGE_TAG: ${{ inputs.image_tag }}
+          RELEASE_PUBLISH_LATEST: ${{ inputs.publish_latest }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            source_sha="$TAG_SOURCE_SHA"
+          else
+            source_sha="$GATED_SOURCE_SHA"
+          fi
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::UI build source must be an exact lowercase commit SHA"
+            exit 1
+          fi
+          tag="$RELEASE_IMAGE_TAG"
+          if [[ -z "$tag" ]]; then
+            tag="${source_sha:0:12}"
+          fi
+          if [[ ! "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "::error::image tag must match Docker tag syntax"
+            exit 1
+          fi
+          ui_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${UI_IMAGE_NAME}"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "ui_repository=$ui_repository" >> "$GITHUB_OUTPUT"
+          {
+            echo "ui_tags<<EOF"
+            echo "${ui_repository}:${tag}"
+            if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$RELEASE_PUBLISH_LATEST" == "true" ]]; then
+              echo "${ui_repository}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout UI source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ needs.prepare.outputs.source_ref }}
+          ref: ${{ github.event_name == 'push' && github.sha || needs.verify-release-gate.outputs.source_sha }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push UI image
-        uses: docker/build-push-action@v6
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: deployments/docker/Dockerfile.listingkit-ui
           push: true
-          tags: ${{ needs.prepare.outputs.ui_tags }}
+          tags: ${{ steps.meta.outputs.ui_tags }}
           cache-from: type=gha,scope=listingkit-ui
           cache-to: type=gha,mode=max,scope=listingkit-ui
+
+      - name: Export immutable UI image
+        id: export-image
+        shell: bash
+        env:
+          UI_REPOSITORY: ${{ steps.meta.outputs.ui_repository }}
+          UI_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$UI_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::UI build did not return an immutable image digest"
+            exit 1
+          fi
+          echo "ui_image=${UI_REPOSITORY}@${UI_DIGEST}" >> "$GITHUB_OUTPUT"
 
   deploy-ui:
     name: Deploy ListingKit UI
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     needs:
-      - prepare
+      - verify-release-gate
       - build-ui
+    if: ${{ always() && (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch') && needs.verify-release-gate.result == 'success' && needs.verify-release-gate.outputs.verified == 'true' && needs.build-ui.result == 'success' }}
     environment:
-      name: production
+      name: listingkit-ui-production
       url: https://pod.shuomiai.com
     steps:
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
+      - name: Checkout release identity tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          version: latest
+          repository: ${{ github.repository }}
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-tools
+          sparse-checkout: |
+            scripts/listingkit-refresh-github-oidc-kubeconfig.sh
+            scripts/listingkit-configure-github-oidc-kubeconfig.sh
+          sparse-checkout-cone-mode: false
 
-      - name: Write kubeconfig
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
+        with:
+          version: v1.31.4
+
+      - name: Refresh UI OIDC for authorization and rollout mutation group
         shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.kube"
-          printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
+        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-ui-rollout.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-ui-production --subject repo:${{ github.repository }}:environment:listingkit-ui-production --repository "${{ github.repository }}" --environment listingkit-ui-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-ui-rollout.kubeconfig" >> "$GITHUB_ENV"
 
       - name: Apply ListingKit UI authorization scopes
         env:
@@ -135,22 +311,29 @@ jobs:
           patch_payload="$(jq -cn \
             --arg scopes "$LISTINGKIT_UI_ZITADEL_SCOPES" \
             '{data:{ZITADEL_SCOPES:$scopes}}')"
-          kubectl -n "${K8S_NAMESPACE}" patch configmap listingkit-workbench-config \
+          kubectl -n "${K8S_NAMESPACE}" patch configmap listingkit-ui-auth-config \
             --type merge \
             --patch "$patch_payload"
 
       - name: Update UI deployment image
+        env:
+          UI_CANDIDATE_IMAGE: ${{ needs.build-ui.outputs.ui_image }}
         run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/listingkit-ui listingkit-ui=${{ needs.prepare.outputs.ui_image }}
+          set -euo pipefail
+          if [[ ! "$UI_CANDIDATE_IMAGE" =~ @sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::UI deployment candidate must be digest-pinned"
+            exit 1
+          fi
+          kubectl -n "$K8S_NAMESPACE" set image deployment/listingkit-ui "listingkit-ui=$UI_CANDIDATE_IMAGE"
 
       - name: Restart UI pods for authorization configuration
         run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/listingkit-ui
+          kubectl -n "$K8S_NAMESPACE" rollout restart deployment/listingkit-ui
 
       - name: Wait for UI rollout
         run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/listingkit-ui --timeout=5m
+          kubectl -n "$K8S_NAMESPACE" rollout status deployment/listingkit-ui --timeout=5m
 
       - name: Show running UI image
         run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} get deployment listingkit-ui -o jsonpath='{.metadata.name}{" => "}{range .spec.template.spec.containers[*]}{.image}{end}{"\\n"}'
+          kubectl -n "$K8S_NAMESPACE" get deployment listingkit-ui -o jsonpath='{.metadata.name}{" => "}{range .spec.template.spec.containers[*]}{.image}{end}{"\n"}'

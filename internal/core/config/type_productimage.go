@@ -28,12 +28,14 @@ type ProductImagePublisherConfig struct {
 }
 
 type ProductImagePublisherS3Config struct {
-	Bucket          string `yaml:"bucket"`
-	Region          string `yaml:"region"`
-	Endpoint        string `yaml:"endpoint"`
-	AccessKeyID     string `yaml:"accessKeyID"`
-	SecretAccessKey string `yaml:"secretAccessKey"`
-	UsePathStyle    bool   `yaml:"usePathStyle"`
+	Bucket                               string `yaml:"bucket"`
+	Region                               string `yaml:"region"`
+	Endpoint                             string `yaml:"endpoint"`
+	AccessKeyID                          string `yaml:"accessKeyID"`
+	SecretAccessKey                      string `yaml:"secretAccessKey"`
+	UsePathStyle                         bool   `yaml:"usePathStyle"`
+	ArtifactMode                         string `yaml:"artifactMode"`
+	COSImmutableNonVersionedBucketPolicy bool   `yaml:"cosImmutableNonVersionedBucketPolicy"`
 }
 
 // ProductImageLifecycleConfig 定义图片产物生命周期策略。

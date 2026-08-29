@@ -35,6 +35,20 @@ async function proxyRequest(
   const { path } = await params;
   const proxyPath = `/${path.join("/")}`;
   const traceFields = buildListingKitTraceLogFields(request.headers);
+  let url: string;
+  try {
+    url = buildListingKitProxyUrl(
+      getListingKitUpstreamBase(),
+      path,
+      request.nextUrl.searchParams.toString(),
+      request.method,
+    );
+  } catch {
+    return NextResponse.json(
+      { error: "listingkit_proxy_route_not_allowed", message: "Proxy route is not allowed" },
+      { status: 404 },
+    );
+  }
   const mock = await buildListingKitMockResponse(request, path);
   if (mock) {
     if (request.method === "POST" && path.length === 1 && path[0] === "generate") {
@@ -76,12 +90,6 @@ async function proxyRequest(
       },
     });
   }
-
-  const url = buildListingKitProxyUrl(
-    getListingKitUpstreamBase(),
-    path,
-    request.nextUrl.searchParams.toString(),
-  );
 
   let verifiedIdentity: VerifiedIdentity | undefined;
   let zitadelToken = "";

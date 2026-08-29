@@ -1,0 +1,31 @@
+apiVersion: apiserver.config.k8s.io/v1
+kind: AuthenticationConfiguration
+jwt:
+  - issuer:
+      url: https://token.actions.githubusercontent.com
+      audiences:
+        - api://listingkit-api-production
+        - api://listingkit-ui-production
+      audienceMatchPolicy: MatchAny
+    claimValidationRules:
+      - expression: claims.repository == 'qq550723504/task-processor'
+        message: token must belong to the canonical repository
+      - expression: >-
+          (claims.sub == 'repo:qq550723504/task-processor:environment:listingkit-api-production' &&
+           claims.environment == 'listingkit-api-production' &&
+           claims.aud == 'api://listingkit-api-production' &&
+           claims.workflow_ref == 'qq550723504/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main') ||
+          (claims.sub == 'repo:qq550723504/task-processor:environment:listingkit-ui-production' &&
+           claims.environment == 'listingkit-ui-production' &&
+           claims.aud == 'api://listingkit-ui-production' &&
+           claims.workflow_ref == 'qq550723504/task-processor/.github/workflows/listingkit-ui-deploy.yml@refs/heads/main')
+        message: token environment, audience, subject, and workflow must be an approved release identity
+      - expression: claims.exp - claims.nbf <= 900
+        message: release token lifetime must not exceed fifteen minutes
+    claimMappings:
+      username:
+        claim: sub
+        prefix: "github:"
+    userValidationRules:
+      - expression: "!user.username.startsWith('system:')"
+        message: release identity cannot use a reserved Kubernetes username

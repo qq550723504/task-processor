@@ -20,7 +20,7 @@ func (s *service) executeWhiteBackground(ctx context.Context, req Request, idx i
 		return asset.AssetRecord{}, false
 	}
 	productAsset := toProductImageAsset(base)
-	rendered, err := s.whiteBackgroundRenderer.Render(ctx, productAsset, buildProductContext(req.Product))
+	rendered, err := s.whiteBackgroundRenderer.Render(ctx, productAsset, BuildProductContext(req.Product))
 	if err != nil || rendered == nil {
 		return asset.AssetRecord{}, false
 	}
@@ -39,7 +39,7 @@ func (s *service) executeSubjectCutout(ctx context.Context, req Request, idx int
 	if strings.TrimSpace(imageURL) == "" {
 		return asset.AssetRecord{}, false
 	}
-	extracted, err := s.subjectExtractor.Extract(ctx, imageURL, buildProductContext(req.Product))
+	extracted, err := s.subjectExtractor.Extract(ctx, imageURL, BuildProductContext(req.Product))
 	if err != nil || extracted == nil {
 		return asset.AssetRecord{}, false
 	}
@@ -59,7 +59,9 @@ func toProductImageAsset(record asset.AssetRecord) *productimage.ImageAsset {
 	}
 }
 
-func buildProductContext(product *catalog.Product) *productimage.ProductContext {
+// BuildProductContext is the canonical catalog-to-provider projection shared
+// by the generation pipeline and durable image-agent run snapshots.
+func BuildProductContext(product *catalog.Product) *productimage.ProductContext {
 	if product == nil {
 		return nil
 	}

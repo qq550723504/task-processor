@@ -44,6 +44,22 @@ export async function buildListingKitProxyResponse({
     });
   }
 
+  if (isImageAgentEventStream(upstream, routePath, method)) {
+    logListingKitProxyResponse({
+      durationMs,
+      method,
+      path,
+      requestId,
+      status: upstream.status,
+      traceFields,
+      upstreamOk: upstream.ok,
+    });
+    return new NextResponse(upstream.body, {
+      status: upstream.status,
+      headers: responseHeaders,
+    });
+  }
+
   try {
     const body = shouldProxyListingKitResponseAsBinary(
       upstream.headers.get("content-type"),
@@ -104,8 +120,26 @@ function buildProxyResponseHeaders(upstream: Response) {
   if (contentTypeHeader) {
     responseHeaders.set("Content-Type", contentTypeHeader);
   }
+  const cacheControl = upstream.headers.get("cache-control");
+  if (cacheControl) {
+    responseHeaders.set("Cache-Control", cacheControl);
+  }
 
   return responseHeaders;
+}
+
+function isImageAgentEventStream(upstream: Response, routePath: string[], method: string) {
+  return (
+    method === "GET" &&
+    routePath.length === 4 &&
+    routePath[0] === "image-agent" &&
+    routePath[1] === "runs" &&
+    routePath[2].trim() !== "" &&
+    routePath[3] === "events" &&
+    (upstream.headers.get("content-type") ?? "")
+      .toLowerCase()
+      .startsWith("text/event-stream")
+  );
 }
 
 function logListingKitProxyResponse({

@@ -1,7 +1,7 @@
 # Build, push, and deploy ListingKit Workbench to K3S.
 # Usage:
-#   .\scripts\build-push-deploy-listingkit-workbench.ps1
-#   .\scripts\build-push-deploy-listingkit-workbench.ps1 -Tag v20260428-1 -PublishLatest
+#   .\scripts\build-push-deploy-listingkit-workbench.ps1 -SkipApply
+#   .\scripts\build-push-deploy-listingkit-workbench.ps1 -Tag v20260428-1 -Namespace listingkit-nonprod
 
 [CmdletBinding()]
 param(
@@ -14,6 +14,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$ProductionNamespace = "task-processor"
+
+if (-not $SkipApply -and [string]::Equals($Namespace.Trim(), $ProductionNamespace, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "workstation deployment to production namespace task-processor is forbidden; use ListingKit API Deploy followed by the exact attempt-bound ListingKit UI Deploy gate, or pass -SkipApply to build and push only"
+}
 
 $ApiImageName = "task-processor-product-listing-api"
 $PreflightImageName = "task-processor-listingkit-identity-preflight"
@@ -31,8 +36,6 @@ $ProductSchemaMigrationManifest = "deployments/kubernetes/listingkit-workbench/j
 $ListingKitSchemaMigrationManifest = "deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml"
 $ApiDeploymentManifest = "deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml"
 $UiDeploymentManifest = "deployments/kubernetes/listingkit-workbench/base/listingkit-ui-deployment.yaml"
-$ProductionNamespace = "task-processor"
-$ProductionIngressManifest = "deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml"
 
 if ($PSBoundParameters.ContainsKey("Tag") -and [string]::IsNullOrWhiteSpace($Tag)) {
     throw "ListingKit release requires a non-empty immutable API image tag"
@@ -219,13 +222,6 @@ if (-not $SkipApply) {
         kubectl -n $Namespace rollout status deployment/product-listing-api --timeout=5m
         if ($LASTEXITCODE -ne 0) { throw "product-listing-api rollout failed" }
 
-        if ($Namespace -eq $ProductionNamespace) {
-            kubectl -n $Namespace apply -f $ProductionIngressManifest
-            if ($LASTEXITCODE -ne 0) { throw "production ListingKit SMS webhook ingress apply failed" }
-        } else {
-            Write-Host "Skipped production ListingKit SMS webhook ingress for non-production namespace $Namespace." -ForegroundColor Yellow
-        }
-
         kubectl -n $Namespace rollout status deployment/listingkit-ui --timeout=5m
         if ($LASTEXITCODE -ne 0) { throw "listingkit-ui rollout failed" }
 
@@ -240,7 +236,7 @@ Write-Host ""
 if ($SkipApply) {
     Write-Host "Images built and pushed; Kubernetes was not changed." -ForegroundColor Yellow
 } else {
-    Write-Host "Gated deployment finished successfully." -ForegroundColor Green
+    Write-Host "Non-production workstation deployment finished successfully." -ForegroundColor Green
     Write-Host "  API image: $ApiImage" -ForegroundColor Green
     Write-Host "  UI image:  $UiImage" -ForegroundColor Green
 }

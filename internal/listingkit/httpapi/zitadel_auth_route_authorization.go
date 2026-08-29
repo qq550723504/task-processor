@@ -37,6 +37,7 @@ func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
 		route.Module == "product-sourcing" ||
 		route.Module == "local-agent" ||
 		route.Module == "crawler-1688" ||
+		route.Module == "image-agent" ||
 		route.Module == "images"
 }
 

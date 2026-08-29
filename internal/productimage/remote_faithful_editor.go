@@ -9,9 +9,10 @@ import (
 )
 
 type RemoteFaithfulEditorConfig struct {
-	WorkDir         string
-	Segmenter       SegmentationClient
-	WhiteBackground WhiteBackgroundClient
+	WorkDir            string
+	Segmenter          SegmentationClient
+	WhiteBackground    WhiteBackgroundClient
+	SourceImageFetcher SourceImageFetcher
 }
 
 type remoteFaithfulEditor struct {
@@ -24,7 +25,7 @@ func NewRemoteFaithfulEditor(config RemoteFaithfulEditorConfig) (FaithfulEditor,
 	if config.Segmenter == nil && config.WhiteBackground == nil {
 		return nil, fmt.Errorf("remote faithful editor requires at least one remote model client")
 	}
-	rt, err := newRealImageComponents(config.WorkDir)
+	rt, err := newRealImageComponents(config.WorkDir, RealImageComponentOptions{SourceImageFetcher: config.SourceImageFetcher})
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +58,7 @@ func (e *remoteFaithfulEditor) extractSubject(ctx context.Context, req *Faithful
 	if sourceAsset == nil || sourceAsset.URL == "" {
 		return nil, fmt.Errorf("source asset is required for subject extraction")
 	}
-	data, filename, err := e.runtime.loadAssetBytes(sourceAsset)
+	data, filename, err := e.runtime.loadAssetBytes(ctx, sourceAsset)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +110,7 @@ func (e *remoteFaithfulEditor) renderWhiteBackground(ctx context.Context, req *F
 	if sourceAsset == nil {
 		return nil, fmt.Errorf("source asset is required for white background rendering")
 	}
-	data, filename, err := e.runtime.loadAssetBytes(sourceAsset)
+	data, filename, err := e.runtime.loadAssetBytes(ctx, sourceAsset)
 	if err != nil {
 		return nil, err
 	}

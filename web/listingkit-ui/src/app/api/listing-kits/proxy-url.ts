@@ -10,8 +10,76 @@ export function buildListingKitProxyUrl(
   upstreamBase: string,
   pathParts: string[],
   search: string,
+  method: string,
 ) {
-  const normalizedBase = upstreamBase.replace(/\/+$/, "");
-  const path = pathParts.map(encodeURIComponent).join("/");
+  for (const part of pathParts) {
+    if (
+      !part ||
+      part === "." ||
+      part === ".." ||
+      part.includes("/") ||
+      part.includes("\\") ||
+      part.includes("\0")
+    ) {
+      throw new Error("invalid proxy path segment");
+    }
+  }
+	if (pathParts[0] === "tasks" && isImageAgentTaskRoute(pathParts.slice(1)) && !isAllowedImageAgentTaskRoute(method, pathParts.slice(1))) {
+		throw new Error("image-agent task proxy route is not allowed");
+	}
+  let normalizedBase = upstreamBase.replace(/\/+$/, "");
+  let routedParts = pathParts;
+  if (pathParts[0] === "image-agent") {
+    if (!isAllowedImageAgentRoute(method, pathParts.slice(1))) {
+      throw new Error("image-agent proxy route is not allowed");
+    }
+    const upstream = new URL(normalizedBase);
+    const listingKitSuffix = "/api/v1/listing-kits";
+    if (!upstream.pathname.endsWith(listingKitSuffix)) {
+      throw new Error("image-agent proxy requires a ListingKit API base");
+    }
+    upstream.pathname = `${upstream.pathname.slice(0, -listingKitSuffix.length)}/api/v1/image-agent`;
+    normalizedBase = upstream.toString().replace(/\/+$/, "");
+    routedParts = pathParts.slice(1);
+  }
+  const path = routedParts.map(encodeURIComponent).join("/");
   return `${normalizedBase}/${path}${search ? `?${search}` : ""}`;
+}
+
+function isImageAgentTaskRoute(route: string[]) {
+	return route.length >= 2 && route[1].startsWith("image-agent");
+}
+
+function isAllowedImageAgentTaskRoute(method: string, route: string[]) {
+	if (!safeID.test(route[0] ?? "")) return false;
+	const verb = method.toUpperCase();
+	return (verb === "GET" && route.length === 2 && route[1] === "image-agent-assets") ||
+		(verb === "POST" && route.length === 2 && route[1] === "image-agent-runs");
+}
+
+const safeID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const safePositiveAttempt = /^[1-9][0-9]{0,8}$/;
+// Mirrors imageagent.ValidateActionID so a durable command is always resumable.
+const safeActionID = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/;
+
+function isAllowedImageAgentRoute(method: string, route: string[]) {
+  const verb = method.toUpperCase();
+  if (verb === "POST" && route.length === 1 && route[0] === "runs") return true;
+  if (route[0] !== "runs" || !safeID.test(route[1] ?? "")) return false;
+  if (verb === "GET" && route.length === 2) return true;
+  if (verb === "PUT" && route.length === 3 && route[2] === "plan") return true;
+  if (verb === "POST" && route.length === 3 && (route[2] === "cancel" || route[2] === "restart")) return true;
+  if (verb === "GET" && route.length === 3 && route[2] === "events") return true;
+  if (verb === "POST" && route.length === 4 && route[2] === "results" && route[3] === "approve") return true;
+  if (verb === "POST" && route.length === 5 && route[2] === "slots" && safeID.test(route[3] ?? "") && route[4] === "retry") return true;
+  if (
+    verb === "POST" &&
+    route.length === 7 &&
+    route[2] === "slots" &&
+    safeID.test(route[3] ?? "") &&
+    route[4] === "attempts" &&
+    safePositiveAttempt.test(route[5] ?? "") &&
+    route[6] === "recover"
+  ) return true;
+  return verb === "POST" && route.length === 5 && route[2] === "commands" && safeActionID.test(route[3] ?? "") && route[4] === "resume";
 }

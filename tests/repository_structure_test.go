@@ -11,10 +11,11 @@ import (
 
 func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 	productRuntimeCommands := map[string]struct{}{
-		"listing-control-plane": {},
-		"product-listing-api":   {},
-		"shein-listing":         {},
-		"temu-listing":          {},
+		"image-agent-temporal-worker": {},
+		"listing-control-plane":       {},
+		"product-listing-api":         {},
+		"shein-listing":               {},
+		"temu-listing":                {},
 	}
 	operationalCommands := map[string]struct{}{
 		"1688-local-agent":                   {},

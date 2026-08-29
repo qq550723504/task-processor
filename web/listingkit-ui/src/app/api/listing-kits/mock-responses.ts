@@ -201,6 +201,9 @@ export async function buildListingKitMockResponse(
   request: NextRequest,
   path: string[],
 ): Promise<ListingKitMockBundle | undefined> {
+  if (path[0] === "image-agent") {
+    return undefined;
+  }
   if (
     request.method === "POST" &&
     path.length === 1 &&

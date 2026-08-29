@@ -13,6 +13,17 @@ type tenantAllowlistedFaithfulEditor struct {
 	allowed map[string]struct{}
 }
 
+func (e *tenantAllowlistedFaithfulEditor) QuoteUsage(ctx context.Context, request productimage.CapabilityUsageQuoteRequest) (productimage.CapabilityUsageQuote, error) {
+	if e == nil || e.inner == nil || !tenantAllowed(ctx, e.allowed) {
+		return productimage.CapabilityUsageQuote{}, productimage.ErrCapabilityUsageQuoteUnavailable
+	}
+	quoter, ok := e.inner.(productimage.CapabilityUsageQuoter)
+	if !ok {
+		return productimage.CapabilityUsageQuote{}, productimage.ErrCapabilityUsageQuoteUnavailable
+	}
+	return quoter.QuoteUsage(ctx, request)
+}
+
 type tenantAllowlistedContextAnalyzer struct {
 	inner   productimage.ProductContextAnalyzer
 	allowed map[string]struct{}
@@ -43,6 +54,17 @@ func (e *tenantAllowlistedFaithfulEditor) Edit(ctx context.Context, req *product
 type tenantAllowlistedSceneGenerator struct {
 	inner   productimage.SceneGenerator
 	allowed map[string]struct{}
+}
+
+func (g *tenantAllowlistedSceneGenerator) QuoteUsage(ctx context.Context, request productimage.CapabilityUsageQuoteRequest) (productimage.CapabilityUsageQuote, error) {
+	if g == nil || g.inner == nil || !tenantAllowed(ctx, g.allowed) {
+		return productimage.CapabilityUsageQuote{}, productimage.ErrCapabilityUsageQuoteUnavailable
+	}
+	quoter, ok := g.inner.(productimage.CapabilityUsageQuoter)
+	if !ok {
+		return productimage.CapabilityUsageQuote{}, productimage.ErrCapabilityUsageQuoteUnavailable
+	}
+	return quoter.QuoteUsage(ctx, request)
 }
 
 func (g *tenantAllowlistedSceneGenerator) GenerateScene(ctx context.Context, req *productimage.SceneGenerationRequest) (*productimage.SceneGenerationResult, error) {

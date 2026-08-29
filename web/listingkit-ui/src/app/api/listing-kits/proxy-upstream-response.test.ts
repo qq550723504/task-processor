@@ -40,6 +40,47 @@ describe("buildListingKitProxyResponse", () => {
     await expect(response.json()).resolves.toEqual({ ok: true });
   });
 
+  it("streams only image-agent SSE responses without buffering the body", async () => {
+    const upstream = new Response("id: 1\ndata: {}\n\n", {
+      status: 200,
+      headers: { "content-type": "text/event-stream; charset=utf-8" },
+    });
+    const textSpy = vi
+      .spyOn(upstream, "text")
+      .mockRejectedValue(new Error("SSE must not be buffered"));
+
+    const response = await buildListingKitProxyResponse({
+      durationMs: 12,
+      method: "GET",
+      path: "/image-agent/runs/run-1/events",
+      requestId: "req-sse",
+      routePath: ["image-agent", "runs", "run-1", "events"],
+      upstream,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("text/event-stream");
+    expect(textSpy).not.toHaveBeenCalled();
+    await expect(response.text()).resolves.toContain("id: 1");
+  });
+
+  it("does not select streaming mode for a non-GET events-shaped response", async () => {
+    const upstream = new Response("event: projection\n\ndata: {}\n\n", {
+      headers: { "content-type": "text/event-stream" },
+    });
+    const textSpy = vi.spyOn(upstream, "text");
+    const response = await buildListingKitProxyResponse({
+      durationMs: 1,
+      method: "POST",
+      path: "/image-agent/runs/run-1/events",
+      requestId: "req-not-sse",
+      routePath: ["image-agent", "runs", "run-1", "events"],
+      upstream,
+    });
+    expect(textSpy).toHaveBeenCalledOnce();
+    await expect(response.text()).resolves.toContain("event: projection");
+  });
+
   it("proxies binary uploaded files as array buffers", async () => {
     const response = await buildListingKitProxyResponse({
       durationMs: 12,

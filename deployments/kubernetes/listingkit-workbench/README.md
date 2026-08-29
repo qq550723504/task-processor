@@ -27,11 +27,12 @@ Create a real Secret from your secret manager or copy the example and fill it ou
 ```powershell
 Copy-Item deployments/kubernetes/listingkit-workbench/base/secret.example.yaml tmp/listingkit-workbench-secret.yaml
 Copy-Item deployments/kubernetes/listingkit-workbench/base/member-invitation-secret.example.yaml tmp/listingkit-member-invitation-secret.yaml
-kubectl apply -n task-processor -f tmp/listingkit-workbench-secret.yaml
-kubectl apply -n task-processor -f tmp/listingkit-member-invitation-secret.yaml
 ```
 
-Do not commit the filled secret file.
+Do not commit the filled secret file or apply it from this README. Have the
+approved secret-management controller reconcile both named Secrets, and record
+that controller's object-identity evidence before starting either canonical
+release workflow.
 
 The application does not consume `TASK_PROCESSOR_DATABASE_DSN`. Before
 applying this least-privilege manifest revision, make sure the existing
@@ -53,7 +54,7 @@ configuration. Every other manifest has an explicit key allowlist:
 - `shein-login-worker`: the five database keys and four SHEIN cookie Redis
   keys only. Each queued account already supplies its tenant and store id.
 - `imgproxy`: signing key/salt and the two ProductImage S3 credential keys.
-- both schema migration Jobs: the five database keys only.
+- both schema migration runner init containers: the five database keys only.
 
 None of those five workloads receives the read-only directory token or the
 member-invitation write token. The worker and migration binaries use scoped
@@ -62,33 +63,21 @@ Amazon, or ZITADEL credentials merely to pass startup validation.
 
 When migrating an existing deployment, create
 `listingkit-member-invitation-secret` with both the token and project id.
-Then remove both invitation keys from the already deployed shared Secret and
-restart every long-lived consumer so no UI, worker, or imgproxy Pod retains the
-write token in its process environment. The API Secret reference is required:
-do not restart the API until the dedicated Secret has been created, because a
-missing token must fail Pod startup instead of falling back to a legacy shared
-Secret value.
+Then have the approved secret manager remove both invitation keys from the
+already deployed shared Secret. Run **ListingKit API Deploy** with the current
+approved immutable candidate and allow its exact-attempt **ListingKit UI
+Deploy** gate to complete; those workflows own the API and UI restarts. The API
+Secret reference is required before that release, because a missing token must
+fail Pod startup instead of falling back to a legacy shared Secret value.
 
-```powershell
-$legacy = kubectl -n task-processor get secret listingkit-workbench-secret -o json | ConvertFrom-Json
-foreach ($key in @(
-  "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN",
-  "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID"
-)) {
-  if ($legacy.data.PSObject.Properties.Name -contains $key) {
-    $memberInvitationPatch = '[{"op":"remove","path":"/data/' + $key + '"}]'
-    kubectl -n task-processor patch secret listingkit-workbench-secret --type=json `
-      -p $memberInvitationPatch
-  }
-}
-kubectl -n task-processor rollout restart deployment/product-listing-api,listingkit-ui,imgproxy,shein-login-worker
-kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
-kubectl -n task-processor rollout status deployment/listingkit-ui --timeout=5m
-kubectl -n task-processor rollout status deployment/imgproxy --timeout=5m
-kubectl -n task-processor rollout status deployment/shein-login-worker --timeout=5m
-```
+After both gated workflows succeed, restart the remaining non-release
+consumers through a separately reviewed administrator change so no older
+imgproxy or SHEIN login Pod retains the removed write token in its process
+environment. This README intentionally provides no executable production
+mutation command for that change; retain the reviewed object identities and
+rollout evidence with the migration record.
 
-The commands inspect only key names and do not decode or print Secret values.
+Do not inspect, decode, or print Secret values during this migration.
 
 Required ZITADEL values:
 
@@ -114,8 +103,10 @@ write-capable service-account token; never copy the OIDC client secret or the
 tenant-directory token into
 `TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN`.
 
-Keep `urn:zitadel:iam:user:resourceowner` in `ZITADEL_SCOPES`; ListingKit uses
-that claim as the tenant id. The Go API reads ZITADEL settings from core
+Keep `urn:zitadel:iam:user:resourceowner` in the UI-only
+`listingkit-ui-auth-config` `ZITADEL_SCOPES`; ListingKit uses that claim as the
+tenant id. Do not store this public OAuth request-scope list in the shared
+Secret or shared API/worker ConfigMap. The Go API reads ZITADEL settings from core
 config `listingkit.zitadel.*`; in Kubernetes we currently populate those config
 keys through env binding such as `ZITADEL_ISSUER_URL` and
 `ZITADEL_CLIENT_ID`. Authentication is mandatory; missing issuer/client
@@ -158,16 +149,20 @@ listingkit_admin
 platform_admin
 ```
 
-Copy the command output into the workbench shared Secret/config:
+Copy the project and authorization values into the workbench Secrets as
+documented below:
 
 ```text
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<project-id>
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS=
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS=
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES=listingkit_admin,listingkit_operator,listingkit_viewer,platform_admin
-ZITADEL_SCOPES=<printed scope string>
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED=1
 ```
+
+Apply the printed `ZITADEL_SCOPES` value only to
+`listingkit-ui-auth-config`. The gated UI release identity owns that single key;
+it cannot patch `listingkit-workbench-config` or any API/worker Deployment.
 
 `listingkit_viewer` users see the main workflow menu only.
 `listingkit_operator` users also see operational data menus.
@@ -175,8 +170,9 @@ TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED=1
 `platform_admin` is kept for platform administration compatibility.
 
 The Go API enforces the same role model as the sidebar. If a user can sign in
-but receives `listingkit_role_denied`, confirm the OIDC runtime uses the printed
-`ZITADEL_SCOPES` value so access tokens contain the ZITADEL project role claim.
+but receives `listingkit_role_denied`, confirm the UI OIDC runtime uses the
+printed `ZITADEL_SCOPES` value from `listingkit-ui-auth-config` so access tokens
+contain the ZITADEL project role claim.
 
 ## Configure member invitations
 
@@ -205,13 +201,13 @@ TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<existing-listingkit-project-id>
 Inject the token through the approved secret manager; never commit it, print it,
 or paste it into the OIDC or tenant-directory fields. Do not add the dedicated
 Secret to UI, worker, imgproxy, or migration Job `envFrom` lists. Apply the
-dedicated Secret, verify its key names, then restart only the already-pinned
-API deployment. Do not apply the base API Deployment here: its image is a
-development default and is not a release target.
+dedicated Secret and verify its key names, then run **ListingKit API Deploy**
+with the current approved immutable API candidate and its exact-attempt
+**ListingKit UI Deploy** gate. Do not restart or apply the API from a
+workstation: the base API image is a development default and is not a release
+target.
 
 ```powershell
-kubectl apply -n task-processor -f tmp/listingkit-member-invitation-secret.yaml
-
 $requiredKeys = @(
   "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN"
 )
@@ -229,9 +225,6 @@ $requiredKeys = @(
 if (@($requiredKeys | Where-Object { $_ -notin $presentKeys }).Count -ne 0) {
   throw "Missing ListingKit invitation credentials in API-only Secret"
 }
-
-kubectl -n task-processor rollout restart deployment/product-listing-api
-kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
 ```
 
 This validation inspects key names only and does not decode or print values.
@@ -291,13 +284,14 @@ message. Do not build or operate a second OTP system.
 3. Have the approved secret manager materialize a Kubernetes Secret named
    `listingkit-tencent-sms-secret` from
    `base/tencent-sms-secret.example.yaml`, including the signing key returned
-   in step 2 and the five Tencent SMS values. Apply the Secret before applying
-   the API Deployment. Never place these values in
+   in step 2 and the five Tencent SMS values. Apply the Secret through the
+   approved secret-management path, then start **ListingKit API Deploy** with
+   the exact source and immutable candidate; that workflow alone applies and
+   restarts the production API Deployment. Never place these values in
    `listingkit-workbench-secret`, a ConfigMap, UI, worker, imgproxy, or a
    migration Job. Inspect only key names, never decode or print values:
 
    ```powershell
-   kubectl apply -n task-processor -f <secret-manager-output>.yaml
    $requiredKeys = @(
      "TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_SIGNING_KEY",
      "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_ID",
@@ -313,29 +307,14 @@ message. Do not build or operate a second OTP system.
    }
    ```
 
-4. Publish the API-only SMS path after the API has loaded that Secret. It is
-   the only newly public API path and must resolve to
-   `product-listing-api` before the UI catch-all. Do not run `kubectl apply -k`
-   for the production overlay here: it renders the overlay's mutable `latest`
-   image fields and can change unrelated workloads. Reapply the currently
-   deployed immutable API image to load the API-only Secret, wait for readiness,
-   then apply only the standalone production Ingress:
-
-   ```powershell
-   $apiImage = kubectl -n task-processor get deployment product-listing-api -o jsonpath='{.spec.template.spec.containers[?(@.name=="product-listing-api")].image}'
-   if ($apiImage -notmatch '@sha256:') { throw "ListingKit API must use an immutable digest" }
-   & "C:\Program Files\Git\bin\bash.exe" scripts/listingkit-apply-api-deployment.sh `
-     --manifest deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml `
-     --namespace task-processor `
-     --image $apiImage
-   if ($LASTEXITCODE -ne 0) { throw "Immutable ListingKit API apply failed" }
-   kubectl -n task-processor rollout restart deployment/product-listing-api
-   if ($LASTEXITCODE -ne 0) { throw "ListingKit API restart failed" }
-   kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
-   if ($LASTEXITCODE -ne 0) { throw "ListingKit API rollout failed" }
-   kubectl -n task-processor apply -f deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml
-   if ($LASTEXITCODE -ne 0) { throw "ListingKit SMS webhook ingress apply failed" }
-   ```
+4. Publish the API-only SMS path only through `ListingKit API Deploy` after the
+   Secret is populated. That workflow runs migrations, both image-agent worker
+   rollouts, the finite canary, the API rollout, and the production Ingress in
+   order, then emits the exact run-and-attempt attestation. Allow its automatic
+   `ListingKit UI Deploy` gate to finish, or manually supply both
+   `release_gate_run_id` and `release_gate_run_attempt` from that API execution.
+   A workstation must not apply the API Deployment, UI Deployment, shared
+   ConfigMap, or production Ingress.
 
 5. After the API rollout and Ingress apply succeed, verify the provider endpoint
    and template mapping, then activate the provider. Do not activate it before
@@ -351,10 +330,15 @@ message. Do not build or operate a second OTP system.
 
 Rotate the Tencent credentials and ZITADEL signing key through the secret
 manager. Update both the API Secret and ZITADEL Provider for the signing-key
-change within the approved maintenance window, then restart only
-`product-listing-api` and repeat the rendered-manifest and controlled-device
-checks above. Do not roll the UI, workers, imgproxy, or migration Jobs: they
-must never consume this Secret.
+change within the approved maintenance window, then start **ListingKit API
+Deploy** from the canonical `main` workflow without rollback inputs. The workflow
+binds the build to its own exact `github.workflow_sha`; that run and attempt alone
+restart `product-listing-api`. After it succeeds, allow
+the automatic **ListingKit UI Deploy** gate to finish or supply that API
+execution's `release_gate_run_id` and `release_gate_run_attempt`. A workstation
+or standalone helper must not restart the production API. Do not roll the UI,
+workers, imgproxy, or migration Jobs merely to consume this Secret; they must
+never receive it.
 
 ## CI/CD deploy
 
@@ -366,41 +350,21 @@ checks, and recovery decision, follow the
 
 ### First controlled deployment
 
-Use a release image built by an approved CI run and its immutable tag. Before
-applying the API or UI deployment, create the namespace, ConfigMap, and real
-Secret, then run the schema migration Jobs once. The API does not auto-migrate
-at startup.
+Provision the namespace and real Secrets through the approved infrastructure
+and secret-management paths. A workstation must not apply the production
+ConfigMap, migration Jobs, API, UI, or Ingress. Start **ListingKit API Deploy**
+from the canonical `main` workflow with both rollback inputs empty; it owns the ordered
+ConfigMap apply, both schema migrations, identity preflight, v2/v3 worker
+rollouts, finite canary, API rollout, and Ingress. A failed migration or gate is
+a No-Go: investigate and use an approved roll-forward or restore procedure
+instead of deleting or editing the production schema manually.
 
-```powershell
-$tag = "<immutable-release-tag>"
-$apiCandidateImage = "docker.io/xuwei190/task-processor-product-listing-api@sha256:<64-hex-api-digest>"
+After that API execution succeeds, let **ListingKit UI Deploy** start from its
+automatic `workflow_run` gate. If a manual UI gate is required, supply both
+`release_gate_run_id` and `release_gate_run_attempt` from that exact successful
+API attempt. UI tag events build and push only; they never mutate production.
 
-kubectl apply -f deployments/kubernetes/listingkit-workbench/base/namespace.yaml
-kubectl apply -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml
-# Apply the real Secret created outside Git before continuing.
-
-$productMigrationFile = Join-Path $env:TEMP "product-listing-api-schema-migrate-job.yaml"
-Copy-Item "deployments/kubernetes/listingkit-workbench/jobs/product-listing-api-schema-migrate-job.yaml" $productMigrationFile
-(Get-Content -Raw $productMigrationFile).Replace("REPLACE_WITH_DEPLOYED_TAG", $tag) |
-  Set-Content -NoNewline $productMigrationFile
-$jobName = kubectl create -n task-processor -f $productMigrationFile -o jsonpath='{.metadata.name}'
-kubectl -n task-processor wait --for=condition=complete "job/$jobName" --timeout=15m
-kubectl -n task-processor logs "job/$jobName"
-
-bash scripts/listingkit-schema-migrate-job.sh `
-  --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml `
-  --namespace task-processor `
-  --image "$apiCandidateImage"
-```
-
-The two Jobs import the production ConfigMap plus only the five database keys
-from `listingkit-workbench-secret`. They run `/app/product-listing-api-schema-migrate` and
-`/app/listingkit-schema-migrate -scope all` respectively, using the same
-immutable API image that will be released. A failed Job is a No-Go: investigate
-and use an approved roll-forward or restore procedure instead of deleting or
-editing the production schema manually.
-
-The ListingKit deployment workflow runs the ListingKit schema migration Job
+The ListingKit deployment workflow runs the ListingKit schema migration gate
 before the identity preflight. For an environment carrying the reviewed
 system-owned exception set, run the one-shot
 `scripts/listingkit-owner-scope-exceptions.ps1` seeder after that migration and
@@ -414,7 +378,7 @@ Every API release must pass the read-only identity preflight in the target
 environment before either the API or its matching UI is updated. The directory
 credential needs read access sufficient to query `POST /v2/users` for every
 ZITADEL organization represented by persisted tenant-owned rows. It does not
-need user-create, update, invitation, or membership-write permission. The Job
+need user-create, update, invitation, or membership-write permission. The gate
 uses the shared ConfigMap and shared Secret for the database and read-only
 directory credential; it never references the API-only member-invitation
 Secret.
@@ -423,34 +387,28 @@ Legacy ListingAdmin owner rows use numeric tenant IDs. For those rows, the
 preflight must find both `projections.org_metadata2` and
 `projections.user_metadata5` in exactly one of the `zitadel_auth` or `zitadel`
 PostgreSQL databases that share the configured database host and credentials.
-Grant the Job account only `CONNECT` plus `SELECT` on both projection tables in
+Grant the preflight database account only `CONNECT` plus `SELECT` on both projection tables in
 the selected database. Neither candidate, both candidates, or an unreadable
 metadata table blocks the release without printing database connection details;
 verify the one intended metadata database and both read-only grants before
 retrying.
 
-Run the tested driver with the exact full immutable API and preflight-runner
-images. Copy each digest from the release build output; do not substitute a
-mutable tag.
-
-```bash
-API_CANDIDATE_IMAGE="docker.io/xuwei190/task-processor-product-listing-api@sha256:<64-hex-api-digest>"
-PREFLIGHT_RUNNER_IMAGE="docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:<64-hex-runner-digest>"
-
-bash scripts/listingkit-identity-preflight-job.sh \
-  --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
-  --namespace task-processor \
-  --image "$API_CANDIDATE_IMAGE" \
-  --runner-image "$PREFLIGHT_RUNNER_IMAGE"
-```
-
-The driver renders a temporary manifest, creates one generated Job, waits up to
-15 minutes, and prints its logs. The Job's 900-second active deadline matches
-that driver wait, so a timed-out release gate cannot leave the preflight
-running indefinitely. A failure or timeout also prints `describe` output and
-returns non-zero before any Deployment image update. The Job only reads owner
-identifiers from the database and users from ZITADEL; it never mutates either
-system.
+`ListingKit API Deploy` composes the exact digest-pinned preflight image and
+runs it only through the administrator-installed
+`listingkit-identity-preflight-runner` Deployment. The Deployment starts at
+zero replicas. The release helper client-renders the reviewed aggregate runner
+manifest, selects exactly that Deployment, fails if the live object is absent,
+scales it to zero, reapplies only the selected reviewed object, and patches only
+the `release-gate` init-container image plus a fixed Pod-template invocation
+annotation derived from the trusted GitHub run ID and run attempt before
+scaling to one. It compares the live security, command, credential, resource,
+hold-container, and template-annotation projection to the reviewed contract,
+then requires its current generation with exactly one updated and available
+replica and none unavailable. The unique template annotation proves the
+current invocation without querying Pods. Every exit scales the runner back to
+zero. The release identity has no top-level `create`
+permission, and the gate only reads owner identifiers from the database and
+users from ZITADEL; it never mutates either system.
 
 Successful output ends with:
 
@@ -546,10 +504,14 @@ ALTER TABLE "listing_product_data"
 This validation is a separate operational change. It is not run by the
 deployment workflow and must not be used to bypass the identity preflight.
 
-For a new cluster, render the existing production overlay from a temporary
-copy, pin both image names to the same immutable tag, and apply that rendered
-manifest only after the Job succeeds. This prevents the overlay's development
-`latest` defaults from being used during bootstrap.
+The production overlay is steady-state desired state only. It contains the two
+long-lived image-agent workers and contains no finite canary workload. A generic
+`kubectl apply -k` is therefore not a release procedure: it cannot prove the
+ordered migrations, worker rollouts, finite canary, API rollout, and UI
+attestation gates. For a new cluster, render an immutable copy locally for
+review and client-side validation, then run the API release workflow. That
+workflow exclusively runs the preinstalled zero-replica canary runner; the matching UI
+release is admitted only by its uploaded exact-source attestation.
 
 ```powershell
 $source = Resolve-Path deployments/kubernetes/listingkit-workbench
@@ -561,7 +523,9 @@ Push-Location (Join-Path $staging "overlays/prod")
 try {
   kustomize edit set image "xuwei190/task-processor-product-listing-api=docker.io/xuwei190/task-processor-product-listing-api:$tag"
   kustomize edit set image "xuwei190/task-processor-listingkit-ui=docker.io/xuwei190/task-processor-listingkit-ui:$tag"
-  kustomize build . | kubectl apply -f -
+  kustomize build . > rendered-listingkit-production.yaml
+  kubectl create --dry-run=client --validate=false \
+    -f rendered-listingkit-production.yaml -o name
 } finally {
   Pop-Location
   if ((Resolve-Path (Split-Path $staging -Parent)).Path -ne $stagingRoot) {
@@ -571,9 +535,10 @@ try {
 }
 ```
 
-Record the source SHA, image tags, migration Job name, and rollout output in
-the Release Candidate Runbook. Subsequent releases must use the independent
-GitHub Actions workflows below rather than reapplying an unpinned overlay.
+This command does not contact or mutate a cluster. Record the source SHA, image
+digests, API workflow run ID, migration gate result, canary result, and rollout
+output in the Release Candidate Runbook. All production mutations use the
+GitHub Actions release workflows below rather than a generic overlay apply.
 
 ### Release workflows
 
@@ -582,10 +547,22 @@ GitHub Actions workflows below rather than reapplying an unpinned overlay.
 
 Trigger rules:
 
-- API tag `listingkit-api-v*` deploys only `product-listing-api`.
-- UI tag `listingkit-ui-v*` deploys only `listingkit-ui`.
-- For an RC, use `workflow_dispatch` for both workflows and set the same
-  immutable `source_ref` and `image_tag` explicitly.
+- A canonical `main` execution of `ListingKit API Deploy` builds the exact
+  workflow commit, runs migrations, both worker rollouts, the finite canary, and
+  the API rollout, then uploads an immutable v2 release attestation scoped to
+  that API workflow run ID and run attempt. API tag events cannot enter the
+  production deploy job.
+- A successful `ListingKit API Deploy` run automatically starts the gated UI
+  path for the exact attested source SHA.
+- UI tag `listingkit-ui-v*` may build and push an image only; it never mutates
+  production.
+- Manual UI production release requires the explicit successful API
+  `release_gate_run_id` and `release_gate_run_attempt`. It downloads only that
+  attempt's artifact and fails closed for a missing/expired/malformed
+  attestation, wrong workflow/conclusion/run/attempt or source, or non-digest
+  API candidate.
+- Branch, tag, image-tag convention, and "latest successful run" are not
+  release evidence.
 - `publish_latest` is not a release or rollback target.
 
 Required GitHub repository secrets:
@@ -593,31 +570,49 @@ Required GitHub repository secrets:
 ```text
 DOCKERHUB_USERNAME
 DOCKERHUB_TOKEN
-KUBE_CONFIG
 ```
 
-`KUBE_CONFIG` should be the full kubeconfig content for the target cluster, not a path.
+Required non-secret variables in both production environments:
+
+```text
+K8S_CLUSTER_SERVER
+K8S_CLUSTER_CA_B64
+```
+
+The cluster endpoint and public CA chain are not credentials. The workflows
+request short-lived GitHub OIDC tokens and construct ephemeral kubeconfigs;
+there is no long-lived kubeconfig fallback.
 
 Recommended GitHub environment setup:
 
 ```text
-Environment name: production
-Environment URL:  https://pod.shuomiai.com
+API environment: listingkit-api-production
+UI environment:  listingkit-ui-production
+Environment URL: https://pod.shuomiai.com
 ```
 
-If you want manual approval before production deployment, add protection rules to the `production` environment in GitHub.
+Configure protection rules independently on both production environments.
+Before the first release, a cluster administrator must configure
+`kubernetes-authentication-config.example.yaml` in kube-apiserver and install
+the standalone `release-authority` Kustomization. On an existing cluster, that
+same separately reviewed bootstrap must also create the new
+`base/listingkit-ui-auth-config.yaml` ConfigMap before the first gated UI release;
+the create-free UI Role can only patch an object that already exists. Release
+workflows never install or widen their own ConfigMaps, Roles, RoleBindings, or
+runner Deployments.
 
 The workflow uses:
 
-- image tag: current commit short SHA by default
+- build tag: the canonical workflow commit's first 12 hexadecimal characters;
+  production deployment and attestation always use the resolved image digest
 - Docker Hub namespace: `xuwei190`
 - Kubernetes namespace: `task-processor`
 - release overlays must be rendered with immutable image tags as shown above.
 
 ## Rollback
 
-Use the same GitHub Actions workflows for rollback. Do not bypass them unless
-GitHub Actions itself is unavailable.
+Use the same GitHub Actions workflows for rollback. There is no supported
+workstation production fallback.
 
 Standard rollback path:
 
@@ -625,58 +620,37 @@ Standard rollback path:
    `sub`; otherwise rollback can restore split ownership semantics and is not
    allowed.
 2. Identify the prior API and UI image digests from a successful release record.
+   Only prior API digests carrying `image-agent-v3-new-starts-v1` are eligible
+   for the production workflow; the workflow inspects the OCI label before any
+   mutation and has no caller override.
    Also identify the current `task-processor-listingkit-identity-preflight`
    runner digest; the gate runner is deliberately separate from the rollback
    candidate and must be available even when that candidate predates preflight.
-3. Run `ListingKit API Deploy` with its prior immutable digest, then wait for the
-   API rollout and readiness probe. The workflow then reapplies the standalone
-   production SMS webhook Ingress only after that rollout succeeds.
-4. Run `ListingKit UI Deploy` with its prior immutable tag, then wait for the
-   UI rollout.
+3. Run `ListingKit API Deploy` with the prior successful API release
+   attestation's exact `rollback_run_id` and `rollback_run_attempt`. The workflow
+   downloads and verifies only that attempt, reapplies only its attested API
+   digest, and retains both current image-agent worker Deployments. It does not
+   rerun migrations, worker rollouts, the canary, or Ingress mutation.
+4. Run `ListingKit UI Deploy` with the same original successful release
+   attestation's `release_gate_run_id` and `release_gate_run_attempt` selected in
+   step 3, not the newer API rollback execution (which intentionally emits no
+   replacement attestation). It builds that exact attested source and waits for
+   the digest-pinned UI rollout.
 5. Record the rollback decision, deployed tags, probe results, and any data
    recovery action in the validation run.
 
 This reuses the same deployment logic as a normal release and keeps the
 rollback auditable.
 
-To find a rollback target:
+To find a rollback target, select a prior successful `ListingKit API Deploy`
+run and its exact attempt that still has the immutable v2 release-attestation
+artifact. Docker tags, Kubernetes rollout history, direct digests, source refs,
+and a "latest successful" lookup are diagnostic context only and are never
+rollback authority.
 
-- Check prior successful runs of `ListingKit API Deploy` and `ListingKit UI Deploy`.
-- Or inspect the currently deployed / previously deployed image tags in Docker
-  Hub or Kubernetes rollout history.
-
-Emergency fallback from a workstation (use the same preflight and immutable
-apply drivers; do not use a direct API `set image`):
-
-```powershell
-$apiImage = "docker.io/xuwei190/task-processor-product-listing-api@sha256:<64-hex-api-digest>"
-$preflightRunnerImage = "docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:<64-hex-runner-digest>"
-& "C:\Program Files\Git\bin\bash.exe" scripts/listingkit-identity-preflight-job.sh `
-  --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml `
-  --namespace task-processor `
-  --image $apiImage `
-  --runner-image $preflightRunnerImage
-if ($LASTEXITCODE -ne 0) { throw "Identity preflight failed; refusing rollback deployment" }
-& "C:\Program Files\Git\bin\bash.exe" scripts/listingkit-apply-api-deployment.sh `
-  --manifest deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml `
-  --namespace task-processor `
-  --image $apiImage
-if ($LASTEXITCODE -ne 0) { throw "Immutable API rollback apply failed" }
-kubectl -n task-processor set image deployment/listingkit-ui listingkit-ui=docker.io/xuwei190/task-processor-listingkit-ui:496ca069
-if ($LASTEXITCODE -ne 0) { throw "ListingKit UI rollback image update failed" }
-kubectl -n task-processor rollout restart deployment/product-listing-api
-if ($LASTEXITCODE -ne 0) { throw "ListingKit API rollback restart failed" }
-kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
-if ($LASTEXITCODE -ne 0) { throw "ListingKit API rollback rollout failed" }
-kubectl -n task-processor apply -f deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml
-if ($LASTEXITCODE -ne 0) { throw "ListingKit SMS webhook ingress rollback apply failed" }
-kubectl -n task-processor rollout status deployment/listingkit-ui --timeout=5m
-if ($LASTEXITCODE -ne 0) { throw "ListingKit UI rollback rollout failed" }
-```
-
-Use the emergency path only when GitHub Actions cannot be used. If you do use
-it, follow up with a normal workflow-driven deploy so the release history stays
-consistent.
+If GitHub Actions is unavailable, pause production mutation and restore the
+gated release service. Internal rendering/apply helpers remain available to CI
+and non-production validation, but are not supported production entry points.
 
 ## SHEIN POD image lookup index backfill
 
@@ -693,16 +667,16 @@ After deploying an image that contains the POD image lookup index:
    to a temporary file outside the repository.
 2. Replace `REPLACE_WITH_DEPLOYED_TAG` with the exact immutable tag currently
    deployed for `product-listing-api`. Do not use `latest`.
-3. Create and follow the one-shot Job:
+3. Prepare the one-shot Job input locally, then submit and observe it only
+   through a separately reviewed maintenance executor whose identity is
+   authorized for that exact Job. This README intentionally does not provide a
+   direct production create command:
 
 ```powershell
 $jobFile = Join-Path $env:TEMP "listingkit-pod-image-index-backfill-job.yaml"
 Copy-Item deployments/kubernetes/listingkit-workbench/jobs/pod-image-index-backfill-job.yaml $jobFile
 (Get-Content -Raw $jobFile).Replace("REPLACE_WITH_DEPLOYED_TAG", "<deployed-commit-tag>") |
   Set-Content -NoNewline $jobFile
-$jobName = kubectl create -f $jobFile -o jsonpath='{.metadata.name}'
-kubectl -n task-processor wait --for=condition=complete "job/$jobName" --timeout=30m
-kubectl -n task-processor logs "job/$jobName"
 ```
 
 Successful stdout is a single machine-readable line such as
@@ -714,7 +688,233 @@ after fixing the cause; upserts are idempotent. Verify a known full SKU through
 then inspect API/proxy logs for errors. Owner filtering remains enabled while
 you complete backfill and tenant/user sampling.
 
-## Temporal rollout
+## Image-agent Temporal v2/v3 recovery rollout
+
+Manual image generation has two long-lived, capability-isolated worker
+Deployments. `image-agent-temporal-worker` runs the frozen v2 registrations on
+`image-agent-manual`; `image-agent-temporal-worker-v3` runs only v3
+registrations on `image-agent-manual-v3`. Both use the same immutable API
+candidate image, but each process receives an explicit `-wire-mode` and
+`-task-queue`. Keep both Deployments present. The v2 worker is removed only
+after the live drain evidence below reaches zero.
+
+**ListingKit API Deploy** preserves the identity preflight, ingress, and
+digest-pinned image gates, then performs this order:
+
+1. Run the additive Product Listing and ListingKit schema migrations.
+2. Apply, restart, and wait for the v2 compatibility worker.
+3. Apply, restart, and wait for the v3 recovery worker.
+4. Invoke the administrator-installed zero-replica
+   `image-agent-temporal-v3-canary-runner` Deployment through
+   `listingkit-run-release-gate-deployment.sh`. The helper selects the reviewed
+   Deployment template, stamps a per-invocation run-ID/attempt annotation,
+   patches only the digest-pinned gate image, proves the current generation has
+   one updated and available replica without querying Pods, and always cleans
+   the runner back to zero.
+5. Only after those gates apply/restart the API so new starts route to v3.
+
+The canary runs `/app/image-agent-temporal-worker -canary` on the v3 queue. It
+registers and executes only the side-effect-free compatibility workflow as the
+release-gate init container in that Deployment template, receives only Temporal
+address/namespace config, and receives no Secret.
+
+### Live preflight and v2 drain evidence
+
+Use Temporal CLI v1.8.1 for this evidence procedure. Take the expected API run
+ID, run attempt, and digest-pinned image from the selected release attestation;
+do not infer them from a tag or from the latest workflow run. Configure standard
+Temporal and PostgreSQL clients without printing credentials. `PGPASSWORD` or a
+protected `.pgpass` may supply PostgreSQL authentication, but neither belongs in
+the command line or captured output.
+
+```bash
+set -euo pipefail
+: "${TEMPORAL_ADDRESS:?set the target Temporal address}"
+: "${TEMPORAL_NAMESPACE:?set the target Temporal namespace}"
+: "${PGHOST:?set the target PostgreSQL host}"
+: "${PGPORT:?set the target PostgreSQL port}"
+: "${PGDATABASE:?set the target PostgreSQL database}"
+: "${PGUSER:?set the target PostgreSQL user}"
+: "${K8S_NAMESPACE:?set the target Kubernetes namespace}"
+: "${API_RELEASE_RUN_ID:?set the attested API workflow run ID}"
+: "${API_RELEASE_RUN_ATTEMPT:?set the attested API workflow run attempt}"
+: "${API_RELEASE_IMAGE:?set the attested digest-pinned API image}"
+bash scripts/listingkit-image-agent-v2-drain-check.sh \
+  --expected-run-id "$API_RELEASE_RUN_ID" \
+  --expected-run-attempt "$API_RELEASE_RUN_ATTEMPT" \
+  --expected-api-image "$API_RELEASE_IMAGE" \
+  --namespace "$K8S_NAMESPACE"
+```
+
+The checked-in script takes exactly three complete samples separated by exactly
+300 seconds: two non-overridable waits create a 10-minute first-to-final window.
+This is a ListingKit operational policy, not a Temporal SLA. Every sample
+freshly verifies the `product-listing-api` Deployment and every selected ready
+Pod against the digest-pinned image and all four release annotations:
+`listingkit.sh/api-release-run-id`,
+`listingkit.sh/api-release-run-attempt`, and
+`listingkit.sh/api-release-image`, plus the hard-coded
+`listingkit.sh/image-agent-routing-contract=image-agent-v3-new-starts-v1`.
+A missing annotation, old or mixed image,
+unready/empty serving set, malformed Kubernetes response, or command failure is
+nonzero evidence.
+
+Every sample also queries PostgreSQL for the complete authoritative producer
+inventory using `status NOT IN ('completed', 'failed', 'cancelled')`, preserves
+each full `(tenant_id, owner_user_id, id)` tuple in a private mode-0700 evidence
+directory, and maps it to
+`image-agent:${tenant_id}:${owner_user_id}:${run_id}`. It then pins Temporal CLI
+1.8.1, validates every count/list/describe command and JSON shape, requires
+count/list query identity and record-count parity, enumerates
+`ImageAgentWorkflow` and `ImageSlotWorkflow`, and describes exact workflow/run
+IDs. `ImageAgentWorkflow` parents own run-state, plan, pending-command, and
+approval Activities. Each `ImageSlotWorkflow` child owns slot execution and
+slot-result persistence Activities, so parent-only describes are not drain
+evidence. The script reads each execution's queue, `pendingChildren`, and
+`pendingActivities`, and counts only the exact `image-agent-manual` queue and
+exact frozen legacy/`.v2` Activity allowlist, including
+`imageagent.execute_slot` and `imageagent.execute_slot.v2`.
+
+Its stdout contains only deterministic safe counters: one block for each of the
+three samples followed by the fixed policy summary. For a two-Pod serving API,
+a successful final block and summary look like:
+
+```text
+sample=3
+api_ready_pod_count=2
+db_nonterminal_run_count=0
+temporal_parent_identity_count=0
+open_v2_parent_count=0
+open_v2_child_count=0
+pending_v2_child_count=0
+pending_v2_activity_count=0
+pending_v2_activity_attempt_sum=0
+stable_sample_count=3
+convergence_interval_seconds=300
+first_to_final_window_seconds=600
+```
+
+The script exits zero only when all three samples prove exact API release
+identity, a ready serving set, exact PostgreSQL/Temporal parent-identity parity,
+and explicit zero for every v2 retirement class. A database-only or
+Temporal-only identity, a producer appearing after an earlier zero, a stale
+first or second Visibility zero followed by nonzero, malformed/missing identity
+or queue, unexpected v2-queue Activity, command failure, or unpinned CLI version
+fails closed. Temporal CLI 1.8.1 emits no list document at a genuine zero: the
+script accepts that zero-byte list only when the paired official count response
+is exactly zero. Whitespace-only output, a nonzero count with an empty list, or
+any count/list disagreement also fails closed. Retain the v2 Deployment unless
+this executable gate exits zero; empty or partial stdout is never drain
+evidence. Full identities remain in private temporary evidence and stdout never
+contains credentials, object metadata, or presigned URLs.
+
+Local test evidence is not live acceptance. Unit tests replace `kubectl`,
+`psql`, Temporal, `jq`, and `sleep`; they prove fail-closed control flow and the
+fixed waits without contacting production. Only an explicitly authorized live
+run against the selected release identity can provide operational drain
+acceptance, and this repository procedure does not authorize that live run.
+
+Identify the `702d76631` rebound window from deployment records, not from Git
+commit time: record the instant that image first became active and the instant
+the correcting image became active. Use parameterized UTC timestamps and this
+half-open query; it selects the complete persisted identity and constructs the
+same full workflow ID used by production code:
+
+```sql
+\set rebound_start '2026-08-27T00:00:00Z'
+\set rebound_end   '2026-08-28T00:00:00Z'
+
+SELECT tenant_id, owner_user_id, id, created_at,
+       format('image-agent:%s:%s:%s', tenant_id, owner_user_id, id) AS workflow_id
+FROM image_agent_v2_runs
+WHERE created_at >= :'rebound_start'::timestamptz
+  AND created_at <  :'rebound_end'::timestamptz
+ORDER BY created_at, tenant_id, owner_user_id, id;
+```
+
+For each row, the equivalent shell construction is
+`workflow_id="image-agent:${tenant_id}:${owner_user_id}:${run_id}"`. Reconcile
+that full ID, never bare `run_id`, against both list/describe inventories. Keep
+ambiguous rows on the v2 inventory for manual reconciliation; never silently
+move an in-flight history to v3.
+
+### Rollback and durable staging retention
+
+Only a prior successful immutable API release attestation carrying
+`image-agent-v3-new-starts-v1` may pass the production rollback workflow. The
+operator supplies its exact workflow run ID and attempt; an image digest, tag,
+source ref, or “latest successful” run is never rollback authority. Such a
+rollback preserves v3 routing for new starts and does **not** delete, scale down, or retarget
+`image-agent-temporal-worker-v3`; that worker must finish histories already
+started on `image-agent-manual-v3`. A v2-producing API rollback is unsupported,
+invalidates the v2 drain evidence, and requires retaining or restoring the v2
+compatibility worker through a separately designed recovery procedure. This
+release path provides no bypass. The additive schema migration is not rolled
+back while either worker can reference v3 records.
+
+Frozen v2 publication may retain legacy publisher storage credentials required
+by historical execution. Do not remove those credentials merely to enforce the
+v3 durable-artifact policy. V3-only artifact mode and immutable COS bucket
+policy/config remain isolated to the v3 worker contract. Any worker image,
+wire/replay, schema, or durable-artifact policy change requires the normal main
+build and worker gates; rollback only reapplies the attested API image.
+
+Only newly started v3 manual workflows receive the production-owned Temporal
+`WorkflowExecutionTimeout` of 30 days. Timeout ends that workflow execution; it
+does not authorize regeneration or deletion of staged bytes. Operators then
+have a 7-day reconciliation allowance. The authoritative maximum durable
+recovery window is therefore `30 days + 7 days = 37 days`. Existing/live
+histories retain the options recorded when they were started, and committed old
+histories remain replayed without a new workflow-history branch.
+
+Configure the object store's lifecycle policy on `image-agent/staging/` outside
+the application with a minimum retention of 45 days, which is strictly greater
+than 37 days. Application request paths do not synchronously delete staging
+objects. Run this redacted check with the same S3-compatible endpoint settings
+used by operations; it prints only policy identity, status, prefix, and days:
+
+```bash
+set -euo pipefail
+: "${STAGING_BUCKET:?set the staging bucket name without printing credentials}"
+lifecycle_args=(s3api get-bucket-lifecycle-configuration --bucket "$STAGING_BUCKET")
+if [[ -n "${S3_ENDPOINT:-}" ]]; then
+  lifecycle_args+=(--endpoint-url "$S3_ENDPOINT")
+fi
+lifecycle_json="$(AWS_PAGER='' aws "${lifecycle_args[@]}")"
+jq -e '
+  [.Rules[] |
+    select(.Status == "Enabled") |
+    select((.Filter.Prefix // .Prefix // "") == "image-agent/staging/") |
+    select((.Expiration.Days // 0) >= 45)] |
+  length == 1
+' <<<"$lifecycle_json" >/dev/null
+jq -c '
+  .Rules[] |
+  select((.Filter.Prefix // .Prefix // "") == "image-agent/staging/") |
+  {policy_id: .ID, status: .Status,
+   prefix: (.Filter.Prefix // .Prefix), expiration_days: .Expiration.Days}
+' <<<"$lifecycle_json"
+```
+
+Record the redacted output and infrastructure-policy revision as live evidence.
+
+Operational evidence must never print Secret values, S3/COS credentials,
+presigned URLs, provider headers, or full object metadata. Record only safe
+counts, workflow/run IDs, activity names/attempts, phases, image digests,
+rollout conditions, canary status, and redacted lifecycle-policy identity.
+
+Keep evidence categories separate:
+
+- Local evidence: Go/frontend tests, structural manifest tests, Kustomize
+  render, immutable-image driver tests, and diff/Secret allowlist inspection.
+- Live evidence: schema gate completion, both worker rollouts, canary runner
+  completion/log outcome, Temporal v2 drain and pending activities, rebound
+  reconciliation, lifecycle policy, and one end-to-end business acceptance.
+
+Local GREEN is not proof of live drain, canary completion, deployment, or
+business acceptance.
+
+## Other ListingKit Temporal workflows
 
 ListingKit now runs three Temporal-backed workflow paths:
 
@@ -722,9 +922,9 @@ ListingKit now runs three Temporal-backed workflow paths:
 - `PlatformAdaptWorkflow`
 - existing SHEIN publish workflow
 
-Current production wiring keeps them on the same task queue and starts the
-worker inside `product-listing-api`. This is the smallest rollout shape and
-matches the current runtime implementation.
+These three non-image-agent workflows keep their existing production task queue
+and API-process worker wiring; the dual image-agent queues above do not change
+them.
 
 Temporal env is prepared in:
 
@@ -745,13 +945,18 @@ Before rollout, confirm:
 2. `LISTINGKIT_TEMPORAL_NAMESPACE` exists in Temporal.
 3. `product-listing-api` pods can reach Temporal on port `7233`.
 
-Recommended rollout order:
+Recommended production rollout order is owned by **ListingKit API Deploy**:
 
-1. Apply the updated ConfigMap.
-2. Roll `product-listing-api`.
-3. Confirm API logs contain:
+1. Start **ListingKit API Deploy** with the exact source and immutable API
+   candidate; its run and attempt apply the updated ConfigMap and roll
+   `product-listing-api`.
+2. Confirm API logs contain:
    - `connected listingkit shein publish temporal client`
    - `started listingkit shein publish temporal worker`
+3. After the API workflow succeeds, let the automatic **ListingKit UI Deploy**
+   gate finish or supply the same `release_gate_run_id` and
+   `release_gate_run_attempt`; do not perform either production mutation from a
+   workstation or standalone helper.
 4. Create one new ListingKit task and confirm logs contain:
    - `WorkflowType StandardProductWorkflow`
    - `WorkflowType PlatformAdaptWorkflow`
@@ -771,32 +976,33 @@ Important current behavior:
 - Older tasks without `standard_product_snapshot` are still manually compatible; platform adaptation can rebuild a fallback snapshot from the persisted legacy result.
 - Successful manual reruns are allowed; standard/platform workflows now permit duplicate workflow IDs after a successful prior run.
 
-## Manual deploy fallback
+## Non-production workstation build/deploy
 
 ```powershell
-.\scripts\build-push-deploy-listingkit-workbench.ps1 -Tag v20260428-1
+.\scripts\build-push-deploy-listingkit-workbench.ps1 `
+  -Tag v20260428-1 `
+  -Namespace listingkit-nonprod
 ```
 
-This uses the same target-namespace identity preflight and immutable API
-Deployment driver as CI. It requires Git Bash (automatically preferred when
-installed) to run the tested release drivers. A failed preflight stops before
-any API or UI Deployment mutation; the API is applied once with the exact
-versioned image, and only then is the matching UI image updated. `latest` is
-never accepted as the candidate release tag.
+Direct workstation apply is supported only when an explicitly non-production
+namespace is supplied. The default namespace is `task-processor`, so a default
+invocation fails before `git`, Docker, Bash, or kubectl. `-SkipApply` keeps the
+build/push-only path available without any Kubernetes mutation. Production
+release and rollback always use `ListingKit API Deploy`, followed by the
+automatic or manual exact-attempt `ListingKit UI Deploy` gate.
 
 Useful switches:
 
 - `-DockerHubUser xuwei190`: image namespace.
-- `-Namespace task-processor`: Kubernetes namespace.
+- `-Namespace listingkit-nonprod`: required explicit non-production namespace
+  for direct apply.
 - `-SkipTests`: skip local test/build checks before Docker build.
 - `-SkipApply`: build and push images only; it performs no Kubernetes command.
 - `-PublishLatest`: additionally refreshes floating tags for development only;
   the gated release still uses the versioned tag.
 
-When `-Namespace` is not `task-processor`, the script deliberately skips the
-production SMS webhook Ingress. That manifest owns `pod.shuomiai.com` and its
-production TLS Secret; use an environment-specific Ingress manifest for a
-staging namespace.
+The workstation script never applies the production SMS webhook Ingress. Use an
+environment-specific Ingress manifest for a staging namespace.
 
 ## Change public host
 

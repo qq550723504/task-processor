@@ -1,35 +1,20 @@
 name: ListingKit API Deploy
 
 on:
-  push:
-    tags:
-      - "listingkit-api-v*"
   workflow_dispatch:
     inputs:
-      source_ref:
-        description: "API source commit or ref. Defaults to the workflow commit."
+      rollback_run_id:
+        description: "Exact successful v2 API release-attestation run ID; empty selects a normal main release."
         required: false
         type: string
-      image_tag:
-        description: "Optional API image tag. Defaults to the first eight source-ref characters."
+      rollback_run_attempt:
+        description: "Exact successful v2 API release-attestation run attempt."
         required: false
         type: string
-      api_image_digest:
-        description: "Existing API image digest for a gated rollback; skips the API rebuild."
-        required: false
-        type: string
-      api_runtime_base_image:
-        description: "Optional API runtime base image override."
-        required: false
-        type: string
-      publish_latest:
-        description: "Also push the latest tag for both images."
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: listingkit-api-deploy-production
@@ -42,109 +27,98 @@ env:
   API_IMAGE_NAME: task-processor-product-listing-api
   API_RUNTIME_BASE_IMAGE: docker.io/xuwei190/crawler-env:latest
   K8S_NAMESPACE: task-processor
+  CANONICAL_WORKFLOW_REF: qq550723504/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main
 
 jobs:
   prepare:
     name: Prepare Release Metadata
     runs-on: ubuntu-latest
     outputs:
+      mode: ${{ steps.meta.outputs.mode }}
       source_ref: ${{ steps.meta.outputs.source_ref }}
       tag: ${{ steps.meta.outputs.tag }}
-      publish_latest: ${{ steps.meta.outputs.publish_latest }}
-      api_runtime_base_image: ${{ steps.meta.outputs.api_runtime_base_image }}
-      candidate_api_digest: ${{ steps.meta.outputs.candidate_api_digest }}
       runner_source_ref: ${{ steps.meta.outputs.runner_source_ref }}
-      source_identity_compatibility: ${{ steps.meta.outputs.source_identity_compatibility }}
     steps:
-      - name: Resolve release tag
+      - name: Bind release to canonical main workflow commit
         id: meta
         shell: bash
         env:
-          RELEASE_SOURCE_REF: ${{ inputs.source_ref }}
-          RELEASE_IMAGE_TAG: ${{ inputs.image_tag }}
-          RELEASE_API_IMAGE_DIGEST: ${{ inputs.api_image_digest }}
-          RELEASE_API_RUNTIME_BASE_IMAGE: ${{ inputs.api_runtime_base_image }}
-          RELEASE_PUBLISH_LATEST: ${{ inputs.publish_latest }}
+          ROLLBACK_RUN_ID: ${{ inputs.rollback_run_id }}
+          ROLLBACK_RUN_ATTEMPT: ${{ inputs.rollback_run_attempt }}
           WORKFLOW_SOURCE_REF: ${{ github.workflow_sha }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          source_ref="$RELEASE_SOURCE_REF"
-          if [[ -z "$source_ref" ]]; then
-            source_ref="${GITHUB_SHA}"
-          else
-            source_ref="$(gh api "repos/${GITHUB_REPOSITORY}/commits/$source_ref" --jq .sha)"
+          if [[ -n "$ROLLBACK_RUN_ID" || -n "$ROLLBACK_RUN_ATTEMPT" ]]; then
+            [[ "$ROLLBACK_RUN_ID" =~ ^[1-9][0-9]*$ && "$ROLLBACK_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || { echo "::error::rollback requires exact run ID and attempt"; exit 1; }
+            echo "mode=rollback" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          tag="$RELEASE_IMAGE_TAG"
-          candidate_api_image="$RELEASE_API_IMAGE_DIGEST"
-          candidate_api_digest=""
-          expected_api_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
-          if [[ -n "$candidate_api_image" && ! "$candidate_api_image" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[A-Fa-f0-9]{64}$ ]]; then
-            echo "::error::api_image_digest must be a digest-pinned image reference"
-            exit 1
-          fi
-          if [[ -n "$candidate_api_image" && "$candidate_api_image" != "$expected_api_repository"@sha256:* ]]; then
-            echo "::error::api_image_digest must reference $expected_api_repository"
-            exit 1
-          fi
-          if [[ -n "$candidate_api_image" ]]; then
-            candidate_api_digest="${candidate_api_image##*@}"
-          fi
-          if [[ -n "$candidate_api_image" && ( -n "$RELEASE_SOURCE_REF" || -n "$RELEASE_IMAGE_TAG" || -n "$RELEASE_API_RUNTIME_BASE_IMAGE" || "$RELEASE_PUBLISH_LATEST" == "true" ) ]]; then
-            echo "::error::api_image_digest cannot be combined with source or build-image inputs"
-            exit 1
-          fi
-
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::normal release requires main"; exit 1; }
+          [[ "$GITHUB_WORKFLOW_REF" == "$CANONICAL_WORKFLOW_REF" ]] || { echo "::error::normal release requires canonical workflow"; exit 1; }
+          source_ref="$WORKFLOW_SOURCE_REF"
+          [[ "$source_ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::workflow SHA is malformed"; exit 1; }
+          tag="${source_ref:0:12}"
           runner_source_ref="$source_ref"
-          if [[ -n "$candidate_api_image" ]]; then
-            runner_source_ref="$WORKFLOW_SOURCE_REF"
-          fi
-          if [[ -z "$tag" ]]; then
-            tag="${source_ref:0:12}"
-          fi
-          source_identity_compatibility="false"
-          validator_content="$(gh api "repos/${GITHUB_REPOSITORY}/contents/internal/core/config/validator_listingkit.go?ref=$source_ref" --jq .content | base64 --decode)"
-          if grep -Fq 'obsolete ZITADEL username allowlist configuration' <<<"$validator_content"; then
-            source_identity_compatibility="true"
-          fi
-          if [[ ! "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
-            echo "::error::image tag must match Docker tag syntax"
-            exit 1
-          fi
-          api_runtime_base_image="${API_RUNTIME_BASE_IMAGE}"
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "$RELEASE_API_RUNTIME_BASE_IMAGE" ]]; then
-            api_runtime_base_image="$RELEASE_API_RUNTIME_BASE_IMAGE"
-          fi
-          publish_latest="false"
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "$RELEASE_PUBLISH_LATEST" == "true" ]]; then
-            publish_latest="true"
-          fi
+          echo "mode=normal" >> "$GITHUB_OUTPUT"
           echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "publish_latest=$publish_latest" >> "$GITHUB_OUTPUT"
-          echo "api_runtime_base_image=$api_runtime_base_image" >> "$GITHUB_OUTPUT"
-          echo "candidate_api_digest=$candidate_api_digest" >> "$GITHUB_OUTPUT"
           echo "runner_source_ref=$runner_source_ref" >> "$GITHUB_OUTPUT"
-          echo "source_identity_compatibility=$source_identity_compatibility" >> "$GITHUB_OUTPUT"
+
+  verify-rollback-attestation:
+    name: Verify Exact Prior API Release Attestation
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: ${{ needs.prepare.outputs.mode == 'rollback' }}
+    outputs:
+      api_image: ${{ steps.export.outputs.api_image }}
+    steps:
+      - name: Checkout trusted attestation verifier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-tools
+          sparse-checkout: scripts/verify-listingkit-api-release-attestation.sh
+          sparse-checkout-cone-mode: false
+      - name: Fetch exact prior run metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.rollback_run_id }}
+          RUN_ATTEMPT: ${{ inputs.rollback_run_attempt }}
+        run: gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}" > run.json
+      - name: Download immutable prior API attestation
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: listingkit-api-release-gate-${{ inputs.rollback_run_id }}-${{ inputs.rollback_run_attempt }}
+          path: release-attestation
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.rollback_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify exact prior release contracts
+        env:
+          RUN_ID: ${{ inputs.rollback_run_id }}
+          RUN_ATTEMPT: ${{ inputs.rollback_run_attempt }}
+        run: bash .workflow-tools/scripts/verify-listingkit-api-release-attestation.sh --attestation release-attestation/listingkit-api-release-attestation.json --run-json run.json --run-id "$RUN_ID" --run-attempt "$RUN_ATTEMPT" --repository "$GITHUB_REPOSITORY" --api-repository "${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
+      - id: export
+        run: echo "api_image=$(jq -er '.api_candidate_image' release-attestation/listingkit-api-release-attestation.json)" >> "$GITHUB_OUTPUT"
 
   build-api:
     name: Build API Image
     runs-on: ubuntu-latest
     needs: prepare
-    if: ${{ needs.prepare.outputs.candidate_api_digest == '' }}
+    if: ${{ needs.prepare.outputs.mode == 'normal' }}
     outputs:
       api_digest: ${{ steps.export-image.outputs.api_digest }}
     steps:
       - name: Checkout API source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.prepare.outputs.source_ref }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -152,16 +126,14 @@ jobs:
 
       - name: Build and push API image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: deployments/docker/Dockerfile.product-listing-api
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:${{ needs.prepare.outputs.tag }}
-            ${{ needs.prepare.outputs.publish_latest == 'true' && format('{0}/{1}/{2}:latest', env.REGISTRY, env.DOCKERHUB_NAMESPACE, env.API_IMAGE_NAME) || '' }}
+          tags: ${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:${{ needs.prepare.outputs.tag }}
           build-args: |
-            API_RUNTIME_BASE_IMAGE=${{ needs.prepare.outputs.api_runtime_base_image }}
+            API_RUNTIME_BASE_IMAGE=${{ env.API_RUNTIME_BASE_IMAGE }}
           cache-from: type=gha,scope=listingkit-api
           cache-to: type=gha,mode=max,scope=listingkit-api
 
@@ -174,19 +146,20 @@ jobs:
     name: Build Identity Preflight Runner
     runs-on: ubuntu-latest
     needs: prepare
+    if: ${{ needs.prepare.outputs.mode == 'normal' }}
     outputs:
       runner_digest: ${{ steps.export-image.outputs.runner_digest }}
     steps:
       - name: Checkout gate runner source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.prepare.outputs.runner_source_ref }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -194,7 +167,7 @@ jobs:
 
       - name: Build and push preflight runner
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: deployments/docker/Dockerfile.listingkit-identity-preflight
@@ -211,88 +184,67 @@ jobs:
   deploy-api:
     name: Deploy ListingKit API
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     needs:
       - prepare
+      - verify-rollback-attestation
       - build-api
       - build-preflight-runner
-    if: ${{ always() && needs.build-preflight-runner.result == 'success' && (needs.build-api.result == 'success' || needs.build-api.result == 'skipped') }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && github.workflow_ref == 'qq550723504/task-processor/.github/workflows/listingkit-deploy.yml@refs/heads/main' && ((needs.prepare.outputs.mode == 'normal' && needs.build-api.result == 'success' && needs.build-preflight-runner.result == 'success') || (needs.prepare.outputs.mode == 'rollback' && needs.verify-rollback-attestation.result == 'success')) }}
     environment:
-      name: production
+      name: listingkit-api-production
       url: https://pod.shuomiai.com
     steps:
       - name: Checkout workflow tooling
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.workflow_sha }}
           path: .workflow-tools
           sparse-checkout: |
+            scripts/listingkit-refresh-github-oidc-kubeconfig.sh
             scripts/validate-listingkit-invitation-secret.sh
-            scripts/listingkit-schema-migrate-job.sh
+            scripts/listingkit-configure-github-oidc-kubeconfig.sh
+            scripts/listingkit-run-release-gate-deployment.sh
+            deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml
             scripts/listingkit-clean-legacy-identity-secret.sh
-            scripts/listingkit-identity-preflight-job.sh
             scripts/listingkit-apply-api-deployment.sh
+            scripts/listingkit-apply-image-agent-worker-deployment.sh
             scripts/lib/listingkit-immutable-image.sh
             deployments/kubernetes/listingkit-workbench/base/configmap.yaml
             deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml
+            deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml
+            deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-v3-deployment.yaml
             deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml
-            deployments/kubernetes/listingkit-workbench/jobs/product-listing-api-schema-migrate-job.yaml
-            deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml
-            deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml
           sparse-checkout-cone-mode: false
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
         with:
-          version: latest
-
-      - name: Write kubeconfig
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.kube"
-          printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
-
-      - name: Reject legacy invitation credentials in shared Secret
-        shell: bash
-        run: |
-          set -euo pipefail
-          shared_secret="listingkit-workbench-secret"
-          if ! shared_secret_json="$(kubectl -n ${{ env.K8S_NAMESPACE }} get secret "$shared_secret" -o json 2>&1)"; then
-            if grep -q "NotFound" <<<"$shared_secret_json"; then
-              echo "Shared Secret $shared_secret is absent; no legacy invitation credentials can be injected."
-              exit 0
-            fi
-            echo "::error::Could not inspect shared Secret for legacy invitation credentials: $shared_secret"
-            exit 1
-          fi
-          for key in \
-            TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN \
-            TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID; do
-            if jq -e --arg key "$key" '.data[$key] != null and .data[$key] != ""' <<<"$shared_secret_json" >/dev/null; then
-              echo "::error::Remove legacy $key from $shared_secret before deploying ListingKit invitations."
-              exit 1
-            fi
-          done
-
-      - name: Validate dedicated member invitation Secret
-        run: |
-          bash .workflow-tools/scripts/validate-listingkit-invitation-secret.sh ${{ env.K8S_NAMESPACE }}
+          version: v1.31.4
 
       - name: Prepare immutable API candidate image
         shell: bash
         env:
-          API_CANDIDATE_DIGEST: ${{ needs.prepare.outputs.candidate_api_digest || needs.build-api.outputs.api_digest }}
+          API_CANDIDATE_DIGEST: ${{ needs.build-api.outputs.api_digest }}
+          ROLLBACK_API_IMAGE: ${{ needs.verify-rollback-attestation.outputs.api_image }}
+          RELEASE_MODE: ${{ needs.prepare.outputs.mode }}
         run: |
           set -euo pipefail
           source .workflow-tools/scripts/lib/listingkit-immutable-image.sh
           api_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
-          API_CANDIDATE_IMAGE="$(listingkit_compose_immutable_image "$api_repository" "$API_CANDIDATE_DIGEST")"
+          if [[ "$RELEASE_MODE" == "rollback" ]]; then
+            API_CANDIDATE_IMAGE="$ROLLBACK_API_IMAGE"
+          else
+            API_CANDIDATE_IMAGE="$(listingkit_compose_immutable_image "$api_repository" "$API_CANDIDATE_DIGEST")"
+          fi
+          [[ "$API_CANDIDATE_IMAGE" =~ ^${api_repository}@sha256:[0-9a-f]{64}$ ]] || { echo "::error::candidate must be immutable"; exit 1; }
           echo "API_CANDIDATE_IMAGE=$API_CANDIDATE_IMAGE" >> "$GITHUB_ENV"
 
       - name: Log in to Docker Hub for candidate inspection
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -302,8 +254,8 @@ jobs:
         id: candidate-identity-compatibility
         shell: bash
         env:
-          CANDIDATE_API_DIGEST: ${{ needs.prepare.outputs.candidate_api_digest }}
-          SOURCE_IDENTITY_COMPATIBILITY: ${{ needs.prepare.outputs.source_identity_compatibility }}
+          CANDIDATE_API_DIGEST: ${{ needs.verify-rollback-attestation.outputs.api_image }}
+          SOURCE_IDENTITY_COMPATIBILITY: false
         run: |
           set -euo pipefail
           docker pull "$API_CANDIDATE_IMAGE" >/dev/null
@@ -330,26 +282,90 @@ jobs:
               exit 1
               ;;
           esac
+          routing_contract="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.listingkit.image-agent-routing" }}' "$API_CANDIDATE_IMAGE")"
+          if [[ "$routing_contract" != "image-agent-v3-new-starts-v1" ]]; then
+            echo "::error::API candidate is not eligible for production v3 new-run routing; use an image built with the reviewed routing contract"
+            exit 1
+          fi
+
+      - name: Refresh API OIDC for credential preflight
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-credential-preflight.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-credential-preflight.kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Reject legacy invitation credentials in shared Secret
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shared_secret="listingkit-workbench-secret"
+          if ! shared_secret_json="$(kubectl -n ${{ env.K8S_NAMESPACE }} get secret "$shared_secret" -o json 2>&1)"; then
+            if grep -q "NotFound" <<<"$shared_secret_json"; then
+              echo "Shared Secret $shared_secret is absent; no legacy invitation credentials can be injected."
+              exit 0
+            fi
+            echo "::error::Could not inspect shared Secret for legacy invitation credentials: $shared_secret"
+            exit 1
+          fi
+          for key in \
+            TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN \
+            TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID; do
+            if jq -e --arg key "$key" '.data[$key] != null and .data[$key] != ""' <<<"$shared_secret_json" >/dev/null; then
+              echo "::error::Remove legacy $key from $shared_secret before deploying ListingKit invitations."
+              exit 1
+            fi
+          done
+
+      - name: Validate dedicated member invitation Secret
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        run: |
+          bash .workflow-tools/scripts/validate-listingkit-invitation-secret.sh ${{ env.K8S_NAMESPACE }}
+
+      - name: Refresh API OIDC for Product Listing schema gate
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-product-schema.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-product-schema.kubeconfig" >> "$GITHUB_ENV"
 
       - name: Migrate Product Listing API schema before ListingKit rollout
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
         shell: bash
         run: |
           set -euo pipefail
-          .workflow-tools/scripts/listingkit-schema-migrate-job.sh \
-            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/jobs/product-listing-api-schema-migrate-job.yaml \
+          .workflow-tools/scripts/listingkit-run-release-gate-deployment.sh \
             --namespace "$K8S_NAMESPACE" \
-            --image "$API_CANDIDATE_IMAGE"
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
+            --deployment product-listing-api-schema-migrate-runner \
+            --image "$API_CANDIDATE_IMAGE" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --timeout-seconds 900
+
+      - name: Refresh API OIDC for ListingKit schema gate
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-listingkit-schema.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-listingkit-schema.kubeconfig" >> "$GITHUB_ENV"
 
       - name: Migrate ListingKit schema before owner exception seeding and preflight
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
         shell: bash
         run: |
           set -euo pipefail
-          .workflow-tools/scripts/listingkit-schema-migrate-job.sh \
-            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml \
+          .workflow-tools/scripts/listingkit-run-release-gate-deployment.sh \
             --namespace "$K8S_NAMESPACE" \
-            --image "$API_CANDIDATE_IMAGE"
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
+            --deployment listingkit-schema-migrate-runner \
+            --image "$API_CANDIDATE_IMAGE" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --timeout-seconds 900
+
+      - name: Refresh API OIDC for identity preflight gate
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-identity-preflight.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-identity-preflight.kubeconfig" >> "$GITHUB_ENV"
 
       - name: Run identity preflight release gate
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
         shell: bash
         env:
           PREFLIGHT_RUNNER_DIGEST: ${{ needs.build-preflight-runner.outputs.runner_digest }}
@@ -358,14 +374,22 @@ jobs:
           source .workflow-tools/scripts/lib/listingkit-immutable-image.sh
           runner_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/task-processor-listingkit-identity-preflight"
           PREFLIGHT_RUNNER_IMAGE="$(listingkit_compose_immutable_image "$runner_repository" "$PREFLIGHT_RUNNER_DIGEST")"
-          .workflow-tools/scripts/listingkit-identity-preflight-job.sh \
-            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
+          .workflow-tools/scripts/listingkit-run-release-gate-deployment.sh \
             --namespace "$K8S_NAMESPACE" \
-            --image "$API_CANDIDATE_IMAGE" \
-            --runner-image "$PREFLIGHT_RUNNER_IMAGE"
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
+            --deployment listingkit-identity-preflight-runner \
+            --image "$PREFLIGHT_RUNNER_IMAGE" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --timeout-seconds 900
+
+      - name: Refresh API OIDC for identity cleanup and v2 worker mutation group
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-v2.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-v2.kubeconfig" >> "$GITHUB_ENV"
 
       - name: Remove deprecated ListingKit identity keys from shared Secret
-        if: ${{ steps.candidate-identity-compatibility.outputs.cleanup_legacy_identity == 'true' }}
+        if: ${{ needs.prepare.outputs.mode == 'normal' && steps.candidate-identity-compatibility.outputs.cleanup_legacy_identity == 'true' }}
         shell: bash
         run: |
           .workflow-tools/scripts/listingkit-clean-legacy-identity-secret.sh \
@@ -374,10 +398,79 @@ jobs:
             product-listing-api
 
       - name: Apply ListingKit runtime configuration for candidate
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} apply -f .workflow-tools/deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 
-      - name: Apply immutable API deployment
+      - name: Apply immutable image agent v2 compatibility worker deployment
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: |
+          .workflow-tools/scripts/listingkit-apply-image-agent-worker-deployment.sh \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-deployment.yaml \
+            --namespace "$K8S_NAMESPACE" \
+            --container image-agent-temporal-worker \
+            --image "$API_CANDIDATE_IMAGE"
+
+      - name: Restart image agent v2 compatibility worker Pods
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/image-agent-temporal-worker
+
+      - name: Wait for image agent v2 compatibility worker rollout
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/image-agent-temporal-worker --timeout=5m
+
+      - name: Refresh API OIDC for finite v3 canary gate
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-canary.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-canary.kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Run finite image agent v3 compatibility canary
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          .workflow-tools/scripts/listingkit-run-release-gate-deployment.sh \
+            --namespace "$K8S_NAMESPACE" \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/release-authority/listingkit-release-gate-runners.yaml \
+            --deployment image-agent-temporal-v3-canary-runner \
+            --image "$API_CANDIDATE_IMAGE" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --timeout-seconds 300
+
+      - name: Refresh API OIDC for v3 worker mutation group
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-v3.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-v3.kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Apply immutable image agent v3 recovery worker deployment
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: |
+          .workflow-tools/scripts/listingkit-apply-image-agent-worker-deployment.sh \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/base/image-agent-temporal-worker-v3-deployment.yaml \
+            --namespace "$K8S_NAMESPACE" \
+            --container image-agent-temporal-worker-v3 \
+            --image "$API_CANDIDATE_IMAGE"
+
+      - name: Restart image agent v3 recovery worker Pods
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/image-agent-temporal-worker-v3
+
+      - name: Wait for image agent v3 recovery worker rollout
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/image-agent-temporal-worker-v3 --timeout=5m
+
+      - name: Refresh API OIDC for API mutation group
+        shell: bash
+        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-rollout.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-rollout.kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Apply immutable API deployment after image agent compatibility gates
         shell: bash
         run: |
           .workflow-tools/scripts/listingkit-apply-api-deployment.sh \
@@ -385,18 +478,97 @@ jobs:
             --namespace "$K8S_NAMESPACE" \
             --image "$API_CANDIDATE_IMAGE"
 
-      - name: Restart API Pods for Secret changes
+      - name: Stamp API release identity and restart Pods
+        shell: bash
         run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} rollout restart deployment/product-listing-api
+          set -euo pipefail
+          if [[ ! "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::workflow run ID is not a positive integer"
+            exit 1
+          fi
+          if [[ ! "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::workflow run attempt is not a positive integer"
+            exit 1
+          fi
+          expected_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
+          if [[ ! "$API_CANDIDATE_IMAGE" =~ ^${expected_repository}@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::API candidate is not a digest-pinned image from the release repository"
+            exit 1
+          fi
+          release_patch="$(jq -cn \
+            --arg run_id_key "listingkit.sh/api-release-run-id" \
+            --arg run_attempt_key "listingkit.sh/api-release-run-attempt" \
+            --arg image_key "listingkit.sh/api-release-image" \
+            --arg routing_contract_key "listingkit.sh/image-agent-routing-contract" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg image "$API_CANDIDATE_IMAGE" \
+            --arg routing_contract "image-agent-v3-new-starts-v1" \
+            '{metadata:{annotations:{($run_id_key):$run_id,($run_attempt_key):$run_attempt,($image_key):$image,($routing_contract_key):$routing_contract}},spec:{template:{metadata:{annotations:{($run_id_key):$run_id,($run_attempt_key):$run_attempt,($image_key):$image,($routing_contract_key):$routing_contract}}}}}')"
+          kubectl -n "${{ env.K8S_NAMESPACE }}" patch deployment product-listing-api \
+            --type merge --patch "$release_patch"
 
       - name: Wait for API rollout
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/product-listing-api --timeout=5m
 
+      - name: Refresh API OIDC for ingress mutation group
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: bash .workflow-tools/scripts/listingkit-refresh-github-oidc-kubeconfig.sh --kubeconfig "$RUNNER_TEMP/listingkit-api-ingress.kubeconfig" --cluster-server "${{ vars.K8S_CLUSTER_SERVER }}" --cluster-ca-b64 "${{ vars.K8S_CLUSTER_CA_B64 }}" --audience api://listingkit-api-production --subject repo:${{ github.repository }}:environment:listingkit-api-production --repository "${{ github.repository }}" --environment listingkit-api-production --workflow-ref "$CANONICAL_WORKFLOW_REF" && echo "KUBECONFIG=$RUNNER_TEMP/listingkit-api-ingress.kubeconfig" >> "$GITHUB_ENV"
+
       - name: Apply production ListingKit SMS webhook ingress
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} apply -f .workflow-tools/deployments/kubernetes/listingkit-workbench/overlays/prod/patch-ingress.yaml
 
       - name: Show running API image
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} get deployment product-listing-api -o jsonpath='{.metadata.name}{" => "}{range .spec.template.spec.containers[*]}{.image}{end}{"\n"}'
+
+      - name: Emit ListingKit API release attestation
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="${{ needs.prepare.outputs.source_ref }}"
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::resolved source SHA is not an exact lowercase commit"
+            exit 1
+          fi
+          expected_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
+          if [[ ! "$API_CANDIDATE_IMAGE" =~ ^${expected_repository}@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::API candidate is not a digest-pinned image from the release repository"
+            exit 1
+          fi
+          if [[ ! "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::workflow run attempt is not a positive integer"
+            exit 1
+          fi
+          issued_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          mkdir -p release-attestation
+          jq -n \
+            --arg gate_version "listingkit-api-release-gate/v2" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow_name "ListingKit API Deploy" \
+            --arg workflow_ref "$CANONICAL_WORKFLOW_REF" \
+            --arg source_sha "$source_sha" \
+            --arg api_candidate_image "$API_CANDIDATE_IMAGE" \
+            --argjson api_workflow_run_id "$GITHUB_RUN_ID" \
+            --argjson api_workflow_run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg issued_at "$issued_at" \
+            --arg routing_contract "image-agent-v3-new-starts-v1" \
+            --arg worker_wire_contract "image-agent-workers-v2-v3" \
+            --arg worker_replay_contract "image-agent-replay-v2-v3" \
+            --arg schema_contract "listingkit-schema-additive-v1" \
+            '{gate_version:$gate_version,repository:$repository,workflow_name:$workflow_name,workflow_ref:$workflow_ref,source_sha:$source_sha,api_candidate_image:$api_candidate_image,api_workflow_run_id:$api_workflow_run_id,api_workflow_run_attempt:$api_workflow_run_attempt,issued_at:$issued_at,routing_contract:$routing_contract,worker_wire_contract:$worker_wire_contract,worker_replay_contract:$worker_replay_contract,schema_contract:$schema_contract}' \
+            > release-attestation/listingkit-api-release-attestation.json
+
+      - name: Upload ListingKit API release attestation
+        if: ${{ needs.prepare.outputs.mode == 'normal' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: listingkit-api-release-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release-attestation/listingkit-api-release-attestation.json
+          if-no-files-found: error
+          retention-days: 90

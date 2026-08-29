@@ -8,6 +8,7 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/watermark"
 	"task-processor/internal/productenrich"
+	productimage "task-processor/internal/productimage"
 )
 
 type RuntimeBuildInput struct {
@@ -20,6 +21,7 @@ type RuntimeBuildInput struct {
 	InputParser          productenrich.InputParser
 	Understanding        productenrich.ProductUnderstanding
 	ImageWorkDir         string
+	SourceImageFetcher   productimage.SourceImageFetcher
 }
 
 type BuildModuleInput struct {
@@ -31,6 +33,7 @@ type BuildModuleInput struct {
 	InputParser          productenrich.InputParser
 	Understanding        productenrich.ProductUnderstanding
 	ImageWorkDir         string
+	SourceImageFetcher   productimage.SourceImageFetcher
 	Options              productImageRuntimeOptions
 }
 
@@ -53,10 +56,10 @@ func newProductImageRuntimeOptions(cfg *config.Config) productImageRuntimeOption
 		return productImageRuntimeOptions{}
 	}
 	return productImageRuntimeOptions{
-		database:                cfg.Database,
-		watermark:               cfg.Watermark,
-		cleanupTemporaryFiles:   cfg.ProductImage.Lifecycle.CleanupTemporaryFiles,
-		reuseExistingAssets:     cfg.ProductImage.Lifecycle.ReuseExistingAssets,
+		database:              cfg.Database,
+		watermark:             cfg.Watermark,
+		cleanupTemporaryFiles: cfg.ProductImage.Lifecycle.CleanupTemporaryFiles,
+		reuseExistingAssets:   cfg.ProductImage.Lifecycle.ReuseExistingAssets,
 		// Governed model stages enforce identity for allowlisted tenants. Task
 		// creation remains compatible with legacy callers that never enter that path.
 		requireAIIdentity:       false,
@@ -79,6 +82,7 @@ func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
 		InputParser:          input.InputParser,
 		Understanding:        input.Understanding,
 		ImageWorkDir:         input.ImageWorkDir,
+		SourceImageFetcher:   input.SourceImageFetcher,
 		Options:              newProductImageRuntimeOptions(input.Config),
 	})
 }

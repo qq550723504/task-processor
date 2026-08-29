@@ -15,11 +15,11 @@ type openAICompatibleFaithfulEditor struct {
 	client  imageEditClient
 }
 
-func NewOpenAICompatibleFaithfulEditor(workDir string, client openAICompatibleImageGenerator) (FaithfulEditor, error) {
+func NewOpenAICompatibleFaithfulEditor(workDir string, client openAICompatibleImageGenerator, options ...RealImageComponentOptions) (FaithfulEditor, error) {
 	if client == nil {
 		return nil, fmt.Errorf("openai-compatible image client is not configured")
 	}
-	rt, err := newRealImageComponents(workDir)
+	rt, err := newRealImageComponents(workDir, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func (e *openAICompatibleFaithfulEditor) edit(ctx context.Context, req *Faithful
 	if req == nil || req.SourceAsset == nil {
 		return nil, fmt.Errorf("faithful edit request requires source asset")
 	}
-	data, filename, err := e.runtime.loadAssetBytes(req.SourceAsset)
+	data, filename, err := e.runtime.loadAssetBytes(ctx, req.SourceAsset)
 	if err != nil {
 		return nil, err
 	}

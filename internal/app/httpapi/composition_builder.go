@@ -21,6 +21,7 @@ type httpFeatureCompositionBuilder struct {
 	buildTaskRPC       taskRPCModuleBuilder
 	buildSDS           sdsModuleBuilder
 	buildSourceAccount sourceAccountRepositoryBuilder
+	buildImageAgent    imageAgentModuleBuilder
 }
 
 func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
@@ -35,6 +36,7 @@ func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 		buildTaskRPC:       buildTaskRPCModuleResult,
 		buildSDS:           buildSDSModuleResult,
 		buildSourceAccount: buildSourceAccountRepository,
+		buildImageAgent:    buildImageAgentModuleResult,
 	}
 }
 
@@ -119,6 +121,21 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	}
 	if composition.listingKitModule != nil {
 		composition.localAgentModule = localagenthttpapi.BuildModule(localagent.NewService(nil))
+	}
+	if b.buildImageAgent != nil {
+		done = timer.phase("buildImageAgentModule")
+		imageAgentModule, imageAgentErr := b.buildImageAgent(deps.shared.cfg, logger)
+		done()
+		if imageAgentErr != nil {
+			return composition, imageAgentErr
+		}
+		composition.imageAgentModule = imageAgentModule
+		if imageAgentModule != nil {
+			deps.addClosers(imageAgentModule.Closers...)
+		}
+		if workspaceErr := attachImageAgentWorkspace(composition.listingKitModule, imageAgentModule); workspaceErr != nil {
+			return composition, workspaceErr
+		}
 	}
 
 	done = timer.phase("buildSupportModules")

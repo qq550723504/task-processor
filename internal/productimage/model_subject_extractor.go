@@ -15,6 +15,14 @@ func NewModelSubjectExtractor(editor FaithfulEditor) SubjectExtractor {
 	return &modelSubjectExtractor{editor: editor}
 }
 
+func (e *modelSubjectExtractor) QuoteUsage(ctx context.Context, request CapabilityUsageQuoteRequest) (CapabilityUsageQuote, error) {
+	quoter, ok := e.editor.(CapabilityUsageQuoter)
+	if !ok || quoter == nil {
+		return CapabilityUsageQuote{}, ErrCapabilityUsageQuoteUnavailable
+	}
+	return quoter.QuoteUsage(ctx, request)
+}
+
 func (e *modelSubjectExtractor) Extract(ctx context.Context, imageURL string, context *ProductContext) (*ImageAsset, error) {
 	if e.editor == nil {
 		return nil, fmt.Errorf("faithful editor is not configured")

@@ -7,11 +7,12 @@ import (
 )
 
 type DefaultModelProviderConfig struct {
-	LLMManager      productenrich.LLMManager
-	WorkDir         string
-	Segmenter       SegmentationClient
-	WhiteBackground WhiteBackgroundClient
-	SceneGenerator  SceneGenerationClient
+	LLMManager         productenrich.LLMManager
+	WorkDir            string
+	Segmenter          SegmentationClient
+	WhiteBackground    WhiteBackgroundClient
+	SceneGenerator     SceneGenerationClient
+	SourceImageFetcher SourceImageFetcher
 }
 
 type defaultModelProvider struct {
@@ -36,9 +37,10 @@ func NewDefaultModelProvider(config DefaultModelProviderConfig) (ProductImageMod
 	var faithfulEditor FaithfulEditor
 	if config.Segmenter != nil || config.WhiteBackground != nil {
 		editor, err := NewRemoteFaithfulEditor(RemoteFaithfulEditorConfig{
-			WorkDir:         config.WorkDir,
-			Segmenter:       config.Segmenter,
-			WhiteBackground: config.WhiteBackground,
+			WorkDir:            config.WorkDir,
+			Segmenter:          config.Segmenter,
+			WhiteBackground:    config.WhiteBackground,
+			SourceImageFetcher: config.SourceImageFetcher,
 		})
 		if err != nil {
 			return nil, err
@@ -58,8 +60,9 @@ func NewDefaultModelProvider(config DefaultModelProviderConfig) (ProductImageMod
 	var sceneGenerator SceneGenerator
 	if config.SceneGenerator != nil {
 		generator, err := NewRemoteSceneGenerator(RemoteSceneGeneratorConfig{
-			WorkDir: config.WorkDir,
-			Client:  config.SceneGenerator,
+			WorkDir:            config.WorkDir,
+			Client:             config.SceneGenerator,
+			SourceImageFetcher: config.SourceImageFetcher,
 		})
 		if err != nil {
 			return nil, err

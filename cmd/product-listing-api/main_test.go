@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -36,10 +38,11 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	client := fixture.authenticatedClient()
 
 	options := httpapi.Options{
-		ConfigPath:      "../../config/config-test.yaml",
-		Port:            port,
-		ShutdownSignal:  shutdownCh,
-		ShutdownTimeout: time.Second,
+		ConfigPath:         "../../config/config-test.yaml",
+		Port:               port,
+		ShutdownSignal:     shutdownCh,
+		ShutdownTimeout:    time.Second,
+		SourceImageFetcher: fixture.sourceImageFetcher(),
 	}
 
 	resultCh := make(chan error, 1)
@@ -163,9 +166,10 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	client := fixture.authenticatedClient()
 
 	options := httpapi.Options{
-		ConfigPath:     "../../config/config-test.yaml",
-		Port:           port,
-		ShutdownSignal: shutdownCh,
+		ConfigPath:         "../../config/config-test.yaml",
+		Port:               port,
+		ShutdownSignal:     shutdownCh,
+		SourceImageFetcher: fixture.sourceImageFetcher(),
 	}
 
 	resultCh := make(chan error, 1)
@@ -414,6 +418,31 @@ func (f *productListingAPITestFixture) authenticatedClient() *http.Client {
 
 func (f *productListingAPITestFixture) imageURL(name string) string {
 	return f.server.URL + "/images/" + name
+}
+
+func (f *productListingAPITestFixture) sourceImageFetcher() productimage.SourceImageFetcher {
+	return func(ctx context.Context, imageURL string, maxBytes int64) ([]byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := f.server.Client().Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return nil, fmt.Errorf("test image response status %d", resp.StatusCode)
+		}
+		data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(data)) > maxBytes {
+			return nil, fmt.Errorf("test image exceeds %d bytes", maxBytes)
+		}
+		return data, nil
+	}
 }
 
 func (f *productListingAPITestFixture) recordUnhandled(request string) {

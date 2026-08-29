@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { type ReactNode, useState } from "react";
 
 import { RecoverySummaryCard } from "@/components/listingkit/review/recovery-summary-card";
 import { ResolvedActionCard } from "@/components/listingkit/review/resolved-action-card";
@@ -11,6 +11,7 @@ import { SheinFlowNav } from "@/components/listingkit/shein/shein-flow-nav";
 import { TaskRevisionHistoryPanel } from "@/components/listingkit/tasks/task-revision-history-panel";
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { TaskProgressNotice } from "@/components/listingkit/tasks/task-progress-notice";
+import { ImageAgentLaunchPanel } from "@/components/listingkit/image-agent/image-agent-launch-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,6 +35,7 @@ import { SDSRepairPanel } from "@/components/listingkit/workspace/sds-repair-pan
 import { SheinAdvancedReviewDetails } from "@/components/listingkit/workspace/shein-advanced-review-details";
 import {
   SheinFinalReviewWorkspaceView,
+  WorkspaceAgentSurface,
   WorkspaceReviewView,
 } from "@/components/listingkit/workspace/workspace-screen-views";
 import {
@@ -85,8 +87,15 @@ function WorkspaceScreenContent({
   taskId: string;
   searchParams: ReturnType<typeof useSearchParams>;
 }) {
+	const router = useRouter();
   const routeSearch = searchParams.toString();
   const routeParams = new URLSearchParams(routeSearch);
+  const requestedImageAgentRunId = routeParams.get("image_agent_run_id")?.trim();
+  const imageAgentRunId =
+    requestedImageAgentRunId &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestedImageAgentRunId)
+      ? requestedImageAgentRunId
+      : undefined;
   const routeHistorySelected = routeParams.get("workspace_view") === "history";
   const routeNavigationState = {
     routeSearch,
@@ -216,6 +225,20 @@ function WorkspaceScreenContent({
   const refetchWorkspace = () =>
     Promise.all([preview.refetch(), session.refetch(), taskResult.refetch()]);
 
+  const withAgentSurface = (legacyPanel: ReactNode) =>
+    imageAgentRunId ? (
+      <WorkspaceAgentSurface context={{ taskId, runId: imageAgentRunId }}>
+        {legacyPanel}
+      </WorkspaceAgentSurface>
+    ) : (
+      legacyPanel
+    );
+	const handleImageAgentCreated = (runId: string) => {
+		const params = new URLSearchParams(routeSearch);
+		params.set("image_agent_run_id", runId);
+		router.replace(`/listing-kits/${taskId}/workspace?${params.toString()}`);
+	};
+
   const handleRunStandardProductTemporal = () => {
     layerAction.mutate({
       action_key: "run_standard_product_temporal",
@@ -235,15 +258,15 @@ function WorkspaceScreenContent({
   };
 
   if (preview.isLoading || session.isLoading) {
-    return <WorkspaceLoadingState />;
+    return withAgentSurface(<WorkspaceLoadingState />);
   }
 
   if (preview.isError || session.isError || taskResult.isError) {
-    return <WorkspaceLoadErrorState onRetry={refetchWorkspace} />;
+    return withAgentSurface(<WorkspaceLoadErrorState onRetry={refetchWorkspace} />);
   }
 
   if (!preview.data || !sessionData) {
-    return <WorkspacePendingDataState onRetry={refetchWorkspace} />;
+    return withAgentSurface(<WorkspacePendingDataState onRetry={refetchWorkspace} />);
   }
 
   const sheinAdvancedReviewDetails = sheinAdvancedReviewDetailsProps ? (
@@ -429,7 +452,7 @@ function WorkspaceScreenContent({
     </div>
   );
 
-  return (
+  return withAgentSurface(
     <div className="min-w-0 space-y-5 overflow-x-hidden">
       <ProductWorkspaceHeader
         layerActionsPending={layerAction.isPending}
@@ -486,6 +509,11 @@ function WorkspaceScreenContent({
         }
         actions={
           <div className="space-y-4">
+			{imageAgentRunId ? null : <ImageAgentLaunchPanel
+				taskId={taskId}
+				targetPlatform={selectedPlatform}
+				onCreated={handleImageAgentCreated}
+			/>}
             <TaskProgressNotice task={taskResult.data} />
             <Card className="p-4">
               <details>
@@ -527,7 +555,7 @@ function WorkspaceScreenContent({
           </div>
         }
       />
-    </div>
+    </div>,
   );
 }
 

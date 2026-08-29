@@ -12,6 +12,9 @@ func applySceneGenerationMetadata(metadata map[string]string, options scenePromp
 	setGenerationMetadataValue(metadata, "props_level", options.PropsLevel)
 	setGenerationMetadataValue(metadata, "audience_hint", options.AudienceHint)
 	setGenerationMetadataValue(metadata, "custom_scene_hint", options.CustomSceneHint)
+	setGenerationMetadataValue(metadata, "slot_role", options.SlotRole)
+	setGenerationMetadataValue(metadata, "slot_brief", options.SlotBrief)
+	setGenerationMetadataValue(metadata, "style_reference_ids", options.StyleReferenceIDs)
 	return metadata
 }
 

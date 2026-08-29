@@ -265,6 +265,8 @@ func TestLoadFromBytes_AppliesProductImagePublisherEnvironmentOverrides(t *testi
 	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID", "local-access")
 	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY", "local-secret")
 	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE", "false")
+	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE", "cos")
+	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY", "true")
 
 	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
 		"openai:",
@@ -283,6 +285,8 @@ func TestLoadFromBytes_AppliesProductImagePublisherEnvironmentOverrides(t *testi
 		"      accessKeyID: oss-access",
 		"      secretAccessKey: oss-secret",
 		"      usePathStyle: true",
+		"      artifactMode: aws",
+		"      cosImmutableNonVersionedBucketPolicy: false",
 	}, "\n")))
 	require.NoError(t, err)
 
@@ -294,6 +298,8 @@ func TestLoadFromBytes_AppliesProductImagePublisherEnvironmentOverrides(t *testi
 	assert.Equal(t, "local-access", cfg.ProductImage.Publisher.S3.AccessKeyID)
 	assert.Equal(t, "local-secret", cfg.ProductImage.Publisher.S3.SecretAccessKey)
 	assert.False(t, cfg.ProductImage.Publisher.S3.UsePathStyle)
+	assert.Equal(t, "cos", cfg.ProductImage.Publisher.S3.ArtifactMode)
+	assert.True(t, cfg.ProductImage.Publisher.S3.COSImmutableNonVersionedBucketPolicy)
 }
 
 func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {

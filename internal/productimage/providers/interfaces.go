@@ -6,6 +6,33 @@ import (
 	"task-processor/internal/productimage/domain"
 )
 
+// CapabilityUsageQuote is a conservative, provider-neutral authorization for
+// one ProductImage capability invocation. Route fields bind a later governed
+// invocation to the exact provider configuration that was quoted.
+type CapabilityUsageQuote struct {
+	Operation            string
+	Provider             string
+	Model                string
+	RoutingKey           string
+	CredentialReference  string
+	ConfigurationVersion string
+	PricingVersion       string
+	Fingerprint          string
+	MaximumOutputs       int64
+	MaximumModelCalls    int64
+	MaximumCostMicros    int64
+	CostUpperBoundKnown  bool
+}
+
+type CapabilityUsageQuoteRequest struct {
+	Operation        string
+	InputFingerprint string
+}
+
+type CapabilityUsageQuoter interface {
+	QuoteUsage(context.Context, CapabilityUsageQuoteRequest) (CapabilityUsageQuote, error)
+}
+
 type SourceParser interface {
 	Parse(ctx context.Context, req *domain.ImageProcessRequest) (*domain.SourceBundle, error)
 }

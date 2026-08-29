@@ -49,6 +49,18 @@ func TestNewPublicImageHTTPClientStopsLongRedirectChains(t *testing.T) {
 	}
 }
 
+func TestNewPublicImageHTTPClientRejectsPrivateRedirectTargets(t *testing.T) {
+	client := NewPublicImageHTTPClient()
+	request, err := http.NewRequest(http.MethodGet, "https://127.0.0.1/image", nil)
+	if err != nil {
+		t.Fatalf("http.NewRequest() error = %v", err)
+	}
+
+	if err := client.CheckRedirect(request, nil); err == nil || !strings.Contains(err.Error(), "public https url is required") {
+		t.Fatalf("CheckRedirect() error = %v, want private target rejected", err)
+	}
+}
+
 func TestResolvePublicImageHostIPsHonorsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

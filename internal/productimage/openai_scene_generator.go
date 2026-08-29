@@ -13,11 +13,11 @@ type openAICompatibleSceneGenerator struct {
 	client  imageEditClient
 }
 
-func NewOpenAICompatibleSceneGenerator(workDir string, client openAICompatibleImageGenerator) (SceneGenerator, error) {
+func NewOpenAICompatibleSceneGenerator(workDir string, client openAICompatibleImageGenerator, options ...RealImageComponentOptions) (SceneGenerator, error) {
 	if client == nil {
 		return nil, fmt.Errorf("openai-compatible image client is not configured")
 	}
-	rt, err := newRealImageComponents(workDir)
+	rt, err := newRealImageComponents(workDir, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func (g *openAICompatibleSceneGenerator) GenerateSceneWithRoute(ctx context.Cont
 	if req == nil || req.SourceAsset == nil {
 		return nil, fmt.Errorf("scene generation request requires source asset")
 	}
-	data, filename, err := g.runtime.loadAssetBytes(req.SourceAsset)
+	data, filename, err := g.runtime.loadAssetBytes(ctx, req.SourceAsset)
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +50,7 @@ func (g *openAICompatibleSceneGenerator) GenerateSceneWithRoute(ctx context.Cont
 		Prompt:         resolvedPrompt.Text,
 		Image:          data,
 		ImageURL:       editableAssetURL(req.SourceAsset),
+		ImageURLs:      styleReferenceURLs(req.ProductContext),
 		ResponseFormat: "b64_json",
 		N:              1,
 		Size:           "auto",
@@ -155,22 +156,47 @@ func buildSceneGenerationResolvedPrompt(req *SceneGenerationRequest) resolvedPro
 	}
 	base += " Produce a premium marketplace-ready gallery image with clean composition and no overlaid text."
 	vars := map[string]any{
-		"product_type":      productType,
-		"title":             title,
-		"scene_intent":      strings.TrimSpace(req.SceneIntent),
-		"scene_category":    options.Category,
-		"scene_style":       options.SceneStyle,
-		"background_tone":   options.BackgroundTone,
-		"composition":       options.Composition,
-		"props_level":       options.PropsLevel,
-		"audience_hint":     options.AudienceHint,
-		"custom_scene_hint": options.CustomSceneHint,
+		"product_type":        productType,
+		"title":               title,
+		"scene_intent":        strings.TrimSpace(req.SceneIntent),
+		"scene_category":      options.Category,
+		"scene_style":         options.SceneStyle,
+		"background_tone":     options.BackgroundTone,
+		"composition":         options.Composition,
+		"props_level":         options.PropsLevel,
+		"audience_hint":       options.AudienceHint,
+		"custom_scene_hint":   options.CustomSceneHint,
+		"slot_role":           options.SlotRole,
+		"slot_brief":          options.SlotBrief,
+		"style_reference_ids": options.StyleReferenceIDs,
 	}
 	resolved := resolveSceneGenerationPrompt(req, vars, base, options)
 	if strings.TrimSpace(resolved.Text) == "" {
 		resolved.Text = base
 	}
+	resolved.Text = appendControlledScenePromptSuffix(resolved.Text, options)
 	return resolved
+}
+
+func appendControlledScenePromptSuffix(rendered string, options scenePromptOptions) string {
+	suffix := ""
+	if role := strings.TrimSpace(options.SlotRole); role != "" {
+		suffix += " Slot role: " + role + "."
+	}
+	if brief := strings.TrimSpace(options.SlotBrief); brief != "" {
+		suffix += " Slot brief: " + brief + "."
+	}
+	if styleReferences := strings.TrimSpace(options.StyleReferenceIDs); styleReferences != "" {
+		suffix += " Authorized style references: " + styleReferences + "."
+	}
+	return rendered + suffix
+}
+
+func styleReferenceURLs(context *ProductContext) []string {
+	if context == nil {
+		return nil
+	}
+	return append([]string(nil), context.StyleReferenceURLs...)
 }
 
 func resolveSceneGenerationPrompt(req *SceneGenerationRequest, vars map[string]any, fallback string, options scenePromptOptions) resolvedProductImagePrompt {

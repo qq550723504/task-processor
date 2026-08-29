@@ -1,0 +1,2 @@
+workflow:
+  uses: ./.github/workflows/unowned-release.yml

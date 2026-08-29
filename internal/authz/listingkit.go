@@ -15,6 +15,8 @@ const (
 	PermissionListingKitPlatformAdm = "listingkit.platform_admin"
 	PermissionProductSourcingWrite  = "product_sourcing.write"
 	PermissionLocalAgentWrite       = "local_agent.write"
+	PermissionImageAgentRead        = "listingkit.image_agent.read"
+	PermissionImageAgentWrite       = "listingkit.image_agent.write"
 )
 
 const listingKitModel = `
@@ -58,20 +60,28 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"listingkit_operator", PermissionListingKitAdminWrite},
 		{"listingkit_operator", PermissionProductSourcingWrite},
 		{"listingkit_operator", PermissionLocalAgentWrite},
+		{"listingkit_operator", PermissionImageAgentRead},
+		{"listingkit_operator", PermissionImageAgentWrite},
 		{"listingkit_admin", PermissionListingKitAdminRead},
 		{"listingkit_admin", PermissionListingKitAdminWrite},
 		{"listingkit_admin", PermissionListingKitPromptWrite},
 		{"listingkit_admin", PermissionProductSourcingWrite},
 		{"listingkit_admin", PermissionLocalAgentWrite},
+		{"listingkit_admin", PermissionImageAgentRead},
+		{"listingkit_admin", PermissionImageAgentWrite},
 		{"platform_admin", PermissionListingKitAdminRead},
 		{"platform_admin", PermissionListingKitAdminWrite},
 		{"platform_admin", PermissionListingKitPromptWrite},
 		{"platform_admin", PermissionListingKitPlatformAdm},
 		{"platform_admin", PermissionProductSourcingWrite},
 		{"platform_admin", PermissionLocalAgentWrite},
+		{"platform_admin", PermissionImageAgentRead},
+		{"platform_admin", PermissionImageAgentWrite},
 		{"admin", PermissionListingKitPlatformAdm},
 		{"admin", PermissionListingKitPromptWrite},
 		{"admin", PermissionLocalAgentWrite},
+		{"admin", PermissionImageAgentRead},
+		{"admin", PermissionImageAgentWrite},
 	} {
 		if _, err := enforcer.AddPolicy(policy); err != nil {
 			return nil, err
@@ -88,6 +98,12 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		if _, err := enforcer.AddPolicy(role, PermissionLocalAgentWrite); err != nil {
 			return nil, err
 		}
+		if _, err := enforcer.AddPolicy(role, PermissionImageAgentRead); err != nil {
+			return nil, err
+		}
+		if _, err := enforcer.AddPolicy(role, PermissionImageAgentWrite); err != nil {
+			return nil, err
+		}
 	}
 	for _, userID := range normalizeUnique(platformAdminUsers) {
 		subject := userSubject(userID)
@@ -98,6 +114,12 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 			return nil, err
 		}
 		if _, err := enforcer.AddPolicy(subject, PermissionLocalAgentWrite); err != nil {
+			return nil, err
+		}
+		if _, err := enforcer.AddPolicy(subject, PermissionImageAgentRead); err != nil {
+			return nil, err
+		}
+		if _, err := enforcer.AddPolicy(subject, PermissionImageAgentWrite); err != nil {
 			return nil, err
 		}
 	}

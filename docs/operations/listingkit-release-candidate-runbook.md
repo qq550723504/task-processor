@@ -20,6 +20,7 @@ tag); never use `latest` as the release or rollback target.
 | API image | `docker.io/xuwei190/task-processor-product-listing-api:<tag>` |
 | UI image | `docker.io/xuwei190/task-processor-listingkit-ui:<tag>` |
 | API workflow run |  |
+| API workflow attempt |  |
 | UI workflow run |  |
 | Operator / approver |  |
 
@@ -52,8 +53,12 @@ tag); never use `latest` as the release or rollback target.
    kubectl -n task-processor get deployment product-listing-api -o wide
    ```
 
-4. Run **ListingKit UI Deploy** against the same `source_ref` and immutable
-   `image_tag`. Its tag trigger is `listingkit-ui-v*`.
+4. Let the successful API execution trigger **ListingKit UI Deploy**
+   automatically. For an explicit manual production gate, supply both the API
+   execution's `release_gate_run_id` and `release_gate_run_attempt`. The UI
+   workflow downloads only that attempt-bound attestation and checks out its
+   exact source SHA. A `listingkit-ui-v*` tag may build/push only and is not a
+   production deployment trigger.
 5. Wait for the UI rollout and record its image:
 
    ```powershell
@@ -94,14 +99,15 @@ do not put that token in this document or in a command history.
 If rollout or smoke validation fails, stop further customer enablement and
 record the failure before acting.
 
-1. Roll back API and/or UI using their respective GitHub Actions workflow with
-   the previously recorded immutable image tag.
+1. Run **ListingKit API Deploy** with the previously recorded immutable API
+   digest, then run **ListingKit UI Deploy** with that successful API
+   execution's exact `release_gate_run_id` and `release_gate_run_attempt`.
 2. Wait for the affected rollout and rerun the liveness/readiness probes.
 3. For a schema or data incompatibility, use the approved roll-forward or
    restore procedure. Do not attempt an unreviewed direct database rollback.
 4. Attach the failed run, deployed tags, probe results, task/attempt IDs, and
    recovery decision to the validation record.
 
-The workstation `kubectl set image` procedure remains an emergency-only path;
-after using it, restore the workflow-driven release history with a normal
-deployment run.
+There is no supported workstation production mutation fallback. If GitHub
+Actions is unavailable, pause release/rollback mutation until the gated API/UI
+workflow path is restored; workstation direct apply is non-production only.

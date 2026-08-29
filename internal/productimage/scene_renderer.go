@@ -13,19 +13,23 @@ type localSceneRenderer struct {
 	runtime *realImageComponents
 }
 
-func NewDefaultSceneRenderer(workDir string) (SceneRenderer, error) {
-	rt, err := newRealImageComponents(workDir)
+func NewDefaultSceneRenderer(workDir string, options ...RealImageComponentOptions) (SceneRenderer, error) {
+	rt, err := newRealImageComponents(workDir, options...)
 	if err != nil {
 		return nil, err
 	}
 	return &localSceneRenderer{runtime: rt}, nil
 }
 
+func (*localSceneRenderer) QuoteUsage(_ context.Context, request CapabilityUsageQuoteRequest) (CapabilityUsageQuote, error) {
+	return localCapabilityUsageQuote(request, 1), nil
+}
+
 func (r *localSceneRenderer) Render(ctx context.Context, asset *ImageAsset, productContext *ProductContext) ([]ImageAsset, error) {
 	if asset == nil {
 		return nil, fmt.Errorf("asset cannot be nil")
 	}
-	data, sourceName, err := r.runtime.loadAssetBytes(asset)
+	data, sourceName, err := r.runtime.loadAssetBytes(ctx, asset)
 	if err != nil {
 		return nil, err
 	}

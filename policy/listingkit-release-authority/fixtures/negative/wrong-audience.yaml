@@ -1,0 +1,2 @@
+identity: {audience: api://listingkit-api-production}
+workflow: {audience: api://listingkit-ui-production}

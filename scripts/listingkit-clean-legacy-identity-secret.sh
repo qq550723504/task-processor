@@ -5,6 +5,20 @@ namespace="${1:?usage: listingkit-clean-legacy-identity-secret.sh <namespace> [s
 secret="${2:-listingkit-workbench-secret}"
 deployment="${3:-product-listing-api}"
 
+if [[ "${namespace,,}" == "task-processor" ]]; then
+  # Misuse guard only: these caller-controlled variables are not authentication.
+  # Production ownership is enforced by the supported-entry inventory and the
+  # exact-run/attempt gates in listingkit-deploy.yml.
+  if [[ "${GITHUB_ACTIONS:-}" != "true" ||
+    "${GITHUB_JOB:-}" != "deploy-api" ||
+    ! "${GITHUB_WORKFLOW_REF:-}" =~ /\.github/workflows/listingkit-deploy\.yml@ ||
+    ! "${GITHUB_RUN_ID:-}" =~ ^[1-9][0-9]*$ ||
+    ! "${GITHUB_RUN_ATTEMPT:-}" =~ ^[1-9][0-9]*$ ]]; then
+    printf '%s\n' 'production identity cleanup is internal to the exact ListingKit API Deploy run and attempt' >&2
+    exit 2
+  fi
+fi
+
 if [[ ! "$deployment" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
   printf 'deployment name must be a DNS label: %s\n' "$deployment" >&2
   exit 2

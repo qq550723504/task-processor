@@ -3,6 +3,13 @@ package productimage
 import "strings"
 
 func applySceneOptionsToProductContext(context *ProductContext, req *ImageProcessRequest) *ProductContext {
+	return ApplySceneOptionsToProductContext(context, req)
+}
+
+// ApplySceneOptionsToProductContext adds the typed scene options to the
+// renderer context. It is exported for callers that execute one ProductImage
+// capability directly instead of the compatibility pipeline.
+func ApplySceneOptionsToProductContext(context *ProductContext, req *ImageProcessRequest) *ProductContext {
 	if req == nil {
 		return context
 	}
@@ -23,6 +30,9 @@ func applySceneOptionsToProductContext(context *ProductContext, req *ImageProces
 	setSceneContextAttribute(context.Attributes, "props_level", req.Scene.PropsLevel)
 	setSceneContextAttribute(context.Attributes, "audience_hint", req.Scene.AudienceHint)
 	setSceneContextAttribute(context.Attributes, "custom_scene_hint", req.Scene.CustomSceneHint)
+	setSceneContextAttribute(context.Attributes, "slot_role", req.Scene.SlotRole)
+	setSceneContextAttribute(context.Attributes, "slot_brief", req.Scene.SlotBrief)
+	setSceneContextAttribute(context.Attributes, "style_reference_ids", strings.Join(normalizedSceneStyleReferenceIDs(req.Scene.StyleReferenceIDs), ","))
 	return context
 }
 

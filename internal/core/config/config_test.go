@@ -204,6 +204,8 @@ func TestConfigBuildIncludesProductImagePublisherS3Config(t *testing.T) {
 	v.Set("productimage.publisher.s3.accessKeyID", "test-access-key")
 	v.Set("productimage.publisher.s3.secretAccessKey", "test-secret-key")
 	v.Set("productimage.publisher.s3.usePathStyle", true)
+	v.Set("productimage.publisher.s3.artifactMode", "aws")
+	v.Set("productimage.publisher.s3.cosImmutableNonVersionedBucketPolicy", true)
 
 	cfg := BuildConfig(v)
 
@@ -215,6 +217,31 @@ func TestConfigBuildIncludesProductImagePublisherS3Config(t *testing.T) {
 	assert.Equal(t, "test-access-key", cfg.ProductImage.Publisher.S3.AccessKeyID)
 	assert.Equal(t, "test-secret-key", cfg.ProductImage.Publisher.S3.SecretAccessKey)
 	assert.True(t, cfg.ProductImage.Publisher.S3.UsePathStyle)
+	assert.Equal(t, "aws", cfg.ProductImage.Publisher.S3.ArtifactMode)
+	assert.True(t, cfg.ProductImage.Publisher.S3.COSImmutableNonVersionedBucketPolicy)
+}
+
+func TestLoadFromBytesIncludesProductImageArtifactStorageCapabilities(t *testing.T) {
+	cfg, err := LoadFromBytes([]byte(`
+openai:
+  apiKey: "test-key"
+productimage:
+  publisher:
+    s3:
+      artifactMode: cos
+      cosImmutableNonVersionedBucketPolicy: true
+`))
+	require.NoError(t, err)
+
+	assert.Equal(t, "cos", cfg.ProductImage.Publisher.S3.ArtifactMode)
+	assert.True(t, cfg.ProductImage.Publisher.S3.COSImmutableNonVersionedBucketPolicy)
+}
+
+func TestProductImageArtifactStorageCapabilitiesHaveNoUnsafeDefaults(t *testing.T) {
+	cfg := BuildConfig(viper.New())
+
+	assert.Empty(t, cfg.ProductImage.Publisher.S3.ArtifactMode)
+	assert.False(t, cfg.ProductImage.Publisher.S3.COSImmutableNonVersionedBucketPolicy)
 }
 
 func TestConfigBuildIncludesDebugConfig(t *testing.T) {

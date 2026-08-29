@@ -46,6 +46,24 @@ Describe "build-push-deploy-listingkit-workbench release gate" {
             $commandLog.Add("kubectl " + ($args -join " "))
             $global:LASTEXITCODE = 0
         }
+
+        function global:git {
+            $commandLog.Add("git " + ($args -join " "))
+            if ($args[0] -eq "rev-parse") {
+                Write-Output "deadbeef"
+            }
+            $global:LASTEXITCODE = 0
+        }
+
+        function global:go {
+            $commandLog.Add("go " + ($args -join " "))
+            $global:LASTEXITCODE = 0
+        }
+
+        function global:npm {
+            $commandLog.Add("npm " + ($args -join " "))
+            $global:LASTEXITCODE = 0
+        }
     }
 
     AfterEach {
@@ -54,6 +72,21 @@ Describe "build-push-deploy-listingkit-workbench release gate" {
         Remove-Item Function:\global:docker -ErrorAction SilentlyContinue
         Remove-Item Function:\global:bash -ErrorAction SilentlyContinue
         Remove-Item Function:\global:kubectl -ErrorAction SilentlyContinue
+        Remove-Item Function:\global:git -ErrorAction SilentlyContinue
+        Remove-Item Function:\global:go -ErrorAction SilentlyContinue
+        Remove-Item Function:\global:npm -ErrorAction SilentlyContinue
+    }
+
+    It "rejects the default production apply before any external command" {
+        { & $scriptPath } | Should Throw "workstation deployment to production namespace task-processor is forbidden"
+
+        $commandLog.Count | Should Be 0
+    }
+
+    It "rejects an explicit production apply before any external command" {
+        { & $scriptPath -Tag "release-20260810" -Namespace "task-processor" -SkipTests } | Should Throw "workstation deployment to production namespace task-processor is forbidden"
+
+        $commandLog.Count | Should Be 0
     }
 
     It "skips every Kubernetes mutation when SkipApply is requested" {
@@ -63,7 +96,7 @@ Describe "build-push-deploy-listingkit-workbench release gate" {
     }
 
     It "runs preflight then immutable API and UI manifest applies" {
-        & $scriptPath -Tag "release-20260810" -SkipTests
+        & $scriptPath -Tag "release-20260810" -Namespace "listingkit-nonprod" -SkipTests
 
         $preflightIndex = $commandLog.FindIndex([Predicate[string]]{ param($command) $command -match "listingkit-identity-preflight-job\.sh" })
         $productSchemaIndex = $commandLog.FindIndex([Predicate[string]]{ param($command) $command -match "product-listing-api-schema-migrate-job\.yaml" })
@@ -87,7 +120,7 @@ Describe "build-push-deploy-listingkit-workbench release gate" {
     }
 
     It "preflights and applies the same custom-registry API image" {
-        & $scriptPath -Tag "release-20260810" -DockerHubUser "alternate-registry" -SkipTests
+        & $scriptPath -Tag "release-20260810" -Namespace "listingkit-nonprod" -DockerHubUser "alternate-registry" -SkipTests
 
         $preflightCommand = @($commandLog | Where-Object { $_ -match "listingkit-identity-preflight-job\.sh" })
         $apiApplyCommand = @($commandLog | Where-Object { $_ -match "listingkit-apply-api-deployment\.sh" })
@@ -100,7 +133,7 @@ Describe "build-push-deploy-listingkit-workbench release gate" {
     It "prevents every deployment mutation when the identity preflight fails" {
         $preflightExitCode = 1
 
-        { & $scriptPath -Tag "release-20260810" -SkipTests } | Should Throw "identity preflight failed"
+        { & $scriptPath -Tag "release-20260810" -Namespace "listingkit-nonprod" -SkipTests } | Should Throw "identity preflight failed"
 
         ($commandLog -join "`n") | Should Match "listingkit-identity-preflight-job\.sh"
         ($commandLog -join "`n") | Should Not Match "listingkit-apply-api-deployment\.sh"
@@ -110,7 +143,7 @@ Describe "build-push-deploy-listingkit-workbench release gate" {
     It "prevents UI or rollout mutations when immutable API apply fails" {
         $apiApplyExitCode = 1
 
-        { & $scriptPath -Tag "release-20260810" -SkipTests } | Should Throw "immutable API deployment apply failed"
+        { & $scriptPath -Tag "release-20260810" -Namespace "listingkit-nonprod" -SkipTests } | Should Throw "immutable API deployment apply failed"
 
         ($commandLog -join "`n") | Should Match "listingkit-identity-preflight-job\.sh"
         ($commandLog -join "`n") | Should Match "listingkit-apply-api-deployment\.sh"

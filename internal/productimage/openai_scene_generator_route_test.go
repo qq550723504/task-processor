@@ -48,6 +48,9 @@ func TestOpenAICompatibleSceneGeneratorAppliesRouteModel(t *testing.T) {
 
 	_, err = routed.GenerateSceneWithRoute(context.Background(), &SceneGenerationRequest{
 		SourceAsset: &ImageAsset{URL: sourcePath, Metadata: map[string]string{"local_path": sourcePath}},
+		ProductContext: &ProductContext{StyleReferenceURLs: []string{
+			"https://cdn.example.test/style-1.png", "https://cdn.example.test/style-2.png",
+		}},
 	}, SceneGenerationRoute{RoutingKey: "productimage-image", ModelID: "routed-model", CredentialReference: "image", ConfigurationVersion: "config-v1"})
 	if err != nil {
 		t.Fatalf("GenerateSceneWithRoute: %v", err)
@@ -57,6 +60,9 @@ func TestOpenAICompatibleSceneGeneratorAppliesRouteModel(t *testing.T) {
 	}
 	if client.lastSelection == nil || client.lastSelection.CredentialReference != "image" || client.lastSelection.ConfigurationVersion != "config-v1" {
 		t.Fatalf("route selection = %+v", client.lastSelection)
+	}
+	if got := client.lastRequest.ImageURLs; len(got) != 2 || got[0] != "https://cdn.example.test/style-1.png" || got[1] != "https://cdn.example.test/style-2.png" {
+		t.Fatalf("style reference URLs = %#v, want authorized image inputs", got)
 	}
 }
 

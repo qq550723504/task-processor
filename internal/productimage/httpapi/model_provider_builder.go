@@ -61,7 +61,8 @@ func remoteImageServiceOptionsFromConfig(cfg config.ProductImageModelConfig) *re
 	return &remoteImageServiceOptions{endpoint: cfg.Endpoint, apiKey: cfg.APIKey, timeout: cfg.Timeout}
 }
 
-func buildModelProvider(options modelProviderOptions, llmMgr productenrich.LLMManager, openaiMgr *openaiclient.Manager, imageWorkDir string) (productimage.ProductImageModelProvider, error) {
+func buildModelProvider(options modelProviderOptions, llmMgr productenrich.LLMManager, openaiMgr *openaiclient.Manager, imageWorkDir string, sourceImageFetcher productimage.SourceImageFetcher) (productimage.ProductImageModelProvider, error) {
+	componentOptions := productimage.RealImageComponentOptions{SourceImageFetcher: sourceImageFetcher}
 
 	var faithfulEditor productimage.FaithfulEditor
 	var sceneGenerator productimage.SceneGenerator
@@ -76,11 +77,11 @@ func buildModelProvider(options modelProviderOptions, llmMgr productenrich.LLMMa
 			}
 			return nil, fmt.Errorf("build productimage scene client %q: %w", productImageSceneClientName, err)
 		}
-		editor, err := productimage.NewOpenAICompatibleFaithfulEditor(imageWorkDir, imageClient)
+		editor, err := productimage.NewOpenAICompatibleFaithfulEditor(imageWorkDir, imageClient, componentOptions)
 		if err != nil {
 			return nil, err
 		}
-		generator, err := productimage.NewOpenAICompatibleSceneGenerator(imageWorkDir, imageClient)
+		generator, err := productimage.NewOpenAICompatibleSceneGenerator(imageWorkDir, imageClient, componentOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -94,11 +95,11 @@ func buildModelProvider(options modelProviderOptions, llmMgr productenrich.LLMMa
 			PollInterval: time.Second,
 			Timeout:      time.Duration(options.nanobanana.timeout) * time.Second,
 		})
-		editor, err := productimage.NewOpenAICompatibleFaithfulEditor(imageWorkDir, imageClient)
+		editor, err := productimage.NewOpenAICompatibleFaithfulEditor(imageWorkDir, imageClient, componentOptions)
 		if err != nil {
 			return nil, err
 		}
-		generator, err := productimage.NewOpenAICompatibleSceneGenerator(imageWorkDir, imageClient)
+		generator, err := productimage.NewOpenAICompatibleSceneGenerator(imageWorkDir, imageClient, componentOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -106,11 +107,11 @@ func buildModelProvider(options modelProviderOptions, llmMgr productenrich.LLMMa
 		sceneGenerator = generator
 	} else if openaiMgr != nil {
 		if imageClient, err := openaiMgr.GetImageClient("image"); err == nil && imageClient != nil {
-			editor, err := productimage.NewOpenAICompatibleFaithfulEditor(imageWorkDir, imageClient)
+			editor, err := productimage.NewOpenAICompatibleFaithfulEditor(imageWorkDir, imageClient, componentOptions)
 			if err != nil {
 				return nil, err
 			}
-			generator, err := productimage.NewOpenAICompatibleSceneGenerator(imageWorkDir, imageClient)
+			generator, err := productimage.NewOpenAICompatibleSceneGenerator(imageWorkDir, imageClient, componentOptions)
 			if err != nil {
 				return nil, err
 			}

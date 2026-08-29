@@ -69,6 +69,7 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 			InputParser:          deps.shared.inputParser,
 			Understanding:        deps.shared.understanding,
 			ImageWorkDir:         deps.shared.imageWorkDir,
+			SourceImageFetcher:   deps.shared.sourceImageFetcher,
 		})
 		if err != nil {
 			return features, err

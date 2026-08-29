@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: listingkit-ui-release
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["listingkit-ui-auth-config"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["listingkit-ui"]
+    verbs: ["get", "patch", "update", "watch"]

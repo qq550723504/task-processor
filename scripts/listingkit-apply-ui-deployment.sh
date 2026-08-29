@@ -7,4 +7,5 @@ exec "$script_dir/listingkit-apply-api-deployment.sh" \
   --container listingkit-ui \
   --deployment listingkit-ui \
   --enforce-env-from-configmap listingkit-workbench-config \
+  --enforce-env-from-configmap listingkit-ui-auth-config \
   "$@"

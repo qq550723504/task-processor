@@ -3775,6 +3775,7 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "amazonlisting", "api")) + string(os.PathSeparator):      {},
 		filepath.Clean(filepath.Join(root, "amazonlisting", "httpapi")) + string(os.PathSeparator):  {},
 		filepath.Clean(filepath.Join(root, "httproute")) + string(os.PathSeparator):                 {},
+		filepath.Clean(filepath.Join(root, "imageagent", "httpapi")) + string(os.PathSeparator):     {},
 		filepath.Clean(filepath.Join(root, "kernel", "module")) + string(os.PathSeparator):          {},
 		filepath.Clean(filepath.Join(root, "listingkit", "api")) + string(os.PathSeparator):         {},
 		filepath.Clean(filepath.Join(root, "listingkit", "httpapi")) + string(os.PathSeparator):     {},
@@ -4755,6 +4756,7 @@ func TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages(t *testing.T) 
 func TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "app", "runtime")) + string(os.PathSeparator):                  {},
+		filepath.Clean(filepath.Join("..", "internal", "imageagent", "temporal")) + string(os.PathSeparator):          {},
 		filepath.Clean(filepath.Join("..", "internal", "listingkit", "temporal")) + string(os.PathSeparator):          {},
 		filepath.Clean(filepath.Join("..", "internal", "listingkit", "task_temporal_submission_activity_support.go")): {},
 	}

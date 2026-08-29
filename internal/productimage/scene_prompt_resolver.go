@@ -7,15 +7,18 @@ import (
 )
 
 type scenePromptOptions struct {
-	Marketplace     string
-	Category        string
-	SceneStyle      string
-	BackgroundTone  string
-	Composition     string
-	PropsLevel      string
-	AudienceHint    string
-	CustomSceneHint string
-	DefaultsSource  string
+	Marketplace       string
+	Category          string
+	SceneStyle        string
+	BackgroundTone    string
+	Composition       string
+	PropsLevel        string
+	AudienceHint      string
+	CustomSceneHint   string
+	SlotRole          string
+	SlotBrief         string
+	StyleReferenceIDs string
+	DefaultsSource    string
 }
 
 func buildSceneGenerationRequest(asset *ImageAsset, context *ProductContext) *SceneGenerationRequest {
@@ -43,13 +46,16 @@ func resolveScenePromptOptions(req *SceneGenerationRequest, context *ProductCont
 	category := resolveSceneCategory(req, context)
 	preset := resolveScenePreset(marketplace, category)
 	explicit := &SceneGenerationOptions{
-		SceneCategory:   firstNonEmpty(trimmed(reqField(req, "scene_category")), contextAttribute(context, "scene_category")),
-		SceneStyle:      firstNonEmpty(trimmed(reqField(req, "scene_style")), contextAttribute(context, "scene_style")),
-		BackgroundTone:  firstNonEmpty(trimmed(reqField(req, "background_tone")), contextAttribute(context, "background_tone")),
-		Composition:     firstNonEmpty(trimmed(reqField(req, "composition")), contextAttribute(context, "composition")),
-		PropsLevel:      firstNonEmpty(trimmed(reqField(req, "props_level")), contextAttribute(context, "props_level")),
-		AudienceHint:    firstNonEmpty(trimmed(reqField(req, "audience_hint")), contextAttribute(context, "audience_hint")),
-		CustomSceneHint: firstNonEmpty(trimmed(reqField(req, "custom_scene_hint")), contextAttribute(context, "custom_scene_hint")),
+		SceneCategory:     firstNonEmpty(trimmed(reqField(req, "scene_category")), contextAttribute(context, "scene_category")),
+		SceneStyle:        firstNonEmpty(trimmed(reqField(req, "scene_style")), contextAttribute(context, "scene_style")),
+		BackgroundTone:    firstNonEmpty(trimmed(reqField(req, "background_tone")), contextAttribute(context, "background_tone")),
+		Composition:       firstNonEmpty(trimmed(reqField(req, "composition")), contextAttribute(context, "composition")),
+		PropsLevel:        firstNonEmpty(trimmed(reqField(req, "props_level")), contextAttribute(context, "props_level")),
+		AudienceHint:      firstNonEmpty(trimmed(reqField(req, "audience_hint")), contextAttribute(context, "audience_hint")),
+		CustomSceneHint:   firstNonEmpty(trimmed(reqField(req, "custom_scene_hint")), contextAttribute(context, "custom_scene_hint")),
+		SlotRole:          contextAttribute(context, "slot_role"),
+		SlotBrief:         contextAttribute(context, "slot_brief"),
+		StyleReferenceIDs: strings.Split(contextAttribute(context, "style_reference_ids"), ","),
 	}
 	merged := MergeSceneGenerationOptions(preset.Options, explicit)
 	if merged == nil {
@@ -63,15 +69,18 @@ func resolveScenePromptOptions(req *SceneGenerationRequest, context *ProductCont
 		defaultsSource = "explicit"
 	}
 	return scenePromptOptions{
-		Marketplace:     marketplace,
-		Category:        firstNonEmpty(merged.SceneCategory, category),
-		SceneStyle:      merged.SceneStyle,
-		BackgroundTone:  merged.BackgroundTone,
-		Composition:     merged.Composition,
-		PropsLevel:      merged.PropsLevel,
-		AudienceHint:    merged.AudienceHint,
-		CustomSceneHint: merged.CustomSceneHint,
-		DefaultsSource:  defaultsSource,
+		Marketplace:       marketplace,
+		Category:          firstNonEmpty(merged.SceneCategory, category),
+		SceneStyle:        merged.SceneStyle,
+		BackgroundTone:    merged.BackgroundTone,
+		Composition:       merged.Composition,
+		PropsLevel:        merged.PropsLevel,
+		AudienceHint:      merged.AudienceHint,
+		CustomSceneHint:   merged.CustomSceneHint,
+		SlotRole:          merged.SlotRole,
+		SlotBrief:         merged.SlotBrief,
+		StyleReferenceIDs: strings.Join(normalizedSceneStyleReferenceIDs(merged.StyleReferenceIDs), ","),
+		DefaultsSource:    defaultsSource,
 	}
 }
 

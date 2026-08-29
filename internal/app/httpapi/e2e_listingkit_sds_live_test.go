@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -56,11 +57,12 @@ func TestHTTPLiveE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 
 	deps := &runtimeDeps{
 		shared: &sharedRuntimeDeps{
-			cfg:           cfg,
-			llmMgr:        llmMgr,
-			inputParser:   inputParser,
-			understanding: understanding,
-			imageWorkDir:  cfg.ProductImage.WorkDir,
+			cfg:                cfg,
+			llmMgr:             llmMgr,
+			inputParser:        inputParser,
+			understanding:      understanding,
+			imageWorkDir:       cfg.ProductImage.WorkDir,
+			sourceImageFetcher: newE2ESourceImageFetcher(http.DefaultClient),
 		},
 		features: &featureRuntimeState{},
 	}

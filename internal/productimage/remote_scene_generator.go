@@ -6,8 +6,9 @@ import (
 )
 
 type RemoteSceneGeneratorConfig struct {
-	WorkDir string
-	Client  SceneGenerationClient
+	WorkDir            string
+	Client             SceneGenerationClient
+	SourceImageFetcher SourceImageFetcher
 }
 
 type remoteSceneGenerator struct {
@@ -19,7 +20,7 @@ func NewRemoteSceneGenerator(config RemoteSceneGeneratorConfig) (SceneGenerator,
 	if config.Client == nil {
 		return nil, fmt.Errorf("scene generation client is not configured")
 	}
-	rt, err := newRealImageComponents(config.WorkDir)
+	rt, err := newRealImageComponents(config.WorkDir, RealImageComponentOptions{SourceImageFetcher: config.SourceImageFetcher})
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +34,7 @@ func (g *remoteSceneGenerator) GenerateScene(ctx context.Context, req *SceneGene
 	if req == nil || req.SourceAsset == nil {
 		return nil, fmt.Errorf("scene generation request requires source asset")
 	}
-	data, filename, err := g.runtime.loadAssetBytes(req.SourceAsset)
+	data, filename, err := g.runtime.loadAssetBytes(ctx, req.SourceAsset)
 	if err != nil {
 		return nil, err
 	}
