@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"task-processor/internal/authidentity"
 )
 
 type Config struct {
@@ -39,6 +40,31 @@ type Result struct {
 	Roles             []RoleResult
 	RecommendedScopes []string
 	AllowedRoles      []string
+}
+
+type LocalApplicationConfig struct {
+	APIName                string
+	OIDCName               string
+	RedirectURIs           []string
+	PostLogoutRedirectURIs []string
+}
+
+type LocalApplicationResult struct {
+	ProjectID         string
+	APIAppID          string
+	APIClientID       string
+	APIClientSecret   string
+	OIDCAppID         string
+	OIDCClientID      string
+	OIDCClientSecret  string
+	RecommendedScopes []string
+}
+
+// String intentionally omits generated client secrets. Results are commonly
+// formatted by CLI callers and must remain safe to print.
+func (r LocalApplicationResult) String() string {
+	return fmt.Sprintf("LocalApplicationResult{ProjectID:%q APIAppID:%q APIClientID:%q OIDCAppID:%q OIDCClientID:%q RecommendedScopes:%v}",
+		r.ProjectID, r.APIAppID, r.APIClientID, r.OIDCAppID, r.OIDCClientID, r.RecommendedScopes)
 }
 
 func DefaultRoles() []ProjectRole {
@@ -118,6 +144,97 @@ func Provision(ctx context.Context, cfg Config) (Result, error) {
 	return result, nil
 }
 
+func ProvisionLocalApplications(ctx context.Context, cfg Config, appCfg LocalApplicationConfig) (LocalApplicationResult, error) {
+	if err := cfg.validate(); err != nil {
+		return LocalApplicationResult{}, err
+	}
+	appCfg.APIName = strings.TrimSpace(appCfg.APIName)
+	appCfg.OIDCName = strings.TrimSpace(appCfg.OIDCName)
+	if appCfg.APIName == "" || appCfg.OIDCName == "" {
+		return LocalApplicationResult{}, errors.New("local API and OIDC application names are required")
+	}
+	if len(appCfg.RedirectURIs) == 0 || len(appCfg.PostLogoutRedirectURIs) == 0 {
+		return LocalApplicationResult{}, errors.New("local OIDC redirect URIs are required")
+	}
+	provisioned, err := Provision(ctx, cfg)
+	if err != nil {
+		return LocalApplicationResult{}, err
+	}
+	client := newClient(cfg)
+	applications, err := client.listApplications(ctx, provisioned.ProjectID)
+	if err != nil {
+		return LocalApplicationResult{}, err
+	}
+	result := LocalApplicationResult{ProjectID: provisioned.ProjectID, RecommendedScopes: provisioned.RecommendedScopes}
+	apiApp, ok := findApplication(applications, appCfg.APIName)
+	if !ok {
+		apiApp, err = client.createAPIApplication(ctx, provisioned.ProjectID, appCfg.APIName)
+		if err != nil {
+			return LocalApplicationResult{}, err
+		}
+	}
+	result.APIAppID = apiApp.ID
+	result.APIClientID = apiApp.clientID()
+	result.APIClientSecret = apiApp.clientSecret()
+	if result.APIAppID == "" || result.APIClientID == "" {
+		return LocalApplicationResult{}, errors.New("ZITADEL API application response did not include app and client ids")
+	}
+
+	oidcApp, ok := findApplication(applications, appCfg.OIDCName)
+	if !ok {
+		oidcApp, err = client.createOIDCApplication(ctx, provisioned.ProjectID, appCfg)
+		if err != nil {
+			return LocalApplicationResult{}, err
+		}
+	}
+	result.OIDCAppID = oidcApp.ID
+	result.OIDCClientID = oidcApp.clientID()
+	result.OIDCClientSecret = oidcApp.clientSecret()
+	if result.OIDCAppID == "" || result.OIDCClientID == "" {
+		return LocalApplicationResult{}, errors.New("ZITADEL OIDC application response did not include app and client ids")
+	}
+	return result, nil
+}
+
+func GrantLocalOperator(ctx context.Context, cfg Config, additionalRole string, identity authidentity.AuthenticatedIdentity) error {
+	if err := cfg.validate(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(cfg.ProjectID) == "" {
+		return errors.New("project id is required for local operator grant")
+	}
+	if strings.TrimSpace(identity.TenantID) == "" || strings.TrimSpace(identity.UserID) == "" {
+		return errors.New("verified tenant and user identity are required for local operator grant")
+	}
+	additionalRole = strings.TrimSpace(additionalRole)
+	if additionalRole != "" && additionalRole != "listingkit_admin" {
+		return fmt.Errorf("unsupported local additional role %q", additionalRole)
+	}
+	client := newClient(cfg)
+	grant, found, err := client.findUserGrant(ctx, cfg.ProjectID, identity)
+	if err != nil {
+		return err
+	}
+	if found {
+		roles := append([]string(nil), grant.RoleKeys...)
+		if !containsString(roles, "listingkit_operator") {
+			roles = append(roles, "listingkit_operator")
+		}
+		if additionalRole != "" && !containsString(roles, additionalRole) {
+			roles = append(roles, additionalRole)
+		}
+		if equalStrings(roles, grant.RoleKeys) {
+			return nil
+		}
+		return client.updateAuthorization(ctx, grant.ID, roles)
+	}
+	roles := []string{"listingkit_operator"}
+	if additionalRole != "" {
+		roles = append(roles, additionalRole)
+	}
+	return client.createAuthorization(ctx, cfg.ProjectID, identity, roles)
+}
+
 func (cfg Config) validate() error {
 	if strings.TrimSpace(cfg.IssuerURL) == "" {
 		return errors.New("issuer URL is required")
@@ -133,6 +250,188 @@ type client struct {
 	token   string
 	orgID   string
 	http    *http.Client
+}
+
+type applicationRecord struct {
+	ID        string `json:"id"`
+	AppID     string `json:"appId"`
+	Name      string `json:"name"`
+	APIConfig *struct {
+		ClientID       string `json:"clientId"`
+		ClientSecret   string `json:"clientSecret"`
+		AuthMethodType string `json:"authMethodType"`
+	} `json:"apiConfig"`
+	OIDCConfig *struct {
+		ClientID     string `json:"clientId"`
+		ClientSecret string `json:"clientSecret"`
+	} `json:"oidcConfig"`
+}
+
+func (a applicationRecord) clientID() string {
+	if a.APIConfig != nil && a.APIConfig.ClientID != "" {
+		return a.APIConfig.ClientID
+	}
+	if a.OIDCConfig != nil {
+		return a.OIDCConfig.ClientID
+	}
+	return ""
+}
+
+func (a applicationRecord) clientSecret() string {
+	if a.APIConfig != nil && a.APIConfig.ClientSecret != "" {
+		return a.APIConfig.ClientSecret
+	}
+	if a.OIDCConfig != nil {
+		return a.OIDCConfig.ClientSecret
+	}
+	return ""
+}
+
+func (a applicationRecord) appID() string {
+	if a.ID != "" {
+		return a.ID
+	}
+	return a.AppID
+}
+
+func (a applicationRecord) normalized() applicationRecord {
+	a.ID = a.appID()
+	return a
+}
+
+func findApplication(applications []applicationRecord, name string) (applicationRecord, bool) {
+	for _, application := range applications {
+		if strings.TrimSpace(application.Name) == name {
+			return application.normalized(), true
+		}
+	}
+	return applicationRecord{}, false
+}
+
+func (c client) listApplications(ctx context.Context, projectID string) ([]applicationRecord, error) {
+	var response struct {
+		Result []applicationRecord `json:"result"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, "/management/v1/projects/"+url.PathEscape(projectID)+"/apps/_search", map[string]any{
+		"queries": []map[string]any{{"nameQuery": map[string]any{"name": "", "method": "TEXT_QUERY_METHOD_EQUALS"}}},
+	}, &response); err != nil {
+		return nil, err
+	}
+	for index := range response.Result {
+		response.Result[index] = response.Result[index].normalized()
+	}
+	return response.Result, nil
+}
+
+func (c client) createAPIApplication(ctx context.Context, projectID, name string) (applicationRecord, error) {
+	var response struct {
+		AppID        string `json:"appId"`
+		ClientID     string `json:"clientId"`
+		ClientSecret string `json:"clientSecret"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, "/management/v1/projects/"+url.PathEscape(projectID)+"/apps/api", map[string]any{
+		"name": name, "authMethodType": "API_AUTH_METHOD_TYPE_BASIC",
+	}, &response); err != nil {
+		return applicationRecord{}, err
+	}
+	return applicationRecord{ID: response.AppID, Name: name, APIConfig: &struct {
+		ClientID       string `json:"clientId"`
+		ClientSecret   string `json:"clientSecret"`
+		AuthMethodType string `json:"authMethodType"`
+	}{ClientID: response.ClientID, ClientSecret: response.ClientSecret, AuthMethodType: "API_AUTH_METHOD_TYPE_BASIC"}}, nil
+}
+
+func (c client) createOIDCApplication(ctx context.Context, projectID string, cfg LocalApplicationConfig) (applicationRecord, error) {
+	var response struct {
+		AppID        string `json:"appId"`
+		ClientID     string `json:"clientId"`
+		ClientSecret string `json:"clientSecret"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, "/management/v1/projects/"+url.PathEscape(projectID)+"/apps/oidc", map[string]any{
+		"name":                     cfg.OIDCName,
+		"redirectUris":             cfg.RedirectURIs,
+		"responseTypes":            []string{"OIDC_RESPONSE_TYPE_CODE"},
+		"grantTypes":               []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
+		"appType":                  "OIDC_APP_TYPE_USER_AGENT",
+		"authMethodType":           "OIDC_AUTH_METHOD_TYPE_NONE",
+		"version":                  "OIDC_VERSION_1_0",
+		"accessTokenType":          "OIDC_TOKEN_TYPE_BEARER",
+		"accessTokenRoleAssertion": true,
+		"postLogoutRedirectUris":   cfg.PostLogoutRedirectURIs,
+	}, &response); err != nil {
+		return applicationRecord{}, err
+	}
+	return applicationRecord{ID: response.AppID, Name: cfg.OIDCName, OIDCConfig: &struct {
+		ClientID     string `json:"clientId"`
+		ClientSecret string `json:"clientSecret"`
+	}{ClientID: response.ClientID, ClientSecret: response.ClientSecret}}, nil
+}
+
+type userGrant struct {
+	ID        string   `json:"id"`
+	UserID    string   `json:"userId"`
+	OrgID     string   `json:"orgId"`
+	ProjectID string   `json:"projectId"`
+	RoleKeys  []string `json:"roleKeys"`
+}
+
+func (c client) findUserGrant(ctx context.Context, projectID string, identity authidentity.AuthenticatedIdentity) (userGrant, bool, error) {
+	var response struct {
+		Result []userGrant `json:"result"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, "/management/v1/users/grants/_search", map[string]any{
+		"queries": []map[string]any{{"userIdQuery": map[string]any{"userId": identity.UserID}}},
+	}, &response); err != nil {
+		return userGrant{}, false, err
+	}
+	for _, grant := range response.Result {
+		if grant.UserID == identity.UserID && grant.OrgID == identity.TenantID && grant.ProjectID == projectID {
+			return grant, true, nil
+		}
+	}
+	return userGrant{}, false, nil
+}
+
+func (c client) createAuthorization(ctx context.Context, projectID string, identity authidentity.AuthenticatedIdentity, roles []string) error {
+	var response struct {
+		ID string `json:"id"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, "/zitadel.authorization.v2.AuthorizationService/CreateAuthorization", map[string]any{
+		"userId": identity.UserID, "projectId": projectID, "organizationId": identity.TenantID, "roleKeys": roles,
+	}, &response); err != nil {
+		return err
+	}
+	if response.ID == "" {
+		return errors.New("ZITADEL role assignment did not return an authorization id")
+	}
+	return nil
+}
+
+func (c client) updateAuthorization(ctx context.Context, authorizationID string, roles []string) error {
+	return c.doJSON(ctx, http.MethodPost, "/zitadel.authorization.v2.AuthorizationService/UpdateAuthorization", map[string]any{
+		"id": authorizationID, "roleKeys": roles,
+	}, &struct{}{})
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func newClient(cfg Config) client {
@@ -241,6 +540,9 @@ func (c client) doJSON(ctx context.Context, method string, path string, body any
 	request.Header.Set("Authorization", "Bearer "+c.token)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
+	if strings.HasPrefix(path, "/zitadel.authorization.v2.AuthorizationService/") {
+		request.Header.Set("Connect-Protocol-Version", "1")
+	}
 	if c.orgID != "" {
 		request.Header.Set("x-zitadel-orgid", c.orgID)
 	}
@@ -250,12 +552,7 @@ func (c client) doJSON(ctx context.Context, method string, path string, body any
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
-		detail := strings.TrimSpace(string(body))
-		if detail == "" {
-			return fmt.Errorf("ZITADEL %s %s failed: %s", method, path, response.Status)
-		}
-		return fmt.Errorf("ZITADEL %s %s failed: %s: %s", method, path, response.Status, detail)
+		return fmt.Errorf("ZITADEL %s %s failed: %s", method, path, response.Status)
 	}
 	if target == nil {
 		return nil
