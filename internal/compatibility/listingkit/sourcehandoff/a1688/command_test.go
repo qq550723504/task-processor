@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"task-processor/internal/authidentity"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/sourceaccount"
@@ -98,8 +99,7 @@ func TestTaskCommandServiceRejectsWrongStorePlatform(t *testing.T) {
 	validator := &storeAccessValidatorFake{errs: map[int64]error{
 		3001: listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable"),
 	}}
-	ctx := listingkit.WithTenantID(context.Background(), "101")
-	ctx = listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: "101", UserID: "user-1"})
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-1"})
 	_, err := NewTaskCommandService(creator, validator).CreateTask(ctx, CreateTaskCommand{URL: "https://detail.1688.com/offer/893.html", Product: commandProduct1688("893"), TenantID: "101", UserID: "user-1", SourceAccountID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"}})
 	if listingkit.StoreAccessErrorCode(err) != listingkit.StoreAccessUnavailable {
 		t.Fatalf("StoreAccessErrorCode() = %q, want unavailable (err=%v)", listingkit.StoreAccessErrorCode(err), err)
@@ -174,8 +174,7 @@ func (v *storeAccessValidatorFake) ValidateSourceAccountAccess(_ context.Context
 
 func TestTaskCommandServiceRejectsMismatchedContextTenant(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
-	ctx := listingkit.WithTenantID(context.Background(), "tenant-verified")
-	ctx = listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: "tenant-verified", UserID: "user-verified"})
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-verified", UserID: "user-verified"})
 
 	_, err := NewTaskCommandService(creator).CreateTask(ctx, CreateTaskCommand{
 		URL:       "https://detail.1688.com/offer/892.html",
@@ -186,6 +185,26 @@ func TestTaskCommandServiceRejectsMismatchedContextTenant(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("CreateTask() error = nil, want tenant mismatch rejection")
+	}
+	if creator.request != nil {
+		t.Fatalf("creator request = %+v, want no task creation", creator.request)
+	}
+}
+
+func TestTaskCommandServiceRejectsLegacyListingKitIdentityWithoutAuthenticatedIdentity(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	ctx := listingkit.WithTenantID(context.Background(), "101")
+	ctx = listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: "101", UserID: "user-legacy"})
+
+	_, err := NewTaskCommandService(creator).CreateTask(ctx, CreateTaskCommand{
+		URL:       "https://detail.1688.com/offer/893.html",
+		Product:   commandProduct1688("893"),
+		TenantID:  "101",
+		UserID:    "user-legacy",
+		Platforms: []string{"shein"},
+	})
+	if err == nil {
+		t.Fatal("CreateTask() error = nil, want verified authidentity requirement")
 	}
 	if creator.request != nil {
 		t.Fatalf("creator request = %+v, want no task creation", creator.request)
@@ -250,8 +269,7 @@ func TestTaskCommandServiceCreateTaskReturnsHandoffOnSourceError(t *testing.T) {
 }
 
 func authenticatedCommandContext(tenantID, userID string) context.Context {
-	ctx := listingkit.WithTenantID(context.Background(), tenantID)
-	return listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: tenantID, UserID: userID})
+	return authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: tenantID, UserID: userID})
 }
 
 func validStoreAccessValidator() *storeAccessValidatorFake {

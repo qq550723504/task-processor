@@ -172,6 +172,55 @@ func TestA1688ListingKitCompatibilityReadsIdentityFromNeutralContext(t *testing.
 	})
 }
 
+func TestA1688ListingKitCommandReadsIdentityFromNeutralContext(t *testing.T) {
+	path := filepath.Join("..", "internal", "compatibility", "listingkit", "sourcehandoff", "a1688", "command.go")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	importsAuthIdentity := false
+	for _, imp := range file.Imports {
+		if imp.Path.Value == `"task-processor/internal/authidentity"` {
+			importsAuthIdentity = true
+			break
+		}
+	}
+	if !importsAuthIdentity {
+		t.Errorf("%s must import internal/authidentity for verified identity context", path)
+	}
+
+	file, err = parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readNeutralIdentity := false
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil {
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if ident.Name == "authidentity" && selector.Sel.Name == "AuthenticatedIdentityFromContext" {
+			readNeutralIdentity = true
+		}
+		if ident.Name == "listingkit" &&
+			(selector.Sel.Name == "TenantIDFromContext" || selector.Sel.Name == "RequestIdentityFromContext") {
+			t.Errorf("%s reads request identity through listingkit.%s; use internal/authidentity", path, selector.Sel.Name)
+		}
+		return true
+	})
+	if !readNeutralIdentity {
+		t.Errorf("%s must read verified identity through authidentity.AuthenticatedIdentityFromContext", path)
+	}
+}
+
 func TestLocalAgentHTTPAPIReadsIdentityFromNeutralContext(t *testing.T) {
 	path := filepath.Join("..", "internal", "localagent", "httpapi", "handler.go")
 	source, err := os.ReadFile(path)
