@@ -818,6 +818,127 @@ func TestRetryUpdateValidatorRejectsBusinessConflictsBeforeAcceptance(t *testing
 	require.NoError(t, state.validateRetrySlot(valid), "an exact accepted retry remains idempotently replayable after the projection advances")
 }
 
+func TestEffectRecoveryCompletionRefreshesParentAndResumesCancellation(t *testing.T) {
+	plan := sevenSlotPlan()
+	input := manualWorkflowInput(plan)
+	index := slotIndex(plan, "scene-2")
+	results := make([]SlotWorkflowResult, len(plan.Slots))
+	results[index] = SlotWorkflowResult{
+		Execution:   imageagent.SlotExecutionResult{SlotID: "scene-2", Attempt: 1},
+		Status:      imageagent.SlotStatusBlocked,
+		ErrorCode:   recoveryRequestedBlockCode,
+		EffectPhase: imageagent.SlotEffectV3PublicationClaimed,
+	}
+	projection := WorkflowResult{
+		Status: imageagent.RunStatusBlocked,
+		Plan:   plan,
+		Slots:  slotProjections(plan, results),
+		Block:  &imageagent.Block{Code: recoveryRequestedBlockCode, SlotID: "scene-2"},
+		RecoverableEffects: []imageagent.RecoverableEffect{{
+			SlotID: "scene-2", Attempt: 1, Code: recoveryRequestedBlockCode,
+		}},
+	}
+	state := &workflowUpdateState{
+		input: &input, projection: &projection, results: &results,
+		cancelBlocked: true, lastBlockedCancelFingerprint: "cancel-fingerprint",
+	}
+	published := imageagent.SlotEffectV3PublishedResult{
+		SlotID: "scene-2", Attempt: 1,
+		Candidates: []imageagent.SlotEffectV3AssetCandidate{{
+			AssetID: "candidate-1", SourceAssetID: "source-1",
+			DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "public/scene-2.png", SHA256: v3SHA256},
+		}},
+	}
+
+	require.True(t, state.applyEffectRecoveryCompleted(EffectRecoveryCompletedSignal{
+		RunID: input.RunID, PlanRevision: plan.Revision, SlotID: "scene-2", Attempt: 1,
+		Result: EffectRecoveryResult{Outcome: EffectRecoveryOutcomePublished, Published: published, EffectPhase: imageagent.SlotEffectV3PublicationComplete},
+	}))
+	require.Equal(t, imageagent.SlotStatusAccepted, results[index].Status)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, results[index].EffectPhase)
+	require.Equal(t, "candidate-1", results[index].Execution.Candidates[0].AssetID)
+	require.Empty(t, projection.RecoverableEffects)
+	require.Nil(t, projection.Block)
+	require.True(t, state.cancelRequested, "the original cancel intent must be restored after the final recovery owner clears")
+	require.True(t, state.cancelPending)
+	require.False(t, state.cancelBlocked)
+	require.Equal(t, "cancel-fingerprint", state.cancelActionFingerprint)
+
+	require.False(t, state.applyEffectRecoveryCompleted(EffectRecoveryCompletedSignal{
+		RunID: input.RunID, PlanRevision: plan.Revision, SlotID: "scene-2", Attempt: 1,
+		Result: EffectRecoveryResult{Outcome: EffectRecoveryOutcomePublished, Published: published, EffectPhase: imageagent.SlotEffectV3PublicationComplete},
+	}), "replaying the completion signal must be idempotent")
+}
+
+func TestEffectRecoveryCompletionKeepsParentBlockedWhileOwnersRemain(t *testing.T) {
+	plan := sevenSlotPlan()
+	input := manualWorkflowInput(plan)
+	first := slotIndex(plan, "slot-2")
+	second := slotIndex(plan, "scene-2")
+	results := make([]SlotWorkflowResult, len(plan.Slots))
+	for _, index := range []int{first, second} {
+		results[index] = SlotWorkflowResult{
+			Execution: imageagent.SlotExecutionResult{SlotID: plan.Slots[index].ID, Attempt: 1},
+			Status:    imageagent.SlotStatusBlocked, ErrorCode: recoveryRequestedBlockCode,
+			EffectPhase: imageagent.SlotEffectV3PublicationClaimed,
+		}
+	}
+	projection := WorkflowResult{
+		Status: imageagent.RunStatusBlocked, Plan: plan, Slots: slotProjections(plan, results),
+		Block: &imageagent.Block{Code: recoveryRequestedBlockCode, SlotID: "slot-2"},
+		RecoverableEffects: []imageagent.RecoverableEffect{
+			{SlotID: "slot-2", Attempt: 1, Code: recoveryRequestedBlockCode},
+			{SlotID: "scene-2", Attempt: 1, Code: recoveryRequestedBlockCode},
+		},
+	}
+	state := &workflowUpdateState{input: &input, projection: &projection, results: &results, cancelBlocked: true, lastBlockedCancelFingerprint: "cancel-fingerprint"}
+	published := imageagent.SlotEffectV3PublishedResult{
+		SlotID: "slot-2", Attempt: 1,
+		Candidates: []imageagent.SlotEffectV3AssetCandidate{{AssetID: "candidate-1", SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "public/slot-2.png", SHA256: v3SHA256}}},
+	}
+
+	require.True(t, state.applyEffectRecoveryCompleted(EffectRecoveryCompletedSignal{
+		RunID: input.RunID, PlanRevision: plan.Revision, SlotID: "slot-2", Attempt: 1,
+		Result: EffectRecoveryResult{Outcome: EffectRecoveryOutcomePublished, Published: published, EffectPhase: imageagent.SlotEffectV3PublicationComplete},
+	}))
+	require.Equal(t, []imageagent.RecoverableEffect{{SlotID: "scene-2", Attempt: 1, Code: recoveryRequestedBlockCode}}, projection.RecoverableEffects)
+	require.NotNil(t, projection.Block)
+	require.Equal(t, "scene-2", projection.Block.SlotID)
+	require.False(t, state.cancelRequested)
+	require.False(t, state.cancelPending)
+	require.True(t, state.cancelBlocked)
+}
+
+func TestEffectRecoveryBlockedCompletionKeepsRecoveryOwner(t *testing.T) {
+	plan := sevenSlotPlan()
+	input := manualWorkflowInput(plan)
+	index := slotIndex(plan, "scene-2")
+	results := make([]SlotWorkflowResult, len(plan.Slots))
+	results[index] = SlotWorkflowResult{
+		Execution: imageagent.SlotExecutionResult{SlotID: "scene-2", Attempt: 1},
+		Status:    imageagent.SlotStatusBlocked, ErrorCode: recoveryRequestedBlockCode,
+		EffectPhase: imageagent.SlotEffectV3PublicationClaimed,
+	}
+	projection := WorkflowResult{
+		Status: imageagent.RunStatusBlocked, Plan: plan, Slots: slotProjections(plan, results),
+		Block:              &imageagent.Block{Code: recoveryRequestedBlockCode, SlotID: "scene-2"},
+		RecoverableEffects: []imageagent.RecoverableEffect{{SlotID: "scene-2", Attempt: 1, Code: recoveryRequestedBlockCode}},
+	}
+	state := &workflowUpdateState{input: &input, projection: &projection, results: &results, cancelBlocked: true}
+	signal := EffectRecoveryCompletedSignal{
+		RunID: input.RunID, PlanRevision: plan.Revision, SlotID: "scene-2", Attempt: 1,
+		Result: EffectRecoveryResult{Outcome: EffectRecoveryOutcomeProviderUnknown, EffectPhase: imageagent.SlotEffectV3ProviderUnknown, BlockedCode: imageagent.SlotProviderOutcomeUnknownCode},
+	}
+
+	require.True(t, state.applyEffectRecoveryCompleted(signal))
+	require.Equal(t, []imageagent.RecoverableEffect{{SlotID: "scene-2", Attempt: 1, Code: imageagent.SlotProviderOutcomeUnknownCode}}, projection.RecoverableEffects)
+	require.Equal(t, imageagent.SlotProviderOutcomeUnknownCode, projection.Block.Code)
+	require.Equal(t, imageagent.SlotProviderOutcomeUnknownCode, projection.Slots[index].ErrorCode)
+	require.False(t, state.cancelRequested)
+	require.True(t, state.cancelBlocked)
+	require.False(t, state.applyEffectRecoveryCompleted(signal), "replaying a blocked completion must not mutate the owner twice")
+}
+
 func TestSafeCommandFailureClassificationNeverExposesRawErrors(t *testing.T) {
 	t.Parallel()
 

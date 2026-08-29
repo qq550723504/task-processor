@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	enumspb "go.temporal.io/api/enums/v1"
 	sdkactivity "go.temporal.io/sdk/activity"
@@ -749,6 +750,7 @@ func (c *recordingRecoveryWorkflowClient) executeRecoveryWorkflow(execution *rec
 	env.RegisterActivityWithOptions(c.activities.RecoverEffectV3, sdkactivity.RegisterOptions{Name: "imageagent.recover_effect.v3"})
 	env.RegisterActivityWithOptions(c.activities.PersistRecoveryBlockedEffectV3, sdkactivity.RegisterOptions{Name: "imageagent.persist_recovery_blocked.v3"})
 	env.RegisterActivityWithOptions(c.activities.ReconcileEffectRecoveryV3, sdkactivity.RegisterOptions{Name: "imageagent.reconcile_effect_recovery.v3"})
+	env.OnSignalExternalWorkflow(mock.Anything, mock.Anything, mock.Anything, "effect_recovery_completed", mock.Anything).Return(nil)
 	env.ExecuteWorkflow(imageagenttemporal.ImageAgentEffectRecoveryWorkflow, input)
 
 	var (

@@ -49,6 +49,7 @@ const (
 	activityPublishApprovedV3           = "imageagent.publish_approved.v3"
 	workflowNameCompatibilityCanary     = "ImageAgentCompatibilityCanaryWorkflow"
 	signalApproveResults                = "approve_results"
+	signalEffectRecoveryCompleted       = "effect_recovery_completed"
 	signalRetrySlot                     = "retry_slot"
 	signalReplacePlan                   = "replace_plan"
 	signalCancel                        = "cancel"
@@ -190,6 +191,18 @@ type EffectRecoveryResult struct {
 	Published   imageagent.SlotEffectV3PublishedResult
 	EffectPhase imageagent.SlotEffectV3Phase
 	BlockedCode string
+}
+
+// EffectRecoveryCompletedSignal is emitted after the recovery workflow has
+// durably reconciled its external effect. The parent uses the identity tuple
+// to ignore stale or duplicate completions while refreshing its in-memory
+// projection and pending cancellation intent.
+type EffectRecoveryCompletedSignal struct {
+	RunID        string
+	PlanRevision int64
+	SlotID       string
+	Attempt      int
+	Result       EffectRecoveryResult
 }
 
 type ExecuteSlotActivityInput struct {

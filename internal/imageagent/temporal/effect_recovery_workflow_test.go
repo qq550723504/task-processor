@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	sdkactivity "go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
@@ -63,6 +64,43 @@ func TestEffectRecoveryWorkflowReconcilesParentProjectionAfterPublication(t *tes
 	require.Equal(t, imageagent.SlotStatusBlocked, projection.Slots[1].Slot.Status)
 	require.Equal(t, recoveryRequestedBlockCode, projection.Slots[1].ErrorCode)
 	require.Zero(t, executor.GenerateCalls(), "parent reconciliation must not redispatch the provider")
+}
+
+func TestEffectRecoveryWorkflowSignalsParentAfterDurableReconciliation(t *testing.T) {
+	_, input := initializedSlotEffectV3Activity(t, "run-v3-recovery-parent-signal")
+	workflowInput := effectRecoveryWorkflowInput(input)
+	expected := EffectRecoveryResult{
+		Outcome: EffectRecoveryOutcomePublished,
+		Published: imageagent.SlotEffectV3PublishedResult{
+			SlotID: input.Slot.ID, Attempt: input.Attempt,
+			Candidates: []imageagent.SlotEffectV3AssetCandidate{{
+				AssetID: "candidate-1", SourceAssetID: "source-1",
+				DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "public/slot-1.png", SHA256: v3SHA256},
+			}},
+		},
+		EffectPhase: imageagent.SlotEffectV3PublicationComplete,
+	}
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(ImageAgentEffectRecoveryWorkflow)
+	env.RegisterActivityWithOptions(func(context.Context, EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {
+		return expected, nil
+	}, sdkactivity.RegisterOptions{Name: activityRecoverEffectV3})
+	env.RegisterActivityWithOptions(func(context.Context, EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {
+		return expected, nil
+	}, sdkactivity.RegisterOptions{Name: activityReconcileEffectRecoveryV3})
+	env.OnSignalExternalWorkflow(mock.Anything, WorkflowID(input.Identity.TenantID, input.Identity.UserID, input.RunID), "", signalEffectRecoveryCompleted,
+		mock.MatchedBy(func(value interface{}) bool {
+			signal, ok := value.(EffectRecoveryCompletedSignal)
+			return ok && signal.RunID == input.RunID && signal.PlanRevision == input.PlanRevision && signal.SlotID == input.Slot.ID && signal.Attempt == input.Attempt && signal.Result.Outcome == expected.Outcome && signal.Result.EffectPhase == expected.EffectPhase
+		}),
+	).Return(nil).Once()
+
+	env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, workflowInput)
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	env.AssertExpectations(t)
 }
 
 func TestEffectRecoveryWorkflowReconcilesUnknownPhaseWithoutClearingOwner(t *testing.T) {
@@ -529,6 +567,7 @@ func newEffectRecoveryWorkflowEnvWithActivities(t *testing.T, recover func(conte
 	env.RegisterActivityWithOptions(recover, sdkactivity.RegisterOptions{Name: activityRecoverEffectV3})
 	env.RegisterActivityWithOptions(persist, sdkactivity.RegisterOptions{Name: activityPersistRecoveryBlockedV3})
 	env.RegisterActivityWithOptions(reconcile, sdkactivity.RegisterOptions{Name: activityReconcileEffectRecoveryV3})
+	env.OnSignalExternalWorkflow(mock.Anything, mock.Anything, mock.Anything, signalEffectRecoveryCompleted, mock.Anything).Return(nil)
 	return env
 }
 

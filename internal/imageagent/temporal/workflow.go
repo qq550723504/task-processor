@@ -166,6 +166,7 @@ func runImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowR
 	retryChannel := workflow.GetSignalChannel(ctx, signalRetrySlot)
 	replaceChannel := workflow.GetSignalChannel(ctx, signalReplacePlan)
 	approveChannel := workflow.GetSignalChannel(ctx, signalApproveResults)
+	recoveryCompletedChannel := workflow.GetSignalChannel(ctx, signalEffectRecoveryCompleted)
 	var results []SlotWorkflowResult
 	updates = newWorkflowUpdateState(ctx, &input, &projection, &results, effects)
 	if err := workflow.SetQueryHandler(ctx, QueryWorkflowProjection, func() (WorkflowResult, error) {
@@ -176,7 +177,7 @@ func runImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowR
 	if err := updates.register(ctx); err != nil {
 		return WorkflowResult{}, fmt.Errorf("register image agent update handlers: %w", err)
 	}
-	updates.startSignalHandlers(ctx, cancelChannel, retryChannel, replaceChannel, approveChannel)
+	updates.startSignalHandlers(ctx, cancelChannel, retryChannel, replaceChannel, approveChannel, recoveryCompletedChannel)
 	awaitTerminalIntent := func(results []SlotWorkflowResult) (WorkflowResult, error) {
 		if err := workflow.Await(ctx, func() bool {
 			return updates.cancelCommitted || isTerminalRunStatus(projection.Status)
@@ -650,6 +651,7 @@ type workflowUpdateState struct {
 	cancelCommitted                 bool
 	cancelCommitErr                 error
 	cancelBlocked                   bool
+	lastBlockedCancelFingerprint    string
 	cancelActionFingerprint         string
 	ingressExhausted                bool
 	enforceIngressPlanPolicy        bool
@@ -687,7 +689,7 @@ func (s *workflowUpdateState) register(ctx workflow.Context) error {
 
 func (s *workflowUpdateState) startSignalHandlers(
 	ctx workflow.Context,
-	cancelChannel, retryChannel, replaceChannel, approveChannel workflow.ReceiveChannel,
+	cancelChannel, retryChannel, replaceChannel, approveChannel, recoveryCompletedChannel workflow.ReceiveChannel,
 ) {
 	workflow.Go(ctx, func(signalCtx workflow.Context) {
 		for {
@@ -717,6 +719,98 @@ func (s *workflowUpdateState) startSignalHandlers(
 			s.dispatchApprovalSignal(signalCtx, signal)
 		}
 	})
+	workflow.Go(ctx, func(signalCtx workflow.Context) {
+		for {
+			var signal EffectRecoveryCompletedSignal
+			recoveryCompletedChannel.Receive(signalCtx, &signal)
+			s.dispatchEffectRecoveryCompleted(signal)
+		}
+	})
+}
+
+func (s *workflowUpdateState) dispatchEffectRecoveryCompleted(signal EffectRecoveryCompletedSignal) {
+	if s.applyEffectRecoveryCompleted(signal) {
+		s.wake.SendAsync(struct{}{})
+	}
+}
+
+// applyEffectRecoveryCompleted reconciles the parent workflow's in-memory
+// state after the recovery activity has committed the same transition to the
+// projection store. The identity tuple makes delivery safe to replay and
+// prevents a late recovery from mutating a newer attempt.
+func (s *workflowUpdateState) applyEffectRecoveryCompleted(signal EffectRecoveryCompletedSignal) bool {
+	if strings.TrimSpace(signal.RunID) == "" || signal.RunID != s.input.RunID || signal.PlanRevision != s.input.Plan.Revision || strings.TrimSpace(signal.SlotID) == "" || signal.Attempt <= 0 {
+		return false
+	}
+	index := slotIndex(s.input.Plan, signal.SlotID)
+	if index < 0 || index >= len(*s.results) || index >= len(s.projection.Slots) {
+		return false
+	}
+	current := (*s.results)[index]
+	if current.Execution.SlotID != signal.SlotID || current.Execution.Attempt != signal.Attempt {
+		return false
+	}
+	ownerIndex := recoverableEffectIndex(s.projection.RecoverableEffects, signal.SlotID, signal.Attempt)
+	clearOwner := false
+	if signal.Result.EffectPhase == imageagent.SlotEffectV3PublicationComplete && signal.Result.Outcome == EffectRecoveryOutcomePublished {
+		published, err := imageagent.NormalizeSlotEffectV3PublishedResult(signal.Result.Published)
+		if err != nil {
+			return false
+		}
+		if ownerIndex < 0 && recoveredSlotProjectionMatches(s.projection.Slots[index], published) {
+			return false
+		}
+		candidates := make([]imageagent.AssetCandidate, 0, len(published.Candidates))
+		for _, candidate := range published.Candidates {
+			candidates = append(candidates, imageagent.AssetCandidate{AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset})
+		}
+		(*s.results)[index] = SlotWorkflowResult{
+			Execution: imageagent.SlotExecutionResult{SlotID: published.SlotID, Attempt: published.Attempt, Candidates: candidates},
+			Status:    imageagent.SlotStatusAccepted, EffectPhase: imageagent.SlotEffectV3PublicationComplete,
+		}
+		s.projection.Slots[index].Attempt = published.Attempt
+		s.projection.Slots[index].Candidates = append([]imageagent.AssetCandidate(nil), candidates...)
+		s.projection.Slots[index].ErrorCode = ""
+		s.projection.Slots[index].Slot.Status = imageagent.SlotStatusAccepted
+		clearOwner = true
+	} else {
+		code := strings.TrimSpace(signal.Result.BlockedCode)
+		if code == "" || signal.Result.EffectPhase == imageagent.SlotEffectV3PublicationComplete {
+			return false
+		}
+		if ownerIndex >= 0 && current.Status == imageagent.SlotStatusBlocked && current.ErrorCode == code && current.EffectPhase == signal.Result.EffectPhase && s.projection.Slots[index].ErrorCode == code {
+			return false
+		}
+		(*s.results)[index].Status = imageagent.SlotStatusBlocked
+		(*s.results)[index].ErrorCode = code
+		(*s.results)[index].EffectPhase = signal.Result.EffectPhase
+		s.projection.Slots[index].Slot.Status = imageagent.SlotStatusBlocked
+		s.projection.Slots[index].ErrorCode = code
+		if ownerIndex >= 0 {
+			s.projection.RecoverableEffects[ownerIndex].Code = code
+		}
+	}
+
+	if clearOwner && ownerIndex >= 0 {
+		effects := make([]imageagent.RecoverableEffect, 0, len(s.projection.RecoverableEffects)-1)
+		effects = append(effects, s.projection.RecoverableEffects[:ownerIndex]...)
+		effects = append(effects, s.projection.RecoverableEffects[ownerIndex+1:]...)
+		s.projection.RecoverableEffects = effects
+	}
+	s.projection.Block = recoveryParentBlock(s.projection.RecoverableEffects)
+	if len(s.projection.RecoverableEffects) == 0 {
+		if s.lastBlockedCancelFingerprint != "" {
+			s.cancelRequested = true
+			s.cancelPending = true
+			s.cancelCommitted = false
+			s.cancelCommitErr = nil
+			s.cancelBlocked = false
+			s.cancelActionFingerprint = s.lastBlockedCancelFingerprint
+		} else if s.projection.Status == imageagent.RunStatusBlocked {
+			s.projection.Status = imageagent.RunStatusAwaitingFinalApproval
+		}
+	}
+	return true
 }
 
 func (s *workflowUpdateState) dispatchReplaceSignal(ctx workflow.Context, signal ReplacePlanSignal) {
@@ -1219,6 +1313,7 @@ func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSig
 			return CommandAcknowledgement{}, s.cancelCommitErr
 		}
 		if s.cancelBlocked {
+			s.lastBlockedCancelFingerprint = record.fingerprint
 			s.cancelRequested = false
 			s.cancelActionFingerprint = ""
 			return CommandAcknowledgement{RunID: signal.RunID, PlanRevision: signal.PlanRevision, ActionID: signal.ActionID, Status: imageagent.RunStatusBlocked}, nil

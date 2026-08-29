@@ -1,6 +1,8 @@
 package temporal
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 const (
 	effectRecoveryPublicationRetryAttempts = 3
 	effectRecoveryPublicationRetryWindow   = 5 * time.Minute
+	effectRecoveryParentSignalPatch        = "image-agent-effect-recovery-parent-signal-v1"
 )
 
 func ImageAgentEffectRecoveryWorkflow(ctx workflow.Context, input EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {
@@ -71,5 +74,27 @@ func reconcileEffectRecovery(ctx workflow.Context, input EffectRecoveryWorkflowI
 	if err := workflow.ExecuteActivity(ctx, activityReconcileEffectRecoveryV3, input).Get(ctx, &result); err != nil {
 		return EffectRecoveryResult{}, err
 	}
+	if workflow.GetVersion(ctx, effectRecoveryParentSignalPatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion {
+		if err := signalEffectRecoveryCompletion(ctx, input, result); err != nil {
+			return EffectRecoveryResult{}, err
+		}
+	}
 	return result, nil
+}
+
+func signalEffectRecoveryCompletion(ctx workflow.Context, input EffectRecoveryWorkflowInput, result EffectRecoveryResult) error {
+	parentID := WorkflowID(input.Identity.TenantID, input.Identity.UserID, input.RunID)
+	err := workflow.SignalExternalWorkflow(ctx, parentID, "", signalEffectRecoveryCompleted, EffectRecoveryCompletedSignal{
+		RunID: input.RunID, PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt, Result: result,
+	}).Get(ctx, nil)
+	if err == nil {
+		return nil
+	}
+	var unknown *sdktemporal.UnknownExternalWorkflowExecutionError
+	if errors.As(err, &unknown) {
+		// Durable reconciliation is authoritative when the parent has already
+		// completed (or is absent in a historical/replay-only test).
+		return nil
+	}
+	return fmt.Errorf("signal parent recovery completion: %w", err)
 }
