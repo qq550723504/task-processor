@@ -130,3 +130,34 @@ func TestZitadelAuthRuntimeDepguardPatternCoversListingKitPackageTree(t *testing
 		}
 	}
 }
+
+func TestTemporalRuntimeDepguardPatternCoversHTTPAPIPackageTrees(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+
+	config := string(content)
+	start := strings.Index(config, "      temporal_runtime_httpapi:\n")
+	if start == -1 {
+		t.Fatalf("%s must define temporal_runtime_httpapi", configPath)
+	}
+	end := strings.Index(config[start+1:], "\n      authruntime_zitadel_listingkit:")
+	if end == -1 {
+		t.Fatalf("%s must keep temporal_runtime_httpapi before authruntime_zitadel_listingkit", configPath)
+	}
+	config = config[start : start+1+end]
+
+	for _, packagePath := range []string{
+		"task-processor/internal/app/httpapi",
+		"task-processor/internal/listingkit/httpapi",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			pattern := fmt.Sprintf(`- pkg: "%s%s"`, packagePath, suffix)
+			if !strings.Contains(config, pattern) {
+				t.Errorf("%s must contain depguard package-tree pattern %s", configPath, pattern)
+			}
+		}
+	}
+}

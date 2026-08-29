@@ -88,6 +88,7 @@ The stable import boundaries are enforced by:
 
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
+- `depguard: temporal_runtime_httpapi`
 
 Treat failures in these tests as architecture regressions, not as prompts to
 broaden the allowed runtime surface without review.
