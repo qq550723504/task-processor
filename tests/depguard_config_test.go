@@ -79,6 +79,38 @@ func TestAICapabilityDepguardUsesStrictAllowlist(t *testing.T) {
 	}
 }
 
+func TestImageAgentEffectPolicyDepguardUsesStrictAllowlist(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	config := readRepositoryText(t, configPath)
+	start := strings.Index(config, "      imageagent_effectpolicy_boundaries:\n")
+	if start == -1 {
+		t.Fatalf("%s must define imageagent_effectpolicy_boundaries", configPath)
+	}
+	end := strings.Index(config[start+1:], "\n      source_handoff_legacy_http:")
+	if end == -1 {
+		t.Fatalf("%s must keep imageagent_effectpolicy_boundaries before source_handoff_legacy_http", configPath)
+	}
+	config = config[start : start+1+end]
+
+	for _, required := range []string{
+		"list-mode: strict",
+		`- "**/internal/imageagent/effectpolicy/*.go"`,
+		`- "**/internal/imageagent/effectpolicy/**/*.go"`,
+		`- "$gostd"`,
+		`- "task-processor/internal/imageagent"`,
+	} {
+		if !strings.Contains(config, required) {
+			t.Errorf("%s imageagent effect policy boundary must contain %s", configPath, required)
+		}
+	}
+
+	for _, forbidden := range []string{"gorm.io/", "go.temporal.io/", "internal/imageagent/store"} {
+		if strings.Contains(config, forbidden) {
+			t.Errorf("%s imageagent effect policy boundary must not allow %s", configPath, forbidden)
+		}
+	}
+}
+
 func TestAlibaba1688CrawlerDepguardPatternKeepsHTTPAPIAdapterException(t *testing.T) {
 	configPath := filepath.Join("..", ".golangci.yml")
 	content, err := os.ReadFile(configPath)

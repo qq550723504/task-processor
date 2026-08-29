@@ -188,11 +188,7 @@ func TestListingKitReleaseAuthorityMachinePolicyOwnsAllSecurityInputs(t *testing
 func TestListingKitReleaseAuthorityCrossFilePolicyRejectsReleaseGateInvocationOverrides(t *testing.T) {
 	t.Parallel()
 
-	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
-	workflow, err := os.ReadFile(workflowPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	workflow := readRepositoryText(t, "..", ".github", "workflows", "listingkit-deploy.yml")
 	for _, test := range []struct {
 		name string
 		from string
@@ -203,8 +199,8 @@ func TestListingKitReleaseAuthorityCrossFilePolicyRejectsReleaseGateInvocationOv
 		{name: "duplicate run attempt", from: "            --run-attempt \"$GITHUB_RUN_ATTEMPT\" \\\n", to: "            --run-attempt \"$GITHUB_RUN_ATTEMPT\" \\\n            --run-attempt \"$GITHUB_RUN_ATTEMPT\" \\\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			mutated := strings.Replace(string(workflow), test.from, test.to, 1)
-			if mutated == string(workflow) {
+			mutated := strings.Replace(workflow, test.from, test.to, 1)
+			if mutated == workflow {
 				t.Fatalf("test fixture did not mutate %q", test.name)
 			}
 			output, runErr := runReleaseAuthorityCrossFilePolicy(t, mutated, "", "")
@@ -218,12 +214,7 @@ func TestListingKitReleaseAuthorityCrossFilePolicyRejectsReleaseGateInvocationOv
 func TestListingKitReleaseAuthorityCrossFilePolicyRejectsStaleOIDCAdjacency(t *testing.T) {
 	t.Parallel()
 
-	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
-	workflow, err := os.ReadFile(workflowPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(workflow)
+	text := readRepositoryText(t, "..", ".github", "workflows", "listingkit-deploy.yml")
 	refreshName := "      - name: Refresh API OIDC for Product Listing schema gate\n"
 	protectedName := "      - name: Migrate Product Listing API schema before ListingKit rollout\n"
 	refreshStart := strings.Index(text, refreshName)
@@ -252,12 +243,7 @@ func TestListingKitReleaseAuthorityCrossFilePolicyRejectsStaleOIDCAdjacency(t *t
 func TestListingKitReleaseAuthorityCrossFilePolicyRejectsLaterMutationBeforeRefresh(t *testing.T) {
 	t.Parallel()
 
-	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
-	workflow, err := os.ReadFile(workflowPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(workflow)
+	text := readRepositoryText(t, "..", ".github", "workflows", "listingkit-deploy.yml")
 	refreshName := "      - name: Refresh API OIDC for identity cleanup and v2 worker mutation group\n"
 	mutationName := "      - name: Apply immutable image agent v2 compatibility worker deployment\n"
 	refreshStart := strings.Index(text, refreshName)
@@ -286,15 +272,8 @@ func TestListingKitReleaseAuthorityCrossFilePolicyRejectsLaterMutationBeforeRefr
 func TestListingKitReleaseAuthorityCrossFilePolicyRejectsLaterUIMutationBeforeRefresh(t *testing.T) {
 	t.Parallel()
 
-	apiWorkflow, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	uiWorkflow, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-ui-deploy.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(uiWorkflow)
+	apiWorkflow := readRepositoryText(t, "..", ".github", "workflows", "listingkit-deploy.yml")
+	text := readRepositoryText(t, "..", ".github", "workflows", "listingkit-ui-deploy.yml")
 	refreshName := "      - name: Refresh UI OIDC for authorization and rollout mutation group\n"
 	mutationName := "      - name: Update UI deployment image\n"
 	refreshStart := strings.Index(text, refreshName)
@@ -311,7 +290,7 @@ func TestListingKitReleaseAuthorityCrossFilePolicyRejectsLaterUIMutationBeforeRe
 	withoutMutation := text[:mutationStart] + text[mutationEnd:]
 	mutatedUI := withoutMutation[:refreshStart] + mutationBlock + withoutMutation[refreshStart:]
 
-	output, runErr := runReleaseAuthorityCrossFilePolicy(t, string(apiWorkflow), mutatedUI, "")
+	output, runErr := runReleaseAuthorityCrossFilePolicy(t, apiWorkflow, mutatedUI, "")
 	if runErr == nil {
 		t.Fatalf("cross-file release-authority policy accepted a later UI mutation before its fresh OIDC step:\n%s", output)
 	}
@@ -323,21 +302,14 @@ func TestListingKitReleaseAuthorityCrossFilePolicyRejectsLaterUIMutationBeforeRe
 func TestListingKitReleaseAuthorityCrossFilePolicyRejectsNativeSidecarRunner(t *testing.T) {
 	t.Parallel()
 
-	workflow, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	runnerPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "release-authority", "listingkit-release-gate-runners.yaml")
-	runners, err := os.ReadFile(runnerPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mutatedRunners := strings.Replace(string(runners), "        - name: release-gate\n          image:", "        - name: release-gate\n          restartPolicy: Always\n          image:", 1)
-	if mutatedRunners == string(runners) {
+	workflow := readRepositoryText(t, "..", ".github", "workflows", "listingkit-deploy.yml")
+	runners := readRepositoryText(t, "..", "deployments", "kubernetes", "listingkit-workbench", "release-authority", "listingkit-release-gate-runners.yaml")
+	mutatedRunners := strings.Replace(runners, "        - name: release-gate\n          image:", "        - name: release-gate\n          restartPolicy: Always\n          image:", 1)
+	if mutatedRunners == runners {
 		t.Fatal("test fixture did not add restartPolicy to release-gate init container")
 	}
 
-	output, runErr := runReleaseAuthorityCrossFilePolicy(t, string(workflow), "", mutatedRunners)
+	output, runErr := runReleaseAuthorityCrossFilePolicy(t, workflow, "", mutatedRunners)
 	if runErr == nil {
 		t.Fatalf("cross-file release-authority policy accepted a native-sidecar release-gate runner:\n%s", output)
 	}

@@ -7,6 +7,8 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -5256,6 +5258,75 @@ func TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted(t *testing.T) {
 			t.Errorf("%s imports task-processor/internal/listingkit/httpapi; keep app/httpapi feature-owned ListingKit HTTPAPI dependencies limited to current module, runtime, route, and server assembly files", path)
 		}
 	}
+}
+
+func TestImageAgentEffectPolicyInboundImportsStayOwnedByStoreAndPolicy(t *testing.T) {
+	root := filepath.Join("..", "internal", "imageagent")
+	violations, err := imageAgentEffectPolicyInboundImportViolations(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 0 {
+		t.Errorf("imageagent effect-policy inbound imports outside store and effectpolicy: %v", violations)
+	}
+}
+
+func TestImageAgentEffectPolicyInboundImportGuardDistinguishesAllowedAndExactImports(t *testing.T) {
+	root := t.TempDir()
+	writeGoSource := func(relativePath, source string) {
+		t.Helper()
+		path := filepath.Join(root, relativePath)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeGoSource("blocked_single.go", "package imageagent\n\nimport _ \"task-processor/internal/imageagent/effectpolicy\"\n")
+	writeGoSource("blocked_grouped.go", "package imageagent\n\nimport (\n\t\"fmt\"\n\t_ \"task-processor/internal/imageagent/effectpolicy\"\n)\n\nvar _ = fmt.Sprintf\n")
+	writeGoSource("ignored_test.go", "package imageagent\n\nimport _ \"task-processor/internal/imageagent/effectpolicy\"\n")
+	writeGoSource("unrelated.go", "package imageagent\n\nimport _ \"task-processor/internal/imageagent/effectpolicymirror\"\n")
+	writeGoSource(filepath.Join("store", "allowed.go"), "package store\n\nimport _ \"task-processor/internal/imageagent/effectpolicy\"\n")
+	writeGoSource(filepath.Join("effectpolicy", "allowed.go"), "package effectpolicy\n\nimport _ \"task-processor/internal/imageagent/effectpolicy\"\n")
+
+	violations, err := imageAgentEffectPolicyInboundImportViolations(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		filepath.Join(root, "blocked_grouped.go"),
+		filepath.Join(root, "blocked_single.go"),
+	}
+	if !reflect.DeepEqual(want, violations) {
+		t.Fatalf("inbound import violations = %v, want %v", violations, want)
+	}
+}
+
+func imageAgentEffectPolicyInboundImportViolations(root string) ([]string, error) {
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		return nil, err
+	}
+
+	allowedOwners := map[string]struct{}{
+		filepath.Join(root, "store") + string(os.PathSeparator):        {},
+		filepath.Join(root, "effectpolicy") + string(os.PathSeparator): {},
+	}
+	const effectPolicyImport = `"task-processor/internal/imageagent/effectpolicy"`
+
+	var violations []string
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") || pathAllowed(path, allowedOwners) {
+			continue
+		}
+		if _, importsEffectPolicy := facts.imports[effectPolicyImport]; importsEffectPolicy {
+			violations = append(violations, path)
+		}
+	}
+	sort.Strings(violations)
+	return violations, nil
 }
 
 func assertNoBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {

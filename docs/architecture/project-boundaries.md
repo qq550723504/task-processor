@@ -208,6 +208,25 @@ Does not own:
 - Provider SDKs, provider request/response DTOs, or concrete credential
   adapters.
 
+### 3.9 `internal/imageagent`
+
+The Image Agent domain package retains its public model, errors, blocked codes,
+fingerprints, and repository ports. Within that boundary:
+
+- `internal/imageagent/effectpolicy` owns pure v3 transition eligibility,
+  including phase, blocking, budget, lease, fencing, fingerprint, and recovery
+  decisions. It depends only on the Go standard library and the parent
+  `internal/imageagent` domain package.
+- `internal/imageagent/store` owns persistence and concurrency mechanics:
+  memory locks, GORM transactions and row locks, record mapping, not-found
+  classification, compare-and-swap predicates, and atomic persistence. It
+  delegates transition eligibility to `effectpolicy` instead of duplicating
+  policy predicates.
+- Temporal, HTTP, tool, service, object-store, and ProductImage callers use the
+  existing Image Agent repository ports. They do not import `effectpolicy`
+  directly, so orchestration and delivery adapters cannot become a second
+  transition owner.
+
 ## 4. Forbidden Import Directions
 
 These import directions are forbidden by default:

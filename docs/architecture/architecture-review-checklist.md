@@ -14,8 +14,9 @@ For structural review, use it in this order:
    area.
 3. Use this checklist to turn those stable rules into merge-time review
    questions.
-4. Use `docs/architecture/next-steps.md` only to confirm the current guard
-   coverage baseline, not to replace the stable boundary documents as policy.
+4. Use this checklist's `Guard Baseline` as the authoritative current guard
+   inventory. `docs/architecture/next-steps.md` only points reviewers here and
+   tracks phased technical priorities; it does not duplicate the inventory.
 
 ## Required Checks
 
@@ -49,15 +50,17 @@ Before merging a structural or feature PR, verify:
 10. Any boundary exception is documented with a narrow scope and a follow-up
    cleanup path.
 11. Relevant import-boundary and architecture tests were run. If a guard is
-   added, removed, or renamed, update the `docs/architecture/next-steps.md`
-   `Current guard coverage` guard baseline in the same change.
+   added, removed, or renamed, update this checklist's `Guard Baseline` in the
+   same change. Confirm that the `docs/architecture/next-steps.md`
+   `Current guard coverage` section still delegates guard baseline authority here
+   without duplicating the inventory.
 
 ## Guard Baseline
 
-Use the `Current guard coverage` section in
-`docs/architecture/next-steps.md` as the current import-boundary baseline.
-Representative guard references must remain a subset of the current guard coverage baseline.
-At minimum, structural review should consider representative guards such as:
+This section is the authoritative current import-boundary guard inventory.
+The `Current guard coverage` section in `docs/architecture/next-steps.md`
+points here instead of maintaining a second copy. Structural review must
+consider the applicable guards, including:
 
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
 - `depguard: domain_app_httpapi_boundaries`
@@ -172,6 +175,9 @@ At minimum, structural review should consider representative guards such as:
 - `depguard: platform_registration_boundaries`
 - `TestAICapabilityModuleUsesOnlyApprovedDependencies`
 - `depguard: aicapability_boundaries`
+- `depguard: imageagent_effectpolicy_boundaries`
+- `TestImageAgentEffectPolicyInboundImportsStayOwnedByStoreAndPolicy`
+- `TestImageAgentEffectPolicyInboundImportGuardDistinguishesAllowedAndExactImports`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
