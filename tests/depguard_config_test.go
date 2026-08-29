@@ -104,3 +104,29 @@ func TestAlibaba1688CrawlerDepguardPatternKeepsHTTPAPIAdapterException(t *testin
 		t.Errorf("%s must keep ListingKit subpackage adapters outside the root-facade guard", configPath)
 	}
 }
+
+func TestZitadelAuthRuntimeDepguardPatternCoversListingKitPackageTree(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+
+	config := string(content)
+	start := strings.Index(config, "      authruntime_zitadel_listingkit:\n")
+	if start == -1 {
+		t.Fatalf("%s must define authruntime_zitadel_listingkit", configPath)
+	}
+	end := strings.Index(config[start+1:], "\n      alibaba1688_listingkit_root:")
+	if end == -1 {
+		t.Fatalf("%s must keep authruntime_zitadel_listingkit before alibaba1688_listingkit_root", configPath)
+	}
+	config = config[start : start+1+end]
+
+	for _, suffix := range []string{"$", "/"} {
+		pattern := fmt.Sprintf(`- pkg: "task-processor/internal/listingkit%s"`, suffix)
+		if !strings.Contains(config, pattern) {
+			t.Errorf("%s must contain depguard package-tree pattern %s", configPath, pattern)
+		}
+	}
+}
