@@ -16,7 +16,7 @@ import (
 func TestProvisionPhaseWritesRuntimeFileWithoutPrintingSecrets(t *testing.T) {
 	tempDir := t.TempDir()
 	managementTokenFile := filepath.Join(tempDir, "management-token.txt")
-	runtimeFile := filepath.Join(tempDir, "runtime.env")
+	runtimeFile := acceptanceRuntimeFile(tempDir)
 	if err := os.WriteFile(managementTokenFile, []byte("management-token-secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestProvisionPhaseWritesRuntimeFileWithoutPrintingSecrets(t *testing.T) {
 func TestAuthorizePhaseVerifiesBrowserTokenBeforeGrant(t *testing.T) {
 	tempDir := t.TempDir()
 	tokenFile := filepath.Join(tempDir, "user-token.txt")
-	runtimeFile := filepath.Join(tempDir, "runtime.env")
+	runtimeFile := acceptanceRuntimeFile(tempDir)
 	if err := os.WriteFile(tokenFile, []byte("browser-token-secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestAuthorizePhaseVerifiesBrowserTokenBeforeGrant(t *testing.T) {
 func TestAuthorizePhaseGrantsAdminOnlyWithFlag(t *testing.T) {
 	tempDir := t.TempDir()
 	tokenFile := filepath.Join(tempDir, "user-token.txt")
-	runtimeFile := filepath.Join(tempDir, "runtime.env")
+	runtimeFile := acceptanceRuntimeFile(tempDir)
 	if err := os.WriteFile(tokenFile, []byte("browser-token-secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -255,6 +255,9 @@ func TestCommandDoesNotAcceptTenantOrUserFlags(t *testing.T) {
 
 func writeRuntimeFixture(t *testing.T, path string, issuerURL string) {
 	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	content := strings.Join([]string{
 		"ZITADEL_ISSUER_URL=" + issuerURL,
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=project-1",
@@ -268,6 +271,10 @@ func writeRuntimeFixture(t *testing.T, path string, issuerURL string) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func acceptanceRuntimeFile(tempDir string) string {
+	return filepath.Join(tempDir, ".local", "image-agent-acceptance", "runtime.env")
 }
 
 func requireManagementAuth(t *testing.T, r *http.Request) {

@@ -67,7 +67,7 @@ func runProvision(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	orgID := envOrDefault("ZITADEL_ORG_ID", "")
 	projectID := os.Getenv(projectIDEnvKey)
 	projectName := envOrDefault("LISTINGKIT_ZITADEL_PROJECT_NAME", "ListingKit")
-	createProject := false
+	createProject := true
 	managementTokenFile := ""
 	runtimeFile := ""
 	flags.StringVar(&issuerURL, "issuer-url", issuerURL, "ZITADEL issuer URL")
@@ -89,10 +89,20 @@ func runProvision(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	if strings.TrimSpace(runtimeFile) == "" {
 		return errors.New("-runtime-file is required")
 	}
+	if err := validateAcceptanceRuntimePath(runtimeFile); err != nil {
+		return err
+	}
 
 	existingRuntime, err := readRuntimeEnv(runtimeFile)
 	if err != nil {
 		return err
+	}
+	if runtimeFileExists(runtimeFile) {
+		for _, key := range []string{apiClientSecretEnvKey, "ZITADEL_CLIENT_SECRET"} {
+			if strings.TrimSpace(existingRuntime[key]) == "" {
+				return fmt.Errorf("existing runtime file is missing %s; refusing to mutate ZITADEL", key)
+			}
+		}
 	}
 	managementToken, err := readSecretFile(managementTokenFile, "management token")
 	if err != nil {
@@ -148,6 +158,9 @@ func runAuthorize(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	}
 	if strings.TrimSpace(runtimeFile) == "" {
 		return errors.New("-runtime-file is required")
+	}
+	if err := validateAcceptanceRuntimePath(runtimeFile); err != nil {
+		return err
 	}
 
 	runtime, err := readRuntimeEnv(runtimeFile)
@@ -298,6 +311,51 @@ func readRuntimeEnv(path string) (map[string]string, error) {
 		values[key] = value
 	}
 	return values, nil
+}
+
+func runtimeFileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func validateAcceptanceRuntimePath(path string) error {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return errors.New("runtime file path is invalid")
+	}
+	parts := strings.Split(filepath.ToSlash(filepath.Clean(absolute)), "/")
+	for index := 0; index+1 < len(parts); index++ {
+		if parts[index] == ".local" && parts[index+1] == "image-agent-acceptance" {
+			return rejectSymlinkPath(absolute)
+		}
+	}
+	return errors.New("runtime file must be under .local/image-agent-acceptance")
+}
+
+func rejectSymlinkPath(path string) error {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return errors.New("runtime file path is invalid")
+	}
+	current := filepath.VolumeName(absolute) + string(filepath.Separator)
+	remainder := strings.TrimPrefix(absolute, current)
+	for _, part := range strings.Split(remainder, string(filepath.Separator)) {
+		if part == "" {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, statErr := os.Lstat(current)
+		if statErr != nil {
+			if os.IsNotExist(statErr) {
+				continue
+			}
+			return fmt.Errorf("inspect runtime file path: %w", statErr)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("runtime file path must not contain symlinks")
+		}
+	}
+	return nil
 }
 
 func writeRuntimeEnv(path string, values map[string]string) error {

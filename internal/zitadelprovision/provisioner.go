@@ -216,6 +216,9 @@ func GrantLocalOperator(ctx context.Context, cfg Config, additionalRole string, 
 	if err := cfg.validate(); err != nil {
 		return err
 	}
+	if err := validateLocalIssuer(cfg.IssuerURL); err != nil {
+		return err
+	}
 	if strings.TrimSpace(cfg.ProjectID) == "" {
 		return errors.New("project id is required for local operator grant")
 	}
