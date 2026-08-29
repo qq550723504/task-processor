@@ -361,6 +361,18 @@ linters-settings:
           - pkg: "task-processor/internal/app/state/"
             desc: "Command entrypoints must not depend on retired app state subpackages"
 
+      authruntime_zitadel_listingkit:
+        # Authentication runtime code must remain independent from ListingKit compatibility and business packages.
+        # The repository-wide issues.exclude-files excludes _test.go; TestZitadelAuthRuntimeDoesNotImportListingKit retains target-independent semantic coverage.
+        files:
+          - "**/internal/authruntime/zitadel/*.go"
+          - "**/internal/authruntime/zitadel/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit$"
+            desc: "Zitadel auth runtime must not depend on the ListingKit root package"
+          - pkg: "task-processor/internal/listingkit/"
+            desc: "Zitadel auth runtime must not depend on ListingKit subpackages"
+
       alibaba1688_listingkit_root:
         # The crawler must not depend on the ListingKit root facade; its reviewed HTTP adapter remains allowed.
         # The repository-wide issues.exclude-files excludes _test.go; TestAlibaba1688CrawlerDoesNotImportListingKitRoot retains target-independent semantic coverage.
