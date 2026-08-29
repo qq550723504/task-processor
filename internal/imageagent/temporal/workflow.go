@@ -1303,6 +1303,11 @@ func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSig
 		s.cancelCommitErr = nil
 		s.cancelBlocked = false
 		s.cancelActionFingerprint = record.fingerprint
+		// Record the intent before waking the cancellation saga. The saga may
+		// launch recovery workflows before this update handler reaches its
+		// blocked acknowledgement, and a fast recovery completion must still
+		// have the original fingerprint available to resume cancellation.
+		s.lastBlockedCancelFingerprint = record.fingerprint
 		s.wake.SendAsync(struct{}{})
 		if err := workflow.Await(ctx, func() bool {
 			return s.cancelCommitted || s.cancelBlocked || (!s.cancelPending && s.cancelCommitErr != nil)
@@ -1313,7 +1318,6 @@ func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSig
 			return CommandAcknowledgement{}, s.cancelCommitErr
 		}
 		if s.cancelBlocked {
-			s.lastBlockedCancelFingerprint = record.fingerprint
 			s.cancelRequested = false
 			s.cancelActionFingerprint = ""
 			return CommandAcknowledgement{RunID: signal.RunID, PlanRevision: signal.PlanRevision, ActionID: signal.ActionID, Status: imageagent.RunStatusBlocked}, nil
@@ -1384,6 +1388,7 @@ func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, re
 	if err == nil {
 		*s.projection = result
 		s.cancelCommitted = true
+		s.lastBlockedCancelFingerprint = ""
 	}
 	s.wake.SendAsync(struct{}{})
 }
