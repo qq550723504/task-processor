@@ -180,6 +180,38 @@ linters-settings:
           - pkg: "task-processor/internal/workspace/shein$"
             desc: "ListingKit root production code must not depend on the legacy workspace SHEIN domain"
 
+      platform_registration_boundaries:
+        # Keep platform registration modules independent from marketplace business and HTTP assembly packages.
+        # Historical platform implementation delegates remain a separate, file-specific semantic exception.
+        files:
+          - "**/internal/platforms/*.go"
+          - "**/internal/platforms/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/app/httpapi$"
+          - pkg: "task-processor/internal/app/httpapi/"
+            desc: "Platform registration must not depend on HTTP assembly"
+          - pkg: "task-processor/internal/asset$"
+          - pkg: "task-processor/internal/asset/"
+            desc: "Platform registration must not own asset business rules"
+          - pkg: "task-processor/internal/catalog$"
+          - pkg: "task-processor/internal/catalog/"
+            desc: "Platform registration must not own catalog business rules"
+          - pkg: "task-processor/internal/listingkit$"
+          - pkg: "task-processor/internal/listingkit/"
+            desc: "Platform registration must not depend on ListingKit business rules"
+          - pkg: "task-processor/internal/marketplace$"
+          - pkg: "task-processor/internal/marketplace/"
+            desc: "Platform registration must not own marketplace business rules"
+          - pkg: "task-processor/internal/productimage$"
+          - pkg: "task-processor/internal/productimage/"
+            desc: "Platform registration must not own product-image business rules"
+          - pkg: "task-processor/internal/publishing$"
+          - pkg: "task-processor/internal/publishing/"
+            desc: "Platform registration must not own publishing business rules"
+          - pkg: "task-processor/internal/workspace$"
+          - pkg: "task-processor/internal/workspace/"
+            desc: "Platform registration must not own workspace business rules"
+
       source_handoff_legacy_http:
         # The retired ProductEnrich HTTP owner must not regain production consumers.
         # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
