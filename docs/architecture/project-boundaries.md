@@ -318,6 +318,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 
 - `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
+- `depguard: domain_app_httpapi_boundaries`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
 - `TestProductDomainDoesNotDependOnOuterAdapters`
 - `TestZitadelAuthRuntimeDoesNotImportListingKit`

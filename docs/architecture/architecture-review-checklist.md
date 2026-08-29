@@ -63,6 +63,7 @@ points here instead of maintaining a second copy. Structural review must
 consider the applicable guards, including:
 
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
+- `depguard: domain_app_httpapi_boundaries`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
 - `TestProductDomainDoesNotDependOnOuterAdapters`
 - `depguard: listingkit_subdomains_root_facade`
@@ -109,6 +110,7 @@ consider the applicable guards, including:
 - `TestAuthenticatedIdentityRootImportsStayRestricted`
 - `TestAuthenticatedIdentityRootImportScannerResolvesAliases`
 - `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
+- `depguard: domain_app_httpapi_boundaries`
 - `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted`
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted`

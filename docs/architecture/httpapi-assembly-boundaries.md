@@ -275,6 +275,7 @@ HTTP API 装配边界由以下测试守住：
 
 - `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
+- `depguard: domain_app_httpapi_boundaries`
 - `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted`
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted`
