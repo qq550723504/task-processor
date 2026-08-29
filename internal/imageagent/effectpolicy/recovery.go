@@ -67,7 +67,8 @@ func RestoreRecoveryBlocked(current imageagent.SlotEffectV3Attempt, reservation 
 	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(attempt); err != nil {
 		return EffectDecision{}, err
 	}
-	if !sameRecoveryReservation(attempt, reservation) || attempt.Phase != imageagent.SlotEffectV3RecoveryBlocked || !isRedrivableRecoveryPhase(attempt.RecoveryPhase) {
+	if !sameRecoveryReservation(attempt, reservation) || attempt.CorruptionMarker != "" ||
+		attempt.Phase != imageagent.SlotEffectV3RecoveryBlocked || !isRedrivableRecoveryPhase(attempt.RecoveryPhase) {
 		return EffectDecision{}, imageagent.ErrRevisionConflict
 	}
 	attempt.Phase = attempt.RecoveryPhase
@@ -97,20 +98,16 @@ func FailClosedCorrupt(identity imageagent.SlotExternalEffectIdentity, marker st
 	if attempt.Identity != identity {
 		return EffectDecision{}, imageagent.ErrRevisionConflict
 	}
-	if attempt.Phase == imageagent.SlotEffectV3RecoveryBlocked {
-		if strings.TrimSpace(attempt.CorruptionMarker) == "" {
-			return EffectDecision{}, imageagent.ErrCorruptPersistedEffect
-		}
-		if err := imageagent.ValidateSlotEffectV3AttemptPolicy(attempt); err != nil {
-			return EffectDecision{}, err
-		}
-		if attempt.CorruptionMarker != marker {
-			return EffectDecision{}, imageagent.ErrRevisionConflict
-		}
-		return EffectDecision{Attempt: attempt}, nil
+	if attempt.Phase == imageagent.SlotEffectV3RecoveryBlocked && strings.TrimSpace(attempt.CorruptionMarker) == "" {
+		return EffectDecision{}, imageagent.ErrCorruptPersistedEffect
 	}
 	if attempt.CorruptionMarker != "" && attempt.CorruptionMarker != marker {
 		return EffectDecision{}, imageagent.ErrRevisionConflict
+	}
+	if attempt.Phase == imageagent.SlotEffectV3RecoveryBlocked &&
+		attempt.BlockedCode == imageagent.SlotRecoveryBlockedCode &&
+		attempt.RecoveryPhase == "" && attempt.CorruptionMarker == marker {
+		return EffectDecision{Attempt: attempt}, nil
 	}
 	attempt.Phase = imageagent.SlotEffectV3RecoveryBlocked
 	attempt.BlockedCode = imageagent.SlotRecoveryBlockedCode

@@ -140,6 +140,57 @@ func TestSlotEffectV3RecoveryRepositoryConformance(t *testing.T) {
 	}
 }
 
+func TestSlotEffectV3CorruptRecoveryMarkerConvergesAcrossRepositories(t *testing.T) {
+	for _, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			fixture := factory.new(t)
+			ctx := context.Background()
+			_, _, err := fixture.effects.ReserveSlotProviderV3(ctx, fixture.reservation)
+			require.NoError(t, err)
+			marker := "budget_policy_json:sha256:0123456789abcdef"
+
+			switch repository := fixture.effects.(type) {
+			case *memoryRepository:
+				repository.mu.Lock()
+				attempt := repository.slotEffectsV3[slotEffectKey(fixture.reservation.Identity)]
+				attempt.Phase = imageagent.SlotEffectV3RecoveryBlocked
+				attempt.BlockedCode = imageagent.SlotRecoveryBlockedCode
+				attempt.RecoveryPhase = imageagent.SlotEffectV3PublicationClaimed
+				attempt.CorruptionMarker = marker
+				repository.slotEffectsV3[slotEffectKey(fixture.reservation.Identity)] = attempt
+				repository.mu.Unlock()
+			case *gormRepository:
+				require.NoError(t, slotEffectV3IdentityWhere(repository.db.Model(&slotExternalEffectV3Record{}), fixture.reservation.Identity).
+					Updates(map[string]any{
+						"phase": imageagent.SlotEffectV3RecoveryBlocked, "blocked_code": imageagent.SlotRecoveryBlockedCode,
+						"recovery_phase": imageagent.SlotEffectV3PublicationClaimed, "corruption_marker": marker,
+					}).Error)
+			default:
+				t.Fatalf("unsupported repository type %T", fixture.effects)
+			}
+
+			restorer := fixture.effects.(imageagent.RecoveryBlockedSlotEffectV3Repository)
+			_, err = restorer.RestoreRecoveryBlockedEffectV3(ctx, fixture.reservation)
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict, "corrupt evidence must never authorize explicit redrive")
+
+			corruptor := fixture.effects.(imageagent.CorruptSlotEffectV3Repository)
+			canonical, err := corruptor.BlockCorruptSlotEffectV3(ctx, fixture.reservation.Identity)
+			require.NoError(t, err)
+			require.Equal(t, imageagent.SlotEffectV3RecoveryBlocked, canonical.Phase)
+			require.Equal(t, imageagent.SlotRecoveryBlockedCode, canonical.BlockedCode)
+			require.Equal(t, marker, canonical.CorruptionMarker)
+			require.Empty(t, canonical.RecoveryPhase)
+
+			persisted, err := fixture.effects.GetSlotExternalEffectV3(ctx, fixture.reservation.Identity)
+			require.NoError(t, err)
+			require.Equal(t, canonical, persisted, "adapter must persist the canonical corruption state")
+			repeated, err := corruptor.BlockCorruptSlotEffectV3(ctx, fixture.reservation.Identity)
+			require.NoError(t, err)
+			require.Equal(t, canonical, repeated)
+		})
+	}
+}
+
 type recoveryConformanceTrace struct {
 	ProviderUnknownPhase        imageagent.SlotEffectV3Phase
 	ProviderUnknownRepeat       bool

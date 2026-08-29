@@ -194,6 +194,25 @@ func TestRestoreRecoveryBlockedDecisionMatrix(t *testing.T) {
 		_, err := RestoreRecoveryBlocked(current, conflict)
 		require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
 	})
+	t.Run("corruption marker rejects otherwise redrivable recovery phases", func(t *testing.T) {
+		for _, recoveryPhase := range []imageagent.SlotEffectV3Phase{
+			imageagent.SlotEffectV3StagingPrepared,
+			imageagent.SlotEffectV3ArtifactStaged,
+			imageagent.SlotEffectV3PublicationClaimed,
+			imageagent.SlotEffectV3ProviderUnknown,
+			imageagent.SlotEffectV3StagingUnknown,
+			imageagent.SlotEffectV3PublicationUnknown,
+		} {
+			t.Run(string(recoveryPhase), func(t *testing.T) {
+				current := recoveryPolicyAttempt(reservation, imageagent.SlotEffectV3RecoveryBlocked)
+				current.RecoveryPhase = recoveryPhase
+				current.CorruptionMarker = "budget_policy_json:sha256:0123456789abcdef"
+
+				_, err := RestoreRecoveryBlocked(current, reservation)
+				require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			})
+		}
+	})
 }
 
 func TestFailClosedCorruptDecisionMatrix(t *testing.T) {
@@ -216,6 +235,12 @@ func TestFailClosedCorruptDecisionMatrix(t *testing.T) {
 			attempt.CorruptionMarker = marker
 			return attempt
 		}()), wantChanged: false},
+		{name: "same marker with recovery phase is canonicalized", identity: identity, marker: marker, current: recoveryAttemptPointer(func() imageagent.SlotEffectV3Attempt {
+			attempt := recoveryPolicyAttempt(reservation, imageagent.SlotEffectV3RecoveryBlocked)
+			attempt.RecoveryPhase = imageagent.SlotEffectV3PublicationClaimed
+			attempt.CorruptionMarker = marker
+			return attempt
+		}()), wantChanged: true},
 		{name: "different marker cannot replace stable evidence", identity: identity, marker: marker + "-other", current: recoveryAttemptPointer(func() imageagent.SlotEffectV3Attempt {
 			attempt := recoveryPolicyAttempt(reservation, imageagent.SlotEffectV3RecoveryBlocked)
 			attempt.CorruptionMarker = marker
@@ -223,12 +248,12 @@ func TestFailClosedCorruptDecisionMatrix(t *testing.T) {
 		}()), wantErr: imageagent.ErrRevisionConflict},
 		{name: "missing marker", identity: identity, wantErr: imageagent.ErrCorruptPersistedEffect},
 		{name: "existing fail closed row missing marker", identity: identity, marker: marker, current: recoveryAttemptPointer(recoveryPolicyAttempt(reservation, imageagent.SlotEffectV3RecoveryBlocked)), wantErr: imageagent.ErrCorruptPersistedEffect},
-		{name: "existing fail closed row has mismatched code", identity: identity, marker: marker, current: recoveryAttemptPointer(func() imageagent.SlotEffectV3Attempt {
+		{name: "same marker with mismatched code is canonicalized", identity: identity, marker: marker, current: recoveryAttemptPointer(func() imageagent.SlotEffectV3Attempt {
 			attempt := recoveryPolicyAttempt(reservation, imageagent.SlotEffectV3RecoveryBlocked)
 			attempt.BlockedCode = imageagent.SlotProviderOutcomeUnknownCode
 			attempt.CorruptionMarker = marker
 			return attempt
-		}()), wantErr: imageagent.ErrInvalidPersistedPolicy},
+		}()), wantChanged: true},
 		{name: "decoded identity mismatch", identity: identity, marker: marker, current: recoveryAttemptPointer(func() imageagent.SlotEffectV3Attempt {
 			attempt := recoveryPolicyAttempt(reservation, imageagent.SlotEffectV3ProviderClaimed)
 			attempt.Identity.SlotID = "other-slot"
