@@ -1,0 +1,46 @@
+package tests
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestPlatformRegistrationDepguardPatternsRespectPackageBoundaries(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+
+	config := string(content)
+	start := strings.Index(config, "      platform_registration_boundaries:\n")
+	if start == -1 {
+		t.Fatalf("%s must define platform_registration_boundaries", configPath)
+	}
+	end := strings.Index(config[start+1:], "\n      source_handoff_legacy_http:")
+	if end == -1 {
+		t.Fatalf("%s must keep platform_registration_boundaries before source_handoff_legacy_http", configPath)
+	}
+	config = config[start : start+1+end]
+
+	for _, packagePath := range []string{
+		"task-processor/internal/app/httpapi",
+		"task-processor/internal/asset",
+		"task-processor/internal/catalog",
+		"task-processor/internal/listingkit",
+		"task-processor/internal/marketplace",
+		"task-processor/internal/productimage",
+		"task-processor/internal/publishing",
+		"task-processor/internal/workspace",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			pattern := fmt.Sprintf(`- pkg: "%s%s"`, packagePath, suffix)
+			if !strings.Contains(config, pattern) {
+				t.Errorf("%s must contain depguard package-boundary pattern %s", configPath, pattern)
+			}
+		}
+	}
+}

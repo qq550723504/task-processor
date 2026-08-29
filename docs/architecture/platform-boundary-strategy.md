@@ -132,6 +132,7 @@ publishing behavior, the owning package should be a marketplace or publishing
 module, with `internal/platforms/*` only delegating to it.
 
 This thin-layer rule is guarded by
+`TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages` plus
 `depguard: platform_registration_boundaries` and
 `TestPlatformRegistrationPackagesStayThin`.
 
