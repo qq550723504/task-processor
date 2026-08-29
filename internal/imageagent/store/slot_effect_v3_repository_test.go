@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -16,6 +18,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"task-processor/internal/imageagent"
+	"task-processor/internal/imageagent/effectpolicy"
 )
 
 func TestSlotEffectV3RepositoryContract(t *testing.T) {
@@ -85,6 +88,693 @@ func TestSlotEffectV3RepositoryContract(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, attempt, replayed)
 		})
+	}
+}
+
+func TestSlotEffectV3StagingRepositoryConformance(t *testing.T) {
+	factories := []struct {
+		name string
+		new  func(*testing.T) imageagent.Repository
+	}{
+		{name: "memory", new: func(*testing.T) imageagent.Repository { return NewMemoryRepository() }},
+		{name: "gorm", new: func(t *testing.T) imageagent.Repository { return NewGormRepository(newConcurrentSQLite(t)) }},
+	}
+	var baseline stagingConformanceTrace
+	for index, factory := range factories {
+		t.Run(factory.name, func(t *testing.T) {
+			trace := runSlotEffectV3StagingConformance(t, factory.new(t))
+			if index == 0 {
+				baseline = trace
+				return
+			}
+			require.Equal(t, baseline, trace)
+		})
+	}
+}
+
+func TestSlotEffectV3PublicationRepositoryConformance(t *testing.T) {
+	var baseline publicationConformanceTrace
+	for index, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			trace := runSlotEffectV3PublicationConformance(t, factory.new(t))
+			if index == 0 {
+				baseline = trace
+				return
+			}
+			require.Equal(t, baseline, trace)
+		})
+	}
+}
+
+func TestSlotEffectV3RecoveryRepositoryConformance(t *testing.T) {
+	var baseline recoveryConformanceTrace
+	for index, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			trace := runSlotEffectV3RecoveryConformance(t, factory)
+			if index == 0 {
+				baseline = trace
+				return
+			}
+			require.Equal(t, baseline, trace)
+		})
+	}
+}
+
+func TestSlotEffectV3CorruptRecoveryMarkerConvergesAcrossRepositories(t *testing.T) {
+	for _, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			fixture := factory.new(t)
+			ctx := context.Background()
+			_, _, err := fixture.effects.ReserveSlotProviderV3(ctx, fixture.reservation)
+			require.NoError(t, err)
+			marker := "budget_policy_json:sha256:0123456789abcdef"
+
+			switch repository := fixture.effects.(type) {
+			case *memoryRepository:
+				repository.mu.Lock()
+				attempt := repository.slotEffectsV3[slotEffectKey(fixture.reservation.Identity)]
+				attempt.Phase = imageagent.SlotEffectV3RecoveryBlocked
+				attempt.BlockedCode = imageagent.SlotRecoveryBlockedCode
+				attempt.RecoveryPhase = imageagent.SlotEffectV3PublicationClaimed
+				attempt.CorruptionMarker = marker
+				repository.slotEffectsV3[slotEffectKey(fixture.reservation.Identity)] = attempt
+				repository.mu.Unlock()
+			case *gormRepository:
+				require.NoError(t, slotEffectV3IdentityWhere(repository.db.Model(&slotExternalEffectV3Record{}), fixture.reservation.Identity).
+					Updates(map[string]any{
+						"phase": imageagent.SlotEffectV3RecoveryBlocked, "blocked_code": imageagent.SlotRecoveryBlockedCode,
+						"recovery_phase": imageagent.SlotEffectV3PublicationClaimed, "corruption_marker": marker,
+					}).Error)
+			default:
+				t.Fatalf("unsupported repository type %T", fixture.effects)
+			}
+
+			restorer := fixture.effects.(imageagent.RecoveryBlockedSlotEffectV3Repository)
+			_, err = restorer.RestoreRecoveryBlockedEffectV3(ctx, fixture.reservation)
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict, "corrupt evidence must never authorize explicit redrive")
+
+			corruptor := fixture.effects.(imageagent.CorruptSlotEffectV3Repository)
+			canonical, err := corruptor.BlockCorruptSlotEffectV3(ctx, fixture.reservation.Identity)
+			require.NoError(t, err)
+			require.Equal(t, imageagent.SlotEffectV3RecoveryBlocked, canonical.Phase)
+			require.Equal(t, imageagent.SlotRecoveryBlockedCode, canonical.BlockedCode)
+			require.Equal(t, marker, canonical.CorruptionMarker)
+			require.Empty(t, canonical.RecoveryPhase)
+
+			persisted, err := fixture.effects.GetSlotExternalEffectV3(ctx, fixture.reservation.Identity)
+			require.NoError(t, err)
+			require.Equal(t, canonical, persisted, "adapter must persist the canonical corruption state")
+			repeated, err := corruptor.BlockCorruptSlotEffectV3(ctx, fixture.reservation.Identity)
+			require.NoError(t, err)
+			require.Equal(t, canonical, repeated)
+		})
+	}
+}
+
+type recoveryConformanceTrace struct {
+	ProviderUnknownPhase        imageagent.SlotEffectV3Phase
+	ProviderUnknownRepeat       bool
+	RecoveryBlockedPhase        imageagent.SlotEffectV3Phase
+	RecoveryPhase               imageagent.SlotEffectV3Phase
+	RestoredPhase               imageagent.SlotEffectV3Phase
+	SecondRestoreConflict       bool
+	ProviderRedispatchRejected  bool
+	StalePublicationRejected    bool
+	PublicationUnknownPhase     imageagent.SlotEffectV3Phase
+	PublicationUnknownRepeat    bool
+	CorruptPhase                imageagent.SlotEffectV3Phase
+	CorruptCode                 string
+	CorruptMarker               string
+	CorruptRepeat               bool
+	CorruptExplicitRedriveFails bool
+}
+
+func runSlotEffectV3RecoveryConformance(t *testing.T, factory v3ReviewFixtureFactory) recoveryConformanceTrace {
+	t.Helper()
+	ctx := context.Background()
+	trace := recoveryConformanceTrace{}
+
+	provider := factory.new(t)
+	_, _, err := provider.effects.ReserveSlotProviderV3(ctx, provider.reservation)
+	require.NoError(t, err)
+	providerUnknown, err := provider.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: provider.reservation, Phase: imageagent.SlotEffectV3ProviderUnknown, Code: imageagent.SlotProviderOutcomeUnknownCode,
+	})
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3ProviderUnknown, providerUnknown.Phase)
+	providerUnknownRepeat, err := provider.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: provider.reservation, Phase: imageagent.SlotEffectV3ProviderUnknown, Code: imageagent.SlotProviderOutcomeUnknownCode,
+	})
+	require.NoError(t, err)
+	require.Equal(t, providerUnknown, providerUnknownRepeat)
+	recoveryBlocked, err := provider.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: provider.reservation, Phase: imageagent.SlotEffectV3RecoveryBlocked, Code: imageagent.SlotRecoveryBlockedCode,
+	})
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3RecoveryBlocked, recoveryBlocked.Phase)
+	require.Equal(t, imageagent.SlotEffectV3ProviderUnknown, recoveryBlocked.RecoveryPhase)
+	restorer := provider.effects.(imageagent.RecoveryBlockedSlotEffectV3Repository)
+	restored, err := restorer.RestoreRecoveryBlockedEffectV3(ctx, provider.reservation)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3ProviderUnknown, restored.Phase)
+	_, secondRestoreErr := restorer.RestoreRecoveryBlockedEffectV3(ctx, provider.reservation)
+	require.ErrorIs(t, secondRestoreErr, imageagent.ErrRevisionConflict)
+
+	providerDispatch := factory.new(t)
+	_, _, err = providerDispatch.effects.ReserveSlotProviderV3(ctx, providerDispatch.reservation)
+	require.NoError(t, err)
+	_, err = providerDispatch.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: providerDispatch.reservation, Phase: imageagent.SlotEffectV3RecoveryBlocked, Code: imageagent.SlotRecoveryBlockedCode,
+	})
+	require.NoError(t, err)
+	_, providerRedispatchErr := providerDispatch.effects.(imageagent.RecoveryBlockedSlotEffectV3Repository).RestoreRecoveryBlockedEffectV3(ctx, providerDispatch.reservation)
+	require.ErrorIs(t, providerRedispatchErr, imageagent.ErrRevisionConflict)
+
+	publication := factory.new(t)
+	stageV3Attempt(t, publication.effects, publication.reservation)
+	request := v3PublicationRequest(publication.reservation, "publisher-a")
+	_, claim, acquired, err := publication.effects.ClaimSlotPublicationV3(ctx, request)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	_, stalePublicationErr := publication.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: publication.reservation, Phase: imageagent.SlotEffectV3PublicationUnknown, Code: imageagent.SlotPublicationOutcomeUnknownCode,
+		Owner: "publisher-b", Fence: claim.Fence,
+	})
+	require.ErrorIs(t, stalePublicationErr, imageagent.ErrRevisionConflict)
+	publicationUnknown, err := publication.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: publication.reservation, Phase: imageagent.SlotEffectV3PublicationUnknown, Code: imageagent.SlotPublicationOutcomeUnknownCode,
+		Owner: claim.Owner, Fence: claim.Fence,
+	})
+	require.NoError(t, err)
+	publicationRepeat, err := publication.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: publication.reservation, Phase: imageagent.SlotEffectV3PublicationUnknown, Code: imageagent.SlotPublicationOutcomeUnknownCode,
+		Owner: claim.Owner, Fence: claim.Fence,
+	})
+	require.NoError(t, err)
+	require.Equal(t, publicationUnknown, publicationRepeat)
+
+	corrupt := factory.new(t)
+	_, _, err = corrupt.effects.ReserveSlotProviderV3(ctx, corrupt.reservation)
+	require.NoError(t, err)
+	corruptPayload := []byte("{corrupt-json")
+	marker := persistedEffectCorruptionMarker("budget_policy_json", corruptPayload)
+	switch repository := corrupt.effects.(type) {
+	case *memoryRepository:
+		repository.mu.Lock()
+		attempt := repository.slotEffectsV3[slotEffectKey(corrupt.reservation.Identity)]
+		attempt.CorruptionMarker = marker
+		repository.slotEffectsV3[slotEffectKey(corrupt.reservation.Identity)] = attempt
+		repository.mu.Unlock()
+	case *gormRepository:
+		require.NoError(t, slotEffectV3IdentityWhere(repository.db.Model(&slotExternalEffectV3Record{}), corrupt.reservation.Identity).
+			Update("budget_policy_json", corruptPayload).Error)
+	default:
+		t.Fatalf("unsupported repository type %T", corrupt.effects)
+	}
+	corruptor := corrupt.effects.(imageagent.CorruptSlotEffectV3Repository)
+	corruptBlocked, err := corruptor.BlockCorruptSlotEffectV3(ctx, corrupt.reservation.Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3RecoveryBlocked, corruptBlocked.Phase)
+	require.Equal(t, imageagent.SlotRecoveryBlockedCode, corruptBlocked.BlockedCode)
+	require.Equal(t, marker, corruptBlocked.CorruptionMarker)
+	require.Empty(t, corruptBlocked.RecoveryPhase)
+	corruptRepeat, err := corruptor.BlockCorruptSlotEffectV3(ctx, corrupt.reservation.Identity)
+	require.NoError(t, err)
+	require.Equal(t, corruptBlocked, corruptRepeat)
+	_, corruptRestoreErr := corrupt.effects.(imageagent.RecoveryBlockedSlotEffectV3Repository).RestoreRecoveryBlockedEffectV3(ctx, corrupt.reservation)
+	require.ErrorIs(t, corruptRestoreErr, imageagent.ErrRevisionConflict)
+
+	trace.ProviderUnknownPhase = providerUnknown.Phase
+	trace.ProviderUnknownRepeat = reflect.DeepEqual(providerUnknown, providerUnknownRepeat)
+	trace.RecoveryBlockedPhase = recoveryBlocked.Phase
+	trace.RecoveryPhase = recoveryBlocked.RecoveryPhase
+	trace.RestoredPhase = restored.Phase
+	trace.SecondRestoreConflict = errors.Is(secondRestoreErr, imageagent.ErrRevisionConflict)
+	trace.ProviderRedispatchRejected = errors.Is(providerRedispatchErr, imageagent.ErrRevisionConflict)
+	trace.StalePublicationRejected = errors.Is(stalePublicationErr, imageagent.ErrRevisionConflict)
+	trace.PublicationUnknownPhase = publicationUnknown.Phase
+	trace.PublicationUnknownRepeat = reflect.DeepEqual(publicationUnknown, publicationRepeat)
+	trace.CorruptPhase = corruptBlocked.Phase
+	trace.CorruptCode = corruptBlocked.BlockedCode
+	trace.CorruptMarker = corruptBlocked.CorruptionMarker
+	trace.CorruptRepeat = reflect.DeepEqual(corruptBlocked, corruptRepeat)
+	trace.CorruptExplicitRedriveFails = errors.Is(corruptRestoreErr, imageagent.ErrRevisionConflict)
+	return trace
+}
+
+type publicationConformanceTrace struct {
+	FirstPhase              imageagent.SlotEffectV3Phase
+	FirstOwner              string
+	FirstFence              int64
+	FirstAcquired           bool
+	NormalizedManifestSHA   string
+	ReplayAcquired          bool
+	ReplayFence             int64
+	ManifestConflict        bool
+	SuccessorOwner          string
+	SuccessorFence          int64
+	SuccessorAcquired       bool
+	StaleRenewalConflict    bool
+	StaleCompletionConflict bool
+	RenewedFence            int64
+	CompletedPhase          imageagent.SlotEffectV3Phase
+	CompletedFingerprint    string
+	CompletedPublished      imageagent.SlotEffectV3PublishedResult
+	CompletionRepeat        bool
+	PostCompletionAcquired  bool
+	PostCompletionPhase     imageagent.SlotEffectV3Phase
+}
+
+func runSlotEffectV3PublicationConformance(t *testing.T, fixture v3ReviewFixture) publicationConformanceTrace {
+	t.Helper()
+	ctx := context.Background()
+	stageV3Attempt(t, fixture.effects, fixture.reservation)
+	request := v3PublicationRequest(fixture.reservation, "worker-a")
+	request.FinalManifest.Assets[0].SHA256 = strings.ToUpper(request.FinalManifest.Assets[0].SHA256)
+	firstAttempt, first, firstAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+	require.NoError(t, err)
+	require.True(t, firstAcquired)
+	require.Equal(t, imageagent.SlotEffectV3PublicationClaimed, firstAttempt.Phase)
+	require.Equal(t, "worker-a", first.Owner)
+	require.EqualValues(t, 1, first.Fence)
+	require.False(t, first.LeaseExpiresAt.IsZero())
+	require.Equal(t, v3SHA256, firstAttempt.FinalManifest.Assets[0].SHA256)
+	require.Equal(t, request.PublicationFingerprint, firstAttempt.PublicationFingerprint)
+	replayAttempt, replay, replayAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+	require.NoError(t, err)
+	require.False(t, replayAcquired)
+	require.Equal(t, first, replay)
+	require.Equal(t, firstAttempt, replayAttempt)
+
+	conflict := request
+	conflict.FinalManifest.Assets = append([]imageagent.PublishedAssetRef(nil), request.FinalManifest.Assets...)
+	conflict.FinalManifest.Assets[0].ObjectKey = "image-agent/final/tenant-a/run/conflict.png"
+	_, _, _, conflictErr := fixture.effects.ClaimSlotPublicationV3(ctx, conflict)
+	require.ErrorIs(t, conflictErr, imageagent.ErrRevisionConflict)
+
+	fixture.expireLease(t, fixture.reservation.Identity)
+	request.Owner = "worker-b"
+	successorAttempt, successor, successorAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+	require.NoError(t, err)
+	require.True(t, successorAcquired)
+	require.Equal(t, imageagent.SlotEffectV3PublicationClaimed, successorAttempt.Phase)
+	require.Equal(t, "worker-b", successor.Owner)
+	require.EqualValues(t, 2, successor.Fence)
+	_, staleRenewalErr := fixture.effects.RenewSlotPublicationV3(ctx, imageagent.PublicationLeaseRenewal{Identity: fixture.reservation.Identity, Owner: first.Owner, Fence: first.Fence, LeaseDuration: time.Minute})
+	require.ErrorIs(t, staleRenewalErr, imageagent.ErrRevisionConflict)
+	published := v3PublishedResult(fixture.reservation)
+	published.Candidates[0].DurableAsset.SHA256 = strings.ToUpper(published.Candidates[0].DurableAsset.SHA256)
+	fingerprintInput := cloneV3PublishedResultForTest(published)
+	resultFingerprint := mustV3ResultFingerprint(t, fingerprintInput)
+	completion := imageagent.PublicationCompletion{Reservation: fixture.reservation, Owner: successor.Owner, Fence: successor.Fence, PublicationFingerprint: request.PublicationFingerprint, ResultFingerprint: resultFingerprint, Published: published}
+	originalCompletion := completion
+	originalCompletion.Published = cloneV3PublishedResultForTest(completion.Published)
+	staleCompletion := completion
+	staleCompletion.Owner = first.Owner
+	staleCompletion.Fence = first.Fence
+	_, staleCompletionErr := fixture.effects.CompleteSlotPublicationV3(ctx, staleCompletion)
+	require.ErrorIs(t, staleCompletionErr, imageagent.ErrRevisionConflict)
+	require.Equal(t, strings.ToUpper(v3SHA256), completion.Published.Candidates[0].DurableAsset.SHA256)
+	renewed, err := fixture.effects.RenewSlotPublicationV3(ctx, imageagent.PublicationLeaseRenewal{Identity: fixture.reservation.Identity, Owner: successor.Owner, Fence: successor.Fence, LeaseDuration: time.Minute})
+	require.NoError(t, err)
+	require.Equal(t, successor.Owner, renewed.Owner)
+	require.Equal(t, successor.Fence, renewed.Fence)
+	require.False(t, renewed.LeaseExpiresAt.Before(successor.LeaseExpiresAt))
+	completed, err := fixture.effects.CompleteSlotPublicationV3(ctx, completion)
+	require.NoError(t, err)
+	require.Equal(t, originalCompletion, completion)
+	require.Equal(t, strings.ToUpper(v3SHA256), completion.Published.Candidates[0].DurableAsset.SHA256)
+	expectedPublished := cloneV3PublishedResultForTest(published)
+	expectedPublished, err = imageagent.NormalizeSlotEffectV3PublishedResult(expectedPublished)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, completed.Phase)
+	require.Equal(t, resultFingerprint, completed.ResultFingerprint)
+	require.Equal(t, expectedPublished, completed.Published)
+	repeated, err := fixture.effects.CompleteSlotPublicationV3(ctx, completion)
+	require.NoError(t, err)
+	require.Equal(t, completed, repeated)
+	postComplete, postClaim, postAcquired, err := fixture.effects.ClaimSlotPublicationV3(ctx, request)
+	require.NoError(t, err)
+	require.False(t, postAcquired)
+	require.Equal(t, completed, postComplete)
+	require.Equal(t, successor, postClaim)
+
+	return publicationConformanceTrace{
+		FirstPhase: firstAttempt.Phase, FirstOwner: first.Owner, FirstFence: first.Fence, FirstAcquired: firstAcquired,
+		NormalizedManifestSHA: firstAttempt.FinalManifest.Assets[0].SHA256, ReplayAcquired: replayAcquired, ReplayFence: replay.Fence,
+		ManifestConflict: errors.Is(conflictErr, imageagent.ErrRevisionConflict), SuccessorOwner: successor.Owner, SuccessorFence: successor.Fence, SuccessorAcquired: successorAcquired,
+		StaleRenewalConflict: errors.Is(staleRenewalErr, imageagent.ErrRevisionConflict), StaleCompletionConflict: errors.Is(staleCompletionErr, imageagent.ErrRevisionConflict),
+		RenewedFence: renewed.Fence, CompletedPhase: completed.Phase, CompletedFingerprint: completed.ResultFingerprint, CompletedPublished: completed.Published,
+		CompletionRepeat: reflect.DeepEqual(completed, repeated), PostCompletionAcquired: postAcquired, PostCompletionPhase: postComplete.Phase,
+	}
+}
+
+func TestSlotEffectV3StagingInputValidationPrecedesStoredStateAcrossAdapters(t *testing.T) {
+	factories := []struct {
+		name string
+		new  func(*testing.T) imageagent.Repository
+	}{
+		{name: "memory", new: func(*testing.T) imageagent.Repository { return NewMemoryRepository() }},
+		{name: "gorm", new: func(t *testing.T) imageagent.Repository { return NewGormRepository(newConcurrentSQLite(t)) }},
+	}
+	for _, factory := range factories {
+		t.Run(factory.name+"/missing_effect", func(t *testing.T) {
+			repository := factory.new(t)
+			reservation := v3Reservation("staging-input-missing-" + factory.name)
+			initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+			_, err := repository.(imageagent.SlotExternalEffectV3Repository).PrepareSlotStagingV3(context.Background(), reservation, invalidV3StagingManifest())
+			require.ErrorIs(t, err, imageagent.ErrValidation)
+		})
+
+		t.Run(factory.name+"/invalid_or_corrupt_persisted_state", func(t *testing.T) {
+			repository := factory.new(t)
+			reservation := v3Reservation("staging-input-corrupt-" + factory.name)
+			initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+			effects := repository.(imageagent.SlotExternalEffectV3Repository)
+			_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
+			require.NoError(t, err)
+			require.True(t, claimed)
+			switch typed := repository.(type) {
+			case *memoryRepository:
+				typed.mu.Lock()
+				attempt := typed.slotEffectsV3[slotEffectKey(reservation.Identity)]
+				attempt.Phase = "invalid_persisted_phase"
+				typed.slotEffectsV3[slotEffectKey(reservation.Identity)] = attempt
+				typed.mu.Unlock()
+			case *gormRepository:
+				require.NoError(t, slotEffectV3IdentityWhere(typed.db.Model(&slotExternalEffectV3Record{}), reservation.Identity).Update("staging_manifest_json", []byte(`{`)).Error)
+			default:
+				t.Fatalf("unsupported repository type %T", repository)
+			}
+			_, err = effects.PrepareSlotStagingV3(context.Background(), reservation, invalidV3StagingManifest())
+			require.ErrorIs(t, err, imageagent.ErrValidation)
+		})
+	}
+}
+
+func invalidV3StagingManifest() imageagent.StagingManifest {
+	manifest := v3StagingManifest()
+	manifest.Assets[0].ObjectKey = `C:\\worker\\generated.png`
+	return manifest
+}
+
+type stagingConformanceTrace struct {
+	Prepared             imageagent.SlotEffectV3Attempt
+	PreparedRepeat       imageagent.SlotEffectV3Attempt
+	ConflictingPrepare   bool
+	WrongCommit          bool
+	Committed            imageagent.SlotEffectV3Attempt
+	CommittedRepeat      imageagent.SlotEffectV3Attempt
+	CommitBeforePrepared bool
+}
+
+func runSlotEffectV3StagingConformance(t *testing.T, repository imageagent.Repository) stagingConformanceTrace {
+	t.Helper()
+	reservation := v3Reservation("staging-conformance")
+	initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	manifest := v3StagingManifest()
+	manifest.Assets[0].SHA256 = strings.ToUpper(manifest.Assets[0].SHA256)
+	prepared, err := effects.PrepareSlotStagingV3(context.Background(), reservation, manifest)
+	require.NoError(t, err)
+	preparedRepeat, err := effects.PrepareSlotStagingV3(context.Background(), reservation, manifest)
+	require.NoError(t, err)
+	conflicting := manifest
+	conflicting.Assets = append([]imageagent.StagedAssetRef(nil), manifest.Assets...)
+	conflicting.Assets[0].ObjectKey = "image-agent/staging/tenant-a/run/replacement.png"
+	_, conflictingErr := effects.PrepareSlotStagingV3(context.Background(), reservation, conflicting)
+	_, wrongCommitErr := effects.CommitSlotStagedV3(context.Background(), reservation, "wrong-fingerprint")
+	committed, err := effects.CommitSlotStagedV3(context.Background(), reservation, prepared.StagingManifestFingerprint)
+	require.NoError(t, err)
+	committedRepeat, err := effects.CommitSlotStagedV3(context.Background(), reservation, prepared.StagingManifestFingerprint)
+	require.NoError(t, err)
+
+	beforePreparedReservation := v3Reservation("staging-before-prepared")
+	initializeSlotEffectRun(t, repository, beforePreparedReservation.Identity.RunID)
+	_, claimed, err = effects.ReserveSlotProviderV3(context.Background(), beforePreparedReservation)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	_, beforePreparedErr := effects.CommitSlotStagedV3(context.Background(), beforePreparedReservation, prepared.StagingManifestFingerprint)
+	require.Equal(t, imageagent.SlotEffectV3StagingPrepared, prepared.Phase)
+	require.Equal(t, strings.ToLower(manifest.Assets[0].SHA256), prepared.StagingManifest.Assets[0].SHA256)
+	require.Equal(t, prepared, preparedRepeat)
+	require.ErrorIs(t, conflictingErr, imageagent.ErrRevisionConflict)
+	require.ErrorIs(t, wrongCommitErr, imageagent.ErrRevisionConflict)
+	require.Equal(t, imageagent.SlotEffectV3ArtifactStaged, committed.Phase)
+	require.Equal(t, committed, committedRepeat)
+	require.ErrorIs(t, beforePreparedErr, imageagent.ErrRevisionConflict)
+
+	return stagingConformanceTrace{
+		Prepared:             normalizeProviderBudgetAttempt(prepared),
+		PreparedRepeat:       normalizeProviderBudgetAttempt(preparedRepeat),
+		ConflictingPrepare:   errors.Is(conflictingErr, imageagent.ErrRevisionConflict),
+		WrongCommit:          errors.Is(wrongCommitErr, imageagent.ErrRevisionConflict),
+		Committed:            normalizeProviderBudgetAttempt(committed),
+		CommittedRepeat:      normalizeProviderBudgetAttempt(committedRepeat),
+		CommitBeforePrepared: errors.Is(beforePreparedErr, imageagent.ErrRevisionConflict),
+	}
+}
+
+func TestSlotEffectV3ProviderBudgetRepositoryConformance(t *testing.T) {
+	factories := []struct {
+		name string
+		new  func(*testing.T) imageagent.Repository
+	}{
+		{name: "memory", new: func(*testing.T) imageagent.Repository { return NewMemoryRepository() }},
+		{name: "gorm", new: func(t *testing.T) imageagent.Repository { return NewGormRepository(newConcurrentSQLite(t)) }},
+	}
+	var baseline providerBudgetConformanceTrace
+	for index, factory := range factories {
+		t.Run(factory.name, func(t *testing.T) {
+			repository := factory.new(t)
+			scope, policy := initializeProviderBudgetConformanceRun(t, repository)
+			trace := exerciseProviderBudgetConformance(t, repository, budgetedV3Reservation(scope, policy, 1, "quote-conformance"))
+			if index == 0 {
+				baseline = trace
+				return
+			}
+			require.Equal(t, baseline, trace)
+		})
+	}
+}
+
+func TestSlotEffectV3RecordFromProviderDecisionUsesAttemptState(t *testing.T) {
+	reservation := v3Reservation("decision-record")
+	reservation.Policy = imageagent.BudgetPolicy{Images: imageagent.Limit{Enabled: true, Value: 3}}
+	reservation.Quote = imageagent.SlotUsageQuote{
+		Maximum:        imageagent.UsageVector{Images: 1},
+		Operations:     []imageagent.SlotUsageOperation{{Name: "generate", Fingerprint: "operation-record", MaximumOutputs: 1, Maximum: imageagent.UsageVector{Images: 1}}},
+		PricingVersion: "pricing-record", Fingerprint: "quote-record",
+	}
+	attempt := imageagent.SlotEffectV3Attempt{
+		Identity: reservation.Identity, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint,
+		Phase: imageagent.SlotEffectV3ProviderNotDispatched, BudgetStatus: imageagent.SlotBudgetReleased,
+		Policy: reservation.Policy, Quote: reservation.Quote,
+	}
+	claimedAt := time.Date(2026, time.August, 29, 12, 0, 0, 0, time.UTC)
+
+	record := slotEffectV3RecordFromProviderDecision(effectpolicy.ProviderReservationDecision{
+		AccountingDecision: effectpolicy.AccountingDecision{EffectDecision: effectpolicy.EffectDecision{Attempt: attempt, Changed: true}},
+		Acquired:           true,
+	}, claimedAt)
+
+	require.Equal(t, string(attempt.Phase), record.Phase)
+	require.Equal(t, string(attempt.BudgetStatus), record.BudgetStatus)
+	require.Equal(t, attempt.Quote.Fingerprint, record.UsageQuoteFingerprint)
+	require.Equal(t, attempt.Quote.PricingVersion, record.PricingVersion)
+	require.Equal(t, claimedAt, record.ProviderClaimedAt)
+	var persistedPolicy imageagent.BudgetPolicy
+	require.NoError(t, json.Unmarshal(record.BudgetPolicyJSON, &persistedPolicy))
+	require.Equal(t, attempt.Policy, persistedPolicy)
+	var persistedQuote imageagent.SlotUsageQuote
+	require.NoError(t, json.Unmarshal(record.UsageQuoteJSON, &persistedQuote))
+	require.Equal(t, attempt.Quote, persistedQuote)
+}
+
+type providerBudgetConformanceTrace struct {
+	ReservedAttempt          imageagent.SlotEffectV3Attempt
+	ReservedAcquired         bool
+	ReservedAccounting       providerBudgetAccounting
+	RepeatedAttempt          imageagent.SlotEffectV3Attempt
+	RepeatedAcquired         bool
+	RepeatedAccounting       providerBudgetAccounting
+	ConflictIsRevision       bool
+	NotDispatchedAttempt     imageagent.SlotEffectV3Attempt
+	NotDispatchedAccounting  providerBudgetAccounting
+	NotDispatchedRepeat      imageagent.SlotEffectV3Attempt
+	RedispatchedAttempt      imageagent.SlotEffectV3Attempt
+	RedispatchedAcquired     bool
+	RedispatchedAccounting   providerBudgetAccounting
+	ExceededIsBudgetExceeded bool
+	SettledAttempt           imageagent.SlotEffectV3Attempt
+	SettledAccounting        providerBudgetAccounting
+	SettledRepeat            imageagent.SlotEffectV3Attempt
+	SettlementConflict       bool
+	ReleasedAttempt          imageagent.SlotEffectV3Attempt
+	ReleasedRepeat           imageagent.SlotEffectV3Attempt
+	ReleasedAccounting       providerBudgetAccounting
+	UnknownAttempt           imageagent.SlotEffectV3Attempt
+	UnknownRepeat            imageagent.SlotEffectV3Attempt
+	UnknownAccounting        providerBudgetAccounting
+}
+
+type providerBudgetAccounting struct {
+	Policy    imageagent.BudgetPolicy
+	Committed imageagent.UsageVector
+	Reserved  imageagent.UsageVector
+	Elapsed   time.Duration
+}
+
+func initializeProviderBudgetConformanceRun(t *testing.T, repository imageagent.Repository) (imageagent.RunScope, imageagent.BudgetPolicy) {
+	t.Helper()
+	run := manualRun("run-provider-budget-conformance", "tenant-a")
+	run.BusinessTaskID = "task-run-provider-budget-conformance"
+	run.Budget = imageagent.Budget{MaxImages: 3, EnabledLimits: imageagent.BudgetLimitImages}
+	run.StartedAt = time.Date(2099, time.January, 1, 0, 0, 0, 0, time.UTC)
+	policy, err := run.Budget.Policy()
+	require.NoError(t, err)
+	plan := planRevision(1)
+	scope := imageagent.ScopeForRun(*run)
+	_, err = repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{
+		Scope: scope, Run: *run, Plan: plan,
+		Catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source.png"},
+			{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style.png"},
+		}},
+		Snapshot: imageagent.RunProjection{Run: *run, Plan: plan}, CommitID: "start:provider-budget-conformance", EventType: "run.initialized", EventPayload: []byte(`{}`),
+	})
+	require.NoError(t, err)
+	return scope, policy
+}
+
+func exerciseProviderBudgetConformance(t *testing.T, repository imageagent.Repository, reservation imageagent.SlotEffectV3Reservation) providerBudgetConformanceTrace {
+	t.Helper()
+	ctx := context.Background()
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	var trace providerBudgetConformanceTrace
+	var err error
+	var attempt imageagent.SlotEffectV3Attempt
+
+	attempt, trace.ReservedAcquired, err = effects.ReserveSlotProviderV3(ctx, reservation)
+	require.NoError(t, err)
+	require.True(t, trace.ReservedAcquired)
+	trace.ReservedAttempt = normalizeProviderBudgetAttempt(attempt)
+	trace.ReservedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+
+	attempt, trace.RepeatedAcquired, err = effects.ReserveSlotProviderV3(ctx, reservation)
+	require.NoError(t, err)
+	require.False(t, trace.RepeatedAcquired)
+	trace.RepeatedAttempt = normalizeProviderBudgetAttempt(attempt)
+	trace.RepeatedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+
+	conflict := reservation
+	conflict.InputFingerprint = "conflicting-input"
+	_, _, err = effects.ReserveSlotProviderV3(ctx, conflict)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+	trace.ConflictIsRevision = errors.Is(err, imageagent.ErrRevisionConflict)
+
+	attempt, err = effects.RecordSlotProviderNotDispatchedV3(ctx, reservation)
+	require.NoError(t, err)
+	trace.NotDispatchedAttempt = normalizeProviderBudgetAttempt(attempt)
+	trace.NotDispatchedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+	attempt, err = effects.RecordSlotProviderNotDispatchedV3(ctx, reservation)
+	require.NoError(t, err)
+	trace.NotDispatchedRepeat = normalizeProviderBudgetAttempt(attempt)
+
+	attempt, trace.RedispatchedAcquired, err = effects.ReserveSlotProviderV3(ctx, reservation)
+	require.NoError(t, err)
+	require.True(t, trace.RedispatchedAcquired)
+	trace.RedispatchedAttempt = normalizeProviderBudgetAttempt(attempt)
+	trace.RedispatchedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+
+	denied := budgetedV3Reservation(reservation.Identity.RunScope, reservation.Policy, 2, "quote-denied-conformance")
+	denied.Quote.Maximum.Images = 3
+	denied.Quote.Operations[0].Maximum.Images = 3
+	_, _, err = effects.ReserveSlotProviderV3(ctx, denied)
+	require.ErrorIs(t, err, imageagent.ErrBudgetExceeded)
+	trace.ExceededIsBudgetExceeded = errors.Is(err, imageagent.ErrBudgetExceeded)
+
+	receipt := imageagent.SlotUsageReceipt{Actual: imageagent.UsageVector{Images: 1, AgentSteps: 1}, ProviderRequestIDs: []string{"request-conformance"}, CostBasis: imageagent.UsageCostReservedUpperBound}
+	attempt, err = effects.SettleSlotProviderV3(ctx, reservation, receipt)
+	require.NoError(t, err)
+	trace.SettledAttempt = normalizeProviderBudgetAttempt(attempt)
+	trace.SettledAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+	attempt, err = effects.SettleSlotProviderV3(ctx, reservation, receipt)
+	require.NoError(t, err)
+	trace.SettledRepeat = normalizeProviderBudgetAttempt(attempt)
+	conflictingReceipt := receipt
+	conflictingReceipt.ProviderRequestIDs = []string{"other-request"}
+	_, err = effects.SettleSlotProviderV3(ctx, reservation, conflictingReceipt)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+	trace.SettlementConflict = errors.Is(err, imageagent.ErrRevisionConflict)
+
+	releaseReservation := budgetedV3Reservation(reservation.Identity.RunScope, reservation.Policy, 2, "quote-release-conformance")
+	_, acquired, err := effects.ReserveSlotProviderV3(ctx, releaseReservation)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	attempt, err = effects.ReleaseSlotProviderBudgetV3(ctx, releaseReservation)
+	require.NoError(t, err)
+	trace.ReleasedAttempt = normalizeProviderBudgetAttempt(attempt)
+	attempt, err = effects.ReleaseSlotProviderBudgetV3(ctx, releaseReservation)
+	require.NoError(t, err)
+	trace.ReleasedRepeat = normalizeProviderBudgetAttempt(attempt)
+	trace.ReleasedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+
+	unknownReservation := budgetedV3Reservation(reservation.Identity.RunScope, reservation.Policy, 3, "quote-unknown-conformance")
+	_, acquired, err = effects.ReserveSlotProviderV3(ctx, unknownReservation)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	attempt, err = effects.MarkSlotProviderBudgetUnknownV3(ctx, unknownReservation)
+	require.NoError(t, err)
+	trace.UnknownAttempt = normalizeProviderBudgetAttempt(attempt)
+	attempt, err = effects.MarkSlotProviderBudgetUnknownV3(ctx, unknownReservation)
+	require.NoError(t, err)
+	trace.UnknownRepeat = normalizeProviderBudgetAttempt(attempt)
+	trace.UnknownAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+	return trace
+}
+
+func normalizeProviderBudgetAttempt(attempt imageagent.SlotEffectV3Attempt) imageagent.SlotEffectV3Attempt {
+	if len(attempt.StagingManifest.Assets) == 0 {
+		attempt.StagingManifest.Assets = nil
+	}
+	if len(attempt.FinalManifest.Assets) == 0 {
+		attempt.FinalManifest.Assets = nil
+	}
+	return attempt
+}
+
+func readProviderBudgetAccounting(t *testing.T, repository imageagent.Repository, scope imageagent.RunScope) providerBudgetAccounting {
+	t.Helper()
+	switch typed := repository.(type) {
+	case *memoryRepository:
+		typed.mu.Lock()
+		defer typed.mu.Unlock()
+		run := typed.runs[scopeKey(scope)]
+		policy, err := run.Budget.Policy()
+		require.NoError(t, err)
+		committed, err := imageagent.UsageVectorFromBudgetUsage(run.Usage)
+		require.NoError(t, err)
+		return providerBudgetAccounting{Policy: policy, Committed: committed, Reserved: typed.reservedUsage[scopeKey(scope)], Elapsed: run.Usage.Elapsed}
+	case *gormRepository:
+		var row runRecord
+		require.NoError(t, runScopeWhere(typed.db, scope).First(&row).Error)
+		run, err := recordToRun(row)
+		require.NoError(t, err)
+		policy, err := run.Budget.Policy()
+		require.NoError(t, err)
+		committed, err := imageagent.UsageVectorFromBudgetUsage(run.Usage)
+		require.NoError(t, err)
+		reserved, err := decodeReservedUsage(row.ReservedUsageJSON)
+		require.NoError(t, err)
+		return providerBudgetAccounting{Policy: policy, Committed: committed, Reserved: reserved, Elapsed: run.Usage.Elapsed}
+	default:
+		t.Fatalf("unsupported repository type %T", repository)
+		return providerBudgetAccounting{}
 	}
 }
 
@@ -282,7 +972,7 @@ func TestSlotEffectV3RepositoryRejectsMismatchedBlockedPolicyOnRead(t *testing.T
 		db := newConcurrentSQLite(t)
 		repository := NewGormRepository(db)
 		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
-		row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+		row := slotEffectV3RecordFixtureFromReservation(reservation, time.Now().UTC())
 		row.Phase = string(imageagent.SlotEffectV3PublicationUnknown)
 		row.BlockedCode = imageagent.SlotProviderOutcomeUnknownCode
 		require.NoError(t, db.Create(&row).Error)
@@ -305,7 +995,7 @@ func TestGormSlotEffectV3CanFailClosedCorruptBudgetPayload(t *testing.T) {
 			repository := NewGormRepository(db)
 			effects := repository.(imageagent.SlotExternalEffectV3Repository)
 			initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
-			row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+			row := slotEffectV3RecordFixtureFromReservation(reservation, time.Now().UTC())
 			require.NoError(t, db.Create(&row).Error)
 			require.NoError(t, db.Model(&slotExternalEffectV3Record{}).
 				Where("tenant_id = ? AND owner_user_id = ? AND run_id = ? AND plan_revision = ? AND slot_id = ? AND attempt = ?",
@@ -461,7 +1151,7 @@ func testGormHistoricalNilOperationReplay(t *testing.T) {
 		repository := NewGormRepository(db)
 		reservation := v3Reservation("historical-nil-gorm-staging")
 		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
-		row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+		row := slotEffectV3RecordFixtureFromReservation(reservation, time.Now().UTC())
 		row.Phase = string(imageagent.SlotEffectV3StagingPrepared)
 		row.StagingManifestJSON = []byte(historicalNilOperationStagingJSON)
 		row.StagingManifestFingerprint = historicalNilOperationStagingFP
@@ -479,7 +1169,7 @@ func testGormHistoricalNilOperationReplay(t *testing.T) {
 		reservation := v3Reservation("historical-nil-gorm-final")
 		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
 		request := v3NilOperationPublicationRequest(reservation)
-		row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+		row := slotEffectV3RecordFixtureFromReservation(reservation, time.Now().UTC())
 		row.Phase = string(imageagent.SlotEffectV3PublicationClaimed)
 		row.PublicationOwner = request.Owner
 		row.PublicationFence = 1
@@ -986,6 +1676,21 @@ func v3Reservation(suffix string) imageagent.SlotEffectV3Reservation {
 	return imageagent.SlotEffectV3Reservation{Identity: imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-slot-effect-v3-" + suffix}, PlanRevision: 1, SlotID: "slot-1", Attempt: 1}, IdempotencyKey: "slot-key-v3-" + suffix, InputFingerprint: "input-fingerprint-v3-" + suffix}
 }
 
+func slotEffectV3RecordFixtureFromReservation(reservation imageagent.SlotEffectV3Reservation, claimedAt time.Time) slotExternalEffectV3Record {
+	status := imageagent.SlotBudgetStatus("")
+	if reservation.Quote.Fingerprint != "" {
+		status = imageagent.SlotBudgetReserved
+	}
+	attempt := imageagent.SlotEffectV3Attempt{
+		Identity: reservation.Identity, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint,
+		Phase: imageagent.SlotEffectV3ProviderClaimed, BudgetStatus: status, Policy: reservation.Policy, Quote: reservation.Quote,
+	}
+	return slotEffectV3RecordFromProviderDecision(effectpolicy.ProviderReservationDecision{
+		AccountingDecision: effectpolicy.AccountingDecision{EffectDecision: effectpolicy.EffectDecision{Attempt: attempt, Changed: true}},
+		Acquired:           true,
+	}, claimedAt)
+}
+
 func v3StagingManifest() imageagent.StagingManifest {
 	return imageagent.StagingManifest{Assets: []imageagent.StagedAssetRef{{ObjectKey: "image-agent/staging/tenant-a/run/asset.png", SHA256: v3SHA256, SizeBytes: 42, ContentType: "image/png", Width: 1200, Height: 1200, SourceAssetID: "source-1", Operations: []string{"resize"}, ProviderReceiptID: "receipt-1"}}}
 }
@@ -1000,6 +1705,11 @@ func v3PublicationRequest(reservation imageagent.SlotEffectV3Reservation, owner 
 
 func v3PublishedResult(reservation imageagent.SlotEffectV3Reservation) imageagent.SlotEffectV3PublishedResult {
 	return imageagent.SlotEffectV3PublishedResult{SlotID: reservation.Identity.SlotID, Attempt: reservation.Identity.Attempt, Candidates: []imageagent.SlotEffectV3AssetCandidate{{AssetID: "candidate-1", SourceAssetID: "source-1", DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: "image-agent/final/tenant-a/run/asset.png", SHA256: v3SHA256}}}}
+}
+
+func cloneV3PublishedResultForTest(result imageagent.SlotEffectV3PublishedResult) imageagent.SlotEffectV3PublishedResult {
+	result.Candidates = append([]imageagent.SlotEffectV3AssetCandidate(nil), result.Candidates...)
+	return result
 }
 
 func mustV3ResultFingerprint(t *testing.T, result imageagent.SlotEffectV3PublishedResult) string {

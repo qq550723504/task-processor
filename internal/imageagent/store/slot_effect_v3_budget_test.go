@@ -194,6 +194,92 @@ func TestSlotEffectV3ProviderNotDispatchedReclaimsOnlyAfterProvenNoEffect(t *tes
 	}
 }
 
+func TestSlotEffectV3PolicyDriftOnlyBlocksAdditionalBudgetAdmission(t *testing.T) {
+	factories := []struct {
+		name string
+		new  func(*testing.T) imageagent.Repository
+	}{
+		{"memory", func(*testing.T) imageagent.Repository { return NewMemoryRepository() }},
+		{"gorm", func(t *testing.T) imageagent.Repository { return NewGormRepository(newConcurrentSQLite(t)) }},
+	}
+	for _, factory := range factories {
+		factory := factory
+		t.Run(factory.name, func(t *testing.T) {
+			tests := []struct {
+				name string
+				run  func(*testing.T, imageagent.SlotExternalEffectV3Repository, imageagent.SlotEffectV3Reservation, imageagent.SlotEffectV3Reservation)
+			}{
+				{name: "reserve_noop", run: func(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, reservation, drifted imageagent.SlotEffectV3Reservation) {
+					_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), drifted)
+					require.NoError(t, err)
+					require.False(t, claimed)
+				}},
+				{name: "not_dispatched_and_redispatch", run: func(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, reservation, drifted imageagent.SlotEffectV3Reservation) {
+					attempt, err := effects.RecordSlotProviderNotDispatchedV3(context.Background(), drifted)
+					require.NoError(t, err)
+					require.Equal(t, imageagent.SlotEffectV3ProviderNotDispatched, attempt.Phase)
+					_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), drifted)
+					require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+					require.False(t, claimed)
+					_, claimed, err = effects.ReserveSlotProviderV3(context.Background(), reservation)
+					require.NoError(t, err)
+					require.True(t, claimed)
+				}},
+				{name: "settle", run: func(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, _, drifted imageagent.SlotEffectV3Reservation) {
+					receipt := imageagent.SlotUsageReceipt{Actual: imageagent.UsageVector{Images: 1, AgentSteps: 1}, CostBasis: imageagent.UsageCostReservedUpperBound}
+					attempt, err := effects.SettleSlotProviderV3(context.Background(), drifted, receipt)
+					require.NoError(t, err)
+					require.Equal(t, imageagent.SlotBudgetCommitted, attempt.BudgetStatus)
+					_, err = effects.SettleSlotProviderV3(context.Background(), drifted, receipt)
+					require.NoError(t, err)
+				}},
+				{name: "release_and_reacquire", run: func(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, reservation, drifted imageagent.SlotEffectV3Reservation) {
+					attempt, err := effects.ReleaseSlotProviderBudgetV3(context.Background(), drifted)
+					require.NoError(t, err)
+					require.Equal(t, imageagent.SlotBudgetReleased, attempt.BudgetStatus)
+					_, err = effects.ReleaseSlotProviderBudgetV3(context.Background(), drifted)
+					require.NoError(t, err)
+					_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), drifted)
+					require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+					require.False(t, claimed)
+					_, claimed, err = effects.ReserveSlotProviderV3(context.Background(), reservation)
+					require.NoError(t, err)
+					require.True(t, claimed)
+				}},
+				{name: "unknown", run: func(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, _, drifted imageagent.SlotEffectV3Reservation) {
+					attempt, err := effects.MarkSlotProviderBudgetUnknownV3(context.Background(), drifted)
+					require.NoError(t, err)
+					require.Equal(t, imageagent.SlotBudgetUnknown, attempt.BudgetStatus)
+					_, err = effects.MarkSlotProviderBudgetUnknownV3(context.Background(), drifted)
+					require.NoError(t, err)
+				}},
+				{name: "staging", run: func(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, _, drifted imageagent.SlotEffectV3Reservation) {
+					attempt, err := effects.PrepareSlotStagingV3(context.Background(), drifted, v3StagingManifest())
+					require.NoError(t, err)
+					require.Equal(t, imageagent.SlotEffectV3StagingPrepared, attempt.Phase)
+					attempt, err = effects.CommitSlotStagedV3(context.Background(), drifted, attempt.StagingManifestFingerprint)
+					require.NoError(t, err)
+					require.Equal(t, imageagent.SlotEffectV3ArtifactStaged, attempt.Phase)
+				}},
+			}
+			for _, test := range tests {
+				t.Run(test.name, func(t *testing.T) {
+					repository := factory.new(t)
+					scope, policy := initializeBudgetedSlotEffectRun(t, repository, "run-policy-drift-"+factory.name+"-"+test.name)
+					effects := repository.(imageagent.SlotExternalEffectV3Repository)
+					reservation := budgetedV3Reservation(scope, policy, 1, "quote-policy-drift")
+					_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
+					require.NoError(t, err)
+					require.True(t, claimed)
+					drifted := reservation
+					drifted.Policy.Images.Value++
+					test.run(t, effects, reservation, drifted)
+				})
+			}
+		})
+	}
+}
+
 func initializeBudgetedSlotEffectRun(t *testing.T, repository imageagent.Repository, runID string) (imageagent.RunScope, imageagent.BudgetPolicy) {
 	t.Helper()
 	run := manualRun(runID, "tenant-a")
