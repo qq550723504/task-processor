@@ -4084,8 +4084,9 @@ func TestServiceCapturesVerifiedIdentityAndRejectsNonManualStarts(t *testing.T) 
 func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 	raw := &recordingSDKClient{queryValue: imageagent.WorkflowProjection{Status: imageagent.RunStatusBlocked, Plan: sevenSlotPlan()}}
 	client := NewClient(raw)
+	startedAt := time.Date(2026, time.August, 29, 0, 0, 0, 0, time.UTC)
 	start := imageagent.WorkflowStart{
-		Run:  imageagent.Run{ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual},
+		Run:  imageagent.Run{ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual, StartedAt: startedAt},
 		Plan: sevenSlotPlan(), Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}, MaxConcurrentSlots: 3,
 	}
 
@@ -4098,6 +4099,7 @@ func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 	require.Equal(t, workflowNameImageAgent, raw.workflowName)
 	require.Equal(t, imageagent.RunModeManual, raw.workflowInput.Mode)
 	require.True(t, raw.workflowInput.WaitForCommands)
+	require.Equal(t, startedAt.Add(V3WorkflowExecutionTimeout-V3LifecycleDeadlineSafetyMargin), raw.workflowInput.LifecycleDeadlineAt)
 
 	projection, err := client.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-1"}, start.Identity)
 	require.NoError(t, err)

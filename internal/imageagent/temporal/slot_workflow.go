@@ -69,6 +69,17 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 		return SlotWorkflowV3Result{}, fmt.Errorf("v3 execute activity name is required")
 	}
 	startToClose := 10 * time.Minute
+	if !input.LifecycleDeadlineAt.IsZero() {
+		providerWindow := input.LifecycleDeadlineAt.Sub(workflow.Now(ctx))
+		if providerWindow <= 0 {
+			return SlotWorkflowV3Result{
+				Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+				Status:    imageagent.SlotStatusBlocked, ErrorCode: imageagent.WorkflowLifecycleElapsedCode,
+				EffectPhase: effectPhaseForFinalizationWire(input.ExternalEffectFinalization, imageagent.SlotEffectV3ProviderNotDispatched),
+			}, nil
+		}
+		startToClose = min(startToClose, providerWindow)
+	}
 	if input.BudgetAuthorization && !input.DeadlineAt.IsZero() {
 		providerWindow := input.DeadlineAt.Sub(workflow.Now(ctx))
 		if providerWindow <= 0 {
@@ -91,7 +102,7 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 		IdempotencyKey:             slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
 		AssetCatalog:               input.AssetCatalog,
 		ExternalEffectFinalization: input.ExternalEffectFinalization,
-		BudgetAuthorization:        input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy, DeadlineAt: input.DeadlineAt,
+		BudgetAuthorization:        input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy, DeadlineAt: input.DeadlineAt, LifecycleDeadlineAt: input.LifecycleDeadlineAt,
 	}
 	var published imageagent.SlotEffectV3PublishedResult
 	for {
@@ -149,7 +160,7 @@ func effectPhaseForFinalizationWire(enabled bool, phase imageagent.SlotEffectV3P
 
 func terminalEffectPhaseForErrorCode(code string) imageagent.SlotEffectV3Phase {
 	switch code {
-	case imageagent.SlotProviderNotDispatchedCode, imageagent.BudgetExhaustedCode, imageagent.BudgetQuoteUnavailableCode, imageagent.BudgetElapsedCode:
+	case imageagent.SlotProviderNotDispatchedCode, imageagent.BudgetExhaustedCode, imageagent.BudgetQuoteUnavailableCode, imageagent.BudgetElapsedCode, imageagent.WorkflowLifecycleElapsedCode:
 		return imageagent.SlotEffectV3ProviderNotDispatched
 	case imageagent.SlotProviderOutcomeUnknownCode:
 		return imageagent.SlotEffectV3ProviderUnknown
@@ -208,7 +219,7 @@ func slotExecutionV3ErrorCode(err error) string {
 			return imageagent.SlotEffectPhaseInvalidCode
 		case slotEffectPolicyInvalidCode:
 			return imageagent.SlotEffectPolicyInvalidCode
-		case imageagent.BudgetExhaustedCode, imageagent.BudgetQuoteUnavailableCode, imageagent.BudgetElapsedCode:
+		case imageagent.BudgetExhaustedCode, imageagent.BudgetQuoteUnavailableCode, imageagent.BudgetElapsedCode, imageagent.WorkflowLifecycleElapsedCode:
 			return applicationError.Type()
 		default:
 			if strings.HasPrefix(applicationError.Type(), "imageagent_slot_effect_") {

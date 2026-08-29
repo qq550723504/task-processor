@@ -114,6 +114,9 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 			return WorkflowResult{}, fmt.Errorf("validate workflow budget deadline: %w", imageagent.ErrValidation)
 		}
 	}
+	if !input.LifecycleDeadlineAt.IsZero() && (input.StartedAt.IsZero() || !input.LifecycleDeadlineAt.Equal(input.StartedAt.Add(V3WorkflowExecutionTimeout-V3LifecycleDeadlineSafetyMargin))) {
+		return WorkflowResult{}, fmt.Errorf("validate workflow lifecycle deadline: %w", imageagent.ErrValidation)
+	}
 	result, runErr := runImageAgentWorkflow(ctx, input)
 	if runErr == nil {
 		return result, nil
@@ -1799,6 +1802,29 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 	completionChannel := workflow.NewBufferedChannel(ctx, len(input.Plan.Slots))
 	childrenCtx, cancelChildren := workflow.WithCancel(ctx)
 	next, inFlight := 0, 0
+	lifecycleElapsed := !input.LifecycleDeadlineAt.IsZero() && !workflow.Now(ctx).Before(input.LifecycleDeadlineAt)
+	var lifecycleTimer workflow.Future
+	if !lifecycleElapsed && !input.LifecycleDeadlineAt.IsZero() {
+		lifecycleTimer = workflow.NewTimer(ctx, input.LifecycleDeadlineAt.Sub(workflow.Now(ctx)))
+	}
+	markNotDispatchedAtLifecycleDeadline := func() error {
+		for next < len(input.Plan.Slots) {
+			completion := blockedSlotCompletion(input, next, 1, imageagent.WorkflowLifecycleElapsedCode, updates.effects.activities.useV3Slot)
+			if updates.effects.activities.useV3Slot && completion.V3Result != nil {
+				if err := updates.effects.persistSlotResultV3(ctx, input, *completion.V3Result); err != nil {
+					return err
+				}
+			} else if err := updates.effects.persistSlotResult(ctx, input, completion.Result); err != nil {
+				return err
+			}
+			results[next] = completion.Result
+			next++
+			if progress != nil {
+				progress(results)
+			}
+		}
+		return nil
+	}
 	launch := func(index int) {
 		if input.externalEffectFinalization {
 			results[index] = SlotWorkflowResult{
@@ -1810,8 +1836,13 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 		next++
 		inFlight++
 	}
-	for next < len(input.Plan.Slots) && inFlight < limit {
+	for !lifecycleElapsed && next < len(input.Plan.Slots) && inFlight < limit {
 		launch(next)
+	}
+	if lifecycleElapsed {
+		if err := markNotDispatchedAtLifecycleDeadline(); err != nil {
+			return results, false, err
+		}
 	}
 	cancelled := false
 	for inFlight > 0 {
@@ -1831,7 +1862,17 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 				}
 			})
 		}
+		if lifecycleTimer != nil && !lifecycleElapsed {
+			selector.AddFuture(lifecycleTimer, func(workflow.Future) {
+				lifecycleElapsed = true
+			})
+		}
 		selector.Select(ctx)
+		if lifecycleElapsed {
+			if err := markNotDispatchedAtLifecycleDeadline(); err != nil {
+				return results, false, err
+			}
+		}
 		if updates != nil && updates.cancelRequested {
 			cancelled = true
 			cancelChildren()
@@ -1857,7 +1898,7 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 				progress(results)
 			}
 		}
-		if !cancelled && next < len(input.Plan.Slots) {
+		if !cancelled && !lifecycleElapsed && next < len(input.Plan.Slots) {
 			launch(next)
 		}
 	}
@@ -1865,6 +1906,10 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 }
 
 func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, completionChannel workflow.SendChannel, activityWire workflowActivityWire) {
+	if !input.LifecycleDeadlineAt.IsZero() && !workflow.Now(ctx).Before(input.LifecycleDeadlineAt) {
+		completionChannel.Send(ctx, blockedSlotCompletion(input, index, attempt, imageagent.WorkflowLifecycleElapsedCode, activityWire.useV3Slot))
+		return
+	}
 	if input.BudgetAuthorization && !input.DeadlineAt.IsZero() && !workflow.Now(ctx).Before(input.DeadlineAt) {
 		completionChannel.Send(ctx, blockedSlotCompletion(input, index, attempt, imageagent.BudgetElapsedCode, activityWire.useV3Slot))
 		return
@@ -1879,7 +1924,7 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 			RunID: slotInput.RunID, Identity: slotInput.Identity, PlanRevision: slotInput.PlanRevision,
 			Slot: slotInput.Slot, Attempt: slotInput.Attempt, AssetCatalog: slotInput.AssetCatalog,
 			ExecuteActivityName: activityWire.executeSlot,
-			BudgetAuthorization: input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy, DeadlineAt: input.DeadlineAt,
+			BudgetAuthorization: input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy, DeadlineAt: input.DeadlineAt, LifecycleDeadlineAt: input.LifecycleDeadlineAt,
 			ExternalEffectFinalization: input.externalEffectFinalization,
 		})
 		workflow.Go(ctx, func(goroutineCtx workflow.Context) {

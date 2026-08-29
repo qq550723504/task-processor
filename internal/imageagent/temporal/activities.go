@@ -217,6 +217,9 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 			return v3Result, sdktemporal.NewNonRetryableApplicationError("image agent provider cannot produce a conservative usage quote", imageagent.BudgetQuoteUnavailableCode, imageagent.ErrBudgetQuoteUnavailable)
 		}
 	}
+	if providerDispatchPossible && !input.LifecycleDeadlineAt.IsZero() && !time.Now().UTC().Before(input.LifecycleDeadlineAt) {
+		return v3Result, sdktemporal.NewNonRetryableApplicationError("image agent lifecycle deadline elapsed", imageagent.WorkflowLifecycleElapsedCode, imageagent.ErrBudgetExceeded)
+	}
 	if input.BudgetAuthorization && providerDispatchPossible && !input.DeadlineAt.IsZero() && !time.Now().UTC().Before(input.DeadlineAt) {
 		return v3Result, sdktemporal.NewNonRetryableApplicationError("image agent budget deadline elapsed", imageagent.BudgetElapsedCode, imageagent.ErrBudgetExceeded)
 	}

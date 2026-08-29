@@ -103,6 +103,7 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 	if policy.MaxElapsed.Enabled {
 		deadlineAt = startedAt.Add(time.Duration(policy.MaxElapsed.Value))
 	}
+	lifecycleDeadlineAt := startedAt.Add(V3WorkflowExecutionTimeout - V3LifecycleDeadlineSafetyMargin)
 	_, err = c.client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
 		ID:                       WorkflowID(start.Identity.TenantID, start.Identity.UserID, start.Run.ID),
 		TaskQueue:                TaskQueueV3,
@@ -113,7 +114,7 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 		RunID: start.Run.ID, Mode: imageagent.RunModeManual, Identity: start.Identity,
 		Plan: start.Plan, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(start.Run.MaxConcurrentSlots), WaitForCommands: true,
 		AssetCatalog: start.AssetCatalog,
-		BudgetPolicy: policy, StartedAt: startedAt, DeadlineAt: deadlineAt,
+		BudgetPolicy: policy, StartedAt: startedAt, DeadlineAt: deadlineAt, LifecycleDeadlineAt: lifecycleDeadlineAt,
 	})
 	return err
 }

@@ -36,6 +36,7 @@ const (
 	BudgetExhaustedCode               = "budget_exhausted"
 	BudgetQuoteUnavailableCode        = "budget_quote_unavailable"
 	BudgetElapsedCode                 = "budget_elapsed"
+	WorkflowLifecycleElapsedCode      = "workflow_lifecycle_elapsed"
 )
 
 type SlotEffectV3BlockedPolicy struct {
@@ -84,7 +85,7 @@ func SlotEffectV3BlockedPolicyForCode(code string) (SlotEffectV3BlockedPolicy, b
 		return SlotEffectV3BlockedPolicy{Code: code, PermittedActions: []Action{ActionCancel}}, true
 	case BudgetExhaustedCode:
 		return SlotEffectV3BlockedPolicy{Code: code, PermittedActions: []Action{ActionEditPlan, ActionCancel}}, true
-	case BudgetQuoteUnavailableCode, BudgetElapsedCode:
+	case BudgetQuoteUnavailableCode, BudgetElapsedCode, WorkflowLifecycleElapsedCode:
 		return SlotEffectV3BlockedPolicy{Code: code, PermittedActions: []Action{ActionCancel}}, true
 	default:
 		if strings.HasPrefix(code, "slot_effect_") {

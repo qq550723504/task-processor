@@ -17,6 +17,7 @@ const (
 	// 30-day lifecycle, leaving a seven-day reconciliation allowance before the
 	// 45-day staging retention can expire.
 	V3WorkflowExecutionTimeout         = 30 * 24 * time.Hour
+	V3LifecycleDeadlineSafetyMargin    = 24 * time.Hour
 	V3MinimumStagingLifecycleRetention = 45 * 24 * time.Hour
 )
 
@@ -96,6 +97,7 @@ type WorkflowInput struct {
 	BudgetPolicy        imageagent.BudgetPolicy
 	StartedAt           time.Time
 	DeadlineAt          time.Time
+	LifecycleDeadlineAt time.Time
 	BudgetAuthorization bool
 	// externalEffectFinalization is runtime-only versioned behavior selected by
 	// the parent workflow before it launches v3 slot children.
@@ -153,6 +155,7 @@ type SlotWorkflowV3Input struct {
 	BudgetAuthorization        bool
 	BudgetPolicy               imageagent.BudgetPolicy
 	DeadlineAt                 time.Time
+	LifecycleDeadlineAt        time.Time
 	ExternalEffectFinalization bool
 }
 
@@ -230,6 +233,7 @@ type ExecuteSlotV3ActivityInput struct {
 	BudgetAuthorization        bool
 	BudgetPolicy               imageagent.BudgetPolicy
 	DeadlineAt                 time.Time
+	LifecycleDeadlineAt        time.Time
 }
 
 // DurableArtifactStore is the production/recovery boundary around deterministic
