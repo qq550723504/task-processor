@@ -226,6 +226,15 @@ linters-settings:
           - "gorm.io/gorm"
           - "task-processor/internal/aicapability"
 
+      imageagent_effectpolicy_boundaries:
+        list-mode: strict
+        files:
+          - "**/internal/imageagent/effectpolicy/*.go"
+          - "**/internal/imageagent/effectpolicy/**/*.go"
+        allow:
+          - "$gostd"
+          - "task-processor/internal/imageagent"
+
       source_handoff_legacy_http:
         # The retired ProductEnrich HTTP owner must not regain production consumers.
         # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
