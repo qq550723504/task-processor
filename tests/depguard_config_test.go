@@ -45,7 +45,7 @@ func TestPlatformRegistrationDepguardPatternsRespectPackageBoundaries(t *testing
 	}
 }
 
-func TestAICapabilityDepguardPatternsRespectPackageBoundaries(t *testing.T) {
+func TestAICapabilityDepguardUsesStrictAllowlist(t *testing.T) {
 	configPath := filepath.Join("..", ".golangci.yml")
 	content, err := os.ReadFile(configPath)
 	if err != nil {
@@ -63,39 +63,18 @@ func TestAICapabilityDepguardPatternsRespectPackageBoundaries(t *testing.T) {
 	}
 	config = config[start : start+1+end]
 
+	if !strings.Contains(config, "list-mode: strict") {
+		t.Errorf("%s must make aicapability_boundaries a strict allowlist", configPath)
+	}
+
 	for _, packagePath := range []string{
-		"github.com/sashabaranov/go-openai",
-		"task-processor/internal/app",
-		"task-processor/internal/amazon",
-		"task-processor/internal/amazonlisting",
-		"task-processor/internal/asset",
-		"task-processor/internal/catalog",
-		"task-processor/internal/core/config",
-		"task-processor/internal/httpbootstrap",
-		"task-processor/internal/httproute",
-		"task-processor/internal/infra/clients",
-		"task-processor/internal/infra/httpx",
-		"task-processor/internal/integration/openai",
-		"task-processor/internal/listing",
-		"task-processor/internal/listingkit",
-		"task-processor/internal/marketplace",
-		"task-processor/internal/product",
-		"task-processor/internal/productenrich",
-		"task-processor/internal/productimage",
-		"task-processor/internal/prompt",
-		"task-processor/internal/promptmgmt",
-		"task-processor/internal/pricing",
-		"task-processor/internal/publishing",
-		"task-processor/internal/shein",
-		"task-processor/internal/sds",
-		"task-processor/internal/temu",
-		"task-processor/internal/workspace",
+		"$gostd",
+		"gorm.io/gorm",
+		"task-processor/internal/aicapability",
 	} {
-		for _, suffix := range []string{"$", "/"} {
-			pattern := fmt.Sprintf(`- pkg: "%s%s"`, packagePath, suffix)
-			if !strings.Contains(config, pattern) {
-				t.Errorf("%s must contain depguard package-boundary pattern %s", configPath, pattern)
-			}
+		pattern := fmt.Sprintf(`- "%s"`, packagePath)
+		if !strings.Contains(config, pattern) {
+			t.Errorf("%s must allow %s for AI capability contracts", configPath, packagePath)
 		}
 	}
 }
