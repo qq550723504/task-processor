@@ -188,6 +188,8 @@ linters-settings:
           - "**/internal/infra/**/*.go"
           - "**/internal/integration/*.go"
           - "**/internal/integration/**/*.go"
+          - "**/internal/platform/*.go"
+          - "**/internal/platform/**/*.go"
           - "**/internal/platformbase/*.go"
           - "**/internal/platformbase/**/*.go"
           - "**/internal/platformtask/*.go"

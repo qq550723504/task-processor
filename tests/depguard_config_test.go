@@ -306,7 +306,7 @@ func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testi
 	}
 	config = config[start : start+1+end]
 
-	for _, packagePath := range []string{"infra", "integration", "platformbase", "platformtask"} {
+	for _, packagePath := range []string{"infra", "integration", "platform", "platformbase", "platformtask"} {
 		for _, pattern := range []string{
 			fmt.Sprintf(`- "**/internal/%s/*.go"`, packagePath),
 			fmt.Sprintf(`- "**/internal/%s/**/*.go"`, packagePath),

@@ -3712,6 +3712,7 @@ func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 	for _, infraRoot := range []string{
 		filepath.Join("..", "internal", "infra"),
 		filepath.Join("..", "internal", "integration"),
+		filepath.Join("..", "internal", "platform"),
 		filepath.Join("..", "internal", "platformbase"),
 		filepath.Join("..", "internal", "platformtask"),
 	} {
