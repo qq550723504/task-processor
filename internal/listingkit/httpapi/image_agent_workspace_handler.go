@@ -20,7 +20,12 @@ import (
 	"task-processor/internal/listingkit/core"
 )
 
-const maxImageAgentWorkspaceRequestBytes = 32 << 10
+const (
+	maxImageAgentWorkspaceRequestBytes = 32 << 10
+	// A main-slot quote includes one output each for subject extraction and
+	// white-background rendering, even though the run publishes one final image.
+	imageAgentWorkspaceMainSlotMaxImages = 2
+)
 
 // ImageAgentWorkspaceApplication is the narrow application port used by the
 // ListingKit-owned browser entrypoint. It deliberately excludes generic plan
@@ -122,7 +127,7 @@ func (h *imageAgentWorkspaceHandler) CreateImageAgentRun(c *gin.Context) {
 	if err := h.application.Start(c.Request.Context(), imageagent.StartRunInput{
 		RunID: runID, BusinessTaskID: task.ID, TargetPlatform: target, Mode: imageagent.RunModeManual,
 		IdempotencyKey: "image-agent-run-" + h.newID(), Plan: plan,
-		Budget: imageagent.Budget{MaxImages: 1, EnabledLimits: imageagent.BudgetLimitImages},
+		Budget: imageagent.Budget{MaxImages: imageAgentWorkspaceMainSlotMaxImages, EnabledLimits: imageagent.BudgetLimitImages},
 	}); err != nil {
 		writeImageAgentWorkspaceError(c, err)
 		return

@@ -53,7 +53,7 @@ func TestImageAgentWorkspaceCreateBuildsSingleSourceServerOwnedRun(t *testing.T)
 	require.Equal(t, imageagent.RunModeManual, start.Mode)
 	require.Equal(t, []string{"shein-source"}, start.Plan.SourceAssetIDs)
 	require.Equal(t, []string{"shein-style"}, start.Plan.StyleReferenceIDs)
-	require.Equal(t, imageagent.Budget{MaxImages: 1, EnabledLimits: imageagent.BudgetLimitImages}, start.Budget)
+	require.Equal(t, imageagent.Budget{MaxImages: 2, EnabledLimits: imageagent.BudgetLimitImages}, start.Budget)
 	require.Equal(t, []imageagent.Slot{{ID: "main", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"shein-source"}, StyleReferenceIDs: []string{"shein-style"}, IdempotencyKey: "image-agent-slot-main-slot", Status: imageagent.SlotStatusPending}}, start.Plan.Slots)
 }
 
