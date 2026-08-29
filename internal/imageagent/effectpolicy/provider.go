@@ -168,6 +168,9 @@ func MarkProviderBudgetUnknown(current imageagent.SlotEffectV3Attempt, reservati
 	if decision.Attempt.BudgetStatus != imageagent.SlotBudgetReserved {
 		return AccountingDecision{}, imageagent.ErrRevisionConflict
 	}
+	if _, err := imageagent.CheckedSubtractUsage(accounting.Reserved, decision.Attempt.Quote.Maximum); err != nil {
+		return AccountingDecision{}, err
+	}
 	decision.Attempt.BudgetStatus = imageagent.SlotBudgetUnknown
 	decision.Changed = true
 	return decision, nil
@@ -199,11 +202,11 @@ func reserveProviderAccounting(reservation imageagent.SlotEffectV3Reservation, a
 }
 
 func cloneSlotUsageQuote(quote imageagent.SlotUsageQuote) imageagent.SlotUsageQuote {
-	quote.Operations = append([]imageagent.SlotUsageOperation(nil), quote.Operations...)
+	quote.Operations = cloneSlice(quote.Operations)
 	return quote
 }
 
 func cloneSlotUsageReceipt(receipt imageagent.SlotUsageReceipt) imageagent.SlotUsageReceipt {
-	receipt.ProviderRequestIDs = append([]string(nil), receipt.ProviderRequestIDs...)
+	receipt.ProviderRequestIDs = cloneSlice(receipt.ProviderRequestIDs)
 	return receipt
 }

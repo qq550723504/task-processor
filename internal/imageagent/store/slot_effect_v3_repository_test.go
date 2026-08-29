@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"task-processor/internal/imageagent"
+	"task-processor/internal/imageagent/effectpolicy"
 )
 
 func TestSlotEffectV3RepositoryContract(t *testing.T) {
@@ -101,7 +102,7 @@ func TestSlotEffectV3ProviderBudgetRepositoryConformance(t *testing.T) {
 	for index, factory := range factories {
 		t.Run(factory.name, func(t *testing.T) {
 			repository := factory.new(t)
-			scope, policy := initializeBudgetedSlotEffectRun(t, repository, "run-provider-budget-conformance")
+			scope, policy := initializeProviderBudgetConformanceRun(t, repository)
 			trace := exerciseProviderBudgetConformance(t, repository, budgetedV3Reservation(scope, policy, 1, "quote-conformance"))
 			if index == 0 {
 				baseline = trace
@@ -112,42 +113,93 @@ func TestSlotEffectV3ProviderBudgetRepositoryConformance(t *testing.T) {
 	}
 }
 
+func TestSlotEffectV3RecordFromProviderDecisionUsesAttemptState(t *testing.T) {
+	reservation := v3Reservation("decision-record")
+	reservation.Policy = imageagent.BudgetPolicy{Images: imageagent.Limit{Enabled: true, Value: 3}}
+	reservation.Quote = imageagent.SlotUsageQuote{
+		Maximum:        imageagent.UsageVector{Images: 1},
+		Operations:     []imageagent.SlotUsageOperation{{Name: "generate", Fingerprint: "operation-record", MaximumOutputs: 1, Maximum: imageagent.UsageVector{Images: 1}}},
+		PricingVersion: "pricing-record", Fingerprint: "quote-record",
+	}
+	attempt := imageagent.SlotEffectV3Attempt{
+		Identity: reservation.Identity, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint,
+		Phase: imageagent.SlotEffectV3ProviderNotDispatched, BudgetStatus: imageagent.SlotBudgetReleased,
+		Policy: reservation.Policy, Quote: reservation.Quote,
+	}
+	claimedAt := time.Date(2026, time.August, 29, 12, 0, 0, 0, time.UTC)
+
+	record := slotEffectV3RecordFromProviderDecision(effectpolicy.ProviderReservationDecision{
+		AccountingDecision: effectpolicy.AccountingDecision{EffectDecision: effectpolicy.EffectDecision{Attempt: attempt, Changed: true}},
+		Acquired:           true,
+	}, claimedAt)
+
+	require.Equal(t, string(attempt.Phase), record.Phase)
+	require.Equal(t, string(attempt.BudgetStatus), record.BudgetStatus)
+	require.Equal(t, attempt.Quote.Fingerprint, record.UsageQuoteFingerprint)
+	require.Equal(t, attempt.Quote.PricingVersion, record.PricingVersion)
+	require.Equal(t, claimedAt, record.ProviderClaimedAt)
+	var persistedPolicy imageagent.BudgetPolicy
+	require.NoError(t, json.Unmarshal(record.BudgetPolicyJSON, &persistedPolicy))
+	require.Equal(t, attempt.Policy, persistedPolicy)
+	var persistedQuote imageagent.SlotUsageQuote
+	require.NoError(t, json.Unmarshal(record.UsageQuoteJSON, &persistedQuote))
+	require.Equal(t, attempt.Quote, persistedQuote)
+}
+
 type providerBudgetConformanceTrace struct {
-	ReservedAttempt          providerBudgetAttempt
+	ReservedAttempt          imageagent.SlotEffectV3Attempt
 	ReservedAcquired         bool
 	ReservedAccounting       providerBudgetAccounting
-	RepeatedAttempt          providerBudgetAttempt
+	RepeatedAttempt          imageagent.SlotEffectV3Attempt
 	RepeatedAcquired         bool
 	RepeatedAccounting       providerBudgetAccounting
 	ConflictIsRevision       bool
-	NotDispatchedAttempt     providerBudgetAttempt
+	NotDispatchedAttempt     imageagent.SlotEffectV3Attempt
 	NotDispatchedAccounting  providerBudgetAccounting
-	NotDispatchedRepeat      providerBudgetAttempt
-	RedispatchedAttempt      providerBudgetAttempt
+	NotDispatchedRepeat      imageagent.SlotEffectV3Attempt
+	RedispatchedAttempt      imageagent.SlotEffectV3Attempt
 	RedispatchedAcquired     bool
 	RedispatchedAccounting   providerBudgetAccounting
 	ExceededIsBudgetExceeded bool
-	SettledAttempt           providerBudgetAttempt
+	SettledAttempt           imageagent.SlotEffectV3Attempt
 	SettledAccounting        providerBudgetAccounting
-	SettledRepeat            providerBudgetAttempt
+	SettledRepeat            imageagent.SlotEffectV3Attempt
 	SettlementConflict       bool
-}
-
-type providerBudgetAttempt struct {
-	Identity         imageagent.SlotExternalEffectIdentity
-	IdempotencyKey   string
-	InputFingerprint string
-	Phase            imageagent.SlotEffectV3Phase
-	BudgetStatus     imageagent.SlotBudgetStatus
-	Policy           imageagent.BudgetPolicy
-	Quote            imageagent.SlotUsageQuote
-	Receipt          imageagent.SlotUsageReceipt
+	ReleasedAttempt          imageagent.SlotEffectV3Attempt
+	ReleasedRepeat           imageagent.SlotEffectV3Attempt
+	ReleasedAccounting       providerBudgetAccounting
+	UnknownAttempt           imageagent.SlotEffectV3Attempt
+	UnknownRepeat            imageagent.SlotEffectV3Attempt
+	UnknownAccounting        providerBudgetAccounting
 }
 
 type providerBudgetAccounting struct {
 	Policy    imageagent.BudgetPolicy
 	Committed imageagent.UsageVector
 	Reserved  imageagent.UsageVector
+	Elapsed   time.Duration
+}
+
+func initializeProviderBudgetConformanceRun(t *testing.T, repository imageagent.Repository) (imageagent.RunScope, imageagent.BudgetPolicy) {
+	t.Helper()
+	run := manualRun("run-provider-budget-conformance", "tenant-a")
+	run.BusinessTaskID = "task-run-provider-budget-conformance"
+	run.Budget = imageagent.Budget{MaxImages: 3, EnabledLimits: imageagent.BudgetLimitImages}
+	run.StartedAt = time.Date(2099, time.January, 1, 0, 0, 0, 0, time.UTC)
+	policy, err := run.Budget.Policy()
+	require.NoError(t, err)
+	plan := planRevision(1)
+	scope := imageagent.ScopeForRun(*run)
+	_, err = repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{
+		Scope: scope, Run: *run, Plan: plan,
+		Catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{
+			{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source.png"},
+			{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, URL: "https://style.example/style.png"},
+		}},
+		Snapshot: imageagent.RunProjection{Run: *run, Plan: plan}, CommitID: "start:provider-budget-conformance", EventType: "run.initialized", EventPayload: []byte(`{}`),
+	})
+	require.NoError(t, err)
+	return scope, policy
 }
 
 func exerciseProviderBudgetConformance(t *testing.T, repository imageagent.Repository, reservation imageagent.SlotEffectV3Reservation) providerBudgetConformanceTrace {
@@ -161,13 +213,13 @@ func exerciseProviderBudgetConformance(t *testing.T, repository imageagent.Repos
 	attempt, trace.ReservedAcquired, err = effects.ReserveSlotProviderV3(ctx, reservation)
 	require.NoError(t, err)
 	require.True(t, trace.ReservedAcquired)
-	trace.ReservedAttempt = providerBudgetAttemptFrom(attempt)
+	trace.ReservedAttempt = normalizeProviderBudgetAttempt(attempt)
 	trace.ReservedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
 
 	attempt, trace.RepeatedAcquired, err = effects.ReserveSlotProviderV3(ctx, reservation)
 	require.NoError(t, err)
 	require.False(t, trace.RepeatedAcquired)
-	trace.RepeatedAttempt = providerBudgetAttemptFrom(attempt)
+	trace.RepeatedAttempt = normalizeProviderBudgetAttempt(attempt)
 	trace.RepeatedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
 
 	conflict := reservation
@@ -178,19 +230,21 @@ func exerciseProviderBudgetConformance(t *testing.T, repository imageagent.Repos
 
 	attempt, err = effects.RecordSlotProviderNotDispatchedV3(ctx, reservation)
 	require.NoError(t, err)
-	trace.NotDispatchedAttempt = providerBudgetAttemptFrom(attempt)
+	trace.NotDispatchedAttempt = normalizeProviderBudgetAttempt(attempt)
 	trace.NotDispatchedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
 	attempt, err = effects.RecordSlotProviderNotDispatchedV3(ctx, reservation)
 	require.NoError(t, err)
-	trace.NotDispatchedRepeat = providerBudgetAttemptFrom(attempt)
+	trace.NotDispatchedRepeat = normalizeProviderBudgetAttempt(attempt)
 
 	attempt, trace.RedispatchedAcquired, err = effects.ReserveSlotProviderV3(ctx, reservation)
 	require.NoError(t, err)
 	require.True(t, trace.RedispatchedAcquired)
-	trace.RedispatchedAttempt = providerBudgetAttemptFrom(attempt)
+	trace.RedispatchedAttempt = normalizeProviderBudgetAttempt(attempt)
 	trace.RedispatchedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
 
 	denied := budgetedV3Reservation(reservation.Identity.RunScope, reservation.Policy, 2, "quote-denied-conformance")
+	denied.Quote.Maximum.Images = 3
+	denied.Quote.Operations[0].Maximum.Images = 3
 	_, _, err = effects.ReserveSlotProviderV3(ctx, denied)
 	require.ErrorIs(t, err, imageagent.ErrBudgetExceeded)
 	trace.ExceededIsBudgetExceeded = errors.Is(err, imageagent.ErrBudgetExceeded)
@@ -198,24 +252,51 @@ func exerciseProviderBudgetConformance(t *testing.T, repository imageagent.Repos
 	receipt := imageagent.SlotUsageReceipt{Actual: imageagent.UsageVector{Images: 1, AgentSteps: 1}, ProviderRequestIDs: []string{"request-conformance"}, CostBasis: imageagent.UsageCostReservedUpperBound}
 	attempt, err = effects.SettleSlotProviderV3(ctx, reservation, receipt)
 	require.NoError(t, err)
-	trace.SettledAttempt = providerBudgetAttemptFrom(attempt)
+	trace.SettledAttempt = normalizeProviderBudgetAttempt(attempt)
 	trace.SettledAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
 	attempt, err = effects.SettleSlotProviderV3(ctx, reservation, receipt)
 	require.NoError(t, err)
-	trace.SettledRepeat = providerBudgetAttemptFrom(attempt)
+	trace.SettledRepeat = normalizeProviderBudgetAttempt(attempt)
 	conflictingReceipt := receipt
 	conflictingReceipt.ProviderRequestIDs = []string{"other-request"}
 	_, err = effects.SettleSlotProviderV3(ctx, reservation, conflictingReceipt)
 	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
 	trace.SettlementConflict = errors.Is(err, imageagent.ErrRevisionConflict)
+
+	releaseReservation := budgetedV3Reservation(reservation.Identity.RunScope, reservation.Policy, 2, "quote-release-conformance")
+	_, acquired, err := effects.ReserveSlotProviderV3(ctx, releaseReservation)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	attempt, err = effects.ReleaseSlotProviderBudgetV3(ctx, releaseReservation)
+	require.NoError(t, err)
+	trace.ReleasedAttempt = normalizeProviderBudgetAttempt(attempt)
+	attempt, err = effects.ReleaseSlotProviderBudgetV3(ctx, releaseReservation)
+	require.NoError(t, err)
+	trace.ReleasedRepeat = normalizeProviderBudgetAttempt(attempt)
+	trace.ReleasedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+
+	unknownReservation := budgetedV3Reservation(reservation.Identity.RunScope, reservation.Policy, 3, "quote-unknown-conformance")
+	_, acquired, err = effects.ReserveSlotProviderV3(ctx, unknownReservation)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	attempt, err = effects.MarkSlotProviderBudgetUnknownV3(ctx, unknownReservation)
+	require.NoError(t, err)
+	trace.UnknownAttempt = normalizeProviderBudgetAttempt(attempt)
+	attempt, err = effects.MarkSlotProviderBudgetUnknownV3(ctx, unknownReservation)
+	require.NoError(t, err)
+	trace.UnknownRepeat = normalizeProviderBudgetAttempt(attempt)
+	trace.UnknownAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
 	return trace
 }
 
-func providerBudgetAttemptFrom(attempt imageagent.SlotEffectV3Attempt) providerBudgetAttempt {
-	return providerBudgetAttempt{
-		Identity: attempt.Identity, IdempotencyKey: attempt.IdempotencyKey, InputFingerprint: attempt.InputFingerprint,
-		Phase: attempt.Phase, BudgetStatus: attempt.BudgetStatus, Policy: attempt.Policy, Quote: attempt.Quote, Receipt: attempt.Receipt,
+func normalizeProviderBudgetAttempt(attempt imageagent.SlotEffectV3Attempt) imageagent.SlotEffectV3Attempt {
+	if len(attempt.StagingManifest.Assets) == 0 {
+		attempt.StagingManifest.Assets = nil
 	}
+	if len(attempt.FinalManifest.Assets) == 0 {
+		attempt.FinalManifest.Assets = nil
+	}
+	return attempt
 }
 
 func readProviderBudgetAccounting(t *testing.T, repository imageagent.Repository, scope imageagent.RunScope) providerBudgetAccounting {
@@ -229,7 +310,7 @@ func readProviderBudgetAccounting(t *testing.T, repository imageagent.Repository
 		require.NoError(t, err)
 		committed, err := imageagent.UsageVectorFromBudgetUsage(run.Usage)
 		require.NoError(t, err)
-		return providerBudgetAccounting{Policy: policy, Committed: committed, Reserved: typed.reservedUsage[scopeKey(scope)]}
+		return providerBudgetAccounting{Policy: policy, Committed: committed, Reserved: typed.reservedUsage[scopeKey(scope)], Elapsed: run.Usage.Elapsed}
 	case *gormRepository:
 		var row runRecord
 		require.NoError(t, runScopeWhere(typed.db, scope).First(&row).Error)
@@ -241,7 +322,7 @@ func readProviderBudgetAccounting(t *testing.T, repository imageagent.Repository
 		require.NoError(t, err)
 		reserved, err := decodeReservedUsage(row.ReservedUsageJSON)
 		require.NoError(t, err)
-		return providerBudgetAccounting{Policy: policy, Committed: committed, Reserved: reserved}
+		return providerBudgetAccounting{Policy: policy, Committed: committed, Reserved: reserved, Elapsed: run.Usage.Elapsed}
 	default:
 		t.Fatalf("unsupported repository type %T", repository)
 		return providerBudgetAccounting{}
@@ -442,7 +523,7 @@ func TestSlotEffectV3RepositoryRejectsMismatchedBlockedPolicyOnRead(t *testing.T
 		db := newConcurrentSQLite(t)
 		repository := NewGormRepository(db)
 		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
-		row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+		row := slotEffectV3RecordFixtureFromReservation(reservation, time.Now().UTC())
 		row.Phase = string(imageagent.SlotEffectV3PublicationUnknown)
 		row.BlockedCode = imageagent.SlotProviderOutcomeUnknownCode
 		require.NoError(t, db.Create(&row).Error)
@@ -465,7 +546,7 @@ func TestGormSlotEffectV3CanFailClosedCorruptBudgetPayload(t *testing.T) {
 			repository := NewGormRepository(db)
 			effects := repository.(imageagent.SlotExternalEffectV3Repository)
 			initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
-			row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+			row := slotEffectV3RecordFixtureFromReservation(reservation, time.Now().UTC())
 			require.NoError(t, db.Create(&row).Error)
 			require.NoError(t, db.Model(&slotExternalEffectV3Record{}).
 				Where("tenant_id = ? AND owner_user_id = ? AND run_id = ? AND plan_revision = ? AND slot_id = ? AND attempt = ?",
@@ -621,7 +702,7 @@ func testGormHistoricalNilOperationReplay(t *testing.T) {
 		repository := NewGormRepository(db)
 		reservation := v3Reservation("historical-nil-gorm-staging")
 		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
-		row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+		row := slotEffectV3RecordFixtureFromReservation(reservation, time.Now().UTC())
 		row.Phase = string(imageagent.SlotEffectV3StagingPrepared)
 		row.StagingManifestJSON = []byte(historicalNilOperationStagingJSON)
 		row.StagingManifestFingerprint = historicalNilOperationStagingFP
@@ -639,7 +720,7 @@ func testGormHistoricalNilOperationReplay(t *testing.T) {
 		reservation := v3Reservation("historical-nil-gorm-final")
 		initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
 		request := v3NilOperationPublicationRequest(reservation)
-		row := slotEffectV3RecordFromReservation(reservation, time.Now().UTC())
+		row := slotEffectV3RecordFixtureFromReservation(reservation, time.Now().UTC())
 		row.Phase = string(imageagent.SlotEffectV3PublicationClaimed)
 		row.PublicationOwner = request.Owner
 		row.PublicationFence = 1
@@ -1144,6 +1225,21 @@ const v3SHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 func v3Reservation(suffix string) imageagent.SlotEffectV3Reservation {
 	return imageagent.SlotEffectV3Reservation{Identity: imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-1", RunID: "run-slot-effect-v3-" + suffix}, PlanRevision: 1, SlotID: "slot-1", Attempt: 1}, IdempotencyKey: "slot-key-v3-" + suffix, InputFingerprint: "input-fingerprint-v3-" + suffix}
+}
+
+func slotEffectV3RecordFixtureFromReservation(reservation imageagent.SlotEffectV3Reservation, claimedAt time.Time) slotExternalEffectV3Record {
+	status := imageagent.SlotBudgetStatus("")
+	if reservation.Quote.Fingerprint != "" {
+		status = imageagent.SlotBudgetReserved
+	}
+	attempt := imageagent.SlotEffectV3Attempt{
+		Identity: reservation.Identity, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint,
+		Phase: imageagent.SlotEffectV3ProviderClaimed, BudgetStatus: status, Policy: reservation.Policy, Quote: reservation.Quote,
+	}
+	return slotEffectV3RecordFromProviderDecision(effectpolicy.ProviderReservationDecision{
+		AccountingDecision: effectpolicy.AccountingDecision{EffectDecision: effectpolicy.EffectDecision{Attempt: attempt, Changed: true}},
+		Acquired:           true,
+	}, claimedAt)
 }
 
 func v3StagingManifest() imageagent.StagingManifest {

@@ -462,7 +462,7 @@ func (r *gormRepository) ReserveSlotProviderV3(ctx context.Context, reservation 
 		if err != nil {
 			return err
 		}
-		row := slotEffectV3RecordFromReservation(reservation, now)
+		row := slotEffectV3RecordFromProviderDecision(decision, now)
 		created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
 		if created.Error != nil {
 			return created.Error
@@ -1271,15 +1271,12 @@ func runScopeWhere(db *gorm.DB, scope imageagent.RunScope) *gorm.DB {
 	return db.Where("tenant_id = ? AND owner_user_id = ? AND id = ?", scope.TenantID, scope.OwnerUserID, scope.RunID)
 }
 
-func slotEffectV3RecordFromReservation(reservation imageagent.SlotEffectV3Reservation, claimedAt time.Time) slotExternalEffectV3Record {
-	identity := reservation.Identity
-	policyJSON, _ := json.Marshal(reservation.Policy)
-	quoteJSON, _ := json.Marshal(reservation.Quote)
-	status := imageagent.SlotBudgetStatus("")
-	if reservation.Quote.Fingerprint != "" {
-		status = imageagent.SlotBudgetReserved
-	}
-	return slotExternalEffectV3Record{TenantID: identity.TenantID, OwnerUserID: identity.OwnerUserID, RunID: identity.RunID, PlanRevision: identity.PlanRevision, SlotID: identity.SlotID, Attempt: identity.Attempt, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint, Phase: string(imageagent.SlotEffectV3ProviderClaimed), BudgetStatus: string(status), BudgetPolicyJSON: policyJSON, UsageQuoteJSON: quoteJSON, UsageQuoteFingerprint: reservation.Quote.Fingerprint, PricingVersion: reservation.Quote.PricingVersion, ProviderClaimedAt: claimedAt}
+func slotEffectV3RecordFromProviderDecision(decision effectpolicy.ProviderReservationDecision, claimedAt time.Time) slotExternalEffectV3Record {
+	attempt := decision.Attempt
+	identity := attempt.Identity
+	policyJSON, _ := json.Marshal(attempt.Policy)
+	quoteJSON, _ := json.Marshal(attempt.Quote)
+	return slotExternalEffectV3Record{TenantID: identity.TenantID, OwnerUserID: identity.OwnerUserID, RunID: identity.RunID, PlanRevision: identity.PlanRevision, SlotID: identity.SlotID, Attempt: identity.Attempt, IdempotencyKey: attempt.IdempotencyKey, InputFingerprint: attempt.InputFingerprint, Phase: string(attempt.Phase), BudgetStatus: string(attempt.BudgetStatus), BudgetPolicyJSON: policyJSON, UsageQuoteJSON: quoteJSON, UsageQuoteFingerprint: attempt.Quote.Fingerprint, PricingVersion: attempt.Quote.PricingVersion, ProviderClaimedAt: claimedAt}
 }
 
 func decodeSlotEffectV3Record(row slotExternalEffectV3Record) (imageagent.SlotEffectV3Attempt, error) {

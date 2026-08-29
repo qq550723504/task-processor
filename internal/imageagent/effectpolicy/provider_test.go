@@ -196,7 +196,8 @@ func TestReleaseAndUnknownProviderBudgetDecisionMatrix(t *testing.T) {
 		{name: "release exact repeat", apply: ReleaseProviderBudget, current: released, accounting: AccountingSnapshot{Policy: reservation.Policy, Reserved: imageagent.UsageVector{Images: 1}}, wantStatus: imageagent.SlotBudgetReleased, wantReserved: 1},
 		{name: "release conflicting state", apply: ReleaseProviderBudget, current: unknown, accounting: providerAccounting(reservation.Policy), wantErr: imageagent.ErrRevisionConflict},
 		{name: "release underflow", apply: ReleaseProviderBudget, current: reserved, accounting: AccountingSnapshot{Policy: reservation.Policy, Reserved: imageagent.UsageVector{Images: 1}}, wantErr: imageagent.ErrBudgetOverflow},
-		{name: "unknown", apply: MarkProviderBudgetUnknown, current: reserved, accounting: AccountingSnapshot{Policy: reservation.Policy, Reserved: imageagent.UsageVector{Images: 3}}, wantStatus: imageagent.SlotBudgetUnknown, wantChanged: true, wantReserved: 3},
+		{name: "unknown", apply: MarkProviderBudgetUnknown, current: reserved, accounting: AccountingSnapshot{Policy: reservation.Policy, Reserved: imageagent.UsageVector{Images: 3, CostMicros: 80}}, wantStatus: imageagent.SlotBudgetUnknown, wantChanged: true, wantReserved: 3},
+		{name: "unknown underflow", apply: MarkProviderBudgetUnknown, current: reserved, accounting: AccountingSnapshot{Policy: reservation.Policy, Reserved: imageagent.UsageVector{Images: 1, CostMicros: 80}}, wantErr: imageagent.ErrBudgetOverflow},
 		{name: "unknown exact repeat", apply: MarkProviderBudgetUnknown, current: unknown, accounting: AccountingSnapshot{Policy: reservation.Policy, Reserved: imageagent.UsageVector{Images: 3}}, wantStatus: imageagent.SlotBudgetUnknown, wantReserved: 3},
 		{name: "unknown conflicting state", apply: MarkProviderBudgetUnknown, current: released, accounting: providerAccounting(reservation.Policy), wantErr: imageagent.ErrRevisionConflict},
 	}
@@ -214,6 +215,28 @@ func TestReleaseAndUnknownProviderBudgetDecisionMatrix(t *testing.T) {
 				t.Fatalf("budget decision = status %q, changed %t, accounting changed %t, reserved %d", decision.Attempt.BudgetStatus, decision.Changed, decision.AccountingChanged, decision.Accounting.Reserved.Images)
 			}
 		})
+	}
+}
+
+func TestReserveProviderExactRepeatPreservesNonNilEmptySlices(t *testing.T) {
+	reservation := providerUnbudgetedReservation()
+	current := providerAttempt(reservation, imageagent.SlotEffectV3ProviderClaimed, "")
+	current.StagingManifest.Assets = []imageagent.StagedAssetRef{}
+	current.FinalManifest.Assets = []imageagent.PublishedAssetRef{}
+	current.Published.Candidates = []imageagent.SlotEffectV3AssetCandidate{}
+	current.Quote.Operations = []imageagent.SlotUsageOperation{}
+	current.Receipt.ProviderRequestIDs = []string{}
+
+	decision, err := ReserveProvider(&current, reservation, AccountingSnapshot{})
+	if err != nil {
+		t.Fatalf("ReserveProvider() error = %v", err)
+	}
+	if decision.Changed {
+		t.Fatal("exact repeat unexpectedly changed")
+	}
+	if decision.Attempt.StagingManifest.Assets == nil || decision.Attempt.FinalManifest.Assets == nil ||
+		decision.Attempt.Published.Candidates == nil || decision.Attempt.Quote.Operations == nil || decision.Attempt.Receipt.ProviderRequestIDs == nil {
+		t.Fatalf("exact repeat lost non-nil empty slice state: %#v", decision.Attempt)
 	}
 }
 

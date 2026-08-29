@@ -46,13 +46,13 @@ func cloneSlotEffectV3Attempt(attempt imageagent.SlotEffectV3Attempt) imageagent
 	attempt.StagingManifest.ProviderMetadata = cloneStringMap(attempt.StagingManifest.ProviderMetadata)
 	attempt.FinalManifest.Assets = clonePublishedAssetRefs(attempt.FinalManifest.Assets)
 	attempt.Published.Candidates = clonePublishedCandidates(attempt.Published.Candidates)
-	attempt.Quote.Operations = append([]imageagent.SlotUsageOperation(nil), attempt.Quote.Operations...)
+	attempt.Quote.Operations = cloneSlice(attempt.Quote.Operations)
 	attempt.Receipt.ProviderRequestIDs = cloneStrings(attempt.Receipt.ProviderRequestIDs)
 	return attempt
 }
 
 func cloneStagedAssetRefs(assets []imageagent.StagedAssetRef) []imageagent.StagedAssetRef {
-	cloned := append([]imageagent.StagedAssetRef(nil), assets...)
+	cloned := cloneSlice(assets)
 	for index := range cloned {
 		cloned[index].Operations = cloneStrings(cloned[index].Operations)
 	}
@@ -60,7 +60,7 @@ func cloneStagedAssetRefs(assets []imageagent.StagedAssetRef) []imageagent.Stage
 }
 
 func clonePublishedAssetRefs(assets []imageagent.PublishedAssetRef) []imageagent.PublishedAssetRef {
-	cloned := append([]imageagent.PublishedAssetRef(nil), assets...)
+	cloned := cloneSlice(assets)
 	for index := range cloned {
 		cloned[index].Operations = cloneStrings(cloned[index].Operations)
 	}
@@ -68,7 +68,7 @@ func clonePublishedAssetRefs(assets []imageagent.PublishedAssetRef) []imageagent
 }
 
 func clonePublishedCandidates(candidates []imageagent.SlotEffectV3AssetCandidate) []imageagent.SlotEffectV3AssetCandidate {
-	return append([]imageagent.SlotEffectV3AssetCandidate(nil), candidates...)
+	return cloneSlice(candidates)
 }
 
 func cloneStringMap(values map[string]string) map[string]string {
@@ -83,5 +83,14 @@ func cloneStringMap(values map[string]string) map[string]string {
 }
 
 func cloneStrings(values []string) []string {
-	return append([]string(nil), values...)
+	return cloneSlice(values)
+}
+
+func cloneSlice[T any](values []T) []T {
+	if values == nil {
+		return nil
+	}
+	cloned := make([]T, len(values))
+	copy(cloned, values)
+	return cloned
 }
