@@ -287,3 +287,58 @@ func TestDomainAppHTTPAPIDepguardPatternCoversBusinessTrees(t *testing.T) {
 		}
 	}
 }
+
+func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+
+	config := string(content)
+	start := strings.Index(config, "      infrastructure_business_boundaries:\n")
+	if start == -1 {
+		t.Fatalf("%s must define infrastructure_business_boundaries", configPath)
+	}
+	end := strings.Index(config[start+1:], "\n      domain_app_httpapi_boundaries:")
+	if end == -1 {
+		t.Fatalf("%s must keep infrastructure_business_boundaries before domain_app_httpapi_boundaries", configPath)
+	}
+	config = config[start : start+1+end]
+
+	for _, packagePath := range []string{"infra", "integration", "platform", "platformbase", "platformtask"} {
+		for _, pattern := range []string{
+			fmt.Sprintf(`- "**/internal/%s/*.go"`, packagePath),
+			fmt.Sprintf(`- "**/internal/%s/**/*.go"`, packagePath),
+		} {
+			if !strings.Contains(config, pattern) {
+				t.Errorf("%s must cover infrastructure package files with %s", configPath, pattern)
+			}
+		}
+	}
+
+	for _, packagePath := range []string{
+		"amazon",
+		"amazonlisting",
+		"asset",
+		"catalog",
+		"listing",
+		"listingkit",
+		"marketplace",
+		"pricing",
+		"productenrich",
+		"productimage",
+		"publishing",
+		"sds",
+		"shein",
+		"temu",
+		"workspace",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			pattern := fmt.Sprintf(`- pkg: "task-processor/internal/%s%s"`, packagePath, suffix)
+			if !strings.Contains(config, pattern) {
+				t.Errorf("%s must deny business package-tree pattern %s", configPath, pattern)
+			}
+		}
+	}
+}

@@ -239,6 +239,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestInfraProductCrawlerAdapterIsRetired",
 		"TestAppCrawlerFetcherCompatibilityLayerIsRetired",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
+		"depguard: infrastructure_business_boundaries",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 	}
 	for _, phrase := range required {
@@ -388,6 +389,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestListingKitRootServiceGenerationFilesStayAllowlisted",
 		"TestListingKitRootGenerationFilesStayAllowlisted",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
+		"depguard: infrastructure_business_boundaries",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 		"TestDomainHTTPPackagesDoNotImportAppHTTPAPI",
 		"depguard: domain_app_httpapi_boundaries",

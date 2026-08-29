@@ -459,6 +459,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestInfraProductCrawlerAdapterIsRetired`
 - `TestAppCrawlerFetcherCompatibilityLayerIsRetired`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
+- `depguard: infrastructure_business_boundaries`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 - `TestAppTaskPollingSourceUsesCapabilityNames`
 - `TestPlatformProcessorRegistryDoesNotExposeRetiredManagementService`
