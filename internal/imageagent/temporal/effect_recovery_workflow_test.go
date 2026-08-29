@@ -3,6 +3,8 @@ package temporal
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -26,6 +28,89 @@ func TestEffectRecoveryWorkflowUsesDeterministicIDAndAttachesDuplicateStart(t *t
 	require.Equal(t, "image-agent-effect-recovery:tenant-a:user-a:run-v3-recovery-id:1:slot-1:1", first)
 	require.Equal(t, first, second, "duplicate starts must target the same deterministic recovery workflow ID")
 	require.NotEqual(t, first, nextAttempt)
+}
+
+func TestEffectRecoveryWorkflowReconcilesParentProjectionAfterPublication(t *testing.T) {
+	repository, inputs := initializedBlockedEffectRecoveryProjection(t, "run-v3-recovery-parent-published", 2)
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	seedV3ArtifactStaged(t, effects, inputs[0], v3StagingManifest(inputs[0], tinyPNGBytes(t)))
+	executor := &recordingStagedExecutor{}
+	activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
+	env := newEffectRecoveryWorkflowEnv(t, activities)
+
+	env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(inputs[0]))
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	_, err := activities.ReconcileEffectRecoveryV3(context.Background(), effectRecoveryWorkflowInput(inputs[0]))
+	require.NoError(t, err, "replaying publication reconciliation must return the already-applied projection")
+	projection, err := repository.GetProjection(context.Background(), imageagent.RunScope{
+		TenantID: "tenant-a", OwnerUserID: "user-a", RunID: inputs[0].RunID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, imageagent.RunStatusBlocked, projection.Run.Status)
+	require.Equal(t, []imageagent.RecoverableEffect{{
+		SlotID: inputs[1].Slot.ID, Attempt: inputs[1].Attempt, Code: recoveryRequestedBlockCode,
+	}}, projection.RecoverableEffects, "publication must remove only the matching recovery owner")
+	require.NotNil(t, projection.Run.Block)
+	require.Equal(t, inputs[1].Slot.ID, projection.Run.Block.SlotID)
+	require.Equal(t, recoveryRequestedBlockCode, projection.Run.Block.Code)
+	require.Equal(t, imageagent.SlotStatusAccepted, projection.Slots[0].Slot.Status)
+	require.Equal(t, inputs[0].Attempt, projection.Slots[0].Attempt)
+	require.Empty(t, projection.Slots[0].ErrorCode)
+	require.Len(t, projection.Slots[0].Candidates, 1)
+	require.NotEmpty(t, projection.Slots[0].Candidates[0].DurableAsset.ObjectKey)
+	require.Equal(t, imageagent.SlotStatusBlocked, projection.Slots[1].Slot.Status)
+	require.Equal(t, recoveryRequestedBlockCode, projection.Slots[1].ErrorCode)
+	require.Zero(t, executor.GenerateCalls(), "parent reconciliation must not redispatch the provider")
+}
+
+func TestEffectRecoveryWorkflowReconcilesUnknownPhaseWithoutClearingOwner(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		phase imageagent.SlotEffectV3Phase
+		code  string
+	}{
+		{name: "provider unknown", phase: imageagent.SlotEffectV3ProviderUnknown, code: imageagent.SlotProviderOutcomeUnknownCode},
+		{name: "recovery blocked", phase: imageagent.SlotEffectV3RecoveryBlocked, code: imageagent.SlotRecoveryBlockedCode},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository, inputs := initializedBlockedEffectRecoveryProjection(t, "run-v3-recovery-parent-"+strings.ReplaceAll(test.name, " ", "-"), 1)
+			effects := repository.(imageagent.SlotExternalEffectV3Repository)
+			reservation := slotEffectReservationV3(slotExecutionInputV3(inputs[0]))
+			_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
+			require.NoError(t, err)
+			require.True(t, claimed)
+			_, err = effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{
+				Reservation: reservation, Phase: test.phase, Code: test.code,
+			})
+			require.NoError(t, err)
+			executor := &recordingStagedExecutor{}
+			activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
+			env := newEffectRecoveryWorkflowEnv(t, activities)
+
+			env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(inputs[0]))
+
+			require.True(t, env.IsWorkflowCompleted())
+			require.NoError(t, env.GetWorkflowError())
+			_, err = activities.ReconcileEffectRecoveryV3(context.Background(), effectRecoveryWorkflowInput(inputs[0]))
+			require.NoError(t, err, "replaying blocked reconciliation must return the already-applied projection")
+			projection, err := repository.GetProjection(context.Background(), imageagent.RunScope{
+				TenantID: "tenant-a", OwnerUserID: "user-a", RunID: inputs[0].RunID,
+			})
+			require.NoError(t, err)
+			require.Equal(t, imageagent.RunStatusBlocked, projection.Run.Status)
+			require.Equal(t, []imageagent.RecoverableEffect{{
+				SlotID: inputs[0].Slot.ID, Attempt: inputs[0].Attempt, Code: test.code,
+			}}, projection.RecoverableEffects)
+			require.NotNil(t, projection.Run.Block)
+			require.Equal(t, inputs[0].Slot.ID, projection.Run.Block.SlotID)
+			require.Equal(t, test.code, projection.Run.Block.Code)
+			require.Equal(t, imageagent.SlotStatusBlocked, projection.Slots[0].Slot.Status)
+			require.Equal(t, test.code, projection.Slots[0].ErrorCode)
+			require.Zero(t, executor.GenerateCalls(), "unknown recovery reconciliation must not call the provider")
+		})
+	}
 }
 
 func TestEffectRecoveryWorkflowReusesPersistedBudgetAuthorizationWithoutQuoteOrGenerate(t *testing.T) {
@@ -52,7 +137,7 @@ func TestEffectRecoveryWorkflowReusesPersistedBudgetAuthorizationWithoutQuoteOrG
 		quote:                   budgetActivityQuote("quote-after-recovery"),
 	}
 	activities := newBudgetV3Activities(t, repository, executor, &recordingArtifactStore{})
-	env := newEffectRecoveryWorkflowEnv(t, activities)
+	env := newEffectRecoveryWorkflowEnvWithoutParentProjection(t, activities)
 
 	env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(input))
 
@@ -87,7 +172,7 @@ func TestEffectRecoveryWorkflowNeverRedispatchesReleasedBudgetedProviderClaim(t 
 		quote:                   persistedQuote,
 	}
 	activities := newBudgetV3Activities(t, repository, executor, &recordingArtifactStore{})
-	env := newEffectRecoveryWorkflowEnv(t, activities)
+	env := newEffectRecoveryWorkflowEnvWithoutParentProjection(t, activities)
 
 	env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(input))
 
@@ -110,7 +195,7 @@ func TestEffectRecoveryWorkflowPersistsRecoveryBlockedForMissingEffectWithoutPro
 	effects := repository.(imageagent.SlotExternalEffectV3Repository)
 	executor := &recordingStagedExecutor{}
 	activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
-	env := newEffectRecoveryWorkflowEnv(t, activities)
+	env := newEffectRecoveryWorkflowEnvWithoutParentProjection(t, activities)
 
 	env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(input))
 
@@ -150,7 +235,7 @@ func TestEffectRecoveryWorkflowScopesToExactEffectIdentityWithoutProviderCall(t 
 	executor := &recordingStagedExecutor{}
 	artifacts := &recordingArtifactStore{}
 	activities := newV3Activities(t, repository, effects, executor, artifacts)
-	env := newEffectRecoveryWorkflowEnv(t, activities)
+	env := newEffectRecoveryWorkflowEnvWithoutParentProjection(t, activities)
 
 	env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(secondAttempt))
 
@@ -303,7 +388,7 @@ func TestEffectRecoveryWorkflowReturnsPersistedTerminalAndUnknownPhasesWithoutPr
 			executor := &recordingStagedExecutor{}
 			artifacts := &recordingArtifactStore{}
 			activities := newV3Activities(t, repository, effects, executor, artifacts)
-			env := newEffectRecoveryWorkflowEnv(t, activities)
+			env := newEffectRecoveryWorkflowEnvWithoutParentProjection(t, activities)
 
 			env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(input))
 
@@ -356,7 +441,7 @@ func TestEffectRecoveryWorkflowPersistsRecoveryBlockedAfterBoundedExhaustion(t *
 		PublicationLeaseDuration: 10 * time.Millisecond,
 	})
 	require.NoError(t, err)
-	env := newEffectRecoveryWorkflowEnv(t, activities)
+	env := newEffectRecoveryWorkflowEnvWithoutParentProjection(t, activities)
 
 	env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(input))
 
@@ -386,6 +471,9 @@ func TestEffectRecoveryWorkflowDoesNotReportRecoveryBlockedWhenPersistenceFails(
 			persistAttempts++
 			return EffectRecoveryResult{}, errors.New("durable recovery block unavailable")
 		},
+		func(context.Context, EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {
+			return EffectRecoveryResult{}, errors.New("parent reconciliation must not run")
+		},
 	)
 
 	env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(input))
@@ -398,16 +486,22 @@ func TestEffectRecoveryWorkflowDoesNotReportRecoveryBlockedWhenPersistenceFails(
 
 func newEffectRecoveryWorkflowEnv(t *testing.T, activities *Activities) *testsuite.TestWorkflowEnvironment {
 	t.Helper()
-	return newEffectRecoveryWorkflowEnvWithActivities(t, activities.RecoverEffectV3, activities.PersistRecoveryBlockedEffectV3)
+	return newEffectRecoveryWorkflowEnvWithActivities(t, activities.RecoverEffectV3, activities.PersistRecoveryBlockedEffectV3, activities.ReconcileEffectRecoveryV3)
 }
 
-func newEffectRecoveryWorkflowEnvWithActivities(t *testing.T, recover func(context.Context, EffectRecoveryWorkflowInput) (EffectRecoveryResult, error), persist func(context.Context, EffectRecoveryWorkflowInput) (EffectRecoveryResult, error)) *testsuite.TestWorkflowEnvironment {
+func newEffectRecoveryWorkflowEnvWithoutParentProjection(t *testing.T, activities *Activities) *testsuite.TestWorkflowEnvironment {
+	t.Helper()
+	return newEffectRecoveryWorkflowEnvWithActivities(t, activities.RecoverEffectV3, activities.PersistRecoveryBlockedEffectV3, activities.RecoverEffectV3)
+}
+
+func newEffectRecoveryWorkflowEnvWithActivities(t *testing.T, recover func(context.Context, EffectRecoveryWorkflowInput) (EffectRecoveryResult, error), persist func(context.Context, EffectRecoveryWorkflowInput) (EffectRecoveryResult, error), reconcile func(context.Context, EffectRecoveryWorkflowInput) (EffectRecoveryResult, error)) *testsuite.TestWorkflowEnvironment {
 	t.Helper()
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
 	env.RegisterWorkflow(ImageAgentEffectRecoveryWorkflow)
 	env.RegisterActivityWithOptions(recover, sdkactivity.RegisterOptions{Name: activityRecoverEffectV3})
 	env.RegisterActivityWithOptions(persist, sdkactivity.RegisterOptions{Name: activityPersistRecoveryBlockedV3})
+	env.RegisterActivityWithOptions(reconcile, sdkactivity.RegisterOptions{Name: activityReconcileEffectRecoveryV3})
 	return env
 }
 
@@ -431,6 +525,75 @@ func initializeEffectRecoveryV3Activity(t *testing.T, repository imageagent.Repo
 	_, err = repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{Scope: imageagent.ScopeForRun(run), Run: run, Plan: plan, Catalog: catalog, Snapshot: imageagent.RunProjection{Run: run, Plan: plan}, CommitID: "start:" + runID, EventType: "run.initialized", EventPayload: []byte(`{}`)})
 	require.NoError(t, err)
 	return ExecuteSlotV3ActivityInput{RunID: runID, Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}, PlanRevision: 1, Slot: plan.Slots[0], Attempt: 1, IdempotencyKey: "slot-key-1:plan:1:attempt:1", AssetCatalog: catalog}
+}
+
+func initializedBlockedEffectRecoveryProjection(t *testing.T, runID string, slotCount int) (imageagent.Repository, []ExecuteSlotV3ActivityInput) {
+	t.Helper()
+	require.Positive(t, slotCount)
+	repository := store.NewMemoryRepository()
+	slots := make([]imageagent.Slot, 0, slotCount)
+	for index := 0; index < slotCount; index++ {
+		role := imageagent.SlotRoleScene
+		if index == 0 {
+			role = imageagent.SlotRoleMain
+		}
+		slots = append(slots, imageagent.Slot{
+			ID: fmt.Sprintf("slot-%d", index+1), Role: role,
+			SourceAssetIDs: []string{"source-1"}, IdempotencyKey: fmt.Sprintf("slot-key-%d", index+1),
+		})
+	}
+	run := imageagent.Run{
+		ID: runID, BusinessTaskID: "task-" + runID, TenantID: "tenant-a", UserID: "user-a",
+		Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-" + runID, Status: imageagent.RunStatusPlanning,
+		CurrentNode: "plan", Version: 1, ActivePlanRevision: 1, MaxConcurrentSlots: 1,
+	}
+	plan := imageagent.Plan{
+		Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"},
+		CreatedBy: "user-a", Slots: slots,
+	}
+	catalog, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{
+		ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/source.png",
+	}}})
+	require.NoError(t, err)
+	_, err = repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{
+		Scope: imageagent.ScopeForRun(run), Run: run, Plan: plan, Catalog: catalog,
+		Snapshot: imageagent.RunProjection{Run: run, Plan: plan}, CommitID: "start:" + runID,
+		EventType: "run.initialized", EventPayload: []byte(`{}`),
+	})
+	require.NoError(t, err)
+	executor := &recordingStagedExecutor{}
+	activities := newV3Activities(t, repository, repository.(imageagent.SlotExternalEffectV3Repository), executor, &recordingArtifactStore{})
+	identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+	inputs := make([]ExecuteSlotV3ActivityInput, 0, slotCount)
+	owners := make([]imageagent.RecoverableEffect, 0, slotCount)
+	for _, slot := range slots {
+		input := ExecuteSlotV3ActivityInput{
+			RunID: runID, Identity: identity, PlanRevision: plan.Revision, Slot: slot, Attempt: 1,
+			IdempotencyKey: slotAttemptKey(plan.Revision, slot, 1), AssetCatalog: catalog,
+		}
+		require.NoError(t, activities.PersistSlotResultV3(context.Background(), PersistSlotResultV3ActivityInput{
+			RunID: runID, Identity: identity, PlanRevision: plan.Revision,
+			Result: SlotWorkflowV3Result{
+				Published: imageagent.SlotEffectV3PublishedResult{SlotID: slot.ID, Attempt: 1},
+				Status:    imageagent.SlotStatusBlocked, ErrorCode: recoveryRequestedBlockCode,
+			},
+			AttemptKey: input.IdempotencyKey,
+		}))
+		inputs = append(inputs, input)
+		owners = append(owners, imageagent.RecoverableEffect{SlotID: slot.ID, Attempt: 1, Code: recoveryRequestedBlockCode})
+	}
+	current, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: runID})
+	require.NoError(t, err)
+	require.NoError(t, activities.PersistRunState(context.Background(), PersistRunStateActivityInput{
+		RunID: runID, Identity: identity, PlanRevision: plan.Revision,
+		Projection: WorkflowResult{
+			Status: imageagent.RunStatusBlocked,
+			Block:  &imageagent.Block{Code: recoveryRequestedBlockCode, Message: recoveryRequestedBlockCode, SlotID: slots[0].ID},
+			Plan:   plan, Slots: current.Slots, RecoverableEffects: owners,
+		},
+		CurrentNode: "retry_slot", CommitID: "test:recovery-handoff:" + runID,
+	}))
+	return repository, inputs
 }
 
 func seedV3PublicationClaimed(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, input ExecuteSlotV3ActivityInput, manifest imageagent.StagingManifest, owner string) {

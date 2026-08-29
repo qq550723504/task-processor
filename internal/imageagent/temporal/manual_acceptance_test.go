@@ -22,9 +22,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
 	enumspb "go.temporal.io/api/enums/v1"
-	sdkconverter "go.temporal.io/sdk/converter"
 	sdkactivity "go.temporal.io/sdk/activity"
 	sdkclient "go.temporal.io/sdk/client"
+	sdkconverter "go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/worker"
 
@@ -64,6 +64,8 @@ type manualRecoveryWorkflowRestartAcceptanceResult struct {
 	RecoveredCandidateAssetIDs  []string
 	ProjectionStatus            imageagent.RunStatus
 	ProjectionBlockCode         string
+	ProjectionOwnerCount        int
+	ProjectionSlotStatus        imageagent.SlotStatus
 }
 
 func TestManualWorkflowRecoveryOwnerCompletesAfterWorkerRestart(t *testing.T) {
@@ -84,7 +86,9 @@ func TestManualWorkflowRecoveryOwnerCompletesAfterWorkerRestart(t *testing.T) {
 	require.Equal(t, 1, result.RecoveredEffectAttempt)
 	require.NotEmpty(t, result.RecoveredCandidateAssetIDs)
 	require.Equal(t, imageagent.RunStatusBlocked, result.ProjectionStatus)
-	require.Equal(t, "recovery_requested", result.ProjectionBlockCode)
+	require.Empty(t, result.ProjectionBlockCode)
+	require.Zero(t, result.ProjectionOwnerCount)
+	require.Equal(t, imageagent.SlotStatusAccepted, result.ProjectionSlotStatus)
 }
 
 func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecoveryWorkflowRestartAcceptanceResult {
@@ -157,6 +161,9 @@ func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecovery
 	blockedProjection.Slots[0].Slot.Status = imageagent.SlotStatusBlocked
 	blockedProjection.Slots[0].Attempt = recoveryInput.Attempt
 	blockedProjection.Slots[0].ErrorCode = "recovery_requested"
+	blockedProjection.RecoverableEffects = []imageagent.RecoverableEffect{{
+		SlotID: recoveryInput.Slot.ID, Attempt: recoveryInput.Attempt, Code: "recovery_requested",
+	}}
 	_, err = repository.CommitProjection(ctx, imageagent.ProjectionCommit{
 		Scope: scope, CommitID: "test:recovery-requested", ExpectedProjectionVersion: currentProjection.ProjectionVersion,
 		Snapshot: blockedProjection, EventType: "run.updated", EventPayload: json.RawMessage(`{}`), ExpectedRunVersion: currentProjection.Run.Version,
@@ -191,7 +198,7 @@ func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecovery
 		Repository: repository, SlotEffects: repository.(imageagent.SlotExternalEffectRepository), SlotExecutor: recoveryExecutor,
 		Publisher: acceptancePublisher{}, PublisherV3: acceptancePublisher{}, SlotEffectsV3: effects,
 		StagedSlotExecutor: recoveryExecutor, ArtifactStore: blockingStore,
-		PublicationOwner: func(context.Context) (string, error) { return "recovered-workflow-run/execute-slot-v3/2", nil },
+		PublicationOwner:         func(context.Context) (string, error) { return "recovered-workflow-run/execute-slot-v3/2", nil },
 		PublicationLeaseDuration: time.Minute,
 	})
 	require.NoError(t, err)
@@ -199,8 +206,8 @@ func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecovery
 	client := imageagenttemporal.NewClient(workflowClient)
 	command := imageagent.RecoverEffectCommand{
 		RunID: run.ID, PlanRevision: plan.Revision, SlotID: recoveryInput.Slot.ID, Attempt: recoveryInput.Attempt,
-		ActionID: "recover-effect-restart-1",
-		Identity: imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID, BusinessTaskID: run.BusinessTaskID},
+		ActionID:   "recover-effect-restart-1",
+		Identity:   imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID, BusinessTaskID: run.BusinessTaskID},
 		Projection: blockedProjection,
 	}
 	expectedRecoveryWorkflowID := imageagenttemporal.EffectRecoveryWorkflowID(
@@ -255,7 +262,14 @@ func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecovery
 		RecoveredEffectAttempt:      recoveredEffect.Identity.Attempt,
 		RecoveredCandidateAssetIDs:  candidateAssetIDs(execution.result.Published),
 		ProjectionStatus:            projected.Run.Status,
-		ProjectionBlockCode:         projected.Run.Block.Code,
+		ProjectionBlockCode: func() string {
+			if projected.Run.Block == nil {
+				return ""
+			}
+			return projected.Run.Block.Code
+		}(),
+		ProjectionOwnerCount: len(projected.RecoverableEffects),
+		ProjectionSlotStatus: projected.Slots[0].Slot.Status,
 	}
 }
 
@@ -573,7 +587,7 @@ func manualAcceptanceReservation(input imageagenttemporal.ExecuteSlotV3ActivityI
 	}
 	return imageagent.SlotEffectV3Reservation{
 		Identity: imageagent.SlotExternalEffectIdentity{
-			RunScope: imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID},
+			RunScope:     imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID},
 			PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt,
 		},
 		IdempotencyKey:   input.IdempotencyKey,
@@ -590,7 +604,7 @@ func manualAcceptanceReservationFromRecoveryInput(input imageagenttemporal.Effec
 	}
 	return imageagent.SlotEffectV3Reservation{
 		Identity: imageagent.SlotExternalEffectIdentity{
-			RunScope: imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID},
+			RunScope:     imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID},
 			PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt,
 		},
 		IdempotencyKey:   execution.IdempotencyKey,
@@ -735,6 +749,7 @@ func (c *recordingRecoveryWorkflowClient) executeRecoveryWorkflow(execution *rec
 	env.RegisterWorkflow(imageagenttemporal.ImageAgentEffectRecoveryWorkflow)
 	env.RegisterActivityWithOptions(c.activities.RecoverEffectV3, sdkactivity.RegisterOptions{Name: "imageagent.recover_effect.v3"})
 	env.RegisterActivityWithOptions(c.activities.PersistRecoveryBlockedEffectV3, sdkactivity.RegisterOptions{Name: "imageagent.persist_recovery_blocked.v3"})
+	env.RegisterActivityWithOptions(c.activities.ReconcileEffectRecoveryV3, sdkactivity.RegisterOptions{Name: "imageagent.reconcile_effect_recovery.v3"})
 	env.ExecuteWorkflow(imageagenttemporal.ImageAgentEffectRecoveryWorkflow, input)
 
 	var (

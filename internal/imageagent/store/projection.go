@@ -601,19 +601,30 @@ func validateSlotProjectionMutationIdentity(input imageagent.ProjectionCommit, c
 		}
 		return nil
 	}
-	if mutation.Result.Attempt != currentSlot.Attempt || currentSlot.Attempt <= 0 ||
-		currentSlot.Slot.Status != imageagent.SlotStatusBlocked || mutation.Result.Status != currentSlot.Slot.Status ||
-		!reflect.DeepEqual(mutation.Projection.Slot, currentSlot.Slot) || !reflect.DeepEqual(mutation.Projection.Candidates, currentSlot.Candidates) ||
-		!imageagent.IsRecoverableEffectBlockCode(mutation.Result.ErrorCode) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode {
-		return fmt.Errorf("%w: recovery slot mutation may only refresh the existing blocked attempt code", imageagent.ErrRevisionConflict)
+	if mutation.Result.Attempt != currentSlot.Attempt || currentSlot.Attempt <= 0 || currentSlot.Slot.Status != imageagent.SlotStatusBlocked {
+		return fmt.Errorf("%w: recovery slot mutation must target the existing blocked attempt", imageagent.ErrRevisionConflict)
 	}
 	if err := validateAttempt(mutation.Attempt); err != nil {
 		return err
 	}
 	if input.RunMutation == nil || mutation.Attempt.Node != input.RunMutation.CurrentNode ||
-		mutation.Attempt.IdempotencyKey != fmt.Sprintf("%s:slot:%s:attempt:%d", input.CommitID, mutation.Result.SlotID, mutation.Result.Attempt) ||
-		mutation.Attempt.Outcome != "blocked" || mutation.Attempt.ErrorCategory != mutation.Result.ErrorCode {
+		mutation.Attempt.IdempotencyKey != fmt.Sprintf("%s:slot:%s:attempt:%d", input.CommitID, mutation.Result.SlotID, mutation.Result.Attempt) {
 		return fmt.Errorf("%w: recovery slot mutation metadata does not match the projection commit", imageagent.ErrRevisionConflict)
+	}
+	if mutation.Result.Status == imageagent.SlotStatusBlocked {
+		if !reflect.DeepEqual(mutation.Projection.Slot, currentSlot.Slot) || !reflect.DeepEqual(mutation.Projection.Candidates, currentSlot.Candidates) ||
+			!imageagent.IsRecoverableEffectBlockCode(mutation.Result.ErrorCode) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode ||
+			mutation.Attempt.Outcome != "blocked" || mutation.Attempt.ErrorCategory != mutation.Result.ErrorCode {
+			return fmt.Errorf("%w: recovery slot mutation may only refresh the existing blocked attempt code", imageagent.ErrRevisionConflict)
+		}
+		return nil
+	}
+	expectedSlot := cloneSlot(currentSlot.Slot)
+	expectedSlot.Status = imageagent.SlotStatusAccepted
+	if mutation.Result.Status != imageagent.SlotStatusAccepted || !reflect.DeepEqual(mutation.Projection.Slot, expectedSlot) ||
+		len(mutation.Projection.Candidates) == 0 || mutation.Result.ErrorCode != "" || mutation.Projection.ErrorCode != "" ||
+		mutation.Attempt.Outcome != "accepted" || mutation.Attempt.ErrorCategory != "" {
+		return fmt.Errorf("%w: recovery slot mutation may only accept durable candidates for the existing attempt", imageagent.ErrRevisionConflict)
 	}
 	return nil
 }

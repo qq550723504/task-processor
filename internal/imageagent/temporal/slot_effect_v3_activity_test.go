@@ -310,7 +310,7 @@ func TestEffectRecoveryWorkflowReconcilesClaimWithoutProviderCall(t *testing.T) 
 	executor := &recordingStagedExecutor{}
 	artifacts := &recordingArtifactStore{}
 	activities := newV3Activities(t, repository, effects, executor, artifacts)
-	env := newEffectRecoveryWorkflowEnv(t, activities)
+	env := newEffectRecoveryWorkflowEnvWithoutParentProjection(t, activities)
 
 	env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(input))
 

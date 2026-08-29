@@ -30,7 +30,7 @@ func ImageAgentEffectRecoveryWorkflow(ctx workflow.Context, input EffectRecovery
 		var result EffectRecoveryResult
 		err := workflow.ExecuteActivity(ctx, activityRecoverEffectV3, input).Get(ctx, &result)
 		if err == nil {
-			return result, nil
+			return reconcileEffectRecovery(ctx, input)
 		}
 		retryDelay, recoverPublication := slotPublicationRecoveryDelay(err)
 		if !recoverPublication {
@@ -61,6 +61,14 @@ func effectRecoveryBlockedResult(input EffectRecoveryWorkflowInput) EffectRecove
 func persistEffectRecoveryBlocked(ctx workflow.Context, input EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {
 	var result EffectRecoveryResult
 	if err := workflow.ExecuteActivity(ctx, activityPersistRecoveryBlockedV3, input).Get(ctx, &result); err != nil {
+		return EffectRecoveryResult{}, err
+	}
+	return reconcileEffectRecovery(ctx, input)
+}
+
+func reconcileEffectRecovery(ctx workflow.Context, input EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {
+	var result EffectRecoveryResult
+	if err := workflow.ExecuteActivity(ctx, activityReconcileEffectRecoveryV3, input).Get(ctx, &result); err != nil {
 		return EffectRecoveryResult{}, err
 	}
 	return result, nil

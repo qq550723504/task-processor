@@ -44,6 +44,7 @@ const (
 	activityStartEffectRecoveryV3       = "imageagent.start_effect_recovery.v3"
 	activityRecoverEffectV3             = "imageagent.recover_effect.v3"
 	activityPersistRecoveryBlockedV3    = "imageagent.persist_recovery_blocked.v3"
+	activityReconcileEffectRecoveryV3   = "imageagent.reconcile_effect_recovery.v3"
 	activityPublishApprovedV3           = "imageagent.publish_approved.v3"
 	workflowNameCompatibilityCanary     = "ImageAgentCompatibilityCanaryWorkflow"
 	signalApproveResults                = "approve_results"
