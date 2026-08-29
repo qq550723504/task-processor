@@ -218,6 +218,35 @@ func TestExecuteSlotV3CancellationTerminalizesSuccessfulProviderEffect(t *testin
 	require.NotEqual(t, imageagent.SlotEffectV3ProviderClaimed, stored.Phase)
 }
 
+func TestExecuteSlotV3CancellationAfterProviderSuccessDetachesRecoveryPreservation(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-provider-success-cancelled-without-wire")
+	path := writeTinyPNG(t)
+	var cancel context.CancelFunc
+	executor := &recordingStagedExecutor{
+		generated:  generatedV3Output(input, path),
+		onGenerate: func() { cancel() },
+	}
+	effects := &cancellationObservingV3Repository{SlotExternalEffectV3Repository: repository.(imageagent.SlotExternalEffectV3Repository)}
+	artifacts := &cancellationObservingArtifactStore{
+		recordingArtifactStore: &recordingArtifactStore{ensureErrors: []error{objectstore.ErrObjectConflict}},
+	}
+	activities := newV3Activities(t, repository, effects, executor, artifacts)
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	cancel = cancelCtx
+	defer cancel()
+
+	_, err := activities.ExecuteSlotV3(ctx, input)
+
+	requireV3ApplicationErrorType(t, err, slotStagingOutcomeUnknownCode)
+	require.False(t, artifacts.PreserveSawCancelledContext())
+	require.False(t, artifacts.EnsureSawCancelledContext())
+	require.False(t, effects.PrepareSawCancelledContext())
+	require.False(t, effects.BlockSawCancelledContext())
+	stored, getErr := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, getErr)
+	require.Equal(t, imageagent.SlotEffectV3StagingUnknown, stored.Phase)
+}
+
 func TestExecuteSlotV3StartsOneFinalizationWindowAfterProviderReturns(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-lazy-finalization-window")
 	input.ExternalEffectFinalization = true
@@ -599,6 +628,34 @@ func TestExecuteSlotV3CancellationTerminalizesPublicationClaim(t *testing.T) {
 	require.False(t, effects.CompleteSawCancelledContext(), "publication completion must use the detached finalization context")
 	require.False(t, executor.BuildSawCancelledContext(), "result construction must use the detached finalization context")
 
+	stored, getErr := baseEffects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, getErr)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
+}
+
+func TestExecuteSlotV3CancellationAfterPublicationClaimDetachesFinalizationWithoutWire(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-publication-cancelled-without-wire")
+	baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
+	seedV3ArtifactStaged(t, baseEffects, input, v3StagingManifest(input, tinyPNGBytes(t)))
+	effects := &cancellationObservingV3Repository{SlotExternalEffectV3Repository: baseEffects}
+	var cancel context.CancelFunc
+	artifacts := &cancellationObservingArtifactStore{
+		recordingArtifactStore: &recordingArtifactStore{onProgress: func(int) { cancel() }},
+	}
+	executor := &recordingStagedExecutor{failBuildOnCancelledContext: true}
+	activities := newV3Activities(t, repository, effects, executor, artifacts)
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	cancel = cancelCtx
+	defer cancel()
+
+	result, err := activities.ExecuteSlotV3(ctx, input)
+
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+	require.False(t, artifacts.FinalizeSawCancelledContext())
+	require.False(t, effects.RenewSawCancelledContext())
+	require.False(t, effects.CompleteSawCancelledContext())
+	require.False(t, executor.BuildSawCancelledContext())
 	stored, getErr := baseEffects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
 	require.NoError(t, getErr)
 	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
