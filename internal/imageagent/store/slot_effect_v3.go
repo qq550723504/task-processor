@@ -378,10 +378,31 @@ func (r *memoryRepository) BlockSlotEffectV3(_ context.Context, transition image
 	if transition.Phase == imageagent.SlotEffectV3PublicationUnknown && (existing.Publication.Owner != transition.Owner || existing.Publication.Fence != transition.Fence) {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
 	}
+	if transition.Phase == imageagent.SlotEffectV3RecoveryBlocked {
+		existing.RecoveryPhase = existing.Phase
+	}
 	existing.Phase = transition.Phase
 	existing.BlockedCode = transition.Code
 	r.slotEffectsV3[slotEffectKey(existing.Identity)] = cloneSlotEffectV3(existing)
 	return cloneSlotEffectV3(existing), nil
+}
+
+func (r *memoryRepository) RestoreRecoveryBlockedEffectV3(_ context.Context, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, error) {
+	if err := validateSlotEffectV3Reservation(reservation); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := slotEffectKey(reservation.Identity)
+	effect, ok := r.slotEffectsV3[key]
+	if !ok || !sameSlotEffectV3Reservation(effect, reservation) || effect.Phase != imageagent.SlotEffectV3RecoveryBlocked || !isRedrivableRecoveryPhase(effect.RecoveryPhase) {
+		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
+	}
+	effect.Phase = effect.RecoveryPhase
+	effect.RecoveryPhase = ""
+	effect.BlockedCode = ""
+	r.slotEffectsV3[key] = cloneSlotEffectV3(effect)
+	return cloneSlotEffectV3(effect), nil
 }
 
 func (r *memoryRepository) GetSlotExternalEffectV3(_ context.Context, identity imageagent.SlotExternalEffectIdentity) (imageagent.SlotEffectV3Attempt, error) {
@@ -1060,6 +1081,10 @@ func (r *gormRepository) BlockSlotEffectV3(ctx context.Context, transition image
 			return imageagent.ErrRevisionConflict
 		}
 		updates := map[string]any{"phase": string(transition.Phase), "blocked_code": transition.Code}
+		if transition.Phase == imageagent.SlotEffectV3RecoveryBlocked {
+			updates["recovery_phase"] = string(current.Phase)
+			current.RecoveryPhase = current.Phase
+		}
 		where := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), transition.Reservation.Identity)
 		if transition.Phase == imageagent.SlotEffectV3PublicationUnknown {
 			where = where.Where("publication_owner = ? AND publication_fence = ?", transition.Owner, transition.Fence)
@@ -1073,6 +1098,40 @@ func (r *gormRepository) BlockSlotEffectV3(ctx context.Context, transition image
 		}
 		current.Phase = transition.Phase
 		current.BlockedCode = transition.Code
+		result = current
+		return nil
+	})
+	return result, err
+}
+
+func (r *gormRepository) RestoreRecoveryBlockedEffectV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, error) {
+	if err := validateSlotEffectV3Reservation(reservation); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
+	var result imageagent.SlotEffectV3Attempt
+	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
+		row, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		if err != nil {
+			return err
+		}
+		current, err := decodeSlotEffectV3Record(row)
+		if err != nil {
+			return err
+		}
+		if !sameSlotEffectV3Reservation(current, reservation) || current.Phase != imageagent.SlotEffectV3RecoveryBlocked || !isRedrivableRecoveryPhase(current.RecoveryPhase) {
+			return imageagent.ErrRevisionConflict
+		}
+		where := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Where("phase = ? AND recovery_phase = ?", string(imageagent.SlotEffectV3RecoveryBlocked), string(current.RecoveryPhase))
+		updated := where.Updates(map[string]any{"phase": string(current.RecoveryPhase), "blocked_code": "", "recovery_phase": ""})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return imageagent.ErrRevisionConflict
+		}
+		current.Phase = current.RecoveryPhase
+		current.RecoveryPhase = ""
+		current.BlockedCode = ""
 		result = current
 		return nil
 	})
@@ -1260,6 +1319,17 @@ func isBlockedV3Phase(phase imageagent.SlotEffectV3Phase) bool {
 	return phase == imageagent.SlotEffectV3ProviderUnknown || phase == imageagent.SlotEffectV3StagingUnknown || phase == imageagent.SlotEffectV3PublicationUnknown || phase == imageagent.SlotEffectV3RecoveryBlocked
 }
 
+func isRedrivableRecoveryPhase(phase imageagent.SlotEffectV3Phase) bool {
+	// ProviderClaimed and ProviderNotDispatched can only be resumed by a new
+	// provider dispatch, which an explicit recovery redrive must never perform.
+	return phase == imageagent.SlotEffectV3StagingPrepared ||
+		phase == imageagent.SlotEffectV3ArtifactStaged ||
+		phase == imageagent.SlotEffectV3PublicationClaimed ||
+		phase == imageagent.SlotEffectV3ProviderUnknown ||
+		phase == imageagent.SlotEffectV3StagingUnknown ||
+		phase == imageagent.SlotEffectV3PublicationUnknown
+}
+
 func canBlockV3(current, blocked imageagent.SlotEffectV3Phase) bool {
 	switch blocked {
 	case imageagent.SlotEffectV3ProviderUnknown:
@@ -1406,7 +1476,7 @@ func slotEffectV3FromRecord(row slotExternalEffectV3Record) imageagent.SlotEffec
 	if row.PublicationLeaseExpiresAt != nil {
 		claim.LeaseExpiresAt = row.PublicationLeaseExpiresAt.UTC()
 	}
-	return imageagent.SlotEffectV3Attempt{Identity: imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: row.TenantID, OwnerUserID: row.OwnerUserID, RunID: row.RunID}, PlanRevision: row.PlanRevision, SlotID: row.SlotID, Attempt: row.Attempt}, IdempotencyKey: row.IdempotencyKey, InputFingerprint: row.InputFingerprint, Phase: imageagent.SlotEffectV3Phase(row.Phase), StagingManifestFingerprint: row.StagingManifestFingerprint, Publication: claim, PublicationFingerprint: row.PublicationFingerprint, ResultFingerprint: row.ResultFingerprint, BlockedCode: row.BlockedCode, CorruptionMarker: row.CorruptionMarker, BudgetStatus: imageagent.SlotBudgetStatus(row.BudgetStatus)}
+	return imageagent.SlotEffectV3Attempt{Identity: imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: row.TenantID, OwnerUserID: row.OwnerUserID, RunID: row.RunID}, PlanRevision: row.PlanRevision, SlotID: row.SlotID, Attempt: row.Attempt}, IdempotencyKey: row.IdempotencyKey, InputFingerprint: row.InputFingerprint, Phase: imageagent.SlotEffectV3Phase(row.Phase), StagingManifestFingerprint: row.StagingManifestFingerprint, Publication: claim, PublicationFingerprint: row.PublicationFingerprint, ResultFingerprint: row.ResultFingerprint, BlockedCode: row.BlockedCode, RecoveryPhase: imageagent.SlotEffectV3Phase(row.RecoveryPhase), CorruptionMarker: row.CorruptionMarker, BudgetStatus: imageagent.SlotBudgetStatus(row.BudgetStatus)}
 }
 
 func decodeReservedUsage(encoded []byte) (imageagent.UsageVector, error) {

@@ -513,6 +513,16 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 	}
 	reservation.Policy = effect.Policy
 	reservation.Quote = effect.Quote
+	if effect.Phase == imageagent.SlotEffectV3RecoveryBlocked && strings.TrimSpace(input.ActionID) != "" {
+		restorer, ok := a.slotEffectsV3.(imageagent.RecoveryBlockedSlotEffectV3Repository)
+		if !ok {
+			return EffectRecoveryResult{}, persistedSlotEffectV3RepositoryError(imageagent.ErrRevisionConflict)
+		}
+		effect, err = restorer.RestoreRecoveryBlockedEffectV3(ctx, reservation)
+		if err != nil {
+			return EffectRecoveryResult{}, persistedSlotEffectV3RepositoryError(err)
+		}
+	}
 	switch effect.Phase {
 	case imageagent.SlotEffectV3PublicationComplete:
 		return EffectRecoveryResult{

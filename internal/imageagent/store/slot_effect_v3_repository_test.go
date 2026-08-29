@@ -88,6 +88,45 @@ func TestSlotEffectV3RepositoryContract(t *testing.T) {
 	}
 }
 
+func TestRecoveryBlockedEffectRestoresItsPriorPublicationPhaseForExplicitRedrive(t *testing.T) {
+	for _, fixtureFactory := range newV3ReviewFixtures() {
+		t.Run(fixtureFactory.name, func(t *testing.T) {
+			fixture := fixtureFactory.new(t)
+			ctx := context.Background()
+			_, _, err := fixture.effects.ReserveSlotProviderV3(ctx, fixture.reservation)
+			require.NoError(t, err)
+			prepared, err := fixture.effects.PrepareSlotStagingV3(ctx, fixture.reservation, v3StagingManifest())
+			require.NoError(t, err)
+			_, err = fixture.effects.CommitSlotStagedV3(ctx, fixture.reservation, prepared.StagingManifestFingerprint)
+			require.NoError(t, err)
+			_, claim, claimed, err := fixture.effects.ClaimSlotPublicationV3(ctx, imageagent.PublicationClaimRequest{
+				Reservation: fixture.reservation, Owner: "worker-a", LeaseDuration: time.Minute,
+				PublicationFingerprint: "publication-fingerprint-redrive", FinalManifest: v3FinalManifest(),
+			})
+			require.NoError(t, err)
+			require.True(t, claimed)
+
+			blocked, err := fixture.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+				Reservation: fixture.reservation, Phase: imageagent.SlotEffectV3RecoveryBlocked, Code: imageagent.SlotRecoveryBlockedCode,
+			})
+			require.NoError(t, err)
+			require.Equal(t, imageagent.SlotEffectV3PublicationClaimed, blocked.RecoveryPhase)
+
+			restorer, ok := fixture.effects.(imageagent.RecoveryBlockedSlotEffectV3Repository)
+			require.True(t, ok)
+			restored, err := restorer.RestoreRecoveryBlockedEffectV3(ctx, fixture.reservation)
+			require.NoError(t, err)
+			require.Equal(t, imageagent.SlotEffectV3PublicationClaimed, restored.Phase)
+			require.Empty(t, restored.BlockedCode)
+			require.Empty(t, restored.RecoveryPhase)
+			require.Equal(t, claim.Fence, restored.Publication.Fence)
+
+			_, err = restorer.RestoreRecoveryBlockedEffectV3(ctx, fixture.reservation)
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+		})
+	}
+}
+
 func TestSlotEffectV3RepositoryPreservesNilAndEmptyOperationsAcrossReplay(t *testing.T) {
 	for _, factory := range newV3ReviewFixtures() {
 		for _, operations := range []struct {

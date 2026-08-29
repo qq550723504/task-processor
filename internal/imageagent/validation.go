@@ -166,15 +166,6 @@ func ValidateSubmittedPlan(plan Plan) error {
 }
 
 func ValidateInitialSubmittedPlan(plan Plan) error {
-	if len(plan.SourceAssetIDs) != 1 || strings.TrimSpace(plan.SourceAssetIDs[0]) == "" {
-		return fmt.Errorf("initial plan requires exactly one source asset")
-	}
-	sourceID := strings.TrimSpace(plan.SourceAssetIDs[0])
-	for _, slot := range plan.Slots {
-		if len(slot.SourceAssetIDs) != 1 || strings.TrimSpace(slot.SourceAssetIDs[0]) != sourceID {
-			return fmt.Errorf("initial slot %q requires exactly one source: the plan source", slot.ID)
-		}
-	}
 	if err := ValidateSubmittedPlan(plan); err != nil {
 		return err
 	}

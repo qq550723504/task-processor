@@ -156,6 +156,10 @@ type SlotEffectV3Attempt struct {
 	ResultFingerprint          string
 	Published                  SlotEffectV3PublishedResult
 	BlockedCode                string
+	// RecoveryPhase records the safe, pre-block phase when bounded recovery
+	// exhausts. It lets an explicit owner-scoped redrive resume finalization
+	// instead of treating recovery_blocked as a terminal no-op.
+	RecoveryPhase SlotEffectV3Phase
 	// CorruptionMarker records a deterministic, non-sensitive marker for a
 	// persisted payload that could not be decoded. It is retained after the
 	// effect is durably fail-closed so recovery never needs the original JSON.
@@ -326,4 +330,11 @@ type SlotExternalEffectV3Repository interface {
 // contract so existing adapters cannot accidentally authorize a new effect.
 type CorruptSlotEffectV3Repository interface {
 	BlockCorruptSlotEffectV3(context.Context, SlotExternalEffectIdentity) (SlotEffectV3Attempt, error)
+}
+
+// RecoveryBlockedSlotEffectV3Repository is the narrow, explicit-redrive
+// capability. It deliberately requires the original reservation identity so
+// callers cannot move an external effect across tenant, plan, slot, or attempt.
+type RecoveryBlockedSlotEffectV3Repository interface {
+	RestoreRecoveryBlockedEffectV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
 }
