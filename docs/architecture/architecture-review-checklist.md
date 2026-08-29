@@ -174,6 +174,7 @@ consider the applicable guards, including:
 - `TestAICapabilityModuleUsesOnlyApprovedDependencies`
 - `depguard: aicapability_boundaries`
 - `depguard: imageagent_effectpolicy_boundaries`
+- `TestImageAgentEffectPolicyInboundImportsStayOwnedByStoreAndPolicy`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
