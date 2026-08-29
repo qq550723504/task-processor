@@ -171,14 +171,6 @@ func (r *memoryRepository) persistMemoryProviderDecision(runKey, effectKey strin
 }
 
 func (r *memoryRepository) PrepareSlotStagingV3(_ context.Context, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (imageagent.SlotEffectV3Attempt, error) {
-	manifest, err := imageagent.NormalizeStagingManifest(manifest)
-	if err != nil {
-		return imageagent.SlotEffectV3Attempt{}, err
-	}
-	fingerprint, err := imageagent.StagingManifestFingerprint(manifest)
-	if err != nil {
-		return imageagent.SlotEffectV3Attempt{}, err
-	}
 	if err := validateSlotEffectV3Reservation(reservation); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
@@ -188,23 +180,14 @@ func (r *memoryRepository) PrepareSlotStagingV3(_ context.Context, reservation i
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
 	}
-	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+	decision, err := effectpolicy.PrepareStaging(existing, reservation, manifest)
+	if err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
-	if !sameSlotEffectV3Reservation(existing, reservation) {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
+	if decision.Changed {
+		r.slotEffectsV3[slotEffectKey(reservation.Identity)] = cloneSlotEffectV3(decision.Attempt)
 	}
-	if existing.Phase == imageagent.SlotEffectV3StagingPrepared && existing.StagingManifestFingerprint == fingerprint {
-		return cloneSlotEffectV3(existing), nil
-	}
-	if existing.Phase != imageagent.SlotEffectV3ProviderClaimed {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
-	}
-	existing.Phase = imageagent.SlotEffectV3StagingPrepared
-	existing.StagingManifest = cloneStagingManifest(manifest)
-	existing.StagingManifestFingerprint = fingerprint
-	r.slotEffectsV3[slotEffectKey(reservation.Identity)] = cloneSlotEffectV3(existing)
-	return cloneSlotEffectV3(existing), nil
+	return cloneSlotEffectV3(decision.Attempt), nil
 }
 
 func (r *memoryRepository) CommitSlotStagedV3(_ context.Context, reservation imageagent.SlotEffectV3Reservation, fingerprint string) (imageagent.SlotEffectV3Attempt, error) {
@@ -217,21 +200,14 @@ func (r *memoryRepository) CommitSlotStagedV3(_ context.Context, reservation ima
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
 	}
-	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+	decision, err := effectpolicy.CommitStaged(existing, reservation, fingerprint)
+	if err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
-	if !sameSlotEffectV3Reservation(existing, reservation) || existing.StagingManifestFingerprint != fingerprint {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
+	if decision.Changed {
+		r.slotEffectsV3[slotEffectKey(reservation.Identity)] = cloneSlotEffectV3(decision.Attempt)
 	}
-	if existing.Phase == imageagent.SlotEffectV3ArtifactStaged {
-		return cloneSlotEffectV3(existing), nil
-	}
-	if existing.Phase != imageagent.SlotEffectV3StagingPrepared {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
-	}
-	existing.Phase = imageagent.SlotEffectV3ArtifactStaged
-	r.slotEffectsV3[slotEffectKey(reservation.Identity)] = cloneSlotEffectV3(existing)
-	return cloneSlotEffectV3(existing), nil
+	return cloneSlotEffectV3(decision.Attempt), nil
 }
 
 func (r *memoryRepository) ClaimSlotPublicationV3(_ context.Context, request imageagent.PublicationClaimRequest) (imageagent.SlotEffectV3Attempt, imageagent.PublicationClaim, bool, error) {
@@ -687,23 +663,11 @@ func persistGormProviderAccounting(tx *gorm.DB, scope imageagent.RunScope, decis
 }
 
 func (r *gormRepository) PrepareSlotStagingV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (imageagent.SlotEffectV3Attempt, error) {
-	manifest, err := imageagent.NormalizeStagingManifest(manifest)
-	if err != nil {
-		return imageagent.SlotEffectV3Attempt{}, err
-	}
-	fingerprint, err := imageagent.StagingManifestFingerprint(manifest)
-	if err != nil {
-		return imageagent.SlotEffectV3Attempt{}, err
-	}
 	if err := validateSlotEffectV3Reservation(reservation); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
-	encoded, err := json.Marshal(manifest)
-	if err != nil {
-		return imageagent.SlotEffectV3Attempt{}, err
-	}
 	var result imageagent.SlotEffectV3Attempt
-	err = withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
+	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
 		row, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
@@ -712,28 +676,27 @@ func (r *gormRepository) PrepareSlotStagingV3(ctx context.Context, reservation i
 		if err != nil {
 			return err
 		}
-		if !sameSlotEffectV3Reservation(current, reservation) {
-			return imageagent.ErrRevisionConflict
+		decision, err := effectpolicy.PrepareStaging(current, reservation, manifest)
+		if err != nil {
+			return err
 		}
-		if current.Phase == imageagent.SlotEffectV3StagingPrepared && current.StagingManifestFingerprint == fingerprint {
-			result = current
+		if !decision.Changed {
+			result = decision.Attempt
 			return nil
 		}
-		if current.Phase != imageagent.SlotEffectV3ProviderClaimed {
-			return imageagent.ErrRevisionConflict
+		encoded, err := json.Marshal(decision.Attempt.StagingManifest)
+		if err != nil {
+			return err
 		}
 		now := time.Now().UTC()
-		updated := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Where("phase = ?", string(imageagent.SlotEffectV3ProviderClaimed)).Updates(map[string]any{"phase": string(imageagent.SlotEffectV3StagingPrepared), "staging_manifest_json": encoded, "staging_manifest_fingerprint": fingerprint, "staging_prepared_at": now})
+		updated := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Where("phase = ?", string(imageagent.SlotEffectV3ProviderClaimed)).Updates(map[string]any{"phase": string(decision.Attempt.Phase), "staging_manifest_json": encoded, "staging_manifest_fingerprint": decision.Attempt.StagingManifestFingerprint, "staging_prepared_at": now})
 		if updated.Error != nil {
 			return updated.Error
 		}
 		if updated.RowsAffected != 1 {
 			return imageagent.ErrRevisionConflict
 		}
-		current.Phase = imageagent.SlotEffectV3StagingPrepared
-		current.StagingManifest = cloneStagingManifest(manifest)
-		current.StagingManifestFingerprint = fingerprint
-		result = current
+		result = decision.Attempt
 		return nil
 	})
 	return result, err
@@ -753,26 +716,23 @@ func (r *gormRepository) CommitSlotStagedV3(ctx context.Context, reservation ima
 		if err != nil {
 			return err
 		}
-		if !sameSlotEffectV3Reservation(current, reservation) || current.StagingManifestFingerprint != fingerprint {
-			return imageagent.ErrRevisionConflict
+		decision, err := effectpolicy.CommitStaged(current, reservation, fingerprint)
+		if err != nil {
+			return err
 		}
-		if current.Phase == imageagent.SlotEffectV3ArtifactStaged {
-			result = current
+		if !decision.Changed {
+			result = decision.Attempt
 			return nil
 		}
-		if current.Phase != imageagent.SlotEffectV3StagingPrepared {
-			return imageagent.ErrRevisionConflict
-		}
 		now := time.Now().UTC()
-		updated := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Where("phase = ?", string(imageagent.SlotEffectV3StagingPrepared)).Updates(map[string]any{"phase": string(imageagent.SlotEffectV3ArtifactStaged), "staged_at": now})
+		updated := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Where("phase = ?", string(imageagent.SlotEffectV3StagingPrepared)).Updates(map[string]any{"phase": string(decision.Attempt.Phase), "staged_at": now})
 		if updated.Error != nil {
 			return updated.Error
 		}
 		if updated.RowsAffected != 1 {
 			return imageagent.ErrRevisionConflict
 		}
-		current.Phase = imageagent.SlotEffectV3ArtifactStaged
-		result = current
+		result = decision.Attempt
 		return nil
 	})
 	return result, err

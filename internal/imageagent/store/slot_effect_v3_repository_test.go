@@ -90,6 +90,88 @@ func TestSlotEffectV3RepositoryContract(t *testing.T) {
 	}
 }
 
+func TestSlotEffectV3StagingRepositoryConformance(t *testing.T) {
+	factories := []struct {
+		name string
+		new  func(*testing.T) imageagent.Repository
+	}{
+		{name: "memory", new: func(*testing.T) imageagent.Repository { return NewMemoryRepository() }},
+		{name: "gorm", new: func(t *testing.T) imageagent.Repository { return NewGormRepository(newConcurrentSQLite(t)) }},
+	}
+	var baseline stagingConformanceTrace
+	for index, factory := range factories {
+		t.Run(factory.name, func(t *testing.T) {
+			trace := runSlotEffectV3StagingConformance(t, factory.new(t))
+			if index == 0 {
+				baseline = trace
+				return
+			}
+			require.Equal(t, baseline, trace)
+		})
+	}
+}
+
+type stagingConformanceTrace struct {
+	Prepared             imageagent.SlotEffectV3Attempt
+	PreparedRepeat       imageagent.SlotEffectV3Attempt
+	ConflictingPrepare   bool
+	WrongCommit          bool
+	Committed            imageagent.SlotEffectV3Attempt
+	CommittedRepeat      imageagent.SlotEffectV3Attempt
+	CommitBeforePrepared bool
+}
+
+func runSlotEffectV3StagingConformance(t *testing.T, repository imageagent.Repository) stagingConformanceTrace {
+	t.Helper()
+	reservation := v3Reservation("staging-conformance")
+	initializeSlotEffectRun(t, repository, reservation.Identity.RunID)
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	manifest := v3StagingManifest()
+	manifest.Assets[0].SHA256 = strings.ToUpper(manifest.Assets[0].SHA256)
+	prepared, err := effects.PrepareSlotStagingV3(context.Background(), reservation, manifest)
+	require.NoError(t, err)
+	preparedRepeat, err := effects.PrepareSlotStagingV3(context.Background(), reservation, manifest)
+	require.NoError(t, err)
+	conflicting := manifest
+	conflicting.Assets = append([]imageagent.StagedAssetRef(nil), manifest.Assets...)
+	conflicting.Assets[0].ObjectKey = "image-agent/staging/tenant-a/run/replacement.png"
+	_, conflictingErr := effects.PrepareSlotStagingV3(context.Background(), reservation, conflicting)
+	_, wrongCommitErr := effects.CommitSlotStagedV3(context.Background(), reservation, "wrong-fingerprint")
+	committed, err := effects.CommitSlotStagedV3(context.Background(), reservation, prepared.StagingManifestFingerprint)
+	require.NoError(t, err)
+	committedRepeat, err := effects.CommitSlotStagedV3(context.Background(), reservation, prepared.StagingManifestFingerprint)
+	require.NoError(t, err)
+
+	beforePreparedReservation := v3Reservation("staging-before-prepared")
+	initializeSlotEffectRun(t, repository, beforePreparedReservation.Identity.RunID)
+	_, claimed, err = effects.ReserveSlotProviderV3(context.Background(), beforePreparedReservation)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	_, beforePreparedErr := effects.CommitSlotStagedV3(context.Background(), beforePreparedReservation, prepared.StagingManifestFingerprint)
+	require.Equal(t, imageagent.SlotEffectV3StagingPrepared, prepared.Phase)
+	require.Equal(t, strings.ToLower(manifest.Assets[0].SHA256), prepared.StagingManifest.Assets[0].SHA256)
+	require.Equal(t, prepared, preparedRepeat)
+	require.ErrorIs(t, conflictingErr, imageagent.ErrRevisionConflict)
+	require.ErrorIs(t, wrongCommitErr, imageagent.ErrRevisionConflict)
+	require.Equal(t, imageagent.SlotEffectV3ArtifactStaged, committed.Phase)
+	require.Equal(t, committed, committedRepeat)
+	require.ErrorIs(t, beforePreparedErr, imageagent.ErrRevisionConflict)
+
+	return stagingConformanceTrace{
+		Prepared:             normalizeProviderBudgetAttempt(prepared),
+		PreparedRepeat:       normalizeProviderBudgetAttempt(preparedRepeat),
+		ConflictingPrepare:   errors.Is(conflictingErr, imageagent.ErrRevisionConflict),
+		WrongCommit:          errors.Is(wrongCommitErr, imageagent.ErrRevisionConflict),
+		Committed:            normalizeProviderBudgetAttempt(committed),
+		CommittedRepeat:      normalizeProviderBudgetAttempt(committedRepeat),
+		CommitBeforePrepared: errors.Is(beforePreparedErr, imageagent.ErrRevisionConflict),
+	}
+}
+
 func TestSlotEffectV3ProviderBudgetRepositoryConformance(t *testing.T) {
 	factories := []struct {
 		name string
