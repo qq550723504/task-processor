@@ -196,9 +196,34 @@ func runImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowR
 		}
 		return projection, nil
 	}
+	persistLifecycleDeadlineBlock := func(result WorkflowResult) (WorkflowResult, error) {
+		result.Status = imageagent.RunStatusBlocked
+		result.Block = &imageagent.Block{Code: imageagent.WorkflowLifecycleElapsedCode, Message: imageagent.WorkflowLifecycleElapsedCode}
+		result.CommandIngress = updates.commandIngress()
+		if err := effects.persistRunState(ctx, input, result, "lifecycle_deadline"); err != nil {
+			if errors.Is(err, errWorkflowEffectFenced) {
+				return awaitTerminalIntent(nil)
+			}
+			return WorkflowResult{}, err
+		}
+		projection = result
+		return result, nil
+	}
+	lifecycleTimer := func() workflow.Future {
+		if input.LifecycleDeadlineAt.IsZero() || !workflow.Now(ctx).Before(input.LifecycleDeadlineAt) {
+			return nil
+		}
+		return workflow.NewTimer(ctx, input.LifecycleDeadlineAt.Sub(workflow.Now(ctx)))
+	}
+	lifecycleElapsed := func() bool {
+		return !input.LifecycleDeadlineAt.IsZero() && !workflow.Now(ctx).Before(input.LifecycleDeadlineAt)
+	}
 
 runPlan:
 	for {
+		if lifecycleElapsed() {
+			return persistLifecycleDeadlineBlock(projection)
+		}
 		executing := WorkflowResult{Status: imageagent.RunStatusExecuting, Plan: input.Plan, Slots: slotProjections(input.Plan, nil)}
 		executing.CommandIngress = updates.commandIngress()
 		if !updates.consumeExecutingHandoff(input.Plan.Revision) {
@@ -211,10 +236,16 @@ runPlan:
 		}
 		projection = executing
 		if updates.pendingActionID != "" {
-			if err := workflow.Await(ctx, func() bool {
-				return updates.pendingActionID == "" || updates.cancelRequested
-			}); err != nil {
-				return WorkflowResult{}, err
+			for updates.pendingActionID != "" && !updates.cancelRequested {
+				wait := workflow.NewSelector(ctx)
+				wait.AddReceive(updates.wake, func(channel workflow.ReceiveChannel, _ bool) { channel.Receive(ctx, nil) })
+				if timer := lifecycleTimer(); timer != nil {
+					wait.AddFuture(timer, func(workflow.Future) {})
+				}
+				wait.Select(ctx)
+				if lifecycleElapsed() {
+					return persistLifecycleDeadlineBlock(projection)
+				}
 			}
 		}
 		if updates.cancelRequested {
@@ -266,7 +297,15 @@ runPlan:
 				if !input.WaitForCommands && !legacyRetryPending && !cancellationBlocked {
 					return result, nil
 				}
-				updates.wake.Receive(ctx, nil)
+				wait := workflow.NewSelector(ctx)
+				wait.AddReceive(updates.wake, func(channel workflow.ReceiveChannel, _ bool) { channel.Receive(ctx, nil) })
+				if timer := lifecycleTimer(); timer != nil {
+					wait.AddFuture(timer, func(workflow.Future) {})
+				}
+				wait.Select(ctx)
+				if lifecycleElapsed() {
+					return persistLifecycleDeadlineBlock(result)
+				}
 				legacyRetryPending = false
 				if updates.cancelRequested {
 					cancelResult, terminal, cancelErr := cancelAndProject(results)
@@ -303,7 +342,15 @@ runPlan:
 		}
 		projection = result
 		for {
-			updates.wake.Receive(ctx, nil)
+			wait := workflow.NewSelector(ctx)
+			wait.AddReceive(updates.wake, func(channel workflow.ReceiveChannel, _ bool) { channel.Receive(ctx, nil) })
+			if timer := lifecycleTimer(); timer != nil {
+				wait.AddFuture(timer, func(workflow.Future) {})
+			}
+			wait.Select(ctx)
+			if lifecycleElapsed() {
+				return persistLifecycleDeadlineBlock(result)
+			}
 			if updates.cancelRequested {
 				cancelResult, terminal, cancelErr := cancelAndProject(results)
 				if cancelErr != nil || terminal {

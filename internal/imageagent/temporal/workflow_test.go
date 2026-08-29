@@ -60,6 +60,42 @@ func TestManualWorkflowExecutesEverySlotIndependently(t *testing.T) {
 	env.AssertExpectations(t)
 }
 
+func TestManualWorkflowPersistsLifecycleBlockWhileAwaitingFinalApproval(t *testing.T) {
+	env := newWorkflowEnv(t)
+	plan := sevenSlotPlan()
+	for _, slot := range plan.Slots {
+		slot := slot
+		env.OnActivity(activityExecuteSlot, mock.Anything, executeInputForSlot(slot.ID, 1)).
+			Return(successfulSlotResult(slot.ID, 1), nil).
+			Once()
+	}
+	persisted := make([]PersistRunStateActivityInput, 0, 3)
+	env.OnActivity(activityPersistRunState, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			persisted = append(persisted, activityInputFromArgs[PersistRunStateActivityInput](t, args))
+		}).
+		Return(nil)
+
+	input := manualWorkflowInput(plan)
+	input.StartedAt = time.Now().UTC().Truncate(time.Second)
+	input.LifecycleDeadlineAt = input.StartedAt.Add(V3WorkflowExecutionTimeout - V3LifecycleDeadlineSafetyMargin)
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	var result WorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, imageagent.RunStatusBlocked, result.Status)
+	require.NotNil(t, result.Block)
+	require.Equal(t, imageagent.WorkflowLifecycleElapsedCode, result.Block.Code)
+	require.NotEmpty(t, persisted)
+	last := persisted[len(persisted)-1]
+	require.Equal(t, imageagent.RunStatusBlocked, last.Projection.Status)
+	require.NotNil(t, last.Projection.Block)
+	require.Equal(t, imageagent.WorkflowLifecycleElapsedCode, last.Projection.Block.Code)
+	env.AssertExpectations(t)
+}
+
 func TestManualWorkflowBlocksOnlyFailedSlot(t *testing.T) {
 	env := newWorkflowEnv(t)
 	plan := sevenSlotPlan()
