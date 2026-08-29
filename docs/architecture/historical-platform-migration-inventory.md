@@ -155,7 +155,7 @@ Good candidates for the next framework slice:
 
 1. Keep extending import or structure guards that keep `internal/platforms/*`
    thin. Current guard:
-   `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages` and
+   `depguard: platform_registration_boundaries` and
    `TestPlatformRegistrationPackagesStayThin`. Local-artifact drift in
    platform registration packages should stay blocked by
    `TestPlatformRegistrationPackagesContainNoLocalArtifacts`.

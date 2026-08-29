@@ -391,7 +391,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestBootstrapKeepsLLMScorerAssemblyInDedicatedFile`
 - `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
 - `TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile`
-- `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
+- `depguard: platform_registration_boundaries`
 - `TestAICapabilityModuleDoesNotImportBusinessOrProviderPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
