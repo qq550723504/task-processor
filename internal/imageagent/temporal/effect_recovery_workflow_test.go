@@ -127,6 +127,205 @@ func TestEffectRecoveryWorkflowPersistsRecoveryBlockedForMissingEffectWithoutPro
 	require.Equal(t, imageagent.SlotRecoveryBlockedCode, stored.BlockedCode)
 }
 
+func TestEffectRecoveryWorkflowScopesToExactEffectIdentityWithoutProviderCall(t *testing.T) {
+	repository, firstAttempt := initializedSlotEffectV3Activity(t, "run-v3-recovery-exact-identity")
+	secondAttempt := firstAttempt
+	secondAttempt.Attempt = 2
+	secondAttempt.IdempotencyKey = slotAttemptKey(secondAttempt.PlanRevision, secondAttempt.Slot, secondAttempt.Attempt)
+
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	firstReservation := slotEffectReservationV3(slotExecutionInputV3(firstAttempt))
+	_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), firstReservation)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	_, err = effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{
+		Reservation: firstReservation,
+		Phase:       imageagent.SlotEffectV3ProviderUnknown,
+		Code:        imageagent.SlotProviderOutcomeUnknownCode,
+	})
+	require.NoError(t, err)
+
+	secondManifest := v3StagingManifest(secondAttempt, tinyPNGBytes(t))
+	seedV3ArtifactStaged(t, effects, secondAttempt, secondManifest)
+	executor := &recordingStagedExecutor{}
+	artifacts := &recordingArtifactStore{}
+	activities := newV3Activities(t, repository, effects, executor, artifacts)
+	env := newEffectRecoveryWorkflowEnv(t, activities)
+
+	env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(secondAttempt))
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	var result EffectRecoveryResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	require.Equal(t, EffectRecoveryOutcomePublished, result.Outcome)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, result.EffectPhase)
+	require.Zero(t, executor.GenerateCalls(), "recovery must not regenerate any attempt while reconciling a persisted effect")
+	require.Equal(t, 1, executor.BuildCalls())
+	require.Equal(t, 1, artifacts.FinalizeCalls())
+
+	firstStored, err := effects.GetSlotExternalEffectV3(context.Background(), firstReservation.Identity)
+	require.NoError(t, err)
+	require.Equal(t, 1, firstStored.Identity.Attempt)
+	require.Equal(t, imageagent.SlotEffectV3ProviderUnknown, firstStored.Phase)
+	require.Equal(t, imageagent.SlotProviderOutcomeUnknownCode, firstStored.BlockedCode)
+
+	secondReservation := slotEffectReservationV3(slotExecutionInputV3(secondAttempt))
+	secondStored, err := effects.GetSlotExternalEffectV3(context.Background(), secondReservation.Identity)
+	require.NoError(t, err)
+	require.Equal(t, 2, secondStored.Identity.Attempt)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, secondStored.Phase)
+	require.Equal(t, 2, secondStored.Published.Attempt)
+}
+
+func TestEffectRecoveryWorkflowReturnsPersistedTerminalAndUnknownPhasesWithoutProviderCall(t *testing.T) {
+	tests := []struct {
+		name        string
+		slug        string
+		setup       func(*testing.T, imageagent.SlotExternalEffectV3Repository, imageagent.Repository, ExecuteSlotV3ActivityInput)
+		wantOutcome EffectRecoveryOutcome
+		wantPhase   imageagent.SlotEffectV3Phase
+		wantCode    string
+	}{
+		{
+			name: "publication complete",
+			slug: "publication-complete",
+			setup: func(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, repository imageagent.Repository, input ExecuteSlotV3ActivityInput) {
+				t.Helper()
+				seedV3ArtifactStaged(t, effects, input, v3StagingManifest(input, tinyPNGBytes(t)))
+				_, err := newV3Activities(t, repository, effects, &recordingStagedExecutor{}, &recordingArtifactStore{}).ExecuteSlotV3(context.Background(), input)
+				require.NoError(t, err)
+			},
+			wantOutcome: EffectRecoveryOutcomePublished,
+			wantPhase:   imageagent.SlotEffectV3PublicationComplete,
+		},
+		{
+			name: "provider unknown",
+			slug: "provider-unknown",
+			setup: func(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, _ imageagent.Repository, input ExecuteSlotV3ActivityInput) {
+				t.Helper()
+				reservation := slotEffectReservationV3(slotExecutionInputV3(input))
+				_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
+				require.NoError(t, err)
+				require.True(t, claimed)
+				_, err = effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{
+					Reservation: reservation,
+					Phase:       imageagent.SlotEffectV3ProviderUnknown,
+					Code:        imageagent.SlotProviderOutcomeUnknownCode,
+				})
+				require.NoError(t, err)
+			},
+			wantOutcome: EffectRecoveryOutcomeProviderUnknown,
+			wantPhase:   imageagent.SlotEffectV3ProviderUnknown,
+			wantCode:    imageagent.SlotProviderOutcomeUnknownCode,
+		},
+		{
+			name: "staging unknown",
+			slug: "staging-unknown",
+			setup: func(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, _ imageagent.Repository, input ExecuteSlotV3ActivityInput) {
+				t.Helper()
+				reservation := slotEffectReservationV3(slotExecutionInputV3(input))
+				seedV3StagingPrepared(t, effects, input, v3StagingManifest(input, tinyPNGBytes(t)))
+				_, err := effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{
+					Reservation: reservation,
+					Phase:       imageagent.SlotEffectV3StagingUnknown,
+					Code:        imageagent.SlotStagingOutcomeUnknownCode,
+				})
+				require.NoError(t, err)
+			},
+			wantOutcome: EffectRecoveryOutcomeStagingUnknown,
+			wantPhase:   imageagent.SlotEffectV3StagingUnknown,
+			wantCode:    imageagent.SlotStagingOutcomeUnknownCode,
+		},
+		{
+			name: "publication unknown",
+			slug: "publication-unknown",
+			setup: func(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, _ imageagent.Repository, input ExecuteSlotV3ActivityInput) {
+				t.Helper()
+				execution := slotExecutionInputV3(input)
+				reservation := slotEffectReservationV3(slotExecutionInputV3(input))
+				manifest := v3StagingManifest(input, tinyPNGBytes(t))
+				seedV3ArtifactStaged(t, effects, input, manifest)
+				finalManifest, err := expectedFinalManifestV3(execution, manifest)
+				require.NoError(t, err)
+				publicationFingerprint, err := imageagent.FinalManifestFingerprint(finalManifest)
+				require.NoError(t, err)
+				stored, claim, claimed, err := effects.ClaimSlotPublicationV3(context.Background(), imageagent.PublicationClaimRequest{
+					Reservation:            reservation,
+					Owner:                  "workflow-run/activity/1",
+					LeaseDuration:          time.Minute,
+					PublicationFingerprint: publicationFingerprint,
+					FinalManifest:          finalManifest,
+				})
+				require.NoError(t, err)
+				require.True(t, claimed)
+				_, err = effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{
+					Reservation: reservation,
+					Phase:       imageagent.SlotEffectV3PublicationUnknown,
+					Code:        imageagent.SlotPublicationOutcomeUnknownCode,
+					Owner:       claim.Owner,
+					Fence:       claim.Fence,
+				})
+				require.NoError(t, err)
+				require.Equal(t, imageagent.SlotEffectV3PublicationClaimed, stored.Phase)
+			},
+			wantOutcome: EffectRecoveryOutcomePublicationUnknown,
+			wantPhase:   imageagent.SlotEffectV3PublicationUnknown,
+			wantCode:    imageagent.SlotPublicationOutcomeUnknownCode,
+		},
+		{
+			name: "recovery blocked",
+			slug: "recovery-blocked",
+			setup: func(t *testing.T, effects imageagent.SlotExternalEffectV3Repository, _ imageagent.Repository, input ExecuteSlotV3ActivityInput) {
+				t.Helper()
+				reservation := slotEffectReservationV3(slotExecutionInputV3(input))
+				_, claimed, err := effects.ReserveSlotProviderV3(context.Background(), reservation)
+				require.NoError(t, err)
+				require.True(t, claimed)
+				_, err = effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{
+					Reservation: reservation,
+					Phase:       imageagent.SlotEffectV3RecoveryBlocked,
+					Code:        imageagent.SlotRecoveryBlockedCode,
+				})
+				require.NoError(t, err)
+			},
+			wantOutcome: EffectRecoveryOutcomeRecoveryBlocked,
+			wantPhase:   imageagent.SlotEffectV3RecoveryBlocked,
+			wantCode:    imageagent.SlotRecoveryBlockedCode,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repository, input := initializedSlotEffectV3Activity(t, "run-v3-recovery-persisted-"+tt.slug)
+			effects := repository.(imageagent.SlotExternalEffectV3Repository)
+			tt.setup(t, effects, repository, input)
+			executor := &recordingStagedExecutor{}
+			artifacts := &recordingArtifactStore{}
+			activities := newV3Activities(t, repository, effects, executor, artifacts)
+			env := newEffectRecoveryWorkflowEnv(t, activities)
+
+			env.ExecuteWorkflow(ImageAgentEffectRecoveryWorkflow, effectRecoveryWorkflowInput(input))
+
+			require.True(t, env.IsWorkflowCompleted())
+			require.NoError(t, env.GetWorkflowError())
+			var result EffectRecoveryResult
+			require.NoError(t, env.GetWorkflowResult(&result))
+			require.Equal(t, tt.wantOutcome, result.Outcome)
+			require.Equal(t, tt.wantPhase, result.EffectPhase)
+			require.Equal(t, tt.wantCode, result.BlockedCode)
+			require.Zero(t, executor.GenerateCalls(), "recovery must not invoke the provider for persisted terminal or unknown phases")
+			require.Zero(t, executor.BuildCalls(), "persisted recovery phases should not rebuild slot output")
+			require.Zero(t, artifacts.FinalizeCalls(), "persisted recovery phases should not finalize staged artifacts again")
+
+			stored, err := effects.GetSlotExternalEffectV3(context.Background(), slotEffectReservationV3(slotExecutionInputV3(input)).Identity)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantPhase, stored.Phase)
+			require.Equal(t, tt.wantCode, stored.BlockedCode)
+		})
+	}
+}
+
 func TestEffectRecoveryWorkflowPersistsRecoveryBlockedAfterBoundedExhaustion(t *testing.T) {
 	var clockMu sync.Mutex
 	clock := time.Date(2026, time.August, 29, 1, 0, 0, 0, time.UTC)

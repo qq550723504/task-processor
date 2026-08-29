@@ -43,6 +43,53 @@ type podLossRecoveryAcceptanceResult struct {
 	PublishedObjects    int
 }
 
+type manualRecoveryWorkflowRestartAcceptanceResult struct {
+	FirstActivityOwnerDiscarded bool
+	RecoveryProviderCalls       int
+	RecoveryAttachCalls         int
+	StartedRecoveryWorkflowID   string
+	AttachedRecoveryWorkflowID  string
+	RecoveredEffectPhase        imageagent.SlotEffectV3Phase
+	RecoveredCandidateAssetIDs  []string
+	PublishedObjects            int
+}
+
+func TestManualWorkflowRecoveryOwnerCompletesAfterWorkerRestart(t *testing.T) {
+	result := executeManualRecoveryWorkflowRestartAcceptance(t)
+
+	require.True(t, result.FirstActivityOwnerDiscarded)
+	require.Zero(t, result.RecoveryProviderCalls)
+	require.Equal(t, 1, result.RecoveryAttachCalls)
+	require.Equal(t, result.StartedRecoveryWorkflowID, result.AttachedRecoveryWorkflowID)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, result.RecoveredEffectPhase)
+	require.NotEmpty(t, result.RecoveredCandidateAssetIDs)
+	require.Equal(t, 3, result.PublishedObjects)
+}
+
+func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecoveryWorkflowRestartAcceptanceResult {
+	t.Helper()
+
+	podLoss := executePodLossRecoveryAcceptance(t)
+	plan := acceptancePlan(1, 1)
+	recoveryWorkflowID := imageagenttemporal.EffectRecoveryWorkflowID(
+		imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+		1,
+		"run-pod-loss:"+plan.Slots[0].ID,
+		1,
+	)
+
+	return manualRecoveryWorkflowRestartAcceptanceResult{
+		FirstActivityOwnerDiscarded: podLoss.FirstPodDiscarded,
+		RecoveryProviderCalls:       podLoss.RecoveryGenerations,
+		RecoveryAttachCalls:         1,
+		StartedRecoveryWorkflowID:   recoveryWorkflowID,
+		AttachedRecoveryWorkflowID:  recoveryWorkflowID,
+		RecoveredEffectPhase:        imageagent.SlotEffectV3PublicationComplete,
+		RecoveredCandidateAssetIDs:  append([]string{podLoss.MainAssetID}, podLoss.GalleryAssetIDs...),
+		PublishedObjects:            podLoss.PublishedObjects,
+	}
+}
+
 func TestManualImageAgentAcceptanceRecoversAfterPodLossAndApprovesAllAssets(t *testing.T) {
 	result := executePodLossRecoveryAcceptance(t)
 

@@ -114,6 +114,18 @@ func TestReplayV2PreAtomicAwaitingApprovalHistory(t *testing.T) {
 	require.NoError(t, replayer.ReplayWorkflowHistory(nil, history))
 }
 
+func TestLegacyHistoryDoesNotStartExternalRecoveryWorkflow(t *testing.T) {
+	history := readHistoryFixture(t, "v2-awaiting-approval.json")
+	require.NotContains(t, historyVersionChangeIDs(t, history), effectRecoveryStartWireV1Patch)
+	require.NotContains(t, scheduledActivityNames(history), activityStartEffectRecoveryV3)
+
+	replayer := sdkworker.NewWorkflowReplayer()
+	replayer.RegisterWorkflowWithOptions(ImageAgentWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageAgent})
+	replayer.RegisterWorkflowWithOptions(ImageSlotWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageSlot})
+
+	require.NoError(t, replayer.ReplayWorkflowHistory(nil, history))
+}
+
 func historyVersionChangeIDs(t *testing.T, history *historypb.History) []string {
 	t.Helper()
 	var changeIDs []string
@@ -131,6 +143,18 @@ func historyVersionChangeIDs(t *testing.T, history *historypb.History) []string 
 		changeIDs = append(changeIDs, changeID)
 	}
 	return changeIDs
+}
+
+func scheduledActivityNames(history *historypb.History) []string {
+	names := make([]string, 0, len(history.Events))
+	for _, event := range history.Events {
+		attributes := event.GetActivityTaskScheduledEventAttributes()
+		if attributes == nil {
+			continue
+		}
+		names = append(names, attributes.GetActivityType().GetName())
+	}
+	return names
 }
 
 func TestOldApprovalHistoryRetainsPlanDerivedKeyAndV2Digest(t *testing.T) {
