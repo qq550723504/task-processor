@@ -169,6 +169,9 @@ type AssetCatalogScope struct {
 	OwnerUserID    string
 	BusinessTaskID string
 	RunID          string
+	// StyleReferenceIDs are the caller-selected, task-owned style assets that
+	// may be promoted into the run-scoped authorization snapshot.
+	StyleReferenceIDs []string
 }
 
 type AuthorizedAssetCatalog interface {

@@ -107,7 +107,7 @@ func TestListingKitImageAgentCatalogIncludesOnlyExplicitNonSourceStyles(t *testi
 	require.ErrorContains(t, err, "unknown style asset")
 }
 
-func TestListingKitImageAgentCatalogRejectsDisplayLabelsOver256UnicodeCodePoints(t *testing.T) {
+func TestListingKitImageAgentCatalogTruncatesDisplayLabelsAt256UnicodeCodePoints(t *testing.T) {
 	longLabel := strings.Repeat("界", 257)
 	task := &listingkit.Task{
 		ID: "task-label", TenantID: "tenant-a", UserID: "user-a",
@@ -116,12 +116,12 @@ func TestListingKitImageAgentCatalogRejectsDisplayLabelsOver256UnicodeCodePoints
 		}}}},
 	}
 
-	_, err := imageAgentCatalogFromTask(task, nil)
-	require.ErrorIs(t, err, imageagent.ErrValidation)
-	require.ErrorContains(t, err, "label exceeds 256 Unicode code points")
+	got, err := imageAgentCatalogFromTask(task, nil)
+	require.NoError(t, err)
+	require.Len(t, []rune(got.Assets[0].Label), 256)
 
 	task.Result.StandardProductSnapshot.AssetBundle.Assets[0].Labels[0] = strings.Repeat("界", 256)
-	got, err := imageAgentCatalogFromTask(task, nil)
+	got, err = imageAgentCatalogFromTask(task, nil)
 	require.NoError(t, err)
 	require.Equal(t, strings.Repeat("界", 256), got.Assets[0].Label)
 }

@@ -3,7 +3,9 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
@@ -41,15 +43,22 @@ func (c *listingKitAuthorizedAssetCatalog) Resolve(ctx context.Context, scope im
 	if task == nil || strings.TrimSpace(task.ID) != strings.TrimSpace(scope.BusinessTaskID) || strings.TrimSpace(task.TenantID) != identity.TenantID || listingkit.ResolveTaskUserID(task) != identity.UserID {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task is not owned by verified tenant")
 	}
-	return imageAgentCatalogFromTask(task)
+	return imageAgentCatalogFromTask(task, scope.StyleReferenceIDs)
 }
 
-func imageAgentCatalogFromTask(task *listingkit.Task) (imageagent.AssetCatalog, error) {
+func imageAgentCatalogFromTask(task *listingkit.Task, selectedStyleIDs ...[]string) (imageagent.AssetCatalog, error) {
 	if task == nil || task.Result == nil || task.Result.StandardProductSnapshot == nil {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task standard product snapshot is required")
 	}
 	snapshot := task.Result.StandardProductSnapshot
-	assets := sourceAssetsFromBundle(snapshot.AssetBundle)
+	var styles []string
+	if len(selectedStyleIDs) > 0 {
+		styles = selectedStyleIDs[0]
+	}
+	assets, err := authorizedAssetsFromBundle(snapshot.AssetBundle, styles)
+	if err != nil {
+		return imageagent.AssetCatalog{}, err
+	}
 	if len(assets) == 0 {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task has no authorized source assets")
 	}
@@ -60,7 +69,70 @@ func imageAgentCatalogFromTask(task *listingkit.Task) (imageagent.AssetCatalog, 
 		context.ProductType = providerContext.ProductType
 		context.Attributes = providerContext.Attributes
 	}
-	return imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{Assets: assets, ProductContext: context})
+	normalized, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{Assets: assets, ProductContext: context})
+	if err != nil {
+		return imageagent.AssetCatalog{}, err
+	}
+	// Keep source material first for callers that render the catalog by role;
+	// the service boundary re-normalizes the immutable snapshot before storage.
+	sort.SliceStable(normalized.Assets, func(i, j int) bool {
+		return normalized.Assets[i].Type == imageagent.AuthorizedAssetSource && normalized.Assets[j].Type == imageagent.AuthorizedAssetStyle
+	})
+	normalized.Manifest.Hash = imageagent.CatalogSnapshotHash(normalized.Assets, normalized.ProductContext)
+	return normalized, nil
+}
+
+func authorizedAssetsFromBundle(bundle *asset.Bundle, selectedStyleIDs []string) ([]imageagent.AuthorizedAsset, error) {
+	selected := make(map[string]struct{}, len(selectedStyleIDs))
+	for _, rawID := range selectedStyleIDs {
+		if id := strings.TrimSpace(rawID); id != "" {
+			selected[id] = struct{}{}
+		}
+	}
+	assets := sourceAssetsFromBundle(bundle)
+	if bundle == nil {
+		return assets, nil
+	}
+	for index := range bundle.Assets {
+		item := &bundle.Assets[index]
+		if item.Kind == asset.KindSourceImage {
+			if _, err := displayLabel(item); err != nil {
+				return nil, err
+			}
+		}
+	}
+	seen := make(map[string]struct{}, len(assets))
+	for _, item := range assets {
+		seen[item.ID] = struct{}{}
+	}
+	for id := range selected {
+		if _, isSource := seen[id]; isSource {
+			return nil, fmt.Errorf("%w: source asset cannot be selected as a style", imageagent.ErrValidation)
+		}
+		var found *asset.Asset
+		for index := range bundle.Assets {
+			if strings.TrimSpace(bundle.Assets[index].ID) == id {
+				found = &bundle.Assets[index]
+				break
+			}
+		}
+		if found == nil {
+			return nil, fmt.Errorf("%w: unknown style asset %q", imageagent.ErrValidation, id)
+		}
+		if strings.TrimSpace(found.URL) == "" {
+			return nil, fmt.Errorf("%w: style asset %q has no URL", imageagent.ErrValidation, id)
+		}
+		url, err := imageagent.ValidateSafeImageURL(found.URL)
+		if err != nil {
+			return nil, fmt.Errorf("%w: style asset %q URL is unsafe", imageagent.ErrValidation, id)
+		}
+		label, err := displayLabel(found)
+		if err != nil {
+			return nil, err
+		}
+		assets = append(assets, imageagent.AuthorizedAsset{ID: id, Type: imageagent.AuthorizedAssetStyle, URL: url, SourceURL: url, DisplayURL: url, Label: label, Width: found.Width, Height: found.Height})
+	}
+	return assets, nil
 }
 
 func sourceAssetsFromBundle(bundle *asset.Bundle) []imageagent.AuthorizedAsset {
@@ -80,9 +152,9 @@ func sourceAssetsFromBundle(bundle *asset.Bundle) []imageagent.AuthorizedAsset {
 			} else if sourceURL, err = imageagent.ValidateSafeImageURL(sourceURL); err != nil {
 				continue
 			}
-			label := "Source image"
-			if len(item.Labels) > 0 && strings.TrimSpace(item.Labels[0]) != "" {
-				label = strings.TrimSpace(item.Labels[0])
+			label, err := displayLabel(&item)
+			if err != nil {
+				continue
 			}
 			// ProductImage slot execution needs only canonical URLs and dimensions.
 			// Task metadata is intentionally not copied into the run authorization
@@ -95,4 +167,15 @@ func sourceAssetsFromBundle(bundle *asset.Bundle) []imageagent.AuthorizedAsset {
 		}
 	}
 	return nil
+}
+
+func displayLabel(item *asset.Asset) (string, error) {
+	label := "Source image"
+	if item != nil && len(item.Labels) > 0 && strings.TrimSpace(item.Labels[0]) != "" {
+		label = strings.TrimSpace(item.Labels[0])
+	}
+	if utf8.RuneCountInString(label) > 256 {
+		label = string([]rune(label)[:256])
+	}
+	return label, nil
 }

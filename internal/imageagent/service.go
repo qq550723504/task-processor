@@ -134,7 +134,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	if err := ValidateInitialSubmittedPlan(input.Plan); err != nil {
 		return fmt.Errorf("%w: validate image agent plan: %v", ErrValidation, err)
 	}
-	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: input.BusinessTaskID, RunID: input.RunID})
+	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: input.BusinessTaskID, RunID: input.RunID, StyleReferenceIDs: append([]string(nil), input.Plan.StyleReferenceIDs...)})
 	if err != nil {
 		return fmt.Errorf("%w: resolve authorized image assets: %v", ErrValidation, err)
 	}

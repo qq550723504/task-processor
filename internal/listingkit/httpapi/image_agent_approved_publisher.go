@@ -133,7 +133,13 @@ func validateImageAgentPublicationTask(task *listingkit.Task, scope imageagent.R
 	if err != nil || len(expected.Assets) == 0 {
 		return imageagent.ErrRevisionConflict
 	}
-	current, err := imageAgentCatalogFromTask(task)
+	styleIDs := make([]string, 0)
+	for _, authorized := range expected.Assets {
+		if authorized.Type == imageagent.AuthorizedAssetStyle {
+			styleIDs = append(styleIDs, authorized.ID)
+		}
+	}
+	current, err := imageAgentCatalogFromTask(task, styleIDs)
 	if err != nil {
 		return imageagent.ErrRevisionConflict
 	}
