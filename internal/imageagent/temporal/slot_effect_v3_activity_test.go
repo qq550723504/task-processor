@@ -277,7 +277,7 @@ func TestExecuteSlotV3StartsOneFinalizationWindowAfterProviderReturns(t *testing
 	require.True(t, prepareDeadline.Equal(completionDeadline), "completion must use the original post-provider grace window")
 }
 
-func TestExecuteSlotV3CancellationPreservesLegacySuccessfulProviderBehaviorWithoutPatch(t *testing.T) {
+func TestExecuteSlotV3CancellationPreservesSuccessfulProviderEffectWithoutFinalizationWire(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-provider-success-legacy-cancelled")
 	path := writeTinyPNG(t)
 	var cancel context.CancelFunc
@@ -298,15 +298,15 @@ func TestExecuteSlotV3CancellationPreservesLegacySuccessfulProviderBehaviorWitho
 
 	_, err := activities.ExecuteSlotV3(ctx, input)
 
-	require.ErrorContains(t, err, "ensure staged artifacts: context canceled")
-	require.True(t, artifacts.PreserveSawCancelledContext(), "legacy path still uses the caller context during recovery preservation")
-	require.True(t, artifacts.EnsureSawCancelledContext(), "legacy path still uses the caller context during staging")
-	require.True(t, effects.PrepareSawCancelledContext(), "legacy path still uses the caller context during staging transition")
-	require.False(t, effects.BlockSawCancelledContext(), "legacy path should not reach detached staging fallback")
+	requireV3ApplicationErrorType(t, err, slotStagingOutcomeUnknownCode)
+	require.False(t, artifacts.PreserveSawCancelledContext(), "recovery preservation must use bounded finalization even without the wire flag")
+	require.False(t, artifacts.EnsureSawCancelledContext(), "staging must use bounded finalization even without the wire flag")
+	require.False(t, effects.PrepareSawCancelledContext(), "staging transition must use bounded finalization even without the wire flag")
+	require.False(t, effects.BlockSawCancelledContext(), "staging fallback must use bounded finalization even without the wire flag")
 
 	stored, getErr := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
 	require.NoError(t, getErr)
-	require.Equal(t, imageagent.SlotEffectV3StagingPrepared, stored.Phase)
+	require.Equal(t, imageagent.SlotEffectV3StagingUnknown, stored.Phase)
 }
 
 func TestExecuteSlotV3ResumesPersistedStagingWithoutRegeneration(t *testing.T) {

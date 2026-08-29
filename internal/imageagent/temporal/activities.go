@@ -251,9 +251,6 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	var finalizationCtx context.Context
 	var cancelFinalization context.CancelFunc
 	postProviderContext := func() context.Context {
-		if !input.ExternalEffectFinalization {
-			return ctx
-		}
 		if finalizationCtx == nil {
 			finalizationCtx, cancelFinalization = providerFinalizationContext(ctx)
 		}
