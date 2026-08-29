@@ -70,6 +70,8 @@ func SlotEffectV3BlockedPolicyForCode(code string) (SlotEffectV3BlockedPolicy, b
 	switch code {
 	case SlotProviderNotDispatchedCode:
 		return SlotEffectV3BlockedPolicy{Code: code, PermittedActions: []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}}, true
+	case "recovery_requested", "recovery_start_failed":
+		return SlotEffectV3BlockedPolicy{Code: code, PermittedActions: []Action{ActionCancel}}, true
 	case SlotProviderOutcomeUnknownCode:
 		phase = SlotEffectV3ProviderUnknown
 	case SlotStagingOutcomeUnknownCode:

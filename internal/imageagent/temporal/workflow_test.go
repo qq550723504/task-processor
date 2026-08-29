@@ -1984,6 +1984,39 @@ func TestReplacementBusinessValidationEnforcesBlockedActionPolicyForNewHistories
 	require.NoError(t, state.validateReplacePlanBusiness(signal), "historical workflows retain their recorded validation contract")
 }
 
+func TestRecoveryHandoffBlocksRejectReplaceAndRetryForNewHistories(t *testing.T) {
+	for _, code := range []string{recoveryRequestedBlockCode, recoveryStartFailedBlockCode} {
+		t.Run(code, func(t *testing.T) {
+			input := manualWorkflowInput(sevenSlotPlan())
+			projection := WorkflowResult{
+				Status: imageagent.RunStatusBlocked,
+				Plan:   input.Plan,
+				Block:  &imageagent.Block{Code: code, SlotID: "scene-2"},
+			}
+			results := make([]SlotWorkflowResult, len(input.Plan.Slots))
+			index := slotIndex(input.Plan, "scene-2")
+			require.GreaterOrEqual(t, index, 0)
+			results[index] = SlotWorkflowResult{
+				Execution: imageagent.SlotExecutionResult{SlotID: "scene-2", Attempt: 1},
+				Status:    imageagent.SlotStatusBlocked,
+				ErrorCode: imageagent.SlotProviderOutcomeUnknownCode,
+			}
+			replacement := sevenSlotPlan()
+			replacement.Revision = 2
+			replacement.ParentRevision = 1
+			replacement.IdempotencyKey = "plan-key-2"
+			state := workflowUpdateState{input: &input, projection: &projection, results: &results, enforceIngressPlanPolicy: true}
+
+			require.Error(t, state.validateReplacePlanBusiness(ReplacePlanSignal{
+				RunID: input.RunID, ExpectedRevision: 1, Plan: replacement, ActorID: input.Identity.UserID, ActionID: "replace-recovery-blocked",
+			}))
+			require.Error(t, state.validateRetrySlotBusiness(RetrySlotSignal{
+				RunID: input.RunID, PlanRevision: 1, SlotID: "scene-2", ActorID: input.Identity.UserID, ActionID: "retry-recovery-blocked",
+			}))
+		})
+	}
+}
+
 func TestManualWorkflowRejectsApprovalWithWrongActorOrDigest(t *testing.T) {
 	for _, test := range []struct {
 		name             string
@@ -2448,6 +2481,7 @@ func TestManualWorkflowStartsExternalRecoveryForUnterminalizedEffect(t *testing.
 	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(effectRecoveryStartWireV1Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	var persisted []PersistRunStateActivityInput
 	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
 		persisted = append(persisted, input)
@@ -2528,6 +2562,7 @@ func TestManualWorkflowKeepsBlockedWhenRecoveryStartFails(t *testing.T) {
 	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(effectRecoveryStartWireV1Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	var blockedStates []PersistRunStateActivityInput
 	var cancelledStates []PersistRunStateActivityInput
 	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
@@ -2615,6 +2650,7 @@ func TestManualWorkflowKeepsBlockedCancellationOpenWithAccurateReceipt(t *testin
 	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(effectRecoveryStartWireV1Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	var persistedStatuses []imageagent.RunStatus
 	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
 		persistedStatuses = append(persistedStatuses, input.Projection.Status)
@@ -2704,6 +2740,7 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(effectRecoveryStartWireV1Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
 		if input.Projection.Status == imageagent.RunStatusBlocked {
 			blockedMu.Lock()
@@ -2768,7 +2805,7 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 	require.NotNil(t, liveProjection.Block)
 	require.Equal(t, "slot-1", liveProjection.Block.SlotID)
 	require.Equal(t, recoveryRequestedBlockCode, liveProjection.Block.Code)
-	require.Equal(t, []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionRetrySlot, imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{
+	require.Equal(t, []imageagent.Action{imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{
 		Mode: imageagent.RunModeManual, Status: liveProjection.Status, Block: liveProjection.Block,
 	}))
 	blockedMu.Lock()

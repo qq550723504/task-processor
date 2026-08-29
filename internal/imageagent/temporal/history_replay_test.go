@@ -168,10 +168,11 @@ func TestOldApprovalHistoryRetainsPlanDerivedKeyAndV2Digest(t *testing.T) {
 }
 
 type wireProbeResult struct {
-	ExecuteSlot      string
-	PublishApproved  string
-	ApprovalActionID string
-	ResultDigest     string
+	ExecuteSlot         string
+	StartEffectRecovery string
+	PublishApproved     string
+	ApprovalActionID    string
+	ResultDigest        string
 }
 
 func TestTask6MarkersAreEvaluatedBeforePreAtomicSelection(t *testing.T) {
@@ -286,10 +287,11 @@ func workflowWireProbe(ctx sdkworkflow.Context) (wireProbeResult, error) {
 		return wireProbeResult{}, err
 	}
 	return wireProbeResult{
-		ExecuteSlot:      wire.executeSlot,
-		PublishApproved:  wire.publishApproved,
-		ApprovalActionID: approvalPublicationKeyForWire("capture-action", "capture-run", 1, wire),
-		ResultDigest:     digest,
+		ExecuteSlot:         wire.executeSlot,
+		StartEffectRecovery: wire.startEffectRecovery,
+		PublishApproved:     wire.publishApproved,
+		ApprovalActionID:    approvalPublicationKeyForWire("capture-action", "capture-run", 1, wire),
+		ResultDigest:        digest,
 	}, nil
 }
 
@@ -322,6 +324,49 @@ func TestNewApprovalScopesActionIDByRunAndRevisionWithV3DigestAndPublishV3(t *te
 	wantDigest, err := imageagent.ResultDigestV3(plan, slotProjections(plan, results))
 	require.NoError(t, err)
 	require.Equal(t, wantDigest, got.ResultDigest)
+}
+
+func TestRecoveryStartMarkerDefaultsOffForLegacyV3Histories(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(workflowWireProbe)
+	env.OnGetVersion(slotExecutionWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+	env.OnGetVersion(approvalActionIDV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	env.OnGetVersion(approvalPublicationWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	env.OnGetVersion(resultDigestV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	env.OnGetVersion(approvalPublicationScopePatch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	env.OnGetVersion(effectRecoveryStartWireV1Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	env.OnGetVersion(activityWireV2Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+
+	env.ExecuteWorkflow(workflowWireProbe)
+
+	require.NoError(t, env.GetWorkflowError())
+	var got wireProbeResult
+	require.NoError(t, env.GetWorkflowResult(&got))
+	require.Equal(t, activityExecuteSlotV3, got.ExecuteSlot)
+	require.Empty(t, got.StartEffectRecovery)
+	require.True(t, env.AssertExpectations(t))
+}
+
+func TestRecoveryStartMarkerEnablesExternalRecoveryForNewV3Histories(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(workflowWireProbe)
+	env.OnGetVersion(slotExecutionWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+	env.OnGetVersion(approvalActionIDV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	env.OnGetVersion(approvalPublicationWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	env.OnGetVersion(resultDigestV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	env.OnGetVersion(approvalPublicationScopePatch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	env.OnGetVersion(effectRecoveryStartWireV1Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+	env.OnGetVersion(activityWireV2Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+
+	env.ExecuteWorkflow(workflowWireProbe)
+
+	require.NoError(t, env.GetWorkflowError())
+	var got wireProbeResult
+	require.NoError(t, env.GetWorkflowResult(&got))
+	require.Equal(t, activityStartEffectRecoveryV3, got.StartEffectRecovery)
+	require.True(t, env.AssertExpectations(t))
 }
 
 func TestRunScopedApprovalPublicationKeyFitsReceiptSchema(t *testing.T) {

@@ -229,6 +229,15 @@ func TestAllowedActionsForInvalidOrUnknownV3PolicyFailClosed(t *testing.T) {
 	}
 }
 
+func TestRecoveryHandoffBlocksOnlyPermitCancel(t *testing.T) {
+	for _, code := range []string{"recovery_requested", "recovery_start_failed"} {
+		run := Run{Mode: RunModeManual, Status: RunStatusBlocked, Block: &Block{Code: code, SlotID: "scene-2"}}
+		require.Equal(t, []Action{ActionCancel}, AllowedActions(run), code)
+		require.False(t, BlockAllowsAction(run.Block, ActionEditPlan), code)
+		require.False(t, BlockAllowsAction(run.Block, ActionRetrySlot), code)
+	}
+}
+
 func TestSlotEffectV3BlockedPolicyRejectsUnknownAndMismatchedCodes(t *testing.T) {
 	for _, tc := range []struct {
 		phase SlotEffectV3Phase

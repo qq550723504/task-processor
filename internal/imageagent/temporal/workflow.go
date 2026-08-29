@@ -28,6 +28,7 @@ const (
 	commandIngressPlanPolicyPatch   = "image-agent-command-ingress-plan-policy-v1"
 	approvalPublicationScopePatch   = "image-agent-approval-publication-scope-v1"
 	externalEffectFinalizationPatch = "image-agent-external-effect-finalization-v1"
+	effectRecoveryStartWireV1Patch  = "image-agent-effect-recovery-start-wire-v1"
 	recoveryRequestedBlockCode      = "recovery_requested"
 	recoveryStartFailedBlockCode    = "recovery_start_failed"
 )
@@ -67,7 +68,7 @@ func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
 		wire.useV3Approval = true
 		wire.useRunScopedApprovalKey = useRunScopedApprovalKey
 	}
-	if useV3Slot {
+	if useV3Slot && workflow.GetVersion(ctx, effectRecoveryStartWireV1Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion {
 		wire.startEffectRecovery = activityStartEffectRecoveryV3
 	}
 	return wire
@@ -1239,7 +1240,10 @@ func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSig
 func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, results []SlotWorkflowResult) {
 	if s.input.externalEffectFinalization && !cancellationResultsTerminalized(results) {
 		result := blockedCancellationProjection(*s.input, results, s.effects.activities)
-		markBlockedProjectionCode(&result, recoveryRequestedBlockCode)
+		recoveryHandoffEnabled := strings.TrimSpace(s.effects.activities.startEffectRecovery) != ""
+		if recoveryHandoffEnabled {
+			markBlockedProjectionCode(&result, recoveryRequestedBlockCode)
+		}
 		result.CommandIngress = s.commandIngress()
 		err := s.effects.persistRunState(ctx, *s.input, result, "retry_slot")
 		s.cancelPending = false
@@ -1247,17 +1251,19 @@ func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, re
 		s.cancelBlocked = false
 		if err == nil {
 			*s.projection = result
-			if recoveryInput, ok := effectRecoveryInputForCancellation(*s.input, results, result.Block); ok {
-				if startErr := s.effects.startEffectRecoveryV3(ctx, recoveryInput); startErr != nil {
-					failed := result
-					failed.Block = cloneTemporalBlock(result.Block)
-					markBlockedProjectionCode(&failed, recoveryStartFailedBlockCode)
-					if persistErr := s.effects.persistRunState(ctx, *s.input, failed, "retry_slot"); persistErr != nil {
-						s.cancelCommitErr = persistErr
-						s.wake.SendAsync(struct{}{})
-						return
+			if recoveryHandoffEnabled {
+				if recoveryInput, ok := effectRecoveryInputForCancellation(*s.input, results, result.Block); ok {
+					if startErr := s.effects.startEffectRecoveryV3(ctx, recoveryInput); startErr != nil {
+						failed := result
+						failed.Block = cloneTemporalBlock(result.Block)
+						markBlockedProjectionCode(&failed, recoveryStartFailedBlockCode)
+						if persistErr := s.effects.persistRunState(ctx, *s.input, failed, "retry_slot"); persistErr != nil {
+							s.cancelCommitErr = persistErr
+							s.wake.SendAsync(struct{}{})
+							return
+						}
+						*s.projection = failed
 					}
-					*s.projection = failed
 				}
 			}
 			s.cancelBlocked = true
