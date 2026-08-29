@@ -35,6 +35,18 @@ type listingKitModuleBuilder func(input listingkithttpapi.RuntimeBuildInput) (*l
 
 type imageAgentModuleBuilder func(*config.Config, *logrus.Logger) (*imageagenthttpapi.BuildResult, error)
 
+func attachImageAgentWorkspace(listingKitModule *listingkithttpapi.Module, imageAgentModule *imageagenthttpapi.BuildResult) error {
+	if listingKitModule == nil || listingKitModule.TaskRepository == nil || imageAgentModule == nil || imageAgentModule.Application == nil {
+		return nil
+	}
+	handler, err := listingkithttpapi.NewImageAgentWorkspaceHandler(listingKitModule.TaskRepository, imageAgentModule.Application)
+	if err != nil {
+		return err
+	}
+	listingKitModule.ImageAgentWorkspaceHandler = handler
+	return nil
+}
+
 func buildProductModuleResult(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error) {
 	return productenrichhttpapi.BuildRuntimeModule(input)
 }

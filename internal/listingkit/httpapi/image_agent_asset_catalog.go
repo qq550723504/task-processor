@@ -44,7 +44,7 @@ func (c *listingKitAuthorizedAssetCatalog) Resolve(ctx context.Context, scope im
 	if task == nil || strings.TrimSpace(task.ID) != strings.TrimSpace(scope.BusinessTaskID) || strings.TrimSpace(task.TenantID) != identity.TenantID || listingkit.ResolveTaskUserID(task) != identity.UserID {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task is not owned by verified tenant")
 	}
-	return imageAgentCatalogFromTaskTarget(task, scope.TargetPlatform, scope.StyleReferenceIDs)
+	return imageAgentCatalogFromTaskTargetSelection(task, scope.TargetPlatform, scope.PrimarySourceAssetID, scope.StyleReferenceIDs)
 }
 
 func imageAgentCatalogFromTask(task *listingkit.Task, selectedStyleIDs ...[]string) (imageagent.AssetCatalog, error) {
@@ -52,26 +52,23 @@ func imageAgentCatalogFromTask(task *listingkit.Task, selectedStyleIDs ...[]stri
 }
 
 func imageAgentCatalogFromTaskTarget(task *listingkit.Task, targetPlatform string, selectedStyleIDs ...[]string) (imageagent.AssetCatalog, error) {
+	return imageAgentCatalogFromTaskTargetSelection(task, targetPlatform, "", selectedStyleIDs...)
+}
+
+func imageAgentCatalogFromTaskTargetSelection(task *listingkit.Task, targetPlatform, selectedSourceID string, selectedStyleIDs ...[]string) (imageagent.AssetCatalog, error) {
 	if task == nil || task.Result == nil || task.Result.StandardProductSnapshot == nil {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task standard product snapshot is required")
 	}
-	bundle := task.Result.StandardProductSnapshot.AssetBundle
-	if len(task.Result.AssetBundlesByTarget) > 0 {
-		targetPlatform = listingplatform.Normalize(targetPlatform)
-		if targetPlatform == "" {
-			return imageagent.AssetCatalog{}, fmt.Errorf("%w: target-keyed asset bundles require explicit image-agent target authorization", imageagent.ErrValidation)
-		}
-		bundle = task.Result.AssetBundlesByTarget[targetPlatform]
-		if bundle == nil {
-			return imageagent.AssetCatalog{}, fmt.Errorf("%w: image-agent target %q has no asset bundle", imageagent.ErrValidation, targetPlatform)
-		}
+	bundle, err := imageAgentBundleForTarget(task, targetPlatform)
+	if err != nil {
+		return imageagent.AssetCatalog{}, err
 	}
 	snapshot := task.Result.StandardProductSnapshot
 	var styles []string
 	if len(selectedStyleIDs) > 0 {
 		styles = selectedStyleIDs[0]
 	}
-	assets, err := authorizedAssetsFromBundle(bundle, styles)
+	assets, err := authorizedAssetsFromBundle(bundle, selectedSourceID, styles)
 	if err != nil {
 		return imageagent.AssetCatalog{}, err
 	}
@@ -98,7 +95,28 @@ func imageAgentCatalogFromTaskTarget(task *listingkit.Task, targetPlatform strin
 	return normalized, nil
 }
 
-func authorizedAssetsFromBundle(bundle *asset.Bundle, selectedStyleIDs []string) ([]imageagent.AuthorizedAsset, error) {
+func imageAgentBundleForTarget(task *listingkit.Task, targetPlatform string) (*asset.Bundle, error) {
+	if task == nil || task.Result == nil || task.Result.StandardProductSnapshot == nil {
+		return nil, fmt.Errorf("business task standard product snapshot is required")
+	}
+	if len(task.Result.AssetBundlesByTarget) == 0 {
+		if strings.TrimSpace(targetPlatform) != "" {
+			return nil, fmt.Errorf("%w: scalar task assets do not accept an image-agent target", imageagent.ErrValidation)
+		}
+		return task.Result.StandardProductSnapshot.AssetBundle, nil
+	}
+	targetPlatform = listingplatform.Normalize(targetPlatform)
+	if targetPlatform == "" {
+		return nil, fmt.Errorf("%w: target-keyed asset bundles require explicit image-agent target authorization", imageagent.ErrValidation)
+	}
+	bundle := task.Result.AssetBundlesByTarget[targetPlatform]
+	if bundle == nil {
+		return nil, fmt.Errorf("%w: image-agent target %q has no asset bundle", imageagent.ErrValidation, targetPlatform)
+	}
+	return bundle, nil
+}
+
+func authorizedAssetsFromBundle(bundle *asset.Bundle, selectedSourceID string, selectedStyleIDs []string) ([]imageagent.AuthorizedAsset, error) {
 	selected := make(map[string]struct{}, len(selectedStyleIDs))
 	for _, rawID := range selectedStyleIDs {
 		if id := strings.TrimSpace(rawID); id != "" {
@@ -106,6 +124,19 @@ func authorizedAssetsFromBundle(bundle *asset.Bundle, selectedStyleIDs []string)
 		}
 	}
 	assets := sourceAssetsFromBundle(bundle)
+	if selectedSourceID = strings.TrimSpace(selectedSourceID); selectedSourceID != "" {
+		selectedSource := make([]imageagent.AuthorizedAsset, 0, 1)
+		for _, item := range assets {
+			if item.ID == selectedSourceID {
+				selectedSource = append(selectedSource, item)
+				break
+			}
+		}
+		if len(selectedSource) == 0 {
+			return nil, fmt.Errorf("%w: unknown source asset %q", imageagent.ErrValidation, selectedSourceID)
+		}
+		assets = selectedSource
+	}
 	if bundle == nil {
 		return assets, nil
 	}

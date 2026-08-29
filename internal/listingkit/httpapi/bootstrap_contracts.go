@@ -23,13 +23,15 @@ import (
 )
 
 type Module struct {
-	Handler              RouteHandler
-	StudioSessionHandler listingkit.StudioSessionHandler
-	TaskLifecycleService listingkit.TaskLifecycleService
-	StoreAccessValidator listingkit.StoreAccessValidator
-	StoreRepository      listingadmin.StoreRepository
-	Pool                 worker.WorkerPool
-	Closers              []func() error
+	Handler                    RouteHandler
+	ImageAgentWorkspaceHandler ImageAgentWorkspaceRouteHandler
+	StudioSessionHandler       listingkit.StudioSessionHandler
+	TaskLifecycleService       listingkit.TaskLifecycleService
+	TaskRepository             listingkit.Repository
+	StoreAccessValidator       listingkit.StoreAccessValidator
+	StoreRepository            listingadmin.StoreRepository
+	Pool                       worker.WorkerPool
+	Closers                    []func() error
 }
 
 type ServiceBundle struct {

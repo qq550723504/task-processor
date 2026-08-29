@@ -89,6 +89,26 @@ func TestImageAgentApprovedPublisherSupersedesPriorImageAgentAssets(t *testing.T
 	}
 }
 
+func TestApplyApprovedAssetRecordsUpdatesOnlyTheRunTargetBundle(t *testing.T) {
+	result := &listingkit.ListingKitResult{
+		StandardProductSnapshot: &listingkit.StandardProductSnapshot{AssetBundle: &asset.Bundle{Assets: []asset.Asset{{ID: "scalar-source", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/scalar.png"}}}},
+		AssetBundlesByTarget: map[string]*asset.Bundle{
+			"shein":  {Assets: []asset.Asset{{ID: "shein-source", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/shein.png"}}},
+			"amazon": {Assets: []asset.Asset{{ID: "amazon-source", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/amazon.png"}}},
+		},
+		AssetInventorySummariesByTarget: map[string]*asset.InventorySummary{},
+	}
+
+	err := applyApprovedAssetRecords(result, []asset.AssetRecord{{ID: "shein-generated", TaskID: "task-1", Kind: asset.KindMainImage, URL: "https://cdn.example.test/generated.png", Generator: "image-agent"}}, " SHEIN ")
+
+	require.NoError(t, err)
+	require.Equal(t, "scalar-source", result.StandardProductSnapshot.AssetBundle.Assets[0].ID)
+	require.Equal(t, "amazon-source", result.AssetBundlesByTarget["amazon"].Assets[0].ID)
+	require.Equal(t, []string{"shein-source", "shein-generated"}, []string{result.AssetBundlesByTarget["shein"].Assets[0].ID, result.AssetBundlesByTarget["shein"].Assets[1].ID})
+	require.NotNil(t, result.AssetInventorySummariesByTarget["shein"])
+	require.Nil(t, result.AssetInventorySummariesByTarget["amazon"])
+}
+
 func TestImageAgentApprovedPublisherRejectsStateDigestCandidateAndScopeInjection(t *testing.T) {
 	tests := []struct {
 		name   string

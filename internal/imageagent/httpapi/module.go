@@ -6,9 +6,10 @@ import (
 )
 
 type BuildResult struct {
-	Handler *Handler
-	Module  kernelmodule.Module
-	Closers []func() error
+	Handler     *Handler
+	Application Application
+	Module      kernelmodule.Module
+	Closers     []func() error
 }
 
 func BuildModule(application Application, options ...HandlerOption) (*BuildResult, error) {
@@ -16,7 +17,7 @@ func BuildModule(application Application, options ...HandlerOption) (*BuildResul
 	if err != nil {
 		return nil, err
 	}
-	return &BuildResult{Handler: handler, Module: NewHTTPModule(handler)}, nil
+	return &BuildResult{Handler: handler, Application: application, Module: NewHTTPModule(handler)}, nil
 }
 
 func NewHTTPModule(handler *Handler) kernelmodule.Module { return routeModule{handler: handler} }

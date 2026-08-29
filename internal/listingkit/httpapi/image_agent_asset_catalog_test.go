@@ -107,6 +107,20 @@ func TestListingKitImageAgentCatalogIncludesOnlyExplicitNonSourceStyles(t *testi
 	require.ErrorContains(t, err, "unknown style asset")
 }
 
+func TestListingKitImageAgentCatalogSnapshotsOnlyTheSelectedPrimarySource(t *testing.T) {
+	task := &listingkit.Task{Result: &listingkit.ListingKitResult{StandardProductSnapshot: &listingkit.StandardProductSnapshot{AssetBundle: &asset.Bundle{Assets: []asset.Asset{
+		{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/source-1.png"},
+		{ID: "source-2", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/source-2.png"},
+		{ID: "scene-1", Kind: asset.KindSceneImage, URL: "https://cdn.example.test/scene-1.png"},
+	}}}}}
+
+	got, err := imageAgentCatalogFromTaskTargetSelection(task, "", "source-2", []string{"scene-1"})
+
+	require.NoError(t, err)
+	require.Equal(t, []imageagent.AuthorizedAssetType{imageagent.AuthorizedAssetSource, imageagent.AuthorizedAssetStyle}, []imageagent.AuthorizedAssetType{got.Assets[0].Type, got.Assets[1].Type})
+	require.Equal(t, []string{"source-2", "scene-1"}, []string{got.Assets[0].ID, got.Assets[1].ID})
+}
+
 func TestImageAgentCatalogRejectsTargetKeyedAssetBundlesWithoutTargetAuthorization(t *testing.T) {
 	task := &listingkit.Task{Result: &listingkit.ListingKitResult{
 		StandardProductSnapshot: &listingkit.StandardProductSnapshot{AssetBundle: &asset.Bundle{Assets: []asset.Asset{{

@@ -4,9 +4,11 @@ import { ApiError } from "@/lib/api/api-error";
 import type {
   ImageAgentPlan,
   ImageAgentProjection,
+  ImageAgentWorkspaceAssets,
 } from "@/lib/types/image-agent";
 
 const imageAgentBffBase = "/api/listing-kits/image-agent/runs";
+const listingKitTaskBffBase = "/api/listing-kits/tasks";
 
 const slotRoleSchema = z.enum([
   "main",
@@ -82,6 +84,7 @@ const projectionSchema = z
       .object({
         id: z.string(),
         business_task_id: z.string(),
+			target_platform: z.string().optional(),
         tenant_id: z.string(),
         user_id: z.string(),
         mode: z.literal("manual"),
@@ -168,6 +171,22 @@ export function parseImageAgentProjection(payload: unknown): ImageAgentProjectio
 export async function getImageAgentRun(runId: string, signal?: AbortSignal) {
 	const payload = await imageAgentRequest<unknown>(encodeId(runId), { signal });
   return parseImageAgentProjection(payload);
+}
+
+const workspaceAssetsSchema = z.object({
+  target_platform: z.string().optional(),
+  source_assets: z.array(z.object({ id: z.string(), label: z.string(), display_url: z.string() }).passthrough()),
+  style_candidates: z.array(z.object({ id: z.string(), label: z.string(), display_url: z.string() }).passthrough()),
+}).passthrough();
+
+export async function getImageAgentWorkspaceAssets(taskId: string, targetPlatform?: string, signal?: AbortSignal): Promise<ImageAgentWorkspaceAssets> {
+  const search = targetPlatform?.trim() ? `?target_platform=${encodeURIComponent(targetPlatform.trim())}` : "";
+  const payload = await listingKitTaskRequest<unknown>(`${encodeId(taskId)}/image-agent-assets${search}`, { signal });
+  return workspaceAssetsSchema.parse(payload) as ImageAgentWorkspaceAssets;
+}
+
+export function createImageAgentWorkspaceRun(taskId: string, input: { target_platform?: string; source_asset_id: string; style_asset_ids: string[] }, signal?: AbortSignal) {
+  return listingKitTaskRequest<{ run_id: string; status: "accepted" }>(`${encodeId(taskId)}/image-agent-runs`, { method: "POST", body: input, signal });
 }
 
 export function replaceImageAgentPlan(
@@ -280,6 +299,24 @@ async function imageAgentRequest<T>(
     typeof payload.message === "string"
       ? payload.message
       : `Image Agent request failed: ${response.status}`;
+  throw new ApiError(message, response.status, payload);
+}
+
+async function listingKitTaskRequest<T>(
+  path: string,
+  { method = "GET", body, signal }: { method?: "GET" | "POST"; body?: unknown; signal?: AbortSignal } = {},
+): Promise<T> {
+  const response = await fetch(`${listingKitTaskBffBase}/${path}`, {
+    method,
+    headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
+  });
+  if (response.ok) return (await response.json()) as T;
+  const payload = await response.json().catch(() => null);
+  const message = payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
+    ? payload.message
+    : `Image Agent workspace request failed: ${response.status}`;
   throw new ApiError(message, response.status, payload);
 }
 

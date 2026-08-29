@@ -171,6 +171,10 @@ type AssetCatalogScope struct {
 	BusinessTaskID string
 	RunID          string
 	TargetPlatform string
+	// PrimarySourceAssetID narrows a task-backed catalog to the single source
+	// selected by the task-scoped workspace entrypoint. Empty preserves the
+	// generic API's historical multi-source catalog behavior.
+	PrimarySourceAssetID string
 	// StyleReferenceIDs are the caller-selected, task-owned style assets that
 	// may be promoted into the run-scoped authorization snapshot.
 	StyleReferenceIDs []string

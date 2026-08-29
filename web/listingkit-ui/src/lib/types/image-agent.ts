@@ -89,6 +89,7 @@ type ImageAgentBlock = {
 type ImageAgentRun = {
   id: string;
   business_task_id: string;
+  target_platform?: string;
   tenant_id: string;
   user_id: string;
   mode: ImageAgentRunMode;
@@ -101,6 +102,18 @@ type ImageAgentRun = {
   budget: ImageAgentBudget;
   usage: ImageAgentBudgetUsage;
   block?: ImageAgentBlock;
+};
+
+export type ImageAgentWorkspaceAsset = {
+  id: string;
+  label: string;
+  display_url: string;
+};
+
+export type ImageAgentWorkspaceAssets = {
+  target_platform?: string;
+  source_assets: ImageAgentWorkspaceAsset[];
+  style_candidates: ImageAgentWorkspaceAsset[];
 };
 
 export type ImageAgentAuthorizedAsset = {

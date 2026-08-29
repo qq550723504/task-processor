@@ -11,6 +11,7 @@ import (
 
 	"task-processor/internal/asset"
 	"task-processor/internal/imageagent"
+	listingplatform "task-processor/internal/listing/platform"
 	"task-processor/internal/listingkit"
 )
 
@@ -75,11 +76,10 @@ func (p *imageAgentApprovedPublisher) PublishApproved(ctx context.Context, input
 	}
 	ack := listingkit.ImageAgentPublicationAcknowledgement{TaskID: projection.Run.BusinessTaskID, RunID: scope.RunID, PlanRevision: input.PlanRevision, ResultDigest: digest, IdempotencyKey: input.IdempotencyKey, CandidateAssetIDs: append([]string(nil), approvedIDs...)}
 	stored, err := p.tasks.CommitImageAgentPublication(ctx, listingkit.ImageAgentPublicationCommit{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, TaskID: projection.Run.BusinessTaskID, IdempotencyKey: input.IdempotencyKey, Fingerprint: fingerprint, Acknowledgement: ack}, func(task *listingkit.Task) error {
-		if err := validateImageAgentPublicationTask(task, scope, projection.AssetCatalog); err != nil {
+		if err := validateImageAgentPublicationTask(task, scope, projection.AssetCatalog, projection.Run.TargetPlatform); err != nil {
 			return err
 		}
-		applyApprovedAssetRecords(task.Result, records)
-		return nil
+		return applyApprovedAssetRecords(task.Result, records, projection.Run.TargetPlatform)
 	})
 	if err != nil {
 		return imageagent.PublicationAcknowledgement{}, fmt.Errorf("persist approved image agent candidates: %w", err)
@@ -113,11 +113,10 @@ func (p *imageAgentApprovedPublisher) PublishApprovedV3(ctx context.Context, inp
 	}
 	ack := listingkit.ImageAgentPublicationAcknowledgement{TaskID: projection.Run.BusinessTaskID, RunID: scope.RunID, PlanRevision: input.PlanRevision, ResultDigest: digest, IdempotencyKey: input.IdempotencyKey, CandidateAssetIDs: append([]string(nil), approvedIDs...)}
 	stored, err := p.tasks.CommitImageAgentPublication(ctx, listingkit.ImageAgentPublicationCommit{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, TaskID: projection.Run.BusinessTaskID, IdempotencyKey: input.IdempotencyKey, Fingerprint: fingerprint, Acknowledgement: ack}, func(task *listingkit.Task) error {
-		if err := validateImageAgentPublicationTask(task, scope, projection.AssetCatalog); err != nil {
+		if err := validateImageAgentPublicationTask(task, scope, projection.AssetCatalog, projection.Run.TargetPlatform); err != nil {
 			return err
 		}
-		applyApprovedAssetRecords(task.Result, records)
-		return nil
+		return applyApprovedAssetRecords(task.Result, records, projection.Run.TargetPlatform)
 	})
 	if err != nil {
 		return imageagent.PublicationAcknowledgement{}, fmt.Errorf("persist approved image agent candidates: %w", err)
@@ -125,7 +124,7 @@ func (p *imageAgentApprovedPublisher) PublishApprovedV3(ctx context.Context, inp
 	return imageagent.PublicationAcknowledgement{TaskID: stored.TaskID, RunID: stored.RunID, PlanRevision: stored.PlanRevision, ResultDigest: stored.ResultDigest, IdempotencyKey: stored.IdempotencyKey, CandidateAssetIDs: append([]string(nil), stored.CandidateAssetIDs...)}, nil
 }
 
-func validateImageAgentPublicationTask(task *listingkit.Task, scope imageagent.RunScope, expected imageagent.AssetCatalog) error {
+func validateImageAgentPublicationTask(task *listingkit.Task, scope imageagent.RunScope, expected imageagent.AssetCatalog, targetPlatform string) error {
 	if task == nil || task.TenantID != scope.TenantID || listingkit.ResolveTaskUserID(task) != scope.OwnerUserID || task.Result == nil || task.Result.StandardProductSnapshot == nil {
 		return imageagent.ErrRunNotFound
 	}
@@ -134,12 +133,19 @@ func validateImageAgentPublicationTask(task *listingkit.Task, scope imageagent.R
 		return imageagent.ErrRevisionConflict
 	}
 	styleIDs := make([]string, 0)
+	sourceIDs := make([]string, 0)
 	for _, authorized := range expected.Assets {
 		if authorized.Type == imageagent.AuthorizedAssetStyle {
 			styleIDs = append(styleIDs, authorized.ID)
+		} else if authorized.Type == imageagent.AuthorizedAssetSource {
+			sourceIDs = append(sourceIDs, authorized.ID)
 		}
 	}
-	current, err := imageAgentCatalogFromTask(task, styleIDs)
+	selectedSourceID := ""
+	if len(sourceIDs) == 1 {
+		selectedSourceID = sourceIDs[0]
+	}
+	current, err := imageAgentCatalogFromTaskTargetSelection(task, targetPlatform, selectedSourceID, styleIDs)
 	if err != nil {
 		return imageagent.ErrRevisionConflict
 	}
@@ -275,8 +281,35 @@ func imageAgentPublicationFingerprint(scope imageagent.RunScope, taskID string, 
 	return hex.EncodeToString(sum[:]), nil
 }
 
-func applyApprovedAssetRecords(result *listingkit.ListingKitResult, records []asset.AssetRecord) {
-	bundle := result.StandardProductSnapshot.AssetBundle
+func applyApprovedAssetRecords(result *listingkit.ListingKitResult, records []asset.AssetRecord, targetPlatform string) error {
+	if result == nil || result.StandardProductSnapshot == nil {
+		return imageagent.ErrRevisionConflict
+	}
+	targetPlatform = listingplatform.Normalize(targetPlatform)
+	if targetPlatform != "" {
+		if len(result.AssetBundlesByTarget) == 0 || result.AssetBundlesByTarget[targetPlatform] == nil {
+			return imageagent.ErrRevisionConflict
+		}
+		bundle := applyApprovedAssetRecordsToBundle(result.AssetBundlesByTarget[targetPlatform], records)
+		result.AssetBundlesByTarget[targetPlatform] = bundle
+		if result.AssetInventorySummariesByTarget == nil {
+			result.AssetInventorySummariesByTarget = map[string]*asset.InventorySummary{}
+		}
+		result.AssetInventorySummariesByTarget[targetPlatform] = asset.InventorySummaryFromBundle(bundle)
+		return nil
+	}
+	if len(result.AssetBundlesByTarget) > 0 {
+		return imageagent.ErrRevisionConflict
+	}
+	bundle := applyApprovedAssetRecordsToBundle(result.StandardProductSnapshot.AssetBundle, records)
+	result.StandardProductSnapshot.AssetBundle = bundle
+	result.StandardProductSnapshot.AssetInventorySummary = asset.InventorySummaryFromBundle(bundle)
+	result.AssetBundle = bundle
+	result.AssetInventorySummary = result.StandardProductSnapshot.AssetInventorySummary
+	return nil
+}
+
+func applyApprovedAssetRecordsToBundle(bundle *asset.Bundle, records []asset.AssetRecord) *asset.Bundle {
 	if bundle == nil {
 		bundle = &asset.Bundle{}
 	}
@@ -310,10 +343,7 @@ func applyApprovedAssetRecords(result *listingkit.ListingKitResult, records []as
 		}
 		selection.GalleryAssetIDs = append(selection.GalleryAssetIDs, record.ID)
 	}
-	result.StandardProductSnapshot.AssetBundle = bundle
-	result.StandardProductSnapshot.AssetInventorySummary = asset.InventorySummaryFromBundle(bundle)
-	result.AssetBundle = bundle
-	result.AssetInventorySummary = result.StandardProductSnapshot.AssetInventorySummary
+	return bundle
 }
 
 func selectionWithoutReplacedImageAgentAssets(selection *asset.Selection, replaced map[string]struct{}) *asset.Selection {

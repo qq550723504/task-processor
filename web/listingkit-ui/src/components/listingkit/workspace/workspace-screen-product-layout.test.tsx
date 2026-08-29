@@ -122,6 +122,7 @@ beforeEach(() => {
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(mocks.routeSearch),
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 
 vi.mock("@/components/listingkit/workspace/use-workspace-data", () => ({

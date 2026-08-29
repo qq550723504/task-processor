@@ -24,6 +24,9 @@ export function buildListingKitProxyUrl(
       throw new Error("invalid proxy path segment");
     }
   }
+	if (pathParts[0] === "tasks" && isImageAgentTaskRoute(pathParts.slice(1)) && !isAllowedImageAgentTaskRoute(method, pathParts.slice(1))) {
+		throw new Error("image-agent task proxy route is not allowed");
+	}
   let normalizedBase = upstreamBase.replace(/\/+$/, "");
   let routedParts = pathParts;
   if (pathParts[0] === "image-agent") {
@@ -41,6 +44,17 @@ export function buildListingKitProxyUrl(
   }
   const path = routedParts.map(encodeURIComponent).join("/");
   return `${normalizedBase}/${path}${search ? `?${search}` : ""}`;
+}
+
+function isImageAgentTaskRoute(route: string[]) {
+	return route.length >= 2 && route[1].startsWith("image-agent");
+}
+
+function isAllowedImageAgentTaskRoute(method: string, route: string[]) {
+	if (!safeID.test(route[0] ?? "")) return false;
+	const verb = method.toUpperCase();
+	return (verb === "GET" && route.length === 2 && route[1] === "image-agent-assets") ||
+		(verb === "POST" && route.length === 2 && route[1] === "image-agent-runs");
 }
 
 const safeID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
