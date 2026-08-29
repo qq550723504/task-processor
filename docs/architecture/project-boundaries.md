@@ -328,6 +328,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
+- `depguard: temporal_runtime_httpapi`
 - `TestProductImageExternalClientImportsStayAllowlisted`
 - `TestAmazonExternalClientImportsStayAllowlisted`
 - `TestSheinBridgeExternalClientImportsStayAllowlisted`

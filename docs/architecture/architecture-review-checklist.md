@@ -345,6 +345,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestHistoricalTemuFormattingFacadeStaysRetired`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
+- `depguard: temporal_runtime_httpapi`
 - `depguard: listing_preview_platform_neutral`
 - `TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets`
 

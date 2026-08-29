@@ -421,6 +421,26 @@ linters-settings:
           - pkg: "task-processor/internal/app/state/"
             desc: "Command entrypoints must not depend on retired app state subpackages"
 
+      temporal_runtime_httpapi:
+        # Temporal runtime packages must remain independent from HTTP API assembly and handlers.
+        # The repository-wide issues.exclude-files excludes _test.go; TestTemporalRuntimePackagesDoNotImportHTTPAPI retains target-independent semantic coverage.
+        files:
+          - "**/internal/app/runtime/*.go"
+          - "**/internal/app/runtime/**/*.go"
+          - "**/internal/listingkit/temporal/*.go"
+          - "**/internal/listingkit/temporal/**/*.go"
+          - "**/internal/listingkit/workflow/*.go"
+          - "**/internal/listingkit/workflow/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/app/httpapi$"
+            desc: "Temporal runtime packages must not depend on app HTTP API assembly"
+          - pkg: "task-processor/internal/app/httpapi/"
+            desc: "Temporal runtime packages must not depend on app HTTP API subpackages"
+          - pkg: "task-processor/internal/listingkit/httpapi$"
+            desc: "Temporal runtime packages must not depend on ListingKit HTTP API assembly"
+          - pkg: "task-processor/internal/listingkit/httpapi/"
+            desc: "Temporal runtime packages must not depend on ListingKit HTTP API subpackages"
+
       authruntime_zitadel_listingkit:
         # Authentication runtime code must remain independent from ListingKit compatibility and business packages.
         # The repository-wide issues.exclude-files excludes _test.go; TestZitadelAuthRuntimeDoesNotImportListingKit retains target-independent semantic coverage.

@@ -26,6 +26,7 @@ func TestTemporalBoundaryDocumentDefinesStableReviewRules(t *testing.T) {
 		"concrete Temporal worker bootstrap",
 		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
 		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
+		"depguard: temporal_runtime_httpapi",
 		"Review Questions",
 	}
 	for _, phrase := range required {
@@ -132,6 +133,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets",
 		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
 		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
+		"depguard: temporal_runtime_httpapi",
 		"TestProductImageExternalClientImportsStayAllowlisted",
 		"TestAmazonExternalClientImportsStayAllowlisted",
 		"TestSheinBridgeExternalClientImportsStayAllowlisted",
@@ -512,6 +514,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestTEMUOpenAIImportsStayAllowlisted",
 		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
 		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
+		"depguard: temporal_runtime_httpapi",
 		"depguard: listing_preview_platform_neutral",
 		"TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets",
 	}
