@@ -28,12 +28,14 @@ const (
 	commandIngressPlanPolicyPatch   = "image-agent-command-ingress-plan-policy-v1"
 	approvalPublicationScopePatch   = "image-agent-approval-publication-scope-v1"
 	externalEffectFinalizationPatch = "image-agent-external-effect-finalization-v1"
+	recoveryRequestedBlockCode      = "recovery_requested"
+	recoveryStartFailedBlockCode    = "recovery_start_failed"
 )
 
 type workflowActivityWire struct {
-	executeSlot, persistSlotResult, persistRunState, persistPlanRevision, persistPendingCommand, publishApproved string
-	useV3Slot, useV3Approval                                                                                     bool
-	useRunScopedApprovalKey                                                                                      bool
+	executeSlot, persistSlotResult, persistRunState, persistPlanRevision, persistPendingCommand, publishApproved, startEffectRecovery string
+	useV3Slot, useV3Approval                                                                                                          bool
+	useRunScopedApprovalKey                                                                                                           bool
 }
 
 func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
@@ -64,6 +66,9 @@ func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
 		wire.publishApproved = activityPublishApprovedV3
 		wire.useV3Approval = true
 		wire.useRunScopedApprovalKey = useRunScopedApprovalKey
+	}
+	if useV3Slot {
+		wire.startEffectRecovery = activityStartEffectRecoveryV3
 	}
 	return wire
 }
@@ -465,6 +470,18 @@ func (o *workflowEffectOwner) persistTerminalRunState(
 	}
 	return o.execute(ctx, identity, func(ownerCtx workflow.Context) error {
 		return executePersistRunState(ownerCtx, o.activities.persistRunState, input, projection, node, identity)
+	})
+}
+
+func (o *workflowEffectOwner) startEffectRecoveryV3(ctx workflow.Context, input EffectRecoveryWorkflowInput) error {
+	if strings.TrimSpace(o.activities.startEffectRecovery) == "" {
+		return fmt.Errorf("effect recovery starter activity is not configured")
+	}
+	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
+		if err := workflow.ExecuteActivity(ownerCtx, o.activities.startEffectRecovery, input).Get(ownerCtx, nil); err != nil {
+			return fmt.Errorf("start effect recovery for slot %s: %w", input.Slot.ID, err)
+		}
+		return nil
 	})
 }
 
@@ -1222,6 +1239,7 @@ func (s *workflowUpdateState) applyCancel(ctx workflow.Context, signal CancelSig
 func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, results []SlotWorkflowResult) {
 	if s.input.externalEffectFinalization && !cancellationResultsTerminalized(results) {
 		result := blockedCancellationProjection(*s.input, results, s.effects.activities)
+		markBlockedProjectionCode(&result, recoveryRequestedBlockCode)
 		result.CommandIngress = s.commandIngress()
 		err := s.effects.persistRunState(ctx, *s.input, result, "retry_slot")
 		s.cancelPending = false
@@ -1229,6 +1247,19 @@ func (s *workflowUpdateState) commitPendingCancellation(ctx workflow.Context, re
 		s.cancelBlocked = false
 		if err == nil {
 			*s.projection = result
+			if recoveryInput, ok := effectRecoveryInputForCancellation(*s.input, results, result.Block); ok {
+				if startErr := s.effects.startEffectRecoveryV3(ctx, recoveryInput); startErr != nil {
+					failed := result
+					failed.Block = cloneTemporalBlock(result.Block)
+					markBlockedProjectionCode(&failed, recoveryStartFailedBlockCode)
+					if persistErr := s.effects.persistRunState(ctx, *s.input, failed, "retry_slot"); persistErr != nil {
+						s.cancelCommitErr = persistErr
+						s.wake.SendAsync(struct{}{})
+						return
+					}
+					*s.projection = failed
+				}
+			}
 			s.cancelBlocked = true
 		}
 		s.wake.SendAsync(struct{}{})
@@ -1779,6 +1810,30 @@ func blockedCancellationProjection(input WorkflowInput, results []SlotWorkflowRe
 		result.Block = &imageagent.Block{Code: code, Message: message, SlotID: slot.ID}
 	}
 	return result
+}
+
+func effectRecoveryInputForCancellation(input WorkflowInput, results []SlotWorkflowResult, block *imageagent.Block) (EffectRecoveryWorkflowInput, bool) {
+	if block == nil || strings.TrimSpace(block.SlotID) == "" {
+		return EffectRecoveryWorkflowInput{}, false
+	}
+	for index := range input.Plan.Slots {
+		if input.Plan.Slots[index].ID != block.SlotID || index >= len(results) || strings.TrimSpace(results[index].Execution.SlotID) == "" {
+			continue
+		}
+		return EffectRecoveryWorkflowInput{
+			RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
+			Slot: input.Plan.Slots[index], Attempt: results[index].Execution.Attempt, AssetCatalog: input.AssetCatalog,
+		}, true
+	}
+	return EffectRecoveryWorkflowInput{}, false
+}
+
+func markBlockedProjectionCode(result *WorkflowResult, code string) {
+	if result == nil || result.Block == nil {
+		return
+	}
+	result.Block.Code = code
+	result.Block.Message = code
 }
 
 func cancellationResultsTerminalized(results []SlotWorkflowResult) bool {

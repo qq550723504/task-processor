@@ -295,6 +295,9 @@ func NewWorker(config WorkerConfig) (sdkworker.Worker, error) {
 	if err != nil {
 		return nil, err
 	}
+	if config.Activities.recoveryWorkflowStarter == nil {
+		config.Activities.recoveryWorkflowStarter = newRecoveryWorkflowStarter(config.Client, queue)
+	}
 	worker := sdkworker.New(config.Client, queue, sdkworker.Options{})
 	if err := RegisterWorkerForMode(worker, config.Activities, config.WireMode); err != nil {
 		return nil, err
@@ -353,7 +356,27 @@ func RegisterWorkerForMode(registrar workerRegistrar, activities *Activities, mo
 		registrar.RegisterWorkflowWithOptions(ImageSlotWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageSlot})
 	} else {
 		registrar.RegisterWorkflowWithOptions(ImageSlotWorkflowV3, sdkworkflow.RegisterOptions{Name: "ImageSlotWorkflowV3"})
+		registrar.RegisterWorkflowWithOptions(ImageAgentEffectRecoveryWorkflow, sdkworkflow.RegisterOptions{Name: EffectRecoveryWorkflowName})
 		registrar.RegisterWorkflowWithOptions(ImageAgentCompatibilityCanaryWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameCompatibilityCanary})
 	}
 	return RegisterActivitiesForMode(registrar, activities, mode)
+}
+
+func newRecoveryWorkflowStarter(client sdkWorkflowClient, taskQueue string) RecoveryWorkflowStarter {
+	return func(ctx context.Context, input EffectRecoveryWorkflowInput) error {
+		if client == nil {
+			return fmt.Errorf("image agent recovery workflow temporal client is not configured")
+		}
+		taskQueue = strings.TrimSpace(taskQueue)
+		if taskQueue == "" {
+			return fmt.Errorf("image agent recovery workflow task queue is required")
+		}
+		_, err := client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
+			ID:                       EffectRecoveryWorkflowID(input.Identity, input.PlanRevision, input.RunID+":"+input.Slot.ID, input.Attempt),
+			TaskQueue:                taskQueue,
+			WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
+			WorkflowIDReusePolicy:    enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
+		}, EffectRecoveryWorkflowName, input)
+		return err
+	}
 }

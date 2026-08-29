@@ -26,6 +26,8 @@ const slotResultPersistedEventType = "slot.result.persisted"
 
 var errPublicationOwnerRequiresActivity = errors.New("publication owner requires a Temporal activity context")
 
+type RecoveryWorkflowStarter func(context.Context, EffectRecoveryWorkflowInput) error
+
 type ActivityDependencies struct {
 	Repository               imageagent.Repository
 	SlotEffects              imageagent.SlotExternalEffectRepository
@@ -37,6 +39,7 @@ type ActivityDependencies struct {
 	ArtifactStore            DurableArtifactStore
 	PublicationOwner         func(context.Context) (string, error)
 	PublicationLeaseDuration time.Duration
+	RecoveryWorkflowStarter  RecoveryWorkflowStarter
 }
 
 type Activities struct {
@@ -50,6 +53,7 @@ type Activities struct {
 	artifactStore            DurableArtifactStore
 	publicationOwner         func(context.Context) (string, error)
 	publicationLeaseDuration time.Duration
+	recoveryWorkflowStarter  RecoveryWorkflowStarter
 }
 
 func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
@@ -100,6 +104,7 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 		repository: dependencies.Repository, slotEffects: dependencies.SlotEffects, slotExecutor: dependencies.SlotExecutor, publisher: dependencies.Publisher, publisherV3: dependencies.PublisherV3,
 		slotEffectsV3: dependencies.SlotEffectsV3, stagedSlotExecutor: dependencies.StagedSlotExecutor, artifactStore: dependencies.ArtifactStore,
 		publicationOwner: dependencies.PublicationOwner, publicationLeaseDuration: dependencies.PublicationLeaseDuration,
+		recoveryWorkflowStarter: dependencies.RecoveryWorkflowStarter,
 	}, nil
 }
 
@@ -592,6 +597,17 @@ func (a *Activities) PersistRecoveryBlockedEffectV3(ctx context.Context, input E
 		return effectRecoveryBlockedResult(input), nil
 	}
 	return a.blockEffectRecoveryV3(ctx, input, reservation)
+}
+
+func (a *Activities) StartEffectRecoveryV3(ctx context.Context, input EffectRecoveryWorkflowInput) error {
+	if a.recoveryWorkflowStarter == nil {
+		return fmt.Errorf("image agent effect recovery workflow starter is required")
+	}
+	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	if err != nil {
+		return err
+	}
+	return a.recoveryWorkflowStarter(ctx, input)
 }
 
 func (a *Activities) persistMissingEffectRecoveryBlockedV3(ctx context.Context, input EffectRecoveryWorkflowInput, reservation imageagent.SlotEffectV3Reservation) (EffectRecoveryResult, error) {
@@ -1284,6 +1300,9 @@ func RegisterActivitiesForMode(registrar activityRegistrar, activities *Activiti
 		registrar.RegisterActivityWithOptions(activities.PublishApproved, sdkactivity.RegisterOptions{Name: activityPublishApproved})
 	} else {
 		registrar.RegisterActivityWithOptions(activities.ExecuteSlotV3, sdkactivity.RegisterOptions{Name: activityExecuteSlotV3})
+		registrar.RegisterActivityWithOptions(activities.StartEffectRecoveryV3, sdkactivity.RegisterOptions{Name: activityStartEffectRecoveryV3})
+		registrar.RegisterActivityWithOptions(activities.RecoverEffectV3, sdkactivity.RegisterOptions{Name: activityRecoverEffectV3})
+		registrar.RegisterActivityWithOptions(activities.PersistRecoveryBlockedEffectV3, sdkactivity.RegisterOptions{Name: activityPersistRecoveryBlockedV3})
 		registrar.RegisterActivityWithOptions(activities.PersistSlotResultV3, sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3})
 		registrar.RegisterActivityWithOptions(activities.PublishApprovedV3, sdkactivity.RegisterOptions{Name: activityPublishApprovedV3})
 	}

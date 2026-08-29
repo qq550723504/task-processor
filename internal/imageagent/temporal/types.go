@@ -41,6 +41,7 @@ const (
 	activityPersistPendingCommand       = "imageagent.persist_pending_command.v2"
 	activityPublishApproved             = "imageagent.publish_approved.v2"
 	activityExecuteSlotV3               = "imageagent.execute_slot.v3"
+	activityStartEffectRecoveryV3       = "imageagent.start_effect_recovery.v3"
 	activityRecoverEffectV3             = "imageagent.recover_effect.v3"
 	activityPersistRecoveryBlockedV3    = "imageagent.persist_recovery_blocked.v3"
 	activityPublishApprovedV3           = "imageagent.publish_approved.v3"

@@ -2430,6 +2430,173 @@ func TestCancellationResultsRequireExplicitEffectTerminalizationProof(t *testing
 		"a generic blocked child result is not proof that a claimed external effect reached a durable terminal phase")
 }
 
+func TestManualWorkflowStartsExternalRecoveryForUnterminalizedEffect(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	env.RegisterWorkflowWithOptions(
+		func(_ workflow.Context, input SlotWorkflowV3Input) (SlotWorkflowV3Result, error) {
+			return SlotWorkflowV3Result{
+				Published:   imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+				Status:      imageagent.SlotStatusBlocked,
+				ErrorCode:   "slot_execution_failed",
+				EffectPhase: imageagent.SlotEffectV3ProviderClaimed,
+			}, nil
+		},
+		workflow.RegisterOptions{Name: "ImageSlotWorkflowV3"},
+	)
+	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	var persisted []PersistRunStateActivityInput
+	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
+		persisted = append(persisted, input)
+		return nil
+	}, sdkactivity.RegisterOptions{Name: activityPersistRunState})
+	env.RegisterActivityWithOptions(
+		func(context.Context, PersistSlotResultV3ActivityInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3},
+	)
+	env.RegisterActivityWithOptions(
+		func(context.Context, PersistPendingCommandActivityInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityPersistPendingCommand},
+	)
+	var started []EffectRecoveryWorkflowInput
+	env.RegisterActivityWithOptions(func(_ context.Context, input EffectRecoveryWorkflowInput) error {
+		started = append(started, input)
+		return nil
+	}, sdkactivity.RegisterOptions{Name: activityStartEffectRecoveryV3})
+	var cancelAck CommandAcknowledgement
+	var cancelErr error
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalCancel, "cancel-start-external-recovery", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { cancelErr = err },
+			OnAccept: func() {},
+			OnComplete: func(result interface{}, err error) {
+				cancelErr = err
+				if err == nil {
+					cancelAck = result.(CommandAcknowledgement)
+				}
+			},
+		}, CancelSignal{
+			RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-start-external-recovery",
+		})
+	}, time.Second)
+	env.RegisterDelayedCallback(env.CancelWorkflow, 2*time.Second)
+
+	plan := sevenSlotPlan()
+	plan.Slots = plan.Slots[:1]
+	input := manualWorkflowInput(plan)
+	input.MaxConcurrentSlots = 1
+	input.WaitForCommands = true
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	normalizedCatalog, err := imageagent.NormalizeAssetCatalog(input.AssetCatalog)
+	require.NoError(t, err)
+	require.Error(t, env.GetWorkflowError(), "the test cancellation should stop an otherwise-open recovery workflow")
+	require.NoError(t, cancelErr)
+	require.Equal(t, imageagent.RunStatusBlocked, cancelAck.Status)
+	require.Len(t, started, 1)
+	require.Equal(t, EffectRecoveryWorkflowInput{
+		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
+		Slot: input.Plan.Slots[0], Attempt: 1, AssetCatalog: normalizedCatalog,
+	}, started[0])
+	require.NotEmpty(t, persisted)
+	blocked := persisted[len(persisted)-1]
+	require.Equal(t, imageagent.RunStatusBlocked, blocked.Projection.Status)
+	require.NotNil(t, blocked.Projection.Block)
+	require.Equal(t, "recovery_requested", blocked.Projection.Block.Code)
+	require.Equal(t, "recovery_requested", blocked.Projection.Block.Message)
+	require.Equal(t, "slot-1", blocked.Projection.Block.SlotID)
+}
+
+func TestManualWorkflowKeepsBlockedWhenRecoveryStartFails(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	env.RegisterWorkflowWithOptions(
+		func(_ workflow.Context, input SlotWorkflowV3Input) (SlotWorkflowV3Result, error) {
+			return SlotWorkflowV3Result{
+				Published:   imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+				Status:      imageagent.SlotStatusBlocked,
+				ErrorCode:   "slot_execution_failed",
+				EffectPhase: imageagent.SlotEffectV3ProviderClaimed,
+			}, nil
+		},
+		workflow.RegisterOptions{Name: "ImageSlotWorkflowV3"},
+	)
+	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(slotExecutionWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(externalEffectFinalizationPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	var blockedStates []PersistRunStateActivityInput
+	var cancelledStates []PersistRunStateActivityInput
+	env.RegisterActivityWithOptions(func(_ context.Context, input PersistRunStateActivityInput) error {
+		if input.Projection.Status == imageagent.RunStatusBlocked {
+			blockedStates = append(blockedStates, input)
+		}
+		if input.Projection.Status == imageagent.RunStatusCancelled {
+			cancelledStates = append(cancelledStates, input)
+		}
+		return nil
+	}, sdkactivity.RegisterOptions{Name: activityPersistRunState})
+	env.RegisterActivityWithOptions(
+		func(context.Context, PersistSlotResultV3ActivityInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3},
+	)
+	env.RegisterActivityWithOptions(
+		func(context.Context, PersistPendingCommandActivityInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityPersistPendingCommand},
+	)
+	startCalls := 0
+	env.RegisterActivityWithOptions(func(context.Context, EffectRecoveryWorkflowInput) error {
+		startCalls++
+		return sdktemporal.NewNonRetryableApplicationError("temporal unavailable", "recovery_start_failed", nil)
+	}, sdkactivity.RegisterOptions{Name: activityStartEffectRecoveryV3})
+	var cancelAck CommandAcknowledgement
+	var cancelErr error
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(signalCancel, "cancel-recovery-start-fails", &testsuite.TestUpdateCallback{
+			OnReject: func(err error) { cancelErr = err },
+			OnAccept: func() {},
+			OnComplete: func(result interface{}, err error) {
+				cancelErr = err
+				if err == nil {
+					cancelAck = result.(CommandAcknowledgement)
+				}
+			},
+		}, CancelSignal{
+			RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "cancel-recovery-start-fails",
+		})
+	}, time.Second)
+	env.RegisterDelayedCallback(env.CancelWorkflow, 2*time.Second)
+
+	plan := sevenSlotPlan()
+	plan.Slots = plan.Slots[:1]
+	input := manualWorkflowInput(plan)
+	input.MaxConcurrentSlots = 1
+	input.WaitForCommands = true
+	env.ExecuteWorkflow(ImageAgentWorkflow, input)
+
+	require.Error(t, env.GetWorkflowError(), "the test cancellation should stop an otherwise-open recovery workflow")
+	require.NoError(t, cancelErr)
+	require.Equal(t, imageagent.RunStatusBlocked, cancelAck.Status)
+	require.Equal(t, 1, startCalls)
+	require.GreaterOrEqual(t, len(blockedStates), 3)
+	tail := blockedStates[len(blockedStates)-2:]
+	require.Equal(t, "recovery_requested", tail[0].Projection.Block.Code)
+	require.Equal(t, "recovery_start_failed", tail[1].Projection.Block.Code)
+	require.Equal(t, "recovery_start_failed", tail[1].Projection.Block.Message)
+	require.Equal(t, "slot-1", tail[1].Projection.Block.SlotID)
+	require.Empty(t, cancelledStates, "a failed recovery handoff must keep the parent blocked instead of projecting cancelled")
+	encoded, err := env.QueryWorkflow(QueryWorkflowProjection)
+	require.NoError(t, err)
+	var projection WorkflowResult
+	require.NoError(t, encoded.Get(&projection))
+	require.Equal(t, imageagent.RunStatusBlocked, projection.Status)
+	require.NotNil(t, projection.Block)
+	require.Equal(t, "recovery_start_failed", projection.Block.Code)
+}
+
 func TestManualWorkflowKeepsBlockedCancellationOpenWithAccurateReceipt(t *testing.T) {
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
@@ -2456,6 +2623,10 @@ func TestManualWorkflowKeepsBlockedCancellationOpenWithAccurateReceipt(t *testin
 	env.RegisterActivityWithOptions(
 		func(context.Context, PersistSlotResultV3ActivityInput) error { return nil },
 		sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3},
+	)
+	env.RegisterActivityWithOptions(
+		func(context.Context, EffectRecoveryWorkflowInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityStartEffectRecoveryV3},
 	)
 	var receipts []*imageagent.PendingCommandReceipt
 	env.RegisterActivityWithOptions(func(_ context.Context, input PersistPendingCommandActivityInput) error {
@@ -2550,6 +2721,10 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 		func(context.Context, PersistSlotResultV3ActivityInput) error { return nil },
 		sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3},
 	)
+	env.RegisterActivityWithOptions(
+		func(context.Context, EffectRecoveryWorkflowInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityStartEffectRecoveryV3},
+	)
 	env.RegisterActivityWithOptions(func(_ context.Context, input PersistPendingCommandActivityInput) error {
 		pendingMu.Lock()
 		pendingReceipts = append(pendingReceipts, input)
@@ -2592,8 +2767,8 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 	require.NotEqual(t, imageagent.RunStatusCancelled, liveProjection.Status)
 	require.NotNil(t, liveProjection.Block)
 	require.Equal(t, "slot-1", liveProjection.Block.SlotID)
-	require.Equal(t, imageagent.SlotEffectPolicyInvalidCode, liveProjection.Block.Code)
-	require.Equal(t, []imageagent.Action{imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{
+	require.Equal(t, recoveryRequestedBlockCode, liveProjection.Block.Code)
+	require.Equal(t, []imageagent.Action{imageagent.ActionEditPlan, imageagent.ActionRetrySlot, imageagent.ActionCancel}, imageagent.AllowedActions(imageagent.Run{
 		Mode: imageagent.RunModeManual, Status: liveProjection.Status, Block: liveProjection.Block,
 	}))
 	blockedMu.Lock()
@@ -2601,7 +2776,7 @@ func TestManualWorkflowDoesNotProjectCancelledForUnterminalizedEffect(t *testing
 	require.Equal(t, imageagent.RunStatusBlocked, blockedStates[0].Projection.Status)
 	require.NotNil(t, blockedStates[0].Projection.Block)
 	require.Equal(t, "slot-1", blockedStates[0].Projection.Block.SlotID)
-	require.Equal(t, imageagent.SlotEffectPolicyInvalidCode, blockedStates[0].Projection.Block.Code)
+	require.Equal(t, recoveryRequestedBlockCode, blockedStates[0].Projection.Block.Code)
 	blockedMu.Unlock()
 	terminalMu.Lock()
 	require.Empty(t, terminalStatuses)
@@ -3833,10 +4008,10 @@ func TestRegisterWorkerUsesExactModeBoundWorkflowAndActivitySets(t *testing.T) {
 		},
 		{
 			name: "v3", mode: WorkerWireModeV3,
-			wantWorkflows: []string{workflowNameImageAgent, "ImageSlotWorkflowV3", workflowNameCompatibilityCanary},
+			wantWorkflows: []string{workflowNameImageAgent, "ImageSlotWorkflowV3", EffectRecoveryWorkflowName, workflowNameCompatibilityCanary},
 			wantActivities: []string{
 				"imageagent.persist_run_state.v2", "imageagent.persist_workflow_failure.v1", "imageagent.persist_workflow_failure.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2",
-				"imageagent.execute_slot.v3", "imageagent.persist_slot_result.v3", "imageagent.publish_approved.v3",
+				"imageagent.execute_slot.v3", "imageagent.start_effect_recovery.v3", "imageagent.recover_effect.v3", "imageagent.persist_recovery_blocked.v3", "imageagent.persist_slot_result.v3", "imageagent.publish_approved.v3",
 			},
 		},
 	}
@@ -4069,6 +4244,10 @@ func newWorkflowEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 		func(context.Context, PublishApprovedActivityInput) error { return nil },
 		sdkactivity.RegisterOptions{Name: activityPublishApproved},
 	)
+	env.RegisterActivityWithOptions(
+		func(context.Context, EffectRecoveryWorkflowInput) error { return nil },
+		sdkactivity.RegisterOptions{Name: activityStartEffectRecoveryV3},
+	)
 	return env
 }
 
@@ -4294,27 +4473,35 @@ func (workflowCatalogResolver) Resolve(context.Context, imageagent.AssetCatalogS
 }
 
 type recordingSDKClient struct {
-	startOptions       sdkclient.StartWorkflowOptions
-	workflowName       string
-	workflowInput      WorkflowInput
-	signalWorkflowID   string
-	signalName         string
-	signalArg          interface{}
-	queryWorkflowID    string
-	queryType          string
-	queryValue         imageagent.WorkflowProjection
-	updateOptions      []sdkclient.UpdateWorkflowOptions
-	updateGetCalls     int
-	updateErr          error
-	updateResultErr    error
-	updateResultErrors []error
-	updateAck          imageagent.CommandAcknowledgement
+	startOptions        sdkclient.StartWorkflowOptions
+	workflowName        string
+	workflowInput       WorkflowInput
+	effectRecoveryInput EffectRecoveryWorkflowInput
+	signalWorkflowID    string
+	signalName          string
+	signalArg           interface{}
+	queryWorkflowID     string
+	queryType           string
+	queryValue          imageagent.WorkflowProjection
+	updateOptions       []sdkclient.UpdateWorkflowOptions
+	updateGetCalls      int
+	updateErr           error
+	updateResultErr     error
+	updateResultErrors  []error
+	updateAck           imageagent.CommandAcknowledgement
 }
 
 func (c *recordingSDKClient) ExecuteWorkflow(_ context.Context, options sdkclient.StartWorkflowOptions, workflow interface{}, args ...interface{}) (sdkclient.WorkflowRun, error) {
 	c.startOptions = options
 	c.workflowName = workflow.(string)
-	c.workflowInput = args[0].(WorkflowInput)
+	if len(args) > 0 {
+		switch input := args[0].(type) {
+		case WorkflowInput:
+			c.workflowInput = input
+		case EffectRecoveryWorkflowInput:
+			c.effectRecoveryInput = input
+		}
+	}
 	return nil, nil
 }
 
