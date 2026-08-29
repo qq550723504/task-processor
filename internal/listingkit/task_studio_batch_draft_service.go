@@ -89,16 +89,14 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	var session *SheinStudioSession
 	var err error
 	isCreate := strings.TrimSpace(req.ID) == ""
-	normalizedReq := req
+	batchReq := req
 	if isCreate {
 		if req.Selection == nil || req.Selection.VariantID <= 0 {
 			return nil, fmt.Errorf("selection is required")
 		}
-		normalizedReq = sanitizeStudioBatchCreateRequest(req, isCreate)
 		session = &SheinStudioSession{
 			ID:                      uuid.NewString(),
 			UserID:                  RequestUserIDFromContext(ctx),
-			SelectionKey:            buildStudioSelectionKey(req.Selection),
 			RenderSizeImagesWithSDS: true,
 		}
 	} else {
@@ -119,52 +117,53 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 			}
 			cloned := *req
 			cloned.Selection = &existingSelection
-			normalizedReq = &cloned
+			batchReq = &cloned
 		} else if req.Selection.VariantID <= 0 {
 			return nil, fmt.Errorf("selection is required")
 		}
 	}
-	normalizedReq.Selection.DesignType = studiodomain.NormalizeBatchDesignType(normalizedReq.Selection.DesignType)
+	fields := applyListingStudioBatchDraftFields(batchReq, isCreate)
 	existingBatchName := strings.TrimSpace(session.BatchName)
+	selection := *batchReq.Selection
+	selection.DesignType = fields.SelectionDesignType
 
-	session.SelectionKey = buildStudioSelectionKey(normalizedReq.Selection)
-	session.Status = deriveBatchStatus(normalizedReq)
-	session.ProductID = normalizedReq.Selection.ProductID
-	session.ParentProductID = normalizedReq.Selection.ParentProductID
-	session.VariantID = normalizedReq.Selection.VariantID
-	session.PrototypeGroupID = normalizedReq.Selection.PrototypeGroupID
-	session.LayerID = normalizedReq.Selection.LayerID
-	session.PrintableWidth = normalizedReq.Selection.PrintableWidth
-	session.PrintableHeight = normalizedReq.Selection.PrintableHeight
-	session.SelectedVariantIDs = append(SheinStudioInt64List(nil), normalizedReq.Selection.SelectedVariantIDs...)
-	session.Selection = SheinStudioSelectionSnapshot(*normalizedReq.Selection)
-	session.Prompt = normalizedReq.Prompt
-	session.PromptMode = strings.TrimSpace(normalizedReq.PromptMode)
-	session.StyleCount = normalizedReq.StyleCount
-	session.VariationIntensity = normalizedReq.VariationIntensity
-	session.ProductImageCount = normalizedReq.ProductImageCount
-	session.ProductImagePrompt = normalizedReq.ProductImagePrompt
-	session.ProductImagePrompts = toStudioProductImagePromptList(normalizedReq.ProductImagePrompts)
-	session.ArtworkModel = normalizedReq.ArtworkModel
-	session.ImageStrategy = normalizedReq.ImageStrategy
-	session.GroupedImageMode = normalizedReq.GroupedImageMode
-	session.SelectedSDSImages = toStudioSelectedSDSImageList(normalizedReq.SelectedSDSImages)
-	session.GroupedSelections = toStudioGroupedSelectionList(normalizedReq.GroupedSelections)
-	legacyTransparentBackground := normalizedReq.TransparentBackground
-	session.TransparentBackgroundMode = NormalizeStudioTransparencyMode(string(normalizedReq.TransparentBackgroundMode), &legacyTransparentBackground)
-	session.TransparentBackground = session.TransparentBackgroundMode != StudioTransparencyModeNone
-	session.RenderSizeImagesWithSDS = normalizedReq.RenderSizeImagesWithSDS
-	session.HotStyleReferenceImageURLs = normalizeStudioHotStyleReferenceImageURLs(normalizedReq.HotStyleReferenceImageURLs)
-	session.HotStyleReferenceBrief = strings.TrimSpace(normalizedReq.HotStyleReferenceBrief)
-	session.HotStyleReferencePrompt = strings.TrimSpace(normalizedReq.HotStyleReferencePrompt)
-	session.SheinStoreID = normalizedReq.SheinStoreID
-	session.ApprovedDesignIDs = append(SheinStudioStringList(nil), normalizedReq.ApprovedDesignIDs...)
-	session.CreatedTasks = toStudioCreatedTaskList(normalizedReq.CreatedTasks)
-	session.CreatedTaskIDs = buildCreatedTaskIDs(normalizedReq.CreatedTasks)
-	session.GenerationJobs = append(SheinStudioGenerationJobList(nil), normalizedReq.GenerationJobs...)
+	session.SelectionKey = fields.SelectionKey
+	session.Status = SheinStudioSessionStatus(fields.Status)
+	session.ProductID = fields.Selection.ProductID
+	session.ParentProductID = fields.Selection.ParentProductID
+	session.VariantID = fields.Selection.VariantID
+	session.PrototypeGroupID = fields.Selection.PrototypeGroupID
+	session.LayerID = fields.Selection.LayerID
+	session.PrintableWidth = fields.Selection.PrintableWidth
+	session.PrintableHeight = fields.Selection.PrintableHeight
+	session.SelectedVariantIDs = append(SheinStudioInt64List(nil), fields.Selection.SelectedVariantIDs...)
+	session.Selection = SheinStudioSelectionSnapshot(selection)
+	session.Prompt = fields.Prompt
+	session.PromptMode = fields.PromptMode
+	session.StyleCount = fields.StyleCount
+	session.VariationIntensity = fields.VariationIntensity
+	session.ProductImageCount = fields.ProductImageCount
+	session.ProductImagePrompt = fields.ProductImagePrompt
+	session.ProductImagePrompts = toStudioProductImagePromptList(fields.ProductImagePrompts)
+	session.ArtworkModel = fields.ArtworkModel
+	session.ImageStrategy = fields.ImageStrategy
+	session.GroupedImageMode = fields.GroupedImageMode
+	session.SelectedSDSImages = toStudioSelectedSDSImageList(fields.SelectedSDSImages)
+	session.GroupedSelections = toStudioGroupedSelectionList(fields.GroupedSelections)
+	session.TransparentBackgroundMode = StudioTransparencyMode(fields.TransparentBackgroundMode)
+	session.TransparentBackground = fields.TransparentBackground
+	session.RenderSizeImagesWithSDS = fields.RenderSizeImagesWithSDS
+	session.HotStyleReferenceImageURLs = SheinStudioStringList(fields.HotStyleReferenceImageURLs)
+	session.HotStyleReferenceBrief = fields.HotStyleReferenceBrief
+	session.HotStyleReferencePrompt = fields.HotStyleReferencePrompt
+	session.SheinStoreID = fields.SheinStoreID
+	session.ApprovedDesignIDs = append(SheinStudioStringList(nil), fields.ApprovedDesignIDs...)
+	session.CreatedTasks = toStudioCreatedTaskList(fields.CreatedTasks)
+	session.CreatedTaskIDs = append(SheinStudioStringList(nil), fields.CreatedTaskIDs...)
+	session.GenerationJobs = append(SheinStudioGenerationJobList(nil), fields.GenerationJobs...)
 	session.SavedAsBatch = true
 	session.BatchName, err = s.resolveBatchName(ctx, studiodomain.BatchNameResolutionInput{
-		RequestedName: normalizedReq.BatchName,
+		RequestedName: batchReq.BatchName,
 		ExistingName:  existingBatchName,
 		IsCreate:      isCreate,
 	})
@@ -179,7 +178,7 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	} else if err := s.repo.UpdateSession(ctx, session); err != nil {
 		return nil, err
 	}
-	if err := s.repo.ReplaceDesigns(ctx, session.ID, normalizedReq.ApprovedDesignIDs, normalizedReq.Designs); err != nil {
+	if err := s.repo.ReplaceDesigns(ctx, session.ID, fields.ApprovedDesignIDs, batchReq.Designs); err != nil {
 		return nil, err
 	}
 	studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
@@ -187,27 +186,71 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 		"batch_name":              session.BatchName,
 		"is_create":               isCreate,
 		"status":                  session.Status,
-		"design_count":            len(normalizedReq.Designs),
-		"approved_design_count":   len(normalizedReq.ApprovedDesignIDs),
-		"created_task_count":      len(normalizedReq.CreatedTasks),
-		"generation_jobs_count":   len(normalizedReq.GenerationJobs),
-		"grouped_selection_count": len(normalizedReq.GroupedSelections),
+		"design_count":            len(batchReq.Designs),
+		"approved_design_count":   len(fields.ApprovedDesignIDs),
+		"created_task_count":      len(fields.CreatedTasks),
+		"generation_jobs_count":   len(fields.GenerationJobs),
+		"grouped_selection_count": len(fields.GroupedSelections),
 		"shein_store_id":          session.SheinStoreID,
 	})).Info("studio batch upserted")
 	return s.loadStudioBatchDraftDetail(ctx, session)
 }
 
-func sanitizeStudioBatchCreateRequest(req *UpsertStudioBatchRequest, isCreate bool) *UpsertStudioBatchRequest {
-	if req == nil || !studiodomain.ShouldDropCreateGenerationJobs(isCreate, len(req.GenerationJobs)) {
-		return req
-	}
-	cloned := *req
-	cloned.GenerationJobs = nil
-	return &cloned
-}
-
-func normalizeStudioHotStyleReferenceImageURLs(values []string) SheinStudioStringList {
-	return SheinStudioStringList(studiodomain.NormalizeHotStyleReferenceImageURLs(values))
+func applyListingStudioBatchDraftFields(
+	req *UpsertStudioBatchRequest,
+	isCreate bool,
+) studiodomain.BatchDraftFields[
+	SheinStudioProductImagePrompt,
+	SheinStudioSelectedSDSImage,
+	SheinStudioGroupedSelection,
+	SheinStudioCreatedTask,
+	SheinStudioGenerationJob,
+] {
+	selection := req.Selection
+	return studiodomain.ApplyBatchDraftFields(studiodomain.BatchDraftInput[
+		SheinStudioProductImagePrompt,
+		SheinStudioSelectedSDSImage,
+		SheinStudioGroupedSelection,
+		SheinStudioCreatedTask,
+		SheinStudioGenerationJob,
+	]{
+		Selection: studiodomain.SelectionKeyInput{
+			ProductID:          selection.ProductID,
+			ParentProductID:    selection.ParentProductID,
+			VariantID:          selection.VariantID,
+			PrototypeGroupID:   selection.PrototypeGroupID,
+			LayerID:            selection.LayerID,
+			PrintableWidth:     selection.PrintableWidth,
+			PrintableHeight:    selection.PrintableHeight,
+			SelectedVariantIDs: selection.SelectedVariantIDs,
+		},
+		SelectionDesignType:        selection.DesignType,
+		Prompt:                     req.Prompt,
+		PromptMode:                 req.PromptMode,
+		StyleCount:                 req.StyleCount,
+		VariationIntensity:         req.VariationIntensity,
+		ProductImageCount:          req.ProductImageCount,
+		ProductImagePrompt:         req.ProductImagePrompt,
+		ProductImagePrompts:        req.ProductImagePrompts,
+		ArtworkModel:               req.ArtworkModel,
+		ImageStrategy:              req.ImageStrategy,
+		GroupedImageMode:           req.GroupedImageMode,
+		SelectedSDSImages:          req.SelectedSDSImages,
+		GroupedSelections:          req.GroupedSelections,
+		TransparentBackground:      req.TransparentBackground,
+		TransparentBackgroundMode:  string(req.TransparentBackgroundMode),
+		RenderSizeImagesWithSDS:    req.RenderSizeImagesWithSDS,
+		HotStyleReferenceImageURLs: req.HotStyleReferenceImageURLs,
+		HotStyleReferenceBrief:     req.HotStyleReferenceBrief,
+		HotStyleReferencePrompt:    req.HotStyleReferencePrompt,
+		SheinStoreID:               req.SheinStoreID,
+		ApprovedDesignIDs:          req.ApprovedDesignIDs,
+		CreatedTasks:               req.CreatedTasks,
+		GenerationJobs:             req.GenerationJobs,
+		DesignCount:                len(req.Designs),
+	}, isCreate, func(task SheinStudioCreatedTask) string {
+		return task.ID
+	})
 }
 
 func (s *taskStudioBatchDraftService) DeleteStudioBatch(ctx context.Context, batchID string) error {
