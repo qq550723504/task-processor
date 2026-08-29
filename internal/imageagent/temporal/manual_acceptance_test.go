@@ -56,6 +56,7 @@ type manualRecoveryWorkflowRestartAcceptanceResult struct {
 	RecoveryTaskQueue           string
 	RecoveryConflictPolicy      enumspb.WorkflowIdConflictPolicy
 	RecoveryReusePolicy         enumspb.WorkflowIdReusePolicy
+	ExpectedRecoveryWorkflowID  string
 	StartedRecoveryWorkflowID   string
 	AttachedRecoveryWorkflowID  string
 	RecoveredEffectPhase        imageagent.SlotEffectV3Phase
@@ -76,6 +77,8 @@ func TestManualWorkflowRecoveryOwnerCompletesAfterWorkerRestart(t *testing.T) {
 	require.Equal(t, imageagenttemporal.TaskQueueV3, result.RecoveryTaskQueue)
 	require.Equal(t, enumspb.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, result.RecoveryConflictPolicy)
 	require.Equal(t, enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY, result.RecoveryReusePolicy)
+	require.Equal(t, result.ExpectedRecoveryWorkflowID, result.StartedRecoveryWorkflowID)
+	require.Equal(t, result.ExpectedRecoveryWorkflowID, result.AttachedRecoveryWorkflowID)
 	require.Equal(t, result.StartedRecoveryWorkflowID, result.AttachedRecoveryWorkflowID)
 	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, result.RecoveredEffectPhase)
 	require.Equal(t, 1, result.RecoveredEffectAttempt)
@@ -200,6 +203,12 @@ func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecovery
 		Identity: imageagent.ExecutionIdentity{TenantID: run.TenantID, UserID: run.UserID, BusinessTaskID: run.BusinessTaskID},
 		Projection: blockedProjection,
 	}
+	expectedRecoveryWorkflowID := imageagenttemporal.EffectRecoveryWorkflowID(
+		command.Identity,
+		command.PlanRevision,
+		command.RunID+":"+command.SlotID,
+		command.Attempt,
+	)
 
 	require.NoError(t, client.RecoverEffect(ctx, command))
 	startedID, _, _ := workflowClient.attachSummary()
@@ -239,6 +248,7 @@ func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecovery
 		RecoveryTaskQueue:           workflowClient.taskQueue(),
 		RecoveryConflictPolicy:      workflowClient.conflictPolicy(),
 		RecoveryReusePolicy:         workflowClient.reusePolicy(),
+		ExpectedRecoveryWorkflowID:  expectedRecoveryWorkflowID,
 		StartedRecoveryWorkflowID:   startedID,
 		AttachedRecoveryWorkflowID:  attachedID,
 		RecoveredEffectPhase:        recoveredEffect.Phase,
