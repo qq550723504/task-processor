@@ -87,7 +87,7 @@ func TestListingKitImageAgentDeploymentsAndCanaryAreCapabilityIsolated(t *testin
 	}
 	canaryContainer := canary.Spec.Template.Spec.InitContainers[0]
 	if !reflect.DeepEqual(canaryContainer.Command, []string{"/app/image-agent-temporal-worker"}) ||
-		!reflect.DeepEqual(canaryContainer.Args, []string{"-canary", "-canary-task-queue", "image-agent-manual-v3", "-log-level", "info"}) {
+		!reflect.DeepEqual(canaryContainer.Args, []string{"-canary", "-canary-task-queue", "image-agent-manual-v3-canary", "-log-level", "info"}) {
 		t.Fatalf("canary must invoke only the side-effect-free v3 compatibility mode, command=%#v args=%#v", canaryContainer.Command, canaryContainer.Args)
 	}
 	for _, source := range canaryContainer.EnvFrom {
@@ -157,7 +157,7 @@ func TestListingKitDeployOrdersImageAgentGatesBeforeAPIRouting(t *testing.T) {
 			}
 		}
 	}
-	ordered := []string{"schema", "v2_apply", "v2_restart", "v2_wait", "v3_apply", "v3_restart", "v3_wait", "canary_gate", "api_apply", "api_stamp", "api_wait"}
+	ordered := []string{"schema", "v2_apply", "v2_restart", "v2_wait", "canary_gate", "v3_apply", "v3_restart", "v3_wait", "api_apply", "api_stamp", "api_wait"}
 	previous := -1
 	for _, key := range ordered {
 		index, ok := indexes[key]
@@ -363,7 +363,7 @@ func TestListingKitDeployOwnsImageAgentWorkerBuildManifestAndImmutableRollout(t 
 	canaryWait := strings.Index(workflow, "--deployment image-agent-temporal-v3-canary-runner")
 	apiStamp := strings.Index(workflow, "patch deployment product-listing-api")
 	apiWait := strings.Index(workflow, "rollout status deployment/product-listing-api --timeout=5m")
-	if v2Wait < 0 || v3Wait < 0 || canaryWait < 0 || apiStamp < 0 || apiWait < 0 || !(v2Wait < v3Wait && v3Wait < canaryWait && canaryWait < apiStamp && apiStamp < apiWait) {
+	if v2Wait < 0 || v3Wait < 0 || canaryWait < 0 || apiStamp < 0 || apiWait < 0 || !(v2Wait < canaryWait && canaryWait < v3Wait && v3Wait < apiStamp && apiStamp < apiWait) {
 		t.Fatalf("v2, v3, and canary gates must complete before the API release identity stamp: v2Wait=%d v3Wait=%d canaryWait=%d apiStamp=%d apiWait=%d", v2Wait, v3Wait, canaryWait, apiStamp, apiWait)
 	}
 	dockerfileBytes, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "Dockerfile.product-listing-api"))
