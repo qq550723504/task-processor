@@ -22,6 +22,13 @@ func TestProvisionLocalApplicationsCreatesAPIAndOIDCApps(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/management/v1/projects/project-1/roles/_search":
 			writeJSON(t, w, map[string]any{"result": defaultRoleResponses()})
 		case r.Method == http.MethodPost && r.URL.Path == "/management/v1/projects/project-1/apps/_search":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode app search body: %v", err)
+			}
+			if len(body) != 0 {
+				t.Fatalf("app search body = %#v, want empty query", body)
+			}
 			writeJSON(t, w, map[string]any{"result": []any{}})
 		case r.Method == http.MethodPost && r.URL.Path == "/management/v1/projects/project-1/apps/api":
 			if err := json.NewDecoder(r.Body).Decode(&apiBody); err != nil {
@@ -98,6 +105,15 @@ func TestProvisionLocalApplicationsReusesAppsByStableName(t *testing.T) {
 				{"id": "api-app-1", "name": "ListingKit Local API", "apiConfig": map[string]any{"clientId": "api-client-1", "authMethodType": "API_AUTH_METHOD_TYPE_BASIC"}},
 				{"id": "oidc-app-1", "name": "ListingKit Local OIDC", "oidcConfig": map[string]any{"clientId": "oidc-client-1"}},
 			}})
+		case "/management/v1/projects/project-1/apps/oidc-app-1":
+			writeJSON(t, w, map[string]any{"app": map[string]any{
+				"id": "oidc-app-1", "name": "ListingKit Local OIDC", "oidcConfig": map[string]any{
+					"clientId": "oidc-client-1", "redirectUris": []string{"http://localhost:3000/api/zitadel-auth/callback"},
+					"responseTypes": []string{"OIDC_RESPONSE_TYPE_CODE"}, "grantTypes": []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
+					"appType": "OIDC_APP_TYPE_USER_AGENT", "authMethodType": "OIDC_AUTH_METHOD_TYPE_NONE",
+					"postLogoutRedirectUris": []string{"http://localhost:3000"}, "accessTokenType": "OIDC_TOKEN_TYPE_BEARER", "accessTokenRoleAssertion": true,
+				},
+			}})
 		case "/management/v1/projects/project-1/apps/api", "/management/v1/projects/project-1/apps/oidc":
 			createCalls++
 			writeJSON(t, w, map[string]any{})
@@ -123,6 +139,22 @@ func TestProvisionLocalApplicationsReusesAppsByStableName(t *testing.T) {
 	if result.APIAppID != "api-app-1" || result.APIClientID != "api-client-1" || result.APIClientSecret != "" ||
 		result.OIDCAppID != "oidc-app-1" || result.OIDCClientID != "oidc-client-1" || result.OIDCClientSecret != "" {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestProvisionLocalApplicationsRejectsNonLocalIssuerOrRedirect(t *testing.T) {
+	base := Config{IssuerURL: "https://zitadel.example.com", ManagementToken: "token", ProjectID: "project-1"}
+	appCfg := LocalApplicationConfig{
+		APIName: "ListingKit Local API", OIDCName: "ListingKit Local OIDC",
+		RedirectURIs: []string{"http://localhost:3000/api/zitadel-auth/callback"}, PostLogoutRedirectURIs: []string{"http://localhost:3000"},
+	}
+	if _, err := ProvisionLocalApplications(context.Background(), base, appCfg); err == nil {
+		t.Fatal("remote issuer was accepted")
+	}
+	base.IssuerURL = "http://127.0.0.1:8080"
+	appCfg.RedirectURIs = []string{"https://example.com/callback"}
+	if _, err := ProvisionLocalApplications(context.Background(), base, appCfg); err == nil {
+		t.Fatal("non-local redirect was accepted")
 	}
 }
 

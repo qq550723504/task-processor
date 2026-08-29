@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -148,6 +149,9 @@ func ProvisionLocalApplications(ctx context.Context, cfg Config, appCfg LocalApp
 	if err := cfg.validate(); err != nil {
 		return LocalApplicationResult{}, err
 	}
+	if err := validateLocalIssuer(cfg.IssuerURL); err != nil {
+		return LocalApplicationResult{}, err
+	}
 	appCfg.APIName = strings.TrimSpace(appCfg.APIName)
 	appCfg.OIDCName = strings.TrimSpace(appCfg.OIDCName)
 	if appCfg.APIName == "" || appCfg.OIDCName == "" {
@@ -155,6 +159,10 @@ func ProvisionLocalApplications(ctx context.Context, cfg Config, appCfg LocalApp
 	}
 	if len(appCfg.RedirectURIs) == 0 || len(appCfg.PostLogoutRedirectURIs) == 0 {
 		return LocalApplicationResult{}, errors.New("local OIDC redirect URIs are required")
+	}
+	if !equalStrings(appCfg.RedirectURIs, []string{"http://localhost:3000/api/zitadel-auth/callback"}) ||
+		!equalStrings(appCfg.PostLogoutRedirectURIs, []string{"http://localhost:3000"}) {
+		return LocalApplicationResult{}, errors.New("local OIDC redirects must use the fixed localhost acceptance URLs")
 	}
 	provisioned, err := Provision(ctx, cfg)
 	if err != nil {
@@ -166,7 +174,10 @@ func ProvisionLocalApplications(ctx context.Context, cfg Config, appCfg LocalApp
 		return LocalApplicationResult{}, err
 	}
 	result := LocalApplicationResult{ProjectID: provisioned.ProjectID, RecommendedScopes: provisioned.RecommendedScopes}
-	apiApp, ok := findApplication(applications, appCfg.APIName)
+	apiApp, ok, err := findApplicationByType(applications, appCfg.APIName, applicationAPI)
+	if err != nil {
+		return LocalApplicationResult{}, err
+	}
 	if !ok {
 		apiApp, err = client.createAPIApplication(ctx, provisioned.ProjectID, appCfg.APIName)
 		if err != nil {
@@ -180,12 +191,17 @@ func ProvisionLocalApplications(ctx context.Context, cfg Config, appCfg LocalApp
 		return LocalApplicationResult{}, errors.New("ZITADEL API application response did not include app and client ids")
 	}
 
-	oidcApp, ok := findApplication(applications, appCfg.OIDCName)
+	oidcApp, ok, err := findApplicationByType(applications, appCfg.OIDCName, applicationOIDC)
+	if err != nil {
+		return LocalApplicationResult{}, err
+	}
 	if !ok {
 		oidcApp, err = client.createOIDCApplication(ctx, provisioned.ProjectID, appCfg)
 		if err != nil {
 			return LocalApplicationResult{}, err
 		}
+	} else if err := validateExistingOIDCApplication(ctx, client, provisioned.ProjectID, oidcApp, appCfg); err != nil {
+		return LocalApplicationResult{}, err
 	}
 	result.OIDCAppID = oidcApp.ID
 	result.OIDCClientID = oidcApp.clientID()
@@ -252,19 +268,38 @@ type client struct {
 	http    *http.Client
 }
 
+type applicationKind string
+
+const (
+	applicationAPI  applicationKind = "API"
+	applicationOIDC applicationKind = "OIDC"
+)
+
+type apiApplicationConfig struct {
+	ClientID       string `json:"clientId"`
+	ClientSecret   string `json:"clientSecret"`
+	AuthMethodType string `json:"authMethodType"`
+}
+
+type oidcApplicationConfig struct {
+	ClientID                 string   `json:"clientId"`
+	ClientSecret             string   `json:"clientSecret"`
+	RedirectURIs             []string `json:"redirectUris"`
+	ResponseTypes            []string `json:"responseTypes"`
+	GrantTypes               []string `json:"grantTypes"`
+	AppType                  string   `json:"appType"`
+	AuthMethodType           string   `json:"authMethodType"`
+	PostLogoutRedirectURIs   []string `json:"postLogoutRedirectUris"`
+	AccessTokenType          string   `json:"accessTokenType"`
+	AccessTokenRoleAssertion *bool    `json:"accessTokenRoleAssertion"`
+}
+
 type applicationRecord struct {
-	ID        string `json:"id"`
-	AppID     string `json:"appId"`
-	Name      string `json:"name"`
-	APIConfig *struct {
-		ClientID       string `json:"clientId"`
-		ClientSecret   string `json:"clientSecret"`
-		AuthMethodType string `json:"authMethodType"`
-	} `json:"apiConfig"`
-	OIDCConfig *struct {
-		ClientID     string `json:"clientId"`
-		ClientSecret string `json:"clientSecret"`
-	} `json:"oidcConfig"`
+	ID         string                 `json:"id"`
+	AppID      string                 `json:"appId"`
+	Name       string                 `json:"name"`
+	APIConfig  *apiApplicationConfig  `json:"apiConfig"`
+	OIDCConfig *oidcApplicationConfig `json:"oidcConfig"`
 }
 
 func (a applicationRecord) clientID() string {
@@ -308,19 +343,90 @@ func findApplication(applications []applicationRecord, name string) (application
 	return applicationRecord{}, false
 }
 
+func findApplicationByType(applications []applicationRecord, name string, kind applicationKind) (applicationRecord, bool, error) {
+	for _, application := range applications {
+		if strings.TrimSpace(application.Name) != name {
+			continue
+		}
+		application = application.normalized()
+		switch kind {
+		case applicationAPI:
+			if application.APIConfig == nil || application.OIDCConfig != nil {
+				return applicationRecord{}, false, fmt.Errorf("local API application name %q is already used by a different application type", name)
+			}
+			if application.APIConfig.AuthMethodType != "API_AUTH_METHOD_TYPE_BASIC" {
+				return applicationRecord{}, false, fmt.Errorf("local API application %q has unsupported authentication method", name)
+			}
+		case applicationOIDC:
+			if application.OIDCConfig == nil || application.APIConfig != nil {
+				return applicationRecord{}, false, fmt.Errorf("local OIDC application name %q is already used by a different application type", name)
+			}
+		default:
+			return applicationRecord{}, false, errors.New("unsupported local application type")
+		}
+		return application, true, nil
+	}
+	return applicationRecord{}, false, nil
+}
+
+func validateLocalIssuer(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" {
+		return errors.New("local ZITADEL issuer URL is invalid")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "localhost" {
+		ip := net.ParseIP(host)
+		if ip == nil || !ip.IsLoopback() {
+			return errors.New("local ZITADEL issuer URL must use localhost or a loopback address")
+		}
+	}
+	return nil
+}
+
+func validateExistingOIDCApplication(ctx context.Context, client client, projectID string, application applicationRecord, cfg LocalApplicationConfig) error {
+	application, err := client.getApplication(ctx, projectID, application.ID)
+	if err != nil {
+		return err
+	}
+	if application.OIDCConfig == nil || application.APIConfig != nil {
+		return errors.New("existing local OIDC application has an unexpected application type")
+	}
+	config := application.OIDCConfig
+	if !equalStrings(config.RedirectURIs, cfg.RedirectURIs) ||
+		!equalStrings(config.PostLogoutRedirectURIs, cfg.PostLogoutRedirectURIs) ||
+		!equalStrings(config.ResponseTypes, []string{"OIDC_RESPONSE_TYPE_CODE"}) ||
+		!equalStrings(config.GrantTypes, []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"}) ||
+		config.AppType != "OIDC_APP_TYPE_USER_AGENT" ||
+		config.AuthMethodType != "OIDC_AUTH_METHOD_TYPE_NONE" ||
+		config.AccessTokenType != "OIDC_TOKEN_TYPE_BEARER" ||
+		config.AccessTokenRoleAssertion == nil || !*config.AccessTokenRoleAssertion {
+		return fmt.Errorf("existing local OIDC application %q does not match the required localhost acceptance configuration", cfg.OIDCName)
+	}
+	return nil
+}
+
 func (c client) listApplications(ctx context.Context, projectID string) ([]applicationRecord, error) {
 	var response struct {
 		Result []applicationRecord `json:"result"`
 	}
-	if err := c.doJSON(ctx, http.MethodPost, "/management/v1/projects/"+url.PathEscape(projectID)+"/apps/_search", map[string]any{
-		"queries": []map[string]any{{"nameQuery": map[string]any{"name": "", "method": "TEXT_QUERY_METHOD_EQUALS"}}},
-	}, &response); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/management/v1/projects/"+url.PathEscape(projectID)+"/apps/_search", map[string]any{}, &response); err != nil {
 		return nil, err
 	}
 	for index := range response.Result {
 		response.Result[index] = response.Result[index].normalized()
 	}
 	return response.Result, nil
+}
+
+func (c client) getApplication(ctx context.Context, projectID, appID string) (applicationRecord, error) {
+	var response struct {
+		App applicationRecord `json:"app"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/management/v1/projects/"+url.PathEscape(projectID)+"/apps/"+url.PathEscape(appID), nil, &response); err != nil {
+		return applicationRecord{}, err
+	}
+	return response.App.normalized(), nil
 }
 
 func (c client) createAPIApplication(ctx context.Context, projectID, name string) (applicationRecord, error) {
@@ -334,11 +440,9 @@ func (c client) createAPIApplication(ctx context.Context, projectID, name string
 	}, &response); err != nil {
 		return applicationRecord{}, err
 	}
-	return applicationRecord{ID: response.AppID, Name: name, APIConfig: &struct {
-		ClientID       string `json:"clientId"`
-		ClientSecret   string `json:"clientSecret"`
-		AuthMethodType string `json:"authMethodType"`
-	}{ClientID: response.ClientID, ClientSecret: response.ClientSecret, AuthMethodType: "API_AUTH_METHOD_TYPE_BASIC"}}, nil
+	return applicationRecord{ID: response.AppID, Name: name, APIConfig: &apiApplicationConfig{
+		ClientID: response.ClientID, ClientSecret: response.ClientSecret, AuthMethodType: "API_AUTH_METHOD_TYPE_BASIC",
+	}}, nil
 }
 
 func (c client) createOIDCApplication(ctx context.Context, projectID string, cfg LocalApplicationConfig) (applicationRecord, error) {
@@ -361,10 +465,9 @@ func (c client) createOIDCApplication(ctx context.Context, projectID string, cfg
 	}, &response); err != nil {
 		return applicationRecord{}, err
 	}
-	return applicationRecord{ID: response.AppID, Name: cfg.OIDCName, OIDCConfig: &struct {
-		ClientID     string `json:"clientId"`
-		ClientSecret string `json:"clientSecret"`
-	}{ClientID: response.ClientID, ClientSecret: response.ClientSecret}}, nil
+	return applicationRecord{ID: response.AppID, Name: cfg.OIDCName, OIDCConfig: &oidcApplicationConfig{
+		ClientID: response.ClientID, ClientSecret: response.ClientSecret,
+	}}, nil
 }
 
 type userGrant struct {
