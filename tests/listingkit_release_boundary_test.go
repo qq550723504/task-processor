@@ -557,11 +557,7 @@ esac
 }
 
 func TestListingKitImageAgentDrainRunbookDefinesCompleteSafeInventoryAndRecoveryHorizon(t *testing.T) {
-	content, err := os.ReadFile(filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "README.md"))
-	if err != nil {
-		t.Fatalf("read ListingKit runbook: %v", err)
-	}
-	runbook := string(content)
+	runbook := readRepositoryText(t, "..", "deployments", "kubernetes", "listingkit-workbench", "README.md")
 	for _, required := range []string{
 		"ImageAgentWorkflow",
 		"ImageSlotWorkflow",
