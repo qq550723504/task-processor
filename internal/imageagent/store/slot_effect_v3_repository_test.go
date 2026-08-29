@@ -126,6 +126,151 @@ func TestSlotEffectV3PublicationRepositoryConformance(t *testing.T) {
 	}
 }
 
+func TestSlotEffectV3RecoveryRepositoryConformance(t *testing.T) {
+	var baseline recoveryConformanceTrace
+	for index, factory := range newV3ReviewFixtures() {
+		t.Run(factory.name, func(t *testing.T) {
+			trace := runSlotEffectV3RecoveryConformance(t, factory)
+			if index == 0 {
+				baseline = trace
+				return
+			}
+			require.Equal(t, baseline, trace)
+		})
+	}
+}
+
+type recoveryConformanceTrace struct {
+	ProviderUnknownPhase        imageagent.SlotEffectV3Phase
+	ProviderUnknownRepeat       bool
+	RecoveryBlockedPhase        imageagent.SlotEffectV3Phase
+	RecoveryPhase               imageagent.SlotEffectV3Phase
+	RestoredPhase               imageagent.SlotEffectV3Phase
+	SecondRestoreConflict       bool
+	ProviderRedispatchRejected  bool
+	StalePublicationRejected    bool
+	PublicationUnknownPhase     imageagent.SlotEffectV3Phase
+	PublicationUnknownRepeat    bool
+	CorruptPhase                imageagent.SlotEffectV3Phase
+	CorruptCode                 string
+	CorruptMarker               string
+	CorruptRepeat               bool
+	CorruptExplicitRedriveFails bool
+}
+
+func runSlotEffectV3RecoveryConformance(t *testing.T, factory v3ReviewFixtureFactory) recoveryConformanceTrace {
+	t.Helper()
+	ctx := context.Background()
+	trace := recoveryConformanceTrace{}
+
+	provider := factory.new(t)
+	_, _, err := provider.effects.ReserveSlotProviderV3(ctx, provider.reservation)
+	require.NoError(t, err)
+	providerUnknown, err := provider.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: provider.reservation, Phase: imageagent.SlotEffectV3ProviderUnknown, Code: imageagent.SlotProviderOutcomeUnknownCode,
+	})
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3ProviderUnknown, providerUnknown.Phase)
+	providerUnknownRepeat, err := provider.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: provider.reservation, Phase: imageagent.SlotEffectV3ProviderUnknown, Code: imageagent.SlotProviderOutcomeUnknownCode,
+	})
+	require.NoError(t, err)
+	require.Equal(t, providerUnknown, providerUnknownRepeat)
+	recoveryBlocked, err := provider.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: provider.reservation, Phase: imageagent.SlotEffectV3RecoveryBlocked, Code: imageagent.SlotRecoveryBlockedCode,
+	})
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3RecoveryBlocked, recoveryBlocked.Phase)
+	require.Equal(t, imageagent.SlotEffectV3ProviderUnknown, recoveryBlocked.RecoveryPhase)
+	restorer := provider.effects.(imageagent.RecoveryBlockedSlotEffectV3Repository)
+	restored, err := restorer.RestoreRecoveryBlockedEffectV3(ctx, provider.reservation)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3ProviderUnknown, restored.Phase)
+	_, secondRestoreErr := restorer.RestoreRecoveryBlockedEffectV3(ctx, provider.reservation)
+	require.ErrorIs(t, secondRestoreErr, imageagent.ErrRevisionConflict)
+
+	providerDispatch := factory.new(t)
+	_, _, err = providerDispatch.effects.ReserveSlotProviderV3(ctx, providerDispatch.reservation)
+	require.NoError(t, err)
+	_, err = providerDispatch.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: providerDispatch.reservation, Phase: imageagent.SlotEffectV3RecoveryBlocked, Code: imageagent.SlotRecoveryBlockedCode,
+	})
+	require.NoError(t, err)
+	_, providerRedispatchErr := providerDispatch.effects.(imageagent.RecoveryBlockedSlotEffectV3Repository).RestoreRecoveryBlockedEffectV3(ctx, providerDispatch.reservation)
+	require.ErrorIs(t, providerRedispatchErr, imageagent.ErrRevisionConflict)
+
+	publication := factory.new(t)
+	stageV3Attempt(t, publication.effects, publication.reservation)
+	request := v3PublicationRequest(publication.reservation, "publisher-a")
+	_, claim, acquired, err := publication.effects.ClaimSlotPublicationV3(ctx, request)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	_, stalePublicationErr := publication.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: publication.reservation, Phase: imageagent.SlotEffectV3PublicationUnknown, Code: imageagent.SlotPublicationOutcomeUnknownCode,
+		Owner: "publisher-b", Fence: claim.Fence,
+	})
+	require.ErrorIs(t, stalePublicationErr, imageagent.ErrRevisionConflict)
+	publicationUnknown, err := publication.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: publication.reservation, Phase: imageagent.SlotEffectV3PublicationUnknown, Code: imageagent.SlotPublicationOutcomeUnknownCode,
+		Owner: claim.Owner, Fence: claim.Fence,
+	})
+	require.NoError(t, err)
+	publicationRepeat, err := publication.effects.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: publication.reservation, Phase: imageagent.SlotEffectV3PublicationUnknown, Code: imageagent.SlotPublicationOutcomeUnknownCode,
+		Owner: claim.Owner, Fence: claim.Fence,
+	})
+	require.NoError(t, err)
+	require.Equal(t, publicationUnknown, publicationRepeat)
+
+	corrupt := factory.new(t)
+	_, _, err = corrupt.effects.ReserveSlotProviderV3(ctx, corrupt.reservation)
+	require.NoError(t, err)
+	corruptPayload := []byte("{corrupt-json")
+	marker := persistedEffectCorruptionMarker("budget_policy_json", corruptPayload)
+	switch repository := corrupt.effects.(type) {
+	case *memoryRepository:
+		repository.mu.Lock()
+		attempt := repository.slotEffectsV3[slotEffectKey(corrupt.reservation.Identity)]
+		attempt.CorruptionMarker = marker
+		repository.slotEffectsV3[slotEffectKey(corrupt.reservation.Identity)] = attempt
+		repository.mu.Unlock()
+	case *gormRepository:
+		require.NoError(t, slotEffectV3IdentityWhere(repository.db.Model(&slotExternalEffectV3Record{}), corrupt.reservation.Identity).
+			Update("budget_policy_json", corruptPayload).Error)
+	default:
+		t.Fatalf("unsupported repository type %T", corrupt.effects)
+	}
+	corruptor := corrupt.effects.(imageagent.CorruptSlotEffectV3Repository)
+	corruptBlocked, err := corruptor.BlockCorruptSlotEffectV3(ctx, corrupt.reservation.Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3RecoveryBlocked, corruptBlocked.Phase)
+	require.Equal(t, imageagent.SlotRecoveryBlockedCode, corruptBlocked.BlockedCode)
+	require.Equal(t, marker, corruptBlocked.CorruptionMarker)
+	require.Empty(t, corruptBlocked.RecoveryPhase)
+	corruptRepeat, err := corruptor.BlockCorruptSlotEffectV3(ctx, corrupt.reservation.Identity)
+	require.NoError(t, err)
+	require.Equal(t, corruptBlocked, corruptRepeat)
+	_, corruptRestoreErr := corrupt.effects.(imageagent.RecoveryBlockedSlotEffectV3Repository).RestoreRecoveryBlockedEffectV3(ctx, corrupt.reservation)
+	require.ErrorIs(t, corruptRestoreErr, imageagent.ErrRevisionConflict)
+
+	trace.ProviderUnknownPhase = providerUnknown.Phase
+	trace.ProviderUnknownRepeat = reflect.DeepEqual(providerUnknown, providerUnknownRepeat)
+	trace.RecoveryBlockedPhase = recoveryBlocked.Phase
+	trace.RecoveryPhase = recoveryBlocked.RecoveryPhase
+	trace.RestoredPhase = restored.Phase
+	trace.SecondRestoreConflict = errors.Is(secondRestoreErr, imageagent.ErrRevisionConflict)
+	trace.ProviderRedispatchRejected = errors.Is(providerRedispatchErr, imageagent.ErrRevisionConflict)
+	trace.StalePublicationRejected = errors.Is(stalePublicationErr, imageagent.ErrRevisionConflict)
+	trace.PublicationUnknownPhase = publicationUnknown.Phase
+	trace.PublicationUnknownRepeat = reflect.DeepEqual(publicationUnknown, publicationRepeat)
+	trace.CorruptPhase = corruptBlocked.Phase
+	trace.CorruptCode = corruptBlocked.BlockedCode
+	trace.CorruptMarker = corruptBlocked.CorruptionMarker
+	trace.CorruptRepeat = reflect.DeepEqual(corruptBlocked, corruptRepeat)
+	trace.CorruptExplicitRedriveFails = errors.Is(corruptRestoreErr, imageagent.ErrRevisionConflict)
+	return trace
+}
+
 type publicationConformanceTrace struct {
 	FirstPhase              imageagent.SlotEffectV3Phase
 	FirstOwner              string
