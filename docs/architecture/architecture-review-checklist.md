@@ -60,6 +60,7 @@ Representative guard references must remain a subset of the current guard covera
 At minimum, structural review should consider representative guards such as:
 
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
+- `depguard: domain_app_httpapi_boundaries`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
 - `TestProductDomainDoesNotDependOnOuterAdapters`
 - `depguard: listingkit_subdomains_root_facade`
@@ -106,6 +107,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestAuthenticatedIdentityRootImportsStayRestricted`
 - `TestAuthenticatedIdentityRootImportScannerResolvesAliases`
 - `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
+- `depguard: domain_app_httpapi_boundaries`
 - `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted`
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted`

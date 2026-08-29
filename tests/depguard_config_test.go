@@ -203,3 +203,55 @@ func TestTemporalRuntimeDepguardPatternCoversHTTPAPIPackageTrees(t *testing.T) {
 		}
 	}
 }
+
+func TestDomainAppHTTPAPIDepguardPatternCoversBusinessTrees(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+
+	config := string(content)
+	start := strings.Index(config, "      domain_app_httpapi_boundaries:\n")
+	if start == -1 {
+		t.Fatalf("%s must define domain_app_httpapi_boundaries", configPath)
+	}
+	end := strings.Index(config[start+1:], "\n      platform_registration_boundaries:")
+	if end == -1 {
+		t.Fatalf("%s must keep domain_app_httpapi_boundaries before platform_registration_boundaries", configPath)
+	}
+	config = config[start : start+1+end]
+
+	for _, packagePath := range []string{
+		"amazon",
+		"amazonlisting",
+		"asset",
+		"catalog",
+		"listing",
+		"listingkit",
+		"marketplace",
+		"pricing",
+		"productenrich",
+		"productimage",
+		"publishing",
+		"sds",
+		"shein",
+		"temu",
+	} {
+		for _, pattern := range []string{
+			fmt.Sprintf(`- "**/internal/%s/*.go"`, packagePath),
+			fmt.Sprintf(`- "**/internal/%s/**/*.go"`, packagePath),
+		} {
+			if !strings.Contains(config, pattern) {
+				t.Errorf("%s must cover domain package files with %s", configPath, pattern)
+			}
+		}
+	}
+
+	for _, suffix := range []string{"$", "/"} {
+		pattern := fmt.Sprintf(`- pkg: "task-processor/internal/app/httpapi%s"`, suffix)
+		if !strings.Contains(config, pattern) {
+			t.Errorf("%s must deny app/httpapi package-tree pattern %s", configPath, pattern)
+		}
+	}
+}
