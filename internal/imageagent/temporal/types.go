@@ -42,6 +42,7 @@ const (
 	activityPublishApproved             = "imageagent.publish_approved.v2"
 	activityExecuteSlotV3               = "imageagent.execute_slot.v3"
 	activityRecoverEffectV3             = "imageagent.recover_effect.v3"
+	activityPersistRecoveryBlockedV3    = "imageagent.persist_recovery_blocked.v3"
 	activityPublishApprovedV3           = "imageagent.publish_approved.v3"
 	workflowNameCompatibilityCanary     = "ImageAgentCompatibilityCanaryWorkflow"
 	signalApproveResults                = "approve_results"
@@ -56,7 +57,7 @@ const (
 	defaultMaxConcurrentSlots           = 4
 	QueryWorkflowProjection             = "image_agent_projection"
 	EffectRecoveryWorkflowName          = "ImageAgentEffectRecoveryWorkflow"
-	effectRecoveryBlockedCode           = "recovery_blocked"
+	effectRecoveryBlockedCode           = imageagent.SlotRecoveryBlockedCode
 )
 
 type WorkerWireMode string

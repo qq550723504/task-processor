@@ -189,6 +189,7 @@ func TestSlotEffectV3BlockedPolicyMapsExactPhaseCodeAndActions(t *testing.T) {
 		{SlotEffectV3ProviderUnknown, SlotProviderOutcomeUnknownCode, []Action{ActionCancel}},
 		{SlotEffectV3StagingUnknown, SlotStagingOutcomeUnknownCode, []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}},
 		{SlotEffectV3PublicationUnknown, SlotPublicationOutcomeUnknownCode, []Action{ActionEditPlan, ActionCancel}},
+		{SlotEffectV3RecoveryBlocked, SlotRecoveryBlockedCode, []Action{ActionCancel}},
 	} {
 		policy, err := SlotEffectV3BlockedPolicyFor(tc.phase, tc.code)
 		require.NoError(t, err)
@@ -234,6 +235,7 @@ func TestSlotEffectV3BlockedPolicyRejectsUnknownAndMismatchedCodes(t *testing.T)
 		code  string
 	}{
 		{SlotEffectV3PublicationUnknown, SlotProviderOutcomeUnknownCode},
+		{SlotEffectV3RecoveryBlocked, SlotPublicationOutcomeUnknownCode},
 		{SlotEffectV3ProviderUnknown, "future_policy"},
 		{SlotEffectV3Phase("future_phase"), SlotProviderOutcomeUnknownCode},
 	} {

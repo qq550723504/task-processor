@@ -367,7 +367,10 @@ func (r *memoryRepository) BlockSlotEffectV3(_ context.Context, transition image
 		}
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
 	}
-	if isBlockedV3Phase(existing.Phase) || !canBlockV3(existing.Phase, transition.Phase) {
+	if transition.Phase != imageagent.SlotEffectV3RecoveryBlocked && isBlockedV3Phase(existing.Phase) {
+		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
+	}
+	if !canBlockV3(existing.Phase, transition.Phase) {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
 	}
 	if transition.Phase == imageagent.SlotEffectV3PublicationUnknown && (existing.Publication.Owner != transition.Owner || existing.Publication.Fence != transition.Fence) {
@@ -1026,7 +1029,10 @@ func (r *gormRepository) BlockSlotEffectV3(ctx context.Context, transition image
 			}
 			return imageagent.ErrRevisionConflict
 		}
-		if isBlockedV3Phase(current.Phase) || !canBlockV3(current.Phase, transition.Phase) {
+		if transition.Phase != imageagent.SlotEffectV3RecoveryBlocked && isBlockedV3Phase(current.Phase) {
+			return imageagent.ErrRevisionConflict
+		}
+		if !canBlockV3(current.Phase, transition.Phase) {
 			return imageagent.ErrRevisionConflict
 		}
 		if transition.Phase == imageagent.SlotEffectV3PublicationUnknown && (current.Publication.Owner != transition.Owner || current.Publication.Fence != transition.Fence) {
@@ -1177,7 +1183,7 @@ func validateBlockTransitionV3(transition imageagent.SlotEffectV3BlockTransition
 }
 
 func isBlockedV3Phase(phase imageagent.SlotEffectV3Phase) bool {
-	return phase == imageagent.SlotEffectV3ProviderUnknown || phase == imageagent.SlotEffectV3StagingUnknown || phase == imageagent.SlotEffectV3PublicationUnknown
+	return phase == imageagent.SlotEffectV3ProviderUnknown || phase == imageagent.SlotEffectV3StagingUnknown || phase == imageagent.SlotEffectV3PublicationUnknown || phase == imageagent.SlotEffectV3RecoveryBlocked
 }
 
 func canBlockV3(current, blocked imageagent.SlotEffectV3Phase) bool {
@@ -1188,6 +1194,15 @@ func canBlockV3(current, blocked imageagent.SlotEffectV3Phase) bool {
 		return current == imageagent.SlotEffectV3StagingPrepared
 	case imageagent.SlotEffectV3PublicationUnknown:
 		return current == imageagent.SlotEffectV3PublicationClaimed
+	case imageagent.SlotEffectV3RecoveryBlocked:
+		return current == imageagent.SlotEffectV3ProviderClaimed ||
+			current == imageagent.SlotEffectV3ProviderNotDispatched ||
+			current == imageagent.SlotEffectV3StagingPrepared ||
+			current == imageagent.SlotEffectV3ArtifactStaged ||
+			current == imageagent.SlotEffectV3PublicationClaimed ||
+			current == imageagent.SlotEffectV3ProviderUnknown ||
+			current == imageagent.SlotEffectV3StagingUnknown ||
+			current == imageagent.SlotEffectV3PublicationUnknown
 	default:
 		return false
 	}

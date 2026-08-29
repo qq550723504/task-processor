@@ -495,16 +495,19 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		AssetCatalog:   input.AssetCatalog,
 		ProductContext: input.AssetCatalog.ProductContext,
 	}
-	effect, err := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, slotEffectReservationV3(executionInput).Identity)
+	reservation := slotEffectReservationV3(executionInput)
+	effect, err := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
 	if err != nil {
 		if errors.Is(err, imageagent.ErrRunNotFound) {
-			return effectRecoveryBlockedResult(input), nil
+			return a.persistMissingEffectRecoveryBlockedV3(ctx, input, reservation)
 		}
 		return EffectRecoveryResult{}, persistedSlotEffectV3RepositoryError(err)
 	}
 	if err := validatePersistedSlotEffectV3(effect); err != nil {
-		return effectRecoveryBlockedResult(input), nil
+		return EffectRecoveryResult{}, err
 	}
+	reservation.Policy = effect.Policy
+	reservation.Quote = effect.Quote
 	switch effect.Phase {
 	case imageagent.SlotEffectV3PublicationComplete:
 		return EffectRecoveryResult{
@@ -518,14 +521,23 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 	case imageagent.SlotEffectV3PublicationUnknown:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomePublicationUnknown, effect.Phase, slotPublicationOutcomeUnknownCode), nil
 	case imageagent.SlotEffectV3ProviderNotDispatched:
+		return a.blockEffectRecoveryV3(ctx, input, reservation)
+	case imageagent.SlotEffectV3ProviderClaimed:
+		if effect.Quote.Fingerprint != "" && effect.BudgetStatus == imageagent.SlotBudgetReleased {
+			return a.blockEffectRecoveryV3(ctx, input, reservation)
+		}
+	case imageagent.SlotEffectV3RecoveryBlocked:
 		return effectRecoveryBlockedResult(input), nil
 	}
+	budgetAuthorization := effect.Quote.Fingerprint != ""
 	published, err := a.ExecuteSlotV3(ctx, ExecuteSlotV3ActivityInput{
 		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
 		Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey:             executionInput.IdempotencyKey,
 		AssetCatalog:               input.AssetCatalog,
 		ExternalEffectFinalization: true,
+		BudgetAuthorization:        budgetAuthorization,
+		BudgetPolicy:               effect.Policy,
 	})
 	if err == nil {
 		return EffectRecoveryResult{
@@ -537,6 +549,82 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		return result, nil
 	}
 	return EffectRecoveryResult{}, err
+}
+
+func (a *Activities) PersistRecoveryBlockedEffectV3(ctx context.Context, input EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {
+	if a.slotEffectsV3 == nil {
+		return EffectRecoveryResult{}, fmt.Errorf("image agent v3 activity dependencies are incomplete")
+	}
+	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	if err != nil {
+		return EffectRecoveryResult{}, err
+	}
+	executionInput := imageagent.SlotExecutionInput{
+		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+		PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
+		IdempotencyKey: slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
+		AssetCatalog:   input.AssetCatalog,
+		ProductContext: input.AssetCatalog.ProductContext,
+	}
+	reservation := slotEffectReservationV3(executionInput)
+	effect, err := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
+	if err != nil {
+		if errors.Is(err, imageagent.ErrRunNotFound) {
+			return a.persistMissingEffectRecoveryBlockedV3(ctx, input, reservation)
+		}
+		return EffectRecoveryResult{}, persistedSlotEffectV3RepositoryError(err)
+	}
+	if err := validatePersistedSlotEffectV3(effect); err != nil {
+		return EffectRecoveryResult{}, err
+	}
+	reservation.Policy = effect.Policy
+	reservation.Quote = effect.Quote
+	switch effect.Phase {
+	case imageagent.SlotEffectV3PublicationComplete:
+		return EffectRecoveryResult{Outcome: EffectRecoveryOutcomePublished, Published: effect.Published, EffectPhase: effect.Phase}, nil
+	case imageagent.SlotEffectV3ProviderUnknown:
+		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeProviderUnknown, effect.Phase, slotProviderOutcomeUnknownCode), nil
+	case imageagent.SlotEffectV3StagingUnknown:
+		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeStagingUnknown, effect.Phase, slotStagingOutcomeUnknownCode), nil
+	case imageagent.SlotEffectV3PublicationUnknown:
+		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomePublicationUnknown, effect.Phase, slotPublicationOutcomeUnknownCode), nil
+	case imageagent.SlotEffectV3RecoveryBlocked:
+		return effectRecoveryBlockedResult(input), nil
+	}
+	return a.blockEffectRecoveryV3(ctx, input, reservation)
+}
+
+func (a *Activities) persistMissingEffectRecoveryBlockedV3(ctx context.Context, input EffectRecoveryWorkflowInput, reservation imageagent.SlotEffectV3Reservation) (EffectRecoveryResult, error) {
+	effect, _, err := a.slotEffectsV3.ReserveSlotProviderV3(ctx, reservation)
+	if err != nil {
+		return EffectRecoveryResult{}, persistedSlotEffectV3RepositoryError(err)
+	}
+	if err := validatePersistedSlotEffectV3(effect); err != nil {
+		return EffectRecoveryResult{}, err
+	}
+	reservation.Policy = effect.Policy
+	reservation.Quote = effect.Quote
+	if effect.Phase == imageagent.SlotEffectV3RecoveryBlocked {
+		return effectRecoveryBlockedResult(input), nil
+	}
+	return a.blockEffectRecoveryV3(ctx, input, reservation)
+}
+
+func (a *Activities) blockEffectRecoveryV3(ctx context.Context, input EffectRecoveryWorkflowInput, reservation imageagent.SlotEffectV3Reservation) (EffectRecoveryResult, error) {
+	blocked, err := a.slotEffectsV3.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+		Reservation: reservation,
+		Phase:       imageagent.SlotEffectV3RecoveryBlocked,
+		Code:        imageagent.SlotRecoveryBlockedCode,
+	})
+	if err != nil {
+		return EffectRecoveryResult{}, persistedSlotEffectV3RepositoryError(err)
+	}
+	return EffectRecoveryResult{
+		Outcome:     EffectRecoveryOutcomeRecoveryBlocked,
+		Published:   imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: input.Attempt},
+		EffectPhase: blocked.Phase,
+		BlockedCode: blocked.BlockedCode,
+	}, nil
 }
 
 func (a *Activities) publicationRecoveryError(message string, publication imageagent.PublicationClaim, cause error) error {
@@ -578,8 +666,6 @@ func effectRecoveryResultFromError(err error) (EffectRecoveryResult, bool) {
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeStagingUnknown, imageagent.SlotEffectV3StagingUnknown, slotStagingOutcomeUnknownCode), true
 	case slotPublicationOutcomeUnknownCode:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomePublicationUnknown, imageagent.SlotEffectV3PublicationUnknown, slotPublicationOutcomeUnknownCode), true
-	case slotEffectPhaseInvalidCode, slotEffectPolicyInvalidCode:
-		return EffectRecoveryResult{Outcome: EffectRecoveryOutcomeRecoveryBlocked, BlockedCode: effectRecoveryBlockedCode}, true
 	default:
 		return EffectRecoveryResult{}, false
 	}
@@ -604,7 +690,8 @@ func validatePersistedSlotEffectV3(effect imageagent.SlotEffectV3Attempt) error 
 		switch effect.Phase {
 		case imageagent.SlotEffectV3ProviderClaimed, imageagent.SlotEffectV3StagingPrepared, imageagent.SlotEffectV3ArtifactStaged,
 			imageagent.SlotEffectV3PublicationClaimed, imageagent.SlotEffectV3PublicationComplete,
-			imageagent.SlotEffectV3ProviderUnknown, imageagent.SlotEffectV3StagingUnknown, imageagent.SlotEffectV3PublicationUnknown:
+			imageagent.SlotEffectV3ProviderUnknown, imageagent.SlotEffectV3StagingUnknown, imageagent.SlotEffectV3PublicationUnknown,
+			imageagent.SlotEffectV3RecoveryBlocked:
 		default:
 			code = slotEffectPhaseInvalidCode
 		}

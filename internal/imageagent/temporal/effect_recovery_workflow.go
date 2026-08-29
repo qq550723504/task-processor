@@ -10,6 +10,11 @@ import (
 	"task-processor/internal/imageagent"
 )
 
+const (
+	effectRecoveryPublicationRetryAttempts = 3
+	effectRecoveryPublicationRetryWindow   = 5 * time.Minute
+)
+
 func ImageAgentEffectRecoveryWorkflow(ctx workflow.Context, input EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 10 * time.Minute,
@@ -19,6 +24,8 @@ func ImageAgentEffectRecoveryWorkflow(ctx workflow.Context, input EffectRecovery
 			NonRetryableErrorTypes: []string{slotPublicationRecoveryErrorType},
 		},
 	})
+	retryDeadline := workflow.Now(ctx).Add(effectRecoveryPublicationRetryWindow)
+	publicationRecoveryAttempts := 0
 	for {
 		var result EffectRecoveryResult
 		err := workflow.ExecuteActivity(ctx, activityRecoverEffectV3, input).Get(ctx, &result)
@@ -27,10 +34,14 @@ func ImageAgentEffectRecoveryWorkflow(ctx workflow.Context, input EffectRecovery
 		}
 		retryDelay, recoverPublication := slotPublicationRecoveryDelay(err)
 		if !recoverPublication {
-			return effectRecoveryBlockedResult(input), nil
+			return persistEffectRecoveryBlocked(ctx, input)
+		}
+		publicationRecoveryAttempts++
+		if publicationRecoveryAttempts >= effectRecoveryPublicationRetryAttempts || !workflow.Now(ctx).Add(retryDelay).Before(retryDeadline) {
+			return persistEffectRecoveryBlocked(ctx, input)
 		}
 		if sleepErr := workflow.Sleep(ctx, retryDelay); sleepErr != nil {
-			return effectRecoveryBlockedResult(input), nil
+			return persistEffectRecoveryBlocked(ctx, input)
 		}
 	}
 }
@@ -42,6 +53,15 @@ func effectRecoveryBlockedResult(input EffectRecoveryWorkflowInput) EffectRecove
 			SlotID:  strings.TrimSpace(input.Slot.ID),
 			Attempt: input.Attempt,
 		},
+		EffectPhase: imageagent.SlotEffectV3RecoveryBlocked,
 		BlockedCode: effectRecoveryBlockedCode,
 	}
+}
+
+func persistEffectRecoveryBlocked(ctx workflow.Context, input EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {
+	var result EffectRecoveryResult
+	if err := workflow.ExecuteActivity(ctx, activityPersistRecoveryBlockedV3, input).Get(ctx, &result); err != nil {
+		return EffectRecoveryResult{}, err
+	}
+	return result, nil
 }
