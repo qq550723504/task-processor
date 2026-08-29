@@ -104,7 +104,7 @@ type ImageAgentRun = {
   block?: ImageAgentBlock;
 };
 
-export type ImageAgentWorkspaceAsset = {
+type ImageAgentWorkspaceAsset = {
   id: string;
   label: string;
   display_url: string;
