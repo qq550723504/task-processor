@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"regexp"
 	"strings"
 	"sync"
@@ -85,6 +86,165 @@ func TestSlotEffectV3RepositoryContract(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, attempt, replayed)
 		})
+	}
+}
+
+func TestSlotEffectV3ProviderBudgetRepositoryConformance(t *testing.T) {
+	factories := []struct {
+		name string
+		new  func(*testing.T) imageagent.Repository
+	}{
+		{name: "memory", new: func(*testing.T) imageagent.Repository { return NewMemoryRepository() }},
+		{name: "gorm", new: func(t *testing.T) imageagent.Repository { return NewGormRepository(newConcurrentSQLite(t)) }},
+	}
+	var baseline providerBudgetConformanceTrace
+	for index, factory := range factories {
+		t.Run(factory.name, func(t *testing.T) {
+			repository := factory.new(t)
+			scope, policy := initializeBudgetedSlotEffectRun(t, repository, "run-provider-budget-conformance")
+			trace := exerciseProviderBudgetConformance(t, repository, budgetedV3Reservation(scope, policy, 1, "quote-conformance"))
+			if index == 0 {
+				baseline = trace
+				return
+			}
+			require.Equal(t, baseline, trace)
+		})
+	}
+}
+
+type providerBudgetConformanceTrace struct {
+	ReservedAttempt          providerBudgetAttempt
+	ReservedAcquired         bool
+	ReservedAccounting       providerBudgetAccounting
+	RepeatedAttempt          providerBudgetAttempt
+	RepeatedAcquired         bool
+	RepeatedAccounting       providerBudgetAccounting
+	ConflictIsRevision       bool
+	NotDispatchedAttempt     providerBudgetAttempt
+	NotDispatchedAccounting  providerBudgetAccounting
+	NotDispatchedRepeat      providerBudgetAttempt
+	RedispatchedAttempt      providerBudgetAttempt
+	RedispatchedAcquired     bool
+	RedispatchedAccounting   providerBudgetAccounting
+	ExceededIsBudgetExceeded bool
+	SettledAttempt           providerBudgetAttempt
+	SettledAccounting        providerBudgetAccounting
+	SettledRepeat            providerBudgetAttempt
+	SettlementConflict       bool
+}
+
+type providerBudgetAttempt struct {
+	Identity         imageagent.SlotExternalEffectIdentity
+	IdempotencyKey   string
+	InputFingerprint string
+	Phase            imageagent.SlotEffectV3Phase
+	BudgetStatus     imageagent.SlotBudgetStatus
+	Policy           imageagent.BudgetPolicy
+	Quote            imageagent.SlotUsageQuote
+	Receipt          imageagent.SlotUsageReceipt
+}
+
+type providerBudgetAccounting struct {
+	Policy    imageagent.BudgetPolicy
+	Committed imageagent.UsageVector
+	Reserved  imageagent.UsageVector
+}
+
+func exerciseProviderBudgetConformance(t *testing.T, repository imageagent.Repository, reservation imageagent.SlotEffectV3Reservation) providerBudgetConformanceTrace {
+	t.Helper()
+	ctx := context.Background()
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	var trace providerBudgetConformanceTrace
+	var err error
+	var attempt imageagent.SlotEffectV3Attempt
+
+	attempt, trace.ReservedAcquired, err = effects.ReserveSlotProviderV3(ctx, reservation)
+	require.NoError(t, err)
+	require.True(t, trace.ReservedAcquired)
+	trace.ReservedAttempt = providerBudgetAttemptFrom(attempt)
+	trace.ReservedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+
+	attempt, trace.RepeatedAcquired, err = effects.ReserveSlotProviderV3(ctx, reservation)
+	require.NoError(t, err)
+	require.False(t, trace.RepeatedAcquired)
+	trace.RepeatedAttempt = providerBudgetAttemptFrom(attempt)
+	trace.RepeatedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+
+	conflict := reservation
+	conflict.InputFingerprint = "conflicting-input"
+	_, _, err = effects.ReserveSlotProviderV3(ctx, conflict)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+	trace.ConflictIsRevision = errors.Is(err, imageagent.ErrRevisionConflict)
+
+	attempt, err = effects.RecordSlotProviderNotDispatchedV3(ctx, reservation)
+	require.NoError(t, err)
+	trace.NotDispatchedAttempt = providerBudgetAttemptFrom(attempt)
+	trace.NotDispatchedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+	attempt, err = effects.RecordSlotProviderNotDispatchedV3(ctx, reservation)
+	require.NoError(t, err)
+	trace.NotDispatchedRepeat = providerBudgetAttemptFrom(attempt)
+
+	attempt, trace.RedispatchedAcquired, err = effects.ReserveSlotProviderV3(ctx, reservation)
+	require.NoError(t, err)
+	require.True(t, trace.RedispatchedAcquired)
+	trace.RedispatchedAttempt = providerBudgetAttemptFrom(attempt)
+	trace.RedispatchedAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+
+	denied := budgetedV3Reservation(reservation.Identity.RunScope, reservation.Policy, 2, "quote-denied-conformance")
+	_, _, err = effects.ReserveSlotProviderV3(ctx, denied)
+	require.ErrorIs(t, err, imageagent.ErrBudgetExceeded)
+	trace.ExceededIsBudgetExceeded = errors.Is(err, imageagent.ErrBudgetExceeded)
+
+	receipt := imageagent.SlotUsageReceipt{Actual: imageagent.UsageVector{Images: 1, AgentSteps: 1}, ProviderRequestIDs: []string{"request-conformance"}, CostBasis: imageagent.UsageCostReservedUpperBound}
+	attempt, err = effects.SettleSlotProviderV3(ctx, reservation, receipt)
+	require.NoError(t, err)
+	trace.SettledAttempt = providerBudgetAttemptFrom(attempt)
+	trace.SettledAccounting = readProviderBudgetAccounting(t, repository, reservation.Identity.RunScope)
+	attempt, err = effects.SettleSlotProviderV3(ctx, reservation, receipt)
+	require.NoError(t, err)
+	trace.SettledRepeat = providerBudgetAttemptFrom(attempt)
+	conflictingReceipt := receipt
+	conflictingReceipt.ProviderRequestIDs = []string{"other-request"}
+	_, err = effects.SettleSlotProviderV3(ctx, reservation, conflictingReceipt)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+	trace.SettlementConflict = errors.Is(err, imageagent.ErrRevisionConflict)
+	return trace
+}
+
+func providerBudgetAttemptFrom(attempt imageagent.SlotEffectV3Attempt) providerBudgetAttempt {
+	return providerBudgetAttempt{
+		Identity: attempt.Identity, IdempotencyKey: attempt.IdempotencyKey, InputFingerprint: attempt.InputFingerprint,
+		Phase: attempt.Phase, BudgetStatus: attempt.BudgetStatus, Policy: attempt.Policy, Quote: attempt.Quote, Receipt: attempt.Receipt,
+	}
+}
+
+func readProviderBudgetAccounting(t *testing.T, repository imageagent.Repository, scope imageagent.RunScope) providerBudgetAccounting {
+	t.Helper()
+	switch typed := repository.(type) {
+	case *memoryRepository:
+		typed.mu.Lock()
+		defer typed.mu.Unlock()
+		run := typed.runs[scopeKey(scope)]
+		policy, err := run.Budget.Policy()
+		require.NoError(t, err)
+		committed, err := imageagent.UsageVectorFromBudgetUsage(run.Usage)
+		require.NoError(t, err)
+		return providerBudgetAccounting{Policy: policy, Committed: committed, Reserved: typed.reservedUsage[scopeKey(scope)]}
+	case *gormRepository:
+		var row runRecord
+		require.NoError(t, runScopeWhere(typed.db, scope).First(&row).Error)
+		run, err := recordToRun(row)
+		require.NoError(t, err)
+		policy, err := run.Budget.Policy()
+		require.NoError(t, err)
+		committed, err := imageagent.UsageVectorFromBudgetUsage(run.Usage)
+		require.NoError(t, err)
+		reserved, err := decodeReservedUsage(row.ReservedUsageJSON)
+		require.NoError(t, err)
+		return providerBudgetAccounting{Policy: policy, Committed: committed, Reserved: reserved}
+	default:
+		t.Fatalf("unsupported repository type %T", repository)
+		return providerBudgetAccounting{}
 	}
 }
 

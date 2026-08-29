@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"task-processor/internal/imageagent"
+	"task-processor/internal/imageagent/effectpolicy"
 )
 
 func (r *memoryRepository) ReserveSlotProviderV3(_ context.Context, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, bool, error) {
@@ -29,38 +30,18 @@ func (r *memoryRepository) ReserveSlotProviderV3(_ context.Context, reservation 
 	runKey := scopeKey(reservation.Identity.RunScope)
 	key := slotEffectKey(reservation.Identity)
 	if existing, ok := r.slotEffectsV3[key]; ok {
-		if err := imageagent.ValidateSlotEffectV3AttemptPolicy(existing); err != nil {
+		accounting, err := providerAccountingSnapshot(r.runs[runKey], r.reservedUsage[runKey])
+		if err != nil {
 			return imageagent.SlotEffectV3Attempt{}, false, err
 		}
-		if !sameSlotEffectV3Reservation(existing, reservation) {
-			return imageagent.SlotEffectV3Attempt{}, false, imageagent.ErrRevisionConflict
+		decision, err := effectpolicy.ReserveProvider(&existing, reservation, accounting)
+		if err != nil {
+			return imageagent.SlotEffectV3Attempt{}, false, err
 		}
-		if existing.Phase == imageagent.SlotEffectV3ProviderNotDispatched {
-			if reservation.Quote.Fingerprint != "" {
-				run := r.runs[runKey]
-				nextReserved, err := authorizeSlotBudget(run, r.reservedUsage[runKey], reservation)
-				if err != nil {
-					return imageagent.SlotEffectV3Attempt{}, false, err
-				}
-				r.reservedUsage[runKey] = nextReserved
-				existing.BudgetStatus = imageagent.SlotBudgetReserved
-			}
-			existing.Phase = imageagent.SlotEffectV3ProviderClaimed
-			r.slotEffectsV3[key] = cloneSlotEffectV3(existing)
-			return cloneSlotEffectV3(existing), true, nil
+		if err := r.persistMemoryProviderDecision(runKey, key, decision.AccountingDecision); err != nil {
+			return imageagent.SlotEffectV3Attempt{}, false, err
 		}
-		if existing.BudgetStatus == imageagent.SlotBudgetReleased && reservation.Quote.Fingerprint != "" {
-			run := r.runs[runKey]
-			nextReserved, err := authorizeSlotBudget(run, r.reservedUsage[runKey], reservation)
-			if err != nil {
-				return imageagent.SlotEffectV3Attempt{}, false, err
-			}
-			r.reservedUsage[runKey] = nextReserved
-			existing.BudgetStatus = imageagent.SlotBudgetReserved
-			r.slotEffectsV3[key] = cloneSlotEffectV3(existing)
-			return cloneSlotEffectV3(existing), true, nil
-		}
-		return cloneSlotEffectV3(existing), false, nil
+		return cloneSlotEffectV3(decision.Attempt), decision.Acquired, nil
 	}
 	for _, existing := range r.slotEffectsV3 {
 		if existing.Identity.RunScope == reservation.Identity.RunScope && existing.IdempotencyKey == reservation.IdempotencyKey {
@@ -70,18 +51,18 @@ func (r *memoryRepository) ReserveSlotProviderV3(_ context.Context, reservation 
 			return imageagent.SlotEffectV3Attempt{}, false, imageagent.ErrRevisionConflict
 		}
 	}
-	created := imageagent.SlotEffectV3Attempt{Identity: reservation.Identity, IdempotencyKey: reservation.IdempotencyKey, InputFingerprint: reservation.InputFingerprint, Phase: imageagent.SlotEffectV3ProviderClaimed, Policy: reservation.Policy, Quote: cloneSlotUsageQuote(reservation.Quote)}
-	if reservation.Quote.Fingerprint != "" {
-		run := r.runs[runKey]
-		reserved, err := authorizeSlotBudget(run, r.reservedUsage[runKey], reservation)
-		if err != nil {
-			return imageagent.SlotEffectV3Attempt{}, false, err
-		}
-		r.reservedUsage[runKey] = reserved
-		created.BudgetStatus = imageagent.SlotBudgetReserved
+	accounting, err := providerAccountingSnapshot(r.runs[runKey], r.reservedUsage[runKey])
+	if err != nil {
+		return imageagent.SlotEffectV3Attempt{}, false, err
 	}
-	r.slotEffectsV3[key] = cloneSlotEffectV3(created)
-	return cloneSlotEffectV3(created), true, nil
+	decision, err := effectpolicy.ReserveProvider(nil, reservation, accounting)
+	if err != nil {
+		return imageagent.SlotEffectV3Attempt{}, false, err
+	}
+	if err := r.persistMemoryProviderDecision(runKey, key, decision.AccountingDecision); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, false, err
+	}
+	return cloneSlotEffectV3(decision.Attempt), decision.Acquired, nil
 }
 
 func (r *memoryRepository) SettleSlotProviderV3(_ context.Context, reservation imageagent.SlotEffectV3Reservation, receipt imageagent.SlotUsageReceipt) (imageagent.SlotEffectV3Attempt, error) {
@@ -99,32 +80,19 @@ func (r *memoryRepository) RecordSlotProviderNotDispatchedV3(_ context.Context, 
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
 	}
-	if !sameSlotEffectV3Reservation(effect, reservation) {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
+	runKey := scopeKey(reservation.Identity.RunScope)
+	accounting, err := providerAccountingSnapshot(r.runs[runKey], r.reservedUsage[runKey])
+	if err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
 	}
-	if effect.Phase == imageagent.SlotEffectV3ProviderNotDispatched {
-		return cloneSlotEffectV3(effect), nil
+	decision, err := effectpolicy.RecordProviderNotDispatched(effect, reservation, accounting)
+	if err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
 	}
-	if effect.Phase != imageagent.SlotEffectV3ProviderClaimed {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
+	if err := r.persistMemoryProviderDecision(runKey, key, decision); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
 	}
-	if reservation.Quote.Fingerprint != "" {
-		if effect.BudgetStatus != imageagent.SlotBudgetReserved {
-			return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
-		}
-		runKey := scopeKey(reservation.Identity.RunScope)
-		reserved, err := imageagent.CheckedSubtractUsage(r.reservedUsage[runKey], effect.Quote.Maximum)
-		if err != nil {
-			return imageagent.SlotEffectV3Attempt{}, err
-		}
-		r.reservedUsage[runKey] = reserved
-		effect.BudgetStatus = imageagent.SlotBudgetReleased
-	} else if effect.BudgetStatus != "" {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
-	}
-	effect.Phase = imageagent.SlotEffectV3ProviderNotDispatched
-	r.slotEffectsV3[key] = cloneSlotEffectV3(effect)
-	return cloneSlotEffectV3(effect), nil
+	return cloneSlotEffectV3(decision.Attempt), nil
 }
 
 func (r *memoryRepository) ReleaseSlotProviderBudgetV3(_ context.Context, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, error) {
@@ -146,57 +114,60 @@ func (r *memoryRepository) transitionMemorySlotBudget(reservation imageagent.Slo
 	if !ok {
 		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
 	}
-	if !sameSlotEffectV3Reservation(effect, reservation) {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
-	}
-	if effect.BudgetStatus == target {
-		if target != imageagent.SlotBudgetCommitted || reflect.DeepEqual(effect.Receipt, receipt) {
-			return cloneSlotEffectV3(effect), nil
-		}
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
-	}
-	if effect.BudgetStatus != imageagent.SlotBudgetReserved {
-		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
-	}
-	if target == imageagent.SlotBudgetCommitted {
-		if err := validateUsageReceipt(effect.Quote, receipt); err != nil {
-			return imageagent.SlotEffectV3Attempt{}, err
-		}
-	}
 	runKey := scopeKey(reservation.Identity.RunScope)
-	reserved, err := imageagent.CheckedSubtractUsage(r.reservedUsage[runKey], effect.Quote.Maximum)
+	accounting, err := providerAccountingSnapshot(r.runs[runKey], r.reservedUsage[runKey])
 	if err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
-	if target != imageagent.SlotBudgetUnknown {
-		r.reservedUsage[runKey] = reserved
+	var decision effectpolicy.AccountingDecision
+	switch target {
+	case imageagent.SlotBudgetCommitted:
+		decision, err = effectpolicy.SettleProvider(effect, reservation, receipt, accounting, r.clock().UTC())
+	case imageagent.SlotBudgetReleased:
+		decision, err = effectpolicy.ReleaseProviderBudget(effect, reservation, accounting)
+	case imageagent.SlotBudgetUnknown:
+		decision, err = effectpolicy.MarkProviderBudgetUnknown(effect, reservation, accounting)
+	default:
+		err = imageagent.ErrValidation
 	}
-	if target == imageagent.SlotBudgetCommitted {
+	if err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
+	if err := r.persistMemoryProviderDecision(runKey, key, decision); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
+	return cloneSlotEffectV3(decision.Attempt), nil
+}
+
+func providerAccountingSnapshot(run imageagent.Run, reserved imageagent.UsageVector) (effectpolicy.AccountingSnapshot, error) {
+	policy, err := run.Budget.Policy()
+	if err != nil {
+		return effectpolicy.AccountingSnapshot{}, imageagent.ErrRevisionConflict
+	}
+	committed, err := imageagent.UsageVectorFromBudgetUsage(run.Usage)
+	if err != nil {
+		return effectpolicy.AccountingSnapshot{}, err
+	}
+	return effectpolicy.AccountingSnapshot{
+		Policy: policy, Committed: committed, Reserved: reserved, Elapsed: run.Usage.Elapsed, StartedAt: run.StartedAt,
+	}, nil
+}
+
+func (r *memoryRepository) persistMemoryProviderDecision(runKey, effectKey string, decision effectpolicy.AccountingDecision) error {
+	if decision.AccountingChanged {
 		run := r.runs[runKey]
-		committed, err := imageagent.UsageVectorFromBudgetUsage(run.Usage)
+		usage, err := imageagent.BudgetUsageFromUsageVector(decision.Accounting.Committed, decision.Accounting.Elapsed)
 		if err != nil {
-			return imageagent.SlotEffectV3Attempt{}, err
+			return err
 		}
-		committed, err = imageagent.CheckedAddUsage(committed, receipt.Actual)
-		if err != nil {
-			return imageagent.SlotEffectV3Attempt{}, err
-		}
-		elapsed := run.Usage.Elapsed
-		if !run.StartedAt.IsZero() {
-			if observed := r.clock().UTC().Sub(run.StartedAt); observed > elapsed {
-				elapsed = observed
-			}
-		}
-		run.Usage, err = imageagent.BudgetUsageFromUsageVector(committed, elapsed)
-		if err != nil {
-			return imageagent.SlotEffectV3Attempt{}, err
-		}
+		run.Usage = usage
 		r.runs[runKey] = run
-		effect.Receipt = cloneSlotUsageReceipt(receipt)
+		r.reservedUsage[runKey] = decision.Accounting.Reserved
 	}
-	effect.BudgetStatus = target
-	r.slotEffectsV3[key] = cloneSlotEffectV3(effect)
-	return cloneSlotEffectV3(effect), nil
+	if decision.Changed {
+		r.slotEffectsV3[effectKey] = cloneSlotEffectV3(decision.Attempt)
+	}
+	return nil
 }
 
 func (r *memoryRepository) PrepareSlotStagingV3(_ context.Context, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (imageagent.SlotEffectV3Attempt, error) {
@@ -454,77 +425,24 @@ func (r *gormRepository) ReserveSlotProviderV3(ctx context.Context, reservation 
 		if err != nil {
 			return err
 		}
+		accounting, err := providerAccountingSnapshotFromRecord(lockedRun)
+		if err != nil {
+			return err
+		}
 		if existingRow, findErr := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity); findErr == nil {
 			existing, decodeErr := decodeSlotEffectV3Record(existingRow)
 			if decodeErr != nil {
 				return decodeErr
 			}
-			if !sameSlotEffectV3Reservation(existing, reservation) {
-				return imageagent.ErrRevisionConflict
+			decision, policyErr := effectpolicy.ReserveProvider(&existing, reservation, accounting)
+			if policyErr != nil {
+				return policyErr
 			}
-			if existing.Phase == imageagent.SlotEffectV3ProviderNotDispatched {
-				updates := map[string]any{"phase": string(imageagent.SlotEffectV3ProviderClaimed), "provider_claimed_at": time.Now().UTC()}
-				if reservation.Quote.Fingerprint != "" {
-					run, decodeRunErr := recordToRun(lockedRun)
-					if decodeRunErr != nil {
-						return decodeRunErr
-					}
-					reserved, decodeUsageErr := decodeReservedUsage(lockedRun.ReservedUsageJSON)
-					if decodeUsageErr != nil {
-						return decodeUsageErr
-					}
-					nextReserved, authorizeErr := authorizeSlotBudget(run, reserved, reservation)
-					if authorizeErr != nil {
-						return authorizeErr
-					}
-					encoded, marshalErr := json.Marshal(nextReserved)
-					if marshalErr != nil {
-						return marshalErr
-					}
-					if updateErr := runScopeWhere(tx.Model(&runRecord{}), reservation.Identity.RunScope).Update("reserved_usage_json", encoded).Error; updateErr != nil {
-						return updateErr
-					}
-					updates["budget_status"] = string(imageagent.SlotBudgetReserved)
-					updates["budget_released_at"] = nil
-					existing.BudgetStatus = imageagent.SlotBudgetReserved
-				}
-				if updateErr := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Updates(updates).Error; updateErr != nil {
-					return updateErr
-				}
-				existing.Phase = imageagent.SlotEffectV3ProviderClaimed
-				result = existing
-				claimed = true
-				return nil
+			if persistErr := persistGormProviderReservation(ctx, tx, reservation.Identity.RunScope, existing, decision); persistErr != nil {
+				return persistErr
 			}
-			if existing.BudgetStatus == imageagent.SlotBudgetReleased && reservation.Quote.Fingerprint != "" {
-				run, decodeRunErr := recordToRun(lockedRun)
-				if decodeRunErr != nil {
-					return decodeRunErr
-				}
-				reserved, decodeUsageErr := decodeReservedUsage(lockedRun.ReservedUsageJSON)
-				if decodeUsageErr != nil {
-					return decodeUsageErr
-				}
-				nextReserved, authorizeErr := authorizeSlotBudget(run, reserved, reservation)
-				if authorizeErr != nil {
-					return authorizeErr
-				}
-				encoded, marshalErr := json.Marshal(nextReserved)
-				if marshalErr != nil {
-					return marshalErr
-				}
-				if updateErr := runScopeWhere(tx.Model(&runRecord{}), reservation.Identity.RunScope).Update("reserved_usage_json", encoded).Error; updateErr != nil {
-					return updateErr
-				}
-				if updateErr := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Updates(map[string]any{"budget_status": string(imageagent.SlotBudgetReserved), "budget_released_at": nil}).Error; updateErr != nil {
-					return updateErr
-				}
-				existing.BudgetStatus = imageagent.SlotBudgetReserved
-				result = existing
-				claimed = true
-				return nil
-			}
-			result = existing
+			result = decision.Attempt
+			claimed = decision.Acquired
 			return nil
 		} else if !errors.Is(findErr, imageagent.ErrRunNotFound) {
 			return findErr
@@ -536,50 +454,25 @@ func (r *gormRepository) ReserveSlotProviderV3(ctx context.Context, reservation 
 		} else if !errors.Is(collisionErr, imageagent.ErrRunNotFound) {
 			return collisionErr
 		}
-		var nextReserved imageagent.UsageVector
-		if reservation.Quote.Fingerprint != "" {
-			run, decodeErr := recordToRun(lockedRun)
-			if decodeErr != nil {
-				return decodeErr
-			}
-			persistedPolicy, policyErr := run.Budget.Policy()
-			if policyErr != nil || persistedPolicy != reservation.Policy {
-				return imageagent.ErrRevisionConflict
-			}
-			committed, usageErr := imageagent.UsageVectorFromBudgetUsage(run.Usage)
-			if usageErr != nil {
-				return usageErr
-			}
-			reserved, usageErr := decodeReservedUsage(lockedRun.ReservedUsageJSON)
-			if usageErr != nil {
-				return usageErr
-			}
-			if usageErr = persistedPolicy.Allows(committed, reserved, reservation.Quote.Maximum); usageErr != nil {
-				return usageErr
-			}
-			nextReserved, usageErr = imageagent.CheckedAddUsage(reserved, reservation.Quote.Maximum)
-			if usageErr != nil {
-				return usageErr
-			}
+		decision, err := effectpolicy.ReserveProvider(nil, reservation, accounting)
+		if err != nil {
+			return err
 		}
-		now := time.Now().UTC()
+		now, err := databaseNow(ctx, tx)
+		if err != nil {
+			return err
+		}
 		row := slotEffectV3RecordFromReservation(reservation, now)
 		created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
 		if created.Error != nil {
 			return created.Error
 		}
 		if created.RowsAffected == 1 {
-			if reservation.Quote.Fingerprint != "" {
-				encoded, marshalErr := json.Marshal(nextReserved)
-				if marshalErr != nil {
-					return marshalErr
-				}
-				if updateErr := runScopeWhere(tx.Model(&runRecord{}), reservation.Identity.RunScope).Update("reserved_usage_json", encoded).Error; updateErr != nil {
-					return updateErr
-				}
+			if persistErr := persistGormProviderAccounting(tx, reservation.Identity.RunScope, decision.AccountingDecision); persistErr != nil {
+				return persistErr
 			}
-			claimed = true
-			result, err = decodeSlotEffectV3Record(row)
+			claimed = decision.Acquired
+			result = decision.Attempt
 			return nil
 		}
 		existing, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
@@ -599,27 +492,18 @@ func (r *gormRepository) ReserveSlotProviderV3(ctx context.Context, reservation 
 		if err != nil {
 			return err
 		}
-		if !sameSlotEffectV3Reservation(result, reservation) {
-			return imageagent.ErrRevisionConflict
+		collisionDecision, policyErr := effectpolicy.ReserveProvider(&result, reservation, accounting)
+		if policyErr != nil {
+			return policyErr
 		}
+		if persistErr := persistGormProviderReservation(ctx, tx, reservation.Identity.RunScope, result, collisionDecision); persistErr != nil {
+			return persistErr
+		}
+		result = collisionDecision.Attempt
+		claimed = collisionDecision.Acquired
 		return nil
 	})
 	return result, claimed, err
-}
-
-func authorizeSlotBudget(run imageagent.Run, reserved imageagent.UsageVector, reservation imageagent.SlotEffectV3Reservation) (imageagent.UsageVector, error) {
-	persistedPolicy, err := run.Budget.Policy()
-	if err != nil || persistedPolicy != reservation.Policy {
-		return imageagent.UsageVector{}, imageagent.ErrRevisionConflict
-	}
-	committed, err := imageagent.UsageVectorFromBudgetUsage(run.Usage)
-	if err != nil {
-		return imageagent.UsageVector{}, err
-	}
-	if err := persistedPolicy.Allows(committed, reserved, reservation.Quote.Maximum); err != nil {
-		return imageagent.UsageVector{}, err
-	}
-	return imageagent.CheckedAddUsage(reserved, reservation.Quote.Maximum)
 }
 
 func (r *gormRepository) SettleSlotProviderV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation, receipt imageagent.SlotUsageReceipt) (imageagent.SlotEffectV3Attempt, error) {
@@ -644,47 +528,31 @@ func (r *gormRepository) RecordSlotProviderNotDispatchedV3(ctx context.Context, 
 		if err != nil {
 			return err
 		}
-		if !sameSlotEffectV3Reservation(effect, reservation) {
-			return imageagent.ErrRevisionConflict
+		accounting, err := providerAccountingSnapshotFromRecord(runRow)
+		if err != nil {
+			return err
 		}
-		if effect.Phase == imageagent.SlotEffectV3ProviderNotDispatched {
-			result = effect
-			return nil
+		decision, err := effectpolicy.RecordProviderNotDispatched(effect, reservation, accounting)
+		if err != nil {
+			return err
 		}
-		if effect.Phase != imageagent.SlotEffectV3ProviderClaimed {
-			return imageagent.ErrRevisionConflict
+		if err := persistGormProviderAccounting(tx, reservation.Identity.RunScope, decision); err != nil {
+			return err
 		}
-		updates := map[string]any{"phase": string(imageagent.SlotEffectV3ProviderNotDispatched)}
-		if reservation.Quote.Fingerprint != "" {
-			if effect.BudgetStatus != imageagent.SlotBudgetReserved {
-				return imageagent.ErrRevisionConflict
+		if decision.Changed {
+			updates := map[string]any{"phase": string(decision.Attempt.Phase), "budget_status": string(decision.Attempt.BudgetStatus)}
+			if effect.BudgetStatus == imageagent.SlotBudgetReserved && decision.Attempt.BudgetStatus == imageagent.SlotBudgetReleased {
+				now, nowErr := databaseNow(ctx, tx)
+				if nowErr != nil {
+					return nowErr
+				}
+				updates["budget_released_at"] = now
 			}
-			reserved, decodeErr := decodeReservedUsage(runRow.ReservedUsageJSON)
-			if decodeErr != nil {
-				return decodeErr
-			}
-			reserved, decodeErr = imageagent.CheckedSubtractUsage(reserved, effect.Quote.Maximum)
-			if decodeErr != nil {
-				return decodeErr
-			}
-			reservedJSON, marshalErr := json.Marshal(reserved)
-			if marshalErr != nil {
-				return marshalErr
-			}
-			if updateErr := runScopeWhere(tx.Model(&runRecord{}), reservation.Identity.RunScope).Update("reserved_usage_json", reservedJSON).Error; updateErr != nil {
+			if updateErr := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Updates(updates).Error; updateErr != nil {
 				return updateErr
 			}
-			updates["budget_status"] = string(imageagent.SlotBudgetReleased)
-			updates["budget_released_at"] = time.Now().UTC()
-			effect.BudgetStatus = imageagent.SlotBudgetReleased
-		} else if effect.BudgetStatus != "" {
-			return imageagent.ErrRevisionConflict
 		}
-		if updateErr := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Updates(updates).Error; updateErr != nil {
-			return updateErr
-		}
-		effect.Phase = imageagent.SlotEffectV3ProviderNotDispatched
-		result = effect
+		result = decision.Attempt
 		return nil
 	})
 	return result, err
@@ -716,100 +584,106 @@ func (r *gormRepository) transitionGormSlotBudget(ctx context.Context, reservati
 		if err != nil {
 			return err
 		}
-		if !sameSlotEffectV3Reservation(effect, reservation) {
-			return imageagent.ErrRevisionConflict
+		accounting, err := providerAccountingSnapshotFromRecord(runRow)
+		if err != nil {
+			return err
 		}
-		if effect.BudgetStatus == target {
-			if target == imageagent.SlotBudgetCommitted && !reflect.DeepEqual(effect.Receipt, receipt) {
-				return imageagent.ErrRevisionConflict
-			}
-			result = effect
-			return nil
+		now, err := databaseNow(ctx, tx)
+		if err != nil {
+			return err
 		}
-		if effect.BudgetStatus != imageagent.SlotBudgetReserved {
-			return imageagent.ErrRevisionConflict
-		}
-		if target == imageagent.SlotBudgetCommitted {
-			if err := validateUsageReceipt(effect.Quote, receipt); err != nil {
-				return err
-			}
-		}
-		updates := map[string]any{"budget_status": string(target)}
-		now := time.Now().UTC()
+		var decision effectpolicy.AccountingDecision
 		switch target {
 		case imageagent.SlotBudgetCommitted:
-			receiptJSON, marshalErr := json.Marshal(receipt)
-			if marshalErr != nil {
-				return marshalErr
-			}
-			updates["usage_receipt_json"] = receiptJSON
-			updates["budget_settled_at"] = now
+			decision, err = effectpolicy.SettleProvider(effect, reservation, receipt, accounting, now)
 		case imageagent.SlotBudgetReleased:
-			updates["budget_released_at"] = now
+			decision, err = effectpolicy.ReleaseProviderBudget(effect, reservation, accounting)
 		case imageagent.SlotBudgetUnknown:
-			updates["budget_unknown_at"] = now
+			decision, err = effectpolicy.MarkProviderBudgetUnknown(effect, reservation, accounting)
 		default:
-			return imageagent.ErrValidation
+			err = imageagent.ErrValidation
 		}
-		if target != imageagent.SlotBudgetUnknown {
-			reserved, decodeErr := decodeReservedUsage(runRow.ReservedUsageJSON)
-			if decodeErr != nil {
-				return decodeErr
-			}
-			reserved, decodeErr = imageagent.CheckedSubtractUsage(reserved, effect.Quote.Maximum)
-			if decodeErr != nil {
-				return decodeErr
-			}
-			runUpdates := map[string]any{}
-			reservedJSON, marshalErr := json.Marshal(reserved)
-			if marshalErr != nil {
-				return marshalErr
-			}
-			runUpdates["reserved_usage_json"] = reservedJSON
-			if target == imageagent.SlotBudgetCommitted {
-				run, decodeRunErr := recordToRun(runRow)
-				if decodeRunErr != nil {
-					return decodeRunErr
-				}
-				committed, usageErr := imageagent.UsageVectorFromBudgetUsage(run.Usage)
-				if usageErr != nil {
-					return usageErr
-				}
-				committed, usageErr = imageagent.CheckedAddUsage(committed, receipt.Actual)
-				if usageErr != nil {
-					return usageErr
-				}
-				elapsed := run.Usage.Elapsed
-				if !run.StartedAt.IsZero() {
-					if observed := now.Sub(run.StartedAt); observed > elapsed {
-						elapsed = observed
-					}
-				}
-				run.Usage, usageErr = imageagent.BudgetUsageFromUsageVector(committed, elapsed)
-				if usageErr != nil {
-					return usageErr
-				}
-				usageJSON, marshalErr := json.Marshal(run.Usage)
+		if err != nil {
+			return err
+		}
+		if err := persistGormProviderAccounting(tx, reservation.Identity.RunScope, decision); err != nil {
+			return err
+		}
+		if decision.Changed {
+			updates := map[string]any{"budget_status": string(decision.Attempt.BudgetStatus)}
+			switch target {
+			case imageagent.SlotBudgetCommitted:
+				receiptJSON, marshalErr := json.Marshal(decision.Attempt.Receipt)
 				if marshalErr != nil {
 					return marshalErr
 				}
-				runUpdates["usage_json"] = usageJSON
+				updates["usage_receipt_json"] = receiptJSON
+				updates["budget_settled_at"] = now
+			case imageagent.SlotBudgetReleased:
+				updates["budget_released_at"] = now
+			case imageagent.SlotBudgetUnknown:
+				updates["budget_unknown_at"] = now
 			}
-			if updateErr := runScopeWhere(tx.Model(&runRecord{}), reservation.Identity.RunScope).Updates(runUpdates).Error; updateErr != nil {
+			if updateErr := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Updates(updates).Error; updateErr != nil {
 				return updateErr
 			}
 		}
-		if updateErr := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).Updates(updates).Error; updateErr != nil {
-			return updateErr
-		}
-		effect.BudgetStatus = target
-		if target == imageagent.SlotBudgetCommitted {
-			effect.Receipt = cloneSlotUsageReceipt(receipt)
-		}
-		result = effect
+		result = decision.Attempt
 		return nil
 	})
 	return result, err
+}
+
+func providerAccountingSnapshotFromRecord(row runRecord) (effectpolicy.AccountingSnapshot, error) {
+	run, err := recordToRun(row)
+	if err != nil {
+		return effectpolicy.AccountingSnapshot{}, err
+	}
+	reserved, err := decodeReservedUsage(row.ReservedUsageJSON)
+	if err != nil {
+		return effectpolicy.AccountingSnapshot{}, err
+	}
+	return providerAccountingSnapshot(run, reserved)
+}
+
+func persistGormProviderReservation(ctx context.Context, tx *gorm.DB, scope imageagent.RunScope, current imageagent.SlotEffectV3Attempt, decision effectpolicy.ProviderReservationDecision) error {
+	if err := persistGormProviderAccounting(tx, scope, decision.AccountingDecision); err != nil {
+		return err
+	}
+	if !decision.Changed {
+		return nil
+	}
+	updates := map[string]any{"phase": string(decision.Attempt.Phase), "budget_status": string(decision.Attempt.BudgetStatus)}
+	if current.Phase == imageagent.SlotEffectV3ProviderNotDispatched && decision.Attempt.Phase == imageagent.SlotEffectV3ProviderClaimed {
+		now, err := databaseNow(ctx, tx)
+		if err != nil {
+			return err
+		}
+		updates["provider_claimed_at"] = now
+	}
+	if current.BudgetStatus == imageagent.SlotBudgetReleased && decision.Attempt.BudgetStatus == imageagent.SlotBudgetReserved {
+		updates["budget_released_at"] = nil
+	}
+	return slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), decision.Attempt.Identity).Updates(updates).Error
+}
+
+func persistGormProviderAccounting(tx *gorm.DB, scope imageagent.RunScope, decision effectpolicy.AccountingDecision) error {
+	if !decision.AccountingChanged {
+		return nil
+	}
+	reservedJSON, err := json.Marshal(decision.Accounting.Reserved)
+	if err != nil {
+		return err
+	}
+	usage, err := imageagent.BudgetUsageFromUsageVector(decision.Accounting.Committed, decision.Accounting.Elapsed)
+	if err != nil {
+		return err
+	}
+	usageJSON, err := json.Marshal(usage)
+	if err != nil {
+		return err
+	}
+	return runScopeWhere(tx.Model(&runRecord{}), scope).Updates(map[string]any{"reserved_usage_json": reservedJSON, "usage_json": usageJSON}).Error
 }
 
 func (r *gormRepository) PrepareSlotStagingV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (imageagent.SlotEffectV3Attempt, error) {
@@ -1354,17 +1228,6 @@ func canBlockV3(current, blocked imageagent.SlotEffectV3Phase) bool {
 
 func sameSlotEffectV3Reservation(effect imageagent.SlotEffectV3Attempt, reservation imageagent.SlotEffectV3Reservation) bool {
 	return effect.Identity == reservation.Identity && effect.IdempotencyKey == reservation.IdempotencyKey && effect.InputFingerprint == reservation.InputFingerprint && effect.Quote.Fingerprint == reservation.Quote.Fingerprint
-}
-
-func validateUsageReceipt(quote imageagent.SlotUsageQuote, receipt imageagent.SlotUsageReceipt) error {
-	if receipt.Actual.Images < 0 || receipt.Actual.AgentSteps < 0 || receipt.Actual.ModelCalls < 0 || receipt.Actual.CostMicros < 0 ||
-		receipt.Actual.Images > quote.Maximum.Images || receipt.Actual.AgentSteps > quote.Maximum.AgentSteps || receipt.Actual.ModelCalls > quote.Maximum.ModelCalls || receipt.Actual.CostMicros > quote.Maximum.CostMicros {
-		return imageagent.ErrRevisionConflict
-	}
-	if receipt.CostBasis == "" {
-		return imageagent.ErrValidation
-	}
-	return nil
 }
 
 func samePublicationCompletionV3(effect imageagent.SlotEffectV3Attempt, completion imageagent.PublicationCompletion) bool {
