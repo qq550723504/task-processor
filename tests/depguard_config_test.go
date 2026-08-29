@@ -117,9 +117,9 @@ func TestZitadelAuthRuntimeDepguardPatternCoversListingKitPackageTree(t *testing
 	if start == -1 {
 		t.Fatalf("%s must define authruntime_zitadel_listingkit", configPath)
 	}
-	end := strings.Index(config[start+1:], "\n  govet:")
+	end := strings.Index(config[start+1:], "\n      alibaba1688_listingkit_root:")
 	if end == -1 {
-		t.Fatalf("%s must keep authruntime_zitadel_listingkit before govet", configPath)
+		t.Fatalf("%s must keep authruntime_zitadel_listingkit before alibaba1688_listingkit_root", configPath)
 	}
 	config = config[start : start+1+end]
 
