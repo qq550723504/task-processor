@@ -280,19 +280,24 @@ func applyApprovedAssetRecords(result *listingkit.ListingKitResult, records []as
 	if bundle == nil {
 		bundle = &asset.Bundle{}
 	}
-	existing := make(map[string]struct{}, len(bundle.Assets))
+	replaced := make(map[string]struct{})
+	retained := make([]asset.Asset, 0, len(bundle.Assets))
 	for _, item := range bundle.Assets {
-		existing[item.ID] = struct{}{}
-	}
-	missing := make([]asset.AssetRecord, 0, len(records))
-	for _, record := range records {
-		if _, ok := existing[record.ID]; !ok {
-			missing = append(missing, record)
+		if item.Generator == "image-agent" {
+			replaced[item.ID] = struct{}{}
+			continue
 		}
+		retained = append(retained, item)
 	}
-	if len(missing) > 0 {
-		bundle = asset.RebuildBundleWithRecords(bundle, missing)
-	}
+	bundle = asset.RebuildBundleWithRecords(&asset.Bundle{
+		Assets:     retained,
+		Selection:  selectionWithoutReplacedImageAgentAssets(bundle.Selection, replaced),
+		Stats:      bundle.Stats,
+		Review:     bundle.Review,
+		Compliance: bundle.Compliance,
+		Quality:    bundle.Quality,
+		IPRisk:     bundle.IPRisk,
+	}, records)
 	selection := bundle.Selection
 	if selection == nil {
 		selection = &asset.Selection{}
@@ -303,14 +308,29 @@ func applyApprovedAssetRecords(result *listingkit.ListingKitResult, records []as
 			selection.MainAssetID = record.ID
 			continue
 		}
-		if !containsImageAgentAssetID(selection.GalleryAssetIDs, record.ID) {
-			selection.GalleryAssetIDs = append(selection.GalleryAssetIDs, record.ID)
-		}
+		selection.GalleryAssetIDs = append(selection.GalleryAssetIDs, record.ID)
 	}
 	result.StandardProductSnapshot.AssetBundle = bundle
 	result.StandardProductSnapshot.AssetInventorySummary = asset.InventorySummaryFromBundle(bundle)
 	result.AssetBundle = bundle
 	result.AssetInventorySummary = result.StandardProductSnapshot.AssetInventorySummary
+}
+
+func selectionWithoutReplacedImageAgentAssets(selection *asset.Selection, replaced map[string]struct{}) *asset.Selection {
+	if selection == nil {
+		return nil
+	}
+	out := *selection
+	if _, ok := replaced[out.MainAssetID]; ok {
+		out.MainAssetID = ""
+	}
+	out.GalleryAssetIDs = make([]string, 0, len(selection.GalleryAssetIDs))
+	for _, id := range selection.GalleryAssetIDs {
+		if _, ok := replaced[id]; !ok {
+			out.GalleryAssetIDs = append(out.GalleryAssetIDs, id)
+		}
+	}
+	return &out
 }
 
 func approvedAssetRecord(taskID string, slot imageagent.Slot, candidate imageagent.AssetCandidate) asset.AssetRecord {
@@ -337,8 +357,4 @@ func cloneImageAgentMetadata(input map[string]string) map[string]string {
 		out[key] = value
 	}
 	return out
-}
-
-func containsImageAgentAssetID(values []string, target string) bool {
-	return slices.Contains(values, target)
 }

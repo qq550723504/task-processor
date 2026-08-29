@@ -49,6 +49,46 @@ func TestImageAgentApprovedPublisherCommitsCanonicalAssetsAndReceiptExactlyOnce(
 	require.Equal(t, task.Result.StandardProductSnapshot.AssetInventorySummary, task.Result.AssetInventorySummary)
 }
 
+func TestImageAgentApprovedPublisherSupersedesPriorImageAgentAssets(t *testing.T) {
+	ctx, db, transactionStore := newApprovedPublisherDatabase(t)
+	require.NoError(t, db.Create(approvedPublisherTask()).Error)
+
+	previous := approvedProjection()
+	previous.Run.ID = "run-previous"
+	for slotIndex := range previous.Slots {
+		for candidateIndex := range previous.Slots[slotIndex].Candidates {
+			previous.Slots[slotIndex].Candidates[candidateIndex].AssetID = fmt.Sprintf("previous-%s-%02d", previous.Slots[slotIndex].Slot.ID, candidateIndex+1)
+		}
+	}
+	previousDigest, err := imageagent.ResultDigestV2(previous.Plan, previous.Slots)
+	require.NoError(t, err)
+	previous.ResultDigest = previousDigest
+	previousPublisher, err := NewImageAgentApprovedPublisher(staticProjectionSource{projection: previous}, transactionStore)
+	require.NoError(t, err)
+	previousInput := approvedPublicationInput(previous)
+	previousInput.RunID = previous.Run.ID
+	previousInput.IdempotencyKey = "approve-previous"
+	previousInput.CandidateAssetIDs[0] = previous.Slots[0].Candidates[0].AssetID
+	_, err = previousPublisher.PublishApproved(ctx, previousInput)
+	require.NoError(t, err)
+
+	current := approvedProjection()
+	currentPublisher, err := NewImageAgentApprovedPublisher(staticProjectionSource{projection: current}, transactionStore)
+	require.NoError(t, err)
+	_, err = currentPublisher.PublishApproved(ctx, approvedPublicationInput(current))
+	require.NoError(t, err)
+
+	var task listingkit.Task
+	require.NoError(t, db.First(&task, "id = ?", "task-1").Error)
+	bundle := task.Result.StandardProductSnapshot.AssetBundle
+	require.Len(t, bundle.Assets, 13, "a newer approval must replace every prior image-agent output")
+	require.Equal(t, "candidate-main", bundle.Selection.MainAssetID)
+	require.NotContains(t, bundle.Selection.GalleryAssetIDs, "previous-scene-01")
+	for _, item := range bundle.Assets {
+		require.NotContains(t, item.ID, "previous-", "superseded image-agent assets must not remain publishable")
+	}
+}
+
 func TestImageAgentApprovedPublisherRejectsStateDigestCandidateAndScopeInjection(t *testing.T) {
 	tests := []struct {
 		name   string

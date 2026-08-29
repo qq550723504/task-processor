@@ -107,6 +107,20 @@ func TestListingKitImageAgentCatalogIncludesOnlyExplicitNonSourceStyles(t *testi
 	require.ErrorContains(t, err, "unknown style asset")
 }
 
+func TestImageAgentCatalogRejectsTargetKeyedAssetBundlesWithoutTargetAuthorization(t *testing.T) {
+	task := &listingkit.Task{Result: &listingkit.ListingKitResult{
+		StandardProductSnapshot: &listingkit.StandardProductSnapshot{AssetBundle: &asset.Bundle{Assets: []asset.Asset{{
+			ID: "source-1", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/source.png",
+		}}}},
+		AssetBundlesByTarget: map[string]*asset.Bundle{
+			"shein": {Assets: []asset.Asset{{ID: "shein-source", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/shein.png"}}},
+		},
+	}}
+
+	_, err := imageAgentCatalogFromTask(task)
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+}
+
 func TestListingKitImageAgentCatalogTruncatesDisplayLabelsAt256UnicodeCodePoints(t *testing.T) {
 	longLabel := strings.Repeat("界", 257)
 	task := &listingkit.Task{

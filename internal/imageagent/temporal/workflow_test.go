@@ -4092,7 +4092,7 @@ func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 	require.NoError(t, client.StartManual(context.Background(), start))
 	require.Equal(t, "image-agent:tenant-a:user-a:run-1", raw.startOptions.ID)
 	require.Equal(t, TaskQueueV3, raw.startOptions.TaskQueue)
-	require.Zero(t, raw.startOptions.WorkflowExecutionTimeout)
+	require.Equal(t, V3WorkflowExecutionTimeout, raw.startOptions.WorkflowExecutionTimeout)
 	require.Equal(t, enumspb.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, raw.startOptions.WorkflowIDConflictPolicy)
 	require.Equal(t, enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY, raw.startOptions.WorkflowIDReusePolicy)
 	require.Equal(t, workflowNameImageAgent, raw.workflowName)
@@ -4156,8 +4156,8 @@ func TestTemporalClientRejectsUnsafeConcurrencyBeforeStartingWorkflow(t *testing
 	require.Empty(t, raw.workflowName)
 }
 
-func TestV3ManualApprovalLifetimeIsNotBoundedByAServerExecutionTimeout(t *testing.T) {
-	require.Zero(t, V3WorkflowExecutionTimeout)
+func TestV3ManualApprovalLifetimeIsBoundedBeforeStagingRetentionExpires(t *testing.T) {
+	require.Equal(t, 30*24*time.Hour, V3WorkflowExecutionTimeout)
 	require.Equal(t, 45*24*time.Hour, V3MinimumStagingLifecycleRetention)
 }
 

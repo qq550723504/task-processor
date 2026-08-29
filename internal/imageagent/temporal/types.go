@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	// V3WorkflowExecutionTimeout deliberately leaves Temporal's optional server
-	// execution deadline unset. Manual runs can wait for operator approval for
-	// an unbounded period; configured MaxElapsed remains the business budget.
-	V3WorkflowExecutionTimeout         = time.Duration(0)
+	// V3WorkflowExecutionTimeout bounds new manual runs within the documented
+	// 30-day lifecycle, leaving a seven-day reconciliation allowance before the
+	// 45-day staging retention can expire.
+	V3WorkflowExecutionTimeout         = 30 * 24 * time.Hour
 	V3MinimumStagingLifecycleRetention = 45 * 24 * time.Hour
 )
 

@@ -50,6 +50,9 @@ func imageAgentCatalogFromTask(task *listingkit.Task, selectedStyleIDs ...[]stri
 	if task == nil || task.Result == nil || task.Result.StandardProductSnapshot == nil {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task standard product snapshot is required")
 	}
+	if len(task.Result.AssetBundlesByTarget) > 0 {
+		return imageagent.AssetCatalog{}, fmt.Errorf("%w: target-keyed asset bundles require explicit image-agent target authorization", imageagent.ErrValidation)
+	}
 	snapshot := task.Result.StandardProductSnapshot
 	var styles []string
 	if len(selectedStyleIDs) > 0 {
