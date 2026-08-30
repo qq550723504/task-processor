@@ -95,8 +95,8 @@ git commit -m "build(web): adopt workbench foundation dependencies"
 - Create: `web/listingkit-ui/src/components/ui/virtual-list.test.tsx`
 
 **Interfaces:**
-- Consumes: `Table`、`Button`、`cn`、`ColumnDef<TData, TValue>` 和 `useVirtualizer`。
-- Produces: `DataTable<TData, TValue>`、`DataTableProps<TData, TValue>`、`VirtualList<TItem>`、`VirtualListProps<TItem>`。
+- Consumes: `Table`、`cn`、TanStack Table v9 feature API 和 `useVirtualizer`。
+- Produces: `DataTable<TData>`、`DataTableProps<TData>`、`createDataTableColumnHelper<TData>()`、`VirtualList<TItem>`、`VirtualListProps<TItem>`。
 
 - [ ] **Step 1: 写 DataTable 排序与空状态失败测试**
 
@@ -105,13 +105,15 @@ git commit -m "build(web): adopt workbench foundation dependencies"
 ```tsx
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ColumnDef } from "@tanstack/react-table";
 
-import { DataTable } from "@/components/ui/data-table";
+import {
+  DataTable,
+  type DataTableColumnDef,
+} from "@/components/ui/data-table";
 
 type Product = { id: string; name: string; sales: number };
 
-const columns: ColumnDef<Product, unknown>[] = [
+const columns: DataTableColumnDef<Product>[] = [
   { accessorKey: "name", header: "商品" },
   { accessorKey: "sales", header: "销量" },
 ];
@@ -172,13 +174,16 @@ Expected: FAIL，错误为无法解析 `@/components/ui/data-table`。
 
 import * as React from "react";
 import {
+  createColumnHelper,
+  createSortedRowModel,
   flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
   type ColumnDef,
   type Row,
+  type RowData,
+  rowSortingFeature,
   type SortingState,
-  useReactTable,
+  tableFeatures,
+  useTable,
 } from "@tanstack/react-table";
 
 import {
@@ -190,28 +195,46 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export type DataTableProps<TData, TValue> = {
+const dataTableFeatures = tableFeatures({
+  rowSortingFeature,
+  sortedRowModel: createSortedRowModel(),
+});
+
+export type DataTableColumnDef<TData extends RowData> = ColumnDef<
+  typeof dataTableFeatures,
+  TData,
+  unknown
+>;
+
+export function createDataTableColumnHelper<TData extends RowData>() {
+  return createColumnHelper<typeof dataTableFeatures, TData>();
+}
+
+export type DataTableProps<TData extends RowData> = {
   ariaLabel: string;
-  columns: ColumnDef<TData, TValue>[];
+  columns: DataTableColumnDef<TData>[];
   data: TData[];
   emptyMessage?: string;
-  getRowId?: (originalRow: TData, index: number, parent?: Row<TData>) => string;
+  getRowId?: (
+    originalRow: TData,
+    index: number,
+    parent?: Row<typeof dataTableFeatures, TData>,
+  ) => string;
 };
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData extends RowData>({
   ariaLabel,
   columns,
   data,
   emptyMessage = "暂无数据",
   getRowId,
-}: DataTableProps<TData, TValue>) {
+}: DataTableProps<TData>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     columns,
     data,
     getRowId,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
     state: { sorting },
   });
@@ -262,7 +285,7 @@ export function DataTable<TData, TValue>({
         {table.getRowModel().rows.length > 0 ? (
           table.getRowModel().rows.map((row) => (
             <TableRow key={row.id}>
-              {row.getVisibleCells().map((cell) => (
+              {row.getAllCells().map((cell) => (
                 <TableCell key={cell.id}>
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </TableCell>
@@ -298,11 +321,16 @@ Expected: 2 tests PASS。
 
 ```tsx
 import { render, screen } from "@testing-library/react";
+import { afterEach, vi } from "vitest";
 
 import { VirtualList } from "@/components/ui/virtual-list";
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("VirtualList", () => {
-  it("renders a bounded window instead of every item", () => {
+  it("renders a bounded window instead of every item", async () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(160);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(320);
     const items = Array.from({ length: 100 }, (_, index) => `任务 ${index + 1}`);
     render(
       <VirtualList
@@ -315,7 +343,7 @@ describe("VirtualList", () => {
       </VirtualList>,
     );
 
-    const renderedItems = screen.getAllByRole("listitem");
+    const renderedItems = await screen.findAllByRole("listitem");
     expect(renderedItems.length).toBeGreaterThan(0);
     expect(renderedItems.length).toBeLessThan(100);
     expect(screen.getByText("任务 1")).toBeInTheDocument();
@@ -345,12 +373,14 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { cn } from "@/lib/utils/cn";
 
+export type VirtualItemKey = string | number | bigint;
+
 export type VirtualListProps<TItem> = {
   ariaLabel: string;
   children: (item: TItem, index: number) => React.ReactNode;
   className?: string;
   estimateSize: number;
-  getItemKey?: (item: TItem, index: number) => React.Key;
+  getItemKey?: (item: TItem, index: number) => VirtualItemKey;
   height: number;
   items: TItem[];
   overscan?: number;
@@ -366,7 +396,12 @@ export function VirtualList<TItem>({
   items,
   overscan = 4,
 }: VirtualListProps<TItem>) {
+  "use no memo";
+
   const parentRef = React.useRef<HTMLDivElement>(null);
+  // TanStack Virtual intentionally keeps interior mutable state; this component
+  // is opted out of React Compiler memoization by the directive above.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: items.length,
     estimateSize: () => estimateSize,
