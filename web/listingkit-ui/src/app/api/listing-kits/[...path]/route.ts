@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
+import { serverAuth } from "@/auth";
 import {
   buildListingKitProxyUrl,
   getListingKitUpstreamBase,
@@ -15,6 +16,7 @@ import { buildListingKitProxyResponse } from "@/app/api/listing-kits/proxy-upstr
 import {
   buildListingKitUpstreamHeaders,
   verifyListingKitRequestIdentity,
+  type AuthenticatedListingKitRequest,
   type VerifiedIdentity,
 } from "@/app/api/listing-kits/proxy-auth";
 import {
@@ -27,7 +29,7 @@ export const dynamic = "force-dynamic";
 const PROXY_BODY_READ_TIMEOUT_MS = 15_000;
 
 async function proxyRequest(
-  request: NextRequest,
+  request: AuthenticatedListingKitRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const requestId = newRequestLogId();
@@ -93,7 +95,7 @@ async function proxyRequest(
 
   let verifiedIdentity: VerifiedIdentity | undefined;
   let zitadelToken = "";
-  const auth = await verifyListingKitRequestIdentity(request);
+  const auth = await verifyListingKitRequestIdentity(request, request.auth);
   if (auth.response) {
     const status = auth.response.status;
     const payload = (await auth.response.clone().json().catch(() => null)) as
@@ -206,38 +208,11 @@ async function proxyRequest(
   return response;
 }
 
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ path: string[] }> },
-) {
-  return proxyRequest(request, context);
-}
+const authenticatedProxyRequest = serverAuth(proxyRequest);
 
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ path: string[] }> },
-) {
-  return proxyRequest(request, context);
-}
-
-export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ path: string[] }> },
-) {
-  return proxyRequest(request, context);
-}
-
-export async function PUT(
-  request: NextRequest,
-  context: { params: Promise<{ path: string[] }> },
-) {
-  return proxyRequest(request, context);
-}
-
-export async function DELETE(
-  request: NextRequest,
-  context: { params: Promise<{ path: string[] }> },
-) {
-  return proxyRequest(request, context);
-}
+export const GET = authenticatedProxyRequest;
+export const POST = authenticatedProxyRequest;
+export const PATCH = authenticatedProxyRequest;
+export const PUT = authenticatedProxyRequest;
+export const DELETE = authenticatedProxyRequest;
 

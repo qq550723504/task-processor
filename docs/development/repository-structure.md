@@ -64,6 +64,7 @@
 
 - `TestCmdContainsOnlyOfficialEntrypoints`
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
+- `TestInternalCmdEntrypointsDoNotImportDomainOrInfraPackages`
 - `depguard: cmd_domain_dependencies`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `depguard: cmd_legacy_app_compatibility`

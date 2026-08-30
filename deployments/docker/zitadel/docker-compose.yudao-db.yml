@@ -1,0 +1,15 @@
+services:
+  zitadel-api:
+    environment:
+      ZITADEL_DATABASE_POSTGRES_DSN: ${ZITADEL_DATABASE_POSTGRES_DSN}
+    networks:
+      - docker_yudao-network
+    depends_on: !reset []
+
+  postgres:
+    profiles:
+      - local-db
+
+networks:
+  docker_yudao-network:
+    external: true

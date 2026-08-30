@@ -3,7 +3,9 @@ param(
     [string]$ConfigPath = "config/config-dev.yaml",
     [string]$LogLevel = "info",
     [Alias("RequireSettingsHealth")]
-    [switch]$RequireReadiness
+    [switch]$RequireReadiness,
+    [switch]$IsolatedAcceptance,
+    [string]$RuntimeDirectory = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -146,7 +148,7 @@ function Initialize-ListingKitObjectStorageEnvFromK8s {
 function Get-ListeningProcessIds {
     param([int]$ListenPort)
 
-    $connections = @(Get-NetTCPConnection -State Listen -LocalPort $ListenPort -ErrorAction SilentlyContinue)
+    $connections = @(Get-ListeningConnections -ListenPort $ListenPort)
     if ($connections.Count -eq 0) {
         return @()
     }
@@ -154,6 +156,24 @@ function Get-ListeningProcessIds {
     return $connections |
         Select-Object -ExpandProperty OwningProcess -Unique |
         Where-Object { $_ -gt 0 }
+}
+
+function Get-ListeningConnections {
+    param([int]$ListenPort)
+
+    return @(Get-NetTCPConnection -State Listen -LocalPort $ListenPort -ErrorAction SilentlyContinue)
+}
+
+function Assert-LoopbackListener {
+    param([int]$ListenPort)
+
+    $connections = @(Get-ListeningConnections -ListenPort $ListenPort)
+    if ($connections.Count -eq 0) {
+        throw "No listener was found on isolated acceptance port $ListenPort"
+    }
+    if (@($connections | Where-Object { $_.LocalAddress -notin @("127.0.0.1", "::1") }).Count -gt 0) {
+        throw "Isolated acceptance port $ListenPort is not bound exclusively to loopback"
+    }
 }
 
 function Stop-ListeningProcesses {
@@ -172,22 +192,66 @@ function Stop-ListeningProcesses {
     }
 }
 
+function Initialize-ApiLaunchEnvironment {
+    param(
+        [string]$RepoRoot,
+        [switch]$IsolatedAcceptance
+    )
+
+    if ($IsolatedAcceptance) {
+        $env:KUBECONFIG = ""
+        Write-Host "Isolated acceptance mode: repository .env and deployed Kubernetes settings are disabled." -ForegroundColor DarkGreen
+        return
+    }
+
+    Import-DotEnvFile -Path (Join-Path $RepoRoot ".env")
+    if ([string]::IsNullOrWhiteSpace($env:KUBECONFIG)) {
+        Write-Host "KUBECONFIG is empty; skipping deployed object storage lookup for local API." -ForegroundColor DarkYellow
+        return
+    }
+    Initialize-ListingKitObjectStorageEnvFromK8s
+}
+
+function Assert-PortAvailable {
+    param([int]$ListenPort)
+
+    $processIds = @(Get-ListeningProcessIds -ListenPort $ListenPort)
+    if ($processIds.Count -gt 0) {
+        throw "Port $ListenPort is already owned by PID(s) $($processIds -join ', '); isolated acceptance refuses to stop unrelated processes"
+    }
+}
+
+function Resolve-IsolatedRuntimeDirectory {
+    param(
+        [string]$RepoRoot,
+        [string]$RequestedPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RequestedPath)) {
+        throw "-RuntimeDirectory is required with -IsolatedAcceptance"
+    }
+    $allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot ".local\image-agent-acceptance"))
+    $resolved = [System.IO.Path]::GetFullPath($RequestedPath)
+    $allowedPrefix = $allowedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $resolved.StartsWith($allowedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "isolated runtime directory must be below $allowedRoot"
+    }
+    return $resolved
+}
+
 function Wait-ForApiReady {
     param(
         [string]$HealthURL,
         [string]$ReadinessURL,
         [switch]$RequireReadiness,
-        [string]$StdoutLogPath,
+        [int]$ProcessId,
         [int]$TimeoutSeconds = 180
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
-        if (Test-Path -LiteralPath $StdoutLogPath) {
-            $stdout = Get-Content -LiteralPath $StdoutLogPath -Raw -ErrorAction SilentlyContinue
-            if ($stdout -match "API service listening on port") {
-                return
-            }
+        if ($ProcessId -gt 0 -and $null -eq (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
+            throw "API process exited before its HTTP endpoint became ready"
         }
 
         try {
@@ -215,7 +279,11 @@ function Wait-ForApiReady {
 }
 
 $repoRoot = Get-RepoRoot
-$runtimeDir = Join-Path $repoRoot ".local\tmp\listingkit-local-api"
+$runtimeDir = if ($IsolatedAcceptance) {
+    Resolve-IsolatedRuntimeDirectory -RepoRoot $repoRoot -RequestedPath $RuntimeDirectory
+} else {
+    Join-Path $repoRoot ".local\tmp\listingkit-local-api"
+}
 $logDir = Join-Path $runtimeDir "logs"
 $binPath = Join-Path $runtimeDir "product-listing-api-local.exe"
 $stdoutLog = Join-Path $logDir "stdout.log"
@@ -227,7 +295,11 @@ $readinessURL = "http://127.0.0.1:${Port}/readyz"
 Ensure-Directory -Path $runtimeDir
 Ensure-Directory -Path $logDir
 
-Stop-ListeningProcesses -ListenPort $Port
+if ($IsolatedAcceptance) {
+    Assert-PortAvailable -ListenPort $Port
+} else {
+    Stop-ListeningProcesses -ListenPort $Port
+}
 
 if (Test-Path -LiteralPath $stdoutLog) { Remove-Item -LiteralPath $stdoutLog -Force }
 if (Test-Path -LiteralPath $stderrLog) { Remove-Item -LiteralPath $stderrLog -Force }
@@ -238,8 +310,7 @@ $env:TASK_PROCESSOR_BROWSER_PROXYSERVER = ""
 $env:TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE = "false"
 $env:TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE = "false"
 $env:LISTINGKIT_TEMPORAL_TASK_QUEUE = "listingkit-local-$env:COMPUTERNAME-$Port"
-Import-DotEnvFile -Path (Join-Path $repoRoot ".env")
-Initialize-ListingKitObjectStorageEnvFromK8s
+Initialize-ApiLaunchEnvironment -RepoRoot $repoRoot -IsolatedAcceptance:$IsolatedAcceptance
 
 Write-Host "Building local product-listing-api..." -ForegroundColor Cyan
 & go build -o $binPath .\cmd\product-listing-api
@@ -248,9 +319,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Starting local product-listing-api on port ${Port}..." -ForegroundColor Cyan
+$apiArguments = @("-config", $ConfigPath, "-port", $Port.ToString(), "-log-level", $LogLevel)
+if ($IsolatedAcceptance) {
+    $apiArguments += @("-bind-address", "127.0.0.1")
+}
 $process = Start-Process `
     -FilePath $binPath `
-    -ArgumentList @("-config", $ConfigPath, "-port", $Port.ToString(), "-log-level", $LogLevel) `
+    -ArgumentList $apiArguments `
     -WorkingDirectory $repoRoot `
     -WindowStyle Hidden `
     -PassThru `
@@ -262,8 +337,11 @@ try {
         -HealthURL $healthURL `
         -ReadinessURL $readinessURL `
         -RequireReadiness:$RequireReadiness `
-        -StdoutLogPath $stdoutLog `
+        -ProcessId $process.Id `
         -TimeoutSeconds 180
+    if ($IsolatedAcceptance) {
+        Assert-LoopbackListener -ListenPort $Port
+    }
 } catch {
     if (-not $process.HasExited) {
         Stop-Process -Id $process.Id -Force

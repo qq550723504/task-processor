@@ -167,7 +167,10 @@ func resolveImageAgentWorkspaceAssets(task *listingkit.Task, targetPlatform stri
 	if task != nil && task.Result != nil && len(task.Result.AssetBundlesByTarget) > 0 {
 		target = listingplatform.Normalize(targetPlatform)
 	}
-	assets := imageAgentWorkspaceAssets{}
+	assets := imageAgentWorkspaceAssets{
+		sources: make([]imageAgentWorkspaceAsset, 0),
+		styles:  make([]imageAgentWorkspaceAsset, 0),
+	}
 	if bundle == nil {
 		return imageAgentWorkspaceAssets{}, "", fmt.Errorf("%w: task has no asset bundle", imageagent.ErrValidation)
 	}

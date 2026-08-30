@@ -22,6 +22,7 @@ func ConfigureListingKitZitadelAuth(cfg config.ListingKitZitadelConfig) {
 			IssuerURL:    strings.TrimRight(strings.TrimSpace(cfg.IssuerURL), "/"),
 			ClientID:     strings.TrimSpace(cfg.ClientID),
 			ClientSecret: strings.TrimSpace(cfg.ClientSecret),
+			ProjectID:    strings.TrimSpace(cfg.ProjectID),
 			HTTPClient:   &http.Client{Timeout: 5 * time.Second},
 		},
 		AuthzConfig: zitadelAuthorizationConfig{

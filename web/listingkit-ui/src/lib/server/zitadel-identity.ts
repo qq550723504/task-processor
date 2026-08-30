@@ -2,7 +2,7 @@
   "urn:zitadel:iam:user:resourceowner:id";
 // Bump when the OIDC authorization contract changes so existing Auth.js
 // sessions are forced through a fresh authorization request.
-export const ZITADEL_IDENTITY_VERSION = 2;
+export const ZITADEL_IDENTITY_VERSION = 3;
 
 export type ListingKitSessionIdentity = {
   tenantId?: string | number;
@@ -21,6 +21,7 @@ export type ZitadelTokenPayload = Record<string, unknown> & {
 
 export function extractZitadelIdentityFromClaims(
   payload: ZitadelTokenPayload,
+  projectId?: string,
 ): ListingKitSessionIdentity | null {
   const tenantId = normalizeClaim(payload[RESOURCE_OWNER_CLAIM]);
   const userId = normalizeClaim(payload.sub);
@@ -33,7 +34,7 @@ export function extractZitadelIdentityFromClaims(
     userId,
     username: normalizeClaim(payload.preferred_username ?? payload.username),
     userType: "zitadel",
-    roles: extractProjectRoles(payload),
+    roles: extractProjectRoles(payload, projectId),
   };
 }
 
@@ -47,7 +48,7 @@ export function normalizeClaim(value: unknown) {
   return undefined;
 }
 
-function extractProjectRoles(payload: ZitadelTokenPayload) {
+function extractProjectRoles(payload: ZitadelTokenPayload, projectId?: string) {
   const seen = new Set<string>();
   const roles: string[] = [];
   const add = (value: unknown) => {
@@ -59,25 +60,32 @@ function extractProjectRoles(payload: ZitadelTokenPayload) {
     roles.push(role);
   };
 
-  for (const value of [
-    payload["urn:zitadel:iam:org:project:roles"],
-    payload.roles,
-    payload.role,
-  ]) {
+  const addClaimValue = (value: unknown) => {
     if (!value) {
-      continue;
+      return;
     }
     if (Array.isArray(value)) {
-      value.forEach(add);
-      continue;
+      value.forEach(addClaimValue);
+      return;
     }
     if (typeof value === "string") {
       value.split(",").forEach(add);
-      continue;
+      return;
     }
     if (typeof value === "object") {
       Object.keys(value).forEach(add);
     }
+  };
+
+  for (const value of [
+    projectId
+      ? payload[`urn:zitadel:iam:org:project:${projectId}:roles`]
+      : undefined,
+    payload["urn:zitadel:iam:org:project:roles"],
+    payload.roles,
+    payload.role,
+  ]) {
+    addClaimValue(value);
   }
 
   return roles;

@@ -4763,7 +4763,32 @@ func TestPlatformModulesHistoricalImplementationImportsStayAllowlisted(t *testin
 }
 
 func TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages(t *testing.T) {
-	assertNoBannedImportPrefixes(t, filepath.Join("..", "cmd"), []string{
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "cmd"), commandEntrypointBannedPrefixes(), nil)
+}
+
+func TestInternalCmdEntrypointsDoNotImportDomainOrInfraPackages(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") || !strings.Contains(filepath.ToSlash(path), "/cmd/") {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			for _, bannedPrefix := range commandEntrypointBannedPrefixes() {
+				if importMatchesPrefix(importPath, bannedPrefix) {
+					t.Errorf("%s imports banned command-entrypoint package prefix %s via %s", path, bannedPrefix, importPath)
+				}
+			}
+		}
+	}
+}
+
+func commandEntrypointBannedPrefixes() []string {
+	return []string{
 		"task-processor/internal/amazon",
 		"task-processor/internal/amazonlisting",
 		"task-processor/internal/asset",
@@ -4777,7 +4802,7 @@ func TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages(t *testing.T) 
 		"task-processor/internal/shein",
 		"task-processor/internal/temu",
 		"task-processor/internal/workspace",
-	}, nil)
+	}
 }
 
 func TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters(t *testing.T) {

@@ -108,3 +108,31 @@ func TestListingKitUIReleaseHasAnExclusiveAuthorizationConfigMap(t *testing.T) {
 		t.Fatal("UI release Role must mutate only listingkit-ui-auth-config")
 	}
 }
+
+// TestListingKitUIReleaseRequestsExactProjectRoleClaim prevents the production
+// release workflow from replacing provisioned project scopes with a generic
+// role-only scope set that cannot identify the trusted ListingKit project.
+func TestListingKitUIReleaseRequestsExactProjectRoleClaim(t *testing.T) {
+	uiConfig, err := os.ReadFile(filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "base", "listingkit-ui-auth-config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(uiConfig), "ZITADEL_PROJECT_ID:") {
+		t.Fatal("UI authorization ConfigMap must carry the public trusted ZITADEL project ID")
+	}
+
+	workflowSource, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-ui-deploy.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(workflowSource)
+	for _, required := range []string{
+		".data.ZITADEL_PROJECT_ID",
+		"urn:zitadel:iam:org:project:${project_id}:roles",
+		"Invalid or missing ZITADEL_PROJECT_ID",
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Errorf("production UI release must derive an exact project role scope; missing %q", required)
+		}
+	}
+}

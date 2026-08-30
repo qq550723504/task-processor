@@ -33,6 +33,9 @@ func autoMigrateRuntime(db *gorm.DB, includeSourceAccount bool) error {
 	if db == nil {
 		return fmt.Errorf("database is nil")
 	}
+	if err := listingadmin.AutoMigrateRuntimePrerequisites(db); err != nil {
+		return fmt.Errorf("migrate listingadmin runtime prerequisites: %w", err)
+	}
 	if err := autoMigrateSystemOwnedExceptionRegistry(db); err != nil {
 		return fmt.Errorf("migrate listingkit owner exception registry: %w", err)
 	}

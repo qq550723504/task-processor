@@ -19,9 +19,17 @@ describe("getZitadelAuthOptions", () => {
     expect(getZitadelAuthOptions()?.scopes.split(/\s+/)).toContain(
       "urn:zitadel:iam:user:resourceowner",
     );
-    expect(getZitadelAuthOptions()?.scopes.split(/\s+/)).toContain(
+    expect(getZitadelAuthOptions()?.scopes.split(/\s+/)).toEqual([
+      "openid",
+      "profile",
+      "email",
+      "urn:zitadel:iam:user:resourceowner",
+      "urn:zitadel:iam:org:project:id:zitadel:aud",
+      "urn:zitadel:iam:org:project:role:listingkit_viewer",
+      "urn:zitadel:iam:org:project:role:listingkit_operator",
       "urn:zitadel:iam:org:project:role:listingkit_admin",
-    );
+      "urn:zitadel:iam:org:project:role:platform_admin",
+    ]);
   });
 });
 
@@ -133,6 +141,50 @@ describe("verifyZitadelAccessToken", () => {
     });
   });
 
+  it("extracts roles from a project-specific ZITADEL role claim", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            active: true,
+            sub: "zitadel-subject-123",
+            "urn:zitadel:iam:user:resourceowner:id": "org-286",
+            "urn:zitadel:iam:org:project:id3:roles": [
+              { listingkit_operator: { "org-286": "zitadel.localhost" } },
+            ],
+            "urn:zitadel:iam:org:project:other-project:roles": [
+              { platform_admin: { "org-286": "zitadel.localhost" } },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    await expect(
+      verifyZitadelAccessToken(
+        "access-token-1",
+        {
+          issuerUrl: "https://issuer.example.com",
+          clientId: "client-1",
+          projectId: "id3",
+          scopes: "openid profile",
+        },
+        {
+          authorization_endpoint:
+            "https://issuer.example.com/oauth/v2/authorize",
+          token_endpoint: "https://issuer.example.com/oauth/v2/token",
+          introspection_endpoint:
+            "https://issuer.example.com/oauth/v2/introspect",
+        },
+      ),
+    ).resolves.toMatchObject({
+      userId: "zitadel-subject-123",
+      roles: ["listingkit_operator"],
+    });
+  });
+
   it("rejects an otherwise valid token without sub", async () => {
     vi.stubGlobal(
       "fetch",
@@ -177,8 +229,7 @@ describe("readZitadelIdentityFromSession", () => {
     expect(
       readZitadelIdentityFromSession({
         expires: "2026-05-17T00:00:00.000Z",
-        accessToken: "access-token-1",
-        identityVersion: 2,
+        identityVersion: 3,
         identity: {
           tenantId: "org-1",
           userId: "user-1",
@@ -200,7 +251,6 @@ describe("readZitadelIdentityFromSession", () => {
     expect(
       readZitadelIdentityFromSession({
         expires: "2026-05-17T00:00:00.000Z",
-        accessToken: "access-token-1",
         identity: {
           tenantId: "org-1",
           userId: "legacy-user-id",

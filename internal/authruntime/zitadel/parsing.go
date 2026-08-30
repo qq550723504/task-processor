@@ -2,10 +2,19 @@ package zitadel
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 )
 
 func ParseRoles(data []byte) []string {
+	return parseRoles(data, "")
+}
+
+func ParseRolesForProject(data []byte, projectID string) []string {
+	return parseRoles(data, strings.TrimSpace(projectID))
+}
+
+func parseRoles(data []byte, projectID string) []string {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil
@@ -25,37 +34,46 @@ func ParseRoles(data []byte) []string {
 		roles = append(roles, role)
 	}
 
-	for _, key := range []string{"urn:zitadel:iam:org:project:roles", "roles", "role"} {
+	keys := make([]string, 0, 4)
+	if projectID != "" {
+		keys = append(keys, "urn:zitadel:iam:org:project:"+projectID+":roles")
+	}
+	keys = append(keys, "urn:zitadel:iam:org:project:roles", "roles", "role")
+	for _, key := range keys {
 		value, ok := raw[key]
 		if !ok {
 			continue
 		}
 
-		var list []string
-		if err := json.Unmarshal(value, &list); err == nil {
-			for _, role := range list {
-				add(role)
-			}
-			continue
-		}
-
-		var single string
-		if err := json.Unmarshal(value, &single); err == nil {
-			for _, role := range strings.Split(single, ",") {
-				add(role)
-			}
-			continue
-		}
-
-		var roleMap map[string]any
-		if err := json.Unmarshal(value, &roleMap); err == nil {
-			for role := range roleMap {
-				add(role)
-			}
+		var claimValue any
+		if err := json.Unmarshal(value, &claimValue); err == nil {
+			addRoleClaimValue(claimValue, add)
 		}
 	}
 
 	return roles
+}
+
+func addRoleClaimValue(value any, add func(string)) {
+	switch typed := value.(type) {
+	case string:
+		for _, role := range strings.Split(typed, ",") {
+			add(role)
+		}
+	case []any:
+		for _, item := range typed {
+			addRoleClaimValue(item, add)
+		}
+	case map[string]any:
+		roles := make([]string, 0, len(typed))
+		for role := range typed {
+			roles = append(roles, role)
+		}
+		sort.Strings(roles)
+		for _, role := range roles {
+			add(role)
+		}
+	}
 }
 
 func StringSliceToSet(values []string) map[string]struct{} {

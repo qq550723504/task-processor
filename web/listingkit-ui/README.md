@@ -38,7 +38,7 @@ Configure ZITADEL for the ListingKit UI session, proxy identity, and Go API:
 ZITADEL_ISSUER_URL=https://your-zitadel-instance
 ZITADEL_CLIENT_ID=your_client_id
 ZITADEL_CLIENT_SECRET=your_client_secret
-ZITADEL_REDIRECT_URI=http://localhost:3000/api/zitadel-auth/callback
+ZITADEL_REDIRECT_URI=http://localhost:3000/api/auth/callback/zitadel
 ZITADEL_POST_LOGOUT_REDIRECT_URI=http://localhost:3000
 ```
 
@@ -49,8 +49,10 @@ Go API introspects the forwarded bearer token against a different issuer/client
 pair.
 
 The Next.js proxy verifies the ZITADEL session or bearer token before forwarding
-requests to the ListingKit Go API. The verified ZITADEL user and resource owner
-are forwarded as ListingKit identity headers.
+requests to the ListingKit Go API. For session-authenticated requests it reads
+the access token only from the encrypted server-side Auth.js JWT; browser-visible
+session payloads do not contain access or ID tokens. The verified ZITADEL user
+and resource owner are forwarded as ListingKit identity headers.
 
 The Go API also verifies direct `/api/v1/listing-kits/*` and
 `/api/v1/shein-login/*` bearer-token requests when `ZITADEL_ISSUER_URL` and

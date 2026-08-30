@@ -28,6 +28,20 @@ func TestImageAgentWorkspacePreflightUsesOnlyRequestedTargetBundle(t *testing.T)
 	require.JSONEq(t, `{"target_platform":"shein","source_assets":[{"id":"shein-source","label":"Shein source","display_url":"https://cdn.example.test/shein-source.png"}],"style_candidates":[{"id":"shein-style","label":"Shein style","display_url":"https://cdn.example.test/shein-style.png"}]}`, response.Body.String())
 }
 
+func TestImageAgentWorkspacePreflightReturnsEmptyStyleArrayWhenNoStyleAssetsExist(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	task := imageAgentWorkspaceTask()
+	task.Result.AssetBundlesByTarget["shein"].Assets = task.Result.AssetBundlesByTarget["shein"].Assets[:1]
+	handler := requireImageAgentWorkspaceHandler(t, task, &imageAgentWorkspaceApplicationStub{})
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/tasks/:task_id/image-agent-assets", handler.GetImageAgentAssets)
+
+	response := performImageAgentWorkspaceRequest(router, http.MethodGet, "/api/v1/listing-kits/tasks/task-1/image-agent-assets?target_platform=shein", "")
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.JSONEq(t, `{"target_platform":"shein","source_assets":[{"id":"shein-source","label":"Shein source","display_url":"https://cdn.example.test/shein-source.png"}],"style_candidates":[]}`, response.Body.String())
+}
+
 func TestImageAgentWorkspaceCreateBuildsSingleSourceServerOwnedRun(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	application := &imageAgentWorkspaceApplicationStub{}

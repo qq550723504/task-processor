@@ -1,11 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
+import { serverAuth } from "@/auth";
+import type { AuthenticatedListingKitRequest } from "@/app/api/listing-kits/proxy-auth";
 import { fetchSDSJSON, sdsAPIErrorPayload } from "@/app/api/sds/shared";
 import type { SDSProductListResponse } from "@/lib/types/sds";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
+const authenticatedGET = serverAuth(async (request: AuthenticatedListingKitRequest) => {
   const page = Number(request.nextUrl.searchParams.get("page") ?? "1") || 1;
   const size = Number(request.nextUrl.searchParams.get("size") ?? "12") || 12;
   const weightBand = request.nextUrl.searchParams.get("weightBand")?.trim() ?? "";
@@ -56,6 +58,7 @@ export async function GET(request: NextRequest) {
   try {
     const { payload } = await fetchSDSJSON<SDSProductListResponse>(
       request,
+      request.auth,
       "/products",
       query,
     );
@@ -64,4 +67,6 @@ export async function GET(request: NextRequest) {
     const payload = sdsAPIErrorPayload(error, "sds_product_query_failed");
     return NextResponse.json(payload.body, { status: payload.status });
   }
-}
+});
+
+export { authenticatedGET as GET };

@@ -289,6 +289,23 @@ func TestConfigureListingKitZitadelAuthKeepsMiddlewareEnabledWithEmptyConfig(t *
 	}
 }
 
+func TestConfigureListingKitZitadelAuthCarriesProjectIDToVerifier(t *testing.T) {
+	t.Cleanup(SetListingKitZitadelAuthConfigForTesting(nil))
+	ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
+		IssuerURL: "https://issuer.example",
+		ClientID:  "listingkit-client",
+		ProjectID: " project-1 ",
+	})
+
+	runtimeCfg := currentListingKitZitadelRuntimeConfig()
+	if runtimeCfg == nil {
+		t.Fatal("expected configured ZITADEL runtime")
+	}
+	if runtimeCfg.AuthConfig.ProjectID != "project-1" {
+		t.Fatalf("ProjectID = %q, want project-1", runtimeCfg.AuthConfig.ProjectID)
+	}
+}
+
 func TestListingKitZitadelAuthMapsVerifiedIdentityToHeaders(t *testing.T) {
 	var introspectionToken string
 	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

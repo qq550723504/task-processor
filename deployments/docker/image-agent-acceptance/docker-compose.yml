@@ -1,0 +1,72 @@
+name: task-processor-image-agent-acceptance
+
+services:
+  acceptance-postgres:
+    image: postgres:17.2-alpine
+    environment:
+      POSTGRES_DB: image_agent_acceptance
+      POSTGRES_USER: acceptance
+      POSTGRES_PASSWORD: ${LISTINGKIT_ACCEPTANCE_DB_PASSWORD:?LISTINGKIT_ACCEPTANCE_DB_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${LISTINGKIT_ACCEPTANCE_DB_PORT:-15433}:5432"
+    volumes:
+      - acceptance-postgres-data:/var/lib/postgresql/data:rw
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acceptance -d image_agent_acceptance"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  temporal:
+    image: temporalio/temporal@sha256:cf86707827fac99e4d1c4a47dc11b105382d796199c7bd41fb3213fb0471628e
+    command: ["server", "start-dev", "--ip", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:${LISTINGKIT_ACCEPTANCE_TEMPORAL_PORT:-17233}:7233"
+      - "127.0.0.1:${LISTINGKIT_ACCEPTANCE_TEMPORAL_UI_PORT:-18233}:8233"
+
+  acceptance-redis:
+    image: redis:7.2-alpine
+    ports:
+      - "127.0.0.1:${LISTINGKIT_ACCEPTANCE_REDIS_PORT:-16379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  acceptance-minio:
+    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-acceptance-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-local-acceptance-password-not-for-production}
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "127.0.0.1:${LISTINGKIT_ACCEPTANCE_S3_PORT:-19000}:9000"
+      - "127.0.0.1:${LISTINGKIT_ACCEPTANCE_S3_CONSOLE_PORT:-19001}:9001"
+    volumes:
+      - acceptance-s3-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  acceptance-minio-init:
+    image: quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-acceptance-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-local-acceptance-password-not-for-production}
+    depends_on:
+      acceptance-minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        until mc alias set local http://acceptance-minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do
+        sleep 2;
+        done;
+        mc mb --ignore-existing local/listingkit-assets
+
+volumes:
+  acceptance-postgres-data:
+  acceptance-s3-data:

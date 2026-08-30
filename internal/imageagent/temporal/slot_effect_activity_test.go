@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	sdkactivity "go.temporal.io/sdk/activity"
 	sdktemporal "go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	sdkworkflow "go.temporal.io/sdk/workflow"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/store"
@@ -247,6 +250,44 @@ func TestPersistSlotResultV3CannotAcceptInvalidMainCandidateCount(t *testing.T) 
 			require.Equal(t, imageagent.SlotStatusBlocked, projection.Slots[0].Slot.Status)
 			require.Equal(t, invalidMainCandidateCountCode, projection.Slots[0].ErrorCode)
 			require.Empty(t, projection.Slots[0].Candidates)
+		})
+	}
+}
+
+func TestPersistSlotResultV3PersistsProviderBudgetBlockWithoutProjectionConflict(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		new  func(t *testing.T) imageagent.Repository
+	}{
+		{name: "memory", new: func(*testing.T) imageagent.Repository { return store.NewMemoryRepository() }},
+		{name: "gorm sqlite", new: func(t *testing.T) imageagent.Repository {
+			db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:image-agent-budget-block-%d?mode=memory&cache=shared", time.Now().UnixNano())), &gorm.Config{})
+			require.NoError(t, err)
+			require.NoError(t, store.AutoMigrate(db))
+			return store.NewGormRepository(db)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository := test.new(t)
+			identity := imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}
+			plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-budget-block", SourceAssetIDs: []string{"source-1"}, StyleReferenceIDs: []string{}, CreatedBy: identity.UserID, Slots: []imageagent.Slot{{ID: "main-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, StyleReferenceIDs: []string{}, IdempotencyKey: "main-key"}}}
+			run := imageagent.Run{ID: "run-budget-block-v3-" + test.name, BusinessTaskID: "task-budget-block", TenantID: identity.TenantID, UserID: identity.UserID, Mode: imageagent.RunModeManual, IdempotencyKey: "run-budget-block-" + test.name, Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1}
+			initializeActivityProjection(t, repository, run, plan)
+			activities, err := NewActivities(ActivityDependencies{Repository: repository, SlotExecutor: &recordingRecoverableSlotExecutor{}, Publisher: &identityCheckingPublisher{t: t}})
+			require.NoError(t, err)
+
+			err = activities.PersistSlotResultV3(context.Background(), PersistSlotResultV3ActivityInput{
+				RunID: run.ID, Identity: identity, PlanRevision: 1, AttemptKey: "main-key:plan:1:attempt:1",
+				Result: SlotWorkflowV3Result{
+					Published: imageagent.SlotEffectV3PublishedResult{SlotID: "main-1", Attempt: 1},
+					Status:    imageagent.SlotStatusBlocked, ErrorCode: imageagent.BudgetQuoteUnavailableCode,
+				},
+			})
+			require.NoError(t, err)
+			projection, err := repository.GetProjection(context.Background(), imageagent.ScopeForRun(run))
+			require.NoError(t, err)
+			require.Equal(t, imageagent.SlotStatusBlocked, projection.Slots[0].Slot.Status)
+			require.Equal(t, imageagent.BudgetQuoteUnavailableCode, projection.Slots[0].ErrorCode)
 		})
 	}
 }

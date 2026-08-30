@@ -54,7 +54,7 @@ func TestZitadelAuthRouteAuthorizationFileOwnsRouteAndPermissionMapping(t *testi
 	require.NotContains(t, content, "type zitadelDiscovery struct {")
 }
 
-func TestNeutralRuntimeMiddlewareOwnsProviderVerification(t *testing.T) {
+func TestNeutralRuntimeDelegatesProviderVerificationToReusableVerifier(t *testing.T) {
 	t.Parallel()
 
 	configSrc, err := os.ReadFile("../../authruntime/zitadel/config.go")
@@ -63,9 +63,17 @@ func TestNeutralRuntimeMiddlewareOwnsProviderVerification(t *testing.T) {
 
 	middlewareSrc, err := os.ReadFile("../../authruntime/zitadel/middleware.go")
 	require.NoError(t, err)
-	content := string(middlewareSrc)
-	require.Contains(t, content, "func (m *middleware) Handle(c *gin.Context) {")
-	require.Contains(t, content, "func (m *middleware) verifyToken(r *http.Request, token string) (*IntrospectionResponse, error) {")
+	middlewareContent := string(middlewareSrc)
+	require.Contains(t, middlewareContent, "func (m *middleware) Handle(c *gin.Context) {")
+	require.Contains(t, middlewareContent, "m.verifier.Verify(c.Request.Context(), token)")
+	require.NotContains(t, middlewareContent, "func (m *middleware) verifyToken(")
+
+	verifierSrc, err := os.ReadFile("../../authruntime/zitadel/verifier.go")
+	require.NoError(t, err)
+	verifierContent := string(verifierSrc)
+	require.Contains(t, verifierContent, "type Verifier interface {")
+	require.Contains(t, verifierContent, "func NewVerifier(cfg Config) Verifier {")
+	require.Contains(t, verifierContent, "func (v *verifier) introspect(ctx context.Context, token string) (*IntrospectionResponse, error) {")
 }
 
 func TestLegacyListingKitProviderFilesAreAbsent(t *testing.T) {
