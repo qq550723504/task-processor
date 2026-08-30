@@ -184,7 +184,7 @@ compatibility
 2. 先记录旧根包文件数、依赖数和禁止新增引用的基线，并增加单向收敛护栏。
 3. 将真正稳定、无业务语义的原语迁入 `internal/shared`；禁止以迁移为由形成新的通用杂物包。
 4. 将配置、日志、可观测性、数据库启动与迁移、Redis、队列和 Temporal 运行时所有权迁入 `internal/platform`。
-5. 将现有具体服务商客户端、S3、crawler 和持久化 adapter 迁入 `internal/integration`；先不引入 MCP 或 pgvector。
+5. 将已经由稳定局部端口隔离的具体服务商客户端、S3、crawler 和持久化 adapter 迁入 `internal/integration`；仍与业务模型、编排或仓储契约混合的 crawler 和持久化实现先记录基线并冻结新增耦合，待所属领域阶段抽出端口后随纵向切片迁移。禁止只改目录名制造伪分层；先不引入 MCP 或 pgvector。
 6. 以真实纵向切片接入 Goose、OpenTelemetry 和 OpenFeature：必须有 app 装配、配置、运行路径和测试，不能只增加未使用依赖。
 7. 先更新 app 的构造和生命周期所有权，再迁移业务调用方；随后增加 depguard 和语义测试，阻止业务包导入具体 adapter 或 SDK。
 8. 证明旧入口零引用后删除对应旧实现；Promptfoo 评测和前端 P0 分开实施，不混入后端基础设施提交。
