@@ -5,7 +5,7 @@ import (
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/listingruntime"
-	"task-processor/internal/pkg/timex"
+	"task-processor/internal/shared/timex"
 )
 
 type TaskDispatchGuard struct {

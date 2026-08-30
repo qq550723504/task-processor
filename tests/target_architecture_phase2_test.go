@@ -121,3 +121,47 @@ func TestTargetDomainsDoNotImportConcreteInfrastructure(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedPackagesDoNotImportAppDomainPlatformOrIntegration(t *testing.T) {
+	index, err := loadGoFileIndex(filepath.Join("..", "internal", "shared"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := []string{
+		"task-processor/internal/app",
+		"task-processor/internal/listing",
+		"task-processor/internal/product",
+		"task-processor/internal/marketplace",
+		"task-processor/internal/agent",
+		"task-processor/internal/knowledge",
+		"task-processor/internal/resourcecatalog",
+		"task-processor/internal/commercial",
+		"task-processor/internal/ledger",
+		"task-processor/internal/organization",
+		"task-processor/internal/platform",
+		"task-processor/internal/integration",
+	}
+	for path, facts := range index.files {
+		rel, err := filepath.Rel(filepath.Join("..", "internal", "shared"), path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for imp := range facts.imports {
+			clean := strings.Trim(imp, `"`)
+			for _, prefix := range forbidden {
+				if importMatchesPrefix(clean, prefix) {
+					t.Errorf("%s imports forbidden package %s", filepath.ToSlash(rel), imp)
+				}
+			}
+		}
+	}
+}
+
+func TestSharedPackageTargetsExist(t *testing.T) {
+	for _, name := range []string{"hashx", "mathx", "ptr", "strx", "timex"} {
+		info, err := os.Stat(filepath.Join("..", "internal", "shared", name))
+		if err != nil || !info.IsDir() {
+			t.Errorf("internal/shared/%s must exist as a directory: %v", name, err)
+		}
+	}
+}

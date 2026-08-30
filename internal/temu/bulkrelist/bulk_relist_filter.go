@@ -3,7 +3,7 @@ package bulkrelist
 import (
 	"fmt"
 	"slices"
-	"task-processor/internal/pkg/strx"
+	"task-processor/internal/shared/strx"
 	"task-processor/internal/temu/api/inventory"
 
 	"github.com/sirupsen/logrus"

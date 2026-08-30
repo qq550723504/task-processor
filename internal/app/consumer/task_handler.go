@@ -19,7 +19,7 @@ import (
 	api "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/strx"
+	"task-processor/internal/shared/strx"
 
 	"github.com/sirupsen/logrus"
 )

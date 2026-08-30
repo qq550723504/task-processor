@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/pkg/hashx"
+	"task-processor/internal/shared/hashx"
 )
 
 // --- mockRedisForCache ---

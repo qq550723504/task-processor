@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/pkg/ptr"
+	"task-processor/internal/shared/ptr"
 	"time"
 
 	"github.com/sirupsen/logrus"

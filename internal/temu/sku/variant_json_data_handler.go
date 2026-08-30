@@ -9,7 +9,7 @@ import (
 	appProduct "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/strx"
+	"task-processor/internal/shared/strx"
 	domainProduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/ptr"
+	"task-processor/internal/shared/ptr"
 	temuimage "task-processor/internal/temu/api/image"
 	temuproduct "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"

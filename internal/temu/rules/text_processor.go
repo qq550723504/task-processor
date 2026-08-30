@@ -3,7 +3,7 @@ package rules
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/pkg/strx"
+	"task-processor/internal/shared/strx"
 )
 
 // TextProcessor 文本处理器

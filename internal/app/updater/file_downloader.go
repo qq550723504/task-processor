@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/httpclient"
-	"task-processor/internal/pkg/strx"
+	"task-processor/internal/shared/strx"
 	"time"
 )
 

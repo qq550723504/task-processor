@@ -7,7 +7,7 @@ import (
 
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/mathx"
+	"task-processor/internal/shared/mathx"
 )
 
 // 这个文件包含ProductDescriptionValidator的评分功能

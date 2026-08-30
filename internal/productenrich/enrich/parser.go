@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"task-processor/internal/pkg/strx"
+	"task-processor/internal/shared/strx"
 	productenrich "task-processor/internal/productenrich"
 
 	"github.com/sirupsen/logrus"
