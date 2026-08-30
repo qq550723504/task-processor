@@ -57,6 +57,8 @@
   - 放本地日志、浏览器状态、临时文件、开发期二进制和其他运行态产物。
   - 默认不提交，避免继续污染仓库根目录。
   - 推荐按 `logs/`、`tmp/`、`chrome/`、`bin/`、`dev-logs/`、`playwright-cli/` 分子目录管理。
+  - 日志库和测试默认只输出到 stdout；只有 app 运行装配可以通过显式配置启用文件日志。
+  - 仓库内受维护的相对日志路径统一位于 `.local/logs/`；测试文件输出使用 `t.TempDir()`。
 
 ## 当前护栏
 
@@ -91,6 +93,7 @@
 - `internal/*`
   - 不放本地 `.local`、`logs`、`tmp` 等运行态产物；业务包、基础设施包和平台包都应保持源码可审查。
   - SDS 登录态、浏览器状态和 auth/cookie JSON 必须放在仓库根 `.local/sds/` 或其他明确忽略的运行态目录，不能放在 `internal/sdslogin/data/`。
+  - `TestInternalPackagesContainNoLocalArtifacts` 检查实际文件系统，包括 Git 忽略路径；`.gitignore` 不能作为在源码包下保留运行态文件的依据。
 - `internal/listingkit`
   - 产品主域兼容 facade，承接 ListingKit 的任务、工作台、审核、提交编排、多租户产品能力。
   - `internal/listingkit/httpapi` 是 ListingKit 专属 HTTP 装配、认证运行时和 AI client helper 的稳定归属地。
