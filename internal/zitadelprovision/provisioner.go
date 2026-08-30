@@ -28,7 +28,10 @@ type Config struct {
 	// BootstrapLoginName identifies the local human account that should receive
 	// the operator role before the first browser login. Empty disables bootstrap.
 	BootstrapLoginName string
-	HTTPClient         *http.Client
+	// AcceptanceOrganizationIDs are stable, provisioner-owned IDs for the two
+	// disposable local acceptance organizations. Name-only adoption is unsafe.
+	AcceptanceOrganizationIDs []string
+	HTTPClient                *http.Client
 }
 
 type ProjectRole struct {
@@ -317,6 +320,13 @@ func ProvisionLocalMultiOrganizationAcceptance(ctx context.Context, cfg Config, 
 	if err := validateLocalIssuer(cfg.IssuerURL); err != nil {
 		return MultiOrganizationAcceptanceResult{}, err
 	}
+	if cfg.HTTPClient == nil {
+		httpClient, err := NewLoopbackOnlyHTTPClient(cfg.IssuerURL)
+		if err != nil {
+			return MultiOrganizationAcceptanceResult{}, err
+		}
+		cfg.HTTPClient = httpClient
+	}
 	projectID := strings.TrimSpace(cfg.ProjectID)
 	if projectID == "" {
 		return MultiOrganizationAcceptanceResult{}, errors.New("project id is required for multi-organization acceptance")
@@ -325,73 +335,45 @@ func ProvisionLocalMultiOrganizationAcceptance(ctx context.Context, cfg Config, 
 	if err != nil {
 		return MultiOrganizationAcceptanceResult{}, err
 	}
+	acceptanceOrganizationIDs := normalizeStrings(cfg.AcceptanceOrganizationIDs)
+	if len(acceptanceOrganizationIDs) != 2 {
+		return MultiOrganizationAcceptanceResult{}, errors.New("exactly two distinct stable acceptance organization ids are required")
+	}
 
 	client := newClient(cfg)
-	existingOrganizations, err := client.listOrganizations(ctx)
-	if err != nil {
-		return MultiOrganizationAcceptanceResult{}, fmt.Errorf("list acceptance organizations: %w", err)
-	}
 	organizationIDs := make(map[string]string, len(normalizedSpec.Organizations))
-	for _, requested := range normalizedSpec.Organizations {
-		for _, existing := range existingOrganizations {
-			if strings.TrimSpace(existing.Name) == requested.Name {
-				organizationIDs[requested.Name] = strings.TrimSpace(existing.ID)
-				break
-			}
+	for index, requested := range normalizedSpec.Organizations {
+		stableID := acceptanceOrganizationIDs[index]
+		if ensureErr := client.ensureAcceptanceOrganization(ctx, stableID, requested.Name); ensureErr != nil {
+			return MultiOrganizationAcceptanceResult{}, ensureErr
 		}
-		if organizationIDs[requested.Name] != "" {
-			continue
-		}
-		organizationID, createErr := client.createOrganization(ctx, requested.Name)
-		if createErr != nil {
-			return MultiOrganizationAcceptanceResult{}, fmt.Errorf("create acceptance organization: %w", createErr)
-		}
-		organizationIDs[requested.Name] = organizationID
+		organizationIDs[requested.Name] = stableID
 	}
 
-	existingProjectGrants, err := client.listProjectGrants(ctx, projectID)
-	if err != nil {
-		return MultiOrganizationAcceptanceResult{}, fmt.Errorf("list acceptance project grants: %w", err)
-	}
 	for _, requested := range normalizedSpec.Organizations {
 		organizationID := organizationIDs[requested.Name]
-		existing, found := findProjectGrant(existingProjectGrants, projectID, organizationID)
-		if !found {
-			if createErr := client.createProjectGrant(ctx, projectID, organizationID, requested.RoleKeys); createErr != nil {
-				return MultiOrganizationAcceptanceResult{}, fmt.Errorf("create acceptance project grant: %w", createErr)
-			}
-			continue
-		}
-		if !equalStringSets(existing.GrantedRoleKeys, requested.RoleKeys) {
-			if updateErr := client.updateProjectGrant(ctx, projectID, organizationID, requested.RoleKeys); updateErr != nil {
-				return MultiOrganizationAcceptanceResult{}, fmt.Errorf("update acceptance project grant: %w", updateErr)
-			}
+		if ensureErr := client.ensureProjectGrant(ctx, projectID, organizationID, requested.RoleKeys); ensureErr != nil {
+			return MultiOrganizationAcceptanceResult{}, ensureErr
 		}
 	}
 
-	existingAuthorizations, err := client.listAuthorizations(ctx, normalizedSpec.UserID, projectID)
-	if err != nil {
-		return MultiOrganizationAcceptanceResult{}, fmt.Errorf("list acceptance role assignments: %w", err)
-	}
 	result := MultiOrganizationAcceptanceResult{UserID: normalizedSpec.UserID, ProjectID: projectID}
 	for _, requested := range normalizedSpec.Organizations {
 		organizationID := organizationIDs[requested.Name]
-		existing, found := findAuthorization(existingAuthorizations, normalizedSpec.UserID, projectID, organizationID)
-		if !found {
-			identity := authidentity.AuthenticatedIdentity{TenantID: organizationID, UserID: normalizedSpec.UserID}
-			if createErr := client.createAuthorization(ctx, projectID, identity, requested.RoleKeys); createErr != nil {
-				return MultiOrganizationAcceptanceResult{}, fmt.Errorf("create acceptance role assignment: %w", createErr)
-			}
-		} else if !equalStringSets(existing.RoleKeys, requested.RoleKeys) {
-			if updateErr := client.updateAuthorization(ctx, existing.ID, requested.RoleKeys); updateErr != nil {
-				return MultiOrganizationAcceptanceResult{}, fmt.Errorf("update acceptance role assignment: %w", updateErr)
-			}
+		if ensureErr := client.ensureAuthorization(ctx, normalizedSpec.UserID, projectID, organizationID, requested.RoleKeys); ensureErr != nil {
+			return MultiOrganizationAcceptanceResult{}, ensureErr
 		}
 		result.Organizations = append(result.Organizations, AcceptanceOrganizationResult{
 			OrganizationID:   organizationID,
 			OrganizationName: requested.Name,
 			RoleKeys:         append([]string(nil), requested.RoleKeys...),
 		})
+	}
+	for _, requested := range normalizedSpec.Organizations {
+		organizationID := organizationIDs[requested.Name]
+		if verifyErr := client.verifyAcceptanceState(ctx, normalizedSpec.UserID, projectID, organizationID, requested.Name, requested.RoleKeys); verifyErr != nil {
+			return MultiOrganizationAcceptanceResult{}, verifyErr
+		}
 	}
 	return result, nil
 }
@@ -647,17 +629,83 @@ func findApplicationByType(applications []applicationRecord, name string, kind a
 
 func validateLocalIssuer(raw string) error {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" {
+	if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return errors.New("local ZITADEL issuer URL is invalid")
 	}
 	host := strings.ToLower(parsed.Hostname())
-	if host != "localhost" {
-		ip := net.ParseIP(host)
-		if ip == nil || !ip.IsLoopback() {
-			return errors.New("local ZITADEL issuer URL must use localhost or a loopback address")
-		}
+	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+		return errors.New("local ZITADEL issuer URL must use localhost, 127.0.0.1, or ::1")
 	}
 	return nil
+}
+
+type lookupIPFunc func(context.Context, string, string) ([]net.IP, error)
+
+func NewLoopbackOnlyHTTPClient(raw string) (*http.Client, error) {
+	return newLoopbackOnlyHTTPClient(raw, net.DefaultResolver.LookupIP)
+}
+
+func newLoopbackOnlyHTTPClient(raw string, lookup lookupIPFunc) (*http.Client, error) {
+	if err := validateLocalIssuer(raw); err != nil {
+		return nil, err
+	}
+	parsed, _ := url.Parse(strings.TrimSpace(raw))
+	if _, err := resolveLoopbackHost(context.Background(), parsed.Hostname(), lookup); err != nil {
+		return nil, err
+	}
+	dialer := &net.Dialer{}
+	transport := &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, errors.New("loopback HTTP destination is invalid")
+		}
+		ips, err := resolveLoopbackHost(ctx, host, lookup)
+		if err != nil {
+			return nil, err
+		}
+		var lastErr error
+		for _, ip := range ips {
+			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			if dialErr == nil {
+				return conn, nil
+			}
+			lastErr = dialErr
+		}
+		return nil, lastErr
+	}}
+	return &http.Client{
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}, nil
+}
+
+func resolveLoopbackHost(ctx context.Context, host string, lookup lookupIPFunc) ([]net.IP, error) {
+	host = strings.ToLower(host)
+	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+		return nil, errors.New("HTTP destination hostname is not an allowed loopback name")
+	}
+	var ips []net.IP
+	if literal := net.ParseIP(host); literal != nil {
+		ips = []net.IP{literal}
+	} else {
+		resolved, err := lookup(ctx, "ip", host)
+		if err != nil {
+			return nil, errors.New("resolve loopback issuer hostname")
+		}
+		ips = resolved
+	}
+	if len(ips) == 0 {
+		return nil, errors.New("loopback issuer hostname resolved to no addresses")
+	}
+	for _, ip := range ips {
+		if ip == nil || !ip.IsLoopback() {
+			return nil, errors.New("loopback issuer hostname resolved to a non-loopback address")
+		}
+	}
+	return ips, nil
 }
 
 func validateExistingOIDCApplication(ctx context.Context, client client, projectID string, application applicationRecord, cfg LocalApplicationConfig) (bool, error) {
@@ -819,27 +867,93 @@ type userGrant struct {
 }
 
 type organizationRecord struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	State string `json:"state"`
 }
 
-func (c client) listOrganizations(ctx context.Context) ([]organizationRecord, error) {
-	var response struct {
-		Result []organizationRecord `json:"result"`
+func (c client) listOrganizations(ctx context.Context, query map[string]any) ([]organizationRecord, error) {
+	var result []organizationRecord
+	for offset := 0; ; {
+		var response struct {
+			Details struct {
+				TotalResult int `json:"totalResult"`
+			} `json:"details"`
+			Result []organizationRecord `json:"result"`
+		}
+		if err := c.doJSON(ctx, http.MethodPost, "/v2/organizations/_search", map[string]any{
+			"query":         map[string]any{"offset": offset, "limit": acceptanceListPageSize, "asc": true},
+			"sortingColumn": "ORGANIZATION_FIELD_NAME_NAME",
+			"queries":       []map[string]any{query},
+		}, &response); err != nil {
+			return nil, err
+		}
+		result = append(result, response.Result...)
+		if len(result) > acceptanceListLimit || response.Details.TotalResult > acceptanceListLimit {
+			return nil, errors.New("acceptance organization query exceeded the safe candidate limit")
+		}
+		if len(result) >= response.Details.TotalResult {
+			return result, nil
+		}
+		if len(response.Result) == 0 {
+			return nil, errors.New("acceptance organization pagination made no progress")
+		}
+		offset += len(response.Result)
 	}
-	if err := c.doJSON(ctx, http.MethodPost, "/v2/organizations/_search", map[string]any{
-		"query": map[string]any{"limit": 1000},
-	}, &response); err != nil {
-		return nil, err
-	}
-	return response.Result, nil
 }
 
-func (c client) createOrganization(ctx context.Context, name string) (string, error) {
+const (
+	acceptanceListPageSize = 100
+	acceptanceListLimit    = 1000
+)
+
+func (c client) findOrganizationByID(ctx context.Context, organizationID string) (organizationRecord, bool, error) {
+	records, err := c.listOrganizations(ctx, map[string]any{"idQuery": map[string]any{"id": organizationID}})
+	if err != nil {
+		return organizationRecord{}, false, err
+	}
+	matches := make([]organizationRecord, 0, len(records))
+	for _, record := range records {
+		if strings.TrimSpace(record.ID) == organizationID {
+			matches = append(matches, record)
+		}
+	}
+	if len(matches) > 1 {
+		return organizationRecord{}, false, errors.New("multiple organizations matched the stable acceptance organization id")
+	}
+	if len(matches) == 0 {
+		return organizationRecord{}, false, nil
+	}
+	return matches[0], true, nil
+}
+
+func (c client) findOrganizationByName(ctx context.Context, name string) (organizationRecord, bool, error) {
+	records, err := c.listOrganizations(ctx, map[string]any{"nameQuery": map[string]any{"name": name, "method": "TEXT_QUERY_METHOD_EQUALS"}})
+	if err != nil {
+		return organizationRecord{}, false, err
+	}
+	matches := make([]organizationRecord, 0, len(records))
+	for _, record := range records {
+		if strings.TrimSpace(record.Name) == name {
+			matches = append(matches, record)
+		}
+	}
+	if len(matches) > 1 {
+		return organizationRecord{}, false, errors.New("multiple organizations matched the acceptance organization name")
+	}
+	if len(matches) == 0 {
+		return organizationRecord{}, false, nil
+	}
+	return matches[0], true, nil
+}
+
+func (c client) createOrganization(ctx context.Context, organizationID, name string) (string, error) {
 	var response struct {
 		OrganizationID string `json:"organizationId"`
 	}
-	if err := c.doJSON(ctx, http.MethodPost, "/v2/organizations", map[string]any{"name": name}, &response); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/v2/organizations", map[string]any{
+		"name": name, "organizationId": organizationID, "orgId": organizationID,
+	}, &response); err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(response.OrganizationID) == "" {
@@ -848,23 +962,100 @@ func (c client) createOrganization(ctx context.Context, name string) (string, er
 	return strings.TrimSpace(response.OrganizationID), nil
 }
 
+func (c client) activateOrganization(ctx context.Context, organizationID string) error {
+	return c.doJSON(ctx, http.MethodPost, "/v2/organizations/"+url.PathEscape(organizationID)+"/activate", nil, &struct{}{})
+}
+
+func (c client) ensureAcceptanceOrganization(ctx context.Context, organizationID, name string) error {
+	existing, found, err := c.findOrganizationByID(ctx, organizationID)
+	if err != nil {
+		return fmt.Errorf("find acceptance organization by stable id: %w", err)
+	}
+	if !found {
+		nameMatch, nameFound, nameErr := c.findOrganizationByName(ctx, name)
+		if nameErr != nil {
+			return fmt.Errorf("check acceptance organization name ownership: %w", nameErr)
+		}
+		if nameFound && strings.TrimSpace(nameMatch.ID) != organizationID {
+			return errors.New("organization with the same name is not owned by this acceptance provisioner")
+		}
+		createdID, createErr := c.createOrganization(ctx, organizationID, name)
+		if createErr != nil && !isProviderConflict(createErr) {
+			return fmt.Errorf("create acceptance organization: %w", createErr)
+		}
+		if createErr == nil && createdID != organizationID {
+			return errors.New("ZITADEL did not honor the stable acceptance organization id")
+		}
+		existing, found, err = c.findOrganizationByID(ctx, organizationID)
+		if err != nil {
+			return fmt.Errorf("read back created acceptance organization: %w", err)
+		}
+	}
+	if !found || strings.TrimSpace(existing.Name) != name {
+		return errors.New("acceptance organization ownership read-back did not match")
+	}
+	switch existing.State {
+	case "ORGANIZATION_STATE_ACTIVE":
+		return nil
+	case "ORGANIZATION_STATE_INACTIVE", "ORGANIZATION_STATE_DEACTIVATED":
+		if err := c.activateOrganization(ctx, organizationID); err != nil {
+			return fmt.Errorf("activate acceptance organization: %w", err)
+		}
+		existing, found, err = c.findOrganizationByID(ctx, organizationID)
+		if err != nil {
+			return fmt.Errorf("read back activated acceptance organization: %w", err)
+		}
+		if !found || existing.State != "ORGANIZATION_STATE_ACTIVE" || strings.TrimSpace(existing.Name) != name {
+			return errors.New("acceptance organization activation read-back did not match")
+		}
+		return nil
+	default:
+		return errors.New("acceptance organization is not active")
+	}
+}
+
 type projectGrantRecord struct {
 	ProjectID             string   `json:"projectId"`
 	GrantedOrganizationID string   `json:"grantedOrganizationId"`
 	GrantedRoleKeys       []string `json:"grantedRoleKeys"`
+	State                 string   `json:"state"`
 }
 
-func (c client) listProjectGrants(ctx context.Context, projectID string) ([]projectGrantRecord, error) {
-	var response struct {
-		ProjectGrants []projectGrantRecord `json:"projectGrants"`
+func (c client) listProjectGrants(ctx context.Context, projectID, organizationID string) ([]projectGrantRecord, error) {
+	var result []projectGrantRecord
+	for offset := 0; ; {
+		var response struct {
+			Pagination struct {
+				TotalResult int `json:"totalResult"`
+			} `json:"pagination"`
+			ProjectGrants []projectGrantRecord `json:"projectGrants"`
+		}
+		if err := c.doJSON(ctx, http.MethodPost, "/zitadel.project.v2.ProjectService/ListProjectGrants", map[string]any{
+			"pagination":    map[string]any{"offset": offset, "limit": acceptanceListPageSize, "asc": true},
+			"sortingColumn": "PROJECT_GRANT_FIELD_NAME_CREATION_DATE",
+			"filters": []map[string]any{
+				{"inProjectIdsFilter": map[string]any{"ids": []string{projectID}}},
+				{"grantedOrganizationIdFilter": map[string]any{"id": organizationID}},
+			},
+		}, &response); err != nil {
+			return nil, err
+		}
+		for _, grant := range response.ProjectGrants {
+			if grant.ProjectID == projectID && grant.GrantedOrganizationID == organizationID {
+				result = append(result, grant)
+			}
+		}
+		if len(result) > acceptanceListLimit || response.Pagination.TotalResult > acceptanceListLimit {
+			return nil, errors.New("acceptance project grant query exceeded the safe candidate limit")
+		}
+		if len(result) >= response.Pagination.TotalResult {
+			return result, nil
+		}
+		if len(response.ProjectGrants) == 0 {
+			return nil, errors.New("acceptance project grant pagination made no progress")
+		}
+		offset += len(response.ProjectGrants)
 	}
-	if err := c.doJSON(ctx, http.MethodPost, "/zitadel.project.v2.ProjectService/ListProjectGrants", map[string]any{
-		"pagination": map[string]any{"limit": 1000},
-		"filters":    []map[string]any{{"inProjectIdsFilter": map[string]any{"ids": []string{projectID}}}},
-	}, &response); err != nil {
-		return nil, err
-	}
-	return response.ProjectGrants, nil
 }
 
 func (c client) createProjectGrant(ctx context.Context, projectID, organizationID string, roleKeys []string) error {
@@ -877,6 +1068,53 @@ func (c client) updateProjectGrant(ctx context.Context, projectID, organizationI
 	return c.doJSON(ctx, http.MethodPost, "/zitadel.project.v2.ProjectService/UpdateProjectGrant", map[string]any{
 		"projectId": projectID, "grantedOrganizationId": organizationID, "roleKeys": roleKeys,
 	}, &struct{}{})
+}
+
+func (c client) activateProjectGrant(ctx context.Context, projectID, organizationID string) error {
+	return c.doJSON(ctx, http.MethodPost, "/zitadel.project.v2.ProjectService/ActivateProjectGrant", map[string]any{
+		"projectId": projectID, "grantedOrganizationId": organizationID,
+	}, &struct{}{})
+}
+
+func (c client) ensureProjectGrant(ctx context.Context, projectID, organizationID string, roleKeys []string) error {
+	grants, err := c.listProjectGrants(ctx, projectID, organizationID)
+	if err != nil {
+		return fmt.Errorf("list acceptance project grant: %w", err)
+	}
+	if len(grants) > 1 {
+		return errors.New("multiple acceptance project grants matched the exact project and organization")
+	}
+	if len(grants) == 0 {
+		if err := c.createProjectGrant(ctx, projectID, organizationID, roleKeys); err != nil && !isProviderConflict(err) {
+			return fmt.Errorf("create acceptance project grant: %w", err)
+		}
+	} else {
+		grant := grants[0]
+		if !equalStringSets(grant.GrantedRoleKeys, roleKeys) {
+			if err := c.updateProjectGrant(ctx, projectID, organizationID, roleKeys); err != nil {
+				return fmt.Errorf("update acceptance project grant: %w", err)
+			}
+		}
+		if grant.State == "PROJECT_GRANT_STATE_INACTIVE" || grant.State == "PROJECT_GRANT_STATE_DEACTIVATED" {
+			if err := c.activateProjectGrant(ctx, projectID, organizationID); err != nil {
+				return fmt.Errorf("activate acceptance project grant: %w", err)
+			}
+		} else if grant.State != "PROJECT_GRANT_STATE_ACTIVE" {
+			return errors.New("acceptance project grant is not active")
+		}
+	}
+	return c.verifyProjectGrant(ctx, projectID, organizationID, roleKeys)
+}
+
+func (c client) verifyProjectGrant(ctx context.Context, projectID, organizationID string, roleKeys []string) error {
+	grants, err := c.listProjectGrants(ctx, projectID, organizationID)
+	if err != nil {
+		return fmt.Errorf("read back acceptance project grant: %w", err)
+	}
+	if len(grants) != 1 || grants[0].State != "PROJECT_GRANT_STATE_ACTIVE" || !equalStringSets(grants[0].GrantedRoleKeys, roleKeys) {
+		return errors.New("acceptance project grant read-back did not match active exact roles")
+	}
+	return nil
 }
 
 func findProjectGrant(grants []projectGrantRecord, projectID, organizationID string) (projectGrantRecord, bool) {
@@ -903,27 +1141,50 @@ type authorizationRecord struct {
 		Key string `json:"key"`
 	} `json:"roles"`
 	RoleKeys []string `json:"-"`
+	State    string   `json:"state"`
 }
 
-func (c client) listAuthorizations(ctx context.Context, userID, projectID string) ([]authorizationRecord, error) {
-	var response struct {
-		Authorizations []authorizationRecord `json:"authorizations"`
-	}
-	if err := c.doJSON(ctx, http.MethodPost, "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations", map[string]any{
-		"pagination": map[string]any{"limit": 1000},
-		"filters": []map[string]any{
-			{"inUserIds": map[string]any{"ids": []string{userID}}},
-			{"projectId": map[string]any{"id": projectID}},
-		},
-	}, &response); err != nil {
-		return nil, err
-	}
-	for index := range response.Authorizations {
-		for _, role := range response.Authorizations[index].Roles {
-			response.Authorizations[index].RoleKeys = append(response.Authorizations[index].RoleKeys, role.Key)
+func (c client) listAuthorizations(ctx context.Context, userID, projectID, organizationID string) ([]authorizationRecord, error) {
+	var result []authorizationRecord
+	for offset := 0; ; {
+		var response struct {
+			Pagination struct {
+				TotalResult int `json:"totalResult"`
+			} `json:"pagination"`
+			Authorizations []authorizationRecord `json:"authorizations"`
 		}
+		if err := c.doJSON(ctx, http.MethodPost, "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations", map[string]any{
+			"pagination":    map[string]any{"offset": offset, "limit": acceptanceListPageSize, "asc": true},
+			"sortingColumn": "AUTHORIZATION_FIELD_NAME_ID",
+			"filters": []map[string]any{
+				{"inUserIds": map[string]any{"ids": []string{userID}}},
+				{"projectId": map[string]any{"id": projectID}},
+				{"organizationId": map[string]any{"id": organizationID}},
+			},
+		}, &response); err != nil {
+			return nil, err
+		}
+		for index := range response.Authorizations {
+			for _, role := range response.Authorizations[index].Roles {
+				response.Authorizations[index].RoleKeys = append(response.Authorizations[index].RoleKeys, role.Key)
+			}
+		}
+		for _, authorization := range response.Authorizations {
+			if authorization.User.ID == userID && authorization.Project.ID == projectID && authorization.Organization.ID == organizationID {
+				result = append(result, authorization)
+			}
+		}
+		if len(result) > acceptanceListLimit || response.Pagination.TotalResult > acceptanceListLimit {
+			return nil, errors.New("acceptance authorization query exceeded the safe candidate limit")
+		}
+		if len(result) >= response.Pagination.TotalResult {
+			return result, nil
+		}
+		if len(response.Authorizations) == 0 {
+			return nil, errors.New("acceptance authorization pagination made no progress")
+		}
+		offset += len(response.Authorizations)
 	}
-	return response.Authorizations, nil
 }
 
 func findAuthorization(authorizations []authorizationRecord, userID, projectID, organizationID string) (authorizationRecord, bool) {
@@ -933,6 +1194,66 @@ func findAuthorization(authorizations []authorizationRecord, userID, projectID, 
 		}
 	}
 	return authorizationRecord{}, false
+}
+
+func (c client) activateAuthorization(ctx context.Context, authorizationID string) error {
+	return c.doJSON(ctx, http.MethodPost, "/zitadel.authorization.v2.AuthorizationService/ActivateAuthorization", map[string]any{"id": authorizationID}, &struct{}{})
+}
+
+func (c client) ensureAuthorization(ctx context.Context, userID, projectID, organizationID string, roleKeys []string) error {
+	authorizations, err := c.listAuthorizations(ctx, userID, projectID, organizationID)
+	if err != nil {
+		return fmt.Errorf("list acceptance role assignment: %w", err)
+	}
+	if len(authorizations) > 1 {
+		return errors.New("multiple acceptance role assignments matched the exact user, project, and organization")
+	}
+	if len(authorizations) == 0 {
+		identity := authidentity.AuthenticatedIdentity{TenantID: organizationID, UserID: userID}
+		if err := c.createAuthorization(ctx, projectID, identity, roleKeys); err != nil && !isProviderConflict(err) {
+			return fmt.Errorf("create acceptance role assignment: %w", err)
+		}
+	} else {
+		authorization := authorizations[0]
+		if !equalStringSets(authorization.RoleKeys, roleKeys) {
+			if err := c.updateAuthorization(ctx, authorization.ID, roleKeys); err != nil {
+				return fmt.Errorf("update acceptance role assignment: %w", err)
+			}
+		}
+		if authorization.State == "STATE_INACTIVE" {
+			if err := c.activateAuthorization(ctx, authorization.ID); err != nil {
+				return fmt.Errorf("activate acceptance role assignment: %w", err)
+			}
+		} else if authorization.State != "STATE_ACTIVE" {
+			return errors.New("acceptance role assignment is not active")
+		}
+	}
+	return c.verifyAuthorization(ctx, userID, projectID, organizationID, roleKeys)
+}
+
+func (c client) verifyAuthorization(ctx context.Context, userID, projectID, organizationID string, roleKeys []string) error {
+	authorizations, err := c.listAuthorizations(ctx, userID, projectID, organizationID)
+	if err != nil {
+		return fmt.Errorf("read back acceptance role assignment: %w", err)
+	}
+	if len(authorizations) != 1 || authorizations[0].State != "STATE_ACTIVE" || !equalStringSets(authorizations[0].RoleKeys, roleKeys) {
+		return errors.New("acceptance role assignment read-back did not match active exact roles")
+	}
+	return nil
+}
+
+func (c client) verifyAcceptanceState(ctx context.Context, userID, projectID, organizationID, name string, roleKeys []string) error {
+	organization, found, err := c.findOrganizationByID(ctx, organizationID)
+	if err != nil {
+		return fmt.Errorf("final acceptance organization read-back: %w", err)
+	}
+	if !found || organization.State != "ORGANIZATION_STATE_ACTIVE" || strings.TrimSpace(organization.Name) != name {
+		return errors.New("final acceptance organization state did not match")
+	}
+	if err := c.verifyProjectGrant(ctx, projectID, organizationID, roleKeys); err != nil {
+		return err
+	}
+	return c.verifyAuthorization(ctx, userID, projectID, organizationID, roleKeys)
 }
 
 func (c client) findUserGrant(ctx context.Context, projectID string, identity authidentity.AuthenticatedIdentity) (userGrant, bool, error) {
@@ -1141,12 +1462,28 @@ func (c client) doJSON(ctx context.Context, method string, path string, body any
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("ZITADEL %s %s failed: %s", method, path, response.Status)
+		return &providerHTTPError{StatusCode: response.StatusCode, Method: method, Path: path, Status: response.Status}
 	}
 	if target == nil {
 		return nil
 	}
 	return json.NewDecoder(response.Body).Decode(target)
+}
+
+type providerHTTPError struct {
+	StatusCode int
+	Method     string
+	Path       string
+	Status     string
+}
+
+func (e *providerHTTPError) Error() string {
+	return fmt.Sprintf("ZITADEL %s %s failed: %s", e.Method, e.Path, e.Status)
+}
+
+func isProviderConflict(err error) bool {
+	var providerErr *providerHTTPError
+	return errors.As(err, &providerErr) && providerErr.StatusCode == http.StatusConflict
 }
 
 func roleKeys(roles []ProjectRole) []string {

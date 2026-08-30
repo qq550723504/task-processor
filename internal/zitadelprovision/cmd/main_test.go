@@ -337,25 +337,25 @@ func TestRunProvisionMultiOrgReusesPresetStateAndWritesOnlyOpaqueOrganizationIDs
 		switch r.URL.Path {
 		case "/v2/organizations/_search":
 			writeMainJSON(t, w, map[string]any{"result": []map[string]any{
-				{"id": organizationAID, "name": "ListingKit Acceptance Organization A"},
-				{"id": organizationBID, "name": "ListingKit Acceptance Organization B"},
+				{"id": organizationAID, "name": "ListingKit Acceptance Organization A", "state": "ORGANIZATION_STATE_ACTIVE"},
+				{"id": organizationBID, "name": "ListingKit Acceptance Organization B", "state": "ORGANIZATION_STATE_ACTIVE"},
 			}})
 		case "/zitadel.project.v2.ProjectService/ListProjectGrants":
 			writeMainJSON(t, w, map[string]any{"projectGrants": []map[string]any{
-				{"projectId": "project-1", "grantedOrganizationId": organizationAID, "grantedRoleKeys": []string{"listingkit_admin"}},
-				{"projectId": "project-1", "grantedOrganizationId": organizationBID, "grantedRoleKeys": []string{"listingkit_viewer"}},
+				{"projectId": "project-1", "grantedOrganizationId": organizationAID, "grantedRoleKeys": []string{"listingkit_admin"}, "state": "PROJECT_GRANT_STATE_ACTIVE"},
+				{"projectId": "project-1", "grantedOrganizationId": organizationBID, "grantedRoleKeys": []string{"listingkit_viewer"}, "state": "PROJECT_GRANT_STATE_ACTIVE"},
 			}})
 		case "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations":
 			writeMainJSON(t, w, map[string]any{"authorizations": []map[string]any{
 				{
 					"id": "authorization-a", "user": map[string]any{"id": userID},
 					"project": map[string]any{"id": "project-1"}, "organization": map[string]any{"id": organizationAID},
-					"roles": []map[string]any{{"key": "listingkit_admin"}},
+					"roles": []map[string]any{{"key": "listingkit_admin"}}, "state": "STATE_ACTIVE",
 				},
 				{
 					"id": "authorization-b", "user": map[string]any{"id": userID},
 					"project": map[string]any{"id": "project-1"}, "organization": map[string]any{"id": organizationBID},
-					"roles": []map[string]any{{"key": "listingkit_viewer"}},
+					"roles": []map[string]any{{"key": "listingkit_viewer"}}, "state": "STATE_ACTIVE",
 				},
 			}})
 		default:
@@ -370,6 +370,8 @@ func TestRunProvisionMultiOrgReusesPresetStateAndWritesOnlyOpaqueOrganizationIDs
 		t.Fatal(err)
 	}
 	runtime[bootstrapUserIDKey] = userID
+	runtime[acceptanceOrgAIDKey] = organizationAID
+	runtime[acceptanceOrgBIDKey] = organizationBID
 	if err := writeRuntimeEnv(runtimeFile, runtime); err != nil {
 		t.Fatal(err)
 	}

@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -34,6 +33,8 @@ const (
 	acceptanceOrgBIDKey   = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ACCEPTANCE_ORGANIZATION_B_ID"
 	acceptanceOrgAName    = "ListingKit Acceptance Organization A"
 	acceptanceOrgBName    = "ListingKit Acceptance Organization B"
+	defaultAcceptanceOrgA = "910000000000000001"
+	defaultAcceptanceOrgB = "910000000000000002"
 )
 
 func main() {
@@ -184,7 +185,8 @@ func runProvisionMultiOrgAcceptance(ctx context.Context, args []string, stdout, 
 		return errors.New("-confirm-resettable-test-data is required")
 	}
 	issuerURL = strings.TrimSpace(issuerURL)
-	if err := validateExactLoopbackIssuer(issuerURL); err != nil {
+	httpClient, err := zitadelprovision.NewLoopbackOnlyHTTPClient(issuerURL)
+	if err != nil {
 		return err
 	}
 	if err := validateAcceptanceRuntimePath(runtimeFile); err != nil {
@@ -214,11 +216,23 @@ func runProvisionMultiOrgAcceptance(ctx context.Context, args []string, stdout, 
 		return err
 	}
 
+	acceptanceOrganizationIDs := []string{
+		strings.TrimSpace(runtime[acceptanceOrgAIDKey]),
+		strings.TrimSpace(runtime[acceptanceOrgBIDKey]),
+	}
+	if acceptanceOrganizationIDs[0] == "" && acceptanceOrganizationIDs[1] == "" {
+		acceptanceOrganizationIDs = []string{defaultAcceptanceOrgA, defaultAcceptanceOrgB}
+	} else if acceptanceOrganizationIDs[0] == "" || acceptanceOrganizationIDs[1] == "" {
+		return errors.New("guarded runtime file must contain both acceptance organization ids or neither")
+	}
+
 	result, err := zitadelprovision.ProvisionLocalMultiOrganizationAcceptance(ctx, zitadelprovision.Config{
-		IssuerURL:       issuerURL,
-		ManagementToken: managementToken,
-		OrgID:           strings.TrimSpace(runtime["ZITADEL_ORG_ID"]),
-		ProjectID:       projectID,
+		IssuerURL:                 issuerURL,
+		ManagementToken:           managementToken,
+		OrgID:                     strings.TrimSpace(runtime["ZITADEL_ORG_ID"]),
+		ProjectID:                 projectID,
+		AcceptanceOrganizationIDs: acceptanceOrganizationIDs,
+		HTTPClient:                httpClient,
 	}, zitadelprovision.MultiOrganizationAcceptanceSpec{
 		UserID: userID,
 		Organizations: []zitadelprovision.AcceptanceOrganizationSpec{
@@ -242,16 +256,8 @@ func runProvisionMultiOrgAcceptance(ctx context.Context, args []string, stdout, 
 }
 
 func validateExactLoopbackIssuer(raw string) error {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" {
-		return errors.New("local ZITADEL issuer URL is invalid")
-	}
-	switch strings.ToLower(parsed.Hostname()) {
-	case "localhost", "127.0.0.1", "::1":
-		return nil
-	default:
-		return errors.New("local ZITADEL issuer hostname must be localhost, 127.0.0.1, or ::1")
-	}
+	_, err := zitadelprovision.NewLoopbackOnlyHTTPClient(raw)
+	return err
 }
 
 func runAuthorize(ctx context.Context, args []string, stdout, stderr io.Writer) error {

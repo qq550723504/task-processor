@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"task-processor/internal/authidentity"
@@ -538,13 +540,15 @@ func TestProvisionCreatesProjectWhenEnabled(t *testing.T) {
 
 func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialModel(t *testing.T) {
 	type organization struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		State string `json:"state"`
 	}
 	type projectGrant struct {
 		ProjectID             string   `json:"projectId"`
 		GrantedOrganizationID string   `json:"grantedOrganizationId"`
 		GrantedRoleKeys       []string `json:"grantedRoleKeys"`
+		State                 string   `json:"state"`
 	}
 	type authorization struct {
 		ID           string
@@ -552,6 +556,7 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 		ProjectID    string
 		Organization string
 		RoleKeys     []string
+		State        string
 	}
 
 	var organizations []organization
@@ -568,7 +573,11 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 				t.Fatal(err)
 			}
 			name, _ := body["name"].(string)
-			created := organization{ID: fmt.Sprintf("org-%d", len(organizations)+1), Name: name}
+			organizationID, _ := body["organizationId"].(string)
+			if body["orgId"] != organizationID {
+				t.Fatalf("stable organization ids = %#v/%#v", body["organizationId"], body["orgId"])
+			}
+			created := organization{ID: organizationID, Name: name, State: "ORGANIZATION_STATE_ACTIVE"}
 			organizations = append(organizations, created)
 			writeJSON(t, w, map[string]any{"organizationId": created.ID})
 		case "/zitadel.project.v2.ProjectService/ListProjectGrants":
@@ -592,6 +601,7 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 				ProjectID:             body.ProjectID,
 				GrantedOrganizationID: body.GrantedOrganizationID,
 				GrantedRoleKeys:       body.RoleKeys,
+				State:                 "PROJECT_GRANT_STATE_ACTIVE",
 			})
 			writeJSON(t, w, map[string]any{"creationDate": "2026-08-30T00:00:00Z"})
 		case "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations":
@@ -607,6 +617,7 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 					"project":      map[string]any{"id": item.ProjectID},
 					"organization": map[string]any{"id": item.Organization},
 					"roles":        roles,
+					"state":        item.State,
 				})
 			}
 			writeJSON(t, w, map[string]any{"authorizations": response})
@@ -626,6 +637,7 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 				ProjectID:    body.ProjectID,
 				Organization: body.OrganizationID,
 				RoleKeys:     body.RoleKeys,
+				State:        "STATE_ACTIVE",
 			})
 			writeJSON(t, w, map[string]any{"id": authorizations[len(authorizations)-1].ID})
 		default:
@@ -642,7 +654,7 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 		},
 	}
 	result, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), Config{
-		IssuerURL: server.URL, ManagementToken: "token", ProjectID: " project-1 ",
+		IssuerURL: server.URL, ManagementToken: "token", ProjectID: " project-1 ", AcceptanceOrganizationIDs: []string{"org-1", "org-2"},
 	}, spec)
 	if err != nil {
 		t.Fatalf("ProvisionLocalMultiOrganizationAcceptance() error = %v", err)
@@ -680,7 +692,7 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 	beforeProjectGrants := len(projectGrants)
 	beforeAuthorizations := len(authorizations)
 	second, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), Config{
-		IssuerURL: server.URL, ManagementToken: "token", ProjectID: "project-1",
+		IssuerURL: server.URL, ManagementToken: "token", ProjectID: "project-1", AcceptanceOrganizationIDs: []string{"org-1", "org-2"},
 	}, spec)
 	if err != nil {
 		t.Fatalf("second ProvisionLocalMultiOrganizationAcceptance() error = %v", err)
@@ -721,7 +733,12 @@ func TestProvisionLocalMultiOrganizationAcceptanceFailsClosedOnInvalidSpec(t *te
 		},
 		{
 			name: "remote issuer",
-			cfg:  Config{IssuerURL: "https://identity.example.com", ManagementToken: "token", ProjectID: "project-1"},
+			cfg:  Config{IssuerURL: "https://identity.example.com", ManagementToken: "token", ProjectID: "project-1", AcceptanceOrganizationIDs: []string{"org-1", "org-2"}},
+			spec: MultiOrganizationAcceptanceSpec{UserID: "user-1", Organizations: []AcceptanceOrganizationSpec{{Name: "A", RoleKeys: []string{"admin"}}, {Name: "B", RoleKeys: []string{"viewer"}}}},
+		},
+		{
+			name: "missing stable acceptance organization ids",
+			cfg:  Config{IssuerURL: "http://localhost:8080", ManagementToken: "token", ProjectID: "project-1"},
 			spec: MultiOrganizationAcceptanceSpec{UserID: "user-1", Organizations: []AcceptanceOrganizationSpec{{Name: "A", RoleKeys: []string{"admin"}}, {Name: "B", RoleKeys: []string{"viewer"}}}},
 		},
 	}
@@ -742,7 +759,7 @@ func TestProvisionLocalMultiOrganizationAcceptanceErrorsAndResultsAreSecretSafe(
 	defer server.Close()
 
 	result, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), Config{
-		IssuerURL: server.URL, ManagementToken: managementSecret, ProjectID: "project-1",
+		IssuerURL: server.URL, ManagementToken: managementSecret, ProjectID: "project-1", AcceptanceOrganizationIDs: []string{"org-1", "org-2"},
 	}, MultiOrganizationAcceptanceSpec{
 		UserID: "user-1",
 		Organizations: []AcceptanceOrganizationSpec{
@@ -759,6 +776,458 @@ func TestProvisionLocalMultiOrganizationAcceptanceErrorsAndResultsAreSecretSafe(
 			t.Fatalf("result/error leaked secret %q: %s", secret, formatted)
 		}
 	}
+}
+
+func TestProvisionLocalMultiOrganizationAcceptanceRejectsSameNameWithUnmanagedID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireAuth(t, r)
+		if r.URL.Path != "/v2/organizations/_search" {
+			t.Fatalf("unexpected mutation after unmanaged name collision: %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		queries, _ := body["queries"].([]any)
+		if len(queries) != 1 {
+			t.Fatalf("organization queries = %#v, want one exact query", body["queries"])
+		}
+		query, _ := queries[0].(map[string]any)
+		if _, byID := query["idQuery"]; byID {
+			writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 0}, "result": []any{}})
+			return
+		}
+		nameQuery, byName := query["nameQuery"].(map[string]any)
+		if !byName || nameQuery["name"] != "Acceptance Organization A" || nameQuery["method"] != "TEXT_QUERY_METHOD_EQUALS" {
+			t.Fatalf("organization name query = %#v", query)
+		}
+		writeJSON(t, w, map[string]any{
+			"details": map[string]any{"totalResult": 1},
+			"result":  []map[string]any{{"id": "unmanaged-org", "name": "Acceptance Organization A", "state": "ORGANIZATION_STATE_ACTIVE"}},
+		})
+	}))
+	defer server.Close()
+
+	_, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), Config{
+		IssuerURL: server.URL, ManagementToken: "token", ProjectID: "project-1", AcceptanceOrganizationIDs: []string{"managed-org-a", "managed-org-b"},
+	}, MultiOrganizationAcceptanceSpec{UserID: "user-1", Organizations: []AcceptanceOrganizationSpec{
+		{Name: "Acceptance Organization A", RoleKeys: []string{"listingkit_admin"}},
+		{Name: "Acceptance Organization B", RoleKeys: []string{"listingkit_viewer"}},
+	}})
+	if err == nil || !strings.Contains(err.Error(), "same name") {
+		t.Fatalf("ProvisionLocalMultiOrganizationAcceptance() error = %v, want unmanaged same-name rejection", err)
+	}
+}
+
+func TestProvisionLocalMultiOrganizationAcceptanceActivatesAndReadsBackExactState(t *testing.T) {
+	organizationIDs := []string{"managed-org-a", "managed-org-b"}
+	names := map[string]string{"managed-org-a": "Acceptance Organization A", "managed-org-b": "Acceptance Organization B"}
+	wantRoles := map[string][]string{"managed-org-a": {"listingkit_admin"}, "managed-org-b": {"listingkit_viewer"}}
+	organizationStates := map[string]string{"managed-org-a": "ORGANIZATION_STATE_INACTIVE", "managed-org-b": "ORGANIZATION_STATE_INACTIVE"}
+	grantStates := map[string]string{"managed-org-a": "PROJECT_GRANT_STATE_INACTIVE", "managed-org-b": "PROJECT_GRANT_STATE_INACTIVE"}
+	grantRoles := map[string][]string{"managed-org-a": {"old_role"}, "managed-org-b": {"old_role"}}
+	authorizationStates := map[string]string{"managed-org-a": "STATE_INACTIVE", "managed-org-b": "STATE_INACTIVE"}
+	authorizationRoles := map[string][]string{"managed-org-a": {"old_role"}, "managed-org-b": {"old_role"}}
+	listCounts := make(map[string]int)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireAuth(t, r)
+		switch {
+		case r.URL.Path == "/v2/organizations/_search":
+			body := decodeTestJSONMap(t, r)
+			assertTestPagination(t, body["query"], "ORGANIZATION_FIELD_NAME_NAME", body["sortingColumn"])
+			organizationID := organizationIDFromQueries(t, body["queries"])
+			listCounts["organization:"+organizationID]++
+			writeJSON(t, w, map[string]any{
+				"details": map[string]any{"totalResult": 1},
+				"result":  []map[string]any{{"id": organizationID, "name": names[organizationID], "state": organizationStates[organizationID]}},
+			})
+		case strings.HasPrefix(r.URL.Path, "/v2/organizations/") && strings.HasSuffix(r.URL.Path, "/activate"):
+			organizationID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v2/organizations/"), "/activate")
+			organizationStates[organizationID] = "ORGANIZATION_STATE_ACTIVE"
+			writeJSON(t, w, map[string]any{"changeDate": "2026-08-30T00:00:00Z"})
+		case r.URL.Path == "/zitadel.project.v2.ProjectService/ListProjectGrants":
+			body := decodeTestJSONMap(t, r)
+			assertTestPagination(t, body["pagination"], "PROJECT_GRANT_FIELD_NAME_CREATION_DATE", body["sortingColumn"])
+			organizationID := projectGrantOrganizationFilter(t, body["filters"], "project-1")
+			listCounts["grant:"+organizationID]++
+			writeJSON(t, w, map[string]any{
+				"pagination": map[string]any{"totalResult": 1, "appliedLimit": 100},
+				"projectGrants": []map[string]any{{
+					"projectId": "project-1", "grantedOrganizationId": organizationID,
+					"grantedRoleKeys": grantRoles[organizationID], "state": grantStates[organizationID],
+				}},
+			})
+		case r.URL.Path == "/zitadel.project.v2.ProjectService/UpdateProjectGrant":
+			body := decodeTestJSONMap(t, r)
+			organizationID, _ := body["grantedOrganizationId"].(string)
+			grantRoles[organizationID] = testStringSlice(t, body["roleKeys"])
+			writeJSON(t, w, map[string]any{"changeDate": "2026-08-30T00:00:00Z"})
+		case r.URL.Path == "/zitadel.project.v2.ProjectService/ActivateProjectGrant":
+			body := decodeTestJSONMap(t, r)
+			organizationID, _ := body["grantedOrganizationId"].(string)
+			grantStates[organizationID] = "PROJECT_GRANT_STATE_ACTIVE"
+			writeJSON(t, w, map[string]any{"changeDate": "2026-08-30T00:00:00Z"})
+		case r.URL.Path == "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations":
+			body := decodeTestJSONMap(t, r)
+			assertTestPagination(t, body["pagination"], "AUTHORIZATION_FIELD_NAME_ID", body["sortingColumn"])
+			organizationID := authorizationOrganizationFilter(t, body["filters"], "user-1", "project-1")
+			listCounts["authorization:"+organizationID]++
+			roles := make([]map[string]any, 0, len(authorizationRoles[organizationID]))
+			for _, roleKey := range authorizationRoles[organizationID] {
+				roles = append(roles, map[string]any{"key": roleKey})
+			}
+			writeJSON(t, w, map[string]any{
+				"pagination": map[string]any{"totalResult": 1, "appliedLimit": 100},
+				"authorizations": []map[string]any{{
+					"id": "authorization-" + organizationID, "state": authorizationStates[organizationID],
+					"user": map[string]any{"id": "user-1"}, "project": map[string]any{"id": "project-1"},
+					"organization": map[string]any{"id": organizationID}, "roles": roles,
+				}},
+			})
+		case r.URL.Path == "/zitadel.authorization.v2.AuthorizationService/UpdateAuthorization":
+			body := decodeTestJSONMap(t, r)
+			authorizationID, _ := body["id"].(string)
+			organizationID := strings.TrimPrefix(authorizationID, "authorization-")
+			authorizationRoles[organizationID] = testStringSlice(t, body["roleKeys"])
+			writeJSON(t, w, map[string]any{"changeDate": "2026-08-30T00:00:00Z"})
+		case r.URL.Path == "/zitadel.authorization.v2.AuthorizationService/ActivateAuthorization":
+			body := decodeTestJSONMap(t, r)
+			authorizationID, _ := body["id"].(string)
+			organizationID := strings.TrimPrefix(authorizationID, "authorization-")
+			authorizationStates[organizationID] = "STATE_ACTIVE"
+			writeJSON(t, w, map[string]any{"changeDate": "2026-08-30T00:00:00Z"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	result, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), Config{
+		IssuerURL: server.URL, ManagementToken: "token", ProjectID: "project-1", AcceptanceOrganizationIDs: organizationIDs,
+	}, MultiOrganizationAcceptanceSpec{UserID: "user-1", Organizations: []AcceptanceOrganizationSpec{
+		{Name: names[organizationIDs[0]], RoleKeys: wantRoles[organizationIDs[0]]},
+		{Name: names[organizationIDs[1]], RoleKeys: wantRoles[organizationIDs[1]]},
+	}})
+	if err != nil {
+		t.Fatalf("ProvisionLocalMultiOrganizationAcceptance() error = %v", err)
+	}
+	if len(result.Organizations) != 2 {
+		t.Fatalf("result organizations = %d, want 2", len(result.Organizations))
+	}
+	for _, organizationID := range organizationIDs {
+		if organizationStates[organizationID] != "ORGANIZATION_STATE_ACTIVE" || grantStates[organizationID] != "PROJECT_GRANT_STATE_ACTIVE" || authorizationStates[organizationID] != "STATE_ACTIVE" {
+			t.Fatalf("final states for %s = %s/%s/%s", organizationID, organizationStates[organizationID], grantStates[organizationID], authorizationStates[organizationID])
+		}
+		if !reflect.DeepEqual(grantRoles[organizationID], wantRoles[organizationID]) || !reflect.DeepEqual(authorizationRoles[organizationID], wantRoles[organizationID]) {
+			t.Fatalf("final roles for %s = %#v/%#v", organizationID, grantRoles[organizationID], authorizationRoles[organizationID])
+		}
+		for _, kind := range []string{"organization:", "grant:", "authorization:"} {
+			if listCounts[kind+organizationID] < 2 {
+				t.Fatalf("%s%s list count = %d, want write read-back", kind, organizationID, listCounts[kind+organizationID])
+			}
+		}
+	}
+}
+
+func TestProvisionLocalMultiOrganizationAcceptanceRecoversCreateConflictsByReadBack(t *testing.T) {
+	organizationIDs := []string{"managed-org-a", "managed-org-b"}
+	names := map[string]string{"managed-org-a": "Acceptance Organization A", "managed-org-b": "Acceptance Organization B"}
+	wantRoles := map[string][]string{"managed-org-a": {"listingkit_admin"}, "managed-org-b": {"listingkit_viewer"}}
+	organizations := make(map[string]organizationRecord)
+	grants := make(map[string]projectGrantRecord)
+	authorizations := make(map[string]authorizationRecord)
+	failAuthorizationBOnce := true
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireAuth(t, r)
+		switch r.URL.Path {
+		case "/v2/organizations/_search":
+			body := decodeTestJSONMap(t, r)
+			queries, _ := body["queries"].([]any)
+			query, _ := queries[0].(map[string]any)
+			if idQuery, ok := query["idQuery"].(map[string]any); ok {
+				organizationID, _ := idQuery["id"].(string)
+				if organization, found := organizations[organizationID]; found {
+					writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 1}, "result": []organizationRecord{organization}})
+					return
+				}
+			} else if nameQuery, ok := query["nameQuery"].(map[string]any); ok {
+				name, _ := nameQuery["name"].(string)
+				for _, organization := range organizations {
+					if organization.Name == name {
+						writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 1}, "result": []organizationRecord{organization}})
+						return
+					}
+				}
+			}
+			writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 0}, "result": []any{}})
+		case "/v2/organizations":
+			body := decodeTestJSONMap(t, r)
+			organizationID, _ := body["organizationId"].(string)
+			if body["orgId"] != organizationID || organizationID == "" {
+				t.Fatalf("create organization stable ids = %#v/%#v", body["organizationId"], body["orgId"])
+			}
+			name, _ := body["name"].(string)
+			organizations[organizationID] = organizationRecord{ID: organizationID, Name: name, State: "ORGANIZATION_STATE_ACTIVE"}
+			w.WriteHeader(http.StatusConflict)
+		case "/zitadel.project.v2.ProjectService/ListProjectGrants":
+			body := decodeTestJSONMap(t, r)
+			organizationID := projectGrantOrganizationFilter(t, body["filters"], "project-1")
+			if grant, found := grants[organizationID]; found {
+				writeJSON(t, w, map[string]any{"pagination": map[string]any{"totalResult": 1}, "projectGrants": []projectGrantRecord{grant}})
+				return
+			}
+			writeJSON(t, w, map[string]any{"pagination": map[string]any{"totalResult": 0}, "projectGrants": []any{}})
+		case "/zitadel.project.v2.ProjectService/CreateProjectGrant":
+			body := decodeTestJSONMap(t, r)
+			organizationID, _ := body["grantedOrganizationId"].(string)
+			grants[organizationID] = projectGrantRecord{
+				ProjectID: "project-1", GrantedOrganizationID: organizationID,
+				GrantedRoleKeys: testStringSlice(t, body["roleKeys"]), State: "PROJECT_GRANT_STATE_ACTIVE",
+			}
+			w.WriteHeader(http.StatusConflict)
+		case "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations":
+			body := decodeTestJSONMap(t, r)
+			organizationID := authorizationOrganizationFilter(t, body["filters"], "user-1", "project-1")
+			if authorization, found := authorizations[organizationID]; found {
+				writeJSON(t, w, map[string]any{"pagination": map[string]any{"totalResult": 1}, "authorizations": []authorizationRecord{authorization}})
+				return
+			}
+			writeJSON(t, w, map[string]any{"pagination": map[string]any{"totalResult": 0}, "authorizations": []any{}})
+		case "/zitadel.authorization.v2.AuthorizationService/CreateAuthorization":
+			body := decodeTestJSONMap(t, r)
+			organizationID, _ := body["organizationId"].(string)
+			if organizationID == "managed-org-b" && failAuthorizationBOnce {
+				failAuthorizationBOnce = false
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			record := authorizationRecord{ID: "authorization-" + organizationID, State: "STATE_ACTIVE"}
+			record.User.ID = "user-1"
+			record.Project.ID = "project-1"
+			record.Organization.ID = organizationID
+			for _, roleKey := range testStringSlice(t, body["roleKeys"]) {
+				record.Roles = append(record.Roles, struct {
+					Key string `json:"key"`
+				}{Key: roleKey})
+			}
+			authorizations[organizationID] = record
+			w.WriteHeader(http.StatusConflict)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		IssuerURL: server.URL, ManagementToken: "token", ProjectID: "project-1", AcceptanceOrganizationIDs: organizationIDs,
+	}
+	spec := MultiOrganizationAcceptanceSpec{UserID: "user-1", Organizations: []AcceptanceOrganizationSpec{
+		{Name: names[organizationIDs[0]], RoleKeys: wantRoles[organizationIDs[0]]},
+		{Name: names[organizationIDs[1]], RoleKeys: wantRoles[organizationIDs[1]]},
+	}}
+	if _, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), cfg, spec); err == nil {
+		t.Fatal("first ProvisionLocalMultiOrganizationAcceptance() error = nil, want injected partial failure")
+	}
+	_, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), cfg, spec)
+	if err != nil {
+		t.Fatalf("ProvisionLocalMultiOrganizationAcceptance() retry after partial failure error = %v", err)
+	}
+}
+
+func TestEnsureAcceptanceOrganizationHandlesConcurrentCreateConflict(t *testing.T) {
+	var mu sync.Mutex
+	initialIDReads := 0
+	initialReadsDone := make(chan struct{})
+	created := false
+	createCalls := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireAuth(t, r)
+		switch r.URL.Path {
+		case "/v2/organizations/_search":
+			body := decodeTestJSONMap(t, r)
+			queries, _ := body["queries"].([]any)
+			query, _ := queries[0].(map[string]any)
+			if _, isID := query["idQuery"]; isID {
+				mu.Lock()
+				if !created && initialIDReads < 2 {
+					initialIDReads++
+					if initialIDReads == 2 {
+						close(initialReadsDone)
+					}
+					mu.Unlock()
+					<-initialReadsDone
+					writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 0}, "result": []any{}})
+					return
+				}
+				isCreated := created
+				mu.Unlock()
+				if isCreated {
+					writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 1}, "result": []map[string]any{{
+						"id": "managed-org-a", "name": "Acceptance Organization A", "state": "ORGANIZATION_STATE_ACTIVE",
+					}}})
+					return
+				}
+			}
+			writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 0}, "result": []any{}})
+		case "/v2/organizations":
+			body := decodeTestJSONMap(t, r)
+			if body["organizationId"] != "managed-org-a" || body["orgId"] != "managed-org-a" {
+				t.Fatalf("create organization body = %#v", body)
+			}
+			mu.Lock()
+			createCalls++
+			if !created {
+				created = true
+				mu.Unlock()
+				writeJSON(t, w, map[string]any{"organizationId": "managed-org-a"})
+				return
+			}
+			mu.Unlock()
+			w.WriteHeader(http.StatusConflict)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"})
+	errorsByCall := make(chan error, 2)
+	for range 2 {
+		go func() {
+			errorsByCall <- client.ensureAcceptanceOrganization(context.Background(), "managed-org-a", "Acceptance Organization A")
+		}()
+	}
+	for range 2 {
+		if err := <-errorsByCall; err != nil {
+			t.Fatalf("ensureAcceptanceOrganization() concurrent error = %v", err)
+		}
+	}
+	if createCalls != 2 {
+		t.Fatalf("create calls = %d, want one success and one conflict", createCalls)
+	}
+}
+
+func TestLoopbackOnlyClientRejectsAmbiguousIssuerAndResolverPollution(t *testing.T) {
+	for _, raw := range []string{
+		"ftp://localhost:8080", "http://user@localhost:8080", "http://localhost:8080/path",
+		"http://localhost:8080?query=1", "http://localhost:8080#fragment", "http://2130706433:8080",
+		"http://[::ffff:127.0.0.1]:8080", "http://localhost.:8080",
+	} {
+		if err := validateLocalIssuer(raw); err == nil {
+			t.Fatalf("validateLocalIssuer(%q) error = nil", raw)
+		}
+	}
+	_, err := newLoopbackOnlyHTTPClient("http://localhost:8080", func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("192.0.2.10")}, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "loopback") {
+		t.Fatalf("newLoopbackOnlyHTTPClient() error = %v, want resolver pollution rejection", err)
+	}
+}
+
+func decodeTestJSONMap(t *testing.T, r *http.Request) map[string]any {
+	t.Helper()
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		t.Fatalf("decode %s: %v", r.URL.Path, err)
+	}
+	return body
+}
+
+func assertTestPagination(t *testing.T, pagination any, wantSorting string, sorting any) {
+	t.Helper()
+	values, ok := pagination.(map[string]any)
+	if !ok || values["offset"] != float64(0) || values["limit"] != float64(100) || values["asc"] != true {
+		t.Fatalf("pagination = %#v, want offset=0 limit=100 asc=true", pagination)
+	}
+	if sorting != wantSorting {
+		t.Fatalf("sortingColumn = %#v, want %q", sorting, wantSorting)
+	}
+}
+
+func organizationIDFromQueries(t *testing.T, value any) string {
+	t.Helper()
+	queries, ok := value.([]any)
+	if !ok || len(queries) != 1 {
+		t.Fatalf("organization queries = %#v", value)
+	}
+	query, _ := queries[0].(map[string]any)
+	idQuery, ok := query["idQuery"].(map[string]any)
+	if !ok {
+		t.Fatalf("organization query = %#v, want idQuery", query)
+	}
+	id, _ := idQuery["id"].(string)
+	return id
+}
+
+func projectGrantOrganizationFilter(t *testing.T, value any, wantProjectID string) string {
+	t.Helper()
+	filters, ok := value.([]any)
+	if !ok || len(filters) != 2 {
+		t.Fatalf("project grant filters = %#v, want project and organization", value)
+	}
+	var organizationID string
+	var projectSeen bool
+	for _, raw := range filters {
+		filter, _ := raw.(map[string]any)
+		if item, ok := filter["inProjectIdsFilter"].(map[string]any); ok {
+			ids := testStringSlice(t, item["ids"])
+			projectSeen = reflect.DeepEqual(ids, []string{wantProjectID})
+		}
+		if item, ok := filter["grantedOrganizationIdFilter"].(map[string]any); ok {
+			organizationID, _ = item["id"].(string)
+		}
+	}
+	if !projectSeen || organizationID == "" {
+		t.Fatalf("project grant filters = %#v", value)
+	}
+	return organizationID
+}
+
+func authorizationOrganizationFilter(t *testing.T, value any, wantUserID, wantProjectID string) string {
+	t.Helper()
+	filters, ok := value.([]any)
+	if !ok || len(filters) != 3 {
+		t.Fatalf("authorization filters = %#v, want user, project, organization", value)
+	}
+	var organizationID string
+	var userSeen, projectSeen bool
+	for _, raw := range filters {
+		filter, _ := raw.(map[string]any)
+		if item, ok := filter["inUserIds"].(map[string]any); ok {
+			userSeen = reflect.DeepEqual(testStringSlice(t, item["ids"]), []string{wantUserID})
+		}
+		if item, ok := filter["projectId"].(map[string]any); ok {
+			projectSeen = item["id"] == wantProjectID
+		}
+		if item, ok := filter["organizationId"].(map[string]any); ok {
+			organizationID, _ = item["id"].(string)
+		}
+	}
+	if !userSeen || !projectSeen || organizationID == "" {
+		t.Fatalf("authorization filters = %#v", value)
+	}
+	return organizationID
+}
+
+func testStringSlice(t *testing.T, value any) []string {
+	t.Helper()
+	values, ok := value.([]any)
+	if !ok {
+		t.Fatalf("value = %#v, want string slice", value)
+	}
+	result := make([]string, 0, len(values))
+	for _, item := range values {
+		text, ok := item.(string)
+		if !ok {
+			t.Fatalf("value item = %#v, want string", item)
+		}
+		result = append(result, text)
+	}
+	return result
 }
 
 func requireAuth(t *testing.T, r *http.Request) {
