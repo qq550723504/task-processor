@@ -53,4 +53,34 @@ describe("DataTable", () => {
       "2",
     );
   });
+
+  it("spans every leaf column in an empty grouped table", () => {
+    const groupedColumns: DataTableColumnDef<Product>[] = [
+      {
+        header: "商品信息",
+        columns: [
+          { accessorKey: "name", header: "商品" },
+          { accessorKey: "sales", header: "销量" },
+        ],
+      },
+      {
+        header: "标识信息",
+        columns: [{ accessorKey: "id", header: "ID" }],
+      },
+    ];
+
+    render(
+      <DataTable
+        ariaLabel="分组商品数据"
+        columns={groupedColumns}
+        data={[]}
+        emptyMessage="暂无分组商品"
+      />,
+    );
+
+    expect(screen.getByRole("cell", { name: "暂无分组商品" })).toHaveAttribute(
+      "colspan",
+      "3",
+    );
+  });
 });
