@@ -71,6 +71,9 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 			resources.RabbitMQClient(),
 		)
 		if err != nil {
+			if closeErr := resources.Close(); closeErr != nil {
+				logger.WithError(closeErr).Warn("close listing runtime resources after fetcher setup failure")
+			}
 			return consumer.SharedResources{}, err
 		}
 		if onListingRuntimeHealthValidator != nil {
@@ -83,6 +86,7 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 			ProcessorRuntime:                   resources.ProcessorRuntime(),
 			ProductFetcher:                     productFetcher,
 			Scheduler:                          resources.Scheduler(),
+			Close:                              resources.Close,
 		}), nil
 	}
 }

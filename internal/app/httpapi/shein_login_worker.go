@@ -7,13 +7,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/database"
 	"task-processor/internal/listingadmin"
-	localruntime "task-processor/internal/listingruntime/local"
 	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 )
 
@@ -160,15 +161,16 @@ func buildSheinLoginWorkerRuntimeWithDependencies(configPath string, dependencie
 }
 
 func buildSheinLoginWorkerDatabaseStoreAPI(cfg *config.Config) (listingadmin.StoreAPI, func() error, error) {
-	provider, err := localruntime.NewLocalDataProvider(cfg.Database, nil)
+	if cfg == nil || cfg.Database == nil || strings.TrimSpace(cfg.Database.Host) == "" {
+		return nil, nil, nil
+	}
+	db, err := database.NewDatabaseFromConfig(cfg.Database)
 	if err != nil {
 		return nil, nil, err
 	}
-	if provider == nil {
-		return nil, nil, nil
-	}
-	storeAPI := localruntime.NewLocalRuntime(provider, localruntime.LocalRuntimeOptions{}).GetStoreAPI()
-	return storeAPI, provider.Close, nil
+	return listingadmin.NewGormStoreAPI(listingadmin.NewGormStoreRepository(db)), func() error {
+		return database.CloseDatabase(db)
+	}, nil
 }
 
 func closeWorkerRuntimeClosers(closers ...func() error) error {

@@ -3,6 +3,7 @@ package listingadmin
 import (
 	"context"
 	"testing"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -114,6 +115,48 @@ func TestGormOperationStrategyRepositoryGetLatestByStoreIDReturnsNewestRow(t *te
 	}
 	if got == nil || got.Name != "new" || !got.ActivityEnabled || got.RestoreStockAmount == nil || *got.RestoreStockAmount != 5 {
 		t.Fatalf("GetLatestByStoreID() = %+v, want newest mapped row", got)
+	}
+}
+
+func TestGormOperationStrategyAPIProjectsLatestStrategy(t *testing.T) {
+	t.Parallel()
+	createdAt := time.Date(2026, time.August, 30, 10, 20, 30, 0, time.UTC)
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingOperationStrategy{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, row := range []listingOperationStrategy{
+		{TenantID: 101, StoreID: 21, Name: "old", Platform: "SHEIN", Status: 1, Deleted: 0, StockChangeThreshold: 3},
+		{
+			TenantID:                    101,
+			StoreID:                     21,
+			Name:                        "new",
+			Platform:                    "SHEIN",
+			Status:                      0,
+			Deleted:                     0,
+			StockChangeThreshold:        17,
+			ActivityEnabled:             1,
+			ActivityLimitedDiscountRate: 0.23,
+			RestoreStockAmount:          8,
+			CreateTime:                  &createdAt,
+		},
+	} {
+		if err := db.Table("listing_operation_strategy").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	api := NewGormOperationStrategyAPI(NewGormOperationStrategyRepository(db))
+	got, err := api.GetOperationStrategyByStoreId(21)
+	if err != nil {
+		t.Fatalf("GetOperationStrategyByStoreId() error = %v", err)
+	}
+	if got == nil || got.ID == 0 || got.Name != "new" || got.StockChangeThreshold != 17 || !got.ActivityEnabled || got.ActivityLimitedDiscountRate != 0.23 || got.RestoreStockAmount != 8 || got.CreateTime.String() != "2026-08-30T10:20:30Z" {
+		t.Fatalf("GetOperationStrategyByStoreId() = %+v, want projected latest strategy", got)
 	}
 }
 

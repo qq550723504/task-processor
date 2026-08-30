@@ -33,7 +33,7 @@ func TestLocalDataProviderBatchProductDataDerivesOwnerFromStore(t *testing.T) {
 		t.Fatalf("migrate product data: %v", err)
 	}
 
-	provider := &LocalDataProvider{db: db}
+	provider := NewLocalDataProviderFromResources(NewRuntimeResources(db, nil))
 	count, err := provider.BatchCreateOrUpdateProductData(&listingadmin.ProductDataBatchSaveReqDTO{
 		Platform: "SHEIN",
 		TenantID: 246,

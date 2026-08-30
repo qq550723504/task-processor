@@ -28,6 +28,7 @@ type appServices struct {
 	sheinProcessor     *pipeline.SheinProcessor
 	processorService   runner.ProcessorService
 	schedulerService   runner.SchedulerService
+	closeResources     func() error
 }
 
 type appServiceResources struct {
@@ -35,6 +36,7 @@ type appServiceResources struct {
 	schedulerService  schedulerServiceResources
 	platformProcessor platformProcessorResources
 	rabbitmqClient    *rabbitmq.Client
+	closeResources    func() error
 }
 
 type processorServiceResources struct {
@@ -78,6 +80,11 @@ func (a *ApplicationBootstrap) Initialize(configPath, appVersion string) error {
 	}
 
 	if err := a.registerLifecycleComponents(); err != nil {
+		if a.services != nil && a.services.closeResources != nil {
+			if closeErr := a.services.closeResources(); closeErr != nil {
+				a.logger.WithError(closeErr).Warn("close shared resources after bootstrap failure")
+			}
+		}
 		return err
 	}
 
@@ -98,6 +105,11 @@ func (a *ApplicationBootstrap) Stop(ctx context.Context) error {
 	a.logger.Info("stopping application bootstrap")
 	if err := a.lifecycleManager.StopAll(ctx); err != nil {
 		a.logger.Errorf("stop lifecycle components: %v", err)
+	}
+	if a.services != nil && a.services.closeResources != nil {
+		if err := a.services.closeResources(); err != nil {
+			a.logger.WithError(err).Warn("close shared resources")
+		}
 	}
 	a.logger.Info("application bootstrap stopped")
 	return nil
@@ -189,6 +201,7 @@ func newAppServiceResources(resources bootstrapresources.SharedResources) appSer
 		},
 		platformProcessor: newPlatformProcessorResources(rawJSONDataClient, processorRuntime, scheduler.CrawlSource(), rabbitmqClient),
 		rabbitmqClient:    rabbitmqClient,
+		closeResources:    resources.Close,
 	}
 }
 
@@ -199,6 +212,7 @@ func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources appSe
 		rabbitmqClient:     resources.rabbitmqClient,
 		processorService:   buildProcessorService(logger, resources.processorService),
 		schedulerService:   buildSchedulerService(logger, cfg, resources.schedulerService),
+		closeResources:     resources.closeResources,
 	}
 }
 
