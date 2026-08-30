@@ -2,9 +2,9 @@ package product
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
+	temupublishing "task-processor/internal/marketplace/temu/publishing"
 	"task-processor/internal/pipeline"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
@@ -97,36 +97,23 @@ func (h *ProductDescriptionValidator) HandleTemu(temuCtx *temucontext.TemuTaskCo
 
 // validateAndOptimizeDescription 验证和优化产品描述
 func (h *ProductDescriptionValidator) validateAndOptimizeDescription(description string, temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) *DescriptionValidationResult {
+	sanitized := temupublishing.SanitizeProductDescription(description)
 	result := &DescriptionValidationResult{
 		OriginalDescription:  description,
-		ValidatedDescription: description,
-		Violations:           []string{},
+		ValidatedDescription: sanitized.Description,
+		Violations:           sanitized.Violations,
 		Suggestions:          []string{},
 		IsValid:              true,
 	}
 
-	// 1. 清理和格式化
-	cleaned := h.cleanAndFormatDescription(description, result)
-	result.ValidatedDescription = cleaned
-
-	// 2. 验证字符支持
-	validated := h.validateCharacterSupport(cleaned, result)
-	result.ValidatedDescription = validated
-
-	// 3. 验证长度限制
-	if len(validated) > 10000 {
-		result.Violations = append(result.Violations, fmt.Sprintf("描述长度超过限制: %d > 10000字符", len(validated)))
-		result.ValidatedDescription = h.truncateDescription(validated, 10000)
-	}
-
-	// 4. 增强描述内容
+	// 1. 增强描述内容
 	enhanced := h.enhanceDescription(result.ValidatedDescription, temuCtx, temuProduct, result)
 	result.ValidatedDescription = enhanced
 
-	// 5. 计算质量评分
+	// 2. 计算质量评分
 	result.QualityScore = h.calculateQualityScore(result.ValidatedDescription, temuCtx, temuProduct)
 
-	// 6. 设置最终状态
+	// 3. 设置最终状态
 	result.Length = len(result.ValidatedDescription)
 	result.IsValid = len(result.Violations) == 0
 
@@ -152,53 +139,6 @@ func (h *ProductDescriptionValidator) generateDefaultDescription(_ *temucontext.
 	defaultDesc := fmt.Sprintf("High-quality %s with excellent features and reliable performance. Perfect for various applications and designed to meet your needs.", productName)
 
 	return defaultDesc
-}
-
-// cleanAndFormatDescription 清理和格式化描述
-func (h *ProductDescriptionValidator) cleanAndFormatDescription(description string, _ *DescriptionValidationResult) string {
-	// 基本清理逻辑
-	cleaned := strings.TrimSpace(description)
-
-	// 移除多余的空格
-	cleaned = regexp.MustCompile(`\s+`).ReplaceAllString(cleaned, " ")
-
-	return cleaned
-}
-
-// validateCharacterSupport 验证字符支持
-func (h *ProductDescriptionValidator) validateCharacterSupport(description string, _ *DescriptionValidationResult) string {
-	// 移除不支持的字符（保留英文字母、数字和基本符号）
-	var cleaned strings.Builder
-
-	for _, r := range description {
-		// 跳过中文字符
-		if r >= 0x4e00 && r <= 0x9fff {
-			continue
-		}
-
-		// 保留ASCII字符
-		if r <= 127 {
-			cleaned.WriteRune(r)
-		}
-	}
-
-	return cleaned.String()
-}
-
-// truncateDescription 截断描述到指定长度
-func (h *ProductDescriptionValidator) truncateDescription(description string, maxLength int) string {
-	if len(description) <= maxLength {
-		return description
-	}
-
-	// 截断到最大长度，但尝试在单词边界截断
-	truncated := description[:maxLength-3]
-	lastSpace := strings.LastIndex(truncated, " ")
-	if lastSpace > maxLength/2 {
-		truncated = truncated[:lastSpace]
-	}
-
-	return truncated + "..."
 }
 
 // enhanceDescription 增强描述内容
