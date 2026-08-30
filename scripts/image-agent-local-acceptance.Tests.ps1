@@ -39,7 +39,24 @@ Describe "image-agent-local-acceptance seed routing" {
     It "invokes the application-owned Image Agent seed command" {
         Invoke-Seed
 
+        $global:capturedGoArguments.Count | Should Be 8
         $global:capturedGoArguments[0] | Should Be "run"
         $global:capturedGoArguments[1] | Should Be "./internal/app/runtime/imageagentacceptance/cmd"
+        $global:capturedGoArguments[2] | Should Be "-runtime-file"
+        $global:capturedGoArguments[3] | Should Be $global:runtimeFile
+        $global:capturedGoArguments[4] | Should Be "-token-file"
+        $global:capturedGoArguments[5] | Should Be $global:TokenFile
+        $global:capturedGoArguments[6] | Should Be "-source-url"
+        $global:capturedGoArguments[7] | Should Be $global:SourceUrl
+    }
+
+    It "appends the optional style URL without changing required arguments" {
+        $global:StyleUrl = "https://example.com/style.png"
+
+        Invoke-Seed
+
+        $global:capturedGoArguments.Count | Should Be 10
+        $global:capturedGoArguments[8] | Should Be "-style-url"
+        $global:capturedGoArguments[9] | Should Be $global:StyleUrl
     }
 }

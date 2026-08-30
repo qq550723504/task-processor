@@ -491,7 +491,8 @@ linters-settings:
 
       cmd_domain_dependencies:
         # Command entrypoints must stay on application-layer assembly ports, not domain or infrastructure packages.
-        # The repository-wide issues.exclude-files excludes _test.go; TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages retains semantic coverage for all command files.
+        # The repository-wide issues.exclude-files excludes _test.go; TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages and
+        # TestInternalCmdEntrypointsDoNotImportDomainOrInfraPackages retain semantic coverage for root and internal command files.
         files:
           - "**/cmd/*.go"
           - "**/cmd/**/*.go"
