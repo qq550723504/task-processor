@@ -15,6 +15,10 @@ import (
 )
 
 func newTestConnectionProxy(t *testing.T, maxOps int) (*ConnectionProxy, *sql.DB, sqlmock.Sqlmock) {
+	return newTestConnectionProxyWithCloseError(t, maxOps, nil)
+}
+
+func newTestConnectionProxyWithCloseError(t *testing.T, maxOps int, closeErr error) (*ConnectionProxy, *sql.DB, sqlmock.Sqlmock) {
 	t.Helper()
 
 	sqlDB, mock, err := sqlmock.New()
@@ -31,10 +35,13 @@ func newTestConnectionProxy(t *testing.T, maxOps int) (*ConnectionProxy, *sql.DB
 		semaphore: make(chan struct{}, maxOps),
 		maxOps:    maxOps,
 	}
-	mock.ExpectClose()
+	closeExpectation := mock.ExpectClose()
+	if closeErr != nil {
+		closeExpectation.WillReturnError(closeErr)
+	}
 	t.Cleanup(func() {
-		if err := proxy.Close(); err != nil {
-			t.Errorf("close proxy: %v", err)
+		if err := proxy.Close(); !errors.Is(err, closeErr) {
+			t.Errorf("close proxy error = %v, want %v", err, closeErr)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("SQL expectations: %v", err)
@@ -236,6 +243,94 @@ func TestConnectionProxyCloseWaitsForActiveExecutionThenRejectsNewWork(t *testin
 		}
 		if called {
 			t.Fatal("Execute after Close invoked callback")
+		}
+	})
+}
+
+func TestConnectionProxyQueuedExecutionIsRejectedWhenCloseStartsBeforeSlotRelease(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		proxy, _, _ := newTestConnectionProxy(t, 1)
+		releaseFirst := make(chan struct{}, 1)
+		defer close(releaseFirst)
+		firstStarted := make(chan struct{})
+		firstResult := make(chan error, 1)
+		go func() {
+			firstResult <- proxy.Execute(t.Context(), func(*gorm.DB) error {
+				close(firstStarted)
+				<-releaseFirst
+				return nil
+			})
+		}()
+		<-firstStarted
+
+		queuedCalled := make(chan struct{}, 1)
+		queuedResult := make(chan error, 1)
+		go func() {
+			queuedResult <- proxy.Execute(t.Context(), func(*gorm.DB) error {
+				queuedCalled <- struct{}{}
+				return nil
+			})
+		}()
+		synctest.Wait()
+
+		closeResult := make(chan error, 1)
+		go func() { closeResult <- proxy.Close() }()
+		synctest.Wait()
+
+		releaseFirst <- struct{}{}
+		synctest.Wait()
+		if err := <-firstResult; err != nil {
+			t.Fatalf("first Execute error = %v", err)
+		}
+		if err := <-queuedResult; err == nil || !strings.Contains(err.Error(), "connection proxy is closed") {
+			t.Fatalf("queued Execute error = %v, want closed proxy", err)
+		}
+		select {
+		case <-queuedCalled:
+			t.Fatal("queued Execute invoked callback after Close started")
+		default:
+		}
+		if err := <-closeResult; err != nil {
+			t.Fatalf("Close error = %v", err)
+		}
+	})
+}
+
+func TestConnectionProxyConcurrentCloseSharesUnderlyingErrorAndRejectsNewWork(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		closeErr := errors.New("driver close failed")
+		proxy, _, mock := newTestConnectionProxyWithCloseError(t, 1, closeErr)
+		const closeCalls = 8
+		start := make(chan struct{})
+		results := make(chan error, closeCalls)
+		for range closeCalls {
+			go func() {
+				<-start
+				results <- proxy.Close()
+			}()
+		}
+		close(start)
+		synctest.Wait()
+
+		for i := range closeCalls {
+			if err := <-results; !errors.Is(err, closeErr) {
+				t.Fatalf("Close result %d = %v, want shared close error", i, err)
+			}
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("underlying Close calls: %v", err)
+		}
+
+		called := false
+		err := proxy.Execute(t.Context(), func(*gorm.DB) error {
+			called = true
+			return nil
+		})
+		if err == nil || !strings.Contains(err.Error(), "connection proxy is closed") {
+			t.Fatalf("Execute after failed Close error = %v, want closed proxy", err)
+		}
+		if called {
+			t.Fatal("Execute after failed Close invoked callback")
 		}
 	})
 }
