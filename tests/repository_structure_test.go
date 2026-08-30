@@ -1,10 +1,12 @@
 package tests
 
 import (
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -185,6 +187,26 @@ func TestLocalArtifactPathDetectionCoversLocalRuntimeDirectories(t *testing.T) {
 	}
 }
 
+func TestLocalArtifactPathsInspectIgnoredFilesystemEntries(t *testing.T) {
+	repoRoot := t.TempDir()
+	artifactDir := filepath.Join(repoRoot, "internal", "example", "tmp", "logs")
+	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(artifactDir, "app.log"), []byte("test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	paths, err := localArtifactPaths(repoRoot, "internal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"internal/example/tmp"}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("localArtifactPaths() = %v, want %v", paths, want)
+	}
+}
+
 func trackedFiles(t *testing.T, pathspec string) []string {
 	t.Helper()
 
@@ -218,12 +240,55 @@ func assertNoTrackedLocalArtifacts(t *testing.T, pathspec string) {
 func assertNoLocalArtifactPaths(t *testing.T, pathspec string) {
 	t.Helper()
 
-	for _, path := range trackedFiles(t, normalizeRepoRelativePath(pathspec)) {
-		if !containsLocalArtifactPathPart(path) {
-			continue
-		}
+	repoRootBytes, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repoRoot := strings.TrimSpace(string(repoRootBytes))
+	paths, err := localArtifactPaths(repoRoot, pathspec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
 		t.Errorf("%s is a local artifact path under %s; keep runtime files under .local instead", path, pathspec)
 	}
+}
+
+func localArtifactPaths(repoRoot, pathspec string) ([]string, error) {
+	root := filepath.Join(repoRoot, filepath.FromSlash(normalizeRepoRelativePath(pathspec)))
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	var paths []string
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == root {
+			return nil
+		}
+		relative, err := filepath.Rel(repoRoot, path)
+		if err != nil {
+			return err
+		}
+		relative = filepath.ToSlash(relative)
+		if !containsLocalArtifactPathPart(relative) {
+			return nil
+		}
+		paths = append(paths, relative)
+		if entry.IsDir() {
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 func normalizeRepoRelativePath(path string) string {
