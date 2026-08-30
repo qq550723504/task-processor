@@ -102,6 +102,7 @@ type SharedResources struct {
 	processorRuntime                   ProcessorRuntime
 	productFetcher                     appfetcher.ProductFetcher
 	scheduler                          SchedulerResources
+	close                              func() error
 }
 
 type SharedResourcesInput struct {
@@ -110,6 +111,7 @@ type SharedResourcesInput struct {
 	ProcessorRuntime                   ProcessorRuntime
 	ProductFetcher                     appfetcher.ProductFetcher
 	Scheduler                          SchedulerResources
+	Close                              func() error
 }
 
 func NewSharedResources(input SharedResourcesInput) SharedResources {
@@ -119,6 +121,7 @@ func NewSharedResources(input SharedResourcesInput) SharedResources {
 		processorRuntime:                   input.ProcessorRuntime,
 		productFetcher:                     input.ProductFetcher,
 		scheduler:                          input.Scheduler,
+		close:                              input.Close,
 	}
 }
 
@@ -140,6 +143,13 @@ func (r SharedResources) ProductFetcher() appfetcher.ProductFetcher {
 
 func (r SharedResources) Scheduler() SchedulerResources {
 	return r.scheduler
+}
+
+func (r SharedResources) Close() error {
+	if r.close == nil {
+		return nil
+	}
+	return r.close()
 }
 
 type PlatformRuntimeResources struct {

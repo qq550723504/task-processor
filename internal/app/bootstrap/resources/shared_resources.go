@@ -2,8 +2,10 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/ports"
@@ -41,6 +43,43 @@ type SharedResources struct {
 	importTaskRepository consumer.ListingRuntimeImportTaskRepository
 	scheduler            consumer.SchedulerResources
 	rabbitMQClient       *rabbitmq.Client
+	closeState           *sharedResourcesCloseState
+}
+
+type sharedResourcesCloseState struct {
+	closers []func() error
+	once    sync.Once
+	err     error
+}
+
+func newSharedResources(closers ...func() error) SharedResources {
+	return SharedResources{closeState: &sharedResourcesCloseState{closers: closers}}
+}
+
+func (s *sharedResourcesCloseState) addCloser(closer func() error) {
+	if s == nil || closer == nil {
+		return
+	}
+	s.closers = append(s.closers, closer)
+}
+
+func (r SharedResources) Close() error {
+	if r.closeState == nil {
+		return nil
+	}
+	r.closeState.once.Do(func() {
+		var errs []error
+		for _, closer := range r.closeState.closers {
+			if closer == nil {
+				continue
+			}
+			if err := closer(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		r.closeState.err = errors.Join(errs...)
+	})
+	return r.closeState.err
 }
 
 func (r SharedResources) RawJSONDataClient() product.RawJsonDataClient {
@@ -91,10 +130,12 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 		return SharedResources{}, fmt.Errorf("config is nil")
 	}
 
-	localProvider, err := localruntime.NewLocalDataProvider(cfg.Database, cfg.Redis)
+	runtimeResources, err := localruntime.NewRuntimeResourcesFromConfig(cfg.Database, cfg.Redis)
 	if err != nil {
-		return SharedResources{}, fmt.Errorf("configure local listing runtime data provider: %w", err)
+		return SharedResources{}, fmt.Errorf("configure local listing runtime resources: %w", err)
 	}
+	resources := newSharedResources(runtimeResources.Close)
+	localProvider := localruntime.NewLocalDataProviderFromResources(runtimeResources)
 
 	var cookieProvider localruntime.SheinCookieProvider
 	cookieRedis := cfg.EffectiveSheinCookieRedis()
@@ -103,21 +144,23 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 			logger.WithError(err).Warn("failed to configure SHEIN cookie Redis provider")
 		} else {
 			cookieProvider = provider
+			if closer, ok := provider.(interface{ Close() error }); ok {
+				resources.closeState.addCloser(closer.Close)
+			}
 		}
 	}
 
-	localRuntime := localruntime.NewLocalRuntime(localProvider, localruntime.LocalRuntimeOptions{
+	localRuntime := localruntime.NewLocalRuntime(runtimeResources, localruntime.LocalRuntimeOptions{
 		SheinCookieProvider: cookieProvider,
 	})
 
-	resources := SharedResources{}
 	var schedulerRuntime runner.SchedulerRuntimeProvider
 	var schedulerFactoryRuntime consumer.SchedulerFactoryRuntime
 	if localRuntime != nil {
 		if options.OnListingRuntimeHealthValidator != nil {
 			options.OnListingRuntimeHealthValidator(localRuntime)
 		}
-		resources.rawJSONDataClient = localruntime.NewRawJsonDataAdapter(localProvider)
+		resources.rawJSONDataClient = localRuntime.GetRawJsonDataAdapter()
 		resources.storeAPI = localRuntime.GetStoreAPI()
 		schedulerRuntime = localRuntime
 		schedulerFactoryRuntime = localSchedulerFactoryRuntime{source: localRuntime}

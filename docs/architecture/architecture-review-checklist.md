@@ -65,6 +65,7 @@ consider the applicable guards, including:
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
 - `depguard: domain_app_httpapi_boundaries`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
+- `depguard: project_boundary_listingkit`
 - `TestProductDomainDoesNotDependOnOuterAdapters`
 - `depguard: listingkit_subdomains_root_facade`
 - `TestListingKitImportDirectionStaysRetiredAcrossBuildTargets`
@@ -90,6 +91,7 @@ consider the applicable guards, including:
 - `TestListingKitRootServiceGenerationFilesStayAllowlisted`
 - `TestListingKitRootGenerationFilesStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
+- `depguard: infrastructure_business_boundaries`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 - `depguard: source_handoff_legacy_http`
 - `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`

@@ -37,21 +37,21 @@ func (r LocalListingRuntimeReport) Fields() map[string]bool {
 	}
 }
 
-func ValidateLocalListingRuntime(provider *LocalDataProvider) (LocalListingRuntimeReport, error) {
+func ValidateLocalListingRuntime(resources *RuntimeResources) (LocalListingRuntimeReport, error) {
 	var report LocalListingRuntimeReport
-	if provider == nil {
-		return report, errors.New("local management data provider is not configured")
+	if resources == nil {
+		return report, errors.New("local listing runtime resources are not configured")
 	}
 
-	report.DB = provider.HasDB()
-	report.Redis = provider.HasRedis()
-	report.ImportTask = provider.importTaskRepository() != nil
-	report.Store = provider.storeRepository() != nil
-	report.ProductImportMapping = provider.productImportMappingRepository() != nil
-	report.ProductData = provider.ProductDataRepository() != nil
-	report.FilterRule = provider.filterRuleRepository() != nil
-	report.ProfitRule = provider.profitRuleRepository() != nil
-	report.PricingRule = provider.pricingRuleRepository() != nil
+	report.DB = resources.HasDB()
+	report.Redis = resources.HasRedis()
+	report.ImportTask = resources.ImportTaskRepository() != nil
+	report.Store = resources.StoreRepository() != nil
+	report.ProductImportMapping = resources.ProductImportMappingRepository() != nil
+	report.ProductData = resources.ProductDataRepository() != nil
+	report.FilterRule = resources.FilterRuleRepository() != nil
+	report.ProfitRule = resources.ProfitRuleRepository() != nil
+	report.PricingRule = resources.PricingRuleRepository() != nil
 	report.DailyQuota = report.Redis
 	report.Ready = report.DB &&
 		report.Redis &&

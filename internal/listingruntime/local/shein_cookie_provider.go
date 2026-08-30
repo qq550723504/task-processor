@@ -29,6 +29,13 @@ type redisSheinCookieProvider struct {
 	client *goredis.Client
 }
 
+func (p *redisSheinCookieProvider) Close() error {
+	if p == nil || p.client == nil {
+		return nil
+	}
+	return p.client.Close()
+}
+
 func newRedisSheinCookieProvider(cfg *config.RedisConfig) (SheinCookieProvider, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("shein cookie redis config is nil")

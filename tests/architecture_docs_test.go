@@ -108,6 +108,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestAlibaba1688CrawlerDoesNotImportListingKitRoot",
 		"depguard: alibaba1688_listingkit_root",
 		"TestProjectBoundaryDomainsDoNotImportListingKitFacade",
+		"depguard: project_boundary_listingkit",
 		"depguard: listingkit_subdomains_root_facade",
 		"TestListingKitImportDirectionStaysRetiredAcrossBuildTargets",
 		"TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly",
@@ -239,6 +240,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestInfraProductCrawlerAdapterIsRetired",
 		"TestAppCrawlerFetcherCompatibilityLayerIsRetired",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
+		"depguard: infrastructure_business_boundaries",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 	}
 	for _, phrase := range required {
@@ -368,6 +370,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestAlibaba1688CrawlerDoesNotImportListingKitRoot",
 		"depguard: alibaba1688_listingkit_root",
 		"TestProjectBoundaryDomainsDoNotImportListingKitFacade",
+		"depguard: project_boundary_listingkit",
 		"depguard: listingkit_subdomains_root_facade",
 		"TestListingKitImportDirectionStaysRetiredAcrossBuildTargets",
 		"TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly",
@@ -388,6 +391,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestListingKitRootServiceGenerationFilesStayAllowlisted",
 		"TestListingKitRootGenerationFilesStayAllowlisted",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
+		"depguard: infrastructure_business_boundaries",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 		"TestDomainHTTPPackagesDoNotImportAppHTTPAPI",
 		"depguard: domain_app_httpapi_boundaries",

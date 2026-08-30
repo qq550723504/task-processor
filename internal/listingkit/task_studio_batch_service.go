@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	studiodomain "task-processor/internal/listing/studio"
 )
 
 type taskStudioBatchService struct {
@@ -173,52 +175,26 @@ func (s *taskStudioBatchService) RetryStudioBatchDesignBackgroundRemoval(ctx con
 	if req != nil {
 		requested = normalizeStudioBatchDesignIDs(req.DesignIDs)
 	}
-	requestedSet := make(map[string]struct{}, len(requested))
-	for _, designID := range requested {
-		requestedSet[designID] = struct{}{}
-	}
-	type retryTarget struct {
-		itemIndex   int
-		designIndex int
-		sourceURL   string
-	}
-	targets := make([]retryTarget, 0)
+	designs := make([]studiodomain.BackgroundRemovalDesign, 0)
 	for itemIndex := range detail.Items {
 		for designIndex := range detail.Items[itemIndex].Designs {
-			design := &detail.Items[itemIndex].Designs[designIndex]
-			if len(requestedSet) > 0 {
-				if _, ok := requestedSet[design.ID]; !ok {
-					continue
-				}
-			} else if design.TransparentBackgroundMode != StudioTransparencyModeRemoval || design.BackgroundRemovalStatus == StudioBackgroundRemovalStatusSucceeded {
-				continue
-			}
-
-			sourceURL := strings.TrimSpace(design.OriginalImageURL)
-			if len(requestedSet) > 0 {
-				if sourceURL == "" {
-					sourceURL = strings.TrimSpace(design.ImageURL)
-				}
-			} else {
-				if design.TransparentBackgroundMode != StudioTransparencyModeRemoval {
-					return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s does not use background removal", design.ID))
-				}
-			}
-			if sourceURL == "" {
-				return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s has no original image", design.ID))
-			}
-			if design.BackgroundRemovalStatus == StudioBackgroundRemovalStatusPending {
-				return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s background removal is already in progress", design.ID))
-			}
-			targets = append(targets, retryTarget{itemIndex: itemIndex, designIndex: designIndex, sourceURL: sourceURL})
+			design := detail.Items[itemIndex].Designs[designIndex]
+			designs = append(designs, studiodomain.BackgroundRemovalDesign{
+				ID:                        design.ID,
+				OriginalImageURL:          design.OriginalImageURL,
+				ImageURL:                  design.ImageURL,
+				TransparentBackgroundMode: studiodomain.TransparencyMode(design.TransparentBackgroundMode),
+				BackgroundRemovalStatus:   studiodomain.BackgroundRemovalStatus(design.BackgroundRemovalStatus),
+			})
 		}
 	}
-	if len(requestedSet) > 0 && len(targets) != len(requestedSet) {
-		return nil, NewStudioBatchActionValidationError("one or more requested designs are not eligible for background removal")
+	targets, err := studiodomain.SelectBackgroundRemovalTargets(designs, requested)
+	if err != nil {
+		return nil, adaptStudioBackgroundRemovalSelectionError(err)
 	}
 	designIDs := make([]string, 0, len(targets))
 	for _, target := range targets {
-		designIDs = append(designIDs, detail.Items[target.itemIndex].Designs[target.designIndex].ID)
+		designIDs = append(designIDs, target.DesignID)
 	}
 	if err := s.rejectStudioBackgroundRemovalForOwnedTasks(ctx, batchID, designIDs); err != nil {
 		return nil, err
@@ -227,9 +203,21 @@ func (s *taskStudioBatchService) RetryStudioBatchDesignBackgroundRemoval(ctx con
 	if s.currentTime != nil {
 		now = s.currentTime().UTC()
 	}
-	for _, target := range targets {
-		design := &detail.Items[target.itemIndex].Designs[target.designIndex]
-		design.OriginalImageURL = target.sourceURL
+	for index, target := range targets {
+		flatIndex := 0
+		var design *StudioMaterializedDesignRecord
+		for itemIndex := range detail.Items {
+			if target.DesignIndex < flatIndex+len(detail.Items[itemIndex].Designs) {
+				designIndex := target.DesignIndex - flatIndex
+				design = &detail.Items[itemIndex].Designs[designIndex]
+				break
+			}
+			flatIndex += len(detail.Items[itemIndex].Designs)
+		}
+		if design == nil {
+			return nil, fmt.Errorf("studio background removal target %d is out of range", index)
+		}
+		design.OriginalImageURL = target.SourceURL
 		design.TransparentBackgroundMode = StudioTransparencyModeRemoval
 		design.BackgroundRemovalStatus = StudioBackgroundRemovalStatusPending
 		design.BackgroundRemovalError = ""
@@ -242,7 +230,7 @@ func (s *taskStudioBatchService) RetryStudioBatchDesignBackgroundRemoval(ctx con
 		if !claimed {
 			return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s background removal is already in progress", design.ID))
 		}
-		materialized, removeErr := s.retryBackgroundRemoval(ctx, target.sourceURL, "studio-design-background-removal-retry.png")
+		materialized, removeErr := s.retryBackgroundRemoval(ctx, target.SourceURL, "studio-design-background-removal-retry.png")
 		if removeErr != nil || materialized == nil || strings.TrimSpace(materialized.ImageURL) == "" {
 			design.ImageURL = design.OriginalImageURL
 			design.BackgroundRemovalStatus = StudioBackgroundRemovalStatusFailed
@@ -285,17 +273,14 @@ func (s *taskStudioBatchService) applyManualStudioBatchDesignBackgroundRemovalTa
 	if target == nil {
 		return nil, NewStudioBatchActionValidationError("manual background removal design is required")
 	}
-	trimmedImageURL := strings.TrimSpace(imageURL)
-	if trimmedImageURL == "" {
-		return nil, NewStudioBatchActionValidationError("manual background removal image URL is required")
-	}
-
-	sourceURL := strings.TrimSpace(target.OriginalImageURL)
-	if sourceURL == "" {
-		sourceURL = strings.TrimSpace(target.ImageURL)
-	}
-	if sourceURL == "" {
-		return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s has no original image", target.ID))
+	fields, err := studiodomain.PrepareManualBackgroundRemoval(studiodomain.ManualBackgroundRemovalInput{
+		DesignID:            target.ID,
+		OriginalImageURL:    target.OriginalImageURL,
+		ImageURL:            target.ImageURL,
+		ReplacementImageURL: imageURL,
+	})
+	if err != nil {
+		return nil, adaptStudioBackgroundRemovalSelectionError(err)
 	}
 	if err := s.rejectStudioBackgroundRemovalForOwnedTasks(ctx, batchID, []string{target.ID}); err != nil {
 		return nil, err
@@ -305,12 +290,12 @@ func (s *taskStudioBatchService) applyManualStudioBatchDesignBackgroundRemovalTa
 	if s.currentTime != nil {
 		now = s.currentTime().UTC()
 	}
-	target.OriginalImageURL = sourceURL
-	target.ImageURL = trimmedImageURL
-	target.TransparentBackgroundMode = StudioTransparencyModeRemoval
-	target.BackgroundRemovalStatus = StudioBackgroundRemovalStatusSucceeded
-	target.BackgroundRemovalError = ""
-	target.BackgroundRemovalModel = ""
+	target.OriginalImageURL = fields.OriginalImageURL
+	target.ImageURL = fields.ImageURL
+	target.TransparentBackgroundMode = StudioTransparencyMode(fields.TransparentBackgroundMode)
+	target.BackgroundRemovalStatus = StudioBackgroundRemovalStatus(fields.BackgroundRemovalStatus)
+	target.BackgroundRemovalError = fields.BackgroundRemovalError
+	target.BackgroundRemovalModel = fields.BackgroundRemovalModel
 	target.UpdatedAt = now
 	repository, ok := s.repo.(manualBackgroundRemovalApplier)
 	if !ok {
@@ -342,30 +327,29 @@ func (s *taskStudioBatchService) validateManualStudioBatchDesignBackgroundRemova
 		return nil, nil, fmt.Errorf("studio batch %s not found", strings.TrimSpace(batchID))
 	}
 
-	trimmedDesignID := strings.TrimSpace(designID)
-	if trimmedDesignID == "" {
-		return nil, nil, NewStudioBatchActionValidationError("design_id is required")
-	}
-
-	var target *StudioMaterializedDesignRecord
+	designs := make([]studiodomain.BackgroundRemovalDesign, 0)
+	designPointers := make([]*StudioMaterializedDesignRecord, 0)
 	for itemIndex := range detail.Items {
 		for designIndex := range detail.Items[itemIndex].Designs {
 			design := &detail.Items[itemIndex].Designs[designIndex]
-			if design.ID == trimmedDesignID {
-				target = design
-				break
-			}
+			designs = append(designs, studiodomain.BackgroundRemovalDesign{
+				ID:                        design.ID,
+				OriginalImageURL:          design.OriginalImageURL,
+				ImageURL:                  design.ImageURL,
+				TransparentBackgroundMode: studiodomain.TransparencyMode(design.TransparentBackgroundMode),
+				BackgroundRemovalStatus:   studiodomain.BackgroundRemovalStatus(design.BackgroundRemovalStatus),
+			})
+			designPointers = append(designPointers, design)
 		}
-		if target != nil {
-			break
-		}
 	}
-	if target == nil {
-		return nil, nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s is not part of batch %s", trimmedDesignID, strings.TrimSpace(batchID)))
+	designIndex, found, err := studiodomain.FindManualBackgroundRemovalDesign(designs, designID)
+	if err != nil {
+		return nil, nil, adaptStudioBackgroundRemovalSelectionError(err)
 	}
-	if target.BackgroundRemovalStatus == StudioBackgroundRemovalStatusPending {
-		return nil, nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s background removal is already in progress", target.ID))
+	if !found {
+		return nil, nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s is not part of batch %s", strings.TrimSpace(designID), strings.TrimSpace(batchID)))
 	}
+	target := designPointers[designIndex]
 	if err := s.rejectStudioBackgroundRemovalForOwnedTasks(ctx, batchID, []string{target.ID}); err != nil {
 		return nil, nil, err
 	}
@@ -428,6 +412,14 @@ func (s *taskStudioBatchService) updateStudioBackgroundRemoval(ctx context.Conte
 		return repository.UpdateStudioMaterializedDesignBackgroundRemoval(ctx, design)
 	}
 	return s.repo.UpdateStudioMaterializedDesign(ctx, design)
+}
+
+func adaptStudioBackgroundRemovalSelectionError(err error) error {
+	var validationErr *studiodomain.BackgroundRemovalValidationError
+	if errors.As(err, &validationErr) {
+		return NewStudioBatchActionValidationError(validationErr.Error())
+	}
+	return err
 }
 
 func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {

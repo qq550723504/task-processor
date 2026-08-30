@@ -70,6 +70,11 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("initialize shared resources: %w", err)
 	}
+	defer func() {
+		if err := resources.Close(); err != nil {
+			logger.WithError(err).Warn("close listing runtime shared resources")
+		}
+	}()
 
 	if err := processorRegistry.RegisterPlatforms(ctx, serviceManager, resources, platform); err != nil {
 		return fmt.Errorf("register %s processor failed: %w", displayName, err)
@@ -127,6 +132,11 @@ func runDebugTask(
 	if err != nil {
 		return fmt.Errorf("initialize shared resources: %w", err)
 	}
+	defer func() {
+		if err := resources.Close(); err != nil {
+			logger.WithError(err).Warn("close debug listing runtime shared resources")
+		}
+	}()
 
 	rt := consumer.BuildPlatformRuntimeContext(consumer.PlatformRuntimeContextInput{
 		Config:    cfg,
