@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -76,6 +77,34 @@ func TestRequestContextPrefersAuthenticatedIdentityOverCallerInputs(t *testing.T
 	}
 	if got := requestRoles(c); len(got) != 1 || got[0] != "listingkit_operator" {
 		t.Fatalf("roles = %#v, want authenticated operator role", got)
+	}
+}
+
+func TestRequestTenantContextRejectsCallerFallbackForAuthenticatedIdentityWithoutEffectiveTenant(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req, err := http.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks?tenant_id=query-forged", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Tenant-ID", "header-forged")
+	req = req.WithContext(authidentity.WithAuthenticatedIdentity(req.Context(), authidentity.AuthenticatedIdentity{
+		UserID: "verified-user",
+	}))
+	c.Request = req
+
+	if got, ok := requestExplicitTenantID(c, "candidate-forged"); ok || got != "" {
+		t.Fatalf("explicit tenant = %q ok=%v, want blank false", got, ok)
+	}
+	if got := requestTenantID(c, "candidate-forged"); got != "" {
+		t.Fatalf("tenant = %q, want blank without candidate/header/query/default fallback", got)
+	}
+	if _, ok := requireExplicitRequestContext(c, "candidate-forged"); ok {
+		t.Fatal("requireExplicitRequestContext accepted authenticated identity without effective tenant")
+	}
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
 

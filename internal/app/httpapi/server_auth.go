@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/authidentity"
+	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/httproute"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/workbenchcontext"
@@ -20,16 +20,22 @@ type organizationIdentityResolver interface {
 }
 
 type routeAuthDependencies struct {
-	zitadelAuth          gin.HandlerFunc
+	// legacyZitadelAuth is the legacy combined authentication/allowlist middleware.
+	legacyZitadelAuth    gin.HandlerFunc
+	workbenchVerifier    zitadelruntime.Verifier
 	organizationResolver organizationIdentityResolver
 	roleMiddleware       func(httproute.Descriptor) gin.HandlerFunc
+}
+
+func newRouteAuthDependencies() routeAuthDependencies {
+	return routeAuthDependencies{legacyZitadelAuth: newLegacyZitadelAuthMiddleware()}
 }
 
 func routeAuthHandlers(route httproute.Descriptor, zitadelAuth gin.HandlerFunc) []gin.HandlerFunc {
 	if zitadelAuth == nil && !routeRequiresOrganizationResolution(route.OrganizationAccessPolicy) {
 		return nil
 	}
-	return routeAuthHandlersWithDependencies(route, routeAuthDependencies{zitadelAuth: zitadelAuth})
+	return routeAuthHandlersWithDependencies(route, routeAuthDependencies{legacyZitadelAuth: zitadelAuth})
 }
 
 func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies routeAuthDependencies) []gin.HandlerFunc {
@@ -41,12 +47,10 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 		return nil
 	}
 	handlers := make([]gin.HandlerFunc, 0, 3)
-	if dependencies.zitadelAuth != nil {
-		zitadelAuth := dependencies.zitadelAuth
-		if requiresOrganization {
-			zitadelAuth = workbenchAuthenticationMiddleware(zitadelAuth)
-		}
-		handlers = append(handlers, zitadelAuth)
+	if requiresOrganization {
+		handlers = append(handlers, workbenchAuthenticationMiddleware(dependencies.workbenchVerifier))
+	} else if dependencies.legacyZitadelAuth != nil {
+		handlers = append(handlers, dependencies.legacyZitadelAuth)
 	}
 	if requiresOrganization {
 		handlers = append(handlers, organizationResolutionMiddleware(route.OrganizationAccessPolicy, dependencies.organizationResolver))
@@ -54,13 +58,12 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 	var roleAuth gin.HandlerFunc
 	if dependencies.roleMiddleware != nil {
 		roleAuth = dependencies.roleMiddleware(route)
+	} else if requiresOrganization {
+		roleAuth = listingkithttpapi.NewRouteRoleMiddlewareWithResponder(route, workbenchRoleAuthorizationResponder)
 	} else {
 		roleAuth = listingkithttpapi.NewRouteRoleMiddleware(route)
 	}
 	if roleAuth != nil {
-		if requiresOrganization {
-			roleAuth = workbenchRoleAuthorizationMiddleware(roleAuth)
-		}
 		handlers = append(handlers, roleAuth)
 	}
 	return handlers
@@ -70,100 +73,45 @@ func routeRequiresOrganizationResolution(policy httproute.OrganizationAccessPoli
 	return policy != "" && policy != httproute.OrganizationAccessPolicyNone
 }
 
-type bufferedGinResponseWriter struct {
-	gin.ResponseWriter
-	header http.Header
-	body   bytes.Buffer
-	status int
-	wrote  bool
-}
-
-func newBufferedGinResponseWriter(writer gin.ResponseWriter) *bufferedGinResponseWriter {
-	return &bufferedGinResponseWriter{
-		ResponseWriter: writer,
-		header:         writer.Header().Clone(),
-		status:         http.StatusOK,
-	}
-}
-
-func (writer *bufferedGinResponseWriter) Header() http.Header { return writer.header }
-
-func (writer *bufferedGinResponseWriter) WriteHeader(status int) {
-	if writer.wrote {
-		return
-	}
-	writer.status = status
-	writer.wrote = true
-}
-
-func (writer *bufferedGinResponseWriter) WriteHeaderNow() {
-	if !writer.wrote {
-		writer.WriteHeader(writer.status)
-	}
-}
-
-func (writer *bufferedGinResponseWriter) Write(data []byte) (int, error) {
-	writer.WriteHeaderNow()
-	return writer.body.Write(data)
-}
-
-func (writer *bufferedGinResponseWriter) WriteString(data string) (int, error) {
-	writer.WriteHeaderNow()
-	return writer.body.WriteString(data)
-}
-
-func (writer *bufferedGinResponseWriter) Status() int { return writer.status }
-func (writer *bufferedGinResponseWriter) Size() int   { return writer.body.Len() }
-func (writer *bufferedGinResponseWriter) Written() bool {
-	return writer.wrote
-}
-func (writer *bufferedGinResponseWriter) Flush() {}
-
-func workbenchAuthenticationMiddleware(zitadelAuth gin.HandlerFunc) gin.HandlerFunc {
+func workbenchAuthenticationMiddleware(verifier zitadelruntime.Verifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		originalWriter := c.Writer
-		bufferedWriter := newBufferedGinResponseWriter(originalWriter)
-		c.Writer = bufferedWriter
-		defer func() { c.Writer = originalWriter }()
-		zitadelAuth(c)
-		c.Writer = originalWriter
-
-		if _, authenticated := authidentity.AuthenticatedIdentityFromContext(c.Request.Context()); !authenticated && c.IsAborted() {
+		token := requestBearerToken(c.GetHeader("Authorization"))
+		if token == "" {
 			writeWorkbenchContextError(c, workbenchcontext.ErrAuthenticationRequired)
 			return
 		}
-		commitBufferedResponse(originalWriter, bufferedWriter)
-	}
-}
-
-func workbenchRoleAuthorizationMiddleware(roleAuth gin.HandlerFunc) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		originalWriter := c.Writer
-		bufferedWriter := newBufferedGinResponseWriter(originalWriter)
-		c.Writer = bufferedWriter
-		defer func() { c.Writer = originalWriter }()
-		roleAuth(c)
-		c.Writer = originalWriter
-
-		if c.IsAborted() && bufferedWriter.Status() == http.StatusForbidden {
-			writeWorkbenchProtocolError(c, http.StatusForbidden, "PERMISSION_DENIED", "Permission is denied")
+		if verifier == nil {
+			writeWorkbenchContextError(c, workbenchcontext.ErrAuthorizationDependencyUnavailable)
 			return
 		}
-		commitBufferedResponse(originalWriter, bufferedWriter)
+		identity, err := verifier.Verify(c.Request.Context(), token)
+		if err != nil {
+			if zitadelruntime.IsVerificationDependencyUnavailable(err) {
+				writeWorkbenchContextError(c, workbenchcontext.ErrAuthorizationDependencyUnavailable)
+			} else {
+				writeWorkbenchContextError(c, workbenchcontext.ErrAuthenticationRequired)
+			}
+			return
+		}
+		for _, header := range []string{
+			"X-User-ID", "X-User-Type", "X-User-Roles", "X-Zitadel-Roles", "X-User",
+			"X-Tenant-ID", "tenant-id", "X-Tenant",
+		} {
+			c.Request.Header.Del(header)
+		}
+		c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity))
+		c.Request.Header.Set("X-User-ID", identity.UserID)
+		c.Request.Header.Set("X-User-Type", "zitadel")
+		c.Next()
 	}
 }
 
-func commitBufferedResponse(originalWriter gin.ResponseWriter, bufferedWriter *bufferedGinResponseWriter) {
-	for key := range originalWriter.Header() {
-		originalWriter.Header().Del(key)
+func workbenchRoleAuthorizationResponder(c *gin.Context, failure listingkithttpapi.RoleAuthorizationFailure, _ string) {
+	if failure == listingkithttpapi.RoleAuthorizationDependencyUnavailable {
+		writeWorkbenchContextError(c, workbenchcontext.ErrAuthorizationDependencyUnavailable)
+		return
 	}
-	for key, values := range bufferedWriter.Header() {
-		originalWriter.Header()[key] = append([]string(nil), values...)
-	}
-	if bufferedWriter.Written() {
-		originalWriter.WriteHeader(bufferedWriter.Status())
-		_, _ = originalWriter.Write(bufferedWriter.body.Bytes())
-	}
+	writeWorkbenchProtocolError(c, http.StatusForbidden, "PERMISSION_DENIED", "Permission is denied")
 }
 
 func organizationResolutionMiddleware(policy httproute.OrganizationAccessPolicy, resolver organizationIdentityResolver) gin.HandlerFunc {
@@ -247,6 +195,6 @@ func writeWorkbenchProtocolError(c *gin.Context, status int, code string, messag
 	})
 }
 
-func newZitadelAuthMiddleware() gin.HandlerFunc {
+func newLegacyZitadelAuthMiddleware() gin.HandlerFunc {
 	return listingkithttpapi.NewZitadelAuthMiddlewareFromEnv()
 }

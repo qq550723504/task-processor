@@ -2,6 +2,7 @@ package zitadel
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -12,6 +13,36 @@ import (
 
 	"task-processor/internal/authidentity"
 )
+
+func TestVerifierClassifiesDependencyFailureSeparatelyFromInvalidToken(t *testing.T) {
+	t.Run("dependency transport", func(t *testing.T) {
+		verifier := NewVerifier(Config{
+			IssuerURL: "https://issuer.example", ClientID: "api",
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return nil, errors.New("dial failed")
+			})},
+		})
+
+		_, err := verifier.Verify(context.Background(), "user-token")
+
+		require.ErrorContains(t, err, "ZITADEL discovery failed:")
+		require.ErrorContains(t, err, "dial failed")
+		require.True(t, IsVerificationDependencyUnavailable(err))
+		require.False(t, IsVerificationInvalid(err))
+	})
+
+	t.Run("inactive token", func(t *testing.T) {
+		server := newAuthServer(t, map[string]any{"active": false})
+		defer server.Close()
+		verifier := NewVerifier(Config{IssuerURL: server.URL, ClientID: "api", HTTPClient: server.Client()})
+
+		_, err := verifier.Verify(context.Background(), "user-token")
+
+		require.ErrorContains(t, err, "inactive token")
+		require.True(t, IsVerificationInvalid(err))
+		require.False(t, IsVerificationDependencyUnavailable(err))
+	})
+}
 
 func TestVerifierReturnsCanonicalIdentity(t *testing.T) {
 	var discoveryHits atomic.Int32

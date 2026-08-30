@@ -18,6 +18,7 @@ import (
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/authidentity"
+	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
@@ -52,6 +53,33 @@ type mountedOrganizationResolverStub struct {
 	bearer *string
 }
 
+type mountedVerifierStub struct {
+	identity authidentity.AuthenticatedIdentity
+	err      error
+	events   *[]string
+	token    *string
+}
+
+func (stub mountedVerifierStub) Verify(_ context.Context, token string) (authidentity.AuthenticatedIdentity, error) {
+	if stub.events != nil {
+		*stub.events = append(*stub.events, "authentication")
+	}
+	if stub.token != nil {
+		*stub.token = token
+	}
+	return stub.identity, stub.err
+}
+
+type appHTTPRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (roundTrip appHTTPRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return roundTrip(request)
+}
+
+func mountedVerifiedIdentity() authidentity.AuthenticatedIdentity {
+	return authidentity.AuthenticatedIdentity{UserID: "user-1", TokenExpiresAt: time.Now().Add(time.Minute)}
+}
+
 type mountedOrganizationResolverError struct{ err error }
 
 func (stub mountedOrganizationResolverError) Resolve(context.Context, httproute.OrganizationAccessPolicy, workbenchcontext.ResolveInput) (authidentity.AuthenticatedIdentity, error) {
@@ -73,7 +101,6 @@ func (stub mountedOrganizationResolverStub) Resolve(_ context.Context, _ httprou
 func TestWorkbenchAuthHandlerOrderIsAuthenticationOrganizationRoleThenHandler(t *testing.T) {
 	events := []string{}
 	resolvedBearer := ""
-	now := time.Now().UTC()
 	router := gin.New()
 	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{{
 		Method:                   http.MethodGet,
@@ -85,13 +112,7 @@ func TestWorkbenchAuthHandlerOrderIsAuthenticationOrganizationRoleThenHandler(t 
 			c.Status(http.StatusNoContent)
 		},
 	}}, routeAuthDependencies{
-		zitadelAuth: func(c *gin.Context) {
-			events = append(events, "authentication")
-			identity := authidentity.AuthenticatedIdentity{UserID: "user-1", TokenExpiresAt: now.Add(time.Minute)}
-			c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity))
-			c.Request.Header.Set("Authorization", "Bearer verified-current-token")
-			c.Next()
-		},
+		workbenchVerifier:    mountedVerifierStub{identity: mountedVerifiedIdentity(), events: &events},
 		organizationResolver: mountedOrganizationResolverStub{events: &events, roles: []string{"listingkit_admin"}, bearer: &resolvedBearer},
 		roleMiddleware: func(httproute.Descriptor) gin.HandlerFunc {
 			return func(c *gin.Context) {
@@ -113,7 +134,69 @@ func TestWorkbenchAuthHandlerOrderIsAuthenticationOrganizationRoleThenHandler(t 
 
 	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
 	require.Equal(t, []string{"authentication", "organization", "role", "handler"}, events)
-	require.Equal(t, "verified-current-token", resolvedBearer)
+	require.Equal(t, "pre-auth-token", resolvedBearer)
+}
+
+func TestProductionAuthShapeSkipsLegacyAllowlistBeforeWorkbenchOrganizationResolution(t *testing.T) {
+	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"introspection_endpoint": "http://" + r.Host + "/oauth/v2/introspect",
+			})
+		case "/oauth/v2/introspect":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"active": true, "sub": "user-1", "exp": time.Now().Add(time.Minute).Unix(),
+				"urn:zitadel:iam:user:resourceowner:id": "org-home",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer zitadel.Close()
+	restore := listingkithttpapi.SetListingKitZitadelAuthConfigForTesting(nil)
+	t.Cleanup(restore)
+	listingkithttpapi.ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
+		IssuerURL: zitadel.URL, ClientID: "listingkit-client", ProjectID: "project-1",
+		AuthorizationRequired: true, AllowedTenantIDs: []string{"org-other"},
+	})
+
+	events := []string{}
+	dependencies := newRouteAuthDependencies()
+	dependencies.workbenchVerifier = zitadelruntime.NewVerifier(zitadelruntime.Config{
+		IssuerURL: zitadel.URL, ClientID: "listingkit-client", ProjectID: "project-1", HTTPClient: zitadel.Client(),
+	})
+	dependencies.organizationResolver = mountedOrganizationResolverStub{events: &events, roles: []string{"listingkit_viewer"}}
+	router := gin.New()
+	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{
+		{
+			Method: http.MethodGet, Path: "/api/v1/workbench/context", AuthPolicy: httproute.AuthPolicyVerifiedIdentity,
+			OrganizationAccessPolicy: httproute.OrganizationAccessPolicyCachedRead,
+			Handler: func(c *gin.Context) {
+				events = append(events, "workbench-handler")
+				c.Status(http.StatusNoContent)
+			},
+		},
+		{
+			Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks", Module: "listing-kit",
+			AuthPolicy: httproute.AuthPolicyVerifiedIdentity,
+			Handler:    func(c *gin.Context) { t.Fatal("legacy handler ran after allowlist denial") },
+		},
+	}, dependencies)
+
+	workbenchRequest := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/context", nil)
+	workbenchRequest.Header.Set("Authorization", "Bearer user-token")
+	workbenchResponse := httptest.NewRecorder()
+	router.ServeHTTP(workbenchResponse, workbenchRequest)
+	require.Equal(t, http.StatusNoContent, workbenchResponse.Code, workbenchResponse.Body.String())
+	require.Equal(t, []string{"organization", "workbench-handler"}, events)
+
+	legacyRequest := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	legacyRequest.Header.Set("Authorization", "Bearer user-token")
+	legacyResponse := httptest.NewRecorder()
+	router.ServeHTTP(legacyResponse, legacyRequest)
+	require.Equal(t, http.StatusForbidden, legacyResponse.Code, legacyResponse.Body.String())
+	require.Contains(t, legacyResponse.Body.String(), "zitadel_access_denied")
 }
 
 func TestLegacyBlankOrganizationPolicySkipsResolver(t *testing.T) {
@@ -148,11 +231,7 @@ func TestWorkbenchOrganizationResolverNilFailsClosed(t *testing.T) {
 		Method: http.MethodGet, Path: "/workbench", AuthPolicy: httproute.AuthPolicyVerifiedIdentity,
 		OrganizationAccessPolicy: httproute.OrganizationAccessPolicyCachedRead,
 		Handler:                  func(c *gin.Context) { t.Fatal("handler ran without organization resolver") },
-	}}, routeAuthDependencies{zitadelAuth: func(c *gin.Context) {
-		identity := authidentity.AuthenticatedIdentity{UserID: "user-1", TokenExpiresAt: time.Now().Add(time.Minute)}
-		c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity))
-		c.Next()
-	}})
+	}}, routeAuthDependencies{workbenchVerifier: mountedVerifierStub{identity: mountedVerifiedIdentity()}})
 	request := httptest.NewRequest(http.MethodGet, "/workbench", nil)
 	request.Header.Set("Authorization", "Bearer current-request-token")
 	response := httptest.NewRecorder()
@@ -217,14 +296,10 @@ func TestWorkbenchScopedRoleDoesNotCarryAdminFromOrganizationAToViewerOrganizati
 			c.Status(http.StatusNoContent)
 		},
 	}}, routeAuthDependencies{
-		zitadelAuth: func(c *gin.Context) {
-			identity := authidentity.AuthenticatedIdentity{
-				TenantID: "org-a", UserID: "user-1", HomeOrganizationID: "org-a",
-				Roles: []string{"listingkit_admin"}, TokenExpiresAt: now.Add(time.Minute),
-			}
-			c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity))
-			c.Next()
-		},
+		workbenchVerifier: mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{
+			TenantID: "org-a", UserID: "user-1", HomeOrganizationID: "org-a",
+			Roles: []string{"listingkit_admin"}, TokenExpiresAt: now.Add(time.Minute),
+		}},
 		organizationResolver: resolver,
 	})
 
@@ -275,21 +350,17 @@ func TestWorkbenchOrganizationContextReadClearsLegacyBusinessScopeWhenSelectionI
 			c.Status(http.StatusNoContent)
 		},
 	}}, routeAuthDependencies{
-		zitadelAuth: func(c *gin.Context) {
-			identity := authidentity.AuthenticatedIdentity{
-				TenantID: "org-home", UserID: "user-1", HomeOrganizationID: "org-home",
-				Roles: []string{"legacy_admin"}, TokenExpiresAt: now.Add(time.Minute),
-			}
-			c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity))
-			c.Request.Header.Set("X-Tenant-ID", "org-home")
-			c.Request.Header.Set("tenant-id", "org-home")
-			c.Request.Header.Set("X-User-Roles", "legacy_admin")
-			c.Next()
-		},
+		workbenchVerifier: mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{
+			TenantID: "org-home", UserID: "user-1", HomeOrganizationID: "org-home",
+			Roles: []string{"legacy_admin"}, TokenExpiresAt: now.Add(time.Minute),
+		}},
 		organizationResolver: resolver,
 	})
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/context", nil)
 	request.Header.Set("Authorization", "Bearer current-request-token")
+	request.Header.Set("X-Tenant-ID", "org-home")
+	request.Header.Set("tenant-id", "org-home")
+	request.Header.Set("X-User-Roles", "legacy_admin")
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -308,11 +379,7 @@ func TestWorkbenchOrganizationAuthenticationFailureUsesStableProtocol(t *testing
 			t.Fatal("handler ran after authentication failure")
 		},
 	}}, routeAuthDependencies{
-		zitadelAuth: func(c *gin.Context) {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "zitadel_token_invalid", "message": "provider said secret-token and org-other",
-			})
-		},
+		workbenchVerifier:    mountedVerifierStub{err: errors.New("provider said secret-token and org-other")},
 		organizationResolver: mountedOrganizationResolverStub{events: &[]string{}},
 	})
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/context", nil)
@@ -337,7 +404,35 @@ func TestWorkbenchOrganizationAuthenticationFailureUsesStableProtocol(t *testing
 	require.NotContains(t, response.Body.String(), "org-other")
 }
 
-func TestWorkbenchAuthProtocolWrapperPreservesGinRecoveryOnHandlerPanic(t *testing.T) {
+func TestWorkbenchVerifierDependencyFailureUsesStableUnavailableProtocol(t *testing.T) {
+	verifier := zitadelruntime.NewVerifier(zitadelruntime.Config{
+		IssuerURL: "https://issuer.example", ClientID: "listingkit-client",
+		HTTPClient: &http.Client{Transport: appHTTPRoundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("dial failed with secret-token and org-other")
+		})},
+	})
+	router := gin.New()
+	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{{
+		Method: http.MethodGet, Path: "/api/v1/workbench/context", AuthPolicy: httproute.AuthPolicyVerifiedIdentity,
+		OrganizationAccessPolicy: httproute.OrganizationAccessPolicyContextRead,
+		Handler:                  func(c *gin.Context) { t.Fatal("handler ran after verifier dependency failure") },
+	}}, routeAuthDependencies{
+		workbenchVerifier:    verifier,
+		organizationResolver: mountedOrganizationResolverStub{events: &[]string{}},
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/context", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+	require.Contains(t, response.Body.String(), "DEPENDENCY_UNAVAILABLE")
+	require.NotContains(t, response.Body.String(), "secret-token")
+	require.NotContains(t, response.Body.String(), "org-other")
+}
+
+func TestWorkbenchVerifierPathPreservesGinRecoveryOnHandlerPanic(t *testing.T) {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{{
@@ -345,11 +440,7 @@ func TestWorkbenchAuthProtocolWrapperPreservesGinRecoveryOnHandlerPanic(t *testi
 		OrganizationAccessPolicy: httproute.OrganizationAccessPolicyCachedRead,
 		Handler:                  func(*gin.Context) { panic("handler panic") },
 	}}, routeAuthDependencies{
-		zitadelAuth: func(c *gin.Context) {
-			identity := authidentity.AuthenticatedIdentity{UserID: "user-1", TokenExpiresAt: time.Now().Add(time.Minute)}
-			c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity))
-			c.Next()
-		},
+		workbenchVerifier:    mountedVerifierStub{identity: mountedVerifiedIdentity()},
 		organizationResolver: mountedOrganizationResolverStub{events: &[]string{}, roles: []string{"listingkit_viewer"}},
 	})
 	request := httptest.NewRequest(http.MethodGet, "/workbench", nil)
@@ -359,6 +450,50 @@ func TestWorkbenchAuthProtocolWrapperPreservesGinRecoveryOnHandlerPanic(t *testi
 	router.ServeHTTP(response, request)
 
 	require.Equal(t, http.StatusInternalServerError, response.Code)
+}
+
+func TestWorkbenchOrganizationScopedSuccessStreamsWithoutResponseBuffering(t *testing.T) {
+	restore := listingkithttpapi.SetListingKitZitadelAuthConfigForTesting(nil)
+	t.Cleanup(restore)
+	events := []string{}
+	response := httptest.NewRecorder()
+	flushedBeforeReturn := false
+	visibleStatusBeforeReturn := 0
+	visibleBodyBeforeReturn := ""
+	visibleHeaderBeforeReturn := ""
+	router := gin.New()
+	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{{
+		Method: http.MethodGet, Path: "/workbench/stream", Module: "listing-kit-admin",
+		Permission: authz.PermissionListingKitAdminRead, AuthPolicy: httproute.AuthPolicyVerifiedIdentity,
+		OrganizationAccessPolicy: httproute.OrganizationAccessPolicyCachedRead,
+		Handler: func(c *gin.Context) {
+			c.Header("X-Workbench-Stream", "visible")
+			c.Header("Content-Length", "5")
+			c.Status(http.StatusPartialContent)
+			_, _ = c.Writer.WriteString("hello")
+			c.Writer.Flush()
+			flushedBeforeReturn = response.Flushed
+			visibleStatusBeforeReturn = response.Code
+			visibleBodyBeforeReturn = response.Body.String()
+			visibleHeaderBeforeReturn = response.Header().Get("X-Workbench-Stream")
+		},
+	}}, routeAuthDependencies{
+		workbenchVerifier:    mountedVerifierStub{identity: mountedVerifiedIdentity()},
+		organizationResolver: mountedOrganizationResolverStub{events: &events, roles: []string{"listingkit_admin"}},
+	})
+	request := httptest.NewRequest(http.MethodGet, "/workbench/stream", nil)
+	request.Header.Set("Authorization", "Bearer current-request-token")
+
+	router.ServeHTTP(response, request)
+
+	require.True(t, flushedBeforeReturn)
+	require.Equal(t, http.StatusPartialContent, visibleStatusBeforeReturn)
+	require.Equal(t, "hello", visibleBodyBeforeReturn)
+	require.Equal(t, "visible", visibleHeaderBeforeReturn)
+	require.Equal(t, http.StatusPartialContent, response.Code)
+	require.Equal(t, "hello", response.Body.String())
+	require.Equal(t, "visible", response.Header().Get("X-Workbench-Stream"))
+	require.Equal(t, "5", response.Header().Get("Content-Length"))
 }
 
 func TestWorkbenchOrganizationErrorsUseStableNonEnumeratingProtocol(t *testing.T) {
@@ -382,11 +517,7 @@ func TestWorkbenchOrganizationErrorsUseStableNonEnumeratingProtocol(t *testing.T
 				OrganizationAccessPolicy: httproute.OrganizationAccessPolicyCachedRead,
 				Handler:                  func(c *gin.Context) { t.Fatal("handler ran after organization resolution error") },
 			}}, routeAuthDependencies{
-				zitadelAuth: func(c *gin.Context) {
-					identity := authidentity.AuthenticatedIdentity{UserID: "user-1", TokenExpiresAt: time.Now().Add(time.Minute)}
-					c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity))
-					c.Next()
-				},
+				workbenchVerifier:    mountedVerifierStub{identity: mountedVerifiedIdentity()},
 				organizationResolver: mountedOrganizationResolverError{err: tt.err},
 			})
 			request := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/context", nil)

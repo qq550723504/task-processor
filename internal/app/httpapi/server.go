@@ -16,9 +16,7 @@ func buildHTTPServerFromRoutes(port int, routes []httproute.Descriptor) *http.Se
 }
 
 func buildHTTPServerFromRoutesAt(bindAddress string, port int, routes []httproute.Descriptor) *http.Server {
-	return buildHTTPServerFromRoutesAtWithAuthDependencies(bindAddress, port, routes, routeAuthDependencies{
-		zitadelAuth: newZitadelAuthMiddleware(),
-	})
+	return buildHTTPServerFromRoutesAtWithAuthDependencies(bindAddress, port, routes, newRouteAuthDependencies())
 }
 
 func buildHTTPServerFromRoutesAtWithAuthDependencies(bindAddress string, port int, routes []httproute.Descriptor, dependencies routeAuthDependencies) *http.Server {
@@ -40,7 +38,7 @@ func serverAddress(bindAddress string, port int) string {
 }
 
 func mountRoutes(r *gin.Engine, routes []httproute.Descriptor) {
-	mountRoutesWithAuthDependencies(r, routes, routeAuthDependencies{zitadelAuth: newZitadelAuthMiddleware()})
+	mountRoutesWithAuthDependencies(r, routes, newRouteAuthDependencies())
 }
 
 func mountRoutesWithAuthDependencies(r *gin.Engine, routes []httproute.Descriptor, dependencies routeAuthDependencies) {
