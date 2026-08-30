@@ -2,7 +2,6 @@ package product
 
 import (
 	"fmt"
-	"strings"
 	temupublishing "task-processor/internal/marketplace/temu/publishing"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
@@ -96,31 +95,7 @@ func (h *BrandClearHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) err
 
 // removeBrandFromText 从文本中移除品牌名称
 func (h *BrandClearHandler) removeBrandFromText(text, brandName string) string {
-	if text == "" || brandName == "" {
-		return text
-	}
-
-	// 创建多种品牌名称的变体进行匹配
-	brandVariants := []string{
-		brandName,                  // 原始品牌名
-		strings.ToUpper(brandName), // 全大写
-		strings.ToLower(brandName), // 全小写
-	}
-
-	result := text
-	for _, variant := range brandVariants {
-		// 移除品牌名称（包括前后可能的空格、逗号、破折号等）
-		result = strings.ReplaceAll(result, variant+" ", "")
-		result = strings.ReplaceAll(result, " "+variant, "")
-		result = strings.ReplaceAll(result, variant+",", "")
-		result = strings.ReplaceAll(result, ","+variant, "")
-		result = strings.ReplaceAll(result, variant+"-", "")
-		result = strings.ReplaceAll(result, "-"+variant, "")
-		result = strings.ReplaceAll(result, variant+"'s", "")
-		result = strings.ReplaceAll(result, variant, "")
-	}
-
-	return temupublishing.NormalizeProductSubmissionName(result)
+	return temupublishing.RemoveBrandFromText(text, brandName)
 }
 
 // Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
