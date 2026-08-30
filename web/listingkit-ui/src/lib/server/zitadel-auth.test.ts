@@ -153,6 +153,9 @@ describe("verifyZitadelAccessToken", () => {
             "urn:zitadel:iam:org:project:id3:roles": [
               { listingkit_operator: { "org-286": "zitadel.localhost" } },
             ],
+            "urn:zitadel:iam:org:project:other-project:roles": [
+              { platform_admin: { "org-286": "zitadel.localhost" } },
+            ],
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         ),
@@ -165,6 +168,7 @@ describe("verifyZitadelAccessToken", () => {
         {
           issuerUrl: "https://issuer.example.com",
           clientId: "client-1",
+          projectId: "id3",
           scopes: "openid profile",
         },
         {
@@ -225,7 +229,7 @@ describe("readZitadelIdentityFromSession", () => {
     expect(
       readZitadelIdentityFromSession({
         expires: "2026-05-17T00:00:00.000Z",
-        identityVersion: 2,
+        identityVersion: 3,
         identity: {
           tenantId: "org-1",
           userId: "user-1",

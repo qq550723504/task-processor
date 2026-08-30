@@ -60,6 +60,61 @@ function Set-EnvIfMissing {
     [Environment]::SetEnvironmentVariable($Name, $Value)
 }
 
+function Assert-LoopbackApiBase {
+    param(
+        [string]$Name,
+        [string]$Value
+    )
+
+    $uri = $null
+    try {
+        $uri = [Uri]$Value
+    } catch {
+        throw "${Name} must be an absolute loopback HTTP(S) URL."
+    }
+    if (-not $uri.IsAbsoluteUri -or @("http", "https") -notcontains $uri.Scheme.ToLowerInvariant()) {
+        throw "${Name} must be an absolute loopback HTTP(S) URL."
+    }
+
+    $isLoopback = $uri.Host.Equals("localhost", [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $isLoopback) {
+        $address = $null
+        if ([System.Net.IPAddress]::TryParse($uri.Host, [ref]$address)) {
+            $isLoopback = [System.Net.IPAddress]::IsLoopback($address)
+        }
+    }
+    if (-not $isLoopback) {
+        throw "${Name} must target localhost or a loopback IP address."
+    }
+}
+
+function Set-UiApiBases {
+    param(
+        [string]$ApiBase,
+        [string]$ServiceApiBase,
+        [switch]$IsolatedAcceptance
+    )
+
+    if ($IsolatedAcceptance) {
+        if ([string]::IsNullOrWhiteSpace($ApiBase) -or [string]::IsNullOrWhiteSpace($ServiceApiBase)) {
+            throw "Isolated acceptance requires explicit local API base URLs."
+        }
+        Assert-LoopbackApiBase -Name "ApiBase" -Value $ApiBase
+        Assert-LoopbackApiBase -Name "ServiceApiBase" -Value $ServiceApiBase
+        $normalizedServiceApiBase = $ServiceApiBase.TrimEnd("/")
+        [Environment]::SetEnvironmentVariable("LISTINGKIT_API_BASE", $ApiBase)
+        [Environment]::SetEnvironmentVariable("LISTINGKIT_SERVICE_API_BASE", $ServiceApiBase)
+        [Environment]::SetEnvironmentVariable("SDS_API_BASE", "${normalizedServiceApiBase}/sds")
+        [Environment]::SetEnvironmentVariable("SDS_LOGIN_API_BASE", "${normalizedServiceApiBase}/sds-login")
+        [Environment]::SetEnvironmentVariable("SHEIN_LOGIN_API_BASE", "${normalizedServiceApiBase}/shein-login")
+        [Environment]::SetEnvironmentVariable("NEXT_PUBLIC_LISTINGKIT_API_BASE", "/api/listing-kits")
+        return
+    }
+
+    Set-EnvIfMissing -Name "LISTINGKIT_API_BASE" -Value $ApiBase
+    Set-EnvIfMissing -Name "LISTINGKIT_SERVICE_API_BASE" -Value $ServiceApiBase
+}
+
 function Import-DotEnvFile {
     param([string]$Path)
 
@@ -310,8 +365,10 @@ Remove-FileIfExists -Path $stderrLog
 Remove-FileIfExists -Path $pidFile
 
 Initialize-UiLaunchEnvironment -RepoRoot $repoRoot -IsolatedAcceptance:$IsolatedAcceptance
-Set-EnvIfMissing -Name "LISTINGKIT_API_BASE" -Value $ApiBase
-Set-EnvIfMissing -Name "LISTINGKIT_SERVICE_API_BASE" -Value $ServiceApiBase
+Set-UiApiBases `
+    -ApiBase $ApiBase `
+    -ServiceApiBase $ServiceApiBase `
+    -IsolatedAcceptance:$IsolatedAcceptance
 
 $nextArguments = @($nextCli, "dev", "-p", $Port.ToString())
 if ($IsolatedAcceptance) {

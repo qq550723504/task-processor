@@ -47,12 +47,18 @@ export async function persistZitadelAcceptanceToken(token: string) {
     }
     await rejectReparsePoints(tokenDirectory);
     await rejectReparsePoints(tokenPath);
-    await rm(tokenPath, { force: true });
-    await rename(temporaryPath, tokenPath);
+    await replaceAcceptanceTokenFile(temporaryPath, tokenPath);
   } finally {
     await rm(temporaryPath, { force: true });
   }
   return true;
+}
+
+export async function replaceAcceptanceTokenFile(
+  temporaryPath: string,
+  tokenPath: string,
+) {
+  await rename(temporaryPath, tokenPath);
 }
 
 async function rejectReparsePoints(targetPath: string) {
@@ -96,7 +102,7 @@ async function protectWindowsFile(filePath: string) {
     "*S-1-5-32-544:(F)",
   ]);
   const { stdout: sddlOutput } = await execFile(
-    "pwsh.exe",
+    "powershell.exe",
     [
       "-NoProfile",
       "-NonInteractive",
@@ -104,7 +110,7 @@ async function protectWindowsFile(filePath: string) {
       "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); (Get-Acl -LiteralPath $env:LISTINGKIT_ACL_VERIFY_PATH).Sddl",
     ],
     {
-      env: { ...process.env, LISTINGKIT_ACL_VERIFY_PATH: filePath },
+      env: windowsPowerShellEnvironment(filePath),
     },
   );
   const sddl = sddlOutput.trim();
@@ -122,4 +128,17 @@ async function protectWindowsFile(filePath: string) {
   if (identities.length === 0 || identities.some((identity) => !allowed.has(identity))) {
     throw new Error("acceptance token ACL contains an unexpected principal");
   }
+}
+
+function windowsPowerShellEnvironment(filePath: string) {
+  const environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    LISTINGKIT_ACL_VERIFY_PATH: filePath,
+  };
+  for (const key of Object.keys(environment)) {
+    if (key.toLowerCase() === "psmodulepath") {
+      delete environment[key];
+    }
+  }
+  return environment;
 }

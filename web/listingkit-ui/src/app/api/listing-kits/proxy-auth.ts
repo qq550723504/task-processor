@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Session } from "next-auth";
 
-import { auth } from "@/auth";
 import { LISTINGKIT_TRACE_HEADER_NAMES } from "@/lib/listingkit/request-trace";
 import {
   getZitadelAuthOptions,
@@ -14,6 +14,9 @@ import { readZitadelServerAccessToken } from "@/lib/server/zitadel-server-token"
 import { logRequestInfo, logRequestWarn } from "@/lib/server/request-log";
 
 export type VerifiedIdentity = ZitadelVerifiedIdentity;
+export type AuthenticatedListingKitRequest = NextRequest & {
+  auth: Session | null;
+};
 export type VerifiedIdentityResult =
   | {
       identity?: VerifiedIdentity;
@@ -24,6 +27,7 @@ export type VerifiedIdentityResult =
 
 export async function verifyListingKitRequestIdentity(
   request: NextRequest,
+  session: Session | null = null,
 ): Promise<VerifiedIdentityResult> {
   const zitadelOptions = getZitadelAuthOptions();
   if (!zitadelOptions) {
@@ -49,7 +53,6 @@ export async function verifyListingKitRequestIdentity(
       };
     }
 
-    const session = await auth();
     const sessionError = readZitadelSessionError(session);
     if (sessionError) {
       logRequestWarn("listingkit proxy auth session error", {
@@ -58,7 +61,7 @@ export async function verifyListingKitRequestIdentity(
       });
       throw new Error(sessionError);
     }
-    const zitadelToken = await readZitadelServerAccessToken(request);
+    const zitadelToken = readZitadelServerAccessToken(session);
     const storedIssuerURL = readZitadelSessionIssuerURL(session);
     const storedClientID = readZitadelSessionClientID(session);
     const identity = readZitadelIdentityFromSession(session) ?? undefined;

@@ -13,6 +13,7 @@ type Config struct {
 	IssuerURL    string
 	ClientID     string
 	ClientSecret string
+	ProjectID    string
 	HTTPClient   *http.Client
 }
 
@@ -60,5 +61,6 @@ func normalizeConfig(cfg Config) Config {
 	cfg.IssuerURL = strings.TrimRight(strings.TrimSpace(cfg.IssuerURL), "/")
 	cfg.ClientID = strings.TrimSpace(cfg.ClientID)
 	cfg.ClientSecret = strings.TrimSpace(cfg.ClientSecret)
+	cfg.ProjectID = strings.TrimSpace(cfg.ProjectID)
 	return cfg
 }

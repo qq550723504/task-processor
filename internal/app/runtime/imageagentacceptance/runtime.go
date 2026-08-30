@@ -56,11 +56,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	// The concrete guard has already checked Compose identity, database name and
 	// marker. Pass its verified handle through the Seed guard adapter so Seed can
 	// own the handle lifetime without opening a second database connection.
-	result, err := imageagentacceptance.Seed(ctx, verifiedGuard{db: db}, zitadel.NewVerifier(zitadel.Config{
-		IssuerURL:    runtime.IssuerURL,
-		ClientID:     runtime.APIClientID,
-		ClientSecret: runtime.APIClientSecret,
-	}), listingkitstore.NewTaskRepository(db), imageagentacceptance.SeedRequest{
+	result, err := imageagentacceptance.Seed(ctx, verifiedGuard{db: db}, zitadel.NewVerifier(verifierConfig(runtime)), listingkitstore.NewTaskRepository(db), imageagentacceptance.SeedRequest{
 		Runtime:   runtime,
 		Token:     token,
 		SourceURL: *sourceURL,
@@ -75,6 +71,15 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		UserID       string `json:"user_id"`
 		WorkspaceURL string `json:"workspace_url"`
 	}{result.TaskID, result.TenantID, result.UserID, result.WorkspaceURL})
+}
+
+func verifierConfig(runtime imageagentacceptance.RuntimeConfig) zitadel.Config {
+	return zitadel.Config{
+		IssuerURL:    runtime.IssuerURL,
+		ClientID:     runtime.APIClientID,
+		ClientSecret: runtime.APIClientSecret,
+		ProjectID:    runtime.ProjectID,
+	}
 }
 
 type verifiedGuard struct{ db *gorm.DB }

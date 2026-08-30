@@ -1,6 +1,8 @@
 $scriptPath = Join-Path $PSScriptRoot "image-agent-local-acceptance.ps1"
 
-function Import-SeedFunction {
+function Import-AcceptanceFunction {
+    param([string]$Name)
+
     $tokens = $null
     $errors = $null
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$errors)
@@ -9,18 +11,18 @@ function Import-SeedFunction {
     }
     $function = $ast.FindAll({
         param($node)
-        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq "Invoke-Seed"
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $Name
     }, $true) | Select-Object -First 1
     if ($null -eq $function) {
-        throw "Invoke-Seed was not found in ${scriptPath}"
+        throw "${Name} was not found in ${scriptPath}"
     }
-    $definition = $function.Extent.Text -replace '^function\s+Invoke-Seed', 'function global:Invoke-Seed'
+    $definition = $function.Extent.Text -replace "^function\s+$([regex]::Escape($Name))", "function global:${Name}"
     Invoke-Expression $definition
 }
 
 Describe "image-agent-local-acceptance seed routing" {
     BeforeEach {
-        Import-SeedFunction
+        Import-AcceptanceFunction -Name "Invoke-Seed"
         $global:SourceUrl = "https://example.com/source.png"
         $global:StyleUrl = ""
         $global:TokenFile = Join-Path $TestDrive "token.txt"
@@ -58,5 +60,37 @@ Describe "image-agent-local-acceptance seed routing" {
         $global:capturedGoArguments.Count | Should Be 10
         $global:capturedGoArguments[8] | Should Be "-style-url"
         $global:capturedGoArguments[9] | Should Be $global:StyleUrl
+    }
+}
+
+Describe "image-agent-local-acceptance authorization startup" {
+    BeforeEach {
+        Import-AcceptanceFunction -Name "Invoke-Authorize"
+        $global:TokenFile = Join-Path $TestDrive "user-token.txt"
+        $global:acceptanceRoot = $TestDrive
+        $global:runtimeFile = Join-Path $TestDrive "runtime.env"
+        Set-Content -LiteralPath $global:TokenFile -Value "test-token"
+        $global:authorizationEvents = @()
+        $global:apiRequiredReadiness = $false
+        function global:Invoke-GoCommand { param([string[]]$Arguments) $global:authorizationEvents += "authorize" }
+        function global:Import-ProvisionedRuntime { $global:authorizationEvents += "runtime" }
+        function global:Start-LocalApi {
+            param([switch]$RequireReadiness)
+            $global:apiRequiredReadiness = $RequireReadiness.IsPresent
+            $global:authorizationEvents += "api"
+        }
+        function global:Start-LocalWorker { $global:authorizationEvents += "worker" }
+    }
+
+    AfterEach {
+        Remove-Item Function:\global:Invoke-Authorize,Function:\global:Invoke-GoCommand,Function:\global:Import-ProvisionedRuntime,Function:\global:Start-LocalApi,Function:\global:Start-LocalWorker -ErrorAction SilentlyContinue
+        Remove-Variable TokenFile,acceptanceRoot,runtimeFile,authorizationEvents,apiRequiredReadiness -Scope Global -ErrorAction SilentlyContinue
+    }
+
+    It "restarts a ready API with authorized tenant settings before the worker" {
+        Invoke-Authorize
+
+        $global:authorizationEvents -join "," | Should Be "authorize,runtime,api,worker"
+        $global:apiRequiredReadiness | Should Be $true
     }
 }

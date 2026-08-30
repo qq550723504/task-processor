@@ -8,7 +8,11 @@ vi.mock("@/lib/server/zitadel-acceptance-token", () => ({
   persistZitadelAcceptanceToken: mockedAcceptanceHandoff.persist,
 }));
 
-import { buildAuthConfig } from "@/auth.config";
+import {
+  buildAuthConfig,
+  buildServerAuthConfig,
+  getZitadelAuthOptions,
+} from "@/auth.config";
 
 const canonicalIdentity = {
   tenantId: "org-286",
@@ -28,7 +32,7 @@ function expiredToken(overrides: Record<string, unknown> = {}) {
     refreshToken: "refresh-token",
     expiresAt: Math.floor(Date.now() / 1000) - 60,
     identity: canonicalIdentity,
-    identityVersion: 2,
+    identityVersion: 3,
     ...overrides,
   };
 }
@@ -98,7 +102,7 @@ describe("ListingKit Auth.js canonical ZITADEL identity", () => {
     }
 
     expect(result.identity).toMatchObject({ userId: "zitadel-subject-123" });
-    expect(result.identityVersion).toBe(2);
+    expect(result.identityVersion).toBe(3);
     expect(mockedAcceptanceHandoff.persist).toHaveBeenCalledWith(
       "access-token-1",
     );
@@ -118,6 +122,47 @@ describe("ListingKit Auth.js canonical ZITADEL identity", () => {
     });
   });
 
+  it("derives the exact ZITADEL project from the configured roles scope", () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    vi.stubEnv(
+      "ZITADEL_SCOPES",
+      "openid urn:zitadel:iam:org:project:project-1:roles",
+    );
+
+    expect(getZitadelAuthOptions()?.projectId).toBe("project-1");
+  });
+
+  it("keeps foreign project roles out of the Auth.js identity", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    vi.stubEnv(
+      "ZITADEL_SCOPES",
+      "openid urn:zitadel:iam:org:project:project-1:roles",
+    );
+    const jwt = buildAuthConfig().callbacks?.jwt;
+    if (!jwt) {
+      throw new Error("Auth.js JWT callback is not configured");
+    }
+
+    const result = await jwt({
+      token: {},
+      account: { provider: "zitadel", access_token: "access-token-1" },
+      profile: {
+        sub: "zitadel-subject-123",
+        "urn:zitadel:iam:user:resourceowner:id": "org-286",
+        "urn:zitadel:iam:org:project:project-1:roles": [
+          { listingkit_operator: {} },
+        ],
+        "urn:zitadel:iam:org:project:foreign-project:roles": [
+          { platform_admin: {} },
+        ],
+      },
+    } as never);
+
+    expect(result?.identity?.roles).toEqual(["listingkit_operator"]);
+  });
+
   it("keeps access and ID tokens out of the browser-visible session", async () => {
     const session = buildAuthConfig().callbacks?.session;
     if (!session) {
@@ -131,13 +176,37 @@ describe("ListingKit Auth.js canonical ZITADEL identity", () => {
         idToken: "id-token-1",
         expiresAt: Math.floor(Date.now() / 1000) + 60,
         identity: canonicalIdentity,
-        identityVersion: 2,
+        identityVersion: 3,
       },
     } as never);
 
     expect(result).not.toHaveProperty("accessToken");
     expect(result).not.toHaveProperty("idToken");
     expect(result).toMatchObject({ identity: canonicalIdentity });
+  });
+
+  it("exposes refreshed tokens only through the server auth session", async () => {
+    const session = buildServerAuthConfig().callbacks?.session;
+    if (!session) {
+      throw new Error("Server Auth.js session callback is not configured");
+    }
+
+    const result = await session({
+      session: { user: {}, expires: new Date(Date.now() + 60_000).toISOString() },
+      token: {
+        accessToken: "refreshed-access-token",
+        idToken: "refreshed-id-token",
+        expiresAt: Math.floor(Date.now() / 1000) + 60,
+        identity: canonicalIdentity,
+        identityVersion: 3,
+      },
+    } as never);
+
+    expect(result).toMatchObject({
+      accessToken: "refreshed-access-token",
+      idToken: "refreshed-id-token",
+      identity: canonicalIdentity,
+    });
   });
 
   it("invalidates identity when a refreshed ID token lacks sub", async () => {
@@ -190,7 +259,7 @@ describe("ListingKit Auth.js canonical ZITADEL identity", () => {
     );
 
     expect(marked.identity).toEqual(canonicalIdentity);
-    expect(marked.identityVersion).toBe(2);
+    expect(marked.identityVersion).toBe(3);
     expect(unmarked.identity).toBeNull();
     expect(unmarked.identityVersion).toBeUndefined();
   });

@@ -308,8 +308,15 @@ jobs:
             urn:zitadel:iam:org:project:role:platform_admin
         run: |
           set -euo pipefail
+          project_id="$(kubectl -n "${K8S_NAMESPACE}" get configmap listingkit-ui-auth-config \
+            -o jsonpath='{.data.ZITADEL_PROJECT_ID}')"
+          if [[ ! "$project_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "::error::Invalid or missing ZITADEL_PROJECT_ID in listingkit-ui-auth-config"
+            exit 1
+          fi
+          scopes="$LISTINGKIT_UI_ZITADEL_SCOPES urn:zitadel:iam:org:project:${project_id}:roles"
           patch_payload="$(jq -cn \
-            --arg scopes "$LISTINGKIT_UI_ZITADEL_SCOPES" \
+            --arg scopes "$scopes" \
             '{data:{ZITADEL_SCOPES:$scopes}}')"
           kubectl -n "${K8S_NAMESPACE}" patch configmap listingkit-ui-auth-config \
             --type merge \

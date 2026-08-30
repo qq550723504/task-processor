@@ -2,7 +2,7 @@
   "urn:zitadel:iam:user:resourceowner:id";
 // Bump when the OIDC authorization contract changes so existing Auth.js
 // sessions are forced through a fresh authorization request.
-export const ZITADEL_IDENTITY_VERSION = 2;
+export const ZITADEL_IDENTITY_VERSION = 3;
 
 export type ListingKitSessionIdentity = {
   tenantId?: string | number;
@@ -21,6 +21,7 @@ export type ZitadelTokenPayload = Record<string, unknown> & {
 
 export function extractZitadelIdentityFromClaims(
   payload: ZitadelTokenPayload,
+  projectId?: string,
 ): ListingKitSessionIdentity | null {
   const tenantId = normalizeClaim(payload[RESOURCE_OWNER_CLAIM]);
   const userId = normalizeClaim(payload.sub);
@@ -33,7 +34,7 @@ export function extractZitadelIdentityFromClaims(
     userId,
     username: normalizeClaim(payload.preferred_username ?? payload.username),
     userType: "zitadel",
-    roles: extractProjectRoles(payload),
+    roles: extractProjectRoles(payload, projectId),
   };
 }
 
@@ -47,7 +48,7 @@ export function normalizeClaim(value: unknown) {
   return undefined;
 }
 
-function extractProjectRoles(payload: ZitadelTokenPayload) {
+function extractProjectRoles(payload: ZitadelTokenPayload, projectId?: string) {
   const seen = new Set<string>();
   const roles: string[] = [];
   const add = (value: unknown) => {
@@ -77,20 +78,14 @@ function extractProjectRoles(payload: ZitadelTokenPayload) {
   };
 
   for (const value of [
+    projectId
+      ? payload[`urn:zitadel:iam:org:project:${projectId}:roles`]
+      : undefined,
     payload["urn:zitadel:iam:org:project:roles"],
     payload.roles,
     payload.role,
   ]) {
     addClaimValue(value);
-  }
-
-  for (const [claimName, value] of Object.entries(payload)) {
-    if (
-      claimName.startsWith("urn:zitadel:iam:org:project:") &&
-      claimName.endsWith(":roles")
-    ) {
-      addClaimValue(value);
-    }
   }
 
   return roles;

@@ -1,5 +1,9 @@
 import NextAuth from "next-auth";
 
-import { buildAuthConfig } from "@/auth.config";
+import { buildAuthConfig, buildServerAuthConfig } from "@/auth.config";
 
-export const { handlers, auth, signIn, signOut } = NextAuth(buildAuthConfig());
+const publicAuth = NextAuth(buildAuthConfig());
+const serverOnlyAuth = NextAuth(buildServerAuthConfig());
+
+export const { handlers, signIn, signOut } = publicAuth;
+export const { auth: serverAuth } = serverOnlyAuth;

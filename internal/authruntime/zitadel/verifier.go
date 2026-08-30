@@ -103,7 +103,7 @@ func (v *verifier) introspect(ctx context.Context, token string) (*Introspection
 		return nil, fmt.Errorf("ZITADEL token introspection response is invalid: %w", err)
 	}
 	payload.Extra = data
-	payload.Roles = ParseRoles(data)
+	payload.Roles = ParseRolesForProject(data, v.cfg.ProjectID)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("ZITADEL token introspection failed: %d", resp.StatusCode)

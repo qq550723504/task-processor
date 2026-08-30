@@ -2,13 +2,28 @@ import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/auth", () => ({
-  auth: vi.fn(async () => null),
+  serverAuth: vi.fn(
+    (handler: (request: NextRequest, context: unknown) => unknown) =>
+      (request: NextRequest, context: unknown) =>
+        handler(Object.assign(request, { auth: null }), context),
+  ),
 }));
 
 import {
   buildSDSLoginUpstreamHeaders,
   GET,
 } from "@/app/api/sds-login/[...path]/route";
+
+async function callGET(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  const response = await GET(request, context);
+  if (!(response instanceof Response)) {
+    throw new Error("SDS login route did not return a response");
+  }
+  return response;
+}
 
 describe("buildSDSLoginUpstreamHeaders", () => {
   it("does not trust caller tenant headers without a verified identity", () => {
@@ -51,7 +66,7 @@ describe("SDS login proxy ZITADEL auth", () => {
       ),
     );
 
-    const response = await GET(
+    const response = await callGET(
       new NextRequest("http://localhost/api/sds-login/status"),
       { params: Promise.resolve({ path: ["status"] }) },
     );
@@ -73,7 +88,7 @@ describe("SDS login proxy ZITADEL auth", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await GET(
+    const response = await callGET(
       new NextRequest("http://localhost/api/sds-login/status", {
         headers: { authorization: "Bearer access-token-1" },
       }),

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { serverAuth } from "@/auth";
 
 import {
   authorizeZitadelIdentity,
@@ -12,7 +12,7 @@ import { readZitadelServerAccessToken } from "@/lib/server/zitadel-server-token"
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
+const authenticatedGET = serverAuth(async (request) => {
   if (!isZitadelAuthConfigured()) {
     return NextResponse.json(
       {
@@ -24,12 +24,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const session = await auth();
+    const session = request.auth;
     const sessionError = readZitadelSessionError(session);
     if (sessionError) {
       throw new Error(sessionError);
     }
-    const accessToken = await readZitadelServerAccessToken(request);
+    const accessToken = readZitadelServerAccessToken(session);
     const identity = readZitadelIdentityFromSession(session);
     if (!accessToken || !identity) {
       throw new Error("Missing ZITADEL session");
@@ -58,4 +58,6 @@ export async function GET(request: NextRequest) {
       { status: 401 },
     );
   }
-}
+});
+
+export { authenticatedGET as GET };

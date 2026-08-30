@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"task-processor/internal/listingkit/imageagentacceptance"
 )
 
 func TestSeedCommandRequiresLocalFilesAndPublicSourceURL(t *testing.T) {
@@ -13,6 +15,19 @@ func TestSeedCommandRequiresLocalFilesAndPublicSourceURL(t *testing.T) {
 	}, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "-runtime-file") {
 		t.Fatalf("Run() error = %v, want required local-file flags", err)
+	}
+}
+
+func TestVerifierConfigCarriesAcceptanceProjectID(t *testing.T) {
+	cfg := verifierConfig(imageagentacceptance.RuntimeConfig{
+		IssuerURL:       "http://localhost:8080",
+		ProjectID:       "project-1",
+		APIClientID:     "api-client",
+		APIClientSecret: "api-secret",
+	})
+
+	if cfg.ProjectID != "project-1" {
+		t.Fatalf("ProjectID = %q, want project-1", cfg.ProjectID)
 	}
 }
 

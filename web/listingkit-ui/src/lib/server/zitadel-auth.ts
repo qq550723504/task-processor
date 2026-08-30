@@ -151,7 +151,7 @@ export async function verifyZitadelAccessToken(
     throw new Error(`ZITADEL token introspection failed: ${response.status}`);
   }
 
-  return extractZitadelIdentityFromClaims(payload);
+  return extractZitadelIdentityFromClaims(payload, options.projectId);
 }
 
 export function authorizeZitadelIdentity(

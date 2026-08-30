@@ -214,6 +214,7 @@ func runAuthorize(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		IssuerURL:    issuerURL,
 		ClientID:     apiClientID,
 		ClientSecret: apiClientSecret,
+		ProjectID:    projectID,
 	})
 	identity, err := verifier.Verify(ctx, browserToken)
 	if err != nil {

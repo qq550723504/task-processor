@@ -32,7 +32,12 @@ func TestVerifierReturnsCanonicalIdentity(t *testing.T) {
 				"active":                                true,
 				"sub":                                   " user-1 ",
 				"urn:zitadel:iam:user:resourceowner:id": " org-1 ",
-				"roles":                                 []string{"listingkit_operator"},
+				"urn:zitadel:iam:org:project:project-1:roles": []any{
+					map[string]any{"listingkit_operator": map[string]any{"displayName": "Operator"}},
+				},
+				"urn:zitadel:iam:org:project:other-project:roles": []any{
+					map[string]any{"foreign_admin": map[string]any{}},
+				},
 			})
 		default:
 			http.NotFound(w, r)
@@ -42,7 +47,7 @@ func TestVerifierReturnsCanonicalIdentity(t *testing.T) {
 
 	verifier := NewVerifier(Config{
 		IssuerURL: server.URL, ClientID: "api", ClientSecret: "secret",
-		HTTPClient: server.Client(),
+		ProjectID: " project-1 ", HTTPClient: server.Client(),
 	})
 
 	for range 2 {
@@ -55,6 +60,20 @@ func TestVerifierReturnsCanonicalIdentity(t *testing.T) {
 
 	require.Equal(t, int32(1), discoveryHits.Load())
 	require.Equal(t, int32(2), introspectionHits.Load())
+}
+
+func TestParseRolesForProjectSupportsDynamicArrayRoleMaps(t *testing.T) {
+	roles := ParseRolesForProject([]byte(`{
+		"urn:zitadel:iam:org:project:project-1:roles": [
+			{"listingkit_operator": {"displayName": "Operator"}},
+			{"listingkit_admin": {}}
+		],
+		"urn:zitadel:iam:org:project:other-project:roles": [
+			{"foreign_admin": {}}
+		]
+	}`), "project-1")
+
+	require.Equal(t, []string{"listingkit_operator", "listingkit_admin"}, roles)
 }
 
 func TestVerifierRejectsInactiveAndIncompleteIdentity(t *testing.T) {

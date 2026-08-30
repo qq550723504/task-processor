@@ -1,12 +1,15 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { persistZitadelAcceptanceToken } from "@/lib/server/zitadel-acceptance-token";
+import {
+  persistZitadelAcceptanceToken,
+  replaceAcceptanceTokenFile,
+} from "@/lib/server/zitadel-acceptance-token";
 
 const execFile = promisify(execFileCallback);
 const roots: string[] = [];
@@ -25,18 +28,65 @@ describe("persistZitadelAcceptanceToken", () => {
     await expect(readFile(tokenPath, "utf8")).resolves.toBe("access-token\n");
 
     if (process.platform === "win32") {
+      const powershellEnvironment: NodeJS.ProcessEnv = {
+        ...process.env,
+        LISTINGKIT_ACL_VERIFY_PATH: tokenPath,
+      };
+      for (const key of Object.keys(powershellEnvironment)) {
+        if (key.toLowerCase() === "psmodulepath") {
+          delete powershellEnvironment[key];
+        }
+      }
       const { stdout } = await execFile(
-        "pwsh.exe",
+        "powershell.exe",
         [
           "-NoProfile",
           "-NonInteractive",
           "-Command",
           "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); (Get-Acl -LiteralPath $env:LISTINGKIT_ACL_VERIFY_PATH).Sddl",
         ],
-        { env: { ...process.env, LISTINGKIT_ACL_VERIFY_PATH: tokenPath } },
+        { env: powershellEnvironment },
       );
       expect(stdout.trim()).toMatch(/D:P/);
     }
+  });
+
+  it("does not require PowerShell 7 for the Windows ACL handoff", async () => {
+    if (process.platform !== "win32") {
+      return;
+    }
+
+    const tokenPath = await acceptanceTokenPath();
+    vi.stubEnv("LISTINGKIT_ACCEPTANCE_TOKEN_FILE", tokenPath);
+    const systemRoot = process.env.SystemRoot || "C:\\Windows";
+    vi.stubEnv(
+      "PATH",
+      [
+        path.join(systemRoot, "System32"),
+        path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0"),
+      ].join(path.delimiter),
+    );
+
+    await expect(
+      persistZitadelAcceptanceToken("windows-powershell-token"),
+    ).resolves.toBe(true);
+    await expect(readFile(tokenPath, "utf8")).resolves.toBe(
+      "windows-powershell-token\n",
+    );
+  });
+
+  it("atomically replaces an existing acceptance token", async () => {
+    const tokenPath = await acceptanceTokenPath();
+    vi.stubEnv("LISTINGKIT_ACCEPTANCE_TOKEN_FILE", tokenPath);
+
+    await persistZitadelAcceptanceToken("previous-token");
+    await expect(persistZitadelAcceptanceToken("refreshed-token")).resolves.toBe(
+      true,
+    );
+
+    await expect(readFile(tokenPath, "utf8")).resolves.toBe(
+      "refreshed-token\n",
+    );
   });
 
   it("rejects a pre-existing symbolic-link token target", async () => {
@@ -55,6 +105,23 @@ describe("persistZitadelAcceptanceToken", () => {
 
     await expect(persistZitadelAcceptanceToken("access-token")).rejects.toThrow(
       /symbolic link|reparse point/i,
+    );
+  });
+
+  it("preserves the previous token when atomic replacement fails", async () => {
+    const tokenPath = await acceptanceTokenPath();
+    await mkdir(path.dirname(tokenPath), { recursive: true });
+    await writeFile(tokenPath, "previous-token\n", "utf8");
+    const missingTemporaryPath = path.join(
+      path.dirname(tokenPath),
+      ".missing-token.tmp",
+    );
+
+    await expect(
+      replaceAcceptanceTokenFile(missingTemporaryPath, tokenPath),
+    ).rejects.toThrow();
+    await expect(readFile(tokenPath, "utf8")).resolves.toBe(
+      "previous-token\n",
     );
   });
 });

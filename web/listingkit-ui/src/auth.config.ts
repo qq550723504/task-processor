@@ -1,5 +1,5 @@
 import { customFetch } from "@auth/core";
-import type { NextAuthConfig } from "next-auth";
+import type { NextAuthConfig, Session } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import ZITADEL from "next-auth/providers/zitadel";
 
@@ -17,8 +17,10 @@ export type { ListingKitSessionIdentity };
 
 declare module "next-auth" {
   interface Session {
+    accessToken?: string;
     expiresAt?: number;
     error?: string;
+    idToken?: string;
     issuerUrl?: string;
     clientId?: string;
     identity?: ListingKitSessionIdentity | null;
@@ -46,6 +48,7 @@ export type ZitadelAuthOptions = {
   clientSecret?: string;
   redirectUri?: string;
   postLogoutRedirectUri?: string;
+  projectId?: string;
   scopes: string;
 };
 
@@ -81,6 +84,7 @@ export function getZitadelAuthOptions(): ZitadelAuthOptions | undefined {
     return undefined;
   }
 
+  const scopes = process.env.ZITADEL_SCOPES?.trim() || DEFAULT_ZITADEL_SCOPES;
   return {
     issuerUrl,
     clientId,
@@ -88,10 +92,22 @@ export function getZitadelAuthOptions(): ZitadelAuthOptions | undefined {
     redirectUri: process.env.ZITADEL_REDIRECT_URI?.trim() || undefined,
     postLogoutRedirectUri:
       process.env.ZITADEL_POST_LOGOUT_REDIRECT_URI?.trim() || undefined,
-    scopes:
-      process.env.ZITADEL_SCOPES?.trim() ||
-      DEFAULT_ZITADEL_SCOPES,
+    projectId: readProjectIDFromScopes(scopes),
+    scopes,
   };
+}
+
+function readProjectIDFromScopes(scopes: string) {
+  const prefix = "urn:zitadel:iam:org:project:";
+  const suffix = ":roles";
+  const projectIDs = new Set(
+    scopes
+      .split(/\s+/)
+      .filter((scope) => scope.startsWith(prefix) && scope.endsWith(suffix))
+      .map((scope) => scope.slice(prefix.length, -suffix.length))
+      .filter(Boolean),
+  );
+  return projectIDs.size === 1 ? [...projectIDs][0] : undefined;
 }
 
 export function isZitadelAuthConfigured() {
@@ -170,7 +186,10 @@ export function buildAuthConfig(): NextAuthConfig {
             await persistZitadelAcceptanceToken(account.access_token);
           }
           const identity = profile
-            ? extractZitadelIdentityFromClaims(profile as ZitadelTokenPayload)
+            ? extractZitadelIdentityFromClaims(
+                profile as ZitadelTokenPayload,
+                zitadel?.projectId,
+              )
             : null;
           return {
             ...token,
@@ -262,6 +281,34 @@ export function buildAuthConfig(): NextAuthConfig {
   };
 }
 
+export function buildServerAuthConfig(): NextAuthConfig {
+  const config = buildAuthConfig();
+  const publicSession = config.callbacks?.session;
+
+  return {
+    ...config,
+    callbacks: {
+      ...config.callbacks,
+      async session(args) {
+        const session = publicSession
+          ? await publicSession(args)
+          : args.session;
+        return {
+          ...session,
+          accessToken:
+            typeof args.token.accessToken === "string"
+              ? args.token.accessToken
+              : undefined,
+          idToken:
+            typeof args.token.idToken === "string"
+              ? args.token.idToken
+              : undefined,
+        } satisfies Session;
+      },
+    },
+  };
+}
+
 async function refreshZitadelToken(
   token: JWT,
   options: ZitadelAuthOptions,
@@ -296,7 +343,7 @@ async function refreshZitadelToken(
 
   const includesIDToken = Object.hasOwn(payload, "id_token");
   const identity = includesIDToken
-    ? extractIdentityFromTokenPayload(payload.id_token)
+    ? extractIdentityFromTokenPayload(payload.id_token, options.projectId)
     : hasCurrentZitadelIdentity(token)
       ? token.identity
       : null;
@@ -363,6 +410,7 @@ function buildZitadelClientAuthHeaders(options: ZitadelAuthOptions) {
 
 function extractIdentityFromTokenPayload(
   rawToken: string | undefined,
+  projectId?: string,
 ): ListingKitSessionIdentity | null {
   if (!rawToken) {
     return null;
@@ -371,7 +419,7 @@ function extractIdentityFromTokenPayload(
   if (!payload) {
     return null;
   }
-  return extractZitadelIdentityFromClaims(payload);
+  return extractZitadelIdentityFromClaims(payload, projectId);
 }
 
 function parseJWTClaims(token: string): ZitadelTokenPayload | null {

@@ -1,6 +1,4 @@
-import type { NextRequest } from "next/server";
-
-import { signOut } from "@/auth";
+import { serverAuth, signOut } from "@/auth";
 import {
   fetchZitadelDiscovery,
   getZitadelAuthOptions,
@@ -10,7 +8,7 @@ import { readZitadelServerIDToken } from "@/lib/server/zitadel-server-token";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
+const authenticatedGET = serverAuth(async (request) => {
   const options = getZitadelAuthOptions();
   const postLogoutTarget = options?.postLogoutRedirectUri || resolvePublicAppOrigin();
 
@@ -31,7 +29,7 @@ export async function GET(request: NextRequest) {
   if (discovery.end_session_endpoint) {
     logoutUrl.searchParams.set("client_id", options.clientId);
     logoutUrl.searchParams.set("post_logout_redirect_uri", postLogoutTarget);
-    const idToken = await readZitadelServerIDToken(request);
+    const idToken = readZitadelServerIDToken(request.auth);
     if (idToken) {
       logoutUrl.searchParams.set("id_token_hint", idToken);
     }
@@ -43,4 +41,6 @@ export async function GET(request: NextRequest) {
         ? `${logoutUrl.pathname}${logoutUrl.search}`
         : logoutUrl.toString(),
   });
-}
+});
+
+export { authenticatedGET as GET };

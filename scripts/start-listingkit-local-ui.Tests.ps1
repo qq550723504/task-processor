@@ -16,6 +16,8 @@ function Import-StartUiScriptFunctions {
         "Import-DotEnvFile",
         "Import-DeployedListingKitAuthSecrets",
         "Initialize-UiLaunchEnvironment",
+        "Assert-LoopbackApiBase",
+        "Set-UiApiBases",
         "Get-ListeningProcessIds",
         "Get-ListeningConnections",
         "Assert-PortAvailable",
@@ -75,6 +77,53 @@ Describe "start-listingkit-local-ui authentication" {
             $env:ZITADEL_ISSUER_URL = $previousIssuer
             $env:ZITADEL_CLIENT_ID = $previousClientID
         }
+    }
+
+    It "overrides inherited API bases in isolated acceptance" {
+        $names = @(
+            "LISTINGKIT_API_BASE",
+            "LISTINGKIT_SERVICE_API_BASE",
+            "SDS_API_BASE",
+            "SDS_LOGIN_API_BASE",
+            "SHEIN_LOGIN_API_BASE",
+            "NEXT_PUBLIC_LISTINGKIT_API_BASE"
+        )
+        $previous = @{}
+        try {
+            foreach ($name in $names) {
+                $previous[$name] = [Environment]::GetEnvironmentVariable($name)
+                [Environment]::SetEnvironmentVariable($name, "https://deployed.example.invalid/$($name.ToLowerInvariant())")
+            }
+
+            Set-UiApiBases `
+                -ApiBase "http://127.0.0.1:18085/api/v1/listing-kits" `
+                -ServiceApiBase "http://127.0.0.1:18085/api/v1" `
+                -IsolatedAcceptance
+
+            $env:LISTINGKIT_API_BASE | Should Be "http://127.0.0.1:18085/api/v1/listing-kits"
+            $env:LISTINGKIT_SERVICE_API_BASE | Should Be "http://127.0.0.1:18085/api/v1"
+            $env:SDS_API_BASE | Should Be "http://127.0.0.1:18085/api/v1/sds"
+            $env:SDS_LOGIN_API_BASE | Should Be "http://127.0.0.1:18085/api/v1/sds-login"
+            $env:SHEIN_LOGIN_API_BASE | Should Be "http://127.0.0.1:18085/api/v1/shein-login"
+            $env:NEXT_PUBLIC_LISTINGKIT_API_BASE | Should Be "/api/listing-kits"
+        } finally {
+            foreach ($name in $names) {
+                [Environment]::SetEnvironmentVariable($name, $previous[$name])
+            }
+        }
+    }
+
+    It "rejects non-loopback API bases in isolated acceptance" {
+        $message = ""
+        try {
+            Set-UiApiBases `
+                -ApiBase "https://deployed.example.invalid/api/v1/listing-kits" `
+                -ServiceApiBase "http://127.0.0.1:18085/api/v1" `
+                -IsolatedAcceptance
+        } catch {
+            $message = $_.Exception.Message
+        }
+        $message | Should Match "loopback"
     }
 
     It "refuses an occupied port in isolated acceptance" {

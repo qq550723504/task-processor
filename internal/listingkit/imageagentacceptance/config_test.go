@@ -14,6 +14,7 @@ func TestLoadRuntimeConfigParsesOnlyTheAcceptanceRuntimeFields(t *testing.T) {
 		"LISTINGKIT_ACCEPTANCE_ENVIRONMENT_MARKER=marker-1",
 		"LISTINGKIT_ACCEPTANCE_COMPOSE_PROJECT=task-processor-image-agent-acceptance",
 		"ZITADEL_ISSUER_URL=https://zitadel.example.test",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=project-1",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_ID=api-client",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_SECRET=api-secret",
 		"# comments and blank lines are allowed",
@@ -32,6 +33,7 @@ func TestLoadRuntimeConfigParsesOnlyTheAcceptanceRuntimeFields(t *testing.T) {
 		EnvironmentMarker: "marker-1",
 		ComposeProject:    "task-processor-image-agent-acceptance",
 		IssuerURL:         "https://zitadel.example.test",
+		ProjectID:         "project-1",
 		APIClientID:       "api-client",
 		APIClientSecret:   "api-secret",
 	}
@@ -46,6 +48,7 @@ func TestLoadRuntimeConfigRejectsMissingOrUnknownFields(t *testing.T) {
 		"LISTINGKIT_ACCEPTANCE_ENVIRONMENT_MARKER":            "marker-1",
 		"LISTINGKIT_ACCEPTANCE_COMPOSE_PROJECT":               "task-processor-image-agent-acceptance",
 		"ZITADEL_ISSUER_URL":                                  "https://zitadel.example.test",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID":        "project-1",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_ID":     "api-client",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_SECRET": "api-secret",
 	}
@@ -54,6 +57,7 @@ func TestLoadRuntimeConfigRejectsMissingOrUnknownFields(t *testing.T) {
 		"LISTINGKIT_ACCEPTANCE_ENVIRONMENT_MARKER",
 		"LISTINGKIT_ACCEPTANCE_COMPOSE_PROJECT",
 		"ZITADEL_ISSUER_URL",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_ID",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_SECRET",
 	} {
@@ -89,6 +93,7 @@ func TestLoadRuntimeConfigAcceptsKnownProvisionCompanions(t *testing.T) {
 		"LISTINGKIT_ACCEPTANCE_ENVIRONMENT_MARKER=marker-1",
 		"LISTINGKIT_ACCEPTANCE_COMPOSE_PROJECT=task-processor-image-agent-acceptance",
 		"ZITADEL_ISSUER_URL=http://localhost:8080",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=project-1",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_ID=api-client",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_SECRET=api-secret",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_MANAGEMENT_TOKEN=management-secret",
@@ -110,6 +115,7 @@ func runtimeEnvContent(fields map[string]string) string {
 		"LISTINGKIT_ACCEPTANCE_ENVIRONMENT_MARKER",
 		"LISTINGKIT_ACCEPTANCE_COMPOSE_PROJECT",
 		"ZITADEL_ISSUER_URL",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_ID",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_SECRET",
 		"UNSUPPORTED_RUNTIME_FIELD",

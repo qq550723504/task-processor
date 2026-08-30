@@ -13,6 +13,7 @@ const (
 	RuntimeEnvironmentMarkerKey = "LISTINGKIT_ACCEPTANCE_ENVIRONMENT_MARKER"
 	RuntimeComposeProjectKey    = "LISTINGKIT_ACCEPTANCE_COMPOSE_PROJECT"
 	RuntimeIssuerURLKey         = "ZITADEL_ISSUER_URL"
+	RuntimeProjectIDKey         = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID"
 	RuntimeAPIClientIDKey       = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_ID"
 	RuntimeAPIClientSecretKey   = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_SECRET"
 )
@@ -24,6 +25,7 @@ var runtimeConfigFields = map[string]func(*RuntimeConfig, string){
 	},
 	RuntimeComposeProjectKey: func(config *RuntimeConfig, value string) { config.ComposeProject = value },
 	RuntimeIssuerURLKey:      func(config *RuntimeConfig, value string) { config.IssuerURL = value },
+	RuntimeProjectIDKey:      func(config *RuntimeConfig, value string) { config.ProjectID = value },
 	RuntimeAPIClientIDKey:    func(config *RuntimeConfig, value string) { config.APIClientID = value },
 	RuntimeAPIClientSecretKey: func(config *RuntimeConfig, value string) {
 		config.APIClientSecret = value
@@ -37,7 +39,6 @@ var runtimeConfigFields = map[string]func(*RuntimeConfig, string){
 // variables would weaken the acceptance boundary.
 var provisionRuntimeFields = map[string]struct{}{
 	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_MANAGEMENT_TOKEN":    {},
-	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID":          {},
 	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_APP_ID":          {},
 	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_ID":       {},
 	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_OIDC_APP_ID":         {},
@@ -62,6 +63,7 @@ type RuntimeConfig struct {
 	EnvironmentMarker string
 	ComposeProject    string
 	IssuerURL         string
+	ProjectID         string
 	APIClientID       string
 	APIClientSecret   string
 }

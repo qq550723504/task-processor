@@ -7,12 +7,10 @@ const mockedAuthState = vi.hoisted(() => ({
 const mockedServerToken = vi.hoisted(() => ({ accessToken: "" }));
 
 vi.mock("@/auth", () => ({
-  auth: vi.fn(() => Promise.resolve(mockedAuthState.session)),
+  serverAuth: vi.fn(() => Promise.resolve(mockedAuthState.session)),
 }));
 vi.mock("@/lib/server/zitadel-server-token", () => ({
-  readZitadelServerAccessToken: vi.fn(() =>
-    Promise.resolve(mockedServerToken.accessToken),
-  ),
+  readZitadelServerAccessToken: vi.fn(() => mockedServerToken.accessToken),
 }));
 
 import {
@@ -309,6 +307,13 @@ describe("buildListingKitUpstreamHeaders", () => {
 });
 
 describe("verifyListingKitRequestIdentity", () => {
+  function verifyRequest(request: NextRequest) {
+    return verifyListingKitRequestIdentity(
+      request,
+      mockedAuthState.session as never,
+    );
+  }
+
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
@@ -319,7 +324,7 @@ describe("verifyListingKitRequestIdentity", () => {
   it("returns 503 when ZITADEL auth is required but not configured", async () => {
     const request = new NextRequest("http://localhost/api/sds/products");
 
-    const result = await verifyListingKitRequestIdentity(request);
+    const result = await verifyRequest(request);
 
     expect(result.response?.status).toBe(503);
   });
@@ -327,7 +332,7 @@ describe("verifyListingKitRequestIdentity", () => {
   it("does not return a local debug identity when a retired auth bypass variable is set", async () => {
     vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
 
-    const result = await verifyListingKitRequestIdentity(
+    const result = await verifyRequest(
       new NextRequest("http://localhost/api/listing-kits/tasks"),
     );
 
@@ -340,7 +345,7 @@ describe("verifyListingKitRequestIdentity", () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
 
-    const result = await verifyListingKitRequestIdentity(
+    const result = await verifyRequest(
       new NextRequest("http://localhost/api/listing-kits/tasks"),
     );
 
@@ -355,7 +360,7 @@ describe("verifyListingKitRequestIdentity", () => {
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await verifyListingKitRequestIdentity(
+    const result = await verifyRequest(
       new NextRequest("http://localhost/api/listing-kits/tasks", {
         headers: { authorization: "Bearer caller-token-1" },
       }),
@@ -374,7 +379,7 @@ describe("verifyListingKitRequestIdentity", () => {
     mockedAuthState.session = {
       issuerUrl: "https://issuer.example.com",
       clientId: "client-1",
-      identityVersion: 2,
+      identityVersion: 3,
       identity: {
         tenantId: "org-286",
         userId: "user-42",
@@ -384,7 +389,7 @@ describe("verifyListingKitRequestIdentity", () => {
       },
     };
 
-    const result = await verifyListingKitRequestIdentity(
+    const result = await verifyRequest(
       new NextRequest("http://localhost/api/listing-kits/tasks"),
     );
 
@@ -406,7 +411,7 @@ describe("verifyListingKitRequestIdentity", () => {
     mockedAuthState.session = {
       issuerUrl: "https://issuer.example.com",
       clientId: "client-1",
-      identityVersion: 2,
+      identityVersion: 3,
       identity: {
         tenantId: "org-286",
         userId: "user-42",
@@ -418,7 +423,7 @@ describe("verifyListingKitRequestIdentity", () => {
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await verifyListingKitRequestIdentity(
+    const result = await verifyRequest(
       new NextRequest("http://localhost/api/listing-kits/tasks"),
     );
 
@@ -450,7 +455,7 @@ describe("verifyListingKitRequestIdentity", () => {
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await verifyListingKitRequestIdentity(
+    const result = await verifyRequest(
       new NextRequest("http://localhost/api/listing-kits/tasks"),
     );
 
@@ -476,7 +481,7 @@ describe("verifyListingKitRequestIdentity", () => {
       },
     };
 
-    const result = await verifyListingKitRequestIdentity(
+    const result = await verifyRequest(
       new NextRequest("http://localhost/api/listing-kits/tasks"),
     );
 

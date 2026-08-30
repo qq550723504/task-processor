@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
 
 const mockedAuthState = vi.hoisted(() => ({
   signOutResult: new Response(null, { status: 302 }),
@@ -29,11 +30,21 @@ const mockedZitadelHelpers = vi.hoisted(() => ({
 }));
 
 vi.mock("@/auth", () => ({
+  serverAuth: vi.fn(
+    (handler: (request: NextRequest, context: unknown) => unknown) =>
+      (request: NextRequest, context: unknown) =>
+        handler(
+          Object.assign(request, {
+            auth: { idToken: mockedServerToken.idToken },
+          }),
+          context,
+        ),
+  ),
   signOut: vi.fn(() => Promise.resolve(mockedAuthState.signOutResult)),
 }));
 
 vi.mock("@/lib/server/zitadel-server-token", () => ({
-  readZitadelServerIDToken: vi.fn(async () => mockedServerToken.idToken),
+  readZitadelServerIDToken: vi.fn(() => mockedServerToken.idToken),
 }));
 
 vi.mock("@/lib/server/zitadel-auth", () => ({
@@ -50,9 +61,18 @@ vi.mock("@/lib/server/zitadel-auth", () => ({
 import { GET } from "@/app/api/zitadel-auth/logout/route";
 import { signOut } from "@/auth";
 
-describe("GET /api/zitadel-auth/logout", () => {
-  const request = new Request("http://localhost:3000/api/zitadel-auth/logout");
+async function callGET() {
+  const response = await GET(
+    new NextRequest("http://localhost:3000/api/zitadel-auth/logout"),
+    {} as never,
+  );
+  if (!(response instanceof Response)) {
+    throw new Error("ZITADEL logout route did not return a response");
+  }
+  return response;
+}
 
+describe("GET /api/zitadel-auth/logout", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     mockedAuthState.signOutResult = new Response(null, { status: 302 });
@@ -73,7 +93,7 @@ describe("GET /api/zitadel-auth/logout", () => {
     };
     mockedZitadelHelpers.discoveryError = new Error("fetch failed");
 
-    await expect(GET(request as never)).resolves.toBe(mockedAuthState.signOutResult);
+    await expect(callGET()).resolves.toBe(mockedAuthState.signOutResult);
 
     expect(signOut).toHaveBeenCalledWith({
       redirectTo: "http://localhost:3000",
@@ -92,7 +112,7 @@ describe("GET /api/zitadel-auth/logout", () => {
     };
     mockedServerToken.idToken = "server-id-token";
 
-    await GET(request as never);
+    await callGET();
 
     expect(signOut).toHaveBeenCalledWith({
       redirectTo:

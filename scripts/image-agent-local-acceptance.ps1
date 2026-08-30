@@ -446,6 +446,7 @@ function Invoke-Authorize {
     if (-not (Test-Path -LiteralPath $path)) { throw "browser token file is required" }
     Invoke-GoCommand -Arguments @("run", "./internal/zitadelprovision/cmd", "authorize", "-token-file", $path, "-runtime-file", $runtimeFile)
     Import-ProvisionedRuntime
+    Start-LocalApi -RequireReadiness
     Start-LocalWorker
 }
 
