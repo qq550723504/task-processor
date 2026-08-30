@@ -52,6 +52,17 @@ func TestLogManagerWithFile(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestDefaultLogManagerDoesNotCreateRuntimeFiles(t *testing.T) {
+	t.Chdir(t.TempDir())
+	manager := NewLogManager(nil)
+	t.Cleanup(func() { _ = manager.Close() })
+
+	manager.GetLogger("default-no-file").Info("stdout only")
+	if _, err := os.Stat("tmp"); !os.IsNotExist(err) {
+		t.Fatalf("default logger created a runtime directory: %v", err)
+	}
+}
+
 func TestLogManagerSetLevel(t *testing.T) {
 	manager := NewLogManager(nil)
 	defer manager.Close()
@@ -84,6 +95,23 @@ func TestGetGlobalLogger(t *testing.T) {
 	// 验证字段
 	data := logger.Data
 	assert.Equal(t, "test_component", data["component"])
+}
+
+func TestLazyGlobalLoggerDoesNotCreateRuntimeFiles(t *testing.T) {
+	t.Chdir(t.TempDir())
+	previous := globalLogManager
+	globalLogManager = nil
+	t.Cleanup(func() {
+		if globalLogManager != nil {
+			_ = globalLogManager.Close()
+		}
+		globalLogManager = previous
+	})
+
+	GetGlobalLogger("lazy-no-file").Info("stdout only")
+	if _, err := os.Stat("tmp"); !os.IsNotExist(err) {
+		t.Fatalf("lazy global logger created a runtime directory: %v", err)
+	}
 }
 
 func TestLogManagerWithFields(t *testing.T) {
@@ -151,7 +179,7 @@ func TestDefaultLogConfig(t *testing.T) {
 	assert.NotNil(t, config)
 	assert.Equal(t, "info", config.Level)
 	assert.Equal(t, "json", config.Format)
-	assert.Equal(t, filepath.Join("tmp", "logs", "app.log"), config.OutputFile)
+	assert.Empty(t, config.OutputFile)
 	assert.Equal(t, 100, config.MaxSize)
 	assert.Equal(t, 10, config.MaxBackups)
 	assert.Equal(t, 30, config.MaxAge)

@@ -45,7 +45,7 @@ func DefaultLogConfig() *LogConfig {
 	return &LogConfig{
 		Level:        "info",
 		Format:       "json",
-		OutputFile:   filepath.Join("tmp", "logs", "app.log"),
+		OutputFile:   "",
 		MaxSize:      100,
 		MaxBackups:   10,
 		MaxAge:       30,
