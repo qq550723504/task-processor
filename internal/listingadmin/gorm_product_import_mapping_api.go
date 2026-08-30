@@ -51,21 +51,21 @@ func (a gormProductImportMappingAPI) GetProductImportMappingBySku(req *ProductIm
 	if a.repository == nil || req == nil {
 		return nil, nil
 	}
-	return a.findLatest(ProductImportMappingQuery{SKU: req.Sku, StoreID: int64PtrIfPositive(req.StoreId)})
+	return a.findLatest(ProductImportMappingQuery{SKU: req.Sku, StoreID: &req.StoreId})
 }
 
 func (a gormProductImportMappingAPI) GetProductImportMappingByTaskAndSku(importTaskID int64, sku string) (*ProductImportMappingRespDTO, error) {
 	if a.repository == nil {
 		return nil, nil
 	}
-	return a.findLatest(ProductImportMappingQuery{ImportTaskID: int64PtrIfPositive(importTaskID), SKU: sku})
+	return a.findLatest(ProductImportMappingQuery{ImportTaskID: &importTaskID, SKU: sku})
 }
 
 func (a gormProductImportMappingAPI) GetProductImportMappingByPlatformProductIdAndStore(req *ProductImportMappingGetByPlatformProductIdAndStoreReqDTO) (*ProductImportMappingRespDTO, error) {
 	if a.repository == nil || req == nil {
 		return nil, nil
 	}
-	return a.findLatest(ProductImportMappingQuery{PlatformProductID: req.PlatformProductId, StoreID: int64PtrIfPositive(req.StoreId)})
+	return a.findLatest(ProductImportMappingQuery{PlatformProductID: req.PlatformProductId, StoreID: &req.StoreId})
 }
 
 func (a gormProductImportMappingAPI) UpdateProductImportMapping(req *ProductImportMappingCreateReqDTO) error {
