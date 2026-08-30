@@ -180,6 +180,42 @@ linters-settings:
           - pkg: "task-processor/internal/workspace/shein$"
             desc: "ListingKit root production code must not depend on the legacy workspace SHEIN domain"
 
+      project_boundary_listingkit:
+        # Project boundary packages must not depend on the ListingKit compatibility facade or its subpackages.
+        # The repository-wide issues.exclude-files excludes _test.go; TestProjectBoundaryDomainsDoNotImportListingKitFacade retains semantic coverage for all project-boundary files.
+        files:
+          - "**/internal/amazon/*.go"
+          - "**/internal/amazon/**/*.go"
+          - "**/internal/asset/*.go"
+          - "**/internal/asset/**/*.go"
+          - "**/internal/catalog/*.go"
+          - "**/internal/catalog/**/*.go"
+          - "**/internal/infra/*.go"
+          - "**/internal/infra/**/*.go"
+          - "**/internal/integration/*.go"
+          - "**/internal/integration/**/*.go"
+          - "**/internal/marketplace/*.go"
+          - "**/internal/marketplace/**/*.go"
+          - "**/internal/platform/*.go"
+          - "**/internal/platform/**/*.go"
+          - "**/internal/product/sourcing/*.go"
+          - "**/internal/product/sourcing/**/*.go"
+          - "**/internal/productimage/*.go"
+          - "**/internal/productimage/**/*.go"
+          - "**/internal/publishing/*.go"
+          - "**/internal/publishing/**/*.go"
+          - "**/internal/shein/*.go"
+          - "**/internal/shein/**/*.go"
+          - "**/internal/temu/*.go"
+          - "**/internal/temu/**/*.go"
+          - "**/internal/workspace/*.go"
+          - "**/internal/workspace/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit$"
+            desc: "Project boundary packages must not depend on the ListingKit root facade"
+          - pkg: "task-processor/internal/listingkit/"
+            desc: "Project boundary packages must not depend on ListingKit subpackages"
+
       infrastructure_business_boundaries:
         # Infrastructure and integration packages must remain independent from business-domain implementations.
         # The repository-wide issues.exclude-files excludes _test.go; TestInfrastructurePackagesDoNotImportBusinessDomains retains semantic coverage for all infrastructure files.

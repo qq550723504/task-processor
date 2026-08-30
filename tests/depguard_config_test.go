@@ -342,3 +342,54 @@ func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testi
 		}
 	}
 }
+
+func TestProjectBoundaryListingKitDepguardPatternCoversDomainTrees(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+
+	config := string(content)
+	start := strings.Index(config, "      project_boundary_listingkit:\n")
+	if start == -1 {
+		t.Fatalf("%s must define project_boundary_listingkit", configPath)
+	}
+	end := strings.Index(config[start+1:], "\n      infrastructure_business_boundaries:")
+	if end == -1 {
+		t.Fatalf("%s must keep project_boundary_listingkit before infrastructure_business_boundaries", configPath)
+	}
+	config = config[start : start+1+end]
+
+	for _, packagePath := range []string{
+		"amazon",
+		"asset",
+		"catalog",
+		"infra",
+		"integration",
+		"marketplace",
+		"platform",
+		"product/sourcing",
+		"productimage",
+		"publishing",
+		"shein",
+		"temu",
+		"workspace",
+	} {
+		for _, pattern := range []string{
+			fmt.Sprintf(`- "**/internal/%s/*.go"`, packagePath),
+			fmt.Sprintf(`- "**/internal/%s/**/*.go"`, packagePath),
+		} {
+			if !strings.Contains(config, pattern) {
+				t.Errorf("%s must cover project-boundary package files with %s", configPath, pattern)
+			}
+		}
+	}
+
+	for _, suffix := range []string{"$", "/"} {
+		pattern := fmt.Sprintf(`- pkg: "task-processor/internal/listingkit%s"`, suffix)
+		if !strings.Contains(config, pattern) {
+			t.Errorf("%s must deny ListingKit package-tree pattern %s", configPath, pattern)
+		}
+	}
+}

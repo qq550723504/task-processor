@@ -65,6 +65,7 @@ consider the applicable guards, including:
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
 - `depguard: domain_app_httpapi_boundaries`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
+- `depguard: project_boundary_listingkit`
 - `TestProductDomainDoesNotDependOnOuterAdapters`
 - `depguard: listingkit_subdomains_root_facade`
 - `TestListingKitImportDirectionStaysRetiredAcrossBuildTargets`
