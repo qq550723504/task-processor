@@ -212,6 +212,7 @@ Current generic seams already moved there:
 - studio session general-metadata patch skeleton (`load session -> apply listingkit adapter patch -> persist`)
 - studio batch-run completion skeleton (`cancel unfinished items -> count item statuses -> resolve final status`)
 - studio background-removal retry target policy (`implicit/explicit design selection -> source fallback -> pending/missing-source validation`)
+- studio manual background-removal policy (`target lookup -> pending guard -> normalized success fields`)
 
 Current rule:
 
