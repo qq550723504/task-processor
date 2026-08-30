@@ -1128,6 +1128,315 @@ func TestLoopbackOnlyClientRejectsAmbiguousIssuerAndResolverPollution(t *testing
 	}
 }
 
+func TestLoopbackOnlyClientDoesNotVisitRedirectTarget(t *testing.T) {
+	targetVisited := make(chan struct{}, 1)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		targetVisited <- struct{}{}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer target.Close()
+
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer redirect.Close()
+
+	client, err := NewLoopbackOnlyHTTPClient(redirect.URL)
+	if err != nil {
+		t.Fatalf("NewLoopbackOnlyHTTPClient() error = %v", err)
+	}
+	response, err := client.Get(redirect.URL)
+	if err != nil {
+		t.Fatalf("loopback client GET redirect error = %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusFound {
+		t.Fatalf("redirect status = %d, want original 302 response", response.StatusCode)
+	}
+	select {
+	case <-targetVisited:
+		t.Fatal("redirect target was accessed")
+	default:
+	}
+}
+
+func TestLoopbackOnlyClientDialsResolverVerifiedLoopbackIP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	_, port, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "http://"))
+	if err != nil {
+		t.Fatalf("split httptest address: %v", err)
+	}
+
+	var lookupHosts []string
+	lookup := func(_ context.Context, network, host string) ([]net.IP, error) {
+		if network != "ip" {
+			t.Fatalf("lookup network = %q, want ip", network)
+		}
+		lookupHosts = append(lookupHosts, host)
+		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+	}
+	var dialAddresses []string
+	realDialer := &net.Dialer{}
+	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
+		dialAddresses = append(dialAddresses, address)
+		return realDialer.DialContext(ctx, network, address)
+	}
+
+	issuer := "http://localhost:" + port
+	client, err := newLoopbackOnlyHTTPClientWithDialer(issuer, lookup, dial)
+	if err != nil {
+		t.Fatalf("newLoopbackOnlyHTTPClientWithDialer() error = %v", err)
+	}
+	response, err := client.Get(issuer)
+	if err != nil {
+		t.Fatalf("loopback client GET error = %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("loopback response status = %d, want 204", response.StatusCode)
+	}
+	if !reflect.DeepEqual(lookupHosts, []string{"localhost", "localhost"}) {
+		t.Fatalf("resolver hosts = %#v, want constructor and dial validation", lookupHosts)
+	}
+	wantDialAddress := net.JoinHostPort("127.0.0.1", port)
+	if !reflect.DeepEqual(dialAddresses, []string{wantDialAddress}) {
+		t.Fatalf("dial addresses = %#v, want only resolver-verified loopback %q", dialAddresses, wantDialAddress)
+	}
+}
+
+func TestOrganizationPaginationContract(t *testing.T) {
+	activeOrganization := func(id string) map[string]any {
+		return map[string]any{"id": id, "name": "Acceptance Organization", "state": "ORGANIZATION_STATE_ACTIVE"}
+	}
+
+	t.Run("merges two pages using the observed page length as the next offset", func(t *testing.T) {
+		server, offsets := newTestPagedServer(t, "/v2/organizations/_search", "query", []any{
+			map[string]any{"details": map[string]any{"totalResult": 2}, "result": []any{activeOrganization("org-1")}},
+			map[string]any{"details": map[string]any{"totalResult": 2}, "result": []any{activeOrganization("org-2")}},
+		})
+		defer server.Close()
+
+		records, err := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"}).listOrganizations(
+			context.Background(), map[string]any{"nameQuery": map[string]any{"name": "Acceptance Organization"}},
+		)
+		if err != nil {
+			t.Fatalf("listOrganizations() error = %v", err)
+		}
+		if len(records) != 2 {
+			t.Fatalf("listOrganizations() records = %d, want 2", len(records))
+		}
+		if got := []string{records[0].ID, records[1].ID}; !reflect.DeepEqual(got, []string{"org-1", "org-2"}) {
+			t.Fatalf("listOrganizations() ids = %#v, want both pages in order", got)
+		}
+		if !reflect.DeepEqual(*offsets, []int{0, 1}) {
+			t.Fatalf("organization offsets = %#v, want literal second-page offset 1", *offsets)
+		}
+	})
+
+	t.Run("rejects a duplicate stable id returned on the second page", func(t *testing.T) {
+		server, offsets := newTestPagedServer(t, "/v2/organizations/_search", "query", []any{
+			map[string]any{"details": map[string]any{"totalResult": 2}, "result": []any{activeOrganization("org-1")}},
+			map[string]any{"details": map[string]any{"totalResult": 2}, "result": []any{activeOrganization("org-1")}},
+		})
+		defer server.Close()
+
+		_, _, err := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"}).findOrganizationByID(context.Background(), "org-1")
+		if err == nil || !strings.Contains(err.Error(), "multiple organizations") {
+			t.Fatalf("findOrganizationByID() error = %v, want duplicate rejection", err)
+		}
+		if !reflect.DeepEqual(*offsets, []int{0, 1}) {
+			t.Fatalf("organization duplicate offsets = %#v, want both pages", *offsets)
+		}
+	})
+
+	t.Run("fails closed when an incomplete second page is empty", func(t *testing.T) {
+		server, offsets := newTestPagedServer(t, "/v2/organizations/_search", "query", []any{
+			map[string]any{"details": map[string]any{"totalResult": 2}, "result": []any{activeOrganization("org-1")}},
+			map[string]any{"details": map[string]any{"totalResult": 2}, "result": []any{}},
+		})
+		defer server.Close()
+
+		_, err := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"}).listOrganizations(
+			context.Background(), map[string]any{"idQuery": map[string]any{"id": "org-1"}},
+		)
+		if err == nil || !strings.Contains(err.Error(), "made no progress") {
+			t.Fatalf("listOrganizations() error = %v, want incomplete empty-page rejection", err)
+		}
+		if !reflect.DeepEqual(*offsets, []int{0, 1}) {
+			t.Fatalf("organization empty-page offsets = %#v, want both pages", *offsets)
+		}
+	})
+}
+
+func TestProjectGrantPaginationContract(t *testing.T) {
+	activeGrant := func() map[string]any {
+		return map[string]any{
+			"projectId": "project-1", "grantedOrganizationId": "org-1",
+			"grantedRoleKeys": []string{"listingkit_admin"}, "state": "PROJECT_GRANT_STATE_ACTIVE",
+		}
+	}
+
+	t.Run("merges two pages using the observed page length as the next offset", func(t *testing.T) {
+		server, offsets := newTestPagedServer(t, "/zitadel.project.v2.ProjectService/ListProjectGrants", "pagination", []any{
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "projectGrants": []any{activeGrant()}},
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "projectGrants": []any{activeGrant()}},
+		})
+		defer server.Close()
+
+		records, err := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"}).listProjectGrants(context.Background(), "project-1", "org-1")
+		if err != nil {
+			t.Fatalf("listProjectGrants() error = %v", err)
+		}
+		if len(records) != 2 || records[0].GrantedOrganizationID != "org-1" || records[1].GrantedOrganizationID != "org-1" {
+			t.Fatalf("listProjectGrants() records = %#v, want both pages merged", records)
+		}
+		if !reflect.DeepEqual(*offsets, []int{0, 1}) {
+			t.Fatalf("project grant offsets = %#v, want literal second-page offset 1", *offsets)
+		}
+	})
+
+	t.Run("rejects a duplicate exact candidate returned on the second page", func(t *testing.T) {
+		server, offsets := newTestPagedServer(t, "/zitadel.project.v2.ProjectService/ListProjectGrants", "pagination", []any{
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "projectGrants": []any{activeGrant()}},
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "projectGrants": []any{activeGrant()}},
+		})
+		defer server.Close()
+
+		err := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"}).ensureProjectGrant(
+			context.Background(), "project-1", "org-1", []string{"listingkit_admin"},
+		)
+		if err == nil || !strings.Contains(err.Error(), "multiple acceptance project grants") {
+			t.Fatalf("ensureProjectGrant() error = %v, want duplicate rejection", err)
+		}
+		if !reflect.DeepEqual(*offsets, []int{0, 1}) {
+			t.Fatalf("project grant duplicate offsets = %#v, want both pages", *offsets)
+		}
+	})
+
+	t.Run("fails closed when an incomplete second page is empty", func(t *testing.T) {
+		server, offsets := newTestPagedServer(t, "/zitadel.project.v2.ProjectService/ListProjectGrants", "pagination", []any{
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "projectGrants": []any{activeGrant()}},
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "projectGrants": []any{}},
+		})
+		defer server.Close()
+
+		_, err := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"}).listProjectGrants(context.Background(), "project-1", "org-1")
+		if err == nil || !strings.Contains(err.Error(), "made no progress") {
+			t.Fatalf("listProjectGrants() error = %v, want incomplete empty-page rejection", err)
+		}
+		if !reflect.DeepEqual(*offsets, []int{0, 1}) {
+			t.Fatalf("project grant empty-page offsets = %#v, want both pages", *offsets)
+		}
+	})
+}
+
+func TestAuthorizationPaginationContract(t *testing.T) {
+	activeAuthorization := func(id string) map[string]any {
+		return map[string]any{
+			"id": id, "state": "STATE_ACTIVE", "user": map[string]any{"id": "user-1"},
+			"project": map[string]any{"id": "project-1"}, "organization": map[string]any{"id": "org-1"},
+			"roles": []map[string]any{{"key": "listingkit_admin"}},
+		}
+	}
+
+	t.Run("merges two pages using the observed page length as the next offset", func(t *testing.T) {
+		server, offsets := newTestPagedServer(t, "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations", "pagination", []any{
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "authorizations": []any{activeAuthorization("authorization-1")}},
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "authorizations": []any{activeAuthorization("authorization-2")}},
+		})
+		defer server.Close()
+
+		records, err := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"}).listAuthorizations(context.Background(), "user-1", "project-1", "org-1")
+		if err != nil {
+			t.Fatalf("listAuthorizations() error = %v", err)
+		}
+		if len(records) != 2 {
+			t.Fatalf("listAuthorizations() records = %d, want 2", len(records))
+		}
+		if got := []string{records[0].ID, records[1].ID}; !reflect.DeepEqual(got, []string{"authorization-1", "authorization-2"}) {
+			t.Fatalf("listAuthorizations() ids = %#v, want both pages in order", got)
+		}
+		if !reflect.DeepEqual(records[0].RoleKeys, []string{"listingkit_admin"}) || !reflect.DeepEqual(records[1].RoleKeys, []string{"listingkit_admin"}) {
+			t.Fatalf("listAuthorizations() roles = %#v/%#v, want both pages normalized", records[0].RoleKeys, records[1].RoleKeys)
+		}
+		if !reflect.DeepEqual(*offsets, []int{0, 1}) {
+			t.Fatalf("authorization offsets = %#v, want literal second-page offset 1", *offsets)
+		}
+	})
+
+	t.Run("rejects a duplicate exact candidate returned on the second page", func(t *testing.T) {
+		server, offsets := newTestPagedServer(t, "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations", "pagination", []any{
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "authorizations": []any{activeAuthorization("authorization-1")}},
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "authorizations": []any{activeAuthorization("authorization-1")}},
+		})
+		defer server.Close()
+
+		err := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"}).ensureAuthorization(
+			context.Background(), "user-1", "project-1", "org-1", []string{"listingkit_admin"},
+		)
+		if err == nil || !strings.Contains(err.Error(), "multiple acceptance role assignments") {
+			t.Fatalf("ensureAuthorization() error = %v, want duplicate rejection", err)
+		}
+		if !reflect.DeepEqual(*offsets, []int{0, 1}) {
+			t.Fatalf("authorization duplicate offsets = %#v, want both pages", *offsets)
+		}
+	})
+
+	t.Run("fails closed when an incomplete second page is empty", func(t *testing.T) {
+		server, offsets := newTestPagedServer(t, "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations", "pagination", []any{
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "authorizations": []any{activeAuthorization("authorization-1")}},
+			map[string]any{"pagination": map[string]any{"totalResult": 2}, "authorizations": []any{}},
+		})
+		defer server.Close()
+
+		_, err := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"}).listAuthorizations(context.Background(), "user-1", "project-1", "org-1")
+		if err == nil || !strings.Contains(err.Error(), "made no progress") {
+			t.Fatalf("listAuthorizations() error = %v, want incomplete empty-page rejection", err)
+		}
+		if !reflect.DeepEqual(*offsets, []int{0, 1}) {
+			t.Fatalf("authorization empty-page offsets = %#v, want both pages", *offsets)
+		}
+	})
+}
+
+func newTestPagedServer(t *testing.T, path, paginationField string, responses []any) (*httptest.Server, *[]int) {
+	t.Helper()
+	offsets := make([]int, 0, len(responses))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireAuth(t, r)
+		if r.Method != http.MethodPost || r.URL.Path != path {
+			t.Errorf("paged request = %s %s, want POST %s", r.Method, r.URL.Path, path)
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
+		body := decodeTestJSONMap(t, r)
+		pagination, ok := body[paginationField].(map[string]any)
+		if !ok {
+			t.Errorf("%s pagination = %#v", path, body[paginationField])
+			http.Error(w, "missing pagination", http.StatusBadRequest)
+			return
+		}
+		offset, ok := pagination["offset"].(float64)
+		if !ok {
+			t.Errorf("%s offset = %#v", path, pagination["offset"])
+			http.Error(w, "missing offset", http.StatusBadRequest)
+			return
+		}
+		page := len(offsets)
+		offsets = append(offsets, int(offset))
+		if page >= len(responses) {
+			t.Errorf("%s requested unexpected page %d at offset %d", path, page+1, int(offset))
+			http.Error(w, "unexpected extra page", http.StatusBadRequest)
+			return
+		}
+		writeJSON(t, w, responses[page])
+	}))
+	return server, &offsets
+}
+
 func decodeTestJSONMap(t *testing.T, r *http.Request) map[string]any {
 	t.Helper()
 	var body map[string]any

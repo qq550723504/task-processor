@@ -641,12 +641,18 @@ func validateLocalIssuer(raw string) error {
 }
 
 type lookupIPFunc func(context.Context, string, string) ([]net.IP, error)
+type dialContextFunc func(context.Context, string, string) (net.Conn, error)
 
 func NewLoopbackOnlyHTTPClient(raw string) (*http.Client, error) {
 	return newLoopbackOnlyHTTPClient(raw, net.DefaultResolver.LookupIP)
 }
 
 func newLoopbackOnlyHTTPClient(raw string, lookup lookupIPFunc) (*http.Client, error) {
+	dialer := &net.Dialer{}
+	return newLoopbackOnlyHTTPClientWithDialer(raw, lookup, dialer.DialContext)
+}
+
+func newLoopbackOnlyHTTPClientWithDialer(raw string, lookup lookupIPFunc, dial dialContextFunc) (*http.Client, error) {
 	if err := validateLocalIssuer(raw); err != nil {
 		return nil, err
 	}
@@ -654,7 +660,6 @@ func newLoopbackOnlyHTTPClient(raw string, lookup lookupIPFunc) (*http.Client, e
 	if _, err := resolveLoopbackHost(context.Background(), parsed.Hostname(), lookup); err != nil {
 		return nil, err
 	}
-	dialer := &net.Dialer{}
 	transport := &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(address)
 		if err != nil {
@@ -666,7 +671,7 @@ func newLoopbackOnlyHTTPClient(raw string, lookup lookupIPFunc) (*http.Client, e
 		}
 		var lastErr error
 		for _, ip := range ips {
-			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			conn, dialErr := dial(ctx, network, net.JoinHostPort(ip.String(), port))
 			if dialErr == nil {
 				return conn, nil
 			}
