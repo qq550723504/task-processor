@@ -3,8 +3,6 @@ package submission
 import (
 	"errors"
 	"time"
-
-	"task-processor/internal/infra/worker"
 )
 
 const (
@@ -13,6 +11,13 @@ const (
 	// EnqueueRetryMaxDelay caps queue-full retry backoff.
 	EnqueueRetryMaxDelay = 5 * time.Second
 )
+
+type queueFullError interface{ QueueFull() bool }
+
+func isQueueFull(err error) bool {
+	var target queueFullError
+	return errors.As(err, &target) && target.QueueFull()
+}
 
 func RetryEnqueueSubmit(taskID string, maxWait time.Duration, submit func(string) error) error {
 	if submit == nil {
@@ -26,7 +31,7 @@ func RetryEnqueueSubmit(taskID string, maxWait time.Duration, submit func(string
 		if err == nil {
 			return nil
 		}
-		if !errors.Is(err, worker.ErrQueueFull) {
+		if !isQueueFull(err) {
 			return err
 		}
 		if time.Now().After(deadline) {

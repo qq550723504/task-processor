@@ -1,0 +1,213 @@
+# Phase 2 runtime convergence inventory
+
+This inventory records the pre-migration dependency debt for Phase 2. Counts are
+ceilings for one-way convergence, not target package sizes and not approval for
+the listed dependencies to remain. A package that follows a relocated runtime
+temporarily still owes a domain-local port in its assigned later phase.
+
+## Initial baseline
+
+| Root | Production Go files | Test files | Go packages | Internal importers |
+| --- | ---: | ---: | ---: | ---: |
+| `internal/core` | 58 | 22 | 5 | 145 |
+| `internal/infra` | 68 | 35 | 14 | 75 |
+| `internal/platform` | 0 | 0 | 0 | 0 |
+| `internal/integration` | 10 | 13 | 4 | measured per slice |
+| `internal/crawler` | 134 | 51 | 4 | frozen pending product/marketplace ports |
+
+The architecture tests freeze `core`, `infra`, and `crawler` production-file
+counts and the direct internal importer counts for `core`, `infra`, and
+`core/logger`. A reduction is expected; an increase is a regression.
+
+## Source directory classification
+
+### `internal/core`
+
+| Current directory | Approved disposition |
+| --- | --- |
+| `core/config` | Split, do not move wholesale. Generic loading, merging, paths, defaults application, and source selection move to `platform/config`; Amazon, AI, listing, processor, product-image, and other business option types stay with their consuming domains until their phases. |
+| `core/errors` | Review each error for ownership. Truly neutral error helpers can move to `shared/errors`; `productjson_errors.go` belongs to the product review in Phase 3. |
+| `core/lifecycle` | Runtime component management belongs to app-owned lifecycle assembly, with only domain-neutral mechanics under `platform` if needed. |
+| `core/logger` | Move to `platform/logging`; app selects file/stdout policy and owns shutdown. |
+| `core/metrics` | **Retain for now.** These are business task and SHEIN metrics, not generic observability. Move them with the listing/marketplace owners in Phases 4-5. |
+
+### `internal/infra`
+
+| Current directory | Approved disposition |
+| --- | --- |
+| `infra/auth` | External identity/session adapter; move only after organization ports exist, to `integration/organization` in Phase 7. |
+| `infra/clients` | Container only; retire after its provider subpackages move. |
+| `infra/clients/openai` | OpenAI adapter under `integration/ai/openai`; business callers first receive agent/product/listing-local ports. |
+| `infra/clients/geminiimage` | Image-provider adapter under `integration/image/gemini`; callers receive product-image/listing-local ports. |
+| `infra/clients/grsai` | Image-provider adapter under `integration/image/grsai`; callers receive product-image/listing-local ports. |
+| `infra/database` | Database connection/runtime and migrations move to `platform/database`; domain repositories do not move with it. |
+| `infra/httpx` | Mixed transport package. Generic response/logging/metrics mechanics belong to app HTTP assembly; crawler handlers remain frozen until product/marketplace ports exist. |
+| `infra/lock` | Domain-neutral memory/Redis locking runtime moves to `platform/lock`, constructed by app. |
+| `infra/metrics` | RabbitMQ consumer-to-business-metric bridge; app wiring plus the owning listing/marketplace metric contract, not generic platform observability. |
+| `infra/monitoring` | Process health and technical telemetry move to `platform/observability`; app owns registration and lifecycle. |
+| `infra/rabbitmq` | Queue runtime moves to `platform/queue/rabbitmq`; app owns connection, consumer registration, and shutdown. |
+| `infra/redisclient` | Redis runtime moves to `platform/redis`; app owns construction and shutdown. |
+| `infra/resilience` | Provider-neutral runtime retry/rate-limit/breaker mechanics move to `platform/resilience`; domains expose policy inputs rather than importing the implementation. |
+| `infra/storage` | S3/object-storage adapter moves to `integration/objectstore/s3`; consuming domains define object-store ports and app wires them. |
+| `infra/worker` | Worker-pool runtime moves to `platform/workerpool`; domains expose submit/queue-local contracts and app wires them. |
+
+### Technical `internal/pkg`
+
+| Current directory | Approved disposition |
+| --- | --- |
+| `pkg/appenv` | App runtime metadata belongs under `app`; logging dependency is rewired to `platform/logging`. |
+| `pkg/cache` | Review as a domain-neutral in-memory primitive, then move to `shared/cache` or the single owning domain; do not preserve a generic dumping ground. |
+| `pkg/downloader` | **Retain pending owning-domain review** (product/product-image in Phase 3 and marketplace in Phase 4). |
+| `pkg/fileio` | Small file primitive can move to `shared/fileio` only after removing runtime logging policy. |
+| `pkg/goroutine` | Runtime concurrency mechanics move with `platform/workerpool` or app lifecycle. |
+| `pkg/hashx` | Stable semantic-free hashing primitive moves to `shared/hashx`. |
+| `pkg/httpapicmd` | Thin app HTTP command shim moves into `app` and is deleted after callers use the app entry point. |
+| `pkg/httpclient` | Outbound transport support belongs inside `integration` adapter support; it must not become a domain-visible client. |
+| `pkg/imagex` | **Retain pending owning-domain review** in product/product-image and marketplace phases. |
+| `pkg/jsonx` | **Retain pending owning-domain review**; LLM JSON behavior is not presumed universally shared. |
+| `pkg/mathx` | Stable semantic-free arithmetic primitive moves to `shared/mathx`. |
+| `pkg/perf` | Technical timing/measurement moves to `platform/observability`. |
+| `pkg/ptr` | Stable semantic-free pointer helpers move to `shared/ptr` if still justified by callers. |
+| `pkg/recovery` | Runtime panic recovery moves to `platform/lifecycle`; app selects process policy. |
+| `pkg/safeimagehttp` | Image HTTP adapter support moves under `integration/image`; direct-importer debt is frozen below. |
+| `pkg/skugen` | **Retain pending owning-domain review** (marketplace/product SKU ownership). |
+| `pkg/strx` | Stable semantic-free string primitives move to `shared/strx`; business cleaners stay with their owner. |
+| `pkg/timeout` | Stable context timeout primitive moves to `shared/time`; app/platform retain lifecycle policy. |
+| `pkg/timex` | Stable semantic-free formatting primitive moves to `shared/time`. |
+| `pkg/types` | **Retain pending owning-domain review**; flexible values must be assigned to the contract that consumes them. |
+| `pkg/watermark` | **Retain pending owning-domain review** in the product-image/marketplace phases. |
+
+The explicit retention set is
+`pkg/{downloader,imagex,jsonx,skugen,types,watermark}`. Retention is temporary
+review status, not final shared ownership.
+
+## Crawler freeze
+
+| Slice | Production files | Test files | Disposition |
+| --- | ---: | ---: | --- |
+| `crawler/alibaba1688` | 36 | 16 | Freeze; extract product sourcing and marketplace-specific ports before Phase 3/4 movement. |
+| `crawler/amazon` | 77 | 27 | Freeze; extract product sourcing and Amazon marketplace ports before Phase 3/4 movement. |
+| `crawler/fetcher` | 3 | 2 | Freeze; queue/worker orchestration moves to app after a product sourcing contract exists. |
+| `crawler/shared` | 18 | 6 | Freeze; split browser adapter support from business request/model behavior only after consumers have local ports. |
+
+These packages currently import business config/models, app ports,
+queue/Redis/worker runtime, and product/sourcing behavior. Moving them now would
+preserve the same dependency defect under a new path. Their file counts are
+therefore frozen, and they move only with the Phase 3 product and Phase 4
+marketplace vertical slices.
+
+## Mixed persistence adapters
+
+GORM use remains mixed with domain models, services, HTTP assembly, and schema
+startup. These are recorded and frozen rather than renamed into `integration`:
+
+| Owning phase | Current adapter-bearing packages |
+| --- | --- |
+| Phase 3 — product | `internal/asset/repository`, `internal/productenrich`, `internal/productenrich/store`, `internal/productimage/store` |
+| Phase 4 — marketplace | `internal/amazonlisting/store`, `internal/publishing/shein`, `internal/shein/aicache`, `internal/shein/productsync`, `internal/temu/sync` |
+| Phase 5 — listing | `internal/listingadmin`, `internal/listingkit`, `internal/listingkit/api`, `internal/listingkit/httpapi`, `internal/listingkit/imageagentacceptance`, `internal/listingkit/memberinvite`, `internal/listingkit/reviewstore`, `internal/listingkit/schema`, `internal/listingkit/sheinsync`, `internal/listingkit/store`, `internal/listingkit/studiostore`, `internal/listingruntime/local` |
+| Phase 6 — agent/knowledge/resource catalog | `internal/aicapability/store`, `internal/imageagent/store`, `internal/imageagent/temporal`, `internal/prompt`, `internal/promptmgmt/api` |
+| Phase 7 — commercial/organization | `internal/listingsubscription`, `internal/sourceaccount`, `internal/sourceaccount/bootstrap`, `internal/tenantbridge`, `internal/tenantbridge/bootstrap` |
+
+App schema/runtime packages may continue to execute the migration baseline while
+Phase 2 centralizes database lifecycle. Each listed domain package must first
+define a focused repository port; only its GORM implementation then moves to an
+owning `integration/<domain>` adapter.
+
+## Direct-importer debt
+
+These are exact pre-migration direct internal-package counts. They must gain no
+new consumers:
+
+| Slice | Initial direct importers |
+| --- | ---: |
+| `core/logger` | 92 packages |
+| `infra/database` | 19 packages |
+| `infra/redisclient` | 6 packages |
+| `infra/rabbitmq` | 17 packages |
+| `infra/worker` | 23 packages |
+| `infra/clients/openai` | 28 packages |
+| `infra/clients/geminiimage` | 1 package |
+| `infra/clients/grsai` | 2 packages |
+| `infra/storage` | 6 packages |
+| `pkg/safeimagehttp` | 8 packages |
+
+The importer disposition below separates app composition callers (rewired in
+this phase) from legacy business callers (temporary migration debt). Supporting
+runtime packages listed as “co-relocate” move with the implementation and do
+not grant a domain dependency.
+
+### `core/logger` — 92
+
+- App importers rewired in Phase 2: `internal/app/runner`, `internal/app/scheduler`, `internal/app/task`, `internal/app/taskstatus`, `internal/app/updater`, `internal/app/worker`.
+- Runtime support that co-relocates or is retired: `internal/core/config`, `internal/infra/clients/openai`, `internal/infra/storage`, `internal/infra/worker`, `internal/pkg/appenv`, `internal/pkg/downloader`, `internal/pkg/fileio`, `internal/platformbase`, `internal/platformtask`.
+- Phase 3 product debt: `internal/crawler/alibaba1688`, `internal/crawler/alibaba1688/extractor`, `internal/crawler/amazon`, `internal/crawler/amazon/browser`, `internal/crawler/amazon/extractor`, `internal/crawler/amazon/variations`, `internal/crawler/fetcher`, `internal/crawler/shared/browser`, `internal/pipeline`, `internal/product`, `internal/productenrich`, `internal/productenrich/api`, `internal/productenrich/enrich`, `internal/productimage`.
+- Phase 4 marketplace debt: `internal/amazon/api`, `internal/amazon/image`, `internal/amazon/listing`, `internal/amazon/llm`, `internal/amazon/pipeline`, `internal/amazon/schema`, `internal/publishing/shein`, `internal/sds/client`, `internal/sds/design`, `internal/sdslogin`, `internal/shein`, `internal/shein/activity`, `internal/shein/aicache`, `internal/shein/category`, `internal/shein/client`, `internal/shein/content`, `internal/shein/inventory`, `internal/shein/managedclient`, `internal/shein/mapping`, `internal/shein/pipeline`, `internal/shein/pricing`, `internal/shein/product`, `internal/shein/product/attribute`, `internal/shein/product/attribute/sale`, `internal/shein/product/build`, `internal/shein/product/image`, `internal/shein/product/skc`, `internal/shein/product/sku`, `internal/shein/product/variant`, `internal/shein/productdata`, `internal/shein/productsync`, `internal/shein/publish`, `internal/shein/scheduler`, `internal/shein/store`, `internal/shein/translate`, `internal/shein/validation`, `internal/sheinbridge/saleattribute`, `internal/sheinlogin`, `internal/temu`, `internal/temu/ai`, `internal/temu/api/client`, `internal/temu/bulkrelist`, `internal/temu/category`, `internal/temu/filter`, `internal/temu/handlerbase`, `internal/temu/image`, `internal/temu/pricing`, `internal/temu/product`, `internal/temu/property`, `internal/temu/rules`, `internal/temu/scheduler`, `internal/temu/sku`, `internal/temu/spec`, `internal/temu/store`, `internal/temu/sync`, `internal/temu/template`.
+- Phase 5 listing debt: `internal/core/metrics`, `internal/listingkit`, `internal/listingkit/api`.
+- Phase 6 agent debt: `internal/localagent`, `internal/prompt`.
+- Phase 8 app-retirement debt: `internal/processor`, `internal/state`.
+
+### `infra/database` — 19
+
+- App importers rewired in Phase 2: `internal/app/bootstrap/resources`, `internal/app/httpapi`, `internal/app/runtime/listing`, `internal/app/runtime/listingcontrol`, `internal/app/runtime/listingkitidentitypreflight`, `internal/app/runtime/listingkitownerexceptions`, `internal/app/runtime/listingkitownerreconcile`, `internal/app/runtime/listingkitschemamigrate`, `internal/app/runtime/productlistingschemamigrate`, `internal/app/runtime/sheinplatformrecovery`, `internal/app/worker/imageagent`.
+- Phase 3 product debt: `internal/productenrich/httpapi`, `internal/productimage/httpapi`.
+- Phase 4 marketplace debt: `internal/amazonlisting/httpapi`, `internal/shein/pipeline`.
+- Phase 5 listing debt: `internal/listingkit/httpapi`, `internal/listingruntime/local`.
+- Phase 7 organization debt: `internal/sourceaccount/bootstrap`, `internal/tenantbridge/bootstrap`.
+
+### `infra/redisclient` — 6
+
+- App importers rewired in Phase 2: `internal/app/consumer`, `internal/app/httpapi`, `internal/app/runtime/listing`.
+- Phase 3/4 crawler debt: `internal/crawler/amazon`, `internal/crawler/shared`.
+- Phase 3 product debt: `internal/productenrich/httpapi`.
+
+### `infra/rabbitmq` — 17
+
+- App importers rewired in Phase 2: `internal/app/bootstrap`, `internal/app/bootstrap/fetchers`, `internal/app/bootstrap/resources`, `internal/app/bootstrap/schedulers`, `internal/app/consumer`, `internal/app/crawler/distributed`, `internal/app/runner`, `internal/app/runtime/listingcontrol`.
+- Runtime support that co-relocates or is retired: `internal/infra/metrics`, `internal/platformbase`.
+- Phase 3 crawler debt: `internal/crawler/fetcher`.
+- Phase 5 listing debt: `internal/listingcontrol`.
+- Phase 4 marketplace debt: `internal/shein/pipeline`, `internal/shein/scheduler`, `internal/temu`, `internal/temu/scheduler`, `internal/temu/sync`.
+
+### `infra/worker` — 23
+
+- App importers rewired in Phase 2: `internal/app/consumer`, `internal/app/httpapi`, `internal/app/runtime/listing`, `internal/app/task`, `internal/app/worker`.
+- Runtime support that co-relocates or is retired: `internal/httpbootstrap`, `internal/kernel/module`, `internal/processor`.
+- Phase 3/4 crawler debt: `internal/crawler/alibaba1688`, `internal/crawler/amazon`, `internal/crawler/shared`.
+- Phase 3 product debt: `internal/productenrich/httpapi`, `internal/productenrich/pipeline`, `internal/productimage/httpapi`, `internal/productimage/pipeline`.
+- Phase 4 marketplace debt: `internal/amazon`, `internal/amazonlisting`, `internal/amazonlisting/httpapi`, `internal/shein/pipeline`, `internal/temu`.
+- Phase 5 listing debt: `internal/listingkit`, `internal/listingkit/httpapi`.
+- Phase 2 boundary correction: `internal/listing/submission` is removed from this debt by consuming a local `QueueFull()` classification rather than the worker sentinel.
+
+### `infra/clients/openai` — 28
+
+- App importers rewired in Phase 2: `internal/app/httpapi`, `internal/app/schema/productlisting`, `internal/app/worker/imageagent`.
+- Runtime support that co-relocates: `internal/core/config`.
+- Phase 3 product debt: `internal/productenrich`, `internal/productenrich/httpapi`, `internal/productimage`, `internal/productimage/httpapi`.
+- Phase 4 marketplace debt: `internal/amazon`, `internal/amazon/llm`, `internal/publishing/sheinmanaged`, `internal/shein/category`, `internal/shein/content`, `internal/shein/pipeline`, `internal/shein/product/attribute`, `internal/shein/product/attribute/sale`, `internal/shein/product/build`, `internal/shein/product/skc`, `internal/shein/submitprep`, `internal/shein/translate`, `internal/sheinbridge/saleattribute`, `internal/temu`, `internal/temu/ai`, `internal/temu/image`, `internal/temu/product`, `internal/temu/sku`.
+- Phase 5 listing debt: `internal/listingadmin`, `internal/listingkit/httpapi`.
+
+### Image-provider clients
+
+- `infra/clients/geminiimage` (1): legacy business importer `internal/listingkit/httpapi`, removed through a listing-local image port in Phase 5; there is no app importer today.
+- `infra/clients/grsai` (2): legacy business importers `internal/listingkit/httpapi` (Phase 5) and `internal/productimage/httpapi` (Phase 3); there is no app importer today.
+
+### `infra/storage` — 6
+
+- App importers rewired in Phase 2: `internal/app/httpapi`, `internal/app/worker/imageagent`.
+- Runtime adapter support that co-relocates: `internal/imageagent/objectstore`.
+- Phase 3 product debt: `internal/productimage`, `internal/productimage/httpapi`.
+- Phase 5 listing debt: `internal/listingkit/httpapi`.
+
+### `pkg/safeimagehttp` — 8
+
+- App importer rewired in Phase 2: `internal/app/worker/imageagent`.
+- Integration support that co-relocates: `internal/infra/clients/geminiimage`, `internal/infra/clients/grsai`, `internal/infra/clients/openai`.
+- Phase 3 product debt: `internal/productimage`.
+- Phase 5 listing debt: `internal/listingkit`, `internal/listingruntime/local`.
+- Phase 6 agent debt: `internal/imageagent`.
+
+All entries in this section are migration debt, not approved final dependency
+directions. The target remains: domains own narrow ports, app wires them,
+platform stays domain-neutral, and provider/persistence implementations live in
+integration.

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	corelogger "task-processor/internal/core/logger"
 	"task-processor/internal/model"
@@ -27,7 +26,7 @@ type ProductFetcher struct {
 func NewProductFetcher(
 	rawJsonDataClient RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	crawlSource ports.CrawlSource,
+	crawlSource sourcing.AmazonCrawlerSource,
 ) *ProductFetcher {
 	return NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, crawlSource, nil)
 }
@@ -36,7 +35,7 @@ func NewProductFetcher(
 func NewProductFetcherWithLogger(
 	rawJsonDataClient RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	crawlSource ports.CrawlSource,
+	crawlSource sourcing.AmazonCrawlerSource,
 	log *logrus.Entry,
 ) *ProductFetcher {
 	if log == nil {

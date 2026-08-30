@@ -8,6 +8,84 @@ import (
 	"testing"
 )
 
+func TestPhase2TargetDirectionDepguardRulesCoverApprovedBoundaries(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	config := readRepositoryText(t, configPath)
+	targetRule := depguardRuleBlock(t, config, "target_domain_concrete_infrastructure")
+	platformRule := depguardRuleBlock(t, config, "platform_domain_dependencies")
+
+	domains := []string{
+		"listing", "product", "marketplace", "agent", "knowledge",
+		"resourcecatalog", "commercial", "ledger", "organization",
+	}
+	for _, domain := range domains {
+		for _, glob := range []string{
+			fmt.Sprintf(`- "**/internal/%s/*.go"`, domain),
+			fmt.Sprintf(`- "**/internal/%s/**/*.go"`, domain),
+		} {
+			if !strings.Contains(targetRule, glob) {
+				t.Errorf("target_domain_concrete_infrastructure must cover %s", glob)
+			}
+		}
+
+		packagePath := "task-processor/internal/" + domain
+		for _, suffix := range []string{"$", "/"} {
+			pattern := fmt.Sprintf(`- pkg: "%s%s"`, packagePath, suffix)
+			if !strings.Contains(platformRule, pattern) {
+				t.Errorf("platform_domain_dependencies must deny %s", pattern)
+			}
+		}
+	}
+
+	for _, glob := range []string{
+		`- "**/internal/platform/*.go"`,
+		`- "**/internal/platform/**/*.go"`,
+	} {
+		if !strings.Contains(platformRule, glob) {
+			t.Errorf("platform_domain_dependencies must cover %s", glob)
+		}
+	}
+
+	for _, packagePath := range []string{
+		"task-processor/internal/platform",
+		"task-processor/internal/integration",
+		"task-processor/internal/infra",
+		"task-processor/internal/app",
+		"gorm.io",
+		"go.temporal.io",
+		"go.opentelemetry.io",
+		"github.com/open-feature",
+		"github.com/aws",
+		"github.com/redis",
+		"github.com/rabbitmq",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			pattern := fmt.Sprintf(`- pkg: "%s%s"`, packagePath, suffix)
+			if !strings.Contains(targetRule, pattern) {
+				t.Errorf("target_domain_concrete_infrastructure must deny %s", pattern)
+			}
+		}
+	}
+}
+
+func depguardRuleBlock(t *testing.T, config, ruleName string) string {
+	t.Helper()
+	startMarker := "      " + ruleName + ":\n"
+	start := strings.Index(config, startMarker)
+	if start == -1 {
+		t.Fatalf(".golangci.yml must define %s", ruleName)
+	}
+	rest := config[start+len(startMarker):]
+	offset := 0
+	for _, line := range strings.SplitAfter(rest, "\n") {
+		if strings.HasPrefix(line, "      ") && len(line) > 6 && line[6] != ' ' {
+			return config[start : start+len(startMarker)+offset]
+		}
+		offset += len(line)
+	}
+	return config[start:]
+}
+
 func TestPlatformRegistrationDepguardPatternsRespectPackageBoundaries(t *testing.T) {
 	configPath := filepath.Join("..", ".golangci.yml")
 	content, err := os.ReadFile(configPath)

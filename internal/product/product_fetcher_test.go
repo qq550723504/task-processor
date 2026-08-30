@@ -39,24 +39,14 @@ type stubProductFetcherCrawlSource struct {
 	lastZipcode string
 }
 
-func (s *stubProductFetcherCrawlSource) Process(url, zipcode string) (*model.Product, error) {
-	return s.ProcessWithContext(context.Background(), url, zipcode)
-}
-
 func (s *stubProductFetcherCrawlSource) ProcessWithContext(_ context.Context, url, zipcode string) (*model.Product, error) {
 	s.lastURL = url
 	s.lastZipcode = zipcode
 	return &model.Product{Asin: "B001"}, nil
 }
 
-func (s *stubProductFetcherCrawlSource) Shutdown() {}
-
 type selectiveProductFetcherCrawlSource struct {
 	products map[string]*model.Product
-}
-
-func (s *selectiveProductFetcherCrawlSource) Process(url, zipcode string) (*model.Product, error) {
-	return s.ProcessWithContext(context.Background(), url, zipcode)
 }
 
 func (s *selectiveProductFetcherCrawlSource) ProcessWithContext(_ context.Context, url, zipcode string) (*model.Product, error) {
@@ -65,8 +55,6 @@ func (s *selectiveProductFetcherCrawlSource) ProcessWithContext(_ context.Contex
 	}
 	return nil, errors.New("product not found")
 }
-
-func (s *selectiveProductFetcherCrawlSource) Shutdown() {}
 
 func TestProductFetcherUsesSourcingDefaultZipcodePolicy(t *testing.T) {
 	source, err := os.ReadFile("product_fetcher.go")

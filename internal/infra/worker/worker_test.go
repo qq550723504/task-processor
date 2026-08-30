@@ -2,11 +2,25 @@
 package worker
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestErrQueueFullSupportsPortableClassificationAndErrorsIs(t *testing.T) {
+	classified, ok := ErrQueueFull.(interface{ QueueFull() bool })
+	if !ok {
+		t.Fatal("ErrQueueFull must expose QueueFull classification")
+	}
+	if !classified.QueueFull() {
+		t.Fatal("ErrQueueFull.QueueFull() = false, want true")
+	}
+	if !errors.Is(ErrQueueFull, ErrQueueFull) {
+		t.Fatal("errors.Is(ErrQueueFull, ErrQueueFull) = false, want true")
+	}
+}
 
 // TestWorkerJob tests worker job structure
 func TestWorkerJob(t *testing.T) {

@@ -4,12 +4,11 @@ This directory is the long-term home of runtime infrastructure owned by the appl
 
 Examples:
 
-- config
+- config loading
 - logging
-- metrics
-- authz
-- database
-- redis
+- observability
+- database runtime and migration
+- Redis
 - queue
-- temporal
-- objectstore
+- Temporal
+- worker pool

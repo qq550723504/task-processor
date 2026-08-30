@@ -30,6 +30,11 @@ type Pool struct {
 
 const queueFullLogInterval = 30 * time.Second
 
+type queueFullError struct{}
+
+func (queueFullError) Error() string   { return "工作队列已满" }
+func (queueFullError) QueueFull() bool { return true }
+
 // NewPool 创建新的工作池（兼容旧版本）
 // 参数:
 //   - proc: 任务处理器，用于处理具体的任务逻辑
@@ -254,6 +259,6 @@ func (p *Pool) GetMetrics() *Metrics {
 
 // 错误定义
 var (
-	ErrQueueFull  = fmt.Errorf("工作队列已满")
-	ErrPoolClosed = fmt.Errorf("工作池已关闭")
+	ErrQueueFull  error = queueFullError{}
+	ErrPoolClosed       = fmt.Errorf("工作池已关闭")
 )
