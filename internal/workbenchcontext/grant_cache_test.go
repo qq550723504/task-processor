@@ -53,6 +53,49 @@ func TestGrantCacheKeysBySubjectProjectAndContractVersionWithoutBearerToken(t *t
 	}
 }
 
+func TestGrantResolverGrantLiveBypassesWarmCache(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 10, 0, 0, 0, time.UTC)
+	client := &authorizationClientStub{grants: []authidentity.OrganizationGrant{validGrant("org-cached")}}
+	resolver := NewGrantResolver(client, NewGrantCache(func() time.Time { return now }))
+	request := GrantRequest{BearerToken: "token", Subject: "subject-a", ProjectID: "project-a", ContractVersion: "v1", TokenExpiresAt: now.Add(time.Minute)}
+
+	if _, err := resolver.Grants(context.Background(), request); err != nil {
+		t.Fatalf("warm Grants() error = %v", err)
+	}
+	client.setGrants([]authidentity.OrganizationGrant{validGrant("org-live")})
+
+	result, err := resolver.Load(context.Background(), GrantLive, request)
+	if err != nil {
+		t.Fatalf("live Load() error = %v", err)
+	}
+	if result.Source != GrantLive || len(result.Grants) != 1 || result.Grants[0].OrganizationID != "org-live" {
+		t.Fatalf("live Load() = %+v, want fresh org-live grant", result)
+	}
+	if calls := client.callCount(); calls != 2 {
+		t.Fatalf("client calls = %d, want 2 because GrantLive bypasses a warm cache", calls)
+	}
+}
+
+func TestGrantResolverGrantLiveFailureDoesNotFallBackToWarmCache(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 10, 0, 0, 0, time.UTC)
+	client := &authorizationClientStub{grants: []authidentity.OrganizationGrant{validGrant("org-cached")}}
+	resolver := NewGrantResolver(client, NewGrantCache(func() time.Time { return now }))
+	request := GrantRequest{BearerToken: "token", Subject: "subject-a", ProjectID: "project-a", ContractVersion: "v1", TokenExpiresAt: now.Add(time.Minute)}
+
+	if _, err := resolver.Grants(context.Background(), request); err != nil {
+		t.Fatalf("warm Grants() error = %v", err)
+	}
+	client.setError(errors.New("ZITADEL unavailable"))
+
+	_, err := resolver.Load(context.Background(), GrantLive, request)
+	if !errors.Is(err, ErrAuthorizationDependencyUnavailable) {
+		t.Fatalf("live Load() error = %v, want authorization dependency error", err)
+	}
+	if calls := client.callCount(); calls != 2 {
+		t.Fatalf("client calls = %d, want 2 because live failure cannot use warm cache", calls)
+	}
+}
+
 func TestGrantCacheUsesTokenBoundTTLAndRejectsExpiredEntries(t *testing.T) {
 	base := time.Date(2026, time.August, 30, 10, 0, 0, 0, time.UTC)
 	now := base
@@ -173,6 +216,35 @@ func TestGrantCacheNormalizesAndProtectsCachedGrants(t *testing.T) {
 	}
 }
 
+func TestGrantCacheRejectsConflictingDuplicateOrganizationNamesWithoutCaching(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 10, 0, 0, 0, time.UTC)
+	request := GrantRequest{BearerToken: "token", Subject: "subject-a", ProjectID: "project-a", ContractVersion: "v1", TokenExpiresAt: now.Add(time.Minute)}
+	first := authidentity.OrganizationGrant{OrganizationID: "org-a", OrganizationName: " Alpha ", ProjectID: "project-a", Roles: []string{"admin"}}
+	second := authidentity.OrganizationGrant{OrganizationID: "org-a", OrganizationName: "Beta", ProjectID: "project-a", Roles: []string{"viewer"}}
+
+	for _, testCase := range []struct {
+		name   string
+		grants []authidentity.OrganizationGrant
+	}{
+		{name: "alpha then beta", grants: []authidentity.OrganizationGrant{first, second}},
+		{name: "beta then alpha", grants: []authidentity.OrganizationGrant{second, first}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			client := &authorizationClientStub{grants: testCase.grants}
+			resolver := NewGrantResolver(client, NewGrantCache(func() time.Time { return now }))
+			for attempt := 0; attempt < 2; attempt++ {
+				_, err := resolver.Grants(context.Background(), request)
+				if !errors.Is(err, ErrAuthorizationDependencyUnavailable) {
+					t.Fatalf("Grants() attempt %d error = %v, want authorization dependency error", attempt, err)
+				}
+			}
+			if calls := client.callCount(); calls != 2 {
+				t.Fatalf("client calls = %d, want 2 because conflicting names must not cache", calls)
+			}
+		})
+	}
+}
+
 func TestGrantCacheDoesNotCacheDependencyFailuresOrMalformedGrants(t *testing.T) {
 	now := time.Date(2026, time.August, 30, 10, 0, 0, 0, time.UTC)
 	request := GrantRequest{BearerToken: "token", Subject: "subject-a", ProjectID: "project-a", ContractVersion: "v1", TokenExpiresAt: now.Add(time.Minute)}
@@ -284,6 +356,19 @@ func (stub *authorizationClientStub) callCount() int {
 	stub.mu.Lock()
 	defer stub.mu.Unlock()
 	return stub.calls
+}
+
+func (stub *authorizationClientStub) setGrants(grants []authidentity.OrganizationGrant) {
+	stub.mu.Lock()
+	stub.grants = cloneGrants(grants)
+	stub.err = nil
+	stub.mu.Unlock()
+}
+
+func (stub *authorizationClientStub) setError(err error) {
+	stub.mu.Lock()
+	stub.err = err
+	stub.mu.Unlock()
 }
 
 func validGrant(organizationID string) authidentity.OrganizationGrant {

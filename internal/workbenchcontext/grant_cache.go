@@ -13,8 +13,8 @@ import (
 
 const grantCacheMaximumTTL = 60 * time.Second
 
-// GrantSource identifies whether verified grants were read from the local
-// cache or obtained live from ZITADEL.
+// GrantSource selects an authorization lookup policy and identifies the source
+// that produced a GrantResult.
 type GrantSource uint8
 
 const (
@@ -59,10 +59,16 @@ func NewGrantResolver(client AuthorizationClient, cache *GrantCache) *GrantResol
 	return &GrantResolver{client: client, cache: cache}
 }
 
-// Grants reads a detached cached snapshot when it remains valid, otherwise it
-// gets a live result from the authorization client. Errors and malformed live
-// results never enter the cache.
+// Grants performs the ordinary read-allowed lookup policy. Callers that must
+// enforce a fresh authorization decision use Load with GrantLive.
 func (resolver *GrantResolver) Grants(ctx context.Context, request GrantRequest) (GrantResult, error) {
+	return resolver.Load(ctx, GrantReadCached, request)
+}
+
+// Load obtains verified grants according to source. GrantReadCached may use a
+// still-valid cache entry. GrantLive always calls the authorization dependency,
+// never falls back to cache on error, and may refresh the cache on success.
+func (resolver *GrantResolver) Load(ctx context.Context, source GrantSource, request GrantRequest) (GrantResult, error) {
 	request = normalizeRequest(request)
 	if err := validateRequest(request); err != nil {
 		return GrantResult{}, err
@@ -73,8 +79,14 @@ func (resolver *GrantResolver) Grants(ctx context.Context, request GrantRequest)
 	if resolver.cache == nil {
 		return GrantResult{}, fmt.Errorf("%w: cache is not configured", ErrAuthorizationDependencyUnavailable)
 	}
-	if grants, ok := resolver.cache.get(request); ok {
-		return GrantResult{Grants: grants, Source: GrantReadCached}, nil
+	switch source {
+	case GrantReadCached:
+		if grants, ok := resolver.cache.get(request); ok {
+			return GrantResult{Grants: grants, Source: GrantReadCached}, nil
+		}
+	case GrantLive:
+	default:
+		return GrantResult{}, fmt.Errorf("%w: unknown grant lookup mode", ErrAuthorizationDependencyUnavailable)
 	}
 
 	grants, err := resolver.client.ListOwnProjectAuthorizations(ctx, request.BearerToken, request.Subject, request.ProjectID)
@@ -224,7 +236,11 @@ func normalizeGrants(grants []authidentity.OrganizationGrant, expectedProjectID 
 				roles[role] = struct{}{}
 			}
 		}
-		if existing, ok := byOrganization[grant.OrganizationID]; !ok || (existing.OrganizationName == "" && grant.OrganizationName != "") {
+		existing, exists := byOrganization[grant.OrganizationID]
+		if exists && existing.OrganizationName != "" && grant.OrganizationName != "" && existing.OrganizationName != grant.OrganizationName {
+			return nil, fmt.Errorf("%w: conflicting live organization grant name", ErrAuthorizationDependencyUnavailable)
+		}
+		if !exists || (existing.OrganizationName == "" && grant.OrganizationName != "") {
 			byOrganization[grant.OrganizationID] = authidentity.OrganizationGrant{
 				OrganizationID:   grant.OrganizationID,
 				OrganizationName: grant.OrganizationName,
