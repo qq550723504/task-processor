@@ -175,6 +175,7 @@ func productionNonPersistentOwnerModelExclusions(repositoryRoot string) map[owne
 	listingKitDirectory := filepath.Join(repositoryRoot, "internal", "listingkit")
 	listingAdminDirectory := filepath.Join(repositoryRoot, "internal", "listingadmin")
 	identityPreflightDirectory := filepath.Join(listingKitDirectory, "identitypreflight")
+	imageAgentAcceptanceDirectory := filepath.Join(listingKitDirectory, "imageagentacceptance")
 	memberInviteDirectory := filepath.Join(listingKitDirectory, "memberinvite")
 	storeDirectory := filepath.Join(listingKitDirectory, "store")
 	openAIDirectory := filepath.Join(repositoryRoot, "internal", "infra", "clients", "openai")
@@ -182,6 +183,7 @@ func productionNonPersistentOwnerModelExclusions(repositoryRoot string) map[owne
 	return map[ownerModelKey]string{
 		{Directory: identityPreflightDirectory, Package: "identitypreflight", TypeName: "PersistedOwner"}:      "read-only aggregate result returned by the preflight repository",
 		{Directory: identityPreflightDirectory, Package: "identitypreflight", TypeName: "unknownOwnerFinding"}: "in-memory comparison finding, never passed to GORM",
+		{Directory: imageAgentAcceptanceDirectory, Package: "imageagentacceptance", TypeName: "SeedResult"}:    "local acceptance command result, never passed to GORM",
 
 		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "CategoryQuery"}:                "repository filter input; Category is represented by a separate persistence row",
 		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "FilterRuleQuery"}:              "repository filter input; FilterRule is represented by a separate persistence row",

@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"strings"
+
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/productenrich"
@@ -38,6 +40,9 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 
 	done = timer.phase("buildHTTPServerBundle")
 	server, routes := runtimeBundle.buildServerBundle(options.Port)
+	if bindAddress := strings.TrimSpace(options.BindAddress); bindAddress != "" {
+		server.Addr = serverAddress(bindAddress, options.Port)
+	}
 	done()
 	timer.total("buildBootstrap")
 	return &appBootstrap{

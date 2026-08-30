@@ -193,6 +193,7 @@ consider the applicable guards, including:
 - `depguard: publishing_common_platforms`
 - `TestCmdContainsOnlyOfficialEntrypoints`
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
+- `TestInternalCmdEntrypointsDoNotImportDomainOrInfraPackages`
 - `depguard: cmd_domain_dependencies`
 - `TestHackContainsOnlyManagedSupportAreas`
 - `TestHackSupportAreasContainNoLocalArtifacts`

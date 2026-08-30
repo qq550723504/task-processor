@@ -31,6 +31,16 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
+func TestBuildHTTPServerFromRoutesAtBindsLoopback(t *testing.T) {
+	server := buildHTTPServerFromRoutesAt("127.0.0.1", 18085, nil)
+	if server.Addr != "127.0.0.1:18085" {
+		t.Fatalf("server address = %q, want loopback-only listener", server.Addr)
+	}
+	if got := buildHTTPServerFromRoutes(18085, nil).Addr; got != ":18085" {
+		t.Fatalf("default server address = %q, want backward-compatible wildcard", got)
+	}
+}
+
 func TestListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFalse(t *testing.T) {
 	restore := listingkithttpapi.SetListingKitZitadelAuthConfigForTesting(nil)
 	t.Cleanup(restore)

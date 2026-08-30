@@ -14,6 +14,7 @@ var (
 	configPath = flag.String("config", "config/config-dev.yaml", "config file path")
 	logLevel   = flag.String("log-level", "info", "log level")
 	port       = flag.Int("port", 8085, "API service port")
+	bindAddr   = flag.String("bind-address", "", "HTTP bind address (empty binds all interfaces)")
 )
 
 var (
@@ -35,8 +36,9 @@ func main() {
 	})
 
 	if err := start(logger, httpapi.Options{
-		ConfigPath: *configPath,
-		Port:       *port,
+		ConfigPath:  *configPath,
+		Port:        *port,
+		BindAddress: *bindAddr,
 	}); err != nil {
 		logger.Fatalf("service start failed: %v", err)
 	}

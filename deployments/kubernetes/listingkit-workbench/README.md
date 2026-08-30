@@ -163,6 +163,10 @@ TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED=1
 Apply the printed `ZITADEL_SCOPES` value only to
 `listingkit-ui-auth-config`. The gated UI release identity owns that single key;
 it cannot patch `listingkit-workbench-config` or any API/worker Deployment.
+Also set the public `ZITADEL_PROJECT_ID` key in that ConfigMap before the first
+gated UI release. Each release validates the key and appends the exact
+`urn:zitadel:iam:org:project:<project-id>:roles` scope instead of trusting role
+claims from unrelated projects.
 
 `listingkit_viewer` users see the main workflow menu only.
 `listingkit_operator` users also see operational data menus.

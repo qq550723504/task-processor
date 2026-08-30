@@ -312,6 +312,7 @@ func TestMiddlewareRejectsMissingTenantAndSubject(t *testing.T) {
 		payload       map[string]any
 		expectedCode  int
 		expectedError string
+		expectedText  string
 	}{
 		{
 			name: "missing tenant",
@@ -321,6 +322,7 @@ func TestMiddlewareRejectsMissingTenantAndSubject(t *testing.T) {
 			},
 			expectedCode:  http.StatusForbidden,
 			expectedError: "zitadel_tenant_missing",
+			expectedText:  "ZITADEL resource owner is required",
 		},
 		{
 			name: "missing subject",
@@ -330,6 +332,7 @@ func TestMiddlewareRejectsMissingTenantAndSubject(t *testing.T) {
 			},
 			expectedCode:  http.StatusForbidden,
 			expectedError: "zitadel_user_missing",
+			expectedText:  "ZITADEL subject is required",
 		},
 	}
 
@@ -356,6 +359,7 @@ func TestMiddlewareRejectsMissingTenantAndSubject(t *testing.T) {
 
 			require.Equal(t, tt.expectedCode, rec.Code)
 			require.Contains(t, rec.Body.String(), tt.expectedError)
+			require.Contains(t, rec.Body.String(), tt.expectedText)
 		})
 	}
 }

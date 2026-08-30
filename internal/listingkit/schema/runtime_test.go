@@ -45,6 +45,24 @@ func TestAutoMigrateRuntimeCreatesRepresentativeTables(t *testing.T) {
 	}
 }
 
+func TestAutoMigrateRuntimeCreatesTaskRepositoryPrerequisites(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: "file:blank-acceptance-schema?mode=memory&cache=shared"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open blank db: %v", err)
+	}
+	if err := AutoMigrateRuntime(db); err != nil {
+		t.Fatalf("AutoMigrateRuntime() error = %v", err)
+	}
+	for _, table := range []string{"listing_kit_tasks", "listing_store"} {
+		if !db.Migrator().HasTable(table) {
+			t.Fatalf("AutoMigrateRuntime() did not create %s", table)
+		}
+	}
+	if db.Migrator().HasTable("listingkit_acceptance_environment") {
+		t.Fatal("product runtime migration must not create the local acceptance marker")
+	}
+}
+
 func TestAutoMigrateRuntimeIncludesUsageLedgerSchema(t *testing.T) {
 	db := openSchemaTestDB(t)
 

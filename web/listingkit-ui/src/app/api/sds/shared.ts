@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Session } from "next-auth";
 
 import {
   buildListingKitUpstreamHeaders,
@@ -62,10 +63,11 @@ function buildSDSAPIBase() {
 
 export async function fetchSDSJSON<T>(
   request: NextRequest,
+  session: Session | null,
   pathname: string,
   query?: URLSearchParams,
 ): Promise<SDSJSONResult<T>> {
-  const auth = await verifyListingKitRequestIdentity(request);
+  const auth = await verifyListingKitRequestIdentity(request, session);
   if (auth.response) {
     throw new SDSAPIError({
       code: "zitadel_proxy_auth_failed",

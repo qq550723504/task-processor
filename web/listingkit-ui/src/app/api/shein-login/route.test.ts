@@ -2,7 +2,11 @@ import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/auth", () => ({
-  auth: vi.fn(async () => null),
+  serverAuth: vi.fn(
+    (handler: (request: NextRequest, context: unknown) => unknown) =>
+      (request: NextRequest, context: unknown) =>
+        handler(Object.assign(request, { auth: null }), context),
+  ),
 }));
 
 import {
@@ -10,6 +14,17 @@ import {
   GET,
   resolveSheinLoginVisitTenantID,
 } from "@/app/api/shein-login/[...path]/route";
+
+async function callGET(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  const response = await GET(request, context);
+  if (!(response instanceof Response)) {
+    throw new Error("SHEIN login route did not return a response");
+  }
+  return response;
+}
 
 describe("buildSheinLoginUpstreamHeaders", () => {
   it("does not trust caller tenant headers without a verified identity", () => {
@@ -79,7 +94,7 @@ describe("SHEIN login proxy ZITADEL auth", () => {
       ),
     );
 
-    const response = await GET(
+    const response = await callGET(
       new NextRequest("http://localhost/api/shein-login/accounts"),
       { params: Promise.resolve({ path: ["accounts"] }) },
     );
@@ -91,7 +106,7 @@ describe("SHEIN login proxy ZITADEL auth", () => {
   });
 
   it("returns 503 when ZITADEL is not configured", async () => {
-    const response = await GET(
+    const response = await callGET(
       new NextRequest("http://localhost/api/shein-login/accounts"),
       { params: Promise.resolve({ path: ["accounts"] }) },
     );
@@ -113,7 +128,7 @@ describe("SHEIN login proxy ZITADEL auth", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await GET(
+    const response = await callGET(
       new NextRequest("http://localhost/api/shein-login/accounts", {
         headers: { authorization: "Bearer access-token-1" },
       }),
@@ -139,7 +154,7 @@ describe("SHEIN login proxy ZITADEL auth", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await GET(
+    await callGET(
       new NextRequest("http://localhost/api/shein-login/accounts?tenant_id=286", {
         headers: {
           authorization: "Bearer access-token-1",

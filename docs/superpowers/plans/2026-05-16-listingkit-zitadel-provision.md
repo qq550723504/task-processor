@@ -54,7 +54,7 @@ Expected: PASS.
 ### Task 2: CLI Wrapper
 
 **Files:**
-- Create: `cmd/listingkit-zitadel-provision/main.go`
+- Create: `internal/zitadelprovision/cmd/main.go`
 
 - [ ] **Step 1: Write CLI around the package**
 
@@ -77,7 +77,7 @@ Print project id, role statuses, recommended `ZITADEL_SCOPES`, and recommended `
 
 - [ ] **Step 2: Run CLI package tests/build**
 
-Run: `go test ./cmd/listingkit-zitadel-provision ./internal/zitadelprovision`
+Run: `go test ./internal/zitadelprovision/cmd ./internal/zitadelprovision`
 
 Expected: PASS or no test files for the command package plus passing internal package tests.
 
@@ -109,7 +109,7 @@ Add commented examples for:
 - [ ] **Step 3: Run final verification**
 
 Run:
-- `go test ./internal/zitadelprovision ./cmd/listingkit-zitadel-provision`
+- `go test ./internal/zitadelprovision ./internal/zitadelprovision/cmd`
 - `npm test -- src/components/listingkit/shared/listingkit-app-shell.test.tsx src/components/providers/zitadel-auth-gate.test.tsx`
 - `npm run typecheck`
 

@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
+import { serverAuth } from "@/auth";
 import {
+  type AuthenticatedListingKitRequest,
   buildListingKitUpstreamHeaders,
   type VerifiedIdentity,
   verifyListingKitRequestIdentity,
@@ -18,12 +20,12 @@ export function buildSDSLoginUpstreamHeaders(
 }
 
 async function proxyRequest(
-  request: NextRequest,
+  request: AuthenticatedListingKitRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
   const url = buildSDSLoginURL(`/${path.join("/")}`);
-  const auth = await verifyListingKitRequestIdentity(request);
+  const auth = await verifyListingKitRequestIdentity(request, request.auth);
   if (auth.response) {
     return auth.response;
   }
@@ -65,6 +67,8 @@ async function proxyRequest(
   });
 }
 
-export const GET = proxyRequest;
-export const POST = proxyRequest;
-export const DELETE = proxyRequest;
+const authenticatedProxyRequest = serverAuth(proxyRequest);
+
+export const GET = authenticatedProxyRequest;
+export const POST = authenticatedProxyRequest;
+export const DELETE = authenticatedProxyRequest;

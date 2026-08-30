@@ -203,6 +203,17 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 	}
 }
 
+func TestGetRunReturnsEmptyActionsArrayWhenNoActionsAreAvailable(t *testing.T) {
+	application := &stubApplication{projection: imageagent.RunProjection{
+		Run: imageagent.Run{ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual},
+	}}
+
+	response := performRequest(t, requireHandler(t, application), http.MethodGet, "/api/v1/image-agent/runs/run-1", "", verifiedIdentity("tenant-a", "user-a"), nil)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Contains(t, response.Body.String(), `"actions":[]`)
+}
+
 func TestGetRunResolvesDurableCandidateURLBeforeSafeURLFiltering(t *testing.T) {
 	const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	application := &stubApplication{projection: imageagent.RunProjection{

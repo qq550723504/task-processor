@@ -12,6 +12,7 @@ const defaultShutdownTimeout = 30 * time.Second
 type Options struct {
 	ConfigPath      string
 	Port            int
+	BindAddress     string
 	ShutdownSignal  chan os.Signal
 	ShutdownTimeout time.Duration
 	// SourceImageFetcher is for trusted process composition (for example local
