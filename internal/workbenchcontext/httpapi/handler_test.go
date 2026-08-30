@@ -17,6 +17,22 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
+type workbenchBodyBoundaryReader struct {
+	payload          []byte
+	offset           int
+	readsPastPayload int
+}
+
+func (reader *workbenchBodyBoundaryReader) Read(buffer []byte) (int, error) {
+	if reader.offset >= len(reader.payload) {
+		reader.readsPastPayload++
+		return 0, io.EOF
+	}
+	read := copy(buffer, reader.payload[reader.offset:])
+	reader.offset += read
+	return read, nil
+}
+
 func TestWorkbenchContextModuleRegistersBothPoliciesExactlyOnce(t *testing.T) {
 	module := NewModule(NewHandler())
 	require.False(t, module.Enabled(&config.Config{}))
@@ -76,6 +92,30 @@ func TestWorkbenchContextSwitchTargetAcceptsExactBodyAndMatchingHeader(t *testin
 
 	require.NoError(t, err)
 	require.Equal(t, "org-a", target)
+	restored, readErr := io.ReadAll(request.Body)
+	require.NoError(t, readErr)
+	require.Equal(t, body, string(restored))
+}
+
+func TestWorkbenchContextSwitchTargetRejects4097ByteBodyWithoutReadingPastLimit(t *testing.T) {
+	reader := &workbenchBodyBoundaryReader{payload: []byte(strings.Repeat("x", 4097))}
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/workbench/context/effective-organization", reader)
+
+	_, err := ResolveSwitchOrganizationTarget(request)
+
+	require.Error(t, err)
+	require.Zero(t, reader.readsPastPayload)
+}
+
+func TestWorkbenchContextSwitchTargetAccepts4096ByteBodyAndRestoresIt(t *testing.T) {
+	body := `{"organizationId":"` + strings.Repeat("a", 4075) + `"}`
+	require.Len(t, body, 4096)
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/workbench/context/effective-organization", strings.NewReader(body))
+
+	target, err := ResolveSwitchOrganizationTarget(request)
+
+	require.NoError(t, err)
+	require.Equal(t, strings.Repeat("a", 4075), target)
 	restored, readErr := io.ReadAll(request.Body)
 	require.NoError(t, readErr)
 	require.Equal(t, body, string(restored))

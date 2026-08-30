@@ -13,6 +13,8 @@ import (
 	"task-processor/internal/authidentity"
 )
 
+const switchOrganizationRequestBodyMaxBytes = 4096
+
 // Handler exposes only the verified, resolved workbench identity projection.
 type Handler struct{}
 
@@ -24,11 +26,14 @@ func ResolveSwitchOrganizationTarget(request *http.Request) (string, error) {
 	if request == nil || request.Body == nil {
 		return "", errors.New("request body is required")
 	}
-	body, err := io.ReadAll(request.Body)
+	body, err := io.ReadAll(io.LimitReader(request.Body, switchOrganizationRequestBodyMaxBytes+1))
 	if err != nil {
 		return "", errors.New("read request body")
 	}
 	request.Body = io.NopCloser(bytes.NewReader(body))
+	if len(body) > switchOrganizationRequestBodyMaxBytes {
+		return "", errors.New("request body is too large")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	opening, err := decoder.Token()
 	if err != nil || opening != json.Delim('{') {

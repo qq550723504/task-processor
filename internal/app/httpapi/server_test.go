@@ -74,6 +74,22 @@ func (stub mountedVerifierStub) Verify(_ context.Context, token string) (authide
 
 type appHTTPRoundTripFunc func(*http.Request) (*http.Response, error)
 
+type workbenchBodyBoundaryReader struct {
+	payload          []byte
+	offset           int
+	readsPastPayload int
+}
+
+func (reader *workbenchBodyBoundaryReader) Read(buffer []byte) (int, error) {
+	if reader.offset >= len(reader.payload) {
+		reader.readsPastPayload++
+		return 0, io.EOF
+	}
+	read := copy(buffer, reader.payload[reader.offset:])
+	reader.offset += read
+	return read, nil
+}
+
 func (roundTrip appHTTPRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return roundTrip(request)
 }
@@ -145,6 +161,39 @@ func TestWorkbenchLiveSwitchRejectsInvalidTargetBeforeGrantLookup(t *testing.T) 
 			require.Zero(t, handlerCalls)
 		})
 	}
+}
+
+func TestWorkbenchLiveSwitchRejects4097ByteBodyWithoutReadingPastLimitBeforeGrantLookup(t *testing.T) {
+	reader := &workbenchBodyBoundaryReader{payload: []byte(strings.Repeat("x", 4097))}
+	resolver := &mountedCapturingOrganizationResolver{}
+	handlerCalls := 0
+	router := gin.New()
+	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{{
+		Method:                     http.MethodPut,
+		Path:                       "/api/v1/workbench/context/effective-organization",
+		AuthPolicy:                 httproute.AuthPolicyVerifiedIdentity,
+		OrganizationAccessPolicy:   httproute.OrganizationAccessPolicyLiveSwitch,
+		OrganizationTargetResolver: workbenchcontexthttpapi.ResolveSwitchOrganizationTarget,
+		Handler: func(c *gin.Context) {
+			handlerCalls++
+			c.Status(http.StatusNoContent)
+		},
+	}}, routeAuthDependencies{
+		workbenchVerifier:    mountedVerifierStub{identity: mountedVerifiedIdentity()},
+		organizationResolver: resolver,
+	})
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/workbench/context/effective-organization", reader)
+	request.Header.Set("Authorization", "Bearer current-request-token")
+	request.Header.Set("X-Request-ID", "req-oversize")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+	require.JSONEq(t, `{"code":"INVALID_REQUEST","message":"Request is invalid","requestId":"req-oversize","fieldErrors":[]}`, response.Body.String())
+	require.Zero(t, reader.readsPastPayload)
+	require.Zero(t, resolver.calls)
+	require.Zero(t, handlerCalls)
 }
 
 func TestWorkbenchLiveSwitchUsesBodyTargetAndRestoresBodyForHandler(t *testing.T) {
