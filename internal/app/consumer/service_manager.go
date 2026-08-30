@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
+	"task-processor/internal/app/lifecycle"
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/core/config"
-	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/core/metrics"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"

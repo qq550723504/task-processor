@@ -12,9 +12,9 @@ func TestLifecycleManagerStartsDependenciesBeforeDependents(t *testing.T) {
 	events := make([]string, 0, 3)
 	m := NewLifecycleManager(logrus.New())
 	components := []*recordingComponent{
-		newRecordingComponent("database", nil, 10, &events),
+		newRecordingComponent("database", nil, 30, &events),
 		newRecordingComponent("worker", []string{"database"}, 20, &events),
-		newRecordingComponent("api", []string{"worker"}, 30, &events),
+		newRecordingComponent("api", []string{"worker"}, 10, &events),
 	}
 	for _, component := range components {
 		if err := m.Register(component); err != nil {
@@ -36,9 +36,9 @@ func TestLifecycleManagerStopsDependentsBeforeDependencies(t *testing.T) {
 	events := make([]string, 0, 6)
 	m := NewLifecycleManager(logrus.New())
 	components := []*recordingComponent{
-		newRecordingComponent("database", nil, 10, &events),
+		newRecordingComponent("database", nil, 30, &events),
 		newRecordingComponent("worker", []string{"database"}, 20, &events),
-		newRecordingComponent("api", []string{"worker"}, 30, &events),
+		newRecordingComponent("api", []string{"worker"}, 10, &events),
 	}
 	for _, component := range components {
 		if err := m.Register(component); err != nil {
@@ -57,6 +57,30 @@ func TestLifecycleManagerStopsDependentsBeforeDependencies(t *testing.T) {
 	want := []string{"stop:api", "stop:worker", "stop:database"}
 	if got := strings.Join(events, ","); got != strings.Join(want, ",") {
 		t.Fatalf("stop order = %v, want %v", events, want)
+	}
+}
+
+func TestLifecycleManagerOrdersIndependentComponentsByPriority(t *testing.T) {
+	events := make([]string, 0, 3)
+	m := NewLifecycleManager(logrus.New())
+	components := []*recordingComponent{
+		newRecordingComponent("low", nil, 30, &events),
+		newRecordingComponent("high", nil, 10, &events),
+		newRecordingComponent("medium", nil, 20, &events),
+	}
+	for _, component := range components {
+		if err := m.Register(component); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := m.StartAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"start:high", "start:medium", "start:low"}
+	if got := strings.Join(events, ","); got != strings.Join(want, ",") {
+		t.Fatalf("start order = %v, want %v", events, want)
 	}
 }
 

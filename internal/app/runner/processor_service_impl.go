@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
-	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/infra/rabbitmq"

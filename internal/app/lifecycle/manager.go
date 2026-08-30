@@ -172,47 +172,55 @@ func (m *managerImpl) sortComponentsByDependencies(components []Component) ([]Co
 		}
 	}
 
-	// 拓扑排序
-	visited := make(map[string]bool)
-	visiting := make(map[string]bool)
-	result := make([]Component, 0, len(components))
-
-	var visit func(string) error
-	visit = func(name string) error {
-		if visiting[name] {
-			return fmt.Errorf("检测到循环依赖，涉及组件: %s", name)
-		}
-		if visited[name] {
-			return nil
-		}
-
-		visiting[name] = true
-		component := componentMap[name]
-
-		// 先访问依赖的组件
+	// 使用入度进行拓扑排序，优先级只在当前可启动的组件之间生效。
+	inDegree := make(map[string]int, len(components))
+	dependents := make(map[string][]string, len(components))
+	for _, component := range components {
+		name := component.Name()
+		inDegree[name] = len(component.Dependencies())
 		for _, dep := range component.Dependencies() {
-			if err := visit(dep); err != nil {
-				return err
+			dependents[dep] = append(dependents[dep], name)
+		}
+	}
+
+	ready := make([]Component, 0, len(components))
+	for _, component := range components {
+		if inDegree[component.Name()] == 0 {
+			ready = append(ready, component)
+		}
+	}
+
+	result := make([]Component, 0, len(components))
+	for len(ready) > 0 {
+		sort.Slice(ready, func(i, j int) bool {
+			if ready[i].Priority() != ready[j].Priority() {
+				return ready[i].Priority() < ready[j].Priority()
+			}
+			return ready[i].Name() < ready[j].Name()
+		})
+
+		component := ready[0]
+		ready = ready[1:]
+		result = append(result, component)
+
+		for _, dependent := range dependents[component.Name()] {
+			inDegree[dependent]--
+			if inDegree[dependent] == 0 {
+				ready = append(ready, componentMap[dependent])
 			}
 		}
-
-		visiting[name] = false
-		visited[name] = true
-		result = append(result, component)
-		return nil
 	}
 
-	// 访问所有组件
-	for _, component := range components {
-		if err := visit(component.Name()); err != nil {
-			return nil, err
+	if len(result) != len(components) {
+		cyclicNames := make([]string, 0, len(components)-len(result))
+		for name, degree := range inDegree {
+			if degree > 0 {
+				cyclicNames = append(cyclicNames, name)
+			}
 		}
+		sort.Strings(cyclicNames)
+		return nil, fmt.Errorf("检测到循环依赖，涉及组件: %s", cyclicNames[0])
 	}
-
-	// 按优先级排序同级组件
-	sort.SliceStable(result, func(i, j int) bool {
-		return result[i].Priority() < result[j].Priority()
-	})
 
 	return result, nil
 }
