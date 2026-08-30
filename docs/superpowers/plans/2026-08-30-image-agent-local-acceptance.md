@@ -37,7 +37,8 @@
 | internal/listingkit/imageagentacceptance/config.go | Acceptance runtime-file model. |
 | internal/listingkit/imageagentacceptance/environment.go | Database marker and Compose identity guard. |
 | internal/listingkit/imageagentacceptance/seed.go | Repository-backed, idempotent SHEIN task seed. |
-| internal/listingkit/imageagentacceptance/cmd/main.go | Module-owned thin seed executable. |
+| internal/app/runtime/imageagentacceptance/runtime.go | Application-layer seed assembly for GORM, ZITADEL verification, and ListingKit repositories. |
+| internal/app/runtime/imageagentacceptance/cmd/main.go | Application-owned thin seed executable. |
 | scripts/image-agent-local-acceptance.ps1 | start, provision, authorize, seed, status and stop orchestration. |
 | docs/development/image-agent-local-acceptance.md | Manual acceptance runbook and boundaries. |
 
@@ -349,15 +350,16 @@ git commit -m "feat: add guarded image agent acceptance seed"
 ## Task 5: Add seed executable and prove blank-database migration
 
 **Files:**
-- Create: internal/listingkit/imageagentacceptance/cmd/main.go
-- Create: internal/listingkit/imageagentacceptance/cmd/main_test.go
+- Create: internal/app/runtime/imageagentacceptance/runtime.go
+- Create: internal/app/runtime/imageagentacceptance/runtime_test.go
+- Create: internal/app/runtime/imageagentacceptance/cmd/main.go
 - Modify: internal/listingkit/schema/runtime_test.go
 - Modify: internal/app/runtime/listingkitschemamigrate/runtime_test.go
 - Modify: internal/listingkit/schema/runtime.go only if the canonical migration test proves a prerequisite missing.
 
 **Interfaces:**
 - Consumes: Task 4 runtime/guard/seed interfaces and the canonical listingkitschema.AutoMigrateRuntime entry point.
-- Produces: go run ./internal/listingkit/imageagentacceptance/cmd -runtime-file ... -token-file ... -source-url ....
+- Produces: go run ./internal/app/runtime/imageagentacceptance/cmd -runtime-file ... -token-file ... -source-url ....
 
 - [ ] **Step 1: Write failing CLI and blank-schema tests**
 
@@ -369,15 +371,15 @@ func TestAutoMigrateRuntimeCreatesTaskRepositoryPrerequisites(t *testing.T) {
     require.True(t, db.Migrator().HasTable("listing_store"))
 }
 func TestSeedCommandRequiresLocalFilesAndPublicSourceURL(t *testing.T) {
-    require.Error(t, run([]string{
+    require.Error(t, Run(context.Background(), []string{
         "-runtime-file", "", "-token-file", "", "-source-url", "http://localhost/a.png",
-    }))
+    }, io.Discard, io.Discard))
 }
 ~~~
 
 - [ ] **Step 2: Run to identify the actual migration gap**
 
-Run: go test ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate ./internal/listingkit/imageagentacceptance/cmd -count=1
+Run: go test ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate ./internal/app/runtime/imageagentacceptance ./internal/app/runtime/imageagentacceptance/cmd -count=1
 
 Expected: the new command test fails. If a canonical prerequisite table is absent, report its exact owner and fix it only in internal/listingkit/schema or its current authoritative migration owner.
 
@@ -387,12 +389,12 @@ The command loads runtime/token files, builds zitadel.NewVerifier, invokes Task 
 
 - [ ] **Step 4: Run tests and commit**
 
-Run: go test ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate ./internal/listingkit/imageagentacceptance/cmd -count=1
+Run: go test ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate ./internal/app/runtime/imageagentacceptance ./internal/app/runtime/imageagentacceptance/cmd -count=1
 
 Expected: PASS; blank acceptance schema originates in canonical migration and the CLI cannot target another database.
 
 ~~~powershell
-git add internal/listingkit/imageagentacceptance internal/listingkit/schema internal/app/runtime/listingkitschemamigrate
+git add internal/app/runtime/imageagentacceptance internal/listingkit/schema internal/app/runtime/listingkitschemamigrate
 git commit -m "feat: add image agent local seed command"
 ~~~
 
@@ -478,7 +480,7 @@ git commit -m "feat: add local image agent acceptance runtime"
 Run:
 
 ~~~powershell
-go test ./internal/authruntime/zitadel ./internal/zitadelprovision ./internal/zitadelprovision/cmd ./internal/listingkit/imageagentacceptance ./internal/listingkit/imageagentacceptance/cmd ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate -count=1
+go test ./internal/authruntime/zitadel ./internal/zitadelprovision ./internal/zitadelprovision/cmd ./internal/listingkit/imageagentacceptance ./internal/app/runtime/imageagentacceptance ./internal/app/runtime/imageagentacceptance/cmd ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate -count=1
 go test ./internal/listingkit/httpapi ./internal/imageagent/... ./internal/app/runtime ./internal/app/worker/imageagent -count=1
 ~~~
 

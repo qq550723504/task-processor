@@ -35,7 +35,7 @@
 - Consumes: `imageagentacceptance.LoadRuntimeConfig`, `imageagentacceptance.NewEnvironmentGuard`, `imageagentacceptance.Seed`, `zitadel.NewVerifier`, and `listingkitstore.NewTaskRepository`.
 - Produces: `func Run(context.Context, []string, io.Writer, io.Writer) error` in package `imageagentacceptanceruntime`.
 
-- [ ] **Step 1: Add the semantic internal-command boundary test**
+- [x] **Step 1: Add the semantic internal-command boundary test**
 
 Add `TestInternalCmdEntrypointsDoNotImportDomainOrInfraPackages` to scan production files below `internal/**/cmd` and compare imports against the same literal package-prefix list used by `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`:
 
@@ -63,7 +63,7 @@ func TestInternalCmdEntrypointsDoNotImportDomainOrInfraPackages(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the boundary test and verify RED**
+- [x] **Step 2: Run the boundary test and verify RED**
 
 Run:
 
@@ -73,7 +73,7 @@ go test ./tests -run 'TestInternalCmdEntrypointsDoNotImportDomainOrInfraPackages
 
 Expected: FAIL naming both imports from `internal/listingkit/imageagentacceptance/cmd/main.go` to `internal/listingkit/imageagentacceptance` and `internal/listingkit/store`.
 
-- [ ] **Step 3: Move assembly behavior and tests into the application runtime**
+- [x] **Step 3: Move assembly behavior and tests into the application runtime**
 
 Implement this public entrypoint while preserving the existing flag validation, environment guard, verified GORM handle reuse, ZITADEL verifier, repository construction, seed request, and JSON response:
 
@@ -142,7 +142,7 @@ Move `TestSeedCommandRequiresLocalFilesAndPublicSourceURL` and `TestValidatePost
 err := Run(context.Background(), args, io.Discard, io.Discard)
 ```
 
-- [ ] **Step 4: Create the application-owned thin executable**
+- [x] **Step 4: Create the application-owned thin executable**
 
 Create `internal/app/runtime/imageagentacceptance/cmd/main.go`:
 
@@ -167,7 +167,7 @@ func main() {
 
 Delete the retired ListingKit-owned command files.
 
-- [ ] **Step 5: Run focused tests and CI-equivalent depguard**
+- [x] **Step 5: Run focused tests and CI-equivalent depguard**
 
 Run:
 
@@ -178,7 +178,7 @@ golangci-lint run --config .golangci.yml --enable-only depguard ./...
 
 Expected: all tests pass and depguard exits 0 with no output.
 
-- [ ] **Step 6: Commit the ownership migration**
+- [x] **Step 6: Commit the ownership migration**
 
 ```powershell
 git add -- internal/app/runtime/imageagentacceptance internal/listingkit/imageagentacceptance/cmd tests/import_boundaries_test.go
@@ -196,7 +196,7 @@ git commit -m "refactor: move image agent acceptance command assembly"
 - Consumes: `go run ./internal/app/runtime/imageagentacceptance/cmd` with the unchanged CLI flags.
 - Produces: the existing `seed` PowerShell mode invoking the application-owned command.
 
-- [ ] **Step 1: Write a Pester test for the real seed argument construction**
+- [x] **Step 1: Write a Pester test for the real seed argument construction**
 
 Use the PowerShell AST to import `Invoke-Seed`, replace only the external `Invoke-GoCommand` boundary, and assert the captured arguments:
 
@@ -241,7 +241,7 @@ Describe "image-agent-local-acceptance seed routing" {
 }
 ```
 
-- [ ] **Step 2: Run the Pester test and verify RED**
+- [x] **Step 2: Run the Pester test and verify RED**
 
 Run:
 
@@ -252,7 +252,7 @@ if ($result.FailedCount -eq 0) { throw "expected old command path failure" }
 
 Expected: FAIL because the captured second argument is `./internal/listingkit/imageagentacceptance/cmd`.
 
-- [ ] **Step 3: Update the orchestrator path**
+- [x] **Step 3: Update the orchestrator path**
 
 Change only the seed command package argument:
 
@@ -260,7 +260,7 @@ Change only the seed command package argument:
 $arguments = @("run", "./internal/app/runtime/imageagentacceptance/cmd", "-runtime-file", $runtimeFile, "-token-file", $path, "-source-url", $SourceUrl)
 ```
 
-- [ ] **Step 4: Run PowerShell tests in both supported hosts**
+- [x] **Step 4: Run PowerShell tests in both supported hosts**
 
 Run:
 
@@ -283,7 +283,7 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '& {
 
 Expected: all tests pass in PowerShell 7 and Windows PowerShell 5.1.
 
-- [ ] **Step 5: Commit the orchestrator migration**
+- [x] **Step 5: Commit the orchestrator migration**
 
 ```powershell
 git add -- scripts/image-agent-local-acceptance.ps1 scripts/image-agent-local-acceptance.Tests.ps1
@@ -302,7 +302,7 @@ git commit -m "test: verify image agent acceptance command routing"
 - Consumes: the final application runtime and command paths from Tasks 1 and 2.
 - Produces: current guard documentation and verification evidence for Draft PR #267.
 
-- [ ] **Step 1: Update the guard baseline and acceptance ownership map**
+- [x] **Step 1: Update the guard baseline and acceptance ownership map**
 
 Add this exact guard to the architecture checklist immediately after the existing command guard:
 
@@ -320,7 +320,7 @@ Document these final owners in the acceptance plan:
 
 Remove references to `internal/listingkit/imageagentacceptance/cmd`.
 
-- [ ] **Step 2: Run architecture documentation tests**
+- [x] **Step 2: Run architecture documentation tests**
 
 Run:
 
@@ -330,7 +330,7 @@ go test ./tests -run 'TestArchitectureReviewChecklistTracksEveryImportBoundaryGu
 
 Expected: PASS.
 
-- [ ] **Step 3: Reproduce the two unrelated full-suite failures independently**
+- [x] **Step 3: Reproduce the two unrelated full-suite failures independently**
 
 Run each twice without changing their production code:
 
@@ -343,7 +343,7 @@ go test ./internal/sdslogin -run 'TestServiceLoadAuthStateReturnsPersistedAccess
 
 If either failure repeats, report it as a separate pre-existing blocker and do not alter unrelated packages in this PR. If both pass twice, record the earlier full-suite failures as non-deterministic and continue.
 
-- [ ] **Step 4: Run final verification**
+- [x] **Step 4: Run final verification**
 
 Run:
 
@@ -355,7 +355,7 @@ git diff --check
 
 Expected: depguard and the serial full Go suite pass. If an unrelated flaky test fails, rerun only that test to classify it before deciding whether the PR is blocked.
 
-- [ ] **Step 5: Commit documentation and plan status**
+- [x] **Step 5: Commit documentation and plan status**
 
 ```powershell
 git add -- docs/architecture/architecture-review-checklist.md docs/superpowers/plans/2026-08-30-image-agent-local-acceptance.md docs/superpowers/plans/2026-08-30-image-agent-acceptance-command-ownership.md
