@@ -33,3 +33,15 @@ func TestProductNameValidatorNormalizesOptimizedNameWithSubmissionPolicy(t *test
 		t.Fatalf("normalizeOptimizedName() = %q, want %q", got, want)
 	}
 }
+
+func TestProductNameValidatorDelegatesSanitizationToPublishingPolicy(t *testing.T) {
+	validator := &ProductNameValidator{}
+
+	got, violations := validator.validateAndCleanProductName("Widget® 中文!")
+	if got != "Widget (R)" {
+		t.Fatalf("validateAndCleanProductName() = %q, want canonical sanitized name", got)
+	}
+	if len(violations) != 3 {
+		t.Fatalf("violations = %#v, want decorative/high-ascii/Chinese violations", violations)
+	}
+}
