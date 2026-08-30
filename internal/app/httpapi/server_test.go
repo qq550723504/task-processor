@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -2355,6 +2356,8 @@ func TestBuildHTTPServerBundleFromModulesReturnsRouteBuildErrors(t *testing.T) {
 }
 
 func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
+	runtimePaths := configureProductImageRuntimePaths(t)
+
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
@@ -2400,6 +2403,8 @@ func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
 	if resp.Code == http.StatusNotFound {
 		t.Fatal("expected SDS catalog categories endpoint to be mounted")
 	}
+	assertRuntimeDirectory(t, runtimePaths.workDir)
+	assertRuntimeDirectory(t, filepath.Join(runtimePaths.publisherOutputDir, "listingkit-inputs"))
 }
 
 func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {

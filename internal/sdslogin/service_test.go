@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,6 +16,64 @@ import (
 	sdsclient "task-processor/internal/sds/client"
 )
 
+func TestServicePersistsPayloadUsingExplicitStateFiles(t *testing.T) {
+	runtimeRoot := t.TempDir()
+	stateFiles := StateFiles{
+		AuthStatePath:      filepath.Join(runtimeRoot, "auth.json"),
+		SessionCookiesPath: filepath.Join(runtimeRoot, "cookies.json"),
+		BrowserStatePath:   filepath.Join(runtimeRoot, "browser_state.json"),
+		LoginPayloadPath:   filepath.Join(runtimeRoot, "login_state.json"),
+	}
+	svc, err := NewService(config.LoginServiceConfig{
+		TenantID:     "1",
+		Identifier:   "869",
+		MerchantName: "merchant",
+		Username:     "user",
+		Password:     "pass",
+	}, config.RedisConfig{}, config.BrowserConfig{}, stateFiles)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	authPath, cookiePath, browserPath, payloadPath := svc.accountStatePaths(svc.account)
+	gotPaths := []string{authPath, cookiePath, browserPath, payloadPath}
+	wantPaths := []string{
+		stateFiles.AuthStatePath,
+		stateFiles.SessionCookiesPath,
+		stateFiles.BrowserStatePath,
+		stateFiles.LoginPayloadPath,
+	}
+	for i := range wantPaths {
+		if gotPaths[i] != wantPaths[i] {
+			t.Fatalf("state path[%d] = %q, want %q", i, gotPaths[i], wantPaths[i])
+		}
+	}
+	if err := os.WriteFile(stateFiles.SessionCookiesPath, []byte("[]\n"), 0o644); err != nil {
+		t.Fatalf("seed session cookies: %v", err)
+	}
+
+	if err := svc.persistPayload(&AuthPayload{
+		TenantID:     "1",
+		Identifier:   "869",
+		AccessToken:  "token",
+		BrowserState: map[string]any{"cookies": []any{}},
+	}); err != nil {
+		t.Fatalf("persistPayload() error = %v", err)
+	}
+	for _, path := range []string{stateFiles.AuthStatePath, stateFiles.BrowserStatePath, stateFiles.LoginPayloadPath} {
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			t.Fatalf("persisted state file %q stat error = %v", path, statErr)
+		}
+		if !info.Mode().IsRegular() {
+			t.Fatalf("persisted state path %q is not a regular file", path)
+		}
+	}
+	if _, statErr := os.Stat(stateFiles.SessionCookiesPath); !os.IsNotExist(statErr) {
+		t.Fatalf("session cookies path %q still exists or cannot be checked after clear: %v", stateFiles.SessionCookiesPath, statErr)
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	svc, err := NewService(config.LoginServiceConfig{
@@ -23,18 +82,22 @@ func newTestService(t *testing.T) *Service {
 		MerchantName: "merchant",
 		Username:     "user",
 		Password:     "pass",
-	}, config.RedisConfig{}, config.BrowserConfig{})
+	}, config.RedisConfig{}, config.BrowserConfig{}, newTestStateFiles(t))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
-	dir := t.TempDir()
-	svc.authFile = filepath.Join(dir, "auth.json")
-	svc.cookieFile = filepath.Join(dir, "cookies.json")
-	svc.browserStateFile = filepath.Join(dir, "browser_state.json")
-	svc.payloadFile = filepath.Join(dir, "login_state.json")
-	svc.authStore = sdsclient.NewAuthStateStore(svc.authFile)
-	svc.sessionStore = sdsclient.NewSessionStore(svc.cookieFile)
 	return svc
+}
+
+func newTestStateFiles(t *testing.T) StateFiles {
+	t.Helper()
+	dir := t.TempDir()
+	return StateFiles{
+		AuthStatePath:      filepath.Join(dir, "auth.json"),
+		SessionCookiesPath: filepath.Join(dir, "cookies.json"),
+		BrowserStatePath:   filepath.Join(dir, "browser_state.json"),
+		LoginPayloadPath:   filepath.Join(dir, "login_state.json"),
+	}
 }
 
 func newRedisBackedTestService(t *testing.T) (*Service, *goredis.Client) {
@@ -313,7 +376,7 @@ func TestTriggerLoginUsesCloakBrowserConfigWhenEnabled(t *testing.T) {
 		CloakBrowserEnabled: true,
 		CloakBrowserPath:    "D:/custom/cloak/chrome.exe",
 		DefaultHeadless:     true,
-	}, config.RedisConfig{}, config.BrowserConfig{BrowserPath: "D:/fallback/browser.exe"})
+	}, config.RedisConfig{}, config.BrowserConfig{BrowserPath: "D:/fallback/browser.exe"}, newTestStateFiles(t))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}

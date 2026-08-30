@@ -195,6 +195,8 @@ func TestEnsureListingKitSheinCookieStoreCachesStoreAndRegistersCloser(t *testin
 }
 
 func TestRuntimeDepsAttachBuiltFeatureModules(t *testing.T) {
+	runtimePaths := configureProductImageRuntimePaths(t)
+
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
@@ -202,6 +204,12 @@ func TestRuntimeDepsAttachBuiltFeatureModules(t *testing.T) {
 	deps, err := buildRuntimeDeps(logger, "../../../config/config-test.yaml")
 	if err != nil {
 		t.Fatalf("buildRuntimeDeps() error = %v", err)
+	}
+	if deps.shared.imageWorkDir != runtimePaths.workDir {
+		t.Fatalf("image work dir = %q, want %q", deps.shared.imageWorkDir, runtimePaths.workDir)
+	}
+	if deps.shared.cfg.ProductImage.Publisher.OutputDir != runtimePaths.publisherOutputDir {
+		t.Fatalf("publisher output dir = %q, want %q", deps.shared.cfg.ProductImage.Publisher.OutputDir, runtimePaths.publisherOutputDir)
 	}
 
 	productModule, err := productenrichhttpapi.BuildRuntimeModule(productenrichhttpapi.RuntimeBuildInput{
@@ -235,6 +243,7 @@ func TestRuntimeDepsAttachBuiltFeatureModules(t *testing.T) {
 	if deps.features.imageService == nil {
 		t.Fatal("expected image service to be attached")
 	}
+	assertRuntimeDirectory(t, runtimePaths.workDir)
 
 	for i := len(deps.shared.closers) - 1; i >= 0; i-- {
 		if deps.shared.closers[i] == nil {
