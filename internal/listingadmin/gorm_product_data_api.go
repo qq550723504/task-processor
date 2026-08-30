@@ -39,7 +39,7 @@ func (a gormProductDataAPI) ListByStore(platform string, tenantID, storeID int64
 	}
 	page, err := a.repository.ListProductData(context.Background(), ProductDataQuery{
 		TenantID:    tenantID,
-		StoreID:     int64PtrIfPositive(storeID),
+		StoreID:     int64Ptr(storeID),
 		Platform:    platform,
 		Page:        1,
 		PageSize:    2000,
@@ -169,7 +169,7 @@ func (a gormProductDataAPI) PageProductDataByStore(req *ProductDataListByStorePa
 	}
 	query := ProductDataQuery{
 		TenantID:          req.TenantID,
-		StoreID:           int64PtrIfPositive(req.StoreID),
+		StoreID:           int64Ptr(req.StoreID),
 		Platform:          req.Platform,
 		Region:            req.Region,
 		Title:             req.Title,
