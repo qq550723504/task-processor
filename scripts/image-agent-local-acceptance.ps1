@@ -453,7 +453,7 @@ function Invoke-Seed {
     Assert-LocalSourceUrl -Url $SourceUrl -Name "SourceUrl"
     $path = if ([string]::IsNullOrWhiteSpace($TokenFile)) { Join-Path $acceptanceRoot "user-token.txt" } else { $TokenFile }
     if (-not (Test-Path -LiteralPath $path)) { throw "browser token file is required" }
-    $arguments = @("run", "./internal/listingkit/imageagentacceptance/cmd", "-runtime-file", $runtimeFile, "-token-file", $path, "-source-url", $SourceUrl)
+    $arguments = @("run", "./internal/app/runtime/imageagentacceptance/cmd", "-runtime-file", $runtimeFile, "-token-file", $path, "-source-url", $SourceUrl)
     if (-not [string]::IsNullOrWhiteSpace($StyleUrl)) { Assert-LocalSourceUrl -Url $StyleUrl -Name "StyleUrl"; $arguments += @("-style-url", $StyleUrl) }
     Invoke-GoCommand -Arguments $arguments
 }
