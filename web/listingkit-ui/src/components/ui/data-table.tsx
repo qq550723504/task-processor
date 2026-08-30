@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-  createColumnHelper,
   createSortedRowModel,
   flexRender,
   type ColumnDef,
@@ -33,10 +32,6 @@ export type DataTableColumnDef<TData extends RowData> = ColumnDef<
   TData,
   unknown
 >;
-
-export function createDataTableColumnHelper<TData extends RowData>() {
-  return createColumnHelper<typeof dataTableFeatures, TData>();
-}
 
 export type DataTableProps<TData extends RowData> = {
   ariaLabel: string;

@@ -5,7 +5,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { cn } from "@/lib/utils/cn";
 
-export type VirtualItemKey = string | number | bigint;
+type VirtualItemKey = string | number | bigint;
 
 export type VirtualListProps<TItem> = {
   ariaLabel: string;
