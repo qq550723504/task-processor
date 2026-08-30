@@ -4,7 +4,7 @@
 
 **Goal:** Add a production-safe workbench identity foundation in which one ZITADEL subject can select among multiple authorized Organizations and receives only the roles scoped to the selected Organization.
 
-**Architecture:** Keep Auth.js as the browser OIDC session owner and the Go API as the authorization authority. The Go authentication middleware verifies the bearer token, a ZITADEL v2 authorization client enumerates the subject's project authorizations, and an effective-organization resolver validates the untrusted requested Organization before role middleware or handlers run. A Next.js BFF stores only the last selected Organization in an HttpOnly cookie and forwards it as untrusted input.
+**Architecture:** Keep Auth.js `serverAuth` as the browser OIDC session owner and the Go API as the authorization authority. Reuse the merged `zitadel.Verifier` for bearer introspection and canonical identity, add a ZITADEL v2 authorization client to enumerate the subject's project role assignments, and validate the untrusted requested Organization before role middleware or handlers run. The Next.js BFF reads the token only through `readZitadelServerAccessToken`, stores only the selected Organization in an HttpOnly cookie, and forwards that Organization as untrusted input.
 
 **Tech Stack:** Go, Gin, GORM, ZITADEL OIDC introspection, ZITADEL Authorization API v2, Next.js 16 App Router, Auth.js, React 19, TanStack Query 5, TypeScript, Vitest, Testing Library.
 
@@ -12,13 +12,15 @@
 
 ## Global Constraints
 
-- Do not create, mutate, or delete ZITADEL Organizations, project grants, users, or role assignments from this implementation.
+- Code may add an idempotent, explicit opt-in local acceptance provisioner for two non-production Organizations, Project Grants, and External Role Assignments. Never execute it without separate user authorization; reject non-loopback issuers and never target remote or production ZITADEL.
+- Treat `authorization.user.organizationId` as Home Organization and `authorization.organization.id` as the authorized enterprise space. Never collapse them into one field.
 - Do not accept `resourceowner:id`, a cookie, a header, URL state, or a browser-parsed claim as proof of effective-organization access.
 - Use ZITADEL Organization IDs as opaque non-empty strings; never parse them as integers and never call `tenantbridge` from a workbench route.
 - The official v2 `AuthorizationService/ListAuthorizations` response is the grant enumeration contract. Filter every response by the introspected subject and configured ListingKit project ID.
 - Organization switch and all writes use a live grant lookup. Reads may use a verified grant cache for at most 60 seconds and never beyond token expiry.
 - A ZITADEL failure without a still-valid read cache fails closed. The cache never stores access tokens.
 - Existing `/listing-kits` routes may continue to compile during the slice, but new `/workbench` routes and `/api/v1/workbench/*` APIs must not depend on their tenant fallback, navigation, or data.
+- Preserve the PR #267 baseline: token verification stays in `zitadel.Verifier`, project role parsing stays in `ParseRolesForProject`, and server-side token access stays in `readZitadelServerAccessToken`.
 - Do not delete legacy tables or data in this plan.
 - Use `apply_patch` for source edits. Preserve unrelated working-tree changes and stage only paths named by the active task.
 
@@ -30,6 +32,11 @@
 
 - Create: `docs/verification/zitadel-multi-organization-authorization.md`
 - Create: `internal/authruntime/zitadel/testdata/list_authorizations_two_orgs.json`
+- Modify: `docs/development/image-agent-local-acceptance.md`
+- Modify: `internal/zitadelprovision/provisioner.go`
+- Modify: `internal/zitadelprovision/provisioner_test.go`
+- Modify: `internal/zitadelprovision/cmd/main.go`
+- Modify: `internal/zitadelprovision/cmd/main_test.go`
 - Modify: `internal/core/config/type_listingkit.go`
 - Create: `internal/core/config/type_workbench.go`
 - Modify: `internal/core/config/defaults.go`
@@ -42,8 +49,8 @@
 - Modify: `internal/authidentity/authenticated_identity.go`
 - Modify: `internal/authidentity/authenticated_identity_test.go`
 - Modify: `internal/authruntime/zitadel/config.go`
-- Modify: `internal/authruntime/zitadel/parsing.go`
-- Modify: `internal/authruntime/zitadel/middleware.go`
+- Modify: `internal/authruntime/zitadel/verifier.go`
+- Modify: `internal/authruntime/zitadel/verifier_test.go`
 - Modify: `internal/authruntime/zitadel/middleware_test.go`
 - Create: `internal/authruntime/zitadel/authorization_client.go`
 - Create: `internal/authruntime/zitadel/authorization_client_test.go`
@@ -91,8 +98,7 @@
 - Modify: `web/listingkit-ui/src/components/application-frame.test.tsx`
 - Modify: `web/listingkit-ui/src/proxy.ts`
 - Modify: `web/listingkit-ui/src/proxy.test.ts`
-- Modify: `web/listingkit-ui/src/lib/server/zitadel-auth.ts`
-- Modify: `web/listingkit-ui/src/lib/server/zitadel-auth.test.ts`
+- Test: `web/listingkit-ui/src/lib/server/zitadel-server-token.test.ts`
 
 ---
 
@@ -140,41 +146,73 @@ When a user has multiple grants but no valid default, context GET returns `200`,
 
 ---
 
-## Task 1: Prove the Real ZITADEL Authorization Shape
+## Task 1: Make the Real Multi-Organization Acceptance State Reproducible
 
 **Files:**
 
+- Modify: `internal/zitadelprovision/provisioner.go`
+- Modify: `internal/zitadelprovision/provisioner_test.go`
+- Modify: `internal/zitadelprovision/cmd/main.go`
+- Modify: `internal/zitadelprovision/cmd/main_test.go`
+- Modify: `docs/development/image-agent-local-acceptance.md`
 - Create: `docs/verification/zitadel-multi-organization-authorization.md`
 - Create: `internal/authruntime/zitadel/testdata/list_authorizations_two_orgs.json`
 
-- [ ] In the existing ZITADEL administration flow, select two non-production test Organizations and one test user. Assign `listingkit_admin` in Organization A and `listingkit_viewer` in Organization B for the configured ListingKit project.
-- [ ] Sign in through the existing Auth.js flow and call the official `POST /zitadel.authorization.v2.AuthorizationService/ListAuthorizations` endpoint with the user's access token and `Connect-Protocol-Version: 1`.
-- [ ] Record only sanitized evidence: issuer host, project ID suffix, subject suffix, Organization ID suffixes, Organization names, role keys, HTTP status, and observation time. Never record tokens, client secrets, cookies, usernames, or full personal data.
-- [ ] Verify the response contains two active authorizations whose `user.id` equals the introspected `sub` and whose `project.id` equals `TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID`.
-- [ ] Revoke the A authorization, repeat a live request, and record that the revoked Organization is absent or non-active. Restore the test grant after evidence collection.
-- [ ] Save a fully synthetic two-Organization response fixture in `testdata`; do not copy production identifiers.
-- [ ] Write the exact response-field mapping and revocation observation into the verification document.
-- [ ] Stop implementation and request ZITADEL test-environment setup if the same subject cannot obtain two differently scoped project authorizations. Do not invent a fallback grant model.
+- [ ] Add failing tests for `ProvisionLocalMultiOrganizationAcceptance(ctx, cfg, spec)` with these exact contracts:
+
+```go
+type MultiOrganizationAcceptanceSpec struct {
+    UserID        string
+    Organizations []AcceptanceOrganizationSpec
+}
+
+type AcceptanceOrganizationSpec struct {
+    Name     string
+    RoleKeys []string
+}
+
+type AcceptanceOrganizationResult struct {
+    OrganizationID   string
+    OrganizationName string
+    RoleKeys          []string
+}
+
+type MultiOrganizationAcceptanceResult struct {
+    UserID        string
+    ProjectID     string
+    Organizations []AcceptanceOrganizationResult
+}
+```
+
+  Tests must prove two Organization names are required, Organization names and role keys are trimmed/deduplicated, blank user/project IDs fail closed, reruns reuse existing Organizations/Project Grants/Role Assignments, and no token or secret appears in errors/results.
+- [ ] Implement the provisioner with the official model: the ListingKit project remains owned by the provider Organization; it is granted to each acceptance Organization; the same existing user receives an External Role Assignment in each Organization. Use `listingkit_admin` for A and `listingkit_viewer` for B in the CLI acceptance preset.
+- [ ] Add the CLI subcommand `provision-multi-org-acceptance`. Require `-issuer-url`, `-management-token-file`, `-runtime-file`, and `-confirm-resettable-test-data`. Resolve the existing bootstrap user and project from the guarded runtime file. Reject an issuer whose hostname is not `localhost`, `127.0.0.1`, or `::1`; do not add a remote override.
+- [ ] Ensure the command is idempotent and writes only opaque IDs required by later acceptance into the existing ignored runtime file. It must never print the management token, browser token, client secret, full user ID, or full Organization IDs.
+- [ ] Document the opt-in command and its destructive scope. Actual execution is an external mutation gate: do not run it until the user explicitly authorizes modification of local resettable ZITADEL test data.
+- [ ] After that authorization, sign in through the existing Auth.js flow and use the server-persisted browser token to call `POST /zitadel.authorization.v2.AuthorizationService/ListAuthorizations` with `Connect-Protocol-Version: 1`. Never expose the token in browser JSON, process arguments, logs, or the report.
+- [ ] Verify two active results where `user.id` equals the introspected `sub`, `user.organizationId` remains the one Home Organization, `project.id` equals the configured ListingKit project, and `organization.id` differs between A and B with the expected scoped roles.
+- [ ] Save a fully synthetic two-Organization fixture in `testdata`, and record only sanitized evidence: issuer host, identifier suffixes, Organization names, role keys, HTTP status, and observation time.
+- [ ] Revocation propagation remains a separate external-mutation acceptance action. Do not revoke or restore an authorization without another explicit approval; record it as pending when not authorized.
 
 **Verification:**
+
+```powershell
+go test ./internal/zitadelprovision ./internal/zitadelprovision/cmd -run "Test.*MultiOrganization|TestRun.*MultiOrg" -count=1
+```
+
+Expected: pass, including idempotence, loopback-only enforcement, and secret-safe output tests.
 
 ```powershell
 rg -n "access_token|refresh_token|client_secret|Authorization:" docs/verification/zitadel-multi-organization-authorization.md internal/authruntime/zitadel/testdata
 ```
 
-Expected: no matches.
-
-```powershell
-go test ./internal/authruntime/zitadel -run TestAuthorizationFixture -count=1
-```
-
-Expected before the fixture test exists: test name is absent. Add the test in Task 3; this command must pass then.
+Expected: no matches. If live execution has not been authorized, the verification document must say `real_environment_status: pending` and must not claim two-Organization acceptance.
 
 **Commit:**
 
 ```powershell
-git add docs/verification/zitadel-multi-organization-authorization.md internal/authruntime/zitadel/testdata/list_authorizations_two_orgs.json
-git commit -m "docs: verify zitadel multi-organization grants"
+git add internal/zitadelprovision docs/development/image-agent-local-acceptance.md docs/verification/zitadel-multi-organization-authorization.md internal/authruntime/zitadel/testdata/list_authorizations_two_orgs.json
+git commit -m "feat: provision local multi-organization acceptance"
 ```
 
 ## Task 2: Extend the Verified Identity Without Changing Tenant Semantics Globally
@@ -184,22 +222,24 @@ git commit -m "docs: verify zitadel multi-organization grants"
 - Modify: `internal/authidentity/authenticated_identity.go`
 - Modify: `internal/authidentity/authenticated_identity_test.go`
 - Modify: `internal/authruntime/zitadel/config.go`
-- Modify: `internal/authruntime/zitadel/parsing.go`
-- Modify: `internal/authruntime/zitadel/middleware.go`
+- Modify: `internal/authruntime/zitadel/verifier.go`
+- Modify: `internal/authruntime/zitadel/verifier_test.go`
 - Modify: `internal/authruntime/zitadel/middleware_test.go`
 
 - [ ] Add failing tests that normalize and defensively copy `HomeOrganizationID`, `EffectiveOrganizationID`, `OrganizationGrants`, and `TokenExpiresAt`.
 - [ ] Add a failing test proving `org-a:admin` and `org-b:viewer` are not flattened into one effective role set after resolution.
-- [ ] Add `exp` parsing to `IntrospectionResponse` and reject an introspection response whose expiry is already past, even if `active=true`.
+- [ ] Add `ExpiresAt int64 \`json:"exp"\`` to `IntrospectionResponse` and a private `now func() time.Time` dependency to `verifier` (`time.Now` in production, fixed clock in tests). Add fake-clock tests proving an expired introspection result is rejected even when `active=true` and a future expiry is copied to `AuthenticatedIdentity.TokenExpiresAt`.
 - [ ] Add the fields in the type contract above. Preserve `TenantID`, `UserID`, and `Roles` only because existing non-workbench handlers still compile; document that new workbench handlers read `EffectiveOrganizationID` and scoped `Roles` only.
-- [ ] Keep authentication middleware responsible only for token verification, `UserID/sub`, `HomeOrganizationID/resourceowner:id`, expiry, and forged-header removal. It must not choose an effective Organization.
+- [ ] Extend the merged `Verifier` rather than reintroducing introspection logic into middleware. `Verifier.Verify` produces `UserID/sub`, `HomeOrganizationID/resourceowner:id`, `TokenExpiresAt`, and the existing project-scoped roles. It must not choose an effective Organization.
+- [ ] Keep `ParseRolesForProject` unchanged unless a failing regression proves a defect; it already filters the merged PR #267 role claims by configured project.
+- [ ] Keep middleware limited to bearer extraction, `Verifier.Verify`, forged-header removal, trusted-context installation, and legacy route authorization. Add an integration test proving it carries the new verifier fields without mutating them.
 - [ ] Keep the current flattened `Roles` value for existing routes, but ensure the resolver in Task 5 overwrites it with only the selected Organization's roles before any workbench permission middleware runs.
 - [ ] Leave `X-Requested-Organization-ID` explicitly untrusted. It may reach Go from the BFF or a direct client, but it can influence context only after the resolver proves a matching live/cached Organization grant.
 
 **Red / green verification:**
 
 ```powershell
-go test ./internal/authidentity ./internal/authruntime/zitadel -run "TestAuthenticatedIdentity|TestMiddleware.*Exp|Test.*Scoped" -count=1
+go test ./internal/authidentity ./internal/authruntime/zitadel -run "TestAuthenticatedIdentity|TestVerifier.*Exp|TestMiddleware.*Canonical|Test.*Scoped" -count=1
 ```
 
 Expected after implementation: pass.
@@ -207,7 +247,7 @@ Expected after implementation: pass.
 **Commit:**
 
 ```powershell
-git add internal/authidentity internal/authruntime/zitadel/config.go internal/authruntime/zitadel/parsing.go internal/authruntime/zitadel/middleware.go internal/authruntime/zitadel/middleware_test.go
+git add internal/authidentity internal/authruntime/zitadel/config.go internal/authruntime/zitadel/verifier.go internal/authruntime/zitadel/verifier_test.go internal/authruntime/zitadel/middleware_test.go
 git commit -m "feat: carry canonical zitadel identity context"
 ```
 
@@ -361,20 +401,21 @@ git commit -m "feat: expose verified workbench context"
 - Create: `web/listingkit-ui/src/lib/server/workbench-proxy.test.ts`
 - Create: `web/listingkit-ui/src/app/api/workbench/[...path]/route.ts`
 - Create: `web/listingkit-ui/src/app/api/workbench/[...path]/route.test.ts`
+- Test: `web/listingkit-ui/src/lib/server/zitadel-server-token.test.ts`
 
-- [ ] Add failing tests that the BFF reads the Auth.js access token server-side, forwards it as bearer auth, and never returns it to the browser.
+- [ ] Add failing tests that the route uses merged `serverAuth`, passes the server session to `readZitadelServerAccessToken`, forwards the returned token as bearer auth, and never returns it to the browser. Do not restore the removed client-session token reader in `zitadel-auth.ts`.
 - [ ] Proxy `/api/workbench/*` to `/api/v1/workbench/*` using the existing upstream base URL rules, but do not reuse legacy ListingKit tenant/user/role header forwarding.
 - [ ] Forward the selection cookie as `X-Requested-Organization-ID` for ordinary requests. For the effective-organization PUT route, validate the JSON body shape and forward its `organizationId` as the requested header. Strip any browser-supplied value for that header before building the upstream request.
 - [ ] On successful PUT switch, set `shuomi_effective_organization` to the Organization ID returned as effective by Go, not blindly to the request body.
 - [ ] Set the cookie attributes from the contract above. Clear it when Go returns `ORGANIZATION_ACCESS_REVOKED`, `ORGANIZATION_ACCESS_DENIED`, or an empty effective Organization.
-- [ ] Preserve upstream status and the stable JSON error body. Cap request bodies and upstream responses at the existing proxy limits.
+- [ ] Preserve upstream status and the stable JSON error body. Cap request bodies and upstream responses at the existing proxy limits. Keep the existing acceptance-token persistence private and out of the request path.
 - [ ] Add tests for forged header stripping, PUT body-to-header forwarding, Go body/header mismatch rejection, failed switch not changing the cookie, revoked selection clearing it, and an open-redirect-free unauthenticated response.
 
 **Verification:**
 
 ```powershell
 Set-Location web/listingkit-ui
-npm.cmd test -- src/lib/server/workbench-proxy.test.ts "src/app/api/workbench/[...path]/route.test.ts"
+npm.cmd test -- src/lib/server/zitadel-server-token.test.ts src/lib/server/workbench-proxy.test.ts "src/app/api/workbench/[...path]/route.test.ts"
 ```
 
 Expected: pass.
@@ -435,12 +476,12 @@ git commit -m "feat: add multi-organization workbench shell"
 
 - Modify: `web/listingkit-ui/src/proxy.ts`
 - Modify: `web/listingkit-ui/src/proxy.test.ts`
-- Modify: `web/listingkit-ui/src/lib/server/zitadel-auth.ts`
-- Modify: `web/listingkit-ui/src/lib/server/zitadel-auth.test.ts`
+- Test: `web/listingkit-ui/src/lib/server/zitadel-server-token.test.ts`
 
 - [ ] Add failing proxy tests for unauthenticated `/workbench`, `/workbench/stores`, and `/workbench/no-organization` requests.
 - [ ] Extend the matcher to `/workbench/:path*` and allow `/workbench` in `normalizeReturnTo` while preserving open-redirect protections.
-- [ ] For workbench pages, require a valid Auth.js access token and canonical subject only. Remove flattened-role/tenant allowlist authorization from the browser edge for these routes; scoped authorization belongs to Go.
+- [ ] Extend the existing `serverAuth` proxy; do not replace it with the old `auth` wrapper. For workbench pages, require `readZitadelServerAccessToken(session)` plus a canonical subject only. Do not expose the token through the public Session route.
+- [ ] Route `/workbench/*` through a separate workbench branch before the legacy `authorizeZitadelIdentity` / `hasPlatformAdminRole` checks. Scoped authorization belongs to Go; the edge must not reject a valid multi-Organization user because of flattened legacy roles or tenant allowlists.
 - [ ] Keep the existing ListingKit edge policy isolated until those routes are explicitly retired. Do not let workbench behavior inherit `hasPlatformAdminRole(identity.roles)` checks.
 - [ ] Add regression tests proving an A-admin/B-viewer session can reach the shell but Go/API permissions still differ after switching.
 
@@ -448,7 +489,7 @@ git commit -m "feat: add multi-organization workbench shell"
 
 ```powershell
 Set-Location web/listingkit-ui
-npm.cmd test -- src/proxy.test.ts src/lib/server/zitadel-auth.test.ts
+npm.cmd test -- src/proxy.test.ts src/lib/server/zitadel-server-token.test.ts
 npm.cmd run typecheck
 ```
 
@@ -457,7 +498,7 @@ Expected: pass.
 **Commit:**
 
 ```powershell
-git add web/listingkit-ui/src/proxy.ts web/listingkit-ui/src/proxy.test.ts web/listingkit-ui/src/lib/server/zitadel-auth.ts web/listingkit-ui/src/lib/server/zitadel-auth.test.ts
+git add web/listingkit-ui/src/proxy.ts web/listingkit-ui/src/proxy.test.ts web/listingkit-ui/src/lib/server/zitadel-server-token.test.ts
 git commit -m "feat: protect workbench with canonical zitadel session"
 ```
 
@@ -470,7 +511,7 @@ git commit -m "feat: protect workbench with canonical zitadel session"
 - [ ] Run all focused Go tests with the race detector.
 - [ ] Run frontend unit tests, type checking, and lint.
 - [ ] Start the API and UI with non-secret environment variables present and verify the process/port/page title before manual acceptance.
-- [ ] With the real two-Organization test subject, verify A shows admin roles, B shows viewer roles, a forged cookie/header cannot select an unauthorized Organization, and switching back restores A only after a live grant check.
+- [ ] If the local external-mutation gate was explicitly approved, run `provision-multi-org-acceptance` and then verify the same Auth.js subject has one Home Organization but two authorization Organizations: A shows admin roles, B shows viewer roles, a forged cookie/header cannot select an unauthorized Organization, and switching back restores A only after a live grant check. Otherwise record this entire check as pending rather than failed or passed.
 - [ ] Revoke A and verify: a write and a switch fail immediately; a cached read fails within 60 seconds; the cookie is cleared; no A data is rendered after the failure.
 - [ ] Inspect logs to confirm no bearer token, cookie value, raw authorization response, or credential is logged.
 - [ ] Record local checks separately from real-environment ZITADEL acceptance. Do not call the slice production-ready if only mocks passed.
@@ -478,9 +519,9 @@ git commit -m "feat: protect workbench with canonical zitadel session"
 **Verification:**
 
 ```powershell
-go test ./internal/authidentity ./internal/authruntime/zitadel ./internal/workbenchcontext/... ./internal/httproute ./internal/app/httpapi -count=1 -race
+go test ./internal/zitadelprovision ./internal/zitadelprovision/cmd ./internal/authidentity ./internal/authruntime/zitadel ./internal/workbenchcontext/... ./internal/httproute ./internal/app/httpapi -count=1 -race
 Set-Location web/listingkit-ui
-npm.cmd test -- src/proxy.test.ts src/lib/server/zitadel-auth.test.ts src/lib/server/workbench-proxy.test.ts "src/app/api/workbench/[...path]/route.test.ts" src/lib/api/workbench-context.test.ts src/components/providers/workbench-context-provider.test.tsx src/components/workbench/organization-switcher.test.tsx src/components/workbench/workspace-app-shell.test.tsx
+npm.cmd test -- src/proxy.test.ts src/lib/server/zitadel-server-token.test.ts src/lib/server/workbench-proxy.test.ts "src/app/api/workbench/[...path]/route.test.ts" src/lib/api/workbench-context.test.ts src/components/providers/workbench-context-provider.test.tsx src/components/workbench/organization-switcher.test.tsx src/components/workbench/workspace-app-shell.test.tsx
 npm.cmd run typecheck
 npm.cmd run lint
 ```

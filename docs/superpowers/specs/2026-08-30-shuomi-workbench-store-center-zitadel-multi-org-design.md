@@ -1,8 +1,8 @@
 # 硕米智能引擎工作台首期设计：店铺中心与 ZITADEL 多企业空间
 
-**日期：** 2026-08-30  
-**状态：** 已确认设计，已完成自审与实施计划；等待执行  
-**范围：** 统一工作台框架、ZITADEL 多企业空间、店铺中心“我的店铺”前后端纵向切片  
+**日期：** 2026-08-30
+**状态：** 已确认设计；已按 PR #267 合并后的 ZITADEL/Auth.js 基线复核
+**范围：** 统一工作台框架、ZITADEL 多企业空间、店铺中心“我的店铺”前后端纵向切片
 **代码库：** `task-processor`
 
 ## 1. 背景
@@ -36,6 +36,14 @@ Figma 中的“硕米智能引擎”工作台包含运营驾驶舱、AI 工作�
 - 新约束：普通用户可以使用同一个 ZITADEL 身份访问多个获授权的企业空间，并显式切换 effective organization。
 
 旧设计中关于租户隔离、缓存隔离、资源归属、平台管理员代管和后端强制鉴权的约束继续有效。
+
+2026-08-30 的最新基线已经通过 PR #267 引入以下能力，本设计直接复用而不重复实现：
+
+- `internal/authruntime/zitadel.Verifier` 统一完成 discovery、introspection 和规范身份构造；
+- `ParseRolesForProject` 只解析配置项目的角色；
+- Auth.js `serverAuth` 在服务端持有会话，`readZitadelServerAccessToken` 读取服务端 token；
+- `internal/zitadelprovision` 幂等创建本地项目、应用并为本地账号建立初始角色；
+- 本地验收链路能够将浏览器 bearer token 保存到受控文件，而不暴露给浏览器 JSON 或日志。
 
 ## 3. 目标
 
@@ -87,14 +95,24 @@ Customer Organization B  ← Project Grant / Role Assignments
 | 产品术语 | 身份或业务含义 |
 |---|---|
 | 用户 | ZITADEL `sub` 标识的自然人或服务身份 |
-| 账号归属组织 | ZITADEL `resourceowner:id`，即 Home Organization |
+| 账号归属组织 | ZITADEL `resourceowner:id` / `authorization.user.organizationId`，即 Home Organization |
 | 企业空间 | 一个可承载硕米业务资源的 ZITADEL Customer Organization |
-| 授权企业 | 用户通过 Project Grant / Role Assignment 可访问的 Organization |
+| 授权企业 | `authorization.organization.id` 标识的 Organization；它拥有项目或已获得 Project Grant，并为该用户建立 Role Assignment |
 | 当前企业 | 当前请求经后端验证后的 Effective Organization |
 | 平台角色 | ListingKit Project 中定义的 `viewer`、`operator`、`admin` 等角色 |
 | 业务租户 ID | 企业空间的 ZITADEL Organization ID |
 
 ZITADEL 负责身份、组织和授权。店铺、商品、任务、套餐、用量和业务配置仍由业务数据库负责。
+
+一个用户仍只归属一个 Home Organization。跨企业访问通过 ZITADEL 原生 Project Grant 与 External Role Assignment 表达，不复制用户账号，也不在业务数据库另建一套成员授权真相源：
+
+```text
+Provider Organization / ListingKit Project
+├── Project Grant → Customer Organization A
+│   └── External Role Assignment(user-1, listingkit_admin)
+└── Project Grant → Customer Organization B
+    └── External Role Assignment(user-1, listingkit_viewer)
+```
 
 ## 6. 身份与授权模型
 
@@ -164,14 +182,16 @@ org-b → [listingkit_viewer]
 
 ## 7. ZITADEL 真实授权验证门槛
 
-在修改应用身份模型前，先使用真实 ZITADEL 环境完成只读验证：
+在把多企业能力标记为真实验收通过前，必须使用真实 ZITADEL 环境完成验证：
 
-1. 创建或选取两个测试 Organization。
-2. 使用同一个测试用户，对两个 Organization 分配不同 ListingKit Project 角色。
+1. 在本地、可重置的非生产 ZITADEL 中创建或复用两个测试 Organization。
+2. 将 ListingKit Project grant 给两个测试 Organization；用同一个测试用户分别建立 External Role Assignment，并分配不同角色。
 3. 完成真实 OIDC 登录。
-4. 检查 ID token、userinfo 和 introspection 的角色声明。
-5. 证明声明能稳定表达 `OrganizationID → Roles[]`。
-6. 证明角色撤销、token 刷新和会话刷新后的变化行为。
+4. 使用服务端保存的用户 bearer token 调用官方 v2 `AuthorizationService/ListAuthorizations`，验证 `authorization.user.id`、`authorization.user.organizationId`、`authorization.organization.id`、`authorization.project.id` 和 `roles[].key`。
+5. 证明同一 subject 返回两个不同的 `authorization.organization.id`，并稳定表达 `OrganizationID → Roles[]`。
+6. 在获得单独外部变更授权后，证明角色撤销、token 刷新和会话刷新后的变化行为。
+
+为避免一次性手工状态，本地 provision 可以增加显式 opt-in 的双组织验收子命令。该子命令必须同时满足：issuer 为 loopback、本地测试数据确认参数存在、凭据来自文件、操作幂等、输出不含 token 或完整个人数据。代码和 mock 测试可以先完成；实际创建 Project Grant / Role Assignment 仍需用户明确授权，绝不对远程或生产 ZITADEL 自动执行。
 
 验证结果决定授权来源：
 
@@ -332,6 +352,9 @@ Store Management Application Service
 
 职责：
 
+- ZITADEL Verifier 负责 bearer token 验证、Subject、Home Organization 和 token expiry；不选择 Effective Organization。
+- ZITADEL Authorization Client 只负责读取官方 v2 Role Assignment，并规范化为组织作用域授权。
+- ZITADEL Provision 只为明确 opt-in 的本地验收环境建立可重放测试状态，不进入生产请求链路。
 - Workspace Context 负责当前企业和组织作用域授权。
 - Store Center Domain 拥有新工作台的店铺资料、平台类型、连接状态和生命周期。
 - Subscription Domain 继续拥有套餐、权益和用量。
@@ -363,6 +386,8 @@ WorkspaceAppShell
 ```
 
 新建中立的 `WorkspaceAppShell`。可以复用现有低层布局、样式变量和通用组件，但不保留 `ListingKitAppShell` 兼容适配器，也不复制一套长期并存的旧导航。
+
+工作台 BFF 必须通过现有 Auth.js `serverAuth` 和 `readZitadelServerAccessToken` 获取服务端 token。浏览器 Session JSON、页面属性、客户端状态和响应正文均不得包含 access token。旧 `/listing-kits` 的 allowlist 与 `hasPlatformAdminRole` 逻辑保持隔离，不能成为 `/workbench/*` 的授权前置条件。
 
 ### 13.3 企业切换体验
 
@@ -601,3 +626,4 @@ WorkspaceAppShell
 5. 明确现有认证路由是否全部经过 authruntime middleware；
 6. 在独立 `codex/` 分支或 worktree 上实施；
 7. 以测试驱动方式完成每个可合并切片。
+8. 以 PR #267 合并后的 `Verifier`、`serverAuth`、服务端 token helper 和 `zitadelprovision` 为实现基线，不恢复已被替换的旧身份路径。
