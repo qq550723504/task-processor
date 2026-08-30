@@ -107,3 +107,56 @@ HTTP URL 命中数均为 0，UI 日志也没有授权敏感词，均未打印值
 A-admin/B-viewer、真实撤销后的即时 write/switch 拒绝、60 秒内 cached-read 失效和恢复
 传播仍全部 pending。禁用 Workbench 的本地 API/UI 冒烟已经通过，但启用 Workbench 的
 运行态仍需要真实 issuer/凭据；在这些外部门禁完成前仍不能声称 production-ready。
+
+## Task 10 修复轮次 1/5（2026-08-31）
+
+本轮只修复验证材料的可复现性，并增加挂载后的 Workbench 路由隔离测试；没有接触真实
+或本地 ZITADEL，没有读取凭据，也没有 provision、revoke、restore 或外部变更。
+
+### 精确测试命令
+
+```powershell
+npm.cmd test -- src/proxy.test.ts src/lib/server/zitadel-auth.test.ts src/lib/server/zitadel-server-token.test.ts src/lib/server/workbench-proxy.test.ts "src/app/api/workbench/[...path]/route.test.ts" src/lib/api/workbench-context.test.ts src/components/providers/workbench-context-provider.test.tsx src/components/workbench/organization-switcher.test.tsx src/components/workbench/workspace-app-shell.test.tsx src/components/application-frame.test.tsx
+```
+
+退出码 0，10/10 文件、120/120 测试通过。
+
+```powershell
+go test ./internal/workbenchcontext/... ./internal/app/httpapi ./internal/listingkit/api -count=1 -race -run 'Test(GrantCacheKeysBySubjectProjectAndContractVersionWithoutBearerToken|GrantResolverGrantLiveBypassesWarmCache|GrantResolverGrantLiveFailureDoesNotFallBackToWarmCache|GrantCacheUsesTokenBoundTTLAndRejectsExpiredEntries|ResolverLivePoliciesBypassCacheAndSwitchInvalidatesBeforeAndAfterLookup|ResolverLiveSwitchInvalidatesAfterFailedLookup|ResolverTreatsRequestedOrganizationAsCandidateAndScopesRolesToVerifiedGrant|WorkbenchAuthHandlerOrderIsAuthenticationOrganizationRoleThenHandler|WorkbenchScopedRoleDoesNotCarryAdminFromOrganizationAToViewerOrganizationB|WorkbenchLiveSwitchRejectsInvalidTargetBeforeGrantLookup|ListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFalse|RequestTenantContextRejectsCallerFallbackForAuthenticatedIdentityWithoutEffectiveTenant)$' -v
+```
+
+退出码 0，12/12 顶层测试通过。
+
+```powershell
+go test ./internal/app/httpapi -race -count=1 -run 'Test(MountedWorkbenchContextDoesNotReachLegacyNumericTenantResolver|ProductionAuthShapeSkipsLegacyAllowlistBeforeWorkbenchOrganizationResolution|LegacyBlankOrganizationPolicySkipsResolver|WorkbenchOrganizationContextReadClearsLegacyBusinessScopeWhenSelectionIsRequired|WorkbenchOrganizationPolicyFailsClosedWithoutAuthenticationMiddleware)$' -v
+```
+
+退出码 0，5/5 通过。新增用例通过生产 `mountRoutesWithAuthDependencies` 挂载并请求
+`GET /api/v1/workbench/context`，同时把 `tenantbridge.ConfigureLegacyTenantResolver`
+配置成计数且报错的 poison resolver；canonical Organization 和 scoped viewer role 到达
+handler，legacy numeric resolver 调用数保持 0。将生产中间件临时变异为调用该 resolver
+时，同一单测以调用数 1 失败；恢复生产文件后 1/1 通过且生产文件 diff 为空。
+
+```powershell
+go test ./internal/app/httpapi -race -count=1
+```
+
+退出码 0：`ok task-processor/internal/app/httpapi 65.378s`。
+
+### 新鲜运行态与日志证据
+
+使用此前未占用的 loopback 端口 `58087`/`53002` 完成禁用 Workbench 的 API/UI 冒烟。
+前置 listener/相关进程数均为 0；API build 退出码 0，task-owned PID `49568` 唯一拥有
+`58087`，`GET /health` 为 200/`{"status":"ok"}`；UI PID `1472` 唯一拥有 `53002`，
+`GET /healthz` 为 200/`{"ok":true}`，`GET /` 为 200，title 和渲染 H1 均断言成功。
+仅停止这两个 PID 后，PID 均不存在且 listener 数均为 0。临时配置已逐字恢复；恢复前后
+index/worktree blob hash 均为 `c56ff31f4036d44f2caa6b7dfacad91bb172616c`，unstaged、
+cached diff 与文件 status 均为空。完整启动、轮询、断言、停止 transcript 保存在同轮
+Task 10 report 中。
+
+可复现审计覆盖三个保留运行目录中的全部 13 个制品，其中 10 个日志共 1,294 行；每个
+制品的路径、字节数、行数和 SHA-256 及完整扫描命令也保存在 Task 10 report。扫描模式为
+`broad_keyword`、`jwt_shape`、`bearer_value`、`secret_assignment`、
+`raw_auth_json_field`；缺文件退出 31，高风险形态非零退出 32，否则退出 0。实际退出码 0：
+三个宽泛命中仅是 `api_key`/`apiKey` 字段名，高风险形态总数 0。真实环境、启用
+Workbench、revoke/restore 与传播时延门禁仍为 pending。
