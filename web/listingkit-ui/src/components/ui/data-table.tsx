@@ -72,6 +72,7 @@ export function DataTable<TData extends RowData>({
               return (
                 <TableHead
                   key={header.id}
+                  colSpan={header.colSpan}
                   aria-sort={
                     sorted === "asc"
                       ? "ascending"

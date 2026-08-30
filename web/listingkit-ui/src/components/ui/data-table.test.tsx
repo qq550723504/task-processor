@@ -82,5 +82,11 @@ describe("DataTable", () => {
       "colspan",
       "3",
     );
+    expect(
+      screen.getByRole("columnheader", { name: "商品信息" }),
+    ).toHaveAttribute("colspan", "2");
+    expect(
+      screen.getByRole("columnheader", { name: "标识信息" }),
+    ).toHaveAttribute("colspan", "1");
   });
 });
