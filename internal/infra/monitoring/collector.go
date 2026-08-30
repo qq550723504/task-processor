@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"sync"
 	"task-processor/internal/core/errors"
-	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/app/lifecycle"
 	"time"
 
 	"github.com/sirupsen/logrus"

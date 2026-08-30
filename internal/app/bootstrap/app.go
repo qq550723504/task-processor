@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/infra/rabbitmq"
 	platformconfig "task-processor/internal/platform/config"
 	"task-processor/internal/platformbase"

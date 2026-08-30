@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/app/runner"
 	"task-processor/internal/app/updater"
 	"task-processor/internal/core/config"
-	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"

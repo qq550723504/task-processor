@@ -9,7 +9,7 @@ import (
 
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/core/config"
-	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/core/metrics"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"

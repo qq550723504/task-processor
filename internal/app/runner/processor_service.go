@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/app/ports"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
-	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"

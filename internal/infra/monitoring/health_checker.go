@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/errors"
-	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/pkg/timeout"
 
 	"github.com/sirupsen/logrus"

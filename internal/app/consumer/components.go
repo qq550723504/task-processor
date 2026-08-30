@@ -4,7 +4,7 @@ package consumer
 import (
 	"context"
 
-	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
