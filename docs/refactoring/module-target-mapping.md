@@ -9,6 +9,12 @@ This document maps the current major project areas to the approved target domain
 - `listing`
 - `marketplace`
 - `product`
+- `agent`
+- `knowledge`
+- `resourcecatalog`
+- `commercial`
+- `ledger`
+- `organization`
 - `integration`
 - `platform`
 - `app`
@@ -23,7 +29,7 @@ Use it before broad refactoring so package moves follow a stable direction.
 | --- | --- | --- | --- |
 | `internal/listingkit` | legacy listing orchestration and API shell | `internal/listing/*` plus `internal/compatibility/listingkit` | shrink into compatibility facade over time |
 | `internal/listingadmin` | listing-admin behavior | `internal/listing/settings` or `internal/app/httpapi` depending on content | split runtime-facing handlers from business logic |
-| `internal/listingsubscription` | listing-related subscription behavior | `internal/listing/task` or `internal/listing/workflow` | keep orchestration in listing domain |
+| `internal/listingsubscription` | plans, entitlements, quotas, usage ledger, outbox, and listing-specific policies | `internal/commercial/*`, `internal/integration/persistence/commercial`, plus narrow `internal/listing/*` policies | usage metering stays in commercial; it is not the money ledger |
 | `internal/platformtask` | task execution helpers | `internal/listing/task` or `internal/platform/temporal` depending on ownership | split business task semantics from runtime task execution |
 | `internal/taskstatus` | task status models and helpers | `internal/listing/task` or `internal/shared` | keep only generic status primitives in shared |
 | `internal/catalog` | canonical product facts | `internal/product/catalog` | direct migration candidate |
@@ -34,8 +40,10 @@ Use it before broad refactoring so package moves follow a stable direction.
 | `internal/productenrich` | product enrichment | `internal/product/ai` or `internal/product/sourcing` | decide based on AI versus sourcing normalization role |
 | `internal/pricing` | pricing helpers | `internal/product`, `internal/marketplace/*`, or `internal/listing/submission` | classify by whether pricing is product-level, platform-specific, or listing-flow-specific |
 | `internal/sds` | product or asset generation support | `internal/product/asset`, `internal/product/image`, or `internal/listing/studio` | split generation runtime from product facts |
-| `internal/prompt` | prompt definitions | `internal/product/ai` or `internal/integration/openai` | prompt ownership should track business use |
-| `internal/promptmgmt` | prompt management | `internal/product/ai` or `internal/app/runtime` | split management UI and domain behavior |
+| `internal/ai` | provider-neutral AI contracts mixed with runtime concerns | `internal/agent/model` or a consuming domain's local contract; concrete providers in `internal/integration/*` | do not expose provider SDK types through domain contracts |
+| `internal/aicapability` | AI capability, routing, policy, cost model, and persistence | `internal/agent/capability` plus `internal/integration/persistence/agent` | split provider-neutral policy from GORM implementation |
+| `internal/prompt` | prompt model, store contract, and GORM store mixed together | `internal/agent/prompt` or the consuming domain, plus `internal/integration/persistence/agent` | ownership follows business use; persistence implementation stays outside the domain |
+| `internal/promptmgmt` | prompt management service and transport-facing behavior | `internal/agent/prompt` plus `internal/app/httpapi` | split domain service from management transport |
 | `internal/crawler` | legacy crawler implementations | `internal/integration/crawler/*` | split by source such as Amazon and 1688 |
 | `internal/amazon` | mixed Amazon logic | `internal/marketplace/amazon/*` and `internal/integration/crawler/amazon` | separate listing-target behavior from source-crawler behavior |
 | `internal/amazonlisting` | Amazon listing behavior | `internal/marketplace/amazon/publishing` or `internal/listing/export` | classify by platform rule versus listing orchestration |
@@ -43,7 +51,7 @@ Use it before broad refactoring so package moves follow a stable direction.
 | `internal/publishing/shein` | legacy SHEIN publishing compatibility shell | `internal/marketplace/shein/publishing` | keep thin; new rules should land in marketplace |
 | `internal/workspace/shein` | legacy SHEIN workspace compatibility shell | `internal/marketplace/shein/workspace` | keep thin; new rules should land in marketplace |
 | `internal/sheinlogin` | SHEIN login adapters | `internal/integration/shein` | authentication adapter, not listing owner |
-| `internal/sheinloginmanaged` | managed SHEIN login integration | `internal/integration/shein` or `internal/platform/authz` | decide by whether it is external adapter or runtime auth support |
+| `internal/sheinloginmanaged` | managed SHEIN login integration | `internal/integration/shein` plus app-owned lifecycle wiring | concrete external authentication does not belong in platform |
 | `internal/temu` | mixed TEMU logic | `internal/marketplace/temu/*` and `internal/integration/temu` | follow the SHEIN split pattern |
 | `internal/platforms` | mixed platform abstractions | `internal/marketplace/*` or `internal/listing/*` | only keep generic cross-platform abstractions in listing |
 | `internal/workspace` | generic workspace behavior | `internal/listing/studio` or `internal/marketplace/*/workspace` | split generic orchestration from platform-specific rules |
@@ -54,7 +62,9 @@ Use it before broad refactoring so package moves follow a stable direction.
 | `internal/taskrpcapi` | task RPC API surface | `internal/app/httpapi` or `internal/app/runtime` | decide by transport ownership |
 | `internal/infra` | runtime infra and external clients | `internal/platform/*` and `internal/integration/*` | split infra by runtime versus external-adapter role |
 | `internal/platformbase` | shared platform base helpers | `internal/platform/*` or `internal/shared` | keep only truly generic primitives in shared |
-| `internal/authz` | authorization support | `internal/platform/authz` | runtime support domain |
+| `internal/authidentity` | normalized tenant, user, and role identity context | `internal/organization/identity` or a minimal `internal/shared/identity` envelope | keep business membership and tenant rules in organization |
+| `internal/authruntime/zitadel` | ZITADEL verifier and HTTP middleware | `internal/integration/identity/zitadel` plus `internal/app/httpapi` | split external verification from middleware wiring |
+| `internal/authz` | business permissions mixed with Casbin engine | owning domains or `internal/organization/authorization`, plus `internal/integration/authz/casbin` | permission semantics are business-owned; concrete policy engine is an adapter |
 | `internal/kernel` | cross-cutting bootstrap/core helpers | `internal/platform/*` or `internal/shared` | classify carefully to avoid becoming a dumping ground |
 | `internal/core` | cross-cutting core helpers | `internal/shared` or a clearer owning domain | only keep stable primitives |
 | `internal/shared` | shared utilities | `internal/shared` | keep small and disciplined |
@@ -66,9 +76,10 @@ Use it before broad refactoring so package moves follow a stable direction.
 | `internal/domain` | legacy domain aggregation | local owning domains | decompose into product, listing, marketplace, shared |
 | `internal/model` | shared or mixed DTO/model package | local owning domains | move models close to the business owner |
 | `internal/scheduler` | scheduling runtime | `internal/app/worker` or `internal/platform/queue` | keep runtime concerns out of business domains |
-| `internal/tenantbridge` | tenant bridge logic | `internal/platform/authz`, `internal/app/runtime`, or `internal/shared` | decide by whether it is runtime tenancy or business tenancy |
+| `internal/sourceaccount` | sourcing account metadata, access policy, and GORM repository | `internal/product/sourcing/account` plus `internal/integration/persistence/product` | source-specific business access is not organization membership; split GORM implementation |
+| `internal/tenantbridge` | legacy tenant mapping compatibility backed by persistence | `internal/compatibility/tenantbridge` plus a persistence adapter | do not turn migration mapping into the organization model |
 | `internal/pkg` | generic helpers | `internal/shared` or more explicit owners | reduce generic catch-all usage |
-| `internal/zitadelprovision` | Zitadel integration | `internal/integration` or `internal/platform/authz` | depends on runtime versus external-adapter ownership |
+| `internal/zitadelprovision` | ZITADEL management client and provisioning workflow | `internal/integration/identity/zitadel/provisioning` plus app-owned operational entrypoints | external client stays in integration; app owns execution lifecycle |
 
 ## 3. Explicit Crawler Guidance
 
@@ -132,6 +143,12 @@ Use this table when the target architecture exists but the legacy package is sti
 | Marketplace workspace/editor rules | `internal/marketplace/<platform>/workspace` | `internal/listingkit`, generic `internal/workspace` if rule is platform-specific |
 | Runtime assembly and route/worker wiring | `internal/app/httpapi`, `internal/app/runtime`, `internal/app/worker` | business packages with embedded bootstrap logic |
 | External API adapter work | `internal/integration/<system>` | `internal/listingkit`, `internal/product`, or generic infra packages |
+| Agent capability and provider-neutral model work | `internal/agent/*` | `internal/integration/openai`, generic `internal/ai` roots |
+| Knowledge documents, retrieval, and citation contracts | `internal/knowledge/*` | agent packages or provider adapters |
+| Agent/tool/service/data catalog work | `internal/resourcecatalog/*` | sales-channel `internal/marketplace/*` |
+| Plans, entitlements, quotas, and usage metering | `internal/commercial/*` | `internal/listing/*`, money `internal/ledger` |
+| Money balance, recharge, charge, and refund | `internal/ledger/*` after a confirmed requirement | usage-metering packages or premature TigerBeetle integration |
+| Organization, membership, and tenant policy | `internal/organization/*` | concrete ZITADEL/Casbin adapters or `internal/shared` catch-alls |
 
 ## 6. Migration Usage Notes
 
