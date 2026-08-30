@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"task-processor/internal/authidentity"
 )
@@ -18,6 +19,7 @@ import (
 var (
 	errResourceOwnerMissing = errors.New("ZITADEL resource owner is required")
 	errSubjectMissing       = errors.New("ZITADEL subject is required")
+	errTokenExpired         = errors.New("ZITADEL token introspection returned an expired token")
 )
 
 type Verifier interface {
@@ -28,6 +30,7 @@ type verifier struct {
 	cfg       Config
 	mu        sync.Mutex
 	discovery discoveryDocument
+	now       func() time.Time
 }
 
 func NewVerifier(cfg Config) Verifier {
@@ -35,7 +38,7 @@ func NewVerifier(cfg Config) Verifier {
 }
 
 func newVerifier(cfg Config) *verifier {
-	return &verifier{cfg: cfg}
+	return &verifier{cfg: cfg, now: time.Now}
 }
 
 func (v *verifier) Verify(ctx context.Context, token string) (authidentity.AuthenticatedIdentity, error) {
@@ -58,11 +61,23 @@ func (v *verifier) Verify(ctx context.Context, token string) (authidentity.Authe
 		return authidentity.AuthenticatedIdentity{}, errSubjectMissing
 	}
 
-	return authidentity.AuthenticatedIdentity{
-		TenantID: tenantID,
-		UserID:   userID,
-		Roles:    append([]string(nil), payload.Roles...),
-	}, nil
+	identity := authidentity.AuthenticatedIdentity{
+		TenantID:           tenantID,
+		UserID:             userID,
+		Roles:              append([]string(nil), payload.Roles...),
+		HomeOrganizationID: tenantID,
+	}
+	if payload.ExpiresAt > 0 {
+		identity.TokenExpiresAt = time.Unix(payload.ExpiresAt, 0).UTC()
+	}
+	return identity, nil
+}
+
+func (v *verifier) tokenExpired(expiresAt int64) bool {
+	if expiresAt <= 0 {
+		return false
+	}
+	return !time.Unix(expiresAt, 0).After(v.now())
 }
 
 func (v *verifier) introspect(ctx context.Context, token string) (*IntrospectionResponse, error) {
@@ -110,6 +125,9 @@ func (v *verifier) introspect(ctx context.Context, token string) (*Introspection
 	}
 	if !payload.Active {
 		return nil, errors.New("ZITADEL token introspection returned an inactive token; check whether the UI and API are using the same ZITADEL issuer/client configuration")
+	}
+	if v.tokenExpired(payload.ExpiresAt) {
+		return nil, errTokenExpired
 	}
 	return &payload, nil
 }

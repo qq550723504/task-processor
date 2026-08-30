@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -54,12 +55,68 @@ func TestVerifierReturnsCanonicalIdentity(t *testing.T) {
 		got, err := verifier.Verify(context.Background(), "user-token")
 		require.NoError(t, err)
 		require.Equal(t, authidentity.AuthenticatedIdentity{
-			TenantID: "org-1", UserID: "user-1", Roles: []string{"listingkit_operator"},
+			TenantID: "org-1", UserID: "user-1", Roles: []string{"listingkit_operator"}, HomeOrganizationID: "org-1",
 		}, got)
 	}
 
 	require.Equal(t, int32(1), discoveryHits.Load())
 	require.Equal(t, int32(2), introspectionHits.Load())
+}
+
+func TestVerifierRejectsExpiredActiveToken(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 12, 0, 0, 0, time.UTC)
+	server := newAuthServer(t, map[string]any{
+		"active":                                true,
+		"sub":                                   "user-1",
+		"urn:zitadel:iam:user:resourceowner:id": "org-1",
+		"exp":                                   now.Add(-time.Second).Unix(),
+	})
+	defer server.Close()
+
+	verifier := newVerifier(normalizeConfig(Config{
+		IssuerURL:  server.URL,
+		ClientID:   "api",
+		HTTPClient: server.Client(),
+	}))
+	verifier.now = func() time.Time { return now }
+
+	_, err := verifier.Verify(context.Background(), "user-token")
+
+	require.ErrorContains(t, err, "expired")
+}
+
+func TestVerifierCopiesFutureExpiryIntoCanonicalIdentity(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 12, 0, 0, 0, time.UTC)
+	expiresAt := now.Add(15 * time.Minute)
+	server := newAuthServer(t, map[string]any{
+		"active":                                true,
+		"sub":                                   " user-1 ",
+		"urn:zitadel:iam:user:resourceowner:id": " org-home ",
+		"exp":                                   expiresAt.Unix(),
+		"urn:zitadel:iam:org:project:project-1:roles": []any{
+			map[string]any{"listingkit_operator": map[string]any{}},
+		},
+	})
+	defer server.Close()
+
+	verifier := newVerifier(normalizeConfig(Config{
+		IssuerURL:  server.URL,
+		ClientID:   "api",
+		ProjectID:  "project-1",
+		HTTPClient: server.Client(),
+	}))
+	verifier.now = func() time.Time { return now }
+
+	got, err := verifier.Verify(context.Background(), "user-token")
+
+	require.NoError(t, err)
+	require.Equal(t, authidentity.AuthenticatedIdentity{
+		TenantID:           "org-home",
+		UserID:             "user-1",
+		Roles:              []string{"listingkit_operator"},
+		HomeOrganizationID: "org-home",
+		TokenExpiresAt:     expiresAt,
+	}, got)
 }
 
 func TestParseRolesForProjectSupportsDynamicArrayRoleMaps(t *testing.T) {

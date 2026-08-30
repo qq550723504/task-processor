@@ -3,6 +3,7 @@ package authidentity
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -11,17 +12,40 @@ import (
 
 func TestAuthenticatedIdentityRoundTripsThroughContext(t *testing.T) {
 	roles := []string{"listingkit_operator"}
+	grantRoles := []string{"listingkit_admin"}
+	grants := []OrganizationGrant{{
+		OrganizationID:   " org-a ",
+		OrganizationName: " Organization A ",
+		ProjectID:        " project-1 ",
+		Roles:            grantRoles,
+	}}
+	expiresAt := time.Date(2026, time.August, 30, 12, 30, 0, 0, time.FixedZone("SGT", 8*60*60))
 	ctx := WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{
-		TenantID: " tenant-a ",
-		UserID:   " user-a ",
-		Roles:    roles,
+		TenantID:                " tenant-a ",
+		UserID:                  " user-a ",
+		Roles:                   roles,
+		HomeOrganizationID:      " org-home ",
+		EffectiveOrganizationID: " org-a ",
+		OrganizationGrants:      grants,
+		TokenExpiresAt:          expiresAt,
 	})
 	roles[0] = "mutated-after-storage"
+	grantRoles[0] = "mutated-after-storage"
+	grants[0].OrganizationID = "mutated-after-storage"
 
 	want := AuthenticatedIdentity{
-		TenantID: "tenant-a",
-		UserID:   "user-a",
-		Roles:    []string{"listingkit_operator"},
+		TenantID:                "tenant-a",
+		UserID:                  "user-a",
+		Roles:                   []string{"listingkit_operator"},
+		HomeOrganizationID:      "org-home",
+		EffectiveOrganizationID: "org-a",
+		OrganizationGrants: []OrganizationGrant{{
+			OrganizationID:   "org-a",
+			OrganizationName: "Organization A",
+			ProjectID:        "project-1",
+			Roles:            []string{"listingkit_admin"},
+		}},
+		TokenExpiresAt: expiresAt.UTC(),
 	}
 
 	got, ok := AuthenticatedIdentityFromContext(ctx)
@@ -30,9 +54,33 @@ func TestAuthenticatedIdentityRoundTripsThroughContext(t *testing.T) {
 	require.Equal(t, want, got)
 	require.Equal(t, aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"}, aiidentity.FromContext(ctx))
 	got.Roles[0] = "mutated-after-read"
+	got.OrganizationGrants[0].OrganizationID = "mutated-after-read"
+	got.OrganizationGrants[0].Roles[0] = "mutated-after-read"
 	got, ok = AuthenticatedIdentityFromContext(ctx)
 	require.True(t, ok)
 	require.Equal(t, want, got)
+}
+
+func TestAuthenticatedIdentityKeepsEffectiveRolesScopedToSelectedOrganization(t *testing.T) {
+	ctx := WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{
+		TenantID:                "org-b",
+		UserID:                  "user-a",
+		Roles:                   []string{"listingkit_viewer"},
+		HomeOrganizationID:      "org-a",
+		EffectiveOrganizationID: "org-b",
+		OrganizationGrants: []OrganizationGrant{
+			{OrganizationID: "org-a", ProjectID: "project-1", Roles: []string{"listingkit_admin"}},
+			{OrganizationID: "org-b", ProjectID: "project-1", Roles: []string{"listingkit_viewer"}},
+		},
+	})
+
+	got, ok := AuthenticatedIdentityFromContext(ctx)
+
+	require.True(t, ok)
+	require.Equal(t, "org-b", got.EffectiveOrganizationID)
+	require.Equal(t, []string{"listingkit_viewer"}, got.Roles)
+	require.Equal(t, []string{"listingkit_admin"}, got.OrganizationGrants[0].Roles)
+	require.Equal(t, []string{"listingkit_viewer"}, got.OrganizationGrants[1].Roles)
 }
 
 func TestAuthenticatedIdentityFromContextRejectsIncompleteIdentity(t *testing.T) {

@@ -28,6 +28,7 @@ type AuthorizationConfig struct {
 type IntrospectionResponse struct {
 	Active     bool            `json:"active"`
 	Subject    string          `json:"sub"`
+	ExpiresAt  int64           `json:"exp"`
 	Username   string          `json:"username"`
 	UserID     string          `json:"user_id"`
 	ResourceID string          `json:"urn:zitadel:iam:user:resourceowner:id"`

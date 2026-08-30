@@ -1,6 +1,7 @@
 package zitadel
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -177,9 +178,10 @@ func TestMiddlewareProjectsVerifiedIdentityAndDeduplicatedRoles(t *testing.T) {
 		identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 		require.True(t, ok)
 		require.Equal(t, authidentity.AuthenticatedIdentity{
-			TenantID: "tenant-9",
-			UserID:   "user-42",
-			Roles:    []string{"admin", "operator"},
+			TenantID:           "tenant-9",
+			UserID:             "user-42",
+			Roles:              []string{"admin", "operator"},
+			HomeOrganizationID: "tenant-9",
 		}, identity)
 
 		c.JSON(http.StatusOK, gin.H{
@@ -206,6 +208,48 @@ func TestMiddlewareProjectsVerifiedIdentityAndDeduplicatedRoles(t *testing.T) {
 	require.Equal(t, "", body["user_legacy"])
 	require.Equal(t, "admin,operator", body["user_roles"])
 	require.Equal(t, "", body["zitadel_roles"])
+}
+
+func TestMiddlewareCarriesCanonicalIdentityWithoutTrustingRequestedOrganization(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	expiresAt := time.Date(2026, time.August, 30, 12, 30, 0, 0, time.UTC)
+	verified := authidentity.AuthenticatedIdentity{
+		TenantID:           "org-home",
+		UserID:             "user-42",
+		Roles:              []string{"listingkit_operator"},
+		HomeOrganizationID: "org-home",
+		OrganizationGrants: []authidentity.OrganizationGrant{{
+			OrganizationID:   "org-a",
+			OrganizationName: "Organization A",
+			ProjectID:        "project-1",
+			Roles:            []string{"listingkit_admin"},
+		}},
+		TokenExpiresAt: expiresAt,
+	}
+	impl := &middleware{
+		cfg:      Config{IssuerURL: "https://issuer.example", ClientID: "client-id"},
+		verifier: staticVerifier{identity: verified},
+	}
+
+	rec := performRequest(t, impl.Handle, http.MethodGet, "/", "access-token", map[string]string{
+		"X-Requested-Organization-ID": "org-forged",
+	}, func(c *gin.Context) {
+		got, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, verified, got)
+		require.Empty(t, got.EffectiveOrganizationID)
+		require.Equal(t, "org-forged", c.GetHeader("X-Requested-Organization-ID"))
+
+		got.OrganizationGrants[0].Roles[0] = "mutated-downstream"
+		gotAgain, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, []string{"listingkit_admin"}, gotAgain.OrganizationGrants[0].Roles)
+		c.Status(http.StatusNoContent)
+	})
+
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	require.Equal(t, []string{"listingkit_admin"}, verified.OrganizationGrants[0].Roles)
 }
 
 func TestMiddlewareRejectsInvalidIntrospectionResponses(t *testing.T) {
@@ -436,6 +480,14 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+type staticVerifier struct {
+	identity authidentity.AuthenticatedIdentity
+}
+
+func (v staticVerifier) Verify(context.Context, string) (authidentity.AuthenticatedIdentity, error) {
+	return v.identity, nil
 }
 
 func performRequest(t *testing.T, middleware gin.HandlerFunc, method string, path string, token string, headers map[string]string, handler gin.HandlerFunc) *httptest.ResponseRecorder {
