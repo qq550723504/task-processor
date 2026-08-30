@@ -86,6 +86,11 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	if err != nil {
 		return fmt.Errorf("initialize scheduler resources: %w", err)
 	}
+	defer func() {
+		if err := resources.Close(); err != nil {
+			logger.WithError(err).Warn("close scheduler shared resources")
+		}
+	}()
 	schedulerService := deps.NewScheduler(logger, cfg, resources)
 	if schedulerService == nil {
 		return fmt.Errorf("scheduler service is not configured")

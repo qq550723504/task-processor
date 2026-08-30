@@ -20,11 +20,11 @@ type LocalTaskRPCProvider struct {
 	db *gorm.DB
 }
 
-func NewLocalTaskRPCProvider(provider *LocalDataProvider) *LocalTaskRPCProvider {
-	if provider == nil || provider.db == nil {
+func NewLocalTaskRPCProvider(db *gorm.DB) *LocalTaskRPCProvider {
+	if db == nil {
 		return nil
 	}
-	return &LocalTaskRPCProvider{db: provider.db}
+	return &LocalTaskRPCProvider{db: db}
 }
 
 func (p *LocalTaskRPCProvider) SubmitTask(req *api.TaskSubmitReqDTO, urgent bool) (*api.TaskSubmitRespDTO, bool, error) {

@@ -10,6 +10,7 @@ import (
 	"image/color"
 	"image/png"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -33,7 +34,7 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	logger.SetLevel(logrus.FatalLevel)
 
 	shutdownCh := make(chan os.Signal, 1)
-	port := 18084
+	port := reserveLocalTCPPort(t)
 	fixture := newProductListingAPITestFixture(t)
 	client := fixture.authenticatedClient()
 
@@ -50,29 +51,7 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 		resultCh <- start(logger, options)
 	}()
 
-	// 等待服务就绪
-	ready := false
-	for i := 0; i < 50; i++ {
-		resp, err := http.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/health")
-		if err == nil {
-			if resp.StatusCode == http.StatusOK {
-				ready = true
-				resp.Body.Close()
-				break
-			}
-			resp.Body.Close()
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	if !ready {
-		select {
-		case err := <-resultCh:
-			require.NoError(t, err)
-		default:
-			t.Fatal("service did not become ready")
-		}
-	}
+	waitForProductListingAPIReady(t, port, resultCh)
 
 	// 创建产品任务
 	reqBody := productenrich.GenerateRequest{Text: "测试蓝牙耳机"}
@@ -161,7 +140,7 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	logger.SetLevel(logrus.FatalLevel)
 
 	shutdownCh := make(chan os.Signal, 1)
-	port := 18085
+	port := reserveLocalTCPPort(t)
 	fixture := newProductListingAPITestFixture(t)
 	client := fixture.authenticatedClient()
 
@@ -177,34 +156,14 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 		resultCh <- start(logger, options)
 	}()
 
-	// 等待服务就绪
-	ready := false
-	for i := 0; i < 50; i++ {
-		resp, err := http.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/health")
-		if err == nil {
-			if resp.StatusCode == http.StatusOK {
-				ready = true
-				resp.Body.Close()
-				break
-			}
-			resp.Body.Close()
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	if !ready {
-		select {
-		case err := <-resultCh:
-			require.NoError(t, err)
-		default:
-			t.Fatal("service did not become ready")
-		}
-	}
+	waitForProductListingAPIReady(t, port, resultCh)
 
 	// 400 invalid request for product generation
 	resp, err := client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/products/generate", "application/json", bytes.NewReader([]byte(`{"text":""}`)))
 	require.NoError(t, err)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	responseBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equalf(t, http.StatusBadRequest, resp.StatusCode, "body=%s", responseBody)
 	resp.Body.Close()
 
 	// 404 when product task not found
@@ -306,6 +265,44 @@ type productListingAPITestFixture struct {
 	t         *testing.T
 	mu        sync.Mutex
 	unhandled []string
+}
+
+func reserveLocalTCPPort(t *testing.T) int {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := listener.Addr().(*net.TCPAddr).Port
+	require.NoError(t, listener.Close())
+	return port
+}
+
+func waitForProductListingAPIReady(t *testing.T, port int, resultCh <-chan error) {
+	t.Helper()
+	for i := 0; i < 50; i++ {
+		select {
+		case err := <-resultCh:
+			require.NoError(t, err)
+			t.Fatal("service exited before becoming ready")
+		default:
+		}
+
+		resp, err := http.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/health")
+		if err == nil {
+			if resp.StatusCode == http.StatusOK {
+				resp.Body.Close()
+				return
+			}
+			resp.Body.Close()
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	select {
+	case err := <-resultCh:
+		require.NoError(t, err)
+	default:
+		t.Fatal("service did not become ready")
+	}
 }
 
 func newProductListingAPITestFixture(t *testing.T) *productListingAPITestFixture {

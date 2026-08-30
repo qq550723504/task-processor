@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -10,6 +11,24 @@ import (
 
 	"task-processor/internal/core/config"
 )
+
+func TestSharedResourcesCloseCallsEachCloserOnce(t *testing.T) {
+	var closes int
+	resources := newSharedResources(func() error {
+		closes++
+		return nil
+	})
+
+	require.NoError(t, resources.Close())
+	require.NoError(t, resources.Close())
+	require.Equal(t, 1, closes)
+}
+
+func TestSharedResourcesCloseReturnsCloserError(t *testing.T) {
+	resources := newSharedResources(func() error { return errors.New("close runtime resources") })
+
+	require.EqualError(t, resources.Close(), "close runtime resources")
+}
 
 func TestBuildSharedResourcesDoesNotConstructRetiredManagementService(t *testing.T) {
 	content, err := os.ReadFile("shared_resources.go")
@@ -55,7 +74,7 @@ func TestBuildSharedResourcesReturnsValue(t *testing.T) {
 		require.NotContains(t, string(content), token)
 	}
 	require.Contains(t, string(content), "func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options SharedResourceOptions) (SharedResources, error)")
-	require.Contains(t, string(content), "resources := SharedResources{}")
+	require.Contains(t, string(content), "resources := newSharedResources(runtimeResources.Close)")
 	require.Contains(t, string(content), "return resources, nil")
 }
 

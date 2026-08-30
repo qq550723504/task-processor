@@ -45,10 +45,13 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	}
 
 	done = timer.phase("buildStoreAPI")
-	storeAPI, err := buildHTTPAPIStoreAPI(cfg, logger)
+	storeAPI, storeCloser, err := buildHTTPAPIStoreAPI(cfg, logger)
 	done()
 	if err != nil {
 		return nil, err
+	}
+	if storeCloser != nil {
+		closers = append(closers, storeCloser)
 	}
 
 	timer.total("buildRuntimeDeps")
