@@ -1,9 +1,9 @@
 "use client";
 
-import { Home } from "lucide-react";
+import { Home, Menu, X, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import {
@@ -28,6 +28,18 @@ import {
 } from "@/components/ui/sidebar";
 
 const NO_ORGANIZATION_ROUTE = "/workbench/no-organization";
+const MOBILE_NAVIGATION_ID = "workbench-mobile-navigation";
+
+type WorkbenchNavItem = {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  match: "exact" | "prefix";
+};
+
+const WORKBENCH_NAV_ITEMS = [
+  { label: "工作台", href: "/workbench", icon: Home, match: "exact" },
+] as const satisfies readonly WorkbenchNavItem[];
 
 export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/workbench";
@@ -108,6 +120,8 @@ function WorkbenchFrame({
   children: ReactNode;
   pathname: string;
 }) {
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+
   return (
     <SidebarProvider>
       <Sidebar>
@@ -120,32 +134,10 @@ function WorkbenchFrame({
           <SidebarGroup>
             <SidebarGroupLabel>工作</SidebarGroupLabel>
             <SidebarGroupContent>
-              <nav aria-label="工作台导航">
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={
-                        pathname === "/workbench" ||
-                        pathname.startsWith("/workbench/")
-                      }
-                    >
-                      <Link
-                        aria-current={
-                          pathname === "/workbench" ||
-                          pathname.startsWith("/workbench/")
-                            ? "page"
-                            : undefined
-                        }
-                        href="/workbench"
-                      >
-                        <Home data-icon="inline-start" />
-                        <span>工作台</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </nav>
+              <WorkbenchNavigation
+                ariaLabel="工作台导航"
+                pathname={pathname}
+              />
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
@@ -153,15 +145,92 @@ function WorkbenchFrame({
       </Sidebar>
       <SidebarInset>
         <header className="flex min-h-16 items-center gap-3 border-b bg-background px-4 sm:px-6">
-          <SidebarTrigger />
+          <Button
+            aria-controls={MOBILE_NAVIGATION_ID}
+            aria-expanded={mobileNavigationOpen}
+            aria-label={
+              mobileNavigationOpen ? "关闭工作台导航" : "打开工作台导航"
+            }
+            className="md:hidden"
+            onClick={() => setMobileNavigationOpen((current) => !current)}
+            size="icon"
+            variant="ghost"
+          >
+            {mobileNavigationOpen ? (
+              <X aria-hidden="true" />
+            ) : (
+              <Menu aria-hidden="true" />
+            )}
+          </Button>
+          <SidebarTrigger
+            aria-label="折叠桌面导航"
+            className="hidden md:inline-flex"
+          />
           <div className="ml-auto">
             <OrganizationSwitcher />
           </div>
         </header>
+        {mobileNavigationOpen ? (
+          <div className="border-b bg-background px-4 py-3 md:hidden">
+            <WorkbenchNavigation
+              ariaLabel="移动工作台导航"
+              id={MOBILE_NAVIGATION_ID}
+              onNavigate={() => setMobileNavigationOpen(false)}
+              pathname={pathname}
+            />
+          </div>
+        ) : null}
         <main className="min-w-0 flex-1 bg-muted/20">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );
+}
+
+function WorkbenchNavigation({
+  ariaLabel,
+  id,
+  onNavigate,
+  pathname,
+}: {
+  ariaLabel: string;
+  id?: string;
+  onNavigate?: () => void;
+  pathname: string;
+}) {
+  return (
+    <nav aria-label={ariaLabel} id={id}>
+      <SidebarMenu>
+        {WORKBENCH_NAV_ITEMS.map((item) => {
+          const active = isActiveWorkbenchNavItem(pathname, item);
+          const Icon = item.icon;
+
+          return (
+            <SidebarMenuItem key={item.href}>
+              <SidebarMenuButton asChild isActive={active}>
+                <Link
+                  aria-current={active ? "page" : undefined}
+                  href={item.href}
+                  onClick={onNavigate}
+                >
+                  <Icon data-icon="inline-start" />
+                  <span>{item.label}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          );
+        })}
+      </SidebarMenu>
+    </nav>
+  );
+}
+
+function isActiveWorkbenchNavItem(
+  pathname: string,
+  item: WorkbenchNavItem,
+) {
+  return item.match === "prefix"
+    ? pathname === item.href || pathname.startsWith(`${item.href}/`)
+    : pathname === item.href;
 }
 
 function AccessState({ action, code }: { action: () => void; code: string }) {

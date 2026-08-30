@@ -84,6 +84,50 @@ describe("WorkspaceAppShell", () => {
     expect(screen.getAllByRole("main")).toHaveLength(1);
   });
 
+  it("reveals a reachable mobile navigation without using the desktop sidebar trigger", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(Response.json(ACTIVE_CONTEXT)),
+    );
+    const user = userEvent.setup();
+
+    renderShell();
+
+    const mobileNavigationButton = await screen.findByRole("button", {
+      name: "打开工作台导航",
+    });
+    expect(mobileNavigationButton).toHaveAttribute("aria-expanded", "false");
+    expect(mobileNavigationButton).toHaveClass("md:hidden");
+    expect(
+      screen.getByRole("button", { name: "折叠桌面导航" }),
+    ).toHaveClass("hidden", "md:inline-flex");
+    expect(
+      screen.queryByRole("navigation", { name: "移动工作台导航" }),
+    ).not.toBeInTheDocument();
+
+    mobileNavigationButton.focus();
+    await user.keyboard("[Enter]");
+
+    expect(mobileNavigationButton).toHaveAttribute("aria-expanded", "true");
+    const mobileNavigation = screen.getByRole("navigation", {
+      name: "移动工作台导航",
+    });
+    const mobileWorkbenchLink = within(mobileNavigation).getByRole("link", {
+      name: "工作台",
+    });
+    expect(mobileWorkbenchLink).toHaveAttribute("href", "/workbench");
+    mobileWorkbenchLink.addEventListener("click", (event) =>
+      event.preventDefault(),
+    );
+
+    await user.click(mobileWorkbenchLink);
+
+    expect(mobileNavigationButton).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("navigation", { name: "移动工作台导航" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps the switcher available but withholds scoped children when selection is required", async () => {
     vi.stubGlobal(
       "fetch",
