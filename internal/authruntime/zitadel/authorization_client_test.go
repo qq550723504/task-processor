@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -123,6 +124,107 @@ func TestAuthorizationClientPaginatesWithStableOffsets(t *testing.T) {
 	mu.Lock()
 	assert.Equal(t, []int{0, 1}, offsets)
 	mu.Unlock()
+}
+
+func TestAuthorizationClientAcceptsProtoJSONUint64Pagination(t *testing.T) {
+	testCases := []struct {
+		name        string
+		totalResult any
+	}{
+		{name: "canonical decimal string", totalResult: "1"},
+		{name: "numeric compatibility", totalResult: 1},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				writeAuthorizationListResponseValue(t, w, tt.totalResult, []map[string]any{
+					authorizationFixture("opaque-auth-id", "user-1", "project-1", "org-1", "Organization 1", "STATE_ACTIVE", "viewer"),
+				})
+			}))
+			defer server.Close()
+
+			client := NewAuthorizationClient(server.URL, server.Client())
+			got, err := client.ListOwnProjectAuthorizations(context.Background(), "token", "user-1", "project-1")
+
+			require.NoError(t, err)
+			assert.Equal(t, []authidentity.OrganizationGrant{{
+				OrganizationID: "org-1", OrganizationName: "Organization 1", ProjectID: "project-1", Roles: []string{"viewer"},
+			}}, got)
+		})
+	}
+}
+
+func TestAuthorizationClientRejectsRepeatedAuthorizationIDAcrossNonEmptyPages(t *testing.T) {
+	const opaqueAuthorizationID = "opaque/auth:id-not-an-integer"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request capturedAuthorizationListRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		switch request.Pagination.Offset {
+		case 0:
+			writeAuthorizationListResponseValue(t, w, 2, []map[string]any{
+				authorizationFixture(opaqueAuthorizationID, "user-1", "project-1", "org-a", "Organization A", "STATE_ACTIVE", "admin"),
+			})
+		case 1:
+			writeAuthorizationListResponseValue(t, w, 2, []map[string]any{
+				authorizationFixture(opaqueAuthorizationID, "user-1", "project-1", "org-b", "Organization B", "STATE_ACTIVE", "viewer"),
+			})
+		default:
+			http.Error(w, "unexpected offset", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	client := NewAuthorizationClient(server.URL, server.Client())
+	_, err := client.ListOwnProjectAuthorizations(context.Background(), "token", "user-1", "project-1")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate authorization id")
+}
+
+func TestAuthorizationClientRejectsChangedTotalResultAcrossPages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request capturedAuthorizationListRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		switch request.Pagination.Offset {
+		case 0:
+			writeAuthorizationListResponseValue(t, w, 2, []map[string]any{
+				authorizationFixture("auth-1", "user-1", "project-1", "org-a", "Organization A", "STATE_ACTIVE", "admin"),
+			})
+		case 1:
+			writeAuthorizationListResponseValue(t, w, 3, []map[string]any{
+				authorizationFixture("auth-2", "user-1", "project-1", "org-b", "Organization B", "STATE_ACTIVE", "viewer"),
+			})
+		case 2:
+			writeAuthorizationListResponseValue(t, w, 3, []map[string]any{
+				authorizationFixture("auth-3", "user-1", "project-1", "org-c", "Organization C", "STATE_ACTIVE", "operator"),
+			})
+		default:
+			http.Error(w, "unexpected offset", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	client := NewAuthorizationClient(server.URL, server.Client())
+	_, err := client.ListOwnProjectAuthorizations(context.Background(), "token", "user-1", "project-1")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "total result changed")
+}
+
+func TestAuthorizationClientRejectsBlankAuthorizationID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeAuthorizationListResponseValue(t, w, 1, []map[string]any{
+			authorizationFixture(" ", "user-1", "project-1", "org-1", "Organization 1", "STATE_ACTIVE", "viewer"),
+		})
+	}))
+	defer server.Close()
+
+	client := NewAuthorizationClient(server.URL, server.Client())
+	_, err := client.ListOwnProjectAuthorizations(context.Background(), "token", "user-1", "project-1")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "blank authorization id")
 }
 
 func TestAuthorizationClientFiltersUntrustedItemsAndDeduplicatesScopedRoles(t *testing.T) {
@@ -287,6 +389,11 @@ func newAuthorizationListServer(t *testing.T, total int, authorizations []map[st
 }
 
 func writeAuthorizationListResponse(t *testing.T, w http.ResponseWriter, total int, authorizations []map[string]any) {
+	t.Helper()
+	writeAuthorizationListResponseValue(t, w, strconv.Itoa(total), authorizations)
+}
+
+func writeAuthorizationListResponseValue(t *testing.T, w http.ResponseWriter, total any, authorizations []map[string]any) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
 	require.NoError(t, json.NewEncoder(w).Encode(map[string]any{

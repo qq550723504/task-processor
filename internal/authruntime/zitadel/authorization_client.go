@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,12 +67,13 @@ type authorizationIDFilter struct {
 
 type authorizationListResponse struct {
 	Pagination struct {
-		TotalResult uint64 `json:"totalResult"`
+		TotalResult protoJSONUint64 `json:"totalResult"`
 	} `json:"pagination"`
 	Authorizations []authorizationRecordV2 `json:"authorizations"`
 }
 
 type authorizationRecordV2 struct {
+	ID      string `json:"id"`
 	Project struct {
 		ID string `json:"id"`
 	} `json:"project"`
@@ -91,6 +93,34 @@ type authorizationRecordV2 struct {
 type organizationGrantAccumulator struct {
 	grant authidentity.OrganizationGrant
 	roles map[string]struct{}
+}
+
+// protoJSONUint64 accepts the canonical quoted decimal representation emitted
+// by ProtoJSON and unquoted integer values for compatibility with JSON proxies.
+type protoJSONUint64 uint64
+
+func (value *protoJSONUint64) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 {
+		return errors.New("empty ProtoJSON uint64")
+	}
+
+	var parsed uint64
+	if data[0] == '"' {
+		var decimal string
+		if err := json.Unmarshal(data, &decimal); err != nil {
+			return err
+		}
+		converted, err := strconv.ParseUint(decimal, 10, 64)
+		if err != nil {
+			return err
+		}
+		parsed = converted
+	} else if err := json.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+	*value = protoJSONUint64(parsed)
+	return nil
 }
 
 // ListOwnProjectAuthorizations returns only active role assignments belonging
@@ -119,33 +149,53 @@ func (c *AuthorizationClient) ListOwnProjectAuthorizations(
 	}
 
 	grants := make(map[string]*organizationGrantAccumulator)
-	returned := 0
+	seenAuthorizationIDs := make(map[string]struct{})
+	var firstTotalResult uint64
+	firstPage := true
 	for offset := 0; ; {
 		response, err := c.listAuthorizationPage(ctx, bearerToken, subject, projectID, offset)
 		if err != nil {
 			return nil, err
 		}
-		if response.Pagination.TotalResult > authorizationListMaximumResult {
-			return nil, errors.New("ZITADEL authorization query returned more than 1,000 authorizations")
+		totalResult := uint64(response.Pagination.TotalResult)
+		if firstPage {
+			firstTotalResult = totalResult
+			firstPage = false
+		} else if totalResult != firstTotalResult {
+			return nil, errors.New("ZITADEL authorization pagination total result changed")
 		}
-		returned += len(response.Authorizations)
-		if returned > authorizationListMaximumResult {
+		if firstTotalResult > authorizationListMaximumResult {
 			return nil, errors.New("ZITADEL authorization query returned more than 1,000 authorizations")
 		}
 
 		for _, authorization := range response.Authorizations {
+			authorizationID := strings.TrimSpace(authorization.ID)
+			if authorizationID == "" {
+				return nil, errors.New("ZITADEL authorization contains a blank authorization id")
+			}
+			if _, duplicate := seenAuthorizationIDs[authorizationID]; duplicate {
+				return nil, errors.New("ZITADEL authorization pagination returned a duplicate authorization id")
+			}
+			seenAuthorizationIDs[authorizationID] = struct{}{}
 			if err := addAuthorizationGrant(grants, authorization, subject, projectID); err != nil {
 				return nil, err
 			}
 		}
 
-		if uint64(returned) >= response.Pagination.TotalResult {
+		returned := uint64(len(seenAuthorizationIDs))
+		if returned > authorizationListMaximumResult {
+			return nil, errors.New("ZITADEL authorization query returned more than 1,000 authorizations")
+		}
+		if returned > firstTotalResult {
+			return nil, errors.New("ZITADEL authorization pagination exceeded its total result")
+		}
+		if returned == firstTotalResult {
 			return sortedOrganizationGrants(grants), nil
 		}
 		if len(response.Authorizations) == 0 {
 			return nil, errors.New("ZITADEL authorization pagination made no progress")
 		}
-		offset += len(response.Authorizations)
+		offset = len(seenAuthorizationIDs)
 	}
 }
 

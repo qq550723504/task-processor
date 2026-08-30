@@ -1,7 +1,7 @@
 {
   "pagination": {
-    "totalResult": 2,
-    "appliedLimit": 100
+    "totalResult": "2",
+    "appliedLimit": "100"
   },
   "authorizations": [
     {
