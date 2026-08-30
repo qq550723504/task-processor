@@ -6,13 +6,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestPhase2TargetDirectionDepguardRulesCoverApprovedBoundaries(t *testing.T) {
 	configPath := filepath.Join("..", ".golangci.yml")
-	config := readRepositoryText(t, configPath)
-	targetRule := depguardRuleBlock(t, config, "target_domain_concrete_infrastructure")
-	platformRule := depguardRuleBlock(t, config, "platform_domain_dependencies")
+	rules := loadDepguardRules(t, configPath)
+	targetRule := requireDepguardRule(t, rules, "target_domain_concrete_infrastructure")
+	platformRule := requireDepguardRule(t, rules, "platform_domain_dependencies")
+	targetFiles := stringSet(targetRule.Files)
+	platformFiles := stringSet(platformRule.Files)
+	targetDeny := depguardDenyPackageSet(targetRule)
+	platformDeny := depguardDenyPackageSet(platformRule)
 
 	domains := []string{
 		"listing", "product", "marketplace", "agent", "knowledge",
@@ -20,28 +26,28 @@ func TestPhase2TargetDirectionDepguardRulesCoverApprovedBoundaries(t *testing.T)
 	}
 	for _, domain := range domains {
 		for _, glob := range []string{
-			fmt.Sprintf(`- "**/internal/%s/*.go"`, domain),
-			fmt.Sprintf(`- "**/internal/%s/**/*.go"`, domain),
+			fmt.Sprintf("**/internal/%s/*.go", domain),
+			fmt.Sprintf("**/internal/%s/**/*.go", domain),
 		} {
-			if !strings.Contains(targetRule, glob) {
+			if _, ok := targetFiles[glob]; !ok {
 				t.Errorf("target_domain_concrete_infrastructure must cover %s", glob)
 			}
 		}
 
 		packagePath := "task-processor/internal/" + domain
 		for _, suffix := range []string{"$", "/"} {
-			pattern := fmt.Sprintf(`- pkg: "%s%s"`, packagePath, suffix)
-			if !strings.Contains(platformRule, pattern) {
+			pattern := packagePath + suffix
+			if _, ok := platformDeny[pattern]; !ok {
 				t.Errorf("platform_domain_dependencies must deny %s", pattern)
 			}
 		}
 	}
 
 	for _, glob := range []string{
-		`- "**/internal/platform/*.go"`,
-		`- "**/internal/platform/**/*.go"`,
+		"**/internal/platform/*.go",
+		"**/internal/platform/**/*.go",
 	} {
-		if !strings.Contains(platformRule, glob) {
+		if _, ok := platformFiles[glob]; !ok {
 			t.Errorf("platform_domain_dependencies must cover %s", glob)
 		}
 	}
@@ -60,30 +66,103 @@ func TestPhase2TargetDirectionDepguardRulesCoverApprovedBoundaries(t *testing.T)
 		"github.com/rabbitmq",
 	} {
 		for _, suffix := range []string{"$", "/"} {
-			pattern := fmt.Sprintf(`- pkg: "%s%s"`, packagePath, suffix)
-			if !strings.Contains(targetRule, pattern) {
+			pattern := packagePath + suffix
+			if _, ok := targetDeny[pattern]; !ok {
 				t.Errorf("target_domain_concrete_infrastructure must deny %s", pattern)
 			}
 		}
 	}
 }
 
-func depguardRuleBlock(t *testing.T, config, ruleName string) string {
+func TestDepguardRuleParsingUsesYAMLSemantics(t *testing.T) {
+	rules := parseDepguardRules(t, []byte(`
+linters-settings:
+  depguard:
+    rules:
+      semantic_rule:
+        files:
+          # - "**/internal/commented/*.go"
+          - '**/internal/single-quoted/*.go'
+        deny:
+          # - pkg: "task-processor/internal/commented$"
+          - pkg: task-processor/internal/unquoted$
+`))
+	rule := requireDepguardRule(t, rules, "semantic_rule")
+	files := stringSet(rule.Files)
+	denied := depguardDenyPackageSet(rule)
+
+	if _, ok := files["**/internal/commented/*.go"]; ok {
+		t.Fatal("commented file glob must not be a semantic depguard entry")
+	}
+	if _, ok := denied["task-processor/internal/commented$"]; ok {
+		t.Fatal("commented deny package must not be a semantic depguard entry")
+	}
+	if _, ok := files["**/internal/single-quoted/*.go"]; !ok {
+		t.Fatal("single-quoted file glob must retain its YAML value")
+	}
+	if _, ok := denied["task-processor/internal/unquoted$"]; !ok {
+		t.Fatal("unquoted deny package must retain its YAML value")
+	}
+}
+
+type depguardConfig struct {
+	LintersSettings struct {
+		Depguard struct {
+			Rules map[string]depguardRule `yaml:"rules"`
+		} `yaml:"depguard"`
+	} `yaml:"linters-settings"`
+}
+
+type depguardRule struct {
+	Files []string       `yaml:"files"`
+	Deny  []depguardDeny `yaml:"deny"`
+}
+
+type depguardDeny struct {
+	Package string `yaml:"pkg"`
+}
+
+func loadDepguardRules(t *testing.T, configPath string) map[string]depguardRule {
 	t.Helper()
-	startMarker := "      " + ruleName + ":\n"
-	start := strings.Index(config, startMarker)
-	if start == -1 {
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+	return parseDepguardRules(t, content)
+}
+
+func parseDepguardRules(t *testing.T, content []byte) map[string]depguardRule {
+	t.Helper()
+	var config depguardConfig
+	if err := yaml.Unmarshal(content, &config); err != nil {
+		t.Fatalf("parse depguard YAML: %v", err)
+	}
+	return config.LintersSettings.Depguard.Rules
+}
+
+func requireDepguardRule(t *testing.T, rules map[string]depguardRule, ruleName string) depguardRule {
+	t.Helper()
+	rule, ok := rules[ruleName]
+	if !ok {
 		t.Fatalf(".golangci.yml must define %s", ruleName)
 	}
-	rest := config[start+len(startMarker):]
-	offset := 0
-	for _, line := range strings.SplitAfter(rest, "\n") {
-		if strings.HasPrefix(line, "      ") && len(line) > 6 && line[6] != ' ' {
-			return config[start : start+len(startMarker)+offset]
-		}
-		offset += len(line)
+	return rule
+}
+
+func stringSet(values []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		result[value] = struct{}{}
 	}
-	return config[start:]
+	return result
+}
+
+func depguardDenyPackageSet(rule depguardRule) map[string]struct{} {
+	result := make(map[string]struct{}, len(rule.Deny))
+	for _, deny := range rule.Deny {
+		result[deny.Package] = struct{}{}
+	}
+	return result
 }
 
 func TestPlatformRegistrationDepguardPatternsRespectPackageBoundaries(t *testing.T) {
