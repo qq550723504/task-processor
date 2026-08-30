@@ -1,17 +1,16 @@
-import {
-  auth,
-  signOut,
-} from "@/auth";
+import type { NextRequest } from "next/server";
+
+import { signOut } from "@/auth";
 import {
   fetchZitadelDiscovery,
   getZitadelAuthOptions,
-  readZitadelIDTokenFromSession,
   resolvePublicAppOrigin,
 } from "@/lib/server/zitadel-auth";
+import { readZitadelServerIDToken } from "@/lib/server/zitadel-server-token";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const options = getZitadelAuthOptions();
   const postLogoutTarget = options?.postLogoutRedirectUri || resolvePublicAppOrigin();
 
@@ -25,7 +24,6 @@ export async function GET() {
   } catch {
     return signOut({ redirectTo: postLogoutTarget });
   }
-  const session = await auth();
   const logoutUrl = discovery.end_session_endpoint
     ? new URL(discovery.end_session_endpoint)
     : new URL(postLogoutTarget);
@@ -33,7 +31,7 @@ export async function GET() {
   if (discovery.end_session_endpoint) {
     logoutUrl.searchParams.set("client_id", options.clientId);
     logoutUrl.searchParams.set("post_logout_redirect_uri", postLogoutTarget);
-    const idToken = readZitadelIDTokenFromSession(session);
+    const idToken = await readZitadelServerIDToken(request);
     if (idToken) {
       logoutUrl.searchParams.set("id_token_hint", idToken);
     }

@@ -18,14 +18,17 @@ import (
 
 const (
 	defaultIssuerURL      = "http://localhost:8080"
+	defaultBootstrapUser  = "zitadel-admin@zitadel.localhost"
 	localAPIApplication   = "ListingKit Local API"
 	localOIDCApplication  = "ListingKit Local OIDC"
-	localRedirectURI      = "http://localhost:3000/api/zitadel-auth/callback"
+	localRedirectURI      = "http://localhost:3000/api/auth/callback/zitadel"
 	localPostLogoutURI    = "http://localhost:3000"
 	managementTokenEnvKey = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MANAGEMENT_TOKEN"
 	projectIDEnvKey       = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID"
 	apiClientIDEnvKey     = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_ID"
 	apiClientSecretEnvKey = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_SECRET"
+	bootstrapTenantIDKey  = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_BOOTSTRAP_TENANT_ID"
+	bootstrapUserIDKey    = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_BOOTSTRAP_USER_ID"
 )
 
 func main() {
@@ -67,6 +70,7 @@ func runProvision(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	orgID := envOrDefault("ZITADEL_ORG_ID", "")
 	projectID := os.Getenv(projectIDEnvKey)
 	projectName := envOrDefault("LISTINGKIT_ZITADEL_PROJECT_NAME", "ListingKit")
+	bootstrapLoginName := envOrDefault("LISTINGKIT_ZITADEL_BOOTSTRAP_LOGIN_NAME", defaultBootstrapUser)
 	createProject := true
 	managementTokenFile := ""
 	runtimeFile := ""
@@ -74,6 +78,7 @@ func runProvision(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	flags.StringVar(&orgID, "org-id", orgID, "ZITADEL management organization ID")
 	flags.StringVar(&projectID, "project-id", projectID, "ListingKit ZITADEL project ID")
 	flags.StringVar(&projectName, "project-name", projectName, "ListingKit ZITADEL project name")
+	flags.StringVar(&bootstrapLoginName, "bootstrap-login-name", bootstrapLoginName, "local human login name to grant the operator role")
 	flags.BoolVar(&createProject, "create-project", createProject, "create the project when it does not exist")
 	flags.StringVar(&managementTokenFile, "management-token-file", managementTokenFile, "file containing the ZITADEL management token")
 	flags.StringVar(&runtimeFile, "runtime-file", runtimeFile, "generated runtime environment file")
@@ -97,31 +102,22 @@ func runProvision(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	if err != nil {
 		return err
 	}
-	if runtimeFileExists(runtimeFile) {
-		for _, key := range []string{apiClientSecretEnvKey, "ZITADEL_CLIENT_SECRET"} {
-			if strings.TrimSpace(existingRuntime[key]) == "" {
-				return fmt.Errorf("existing runtime file is missing %s; refusing to mutate ZITADEL", key)
-			}
-		}
-	}
 	managementToken, err := readSecretFile(managementTokenFile, "management token")
 	if err != nil {
 		return err
 	}
+	hasProjectCheck := false
 
 	result, err := zitadelprovision.ProvisionLocalApplications(ctx, zitadelprovision.Config{
-		IssuerURL:       strings.TrimSpace(issuerURL),
-		ManagementToken: managementToken,
-		OrgID:           strings.TrimSpace(orgID),
-		ProjectID:       strings.TrimSpace(projectID),
-		ProjectName:     strings.TrimSpace(projectName),
-		CreateProject:   createProject,
-	}, zitadelprovision.LocalApplicationConfig{
-		APIName:                localAPIApplication,
-		OIDCName:               localOIDCApplication,
-		RedirectURIs:           []string{localRedirectURI},
-		PostLogoutRedirectURIs: []string{localPostLogoutURI},
-	})
+		IssuerURL:          strings.TrimSpace(issuerURL),
+		ManagementToken:    managementToken,
+		OrgID:              strings.TrimSpace(orgID),
+		ProjectID:          strings.TrimSpace(projectID),
+		ProjectName:        strings.TrimSpace(projectName),
+		CreateProject:      createProject,
+		HasProjectCheck:    &hasProjectCheck,
+		BootstrapLoginName: strings.TrimSpace(bootstrapLoginName),
+	}, localApplicationConfig())
 	if err != nil {
 		return fmt.Errorf("provision local ZITADEL applications: %w", err)
 	}
@@ -135,6 +131,20 @@ func runProvision(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	}
 	fmt.Fprintln(stdout, "status=ok phase=provision")
 	return nil
+}
+
+func localApplicationConfig() zitadelprovision.LocalApplicationConfig {
+	return zitadelprovision.LocalApplicationConfig{
+		APIName:                localAPIApplication,
+		OIDCName:               localOIDCApplication,
+		RedirectURIs:           []string{localRedirectURI},
+		PostLogoutRedirectURIs: []string{localPostLogoutURI},
+		// Existing local secrets are intentionally rotated on every provision.
+		// If a prior run rotated ZITADEL but crashed before runtime.env was
+		// replaced, the next run must recover instead of preserving stale values.
+		RotateAPIClientSecret:  true,
+		RotateOIDCClientSecret: true,
+	}
 }
 
 func runAuthorize(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -191,6 +201,14 @@ func runAuthorize(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	if err != nil {
 		return err
 	}
+	bootstrapTenantID, err := requiredRuntimeValue(runtime, bootstrapTenantIDKey)
+	if err != nil {
+		return err
+	}
+	bootstrapUserID, err := requiredRuntimeValue(runtime, bootstrapUserIDKey)
+	if err != nil {
+		return err
+	}
 
 	verifier := zitadel.NewVerifier(zitadel.Config{
 		IssuerURL:    issuerURL,
@@ -200,6 +218,9 @@ func runAuthorize(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	identity, err := verifier.Verify(ctx, browserToken)
 	if err != nil {
 		return fmt.Errorf("verify browser token: %w", err)
+	}
+	if identity.TenantID != bootstrapTenantID || identity.UserID != bootstrapUserID {
+		return errors.New("verified browser identity does not match the provisioned local bootstrap user")
 	}
 
 	additionalRole := ""
@@ -214,13 +235,30 @@ func runAuthorize(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	}, additionalRole, identity); err != nil {
 		return fmt.Errorf("grant local operator authorization: %w", err)
 	}
+	runtime["TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED"] = "true"
+	runtime["TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS"] = identity.TenantID
+	if err := writeRuntimeEnv(runtimeFile, runtime); err != nil {
+		return fmt.Errorf("persist authorized acceptance tenant: %w", err)
+	}
 	fmt.Fprintln(stdout, "status=ok phase=authorize")
 	return nil
 }
 
 func runtimeValues(existing map[string]string, issuerURL, managementToken, orgID string, result zitadelprovision.LocalApplicationResult) (map[string]string, error) {
 	runtime := make(map[string]string)
-	for _, key := range []string{managementTokenEnvKey, apiClientSecretEnvKey, "ZITADEL_CLIENT_SECRET", "ZITADEL_ORG_ID"} {
+	for _, key := range []string{
+		managementTokenEnvKey,
+		apiClientSecretEnvKey,
+		"ZITADEL_CLIENT_SECRET",
+		"ZITADEL_ORG_ID",
+		"LISTINGKIT_ACCEPTANCE_DATABASE_DSN",
+		"LISTINGKIT_ACCEPTANCE_ENVIRONMENT_MARKER",
+		"LISTINGKIT_ACCEPTANCE_COMPOSE_PROJECT",
+		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED",
+		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS",
+		bootstrapTenantIDKey,
+		bootstrapUserIDKey,
+	} {
 		if value := strings.TrimSpace(existing[key]); value != "" {
 			runtime[key] = value
 		}
@@ -250,6 +288,11 @@ func runtimeValues(existing map[string]string, issuerURL, managementToken, orgID
 	runtime["ZITADEL_SCOPES"] = strings.Join(result.RecommendedScopes, " ")
 	runtime["TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED"] = "true"
 	runtime["TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES"] = "listingkit_viewer,listingkit_operator,listingkit_admin,platform_admin"
+	runtime[bootstrapTenantIDKey] = strings.TrimSpace(result.BootstrapTenantID)
+	runtime[bootstrapUserIDKey] = strings.TrimSpace(result.BootstrapUserID)
+	if runtime[bootstrapTenantIDKey] == "" || runtime[bootstrapUserIDKey] == "" {
+		return nil, errors.New("local bootstrap identity is unavailable")
+	}
 	if strings.TrimSpace(orgID) != "" {
 		runtime["ZITADEL_ORG_ID"] = strings.TrimSpace(orgID)
 	}
@@ -257,13 +300,18 @@ func runtimeValues(existing map[string]string, issuerURL, managementToken, orgID
 }
 
 func preserveSecret(generated string, existing map[string]string, key string) (string, error) {
-	if strings.TrimSpace(generated) != "" {
+	if isUsableRuntimeSecret(generated) {
 		return generated, nil
 	}
-	if value := strings.TrimSpace(existing[key]); value != "" {
+	if value := strings.TrimSpace(existing[key]); isUsableRuntimeSecret(value) {
 		return value, nil
 	}
 	return "", fmt.Errorf("runtime secret %s is unavailable", key)
+}
+
+func isUsableRuntimeSecret(value string) bool {
+	normalized := strings.TrimSpace(value)
+	return normalized != "" && !strings.EqualFold(normalized, "pending-provision")
 }
 
 func readSecretFile(path, description string) (string, error) {
@@ -351,8 +399,12 @@ func rejectSymlinkPath(path string) error {
 			}
 			return fmt.Errorf("inspect runtime file path: %w", statErr)
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("runtime file path must not contain symlinks")
+		unsafe, unsafeErr := isUnsafePathComponent(current, info)
+		if unsafeErr != nil {
+			return fmt.Errorf("inspect runtime file path safety: %w", unsafeErr)
+		}
+		if unsafe {
+			return errors.New("runtime file path must not contain symlinks or reparse points")
 		}
 	}
 	return nil
@@ -380,11 +432,8 @@ func writeRuntimeEnv(path string, values map[string]string) error {
 		content.WriteString(value)
 		content.WriteByte('\n')
 	}
-	if err := os.WriteFile(path, []byte(content.String()), 0o600); err != nil {
-		return fmt.Errorf("write runtime file: %w", err)
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return fmt.Errorf("protect runtime file: %w", err)
+	if err := writePrivateFile(path, []byte(content.String())); err != nil {
+		return fmt.Errorf("write protected runtime file: %w", err)
 	}
 	return nil
 }

@@ -4,9 +4,12 @@ import (
 	"context"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
 
 	"task-processor/internal/asset"
 	"task-processor/internal/authidentity"
@@ -44,6 +47,9 @@ func TestSeedDerivesOwnerAndCreatesMinimalSheinTask(t *testing.T) {
 	}
 	if task.TenantID != "org-1" || task.UserID != "user-1" || task.Result == nil || task.Result.StandardProductSnapshot == nil {
 		t.Fatalf("seeded task identity/result = %+v, want derived owner and standard snapshot", task)
+	}
+	if !reflect.DeepEqual(task.Result.Platforms, []string{"shein"}) {
+		t.Fatalf("seeded task platforms = %+v, want SHEIN target declaration", task.Result.Platforms)
 	}
 	bundle := task.Result.AssetBundlesByTarget["shein"]
 	if bundle == nil || len(bundle.Assets) != 2 {
@@ -91,6 +97,73 @@ func TestSeedRerunIsIdempotentButDifferentSourceOrOwnerFails(t *testing.T) {
 	repo.override = existing
 	if _, err := Seed(context.Background(), acceptingGuard{}, verifier, repo, request); err == nil || !strings.Contains(err.Error(), "owner") {
 		t.Fatalf("changed owner Seed() error = %v, want owner rejection", err)
+	}
+}
+
+func TestSeedConcurrentSQLiteCreateRecoversTheEquivalentRow(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{
+		DriverName: "sqlite",
+		DSN:        "file:image-agent-acceptance-seed-concurrent?mode=memory&cache=shared&_busy_timeout=5000",
+	}, &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	if err := db.AutoMigrate(&listingkit.Task{}, &listingkit.SheinPODImageLookupIndex{}); err != nil {
+		t.Fatal(err)
+	}
+
+	barrier := &createBarrierRepository{
+		Repository: store.NewTaskRepository(db),
+		arrived:    make(chan struct{}, 2),
+		release:    make(chan struct{}),
+	}
+	verifier := stubVerifier{identity: authidentity.AuthenticatedIdentity{
+		TenantID: "org-1", UserID: "user-1", Roles: []string{"listingkit_operator"},
+	}}
+	request := SeedRequest{Token: "token", SourceURL: "https://cdn.example.test/source.png"}
+
+	type outcome struct {
+		result SeedResult
+		err    error
+	}
+	outcomes := make(chan outcome, 2)
+	var workers sync.WaitGroup
+	for range 2 {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			result, seedErr := Seed(context.Background(), acceptingGuard{}, verifier, barrier, request)
+			outcomes <- outcome{result: result, err: seedErr}
+		}()
+	}
+	<-barrier.arrived
+	<-barrier.arrived
+	close(barrier.release)
+	workers.Wait()
+	close(outcomes)
+
+	var first SeedResult
+	for outcome := range outcomes {
+		if outcome.err != nil {
+			t.Fatalf("concurrent Seed() error = %v", outcome.err)
+		}
+		if first.TaskID == "" {
+			first = outcome.result
+		} else if outcome.result != first {
+			t.Fatalf("concurrent Seed() results differ: %+v vs %+v", outcome.result, first)
+		}
+	}
+	var count int64
+	if err := db.Model(&listingkit.Task{}).Where("id = ?", first.TaskID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("persisted task count = %d, want 1", count)
 	}
 }
 
@@ -146,6 +219,18 @@ type recordingRepository struct {
 	listingkit.Repository
 	creates  int
 	override *listingkit.Task
+}
+
+type createBarrierRepository struct {
+	listingkit.Repository
+	arrived chan struct{}
+	release chan struct{}
+}
+
+func (r *createBarrierRepository) CreateTask(ctx context.Context, task *listingkit.Task) error {
+	r.arrived <- struct{}{}
+	<-r.release
+	return r.Repository.CreateTask(ctx, task)
 }
 
 func (r *recordingRepository) GetTask(ctx context.Context, taskID string) (*listingkit.Task, error) {

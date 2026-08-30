@@ -83,12 +83,63 @@ func TestEnvironmentGuardFailsClosedWhenAProbeIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestEnvironmentGuardRejectsMismatchedLocalTargetsBeforeDockerOrDatabase(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*RuntimeConfig)
+	}{
+		{name: "compose project", mutate: func(config *RuntimeConfig) { config.ComposeProject = "other-project" }},
+		{name: "database host", mutate: func(config *RuntimeConfig) {
+			config.DatabaseDSN = "postgres://acceptance@db.example.test:15433/image_agent_acceptance"
+		}},
+		{name: "database port", mutate: func(config *RuntimeConfig) {
+			config.DatabaseDSN = "postgres://acceptance@127.0.0.1:5432/image_agent_acceptance"
+		}},
+		{name: "database name", mutate: func(config *RuntimeConfig) { config.DatabaseDSN = "postgres://acceptance@127.0.0.1:15433/postgres" }},
+		{name: "database query host override", mutate: func(config *RuntimeConfig) {
+			config.DatabaseDSN = "postgres://acceptance@127.0.0.1:15433/image_agent_acceptance?sslmode=disable&host=db.example.test"
+		}},
+		{name: "database query user override", mutate: func(config *RuntimeConfig) {
+			config.DatabaseDSN = "postgres://acceptance@127.0.0.1:15433/image_agent_acceptance?sslmode=disable&user=prod"
+		}},
+		{name: "database unsupported parameter", mutate: func(config *RuntimeConfig) {
+			config.DatabaseDSN = "postgres://acceptance@127.0.0.1:15433/image_agent_acceptance?sslmode=disable&application_name=acceptance"
+		}},
+		{name: "issuer host", mutate: func(config *RuntimeConfig) { config.IssuerURL = "http://zitadel.example.test:8080" }},
+		{name: "issuer port", mutate: func(config *RuntimeConfig) { config.IssuerURL = "http://localhost:9090" }},
+		{name: "placeholder client", mutate: func(config *RuntimeConfig) { config.APIClientSecret = "pending-provision" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := validRuntimeConfig()
+			tt.mutate(&config)
+			probed := false
+			guard := NewEnvironmentGuard(EnvironmentProbes{
+				ComposeProject: func(context.Context, RuntimeConfig) (bool, error) {
+					probed = true
+					return true, nil
+				},
+				Open: func(context.Context, RuntimeConfig) (*gorm.DB, error) {
+					probed = true
+					return openAcceptanceTestDB(t), nil
+				},
+			})
+			if _, err := guard.Verify(context.Background(), config); err == nil {
+				t.Fatal("Verify() accepted a mismatched local target")
+			}
+			if probed {
+				t.Fatal("Verify() probed Docker or opened a database before rejecting runtime identity")
+			}
+		})
+	}
+}
+
 func validRuntimeConfig() RuntimeConfig {
 	return RuntimeConfig{
-		DatabaseDSN:       "postgres://acceptance@localhost/image_agent_acceptance",
+		DatabaseDSN:       "postgres://acceptance@127.0.0.1:15433/image_agent_acceptance?sslmode=disable",
 		EnvironmentMarker: "marker-1",
 		ComposeProject:    "task-processor-image-agent-acceptance",
-		IssuerURL:         "https://zitadel.example.test",
+		IssuerURL:         "http://localhost:8080",
 		APIClientID:       "api-client",
 		APIClientSecret:   "api-secret",
 	}

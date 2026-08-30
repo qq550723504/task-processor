@@ -83,6 +83,27 @@ func TestLoadRuntimeConfigRejectsMissingOrUnknownFields(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeConfigAcceptsKnownProvisionCompanions(t *testing.T) {
+	content := strings.Join([]string{
+		"LISTINGKIT_ACCEPTANCE_DATABASE_DSN=postgres://acceptance@localhost/image_agent_acceptance",
+		"LISTINGKIT_ACCEPTANCE_ENVIRONMENT_MARKER=marker-1",
+		"LISTINGKIT_ACCEPTANCE_COMPOSE_PROJECT=task-processor-image-agent-acceptance",
+		"ZITADEL_ISSUER_URL=http://localhost:8080",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_ID=api-client",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_SECRET=api-secret",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_MANAGEMENT_TOKEN=management-secret",
+		"ZITADEL_CLIENT_ID=oidc-client",
+		"ZITADEL_CLIENT_SECRET=oidc-secret",
+	}, "\n")
+	got, err := ParseRuntimeConfig([]byte(content))
+	if err != nil {
+		t.Fatalf("ParseRuntimeConfig() error = %v", err)
+	}
+	if got.APIClientID != "api-client" || got.APIClientSecret != "api-secret" {
+		t.Fatalf("ParseRuntimeConfig() = %+v", got)
+	}
+}
+
 func runtimeEnvContent(fields map[string]string) string {
 	keys := []string{
 		"LISTINGKIT_ACCEPTANCE_DATABASE_DSN",

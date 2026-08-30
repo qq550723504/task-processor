@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { LISTINGKIT_TRACE_HEADER_NAMES } from "@/lib/listingkit/request-trace";
-	import {
+import {
   getZitadelAuthOptions,
-  readZitadelAccessTokenFromSession,
   readZitadelSessionClientID,
   readZitadelIdentityFromSession,
   readZitadelSessionError,
   readZitadelSessionIssuerURL,
   type ZitadelVerifiedIdentity,
 } from "@/lib/server/zitadel-auth";
+import { readZitadelServerAccessToken } from "@/lib/server/zitadel-server-token";
 import { logRequestInfo, logRequestWarn } from "@/lib/server/request-log";
 
 export type VerifiedIdentity = ZitadelVerifiedIdentity;
@@ -58,7 +58,7 @@ export async function verifyListingKitRequestIdentity(
       });
       throw new Error(sessionError);
     }
-    const zitadelToken = readZitadelAccessTokenFromSession(session);
+    const zitadelToken = await readZitadelServerAccessToken(request);
     const storedIssuerURL = readZitadelSessionIssuerURL(session);
     const storedClientID = readZitadelSessionClientID(session);
     const identity = readZitadelIdentityFromSession(session) ?? undefined;

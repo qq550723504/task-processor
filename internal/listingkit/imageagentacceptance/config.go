@@ -30,6 +30,31 @@ var runtimeConfigFields = map[string]func(*RuntimeConfig, string){
 	},
 }
 
+// provisionRuntimeFields are emitted by the ZITADEL provisioning command and
+// are intentionally accepted here as opaque companion values. Seed only
+// projects the six fields above; rejecting the companion values would make the
+// provision -> seed handoff impossible while accepting arbitrary environment
+// variables would weaken the acceptance boundary.
+var provisionRuntimeFields = map[string]struct{}{
+	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_MANAGEMENT_TOKEN":    {},
+	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID":          {},
+	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_APP_ID":          {},
+	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_ID":       {},
+	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_OIDC_APP_ID":         {},
+	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_BOOTSTRAP_TENANT_ID": {},
+	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_BOOTSTRAP_USER_ID":   {},
+	"ZITADEL_CLIENT_ID":                                                   {},
+	"ZITADEL_CLIENT_SECRET":                                               {},
+	"ZITADEL_REDIRECT_URI":                                                {},
+	"ZITADEL_POST_LOGOUT_REDIRECT_URI":                                    {},
+	"ZITADEL_SCOPES":                                                      {},
+	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED":                    {},
+	"TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES":                     {},
+	"ZITADEL_ORG_ID":                                                      {},
+	"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED":            {},
+	"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS": {},
+}
+
 // RuntimeConfig contains only the values generated for the local acceptance
 // environment. It deliberately does not model the broader application env.
 type RuntimeConfig struct {
@@ -70,8 +95,9 @@ func ParseRuntimeConfig(data []byte) (RuntimeConfig, error) {
 		if !ok || key == "" {
 			return RuntimeConfig{}, fmt.Errorf("invalid acceptance runtime entry at line %d", lineNumber)
 		}
-		setter, ok := runtimeConfigFields[key]
-		if !ok {
+		setter, requiredField := runtimeConfigFields[key]
+		_, companionField := provisionRuntimeFields[key]
+		if !requiredField && !companionField {
 			return RuntimeConfig{}, fmt.Errorf("unsupported acceptance runtime field %q", key)
 		}
 		if _, duplicate := seen[key]; duplicate {
@@ -84,7 +110,9 @@ func ParseRuntimeConfig(data []byte) (RuntimeConfig, error) {
 		if value == "" {
 			return RuntimeConfig{}, fmt.Errorf("acceptance runtime field %q is empty", key)
 		}
-		setter(&config, value)
+		if requiredField {
+			setter(&config, value)
+		}
 		seen[key] = struct{}{}
 	}
 	if err := scanner.Err(); err != nil {

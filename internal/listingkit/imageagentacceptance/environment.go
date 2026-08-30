@@ -4,14 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 const (
 	DatabaseName                   = "image_agent_acceptance"
+	DatabaseUser                   = "acceptance"
+	DatabasePort                   = "15433"
+	ComposeProjectName             = "task-processor-image-agent-acceptance"
+	ComposePostgresService         = "acceptance-postgres"
+	IssuerPort                     = "8080"
 	EnvironmentMarkerTable         = "listingkit_acceptance_environment"
 	EnvironmentMarkerColumn        = "marker"
 	composeProjectProbeUnavailable = "acceptance Compose project probe is not configured"
@@ -117,7 +125,71 @@ func validateRuntimeConfig(config RuntimeConfig) error {
 			return fmt.Errorf("acceptance runtime %s is required", name)
 		}
 	}
+	if strings.TrimSpace(config.ComposeProject) != ComposeProjectName {
+		return errors.New("acceptance runtime Compose project is not the isolated acceptance project")
+	}
+	if strings.EqualFold(strings.TrimSpace(config.APIClientID), "pending-provision") ||
+		strings.EqualFold(strings.TrimSpace(config.APIClientSecret), "pending-provision") {
+		return errors.New("acceptance runtime API credentials are still pending provisioning")
+	}
+	if err := validateAcceptanceDatabaseDSN(config.DatabaseDSN); err != nil {
+		return err
+	}
+	if err := validateAcceptanceIssuer(config.IssuerURL); err != nil {
+		return err
+	}
 	return nil
+}
+
+func validateAcceptanceDatabaseDSN(raw string) error {
+	raw = strings.TrimSpace(raw)
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return errors.New("acceptance runtime database DSN is invalid")
+	}
+	if parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" {
+		return errors.New("acceptance runtime database DSN must use PostgreSQL")
+	}
+	query := parsed.Query()
+	if len(query) != 1 || len(query["sslmode"]) != 1 || query.Get("sslmode") != "disable" {
+		return errors.New("acceptance runtime database DSN only allows sslmode=disable")
+	}
+	config, err := pgx.ParseConfig(raw)
+	if err != nil {
+		return errors.New("acceptance runtime database DSN is invalid")
+	}
+	if !isLoopbackHost(config.Host) || config.Port != 15433 {
+		return errors.New("acceptance runtime database DSN must target the isolated loopback port")
+	}
+	if config.User != DatabaseUser {
+		return errors.New("acceptance runtime database DSN must use the acceptance user")
+	}
+	if config.Database != DatabaseName {
+		return errors.New("acceptance runtime database DSN must target the acceptance database")
+	}
+	return nil
+}
+
+func validateAcceptanceIssuer(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "http" || parsed.User != nil {
+		return errors.New("acceptance runtime issuer must be a local HTTP URL")
+	}
+	if !isLoopbackHost(parsed.Hostname()) || parsed.Port() != IssuerPort {
+		return errors.New("acceptance runtime issuer must target the isolated loopback port")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return errors.New("acceptance runtime issuer must not contain a path")
+	}
+	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(strings.TrimSpace(host), "localhost") {
+		return true
+	}
+	ip := net.ParseIP(strings.TrimSpace(host))
+	return ip != nil && ip.IsLoopback()
 }
 
 func openRuntimeDatabase(ctx context.Context, config RuntimeConfig) (*gorm.DB, error) {

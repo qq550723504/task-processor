@@ -4,9 +4,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mockedAuthState = vi.hoisted(() => ({
   session: null as Record<string, unknown> | null,
 }));
+const mockedServerToken = vi.hoisted(() => ({ accessToken: "" }));
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(() => Promise.resolve(mockedAuthState.session)),
+}));
+vi.mock("@/lib/server/zitadel-server-token", () => ({
+  readZitadelServerAccessToken: vi.fn(() =>
+    Promise.resolve(mockedServerToken.accessToken),
+  ),
 }));
 
 import {
@@ -307,6 +313,7 @@ describe("verifyListingKitRequestIdentity", () => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     mockedAuthState.session = null;
+    mockedServerToken.accessToken = "";
   });
 
   it("returns 503 when ZITADEL auth is required but not configured", async () => {
@@ -363,8 +370,8 @@ describe("verifyListingKitRequestIdentity", () => {
   it("returns the Auth.js session identity when a session is present", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
+    mockedServerToken.accessToken = "session-token-1";
     mockedAuthState.session = {
-      accessToken: "session-token-1",
       issuerUrl: "https://issuer.example.com",
       clientId: "client-1",
       identityVersion: 2,
@@ -395,8 +402,8 @@ describe("verifyListingKitRequestIdentity", () => {
   it("forwards an Auth.js session token without revalidating the token in the proxy", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
+    mockedServerToken.accessToken = "session-token-1";
     mockedAuthState.session = {
-      accessToken: "session-token-1",
       issuerUrl: "https://issuer.example.com",
       clientId: "client-1",
       identityVersion: 2,
@@ -430,8 +437,8 @@ describe("verifyListingKitRequestIdentity", () => {
   it("rejects unmarked legacy stored sessions without proxy-side introspection", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
+    mockedServerToken.accessToken = "session-token-1";
     mockedAuthState.session = {
-      accessToken: "session-token-1",
       identity: {
         tenantId: "org-286",
         userId: "user-42",
@@ -456,8 +463,8 @@ describe("verifyListingKitRequestIdentity", () => {
   it("rejects stored sessions created for a different ZITADEL issuer or client", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
+    mockedServerToken.accessToken = "session-token-1";
     mockedAuthState.session = {
-      accessToken: "session-token-1",
       issuerUrl: "http://localhost:8080",
       clientId: "old-client",
       identity: {

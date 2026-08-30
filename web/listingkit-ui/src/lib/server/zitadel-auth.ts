@@ -91,18 +91,6 @@ export function readZitadelIdentityFromSession(
   };
 }
 
-export function readZitadelAccessTokenFromSession(
-  session: Session | null | undefined,
-) {
-  return typeof session?.accessToken === "string" ? session.accessToken : "";
-}
-
-export function readZitadelIDTokenFromSession(
-  session: Session | null | undefined,
-) {
-  return typeof session?.idToken === "string" ? session.idToken : "";
-}
-
 export function readZitadelSessionError(session: Session | null | undefined) {
   return typeof session?.error === "string" ? session.error : "";
 }

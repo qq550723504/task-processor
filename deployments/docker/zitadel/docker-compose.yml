@@ -16,7 +16,7 @@ services:
       - --log.level=${TRAEFIK_LOG_LEVEL}
       - --accesslog=${TRAEFIK_ACCESSLOG_ENABLED}
     ports:
-      - ${PROXY_HTTP_PUBLISHED_PORT}:80
+      - ${PROXY_HTTP_PUBLISHED_HOST:-0.0.0.0}:${PROXY_HTTP_PUBLISHED_PORT}:80
     networks:
       - local-zitadel
     volumes:

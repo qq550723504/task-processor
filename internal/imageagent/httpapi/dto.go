@@ -266,7 +266,7 @@ type commandIngressDTO struct {
 func newRunProjectionResponse(value imageagent.RunProjection, publicURLs imageagent.DurableAssetPublicURLResolver) runProjectionResponse {
 	response := runProjectionResponse{
 		Run: newRunDTO(value.Run), Plan: newPlanDTO(value.Plan), ResultDigest: value.ResultDigest,
-		Actions: append([]imageagent.Action(nil), value.Actions...), LastEventID: value.LastEventID,
+		Actions: append([]imageagent.Action{}, value.Actions...), LastEventID: value.LastEventID,
 		ProjectionVersion: value.ProjectionVersion,
 		Slots:             make([]slotProjectionDTO, len(value.Slots)),
 		CommandIngress:    commandIngressDTO{Used: value.CommandIngress.Used, Limit: value.CommandIngress.Limit, Exhausted: value.CommandIngress.Exhausted, Reason: value.CommandIngress.Reason},

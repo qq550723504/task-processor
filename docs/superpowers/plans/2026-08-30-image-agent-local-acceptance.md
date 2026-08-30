@@ -33,11 +33,11 @@
 | internal/authruntime/zitadel/verifier.go | Shared bearer-token-to-verified-identity port. |
 | internal/authruntime/zitadel/verifier_test.go | Discovery/introspection and identity failure tests. |
 | internal/zitadelprovision/provisioner.go | Project, role, API app, OIDC app and local role-grant lifecycle. |
-| cmd/listingkit-zitadel-provision/main.go | provision and authorize CLI adapter. |
+| internal/zitadelprovision/cmd/main.go | Module-owned provision and authorize development adapter. |
 | internal/listingkit/imageagentacceptance/config.go | Acceptance runtime-file model. |
 | internal/listingkit/imageagentacceptance/environment.go | Database marker and Compose identity guard. |
 | internal/listingkit/imageagentacceptance/seed.go | Repository-backed, idempotent SHEIN task seed. |
-| cmd/listingkit-image-agent-acceptance-seed/main.go | Thin seed executable. |
+| internal/listingkit/imageagentacceptance/cmd/main.go | Module-owned thin seed executable. |
 | scripts/image-agent-local-acceptance.ps1 | start, provision, authorize, seed, status and stop orchestration. |
 | docs/development/image-agent-local-acceptance.md | Manual acceptance runbook and boundaries. |
 
@@ -182,8 +182,8 @@ git commit -m "refactor: share zitadel identity verification"
 **Files:**
 - Modify: internal/zitadelprovision/provisioner.go
 - Modify: internal/zitadelprovision/provisioner_test.go
-- Create: cmd/listingkit-zitadel-provision/main.go
-- Create: cmd/listingkit-zitadel-provision/main_test.go
+- Create: internal/zitadelprovision/cmd/main.go
+- Create: internal/zitadelprovision/cmd/main_test.go
 
 **Interfaces:**
 - Consumes: existing Config, a local management-token file, and Task 2 verified browser identity.
@@ -222,13 +222,13 @@ The HTTP server must also assert errors and result formatting never echo managem
 
 - [ ] **Step 2: Run provisioner tests**
 
-Run: go test ./internal/zitadelprovision ./cmd/listingkit-zitadel-provision -count=1
+Run: go test ./internal/zitadelprovision ./internal/zitadelprovision/cmd -count=1
 
 Expected: FAIL because local application and grant APIs are absent.
 
 - [ ] **Step 3: Implement idempotent management operations**
 
-Extend internal/zitadelprovision rather than adding another management client. Search applications by stable local names before posting. Create the API app using API_AUTH_METHOD_TYPE_BASIC. Create the OIDC app with exact localhost redirect/post-logout URLs, OIDC_APP_TYPE_USER_AGENT, authorization-code grant, bearer access token and accessTokenRoleAssertion=true.
+Extend internal/zitadelprovision rather than adding another management client. Search applications by stable local names before posting. Create the API app using API_AUTH_METHOD_TYPE_BASIC. Create the server-side OIDC app with exact localhost redirect/post-logout URLs, OIDC_APP_TYPE_WEB, OIDC_AUTH_METHOD_TYPE_BASIC, authorization-code grant, bearer access token and accessTokenRoleAssertion=true.
 
 The provisioner returns generated secrets only to the CLI runtime-file writer. It never includes them in Error or normal console Result values. GrantLocalOperator rejects blank verified identity, searches for an equivalent user grant, then uses the existing CreateAuthorization Connect protocol only if missing. Grant admin only when the CLI receives -grant-admin.
 
@@ -237,18 +237,18 @@ The provisioner returns generated secrets only to the CLI runtime-file writer. I
 provision reads -management-token-file and writes generated values to -runtime-file. authorize reads the browser token file and runtime file, uses Task 2 Verifier to derive its identity, and grants listingkit_operator. Neither command has a tenant or user flag.
 
 ~~~powershell
-go run ./cmd/listingkit-zitadel-provision provision -management-token-file .local/image-agent-acceptance/management-token.txt -runtime-file .local/image-agent-acceptance/runtime.env
-go run ./cmd/listingkit-zitadel-provision authorize -token-file .local/image-agent-acceptance/user-token.txt -runtime-file .local/image-agent-acceptance/runtime.env
+go run ./internal/zitadelprovision/cmd provision -management-token-file .local/image-agent-acceptance/management-token.txt -runtime-file .local/image-agent-acceptance/runtime.env
+go run ./internal/zitadelprovision/cmd authorize -token-file .local/image-agent-acceptance/user-token.txt -runtime-file .local/image-agent-acceptance/runtime.env
 ~~~
 
 - [ ] **Step 5: Run focused checks and commit**
 
-Run: go test ./internal/zitadelprovision ./cmd/listingkit-zitadel-provision ./internal/authruntime/zitadel -count=1
+Run: go test ./internal/zitadelprovision ./internal/zitadelprovision/cmd ./internal/authruntime/zitadel -count=1
 
 Expected: PASS; resource re-runs are idempotent and role assignment cannot precede a verified browser token.
 
 ~~~powershell
-git add internal/zitadelprovision cmd/listingkit-zitadel-provision
+git add internal/zitadelprovision
 git commit -m "feat: provision local listingkit zitadel applications"
 ~~~
 
@@ -349,15 +349,15 @@ git commit -m "feat: add guarded image agent acceptance seed"
 ## Task 5: Add seed executable and prove blank-database migration
 
 **Files:**
-- Create: cmd/listingkit-image-agent-acceptance-seed/main.go
-- Create: cmd/listingkit-image-agent-acceptance-seed/main_test.go
+- Create: internal/listingkit/imageagentacceptance/cmd/main.go
+- Create: internal/listingkit/imageagentacceptance/cmd/main_test.go
 - Modify: internal/listingkit/schema/runtime_test.go
 - Modify: internal/app/runtime/listingkitschemamigrate/runtime_test.go
 - Modify: internal/listingkit/schema/runtime.go only if the canonical migration test proves a prerequisite missing.
 
 **Interfaces:**
 - Consumes: Task 4 runtime/guard/seed interfaces and the canonical listingkitschema.AutoMigrateRuntime entry point.
-- Produces: go run ./cmd/listingkit-image-agent-acceptance-seed -runtime-file ... -token-file ... -source-url ....
+- Produces: go run ./internal/listingkit/imageagentacceptance/cmd -runtime-file ... -token-file ... -source-url ....
 
 - [ ] **Step 1: Write failing CLI and blank-schema tests**
 
@@ -377,7 +377,7 @@ func TestSeedCommandRequiresLocalFilesAndPublicSourceURL(t *testing.T) {
 
 - [ ] **Step 2: Run to identify the actual migration gap**
 
-Run: go test ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate ./cmd/listingkit-image-agent-acceptance-seed -count=1
+Run: go test ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate ./internal/listingkit/imageagentacceptance/cmd -count=1
 
 Expected: the new command test fails. If a canonical prerequisite table is absent, report its exact owner and fix it only in internal/listingkit/schema or its current authoritative migration owner.
 
@@ -387,12 +387,12 @@ The command loads runtime/token files, builds zitadel.NewVerifier, invokes Task 
 
 - [ ] **Step 4: Run tests and commit**
 
-Run: go test ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate ./cmd/listingkit-image-agent-acceptance-seed -count=1
+Run: go test ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate ./internal/listingkit/imageagentacceptance/cmd -count=1
 
 Expected: PASS; blank acceptance schema originates in canonical migration and the CLI cannot target another database.
 
 ~~~powershell
-git add cmd/listingkit-image-agent-acceptance-seed internal/listingkit/schema internal/app/runtime/listingkitschemamigrate
+git add internal/listingkit/imageagentacceptance internal/listingkit/schema internal/app/runtime/listingkitschemamigrate
 git commit -m "feat: add image agent local seed command"
 ~~~
 
@@ -445,7 +445,7 @@ provision, authorize and seed only delegate to fixed Task 3/5 runtime paths. The
 
 - [ ] **Step 4: Write runbook**
 
-Document the order: start, provision, local UI login, token save, authorize, seed, workspace preflight/run. Include public HTTPS source requirement, ownership negative tests, provider/COS boundary and reset semantics.
+Document the order: start, provision, local UI login, server-side encrypted-JWT token handoff, authorize, seed, workspace preflight/run. Include public HTTPS source requirement, ownership negative tests, provider/COS boundary and reset semantics.
 
 - [ ] **Step 5: Run static checks and commit**
 
@@ -478,7 +478,7 @@ git commit -m "feat: add local image agent acceptance runtime"
 Run:
 
 ~~~powershell
-go test ./internal/authruntime/zitadel ./internal/zitadelprovision ./internal/listingkit/imageagentacceptance ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate ./cmd/listingkit-zitadel-provision ./cmd/listingkit-image-agent-acceptance-seed -count=1
+go test ./internal/authruntime/zitadel ./internal/zitadelprovision ./internal/zitadelprovision/cmd ./internal/listingkit/imageagentacceptance ./internal/listingkit/imageagentacceptance/cmd ./internal/listingkit/schema ./internal/app/runtime/listingkitschemamigrate -count=1
 go test ./internal/listingkit/httpapi ./internal/imageagent/... ./internal/app/runtime ./internal/app/worker/imageagent -count=1
 ~~~
 
@@ -486,7 +486,7 @@ Expected: PASS. Stop and diagnose failures before containers start.
 
 - [ ] **Step 2: Start and provision**
 
-Run documented start, provision, local browser-login/token-save and authorize sequence. Verify local ZITADEL discovery, API health and token introspection without printing credentials.
+Run documented start, provision, local browser login/server-side token handoff and authorize sequence. Verify local ZITADEL discovery, API health and token introspection without printing credentials.
 
 - [ ] **Step 3: Seed and prove ownership**
 

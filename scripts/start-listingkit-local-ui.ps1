@@ -1,7 +1,9 @@
 param(
     [int]$Port = 3000,
     [string]$ApiBase = "http://localhost:8085/api/v1/listing-kits",
-    [string]$ServiceApiBase = "http://localhost:8085/api/v1"
+    [string]$ServiceApiBase = "http://localhost:8085/api/v1",
+    [switch]$IsolatedAcceptance,
+    [string]$RuntimeDirectory = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -131,7 +133,7 @@ function Import-DeployedListingKitAuthSecrets {
 function Get-ListeningProcessIds {
     param([int]$ListenPort)
 
-    $connections = @(Get-NetTCPConnection -State Listen -LocalPort $ListenPort -ErrorAction SilentlyContinue)
+    $connections = @(Get-ListeningConnections -ListenPort $ListenPort)
     if ($connections.Count -eq 0) {
         return @()
     }
@@ -139,6 +141,47 @@ function Get-ListeningProcessIds {
     return $connections |
         Select-Object -ExpandProperty OwningProcess -Unique |
         Where-Object { $_ -gt 0 }
+}
+
+function Get-ListeningConnections {
+    param([int]$ListenPort)
+
+    return @(Get-NetTCPConnection -State Listen -LocalPort $ListenPort -ErrorAction SilentlyContinue)
+}
+
+function Assert-LoopbackListener {
+    param([int]$ListenPort)
+
+    $connections = @(Get-ListeningConnections -ListenPort $ListenPort)
+    if ($connections.Count -eq 0) {
+        throw "No listener was found on isolated acceptance port $ListenPort"
+    }
+    if (@($connections | Where-Object { $_.LocalAddress -notin @("127.0.0.1", "::1") }).Count -gt 0) {
+        throw "Isolated acceptance port $ListenPort is not bound exclusively to loopback"
+    }
+}
+
+function Stop-VerifiedUiProcessTree {
+    param(
+        [System.Diagnostics.Process]$RootProcess,
+        [int]$ListenPort,
+        [string]$ExpectedCommandContains
+    )
+
+    if ($null -ne $RootProcess -and -not $RootProcess.HasExited) {
+        if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
+            & taskkill.exe /PID $RootProcess.Id /T /F 2>$null | Out-Null
+        } else {
+            Stop-Process -Id $RootProcess.Id -Force -ErrorAction SilentlyContinue
+        }
+        try { $RootProcess.WaitForExit() } catch {}
+    }
+    foreach ($listenerPid in @(Get-ListeningProcessIds -ListenPort $ListenPort)) {
+        $record = Get-CimInstance Win32_Process -Filter "ProcessId = $listenerPid" -ErrorAction SilentlyContinue
+        if ($null -ne $record -and ([string]$record.CommandLine).IndexOf($ExpectedCommandContains, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            Stop-Process -Id $listenerPid -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 function Stop-ListeningProcesses {
@@ -160,20 +203,60 @@ function Stop-ListeningProcesses {
     }
 }
 
+function Initialize-UiLaunchEnvironment {
+    param(
+        [string]$RepoRoot,
+        [switch]$IsolatedAcceptance
+    )
+
+    if ($IsolatedAcceptance) {
+        $env:KUBECONFIG = ""
+        Write-Host "Isolated acceptance mode: repository .env and deployed Kubernetes credentials are disabled." -ForegroundColor DarkGreen
+        return
+    }
+
+    Import-DotEnvFile -Path (Join-Path $RepoRoot ".env")
+    Import-DeployedListingKitAuthSecrets
+}
+
+function Assert-PortAvailable {
+    param([int]$ListenPort)
+
+    $processIds = @(Get-ListeningProcessIds -ListenPort $ListenPort)
+    if ($processIds.Count -gt 0) {
+        throw "Port $ListenPort is already owned by PID(s) $($processIds -join ', '); isolated acceptance refuses to stop unrelated processes"
+    }
+}
+
+function Resolve-IsolatedRuntimeDirectory {
+    param(
+        [string]$RepoRoot,
+        [string]$RequestedPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RequestedPath)) {
+        throw "-RuntimeDirectory is required with -IsolatedAcceptance"
+    }
+    $allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot ".local\image-agent-acceptance"))
+    $resolved = [System.IO.Path]::GetFullPath($RequestedPath)
+    $allowedPrefix = $allowedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $resolved.StartsWith($allowedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "isolated runtime directory must be below $allowedRoot"
+    }
+    return $resolved
+}
+
 function Wait-ForUiReady {
     param(
         [string]$RootUrl,
-        [string]$StdoutLogPath,
+        [int]$ProcessId,
         [int]$TimeoutSeconds = 180
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
-        if (Test-Path -LiteralPath $StdoutLogPath) {
-            $stdout = Get-Content -LiteralPath $StdoutLogPath -Raw -ErrorAction SilentlyContinue
-            if ($stdout -match "Ready in" -or $stdout -match "Local:\s+http://") {
-                return
-            }
+        if ($ProcessId -gt 0 -and $null -eq (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
+            throw "UI process exited before its HTTP endpoint became ready"
         }
 
         try {
@@ -198,40 +281,47 @@ function Wait-ForUiReady {
 
 $repoRoot = Get-RepoRoot
 $uiRoot = Join-Path $repoRoot "web\listingkit-ui"
-$runtimeDir = Join-Path $uiRoot ".local-dev"
+$runtimeDir = if ($IsolatedAcceptance) {
+    Resolve-IsolatedRuntimeDirectory -RepoRoot $repoRoot -RequestedPath $RuntimeDirectory
+} else {
+    Join-Path $uiRoot ".local-dev"
+}
 $stdoutLog = Join-Path $runtimeDir "ui-stdout.log"
 $stderrLog = Join-Path $runtimeDir "ui-stderr.log"
 $pidFile = Join-Path $runtimeDir "listingkit-ui-local.pid"
 $rootUrl = "http://127.0.0.1:${Port}"
-$nextScript = Join-Path $uiRoot "node_modules\.bin\next.ps1"
+$nextCli = Join-Path $uiRoot "node_modules\next\dist\bin\next"
+$nodeExecutable = (Get-Command node.exe -ErrorAction Stop).Source
 
 Ensure-Directory -Path $runtimeDir
 
-if (-not (Test-Path -LiteralPath $nextScript)) {
-    throw "Next.js launcher not found: $nextScript. Run npm install in web/listingkit-ui first."
+if (-not (Test-Path -LiteralPath $nextCli)) {
+    throw "Next.js CLI not found: $nextCli. Run npm install in web/listingkit-ui first."
 }
 
-Stop-ListeningProcesses -ListenPort $Port
+if ($IsolatedAcceptance) {
+    Assert-PortAvailable -ListenPort $Port
+} else {
+    Stop-ListeningProcesses -ListenPort $Port
+}
 
 Remove-FileIfExists -Path $stdoutLog
 Remove-FileIfExists -Path $stderrLog
 Remove-FileIfExists -Path $pidFile
 
-Import-DotEnvFile -Path (Join-Path $repoRoot ".env")
-Import-DeployedListingKitAuthSecrets
+Initialize-UiLaunchEnvironment -RepoRoot $repoRoot -IsolatedAcceptance:$IsolatedAcceptance
 Set-EnvIfMissing -Name "LISTINGKIT_API_BASE" -Value $ApiBase
 Set-EnvIfMissing -Name "LISTINGKIT_SERVICE_API_BASE" -Value $ServiceApiBase
 
-$command = @"
-`$env:LISTINGKIT_API_BASE = '$ApiBase'
-`$env:LISTINGKIT_SERVICE_API_BASE = '$ServiceApiBase'
-& '$nextScript' dev -p $Port
-"@
+$nextArguments = @($nextCli, "dev", "-p", $Port.ToString())
+if ($IsolatedAcceptance) {
+    $nextArguments += @("-H", "127.0.0.1")
+}
 
 Write-Host "Starting local listingkit-ui on port ${Port}..." -ForegroundColor Cyan
 $process = Start-Process `
-    -FilePath "powershell" `
-    -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $command) `
+    -FilePath $nodeExecutable `
+    -ArgumentList $nextArguments `
     -WorkingDirectory $uiRoot `
     -WindowStyle Hidden `
     -PassThru `
@@ -239,15 +329,16 @@ $process = Start-Process `
     -RedirectStandardError $stderrLog
 
 try {
-    Wait-ForUiReady -RootUrl $rootUrl -StdoutLogPath $stdoutLog -TimeoutSeconds 180
-} catch {
-    if (-not $process.HasExited) {
-        Stop-Process -Id $process.Id -Force
-        try {
-            $process.WaitForExit()
-        } catch {
-        }
+    Wait-ForUiReady -RootUrl $rootUrl -ProcessId $process.Id -TimeoutSeconds 180
+    if ($IsolatedAcceptance) {
+        Assert-LoopbackListener -ListenPort $Port
     }
+    $listenerPid = @(Get-ListeningProcessIds -ListenPort $Port | Select-Object -First 1)
+    if ($listenerPid.Count -eq 0 -or $listenerPid[0] -le 0) {
+        throw "UI became ready but no listening process was found on port ${Port}"
+    }
+} catch {
+    Stop-VerifiedUiProcessTree -RootProcess $process -ListenPort $Port -ExpectedCommandContains $uiRoot
 
     Write-Host ""
     Write-Host "UI failed to become ready. Recent stdout:" -ForegroundColor Red
@@ -260,11 +351,6 @@ try {
         Get-Content -LiteralPath $stderrLog -Tail 80
     }
     throw
-}
-
-$listenerPid = @(Get-ListeningProcessIds -ListenPort $Port | Select-Object -First 1)
-if ($listenerPid.Count -eq 0 -or $listenerPid[0] -le 0) {
-    throw "UI became ready but no listening process was found on port ${Port}"
 }
 
 Set-Content -LiteralPath $pidFile -Value $listenerPid[0] -NoNewline

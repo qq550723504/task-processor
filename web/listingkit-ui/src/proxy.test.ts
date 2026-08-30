@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mockedAuthState = vi.hoisted(() => ({
   session: null as Record<string, unknown> | null,
 }));
+const mockedServerToken = vi.hoisted(() => ({ accessToken: "" }));
 
 vi.mock("@/auth", () => ({
   auth: vi.fn((handler?: (request: NextRequest & { auth?: unknown }) => unknown) => {
@@ -13,6 +14,11 @@ vi.mock("@/auth", () => ({
     }
     return Promise.resolve(mockedAuthState.session);
   }),
+}));
+vi.mock("@/lib/server/zitadel-server-token", () => ({
+  readZitadelServerAccessToken: vi.fn(() =>
+    Promise.resolve(mockedServerToken.accessToken),
+  ),
 }));
 
 import { proxy } from "./proxy";
@@ -28,6 +34,7 @@ async function callProxy(path: string) {
 describe("ListingKit ZITADEL proxy", () => {
   afterEach(() => {
     mockedAuthState.session = null;
+    mockedServerToken.accessToken = "";
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
@@ -47,8 +54,8 @@ describe("ListingKit ZITADEL proxy", () => {
   it("allows ListingKit pages with a valid Auth.js session", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    mockedServerToken.accessToken = "token-1";
     mockedAuthState.session = {
-      accessToken: "token-1",
       identityVersion: 2,
       identity: {
         tenantId: "org-1",
@@ -68,8 +75,8 @@ describe("ListingKit ZITADEL proxy", () => {
   it("redirects sessions issued before the current identity version", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    mockedServerToken.accessToken = "token-1";
     mockedAuthState.session = {
-      accessToken: "token-1",
       identityVersion: 1,
       identity: {
         tenantId: "org-1",
@@ -91,8 +98,8 @@ describe("ListingKit ZITADEL proxy", () => {
   it("redirects sessions without a ZITADEL subject to login", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    mockedServerToken.accessToken = "token-1";
     mockedAuthState.session = {
-      accessToken: "token-1",
       identityVersion: 2,
       identity: {
         tenantId: "org-1",
@@ -114,8 +121,8 @@ describe("ListingKit ZITADEL proxy", () => {
   it("redirects non-platform administrators away from the SDS login page", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    mockedServerToken.accessToken = "token-1";
     mockedAuthState.session = {
-      accessToken: "token-1",
       identityVersion: 2,
       identity: {
         tenantId: "org-1",
@@ -135,8 +142,8 @@ describe("ListingKit ZITADEL proxy", () => {
   it("allows platform administrators to access the SDS login page", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    mockedServerToken.accessToken = "token-1";
     mockedAuthState.session = {
-      accessToken: "token-1",
       identityVersion: 2,
       identity: {
         tenantId: "org-1",
@@ -157,8 +164,8 @@ describe("ListingKit ZITADEL proxy", () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
     vi.stubEnv("LISTINGKIT_ZITADEL_ALLOWED_USER_IDS", "allowed-subject");
+    mockedServerToken.accessToken = "token-1";
     mockedAuthState.session = {
-      accessToken: "token-1",
       identityVersion: 2,
       identity: {
         tenantId: "org-1",

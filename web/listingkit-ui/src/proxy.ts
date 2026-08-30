@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Session } from "next-auth";
 
 import { auth } from "@/auth";
-	import {
+import {
   authorizeZitadelIdentity,
-	  isZitadelAuthConfigured,
-  readZitadelAccessTokenFromSession,
+  isZitadelAuthConfigured,
   readZitadelIdentityFromSession,
   readZitadelSessionError,
 } from "@/lib/server/zitadel-auth";
 import { hasPlatformAdminRole } from "@/lib/listingkit-permissions";
+import { readZitadelServerAccessToken } from "@/lib/server/zitadel-server-token";
 
 type AuthenticatedProxyRequest = NextRequest & {
   auth?: unknown;
@@ -35,7 +35,7 @@ async function handleProxy(request: AuthenticatedProxyRequest) {
   }
 
   const session = (request.auth ?? null) as Session | null;
-  const accessToken = readZitadelAccessTokenFromSession(session);
+  const accessToken = await readZitadelServerAccessToken(request);
   const sessionError = readZitadelSessionError(session);
   if (!accessToken || sessionError) {
     return redirectToZitadelLogin(request);

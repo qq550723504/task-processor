@@ -111,10 +111,40 @@ func dockerComposeProjectProbe(ctx context.Context, config imageagentacceptance.
 	if project == "" {
 		return false, errors.New("Compose project is required")
 	}
-	command := exec.CommandContext(ctx, "docker", "ps", "--filter", "label=com.docker.compose.project="+project, "--format", "{{.ID}}")
+	command := exec.CommandContext(
+		ctx,
+		"docker",
+		"ps",
+		"--filter", "label=com.docker.compose.project="+project,
+		"--filter", "label=com.docker.compose.service="+imageagentacceptance.ComposePostgresService,
+		"--format", "{{.ID}}",
+	)
 	output, err := command.Output()
 	if err != nil {
 		return false, errors.New("docker Compose project probe failed")
 	}
-	return strings.TrimSpace(string(output)) != "", nil
+	containerIDs := strings.Fields(string(output))
+	if len(containerIDs) != 1 {
+		return false, nil
+	}
+	inspect := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{json .NetworkSettings.Ports}}", containerIDs[0])
+	portOutput, err := inspect.Output()
+	if err != nil {
+		return false, errors.New("docker Compose PostgreSQL port probe failed")
+	}
+	return validatePostgresBindings(portOutput), nil
+}
+
+func validatePostgresBindings(data []byte) bool {
+	var ports map[string][]struct {
+		HostIP   string `json:"HostIp"`
+		HostPort string `json:"HostPort"`
+	}
+	if err := json.Unmarshal(data, &ports); err != nil {
+		return false
+	}
+	bindings := ports["5432/tcp"]
+	return len(bindings) == 1 &&
+		bindings[0].HostIP == "127.0.0.1" &&
+		bindings[0].HostPort == imageagentacceptance.DatabasePort
 }

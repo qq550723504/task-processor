@@ -39,9 +39,10 @@ type SeedResult struct {
 	WorkspaceURL string
 }
 
-// Seed creates the one deterministic, owned acceptance task. The caller must
-// invoke the supplied EnvironmentGuard with the loaded RuntimeConfig before
-// calling Seed; the fixed Seed signature intentionally carries no DSN.
+// Seed creates the one deterministic, owned acceptance task. It verifies the
+// supplied EnvironmentGuard with the loaded RuntimeConfig before any
+// repository read or write; the fixed Seed signature intentionally carries no
+// DSN.
 func Seed(ctx context.Context, guard EnvironmentGuard, verifier zitadel.Verifier, repo listingkit.Repository, request SeedRequest) (SeedResult, error) {
 	if guard == nil {
 		return SeedResult{}, errors.New("acceptance environment guard is required")
@@ -119,7 +120,8 @@ func Seed(ctx context.Context, guard EnvironmentGuard, verifier zitadel.Verifier
 		UserID:   identity.UserID,
 		Status:   core.TaskStatusPending,
 		Result: &listingkit.ListingKitResult{
-			TaskID: taskID,
+			TaskID:    taskID,
+			Platforms: []string{seedTargetPlatform},
 			AssetBundlesByTarget: map[string]*asset.Bundle{
 				seedTargetPlatform: {Assets: acceptanceAssets(sourceURL, styleURL)},
 			},
@@ -127,9 +129,41 @@ func Seed(ctx context.Context, guard EnvironmentGuard, verifier zitadel.Verifier
 		},
 	}
 	if err := repo.CreateTask(identityContext, task); err != nil {
+		recovered, recoveryErr := recoverConcurrentSeed(identityContext, repo, taskID, identity, sourceURL, styleURL)
+		if recoveryErr == nil {
+			return recovered, nil
+		}
 		return SeedResult{}, fmt.Errorf("create acceptance task: %w", err)
 	}
 	return seedResult(task), nil
+}
+
+func recoverConcurrentSeed(
+	ctx context.Context,
+	repo listingkit.Repository,
+	taskID string,
+	identity authidentity.AuthenticatedIdentity,
+	sourceURL string,
+	styleURL string,
+) (SeedResult, error) {
+	task, err := repo.GetTask(ctx, taskID)
+	if err == nil {
+		if equivalentSeedTask(task, identity, sourceURL, styleURL) {
+			return seedResult(task), nil
+		}
+		return SeedResult{}, errors.New("concurrent seed created a non-equivalent acceptance task")
+	}
+	if !errors.Is(err, core.ErrTaskNotFound) {
+		return SeedResult{}, err
+	}
+	if conflicting, conflictErr := repo.GetTask(context.Background(), taskID); conflictErr == nil {
+		return SeedResult{}, fmt.Errorf(
+			"concurrent seed created an acceptance task owned by %q/%q",
+			strings.TrimSpace(conflicting.TenantID),
+			strings.TrimSpace(conflicting.UserID),
+		)
+	}
+	return SeedResult{}, err
 }
 
 func hasSeedRole(roles []string) bool {
@@ -157,6 +191,9 @@ func acceptanceAssets(sourceURL, styleURL string) []asset.Asset {
 
 func equivalentSeedTask(task *listingkit.Task, identity authidentity.AuthenticatedIdentity, sourceURL, styleURL string) bool {
 	if task == nil || strings.TrimSpace(task.TenantID) != identity.TenantID || strings.TrimSpace(task.UserID) != identity.UserID || task.Result == nil || task.Result.StandardProductSnapshot == nil {
+		return false
+	}
+	if !reflect.DeepEqual(task.Result.Platforms, []string{seedTargetPlatform}) {
 		return false
 	}
 	if len(task.Result.AssetBundlesByTarget) != 1 {

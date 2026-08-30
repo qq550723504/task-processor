@@ -59,24 +59,37 @@ function extractProjectRoles(payload: ZitadelTokenPayload) {
     roles.push(role);
   };
 
+  const addClaimValue = (value: unknown) => {
+    if (!value) {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(addClaimValue);
+      return;
+    }
+    if (typeof value === "string") {
+      value.split(",").forEach(add);
+      return;
+    }
+    if (typeof value === "object") {
+      Object.keys(value).forEach(add);
+    }
+  };
+
   for (const value of [
     payload["urn:zitadel:iam:org:project:roles"],
     payload.roles,
     payload.role,
   ]) {
-    if (!value) {
-      continue;
-    }
-    if (Array.isArray(value)) {
-      value.forEach(add);
-      continue;
-    }
-    if (typeof value === "string") {
-      value.split(",").forEach(add);
-      continue;
-    }
-    if (typeof value === "object") {
-      Object.keys(value).forEach(add);
+    addClaimValue(value);
+  }
+
+  for (const [claimName, value] of Object.entries(payload)) {
+    if (
+      claimName.startsWith("urn:zitadel:iam:org:project:") &&
+      claimName.endsWith(":roles")
+    ) {
+      addClaimValue(value);
     }
   }
 

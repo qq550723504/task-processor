@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -432,8 +433,8 @@ func clonePlan(plan imageagent.Plan) imageagent.Plan {
 }
 
 func cloneSlot(slot imageagent.Slot) imageagent.Slot {
-	slot.SourceAssetIDs = append([]string(nil), slot.SourceAssetIDs...)
-	slot.StyleReferenceIDs = append([]string(nil), slot.StyleReferenceIDs...)
+	slot.SourceAssetIDs = slices.Clone(slot.SourceAssetIDs)
+	slot.StyleReferenceIDs = slices.Clone(slot.StyleReferenceIDs)
 	return slot
 }
 

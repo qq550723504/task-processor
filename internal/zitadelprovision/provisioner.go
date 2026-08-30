@@ -21,7 +21,14 @@ type Config struct {
 	ProjectID       string
 	ProjectName     string
 	CreateProject   bool
-	HTTPClient      *http.Client
+	// HasProjectCheck controls whether ZITADEL requires an organization-level
+	// grant before users can authenticate to the project. Nil preserves the
+	// existing provisioning default.
+	HasProjectCheck *bool
+	// BootstrapLoginName identifies the local human account that should receive
+	// the operator role before the first browser login. Empty disables bootstrap.
+	BootstrapLoginName string
+	HTTPClient         *http.Client
 }
 
 type ProjectRole struct {
@@ -48,6 +55,8 @@ type LocalApplicationConfig struct {
 	OIDCName               string
 	RedirectURIs           []string
 	PostLogoutRedirectURIs []string
+	RotateAPIClientSecret  bool
+	RotateOIDCClientSecret bool
 }
 
 type LocalApplicationResult struct {
@@ -58,6 +67,8 @@ type LocalApplicationResult struct {
 	OIDCAppID         string
 	OIDCClientID      string
 	OIDCClientSecret  string
+	BootstrapTenantID string
+	BootstrapUserID   string
 	RecommendedScopes []string
 }
 
@@ -77,16 +88,18 @@ func DefaultRoles() []ProjectRole {
 	}
 }
 
-func RecommendedScopes() []string {
+func RecommendedScopes(projectID string) []string {
 	scopes := []string{
 		"openid",
 		"profile",
 		"email",
 		"urn:zitadel:iam:user:resourceowner",
-		"urn:zitadel:iam:org:project:id:zitadel:aud",
 	}
-	for _, role := range DefaultRoles() {
-		scopes = append(scopes, "urn:zitadel:iam:org:project:role:"+role.Key)
+	if projectID = strings.TrimSpace(projectID); projectID != "" {
+		scopes = append(scopes,
+			"urn:zitadel:iam:org:project:id:"+projectID+":aud",
+			"urn:zitadel:iam:org:project:"+projectID+":roles",
+		)
 	}
 	return scopes
 }
@@ -109,15 +122,22 @@ func Provision(ctx context.Context, cfg Config) (Result, error) {
 		}
 		projectID = foundID
 	}
+	createdProject := false
 	if projectID == "" {
 		if !cfg.CreateProject {
 			return Result{}, fmt.Errorf("project %s not found; pass -create-project to create it", projectName)
 		}
-		createdID, err := client.createProject(ctx, projectName)
+		createdID, err := client.createProject(ctx, projectName, cfg.HasProjectCheck)
 		if err != nil {
 			return Result{}, err
 		}
 		projectID = createdID
+		createdProject = true
+	}
+	if cfg.HasProjectCheck != nil && !createdProject {
+		if err := client.updateProject(ctx, projectID, projectName, *cfg.HasProjectCheck); err != nil {
+			return Result{}, err
+		}
 	}
 
 	existingRoles, err := client.listProjectRoles(ctx, projectID)
@@ -127,7 +147,7 @@ func Provision(ctx context.Context, cfg Config) (Result, error) {
 	result := Result{
 		ProjectID:         projectID,
 		ProjectName:       projectName,
-		RecommendedScopes: RecommendedScopes(),
+		RecommendedScopes: RecommendedScopes(projectID),
 		AllowedRoles:      roleKeys(DefaultRoles()),
 	}
 	for _, role := range DefaultRoles() {
@@ -160,7 +180,7 @@ func ProvisionLocalApplications(ctx context.Context, cfg Config, appCfg LocalApp
 	if len(appCfg.RedirectURIs) == 0 || len(appCfg.PostLogoutRedirectURIs) == 0 {
 		return LocalApplicationResult{}, errors.New("local OIDC redirect URIs are required")
 	}
-	if !equalStrings(appCfg.RedirectURIs, []string{"http://localhost:3000/api/zitadel-auth/callback"}) ||
+	if !equalStrings(appCfg.RedirectURIs, []string{"http://localhost:3000/api/auth/callback/zitadel"}) ||
 		!equalStrings(appCfg.PostLogoutRedirectURIs, []string{"http://localhost:3000"}) {
 		return LocalApplicationResult{}, errors.New("local OIDC redirects must use the fixed localhost acceptance URLs")
 	}
@@ -169,14 +189,57 @@ func ProvisionLocalApplications(ctx context.Context, cfg Config, appCfg LocalApp
 		return LocalApplicationResult{}, err
 	}
 	client := newClient(cfg)
+	result := LocalApplicationResult{ProjectID: provisioned.ProjectID, RecommendedScopes: provisioned.RecommendedScopes}
+	if loginName := strings.TrimSpace(cfg.BootstrapLoginName); loginName != "" {
+		identity, err := bootstrapLocalOperator(ctx, cfg, loginName, provisioned.ProjectID)
+		if err != nil {
+			return LocalApplicationResult{}, err
+		}
+		result.BootstrapTenantID = identity.TenantID
+		result.BootstrapUserID = identity.UserID
+	}
 	applications, err := client.listApplications(ctx, provisioned.ProjectID)
 	if err != nil {
 		return LocalApplicationResult{}, err
 	}
-	result := LocalApplicationResult{ProjectID: provisioned.ProjectID, RecommendedScopes: provisioned.RecommendedScopes}
 	apiApp, ok, err := findApplicationByType(applications, appCfg.APIName, applicationAPI)
 	if err != nil {
 		return LocalApplicationResult{}, err
+	}
+	if ok {
+		apiApp, err = client.getApplication(ctx, provisioned.ProjectID, apiApp.ID)
+		if err != nil {
+			return LocalApplicationResult{}, err
+		}
+		if apiApp.APIConfig == nil || apiApp.OIDCConfig != nil {
+			return LocalApplicationResult{}, fmt.Errorf("local API application %q has an unexpected application type", appCfg.APIName)
+		}
+		rotateAPISecret := appCfg.RotateAPIClientSecret
+		if apiApp.APIConfig.AuthMethodType == "" {
+			// ZITADEL v4 omits the enum's default Basic value on some v1
+			// responses. Requiring a newly generated client secret proves that
+			// the reused local app still supports the Basic-secret contract.
+			rotateAPISecret = true
+		} else if apiApp.APIConfig.AuthMethodType != "API_AUTH_METHOD_TYPE_BASIC" {
+			if err := client.updateAPIApplicationConfig(ctx, provisioned.ProjectID, apiApp.ID); err != nil {
+				return LocalApplicationResult{}, err
+			}
+			apiApp, err = client.getApplication(ctx, provisioned.ProjectID, apiApp.ID)
+			if err != nil {
+				return LocalApplicationResult{}, err
+			}
+			if apiApp.APIConfig == nil || apiApp.APIConfig.AuthMethodType != "API_AUTH_METHOD_TYPE_BASIC" {
+				return LocalApplicationResult{}, fmt.Errorf("local API application %q must use Basic authentication", appCfg.APIName)
+			}
+			rotateAPISecret = true
+		}
+		if rotateAPISecret {
+			secret, err := client.regenerateAPIClientSecret(ctx, provisioned.ProjectID, apiApp.ID)
+			if err != nil {
+				return LocalApplicationResult{}, err
+			}
+			apiApp.APIConfig.ClientSecret = secret
+		}
 	}
 	if !ok {
 		apiApp, err = client.createAPIApplication(ctx, provisioned.ProjectID, appCfg.APIName)
@@ -200,8 +263,21 @@ func ProvisionLocalApplications(ctx context.Context, cfg Config, appCfg LocalApp
 		if err != nil {
 			return LocalApplicationResult{}, err
 		}
-	} else if err := validateExistingOIDCApplication(ctx, client, provisioned.ProjectID, oidcApp, appCfg); err != nil {
-		return LocalApplicationResult{}, err
+	} else {
+		updated, validateErr := validateExistingOIDCApplication(ctx, client, provisioned.ProjectID, oidcApp, appCfg)
+		if validateErr != nil {
+			return LocalApplicationResult{}, validateErr
+		}
+		if updated {
+			appCfg.RotateOIDCClientSecret = true
+		}
+	}
+	if ok && appCfg.RotateOIDCClientSecret {
+		secret, err := client.regenerateOIDCClientSecret(ctx, provisioned.ProjectID, oidcApp.ID)
+		if err != nil {
+			return LocalApplicationResult{}, err
+		}
+		oidcApp.OIDCConfig.ClientSecret = secret
 	}
 	result.OIDCAppID = oidcApp.ID
 	result.OIDCClientID = oidcApp.clientID()
@@ -210,6 +286,23 @@ func ProvisionLocalApplications(ctx context.Context, cfg Config, appCfg LocalApp
 		return LocalApplicationResult{}, errors.New("ZITADEL OIDC application response did not include app and client ids")
 	}
 	return result, nil
+}
+
+func bootstrapLocalOperator(ctx context.Context, cfg Config, loginName, projectID string) (authidentity.AuthenticatedIdentity, error) {
+	user, err := newClient(cfg).findGlobalUserByLoginName(ctx, loginName)
+	if err != nil {
+		return authidentity.AuthenticatedIdentity{}, fmt.Errorf("find local bootstrap user %q: %w", loginName, err)
+	}
+	if user.ID == "" || user.Details.ResourceOwner == "" {
+		return authidentity.AuthenticatedIdentity{}, fmt.Errorf("local bootstrap user %q response is missing id or resource owner", loginName)
+	}
+	identity := authidentity.AuthenticatedIdentity{TenantID: user.Details.ResourceOwner, UserID: user.ID}
+	bootstrapConfig := cfg
+	bootstrapConfig.ProjectID = projectID
+	if err := GrantLocalOperator(ctx, bootstrapConfig, "", identity); err != nil {
+		return authidentity.AuthenticatedIdentity{}, fmt.Errorf("grant local bootstrap operator: %w", err)
+	}
+	return identity, nil
 }
 
 func GrantLocalOperator(ctx context.Context, cfg Config, additionalRole string, identity authidentity.AuthenticatedIdentity) error {
@@ -271,6 +364,25 @@ type client struct {
 	http    *http.Client
 }
 
+type globalUserRecord struct {
+	ID            string `json:"id"`
+	PreferredName string `json:"preferredLoginName"`
+	Details       struct {
+		ResourceOwner string `json:"resourceOwner"`
+	} `json:"details"`
+}
+
+func (c client) findGlobalUserByLoginName(ctx context.Context, loginName string) (globalUserRecord, error) {
+	var response struct {
+		User globalUserRecord `json:"user"`
+	}
+	path := "/management/v1/global/users/_by_login_name?loginName=" + url.QueryEscape(loginName)
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return globalUserRecord{}, err
+	}
+	return response.User, nil
+}
+
 type applicationKind string
 
 const (
@@ -293,8 +405,10 @@ type oidcApplicationConfig struct {
 	AppType                  string   `json:"appType"`
 	AuthMethodType           string   `json:"authMethodType"`
 	PostLogoutRedirectURIs   []string `json:"postLogoutRedirectUris"`
+	DevMode                  *bool    `json:"devMode"`
 	AccessTokenType          string   `json:"accessTokenType"`
 	AccessTokenRoleAssertion *bool    `json:"accessTokenRoleAssertion"`
+	IDTokenRoleAssertion     *bool    `json:"idTokenRoleAssertion"`
 }
 
 type applicationRecord struct {
@@ -357,9 +471,6 @@ func findApplicationByType(applications []applicationRecord, name string, kind a
 			if application.APIConfig == nil || application.OIDCConfig != nil {
 				return applicationRecord{}, false, fmt.Errorf("local API application name %q is already used by a different application type", name)
 			}
-			if application.APIConfig.AuthMethodType != "API_AUTH_METHOD_TYPE_BASIC" {
-				return applicationRecord{}, false, fmt.Errorf("local API application %q has unsupported authentication method", name)
-			}
 		case applicationOIDC:
 			if application.OIDCConfig == nil || application.APIConfig != nil {
 				return applicationRecord{}, false, fmt.Errorf("local OIDC application name %q is already used by a different application type", name)
@@ -387,26 +498,34 @@ func validateLocalIssuer(raw string) error {
 	return nil
 }
 
-func validateExistingOIDCApplication(ctx context.Context, client client, projectID string, application applicationRecord, cfg LocalApplicationConfig) error {
+func validateExistingOIDCApplication(ctx context.Context, client client, projectID string, application applicationRecord, cfg LocalApplicationConfig) (bool, error) {
 	application, err := client.getApplication(ctx, projectID, application.ID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if application.OIDCConfig == nil || application.APIConfig != nil {
-		return errors.New("existing local OIDC application has an unexpected application type")
+		return false, errors.New("existing local OIDC application has an unexpected application type")
 	}
 	config := application.OIDCConfig
-	if !equalStrings(config.RedirectURIs, cfg.RedirectURIs) ||
-		!equalStrings(config.PostLogoutRedirectURIs, cfg.PostLogoutRedirectURIs) ||
-		!equalStrings(config.ResponseTypes, []string{"OIDC_RESPONSE_TYPE_CODE"}) ||
-		!equalStrings(config.GrantTypes, []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"}) ||
-		config.AppType != "OIDC_APP_TYPE_USER_AGENT" ||
-		config.AuthMethodType != "OIDC_AUTH_METHOD_TYPE_NONE" ||
-		config.AccessTokenType != "OIDC_TOKEN_TYPE_BEARER" ||
-		config.AccessTokenRoleAssertion == nil || !*config.AccessTokenRoleAssertion {
-		return fmt.Errorf("existing local OIDC application %q does not match the required localhost acceptance configuration", cfg.OIDCName)
+	if equalStrings(config.RedirectURIs, cfg.RedirectURIs) &&
+		equalStrings(config.PostLogoutRedirectURIs, cfg.PostLogoutRedirectURIs) &&
+		equalStrings(config.ResponseTypes, []string{"OIDC_RESPONSE_TYPE_CODE"}) &&
+		equalStrings(config.GrantTypes, []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"}) &&
+		(config.AppType == "" || config.AppType == "OIDC_APP_TYPE_WEB") &&
+		(config.AuthMethodType == "" || config.AuthMethodType == "OIDC_AUTH_METHOD_TYPE_BASIC") &&
+		(config.AccessTokenType == "" || config.AccessTokenType == "OIDC_TOKEN_TYPE_BEARER") &&
+		config.DevMode != nil && *config.DevMode &&
+		config.AccessTokenRoleAssertion != nil && *config.AccessTokenRoleAssertion &&
+		config.IDTokenRoleAssertion != nil && *config.IDTokenRoleAssertion {
+		// ZITADEL v4 omits the default Web/Basic enums in some v1 responses.
+		// A regenerated client secret is the fail-closed proof that the reused
+		// application still implements the confidential Basic contract.
+		return config.AppType == "" || config.AuthMethodType == "", nil
 	}
-	return nil
+	if err := client.updateOIDCApplicationConfig(ctx, projectID, application.ID, cfg); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (c client) listApplications(ctx context.Context, projectID string) ([]applicationRecord, error) {
@@ -448,6 +567,44 @@ func (c client) createAPIApplication(ctx context.Context, projectID, name string
 	}}, nil
 }
 
+func (c client) updateAPIApplicationConfig(ctx context.Context, projectID, appID string) error {
+	path := "/management/v1/projects/" + url.PathEscape(projectID) + "/apps/" + url.PathEscape(appID) + "/api_config"
+	if err := c.doJSON(ctx, http.MethodPut, path, map[string]any{
+		"authMethodType": "API_AUTH_METHOD_TYPE_BASIC",
+	}, nil); err != nil {
+		return fmt.Errorf("update local API application authentication: %w", err)
+	}
+	return nil
+}
+
+func (c client) regenerateAPIClientSecret(ctx context.Context, projectID, appID string) (string, error) {
+	var response struct {
+		ClientSecret string `json:"clientSecret"`
+	}
+	path := "/management/v1/projects/" + url.PathEscape(projectID) + "/apps/" + url.PathEscape(appID) + "/api_config/_generate_client_secret"
+	if err := c.doJSON(ctx, http.MethodPost, path, map[string]any{}, &response); err != nil {
+		return "", fmt.Errorf("regenerate local API client secret: %w", err)
+	}
+	if strings.TrimSpace(response.ClientSecret) == "" {
+		return "", errors.New("regenerate local API client secret returned an empty secret")
+	}
+	return response.ClientSecret, nil
+}
+
+func (c client) regenerateOIDCClientSecret(ctx context.Context, projectID, appID string) (string, error) {
+	var response struct {
+		ClientSecret string `json:"clientSecret"`
+	}
+	path := "/management/v1/projects/" + url.PathEscape(projectID) + "/apps/" + url.PathEscape(appID) + "/oidc_config/_generate_client_secret"
+	if err := c.doJSON(ctx, http.MethodPost, path, map[string]any{}, &response); err != nil {
+		return "", fmt.Errorf("regenerate local OIDC client secret: %w", err)
+	}
+	if strings.TrimSpace(response.ClientSecret) == "" {
+		return "", errors.New("regenerate local OIDC client secret returned an empty secret")
+	}
+	return response.ClientSecret, nil
+}
+
 func (c client) createOIDCApplication(ctx context.Context, projectID string, cfg LocalApplicationConfig) (applicationRecord, error) {
 	var response struct {
 		AppID        string `json:"appId"`
@@ -459,11 +616,13 @@ func (c client) createOIDCApplication(ctx context.Context, projectID string, cfg
 		"redirectUris":             cfg.RedirectURIs,
 		"responseTypes":            []string{"OIDC_RESPONSE_TYPE_CODE"},
 		"grantTypes":               []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
-		"appType":                  "OIDC_APP_TYPE_USER_AGENT",
-		"authMethodType":           "OIDC_AUTH_METHOD_TYPE_NONE",
+		"appType":                  "OIDC_APP_TYPE_WEB",
+		"authMethodType":           "OIDC_AUTH_METHOD_TYPE_BASIC",
 		"version":                  "OIDC_VERSION_1_0",
 		"accessTokenType":          "OIDC_TOKEN_TYPE_BEARER",
 		"accessTokenRoleAssertion": true,
+		"idTokenRoleAssertion":     true,
+		"devMode":                  true,
 		"postLogoutRedirectUris":   cfg.PostLogoutRedirectURIs,
 	}, &response); err != nil {
 		return applicationRecord{}, err
@@ -471,6 +630,22 @@ func (c client) createOIDCApplication(ctx context.Context, projectID string, cfg
 	return applicationRecord{ID: response.AppID, Name: cfg.OIDCName, OIDCConfig: &oidcApplicationConfig{
 		ClientID: response.ClientID, ClientSecret: response.ClientSecret,
 	}}, nil
+}
+
+func (c client) updateOIDCApplicationConfig(ctx context.Context, projectID, appID string, cfg LocalApplicationConfig) error {
+	path := "/management/v1/projects/" + url.PathEscape(projectID) + "/apps/" + url.PathEscape(appID) + "/oidc_config"
+	return c.doJSON(ctx, http.MethodPut, path, map[string]any{
+		"redirectUris":             cfg.RedirectURIs,
+		"responseTypes":            []string{"OIDC_RESPONSE_TYPE_CODE"},
+		"grantTypes":               []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
+		"appType":                  "OIDC_APP_TYPE_WEB",
+		"authMethodType":           "OIDC_AUTH_METHOD_TYPE_BASIC",
+		"accessTokenType":          "OIDC_TOKEN_TYPE_BEARER",
+		"accessTokenRoleAssertion": true,
+		"idTokenRoleAssertion":     true,
+		"devMode":                  true,
+		"postLogoutRedirectUris":   cfg.PostLogoutRedirectURIs,
+	}, nil)
 }
 
 type userGrant struct {
@@ -580,15 +755,19 @@ func (c client) findProject(ctx context.Context, name string) (string, error) {
 	return "", nil
 }
 
-func (c client) createProject(ctx context.Context, name string) (string, error) {
+func (c client) createProject(ctx context.Context, name string, hasProjectCheck *bool) (string, error) {
 	var response struct {
 		ID string `json:"id"`
+	}
+	projectHasProjectCheck := true
+	if hasProjectCheck != nil {
+		projectHasProjectCheck = *hasProjectCheck
 	}
 	if err := c.doJSON(ctx, http.MethodPost, "/management/v1/projects", map[string]any{
 		"name":                 name,
 		"projectRoleAssertion": true,
 		"projectRoleCheck":     true,
-		"hasProjectCheck":      true,
+		"hasProjectCheck":      projectHasProjectCheck,
 	}, &response); err != nil {
 		return "", err
 	}
@@ -596,6 +775,16 @@ func (c client) createProject(ctx context.Context, name string) (string, error) 
 		return "", errors.New("ZITADEL create project response did not include an id")
 	}
 	return response.ID, nil
+}
+
+func (c client) updateProject(ctx context.Context, projectID, name string, hasProjectCheck bool) error {
+	var response map[string]any
+	return c.doJSON(ctx, http.MethodPut, "/management/v1/projects/"+url.PathEscape(projectID), map[string]any{
+		"name":                 name,
+		"projectRoleAssertion": true,
+		"projectRoleCheck":     true,
+		"hasProjectCheck":      hasProjectCheck,
+	}, &response)
 }
 
 func (c client) listProjectRoles(ctx context.Context, projectID string) (map[string]ProjectRole, error) {

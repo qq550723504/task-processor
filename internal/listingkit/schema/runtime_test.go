@@ -58,6 +58,9 @@ func TestAutoMigrateRuntimeCreatesTaskRepositoryPrerequisites(t *testing.T) {
 			t.Fatalf("AutoMigrateRuntime() did not create %s", table)
 		}
 	}
+	if db.Migrator().HasTable("listingkit_acceptance_environment") {
+		t.Fatal("product runtime migration must not create the local acceptance marker")
+	}
 }
 
 func TestAutoMigrateRuntimeIncludesUsageLedgerSchema(t *testing.T) {

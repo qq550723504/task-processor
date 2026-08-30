@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const mockedAcceptanceHandoff = vi.hoisted(() => ({
+  persist: vi.fn(async () => false),
+}));
+
+vi.mock("@/lib/server/zitadel-acceptance-token", () => ({
+  persistZitadelAcceptanceToken: mockedAcceptanceHandoff.persist,
+}));
+
 import { buildAuthConfig } from "@/auth.config";
 
 const canonicalIdentity = {
@@ -60,6 +68,7 @@ async function refreshSession(
 
 describe("ListingKit Auth.js canonical ZITADEL identity", () => {
   afterEach(() => {
+    mockedAcceptanceHandoff.persist.mockClear();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -90,6 +99,45 @@ describe("ListingKit Auth.js canonical ZITADEL identity", () => {
 
     expect(result.identity).toMatchObject({ userId: "zitadel-subject-123" });
     expect(result.identityVersion).toBe(2);
+    expect(mockedAcceptanceHandoff.persist).toHaveBeenCalledWith(
+      "access-token-1",
+    );
+  });
+
+  it("uses the same confidential Basic client contract provisioned in ZITADEL", () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    vi.stubEnv("ZITADEL_CLIENT_SECRET", "listingkit-secret");
+
+    const provider = buildAuthConfig().providers?.[0];
+    if (!provider || typeof provider === "function") {
+      throw new Error("ZITADEL provider is not configured");
+    }
+    expect(provider.options?.client).toMatchObject({
+      token_endpoint_auth_method: "client_secret_basic",
+    });
+  });
+
+  it("keeps access and ID tokens out of the browser-visible session", async () => {
+    const session = buildAuthConfig().callbacks?.session;
+    if (!session) {
+      throw new Error("Auth.js session callback is not configured");
+    }
+
+    const result = await session({
+      session: { user: {}, expires: new Date(Date.now() + 60_000).toISOString() },
+      token: {
+        accessToken: "access-token-1",
+        idToken: "id-token-1",
+        expiresAt: Math.floor(Date.now() / 1000) + 60,
+        identity: canonicalIdentity,
+        identityVersion: 2,
+      },
+    } as never);
+
+    expect(result).not.toHaveProperty("accessToken");
+    expect(result).not.toHaveProperty("idToken");
+    expect(result).toMatchObject({ identity: canonicalIdentity });
   });
 
   it("invalidates identity when a refreshed ID token lacks sub", async () => {

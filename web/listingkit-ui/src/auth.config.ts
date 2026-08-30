@@ -4,6 +4,7 @@ import type { JWT } from "next-auth/jwt";
 import ZITADEL from "next-auth/providers/zitadel";
 
 import { createResilientOidcFetch } from "@/lib/server/auth-fetch";
+import { persistZitadelAcceptanceToken } from "@/lib/server/zitadel-acceptance-token";
 import {
   extractZitadelIdentityFromClaims,
   normalizeClaim,
@@ -16,8 +17,6 @@ export type { ListingKitSessionIdentity };
 
 declare module "next-auth" {
   interface Session {
-    accessToken?: string;
-    idToken?: string;
     expiresAt?: number;
     error?: string;
     issuerUrl?: string;
@@ -148,6 +147,7 @@ export function buildAuthConfig(): NextAuthConfig {
         issuer: zitadel.issuerUrl,
         clientId: zitadel.clientId,
         clientSecret: zitadel.clientSecret,
+        client: { token_endpoint_auth_method: "client_secret_basic" },
         authorization: { params: { scope: zitadel.scopes } },
       })
     : undefined;
@@ -166,6 +166,9 @@ export function buildAuthConfig(): NextAuthConfig {
     callbacks: {
       async jwt({ token, account, profile }) {
         if (account?.provider === "zitadel") {
+          if (account.access_token) {
+            await persistZitadelAcceptanceToken(account.access_token);
+          }
           const identity = profile
             ? extractZitadelIdentityFromClaims(profile as ZitadelTokenPayload)
             : null;
@@ -202,6 +205,9 @@ export function buildAuthConfig(): NextAuthConfig {
 
         try {
           const refreshed = await refreshZitadelToken(token, zitadel, oidcFetch);
+          if (refreshed.accessToken) {
+            await persistZitadelAcceptanceToken(refreshed.accessToken);
+          }
           return {
             ...token,
             ...refreshed,
@@ -222,8 +228,6 @@ export function buildAuthConfig(): NextAuthConfig {
         }
       },
       async session({ session, token }) {
-        session.accessToken = token.accessToken;
-        session.idToken = token.idToken;
         session.expiresAt = token.expiresAt;
         session.error = token.error;
         session.issuerUrl = token.issuerUrl;

@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mockedAuthState = vi.hoisted(() => ({
-  session: null as Record<string, unknown> | null,
   signOutResult: new Response(null, { status: 302 }),
+}));
+
+const mockedServerToken = vi.hoisted(() => ({
+  idToken: "",
 }));
 
 const mockedZitadelHelpers = vi.hoisted(() => ({
@@ -26,8 +29,11 @@ const mockedZitadelHelpers = vi.hoisted(() => ({
 }));
 
 vi.mock("@/auth", () => ({
-  auth: vi.fn(() => Promise.resolve(mockedAuthState.session)),
   signOut: vi.fn(() => Promise.resolve(mockedAuthState.signOutResult)),
+}));
+
+vi.mock("@/lib/server/zitadel-server-token", () => ({
+  readZitadelServerIDToken: vi.fn(async () => mockedServerToken.idToken),
 }));
 
 vi.mock("@/lib/server/zitadel-auth", () => ({
@@ -38,9 +44,6 @@ vi.mock("@/lib/server/zitadel-auth", () => ({
     }
     return mockedZitadelHelpers.discovery;
   }),
-  readZitadelIDTokenFromSession: vi.fn((session) =>
-    typeof session?.idToken === "string" ? session.idToken : "",
-  ),
   resolvePublicAppOrigin: vi.fn(() => mockedZitadelHelpers.publicOrigin),
 }));
 
@@ -48,10 +51,12 @@ import { GET } from "@/app/api/zitadel-auth/logout/route";
 import { signOut } from "@/auth";
 
 describe("GET /api/zitadel-auth/logout", () => {
+  const request = new Request("http://localhost:3000/api/zitadel-auth/logout");
+
   afterEach(() => {
     vi.restoreAllMocks();
-    mockedAuthState.session = null;
     mockedAuthState.signOutResult = new Response(null, { status: 302 });
+    mockedServerToken.idToken = "";
     mockedZitadelHelpers.options = undefined;
     mockedZitadelHelpers.discovery = undefined;
     mockedZitadelHelpers.discoveryError = null;
@@ -68,10 +73,30 @@ describe("GET /api/zitadel-auth/logout", () => {
     };
     mockedZitadelHelpers.discoveryError = new Error("fetch failed");
 
-    await expect(GET()).resolves.toBe(mockedAuthState.signOutResult);
+    await expect(GET(request as never)).resolves.toBe(mockedAuthState.signOutResult);
 
     expect(signOut).toHaveBeenCalledWith({
       redirectTo: "http://localhost:3000",
+    });
+  });
+
+  it("uses only the encrypted server JWT ID token as the logout hint", async () => {
+    mockedZitadelHelpers.options = {
+      issuerUrl: "https://auth.shuomiai.com",
+      clientId: "client-1",
+      postLogoutRedirectUri: "http://localhost:3000",
+      scopes: "openid profile",
+    };
+    mockedZitadelHelpers.discovery = {
+      end_session_endpoint: "https://auth.shuomiai.com/oidc/v1/end_session",
+    };
+    mockedServerToken.idToken = "server-id-token";
+
+    await GET(request as never);
+
+    expect(signOut).toHaveBeenCalledWith({
+      redirectTo:
+        "https://auth.shuomiai.com/oidc/v1/end_session?client_id=client-1&post_logout_redirect_uri=http%3A%2F%2Flocalhost%3A3000&id_token_hint=server-id-token",
     });
   });
 });

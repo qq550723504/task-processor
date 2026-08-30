@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -55,7 +56,7 @@ func TestProvisionLocalApplicationsCreatesAPIAndOIDCApps(t *testing.T) {
 	}, LocalApplicationConfig{
 		APIName:                "ListingKit Local API",
 		OIDCName:               "ListingKit Local OIDC",
-		RedirectURIs:           []string{"http://localhost:3000/api/zitadel-auth/callback"},
+		RedirectURIs:           []string{"http://localhost:3000/api/auth/callback/zitadel"},
 		PostLogoutRedirectURIs: []string{"http://localhost:3000"},
 	})
 	if err != nil {
@@ -65,13 +66,15 @@ func TestProvisionLocalApplicationsCreatesAPIAndOIDCApps(t *testing.T) {
 	if apiBody["name"] != "ListingKit Local API" || apiBody["authMethodType"] != "API_AUTH_METHOD_TYPE_BASIC" {
 		t.Fatalf("API app body = %#v", apiBody)
 	}
-	assertStringSlice(t, oidcBody["redirectUris"], []string{"http://localhost:3000/api/zitadel-auth/callback"})
+	assertStringSlice(t, oidcBody["redirectUris"], []string{"http://localhost:3000/api/auth/callback/zitadel"})
 	assertStringSlice(t, oidcBody["postLogoutRedirectUris"], []string{"http://localhost:3000"})
 	if oidcBody["name"] != "ListingKit Local OIDC" ||
-		oidcBody["appType"] != "OIDC_APP_TYPE_USER_AGENT" ||
-		oidcBody["authMethodType"] != "OIDC_AUTH_METHOD_TYPE_NONE" ||
+		oidcBody["appType"] != "OIDC_APP_TYPE_WEB" ||
+		oidcBody["authMethodType"] != "OIDC_AUTH_METHOD_TYPE_BASIC" ||
 		oidcBody["accessTokenType"] != "OIDC_TOKEN_TYPE_BEARER" ||
-		oidcBody["accessTokenRoleAssertion"] != true {
+		oidcBody["accessTokenRoleAssertion"] != true ||
+		oidcBody["idTokenRoleAssertion"] != true ||
+		oidcBody["devMode"] != true {
 		t.Fatalf("OIDC app body = %#v", oidcBody)
 	}
 	assertStringSlice(t, oidcBody["responseTypes"], []string{"OIDC_RESPONSE_TYPE_CODE"})
@@ -88,13 +91,20 @@ func TestProvisionLocalApplicationsCreatesAPIAndOIDCApps(t *testing.T) {
 			t.Fatalf("formatted result leaked %q: %s", secret, formatted)
 		}
 	}
-	if !contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:role:listingkit_operator") {
+	if !contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:id:project-1:aud") ||
+		!contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:project-1:roles") {
 		t.Fatalf("recommended scopes = %#v", result.RecommendedScopes)
+	}
+	if contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:id:zitadel:aud") ||
+		!contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:id:project-1:aud") ||
+		!contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:project-1:roles") {
+		t.Fatalf("recommended scopes must target the ListingKit project: %#v", result.RecommendedScopes)
 	}
 }
 
 func TestProvisionLocalApplicationsReusesAppsByStableName(t *testing.T) {
 	createCalls := 0
+	updateCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requireAuth(t, r)
 		switch r.URL.Path {
@@ -102,8 +112,14 @@ func TestProvisionLocalApplicationsReusesAppsByStableName(t *testing.T) {
 			writeJSON(t, w, map[string]any{"result": defaultRoleResponses()})
 		case "/management/v1/projects/project-1/apps/_search":
 			writeJSON(t, w, map[string]any{"result": []map[string]any{
-				{"id": "api-app-1", "name": "ListingKit Local API", "apiConfig": map[string]any{"clientId": "api-client-1", "authMethodType": "API_AUTH_METHOD_TYPE_BASIC"}},
+				{"id": "api-app-1", "name": "ListingKit Local API", "apiConfig": map[string]any{"clientId": "api-client-1"}},
 				{"id": "oidc-app-1", "name": "ListingKit Local OIDC", "oidcConfig": map[string]any{"clientId": "oidc-client-1"}},
+			}})
+		case "/management/v1/projects/project-1/apps/api-app-1":
+			writeJSON(t, w, map[string]any{"app": map[string]any{
+				"id": "api-app-1", "name": "ListingKit Local API", "apiConfig": map[string]any{
+					"clientId": "api-client-1", "clientSecret": "", "authMethodType": "API_AUTH_METHOD_TYPE_BASIC",
+				},
 			}})
 		case "/management/v1/projects/project-1/apps/oidc-app-1":
 			writeJSON(t, w, map[string]any{"app": map[string]any{
@@ -111,9 +127,33 @@ func TestProvisionLocalApplicationsReusesAppsByStableName(t *testing.T) {
 					"clientId": "oidc-client-1", "redirectUris": []string{"http://localhost:3000/api/zitadel-auth/callback"},
 					"responseTypes": []string{"OIDC_RESPONSE_TYPE_CODE"}, "grantTypes": []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
 					"appType": "OIDC_APP_TYPE_USER_AGENT", "authMethodType": "OIDC_AUTH_METHOD_TYPE_NONE",
-					"postLogoutRedirectUris": []string{"http://localhost:3000"}, "accessTokenType": "OIDC_TOKEN_TYPE_BEARER", "accessTokenRoleAssertion": true,
+					"postLogoutRedirectUris": []string{"http://localhost:3000"}, "accessTokenRoleAssertion": true,
 				},
 			}})
+		case "/management/v1/projects/project-1/apps/oidc-app-1/oidc_config":
+			if r.Method != http.MethodPut {
+				t.Fatalf("OIDC update method = %s, want PUT", r.Method)
+			}
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode OIDC update body: %v", err)
+			}
+			if !reflect.DeepEqual(body["redirectUris"], []any{"http://localhost:3000/api/auth/callback/zitadel"}) {
+				t.Fatalf("OIDC update body = %#v", body)
+			}
+			if body["devMode"] != true {
+				t.Fatalf("OIDC update devMode = %#v, want true", body["devMode"])
+			}
+			if body["idTokenRoleAssertion"] != true {
+				t.Fatalf("OIDC update idTokenRoleAssertion = %#v, want true", body["idTokenRoleAssertion"])
+			}
+			if body["appType"] != "OIDC_APP_TYPE_WEB" || body["authMethodType"] != "OIDC_AUTH_METHOD_TYPE_BASIC" {
+				t.Fatalf("OIDC update authentication contract = %#v", body)
+			}
+			updateCalls++
+			writeJSON(t, w, map[string]any{"details": map[string]any{"sequence": "2"}})
+		case "/management/v1/projects/project-1/apps/oidc-app-1/oidc_config/_generate_client_secret":
+			writeJSON(t, w, map[string]any{"clientSecret": "rotated-oidc-secret"})
 		case "/management/v1/projects/project-1/apps/api", "/management/v1/projects/project-1/apps/oidc":
 			createCalls++
 			writeJSON(t, w, map[string]any{})
@@ -127,7 +167,7 @@ func TestProvisionLocalApplicationsReusesAppsByStableName(t *testing.T) {
 		IssuerURL: server.URL, ManagementToken: "token", ProjectID: "project-1",
 	}, LocalApplicationConfig{
 		APIName: "ListingKit Local API", OIDCName: "ListingKit Local OIDC",
-		RedirectURIs:           []string{"http://localhost:3000/api/zitadel-auth/callback"},
+		RedirectURIs:           []string{"http://localhost:3000/api/auth/callback/zitadel"},
 		PostLogoutRedirectURIs: []string{"http://localhost:3000"},
 	})
 	if err != nil {
@@ -136,9 +176,94 @@ func TestProvisionLocalApplicationsReusesAppsByStableName(t *testing.T) {
 	if createCalls != 0 {
 		t.Fatalf("create calls = %d, want 0", createCalls)
 	}
+	if updateCalls != 1 {
+		t.Fatalf("OIDC update calls = %d, want 1", updateCalls)
+	}
 	if result.APIAppID != "api-app-1" || result.APIClientID != "api-client-1" || result.APIClientSecret != "" ||
-		result.OIDCAppID != "oidc-app-1" || result.OIDCClientID != "oidc-client-1" || result.OIDCClientSecret != "" {
+		result.OIDCAppID != "oidc-app-1" || result.OIDCClientID != "oidc-client-1" || result.OIDCClientSecret != "rotated-oidc-secret" {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestProvisionLocalApplicationsValidatesBasicAndRotatesMissingSecrets(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		authMethod string
+	}{
+		{name: "rotates basic", authMethod: "API_AUTH_METHOD_TYPE_BASIC"},
+		{name: "proves omitted basic by rotation", authMethod: ""},
+		{name: "repairs private key", authMethod: "API_AUTH_METHOD_TYPE_PRIVATE_KEY_JWT"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rotated := false
+			currentAuthMethod := tt.authMethod
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requireAuth(t, r)
+				switch r.URL.Path {
+				case "/management/v1/projects/project-1/roles/_search":
+					writeJSON(t, w, map[string]any{"result": defaultRoleResponses()})
+				case "/management/v1/projects/project-1/apps/_search":
+					writeJSON(t, w, map[string]any{"result": []map[string]any{
+						{"id": "api-app-1", "name": "ListingKit Local API", "apiConfig": map[string]any{"clientId": "api-client-1"}},
+						{"id": "oidc-app-1", "name": "ListingKit Local OIDC", "oidcConfig": map[string]any{"clientId": "oidc-client-1"}},
+					}})
+				case "/management/v1/projects/project-1/apps/api-app-1":
+					writeJSON(t, w, map[string]any{"app": map[string]any{
+						"id": "api-app-1", "name": "ListingKit Local API",
+						"apiConfig": map[string]any{"clientId": "api-client-1", "authMethodType": currentAuthMethod},
+					}})
+				case "/management/v1/projects/project-1/apps/api-app-1/api_config":
+					if r.Method != http.MethodPut {
+						t.Fatalf("API config method = %s, want PUT", r.Method)
+					}
+					currentAuthMethod = "API_AUTH_METHOD_TYPE_BASIC"
+					writeJSON(t, w, map[string]any{"details": map[string]any{"sequence": "2"}})
+				case "/management/v1/projects/project-1/apps/api-app-1/api_config/_generate_client_secret":
+					rotated = true
+					writeJSON(t, w, map[string]any{"clientSecret": "rotated-api-secret"})
+				case "/management/v1/projects/project-1/apps/oidc-app-1/oidc_config/_generate_client_secret":
+					writeJSON(t, w, map[string]any{"clientSecret": "rotated-oidc-secret"})
+				case "/management/v1/projects/project-1/apps/oidc-app-1":
+					devMode := true
+					_ = devMode
+					writeJSON(t, w, map[string]any{"app": map[string]any{
+						"id": "oidc-app-1", "name": "ListingKit Local OIDC",
+						"oidcConfig": map[string]any{
+							"clientId":               "oidc-client-1",
+							"redirectUris":           []string{"http://localhost:3000/api/auth/callback/zitadel"},
+							"postLogoutRedirectUris": []string{"http://localhost:3000"},
+							"responseTypes":          []string{"OIDC_RESPONSE_TYPE_CODE"},
+							"grantTypes":             []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
+							// ZITADEL v4 may omit the default Web/Basic enum values.
+							"appType":                  "",
+							"authMethodType":           "",
+							"accessTokenType":          "OIDC_TOKEN_TYPE_BEARER",
+							"devMode":                  true,
+							"accessTokenRoleAssertion": true,
+							"idTokenRoleAssertion":     true,
+						},
+					}})
+				default:
+					t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+			}))
+			defer server.Close()
+
+			result, err := ProvisionLocalApplications(context.Background(), Config{
+				IssuerURL: server.URL, ManagementToken: "token", ProjectID: "project-1",
+			}, LocalApplicationConfig{
+				APIName: "ListingKit Local API", OIDCName: "ListingKit Local OIDC",
+				RedirectURIs:           []string{"http://localhost:3000/api/auth/callback/zitadel"},
+				PostLogoutRedirectURIs: []string{"http://localhost:3000"},
+				RotateAPIClientSecret:  true,
+			})
+			if err != nil {
+				t.Fatalf("ProvisionLocalApplications() error = %v", err)
+			}
+			if !rotated || result.APIClientSecret != "rotated-api-secret" {
+				t.Fatalf("rotation result = %#v, rotated=%v", result, rotated)
+			}
+		})
 	}
 }
 
@@ -146,7 +271,7 @@ func TestProvisionLocalApplicationsRejectsNonLocalIssuerOrRedirect(t *testing.T)
 	base := Config{IssuerURL: "https://zitadel.example.com", ManagementToken: "token", ProjectID: "project-1"}
 	appCfg := LocalApplicationConfig{
 		APIName: "ListingKit Local API", OIDCName: "ListingKit Local OIDC",
-		RedirectURIs: []string{"http://localhost:3000/api/zitadel-auth/callback"}, PostLogoutRedirectURIs: []string{"http://localhost:3000"},
+		RedirectURIs: []string{"http://localhost:3000/api/auth/callback/zitadel"}, PostLogoutRedirectURIs: []string{"http://localhost:3000"},
 	}
 	if _, err := ProvisionLocalApplications(context.Background(), base, appCfg); err == nil {
 		t.Fatal("remote issuer was accepted")
@@ -341,7 +466,7 @@ func TestProvisionCreatesMissingRolesOnExistingProject(t *testing.T) {
 	if !result.Roles[0].Existed || result.Roles[1].Existed {
 		t.Fatalf("unexpected role statuses: %#v", result.Roles)
 	}
-	if !contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:role:listingkit_admin") {
+	if !contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:project-1:roles") {
 		t.Fatalf("recommended scopes missing listingkit_admin: %#v", result.RecommendedScopes)
 	}
 }

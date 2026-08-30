@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -11,14 +12,25 @@ import (
 )
 
 func buildHTTPServerFromRoutes(port int, routes []httproute.Descriptor) *http.Server {
+	return buildHTTPServerFromRoutesAt("", port, routes)
+}
+
+func buildHTTPServerFromRoutesAt(bindAddress string, port int, routes []httproute.Descriptor) *http.Server {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	mountRoutes(router, routes)
 	return &http.Server{
-		Addr:              fmt.Sprintf(":%d", port),
+		Addr:              serverAddress(bindAddress, port),
 		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+}
+
+func serverAddress(bindAddress string, port int) string {
+	if bindAddress == "" {
+		return fmt.Sprintf(":%d", port)
+	}
+	return net.JoinHostPort(bindAddress, fmt.Sprint(port))
 }
 
 func mountRoutes(r *gin.Engine, routes []httproute.Descriptor) {
