@@ -11,32 +11,34 @@ import (
 )
 
 type httpFeatureCompositionBuilder struct {
-	buildProduct       productModuleBuilder
-	buildImage         imageModuleBuilder
-	buildAmazonListing amazonListingModuleBuilder
-	buildSheinLogin    sheinLoginModuleBuilder
-	buildSDSLogin      sdsLoginModuleBuilder
-	buildListingKit    listingKitModuleBuilder
-	buildPrompt        promptModuleBuilder
-	buildTaskRPC       taskRPCModuleBuilder
-	buildSDS           sdsModuleBuilder
-	buildSourceAccount sourceAccountRepositoryBuilder
-	buildImageAgent    imageAgentModuleBuilder
+	buildProduct          productModuleBuilder
+	buildImage            imageModuleBuilder
+	buildAmazonListing    amazonListingModuleBuilder
+	buildSheinLogin       sheinLoginModuleBuilder
+	buildSDSLogin         sdsLoginModuleBuilder
+	buildListingKit       listingKitModuleBuilder
+	buildPrompt           promptModuleBuilder
+	buildTaskRPC          taskRPCModuleBuilder
+	buildSDS              sdsModuleBuilder
+	buildSourceAccount    sourceAccountRepositoryBuilder
+	buildImageAgent       imageAgentModuleBuilder
+	buildWorkbenchContext workbenchContextModuleBuilder
 }
 
 func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 	return httpFeatureCompositionBuilder{
-		buildProduct:       buildProductModuleResult,
-		buildImage:         buildImageModuleResult,
-		buildAmazonListing: buildAmazonListingModuleResult,
-		buildSheinLogin:    buildSheinLoginModuleResult,
-		buildSDSLogin:      buildSDSLoginModuleResult,
-		buildListingKit:    buildListingKitModuleResult,
-		buildPrompt:        buildPromptModuleResult,
-		buildTaskRPC:       buildTaskRPCModuleResult,
-		buildSDS:           buildSDSModuleResult,
-		buildSourceAccount: buildSourceAccountRepository,
-		buildImageAgent:    buildImageAgentModuleResult,
+		buildProduct:          buildProductModuleResult,
+		buildImage:            buildImageModuleResult,
+		buildAmazonListing:    buildAmazonListingModuleResult,
+		buildSheinLogin:       buildSheinLoginModuleResult,
+		buildSDSLogin:         buildSDSLoginModuleResult,
+		buildListingKit:       buildListingKitModuleResult,
+		buildPrompt:           buildPromptModuleResult,
+		buildTaskRPC:          buildTaskRPCModuleResult,
+		buildSDS:              buildSDSModuleResult,
+		buildSourceAccount:    buildSourceAccountRepository,
+		buildImageAgent:       buildImageAgentModuleResult,
+		buildWorkbenchContext: buildDefaultWorkbenchContextModule,
 	}
 }
 
@@ -151,6 +153,17 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	composition.promptModule = supportFeatures.promptModule
 	composition.taskRPCResult = supportFeatures.taskRPCResult
 	composition.sdsModule = supportFeatures.sdsModule
+
+	if b.buildWorkbenchContext != nil {
+		done = timer.phase("buildWorkbenchContextModule")
+		workbenchResult, workbenchErr := b.buildWorkbenchContext(deps.shared.cfg)
+		done()
+		if workbenchErr != nil {
+			return composition, workbenchErr
+		}
+		composition.workbenchContextModule = workbenchResult.module
+		composition.workbenchAuthDependencies = workbenchResult.authDependencies
+	}
 	timer.total("buildHTTPFeatureComposition")
 
 	return composition, nil

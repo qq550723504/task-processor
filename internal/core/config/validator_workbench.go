@@ -24,6 +24,13 @@ func ValidateWorkbenchConfig(workbench *WorkbenchConfig, zitadel *ListingKitZita
 			Hint:    "configure the ZITADEL issuer URL or disable workbench",
 		})
 	}
+	if zitadel == nil || strings.TrimSpace(zitadel.ClientID) == "" {
+		errors = append(errors, &ValidationError{
+			Field:   "listingkit.zitadel.clientID",
+			Message: "is required when workbench is enabled",
+			Hint:    "configure the ZITADEL client ID or disable workbench",
+		})
+	}
 	if zitadel == nil || strings.TrimSpace(zitadel.AuthorizationAPIURL) == "" {
 		errors = append(errors, &ValidationError{
 			Field:   "listingkit.zitadel.authorizationAPIURL",

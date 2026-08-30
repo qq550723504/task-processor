@@ -27,6 +27,8 @@ type routeAuthDependencies struct {
 	roleMiddleware       func(httproute.Descriptor) gin.HandlerFunc
 }
 
+const resolvedOrganizationTargetKey = "workbench.resolved-organization-target"
+
 func newRouteAuthDependencies() routeAuthDependencies {
 	return routeAuthDependencies{legacyZitadelAuth: newLegacyZitadelAuthMiddleware()}
 }
@@ -46,13 +48,16 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 	if !requiresOrganization && !listingkithttpapi.RouteRequiresZitadelAuth(route) {
 		return nil
 	}
-	handlers := make([]gin.HandlerFunc, 0, 3)
+	handlers := make([]gin.HandlerFunc, 0, 4)
 	if requiresOrganization {
 		handlers = append(handlers, workbenchAuthenticationMiddleware(dependencies.workbenchVerifier))
 	} else if dependencies.legacyZitadelAuth != nil {
 		handlers = append(handlers, dependencies.legacyZitadelAuth)
 	}
 	if requiresOrganization {
+		if route.OrganizationTargetResolver != nil {
+			handlers = append(handlers, organizationTargetResolutionMiddleware(route.OrganizationTargetResolver))
+		}
 		handlers = append(handlers, organizationResolutionMiddleware(route.OrganizationAccessPolicy, dependencies.organizationResolver))
 	}
 	var roleAuth gin.HandlerFunc
@@ -67,6 +72,18 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 		handlers = append(handlers, roleAuth)
 	}
 	return handlers
+}
+
+func organizationTargetResolutionMiddleware(resolve httproute.OrganizationTargetResolver) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		target, err := resolve(c.Request)
+		if err != nil {
+			writeWorkbenchProtocolError(c, http.StatusBadRequest, "INVALID_REQUEST", "Request is invalid")
+			return
+		}
+		c.Set(resolvedOrganizationTargetKey, target)
+		c.Next()
+	}
 }
 
 func routeRequiresOrganizationResolution(policy httproute.OrganizationAccessPolicy) bool {
@@ -125,10 +142,14 @@ func organizationResolutionMiddleware(policy httproute.OrganizationAccessPolicy,
 			writeWorkbenchContextError(c, workbenchcontext.ErrAuthorizationDependencyUnavailable)
 			return
 		}
+		requestedOrganizationID := c.GetHeader("X-Requested-Organization-ID")
+		if resolvedTarget, exists := c.Get(resolvedOrganizationTargetKey); exists {
+			requestedOrganizationID, _ = resolvedTarget.(string)
+		}
 		resolved, err := resolver.Resolve(c.Request.Context(), policy, workbenchcontext.ResolveInput{
 			Identity:                identity,
 			BearerToken:             requestBearerToken(c.GetHeader("Authorization")),
-			RequestedOrganizationID: c.GetHeader("X-Requested-Organization-ID"),
+			RequestedOrganizationID: requestedOrganizationID,
 		})
 		if err != nil {
 			writeWorkbenchContextError(c, err)

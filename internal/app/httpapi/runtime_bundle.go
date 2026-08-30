@@ -12,8 +12,9 @@ import (
 )
 
 type runtimeBundle struct {
-	routes      []httproute.Descriptor
-	workerPools []kernelmodule.NamedWorkerPool
+	routes           []httproute.Descriptor
+	workerPools      []kernelmodule.NamedWorkerPool
+	authDependencies *routeAuthDependencies
 }
 
 func buildRuntimeBundleFromModules(cfg *config.Config, modules []kernelmodule.Module) (runtimeBundle, error) {
@@ -40,6 +41,9 @@ func buildRuntimeBundleFromModules(cfg *config.Config, modules []kernelmodule.Mo
 }
 
 func (b runtimeBundle) buildServerBundle(port int) (*http.Server, []httproute.Descriptor) {
+	if b.authDependencies != nil {
+		return buildHTTPServerFromRoutesAtWithAuthDependencies("", port, b.routes, *b.authDependencies), b.routes
+	}
 	return buildHTTPServerFromRoutes(port, b.routes), b.routes
 }
 

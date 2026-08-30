@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,6 +32,7 @@ import (
 	"task-processor/internal/sheinlogin"
 	"task-processor/internal/taskrpcapi"
 	"task-processor/internal/workbenchcontext"
+	workbenchcontexthttpapi "task-processor/internal/workbenchcontext/httpapi"
 )
 
 func init() {
@@ -82,8 +84,100 @@ func mountedVerifiedIdentity() authidentity.AuthenticatedIdentity {
 
 type mountedOrganizationResolverError struct{ err error }
 
+type mountedCapturingOrganizationResolver struct {
+	calls  int
+	target string
+}
+
+func (resolver *mountedCapturingOrganizationResolver) Resolve(_ context.Context, _ httproute.OrganizationAccessPolicy, input workbenchcontext.ResolveInput) (authidentity.AuthenticatedIdentity, error) {
+	resolver.calls++
+	resolver.target = input.RequestedOrganizationID
+	identity := input.Identity
+	identity.EffectiveOrganizationID = input.RequestedOrganizationID
+	return identity, nil
+}
+
 func (stub mountedOrganizationResolverError) Resolve(context.Context, httproute.OrganizationAccessPolicy, workbenchcontext.ResolveInput) (authidentity.AuthenticatedIdentity, error) {
 	return authidentity.AuthenticatedIdentity{}, stub.err
+}
+
+func TestWorkbenchLiveSwitchRejectsInvalidTargetBeforeGrantLookup(t *testing.T) {
+	testCases := []struct {
+		name   string
+		body   string
+		header string
+	}{
+		{name: "unknown field", body: `{"organizationId":"org-a","unexpected":true}`},
+		{name: "blank", body: `{"organizationId":" "}`},
+		{name: "trailing", body: `{"organizationId":"org-a"}{}`},
+		{name: "header mismatch", body: `{"organizationId":"org-a"}`, header: "org-b"},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			resolver := &mountedCapturingOrganizationResolver{}
+			handlerCalls := 0
+			router := gin.New()
+			mountRoutesWithAuthDependencies(router, []httproute.Descriptor{{
+				Method:                     http.MethodPut,
+				Path:                       "/api/v1/workbench/context/effective-organization",
+				AuthPolicy:                 httproute.AuthPolicyVerifiedIdentity,
+				OrganizationAccessPolicy:   httproute.OrganizationAccessPolicyLiveSwitch,
+				OrganizationTargetResolver: workbenchcontexthttpapi.ResolveSwitchOrganizationTarget,
+				Handler: func(c *gin.Context) {
+					handlerCalls++
+					c.Status(http.StatusNoContent)
+				},
+			}}, routeAuthDependencies{
+				workbenchVerifier:    mountedVerifierStub{identity: mountedVerifiedIdentity()},
+				organizationResolver: resolver,
+			})
+			request := httptest.NewRequest(http.MethodPut, "/api/v1/workbench/context/effective-organization", strings.NewReader(tt.body))
+			request.Header.Set("Authorization", "Bearer current-request-token")
+			request.Header.Set("X-Requested-Organization-ID", tt.header)
+			request.Header.Set("X-Request-ID", "req-123")
+			response := httptest.NewRecorder()
+
+			router.ServeHTTP(response, request)
+
+			require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+			require.JSONEq(t, `{"code":"INVALID_REQUEST","message":"Request is invalid","requestId":"req-123","fieldErrors":[]}`, response.Body.String())
+			require.Zero(t, resolver.calls)
+			require.Zero(t, handlerCalls)
+		})
+	}
+}
+
+func TestWorkbenchLiveSwitchUsesBodyTargetAndRestoresBodyForHandler(t *testing.T) {
+	const body = `{"organizationId":"org-a"}`
+	resolver := &mountedCapturingOrganizationResolver{}
+	handlerBody := ""
+	router := gin.New()
+	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{{
+		Method:                     http.MethodPut,
+		Path:                       "/api/v1/workbench/context/effective-organization",
+		AuthPolicy:                 httproute.AuthPolicyVerifiedIdentity,
+		OrganizationAccessPolicy:   httproute.OrganizationAccessPolicyLiveSwitch,
+		OrganizationTargetResolver: workbenchcontexthttpapi.ResolveSwitchOrganizationTarget,
+		Handler: func(c *gin.Context) {
+			data, err := io.ReadAll(c.Request.Body)
+			require.NoError(t, err)
+			handlerBody = string(data)
+			c.Status(http.StatusNoContent)
+		},
+	}}, routeAuthDependencies{
+		workbenchVerifier:    mountedVerifierStub{identity: mountedVerifiedIdentity()},
+		organizationResolver: resolver,
+	})
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/workbench/context/effective-organization", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer current-request-token")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+	require.Equal(t, 1, resolver.calls)
+	require.Equal(t, "org-a", resolver.target)
+	require.Equal(t, body, handlerBody)
 }
 
 func (stub mountedOrganizationResolverStub) Resolve(_ context.Context, _ httproute.OrganizationAccessPolicy, input workbenchcontext.ResolveInput) (authidentity.AuthenticatedIdentity, error) {

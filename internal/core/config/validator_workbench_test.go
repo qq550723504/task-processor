@@ -16,18 +16,27 @@ func TestValidateWorkbenchZitadelConfigRequiresCompleteInputsWhenEnabled(t *test
 	}{
 		{
 			name:    "missing project id",
-			zitadel: ListingKitZitadelConfig{IssuerURL: "https://issuer.example", AuthorizationAPIURL: "https://issuer.example"},
+			zitadel: ListingKitZitadelConfig{IssuerURL: "https://issuer.example", AuthorizationAPIURL: "https://issuer.example", ClientID: "client-1"},
 			field:   "listingkit.zitadel.projectID",
 		},
 		{
 			name:    "missing issuer URL",
-			zitadel: ListingKitZitadelConfig{ProjectID: "project-1", AuthorizationAPIURL: "https://authorization.example"},
+			zitadel: ListingKitZitadelConfig{ProjectID: "project-1", AuthorizationAPIURL: "https://authorization.example", ClientID: "client-1"},
 			field:   "listingkit.zitadel.issuerURL",
 		},
 		{
 			name:    "missing authorization API URL",
-			zitadel: ListingKitZitadelConfig{ProjectID: "project-1", IssuerURL: "https://issuer.example"},
+			zitadel: ListingKitZitadelConfig{ProjectID: "project-1", IssuerURL: "https://issuer.example", ClientID: "client-1"},
 			field:   "listingkit.zitadel.authorizationAPIURL",
+		},
+		{
+			name: "missing client ID",
+			zitadel: ListingKitZitadelConfig{
+				ProjectID:           "project-1",
+				IssuerURL:           "https://issuer.example",
+				AuthorizationAPIURL: "https://authorization.example",
+			},
+			field: "listingkit.zitadel.clientID",
 		},
 	}
 
@@ -51,6 +60,7 @@ func TestValidateWorkbenchZitadelConfigAllowsDisabledOrCompleteConfiguration(t *
 			ProjectID:           "project-1",
 			IssuerURL:           "https://issuer.example",
 			AuthorizationAPIURL: "https://authorization.example",
+			ClientID:            "client-1",
 		},
 	))
 }
