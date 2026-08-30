@@ -103,18 +103,7 @@ func (m *managerImpl) Validate(cfg *Config) error {
 	if cfg == nil {
 		return fmt.Errorf("配置不能为空")
 	}
-	// 使用统一的 validators 包进行完整配置验证，保持与其他入口一致
-	v := NewValidator(
-		&cfg.Processor,
-		&cfg.Worker,
-		&cfg.OpenAI,
-		&cfg.Browser,
-		&cfg.Amazon,
-		cfg.RabbitMQ,
-		&cfg.Platforms,
-		&cfg.AICapability,
-	)
-	return v.ValidateWithError()
+	return ValidateConfigWithError(cfg)
 }
 
 // GetCurrent 获取当前配置

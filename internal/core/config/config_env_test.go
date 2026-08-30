@@ -431,6 +431,49 @@ func TestBuildConfigReadsMemberInvitationCredentials(t *testing.T) {
 	assert.Equal(t, "project-1", cfg.ListingKit.Zitadel.ProjectID)
 }
 
+func TestBuildReadsZitadelAuthorizationAndWorkbenchConfig(t *testing.T) {
+	t.Setenv("ZITADEL_ISSUER_URL", "https://issuer.example")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHORIZATION_API_URL", "https://authorization-proxy.example")
+	t.Setenv("TASK_PROCESSOR_WORKBENCH_ENABLED", "true")
+
+	cfg := BuildConfig(newViper())
+
+	assert.Equal(t, "https://authorization-proxy.example", cfg.ListingKit.Zitadel.AuthorizationAPIURL)
+	assert.True(t, cfg.Workbench.Enabled)
+}
+
+func TestBuildDefaultsZitadelAuthorizationAPIURLConfig(t *testing.T) {
+	v := newViper()
+	v.Set("listingkit.zitadel.issuerURL", "https://issuer.example")
+	v.Set("listingkit.zitadel.authorizationAPIURL", "")
+
+	cfg := BuildConfig(v)
+
+	assert.Equal(t, "https://issuer.example", cfg.ListingKit.Zitadel.AuthorizationAPIURL)
+}
+
+func TestWorkbenchZitadelConfigDefaultsDisabled(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_WORKBENCH_ENABLED", "false")
+	assert.False(t, BuildConfig(newViper()).Workbench.Enabled)
+}
+
+func TestLoadFromBytesRejectsEnabledWorkbenchWithoutCompleteZitadelConfig(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_WORKBENCH_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID", "")
+	t.Setenv("ZITADEL_ISSUER_URL", "https://issuer.example")
+
+	_, err := LoadFromBytes([]byte(strings.Join([]string{
+		"openai:",
+		"  apiKey: test-openai-key",
+		"  model: gemini-2.5-flash",
+		"  baseURL: https://api.example.test/v1",
+		"  timeout: 30",
+	}, "\n")))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "listingkit.zitadel.projectID")
+}
+
 func TestBuildConfigReadsTencentSMSWebhookCredentials(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_SIGNING_KEY", "signing-key")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_ID", "secret-id")

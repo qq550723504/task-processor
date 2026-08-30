@@ -16,6 +16,11 @@ func BuildConfig(v *viper.Viper) *Config {
 	listingKitAllowedUsernames := getStringSlice(v, "listingkit.zitadel.allowedUsernames")
 	listingKitLegacyUsernameAllowlistConfigured := legacyListingKitUsernameAllowlistConfigured(v)
 	listingKitAllowedRoles := getStringSlice(v, "listingkit.zitadel.allowedRoles")
+	listingKitZitadelIssuerURL := v.GetString("listingkit.zitadel.issuerURL")
+	listingKitZitadelAuthorizationAPIURL := v.GetString("listingkit.zitadel.authorizationAPIURL")
+	if strings.TrimSpace(listingKitZitadelAuthorizationAPIURL) == "" {
+		listingKitZitadelAuthorizationAPIURL = listingKitZitadelIssuerURL
+	}
 
 	cfg := &Config{
 		Processor: ProcessorConfig{
@@ -223,7 +228,8 @@ func BuildConfig(v *viper.Viper) *Config {
 			PlatformAdminUsers:             getStringSlice(v, "listingkit.platformAdminUsers"),
 			PlatformAdminRoles:             getStringSlice(v, "listingkit.platformAdminRoles"),
 			Zitadel: ListingKitZitadelConfig{
-				IssuerURL:                         v.GetString("listingkit.zitadel.issuerURL"),
+				IssuerURL:                         listingKitZitadelIssuerURL,
+				AuthorizationAPIURL:               listingKitZitadelAuthorizationAPIURL,
 				ClientID:                          v.GetString("listingkit.zitadel.clientID"),
 				ClientSecret:                      v.GetString("listingkit.zitadel.clientSecret"),
 				TenantDirectoryToken:              v.GetString("listingkit.zitadel.tenantDirectoryToken"),
@@ -244,6 +250,9 @@ func BuildConfig(v *viper.Viper) *Config {
 					TencentTemplateID: v.GetString("listingkit.zitadel.sms.tencentTemplateID"),
 				},
 			},
+		},
+		Workbench: WorkbenchConfig{
+			Enabled: v.GetBool("workbench.enabled"),
 		},
 	}
 
