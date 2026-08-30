@@ -1,16 +1,18 @@
-package main
+package imageagentacceptanceruntime
 
 import (
+	"context"
+	"io"
 	"strings"
 	"testing"
 )
 
 func TestSeedCommandRequiresLocalFilesAndPublicSourceURL(t *testing.T) {
-	err := run([]string{
+	err := Run(context.Background(), []string{
 		"-runtime-file", "", "-token-file", "", "-source-url", "http://localhost/a.png",
-	})
+	}, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "-runtime-file") {
-		t.Fatalf("run() error = %v, want required local-file flags", err)
+		t.Fatalf("Run() error = %v, want required local-file flags", err)
 	}
 }
 

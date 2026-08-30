@@ -1,11 +1,10 @@
-package main
+package imageagentacceptanceruntime
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -18,18 +17,8 @@ import (
 	listingkitstore "task-processor/internal/listingkit/store"
 )
 
-func main() {
-	if err := runWithIO(context.Background(), os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
-
-func run(args []string) error {
-	return runWithIO(context.Background(), args, io.Discard, io.Discard)
-}
-
-func runWithIO(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+// Run assembles and executes the local Image Agent acceptance seed workflow.
+func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("listingkit-image-agent-acceptance-seed", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	runtimeFile := flags.String("runtime-file", "", "generated local acceptance runtime file")
