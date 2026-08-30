@@ -89,8 +89,6 @@ func TestAuthenticatedIdentityFromContextRejectsIncompleteIdentity(t *testing.T)
 		ctx  context.Context
 	}{
 		{name: "missing identity", ctx: context.Background()},
-		{name: "missing tenant", ctx: WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{UserID: "user-a"})},
-		{name: "blank tenant", ctx: WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{TenantID: " \t ", UserID: "user-a"})},
 		{name: "missing user", ctx: WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{TenantID: "tenant-a"})},
 		{name: "blank user", ctx: WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{TenantID: "tenant-a", UserID: " \t "})},
 	}
@@ -101,4 +99,20 @@ func TestAuthenticatedIdentityFromContextRejectsIncompleteIdentity(t *testing.T)
 			require.False(t, ok)
 		})
 	}
+}
+
+func TestAuthenticatedIdentityFromContextAcceptsVerifiedUserWithoutEffectiveOrganization(t *testing.T) {
+	ctx := WithAuthenticatedIdentity(context.Background(), AuthenticatedIdentity{
+		UserID:             " user-a ",
+		HomeOrganizationID: " org-home ",
+		Roles:              []string{},
+	})
+
+	got, ok := AuthenticatedIdentityFromContext(ctx)
+
+	require.True(t, ok)
+	require.Equal(t, "user-a", got.UserID)
+	require.Empty(t, got.TenantID)
+	require.Empty(t, got.EffectiveOrganizationID)
+	require.Empty(t, got.Roles)
 }

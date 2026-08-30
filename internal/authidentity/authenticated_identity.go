@@ -50,7 +50,7 @@ func AuthenticatedIdentityFromContext(ctx context.Context) (AuthenticatedIdentit
 		return AuthenticatedIdentity{}, false
 	}
 	identity, ok := ctx.Value(authenticatedIdentityContextKey{}).(AuthenticatedIdentity)
-	if !ok || strings.TrimSpace(identity.TenantID) == "" || strings.TrimSpace(identity.UserID) == "" {
+	if !ok || strings.TrimSpace(identity.UserID) == "" {
 		return AuthenticatedIdentity{}, false
 	}
 	return normalizeIdentity(identity), true
