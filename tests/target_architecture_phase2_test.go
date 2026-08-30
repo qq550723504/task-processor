@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -122,6 +123,58 @@ func TestTargetDomainsDoNotImportConcreteInfrastructure(t *testing.T) {
 	}
 }
 
+func decodeGoImportPath(importLiteral string) (string, error) {
+	return strconv.Unquote(importLiteral)
+}
+
+func TestSharedImportPathDecodesGoStringLiterals(t *testing.T) {
+	root := t.TempDir()
+	source := "package fixture\nimport (\n" +
+		"\t\"task-processor/internal/app\"\n" +
+		"\t`task-processor/internal/app`\n" +
+		"\t\"task-processor/internal/\\x61pp\"\n" +
+		")\n"
+	if err := os.WriteFile(filepath.Join(root, "fixture.go"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(index.files) != 1 {
+		t.Fatalf("parsed Go files = %d, want 1", len(index.files))
+	}
+
+	want := "task-processor/internal/app"
+	for _, importLiteral := range []string{
+		`"task-processor/internal/app"`,
+		"`task-processor/internal/app`",
+		`"task-processor/internal/\x61pp"`,
+	} {
+		for _, facts := range index.files {
+			if _, ok := facts.imports[importLiteral]; !ok {
+				t.Errorf("parsed imports do not contain literal %q", importLiteral)
+				continue
+			}
+		}
+		got, err := decodeGoImportPath(importLiteral)
+		if err != nil {
+			t.Errorf("decodeGoImportPath(%q): %v", importLiteral, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("decodeGoImportPath(%q) = %q, want %q", importLiteral, got, want)
+		}
+		if !importMatchesPrefix(got, want) {
+			t.Errorf("decoded import %q does not match forbidden prefix %q", got, want)
+		}
+	}
+	if _, err := decodeGoImportPath("not-a-go-string-literal"); err == nil {
+		t.Error("decodeGoImportPath accepted an invalid Go import literal")
+	}
+}
+
 func TestSharedPackagesDoNotImportAppDomainPlatformOrIntegration(t *testing.T) {
 	index, err := loadGoFileIndex(filepath.Join("..", "internal", "shared"), "")
 	if err != nil {
@@ -147,7 +200,11 @@ func TestSharedPackagesDoNotImportAppDomainPlatformOrIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		for imp := range facts.imports {
-			clean := strings.Trim(imp, `"`)
+			clean, err := decodeGoImportPath(imp)
+			if err != nil {
+				t.Errorf("%s has invalid Go import literal %q: %v", filepath.ToSlash(rel), imp, err)
+				continue
+			}
 			for _, prefix := range forbidden {
 				if importMatchesPrefix(clean, prefix) {
 					t.Errorf("%s imports forbidden package %s", filepath.ToSlash(rel), imp)
