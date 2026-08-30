@@ -1,5 +1,5 @@
-// Package logger 提供统一的日志管理功能
-package logger
+// Package logging 提供统一的日志管理功能
+package logging
 
 import (
 	"fmt"

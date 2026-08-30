@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/resilience"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/recovery"
+	logger "task-processor/internal/platform/logging"
 
 	"github.com/sirupsen/logrus"
 )

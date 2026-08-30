@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"task-processor/internal/core/logger"
 	infralock "task-processor/internal/infra/lock"
+	logger "task-processor/internal/platform/logging"
 	"time"
 
 	"github.com/sirupsen/logrus"

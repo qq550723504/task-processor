@@ -82,7 +82,7 @@ func TestPhase2LegacyRootsDoNotGrow(t *testing.T) {
 	}{
 		{"task-processor/internal/core", 145},
 		{"task-processor/internal/infra", 75},
-		{"task-processor/internal/core/logger", 92},
+		{"task-processor/internal/core/logger", 84},
 	} {
 		if got := internalImporterPackageCount(t, tc.path); got > tc.max {
 			t.Errorf("%s importer packages = %d, baseline max = %d", tc.path, got, tc.max)

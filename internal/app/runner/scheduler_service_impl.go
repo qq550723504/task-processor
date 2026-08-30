@@ -8,8 +8,8 @@ import (
 
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/core/logger"
 	infralock "task-processor/internal/infra/lock"
+	logger "task-processor/internal/platform/logging"
 )
 
 // initializeResources 初始化资源

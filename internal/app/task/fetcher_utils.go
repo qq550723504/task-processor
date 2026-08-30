@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"task-processor/internal/app/taskstatus"
-	"task-processor/internal/core/logger"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
+	logger "task-processor/internal/platform/logging"
 )
 
 type runtimeImportTaskStatusClient struct {

@@ -3,8 +3,8 @@ package task
 import (
 	"fmt"
 
-	"task-processor/internal/core/logger"
 	"task-processor/internal/listingruntime"
+	logger "task-processor/internal/platform/logging"
 	"task-processor/internal/shared/timex"
 )
 

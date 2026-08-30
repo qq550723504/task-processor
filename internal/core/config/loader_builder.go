@@ -4,7 +4,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"task-processor/internal/core/logger"
+	logger "task-processor/internal/platform/logging"
 	"time"
 
 	"github.com/spf13/viper"

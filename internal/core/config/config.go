@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/watermark"
+	logger "task-processor/internal/platform/logging"
 
 	"github.com/spf13/viper"
 )
