@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/core/config"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,7 +22,7 @@ func TestConnectionProxyConfig(t *testing.T) {
 	// 测试配置验证
 	cfg := &ConnectionProxyConfig{
 		MaxConcurrentOps: 10,
-		DBConfig: &config.DatabaseConfig{
+		DBConfig: &Config{
 			Host:     "localhost",
 			Port:     5432,
 			User:     "test",

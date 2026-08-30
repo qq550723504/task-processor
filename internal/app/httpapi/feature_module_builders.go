@@ -7,15 +7,16 @@ import (
 	"github.com/sirupsen/logrus"
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	"task-processor/internal/app/configadapter"
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
 	imageagenthttpapi "task-processor/internal/imageagent/httpapi"
 	imageagentstore "task-processor/internal/imageagent/store"
-	"task-processor/internal/infra/database"
 	storageinfra "task-processor/internal/infra/storage"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
+	platformdatabase "task-processor/internal/platform/database"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	"task-processor/internal/sourceaccount"
@@ -80,12 +81,13 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 		closeWorkflowOnError()
 		return nil, fmt.Errorf("build image agent HTTP module: database config is required")
 	}
-	db, err := database.NewSharedDatabaseFromConfig(cfg.Database)
+	databaseConfig := configadapter.Database(cfg.Database)
+	db, err := platformdatabase.OpenShared(databaseConfig)
 	if err != nil {
 		closeWorkflowOnError()
 		return nil, fmt.Errorf("build image agent repository: %w", err)
 	}
-	databaseCloser := func() error { return database.CloseSharedDatabase(cfg.Database, db) }
+	databaseCloser := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	service, err := imageagent.NewService(
 		imageagentstore.NewGormRepository(db), workflowClient,
 		listingkithttpapi.NewImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db)),

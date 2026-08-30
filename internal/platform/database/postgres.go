@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/core/config"
-
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -28,7 +26,7 @@ var sharedDatabases = struct {
 	entries: make(map[string]*sharedDatabaseEntry),
 }
 
-func sharedDatabaseKey(cfg *config.DatabaseConfig) string {
+func sharedDatabaseKey(cfg *Config) string {
 	if cfg == nil {
 		return ""
 	}
@@ -40,7 +38,7 @@ func quoteIdentifier(name string) string {
 	return fmt.Sprintf(`"%s"`, name)
 }
 
-func createDatabaseIfNotExists(cfg *config.DatabaseConfig) error {
+func createDatabaseIfNotExists(cfg *Config) error {
 	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable TimeZone=Asia/Shanghai",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password,
@@ -81,9 +79,9 @@ type databaseOpenOptions struct {
 }
 
 type databaseOpener func(string) (*gorm.DB, error)
-type databaseCreator func(*config.DatabaseConfig) error
+type databaseCreator func(*Config) error
 
-func databaseDSN(cfg *config.DatabaseConfig, readOnly bool) string {
+func databaseDSN(cfg *Config, readOnly bool) string {
 	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable TimeZone=Asia/Shanghai",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Database,
@@ -101,8 +99,8 @@ func openPostgresDatabase(dsn string) (*gorm.DB, error) {
 	})
 }
 
-func newDatabaseFromConfig(
-	cfg *config.DatabaseConfig,
+func openDatabase(
+	cfg *Config,
 	options databaseOpenOptions,
 	open databaseOpener,
 	create databaseCreator,
@@ -174,10 +172,10 @@ func newDatabaseFromConfig(
 	return db, nil
 }
 
-// NewDatabaseFromConfig 从 config.DatabaseConfig 创建数据库连接，cfg 为 nil 时返回 (nil, nil)。
+// Open creates a database connection from cfg. A nil cfg returns (nil, nil).
 // 普通应用启动保持既有行为：目标数据库缺失时尝试创建后重连。
-func NewDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
-	return newDatabaseFromConfig(
+func Open(cfg *Config) (*gorm.DB, error) {
+	return openDatabase(
 		cfg,
 		databaseOpenOptions{createIfMissing: true},
 		openPostgresDatabase,
@@ -185,8 +183,8 @@ func NewDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	)
 }
 
-func newDatabaseFromConfigWithoutCreate(cfg *config.DatabaseConfig, open databaseOpener) (*gorm.DB, error) {
-	return newDatabaseFromConfig(
+func openExistingReadOnly(cfg *Config, open databaseOpener) (*gorm.DB, error) {
+	return openDatabase(
 		cfg,
 		databaseOpenOptions{readOnly: true},
 		open,
@@ -194,18 +192,18 @@ func newDatabaseFromConfigWithoutCreate(cfg *config.DatabaseConfig, open databas
 	)
 }
 
-// NewDatabaseFromConfigWithoutCreate opens an existing target database with a
+// OpenExistingReadOnly opens an existing target database with a
 // read-only PostgreSQL session and never attempts to create a missing database.
-func NewDatabaseFromConfigWithoutCreate(cfg *config.DatabaseConfig) (*gorm.DB, error) {
-	return newDatabaseFromConfigWithoutCreate(cfg, openPostgresDatabase)
+func OpenExistingReadOnly(cfg *Config) (*gorm.DB, error) {
+	return openExistingReadOnly(cfg, openPostgresDatabase)
 }
 
-// NewDatabaseFromConfigWithoutCreateWritable opens an existing target database
+// OpenExistingWritable opens an existing target database
 // without creating it and without forcing the session read-only. It is reserved
 // for explicitly confirmed maintenance operations; normal readers must use
-// NewDatabaseFromConfigWithoutCreate.
-func NewDatabaseFromConfigWithoutCreateWritable(cfg *config.DatabaseConfig) (*gorm.DB, error) {
-	return newDatabaseFromConfig(
+// OpenExistingReadOnly.
+func OpenExistingWritable(cfg *Config) (*gorm.DB, error) {
+	return openDatabase(
 		cfg,
 		databaseOpenOptions{createIfMissing: false},
 		openPostgresDatabase,
@@ -213,9 +211,9 @@ func NewDatabaseFromConfigWithoutCreateWritable(cfg *config.DatabaseConfig) (*go
 	)
 }
 
-// NewSharedDatabaseFromConfig returns a process-local shared *gorm.DB for the
+// OpenShared returns a process-local shared *gorm.DB for the
 // given config. Repeated calls with the same config reuse one underlying sql.DB.
-func NewSharedDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+func OpenShared(cfg *Config) (*gorm.DB, error) {
 	if cfg == nil {
 		return nil, nil
 	}
@@ -230,7 +228,7 @@ func NewSharedDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	}
 	sharedDatabases.mu.Unlock()
 
-	db, err := NewDatabaseFromConfig(cfg)
+	db, err := Open(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +237,7 @@ func NewSharedDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	if entry := sharedDatabases.entries[key]; entry != nil {
 		entry.refs++
 		sharedDatabases.mu.Unlock()
-		_ = CloseDatabase(db)
+		_ = Close(db)
 		return entry.db, nil
 	}
 	sharedDatabases.entries[key] = &sharedDatabaseEntry{
@@ -250,8 +248,8 @@ func NewSharedDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
-// CloseDatabase 关闭数据库连接
-func CloseDatabase(db *gorm.DB) error {
+// Close closes a database connection.
+func Close(db *gorm.DB) error {
 	if db == nil {
 		return nil
 	}
@@ -262,9 +260,9 @@ func CloseDatabase(db *gorm.DB) error {
 	return sqlDB.Close()
 }
 
-// CloseSharedDatabase releases one reference to a shared database handle and
+// CloseShared releases one reference to a shared database handle and
 // closes the underlying sql.DB only when the last caller releases it.
-func CloseSharedDatabase(cfg *config.DatabaseConfig, db *gorm.DB) error {
+func CloseShared(cfg *Config, db *gorm.DB) error {
 	if cfg == nil || db == nil {
 		return nil
 	}
@@ -274,7 +272,7 @@ func CloseSharedDatabase(cfg *config.DatabaseConfig, db *gorm.DB) error {
 	entry := sharedDatabases.entries[key]
 	if entry == nil || entry.db != db {
 		sharedDatabases.mu.Unlock()
-		return CloseDatabase(db)
+		return Close(db)
 	}
 
 	entry.refs--
@@ -285,5 +283,5 @@ func CloseSharedDatabase(cfg *config.DatabaseConfig, db *gorm.DB) error {
 
 	delete(sharedDatabases.entries, key)
 	sharedDatabases.mu.Unlock()
-	return CloseDatabase(db)
+	return Close(db)
 }

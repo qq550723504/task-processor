@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/listingkit/identitypreflight"
 	"task-processor/internal/listingkit/ownerreconcile"
 	"task-processor/internal/listingkit/userdirectory"
@@ -25,7 +24,7 @@ import (
 func TestDefaultRuntimeDependenciesUseNonCreatingDatabaseFactory(t *testing.T) {
 	t.Parallel()
 
-	want := reflect.ValueOf(database.NewDatabaseFromConfigWithoutCreate).Pointer()
+	want := reflect.ValueOf(openExistingReadOnly).Pointer()
 	for name, factory := range map[string]func(*config.DatabaseConfig) (*gorm.DB, error){
 		"owner":    defaultRuntimeDependencies().OpenDB,
 		"metadata": defaultRuntimeDependencies().OpenMetadataDB,

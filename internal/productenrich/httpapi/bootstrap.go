@@ -8,9 +8,9 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/httpbootstrap"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/redisclient"
 	"task-processor/internal/infra/worker"
+	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/productenrich"
 	productapi "task-processor/internal/productenrich/api"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
@@ -144,7 +144,8 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	databaseConfig := platformDatabaseConfig(cfg)
+	db, err := platformdatabase.OpenShared(databaseConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -157,6 +158,22 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	}
 
 	repo := productstore.NewTaskRepository(db)
-	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	return repo, closer, nil
+}
+
+func platformDatabaseConfig(cfg *config.DatabaseConfig) *platformdatabase.Config {
+	if cfg == nil {
+		return nil
+	}
+	return &platformdatabase.Config{
+		Host:                  cfg.Host,
+		Port:                  cfg.Port,
+		User:                  cfg.User,
+		Password:              cfg.Password,
+		Database:              cfg.Database,
+		MaxConnections:        cfg.MaxConnections,
+		MaxIdleConnections:    cfg.MaxIdleConnections,
+		ConnectionMaxLifetime: cfg.ConnectionMaxLifetime,
+	}
 }

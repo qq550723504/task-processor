@@ -6,8 +6,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"task-processor/internal/core/config"
-
 	"gorm.io/gorm"
 )
 
@@ -29,9 +27,9 @@ type ProxyLogger interface {
 
 // ConnectionProxyConfig 连接代理配置
 type ConnectionProxyConfig struct {
-	MaxConcurrentOps int                    // 最大并发DB操作数
-	DBConfig         *config.DatabaseConfig // 数据库配置
-	Logger           ProxyLogger            // 日志记录器
+	MaxConcurrentOps int         // 最大并发DB操作数
+	DBConfig         *Config     // 数据库配置
+	Logger           ProxyLogger // 日志记录器
 }
 
 // NewConnectionProxy 创建连接代理
@@ -49,7 +47,7 @@ func NewConnectionProxy(cfg *ConnectionProxyConfig) (*ConnectionProxy, error) {
 	}
 
 	// 创建共享数据库实例
-	db, err := NewSharedDatabaseFromConfig(cfg.DBConfig)
+	db, err := OpenShared(cfg.DBConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create shared database: %w", err)
 	}

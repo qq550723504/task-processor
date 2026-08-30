@@ -11,6 +11,7 @@ import (
 
 	"task-processor/internal/aicapability"
 	aicapabilitystore "task-processor/internal/aicapability/store"
+	"task-processor/internal/app/configadapter"
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/core/config"
 	"task-processor/internal/imageagent/objectstore"
@@ -18,11 +19,11 @@ import (
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	imageagenttools "task-processor/internal/imageagent/tools"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/storage"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/pkg/safeimagehttp"
+	platformdatabase "task-processor/internal/platform/database"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
@@ -48,7 +49,13 @@ var defaultImageAgentArtifactTiming = imageAgentArtifactTiming{
 
 func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResolver {
 	return imageAgentWorkerDependencyResolver{
-		LoadConfig: config.LoadConfigFromFile, OpenDB: database.NewSharedDatabaseFromConfig, CloseDB: database.CloseSharedDatabase,
+		LoadConfig: config.LoadConfigFromFile,
+		OpenDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenShared(configadapter.Database(cfg))
+		},
+		CloseDB: func(cfg *config.DatabaseConfig, db *gorm.DB) error {
+			return platformdatabase.CloseShared(configadapter.Database(cfg), db)
+		},
 		BuildAI: buildImageAgentWorkerAI, BuildCapabilities: productimagehttpapi.BuildImageAgentCapabilities,
 		BuildArtifactStore: buildImageAgentDurableArtifactStore,
 		ArtifactTiming:     defaultImageAgentArtifactTiming,

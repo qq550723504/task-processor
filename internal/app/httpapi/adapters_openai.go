@@ -5,9 +5,10 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/infra/database"
+	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/productenrich"
 )
 
@@ -30,7 +31,8 @@ func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Lo
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	databaseConfig := configadapter.Database(cfg)
+	db, err := platformdatabase.OpenShared(databaseConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -41,6 +43,6 @@ func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Lo
 		}
 	}
 	resolver := openaiclient.NewGormCredentialResolver(db)
-	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	return resolver, closer, nil
 }

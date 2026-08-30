@@ -3,8 +3,9 @@ package resources
 import (
 	"fmt"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
+	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/prompt"
 
 	"github.com/sirupsen/logrus"
@@ -15,7 +16,8 @@ func NewDBTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
 
-	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	databaseConfig := configadapter.Database(cfg)
+	db, err := platformdatabase.OpenShared(databaseConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -26,6 +28,6 @@ func NewDBTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (
 	}
 
 	store := prompt.NewGormTenantPromptStore(db)
-	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	return store, closer, nil
 }

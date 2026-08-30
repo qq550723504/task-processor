@@ -6,7 +6,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
+	platformdatabase "task-processor/internal/platform/database"
 	productimage "task-processor/internal/productimage"
 	productimagestore "task-processor/internal/productimage/store"
 )
@@ -28,7 +28,8 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	databaseConfig := platformDatabaseConfig(cfg)
+	db, err := platformdatabase.OpenShared(databaseConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -41,6 +42,22 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	}
 
 	repo := productimagestore.NewTaskRepository(db)
-	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	return repo, closer, nil
+}
+
+func platformDatabaseConfig(cfg *config.DatabaseConfig) *platformdatabase.Config {
+	if cfg == nil {
+		return nil
+	}
+	return &platformdatabase.Config{
+		Host:                  cfg.Host,
+		Port:                  cfg.Port,
+		User:                  cfg.User,
+		Password:              cfg.Password,
+		Database:              cfg.Database,
+		MaxConnections:        cfg.MaxConnections,
+		MaxIdleConnections:    cfg.MaxIdleConnections,
+		ConnectionMaxLifetime: cfg.ConnectionMaxLifetime,
+	}
 }

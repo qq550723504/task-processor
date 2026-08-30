@@ -12,8 +12,8 @@ import (
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httpbootstrap"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/worker"
+	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
@@ -87,11 +87,12 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (ama
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	
+
 	start := time.Now()
 	logger.Infof("[amazonlisting] starting database connection...")
-	
-	db, err := database.NewSharedDatabaseFromConfig(cfg)
+
+	databaseConfig := platformDatabaseConfig(cfg)
+	db, err := platformdatabase.OpenShared(databaseConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
@@ -99,14 +100,14 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (ama
 
 	start = time.Now()
 	logger.Infof("[amazonlisting] starting AutoMigrate for Task table...")
-	
+
 	// 可以通过环境变量禁用 AutoMigrate 以加快启动速度
 	// 设置 TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE=false 来跳过
 	autoMigrate := true
 	if envVal := os.Getenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE"); envVal != "" {
 		autoMigrate = envVal != "false" && envVal != "0"
 	}
-	
+
 	if autoMigrate {
 		if err := db.AutoMigrate(&amazonlisting.Task{}); err != nil {
 			return nil, nil, fmt.Errorf("amazonlisting auto-migrate failed: %w", err)
@@ -117,6 +118,22 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (ama
 	}
 
 	repo := amazonlistingstore.NewTaskRepository(db)
-	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	return repo, closer, nil
+}
+
+func platformDatabaseConfig(cfg *config.DatabaseConfig) *platformdatabase.Config {
+	if cfg == nil {
+		return nil
+	}
+	return &platformdatabase.Config{
+		Host:                  cfg.Host,
+		Port:                  cfg.Port,
+		User:                  cfg.User,
+		Password:              cfg.Password,
+		Database:              cfg.Database,
+		MaxConnections:        cfg.MaxConnections,
+		MaxIdleConnections:    cfg.MaxIdleConnections,
+		ConnectionMaxLifetime: cfg.ConnectionMaxLifetime,
+	}
 }

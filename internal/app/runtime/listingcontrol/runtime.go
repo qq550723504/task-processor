@@ -8,12 +8,13 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
 	controllib "task-processor/internal/listingcontrol"
 	"task-processor/internal/pkg/appenv"
+	platformdatabase "task-processor/internal/platform/database"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
@@ -45,9 +46,11 @@ func defaultRuntimeDependencies() runtimeDependencies {
 	return runtimeDependencies{
 		LoadConfig: config.LoadConfigWithFallback,
 		OpenDB: func(ctx context.Context, cfg *config.DatabaseConfig) (*gorm.DB, error) {
-			return database.NewSharedDatabaseFromConfig(cfg)
+			return platformdatabase.OpenShared(configadapter.Database(cfg))
 		},
-		CloseDB: database.CloseSharedDatabase,
+		CloseDB: func(cfg *config.DatabaseConfig, db *gorm.DB) error {
+			return platformdatabase.CloseShared(configadapter.Database(cfg), db)
+		},
 		MigrateImportTask: func(db *gorm.DB) error {
 			return listingadmin.AutoMigrateImportTaskRepository(db)
 		},

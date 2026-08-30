@@ -7,13 +7,13 @@ import (
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	types "task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
+	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/processor"
 	"task-processor/internal/shein/aicache"
 	sheinclient "task-processor/internal/shein/client"
@@ -115,7 +115,7 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 	if cfg.Database == nil {
 		logger.Warn("[SHEIN] database config is nil, AI cache will fall back to memory")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg.Database)
+	db, err := platformdatabase.Open(platformDatabaseConfig(cfg.Database))
 	if err != nil {
 		logger.Warnf("[SHEIN] database unavailable, AI cache falling back to memory: %v", err)
 	}
@@ -127,6 +127,22 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 	p.pipeline = p.buildPipeline()
 
 	return p, nil
+}
+
+func platformDatabaseConfig(cfg *config.DatabaseConfig) *platformdatabase.Config {
+	if cfg == nil {
+		return nil
+	}
+	return &platformdatabase.Config{
+		Host:                  cfg.Host,
+		Port:                  cfg.Port,
+		User:                  cfg.User,
+		Password:              cfg.Password,
+		Database:              cfg.Database,
+		MaxConnections:        cfg.MaxConnections,
+		MaxIdleConnections:    cfg.MaxIdleConnections,
+		ConnectionMaxLifetime: cfg.ConnectionMaxLifetime,
+	}
 }
 
 func (p *SheinProcessor) buildPipeline() *Pipeline {

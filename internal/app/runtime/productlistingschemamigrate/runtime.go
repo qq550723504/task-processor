@@ -6,9 +6,10 @@ import (
 
 	"gorm.io/gorm"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/app/schema/productlisting"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
+	platformdatabase "task-processor/internal/platform/database"
 )
 
 type Dependencies struct {
@@ -28,7 +29,9 @@ func runWithDependencies(ctx context.Context, configPath string, deps Dependenci
 		deps.LoadConfig = config.LoadConfigFromFileWithoutValidation
 	}
 	if deps.OpenDB == nil {
-		deps.OpenDB = database.NewDatabaseFromConfig
+		deps.OpenDB = func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.Open(configadapter.Database(cfg))
+		}
 	}
 	if deps.CloseDB == nil {
 		deps.CloseDB = closeDB

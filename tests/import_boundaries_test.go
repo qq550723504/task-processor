@@ -5208,7 +5208,6 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 		`"task-processor/internal/app/runtime"`: {},
 		`"task-processor/internal/asset/repository"`:       {},
 		`"task-processor/internal/core/config"`:            {},
-		`"task-processor/internal/infra/database"`:         {},
 		`"task-processor/internal/infra/clients/openai"`:   {},
 		`"task-processor/internal/listingadmin"`:           {},
 		`"task-processor/internal/listingkit"`:             {},

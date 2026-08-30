@@ -61,11 +61,11 @@ func TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile(t *testing.T) {
 func TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile(t *testing.T) {
 	bootstrapSource := readProductImageHTTPAPIBoundaryFile(t, "bootstrap.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/database"`,
+		`"task-processor/internal/platform/database"`,
 		`"task-processor/internal/productimage/store"`,
 		"func buildTaskRepository(",
 		"func newDBTaskRepository(",
-		"database.NewSharedDatabaseFromConfig(",
+		"platformdatabase.OpenShared(",
 		"db.AutoMigrate(&productimage.Task{})",
 	} {
 		if strings.Contains(bootstrapSource, marker) {
@@ -75,11 +75,11 @@ func TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile(t *testing.T) {
 
 	builderSource := readProductImageHTTPAPIBoundaryFile(t, "task_repository_builder.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/database"`,
+		`"task-processor/internal/platform/database"`,
 		`"task-processor/internal/productimage/store"`,
 		"func buildTaskRepository(",
 		"func newDBTaskRepository(",
-		"database.NewSharedDatabaseFromConfig(",
+		"platformdatabase.OpenShared(",
 		"db.AutoMigrate(&productimage.Task{})",
 	} {
 		if !strings.Contains(builderSource, marker) {

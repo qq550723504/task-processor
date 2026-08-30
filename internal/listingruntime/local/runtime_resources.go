@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	listingkitstore "task-processor/internal/listingkit/store"
+	platformdatabase "task-processor/internal/platform/database"
 
 	goredis "github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -56,7 +56,7 @@ func NewRuntimeResourcesFromConfig(dbCfg *config.DatabaseConfig, redisCfg *confi
 		err error
 	)
 	if dbCfg != nil && strings.TrimSpace(dbCfg.Host) != "" {
-		db, err = database.NewDatabaseFromConfig(dbCfg)
+		db, err = platformdatabase.Open(platformDatabaseConfig(dbCfg))
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func NewRuntimeResourcesFromConfig(dbCfg *config.DatabaseConfig, redisCfg *confi
 		if err := rdb.Ping(ctx).Err(); err != nil {
 			_ = rdb.Close()
 			if db != nil {
-				_ = database.CloseDatabase(db)
+				_ = platformdatabase.Close(db)
 			}
 			return nil, fmt.Errorf("connect local redis (%s:%d/%d): %w", redisCfg.Host, redisCfg.Port, redisCfg.DB, err)
 		}
@@ -92,7 +92,7 @@ func (r *RuntimeResources) Close() error {
 	r.closeOnce.Do(func() {
 		var errs []error
 		if r.db != nil {
-			if err := database.CloseDatabase(r.db); err != nil {
+			if err := platformdatabase.Close(r.db); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -104,6 +104,22 @@ func (r *RuntimeResources) Close() error {
 		r.closeErr = errors.Join(errs...)
 	})
 	return r.closeErr
+}
+
+func platformDatabaseConfig(cfg *config.DatabaseConfig) *platformdatabase.Config {
+	if cfg == nil {
+		return nil
+	}
+	return &platformdatabase.Config{
+		Host:                  cfg.Host,
+		Port:                  cfg.Port,
+		User:                  cfg.User,
+		Password:              cfg.Password,
+		Database:              cfg.Database,
+		MaxConnections:        cfg.MaxConnections,
+		MaxIdleConnections:    cfg.MaxIdleConnections,
+		ConnectionMaxLifetime: cfg.ConnectionMaxLifetime,
+	}
 }
 
 func (r *RuntimeResources) HasDB() bool { return r != nil && r.db != nil }
