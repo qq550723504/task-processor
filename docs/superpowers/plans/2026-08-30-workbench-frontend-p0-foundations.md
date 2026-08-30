@@ -475,15 +475,18 @@ git commit -m "feat(web): add data table and virtual list foundations"
 创建 `chart.test.tsx`，在文件顶部模拟 jsdom 不支持的外部图形运行时，但保留真实 React 生命周期：
 
 ```tsx
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import type { EChartsOption } from "echarts";
 import { afterEach, vi } from "vitest";
 
-const setOption = vi.fn();
-const resize = vi.fn();
-const dispose = vi.fn();
+const chart = vi.hoisted(() => ({
+  dispose: vi.fn(),
+  resize: vi.fn(),
+  setOption: vi.fn(),
+}));
 
 vi.mock("echarts", () => ({
-  init: vi.fn(() => ({ setOption, resize, dispose })),
+  init: vi.fn(() => chart),
 }));
 
 import { EChart } from "@/components/ui/chart";
@@ -507,19 +510,30 @@ describe("EChart", () => {
       },
     );
 
-    const first = { xAxis: { type: "category" }, series: [{ type: "bar", data: [1] }] };
-    const second = { xAxis: { type: "category" }, series: [{ type: "bar", data: [2] }] };
+    const first: EChartsOption = {
+      xAxis: { type: "category" },
+      series: [{ type: "bar", data: [1] }],
+    };
+    const second: EChartsOption = {
+      xAxis: { type: "category" },
+      series: [{ type: "bar", data: [2] }],
+    };
     const view = render(<EChart ariaLabel="经营趋势" option={first} />);
 
-    await waitFor(() => expect(setOption).toHaveBeenCalledWith(first, { notMerge: true }));
+    expect(screen.getByRole("img", { name: "经营趋势" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(chart.setOption).toHaveBeenCalledWith(first, { notMerge: true }),
+    );
     notifyResize?.();
-    expect(resize).toHaveBeenCalledTimes(1);
+    expect(chart.resize).toHaveBeenCalledTimes(1);
 
     view.rerender(<EChart ariaLabel="经营趋势" option={second} />);
-    await waitFor(() => expect(setOption).toHaveBeenLastCalledWith(second, { notMerge: true }));
+    await waitFor(() =>
+      expect(chart.setOption).toHaveBeenLastCalledWith(second, { notMerge: true }),
+    );
 
     view.unmount();
-    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(chart.dispose).toHaveBeenCalledTimes(1);
   });
 });
 ```
@@ -556,14 +570,20 @@ export function EChart({ ariaLabel, className, option }: EChartProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const chartRef = React.useRef<import("echarts").ECharts | null>(null);
   const optionRef = React.useRef(option);
-  optionRef.current = option;
+
+  React.useEffect(() => {
+    optionRef.current = option;
+    chartRef.current?.setOption(option, { notMerge: true });
+  }, [option]);
 
   React.useEffect(() => {
     let active = true;
     let observer: ResizeObserver | undefined;
 
     void import("echarts").then((echarts) => {
-      if (!active || !containerRef.current) return;
+      if (!active || !containerRef.current) {
+        return;
+      }
       const chart = echarts.init(containerRef.current, undefined, { renderer: "svg" });
       chartRef.current = chart;
       chart.setOption(optionRef.current, { notMerge: true });
@@ -578,10 +598,6 @@ export function EChart({ ariaLabel, className, option }: EChartProps) {
       chartRef.current = null;
     };
   }, []);
-
-  React.useEffect(() => {
-    chartRef.current?.setOption(option, { notMerge: true });
-  }, [option]);
 
   return (
     <div
