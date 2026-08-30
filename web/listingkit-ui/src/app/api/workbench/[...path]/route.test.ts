@@ -1,3 +1,6 @@
+import { createServer, type RequestListener } from "node:http";
+import type { AddressInfo } from "node:net";
+
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -23,7 +26,9 @@ vi.mock("@/lib/server/zitadel-server-token", () => ({
   readZitadelServerAccessToken: authMocks.readToken,
 }));
 
-import { GET, PUT } from "@/app/api/workbench/[...path]/route";
+import * as workbenchRoute from "@/app/api/workbench/[...path]/route";
+
+const { GET, PUT } = workbenchRoute;
 
 async function call(
   handler: typeof GET,
@@ -37,6 +42,22 @@ async function call(
     throw new Error("Workbench route did not return a response");
   }
   return response;
+}
+
+async function listen(handler: RequestListener) {
+  const server = createServer(handler);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    close: () =>
+      new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      ),
+  };
 }
 
 describe("/api/workbench BFF", () => {
@@ -103,6 +124,39 @@ describe("/api/workbench BFF", () => {
       fieldErrors: [],
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not follow an upstream redirect outside the fixed endpoint allowlist", async () => {
+    authState.session = { accessToken: "private-token" };
+    authState.token = "private-token";
+    let redirectTargetHits = 0;
+    const target = await listen((_request, response) => {
+      redirectTargetHits += 1;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ effectiveOrganizationId: "org-target" }));
+    });
+    const source = await listen((_request, response) => {
+      response.writeHead(302, { Location: `${target.url}/not-allowlisted` });
+      response.end();
+    });
+    vi.stubEnv("LISTINGKIT_SERVICE_API_BASE", `${source.url}/api/v1`);
+
+    try {
+      const response = await call(
+        GET,
+        new NextRequest("http://localhost/api/workbench/context", {
+          headers: { cookie: "shuomi_effective_organization=org-cookie" },
+        }),
+        ["context"],
+      );
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get("Location")).toBeNull();
+      expect(redirectTargetHits).toBe(0);
+    } finally {
+      await source.close();
+      await target.close();
+    }
   });
 
   it("sets the switch cookie from Go's response instead of the requested organization", async () => {
@@ -184,4 +238,31 @@ describe("/api/workbench BFF", () => {
     expect(response.status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it.each(["HEAD", "POST", "PATCH", "DELETE", "OPTIONS"])(
+    "explicitly rejects %s without contacting upstream",
+    async (method) => {
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", fetchMock);
+      const handler = (
+        workbenchRoute as unknown as Record<string, typeof GET | undefined>
+      )[method];
+
+      expect(handler).toBeTypeOf("function");
+      if (!handler) return;
+      const response = await call(
+        handler,
+        new NextRequest("http://localhost/api/workbench/not-allowlisted", {
+          method,
+        }),
+        ["not-allowlisted"],
+      );
+
+      expect(response.status).toBe(405);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "INVALID_REQUEST",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 });

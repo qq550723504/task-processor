@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { parseTree, type ParseError } from "jsonc-parser";
 
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
 
 const DEFAULT_SERVICE_API_BASE = "http://localhost:8085/api/v1";
 const REQUEST_BODY_MAX_BYTES = 4 * 1024;
+const REQUEST_BODY_READ_TIMEOUT_MS = 15_000;
 const UPSTREAM_RESPONSE_MAX_BYTES = 1024 * 1024;
 
 type WorkbenchUpstreamRequest = {
@@ -30,13 +32,21 @@ export async function buildWorkbenchUpstreamRequest(
   if (request.method.toUpperCase() === "PUT") {
     const contentLength = readContentLength(request.headers);
     if (contentLength !== null && contentLength > REQUEST_BODY_MAX_BYTES) {
+      void request.body?.cancel().catch(() => undefined);
       return protocolError(413, "INVALID_REQUEST", "Request body is too large");
     }
 
     let rawBody: Uint8Array;
     try {
-      rawBody = await readBodyWithinLimit(request.body, REQUEST_BODY_MAX_BYTES);
+      rawBody = await readBodyWithinLimit(
+        request.body,
+        REQUEST_BODY_MAX_BYTES,
+        REQUEST_BODY_READ_TIMEOUT_MS,
+      );
     } catch (error) {
+      if (error instanceof BodyReadTimeoutError) {
+        return protocolError(408, "INVALID_REQUEST", "Request body read timed out");
+      }
       if (error instanceof BodyTooLargeError) {
         return protocolError(413, "INVALID_REQUEST", "Request body is too large");
       }
@@ -51,11 +61,18 @@ export async function buildWorkbenchUpstreamRequest(
     headers.set("Content-Type", "application/json");
     headers.set("X-Requested-Organization-ID", organizationId);
   } else {
-    const selectedOrganization = readCookie(
+    const selectedCookie = readCookie(
       request.headers.get("cookie"),
       WORKBENCH_COOKIE_NAME,
-    ).trim();
+    );
+    if (selectedCookie === null) {
+      return protocolError(400, "INVALID_REQUEST", "Selection cookie is invalid");
+    }
+    const selectedOrganization = selectedCookie.trim();
     if (selectedOrganization) {
+      if (!isSafeOrganizationId(selectedOrganization)) {
+        return protocolError(400, "INVALID_REQUEST", "Selection cookie is invalid");
+      }
       headers.set("X-Requested-Organization-ID", selectedOrganization);
     }
   }
@@ -76,6 +93,7 @@ export async function buildWorkbenchBrowserResponse(upstream: Response) {
   try {
     const contentLength = readContentLength(upstream.headers);
     if (contentLength !== null && contentLength > UPSTREAM_RESPONSE_MAX_BYTES) {
+      void upstream.body?.cancel().catch(() => undefined);
       throw new BodyTooLargeError();
     }
     body = await readBodyWithinLimit(
@@ -98,6 +116,28 @@ export async function buildWorkbenchBrowserResponse(upstream: Response) {
     }
   }
 
+  const payload = parseJSONBody(body);
+  let effectiveOrganizationId: string | null | undefined;
+
+  if (upstream.ok) {
+    if (!payload || !hasOwn(payload, "effectiveOrganizationId")) {
+      return invalidUpstreamResponse();
+    }
+    if (payload.effectiveOrganizationId === null) {
+      effectiveOrganizationId = null;
+    } else if (typeof payload.effectiveOrganizationId === "string") {
+      effectiveOrganizationId = payload.effectiveOrganizationId.trim();
+      if (
+        effectiveOrganizationId &&
+        !isSafeOrganizationId(effectiveOrganizationId)
+      ) {
+        return invalidUpstreamResponse();
+      }
+    } else {
+      return invalidUpstreamResponse();
+    }
+  }
+
   const responseBody = statusAllowsBody(upstream.status)
     ? Uint8Array.from(body).buffer
     : null;
@@ -105,13 +145,8 @@ export async function buildWorkbenchBrowserResponse(upstream: Response) {
     status: upstream.status,
     headers: responseHeaders,
   });
-  const payload = parseJSONBody(body);
 
-  if (upstream.ok && payload && hasOwn(payload, "effectiveOrganizationId")) {
-    const effectiveOrganizationId =
-      typeof payload.effectiveOrganizationId === "string"
-        ? payload.effectiveOrganizationId.trim()
-        : "";
+  if (upstream.ok) {
     if (effectiveOrganizationId) {
       response.cookies.set(WORKBENCH_COOKIE_NAME, effectiveOrganizationId, {
         httpOnly: true,
@@ -183,22 +218,32 @@ function parseSwitchOrganizationBody(body: Uint8Array) {
   } catch {
     return "";
   }
-  const match =
-    /^\s*\{\s*"organizationId"\s*:\s*("(?:\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|[^"\\\u0000-\u001F])*")\s*\}\s*$/u.exec(
-      text,
-    );
-  if (!match?.[1]) {
+  const errors: ParseError[] = [];
+  const root = parseTree(text, errors, {
+    allowEmptyContent: false,
+    allowTrailingComma: false,
+    disallowComments: true,
+  });
+  if (errors.length > 0 || root?.type !== "object" || root.children?.length !== 1) {
     return "";
   }
-  try {
-    const value = JSON.parse(match[1]) as unknown;
-    return typeof value === "string" ? value.trim() : "";
-  } catch {
+  const property = root.children[0];
+  const key = property?.children?.[0];
+  const value = property?.children?.[1];
+  if (
+    property?.type !== "property" ||
+    property.children?.length !== 2 ||
+    key?.type !== "string" ||
+    key.value !== "organizationId" ||
+    value?.type !== "string"
+  ) {
     return "";
   }
+  const organizationId = String(value.value).trim();
+  return isSafeOrganizationId(organizationId) ? organizationId : "";
 }
 
-function readCookie(header: string | null, name: string) {
+function readCookie(header: string | null, name: string): string | null {
   if (!header) return "";
   for (const part of header.split(";")) {
     const separator = part.indexOf("=");
@@ -206,7 +251,7 @@ function readCookie(header: string | null, name: string) {
     try {
       return decodeURIComponent(part.slice(separator + 1).trim());
     } catch {
-      return "";
+      return null;
     }
   }
   return "";
@@ -215,24 +260,41 @@ function readCookie(header: string | null, name: string) {
 async function readBodyWithinLimit(
   stream: ReadableStream<Uint8Array> | null,
   limit: number,
+  timeoutMs?: number,
 ) {
   if (!stream) return new Uint8Array();
-  const reader = stream.getReader();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = timeoutMs
+    ? new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new BodyReadTimeoutError()), timeoutMs);
+      })
+    : undefined;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
+    reader = stream.getReader();
     while (true) {
-      const { done, value } = await reader.read();
+      const next = reader.read();
+      const { done, value } = deadline
+        ? await Promise.race([next, deadline])
+        : await next;
       if (done) break;
       if (total + value.byteLength > limit) {
-        await reader.cancel().catch(() => undefined);
+        void reader.cancel().catch(() => undefined);
         throw new BodyTooLargeError();
       }
       chunks.push(value);
       total += value.byteLength;
     }
+  } catch (error) {
+    if (error instanceof BodyReadTimeoutError && reader) {
+      void reader.cancel().catch(() => undefined);
+    }
+    throw error;
   } finally {
-    reader.releaseLock();
+    if (timeout) clearTimeout(timeout);
+    reader?.releaseLock();
   }
   const joined = new Uint8Array(total);
   let offset = 0;
@@ -265,6 +327,18 @@ function hasOwn(value: object, key: string) {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
+function isSafeOrganizationId(value: string) {
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
+}
+
+function invalidUpstreamResponse() {
+  return protocolError(
+    502,
+    "DEPENDENCY_UNAVAILABLE",
+    "Workbench upstream response is invalid",
+  );
+}
+
 function clearSelectionCookie(response: NextResponse) {
   response.cookies.set(WORKBENCH_COOKIE_NAME, "", {
     httpOnly: true,
@@ -287,3 +361,4 @@ function protocolError(status: number, code: string, message: string) {
 }
 
 class BodyTooLargeError extends Error {}
+class BodyReadTimeoutError extends Error {}

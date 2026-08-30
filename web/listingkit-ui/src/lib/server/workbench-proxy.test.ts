@@ -17,6 +17,7 @@ const contextPayload = {
 describe("buildWorkbenchUpstreamRequest", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.useRealTimers();
   });
 
   it("uses the trusted selection cookie and strips every browser-supplied identity header", async () => {
@@ -109,6 +110,79 @@ describe("buildWorkbenchUpstreamRequest", () => {
     await expect(result.json()).resolves.toMatchObject({ code: "INVALID_REQUEST" });
   });
 
+  it.each([
+    ["non-breaking space", '\u00a0{"organizationId":"org-a"}'],
+    ["line separator", '\u2028{"organizationId":"org-a"}'],
+  ])("rejects JSON surrounded by %s", async (_name, body) => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request(
+        "http://localhost/api/workbench/context/effective-organization",
+        { method: "PUT", body },
+      ),
+      ["context", "effective-organization"],
+      "server-token",
+    );
+
+    expect(result).toBeInstanceOf(Response);
+    if (!(result instanceof Response)) return;
+    expect(result.status).toBe(400);
+    await expect(result.json()).resolves.toMatchObject({ code: "INVALID_REQUEST" });
+  });
+
+  it.each([
+    ["carriage return", '{"organizationId":"org\\u000dvalue"}'],
+    ["NUL", '{"organizationId":"org\\u0000value"}'],
+    ["overlong value", JSON.stringify({ organizationId: `o${"r".repeat(128)}` })],
+  ])("returns stable JSON for a %s in the PUT organization ID", async (_name, body) => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request(
+        "http://localhost/api/workbench/context/effective-organization",
+        { method: "PUT", body },
+      ),
+      ["context", "effective-organization"],
+      "server-token",
+    );
+
+    expect(result).toBeInstanceOf(Response);
+    if (!(result instanceof Response)) return;
+    expect(result.status).toBe(400);
+    expect((await result.text()).length).toBeLessThan(256);
+  });
+
+  it("returns stable JSON for an unsafe percent-decoded selection cookie", async () => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request("http://localhost/api/workbench/context", {
+        headers: {
+          cookie: `${WORKBENCH_COOKIE_NAME}=org%0Dvalue`,
+        },
+      }),
+      ["context"],
+      "server-token",
+    );
+
+    expect(result).toBeInstanceOf(Response);
+    if (!(result instanceof Response)) return;
+    expect(result.status).toBe(400);
+    await expect(result.json()).resolves.toMatchObject({ code: "INVALID_REQUEST" });
+  });
+
+  it("returns stable JSON for a malformed percent-encoded selection cookie", async () => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request("http://localhost/api/workbench/context", {
+        headers: {
+          cookie: `${WORKBENCH_COOKIE_NAME}=org%ZZvalue`,
+        },
+      }),
+      ["context"],
+      "server-token",
+    );
+
+    expect(result).toBeInstanceOf(Response);
+    if (!(result instanceof Response)) return;
+    expect(result.status).toBe(400);
+    await expect(result.json()).resolves.toMatchObject({ code: "INVALID_REQUEST" });
+  });
+
   it("rejects a client body larger than 4 KiB before constructing an upstream request", async () => {
     const result = await buildWorkbenchUpstreamRequest(
       new Request(
@@ -125,6 +199,94 @@ describe("buildWorkbenchUpstreamRequest", () => {
     expect(result).toBeInstanceOf(Response);
     if (!(result instanceof Response)) return;
     expect(result.status).toBe(413);
+  });
+
+  it("cancels a client body rejected by its oversized Content-Length", async () => {
+    const cancel = vi.fn();
+    const result = await buildWorkbenchUpstreamRequest(
+      {
+        method: "PUT",
+        headers: new Headers({ "content-length": "4097" }),
+        body: new ReadableStream<Uint8Array>({ cancel }),
+      } as Request,
+      ["context", "effective-organization"],
+      "server-token",
+    );
+
+    expect(result).toBeInstanceOf(Response);
+    if (!(result instanceof Response)) return;
+    expect(result.status).toBe(413);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("times out and cancels a client body that never finishes", async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+        controller.enqueue(
+          new TextEncoder().encode('{"organizationId":"org-a"}'),
+        );
+      },
+      cancel,
+    });
+    const pending = buildWorkbenchUpstreamRequest(
+      {
+        method: "PUT",
+        headers: new Headers(),
+        body,
+      } as Request,
+      ["context", "effective-organization"],
+      "server-token",
+    );
+    let result: Awaited<typeof pending> | undefined;
+    void pending.then((value) => {
+      result = value;
+    });
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    await Promise.resolve();
+    try {
+      expect(result).toBeInstanceOf(Response);
+      if (!(result instanceof Response)) return;
+      expect(result.status).toBe(408);
+      await expect(result.json()).resolves.toMatchObject({
+        code: "INVALID_REQUEST",
+      });
+      expect(cancel).toHaveBeenCalledOnce();
+    } finally {
+      if (!result) {
+        streamController?.close();
+        await pending;
+      }
+    }
+  });
+
+  it("returns at the body deadline even when stream cancellation cleanup stalls", async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    const body = new ReadableStream<Uint8Array>({ cancel });
+    const pending = buildWorkbenchUpstreamRequest(
+      {
+        method: "PUT",
+        headers: new Headers(),
+        body,
+      } as Request,
+      ["context", "effective-organization"],
+      "server-token",
+    );
+    let result: Awaited<typeof pending> | undefined;
+    void pending.then((value) => {
+      result = value;
+    });
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    await Promise.resolve();
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(result).toBeInstanceOf(Response);
   });
 
   it.each([
@@ -248,6 +410,37 @@ describe("buildWorkbenchBrowserResponse", () => {
 
     expect(response.status).toBe(502);
     expect(text.length).toBeLessThan(1024);
+    expect(JSON.parse(text)).toMatchObject({ code: "DEPENDENCY_UNAVAILABLE" });
+  });
+
+  it("cancels an upstream body rejected by its oversized Content-Length", async () => {
+    const cancel = vi.fn();
+    const upstream = new Response(
+      new ReadableStream<Uint8Array>({ cancel }),
+      {
+        status: 200,
+        headers: {
+          "content-length": String(1024 * 1024 + 1),
+          "content-type": "application/json",
+        },
+      },
+    );
+
+    const response = await buildWorkbenchBrowserResponse(upstream);
+
+    expect(response.status).toBe(502);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("maps an unsafe effective organization from upstream to a bounded 502", async () => {
+    const response = await buildWorkbenchBrowserResponse(
+      Response.json({ ...contextPayload, effectiveOrganizationId: "org\rvalue" }),
+    );
+    const text = await response.text();
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    expect(text.length).toBeLessThan(256);
     expect(JSON.parse(text)).toMatchObject({ code: "DEPENDENCY_UNAVAILABLE" });
   });
 });

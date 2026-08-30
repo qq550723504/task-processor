@@ -42,6 +42,7 @@ async function proxyWorkbenchRequest(
   try {
     const upstream = await fetch(upstreamRequest.url, {
       ...upstreamRequest.init,
+      redirect: "manual",
       signal: controller.signal,
     });
     return await buildWorkbenchBrowserResponse(upstream);
@@ -60,3 +61,17 @@ const authenticatedProxyRequest = serverAuth(proxyWorkbenchRequest);
 
 export const GET = authenticatedProxyRequest;
 export const PUT = authenticatedProxyRequest;
+
+function rejectUnsupportedRequest() {
+  return workbenchProtocolError(
+    405,
+    "INVALID_REQUEST",
+    "Workbench method is not allowed",
+  );
+}
+
+export const HEAD = rejectUnsupportedRequest;
+export const POST = rejectUnsupportedRequest;
+export const PATCH = rejectUnsupportedRequest;
+export const DELETE = rejectUnsupportedRequest;
+export const OPTIONS = rejectUnsupportedRequest;
