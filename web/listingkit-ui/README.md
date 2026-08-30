@@ -12,10 +12,11 @@ Current scope:
 
 ## Setup
 
-1. Install dependencies:
+1. Enable Corepack and install the dependencies pinned by `pnpm-lock.yaml`:
 
 ```bash
-npm install
+corepack enable
+pnpm install --frozen-lockfile
 ```
 
 2. Copy the environment template:
@@ -93,7 +94,7 @@ LISTINGKIT_UI_ASYNC_JOB_TIMEOUT_MS=3600000
 4. Start the app:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
@@ -128,7 +129,7 @@ curl -i http://localhost:3000/api/zitadel-auth/session
 这时优先改用稳定模式：
 
 ```bash
-npm run build
+pnpm build
 PORT=3000 HOSTNAME=0.0.0.0 node .next/standalone/server.js
 ```
 
@@ -162,10 +163,12 @@ node .next/standalone/server.js
 ## Commands
 
 ```bash
-npm run dev
-npm run lint
-npm test
-npm run build
+pnpm dev
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+pnpm build
 ```
 
 ## Notes
