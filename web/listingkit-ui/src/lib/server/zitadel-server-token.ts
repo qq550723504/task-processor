@@ -3,7 +3,7 @@ import { getToken } from "next-auth/jwt";
 
 import { getAuthJsSecret } from "@/auth.config";
 
-export async function readZitadelServerJWT(request: NextRequest) {
+async function readZitadelServerJWT(request: NextRequest) {
   const secret = getAuthJsSecret();
   if (!secret) {
     return null;
