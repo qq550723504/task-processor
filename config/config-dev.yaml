@@ -5,16 +5,16 @@
 logging:
   level: "DEBUG"  # 设置为 DEBUG 级别以显示详细调试信息
   format: "text"  # text 或 json
-  file: "tmp/logs/app.log"
+  file: ".local/logs/app.log"
   split_by_level:
     - levels: [error, fatal, panic]
-      file: tmp/logs/error.log
+      file: .local/logs/error.log
     - levels: [warn]
-      file: tmp/logs/warn.log
+      file: .local/logs/warn.log
     - levels: [info]
-      file: tmp/logs/info.log
+      file: .local/logs/info.log
     - levels: [debug, trace]
-      file: tmp/logs/debug.log
+      file: .local/logs/debug.log
 
 # 处理器配置
 processor:
