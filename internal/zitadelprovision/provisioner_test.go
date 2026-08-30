@@ -536,6 +536,231 @@ func TestProvisionCreatesProjectWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialModel(t *testing.T) {
+	type organization struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	type projectGrant struct {
+		ProjectID             string   `json:"projectId"`
+		GrantedOrganizationID string   `json:"grantedOrganizationId"`
+		GrantedRoleKeys       []string `json:"grantedRoleKeys"`
+	}
+	type authorization struct {
+		ID           string
+		UserID       string
+		ProjectID    string
+		Organization string
+		RoleKeys     []string
+	}
+
+	var organizations []organization
+	var projectGrants []projectGrant
+	var authorizations []authorization
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireAuth(t, r)
+		switch r.URL.Path {
+		case "/v2/organizations/_search":
+			writeJSON(t, w, map[string]any{"result": organizations})
+		case "/v2/organizations":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			name, _ := body["name"].(string)
+			created := organization{ID: fmt.Sprintf("org-%d", len(organizations)+1), Name: name}
+			organizations = append(organizations, created)
+			writeJSON(t, w, map[string]any{"organizationId": created.ID})
+		case "/zitadel.project.v2.ProjectService/ListProjectGrants":
+			if got := r.Header.Get("Connect-Protocol-Version"); got != "1" {
+				t.Fatalf("Connect-Protocol-Version = %q, want 1", got)
+			}
+			writeJSON(t, w, map[string]any{"projectGrants": projectGrants})
+		case "/zitadel.project.v2.ProjectService/CreateProjectGrant":
+			if got := r.Header.Get("Connect-Protocol-Version"); got != "1" {
+				t.Fatalf("Connect-Protocol-Version = %q, want 1", got)
+			}
+			var body struct {
+				ProjectID             string   `json:"projectId"`
+				GrantedOrganizationID string   `json:"grantedOrganizationId"`
+				RoleKeys              []string `json:"roleKeys"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			projectGrants = append(projectGrants, projectGrant{
+				ProjectID:             body.ProjectID,
+				GrantedOrganizationID: body.GrantedOrganizationID,
+				GrantedRoleKeys:       body.RoleKeys,
+			})
+			writeJSON(t, w, map[string]any{"creationDate": "2026-08-30T00:00:00Z"})
+		case "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations":
+			response := make([]map[string]any, 0, len(authorizations))
+			for _, item := range authorizations {
+				roles := make([]map[string]any, 0, len(item.RoleKeys))
+				for _, roleKey := range item.RoleKeys {
+					roles = append(roles, map[string]any{"key": roleKey})
+				}
+				response = append(response, map[string]any{
+					"id":           item.ID,
+					"user":         map[string]any{"id": item.UserID},
+					"project":      map[string]any{"id": item.ProjectID},
+					"organization": map[string]any{"id": item.Organization},
+					"roles":        roles,
+				})
+			}
+			writeJSON(t, w, map[string]any{"authorizations": response})
+		case "/zitadel.authorization.v2.AuthorizationService/CreateAuthorization":
+			var body struct {
+				UserID         string   `json:"userId"`
+				ProjectID      string   `json:"projectId"`
+				OrganizationID string   `json:"organizationId"`
+				RoleKeys       []string `json:"roleKeys"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			authorizations = append(authorizations, authorization{
+				ID:           fmt.Sprintf("authorization-%d", len(authorizations)+1),
+				UserID:       body.UserID,
+				ProjectID:    body.ProjectID,
+				Organization: body.OrganizationID,
+				RoleKeys:     body.RoleKeys,
+			})
+			writeJSON(t, w, map[string]any{"id": authorizations[len(authorizations)-1].ID})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	spec := MultiOrganizationAcceptanceSpec{
+		UserID: " user-1 ",
+		Organizations: []AcceptanceOrganizationSpec{
+			{Name: " Acceptance Organization A ", RoleKeys: []string{" listingkit_admin ", "listingkit_admin", ""}},
+			{Name: " Acceptance Organization B ", RoleKeys: []string{" listingkit_viewer ", "listingkit_viewer"}},
+		},
+	}
+	result, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), Config{
+		IssuerURL: server.URL, ManagementToken: "token", ProjectID: " project-1 ",
+	}, spec)
+	if err != nil {
+		t.Fatalf("ProvisionLocalMultiOrganizationAcceptance() error = %v", err)
+	}
+
+	want := MultiOrganizationAcceptanceResult{
+		UserID: "user-1", ProjectID: "project-1",
+		Organizations: []AcceptanceOrganizationResult{
+			{OrganizationID: "org-1", OrganizationName: "Acceptance Organization A", RoleKeys: []string{"listingkit_admin"}},
+			{OrganizationID: "org-2", OrganizationName: "Acceptance Organization B", RoleKeys: []string{"listingkit_viewer"}},
+		},
+	}
+	if !reflect.DeepEqual(result, want) {
+		t.Fatalf("result = %#v, want %#v", result, want)
+	}
+	if len(projectGrants) != 2 || len(authorizations) != 2 {
+		t.Fatalf("created project grants/authorizations = %d/%d, want 2/2", len(projectGrants), len(authorizations))
+	}
+	for index := range want.Organizations {
+		if projectGrants[index].ProjectID != "project-1" || projectGrants[index].GrantedOrganizationID != want.Organizations[index].OrganizationID {
+			t.Fatalf("project grant %d = %#v", index, projectGrants[index])
+		}
+		if !reflect.DeepEqual(projectGrants[index].GrantedRoleKeys, want.Organizations[index].RoleKeys) {
+			t.Fatalf("project grant roles %d = %#v", index, projectGrants[index].GrantedRoleKeys)
+		}
+		if authorizations[index].UserID != "user-1" || authorizations[index].ProjectID != "project-1" || authorizations[index].Organization != want.Organizations[index].OrganizationID {
+			t.Fatalf("authorization %d = %#v", index, authorizations[index])
+		}
+		if !reflect.DeepEqual(authorizations[index].RoleKeys, want.Organizations[index].RoleKeys) {
+			t.Fatalf("authorization roles %d = %#v", index, authorizations[index].RoleKeys)
+		}
+	}
+
+	beforeOrganizations := len(organizations)
+	beforeProjectGrants := len(projectGrants)
+	beforeAuthorizations := len(authorizations)
+	second, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), Config{
+		IssuerURL: server.URL, ManagementToken: "token", ProjectID: "project-1",
+	}, spec)
+	if err != nil {
+		t.Fatalf("second ProvisionLocalMultiOrganizationAcceptance() error = %v", err)
+	}
+	if !reflect.DeepEqual(second, want) {
+		t.Fatalf("second result = %#v, want %#v", second, want)
+	}
+	if len(organizations) != beforeOrganizations || len(projectGrants) != beforeProjectGrants || len(authorizations) != beforeAuthorizations {
+		t.Fatalf("rerun created resources: organizations=%d grants=%d authorizations=%d", len(organizations)-beforeOrganizations, len(projectGrants)-beforeProjectGrants, len(authorizations)-beforeAuthorizations)
+	}
+}
+
+func TestProvisionLocalMultiOrganizationAcceptanceFailsClosedOnInvalidSpec(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		spec MultiOrganizationAcceptanceSpec
+	}{
+		{
+			name: "blank project id",
+			cfg:  Config{IssuerURL: "http://localhost:8080", ManagementToken: "token"},
+			spec: MultiOrganizationAcceptanceSpec{UserID: "user-1", Organizations: []AcceptanceOrganizationSpec{{Name: "A", RoleKeys: []string{"admin"}}, {Name: "B", RoleKeys: []string{"viewer"}}}},
+		},
+		{
+			name: "blank user id",
+			cfg:  Config{IssuerURL: "http://localhost:8080", ManagementToken: "token", ProjectID: "project-1"},
+			spec: MultiOrganizationAcceptanceSpec{Organizations: []AcceptanceOrganizationSpec{{Name: "A", RoleKeys: []string{"admin"}}, {Name: "B", RoleKeys: []string{"viewer"}}}},
+		},
+		{
+			name: "one organization",
+			cfg:  Config{IssuerURL: "http://localhost:8080", ManagementToken: "token", ProjectID: "project-1"},
+			spec: MultiOrganizationAcceptanceSpec{UserID: "user-1", Organizations: []AcceptanceOrganizationSpec{{Name: "A", RoleKeys: []string{"admin"}}}},
+		},
+		{
+			name: "duplicate normalized organizations",
+			cfg:  Config{IssuerURL: "http://localhost:8080", ManagementToken: "token", ProjectID: "project-1"},
+			spec: MultiOrganizationAcceptanceSpec{UserID: "user-1", Organizations: []AcceptanceOrganizationSpec{{Name: " A ", RoleKeys: []string{"admin"}}, {Name: "A", RoleKeys: []string{"viewer"}}}},
+		},
+		{
+			name: "remote issuer",
+			cfg:  Config{IssuerURL: "https://identity.example.com", ManagementToken: "token", ProjectID: "project-1"},
+			spec: MultiOrganizationAcceptanceSpec{UserID: "user-1", Organizations: []AcceptanceOrganizationSpec{{Name: "A", RoleKeys: []string{"admin"}}, {Name: "B", RoleKeys: []string{"viewer"}}}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), test.cfg, test.spec); err == nil {
+				t.Fatal("ProvisionLocalMultiOrganizationAcceptance() error = nil")
+			}
+		})
+	}
+}
+
+func TestProvisionLocalMultiOrganizationAcceptanceErrorsAndResultsAreSecretSafe(t *testing.T) {
+	const managementSecret = "management-secret-that-must-not-appear"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "provider-response-secret-that-must-not-appear", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	result, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), Config{
+		IssuerURL: server.URL, ManagementToken: managementSecret, ProjectID: "project-1",
+	}, MultiOrganizationAcceptanceSpec{
+		UserID: "user-1",
+		Organizations: []AcceptanceOrganizationSpec{
+			{Name: "A", RoleKeys: []string{"listingkit_admin"}},
+			{Name: "B", RoleKeys: []string{"listingkit_viewer"}},
+		},
+	})
+	if err == nil {
+		t.Fatal("ProvisionLocalMultiOrganizationAcceptance() error = nil")
+	}
+	formatted := fmt.Sprintf("%+v %v", result, err)
+	for _, secret := range []string{managementSecret, "provider-response-secret-that-must-not-appear"} {
+		if strings.Contains(formatted, secret) {
+			t.Fatalf("result/error leaked secret %q: %s", secret, formatted)
+		}
+	}
+}
+
 func requireAuth(t *testing.T, r *http.Request) {
 	t.Helper()
 	if got := r.Header.Get("Authorization"); got != "Bearer token" {

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -29,6 +30,10 @@ const (
 	apiClientSecretEnvKey = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_API_CLIENT_SECRET"
 	bootstrapTenantIDKey  = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_BOOTSTRAP_TENANT_ID"
 	bootstrapUserIDKey    = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_BOOTSTRAP_USER_ID"
+	acceptanceOrgAIDKey   = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ACCEPTANCE_ORGANIZATION_A_ID"
+	acceptanceOrgBIDKey   = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ACCEPTANCE_ORGANIZATION_B_ID"
+	acceptanceOrgAName    = "ListingKit Acceptance Organization A"
+	acceptanceOrgBName    = "ListingKit Acceptance Organization B"
 )
 
 func main() {
@@ -49,7 +54,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		stderr = io.Discard
 	}
 	if len(args) == 0 {
-		return errors.New("subcommand is required: provision or authorize")
+		return errors.New("subcommand is required: provision, authorize, or provision-multi-org-acceptance")
 	}
 
 	switch args[0] {
@@ -57,8 +62,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runProvision(ctx, args[1:], stdout, stderr)
 	case "authorize":
 		return runAuthorize(ctx, args[1:], stdout, stderr)
+	case "provision-multi-org-acceptance":
+		return runProvisionMultiOrgAcceptance(ctx, args[1:], stdout, stderr)
 	default:
-		return fmt.Errorf("unknown subcommand %q: want provision or authorize", args[0])
+		return fmt.Errorf("unknown subcommand %q: want provision, authorize, or provision-multi-org-acceptance", args[0])
 	}
 }
 
@@ -144,6 +151,106 @@ func localApplicationConfig() zitadelprovision.LocalApplicationConfig {
 		// replaced, the next run must recover instead of preserving stale values.
 		RotateAPIClientSecret:  true,
 		RotateOIDCClientSecret: true,
+	}
+}
+
+func runProvisionMultiOrgAcceptance(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("provision-multi-org-acceptance", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	issuerURL := ""
+	managementTokenFile := ""
+	runtimeFile := ""
+	confirmResettableTestData := false
+	flags.StringVar(&issuerURL, "issuer-url", issuerURL, "loopback ZITADEL issuer URL")
+	flags.StringVar(&managementTokenFile, "management-token-file", managementTokenFile, "file containing the ZITADEL management token")
+	flags.StringVar(&runtimeFile, "runtime-file", runtimeFile, "guarded local acceptance runtime environment file")
+	flags.BoolVar(&confirmResettableTestData, "confirm-resettable-test-data", confirmResettableTestData, "confirm that the target is disposable local ZITADEL test data")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if len(flags.Args()) != 0 {
+		return fmt.Errorf("unexpected arguments after provision-multi-org-acceptance flags: %s", strings.Join(flags.Args(), " "))
+	}
+	if strings.TrimSpace(issuerURL) == "" {
+		return errors.New("-issuer-url is required")
+	}
+	if strings.TrimSpace(managementTokenFile) == "" {
+		return errors.New("-management-token-file is required")
+	}
+	if strings.TrimSpace(runtimeFile) == "" {
+		return errors.New("-runtime-file is required")
+	}
+	if !confirmResettableTestData {
+		return errors.New("-confirm-resettable-test-data is required")
+	}
+	issuerURL = strings.TrimSpace(issuerURL)
+	if err := validateExactLoopbackIssuer(issuerURL); err != nil {
+		return err
+	}
+	if err := validateAcceptanceRuntimePath(runtimeFile); err != nil {
+		return err
+	}
+	runtime, err := readRuntimeEnv(runtimeFile)
+	if err != nil {
+		return err
+	}
+	runtimeIssuer, err := requiredRuntimeValue(runtime, "ZITADEL_ISSUER_URL")
+	if err != nil {
+		return err
+	}
+	if strings.TrimRight(runtimeIssuer, "/") != strings.TrimRight(issuerURL, "/") {
+		return errors.New("-issuer-url does not match the guarded runtime file")
+	}
+	projectID, err := requiredRuntimeValue(runtime, projectIDEnvKey)
+	if err != nil {
+		return err
+	}
+	userID, err := requiredRuntimeValue(runtime, bootstrapUserIDKey)
+	if err != nil {
+		return err
+	}
+	managementToken, err := readSecretFile(managementTokenFile, "management token")
+	if err != nil {
+		return err
+	}
+
+	result, err := zitadelprovision.ProvisionLocalMultiOrganizationAcceptance(ctx, zitadelprovision.Config{
+		IssuerURL:       issuerURL,
+		ManagementToken: managementToken,
+		OrgID:           strings.TrimSpace(runtime["ZITADEL_ORG_ID"]),
+		ProjectID:       projectID,
+	}, zitadelprovision.MultiOrganizationAcceptanceSpec{
+		UserID: userID,
+		Organizations: []zitadelprovision.AcceptanceOrganizationSpec{
+			{Name: acceptanceOrgAName, RoleKeys: []string{"listingkit_admin"}},
+			{Name: acceptanceOrgBName, RoleKeys: []string{"listingkit_viewer"}},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("provision local multi-organization acceptance: %w", err)
+	}
+	if len(result.Organizations) != 2 {
+		return errors.New("multi-organization acceptance provisioner did not return exactly two organizations")
+	}
+	runtime[acceptanceOrgAIDKey] = result.Organizations[0].OrganizationID
+	runtime[acceptanceOrgBIDKey] = result.Organizations[1].OrganizationID
+	if err := writeRuntimeEnv(runtimeFile, runtime); err != nil {
+		return fmt.Errorf("persist acceptance organization ids: %w", err)
+	}
+	fmt.Fprintln(stdout, "status=ok phase=provision-multi-org-acceptance organizations=2")
+	return nil
+}
+
+func validateExactLoopbackIssuer(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" {
+		return errors.New("local ZITADEL issuer URL is invalid")
+	}
+	switch strings.ToLower(parsed.Hostname()) {
+	case "localhost", "127.0.0.1", "::1":
+		return nil
+	default:
+		return errors.New("local ZITADEL issuer hostname must be localhost, 127.0.0.1, or ::1")
 	}
 }
 
