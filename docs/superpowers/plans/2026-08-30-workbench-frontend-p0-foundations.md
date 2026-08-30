@@ -637,7 +637,12 @@ git commit -m "feat(web): add echarts lifecycle boundary"
 - Create: `web/listingkit-ui/playwright.config.ts`
 - Create: `web/listingkit-ui/e2e/public-site.spec.ts`
 - Create: `web/listingkit-ui/e2e/accessibility.spec.ts`
-- Modify: `web/listingkit-ui/.gitignore`
+- Create: `web/listingkit-ui/AGENTS.md` (由 Next.js 16.3 首次 `next dev` 自动生成)
+- Create: `web/listingkit-ui/CLAUDE.md` (由 Next.js 16.3 首次 `next dev` 自动生成)
+- Modify: `web/listingkit-ui/vitest.config.ts`
+- Modify: `web/listingkit-ui/src/components/marketing/practice-tabs.tsx`
+- Modify: `web/listingkit-ui/src/components/marketing/marketing-homepage.module.css`
+- Modify if needed: repository `.gitignore`
 
 **Interfaces:**
 - Consumes: 根路径公开营销页、Playwright webServer、axe-core 浏览器注入。
@@ -738,6 +743,12 @@ pnpm test:e2e
 
 Expected: 首次运行若发现真实页面行为或严重可访问性问题，测试应先 RED 并列出具体 selector/rule；修复对应生产可访问性问题后重跑至 2 tests PASS。不得通过排除整个页面、禁用规则或放宽为不检查来变绿。
 
+Observed RED: axe 报告实践场景的 `tablist` 直接包含标题（`aria-required-children`），以及页脚 10px 文字只有 4.004:1 对比度（`color-contrast`）。修复方式是给 tabs 增加独立的 `tablist` 容器，并将页脚文字调整为 4.625:1；不增加 axe 排除项。
+
+Next.js 16.3 首次启动开发服务器还会自动生成 `AGENTS.md` 与指向它的 `CLAUDE.md`。这两个框架管理的文件必须一并提交，否则每次执行 Playwright 都会重新造成脏工作区。
+
+完整回归还确认 Vitest 的默认 `**/*.spec.ts` 会扫描 Playwright 套件；在 Vitest `exclude` 中增加 `e2e/**`，明确两个测试运行器的发现边界。
+
 - [ ] **Step 6: 验证产物位置与前端回归**
 
 Run:
@@ -756,7 +767,7 @@ Expected: axe、TypeScript、1770 个既有 Vitest 加新增测试和生产构�
 
 ```powershell
 git diff --check
-git add web/listingkit-ui/playwright.config.ts web/listingkit-ui/e2e web/listingkit-ui/.gitignore
+git add web/listingkit-ui/playwright.config.ts web/listingkit-ui/e2e web/listingkit-ui/AGENTS.md web/listingkit-ui/CLAUDE.md web/listingkit-ui/vitest.config.ts web/listingkit-ui/src/components/marketing/practice-tabs.tsx web/listingkit-ui/src/components/marketing/marketing-homepage.module.css
 git commit -m "test(web): add playwright accessibility gate"
 ```
 

@@ -52,9 +52,11 @@ export function PracticeTabs() {
   }
 
   return <><div className={styles.practiceLayout}>
-    <div className={styles.scenarioList} role="tablist" aria-label="实践场景">
+    <div className={styles.scenarioList}>
       <h3>选择实践场景</h3><p>查看不同用户如何使用AI完成业务</p>
-      {practices.map((practice, index) => <button type="button" role="tab" id={`practice-tab-${index}`} aria-controls={panelId} aria-selected={activeIndex === index} tabIndex={activeIndex === index ? 0 : -1} className={activeIndex === index ? styles.activeScenario : ""} key={practice.title} ref={(element) => { tabRefs.current[index] = element; }} onClick={() => setActiveIndex(index)} onKeyDown={(event) => handleTabKeyDown(event, index)}><span>{practice.number}</span><span><b>{practice.title}</b><small>{practice.detail}</small></span></button>)}
+      <div className={styles.scenarioTabs} role="tablist" aria-label="实践场景">
+        {practices.map((practice, index) => <button type="button" role="tab" id={`practice-tab-${index}`} aria-controls={panelId} aria-selected={activeIndex === index} tabIndex={activeIndex === index ? 0 : -1} className={activeIndex === index ? styles.activeScenario : ""} key={practice.title} ref={(element) => { tabRefs.current[index] = element; }} onClick={() => setActiveIndex(index)} onKeyDown={(event) => handleTabKeyDown(event, index)}><span>{practice.number}</span><span><b>{practice.title}</b><small>{practice.detail}</small></span></button>)}
+      </div>
     </div>
     <article className={styles.practiceCase} id={panelId} role="tabpanel" aria-labelledby={`practice-tab-${activeIndex}`}>
       <small>{activePractice.label}</small><h3>{activePractice.headline}</h3><p>{activePractice.description}</p>
