@@ -79,5 +79,5 @@
 - [x] Run focused Go, Pester, and UI tests after each slice.
 - [x] Run serial full Go tests plus UI test, lint, and typecheck suites.
 - [x] Request an independent final code review and address all critical/important findings.
-- [ ] Stage only intended paths, commit, merge current `origin/main`, resolve conflicts, and rerun verification.
+- [x] Stage only intended paths, commit, merge current `origin/main`, resolve conflicts, and rerun verification.
 - [ ] Push the `codex/image-agent-local-acceptance` branch and create a Draft PR without merging or deploying.
