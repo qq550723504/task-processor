@@ -2,125 +2,240 @@ package database
 
 import (
 	"context"
-	"sync"
-	"sync/atomic"
+	"database/sql"
+	"errors"
+	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/DATA-DOG/go-sqlmock"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-type testLogger struct{}
+func newTestConnectionProxy(t *testing.T, maxOps int) (*ConnectionProxy, *sql.DB, sqlmock.Sqlmock) {
+	t.Helper()
 
-func (l *testLogger) Infof(format string, args ...interface{})  {}
-func (l *testLogger) Warnf(format string, args ...interface{})  {}
-func (l *testLogger) Errorf(format string, args ...interface{}) {}
-
-func TestConnectionProxyConfig(t *testing.T) {
-	t.Parallel()
-
-	// 测试配置验证
-	cfg := &ConnectionProxyConfig{
-		MaxConcurrentOps: 10,
-		DBConfig: &Config{
-			Host:     "localhost",
-			Port:     5432,
-			User:     "test",
-			Password: "test",
-			Database: "test",
-		},
-		Logger: &testLogger{},
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("open SQL mock: %v", err)
+	}
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{DisableAutomaticPing: true})
+	if err != nil {
+		t.Fatalf("open GORM test database: %v", err)
 	}
 
-	// 验证配置
-	assert.NotNil(t, cfg)
-	assert.Equal(t, 10, cfg.MaxConcurrentOps)
-}
-
-func TestConnectionProxySemaphoreBehavior(t *testing.T) {
-	t.Parallel()
-
-	// 创建一个简单的信号量测试，不依赖数据库
-	semaphore := make(chan struct{}, 3)
-	maxConcurrent := int64(0)
-	currentConcurrent := int64(0)
-	var mu sync.Mutex
-
-	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			// 尝试获取信号量
-			select {
-			case semaphore <- struct{}{}:
-				defer func() { <-semaphore }()
-
-				// 记录并发数
-				curr := atomic.AddInt64(&currentConcurrent, 1)
-				mu.Lock()
-				if curr > maxConcurrent {
-					maxConcurrent = curr
-				}
-				mu.Unlock()
-
-				// 模拟工作
-				time.Sleep(50 * time.Millisecond)
-
-				atomic.AddInt64(&currentConcurrent, -1)
-
-			case <-time.After(2 * time.Second):
-				// 超时
-			}
-		}()
+	proxy := &ConnectionProxy{
+		master:    db,
+		semaphore: make(chan struct{}, maxOps),
+		maxOps:    maxOps,
 	}
-
-	wg.Wait()
-
-	// 验证最大并发数不超过限制
-	assert.LessOrEqual(t, maxConcurrent, int64(3))
-}
-
-func TestConnectionProxyContextCancellation(t *testing.T) {
-	t.Parallel()
-
-	semaphore := make(chan struct{}, 1)
-	// 先占用信号量
-	semaphore <- struct{}{}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	// 尝试获取信号量，应该会超时
-	done := make(chan error, 1)
-	go func() {
-		select {
-		case semaphore <- struct{}{}:
-			<-semaphore
-			done <- nil
-		case <-ctx.Done():
-			done <- ctx.Err()
+	mock.ExpectClose()
+	t.Cleanup(func() {
+		if err := proxy.Close(); err != nil {
+			t.Errorf("close proxy: %v", err)
 		}
-	}()
-
-	err := <-done
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "context deadline exceeded")
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("SQL expectations: %v", err)
+		}
+	})
+	return proxy, sqlDB, mock
 }
 
-func TestConnectionProxyStatsTracking(t *testing.T) {
+func TestNewConnectionProxyRejectsMissingConfig(t *testing.T) {
 	t.Parallel()
 
-	activeOps := int64(0)
+	if _, err := NewConnectionProxy(nil); err == nil || !strings.Contains(err.Error(), "connection proxy config is nil") {
+		t.Fatalf("NewConnectionProxy(nil) error = %v", err)
+	}
+	if _, err := NewConnectionProxy(&ConnectionProxyConfig{}); err == nil || !strings.Contains(err.Error(), "database config is nil") {
+		t.Fatalf("NewConnectionProxy(empty) error = %v", err)
+	}
+}
 
-	// 模拟增加和减少活跃操作数
-	atomic.AddInt64(&activeOps, 1)
-	assert.Equal(t, int64(1), atomic.LoadInt64(&activeOps))
+func TestConnectionProxyExecuteLimitsConcurrencyAndReleasesSlots(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		proxy, _, _ := newTestConnectionProxy(t, 2)
+		release := make(chan struct{})
+		defer close(release)
+		started := make(chan struct{}, 2)
+		results := make(chan error, 2)
 
-	atomic.AddInt64(&activeOps, 2)
-	assert.Equal(t, int64(3), atomic.LoadInt64(&activeOps))
+		for range 2 {
+			go func() {
+				results <- proxy.Execute(t.Context(), func(*gorm.DB) error {
+					started <- struct{}{}
+					<-release
+					return nil
+				})
+			}()
+		}
+		<-started
+		<-started
 
-	atomic.AddInt64(&activeOps, -3)
-	assert.Equal(t, int64(0), atomic.LoadInt64(&activeOps))
+		stats := proxy.GetStats()
+		if got := stats["max_concurrent_ops"]; got != 2 {
+			t.Fatalf("max_concurrent_ops = %v, want 2", got)
+		}
+		if got := stats["active_operations"]; got != int64(2) {
+			t.Fatalf("active_operations = %v, want 2", got)
+		}
+		if got := stats["semaphore_available"]; got != 2 {
+			t.Fatalf("semaphore_available = %v, want 2 occupied slots", got)
+		}
+
+		waitingContext, cancelWaiting := context.WithCancel(t.Context())
+		waitingCalled := make(chan struct{}, 1)
+		waitingResult := make(chan error, 1)
+		go func() {
+			waitingResult <- proxy.Execute(waitingContext, func(*gorm.DB) error {
+				waitingCalled <- struct{}{}
+				return nil
+			})
+		}()
+		synctest.Wait()
+		cancelWaiting()
+		synctest.Wait()
+		if err := <-waitingResult; !errors.Is(err, context.Canceled) {
+			t.Fatalf("saturated Execute error = %v, want context cancellation", err)
+		}
+		select {
+		case <-waitingCalled:
+			t.Fatal("saturated Execute invoked callback after context cancellation")
+		default:
+		}
+
+		release <- struct{}{}
+		if err := <-results; err != nil {
+			t.Fatalf("first blocked Execute error = %v", err)
+		}
+		if err := proxy.Execute(t.Context(), func(*gorm.DB) error { return nil }); err != nil {
+			t.Fatalf("Execute after slot release error = %v", err)
+		}
+		release <- struct{}{}
+		if err := <-results; err != nil {
+			t.Fatalf("second blocked Execute error = %v", err)
+		}
+
+		stats = proxy.GetStats()
+		if got := stats["active_operations"]; got != int64(0) {
+			t.Fatalf("active_operations after release = %v, want 0", got)
+		}
+		if got := stats["semaphore_available"]; got != 0 {
+			t.Fatalf("semaphore_available after release = %v, want 0 occupied slots", got)
+		}
+	})
+}
+
+func TestConnectionProxyExecuteWithTimeoutWhileSaturated(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		proxy, _, _ := newTestConnectionProxy(t, 1)
+		release := make(chan struct{})
+		defer close(release)
+		started := make(chan struct{})
+		blockingResult := make(chan error, 1)
+		go func() {
+			blockingResult <- proxy.Execute(t.Context(), func(*gorm.DB) error {
+				close(started)
+				<-release
+				return nil
+			})
+		}()
+		<-started
+
+		called := false
+		err := proxy.ExecuteWithTimeout(t.Context(), 25*time.Millisecond, func(*gorm.DB) error {
+			called = true
+			return nil
+		})
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("ExecuteWithTimeout error = %v, want deadline exceeded", err)
+		}
+		if called {
+			t.Fatal("ExecuteWithTimeout invoked callback while semaphore was saturated")
+		}
+
+		release <- struct{}{}
+		if err := <-blockingResult; err != nil {
+			t.Fatalf("blocking Execute error = %v", err)
+		}
+	})
+}
+
+func TestConnectionProxyExecutePropagatesCallbackErrorAndRestoresStats(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		proxy, _, _ := newTestConnectionProxy(t, 1)
+		callbackErr := errors.New("callback failed")
+
+		if err := proxy.Execute(t.Context(), func(*gorm.DB) error { return callbackErr }); !errors.Is(err, callbackErr) {
+			t.Fatalf("Execute error = %v, want callback error", err)
+		}
+		stats := proxy.GetStats()
+		if got := stats["active_operations"]; got != int64(0) {
+			t.Fatalf("active_operations after callback error = %v, want 0", got)
+		}
+		if got := stats["semaphore_available"]; got != 0 {
+			t.Fatalf("semaphore_available after callback error = %v, want 0 occupied slots", got)
+		}
+		if err := proxy.Execute(t.Context(), func(*gorm.DB) error { return nil }); err != nil {
+			t.Fatalf("Execute after callback error error = %v", err)
+		}
+	})
+}
+
+func TestConnectionProxyCloseWaitsForActiveExecutionThenRejectsNewWork(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		proxy, sqlDB, _ := newTestConnectionProxy(t, 1)
+		release := make(chan struct{})
+		started := make(chan struct{})
+		executeResult := make(chan error, 1)
+		go func() {
+			executeResult <- proxy.Execute(t.Context(), func(*gorm.DB) error {
+				close(started)
+				<-release
+				return sqlDB.PingContext(t.Context())
+			})
+		}()
+		<-started
+
+		closeResult := make(chan error, 1)
+		go func() { closeResult <- proxy.Close() }()
+		synctest.Wait()
+		select {
+		case err := <-closeResult:
+			close(release)
+			synctest.Wait()
+			<-executeResult
+			t.Fatalf("Close returned while callback was active: %v", err)
+		default:
+		}
+		if err := sqlDB.PingContext(t.Context()); err != nil {
+			t.Fatalf("database closed while callback was active: %v", err)
+		}
+
+		close(release)
+		synctest.Wait()
+		if err := <-executeResult; err != nil {
+			t.Fatalf("active Execute error = %v", err)
+		}
+		if err := <-closeResult; err != nil {
+			t.Fatalf("Close error = %v", err)
+		}
+		if err := sqlDB.PingContext(t.Context()); err == nil || !strings.Contains(err.Error(), "database is closed") {
+			t.Fatalf("Ping after Close error = %v, want database closed", err)
+		}
+
+		called := false
+		err := proxy.Execute(t.Context(), func(*gorm.DB) error {
+			called = true
+			return nil
+		})
+		if err == nil || !strings.Contains(err.Error(), "connection proxy is closed") {
+			t.Fatalf("Execute after Close error = %v, want closed proxy", err)
+		}
+		if called {
+			t.Fatal("Execute after Close invoked callback")
+		}
+	})
 }

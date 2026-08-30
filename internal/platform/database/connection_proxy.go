@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -16,6 +17,12 @@ type ConnectionProxy struct {
 	maxOps    int           // 最大并发操作数
 	activeOps int64         // 当前活跃操作数（用于监控）
 	logger    ProxyLogger   // 日志接口
+
+	mu        sync.Mutex
+	activeWG  sync.WaitGroup
+	closed    bool
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // ProxyLogger 简单的日志接口
@@ -76,13 +83,22 @@ func (p *ConnectionProxy) Execute(ctx context.Context, fn func(*gorm.DB) error) 
 	// 尝试获取信号量
 	select {
 	case p.semaphore <- struct{}{}:
+		p.mu.Lock()
+		if p.closed {
+			p.mu.Unlock()
+			<-p.semaphore
+			return fmt.Errorf("connection proxy is closed")
+		}
+		p.activeWG.Add(1)
+		atomic.AddInt64(&p.activeOps, 1)
+		p.mu.Unlock()
+
 		// 成功获取信号量
 		defer func() {
 			<-p.semaphore // 释放信号量
 			atomic.AddInt64(&p.activeOps, -1)
+			p.activeWG.Done()
 		}()
-
-		atomic.AddInt64(&p.activeOps, 1)
 
 		// 执行数据库操作
 		return fn(p.master)
@@ -145,18 +161,27 @@ func (p *ConnectionProxy) GetStats() map[string]interface{} {
 
 // Close 关闭连接代理
 func (p *ConnectionProxy) Close() error {
-	if p.master == nil {
-		return nil
-	}
+	p.closeOnce.Do(func() {
+		p.mu.Lock()
+		p.closed = true
+		p.mu.Unlock()
 
-	sqlDB, err := p.master.DB()
-	if err != nil {
-		return fmt.Errorf("failed to get sql.DB: %w", err)
-	}
+		p.activeWG.Wait()
+		if p.master == nil {
+			return
+		}
 
-	if p.logger != nil {
-		p.logger.Infof("Closing ConnectionProxy, active operations: %d", atomic.LoadInt64(&p.activeOps))
-	}
+		sqlDB, err := p.master.DB()
+		if err != nil {
+			p.closeErr = fmt.Errorf("failed to get sql.DB: %w", err)
+			return
+		}
 
-	return sqlDB.Close()
+		if p.logger != nil {
+			p.logger.Infof("Closing ConnectionProxy, active operations: %d", atomic.LoadInt64(&p.activeOps))
+		}
+
+		p.closeErr = sqlDB.Close()
+	})
+	return p.closeErr
 }
