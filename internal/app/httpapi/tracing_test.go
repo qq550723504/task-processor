@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +19,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	platformfeatureflag "task-processor/internal/platform/featureflag"
 	platformobservability "task-processor/internal/platform/observability"
 )
 
@@ -45,6 +47,9 @@ func TestBuildRuntimeDepsTranslatesTraceConfigBeforeClosableResources(t *testing
 			gotConfig = cfg
 			return trace, nil
 		},
+		buildFeatureFlagRuntime: func(context.Context, platformfeatureflag.Config) (featureFlagRuntime, error) {
+			return &stubFeatureFlagRuntime{enabled: true}, nil
+		},
 		migrateSchema: func(context.Context, *config.DatabaseConfig, *logrus.Logger) error {
 			return wantErr
 		},
@@ -71,10 +76,15 @@ func TestBuildRuntimeDepsTraceConstructionFailureStopsBeforeSchemaMigration(t *t
 	t.Setenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE", "true")
 	wantErr := errors.New("trace construction failed")
 	migrationCalled := false
+	featureRuntimeCalled := false
 
 	_, err := buildRuntimeDepsWithBuilders(logrus.New(), "../../../config/config-test.yaml", runtimeDepsBuilders{
 		buildTraceRuntime: func(context.Context, platformobservability.Config) (traceRuntime, error) {
 			return nil, wantErr
+		},
+		buildFeatureFlagRuntime: func(context.Context, platformfeatureflag.Config) (featureFlagRuntime, error) {
+			featureRuntimeCalled = true
+			return &stubFeatureFlagRuntime{}, nil
 		},
 		migrateSchema: func(context.Context, *config.DatabaseConfig, *logrus.Logger) error {
 			migrationCalled = true
@@ -86,6 +96,44 @@ func TestBuildRuntimeDepsTraceConstructionFailureStopsBeforeSchemaMigration(t *t
 	}
 	if migrationCalled {
 		t.Fatal("schema migration ran after trace construction failure")
+	}
+	if featureRuntimeCalled {
+		t.Fatal("feature runtime construction ran after trace construction failure")
+	}
+}
+
+func TestBuildRuntimeDepsConstructsTraceBeforeFeaturesAndClosesTraceLast(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+	wantErr := errors.New("stop after feature runtime")
+	events := make([]string, 0, 5)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte("database:\n  host: localhost\n"), 0o600); err != nil {
+		t.Fatalf("write config fixture: %v", err)
+	}
+
+	_, err := buildRuntimeDepsWithBuilders(logrus.New(), configPath, runtimeDepsBuilders{
+		buildTraceRuntime: func(context.Context, platformobservability.Config) (traceRuntime, error) {
+			events = append(events, "trace-build")
+			return &stubTraceRuntime{onShutdown: func() { events = append(events, "trace-close") }}, nil
+		},
+		buildFeatureFlagRuntime: func(context.Context, platformfeatureflag.Config) (featureFlagRuntime, error) {
+			events = append(events, "feature-build")
+			return &stubFeatureFlagRuntime{
+				enabled:    true,
+				onShutdown: func() { events = append(events, "feature-close") },
+			}, nil
+		},
+		migrateSchema: func(context.Context, *config.DatabaseConfig, *logrus.Logger) error {
+			events = append(events, "schema-migrate")
+			return wantErr
+		},
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("buildRuntimeDepsWithBuilders() error = %v, want %v", err, wantErr)
+	}
+	wantEvents := []string{"trace-build", "feature-build", "schema-migrate", "feature-close", "trace-close"}
+	if !reflect.DeepEqual(events, wantEvents) {
+		t.Fatalf("runtime lifecycle events = %#v, want %#v", events, wantEvents)
 	}
 }
 
@@ -142,6 +190,7 @@ func TestBuildBootstrapWrapsFinalHandlerAndPreservesRealHTTPResponse(t *testing.
 
 type stubTraceRuntime struct {
 	shutdownCalls int
+	onShutdown    func()
 }
 
 func (r *stubTraceRuntime) WrapHTTPHandler(handler http.Handler, _ string) http.Handler {
@@ -150,6 +199,25 @@ func (r *stubTraceRuntime) WrapHTTPHandler(handler http.Handler, _ string) http.
 
 func (r *stubTraceRuntime) Shutdown(context.Context) error {
 	r.shutdownCalls++
+	if r.onShutdown != nil {
+		r.onShutdown()
+	}
+	return nil
+}
+
+type stubFeatureFlagRuntime struct {
+	enabled    bool
+	onShutdown func()
+}
+
+func (r *stubFeatureFlagRuntime) Bool(context.Context, string, bool, map[string]any) bool {
+	return r.enabled
+}
+
+func (r *stubFeatureFlagRuntime) Shutdown(context.Context) error {
+	if r.onShutdown != nil {
+		r.onShutdown()
+	}
 	return nil
 }
 

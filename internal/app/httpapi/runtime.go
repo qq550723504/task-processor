@@ -11,21 +11,29 @@ import (
 )
 
 type runtimeDepsBuilders struct {
-	buildTraceRuntime func(context.Context, platformobservability.Config) (traceRuntime, error)
-	migrateSchema     productListingSchemaMigrator
+	buildTraceRuntime       func(context.Context, platformobservability.Config) (traceRuntime, error)
+	buildFeatureFlagRuntime func(context.Context, platformfeatureflag.Config) (featureFlagRuntime, error)
+	migrateSchema           productListingSchemaMigrator
+}
+
+type featureFlagRuntime interface {
+	BoolEvaluator
+	Shutdown(context.Context) error
 }
 
 func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, error) {
 	return buildRuntimeDepsWithBuilders(logger, configPath, runtimeDepsBuilders{
-		buildTraceRuntime: buildPlatformTraceRuntime,
-		migrateSchema:     migrateProductListingAPIRuntimeSchema,
+		buildTraceRuntime:       buildPlatformTraceRuntime,
+		buildFeatureFlagRuntime: buildPlatformFeatureFlagRuntime,
+		migrateSchema:           migrateProductListingAPIRuntimeSchema,
 	})
 }
 
 func buildRuntimeDepsWithSchemaMigrator(logger *logrus.Logger, configPath string, migrateSchema productListingSchemaMigrator) (*runtimeDeps, error) {
 	return buildRuntimeDepsWithBuilders(logger, configPath, runtimeDepsBuilders{
-		buildTraceRuntime: buildPlatformTraceRuntime,
-		migrateSchema:     migrateSchema,
+		buildTraceRuntime:       buildPlatformTraceRuntime,
+		buildFeatureFlagRuntime: buildPlatformFeatureFlagRuntime,
+		migrateSchema:           migrateSchema,
 	})
 }
 
@@ -40,6 +48,9 @@ func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, buil
 	}
 	if builders.buildTraceRuntime == nil {
 		return nil, fmt.Errorf("trace runtime builder is nil")
+	}
+	if builders.buildFeatureFlagRuntime == nil {
+		return nil, fmt.Errorf("feature flag runtime builder is nil")
 	}
 
 	runtimeContext := context.Background()
@@ -60,7 +71,7 @@ func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, buil
 	}()
 
 	done = timer.phase("buildFeatureFlagRuntime")
-	featureFlags, err := platformfeatureflag.New(runtimeContext, platformfeatureflag.Config{Flags: cfg.FeatureFlags.Flags})
+	featureFlags, err := builders.buildFeatureFlagRuntime(runtimeContext, platformfeatureflag.Config{Flags: cfg.FeatureFlags.Flags})
 	done()
 	if err != nil {
 		return nil, err
@@ -156,6 +167,10 @@ func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, buil
 
 func buildPlatformTraceRuntime(ctx context.Context, cfg platformobservability.Config) (traceRuntime, error) {
 	return platformobservability.NewTraceRuntime(ctx, cfg)
+}
+
+func buildPlatformFeatureFlagRuntime(ctx context.Context, cfg platformfeatureflag.Config) (featureFlagRuntime, error) {
+	return platformfeatureflag.New(ctx, cfg)
 }
 
 func cleanupOwnedRuntimeResources(completed bool, closers []func() error) {
