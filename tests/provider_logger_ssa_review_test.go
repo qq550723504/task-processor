@@ -187,6 +187,129 @@ func nilLogger() {
 	}
 }
 
+func TestProviderLoggerSSACallSiteNilRejectsIdentityAndRecursiveIdentityOfNil(t *testing.T) {
+	loaded := loadProviderLoggerSSAFixture(t, `package sample
+
+import (
+	openai "example/root/openai"
+	productenrich "example/root/productenrich"
+)
+
+func identity(entry *openai.Entry) *openai.Entry { return entry }
+
+func recursiveIdentity(entry *openai.Entry, remaining int) *openai.Entry {
+	if remaining <= 0 {
+		return entry
+	}
+	return recursiveIdentity(entry, remaining-1)
+}
+
+type entryAlias openai.Entry
+
+func (entry *entryAlias) identity() *openai.Entry {
+	return (*openai.Entry)(entry)
+}
+
+func build() {
+	openai.NewClient(&openai.ClientConfig{Logger: openai.AdaptLogrus(identity(nil))})
+	productenrich.NewLLMManagerAdapter("config", identity(nil))
+	openai.NewClient(&openai.ClientConfig{Logger: openai.AdaptLogrus(recursiveIdentity(nil, 3))})
+	productenrich.NewLLMManagerAdapter("config", recursiveIdentity(nil, 3))
+	openai.NewClient(&openai.ClientConfig{Logger: openai.AdaptLogrus(((*entryAlias)(nil)).identity())})
+	productenrich.NewLLMManagerAdapter("config", ((*entryAlias)(nil)).identity())
+}
+`)
+	violations := loggerContractSSAViolations(loaded, fixtureProviderLoggerRules(), fixtureTypedNilRules())
+	if len(violations) != 6 {
+		t.Fatalf("violations = %v, want nil actuals propagated through identity, recursive identity, and receiver", violations)
+	}
+}
+
+func TestProviderLoggerSSACallSiteNilAcceptsUnknownAndNonNilActuals(t *testing.T) {
+	loaded := loadProviderLoggerSSAFixture(t, `package sample
+
+import (
+	openai "example/root/openai"
+	productenrich "example/root/productenrich"
+)
+
+func identity(entry *openai.Entry) *openai.Entry { return entry }
+
+func recursiveIdentity(entry *openai.Entry, remaining int) *openai.Entry {
+	if remaining <= 0 {
+		return entry
+	}
+	return recursiveIdentity(entry, remaining-1)
+}
+
+type entryAlias openai.Entry
+
+func (entry *entryAlias) identity() *openai.Entry {
+	return (*openai.Entry)(entry)
+}
+
+func build(entry *openai.Entry, alias *entryAlias) {
+	openai.NewClient(&openai.ClientConfig{Logger: openai.AdaptLogrus(identity(entry))})
+	productenrich.NewLLMManagerAdapter("config", identity(&openai.Entry{}))
+	openai.NewClient(&openai.ClientConfig{Logger: openai.AdaptLogrus(recursiveIdentity(entry, 3))})
+	productenrich.NewLLMManagerAdapter("config", recursiveIdentity(&openai.Entry{}, 3))
+	openai.NewClient(&openai.ClientConfig{Logger: openai.AdaptLogrus(alias.identity())})
+	productenrich.NewLLMManagerAdapter("config", (&entryAlias{}).identity())
+}
+`)
+	if violations := loggerContractSSAViolations(loaded, fixtureProviderLoggerRules(), fixtureTypedNilRules()); len(violations) != 0 {
+		t.Fatalf("unknown or nonnil actuals must not be treated as definitely nil: %v", violations)
+	}
+}
+
+func TestProviderLoggerSSAReachableReturnsIgnoreConstantFalseBranch(t *testing.T) {
+	loaded := loadProviderLoggerSSAFixture(t, `package sample
+
+import (
+	openai "example/root/openai"
+	productenrich "example/root/productenrich"
+)
+
+func reachableNil() *openai.Entry {
+	if false {
+		return &openai.Entry{}
+	}
+	return nil
+}
+
+func build() {
+	openai.NewClient(&openai.ClientConfig{Logger: openai.AdaptLogrus(reachableNil())})
+	productenrich.NewLLMManagerAdapter("config", reachableNil())
+}
+`)
+	violations := loggerContractSSAViolations(loaded, fixtureProviderLoggerRules(), fixtureTypedNilRules())
+	if len(violations) != 2 {
+		t.Fatalf("violations = %v, want only entry-reachable nil return considered", violations)
+	}
+}
+
+func TestProviderLoggerSSAReachableReturnsTreatNoReturnAsUnknown(t *testing.T) {
+	loaded := loadProviderLoggerSSAFixture(t, `package sample
+
+import (
+	openai "example/root/openai"
+	productenrich "example/root/productenrich"
+)
+
+func neverReturns() *openai.Entry {
+	for {}
+}
+
+func build() {
+	openai.NewClient(&openai.ClientConfig{Logger: openai.AdaptLogrus(neverReturns())})
+	productenrich.NewLLMManagerAdapter("config", neverReturns())
+}
+`)
+	if violations := loggerContractSSAViolations(loaded, fixtureProviderLoggerRules(), fixtureTypedNilRules()); len(violations) != 0 {
+		t.Fatalf("helper without an entry-reachable return must remain unknown: %v", violations)
+	}
+}
+
 func fixtureTypedNilRules() []typedNilCallRule {
 	return []typedNilCallRule{{
 		PackagePath:  "example/root/productenrich",
