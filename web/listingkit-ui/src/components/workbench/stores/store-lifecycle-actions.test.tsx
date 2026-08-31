@@ -199,11 +199,11 @@ describe("StoreLifecycleActions", () => {
     expect(remove.mutate).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["old", "failed"])("keeps an interrupted delete locked when its refresh is %s", async (outcome) => {
+  it.each(["old", "lower", "failed"])("keeps an interrupted delete locked when its refresh is %s", async (outcome) => {
     const user = userEvent.setup(); remove.canRetryLast = true;
-    const onRefreshStore = outcome === "old"
-      ? vi.fn().mockResolvedValue({ ...STORE })
-      : vi.fn().mockRejectedValue(new Error("offline"));
+    const onRefreshStore = outcome === "failed"
+      ? vi.fn().mockRejectedValue(new Error("offline"))
+      : vi.fn().mockResolvedValue({ ...STORE, version: outcome === "lower" ? 3 : 4 });
     const onStoreUpdated = vi.fn();
     render(<StoreLifecycleActions onRefreshStore={onRefreshStore} onStoreUpdated={onStoreUpdated} store={STORE} />);
     await user.click(screen.getByRole("button", { name: "删除店铺" }));
@@ -213,6 +213,26 @@ describe("StoreLifecycleActions", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "重试删除" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "确认删除" })).toBeDisabled();
     expect(onStoreUpdated).not.toHaveBeenCalled();
+    expect(remove.mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the terminal delete lock across a newer active projection and exposes only retryLast", async () => {
+    const user = userEvent.setup(); remove.canRetryLast = true;
+    const newerActive = { ...STORE, version: 5 };
+    const onRefreshStore = vi.fn().mockResolvedValue(newerActive);
+    const onStoreUpdated = vi.fn();
+    const view = render(<StoreLifecycleActions onRefreshStore={onRefreshStore} onStoreUpdated={onStoreUpdated} store={STORE} />);
+    await user.click(screen.getByRole("button", { name: "删除店铺" }));
+    await user.type(screen.getByLabelText("确认删除文本"), "删除 企业 A 的店铺 华东旗舰店");
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    remove.mutate.mock.calls[0]?.[1].onError({ status: 503, code: "DEPENDENCY_UNAVAILABLE" });
+    await waitFor(() => expect(onRefreshStore).toHaveBeenCalledTimes(1));
+    expect(onStoreUpdated).not.toHaveBeenCalled();
+    view.rerender(<StoreLifecycleActions onRefreshStore={onRefreshStore} onStoreUpdated={onStoreUpdated} store={newerActive} />);
+    expect(screen.queryByRole("button", { name: "删除店铺" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认删除" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试删除" }));
+    expect(remove.retryLast).toHaveBeenCalledTimes(1);
     expect(remove.mutate).toHaveBeenCalledTimes(1);
   });
 

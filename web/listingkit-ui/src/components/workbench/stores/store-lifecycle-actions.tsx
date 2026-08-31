@@ -62,16 +62,19 @@ export function StoreLifecycleActions({
   const canDelete = Boolean(
     organizationId && context.roles.some((role) => deleteRoles.has(role)),
   );
-  const scopeKey = [
-    organizationId,
+  const scopeKey = [organizationId, store.id].join("\u0000");
+  const confirmationScopeKey = [
+    scopeKey,
     organizationName,
     [...context.roles].sort().join(","),
-    store.id,
+    store.name,
+    store.version,
   ].join("\u0000");
   return (
     <ScopedStoreLifecycleActions
       canDelete={canDelete}
       canUpdate={canUpdate}
+      confirmationScopeKey={confirmationScopeKey}
       context={context}
       key={scopeKey}
       onDeleted={onDeleted}
@@ -88,6 +91,7 @@ export function StoreLifecycleActions({
 function ScopedStoreLifecycleActions({
   canDelete,
   canUpdate,
+  confirmationScopeKey,
   context,
   organizationId,
   organizationName,
@@ -99,6 +103,7 @@ function ScopedStoreLifecycleActions({
 }: Props & {
   canDelete: boolean;
   canUpdate: boolean;
+  confirmationScopeKey: string;
   context: ReturnType<typeof useWorkbenchContext>;
   organizationId: string;
   organizationName: string;
@@ -108,12 +113,10 @@ function ScopedStoreLifecycleActions({
   const enable = useEnableWorkbenchStore();
   const disable = useDisableWorkbenchStore();
   const remove = useDeleteWorkbenchStore();
-  const operationScopeKey = [scopeKey, store.name, store.version].join("\u0000");
   const phrase = `删除 ${organizationName} 的店铺 ${store.name}`;
-  const [dialogTarget, setDialogTarget] = useState<string | null>(null);
   const [action, setAction] = useState<ActionState>({
     kind: "idle",
-    scopeKey: operationScopeKey,
+    scopeKey,
   });
   const actionRef = useRef(false);
   const mountedRef = useRef(true);
@@ -121,10 +124,7 @@ function ScopedStoreLifecycleActions({
     mountedRef.current = false;
   }, []);
 
-  const currentAction: ActionState =
-    action.scopeKey === operationScopeKey
-      ? action
-      : { kind: "idle", scopeKey: operationScopeKey };
+  const currentAction = action;
   const isBusy =
     currentAction.kind === "pending" ||
     currentAction.kind === "refreshing" ||
@@ -133,7 +133,7 @@ function ScopedStoreLifecycleActions({
     disable.isPending ||
     remove.isPending;
 
-  const setIdle = (operationScope = operationScopeKey) => {
+  const setIdle = (operationScope = scopeKey) => {
     actionRef.current = false;
     if (mountedRef.current) {
       setAction({ kind: "idle", scopeKey: operationScope });
@@ -188,7 +188,7 @@ function ScopedStoreLifecycleActions({
     ) {
       return;
     }
-    const operationScope = operationScopeKey;
+    const operationScope = scopeKey;
     const operationOrganizationId = organizationId;
     const baselineVersion = store.version;
     actionRef.current = true;
@@ -222,7 +222,7 @@ function ScopedStoreLifecycleActions({
       return;
     }
     const conflict = currentAction;
-    const operationScope = operationScopeKey;
+    const operationScope = scopeKey;
     const operationOrganizationId = organizationId;
     actionRef.current = true;
     setAction({ ...conflict, kind: "refreshing" });
@@ -238,7 +238,6 @@ function ScopedStoreLifecycleActions({
           setAction({ ...conflict, kind: "conflict" });
           return;
         }
-        setDialogTarget(null);
         setAction({ kind: "idle", scopeKey: operationScope });
         onStoreUpdated?.(latest);
       },
@@ -253,7 +252,6 @@ function ScopedStoreLifecycleActions({
     actionRef.current = false;
     if (!mountedRef.current || organizationId !== operationOrganizationId) return;
     setAction({ kind: "idle", scopeKey: operationScope });
-    setDialogTarget(null);
     onDeleted?.();
   };
   const finishInterruptedRefresh = (
@@ -293,7 +291,6 @@ function ScopedStoreLifecycleActions({
       return;
     }
     if (error.code === "STORE_VERSION_CONFLICT") {
-      setDialogTarget(null);
       beginConflict("delete", baselineVersion, operationScope);
       return;
     }
@@ -340,12 +337,11 @@ function ScopedStoreLifecycleActions({
       actionRef.current ||
       isBusy ||
       currentAction.kind !== "idle" ||
-      !canDelete ||
-      dialogTarget !== operationScopeKey
+      !canDelete
     ) {
       return;
     }
-    const operationScope = operationScopeKey;
+    const operationScope = scopeKey;
     const operationOrganizationId = organizationId;
     const baselineVersion = store.version;
     actionRef.current = true;
@@ -369,8 +365,7 @@ function ScopedStoreLifecycleActions({
     const interruptedRetry =
       currentAction.kind === "delete-interrupted" &&
       currentAction.retryable &&
-      !currentAction.refreshing &&
-      dialogTarget === operationScopeKey;
+      !currentAction.refreshing;
     if (
       actionRef.current ||
       isBusy ||
@@ -380,7 +375,7 @@ function ScopedStoreLifecycleActions({
     ) {
       return;
     }
-    const operationScope = operationScopeKey;
+    const operationScope = scopeKey;
     const operationOrganizationId = organizationId;
     const baselineVersion = store.version;
     actionRef.current = true;
@@ -471,12 +466,77 @@ function ScopedStoreLifecycleActions({
       remove.canRetryLast,
   );
   return (
+    <StoreLifecycleControls
+      action={currentAction}
+      canDelete={canDelete}
+      canUpdate={canUpdate}
+      isBusy={isBusy}
+      key={confirmationScopeKey}
+      onConfirmDelete={submitDelete}
+      onRetryDelete={retryDelete}
+      onStateAction={runStateAction}
+      phrase={phrase}
+      retryAvailable={retryAvailable}
+      store={store}
+      terminal={deleteTerminal}
+    />
+  );
+}
+
+function StoreLifecycleControls({
+  action,
+  canDelete,
+  canUpdate,
+  isBusy,
+  onConfirmDelete,
+  onRetryDelete,
+  onStateAction,
+  phrase,
+  retryAvailable,
+  store,
+  terminal,
+}: {
+  action: ActionState;
+  canDelete: boolean;
+  canUpdate: boolean;
+  isBusy: boolean;
+  onConfirmDelete: () => void;
+  onRetryDelete: () => void;
+  onStateAction: (action: "enable" | "disable") => void;
+  phrase: string;
+  retryAvailable: boolean;
+  store: WorkbenchStore;
+  terminal: DeleteTerminal;
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  if (action.kind === "delete-interrupted" && !dialogOpen) {
+    return (
+      <div className="space-y-2" role="alert">
+        <p className="text-sm text-destructive">
+          {action.retryable
+            ? "删除请求未完成，不能重新提交普通删除。"
+            : "删除请求未完成，当前请求不能重试。"}
+        </p>
+        {retryAvailable ? (
+          <Button
+            disabled={isBusy}
+            onClick={onRetryDelete}
+            size="sm"
+            variant="outline"
+          >
+            重试删除
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+  return (
     <div className="flex flex-wrap gap-2">
       {canUpdate ? (
         <Button
-          disabled={isBusy || currentAction.kind !== "idle"}
+          disabled={isBusy || action.kind !== "idle"}
           onClick={() =>
-            runStateAction(
+            onStateAction(
               store.lifecycleStatus === "active" ? "disable" : "enable",
             )
           }
@@ -488,15 +548,9 @@ function ScopedStoreLifecycleActions({
       ) : null}
       {canDelete ? (
         <Button
-          disabled={isBusy || currentAction.kind !== "idle"}
+          disabled={isBusy || action.kind !== "idle"}
           onClick={() => {
-            if (
-              canDelete &&
-              !actionRef.current &&
-              currentAction.kind === "idle"
-            ) {
-              setDialogTarget(operationScopeKey);
-            }
+            if (canDelete && action.kind === "idle") setDialogOpen(true);
           }}
           size="sm"
           variant="destructive"
@@ -504,16 +558,15 @@ function ScopedStoreLifecycleActions({
           删除店铺
         </Button>
       ) : null}
-      {canDelete && dialogTarget === operationScopeKey ? (
+      {canDelete && dialogOpen ? (
         <DeleteConfirmation
-          key={operationScopeKey}
-          onCancel={() => setDialogTarget(null)}
-          onConfirm={submitDelete}
-          onRetry={retryDelete}
+          onCancel={() => setDialogOpen(false)}
+          onConfirm={onConfirmDelete}
+          onRetry={onRetryDelete}
           pending={isBusy}
           phrase={phrase}
           retryAvailable={retryAvailable}
-          terminal={deleteTerminal}
+          terminal={terminal}
         />
       ) : null}
     </div>

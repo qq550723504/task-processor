@@ -80,7 +80,6 @@ function StoreDetailContent({ canUpdate, storeId }: { canUpdate: boolean; storeI
   const refreshLifecycleStore = async () => {
     const result = await storeQuery.refetch();
     if (!result.isSuccess || result.isError || !result.data) return null;
-    setDisplayedStore(result.data);
     return result.data;
   };
   return <>
