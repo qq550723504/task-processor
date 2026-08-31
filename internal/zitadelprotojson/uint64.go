@@ -12,7 +12,7 @@ import (
 type Uint64 uint64
 
 func (value *Uint64) UnmarshalJSON(data []byte) error {
-	data = bytes.TrimSpace(data)
+	data = bytes.Trim(data, " \t\r\n")
 	if len(data) == 0 {
 		return errors.New("empty ProtoJSON uint64")
 	}
@@ -22,8 +22,10 @@ func (value *Uint64) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &decimal); err != nil {
 			return err
 		}
-	}
-	if !isUnsignedDecimal(decimal) {
+		if !isUnsignedDecimal(decimal) {
+			return errors.New("invalid ProtoJSON uint64")
+		}
+	} else if !json.Valid(data) || !isCanonicalJSONUnsignedInteger(data) {
 		return errors.New("invalid ProtoJSON uint64")
 	}
 	parsed, err := strconv.ParseUint(decimal, 10, 64)
@@ -39,6 +41,24 @@ func isUnsignedDecimal(value string) bool {
 		return false
 	}
 	for _, digit := range []byte(value) {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isCanonicalJSONUnsignedInteger(value []byte) bool {
+	if len(value) == 0 {
+		return false
+	}
+	if value[0] == '0' {
+		return len(value) == 1
+	}
+	if value[0] < '1' || value[0] > '9' {
+		return false
+	}
+	for _, digit := range value[1:] {
 		if digit < '0' || digit > '9' {
 			return false
 		}

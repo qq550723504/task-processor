@@ -67,3 +67,55 @@ func TestUint64UnmarshalJSONRejectsNullWithoutTreatingItAsZero(t *testing.T) {
 		})
 	}
 }
+
+func TestUint64UnmarshalJSONAcceptsCanonicalDirectTokens(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		input string
+		want  Uint64
+	}{
+		{name: "zero", input: `0`, want: 0},
+		{name: "positive decimal", input: `42`, want: 42},
+		{name: "maximum uint64", input: `18446744073709551615`, want: ^Uint64(0)},
+		{name: "quoted decimal compatibility", input: `"00042"`, want: 42},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			value := Uint64(9)
+
+			if err := value.UnmarshalJSON([]byte(test.input)); err != nil {
+				t.Fatalf("UnmarshalJSON(%s) error = %v", test.input, err)
+			}
+			if value != test.want {
+				t.Fatalf("UnmarshalJSON(%s) = %d, want %d", test.input, value, test.want)
+			}
+		})
+	}
+}
+
+func TestUint64UnmarshalJSONRejectsInvalidNumericLexemesWithoutMutatingReceiver(t *testing.T) {
+	// Mutation caught: accepting all digit-only unquoted tokens permits JSON
+	// numbers that are not complete canonical JSON unsigned integers.
+	for _, test := range []struct {
+		name  string
+		input string
+	}{
+		{name: "leading zero", input: `01`},
+		{name: "multiple leading zeroes", input: `00`},
+		{name: "leading zero before positive decimal", input: `042`},
+		{name: "trailing numeric token", input: `42 0`},
+		{name: "trailing null token", input: `42 null`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			value := Uint64(9)
+
+			err := value.UnmarshalJSON([]byte(test.input))
+
+			if err == nil {
+				t.Fatalf("UnmarshalJSON(%s) unexpectedly succeeded with %d", test.input, value)
+			}
+			if value != 9 {
+				t.Fatalf("UnmarshalJSON(%s) changed receiver to %d, want 9", test.input, value)
+			}
+		})
+	}
+}
