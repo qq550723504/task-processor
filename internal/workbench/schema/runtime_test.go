@@ -62,7 +62,7 @@ func TestWorkbenchAutoMigrateUsesNonNullStringOrganizationColumns(t *testing.T) 
 		t.Fatalf("AutoMigrateRuntime() error = %v", err)
 	}
 
-	for _, table := range []string{"workbench_stores", "workbench_store_audit_logs", "saas_store_quota_allocations"} {
+	for _, table := range []string{"workbench_stores", "workbench_store_audit_logs", "saas_store_quota_allocations", "saas_store_quota_buckets"} {
 		columns := sqliteTableColumns(t, db, table)
 		var organizationColumn *sqliteColumnInfo
 		for index := range columns {
@@ -81,6 +81,17 @@ func TestWorkbenchAutoMigrateUsesNonNullStringOrganizationColumns(t *testing.T) 
 		if organizationColumn.NotNull != 1 {
 			t.Fatalf("%s organization_id notnull = %d, want 1", table, organizationColumn.NotNull)
 		}
+	}
+}
+
+func TestWorkbenchAutoMigrateRejectsNullStoreQuotaBucketOrganization(t *testing.T) {
+	db := openWorkbenchSchemaTestDB(t)
+	if err := AutoMigrateRuntime(db); err != nil {
+		t.Fatalf("AutoMigrateRuntime() error = %v", err)
+	}
+
+	if err := db.Exec(`INSERT INTO saas_store_quota_buckets (organization_id) VALUES (NULL)`).Error; err == nil {
+		t.Fatal("Store quota bucket accepted a NULL organization_id")
 	}
 }
 

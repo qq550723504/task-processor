@@ -52,6 +52,9 @@ func Run(ctx context.Context, opts Options) error {
 }
 
 func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependencies) error {
+	if err := validateMigrationScope(opts.Scope); err != nil {
+		return err
+	}
 	_ = ctx
 	defaults := defaultRuntimeDependencies()
 	if deps.LoadConfig == nil {
@@ -101,6 +104,9 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 }
 
 func runMigration(db *gorm.DB, scope string, deps runtimeDependencies) error {
+	if err := validateMigrationScope(scope); err != nil {
+		return err
+	}
 	switch scope {
 	case "", "all":
 		if err := deps.MigrateAll(db); err != nil {
@@ -111,6 +117,15 @@ func runMigration(db *gorm.DB, scope string, deps runtimeDependencies) error {
 		return deps.MigrateSheinSync(db)
 	case "workbench":
 		return deps.MigrateWorkbench(db)
+	default:
+		return flag.ErrHelp
+	}
+}
+
+func validateMigrationScope(scope string) error {
+	switch scope {
+	case "", "all", "shein-sync", "workbench":
+		return nil
 	default:
 		return flag.ErrHelp
 	}

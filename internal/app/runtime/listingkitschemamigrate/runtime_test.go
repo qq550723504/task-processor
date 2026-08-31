@@ -147,6 +147,42 @@ func TestMigrationScopeDispatchesExactMigratorsInOrder(t *testing.T) {
 	}
 }
 
+func TestMigrationUnknownScopeReturnsHelpBeforeAnyRuntimeSideEffect(t *testing.T) {
+	calls := make([]string, 0, 6)
+	err := runWithDependencies(context.Background(), Options{Scope: "unknown"}, runtimeDependencies{
+		LoadConfig: func(string) (*config.Config, error) {
+			calls = append(calls, "load-config")
+			return &config.Config{Database: &config.DatabaseConfig{}}, nil
+		},
+		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			calls = append(calls, "open-db")
+			return &gorm.DB{}, nil
+		},
+		CloseDB: func(*gorm.DB) error {
+			calls = append(calls, "close-db")
+			return nil
+		},
+		MigrateAll: func(*gorm.DB) error {
+			calls = append(calls, "migrate-all")
+			return nil
+		},
+		MigrateSheinSync: func(*gorm.DB) error {
+			calls = append(calls, "migrate-shein-sync")
+			return nil
+		},
+		MigrateWorkbench: func(*gorm.DB) error {
+			calls = append(calls, "migrate-workbench")
+			return nil
+		},
+	})
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("runWithDependencies() error = %v, want flag.ErrHelp", err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("unknown scope caused runtime side effects: %v", calls)
+	}
+}
+
 func TestMigrationScopeAllStopsBeforeWorkbenchAfterListingKitFailure(t *testing.T) {
 	db := &gorm.DB{}
 	wantErr := errors.New("listingkit migration failed")

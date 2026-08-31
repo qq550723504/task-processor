@@ -28,7 +28,7 @@ type storeQuotaAllocationRow struct {
 func (storeQuotaAllocationRow) TableName() string { return "saas_store_quota_allocations" }
 
 type storeQuotaBucketRow struct {
-	OrganizationID string    `gorm:"column:organization_id;primaryKey;size:200"`
+	OrganizationID string    `gorm:"column:organization_id;primaryKey;not null;size:200"`
 	Committed      int64     `gorm:"column:committed;not null;default:0;check:committed >= 0"`
 	Reserved       int64     `gorm:"column:reserved;not null;default:0;check:reserved >= 0"`
 	Version        int64     `gorm:"column:version;not null;default:1;check:version > 0"`
