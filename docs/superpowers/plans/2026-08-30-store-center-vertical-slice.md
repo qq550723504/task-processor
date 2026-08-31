@@ -77,6 +77,7 @@
 - Modify: `internal/app/httpapi/types.go`
 - Modify: `internal/app/httpapi/composition_builder.go`
 - Modify: `internal/app/httpapi/composition_modules.go`
+- Modify: `internal/app/httpapi/workbench_context_module_test.go`
 - Create: `internal/app/httpapi/storecenter_module.go`
 - Create: `internal/app/httpapi/storecenter_module_test.go`
 - Create: `internal/workbench/schema/runtime.go`
@@ -538,7 +539,7 @@ Expected: pass.
 **Commit:**
 
 ```powershell
-git add internal/app/httpapi/types.go internal/app/httpapi/composition_builder.go internal/app/httpapi/composition_modules.go internal/app/httpapi/storecenter_module* internal/workbench/schema internal/listingsubscription/store_quota_gorm.go internal/listingsubscription/store_quota_gorm_test.go internal/app/runtime/listingkitschemamigrate
+git add internal/app/httpapi/types.go internal/app/httpapi/composition_builder.go internal/app/httpapi/composition_modules.go internal/app/httpapi/workbench_context_module_test.go internal/app/httpapi/storecenter_module* internal/workbench/schema internal/listingsubscription/store_quota_gorm.go internal/listingsubscription/store_quota_gorm_test.go internal/app/runtime/listingkitschemamigrate
 git commit -m "feat: wire store center runtime and schema"
 ```
 
