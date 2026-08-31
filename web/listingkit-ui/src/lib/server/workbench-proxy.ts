@@ -915,27 +915,29 @@ function hasCanonicalStoreIntegerTokens(
   );
 }
 
-function hasUniqueObjectKeys(node: JSONNode): boolean {
-  if (node.type === "object") {
-    const names = new Set<string>();
-    for (const property of node.children ?? []) {
-      const key = property.children?.[0];
-      const value = property.children?.[1];
-      if (
-        property.type !== "property" ||
-        key?.type !== "string" ||
-        !value ||
-        names.has(String(key.value))
-      ) {
-        return false;
+function hasUniqueObjectKeys(root: JSONNode): boolean {
+  const pending = [root];
+  while (pending.length > 0) {
+    const node = pending.pop()!;
+    if (node.type === "object") {
+      const names = new Set<string>();
+      for (const property of node.children ?? []) {
+        const key = property.children?.[0];
+        const value = property.children?.[1];
+        if (
+          property.type !== "property" ||
+          key?.type !== "string" ||
+          !value ||
+          names.has(String(key.value))
+        ) {
+          return false;
+        }
+        names.add(String(key.value));
+        pending.push(value);
       }
-      names.add(String(key.value));
-      if (!hasUniqueObjectKeys(value)) return false;
+    } else if (node.type === "array") {
+      for (const child of node.children ?? []) pending.push(child);
     }
-    return true;
-  }
-  if (node.type === "array") {
-    return (node.children ?? []).every(hasUniqueObjectKeys);
   }
   return true;
 }

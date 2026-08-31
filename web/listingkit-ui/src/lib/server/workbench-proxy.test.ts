@@ -989,6 +989,30 @@ describe("strict Store Center response boundary", () => {
     pagination: { page: 1, pageSize: 20, total: 1 },
   });
 
+  it.each(["array", "object"] as const)(
+    "maps a Store success DTO with a 4000-level unknown %s to bounded 502 without rejecting",
+    async (kind) => {
+      const depth = 4_000;
+      const nested =
+        kind === "array"
+          ? `${"[".repeat(depth)}0${"]".repeat(depth)}`
+          : `${'{"value":'.repeat(depth)}0${"}".repeat(depth)}`;
+      const raw = `${rawStore.slice(0, -1)},"unknown":${nested}}`;
+
+      const response = await buildWorkbenchBrowserResponse(
+        new Response(raw),
+        "store-item",
+      );
+      const text = await response.text();
+
+      expect(response.status).toBe(502);
+      expect(text.length).toBeLessThan(1024);
+      expect(JSON.parse(text)).toMatchObject({
+        code: "DEPENDENCY_UNAVAILABLE",
+      });
+    },
+  );
+
   it.each([
     [
       "Store item version",
@@ -1003,6 +1027,15 @@ describe("strict Store Center response boundary", () => {
       rawStore.replace(
         '"version":2',
         '"version":2,"version":2.00000000000000001',
+      ),
+    ],
+    [
+      "escaped duplicate Store item version",
+      "store-item",
+      200,
+      rawStore.replace(
+        '"version":2',
+        '"version":2,"\\u0076ersion":2.00000000000000001',
       ),
     ],
     [
