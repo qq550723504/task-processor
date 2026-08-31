@@ -1,4 +1,4 @@
-package storage
+package s3
 
 import (
 	"context"
@@ -8,11 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
-
-	"task-processor/internal/core/logger"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -21,15 +18,87 @@ import (
 	"github.com/aws/smithy-go"
 )
 
-func TestMain(m *testing.M) {
-	logger.InitGlobalLogger(&logger.LogConfig{Level: "error", Console: false})
-	os.Exit(m.Run())
-}
-
-func TestS3UploaderResolvedURLPrefersPublicBase(t *testing.T) {
+func TestUploaderRejectsEmptyBucket(t *testing.T) {
 	t.Parallel()
 
-	uploader := NewS3UploaderWithOptions(nil, S3UploaderOptions{
+	_, err := NewUploaderWithOptions(&fakeS3API{}, UploaderOptions{})
+	if err == nil || !strings.Contains(err.Error(), "bucket") {
+		t.Fatalf("NewUploaderWithOptions() error = %v, want bucket validation", err)
+	}
+}
+
+func TestUploaderRejectsNilClient(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewUploaderWithOptions(nil, UploaderOptions{Bucket: "assets"})
+	if err == nil || !strings.Contains(err.Error(), "client") {
+		t.Fatalf("NewUploaderWithOptions() error = %v, want client validation", err)
+	}
+	var typedNil *s3.Client
+	_, err = NewUploaderWithOptions(typedNil, UploaderOptions{Bucket: "assets"})
+	if err == nil || !strings.Contains(err.Error(), "client") {
+		t.Fatalf("NewUploaderWithOptions(typed nil) error = %v, want client validation", err)
+	}
+}
+
+func TestUploadMultipleRejectsEmptyInputWithoutPanic(t *testing.T) {
+	t.Parallel()
+
+	uploader := mustNewUploader(t, &fakeS3API{}, UploaderOptions{Bucket: "assets"})
+	urls, err := uploader.UploadMultiple(context.Background(), "batch", nil)
+	if err == nil || urls != nil {
+		t.Fatalf("UploadMultiple() = (%v, %v), want nil URLs and deterministic error", urls, err)
+	}
+}
+
+func TestUploaderUsesConfiguredStructuredLogger(t *testing.T) {
+	t.Parallel()
+
+	recorder := &recordingLogger{}
+	uploader := mustNewUploader(t, &fakeS3API{}, UploaderOptions{Bucket: "assets", Logger: recorder})
+	if _, err := uploader.Upload(context.Background(), "folder/image.png", []byte("image"), "image/png"); err != nil {
+		t.Fatalf("Upload() error = %v", err)
+	}
+	if len(recorder.infos) != 2 {
+		t.Fatalf("logger info calls = %d, want 2", len(recorder.infos))
+	}
+	if got := recorder.infos[0].fields["bucket"]; got != "assets" {
+		t.Fatalf("first log bucket = %v, want assets", got)
+	}
+	if got := recorder.infos[1].fields["object_key"]; got != "folder/image.png" {
+		t.Fatalf("success log object_key = %v, want folder/image.png", got)
+	}
+}
+
+func mustNewUploader(t *testing.T, client S3ObjectAPI, opts UploaderOptions) *Uploader {
+	t.Helper()
+	uploader, err := NewUploaderWithOptions(client, opts)
+	if err != nil {
+		t.Fatalf("NewUploaderWithOptions() error = %v", err)
+	}
+	return uploader
+}
+
+type recordedLog struct {
+	message string
+	fields  map[string]any
+}
+
+type recordingLogger struct {
+	infos []recordedLog
+}
+
+func (*recordingLogger) Debug(string, map[string]any) {}
+func (l *recordingLogger) Info(message string, fields map[string]any) {
+	l.infos = append(l.infos, recordedLog{message: message, fields: fields})
+}
+func (*recordingLogger) Warn(string, map[string]any)  {}
+func (*recordingLogger) Error(string, map[string]any) {}
+
+func TestUploaderResolvedURLPrefersPublicBase(t *testing.T) {
+	t.Parallel()
+
+	uploader := mustNewUploader(t, &fakeS3API{}, UploaderOptions{
 		Bucket:     "listingkit-assets",
 		PublicBase: "http://127.0.0.1:9100/listingkit-assets",
 	})
@@ -41,10 +110,10 @@ func TestS3UploaderResolvedURLPrefersPublicBase(t *testing.T) {
 	}
 }
 
-func TestS3UploaderResolvedURLSupportsPathStyleEndpoint(t *testing.T) {
+func TestUploaderResolvedURLSupportsPathStyleEndpoint(t *testing.T) {
 	t.Parallel()
 
-	uploader := NewS3UploaderWithOptions(nil, S3UploaderOptions{
+	uploader := mustNewUploader(t, &fakeS3API{}, UploaderOptions{
 		Bucket:       "listingkit-assets",
 		Endpoint:     "http://127.0.0.1:9100",
 		UsePathStyle: true,
@@ -60,7 +129,7 @@ func TestS3UploaderResolvedURLSupportsPathStyleEndpoint(t *testing.T) {
 func TestInspectObjectOnlyTreatsTypedNotFoundAsMissing(t *testing.T) {
 	t.Parallel()
 
-	uploader := NewS3UploaderWithAPI(&fakeS3API{headErr: &types.NotFound{}}, S3UploaderOptions{Bucket: "listingkit-assets", ArtifactCapabilities: ArtifactStorageCapabilities{Mode: ArtifactStorageModeAWS}})
+	uploader := mustNewUploader(t, &fakeS3API{headErr: &types.NotFound{}}, UploaderOptions{Bucket: "listingkit-assets", ArtifactCapabilities: ArtifactStorageCapabilities{Mode: ArtifactStorageModeAWS}})
 	inspection, err := uploader.InspectObject(context.Background(), "missing.png")
 	if err != nil {
 		t.Fatalf("InspectObject() error = %v", err)
@@ -69,7 +138,7 @@ func TestInspectObjectOnlyTreatsTypedNotFoundAsMissing(t *testing.T) {
 		t.Fatal("InspectObject().Exists = true, want false")
 	}
 
-	uploader = NewS3UploaderWithAPI(&fakeS3API{headErr: errors.New("access denied")}, S3UploaderOptions{Bucket: "listingkit-assets", ArtifactCapabilities: ArtifactStorageCapabilities{Mode: ArtifactStorageModeAWS}})
+	uploader = mustNewUploader(t, &fakeS3API{headErr: errors.New("access denied")}, UploaderOptions{Bucket: "listingkit-assets", ArtifactCapabilities: ArtifactStorageCapabilities{Mode: ArtifactStorageModeAWS}})
 	if _, err := uploader.InspectObject(context.Background(), "missing.png"); err == nil {
 		t.Fatal("InspectObject() error = nil, want non-not-found HEAD error")
 	}
@@ -88,7 +157,7 @@ func TestInspectObjectClassifiesWrappedSmithyErrorsPrecisely(t *testing.T) {
 		{name: "wrapped server error", headErr: fmt.Errorf("wrapped: %w", &smithy.GenericAPIError{Code: "InternalError"})},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			uploader := NewS3UploaderWithAPI(&fakeS3API{headErr: tc.headErr}, S3UploaderOptions{Bucket: "listingkit-assets", ArtifactCapabilities: ArtifactStorageCapabilities{Mode: ArtifactStorageModeAWS}})
+			uploader := mustNewUploader(t, &fakeS3API{headErr: tc.headErr}, UploaderOptions{Bucket: "listingkit-assets", ArtifactCapabilities: ArtifactStorageCapabilities{Mode: ArtifactStorageModeAWS}})
 			inspection, err := uploader.InspectObject(context.Background(), "missing.png")
 			if tc.missing {
 				if err != nil || inspection.Exists {
@@ -106,7 +175,7 @@ func TestInspectObjectClassifiesWrappedSmithyErrorsPrecisely(t *testing.T) {
 func TestExistsPreservesLegacyPlainHeadAndErrorSemantics(t *testing.T) {
 	t.Parallel()
 	api := &fakeS3API{headErr: errors.New("legacy access error")}
-	uploader := NewS3UploaderWithAPI(api, S3UploaderOptions{Bucket: "listingkit-assets"})
+	uploader := mustNewUploader(t, api, UploaderOptions{Bucket: "listingkit-assets"})
 	exists, err := uploader.Exists(context.Background(), "legacy/key.png")
 	if err != nil || exists {
 		t.Fatalf("Exists() = (%t, %v), want (false, nil)", exists, err)
@@ -129,7 +198,7 @@ func TestArtifactStorageCapabilityModesSerializeRequiredHeaders(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			capture := &requestCapture{}
-			uploader := NewS3UploaderWithOptions(capturingS3Client(capture), S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: tc.capabilities})
+			uploader := mustNewUploader(t, capturingS3Client(capture), UploaderOptions{Bucket: "assets", ArtifactCapabilities: tc.capabilities})
 			object := immutableObject("folder/source.png")
 			if err := uploader.PutImmutable(context.Background(), object); err != nil {
 				t.Fatalf("PutImmutable() error = %v", err)
@@ -173,7 +242,7 @@ func TestArtifactStorageCapabilityModesSerializeRequiredHeaders(t *testing.T) {
 func TestArtifactCOSFailsClosedWithoutImmutableNonVersionedPolicy(t *testing.T) {
 	t.Parallel()
 	api := &fakeS3API{}
-	uploader := NewS3UploaderWithAPI(api, S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: ArtifactStorageCapabilities{Mode: ArtifactStorageModeCOS}})
+	uploader := mustNewUploader(t, api, UploaderOptions{Bucket: "assets", ArtifactCapabilities: ArtifactStorageCapabilities{Mode: ArtifactStorageModeCOS}})
 	if err := uploader.PutImmutable(context.Background(), immutableObject("object.png")); err == nil {
 		t.Fatal("PutImmutable() error = nil, want explicit COS policy rejection")
 	}
@@ -191,7 +260,7 @@ func TestCopySourceEscapesReservedAndUnicodeSegments(t *testing.T) {
 	}
 
 	capture := &requestCapture{}
-	uploader := NewS3UploaderWithOptions(capturingS3Client(capture), S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: ArtifactStorageCapabilities{Mode: ArtifactStorageModeAWS}})
+	uploader := mustNewUploader(t, capturingS3Client(capture), UploaderOptions{Bucket: "assets", ArtifactCapabilities: ArtifactStorageCapabilities{Mode: ArtifactStorageModeAWS}})
 	if err := uploader.CopyImmutable(context.Background(), ImmutableObjectCopy{SourceKey: "nested/空 格+?#%.png", Destination: immutableObject("destination.png")}); err != nil {
 		t.Fatalf("CopyImmutable() error = %v", err)
 	}
@@ -205,11 +274,12 @@ type fakeS3API struct {
 	headErr   error
 	headInput *s3.HeadObjectInput
 	putCalls  int
+	putErr    error
 }
 
 func (f *fakeS3API) PutObject(context.Context, *s3.PutObjectInput, ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	f.putCalls++
-	return nil, errors.New("not implemented")
+	return &s3.PutObjectOutput{}, f.putErr
 }
 
 func (f *fakeS3API) HeadObject(_ context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {

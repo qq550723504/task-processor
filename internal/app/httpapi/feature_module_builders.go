@@ -13,7 +13,7 @@ import (
 	"task-processor/internal/imageagent"
 	imageagenthttpapi "task-processor/internal/imageagent/httpapi"
 	imageagentstore "task-processor/internal/imageagent/store"
-	storageinfra "task-processor/internal/infra/storage"
+	s3integration "task-processor/internal/integration/s3"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
 	platformdatabase "task-processor/internal/platform/database"
@@ -126,8 +126,26 @@ func imageAgentDurableAssetPublicURLResolver(cfg *config.Config) imageagent.Dura
 	if !publisher.Enabled || !strings.EqualFold(strings.TrimSpace(publisher.Provider), "s3") || strings.TrimSpace(publisher.PublicBase) == "" || strings.TrimSpace(publisher.S3.Bucket) == "" {
 		return nil
 	}
-	return storageinfra.NewS3UploaderWithOptions(nil, storageinfra.S3UploaderOptions{
-		Bucket: publisher.S3.Bucket, PublicBase: publisher.PublicBase,
-		Endpoint: publisher.S3.Endpoint, UsePathStyle: publisher.S3.UsePathStyle,
-	})
+	return imageAgentObjectURLResolver{
+		bucket: publisher.S3.Bucket, publicBase: publisher.PublicBase,
+		endpoint: publisher.S3.Endpoint, usePathStyle: publisher.S3.UsePathStyle,
+	}
+}
+
+type imageAgentObjectURLResolver struct {
+	bucket       string
+	publicBase   string
+	endpoint     string
+	usePathStyle bool
+}
+
+func (r imageAgentObjectURLResolver) PublicURL(key string) string {
+	fallbackBase := s3integration.BuildS3PublicBase(r.endpoint, r.bucket, r.usePathStyle)
+	fallbackURL := ""
+	if fallbackBase != "" {
+		fallbackURL = strings.TrimRight(fallbackBase, "/") + "/" + strings.TrimLeft(strings.TrimSpace(key), "/")
+	} else {
+		fallbackURL = fmt.Sprintf("https://%s.s3.amazonaws.com/%s", strings.TrimSpace(r.bucket), strings.TrimLeft(strings.TrimSpace(key), "/"))
+	}
+	return s3integration.ResolveObjectURL(r.publicBase, key, fallbackURL)
 }

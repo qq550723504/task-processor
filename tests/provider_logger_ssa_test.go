@@ -241,6 +241,36 @@ func build(entry *openai.Entry, first bool) {
 	}
 }
 
+func TestProviderLoggerSSAMustBoundUsesSecondS3OptionsArgument(t *testing.T) {
+	t.Run("rejects unbound uploader options", func(t *testing.T) {
+		loaded := loadProviderLoggerSSAFixture(t, `package sample
+
+import s3 "example/root/s3"
+
+func build() { s3.NewUploaderWithOptions(nil, s3.UploaderOptions{}) }
+`)
+		violations := loggerContractSSAViolations(loaded, fixtureProviderLoggerRules(), nil)
+		if len(violations) != 1 {
+			t.Fatalf("violations = %v, want exactly one unbound S3 options violation", violations)
+		}
+	})
+
+	t.Run("accepts bound uploader options", func(t *testing.T) {
+		loaded := loadProviderLoggerSSAFixture(t, `package sample
+
+import s3 "example/root/s3"
+
+func build(entry *s3.Entry) {
+		opts := s3.UploaderOptions{Logger: s3.AdaptLogrus(entry)}
+		s3.NewUploaderWithOptions(nil, opts)
+}
+`)
+		if violations := loggerContractSSAViolations(loaded, fixtureProviderLoggerRules(), nil); len(violations) != 0 {
+			t.Fatalf("valid S3 logger binding reported violations: %v", violations)
+		}
+	})
+}
+
 func TestTypedNilLoggerCallAnalysisRejectsExplicitAndAliasedNil(t *testing.T) {
 	loaded := loadProviderLoggerSSAFixture(t, `package sample
 
@@ -306,6 +336,7 @@ func productionProviderLoggerRules() []providerLoggerRule {
 		{PackagePath: openAIPath, ConstructorName: "NewCachedClient", AdapterName: "AdaptLogrus", LoggerField: "Logger", ConfigArgument: 0},
 		{PackagePath: openAIPath, ConstructorName: "NewResilientClient", AdapterName: "AdaptLogrus", LoggerField: "Logger", ConfigArgument: 0},
 		{PackagePath: "task-processor/internal/integration/grsai", ConstructorName: "NewClient", AdapterName: "AdaptLogrus", LoggerField: "Logger", ConfigArgument: 0},
+		{PackagePath: "task-processor/internal/integration/s3", ConstructorName: "NewUploaderWithOptions", AdapterName: "AdaptLogrus", LoggerField: "Logger", ConfigArgument: 1},
 	}
 }
 
@@ -344,6 +375,7 @@ func fixtureProviderLoggerRules() []providerLoggerRule {
 	return []providerLoggerRule{
 		{PackagePath: "example/root/openai", ConstructorName: "NewClient", AdapterName: "AdaptLogrus", LoggerField: "Logger", ConfigArgument: 0},
 		{PackagePath: "example/root/grsai", ConstructorName: "NewClient", AdapterName: "AdaptLogrus", LoggerField: "Logger", ConfigArgument: 0},
+		{PackagePath: "example/root/s3", ConstructorName: "NewUploaderWithOptions", AdapterName: "AdaptLogrus", LoggerField: "Logger", ConfigArgument: 1},
 	}
 }
 
@@ -353,6 +385,16 @@ func loadProviderLoggerSSAFixture(t *testing.T, source string) []*packages.Packa
 	writeModuleFixtureFile(t, root, "go.mod", "module example/root\n\ngo 1.26.0\n")
 	writeModuleFixtureFile(t, root, "openai/provider.go", providerLoggerFixturePackage("openai"))
 	writeModuleFixtureFile(t, root, "grsai/provider.go", providerLoggerFixturePackage("grsai"))
+	writeModuleFixtureFile(t, root, "s3/provider.go", `package s3
+
+type Logger interface { Log() }
+type UploaderOptions struct { Logger Logger }
+type Entry struct{}
+type adaptedLogger struct{}
+func (adaptedLogger) Log() {}
+func AdaptLogrus(*Entry) Logger { return adaptedLogger{} }
+func NewUploaderWithOptions(any, UploaderOptions) {}
+`)
 	writeModuleFixtureFile(t, root, "productenrich/manager.go", `package productenrich
 
 import openai "example/root/openai"

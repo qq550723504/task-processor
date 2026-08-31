@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,9 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	enumspb "go.temporal.io/api/enums/v1"
@@ -34,7 +30,6 @@ import (
 	imageagentstore "task-processor/internal/imageagent/store"
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	imageagenttools "task-processor/internal/imageagent/tools"
-	"task-processor/internal/infra/storage"
 	"task-processor/internal/productimage"
 )
 
@@ -124,12 +119,8 @@ func executeManualRecoveryWorkflowRestartAcceptance(t *testing.T) manualRecovery
 	transientPath := filepath.Join(transientDir, "generated.png")
 	require.NoError(t, os.WriteFile(transientPath, acceptancePNG, 0o600))
 	firstExecutor := newAcceptanceProductImageExecutor(transientPath)
-	durableAPI := &podLossAcceptanceS3{objects: map[string]podLossAcceptanceS3Object{}}
-	uploader := storage.NewS3UploaderWithAPI(durableAPI, storage.S3UploaderOptions{
-		Bucket: "acceptance-assets", PublicBase: "https://cdn.example.test",
-		ArtifactCapabilities: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeAWS},
-	})
-	durableStore, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{
+	durableAPI := &podLossAcceptanceObjectStore{objects: map[string]podLossAcceptanceObject{}}
+	durableStore, err := objectstore.NewDurableArtifactStore(durableAPI, objectstore.DurableArtifactStoreConfig{
 		MaxArtifactBytes: 1 << 20, OperationTimeout: 5 * time.Second,
 	})
 	require.NoError(t, err)
@@ -317,12 +308,8 @@ func executePodLossRecoveryAcceptance(t *testing.T) podLossRecoveryAcceptanceRes
 	transientPath := filepath.Join(transientDir, "generated.png")
 	require.NoError(t, os.WriteFile(transientPath, acceptancePNG, 0o600))
 	firstExecutor := newAcceptanceProductImageExecutor(transientPath)
-	durableAPI := &podLossAcceptanceS3{objects: map[string]podLossAcceptanceS3Object{}}
-	uploader := storage.NewS3UploaderWithAPI(durableAPI, storage.S3UploaderOptions{
-		Bucket: "acceptance-assets", PublicBase: "https://cdn.example.test",
-		ArtifactCapabilities: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeAWS},
-	})
-	durableStore, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{
+	durableAPI := &podLossAcceptanceObjectStore{objects: map[string]podLossAcceptanceObject{}}
+	durableStore, err := objectstore.NewDurableArtifactStore(durableAPI, objectstore.DurableArtifactStoreConfig{
 		MaxArtifactBytes: 1 << 20, OperationTimeout: 5 * time.Second,
 	})
 	require.NoError(t, err)
@@ -1024,84 +1011,80 @@ func (p *recordingAcceptanceApprovalPublisher) PublishApprovedV3(_ context.Conte
 	return imageagent.PublicationAcknowledgement{IdempotencyKey: input.IdempotencyKey}, nil
 }
 
-type podLossAcceptanceS3Object struct {
+type podLossAcceptanceObject struct {
 	data        []byte
 	contentType string
 	metadata    map[string]string
 	checksum    string
 }
 
-type podLossAcceptanceS3 struct {
+type podLossAcceptanceObjectStore struct {
 	mu      sync.Mutex
-	objects map[string]podLossAcceptanceS3Object
+	objects map[string]podLossAcceptanceObject
 }
 
-func (s *podLossAcceptanceS3) PutObject(_ context.Context, input *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
-	data, err := io.ReadAll(input.Body)
-	if err != nil {
-		return nil, err
-	}
+func (s *podLossAcceptanceObjectStore) PublicURL(key string) string {
+	return "https://cdn.example.test/" + strings.TrimLeft(key, "/")
+}
+
+func (s *podLossAcceptanceObjectStore) PutImmutable(_ context.Context, input objectstore.ImmutableObjectPut) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := aws.ToString(input.Key)
+	key := input.Key
 	if _, exists := s.objects[key]; exists {
-		return nil, objectstore.ErrObjectConflict
+		return objectstore.ErrObjectConflict
 	}
-	s.objects[key] = podLossAcceptanceS3Object{
-		data: append([]byte(nil), data...), contentType: aws.ToString(input.ContentType),
-		metadata: cloneAcceptanceMetadata(input.Metadata), checksum: aws.ToString(input.ChecksumSHA256),
+	s.objects[key] = podLossAcceptanceObject{
+		data: append([]byte(nil), input.Data...), contentType: input.ContentType,
+		metadata: map[string]string{"sha256": input.SHA256, "size-bytes": fmt.Sprintf("%d", input.SizeBytes)},
 	}
-	return &s3.PutObjectOutput{}, nil
+	return nil
 }
 
-func (s *podLossAcceptanceS3) HeadObject(_ context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+func (s *podLossAcceptanceObjectStore) InspectObject(_ context.Context, key string) (objectstore.ObjectInspection, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	object, exists := s.objects[aws.ToString(input.Key)]
+	object, exists := s.objects[key]
 	if !exists {
-		return nil, &types.NotFound{}
+		return objectstore.ObjectInspection{}, nil
 	}
-	return &s3.HeadObjectOutput{
-		ContentLength: aws.Int64(int64(len(object.data))), ContentType: aws.String(object.contentType),
-		Metadata: cloneAcceptanceMetadata(object.metadata), ChecksumSHA256: aws.String(object.checksum),
+	return objectstore.ObjectInspection{
+		Exists: true, ContentLength: int64(len(object.data)), ContentType: object.contentType,
+		Metadata: cloneAcceptanceMetadata(object.metadata), ServerChecksumSHA256: object.checksum,
 	}, nil
 }
 
-func (s *podLossAcceptanceS3) GetObject(_ context.Context, input *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+func (s *podLossAcceptanceObjectStore) ReadObject(_ context.Context, key string, maxBytes int64) ([]byte, objectstore.ObjectInspection, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	object, exists := s.objects[aws.ToString(input.Key)]
+	object, exists := s.objects[key]
 	if !exists {
-		return nil, &types.NoSuchKey{}
+		return nil, objectstore.ObjectInspection{}, nil
 	}
-	return &s3.GetObjectOutput{
-		Body: io.NopCloser(strings.NewReader(string(object.data))), ContentLength: aws.Int64(int64(len(object.data))),
-		ContentType: aws.String(object.contentType), Metadata: cloneAcceptanceMetadata(object.metadata), ChecksumSHA256: aws.String(object.checksum),
-	}, nil
+	if int64(len(object.data)) > maxBytes {
+		return nil, objectstore.ObjectInspection{}, errors.New("acceptance object exceeds bounded read")
+	}
+	inspection := objectstore.ObjectInspection{Exists: true, ContentLength: int64(len(object.data)), ContentType: object.contentType, Metadata: cloneAcceptanceMetadata(object.metadata), ServerChecksumSHA256: object.checksum}
+	return append([]byte(nil), object.data...), inspection, nil
 }
 
-func (s *podLossAcceptanceS3) CopyObject(_ context.Context, input *s3.CopyObjectInput, _ ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
+func (s *podLossAcceptanceObjectStore) CopyImmutable(_ context.Context, input objectstore.ImmutableObjectCopy) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	sourceKey := strings.TrimPrefix(aws.ToString(input.CopySource), "acceptance-assets/")
-	source, exists := s.objects[sourceKey]
+	source, exists := s.objects[input.SourceKey]
 	if !exists {
-		return nil, &types.NotFound{}
+		return objectstore.ErrArtifactUnavailable
 	}
-	destinationKey := aws.ToString(input.Key)
+	destinationKey := input.Destination.Key
 	if _, exists := s.objects[destinationKey]; !exists {
-		source.contentType = aws.ToString(input.ContentType)
-		source.metadata = cloneAcceptanceMetadata(input.Metadata)
+		source.contentType = input.Destination.ContentType
+		source.metadata = map[string]string{"sha256": input.Destination.SHA256, "size-bytes": fmt.Sprintf("%d", input.Destination.SizeBytes)}
 		s.objects[destinationKey] = source
 	}
-	return &s3.CopyObjectOutput{}, nil
+	return nil
 }
 
-func (*podLossAcceptanceS3) DeleteObject(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
-	return nil, errors.New("acceptance does not delete durable recovery objects")
-}
-
-func (s *podLossAcceptanceS3) countPrefix(prefix string) int {
+func (s *podLossAcceptanceObjectStore) countPrefix(prefix string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	count := 0

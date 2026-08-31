@@ -1,4 +1,4 @@
-package storage
+package s3
 
 import (
 	"bytes"
@@ -10,11 +10,10 @@ import (
 	"io"
 	"net/url"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
-
-	"task-processor/internal/core/logger"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -22,23 +21,20 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
-	"github.com/sirupsen/logrus"
 )
 
-// S3Uploader S3上传器
-type S3Uploader struct {
+// Uploader uploads objects through an S3-compatible API.
+type Uploader struct {
 	s3Client             S3ObjectAPI
 	bucket               string
 	publicBase           string
 	endpoint             string
 	usePathStyle         bool
 	artifactCapabilities ArtifactStorageCapabilities
-	logger               *logrus.Entry
+	logger               Logger
 }
 
-// S3ObjectAPI is the narrow AWS SDK v2 call boundary used by S3Uploader. The
-// production constructor still receives the configured *s3.Client; this
-// interface permits focused tests to fake only Put/Head/Get/Copy calls.
+// S3ObjectAPI is the narrow AWS SDK v2 request boundary used by Uploader.
 type S3ObjectAPI interface {
 	PutObject(context.Context, *s3.PutObjectInput, ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	HeadObject(context.Context, *s3.HeadObjectInput, ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
@@ -84,47 +80,40 @@ type ArtifactStorageCapabilities struct {
 	COSImmutableNonVersionedBucketPolicy bool
 }
 
-// S3Config S3配置
-type S3Config struct {
-	Bucket string `json:"bucket"`
-	Region string `json:"region"`
-}
-
-type S3UploaderOptions struct {
+type UploaderOptions struct {
 	Bucket               string
 	PublicBase           string
 	Endpoint             string
 	UsePathStyle         bool
 	ArtifactCapabilities ArtifactStorageCapabilities
+	Logger               Logger `json:"-"`
 }
 
-// NewS3Uploader 创建S3上传器
-func NewS3Uploader(s3Client *s3.Client, bucket string) *S3Uploader {
-	return NewS3UploaderWithOptions(s3Client, S3UploaderOptions{Bucket: bucket})
-}
-
-func NewS3UploaderWithOptions(s3Client *s3.Client, opts S3UploaderOptions) *S3Uploader {
-	return NewS3UploaderWithAPI(s3Client, opts)
-}
-
-// NewS3UploaderWithAPI is intended for tests that need to fake the AWS SDK
-// request boundary. Runtime composition should use NewS3UploaderWithOptions.
-func NewS3UploaderWithAPI(s3Client S3ObjectAPI, opts S3UploaderOptions) *S3Uploader {
-	return &S3Uploader{
+// NewUploaderWithOptions constructs the sole uploader implementation. The
+// narrow client interface keeps SDK fakes in this integration package.
+func NewUploaderWithOptions(s3Client S3ObjectAPI, opts UploaderOptions) (*Uploader, error) {
+	if s3Client == nil || (reflect.ValueOf(s3Client).Kind() == reflect.Pointer && reflect.ValueOf(s3Client).IsNil()) {
+		return nil, fmt.Errorf("s3 client cannot be nil")
+	}
+	bucket := strings.TrimSpace(opts.Bucket)
+	if bucket == "" {
+		return nil, fmt.Errorf("s3 bucket cannot be empty")
+	}
+	return &Uploader{
 		s3Client:             s3Client,
-		bucket:               opts.Bucket,
+		bucket:               bucket,
 		publicBase:           opts.PublicBase,
 		endpoint:             opts.Endpoint,
 		usePathStyle:         opts.UsePathStyle,
 		artifactCapabilities: opts.ArtifactCapabilities,
-		logger:               logger.GetGlobalLogger("S3Uploader"),
-	}
+		logger:               loggerOrNoop(opts.Logger),
+	}, nil
 }
 
 // PutImmutable writes an object only when its deterministic key is unused. It
 // records application metadata as a fallback for S3-compatible endpoints that
 // do not expose a server checksum through HeadObject.
-func (u *S3Uploader) PutImmutable(ctx context.Context, object ImmutableObjectPut) error {
+func (u *Uploader) PutImmutable(ctx context.Context, object ImmutableObjectPut) error {
 	if err := validateImmutableObjectIdentity(object); err != nil {
 		return err
 	}
@@ -165,7 +154,7 @@ func (u *S3Uploader) PutImmutable(ctx context.Context, object ImmutableObjectPut
 // InspectObject returns typed object metadata. Only explicit AWS/Smithy
 // not-found errors become Exists=false; every other HeadObject error remains
 // observable to recovery callers.
-func (u *S3Uploader) InspectObject(ctx context.Context, key string) (ObjectInspection, error) {
+func (u *Uploader) InspectObject(ctx context.Context, key string) (ObjectInspection, error) {
 	checksumEnabled, err := u.strictArtifactCapability()
 	if err != nil {
 		return ObjectInspection{}, err
@@ -201,7 +190,7 @@ func (u *S3Uploader) InspectObject(ctx context.Context, key string) (ObjectInspe
 // ReadObject returns a bounded object body together with the same integrity
 // metadata exposed by InspectObject. Durable recovery callers validate that
 // metadata against their content-addressed identity before trusting the bytes.
-func (u *S3Uploader) ReadObject(ctx context.Context, key string, maxBytes int64) ([]byte, ObjectInspection, error) {
+func (u *Uploader) ReadObject(ctx context.Context, key string, maxBytes int64) ([]byte, ObjectInspection, error) {
 	if strings.TrimSpace(key) == "" || key != strings.TrimSpace(key) || maxBytes <= 0 {
 		return nil, ObjectInspection{}, fmt.Errorf("invalid bounded S3 object read")
 	}
@@ -252,7 +241,7 @@ func (u *S3Uploader) ReadObject(ctx context.Context, key string, maxBytes int64)
 // CopyImmutable copies a verified staged object to an unused deterministic
 // destination. Destination preconditions prevent it from overwriting a key
 // created by a concurrent or external writer.
-func (u *S3Uploader) CopyImmutable(ctx context.Context, object ImmutableObjectCopy) error {
+func (u *Uploader) CopyImmutable(ctx context.Context, object ImmutableObjectCopy) error {
 	if err := validateImmutableObjectIdentity(object.Destination); err != nil {
 		return err
 	}
@@ -283,18 +272,18 @@ func (u *S3Uploader) CopyImmutable(ctx context.Context, object ImmutableObjectCo
 }
 
 // Upload 上传图片到S3
-func (u *S3Uploader) Upload(
+func (u *Uploader) Upload(
 	ctx context.Context,
 	key string,
 	data []byte,
 	contentType string,
 ) (string, error) {
-	u.logger.WithFields(logrus.Fields{
+	u.logger.Info("开始上传到S3", map[string]any{
 		"bucket":       u.bucket,
 		"key":          key,
 		"size":         len(data),
 		"content_type": contentType,
-	}).Info("开始上传到S3")
+	})
 
 	input := &s3.PutObjectInput{
 		Bucket:      aws.String(u.bucket),
@@ -309,30 +298,33 @@ func (u *S3Uploader) Upload(
 	}
 
 	url := u.resolveObjectURL(key)
-	u.logger.WithFields(logrus.Fields{
+	u.logger.Info("S3上传成功", map[string]any{
 		"object_key": key,
 		"url":        url,
-	}).Info("S3上传成功")
+	})
 
 	return url, nil
 }
 
 // PublicURL returns the externally reachable URL for an object key using the
 // same public-base and endpoint rules as Upload.
-func (u *S3Uploader) PublicURL(key string) string {
+func (u *Uploader) PublicURL(key string) string {
 	return u.resolveObjectURL(key)
 }
 
 // UploadMultiple 批量上传图片
-func (u *S3Uploader) UploadMultiple(
+func (u *Uploader) UploadMultiple(
 	ctx context.Context,
 	prefix string,
 	images [][]byte,
 ) ([]string, error) {
-	u.logger.WithFields(logrus.Fields{
+	if len(images) == 0 {
+		return nil, fmt.Errorf("S3 image batch cannot be empty")
+	}
+	u.logger.Info("开始批量上传到S3", map[string]any{
 		"prefix": prefix,
 		"count":  len(images),
-	}).Info("开始批量上传到S3")
+	})
 
 	urls := make([]string, 0, len(images))
 	var errors []error
@@ -346,7 +338,7 @@ func (u *S3Uploader) UploadMultiple(
 
 		url, err := u.Upload(ctx, key, imageData, contentType)
 		if err != nil {
-			u.logger.WithError(err).Warnf("上传图片失败 [%d/%d]", i+1, len(images))
+			u.logger.Warn("上传图片失败", map[string]any{"error": err, "index": i + 1, "total_count": len(images)})
 			errors = append(errors, err)
 			continue
 		}
@@ -358,30 +350,30 @@ func (u *S3Uploader) UploadMultiple(
 		return nil, fmt.Errorf("所有图片上传失败，第一个错误: %w", errors[0])
 	}
 
-	u.logger.WithFields(logrus.Fields{
+	u.logger.Info("批量S3上传完成", map[string]any{
 		"success_count": len(urls),
 		"total_count":   len(images),
 		"error_count":   len(errors),
-	}).Info("批量S3上传完成")
+	})
 
 	return urls, nil
 }
 
 // UploadWithMetadata 上传带元数据的文件
-func (u *S3Uploader) UploadWithMetadata(
+func (u *Uploader) UploadWithMetadata(
 	ctx context.Context,
 	key string,
 	data []byte,
 	contentType string,
 	metadata map[string]string,
 ) (string, error) {
-	u.logger.WithFields(logrus.Fields{
+	u.logger.Info("开始上传带元数据的文件到S3", map[string]any{
 		"bucket":       u.bucket,
 		"key":          key,
 		"size":         len(data),
 		"content_type": contentType,
 		"metadata":     metadata,
-	}).Info("开始上传带元数据的文件到S3")
+	})
 
 	input := &s3.PutObjectInput{
 		Bucket:      aws.String(u.bucket),
@@ -397,20 +389,20 @@ func (u *S3Uploader) UploadWithMetadata(
 	}
 
 	url := u.resolveObjectURL(key)
-	u.logger.WithFields(logrus.Fields{
+	u.logger.Info("带元数据的S3上传成功", map[string]any{
 		"object_key": key,
 		"url":        url,
-	}).Info("带元数据的S3上传成功")
+	})
 
 	return url, nil
 }
 
 // Delete 删除S3对象
-func (u *S3Uploader) Delete(ctx context.Context, key string) error {
-	u.logger.WithFields(logrus.Fields{
+func (u *Uploader) Delete(ctx context.Context, key string) error {
+	u.logger.Info("删除S3对象", map[string]any{
 		"bucket": u.bucket,
 		"key":    key,
-	}).Info("删除S3对象")
+	})
 
 	input := &s3.DeleteObjectInput{
 		Bucket: aws.String(u.bucket),
@@ -422,12 +414,12 @@ func (u *S3Uploader) Delete(ctx context.Context, key string) error {
 		return fmt.Errorf("删除S3对象失败: %w", err)
 	}
 
-	u.logger.Info("S3对象删除成功")
+	u.logger.Info("S3对象删除成功", nil)
 	return nil
 }
 
 // Exists 检查S3对象是否存在
-func (u *S3Uploader) Exists(ctx context.Context, key string) (bool, error) {
+func (u *Uploader) Exists(ctx context.Context, key string) (bool, error) {
 	_, err := u.s3Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(u.bucket), Key: aws.String(key)})
 	if err != nil {
 		return false, nil
@@ -436,14 +428,14 @@ func (u *S3Uploader) Exists(ctx context.Context, key string) (bool, error) {
 }
 
 // generateKey 生成S3 key
-func (u *S3Uploader) generateKey(prefix string, index int) string {
+func (u *Uploader) generateKey(prefix string, index int) string {
 	timestamp := time.Now().Unix()
 	filename := fmt.Sprintf("image_%d_%d.jpg", timestamp, index)
 	return filepath.Join(prefix, filename)
 }
 
 // GenerateUniqueKey 生成唯一的S3 key
-func (u *S3Uploader) GenerateUniqueKey(prefix, filename string) string {
+func (u *Uploader) GenerateUniqueKey(prefix, filename string) string {
 	timestamp := time.Now().Unix()
 	ext := filepath.Ext(filename)
 	name := filename[:len(filename)-len(ext)]
@@ -452,7 +444,7 @@ func (u *S3Uploader) GenerateUniqueKey(prefix, filename string) string {
 }
 
 // detectContentType 检测内容类型
-func (u *S3Uploader) detectContentType(data []byte) string {
+func (u *Uploader) detectContentType(data []byte) string {
 	if len(data) < 12 {
 		return "image/jpeg"
 	}
@@ -481,7 +473,7 @@ func (u *S3Uploader) detectContentType(data []byte) string {
 	return "image/jpeg"
 }
 
-func (u *S3Uploader) resolveObjectURL(key string) string {
+func (u *Uploader) resolveObjectURL(key string) string {
 	fallbackBase := BuildS3PublicBase(u.endpoint, u.bucket, u.usePathStyle)
 	fallbackURL := ""
 	if fallbackBase != "" {
@@ -519,7 +511,7 @@ func strictPathEscape(value string) string {
 	return strings.ReplaceAll(url.PathEscape(value), "+", "%2B")
 }
 
-func (u *S3Uploader) strictArtifactCapability() (bool, error) {
+func (u *Uploader) strictArtifactCapability() (bool, error) {
 	switch u.artifactCapabilities.Mode {
 	case ArtifactStorageModeAWS:
 		return true, nil
@@ -533,7 +525,7 @@ func (u *S3Uploader) strictArtifactCapability() (bool, error) {
 	}
 }
 
-func (u *S3Uploader) immutableWriteOptions() (bool, []func(*s3.Options), error) {
+func (u *Uploader) immutableWriteOptions() (bool, []func(*s3.Options), error) {
 	checksumEnabled, err := u.strictArtifactCapability()
 	if err != nil || u.artifactCapabilities.Mode != ArtifactStorageModeCOS {
 		return checksumEnabled, nil, err

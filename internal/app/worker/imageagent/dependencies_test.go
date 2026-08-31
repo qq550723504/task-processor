@@ -17,8 +17,8 @@ import (
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
-	"task-processor/internal/infra/storage"
 	openaiclient "task-processor/internal/integration/openai"
+	s3integration "task-processor/internal/integration/s3"
 	"task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
@@ -48,8 +48,8 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
 			}, nil
 		},
-		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
-			return workerArtifactStore{}, nil
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
+			return stubWorkerArtifactStore{}, nil
 		},
 	}
 
@@ -84,9 +84,9 @@ func TestResolveImageAgentTemporalDependenciesForV2SkipsV3ValidationAndDurableCo
 				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
 			}, nil
 		},
-		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 			storeBuilds++
-			return workerArtifactStore{}, nil
+			return stubWorkerArtifactStore{}, nil
 		},
 		ArtifactTiming: imageAgentArtifactTiming{OperationTimeout: 2 * time.Minute, PublicationLeaseDuration: time.Minute},
 	}
@@ -123,9 +123,9 @@ func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *t
 				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
 			}, nil
 		},
-		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 			storeBuilds++
-			return workerArtifactStore{}, nil
+			return stubWorkerArtifactStore{}, nil
 		},
 		ArtifactTiming: imageAgentArtifactTiming{},
 	})
@@ -151,9 +151,9 @@ func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseOnInvalidP
 			databaseOpens++
 			return &gorm.DB{}, nil
 		},
-		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 			storeBuilds++
-			return workerArtifactStore{}, nil
+			return stubWorkerArtifactStore{}, nil
 		},
 	})
 	require.ErrorContains(t, err, "immutable non-versioned")
@@ -171,9 +171,9 @@ func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseWhenArtifa
 			databaseOpens++
 			return &gorm.DB{}, nil
 		},
-		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 			storeBuilds++
-			return workerArtifactStore{}, nil
+			return stubWorkerArtifactStore{}, nil
 		},
 	})
 	require.ErrorContains(t, err, "artifact mode")
@@ -187,11 +187,11 @@ func TestArtifactStorageCapabilitiesFromConfigFailsClosed(t *testing.T) {
 	tests := []struct {
 		name    string
 		mutate  func(*config.ProductImagePublisherConfig)
-		want    storage.ArtifactStorageCapabilities
+		want    s3integration.ArtifactStorageCapabilities
 		wantErr string
 	}{
-		{name: "aws", want: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeAWS}},
-		{name: "cos", mutate: func(cfg *config.ProductImagePublisherConfig) { *cfg = validCOS }, want: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeCOS, COSImmutableNonVersionedBucketPolicy: true}},
+		{name: "aws", want: s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeAWS}},
+		{name: "cos", mutate: func(cfg *config.ProductImagePublisherConfig) { *cfg = validCOS }, want: s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeCOS, COSImmutableNonVersionedBucketPolicy: true}},
 		{name: "disabled", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.Enabled = false }, wantErr: "disabled"},
 		{name: "wrong provider", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.Provider = "local" }, wantErr: "provider must be s3"},
 		{name: "missing bucket", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.Bucket = "" }, wantErr: "bucket"},
@@ -244,9 +244,9 @@ func TestResolveImageAgentTemporalDependenciesRejectsCredentialsBeforeDatabaseOp
 			_, _, err := resolveImageAgentTemporalDependencies("config/worker.yaml", nil, imageAgentWorkerDependencyResolver{
 				LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
 				OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { dbOpens++; return &gorm.DB{}, nil },
-				BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
+				BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 					storeBuilds++
-					return workerArtifactStore{}, nil
+					return stubWorkerArtifactStore{}, nil
 				},
 			})
 			require.ErrorContains(t, err, "access key ID and secret access key")
@@ -279,9 +279,9 @@ func TestResolveImageAgentTemporalDependenciesRejectsOperationTimeoutOutsidePubl
 			_, _, err := resolveImageAgentTemporalDependencies("config/worker.yaml", nil, imageAgentWorkerDependencyResolver{
 				ArtifactTiming: tc.timing,
 				LoadConfig:     func(string) (*config.Config, error) { return cfg, nil },
-				BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error) {
+				BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 					storeBuilds++
-					return workerArtifactStore{}, nil
+					return stubWorkerArtifactStore{}, nil
 				},
 				OpenDB:  func(*config.DatabaseConfig) (*gorm.DB, error) { databaseOpens++; return &gorm.DB{}, nil },
 				CloseDB: func(*config.DatabaseConfig, *gorm.DB) error { return nil },
@@ -298,7 +298,7 @@ func TestResolveImageAgentTemporalDependenciesRejectsOperationTimeoutOutsidePubl
 
 func TestBuildImageAgentDurableArtifactStoreUsesConfiguredS3ClientPath(t *testing.T) {
 	cfg := &config.Config{ProductImage: config.ProductImageConfig{Publisher: durablePublisherConfig("aws", true)}}
-	artifactStore, err := buildImageAgentDurableArtifactStore(cfg, defaultImageAgentArtifactTiming)
+	artifactStore, err := buildImageAgentDurableArtifactStore(cfg, defaultImageAgentArtifactTiming, logrus.New())
 	require.NoError(t, err)
 	require.NotNil(t, artifactStore)
 }
@@ -310,30 +310,30 @@ func durablePublisherConfig(mode string, cosPolicy bool) config.ProductImagePubl
 	}
 }
 
-type workerArtifactStore struct{}
+type stubWorkerArtifactStore struct{}
 
-func (workerArtifactStore) PublicURL(key string) string { return "https://cdn.example.test/" + key }
+func (stubWorkerArtifactStore) PublicURL(key string) string { return "https://cdn.example.test/" + key }
 
-func (workerArtifactStore) PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
+func (stubWorkerArtifactStore) PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput) (objectstore.PreparedSlotArtifacts, error) {
 	return objectstore.PreparedSlotArtifacts{}, nil
 }
-func (workerArtifactStore) PreserveSlotArtifacts(context.Context, imageagent.SlotExternalEffectIdentity, objectstore.PreparedSlotArtifacts) error {
+func (stubWorkerArtifactStore) PreserveSlotArtifacts(context.Context, imageagent.SlotExternalEffectIdentity, objectstore.PreparedSlotArtifacts) error {
 	return nil
 }
-func (workerArtifactStore) RecoverSlotArtifacts(_ context.Context, _ imageagent.SlotExternalEffectIdentity, expected imageagent.StagingManifest) (objectstore.PreparedSlotArtifacts, error) {
+func (stubWorkerArtifactStore) RecoverSlotArtifacts(_ context.Context, _ imageagent.SlotExternalEffectIdentity, expected imageagent.StagingManifest) (objectstore.PreparedSlotArtifacts, error) {
 	return objectstore.PreparedSlotArtifacts{Manifest: expected}, nil
 }
-func (workerArtifactStore) EnsureStaged(context.Context, objectstore.PreparedSlotArtifacts) error {
+func (stubWorkerArtifactStore) EnsureStaged(context.Context, objectstore.PreparedSlotArtifacts) error {
 	return nil
 }
-func (workerArtifactStore) Finalize(context.Context, imageagent.StagingManifest) (imageagent.FinalManifest, error) {
+func (stubWorkerArtifactStore) Finalize(context.Context, imageagent.StagingManifest) (imageagent.FinalManifest, error) {
 	return imageagent.FinalManifest{}, nil
 }
-func (workerArtifactStore) FinalizeWithProgress(context.Context, imageagent.StagingManifest, func(context.Context, int) error) (imageagent.FinalManifest, error) {
+func (stubWorkerArtifactStore) FinalizeWithProgress(context.Context, imageagent.StagingManifest, func(context.Context, int) error) (imageagent.FinalManifest, error) {
 	return imageagent.FinalManifest{}, nil
 }
 
-var _ imageagenttemporal.DurableArtifactStore = workerArtifactStore{}
+var _ imageagenttemporal.DurableArtifactStore = stubWorkerArtifactStore{}
 
 type runtimeSubjectExtractor struct{}
 

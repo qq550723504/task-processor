@@ -1,4 +1,4 @@
-package storage
+package s3
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-type S3ClientConfig struct {
+type ClientConfig struct {
 	Region          string
 	Endpoint        string
 	AccessKeyID     string
@@ -17,7 +17,7 @@ type S3ClientConfig struct {
 	UsePathStyle    bool
 }
 
-func NewS3Client(cfg S3ClientConfig) (*s3.Client, error) {
+func NewClient(cfg ClientConfig) (*s3.Client, error) {
 	region := strings.TrimSpace(cfg.Region)
 	if region == "" {
 		return nil, fmt.Errorf("s3 region cannot be empty")
