@@ -258,29 +258,46 @@ func (lm *LogManager) createOutputs() []io.Writer {
 	return outputs
 }
 
+type logManagerFactory func(*LogConfig) *LogManager
+
+type logManagerRegistry struct {
+	mutex   sync.Mutex
+	manager *LogManager
+	factory logManagerFactory
+}
+
+func newLogManagerRegistry(factory logManagerFactory) *logManagerRegistry {
+	return &logManagerRegistry{factory: factory}
+}
+
+func (r *logManagerRegistry) init(config *LogConfig) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.manager = r.factory(config)
+}
+
+func (r *logManagerRegistry) get() *LogManager {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.manager == nil {
+		r.manager = r.factory(nil)
+	}
+	return r.manager
+}
+
 // 全局日志管理器实例
-var (
-	globalLogManager      *LogManager
-	globalLogManagerMutex sync.Mutex
-)
+var globalLogManagerRegistry = newLogManagerRegistry(NewLogManager)
 
 // InitGlobalLogger 初始化全局日志管理器
 func InitGlobalLogger(config *LogConfig) {
-	globalLogManagerMutex.Lock()
-	defer globalLogManagerMutex.Unlock()
-
-	globalLogManager = NewLogManager(config)
+	globalLogManagerRegistry.init(config)
 }
 
 // GetGlobalLogManager 获取全局日志管理器实例
 func GetGlobalLogManager() *LogManager {
-	globalLogManagerMutex.Lock()
-	defer globalLogManagerMutex.Unlock()
-
-	if globalLogManager == nil {
-		globalLogManager = NewLogManager(nil)
-	}
-	return globalLogManager
+	return globalLogManagerRegistry.get()
 }
 
 // GetGlobalLogger 获取全局日志记录器

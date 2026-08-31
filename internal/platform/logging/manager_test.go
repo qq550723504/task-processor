@@ -3,7 +3,7 @@ package logging
 import (
 	"os"
 	"path/filepath"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -98,116 +98,154 @@ func TestGetGlobalLogger(t *testing.T) {
 	assert.Equal(t, "test_component", data["component"])
 }
 
-func TestGetGlobalLogManagerConcurrentLazyInitializationReturnsOneManager(t *testing.T) {
-	previous := globalLogManager
-	globalLogManager = nil
-	t.Cleanup(func() {
-		if globalLogManager != nil {
-			_ = globalLogManager.Close()
-		}
-		globalLogManager = previous
+func TestLogManagerRegistryConcurrentLazyInitializationConstructsOnce(t *testing.T) {
+	factoryEntered := make(chan struct{}, 2)
+	releaseFactory := make(chan struct{})
+	var factoryCalls atomic.Int32
+	registry := newLogManagerRegistry(func(*LogConfig) *LogManager {
+		factoryCalls.Add(1)
+		factoryEntered <- struct{}{}
+		<-releaseFactory
+		return NewLogManager(&LogConfig{Level: "info", Console: false})
 	})
 
-	const callers = 8
-	start := make(chan struct{})
-	managers := make(chan *LogManager, callers)
-	var wg sync.WaitGroup
-	wg.Add(callers)
-	for range callers {
-		go func() {
-			defer wg.Done()
-			<-start
-			managers <- GetGlobalLogManager()
-		}()
+	firstReturned := make(chan *LogManager, 1)
+	go func() { firstReturned <- registry.get() }()
+	<-factoryEntered
+
+	secondLaunched := make(chan struct{})
+	secondReturned := make(chan *LogManager, 1)
+	go func() {
+		close(secondLaunched)
+		secondReturned <- registry.get()
+	}()
+	<-secondLaunched
+
+	duplicateConstruction := false
+	select {
+	case <-factoryEntered:
+		duplicateConstruction = true
+	case <-time.After(100 * time.Millisecond):
 	}
+	close(releaseFactory)
 
-	close(start)
-	wg.Wait()
-	close(managers)
+	first := <-firstReturned
+	second := <-secondReturned
+	t.Cleanup(func() { _ = first.Close() })
+	if duplicateConstruction {
+		t.Fatal("a second lazy caller entered the manager factory before the first construction completed")
+	}
+	assert.Equal(t, int32(1), factoryCalls.Load())
+	assert.Same(t, first, second)
+}
 
-	var first *LogManager
-	for manager := range managers {
-		require.NotNil(t, manager)
-		if first == nil {
-			first = manager
-			continue
+func TestLogManagerRegistryGetWaitsForInitToPublishCompleteManager(t *testing.T) {
+	factoryEntered := make(chan int32, 2)
+	releaseInit := make(chan struct{})
+	var factoryCalls atomic.Int32
+	var initialized *LogManager
+	registry := newLogManagerRegistry(func(*LogConfig) *LogManager {
+		call := factoryCalls.Add(1)
+		factoryEntered <- call
+		if call == 1 {
+			<-releaseInit
+			initialized = NewLogManager(&LogConfig{Level: "error", Console: false})
+			return initialized
 		}
-		assert.Same(t, first, manager)
+		return &LogManager{}
+	})
+
+	initReturned := make(chan struct{})
+	go func() {
+		registry.init(&LogConfig{Level: "error", Console: false})
+		close(initReturned)
+	}()
+	require.Equal(t, int32(1), <-factoryEntered)
+
+	getLaunched := make(chan struct{})
+	getReturned := make(chan *LogManager, 1)
+	go func() {
+		close(getLaunched)
+		getReturned <- registry.get()
+	}()
+	<-getLaunched
+
+	var observedBeforePublish *LogManager
+	select {
+	case observedBeforePublish = <-getReturned:
+	case <-time.After(100 * time.Millisecond):
 	}
+	close(releaseInit)
+	<-initReturned
+	t.Cleanup(func() { _ = initialized.Close() })
+
+	if observedBeforePublish != nil {
+		t.Fatal("Get returned a manager before Init completed construction and publication")
+	}
+	got := <-getReturned
+	assert.Equal(t, int32(1), factoryCalls.Load())
+	assert.Same(t, initialized, got)
+	require.NotNil(t, got.GetRawLogger())
+	assert.Equal(t, "error", got.GetLevel())
 }
 
-func TestInitGlobalLoggerConcurrentWithGetPublishesValidManager(t *testing.T) {
-	InitGlobalLogger(&LogConfig{Level: "info", Console: false})
-
-	start := make(chan struct{})
-	entry := make(chan *logrus.Entry, 1)
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		<-start
-		InitGlobalLogger(&LogConfig{Level: "error", Console: false})
-	}()
-	go func() {
-		defer wg.Done()
-		<-start
-		entry <- GetGlobalLogger("concurrent-init")
-	}()
-
-	close(start)
-	wg.Wait()
-	close(entry)
-
-	got := <-entry
-	require.NotNil(t, got)
-	require.NotNil(t, got.Logger)
-	assert.Equal(t, "concurrent-init", got.Data["component"])
-	assert.Equal(t, "error", GetGlobalLogManager().GetLevel())
-}
-
-func TestLogManagerConcurrentSetAndGetLevel(t *testing.T) {
+func TestLogManagerSetAndGetLevelWaitForManagerLock(t *testing.T) {
 	manager := NewLogManager(&LogConfig{Level: "info", Console: false})
 	t.Cleanup(func() { _ = manager.Close() })
 
-	start := make(chan struct{})
-	observed := make(chan string, 1)
-	setErr := make(chan error, 1)
-	var wg sync.WaitGroup
-	wg.Add(2)
+	manager.mutex.Lock()
+	getLaunched := make(chan struct{})
+	getReturned := make(chan string, 1)
 	go func() {
-		defer wg.Done()
-		<-start
-		setErr <- manager.SetLevel("debug")
+		close(getLaunched)
+		getReturned <- manager.GetLevel()
 	}()
+	<-getLaunched
+
+	var levelBeforeUnlock string
+	getCompletedBeforeUnlock := false
+	select {
+	case levelBeforeUnlock = <-getReturned:
+		getCompletedBeforeUnlock = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	manager.mutex.Unlock()
+	if getCompletedBeforeUnlock {
+		t.Errorf("GetLevel returned while the manager lock was held: %q", levelBeforeUnlock)
+	} else {
+		assert.Equal(t, "info", <-getReturned)
+	}
+
+	manager.mutex.Lock()
+	setLaunched := make(chan struct{})
+	setReturned := make(chan error, 1)
 	go func() {
-		defer wg.Done()
-		<-start
-		observed <- manager.GetLevel()
+		close(setLaunched)
+		setReturned <- manager.SetLevel("debug")
 	}()
+	<-setLaunched
 
-	close(start)
-	wg.Wait()
-	close(observed)
-	close(setErr)
-
-	require.NoError(t, <-setErr)
-	level := <-observed
-	assert.Contains(t, []string{"info", "debug"}, level)
+	var setBeforeUnlock error
+	setCompletedBeforeUnlock := false
+	select {
+	case setBeforeUnlock = <-setReturned:
+		setCompletedBeforeUnlock = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	manager.mutex.Unlock()
+	if setCompletedBeforeUnlock {
+		t.Fatalf("SetLevel returned while the manager lock was held: %v", setBeforeUnlock)
+	}
+	require.NoError(t, <-setReturned)
 	assert.Equal(t, "debug", manager.GetLevel())
 }
 
-func TestLazyGlobalLoggerDoesNotCreateRuntimeFiles(t *testing.T) {
+func TestLazyLogManagerRegistryDoesNotCreateRuntimeFiles(t *testing.T) {
 	t.Chdir(t.TempDir())
-	previous := globalLogManager
-	globalLogManager = nil
-	t.Cleanup(func() {
-		if globalLogManager != nil {
-			_ = globalLogManager.Close()
-		}
-		globalLogManager = previous
-	})
+	registry := newLogManagerRegistry(NewLogManager)
+	t.Cleanup(func() { _ = registry.get().Close() })
 
-	GetGlobalLogger("lazy-no-file").Info("stdout only")
+	registry.get().GetLogger("lazy-no-file").Info("stdout only")
 	if _, err := os.Stat("tmp"); !os.IsNotExist(err) {
 		t.Fatalf("lazy global logger created a runtime directory: %v", err)
 	}
