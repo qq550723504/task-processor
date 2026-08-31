@@ -14,6 +14,21 @@ const contextPayload = {
   organizations: [{ id: "org-b", name: "Organization B", roles: [] }],
 };
 
+const storeId = "11111111-1111-4111-8111-11111111111a";
+const operationKey = "22222222-2222-4222-8222-22222222222b";
+const storePayload = {
+  id: storeId,
+  name: "Store",
+  platform: "shein",
+  region: "SG",
+  externalStoreId: "external-1",
+  lifecycleStatus: "active",
+  connectionStatus: "connected",
+  version: 2,
+  createdAt: "2026-08-30T01:02:03Z",
+  updatedAt: "2026-08-30T02:03:04Z",
+};
+
 describe("buildWorkbenchUpstreamRequest", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -578,5 +593,510 @@ describe("buildWorkbenchBrowserResponse", () => {
     expect(response.headers.get("Set-Cookie")).toBeNull();
     expect(text.length).toBeLessThan(256);
     expect(JSON.parse(text)).toMatchObject({ code: "DEPENDENCY_UNAVAILABLE" });
+  });
+});
+
+describe("strict Store Center request boundary", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    {
+      name: "list",
+      method: "GET",
+      path: ["stores"],
+      url: "http://localhost/api/workbench/stores?page=2&pageSize=50&platform=shein&status=active",
+      headers: {},
+      body: undefined,
+      wantURL:
+        "http://localhost:8085/api/v1/workbench/stores?page=2&pageSize=50&platform=shein&status=active",
+      contract: "store-list",
+    },
+    {
+      name: "create",
+      method: "POST",
+      path: ["stores"],
+      url: "http://localhost/api/workbench/stores",
+      headers: { "Idempotency-Key": operationKey },
+      body: JSON.stringify({
+        name: " Store ",
+        platform: "shein",
+        region: " SG ",
+        externalStoreId: " external-1 ",
+      }),
+      wantURL: "http://localhost:8085/api/v1/workbench/stores",
+      contract: "store-create",
+    },
+    {
+      name: "get",
+      method: "GET",
+      path: ["stores", storeId],
+      url: `http://localhost/api/workbench/stores/${storeId}`,
+      headers: {},
+      body: undefined,
+      wantURL: `http://localhost:8085/api/v1/workbench/stores/${storeId}`,
+      contract: "store-item",
+    },
+    {
+      name: "update",
+      method: "PUT",
+      path: ["stores", storeId],
+      url: `http://localhost/api/workbench/stores/${storeId}`,
+      headers: { "If-Match": '"2"' },
+      body: JSON.stringify({ name: " Store ", region: " SG " }),
+      wantURL: `http://localhost:8085/api/v1/workbench/stores/${storeId}`,
+      contract: "store-item",
+    },
+    {
+      name: "delete",
+      method: "DELETE",
+      path: ["stores", storeId],
+      url: `http://localhost/api/workbench/stores/${storeId}`,
+      headers: {
+        "Idempotency-Key": operationKey,
+        "If-Match": '"2"',
+      },
+      body: undefined,
+      wantURL: `http://localhost:8085/api/v1/workbench/stores/${storeId}`,
+      contract: "store-delete",
+    },
+    ...["enable", "disable"].map((action) => ({
+      name: action,
+      method: "POST",
+      path: ["stores", storeId, action],
+      url: `http://localhost/api/workbench/stores/${storeId}/${action}`,
+      headers: { "If-Match": '"2"' },
+      body: undefined,
+      wantURL: `http://localhost:8085/api/v1/workbench/stores/${storeId}/${action}`,
+      contract: "store-item",
+    })),
+  ])("maps the exact $name route through one typed descriptor", async (testCase) => {
+    const requestHeaders = new Headers({
+      cookie: `${WORKBENCH_COOKIE_NAME}=org-cookie`,
+      authorization: "Bearer browser-secret",
+      "x-requested-organization-id": "org-forged",
+      "x-tenant-id": "tenant-forged",
+      "x-subject-id": "subject-forged",
+      "x-forwarded-for": "127.0.0.1",
+    });
+    for (const [name, value] of Object.entries(testCase.headers)) {
+      if (value !== undefined) requestHeaders.set(name, value);
+    }
+    const request = new Request(testCase.url, {
+      method: testCase.method,
+      headers: requestHeaders,
+      body: testCase.body,
+    });
+
+    const result = await buildWorkbenchUpstreamRequest(
+      request,
+      testCase.path,
+      "server-token",
+    );
+
+    expect(result).not.toBeInstanceOf(Response);
+    if (result instanceof Response) return;
+    expect(result.url).toBe(testCase.wantURL);
+    expect(result.init.method).toBe(testCase.method);
+    expect(result.responseContract).toBe(testCase.contract);
+    const headers = new Headers(result.init.headers);
+    expect(headers.get("Authorization")).toBe("Bearer server-token");
+    expect(headers.get("X-Requested-Organization-ID")).toBe("org-cookie");
+    expect(headers.get("Cookie")).toBeNull();
+    expect(headers.get("X-Tenant-ID")).toBeNull();
+    expect(headers.get("X-Subject-ID")).toBeNull();
+    expect(headers.get("X-Forwarded-For")).toBeNull();
+    expect(headers.get("Idempotency-Key")).toBe(
+      testCase.name === "create" || testCase.name === "delete"
+        ? operationKey
+        : null,
+    );
+    expect(headers.get("If-Match")).toBe(
+      ["update", "delete", "enable", "disable"].includes(testCase.name)
+        ? '"2"'
+        : null,
+    );
+    if (testCase.name === "create") {
+      expect(result.init.body).toBe(
+        JSON.stringify({
+          name: "Store",
+          platform: "shein",
+          region: "SG",
+          externalStoreId: "external-1",
+        }),
+      );
+    }
+    if (testCase.name === "update") {
+      expect(result.init.body).toBe(
+        JSON.stringify({ name: "Store", region: "SG" }),
+      );
+    }
+  });
+
+  it.each([
+    ["uppercase UUID", ["stores", storeId.toUpperCase()]],
+    ["nil UUID", ["stores", "00000000-0000-0000-0000-000000000000"]],
+    ["invalid version", ["stores", "11111111-1111-6111-8111-111111111111"]],
+    ["invalid variant", ["stores", "11111111-1111-4111-7111-111111111111"]],
+    ["encoded slash", ["stores", "%2f"]],
+    ["decoded slash", ["stores", `prefix/${storeId}`]],
+    ["decoded backslash", ["stores", `prefix\\${storeId}`]],
+    ["dot segment", ["stores", ".."]],
+    ["empty segment", ["stores", ""]],
+    ["trailing segment", ["stores", storeId, "extra"]],
+    ["repeated stores segment", ["stores", "stores", storeId]],
+  ])("rejects the %s path before fetch", async (_name, path) => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request("http://localhost/api/workbench/stores", { method: "GET" }),
+      path,
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(404);
+  });
+
+  it("rejects an alternate percent-encoding of an otherwise canonical Store UUID", async () => {
+    const encodedStoreId = `%31${storeId.slice(1)}`;
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request(`http://localhost/api/workbench/stores/${encodedStoreId}`, {
+        method: "GET",
+      }),
+      ["stores", storeId],
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(404);
+  });
+
+  it.each([
+    ["PUT collection", "PUT", ["stores"]],
+    ["DELETE collection", "DELETE", ["stores"]],
+    ["POST item", "POST", ["stores", storeId]],
+    ["GET action", "GET", ["stores", storeId, "enable"]],
+    ["PUT action", "PUT", ["stores", storeId, "disable"]],
+    ["unknown action", "POST", ["stores", storeId, "archive"]],
+  ])("rejects non-allowlisted Store method/path: %s", async (_name, method, path) => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request("http://localhost/api/workbench/stores", { method }),
+      path,
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(404);
+  });
+
+  it.each([
+    "page=0",
+    "page=01",
+    "page=+1",
+    "page=9007199254740992",
+    "pageSize=0",
+    "pageSize=101",
+    "pageSize=01",
+    "platform=amazon",
+    "status=unknown",
+    "page=1&page=2",
+    "organizationId=org-forged",
+    "organization_id=org-forged",
+    "tenantId=tenant-forged",
+    "unknown=value",
+  ])("rejects invalid Store list query %s", async (query) => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request(`http://localhost/api/workbench/stores?${query}`, {
+        method: "GET",
+      }),
+      ["stores"],
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(400);
+  });
+
+  it("rejects a rebuilt Store query larger than 2 KiB", async () => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request(
+        `http://localhost/api/workbench/stores?platform=${"s".repeat(2100)}`,
+        { method: "GET" },
+      ),
+      ["stores"],
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(400);
+  });
+
+  it.each([
+    ["create", "POST", ["stores"], { "Idempotency-Key": operationKey }, JSON.stringify({ name: "A", platform: "shein", region: "SG" })],
+    ["item", "GET", ["stores", storeId], {}, undefined],
+    ["update", "PUT", ["stores", storeId], { "If-Match": '"2"' }, JSON.stringify({ name: "A", region: "SG" })],
+    ["delete", "DELETE", ["stores", storeId], { "Idempotency-Key": operationKey, "If-Match": '"2"' }, undefined],
+    ["action", "POST", ["stores", storeId, "enable"], { "If-Match": '"2"' }, undefined],
+  ] as const)("rejects query input on Store %s", async (_name, method, path, headers, body) => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request(
+        `http://localhost/api/workbench/${path.join("/")}?organizationId=org-forged`,
+        { method, headers, body },
+      ),
+      [...path],
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(400);
+  });
+
+  it.each([
+    ["duplicate create key", `{"name":"A","name":"B","platform":"shein","region":"SG"}`],
+    ["unknown create key", `{"name":"A","platform":"shein","region":"SG","organizationId":"org-forged"}`],
+    ["case variant", `{"Name":"A","platform":"shein","region":"SG"}`],
+    ["missing required", `{"name":"A","platform":"shein"}`],
+    ["non-string", `{"name":1,"platform":"shein","region":"SG"}`],
+    ["trailing JSON", `{"name":"A","platform":"shein","region":"SG"}{}`],
+    ["comment", `{"name":"A","platform":"shein","region":"SG"/*x*/}`],
+    ["trailing comma", `{"name":"A","platform":"shein","region":"SG",}`],
+    ["blank", `{"name":"  ","platform":"shein","region":"SG"}`],
+    ["control", `{"name":"A\\u0000","platform":"shein","region":"SG"}`],
+    ["name too long", JSON.stringify({ name: "界".repeat(121), platform: "shein", region: "SG" })],
+    ["region too long", JSON.stringify({ name: "A", platform: "shein", region: "界".repeat(65) })],
+    ["external id too long", JSON.stringify({ name: "A", platform: "shein", region: "SG", externalStoreId: "界".repeat(129) })],
+  ])("rejects invalid create body: %s", async (_name, body) => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request("http://localhost/api/workbench/stores", {
+        method: "POST",
+        headers: { "Idempotency-Key": operationKey },
+        body,
+      }),
+      ["stores"],
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(400);
+  });
+
+  it.each([
+    ["duplicate key", `{"name":"A","name":"B","region":"SG"}`],
+    ["unknown key", `{"name":"A","region":"SG","platform":"shein"}`],
+    ["missing key", `{"name":"A"}`],
+    ["non-string", `{"name":"A","region":1}`],
+    ["blank", `{"name":"A","region":"  "}`],
+  ])("rejects invalid update body: %s", async (_name, body) => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request(`http://localhost/api/workbench/stores/${storeId}`, {
+        method: "PUT",
+        headers: { "If-Match": '"2"' },
+        body,
+      }),
+      ["stores", storeId],
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(400);
+  });
+
+  it("rejects invalid UTF-8 and oversized Store bodies", async () => {
+    const invalidUTF8 = await buildWorkbenchUpstreamRequest(
+      new Request("http://localhost/api/workbench/stores", {
+        method: "POST",
+        headers: { "Idempotency-Key": operationKey },
+        body: new Uint8Array([0xff]),
+      }),
+      ["stores"],
+      "server-token",
+    );
+    expect(invalidUTF8).toBeInstanceOf(Response);
+    if (invalidUTF8 instanceof Response) expect(invalidUTF8.status).toBe(400);
+
+    const oversized = await buildWorkbenchUpstreamRequest(
+      new Request("http://localhost/api/workbench/stores", {
+        method: "POST",
+        headers: { "Idempotency-Key": operationKey },
+        body: "x".repeat(16 * 1024 + 1),
+      }),
+      ["stores"],
+      "server-token",
+    );
+    expect(oversized).toBeInstanceOf(Response);
+    if (oversized instanceof Response) expect(oversized.status).toBe(413);
+  });
+
+  it.each([
+    ["create missing idempotency", "POST", ["stores"], {}],
+    ["create malformed idempotency", "POST", ["stores"], { "Idempotency-Key": storeId.toUpperCase() }],
+    ["create repeated idempotency", "POST", ["stores"], { "Idempotency-Key": `${operationKey}, ${operationKey}` }],
+    ["create nil idempotency", "POST", ["stores"], { "Idempotency-Key": "00000000-0000-0000-0000-000000000000" }],
+    ["update missing If-Match", "PUT", ["stores", storeId], {}],
+    ["update weak If-Match", "PUT", ["stores", storeId], { "If-Match": 'W/"2"' }],
+    ["update list If-Match", "PUT", ["stores", storeId], { "If-Match": '"2", "3"' }],
+    ["update leading-zero If-Match", "PUT", ["stores", storeId], { "If-Match": '"02"' }],
+    ["update unsafe If-Match", "PUT", ["stores", storeId], { "If-Match": '"9007199254740992"' }],
+    ["delete missing idempotency", "DELETE", ["stores", storeId], { "If-Match": '"2"' }],
+    ["delete missing If-Match", "DELETE", ["stores", storeId], { "Idempotency-Key": operationKey }],
+  ])("rejects required Store header contract: %s", async (_name, method, path, headers) => {
+    const body = method === "POST" ? JSON.stringify({ name: "A", platform: "shein", region: "SG" }) : method === "PUT" ? JSON.stringify({ name: "A", region: "SG" }) : undefined;
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request(`http://localhost/api/workbench/${path.join("/")}`, {
+        method,
+        headers,
+        body,
+      }),
+      path as string[],
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(400);
+  });
+
+  it.each(["enable", "disable"])(
+    "rejects any body on the %s action",
+    async (action) => {
+      const result = await buildWorkbenchUpstreamRequest(
+        new Request(`http://localhost/api/workbench/stores/${storeId}/${action}`, {
+          method: "POST",
+          headers: { "If-Match": '"2"' },
+          body: "{}",
+        }),
+        ["stores", storeId, action],
+        "server-token",
+      );
+      expect(result).toBeInstanceOf(Response);
+      if (result instanceof Response) expect(result.status).toBe(400);
+    },
+  );
+
+  it("rejects any body on delete", async () => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request(`http://localhost/api/workbench/stores/${storeId}`, {
+        method: "DELETE",
+        headers: {
+          "Idempotency-Key": operationKey,
+          "If-Match": '"2"',
+        },
+        body: "x",
+      }),
+      ["stores", storeId],
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(400);
+  });
+});
+
+describe("strict Store Center response boundary", () => {
+  it.each([
+    ["store-create", 201],
+    ["store-item", 200],
+  ] as const)("accepts the exact %s success DTO", async (contract, status) => {
+    const response = await buildWorkbenchBrowserResponse(
+      Response.json(storePayload, { status }),
+      contract,
+    );
+    expect(response.status).toBe(status);
+    await expect(response.json()).resolves.toEqual(storePayload);
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+  });
+
+  it("accepts a valid UTC RFC3339Nano Store timestamp", async () => {
+    const payload = { ...storePayload, updatedAt: "2026-08-30T02:03:04.123456789Z" };
+    const response = await buildWorkbenchBrowserResponse(
+      Response.json(payload),
+      "store-item",
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(payload);
+  });
+
+  it("accepts the exact list and delete DTOs", async () => {
+    const listPayload = {
+      items: [storePayload],
+      quota: { used: 1, reserved: 0, limit: 5, allowed: true, reason: "" },
+      pagination: { page: 1, pageSize: 20, total: 1 },
+    };
+    const list = await buildWorkbenchBrowserResponse(
+      Response.json(listPayload),
+      "store-list",
+    );
+    expect(list.status).toBe(200);
+    await expect(list.json()).resolves.toEqual(listPayload);
+
+    const deletePayload = { id: storeId, deleted: true, version: 3 };
+    const deleted = await buildWorkbenchBrowserResponse(
+      Response.json(deletePayload),
+      "store-delete",
+    );
+    expect(deleted.status).toBe(200);
+    await expect(deleted.json()).resolves.toEqual(deletePayload);
+  });
+
+  it.each([
+    ["unknown field", { ...storePayload, organizationId: "org-secret" }],
+    ["credential field", { ...storePayload, token: "secret" }],
+    ["connection reference", { ...storePayload, connectionRef: "private" }],
+    ["nil UUID", { ...storePayload, id: "00000000-0000-0000-0000-000000000000" }],
+    ["unsafe version", { ...storePayload, version: Number.MAX_SAFE_INTEGER + 1 }],
+    ["invalid lifecycle", { ...storePayload, lifecycleStatus: "deleted" }],
+    ["invalid connection", { ...storePayload, connectionStatus: "unknown" }],
+    ["offset timestamp", { ...storePayload, createdAt: "2026-08-30T09:02:03+08:00" }],
+    ["impossible timestamp", { ...storePayload, updatedAt: "2026-02-30T02:03:04Z" }],
+  ])("maps invalid Store %s to bounded 502", async (_name, payload) => {
+    const response = await buildWorkbenchBrowserResponse(
+      Response.json(payload),
+      "store-item",
+    );
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "DEPENDENCY_UNAVAILABLE",
+    });
+  });
+
+  it.each([
+    ["create wrong status", "store-create", 200, storePayload],
+    ["item wrong status", "store-item", 201, storePayload],
+    ["delete wrong status", "store-delete", 204, null],
+    ["list wrong shape", "store-list", 200, storePayload],
+    ["too many items", "store-list", 200, { items: Array.from({ length: 101 }, () => storePayload), quota: { used: 0, reserved: 0, limit: null, allowed: false, reason: "subscription_required" }, pagination: { page: 1, pageSize: 100, total: 101 } }],
+    ["negative count", "store-list", 200, { items: [], quota: { used: -1, reserved: 0, limit: 5, allowed: true, reason: "" }, pagination: { page: 1, pageSize: 20, total: 0 } }],
+  ] as const)("rejects Store status/body mismatch: %s", async (_name, contract, status, payload) => {
+    const response = await buildWorkbenchBrowserResponse(
+      payload === null ? new Response(null, { status }) : Response.json(payload, { status }),
+      contract,
+    );
+    expect(response.status).toBe(502);
+  });
+
+  it.each([
+    ["invalid JSON", new Response("{"), "store-item"],
+    ["invalid UTF-8", new Response(new Uint8Array([0xff]), { status: 200 }), "store-item"],
+    ["success carrying error", Response.json({ code: "STORE_NOT_FOUND", message: "Missing", requestId: "", fieldErrors: [] }), "store-item"],
+    ["error carrying success", Response.json(storePayload, { status: 404 }), "store-item"],
+    ["redirect", new Response(null, { status: 302, headers: { location: "https://attacker.example" } }), "store-item"],
+  ] as const)("rejects Store transport mismatch: %s", async (_name, upstream, contract) => {
+    const response = await buildWorkbenchBrowserResponse(upstream, contract);
+    expect(response.status).toBe(502);
+    expect(response.headers.get("Location")).toBeNull();
+  });
+
+  it("preserves a strict Store error without mutating the selection cookie", async () => {
+    const payload = {
+      code: "STORE_VERSION_CONFLICT",
+      message: "Store version conflict",
+      requestId: "req-1",
+      fieldErrors: [],
+    };
+    const response = await buildWorkbenchBrowserResponse(
+      Response.json(payload, {
+        status: 409,
+        headers: {
+          location: "https://attacker.example",
+          "set-cookie": "secret=value",
+          etag: '"3"',
+        },
+      }),
+      "store-item",
+    );
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual(payload);
+    expect(response.headers.get("Location")).toBeNull();
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    expect(response.headers.get("ETag")).toBeNull();
   });
 });

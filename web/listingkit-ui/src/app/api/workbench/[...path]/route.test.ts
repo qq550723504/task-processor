@@ -33,7 +33,22 @@ vi.mock("@/lib/server/zitadel-server-token", () => ({
 
 import * as workbenchRoute from "@/app/api/workbench/[...path]/route";
 
-const { GET, PUT } = workbenchRoute;
+const { GET, PUT, POST, DELETE } = workbenchRoute;
+
+const storeId = "11111111-1111-4111-8111-11111111111a";
+const operationKey = "22222222-2222-4222-8222-22222222222b";
+const storePayload = {
+  id: storeId,
+  name: "Store",
+  platform: "shein",
+  region: "SG",
+  externalStoreId: "",
+  lifecycleStatus: "active",
+  connectionStatus: "disconnected",
+  version: 2,
+  createdAt: "2026-08-30T01:02:03Z",
+  updatedAt: "2026-08-30T02:03:04Z",
+};
 
 async function call(handler: typeof GET, request: NextRequest, path: string[]) {
   const response = await handler(request, {
@@ -68,6 +83,7 @@ describe("/api/workbench BFF", () => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+    vi.useRealTimers();
   });
 
   it("uses the merged serverAuth wrapper and reads the token from request.auth", async () => {
@@ -163,6 +179,36 @@ describe("/api/workbench BFF", () => {
     }
   });
 
+  it("aborts an upstream request at 15 seconds and returns bounded 502 JSON", async () => {
+    vi.useFakeTimers();
+    authState.session = { accessToken: "private-token" };
+    authState.token = "private-token";
+    const fetchMock = vi.fn<typeof fetch>((_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = call(
+      GET,
+      new NextRequest("http://localhost/api/workbench/context"),
+      ["context"],
+    );
+    await vi.advanceTimersByTimeAsync(15_000);
+    const response = await pending;
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      code: "DEPENDENCY_UNAVAILABLE",
+      message: "Workbench upstream is unavailable",
+      requestId: "",
+      fieldErrors: [],
+    });
+  });
+
   it("sets the switch cookie from Go's response instead of the requested organization", async () => {
     authState.session = { accessToken: "private-token" };
     authState.token = "private-token";
@@ -251,7 +297,65 @@ describe("/api/workbench BFF", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each(["HEAD", "POST", "PATCH", "DELETE", "OPTIONS"])(
+  it("proxies Store create with the typed 201 response contract", async () => {
+    authState.session = { accessToken: "private-token" };
+    authState.token = "private-token";
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(storePayload, { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await call(
+      POST,
+      new NextRequest("http://localhost/api/workbench/stores", {
+        method: "POST",
+        headers: {
+          "Idempotency-Key": operationKey,
+          cookie: "shuomi_effective_organization=org-cookie",
+        },
+        body: JSON.stringify({ name: "Store", platform: "shein", region: "SG" }),
+      }),
+      ["stores"],
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual(storePayload);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe("manual");
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("Idempotency-Key")).toBe(operationKey);
+    expect(headers.get("X-Requested-Organization-ID")).toBe("org-cookie");
+  });
+
+  it("proxies Store delete and validates its response as delete, not item", async () => {
+    authState.session = { accessToken: "private-token" };
+    authState.token = "private-token";
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      Response.json({ id: storeId, deleted: true, version: 3 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await call(
+      DELETE,
+      new NextRequest(`http://localhost/api/workbench/stores/${storeId}`, {
+        method: "DELETE",
+        headers: {
+          "Idempotency-Key": operationKey,
+          "If-Match": '"2"',
+        },
+      }),
+      ["stores", storeId],
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      id: storeId,
+      deleted: true,
+      version: 3,
+    });
+  });
+
+  it.each(["HEAD", "PATCH", "OPTIONS"])(
     "explicitly rejects %s without contacting upstream",
     async (method) => {
       const fetchMock = vi.fn<typeof fetch>();

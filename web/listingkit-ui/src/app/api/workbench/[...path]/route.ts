@@ -45,7 +45,10 @@ async function proxyWorkbenchRequest(
       redirect: "manual",
       signal: controller.signal,
     });
-    return await buildWorkbenchBrowserResponse(upstream);
+    return await buildWorkbenchBrowserResponse(
+      upstream,
+      upstreamRequest.responseContract,
+    );
   } catch {
     return workbenchProtocolError(
       502,
@@ -61,6 +64,8 @@ const authenticatedProxyRequest = serverAuth(proxyWorkbenchRequest);
 
 export const GET = authenticatedProxyRequest;
 export const PUT = authenticatedProxyRequest;
+export const POST = authenticatedProxyRequest;
+export const DELETE = authenticatedProxyRequest;
 
 function rejectUnsupportedRequest() {
   return workbenchProtocolError(
@@ -71,7 +76,5 @@ function rejectUnsupportedRequest() {
 }
 
 export const HEAD = rejectUnsupportedRequest;
-export const POST = rejectUnsupportedRequest;
 export const PATCH = rejectUnsupportedRequest;
-export const DELETE = rejectUnsupportedRequest;
 export const OPTIONS = rejectUnsupportedRequest;
