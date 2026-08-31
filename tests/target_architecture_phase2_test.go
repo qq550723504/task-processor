@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -11,6 +12,69 @@ import (
 	"strings"
 	"testing"
 )
+
+const temporalSDKClientImport = "go.temporal.io/sdk/client"
+
+func temporalSDKDialViolations(root, ownerRoot string) ([]string, error) {
+	var violations []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		aliases := make(map[string]struct{})
+		for _, spec := range file.Imports {
+			importPath, err := strconv.Unquote(spec.Path.Value)
+			if err != nil {
+				return fmt.Errorf("decode import in %s: %w", path, err)
+			}
+			if importPath != temporalSDKClientImport {
+				continue
+			}
+			if spec.Name != nil && spec.Name.Name == "." {
+				violations = append(violations, fmt.Sprintf("%s dot-imports %s", filepath.ToSlash(path), temporalSDKClientImport))
+				continue
+			}
+			alias := "client"
+			if spec.Name != nil {
+				alias = spec.Name.Name
+			}
+			if alias != "_" {
+				aliases[alias] = struct{}{}
+			}
+		}
+		if pathIsWithin(path, ownerRoot) {
+			return nil
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || (selector.Sel.Name != "Dial" && selector.Sel.Name != "DialContext") {
+				return true
+			}
+			qualifier, ok := selector.X.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			if _, ok := aliases[qualifier.Name]; ok {
+				violations = append(violations, fmt.Sprintf("%s references %s.%s outside internal/platform/temporal", filepath.ToSlash(path), qualifier.Name, selector.Sel.Name))
+			}
+			return true
+		})
+		return nil
+	})
+	return violations, err
+}
+
+func pathIsWithin(path, root string) bool {
+	relative, err := filepath.Rel(root, path)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
 
 func TestProductListingRepositoryBuildersDoNotCallDirectAutoMigrate(t *testing.T) {
 	for _, root := range []string{
@@ -51,6 +115,151 @@ func TestProductListingRepositoryBuildersDoNotCallDirectAutoMigrate(t *testing.T
 		})
 		if err != nil {
 			t.Fatalf("scan %s: %v", root, err)
+		}
+	}
+}
+
+func TestTemporalSDKDialOwnershipScannerRejectsAliasesAndDotImports(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		source string
+	}{
+		{
+			name: "aliased Dial",
+			source: `package fixture
+import temporalclient "go.temporal.io/sdk/client"
+func connect() { _, _ = temporalclient.Dial(temporalclient.Options{}) }
+`,
+		},
+		{
+			name: "aliased DialContext",
+			source: `package fixture
+import (
+	"context"
+	temporalclient "go.temporal.io/sdk/client"
+)
+func connect(ctx context.Context) { _, _ = temporalclient.DialContext(ctx, temporalclient.Options{}) }
+`,
+		},
+		{
+			name: "indirect DialContext alias",
+			source: `package fixture
+import (
+	"context"
+	temporalclient ` + "`go.temporal.io/sdk/client`" + `
+)
+func connect(ctx context.Context) {
+	dial := temporalclient.DialContext
+	_, _ = dial(ctx, temporalclient.Options{})
+}
+`,
+		},
+		{
+			name: "escaped SDK import",
+			source: `package fixture
+import temporalclient "go.temporal.io/sdk/\x63lient"
+func connect() { _, _ = temporalclient.Dial(temporalclient.Options{}) }
+`,
+		},
+		{
+			name: "dot import",
+			source: `package fixture
+import . "go.temporal.io/sdk/client"
+func connect() { _, _ = Dial(Options{}) }
+`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "app", "runtime", "fixture.go")
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(test.source), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			violations, err := temporalSDKDialViolations(root, filepath.Join(root, "platform", "temporal"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(violations) == 0 {
+				t.Fatal("scanner accepted Temporal SDK dial construction outside platform/temporal")
+			}
+		})
+	}
+}
+
+func TestTemporalSDKDialOwnershipScannerAllowsPlatformOwner(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "platform", "temporal", "client.go")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := `package temporal
+import (
+	"context"
+	sdkclient "go.temporal.io/sdk/client"
+)
+func connect(ctx context.Context) { _, _ = sdkclient.DialContext(ctx, sdkclient.Options{}) }
+`
+	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	violations, err := temporalSDKDialViolations(root, filepath.Join(root, "platform", "temporal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 0 {
+		t.Fatalf("allowed platform Temporal dial violations = %v", violations)
+	}
+}
+
+func TestTemporalSDKDialOwnershipScannerRejectsDotImportInsidePlatformOwner(t *testing.T) {
+	root := t.TempDir()
+	ownerRoot := filepath.Join(root, "platform", "temporal")
+	path := filepath.Join(ownerRoot, "client.go")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := `package temporal
+import . "go.temporal.io/sdk/client"
+func connect() { _, _ = Dial(Options{}) }
+`
+	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	violations, err := temporalSDKDialViolations(root, ownerRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) == 0 {
+		t.Fatal("scanner accepted a dot import in the platform Temporal owner")
+	}
+}
+
+func TestTemporalSDKDialConstructionOwnedByPlatform(t *testing.T) {
+	internalRoot := filepath.Join("..", "internal")
+	violations, err := temporalSDKDialViolations(internalRoot, filepath.Join(internalRoot, "platform", "temporal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, violation := range violations {
+		t.Error(violation)
+	}
+}
+
+func TestPhase2TemporalPlatformSDKClientAllowlistIsFileScoped(t *testing.T) {
+	allowedFiles := temporalPlatformSDKClientAllowedFiles()
+	for _, allowed := range []string{"client.go", "client_test.go"} {
+		path := filepath.Join("..", "internal", "platform", "temporal", allowed)
+		if !pathAllowed(path, allowedFiles) {
+			t.Errorf("Temporal SDK client allowlist rejected %s", path)
+		}
+	}
+	for _, rejected := range []string{"worker.go", "workflow.go", "activity.go", "nested/client.go"} {
+		path := filepath.Join("..", "internal", "platform", "temporal", filepath.FromSlash(rejected))
+		if pathAllowed(path, allowedFiles) {
+			t.Errorf("Temporal SDK client allowlist accepted unrelated platform file %s", path)
 		}
 	}
 }

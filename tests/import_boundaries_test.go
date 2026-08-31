@@ -4806,7 +4806,7 @@ func commandEntrypointBannedPrefixes() []string {
 }
 
 func TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters(t *testing.T) {
-	allowedFiles := map[string]struct{}{
+	orchestrationAllowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "app", "runtime")) + string(os.PathSeparator):                  {},
 		filepath.Clean(filepath.Join("..", "internal", "imageagent", "temporal")) + string(os.PathSeparator):          {},
 		filepath.Clean(filepath.Join("..", "internal", "listingkit", "temporal")) + string(os.PathSeparator):          {},
@@ -4816,13 +4816,31 @@ func TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters(t *testing.T) {
 		`"go.temporal.io/api/enums/v1"`,
 		`"go.temporal.io/api/serviceerror"`,
 		`"go.temporal.io/sdk/activity"`,
-		`"go.temporal.io/sdk/client"`,
 		`"go.temporal.io/sdk/converter"`,
 		`"go.temporal.io/sdk/temporal"`,
 		`"go.temporal.io/sdk/testsuite"`,
 		`"go.temporal.io/sdk/worker"`,
 		`"go.temporal.io/sdk/workflow"`,
-	}, allowedFiles)
+	}, orchestrationAllowedFiles)
+
+	platformClientFiles := temporalPlatformSDKClientAllowedFiles()
+	clientAllowedFiles := make(map[string]struct{}, len(orchestrationAllowedFiles)+len(platformClientFiles))
+	for path := range orchestrationAllowedFiles {
+		clientAllowedFiles[path] = struct{}{}
+	}
+	for path := range platformClientFiles {
+		clientAllowedFiles[path] = struct{}{}
+	}
+	assertNoBannedImports(t, filepath.Join("..", "internal"), []string{
+		`"go.temporal.io/sdk/client"`,
+	}, clientAllowedFiles)
+}
+
+func temporalPlatformSDKClientAllowedFiles() map[string]struct{} {
+	return map[string]struct{}{
+		filepath.Clean(filepath.Join("..", "internal", "platform", "temporal", "client.go")):      {},
+		filepath.Clean(filepath.Join("..", "internal", "platform", "temporal", "client_test.go")): {},
+	}
 }
 
 func TestTemporalRuntimePackagesDoNotImportHTTPAPI(t *testing.T) {
