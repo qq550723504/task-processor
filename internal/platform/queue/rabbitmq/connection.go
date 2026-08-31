@@ -13,6 +13,21 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type connectionRuntime interface {
+	connect(*ConnectionManager) error
+	startMonitor(*ConnectionManager)
+}
+
+type productionConnectionRuntime struct{}
+
+func (productionConnectionRuntime) connect(manager *ConnectionManager) error {
+	return manager.connect()
+}
+
+func (productionConnectionRuntime) startMonitor(manager *ConnectionManager) {
+	go manager.monitorConnection()
+}
+
 // ConnectionManager RabbitMQ连接管理器
 type ConnectionManager struct {
 	url        string
@@ -25,8 +40,7 @@ type ConnectionManager struct {
 	reconnectInterval time.Duration
 	maxReconnectTries int
 	retryStrategy     RetryStrategy
-	connectAttempt    func() error
-	startMonitor      func()
+	runtime           connectionRuntime
 
 	// 生命周期管理
 	ctx    context.Context
@@ -76,21 +90,23 @@ type ConnectionStateListener func(oldState, newState ConnectionState)
 
 // NewConnectionManager 创建连接管理器
 func NewConnectionManager(config ConnectionConfig, logger *logrus.Logger) *ConnectionManager {
+	return newConnectionManager(config, logger, productionConnectionRuntime{})
+}
+
+func newConnectionManager(config ConnectionConfig, logger *logrus.Logger, runtime connectionRuntime) *ConnectionManager {
 	// 设置默认值
 	config.SetDefaults()
 
-	manager := &ConnectionManager{
+	return &ConnectionManager{
 		url:               config.URL,
 		logger:            logger,
 		reconnectInterval: config.ReconnectInterval,
 		maxReconnectTries: config.MaxReconnectTries,
 		retryStrategy:     NewDefaultRetryStrategy(config.MaxReconnectTries),
+		runtime:           runtime,
 		stateListeners:    make([]ConnectionStateListener, 0),
 		errorCollector:    NewErrorCollector(500),
 	}
-	manager.connectAttempt = manager.connect
-	manager.startMonitor = func() { go manager.monitorConnection() }
-	return manager
 }
 
 // AddStateListener 添加状态监听器
@@ -132,7 +148,7 @@ func (cm *ConnectionManager) Connect(ctx context.Context) error {
 	cm.notifyStateChange(ConnectionStateDisconnected, ConnectionStateConnecting)
 
 	// 建立连接
-	if err := cm.attemptConnect(); err != nil {
+	if err := cm.runtime.connect(cm); err != nil {
 		cm.errorCollector.Collect(ErrorTypeConnection, "", "", err, "建立连接失败")
 		cm.notifyStateChange(ConnectionStateConnecting, ConnectionStateDisconnected)
 		return fmt.Errorf("建立RabbitMQ连接失败: %w", err)
@@ -142,7 +158,7 @@ func (cm *ConnectionManager) Connect(ctx context.Context) error {
 	cm.notifyStateChange(ConnectionStateConnecting, ConnectionStateConnected)
 
 	// 启动连接监控
-	cm.launchMonitor()
+	cm.runtime.startMonitor(cm)
 
 	cm.logger.Info("RabbitMQ连接建立成功")
 	return nil
@@ -166,21 +182,6 @@ func (cm *ConnectionManager) connect() error {
 	}
 
 	return nil
-}
-
-func (cm *ConnectionManager) attemptConnect() error {
-	if cm.connectAttempt != nil {
-		return cm.connectAttempt()
-	}
-	return cm.connect()
-}
-
-func (cm *ConnectionManager) launchMonitor() {
-	if cm.startMonitor != nil {
-		cm.startMonitor()
-		return
-	}
-	go cm.monitorConnection()
 }
 
 // monitorConnection 监控连接状态
@@ -240,7 +241,7 @@ func (cm *ConnectionManager) reconnect() {
 		default:
 		}
 
-		if err := cm.attemptConnect(); err != nil {
+		if err := cm.runtime.connect(cm); err != nil {
 			// 收集错误
 			cm.errorCollector.Collect(ErrorTypeConnection, "", "", err, fmt.Sprintf("重连尝试%d失败", attempt+1))
 
@@ -265,7 +266,7 @@ func (cm *ConnectionManager) reconnect() {
 		cm.executeReconnectCallbacks()
 
 		// 重新启动监控
-		cm.launchMonitor()
+		cm.runtime.startMonitor(cm)
 		return
 	}
 
