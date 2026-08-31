@@ -367,7 +367,7 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 	if errors.Is(err, ErrNotFound) {
 		return StoreMutationResult{}, ErrNotFound
 	}
-	if err != nil || store == nil || store.OrganizationID() != request.organizationID || store.ID() != request.storeID {
+	if err != nil || !matchesStoreScope(store, request.organizationID, request.storeID) {
 		return StoreMutationResult{}, dependencyError(err)
 	}
 	replayed := false
@@ -407,18 +407,19 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 			}
 			if err := s.repository.Save(ctx, request.organizationID, store, request.expectedVersion); err != nil {
 				resolved, readErr := s.repository.Get(ctx, request.organizationID, request.storeID)
-				if readErr == nil && resolved != nil && resolved.OrganizationID() == request.organizationID && resolved.Version() == request.expectedVersion+1 && request.matches(resolved) {
+				if readErr != nil || !matchesStoreScope(resolved, request.organizationID, request.storeID) {
+					return StoreMutationResult{}, dependencyError(err)
+				}
+				if resolved.Version() == request.expectedVersion+1 && request.matches(resolved) {
 					store = resolved
 					replayed = true
-				} else if readErr == nil && resolved != nil && resolved.Version() == request.expectedVersion {
+				} else if resolved.Version() == request.expectedVersion {
 					if errors.Is(err, ErrAlreadyExists) {
 						return StoreMutationResult{}, ErrAlreadyExists
 					}
 					return StoreMutationResult{}, dependencyError(err)
-				} else if readErr == nil && resolved != nil {
-					return StoreMutationResult{}, ErrVersionConflict
 				} else {
-					return StoreMutationResult{}, dependencyError(err)
+					return StoreMutationResult{}, ErrVersionConflict
 				}
 			}
 		} else if request.noOpAuditAction != "" {
@@ -453,6 +454,10 @@ func validateUpdateIntent(event *AuditEvent, request mutationRequest, store *Sto
 	return nil
 }
 
+func matchesStoreScope(store *Store, organizationID, storeID string) bool {
+	return store != nil && store.OrganizationID() == organizationID && store.ID() == storeID
+}
+
 func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (DeleteStoreResult, error) {
 	normalized, err := normalizeDeleteStoreRequest(request)
 	if err != nil {
@@ -482,7 +487,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 		}
 		return DeleteStoreResult{StoreID: normalized.StoreID, Version: version, Replayed: true}, nil
 	}
-	if getErr != nil || store == nil || store.OrganizationID() != normalized.OrganizationID || store.ID() != normalized.StoreID {
+	if getErr != nil || !matchesStoreScope(store, normalized.OrganizationID, normalized.StoreID) {
 		return DeleteStoreResult{}, dependencyError(getErr)
 	}
 	replayed := false
@@ -514,7 +519,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 		}
 		if err := s.repository.Save(ctx, normalized.OrganizationID, store, normalized.ExpectedVersion); err != nil {
 			resolved, readErr := s.repository.Get(ctx, normalized.OrganizationID, normalized.StoreID)
-			if readErr != nil || resolved == nil || resolved.Version() != normalized.ExpectedVersion+1 || resolved.LifecycleStatus() != StoreStatusDeleting || resolved.DeleteOperationKey() != normalized.OperationKey {
+			if readErr != nil || !matchesStoreScope(resolved, normalized.OrganizationID, normalized.StoreID) || resolved.Version() != normalized.ExpectedVersion+1 || resolved.LifecycleStatus() != StoreStatusDeleting || resolved.DeleteOperationKey() != normalized.OperationKey {
 				return DeleteStoreResult{}, dependencyError(err)
 			}
 			store = resolved

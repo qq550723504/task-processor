@@ -983,6 +983,61 @@ func TestServiceUpdateAmbiguousSaveWithUnchangedDurableStateIsDependencyUnavaila
 	}
 }
 
+func TestServiceUpdateRejectsWrongIdentityAcrossPostSaveReadbackClassifications(t *testing.T) {
+	for _, branch := range []struct {
+		name    string
+		saveErr error
+		build   func(*storecenter.Store) *storecenter.Store
+	}{
+		{"would-be replay", errors.New("ambiguous save"), func(store *storecenter.Store) *storecenter.Store {
+			readback := cloneStore(store)
+			if _, err := readback.EditBasic("After", "MY", "editor", readback.UpdatedAt().Add(time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			return readback
+		}},
+		{"would-be already exists", storecenter.ErrAlreadyExists, func(store *storecenter.Store) *storecenter.Store { return cloneStore(store) }},
+		{"would-be version conflict", errors.New("ambiguous save"), func(store *storecenter.Store) *storecenter.Store {
+			snapshot := store.Snapshot()
+			snapshot.Name, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = "Diverged", snapshot.Version+2, "other-editor", snapshot.UpdatedAt.Add(2*time.Minute)
+			readback, err := storecenter.RehydrateStore(snapshot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return readback
+		}},
+	} {
+		for _, identity := range []string{"organization", "store ID"} {
+			t.Run(branch.name+"/wrong "+identity, func(t *testing.T) {
+				store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+				readback := branch.build(store)
+				snapshot := readback.Snapshot()
+				if identity == "organization" {
+					snapshot.OrganizationID = "org-b"
+				} else {
+					snapshot.ID = uuid.NewString()
+				}
+				readback, err := storecenter.RehydrateStore(snapshot)
+				if err != nil {
+					t.Fatal(err)
+				}
+				repository := newStoreRepositoryFake()
+				repository.stores["org-a/"+store.ID()] = cloneStore(store)
+				repository.saveErr = branch.saveErr
+				repository.storeOnSaveError = readback
+				service, err := storecenter.NewService(repository, &quotaLedgerFake{}, newAuditRepositoryFake(), &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = service.Update(context.Background(), storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "editor", StoreID: store.ID(), ExpectedVersion: store.Version(), Name: "After", Region: "MY"})
+				if !errors.Is(err, storecenter.ErrDependencyUnavailable) || errors.Is(err, storecenter.ErrAlreadyExists) || errors.Is(err, storecenter.ErrVersionConflict) {
+					t.Fatalf("Update() with wrong %s %s readback = %v, want redacted dependency error", identity, branch.name, err)
+				}
+			})
+		}
+	}
+}
+
 func TestServiceDeleteRejectsCorruptDurableDeallocationAudit(t *testing.T) {
 	storeID := "00000000-0000-4000-8000-000000000508"
 	operationKey := uuid.NewString()
@@ -1225,6 +1280,46 @@ func TestServiceDeleteRejectsMismatchedDeallocationResult(t *testing.T) {
 	current, getErr := repository.Get(context.Background(), "org-a", store.ID())
 	if getErr != nil || current.LifecycleStatus() != storecenter.StoreStatusDeleting {
 		t.Fatalf("mismatched deallocation durable store = %#v, %v", current, getErr)
+	}
+}
+
+func TestServiceDeleteRejectsWrongIdentityAfterAmbiguousBeginDeleteSave(t *testing.T) {
+	for _, identity := range []string{"organization", "store ID"} {
+		t.Run("wrong "+identity, func(t *testing.T) {
+			repository := newStoreRepositoryFake()
+			store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")
+			repository.stores["org-a/"+store.ID()] = cloneStore(store)
+			ledger := &quotaLedgerFake{allocation: listingsubscription.StoreQuotaAllocation{OrganizationID: "org-a", AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), Status: listingsubscription.StoreQuotaAllocated}}
+			audit := newAuditRepositoryFake()
+			operationKey := uuid.NewString()
+			readback := cloneStore(store)
+			if err := readback.BeginDelete(operationKey, "admin", readback.UpdatedAt().Add(time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			snapshot := readback.Snapshot()
+			if identity == "organization" {
+				snapshot.OrganizationID = "org-b"
+			} else {
+				snapshot.ID = uuid.NewString()
+			}
+			readback, err := storecenter.RehydrateStore(snapshot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			repository.saveErr = errors.New("ambiguous save")
+			repository.storeOnSaveError = readback
+			service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = service.Delete(context.Background(), storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "admin", StoreID: store.ID(), ExpectedVersion: store.Version(), OperationKey: operationKey})
+			if !errors.Is(err, storecenter.ErrDependencyUnavailable) || ledger.deallocateCalls != 0 || repository.softDeleteCalls != 0 {
+				t.Fatalf("Delete() wrong %s readback = %v dealloc=%d soft-delete=%d", identity, err, ledger.deallocateCalls, repository.softDeleteCalls)
+			}
+			if marked := audit.eventFor("org-a", operationKey, storecenter.AuditActionStoreMarkedDeleting); marked.Action != "" {
+				t.Fatalf("wrong %s readback recorded false durable success: %+v", identity, marked)
+			}
+		})
 	}
 }
 
@@ -1691,6 +1786,7 @@ type storeRepositoryFake struct {
 	getErr                       error
 	getErrAfterCreate            error
 	saveErr                      error
+	storeOnSaveError             *storecenter.Store
 	persistBeforeCreateError     bool
 	persistBeforeSaveError       bool
 	createCalls                  int
@@ -1771,7 +1867,9 @@ func (f *storeRepositoryFake) Save(_ context.Context, organizationID string, sto
 	defer f.mu.Unlock()
 	f.saveCalls++
 	if f.saveErr != nil {
-		if f.persistBeforeSaveError {
+		if f.storeOnSaveError != nil {
+			f.stores[organizationID+"/"+store.ID()] = cloneStore(f.storeOnSaveError)
+		} else if f.persistBeforeSaveError {
 			f.stores[organizationID+"/"+store.ID()] = cloneStore(store)
 		}
 		return f.saveErr
