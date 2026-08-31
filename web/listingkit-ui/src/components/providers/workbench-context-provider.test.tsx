@@ -37,10 +37,13 @@ function ContextProbe() {
   return (
     <div>
       <p>user:{context.user?.id ?? "none"}</p>
+      <p>home:{context.homeOrganizationId ?? "none"}</p>
       <p>organization:{context.effectiveOrganization?.name ?? "none"}</p>
       <p>roles:{context.roles.join(",") || "none"}</p>
       <p>selection:{String(context.selectionRequired)}</p>
-      <button onClick={() => context.switchOrganization("org-b")}>switch</button>
+      <button onClick={() => context.switchOrganization("org-b")}>
+        switch
+      </button>
     </div>
   );
 }
@@ -80,7 +83,10 @@ describe("WorkbenchContextProvider", () => {
     renderProvider();
 
     expect(screen.getByText("loading")).toBeInTheDocument();
-    expect(await screen.findByText("organization:硕米科技")).toBeInTheDocument();
+    expect(
+      await screen.findByText("organization:硕米科技"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("home:org-a")).toBeInTheDocument();
     expect(screen.getByText("roles:org-a-admin")).toBeInTheDocument();
     expect(screen.queryByText(/org-b-viewer/)).not.toBeInTheDocument();
   });
@@ -96,8 +102,7 @@ describe("WorkbenchContextProvider", () => {
     const sentinelStateWhenNextContextWasInstalled: unknown[] = [];
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
       if (
-        event.query.queryHash ===
-          JSON.stringify(WORKBENCH_CONTEXT_QUERY_KEY) &&
+        event.query.queryHash === JSON.stringify(WORKBENCH_CONTEXT_QUERY_KEY) &&
         (event.query.state.data as typeof ORG_B_CONTEXT | undefined)
           ?.effectiveOrganizationId === "org-b"
       ) {
@@ -111,7 +116,10 @@ describe("WorkbenchContextProvider", () => {
     await screen.findByText("organization:硕米科技");
     await userEvent.click(screen.getByRole("button", { name: "switch" }));
 
-    expect(await screen.findByText("organization:星海贸易")).toBeInTheDocument();
+    expect(
+      await screen.findByText("organization:星海贸易"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("home:org-a")).toBeInTheDocument();
     expect(screen.getByText("roles:org-b-viewer")).toBeInTheDocument();
     expect(
       queryClient.getQueryData(["workbench", "org-a", "sentinel"]),
@@ -155,7 +163,9 @@ describe("WorkbenchContextProvider", () => {
     expect(
       queryClient.getQueryData(["workbench", "org-a", "sentinel"]),
     ).toBeUndefined();
-    expect(queryClient.getQueryData(WORKBENCH_CONTEXT_QUERY_KEY)).toBeUndefined();
+    expect(
+      queryClient.getQueryData(WORKBENCH_CONTEXT_QUERY_KEY),
+    ).toBeUndefined();
     expect(screen.queryByText("roles:org-a-admin")).not.toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { parseTree, type ParseError } from "jsonc-parser";
 
+import {
+  parseWorkbenchContextPayload,
+  parseWorkbenchErrorEnvelopePayload,
+} from "@/lib/api/workbench-context";
+
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
 
 const DEFAULT_SERVICE_API_BASE = "http://localhost:8085/api/v1";
@@ -20,7 +25,11 @@ export async function buildWorkbenchUpstreamRequest(
 ): Promise<WorkbenchUpstreamRequest | Response> {
   const route = resolveAllowlistedRoute(request.method, path);
   if (!route) {
-    return protocolError(404, "INVALID_REQUEST", "Workbench route is not allowed");
+    return protocolError(
+      404,
+      "INVALID_REQUEST",
+      "Workbench route is not allowed",
+    );
   }
 
   const headers = new Headers({
@@ -45,10 +54,18 @@ export async function buildWorkbenchUpstreamRequest(
       );
     } catch (error) {
       if (error instanceof BodyReadTimeoutError) {
-        return protocolError(408, "INVALID_REQUEST", "Request body read timed out");
+        return protocolError(
+          408,
+          "INVALID_REQUEST",
+          "Request body read timed out",
+        );
       }
       if (error instanceof BodyTooLargeError) {
-        return protocolError(413, "INVALID_REQUEST", "Request body is too large");
+        return protocolError(
+          413,
+          "INVALID_REQUEST",
+          "Request body is too large",
+        );
       }
       return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
     }
@@ -66,12 +83,20 @@ export async function buildWorkbenchUpstreamRequest(
       WORKBENCH_COOKIE_NAME,
     );
     if (selectedCookie === null) {
-      return protocolError(400, "INVALID_REQUEST", "Selection cookie is invalid");
+      return protocolError(
+        400,
+        "INVALID_REQUEST",
+        "Selection cookie is invalid",
+      );
     }
     const selectedOrganization = selectedCookie.trim();
     if (selectedOrganization) {
       if (!isSafeOrganizationId(selectedOrganization)) {
-        return protocolError(400, "INVALID_REQUEST", "Selection cookie is invalid");
+        return protocolError(
+          400,
+          "INVALID_REQUEST",
+          "Selection cookie is invalid",
+        );
       }
       headers.set("X-Requested-Organization-ID", selectedOrganization);
     }
@@ -108,45 +133,30 @@ export async function buildWorkbenchBrowserResponse(upstream: Response) {
     );
   }
 
-  const responseHeaders = new Headers();
-  for (const name of ["Content-Type", "Cache-Control", "ETag", "X-Request-ID"]) {
-    const value = upstream.headers.get(name);
-    if (value) {
-      responseHeaders.set(name, value);
-    }
-  }
-
   const payload = parseJSONBody(body);
-  let effectiveOrganizationId: string | null | undefined;
-
-  if (upstream.ok) {
-    if (!payload || !hasOwn(payload, "effectiveOrganizationId")) {
-      return invalidUpstreamResponse();
-    }
-    if (payload.effectiveOrganizationId === null) {
-      effectiveOrganizationId = null;
-    } else if (typeof payload.effectiveOrganizationId === "string") {
-      effectiveOrganizationId = payload.effectiveOrganizationId.trim();
-      if (
-        effectiveOrganizationId &&
-        !isSafeOrganizationId(effectiveOrganizationId)
-      ) {
-        return invalidUpstreamResponse();
-      }
-    } else {
-      return invalidUpstreamResponse();
-    }
+  const parsedContext =
+    upstream.status === 200 ? parseWorkbenchContextPayload(payload) : null;
+  const parsedError =
+    upstream.status >= 400 && upstream.status <= 599
+      ? parseWorkbenchErrorEnvelopePayload(payload)
+      : null;
+  if (upstream.ok ? !parsedContext?.success : !parsedError?.success) {
+    return invalidUpstreamResponse();
   }
 
-  const responseBody = statusAllowsBody(upstream.status)
-    ? Uint8Array.from(body).buffer
-    : null;
-  const response = new NextResponse(responseBody, {
+  const validatedPayload = parsedContext?.success
+    ? parsedContext.data
+    : parsedError?.success
+      ? parsedError.data
+      : null;
+  if (!validatedPayload) return invalidUpstreamResponse();
+  const response = new NextResponse(JSON.stringify(validatedPayload), {
     status: upstream.status,
-    headers: responseHeaders,
+    headers: safeJSONHeaders(),
   });
 
-  if (upstream.ok) {
+  if (parsedContext?.success) {
+    const effectiveOrganizationId = parsedContext.data.effectiveOrganizationId;
     if (effectiveOrganizationId) {
       response.cookies.set(WORKBENCH_COOKIE_NAME, effectiveOrganizationId, {
         httpOnly: true,
@@ -158,8 +168,9 @@ export async function buildWorkbenchBrowserResponse(upstream: Response) {
       clearSelectionCookie(response);
     }
   } else if (
-    payload?.code === "ORGANIZATION_ACCESS_REVOKED" ||
-    payload?.code === "ORGANIZATION_ACCESS_DENIED"
+    parsedError?.success &&
+    (parsedError.data.code === "ORGANIZATION_ACCESS_REVOKED" ||
+      parsedError.data.code === "ORGANIZATION_ACCESS_DENIED")
   ) {
     clearSelectionCookie(response);
   }
@@ -197,11 +208,11 @@ function resolveAllowlistedRoute(method: string, path: string[]) {
 function isSafePathSegment(value: string) {
   return Boolean(
     value &&
-      value !== "." &&
-      value !== ".." &&
-      !value.includes("/") &&
-      !value.includes("\\") &&
-      !value.includes("\0"),
+    value !== "." &&
+    value !== ".." &&
+    !value.includes("/") &&
+    !value.includes("\\") &&
+    !value.includes("\0"),
   );
 }
 
@@ -224,7 +235,11 @@ function parseSwitchOrganizationBody(body: Uint8Array) {
     allowTrailingComma: false,
     disallowComments: true,
   });
-  if (errors.length > 0 || root?.type !== "object" || root.children?.length !== 1) {
+  if (
+    errors.length > 0 ||
+    root?.type !== "object" ||
+    root.children?.length !== 1
+  ) {
     return "";
   }
   const property = root.children[0];
@@ -266,7 +281,10 @@ async function readBodyWithinLimit(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const deadline = timeoutMs
     ? new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => reject(new BodyReadTimeoutError()), timeoutMs);
+        timeout = setTimeout(
+          () => reject(new BodyReadTimeoutError()),
+          timeoutMs,
+        );
       })
     : undefined;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
@@ -314,17 +332,15 @@ function readContentLength(headers: Headers) {
 
 function parseJSONBody(body: Uint8Array) {
   try {
-    const value = JSON.parse(new TextDecoder().decode(body)) as unknown;
+    const value = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(body),
+    ) as unknown;
     return value !== null && typeof value === "object"
       ? (value as Record<string, unknown>)
       : null;
   } catch {
     return null;
   }
-}
-
-function hasOwn(value: object, key: string) {
-  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function isSafeOrganizationId(value: string) {
@@ -349,15 +365,19 @@ function clearSelectionCookie(response: NextResponse) {
   });
 }
 
-function statusAllowsBody(status: number) {
-  return status !== 204 && status !== 205 && status !== 304;
-}
-
 function protocolError(status: number, code: string, message: string) {
   return NextResponse.json(
     { code, message, requestId: "", fieldErrors: [] },
-    { status },
+    { status, headers: safeJSONHeaders() },
   );
+}
+
+function safeJSONHeaders() {
+  return new Headers({
+    "Content-Type": "application/json",
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
 }
 
 class BodyTooLargeError extends Error {}

@@ -20,6 +20,7 @@ import {
 
 type WorkbenchContextValue = {
   user: WorkbenchContext["user"] | null;
+  homeOrganizationId: string | null;
   organizations: WorkbenchOrganization[];
   effectiveOrganization: WorkbenchOrganization | null;
   roles: string[];
@@ -65,12 +66,12 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
 
   const currentContext = blockingError
     ? null
-    : switchedContext ?? contextQuery.data ?? null;
+    : (switchedContext ?? contextQuery.data ?? null);
   const effectiveOrganization = currentContext?.effectiveOrganizationId
-    ? currentContext.organizations.find(
+    ? (currentContext.organizations.find(
         (organization) =>
           organization.id === currentContext.effectiveOrganizationId,
-      ) ?? null
+      ) ?? null)
     : null;
   const queryError = contextQuery.error
     ? normalizeWorkbenchError(contextQuery.error)
@@ -79,12 +80,12 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
   const value = useMemo<WorkbenchContextValue>(
     () => ({
       user: currentContext?.user ?? null,
+      homeOrganizationId: currentContext?.homeOrganizationId ?? null,
       organizations: currentContext?.organizations ?? [],
       effectiveOrganization,
       roles: effectiveOrganization?.roles ?? [],
       selectionRequired: currentContext?.selectionRequired ?? false,
-      isLoading:
-        !blockingError && !switchedContext && contextQuery.isPending,
+      isLoading: !blockingError && !switchedContext && contextQuery.isPending,
       isSwitching: switchMutation.isPending,
       error: queryError,
       blockingError,
@@ -125,10 +126,5 @@ export function useWorkbenchContext() {
 
 function normalizeWorkbenchError(error: unknown) {
   if (error instanceof WorkbenchContextError) return error;
-  return new WorkbenchContextError(
-    0,
-    "WORKBENCH_REQUEST_FAILED",
-    "",
-    [],
-  );
+  return new WorkbenchContextError(0, "WORKBENCH_REQUEST_FAILED", "", []);
 }

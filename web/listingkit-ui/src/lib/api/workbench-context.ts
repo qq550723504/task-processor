@@ -2,23 +2,35 @@ import { z } from "zod";
 
 export const WORKBENCH_CONTEXT_QUERY_KEY = ["workbench-context"] as const;
 
-const nonblankIdSchema = z.string().trim().min(1);
+const safeIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
+
+const safeDisplayNameSchema = z
+  .string()
+  .max(256)
+  .refine((value) => !/[\u0000-\u001f\u007f]/.test(value));
+
+const roleSchema = safeIdSchema;
 
 const organizationSchema = z
   .object({
-    id: nonblankIdSchema,
-    name: z.string(),
-    roles: z.array(z.string()),
+    id: safeIdSchema,
+    name: safeDisplayNameSchema,
+    roles: z.array(roleSchema).max(128),
   })
   .strict();
 
-const workbenchContextSchema = z
+export const workbenchContextSchema = z
   .object({
-    user: z.object({ id: nonblankIdSchema }).strict(),
-    homeOrganizationId: nonblankIdSchema,
-    effectiveOrganizationId: nonblankIdSchema.nullable(),
+    user: z.object({ id: safeIdSchema }).strict(),
+    homeOrganizationId: safeIdSchema,
+    effectiveOrganizationId: safeIdSchema.nullable(),
     selectionRequired: z.boolean(),
-    organizations: z.array(organizationSchema),
+    organizations: z.array(organizationSchema).max(1000),
   })
   .strict()
   .superRefine((context, refinement) => {
@@ -43,19 +55,56 @@ const workbenchContextSchema = z
         path: ["effectiveOrganizationId"],
       });
     }
+    if (
+      context.selectionRequired !==
+      (context.effectiveOrganizationId === null &&
+        context.organizations.length > 1)
+    ) {
+      refinement.addIssue({
+        code: "custom",
+        message: "Selection state must match the effective Organization",
+        path: ["selectionRequired"],
+      });
+    }
   });
 
-const errorEnvelopeSchema = z
+const fieldErrorSchema = z
   .object({
-    code: z.string().trim().min(1),
-    message: z.string(),
-    requestId: z.string(),
-    fieldErrors: z.array(z.unknown()),
+    field: z.string().trim().min(1).max(128),
+    code: z.string().trim().min(1).max(128),
+  })
+  .strict();
+
+export const workbenchErrorEnvelopeSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Z][A-Z0-9_]*$/),
+    message: z.string().max(2048),
+    requestId: z
+      .string()
+      .max(256)
+      .refine((value) => !/[\u0000-\u001f\u007f]/.test(value)),
+    fieldErrors: z.array(fieldErrorSchema).max(128),
   })
   .strict();
 
 export type WorkbenchContext = z.infer<typeof workbenchContextSchema>;
 export type WorkbenchOrganization = WorkbenchContext["organizations"][number];
+export type WorkbenchErrorEnvelope = z.infer<
+  typeof workbenchErrorEnvelopeSchema
+>;
+
+export function parseWorkbenchContextPayload(payload: unknown) {
+  return workbenchContextSchema.safeParse(payload);
+}
+
+export function parseWorkbenchErrorEnvelopePayload(payload: unknown) {
+  return workbenchErrorEnvelopeSchema.safeParse(payload);
+}
 
 export class WorkbenchContextError extends Error {
   constructor(
@@ -102,17 +151,12 @@ async function requestWorkbenchContext(
   try {
     response = await fetch(input, init);
   } catch {
-    throw new WorkbenchContextError(
-      0,
-      "WORKBENCH_REQUEST_FAILED",
-      "",
-      [],
-    );
+    throw new WorkbenchContextError(0, "WORKBENCH_REQUEST_FAILED", "", []);
   }
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const parsedError = errorEnvelopeSchema.safeParse(payload);
+    const parsedError = parseWorkbenchErrorEnvelopePayload(payload);
     if (!parsedError.success) {
       throw invalidResponseError(response.status);
     }
@@ -124,7 +168,7 @@ async function requestWorkbenchContext(
     );
   }
 
-  const parsedContext = workbenchContextSchema.safeParse(payload);
+  const parsedContext = parseWorkbenchContextPayload(payload);
   if (!parsedContext.success) {
     throw invalidResponseError(response.status);
   }

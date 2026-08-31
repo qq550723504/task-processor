@@ -52,7 +52,10 @@ describe("WorkspaceAppShell", () => {
   });
 
   it("shows a bounded loading shell before rendering Organization children", () => {
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockReturnValue(new Promise(() => {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockReturnValue(new Promise(() => {})),
+    );
 
     renderShell();
 
@@ -98,9 +101,10 @@ describe("WorkspaceAppShell", () => {
     });
     expect(mobileNavigationButton).toHaveAttribute("aria-expanded", "false");
     expect(mobileNavigationButton).toHaveClass("md:hidden");
-    expect(
-      screen.getByRole("button", { name: "折叠桌面导航" }),
-    ).toHaveClass("hidden", "md:inline-flex");
+    expect(screen.getByRole("button", { name: "折叠桌面导航" })).toHaveClass(
+      "hidden",
+      "md:inline-flex",
+    );
     expect(
       screen.queryByRole("navigation", { name: "移动工作台导航" }),
     ).not.toBeInTheDocument();
@@ -126,6 +130,29 @@ describe("WorkspaceAppShell", () => {
     expect(
       screen.queryByRole("navigation", { name: "移动工作台导航" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("persistently identifies delegated operation with safe Organization names", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          Response.json({
+            ...ACTIVE_CONTEXT,
+            effectiveOrganizationId: "org-b",
+          }),
+        ),
+    );
+
+    renderShell();
+
+    expect(
+      await screen.findByRole("status", { name: "企业代管状态" }),
+    ).toHaveTextContent("正在代管星海贸易");
+    expect(
+      screen.getByRole("status", { name: "企业代管状态" }),
+    ).toHaveTextContent("账号归属硕米科技");
   });
 
   it("keeps the switcher available but withholds scoped children when selection is required", async () => {
@@ -156,9 +183,14 @@ describe("WorkspaceAppShell", () => {
       selectionRequired: false,
       organizations: [],
     };
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockImplementation(() =>
-      Promise.resolve(Response.json(noOrganizationContext)),
-    ));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof fetch>()
+        .mockImplementation(() =>
+          Promise.resolve(Response.json(noOrganizationContext)),
+        ),
+    );
 
     const firstRender = renderShell();
 

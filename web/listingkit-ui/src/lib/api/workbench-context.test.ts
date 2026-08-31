@@ -79,7 +79,9 @@ describe("workbench context API", () => {
       vi.fn<typeof fetch>().mockResolvedValue(Response.json(payload)),
     );
 
-    const error = await fetchWorkbenchContext().catch((reason: unknown) => reason);
+    const error = await fetchWorkbenchContext().catch(
+      (reason: unknown) => reason,
+    );
 
     expect(error).toBeInstanceOf(WorkbenchContextError);
     expect(error).toMatchObject({
@@ -106,7 +108,9 @@ describe("workbench context API", () => {
       ),
     );
 
-    const error = await fetchWorkbenchContext().catch((reason: unknown) => reason);
+    const error = await fetchWorkbenchContext().catch(
+      (reason: unknown) => reason,
+    );
 
     expect(error).toBeInstanceOf(WorkbenchContextError);
     expect(error).toMatchObject({
@@ -120,12 +124,16 @@ describe("workbench context API", () => {
   it("uses a deterministic client code for malformed error JSON without exposing raw text", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        new Response("private upstream diagnostics", { status: 502 }),
-      ),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response("private upstream diagnostics", { status: 502 }),
+        ),
     );
 
-    const error = await fetchWorkbenchContext().catch((reason: unknown) => reason);
+    const error = await fetchWorkbenchContext().catch(
+      (reason: unknown) => reason,
+    );
 
     expect(error).toBeInstanceOf(WorkbenchContextError);
     expect(error).toMatchObject({
@@ -143,7 +151,9 @@ describe("workbench context API", () => {
       vi.fn<typeof fetch>().mockRejectedValue(new Error("socket secret")),
     );
 
-    const error = await fetchWorkbenchContext().catch((reason: unknown) => reason);
+    const error = await fetchWorkbenchContext().catch(
+      (reason: unknown) => reason,
+    );
 
     expect(error).toBeInstanceOf(WorkbenchContextError);
     expect(error).toMatchObject({

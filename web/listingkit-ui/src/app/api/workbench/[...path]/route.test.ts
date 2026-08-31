@@ -11,7 +11,12 @@ const authState = vi.hoisted(() => ({
 
 const authMocks = vi.hoisted(() => ({
   wrapper: vi.fn(
-    (handler: (request: NextRequest & { auth?: unknown }, context: unknown) => unknown) =>
+    (
+      handler: (
+        request: NextRequest & { auth?: unknown },
+        context: unknown,
+      ) => unknown,
+    ) =>
       (request: NextRequest, context: unknown) =>
         handler(Object.assign(request, { auth: authState.session }), context),
   ),
@@ -30,11 +35,7 @@ import * as workbenchRoute from "@/app/api/workbench/[...path]/route";
 
 const { GET, PUT } = workbenchRoute;
 
-async function call(
-  handler: typeof GET,
-  request: NextRequest,
-  path: string[],
-) {
+async function call(handler: typeof GET, request: NextRequest, path: string[]) {
   const response = await handler(request, {
     params: Promise.resolve({ path }),
   });
@@ -150,8 +151,11 @@ describe("/api/workbench BFF", () => {
         ["context"],
       );
 
-      expect(response.status).toBe(302);
+      expect(response.status).toBe(502);
       expect(response.headers.get("Location")).toBeNull();
+      await expect(response.json()).resolves.toMatchObject({
+        code: "DEPENDENCY_UNAVAILABLE",
+      });
       expect(redirectTargetHits).toBe(0);
     } finally {
       await source.close();
@@ -168,7 +172,13 @@ describe("/api/workbench BFF", () => {
         homeOrganizationId: "org-a",
         effectiveOrganizationId: "org-canonical",
         selectionRequired: false,
-        organizations: [],
+        organizations: [
+          {
+            id: "org-canonical",
+            name: "Canonical Organization",
+            roles: ["listingkit_viewer"],
+          },
+        ],
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -201,9 +211,9 @@ describe("/api/workbench BFF", () => {
     };
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>().mockResolvedValueOnce(
-        Response.json(payload, { status: 400 }),
-      ),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json(payload, { status: 400 })),
     );
 
     const response = await call(
@@ -231,7 +241,9 @@ describe("/api/workbench BFF", () => {
 
     const response = await call(
       GET,
-      new NextRequest("http://localhost/api/workbench/https://attacker.example"),
+      new NextRequest(
+        "http://localhost/api/workbench/https://attacker.example",
+      ),
       ["https:", "", "attacker.example"],
     );
 

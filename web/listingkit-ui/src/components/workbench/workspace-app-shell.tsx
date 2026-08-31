@@ -121,6 +121,7 @@ function WorkbenchFrame({
   pathname: string;
 }) {
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const context = useWorkbenchContext();
 
   return (
     <SidebarProvider>
@@ -134,10 +135,7 @@ function WorkbenchFrame({
           <SidebarGroup>
             <SidebarGroupLabel>工作</SidebarGroupLabel>
             <SidebarGroupContent>
-              <WorkbenchNavigation
-                ariaLabel="工作台导航"
-                pathname={pathname}
-              />
+              <WorkbenchNavigation ariaLabel="工作台导航" pathname={pathname} />
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
@@ -166,7 +164,12 @@ function WorkbenchFrame({
             aria-label="折叠桌面导航"
             className="hidden md:inline-flex"
           />
-          <div className="ml-auto">
+          <div className="ml-auto flex min-w-0 items-center gap-3">
+            <DelegatedOperationIndicator
+              effectiveOrganization={context.effectiveOrganization}
+              homeOrganizationId={context.homeOrganizationId}
+              organizations={context.organizations}
+            />
             <OrganizationSwitcher />
           </div>
         </header>
@@ -183,6 +186,43 @@ function WorkbenchFrame({
         <main className="min-w-0 flex-1 bg-muted/20">{children}</main>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+function DelegatedOperationIndicator({
+  effectiveOrganization,
+  homeOrganizationId,
+  organizations,
+}: {
+  effectiveOrganization: ReturnType<
+    typeof useWorkbenchContext
+  >["effectiveOrganization"];
+  homeOrganizationId: string | null;
+  organizations: ReturnType<typeof useWorkbenchContext>["organizations"];
+}) {
+  if (
+    !effectiveOrganization ||
+    !homeOrganizationId ||
+    effectiveOrganization.id === homeOrganizationId
+  ) {
+    return null;
+  }
+  const homeOrganizationName =
+    organizations.find((organization) => organization.id === homeOrganizationId)
+      ?.name || "其他归属企业";
+  return (
+    <p
+      aria-label="企业代管状态"
+      className="min-w-0 text-right text-xs font-medium text-amber-700 dark:text-amber-300"
+      role="status"
+    >
+      <span className="block truncate">
+        正在代管{effectiveOrganization.name}
+      </span>
+      <span className="block truncate text-muted-foreground">
+        账号归属{homeOrganizationName}
+      </span>
+    </p>
   );
 }
 
@@ -224,10 +264,7 @@ function WorkbenchNavigation({
   );
 }
 
-function isActiveWorkbenchNavItem(
-  pathname: string,
-  item: WorkbenchNavItem,
-) {
+function isActiveWorkbenchNavItem(pathname: string, item: WorkbenchNavItem) {
   return item.match === "prefix"
     ? pathname === item.href || pathname.startsWith(`${item.href}/`)
     : pathname === item.href;
