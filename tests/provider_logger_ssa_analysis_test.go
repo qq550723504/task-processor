@@ -30,7 +30,7 @@ func loggerContractSSAViolations(loaded []*packages.Package, providerRules []pro
 	for _, rule := range nilRules {
 		rulesByNilCheckedFunction[rule.PackagePath+"."+rule.FunctionName] = rule
 	}
-	var violations []string
+	violations := managedFunctionValueViolations(loaded, providerRules, nilRules)
 	for _, function := range loadedSourceFunctions(program, loaded) {
 		for _, block := range function.Blocks {
 			for _, instruction := range block.Instrs {
@@ -49,7 +49,7 @@ func loggerContractSSAViolations(loaded []*packages.Package, providerRules []pro
 						violations = append(violations, fmt.Sprintf("%s: %s.%s config Logger is not definitely bound by %s.AdaptLogrus", position, rule.PackagePath, rule.ConstructorName, rule.PackagePath))
 					}
 				}
-				if rule, ok := rulesByNilCheckedFunction[functionKey]; ok && rule.Argument < len(call.Common().Args) && providerValueDefinitelyNil(call.Common().Args[rule.Argument], make(map[ssa.Value]bool)) {
+				if rule, ok := rulesByNilCheckedFunction[functionKey]; ok && rule.Argument < len(call.Common().Args) && providerValueDefinitelyNil(call.Common().Args[rule.Argument]) {
 					position := program.Fset.Position(call.Pos())
 					violations = append(violations, fmt.Sprintf("%s: %s.%s argument %d is typed nil", position, rule.PackagePath, rule.FunctionName, rule.Argument))
 				}
@@ -238,6 +238,9 @@ func transferProviderLoggerInstruction(instruction ssa.Instruction, state provid
 			return providerLoggerBad
 		}
 		if providerValuesReferToSameObject(typed.Addr, target) {
+			if providerConfigDefinitelyBound(typed.Parent(), typed.Val, typed, rule, make(map[*ssa.Function]bool)) {
+				return providerLoggerGood
+			}
 			return providerLoggerBad
 		}
 	case *ssa.Call:
@@ -295,7 +298,7 @@ func providerValueComesFromAdapter(value ssa.Value, rule providerLoggerRule, see
 			return false
 		}
 		for _, argument := range typed.Common().Args {
-			if providerValueDefinitelyNil(argument, make(map[ssa.Value]bool)) {
+			if providerValueDefinitelyNil(argument) {
 				return false
 			}
 		}
@@ -314,37 +317,6 @@ func providerValueComesFromAdapter(value ssa.Value, rule providerLoggerRule, see
 		}
 		for _, edge := range typed.Edges {
 			if !providerValueComesFromAdapter(edge, rule, seen) {
-				return false
-			}
-		}
-		return true
-	}
-	return false
-}
-
-func providerValueDefinitelyNil(value ssa.Value, seen map[ssa.Value]bool) bool {
-	if value == nil || seen[value] {
-		return false
-	}
-	seen[value] = true
-	defer delete(seen, value)
-	switch typed := value.(type) {
-	case *ssa.Const:
-		return typed.IsNil()
-	case *ssa.ChangeType:
-		return providerValueDefinitelyNil(typed.X, seen)
-	case *ssa.Convert:
-		return providerValueDefinitelyNil(typed.X, seen)
-	case *ssa.ChangeInterface:
-		return providerValueDefinitelyNil(typed.X, seen)
-	case *ssa.MakeInterface:
-		return providerValueDefinitelyNil(typed.X, seen)
-	case *ssa.Phi:
-		if len(typed.Edges) == 0 {
-			return false
-		}
-		for _, edge := range typed.Edges {
-			if !providerValueDefinitelyNil(edge, seen) {
 				return false
 			}
 		}
