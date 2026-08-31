@@ -250,7 +250,7 @@ func DefaultPlans() []PlanBundle {
 		{
 			Plan: Plan{Code: PlanBasic, Name: "基础版", Description: "店铺、任务导入和基础规则", SortOrder: 10, Active: true, CreatedAt: now, UpdatedAt: now},
 			Modules: []PlanModule{
-				{PlanCode: PlanBasic, ModuleCode: ModuleStoreManagement, SortOrder: 10},
+				{PlanCode: PlanBasic, ModuleCode: ModuleStoreManagement, Limits: map[string]int{"store_count": 1}, SortOrder: 10},
 				{PlanCode: PlanBasic, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 100}, SortOrder: 20},
 				{PlanCode: PlanBasic, ModuleCode: ModuleRules, SortOrder: 30},
 				{PlanCode: PlanBasic, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 1 * 1024 * 1024 * 1024}, SortOrder: 60},
@@ -259,7 +259,7 @@ func DefaultPlans() []PlanBundle {
 		{
 			Plan: Plan{Code: PlanProfessional, Name: "专业版", Description: "包含运营策略、Studio 和 10GB OSS 存储", SortOrder: 20, Active: true, CreatedAt: now, UpdatedAt: now},
 			Modules: []PlanModule{
-				{PlanCode: PlanProfessional, ModuleCode: ModuleStoreManagement, SortOrder: 10},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleStoreManagement, Limits: map[string]int{"store_count": 5}, SortOrder: 10},
 				{PlanCode: PlanProfessional, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 1000}, SortOrder: 20},
 				{PlanCode: PlanProfessional, ModuleCode: ModuleRules, SortOrder: 30},
 				{PlanCode: PlanProfessional, ModuleCode: ModuleOperationStrategy, SortOrder: 40},
@@ -270,7 +270,7 @@ func DefaultPlans() []PlanBundle {
 		{
 			Plan: Plan{Code: PlanEnterprise, Name: "企业版", Description: "完整模块和更高额度", SortOrder: 30, Active: true, CreatedAt: now, UpdatedAt: now},
 			Modules: []PlanModule{
-				{PlanCode: PlanEnterprise, ModuleCode: ModuleStoreManagement, SortOrder: 10},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleStoreManagement, Limits: map[string]int{"store_count": 20}, SortOrder: 10},
 				{PlanCode: PlanEnterprise, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 10000}, SortOrder: 20},
 				{PlanCode: PlanEnterprise, ModuleCode: ModuleRules, SortOrder: 30},
 				{PlanCode: PlanEnterprise, ModuleCode: ModuleOperationStrategy, SortOrder: 40},

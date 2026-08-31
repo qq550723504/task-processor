@@ -180,6 +180,8 @@ func AutoMigrateRepository(db *gorm.DB) error {
 		&usageBucketRow{},
 		&usageEventOutboxRow{},
 		&auditLogRow{},
+		&storeQuotaAllocationRow{},
+		&storeQuotaBucketRow{},
 	)
 }
 
