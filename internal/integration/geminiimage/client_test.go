@@ -1,10 +1,10 @@
 package geminiimage
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -24,8 +24,14 @@ type rewriteImageReferenceTransport struct {
 
 type geminiRoundTripFunc func(*http.Request) (*http.Response, error)
 
+type geminiReaderFunc func([]byte) (int, error)
+
 func (f geminiRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+func (f geminiReaderFunc) Read(data []byte) (int, error) {
+	return f(data)
 }
 
 func (t rewriteImageReferenceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -309,25 +315,29 @@ func TestClientEditImageIncludesSecondaryURLsAlongsideInlinePrimary(t *testing.T
 }
 
 func TestClientEditImageRejectsOversizedSecondaryReference(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/oversized.png" {
-			t.Fatalf("unexpected path = %q", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(bytes.Repeat([]byte("x"), int(maxImageReferenceBytes+1)))
-	}))
-	defer server.Close()
-
+	readBody := false
+	referenceClient := &http.Client{Transport: geminiRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode:    http.StatusOK,
+			ContentLength: maxImageReferenceBytes + 1,
+			Header:        http.Header{"Content-Type": []string{"image/png"}},
+			Body: io.NopCloser(geminiReaderFunc(func([]byte) (int, error) {
+				readBody = true
+				return 0, errors.New("oversized declared body must not be read")
+			})),
+			Request: req,
+		}, nil
+	})}
 	client := NewClient(Config{
-		APIKey: "test-key", Model: "gemini-2.5-flash-image", BaseURL: server.URL + "/v1beta",
-		Timeout: time.Second, MaxAttempts: 1, HTTPClient: server.Client(),
-		ImageReferenceHTTPClient: imageReferenceClient(server),
+		Model: "gemini-2.5-flash-image", Timeout: time.Second,
+		ImageReferenceHTTPClient: referenceClient,
 	})
-	_, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
-		Prompt: "edit faithfully", ImageURLs: []string{"https://image.example.test/oversized.png"},
-	})
+	_, _, err := client.downloadSourceImage(context.Background(), "https://image.example.test/oversized.png")
 	if err == nil || !strings.Contains(err.Error(), "source image exceeds 32 MiB") {
-		t.Fatalf("EditImage() error = %v, want oversized reference error", err)
+		t.Fatalf("downloadSourceImage() error = %v, want oversized reference error", err)
+	}
+	if readBody {
+		t.Fatal("downloadSourceImage() read a response body whose declared size exceeds the limit")
 	}
 }
 

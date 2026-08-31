@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

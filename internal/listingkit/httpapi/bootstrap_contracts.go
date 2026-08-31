@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/aicapability"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"

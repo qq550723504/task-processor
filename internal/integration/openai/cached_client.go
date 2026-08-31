@@ -8,17 +8,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"task-processor/internal/core/logger"
-
-	"github.com/sirupsen/logrus"
 )
 
 // CachedClient 带缓存的OpenAI客户端装饰器
 type CachedClient struct {
 	client  *Client
 	cache   Cache
-	logger  *logrus.Entry
+	logger  Logger
 	ttl     time.Duration
 	enabled bool
 }
@@ -37,6 +33,7 @@ type CachedClientConfig struct {
 	TTL       time.Duration // 缓存过期时间,默认24小时
 	KeyPrefix string        // 缓存键前缀,默认"openai"
 	Enabled   bool          // 是否启用缓存
+	Logger    Logger        `json:"-"`
 }
 
 // NewCachedClient 创建带缓存的OpenAI客户端
@@ -59,7 +56,7 @@ func NewCachedClient(config *CachedClientConfig) (*CachedClient, error) {
 	return &CachedClient{
 		client:  config.Client,
 		cache:   config.Cache,
-		logger:  logger.GetGlobalLogger("CachedOpenAIClient"),
+		logger:  loggerOrNoop(config.Logger),
 		ttl:     config.TTL,
 		enabled: config.Enabled && config.Cache != nil,
 	}, nil
@@ -78,7 +75,7 @@ func (c *CachedClient) CreateChatCompletion(ctx context.Context, req *ChatComple
 	// 尝试从缓存获取
 	cached, err := c.cache.Get(ctx, cacheKey)
 	if err == nil && cached != "" {
-		c.logger.Debugf("缓存命中: %s", cacheKey)
+		c.logger.Debug("缓存命中", map[string]any{"cache_key": cacheKey})
 
 		var resp ChatCompletionResponse
 		if unmarshalErr := json.Unmarshal([]byte(cached), &resp); unmarshalErr == nil {
@@ -87,7 +84,7 @@ func (c *CachedClient) CreateChatCompletion(ctx context.Context, req *ChatComple
 	}
 
 	// 缓存未命中,调用API
-	c.logger.Debugf("缓存未命中: %s", cacheKey)
+	c.logger.Debug("缓存未命中", map[string]any{"cache_key": cacheKey})
 	resp, err := c.client.CreateChatCompletion(ctx, req)
 	if err != nil {
 		return nil, err
@@ -96,7 +93,7 @@ func (c *CachedClient) CreateChatCompletion(ctx context.Context, req *ChatComple
 	// 保存到缓存
 	if respData, marshalErr := json.Marshal(resp); marshalErr == nil {
 		if setErr := c.cache.Set(ctx, cacheKey, string(respData), c.ttl); setErr != nil {
-			c.logger.Warnf("保存缓存失败: %v", setErr)
+			c.logger.Warn("保存缓存失败", map[string]any{"error": setErr})
 		}
 	}
 

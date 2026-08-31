@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 )
 
 func TestStudioBatchRunExecutorContinuesAfterOneItemFailure(t *testing.T) {

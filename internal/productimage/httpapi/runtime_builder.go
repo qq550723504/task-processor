@@ -5,7 +5,7 @@ import (
 
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/pkg/watermark"
 	"task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"

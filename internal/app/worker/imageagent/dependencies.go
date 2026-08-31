@@ -18,11 +18,11 @@ import (
 	imageagentstore "task-processor/internal/imageagent/store"
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	imageagenttools "task-processor/internal/imageagent/tools"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/storage"
+	"task-processor/internal/integration/httpimage"
+	openaiclient "task-processor/internal/integration/openai"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
-	"task-processor/internal/pkg/safeimagehttp"
 	platformdatabase "task-processor/internal/platform/database"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
@@ -31,7 +31,7 @@ type imageAgentWorkerDependencyResolver struct {
 	LoadConfig         func(string) (*config.Config, error)
 	OpenDB             func(*config.DatabaseConfig) (*gorm.DB, error)
 	CloseDB            func(*config.DatabaseConfig, *gorm.DB) error
-	BuildAI            func(*config.Config, *gorm.DB) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error)
+	BuildAI            func(*config.Config, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error)
 	BuildCapabilities  func(productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error)
 	BuildArtifactStore func(*config.Config, imageAgentArtifactTiming) (imageagenttemporal.DurableArtifactStore, error)
 	ArtifactTiming     imageAgentArtifactTiming
@@ -121,7 +121,7 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("open image agent worker database: %w", err)
 	}
 	closeDB := func() error { return resolver.CloseDB(cfg.Database, db) }
-	manager, credentialResolver, recorder, err := resolver.BuildAI(cfg, db)
+	manager, credentialResolver, recorder, err := resolver.BuildAI(cfg, db, logger)
 	if err != nil {
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent provider runtime: %w", err)
@@ -227,7 +227,7 @@ func buildImageAgentDurableArtifactStore(cfg *config.Config, timing imageAgentAr
 		Bucket: s3Config.Bucket, PublicBase: publisher.PublicBase, Endpoint: s3Config.Endpoint,
 		UsePathStyle: s3Config.UsePathStyle, ArtifactCapabilities: capabilities,
 	})
-	store, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{MaxArtifactBytes: safeimagehttp.DefaultMaxBodyBytes, OperationTimeout: timing.OperationTimeout})
+	store, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{MaxArtifactBytes: httpimage.DefaultMaxBodyBytes, OperationTimeout: timing.OperationTimeout})
 	if err != nil {
 		return nil, fmt.Errorf("build durable image artifact object store: %w", err)
 	}
@@ -241,11 +241,18 @@ func (timing imageAgentArtifactTiming) validate() error {
 	return nil
 }
 
-func buildImageAgentWorkerAI(cfg *config.Config, db *gorm.DB) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
+func buildImageAgentWorkerAI(cfg *config.Config, db *gorm.DB, logger *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
 	if cfg == nil || db == nil {
 		return nil, nil, nil, fmt.Errorf("image agent provider configuration and database are required")
 	}
-	manager, err := openaiclient.NewManager(&openaiclient.ManagerConfig{Clients: cfg.OpenAI.ToClientConfigs(), DefaultClient: "default"})
+	var componentLogger *logrus.Entry
+	if logger != nil {
+		componentLogger = logrus.NewEntry(logger).WithField("component", "image-agent-openai")
+	}
+	manager, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
+		Clients: cfg.OpenAI.ToClientConfigs(), DefaultClient: "default",
+		Logger: openaiclient.AdaptLogrus(componentLogger),
+	})
 	if err != nil {
 		return nil, nil, nil, err
 	}

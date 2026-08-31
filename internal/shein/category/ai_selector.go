@@ -3,7 +3,7 @@ package category
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
-	openaiClient "task-processor/internal/infra/clients/openai"
+	openaiClient "task-processor/internal/integration/openai"
 	"task-processor/internal/shein"
 )
 

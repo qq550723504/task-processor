@@ -16,7 +16,7 @@ import (
 
 	"golang.org/x/sync/semaphore"
 	openaiclient "task-processor/internal/ai"
-	"task-processor/internal/pkg/safeimagehttp"
+	"task-processor/internal/integration/httpimage"
 )
 
 type Config struct {
@@ -324,7 +324,7 @@ func (c *Client) buildImageInputParts(ctx context.Context, req *openaiclient.Ima
 		if len(req.Image) > 0 && strings.TrimSpace(req.ImageURL) != "" && imageURL == strings.TrimSpace(req.ImageURL) {
 			continue
 		}
-		validatedURL, validateErr := safeimagehttp.ValidatePublicHTTPSURL(imageURL)
+		validatedURL, validateErr := httpimage.ValidatePublicHTTPSURL(imageURL)
 		if validateErr != nil {
 			return nil, release, fmt.Errorf("validate source image URL: %w", validateErr)
 		}
@@ -357,7 +357,7 @@ func (c *Client) buildImageInputParts(ctx context.Context, req *openaiclient.Ima
 }
 
 func (c *Client) downloadSourceImage(ctx context.Context, imageURL string) ([]byte, string, error) {
-	validatedURL, err := safeimagehttp.ValidatePublicHTTPSURL(imageURL)
+	validatedURL, err := httpimage.ValidatePublicHTTPSURL(imageURL)
 	if err != nil {
 		return nil, "", fmt.Errorf("validate source image URL: %w", err)
 	}
@@ -371,7 +371,7 @@ func (c *Client) downloadSourceImageValidated(ctx context.Context, validatedURL 
 	}
 	defer downloadRelease()
 
-	client := safeimagehttp.NewPublicImageHTTPClient()
+	client := httpimage.NewPublicImageHTTPClient()
 	if c != nil && c.cfg.ImageReferenceHTTPClient != nil {
 		// Keep the URL validation mandatory even for a controlled transport
 		// override; the override only replaces dialing for tests or callers
@@ -391,6 +391,9 @@ func (c *Client) downloadSourceImageValidated(ctx context.Context, validatedURL 
 		return nil, "", fmt.Errorf("download source image: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.ContentLength > maxImageReferenceBytes {
+		return nil, "", fmt.Errorf("source image exceeds 32 MiB")
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxImageReferenceBytes+1))
 	if err != nil {
 		return nil, "", fmt.Errorf("read source image: %w", err)

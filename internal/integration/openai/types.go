@@ -30,6 +30,7 @@ var ErrAsyncImageGenerationNotSupported = ai.ErrAsyncImageGenerationNotSupported
 
 // ClientConfig OpenAI客户端配置
 type ClientConfig struct {
+	Logger     Logger        `json:"-"`
 	APIKey     string        `json:"api_key"`
 	Model      string        `json:"model"`
 	BaseURL    string        `json:"base_url"`
@@ -62,6 +63,7 @@ func NewClientConfig(apiKey, model, baseURL string, timeout int) *ClientConfig {
 
 // PoolConfig 请求池配置
 type PoolConfig struct {
+	Logger        Logger          `json:"-"`
 	RateLimit     float64         `json:"rate_limit"`
 	BurstLimit    float64         `json:"burst_limit"`
 	ClientConfigs []*ClientConfig `json:"client_configs"`

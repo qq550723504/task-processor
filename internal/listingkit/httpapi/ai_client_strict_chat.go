@@ -7,7 +7,8 @@ import (
 	"sync"
 
 	"task-processor/internal/ai"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	corelogger "task-processor/internal/core/logger"
+	openaiclient "task-processor/internal/integration/openai"
 )
 
 type strictListingKitChatClient struct {
@@ -68,7 +69,8 @@ func resolveStrictListingKitClient(
 	if resolved == nil || resolved.Config == nil {
 		return nil, errListingKitAIClientNotConfigured(clientName)
 	}
-	config := resolved.Config
+	config := *resolved.Config
+	config.Logger = openaiclient.AdaptLogrus(corelogger.GetGlobalLogger("listingkit/chat-provider"))
 	if strings.TrimSpace(config.APIKey) == "" || strings.TrimSpace(config.BaseURL) == "" || strings.TrimSpace(config.Model) == "" {
 		return nil, errListingKitAIClientNotConfigured(clientName)
 	}
@@ -81,7 +83,7 @@ func resolveStrictListingKitClient(
 	if client := cache[cacheKey]; client != nil {
 		return client, nil
 	}
-	client := openaiclient.NewClient(config)
+	client := openaiclient.NewClient(&config)
 	if client == nil {
 		return nil, fmt.Errorf("create listingkit ai client %q: failed to initialize", normalizeListingKitClientName(clientName))
 	}

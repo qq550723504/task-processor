@@ -107,7 +107,7 @@ func validateImageAgentWorkerCapabilityPolicy(input imageAgentWorkerCapabilityPo
 }
 
 func buildGenerationCapabilities(input BuildModuleInput) (generationCapabilities, error) {
-	modelProvider, err := buildModelProvider(input.Options.modelProvider, input.LLMManager, input.OpenAIManager, input.ImageWorkDir, input.SourceImageFetcher)
+	modelProvider, err := buildModelProvider(input.Options.modelProvider, input.LLMManager, input.OpenAIManager, input.ImageWorkDir, input.SourceImageFetcher, input.Logger)
 	if err != nil {
 		return generationCapabilities{}, fmt.Errorf("create productimage model provider: %w", err)
 	}

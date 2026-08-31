@@ -9,11 +9,9 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"task-processor/internal/core/logger"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
-	"github.com/sirupsen/logrus"
 )
 
 // RequestPool OpenAI请求池，负责并发控制、速率限制和负载均衡
@@ -22,7 +20,7 @@ type RequestPool struct {
 	semaphore                chan struct{}
 	rateLimit                *RateLimiter
 	referenceMaterialization *referenceMaterializationBudget
-	logger                   *logrus.Entry
+	logger                   Logger
 	mutex                    sync.Mutex
 	roundRobin               int
 }
@@ -32,6 +30,7 @@ type BaseClient struct {
 	client                   *openai.Client
 	config                   *ClientConfig
 	referenceMaterialization *referenceMaterializationBudget
+	logger                   Logger
 }
 
 // RateLimiter 速率限制器
@@ -45,6 +44,9 @@ type RateLimiter struct {
 
 // NewRequestPool 创建新的请求池
 func NewRequestPool(config *PoolConfig) (*RequestPool, error) {
+	if config == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
 	if len(config.ClientConfigs) == 0 {
 		return nil, fmt.Errorf("至少需要一个客户端配置")
 	}
@@ -55,7 +57,11 @@ func NewRequestPool(config *PoolConfig) (*RequestPool, error) {
 	// 创建多个客户端实例
 	clients := make([]*BaseClient, len(config.ClientConfigs))
 	for i, clientConfig := range config.ClientConfigs {
-		clients[i] = newBaseClient(clientConfig, sharedReferenceMaterialization)
+		clientLogger := config.Logger
+		if clientConfig != nil && clientConfig.Logger != nil {
+			clientLogger = clientConfig.Logger
+		}
+		clients[i] = newBaseClient(clientConfig, sharedReferenceMaterialization, loggerOrNoop(clientLogger))
 	}
 
 	// 创建速率限制器
@@ -71,12 +77,12 @@ func NewRequestPool(config *PoolConfig) (*RequestPool, error) {
 		semaphore:                make(chan struct{}, config.MaxConcurrent),
 		rateLimit:                rateLimiter,
 		referenceMaterialization: sharedReferenceMaterialization,
-		logger:                   logger.GetGlobalLogger("OpenAIRequestPool"),
+		logger:                   loggerOrNoop(config.Logger),
 	}, nil
 }
 
 // newBaseClient 创建基础客户端
-func newBaseClient(config *ClientConfig, referenceMaterialization *referenceMaterializationBudget) *BaseClient {
+func newBaseClient(config *ClientConfig, referenceMaterialization *referenceMaterializationBudget, logger Logger) *BaseClient {
 	// 创建OpenAI客户端配置
 	clientConfig := openai.DefaultConfig(config.APIKey)
 	if config.BaseURL != "" {
@@ -86,7 +92,7 @@ func newBaseClient(config *ClientConfig, referenceMaterialization *referenceMate
 	// 创建OpenAI客户端
 	client := openai.NewClientWithConfig(clientConfig)
 
-	return &BaseClient{client: client, config: config, referenceMaterialization: referenceMaterialization}
+	return &BaseClient{client: client, config: config, referenceMaterialization: referenceMaterialization, logger: loggerOrNoop(logger)}
 }
 
 // CreateChatCompletion 通过请求池创建聊天完成
@@ -134,7 +140,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 		if attempt > 0 {
 			// 计算指数退避延迟时间
 			delay := bc.config.RetryDelay * time.Duration(1<<uint(attempt-1))
-			logger.GetGlobalLogger("infra/clients").Warnf("OpenAI API调用失败，第%d次重试，等待%v后重试: %v", attempt, delay, lastErr)
+			bc.logger.Warn("OpenAI API调用失败，等待重试", map[string]any{"attempt": attempt, "delay": delay, "error": lastErr})
 
 			select {
 			case <-time.After(delay):
@@ -156,7 +162,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 		if err == nil {
 			// 成功，返回响应
 			if attempt > 0 {
-				logger.GetGlobalLogger("infra/clients").Infof("OpenAI API调用在第%d次重试后成功", attempt)
+				bc.logger.Info("OpenAI API调用重试后成功", map[string]any{"attempt": attempt})
 			}
 			return convertResponse(&resp), nil
 		}
@@ -165,7 +171,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 
 		// 检查是否应该重试
 		if !shouldRetryWithContext(ctx, err) {
-			logger.GetGlobalLogger("infra/clients").Warnf("OpenAI API调用失败，错误不可重试: %v", err)
+			bc.logger.Warn("OpenAI API调用失败，错误不可重试", map[string]any{"error": err})
 			break
 		}
 	}
@@ -196,7 +202,7 @@ func (p *RequestPool) waitForRateLimit(ctx context.Context) error {
 
 	// 计算等待时间
 	waitTime := time.Duration((1.0-p.rateLimit.tokens)/p.rateLimit.refillRate) * time.Second
-	p.logger.Debugf("速率限制等待: %v", waitTime)
+	p.logger.Debug("速率限制等待", map[string]any{"wait_time": waitTime})
 
 	// 等待
 	select {
@@ -221,13 +227,13 @@ func (p *RequestPool) getNextClient() *BaseClient {
 // logMetrics 记录请求指标，包含耗时和 token 用量
 func (p *RequestPool) logMetrics(duration time.Duration, resp *ChatCompletionResponse, err error) {
 	if err != nil {
-		p.logger.WithFields(logrus.Fields{
+		p.logger.Warn("OpenAI API请求失败", map[string]any{
 			"duration_ms": duration.Milliseconds(),
 			"error":       err.Error(),
-		}).Warn("OpenAI API请求失败")
+		})
 		return
 	}
-	fields := logrus.Fields{
+	fields := map[string]any{
 		"duration_ms": duration.Milliseconds(),
 	}
 	if resp != nil {
@@ -236,7 +242,7 @@ func (p *RequestPool) logMetrics(duration time.Duration, resp *ChatCompletionRes
 		fields["completion_tokens"] = resp.Usage.CompletionTokens
 		fields["total_tokens"] = resp.Usage.TotalTokens
 	}
-	p.logger.WithFields(fields).Debug("OpenAI API请求成功")
+	p.logger.Debug("OpenAI API请求成功", fields)
 }
 
 // GetStats 获取请求池统计信息
@@ -261,7 +267,7 @@ func (p *RequestPool) Close() error {
 		p.semaphore <- struct{}{}
 	}
 
-	p.logger.Info("OpenAI请求池已关闭")
+	p.logger.Info("OpenAI请求池已关闭", nil)
 	return nil
 }
 

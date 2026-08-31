@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"task-processor/internal/pkg/safeimagehttp"
+	"task-processor/internal/integration/httpimage"
 )
 
 type studioDesignAsyncQueryResponse struct {
@@ -432,7 +432,7 @@ func (s *taskStudioMediaService) resolveStudioBackgroundRemovalURL(ctx context.C
 var studioPublicImageHTTPClient = newStudioPublicImageHTTPClient()
 
 func newStudioPublicImageHTTPClient() *http.Client {
-	return safeimagehttp.NewPublicImageHTTPClient()
+	return httpimage.NewPublicImageHTTPClient()
 }
 
 func (s *taskStudioMediaService) materializeAsyncStudioDesignResult(ctx context.Context, req *StudioDesignRequest, result *AIImageAsyncResult) (*StudioDesignResponse, error) {

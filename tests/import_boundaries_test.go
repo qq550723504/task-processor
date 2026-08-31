@@ -803,7 +803,7 @@ func TestListingKitSheinSyncAsyncIdentityContextDoesNotImportOpenAI(t *testing.T
 		if strings.HasSuffix(filepath.Base(path), "_test.go") {
 			continue
 		}
-		if _, ok := facts.imports[`"task-processor/internal/infra/clients/openai"`]; ok {
+		if _, ok := facts.imports[`"task-processor/internal/integration/openai"`]; ok {
 			t.Errorf("%s imports the concrete OpenAI client; use shared aiidentity for SHEIN sync request context", path)
 		}
 	}
@@ -819,7 +819,7 @@ func TestListingKitSheinAdapterReviewContentOptimizerDoesNotImportOpenAI(t *test
 		if strings.HasSuffix(filepath.Base(path), "_test.go") {
 			continue
 		}
-		if _, ok := facts.imports[`"task-processor/internal/infra/clients/openai"`]; ok {
+		if _, ok := facts.imports[`"task-processor/internal/integration/openai"`]; ok {
 			t.Errorf("%s imports the concrete OpenAI client; use the neutral internal/ai contract for SHEIN review content", path)
 		}
 	}
@@ -1033,7 +1033,7 @@ func TestPublishingSheinOpenAIImportsStayAllowlisted(t *testing.T) {
 		if pathAllowed(path, allowedFiles) {
 			continue
 		}
-		if _, ok := facts.imports[`"task-processor/internal/infra/clients/openai"`]; ok {
+		if _, ok := facts.imports[`"task-processor/internal/integration/openai"`]; ok {
 			t.Errorf("%s imports OpenAI adapter directly; keep publishing/shein concrete OpenAI dependencies limited to current inference and runtime resolver seams", path)
 		}
 	}
@@ -1509,8 +1509,8 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 			continue
 		}
 		for _, bannedImport := range []string{
-			`"task-processor/internal/infra/clients/grsai"`,
-			`"task-processor/internal/infra/clients/openai"`,
+			`"task-processor/internal/integration/grsai"`,
+			`"task-processor/internal/integration/openai"`,
 		} {
 			if _, ok := facts.imports[bannedImport]; ok {
 				t.Errorf("%s imports %s; keep listingkit/httpapi concrete external clients limited to current AI runtime and bootstrap seams", path, bannedImport)
@@ -3528,7 +3528,7 @@ func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 		}
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
-			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+			if importMatchesPrefix(importPath, "task-processor/internal/integration/openai") {
 				t.Errorf("%s imports %s; keep ListingKit root contracts provider-neutral", path, importPath)
 			}
 		}
@@ -3855,8 +3855,8 @@ func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 			continue
 		}
 		for _, bannedImport := range []string{
-			`"task-processor/internal/infra/clients/grsai"`,
-			`"task-processor/internal/infra/clients/openai"`,
+			`"task-processor/internal/integration/grsai"`,
+			`"task-processor/internal/integration/openai"`,
 		} {
 			if _, ok := facts.imports[bannedImport]; ok {
 				t.Errorf("%s imports %s; keep productimage concrete external clients limited to current provider adapter and runtime builder seams", path, bannedImport)
@@ -3894,7 +3894,7 @@ func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
 			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") ||
-				importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+				importMatchesPrefix(importPath, "task-processor/internal/integration/openai") {
 				t.Errorf("%s imports %s; keep Amazon concrete external client dependencies limited to current management DTO and OpenAI LLM seams", path, importPath)
 			}
 		}
@@ -3920,7 +3920,7 @@ func TestSheinBridgeExternalClientImportsStayAllowlisted(t *testing.T) {
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
 			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") ||
-				importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+				importMatchesPrefix(importPath, "task-processor/internal/integration/openai") {
 				t.Errorf("%s imports %s; keep sheinbridge concrete external client dependencies limited to current sale-attribute runtime bridge seams", path, importPath)
 			}
 		}
@@ -4069,7 +4069,7 @@ func TestSheinOpenAIImportsStayAllowlisted(t *testing.T) {
 		}
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
-			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+			if importMatchesPrefix(importPath, "task-processor/internal/integration/openai") {
 				t.Errorf("%s imports %s; keep SHEIN concrete OpenAI client dependencies limited to current category, content, pipeline, product, submit-prep, and translate seams", path, importPath)
 			}
 		}
@@ -4093,8 +4093,8 @@ func TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted(t *testing.T
 			continue
 		}
 		for _, bannedImport := range []string{
-			`"task-processor/internal/infra/clients/grsai"`,
-			`"task-processor/internal/infra/clients/openai"`,
+			`"task-processor/internal/integration/grsai"`,
+			`"task-processor/internal/integration/openai"`,
 		} {
 			if _, ok := facts.imports[bannedImport]; ok {
 				t.Errorf("%s imports %s; keep app/httpapi free of ProductImage concrete external clients; ProductImage provider assembly belongs in internal/productimage/httpapi", path, bannedImport)
@@ -4658,7 +4658,7 @@ func TestTEMUOpenAIImportsStayAllowlisted(t *testing.T) {
 		}
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
-			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+			if importMatchesPrefix(importPath, "task-processor/internal/integration/openai") {
 				t.Errorf("%s imports %s; keep TEMU concrete OpenAI client dependencies limited to current AI, image, SKU, product, and pipeline seams", path, importPath)
 			}
 		}
@@ -5226,7 +5226,7 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 		`"task-processor/internal/app/runtime"`: {},
 		`"task-processor/internal/asset/repository"`:       {},
 		`"task-processor/internal/core/config"`:            {},
-		`"task-processor/internal/infra/clients/openai"`:   {},
+		`"task-processor/internal/integration/openai"`:   {},
 		`"task-processor/internal/listingadmin"`:           {},
 		`"task-processor/internal/listingkit"`:             {},
 		`"task-processor/internal/listingkit/httpapi"`:     {},

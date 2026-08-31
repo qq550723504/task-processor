@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"task-processor/internal/pkg/safeimagehttp"
+	"task-processor/internal/integration/httpimage"
 )
 
 type ImageDownloader struct {
@@ -14,7 +14,7 @@ type ImageDownloader struct {
 }
 
 func NewImageDownloader(timeout time.Duration) *ImageDownloader {
-	client := safeimagehttp.NewPublicImageHTTPClient()
+	client := httpimage.NewPublicImageHTTPClient()
 	client.Timeout = timeout
 	return &ImageDownloader{
 		client: client,
@@ -25,7 +25,7 @@ func (d *ImageDownloader) DownloadImage(url string) ([]byte, error) {
 	if d == nil || d.client == nil {
 		return nil, fmt.Errorf("image downloader is not configured")
 	}
-	data, err := safeimagehttp.Download(context.Background(), d.client, url, safeimagehttp.DefaultMaxBodyBytes)
+	data, err := httpimage.Download(context.Background(), d.client, url, httpimage.DefaultMaxBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("download image %s: %w", url, err)
 	}

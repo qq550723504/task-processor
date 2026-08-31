@@ -13,7 +13,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	openaiClient "task-processor/internal/infra/clients/openai"
+	openaiClient "task-processor/internal/integration/openai"
 	"task-processor/internal/pkg/imagex"
 	"task-processor/internal/pkg/timeout"
 )

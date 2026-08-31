@@ -7,23 +7,24 @@ import (
 
 	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/productenrich"
 )
 
-func newLLMManager(cfg config.OpenAIConfig) (productenrich.LLMManager, error) {
-	manager, err := newOpenAIManager(cfg)
+func newLLMManager(cfg config.OpenAIConfig, logger *logrus.Entry) (productenrich.LLMManager, error) {
+	manager, err := newOpenAIManager(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
 	return productenrich.NewLLMManagerAdapterFromManager(manager)
 }
 
-func newOpenAIManager(cfg config.OpenAIConfig) (*openaiclient.Manager, error) {
+func newOpenAIManager(cfg config.OpenAIConfig, logger *logrus.Entry) (*openaiclient.Manager, error) {
 	return openaiclient.NewManager(&openaiclient.ManagerConfig{
 		Clients:       cfg.ToClientConfigs(),
 		DefaultClient: "default",
+		Logger:        openaiclient.AdaptLogrus(logger),
 	})
 }
 

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"task-processor/internal/aicapability"
-	"task-processor/internal/infra/clients/grsai"
+	"task-processor/internal/integration/grsai"
 	productimage "task-processor/internal/productimage"
 	"task-processor/internal/productimage/store"
 )

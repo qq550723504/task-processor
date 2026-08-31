@@ -4,41 +4,44 @@ package openai
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/core/logger"
 	"task-processor/internal/shared/ptr"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 // Client OpenAI API客户端 - 简化版本，专注于基本功能
 type Client struct {
 	pool   *RequestPool
 	config *ClientConfig
-	logger *logrus.Entry
+	logger Logger
 }
 
 // NewClient 创建新的OpenAI客户端
 func NewClient(config *ClientConfig) *Client {
+	if config == nil {
+		return nil
+	}
+	clientConfig := cloneClientConfig(config)
+	clientLogger := loggerOrNoop(clientConfig.Logger)
 	// 创建请求池配置
 	poolConfig := &PoolConfig{
+		Logger:        clientLogger,
 		MaxConcurrent: 10,
 		RateLimit:     5.0,
 		BurstLimit:    15.0,
-		ClientConfigs: []*ClientConfig{config},
+		ClientConfigs: []*ClientConfig{clientConfig},
 	}
 
 	// 创建请求池
 	pool, err := NewRequestPool(poolConfig)
 	if err != nil {
-		logger.GetGlobalLogger("infra/clients").Errorf("创建OpenAI请求池失败: %v", err)
+		clientLogger.Error("创建OpenAI请求池失败", map[string]any{"error": err.Error()})
 		return nil
 	}
 
 	return &Client{
 		pool:   pool,
-		config: config,
-		logger: logger.GetGlobalLogger("OpenAIClient"),
+		config: clientConfig,
+		logger: clientLogger,
 	}
 }
 

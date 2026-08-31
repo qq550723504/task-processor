@@ -11,7 +11,7 @@ import (
 	amazonModel "task-processor/internal/amazon/model"
 	"task-processor/internal/amazon/pipeline"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/integration/openai"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	worker "task-processor/internal/platform/workerpool"
@@ -50,7 +50,13 @@ func NewProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger
 	services.SetProductTypeService(productTypeService)
 
 	// 初始化 LLM 属性映射器
-	openaiClient := openai.NewClient(cfg.OpenAI.ToClientConfig())
+	openaiConfig := cfg.OpenAI.ToClientConfig()
+	var componentLogger *logrus.Entry
+	if logger != nil {
+		componentLogger = logrus.NewEntry(logger).WithField("component", "amazon-openai")
+	}
+	openaiConfig.Logger = openai.AdaptLogrus(componentLogger)
+	openaiClient := openai.NewClient(openaiConfig)
 	services.SetLLMAttributeMapper(llm.NewLLMAttributeMapper(llm.NewOpenAILLMClient(openaiClient)))
 
 	p := &Processor{

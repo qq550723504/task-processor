@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"golang.org/x/sync/semaphore"
-	"task-processor/internal/pkg/safeimagehttp"
+	"task-processor/internal/integration/httpimage"
 )
 
 const (
@@ -282,11 +282,11 @@ func downloadImageEditReference(ctx context.Context, imageURL string, override *
 	client := override
 	if client == nil {
 		var err error
-		validatedURL, err = safeimagehttp.ValidatePublicHTTPSURL(validatedURL)
+		validatedURL, err = httpimage.ValidatePublicHTTPSURL(validatedURL)
 		if err != nil {
 			return nil, "", fmt.Errorf("validate secondary image URL: %w", err)
 		}
-		client = safeimagehttp.NewPublicImageHTTPClient()
+		client = httpimage.NewPublicImageHTTPClient()
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, validatedURL, nil)
 	if err != nil {

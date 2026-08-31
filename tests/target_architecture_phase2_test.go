@@ -515,3 +515,83 @@ func TestSharedPackageTargetsExist(t *testing.T) {
 		}
 	}
 }
+
+func integrationProviderAdapterImportViolations(root string) ([]string, error) {
+	providerRoots := map[string]bool{
+		"openai": true, "geminiimage": true, "grsai": true,
+	}
+	var violations []string
+	for _, name := range []string{"openai", "geminiimage", "grsai", "httpimage"} {
+		packageRoot := filepath.Join(root, name)
+		info, err := os.Stat(packageRoot)
+		if err != nil {
+			violations = append(violations, fmt.Sprintf("internal/integration/%s must exist: %v", name, err))
+			continue
+		}
+		if !info.IsDir() {
+			violations = append(violations, fmt.Sprintf("internal/integration/%s is not a directory", name))
+			continue
+		}
+		index, err := loadGoFileIndex(packageRoot, "")
+		if err != nil {
+			return nil, err
+		}
+		for path, facts := range index.files {
+			if strings.HasSuffix(path, "_test.go") {
+				continue
+			}
+			for importLiteral := range facts.imports {
+				importPath, err := decodeGoImportPath(importLiteral)
+				if err != nil {
+					return nil, fmt.Errorf("decode import in %s: %w", path, err)
+				}
+				if !importMatchesPrefix(importPath, "task-processor/internal") {
+					continue
+				}
+				allowed := false
+				if providerRoots[name] {
+					allowed = importPath == "task-processor/internal/ai" ||
+						importMatchesPrefix(importPath, "task-processor/internal/shared") ||
+						importPath == "task-processor/internal/integration/httpimage"
+				}
+				if !allowed {
+					violations = append(violations, fmt.Sprintf("%s imports forbidden internal package %s", filepath.ToSlash(path), importPath))
+				}
+			}
+		}
+	}
+	return violations, nil
+}
+
+func TestIntegrationProviderAdaptersUseOnlyContracts(t *testing.T) {
+	violations, err := integrationProviderAdapterImportViolations(filepath.Join("..", "internal", "integration"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, violation := range violations {
+		t.Error(violation)
+	}
+}
+
+func TestIntegrationProviderBoundaryDecodesGoImportLiterals(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"openai", "geminiimage", "grsai", "httpimage"} {
+		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	source := "package openai\nimport (\n" +
+		"\t`task-processor/internal/app`\n" +
+		"\t\"task-processor/internal/\\x63ore\"\n" +
+		")\n"
+	if err := os.WriteFile(filepath.Join(root, "openai", "fixture.go"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	violations, err := integrationProviderAdapterImportViolations(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 2 {
+		t.Fatalf("decoded forbidden import violations = %v, want 2", violations)
+	}
+}

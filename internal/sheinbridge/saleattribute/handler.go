@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/listingruntime"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/model"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinctx "task-processor/internal/shein/context"

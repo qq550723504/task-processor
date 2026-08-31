@@ -8,10 +8,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-
-	"task-processor/internal/core/logger"
-
-	"github.com/sirupsen/logrus"
 )
 
 // Manager OpenAI客户端管理器
@@ -20,7 +16,7 @@ type Manager struct {
 	dynamicClients map[string]*Client
 	configResolver ClientConfigResolver
 	defaultClient  *Client
-	logger         *logrus.Entry
+	logger         Logger
 	mu             sync.RWMutex
 }
 
@@ -58,6 +54,7 @@ type ManagerConfig struct {
 	Clients        map[string]*ClientConfig
 	ConfigResolver ClientConfigResolver
 	DefaultClient  string
+	Logger         Logger `json:"-"`
 }
 
 // NewManager 创建OpenAI客户端管理器
@@ -69,21 +66,26 @@ func NewManager(config *ManagerConfig) (*Manager, error) {
 		return nil, fmt.Errorf("at least one client must be configured")
 	}
 
+	managerLogger := loggerOrNoop(config.Logger)
 	manager := &Manager{
 		clients:        make(map[string]*Client),
 		dynamicClients: make(map[string]*Client),
 		configResolver: config.ConfigResolver,
-		logger:         logger.GetGlobalLogger("OpenAIManager"),
+		logger:         managerLogger,
 	}
 
 	// 创建所有配置的客户端
 	for name, clientConfig := range config.Clients {
-		client := NewClient(clientConfig)
+		effectiveClientConfig := cloneClientConfig(clientConfig)
+		if effectiveClientConfig != nil && effectiveClientConfig.Logger == nil {
+			effectiveClientConfig.Logger = managerLogger
+		}
+		client := NewClient(effectiveClientConfig)
 		if client == nil {
 			return nil, fmt.Errorf("failed to create client: %s", name)
 		}
 		manager.clients[name] = client
-		manager.logger.Infof("OpenAI客户端已注册: %s", name)
+		manager.logger.Info("OpenAI客户端已注册", map[string]any{"client": name})
 	}
 
 	// 设置默认客户端
@@ -167,7 +169,7 @@ func (m *Manager) RegisterClient(name string, client *Client) error {
 		return fmt.Errorf("client already exists")
 	}
 	m.clients[name] = client
-	m.logger.Infof("客户端已注册: %s", name)
+	m.logger.Info("客户端已注册", map[string]any{"client": name})
 	return nil
 }
 
@@ -269,6 +271,9 @@ func (m *Manager) resolveEffectiveClientConfiguration(ctx context.Context, name 
 			usesStatic = false
 		}
 	}
+	if effectiveConfig != nil && effectiveConfig.Logger == nil {
+		effectiveConfig.Logger = m.logger
+	}
 	if !validEffectiveClientConfig(effectiveConfig) {
 		return effectiveClientConfiguration{}, fmt.Errorf("image credential configuration is unavailable: %w: client %q", ErrClientConfigurationUnavailable, name)
 	}
@@ -351,9 +356,9 @@ func (m *Manager) Close() error {
 	defer m.mu.Unlock()
 	for name, client := range m.clients {
 		if err := client.Close(); err != nil {
-			m.logger.Errorf("关闭客户端失败 %s: %v", name, err)
+			m.logger.Error("关闭客户端失败", map[string]any{"client": name, "error": err})
 		}
 	}
-	m.logger.Info("管理器已关闭")
+	m.logger.Info("管理器已关闭", nil)
 	return nil
 }

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"task-processor/internal/core/logger"
-	openaiClient "task-processor/internal/infra/clients/openai"
+	openaiClient "task-processor/internal/integration/openai"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	api_attribute "task-processor/internal/shein/api/attribute"

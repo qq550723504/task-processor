@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	openaiClient "task-processor/internal/infra/clients/openai"
+	openaiClient "task-processor/internal/integration/openai"
 	api "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"

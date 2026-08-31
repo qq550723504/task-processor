@@ -13,14 +13,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/semaphore"
 
 	openaiclient "task-processor/internal/ai"
-	"task-processor/internal/pkg/safeimagehttp"
+	"task-processor/internal/integration/httpimage"
 )
 
 type Config struct {
+	Logger       Logger
 	APIKey       string
 	Model        string
 	SubmitURL    string
@@ -39,6 +39,7 @@ type Config struct {
 
 type Client struct {
 	cfg                      Config
+	logger                   Logger
 	httpClient               *http.Client
 	referenceMaterialization *referenceMaterializationBudget
 }
@@ -163,6 +164,7 @@ func NewClient(cfg Config) *Client {
 	}
 	return &Client{
 		cfg:                      cfg,
+		logger:                   loggerOrNoop(cfg.Logger),
 		httpClient:               httpClient,
 		referenceMaterialization: newReferenceMaterializationBudget(cfg.MaxReferenceMaterializedBytes, cfg.MaxReferenceMaterializationConcurrency),
 	}
@@ -283,7 +285,7 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 }
 
 func (c *Client) logSubmitDiagnostic(ctx context.Context, submitURL string, req submitRequest, mode string) {
-	fields := logrus.Fields{
+	fields := map[string]any{
 		"mode":                mode,
 		"submit_url":          submitURL,
 		"model":               req.Model,
@@ -299,7 +301,7 @@ func (c *Client) logSubmitDiagnostic(ctx context.Context, submitURL string, req 
 	} else {
 		fields["ctx_deadline"] = "none"
 	}
-	logrus.WithFields(fields).Info("grsai submit diagnostic")
+	c.logger.Info("grsai submit diagnostic", fields)
 }
 
 func (c *Client) attachSubmitResponseData(ctx context.Context, payload *resultPayload, response *openaiclient.ImageAsyncSubmitResponse) error {
@@ -425,7 +427,7 @@ func (c *Client) imageInputsForRequest(ctx context.Context, req *openaiclient.Im
 			prepared[inputIndex] = input
 			continue
 		}
-		validated, err := safeimagehttp.ValidatePublicHTTPSURL(input)
+		validated, err := httpimage.ValidatePublicHTTPSURL(input)
 		if err != nil {
 			return nil, nil, fmt.Errorf("grsai image reference is not a public https url: %w", err)
 		}
@@ -467,7 +469,7 @@ func (c *Client) materializeRemoteImageReference(ctx context.Context, validated 
 		downloadCtx, cancel = context.WithTimeout(ctx, c.cfg.Timeout)
 		defer cancel()
 	}
-	client := safeimagehttp.NewPublicImageHTTPClient()
+	client := httpimage.NewPublicImageHTTPClient()
 	request, err := http.NewRequestWithContext(downloadCtx, http.MethodGet, validated, nil)
 	if err != nil {
 		return "", fmt.Errorf("build grsai image reference request: %w", err)

@@ -1,4 +1,4 @@
-package safeimagehttp
+package httpimage
 
 import (
 	"context"

@@ -7,16 +7,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"task-processor/internal/core/logger"
-
-	"github.com/sirupsen/logrus"
 )
 
 // ResilientClient 带弹性机制的OpenAI客户端装饰器
 type ResilientClient struct {
 	client         *Client
-	logger         *logrus.Entry
+	logger         Logger
 	circuitBreaker *CircuitBreaker
 	clientName     string
 }
@@ -26,6 +22,7 @@ type ResilientClientConfig struct {
 	Client               *Client
 	ClientName           string
 	CircuitBreakerConfig *CircuitBreakerConfig
+	Logger               Logger `json:"-"`
 }
 
 // CircuitBreakerConfig 熔断器配置
@@ -200,12 +197,12 @@ func NewResilientClient(config *ResilientClientConfig) (*ResilientClient, error)
 	cb := NewCircuitBreaker(config.CircuitBreakerConfig)
 	client := &ResilientClient{
 		client:         config.Client,
-		logger:         logger.GetGlobalLogger("ResilientOpenAIClient"),
+		logger:         loggerOrNoop(config.Logger),
 		circuitBreaker: cb,
 		clientName:     config.ClientName,
 	}
 	cb.OnStateChange(func(from, to CircuitState) {
-		client.logger.Warnf("熔断器状态变更: %s -> %s", stateString(from), stateString(to))
+		client.logger.Warn("熔断器状态变更", map[string]any{"from": stateString(from), "to": stateString(to)})
 	})
 	return client, nil
 }
@@ -225,17 +222,17 @@ func (r *ResilientClient) CreateChatCompletion(ctx context.Context, req *ChatCom
 
 	duration := time.Since(startTime)
 	if err != nil {
-		r.logger.WithFields(logrus.Fields{
+		r.logger.Error("OpenAI API调用失败", map[string]any{
 			"client":      r.clientName,
 			"duration_ms": duration.Milliseconds(),
-		}).Error("OpenAI API调用失败")
+		})
 		return nil, err
 	}
 
-	r.logger.WithFields(logrus.Fields{
+	r.logger.Debug("OpenAI API调用成功", map[string]any{
 		"client":      r.clientName,
 		"duration_ms": duration.Milliseconds(),
-	}).Debug("OpenAI API调用成功")
+	})
 	return resp, nil
 }
 
@@ -313,7 +310,7 @@ func (r *ResilientClient) GetCircuitBreakerCounts() (requests, successes, failur
 // ResetCircuitBreaker 重置熔断器
 func (r *ResilientClient) ResetCircuitBreaker() {
 	r.circuitBreaker.Reset()
-	r.logger.Infof("熔断器已重置")
+	r.logger.Info("熔断器已重置", nil)
 }
 
 // GetStats 获取客户端统计信息

@@ -1,6 +1,6 @@
-// Package safeimagehttp provides the shared SSRF-safe client used for fetching
+// Package httpimage provides the shared SSRF-safe client used for fetching
 // externally hosted image references.
-package safeimagehttp
+package httpimage
 
 import (
 	"context"
@@ -74,7 +74,7 @@ type invalidPublicURLError struct{}
 
 func (*invalidPublicURLError) Error() string { return "public https url is required" }
 
-var resolvePublicImageHostIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+func resolvePublicImageHostIPs(ctx context.Context, host string) ([]net.IP, error) {
 	return net.DefaultResolver.LookupIP(ctx, "ip", host)
 }
 

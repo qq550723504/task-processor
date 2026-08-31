@@ -9,7 +9,7 @@ import (
 func TestBootstrapKeepsModelProviderAssemblyInDedicatedFile(t *testing.T) {
 	bootstrapSource := readProductImageHTTPAPIBoundaryFile(t, "bootstrap.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/clients/grsai"`,
+		`"task-processor/internal/integration/grsai"`,
 		"func buildModelProvider(",
 		"grsai.NewClient(",
 	} {
@@ -20,7 +20,7 @@ func TestBootstrapKeepsModelProviderAssemblyInDedicatedFile(t *testing.T) {
 
 	builderSource := readProductImageHTTPAPIBoundaryFile(t, "model_provider_builder.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/clients/grsai"`,
+		`"task-processor/internal/integration/grsai"`,
 		"func buildModelProvider(",
 		"grsai.NewClient(",
 	} {
