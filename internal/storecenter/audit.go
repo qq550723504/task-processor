@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var ErrAuditIdentityMismatch = errors.New("store audit identity mismatch")
@@ -20,6 +21,7 @@ type AuditAction string
 const (
 	AuditActionQuotaReserved          AuditAction = "quota_reserved"
 	AuditActionStoreCreated           AuditAction = "store_created"
+	AuditActionQuotaCommitStarted     AuditAction = "quota_commit_started"
 	AuditActionQuotaCommitFailed      AuditAction = "quota_commit_failed"
 	AuditActionStoreCreateFailed      AuditAction = "store_create_failed"
 	AuditActionStoreCreateUnknown     AuditAction = "store_create_unknown"
@@ -83,7 +85,8 @@ type workbenchStoreAuditLogRecord struct {
 	PreviousState  string    `gorm:"column:previous_state;size:32;not null"`
 	NewState       string    `gorm:"column:new_state;size:32;not null"`
 	FailureCode    string    `gorm:"column:failure_code;size:64;not null"`
-	OccurredAt     time.Time `gorm:"column:occurred_at;not null;index:idx_workbench_store_audit_org_store_created,priority:3"`
+	CreatedAt      time.Time `gorm:"column:created_at;not null;index:idx_workbench_store_audit_org_store_created,priority:3"`
+	OccurredAt     time.Time `gorm:"column:occurred_at;not null"`
 }
 
 func (workbenchStoreAuditLogRecord) TableName() string { return "workbench_store_audit_logs" }
@@ -113,7 +116,11 @@ func (r *GormAuditRepository) Record(ctx context.Context, event AuditEvent) (Aud
 	if err != nil {
 		return AuditEvent{}, false, err
 	}
-	if err := r.db.WithContext(ctx).Create(&record).Error; err == nil {
+	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "organization_id"}, {Name: "request_key"}, {Name: "action"}},
+		DoNothing: true,
+	}).Create(&record)
+	if result.Error == nil && result.RowsAffected == 1 {
 		return normalized, false, nil
 	}
 	existing, err := r.Get(ctx, normalized.OrganizationID, normalized.RequestKey, normalized.Action)
@@ -208,7 +215,7 @@ func normalizeSafeFieldNames(fields []string) ([]string, error) {
 
 func validAuditAction(action AuditAction) bool {
 	switch action {
-	case AuditActionQuotaReserved, AuditActionStoreCreated, AuditActionQuotaCommitFailed, AuditActionStoreCreateFailed, AuditActionStoreCreateUnknown, AuditActionStoreCreationCommitted:
+	case AuditActionQuotaReserved, AuditActionStoreCreated, AuditActionQuotaCommitStarted, AuditActionQuotaCommitFailed, AuditActionStoreCreateFailed, AuditActionStoreCreateUnknown, AuditActionStoreCreationCommitted:
 		return true
 	}
 	return false
@@ -226,7 +233,7 @@ func auditRecordFromEvent(event AuditEvent) (workbenchStoreAuditLogRecord, error
 	if err != nil {
 		return workbenchStoreAuditLogRecord{}, err
 	}
-	return workbenchStoreAuditLogRecord{EventID: event.EventID, OrganizationID: event.OrganizationID, StoreID: event.StoreID, AllocationID: event.AllocationID, RequestKey: event.RequestKey, Action: string(event.Action), Outcome: string(event.Outcome), ActorSubject: event.ActorSubject, SafeFieldNames: string(fields), PreviousState: string(event.PreviousState), NewState: string(event.NewState), FailureCode: string(event.FailureCode), OccurredAt: event.OccurredAt.UTC()}, nil
+	return workbenchStoreAuditLogRecord{EventID: event.EventID, OrganizationID: event.OrganizationID, StoreID: event.StoreID, AllocationID: event.AllocationID, RequestKey: event.RequestKey, Action: string(event.Action), Outcome: string(event.Outcome), ActorSubject: event.ActorSubject, SafeFieldNames: string(fields), PreviousState: string(event.PreviousState), NewState: string(event.NewState), FailureCode: string(event.FailureCode), CreatedAt: time.Now().UTC(), OccurredAt: event.OccurredAt.UTC()}, nil
 }
 
 func auditEventFromRecord(record workbenchStoreAuditLogRecord) (AuditEvent, error) {
@@ -240,6 +247,7 @@ func auditEventFromRecord(record workbenchStoreAuditLogRecord) (AuditEvent, erro
 func sameAuditSemanticPayload(a, b AuditEvent) bool {
 	a.EventID, b.EventID = "", ""
 	a.OccurredAt, b.OccurredAt = time.Time{}, time.Time{}
+	a.ActorSubject, b.ActorSubject = "", ""
 	a.SafeFieldNames = append([]string(nil), a.SafeFieldNames...)
 	b.SafeFieldNames = append([]string(nil), b.SafeFieldNames...)
 	return reflect.DeepEqual(a, b)

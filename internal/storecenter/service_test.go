@@ -3,11 +3,15 @@ package storecenter_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/storecenter"
 )
@@ -52,7 +56,7 @@ func TestServiceCreateActivatesOneReservedStore(t *testing.T) {
 	if ledger.reserveCalls != 1 || ledger.commitCalls != 1 || ledger.releaseCalls != 0 {
 		t.Fatalf("quota calls reserve/commit/release = %d/%d/%d, want 1/1/0", ledger.reserveCalls, ledger.commitCalls, ledger.releaseCalls)
 	}
-	if got := audit.actionsFor(organizationID, requestKey); !sameStrings(got, []string{"quota_reserved", "store_created", "store_creation_committed"}) {
+	if got := audit.actionsFor(organizationID, requestKey); !sameStrings(got, []string{"quota_reserved", "store_created", "quota_commit_started", "store_creation_committed"}) {
 		t.Fatalf("audit actions = %v, want safe durable phases", got)
 	}
 }
@@ -125,6 +129,30 @@ func TestServiceCreateMapsQuotaExceededWithoutRepositoryMutation(t *testing.T) {
 	}
 	if repository.createCalls != 0 || audit.recordCalls != 0 {
 		t.Fatalf("quota rejection calls create/audit = %d/%d, want 0/0", repository.createCalls, audit.recordCalls)
+	}
+}
+
+func TestServiceCreateRejectsMalformedQuotaExceededDetails(t *testing.T) {
+	ledger := &quotaLedgerFake{reserveErr: &listingsubscription.StoreQuotaExceededError{Committed: -1, Reserved: 0, Limit: 0}}
+	service, err := storecenter.NewService(newStoreRepositoryFake(), ledger, newAuditRepositoryFake(), time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	_, err = service.Create(context.Background(), validCreateRequest())
+	if !errors.Is(err, storecenter.ErrDependencyUnavailable) || err.Error() != storecenter.ErrDependencyUnavailable.Error() {
+		t.Fatalf("Create() malformed limit error = %v, want safe dependency sentinel", err)
+	}
+}
+
+func TestServiceCreateRedactsDependencyTextEvenWhenSentinelIsWrapped(t *testing.T) {
+	ledger := &quotaLedgerFake{reserveErr: fmt.Errorf("driver password text: %w", storecenter.ErrDependencyUnavailable)}
+	service, err := storecenter.NewService(newStoreRepositoryFake(), ledger, newAuditRepositoryFake(), time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	_, err = service.Create(context.Background(), validCreateRequest())
+	if !errors.Is(err, storecenter.ErrDependencyUnavailable) || err.Error() != storecenter.ErrDependencyUnavailable.Error() || strings.Contains(err.Error(), "password") {
+		t.Fatalf("Create() dependency error = %q, want redacted sentinel", err)
 	}
 }
 
@@ -318,6 +346,166 @@ func TestServiceCreateReplayReturnsLaterDisabledStoreWithoutReactivation(t *test
 	}
 }
 
+func TestServiceCreateCrossActorReplayKeepsFirstDurableAuditActor(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	db, err := gorm.Open(sqlite.Open("file:"+t.TempDir()+"/service-audit.db?_busy_timeout=5000"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("audit DB handle: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("migrate audit: %v", err)
+	}
+	audit, err := storecenter.NewGormAuditRepository(db)
+	if err != nil {
+		t.Fatalf("NewGormAuditRepository: %v", err)
+	}
+	service, err := storecenter.NewService(newStoreRepositoryFake(), ledger, audit, time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); err != nil {
+		t.Fatalf("first Create(): %v", err)
+	}
+	retry := request
+	retry.ActorSubject = "actor-2"
+	result, err := service.Create(context.Background(), retry)
+	if err != nil {
+		t.Fatalf("cross-actor replay Create(): %v", err)
+	}
+	if !result.Replayed {
+		t.Fatal("cross-actor replay Replayed = false")
+	}
+	event, err := audit.Get(context.Background(), request.OrganizationID, request.IdempotencyKey, storecenter.AuditActionQuotaReserved)
+	if err != nil || event.ActorSubject != request.ActorSubject {
+		t.Fatalf("durable audit actor = %v/%v, want first actor", event, err)
+	}
+}
+
+func TestServiceCreateNeverReleasesAfterAmbiguousConfirmationRead(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	repository := newStoreRepositoryFake()
+	repository.createErr = errors.New("ambiguous create")
+	repository.getErrAfterCreate = errors.New("confirmation unavailable")
+	service, err := storecenter.NewService(repository, ledger, newAuditRepositoryFake(), time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("Create() error = %v, want dependency unavailable", err)
+	}
+	if ledger.releaseCalls != 0 {
+		t.Fatalf("ambiguous confirmation release calls = %d, want 0", ledger.releaseCalls)
+	}
+}
+
+func TestServiceCreateNeverResurrectsReleasedOrAllocatedAllocationWithoutStore(t *testing.T) {
+	for _, status := range []listingsubscription.StoreQuotaAllocationStatus{listingsubscription.StoreQuotaReleased, listingsubscription.StoreQuotaAllocated} {
+		t.Run(string(status), func(t *testing.T) {
+			request := validCreateRequest()
+			ledger := quotaForRequest(request)
+			ledger.allocation.Status = status
+			repository := newStoreRepositoryFake()
+			service, err := storecenter.NewService(repository, ledger, newAuditRepositoryFake(), time.Now)
+			if err != nil {
+				t.Fatalf("NewService(): %v", err)
+			}
+			if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+				t.Fatalf("Create() error = %v, want dependency unavailable", err)
+			}
+			if repository.createCalls != 0 || ledger.releaseCalls != 0 {
+				t.Fatalf("inconsistent allocation create/release = %d/%d, want 0/0", repository.createCalls, ledger.releaseCalls)
+			}
+		})
+	}
+}
+
+func TestServiceCreateRejectsAllocationStoreRequestMismatchWithoutCompensation(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	repository := newStoreRepositoryFake()
+	mismatched, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: ledger.allocation.StoreID, OrganizationID: request.OrganizationID, ActorSubject: request.ActorSubject, Name: request.Name, Platform: request.Platform, Region: request.Region, CreateIdempotencyKey: uuid.NewString(), QuotaAllocationID: uuid.NewString(), OccurredAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatalf("NewStore(mismatch): %v", err)
+	}
+	repository.stores[request.OrganizationID+"/"+ledger.allocation.StoreID] = mismatched
+	service, err := storecenter.NewService(repository, ledger, newAuditRepositoryFake(), time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("Create() error = %v, want dependency unavailable", err)
+	}
+	if repository.createCalls != 0 || ledger.releaseCalls != 0 {
+		t.Fatalf("mismatch create/release = %d/%d, want 0/0", repository.createCalls, ledger.releaseCalls)
+	}
+}
+
+func TestServiceCreateRejectsReleaseResultIdentityMismatch(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	ledger.releaseOverride = &listingsubscription.StoreQuotaAllocation{OrganizationID: request.OrganizationID, AllocationID: uuid.NewString(), StoreID: ledger.allocation.StoreID, RequestKey: request.IdempotencyKey, Status: listingsubscription.StoreQuotaReleased}
+	repository := newStoreRepositoryFake()
+	repository.createErr = storecenter.ErrAlreadyExists
+	service, err := storecenter.NewService(repository, ledger, newAuditRepositoryFake(), time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("Create() error = %v, want dependency unavailable", err)
+	}
+}
+
+func TestServiceCreateTerminalFailureReplayRejectsReleaseResultMismatch(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	ledger.releaseOverride = &listingsubscription.StoreQuotaAllocation{OrganizationID: request.OrganizationID, AllocationID: uuid.NewString(), StoreID: ledger.allocation.StoreID, RequestKey: request.IdempotencyKey, Status: listingsubscription.StoreQuotaReleased}
+	audit := newAuditRepositoryFake()
+	_, _, err := audit.Record(context.Background(), storecenter.AuditEvent{EventID: uuid.NewString(), OrganizationID: request.OrganizationID, StoreID: ledger.allocation.StoreID, AllocationID: ledger.allocation.AllocationID, RequestKey: request.IdempotencyKey, Action: storecenter.AuditActionStoreCreateFailed, Outcome: storecenter.AuditOutcomeFailed, ActorSubject: request.ActorSubject, FailureCode: storecenter.AuditFailureAlreadyExists, OccurredAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatalf("Record terminal audit: %v", err)
+	}
+	service, err := storecenter.NewService(newStoreRepositoryFake(), ledger, audit, time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("terminal replay Create() error = %v, want dependency unavailable", err)
+	}
+}
+
+func TestServiceCreateCommitFailureAuditWriteAheadRecoversOnReplay(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	ledger.commitErr = errors.New("commit unavailable")
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionQuotaCommitFailed: 1}
+	service, err := storecenter.NewService(newStoreRepositoryFake(), ledger, audit, time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Create() error = %v, want dependency unavailable", err)
+	}
+	if got := audit.actionsFor(request.OrganizationID, request.IdempotencyKey); !sameStrings(got, []string{"quota_reserved", "store_created", "quota_commit_started"}) {
+		t.Fatalf("first audit actions = %v, want durable write-ahead only", got)
+	}
+	ledger.commitErr = nil
+	result, err := service.Create(context.Background(), request)
+	if err != nil {
+		t.Fatalf("replay Create(): %v", err)
+	}
+	if result.Store.LifecycleStatus() != storecenter.StoreStatusActive || ledger.commitCalls != 2 {
+		t.Fatalf("replay Store/commits = %s/%d, want active/2", result.Store.LifecycleStatus(), ledger.commitCalls)
+	}
+}
+
 func validCreateRequest() storecenter.CreateStoreRequest {
 	return storecenter.CreateStoreRequest{OrganizationID: "org-1", ActorSubject: "actor-1", IdempotencyKey: uuid.NewString(), Name: "Shop", Platform: "shein", Region: "SG"}
 }
@@ -330,6 +518,7 @@ type storeRepositoryFake struct {
 	stores                   map[string]*storecenter.Store
 	createErr                error
 	getErr                   error
+	getErrAfterCreate        error
 	saveErr                  error
 	persistBeforeCreateError bool
 	persistBeforeSaveError   bool
@@ -347,6 +536,9 @@ func (f *storeRepositoryFake) CreateOrReplay(_ context.Context, organizationID s
 	defer f.mu.Unlock()
 	f.createCalls++
 	if f.createErr != nil {
+		if f.getErrAfterCreate != nil {
+			f.getErr = f.getErrAfterCreate
+		}
 		if f.persistBeforeCreateError {
 			f.stores[organizationID+"/"+store.ID()] = cloneStore(store)
 		}
@@ -408,6 +600,7 @@ func cloneStore(store *storecenter.Store) *storecenter.Store {
 type quotaLedgerFake struct {
 	mu                                      sync.Mutex
 	allocation                              listingsubscription.StoreQuotaAllocation
+	releaseOverride                         *listingsubscription.StoreQuotaAllocation
 	reserveErr, commitErr, releaseErr       error
 	reserveCalls, commitCalls, releaseCalls int
 }
@@ -437,6 +630,9 @@ func (f *quotaLedgerFake) ReleaseReservation(_ context.Context, _ listingsubscri
 	f.releaseCalls++
 	if f.releaseErr != nil {
 		return listingsubscription.StoreQuotaTransitionResult{}, f.releaseErr
+	}
+	if f.releaseOverride != nil {
+		return listingsubscription.StoreQuotaTransitionResult{Allocation: *f.releaseOverride}, nil
 	}
 	f.allocation.Status = listingsubscription.StoreQuotaReleased
 	return listingsubscription.StoreQuotaTransitionResult{Allocation: f.allocation}, nil

@@ -115,10 +115,16 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		return CreateStoreResult{}, dependencyError(errors.New("deleting store cannot be replayed"))
 	}
 
-	if err := s.record(ctx, allocation, request, AuditActionStoreCreated, AuditOutcomeSucceeded, store, StoreStatusProvisioning, StoreStatusProvisioning, AuditFailureNone); err != nil {
+	if err := s.record(ctx, allocation, request, AuditActionStoreCreated, AuditOutcomeSucceeded, store, "", StoreStatusProvisioning, AuditFailureNone); err != nil {
 		return CreateStoreResult{}, dependencyError(err)
 	}
 	if allocation.Status == listingsubscription.StoreQuotaReserved {
+		// This truthful write-ahead event means a crash after it but before a
+		// terminal quota outcome is conservatively resumed through idempotent
+		// Commit rather than inventing a failed outcome.
+		if err := s.record(ctx, allocation, request, AuditActionQuotaCommitStarted, AuditOutcomeUnknown, store, StoreStatusProvisioning, StoreStatusProvisioning, AuditFailureNone); err != nil {
+			return CreateStoreResult{}, dependencyError(err)
+		}
 		committed, commitErr := s.quota.Commit(ctx, transition)
 		if commitErr != nil {
 			_ = s.record(ctx, allocation, request, AuditActionQuotaCommitFailed, AuditOutcomeFailed, store, StoreStatusProvisioning, StoreStatusProvisioning, AuditFailureDependencyUnavailable)
@@ -185,7 +191,7 @@ func (s *Service) compensateDefinitiveCreateFailure(ctx context.Context, allocat
 	if err := s.record(ctx, allocation, request, AuditActionStoreCreateFailed, AuditOutcomeFailed, nil, "", "", auditFailureFor(failure)); err != nil {
 		return CreateStoreResult{}, dependencyError(err)
 	}
-	if _, err := s.quota.ReleaseReservation(ctx, transition); err != nil {
+	if err := s.releaseReservation(ctx, transition); err != nil {
 		return CreateStoreResult{}, dependencyError(err)
 	}
 	return CreateStoreResult{}, failure
@@ -196,13 +202,21 @@ func (s *Service) finishReleasedFailure(ctx context.Context, allocation listings
 	case listingsubscription.StoreQuotaReleased:
 		return nil
 	case listingsubscription.StoreQuotaReserved:
-		if _, err := s.quota.ReleaseReservation(ctx, transition); err != nil {
+		if err := s.releaseReservation(ctx, transition); err != nil {
 			return dependencyError(err)
 		}
 		return nil
 	default:
 		return dependencyError(errors.New("terminal create failure has allocated quota"))
 	}
+}
+
+func (s *Service) releaseReservation(ctx context.Context, input listingsubscription.StoreQuotaTransitionInput) error {
+	released, err := s.quota.ReleaseReservation(ctx, input)
+	if err != nil {
+		return err
+	}
+	return validateTransitionAllocation(released.Allocation, input, listingsubscription.StoreQuotaReleased)
 }
 
 func (s *Service) record(ctx context.Context, allocation listingsubscription.StoreQuotaAllocation, request CreateStoreRequest, action AuditAction, outcome AuditOutcome, store *Store, previous, next LifecycleStatus, failure AuditFailureCode) error {
@@ -242,6 +256,9 @@ func verifyStoreAllocation(store *Store, request CreateStoreRequest, allocation 
 func mapQuotaError(err error) error {
 	var exceeded *listingsubscription.StoreQuotaExceededError
 	if errors.As(err, &exceeded) {
+		if exceeded.Committed < 0 || exceeded.Reserved < 0 || exceeded.Limit <= 0 {
+			return dependencyError(err)
+		}
 		return &StoreLimitReachedError{Committed: exceeded.Committed, Used: exceeded.Committed, Reserved: exceeded.Reserved, Limit: exceeded.Limit}
 	}
 	if errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
@@ -255,10 +272,7 @@ func mapRepositoryFailure(err error) error {
 	}
 	return dependencyError(err)
 }
-func dependencyError(err error) error {
-	if errors.Is(err, ErrDependencyUnavailable) {
-		return err
-	}
+func dependencyError(_ error) error {
 	return fmt.Errorf("%w", ErrDependencyUnavailable)
 }
 func (s *Service) utcNow() time.Time { return s.now().UTC() }
