@@ -220,11 +220,10 @@ func TestAuditRepositoryAcceptsOnlyTaskFiveLifecycleActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, action := range []storecenter.AuditAction{
-		storecenter.AuditActionStoreUpdated, storecenter.AuditActionStoreUpdateNoOp, storecenter.AuditActionStoreDisabled, storecenter.AuditActionStoreEnabled,
+		storecenter.AuditActionStoreUpdateStarted, storecenter.AuditActionStoreUpdated, storecenter.AuditActionStoreUpdateNoOp, storecenter.AuditActionStoreDisabled, storecenter.AuditActionStoreEnabled,
 		storecenter.AuditActionDeleteStarted, storecenter.AuditActionStoreMarkedDeleting, storecenter.AuditActionQuotaDeallocated, storecenter.AuditActionDeleteComplete,
 	} {
-		event := safeAuditEvent("org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), time.Now().UTC())
-		event.Action, event.StoreVersion = action, 3
+		event := taskFiveAuditEvent(action)
 		if _, _, err := repository.Record(context.Background(), event); err != nil {
 			t.Fatalf("Record(%s) = %v", action, err)
 		}
@@ -236,6 +235,74 @@ func TestAuditRepositoryAcceptsOnlyTaskFiveLifecycleActions(t *testing.T) {
 	}
 }
 
+func TestAuditRepositoryRejectsInvalidTaskFiveActionCombinations(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := storecenter.NewGormAuditRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name   string
+		action storecenter.AuditAction
+		mutate func(*storecenter.AuditEvent)
+	}{
+		{"update intent cannot claim success", storecenter.AuditActionStoreUpdateStarted, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeSucceeded }},
+		{"updated cannot remain unknown", storecenter.AuditActionStoreUpdated, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeUnknown }},
+		{"noop cannot claim changed fields", storecenter.AuditActionStoreUpdateNoOp, func(event *storecenter.AuditEvent) { event.SafeFieldNames = []string{"name"} }},
+		{"disable requires active origin", storecenter.AuditActionStoreDisabled, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.StoreStatusDisabled }},
+		{"enable requires disabled origin", storecenter.AuditActionStoreEnabled, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.StoreStatusActive }},
+		{"delete intent cannot claim success", storecenter.AuditActionDeleteStarted, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeSucceeded }},
+		{"marked deleting must be success", storecenter.AuditActionStoreMarkedDeleting, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeUnknown }},
+		{"deallocation changes quota only", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.SafeFieldNames = []string{"lifecycle_status"} }},
+		{"complete begins from deleting", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.StoreStatusActive }},
+		{"task five events require positive version", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.StoreVersion = 0 }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			event := taskFiveAuditEvent(test.action)
+			test.mutate(&event)
+			if _, _, err := repository.Record(context.Background(), event); err == nil {
+				t.Fatalf("Record(%s corrupt combination) error = nil", test.action)
+			}
+		})
+	}
+}
+
 func safeAuditEvent(organizationID, storeID, allocationID, requestKey string, occurredAt time.Time) storecenter.AuditEvent {
 	return storecenter.AuditEvent{EventID: uuid.NewString(), OrganizationID: organizationID, StoreID: storeID, AllocationID: allocationID, RequestKey: requestKey, Action: storecenter.AuditActionQuotaReserved, Outcome: storecenter.AuditOutcomeSucceeded, ActorSubject: "actor-1", SafeFieldNames: []string{"name", "lifecycle_status", "name"}, NewState: storecenter.StoreStatusProvisioning, OccurredAt: occurredAt}
+}
+
+func taskFiveAuditEvent(action storecenter.AuditAction) storecenter.AuditEvent {
+	event := safeAuditEvent("org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), time.Now().UTC())
+	event.Action = action
+	event.Outcome = storecenter.AuditOutcomeSucceeded
+	event.FailureCode = storecenter.AuditFailureNone
+	event.StoreVersion = 3
+	switch action {
+	case storecenter.AuditActionStoreUpdateStarted:
+		event.Outcome, event.SafeFieldNames, event.PreviousState, event.NewState = storecenter.AuditOutcomeUnknown, []string{"name"}, storecenter.StoreStatusActive, storecenter.StoreStatusActive
+	case storecenter.AuditActionStoreUpdated:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"name"}, storecenter.StoreStatusActive, storecenter.StoreStatusActive
+	case storecenter.AuditActionStoreUpdateNoOp:
+		event.SafeFieldNames, event.PreviousState, event.NewState = nil, storecenter.StoreStatusActive, storecenter.StoreStatusActive
+	case storecenter.AuditActionStoreDisabled:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"lifecycle_status"}, storecenter.StoreStatusActive, storecenter.StoreStatusDisabled
+	case storecenter.AuditActionStoreEnabled:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"lifecycle_status"}, storecenter.StoreStatusDisabled, storecenter.StoreStatusActive
+	case storecenter.AuditActionDeleteStarted:
+		event.Outcome, event.SafeFieldNames, event.PreviousState, event.NewState = storecenter.AuditOutcomeUnknown, []string{"lifecycle_status"}, storecenter.StoreStatusActive, storecenter.StoreStatusDeleting
+	case storecenter.AuditActionStoreMarkedDeleting:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"lifecycle_status"}, storecenter.StoreStatusActive, storecenter.StoreStatusDeleting
+	case storecenter.AuditActionQuotaDeallocated:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"quota_allocation_id"}, storecenter.StoreStatusDeleting, storecenter.StoreStatusDeleting
+	case storecenter.AuditActionDeleteComplete:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"lifecycle_status"}, storecenter.StoreStatusDeleting, ""
+	}
+	return event
 }

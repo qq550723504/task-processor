@@ -306,6 +306,7 @@ func TestGormStoreRepositoryRejectsCraftedImmutableOrIllegalLifecycleSave(t *tes
 		name   string
 		mutate func(*storecenter.StoreSnapshot)
 	}{
+		{"version and provenance only", func(snapshot *storecenter.StoreSnapshot) {}},
 		{"external identity", func(snapshot *storecenter.StoreSnapshot) { snapshot.ExternalStoreID = "forged-external" }},
 		{"quota allocation", func(snapshot *storecenter.StoreSnapshot) {
 			snapshot.QuotaAllocationID = "00000000-0000-4000-8000-000000000337"
@@ -362,6 +363,52 @@ func TestGormStoreRepositoryRejectsCraftedImmutableOrIllegalLifecycleSave(t *tes
 				t.Fatalf("rejected Save mutated durable store: got %#v, want %#v", after.Snapshot(), before.Snapshot())
 			}
 		})
+	}
+}
+
+// Mutation caught: a caller must not be able to manufacture a second durable
+// delete transition merely by advancing version/provenance on an already
+// deleting aggregate with the same operation key.
+func TestGormStoreRepositoryRejectsDeletingSameKeyVersionOnlySave(t *testing.T) {
+	repo := newStoreRepository(t)
+	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-00000000013a", "00000000-0000-4000-8000-00000000023a", "00000000-0000-4000-8000-00000000033a", "North", "SG", "external-delete-bump", testPersistenceTime)
+	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BeginDelete("00000000-0000-4000-8000-00000000043a", "subject-delete", store.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", store, 2); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := repo.Get(context.Background(), "org-a", store.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := before.Snapshot()
+	snapshot.Version++
+	snapshot.UpdatedBy = "subject-forged"
+	snapshot.UpdatedAt = snapshot.UpdatedAt.Add(time.Minute)
+	crafted, err := storecenter.RehydrateStore(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", crafted, before.Version()); err == nil {
+		t.Fatal("Save(deleting same-key version-only snapshot) error = nil, want rejection")
+	}
+	after, err := repo.Get(context.Background(), "org-a", store.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(after.Snapshot(), before.Snapshot()) {
+		t.Fatalf("rejected Save mutated durable store: got %#v, want %#v", after.Snapshot(), before.Snapshot())
 	}
 }
 

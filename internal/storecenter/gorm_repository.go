@@ -364,22 +364,32 @@ func validateSaveSnapshot(durable, incoming StoreSnapshot) error {
 	}
 	beginningDelete := (durable.LifecycleStatus == StoreStatusActive || durable.LifecycleStatus == StoreStatusDisabled) && incoming.LifecycleStatus == StoreStatusDeleting && durable.DeleteOperationKey == "" && incoming.DeleteOperationKey != ""
 	profileChanged := durable.Name != incoming.Name || durable.Region != incoming.Region
-	if beginningDelete && profileChanged {
-		return errors.New("store profile cannot change while deletion begins")
+	lifecycleChanged := incoming.LifecycleStatus != durable.LifecycleStatus
+	if beginningDelete {
+		if profileChanged {
+			return errors.New("store profile cannot change while deletion begins")
+		}
+		return nil
 	}
-	if incoming.LifecycleStatus != durable.LifecycleStatus && profileChanged {
-		return errors.New("store profile and lifecycle cannot change together")
-	}
-	if incoming.LifecycleStatus == durable.LifecycleStatus && profileChanged && durable.LifecycleStatus != StoreStatusActive && durable.LifecycleStatus != StoreStatusDisabled {
-		return ErrInvalidTransition
-	}
-	if durable.DeleteOperationKey != incoming.DeleteOperationKey && !beginningDelete {
+	if durable.DeleteOperationKey != incoming.DeleteOperationKey {
 		return errors.New("store delete operation key changed")
 	}
-	if incoming.LifecycleStatus != durable.LifecycleStatus && !canTransition(durable.LifecycleStatus, incoming.LifecycleStatus) && !beginningDelete {
+	if lifecycleChanged && profileChanged {
+		return errors.New("store profile and lifecycle cannot change together")
+	}
+	if profileChanged {
+		if durable.LifecycleStatus == StoreStatusActive || durable.LifecycleStatus == StoreStatusDisabled {
+			return nil
+		}
+		return ErrInvalidTransition
+	}
+	if lifecycleChanged {
+		if canTransition(durable.LifecycleStatus, incoming.LifecycleStatus) {
+			return nil
+		}
 		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, durable.LifecycleStatus, incoming.LifecycleStatus)
 	}
-	return nil
+	return errors.New("store save must change profile or lifecycle state")
 }
 
 func normalizeStorePage(page, pageSize int) (int, int) {

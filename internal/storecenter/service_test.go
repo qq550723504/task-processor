@@ -763,13 +763,54 @@ func TestServiceUpdateAuditFailureRepairsWithoutSecondSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "editor", StoreID: store.ID(), ExpectedVersion: store.Version(), Name: " After ", Region: " MY "}
+	request := storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "editor", StoreID: store.ID(), ExpectedVersion: store.Version(), Name: " After ", Region: store.Region()}
 	if _, err := service.Update(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
 		t.Fatalf("first Update() = %v", err)
 	}
 	result, err := service.Update(context.Background(), request)
 	if err != nil || !result.Replayed || result.Store.Store.Name() != "After" || result.Store.Store.Version() != request.ExpectedVersion+1 || repository.saveCalls != 1 {
 		t.Fatalf("replay Update() = %#v, %v saves=%d", result, err, repository.saveCalls)
+	}
+	operationKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte("org-a\n"+store.ID()+"\nupdate\n"+fmt.Sprint(store.Version()))).String()
+	completed := audit.eventFor("org-a", operationKey, storecenter.AuditActionStoreUpdated)
+	if !sameStrings(completed.SafeFieldNames, []string{"name"}) {
+		t.Fatalf("repaired update fields = %v, want authoritative name-only intent", completed.SafeFieldNames)
+	}
+}
+
+func TestServiceUpdateRepairRequiresValidAuthoritativeIntent(t *testing.T) {
+	for _, corrupt := range []bool{false, true} {
+		name := "missing"
+		if corrupt {
+			name = "corrupt"
+		}
+		t.Run(name, func(t *testing.T) {
+			original := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+			persisted := cloneStore(original)
+			if _, err := persisted.EditBasic("After", persisted.Region(), "editor", persisted.UpdatedAt().Add(time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			repository := newStoreRepositoryFake()
+			repository.stores["org-a/"+persisted.ID()] = persisted
+			audit := newAuditRepositoryFake()
+			operationKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte("org-a\n"+original.ID()+"\nupdate\n"+fmt.Sprint(original.Version()))).String()
+			if corrupt {
+				audit.events["org-a/"+operationKey+"/"+string(storecenter.AuditActionStoreUpdateStarted)] = storecenter.AuditEvent{
+					OrganizationID: "org-a", StoreID: original.ID(), AllocationID: original.QuotaAllocationID(), RequestKey: operationKey,
+					Action: storecenter.AuditActionStoreUpdateStarted, Outcome: storecenter.AuditOutcomeUnknown, ActorSubject: "editor",
+					SafeFieldNames: []string{"quota_allocation_id"}, PreviousState: storecenter.StoreStatusActive, NewState: storecenter.StoreStatusActive,
+					FailureCode: storecenter.AuditFailureNone, StoreVersion: original.Version(),
+				}
+			}
+			service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, time.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = service.Update(context.Background(), storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "editor", StoreID: original.ID(), ExpectedVersion: original.Version(), Name: "After", Region: original.Region()})
+			if !errors.Is(err, storecenter.ErrDependencyUnavailable) || repository.saveCalls != 0 {
+				t.Fatalf("repair with %s intent = %v saves=%d", name, err, repository.saveCalls)
+			}
+		})
 	}
 }
 
@@ -795,6 +836,62 @@ func TestServiceDisableEnableDoNotTouchQuota(t *testing.T) {
 	}
 }
 
+func TestServiceLifecycleRejectsIllegalStatesAndStaleVersions(t *testing.T) {
+	tests := []struct {
+		name            string
+		status          storecenter.LifecycleStatus
+		action          string
+		expectedVersion func(*storecenter.Store) int64
+		want            error
+	}{
+		{"disable provisioning", storecenter.StoreStatusProvisioning, "disable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
+		{"disable disabled", storecenter.StoreStatusDisabled, "disable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
+		{"enable active", storecenter.StoreStatusActive, "enable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
+		{"enable deleting", storecenter.StoreStatusDeleting, "enable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
+		{"stale disable", storecenter.StoreStatusActive, "disable", func(store *storecenter.Store) int64 { return store.Version() - 1 }, storecenter.ErrVersionConflict},
+		{"stale enable", storecenter.StoreStatusDisabled, "enable", func(store *storecenter.Store) int64 { return store.Version() - 1 }, storecenter.ErrVersionConflict},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: uuid.NewString(), OrganizationID: "org-a", ActorSubject: "creator", Name: "Store", Platform: "shein", Region: "SG", CreateIdempotencyKey: uuid.NewString(), QuotaAllocationID: uuid.NewString(), OccurredAt: time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.status != storecenter.StoreStatusProvisioning {
+				if err := store.TransitionTo(storecenter.StoreStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.status == storecenter.StoreStatusDisabled {
+				if err := store.TransitionTo(storecenter.StoreStatusDisabled, "operator", store.UpdatedAt().Add(time.Second)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.status == storecenter.StoreStatusDeleting {
+				if err := store.BeginDelete(uuid.NewString(), "operator", store.UpdatedAt().Add(time.Second)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			repository := newStoreRepositoryFake()
+			repository.stores["org-a/"+store.ID()] = cloneStore(store)
+			ledger := &quotaLedgerFake{}
+			service, err := storecenter.NewService(repository, ledger, newAuditRepositoryFake(), &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := storecenter.StoreLifecycleRequest{OrganizationID: "org-a", ActorSubject: "operator", StoreID: store.ID(), ExpectedVersion: test.expectedVersion(store)}
+			if test.action == "disable" {
+				_, err = service.Disable(context.Background(), request)
+			} else {
+				_, err = service.Enable(context.Background(), request)
+			}
+			if !errors.Is(err, test.want) || repository.saveCalls != 0 || ledger.reserveCalls+ledger.commitCalls+ledger.releaseCalls+ledger.deallocateCalls != 0 {
+				t.Fatalf("%s() = %v saves=%d quota calls=%d/%d/%d/%d", test.action, err, repository.saveCalls, ledger.reserveCalls, ledger.commitCalls, ledger.releaseCalls, ledger.deallocateCalls)
+			}
+		})
+	}
+}
+
 func TestServiceDeleteDeallocatesThenSoftDeletesAndReplays(t *testing.T) {
 	repository := newStoreRepositoryFake()
 	store := activeServiceStore(t, "org-a", "00000000-0000-4000-8000-000000000506", "00000000-0000-4000-8000-000000000606", "00000000-0000-4000-8000-000000000706", "Store")
@@ -812,6 +909,62 @@ func TestServiceDeleteDeallocatesThenSoftDeletesAndReplays(t *testing.T) {
 	replay, err := service.Delete(context.Background(), request)
 	if err != nil || !replay.Replayed || ledger.deallocateCalls != 1 || repository.softDeleteCalls != 1 {
 		t.Fatalf("Delete() replay = %#v, %v", replay, err)
+	}
+}
+
+func TestServiceDeleteAuditsWriteAheadIntentAndTruthfulDurablePhases(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	ledger := &quotaLedgerFake{allocation: listingsubscription.StoreQuotaAllocation{OrganizationID: "org-a", AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), Status: listingsubscription.StoreQuotaAllocated}}
+	audit := newAuditRepositoryFake()
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "admin", StoreID: store.ID(), ExpectedVersion: store.Version(), OperationKey: uuid.NewString()}
+	if _, err := service.Delete(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	started := audit.eventFor("org-a", request.OperationKey, storecenter.AuditActionDeleteStarted)
+	if started.Outcome != storecenter.AuditOutcomeUnknown || started.FailureCode != storecenter.AuditFailureNone || started.PreviousState != storecenter.StoreStatusActive || started.NewState != storecenter.StoreStatusDeleting || started.StoreVersion != store.Version() || !sameStrings(started.SafeFieldNames, []string{"lifecycle_status"}) {
+		t.Fatalf("delete_started = %+v, want truthful write-ahead intent", started)
+	}
+	marked := audit.eventFor("org-a", request.OperationKey, storecenter.AuditActionStoreMarkedDeleting)
+	if marked.Outcome != storecenter.AuditOutcomeSucceeded || marked.PreviousState != storecenter.StoreStatusActive || marked.NewState != storecenter.StoreStatusDeleting || marked.StoreVersion != store.Version()+1 || !sameStrings(marked.SafeFieldNames, []string{"lifecycle_status"}) {
+		t.Fatalf("store_marked_deleting = %+v, want durable lifecycle success", marked)
+	}
+	deallocated := audit.eventFor("org-a", request.OperationKey, storecenter.AuditActionQuotaDeallocated)
+	if deallocated.Outcome != storecenter.AuditOutcomeSucceeded || deallocated.PreviousState != storecenter.StoreStatusDeleting || deallocated.NewState != storecenter.StoreStatusDeleting || deallocated.StoreVersion != store.Version()+1 || !sameStrings(deallocated.SafeFieldNames, []string{"quota_allocation_id"}) {
+		t.Fatalf("quota_deallocated = %+v, want durable quota success", deallocated)
+	}
+	completed := audit.eventFor("org-a", request.OperationKey, storecenter.AuditActionDeleteComplete)
+	if completed.Outcome != storecenter.AuditOutcomeSucceeded || completed.PreviousState != storecenter.StoreStatusDeleting || completed.NewState != "" || completed.StoreVersion != store.Version()+2 || !sameStrings(completed.SafeFieldNames, []string{"lifecycle_status"}) {
+		t.Fatalf("delete_complete = %+v, want durable deletion success", completed)
+	}
+}
+
+func TestServiceDeleteStartedAuditFailureCannotMoveStoreAndRetryConverges(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	ledger := &quotaLedgerFake{allocation: listingsubscription.StoreQuotaAllocation{OrganizationID: "org-a", AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), Status: listingsubscription.StoreQuotaAllocated}}
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionDeleteStarted: 1}
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "admin", StoreID: store.ID(), ExpectedVersion: store.Version(), OperationKey: uuid.NewString()}
+	if _, err := service.Delete(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Delete() = %v, want dependency error", err)
+	}
+	current, err := repository.Get(context.Background(), "org-a", store.ID())
+	if err != nil || current.LifecycleStatus() != storecenter.StoreStatusActive || current.Version() != store.Version() || repository.saveCalls != 0 || ledger.deallocateCalls != 0 {
+		t.Fatalf("failed intent mutated state = %+v/%v saves=%d dealloc=%d", current, err, repository.saveCalls, ledger.deallocateCalls)
+	}
+	if _, err := service.Delete(context.Background(), request); err != nil {
+		t.Fatalf("retry Delete() = %v", err)
 	}
 }
 
@@ -845,6 +998,47 @@ func TestServiceDeleteRejectsCorruptDurableDeallocationAudit(t *testing.T) {
 	_, err = service.Delete(context.Background(), storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "admin", StoreID: storeID, ExpectedVersion: 3, OperationKey: operationKey})
 	if !errors.Is(err, storecenter.ErrDependencyUnavailable) {
 		t.Fatalf("Delete() corrupt deallocation audit = %v, want dependency unavailable", err)
+	}
+}
+
+func TestServiceDeleteRejectsActionSpecificCorruptRecoveryAudits(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		action storecenter.AuditAction
+		mutate func(*storecenter.AuditEvent)
+	}{
+		{"wrong outcome", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeUnknown }},
+		{"wrong failure", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.FailureCode = storecenter.AuditFailureDependencyUnavailable }},
+		{"wrong quota state", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.StoreStatusActive }},
+		{"wrong quota fields", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.SafeFieldNames = []string{"lifecycle_status"} }},
+		{"implausible quota version", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.StoreVersion = 9 }},
+		{"wrong complete outcome", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeUnknown }},
+		{"wrong complete state", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.NewState = storecenter.StoreStatusDeleting }},
+		{"wrong complete fields", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.SafeFieldNames = []string{"quota_allocation_id"} }},
+		{"implausible complete version", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.StoreVersion = 9 }},
+		{"wrong action identity", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.Action = storecenter.AuditActionQuotaDeallocated }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			storeID, operationKey, allocationID := uuid.NewString(), uuid.NewString(), uuid.NewString()
+			event := taskFiveAuditEvent(test.action)
+			event.OrganizationID, event.StoreID, event.RequestKey, event.AllocationID = "org-a", storeID, operationKey, allocationID
+			if test.action == storecenter.AuditActionQuotaDeallocated {
+				event.StoreVersion = 3
+			} else {
+				event.StoreVersion = 4
+			}
+			test.mutate(&event)
+			audit := newAuditRepositoryFake()
+			audit.events["org-a/"+operationKey+"/"+string(test.action)] = event
+			service, err := storecenter.NewService(newStoreRepositoryFake(), &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, time.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = service.Delete(context.Background(), storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "admin", StoreID: storeID, ExpectedVersion: 2, OperationKey: operationKey})
+			if !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+				t.Fatalf("Delete() corrupt %s audit = %v, want dependency unavailable", test.action, err)
+			}
+		})
 	}
 }
 
@@ -940,6 +1134,34 @@ func TestServiceDeleteDeallocationFailureLeavesOwnedDeletingStoreAndSameKeyResum
 	result, err := service.Delete(context.Background(), first)
 	if err != nil || result.Version != deleting.Version()+1 || repository.saveCalls != 1 || ledger.deallocateCalls != 2 {
 		t.Fatalf("resumed Delete() = %#v, %v saves=%d dealloc=%d", result, err, repository.saveCalls, ledger.deallocateCalls)
+	}
+}
+
+// Controller contract: only the exact same operation key may retry with the
+// original pre-delete version after the durable begin-delete Save advanced it
+// once. The companion test above covers retrying with the current version.
+func TestServiceDeleteSameKeyOriginalVersionReplayAfterDurableBeginDelete(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	ledger := &quotaLedgerFake{allocation: listingsubscription.StoreQuotaAllocation{OrganizationID: "org-a", AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), Status: listingsubscription.StoreQuotaAllocated}, deallocateErr: errors.New("quota timeout")}
+	audit := newAuditRepositoryFake()
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "admin", StoreID: store.ID(), ExpectedVersion: store.Version(), OperationKey: uuid.NewString()}
+	if _, err := service.Delete(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Delete() = %v", err)
+	}
+	deleting, err := repository.Get(context.Background(), "org-a", store.ID())
+	if err != nil || deleting.Version() != request.ExpectedVersion+1 || deleting.DeleteOperationKey() != request.OperationKey {
+		t.Fatalf("durable deleting state = %+v/%v", deleting, err)
+	}
+	ledger.deallocateErr = nil
+	result, err := service.Delete(context.Background(), request)
+	if err != nil || result.Version != request.ExpectedVersion+2 || !result.Replayed {
+		t.Fatalf("original-version replay Delete() = %#v, %v", result, err)
 	}
 }
 
@@ -1128,6 +1350,120 @@ func TestServiceUpdateNoOpAuditsWithoutSavingOrBumpingVersion(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateAuditsOnlyActualFieldsThroughDurableIntent(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	audit := newAuditRepositoryFake()
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "editor", StoreID: store.ID(), ExpectedVersion: store.Version(), Name: "After", Region: store.Region()}
+	if _, err := service.Update(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	operationKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte("org-a\n"+store.ID()+"\nupdate\n"+fmt.Sprint(store.Version()))).String()
+	started := audit.eventFor("org-a", operationKey, storecenter.AuditActionStoreUpdateStarted)
+	if started.Action != storecenter.AuditActionStoreUpdateStarted || started.Outcome != storecenter.AuditOutcomeUnknown || started.FailureCode != storecenter.AuditFailureNone || started.StoreVersion != store.Version() || !sameStrings(started.SafeFieldNames, []string{"name"}) {
+		t.Fatalf("update intent = %+v, want unknown version-%d name-only checkpoint", started, store.Version())
+	}
+	completed := audit.eventFor("org-a", operationKey, storecenter.AuditActionStoreUpdated)
+	if completed.Outcome != storecenter.AuditOutcomeSucceeded || completed.StoreVersion != store.Version()+1 || !sameStrings(completed.SafeFieldNames, []string{"name"}) {
+		t.Fatalf("completed update = %+v, want succeeded name-only fields", completed)
+	}
+}
+
+func TestServiceUpdateIntentFailureDoesNotSaveAndRetryConverges(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionStoreUpdateStarted: 1}
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "editor", StoreID: store.ID(), ExpectedVersion: store.Version(), Name: "After", Region: "MY"}
+	if _, err := service.Update(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Update() = %v, want dependency error", err)
+	}
+	if repository.saveCalls != 0 {
+		t.Fatalf("Save calls after failed intent = %d, want 0", repository.saveCalls)
+	}
+	result, err := service.Update(context.Background(), request)
+	if err != nil || result.Store.Store.Name() != "After" || repository.saveCalls != 1 {
+		t.Fatalf("retry Update() = %#v, %v saves=%d", result, err, repository.saveCalls)
+	}
+}
+
+// A deterministic identity collision is a safe business conflict, not an
+// infrastructure outage. The service must preserve the stable sentinel and
+// never expose SQLite/GORM details.
+func TestServiceUpdatePreservesRedactedAlreadyExistsFromGormSave(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.TempDir()+"/update-collision.db?_busy_timeout=5000"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := storecenter.AutoMigrateStoreRepository(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := storecenter.NewGormStoreRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audit, err := storecenter.NewGormAuditRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistActive := func(region string) *storecenter.Store {
+		store, createErr := storecenter.NewStore(storecenter.CreateStoreInput{
+			ID: uuid.NewString(), OrganizationID: "org-a", ActorSubject: "creator", Name: "Store " + region,
+			Platform: "shein", Region: region, ExternalStoreID: "shared-external", CreateIdempotencyKey: uuid.NewString(),
+			QuotaAllocationID: uuid.NewString(), OccurredAt: time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC),
+		})
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if _, _, createErr = repository.CreateOrReplay(context.Background(), "org-a", store); createErr != nil {
+			t.Fatal(createErr)
+		}
+		if createErr = store.TransitionTo(storecenter.StoreStatusActive, "creator", store.UpdatedAt().Add(time.Second)); createErr != nil {
+			t.Fatal(createErr)
+		}
+		if createErr = repository.Save(context.Background(), "org-a", store, 1); createErr != nil {
+			t.Fatal(createErr)
+		}
+		return store
+	}
+	_ = persistActive("SG")
+	candidate := persistActive("MY")
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, func() time.Time {
+		return candidate.UpdatedAt().Add(time.Minute)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = service.Update(context.Background(), storecenter.UpdateStoreRequest{
+		OrganizationID: "org-a", ActorSubject: "editor", StoreID: candidate.ID(), ExpectedVersion: candidate.Version(), Name: candidate.Name(), Region: "SG",
+	})
+	if !errors.Is(err, storecenter.ErrAlreadyExists) {
+		t.Fatalf("Update() error = %v, want ErrAlreadyExists", err)
+	}
+	if err.Error() != storecenter.ErrAlreadyExists.Error() {
+		t.Fatalf("Update() error = %q, want redacted %q", err, storecenter.ErrAlreadyExists)
+	}
+}
+
 func TestServiceUpdateAfterNoOpAtSameVersionDoesNotPoisonRealMutation(t *testing.T) {
 	repository := newStoreRepositoryFake()
 	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")
@@ -1192,12 +1528,17 @@ func TestServiceConcurrentDifferentDeleteKeysHaveOneOwner(t *testing.T) {
 	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")
 	repository.stores["org-a/"+store.ID()] = cloneStore(store)
 	ledger := &quotaLedgerFake{allocation: listingsubscription.StoreQuotaAllocation{OrganizationID: "org-a", AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), Status: listingsubscription.StoreQuotaAllocated}}
-	service, err := storecenter.NewService(repository, ledger, newAuditRepositoryFake(), &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+	audit := newAuditRepositoryFake()
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
 	if err != nil {
 		t.Fatal(err)
 	}
 	start := make(chan struct{})
-	results := make(chan error, 2)
+	type output struct {
+		key string
+		err error
+	}
+	results := make(chan output, 2)
 	var group sync.WaitGroup
 	for range 2 {
 		key := uuid.NewString()
@@ -1206,20 +1547,26 @@ func TestServiceConcurrentDifferentDeleteKeysHaveOneOwner(t *testing.T) {
 			defer group.Done()
 			<-start
 			_, err := service.Delete(context.Background(), storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "admin", StoreID: store.ID(), ExpectedVersion: store.Version(), OperationKey: key})
-			results <- err
+			results <- output{key: key, err: err}
 		}()
 	}
 	close(start)
 	group.Wait()
 	close(results)
 	var successes, failures int
-	for err := range results {
-		if err == nil {
+	for result := range results {
+		if result.err == nil {
 			successes++
-		} else if errors.Is(err, storecenter.ErrDependencyUnavailable) || errors.Is(err, storecenter.ErrVersionConflict) || errors.Is(err, storecenter.ErrInvalidTransition) {
+			continue
+		} else if errors.Is(result.err, storecenter.ErrNotFound) || errors.Is(result.err, storecenter.ErrDependencyUnavailable) || errors.Is(result.err, storecenter.ErrVersionConflict) || errors.Is(result.err, storecenter.ErrInvalidTransition) {
 			failures++
 		} else {
-			t.Fatalf("concurrent Delete() = %v", err)
+			t.Fatalf("concurrent Delete() = %v", result.err)
+		}
+		for _, action := range []storecenter.AuditAction{storecenter.AuditActionStoreMarkedDeleting, storecenter.AuditActionQuotaDeallocated, storecenter.AuditActionDeleteComplete} {
+			if event := audit.eventFor("org-a", result.key, action); event.Action != "" {
+				t.Fatalf("losing operation %s recorded false success %s: %+v", result.key, action, event)
+			}
 		}
 	}
 	if successes != 1 || failures != 1 || ledger.deallocateCalls != 1 {

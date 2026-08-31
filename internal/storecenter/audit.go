@@ -26,6 +26,7 @@ const (
 	AuditActionStoreCreateFailed      AuditAction = "store_create_failed"
 	AuditActionStoreCreateUnknown     AuditAction = "store_create_unknown"
 	AuditActionStoreCreationCommitted AuditAction = "store_creation_committed"
+	AuditActionStoreUpdateStarted     AuditAction = "store_update_started"
 	AuditActionStoreUpdated           AuditAction = "store_updated"
 	AuditActionStoreUpdateNoOp        AuditAction = "store_update_noop"
 	AuditActionStoreDisabled          AuditAction = "store_disabled"
@@ -206,7 +207,42 @@ func normalizeAuditEvent(event AuditEvent) (AuditEvent, error) {
 		return AuditEvent{}, err
 	}
 	event.SafeFieldNames = fields
+	if !validTaskFiveAuditCombination(event) {
+		return AuditEvent{}, errors.New("audit action outcome, state, fields, or version combination is invalid")
+	}
 	return event, nil
+}
+
+func validTaskFiveAuditCombination(event AuditEvent) bool {
+	succeeded := event.Outcome == AuditOutcomeSucceeded && event.FailureCode == AuditFailureNone && event.StoreVersion > 0
+	unknown := event.Outcome == AuditOutcomeUnknown && event.FailureCode == AuditFailureNone && event.StoreVersion > 0
+	sameMutableState := event.PreviousState == event.NewState && (event.PreviousState == StoreStatusActive || event.PreviousState == StoreStatusDisabled)
+	profileFields := len(event.SafeFieldNames) > 0
+	for _, field := range event.SafeFieldNames {
+		profileFields = profileFields && (field == "name" || field == "region")
+	}
+	switch event.Action {
+	case AuditActionStoreUpdateStarted:
+		return unknown && sameMutableState && profileFields
+	case AuditActionStoreUpdated:
+		return succeeded && sameMutableState && profileFields
+	case AuditActionStoreUpdateNoOp:
+		return succeeded && sameMutableState && len(event.SafeFieldNames) == 0
+	case AuditActionStoreDisabled:
+		return succeeded && event.PreviousState == StoreStatusActive && event.NewState == StoreStatusDisabled && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
+	case AuditActionStoreEnabled:
+		return succeeded && event.PreviousState == StoreStatusDisabled && event.NewState == StoreStatusActive && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
+	case AuditActionDeleteStarted:
+		return unknown && (event.PreviousState == StoreStatusActive || event.PreviousState == StoreStatusDisabled) && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
+	case AuditActionStoreMarkedDeleting:
+		return succeeded && (event.PreviousState == StoreStatusActive || event.PreviousState == StoreStatusDisabled) && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
+	case AuditActionQuotaDeallocated:
+		return succeeded && event.PreviousState == StoreStatusDeleting && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "quota_allocation_id")
+	case AuditActionDeleteComplete:
+		return succeeded && event.PreviousState == StoreStatusDeleting && event.NewState == "" && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
+	default:
+		return true
+	}
 }
 
 func normalizeSafeFieldNames(fields []string) ([]string, error) {
@@ -228,7 +264,7 @@ func normalizeSafeFieldNames(fields []string) ([]string, error) {
 
 func validAuditAction(action AuditAction) bool {
 	switch action {
-	case AuditActionQuotaReserved, AuditActionStoreCreated, AuditActionQuotaCommitStarted, AuditActionQuotaCommitFailed, AuditActionStoreCreateFailed, AuditActionStoreCreateUnknown, AuditActionStoreCreationCommitted, AuditActionStoreUpdated, AuditActionStoreUpdateNoOp, AuditActionStoreDisabled, AuditActionStoreEnabled, AuditActionDeleteStarted, AuditActionStoreMarkedDeleting, AuditActionQuotaDeallocated, AuditActionDeleteComplete:
+	case AuditActionQuotaReserved, AuditActionStoreCreated, AuditActionQuotaCommitStarted, AuditActionQuotaCommitFailed, AuditActionStoreCreateFailed, AuditActionStoreCreateUnknown, AuditActionStoreCreationCommitted, AuditActionStoreUpdateStarted, AuditActionStoreUpdated, AuditActionStoreUpdateNoOp, AuditActionStoreDisabled, AuditActionStoreEnabled, AuditActionDeleteStarted, AuditActionStoreMarkedDeleting, AuditActionQuotaDeallocated, AuditActionDeleteComplete:
 		return true
 	}
 	return false

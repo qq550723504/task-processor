@@ -310,7 +310,16 @@ func (s *Service) Update(ctx context.Context, request UpdateStoreRequest) (Store
 	if err != nil {
 		return StoreMutationResult{}, err
 	}
-	return s.mutate(ctx, mutationRequest{organizationID: normalized.OrganizationID, actor: normalized.ActorSubject, storeID: normalized.StoreID, expectedVersion: normalized.ExpectedVersion, actionName: "update", auditAction: AuditActionStoreUpdated, noOpAuditAction: AuditActionStoreUpdateNoOp, fields: []string{"name", "region"}, apply: func(store *Store, at time.Time) (bool, error) {
+	return s.mutate(ctx, mutationRequest{organizationID: normalized.OrganizationID, actor: normalized.ActorSubject, storeID: normalized.StoreID, expectedVersion: normalized.ExpectedVersion, actionName: "update", intentAuditAction: AuditActionStoreUpdateStarted, auditAction: AuditActionStoreUpdated, noOpAuditAction: AuditActionStoreUpdateNoOp, fieldsFor: func(store *Store) []string {
+		fields := make([]string, 0, 2)
+		if store.Name() != normalized.Name {
+			fields = append(fields, "name")
+		}
+		if store.Region() != normalized.Region {
+			fields = append(fields, "region")
+		}
+		return fields
+	}, apply: func(store *Store, at time.Time) (bool, error) {
 		return store.EditBasic(normalized.Name, normalized.Region, normalized.ActorSubject, at)
 	}, matches: func(store *Store) bool { return store.Name() == normalized.Name && store.Region() == normalized.Region }})
 }
@@ -343,8 +352,10 @@ type mutationRequest struct {
 	organizationID, actor, storeID, actionName string
 	expectedVersion                            int64
 	auditAction                                AuditAction
+	intentAuditAction                          AuditAction
 	noOpAuditAction                            AuditAction
 	fields                                     []string
+	fieldsFor                                  func(*Store) []string
 	previous, next                             LifecycleStatus
 	apply                                      func(*Store, time.Time) (bool, error)
 	matches                                    func(*Store) bool
@@ -363,10 +374,20 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 	auditAction := request.auditAction
 	auditFields := request.fields
 	if store.Version() == request.expectedVersion+1 && request.matches(store) {
+		if request.intentAuditAction != "" {
+			intent, intentErr := s.audit.Get(ctx, request.organizationID, operationKey, request.intentAuditAction)
+			if intentErr != nil || validateUpdateIntent(intent, request, store, operationKey) != nil {
+				return StoreMutationResult{}, dependencyError(intentErr)
+			}
+			auditFields = append([]string(nil), intent.SafeFieldNames...)
+		}
 		replayed = true
 	} else if store.Version() != request.expectedVersion {
 		return StoreMutationResult{}, ErrVersionConflict
 	} else {
+		if request.fieldsFor != nil {
+			auditFields = request.fieldsFor(store)
+		}
 		changed, applyErr := request.apply(store, s.monotonicNow(store.UpdatedAt()))
 		if applyErr != nil {
 			if errors.Is(applyErr, ErrInvalidTransition) {
@@ -375,12 +396,24 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 			return StoreMutationResult{}, applyErr
 		}
 		if changed {
+			if request.intentAuditAction != "" {
+				intent := newAuditEvent(request.organizationID, request.storeID, store.QuotaAllocationID(), operationKey, request.intentAuditAction, AuditOutcomeUnknown, request.actor, auditFields, store.LifecycleStatus(), store.LifecycleStatus(), AuditFailureNone, s.utcNow())
+				intent.StoreVersion = request.expectedVersion
+				durableIntent, _, intentErr := s.audit.Record(ctx, intent)
+				if intentErr != nil || validateUpdateIntent(&durableIntent, request, store, operationKey) != nil {
+					return StoreMutationResult{}, dependencyError(intentErr)
+				}
+				auditFields = append([]string(nil), durableIntent.SafeFieldNames...)
+			}
 			if err := s.repository.Save(ctx, request.organizationID, store, request.expectedVersion); err != nil {
 				resolved, readErr := s.repository.Get(ctx, request.organizationID, request.storeID)
 				if readErr == nil && resolved != nil && resolved.OrganizationID() == request.organizationID && resolved.Version() == request.expectedVersion+1 && request.matches(resolved) {
 					store = resolved
 					replayed = true
 				} else if readErr == nil && resolved != nil && resolved.Version() == request.expectedVersion {
+					if errors.Is(err, ErrAlreadyExists) {
+						return StoreMutationResult{}, ErrAlreadyExists
+					}
 					return StoreMutationResult{}, dependencyError(err)
 				} else if readErr == nil && resolved != nil {
 					return StoreMutationResult{}, ErrVersionConflict
@@ -393,7 +426,11 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 			auditFields = nil
 		}
 	}
-	event := newAuditEvent(request.organizationID, request.storeID, store.QuotaAllocationID(), operationKey, auditAction, AuditOutcomeSucceeded, request.actor, auditFields, request.previous, request.next, AuditFailureNone, s.utcNow())
+	previous, next := request.previous, request.next
+	if request.intentAuditAction != "" {
+		previous, next = store.LifecycleStatus(), store.LifecycleStatus()
+	}
+	event := newAuditEvent(request.organizationID, request.storeID, store.QuotaAllocationID(), operationKey, auditAction, AuditOutcomeSucceeded, request.actor, auditFields, previous, next, AuditFailureNone, s.utcNow())
 	event.StoreVersion = store.Version()
 	_, auditReplayed, err := s.audit.Record(ctx, event)
 	if err != nil {
@@ -404,6 +441,16 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 		return StoreMutationResult{}, err
 	}
 	return StoreMutationResult{Store: projection, Replayed: replayed || auditReplayed}, nil
+}
+
+func validateUpdateIntent(event *AuditEvent, request mutationRequest, store *Store, operationKey string) error {
+	if event == nil || store == nil || event.OrganizationID != request.organizationID || event.StoreID != request.storeID || event.AllocationID != store.QuotaAllocationID() || event.RequestKey != operationKey || event.Action != request.intentAuditAction || event.Outcome != AuditOutcomeUnknown || event.FailureCode != AuditFailureNone || event.StoreVersion != request.expectedVersion || event.PreviousState != store.LifecycleStatus() || event.NewState != store.LifecycleStatus() {
+		return ErrAuditIdentityMismatch
+	}
+	if !exactSafeFields(event.SafeFieldNames, "name") && !exactSafeFields(event.SafeFieldNames, "region") && !exactSafeFields(event.SafeFieldNames, "name", "region") {
+		return ErrAuditIdentityMismatch
+	}
+	return nil
 }
 
 func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (DeleteStoreResult, error) {
@@ -430,7 +477,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 			return DeleteStoreResult{}, dependencyError(auditErr)
 		}
 		version := deallocated.StoreVersion + 1
-		if err := s.recordDeletePhase(ctx, normalized, deallocated.AllocationID, AuditActionDeleteComplete, "", "", version); err != nil {
+		if err := s.recordDeletePhase(ctx, normalized, deallocated.AllocationID, AuditActionDeleteComplete, StoreStatusDeleting, "", version); err != nil {
 			return DeleteStoreResult{}, dependencyError(err)
 		}
 		return DeleteStoreResult{StoreID: normalized.StoreID, Version: version, Replayed: true}, nil
@@ -446,13 +493,19 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 	if store.LifecycleStatus() == StoreStatusProvisioning {
 		return DeleteStoreResult{}, ErrInvalidTransition
 	}
+	previous := LifecycleStatus("")
 	if store.LifecycleStatus() == StoreStatusDeleting {
 		if store.DeleteOperationKey() != normalized.OperationKey {
 			return DeleteStoreResult{}, ErrInvalidTransition
 		}
+		started, auditErr := s.audit.Get(ctx, normalized.OrganizationID, normalized.OperationKey, AuditActionDeleteStarted)
+		if auditErr != nil || validateDeleteAudit(started, normalized, AuditActionDeleteStarted) != nil || started.AllocationID != store.QuotaAllocationID() {
+			return DeleteStoreResult{}, dependencyError(auditErr)
+		}
+		previous = started.PreviousState
 		replayed = true
 	} else {
-		previous := store.LifecycleStatus()
+		previous = store.LifecycleStatus()
 		if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionDeleteStarted, previous, StoreStatusDeleting, store.Version()); err != nil {
 			return DeleteStoreResult{}, dependencyError(err)
 		}
@@ -468,7 +521,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 			replayed = true
 		}
 	}
-	if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionStoreMarkedDeleting, "", StoreStatusDeleting, store.Version()); err != nil {
+	if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionStoreMarkedDeleting, previous, StoreStatusDeleting, store.Version()); err != nil {
 		return DeleteStoreResult{}, dependencyError(err)
 	}
 	transition := listingsubscription.StoreQuotaTransitionInput{OrganizationID: normalized.OrganizationID, AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), ActorSubject: normalized.ActorSubject}
@@ -496,20 +549,61 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 }
 
 func validateDeleteAudit(event *AuditEvent, request DeleteStoreRequest, action AuditAction) error {
-	if event == nil || event.OrganizationID != request.OrganizationID || event.RequestKey != request.OperationKey || event.StoreID != request.StoreID || event.Action != action || event.Outcome != AuditOutcomeSucceeded || event.FailureCode != AuditFailureNone || event.StoreVersion <= 0 {
+	if event == nil || event.OrganizationID != request.OrganizationID || event.RequestKey != request.OperationKey || event.StoreID != request.StoreID || event.Action != action || event.FailureCode != AuditFailureNone || event.StoreVersion <= 0 {
 		return ErrAuditIdentityMismatch
 	}
 	if _, err := canonicalUUID(event.AllocationID); err != nil {
+		return ErrAuditIdentityMismatch
+	}
+	valid := false
+	switch action {
+	case AuditActionDeleteStarted:
+		valid = event.Outcome == AuditOutcomeUnknown && (event.PreviousState == StoreStatusActive || event.PreviousState == StoreStatusDisabled) && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "lifecycle_status") && (event.StoreVersion == request.ExpectedVersion || event.StoreVersion == request.ExpectedVersion-1)
+	case AuditActionStoreMarkedDeleting:
+		valid = event.Outcome == AuditOutcomeSucceeded && (event.PreviousState == StoreStatusActive || event.PreviousState == StoreStatusDisabled) && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "lifecycle_status") && (event.StoreVersion == request.ExpectedVersion || event.StoreVersion == request.ExpectedVersion+1)
+	case AuditActionQuotaDeallocated:
+		valid = event.Outcome == AuditOutcomeSucceeded && event.PreviousState == StoreStatusDeleting && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "quota_allocation_id") && (event.StoreVersion == request.ExpectedVersion || event.StoreVersion == request.ExpectedVersion+1)
+	case AuditActionDeleteComplete:
+		valid = event.Outcome == AuditOutcomeSucceeded && event.PreviousState == StoreStatusDeleting && event.NewState == "" && exactSafeFields(event.SafeFieldNames, "lifecycle_status") && (event.StoreVersion == request.ExpectedVersion+1 || event.StoreVersion == request.ExpectedVersion+2)
+	}
+	if !valid {
 		return ErrAuditIdentityMismatch
 	}
 	return nil
 }
 
 func (s *Service) recordDeletePhase(ctx context.Context, request DeleteStoreRequest, allocationID string, action AuditAction, previous, next LifecycleStatus, version int64) error {
-	event := newAuditEvent(request.OrganizationID, request.StoreID, allocationID, request.OperationKey, action, AuditOutcomeSucceeded, request.ActorSubject, []string{"lifecycle_status", "quota_allocation_id"}, previous, next, AuditFailureNone, s.utcNow())
+	outcome := AuditOutcomeSucceeded
+	fields := []string{"lifecycle_status"}
+	if action == AuditActionDeleteStarted {
+		outcome = AuditOutcomeUnknown
+	}
+	if action == AuditActionQuotaDeallocated {
+		fields = []string{"quota_allocation_id"}
+	}
+	event := newAuditEvent(request.OrganizationID, request.StoreID, allocationID, request.OperationKey, action, outcome, request.ActorSubject, fields, previous, next, AuditFailureNone, s.utcNow())
 	event.StoreVersion = version
 	_, _, err := s.audit.Record(ctx, event)
 	return err
+}
+
+func exactSafeFields(got []string, want ...string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	seen := make(map[string]bool, len(got))
+	for _, field := range got {
+		if seen[field] {
+			return false
+		}
+		seen[field] = true
+	}
+	for _, field := range want {
+		if !seen[field] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) projectOne(ctx context.Context, store *Store) (StoreProjection, error) {
