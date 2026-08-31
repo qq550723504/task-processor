@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
+	"task-processor/internal/platform/queue/rabbitmq"
 )
 
 type DispatchTaskRepository interface {

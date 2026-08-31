@@ -5,8 +5,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/pkg/recovery"
 	"time"
 
@@ -19,7 +17,7 @@ type LoadMonitor struct {
 	logger *logrus.Logger
 
 	// 使用通用指标收集器
-	metricsCollector *monitoring.MetricsCollector
+	metricsCollector SystemMetricsCollector
 
 	// 任务统计数据
 	stats      LoadStats
@@ -36,7 +34,7 @@ type LoadMonitor struct {
 	wg     sync.WaitGroup
 
 	// 配置
-	config config.LoadMonitorConfig
+	config LoadMonitorConfig
 }
 
 // LoadStats 负载统计信息
@@ -66,18 +64,12 @@ type QueueLoadStats struct {
 	LastProcessed     time.Time   `json:"last_processed"`
 }
 
-// MonitorConfig 监控配置（内部使用，用于兼容）
-type MonitorConfig = config.LoadMonitorConfig
-
 // NewLoadMonitor 创建负载监控器
-func NewLoadMonitor(cfg config.LoadMonitorConfig, logger *logrus.Logger) *LoadMonitor {
+func NewLoadMonitor(cfg LoadMonitorConfig, metricsCollector SystemMetricsCollector, logger *logrus.Logger) *LoadMonitor {
 	// 设置默认值
 	if cfg.UpdateInterval == 0 {
 		cfg.UpdateInterval = 30 * time.Second
 	}
-
-	// 创建通用指标收集器
-	metricsCollector := monitoring.NewMetricsCollector(logger, cfg.UpdateInterval)
 
 	return &LoadMonitor{
 		logger:               logger,
@@ -96,8 +88,10 @@ func (lm *LoadMonitor) Start(ctx context.Context) error {
 	lm.ctx, lm.cancel = context.WithCancel(ctx)
 
 	// 启动通用指标收集器
-	if err := lm.metricsCollector.Start(ctx); err != nil {
-		return fmt.Errorf("启动指标收集器失败: %w", err)
+	if lm.metricsCollector != nil {
+		if err := lm.metricsCollector.Start(ctx); err != nil {
+			return fmt.Errorf("启动指标收集器失败: %w", err)
+		}
 	}
 
 	// 启动监控goroutine
@@ -113,8 +107,10 @@ func (lm *LoadMonitor) Stop(ctx context.Context) error {
 	lm.logger.Info("停止负载监控器...")
 
 	// 停止指标收集器
-	if err := lm.metricsCollector.Stop(ctx); err != nil {
-		lm.logger.Warnf("停止指标收集器失败: %v", err)
+	if lm.metricsCollector != nil {
+		if err := lm.metricsCollector.Stop(ctx); err != nil {
+			lm.logger.Warnf("停止指标收集器失败: %v", err)
+		}
 	}
 
 	// 取消上下文
@@ -170,26 +166,28 @@ func (lm *LoadMonitor) updateStats() {
 	// 获取处理时间统计
 	lm.stats.ProcessingTimeStats = lm.processingTimeWindow.GetStats()
 
-	// 更新RabbitMQ特定的指标到通用指标收集器
-	lm.metricsCollector.SetCounter("rabbitmq_tasks_processed_total", float64(lm.stats.TasksProcessed), nil, "处理的任务总数")
-	lm.metricsCollector.SetCounter("rabbitmq_tasks_succeeded_total", float64(lm.stats.TasksSucceeded), nil, "成功的任务总数")
-	lm.metricsCollector.SetCounter("rabbitmq_tasks_failed_total", float64(lm.stats.TasksFailed), nil, "失败的任务总数")
-	lm.metricsCollector.SetCounter("rabbitmq_tasks_retried_total", float64(lm.stats.TasksRetried), nil, "重试的任务总数")
+	if lm.metricsCollector != nil {
+		// 更新RabbitMQ特定的指标到注入的指标收集器
+		lm.metricsCollector.SetCounter("rabbitmq_tasks_processed_total", float64(lm.stats.TasksProcessed), nil, "处理的任务总数")
+		lm.metricsCollector.SetCounter("rabbitmq_tasks_succeeded_total", float64(lm.stats.TasksSucceeded), nil, "成功的任务总数")
+		lm.metricsCollector.SetCounter("rabbitmq_tasks_failed_total", float64(lm.stats.TasksFailed), nil, "失败的任务总数")
+		lm.metricsCollector.SetCounter("rabbitmq_tasks_retried_total", float64(lm.stats.TasksRetried), nil, "重试的任务总数")
 
-	lm.metricsCollector.SetGauge("rabbitmq_avg_processing_time_seconds", lm.stats.ProcessingTimeStats.Average.Seconds(), nil, "平均处理时间")
-	lm.metricsCollector.SetGauge("rabbitmq_max_processing_time_seconds", lm.stats.ProcessingTimeStats.Max.Seconds(), nil, "最大处理时间")
-	lm.metricsCollector.SetGauge("rabbitmq_min_processing_time_seconds", lm.stats.ProcessingTimeStats.Min.Seconds(), nil, "最小处理时间")
-	lm.metricsCollector.SetGauge("rabbitmq_p95_processing_time_seconds", lm.stats.ProcessingTimeStats.P95.Seconds(), nil, "P95处理时间")
-	lm.metricsCollector.SetGauge("rabbitmq_p99_processing_time_seconds", lm.stats.ProcessingTimeStats.P99.Seconds(), nil, "P99处理时间")
+		lm.metricsCollector.SetGauge("rabbitmq_avg_processing_time_seconds", lm.stats.ProcessingTimeStats.Average.Seconds(), nil, "平均处理时间")
+		lm.metricsCollector.SetGauge("rabbitmq_max_processing_time_seconds", lm.stats.ProcessingTimeStats.Max.Seconds(), nil, "最大处理时间")
+		lm.metricsCollector.SetGauge("rabbitmq_min_processing_time_seconds", lm.stats.ProcessingTimeStats.Min.Seconds(), nil, "最小处理时间")
+		lm.metricsCollector.SetGauge("rabbitmq_p95_processing_time_seconds", lm.stats.ProcessingTimeStats.P95.Seconds(), nil, "P95处理时间")
+		lm.metricsCollector.SetGauge("rabbitmq_p99_processing_time_seconds", lm.stats.ProcessingTimeStats.P99.Seconds(), nil, "P99处理时间")
 
-	// 更新队列统计
-	for queueName, queueStats := range lm.stats.QueueStats {
-		labels := map[string]string{"queue": queueName}
-		lm.metricsCollector.SetCounter("rabbitmq_queue_messages_processed_total", float64(queueStats.MessagesProcessed), labels, "队列处理消息总数")
-		lm.metricsCollector.SetCounter("rabbitmq_queue_messages_succeeded_total", float64(queueStats.MessagesSucceeded), labels, "队列成功消息总数")
-		lm.metricsCollector.SetCounter("rabbitmq_queue_messages_failed_total", float64(queueStats.MessagesFailed), labels, "队列失败消息总数")
-		lm.metricsCollector.SetGauge("rabbitmq_queue_avg_processing_time_seconds", queueStats.ProcessingStats.Average.Seconds(), labels, "队列平均处理时间")
-		lm.metricsCollector.SetGauge("rabbitmq_queue_p95_processing_time_seconds", queueStats.ProcessingStats.P95.Seconds(), labels, "队列P95处理时间")
+		// 更新队列统计
+		for queueName, queueStats := range lm.stats.QueueStats {
+			labels := map[string]string{"queue": queueName}
+			lm.metricsCollector.SetCounter("rabbitmq_queue_messages_processed_total", float64(queueStats.MessagesProcessed), labels, "队列处理消息总数")
+			lm.metricsCollector.SetCounter("rabbitmq_queue_messages_succeeded_total", float64(queueStats.MessagesSucceeded), labels, "队列成功消息总数")
+			lm.metricsCollector.SetCounter("rabbitmq_queue_messages_failed_total", float64(queueStats.MessagesFailed), labels, "队列失败消息总数")
+			lm.metricsCollector.SetGauge("rabbitmq_queue_avg_processing_time_seconds", queueStats.ProcessingStats.Average.Seconds(), labels, "队列平均处理时间")
+			lm.metricsCollector.SetGauge("rabbitmq_queue_p95_processing_time_seconds", queueStats.ProcessingStats.P95.Seconds(), labels, "队列P95处理时间")
+		}
 	}
 
 	// 更新时间戳
@@ -274,8 +272,7 @@ func (lm *LoadMonitor) GetStats() LoadStats {
 func (lm *LoadMonitor) GetHealthStatus() map[string]any {
 	stats := lm.GetStats()
 
-	// 从通用指标收集器获取系统指标
-	metrics := lm.metricsCollector.GetMetrics()
+	metrics := lm.SystemMetricsSnapshot()
 
 	health := make(map[string]any)
 	health["status"] = "healthy"
@@ -285,13 +282,13 @@ func (lm *LoadMonitor) GetHealthStatus() map[string]any {
 
 	// 添加系统指标
 	if cpuMetric, ok := metrics["system_cpu_cores"]; ok {
-		health["cpu_cores"] = cpuMetric.Value
+		health["cpu_cores"] = cpuMetric
 	}
 	if goroutineMetric, ok := metrics["system_goroutines_count"]; ok {
-		health["goroutine_count"] = goroutineMetric.Value
+		health["goroutine_count"] = goroutineMetric
 
 		// 判断健康状态
-		if goroutineMetric.Value > 1000 {
+		if goroutineMetric > 1000 {
 			health["status"] = "warning"
 			health["warning"] = "Goroutine数量过多"
 		}
@@ -331,8 +328,10 @@ func (lm *LoadMonitor) ResetStats() {
 	lm.logger.Info("负载统计信息已重置")
 }
 
-// GetMetricsCollector 获取指标收集器
-// 允许外部访问底层的指标收集器
-func (lm *LoadMonitor) GetMetricsCollector() *monitoring.MetricsCollector {
-	return lm.metricsCollector
+// SystemMetricsSnapshot returns a runtime-neutral snapshot of collected metrics.
+func (lm *LoadMonitor) SystemMetricsSnapshot() map[string]float64 {
+	if lm.metricsCollector == nil {
+		return map[string]float64{}
+	}
+	return lm.metricsCollector.Snapshot()
 }

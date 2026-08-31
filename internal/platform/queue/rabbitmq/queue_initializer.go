@@ -10,12 +10,23 @@ import (
 
 // QueueInitializer 队列初始化器
 type QueueInitializer struct {
-	client *Client
+	client queueInitializerClient
 	logger *logrus.Logger
+}
+
+type queueInitializerClient interface {
+	DeclareExchange(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error
+	DeclareQueue(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) error
+	DeleteQueue(name string, ifUnused, ifEmpty, noWait bool) error
+	BindQueue(queueName, routingKey, exchangeName string, noWait bool, args amqp.Table) error
 }
 
 // NewQueueInitializer 创建队列初始化器
 func NewQueueInitializer(client *Client, logger *logrus.Logger) *QueueInitializer {
+	return newQueueInitializer(client, logger)
+}
+
+func newQueueInitializer(client queueInitializerClient, logger *logrus.Logger) *QueueInitializer {
 	return &QueueInitializer{client: client, logger: logger}
 }
 

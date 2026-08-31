@@ -5,8 +5,8 @@ import (
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/state"
 
 	"github.com/sirupsen/logrus"

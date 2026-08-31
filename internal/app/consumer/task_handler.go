@@ -14,11 +14,11 @@ import (
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/app/taskstatus"
 	taskdomain "task-processor/internal/domain/task"
-	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/infra/worker"
 	api "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
+	"task-processor/internal/platform/queue/rabbitmq"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/shared/strx"
 
 	"github.com/sirupsen/logrus"

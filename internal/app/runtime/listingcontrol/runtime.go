@@ -10,11 +10,11 @@ import (
 
 	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
 	controllib "task-processor/internal/listingcontrol"
 	"task-processor/internal/pkg/appenv"
 	platformdatabase "task-processor/internal/platform/database"
+	"task-processor/internal/platform/queue/rabbitmq"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"

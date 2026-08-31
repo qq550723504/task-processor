@@ -13,8 +13,8 @@ import (
 
 	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
 	api "task-processor/internal/listingadmin"
+	"task-processor/internal/platform/queue/rabbitmq"
 	platformredis "task-processor/internal/platform/redis"
 
 	amqp "github.com/rabbitmq/amqp091-go"

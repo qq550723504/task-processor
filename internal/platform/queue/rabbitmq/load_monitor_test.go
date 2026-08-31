@@ -2,7 +2,6 @@ package rabbitmq
 
 import (
 	"context"
-	"task-processor/internal/core/config"
 	"testing"
 	"time"
 
@@ -11,11 +10,11 @@ import (
 
 func TestNewLoadMonitor(t *testing.T) {
 	logger := logrus.New()
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 10 * time.Second,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	if lm == nil {
 		t.Fatal("NewLoadMonitor 应该返回非 nil 实例")
@@ -40,11 +39,11 @@ func TestNewLoadMonitor(t *testing.T) {
 
 func TestNewLoadMonitor_DefaultInterval(t *testing.T) {
 	logger := logrus.New()
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 0, // 未设置
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	// 应该使用默认值 30 秒
 	if lm.config.UpdateInterval != 30*time.Second {
@@ -56,11 +55,11 @@ func TestLoadMonitor_RecordTaskProcessed_Success(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel) // 减少日志输出
 
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 1 * time.Second,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	// 记录成功的任务
 	lm.RecordTaskProcessed("test-queue", true, 100*time.Millisecond)
@@ -98,11 +97,11 @@ func TestLoadMonitor_RecordTaskProcessed_Failure(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 1 * time.Second,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	// 记录失败的任务
 	lm.RecordTaskProcessed("test-queue", false, 50*time.Millisecond)
@@ -136,11 +135,11 @@ func TestLoadMonitor_RecordTaskProcessed_MultipleQueues(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 1 * time.Second,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	// 记录多个队列的任务
 	lm.RecordTaskProcessed("queue-1", true, 100*time.Millisecond)
@@ -174,11 +173,11 @@ func TestLoadMonitor_RecordTaskRetried(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 1 * time.Second,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	// 记录重试
 	lm.RecordTaskRetried("test-queue")
@@ -195,11 +194,11 @@ func TestLoadMonitor_GetStats_DeepCopy(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 1 * time.Second,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	lm.RecordTaskProcessed("test-queue", true, 100*time.Millisecond)
 
@@ -224,11 +223,11 @@ func TestLoadMonitor_ResetStats(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 1 * time.Second,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	// 记录一些数据
 	lm.RecordTaskProcessed("test-queue", true, 100*time.Millisecond)
@@ -266,11 +265,11 @@ func TestLoadMonitor_CalculateSuccessRate(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 1 * time.Second,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	tests := []struct {
 		name      string
@@ -306,11 +305,11 @@ func TestLoadMonitor_GetHealthStatus(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 1 * time.Second,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	// 记录一些成功的任务
 	for i := 0; i < 10; i++ {
@@ -337,11 +336,11 @@ func TestLoadMonitor_StartStop(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 100 * time.Millisecond,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	ctx := context.Background()
 
@@ -364,20 +363,22 @@ func TestLoadMonitor_StartStop(t *testing.T) {
 	}
 }
 
-func TestLoadMonitor_GetMetricsCollector(t *testing.T) {
+func TestLoadMonitor_SystemMetricsSnapshotWithoutCollector(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 1 * time.Second,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
+	lm.RecordTaskProcessed("test-queue", true, 100*time.Millisecond)
 
-	collector := lm.GetMetricsCollector()
-
-	if collector == nil {
-		t.Error("GetMetricsCollector 应该返回非 nil 实例")
+	if got := lm.SystemMetricsSnapshot(); len(got) != 0 {
+		t.Fatalf("system metrics = %#v, want empty snapshot", got)
+	}
+	if got := lm.GetStats().TasksProcessed; got != 1 {
+		t.Fatalf("TasksProcessed = %d, want 1", got)
 	}
 }
 
@@ -385,11 +386,11 @@ func TestLoadMonitor_ProcessingTimeStats(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	cfg := config.LoadMonitorConfig{
+	cfg := LoadMonitorConfig{
 		UpdateInterval: 1 * time.Second,
 	}
 
-	lm := NewLoadMonitor(cfg, logger)
+	lm := NewLoadMonitor(cfg, nil, logger)
 
 	// 记录不同处理时间的任务
 	lm.RecordTaskProcessed("test-queue", true, 100*time.Millisecond)

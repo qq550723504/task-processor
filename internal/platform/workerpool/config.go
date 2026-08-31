@@ -1,5 +1,5 @@
 // Package worker 提供工作池配置
-package worker
+package workerpool
 
 import (
 	"fmt"

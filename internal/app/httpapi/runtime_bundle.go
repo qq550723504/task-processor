@@ -6,8 +6,8 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
-	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/taskrpcapi"
 )
 

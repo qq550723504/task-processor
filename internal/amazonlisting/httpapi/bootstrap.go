@@ -12,8 +12,8 @@ import (
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httpbootstrap"
-	"task-processor/internal/infra/worker"
 	platformdatabase "task-processor/internal/platform/database"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )

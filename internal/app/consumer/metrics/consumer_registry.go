@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"sync"
 	coremetrics "task-processor/internal/core/metrics"
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platform/queue/rabbitmq"
 
 	"github.com/prometheus/client_golang/prometheus"
 )

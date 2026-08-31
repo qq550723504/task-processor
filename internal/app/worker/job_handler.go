@@ -3,9 +3,9 @@ package worker
 
 import (
 	"encoding/json"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	logger "task-processor/internal/platform/logging"
+	worker "task-processor/internal/platform/workerpool"
 
 	"github.com/sirupsen/logrus"
 )

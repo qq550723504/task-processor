@@ -11,8 +11,8 @@ import (
 	crawler1688 "task-processor/internal/crawler/alibaba1688"
 	"task-processor/internal/httproute"
 	"task-processor/internal/infra/httpx"
-	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/sourceaccount"
 )
 

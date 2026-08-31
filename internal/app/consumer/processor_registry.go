@@ -5,9 +5,9 @@ import (
 	"sync"
 
 	apptask "task-processor/internal/app/task"
-	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/infra/worker"
 	api "task-processor/internal/listingadmin"
+	"task-processor/internal/platform/queue/rabbitmq"
+	worker "task-processor/internal/platform/workerpool"
 
 	"github.com/sirupsen/logrus"
 )

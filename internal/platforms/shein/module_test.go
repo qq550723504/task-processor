@@ -10,9 +10,9 @@ import (
 	appscheduler "task-processor/internal/app/scheduler"
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/prompt"
 	"task-processor/internal/shared/tenantctx"
 

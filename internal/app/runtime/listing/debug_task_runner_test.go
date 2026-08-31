@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 func TestListingAdminImportTaskToDebugModelTaskMapsLocalTask(t *testing.T) {

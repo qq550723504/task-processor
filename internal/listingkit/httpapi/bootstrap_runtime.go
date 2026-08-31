@@ -6,9 +6,9 @@ import (
 
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/httpbootstrap"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 type serviceRuntimeModules struct {

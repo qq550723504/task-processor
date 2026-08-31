@@ -1,14 +1,13 @@
 // Package worker 提供工作池实现，用于并发处理任务
-package worker
+package workerpool
 
 import (
 	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
-	"task-processor/internal/core/config"
-	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/recovery"
+	logger "task-processor/internal/platform/logging"
 	"time"
 )
 
@@ -34,24 +33,6 @@ type queueFullError struct{}
 
 func (queueFullError) Error() string   { return "工作队列已满" }
 func (queueFullError) QueueFull() bool { return true }
-
-// NewPool 创建新的工作池（兼容旧版本）
-// 参数:
-//   - proc: 任务处理器，用于处理具体的任务逻辑
-//   - workerCfg: 工作池配置，包含并发数和缓冲区大小
-//
-// 返回值:
-//   - *Pool: 工作池实例
-func NewPool(proc Processor, workerCfg config.WorkerConfig) *Pool {
-	// 从默认配置开始
-	poolCfg := DefaultPoolConfig()
-
-	// 覆盖从配置文件读取的值
-	poolCfg.Concurrency = workerCfg.Concurrency
-	poolCfg.BufferSize = workerCfg.BufferSize
-
-	return NewPoolWithConfig(proc, poolCfg)
-}
 
 // NewPoolWithConfig 使用新配置创建工作池
 // 参数:

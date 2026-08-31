@@ -1,5 +1,5 @@
 // Package worker 提供工作池接口定义
-package worker
+package workerpool
 
 import (
 	"context"

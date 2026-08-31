@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/infra/monitoring"
+	"task-processor/internal/platform/queue/rabbitmq"
 
 	"github.com/sirupsen/logrus"
 )
@@ -89,9 +91,15 @@ func newTestHTTPServerManager() *HTTPServerManager {
 
 	return NewHTTPServerManager(
 		cfg,
-		rabbitmq.NewLoadMonitor(config.LoadMonitorConfig{}, logger),
+		newTestLoadMonitor(config.LoadMonitorConfig{}, logger),
 		NewRabbitMQService(cfg, logger),
 		nil,
 		logger,
 	)
+}
+
+func newTestLoadMonitor(cfg config.LoadMonitorConfig, logger *logrus.Logger) *rabbitmq.LoadMonitor {
+	monitorCfg := configadapter.LoadMonitor(cfg)
+	collector := monitoring.NewMetricsCollector(logger, monitorCfg.UpdateInterval)
+	return rabbitmq.NewLoadMonitor(monitorCfg, newSystemMetricsCollectorAdapter(collector), logger)
 }

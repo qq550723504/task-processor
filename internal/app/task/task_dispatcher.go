@@ -6,10 +6,10 @@ import (
 	"errors"
 	"strings"
 
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingruntime"
 	types "task-processor/internal/model"
 	logger "task-processor/internal/platform/logging"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 type TaskDispatcher struct {

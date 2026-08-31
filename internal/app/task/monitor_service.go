@@ -3,8 +3,8 @@ package task
 
 import (
 	"context"
-	"task-processor/internal/infra/worker"
 	logger "task-processor/internal/platform/logging"
+	worker "task-processor/internal/platform/workerpool"
 	"time"
 )
 

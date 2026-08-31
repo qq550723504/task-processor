@@ -12,9 +12,9 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/httpx"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	platformredis "task-processor/internal/platform/redis"
+	worker "task-processor/internal/platform/workerpool"
 
 	"github.com/sirupsen/logrus"
 )

@@ -1,5 +1,5 @@
 // Package worker 提供工作池监控指标
-package worker
+package workerpool
 
 import (
 	"sync"

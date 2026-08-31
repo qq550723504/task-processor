@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"task-processor/internal/app/taskstatus"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 type stubTaskSubmitter struct {

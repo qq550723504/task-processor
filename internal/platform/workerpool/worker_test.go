@@ -1,5 +1,5 @@
 // Package worker provides unit tests for worker pool
-package worker
+package workerpool
 
 import (
 	"errors"

@@ -5,7 +5,7 @@ import (
 	"context"
 
 	"task-processor/internal/app/lifecycle"
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platform/queue/rabbitmq"
 
 	"github.com/sirupsen/logrus"
 )

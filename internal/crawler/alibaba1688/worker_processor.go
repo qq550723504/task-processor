@@ -11,7 +11,7 @@ import (
 
 	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/crawler/shared"
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 // Crawler1688Processor 实现 worker.Processor 接口

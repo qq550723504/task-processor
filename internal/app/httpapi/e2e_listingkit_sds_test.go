@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/productimage"

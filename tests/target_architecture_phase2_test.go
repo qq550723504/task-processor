@@ -169,6 +169,30 @@ func TestTargetDomainsDoNotImportConcreteInfrastructure(t *testing.T) {
 	}
 }
 
+func TestPlatformQueueRabbitMQDoesNotImportApplicationOrLegacyInfrastructure(t *testing.T) {
+	index, err := loadGoFileIndex(filepath.Join("..", "internal", "platform", "queue", "rabbitmq"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		for imp := range facts.imports {
+			clean, err := decodeGoImportPath(imp)
+			if err != nil {
+				t.Fatalf("%s has invalid import %s: %v", filepath.ToSlash(path), imp, err)
+			}
+			for _, forbidden := range []string{
+				"task-processor/internal/app",
+				"task-processor/internal/core",
+				"task-processor/internal/infra",
+			} {
+				if importMatchesPrefix(clean, forbidden) {
+					t.Errorf("%s imports forbidden package %s", filepath.ToSlash(path), clean)
+				}
+			}
+		}
+	}
+}
+
 func decodeGoImportPath(importLiteral string) (string, error) {
 	return strconv.Unquote(importLiteral)
 }

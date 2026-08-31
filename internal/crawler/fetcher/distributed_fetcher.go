@@ -11,8 +11,8 @@ import (
 	"task-processor/internal/app/crawler/distributed"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
+	"task-processor/internal/platform/queue/rabbitmq"
 	domainProduct "task-processor/internal/product"
 	"task-processor/internal/product/sourcing"
 

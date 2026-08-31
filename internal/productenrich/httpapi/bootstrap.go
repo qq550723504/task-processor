@@ -8,9 +8,9 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/httpbootstrap"
-	"task-processor/internal/infra/worker"
 	platformdatabase "task-processor/internal/platform/database"
 	platformredis "task-processor/internal/platform/redis"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/productenrich"
 	productapi "task-processor/internal/productenrich/api"
 	productenrichenrich "task-processor/internal/productenrich/enrich"

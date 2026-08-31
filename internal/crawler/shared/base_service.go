@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/worker"
 	platformredis "task-processor/internal/platform/redis"
+	worker "task-processor/internal/platform/workerpool"
 
 	"github.com/sirupsen/logrus"
 )

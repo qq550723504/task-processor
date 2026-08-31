@@ -7,8 +7,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit/core"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 type Processor struct {

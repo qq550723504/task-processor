@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/platformbase"
 	"task-processor/internal/product"
 )

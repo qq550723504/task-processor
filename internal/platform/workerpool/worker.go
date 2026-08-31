@@ -1,5 +1,5 @@
 // Package worker 提供工作协程实现
-package worker
+package workerpool
 
 import (
 	"context"

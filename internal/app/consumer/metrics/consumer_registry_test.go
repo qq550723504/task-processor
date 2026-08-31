@@ -6,7 +6,7 @@ import (
 	"time"
 
 	coremetrics "task-processor/internal/core/metrics"
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platform/queue/rabbitmq"
 
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 )

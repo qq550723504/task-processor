@@ -5,8 +5,8 @@ import (
 
 	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/worker"
 	platformredis "task-processor/internal/platform/redis"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 )

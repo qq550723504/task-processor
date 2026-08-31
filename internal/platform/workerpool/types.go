@@ -1,5 +1,5 @@
 // Package worker 提供工作池相关数据结构
-package worker
+package workerpool
 
 // QueueStats 队列统计信息
 type QueueStats struct {

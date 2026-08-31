@@ -12,9 +12,9 @@ import (
 	"task-processor/internal/amazon/pipeline"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/openai"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/processor"
 
 	"github.com/sirupsen/logrus"
