@@ -149,6 +149,53 @@ linters-settings:
           - pkg: "task-processor/internal/organization/"
             desc: "platform is domain neutral"
 
+      phase2_retired_runtime_paths:
+        # Phase 2 moved these runtime packages to app, platform, integration,
+        # or shared owners. Apply this rule to every production Go file so a
+        # legacy import cannot be reintroduced from an unclassified package.
+        files:
+          - "**/internal/*.go"
+          - "**/internal/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/core/lifecycle$"
+          - pkg: "task-processor/internal/core/lifecycle/"
+          - pkg: "task-processor/internal/infra/database$"
+          - pkg: "task-processor/internal/infra/database/"
+          - pkg: "task-processor/internal/infra/redisclient$"
+          - pkg: "task-processor/internal/infra/redisclient/"
+          - pkg: "task-processor/internal/infra/lock$"
+          - pkg: "task-processor/internal/infra/lock/"
+          - pkg: "task-processor/internal/infra/rabbitmq$"
+          - pkg: "task-processor/internal/infra/rabbitmq/"
+          - pkg: "task-processor/internal/infra/worker$"
+          - pkg: "task-processor/internal/infra/worker/"
+          - pkg: "task-processor/internal/infra/clients/openai$"
+          - pkg: "task-processor/internal/infra/clients/openai/"
+          - pkg: "task-processor/internal/infra/clients/geminiimage$"
+          - pkg: "task-processor/internal/infra/clients/geminiimage/"
+          - pkg: "task-processor/internal/infra/clients/grsai$"
+          - pkg: "task-processor/internal/infra/clients/grsai/"
+          - pkg: "task-processor/internal/infra/storage$"
+          - pkg: "task-processor/internal/infra/storage/"
+          - pkg: "task-processor/internal/infra/resilience$"
+          - pkg: "task-processor/internal/infra/resilience/"
+          - pkg: "task-processor/internal/infra/metrics$"
+          - pkg: "task-processor/internal/infra/metrics/"
+          - pkg: "task-processor/internal/infra/monitoring$"
+          - pkg: "task-processor/internal/infra/monitoring/"
+          - pkg: "task-processor/internal/pkg/safeimagehttp$"
+          - pkg: "task-processor/internal/pkg/safeimagehttp/"
+          - pkg: "task-processor/internal/pkg/hashx$"
+          - pkg: "task-processor/internal/pkg/hashx/"
+          - pkg: "task-processor/internal/pkg/mathx$"
+          - pkg: "task-processor/internal/pkg/mathx/"
+          - pkg: "task-processor/internal/pkg/ptr$"
+          - pkg: "task-processor/internal/pkg/ptr/"
+          - pkg: "task-processor/internal/pkg/strx$"
+          - pkg: "task-processor/internal/pkg/strx/"
+          - pkg: "task-processor/internal/pkg/timex$"
+          - pkg: "task-processor/internal/pkg/timex/"
+
       shein_marketplace_publishing:
         # Keep this first rule narrow: migration-specific exceptions remain in
         # tests/import_boundaries_test.go until their contracts are stable.

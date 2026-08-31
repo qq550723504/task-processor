@@ -2,11 +2,12 @@
 
 This directory is the long-term home of external system adapters.
 
-Examples:
+Owned external adapters:
 
 - OpenAI
-- image providers
+- Gemini and GRSAI image providers
 - S3
+- remote image HTTP
 - Playwright
 - marketplace API clients
 - crawler adapters

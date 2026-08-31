@@ -2,13 +2,15 @@
 
 This directory is the long-term home of runtime infrastructure owned by the application itself.
 
-Examples:
+Owned runtime mechanisms:
 
 - config loading
 - logging
-- observability
-- database runtime and migration
+- database runtime and Goose migration
 - Redis
-- queue
-- Temporal
+- RabbitMQ queue runtime
+- worker pool
+- Temporal dial
+- feature flags
+- tracing and technical observability
 - worker pool

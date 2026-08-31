@@ -5,6 +5,47 @@ ceilings for one-way convergence, not target package sizes and not approval for
 the listed dependencies to remain. A package that follows a relocated runtime
 temporarily still owes a domain-local port in its assigned later phase.
 
+## Final closure inventory
+
+The closure guard uses fresh `go list` results from the final Phase 2 tree.
+These are enforced ceilings: later changes may keep or lower them, but must
+never increase them.
+
+| Legacy root | Production Go files | Internal importer packages |
+| --- | ---: | ---: |
+| `core` | 46 | 134 |
+| `infra` | 16 | 4 |
+| `crawler` | 134 | frozen by file count |
+
+| Relocated concrete package | Importer ceiling |
+| --- | ---: |
+| `core/logger` | 82 |
+| `platform/logging` | 9 |
+| `platform/database` | 21 |
+| `platform/redis` | 8 |
+| `platform/queue/rabbitmq` | 18 |
+| `platform/workerpool` | 23 |
+| `integration/openai` | 28 |
+| `integration/geminiimage` | 1 |
+| `integration/grsai` | 2 |
+| `integration/s3` | 4 |
+| `integration/httpimage` | 8 |
+
+The reviewed plan's proposed 8/20 values were stale arithmetic, not valid
+targets. `platform/logging` has one intentional same-platform workerpool
+consumer in addition to app/config/facade wiring, so its final value is 9.
+`platform/database` has 21 because `internal/app/schema/productlisting` is the
+Goose migration owner introduced after the earlier database count. Removing
+either dependency merely to hit 8/20 would invert approved ownership. The
+lower natural values, `core/logger` 82 and `integration/s3` 4, replace the
+plan's higher draft ceilings.
+
+The retirement set contains the 19 package paths enumerated by the executable
+guard. The plan's prose called this set “20”, but its path list contains 19;
+`internal/pkg/timeout` remains a live package and `internal/infra/clients` is
+not banned as a whole. No package was invented or retired to satisfy that
+counting error.
+
 ## Initial baseline
 
 | Root | Production Go files | Test files | Go packages | Internal importers |
@@ -114,10 +155,18 @@ Phase 2 centralizes database lifecycle. Each listed domain package must first
 define a focused repository port; only its GORM implementation then moves to an
 owning `integration/<domain>` adapter.
 
-## Direct-importer debt
+## Legacy consumer register
 
-These are exact pre-migration direct internal-package counts. They must gain no
-new consumers:
+The initial counts below preserve the migration baseline. The named package
+lists are also the exact legacy consumer register used at closure: app,
+platform-to-platform, and integration-to-integration wiring is intentional;
+every other named package is frozen and moves only with its later owner. They
+must gain no new consumers.
+
+Technical compatibility consumers are explicit too:
+`internal/core/config` consumes platform logging and OpenAI configuration
+types, while the forwarding facade `internal/core/logger` consumes platform
+logging. They are schema/facade debt, not business-domain precedents.
 
 | Slice | Initial direct importers |
 | --- | ---: |
@@ -132,23 +181,22 @@ new consumers:
 | `infra/storage` | 6 packages |
 | `pkg/safeimagehttp` | 8 packages |
 
-The importer disposition below separates app composition callers (rewired in
-this phase) from legacy business callers (temporary migration debt). Supporting
-runtime packages listed as “co-relocate” move with the implementation and do
-not grant a domain dependency.
+The importer disposition separates composition callers from legacy business
+callers. Supporting runtime packages remain app-retirement debt and do not
+grant a domain dependency.
 
-### `core/logger` — 92
+### `core/logger` — closure ceiling 82
 
 - App importers rewired in Phase 2: `internal/app/runner`, `internal/app/scheduler`, `internal/app/task`, `internal/app/taskstatus`, `internal/app/updater`, `internal/app/worker`.
 - Runtime support that co-relocates or is retired: `internal/core/config`, `internal/infra/clients/openai`, `internal/infra/storage`, `internal/infra/worker`, `internal/pkg/appenv`, `internal/pkg/fileio`, `internal/platformbase`, `internal/platformtask`.
 - Phase 3/4 owning-domain debt: `internal/pkg/downloader` remains with the product/product-image and marketplace reviews; remove its logger dependency only after the owning-domain review and local port are in place.
 - Phase 3 product debt: `internal/crawler/alibaba1688`, `internal/crawler/alibaba1688/extractor`, `internal/crawler/amazon`, `internal/crawler/amazon/browser`, `internal/crawler/amazon/extractor`, `internal/crawler/amazon/variations`, `internal/crawler/fetcher`, `internal/crawler/shared/browser`, `internal/pipeline`, `internal/product`, `internal/productenrich`, `internal/productenrich/api`, `internal/productenrich/enrich`, `internal/productimage`.
 - Phase 4 marketplace debt: `internal/amazon/api`, `internal/amazon/image`, `internal/amazon/listing`, `internal/amazon/llm`, `internal/amazon/pipeline`, `internal/amazon/schema`, `internal/publishing/shein`, `internal/sds/client`, `internal/sds/design`, `internal/sdslogin`, `internal/shein`, `internal/shein/activity`, `internal/shein/aicache`, `internal/shein/category`, `internal/shein/client`, `internal/shein/content`, `internal/shein/inventory`, `internal/shein/managedclient`, `internal/shein/mapping`, `internal/shein/pipeline`, `internal/shein/pricing`, `internal/shein/product`, `internal/shein/product/attribute`, `internal/shein/product/attribute/sale`, `internal/shein/product/build`, `internal/shein/product/image`, `internal/shein/product/skc`, `internal/shein/product/sku`, `internal/shein/product/variant`, `internal/shein/productdata`, `internal/shein/productsync`, `internal/shein/publish`, `internal/shein/scheduler`, `internal/shein/store`, `internal/shein/translate`, `internal/shein/validation`, `internal/sheinbridge/saleattribute`, `internal/sheinlogin`, `internal/temu`, `internal/temu/ai`, `internal/temu/api/client`, `internal/temu/bulkrelist`, `internal/temu/category`, `internal/temu/filter`, `internal/temu/handlerbase`, `internal/temu/image`, `internal/temu/pricing`, `internal/temu/product`, `internal/temu/property`, `internal/temu/rules`, `internal/temu/scheduler`, `internal/temu/sku`, `internal/temu/spec`, `internal/temu/store`, `internal/temu/sync`, `internal/temu/template`.
-- Phase 5 listing debt: `internal/core/metrics`, `internal/listingkit`, `internal/listingkit/api`.
+- Phase 5 listing debt: `internal/core/metrics`, `internal/listingkit`, `internal/listingkit/api`, `internal/listingkit/httpapi`.
 - Phase 6 agent debt: `internal/localagent`, `internal/prompt`.
 - Phase 8 app-retirement debt: `internal/processor`, `internal/state`.
 
-### `infra/database` — 19
+### `platform/database` — closure ceiling 21
 
 - App importers rewired in Phase 2: `internal/app/bootstrap/resources`, `internal/app/httpapi`, `internal/app/runtime/listing`, `internal/app/runtime/listingcontrol`, `internal/app/runtime/listingkitidentitypreflight`, `internal/app/runtime/listingkitownerexceptions`, `internal/app/runtime/listingkitownerreconcile`, `internal/app/runtime/listingkitschemamigrate`, `internal/app/runtime/productlistingschemamigrate`, `internal/app/runtime/sheinplatformrecovery`, `internal/app/worker/imageagent`.
 - Phase 3 product debt: `internal/productenrich/httpapi`, `internal/productimage/httpapi`.
@@ -156,13 +204,13 @@ not grant a domain dependency.
 - Phase 5 listing debt: `internal/listingkit/httpapi`, `internal/listingruntime/local`.
 - Phase 7 organization debt: `internal/sourceaccount/bootstrap`, `internal/tenantbridge/bootstrap`.
 
-### `infra/redisclient` — 6
+### `platform/redis` — closure ceiling 8
 
 - App importers rewired in Phase 2: `internal/app/consumer`, `internal/app/httpapi`, `internal/app/runtime/listing`.
 - Phase 3/4 crawler debt: `internal/crawler/amazon`, `internal/crawler/shared`.
 - Phase 3 product debt: `internal/productenrich/httpapi`.
 
-### `infra/rabbitmq` — 17
+### `platform/queue/rabbitmq` — closure ceiling 18
 
 - App importers rewired in Phase 2: `internal/app/bootstrap`, `internal/app/bootstrap/fetchers`, `internal/app/bootstrap/resources`, `internal/app/bootstrap/schedulers`, `internal/app/consumer`, `internal/app/crawler/distributed`, `internal/app/runner`, `internal/app/runtime/listingcontrol`.
 - Runtime support that co-relocates or is retired: `internal/infra/metrics`, `internal/platformbase`.
@@ -170,7 +218,7 @@ not grant a domain dependency.
 - Phase 5 listing debt: `internal/listingcontrol`.
 - Phase 4 marketplace debt: `internal/shein/pipeline`, `internal/shein/scheduler`, `internal/temu`, `internal/temu/scheduler`, `internal/temu/sync`.
 
-### `infra/worker` — 23
+### `platform/workerpool` — closure ceiling 23
 
 - App importers rewired in Phase 2: `internal/app/consumer`, `internal/app/httpapi`, `internal/app/runtime/listing`, `internal/app/task`, `internal/app/worker`.
 - Runtime support that co-relocates or is retired: `internal/httpbootstrap`, `internal/kernel/module`, `internal/processor`.
@@ -180,7 +228,7 @@ not grant a domain dependency.
 - Phase 5 listing debt: `internal/listingkit`, `internal/listingkit/httpapi`.
 - Phase 2 boundary correction: `internal/listing/submission` is removed from this debt by consuming a local `QueueFull()` classification rather than the worker sentinel.
 
-### `infra/clients/openai` — 28
+### `integration/openai` — closure ceiling 28
 
 - App importers rewired in Phase 2: `internal/app/httpapi`, `internal/app/schema/productlisting`, `internal/app/worker/imageagent`.
 - Runtime support that co-relocates: `internal/core/config`.
@@ -190,17 +238,17 @@ not grant a domain dependency.
 
 ### Image-provider clients
 
-- `infra/clients/geminiimage` (1): legacy business importer `internal/listingkit/httpapi`, removed through a listing-local image port in Phase 5; there is no app importer today.
-- `infra/clients/grsai` (2): legacy business importers `internal/listingkit/httpapi` (Phase 5) and `internal/productimage/httpapi` (Phase 3); there is no app importer today.
+- `integration/geminiimage` (1): legacy business importer `internal/listingkit/httpapi`, removed through a listing-local image port in Phase 5; there is no app importer today.
+- `integration/grsai` (2): legacy business importers `internal/listingkit/httpapi` (Phase 5) and `internal/productimage/httpapi` (Phase 3); there is no app importer today.
 
-### `infra/storage` — 6
+### `integration/s3` — closure ceiling 4
 
 - App importers rewired in Phase 2: `internal/app/httpapi`, `internal/app/worker/imageagent`.
 - Runtime adapter support that co-relocates: `internal/imageagent/objectstore`.
 - Phase 3 product debt: `internal/productimage`, `internal/productimage/httpapi`.
 - Phase 5 listing debt: `internal/listingkit/httpapi`.
 
-### `pkg/safeimagehttp` — 8
+### `integration/httpimage` — closure ceiling 8
 
 - App importer rewired in Phase 2: `internal/app/worker/imageagent`.
 - Integration support that co-relocates: `internal/infra/clients/geminiimage`, `internal/infra/clients/grsai`, `internal/infra/clients/openai`.

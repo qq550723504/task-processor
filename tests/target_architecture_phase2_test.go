@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -279,6 +280,72 @@ func TestPhase2TargetReadmesMatchApprovedOwnership(t *testing.T) {
 	}
 }
 
+func TestPhase2MigratedLegacyPackagesStayRetired(t *testing.T) {
+	present, err := presentRetiredPaths(filepath.Join(".."), phase2RetiredLegacyPaths())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range present {
+		t.Errorf("retired path still exists: %s", path)
+	}
+}
+
+func TestPhase2RetirementGuardDetectsRecreatedPackage(t *testing.T) {
+	root := t.TempDir()
+	recreated := filepath.Join("internal", "infra", "storage")
+	if err := os.MkdirAll(filepath.Join(root, recreated), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	present, err := presentRetiredPaths(root, []string{recreated})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(present) != 1 || present[0] != recreated {
+		t.Fatalf("present retired paths = %v, want [%s]", present, recreated)
+	}
+}
+
+func phase2RetiredLegacyPaths() []string {
+	return []string{
+		"internal/core/lifecycle",
+		"internal/infra/database",
+		"internal/infra/redisclient",
+		"internal/infra/lock",
+		"internal/infra/rabbitmq",
+		"internal/infra/worker",
+		"internal/infra/clients/openai",
+		"internal/infra/clients/geminiimage",
+		"internal/infra/clients/grsai",
+		"internal/infra/storage",
+		"internal/infra/resilience",
+		"internal/infra/metrics",
+		"internal/infra/monitoring",
+		"internal/pkg/safeimagehttp",
+		"internal/pkg/hashx",
+		"internal/pkg/mathx",
+		"internal/pkg/ptr",
+		"internal/pkg/strx",
+		"internal/pkg/timex",
+	}
+}
+
+func presentRetiredPaths(root string, paths []string) ([]string, error) {
+	present := make([]string, 0)
+	for _, path := range paths {
+		_, err := os.Stat(filepath.Join(root, filepath.FromSlash(path)))
+		switch {
+		case err == nil:
+			present = append(present, path)
+		case errors.Is(err, os.ErrNotExist):
+			continue
+		default:
+			return nil, fmt.Errorf("inspect retired path %s: %w", path, err)
+		}
+	}
+	return present, nil
+}
+
 func productionGoFileCount(t *testing.T, root string) int {
 	t.Helper()
 	count := 0
@@ -321,27 +388,80 @@ func internalImporterPackageCount(t *testing.T, target string) int {
 	return count
 }
 
+type legacyRootCeiling struct {
+	name string
+	max  int
+}
+
+func phase2LegacyRootCeilings() []legacyRootCeiling {
+	return []legacyRootCeiling{
+		{name: "core", max: 46},
+		{name: "infra", max: 16},
+		{name: "crawler", max: 134},
+	}
+}
+
+type importerCeiling struct {
+	path string
+	max  int
+}
+
+func phase2ConcreteImporterCeilings() []importerCeiling {
+	return []importerCeiling{
+		{path: "task-processor/internal/core", max: 134},
+		{path: "task-processor/internal/infra", max: 4},
+		{path: "task-processor/internal/core/logger", max: 82},
+		{path: "task-processor/internal/platform/logging", max: 9},
+		{path: "task-processor/internal/platform/database", max: 21},
+		{path: "task-processor/internal/platform/redis", max: 8},
+		{path: "task-processor/internal/platform/queue/rabbitmq", max: 18},
+		{path: "task-processor/internal/platform/workerpool", max: 23},
+		{path: "task-processor/internal/integration/openai", max: 28},
+		{path: "task-processor/internal/integration/geminiimage", max: 1},
+		{path: "task-processor/internal/integration/grsai", max: 2},
+		{path: "task-processor/internal/integration/s3", max: 4},
+		{path: "task-processor/internal/integration/httpimage", max: 8},
+	}
+}
+
 func TestPhase2LegacyRootsDoNotGrow(t *testing.T) {
 	root := filepath.Join("..", "internal")
-	for _, tc := range []struct {
-		name string
-		max  int
-	}{{"core", 58}, {"infra", 68}, {"crawler", 134}} {
+	for _, tc := range phase2LegacyRootCeilings() {
 		if got := productionGoFileCount(t, filepath.Join(root, tc.name)); got > tc.max {
 			t.Errorf("internal/%s production files = %d, baseline max = %d", tc.name, got, tc.max)
 		}
 	}
-	for _, tc := range []struct {
-		path string
-		max  int
-	}{
-		{"task-processor/internal/core", 145},
-		{"task-processor/internal/infra", 75},
-		{"task-processor/internal/core/logger", 84},
-	} {
+	for _, tc := range phase2ConcreteImporterCeilings() {
 		if got := internalImporterPackageCount(t, tc.path); got > tc.max {
 			t.Errorf("%s importer packages = %d, baseline max = %d", tc.path, got, tc.max)
 		}
+	}
+}
+
+func TestPhase2ClosureCeilingsRecordFreshInventory(t *testing.T) {
+	if got := phase2LegacyRootCeilings(); !reflect.DeepEqual(got, []legacyRootCeiling{
+		{name: "core", max: 46},
+		{name: "infra", max: 16},
+		{name: "crawler", max: 134},
+	}) {
+		t.Fatalf("legacy root ceilings = %#v", got)
+	}
+	if got := phase2ConcreteImporterCeilings(); !reflect.DeepEqual(got, []importerCeiling{
+		{path: "task-processor/internal/core", max: 134},
+		{path: "task-processor/internal/infra", max: 4},
+		{path: "task-processor/internal/core/logger", max: 82},
+		{path: "task-processor/internal/platform/logging", max: 9},
+		{path: "task-processor/internal/platform/database", max: 21},
+		{path: "task-processor/internal/platform/redis", max: 8},
+		{path: "task-processor/internal/platform/queue/rabbitmq", max: 18},
+		{path: "task-processor/internal/platform/workerpool", max: 23},
+		{path: "task-processor/internal/integration/openai", max: 28},
+		{path: "task-processor/internal/integration/geminiimage", max: 1},
+		{path: "task-processor/internal/integration/grsai", max: 2},
+		{path: "task-processor/internal/integration/s3", max: 4},
+		{path: "task-processor/internal/integration/httpimage", max: 8},
+	}) {
+		t.Fatalf("concrete importer ceilings = %#v", got)
 	}
 }
 

@@ -114,6 +114,27 @@
 
 ## 后续收口方向
 
+### Phase 2 runtime foundation closure
+
+Phase 2 establishes three runtime ownership roots:
+
+- `internal/app` owns lifecycle and provider registration, migration execution,
+  final HTTP instrumentation, and ordered shutdown.
+- `internal/platform` owns the application runtime mechanisms: config loading,
+  logging, database and Goose, Redis, RabbitMQ, worker pool, Temporal dial,
+  feature flags, and tracing.
+- `internal/integration` owns external adapters: OpenAI, Gemini, GRSAI, S3, and
+  remote image HTTP.
+
+This is a runtime-foundation closure, not the end of the business migration.
+At this close, only nine target domain roots satisfy the final dependency rule:
+`internal/listing`, `internal/product`, `internal/marketplace`,
+`internal/agent`, `internal/knowledge`, `internal/resourcecatalog`,
+`internal/commercial`, `internal/ledger`, and `internal/organization`.
+Historical business roots remain under non-growth ceilings until their owning
+product, marketplace, listing, agent, or organization phase removes concrete
+runtime dependencies.
+
 - 平台实现逐步从历史目录收口到统一的平台边界，例如 `internal/marketplace/*` 或经过批准的目标包。
 - `internal/listingkit` 继续作为产品主域 facade 和编排中心，避免回流依赖历史平台 runtime。
 - `internal/app` 继续保持运行装配职责，避免混入产品或平台业务逻辑。

@@ -150,7 +150,29 @@ Use this table when the target architecture exists but the legacy package is sti
 | Money balance, recharge, charge, and refund | `internal/ledger/*` after a confirmed requirement | usage-metering packages or premature TigerBeetle integration |
 | Organization, membership, and tenant policy | `internal/organization/*` | concrete ZITADEL/Casbin adapters or `internal/shared` catch-alls |
 
-## 6. Migration Usage Notes
+## 6. Phase 2 closure landing rules
+
+Phase 2 gives runtime mechanisms stable owners without pretending that every
+historical business consumer is already clean:
+
+- the product owner (Phase 3) drains product enrichment, ProductImage,
+  sourcing crawler, and product persistence consumers;
+- the marketplace owner (Phase 4) drains Amazon, SHEIN, TEMU, publishing, and
+  marketplace crawler consumers;
+- the listing owner (Phase 5) drains ListingKit and listing runtime consumers;
+- the agent/knowledge/resource-catalog owner (Phase 6) drains image-agent,
+  local-agent, and prompt consumers;
+- the organization owner (Phase 7) drains identity, source-account bootstrap,
+  and tenant-bridge persistence consumers;
+- app-retirement work removes generic legacy runtime shells such as
+  `platformbase`, `platformtask`, `processor`, and `state` only after their
+  call sites have named owners.
+
+All of these consumers are frozen at the Phase 2 closure counts in
+`phase2-runtime-inventory.md`. New code lands in the target owner first; it
+must not add another consumer to a relocated concrete API.
+
+## 7. Migration Usage Notes
 
 Use this mapping as follows:
 

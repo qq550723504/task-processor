@@ -105,6 +105,46 @@ linters-settings:
 	}
 }
 
+func TestPhase2RetiredRuntimePathsHavePermanentDepguardRules(t *testing.T) {
+	rules := loadDepguardRules(t, filepath.Join("..", ".golangci.yml"))
+	rule := requireDepguardRule(t, rules, "phase2_retired_runtime_paths")
+	files := stringSet(rule.Files)
+	denied := depguardDenyPackageSet(rule)
+
+	for _, glob := range []string{"**/internal/*.go", "**/internal/**/*.go"} {
+		if _, ok := files[glob]; !ok {
+			t.Errorf("phase2_retired_runtime_paths must cover production files with %s", glob)
+		}
+	}
+	for _, path := range []string{
+		"task-processor/internal/core/lifecycle",
+		"task-processor/internal/infra/database",
+		"task-processor/internal/infra/redisclient",
+		"task-processor/internal/infra/lock",
+		"task-processor/internal/infra/rabbitmq",
+		"task-processor/internal/infra/worker",
+		"task-processor/internal/infra/clients/openai",
+		"task-processor/internal/infra/clients/geminiimage",
+		"task-processor/internal/infra/clients/grsai",
+		"task-processor/internal/infra/storage",
+		"task-processor/internal/infra/resilience",
+		"task-processor/internal/infra/metrics",
+		"task-processor/internal/infra/monitoring",
+		"task-processor/internal/pkg/safeimagehttp",
+		"task-processor/internal/pkg/hashx",
+		"task-processor/internal/pkg/mathx",
+		"task-processor/internal/pkg/ptr",
+		"task-processor/internal/pkg/strx",
+		"task-processor/internal/pkg/timex",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			if _, ok := denied[path+suffix]; !ok {
+				t.Errorf("phase2_retired_runtime_paths must deny %s", path+suffix)
+			}
+		}
+	}
+}
+
 type depguardConfig struct {
 	LintersSettings struct {
 		Depguard struct {

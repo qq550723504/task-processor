@@ -2,11 +2,116 @@ package tests
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 )
+
+func TestPhase2ClosureDocumentsRuntimeOwnershipAndDeferredDebt(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "development", "repository-structure.md"), []string{
+		"Phase 2 runtime foundation closure",
+		"lifecycle", "provider registration", "migration execution", "instrumentation", "shutdown",
+		"only nine target domain roots",
+	})
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "project-boundaries.md"), []string{
+		"Phase 2 closure boundary",
+		"internal/core/config", "internal/core/logger", "forwarding-only compatibility facade",
+		"internal/core/metrics", "internal/infra/auth", "internal/infra/httpx",
+		"MCP", "pgvector", "TigerBeetle", "not admitted",
+	})
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "refactoring", "module-target-mapping.md"), []string{
+		"Phase 2 closure landing rules",
+		"product owner", "marketplace owner", "organization owner",
+	})
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "refactoring", "phase2-runtime-inventory.md"), []string{
+		"Final closure inventory",
+		"`core/logger` | 82", "`platform/logging` | 9", "`platform/database` | 21", "`integration/s3` | 4",
+		"same-platform workerpool", "Goose migration owner", "Legacy consumer register",
+	})
+	requireDocumentPhrases(t, filepath.Join("..", "internal", "platform", "README.md"), []string{
+		"Goose", "RabbitMQ", "worker pool", "Temporal dial", "feature flags", "tracing",
+	})
+	requireDocumentPhrases(t, filepath.Join("..", "internal", "integration", "README.md"), []string{
+		"OpenAI", "Gemini", "GRSAI", "S3", "remote image HTTP",
+	})
+}
+
+func TestPhase2InventoryNamesEveryRemainingLegacyConcreteConsumer(t *testing.T) {
+	path := filepath.Join("..", "docs", "refactoring", "phase2-runtime-inventory.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	section := markdownSection(t, string(content), "## Legacy consumer register")
+	targets := []string{
+		"task-processor/internal/core/logger",
+		"task-processor/internal/platform/logging",
+		"task-processor/internal/platform/database",
+		"task-processor/internal/platform/redis",
+		"task-processor/internal/platform/queue/rabbitmq",
+		"task-processor/internal/platform/workerpool",
+		"task-processor/internal/integration/openai",
+		"task-processor/internal/integration/geminiimage",
+		"task-processor/internal/integration/grsai",
+		"task-processor/internal/integration/s3",
+		"task-processor/internal/integration/httpimage",
+	}
+	importersByTarget := directInternalImporterMap(t, targets)
+	for _, target := range targets {
+		for _, importer := range importersByTarget[target] {
+			if strings.HasPrefix(importer, "task-processor/internal/app") ||
+				strings.HasPrefix(importer, "task-processor/internal/platform") ||
+				strings.HasPrefix(importer, "task-processor/internal/integration") {
+				continue
+			}
+			moduleRelative := strings.TrimPrefix(importer, "task-processor/")
+			if !strings.Contains(section, "`"+moduleRelative+"`") {
+				t.Errorf("%s must list legacy consumer %s", path, importer)
+			}
+		}
+	}
+}
+
+func requireDocumentPhrases(t *testing.T, path string, required []string) {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q", path, phrase)
+		}
+	}
+}
+
+func directInternalImporterMap(t *testing.T, targets []string) map[string][]string {
+	t.Helper()
+	cmd := exec.Command("go", "list", "-f", `{{.ImportPath}}|{{join .Imports ","}}`, "./internal/...")
+	cmd.Dir = ".."
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list internal importers: %v\n%s", err, out)
+	}
+	result := make(map[string][]string, len(targets))
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		importer, imports, ok := strings.Cut(strings.TrimSpace(line), "|")
+		if !ok {
+			continue
+		}
+		for _, target := range targets {
+			for _, imported := range strings.Split(imports, ",") {
+				if imported == target || strings.HasPrefix(imported, target+"/") {
+					result[target] = append(result[target], importer)
+					break
+				}
+			}
+		}
+	}
+	return result
+}
 
 func TestTemporalBoundaryDocumentDefinesStableReviewRules(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "temporal-boundaries.md")
