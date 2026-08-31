@@ -759,13 +759,15 @@ git commit -m "feat: create and edit workbench stores"
 - Modify: `web/listingkit-ui/src/components/workbench/stores/store-detail-page.test.tsx`
 - Modify: `web/listingkit-ui/src/components/workbench/stores/store-table.tsx`
 - Modify: `web/listingkit-ui/src/components/workbench/stores/store-table.test.tsx`
+- Modify: `web/listingkit-ui/src/components/workbench/stores/store-list-page.tsx`
+- Modify: `web/listingkit-ui/src/components/workbench/stores/store-list-page.test.tsx`
 
 - [ ] Add tests for role-based visibility, enable/disable labels, disabled stores still consuming quota, delete confirmation, version conflict, deleting/retry state, and revoked grant during mutation.
 - [ ] Require delete confirmation text containing both the exact store name and current Organization name. Do not use a generic browser confirm dialog.
 - [ ] Disable lifecycle actions while requests run and prevent double submission. Reuse the same delete operation key for a retry of an interrupted deletion.
 - [ ] On `ORGANIZATION_ACCESS_REVOKED`, clear workbench queries, clear the selected Organization cookie through the context endpoint behavior, and show the blocking access state.
 - [ ] On a `deleting` response after dependency failure, present a retry action and prevent edit/enable/disable.
-- [ ] After successful delete, invalidate current Organization stores, navigate to list, and show a recoverability statement: the UI does not offer restore; database soft-delete remains an operational recovery mechanism.
+- [ ] After successful delete, invalidate current Organization stores, navigate to the list with a static non-sensitive notice, and show a recoverability statement: the UI does not offer restore; database soft-delete remains an operational recovery mechanism. Do not place Store or Organization identity in the URL.
 
 **Verification:**
 
