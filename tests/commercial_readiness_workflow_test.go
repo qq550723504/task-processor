@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -135,6 +136,40 @@ func TestCommercialReadinessWorkflowCollectsPinnedReleaseEvidence(t *testing.T) 
 	}
 
 	workflow := string(content)
+	packageContent, err := os.ReadFile(filepath.Join("..", "web", "listingkit-ui", "package.json"))
+	if err != nil {
+		t.Fatalf("read frontend package manifest: %v", err)
+	}
+	var packageManifest struct {
+		PackageManager string `json:"packageManager"`
+	}
+	if err := json.Unmarshal(packageContent, &packageManifest); err != nil {
+		t.Fatalf("parse frontend package manifest: %v", err)
+	}
+	packageManager, _, found := strings.Cut(packageManifest.PackageManager, "@")
+	if !found || packageManager == "" {
+		t.Fatalf("frontend packageManager must pin a package manager and version, got %q", packageManifest.PackageManager)
+	}
+
+	var installCommand, lockfile string
+	scriptCommand := func(script string) string { return packageManager + " " + script }
+	switch packageManager {
+	case "pnpm":
+		installCommand = "pnpm install --frozen-lockfile"
+		lockfile = "pnpm-lock.yaml"
+	case "npm":
+		installCommand = "npm ci"
+		lockfile = "package-lock.json"
+		scriptCommand = func(script string) string {
+			if script == "test" {
+				return "npm test"
+			}
+			return "npm run " + script
+		}
+	default:
+		t.Fatalf("commercial-readiness workflow policy does not support package manager %q", packageManager)
+	}
+
 	for _, required := range []string{
 		"workflow_dispatch:",
 		"commit_sha:",
@@ -144,10 +179,13 @@ func TestCommercialReadinessWorkflowCollectsPinnedReleaseEvidence(t *testing.T) 
 		"go test -race ./internal/app/runtime/listingcontrol -run TestControlPlaneService -count=1",
 		"go test -race ./internal/listingadmin -run \"TestConcurrentClaimForDispatchOnlyOneWorkerWins|TestConcurrentRollbackDispatchOnlyOriginalQueuedClaimIsRestoredOnce|TestConcurrentRecoveryOnlyUpdatesStillEligibleRowsOnce\" -count=1",
 		"make build-all",
-		"npm run lint",
-		"npm run typecheck",
-		"npm test",
-		"npm run build",
+		"cache: " + packageManager,
+		"cache-dependency-path: web/listingkit-ui/" + lockfile,
+		installCommand,
+		scriptCommand("lint"),
+		scriptCommand("typecheck"),
+		scriptCommand("test"),
+		scriptCommand("build"),
 		"deployments/docker/Dockerfile.product-listing-api",
 		"deployments/docker/Dockerfile.listingkit-ui",
 		"kustomize build deployments/kubernetes/listingkit-workbench/overlays/prod",

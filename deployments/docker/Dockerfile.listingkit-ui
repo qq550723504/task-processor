@@ -4,8 +4,8 @@ FROM node:22-alpine AS deps
 
 WORKDIR /app
 
-COPY web/listingkit-ui/package.json web/listingkit-ui/package-lock.json ./
-RUN npm ci
+COPY web/listingkit-ui/package.json web/listingkit-ui/pnpm-lock.yaml web/listingkit-ui/pnpm-workspace.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
 
 FROM node:22-alpine AS builder
 
@@ -15,7 +15,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY web/listingkit-ui ./
-RUN npm run build
+RUN corepack enable && pnpm build
 
 FROM node:22-alpine AS runner
 

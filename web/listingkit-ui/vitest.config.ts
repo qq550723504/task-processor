@@ -11,6 +11,7 @@ export default defineConfig({
     testTimeout: 15000,
     exclude: [
       ...configDefaults.exclude,
+      "e2e/**",
       ".next/**",
       "coverage/**",
       "test-results/**",

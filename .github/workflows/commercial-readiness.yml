@@ -49,12 +49,18 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/listingkit-ui/package.json
+          run_install: false
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: web/listingkit-ui/package-lock.json
+          cache: pnpm
+          cache-dependency-path: web/listingkit-ui/pnpm-lock.yaml
 
       - name: Resolve checked-out commit
         id: resolve
@@ -82,9 +88,9 @@ jobs:
             echo "- Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "- Go: $(go version)"
             echo "- Node: $(node --version)"
-            echo "- npm: $(npm --version)"
+            echo "- pnpm: $(pnpm --version)"
           } | tee evidence/metadata.md
-          sha256sum go.mod go.sum web/listingkit-ui/package-lock.json | tee evidence/lockfiles.sha256
+          sha256sum go.mod go.sum web/listingkit-ui/pnpm-lock.yaml | tee evidence/lockfiles.sha256
           git show --no-patch --format=fuller HEAD | tee evidence/commit.txt
 
       - name: Upload target metadata
@@ -171,47 +177,53 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.commit_sha }}
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/listingkit-ui/package.json
+          run_install: false
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: web/listingkit-ui/package-lock.json
+          cache: pnpm
+          cache-dependency-path: web/listingkit-ui/pnpm-lock.yaml
 
       - name: Prepare evidence directory
         run: mkdir -p evidence
 
       - name: Install dependencies
         id: install
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Run lint
         id: lint
         shell: bash
         run: |
           set -o pipefail
-          npm run lint 2>&1 | tee evidence/lint.log
+          pnpm lint 2>&1 | tee evidence/lint.log
 
       - name: Run typecheck
         id: typecheck
         shell: bash
         run: |
           set -o pipefail
-          npm run typecheck 2>&1 | tee evidence/typecheck.log
+          pnpm typecheck 2>&1 | tee evidence/typecheck.log
 
       - name: Run tests
         id: test
         shell: bash
         run: |
           set -o pipefail
-          npm test 2>&1 | tee evidence/test.log
+          pnpm test 2>&1 | tee evidence/test.log
 
       - name: Build frontend
         id: build
         shell: bash
         run: |
           set -o pipefail
-          npm run build 2>&1 | tee evidence/build.log
+          pnpm build 2>&1 | tee evidence/build.log
 
       - name: Classify frontend validation result
         if: ${{ always() }}
