@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	goredis "github.com/redis/go-redis/v9"
 )
 
@@ -62,7 +63,7 @@ func NewRedisLock(cfg *Config, owner string, logger Logger) (*RedisLock, error) 
 
 func NewRedisLockWithClient(client *goredis.Client, owner string, logger Logger) *RedisLock {
 	if strings.TrimSpace(owner) == "" {
-		owner = fmt.Sprintf("owner-%d", time.Now().UnixNano())
+		owner = uuid.NewString()
 	}
 	return &RedisLock{client: client, owner: owner, logger: logger}
 }

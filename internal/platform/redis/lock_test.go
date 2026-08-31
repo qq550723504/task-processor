@@ -51,6 +51,59 @@ func TestRedisLockOnlyOwnerCanUnlock(t *testing.T) {
 	}
 }
 
+func TestRedisLockTryLockDoesNotOverwriteAnotherOwner(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	first := NewRedisLockWithClient(client, "pod-1", nil)
+	second := NewRedisLockWithClient(client, "pod-2", nil)
+	ctx := context.Background()
+
+	acquired, err := first.TryLock(ctx, "job", time.Minute)
+	if err != nil || !acquired {
+		t.Fatalf("first TryLock() = %v, %v", acquired, err)
+	}
+	acquired, err = second.TryLock(ctx, "job", time.Minute)
+	if err != nil || acquired {
+		t.Fatalf("second TryLock() = %v, %v, want false, nil", acquired, err)
+	}
+	if got, err := server.Get("job"); err != nil || got != "pod-1" {
+		t.Fatalf("stored owner = %q, %v, want pod-1", got, err)
+	}
+}
+
+func TestRedisLockBlankOwnersAreGeneratedAndDistinct(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	first := NewRedisLockWithClient(client, "", nil)
+	second := NewRedisLockWithClient(client, "  ", nil)
+
+	if strings.TrimSpace(first.owner) == "" || strings.TrimSpace(second.owner) == "" {
+		t.Fatalf("generated owners must be nonblank: %q, %q", first.owner, second.owner)
+	}
+	if first.owner == second.owner {
+		t.Fatalf("separate blank-owner locks share owner %q", first.owner)
+	}
+
+	ctx := context.Background()
+	if acquired, err := first.TryLock(ctx, "job", time.Minute); err != nil || !acquired {
+		t.Fatalf("first TryLock() = %v, %v", acquired, err)
+	}
+	if extended, err := second.Extend(ctx, "job", 5*time.Minute); err != nil || extended {
+		t.Fatalf("other generated owner Extend() = %v, %v, want false, nil", extended, err)
+	}
+	if got := server.TTL("job"); got != time.Minute {
+		t.Fatalf("TTL after other generated owner Extend = %s, want 1m", got)
+	}
+	if err := second.Unlock(ctx, "job"); err != nil {
+		t.Fatal(err)
+	}
+	if locked, err := first.IsLocked(ctx, "job"); err != nil || !locked {
+		t.Fatalf("IsLocked() after other generated owner Unlock = %v, %v", locked, err)
+	}
+}
+
 func TestNewRedisLockValidatesConfig(t *testing.T) {
 	tests := []struct {
 		name string
@@ -83,6 +136,31 @@ func TestNewRedisLockReportsConnectionFailure(t *testing.T) {
 	prefix := fmt.Sprintf("redis lock connection failed (%s:%d): ", cfg.Host, cfg.Port)
 	if !strings.HasPrefix(err.Error(), prefix) {
 		t.Fatalf("error = %q, want prefix %q", err, prefix)
+	}
+}
+
+func TestNewRedisLockUsesAllConnectionConfigFields(t *testing.T) {
+	server := miniredis.RunT(t)
+	server.RequireAuth("lock-secret")
+	cfg := redisConfigForServer(t, server, "lock-secret", 6, 9)
+
+	lock, err := NewRedisLock(cfg, "pod-auth", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lock.Close() })
+
+	opts := lock.client.Options()
+	if opts.Addr != server.Addr() || opts.Password != "lock-secret" || opts.DB != 6 || opts.PoolSize != 9 {
+		t.Fatalf("options = addr:%q password:%q db:%d pool:%d", opts.Addr, opts.Password, opts.DB, opts.PoolSize)
+	}
+	acquired, err := lock.TryLock(context.Background(), "configured-lock", time.Minute)
+	if err != nil || !acquired {
+		t.Fatalf("TryLock() = %v, %v", acquired, err)
+	}
+	got, err := server.DB(6).Get("configured-lock")
+	if err != nil || got != "pod-auth" {
+		t.Fatalf("DB 6 owner = %q, %v", got, err)
 	}
 }
 

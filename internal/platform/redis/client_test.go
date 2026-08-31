@@ -252,13 +252,69 @@ func TestNewReportsConnectionFailure(t *testing.T) {
 	}
 }
 
-func TestClientCloseRejectsFurtherOperations(t *testing.T) {
+func TestClientOperationsPropagateBackendErrorsAfterClose(t *testing.T) {
 	client := newTestClient(t)
+	ctx := context.Background()
+	if err := client.Set(ctx, "existing", "value", 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SAdd(ctx, "existing-set", "member"); err != nil {
+		t.Fatal(err)
+	}
 	if err := client.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Set(context.Background(), "key", "value", 0); err == nil {
-		t.Fatal("Set after Close returned nil error")
+
+	tests := []struct {
+		name           string
+		call           func() error
+		rejectedErrors []string
+	}{
+		{name: "Push", call: func() error { return client.Push(ctx, "jobs", "value") }},
+		{
+			name: "Get existing key",
+			call: func() error {
+				_, err := client.Get(ctx, "existing")
+				return err
+			},
+			rejectedErrors: []string{"key not found: existing"},
+		},
+		{name: "Set", call: func() error { return client.Set(ctx, "key", "value", time.Minute) }},
+		{
+			name: "SetNX",
+			call: func() error {
+				_, err := client.SetNX(ctx, "key", "value", time.Minute)
+				return err
+			},
+		},
+		{name: "Delete", call: func() error { return client.Delete(ctx, "key") }},
+		{
+			name: "Scan",
+			call: func() error {
+				_, _, err := client.Scan(ctx, 0, "*", 10)
+				return err
+			},
+		},
+		{
+			name: "SMembers",
+			call: func() error {
+				_, err := client.SMembers(ctx, "existing-set")
+				return err
+			},
+		},
+		{name: "SAdd", call: func() error { return client.SAdd(ctx, "existing-set", "other") }},
+		{name: "ReplaceSet", call: func() error { return client.ReplaceSet(ctx, "existing-set", "replacement") }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			if err == nil {
+				t.Fatal("operation after Close returned nil error")
+			}
+			if slices.Contains(tt.rejectedErrors, err.Error()) {
+				t.Fatalf("backend error was incorrectly remapped to %q", err)
+			}
+		})
 	}
 }
 
