@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/sirupsen/logrus"
-	"gorm.io/gorm"
 
 	"task-processor/internal/app/configadapter"
 	"task-processor/internal/app/schema/productlisting"
@@ -15,10 +14,6 @@ import (
 )
 
 type productListingSchemaMigrator func(context.Context, *config.DatabaseConfig, *logrus.Logger) error
-
-func AutoMigrateProductListingAPIRuntimeSchema(db *gorm.DB) error {
-	return productlisting.Migrate(context.Background(), db)
-}
 
 func migrateProductListingAPIRuntimeSchema(ctx context.Context, cfg *config.DatabaseConfig, logger *logrus.Logger) error {
 	if cfg == nil {

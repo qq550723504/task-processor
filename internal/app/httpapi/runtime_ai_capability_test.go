@@ -6,15 +6,11 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	_ "modernc.org/sqlite"
 
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
@@ -392,26 +388,4 @@ func (h *captureLogHook) Levels() []logrus.Level { return logrus.AllLevels }
 func (h *captureLogHook) Fire(entry *logrus.Entry) error {
 	h.entries = append(h.entries, entry)
 	return nil
-}
-
-func TestAutoMigrateProductListingAPIRuntimeSchemaCreatesAIInvocationsTable(t *testing.T) {
-	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: filepath.Join(t.TempDir(), "product-listing.sqlite")}, &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatalf("get sql.DB: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-
-	if err := AutoMigrateProductListingAPIRuntimeSchema(db); err != nil {
-		t.Fatalf("AutoMigrateProductListingAPIRuntimeSchema() error = %v", err)
-	}
-	if !db.Migrator().HasTable("ai_invocations") {
-		t.Fatal("expected ai_invocations table to be created")
-	}
-	if !db.Migrator().HasTable("ai_async_jobs") {
-		t.Fatal("expected ai_async_jobs table to be created")
-	}
 }

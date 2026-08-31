@@ -76,16 +76,23 @@ func TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile(t *testing.T) {
 
 	builderSource := readProductImageHTTPAPIBoundaryFile(t, "task_repository_builder.go")
 	for _, marker := range []string{
-		`"task-processor/internal/app/schema/productlisting"`,
 		`"task-processor/internal/platform/database"`,
 		`"task-processor/internal/productimage/store"`,
 		"func buildTaskRepository(",
 		"func newDBTaskRepository(",
 		"platformdatabase.OpenShared(",
-		"productlisting.Migrate(",
 	} {
 		if !strings.Contains(builderSource, marker) {
 			t.Fatalf("task_repository_builder.go missing %s", marker)
+		}
+	}
+	for _, forbidden := range []string{
+		`"task-processor/internal/app/schema/productlisting"`,
+		"ProductListingAPIRuntimeAutoMigrateEnabled(",
+		"productlisting.Migrate(",
+	} {
+		if strings.Contains(builderSource, forbidden) {
+			t.Fatalf("task_repository_builder.go must be pure repository construction; found %s", forbidden)
 		}
 	}
 }

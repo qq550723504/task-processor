@@ -12,14 +12,6 @@ import (
 	"task-processor/internal/productimage"
 )
 
-func TestAutoMigrateProductListingAPIRuntimeSchemaRejectsNilDB(t *testing.T) {
-	t.Parallel()
-
-	if err := AutoMigrateProductListingAPIRuntimeSchema(nil); err == nil {
-		t.Fatal("expected nil db to fail")
-	}
-}
-
 func TestTaskModelsUseDistinctTableNames(t *testing.T) {
 	t.Parallel()
 

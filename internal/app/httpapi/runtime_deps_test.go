@@ -57,6 +57,17 @@ func TestBuildRuntimeDepsRunsEnabledSchemaMigrationBeforeRepositoryConstruction(
 }
 
 func TestMigrateProductListingSchemaIfEnabledSkipsDisabledFlag(t *testing.T) {
+	previousValue, hadPreviousValue := os.LookupEnv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE")
+	if err := os.Unsetenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE"); err != nil {
+		t.Fatalf("unset legacy auto-migrate environment variable: %v", err)
+	}
+	t.Cleanup(func() {
+		if hadPreviousValue {
+			_ = os.Setenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE", previousValue)
+			return
+		}
+		_ = os.Unsetenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE")
+	})
 	evaluator := &recordingBoolEvaluator{value: false}
 	called := 0
 	err := migrateProductListingSchemaIfEnabled(context.Background(), evaluator, &config.DatabaseConfig{}, logrus.New(), func(context.Context, *config.DatabaseConfig, *logrus.Logger) error {
@@ -65,6 +76,41 @@ func TestMigrateProductListingSchemaIfEnabledSkipsDisabledFlag(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("migrateProductListingSchemaIfEnabled() error = %v", err)
+	}
+	if called != 0 {
+		t.Fatalf("schema migrator calls = %d, want 0", called)
+	}
+}
+
+func TestBuildRuntimeDepsDisabledOpenFeatureFlagSkipsMigrationAndContinuesToRepositoryConstruction(t *testing.T) {
+	previousValue, hadPreviousValue := os.LookupEnv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE")
+	if err := os.Unsetenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE"); err != nil {
+		t.Fatalf("unset legacy auto-migrate environment variable: %v", err)
+	}
+	t.Cleanup(func() {
+		if hadPreviousValue {
+			_ = os.Setenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE", previousValue)
+			return
+		}
+		_ = os.Unsetenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE")
+	})
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+	configPath := filepath.Join(t.TempDir(), "runtime.yaml")
+	contents := []byte("featureFlags:\n  flags:\n    product-listing-runtime-auto-migrate: false\ndatabase:\n  host: 127.0.0.1\n  port: 1\n  user: test\n  password: test\n  database: test\n")
+	if err := os.WriteFile(configPath, contents, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	called := 0
+	deps, err := buildRuntimeDepsWithSchemaMigrator(logrus.New(), configPath, func(context.Context, *config.DatabaseConfig, *logrus.Logger) error {
+		called++
+		return nil
+	})
+	if deps != nil {
+		t.Fatal("buildRuntimeDepsWithSchemaMigrator() unexpectedly constructed deps with unreachable database")
+	}
+	if err == nil || !strings.Contains(err.Error(), "database connection failed") {
+		t.Fatalf("buildRuntimeDepsWithSchemaMigrator() error = %v, want repository construction database failure", err)
 	}
 	if called != 0 {
 		t.Fatalf("schema migrator calls = %d, want 0", called)
