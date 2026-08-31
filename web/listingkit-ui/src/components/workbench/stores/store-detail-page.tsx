@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
@@ -18,12 +18,28 @@ type RecoveryState =
 export function StoreDetailPage({ storeId }: { storeId: string }) {
   const router = useRouter();
   const organizationId = useWorkbenchContext().effectiveOrganization?.id ?? "";
-  const initialOrganizationId = useRef(organizationId);
+  const [initialOrganizationId] = useState(organizationId);
+  const organizationChanged = organizationId !== initialOrganizationId;
   useEffect(() => {
-    if (!organizationId || organizationId === initialOrganizationId.current) return;
+    if (!organizationId || !organizationChanged) return;
     router.replace("/workbench/stores");
-  }, [organizationId, router]);
-  return <StoreDetailContent key={storeId} storeId={storeId} />;
+  }, [organizationChanged, organizationId, router]);
+  if (organizationChanged) {
+    return (
+      <section
+        className="mx-auto max-w-2xl px-4 py-8"
+        role="status"
+      >
+        正在切换企业...
+      </section>
+    );
+  }
+  return (
+    <StoreDetailContent
+      key={`${organizationId}:${storeId}`}
+      storeId={storeId}
+    />
+  );
 }
 
 function StoreDetailContent({ storeId }: { storeId: string }) {
@@ -37,9 +53,10 @@ function StoreDetailContent({ storeId }: { storeId: string }) {
     return <DetailError code={code} retry={() => void storeQuery.refetch()} />;
   }
 
-  const loadLatest = async (draft: WorkbenchStoreUpdateInput) => {
-    if (!store) return;
-    const base = store;
+  const loadLatest = async (
+    draft: WorkbenchStoreUpdateInput,
+    base: WorkbenchStore,
+  ) => {
     setRecovery({ state: "loading", base, draft });
     const result = await storeQuery.refetch();
     if (!result.isSuccess || result.isError || !result.data) {
@@ -49,8 +66,8 @@ function StoreDetailContent({ storeId }: { storeId: string }) {
     setRecovery({ state: "ready", base, draft, latest: result.data, changedFields: changedFields(base, result.data) });
   };
   return <>
-    {recovery.state === "failed" ? <section className="mx-auto mt-6 max-w-2xl rounded-xl border bg-card p-4" role="alert"><p>无法确认店铺最新版本，草稿已保留。</p><Button className="mt-3" onClick={() => void loadLatest(recovery.draft)} variant="outline">重试获取最新版本</Button></section> : null}
-    <StoreForm conflict={recovery.state === "ready" ? { latest: recovery.latest, changedFields: recovery.changedFields } : null} mode="edit" onConflict={(draft) => void loadLatest(draft)} onSaved={(next) => { setDisplayedStore(next); setRecovery({ state: "idle" }); }} recoveryState={recovery.state === "loading" || recovery.state === "failed" ? recovery.state : "idle"} store={store} />
+    {recovery.state === "failed" ? <section className="mx-auto mt-6 max-w-2xl rounded-xl border bg-card p-4" role="alert"><p>无法确认店铺最新版本，草稿已保留。</p><Button className="mt-3" onClick={() => void loadLatest(recovery.draft, recovery.base)} variant="outline">重试获取最新版本</Button></section> : null}
+    <StoreForm conflict={recovery.state === "ready" ? { latest: recovery.latest, changedFields: recovery.changedFields } : null} mode="edit" onConflict={(draft, baseline) => void loadLatest(draft, baseline)} onSaved={(next) => { setDisplayedStore(next); setRecovery({ state: "idle" }); }} recoveryState={recovery.state === "loading" || recovery.state === "failed" ? recovery.state : "idle"} store={store} />
   </>;
 }
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -89,11 +89,14 @@ describe("StoreForm", () => {
     await user.click(screen.getByRole("button", { name: "保存更改" }));
     expect(update.mutate).toHaveBeenCalledWith({ id: STORE.id, version: 3, input: { name: "我的草稿", region: "CN" } }, expect.any(Object));
     update.mutate.mock.calls[0]?.[1].onError({ code: "STORE_VERSION_CONFLICT", status: 409, fieldErrors: [] });
-    expect(onConflict).toHaveBeenCalled();
-    view.rerender(<StoreForm mode="edit" store={STORE} conflict={{ latest: { ...STORE, name: "他人更新", version: 4 }, changedFields: ["name"] }} onConflict={onConflict} />);
+    expect(onConflict).toHaveBeenCalledWith({ name: "我的草稿", region: "CN" }, STORE);
+    const latest = { ...STORE, name: "他人更新", version: 4 };
+    view.rerender(<StoreForm mode="edit" store={STORE} conflict={{ latest, changedFields: ["name"] }} onConflict={onConflict} />);
     expect(screen.getByText(/名称已被其他人修改/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "使用最新版本重新保存" }));
     expect(update.mutate).toHaveBeenLastCalledWith({ id: STORE.id, version: 4, input: { name: "我的草稿", region: "CN" } }, expect.any(Object));
+    update.mutate.mock.calls[1]?.[1].onError({ code: "STORE_VERSION_CONFLICT", status: 409, fieldErrors: [] });
+    expect(onConflict).toHaveBeenLastCalledWith({ name: "我的草稿", region: "CN" }, latest);
   });
 
   it("keeps a dirty edit draft and original version across background query projections", async () => {
@@ -120,6 +123,22 @@ describe("StoreForm", () => {
     expect(router.replace).not.toHaveBeenCalled();
     context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [] };
     view.rerender(<StoreForm mode="create" />);
+    expect(screen.getByRole("status")).toHaveTextContent("正在切换企业");
+    expect(screen.queryByDisplayValue("草稿")).not.toBeInTheDocument();
     expect(router.replace).toHaveBeenCalledWith("/workbench/stores");
+  });
+
+  it("does not lock explicit conflict retry after keyboard or programmatic form submission", async () => {
+    const latest = { ...STORE, version: 4 };
+    const user = userEvent.setup();
+    const { container } = render(<StoreForm conflict={{ latest, changedFields: ["region"] }} mode="edit" store={STORE} />);
+    const formElement = container.querySelector("form");
+    expect(formElement).not.toBeNull();
+    fireEvent.submit(formElement!);
+    expect(update.mutate).not.toHaveBeenCalled();
+    const retry = screen.getByRole("button", { name: "使用最新版本重新保存" });
+    expect(retry).toBeEnabled();
+    await user.click(retry);
+    expect(update.mutate).toHaveBeenCalledWith({ id: STORE.id, version: 4, input: { name: STORE.name, region: STORE.region } }, expect.any(Object));
   });
 });

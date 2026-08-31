@@ -27,7 +27,10 @@ type StoreFormProps =
       store: WorkbenchStore;
       conflict?: Conflict | null;
       recoveryState?: "idle" | "loading" | "failed";
-      onConflict?: (draft: WorkbenchStoreUpdateInput) => void;
+      onConflict?: (
+        draft: WorkbenchStoreUpdateInput,
+        baseline: WorkbenchStore,
+      ) => void;
       onSaved?: (store: WorkbenchStore) => void;
     };
 
@@ -41,7 +44,9 @@ export function StoreForm(props: StoreFormProps) {
   const router = useRouter();
   const context = useWorkbenchContext();
   const organization = context.effectiveOrganization;
-  const mountedOrganizationId = useRef(organization?.id ?? "");
+  const [mountedOrganizationId] = useState(() => organization?.id ?? "");
+  const organizationChanged =
+    (organization?.id ?? "") !== mountedOrganizationId;
   const mountedRef = useRef(true);
   const confirmationPendingRef = useRef(false);
   const submissionPendingRef = useRef(false);
@@ -68,15 +73,20 @@ export function StoreForm(props: StoreFormProps) {
   }, []);
 
   useEffect(() => {
-    const startOrganizationId = mountedOrganizationId.current;
-    if (!organization || organization.id === startOrganizationId) return;
+    if (!organization || organization.id === mountedOrganizationId) return;
     form.reset(props.mode === "create" ? { name: "", platform: "shein", region: "", externalStoreId: "" } : { name: props.store.name, region: props.store.region });
     router.replace("/workbench/stores");
-  }, [form, organization, props, router]);
+  }, [form, mountedOrganizationId, organization, props, router]);
 
   useEffect(() => {
     return context.registerOrganizationSwitchGuard((target) => {
-      if (!mountedRef.current || confirmationPendingRef.current) return false;
+      if (
+        !mountedRef.current ||
+        organizationChanged ||
+        confirmationPendingRef.current
+      ) {
+        return false;
+      }
       if (!form.formState.isDirty) return true;
       confirmationPendingRef.current = true;
       try {
@@ -87,15 +97,21 @@ export function StoreForm(props: StoreFormProps) {
         confirmationPendingRef.current = false;
       }
     });
-  }, [context, form.formState.isDirty, organization?.name]);
+  }, [context, form.formState.isDirty, organization?.name, organizationChanged]);
 
   const submit = (values: WorkbenchStoreCreateInput | WorkbenchStoreUpdateInput) => {
-    if (isPending || submissionPendingRef.current || !organization) return;
-    if (props.mode === "edit" && (props.conflict || props.recoveryState === "loading" || props.recoveryState === "failed" || !editBaseline)) return;
-    submissionPendingRef.current = true;
-    setSubmissionPending(true);
-    setFormError(null);
+    if (
+      isPending ||
+      submissionPendingRef.current ||
+      !organization ||
+      organizationChanged
+    ) {
+      return;
+    }
     if (props.mode === "create") {
+      submissionPendingRef.current = true;
+      setSubmissionPending(true);
+      setFormError(null);
       create.mutate(values as WorkbenchStoreCreateInput, {
         onSuccess: (store) => { submissionPendingRef.current = false; setSubmissionPending(false); router.push(`/workbench/stores/${store.id}`); },
         onError: (error) => { submissionPendingRef.current = false; setSubmissionPending(false); setFormError(applyServerError(form, error, "create")); },
@@ -103,14 +119,24 @@ export function StoreForm(props: StoreFormProps) {
       return;
     }
     const baseline = editBaseline;
-    if (!baseline) return;
+    if (
+      props.conflict ||
+      props.recoveryState === "loading" ||
+      props.recoveryState === "failed" ||
+      !baseline
+    ) {
+      return;
+    }
+    submissionPendingRef.current = true;
+    setSubmissionPending(true);
+    setFormError(null);
     update.mutate(
       { id: baseline.id, version: baseline.version, input: values as WorkbenchStoreUpdateInput },
       {
         onSuccess: (store) => { submissionPendingRef.current = false; setSubmissionPending(false); setEditBaseline(store); form.reset({ name: store.name, region: store.region }); props.onSaved?.(store); },
         onError: (error) => {
           if (error.code === "STORE_VERSION_CONFLICT") {
-            submissionPendingRef.current = false; setSubmissionPending(false); props.onConflict?.(values as WorkbenchStoreUpdateInput);
+            submissionPendingRef.current = false; setSubmissionPending(false); props.onConflict?.(values as WorkbenchStoreUpdateInput, baseline);
             return;
           }
           submissionPendingRef.current = false; setSubmissionPending(false); setFormError(applyServerError(form, error, "edit"));
@@ -131,23 +157,37 @@ export function StoreForm(props: StoreFormProps) {
   };
   const retryConflict = () => {
     if (isPending || props.mode !== "edit" || !props.conflict || !editBaseline || submissionPendingRef.current) return;
+    const conflict = props.conflict;
     const draft = workbenchStoreUpdateSchema.safeParse(form.getValues());
     if (!draft.success) return;
     submissionPendingRef.current = true;
     setSubmissionPending(true);
     setFormError(null);
     update.mutate(
-      { id: editBaseline.id, version: props.conflict.latest.version, input: draft.data },
+      { id: editBaseline.id, version: conflict.latest.version, input: draft.data },
       {
         onSuccess: (store) => { submissionPendingRef.current = false; setSubmissionPending(false); setEditBaseline(store); form.reset({ name: store.name, region: store.region }); props.onSaved?.(store); },
         onError: (error) => {
           submissionPendingRef.current = false; setSubmissionPending(false);
-          if (error.code === "STORE_VERSION_CONFLICT") props.onConflict?.(draft.data);
+          if (error.code === "STORE_VERSION_CONFLICT") {
+            props.onConflict?.(draft.data, conflict.latest);
+          }
           else setFormError(applyServerError(form, error, "edit"));
         },
       },
     );
   };
+
+  if (organizationChanged) {
+    return (
+      <section
+        className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6"
+        role="status"
+      >
+        正在切换企业...
+      </section>
+    );
+  }
 
   const organizationName = organization?.name ?? "当前企业";
   return (

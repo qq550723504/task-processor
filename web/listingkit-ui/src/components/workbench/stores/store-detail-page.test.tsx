@@ -16,7 +16,7 @@ import { StoreDetailPage } from "@/components/workbench/stores/store-detail-page
 
 const STORE = { id: "11111111-1111-4111-8111-111111111111", name: "店铺", platform: "shein" as const, region: "CN", externalStoreId: "", lifecycleStatus: "active" as const, connectionStatus: "disconnected" as const, version: 1, createdAt: "2026-08-31T00:00:00Z", updatedAt: "2026-08-31T00:00:00Z" };
 describe("StoreDetailPage", () => {
-  afterEach(() => { query.value = {}; update.mutate.mockReset(); update.isPending = false; create.mutate.mockReset(); context.registerOrganizationSwitchGuard.mockClear(); });
+  afterEach(() => { query.value = {}; update.mutate.mockReset(); update.isPending = false; create.mutate.mockReset(); context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] }; context.registerOrganizationSwitchGuard.mockReset(); context.registerOrganizationSwitchGuard.mockImplementation(() => vi.fn()); router.replace.mockReset(); });
   it("renders stable loading, not-found, access, and dependency states", () => {
     query.value = { isPending: true }; const { rerender } = render(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("status")).toHaveTextContent("正在加载店铺");
     query.value = { isPending: false, isError: true, error: { code: "STORE_NOT_FOUND" }, refetch: vi.fn() }; rerender(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("alert")).toHaveTextContent("店铺不存在或已不可访问");
@@ -36,6 +36,20 @@ describe("StoreDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "使用最新版本重新保存" }));
     expect(update.mutate).toHaveBeenLastCalledWith({ id: STORE.id, version: 2, input: { name: "我的草稿", region: "CN" } }, expect.any(Object));
   });
+  it("compares conflict fields against the immutable submitted baseline rather than a background query projection", async () => {
+    const background = { ...STORE, name: "后台名称", version: 2 };
+    const latest = { ...background, region: "US", version: 3 };
+    const refetch = vi.fn().mockResolvedValue({ data: latest, isSuccess: true, isError: false });
+    query.value = { isPending: false, isError: false, data: STORE, refetch };
+    const user = userEvent.setup(); const view = render(<StoreDetailPage storeId={STORE.id} />);
+    await user.clear(screen.getByLabelText("店铺名称")); await user.type(screen.getByLabelText("店铺名称"), "我的草稿");
+    query.value = { isPending: false, isError: false, data: background, refetch };
+    view.rerender(<StoreDetailPage storeId={STORE.id} />);
+    await user.click(screen.getByRole("button", { name: "保存更改" }));
+    expect(update.mutate).toHaveBeenCalledWith({ id: STORE.id, version: 1, input: { name: "我的草稿", region: "CN" } }, expect.any(Object));
+    update.mutate.mock.calls[0]?.[1].onError({ code: "STORE_VERSION_CONFLICT", status: 409, fieldErrors: [] });
+    expect(await screen.findByText(/名称、区域已被其他人修改/)).toBeInTheDocument();
+  });
   it("fails closed when latest conflict fetch fails and repeats conflict recovery", async () => {
     const latest = { ...STORE, version: 2, name: "服务端名称" };
     const refetch = vi.fn().mockResolvedValueOnce({ data: STORE, isSuccess: false, isError: true }).mockResolvedValueOnce({ data: latest, isSuccess: true, isError: false }).mockResolvedValueOnce({ data: { ...latest, version: 3, region: "US" }, isSuccess: true, isError: false });
@@ -50,6 +64,8 @@ describe("StoreDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "使用最新版本重新保存" })); update.mutate.mock.calls[1]?.[1].onError({ code: "STORE_VERSION_CONFLICT", status: 409, fieldErrors: [] });
     await waitFor(() => expect(refetch).toHaveBeenCalledTimes(3));
     expect(screen.getByLabelText("店铺名称")).toHaveValue("草稿");
+    expect(screen.getByText(/最新版本中区域已被其他人修改/)).toBeInTheDocument();
+    expect(screen.queryByText(/最新版本中名称、区域已被其他人修改/)).not.toBeInTheDocument();
   });
   it("locks normal save while a conflict refetch is pending", async () => {
     let settle!: (result: { data: typeof STORE; isSuccess: boolean; isError: boolean }) => void;
@@ -78,6 +94,38 @@ describe("StoreDetailPage", () => {
     context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [] };
     query.value = { isPending: true, isError: false, data: undefined, refetch: vi.fn() };
     view.rerender(<StoreDetailPage storeId={STORE.id} />);
+    expect(screen.getByRole("status")).toHaveTextContent("正在切换企业");
+    expect(screen.queryByDisplayValue(/店铺草稿/)).not.toBeInTheDocument();
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/workbench/stores"));
+  });
+
+  it("hides a successful edit projection on the first frame of an actual Organization change", async () => {
+    query.value = { isPending: false, isError: false, data: STORE, refetch: vi.fn() };
+    const user = userEvent.setup(); const view = render(<StoreDetailPage storeId={STORE.id} />);
+    await user.clear(screen.getByLabelText("店铺名称")); await user.type(screen.getByLabelText("店铺名称"), "旧企业已保存");
+    await user.click(screen.getByRole("button", { name: "保存更改" }));
+    update.mutate.mock.calls[0]?.[1].onSuccess({ ...STORE, name: "旧企业已保存", version: 2 });
+    expect(await screen.findByDisplayValue("旧企业已保存")).toBeInTheDocument();
+    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [] };
+    query.value = { isPending: true, isError: false, data: undefined, refetch: vi.fn() };
+    view.rerender(<StoreDetailPage storeId={STORE.id} />);
+    expect(screen.getByRole("status")).toHaveTextContent("正在切换企业");
+    expect(screen.queryByDisplayValue("旧企业已保存")).not.toBeInTheDocument();
+  });
+
+  it("hides conflict recovery and its draft on the first frame of an actual Organization change", async () => {
+    const refetch = vi.fn().mockResolvedValue({ data: { ...STORE, name: "服务端", version: 2 }, isSuccess: true, isError: false });
+    query.value = { isPending: false, isError: false, data: STORE, refetch };
+    const user = userEvent.setup(); const view = render(<StoreDetailPage storeId={STORE.id} />);
+    await user.clear(screen.getByLabelText("店铺名称")); await user.type(screen.getByLabelText("店铺名称"), "旧企业冲突草稿");
+    await user.click(screen.getByRole("button", { name: "保存更改" }));
+    update.mutate.mock.calls[0]?.[1].onError({ code: "STORE_VERSION_CONFLICT", status: 409, fieldErrors: [] });
+    expect(await screen.findByRole("button", { name: "使用最新版本重新保存" })).toBeInTheDocument();
+    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [] };
+    query.value = { isPending: true, isError: false, data: undefined, refetch: vi.fn() };
+    view.rerender(<StoreDetailPage storeId={STORE.id} />);
+    expect(screen.getByRole("status")).toHaveTextContent("正在切换企业");
+    expect(screen.queryByDisplayValue("旧企业冲突草稿")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "使用最新版本重新保存" })).not.toBeInTheDocument();
   });
 });
