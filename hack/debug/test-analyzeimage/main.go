@@ -43,7 +43,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "load config failed: %v\n", err)
 		os.Exit(1)
 	}
-	llmManager, err := productenrich.NewLLMManagerAdapter(cfg.OpenAI)
+	componentLogger := corelogger.GetGlobalLogger("debug/test-analyzeimage")
+	llmManager, err := productenrich.NewLLMManagerAdapter(cfg.OpenAI, componentLogger)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create llm manager: %v\n", err)
 		os.Exit(1)

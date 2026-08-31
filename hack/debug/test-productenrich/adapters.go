@@ -28,7 +28,8 @@ func buildService(cfg *config.Config) (productenrich.ProductService, error) {
 		logger.Info("Prompt Registry 已初始化")
 	}
 
-	llmMgr, err := productenrich.NewLLMManagerAdapter(cfg.OpenAI)
+	componentLogger := logger.WithField("component", "debug/test-productenrich")
+	llmMgr, err := productenrich.NewLLMManagerAdapter(cfg.OpenAI, componentLogger)
 	if err != nil {
 		return nil, fmt.Errorf("创建 LLMManager 失败: %w", err)
 	}
