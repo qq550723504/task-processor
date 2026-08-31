@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 
+import { StoreLifecycleActions } from "@/components/workbench/stores/store-lifecycle-actions";
 import type { WorkbenchStore } from "@/lib/api/workbench-stores";
 
 const lifecycleLabels: Record<WorkbenchStore["lifecycleStatus"], string> = {
@@ -16,7 +19,7 @@ const connectionLabels: Record<WorkbenchStore["connectionStatus"], string> = {
   unavailable: "暂时无法检查",
 };
 
-export function StoreTable({ stores }: { stores: WorkbenchStore[] }) {
+export function StoreTable({ stores, onDeleted, onRefreshStore }: { stores: WorkbenchStore[]; onDeleted?: () => void; onRefreshStore?: (storeId: string) => Promise<WorkbenchStore | null | undefined> }) {
   return (
     <div className="overflow-x-auto rounded-xl border bg-card">
       <table aria-label="我的店铺列表" className="w-full min-w-[900px] text-sm">
@@ -64,6 +67,7 @@ export function StoreTable({ stores }: { stores: WorkbenchStore[] }) {
                   >
                     查看
                   </Link>
+                  <div className="mt-2"><StoreLifecycleActions onDeleted={onDeleted} onRefreshStore={onRefreshStore ? () => onRefreshStore(store.id) : undefined} store={store} /></div>
                 </td>
               </tr>
             );

@@ -13,6 +13,7 @@ const context = vi.hoisted(() => ({
 }));
 const storesQuery = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const useWorkbenchStores = vi.hoisted(() => vi.fn(() => storesQuery.value));
+const table = vi.hoisted(() => ({ props: [] as Array<Record<string, unknown>> }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => navigation.pathname,
@@ -25,6 +26,7 @@ vi.mock("@/components/providers/workbench-context-provider", () => ({
 vi.mock("@/lib/query/use-workbench-stores", () => ({
   useWorkbenchStores,
 }));
+vi.mock("@/components/workbench/stores/store-table", () => ({ StoreTable: (props: { stores: typeof STORE[] }) => { table.props.push(props); return <div>{props.stores.map((store) => <span key={store.id}>{store.name}</span>)}</div>; } }));
 
 import { StoreListPage } from "@/components/workbench/stores/store-list-page";
 
@@ -64,6 +66,7 @@ describe("StoreListPage", () => {
     context.roles = ["listingkit_operator"];
     context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] };
     storesQuery.value = {};
+    table.props = [];
   });
 
   it("normalizes URL state, exposes the server quota, and writes only allowlisted filters", async () => {
@@ -157,6 +160,29 @@ describe("StoreListPage", () => {
     rerender(<StoreListPage />);
     expect(screen.getByText("没有符合筛选条件的店铺")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "清除筛选" })).toBeInTheDocument();
+  });
+
+  it("keeps disabled Stores in the directory and explains that they still consume quota", () => {
+    storesQuery.value = listData({ data: { ...listData().data, items: [{ ...STORE, lifecycleStatus: "disabled" as const }] } });
+    render(<StoreListPage />);
+    expect(screen.getByText("企业 A 店铺")).toBeInTheDocument();
+    expect(screen.getByText(/已停用店铺仍占用店铺额度/)).toBeInTheDocument();
+  });
+
+  it("consumes only the exact static successful-delete notice and never preserves it on filter navigation", async () => {
+    navigation.search = "notice=store-deleted&page=2";
+    storesQuery.value = listData();
+    const user = userEvent.setup();
+    const { rerender } = render(<StoreListPage />);
+    expect(screen.getByRole("status")).toHaveTextContent("界面不提供恢复");
+    await user.selectOptions(screen.getByRole("combobox", { name: "平台" }), "shein");
+    expect(navigation.push).toHaveBeenLastCalledWith("/workbench/stores?page=1&pageSize=20&platform=shein");
+    navigation.search = "notice=store-deleted&notice=store-deleted";
+    rerender(<StoreListPage />);
+    expect(screen.queryByRole("status", { name: /恢复/ })).not.toBeInTheDocument();
+    navigation.search = "notice=other";
+    rerender(<StoreListPage />);
+    expect(screen.queryByText(/界面不提供恢复/)).not.toBeInTheDocument();
   });
 
   it("resets platform filters to page one and preserves filters across pagination boundaries", async () => {

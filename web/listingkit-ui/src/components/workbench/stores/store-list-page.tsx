@@ -28,6 +28,7 @@ export function StoreListPage() {
   const stores = useWorkbenchStores(filters);
   const data = stores.data;
   const hasFilters = Boolean(filters.platform || filters.status);
+  const deletedNotice = searchParams.getAll("notice").length === 1 && searchParams.get("notice") === "store-deleted";
   const canCreateByRole = context.roles.some((role) => createRoles.has(role));
   const canCreate = Boolean(data?.quota.allowed && canCreateByRole);
 
@@ -76,6 +77,8 @@ export function StoreListPage() {
         {hasFilters && data?.items.length !== 0 ? <Button onClick={resetFilters} variant="ghost">清除筛选</Button> : null}
       </div>
 
+      {deletedNotice ? <p className="mt-4 rounded-md border p-3 text-sm" role="status">店铺已删除。界面不提供恢复；如需运营恢复，请由管理员通过数据库软删除恢复流程处理。</p> : null}
+
       {stores.isPending ? <LoadingState /> : stores.isError ? (
         <ErrorState error={stores.error} retry={() => void stores.refetch()} />
       ) : data ? (
@@ -84,7 +87,11 @@ export function StoreListPage() {
           {data.items.length === 0 ? (
             <EmptyState filtered={hasFilters} clearFilters={resetFilters} />
           ) : (
-            <StoreTable stores={data.items} />
+            <StoreTable onDeleted={() => router.push("/workbench/stores?notice=store-deleted")} onRefreshStore={async (storeId) => {
+              const result = await stores.refetch();
+              if (!result.isSuccess || result.isError) return null;
+              return result.data?.items.find((store) => store.id === storeId) ?? null;
+            }} stores={data.items} />
           )}
           <Pagination filters={filters} onChange={updateFilters} page={data.pagination.page} pageSize={data.pagination.pageSize} total={data.pagination.total} />
         </div>
@@ -109,7 +116,7 @@ function EmptyState({ filtered, clearFilters }: { filtered: boolean; clearFilter
 
 function QuotaSummary({ quota }: { quota: { used: number; limit: number | null; allowed: boolean; reason: string } }) {
   const hint = quota.reason === "subscription_required" ? "当前企业需要管理员配置有效订阅后才能新建店铺。" : quota.reason === "store_limit_reached" || (!quota.allowed && quota.limit !== null && quota.used >= quota.limit) ? "店铺额度已用尽，请联系管理员或升级套餐。" : null;
-  return <div className="flex flex-wrap items-center justify-between gap-2 text-sm"><p>已使用 {quota.used} / {quota.limit ?? "—"}</p>{hint ? <p className="text-muted-foreground">{hint}</p> : null}</div>;
+  return <div className="flex flex-wrap items-center justify-between gap-2 text-sm"><p>已使用 {quota.used} / {quota.limit ?? "—"}</p><p className="text-muted-foreground">已停用店铺仍占用店铺额度。</p>{hint ? <p className="text-muted-foreground">{hint}</p> : null}</div>;
 }
 
 function Pagination({ filters, onChange, page, pageSize, total }: { filters: WorkbenchStoreListFilters; onChange: (filters: WorkbenchStoreListFilters) => void; page: number; pageSize: number; total: number }) {

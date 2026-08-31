@@ -1,5 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const lifecycle = vi.hoisted(() => ({ props: [] as Array<Record<string, unknown>> }));
+vi.mock("@/components/workbench/stores/store-lifecycle-actions", () => ({ StoreLifecycleActions: (props: Record<string, unknown>) => { lifecycle.props.push(props); return <button type="button">行内生命周期操作</button>; } }));
 
 import { StoreTable } from "@/components/workbench/stores/store-table";
 
@@ -82,5 +85,14 @@ describe("StoreTable", () => {
       "dateTime",
       "",
     );
+  });
+
+  it("keeps detail navigation and row lifecycle controls as sibling interactive elements", () => {
+    render(<StoreTable stores={[STORE]} />);
+    const link = screen.getByRole("link", { name: "查看华东旗舰店" });
+    const action = screen.getByRole("button", { name: "行内生命周期操作" });
+    expect(link.contains(action)).toBe(false);
+    expect(action.contains(link)).toBe(false);
+    expect(lifecycle.props.at(-1)?.store).toEqual(STORE);
   });
 });
