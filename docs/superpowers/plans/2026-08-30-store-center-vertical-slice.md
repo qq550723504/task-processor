@@ -408,8 +408,14 @@ git commit -m "feat: create stores with idempotent quota compensation"
 
 **Files:**
 
+- Modify: `internal/storecenter/store.go`
+- Modify: `internal/storecenter/store_test.go`
+- Modify: `internal/storecenter/gorm_repository.go`
+- Modify: `internal/storecenter/gorm_repository_test.go`
 - Modify: `internal/storecenter/service.go`
 - Modify: `internal/storecenter/service_test.go`
+- Modify: `internal/storecenter/audit.go`
+- Modify: `internal/storecenter/audit_test.go`
 - Create: `internal/storecenter/connection_status.go`
 - Create: `internal/storecenter/connection_status_test.go`
 
@@ -420,9 +426,10 @@ git commit -m "feat: create stores with idempotent quota compensation"
 - [ ] Include the quota ledger's Organization-scoped summary in list responses as `used`, `reserved`, and `limit`; do not calculate it with `COUNT(workbench_stores)`.
 - [ ] Implement basic edit with `If-Match` version and immutable Organization/platform/external identity fields.
 - [ ] Disable and enable through explicit state transitions. Disabled stores continue consuming quota.
-- [ ] Controlled delete first transitions to `deleting`, then deallocates quota, then soft-deletes. If deallocation fails, keep `deleting`; a retry with the returned/current version resumes safely.
+- [ ] Add aggregate-owned basic-edit behavior and a canonical persisted delete operation key. Do not mutate exported snapshots in the service or duplicate the repository create fingerprint. The delete key is blank before deletion, becomes immutable when deletion starts, and is included in GORM mapping/invariant coverage.
+- [ ] Controlled delete first binds the operation key and transitions to `deleting`, then deallocates quota, then soft-deletes. If deallocation fails, keep `deleting`; only the same operation key with the returned/current version may resume safely.
 - [ ] After successful soft delete, list/get return not found and quota committed count is lower by one. Repeating delete is idempotent only when the same delete operation key is supplied; otherwise return not found.
-- [ ] Write idempotent audit events for edit, disable, enable, delete-start, quota-deallocate, and delete-complete.
+- [ ] Write idempotent audit events for edit, disable, enable, delete-start, quota-deallocate, and delete-complete. Use deterministic version-scoped operation UUIDs for versioned mutations and the caller's canonical delete operation UUID for deletion so an ambiguous save or final audit failure can be resumed without accepting a stale mutation.
 
 **Verification:**
 
