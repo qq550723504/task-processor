@@ -49,7 +49,8 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		return nil, err
 	}
 	ownedClosers = append(ownedClosers, openaiDeps.closers...)
-	closers := openaiDeps.closers
+	closers := make([]func() error, 0, len(openaiDeps.closers)+len(promptDeps.closers)+1)
+	closers = append(closers, openaiDeps.closers...)
 	done = timer.phase("buildAICapabilityRuntimeDeps")
 	aiCapabilityDeps, err := buildAICapabilityRuntimeDeps(cfg, logger, featureFlags)
 	done()
@@ -76,7 +77,6 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		ownedClosers = append(ownedClosers, storeCloser)
 		closers = append(closers, storeCloser)
 	}
-	closers = append(closers, featureFlagsCloser)
 
 	timer.total("buildRuntimeDeps")
 	completed = true
@@ -102,7 +102,9 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 			imageWorkDir:         imageWorkDir,
 			storeAPI:             storeAPI,
 		},
-		features: &featureRuntimeState{},
+		features:            &featureRuntimeState{},
+		constructionClosers: ownedClosers,
+		featureFlagsCloser:  featureFlagsCloser,
 	}, nil
 }
 

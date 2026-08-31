@@ -34,7 +34,7 @@ func TestShouldAutoMigrateProductListingAPIRuntimeDefaultsTrueWithoutEvaluator(t
 	}
 }
 
-func TestBuildRuntimeDepsConstructsFeatureFlagRuntimeAndRegistersShutdown(t *testing.T) {
+func TestBuildRuntimeDepsConstructsFeatureFlagRuntimeAndRetainsFinalShutdown(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
 	t.Setenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE", "false")
 	logger := logrus.New()
@@ -50,15 +50,16 @@ func TestBuildRuntimeDepsConstructsFeatureFlagRuntimeAndRegistersShutdown(t *tes
 	if shouldAutoMigrateProductListingAPIRuntime(t.Context(), deps.shared.featureFlags) {
 		t.Fatal("feature flag evaluator returned true, want environment override false")
 	}
-	if len(deps.shared.closers) != 2 {
-		t.Fatalf("closers = %d, want existing StoreAPI closer followed by feature runtime shutdown", len(deps.shared.closers))
+	if len(deps.shared.closers) != 1 {
+		t.Fatalf("ordinary closers = %d, want existing StoreAPI closer without feature runtime shutdown", len(deps.shared.closers))
 	}
-	if err := deps.shared.closers[1](); err != nil {
-		t.Fatalf("feature runtime closer error = %v", err)
+	if deps.featureFlagsCloser == nil {
+		t.Fatal("feature runtime final closer is nil")
 	}
-	if err := deps.shared.closers[0](); err != nil {
-		t.Fatalf("StoreAPI closer error = %v", err)
+	if len(deps.constructionClosers) != 2 {
+		t.Fatalf("construction closers = %d, want feature runtime followed by StoreAPI", len(deps.constructionClosers))
 	}
+	t.Cleanup(func() { cleanupOwnedRuntimeResources(false, deps.constructionClosers) })
 }
 
 func TestCleanupOwnedRuntimeResourcesClosesInReverseOrderOnlyOnFailure(t *testing.T) {

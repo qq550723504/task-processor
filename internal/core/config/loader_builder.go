@@ -18,11 +18,7 @@ func BuildConfig(v *viper.Viper) *Config {
 	listingKitAllowedRoles := getStringSlice(v, "listingkit.zitadel.allowedRoles")
 
 	cfg := &Config{
-		FeatureFlags: FeatureFlagsConfig{
-			Flags: map[string]bool{
-				"product-listing-runtime-auto-migrate": v.GetBool("featureFlags.flags.product-listing-runtime-auto-migrate"),
-			},
-		},
+		FeatureFlags: buildFeatureFlagsConfig(v),
 		Processor: ProcessorConfig{
 			MaxRetries:       v.GetInt("processor.maxRetries"),
 			Timeout:          v.GetInt("processor.timeout"),
@@ -293,6 +289,22 @@ func BuildConfig(v *viper.Viper) *Config {
 	}
 
 	return cfg
+}
+
+func buildFeatureFlagsConfig(v *viper.Viper) FeatureFlagsConfig {
+	const (
+		flagsConfigKey = "featureFlags.flags"
+		autoMigrateKey = "product-listing-runtime-auto-migrate"
+	)
+
+	rawFlags := v.GetStringMap(flagsConfigKey)
+	flags := make(map[string]bool, len(rawFlags)+1)
+	for key := range rawFlags {
+		flags[key] = v.GetBool(flagsConfigKey + "." + key)
+	}
+	flags[autoMigrateKey] = v.GetBool(flagsConfigKey + "." + autoMigrateKey)
+
+	return FeatureFlagsConfig{Flags: flags}
 }
 
 func legacyListingKitUsernameAllowlistConfigured(v *viper.Viper) bool {

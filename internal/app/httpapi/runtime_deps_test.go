@@ -55,11 +55,7 @@ func TestBuildRuntimeDepsInitializesSharedRuntimeWithoutFeatureState(t *testing.
 		t.Fatalf("buildRuntimeDeps() error = %v", err)
 	}
 	t.Cleanup(func() {
-		for _, closer := range deps.shared.closers {
-			if closer != nil {
-				_ = closer()
-			}
-		}
+		cleanupOwnedRuntimeResources(false, deps.constructionClosers)
 	})
 
 	if deps.shared == nil {
@@ -252,14 +248,7 @@ func TestRuntimeDepsAttachBuiltFeatureModules(t *testing.T) {
 	}
 	assertRuntimeDirectory(t, runtimePaths.workDir)
 
-	for i := len(deps.shared.closers) - 1; i >= 0; i-- {
-		if deps.shared.closers[i] == nil {
-			continue
-		}
-		if err := deps.shared.closers[i](); err != nil {
-			t.Fatalf("closer[%d]() error = %v", i, err)
-		}
-	}
+	cleanupOwnedRuntimeResources(false, deps.constructionClosers)
 }
 
 type stubStatusProvider func(context.Context) (*sdslogin.Status, error)

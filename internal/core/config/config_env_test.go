@@ -136,6 +136,38 @@ func TestLoadFromBytesLoadsFeatureFlagFromYAML(t *testing.T) {
 	assert.Equal(t, false, cfg.FeatureFlags.Flags["product-listing-runtime-auto-migrate"])
 }
 
+func TestLoadFromBytesPreservesEveryBooleanFeatureFlagFromYAML(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+	t.Setenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE", "false")
+
+	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
+		"featureFlags:",
+		"  flags:",
+		"    product-listing-runtime-auto-migrate: true",
+		"    secondary-runtime-capability: true",
+	}, "\n")))
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]bool{
+		"product-listing-runtime-auto-migrate": false,
+		"secondary-runtime-capability":         true,
+	}, cfg.FeatureFlags.Flags)
+}
+
+func TestBuildConfigReturnsIndependentFeatureFlagMaps(t *testing.T) {
+	v := newViper()
+	v.Set("featureFlags.flags.secondary-runtime-capability", true)
+
+	first := BuildConfig(v)
+	second := BuildConfig(v)
+	first.FeatureFlags.Flags["secondary-runtime-capability"] = false
+	first.FeatureFlags.Flags["test-only-mutation"] = true
+
+	assert.Equal(t, true, second.FeatureFlags.Flags["secondary-runtime-capability"])
+	assert.NotContains(t, second.FeatureFlags.Flags, "test-only-mutation")
+	assert.Equal(t, true, v.GetBool("featureFlags.flags.secondary-runtime-capability"))
+}
+
 func TestLoadFromBytesFeatureFlagEnvironmentOverride(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
 	t.Setenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE", "false")
