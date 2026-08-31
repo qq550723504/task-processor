@@ -276,6 +276,56 @@ describe("Organization-scoped workbench Store queries", () => {
     );
   });
 
+  it("exposes only public variables for keyed and unkeyed mutations", async () => {
+    const { wrapper } = createHarness();
+    const { result } = renderHook(
+      () => ({
+        create: useCreateWorkbenchStore(),
+        remove: useDeleteWorkbenchStore(),
+        update: useUpdateWorkbenchStore(),
+        enable: useEnableWorkbenchStore(),
+      }),
+      { wrapper },
+    );
+    const createInput = {
+      name: "Shop",
+      platform: "shein" as const,
+      region: "SG",
+    };
+    const updateInput = {
+      id: STORE_ID,
+      version: 2,
+      input: { name: "Renamed", region: "MY" },
+    };
+    const versionInput = { id: STORE_ID, version: 2 };
+
+    await act(async () => {
+      await result.current.create.mutateAsync(createInput);
+      await result.current.remove.mutateAsync(versionInput);
+      await result.current.update.mutateAsync(updateInput);
+      await result.current.enable.mutateAsync(versionInput);
+    });
+    await waitFor(() => {
+      expect(result.current.create.variables).toBeDefined();
+      expect(result.current.remove.variables).toBeDefined();
+      expect(result.current.update.variables).toBeDefined();
+      expect(result.current.enable.variables).toBeDefined();
+    });
+
+    expect(result.current.create.variables).toEqual(createInput);
+    expect(result.current.create.variables).not.toHaveProperty("organizationId");
+    expect(result.current.create.variables).not.toHaveProperty("operationKey");
+    expect(result.current.remove.variables).toEqual(versionInput);
+    expect(result.current.remove.variables).not.toHaveProperty("organizationId");
+    expect(result.current.remove.variables).not.toHaveProperty("operationKey");
+    expect(result.current.update.variables).toEqual(updateInput);
+    expect(result.current.update.variables).not.toHaveProperty("organizationId");
+    expect(result.current.update.variables).not.toHaveProperty("operationKey");
+    expect(result.current.enable.variables).toEqual(versionInput);
+    expect(result.current.enable.variables).not.toHaveProperty("organizationId");
+    expect(result.current.enable.variables).not.toHaveProperty("operationKey");
+  });
+
   it("passes the last projection version to update, enable, and disable", async () => {
     const { wrapper } = createHarness();
     const { result } = renderHook(

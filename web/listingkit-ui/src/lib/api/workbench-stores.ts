@@ -195,6 +195,7 @@ export async function listWorkbenchStores(
     `/api/workbench/stores?${search.toString()}`,
     { method: "GET" },
     workbenchStoreListResponseSchema,
+    200,
   );
 }
 
@@ -205,6 +206,7 @@ export async function getWorkbenchStore(
     storePath(storeId),
     { method: "GET" },
     workbenchStoreSchema,
+    200,
   );
 }
 
@@ -225,6 +227,7 @@ export async function createWorkbenchStore(
       body: JSON.stringify(parsedInput),
     },
     workbenchStoreSchema,
+    201,
   );
 }
 
@@ -245,6 +248,7 @@ export async function updateWorkbenchStore(
       body: JSON.stringify(parsedInput),
     },
     workbenchStoreSchema,
+    200,
   );
 }
 
@@ -278,6 +282,7 @@ export async function deleteWorkbenchStore(
       },
     },
     workbenchStoreDeleteSchema,
+    200,
   );
 }
 
@@ -293,6 +298,7 @@ function storeAction(
       headers: { "If-Match": ifMatch(version) },
     },
     workbenchStoreSchema,
+    200,
   );
 }
 
@@ -315,6 +321,7 @@ async function requestWorkbenchStores<T>(
   input: string,
   init: RequestInit,
   schema: z.ZodType<T>,
+  expectedStatus: number,
 ): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
@@ -346,6 +353,10 @@ async function requestWorkbenchStores<T>(
       parsedError.data.requestId,
       parsedError.data.fieldErrors,
     );
+  }
+
+  if (response.status !== expectedStatus) {
+    throw invalidResponseError(response.status);
   }
 
   const parsed = schema.safeParse(payload);

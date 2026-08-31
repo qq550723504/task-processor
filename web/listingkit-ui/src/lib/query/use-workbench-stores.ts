@@ -86,6 +86,7 @@ export function useCreateWorkbenchStore() {
   });
   return {
     ...mutation,
+    variables: mutation.variables?.input,
     mutate: (
       input: WorkbenchStoreCreateInput,
       options?: MutationOptions<WorkbenchStore, WorkbenchStoreCreateInput>,
@@ -157,6 +158,7 @@ export function useDeleteWorkbenchStore() {
   });
   return {
     ...mutation,
+    variables: mutation.variables?.input,
     mutate: (
       input: StoreVersionInput,
       options?: MutationOptions<WorkbenchStoreDeleteResult, StoreVersionInput>,
@@ -208,12 +210,17 @@ type MutationOptions<TData, TInput> = MutateOptions<
   unknown
 >;
 
-function exposeMutation<TData, TInput, TOperation>(
+function exposeMutation<
+  TData,
+  TInput,
+  TOperation extends CapturedOperation<TInput>,
+>(
   mutation: UseMutationResult<TData, WorkbenchAPIError, TOperation, unknown>,
   capture: (input: TInput) => TOperation,
 ) {
   return {
     ...mutation,
+    variables: mutation.variables?.input,
     mutate: (input: TInput, options?: MutationOptions<TData, TInput>) =>
       mutation.mutate(capture(input), captureMutationOptions(options, input)),
     mutateAsync: (input: TInput, options?: MutationOptions<TData, TInput>) =>
@@ -256,7 +263,6 @@ function captureMutationOptions<TData, TInput, TOperation>(
 ): MutateOptions<TData, WorkbenchAPIError, TOperation, unknown> | undefined {
   if (!options) return undefined;
   return {
-    ...options,
     onSuccess: options.onSuccess
       ? (data, _operation, onMutateResult, context) =>
           options.onSuccess?.(data, input, onMutateResult, context)

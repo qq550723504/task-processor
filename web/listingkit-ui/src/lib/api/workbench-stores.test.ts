@@ -308,4 +308,68 @@ describe("workbench Store API", () => {
       ).rejects.toMatchObject({ code: "INVALID_WORKBENCH_RESPONSE" });
     }
   });
+
+  it("rejects valid success payloads returned with an operation's wrong 2xx status", async () => {
+    const cases = [
+      {
+        status: 200,
+        payload: store,
+        call: () =>
+          createWorkbenchStore(
+            { name: "Shop", platform: "shein", region: "SG" },
+            CREATE_KEY,
+          ),
+      },
+      {
+        status: 201,
+        payload: list,
+        call: () => listWorkbenchStores({ page: 1, pageSize: 20 }),
+      },
+      {
+        status: 201,
+        payload: store,
+        call: () => getWorkbenchStore(STORE_ID),
+      },
+      {
+        status: 201,
+        payload: store,
+        call: () =>
+          updateWorkbenchStore(
+            STORE_ID,
+            { name: "Shop", region: "SG" },
+            2,
+          ),
+      },
+      {
+        status: 201,
+        payload: store,
+        call: () => enableWorkbenchStore(STORE_ID, 2),
+      },
+      {
+        status: 201,
+        payload: store,
+        call: () => disableWorkbenchStore(STORE_ID, 2),
+      },
+      {
+        status: 201,
+        payload: { id: STORE_ID, deleted: true, version: 3 },
+        call: () => deleteWorkbenchStore(STORE_ID, 2, DELETE_KEY),
+      },
+    ];
+    const results: string[] = [];
+
+    for (const testCase of cases) {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(testCase.payload, testCase.status),
+      );
+      const result = await testCase.call().catch((error: unknown) => error);
+      results.push(
+        result instanceof WorkbenchAPIError ? result.code : "resolved",
+      );
+    }
+
+    expect(results).toEqual(
+      Array.from({ length: cases.length }, () => "INVALID_WORKBENCH_RESPONSE"),
+    );
+  });
 });
