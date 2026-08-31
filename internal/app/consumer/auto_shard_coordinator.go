@@ -11,10 +11,11 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/infra/redisclient"
 	api "task-processor/internal/listingadmin"
+	platformredis "task-processor/internal/platform/redis"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
@@ -55,7 +56,7 @@ type autoShardNodeLoad struct {
 type AutoShardCoordinator struct {
 	cfg         config.AutoShardConfig
 	storeAPI    api.StoreAPI
-	redis       *redisclient.Client
+	redis       *platformredis.Client
 	logger      *logrus.Logger
 	nodeID      string
 	rabbitMQURL string
@@ -85,7 +86,7 @@ func NewAutoShardCoordinator(
 	if redisCfg == nil {
 		return nil, fmt.Errorf("redis config is nil")
 	}
-	redisClient, err := redisclient.New(redisCfg)
+	redisClient, err := platformredis.New(configadapter.Redis(redisCfg))
 	if err != nil {
 		return nil, err
 	}

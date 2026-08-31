@@ -1,4 +1,4 @@
-package lock
+package redis
 
 import (
 	"context"
@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"task-processor/internal/core/config"
 
 	goredis "github.com/redis/go-redis/v9"
 )
@@ -17,14 +15,30 @@ const (
 	redisExtendScript = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pexpire", KEYS[1], ARGV[2]) else return 0 end`
 )
 
-// RedisLock is a Redis-backed DistributedLock implementation.
+type LockOptions struct {
+	RetryCount    int
+	RetryDelay    time.Duration
+	AutoRenew     bool
+	RenewInterval time.Duration
+}
+
+func DefaultLockOptions() *LockOptions {
+	return &LockOptions{
+		RetryCount:    3,
+		RetryDelay:    100 * time.Millisecond,
+		AutoRenew:     false,
+		RenewInterval: 5 * time.Second,
+	}
+}
+
+// RedisLock is a Redis-backed distributed lock implementation.
 type RedisLock struct {
 	client *goredis.Client
 	owner  string
 	logger Logger
 }
 
-func NewRedisLock(cfg *config.RedisConfig, owner string, logger Logger) (*RedisLock, error) {
+func NewRedisLock(cfg *Config, owner string, logger Logger) (*RedisLock, error) {
 	if cfg == nil {
 		return nil, errors.New("redis config is nil")
 	}
@@ -50,11 +64,7 @@ func NewRedisLockWithClient(client *goredis.Client, owner string, logger Logger)
 	if strings.TrimSpace(owner) == "" {
 		owner = fmt.Sprintf("owner-%d", time.Now().UnixNano())
 	}
-	return &RedisLock{
-		client: client,
-		owner:  owner,
-		logger: logger,
-	}
+	return &RedisLock{client: client, owner: owner, logger: logger}
 }
 
 func (l *RedisLock) TryLock(ctx context.Context, key string, ttl time.Duration) (bool, error) {
@@ -115,5 +125,3 @@ func (l *RedisLock) Close() error {
 	}
 	return l.client.Close()
 }
-
-var _ DistributedLock = (*RedisLock)(nil)

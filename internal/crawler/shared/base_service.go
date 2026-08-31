@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/redisclient"
 	"task-processor/internal/infra/worker"
+	platformredis "task-processor/internal/platform/redis"
 
 	"github.com/sirupsen/logrus"
 )
@@ -76,7 +76,7 @@ func (b *BaseService) ConfigureRedisResultStore(cfg *config.RedisConfig, logger 
 		return nil
 	}
 
-	client, err := redisclient.New(cfg)
+	client, err := platformredis.New(platformRedisConfig(cfg))
 	if err != nil {
 		return fmt.Errorf("create crawler result redis store: %w", err)
 	}
@@ -86,6 +86,19 @@ func (b *BaseService) ConfigureRedisResultStore(cfg *config.RedisConfig, logger 
 		logger.Infof("已启用 crawler 异步任务共享结果存储: prefix=%s ttl=%s", b.resultStorePrefix, b.resultStoreTTL)
 	}
 	return nil
+}
+
+func platformRedisConfig(cfg *config.RedisConfig) *platformredis.Config {
+	if cfg == nil {
+		return nil
+	}
+	return &platformredis.Config{
+		Host:     cfg.Host,
+		Port:     cfg.Port,
+		Password: cfg.Password,
+		DB:       cfg.DB,
+		PoolSize: cfg.PoolSize,
+	}
 }
 
 // Close 关闭共享资源。

@@ -8,9 +8,9 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/httpbootstrap"
-	"task-processor/internal/infra/redisclient"
 	"task-processor/internal/infra/worker"
 	platformdatabase "task-processor/internal/platform/database"
+	platformredis "task-processor/internal/platform/redis"
 	"task-processor/internal/productenrich"
 	productapi "task-processor/internal/productenrich/api"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
@@ -128,7 +128,7 @@ func buildTaskRepository(cfg *config.Config, logger *logrus.Logger) (productenri
 
 func buildRedisClient(cfg *config.Config, logger *logrus.Logger) (productenrich.RedisClient, error) {
 	if cfg != nil && cfg.Redis != nil && cfg.Redis.Host != "" {
-		redisClient, err := redisclient.New(cfg.Redis)
+		redisClient, err := platformredis.New(platformRedisConfig(cfg.Redis))
 		if err != nil {
 			return nil, err
 		}
@@ -138,6 +138,19 @@ func buildRedisClient(cfg *config.Config, logger *logrus.Logger) (productenrich.
 
 	logger.Warn("Redis not configured, using in-memory productenrich queue fallback")
 	return productenrich.NewMemRedisClient(), nil
+}
+
+func platformRedisConfig(cfg *config.RedisConfig) *platformredis.Config {
+	if cfg == nil {
+		return nil
+	}
+	return &platformredis.Config{
+		Host:     cfg.Host,
+		Port:     cfg.Port,
+		Password: cfg.Password,
+		DB:       cfg.DB,
+		PoolSize: cfg.PoolSize,
+	}
 }
 
 func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (productenrich.TaskRepository, func() error, error) {

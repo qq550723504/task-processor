@@ -9,10 +9,10 @@ import (
 
 	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/redisclient"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/appenv"
 	platformdatabase "task-processor/internal/platform/database"
+	platformredis "task-processor/internal/platform/redis"
 
 	"github.com/sirupsen/logrus"
 )
@@ -83,7 +83,7 @@ func newRuntimePauseReader(cfg *config.Config) (listingadmin.RuntimePauseReader,
 	if cfg == nil || cfg.Redis == nil {
 		return nil, nil, fmt.Errorf("redis config is required for paused task recovery")
 	}
-	client, err := redisclient.New(cfg.Redis)
+	client, err := platformredis.New(configadapter.Redis(cfg.Redis))
 	if err != nil {
 		return nil, nil, fmt.Errorf("initialize recovery redis client: %w", err)
 	}

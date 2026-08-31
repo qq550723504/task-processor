@@ -4,7 +4,6 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/infra/lock"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -14,7 +13,7 @@ import (
 // 用于防止多实例部署时任务重复执行
 type LockedTaskExecutor struct {
 	executor *TaskExecutor
-	lock     lock.DistributedLock
+	lock     DistributedLock
 	logger   *logrus.Logger
 	lockKey  string
 	lockTTL  time.Duration
@@ -26,7 +25,7 @@ func NewLockedTaskExecutor(
 	task Task,
 	depManager *DependencyManager,
 	taskTimeout time.Duration,
-	distributedLock lock.DistributedLock,
+	distributedLock DistributedLock,
 	logger *logrus.Logger,
 ) *LockedTaskExecutor {
 	executor := NewTaskExecutor(ctx, task, depManager, taskTimeout)

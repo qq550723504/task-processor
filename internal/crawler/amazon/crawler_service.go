@@ -12,9 +12,9 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/httpx"
-	"task-processor/internal/infra/redisclient"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
+	platformredis "task-processor/internal/platform/redis"
 
 	"github.com/sirupsen/logrus"
 )
@@ -263,7 +263,7 @@ func buildProductDedupeStore(cfg *config.Config, logger *logrus.Logger) productD
 		return nil
 	}
 
-	client, err := redisclient.New(cfg.Redis)
+	client, err := platformredis.New(platformRedisConfig(cfg.Redis))
 	if err != nil {
 		logger.Warnf("初始化产品去重 Redis 失败，将退化为无去重模式: %v", err)
 		return nil
@@ -271,6 +271,19 @@ func buildProductDedupeStore(cfg *config.Config, logger *logrus.Logger) productD
 
 	logger.Info("已启用 Amazon crawler API 产品级去重")
 	return client
+}
+
+func platformRedisConfig(cfg *config.RedisConfig) *platformredis.Config {
+	if cfg == nil {
+		return nil
+	}
+	return &platformredis.Config{
+		Host:     cfg.Host,
+		Port:     cfg.Port,
+		Password: cfg.Password,
+		DB:       cfg.DB,
+		PoolSize: cfg.PoolSize,
+	}
 }
 
 func (s *Service) resolveFetchInputs(url, asin, region, zipcode string) (string, string, error) {
