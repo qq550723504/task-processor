@@ -2,18 +2,41 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   WorkbenchAPIError,
-  createWorkbenchStore,
-  deleteWorkbenchStore,
-  disableWorkbenchStore,
-  enableWorkbenchStore,
-  getWorkbenchStore,
-  listWorkbenchStores,
-  updateWorkbenchStore,
+  createWorkbenchStore as createWorkbenchStoreWithExpectedOrganization,
+  deleteWorkbenchStore as deleteWorkbenchStoreWithExpectedOrganization,
+  disableWorkbenchStore as disableWorkbenchStoreWithExpectedOrganization,
+  enableWorkbenchStore as enableWorkbenchStoreWithExpectedOrganization,
+  getWorkbenchStore as getWorkbenchStoreWithExpectedOrganization,
+  listWorkbenchStores as listWorkbenchStoresWithExpectedOrganization,
+  updateWorkbenchStore as updateWorkbenchStoreWithExpectedOrganization,
 } from "@/lib/api/workbench-stores";
 
 const STORE_ID = "11111111-1111-4111-8111-111111111111";
 const CREATE_KEY = "2222222a-2222-4222-8222-222222222222";
 const DELETE_KEY = "33333333-3333-4333-8333-333333333333";
+const ORGANIZATION_ID = "org-a";
+const listWorkbenchStores = (filters: Parameters<typeof listWorkbenchStoresWithExpectedOrganization>[0]) =>
+  listWorkbenchStoresWithExpectedOrganization(filters, ORGANIZATION_ID);
+const getWorkbenchStore = (storeId: string) =>
+  getWorkbenchStoreWithExpectedOrganization(storeId, ORGANIZATION_ID);
+const createWorkbenchStore = (
+  input: Parameters<typeof createWorkbenchStoreWithExpectedOrganization>[0],
+  key: string,
+) => createWorkbenchStoreWithExpectedOrganization(input, key, ORGANIZATION_ID);
+const deleteWorkbenchStore = (
+  id: string,
+  version: number,
+  key: string,
+) => deleteWorkbenchStoreWithExpectedOrganization(id, version, key, ORGANIZATION_ID);
+const updateWorkbenchStore = (
+  id: string,
+  input: Parameters<typeof updateWorkbenchStoreWithExpectedOrganization>[1],
+  version: number,
+) => updateWorkbenchStoreWithExpectedOrganization(id, input, version, ORGANIZATION_ID);
+const enableWorkbenchStore = (id: string, version: number) =>
+  enableWorkbenchStoreWithExpectedOrganization(id, version, ORGANIZATION_ID);
+const disableWorkbenchStore = (id: string, version: number) =>
+  disableWorkbenchStoreWithExpectedOrganization(id, version, ORGANIZATION_ID);
 const store = {
   id: STORE_ID,
   name: "North Shop",
@@ -79,6 +102,9 @@ describe("workbench Store API", () => {
       credentials: "same-origin",
     });
     expect(requestAt().headers.get("Accept")).toBe("application/json");
+    expect(requestAt().headers.get("X-Expected-Organization-ID")).toBe(
+      ORGANIZATION_ID,
+    );
     expect(requestAt().headers.has("Content-Type")).toBe(false);
     expect(requestAt().headers.has("If-Match")).toBe(false);
     expect(requestAt().headers.has("Idempotency-Key")).toBe(false);
@@ -114,7 +140,10 @@ describe("workbench Store API", () => {
       method: "GET",
       credentials: "same-origin",
     });
-    expect([...requestAt().headers]).toEqual([["accept", "application/json"]]);
+    expect([...requestAt().headers]).toEqual([
+      ["accept", "application/json"],
+      ["x-expected-organization-id", ORGANIZATION_ID],
+    ]);
   });
 
   it("sends normalized create JSON with only its operation header", async () => {

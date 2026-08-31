@@ -312,6 +312,7 @@ describe("/api/workbench BFF", () => {
         headers: {
           "Idempotency-Key": operationKey,
           cookie: "shuomi_effective_organization=org-cookie",
+          "X-Expected-Organization-ID": "org-cookie",
         },
         body: JSON.stringify({ name: "Store", platform: "shein", region: "SG" }),
       }),
@@ -342,6 +343,8 @@ describe("/api/workbench BFF", () => {
         headers: {
           "Idempotency-Key": operationKey,
           "If-Match": '"2"',
+          cookie: "shuomi_effective_organization=org-cookie",
+          "X-Expected-Organization-ID": "org-cookie",
         },
       }),
       ["stores", storeId],

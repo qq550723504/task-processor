@@ -22,6 +22,10 @@ const canonicalUUIDSchema = z
         value,
       ),
   );
+export const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
+const expectedOrganizationIdSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 const positiveSafeIntegerSchema = z
   .number()
   .int()
@@ -155,6 +159,7 @@ export const workbenchStoreErrorCodes = [
   "STORE_INVALID_STATE",
   "SUBSCRIPTION_REQUIRED",
   "STORE_LIMIT_REACHED",
+  "ORGANIZATION_CONTEXT_CHANGED",
 ] as const;
 export type WorkbenchStoreKnownErrorCode =
   (typeof workbenchStoreErrorCodes)[number];
@@ -180,6 +185,7 @@ export class WorkbenchAPIError extends Error {
 
 export async function listWorkbenchStores(
   filters: WorkbenchStoreListFilters,
+  expectedOrganizationId: string,
 ): Promise<WorkbenchStoreList> {
   const parsedFilters = parseInput(workbenchStoreListFiltersSchema, filters);
   const search = new URLSearchParams();
@@ -196,23 +202,27 @@ export async function listWorkbenchStores(
     { method: "GET" },
     workbenchStoreListResponseSchema,
     200,
+    expectedOrganizationId,
   );
 }
 
 export async function getWorkbenchStore(
   storeId: string,
+  expectedOrganizationId: string,
 ): Promise<WorkbenchStore> {
   return requestWorkbenchStores(
     storePath(storeId),
     { method: "GET" },
     workbenchStoreSchema,
     200,
+    expectedOrganizationId,
   );
 }
 
 export async function createWorkbenchStore(
   input: WorkbenchStoreCreateInput,
   idempotencyKey: string,
+  expectedOrganizationId: string,
 ): Promise<WorkbenchStore> {
   const parsedInput = parseInput(workbenchStoreCreateSchema, input);
   const parsedKey = parseInput(canonicalUUIDSchema, idempotencyKey);
@@ -228,6 +238,7 @@ export async function createWorkbenchStore(
     },
     workbenchStoreSchema,
     201,
+    expectedOrganizationId,
   );
 }
 
@@ -235,6 +246,7 @@ export async function updateWorkbenchStore(
   storeId: string,
   input: WorkbenchStoreUpdateInput,
   version: number,
+  expectedOrganizationId: string,
 ): Promise<WorkbenchStore> {
   const parsedInput = parseInput(workbenchStoreUpdateSchema, input);
   return requestWorkbenchStores(
@@ -249,27 +261,31 @@ export async function updateWorkbenchStore(
     },
     workbenchStoreSchema,
     200,
+    expectedOrganizationId,
   );
 }
 
 export async function enableWorkbenchStore(
   storeId: string,
   version: number,
+  expectedOrganizationId: string,
 ): Promise<WorkbenchStore> {
-  return storeAction(storeId, "enable", version);
+  return storeAction(storeId, "enable", version, expectedOrganizationId);
 }
 
 export async function disableWorkbenchStore(
   storeId: string,
   version: number,
+  expectedOrganizationId: string,
 ): Promise<WorkbenchStore> {
-  return storeAction(storeId, "disable", version);
+  return storeAction(storeId, "disable", version, expectedOrganizationId);
 }
 
 export async function deleteWorkbenchStore(
   storeId: string,
   version: number,
   idempotencyKey: string,
+  expectedOrganizationId: string,
 ): Promise<WorkbenchStoreDeleteResult> {
   const parsedKey = parseInput(canonicalUUIDSchema, idempotencyKey);
   return requestWorkbenchStores(
@@ -283,6 +299,7 @@ export async function deleteWorkbenchStore(
     },
     workbenchStoreDeleteSchema,
     200,
+    expectedOrganizationId,
   );
 }
 
@@ -290,6 +307,7 @@ function storeAction(
   storeId: string,
   action: "enable" | "disable",
   version: number,
+  expectedOrganizationId: string,
 ) {
   return requestWorkbenchStores(
     `${storePath(storeId)}/${action}`,
@@ -299,6 +317,7 @@ function storeAction(
     },
     workbenchStoreSchema,
     200,
+    expectedOrganizationId,
   );
 }
 
@@ -322,8 +341,13 @@ async function requestWorkbenchStores<T>(
   init: RequestInit,
   schema: z.ZodType<T>,
   expectedStatus: number,
+  expectedOrganizationId: string,
 ): Promise<T> {
   const headers = new Headers(init.headers);
+  headers.set(
+    EXPECTED_ORGANIZATION_ID_HEADER,
+    parseInput(expectedOrganizationIdSchema, expectedOrganizationId),
+  );
   headers.set("Accept", "application/json");
   let response: Response;
   try {

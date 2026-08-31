@@ -184,7 +184,7 @@ describe("Organization-scoped workbench Store queries", () => {
       page: 1,
       pageSize: 20,
       status: "active",
-    });
+    }, "org-a");
   });
 
   it("reuses one create key across eligible retries and creates a new key for the next submission", async () => {
@@ -200,13 +200,13 @@ describe("Organization-scoped workbench Store queries", () => {
     await act(async () => {
       await result.current.mutateAsync(input);
     });
-    expect(mocks.create).toHaveBeenNthCalledWith(1, input, CREATE_KEY_1);
-    expect(mocks.create).toHaveBeenNthCalledWith(2, input, CREATE_KEY_1);
+    expect(mocks.create).toHaveBeenNthCalledWith(1, input, CREATE_KEY_1, "org-a");
+    expect(mocks.create).toHaveBeenNthCalledWith(2, input, CREATE_KEY_1, "org-a");
 
     await act(async () => {
       await result.current.mutateAsync(input);
     });
-    expect(mocks.create).toHaveBeenNthCalledWith(3, input, CREATE_KEY_2);
+    expect(mocks.create).toHaveBeenNthCalledWith(3, input, CREATE_KEY_2, "org-a");
   });
 
   it("reuses one delete key across retries and keeps it distinct from create", async () => {
@@ -233,9 +233,9 @@ describe("Organization-scoped workbench Store queries", () => {
       await result.current.remove.mutateAsync({ id: STORE_ID, version: 2 });
     });
 
-    expect(mocks.create).toHaveBeenCalledWith(expect.anything(), CREATE_KEY_1);
-    expect(mocks.remove).toHaveBeenNthCalledWith(1, STORE_ID, 2, CREATE_KEY_2);
-    expect(mocks.remove).toHaveBeenNthCalledWith(2, STORE_ID, 2, CREATE_KEY_2);
+    expect(mocks.create).toHaveBeenCalledWith(expect.anything(), CREATE_KEY_1, "org-a");
+    expect(mocks.remove).toHaveBeenNthCalledWith(1, STORE_ID, 2, CREATE_KEY_2, "org-a");
+    expect(mocks.remove).toHaveBeenNthCalledWith(2, STORE_ID, 2, CREATE_KEY_2, "org-a");
     expect(CREATE_KEY_1).not.toBe(CREATE_KEY_2);
   });
 
@@ -256,6 +256,30 @@ describe("Organization-scoped workbench Store queries", () => {
       ).rejects.toMatchObject({ code: "STORE_ALREADY_EXISTS" });
     });
     expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries only the terminal keyed create operation with its captured Organization and UUID", async () => {
+    mocks.create
+      .mockRejectedValueOnce(new WorkbenchAPIError(503, "DEPENDENCY_UNAVAILABLE", "", "", []))
+      .mockRejectedValueOnce(new WorkbenchAPIError(503, "DEPENDENCY_UNAVAILABLE", "", "", []))
+      .mockRejectedValueOnce(new WorkbenchAPIError(503, "DEPENDENCY_UNAVAILABLE", "", "", []))
+      .mockResolvedValue(store);
+    const { wrapper } = createHarness();
+    const { result } = renderHook(() => useCreateWorkbenchStore(), { wrapper });
+    const input = { name: "Shop", platform: "shein" as const, region: "SG" };
+
+    await act(async () => {
+      await expect(result.current.mutateAsync(input)).rejects.toMatchObject({ status: 503 });
+    });
+    await waitFor(() => expect(result.current.canRetryLast).toBe(true));
+    await act(async () => {
+      await result.current.retryLast();
+    });
+    expect(mocks.create).toHaveBeenCalledTimes(4);
+    for (const call of mocks.create.mock.calls) {
+      expect(call).toEqual([input, CREATE_KEY_1, "org-a"]);
+    }
+    expect(result.current.canRetryLast).toBe(false);
   });
 
   it("preserves per-call mutation callbacks with the caller input", async () => {
@@ -351,9 +375,10 @@ describe("Organization-scoped workbench Store queries", () => {
       STORE_ID,
       { name: "Renamed", region: "MY" },
       7,
+      "org-a",
     );
-    expect(mocks.enable).toHaveBeenCalledWith(STORE_ID, 8);
-    expect(mocks.disable).toHaveBeenCalledWith(STORE_ID, 9);
+    expect(mocks.enable).toHaveBeenCalledWith(STORE_ID, 8, "org-a");
+    expect(mocks.disable).toHaveBeenCalledWith(STORE_ID, 9, "org-a");
   });
 
   it("invalidates only each successful operation's captured Organization root", async () => {

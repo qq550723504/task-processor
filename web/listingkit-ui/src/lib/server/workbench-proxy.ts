@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/workbench-context";
 
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
+export const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
 
 const DEFAULT_SERVICE_API_BASE = "http://localhost:8085/api/v1";
 const SWITCH_REQUEST_BODY_MAX_BYTES = 4 * 1024;
@@ -242,6 +243,22 @@ export async function buildWorkbenchUpstreamRequest(
   } else {
     const selectedOrganization = readSelectedOrganization(request);
     if (selectedOrganization instanceof Response) return selectedOrganization;
+    if (route.requestContract.startsWith("store-")) {
+      const expectedOrganization = readExpectedOrganizationAssertion(
+        request.headers,
+      );
+      if (
+        !expectedOrganization ||
+        !selectedOrganization ||
+        expectedOrganization !== selectedOrganization
+      ) {
+        return protocolError(
+          409,
+          "ORGANIZATION_CONTEXT_CHANGED",
+          "Organization context changed",
+        );
+      }
+    }
     if (selectedOrganization) {
       headers.set("X-Requested-Organization-ID", selectedOrganization);
     }
@@ -573,6 +590,13 @@ function readSelectedOrganization(request: Request) {
     return protocolError(400, "INVALID_REQUEST", "Selection cookie is invalid");
   }
   return selectedOrganization;
+}
+
+function readExpectedOrganizationAssertion(headers: Headers) {
+  const value = headers.get(EXPECTED_ORGANIZATION_ID_HEADER);
+  return value && !value.includes(",") && isSafeOrganizationId(value)
+    ? value
+    : "";
 }
 
 function hasNoQuery(request: Request) {

@@ -30,6 +30,50 @@ const storePayload = {
 };
 
 describe("buildWorkbenchUpstreamRequest", () => {
+  it("fails closed before reading a Store body when the captured Organization differs from the selection cookie", async () => {
+    const request = new Request("http://localhost/api/workbench/stores", {
+      method: "POST",
+      headers: {
+        cookie: "shuomi_effective_organization=org-cookie",
+        "X-Expected-Organization-ID": "org-captured",
+      },
+      body: "{}",
+    });
+
+    const response = await buildWorkbenchUpstreamRequest(
+      request,
+      ["stores"],
+      "token",
+    );
+
+    expect(response).toBeInstanceOf(Response);
+    expect((response as Response).status).toBe(409);
+    await expect((response as Response).json()).resolves.toMatchObject({
+      code: "ORGANIZATION_CONTEXT_CHANGED",
+    });
+    expect(request.bodyUsed).toBe(false);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["empty", ""],
+    ["comma-collapsed duplicate", "org-cookie, org-cookie"],
+    ["unsafe", "org cookie"],
+    ["oversized", `o${"x".repeat(128)}`],
+  ])("rejects a %s Store expected Organization assertion", async (_name, expected) => {
+    const headers = new Headers({ cookie: "shuomi_effective_organization=org-cookie" });
+    if (expected !== undefined) headers.set("X-Expected-Organization-ID", expected);
+    const response = await buildWorkbenchUpstreamRequest(
+      new Request("http://localhost/api/workbench/stores?page=1", { method: "GET", headers }),
+      ["stores"],
+      "token",
+    );
+    expect(response).toBeInstanceOf(Response);
+    expect((response as Response).status).toBe(409);
+    await expect((response as Response).json()).resolves.toMatchObject({
+      code: "ORGANIZATION_CONTEXT_CHANGED",
+    });
+  });
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.useRealTimers();
@@ -597,6 +641,11 @@ describe("buildWorkbenchBrowserResponse", () => {
 });
 
 describe("strict Store Center request boundary", () => {
+  const storeHeaders = (headers: HeadersInit = {}) => ({
+    cookie: `${WORKBENCH_COOKIE_NAME}=org-cookie`,
+    "X-Expected-Organization-ID": "org-cookie",
+    ...headers,
+  });
   afterEach(() => {
     vi.unstubAllEnvs();
   });
@@ -674,6 +723,7 @@ describe("strict Store Center request boundary", () => {
   ])("maps the exact $name route through one typed descriptor", async (testCase) => {
     const requestHeaders = new Headers({
       cookie: `${WORKBENCH_COOKIE_NAME}=org-cookie`,
+      "X-Expected-Organization-ID": "org-cookie",
       authorization: "Bearer browser-secret",
       "x-requested-organization-id": "org-forged",
       "x-tenant-id": "tenant-forged",
@@ -703,6 +753,7 @@ describe("strict Store Center request boundary", () => {
     const headers = new Headers(result.init.headers);
     expect(headers.get("Authorization")).toBe("Bearer server-token");
     expect(headers.get("X-Requested-Organization-ID")).toBe("org-cookie");
+    expect(headers.get("X-Expected-Organization-ID")).toBeNull();
     expect(headers.get("Cookie")).toBeNull();
     expect(headers.get("X-Tenant-ID")).toBeNull();
     expect(headers.get("X-Subject-ID")).toBeNull();
@@ -760,7 +811,7 @@ describe("strict Store Center request boundary", () => {
     const encodedStoreId = `%31${storeId.slice(1)}`;
     const result = await buildWorkbenchUpstreamRequest(
       new Request(`http://localhost/api/workbench/stores/${encodedStoreId}`, {
-        method: "GET",
+        method: "GET", headers: storeHeaders(),
       }),
       ["stores", storeId],
       "server-token",
@@ -805,6 +856,7 @@ describe("strict Store Center request boundary", () => {
     const result = await buildWorkbenchUpstreamRequest(
       new Request(`http://localhost/api/workbench/stores?${query}`, {
         method: "GET",
+        headers: storeHeaders(),
       }),
       ["stores"],
       "server-token",
@@ -817,7 +869,7 @@ describe("strict Store Center request boundary", () => {
     const result = await buildWorkbenchUpstreamRequest(
       new Request(
         `http://localhost/api/workbench/stores?platform=${"s".repeat(2100)}`,
-        { method: "GET" },
+        { method: "GET", headers: storeHeaders() },
       ),
       ["stores"],
       "server-token",
@@ -836,7 +888,7 @@ describe("strict Store Center request boundary", () => {
     const result = await buildWorkbenchUpstreamRequest(
       new Request(
         `http://localhost/api/workbench/${path.join("/")}?organizationId=org-forged`,
-        { method, headers, body },
+        { method, headers: storeHeaders(headers), body },
       ),
       [...path],
       "server-token",
@@ -863,7 +915,7 @@ describe("strict Store Center request boundary", () => {
     const result = await buildWorkbenchUpstreamRequest(
       new Request("http://localhost/api/workbench/stores", {
         method: "POST",
-        headers: { "Idempotency-Key": operationKey },
+        headers: storeHeaders({ "Idempotency-Key": operationKey }),
         body,
       }),
       ["stores"],
@@ -883,7 +935,7 @@ describe("strict Store Center request boundary", () => {
     const result = await buildWorkbenchUpstreamRequest(
       new Request(`http://localhost/api/workbench/stores/${storeId}`, {
         method: "PUT",
-        headers: { "If-Match": '"2"' },
+        headers: storeHeaders({ "If-Match": '"2"' }),
         body,
       }),
       ["stores", storeId],
@@ -897,7 +949,7 @@ describe("strict Store Center request boundary", () => {
     const invalidUTF8 = await buildWorkbenchUpstreamRequest(
       new Request("http://localhost/api/workbench/stores", {
         method: "POST",
-        headers: { "Idempotency-Key": operationKey },
+        headers: storeHeaders({ "Idempotency-Key": operationKey }),
         body: new Uint8Array([0xff]),
       }),
       ["stores"],
@@ -909,7 +961,7 @@ describe("strict Store Center request boundary", () => {
     const oversized = await buildWorkbenchUpstreamRequest(
       new Request("http://localhost/api/workbench/stores", {
         method: "POST",
-        headers: { "Idempotency-Key": operationKey },
+        headers: storeHeaders({ "Idempotency-Key": operationKey }),
         body: "x".repeat(16 * 1024 + 1),
       }),
       ["stores"],
@@ -936,7 +988,7 @@ describe("strict Store Center request boundary", () => {
     const result = await buildWorkbenchUpstreamRequest(
       new Request(`http://localhost/api/workbench/${path.join("/")}`, {
         method,
-        headers,
+        headers: storeHeaders(headers),
         body,
       }),
       path as string[],
@@ -952,7 +1004,7 @@ describe("strict Store Center request boundary", () => {
       const result = await buildWorkbenchUpstreamRequest(
         new Request(`http://localhost/api/workbench/stores/${storeId}/${action}`, {
           method: "POST",
-          headers: { "If-Match": '"2"' },
+          headers: storeHeaders({ "If-Match": '"2"' }),
           body: "{}",
         }),
         ["stores", storeId, action],
@@ -967,10 +1019,10 @@ describe("strict Store Center request boundary", () => {
     const result = await buildWorkbenchUpstreamRequest(
       new Request(`http://localhost/api/workbench/stores/${storeId}`, {
         method: "DELETE",
-        headers: {
+        headers: storeHeaders({
           "Idempotency-Key": operationKey,
           "If-Match": '"2"',
-        },
+        }),
         body: "x",
       }),
       ["stores", storeId],

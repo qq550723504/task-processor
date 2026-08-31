@@ -7,6 +7,7 @@ import {
   type MutateOptions,
   type UseMutationResult,
 } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import {
@@ -32,6 +33,8 @@ export const workbenchStoreKeys = {
     [...workbenchStoreKeys.root(organizationId), "list", filters] as const,
   item: (organizationId: string, storeId: string) =>
     [...workbenchStoreKeys.root(organizationId), "item", storeId] as const,
+  mutation: (organizationId: string, action: string) =>
+    [...workbenchStoreKeys.root(organizationId), "mutation", action] as const,
 };
 
 type CapturedOperation<T> = {
@@ -52,7 +55,7 @@ export function useWorkbenchStores(filters: WorkbenchStoreListFilters) {
   const organizationId = useEffectiveOrganizationId();
   return useQuery({
     queryKey: workbenchStoreKeys.list(organizationId, filters),
-    queryFn: () => listWorkbenchStores(filters),
+    queryFn: () => listWorkbenchStores(filters, organizationId),
     enabled: organizationId.length > 0,
     retry: retryWorkbenchRequest,
   });
@@ -62,7 +65,7 @@ export function useWorkbenchStore(storeId: string) {
   const organizationId = useEffectiveOrganizationId();
   return useQuery({
     queryKey: workbenchStoreKeys.item(organizationId, storeId),
-    queryFn: () => getWorkbenchStore(storeId),
+    queryFn: () => getWorkbenchStore(storeId, organizationId),
     enabled: organizationId.length > 0 && storeId.length > 0,
     retry: retryWorkbenchRequest,
   });
@@ -71,19 +74,51 @@ export function useWorkbenchStore(storeId: string) {
 export function useCreateWorkbenchStore() {
   const organizationId = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
+  const lastOperationRef = useRef<{
+    operation: CapturedKeyedOperation<WorkbenchStoreCreateInput>;
+    retryable: boolean;
+  } | null>(null);
+  const [retryState, setRetryState] = useState<RetryState | null>(null);
   const mutation = useMutation<
     WorkbenchStore,
     WorkbenchAPIError,
     CapturedKeyedOperation<WorkbenchStoreCreateInput>
   >({
+    mutationKey: workbenchStoreKeys.mutation(organizationId, "create"),
     mutationFn: (operation: CapturedKeyedOperation<WorkbenchStoreCreateInput>) => {
       requireEffectiveOrganization(operation.organizationId);
-      return createWorkbenchStore(operation.input, operation.operationKey);
+      return createWorkbenchStore(operation.input, operation.operationKey, operation.organizationId);
     },
     retry: retryWorkbenchRequest,
     onSuccess: (_store, operation) =>
-      invalidateCapturedOrganization(queryClient, operation.organizationId),
+      {
+        updateLastKeyedOperation(lastOperationRef, setRetryState, operation, false);
+        return invalidateCapturedOrganization(queryClient, operation.organizationId);
+      },
+    onError: (error, operation) => {
+      updateLastKeyedOperation(
+        lastOperationRef,
+        setRetryState,
+        operation,
+        isExplicitRetryEligible(error),
+      );
+    },
   });
+  const submit = (
+    input: WorkbenchStoreCreateInput,
+    options?: MutationOptions<WorkbenchStore, WorkbenchStoreCreateInput>,
+  ) => {
+    const operation = captureKeyedOperation(organizationId, input);
+    lastOperationRef.current = { operation, retryable: false };
+    setRetryState({ organizationId: operation.organizationId, available: false });
+    return [operation, captureMutationOptions(options, input)] as const;
+  };
+  const retryLast = () => retryLastKeyedOperation(
+    mutation,
+    lastOperationRef,
+    setRetryState,
+    organizationId,
+  );
   return {
     ...mutation,
     variables: mutation.variables?.input,
@@ -91,18 +126,16 @@ export function useCreateWorkbenchStore() {
       input: WorkbenchStoreCreateInput,
       options?: MutationOptions<WorkbenchStore, WorkbenchStoreCreateInput>,
     ) =>
-      mutation.mutate(
-        captureKeyedOperation(organizationId, input),
-        captureMutationOptions(options, input),
-      ),
+      mutation.mutate(...submit(input, options)),
     mutateAsync: (
       input: WorkbenchStoreCreateInput,
       options?: MutationOptions<WorkbenchStore, WorkbenchStoreCreateInput>,
     ) =>
-      mutation.mutateAsync(
-        captureKeyedOperation(organizationId, input),
-        captureMutationOptions(options, input),
-      ),
+      organizationId
+        ? mutation.mutateAsync(...submit(input, options))
+        : Promise.reject(missingOrganizationError()),
+    retryLast,
+    canRetryLast: retryState?.available === true && retryState.organizationId === organizationId,
   };
 }
 
@@ -114,10 +147,11 @@ export function useUpdateWorkbenchStore() {
     WorkbenchAPIError,
     CapturedOperation<StoreUpdateInput>
   >({
+    mutationKey: workbenchStoreKeys.mutation(organizationId, "update"),
     mutationFn: (operation: CapturedOperation<StoreUpdateInput>) => {
       requireEffectiveOrganization(operation.organizationId);
       const { id, input, version } = operation.input;
-      return updateWorkbenchStore(id, input, version);
+      return updateWorkbenchStore(id, input, version, operation.organizationId);
     },
     retry: retryWorkbenchRequest,
     onSuccess: (_store, operation) =>
@@ -139,23 +173,56 @@ export function useDisableWorkbenchStore() {
 export function useDeleteWorkbenchStore() {
   const organizationId = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
+  const lastOperationRef = useRef<{
+    operation: CapturedKeyedOperation<StoreVersionInput>;
+    retryable: boolean;
+  } | null>(null);
+  const [retryState, setRetryState] = useState<RetryState | null>(null);
   const mutation = useMutation<
     WorkbenchStoreDeleteResult,
     WorkbenchAPIError,
     CapturedKeyedOperation<StoreVersionInput>
   >({
+    mutationKey: workbenchStoreKeys.mutation(organizationId, "delete"),
     mutationFn: (operation: CapturedKeyedOperation<StoreVersionInput>) => {
       requireEffectiveOrganization(operation.organizationId);
       return deleteWorkbenchStore(
         operation.input.id,
         operation.input.version,
         operation.operationKey,
+        operation.organizationId,
       );
     },
     retry: retryWorkbenchRequest,
     onSuccess: (_result: WorkbenchStoreDeleteResult, operation) =>
-      invalidateCapturedOrganization(queryClient, operation.organizationId),
+      {
+        updateLastKeyedOperation(lastOperationRef, setRetryState, operation, false);
+        return invalidateCapturedOrganization(queryClient, operation.organizationId);
+      },
+    onError: (error, operation) => {
+      updateLastKeyedOperation(
+        lastOperationRef,
+        setRetryState,
+        operation,
+        isExplicitRetryEligible(error),
+      );
+    },
   });
+  const submit = (
+    input: StoreVersionInput,
+    options?: MutationOptions<WorkbenchStoreDeleteResult, StoreVersionInput>,
+  ) => {
+    const operation = captureKeyedOperation(organizationId, input);
+    lastOperationRef.current = { operation, retryable: false };
+    setRetryState({ organizationId: operation.organizationId, available: false });
+    return [operation, captureMutationOptions(options, input)] as const;
+  };
+  const retryLast = () => retryLastKeyedOperation(
+    mutation,
+    lastOperationRef,
+    setRetryState,
+    organizationId,
+  );
   return {
     ...mutation,
     variables: mutation.variables?.input,
@@ -163,23 +230,21 @@ export function useDeleteWorkbenchStore() {
       input: StoreVersionInput,
       options?: MutationOptions<WorkbenchStoreDeleteResult, StoreVersionInput>,
     ) =>
-      mutation.mutate(
-        captureKeyedOperation(organizationId, input),
-        captureMutationOptions(options, input),
-      ),
+      mutation.mutate(...submit(input, options)),
     mutateAsync: (
       input: StoreVersionInput,
       options?: MutationOptions<WorkbenchStoreDeleteResult, StoreVersionInput>,
     ) =>
-      mutation.mutateAsync(
-        captureKeyedOperation(organizationId, input),
-        captureMutationOptions(options, input),
-      ),
+      organizationId
+        ? mutation.mutateAsync(...submit(input, options))
+        : Promise.reject(missingOrganizationError()),
+    retryLast,
+    canRetryLast: retryState?.available === true && retryState.organizationId === organizationId,
   };
 }
 
 function useStoreStateMutation(
-  action: (storeId: string, version: number) => ReturnType<
+  action: (storeId: string, version: number, expectedOrganizationId: string) => ReturnType<
     typeof enableWorkbenchStore
   >,
 ) {
@@ -190,9 +255,13 @@ function useStoreStateMutation(
     WorkbenchAPIError,
     CapturedOperation<StoreVersionInput>
   >({
+    mutationKey: workbenchStoreKeys.mutation(
+      organizationId,
+      action === enableWorkbenchStore ? "enable" : "disable",
+    ),
     mutationFn: (operation: CapturedOperation<StoreVersionInput>) => {
       requireEffectiveOrganization(operation.organizationId);
-      return action(operation.input.id, operation.input.version);
+      return action(operation.input.id, operation.input.version, operation.organizationId);
     },
     retry: retryWorkbenchRequest,
     onSuccess: (_store, operation) =>
@@ -242,13 +311,69 @@ function captureKeyedOperation<T>(
   };
 }
 
+function isExplicitRetryEligible(error: WorkbenchAPIError) {
+  return error.status === 0 || error.status >= 500;
+}
+
+function canRetryLastKeyedOperation<T>(
+  last: { operation: CapturedKeyedOperation<T>; retryable: boolean } | null,
+  organizationId: string,
+) {
+  return Boolean(last?.retryable && last.operation.organizationId === organizationId);
+}
+
+function updateLastKeyedOperation<T>(
+  ref: React.MutableRefObject<{
+    operation: CapturedKeyedOperation<T>;
+    retryable: boolean;
+  } | null>,
+  setRetryState: React.Dispatch<React.SetStateAction<RetryState | null>>,
+  operation: CapturedKeyedOperation<T>,
+  retryable: boolean,
+) {
+  if (ref.current?.operation !== operation) return;
+  ref.current = { operation, retryable };
+  setRetryState({ organizationId: operation.organizationId, available: retryable });
+}
+
+function retryLastKeyedOperation<TData, TInput>(
+  mutation: UseMutationResult<
+    TData,
+    WorkbenchAPIError,
+    CapturedKeyedOperation<TInput>,
+    unknown
+  >,
+  ref: React.MutableRefObject<{
+    operation: CapturedKeyedOperation<TInput>;
+    retryable: boolean;
+  } | null>,
+  setRetryState: React.Dispatch<React.SetStateAction<RetryState | null>>,
+  organizationId: string,
+) {
+  const last = ref.current;
+  if (!last || !canRetryLastKeyedOperation(last, organizationId)) {
+    return Promise.reject(
+      new WorkbenchAPIError(0, "INVALID_REQUEST", "No Store retry is available", "", []),
+    );
+  }
+  ref.current = { ...last, retryable: false };
+  setRetryState({ organizationId: last.operation.organizationId, available: false });
+  return mutation.mutateAsync(last.operation);
+}
+
+type RetryState = { organizationId: string; available: boolean };
+
 function captureOperation<T>(organizationId: string, input: T): CapturedOperation<T> {
   return { organizationId, input };
 }
 
 function requireEffectiveOrganization(organizationId: string) {
   if (organizationId) return;
-  throw new WorkbenchAPIError(
+  throw missingOrganizationError();
+}
+
+function missingOrganizationError() {
+  return new WorkbenchAPIError(
     409,
     "ORGANIZATION_SELECTION_REQUIRED",
     "An Organization selection is required",
