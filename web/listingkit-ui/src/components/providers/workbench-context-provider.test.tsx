@@ -62,6 +62,27 @@ function GuardedProbe({
   return <button onClick={() => context.switchOrganization("org-b")}>guarded switch</button>;
 }
 
+function GuardLifecycleProbe({
+  active,
+  guard,
+}: {
+  active: boolean;
+  guard: (target: { id: string; name: string; roles: string[] }) => boolean;
+}) {
+  const context = useWorkbenchContext();
+  useEffect(() => active ? context.registerOrganizationSwitchGuard(guard) : undefined, [active, context, guard]);
+  return <button onClick={() => context.switchOrganization("org-b")}>lifecycle switch</button>;
+}
+
+function SnapshotGuardProbe({ lateGuard }: { lateGuard: () => boolean }) {
+  const context = useWorkbenchContext();
+  useEffect(() => context.registerOrganizationSwitchGuard(() => {
+    context.registerOrganizationSwitchGuard(lateGuard);
+    return true;
+  }), [context, lateGuard]);
+  return <button onClick={() => context.switchOrganization("org-b")}>snapshot switch</button>;
+}
+
 function renderProvider(queryClient = createQueryClient()) {
   render(
     <QueryClientProvider client={queryClient}>
@@ -216,6 +237,122 @@ describe("WorkbenchContextProvider", () => {
     await userEvent.click(screen.getByRole("button", { name: "guarded switch" }));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(queryClient.getQueryData(["workbench", "org-a", "sentinel"])).toBe("old-data");
+  });
+
+  it("passes the resolved target to every allowing guard before switching", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(ORG_A_CONTEXT))
+      .mockResolvedValueOnce(Response.json(ORG_B_CONTEXT));
+    const guard = vi.fn(() => true);
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <WorkbenchContextProvider><GuardedProbe guard={guard} /></WorkbenchContextProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole("button", { name: "guarded switch" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(guard).toHaveBeenCalledWith(ORG_A_CONTEXT.organizations[1]);
+  });
+
+  it("cleans up an unmounted switch guard", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(ORG_A_CONTEXT))
+      .mockResolvedValueOnce(Response.json(ORG_B_CONTEXT));
+    const guard = vi.fn(() => false);
+    vi.stubGlobal("fetch", fetchMock);
+    const queryClient = createQueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <WorkbenchContextProvider><GuardLifecycleProbe active guard={guard} /></WorkbenchContextProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <WorkbenchContextProvider><GuardLifecycleProbe active={false} guard={guard} /></WorkbenchContextProvider>
+      </QueryClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "lifecycle switch" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(guard).not.toHaveBeenCalled();
+  });
+
+  it("runs a snapshot of guards so registrations during a guard do not affect that switch", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(ORG_A_CONTEXT))
+      .mockResolvedValueOnce(Response.json(ORG_B_CONTEXT));
+    const lateGuard = vi.fn(() => false);
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <WorkbenchContextProvider><SnapshotGuardProbe lateGuard={lateGuard} /></WorkbenchContextProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole("button", { name: "snapshot switch" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(lateGuard).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["throws", () => { throw new Error("no"); }],
+    ["rejects", () => Promise.reject(new Error("no"))],
+  ])("cancels a guard that %s without cache mutation", async (_name, guard) => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(ORG_A_CONTEXT));
+    vi.stubGlobal("fetch", fetchMock);
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(["workbench", "org-a", "sentinel"], "old-data");
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkbenchContextProvider><GuardedProbe guard={guard} /></WorkbenchContextProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole("button", { name: "guarded switch" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(queryClient.getQueryData(["workbench", "org-a", "sentinel"])).toBe("old-data");
+  });
+
+  it("refuses a pending Store mutation before invoking a guard", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(ORG_A_CONTEXT));
+    const guard = vi.fn(() => true);
+    vi.stubGlobal("fetch", fetchMock);
+    const queryClient = createQueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkbenchContextProvider><GuardedProbe guard={guard} /></WorkbenchContextProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const pending = queryClient.getMutationCache().build(queryClient, {
+      mutationKey: ["workbench", "org-a", "stores", "mutation", "create"],
+      mutationFn: () => new Promise(() => undefined),
+    });
+    void pending.execute(undefined);
+    await waitFor(() => expect(queryClient.isMutating()).toBe(1));
+    await userEvent.click(screen.getByRole("button", { name: "guarded switch" }));
+    expect(guard).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows unrelated pending mutations to switch Organizations", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(ORG_A_CONTEXT))
+      .mockResolvedValueOnce(Response.json(ORG_B_CONTEXT));
+    vi.stubGlobal("fetch", fetchMock);
+    const queryClient = createQueryClient();
+    renderProvider(queryClient);
+    await screen.findByText("organization:硕米科技");
+    const pending = queryClient.getMutationCache().build(queryClient, {
+      mutationKey: ["workbench", "org-a", "other", "mutation", "create"],
+      mutationFn: () => new Promise(() => undefined),
+    });
+    void pending.execute(undefined);
+    await userEvent.click(screen.getByRole("button", { name: "switch" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
   it("rechecks pending Store mutations after an asynchronous guard", async () => {

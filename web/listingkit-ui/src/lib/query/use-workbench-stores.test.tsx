@@ -173,6 +173,20 @@ describe("Organization-scoped workbench Store queries", () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 
+  it("rejects a fire-and-forget create before generating an operation UUID without an Organization", async () => {
+    selectOrganization(null);
+    const { wrapper } = createHarness();
+    const randomUUID = globalThis.crypto.randomUUID as ReturnType<typeof vi.fn>;
+    const { result } = renderHook(() => useCreateWorkbenchStore(), { wrapper });
+
+    await act(async () => {
+      result.current.mutate({ name: "Shop", platform: "shein", region: "SG" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(randomUUID).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
   it("uses Organization only as a cache partition and never as HTTP input", async () => {
     const { wrapper } = createHarness();
     const { result } = renderHook(
@@ -280,6 +294,67 @@ describe("Organization-scoped workbench Store queries", () => {
       expect(call).toEqual([input, CREATE_KEY_1, "org-a"]);
     }
     expect(result.current.canRetryLast).toBe(false);
+  });
+
+  it("retries a terminal delete with the same captured Organization and UUID", async () => {
+    mocks.remove
+      .mockRejectedValueOnce(new WorkbenchAPIError(0, "WORKBENCH_REQUEST_FAILED", "", "", []))
+      .mockRejectedValueOnce(new WorkbenchAPIError(0, "WORKBENCH_REQUEST_FAILED", "", "", []))
+      .mockRejectedValueOnce(new WorkbenchAPIError(0, "WORKBENCH_REQUEST_FAILED", "", "", []))
+      .mockResolvedValue({ id: STORE_ID, deleted: true, version: 3 });
+    const { wrapper } = createHarness();
+    const { result } = renderHook(() => useDeleteWorkbenchStore(), { wrapper });
+    const input = { id: STORE_ID, version: 2 };
+
+    await act(async () => {
+      await expect(result.current.mutateAsync(input)).rejects.toMatchObject({ status: 0 });
+    });
+    await waitFor(() => expect(result.current.canRetryLast).toBe(true));
+    await act(async () => {
+      await result.current.retryLast();
+    });
+    expect(mocks.remove).toHaveBeenCalledTimes(4);
+    for (const call of mocks.remove.mock.calls) {
+      expect(call).toEqual([STORE_ID, 2, CREATE_KEY_1, "org-a"]);
+    }
+    expect(globalThis.crypto.randomUUID).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses explicit retry for successful, semantic, pending, superseded, or Organization-changed operations", async () => {
+    const { wrapper } = createHarness();
+    const hook = renderHook(() => useCreateWorkbenchStore(), { wrapper });
+    const input = { name: "Shop", platform: "shein" as const, region: "SG" };
+
+    await act(async () => {
+      await hook.result.current.mutateAsync(input);
+    });
+    await expect(hook.result.current.retryLast()).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+
+    mocks.create.mockRejectedValue(new WorkbenchAPIError(409, "STORE_ALREADY_EXISTS", "", "", []));
+    await act(async () => {
+      await expect(hook.result.current.mutateAsync(input)).rejects.toMatchObject({ status: 409 });
+    });
+    await expect(hook.result.current.retryLast()).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+
+    let resolvePending!: (value: typeof store) => void;
+    mocks.create.mockReset().mockReturnValue(new Promise<typeof store>((resolve) => { resolvePending = resolve; }));
+    let pending!: Promise<WorkbenchStore>;
+    act(() => { pending = hook.result.current.mutateAsync(input); });
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
+    await expect(hook.result.current.retryLast()).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+    await act(async () => { resolvePending(store); await pending; });
+
+    mocks.create
+      .mockReset()
+      .mockRejectedValueOnce(new WorkbenchAPIError(503, "DEPENDENCY_UNAVAILABLE", "", "", []))
+      .mockRejectedValueOnce(new WorkbenchAPIError(503, "DEPENDENCY_UNAVAILABLE", "", "", []))
+      .mockRejectedValueOnce(new WorkbenchAPIError(503, "DEPENDENCY_UNAVAILABLE", "", "", []));
+    await act(async () => { await expect(hook.result.current.mutateAsync(input)).rejects.toMatchObject({ status: 503 }); });
+    await waitFor(() => expect(hook.result.current.canRetryLast).toBe(true));
+    selectOrganization("org-b");
+    hook.rerender();
+    expect(hook.result.current.canRetryLast).toBe(false);
+    await expect(hook.result.current.retryLast()).rejects.toMatchObject({ code: "INVALID_REQUEST" });
   });
 
   it("preserves per-call mutation callbacks with the caller input", async () => {

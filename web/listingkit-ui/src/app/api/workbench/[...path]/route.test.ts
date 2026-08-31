@@ -358,6 +358,70 @@ describe("/api/workbench BFF", () => {
     });
   });
 
+  it.each([
+    ["list", GET, "GET", ["stores"], "/api/workbench/stores?page=1", {}, undefined],
+    ["create", POST, "POST", ["stores"], "/api/workbench/stores", { "Idempotency-Key": operationKey }, JSON.stringify({ name: "Store", platform: "shein", region: "SG" })],
+    ["get", GET, "GET", ["stores", storeId], `/api/workbench/stores/${storeId}`, {}, undefined],
+    ["update", PUT, "PUT", ["stores", storeId], `/api/workbench/stores/${storeId}`, { "If-Match": '"2"' }, JSON.stringify({ name: "Store", region: "SG" })],
+    ["delete", DELETE, "DELETE", ["stores", storeId], `/api/workbench/stores/${storeId}`, { "Idempotency-Key": operationKey, "If-Match": '"2"' }, undefined],
+    ["enable", POST, "POST", ["stores", storeId, "enable"], `/api/workbench/stores/${storeId}/enable`, { "If-Match": '"2"' }, undefined],
+    ["disable", POST, "POST", ["stores", storeId, "disable"], `/api/workbench/stores/${storeId}/disable`, { "If-Match": '"2"' }, undefined],
+  ] as const)("does not fetch upstream when %s has a mismatched or absent Store assertion", async (_name, handler, method, path, route, routeHeaders, body) => {
+    authState.session = { accessToken: "private-token" };
+    authState.token = "private-token";
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    for (const headers of [
+      { cookie: "shuomi_effective_organization=org-cookie", "X-Expected-Organization-ID": "org-other", ...routeHeaders },
+      { "X-Expected-Organization-ID": "org-cookie", ...routeHeaders },
+    ]) {
+      const response = await call(
+        handler,
+        new NextRequest(`http://localhost${route}`, { method, headers, body }),
+        [...path],
+      );
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({ code: "ORGANIZATION_CONTEXT_CHANGED" });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["list", GET, "GET", ["stores"], "/api/workbench/stores?page=1", {}, undefined, 200],
+    ["create", POST, "POST", ["stores"], "/api/workbench/stores", { "Idempotency-Key": operationKey }, JSON.stringify({ name: "Store", platform: "shein", region: "SG" }), 201],
+    ["get", GET, "GET", ["stores", storeId], `/api/workbench/stores/${storeId}`, {}, undefined, 200],
+    ["update", PUT, "PUT", ["stores", storeId], `/api/workbench/stores/${storeId}`, { "If-Match": '"2"' }, JSON.stringify({ name: "Store", region: "SG" }), 200],
+    ["delete", DELETE, "DELETE", ["stores", storeId], `/api/workbench/stores/${storeId}`, { "Idempotency-Key": operationKey, "If-Match": '"2"' }, undefined, 200],
+    ["enable", POST, "POST", ["stores", storeId, "enable"], `/api/workbench/stores/${storeId}/enable`, { "If-Match": '"2"' }, undefined, 200],
+    ["disable", POST, "POST", ["stores", storeId, "disable"], `/api/workbench/stores/${storeId}/disable`, { "If-Match": '"2"' }, undefined, 200],
+  ] as const)("proxies matching expected Organization assertions for %s", async (name, handler, method, path, route, routeHeaders, body, status) => {
+    authState.session = { accessToken: "private-token" };
+    authState.token = "private-token";
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input, init) => {
+      expect(new Headers(init?.headers).get("X-Requested-Organization-ID")).toBe("org-cookie");
+      expect(new Headers(init?.headers).get("X-Expected-Organization-ID")).toBeNull();
+      const payload = name === "list"
+        ? { items: [], quota: { used: 0, reserved: 0, limit: 5, allowed: true, reason: "" }, pagination: { page: 1, pageSize: 20, total: 0 } }
+        : name === "delete"
+          ? { id: storeId, deleted: true, version: 3 }
+          : storePayload;
+      void input;
+      return Promise.resolve(Response.json(payload, { status }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await call(
+      handler,
+      new NextRequest(`http://localhost${route}`, {
+        method,
+        headers: { cookie: "shuomi_effective_organization=org-cookie", "X-Expected-Organization-ID": "org-cookie", ...routeHeaders },
+        body,
+      }),
+      [...path],
+    );
+    expect(response.status).toBe(status);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it.each(["HEAD", "PATCH", "OPTIONS"])(
     "explicitly rejects %s without contacting upstream",
     async (method) => {

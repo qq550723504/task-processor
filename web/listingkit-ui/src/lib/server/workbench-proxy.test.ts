@@ -74,6 +74,51 @@ describe("buildWorkbenchUpstreamRequest", () => {
       code: "ORGANIZATION_CONTEXT_CHANGED",
     });
   });
+
+  it.each([
+    ["list", "GET", ["stores"], "http://localhost/api/workbench/stores?page=1", {}, undefined],
+    ["create", "POST", ["stores"], "http://localhost/api/workbench/stores", { "Idempotency-Key": operationKey }, JSON.stringify({ name: "Store", platform: "shein", region: "SG" })],
+    ["get", "GET", ["stores", storeId], `http://localhost/api/workbench/stores/${storeId}`, {}, undefined],
+    ["update", "PUT", ["stores", storeId], `http://localhost/api/workbench/stores/${storeId}`, { "If-Match": '"2"' }, JSON.stringify({ name: "Store", region: "SG" })],
+    ["delete", "DELETE", ["stores", storeId], `http://localhost/api/workbench/stores/${storeId}`, { "Idempotency-Key": operationKey, "If-Match": '"2"' }, undefined],
+    ["enable", "POST", ["stores", storeId, "enable"], `http://localhost/api/workbench/stores/${storeId}/enable`, { "If-Match": '"2"' }, undefined],
+    ["disable", "POST", ["stores", storeId, "disable"], `http://localhost/api/workbench/stores/${storeId}/disable`, { "If-Match": '"2"' }, undefined],
+  ] as const)("binds %s to match/mismatch/no-cookie Organization assertions", async (_name, method, path, url, routeHeaders, body) => {
+    for (const [mode, headers] of [
+      ["match", { cookie: `${WORKBENCH_COOKIE_NAME}=org-cookie`, "X-Expected-Organization-ID": "org-cookie", ...routeHeaders }],
+      ["mismatch", { cookie: `${WORKBENCH_COOKIE_NAME}=org-cookie`, "X-Expected-Organization-ID": "org-other", ...routeHeaders }],
+      ["no-cookie", { "X-Expected-Organization-ID": "org-cookie", ...routeHeaders }],
+    ] as const) {
+      const request = new Request(url, { method, headers, body });
+      const result = await buildWorkbenchUpstreamRequest(request, [...path], "token");
+      if (mode === "match") {
+        expect(result).not.toBeInstanceOf(Response);
+        if (!(result instanceof Response)) {
+          expect(new Headers(result.init.headers).get("X-Requested-Organization-ID")).toBe("org-cookie");
+          expect(new Headers(result.init.headers).get("X-Expected-Organization-ID")).toBeNull();
+        }
+      } else {
+        expect(result).toBeInstanceOf(Response);
+        expect((result as Response).status).toBe(409);
+        expect(request.bodyUsed).toBe(false);
+      }
+    }
+  });
+
+  it("rejects actual duplicate and differently-cased expected Organization headers", async () => {
+    const headers = new Headers([
+      ["cookie", `${WORKBENCH_COOKIE_NAME}=org-cookie`],
+      ["X-Expected-Organization-ID", "org-cookie"],
+      ["x-expected-organization-id", "org-cookie"],
+    ]);
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request("http://localhost/api/workbench/stores?page=1", { method: "GET", headers }),
+      ["stores"],
+      "token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(409);
+  });
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.useRealTimers();

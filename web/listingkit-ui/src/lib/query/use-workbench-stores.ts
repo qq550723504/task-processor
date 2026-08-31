@@ -307,7 +307,7 @@ function captureKeyedOperation<T>(
   return {
     organizationId,
     input,
-    operationKey: globalThis.crypto.randomUUID(),
+    operationKey: organizationId ? globalThis.crypto.randomUUID() : "",
   };
 }
 
