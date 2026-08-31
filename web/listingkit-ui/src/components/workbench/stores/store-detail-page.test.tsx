@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +15,7 @@ vi.mock("@/lib/query/use-workbench-stores", () => ({ useWorkbenchStore: () => qu
 vi.mock("@/components/workbench/stores/store-lifecycle-actions", () => ({ StoreLifecycleActions: (props: Record<string, unknown>) => { lifecycle.props.push(props); return <div data-testid="lifecycle-actions">生命周期操作</div>; } }));
 
 import { StoreDetailPage } from "@/components/workbench/stores/store-detail-page";
+import type { WorkbenchStore } from "@/lib/api/workbench-stores";
 
 const STORE = { id: "11111111-1111-4111-8111-111111111111", name: "店铺", platform: "shein" as const, region: "CN", externalStoreId: "", lifecycleStatus: "active" as const, connectionStatus: "disconnected" as const, version: 1, createdAt: "2026-08-31T00:00:00Z", updatedAt: "2026-08-31T00:00:00Z" };
 describe("StoreDetailPage", () => {
@@ -38,6 +39,15 @@ describe("StoreDetailPage", () => {
     render(<StoreDetailPage storeId={STORE.id} />);
     expect(screen.getByText(/店铺状态：删除中/)).toBeInTheDocument();
     expect(screen.getByTestId("lifecycle-actions")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
+  });
+  it("locks editing immediately when a delete refresh updates the detail projection to deleting", () => {
+    query.value = { isPending: false, isError: false, data: STORE, refetch: vi.fn() };
+    render(<StoreDetailPage storeId={STORE.id} />);
+    expect(screen.getByRole("button", { name: "保存更改" })).toBeInTheDocument();
+    const actions = lifecycle.props.at(-1) as { onStoreUpdated: (store: WorkbenchStore) => void };
+    act(() => actions.onStoreUpdated({ ...STORE, lifecycleStatus: "deleting", version: 2 }));
+    expect(screen.getByText(/店铺状态：删除中/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
   });
   it("preserves the actual form draft when conflict refetch returns a newer projection", async () => {

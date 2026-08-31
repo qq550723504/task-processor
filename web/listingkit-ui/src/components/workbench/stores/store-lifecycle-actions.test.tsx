@@ -107,6 +107,34 @@ describe("StoreLifecycleActions", () => {
     expect(remove.mutate).toHaveBeenCalledTimes(1);
   });
 
+  it("permanently locks normal confirmation after a semantic delete failure and never exposes retryLast", async () => {
+    const user = userEvent.setup(); remove.canRetryLast = true;
+    render(<StoreLifecycleActions store={STORE} />);
+    await user.click(screen.getByRole("button", { name: "删除店铺" }));
+    await user.type(screen.getByLabelText("确认删除文本"), "删除 企业 A 的店铺 华东旗舰店");
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    remove.mutate.mock.calls[0]?.[1].onError({ status: 422, code: "STORE_INVALID_STATE" });
+    expect(await screen.findByRole("button", { name: "确认删除" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "重试删除" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    expect(remove.mutate).toHaveBeenCalledTimes(1);
+    expect(remove.retryLast).not.toHaveBeenCalled();
+  });
+
+  it.each(["listingkit_operator", "listingkit_viewer"])("synchronously clears an open delete draft when an admin becomes %s", async (role) => {
+    const user = userEvent.setup();
+    const view = render(<StoreLifecycleActions store={STORE} />);
+    await user.click(screen.getByRole("button", { name: "删除店铺" }));
+    await user.type(screen.getByLabelText("确认删除文本"), "删除 企业 A 的店铺 华东旗舰店");
+    context.roles = [role];
+    view.rerender(<StoreLifecycleActions store={STORE} />);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试删除" })).not.toBeInTheDocument();
+    context.roles = ["listingkit_admin"];
+    view.rerender(<StoreLifecycleActions store={STORE} />);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
   it("locks a deleting Store and only offers an eligible existing delete retry", () => {
     const { rerender } = render(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "deleting" }} />);
     expect(screen.getByText(/删除正在进行中/)).toBeInTheDocument();
@@ -115,6 +143,14 @@ describe("StoreLifecycleActions", () => {
     remove.canRetryLast = true;
     rerender(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "deleting" }} />);
     expect(screen.getByRole("button", { name: "重试删除" })).toBeInTheDocument();
+  });
+
+  it("never exposes an eligible deleting retry after the current role loses delete permission", () => {
+    remove.canRetryLast = true;
+    context.roles = ["listingkit_operator"];
+    render(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "deleting" }} />);
+    expect(screen.getByText(/删除正在进行中/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试删除" })).not.toBeInTheDocument();
   });
 
   it("refreshes a version conflict before allowing another action", async () => {
@@ -128,6 +164,77 @@ describe("StoreLifecycleActions", () => {
     expect(screen.getByRole("button", { name: "刷新店铺信息" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "刷新店铺信息" }));
     await waitFor(() => expect(onStoreUpdated).toHaveBeenCalledWith(expect.objectContaining({ version: 5 })));
+  });
+
+  it.each([4, 3])("keeps a lifecycle version conflict locked when refresh returns version %s", async (version) => {
+    const user = userEvent.setup();
+    const onRefreshStore = vi.fn().mockResolvedValue({ ...STORE, version });
+    const onStoreUpdated = vi.fn();
+    render(<StoreLifecycleActions onRefreshStore={onRefreshStore} onStoreUpdated={onStoreUpdated} store={STORE} />);
+    await user.click(screen.getByRole("button", { name: "停用店铺" }));
+    disable.mutate.mock.calls[0]?.[1].onError({ status: 409, code: "STORE_VERSION_CONFLICT" });
+    await user.click(await screen.findByRole("button", { name: "刷新店铺信息" }));
+    await waitFor(() => expect(onRefreshStore).toHaveBeenCalledTimes(1));
+    expect(onStoreUpdated).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "刷新店铺信息" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "停用店铺" })).not.toBeInTheDocument();
+  });
+
+  it("refreshes a terminal network delete and locks to deleting while retrying only the captured key", async () => {
+    const user = userEvent.setup(); remove.canRetryLast = true;
+    const deleting = { ...STORE, lifecycleStatus: "deleting" as const, version: 5 };
+    const onRefreshStore = vi.fn().mockResolvedValue(deleting);
+    const onStoreUpdated = vi.fn();
+    const view = render(<StoreLifecycleActions onRefreshStore={onRefreshStore} onStoreUpdated={onStoreUpdated} store={STORE} />);
+    await user.click(screen.getByRole("button", { name: "删除店铺" }));
+    await user.type(screen.getByLabelText("确认删除文本"), "删除 企业 A 的店铺 华东旗舰店");
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    remove.mutate.mock.calls[0]?.[1].onError({ status: 503, code: "DEPENDENCY_UNAVAILABLE" });
+    await waitFor(() => expect(onRefreshStore).toHaveBeenCalledTimes(1));
+    expect(onStoreUpdated).toHaveBeenCalledWith(deleting);
+    view.rerender(<StoreLifecycleActions onRefreshStore={onRefreshStore} onStoreUpdated={onStoreUpdated} store={deleting} />);
+    expect(screen.queryByRole("button", { name: "确认删除" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试删除" }));
+    expect(remove.retryLast).toHaveBeenCalledTimes(1);
+    expect(remove.mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["old", "failed"])("keeps an interrupted delete locked when its refresh is %s", async (outcome) => {
+    const user = userEvent.setup(); remove.canRetryLast = true;
+    const onRefreshStore = outcome === "old"
+      ? vi.fn().mockResolvedValue({ ...STORE })
+      : vi.fn().mockRejectedValue(new Error("offline"));
+    const onStoreUpdated = vi.fn();
+    render(<StoreLifecycleActions onRefreshStore={onRefreshStore} onStoreUpdated={onStoreUpdated} store={STORE} />);
+    await user.click(screen.getByRole("button", { name: "删除店铺" }));
+    await user.type(screen.getByLabelText("确认删除文本"), "删除 企业 A 的店铺 华东旗舰店");
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    remove.mutate.mock.calls[0]?.[1].onError({ status: 0, code: "DEPENDENCY_UNAVAILABLE" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "重试删除" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "确认删除" })).toBeDisabled();
+    expect(onStoreUpdated).not.toHaveBeenCalled();
+    expect(remove.mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a delete version conflict locked until refresh proves a strictly newer projection", async () => {
+    const user = userEvent.setup();
+    const onRefreshStore = vi.fn()
+      .mockResolvedValueOnce({ ...STORE })
+      .mockResolvedValueOnce({ ...STORE, version: 5 });
+    const onStoreUpdated = vi.fn();
+    render(<StoreLifecycleActions onRefreshStore={onRefreshStore} onStoreUpdated={onStoreUpdated} store={STORE} />);
+    await user.click(screen.getByRole("button", { name: "删除店铺" }));
+    await user.type(screen.getByLabelText("确认删除文本"), "删除 企业 A 的店铺 华东旗舰店");
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    remove.mutate.mock.calls[0]?.[1].onError({ status: 409, code: "STORE_VERSION_CONFLICT" });
+    await user.click(await screen.findByRole("button", { name: "刷新店铺信息" }));
+    expect(await screen.findByRole("button", { name: "刷新店铺信息" })).toBeInTheDocument();
+    expect(onStoreUpdated).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "刷新店铺信息" }));
+    await waitFor(() => expect(onStoreUpdated).toHaveBeenCalledWith(expect.objectContaining({ version: 5 })));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除店铺" })).toBeInTheDocument();
+    expect(remove.mutate).toHaveBeenCalledTimes(1);
   });
 
   it("fails closed on a revoked grant by removing only this Organization Store queries and retrying context", async () => {
