@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,19 +60,100 @@ func TestPhase2InventoryNamesEveryRemainingLegacyConcreteConsumer(t *testing.T) 
 		"task-processor/internal/integration/httpimage",
 	}
 	importersByTarget := directInternalImporterMap(t, targets)
+	register, parseErrors := parseLegacyConsumerRegister(section)
+	for _, parseErr := range parseErrors {
+		t.Error(parseErr)
+	}
+	allowedTargets := make(map[string]struct{}, len(targets))
 	for _, target := range targets {
+		allowedTargets[target] = struct{}{}
+		expected := make(map[string]struct{})
 		for _, importer := range importersByTarget[target] {
-			if strings.HasPrefix(importer, "task-processor/internal/app") ||
-				strings.HasPrefix(importer, "task-processor/internal/platform") ||
-				strings.HasPrefix(importer, "task-processor/internal/integration") {
+			if isPhase2IntentionalConcreteWiring(importer) {
 				continue
 			}
-			moduleRelative := strings.TrimPrefix(importer, "task-processor/")
-			if !strings.Contains(section, "`"+moduleRelative+"`") {
-				t.Errorf("%s must list legacy consumer %s", path, importer)
+			expected[importer] = struct{}{}
+		}
+		actual := register[target]
+		for importer := range expected {
+			if _, ok := actual[importer]; !ok {
+				t.Errorf("%s register is missing %s -> %s", path, target, importer)
+			}
+		}
+		for importer := range actual {
+			if _, ok := expected[importer]; !ok {
+				t.Errorf("%s register has stale or wrong-target row %s -> %s", path, target, importer)
 			}
 		}
 	}
+	for target := range register {
+		if _, ok := allowedTargets[target]; !ok {
+			t.Errorf("%s register has unapproved target %s", path, target)
+		}
+	}
+}
+
+type legacyConsumerRegisterEntry struct {
+	class string
+	owner string
+}
+
+func parseLegacyConsumerRegister(section string) (map[string]map[string]legacyConsumerRegisterEntry, []string) {
+	register := make(map[string]map[string]legacyConsumerRegisterEntry)
+	var problems []string
+	inTable := false
+	for lineNumber, line := range strings.Split(section, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "| Target import path | Exact consumer package | Class | Explicit later owner / phase |" {
+			inTable = true
+			continue
+		}
+		if !inTable || !strings.HasPrefix(trimmed, "|") {
+			continue
+		}
+		columns := strings.Split(line, "|")
+		if len(columns) != 6 {
+			problems = append(problems, fmt.Sprintf("legacy consumer register line %d must have exactly four columns", lineNumber+1))
+			continue
+		}
+		target := strings.Trim(strings.TrimSpace(columns[1]), "`")
+		consumer := strings.Trim(strings.TrimSpace(columns[2]), "`")
+		class := strings.TrimSpace(columns[3])
+		owner := strings.TrimSpace(columns[4])
+		if strings.HasPrefix(target, "---") {
+			continue
+		}
+		if !strings.HasPrefix(target, "task-processor/internal/") || !strings.HasPrefix(consumer, "task-processor/internal/") {
+			problems = append(problems, fmt.Sprintf("legacy consumer register line %d must use full internal import paths", lineNumber+1))
+			continue
+		}
+		if class == "" || owner == "" {
+			problems = append(problems, fmt.Sprintf("legacy consumer register line %d must name class and later owner", lineNumber+1))
+			continue
+		}
+		if register[target] == nil {
+			register[target] = make(map[string]legacyConsumerRegisterEntry)
+		}
+		if _, exists := register[target][consumer]; exists {
+			problems = append(problems, fmt.Sprintf("legacy consumer register line %d duplicates %s -> %s", lineNumber+1, target, consumer))
+			continue
+		}
+		register[target][consumer] = legacyConsumerRegisterEntry{class: class, owner: owner}
+	}
+	return register, problems
+}
+
+func isPhase2IntentionalConcreteWiring(importer string) bool {
+	for _, prefix := range []string{
+		"task-processor/internal/app",
+		"task-processor/internal/platform",
+		"task-processor/internal/integration",
+	} {
+		if importMatchesPrefix(importer, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func requireDocumentPhrases(t *testing.T, path string, required []string) {

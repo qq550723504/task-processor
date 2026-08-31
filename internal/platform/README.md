@@ -13,4 +13,3 @@ Owned runtime mechanisms:
 - Temporal dial
 - feature flags
 - tracing and technical observability
-- worker pool
