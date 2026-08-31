@@ -440,6 +440,79 @@ func TestStoreQuotaCancelledContextStopsBeforeReservationWork(t *testing.T) {
 	}
 }
 
+func TestStoreQuotaTransitionMissingBucketRejectsReplayWithoutMutatingAllocation(t *testing.T) {
+	db := openStoreQuotaTestDB(t)
+	repo := NewGormRepository(db)
+	seedStoreQuotaSubscription(t, repo, "org-missing-bucket", PlanBasic, 1)
+	ledger := NewGormStoreQuotaLedger(repo)
+	input := StoreQuotaReserveInput{OrganizationID: "org-missing-bucket", RequestKey: uuid.NewString(), ActorSubject: "creator"}
+	reserved, err := ledger.Reserve(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transition := StoreQuotaTransitionInput{OrganizationID: input.OrganizationID, AllocationID: reserved.AllocationID, StoreID: reserved.StoreID, RequestKey: input.RequestKey, ActorSubject: "operator"}
+	if _, err := ledger.Commit(context.Background(), transition); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("organization_id = ?", input.OrganizationID).Delete(&storeQuotaBucketRow{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ledger.Commit(context.Background(), transition); !errors.Is(err, ErrStoreQuotaInvalidTransition) {
+		t.Fatalf("missing-bucket commit replay error = %v, want invalid transition", err)
+	}
+	allocation, err := ledger.GetByRequestKey(context.Background(), input.OrganizationID, input.RequestKey)
+	if err != nil || allocation.Status != StoreQuotaAllocated {
+		t.Fatalf("missing-bucket replay mutated allocation = %#v, %v", allocation, err)
+	}
+	foreign := transition
+	foreign.OrganizationID = "org-foreign"
+	if _, err := ledger.Commit(context.Background(), foreign); !errors.Is(err, ErrStoreQuotaNotFound) {
+		t.Fatalf("cross-org Commit() error = %v, want not found", err)
+	}
+}
+
+func TestStoreQuotaConcurrentReserveAndCommitKeepCountersConsistent(t *testing.T) {
+	db := openConcurrentStoreQuotaTestDB(t)
+	repo := NewGormRepository(db)
+	seedStoreQuotaSubscription(t, repo, "org-lock-order", PlanBasic, 2)
+	ledger := NewGormStoreQuotaLedger(repo)
+	firstInput := StoreQuotaReserveInput{OrganizationID: "org-lock-order", RequestKey: uuid.NewString(), ActorSubject: "creator"}
+	first, err := ledger.Reserve(context.Background(), firstInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transition := StoreQuotaTransitionInput{OrganizationID: firstInput.OrganizationID, AllocationID: first.AllocationID, StoreID: first.StoreID, RequestKey: firstInput.RequestKey, ActorSubject: "operator"}
+	secondInput := StoreQuotaReserveInput{OrganizationID: "org-lock-order", RequestKey: uuid.NewString(), ActorSubject: "creator-2"}
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		_, err := ledger.Commit(context.Background(), transition)
+		errs <- err
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		_, err := ledger.Reserve(context.Background(), secondInput)
+		errs <- err
+	}()
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent transition/reserve error = %v", err)
+		}
+	}
+	summary, err := ledger.Summary(context.Background(), "org-lock-order")
+	if err != nil || summary.Committed != 1 || summary.Reserved != 1 {
+		t.Fatalf("lock-order summary = %#v, %v; want 1 committed and 1 reserved", summary, err)
+	}
+}
+
 func openConcurrentStoreQuotaTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := "file:" + filepath.ToSlash(filepath.Join(t.TempDir(), "store-quota.db")) + "?mode=rwc&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)"

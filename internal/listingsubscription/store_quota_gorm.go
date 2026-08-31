@@ -151,8 +151,27 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 	}
 	var result StoreQuotaTransitionResult
 	err = l.withRetry(ctx, func(tx *gorm.DB) error {
+		// Global ledger lock order is always Organization bucket first, then
+		// allocation/request row. The initial scoped lookup deliberately takes
+		// no row lock: it preserves cross-Organization not-found semantics
+		// without inverting the lock order used by Reserve.
+		var initial storeQuotaAllocationRow
+		err := tx.Where("organization_id = ? AND allocation_id = ?", input.OrganizationID, input.AllocationID).Take(&initial).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrStoreQuotaNotFound
+		}
+		if err != nil {
+			return err
+		}
+		bucket, err := loadStoreQuotaBucket(tx, input.OrganizationID)
+		if err != nil {
+			return err
+		}
+		if err := validateStoreQuotaBucket(bucket); err != nil {
+			return err
+		}
 		var row storeQuotaAllocationRow
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND allocation_id = ?", input.OrganizationID, input.AllocationID).Take(&row).Error
+		err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND allocation_id = ?", input.OrganizationID, input.AllocationID).Take(&row).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrStoreQuotaNotFound
 		}
@@ -178,13 +197,6 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 			if operation != storeQuotaDeallocate {
 				return ErrStoreQuotaInvalidTransition
 			}
-			bucket, err := loadStoreQuotaBucket(tx, input.OrganizationID)
-			if err != nil {
-				return err
-			}
-			if err := validateStoreQuotaBucket(bucket); err != nil {
-				return err
-			}
 			if bucket.Committed < 1 {
 				return ErrStoreQuotaInvalidTransition
 			}
@@ -201,13 +213,6 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 		}
 		if allocation.Status != StoreQuotaReserved {
 			return ErrStoreQuotaInvalidTransition
-		}
-		bucket, err := loadStoreQuotaBucket(tx, input.OrganizationID)
-		if err != nil {
-			return err
-		}
-		if err := validateStoreQuotaBucket(bucket); err != nil {
-			return err
 		}
 		if bucket.Reserved < 1 {
 			return ErrStoreQuotaInvalidTransition
