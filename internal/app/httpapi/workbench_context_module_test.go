@@ -171,7 +171,7 @@ func TestWorkbenchCompositionRegistersRoutesExactlyOnceWhenEnabled(t *testing.T)
 	require.Equal(t, 1, routeCount(bundle.routes, http.MethodPut, "/api/v1/workbench/context/effective-organization"))
 }
 
-func TestBuildBootstrapRegistersWorkbenchRoutesWhenEnabled(t *testing.T) {
+func TestBuildBootstrapFailsClosedWhenWorkbenchIsEnabledWithoutDatabase(t *testing.T) {
 	restoreAuth := listingkithttpapi.SetListingKitZitadelAuthConfigForTesting(nil)
 	t.Cleanup(restoreAuth)
 	logger := logrus.New()
@@ -185,9 +185,10 @@ func TestBuildBootstrapRegistersWorkbenchRoutesWhenEnabled(t *testing.T) {
 
 	bootstrap, err := buildBootstrap(logger, Options{ConfigPath: "../../../config/config-test.yaml", Port: 18080})
 
-	require.NoError(t, err)
-	require.Equal(t, 1, routeCount(bootstrap.routes, http.MethodGet, "/api/v1/workbench/context"))
-	require.Equal(t, 1, routeCount(bootstrap.routes, http.MethodPut, "/api/v1/workbench/context/effective-organization"))
+	require.Error(t, err)
+	require.Nil(t, bootstrap)
+	require.Contains(t, err.Error(), "durable database configuration is required")
+	require.NotContains(t, err.Error(), "sk-test")
 }
 
 func routeCount(routes []httproute.Descriptor, method string, path string) int {

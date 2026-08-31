@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -195,6 +196,43 @@ func TestStoreQuotaMigrationIsRepeatableAndCreatesScopedIndexes(t *testing.T) {
 		if !db.Migrator().HasIndex(&storeQuotaAllocationRow{}, index) {
 			t.Fatalf("missing allocation index %s", index)
 		}
+	}
+}
+
+func TestStoreQuotaMigrationCreatesOnlyQuotaTablesAndIsRepeatable(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := AutoMigrateStoreQuotaLedger(db); err != nil {
+			t.Fatalf("AutoMigrateStoreQuotaLedger() attempt %d error = %v", attempt+1, err)
+		}
+	}
+
+	for _, table := range []string{"saas_store_quota_allocations", "saas_store_quota_buckets"} {
+		if !db.Migrator().HasTable(table) {
+			t.Fatalf("missing quota table %s", table)
+		}
+	}
+	var createdTables []string
+	if err := db.Raw(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`).Scan(&createdTables).Error; err != nil {
+		t.Fatalf("list created tables: %v", err)
+	}
+	if !reflect.DeepEqual(createdTables, []string{"saas_store_quota_allocations", "saas_store_quota_buckets"}) {
+		t.Fatalf("narrow quota migration tables = %v", createdTables)
+	}
+	for _, unrelated := range []string{"saas_modules", "saas_plans", "saas_tenant_subscriptions", "saas_usage_counters", "saas_usage_events", "saas_subscription_audit_logs"} {
+		if db.Migrator().HasTable(unrelated) {
+			t.Fatalf("narrow quota migration created unrelated table %s", unrelated)
+		}
+	}
+}
+
+func TestStoreQuotaMigrationRejectsNilDatabase(t *testing.T) {
+	if err := AutoMigrateStoreQuotaLedger(nil); err == nil {
+		t.Fatal("AutoMigrateStoreQuotaLedger(nil) accepted a nil database")
 	}
 }
 

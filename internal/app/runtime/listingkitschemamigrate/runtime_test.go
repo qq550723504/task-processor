@@ -1,10 +1,14 @@
 package listingkitschemamigrate
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"task-processor/internal/core/config"
@@ -91,6 +95,141 @@ func TestRunDispatchesSheinSyncScopeAndClosesDatabase(t *testing.T) {
 	}
 	if !opened || !migratedSheinSync || !closed {
 		t.Fatalf("expected open, shein-sync migration, and close; opened=%v migrated=%v closed=%v", opened, migratedSheinSync, closed)
+	}
+}
+
+func TestMigrationScopeDispatchesExactMigratorsInOrder(t *testing.T) {
+	db := &gorm.DB{}
+	for _, test := range []struct {
+		name      string
+		scope     string
+		wantOrder []string
+		wantErr   error
+	}{
+		{name: "empty is all", scope: "", wantOrder: []string{"all", "workbench"}},
+		{name: "all", scope: "all", wantOrder: []string{"all", "workbench"}},
+		{name: "shein sync", scope: "shein-sync", wantOrder: []string{"shein-sync"}},
+		{name: "workbench", scope: "workbench", wantOrder: []string{"workbench"}},
+		{name: "unknown", scope: "unknown", wantErr: flag.ErrHelp},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var order []string
+			err := runMigration(db, test.scope, runtimeDependencies{
+				MigrateAll: func(got *gorm.DB) error {
+					if got != db {
+						t.Fatal("MigrateAll received a different database")
+					}
+					order = append(order, "all")
+					return nil
+				},
+				MigrateSheinSync: func(got *gorm.DB) error {
+					if got != db {
+						t.Fatal("MigrateSheinSync received a different database")
+					}
+					order = append(order, "shein-sync")
+					return nil
+				},
+				MigrateWorkbench: func(got *gorm.DB) error {
+					if got != db {
+						t.Fatal("MigrateWorkbench received a different database")
+					}
+					order = append(order, "workbench")
+					return nil
+				},
+			})
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("runMigration() error = %v, want %v", err, test.wantErr)
+			}
+			if !reflect.DeepEqual(order, test.wantOrder) {
+				t.Fatalf("migration order = %v, want %v", order, test.wantOrder)
+			}
+		})
+	}
+}
+
+func TestMigrationScopeAllStopsBeforeWorkbenchAfterListingKitFailure(t *testing.T) {
+	db := &gorm.DB{}
+	wantErr := errors.New("listingkit migration failed")
+	workbenchCalled := false
+	err := runMigration(db, "all", runtimeDependencies{
+		MigrateAll: func(*gorm.DB) error { return wantErr },
+		MigrateWorkbench: func(*gorm.DB) error {
+			workbenchCalled = true
+			return nil
+		},
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("runMigration() error = %v, want %v", err, wantErr)
+	}
+	if workbenchCalled {
+		t.Fatal("Workbench migration ran after the broad migration failed")
+	}
+}
+
+func TestMigrationScopeWorkbenchClosesDatabaseOnMigrationFailure(t *testing.T) {
+	db := &gorm.DB{}
+	wantErr := errors.New("workbench migration failed")
+	closed := false
+	err := runWithDependencies(context.Background(), Options{Config: "config/test.yaml", LogLevel: "error", Scope: "workbench"}, runtimeDependencies{
+		LoadConfig: func(string) (*config.Config, error) {
+			return &config.Config{Database: &config.DatabaseConfig{}}, nil
+		},
+		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
+		CloseDB: func(got *gorm.DB) error {
+			if got != db {
+				t.Fatal("closed a different database")
+			}
+			closed = true
+			return nil
+		},
+		MigrateAll: func(*gorm.DB) error {
+			t.Fatal("broad migration ran for workbench-only scope")
+			return nil
+		},
+		MigrateSheinSync: func(*gorm.DB) error {
+			t.Fatal("Shein sync migration ran for workbench-only scope")
+			return nil
+		},
+		MigrateWorkbench: func(*gorm.DB) error { return wantErr },
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("runWithDependencies() error = %v, want wrapped %v", err, wantErr)
+	}
+	if !closed {
+		t.Fatal("database was not closed after Workbench migration failure")
+	}
+}
+
+func TestMigrationScopeWorkbenchDefaultsToOwnedMigrator(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = runWithDependencies(context.Background(), Options{Config: "config/test.yaml", LogLevel: "error", Scope: "workbench"}, runtimeDependencies{
+		LoadConfig: func(string) (*config.Config, error) {
+			return &config.Config{Database: &config.DatabaseConfig{}}, nil
+		},
+		OpenDB:  func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
+		CloseDB: func(*gorm.DB) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("runWithDependencies() error = %v", err)
+	}
+	if !db.Migrator().HasTable("workbench_stores") {
+		t.Fatal("default Workbench migrator did not create the owned schema")
+	}
+}
+
+func TestMigrationScopeFlagHelpAdvertisesAllSupportedScopes(t *testing.T) {
+	var output bytes.Buffer
+	fs := flag.NewFlagSet("listingkit-schema-migrate", flag.ContinueOnError)
+	fs.SetOutput(&output)
+	ParseFlagsFrom(fs, "--help")
+	fs.PrintDefaults()
+	for _, scope := range []string{"all", "shein-sync", "workbench"} {
+		if !strings.Contains(output.String(), scope) {
+			t.Fatalf("scope help does not advertise %q: %s", scope, output.String())
+		}
 	}
 }
 

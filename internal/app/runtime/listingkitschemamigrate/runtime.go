@@ -10,6 +10,7 @@ import (
 	listingkitschema "task-processor/internal/listingkit/schema"
 	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/pkg/appenv"
+	workbenchschema "task-processor/internal/workbench/schema"
 
 	"gorm.io/gorm"
 )
@@ -20,6 +21,7 @@ type runtimeDependencies struct {
 	CloseDB          func(db *gorm.DB) error
 	MigrateAll       func(db *gorm.DB) error
 	MigrateSheinSync func(db *gorm.DB) error
+	MigrateWorkbench func(db *gorm.DB) error
 }
 
 func defaultRuntimeDependencies() runtimeDependencies {
@@ -41,6 +43,7 @@ func defaultRuntimeDependencies() runtimeDependencies {
 		MigrateSheinSync: func(db *gorm.DB) error {
 			return listingkitstore.AutoMigrateSheinSyncRepository(db)
 		},
+		MigrateWorkbench: workbenchschema.AutoMigrateRuntime,
 	}
 }
 
@@ -65,6 +68,9 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	}
 	if deps.MigrateSheinSync == nil {
 		deps.MigrateSheinSync = defaults.MigrateSheinSync
+	}
+	if deps.MigrateWorkbench == nil {
+		deps.MigrateWorkbench = defaults.MigrateWorkbench
 	}
 
 	logger := appenv.SetupLoggerWithLevel(opts.LogLevel)
@@ -97,9 +103,14 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 func runMigration(db *gorm.DB, scope string, deps runtimeDependencies) error {
 	switch scope {
 	case "", "all":
-		return deps.MigrateAll(db)
+		if err := deps.MigrateAll(db); err != nil {
+			return err
+		}
+		return deps.MigrateWorkbench(db)
 	case "shein-sync":
 		return deps.MigrateSheinSync(db)
+	case "workbench":
+		return deps.MigrateWorkbench(db)
 	default:
 		return flag.ErrHelp
 	}

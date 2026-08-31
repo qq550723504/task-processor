@@ -37,6 +37,16 @@ type storeQuotaBucketRow struct {
 
 func (storeQuotaBucketRow) TableName() string { return "saas_store_quota_buckets" }
 
+// AutoMigrateStoreQuotaLedger owns only the two Store quota ledger tables.
+// Workbench schema migration deliberately uses this narrow entry point instead
+// of the broad Subscription repository migration.
+func AutoMigrateStoreQuotaLedger(db *gorm.DB) error {
+	if db == nil {
+		return errors.New("store quota database is required")
+	}
+	return db.AutoMigrate(&storeQuotaAllocationRow{}, &storeQuotaBucketRow{})
+}
+
 type gormStoreQuotaLedger struct {
 	repo *GormRepository
 	now  func() time.Time

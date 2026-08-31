@@ -56,5 +56,6 @@ type httpFeatureComposition struct {
 	localAgentModule          *localagenthttpapi.BuildResult
 	imageAgentModule          *imageagenthttpapi.BuildResult
 	workbenchContextModule    kernelmodule.Module
+	storeCenterModule         kernelmodule.Module
 	workbenchAuthDependencies *routeAuthDependencies
 }

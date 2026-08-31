@@ -24,6 +24,7 @@ func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 		c.crawler1688Module,
 		c.localAgentHTTPModule(),
 		c.workbenchContextModule,
+		c.storeCenterModule,
 	}
 }
 
