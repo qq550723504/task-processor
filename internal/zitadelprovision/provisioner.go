@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"task-processor/internal/authidentity"
+	"task-processor/internal/zitadelprotojson"
 )
 
 type Config struct {
@@ -643,6 +645,8 @@ func validateLocalIssuer(raw string) error {
 type lookupIPFunc func(context.Context, string, string) ([]net.IP, error)
 type dialContextFunc func(context.Context, string, string) (net.Conn, error)
 
+const loopbackHTTPClientTimeout = 5 * time.Second
+
 func NewLoopbackOnlyHTTPClient(raw string) (*http.Client, error) {
 	return newLoopbackOnlyHTTPClient(raw, net.DefaultResolver.LookupIP)
 }
@@ -681,6 +685,7 @@ func newLoopbackOnlyHTTPClientWithDialer(raw string, lookup lookupIPFunc, dial d
 	}}
 	return &http.Client{
 		Transport: transport,
+		Timeout:   loopbackHTTPClientTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -882,7 +887,7 @@ func (c client) listOrganizations(ctx context.Context, query map[string]any) ([]
 	for offset := 0; ; {
 		var response struct {
 			Details struct {
-				TotalResult int `json:"totalResult"`
+				TotalResult zitadelprotojson.Uint64 `json:"totalResult"`
 			} `json:"details"`
 			Result []organizationRecord `json:"result"`
 		}
@@ -897,7 +902,7 @@ func (c client) listOrganizations(ctx context.Context, query map[string]any) ([]
 		if len(result) > acceptanceListLimit || response.Details.TotalResult > acceptanceListLimit {
 			return nil, errors.New("acceptance organization query exceeded the safe candidate limit")
 		}
-		if len(result) >= response.Details.TotalResult {
+		if uint64(len(result)) >= uint64(response.Details.TotalResult) {
 			return result, nil
 		}
 		if len(response.Result) == 0 {
@@ -1031,7 +1036,7 @@ func (c client) listProjectGrants(ctx context.Context, projectID, organizationID
 	for offset := 0; ; {
 		var response struct {
 			Pagination struct {
-				TotalResult int `json:"totalResult"`
+				TotalResult zitadelprotojson.Uint64 `json:"totalResult"`
 			} `json:"pagination"`
 			ProjectGrants []projectGrantRecord `json:"projectGrants"`
 		}
@@ -1053,7 +1058,7 @@ func (c client) listProjectGrants(ctx context.Context, projectID, organizationID
 		if len(result) > acceptanceListLimit || response.Pagination.TotalResult > acceptanceListLimit {
 			return nil, errors.New("acceptance project grant query exceeded the safe candidate limit")
 		}
-		if len(result) >= response.Pagination.TotalResult {
+		if uint64(len(result)) >= uint64(response.Pagination.TotalResult) {
 			return result, nil
 		}
 		if len(response.ProjectGrants) == 0 {
@@ -1154,7 +1159,7 @@ func (c client) listAuthorizations(ctx context.Context, userID, projectID, organ
 	for offset := 0; ; {
 		var response struct {
 			Pagination struct {
-				TotalResult int `json:"totalResult"`
+				TotalResult zitadelprotojson.Uint64 `json:"totalResult"`
 			} `json:"pagination"`
 			Authorizations []authorizationRecord `json:"authorizations"`
 		}
@@ -1182,7 +1187,7 @@ func (c client) listAuthorizations(ctx context.Context, userID, projectID, organ
 		if len(result) > acceptanceListLimit || response.Pagination.TotalResult > acceptanceListLimit {
 			return nil, errors.New("acceptance authorization query exceeded the safe candidate limit")
 		}
-		if len(result) >= response.Pagination.TotalResult {
+		if uint64(len(result)) >= uint64(response.Pagination.TotalResult) {
 			return result, nil
 		}
 		if len(response.Authorizations) == 0 {

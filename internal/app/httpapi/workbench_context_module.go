@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
@@ -20,10 +22,10 @@ type workbenchContextBuildResult struct {
 	authDependencies *routeAuthDependencies
 }
 
-type workbenchContextModuleBuilder func(*config.Config) (workbenchContextBuildResult, error)
+type workbenchContextModuleBuilder func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error)
 
-func buildDefaultWorkbenchContextModule(cfg *config.Config) (workbenchContextBuildResult, error) {
-	return buildWorkbenchContextModule(cfg, defaultWorkbenchContextFactories())
+func buildDefaultWorkbenchContextModule(cfg *config.Config, logger *logrus.Logger) (workbenchContextBuildResult, error) {
+	return buildWorkbenchContextModule(cfg, logger, defaultWorkbenchContextFactories())
 }
 
 type workbenchContextFactories struct {
@@ -35,6 +37,7 @@ type workbenchContextFactories struct {
 	newResolver            func(workbenchcontext.GrantLoader, string, string, workbenchcontext.OrganizationBusinessStatusChecker) *workbenchcontext.Resolver
 	newHandler             func() *workbenchcontexthttpapi.Handler
 	newModule              func(*workbenchcontexthttpapi.Handler) kernelmodule.Module
+	newAuditRecorder       func(*logrus.Logger) workbenchcontext.AuditRecorder
 }
 
 func defaultWorkbenchContextFactories() workbenchContextFactories {
@@ -53,12 +56,13 @@ func defaultWorkbenchContextFactories() workbenchContextFactories {
 		newResolver: func(loader workbenchcontext.GrantLoader, projectID string, contractVersion string, status workbenchcontext.OrganizationBusinessStatusChecker) *workbenchcontext.Resolver {
 			return workbenchcontext.NewResolver(loader, projectID, contractVersion, status)
 		},
-		newHandler: workbenchcontexthttpapi.NewHandler,
-		newModule:  workbenchcontexthttpapi.NewModule,
+		newHandler:       workbenchcontexthttpapi.NewHandler,
+		newModule:        workbenchcontexthttpapi.NewModule,
+		newAuditRecorder: workbenchcontext.NewStructuredAuditRecorder,
 	}
 }
 
-func buildWorkbenchContextModule(cfg *config.Config, factories workbenchContextFactories) (workbenchContextBuildResult, error) {
+func buildWorkbenchContextModule(cfg *config.Config, logger *logrus.Logger, factories workbenchContextFactories) (workbenchContextBuildResult, error) {
 	if cfg == nil || !cfg.Workbench.Enabled {
 		return workbenchContextBuildResult{}, nil
 	}
@@ -84,5 +88,10 @@ func buildWorkbenchContextModule(cfg *config.Config, factories workbenchContextF
 	authDependencies := newRouteAuthDependencies()
 	authDependencies.workbenchVerifier = verifier
 	authDependencies.organizationResolver = resolver
+	if factories.newAuditRecorder != nil {
+		authDependencies.auditRecorder = factories.newAuditRecorder(logger)
+	} else {
+		authDependencies.auditRecorder = workbenchcontext.NewStructuredAuditRecorder(logger)
+	}
 	return workbenchContextBuildResult{module: module, authDependencies: &authDependencies}, nil
 }

@@ -248,6 +248,34 @@ func TestAuthorizationClientFiltersUntrustedItemsAndDeduplicatesScopedRoles(t *t
 	}}, got)
 }
 
+func TestAuthorizationClientRejectsConflictingOrganizationNamesAcrossRawPages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request capturedAuthorizationListRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		switch request.Pagination.Offset {
+		case 0:
+			writeAuthorizationListResponse(t, w, 2, []map[string]any{
+				authorizationFixture("auth-1", "user-1", "project-1", "org-a", " Organization Alpha ", "STATE_ACTIVE", "viewer"),
+			})
+		case 1:
+			writeAuthorizationListResponse(t, w, 2, []map[string]any{
+				authorizationFixture("auth-2", "user-1", "project-1", "org-a", "Organization Beta", "STATE_ACTIVE", "admin"),
+			})
+		default:
+			http.Error(w, "unexpected offset", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	client := NewAuthorizationClient(server.URL, server.Client())
+	_, err := client.ListOwnProjectAuthorizations(context.Background(), "token", "user-1", "project-1")
+
+	require.Error(t, err)
+	assert.Equal(t, "ZITADEL authorization contains conflicting organization names", err.Error())
+	assert.NotContains(t, err.Error(), "Alpha")
+	assert.NotContains(t, err.Error(), "Beta")
+}
+
 func TestAuthorizationClientRejectsBlankIdentityBoundaryIDs(t *testing.T) {
 	testCases := []struct {
 		name   string

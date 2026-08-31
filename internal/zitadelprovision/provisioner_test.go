@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"task-processor/internal/authidentity"
 )
@@ -1207,6 +1208,36 @@ func TestLoopbackOnlyClientDialsResolverVerifiedLoopbackIP(t *testing.T) {
 	}
 }
 
+func TestLoopbackHTTPClientHasOverallTimeoutAndHonorsRequestCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	client, err := NewLoopbackOnlyHTTPClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewLoopbackOnlyHTTPClient() error = %v", err)
+	}
+	if client.Timeout != 5*time.Second {
+		t.Fatalf("loopback client timeout = %s, want 5s overall bound", client.Timeout)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	started := time.Now()
+	_, err = client.Do(request)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("client.Do() error = %v, want context deadline exceeded", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("request cancellation took %s, want under 1s", elapsed)
+	}
+}
+
 func TestOrganizationPaginationContract(t *testing.T) {
 	activeOrganization := func(id string) map[string]any {
 		return map[string]any{"id": id, "name": "Acceptance Organization", "state": "ORGANIZATION_STATE_ACTIVE"}
@@ -1214,8 +1245,8 @@ func TestOrganizationPaginationContract(t *testing.T) {
 
 	t.Run("merges two pages using the observed page length as the next offset", func(t *testing.T) {
 		server, offsets := newTestPagedServer(t, "/v2/organizations/_search", "query", []any{
-			map[string]any{"details": map[string]any{"totalResult": 2}, "result": []any{activeOrganization("org-1")}},
-			map[string]any{"details": map[string]any{"totalResult": 2}, "result": []any{activeOrganization("org-2")}},
+			map[string]any{"details": map[string]any{"totalResult": "2"}, "result": []any{activeOrganization("org-1")}},
+			map[string]any{"details": map[string]any{"totalResult": "2"}, "result": []any{activeOrganization("org-2")}},
 		})
 		defer server.Close()
 
@@ -1281,8 +1312,8 @@ func TestProjectGrantPaginationContract(t *testing.T) {
 
 	t.Run("merges two pages using the observed page length as the next offset", func(t *testing.T) {
 		server, offsets := newTestPagedServer(t, "/zitadel.project.v2.ProjectService/ListProjectGrants", "pagination", []any{
-			map[string]any{"pagination": map[string]any{"totalResult": 2}, "projectGrants": []any{activeGrant()}},
-			map[string]any{"pagination": map[string]any{"totalResult": 2}, "projectGrants": []any{activeGrant()}},
+			map[string]any{"pagination": map[string]any{"totalResult": "2"}, "projectGrants": []any{activeGrant()}},
+			map[string]any{"pagination": map[string]any{"totalResult": "2"}, "projectGrants": []any{activeGrant()}},
 		})
 		defer server.Close()
 
@@ -1344,8 +1375,8 @@ func TestAuthorizationPaginationContract(t *testing.T) {
 
 	t.Run("merges two pages using the observed page length as the next offset", func(t *testing.T) {
 		server, offsets := newTestPagedServer(t, "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations", "pagination", []any{
-			map[string]any{"pagination": map[string]any{"totalResult": 2}, "authorizations": []any{activeAuthorization("authorization-1")}},
-			map[string]any{"pagination": map[string]any{"totalResult": 2}, "authorizations": []any{activeAuthorization("authorization-2")}},
+			map[string]any{"pagination": map[string]any{"totalResult": "2"}, "authorizations": []any{activeAuthorization("authorization-1")}},
+			map[string]any{"pagination": map[string]any{"totalResult": "2"}, "authorizations": []any{activeAuthorization("authorization-2")}},
 		})
 		defer server.Close()
 

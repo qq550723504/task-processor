@@ -49,7 +49,7 @@ func TestWorkbenchModuleBuildDisabledIsInert(t *testing.T) {
 		newModule:  func(*workbenchcontexthttpapi.Handler) kernelmodule.Module { called++; return nil },
 	}
 
-	result, err := buildWorkbenchContextModule(&config.Config{}, factories)
+	result, err := buildWorkbenchContextModule(&config.Config{}, logrus.New(), factories)
 
 	require.NoError(t, err)
 	require.Nil(t, result.module)
@@ -119,7 +119,7 @@ func TestWorkbenchModuleBuildConstructsChainOnceWithOneBoundedHTTPClient(t *test
 		}},
 	}
 
-	result, err := buildWorkbenchContextModule(cfg, factories)
+	result, err := buildWorkbenchContextModule(cfg, logrus.New(), factories)
 
 	require.NoError(t, err)
 	require.NotNil(t, result.module)
@@ -130,6 +130,7 @@ func TestWorkbenchModuleBuildConstructsChainOnceWithOneBoundedHTTPClient(t *test
 	require.Equal(t, "zitadel-authorization-v2", resolverContractVersion)
 	require.Nil(t, resolverStatus)
 	require.Same(t, builtResolver, result.authDependencies.organizationResolver)
+	require.NotNil(t, result.authDependencies.auditRecorder)
 	for _, name := range []string{"http", "verifier", "authorization-client", "cache", "grant-resolver", "resolver", "handler", "module"} {
 		require.Equal(t, 1, counts[name], name)
 	}

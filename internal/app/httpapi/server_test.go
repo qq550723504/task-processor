@@ -101,6 +101,16 @@ func mountedVerifiedIdentity() authidentity.AuthenticatedIdentity {
 
 type mountedOrganizationResolverError struct{ err error }
 
+type mountedWorkbenchAuditStub struct {
+	records []workbenchcontext.AuditEvent
+	err     error
+}
+
+func (stub *mountedWorkbenchAuditStub) Record(_ context.Context, event workbenchcontext.AuditEvent) error {
+	stub.records = append(stub.records, event)
+	return stub.err
+}
+
 type mountedCapturingOrganizationResolver struct {
 	calls  int
 	target string
@@ -182,6 +192,7 @@ func TestWorkbenchLiveSwitchRejects4097ByteBodyWithoutReadingPastLimitBeforeGran
 	}}, routeAuthDependencies{
 		workbenchVerifier:    mountedVerifierStub{identity: mountedVerifiedIdentity()},
 		organizationResolver: resolver,
+		auditRecorder:        &mountedWorkbenchAuditStub{},
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/workbench/context/effective-organization", reader)
 	request.Header.Set("Authorization", "Bearer current-request-token")
@@ -217,6 +228,7 @@ func TestWorkbenchLiveSwitchUsesBodyTargetAndRestoresBodyForHandler(t *testing.T
 	}}, routeAuthDependencies{
 		workbenchVerifier:    mountedVerifierStub{identity: mountedVerifiedIdentity()},
 		organizationResolver: resolver,
+		auditRecorder:        &mountedWorkbenchAuditStub{},
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/workbench/context/effective-organization", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer current-request-token")
@@ -228,6 +240,135 @@ func TestWorkbenchLiveSwitchUsesBodyTargetAndRestoresBodyForHandler(t *testing.T
 	require.Equal(t, 1, resolver.calls)
 	require.Equal(t, "org-a", resolver.target)
 	require.Equal(t, body, handlerBody)
+}
+
+func TestWorkbenchLiveSwitchRequiresAuditBeforeReportingSuccess(t *testing.T) {
+	now := time.Date(2026, time.August, 31, 8, 0, 0, 0, time.UTC)
+	for _, tt := range []struct {
+		name         string
+		auditError   error
+		wantStatus   int
+		wantHandlers int
+	}{
+		{name: "recorded", wantStatus: http.StatusNoContent, wantHandlers: 1},
+		{name: "audit unavailable", auditError: errors.New("audit sink unavailable"), wantStatus: http.StatusServiceUnavailable},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			audit := &mountedWorkbenchAuditStub{err: tt.auditError}
+			handlerCalls := 0
+			router := gin.New()
+			route := httproute.Descriptor{
+				Method: http.MethodPut, Path: "/api/v1/workbench/context/effective-organization",
+				AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveSwitch,
+				OrganizationTargetResolver: workbenchcontexthttpapi.ResolveSwitchOrganizationTarget,
+				Handler:                    func(c *gin.Context) { handlerCalls++; c.Status(http.StatusNoContent) },
+			}
+			mountRoutesWithAuthDependencies(router, []httproute.Descriptor{route}, routeAuthDependencies{
+				workbenchVerifier: mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{
+					UserID: "user-1", HomeOrganizationID: "org-home", TokenExpiresAt: now.Add(time.Minute),
+				}},
+				organizationResolver: &mountedCapturingOrganizationResolver{},
+				auditRecorder:        audit,
+				auditNow:             func() time.Time { return now },
+			})
+			request := httptest.NewRequest(http.MethodPut, route.Path, strings.NewReader(`{"organizationId":"org-target"}`))
+			request.Header.Set("Authorization", "Bearer current-request-token")
+			request.Header.Set("X-Request-ID", "req-switch")
+			response := httptest.NewRecorder()
+
+			router.ServeHTTP(response, request)
+
+			require.Equal(t, tt.wantStatus, response.Code, response.Body.String())
+			require.Equal(t, tt.wantHandlers, handlerCalls)
+			require.Equal(t, []workbenchcontext.AuditEvent{{
+				Subject: "user-1", HomeOrganizationID: "org-home", EffectiveOrganizationID: "org-target",
+				Resource: route.Path, Action: workbenchcontext.AuditActionOrganizationSwitch,
+				Result: workbenchcontext.AuditResultSuccess, Timestamp: now, RequestID: "req-switch",
+			}}, audit.records)
+		})
+	}
+}
+
+func TestWorkbenchLiveSwitchFailureIsAuditedWithoutChangingTheStableDenial(t *testing.T) {
+	now := time.Date(2026, time.August, 31, 8, 15, 0, 0, time.UTC)
+	audit := &mountedWorkbenchAuditStub{err: errors.New("audit unavailable")}
+	router := gin.New()
+	route := httproute.Descriptor{
+		Method: http.MethodPut, Path: "/api/v1/workbench/context/effective-organization",
+		AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveSwitch,
+		OrganizationTargetResolver: workbenchcontexthttpapi.ResolveSwitchOrganizationTarget,
+		Handler:                    func(*gin.Context) { t.Fatal("denied switch handler ran") },
+	}
+	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{route}, routeAuthDependencies{
+		workbenchVerifier:    mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{UserID: "user-1", HomeOrganizationID: "org-home", TokenExpiresAt: now.Add(time.Minute)}},
+		organizationResolver: mountedOrganizationResolverError{err: workbenchcontext.ErrOrganizationAccessDenied},
+		auditRecorder:        audit, auditNow: func() time.Time { return now },
+	})
+	request := httptest.NewRequest(route.Method, route.Path, strings.NewReader(`{"organizationId":"org-target"}`))
+	request.Header.Set("Authorization", "Bearer current-request-token")
+	request.Header.Set("X-Request-ID", "req-switch-denied")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusForbidden, response.Code)
+	require.Contains(t, response.Body.String(), "ORGANIZATION_ACCESS_DENIED")
+	require.Equal(t, []workbenchcontext.AuditEvent{{
+		Subject: "user-1", HomeOrganizationID: "org-home", EffectiveOrganizationID: "org-target",
+		Resource: route.Path, Action: workbenchcontext.AuditActionOrganizationSwitch,
+		Result: workbenchcontext.AuditResultOrganizationAccessDenied, Timestamp: now, RequestID: "req-switch-denied",
+	}}, audit.records)
+}
+
+func TestWorkbenchPostAuthenticationOrganizationAndRoleDenialsAreAudited(t *testing.T) {
+	now := time.Date(2026, time.August, 31, 8, 30, 0, 0, time.UTC)
+	t.Run("organization denial", func(t *testing.T) {
+		audit := &mountedWorkbenchAuditStub{err: errors.New("audit unavailable")}
+		router := gin.New()
+		route := httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/workbench/resource", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyCachedRead, Handler: func(*gin.Context) { t.Fatal("denied handler ran") }}
+		mountRoutesWithAuthDependencies(router, []httproute.Descriptor{route}, routeAuthDependencies{
+			workbenchVerifier:    mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{UserID: "user-1", HomeOrganizationID: "org-home", TokenExpiresAt: now.Add(time.Minute)}},
+			organizationResolver: mountedOrganizationResolverError{err: workbenchcontext.ErrOrganizationAccessDenied},
+			auditRecorder:        audit, auditNow: func() time.Time { return now },
+		})
+		request := httptest.NewRequest(route.Method, route.Path, nil)
+		request.Header.Set("Authorization", "Bearer current-request-token")
+		request.Header.Set("X-Requested-Organization-ID", "org-target")
+		request.Header.Set("X-Request-ID", "req-denied")
+		response := httptest.NewRecorder()
+
+		router.ServeHTTP(response, request)
+
+		require.Equal(t, http.StatusForbidden, response.Code)
+		require.Contains(t, response.Body.String(), "ORGANIZATION_ACCESS_DENIED")
+		require.Equal(t, 1, len(audit.records))
+		require.Equal(t, "org-target", audit.records[0].EffectiveOrganizationID)
+		require.Equal(t, workbenchcontext.AuditResultOrganizationAccessDenied, audit.records[0].Result)
+	})
+
+	t.Run("role denial", func(t *testing.T) {
+		audit := &mountedWorkbenchAuditStub{err: errors.New("audit unavailable")}
+		router := gin.New()
+		route := httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/workbench/admin-action", Module: "listing-kit-admin", Permission: authz.PermissionListingKitAdminWrite, AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, Handler: func(*gin.Context) { t.Fatal("denied handler ran") }}
+		mountRoutesWithAuthDependencies(router, []httproute.Descriptor{route}, routeAuthDependencies{
+			workbenchVerifier:    mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{UserID: "user-1", HomeOrganizationID: "org-home", TokenExpiresAt: now.Add(time.Minute)}},
+			organizationResolver: mountedOrganizationResolverStub{events: &[]string{}, roles: []string{"listingkit_viewer"}},
+			auditRecorder:        audit, auditNow: func() time.Time { return now },
+		})
+		request := httptest.NewRequest(route.Method, route.Path, nil)
+		request.Header.Set("Authorization", "Bearer current-request-token")
+		request.Header.Set("X-Request-ID", "req-role")
+		response := httptest.NewRecorder()
+
+		router.ServeHTTP(response, request)
+
+		require.Equal(t, http.StatusForbidden, response.Code)
+		require.Contains(t, response.Body.String(), "PERMISSION_DENIED")
+		require.Equal(t, 1, len(audit.records))
+		require.Equal(t, "org-a", audit.records[0].EffectiveOrganizationID)
+		require.Equal(t, authz.PermissionListingKitAdminWrite, audit.records[0].Action)
+		require.Equal(t, workbenchcontext.AuditResultPermissionDenied, audit.records[0].Result)
+	})
 }
 
 func (stub mountedOrganizationResolverStub) Resolve(_ context.Context, _ httproute.OrganizationAccessPolicy, input workbenchcontext.ResolveInput) (authidentity.AuthenticatedIdentity, error) {

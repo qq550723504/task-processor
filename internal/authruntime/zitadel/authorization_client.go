@@ -9,11 +9,11 @@ import (
 	"io"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"task-processor/internal/authidentity"
+	"task-processor/internal/zitadelprotojson"
 )
 
 const (
@@ -67,7 +67,7 @@ type authorizationIDFilter struct {
 
 type authorizationListResponse struct {
 	Pagination struct {
-		TotalResult protoJSONUint64 `json:"totalResult"`
+		TotalResult zitadelprotojson.Uint64 `json:"totalResult"`
 	} `json:"pagination"`
 	Authorizations []authorizationRecordV2 `json:"authorizations"`
 }
@@ -93,34 +93,6 @@ type authorizationRecordV2 struct {
 type organizationGrantAccumulator struct {
 	grant authidentity.OrganizationGrant
 	roles map[string]struct{}
-}
-
-// protoJSONUint64 accepts the canonical quoted decimal representation emitted
-// by ProtoJSON and unquoted integer values for compatibility with JSON proxies.
-type protoJSONUint64 uint64
-
-func (value *protoJSONUint64) UnmarshalJSON(data []byte) error {
-	data = bytes.TrimSpace(data)
-	if len(data) == 0 {
-		return errors.New("empty ProtoJSON uint64")
-	}
-
-	var parsed uint64
-	if data[0] == '"' {
-		var decimal string
-		if err := json.Unmarshal(data, &decimal); err != nil {
-			return err
-		}
-		converted, err := strconv.ParseUint(decimal, 10, 64)
-		if err != nil {
-			return err
-		}
-		parsed = converted
-	} else if err := json.Unmarshal(data, &parsed); err != nil {
-		return err
-	}
-	*value = protoJSONUint64(parsed)
-	return nil
 }
 
 // ListOwnProjectAuthorizations returns only active role assignments belonging
@@ -275,19 +247,22 @@ func addAuthorizationGrant(
 		return nil
 	}
 
+	organizationName := strings.TrimSpace(authorization.Organization.Name)
 	accumulator, ok := grants[organizationID]
 	if !ok {
 		accumulator = &organizationGrantAccumulator{
 			grant: authidentity.OrganizationGrant{
 				OrganizationID:   organizationID,
-				OrganizationName: strings.TrimSpace(authorization.Organization.Name),
+				OrganizationName: organizationName,
 				ProjectID:        authorizationProjectID,
 			},
 			roles: make(map[string]struct{}),
 		}
 		grants[organizationID] = accumulator
+	} else if accumulator.grant.OrganizationName != "" && organizationName != "" && accumulator.grant.OrganizationName != organizationName {
+		return errors.New("ZITADEL authorization contains conflicting organization names")
 	} else if accumulator.grant.OrganizationName == "" {
-		accumulator.grant.OrganizationName = strings.TrimSpace(authorization.Organization.Name)
+		accumulator.grant.OrganizationName = organizationName
 	}
 	for _, role := range authorization.Roles {
 		if key := strings.TrimSpace(role.Key); key != "" {

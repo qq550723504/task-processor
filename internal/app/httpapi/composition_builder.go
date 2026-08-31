@@ -156,7 +156,7 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 
 	if b.buildWorkbenchContext != nil {
 		done = timer.phase("buildWorkbenchContextModule")
-		workbenchResult, workbenchErr := b.buildWorkbenchContext(deps.shared.cfg)
+		workbenchResult, workbenchErr := b.buildWorkbenchContext(deps.shared.cfg, logger)
 		done()
 		if workbenchErr != nil {
 			return composition, workbenchErr

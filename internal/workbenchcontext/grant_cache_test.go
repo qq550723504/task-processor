@@ -110,10 +110,11 @@ func TestGrantCacheUsesTokenBoundTTLAndRejectsExpiredEntries(t *testing.T) {
 	if _, err := resolver.Grants(context.Background(), request); err != nil {
 		t.Fatalf("initial Grants() error = %v", err)
 	}
-	if len(cache.entries) != 1 {
-		t.Fatalf("cache entries = %d, want 1", len(cache.entries))
+	if cache.entries.Len() != 1 {
+		t.Fatalf("cache entries = %d, want 1", cache.entries.Len())
 	}
-	for _, entry := range cache.entries {
+	for _, item := range cache.entries.Items() {
+		entry := item.Value()
 		if !entry.expiresAt.Equal(base.Add(60 * time.Second)) {
 			t.Fatalf("cache expiry = %s, want %s", entry.expiresAt, base.Add(60*time.Second))
 		}
@@ -148,8 +149,60 @@ func TestGrantCacheDoesNotCacheTokensWithLessThanOneSecondRemaining(t *testing.T
 	if calls := client.callCount(); calls != 2 {
 		t.Fatalf("client calls = %d, want 2 when token has under one second left", calls)
 	}
-	if len(cache.entries) != 0 {
-		t.Fatalf("cache entries = %d, want 0", len(cache.entries))
+	if cache.entries.Len() != 0 {
+		t.Fatalf("cache entries = %d, want 0", cache.entries.Len())
+	}
+}
+
+func TestGrantCacheEnforcesHardCapacityByEvictingLeastRecentlyUsedEntry(t *testing.T) {
+	now := time.Now().UTC()
+	client := &authorizationClientStub{grants: []authidentity.OrganizationGrant{validGrant("org-a")}}
+	cache := newGrantCache(func() time.Time { return now }, 2)
+	resolver := NewGrantResolver(client, cache)
+	request := GrantRequest{BearerToken: "token", ProjectID: "project-a", ContractVersion: "v1", TokenExpiresAt: now.Add(time.Minute)}
+
+	for _, subject := range []string{"subject-1", "subject-2"} {
+		request.Subject = subject
+		if _, err := resolver.Grants(context.Background(), request); err != nil {
+			t.Fatalf("warm %s: %v", subject, err)
+		}
+	}
+	request.Subject = "subject-1"
+	if _, err := resolver.Grants(context.Background(), request); err != nil {
+		t.Fatalf("touch subject-1: %v", err)
+	}
+	request.Subject = "subject-3"
+	if _, err := resolver.Grants(context.Background(), request); err != nil {
+		t.Fatalf("insert subject-3: %v", err)
+	}
+
+	if got := cache.entries.Len(); got != 2 {
+		t.Fatalf("cache entries = %d, want hard capacity 2", got)
+	}
+	if cache.entries.Get(grantCacheKey{subject: "subject-2", projectID: "project-a", contractVersion: "v1"}) != nil {
+		t.Fatal("least-recently-used subject-2 entry survived capacity eviction")
+	}
+	if cache.entries.Get(grantCacheKey{subject: "subject-1", projectID: "project-a", contractVersion: "v1"}) == nil {
+		t.Fatal("recently accessed subject-1 entry was evicted")
+	}
+}
+
+func TestGrantCachePutGloballyRemovesExpiredOneOffSubjectEntries(t *testing.T) {
+	now := time.Now().UTC()
+	cache := newGrantCache(nil, 8)
+	expiredKey := grantCacheKey{subject: "one-off-subject", projectID: "project-a", contractVersion: "v1"}
+	cache.entries.Set(expiredKey, grantCacheEntry{expiresAt: now.Add(5 * time.Millisecond)}, 5*time.Millisecond)
+	time.Sleep(25 * time.Millisecond)
+
+	cache.put(GrantRequest{
+		Subject: "active-subject", ProjectID: "project-a", ContractVersion: "v1", TokenExpiresAt: time.Now().Add(time.Minute),
+	}, []authidentity.OrganizationGrant{validGrant("org-a")})
+
+	if got := cache.entries.Len(); got != 1 {
+		t.Fatalf("cache entries after global expiry cleanup = %d, want 1", got)
+	}
+	if cache.entries.Get(expiredKey) != nil {
+		t.Fatal("expired one-off subject entry survived unrelated put lifecycle cleanup")
 	}
 }
 

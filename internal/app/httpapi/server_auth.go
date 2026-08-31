@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -25,12 +26,14 @@ type routeAuthDependencies struct {
 	workbenchVerifier    zitadelruntime.Verifier
 	organizationResolver organizationIdentityResolver
 	roleMiddleware       func(httproute.Descriptor) gin.HandlerFunc
+	auditRecorder        workbenchcontext.AuditRecorder
+	auditNow             func() time.Time
 }
 
 const resolvedOrganizationTargetKey = "workbench.resolved-organization-target"
 
 func newRouteAuthDependencies() routeAuthDependencies {
-	return routeAuthDependencies{legacyZitadelAuth: newLegacyZitadelAuthMiddleware()}
+	return routeAuthDependencies{legacyZitadelAuth: newLegacyZitadelAuthMiddleware(), auditNow: time.Now}
 }
 
 func routeAuthHandlers(route httproute.Descriptor, zitadelAuth gin.HandlerFunc) []gin.HandlerFunc {
@@ -56,15 +59,15 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 	}
 	if requiresOrganization {
 		if route.OrganizationTargetResolver != nil {
-			handlers = append(handlers, organizationTargetResolutionMiddleware(route.OrganizationTargetResolver))
+			handlers = append(handlers, organizationTargetResolutionMiddleware(route, dependencies))
 		}
-		handlers = append(handlers, organizationResolutionMiddleware(route.OrganizationAccessPolicy, dependencies.organizationResolver))
+		handlers = append(handlers, organizationResolutionMiddleware(route, dependencies))
 	}
 	var roleAuth gin.HandlerFunc
 	if dependencies.roleMiddleware != nil {
 		roleAuth = dependencies.roleMiddleware(route)
 	} else if requiresOrganization {
-		roleAuth = listingkithttpapi.NewRouteRoleMiddlewareWithResponder(route, workbenchRoleAuthorizationResponder)
+		roleAuth = listingkithttpapi.NewRouteRoleMiddlewareWithResponder(route, workbenchRoleAuthorizationResponder(route, dependencies))
 	} else {
 		roleAuth = listingkithttpapi.NewRouteRoleMiddleware(route)
 	}
@@ -74,10 +77,13 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 	return handlers
 }
 
-func organizationTargetResolutionMiddleware(resolve httproute.OrganizationTargetResolver) gin.HandlerFunc {
+func organizationTargetResolutionMiddleware(route httproute.Descriptor, dependencies routeAuthDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		target, err := resolve(c.Request)
+		target, err := route.OrganizationTargetResolver(c.Request)
 		if err != nil {
+			if identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context()); ok {
+				_ = recordWorkbenchAudit(c, route, dependencies, identity, "", workbenchcontext.AuditResultInvalidRequest)
+			}
 			writeWorkbenchProtocolError(c, http.StatusBadRequest, "INVALID_REQUEST", "Request is invalid")
 			return
 		}
@@ -123,22 +129,27 @@ func workbenchAuthenticationMiddleware(verifier zitadelruntime.Verifier) gin.Han
 	}
 }
 
-func workbenchRoleAuthorizationResponder(c *gin.Context, failure listingkithttpapi.RoleAuthorizationFailure, _ string) {
-	if failure == listingkithttpapi.RoleAuthorizationDependencyUnavailable {
-		writeWorkbenchContextError(c, workbenchcontext.ErrAuthorizationDependencyUnavailable)
-		return
+func workbenchRoleAuthorizationResponder(route httproute.Descriptor, dependencies routeAuthDependencies) listingkithttpapi.RoleAuthorizationResponder {
+	return func(c *gin.Context, failure listingkithttpapi.RoleAuthorizationFailure, _ string) {
+		if failure == listingkithttpapi.RoleAuthorizationDependencyUnavailable {
+			writeWorkbenchContextError(c, workbenchcontext.ErrAuthorizationDependencyUnavailable)
+			return
+		}
+		if identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context()); ok {
+			_ = recordWorkbenchAudit(c, route, dependencies, identity, identity.EffectiveOrganizationID, workbenchcontext.AuditResultPermissionDenied)
+		}
+		writeWorkbenchProtocolError(c, http.StatusForbidden, "PERMISSION_DENIED", "Permission is denied")
 	}
-	writeWorkbenchProtocolError(c, http.StatusForbidden, "PERMISSION_DENIED", "Permission is denied")
 }
 
-func organizationResolutionMiddleware(policy httproute.OrganizationAccessPolicy, resolver organizationIdentityResolver) gin.HandlerFunc {
+func organizationResolutionMiddleware(route httproute.Descriptor, dependencies routeAuthDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		identity, authenticated := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 		if !authenticated {
 			writeWorkbenchContextError(c, workbenchcontext.ErrAuthenticationRequired)
 			return
 		}
-		if resolver == nil {
+		if dependencies.organizationResolver == nil {
 			writeWorkbenchContextError(c, workbenchcontext.ErrAuthorizationDependencyUnavailable)
 			return
 		}
@@ -146,14 +157,26 @@ func organizationResolutionMiddleware(policy httproute.OrganizationAccessPolicy,
 		if resolvedTarget, exists := c.Get(resolvedOrganizationTargetKey); exists {
 			requestedOrganizationID, _ = resolvedTarget.(string)
 		}
-		resolved, err := resolver.Resolve(c.Request.Context(), policy, workbenchcontext.ResolveInput{
+		resolved, err := dependencies.organizationResolver.Resolve(c.Request.Context(), route.OrganizationAccessPolicy, workbenchcontext.ResolveInput{
 			Identity:                identity,
 			BearerToken:             requestBearerToken(c.GetHeader("Authorization")),
 			RequestedOrganizationID: requestedOrganizationID,
 		})
 		if err != nil {
+			if result := workbenchAuditResultForError(err); result != "" || route.OrganizationAccessPolicy == httproute.OrganizationAccessPolicyLiveSwitch {
+				if result == "" {
+					result = workbenchcontext.AuditResultDependencyUnavailable
+				}
+				_ = recordWorkbenchAudit(c, route, dependencies, identity, requestedOrganizationID, result)
+			}
 			writeWorkbenchContextError(c, err)
 			return
+		}
+		if route.OrganizationAccessPolicy == httproute.OrganizationAccessPolicyLiveSwitch {
+			if err := recordWorkbenchAudit(c, route, dependencies, resolved, resolved.EffectiveOrganizationID, workbenchcontext.AuditResultSuccess); err != nil {
+				writeWorkbenchContextError(c, workbenchcontext.ErrAuthorizationDependencyUnavailable)
+				return
+			}
 		}
 		c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), resolved))
 		for _, header := range []string{"X-Tenant-ID", "tenant-id", "X-User-Roles"} {
@@ -167,6 +190,43 @@ func organizationResolutionMiddleware(policy httproute.OrganizationAccessPolicy,
 			c.Request.Header.Set("X-User-Roles", strings.Join(resolved.Roles, ","))
 		}
 		c.Next()
+	}
+}
+
+func recordWorkbenchAudit(c *gin.Context, route httproute.Descriptor, dependencies routeAuthDependencies, identity authidentity.AuthenticatedIdentity, effectiveOrganizationID, result string) error {
+	if dependencies.auditRecorder == nil {
+		return errors.New("workbench audit recorder is not configured")
+	}
+	now := dependencies.auditNow
+	if now == nil {
+		now = time.Now
+	}
+	action := route.Permission
+	if route.OrganizationAccessPolicy == httproute.OrganizationAccessPolicyLiveSwitch {
+		action = workbenchcontext.AuditActionOrganizationSwitch
+	} else if strings.TrimSpace(action) == "" {
+		action = route.Method
+	}
+	return dependencies.auditRecorder.Record(c.Request.Context(), workbenchcontext.AuditEvent{
+		Subject: identity.UserID, HomeOrganizationID: identity.HomeOrganizationID,
+		EffectiveOrganizationID: effectiveOrganizationID,
+		Resource:                route.Path, Action: action, Result: result,
+		Timestamp: now().UTC(), RequestID: strings.TrimSpace(c.GetHeader("X-Request-ID")),
+	})
+}
+
+func workbenchAuditResultForError(err error) string {
+	switch {
+	case errors.Is(err, workbenchcontext.ErrOrganizationAccessDenied):
+		return workbenchcontext.AuditResultOrganizationAccessDenied
+	case errors.Is(err, workbenchcontext.ErrOrganizationAccessRevoked):
+		return workbenchcontext.AuditResultOrganizationAccessRevoked
+	case errors.Is(err, workbenchcontext.ErrOrganizationSuspended):
+		return workbenchcontext.AuditResultOrganizationSuspended
+	case errors.Is(err, workbenchcontext.ErrOrganizationSelectionRequired):
+		return workbenchcontext.AuditResultSelectionRequired
+	default:
+		return ""
 	}
 }
 

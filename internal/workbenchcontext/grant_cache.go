@@ -8,10 +8,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jellydator/ttlcache/v3"
+
 	"task-processor/internal/authidentity"
 )
 
-const grantCacheMaximumTTL = 60 * time.Second
+const (
+	grantCacheMaximumTTL      = 60 * time.Second
+	grantCacheDefaultCapacity = uint64(1024)
+)
 
 // GrantSource selects an authorization lookup policy and identifies the source
 // that produced a GrantResult.
@@ -126,38 +131,43 @@ type grantCacheEntry struct {
 type GrantCache struct {
 	mu      sync.RWMutex
 	now     func() time.Time
-	entries map[grantCacheKey]grantCacheEntry
+	entries *ttlcache.Cache[grantCacheKey, grantCacheEntry]
 }
 
 // NewGrantCache creates a concurrency-safe in-process grant cache. The clock
 // parameter is injectable for deterministic expiry tests.
 func NewGrantCache(now func() time.Time) *GrantCache {
+	return newGrantCache(now, grantCacheDefaultCapacity)
+}
+
+func newGrantCache(now func() time.Time, capacity uint64) *GrantCache {
 	if now == nil {
 		now = time.Now
 	}
-	return &GrantCache{now: now, entries: make(map[grantCacheKey]grantCacheEntry)}
+	return &GrantCache{
+		now: now,
+		entries: ttlcache.New[grantCacheKey, grantCacheEntry](
+			ttlcache.WithCapacity[grantCacheKey, grantCacheEntry](capacity),
+			ttlcache.WithDisableTouchOnHit[grantCacheKey, grantCacheEntry](),
+		),
+	}
 }
 
 func (cache *GrantCache) get(request GrantRequest) ([]authidentity.OrganizationGrant, bool) {
 	key := cacheKey(request)
 	now := cache.now()
-	cache.mu.RLock()
-	entry, ok := cache.entries[key]
-	if ok && now.Before(entry.expiresAt) {
-		grants := cloneGrants(entry.grants)
-		cache.mu.RUnlock()
-		return grants, true
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	item := cache.entries.Get(key)
+	if item == nil {
+		return nil, false
 	}
-	cache.mu.RUnlock()
-	if ok {
-		cache.mu.Lock()
-		entry, stillPresent := cache.entries[key]
-		if stillPresent && !now.Before(entry.expiresAt) {
-			delete(cache.entries, key)
-		}
-		cache.mu.Unlock()
+	entry := item.Value()
+	if !now.Before(entry.expiresAt) {
+		cache.entries.Delete(key)
+		return nil, false
 	}
-	return nil, false
+	return cloneGrants(entry.grants), true
 }
 
 func (cache *GrantCache) put(request GrantRequest, grants []authidentity.OrganizationGrant) {
@@ -174,7 +184,8 @@ func (cache *GrantCache) put(request GrantRequest, grants []authidentity.Organiz
 	}
 	expiresAt := now.Add(ttl)
 	cache.mu.Lock()
-	cache.entries[cacheKey(request)] = grantCacheEntry{grants: cloneGrants(grants), expiresAt: expiresAt}
+	cache.entries.DeleteExpired()
+	cache.entries.Set(cacheKey(request), grantCacheEntry{grants: cloneGrants(grants), expiresAt: expiresAt}, ttl)
 	cache.mu.Unlock()
 }
 
@@ -186,9 +197,9 @@ func (cache *GrantCache) Invalidate(subject string, projectID string) {
 	subject = strings.TrimSpace(subject)
 	projectID = strings.TrimSpace(projectID)
 	cache.mu.Lock()
-	for key := range cache.entries {
+	for _, key := range cache.entries.Keys() {
 		if key.subject == subject && key.projectID == projectID {
-			delete(cache.entries, key)
+			cache.entries.Delete(key)
 		}
 	}
 	cache.mu.Unlock()
