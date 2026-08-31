@@ -274,8 +274,8 @@ func newStoreFromSnapshot(snapshot StoreSnapshot) (*Store, error) {
 	if !validLifecycleStatus(snapshot.LifecycleStatus) {
 		return nil, errors.New("lifecycle status is invalid")
 	}
-	if snapshot.Version < 1 {
-		return nil, errors.New("version must be positive")
+	if snapshot.Version < minimumLifecycleVersion(snapshot.LifecycleStatus) {
+		return nil, fmt.Errorf("version %d cannot reach lifecycle status %s", snapshot.Version, snapshot.LifecycleStatus)
 	}
 	if snapshot.CreatedAt.IsZero() || snapshot.UpdatedAt.IsZero() {
 		return nil, errors.New("created and updated times are required")
@@ -331,6 +331,19 @@ func validLifecycleStatus(status LifecycleStatus) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func minimumLifecycleVersion(status LifecycleStatus) int64 {
+	switch status {
+	case StoreStatusProvisioning:
+		return 1
+	case StoreStatusActive:
+		return 2
+	case StoreStatusDisabled, StoreStatusDeleting:
+		return 3
+	default:
+		return 1
 	}
 }
 

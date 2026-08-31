@@ -149,14 +149,14 @@ func TestLifecycleTransitionsEnforceEdgesAndVersions(t *testing.T) {
 		wantVersion int64
 	}{
 		{"provisioning activates", storecenter.StoreStatusProvisioning, storecenter.StoreStatusActive, nil, storecenter.StoreStatusActive, 2},
-		{"active disables", storecenter.StoreStatusActive, storecenter.StoreStatusDisabled, nil, storecenter.StoreStatusDisabled, 2},
-		{"disabled activates", storecenter.StoreStatusDisabled, storecenter.StoreStatusActive, nil, storecenter.StoreStatusActive, 2},
-		{"active deletes", storecenter.StoreStatusActive, storecenter.StoreStatusDeleting, nil, storecenter.StoreStatusDeleting, 2},
-		{"disabled deletes", storecenter.StoreStatusDisabled, storecenter.StoreStatusDeleting, nil, storecenter.StoreStatusDeleting, 2},
+		{"active disables", storecenter.StoreStatusActive, storecenter.StoreStatusDisabled, nil, storecenter.StoreStatusDisabled, 3},
+		{"disabled activates", storecenter.StoreStatusDisabled, storecenter.StoreStatusActive, nil, storecenter.StoreStatusActive, 4},
+		{"active deletes", storecenter.StoreStatusActive, storecenter.StoreStatusDeleting, nil, storecenter.StoreStatusDeleting, 3},
+		{"disabled deletes", storecenter.StoreStatusDisabled, storecenter.StoreStatusDeleting, nil, storecenter.StoreStatusDeleting, 4},
 		{"provisioning cannot disable", storecenter.StoreStatusProvisioning, storecenter.StoreStatusDisabled, storecenter.ErrInvalidTransition, storecenter.StoreStatusProvisioning, 1},
 		{"provisioning cannot delete", storecenter.StoreStatusProvisioning, storecenter.StoreStatusDeleting, storecenter.ErrInvalidTransition, storecenter.StoreStatusProvisioning, 1},
-		{"active cannot activate", storecenter.StoreStatusActive, storecenter.StoreStatusActive, storecenter.ErrInvalidTransition, storecenter.StoreStatusActive, 1},
-		{"deleting cannot activate", storecenter.StoreStatusDeleting, storecenter.StoreStatusActive, storecenter.ErrInvalidTransition, storecenter.StoreStatusDeleting, 1},
+		{"active cannot activate", storecenter.StoreStatusActive, storecenter.StoreStatusActive, storecenter.ErrInvalidTransition, storecenter.StoreStatusActive, 2},
+		{"deleting cannot activate", storecenter.StoreStatusDeleting, storecenter.StoreStatusActive, storecenter.ErrInvalidTransition, storecenter.StoreStatusDeleting, 3},
 	}
 
 	for _, tt := range tests {
@@ -224,6 +224,42 @@ func TestStoreRehydrateRejectsInvalidPersistedState(t *testing.T) {
 			tt.mutate(&snapshot)
 			if _, err := storecenter.RehydrateStore(snapshot); err == nil {
 				t.Fatal("RehydrateStore() error = nil, want invariant error")
+			}
+		})
+	}
+}
+
+// Mutation caught: accepting lifecycle states at versions that cannot be
+// reached from provisioning version 1 would admit impossible persisted rows.
+func TestStoreRehydrateEnforcesLifecycleMinimumVersions(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  storecenter.LifecycleStatus
+		version int64
+		wantErr bool
+	}{
+		{"provisioning starts at one", storecenter.StoreStatusProvisioning, 1, false},
+		{"provisioning permits later edits", storecenter.StoreStatusProvisioning, 8, false},
+		{"active rejects creation version", storecenter.StoreStatusActive, 1, true},
+		{"active permits first transition", storecenter.StoreStatusActive, 2, false},
+		{"active permits later edits", storecenter.StoreStatusActive, 8, false},
+		{"disabled rejects version two", storecenter.StoreStatusDisabled, 2, true},
+		{"disabled permits first disable", storecenter.StoreStatusDisabled, 3, false},
+		{"disabled permits later edits", storecenter.StoreStatusDisabled, 9, false},
+		{"deleting rejects version two", storecenter.StoreStatusDeleting, 2, true},
+		{"deleting permits direct active delete", storecenter.StoreStatusDeleting, 3, false},
+		{"deleting permits later edits", storecenter.StoreStatusDeleting, 10, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			snapshot := newTestStore(t).Snapshot()
+			snapshot.LifecycleStatus = tt.status
+			snapshot.Version = tt.version
+
+			_, err := storecenter.RehydrateStore(snapshot)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("RehydrateStore() error = %v, want error = %t", err, tt.wantErr)
 			}
 		})
 	}
@@ -311,11 +347,25 @@ func newStoreAtStatus(t *testing.T, status storecenter.StoreStatus) *storecenter
 	t.Helper()
 	snapshot := newTestStore(t).Snapshot()
 	snapshot.LifecycleStatus = status
+	snapshot.Version = minimumVersionForStatus(status)
 	store, err := storecenter.RehydrateStore(snapshot)
 	if err != nil {
 		t.Fatalf("RehydrateStore() error = %v", err)
 	}
 	return store
+}
+
+func minimumVersionForStatus(status storecenter.LifecycleStatus) int64 {
+	switch status {
+	case storecenter.StoreStatusProvisioning:
+		return 1
+	case storecenter.StoreStatusActive:
+		return 2
+	case storecenter.StoreStatusDisabled, storecenter.StoreStatusDeleting:
+		return 3
+	default:
+		return 1
+	}
 }
 
 func validCreateStoreInput() storecenter.CreateStoreInput {
