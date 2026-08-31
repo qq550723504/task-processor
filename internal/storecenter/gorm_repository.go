@@ -154,6 +154,9 @@ func (r *GormStoreRepository) Save(ctx context.Context, organizationID string, s
 	if err != nil {
 		return fmt.Errorf("rehydrate durable workbench store: %w", err)
 	}
+	if durableStore.Version() != expectedVersion {
+		return ErrVersionConflict
+	}
 	if err := validateSaveSnapshot(durableStore.Snapshot(), snapshot); err != nil {
 		return err
 	}

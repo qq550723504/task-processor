@@ -530,6 +530,50 @@ func TestGormStoreRepositoryConcurrentSavesHaveOneWinner(t *testing.T) {
 	}
 }
 
+// Mutation caught: validating a stale candidate's lifecycle or timestamp
+// before its durable version returns an invalid-transition error instead of
+// the optimistic-concurrency conflict the caller must recover from.
+func TestGormStoreRepositoryPrioritizesVersionConflictOverStaleLifecycleValidation(t *testing.T) {
+	repo := newStoreRepository(t)
+	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000156", "00000000-0000-4000-8000-000000000256", "00000000-0000-4000-8000-000000000356", "North", "SG", "external", testPersistenceTime)
+	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-active", store.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
+		t.Fatal(err)
+	}
+	winner, err := repo.Get(context.Background(), "org-a", store.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, err := repo.Get(context.Background(), "org-a", store.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := winner.TransitionTo(storecenter.StoreStatusDeleting, "subject-winner", winner.UpdatedAt().Add(5*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", winner, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := stale.TransitionTo(storecenter.StoreStatusDisabled, "subject-stale", stale.UpdatedAt().Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", stale, 2); !errors.Is(err, storecenter.ErrVersionConflict) {
+		t.Fatalf("stale Save error = %v, want ErrVersionConflict", err)
+	}
+	got, err := repo.Get(context.Background(), "org-a", store.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LifecycleStatus() != storecenter.StoreStatusDeleting || got.Version() != 3 || got.UpdatedBy() != "subject-winner" {
+		t.Fatalf("stale Save mutated winner: got status=%q version=%d actor=%q", got.LifecycleStatus(), got.Version(), got.UpdatedBy())
+	}
+}
+
 var testPersistenceTime = time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC)
 
 func newStoreRepository(t *testing.T) *storecenter.GormStoreRepository {
