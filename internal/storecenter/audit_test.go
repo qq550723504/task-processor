@@ -133,21 +133,40 @@ func TestAuditRepositoryConcurrentExactRecordConverges(t *testing.T) {
 	}
 	event := safeAuditEvent("org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), time.Now().UTC())
 	start := make(chan struct{})
-	errorsOut := make(chan error, 2)
+	results := make(chan struct {
+		event    storecenter.AuditEvent
+		replayed bool
+		err      error
+	}, 2)
 	for range 2 {
 		go func() {
 			<-start
 			candidate := event
 			candidate.EventID = uuid.NewString()
-			_, _, err := repository.Record(context.Background(), candidate)
-			errorsOut <- err
+			candidate.ActorSubject = uuid.NewString()
+			stored, replayed, err := repository.Record(context.Background(), candidate)
+			results <- struct {
+				event    storecenter.AuditEvent
+				replayed bool
+				err      error
+			}{stored, replayed, err}
 		}()
 	}
 	close(start)
-	for range 2 {
-		if err := <-errorsOut; err != nil {
-			t.Fatalf("concurrent Record() error = %v", err)
-		}
+	first := <-results
+	second := <-results
+	if first.err != nil || second.err != nil {
+		t.Fatalf("concurrent Record() errors = %v/%v", first.err, second.err)
+	}
+	if first.replayed == second.replayed {
+		t.Fatalf("concurrent replay flags = %v/%v, want one insert and one replay", first.replayed, second.replayed)
+	}
+	if first.event.EventID != second.event.EventID || first.event.ActorSubject != second.event.ActorSubject || !first.event.OccurredAt.Equal(second.event.OccurredAt) {
+		t.Fatalf("concurrent durable authority differs: %+v / %+v", first.event, second.event)
+	}
+	var rows int64
+	if err := db.Table("workbench_store_audit_logs").Count(&rows).Error; err != nil || rows != 1 {
+		t.Fatalf("concurrent audit rows = %d/%v, want 1", rows, err)
 	}
 }
 

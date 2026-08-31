@@ -90,7 +90,11 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 				createErr := err
 				store, err = s.repository.Get(ctx, request.OrganizationID, allocation.StoreID)
 				if errors.Is(err, ErrNotFound) {
-					return s.compensateDefinitiveCreateFailure(ctx, allocation, transition, request, createErr)
+					if errors.Is(createErr, ErrAlreadyExists) {
+						return s.compensateDefinitiveCreateFailure(ctx, allocation, transition, request, createErr)
+					}
+					_ = s.record(ctx, allocation, request, AuditActionStoreCreateUnknown, AuditOutcomeUnknown, nil, "", "", AuditFailureDependencyUnavailable)
+					return CreateStoreResult{}, dependencyError(createErr)
 				}
 				if err != nil {
 					_ = s.record(ctx, allocation, request, AuditActionStoreCreateUnknown, AuditOutcomeUnknown, nil, "", "", AuditFailureDependencyUnavailable)
@@ -191,6 +195,9 @@ func (s *Service) compensateDefinitiveCreateFailure(ctx context.Context, allocat
 	if err := s.record(ctx, allocation, request, AuditActionStoreCreateFailed, AuditOutcomeFailed, nil, "", "", auditFailureFor(failure)); err != nil {
 		return CreateStoreResult{}, dependencyError(err)
 	}
+	if err := s.requireNoStoreBeforeRelease(ctx, allocation, request.OrganizationID); err != nil {
+		return CreateStoreResult{}, err
+	}
 	if err := s.releaseReservation(ctx, transition); err != nil {
 		return CreateStoreResult{}, dependencyError(err)
 	}
@@ -202,6 +209,9 @@ func (s *Service) finishReleasedFailure(ctx context.Context, allocation listings
 	case listingsubscription.StoreQuotaReleased:
 		return nil
 	case listingsubscription.StoreQuotaReserved:
+		if err := s.requireNoStoreBeforeRelease(ctx, allocation, request.OrganizationID); err != nil {
+			return err
+		}
 		if err := s.releaseReservation(ctx, transition); err != nil {
 			return dependencyError(err)
 		}
@@ -209,6 +219,20 @@ func (s *Service) finishReleasedFailure(ctx context.Context, allocation listings
 	default:
 		return dependencyError(errors.New("terminal create failure has allocated quota"))
 	}
+}
+
+func (s *Service) requireNoStoreBeforeRelease(ctx context.Context, allocation listingsubscription.StoreQuotaAllocation, organizationID string) error {
+	store, err := s.repository.Get(ctx, organizationID, allocation.StoreID)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return dependencyError(err)
+	}
+	if err := verifyStoreAllocation(store, CreateStoreRequest{OrganizationID: organizationID, IdempotencyKey: allocation.RequestKey}, allocation); err != nil {
+		return dependencyError(err)
+	}
+	return dependencyError(errors.New("store appeared before reservation release"))
 }
 
 func (s *Service) releaseReservation(ctx context.Context, input listingsubscription.StoreQuotaTransitionInput) error {
@@ -256,13 +280,13 @@ func verifyStoreAllocation(store *Store, request CreateStoreRequest, allocation 
 func mapQuotaError(err error) error {
 	var exceeded *listingsubscription.StoreQuotaExceededError
 	if errors.As(err, &exceeded) {
-		if exceeded.Committed < 0 || exceeded.Reserved < 0 || exceeded.Limit <= 0 {
+		if exceeded == nil || exceeded.Committed < 0 || exceeded.Reserved < 0 || exceeded.Limit <= 0 || (exceeded.Committed < exceeded.Limit && exceeded.Reserved < exceeded.Limit-exceeded.Committed) {
 			return dependencyError(err)
 		}
 		return &StoreLimitReachedError{Committed: exceeded.Committed, Used: exceeded.Committed, Reserved: exceeded.Reserved, Limit: exceeded.Limit}
 	}
 	if errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
-		return err
+		return fmt.Errorf("%w", listingsubscription.ErrSubscriptionRequired)
 	}
 	return dependencyError(err)
 }

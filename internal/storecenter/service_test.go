@@ -59,6 +59,10 @@ func TestServiceCreateActivatesOneReservedStore(t *testing.T) {
 	if got := audit.actionsFor(organizationID, requestKey); !sameStrings(got, []string{"quota_reserved", "store_created", "quota_commit_started", "store_creation_committed"}) {
 		t.Fatalf("audit actions = %v, want safe durable phases", got)
 	}
+	createdEvent := audit.eventFor(organizationID, requestKey, storecenter.AuditActionStoreCreated)
+	if createdEvent.PreviousState != "" || createdEvent.NewState != storecenter.StoreStatusProvisioning {
+		t.Fatalf("store_created state = %q -> %q, want empty -> provisioning", createdEvent.PreviousState, createdEvent.NewState)
+	}
 }
 
 func TestServiceCreateDefinitiveDuplicateReleasesAndReplaysStableFailure(t *testing.T) {
@@ -153,6 +157,32 @@ func TestServiceCreateRedactsDependencyTextEvenWhenSentinelIsWrapped(t *testing.
 	_, err = service.Create(context.Background(), validCreateRequest())
 	if !errors.Is(err, storecenter.ErrDependencyUnavailable) || err.Error() != storecenter.ErrDependencyUnavailable.Error() || strings.Contains(err.Error(), "password") {
 		t.Fatalf("Create() dependency error = %q, want redacted sentinel", err)
+	}
+}
+
+func TestServiceCreateRedactsWrappedSubscriptionRequired(t *testing.T) {
+	ledger := &quotaLedgerFake{reserveErr: fmt.Errorf("provider token text: %w", listingsubscription.ErrSubscriptionRequired)}
+	service, err := storecenter.NewService(newStoreRepositoryFake(), ledger, newAuditRepositoryFake(), time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	_, err = service.Create(context.Background(), validCreateRequest())
+	if !errors.Is(err, listingsubscription.ErrSubscriptionRequired) || err.Error() != listingsubscription.ErrSubscriptionRequired.Error() || strings.Contains(err.Error(), "token") {
+		t.Fatalf("Create() subscription error = %q, want redacted subscription sentinel", err)
+	}
+}
+
+func TestServiceCreateRejectsTypedNilAndInconsistentQuotaExceeded(t *testing.T) {
+	var typedNil *listingsubscription.StoreQuotaExceededError
+	for _, reserveErr := range []error{typedNil, &listingsubscription.StoreQuotaExceededError{Committed: 1, Reserved: 1, Limit: 3}} {
+		service, err := storecenter.NewService(newStoreRepositoryFake(), &quotaLedgerFake{reserveErr: reserveErr}, newAuditRepositoryFake(), time.Now)
+		if err != nil {
+			t.Fatalf("NewService(): %v", err)
+		}
+		_, err = service.Create(context.Background(), validCreateRequest())
+		if !errors.Is(err, storecenter.ErrDependencyUnavailable) || err.Error() != storecenter.ErrDependencyUnavailable.Error() {
+			t.Fatalf("Create() quota error = %v, want redacted dependency", err)
+		}
 	}
 }
 
@@ -317,6 +347,35 @@ func TestServiceCreateConcurrentExactRequestsConverge(t *testing.T) {
 	}
 }
 
+func TestServiceCreateConcurrentReplayRepairsWriteAheadAuditFailure(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	repository := newStoreRepositoryFake()
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionQuotaCommitStarted: 1}
+	service, err := storecenter.NewService(repository, ledger, audit, time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("initial Create() error = %v, want dependency unavailable", err)
+	}
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	for range 2 {
+		go func() { <-start; _, err := service.Create(context.Background(), request); errs <- err }()
+	}
+	close(start)
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent replay Create(): %v", err)
+		}
+	}
+	if got := audit.actionsFor(request.OrganizationID, request.IdempotencyKey); !sameStrings(got, []string{"quota_reserved", "store_created", "quota_commit_started", "store_creation_committed"}) {
+		t.Fatalf("recovered audit actions = %v, want one durable write-ahead phase", got)
+	}
+}
+
 func TestServiceCreateReplayReturnsLaterDisabledStoreWithoutReactivation(t *testing.T) {
 	request := validCreateRequest()
 	ledger := quotaForRequest(request)
@@ -462,6 +521,88 @@ func TestServiceCreateRejectsReleaseResultIdentityMismatch(t *testing.T) {
 	}
 }
 
+func TestServiceCreateRejectsReleaseResultWithCorrectIdentityWrongStatus(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	wrongStatus := ledger.allocation
+	wrongStatus.Status = listingsubscription.StoreQuotaReserved
+	ledger.releaseOverride = &wrongStatus
+	repository := newStoreRepositoryFake()
+	repository.createErr = storecenter.ErrAlreadyExists
+	service, err := storecenter.NewService(repository, ledger, newAuditRepositoryFake(), time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("Create() error = %v, want dependency unavailable", err)
+	}
+}
+
+func TestServiceCreateDoesNotCompensateGenericCreateError(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	repository := newStoreRepositoryFake()
+	repository.createErr = errors.New("driver create failure")
+	audit := newAuditRepositoryFake()
+	service, err := storecenter.NewService(repository, ledger, audit, time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("Create() error = %v, want dependency unavailable", err)
+	}
+	if ledger.releaseCalls != 0 || len(audit.actionsFor(request.OrganizationID, request.IdempotencyKey)) != 2 {
+		t.Fatalf("generic failure release/audits = %d/%v, want no release and no terminal audit", ledger.releaseCalls, audit.actionsFor(request.OrganizationID, request.IdempotencyKey))
+	}
+}
+
+func TestServiceCreateTerminalFailureWithAppearingStoreNeverReleases(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	repository := newStoreRepositoryFake()
+	audit := newAuditRepositoryFake()
+	store := matchingStore(t, request, ledger.allocation)
+	audit.onRecord = func(event storecenter.AuditEvent) {
+		if event.Action == storecenter.AuditActionStoreCreateFailed {
+			repository.stores[request.OrganizationID+"/"+store.ID()] = cloneStore(store)
+		}
+	}
+	repository.createErr = storecenter.ErrAlreadyExists
+	service, err := storecenter.NewService(repository, ledger, audit, time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("Create() error = %v, want dependency unavailable", err)
+	}
+	if ledger.releaseCalls != 0 {
+		t.Fatalf("post-terminal Store appearance release calls = %d, want 0", ledger.releaseCalls)
+	}
+}
+
+func TestServiceCreateTerminalReplayWithStorePresentNeverReleases(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	repository := newStoreRepositoryFake()
+	audit := newAuditRepositoryFake()
+	store := matchingStore(t, request, ledger.allocation)
+	repository.stores[request.OrganizationID+"/"+store.ID()] = cloneStore(store)
+	_, _, err := audit.Record(context.Background(), storecenter.AuditEvent{EventID: uuid.NewString(), OrganizationID: request.OrganizationID, StoreID: store.ID(), AllocationID: ledger.allocation.AllocationID, RequestKey: request.IdempotencyKey, Action: storecenter.AuditActionStoreCreateFailed, Outcome: storecenter.AuditOutcomeFailed, ActorSubject: request.ActorSubject, FailureCode: storecenter.AuditFailureAlreadyExists, OccurredAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatalf("Record terminal audit: %v", err)
+	}
+	service, err := storecenter.NewService(repository, ledger, audit, time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("terminal replay Create() error = %v, want dependency unavailable", err)
+	}
+	if ledger.releaseCalls != 0 {
+		t.Fatalf("terminal replay Store-present release calls = %d, want 0", ledger.releaseCalls)
+	}
+}
+
 func TestServiceCreateTerminalFailureReplayRejectsReleaseResultMismatch(t *testing.T) {
 	request := validCreateRequest()
 	ledger := quotaForRequest(request)
@@ -597,6 +738,15 @@ func cloneStore(store *storecenter.Store) *storecenter.Store {
 	return cloned
 }
 
+func matchingStore(t *testing.T, request storecenter.CreateStoreRequest, allocation listingsubscription.StoreQuotaAllocation) *storecenter.Store {
+	t.Helper()
+	store, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: allocation.StoreID, OrganizationID: request.OrganizationID, ActorSubject: request.ActorSubject, Name: request.Name, Platform: request.Platform, Region: request.Region, ExternalStoreID: request.ExternalStoreID, CreateIdempotencyKey: request.IdempotencyKey, QuotaAllocationID: allocation.AllocationID, OccurredAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatalf("NewStore(matching): %v", err)
+	}
+	return store
+}
+
 type quotaLedgerFake struct {
 	mu                                      sync.Mutex
 	allocation                              listingsubscription.StoreQuotaAllocation
@@ -653,6 +803,7 @@ type auditRepositoryFake struct {
 	recordErr   error
 	failActions map[storecenter.AuditAction]int
 	recordCalls int
+	onRecord    func(storecenter.AuditEvent)
 }
 
 func newAuditRepositoryFake() *auditRepositoryFake {
@@ -677,6 +828,9 @@ func (f *auditRepositoryFake) Record(_ context.Context, event storecenter.AuditE
 		return existing, true, nil
 	}
 	f.events[key] = event
+	if f.onRecord != nil {
+		f.onRecord(event)
+	}
 	return event, false, nil
 }
 func (f *auditRepositoryFake) Get(_ context.Context, organizationID, requestKey string, action storecenter.AuditAction) (*storecenter.AuditEvent, error) {
@@ -699,6 +853,13 @@ func (f *auditRepositoryFake) actionsFor(organizationID, requestKey string) []st
 	}
 	return out
 }
+
+func (f *auditRepositoryFake) eventFor(organizationID, requestKey string, action storecenter.AuditAction) storecenter.AuditEvent {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.events[organizationID+"/"+requestKey+"/"+string(action)]
+}
+
 func sameStrings(got, want []string) bool {
 	if len(got) != len(want) {
 		return false
