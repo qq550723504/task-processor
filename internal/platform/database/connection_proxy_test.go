@@ -1,9 +1,11 @@
 package database
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -48,6 +50,35 @@ func newTestConnectionProxyWithCloseError(t *testing.T, maxOps int, closeErr err
 		}
 	})
 	return proxy, sqlDB, mock
+}
+
+func waitForConnectionProxyCloseWaiters(t *testing.T, results <-chan error, want int) {
+	t.Helper()
+
+	const attempts = 10_000
+	for range attempts {
+		select {
+		case err := <-results:
+			t.Fatalf("Close returned before active Execute was released: %v", err)
+		default:
+		}
+
+		stack := make([]byte, 64<<10)
+		stack = stack[:runtime.Stack(stack, true)]
+		waiting := 0
+		for _, goroutine := range bytes.Split(stack, []byte("\n\n")) {
+			if bytes.Contains(goroutine, []byte("[sync.Mutex.Lock")) &&
+				bytes.Contains(goroutine, []byte("database.(*ConnectionProxy).Close")) {
+				waiting++
+			}
+		}
+		if waiting == want {
+			return
+		}
+		runtime.Gosched()
+	}
+
+	t.Fatalf("concurrent Close waiters did not block in sync.Once; want %d", want)
 }
 
 func TestNewConnectionProxyRejectsMissingConfig(t *testing.T) {
@@ -300,17 +331,36 @@ func TestConnectionProxyConcurrentCloseSharesUnderlyingErrorAndRejectsNewWork(t 
 	synctest.Test(t, func(t *testing.T) {
 		closeErr := errors.New("driver close failed")
 		proxy, _, mock := newTestConnectionProxyWithCloseError(t, 1, closeErr)
+		releaseExecute := make(chan struct{}, 1)
+		defer close(releaseExecute)
+		executeStarted := make(chan struct{})
+		executeResult := make(chan error, 1)
+		go func() {
+			executeResult <- proxy.Execute(t.Context(), func(*gorm.DB) error {
+				close(executeStarted)
+				<-releaseExecute
+				return nil
+			})
+		}()
+		<-executeStarted
+
 		const closeCalls = 8
-		start := make(chan struct{})
 		results := make(chan error, closeCalls)
-		for range closeCalls {
+		go func() { results <- proxy.Close() }()
+		synctest.Wait()
+
+		for range closeCalls - 1 {
 			go func() {
-				<-start
 				results <- proxy.Close()
 			}()
 		}
-		close(start)
+		waitForConnectionProxyCloseWaiters(t, results, closeCalls-1)
+
+		releaseExecute <- struct{}{}
 		synctest.Wait()
+		if err := <-executeResult; err != nil {
+			t.Fatalf("active Execute error = %v", err)
+		}
 
 		for i := range closeCalls {
 			if err := <-results; !errors.Is(err, closeErr) {
