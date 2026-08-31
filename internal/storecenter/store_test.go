@@ -1,117 +1,136 @@
-package storecenter
+package storecenter_test
 
 import (
 	"context"
 	"errors"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
+	"time"
+
+	"task-processor/internal/storecenter"
 )
 
 const (
 	testStoreID        = "123e4567-e89b-12d3-a456-426614174000"
 	testIdempotencyKey = "123e4567-e89b-12d3-a456-426614174001"
+	testAllocationID   = "123e4567-e89b-12d3-a456-426614174002"
 )
+
+var (
+	testCreatedAt = time.Date(2026, time.August, 31, 8, 30, 0, 0, time.UTC)
+	testUpdatedAt = time.Date(2026, time.August, 31, 8, 31, 0, 0, time.UTC)
+)
+
+// Mutation caught: omitting persisted aggregate fields or initializing them
+// from a wall clock would break Task 2 persistence and deterministic creation.
+func TestStoreCreateInitializesPersistedAggregateState(t *testing.T) {
+	store := newTestStore(t)
+
+	assertEqual(t, "ID", store.ID(), testStoreID)
+	assertEqual(t, "OrganizationID", store.OrganizationID(), "org_Exact-Value")
+	assertEqual(t, "Name", store.Name(), "North Shop")
+	assertEqual(t, "Platform", store.Platform(), storecenter.PlatformShein)
+	assertEqual(t, "Region", store.Region(), "Singapore")
+	assertEqual(t, "ExternalStoreID", store.ExternalStoreID(), "external-42")
+	assertEqual(t, "ConnectionRef", store.ConnectionRef(), "")
+	assertEqual(t, "QuotaAllocationID", store.QuotaAllocationID(), testAllocationID)
+	assertEqual(t, "LifecycleStatus", store.LifecycleStatus(), storecenter.StoreStatusProvisioning)
+	assertEqual(t, "Version", store.Version(), int64(1))
+	assertEqual(t, "CreatedBy", store.CreatedBy(), "subject_Exact-Value")
+	assertEqual(t, "UpdatedBy", store.UpdatedBy(), "subject_Exact-Value")
+	assertEqual(t, "CreatedAt", store.CreatedAt(), testCreatedAt)
+	assertEqual(t, "UpdatedAt", store.UpdatedAt(), testCreatedAt)
+	if got := store.DeletedAt(); got != nil {
+		t.Fatalf("DeletedAt() = %v, want nil", *got)
+	}
+}
 
 // Mutation caught: removing Unicode-safe surrounding-whitespace trimming
 // would store user-facing values with leading or trailing whitespace.
 func TestStoreCreateNormalizesUserFacingValues(t *testing.T) {
-	store, err := NewStore(CreateStoreInput{
-		ID:                   testStoreID,
-		OrganizationID:       "org_Exact-Value",
-		CreatedBySubject:     "subject_Exact-Value",
-		Name:                 "\u2002 North Shop \u2002",
-		Platform:             " SHEIN ",
-		Region:               "\u2002 Singapore \u2002",
-		ExternalStoreID:      "\u2002 ext-42 \u2002",
-		CreateIdempotencyKey: testIdempotencyKey,
-	})
+	input := validCreateStoreInput()
+	input.Name = "\u2002 North Shop \u2002"
+	input.Platform = " SHEIN "
+	input.Region = "\u2002 Singapore \u2002"
+	input.ExternalStoreID = "\u2002 ext-42 \u2002"
+
+	store, err := storecenter.NewStore(input)
 	if err != nil {
 		t.Fatalf("NewStore() error = %v", err)
 	}
 
-	if got, want := store.Name, "North Shop"; got != want {
-		t.Errorf("Name = %q, want %q", got, want)
-	}
-	if got, want := store.Region, "Singapore"; got != want {
-		t.Errorf("Region = %q, want %q", got, want)
-	}
-	if got, want := store.ExternalStoreID, "ext-42"; got != want {
-		t.Errorf("ExternalStoreID = %q, want %q", got, want)
-	}
-	if got, want := store.Platform, PlatformShein; got != want {
-		t.Errorf("Platform = %q, want %q", got, want)
-	}
-	if got, want := store.OrganizationID, "org_Exact-Value"; got != want {
-		t.Errorf("OrganizationID = %q, want exact %q", got, want)
-	}
-	if got, want := store.CreatedBySubject, "subject_Exact-Value"; got != want {
-		t.Errorf("CreatedBySubject = %q, want exact %q", got, want)
-	}
-	if got, want := store.Status, StoreStatusProvisioning; got != want {
-		t.Errorf("Status = %q, want %q", got, want)
-	}
-	if got, want := store.Version, int64(1); got != want {
-		t.Errorf("Version = %d, want %d", got, want)
-	}
+	assertEqual(t, "Name", store.Name(), "North Shop")
+	assertEqual(t, "Region", store.Region(), "Singapore")
+	assertEqual(t, "ExternalStoreID", store.ExternalStoreID(), "ext-42")
+	assertEqual(t, "Platform", store.Platform(), storecenter.PlatformShein)
+	assertEqual(t, "OrganizationID", store.OrganizationID(), "org_Exact-Value")
+	assertEqual(t, "CreatedBy", store.CreatedBy(), "subject_Exact-Value")
 }
 
 // Mutation caught: allowing empty, transformed opaque identity, malformed UUID,
-// unsupported platform, or control-character data would admit invalid stores.
+// unsupported platform, zero creation time, or control-character data would admit invalid stores.
 func TestStoreCreateRejectsInvalidInput(t *testing.T) {
-	valid := CreateStoreInput{
-		ID:                   testStoreID,
-		OrganizationID:       "org_Exact-Value",
-		CreatedBySubject:     "subject_Exact-Value",
-		Name:                 "North Shop",
-		Platform:             "shein",
-		Region:               "Singapore",
-		ExternalStoreID:      "external-42",
-		CreateIdempotencyKey: testIdempotencyKey,
-	}
-
 	tests := []struct {
 		name   string
-		mutate func(*CreateStoreInput)
+		mutate func(*storecenter.CreateStoreInput)
 	}{
-		{"blank organization", func(in *CreateStoreInput) { in.OrganizationID = "" }},
-		{"surrounding organization whitespace", func(in *CreateStoreInput) { in.OrganizationID = " org_Exact-Value" }},
-		{"organization control character", func(in *CreateStoreInput) { in.OrganizationID = "org\nvalue" }},
-		{"organization invalid utf8", func(in *CreateStoreInput) { in.OrganizationID = string([]byte{0xff}) }},
-		{"blank subject", func(in *CreateStoreInput) { in.CreatedBySubject = "" }},
-		{"subject surrounding whitespace", func(in *CreateStoreInput) { in.CreatedBySubject = " subject_Exact-Value" }},
-		{"subject invalid utf8", func(in *CreateStoreInput) { in.CreatedBySubject = string([]byte{0xff}) }},
-		{"blank name", func(in *CreateStoreInput) { in.Name = "\u2002\t" }},
-		{"name control character", func(in *CreateStoreInput) { in.Name = "North\nShop" }},
-		{"name invalid utf8", func(in *CreateStoreInput) { in.Name = string([]byte{0xff}) }},
-		{"blank platform", func(in *CreateStoreInput) { in.Platform = " " }},
-		{"unsupported platform", func(in *CreateStoreInput) { in.Platform = "amazon" }},
-		{"platform invalid utf8", func(in *CreateStoreInput) { in.Platform = string([]byte{0xff}) }},
-		{"blank region", func(in *CreateStoreInput) { in.Region = "" }},
-		{"region control character", func(in *CreateStoreInput) { in.Region = "SG\r" }},
-		{"region invalid utf8", func(in *CreateStoreInput) { in.Region = string([]byte{0xff}) }},
-		{"external store id control character", func(in *CreateStoreInput) { in.ExternalStoreID = "ext\x00" }},
-		{"external store id invalid utf8", func(in *CreateStoreInput) { in.ExternalStoreID = string([]byte{0xff}) }},
-		{"blank idempotency key", func(in *CreateStoreInput) { in.CreateIdempotencyKey = "" }},
-		{"malformed store id", func(in *CreateStoreInput) { in.ID = "not-a-uuid" }},
-		{"nil store id", func(in *CreateStoreInput) { in.ID = "00000000-0000-0000-0000-000000000000" }},
-		{"uppercase store id", func(in *CreateStoreInput) { in.ID = strings.ToUpper(testStoreID) }},
-		{"malformed idempotency key", func(in *CreateStoreInput) { in.CreateIdempotencyKey = "not-a-uuid" }},
-		{"nil idempotency key", func(in *CreateStoreInput) { in.CreateIdempotencyKey = "00000000-0000-0000-0000-000000000000" }},
-		{"uppercase idempotency key", func(in *CreateStoreInput) { in.CreateIdempotencyKey = strings.ToUpper(testIdempotencyKey) }},
-		{"name over code-point limit", func(in *CreateStoreInput) { in.Name = strings.Repeat("界", MaxStoreNameCodePoints+1) }},
-		{"region over code-point limit", func(in *CreateStoreInput) { in.Region = strings.Repeat("界", MaxStoreRegionCodePoints+1) }},
-		{"external store id over code-point limit", func(in *CreateStoreInput) { in.ExternalStoreID = strings.Repeat("界", MaxExternalStoreIDCodePoints+1) }},
-		{"organization over byte limit", func(in *CreateStoreInput) { in.OrganizationID = strings.Repeat("a", MaxOrganizationIDBytes+1) }},
-		{"subject over byte limit", func(in *CreateStoreInput) { in.CreatedBySubject = strings.Repeat("a", MaxSubjectBytes+1) }},
+		{"blank organization", func(in *storecenter.CreateStoreInput) { in.OrganizationID = "" }},
+		{"surrounding organization whitespace", func(in *storecenter.CreateStoreInput) { in.OrganizationID = " org_Exact-Value" }},
+		{"organization control character", func(in *storecenter.CreateStoreInput) { in.OrganizationID = "org\nvalue" }},
+		{"organization invalid utf8", func(in *storecenter.CreateStoreInput) { in.OrganizationID = string([]byte{0xff}) }},
+		{"blank actor", func(in *storecenter.CreateStoreInput) { in.ActorSubject = "" }},
+		{"actor surrounding whitespace", func(in *storecenter.CreateStoreInput) { in.ActorSubject = " subject_Exact-Value" }},
+		{"actor invalid utf8", func(in *storecenter.CreateStoreInput) { in.ActorSubject = string([]byte{0xff}) }},
+		{"blank name", func(in *storecenter.CreateStoreInput) { in.Name = "\u2002\t" }},
+		{"name control character", func(in *storecenter.CreateStoreInput) { in.Name = "North\nShop" }},
+		{"name invalid utf8", func(in *storecenter.CreateStoreInput) { in.Name = string([]byte{0xff}) }},
+		{"blank platform", func(in *storecenter.CreateStoreInput) { in.Platform = " " }},
+		{"unsupported platform", func(in *storecenter.CreateStoreInput) { in.Platform = "amazon" }},
+		{"platform invalid utf8", func(in *storecenter.CreateStoreInput) { in.Platform = string([]byte{0xff}) }},
+		{"blank region", func(in *storecenter.CreateStoreInput) { in.Region = "" }},
+		{"region control character", func(in *storecenter.CreateStoreInput) { in.Region = "SG\r" }},
+		{"region invalid utf8", func(in *storecenter.CreateStoreInput) { in.Region = string([]byte{0xff}) }},
+		{"external store id control character", func(in *storecenter.CreateStoreInput) { in.ExternalStoreID = "ext\x00" }},
+		{"external store id invalid utf8", func(in *storecenter.CreateStoreInput) { in.ExternalStoreID = string([]byte{0xff}) }},
+		{"blank idempotency key", func(in *storecenter.CreateStoreInput) { in.CreateIdempotencyKey = "" }},
+		{"blank quota allocation id", func(in *storecenter.CreateStoreInput) { in.QuotaAllocationID = "" }},
+		{"malformed store id", func(in *storecenter.CreateStoreInput) { in.ID = "not-a-uuid" }},
+		{"nil store id", func(in *storecenter.CreateStoreInput) { in.ID = "00000000-0000-0000-0000-000000000000" }},
+		{"uppercase store id", func(in *storecenter.CreateStoreInput) { in.ID = strings.ToUpper(testStoreID) }},
+		{"malformed idempotency key", func(in *storecenter.CreateStoreInput) { in.CreateIdempotencyKey = "not-a-uuid" }},
+		{"nil idempotency key", func(in *storecenter.CreateStoreInput) {
+			in.CreateIdempotencyKey = "00000000-0000-0000-0000-000000000000"
+		}},
+		{"uppercase idempotency key", func(in *storecenter.CreateStoreInput) { in.CreateIdempotencyKey = strings.ToUpper(testIdempotencyKey) }},
+		{"malformed quota allocation id", func(in *storecenter.CreateStoreInput) { in.QuotaAllocationID = "not-a-uuid" }},
+		{"nil quota allocation id", func(in *storecenter.CreateStoreInput) { in.QuotaAllocationID = "00000000-0000-0000-0000-000000000000" }},
+		{"uppercase quota allocation id", func(in *storecenter.CreateStoreInput) { in.QuotaAllocationID = strings.ToUpper(testAllocationID) }},
+		{"zero occurred at", func(in *storecenter.CreateStoreInput) { in.OccurredAt = time.Time{} }},
+		{"name over code-point limit", func(in *storecenter.CreateStoreInput) {
+			in.Name = strings.Repeat("界", storecenter.MaxStoreNameCodePoints+1)
+		}},
+		{"region over code-point limit", func(in *storecenter.CreateStoreInput) {
+			in.Region = strings.Repeat("界", storecenter.MaxStoreRegionCodePoints+1)
+		}},
+		{"external store id over code-point limit", func(in *storecenter.CreateStoreInput) {
+			in.ExternalStoreID = strings.Repeat("界", storecenter.MaxExternalStoreIDCodePoints+1)
+		}},
+		{"organization over byte limit", func(in *storecenter.CreateStoreInput) {
+			in.OrganizationID = strings.Repeat("a", storecenter.MaxOrganizationIDBytes+1)
+		}},
+		{"actor over byte limit", func(in *storecenter.CreateStoreInput) {
+			in.ActorSubject = strings.Repeat("a", storecenter.MaxSubjectBytes+1)
+		}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			input := valid
+			input := validCreateStoreInput()
 			tt.mutate(&input)
 
-			if _, err := NewStore(input); err == nil {
+			if _, err := storecenter.NewStore(input); err == nil {
 				t.Fatal("NewStore() error = nil, want validation error")
 			}
 		})
@@ -119,130 +138,219 @@ func TestStoreCreateRejectsInvalidInput(t *testing.T) {
 }
 
 // Mutation caught: accepting an invalid lifecycle edge, treating a no-op as a
-// write, or missing a version increment would corrupt lifecycle concurrency.
+// write, or missing an audit/version update would corrupt lifecycle concurrency.
 func TestLifecycleTransitionsEnforceEdgesAndVersions(t *testing.T) {
 	tests := []struct {
 		name        string
-		start       StoreStatus
-		target      StoreStatus
+		start       storecenter.StoreStatus
+		target      storecenter.StoreStatus
 		wantErr     error
-		wantStatus  StoreStatus
+		wantStatus  storecenter.StoreStatus
 		wantVersion int64
 	}{
-		{"provisioning activates", StoreStatusProvisioning, StoreStatusActive, nil, StoreStatusActive, 2},
-		{"active disables", StoreStatusActive, StoreStatusDisabled, nil, StoreStatusDisabled, 2},
-		{"disabled activates", StoreStatusDisabled, StoreStatusActive, nil, StoreStatusActive, 2},
-		{"active deletes", StoreStatusActive, StoreStatusDeleting, nil, StoreStatusDeleting, 2},
-		{"disabled deletes", StoreStatusDisabled, StoreStatusDeleting, nil, StoreStatusDeleting, 2},
-		{"provisioning cannot disable", StoreStatusProvisioning, StoreStatusDisabled, ErrInvalidTransition, StoreStatusProvisioning, 1},
-		{"provisioning cannot delete", StoreStatusProvisioning, StoreStatusDeleting, ErrInvalidTransition, StoreStatusProvisioning, 1},
-		{"active cannot activate", StoreStatusActive, StoreStatusActive, ErrInvalidTransition, StoreStatusActive, 1},
-		{"deleting cannot activate", StoreStatusDeleting, StoreStatusActive, ErrInvalidTransition, StoreStatusDeleting, 1},
+		{"provisioning activates", storecenter.StoreStatusProvisioning, storecenter.StoreStatusActive, nil, storecenter.StoreStatusActive, 2},
+		{"active disables", storecenter.StoreStatusActive, storecenter.StoreStatusDisabled, nil, storecenter.StoreStatusDisabled, 2},
+		{"disabled activates", storecenter.StoreStatusDisabled, storecenter.StoreStatusActive, nil, storecenter.StoreStatusActive, 2},
+		{"active deletes", storecenter.StoreStatusActive, storecenter.StoreStatusDeleting, nil, storecenter.StoreStatusDeleting, 2},
+		{"disabled deletes", storecenter.StoreStatusDisabled, storecenter.StoreStatusDeleting, nil, storecenter.StoreStatusDeleting, 2},
+		{"provisioning cannot disable", storecenter.StoreStatusProvisioning, storecenter.StoreStatusDisabled, storecenter.ErrInvalidTransition, storecenter.StoreStatusProvisioning, 1},
+		{"provisioning cannot delete", storecenter.StoreStatusProvisioning, storecenter.StoreStatusDeleting, storecenter.ErrInvalidTransition, storecenter.StoreStatusProvisioning, 1},
+		{"active cannot activate", storecenter.StoreStatusActive, storecenter.StoreStatusActive, storecenter.ErrInvalidTransition, storecenter.StoreStatusActive, 1},
+		{"deleting cannot activate", storecenter.StoreStatusDeleting, storecenter.StoreStatusActive, storecenter.ErrInvalidTransition, storecenter.StoreStatusDeleting, 1},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := newTestStore(t)
-			store.Status = tt.start
+			store := newStoreAtStatus(t, tt.start)
+			before := store.Snapshot()
 
-			err := store.TransitionTo(tt.target)
+			err := store.TransitionTo(tt.target, "subject_Update", testUpdatedAt)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("TransitionTo(%q) error = %v, want errors.Is(_, %v)", tt.target, err, tt.wantErr)
 			}
-			if got := store.Status; got != tt.wantStatus {
-				t.Errorf("Status = %q, want %q", got, tt.wantStatus)
-			}
-			if got := store.Version; got != tt.wantVersion {
-				t.Errorf("Version = %d, want %d", got, tt.wantVersion)
+			assertEqual(t, "LifecycleStatus", store.LifecycleStatus(), tt.wantStatus)
+			assertEqual(t, "Version", store.Version(), tt.wantVersion)
+			if tt.wantErr == nil {
+				assertEqual(t, "UpdatedBy", store.UpdatedBy(), "subject_Update")
+				assertEqual(t, "UpdatedAt", store.UpdatedAt(), testUpdatedAt)
+			} else if got := store.Snapshot(); !reflect.DeepEqual(got, before) {
+				t.Fatalf("invalid transition mutated Store: got %#v, want %#v", got, before)
 			}
 		})
 	}
 }
 
-// Mutation caught: changing Store identity fields during a lifecycle write
-// would let a state transition re-scope or re-platform a durable store.
-func TestLifecycleTransitionPreservesImmutableIdentity(t *testing.T) {
-	store := newTestStore(t)
-	wantID, wantOrganizationID, wantPlatform := store.ID, store.OrganizationID, store.Platform
-
-	if err := store.TransitionTo(StoreStatusActive); err != nil {
-		t.Fatalf("TransitionTo(active) error = %v", err)
+// Mutation caught: exposing mutable aggregate fields or leaking a mutable
+// persistence snapshot into Store would permit identity changes outside its rules.
+func TestStoreContractAggregateStateIsPrivateAndSnapshotIsDetached(t *testing.T) {
+	aggregateType := reflect.TypeOf(storecenter.Store{})
+	for i := 0; i < aggregateType.NumField(); i++ {
+		field := aggregateType.Field(i)
+		if field.IsExported() {
+			t.Errorf("Store field %q is exported; aggregate state must be private", field.Name)
+		}
 	}
 
-	if store.ID != wantID || store.OrganizationID != wantOrganizationID || store.Platform != wantPlatform {
-		t.Fatalf("identity changed after transition: got (%q, %q, %q), want (%q, %q, %q)", store.ID, store.OrganizationID, store.Platform, wantID, wantOrganizationID, wantPlatform)
+	store := newTestStore(t)
+	snapshot := store.Snapshot()
+	snapshot.ID = "123e4567-e89b-12d3-a456-426614174099"
+	snapshot.OrganizationID = "other-org"
+	snapshot.Platform = storecenter.Platform("other")
+
+	assertEqual(t, "Store ID after snapshot mutation", store.ID(), testStoreID)
+	assertEqual(t, "Store OrganizationID after snapshot mutation", store.OrganizationID(), "org_Exact-Value")
+	assertEqual(t, "Store Platform after snapshot mutation", store.Platform(), storecenter.PlatformShein)
+}
+
+// Mutation caught: making rehydration accept an invalid persisted record would
+// let corrupt rows bypass the same aggregate invariants as NewStore.
+func TestStoreRehydrateRejectsInvalidPersistedState(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*storecenter.StoreSnapshot)
+	}{
+		{"nil quota allocation id", func(s *storecenter.StoreSnapshot) { s.QuotaAllocationID = "00000000-0000-0000-0000-000000000000" }},
+		{"zero created at", func(s *storecenter.StoreSnapshot) { s.CreatedAt = time.Time{} }},
+		{"updated before created", func(s *storecenter.StoreSnapshot) { s.UpdatedAt = testCreatedAt.Add(-time.Second) }},
+		{"deleted active store", func(s *storecenter.StoreSnapshot) {
+			now := testUpdatedAt
+			s.LifecycleStatus = storecenter.StoreStatusActive
+			s.DeletedAt = &now
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			snapshot := newTestStore(t).Snapshot()
+			tt.mutate(&snapshot)
+			if _, err := storecenter.RehydrateStore(snapshot); err == nil {
+				t.Fatal("RehydrateStore() error = nil, want invariant error")
+			}
+		})
 	}
 }
 
-// Mutation caught: exposing a credential-shaped JSON field on the domain type
-// would make secret disclosure possible once Store is serialized by a caller.
+// Mutation caught: changing identity fields during a lifecycle write would let
+// a state transition re-scope or re-platform a durable store.
+func TestLifecycleTransitionPreservesImmutableIdentity(t *testing.T) {
+	store := newTestStore(t)
+	wantID, wantOrganizationID, wantPlatform := store.ID(), store.OrganizationID(), store.Platform()
+
+	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject_Update", testUpdatedAt); err != nil {
+		t.Fatalf("TransitionTo(active) error = %v", err)
+	}
+
+	if store.ID() != wantID || store.OrganizationID() != wantOrganizationID || store.Platform() != wantPlatform {
+		t.Fatalf("identity changed after transition: got (%q, %q, %q), want (%q, %q, %q)", store.ID(), store.OrganizationID(), store.Platform(), wantID, wantOrganizationID, wantPlatform)
+	}
+}
+
+// Mutation caught: adding a credential-shaped Go field or JSON tag alias to a
+// domain-visible Store type would make secret disclosure possible on serialization.
 func TestStoreContractHasNoJSONVisibleCredentialFields(t *testing.T) {
 	forbidden := []string{"password", "token", "cookie", "secret", "credential", "username"}
-	typeOfStore := reflect.TypeOf(Store{})
-	for i := 0; i < typeOfStore.NumField(); i++ {
-		field := typeOfStore.Field(i)
-		if !field.IsExported() || field.Tag.Get("json") == "-" {
-			continue
-		}
-		name := strings.ToLower(field.Name)
-		for _, word := range forbidden {
-			if strings.Contains(name, word) {
-				t.Errorf("Store field %q is JSON-visible and credential-shaped", field.Name)
+	for _, typeOfValue := range []reflect.Type{
+		reflect.TypeOf(storecenter.Store{}),
+		reflect.TypeOf(storecenter.StoreSnapshot{}),
+	} {
+		for i := 0; i < typeOfValue.NumField(); i++ {
+			field := typeOfValue.Field(i)
+			jsonName, visible := jsonFieldName(field)
+			if !visible {
+				continue
+			}
+			for _, candidate := range []string{field.Name, jsonName} {
+				for _, word := range forbidden {
+					if strings.Contains(strings.ToLower(candidate), word) {
+						t.Errorf("%s field %q has credential-shaped JSON-visible name %q", typeOfValue.Name(), field.Name, jsonName)
+					}
+				}
 			}
 		}
 	}
 }
 
-// Mutation caught: dropping Organization ID from a repository operation would
-// make an accidental UUID-only cross-Organization read or write possible.
-func TestStoreContractRepositoryIsOrganizationScoped(t *testing.T) {
-	repositoryType := reflect.TypeOf((*Repository)(nil)).Elem()
+// Mutation caught: adding an unreviewed Repository method could reintroduce a
+// UUID-only data boundary even if the current five methods remain scoped.
+func TestStoreContractRepositoryHasOnlyOrganizationScopedMethods(t *testing.T) {
+	repositoryType := reflect.TypeOf((*storecenter.Repository)(nil)).Elem()
 	contextType := reflect.TypeOf((*context.Context)(nil)).Elem()
 	stringType := reflect.TypeOf("")
+	wantMethods := []string{"CreateOrReplay", "Get", "List", "Save", "SoftDelete"}
 
-	methods := []struct {
-		name      string
-		minInputs int
-	}{
-		{"CreateOrReplay", 3},
-		{"List", 3},
-		{"Get", 3},
-		{"Save", 4},
-		{"SoftDelete", 4},
-	}
-	for _, tt := range methods {
-		method, ok := repositoryType.MethodByName(tt.name)
-		if !ok {
-			t.Errorf("Repository is missing %s", tt.name)
-			continue
-		}
-		if method.Type.NumIn() < tt.minInputs {
-			t.Errorf("Repository.%s has %d inputs, want at least %d", tt.name, method.Type.NumIn(), tt.minInputs)
+	gotMethods := make([]string, 0, repositoryType.NumMethod())
+	for i := 0; i < repositoryType.NumMethod(); i++ {
+		method := repositoryType.Method(i)
+		gotMethods = append(gotMethods, method.Name)
+		if method.Type.NumIn() < 3 {
+			t.Errorf("Repository.%s has %d inputs, want context plus Organization ID", method.Name, method.Type.NumIn())
 			continue
 		}
 		if got := method.Type.In(0); got != contextType {
-			t.Errorf("Repository.%s first input = %v, want context.Context", tt.name, got)
+			t.Errorf("Repository.%s first input = %v, want context.Context", method.Name, got)
 		}
 		if got := method.Type.In(1); got != stringType {
-			t.Errorf("Repository.%s second input = %v, want Organization ID string", tt.name, got)
+			t.Errorf("Repository.%s second input = %v, want Organization ID string", method.Name, got)
 		}
+	}
+	sort.Strings(gotMethods)
+	if !reflect.DeepEqual(gotMethods, wantMethods) {
+		t.Errorf("Repository methods = %v, want exactly %v", gotMethods, wantMethods)
 	}
 }
 
-func newTestStore(t *testing.T) *Store {
+func newTestStore(t *testing.T) *storecenter.Store {
 	t.Helper()
-	store, err := NewStore(CreateStoreInput{
+	store, err := storecenter.NewStore(validCreateStoreInput())
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	return store
+}
+
+func newStoreAtStatus(t *testing.T, status storecenter.StoreStatus) *storecenter.Store {
+	t.Helper()
+	snapshot := newTestStore(t).Snapshot()
+	snapshot.LifecycleStatus = status
+	store, err := storecenter.RehydrateStore(snapshot)
+	if err != nil {
+		t.Fatalf("RehydrateStore() error = %v", err)
+	}
+	return store
+}
+
+func validCreateStoreInput() storecenter.CreateStoreInput {
+	return storecenter.CreateStoreInput{
 		ID:                   testStoreID,
 		OrganizationID:       "org_Exact-Value",
-		CreatedBySubject:     "subject_Exact-Value",
+		ActorSubject:         "subject_Exact-Value",
 		Name:                 "North Shop",
 		Platform:             "shein",
 		Region:               "Singapore",
 		ExternalStoreID:      "external-42",
 		CreateIdempotencyKey: testIdempotencyKey,
-	})
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
+		QuotaAllocationID:    testAllocationID,
+		OccurredAt:           testCreatedAt,
 	}
-	return store
+}
+
+func jsonFieldName(field reflect.StructField) (string, bool) {
+	if !field.IsExported() {
+		return "", false
+	}
+	tag := field.Tag.Get("json")
+	name, _, _ := strings.Cut(tag, ",")
+	if name == "-" {
+		return "", false
+	}
+	if name == "" {
+		return field.Name, true
+	}
+	return name, true
+}
+
+func assertEqual[T comparable](t *testing.T, label string, got, want T) {
+	t.Helper()
+	if got != want {
+		t.Errorf("%s = %v, want %v", label, got, want)
+	}
 }
