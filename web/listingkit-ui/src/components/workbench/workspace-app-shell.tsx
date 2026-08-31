@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Menu, X, type LucideIcon } from "lucide-react";
+import { Home, Menu, Store, X, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -37,9 +37,28 @@ type WorkbenchNavItem = {
   match: "exact" | "prefix";
 };
 
-const WORKBENCH_NAV_ITEMS = [
-  { label: "工作台", href: "/workbench", icon: Home, match: "exact" },
-] as const satisfies readonly WorkbenchNavItem[];
+const WORKBENCH_NAV_GROUPS = [
+  {
+    label: "工作",
+    items: [
+      { label: "工作台", href: "/workbench", icon: Home, match: "exact" },
+    ],
+  },
+  {
+    label: "店铺中心",
+    items: [
+      {
+        label: "我的店铺",
+        href: "/workbench/stores",
+        icon: Store,
+        match: "prefix",
+      },
+    ],
+  },
+] as const satisfies readonly {
+  label: string;
+  items: readonly WorkbenchNavItem[];
+}[];
 
 export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/workbench";
@@ -132,12 +151,7 @@ function WorkbenchFrame({
           </Link>
         </SidebarHeader>
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>工作</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <WorkbenchNavigation ariaLabel="工作台导航" pathname={pathname} />
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <WorkbenchNavigation ariaLabel="工作台导航" pathname={pathname} />
         </SidebarContent>
         <SidebarRail />
       </Sidebar>
@@ -241,27 +255,33 @@ function WorkbenchNavigation({
 }) {
   return (
     <nav aria-label={ariaLabel} id={id}>
-      <SidebarMenu>
-        {WORKBENCH_NAV_ITEMS.map((item) => {
-          const active = isActiveWorkbenchNavItem(pathname, item);
-          const Icon = item.icon;
-
-          return (
-            <SidebarMenuItem key={item.href}>
-              <SidebarMenuButton asChild isActive={active}>
-                <Link
-                  aria-current={active ? "page" : undefined}
-                  href={item.href}
-                  onClick={onNavigate}
-                >
-                  <Icon data-icon="inline-start" />
-                  <span>{item.label}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          );
-        })}
-      </SidebarMenu>
+      {WORKBENCH_NAV_GROUPS.map((group) => (
+        <SidebarGroup key={group.label}>
+          <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {group.items.map((item) => {
+                const active = isActiveWorkbenchNavItem(pathname, item);
+                const Icon = item.icon;
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={active}>
+                      <Link
+                        aria-current={active ? "page" : undefined}
+                        href={item.href}
+                        onClick={onNavigate}
+                      >
+                        <Icon data-icon="inline-start" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
     </nav>
   );
 }

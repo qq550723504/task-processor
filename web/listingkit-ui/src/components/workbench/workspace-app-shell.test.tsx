@@ -81,7 +81,7 @@ describe("WorkspaceAppShell", () => {
     expect(screen.queryByText("organization child")).not.toBeInTheDocument();
   });
 
-  it("renders a neutral accessible shell with only implemented Workbench navigation", async () => {
+  it("renders the two implemented desktop navigation groups without extra menu items", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>().mockResolvedValue(Response.json(ACTIVE_CONTEXT)),
@@ -100,8 +100,11 @@ describe("WorkspaceAppShell", () => {
     expect(
       within(navigationLandmark).getByRole("link", { name: "工作台" }),
     ).toHaveAttribute("href", "/workbench");
-    expect(within(navigationLandmark).getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText(/店铺中心|我的店铺/)).not.toBeInTheDocument();
+    expect(within(navigationLandmark).getAllByRole("link")).toHaveLength(2);
+    expect(screen.getByText("店铺中心")).toBeInTheDocument();
+    expect(
+      within(navigationLandmark).getByRole("link", { name: "我的店铺" }),
+    ).toHaveAttribute("href", "/workbench/stores");
     expect(screen.getAllByRole("main")).toHaveLength(1);
   });
 
@@ -148,6 +151,22 @@ describe("WorkspaceAppShell", () => {
     expect(
       screen.queryByRole("navigation", { name: "移动工作台导航" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("uses exact Workbench and prefix Store active matching in both navigation modes", async () => {
+    navigation.pathname = "/workbench/stores/11111111-1111-4111-8111-111111111111";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(Response.json(ACTIVE_CONTEXT)),
+    );
+    const user = userEvent.setup();
+    renderShell();
+
+    const desktopNavigation = await screen.findByRole("navigation", { name: "工作台导航" });
+    expect(within(desktopNavigation).getByRole("link", { name: "我的店铺" })).toHaveAttribute("aria-current", "page");
+    expect(within(desktopNavigation).getByRole("link", { name: "工作台" })).not.toHaveAttribute("aria-current");
+    await user.click(screen.getByRole("button", { name: "打开工作台导航" }));
+    expect(within(screen.getByRole("navigation", { name: "移动工作台导航" })).getByRole("link", { name: "我的店铺" })).toHaveAttribute("aria-current", "page");
   });
 
   it("persistently identifies delegated operation with safe Organization names", async () => {
