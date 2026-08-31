@@ -284,8 +284,27 @@ func TestSharedPackagesDoNotImportAppDomainPlatformOrIntegration(t *testing.T) {
 	}
 }
 
+func TestSharedResilienceDoesNotImportInternalPackages(t *testing.T) {
+	index, err := loadGoFileIndex(filepath.Join("..", "internal", "shared", "resilience"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		for imp := range facts.imports {
+			clean, err := decodeGoImportPath(imp)
+			if err != nil {
+				t.Errorf("%s has invalid Go import literal %q: %v", filepath.ToSlash(path), imp, err)
+				continue
+			}
+			if importMatchesPrefix(clean, "task-processor/internal") {
+				t.Errorf("%s imports forbidden internal package %s", filepath.ToSlash(path), clean)
+			}
+		}
+	}
+}
+
 func TestSharedPackageTargetsExist(t *testing.T) {
-	for _, name := range []string{"hashx", "mathx", "ptr", "strx", "timex"} {
+	for _, name := range []string{"hashx", "mathx", "ptr", "resilience", "strx", "timex"} {
 		info, err := os.Stat(filepath.Join("..", "internal", "shared", name))
 		if err != nil || !info.IsDir() {
 			t.Errorf("internal/shared/%s must exist as a directory: %v", name, err)

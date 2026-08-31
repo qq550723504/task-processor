@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
-	infraresilience "task-processor/internal/infra/resilience"
+	sharedresilience "task-processor/internal/shared/resilience"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,7 +21,7 @@ type RateLimiter interface {
 
 // TokenBucketLimiter 令牌桶速率限制器
 type TokenBucketLimiter struct {
-	limiter *infraresilience.RateLimiter
+	limiter *sharedresilience.RateLimiter
 }
 
 // NewTokenBucketLimiter 创建令牌桶限制器。
@@ -36,7 +36,7 @@ func NewTokenBucketLimiter(ratePerSecond, capacity float64) *TokenBucketLimiter 
 	}
 
 	return &TokenBucketLimiter{
-		limiter: infraresilience.NewRateLimiter(ratePerSecond, burst),
+		limiter: sharedresilience.NewRateLimiter(ratePerSecond, burst),
 	}
 }
 
@@ -105,7 +105,7 @@ func (limits *APIRateLimits) GetLimiterForPath(path string) RateLimiter {
 
 // CircuitBreaker 断路器实现
 type CircuitBreaker struct {
-	breaker *infraresilience.CircuitBreaker
+	breaker *sharedresilience.CircuitBreaker
 	logger  *logrus.Entry
 }
 
@@ -114,18 +114,18 @@ func NewCircuitBreaker(failureThreshold, successThreshold int, timeout time.Dura
 	logEntry := logger.GetGlobalLogger("CircuitBreaker")
 
 	return &CircuitBreaker{
-		breaker: infraresilience.NewCircuitBreaker(infraresilience.CircuitBreakerConfig{
+		breaker: sharedresilience.NewCircuitBreaker(sharedresilience.CircuitBreakerConfig{
 			Name:             "amazon-api",
 			MaxRequests:      normalizeThreshold(successThreshold),
 			OpenTimeout:      timeout,
 			ReadyToTripAfter: normalizeThreshold(failureThreshold),
-			OnStateChange: func(from, to infraresilience.CircuitState) {
+			OnStateChange: func(from, to sharedresilience.CircuitState) {
 				switch to {
-				case infraresilience.StateHalfOpen:
+				case sharedresilience.StateHalfOpen:
 					logEntry.Info("断路器进入半开状态")
-				case infraresilience.StateClosed:
+				case sharedresilience.StateClosed:
 					logEntry.Info("断路器关闭")
-				case infraresilience.StateOpen:
+				case sharedresilience.StateOpen:
 					logEntry.WithFields(logrus.Fields{
 						"from_state":        from,
 						"failure_threshold": failureThreshold,
