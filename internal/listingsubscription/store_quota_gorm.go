@@ -51,14 +51,17 @@ func newGormStoreQuotaLedger(repo *GormRepository, now func() time.Time) *gormSt
 }
 
 func (l *gormStoreQuotaLedger) Reserve(ctx context.Context, input StoreQuotaReserveInput) (StoreQuotaReserveResult, error) {
+	if err := l.configurationError(); err != nil {
+		return StoreQuotaReserveResult{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return StoreQuotaReserveResult{}, err
+	}
 	input, err := NormalizeAndValidateStoreQuotaReserveInput(input)
 	if err != nil {
 		return StoreQuotaReserveResult{}, err
 	}
 	if existing, err := l.GetByRequestKey(ctx, input.OrganizationID, input.RequestKey); err == nil {
-		if existing.CreatedBy != input.ActorSubject {
-			return StoreQuotaReserveResult{}, ErrStoreQuotaIdentityMismatch
-		}
 		return storeQuotaReserveResult(*existing, true), nil
 	} else if !errors.Is(err, ErrStoreQuotaNotFound) {
 		return StoreQuotaReserveResult{}, err
@@ -66,13 +69,14 @@ func (l *gormStoreQuotaLedger) Reserve(ctx context.Context, input StoreQuotaRese
 
 	var result StoreQuotaReserveResult
 	err = l.withRetry(ctx, func(tx *gorm.DB) error {
+		bucket, err := establishAndLockStoreQuotaBucket(tx, input.OrganizationID, l.now().UTC())
+		if err != nil {
+			return err
+		}
 		var existing storeQuotaAllocationRow
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND request_key = ?", input.OrganizationID, input.RequestKey).Take(&existing).Error
+		err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND request_key = ?", input.OrganizationID, input.RequestKey).Take(&existing).Error
 		if err == nil {
 			allocation := storeQuotaAllocationFromRow(existing)
-			if allocation.CreatedBy != input.ActorSubject {
-				return ErrStoreQuotaIdentityMismatch
-			}
 			result = storeQuotaReserveResult(allocation, true)
 			return nil
 		}
@@ -83,20 +87,27 @@ func (l *gormStoreQuotaLedger) Reserve(ctx context.Context, input StoreQuotaRese
 		if err != nil {
 			return err
 		}
-		bucket, err := loadOrCreateStoreQuotaBucket(tx, input.OrganizationID)
-		if err != nil {
-			return err
-		}
 		if err := validateStoreQuotaBucket(bucket); err != nil {
 			return err
 		}
 		if bucket.Committed > math.MaxInt64-bucket.Reserved || bucket.Committed+bucket.Reserved >= limit {
 			return &StoreQuotaExceededError{OrganizationID: input.OrganizationID, Committed: bucket.Committed, Reserved: bucket.Reserved, Limit: limit}
 		}
-		now := l.now().UTC()
+		now := storeQuotaTimestamp(l.now().UTC(), bucket.UpdatedAt)
 		row := storeQuotaAllocationRow{AllocationID: uuid.NewString(), OrganizationID: input.OrganizationID, StoreID: uuid.NewString(), RequestKey: input.RequestKey, Status: string(StoreQuotaReserved), CreatedBy: input.ActorSubject, UpdatedBy: input.ActorSubject, CreatedAt: now, UpdatedAt: now}
-		if err := tx.Create(&row).Error; err != nil {
-			return err
+		created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+		if created.Error != nil {
+			return created.Error
+		}
+		if created.RowsAffected != 1 {
+			var replay storeQuotaAllocationRow
+			if replayErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND request_key = ?", input.OrganizationID, input.RequestKey).Take(&replay).Error; replayErr == nil {
+				result = storeQuotaReserveResult(storeQuotaAllocationFromRow(replay), true)
+				return nil
+			} else if !errors.Is(replayErr, gorm.ErrRecordNotFound) {
+				return replayErr
+			}
+			return errStoreQuotaAllocationRace
 		}
 		if err := updateStoreQuotaBucket(tx, bucket, bucket.Committed, bucket.Reserved+1, now); err != nil {
 			return err
@@ -128,6 +139,12 @@ const (
 )
 
 func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaTransitionInput, target StoreQuotaAllocationStatus, operation storeQuotaOperation) (StoreQuotaTransitionResult, error) {
+	if err := l.configurationError(); err != nil {
+		return StoreQuotaTransitionResult{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return StoreQuotaTransitionResult{}, err
+	}
 	input, err := normalizeAndValidateStoreQuotaTransitionInput(input)
 	if err != nil {
 		return StoreQuotaTransitionResult{}, err
@@ -142,7 +159,7 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 		if err != nil {
 			return err
 		}
-		if row.StoreID != input.StoreID || row.RequestKey != input.RequestKey || row.CreatedBy != input.ActorSubject {
+		if row.StoreID != input.StoreID || row.RequestKey != input.RequestKey {
 			return ErrStoreQuotaIdentityMismatch
 		}
 		allocation := storeQuotaAllocationFromRow(row)
@@ -171,7 +188,7 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 			if bucket.Committed < 1 {
 				return ErrStoreQuotaInvalidTransition
 			}
-			now := l.now().UTC()
+			now := storeQuotaTimestamp(l.now().UTC(), row.UpdatedAt, bucket.UpdatedAt)
 			if err := updateStoreQuotaBucket(tx, bucket, bucket.Committed-1, bucket.Reserved, now); err != nil {
 				return err
 			}
@@ -195,7 +212,7 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 		if bucket.Reserved < 1 {
 			return ErrStoreQuotaInvalidTransition
 		}
-		now := l.now().UTC()
+		now := storeQuotaTimestamp(l.now().UTC(), row.UpdatedAt, bucket.UpdatedAt)
 		if operation == storeQuotaCommit {
 			if err := updateStoreQuotaBucket(tx, bucket, bucket.Committed+1, bucket.Reserved-1, now); err != nil {
 				return err
@@ -222,6 +239,12 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 }
 
 func (l *gormStoreQuotaLedger) GetByRequestKey(ctx context.Context, organizationID, requestKey string) (*StoreQuotaAllocation, error) {
+	if err := l.configurationError(); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := validateStoreQuotaText(organizationID, "organization_id"); err != nil {
 		return nil, err
 	}
@@ -241,6 +264,12 @@ func (l *gormStoreQuotaLedger) GetByRequestKey(ctx context.Context, organization
 }
 
 func (l *gormStoreQuotaLedger) Summary(ctx context.Context, organizationID string) (StoreQuotaSummary, error) {
+	if err := l.configurationError(); err != nil {
+		return StoreQuotaSummary{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return StoreQuotaSummary{}, err
+	}
 	if err := validateStoreQuotaText(organizationID, "organization_id"); err != nil {
 		return StoreQuotaSummary{}, err
 	}
@@ -275,20 +304,42 @@ func (l *gormStoreQuotaLedger) Summary(ctx context.Context, organizationID strin
 }
 
 func (l *gormStoreQuotaLedger) withRetry(ctx context.Context, operation func(*gorm.DB) error) error {
-	if l == nil || l.repo == nil || l.repo.db == nil {
-		return errors.New("store quota repository is not configured")
+	if err := l.configurationError(); err != nil {
+		return err
 	}
 	var err error
 	for attempt := 0; attempt < 20; attempt++ {
-		err = l.repo.db.WithContext(ctx).Transaction(operation)
-		if !isRetryableUsageLedgerError(err) && !errors.Is(err, errStoreQuotaVersionRace) {
+		if err := ctx.Err(); err != nil {
 			return err
+		}
+		err = l.repo.db.WithContext(ctx).Transaction(operation)
+		if !isRetryableUsageLedgerError(err) && !errors.Is(err, errStoreQuotaVersionRace) && !errors.Is(err, errStoreQuotaAllocationRace) {
+			return err
+		}
+		if attempt < 19 {
+			timer := time.NewTimer(time.Duration(attempt+1) * 5 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
+				return ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 	return err
 }
 
 var errStoreQuotaVersionRace = errors.New("store quota bucket version race")
+var errStoreQuotaAllocationRace = errors.New("store quota allocation race")
+
+func (l *gormStoreQuotaLedger) configurationError() error {
+	if l == nil || l.repo == nil || l.repo.db == nil {
+		return ErrStoreQuotaNotConfigured
+	}
+	return nil
+}
 
 func loadStoreQuotaBucket(tx *gorm.DB, organizationID string) (storeQuotaBucketRow, error) {
 	var bucket storeQuotaBucketRow
@@ -299,19 +350,12 @@ func loadStoreQuotaBucket(tx *gorm.DB, organizationID string) (storeQuotaBucketR
 	return bucket, err
 }
 
-func loadOrCreateStoreQuotaBucket(tx *gorm.DB, organizationID string) (storeQuotaBucketRow, error) {
-	bucket, err := loadStoreQuotaBucket(tx, organizationID)
-	if err == nil {
-		return bucket, nil
+func establishAndLockStoreQuotaBucket(tx *gorm.DB, organizationID string, now time.Time) (storeQuotaBucketRow, error) {
+	created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&storeQuotaBucketRow{OrganizationID: organizationID, Version: 1, UpdatedAt: now})
+	if created.Error != nil {
+		return storeQuotaBucketRow{}, created.Error
 	}
-	if !errors.Is(err, ErrStoreQuotaInvalidTransition) {
-		return storeQuotaBucketRow{}, err
-	}
-	bucket = storeQuotaBucketRow{OrganizationID: organizationID, Version: 1}
-	if err := tx.Create(&bucket).Error; err != nil {
-		return storeQuotaBucketRow{}, err
-	}
-	return bucket, nil
+	return loadStoreQuotaBucket(tx, organizationID)
 }
 
 func validateStoreQuotaBucket(bucket storeQuotaBucketRow) error {
@@ -418,4 +462,14 @@ func cloneStoreQuotaTime(value *time.Time) *time.Time {
 	}
 	clone := *value
 	return &clone
+}
+
+func storeQuotaTimestamp(now time.Time, durableTimes ...time.Time) time.Time {
+	result := now.UTC()
+	for _, durable := range durableTimes {
+		if durable.After(result) {
+			result = durable
+		}
+	}
+	return result
 }

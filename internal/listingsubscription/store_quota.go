@@ -20,6 +20,7 @@ var (
 	ErrStoreQuotaIdentityMismatch  = errors.New("store quota allocation identity mismatch")
 	ErrStoreQuotaInvalidTransition = errors.New("store quota invalid transition")
 	ErrStoreQuotaExceeded          = errors.New("store quota exceeded")
+	ErrStoreQuotaNotConfigured     = errors.New("store quota ledger is not configured")
 )
 
 type StoreQuotaAllocationStatus string

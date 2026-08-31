@@ -344,6 +344,102 @@ func TestStoreQuotaConcurrentLimitOneHasOneAdmission(t *testing.T) {
 	}
 }
 
+func TestStoreQuotaConcurrentSameRequestKeyReplaysOneDurableReservation(t *testing.T) {
+	db := openConcurrentStoreQuotaTestDB(t)
+	repo := NewGormRepository(db)
+	seedStoreQuotaSubscription(t, repo, "org-same-key", PlanBasic, 1)
+	ledger := NewGormStoreQuotaLedger(repo)
+	input := StoreQuotaReserveInput{OrganizationID: "org-same-key", RequestKey: uuid.NewString(), ActorSubject: "actor-1"}
+	start := make(chan struct{})
+	results := make(chan StoreQuotaReserveResult, 2)
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			result, err := ledger.Reserve(context.Background(), input)
+			results <- result
+			errs <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	close(errs)
+	var observed []StoreQuotaReserveResult
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("same-key concurrent Reserve() error = %v", err)
+		}
+	}
+	for result := range results {
+		observed = append(observed, result)
+	}
+	if len(observed) != 2 || observed[0].AllocationID != observed[1].AllocationID || observed[0].StoreID != observed[1].StoreID || observed[0].Existing == observed[1].Existing {
+		t.Fatalf("same-key results = %#v, want one new and one exact replay", observed)
+	}
+	summary, err := ledger.Summary(context.Background(), "org-same-key")
+	if err != nil || summary.Reserved != 1 || summary.Committed != 0 {
+		t.Fatalf("same-key summary = %#v, %v", summary, err)
+	}
+}
+
+func TestStoreQuotaTransitionAllowsAuthorizedActorChangeAndDoesNotBackdate(t *testing.T) {
+	db := openStoreQuotaTestDB(t)
+	repo := NewGormRepository(db)
+	seedStoreQuotaSubscription(t, repo, "org-actor", PlanBasic, 1)
+	future := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := db.Exec("PRAGMA ignore_check_constraints = ON").Error; err != nil {
+		t.Fatal(err)
+	}
+	ledger := newGormStoreQuotaLedger(repo, func() time.Time { return time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC) })
+	input := StoreQuotaReserveInput{OrganizationID: "org-actor", RequestKey: uuid.NewString(), ActorSubject: "creator"}
+	reserved, err := ledger.Reserve(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("UPDATE saas_store_quota_allocations SET updated_at = ? WHERE allocation_id = ?", future, reserved.AllocationID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("UPDATE saas_store_quota_buckets SET updated_at = ? WHERE organization_id = ?", future, input.OrganizationID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("PRAGMA ignore_check_constraints = OFF").Error; err != nil {
+		t.Fatal(err)
+	}
+	transition := StoreQuotaTransitionInput{OrganizationID: input.OrganizationID, AllocationID: reserved.AllocationID, StoreID: reserved.StoreID, RequestKey: input.RequestKey, ActorSubject: "operator"}
+	committed, err := ledger.Commit(context.Background(), transition)
+	if err != nil || committed.Allocation.UpdatedBy != "operator" || committed.Allocation.CreatedBy != "creator" || committed.Allocation.UpdatedAt.Before(future) || committed.Allocation.AllocatedAt.Before(future) {
+		t.Fatalf("cross-actor Commit() = %#v, %v", committed, err)
+	}
+	transition.ActorSubject = "deleter"
+	deallocated, err := ledger.Deallocate(context.Background(), transition)
+	if err != nil || deallocated.Allocation.UpdatedBy != "deleter" || deallocated.Allocation.CreatedBy != "creator" || deallocated.Allocation.UpdatedAt.Before(future) || deallocated.Allocation.ReleasedAt.Before(future) {
+		t.Fatalf("cross-actor Deallocate() = %#v, %v", deallocated, err)
+	}
+	if replay, err := ledger.Deallocate(context.Background(), transition); err != nil || !replay.Existing {
+		t.Fatalf("cross-actor deallocate replay = %#v, %v", replay, err)
+	}
+}
+
+func TestStoreQuotaCancelledContextStopsBeforeReservationWork(t *testing.T) {
+	db := openStoreQuotaTestDB(t)
+	repo := NewGormRepository(db)
+	seedStoreQuotaSubscription(t, repo, "org-cancel", PlanBasic, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := NewGormStoreQuotaLedger(repo).Reserve(ctx, StoreQuotaReserveInput{OrganizationID: "org-cancel", RequestKey: uuid.NewString(), ActorSubject: "actor-1"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled Reserve() error = %v, want context canceled", err)
+	}
+	var count int64
+	if err := db.Model(&storeQuotaAllocationRow{}).Where("organization_id = ?", "org-cancel").Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("cancelled Reserve() allocations=%d, %v; want 0", count, err)
+	}
+}
+
 func openConcurrentStoreQuotaTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := "file:" + filepath.ToSlash(filepath.Join(t.TempDir(), "store-quota.db")) + "?mode=rwc&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)"

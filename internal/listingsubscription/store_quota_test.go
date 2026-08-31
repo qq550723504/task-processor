@@ -49,3 +49,17 @@ func TestStoreQuotaInputRejectsNonCanonicalIdentity(t *testing.T) {
 		t.Fatalf("noncanonical request key error = %v, want invalid input", err)
 	}
 }
+
+func TestStoreQuotaNilRepositoryReturnsConfiguredError(t *testing.T) {
+	ledger := NewGormStoreQuotaLedger(nil)
+	input := StoreQuotaReserveInput{OrganizationID: "org-a", RequestKey: uuid.NewString(), ActorSubject: "actor-1"}
+	if _, err := ledger.Reserve(context.Background(), input); !errors.Is(err, ErrStoreQuotaNotConfigured) {
+		t.Fatalf("nil ledger Reserve() error = %v, want not configured", err)
+	}
+	if _, err := ledger.Summary(context.Background(), "org-a"); !errors.Is(err, ErrStoreQuotaNotConfigured) {
+		t.Fatalf("nil ledger Summary() error = %v, want not configured", err)
+	}
+	if _, err := ledger.GetByRequestKey(context.Background(), "org-a", input.RequestKey); !errors.Is(err, ErrStoreQuotaNotConfigured) {
+		t.Fatalf("nil ledger GetByRequestKey() error = %v, want not configured", err)
+	}
+}
