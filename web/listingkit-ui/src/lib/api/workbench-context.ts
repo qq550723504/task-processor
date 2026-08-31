@@ -11,6 +11,8 @@ const safeIdSchema = z
 
 const safeDisplayNameSchema = z
   .string()
+  .trim()
+  .min(1)
   .max(256)
   .refine((value) => !/[\u0000-\u001f\u007f]/.test(value));
 
@@ -55,15 +57,25 @@ export const workbenchContextSchema = z
         path: ["effectiveOrganizationId"],
       });
     }
-    if (
-      context.selectionRequired !==
-      (context.effectiveOrganizationId === null &&
-        context.organizations.length > 1)
-    ) {
+    const organizationCount = context.organizations.length;
+    const isResolverReachableState =
+      (organizationCount === 0 &&
+        context.effectiveOrganizationId === null &&
+        !context.selectionRequired) ||
+      (organizationCount === 1 &&
+        context.effectiveOrganizationId === context.organizations[0]?.id &&
+        !context.selectionRequired) ||
+      (organizationCount > 1 &&
+        ((context.effectiveOrganizationId === null &&
+          context.selectionRequired) ||
+          (context.effectiveOrganizationId !== null &&
+            !context.selectionRequired)));
+    if (!isResolverReachableState) {
       refinement.addIssue({
         code: "custom",
-        message: "Selection state must match the effective Organization",
-        path: ["selectionRequired"],
+        message:
+          "Organization count, effective Organization, and selection state must match the resolver",
+        path: ["effectiveOrganizationId"],
       });
     }
   });

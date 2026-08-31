@@ -17,20 +17,31 @@ func (value *Uint64) UnmarshalJSON(data []byte) error {
 		return errors.New("empty ProtoJSON uint64")
 	}
 
-	var parsed uint64
+	decimal := string(data)
 	if data[0] == '"' {
-		var decimal string
 		if err := json.Unmarshal(data, &decimal); err != nil {
 			return err
 		}
-		converted, err := strconv.ParseUint(decimal, 10, 64)
-		if err != nil {
-			return err
-		}
-		parsed = converted
-	} else if err := json.Unmarshal(data, &parsed); err != nil {
+	}
+	if !isUnsignedDecimal(decimal) {
+		return errors.New("invalid ProtoJSON uint64")
+	}
+	parsed, err := strconv.ParseUint(decimal, 10, 64)
+	if err != nil {
 		return err
 	}
 	*value = Uint64(parsed)
 	return nil
+}
+
+func isUnsignedDecimal(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, digit := range []byte(value) {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return true
 }

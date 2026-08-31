@@ -42,3 +42,28 @@ func TestUint64RejectsNonCanonicalOrOutOfRangeValues(t *testing.T) {
 		})
 	}
 }
+
+func TestUint64UnmarshalJSONRejectsNullWithoutTreatingItAsZero(t *testing.T) {
+	// Mutation caught: replacing strict token validation with json.Unmarshal
+	// directly into uint64 accepts null as zero.
+	for _, test := range []struct {
+		name    string
+		initial Uint64
+	}{
+		{name: "fresh receiver", initial: 0},
+		{name: "non-zero receiver", initial: 42},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			value := test.initial
+
+			err := json.Unmarshal([]byte(`null`), &value)
+
+			if err == nil {
+				t.Fatalf("Unmarshal(null) unexpectedly succeeded with %d", value)
+			}
+			if value != test.initial {
+				t.Fatalf("Unmarshal(null) changed receiver to %d, want %d", value, test.initial)
+			}
+		})
+	}
+}

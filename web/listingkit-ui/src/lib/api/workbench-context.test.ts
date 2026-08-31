@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchWorkbenchContext,
+  parseWorkbenchContextPayload,
   switchEffectiveOrganization,
   WorkbenchContextError,
 } from "@/lib/api/workbench-context";
@@ -38,6 +39,80 @@ describe("workbench context API", () => {
   });
 
   it.each([
+    [
+      "zero accessible Organizations",
+      {
+        ...VALID_CONTEXT,
+        effectiveOrganizationId: null,
+        selectionRequired: false,
+        organizations: [],
+      },
+    ],
+    [
+      "one accessible Organization",
+      {
+        ...VALID_CONTEXT,
+        effectiveOrganizationId: "org-a",
+        selectionRequired: false,
+        organizations: [VALID_CONTEXT.organizations[0]],
+      },
+    ],
+    [
+      "multiple Organizations without an effective selection",
+      {
+        ...VALID_CONTEXT,
+        effectiveOrganizationId: null,
+        selectionRequired: true,
+      },
+    ],
+    ["multiple Organizations with a listed effective selection", VALID_CONTEXT],
+  ])("accepts the resolver-reachable state for %s", (_name, payload) => {
+    // Mutation caught: accepting selectionRequired based only on a null
+    // effective ID allows states the effective Organization resolver cannot emit.
+    expect(parseWorkbenchContextPayload(payload).success).toBe(true);
+  });
+
+  it.each([
+    [
+      "zero Organizations with selection required",
+      {
+        ...VALID_CONTEXT,
+        effectiveOrganizationId: null,
+        selectionRequired: true,
+        organizations: [],
+      },
+    ],
+    [
+      "one Organization without an effective selection",
+      {
+        ...VALID_CONTEXT,
+        effectiveOrganizationId: null,
+        selectionRequired: false,
+        organizations: [VALID_CONTEXT.organizations[0]],
+      },
+    ],
+    [
+      "one Organization with selection required",
+      {
+        ...VALID_CONTEXT,
+        effectiveOrganizationId: "org-a",
+        selectionRequired: true,
+        organizations: [VALID_CONTEXT.organizations[0]],
+      },
+    ],
+    [
+      "multiple Organizations without a selection requirement",
+      { ...VALID_CONTEXT, effectiveOrganizationId: null },
+    ],
+    [
+      "multiple Organizations with a selection requirement despite an effective Organization",
+      { ...VALID_CONTEXT, selectionRequired: true },
+    ],
+  ])("rejects an unreachable resolver state for %s", (_name, payload) => {
+    expect(parseWorkbenchContextPayload(payload).success).toBe(false);
+  });
+
+  it.each([
     ["a blank user ID", { ...VALID_CONTEXT, user: { id: "  " } }],
     [
       "duplicate Organization IDs",
@@ -69,6 +144,16 @@ describe("workbench context API", () => {
         ...VALID_CONTEXT,
         organizations: [
           { ...VALID_CONTEXT.organizations[0], id: " " },
+          VALID_CONTEXT.organizations[1],
+        ],
+      },
+    ],
+    [
+      "an Organization display name without a non-whitespace character",
+      {
+        ...VALID_CONTEXT,
+        organizations: [
+          { ...VALID_CONTEXT.organizations[0], name: "   " },
           VALID_CONTEXT.organizations[1],
         ],
       },

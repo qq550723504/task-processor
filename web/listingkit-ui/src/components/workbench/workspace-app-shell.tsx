@@ -207,6 +207,8 @@ function DelegatedOperationIndicator({
   ) {
     return null;
   }
+  const effectiveOrganizationName =
+    effectiveOrganization.name.trim() || "当前企业";
   const homeOrganizationName =
     organizations.find((organization) => organization.id === homeOrganizationId)
       ?.name || "其他归属企业";
@@ -217,7 +219,7 @@ function DelegatedOperationIndicator({
       role="status"
     >
       <span className="block truncate">
-        正在代管{effectiveOrganization.name}
+        正在代管{effectiveOrganizationName}
       </span>
       <span className="block truncate text-muted-foreground">
         账号归属{homeOrganizationName}

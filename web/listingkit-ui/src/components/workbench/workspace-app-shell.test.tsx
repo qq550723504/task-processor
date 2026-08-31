@@ -8,10 +8,27 @@ const navigation = vi.hoisted(() => ({
   replace: vi.fn(),
 }));
 
+const injectedWorkbenchContext = vi.hoisted(() => ({ value: null as unknown }));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => navigation.pathname,
   useRouter: () => ({ replace: navigation.replace }),
 }));
+
+vi.mock(
+  "@/components/providers/workbench-context-provider",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/components/providers/workbench-context-provider")
+      >();
+    return {
+      ...actual,
+      useWorkbenchContext: () =>
+        injectedWorkbenchContext.value ?? actual.useWorkbenchContext(),
+    };
+  },
+);
 
 import { WorkbenchContextProvider } from "@/components/providers/workbench-context-provider";
 import { WorkspaceAppShell } from "@/components/workbench/workspace-app-shell";
@@ -47,6 +64,7 @@ describe("WorkspaceAppShell", () => {
   afterEach(() => {
     navigation.pathname = "/workbench";
     navigation.replace.mockReset();
+    injectedWorkbenchContext.value = null;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -135,14 +153,12 @@ describe("WorkspaceAppShell", () => {
   it("persistently identifies delegated operation with safe Organization names", async () => {
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn<typeof fetch>()
-        .mockResolvedValue(
-          Response.json({
-            ...ACTIVE_CONTEXT,
-            effectiveOrganizationId: "org-b",
-          }),
-        ),
+      vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          ...ACTIVE_CONTEXT,
+          effectiveOrganizationId: "org-b",
+        }),
+      ),
     );
 
     renderShell();
@@ -153,6 +169,38 @@ describe("WorkspaceAppShell", () => {
     expect(
       screen.getByRole("status", { name: "企业代管状态" }),
     ).toHaveTextContent("账号归属硕米科技");
+  });
+
+  it("uses a stable non-ID fallback for an injected unnamed delegated target", async () => {
+    injectedWorkbenchContext.value = {
+      user: { id: "user-1" },
+      homeOrganizationId: "org-a",
+      organizations: [
+        { id: "org-a", name: "硕米科技", roles: ["role-a"] },
+        { id: "org-b", name: "", roles: ["role-b"] },
+      ],
+      effectiveOrganization: { id: "org-b", name: "", roles: ["role-b"] },
+      roles: ["role-b"],
+      selectionRequired: false,
+      isLoading: false,
+      isSwitching: false,
+      error: null,
+      blockingError: null,
+      retry: vi.fn(),
+      switchOrganization: vi.fn(),
+    };
+
+    render(
+      <WorkspaceAppShell>
+        <p>organization child</p>
+      </WorkspaceAppShell>,
+    );
+
+    const indicator = await screen.findByRole("status", {
+      name: "企业代管状态",
+    });
+    expect(indicator).toHaveTextContent("正在代管当前企业");
+    expect(indicator).not.toHaveTextContent("org-b");
   });
 
   it("keeps the switcher available but withholds scoped children when selection is required", async () => {

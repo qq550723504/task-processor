@@ -361,6 +361,14 @@ describe("buildWorkbenchBrowserResponse", () => {
 
   it.each([
     ["partial context", { effectiveOrganizationId: "org-b" }],
+    [
+      "sole-Organization context without its required effective selection",
+      {
+        ...contextPayload,
+        effectiveOrganizationId: null,
+        selectionRequired: false,
+      },
+    ],
     ["unknown success field", { ...contextPayload, accessToken: "unsafe" }],
     [
       "duplicate organization",
@@ -512,9 +520,13 @@ describe("buildWorkbenchBrowserResponse", () => {
     },
   );
 
-  it("clears a stale selection when a successful context has no effective organization", async () => {
+  it("clears a stale selection when a zero-Organization context has no effective organization", async () => {
     const response = await buildWorkbenchBrowserResponse(
-      Response.json({ ...contextPayload, effectiveOrganizationId: null }),
+      Response.json({
+        ...contextPayload,
+        effectiveOrganizationId: null,
+        organizations: [],
+      }),
     );
 
     expect(response.headers.get("Set-Cookie")).toContain(
