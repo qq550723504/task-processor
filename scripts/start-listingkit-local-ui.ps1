@@ -351,7 +351,7 @@ $nodeExecutable = (Get-Command node.exe -ErrorAction Stop).Source
 Ensure-Directory -Path $runtimeDir
 
 if (-not (Test-Path -LiteralPath $nextCli)) {
-    throw "Next.js CLI not found: $nextCli. Run npm install in web/listingkit-ui first."
+    throw "Next.js CLI not found: $nextCli. Run pnpm install --frozen-lockfile in web/listingkit-ui first."
 }
 
 if ($IsolatedAcceptance) {

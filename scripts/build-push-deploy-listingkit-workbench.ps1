@@ -111,7 +111,7 @@ if (-not $SkipTests) {
     }
 
     Invoke-Step "[2/8] Building frontend..." {
-        npm --prefix web/listingkit-ui run build
+        pnpm --dir web/listingkit-ui build
         if ($LASTEXITCODE -ne 0) { throw "frontend build failed" }
     }
 }
