@@ -588,7 +588,7 @@ func storeResponse(store *storecenter.Store, connection storecenter.ConnectionSt
 	default:
 		return StoreResponse{}, storecenter.ErrDependencyUnavailable
 	}
-	return StoreResponse{ID: store.ID(), Name: store.Name(), Platform: string(store.Platform()), Region: store.Region(), ExternalStoreID: store.ExternalStoreID(), LifecycleStatus: store.LifecycleStatus(), ConnectionStatus: connection, Version: store.Version(), CreatedAt: store.CreatedAt(), UpdatedAt: store.UpdatedAt()}, nil
+	return StoreResponse{ID: store.ID(), Name: store.Name(), Platform: string(store.Platform()), Region: store.Region(), ExternalStoreID: store.ExternalStoreID(), LifecycleStatus: store.LifecycleStatus(), ConnectionStatus: connection, Version: store.Version(), CreatedAt: store.CreatedAt().UTC(), UpdatedAt: store.UpdatedAt().UTC()}, nil
 }
 
 func isNilInterface(value any) bool {

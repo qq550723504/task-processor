@@ -121,6 +121,7 @@ func RecommendedScopes(projectID string) []string {
 		"profile",
 		"email",
 		"urn:zitadel:iam:user:resourceowner",
+		"urn:zitadel:iam:org:project:id:zitadel:aud",
 	}
 	if projectID = strings.TrimSpace(projectID); projectID != "" {
 		scopes = append(scopes,
@@ -915,7 +916,34 @@ func (c client) listOrganizations(ctx context.Context, query map[string]any) ([]
 const (
 	acceptanceListPageSize = 100
 	acceptanceListLimit    = 1000
+	acceptanceReadAttempts = 31
+	acceptanceReadInterval = 100 * time.Millisecond
 )
+
+func waitForAcceptanceReadBack(ctx context.Context, verify func() (bool, error)) (bool, error) {
+	for attempt := 0; attempt < acceptanceReadAttempts; attempt++ {
+		matched, err := verify()
+		if err != nil || matched {
+			return matched, err
+		}
+		if attempt == acceptanceReadAttempts-1 {
+			break
+		}
+		timer := time.NewTimer(acceptanceReadInterval)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return false, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return false, nil
+}
 
 func (c client) findOrganizationByID(ctx context.Context, organizationID string) (organizationRecord, bool, error) {
 	records, err := c.listOrganizations(ctx, map[string]any{"idQuery": map[string]any{"id": organizationID}})
@@ -996,9 +1024,21 @@ func (c client) ensureAcceptanceOrganization(ctx context.Context, organizationID
 		if createErr == nil && createdID != organizationID {
 			return errors.New("ZITADEL did not honor the stable acceptance organization id")
 		}
-		existing, found, err = c.findOrganizationByID(ctx, organizationID)
-		if err != nil {
-			return fmt.Errorf("read back created acceptance organization: %w", err)
+		matched, readErr := waitForAcceptanceReadBack(ctx, func() (bool, error) {
+			existing, found, err = c.findOrganizationByID(ctx, organizationID)
+			if err != nil || !found {
+				return false, err
+			}
+			if strings.TrimSpace(existing.Name) != name {
+				return false, errors.New("acceptance organization ownership read-back did not match")
+			}
+			return true, nil
+		})
+		if readErr != nil {
+			return fmt.Errorf("read back created acceptance organization: %w", readErr)
+		}
+		if !matched {
+			return errors.New("acceptance organization ownership read-back did not match")
 		}
 	}
 	if !found || strings.TrimSpace(existing.Name) != name {
@@ -1011,11 +1051,20 @@ func (c client) ensureAcceptanceOrganization(ctx context.Context, organizationID
 		if err := c.activateOrganization(ctx, organizationID); err != nil {
 			return fmt.Errorf("activate acceptance organization: %w", err)
 		}
-		existing, found, err = c.findOrganizationByID(ctx, organizationID)
-		if err != nil {
-			return fmt.Errorf("read back activated acceptance organization: %w", err)
+		matched, readErr := waitForAcceptanceReadBack(ctx, func() (bool, error) {
+			existing, found, err = c.findOrganizationByID(ctx, organizationID)
+			if err != nil || !found {
+				return false, err
+			}
+			if strings.TrimSpace(existing.Name) != name {
+				return false, errors.New("acceptance organization activation read-back did not match")
+			}
+			return existing.State == "ORGANIZATION_STATE_ACTIVE", nil
+		})
+		if readErr != nil {
+			return fmt.Errorf("read back activated acceptance organization: %w", readErr)
 		}
-		if !found || existing.State != "ORGANIZATION_STATE_ACTIVE" || strings.TrimSpace(existing.Name) != name {
+		if !matched {
 			return errors.New("acceptance organization activation read-back did not match")
 		}
 		return nil
@@ -1117,11 +1166,20 @@ func (c client) ensureProjectGrant(ctx context.Context, projectID, organizationI
 }
 
 func (c client) verifyProjectGrant(ctx context.Context, projectID, organizationID string, roleKeys []string) error {
-	grants, err := c.listProjectGrants(ctx, projectID, organizationID)
+	matched, err := waitForAcceptanceReadBack(ctx, func() (bool, error) {
+		grants, err := c.listProjectGrants(ctx, projectID, organizationID)
+		if err != nil {
+			return false, err
+		}
+		if len(grants) > 1 {
+			return false, errors.New("multiple acceptance project grants matched the exact project and organization")
+		}
+		return len(grants) == 1 && grants[0].State == "PROJECT_GRANT_STATE_ACTIVE" && equalStringSets(grants[0].GrantedRoleKeys, roleKeys), nil
+	})
 	if err != nil {
 		return fmt.Errorf("read back acceptance project grant: %w", err)
 	}
-	if len(grants) != 1 || grants[0].State != "PROJECT_GRANT_STATE_ACTIVE" || !equalStringSets(grants[0].GrantedRoleKeys, roleKeys) {
+	if !matched {
 		return errors.New("acceptance project grant read-back did not match active exact roles")
 	}
 	return nil
@@ -1242,11 +1300,20 @@ func (c client) ensureAuthorization(ctx context.Context, userID, projectID, orga
 }
 
 func (c client) verifyAuthorization(ctx context.Context, userID, projectID, organizationID string, roleKeys []string) error {
-	authorizations, err := c.listAuthorizations(ctx, userID, projectID, organizationID)
+	matched, err := waitForAcceptanceReadBack(ctx, func() (bool, error) {
+		authorizations, err := c.listAuthorizations(ctx, userID, projectID, organizationID)
+		if err != nil {
+			return false, err
+		}
+		if len(authorizations) > 1 {
+			return false, errors.New("multiple acceptance role assignments matched the exact user, project, and organization")
+		}
+		return len(authorizations) == 1 && authorizations[0].State == "STATE_ACTIVE" && equalStringSets(authorizations[0].RoleKeys, roleKeys), nil
+	})
 	if err != nil {
 		return fmt.Errorf("read back acceptance role assignment: %w", err)
 	}
-	if len(authorizations) != 1 || authorizations[0].State != "STATE_ACTIVE" || !equalStringSets(authorizations[0].RoleKeys, roleKeys) {
+	if !matched {
 		return errors.New("acceptance role assignment read-back did not match active exact roles")
 	}
 	return nil

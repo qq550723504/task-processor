@@ -350,6 +350,26 @@ func TestHandlerReturnsExactSuccessDTOsAndReplayStatuses(t *testing.T) {
 	}
 }
 
+func TestHandlerSerializesStoreTimestampsAsUTC(t *testing.T) {
+	location := time.FixedZone("acceptance-local", 8*60*60)
+	store, err := storecenter.RehydrateStore(storecenter.StoreSnapshot{
+		ID: testStoreID, OrganizationID: "org-effective", Name: "Store", Platform: storecenter.PlatformShein, Region: "SG", ExternalStoreID: "external-1",
+		LifecycleStatus: storecenter.StoreStatusActive, ConnectionRef: "connection-private", QuotaAllocationID: testAllocationID, Version: 2,
+		CreatedBy: "creator-private", UpdatedBy: "updater-private", CreatedAt: time.Date(2026, 8, 30, 9, 2, 3, 0, location), UpdatedAt: time.Date(2026, 8, 30, 10, 3, 4, 0, location), CreateIdempotencyKey: testCreateKey,
+	})
+	require.NoError(t, err)
+	projection := storecenter.StoreProjection{Store: *store, ConnectionStatus: storecenter.ConnectionStatusConnected}
+	service := newStoreServiceStub(t)
+	service.createResult = storecenter.CreateStoreResult{Store: store, Replayed: true}
+	service.getResult = projection
+
+	response := serve(t, mountedRouter(t, mustHandler(t, service)), validIdentity(), http.MethodPost, "/api/v1/workbench/stores", `{"name":"Store","platform":"shein","region":"SG","externalStoreId":"external-1"}`, map[string][]string{"Idempotency-Key": {testCreateKey}})
+
+	require.Equal(t, http.StatusCreated, response.Code)
+	require.Contains(t, response.Body.String(), `"createdAt":"2026-08-30T01:02:03Z"`)
+	require.Contains(t, response.Body.String(), `"updatedAt":"2026-08-30T02:03:04Z"`)
+}
+
 func TestHandlerEnforcesExact16KiBBodyLimit(t *testing.T) {
 	base := `{"name":"Store","platform":"shein","region":"SG"}`
 	require.Less(t, len(base), requestBodyMaxBytes)

@@ -98,10 +98,10 @@ func TestProvisionLocalApplicationsCreatesAPIAndOIDCApps(t *testing.T) {
 		!contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:project-1:roles") {
 		t.Fatalf("recommended scopes = %#v", result.RecommendedScopes)
 	}
-	if contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:id:zitadel:aud") ||
+	if !contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:id:zitadel:aud") ||
 		!contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:id:project-1:aud") ||
 		!contains(result.RecommendedScopes, "urn:zitadel:iam:org:project:project-1:roles") {
-		t.Fatalf("recommended scopes must target the ListingKit project: %#v", result.RecommendedScopes)
+		t.Fatalf("recommended scopes must authorize the ZITADEL read API and target the ListingKit project: %#v", result.RecommendedScopes)
 	}
 }
 
@@ -1108,6 +1108,120 @@ func TestEnsureAcceptanceOrganizationHandlesConcurrentCreateConflict(t *testing.
 	}
 	if createCalls != 2 {
 		t.Fatalf("create calls = %d, want one success and one conflict", createCalls)
+	}
+}
+
+func TestEnsureAcceptanceOrganizationRetriesEventuallyConsistentReadBack(t *testing.T) {
+	created := false
+	postCreateReads := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireAuth(t, r)
+		switch r.URL.Path {
+		case "/v2/organizations/_search":
+			body := decodeTestJSONMap(t, r)
+			queries, _ := body["queries"].([]any)
+			query, _ := queries[0].(map[string]any)
+			if _, isID := query["idQuery"]; isID && created {
+				postCreateReads++
+				if postCreateReads >= 3 {
+					writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 1}, "result": []map[string]any{{
+						"id": "managed-org-a", "name": "Acceptance Organization A", "state": "ORGANIZATION_STATE_ACTIVE",
+					}}})
+					return
+				}
+			}
+			writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 0}, "result": []any{}})
+		case "/v2/organizations":
+			created = true
+			writeJSON(t, w, map[string]any{"organizationId": "managed-org-a"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"})
+	if err := client.ensureAcceptanceOrganization(context.Background(), "managed-org-a", "Acceptance Organization A"); err != nil {
+		t.Fatalf("ensureAcceptanceOrganization() error = %v", err)
+	}
+	if postCreateReads != 3 {
+		t.Fatalf("post-create reads = %d, want 3", postCreateReads)
+	}
+}
+
+func TestEnsureProjectGrantRetriesEventuallyConsistentReadBack(t *testing.T) {
+	created := false
+	postCreateReads := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireAuth(t, r)
+		switch r.URL.Path {
+		case "/zitadel.project.v2.ProjectService/ListProjectGrants":
+			if created {
+				postCreateReads++
+				if postCreateReads >= 3 {
+					writeJSON(t, w, map[string]any{"pagination": map[string]any{"totalResult": 1}, "projectGrants": []map[string]any{{
+						"projectId": "project-1", "grantedOrganizationId": "managed-org-a",
+						"grantedRoleKeys": []string{"listingkit_admin"}, "state": "PROJECT_GRANT_STATE_ACTIVE",
+					}}})
+					return
+				}
+			}
+			writeJSON(t, w, map[string]any{"pagination": map[string]any{"totalResult": 0}, "projectGrants": []any{}})
+		case "/zitadel.project.v2.ProjectService/CreateProjectGrant":
+			created = true
+			writeJSON(t, w, map[string]any{"creationDate": "2026-08-31T00:00:00Z"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"})
+	if err := client.ensureProjectGrant(context.Background(), "project-1", "managed-org-a", []string{"listingkit_admin"}); err != nil {
+		t.Fatalf("ensureProjectGrant() error = %v", err)
+	}
+	if postCreateReads != 3 {
+		t.Fatalf("post-create reads = %d, want 3", postCreateReads)
+	}
+}
+
+func TestEnsureAuthorizationRetriesEventuallyConsistentReadBack(t *testing.T) {
+	created := false
+	postCreateReads := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireAuth(t, r)
+		switch r.URL.Path {
+		case "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations":
+			if created {
+				postCreateReads++
+				if postCreateReads >= 3 {
+					writeJSON(t, w, map[string]any{"pagination": map[string]any{"totalResult": 1}, "authorizations": []map[string]any{{
+						"id": "authorization-a", "state": "STATE_ACTIVE", "user": map[string]any{"id": "user-1"},
+						"project": map[string]any{"id": "project-1"}, "organization": map[string]any{"id": "managed-org-a"},
+						"roles": []map[string]any{{"key": "listingkit_admin"}},
+					}}})
+					return
+				}
+			}
+			writeJSON(t, w, map[string]any{"pagination": map[string]any{"totalResult": 0}, "authorizations": []any{}})
+		case "/zitadel.authorization.v2.AuthorizationService/CreateAuthorization":
+			created = true
+			writeJSON(t, w, map[string]any{"id": "authorization-a"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"})
+	if err := client.ensureAuthorization(context.Background(), "user-1", "project-1", "managed-org-a", []string{"listingkit_admin"}); err != nil {
+		t.Fatalf("ensureAuthorization() error = %v", err)
+	}
+	if postCreateReads != 3 {
+		t.Fatalf("post-create reads = %d, want 3", postCreateReads)
 	}
 }
 

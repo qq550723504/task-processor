@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"task-processor/internal/zitadelprovision"
 )
 
 func TestProvisionPhaseWritesRuntimeFileWithoutPrintingSecrets(t *testing.T) {
@@ -142,6 +144,35 @@ func TestProvisionPhaseWritesRuntimeFileWithoutPrintingSecrets(t *testing.T) {
 	}
 	if !strings.Contains(runtime, "ZITADEL_SCOPES=openid profile email ") {
 		t.Fatalf("runtime file missing ZITADEL scopes:\n%s", runtime)
+	}
+	if !strings.Contains(runtime, "urn:zitadel:iam:org:project:id:zitadel:aud") {
+		t.Fatalf("runtime file missing ZITADEL API audience scope:\n%s", runtime)
+	}
+}
+
+func TestRuntimeValuesPreservesMultiOrganizationAcceptanceIDs(t *testing.T) {
+	runtime, err := runtimeValues(map[string]string{
+		acceptanceOrgAIDKey:  "910000000000000001",
+		acceptanceOrgBIDKey:  "910000000000000002",
+		bootstrapTenantIDKey: "org-home",
+		bootstrapUserIDKey:   "user-1",
+	}, "http://localhost:19080", "management-token", "", zitadelprovision.LocalApplicationResult{
+		ProjectID:         "project-1",
+		APIAppID:          "api-app-1",
+		APIClientID:       "api-client-1",
+		APIClientSecret:   "api-secret-1",
+		OIDCAppID:         "oidc-app-1",
+		OIDCClientID:      "oidc-client-1",
+		OIDCClientSecret:  "oidc-secret-1",
+		BootstrapTenantID: "org-home",
+		BootstrapUserID:   "user-1",
+		RecommendedScopes: zitadelprovision.RecommendedScopes("project-1"),
+	})
+	if err != nil {
+		t.Fatalf("runtimeValues() error = %v", err)
+	}
+	if runtime[acceptanceOrgAIDKey] != "910000000000000001" || runtime[acceptanceOrgBIDKey] != "910000000000000002" {
+		t.Fatalf("runtime acceptance organization IDs = %q/%q", runtime[acceptanceOrgAIDKey], runtime[acceptanceOrgBIDKey])
 	}
 }
 

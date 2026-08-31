@@ -372,6 +372,8 @@ func runtimeValues(existing map[string]string, issuerURL, managementToken, orgID
 		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS",
 		bootstrapTenantIDKey,
 		bootstrapUserIDKey,
+		acceptanceOrgAIDKey,
+		acceptanceOrgBIDKey,
 	} {
 		if value := strings.TrimSpace(existing[key]); value != "" {
 			runtime[key] = value

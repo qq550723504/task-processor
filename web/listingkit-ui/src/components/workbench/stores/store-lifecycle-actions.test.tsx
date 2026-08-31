@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 
 const context = vi.hoisted(() => ({
   effectiveOrganization: { id: "org-a", name: "企业 A", roles: [] as string[] },
@@ -75,6 +76,17 @@ describe("StoreLifecycleActions", () => {
     const action = screen.getByRole("button", { name: "停用店铺" });
     await user.dblClick(action);
     expect(disable.mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps lifecycle callbacks mounted under React Strict Mode", async () => {
+    const onStoreUpdated = vi.fn();
+    const user = userEvent.setup();
+    render(<StrictMode><StoreLifecycleActions onStoreUpdated={onStoreUpdated} store={STORE} /></StrictMode>);
+
+    await user.click(screen.getByRole("button", { name: "停用店铺" }));
+    disable.mutate.mock.calls[0]?.[1].onSuccess({ ...STORE, lifecycleStatus: "disabled", version: 5 });
+
+    await waitFor(() => expect(onStoreUpdated).toHaveBeenCalledWith(expect.objectContaining({ lifecycleStatus: "disabled", version: 5 })));
   });
 
   it("requires the exact visible Organization and Store phrase and clears it on cancel", async () => {
