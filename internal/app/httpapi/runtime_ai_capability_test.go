@@ -25,7 +25,7 @@ import (
 func TestBuildAICapabilityRuntimeDepsKeepsLegacyModeDependencyFree(t *testing.T) {
 	deps, err := buildAICapabilityRuntimeDeps(&config.Config{
 		AICapability: config.AICapabilityConfig{StudioImageRoutingMode: "legacy"},
-	}, logrus.New())
+	}, logrus.New(), nil)
 	if err != nil {
 		t.Fatalf("buildAICapabilityRuntimeDeps() error = %v", err)
 	}
@@ -45,7 +45,7 @@ func TestBuildAICapabilityRuntimeDepsRequiresDatabaseOutsideLegacy(t *testing.T)
 		t.Run(mode, func(t *testing.T) {
 			_, err := buildAICapabilityRuntimeDeps(&config.Config{
 				AICapability: config.AICapabilityConfig{StudioImageRoutingMode: mode},
-			}, logrus.New())
+			}, logrus.New(), nil)
 			if err == nil {
 				t.Fatal("expected missing database error")
 			}
@@ -65,7 +65,7 @@ func TestBuildAICapabilityRuntimeDepsRequiresDatabaseWhenProductImageSceneEnable
 			StudioImageRoutingMode:   "legacy",
 			ProductImageSceneEnabled: true,
 		},
-	}, logrus.New())
+	}, logrus.New(), nil)
 	if err == nil {
 		t.Fatal("expected missing database error")
 	}
@@ -80,7 +80,7 @@ func TestBuildAICapabilityRuntimeDepsRequiresDatabaseWhenProductEnrichGovernance
 			StudioImageRoutingMode:   "legacy",
 			ProductEnrichTextEnabled: true,
 		},
-	}, logrus.New())
+	}, logrus.New(), nil)
 	if err == nil {
 		t.Fatal("expected missing database error")
 	}

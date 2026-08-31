@@ -8,6 +8,7 @@ import (
 
 func setDefaults(v *viper.Viper) {
 	defaults := NewDefaultConfig()
+	v.SetDefault("featureFlags.flags.product-listing-runtime-auto-migrate", defaults.FeatureFlags.Flags["product-listing-runtime-auto-migrate"])
 
 	v.SetDefault("processor.maxRetries", defaults.Processor.MaxRetries)
 	v.SetDefault("processor.timeout", defaults.Processor.Timeout)

@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-// ProductListingAPIRuntimeAutoMigrateEnabled reports whether runtime database
-// migrations are allowed for the product-listing API process. It defaults to
-// true for backwards compatibility, while allowing local debugging sessions to
-// connect to a shared database without modifying its schema.
+// ProductListingAPIRuntimeAutoMigrateEnabled is retained only for the legacy
+// internal/productimage/httpapi/task_repository_builder.go and
+// internal/productenrich/httpapi/bootstrap.go entrypoints. New app composition
+// evaluates this switch through OpenFeature instead.
 func ProductListingAPIRuntimeAutoMigrateEnabled() bool {
 	raw := strings.TrimSpace(os.Getenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE"))
 	if raw == "" {

@@ -18,6 +18,11 @@ func BuildConfig(v *viper.Viper) *Config {
 	listingKitAllowedRoles := getStringSlice(v, "listingkit.zitadel.allowedRoles")
 
 	cfg := &Config{
+		FeatureFlags: FeatureFlagsConfig{
+			Flags: map[string]bool{
+				"product-listing-runtime-auto-migrate": v.GetBool("featureFlags.flags.product-listing-runtime-auto-migrate"),
+			},
+		},
 		Processor: ProcessorConfig{
 			MaxRetries:       v.GetInt("processor.maxRetries"),
 			Timeout:          v.GetInt("processor.timeout"),

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -12,7 +13,7 @@ import (
 	platformdatabase "task-processor/internal/platform/database"
 )
 
-func newDBAICapabilityStores(cfg *config.DatabaseConfig, logger *logrus.Logger) (aicapability.InvocationRecorder, aicapability.AsyncJobBindingStore, func() error, error) {
+func newDBAICapabilityStores(cfg *config.DatabaseConfig, logger *logrus.Logger, featureFlags BoolEvaluator) (aicapability.InvocationRecorder, aicapability.AsyncJobBindingStore, func() error, error) {
 	if cfg == nil {
 		return nil, nil, nil, fmt.Errorf("AI capability invocation ledger database config is nil")
 	}
@@ -24,7 +25,7 @@ func newDBAICapabilityStores(cfg *config.DatabaseConfig, logger *logrus.Logger) 
 	if logger != nil {
 		logger.Infof("AI capability invocation ledger database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
 	}
-	if shouldAutoMigrateProductListingAPIRuntime() {
+	if shouldAutoMigrateProductListingAPIRuntime(context.Background(), featureFlags) {
 		if err := aicapabilitystore.AutoMigrateInvocationLedger(db); err != nil {
 			_ = platformdatabase.CloseShared(databaseConfig, db)
 			return nil, nil, nil, fmt.Errorf("ai invocation ledger auto-migrate failed: %w", err)

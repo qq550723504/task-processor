@@ -101,6 +101,9 @@ func validateAmazonCrawlerAPIConfig(cfg *Config) error {
 
 func NewDefaultConfig() *Config {
 	return &Config{
+		FeatureFlags: FeatureFlagsConfig{
+			Flags: map[string]bool{"product-listing-runtime-auto-migrate": true},
+		},
 		Processor: ProcessorConfig{
 			MaxRetries:       3,
 			Timeout:          300,

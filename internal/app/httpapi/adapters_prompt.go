@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -12,8 +13,8 @@ import (
 	"task-processor/internal/prompt"
 )
 
-func newDBTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (prompt.TenantPromptStore, func() error, error) {
-	if !shouldAutoMigrateProductListingAPIRuntime() {
+func newDBTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger, featureFlags BoolEvaluator) (prompt.TenantPromptStore, func() error, error) {
+	if !shouldAutoMigrateProductListingAPIRuntime(context.Background(), featureFlags) {
 		if cfg == nil {
 			return nil, nil, fmt.Errorf("database config is nil")
 		}

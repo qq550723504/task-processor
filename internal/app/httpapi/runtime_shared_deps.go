@@ -13,6 +13,7 @@ import (
 
 type sharedRuntimeDeps struct {
 	cfg                  *config.Config
+	featureFlags         BoolEvaluator
 	closers              []func() error
 	openaiMgr            *openaiclient.Manager
 	aiCredentialStore    *openaiclient.GormCredentialResolver

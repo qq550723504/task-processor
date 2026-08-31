@@ -1,3 +1,7 @@
+featureFlags:
+  flags:
+    product-listing-runtime-auto-migrate: true
+
 # 统一开发环境配置
 # 支持 TEMU 和 SHEIN 两个平台
 

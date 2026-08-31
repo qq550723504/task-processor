@@ -25,6 +25,7 @@ var (
 )
 
 type Config struct {
+	FeatureFlags        FeatureFlagsConfig        `yaml:"featureFlags"`
 	Logging             LoggingConfig             `yaml:"logging"`
 	Processor           ProcessorConfig           `yaml:"processor"`
 	Worker              WorkerConfig              `yaml:"worker"`
@@ -43,6 +44,10 @@ type Config struct {
 	ListingKit          ListingKitConfig          `yaml:"listingkit"`
 	ListingControlPlane ListingControlPlaneConfig `yaml:"listingControlPlane"`
 	AICapability        AICapabilityConfig        `yaml:"aiCapability"`
+}
+
+type FeatureFlagsConfig struct {
+	Flags map[string]bool `yaml:"flags"`
 }
 
 type DebugConfig struct {
@@ -219,6 +224,9 @@ func bindKnownEnvs(v *viper.Viper) {
 
 func knownEnvBindings() map[string]envBinding {
 	return map[string]envBinding{
+		"featureFlags.flags.product-listing-runtime-auto-migrate": {
+			Primary: "TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE",
+		},
 		"aiCapability.studioImageRoutingMode": {
 			Primary: "TASK_PROCESSOR_AI_CAPABILITY_STUDIO_IMAGE_ROUTING_MODE",
 		},

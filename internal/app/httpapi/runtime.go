@@ -1,6 +1,12 @@
 package httpapi
 
-import "github.com/sirupsen/logrus"
+import (
+	"context"
+
+	"github.com/sirupsen/logrus"
+
+	platformfeatureflag "task-processor/internal/platform/featureflag"
+)
 
 func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, error) {
 	timer := newStartupTimer(logger)
@@ -12,29 +18,45 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		return nil, err
 	}
 
+	done = timer.phase("buildFeatureFlagRuntime")
+	featureFlags, err := platformfeatureflag.New(context.Background(), platformfeatureflag.Config{Flags: cfg.FeatureFlags.Flags})
+	done()
+	if err != nil {
+		return nil, err
+	}
+	featureFlagsCloser := func() error { return featureFlags.Shutdown(context.Background()) }
+	ownedClosers := []func() error{featureFlagsCloser}
+	completed := false
+	defer func() {
+		cleanupOwnedRuntimeResources(completed, ownedClosers)
+	}()
+
 	done = timer.phase("resolveImageWorkDir")
 	imageWorkDir := resolveImageWorkDir(cfg)
 	done()
 
 	done = timer.phase("buildPromptRuntimeDeps")
-	promptDeps, err := buildPromptRuntimeDeps(cfg, logger)
+	promptDeps, err := buildPromptRuntimeDeps(cfg, logger, featureFlags)
 	done()
 	if err != nil {
 		return nil, err
 	}
+	ownedClosers = append(ownedClosers, promptDeps.closers...)
 	done = timer.phase("buildOpenAIRuntimeDeps")
-	openaiDeps, err := buildOpenAIRuntimeDeps(cfg, logger)
+	openaiDeps, err := buildOpenAIRuntimeDeps(cfg, logger, featureFlags)
 	done()
 	if err != nil {
 		return nil, err
 	}
+	ownedClosers = append(ownedClosers, openaiDeps.closers...)
 	closers := openaiDeps.closers
 	done = timer.phase("buildAICapabilityRuntimeDeps")
-	aiCapabilityDeps, err := buildAICapabilityRuntimeDeps(cfg, logger)
+	aiCapabilityDeps, err := buildAICapabilityRuntimeDeps(cfg, logger, featureFlags)
 	done()
 	if err != nil {
 		return nil, err
 	}
+	ownedClosers = append(ownedClosers, aiCapabilityDeps.closers...)
 	closers = append(closers, aiCapabilityDeps.closers...)
 	closers = append(closers, promptDeps.closers...)
 	done = timer.phase("buildProductEnrichRuntimeDeps")
@@ -51,13 +73,17 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		return nil, err
 	}
 	if storeCloser != nil {
+		ownedClosers = append(ownedClosers, storeCloser)
 		closers = append(closers, storeCloser)
 	}
+	closers = append(closers, featureFlagsCloser)
 
 	timer.total("buildRuntimeDeps")
+	completed = true
 	return &runtimeDeps{
 		shared: &sharedRuntimeDeps{
 			cfg:                  cfg,
+			featureFlags:         featureFlags,
 			closers:              closers,
 			openaiMgr:            openaiDeps.openaiMgr,
 			aiCredentialStore:    openaiDeps.aiCredentialStore,
@@ -78,4 +104,15 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		},
 		features: &featureRuntimeState{},
 	}, nil
+}
+
+func cleanupOwnedRuntimeResources(completed bool, closers []func() error) {
+	if completed {
+		return
+	}
+	for index := len(closers) - 1; index >= 0; index-- {
+		if closers[index] != nil {
+			_ = closers[index]()
+		}
+	}
 }

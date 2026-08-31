@@ -115,6 +115,58 @@ func TestNewViper_BindsDatabaseEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "legacy-db", v.GetString("database.database"))
 }
 
+func TestFeatureFlagsDefaultProductListingRuntimeAutoMigrate(t *testing.T) {
+	cfg := NewDefaultConfig()
+
+	assert.Equal(t, map[string]bool{
+		"product-listing-runtime-auto-migrate": true,
+	}, cfg.FeatureFlags.Flags)
+}
+
+func TestLoadFromBytesLoadsFeatureFlagFromYAML(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+
+	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
+		"featureFlags:",
+		"  flags:",
+		"    product-listing-runtime-auto-migrate: false",
+	}, "\n")))
+	require.NoError(t, err)
+
+	assert.Equal(t, false, cfg.FeatureFlags.Flags["product-listing-runtime-auto-migrate"])
+}
+
+func TestLoadFromBytesFeatureFlagEnvironmentOverride(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+	t.Setenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE", "false")
+
+	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
+		"featureFlags:",
+		"  flags:",
+		"    product-listing-runtime-auto-migrate: true",
+	}, "\n")))
+	require.NoError(t, err)
+
+	assert.Equal(t, false, cfg.FeatureFlags.Flags["product-listing-runtime-auto-migrate"])
+}
+
+func TestCommittedFeatureFlagConfigArtifactsEnableProductListingRuntimeAutoMigrate(t *testing.T) {
+	for _, configName := range []string{"config-dev.yaml", "config-prod.yaml", "config-test.yaml"} {
+		t.Run(configName, func(t *testing.T) {
+			contents, err := os.ReadFile(filepath.Join("..", "..", "..", "config", configName))
+			require.NoError(t, err)
+
+			var document map[string]any
+			require.NoError(t, yaml.Unmarshal(contents, &document))
+			featureFlags, ok := document["featureFlags"].(map[string]any)
+			require.True(t, ok, "featureFlags must be a YAML mapping")
+			flags, ok := featureFlags["flags"].(map[string]any)
+			require.True(t, ok, "featureFlags.flags must be a YAML mapping")
+			assert.Equal(t, true, flags["product-listing-runtime-auto-migrate"])
+		})
+	}
+}
+
 func TestNewViperBindsProcessingTimeoutWatchdogEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_ENABLED", "true")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_INTERVAL_SECONDS", "300")

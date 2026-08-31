@@ -54,6 +54,13 @@ func TestBuildRuntimeDepsInitializesSharedRuntimeWithoutFeatureState(t *testing.
 	if err != nil {
 		t.Fatalf("buildRuntimeDeps() error = %v", err)
 	}
+	t.Cleanup(func() {
+		for _, closer := range deps.shared.closers {
+			if closer != nil {
+				_ = closer()
+			}
+		}
+	})
 
 	if deps.shared == nil {
 		t.Fatal("expected shared runtime deps")

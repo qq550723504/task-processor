@@ -15,7 +15,7 @@ type aiCapabilityRuntimeDeps struct {
 	closers            []func() error
 }
 
-func buildAICapabilityRuntimeDeps(cfg *config.Config, logger *logrus.Logger) (*aiCapabilityRuntimeDeps, error) {
+func buildAICapabilityRuntimeDeps(cfg *config.Config, logger *logrus.Logger, featureFlags BoolEvaluator) (*aiCapabilityRuntimeDeps, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("AI capability configuration is nil")
 	}
@@ -34,7 +34,7 @@ func buildAICapabilityRuntimeDeps(cfg *config.Config, logger *logrus.Logger) (*a
 	if cfg.Database == nil {
 		return nil, fmt.Errorf("AI capability invocation ledger requires database configuration for %s mode", mode)
 	}
-	recorder, asyncJobStore, closer, err := newDBAICapabilityStores(cfg.Database, logger)
+	recorder, asyncJobStore, closer, err := newDBAICapabilityStores(cfg.Database, logger, featureFlags)
 	if err != nil {
 		return nil, fmt.Errorf("create AI capability invocation recorder: %w", err)
 	}
