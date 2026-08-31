@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-30-shuomi-workbench-store-center-zitadel-multi-org-design.md`
 
-**Prerequisite:** `docs/superpowers/plans/2026-08-30-zitadel-multi-organization-workbench-context.md` is complete, including real ZITADEL acceptance.
+**Prerequisite:** The code and local verification tasks in `docs/superpowers/plans/2026-08-30-zitadel-multi-organization-workbench-context.md` are implemented. Task 0 below closes the three explicitly surfaced final-review prerequisites before any Store domain work. Real ZITADEL, browser, enabled-runtime, and revocation acceptance remain approval-gated completion/release gates; their pending state does not authorize external mutation and does not block Tasks 1–11 code execution.
 
 ## Global Constraints
 
@@ -29,6 +29,16 @@
 ---
 
 ## File Map
+
+### Identity boundary preflight
+
+- Modify: `internal/zitadelprotojson/uint64.go`
+- Modify: `internal/zitadelprotojson/uint64_test.go`
+- Modify: `web/listingkit-ui/src/lib/api/workbench-context.ts`
+- Modify: `web/listingkit-ui/src/lib/api/workbench-context.test.ts`
+- Modify: `web/listingkit-ui/src/lib/server/workbench-proxy.test.ts`
+- Modify: `web/listingkit-ui/src/components/workbench/workspace-app-shell.tsx`
+- Modify: `web/listingkit-ui/src/components/workbench/workspace-app-shell.test.tsx`
 
 ### Store Center domain and persistence
 
@@ -197,6 +207,67 @@ Role mapping:
 | `listingkit_operator` | read, create, update, lifecycle |
 | `listingkit_admin` | read, create, update, lifecycle, delete |
 | `platform_admin` | read, create, update, lifecycle, delete |
+
+---
+
+## Task 0: Close Identity Boundary Preconditions
+
+**Files:**
+
+- Modify: `internal/zitadelprotojson/uint64.go`
+- Modify: `internal/zitadelprotojson/uint64_test.go`
+- Modify: `web/listingkit-ui/src/lib/api/workbench-context.ts`
+- Modify: `web/listingkit-ui/src/lib/api/workbench-context.test.ts`
+- Modify: `web/listingkit-ui/src/lib/server/workbench-proxy.test.ts`
+- Modify: `web/listingkit-ui/src/components/workbench/workspace-app-shell.tsx`
+- Modify: `web/listingkit-ui/src/components/workbench/workspace-app-shell.test.tsx`
+
+**Interfaces:**
+
+- Consumes: `zitadelprotojson.Uint64.UnmarshalJSON`, the shared strict `workbenchContextSchema`, `parseWorkbenchContext`, `buildWorkbenchBrowserResponse`, and `WorkspaceAppShell` from the prerequisite identity plan.
+- Produces: a decoder that rejects every non-integer JSON type including `null`; a browser context contract that accepts only resolver-reachable zero/one/many-Organization states; and an accessible delegated-operation indicator that always names or safely labels the effective target.
+
+- [ ] Add a failing Go table case that unmarshals literal JSON `null` into both a fresh and a non-zero `zitadelprotojson.Uint64`, requires an error, and proves the receiver is not silently treated as a valid zero total. State the mutation caught: replacing strict token validation with direct `json.Unmarshal` into `uint64` must fail this test.
+- [ ] Run `go test ./internal/zitadelprotojson -run "TestUint64UnmarshalJSON" -count=1 -race` and retain RED output showing `null` was accepted.
+- [ ] Change `Uint64.UnmarshalJSON` to classify the JSON token before numeric decoding. Accept only an unsigned base-10 integer encoded as a JSON number or quoted decimal string; reject `null`, booleans, arrays, objects, empty strings, signs, fractions, exponents that are not exact supported decimal form, overflow, and trailing data. Preserve the existing max-`uint64` and numeric compatibility cases.
+- [ ] Run the same Go command and retain GREEN output.
+- [ ] Add failing TypeScript table cases for the exact resolver-reachable context-state matrix:
+
+```text
+0 Organizations → effectiveOrganizationId=null, selectionRequired=false
+1 Organization  → effectiveOrganizationId=<that Organization>, selectionRequired=false
+2+ Organizations with no effective selection → effectiveOrganizationId=null, selectionRequired=true
+2+ Organizations with an effective selection → effectiveOrganizationId is a listed ID, selectionRequired=false
+```
+
+  Reject every other combination, including the previously accepted sole-Organization `null/false` state. Add a BFF regression proving such a partial upstream `200` is converted to stable `502 DEPENDENCY_UNAVAILABLE` JSON with safe headers.
+- [ ] Require every Organization display name in the strict context schema to contain at least one non-whitespace character after normalization. Add a shell regression with an injected empty effective name and require the delegated-operation status to use the non-ID fallback `当前企业`, never an empty target or raw Organization ID.
+- [ ] Run the focused frontend tests and retain RED output for the impossible state and empty-target indicator:
+
+```powershell
+Set-Location web/listingkit-ui
+npm.cmd test -- src/lib/api/workbench-context.test.ts src/lib/server/workbench-proxy.test.ts src/components/workbench/workspace-app-shell.test.tsx
+```
+
+- [ ] Implement the smallest shared-schema invariants and shell fallback, then rerun the same command for GREEN. Do not weaken the BFF's exact envelope, safe-header, cookie, body, or redirect protections.
+- [ ] Run regression gates:
+
+```powershell
+go test ./internal/zitadelprotojson ./internal/authruntime/zitadel ./internal/zitadelprovision -count=1 -race
+Set-Location web/listingkit-ui
+npm.cmd test -- src/lib/api/workbench-context.test.ts src/lib/server/workbench-proxy.test.ts "src/app/api/workbench/[...path]/route.test.ts" src/components/providers/workbench-context-provider.test.tsx src/components/workbench/workspace-app-shell.test.tsx src/components/application-frame.test.tsx
+npm.cmd run typecheck
+npm.cmd run lint -- src/lib/api/workbench-context.ts src/lib/server/workbench-proxy.ts src/components/workbench/workspace-app-shell.tsx
+```
+
+- [ ] Inspect the diff for bearer/cookie/credential logging and confirm no external ZITADEL call or mutation occurred. Commit only after every named test actually executes.
+
+**Commit:**
+
+```powershell
+git add internal/zitadelprotojson/uint64.go internal/zitadelprotojson/uint64_test.go web/listingkit-ui/src/lib/api/workbench-context.ts web/listingkit-ui/src/lib/api/workbench-context.test.ts web/listingkit-ui/src/lib/server/workbench-proxy.test.ts web/listingkit-ui/src/components/workbench/workspace-app-shell.tsx web/listingkit-ui/src/components/workbench/workspace-app-shell.test.tsx
+git commit -m "fix: close workbench identity preconditions"
+```
 
 ---
 
