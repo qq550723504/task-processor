@@ -3,9 +3,11 @@ package rabbitmq
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -26,50 +28,200 @@ func TestNewConnectionManagerBindsProductionRuntimeAndUsesRealDial(t *testing.T)
 	}
 	if err := manager.Connect(context.Background()); err == nil {
 		t.Fatal("Connect() error = nil for a syntactically invalid AMQP URL; production dial was not used")
+	} else if !strings.Contains(err.Error(), `invalid URL escape "%zz"`) {
+		t.Fatalf("Connect() error = %q, want invalid URL escape from the production dial path", err)
 	}
 }
 
-func TestProductionConnectionRuntimeStartsConnectionMonitor(t *testing.T) {
+func TestProductionConnectionRuntimeDelegatesDirectly(t *testing.T) {
 	parsed, err := parser.ParseFile(token.NewFileSet(), "connection.go", nil, 0)
 	if err != nil {
 		t.Fatalf("parse connection.go: %v", err)
 	}
 
-	var startMonitor *ast.FuncDecl
-	for _, declaration := range parsed.Decls {
-		function, ok := declaration.(*ast.FuncDecl)
-		if !ok || function.Name.Name != "startMonitor" || function.Recv == nil || len(function.Recv.List) != 1 {
-			continue
-		}
-		receiver, ok := function.Recv.List[0].Type.(*ast.Ident)
-		if ok && receiver.Name == "productionConnectionRuntime" {
-			startMonitor = function
-			break
-		}
+	tests := []struct {
+		name      string
+		method    string
+		delegate  string
+		statement runtimeDelegationStatement
+	}{
+		{name: "connect", method: "connect", delegate: "connect", statement: runtimeReturnDelegation},
+		{name: "start monitor", method: "startMonitor", delegate: "monitorConnection", statement: runtimeGoDelegation},
 	}
-	if startMonitor == nil {
-		t.Fatal("productionConnectionRuntime.startMonitor method not found")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateDirectRuntimeDelegation(parsed, "productionConnectionRuntime", test.method, test.delegate, test.statement); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestValidateDirectRuntimeDelegation(t *testing.T) {
+	tests := []struct {
+		name      string
+		source    string
+		method    string
+		delegate  string
+		statement runtimeDelegationStatement
+		wantValid bool
+	}{
+		{
+			name:      "value receiver and renamed parameter",
+			source:    `package rabbitmq; type productionConnectionRuntime struct{}; func (productionConnectionRuntime) connect(cm *ConnectionManager) error { return cm.connect() }`,
+			method:    "connect",
+			delegate:  "connect",
+			statement: runtimeReturnDelegation,
+			wantValid: true,
+		},
+		{
+			name:      "pointer receiver and renamed parameter",
+			source:    `package rabbitmq; type productionConnectionRuntime struct{}; func (*productionConnectionRuntime) startMonitor(cm *ConnectionManager) { go cm.monitorConnection() }`,
+			method:    "startMonitor",
+			delegate:  "monitorConnection",
+			statement: runtimeGoDelegation,
+			wantValid: true,
+		},
+		{
+			name:      "fixed connect error",
+			source:    `package rabbitmq; type productionConnectionRuntime struct{}; func (productionConnectionRuntime) connect(cm *ConnectionManager) error { return errors.New("fixed") }`,
+			method:    "connect",
+			delegate:  "connect",
+			statement: runtimeReturnDelegation,
+			wantValid: false,
+		},
+		{
+			name:      "monitor hidden in unreachable branch",
+			source:    `package rabbitmq; type productionConnectionRuntime struct{}; func (productionConnectionRuntime) startMonitor(cm *ConnectionManager) { if false { go cm.monitorConnection() } }`,
+			method:    "startMonitor",
+			delegate:  "monitorConnection",
+			statement: runtimeGoDelegation,
+			wantValid: false,
+		},
+		{
+			name:      "monitor hidden in closure",
+			source:    `package rabbitmq; type productionConnectionRuntime struct{}; func (productionConnectionRuntime) startMonitor(cm *ConnectionManager) { func() { go cm.monitorConnection() }() }`,
+			method:    "startMonitor",
+			delegate:  "monitorConnection",
+			statement: runtimeGoDelegation,
+			wantValid: false,
+		},
+		{
+			name:      "extra top-level statement",
+			source:    `package rabbitmq; type productionConnectionRuntime struct{}; func (productionConnectionRuntime) startMonitor(cm *ConnectionManager) { println("extra"); go cm.monitorConnection() }`,
+			method:    "startMonitor",
+			delegate:  "monitorConnection",
+			statement: runtimeGoDelegation,
+			wantValid: false,
+		},
 	}
 
-	startsMonitor := false
-	ast.Inspect(startMonitor.Body, func(node ast.Node) bool {
-		goStatement, ok := node.(*ast.GoStmt)
-		if !ok {
-			return true
-		}
-		selector, ok := goStatement.Call.Fun.(*ast.SelectorExpr)
-		if !ok || selector.Sel.Name != "monitorConnection" || len(goStatement.Call.Args) != 0 {
-			return true
-		}
-		receiver, ok := selector.X.(*ast.Ident)
-		if ok && receiver.Name == "manager" {
-			startsMonitor = true
-		}
-		return true
-	})
-	if !startsMonitor {
-		t.Fatal("productionConnectionRuntime.startMonitor does not start manager.monitorConnection in a goroutine")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			parsed, err := parser.ParseFile(token.NewFileSet(), "", test.source, 0)
+			if err != nil {
+				t.Fatalf("parse fixture: %v", err)
+			}
+			err = validateDirectRuntimeDelegation(parsed, "productionConnectionRuntime", test.method, test.delegate, test.statement)
+			if test.wantValid && err != nil {
+				t.Fatalf("valid direct delegation rejected: %v", err)
+			}
+			if !test.wantValid && err == nil {
+				t.Fatal("invalid delegation accepted")
+			}
+		})
 	}
+}
+
+type runtimeDelegationStatement int
+
+const (
+	runtimeReturnDelegation runtimeDelegationStatement = iota
+	runtimeGoDelegation
+)
+
+func validateDirectRuntimeDelegation(
+	file *ast.File,
+	receiverType string,
+	methodName string,
+	delegateName string,
+	statementType runtimeDelegationStatement,
+) error {
+	method := findRuntimeMethod(file, receiverType, methodName)
+	if method == nil {
+		return fmt.Errorf("%s.%s method not found", receiverType, methodName)
+	}
+	if method.Type.Params == nil || len(method.Type.Params.List) != 1 || len(method.Type.Params.List[0].Names) != 1 {
+		return fmt.Errorf("%s.%s must have exactly one named parameter", receiverType, methodName)
+	}
+	parameterName := method.Type.Params.List[0].Names[0].Name
+	if method.Body == nil || len(method.Body.List) != 1 {
+		return fmt.Errorf("%s.%s must contain exactly one top-level statement", receiverType, methodName)
+	}
+
+	var call *ast.CallExpr
+	switch statementType {
+	case runtimeReturnDelegation:
+		statement, ok := method.Body.List[0].(*ast.ReturnStmt)
+		if !ok || len(statement.Results) != 1 {
+			return fmt.Errorf("%s.%s must directly return one call", receiverType, methodName)
+		}
+		call, ok = statement.Results[0].(*ast.CallExpr)
+		if !ok {
+			return fmt.Errorf("%s.%s must directly return a call", receiverType, methodName)
+		}
+	case runtimeGoDelegation:
+		statement, ok := method.Body.List[0].(*ast.GoStmt)
+		if !ok {
+			return fmt.Errorf("%s.%s must directly start one goroutine", receiverType, methodName)
+		}
+		call = statement.Call
+	default:
+		return fmt.Errorf("unknown delegation statement type %d", statementType)
+	}
+
+	if !isDirectParameterCall(call, parameterName, delegateName) {
+		return fmt.Errorf("%s.%s must directly call %s.%s()", receiverType, methodName, parameterName, delegateName)
+	}
+	return nil
+}
+
+func findRuntimeMethod(file *ast.File, receiverType string, methodName string) *ast.FuncDecl {
+	for _, declaration := range file.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Name.Name != methodName || function.Recv == nil || len(function.Recv.List) != 1 {
+			continue
+		}
+		if runtimeReceiverBaseName(function.Recv.List[0].Type) == receiverType {
+			return function
+		}
+	}
+	return nil
+}
+
+func runtimeReceiverBaseName(expression ast.Expr) string {
+	switch receiver := expression.(type) {
+	case *ast.Ident:
+		return receiver.Name
+	case *ast.StarExpr:
+		return runtimeReceiverBaseName(receiver.X)
+	case *ast.ParenExpr:
+		return runtimeReceiverBaseName(receiver.X)
+	default:
+		return ""
+	}
+}
+
+func isDirectParameterCall(call *ast.CallExpr, parameterName string, delegateName string) bool {
+	if call == nil || len(call.Args) != 0 {
+		return false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != delegateName {
+		return false
+	}
+	receiver, ok := selector.X.(*ast.Ident)
+	return ok && receiver.Name == parameterName
 }
 
 func TestConnectionManagerConnectUsesRuntimeAndStartsMonitorOnce(t *testing.T) {
