@@ -530,7 +530,7 @@ func normalizePublicValue(value string, max int, required bool) (string, error) 
 }
 
 func listResponse(result storecenter.ListStoresResult, request storecenter.ListStoresRequest) (ListStoresResponse, error) {
-	if result.Total < 0 || result.Page != request.Page || result.PageSize != request.PageSize || result.Quota.Used < 0 || result.Quota.Reserved < 0 || (result.Quota.Limit != nil && *result.Quota.Limit <= 0) {
+	if result.Total < int64(len(result.Items)) || len(result.Items) > result.PageSize || result.Page != request.Page || result.PageSize != request.PageSize || !validQuotaProjection(result.Quota) {
 		return ListStoresResponse{}, storecenter.ErrDependencyUnavailable
 	}
 	items := make([]StoreResponse, 0, len(result.Items))
@@ -547,6 +547,26 @@ func listResponse(result storecenter.ListStoresResult, request storecenter.ListS
 		limit = &value
 	}
 	return ListStoresResponse{Items: items, Quota: QuotaResponse{Used: result.Quota.Used, Reserved: result.Quota.Reserved, Limit: limit, Allowed: result.Quota.Allowed, Reason: result.Quota.Reason}, Pagination: PaginationResponse{Page: result.Page, PageSize: result.PageSize, Total: result.Total}}, nil
+}
+
+func validQuotaProjection(quota storecenter.StoreQuotaProjection) bool {
+	if quota.Used < 0 || quota.Reserved < 0 {
+		return false
+	}
+	if quota.Limit == nil {
+		return !quota.Allowed && quota.Reason == "subscription_required"
+	}
+	if *quota.Limit <= 0 {
+		return false
+	}
+	allowed := quota.Used < *quota.Limit && quota.Reserved < *quota.Limit-quota.Used
+	if quota.Allowed != allowed {
+		return false
+	}
+	if allowed {
+		return quota.Reason == ""
+	}
+	return quota.Reason == "store_limit_reached"
 }
 
 func projectionResponse(projection storecenter.StoreProjection, organizationID, storeID string) (StoreResponse, error) {

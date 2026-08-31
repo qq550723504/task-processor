@@ -383,6 +383,109 @@ func TestHandlerDefaultsListPaginationAndReturnsNonNullItems(t *testing.T) {
 	require.Equal(t, 20, service.listRequest.PageSize)
 }
 
+func TestHandlerRejectsCorruptListProducerContractWithoutLeakingReason(t *testing.T) {
+	zero, negative := int64(0), int64(-1)
+	tests := []struct {
+		name   string
+		mutate func(*storecenter.ListStoresResult)
+	}{
+		{name: "total is negative", mutate: func(result *storecenter.ListStoresResult) { result.Total = -1 }},
+		{name: "total is below returned item count", mutate: func(result *storecenter.ListStoresResult) { result.Total = 0 }},
+		{name: "returned item count exceeds page size", mutate: func(result *storecenter.ListStoresResult) {
+			result.Items = append(result.Items, result.Items...)
+			result.PageSize = 1
+			result.Total = 2
+		}},
+		{name: "used is negative", mutate: func(result *storecenter.ListStoresResult) { result.Quota.Used = -1 }},
+		{name: "reserved is negative", mutate: func(result *storecenter.ListStoresResult) { result.Quota.Reserved = -1 }},
+		{name: "nil limit claims allowed", mutate: func(result *storecenter.ListStoresResult) {
+			result.Quota.Limit = nil
+			result.Quota.Allowed = true
+			result.Quota.Reason = "subscription_required"
+		}},
+		{name: "nil limit omits subscription reason", mutate: func(result *storecenter.ListStoresResult) {
+			result.Quota.Limit = nil
+			result.Quota.Allowed = false
+			result.Quota.Reason = ""
+		}},
+		{name: "nil limit has arbitrary secret reason", mutate: func(result *storecenter.ListStoresResult) {
+			result.Quota.Limit = nil
+			result.Quota.Allowed = false
+			result.Quota.Reason = "provider-token-secret"
+		}},
+		{name: "zero limit", mutate: func(result *storecenter.ListStoresResult) { result.Quota.Limit = &zero }},
+		{name: "negative limit", mutate: func(result *storecenter.ListStoresResult) { result.Quota.Limit = &negative }},
+		{name: "available quota claims disallowed", mutate: func(result *storecenter.ListStoresResult) {
+			result.Quota.Allowed = false
+			result.Quota.Reason = "store_limit_reached"
+		}},
+		{name: "used limit claims allowed", mutate: func(result *storecenter.ListStoresResult) {
+			result.Quota.Used = 3
+			result.Quota.Allowed = true
+			result.Quota.Reason = ""
+		}},
+		{name: "reserved capacity claims allowed", mutate: func(result *storecenter.ListStoresResult) {
+			result.Quota.Used = 2
+			result.Quota.Reserved = 1
+			result.Quota.Allowed = true
+			result.Quota.Reason = ""
+		}},
+		{name: "allowed quota has reason", mutate: func(result *storecenter.ListStoresResult) { result.Quota.Reason = "store_limit_reached" }},
+		{name: "disallowed quota omits reason", mutate: func(result *storecenter.ListStoresResult) {
+			result.Quota.Used = 3
+			result.Quota.Allowed = false
+			result.Quota.Reason = ""
+		}},
+		{name: "disallowed quota has arbitrary secret reason", mutate: func(result *storecenter.ListStoresResult) {
+			result.Quota.Used = 3
+			result.Quota.Allowed = false
+			result.Quota.Reason = "sql-password-secret"
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := newStoreServiceStub(t)
+			tt.mutate(&service.listResult)
+			path := "/api/v1/workbench/stores"
+			if service.listResult.PageSize == 1 {
+				path += "?pageSize=1"
+			}
+			response := serve(t, mountedRouter(t, mustHandler(t, service)), validIdentity(), http.MethodGet, path, "", nil)
+			require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+			assertProtocolError(t, response, "DEPENDENCY_UNAVAILABLE", []FieldError{})
+			require.NotContains(t, response.Body.String(), "provider-token-secret")
+			require.NotContains(t, response.Body.String(), "sql-password-secret")
+		})
+	}
+}
+
+func TestHandlerPreservesEveryValidQuotaProjection(t *testing.T) {
+	tests := []struct {
+		name  string
+		quota storecenter.StoreQuotaProjection
+		want  string
+	}{
+		{name: "subscription required", quota: storecenter.StoreQuotaProjection{Allowed: false, Reason: "subscription_required"}, want: `{"used":0,"reserved":0,"limit":null,"allowed":false,"reason":"subscription_required"}`},
+		{name: "capacity available", quota: storecenter.StoreQuotaProjection{Used: 1, Reserved: 0, Limit: int64Pointer(3), Allowed: true}, want: `{"used":1,"reserved":0,"limit":3,"allowed":true,"reason":""}`},
+		{name: "capacity reached", quota: storecenter.StoreQuotaProjection{Used: 2, Reserved: 1, Limit: int64Pointer(3), Allowed: false, Reason: "store_limit_reached"}, want: `{"used":2,"reserved":1,"limit":3,"allowed":false,"reason":"store_limit_reached"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := newStoreServiceStub(t)
+			service.listResult.Quota = tt.quota
+			response := serve(t, mountedRouter(t, mustHandler(t, service)), validIdentity(), http.MethodGet, "/api/v1/workbench/stores", "", nil)
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			var payload struct {
+				Quota json.RawMessage `json:"quota"`
+			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload))
+			require.JSONEq(t, tt.want, string(payload.Quota))
+		})
+	}
+}
+
+func int64Pointer(value int64) *int64 { return &value }
+
 func TestHandlerFailsClosedOnCrossOrganizationOrWrongStoreProducerOutput(t *testing.T) {
 	tests := []struct {
 		name, path string
