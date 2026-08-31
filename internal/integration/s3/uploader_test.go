@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -30,14 +31,50 @@ func TestUploaderRejectsEmptyBucket(t *testing.T) {
 func TestUploaderRejectsNilClient(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewUploaderWithOptions(nil, UploaderOptions{Bucket: "assets"})
-	if err == nil || !strings.Contains(err.Error(), "client") {
-		t.Fatalf("NewUploaderWithOptions() error = %v, want client validation", err)
-	}
 	var typedNil *s3.Client
-	_, err = NewUploaderWithOptions(typedNil, UploaderOptions{Bucket: "assets"})
-	if err == nil || !strings.Contains(err.Error(), "client") {
-		t.Fatalf("NewUploaderWithOptions(typed nil) error = %v, want client validation", err)
+	var nilSlice nilSliceS3API
+	for _, test := range []struct {
+		name   string
+		client S3ObjectAPI
+	}{
+		{name: "nil interface", client: nil},
+		{name: "nil pointer", client: typedNil},
+		{name: "nil slice", client: nilSlice},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := NewUploaderWithOptions(test.client, UploaderOptions{Bucket: "assets"})
+			if err == nil || !strings.Contains(err.Error(), "client") {
+				t.Fatalf("NewUploaderWithOptions() error = %v, want client validation", err)
+			}
+		})
+	}
+}
+
+func TestNilReflectValueHandlesEveryIsNilKindWithoutPanicking(t *testing.T) {
+	t.Parallel()
+
+	var nilInterface S3ObjectAPI
+	var nilPointer *fakeS3API
+	for _, test := range []struct {
+		name  string
+		value reflect.Value
+		want  bool
+	}{
+		{name: "invalid", value: reflect.Value{}, want: true},
+		{name: "nil channel", value: reflect.ValueOf((chan struct{})(nil)), want: true},
+		{name: "nil function", value: reflect.ValueOf((func())(nil)), want: true},
+		{name: "nil interface", value: reflect.ValueOf(&nilInterface).Elem(), want: true},
+		{name: "nil map", value: reflect.ValueOf((map[string]string)(nil)), want: true},
+		{name: "nil pointer", value: reflect.ValueOf(nilPointer), want: true},
+		{name: "nil slice", value: reflect.ValueOf(([]byte)(nil)), want: true},
+		{name: "non-nilable struct", value: reflect.ValueOf(struct{}{}), want: false},
+		{name: "non-nil slice", value: reflect.ValueOf([]byte{}), want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isNilReflectValue(test.value); got != test.want {
+				t.Fatalf("isNilReflectValue() = %t, want %t", got, test.want)
+			}
+		})
 	}
 }
 
@@ -275,6 +312,24 @@ type fakeS3API struct {
 	headInput *s3.HeadObjectInput
 	putCalls  int
 	putErr    error
+}
+
+type nilSliceS3API []byte
+
+func (nilSliceS3API) PutObject(context.Context, *s3.PutObjectInput, ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	return nil, errors.New("not implemented")
+}
+func (nilSliceS3API) HeadObject(context.Context, *s3.HeadObjectInput, ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+	return nil, errors.New("not implemented")
+}
+func (nilSliceS3API) GetObject(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	return nil, errors.New("not implemented")
+}
+func (nilSliceS3API) CopyObject(context.Context, *s3.CopyObjectInput, ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
+	return nil, errors.New("not implemented")
+}
+func (nilSliceS3API) DeleteObject(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (f *fakeS3API) PutObject(context.Context, *s3.PutObjectInput, ...func(*s3.Options)) (*s3.PutObjectOutput, error) {

@@ -92,7 +92,7 @@ type UploaderOptions struct {
 // NewUploaderWithOptions constructs the sole uploader implementation. The
 // narrow client interface keeps SDK fakes in this integration package.
 func NewUploaderWithOptions(s3Client S3ObjectAPI, opts UploaderOptions) (*Uploader, error) {
-	if s3Client == nil || (reflect.ValueOf(s3Client).Kind() == reflect.Pointer && reflect.ValueOf(s3Client).IsNil()) {
+	if s3Client == nil || isNilReflectValue(reflect.ValueOf(s3Client)) {
 		return nil, fmt.Errorf("s3 client cannot be nil")
 	}
 	bucket := strings.TrimSpace(opts.Bucket)
@@ -108,6 +108,18 @@ func NewUploaderWithOptions(s3Client S3ObjectAPI, opts UploaderOptions) (*Upload
 		artifactCapabilities: opts.ArtifactCapabilities,
 		logger:               loggerOrNoop(opts.Logger),
 	}, nil
+}
+
+func isNilReflectValue(value reflect.Value) bool {
+	if !value.IsValid() {
+		return true
+	}
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 // PutImmutable writes an object only when its deterministic key is unused. It

@@ -43,8 +43,18 @@ func TestWorkerArtifactStoreConvertsDomainObjectsWithoutLeakingS3Types(t *testin
 	if err := bridge.CopyImmutable(context.Background(), copyInput); err != nil {
 		t.Fatalf("CopyImmutable() error = %v", err)
 	}
-	if uploader.copy.SourceKey != copyInput.SourceKey || uploader.copy.Destination.Key != copyInput.Destination.Key {
-		t.Fatalf("converted copy = %+v, want source %q destination %q", uploader.copy, copyInput.SourceKey, copyInput.Destination.Key)
+	wantCopy := s3integration.ImmutableObjectCopy{
+		SourceKey: copyInput.SourceKey,
+		Destination: s3integration.ImmutableObjectPut{
+			Key:         put.Key,
+			Data:        put.Data,
+			ContentType: put.ContentType,
+			SHA256:      put.SHA256,
+			SizeBytes:   put.SizeBytes,
+		},
+	}
+	if !reflect.DeepEqual(uploader.copy, wantCopy) {
+		t.Fatalf("converted copy = %+v, want %+v", uploader.copy, wantCopy)
 	}
 	if got := bridge.PublicURL("folder/source.png"); got != "https://cdn.example.test/folder/source.png" {
 		t.Fatalf("PublicURL() = %q", got)
