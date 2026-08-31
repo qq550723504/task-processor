@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { parseTree, type ParseError } from "jsonc-parser";
+import {
+  findNodeAtLocation,
+  parseTree,
+  type Node as JSONNode,
+  type ParseError,
+} from "jsonc-parser";
 import { z } from "zod";
 
 import {
@@ -52,6 +57,12 @@ type WorkbenchUpstreamRequest = {
   url: string;
   init: RequestInit;
   responseContract: WorkbenchResponseContract;
+};
+
+type ParsedJSONBody = {
+  payload: Record<string, unknown>;
+  root: JSONNode;
+  text: string;
 };
 
 const canonicalUUIDSchema = z.string().refine(isCanonicalUUID);
@@ -358,7 +369,8 @@ export async function buildWorkbenchBrowserResponse(
     );
   }
 
-  const payload = parseJSONBody(body);
+  const parsedBody = parseJSONBody(body);
+  const payload = parsedBody?.payload ?? null;
   const parsedError =
     upstream.status >= 400 && upstream.status <= 599
       ? parseWorkbenchErrorEnvelopePayload(payload)
@@ -382,7 +394,7 @@ export async function buildWorkbenchBrowserResponse(
   const validatedPayload = parseSuccessfulPayload(
     contract,
     upstream.status,
-    payload,
+    parsedBody,
   );
   if (!validatedPayload) {
     return invalidUpstreamResponse();
@@ -781,13 +793,21 @@ function readContentLength(headers: Headers) {
   return Number.isSafeInteger(value) ? value : null;
 }
 
-function parseJSONBody(body: Uint8Array) {
+function parseJSONBody(body: Uint8Array): ParsedJSONBody | null {
   try {
-    const value = JSON.parse(
-      new TextDecoder("utf-8", { fatal: true }).decode(body),
-    ) as unknown;
-    return value !== null && typeof value === "object"
-      ? (value as Record<string, unknown>)
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(body);
+    const value = JSON.parse(text) as unknown;
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    const errors: ParseError[] = [];
+    const root = parseTree(text, errors, {
+      allowEmptyContent: false,
+      allowTrailingComma: false,
+      disallowComments: true,
+    });
+    return errors.length === 0 && root?.type === "object"
+      ? { payload: value as Record<string, unknown>, root, text }
       : null;
   } catch {
     return null;
@@ -826,15 +846,125 @@ function isUTCRFC3339Timestamp(value: string) {
   return day >= 1 && day <= daysInMonth;
 }
 
+function hasCanonicalStoreIntegerTokens(
+  contract: WorkbenchResponseContract,
+  body: ParsedJSONBody,
+) {
+  if (!hasUniqueObjectKeys(body.root)) return false;
+  if (contract === "store-create" || contract === "store-item") {
+    return hasCanonicalIntegerNode(
+      findNodeAtLocation(body.root, ["version"]),
+      body.text,
+      false,
+    );
+  }
+  if (contract === "store-delete") {
+    return hasCanonicalIntegerNode(
+      findNodeAtLocation(body.root, ["version"]),
+      body.text,
+      false,
+    );
+  }
+  if (contract !== "store-list") return true;
+
+  const items = findNodeAtLocation(body.root, ["items"]);
+  if (items?.type === "array") {
+    for (const item of items.children ?? []) {
+      if (
+        !hasCanonicalIntegerNode(
+          findNodeAtLocation(item, ["version"]),
+          body.text,
+          false,
+        )
+      ) {
+        return false;
+      }
+    }
+  }
+  return (
+    hasCanonicalIntegerNode(
+      findNodeAtLocation(body.root, ["quota", "used"]),
+      body.text,
+      true,
+    ) &&
+    hasCanonicalIntegerNode(
+      findNodeAtLocation(body.root, ["quota", "reserved"]),
+      body.text,
+      true,
+    ) &&
+    hasCanonicalIntegerNode(
+      findNodeAtLocation(body.root, ["quota", "limit"]),
+      body.text,
+      false,
+    ) &&
+    hasCanonicalIntegerNode(
+      findNodeAtLocation(body.root, ["pagination", "page"]),
+      body.text,
+      false,
+    ) &&
+    hasCanonicalIntegerNode(
+      findNodeAtLocation(body.root, ["pagination", "pageSize"]),
+      body.text,
+      false,
+    ) &&
+    hasCanonicalIntegerNode(
+      findNodeAtLocation(body.root, ["pagination", "total"]),
+      body.text,
+      true,
+    )
+  );
+}
+
+function hasUniqueObjectKeys(node: JSONNode): boolean {
+  if (node.type === "object") {
+    const names = new Set<string>();
+    for (const property of node.children ?? []) {
+      const key = property.children?.[0];
+      const value = property.children?.[1];
+      if (
+        property.type !== "property" ||
+        key?.type !== "string" ||
+        !value ||
+        names.has(String(key.value))
+      ) {
+        return false;
+      }
+      names.add(String(key.value));
+      if (!hasUniqueObjectKeys(value)) return false;
+    }
+    return true;
+  }
+  if (node.type === "array") {
+    return (node.children ?? []).every(hasUniqueObjectKeys);
+  }
+  return true;
+}
+
+function hasCanonicalIntegerNode(
+  node: JSONNode | undefined,
+  text: string,
+  allowZero: boolean,
+) {
+  if (!node || node.type !== "number") return true;
+  const token = text.slice(node.offset, node.offset + node.length);
+  const canonicalPattern = allowZero ? /^(0|[1-9][0-9]*)$/ : /^[1-9][0-9]*$/;
+  if (!canonicalPattern.test(token)) return false;
+  try {
+    return BigInt(token) <= BigInt("9007199254740991");
+  } catch {
+    return false;
+  }
+}
+
 function parseSuccessfulPayload(
   contract: WorkbenchResponseContract,
   status: number,
-  payload: Record<string, unknown> | null,
+  body: ParsedJSONBody | null,
 ): Record<string, unknown> | null {
-  if (!payload) return null;
+  if (!body) return null;
   if (contract === "context") {
     if (status !== 200) return null;
-    const parsed = parseWorkbenchContextPayload(payload);
+    const parsed = parseWorkbenchContextPayload(body.payload);
     return parsed.success ? parsed.data : null;
   }
   const parser =
@@ -845,7 +975,8 @@ function parseSuccessfulPayload(
         : storeResponseSchema;
   const expectedStatus = contract === "store-create" ? 201 : 200;
   if (status !== expectedStatus) return null;
-  const parsed = parser.safeParse(payload);
+  if (!hasCanonicalStoreIntegerTokens(contract, body)) return null;
+  const parsed = parser.safeParse(body.payload);
   return parsed.success ? parsed.data : null;
 }
 

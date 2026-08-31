@@ -982,6 +982,172 @@ describe("strict Store Center request boundary", () => {
 });
 
 describe("strict Store Center response boundary", () => {
+  const rawStore = JSON.stringify(storePayload);
+  const rawList = JSON.stringify({
+    items: [storePayload],
+    quota: { used: 1, reserved: 1, limit: 5, allowed: true, reason: "" },
+    pagination: { page: 1, pageSize: 20, total: 1 },
+  });
+
+  it.each([
+    [
+      "Store item version",
+      "store-item",
+      200,
+      rawStore.replace('"version":2', '"version":2.00000000000000001'),
+    ],
+    [
+      "duplicate Store item version using a lossy last token",
+      "store-item",
+      200,
+      rawStore.replace(
+        '"version":2',
+        '"version":2,"version":2.00000000000000001',
+      ),
+    ],
+    [
+      "Store list item version",
+      "store-list",
+      200,
+      rawList.replace('"version":2', '"version":2.00000000000000001'),
+    ],
+    [
+      "delete version",
+      "store-delete",
+      200,
+      `{"id":"${storeId}","deleted":true,"version":9007199254740991.1}`,
+    ],
+    [
+      "quota used",
+      "store-list",
+      200,
+      rawList.replace('"used":1', '"used":1.00000000000000001'),
+    ],
+    [
+      "quota reserved",
+      "store-list",
+      200,
+      rawList.replace('"reserved":1', '"reserved":1.00000000000000001'),
+    ],
+    [
+      "non-null quota limit",
+      "store-list",
+      200,
+      rawList.replace('"limit":5', '"limit":5.0000000000000001'),
+    ],
+    [
+      "pagination page",
+      "store-list",
+      200,
+      rawList.replace('"page":1', '"page":1.00000000000000001'),
+    ],
+    [
+      "pagination pageSize",
+      "store-list",
+      200,
+      rawList.replace('"pageSize":20', '"pageSize":20.000000000000001'),
+    ],
+    [
+      "pagination total",
+      "store-list",
+      200,
+      rawList.replace('"total":1', '"total":1.00000000000000001'),
+    ],
+  ] as const)(
+    "rejects a lossy fractional JSON number token for %s",
+    async (_name, contract, status, raw) => {
+      const response = await buildWorkbenchBrowserResponse(
+        new Response(raw, {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+        contract,
+      );
+
+      expect(response.status).toBe(502);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "DEPENDENCY_UNAVAILABLE",
+      });
+    },
+  );
+
+  it("accepts canonical integer tokens, nullable quota limit, and numeric text in strings", async () => {
+    const store = await buildWorkbenchBrowserResponse(
+      new Response(
+        rawStore
+          .replace('"name":"Store"', '"name":"Store 2.00000000000000001"')
+          .replace('"version":2', '"version":9007199254740991'),
+      ),
+      "store-item",
+    );
+    expect(store.status).toBe(200);
+    await expect(store.json()).resolves.toMatchObject({
+      name: "Store 2.00000000000000001",
+      version: Number.MAX_SAFE_INTEGER,
+    });
+
+    const list = await buildWorkbenchBrowserResponse(
+      new Response(
+        JSON.stringify({
+          items: [],
+          quota: {
+            used: 0,
+            reserved: 0,
+            limit: null,
+            allowed: false,
+            reason: "subscription_required",
+          },
+          pagination: { page: 1, pageSize: 20, total: 0 },
+        }),
+      ),
+      "store-list",
+    );
+    expect(list.status).toBe(200);
+    await expect(list.json()).resolves.toMatchObject({
+      quota: { limit: null },
+    });
+  });
+
+  it.each([
+    [
+      "exponent Store version",
+      "store-item",
+      rawStore.replace('"version":2', '"version":2e0'),
+    ],
+    [
+      "negative-zero quota count",
+      "store-list",
+      rawList.replace('"used":1', '"used":-0'),
+    ],
+    [
+      "decimal pagination integer",
+      "store-list",
+      rawList.replace('"page":1', '"page":1.0'),
+    ],
+    [
+      "lossy version in a later Store list item",
+      "store-list",
+      JSON.stringify({
+        items: [
+          storePayload,
+          {
+            ...storePayload,
+            id: "33333333-3333-4333-8333-33333333333c",
+            version: 3,
+          },
+        ],
+        quota: { used: 1, reserved: 1, limit: 5, allowed: true, reason: "" },
+        pagination: { page: 1, pageSize: 20, total: 2 },
+      }).replace('"version":3', '"version":3.00000000000000001'),
+    ],
+  ] as const)("rejects a noncanonical raw integer representation: %s", async (_name, contract, raw) => {
+    const response = await buildWorkbenchBrowserResponse(
+      new Response(raw),
+      contract,
+    );
+    expect(response.status).toBe(502);
+  });
+
   it.each([
     ["store-create", 201],
     ["store-item", 200],
