@@ -507,6 +507,136 @@ func TestMemUsageLedgerStorageSignedTransitionsAndOutboxFiltering(t *testing.T) 
 	}
 }
 
+func TestMemUsageLedgerStorageSnapshotTimesAreStrictlyOrdered(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemRepository()
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-storage-time", ModuleOSSStorage, map[string]int{"storage_bytes_current": 100})
+	ledger := NewMemUsageLedger(repo)
+	firstReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-storage-time", "storage-time-first", 1))
+	if err != nil {
+		t.Fatalf("first Reserve() error = %v", err)
+	}
+	first, err := ledger.Commit(ctx, firstReservation.Event.EventID)
+	if err != nil {
+		t.Fatalf("first Commit() error = %v", err)
+	}
+	secondReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-storage-time", "storage-time-second", 1))
+	if err != nil {
+		t.Fatalf("second Reserve() error = %v", err)
+	}
+	second, err := ledger.Commit(ctx, secondReservation.Event.EventID)
+	if err != nil {
+		t.Fatalf("second Commit() error = %v", err)
+	}
+	if first.StorageSnapshotAt == nil || second.StorageSnapshotAt == nil || !second.StorageSnapshotAt.After(*first.StorageSnapshotAt) {
+		t.Fatalf("storage snapshot times = %v, %v; want strict commit order", first.StorageSnapshotAt, second.StorageSnapshotAt)
+	}
+}
+
+func TestMemUsageLedgerReversalTreatsEqualDeliveredSnapshotAsAuthoritative(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemRepository()
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-storage-tie", ModuleOSSStorage, map[string]int{"storage_bytes_current": 100})
+	ledger := NewMemUsageLedger(repo)
+	implementation := ledger.(*memUsageLedger)
+	sourceReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-storage-tie", "storage-tie-source", 10))
+	if err != nil {
+		t.Fatalf("source Reserve() error = %v", err)
+	}
+	source, err := ledger.Commit(ctx, sourceReservation.Event.EventID)
+	if err != nil {
+		t.Fatalf("source Commit() error = %v", err)
+	}
+	laterReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-storage-tie", "storage-tie-delivered", 5))
+	if err != nil {
+		t.Fatalf("delivered Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, laterReservation.Event.EventID); err != nil {
+		t.Fatalf("delivered Commit() error = %v", err)
+	}
+
+	implementation.mu.Lock()
+	later := implementation.eventsByID[laterReservation.Event.EventID]
+	later.event.StorageSnapshotAt = cloneUsageTimePointer(source.StorageSnapshotAt)
+	implementation.eventsByID[laterReservation.Event.EventID] = later
+	laterOutbox := implementation.outboxByEventID[laterReservation.Event.EventID]
+	laterOutbox.Status = "sent"
+	implementation.outboxByEventID[laterReservation.Event.EventID] = laterOutbox
+	implementation.mu.Unlock()
+
+	reversal, err := ledger.Reverse(ctx, source.EventID, "storage-tie-reversal", "correction")
+	if err != nil {
+		t.Fatalf("Reverse() error = %v", err)
+	}
+	items, err := ledger.ListPendingOutbox(ctx, 10)
+	if err != nil {
+		t.Fatalf("ListPendingOutbox() error = %v", err)
+	}
+	found := false
+	for _, item := range items {
+		if item.EventID == reversal.EventID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("pending outbox = %+v, want authoritative reversal %q", items, reversal.EventID)
+	}
+}
+
+func TestMemUsageLedgerReversalTreatsEqualLegacyCreatedTimeAsAuthoritative(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemRepository()
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-storage-legacy-tie", ModuleOSSStorage, map[string]int{"storage_bytes_current": 100})
+	ledger := NewMemUsageLedger(repo)
+	implementation := ledger.(*memUsageLedger)
+	sourceReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-storage-legacy-tie", "storage-legacy-tie-source", 10))
+	if err != nil {
+		t.Fatalf("source Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, sourceReservation.Event.EventID); err != nil {
+		t.Fatalf("source Commit() error = %v", err)
+	}
+	laterReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-storage-legacy-tie", "storage-legacy-tie-delivered", 5))
+	if err != nil {
+		t.Fatalf("delivered Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, laterReservation.Event.EventID); err != nil {
+		t.Fatalf("delivered Commit() error = %v", err)
+	}
+
+	tie := time.Date(2026, time.August, 31, 4, 0, 0, 0, time.UTC)
+	implementation.mu.Lock()
+	source := implementation.eventsByID[sourceReservation.Event.EventID]
+	source.event.CreatedAt = tie
+	implementation.eventsByID[sourceReservation.Event.EventID] = source
+	later := implementation.eventsByID[laterReservation.Event.EventID]
+	later.event.StorageSnapshotAt = nil
+	later.event.CreatedAt = tie
+	implementation.eventsByID[laterReservation.Event.EventID] = later
+	laterOutbox := implementation.outboxByEventID[laterReservation.Event.EventID]
+	laterOutbox.Status = "sent"
+	implementation.outboxByEventID[laterReservation.Event.EventID] = laterOutbox
+	implementation.mu.Unlock()
+
+	reversal, err := ledger.Reverse(ctx, sourceReservation.Event.EventID, "storage-legacy-tie-reversal", "correction")
+	if err != nil {
+		t.Fatalf("Reverse() error = %v", err)
+	}
+	items, err := ledger.ListPendingOutbox(ctx, 10)
+	if err != nil {
+		t.Fatalf("ListPendingOutbox() error = %v", err)
+	}
+	found := false
+	for _, item := range items {
+		if item.EventID == reversal.EventID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("pending outbox = %+v, want legacy authoritative reversal %q", items, reversal.EventID)
+	}
+}
+
 func TestMemUsageLedgerRejectsDeletionCommitBelowZeroAgainstUncommittedUpload(t *testing.T) {
 	repo := NewMemRepository()
 	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleOSSStorage, map[string]int{"storage_bytes_current": 100})

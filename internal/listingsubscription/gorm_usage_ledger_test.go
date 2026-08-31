@@ -39,6 +39,36 @@ func TestIsRetryableUsageLedgerErrorUsesSQLiteDriverCode(t *testing.T) {
 	}
 }
 
+func TestNextStorageSnapshotTimeAdvancesPastEqualAndFuturePriorTimes(t *testing.T) {
+	tests := []struct {
+		name      string
+		candidate time.Time
+		prior     time.Time
+		want      time.Time
+	}{
+		{
+			name:      "equal after microsecond normalization",
+			candidate: time.Date(2026, time.August, 31, 12, 0, 0, 999, time.FixedZone("UTC+8", 8*60*60)),
+			prior:     time.Date(2026, time.August, 31, 4, 0, 0, 0, time.UTC),
+			want:      time.Date(2026, time.August, 31, 4, 0, 0, 1000, time.UTC),
+		},
+		{
+			name:      "wall clock rollback",
+			candidate: time.Date(2026, time.August, 30, 4, 0, 0, 0, time.UTC),
+			prior:     time.Date(2026, time.August, 31, 4, 0, 0, 5000, time.UTC),
+			want:      time.Date(2026, time.August, 31, 4, 0, 0, 6000, time.UTC),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := nextStorageSnapshotTime(tt.candidate, tt.prior); !got.Equal(tt.want) || got.Location() != time.UTC {
+				t.Fatalf("nextStorageSnapshotTime(%v, %v) = %v (%v), want %v (UTC)", tt.candidate, tt.prior, got, got.Location(), tt.want)
+			}
+		})
+	}
+}
+
 func TestGormUsageLedgerReserveIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
@@ -208,6 +238,169 @@ func TestGormUsageLedgerPersistsStorageSnapshotAcrossReplayAndGet(t *testing.T) 
 	payload, err := BuildOpenMeterUsageOutboxPayload(*stored)
 	if err != nil || payload.Quantity != 10 {
 		t.Fatalf("stored payload = %+v, error=%v, want quantity 10", payload, err)
+	}
+}
+
+func TestGormUsageLedgerAllocatesStorageSnapshotTimeAcrossRestart(t *testing.T) {
+	ctx := context.Background()
+	dsn := "file:" + filepath.ToSlash(filepath.Join(t.TempDir(), "usage-ledger-restart.db")) + "?mode=rwc&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)"
+	dbA, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: dsn}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open first db: %v", err)
+	}
+	if err := AutoMigrateRepository(dbA); err != nil {
+		t.Fatalf("AutoMigrateRepository() error = %v", err)
+	}
+	repoA := NewGormRepository(dbA)
+	seedUsageLedgerEntitlement(t, repoA, "tenant-restart", ModuleOSSStorage, map[string]int{"storage_bytes": 100})
+	firstReservation, err := NewGormUsageLedger(repoA).Reserve(ctx, usageLedgerStorageInput("tenant-restart", "storage-restart-first", 1))
+	if err != nil {
+		t.Fatalf("first Reserve() error = %v", err)
+	}
+	if _, err := NewGormUsageLedger(repoA).Commit(ctx, firstReservation.Event.EventID); err != nil {
+		t.Fatalf("first Commit() error = %v", err)
+	}
+	future := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+	if err := dbA.Model(&usageEventRow{}).Where("event_id = ?", firstReservation.Event.EventID).Update("storage_snapshot_at", future).Error; err != nil {
+		t.Fatalf("seed persisted future snapshot time: %v", err)
+	}
+	sqlDBA, err := dbA.DB()
+	if err != nil {
+		t.Fatalf("first sql DB: %v", err)
+	}
+	if err := sqlDBA.Close(); err != nil {
+		t.Fatalf("close first db: %v", err)
+	}
+
+	dbB, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: dsn}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("reopen db: %v", err)
+	}
+	sqlDBB, err := dbB.DB()
+	if err != nil {
+		t.Fatalf("reopened sql DB: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDBB.Close() })
+	ledgerB := NewGormUsageLedger(NewGormRepository(dbB))
+	secondReservation, err := ledgerB.Reserve(ctx, usageLedgerStorageInput("tenant-restart", "storage-restart-second", 1))
+	if err != nil {
+		t.Fatalf("second Reserve() error = %v", err)
+	}
+	second, err := ledgerB.Commit(ctx, secondReservation.Event.EventID)
+	if err != nil {
+		t.Fatalf("second Commit() error = %v", err)
+	}
+	if second.StorageSnapshotAt == nil || !second.StorageSnapshotAt.After(future) {
+		t.Fatalf("second snapshot time = %v, want strictly after persisted %v", second.StorageSnapshotAt, future)
+	}
+}
+
+func TestGormUsageLedgerAllocatesAfterSeededFutureStorageSnapshot(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-future", ModuleOSSStorage, map[string]int{"storage_bytes": 100})
+	ledger := NewGormUsageLedger(repo)
+	firstReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-future", "storage-future-first", 1))
+	if err != nil {
+		t.Fatalf("first Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, firstReservation.Event.EventID); err != nil {
+		t.Fatalf("first Commit() error = %v", err)
+	}
+	future := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+	if err := db.Model(&usageEventRow{}).Where("event_id = ?", firstReservation.Event.EventID).Update("storage_snapshot_at", future).Error; err != nil {
+		t.Fatalf("seed future snapshot time: %v", err)
+	}
+
+	secondReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-future", "storage-future-second", 1))
+	if err != nil {
+		t.Fatalf("second Reserve() error = %v", err)
+	}
+	second, err := ledger.Commit(ctx, secondReservation.Event.EventID)
+	if err != nil {
+		t.Fatalf("second Commit() error = %v", err)
+	}
+	if second.StorageSnapshotAt == nil || !second.StorageSnapshotAt.After(future) {
+		t.Fatalf("second snapshot time = %v, want strictly after seeded future %v", second.StorageSnapshotAt, future)
+	}
+}
+
+func TestGormUsageLedgerConcurrentStorageCommitsAllocateStrictSnapshotTimes(t *testing.T) {
+	const workerCount = 8
+	ctx := context.Background()
+	db := openConcurrentUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-storage-concurrent", ModuleOSSStorage, map[string]int{"storage_bytes": 100})
+	ledger := NewGormUsageLedger(repo)
+	eventIDs := make([]string, 0, workerCount)
+	for worker := 0; worker < workerCount; worker++ {
+		reservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-storage-concurrent", fmt.Sprintf("storage-concurrent-%02d", worker), 1))
+		if err != nil {
+			t.Fatalf("Reserve(%d) error = %v", worker, err)
+		}
+		eventIDs = append(eventIDs, reservation.Event.EventID)
+	}
+
+	allBucketReads := make(chan struct{})
+	var bucketReads atomic.Int32
+	if err := db.Callback().Query().After("gorm:query").Register("test_storage_commit_read_gate", func(tx *gorm.DB) {
+		if tx.Statement.Table != "saas_usage_buckets" {
+			return
+		}
+		read := bucketReads.Add(1)
+		if read == workerCount {
+			close(allBucketReads)
+		}
+		if read <= workerCount {
+			<-allBucketReads
+		}
+	}); err != nil {
+		t.Fatalf("register bucket read gate: %v", err)
+	}
+
+	start := make(chan struct{})
+	results := make(chan error, workerCount)
+	var workers sync.WaitGroup
+	for _, eventID := range eventIDs {
+		workers.Add(1)
+		go func(eventID string) {
+			defer workers.Done()
+			<-start
+			_, err := ledger.Commit(ctx, eventID)
+			results <- err
+		}(eventID)
+	}
+	close(start)
+	workers.Wait()
+	close(results)
+	for err := range results {
+		if err != nil {
+			t.Fatalf("concurrent Commit() error = %v", err)
+		}
+	}
+
+	var committed []usageEventRow
+	if err := db.Where("tenant_id = ? AND module_code = ? AND metric = ? AND status = ?", "tenant-storage-concurrent", ModuleOSSStorage, usageMetricStorageBytesCurrent, string(UsageEventCommitted)).Order("storage_snapshot_at ASC").Find(&committed).Error; err != nil {
+		t.Fatalf("load committed storage events: %v", err)
+	}
+	if len(committed) != workerCount {
+		t.Fatalf("committed events = %d, want %d", len(committed), workerCount)
+	}
+	for i, event := range committed {
+		if event.StorageSnapshotAt == nil {
+			t.Fatalf("committed event %d snapshot time is nil", i)
+		}
+		if i > 0 && !event.StorageSnapshotAt.After(*committed[i-1].StorageSnapshotAt) {
+			t.Fatalf("snapshot times[%d:%d] = %v, %v; want strict persisted order", i-1, i, committed[i-1].StorageSnapshotAt, event.StorageSnapshotAt)
+		}
+	}
+	var bucket usageBucketRow
+	if err := db.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-storage-concurrent", ModuleOSSStorage, usageStorageBucketPeriodKey, usageMetricStorageBytesCurrent).Take(&bucket).Error; err != nil {
+		t.Fatalf("load storage bucket: %v", err)
+	}
+	if bucket.Committed != workerCount || bucket.Reserved != 0 {
+		t.Fatalf("storage bucket = committed:%d reserved:%d, want %d/0", bucket.Committed, bucket.Reserved, workerCount)
 	}
 }
 
@@ -771,6 +964,94 @@ func TestGormUsageLedgerReversalProjectsCorrectionAfterLaterStorageDelivery(t *t
 	payload, err := BuildOpenMeterUsageOutboxPayload(reversal)
 	if err != nil || payload.Quantity != 5 {
 		t.Fatalf("correction payload = %+v, error=%v, want latest snapshot 5", payload, err)
+	}
+}
+
+func TestGormUsageLedgerReversalTreatsEqualDeliveredSnapshotAsAuthoritative(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-storage-tie", ModuleOSSStorage, map[string]int{"storage_bytes": 100})
+	ledger := NewGormUsageLedger(repo)
+	sourceReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-storage-tie", "storage-tie-source", 10))
+	if err != nil {
+		t.Fatalf("source Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, sourceReservation.Event.EventID); err != nil {
+		t.Fatalf("source Commit() error = %v", err)
+	}
+	laterReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-storage-tie", "storage-tie-delivered", 5))
+	if err != nil {
+		t.Fatalf("delivered Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, laterReservation.Event.EventID); err != nil {
+		t.Fatalf("delivered Commit() error = %v", err)
+	}
+	tie := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+	if err := db.Model(&usageEventRow{}).Where("event_id IN ?", []string{sourceReservation.Event.EventID, laterReservation.Event.EventID}).Update("storage_snapshot_at", tie).Error; err != nil {
+		t.Fatalf("seed historical snapshot tie: %v", err)
+	}
+	if err := db.Model(&usageEventOutboxRow{}).Where("event_id = ?", laterReservation.Event.EventID).Update("status", "sent").Error; err != nil {
+		t.Fatalf("mark tied snapshot delivered: %v", err)
+	}
+
+	reversal, err := ledger.Reverse(ctx, sourceReservation.Event.EventID, "storage-tie-reversal", "correction")
+	if err != nil {
+		t.Fatalf("Reverse() error = %v", err)
+	}
+	if reversal.StorageSnapshotAt == nil || !reversal.StorageSnapshotAt.After(tie) {
+		t.Fatalf("reversal snapshot time = %v, want strictly after tied persisted maximum %v", reversal.StorageSnapshotAt, tie)
+	}
+	var outbox usageEventOutboxRow
+	if err := db.Where("event_id = ?", reversal.EventID).Take(&outbox).Error; err != nil {
+		t.Fatalf("load reversal outbox: %v", err)
+	}
+	if outbox.Status != "pending" {
+		t.Fatalf("reversal outbox status = %q, want pending authoritative correction", outbox.Status)
+	}
+}
+
+func TestGormUsageLedgerReversalTreatsEqualLegacyCreatedTimeAsAuthoritative(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-storage-legacy-tie", ModuleOSSStorage, map[string]int{"storage_bytes": 100})
+	ledger := NewGormUsageLedger(repo)
+	sourceReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-storage-legacy-tie", "storage-legacy-tie-source", 10))
+	if err != nil {
+		t.Fatalf("source Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, sourceReservation.Event.EventID); err != nil {
+		t.Fatalf("source Commit() error = %v", err)
+	}
+	laterReservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-storage-legacy-tie", "storage-legacy-tie-delivered", 5))
+	if err != nil {
+		t.Fatalf("delivered Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, laterReservation.Event.EventID); err != nil {
+		t.Fatalf("delivered Commit() error = %v", err)
+	}
+	tie := time.Date(2026, time.August, 31, 4, 0, 0, 0, time.UTC)
+	if err := db.Model(&usageEventRow{}).Where("event_id = ?", sourceReservation.Event.EventID).Update("created_at", tie).Error; err != nil {
+		t.Fatalf("seed source created time: %v", err)
+	}
+	if err := db.Model(&usageEventRow{}).Where("event_id = ?", laterReservation.Event.EventID).Updates(map[string]any{"storage_snapshot_at": nil, "created_at": tie}).Error; err != nil {
+		t.Fatalf("seed legacy delivered event: %v", err)
+	}
+	if err := db.Model(&usageEventOutboxRow{}).Where("event_id = ?", laterReservation.Event.EventID).Update("status", "sent").Error; err != nil {
+		t.Fatalf("mark legacy snapshot delivered: %v", err)
+	}
+
+	reversal, err := ledger.Reverse(ctx, sourceReservation.Event.EventID, "storage-legacy-tie-reversal", "correction")
+	if err != nil {
+		t.Fatalf("Reverse() error = %v", err)
+	}
+	var outbox usageEventOutboxRow
+	if err := db.Where("event_id = ?", reversal.EventID).Take(&outbox).Error; err != nil {
+		t.Fatalf("load reversal outbox: %v", err)
+	}
+	if outbox.Status != "pending" {
+		t.Fatalf("reversal outbox status = %q, want pending legacy correction", outbox.Status)
 	}
 }
 
