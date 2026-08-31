@@ -81,8 +81,11 @@
 - Create: `internal/app/httpapi/storecenter_module_test.go`
 - Create: `internal/workbench/schema/runtime.go`
 - Create: `internal/workbench/schema/runtime_test.go`
+- Modify: `internal/listingsubscription/store_quota_gorm.go`
+- Modify: `internal/listingsubscription/store_quota_gorm_test.go`
 - Modify: `internal/app/runtime/listingkitschemamigrate/runtime.go`
 - Modify: `internal/app/runtime/listingkitschemamigrate/runtime_test.go`
+- Modify: `internal/app/runtime/listingkitschemamigrate/flags.go`
 
 ### Frontend API and pages
 
@@ -519,7 +522,7 @@ git commit -m "feat: expose scoped store center api"
 - [ ] Add failing composition tests proving one shared GORM connection creates the store repository, subscription repository/quota ledger, audit repository, service, and route module.
 - [ ] Build Store Center only when workbench is enabled and database configuration is present. Fail startup rather than serving an in-memory store in production.
 - [ ] Add the module to `runtimeModules()` after workbench context is constructed. Route middleware still owns request order; module order must not become an authorization assumption.
-- [ ] Implement `workbench/schema.AutoMigrateRuntime` for Store Center and subscription quota tables. It must not migrate or read `listing_store`.
+- [ ] Add a narrow, exported, idempotent Store-quota migration entry point in the Subscription Domain; do not call its broad `AutoMigrateRepository` from Workbench schema ownership. Implement `workbench/schema.AutoMigrateRuntime` by composing the Store, Store audit, and narrow Store-quota migrations. It must not migrate or read `listing_store` or unrelated subscription tables.
 - [ ] Extend the existing schema migration runtime with scope `workbench`; scope `all` includes it. Keep this as a thin deployment entry point, while schema ownership remains in `internal/workbench/schema`.
 - [ ] Add migration tests asserting all four new tables exist, repeated migration is idempotent, and representative `organization_id` columns are strings/non-null.
 - [ ] Run migration against an empty disposable PostgreSQL database and record table existence/count-zero evidence. Do not truncate legacy tables.
@@ -535,7 +538,7 @@ Expected: pass.
 **Commit:**
 
 ```powershell
-git add internal/app/httpapi/types.go internal/app/httpapi/composition_builder.go internal/app/httpapi/composition_modules.go internal/app/httpapi/storecenter_module* internal/workbench/schema internal/app/runtime/listingkitschemamigrate
+git add internal/app/httpapi/types.go internal/app/httpapi/composition_builder.go internal/app/httpapi/composition_modules.go internal/app/httpapi/storecenter_module* internal/workbench/schema internal/listingsubscription/store_quota_gorm.go internal/listingsubscription/store_quota_gorm_test.go internal/app/runtime/listingkitschemamigrate
 git commit -m "feat: wire store center runtime and schema"
 ```
 
