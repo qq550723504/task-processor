@@ -199,6 +199,26 @@ DELETE item 200 = { id, deleted: true, version }
 
 Task 6 owns these Go DTOs and exact statuses. It must reject unknown response fields in its request tests so Task 7A can mirror one authoritative contract at the browser boundary rather than infer shapes from domain structs.
 
+The Store Center transport error contract is also exact. `fieldErrors` is always a
+non-null array of `{ field, code }` objects; callers never parse `message` for
+control flow. Handler-owned mappings are:
+
+| Condition | HTTP | Stable code |
+|---|---:|---|
+| malformed/oversized/unknown/duplicate request input or header | 400 | `INVALID_REQUEST` |
+| Store is absent in the effective Organization, including a foreign-Organization ID | 404 | `STORE_NOT_FOUND` |
+| duplicate Store identity | 409 | `STORE_ALREADY_EXISTS` |
+| optimistic version conflict | 409 | `STORE_VERSION_CONFLICT` |
+| invalid lifecycle transition | 422 | `STORE_INVALID_STATE` |
+| no active subscription / no `store_count` entitlement | 409 | `SUBSCRIPTION_REQUIRED` |
+| Store quota reached | 409 | `STORE_LIMIT_REACHED` |
+| repository/quota/audit/provider corruption or outage | 503 | `DEPENDENCY_UNAVAILABLE` |
+
+Authentication, Organization selection/access, suspension, revocation, and
+permission failures remain owned by the mounted server middleware and retain the
+existing Workbench protocol codes. Task 6 must not remap those failures inside
+the handler.
+
 Role mapping:
 
 | Scoped role | Permissions |
