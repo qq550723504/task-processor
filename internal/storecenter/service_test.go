@@ -208,8 +208,8 @@ func TestServiceCreateCommitFailureResumesWithoutRecreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replay Create() error = %v", err)
 	}
-	if result.Store.LifecycleStatus() != storecenter.StoreStatusActive || repository.createCalls != 1 || ledger.releaseCalls != 0 {
-		t.Fatalf("replay lifecycle/create/release = %s/%d/%d, want active/1/0", result.Store.LifecycleStatus(), repository.createCalls, ledger.releaseCalls)
+	if result.Store.LifecycleStatus() != storecenter.StoreStatusActive || repository.createCalls != 2 || ledger.releaseCalls != 0 {
+		t.Fatalf("replay lifecycle/create/release = %s/%d/%d, want active/2/0", result.Store.LifecycleStatus(), repository.createCalls, ledger.releaseCalls)
 	}
 }
 
@@ -218,6 +218,7 @@ func TestServiceCreateAmbiguousCreateFoundNeverReleases(t *testing.T) {
 	ledger := quotaForRequest(request)
 	repository := newStoreRepositoryFake()
 	repository.createErr = errors.New("ambiguous persistence outcome")
+	repository.createErrOnce = true
 	repository.persistBeforeCreateError = true
 	audit := newAuditRepositoryFake()
 	service, err := storecenter.NewService(repository, ledger, audit, time.Now)
@@ -446,6 +447,53 @@ func TestServiceCreateCrossActorReplayKeepsFirstDurableAuditActor(t *testing.T) 
 	}
 }
 
+func TestServiceCreateFoundStoreVerifiesImmutableCreateFingerprint(t *testing.T) {
+	request := validCreateRequest()
+	request.ExternalStoreID = "external-a"
+	ledger := quotaForRequest(request)
+	repository := newStoreRepositoryFake()
+	audit := newAuditRepositoryFake()
+	service, err := storecenter.NewService(repository, ledger, audit, time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); err != nil {
+		t.Fatalf("initial Create(): %v", err)
+	}
+	for _, mutate := range []func(*storecenter.CreateStoreRequest){func(r *storecenter.CreateStoreRequest) { r.Name = "changed" }, func(r *storecenter.CreateStoreRequest) { r.Region = "MY" }, func(r *storecenter.CreateStoreRequest) { r.ExternalStoreID = "external-b" }} {
+		replay := request
+		mutate(&replay)
+		if _, err := service.Create(context.Background(), replay); !errors.Is(err, storecenter.ErrAlreadyExists) {
+			t.Fatalf("changed payload replay error = %v, want ErrAlreadyExists", err)
+		}
+		if ledger.releaseCalls != 0 || repository.saveCalls != 1 {
+			t.Fatalf("changed replay release/save = %d/%d, want 0/1", ledger.releaseCalls, repository.saveCalls)
+		}
+	}
+}
+
+func TestServiceCreateAmbiguousFoundStoreVerifiesFingerprint(t *testing.T) {
+	original := validCreateRequest()
+	original.ExternalStoreID = "external-a"
+	request := original
+	request.Name = "changed"
+	ledger := quotaForRequest(request)
+	repository := newStoreRepositoryFake()
+	repository.createErr = errors.New("ambiguous create")
+	repository.createErrOnce = true
+	repository.storeOnCreateError = matchingStore(t, original, ledger.allocation)
+	service, err := storecenter.NewService(repository, ledger, newAuditRepositoryFake(), time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrAlreadyExists) {
+		t.Fatalf("ambiguous changed payload Create() error = %v, want ErrAlreadyExists", err)
+	}
+	if ledger.releaseCalls != 0 {
+		t.Fatalf("ambiguous fingerprint conflict release calls = %d, want 0", ledger.releaseCalls)
+	}
+}
+
 func TestServiceCreateNeverReleasesAfterAmbiguousConfirmationRead(t *testing.T) {
 	request := validCreateRequest()
 	ledger := quotaForRequest(request)
@@ -657,7 +705,10 @@ func quotaForRequest(request storecenter.CreateStoreRequest) *quotaLedgerFake {
 type storeRepositoryFake struct {
 	mu                       sync.Mutex
 	stores                   map[string]*storecenter.Store
+	fingerprints             map[string]storeCreateFingerprint
 	createErr                error
+	createErrOnce            bool
+	storeOnCreateError       *storecenter.Store
 	getErr                   error
 	getErrAfterCreate        error
 	saveErr                  error
@@ -669,7 +720,7 @@ type storeRepositoryFake struct {
 }
 
 func newStoreRepositoryFake() *storeRepositoryFake {
-	return &storeRepositoryFake{stores: map[string]*storecenter.Store{}}
+	return &storeRepositoryFake{stores: map[string]*storecenter.Store{}, fingerprints: map[string]storeCreateFingerprint{}}
 }
 
 func (f *storeRepositoryFake) CreateOrReplay(_ context.Context, organizationID string, store *storecenter.Store) (*storecenter.Store, bool, error) {
@@ -682,13 +733,27 @@ func (f *storeRepositoryFake) CreateOrReplay(_ context.Context, organizationID s
 		}
 		if f.persistBeforeCreateError {
 			f.stores[organizationID+"/"+store.ID()] = cloneStore(store)
+			f.fingerprints[organizationID+"/"+store.ID()] = fingerprintFor(store)
 		}
-		return nil, false, f.createErr
+		if f.storeOnCreateError != nil {
+			f.stores[organizationID+"/"+store.ID()] = cloneStore(f.storeOnCreateError)
+			f.fingerprints[organizationID+"/"+store.ID()] = fingerprintFor(f.storeOnCreateError)
+		}
+		err := f.createErr
+		if f.createErrOnce {
+			f.createErr = nil
+		}
+		return nil, false, err
 	}
-	if existing := f.stores[organizationID+"/"+store.ID()]; existing != nil {
+	key := organizationID + "/" + store.ID()
+	if existing := f.stores[key]; existing != nil {
+		if f.fingerprints[key] != fingerprintFor(store) {
+			return nil, false, storecenter.ErrAlreadyExists
+		}
 		return cloneStore(existing), true, nil
 	}
-	f.stores[organizationID+"/"+store.ID()] = cloneStore(store)
+	f.stores[key] = cloneStore(store)
+	f.fingerprints[key] = fingerprintFor(store)
 	return cloneStore(store), false, nil
 }
 func (f *storeRepositoryFake) List(context.Context, string, storecenter.StoreListQuery) (storecenter.StorePage, error) {
@@ -745,6 +810,12 @@ func matchingStore(t *testing.T, request storecenter.CreateStoreRequest, allocat
 		t.Fatalf("NewStore(matching): %v", err)
 	}
 	return store
+}
+
+type storeCreateFingerprint struct{ id, allocationID, key, name, platform, region, external string }
+
+func fingerprintFor(store *storecenter.Store) storeCreateFingerprint {
+	return storeCreateFingerprint{id: store.ID(), allocationID: store.QuotaAllocationID(), key: store.CreateIdempotencyKey(), name: store.Name(), platform: string(store.Platform()), region: store.Region(), external: store.ExternalStoreID()}
 }
 
 type quotaLedgerFake struct {

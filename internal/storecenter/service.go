@@ -58,6 +58,10 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		return CreateStoreResult{}, dependencyError(err)
 	}
 	transition := listingsubscription.StoreQuotaTransitionInput{OrganizationID: request.OrganizationID, AllocationID: allocation.AllocationID, StoreID: allocation.StoreID, RequestKey: request.IdempotencyKey, ActorSubject: request.ActorSubject}
+	candidate, err := s.createCandidate(request, allocation)
+	if err != nil {
+		return CreateStoreResult{}, dependencyError(err)
+	}
 	replayed := reserved.Existing
 
 	if err := s.record(ctx, allocation, request, AuditActionQuotaReserved, AuditOutcomeSucceeded, nil, "", StoreStatusProvisioning, AuditFailureNone); err != nil {
@@ -76,15 +80,12 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 	}
 
 	store, err := s.repository.Get(ctx, request.OrganizationID, allocation.StoreID)
+	verifyExistingCreate := false
 	if errors.Is(err, ErrNotFound) {
 		switch allocation.Status {
 		case listingsubscription.StoreQuotaReserved:
-			store, err = NewStore(CreateStoreInput{ID: allocation.StoreID, OrganizationID: request.OrganizationID, ActorSubject: request.ActorSubject, Name: request.Name, Platform: request.Platform, Region: request.Region, ExternalStoreID: request.ExternalStoreID, CreateIdempotencyKey: request.IdempotencyKey, QuotaAllocationID: allocation.AllocationID, OccurredAt: s.utcNow()})
-			if err != nil {
-				return CreateStoreResult{}, err
-			}
 			var createdReplay bool
-			store, createdReplay, err = s.repository.CreateOrReplay(ctx, request.OrganizationID, store)
+			store, createdReplay, err = s.repository.CreateOrReplay(ctx, request.OrganizationID, candidate)
 			replayed = replayed || createdReplay
 			if err != nil {
 				createErr := err
@@ -101,6 +102,7 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 					return CreateStoreResult{}, dependencyError(err)
 				}
 				replayed = true
+				verifyExistingCreate = true
 			}
 		case listingsubscription.StoreQuotaAllocated, listingsubscription.StoreQuotaReleased:
 			return CreateStoreResult{}, dependencyError(errors.New("quota allocation has no durable store"))
@@ -111,9 +113,24 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		return CreateStoreResult{}, dependencyError(err)
 	} else {
 		replayed = true
+		verifyExistingCreate = true
 	}
 	if err := verifyStoreAllocation(store, request, allocation); err != nil {
 		return CreateStoreResult{}, dependencyError(err)
+	}
+	if verifyExistingCreate {
+		verified, verifiedReplay, err := s.repository.CreateOrReplay(ctx, request.OrganizationID, candidate)
+		if errors.Is(err, ErrAlreadyExists) {
+			return CreateStoreResult{}, ErrAlreadyExists
+		}
+		if err != nil {
+			return CreateStoreResult{}, dependencyError(err)
+		}
+		if err := verifyStoreAllocation(verified, request, allocation); err != nil {
+			return CreateStoreResult{}, dependencyError(err)
+		}
+		store = verified
+		replayed = replayed || verifiedReplay
 	}
 	if store.LifecycleStatus() == StoreStatusDeleting {
 		return CreateStoreResult{}, dependencyError(errors.New("deleting store cannot be replayed"))
@@ -161,6 +178,10 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		return CreateStoreResult{}, dependencyError(err)
 	}
 	return CreateStoreResult{Store: store, Replayed: replayed}, nil
+}
+
+func (s *Service) createCandidate(request CreateStoreRequest, allocation listingsubscription.StoreQuotaAllocation) (*Store, error) {
+	return NewStore(CreateStoreInput{ID: allocation.StoreID, OrganizationID: request.OrganizationID, ActorSubject: request.ActorSubject, Name: request.Name, Platform: request.Platform, Region: request.Region, ExternalStoreID: request.ExternalStoreID, CreateIdempotencyKey: request.IdempotencyKey, QuotaAllocationID: allocation.AllocationID, OccurredAt: s.utcNow()})
 }
 
 func normalizeCreateStoreRequest(request CreateStoreRequest) (CreateStoreRequest, error) {
