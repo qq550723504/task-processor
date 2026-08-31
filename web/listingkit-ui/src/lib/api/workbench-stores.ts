@@ -22,7 +22,7 @@ const canonicalUUIDSchema = z
         value,
       ),
   );
-export const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
+const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
 const expectedOrganizationIdSchema = z
   .string()
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
@@ -139,31 +139,23 @@ export type WorkbenchStoreList = z.infer<typeof workbenchStoreListResponseSchema
 export type WorkbenchStoreDeleteResult = z.infer<
   typeof workbenchStoreDeleteSchema
 >;
-export type WorkbenchStoreConnectionStatus =
-  WorkbenchStore["connectionStatus"];
-export type WorkbenchStoreQuotaReason = WorkbenchStoreList["quota"]["reason"];
-export type WorkbenchStoreFieldError =
-  WorkbenchErrorEnvelope["fieldErrors"][number];
-export const workbenchStoreErrorCodes = [
-  "INVALID_REQUEST",
-  "AUTHENTICATION_REQUIRED",
-  "ORGANIZATION_SELECTION_REQUIRED",
-  "ORGANIZATION_ACCESS_DENIED",
-  "ORGANIZATION_ACCESS_REVOKED",
-  "ORGANIZATION_SUSPENDED",
-  "PERMISSION_DENIED",
-  "DEPENDENCY_UNAVAILABLE",
-  "STORE_NOT_FOUND",
-  "STORE_ALREADY_EXISTS",
-  "STORE_VERSION_CONFLICT",
-  "STORE_INVALID_STATE",
-  "SUBSCRIPTION_REQUIRED",
-  "STORE_LIMIT_REACHED",
-  "ORGANIZATION_CONTEXT_CHANGED",
-] as const;
-export type WorkbenchStoreKnownErrorCode =
-  (typeof workbenchStoreErrorCodes)[number];
-export type WorkbenchStoreErrorCode = WorkbenchStoreKnownErrorCode | (string & {});
+export type WorkbenchStoreErrorCode =
+  | "INVALID_REQUEST"
+  | "AUTHENTICATION_REQUIRED"
+  | "ORGANIZATION_SELECTION_REQUIRED"
+  | "ORGANIZATION_ACCESS_DENIED"
+  | "ORGANIZATION_ACCESS_REVOKED"
+  | "ORGANIZATION_SUSPENDED"
+  | "PERMISSION_DENIED"
+  | "DEPENDENCY_UNAVAILABLE"
+  | "STORE_NOT_FOUND"
+  | "STORE_ALREADY_EXISTS"
+  | "STORE_VERSION_CONFLICT"
+  | "STORE_INVALID_STATE"
+  | "SUBSCRIPTION_REQUIRED"
+  | "STORE_LIMIT_REACHED"
+  | "ORGANIZATION_CONTEXT_CHANGED"
+  | (string & {});
 export type {
   WorkbenchStoreCreateInput,
   WorkbenchStoreListFilters,

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-export const workbenchStorePlatformSchema = z.literal("shein");
-export const workbenchStoreLifecycleStatusSchema = z.enum([
+const workbenchStorePlatformSchema = z.literal("shein");
+const workbenchStoreLifecycleStatusSchema = z.enum([
   "provisioning",
   "active",
   "disabled",
@@ -55,10 +55,4 @@ export type WorkbenchStoreUpdateInput = z.infer<
 >;
 export type WorkbenchStoreListFilters = z.infer<
   typeof workbenchStoreListFiltersSchema
->;
-export type WorkbenchStorePlatform = z.infer<
-  typeof workbenchStorePlatformSchema
->;
-export type WorkbenchStoreLifecycleStatus = z.infer<
-  typeof workbenchStoreLifecycleStatusSchema
 >;

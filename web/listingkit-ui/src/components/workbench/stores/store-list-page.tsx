@@ -123,7 +123,7 @@ function Pagination({ filters, onChange, page, pageSize, total }: { filters: Wor
   return <div className="flex items-center justify-between gap-3"><p className="text-sm text-muted-foreground">第 {page} 页，共 {total} 家店铺</p><div className="flex gap-2"><Button aria-label="上一页" disabled={page <= 1} onClick={() => onChange({ ...filters, page: page - 1 })} size="sm" variant="outline"><ChevronLeft aria-hidden="true" />上一页</Button><Button aria-label="下一页" disabled={page * pageSize >= total} onClick={() => onChange({ ...filters, page: page + 1 })} size="sm" variant="outline">下一页<ChevronRight aria-hidden="true" /></Button></div></div>;
 }
 
-export function parseStoreFilters(searchParams: URLSearchParams): WorkbenchStoreListFilters {
+function parseStoreFilters(searchParams: URLSearchParams): WorkbenchStoreListFilters {
   const page = parseCanonicalDecimal(searchParams.getAll("page"), DEFAULT_PAGE, Number.MAX_SAFE_INTEGER);
   const pageSize = parseCanonicalDecimal(searchParams.getAll("pageSize"), DEFAULT_PAGE_SIZE, 100);
   const platform = searchParams.getAll("platform").length === 1 && searchParams.get("platform") === "shein" ? "shein" : undefined;
@@ -145,7 +145,7 @@ function isStoreStatus(value: string | null): value is NonNullable<WorkbenchStor
   return value === "provisioning" || value === "active" || value === "disabled" || value === "deleting";
 }
 
-export function buildStoreSearch(filters: WorkbenchStoreListFilters) {
+function buildStoreSearch(filters: WorkbenchStoreListFilters) {
   const params = new URLSearchParams();
   params.set("page", String(filters.page));
   params.set("pageSize", String(filters.pageSize));

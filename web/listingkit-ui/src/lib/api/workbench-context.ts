@@ -26,7 +26,7 @@ const organizationSchema = z
   })
   .strict();
 
-export const workbenchContextSchema = z
+const workbenchContextSchema = z
   .object({
     user: z.object({ id: safeIdSchema }).strict(),
     homeOrganizationId: safeIdSchema,
@@ -87,7 +87,7 @@ const fieldErrorSchema = z
   })
   .strict();
 
-export const workbenchErrorEnvelopeSchema = z
+const workbenchErrorEnvelopeSchema = z
   .object({
     code: z
       .string()

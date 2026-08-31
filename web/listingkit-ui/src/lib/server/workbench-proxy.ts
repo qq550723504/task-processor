@@ -13,7 +13,7 @@ import {
 } from "@/lib/api/workbench-context";
 
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
-export const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
+const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
 
 const DEFAULT_SERVICE_API_BASE = "http://localhost:8085/api/v1";
 const SWITCH_REQUEST_BODY_MAX_BYTES = 4 * 1024;
