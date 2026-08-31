@@ -664,6 +664,56 @@ git add web/listingkit-ui/src/components/workbench/stores/store-list-page* web/l
 git commit -m "feat: render workbench store directory"
 ```
 
+## Task 9A: Bind Store Requests to Their Starting Organization
+
+**Architecture correction:** Task 8 captures Organization only for query keys
+and invalidation, while each retry is authenticated by the current mutable
+selection cookie. A same-tab or cross-tab switch can therefore reinterpret a
+retry under a different Organization. The current Context Provider also has no
+guard registry for Task 10's dirty-form switch confirmation. Close both gaps
+before forms; do not simulate safety inside a page component.
+
+**Files:**
+
+- Modify: `web/listingkit-ui/src/lib/server/workbench-proxy.ts`
+- Modify: `web/listingkit-ui/src/lib/server/workbench-proxy.test.ts`
+- Modify: `web/listingkit-ui/src/lib/api/workbench-stores.ts`
+- Modify: `web/listingkit-ui/src/lib/api/workbench-stores.test.ts`
+- Modify: `web/listingkit-ui/src/lib/query/use-workbench-stores.ts`
+- Modify: `web/listingkit-ui/src/lib/query/use-workbench-stores.test.tsx`
+- Modify: `web/listingkit-ui/src/components/providers/workbench-context-provider.tsx`
+- Modify: `web/listingkit-ui/src/components/providers/workbench-context-provider.test.tsx`
+
+- [ ] Add RED tests proving a Store request/retry whose captured Organization no longer matches the HttpOnly selection cookie is rejected before upstream fetch and never reinterpreted under the new Organization.
+- [ ] Require every browser Store request to send exactly one safe `X-Expected-Organization-ID`. Compare it to the validated selection cookie in the BFF; missing, malformed, repeated, empty, or mismatched assertions return bounded `409 ORGANIZATION_CONTEXT_CHANGED`. The assertion is never an Organization selector, never forwarded upstream, and never replaces the cookie-derived `X-Requested-Organization-ID` or Go authorization.
+- [ ] Keep context GET/switch behavior unchanged and continue stripping every other browser Organization/tenant/identity header. Add explicit regressions that a matching assertion forwards only the trusted cookie-derived header and a mismatch performs no fetch/body read.
+- [ ] Pass the effective Organization captured by each Task 8 query/mutation to the API client solely for the consistency header. Empty/unsafe IDs fail before fetch. Query keys remain Organization-rooted and no Organization enters Store path/query/body JSON.
+- [ ] Set Organization-scoped Store mutation keys. Make the Context Provider report switching busy and refuse a switch while such a mutation is pending, before cookie mutation or cache clearing.
+- [ ] Add a fail-closed `registerOrganizationSwitchGuard` API to the Context Provider. Execute current guards before the switch request; a false result or thrown/rejected guard cancels the switch and preserves context/cache. Registration returns cleanup and must not leak unmounted guards.
+- [ ] Extend keyed create/delete mutation facades with an explicit last-operation retry that reuses the exact captured Organization and operation UUID after an eligible network/5xx terminal failure. A new explicit submission gets a new key; a successful, superseded, non-retryable, missing, or now-different-Organization operation cannot be retried. Keep internal Organization/key hidden from public `variables` and callbacks.
+- [ ] Add `ORGANIZATION_CONTEXT_CHANGED` to the known frontend code set and map it using stable copy only. Do not render raw cookie/header values, Organization IDs, server messages, or request IDs.
+- [ ] Rerun Task 7A context/cookie and Task 8/9 regressions. No real browser, network, provider, ZITADEL, or database mutation.
+
+**Verification:**
+
+```powershell
+Set-Location web/listingkit-ui
+npm.cmd test -- src/lib/server/workbench-proxy.test.ts src/lib/api/workbench-stores.test.ts src/lib/query/use-workbench-stores.test.tsx src/components/providers/workbench-context-provider.test.tsx
+npm.cmd test -- src/components/workbench/stores/store-list-page.test.tsx src/components/workbench/workspace-app-shell.test.tsx
+npm.cmd run typecheck
+npm.cmd run lint -- src/lib/server/workbench-proxy.ts src/lib/api/workbench-stores.ts src/lib/query/use-workbench-stores.ts src/components/providers/workbench-context-provider.tsx
+```
+
+Expected: matching Organization requests pass; every drift/switch/retry race
+fails closed without changing target Organization or exposing internal identity.
+
+**Commit:**
+
+```powershell
+git add web/listingkit-ui/src/lib/server/workbench-proxy* web/listingkit-ui/src/lib/api/workbench-stores* web/listingkit-ui/src/lib/query/use-workbench-stores* web/listingkit-ui/src/components/providers/workbench-context-provider*
+git commit -m "fix: bind store requests to organization context"
+```
+
 ## Task 10: Build Create and Edit Forms With Conflict Recovery
 
 **Files:**
