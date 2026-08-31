@@ -13,10 +13,22 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type rwLocker interface {
+	Lock()
+	Unlock()
+	RLock()
+	RUnlock()
+}
+
+type logLevelState struct {
+	locker rwLocker
+	value  logrus.Level
+}
+
 // LogManager 统一日志管理器
 type LogManager struct {
 	logger     *logrus.Logger
-	level      logrus.Level
+	levelState logLevelState
 	formatter  logrus.Formatter
 	outputs    []io.Writer
 	config     *LogConfig
@@ -58,6 +70,10 @@ func DefaultLogConfig() *LogConfig {
 
 // NewLogManager 创建日志管理器
 func NewLogManager(config *LogConfig) *LogManager {
+	return newLogManager(config, &sync.RWMutex{})
+}
+
+func newLogManager(config *LogConfig, levelLocker rwLocker) *LogManager {
 	if config == nil {
 		config = DefaultLogConfig()
 	}
@@ -77,8 +93,11 @@ func NewLogManager(config *LogConfig) *LogManager {
 
 	// 创建日志管理器
 	lm := &LogManager{
-		logger:    logger,
-		level:     level,
+		logger: logger,
+		levelState: logLevelState{
+			locker: levelLocker,
+			value:  level,
+		},
 		formatter: formatter,
 		config:    config,
 	}
@@ -116,11 +135,11 @@ func (lm *LogManager) GetLoggerWithFields(fields logrus.Fields) *logrus.Entry {
 // SetLevel 动态设置日志级别
 func (lm *LogManager) SetLevel(level string) error {
 	logLevel := parseLogLevel(level)
-	lm.mutex.Lock()
-	defer lm.mutex.Unlock()
+	lm.levelState.locker.Lock()
+	defer lm.levelState.locker.Unlock()
 
 	lm.logger.SetLevel(logLevel)
-	lm.level = logLevel
+	lm.levelState.value = logLevel
 	return nil
 }
 
@@ -131,10 +150,10 @@ func (lm *LogManager) GetRawLogger() *logrus.Logger {
 
 // GetLevel 获取当前日志级别
 func (lm *LogManager) GetLevel() string {
-	lm.mutex.RLock()
-	defer lm.mutex.RUnlock()
+	lm.levelState.locker.RLock()
+	defer lm.levelState.locker.RUnlock()
 
-	return lm.level.String()
+	return lm.levelState.value.String()
 }
 
 // Close 关闭日志管理器
@@ -261,25 +280,28 @@ func (lm *LogManager) createOutputs() []io.Writer {
 type logManagerFactory func(*LogConfig) *LogManager
 
 type logManagerRegistry struct {
-	mutex   sync.Mutex
+	locker  rwLocker
 	manager *LogManager
 	factory logManagerFactory
 }
 
-func newLogManagerRegistry(factory logManagerFactory) *logManagerRegistry {
-	return &logManagerRegistry{factory: factory}
+func newLogManagerRegistry(factory logManagerFactory, locker rwLocker) *logManagerRegistry {
+	return &logManagerRegistry{
+		locker:  locker,
+		factory: factory,
+	}
 }
 
 func (r *logManagerRegistry) init(config *LogConfig) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
+	r.locker.Lock()
+	defer r.locker.Unlock()
 
 	r.manager = r.factory(config)
 }
 
 func (r *logManagerRegistry) get() *LogManager {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
+	r.locker.Lock()
+	defer r.locker.Unlock()
 
 	if r.manager == nil {
 		r.manager = r.factory(nil)
@@ -288,7 +310,7 @@ func (r *logManagerRegistry) get() *LogManager {
 }
 
 // 全局日志管理器实例
-var globalLogManagerRegistry = newLogManagerRegistry(NewLogManager)
+var globalLogManagerRegistry = newLogManagerRegistry(NewLogManager, &sync.RWMutex{})
 
 // InitGlobalLogger 初始化全局日志管理器
 func InitGlobalLogger(config *LogConfig) {

@@ -3,6 +3,7 @@ package logging
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -11,6 +12,49 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type probeRWLocker struct {
+	delegate        sync.RWMutex
+	lockAttempt     chan struct{}
+	lockPermit      chan struct{}
+	unlockAttempt   chan struct{}
+	unlockPermit    chan struct{}
+	readLockAttempt chan struct{}
+	readLockPermit  chan struct{}
+}
+
+func newProbeRWLocker() *probeRWLocker {
+	return &probeRWLocker{
+		lockAttempt:     make(chan struct{}),
+		lockPermit:      make(chan struct{}),
+		unlockAttempt:   make(chan struct{}),
+		unlockPermit:    make(chan struct{}),
+		readLockAttempt: make(chan struct{}),
+		readLockPermit:  make(chan struct{}),
+	}
+}
+
+func (l *probeRWLocker) Lock() {
+	l.lockAttempt <- struct{}{}
+	<-l.lockPermit
+	l.delegate.Lock()
+}
+
+func (l *probeRWLocker) Unlock() {
+	l.unlockAttempt <- struct{}{}
+	<-l.unlockPermit
+	l.delegate.Unlock()
+}
+
+func (l *probeRWLocker) RLock() {
+	l.readLockAttempt <- struct{}{}
+	<-l.readLockPermit
+	l.delegate.RLock()
+}
+
+func (l *probeRWLocker) RUnlock() {
+	l.delegate.RUnlock()
+}
 
 func TestNewLogManager(t *testing.T) {
 	config := &LogConfig{
@@ -21,7 +65,7 @@ func TestNewLogManager(t *testing.T) {
 
 	manager := NewLogManager(config)
 	assert.NotNil(t, manager)
-	assert.Equal(t, logrus.InfoLevel, manager.level)
+	assert.Equal(t, "info", manager.GetLevel())
 }
 
 func TestLogManagerWithFile(t *testing.T) {
@@ -99,89 +143,92 @@ func TestGetGlobalLogger(t *testing.T) {
 }
 
 func TestLogManagerRegistryConcurrentLazyInitializationConstructsOnce(t *testing.T) {
-	factoryEntered := make(chan struct{}, 2)
-	releaseFactory := make(chan struct{})
 	var factoryCalls atomic.Int32
+	probe := newProbeRWLocker()
 	registry := newLogManagerRegistry(func(*LogConfig) *LogManager {
 		factoryCalls.Add(1)
-		factoryEntered <- struct{}{}
-		<-releaseFactory
 		return NewLogManager(&LogConfig{Level: "info", Console: false})
-	})
+	}, probe)
 
 	firstReturned := make(chan *LogManager, 1)
 	go func() { firstReturned <- registry.get() }()
-	<-factoryEntered
-
-	secondLaunched := make(chan struct{})
-	secondReturned := make(chan *LogManager, 1)
-	go func() {
-		close(secondLaunched)
-		secondReturned <- registry.get()
-	}()
-	<-secondLaunched
-
-	duplicateConstruction := false
 	select {
-	case <-factoryEntered:
-		duplicateConstruction = true
-	case <-time.After(100 * time.Millisecond):
+	case <-probe.lockAttempt:
+	case first := <-firstReturned:
+		t.Fatalf("first lazy Get returned before reaching the lock boundary: %p", first)
 	}
-	close(releaseFactory)
+	probe.lockPermit <- struct{}{}
+	select {
+	case <-probe.unlockAttempt:
+	case first := <-firstReturned:
+		t.Fatalf("first lazy Get returned before reaching the unlock boundary: %p", first)
+	}
+
+	secondReturned := make(chan *LogManager, 1)
+	go func() { secondReturned <- registry.get() }()
+	select {
+	case <-probe.lockAttempt:
+	case second := <-secondReturned:
+		t.Fatalf("second lazy Get returned before reaching the lock boundary: %p", second)
+	}
+	probe.lockPermit <- struct{}{}
+	probe.unlockPermit <- struct{}{}
 
 	first := <-firstReturned
+	<-probe.unlockAttempt
+	probe.unlockPermit <- struct{}{}
 	second := <-secondReturned
 	t.Cleanup(func() { _ = first.Close() })
-	if duplicateConstruction {
-		t.Fatal("a second lazy caller entered the manager factory before the first construction completed")
-	}
 	assert.Equal(t, int32(1), factoryCalls.Load())
 	assert.Same(t, first, second)
 }
 
 func TestLogManagerRegistryGetWaitsForInitToPublishCompleteManager(t *testing.T) {
-	factoryEntered := make(chan int32, 2)
+	factoryEntered := make(chan struct{})
 	releaseInit := make(chan struct{})
 	var factoryCalls atomic.Int32
 	var initialized *LogManager
+	probe := newProbeRWLocker()
 	registry := newLogManagerRegistry(func(*LogConfig) *LogManager {
 		call := factoryCalls.Add(1)
-		factoryEntered <- call
 		if call == 1 {
+			factoryEntered <- struct{}{}
 			<-releaseInit
 			initialized = NewLogManager(&LogConfig{Level: "error", Console: false})
 			return initialized
 		}
 		return &LogManager{}
-	})
+	}, probe)
 
 	initReturned := make(chan struct{})
 	go func() {
 		registry.init(&LogConfig{Level: "error", Console: false})
 		close(initReturned)
 	}()
-	require.Equal(t, int32(1), <-factoryEntered)
-
-	getLaunched := make(chan struct{})
-	getReturned := make(chan *LogManager, 1)
-	go func() {
-		close(getLaunched)
-		getReturned <- registry.get()
-	}()
-	<-getLaunched
-
-	var observedBeforePublish *LogManager
 	select {
-	case observedBeforePublish = <-getReturned:
-	case <-time.After(100 * time.Millisecond):
+	case <-probe.lockAttempt:
+	case <-initReturned:
+		t.Fatal("Init returned before reaching the lock boundary")
 	}
+	probe.lockPermit <- struct{}{}
+	<-factoryEntered
+
+	getReturned := make(chan *LogManager, 1)
+	go func() { getReturned <- registry.get() }()
+	select {
+	case <-probe.lockAttempt:
+	case observed := <-getReturned:
+		t.Fatalf("Get returned before reaching the lock boundary: %p", observed)
+	}
+	probe.lockPermit <- struct{}{}
 	close(releaseInit)
+	<-probe.unlockAttempt
+	probe.unlockPermit <- struct{}{}
 	<-initReturned
 	t.Cleanup(func() { _ = initialized.Close() })
 
-	if observedBeforePublish != nil {
-		t.Fatal("Get returned a manager before Init completed construction and publication")
-	}
+	<-probe.unlockAttempt
+	probe.unlockPermit <- struct{}{}
 	got := <-getReturned
 	assert.Equal(t, int32(1), factoryCalls.Load())
 	assert.Same(t, initialized, got)
@@ -190,59 +237,50 @@ func TestLogManagerRegistryGetWaitsForInitToPublishCompleteManager(t *testing.T)
 }
 
 func TestLogManagerSetAndGetLevelWaitForManagerLock(t *testing.T) {
-	manager := NewLogManager(&LogConfig{Level: "info", Console: false})
+	probe := newProbeRWLocker()
+	manager := newLogManager(&LogConfig{Level: "info", Console: false}, probe)
 	t.Cleanup(func() { _ = manager.Close() })
 
-	manager.mutex.Lock()
-	getLaunched := make(chan struct{})
 	getReturned := make(chan string, 1)
-	go func() {
-		close(getLaunched)
-		getReturned <- manager.GetLevel()
-	}()
-	<-getLaunched
-
-	var levelBeforeUnlock string
-	getCompletedBeforeUnlock := false
+	go func() { getReturned <- manager.GetLevel() }()
 	select {
-	case levelBeforeUnlock = <-getReturned:
-		getCompletedBeforeUnlock = true
-	case <-time.After(100 * time.Millisecond):
+	case <-probe.readLockAttempt:
+	case level := <-getReturned:
+		t.Fatalf("GetLevel returned before reaching the read-lock boundary: %q", level)
 	}
-	manager.mutex.Unlock()
-	if getCompletedBeforeUnlock {
-		t.Errorf("GetLevel returned while the manager lock was held: %q", levelBeforeUnlock)
-	} else {
-		assert.Equal(t, "info", <-getReturned)
-	}
+	probe.readLockPermit <- struct{}{}
+	assert.Equal(t, "info", <-getReturned)
 
-	manager.mutex.Lock()
-	setLaunched := make(chan struct{})
 	setReturned := make(chan error, 1)
-	go func() {
-		close(setLaunched)
-		setReturned <- manager.SetLevel("debug")
-	}()
-	<-setLaunched
-
-	var setBeforeUnlock error
-	setCompletedBeforeUnlock := false
+	go func() { setReturned <- manager.SetLevel("debug") }()
 	select {
-	case setBeforeUnlock = <-setReturned:
-		setCompletedBeforeUnlock = true
-	case <-time.After(100 * time.Millisecond):
+	case <-probe.lockAttempt:
+	case err := <-setReturned:
+		t.Fatalf("SetLevel returned before reaching the lock boundary: %v", err)
 	}
-	manager.mutex.Unlock()
-	if setCompletedBeforeUnlock {
-		t.Fatalf("SetLevel returned while the manager lock was held: %v", setBeforeUnlock)
+	probe.lockPermit <- struct{}{}
+	select {
+	case <-probe.unlockAttempt:
+	case err := <-setReturned:
+		t.Fatalf("SetLevel returned before reaching the unlock boundary: %v", err)
 	}
+	probe.unlockPermit <- struct{}{}
 	require.NoError(t, <-setReturned)
-	assert.Equal(t, "debug", manager.GetLevel())
+
+	finalLevel := make(chan string, 1)
+	go func() { finalLevel <- manager.GetLevel() }()
+	select {
+	case <-probe.readLockAttempt:
+	case level := <-finalLevel:
+		t.Fatalf("final GetLevel returned before reaching the read-lock boundary: %q", level)
+	}
+	probe.readLockPermit <- struct{}{}
+	assert.Equal(t, "debug", <-finalLevel)
 }
 
 func TestLazyLogManagerRegistryDoesNotCreateRuntimeFiles(t *testing.T) {
 	t.Chdir(t.TempDir())
-	registry := newLogManagerRegistry(NewLogManager)
+	registry := newLogManagerRegistry(NewLogManager, &sync.RWMutex{})
 	t.Cleanup(func() { _ = registry.get().Close() })
 
 	registry.get().GetLogger("lazy-no-file").Info("stdout only")
