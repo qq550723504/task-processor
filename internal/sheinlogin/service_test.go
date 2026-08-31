@@ -1238,15 +1238,13 @@ func TestServicePersistsCookieWhenManualVerificationCompletesAfterVerifyRequest(
 
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		if has, err := svc.store.HasCookie(context.Background(), 1, 2); err == nil && has {
-			if svc.loadSession(1, 2) != nil {
-				t.Fatal("expected completed manual verification session to be cleared")
-			}
+		if has, err := svc.store.HasCookie(context.Background(), 1, 2); err == nil && has && svc.loadSession(1, 2) == nil {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("expected manual verification watcher to persist cookie")
+	has, err := svc.store.HasCookie(context.Background(), 1, 2)
+	t.Fatalf("expected manual verification watcher to persist cookie and clear its session: has_cookie=%t cookie_error=%v session_present=%t", has, err, svc.loadSession(1, 2) != nil)
 }
 
 func TestServiceSubmitVerifyCodeUsesTenantScopedSessionWhenStoreIDsCollide(t *testing.T) {
