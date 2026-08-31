@@ -3,6 +3,7 @@ package logging
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -95,6 +96,104 @@ func TestGetGlobalLogger(t *testing.T) {
 	// 验证字段
 	data := logger.Data
 	assert.Equal(t, "test_component", data["component"])
+}
+
+func TestGetGlobalLogManagerConcurrentLazyInitializationReturnsOneManager(t *testing.T) {
+	previous := globalLogManager
+	globalLogManager = nil
+	t.Cleanup(func() {
+		if globalLogManager != nil {
+			_ = globalLogManager.Close()
+		}
+		globalLogManager = previous
+	})
+
+	const callers = 8
+	start := make(chan struct{})
+	managers := make(chan *LogManager, callers)
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	for range callers {
+		go func() {
+			defer wg.Done()
+			<-start
+			managers <- GetGlobalLogManager()
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(managers)
+
+	var first *LogManager
+	for manager := range managers {
+		require.NotNil(t, manager)
+		if first == nil {
+			first = manager
+			continue
+		}
+		assert.Same(t, first, manager)
+	}
+}
+
+func TestInitGlobalLoggerConcurrentWithGetPublishesValidManager(t *testing.T) {
+	InitGlobalLogger(&LogConfig{Level: "info", Console: false})
+
+	start := make(chan struct{})
+	entry := make(chan *logrus.Entry, 1)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		InitGlobalLogger(&LogConfig{Level: "error", Console: false})
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		entry <- GetGlobalLogger("concurrent-init")
+	}()
+
+	close(start)
+	wg.Wait()
+	close(entry)
+
+	got := <-entry
+	require.NotNil(t, got)
+	require.NotNil(t, got.Logger)
+	assert.Equal(t, "concurrent-init", got.Data["component"])
+	assert.Equal(t, "error", GetGlobalLogManager().GetLevel())
+}
+
+func TestLogManagerConcurrentSetAndGetLevel(t *testing.T) {
+	manager := NewLogManager(&LogConfig{Level: "info", Console: false})
+	t.Cleanup(func() { _ = manager.Close() })
+
+	start := make(chan struct{})
+	observed := make(chan string, 1)
+	setErr := make(chan error, 1)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		setErr <- manager.SetLevel("debug")
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		observed <- manager.GetLevel()
+	}()
+
+	close(start)
+	wg.Wait()
+	close(observed)
+	close(setErr)
+
+	require.NoError(t, <-setErr)
+	level := <-observed
+	assert.Contains(t, []string{"info", "debug"}, level)
+	assert.Equal(t, "debug", manager.GetLevel())
 }
 
 func TestLazyGlobalLoggerDoesNotCreateRuntimeFiles(t *testing.T) {

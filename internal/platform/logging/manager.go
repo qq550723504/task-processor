@@ -116,6 +116,9 @@ func (lm *LogManager) GetLoggerWithFields(fields logrus.Fields) *logrus.Entry {
 // SetLevel 动态设置日志级别
 func (lm *LogManager) SetLevel(level string) error {
 	logLevel := parseLogLevel(level)
+	lm.mutex.Lock()
+	defer lm.mutex.Unlock()
+
 	lm.logger.SetLevel(logLevel)
 	lm.level = logLevel
 	return nil
@@ -128,6 +131,9 @@ func (lm *LogManager) GetRawLogger() *logrus.Logger {
 
 // GetLevel 获取当前日志级别
 func (lm *LogManager) GetLevel() string {
+	lm.mutex.RLock()
+	defer lm.mutex.RUnlock()
+
 	return lm.level.String()
 }
 
@@ -253,33 +259,36 @@ func (lm *LogManager) createOutputs() []io.Writer {
 }
 
 // 全局日志管理器实例
-var globalLogManager *LogManager
+var (
+	globalLogManager      *LogManager
+	globalLogManagerMutex sync.Mutex
+)
 
 // InitGlobalLogger 初始化全局日志管理器
 func InitGlobalLogger(config *LogConfig) {
+	globalLogManagerMutex.Lock()
+	defer globalLogManagerMutex.Unlock()
+
 	globalLogManager = NewLogManager(config)
 }
 
 // GetGlobalLogManager 获取全局日志管理器实例
 func GetGlobalLogManager() *LogManager {
+	globalLogManagerMutex.Lock()
+	defer globalLogManagerMutex.Unlock()
+
 	if globalLogManager == nil {
-		InitGlobalLogger(nil)
+		globalLogManager = NewLogManager(nil)
 	}
 	return globalLogManager
 }
 
 // GetGlobalLogger 获取全局日志记录器
 func GetGlobalLogger(component string) *logrus.Entry {
-	if globalLogManager == nil {
-		InitGlobalLogger(nil) // 使用默认配置
-	}
-	return globalLogManager.GetLogger(component)
+	return GetGlobalLogManager().GetLogger(component)
 }
 
 // SetGlobalLogLevel 设置全局日志级别
 func SetGlobalLogLevel(level string) error {
-	if globalLogManager == nil {
-		InitGlobalLogger(nil)
-	}
-	return globalLogManager.SetLevel(level)
+	return GetGlobalLogManager().SetLevel(level)
 }
