@@ -21,8 +21,16 @@ type rwLocker interface {
 }
 
 type logLevelState struct {
-	locker rwLocker
-	value  logrus.Level
+	defaultLocker sync.RWMutex
+	locker        rwLocker
+	value         logrus.Level
+}
+
+func (s *logLevelState) locking() rwLocker {
+	if s.locker != nil {
+		return s.locker
+	}
+	return &s.defaultLocker
 }
 
 // LogManager 统一日志管理器
@@ -135,8 +143,9 @@ func (lm *LogManager) GetLoggerWithFields(fields logrus.Fields) *logrus.Entry {
 // SetLevel 动态设置日志级别
 func (lm *LogManager) SetLevel(level string) error {
 	logLevel := parseLogLevel(level)
-	lm.levelState.locker.Lock()
-	defer lm.levelState.locker.Unlock()
+	locker := lm.levelState.locking()
+	locker.Lock()
+	defer locker.Unlock()
 
 	lm.logger.SetLevel(logLevel)
 	lm.levelState.value = logLevel
@@ -150,8 +159,9 @@ func (lm *LogManager) GetRawLogger() *logrus.Logger {
 
 // GetLevel 获取当前日志级别
 func (lm *LogManager) GetLevel() string {
-	lm.levelState.locker.RLock()
-	defer lm.levelState.locker.RUnlock()
+	locker := lm.levelState.locking()
+	locker.RLock()
+	defer locker.RUnlock()
 
 	return lm.levelState.value.String()
 }

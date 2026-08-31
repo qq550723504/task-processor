@@ -126,6 +126,58 @@ func TestLogManagerSetLevel(t *testing.T) {
 	assert.Equal(t, "error", manager.GetLevel())
 }
 
+func TestZeroValueLogManagerGetLevel(t *testing.T) {
+	var manager LogManager
+
+	assert.Equal(t, "panic", manager.GetLevel())
+}
+
+func TestLogManagerFallbackLockSupportsConcurrentSetAndGetLevel(t *testing.T) {
+	manager := &LogManager{logger: logrus.New()}
+	start := make(chan struct{})
+	panicValues := make(chan any, 2)
+	var workers sync.WaitGroup
+	workers.Add(2)
+
+	go func() {
+		defer workers.Done()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				panicValues <- recovered
+			}
+		}()
+		<-start
+		for i := 0; i < 100; i++ {
+			_ = manager.SetLevel("debug")
+		}
+	}()
+
+	go func() {
+		defer workers.Done()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				panicValues <- recovered
+			}
+		}()
+		<-start
+		for i := 0; i < 100; i++ {
+			level := manager.GetLevel()
+			if level != "panic" && level != "debug" {
+				t.Errorf("concurrent GetLevel returned unexpected level %q", level)
+				return
+			}
+		}
+	}()
+
+	close(start)
+	workers.Wait()
+	close(panicValues)
+	for recovered := range panicValues {
+		t.Errorf("fallback-lock level operation panicked: %v", recovered)
+	}
+	assert.Equal(t, "debug", manager.GetLevel())
+}
+
 func TestGetGlobalLogger(t *testing.T) {
 	// 初始化全局logger
 	InitGlobalLogger(&LogConfig{
