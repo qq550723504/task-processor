@@ -13,8 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/sync/semaphore"
 	"task-processor/internal/integration/httpimage"
+
+	"golang.org/x/sync/semaphore"
 )
 
 const (

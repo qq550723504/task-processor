@@ -347,7 +347,7 @@ func convertResponse(resp *openai.ChatCompletionResponse) *ChatCompletionRespons
 
 // shouldRetry 判断错误是否应该重试
 func shouldRetry(err error) bool {
-	return shouldRetryWithContext(nil, err)
+	return shouldRetryWithContext(context.TODO(), err)
 }
 
 func shouldRetryWithContext(parentCtx context.Context, err error) bool {
@@ -369,10 +369,7 @@ func shouldRetryWithContext(parentCtx context.Context, err error) bool {
 
 	var apiErr *openai.APIError
 	if errors.As(err, &apiErr) {
-		if isRetryableOpenAIAPIError(apiErr) {
-			return true
-		}
-		return false
+		return isRetryableOpenAIAPIError(apiErr)
 	}
 
 	var reqErr *openai.RequestError

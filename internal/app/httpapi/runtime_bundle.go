@@ -18,7 +18,6 @@ type runtimeBundle struct {
 
 func buildRuntimeBundleFromModules(cfg *config.Config, modules []kernelmodule.Module) (runtimeBundle, error) {
 	reg := kernelmodule.NewRegistry()
-	filtered := make([]kernelmodule.Module, 0, len(modules))
 
 	for _, mod := range modules {
 		if mod == nil {
@@ -30,7 +29,6 @@ func buildRuntimeBundleFromModules(cfg *config.Config, modules []kernelmodule.Mo
 		if err := mod.Register(reg); err != nil {
 			return runtimeBundle{}, fmt.Errorf("register module %s: %w", mod.Name(), err)
 		}
-		filtered = append(filtered, mod)
 	}
 
 	return runtimeBundle{

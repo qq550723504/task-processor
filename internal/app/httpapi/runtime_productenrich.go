@@ -34,7 +34,7 @@ func productEnrichInvocationErrorHandler(logger *logrus.Logger) func(aicapabilit
 			return
 		}
 		logger.WithError(err).WithFields(logrus.Fields{
-			"invocation_id": string(record.InvocationID),
+			"invocation_id": record.InvocationID,
 			"capability":    string(record.Capability),
 			"operation":     string(record.Operation),
 		}).Warn("ai invocation ledger write failed")

@@ -14,9 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/sync/semaphore"
 	openaiclient "task-processor/internal/ai"
 	"task-processor/internal/integration/httpimage"
+
+	"golang.org/x/sync/semaphore"
 )
 
 type Config struct {
