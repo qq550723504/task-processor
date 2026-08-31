@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -14,6 +15,18 @@ import (
 	listingtemporal "task-processor/internal/listingkit/temporal"
 	platformtemporal "task-processor/internal/platform/temporal"
 )
+
+var errTemporalCloseOwnerRequired = errors.New("temporal dial succeeded without close owner")
+
+func validateTemporalDialResult(client sdkclient.Client, closeFn func() error, err error) (sdkclient.Client, func() error, error) {
+	if err != nil {
+		return nil, nil, err
+	}
+	if closeFn == nil {
+		return nil, nil, errTemporalCloseOwnerRequired
+	}
+	return client, closeFn, nil
+}
 
 const (
 	envListingKitTemporalEnabled   = "LISTINGKIT_TEMPORAL_ENABLED"
@@ -146,7 +159,7 @@ func dialListingKitTemporalSDKClient(ctx context.Context, dial listingKitTempora
 		namespace = "default"
 	}
 	config := platformtemporal.Config{Address: address, Namespace: namespace}
-	rawClient, closeClient, err := dial(ctx, config)
+	rawClient, closeClient, err := validateTemporalDialResult(dial(ctx, config))
 	if err != nil {
 		return nil, nil, platformtemporal.Config{}, err
 	}

@@ -164,6 +164,39 @@ func TestImageAgentTemporalRuntimeClosesClientWhenWorkerStartFails(t *testing.T)
 	require.Equal(t, 1, closed)
 }
 
+func TestImageAgentTemporalRuntimeRejectsMissingCloseOwnerBeforeWorkerActions(t *testing.T) {
+	t.Setenv(envImageAgentTemporalEnabled, "true")
+	for _, stage := range []string{"worker build", "worker start", "normal runtime"} {
+		t.Run(stage, func(t *testing.T) {
+			worker := &recordingImageAgentWorker{}
+			if stage == "worker start" {
+				worker.startErr = errors.New("worker start should not run")
+			}
+			builds := 0
+			closeFn, err := startImageAgentTemporalWorkerWithDependencies(ImageAgentTemporalDependencies{
+				Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{}, PublisherV3: runtimePublisher{},
+				StagedSlotExecutor: runtimeSlotExecutor{}, ArtifactStore: runtimeArtifactStore{},
+			}, imageAgentTemporalRuntimeDependencies{
+				Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
+					return nil, nil, nil
+				},
+				NewWorker: func(imageagenttemporal.WorkerConfig) (imageAgentWorker, error) {
+					builds++
+					if stage == "worker build" {
+						return nil, errors.New("worker build should not run")
+					}
+					return worker, nil
+				},
+			})
+			require.ErrorContains(t, err, "close owner")
+			require.Nil(t, closeFn)
+			require.Zero(t, builds)
+			require.False(t, worker.started)
+			require.False(t, worker.stopped)
+		})
+	}
+}
+
 func TestImageAgentTemporalRuntimeFailsClosedWithoutProductPorts(t *testing.T) {
 	t.Setenv(envImageAgentTemporalEnabled, "true")
 	_, err := startImageAgentTemporalWorkerWithDependencies(ImageAgentTemporalDependencies{Repository: store.NewMemoryRepository()}, imageAgentTemporalRuntimeDependencies{})
@@ -205,6 +238,21 @@ func TestImageAgentCompatibilityCanaryDialsWithoutProductDependencies(t *testing
 	require.True(t, closed)
 }
 
+func TestImageAgentCompatibilityCanaryRejectsMissingCloseOwnerBeforeRun(t *testing.T) {
+	ran := false
+	err := runImageAgentCompatibilityCanaryWithDependencies(context.Background(), nil, "image-agent-manual-v3-canary", imageAgentCompatibilityCanaryDependencies{
+		Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
+			return nil, nil, nil
+		},
+		RunCanary: func(context.Context, sdkclient.Client, string) error {
+			ran = true
+			return nil
+		},
+	})
+	require.ErrorContains(t, err, "close owner")
+	require.False(t, ran)
+}
+
 func TestImageAgentCompatibilityCanaryWithWorkerStartsIsolatedQueueWorker(t *testing.T) {
 	worker := &recordingImageAgentWorker{}
 	dialed, ran, closed := false, false, false
@@ -236,6 +284,26 @@ func TestImageAgentCompatibilityCanaryWithWorkerStartsIsolatedQueueWorker(t *tes
 	require.True(t, worker.started)
 	require.True(t, worker.stopped)
 	require.True(t, closed)
+}
+
+func TestImageAgentCompatibilityCanaryWithWorkerRejectsMissingCloseOwnerBeforeWorkerActions(t *testing.T) {
+	built, ran := false, false
+	err := runImageAgentCompatibilityCanaryWithWorkerDependencies(context.Background(), nil, "image-agent-manual-v3-canary", imageAgentCompatibilityCanaryWorkerDependencies{
+		Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
+			return nil, nil, nil
+		},
+		NewWorker: func(sdkclient.Client, string) (imageAgentWorker, error) {
+			built = true
+			return &recordingImageAgentWorker{}, nil
+		},
+		RunCanary: func(context.Context, sdkclient.Client, string) error {
+			ran = true
+			return nil
+		},
+	})
+	require.ErrorContains(t, err, "close owner")
+	require.False(t, built)
+	require.False(t, ran)
 }
 
 type recordingImageAgentWorker struct {

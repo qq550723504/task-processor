@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -30,7 +29,7 @@ func temporalSDKDialViolations(root, ownerRoot string) ([]string, error) {
 		}
 		aliases := make(map[string]struct{})
 		for _, spec := range file.Imports {
-			importPath, err := strconv.Unquote(spec.Path.Value)
+			importPath, err := decodeGoImportPath(spec.Path.Value)
 			if err != nil {
 				return fmt.Errorf("decode import in %s: %w", path, err)
 			}
@@ -400,10 +399,6 @@ func TestPlatformQueueRabbitMQDoesNotImportApplicationOrLegacyInfrastructure(t *
 			}
 		}
 	}
-}
-
-func decodeGoImportPath(importLiteral string) (string, error) {
-	return strconv.Unquote(importLiteral)
 }
 
 func TestSharedImportPathDecodesGoStringLiterals(t *testing.T) {

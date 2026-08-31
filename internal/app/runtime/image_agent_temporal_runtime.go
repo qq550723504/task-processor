@@ -154,7 +154,7 @@ func startImageAgentTemporalWorkerWithOptionsAndDependenciesContext(ctx context.
 	}
 	address := envOrDefault(envImageAgentTemporalAddress, "localhost:7233")
 	namespace := envOrDefault(envImageAgentTemporalNamespace, "default")
-	client, closeClient, err := runtimeDependencies.Dial(ctx, address, namespace)
+	client, closeClient, err := validateTemporalDialResult(runtimeDependencies.Dial(ctx, address, namespace))
 	if err != nil {
 		return nil, fmt.Errorf("dial image agent temporal: %w", err)
 	}
@@ -220,13 +220,11 @@ func runImageAgentCompatibilityCanaryWithWorkerDependencies(ctx context.Context,
 	}
 	address := envOrDefault(envImageAgentTemporalAddress, "localhost:7233")
 	namespace := envOrDefault(envImageAgentTemporalNamespace, "default")
-	client, closeClient, err := dependencies.Dial(ctx, address, namespace)
+	client, closeClient, err := validateTemporalDialResult(dependencies.Dial(ctx, address, namespace))
 	if err != nil {
 		return fmt.Errorf("dial image agent temporal for compatibility canary: %w", err)
 	}
-	if closeClient != nil {
-		defer closeClient()
-	}
+	defer closeClient()
 	worker, err := dependencies.NewWorker(client, taskQueue)
 	if err != nil {
 		return fmt.Errorf("build image agent compatibility canary worker: %w", err)
@@ -257,7 +255,7 @@ func runImageAgentCompatibilityCanaryWithDependencies(ctx context.Context, logge
 	}
 	address := envOrDefault(envImageAgentTemporalAddress, "localhost:7233")
 	namespace := envOrDefault(envImageAgentTemporalNamespace, "default")
-	client, closeClient, err := dependencies.Dial(ctx, address, namespace)
+	client, closeClient, err := validateTemporalDialResult(dependencies.Dial(ctx, address, namespace))
 	if err != nil {
 		return fmt.Errorf("dial image agent temporal for compatibility canary: %w", err)
 	}
@@ -278,7 +276,7 @@ func defaultImageAgentTemporalRuntimeDependencies() imageAgentTemporalRuntimeDep
 }
 
 func dialImageAgentTemporal(ctx context.Context, address, namespace string) (sdkclient.Client, func() error, error) {
-	return platformtemporal.Dial(ctx, platformtemporal.Config{Address: address, Namespace: namespace})
+	return validateTemporalDialResult(platformtemporal.Dial(ctx, platformtemporal.Config{Address: address, Namespace: namespace}))
 }
 
 func envOrDefault(name, fallback string) string {

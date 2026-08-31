@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	sdkclient "go.temporal.io/sdk/client"
@@ -52,6 +53,38 @@ func TestListingKitTemporalDialResolvesEnvironmentIntoPlatformConfig(t *testing.
 	}
 	if err := closeFn(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestListingKitTemporalDialRejectsMissingCloseOwner(t *testing.T) {
+	client, closeFn, _, err := dialListingKitTemporalSDKClient(context.Background(), func(context.Context, platformtemporal.Config) (sdkclient.Client, func() error, error) {
+		return nil, nil, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "close owner") {
+		t.Fatalf("error = %v, want missing close owner", err)
+	}
+	if client != nil || closeFn != nil {
+		t.Fatalf("client nil = %t, closeFn nil = %t; want true, true", client == nil, closeFn == nil)
+	}
+}
+
+func TestListingKitTemporalWorkerRejectsMissingCloseOwnerBeforeHostConstruction(t *testing.T) {
+	t.Setenv(envListingKitTemporalEnabled, "true")
+	hostCalls := 0
+	dependencies := successfulListingKitTemporalDependencies(new(int))
+	dependencies.Dial = func(context.Context, platformtemporal.Config) (sdkclient.Client, func() error, error) {
+		return nil, nil, nil
+	}
+	dependencies.NewActivityHost = func(any) (listingkit.SheinPublishActivityHost, error) {
+		hostCalls++
+		return nil, nil
+	}
+	closeFn, err := startListingKitSheinPublishTemporalWorkerWithDependencies(context.Background(), struct{}{}, nil, dependencies)
+	if err == nil || !strings.Contains(err.Error(), "close owner") {
+		t.Fatalf("error = %v, want missing close owner", err)
+	}
+	if closeFn != nil || hostCalls != 0 {
+		t.Fatalf("closeFn nil = %t, host calls = %d; want true, 0", closeFn == nil, hostCalls)
 	}
 }
 

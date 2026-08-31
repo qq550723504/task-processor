@@ -5375,38 +5375,24 @@ func imageAgentEffectPolicyInboundImportViolations(root string) ([]string, error
 func assertNoBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 
-	index, err := loadGoFileIndex(root, "")
+	violations, err := findBannedImportViolations(root, bannedImports, allowedFiles, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for path, facts := range index.files {
-		if pathAllowed(path, allowedFiles) {
-			continue
-		}
-		for _, banned := range bannedImports {
-			if _, ok := facts.imports[banned]; ok {
-				t.Errorf("%s imports banned boundary package %s", path, banned)
-			}
-		}
+	for _, violation := range violations {
+		t.Errorf("%s imports banned boundary package %q", violation.path, violation.importPath)
 	}
 }
 
 func assertNoProductionBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 
-	index, err := loadGoFileIndex(root, "")
+	violations, err := findBannedImportViolations(root, bannedImports, allowedFiles, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for path, facts := range index.files {
-		if strings.HasSuffix(filepath.Base(path), "_test.go") || pathAllowed(path, allowedFiles) {
-			continue
-		}
-		for _, banned := range bannedImports {
-			if _, ok := facts.imports[banned]; ok {
-				t.Errorf("%s imports banned production boundary package %s", path, banned)
-			}
-		}
+	for _, violation := range violations {
+		t.Errorf("%s imports banned production boundary package %q", violation.path, violation.importPath)
 	}
 }
 
