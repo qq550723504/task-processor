@@ -1,0 +1,64 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
+import { StoreForm } from "@/components/workbench/stores/store-form";
+import { Button } from "@/components/ui/button";
+import { WorkbenchAPIError, type WorkbenchStore } from "@/lib/api/workbench-stores";
+import { useWorkbenchStore } from "@/lib/query/use-workbench-stores";
+import type { WorkbenchStoreUpdateInput } from "@/lib/validation/workbench-store";
+
+type RecoveryState =
+  | { state: "idle" }
+  | { state: "loading" | "failed"; base: WorkbenchStore; draft: WorkbenchStoreUpdateInput }
+  | { state: "ready"; base: WorkbenchStore; draft: WorkbenchStoreUpdateInput; latest: WorkbenchStore; changedFields: ("name" | "region")[] };
+
+export function StoreDetailPage({ storeId }: { storeId: string }) {
+  const router = useRouter();
+  const organizationId = useWorkbenchContext().effectiveOrganization?.id ?? "";
+  const initialOrganizationId = useRef(organizationId);
+  useEffect(() => {
+    if (!organizationId || organizationId === initialOrganizationId.current) return;
+    router.replace("/workbench/stores");
+  }, [organizationId, router]);
+  return <StoreDetailContent key={storeId} storeId={storeId} />;
+}
+
+function StoreDetailContent({ storeId }: { storeId: string }) {
+  const storeQuery = useWorkbenchStore(storeId);
+  const [displayedStore, setDisplayedStore] = useState<WorkbenchStore | null>(null);
+  const [recovery, setRecovery] = useState<RecoveryState>({ state: "idle" });
+  const store = displayedStore ?? (recovery.state === "idle" ? storeQuery.data : recovery.base);
+  if (storeQuery.isPending && !store) return <section className="mx-auto max-w-2xl px-4 py-8" role="status">正在加载店铺...</section>;
+  if (!store) {
+    const code = (storeQuery.error as Partial<WorkbenchAPIError> | undefined)?.code;
+    return <DetailError code={code} retry={() => void storeQuery.refetch()} />;
+  }
+
+  const loadLatest = async (draft: WorkbenchStoreUpdateInput) => {
+    if (!store) return;
+    const base = store;
+    setRecovery({ state: "loading", base, draft });
+    const result = await storeQuery.refetch();
+    if (!result.isSuccess || result.isError || !result.data) {
+      setRecovery({ state: "failed", base, draft });
+      return;
+    }
+    setRecovery({ state: "ready", base, draft, latest: result.data, changedFields: changedFields(base, result.data) });
+  };
+  return <>
+    {recovery.state === "failed" ? <section className="mx-auto mt-6 max-w-2xl rounded-xl border bg-card p-4" role="alert"><p>无法确认店铺最新版本，草稿已保留。</p><Button className="mt-3" onClick={() => void loadLatest(recovery.draft)} variant="outline">重试获取最新版本</Button></section> : null}
+    <StoreForm conflict={recovery.state === "ready" ? { latest: recovery.latest, changedFields: recovery.changedFields } : null} mode="edit" onConflict={(draft) => void loadLatest(draft)} onSaved={(next) => { setDisplayedStore(next); setRecovery({ state: "idle" }); }} recoveryState={recovery.state === "loading" || recovery.state === "failed" ? recovery.state : "idle"} store={store} />
+  </>;
+}
+
+function changedFields(oldStore: WorkbenchStore, latest: WorkbenchStore): ("name" | "region")[] {
+  return (["name", "region"] as const).filter((field) => oldStore[field] !== latest[field]);
+}
+
+function DetailError({ code, retry }: { code?: string; retry: () => void }) {
+  const message = code === "STORE_NOT_FOUND" || code === "ORGANIZATION_ACCESS_DENIED" || code === "ORGANIZATION_ACCESS_REVOKED" ? "店铺不存在或已不可访问" : code === "PERMISSION_DENIED" ? "没有编辑当前企业店铺的权限" : "店铺服务暂时不可用，请稍后重试";
+  return <section className="mx-auto mt-8 max-w-2xl rounded-xl border bg-card p-6" role="alert"><h1 className="font-semibold">{message}</h1><Button className="mt-4" onClick={retry} variant="outline">重试</Button></section>;
+}
