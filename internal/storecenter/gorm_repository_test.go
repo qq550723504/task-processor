@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"sync"
 	"testing"
@@ -96,6 +97,51 @@ func TestGormStoreRepositoryCreateReplaysOnlyTheImmutableCreationRequest(t *test
 	}
 	if got, err := repo.Get(context.Background(), "org-a", first.ID()); err != nil || got.Name() != "Renamed" {
 		t.Fatalf("conflict mutated existing row: Get = (%v, %v)", got, err)
+	}
+}
+
+// Mutation caught: accepting a rehydrated lifecycle, connection, or audit
+// change at the creation boundary would let callers bypass NewStore's pristine
+// provisioning state before the first durable insert or replay decision.
+func TestGormStoreRepositoryRejectsNonPristineCreateSnapshots(t *testing.T) {
+	repo := newStoreRepository(t)
+	for index, test := range []struct {
+		name   string
+		mutate func(*storecenter.StoreSnapshot)
+	}{
+		{"active lifecycle", func(snapshot *storecenter.StoreSnapshot) {
+			snapshot.LifecycleStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.StoreStatusActive, 2, "subject-update", snapshot.UpdatedAt.Add(time.Minute)
+		}},
+		{"disabled lifecycle", func(snapshot *storecenter.StoreSnapshot) {
+			snapshot.LifecycleStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.StoreStatusDisabled, 3, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
+		}},
+		{"deleting lifecycle", func(snapshot *storecenter.StoreSnapshot) {
+			snapshot.LifecycleStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.StoreStatusDeleting, 3, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
+		}},
+		{"deleted state", func(snapshot *storecenter.StoreSnapshot) {
+			snapshot.LifecycleStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.StoreStatusDeleting, 3, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
+			deletedAt := snapshot.UpdatedAt.Add(time.Minute)
+			snapshot.DeletedAt = &deletedAt
+		}},
+		{"connection reference", func(snapshot *storecenter.StoreSnapshot) { snapshot.ConnectionRef = "opaque-connection-ref" }},
+		{"audit actor", func(snapshot *storecenter.StoreSnapshot) { snapshot.UpdatedBy = "subject-update" }},
+		{"audit timestamp", func(snapshot *storecenter.StoreSnapshot) { snapshot.UpdatedAt = snapshot.UpdatedAt.Add(time.Minute) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := newPersistenceStore(t, "org-a", fmt.Sprintf("00000000-0000-4000-8000-%012d", 160+index), fmt.Sprintf("00000000-0000-4000-8000-%012d", 260+index), fmt.Sprintf("00000000-0000-4000-8000-%012d", 360+index), "North", "SG", fmt.Sprintf("external-%d", index), testPersistenceTime)
+			snapshot := store.Snapshot()
+			test.mutate(&snapshot)
+			crafted, err := storecenter.RehydrateStore(snapshot)
+			if err != nil {
+				t.Fatalf("RehydrateStore(crafted) error = %v", err)
+			}
+			if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", crafted); err == nil {
+				t.Fatal("CreateOrReplay(crafted) error = nil, want pristine-state rejection")
+			}
+			if _, err := repo.Get(context.Background(), "org-a", snapshot.ID); !errors.Is(err, storecenter.ErrNotFound) {
+				t.Fatalf("crafted create mutated row: Get error = %v, want ErrNotFound", err)
+			}
+		})
 	}
 }
 
@@ -209,6 +255,102 @@ func TestGormStoreRepositoryScopesGetsAndClassifiesVersionedWrites(t *testing.T)
 	}
 }
 
+// Mutation caught: trusting a publicly rehydrated snapshot would let an edit
+// replace durable external/quota/audit identity or regress lifecycle state.
+func TestGormStoreRepositoryRejectsCraftedImmutableOrIllegalLifecycleSave(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*storecenter.StoreSnapshot)
+	}{
+		{"external identity", func(snapshot *storecenter.StoreSnapshot) { snapshot.ExternalStoreID = "forged-external" }},
+		{"quota allocation", func(snapshot *storecenter.StoreSnapshot) {
+			snapshot.QuotaAllocationID = "00000000-0000-4000-8000-000000000337"
+		}},
+		{"create key", func(snapshot *storecenter.StoreSnapshot) {
+			snapshot.CreateIdempotencyKey = "00000000-0000-4000-8000-000000000237"
+		}},
+		{"created actor", func(snapshot *storecenter.StoreSnapshot) { snapshot.CreatedBy = "forged-creator" }},
+		{"created time", func(snapshot *storecenter.StoreSnapshot) { snapshot.CreatedAt = snapshot.CreatedAt.Add(-time.Minute) }},
+		{"lifecycle regression", func(snapshot *storecenter.StoreSnapshot) {
+			snapshot.LifecycleStatus = storecenter.StoreStatusProvisioning
+		}},
+		{"stale update time", func(snapshot *storecenter.StoreSnapshot) {
+			snapshot.UpdatedAt = snapshot.UpdatedAt.Add(-2 * time.Minute)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newStoreRepository(t)
+			store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000136", "00000000-0000-4000-8000-000000000236", "00000000-0000-4000-8000-000000000336", "North", "SG", "external", testPersistenceTime)
+			if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
+				t.Fatal(err)
+			}
+			before, err := repo.Get(context.Background(), "org-a", store.ID())
+			if err != nil {
+				t.Fatal(err)
+			}
+			snapshot := before.Snapshot()
+			snapshot.Version++
+			snapshot.UpdatedBy = "subject-candidate"
+			snapshot.UpdatedAt = snapshot.UpdatedAt.Add(time.Minute)
+			test.mutate(&snapshot)
+			crafted, err := storecenter.RehydrateStore(snapshot)
+			if err != nil {
+				t.Fatalf("RehydrateStore(crafted) error = %v", err)
+			}
+			if err := repo.Save(context.Background(), "org-a", crafted, before.Version()); err == nil {
+				t.Fatal("Save(crafted) error = nil, want immutable/lifecycle rejection")
+			}
+			after, err := repo.Get(context.Background(), "org-a", store.ID())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(after.Snapshot(), before.Snapshot()) {
+				t.Fatalf("rejected Save mutated durable store: got %#v, want %#v", after.Snapshot(), before.Snapshot())
+			}
+		})
+	}
+}
+
+// Mutation caught: omitting a mutable field from the update map or overwriting
+// durable immutable creation fields breaks the persisted aggregate round trip.
+func TestGormStoreRepositoryRoundTripsEveryLiveAggregateField(t *testing.T) {
+	repo := newStoreRepository(t)
+	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000137", "00000000-0000-4000-8000-000000000237", "00000000-0000-4000-8000-000000000337", "North", "SG", "external", testPersistenceTime)
+	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := store.Snapshot()
+	snapshot.Name, snapshot.Region, snapshot.ConnectionRef = "Renamed", "MY", "opaque-connection-ref"
+	snapshot.Version++
+	snapshot.UpdatedBy, snapshot.UpdatedAt = "subject-edit", snapshot.UpdatedAt.Add(time.Minute)
+	edited, err := storecenter.RehydrateStore(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", edited, 2); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.Get(context.Background(), "org-a", store.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Snapshot(), snapshot) {
+		t.Fatalf("round-tripped snapshot = %#v, want %#v", got.Snapshot(), snapshot)
+	}
+}
+
 // Mutation caught: allowing direct delete or hard deletion would bypass the
 // lifecycle/retention boundary and lose the deletion version/timestamp.
 func TestGormStoreRepositorySoftDeletesOnlyDeletingRows(t *testing.T) {
@@ -261,6 +403,47 @@ func TestGormStoreRepositorySoftDeletesOnlyDeletingRows(t *testing.T) {
 	}
 	if row.Version != 4 || row.DeletedAt == nil || row.DeletedAt.IsZero() {
 		t.Fatalf("soft-deleted row = %#v, want version 4 and timestamp", row)
+	}
+}
+
+// Mutation caught: choosing a deletion wall-clock earlier than a future
+// durable update makes the soft-deleted record fail Store rehydration rules.
+func TestGormStoreRepositorySoftDeleteNeverBackdatesFutureDurableUpdate(t *testing.T) {
+	db := openStoreDB(t)
+	repo, err := storecenter.NewGormStoreRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000148", "00000000-0000-4000-8000-000000000248", "00000000-0000-4000-8000-000000000348", "North", "SG", "external", future)
+	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-update", future.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.TransitionTo(storecenter.StoreStatusDeleting, "subject-update", future.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", store, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 3); err != nil {
+		t.Fatal(err)
+	}
+	var row struct {
+		UpdatedAt time.Time `gorm:"column:updated_at"`
+		DeletedAt time.Time `gorm:"column:deleted_at"`
+		Version   int64
+	}
+	if err := db.Table("workbench_stores").Unscoped().Select("updated_at, deleted_at, version").Where("organization_id = ? AND id = ?", "org-a", store.ID()).Scan(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.DeletedAt.Before(future.Add(2*time.Minute)) || row.UpdatedAt != row.DeletedAt || row.Version != 4 {
+		t.Fatalf("soft delete row = %#v, want durable-update-or-later timestamp and version 4", row)
 	}
 }
 

@@ -66,6 +66,9 @@ func (r *GormStoreRepository) CreateOrReplay(ctx context.Context, organizationID
 		return nil, false, err
 	}
 	snapshot := store.Snapshot()
+	if err := requirePristineCreateSnapshot(snapshot); err != nil {
+		return nil, false, err
+	}
 	fingerprint := createRequestFingerprint(snapshot)
 	if existing, found, err := r.findByCreateKey(ctx, organizationID, snapshot.CreateIdempotencyKey); err != nil {
 		return nil, false, err
@@ -143,20 +146,26 @@ func (r *GormStoreRepository) Save(ctx context.Context, organizationID string, s
 	if _, err := RehydrateStore(snapshot); err != nil {
 		return fmt.Errorf("invalid store snapshot: %w", err)
 	}
+	durableRecord, err := r.loadActiveRecord(ctx, organizationID, snapshot.ID)
+	if err != nil {
+		return err
+	}
+	durableStore, err := rehydrateRecord(durableRecord)
+	if err != nil {
+		return fmt.Errorf("rehydrate durable workbench store: %w", err)
+	}
+	if err := validateSaveSnapshot(durableStore.Snapshot(), snapshot); err != nil {
+		return err
+	}
 	updates := map[string]any{
-		"name":                snapshot.Name,
-		"platform":            string(snapshot.Platform),
-		"region":              snapshot.Region,
-		"external_store_id":   snapshot.ExternalStoreID,
-		"lifecycle_status":    string(snapshot.LifecycleStatus),
-		"connection_ref":      snapshot.ConnectionRef,
-		"quota_allocation_id": snapshot.QuotaAllocationID,
-		"version":             snapshot.Version,
-		"created_by":          snapshot.CreatedBy,
-		"updated_by":          snapshot.UpdatedBy,
-		"created_at":          snapshot.CreatedAt,
-		"updated_at":          snapshot.UpdatedAt,
-		"identity_key":        identityKey(snapshot),
+		"name":             snapshot.Name,
+		"region":           snapshot.Region,
+		"lifecycle_status": string(snapshot.LifecycleStatus),
+		"connection_ref":   snapshot.ConnectionRef,
+		"version":          snapshot.Version,
+		"updated_by":       snapshot.UpdatedBy,
+		"updated_at":       snapshot.UpdatedAt,
+		"identity_key":     identityKey(snapshot),
 	}
 	result := r.scopedActiveRecords(ctx, organizationID).Where("id = ? AND version = ?", snapshot.ID, expectedVersion).Updates(updates)
 	if result.Error != nil {
@@ -172,7 +181,24 @@ func (r *GormStoreRepository) Save(ctx context.Context, organizationID string, s
 }
 
 func (r *GormStoreRepository) SoftDelete(ctx context.Context, organizationID string, storeID string, expectedVersion int64) error {
+	durableRecord, err := r.loadActiveRecord(ctx, organizationID, storeID)
+	if err != nil {
+		return err
+	}
+	durableStore, err := rehydrateRecord(durableRecord)
+	if err != nil {
+		return fmt.Errorf("rehydrate durable workbench store: %w", err)
+	}
+	if durableStore.LifecycleStatus() != StoreStatusDeleting {
+		return ErrInvalidTransition
+	}
+	if durableStore.Version() != expectedVersion {
+		return ErrVersionConflict
+	}
 	now := time.Now().UTC()
+	if now.Before(durableStore.UpdatedAt()) {
+		now = durableStore.UpdatedAt()
+	}
 	result := r.scopedActiveRecords(ctx, organizationID).
 		Where("id = ? AND version = ? AND lifecycle_status = ?", storeID, expectedVersion, string(StoreStatusDeleting)).
 		Updates(map[string]any{"deleted_at": now, "updated_at": now, "version": gorm.Expr("version + ?", 1)})
@@ -184,7 +210,7 @@ func (r *GormStoreRepository) SoftDelete(ctx context.Context, organizationID str
 	}
 
 	var record workbenchStoreRecord
-	err := r.scopedActiveRecords(ctx, organizationID).Where("id = ?", storeID).First(&record).Error
+	err = r.scopedActiveRecords(ctx, organizationID).Where("id = ?", storeID).First(&record).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrNotFound
 	}
@@ -264,6 +290,18 @@ func (r *GormStoreRepository) classifyAbsentVersionedRow(ctx context.Context, or
 	return ErrVersionConflict
 }
 
+func (r *GormStoreRepository) loadActiveRecord(ctx context.Context, organizationID, storeID string) (workbenchStoreRecord, error) {
+	var record workbenchStoreRecord
+	err := r.scopedActiveRecords(ctx, organizationID).Where("id = ?", storeID).First(&record).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return workbenchStoreRecord{}, ErrNotFound
+	}
+	if err != nil {
+		return workbenchStoreRecord{}, fmt.Errorf("load workbench store: %w", err)
+	}
+	return record, nil
+}
+
 func recordFromSnapshot(snapshot StoreSnapshot, identity, fingerprint string) workbenchStoreRecord {
 	record := workbenchStoreRecord{
 		ID: snapshot.ID, OrganizationID: snapshot.OrganizationID, Name: snapshot.Name, Platform: string(snapshot.Platform), Region: snapshot.Region,
@@ -298,6 +336,29 @@ func requireStoreScope(organizationID string, store *Store) error {
 	}
 	if organizationID == "" || store.OrganizationID() != organizationID {
 		return errors.New("store organization does not match repository scope")
+	}
+	return nil
+}
+
+func requirePristineCreateSnapshot(snapshot StoreSnapshot) error {
+	if snapshot.LifecycleStatus != StoreStatusProvisioning || snapshot.Version != 1 || snapshot.DeletedAt != nil || snapshot.ConnectionRef != "" || snapshot.CreatedBy != snapshot.UpdatedBy || !snapshot.CreatedAt.Equal(snapshot.UpdatedAt) {
+		return errors.New("store creation snapshot must be pristine provisioning state")
+	}
+	return nil
+}
+
+func validateSaveSnapshot(durable, incoming StoreSnapshot) error {
+	if durable.ID != incoming.ID || durable.OrganizationID != incoming.OrganizationID || durable.Platform != incoming.Platform || durable.ExternalStoreID != incoming.ExternalStoreID || durable.QuotaAllocationID != incoming.QuotaAllocationID || durable.CreateIdempotencyKey != incoming.CreateIdempotencyKey || durable.CreatedBy != incoming.CreatedBy || !durable.CreatedAt.Equal(incoming.CreatedAt) {
+		return errors.New("store immutable fields changed")
+	}
+	if incoming.DeletedAt != nil {
+		return errors.New("store deletion must use soft delete")
+	}
+	if incoming.UpdatedAt.Before(durable.UpdatedAt) {
+		return errors.New("store update time must not precede durable update")
+	}
+	if incoming.LifecycleStatus != durable.LifecycleStatus && !canTransition(durable.LifecycleStatus, incoming.LifecycleStatus) {
+		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, durable.LifecycleStatus, incoming.LifecycleStatus)
 	}
 	return nil
 }
