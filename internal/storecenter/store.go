@@ -68,6 +68,7 @@ type Store struct {
 	updatedAt            time.Time
 	deletedAt            *time.Time
 	createIdempotencyKey string
+	deleteOperationKey   string
 }
 
 // StoreSnapshot is the explicit persistence rehydration boundary. It is not
@@ -89,6 +90,7 @@ type StoreSnapshot struct {
 	UpdatedAt            time.Time
 	DeletedAt            *time.Time
 	CreateIdempotencyKey string
+	DeleteOperationKey   string
 }
 
 type CreateStoreInput struct {
@@ -185,6 +187,7 @@ func (s *Store) UpdatedBy() string                { return s.updatedBy }
 func (s *Store) CreatedAt() time.Time             { return s.createdAt }
 func (s *Store) UpdatedAt() time.Time             { return s.updatedAt }
 func (s *Store) CreateIdempotencyKey() string     { return s.createIdempotencyKey }
+func (s *Store) DeleteOperationKey() string       { return s.deleteOperationKey }
 func (s *Store) DeletedAt() *time.Time            { return copyTimePointer(s.deletedAt) }
 
 func (s *Store) Snapshot() StoreSnapshot {
@@ -205,7 +208,71 @@ func (s *Store) Snapshot() StoreSnapshot {
 		UpdatedAt:            s.updatedAt,
 		DeletedAt:            copyTimePointer(s.deletedAt),
 		CreateIdempotencyKey: s.createIdempotencyKey,
+		DeleteOperationKey:   s.deleteOperationKey,
 	}
+}
+
+// EditBasic applies the aggregate-owned mutable Store profile. A normalized
+// no-op is accepted without changing provenance or version.
+func (s *Store) EditBasic(name, region, actorSubject string, occurredAt time.Time) (bool, error) {
+	if s.lifecycleStatus != StoreStatusActive && s.lifecycleStatus != StoreStatusDisabled {
+		return false, ErrInvalidTransition
+	}
+	normalizedName, err := normalizeUserValue("name", name, MaxStoreNameCodePoints, true)
+	if err != nil {
+		return false, err
+	}
+	normalizedRegion, err := normalizeUserValue("region", region, MaxStoreRegionCodePoints, true)
+	if err != nil {
+		return false, err
+	}
+	actorSubject, err = validateOpaqueIdentity("actor subject", actorSubject, MaxSubjectBytes)
+	if err != nil {
+		return false, err
+	}
+	if occurredAt.IsZero() || occurredAt.Before(s.updatedAt) {
+		return false, errors.New("edit time must not precede the last update")
+	}
+	if normalizedName == s.name && normalizedRegion == s.region {
+		return false, nil
+	}
+	s.name = normalizedName
+	s.region = normalizedRegion
+	s.updatedBy = actorSubject
+	s.updatedAt = occurredAt
+	s.version++
+	return true, nil
+}
+
+// BeginDelete binds a single canonical operation to the destructive state.
+// The same key is an idempotent aggregate replay; no other key may take over.
+func (s *Store) BeginDelete(operationKey, actorSubject string, occurredAt time.Time) error {
+	operationKey, err := canonicalUUID(operationKey)
+	if err != nil {
+		return fmt.Errorf("delete operation key: %w", err)
+	}
+	if s.lifecycleStatus == StoreStatusDeleting {
+		if s.deleteOperationKey == operationKey {
+			return nil
+		}
+		return ErrInvalidTransition
+	}
+	if s.lifecycleStatus != StoreStatusActive && s.lifecycleStatus != StoreStatusDisabled {
+		return ErrInvalidTransition
+	}
+	actorSubject, err = validateOpaqueIdentity("actor subject", actorSubject, MaxSubjectBytes)
+	if err != nil {
+		return err
+	}
+	if occurredAt.IsZero() || occurredAt.Before(s.updatedAt) {
+		return errors.New("delete time must not precede the last update")
+	}
+	s.lifecycleStatus = StoreStatusDeleting
+	s.deleteOperationKey = operationKey
+	s.updatedBy = actorSubject
+	s.updatedAt = occurredAt
+	s.version++
+	return nil
 }
 
 func (s *Store) TransitionTo(target LifecycleStatus, actorSubject string, occurredAt time.Time) error {
@@ -274,6 +341,15 @@ func newStoreFromSnapshot(snapshot StoreSnapshot) (*Store, error) {
 	if !validLifecycleStatus(snapshot.LifecycleStatus) {
 		return nil, errors.New("lifecycle status is invalid")
 	}
+	deleteOperationKey := ""
+	if snapshot.LifecycleStatus == StoreStatusDeleting {
+		deleteOperationKey, err = canonicalUUID(snapshot.DeleteOperationKey)
+		if err != nil {
+			return nil, fmt.Errorf("delete operation key: %w", err)
+		}
+	} else if snapshot.DeleteOperationKey != "" {
+		return nil, errors.New("only deleting stores may have a delete operation key")
+	}
 	if snapshot.Version < minimumLifecycleVersion(snapshot.LifecycleStatus) {
 		return nil, fmt.Errorf("version %d cannot reach lifecycle status %s", snapshot.Version, snapshot.LifecycleStatus)
 	}
@@ -309,6 +385,7 @@ func newStoreFromSnapshot(snapshot StoreSnapshot) (*Store, error) {
 		updatedAt:            snapshot.UpdatedAt,
 		deletedAt:            copyTimePointer(snapshot.DeletedAt),
 		createIdempotencyKey: createIdempotencyKey,
+		deleteOperationKey:   deleteOperationKey,
 	}, nil
 }
 
@@ -317,9 +394,9 @@ func canTransition(current, target LifecycleStatus) bool {
 	case StoreStatusProvisioning:
 		return target == StoreStatusActive
 	case StoreStatusActive:
-		return target == StoreStatusDisabled || target == StoreStatusDeleting
+		return target == StoreStatusDisabled
 	case StoreStatusDisabled:
-		return target == StoreStatusActive || target == StoreStatusDeleting
+		return target == StoreStatusActive
 	default:
 		return false
 	}

@@ -91,15 +91,16 @@ func TestAuditMigrationCreatesCreatedAtScopedIndex(t *testing.T) {
 	if err := db.Raw("PRAGMA index_list(workbench_store_audit_logs)").Scan(&indexes).Error; err != nil {
 		t.Fatalf("index list: %v", err)
 	}
-	hasColumn, hasIndex := false, false
+	hasColumn, hasVersion, hasIndex := false, false, false
 	for _, column := range columns {
 		hasColumn = hasColumn || column.Name == "created_at"
+		hasVersion = hasVersion || column.Name == "store_version"
 	}
 	for _, index := range indexes {
 		hasIndex = hasIndex || index.Name == "idx_workbench_store_audit_org_store_created"
 	}
-	if !hasColumn || !hasIndex {
-		t.Fatalf("audit schema created_at/index = %v/%v, want both", hasColumn, hasIndex)
+	if !hasColumn || !hasVersion || !hasIndex {
+		t.Fatalf("audit schema created_at/store_version/index = %v/%v/%v, want all", hasColumn, hasVersion, hasIndex)
 	}
 	var indexColumns []struct{ Name string }
 	if err := db.Raw("PRAGMA index_info(idx_workbench_store_audit_org_store_created)").Scan(&indexColumns).Error; err != nil {
@@ -184,7 +185,13 @@ func TestAuditEventRejectsCredentialShapedFields(t *testing.T) {
 	if _, _, err := repository.Record(context.Background(), event); err == nil {
 		t.Fatal("Record() with token-shaped safe field succeeded")
 	}
-	for _, typ := range []reflect.Type{reflect.TypeOf(storecenter.AuditEvent{}), reflect.TypeOf(storecenter.CreateStoreRequest{}), reflect.TypeOf(storecenter.CreateStoreResult{})} {
+	for _, typ := range []reflect.Type{
+		reflect.TypeOf(storecenter.AuditEvent{}), reflect.TypeOf(storecenter.CreateStoreRequest{}), reflect.TypeOf(storecenter.CreateStoreResult{}),
+		reflect.TypeOf(storecenter.ListStoresRequest{}), reflect.TypeOf(storecenter.GetStoreRequest{}), reflect.TypeOf(storecenter.StoreProjection{}),
+		reflect.TypeOf(storecenter.StoreQuotaProjection{}), reflect.TypeOf(storecenter.ListStoresResult{}), reflect.TypeOf(storecenter.UpdateStoreRequest{}),
+		reflect.TypeOf(storecenter.StoreLifecycleRequest{}), reflect.TypeOf(storecenter.StoreMutationResult{}), reflect.TypeOf(storecenter.DeleteStoreRequest{}),
+		reflect.TypeOf(storecenter.DeleteStoreResult{}), reflect.TypeOf(storecenter.ConnectionStatusInput{}),
+	} {
 		for index := 0; index < typ.NumField(); index++ {
 			field := typ.Field(index)
 			if field.PkgPath != "" || strings.Contains(field.Tag.Get("json"), "-") {
@@ -197,6 +204,35 @@ func TestAuditEventRejectsCredentialShapedFields(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestAuditRepositoryAcceptsOnlyTaskFiveLifecycleActions(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := storecenter.NewGormAuditRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []storecenter.AuditAction{
+		storecenter.AuditActionStoreUpdated, storecenter.AuditActionStoreUpdateNoOp, storecenter.AuditActionStoreDisabled, storecenter.AuditActionStoreEnabled,
+		storecenter.AuditActionDeleteStarted, storecenter.AuditActionStoreMarkedDeleting, storecenter.AuditActionQuotaDeallocated, storecenter.AuditActionDeleteComplete,
+	} {
+		event := safeAuditEvent("org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), time.Now().UTC())
+		event.Action, event.StoreVersion = action, 3
+		if _, _, err := repository.Record(context.Background(), event); err != nil {
+			t.Fatalf("Record(%s) = %v", action, err)
+		}
+	}
+	event := safeAuditEvent("org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), time.Now().UTC())
+	event.Action = storecenter.AuditAction("delete_credentials_exported")
+	if _, _, err := repository.Record(context.Background(), event); err == nil {
+		t.Fatal("unallowlisted action recorded")
 	}
 }
 

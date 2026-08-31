@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"task-processor/internal/storecenter"
 )
 
@@ -151,8 +152,8 @@ func TestLifecycleTransitionsEnforceEdgesAndVersions(t *testing.T) {
 		{"provisioning activates", storecenter.StoreStatusProvisioning, storecenter.StoreStatusActive, nil, storecenter.StoreStatusActive, 2},
 		{"active disables", storecenter.StoreStatusActive, storecenter.StoreStatusDisabled, nil, storecenter.StoreStatusDisabled, 3},
 		{"disabled activates", storecenter.StoreStatusDisabled, storecenter.StoreStatusActive, nil, storecenter.StoreStatusActive, 4},
-		{"active deletes", storecenter.StoreStatusActive, storecenter.StoreStatusDeleting, nil, storecenter.StoreStatusDeleting, 3},
-		{"disabled deletes", storecenter.StoreStatusDisabled, storecenter.StoreStatusDeleting, nil, storecenter.StoreStatusDeleting, 4},
+		{"active cannot bypass begin delete", storecenter.StoreStatusActive, storecenter.StoreStatusDeleting, storecenter.ErrInvalidTransition, storecenter.StoreStatusActive, 2},
+		{"disabled cannot bypass begin delete", storecenter.StoreStatusDisabled, storecenter.StoreStatusDeleting, storecenter.ErrInvalidTransition, storecenter.StoreStatusDisabled, 3},
 		{"provisioning cannot disable", storecenter.StoreStatusProvisioning, storecenter.StoreStatusDisabled, storecenter.ErrInvalidTransition, storecenter.StoreStatusProvisioning, 1},
 		{"provisioning cannot delete", storecenter.StoreStatusProvisioning, storecenter.StoreStatusDeleting, storecenter.ErrInvalidTransition, storecenter.StoreStatusProvisioning, 1},
 		{"active cannot activate", storecenter.StoreStatusActive, storecenter.StoreStatusActive, storecenter.ErrInvalidTransition, storecenter.StoreStatusActive, 2},
@@ -256,6 +257,9 @@ func TestStoreRehydrateEnforcesLifecycleMinimumVersions(t *testing.T) {
 			snapshot := newTestStore(t).Snapshot()
 			snapshot.LifecycleStatus = tt.status
 			snapshot.Version = tt.version
+			if tt.status == storecenter.StoreStatusDeleting {
+				snapshot.DeleteOperationKey = uuid.NewString()
+			}
 
 			_, err := storecenter.RehydrateStore(snapshot)
 			if (err != nil) != tt.wantErr {
@@ -343,11 +347,93 @@ func newTestStore(t *testing.T) *storecenter.Store {
 	return store
 }
 
+func TestStoreEditBasicOwnsNormalizedMutableFields(t *testing.T) {
+	store := newTestStore(t)
+	if err := store.TransitionTo(storecenter.StoreStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	before := store.Snapshot()
+	changed, err := store.EditBasic("  Updated Shop  ", "  MY  ", "editor", store.UpdatedAt().Add(time.Second))
+	if err != nil {
+		t.Fatalf("EditBasic() error = %v", err)
+	}
+	if !changed || store.Name() != "Updated Shop" || store.Region() != "MY" || store.Version() != before.Version+1 {
+		t.Fatalf("EditBasic() = changed %v snapshot %+v", changed, store.Snapshot())
+	}
+	after := store.Snapshot()
+	if after.OrganizationID != before.OrganizationID || after.Platform != before.Platform || after.ExternalStoreID != before.ExternalStoreID || after.QuotaAllocationID != before.QuotaAllocationID || after.CreateIdempotencyKey != before.CreateIdempotencyKey || after.ConnectionRef != before.ConnectionRef || after.CreatedBy != before.CreatedBy || !after.CreatedAt.Equal(before.CreatedAt) {
+		t.Fatalf("EditBasic() changed immutable identity: before=%+v after=%+v", before, after)
+	}
+	changed, err = store.EditBasic("Updated Shop", "MY", "editor", store.UpdatedAt())
+	if err != nil || changed || store.Version() != after.Version {
+		t.Fatalf("no-op EditBasic() = %v, %v version %d", changed, err, store.Version())
+	}
+}
+
+func TestStoreEditBasicRejectsTransitionalStates(t *testing.T) {
+	store := newTestStore(t)
+	if _, err := store.EditBasic("Name", "SG", "editor", store.UpdatedAt()); !errors.Is(err, storecenter.ErrInvalidTransition) {
+		t.Fatalf("provisioning EditBasic() error = %v", err)
+	}
+	if err := store.TransitionTo(storecenter.StoreStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BeginDelete(uuid.NewString(), "deleter", store.UpdatedAt().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.EditBasic("Name", "SG", "editor", store.UpdatedAt()); !errors.Is(err, storecenter.ErrInvalidTransition) {
+		t.Fatalf("deleting EditBasic() error = %v", err)
+	}
+}
+
+func TestStoreBeginDeleteBindsCanonicalKeyOnce(t *testing.T) {
+	store := newTestStore(t)
+	if err := store.TransitionTo(storecenter.StoreStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	key := uuid.NewString()
+	beforeVersion := store.Version()
+	if err := store.BeginDelete(key, "deleter", store.UpdatedAt().Add(time.Second)); err != nil {
+		t.Fatalf("BeginDelete() error = %v", err)
+	}
+	if store.LifecycleStatus() != storecenter.StoreStatusDeleting || store.DeleteOperationKey() != key || store.Version() != beforeVersion+1 {
+		t.Fatalf("BeginDelete() snapshot = %+v", store.Snapshot())
+	}
+	if err := store.BeginDelete(key, "other-actor", store.UpdatedAt()); err != nil || store.Version() != beforeVersion+1 {
+		t.Fatalf("same-key replay BeginDelete() = %v version %d", err, store.Version())
+	}
+	if err := store.BeginDelete(uuid.NewString(), "deleter", store.UpdatedAt()); !errors.Is(err, storecenter.ErrInvalidTransition) {
+		t.Fatalf("different-key BeginDelete() error = %v", err)
+	}
+}
+
+func TestStoreDeleteKeyRehydrationInvariant(t *testing.T) {
+	active := newTestStore(t).Snapshot()
+	active.DeleteOperationKey = uuid.NewString()
+	if _, err := storecenter.RehydrateStore(active); err == nil {
+		t.Fatal("active Store with delete key rehydrated")
+	}
+	deleting := newTestStore(t)
+	if err := deleting.TransitionTo(storecenter.StoreStatusActive, "creator", deleting.UpdatedAt().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	deletingSnapshot := deleting.Snapshot()
+	deletingSnapshot.LifecycleStatus = storecenter.StoreStatusDeleting
+	deletingSnapshot.Version++
+	deletingSnapshot.UpdatedAt = deletingSnapshot.UpdatedAt.Add(time.Second)
+	if _, err := storecenter.RehydrateStore(deletingSnapshot); err == nil {
+		t.Fatal("deleting Store without delete key rehydrated")
+	}
+}
+
 func newStoreAtStatus(t *testing.T, status storecenter.StoreStatus) *storecenter.Store {
 	t.Helper()
 	snapshot := newTestStore(t).Snapshot()
 	snapshot.LifecycleStatus = status
 	snapshot.Version = minimumVersionForStatus(status)
+	if status == storecenter.StoreStatusDeleting {
+		snapshot.DeleteOperationKey = uuid.NewString()
+	}
 	store, err := storecenter.RehydrateStore(snapshot)
 	if err != nil {
 		t.Fatalf("RehydrateStore() error = %v", err)

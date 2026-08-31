@@ -26,6 +26,14 @@ const (
 	AuditActionStoreCreateFailed      AuditAction = "store_create_failed"
 	AuditActionStoreCreateUnknown     AuditAction = "store_create_unknown"
 	AuditActionStoreCreationCommitted AuditAction = "store_creation_committed"
+	AuditActionStoreUpdated           AuditAction = "store_updated"
+	AuditActionStoreUpdateNoOp        AuditAction = "store_update_noop"
+	AuditActionStoreDisabled          AuditAction = "store_disabled"
+	AuditActionStoreEnabled           AuditAction = "store_enabled"
+	AuditActionDeleteStarted          AuditAction = "delete_started"
+	AuditActionStoreMarkedDeleting    AuditAction = "store_marked_deleting"
+	AuditActionQuotaDeallocated       AuditAction = "quota_deallocated"
+	AuditActionDeleteComplete         AuditAction = "delete_complete"
 )
 
 type AuditOutcome string
@@ -60,6 +68,7 @@ type AuditEvent struct {
 	PreviousState  LifecycleStatus  `json:"previousState"`
 	NewState       LifecycleStatus  `json:"newState"`
 	FailureCode    AuditFailureCode `json:"failureCode"`
+	StoreVersion   int64            `json:"storeVersion"`
 	OccurredAt     time.Time        `json:"occurredAt"`
 }
 
@@ -85,6 +94,7 @@ type workbenchStoreAuditLogRecord struct {
 	PreviousState  string    `gorm:"column:previous_state;size:32;not null"`
 	NewState       string    `gorm:"column:new_state;size:32;not null"`
 	FailureCode    string    `gorm:"column:failure_code;size:64;not null"`
+	StoreVersion   int64     `gorm:"column:store_version;not null"`
 	CreatedAt      time.Time `gorm:"column:created_at;not null;index:idx_workbench_store_audit_org_store_created,priority:3"`
 	OccurredAt     time.Time `gorm:"column:occurred_at;not null"`
 }
@@ -188,6 +198,9 @@ func normalizeAuditEvent(event AuditEvent) (AuditEvent, error) {
 	if event.OccurredAt.IsZero() {
 		return AuditEvent{}, errors.New("audit occurrence time is required")
 	}
+	if event.StoreVersion < 0 {
+		return AuditEvent{}, errors.New("audit store version is invalid")
+	}
 	fields, err := normalizeSafeFieldNames(event.SafeFieldNames)
 	if err != nil {
 		return AuditEvent{}, err
@@ -215,7 +228,7 @@ func normalizeSafeFieldNames(fields []string) ([]string, error) {
 
 func validAuditAction(action AuditAction) bool {
 	switch action {
-	case AuditActionQuotaReserved, AuditActionStoreCreated, AuditActionQuotaCommitStarted, AuditActionQuotaCommitFailed, AuditActionStoreCreateFailed, AuditActionStoreCreateUnknown, AuditActionStoreCreationCommitted:
+	case AuditActionQuotaReserved, AuditActionStoreCreated, AuditActionQuotaCommitStarted, AuditActionQuotaCommitFailed, AuditActionStoreCreateFailed, AuditActionStoreCreateUnknown, AuditActionStoreCreationCommitted, AuditActionStoreUpdated, AuditActionStoreUpdateNoOp, AuditActionStoreDisabled, AuditActionStoreEnabled, AuditActionDeleteStarted, AuditActionStoreMarkedDeleting, AuditActionQuotaDeallocated, AuditActionDeleteComplete:
 		return true
 	}
 	return false
@@ -233,7 +246,7 @@ func auditRecordFromEvent(event AuditEvent) (workbenchStoreAuditLogRecord, error
 	if err != nil {
 		return workbenchStoreAuditLogRecord{}, err
 	}
-	return workbenchStoreAuditLogRecord{EventID: event.EventID, OrganizationID: event.OrganizationID, StoreID: event.StoreID, AllocationID: event.AllocationID, RequestKey: event.RequestKey, Action: string(event.Action), Outcome: string(event.Outcome), ActorSubject: event.ActorSubject, SafeFieldNames: string(fields), PreviousState: string(event.PreviousState), NewState: string(event.NewState), FailureCode: string(event.FailureCode), CreatedAt: time.Now().UTC(), OccurredAt: event.OccurredAt.UTC()}, nil
+	return workbenchStoreAuditLogRecord{EventID: event.EventID, OrganizationID: event.OrganizationID, StoreID: event.StoreID, AllocationID: event.AllocationID, RequestKey: event.RequestKey, Action: string(event.Action), Outcome: string(event.Outcome), ActorSubject: event.ActorSubject, SafeFieldNames: string(fields), PreviousState: string(event.PreviousState), NewState: string(event.NewState), FailureCode: string(event.FailureCode), StoreVersion: event.StoreVersion, CreatedAt: time.Now().UTC(), OccurredAt: event.OccurredAt.UTC()}, nil
 }
 
 func auditEventFromRecord(record workbenchStoreAuditLogRecord) (AuditEvent, error) {
@@ -241,7 +254,7 @@ func auditEventFromRecord(record workbenchStoreAuditLogRecord) (AuditEvent, erro
 	if err := json.Unmarshal([]byte(record.SafeFieldNames), &fields); err != nil {
 		return AuditEvent{}, err
 	}
-	return normalizeAuditEvent(AuditEvent{EventID: record.EventID, OrganizationID: record.OrganizationID, StoreID: record.StoreID, AllocationID: record.AllocationID, RequestKey: record.RequestKey, Action: AuditAction(record.Action), Outcome: AuditOutcome(record.Outcome), ActorSubject: record.ActorSubject, SafeFieldNames: fields, PreviousState: LifecycleStatus(record.PreviousState), NewState: LifecycleStatus(record.NewState), FailureCode: AuditFailureCode(record.FailureCode), OccurredAt: record.OccurredAt})
+	return normalizeAuditEvent(AuditEvent{EventID: record.EventID, OrganizationID: record.OrganizationID, StoreID: record.StoreID, AllocationID: record.AllocationID, RequestKey: record.RequestKey, Action: AuditAction(record.Action), Outcome: AuditOutcome(record.Outcome), ActorSubject: record.ActorSubject, SafeFieldNames: fields, PreviousState: LifecycleStatus(record.PreviousState), NewState: LifecycleStatus(record.NewState), FailureCode: AuditFailureCode(record.FailureCode), StoreVersion: record.StoreVersion, OccurredAt: record.OccurredAt})
 }
 
 func sameAuditSemanticPayload(a, b AuditEvent) bool {

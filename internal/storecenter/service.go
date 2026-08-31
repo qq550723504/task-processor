@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"task-processor/internal/listingsubscription"
 )
 
@@ -25,23 +28,93 @@ type CreateStoreResult struct {
 	Replayed bool
 }
 
+type ListStoresRequest struct {
+	OrganizationID string
+	Page           int
+	PageSize       int
+	Platform       string
+	Status         LifecycleStatus
+}
+
+type GetStoreRequest struct {
+	OrganizationID string
+	StoreID        string
+}
+
+type StoreProjection struct {
+	Store            Store
+	ConnectionStatus ConnectionStatus
+}
+
+type StoreQuotaProjection struct {
+	Used     int64
+	Reserved int64
+	Limit    *int64
+	Allowed  bool
+	Reason   string
+}
+
+type ListStoresResult struct {
+	Items    []StoreProjection
+	Total    int64
+	Page     int
+	PageSize int
+	Quota    StoreQuotaProjection
+}
+
+type UpdateStoreRequest struct {
+	OrganizationID  string
+	ActorSubject    string
+	StoreID         string
+	ExpectedVersion int64
+	Name            string
+	Region          string
+}
+
+type StoreLifecycleRequest struct {
+	OrganizationID  string
+	ActorSubject    string
+	StoreID         string
+	ExpectedVersion int64
+}
+
+type StoreMutationResult struct {
+	Store    StoreProjection
+	Replayed bool
+}
+
+type DeleteStoreRequest struct {
+	OrganizationID  string
+	ActorSubject    string
+	StoreID         string
+	ExpectedVersion int64
+	OperationKey    string
+}
+
+type DeleteStoreResult struct {
+	StoreID  string
+	Version  int64
+	Replayed bool
+}
+
 type StoreLimitReachedError struct{ Committed, Used, Reserved, Limit int64 }
 
 func (e *StoreLimitReachedError) Error() string        { return "store limit reached" }
 func (e *StoreLimitReachedError) Is(target error) bool { return target == ErrLimitReached }
 
 type Service struct {
-	repository Repository
-	quota      listingsubscription.StoreQuotaLedger
-	audit      AuditRepository
-	now        func() time.Time
+	repository  Repository
+	quota       listingsubscription.StoreQuotaLedger
+	audit       AuditRepository
+	connections ConnectionStatusProvider
+	now         func() time.Time
 }
 
-func NewService(repository Repository, quota listingsubscription.StoreQuotaLedger, audit AuditRepository, now func() time.Time) (*Service, error) {
-	if isNilDependency(repository) || isNilDependency(quota) || isNilDependency(audit) || now == nil {
+func NewService(repository Repository, quota listingsubscription.StoreQuotaLedger, audit AuditRepository, connections ConnectionStatusProvider, now func() time.Time) (*Service, error) {
+	if isNilDependency(repository) || isNilDependency(quota) || isNilDependency(audit) || isNilDependency(connections) || now == nil {
 		return nil, errors.New("store service dependencies are required")
 	}
-	return &Service{repository: repository, quota: quota, audit: audit, now: now}, nil
+	return &Service{repository: repository, quota: quota, audit: audit, connections: connections, now: now}, nil
 }
 
 func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (CreateStoreResult, error) {
@@ -178,6 +251,413 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		return CreateStoreResult{}, dependencyError(err)
 	}
 	return CreateStoreResult{Store: store, Replayed: replayed}, nil
+}
+
+const connectionStatusTimeout = 500 * time.Millisecond
+
+func (s *Service) List(ctx context.Context, request ListStoresRequest) (ListStoresResult, error) {
+	normalized, query, err := normalizeListStoresRequest(request)
+	if err != nil {
+		return ListStoresResult{}, err
+	}
+	page, err := s.repository.List(ctx, normalized.OrganizationID, query)
+	if err != nil {
+		return ListStoresResult{}, dependencyError(err)
+	}
+	if page.Total < 0 || int64(len(page.Stores)) > page.Total || len(page.Stores) > normalized.PageSize {
+		return ListStoresResult{}, dependencyError(errors.New("store page is inconsistent"))
+	}
+	items := make([]StoreProjection, len(page.Stores))
+	for i := range page.Stores {
+		store, cloneErr := RehydrateStore(page.Stores[i].Snapshot())
+		if cloneErr != nil || store.OrganizationID() != normalized.OrganizationID {
+			return ListStoresResult{}, dependencyError(cloneErr)
+		}
+		items[i].Store = *store
+	}
+	s.projectConnections(ctx, items)
+	summary, err := s.quota.Summary(ctx, normalized.OrganizationID)
+	if err != nil {
+		return ListStoresResult{}, dependencyError(err)
+	}
+	quota, err := validateQuotaSummary(normalized.OrganizationID, summary)
+	if err != nil {
+		return ListStoresResult{}, dependencyError(err)
+	}
+	return ListStoresResult{Items: items, Total: page.Total, Page: normalized.Page, PageSize: normalized.PageSize, Quota: quota}, nil
+}
+
+func (s *Service) Get(ctx context.Context, request GetStoreRequest) (StoreProjection, error) {
+	normalized, err := normalizeGetStoreRequest(request)
+	if err != nil {
+		return StoreProjection{}, err
+	}
+	store, err := s.repository.Get(ctx, normalized.OrganizationID, normalized.StoreID)
+	if errors.Is(err, ErrNotFound) {
+		return StoreProjection{}, ErrNotFound
+	}
+	if err != nil {
+		return StoreProjection{}, dependencyError(err)
+	}
+	if store == nil || store.OrganizationID() != normalized.OrganizationID || store.ID() != normalized.StoreID {
+		return StoreProjection{}, dependencyError(errors.New("store read identity mismatch"))
+	}
+	return s.projectOne(ctx, store)
+}
+
+func (s *Service) Update(ctx context.Context, request UpdateStoreRequest) (StoreMutationResult, error) {
+	normalized, err := normalizeUpdateStoreRequest(request)
+	if err != nil {
+		return StoreMutationResult{}, err
+	}
+	return s.mutate(ctx, mutationRequest{organizationID: normalized.OrganizationID, actor: normalized.ActorSubject, storeID: normalized.StoreID, expectedVersion: normalized.ExpectedVersion, actionName: "update", auditAction: AuditActionStoreUpdated, noOpAuditAction: AuditActionStoreUpdateNoOp, fields: []string{"name", "region"}, apply: func(store *Store, at time.Time) (bool, error) {
+		return store.EditBasic(normalized.Name, normalized.Region, normalized.ActorSubject, at)
+	}, matches: func(store *Store) bool { return store.Name() == normalized.Name && store.Region() == normalized.Region }})
+}
+
+func (s *Service) Disable(ctx context.Context, request StoreLifecycleRequest) (StoreMutationResult, error) {
+	return s.changeLifecycle(ctx, request, "disable", AuditActionStoreDisabled, StoreStatusActive, StoreStatusDisabled)
+}
+
+func (s *Service) Enable(ctx context.Context, request StoreLifecycleRequest) (StoreMutationResult, error) {
+	return s.changeLifecycle(ctx, request, "enable", AuditActionStoreEnabled, StoreStatusDisabled, StoreStatusActive)
+}
+
+func (s *Service) changeLifecycle(ctx context.Context, request StoreLifecycleRequest, actionName string, auditAction AuditAction, from, to LifecycleStatus) (StoreMutationResult, error) {
+	normalized, err := normalizeLifecycleRequest(request)
+	if err != nil {
+		return StoreMutationResult{}, err
+	}
+	return s.mutate(ctx, mutationRequest{organizationID: normalized.OrganizationID, actor: normalized.ActorSubject, storeID: normalized.StoreID, expectedVersion: normalized.ExpectedVersion, actionName: actionName, auditAction: auditAction, fields: []string{"lifecycle_status"}, previous: from, next: to, apply: func(store *Store, at time.Time) (bool, error) {
+		if store.LifecycleStatus() != from {
+			return false, ErrInvalidTransition
+		}
+		if err := store.TransitionTo(to, normalized.ActorSubject, at); err != nil {
+			return false, err
+		}
+		return true, nil
+	}, matches: func(store *Store) bool { return store.LifecycleStatus() == to }})
+}
+
+type mutationRequest struct {
+	organizationID, actor, storeID, actionName string
+	expectedVersion                            int64
+	auditAction                                AuditAction
+	noOpAuditAction                            AuditAction
+	fields                                     []string
+	previous, next                             LifecycleStatus
+	apply                                      func(*Store, time.Time) (bool, error)
+	matches                                    func(*Store) bool
+}
+
+func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMutationResult, error) {
+	operationKey := deterministicMutationKey(request.organizationID, request.storeID, request.actionName, request.expectedVersion)
+	store, err := s.repository.Get(ctx, request.organizationID, request.storeID)
+	if errors.Is(err, ErrNotFound) {
+		return StoreMutationResult{}, ErrNotFound
+	}
+	if err != nil || store == nil || store.OrganizationID() != request.organizationID || store.ID() != request.storeID {
+		return StoreMutationResult{}, dependencyError(err)
+	}
+	replayed := false
+	auditAction := request.auditAction
+	auditFields := request.fields
+	if store.Version() == request.expectedVersion+1 && request.matches(store) {
+		replayed = true
+	} else if store.Version() != request.expectedVersion {
+		return StoreMutationResult{}, ErrVersionConflict
+	} else {
+		changed, applyErr := request.apply(store, s.monotonicNow(store.UpdatedAt()))
+		if applyErr != nil {
+			if errors.Is(applyErr, ErrInvalidTransition) {
+				return StoreMutationResult{}, ErrInvalidTransition
+			}
+			return StoreMutationResult{}, applyErr
+		}
+		if changed {
+			if err := s.repository.Save(ctx, request.organizationID, store, request.expectedVersion); err != nil {
+				resolved, readErr := s.repository.Get(ctx, request.organizationID, request.storeID)
+				if readErr == nil && resolved != nil && resolved.OrganizationID() == request.organizationID && resolved.Version() == request.expectedVersion+1 && request.matches(resolved) {
+					store = resolved
+					replayed = true
+				} else if readErr == nil && resolved != nil && resolved.Version() == request.expectedVersion {
+					return StoreMutationResult{}, dependencyError(err)
+				} else if readErr == nil && resolved != nil {
+					return StoreMutationResult{}, ErrVersionConflict
+				} else {
+					return StoreMutationResult{}, dependencyError(err)
+				}
+			}
+		} else if request.noOpAuditAction != "" {
+			auditAction = request.noOpAuditAction
+			auditFields = nil
+		}
+	}
+	event := newAuditEvent(request.organizationID, request.storeID, store.QuotaAllocationID(), operationKey, auditAction, AuditOutcomeSucceeded, request.actor, auditFields, request.previous, request.next, AuditFailureNone, s.utcNow())
+	event.StoreVersion = store.Version()
+	_, auditReplayed, err := s.audit.Record(ctx, event)
+	if err != nil {
+		return StoreMutationResult{}, dependencyError(err)
+	}
+	projection, err := s.projectOne(ctx, store)
+	if err != nil {
+		return StoreMutationResult{}, err
+	}
+	return StoreMutationResult{Store: projection, Replayed: replayed || auditReplayed}, nil
+}
+
+func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (DeleteStoreResult, error) {
+	normalized, err := normalizeDeleteStoreRequest(request)
+	if err != nil {
+		return DeleteStoreResult{}, err
+	}
+	if completed, err := s.audit.Get(ctx, normalized.OrganizationID, normalized.OperationKey, AuditActionDeleteComplete); err == nil {
+		if validateDeleteAudit(completed, normalized, AuditActionDeleteComplete) != nil {
+			return DeleteStoreResult{}, dependencyError(ErrAuditIdentityMismatch)
+		}
+		return DeleteStoreResult{StoreID: normalized.StoreID, Version: completed.StoreVersion, Replayed: true}, nil
+	} else if !errors.Is(err, ErrNotFound) {
+		return DeleteStoreResult{}, dependencyError(err)
+	}
+
+	store, getErr := s.repository.Get(ctx, normalized.OrganizationID, normalized.StoreID)
+	if errors.Is(getErr, ErrNotFound) {
+		deallocated, auditErr := s.audit.Get(ctx, normalized.OrganizationID, normalized.OperationKey, AuditActionQuotaDeallocated)
+		if errors.Is(auditErr, ErrNotFound) {
+			return DeleteStoreResult{}, ErrNotFound
+		}
+		if auditErr != nil || validateDeleteAudit(deallocated, normalized, AuditActionQuotaDeallocated) != nil {
+			return DeleteStoreResult{}, dependencyError(auditErr)
+		}
+		version := deallocated.StoreVersion + 1
+		if err := s.recordDeletePhase(ctx, normalized, deallocated.AllocationID, AuditActionDeleteComplete, "", "", version); err != nil {
+			return DeleteStoreResult{}, dependencyError(err)
+		}
+		return DeleteStoreResult{StoreID: normalized.StoreID, Version: version, Replayed: true}, nil
+	}
+	if getErr != nil || store == nil || store.OrganizationID() != normalized.OrganizationID || store.ID() != normalized.StoreID {
+		return DeleteStoreResult{}, dependencyError(getErr)
+	}
+	replayed := false
+	resumingSameOperation := store.LifecycleStatus() == StoreStatusDeleting && store.DeleteOperationKey() == normalized.OperationKey && (store.Version() == normalized.ExpectedVersion || store.Version() == normalized.ExpectedVersion+1)
+	if store.Version() != normalized.ExpectedVersion && !resumingSameOperation {
+		return DeleteStoreResult{}, ErrVersionConflict
+	}
+	if store.LifecycleStatus() == StoreStatusProvisioning {
+		return DeleteStoreResult{}, ErrInvalidTransition
+	}
+	if store.LifecycleStatus() == StoreStatusDeleting {
+		if store.DeleteOperationKey() != normalized.OperationKey {
+			return DeleteStoreResult{}, ErrInvalidTransition
+		}
+		replayed = true
+	} else {
+		previous := store.LifecycleStatus()
+		if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionDeleteStarted, previous, StoreStatusDeleting, store.Version()); err != nil {
+			return DeleteStoreResult{}, dependencyError(err)
+		}
+		if err := store.BeginDelete(normalized.OperationKey, normalized.ActorSubject, s.monotonicNow(store.UpdatedAt())); err != nil {
+			return DeleteStoreResult{}, err
+		}
+		if err := s.repository.Save(ctx, normalized.OrganizationID, store, normalized.ExpectedVersion); err != nil {
+			resolved, readErr := s.repository.Get(ctx, normalized.OrganizationID, normalized.StoreID)
+			if readErr != nil || resolved == nil || resolved.Version() != normalized.ExpectedVersion+1 || resolved.LifecycleStatus() != StoreStatusDeleting || resolved.DeleteOperationKey() != normalized.OperationKey {
+				return DeleteStoreResult{}, dependencyError(err)
+			}
+			store = resolved
+			replayed = true
+		}
+	}
+	if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionStoreMarkedDeleting, "", StoreStatusDeleting, store.Version()); err != nil {
+		return DeleteStoreResult{}, dependencyError(err)
+	}
+	transition := listingsubscription.StoreQuotaTransitionInput{OrganizationID: normalized.OrganizationID, AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), ActorSubject: normalized.ActorSubject}
+	deallocated, err := s.quota.Deallocate(ctx, transition)
+	if err != nil {
+		return DeleteStoreResult{}, dependencyError(err)
+	}
+	if err := validateTransitionAllocation(deallocated.Allocation, transition, listingsubscription.StoreQuotaReleased); err != nil {
+		return DeleteStoreResult{}, dependencyError(err)
+	}
+	if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionQuotaDeallocated, StoreStatusDeleting, StoreStatusDeleting, store.Version()); err != nil {
+		return DeleteStoreResult{}, dependencyError(err)
+	}
+	if err := s.repository.SoftDelete(ctx, normalized.OrganizationID, store.ID(), store.Version()); err != nil {
+		_, readErr := s.repository.Get(ctx, normalized.OrganizationID, store.ID())
+		if !errors.Is(readErr, ErrNotFound) {
+			return DeleteStoreResult{}, dependencyError(err)
+		}
+	}
+	version := store.Version() + 1
+	if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionDeleteComplete, StoreStatusDeleting, "", version); err != nil {
+		return DeleteStoreResult{}, dependencyError(err)
+	}
+	return DeleteStoreResult{StoreID: store.ID(), Version: version, Replayed: replayed}, nil
+}
+
+func validateDeleteAudit(event *AuditEvent, request DeleteStoreRequest, action AuditAction) error {
+	if event == nil || event.OrganizationID != request.OrganizationID || event.RequestKey != request.OperationKey || event.StoreID != request.StoreID || event.Action != action || event.Outcome != AuditOutcomeSucceeded || event.FailureCode != AuditFailureNone || event.StoreVersion <= 0 {
+		return ErrAuditIdentityMismatch
+	}
+	if _, err := canonicalUUID(event.AllocationID); err != nil {
+		return ErrAuditIdentityMismatch
+	}
+	return nil
+}
+
+func (s *Service) recordDeletePhase(ctx context.Context, request DeleteStoreRequest, allocationID string, action AuditAction, previous, next LifecycleStatus, version int64) error {
+	event := newAuditEvent(request.OrganizationID, request.StoreID, allocationID, request.OperationKey, action, AuditOutcomeSucceeded, request.ActorSubject, []string{"lifecycle_status", "quota_allocation_id"}, previous, next, AuditFailureNone, s.utcNow())
+	event.StoreVersion = version
+	_, _, err := s.audit.Record(ctx, event)
+	return err
+}
+
+func (s *Service) projectOne(ctx context.Context, store *Store) (StoreProjection, error) {
+	if store == nil {
+		return StoreProjection{}, dependencyError(errors.New("nil store"))
+	}
+	clone, err := RehydrateStore(store.Snapshot())
+	if err != nil {
+		return StoreProjection{}, dependencyError(err)
+	}
+	status := resolveConnectionStatus(ctx, s.connections, ConnectionStatusInput{OrganizationID: clone.OrganizationID(), StoreID: clone.ID(), Platform: clone.Platform(), ConnectionRef: clone.ConnectionRef()}, connectionStatusTimeout)
+	return StoreProjection{Store: *clone, ConnectionStatus: status}, nil
+}
+
+func (s *Service) projectConnections(ctx context.Context, items []StoreProjection) {
+	workers := len(items)
+	if workers > 8 {
+		workers = 8
+	}
+	jobs := make(chan int)
+	var group sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			for index := range jobs {
+				store := &items[index].Store
+				items[index].ConnectionStatus = resolveConnectionStatus(ctx, s.connections, ConnectionStatusInput{OrganizationID: store.OrganizationID(), StoreID: store.ID(), Platform: store.Platform(), ConnectionRef: store.ConnectionRef()}, connectionStatusTimeout)
+			}
+		}()
+	}
+	for index := range items {
+		jobs <- index
+	}
+	close(jobs)
+	group.Wait()
+}
+
+func normalizeListStoresRequest(request ListStoresRequest) (ListStoresRequest, StoreListQuery, error) {
+	organizationID, err := validateOpaqueIdentity("organization ID", request.OrganizationID, MaxOrganizationIDBytes)
+	if err != nil || request.Page < 1 || request.PageSize < 1 || request.PageSize > 100 {
+		return ListStoresRequest{}, StoreListQuery{}, errors.New("invalid store list request")
+	}
+	platform := Platform("")
+	if request.Platform != "" {
+		platform, err = normalizePlatform(request.Platform)
+		if err != nil || string(platform) != request.Platform {
+			return ListStoresRequest{}, StoreListQuery{}, errors.New("invalid store list platform")
+		}
+	}
+	if request.Status != "" && !validLifecycleStatus(request.Status) {
+		return ListStoresRequest{}, StoreListQuery{}, errors.New("invalid store list status")
+	}
+	request.OrganizationID = organizationID
+	return request, StoreListQuery{Platform: platform, Status: request.Status, Page: request.Page, PageSize: request.PageSize}, nil
+}
+
+func normalizeGetStoreRequest(request GetStoreRequest) (GetStoreRequest, error) {
+	var err error
+	if request.OrganizationID, err = validateOpaqueIdentity("organization ID", request.OrganizationID, MaxOrganizationIDBytes); err != nil {
+		return GetStoreRequest{}, err
+	}
+	if request.StoreID, err = canonicalUUID(request.StoreID); err != nil {
+		return GetStoreRequest{}, err
+	}
+	return request, nil
+}
+
+func normalizeUpdateStoreRequest(request UpdateStoreRequest) (UpdateStoreRequest, error) {
+	identity, err := normalizeMutationIdentity(request.OrganizationID, request.ActorSubject, request.StoreID, request.ExpectedVersion)
+	if err != nil {
+		return UpdateStoreRequest{}, err
+	}
+	request.OrganizationID, request.ActorSubject, request.StoreID = identity.OrganizationID, identity.ActorSubject, identity.StoreID
+	if request.Name, err = normalizeUserValue("name", request.Name, MaxStoreNameCodePoints, true); err != nil {
+		return UpdateStoreRequest{}, err
+	}
+	if request.Region, err = normalizeUserValue("region", request.Region, MaxStoreRegionCodePoints, true); err != nil {
+		return UpdateStoreRequest{}, err
+	}
+	return request, nil
+}
+
+func normalizeLifecycleRequest(request StoreLifecycleRequest) (StoreLifecycleRequest, error) {
+	identity, err := normalizeMutationIdentity(request.OrganizationID, request.ActorSubject, request.StoreID, request.ExpectedVersion)
+	if err != nil {
+		return StoreLifecycleRequest{}, err
+	}
+	request.OrganizationID, request.ActorSubject, request.StoreID = identity.OrganizationID, identity.ActorSubject, identity.StoreID
+	return request, nil
+}
+
+func normalizeDeleteStoreRequest(request DeleteStoreRequest) (DeleteStoreRequest, error) {
+	identity, err := normalizeMutationIdentity(request.OrganizationID, request.ActorSubject, request.StoreID, request.ExpectedVersion)
+	if err != nil {
+		return DeleteStoreRequest{}, err
+	}
+	request.OrganizationID, request.ActorSubject, request.StoreID = identity.OrganizationID, identity.ActorSubject, identity.StoreID
+	if request.OperationKey, err = canonicalUUID(request.OperationKey); err != nil {
+		return DeleteStoreRequest{}, err
+	}
+	return request, nil
+}
+
+type mutationIdentity struct{ OrganizationID, ActorSubject, StoreID string }
+
+func normalizeMutationIdentity(organizationID, actor, storeID string, expectedVersion int64) (mutationIdentity, error) {
+	var err error
+	if organizationID, err = validateOpaqueIdentity("organization ID", organizationID, MaxOrganizationIDBytes); err != nil {
+		return mutationIdentity{}, err
+	}
+	if actor, err = validateOpaqueIdentity("actor subject", actor, MaxSubjectBytes); err != nil {
+		return mutationIdentity{}, err
+	}
+	if storeID, err = canonicalUUID(storeID); err != nil || expectedVersion <= 0 {
+		return mutationIdentity{}, errors.New("invalid versioned store request")
+	}
+	return mutationIdentity{organizationID, actor, storeID}, nil
+}
+
+func deterministicMutationKey(organizationID, storeID, action string, expectedVersion int64) string {
+	name := organizationID + "\n" + storeID + "\n" + action + "\n" + strconv.FormatInt(expectedVersion, 10)
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(name)).String()
+}
+
+func validateQuotaSummary(organizationID string, summary listingsubscription.StoreQuotaSummary) (StoreQuotaProjection, error) {
+	if summary.OrganizationID != organizationID || summary.Committed < 0 || summary.Reserved < 0 {
+		return StoreQuotaProjection{}, errors.New("quota summary identity or counts are invalid")
+	}
+	if summary.Limit == nil {
+		if summary.Allowed || summary.Reason != "subscription_required" {
+			return StoreQuotaProjection{}, errors.New("quota summary subscription state is invalid")
+		}
+	} else {
+		if *summary.Limit <= 0 {
+			return StoreQuotaProjection{}, errors.New("quota summary limit is invalid")
+		}
+		allowed := summary.Committed < *summary.Limit && summary.Reserved < *summary.Limit-summary.Committed
+		if summary.Allowed != allowed || (allowed && summary.Reason != "") || (!allowed && summary.Reason != "store_limit_reached") {
+			return StoreQuotaProjection{}, errors.New("quota summary availability is inconsistent")
+		}
+	}
+	var limit *int64
+	if summary.Limit != nil {
+		value := *summary.Limit
+		limit = &value
+	}
+	return StoreQuotaProjection{Used: summary.Committed, Reserved: summary.Reserved, Limit: limit, Allowed: summary.Allowed, Reason: summary.Reason}, nil
 }
 
 func (s *Service) createCandidate(request CreateStoreRequest, allocation listingsubscription.StoreQuotaAllocation) (*Store, error) {

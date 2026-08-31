@@ -37,6 +37,7 @@ type workbenchStoreRecord struct {
 	UpdatedAt                time.Time      `gorm:"column:updated_at;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:3"`
 	DeletedAt                gorm.DeletedAt `gorm:"column:deleted_at;index"`
 	CreateIdempotencyKey     string         `gorm:"column:create_idempotency_key;type:char(36);not null;uniqueIndex:ux_workbench_stores_org_create_key,priority:2"`
+	DeleteOperationKey       string         `gorm:"column:delete_operation_key;type:char(36);not null"`
 	IdentityKey              string         `gorm:"column:identity_key;size:64;not null;uniqueIndex:ux_workbench_stores_org_identity_key,priority:2"`
 	CreateRequestFingerprint string         `gorm:"column:create_request_fingerprint;size:64;not null"`
 }
@@ -161,14 +162,15 @@ func (r *GormStoreRepository) Save(ctx context.Context, organizationID string, s
 		return err
 	}
 	updates := map[string]any{
-		"name":             snapshot.Name,
-		"region":           snapshot.Region,
-		"lifecycle_status": string(snapshot.LifecycleStatus),
-		"connection_ref":   snapshot.ConnectionRef,
-		"version":          snapshot.Version,
-		"updated_by":       snapshot.UpdatedBy,
-		"updated_at":       snapshot.UpdatedAt,
-		"identity_key":     identityKey(snapshot),
+		"name":                 snapshot.Name,
+		"region":               snapshot.Region,
+		"lifecycle_status":     string(snapshot.LifecycleStatus),
+		"connection_ref":       snapshot.ConnectionRef,
+		"version":              snapshot.Version,
+		"updated_by":           snapshot.UpdatedBy,
+		"updated_at":           snapshot.UpdatedAt,
+		"identity_key":         identityKey(snapshot),
+		"delete_operation_key": snapshot.DeleteOperationKey,
 	}
 	result := r.scopedActiveRecords(ctx, organizationID).Where("id = ? AND version = ?", snapshot.ID, expectedVersion).Updates(updates)
 	if result.Error != nil {
@@ -310,7 +312,7 @@ func recordFromSnapshot(snapshot StoreSnapshot, identity, fingerprint string) wo
 		ID: snapshot.ID, OrganizationID: snapshot.OrganizationID, Name: snapshot.Name, Platform: string(snapshot.Platform), Region: snapshot.Region,
 		ExternalStoreID: snapshot.ExternalStoreID, LifecycleStatus: string(snapshot.LifecycleStatus), ConnectionRef: snapshot.ConnectionRef,
 		QuotaAllocationID: snapshot.QuotaAllocationID, Version: snapshot.Version, CreatedBy: snapshot.CreatedBy, UpdatedBy: snapshot.UpdatedBy,
-		CreatedAt: snapshot.CreatedAt, UpdatedAt: snapshot.UpdatedAt, CreateIdempotencyKey: snapshot.CreateIdempotencyKey,
+		CreatedAt: snapshot.CreatedAt, UpdatedAt: snapshot.UpdatedAt, CreateIdempotencyKey: snapshot.CreateIdempotencyKey, DeleteOperationKey: snapshot.DeleteOperationKey,
 		IdentityKey: identity, CreateRequestFingerprint: fingerprint,
 	}
 	if snapshot.DeletedAt != nil {
@@ -324,7 +326,7 @@ func rehydrateRecord(record workbenchStoreRecord) (*Store, error) {
 		ID: record.ID, OrganizationID: record.OrganizationID, Name: record.Name, Platform: Platform(record.Platform), Region: record.Region,
 		ExternalStoreID: record.ExternalStoreID, LifecycleStatus: LifecycleStatus(record.LifecycleStatus), ConnectionRef: record.ConnectionRef,
 		QuotaAllocationID: record.QuotaAllocationID, Version: record.Version, CreatedBy: record.CreatedBy, UpdatedBy: record.UpdatedBy,
-		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CreateIdempotencyKey: record.CreateIdempotencyKey,
+		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CreateIdempotencyKey: record.CreateIdempotencyKey, DeleteOperationKey: record.DeleteOperationKey,
 	}
 	if record.DeletedAt.Valid {
 		deletedAt := record.DeletedAt.Time
@@ -344,14 +346,14 @@ func requireStoreScope(organizationID string, store *Store) error {
 }
 
 func requirePristineCreateSnapshot(snapshot StoreSnapshot) error {
-	if snapshot.LifecycleStatus != StoreStatusProvisioning || snapshot.Version != 1 || snapshot.DeletedAt != nil || snapshot.ConnectionRef != "" || snapshot.CreatedBy != snapshot.UpdatedBy || !snapshot.CreatedAt.Equal(snapshot.UpdatedAt) {
+	if snapshot.LifecycleStatus != StoreStatusProvisioning || snapshot.Version != 1 || snapshot.DeletedAt != nil || snapshot.ConnectionRef != "" || snapshot.DeleteOperationKey != "" || snapshot.CreatedBy != snapshot.UpdatedBy || !snapshot.CreatedAt.Equal(snapshot.UpdatedAt) {
 		return errors.New("store creation snapshot must be pristine provisioning state")
 	}
 	return nil
 }
 
 func validateSaveSnapshot(durable, incoming StoreSnapshot) error {
-	if durable.ID != incoming.ID || durable.OrganizationID != incoming.OrganizationID || durable.Platform != incoming.Platform || durable.ExternalStoreID != incoming.ExternalStoreID || durable.QuotaAllocationID != incoming.QuotaAllocationID || durable.CreateIdempotencyKey != incoming.CreateIdempotencyKey || durable.CreatedBy != incoming.CreatedBy || !durable.CreatedAt.Equal(incoming.CreatedAt) {
+	if durable.ID != incoming.ID || durable.OrganizationID != incoming.OrganizationID || durable.Platform != incoming.Platform || durable.ExternalStoreID != incoming.ExternalStoreID || durable.ConnectionRef != incoming.ConnectionRef || durable.QuotaAllocationID != incoming.QuotaAllocationID || durable.CreateIdempotencyKey != incoming.CreateIdempotencyKey || durable.CreatedBy != incoming.CreatedBy || !durable.CreatedAt.Equal(incoming.CreatedAt) {
 		return errors.New("store immutable fields changed")
 	}
 	if incoming.DeletedAt != nil {
@@ -360,7 +362,21 @@ func validateSaveSnapshot(durable, incoming StoreSnapshot) error {
 	if incoming.UpdatedAt.Before(durable.UpdatedAt) {
 		return errors.New("store update time must not precede durable update")
 	}
-	if incoming.LifecycleStatus != durable.LifecycleStatus && !canTransition(durable.LifecycleStatus, incoming.LifecycleStatus) {
+	beginningDelete := (durable.LifecycleStatus == StoreStatusActive || durable.LifecycleStatus == StoreStatusDisabled) && incoming.LifecycleStatus == StoreStatusDeleting && durable.DeleteOperationKey == "" && incoming.DeleteOperationKey != ""
+	profileChanged := durable.Name != incoming.Name || durable.Region != incoming.Region
+	if beginningDelete && profileChanged {
+		return errors.New("store profile cannot change while deletion begins")
+	}
+	if incoming.LifecycleStatus != durable.LifecycleStatus && profileChanged {
+		return errors.New("store profile and lifecycle cannot change together")
+	}
+	if incoming.LifecycleStatus == durable.LifecycleStatus && profileChanged && durable.LifecycleStatus != StoreStatusActive && durable.LifecycleStatus != StoreStatusDisabled {
+		return ErrInvalidTransition
+	}
+	if durable.DeleteOperationKey != incoming.DeleteOperationKey && !beginningDelete {
+		return errors.New("store delete operation key changed")
+	}
+	if incoming.LifecycleStatus != durable.LifecycleStatus && !canTransition(durable.LifecycleStatus, incoming.LifecycleStatus) && !beginningDelete {
 		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, durable.LifecycleStatus, incoming.LifecycleStatus)
 	}
 	return nil
