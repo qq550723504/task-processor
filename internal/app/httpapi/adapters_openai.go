@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -28,7 +27,7 @@ func newOpenAIManager(cfg config.OpenAIConfig) (*openaiclient.Manager, error) {
 	})
 }
 
-func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Logger, featureFlags BoolEvaluator) (*openaiclient.GormCredentialResolver, func() error, error) {
+func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Logger) (*openaiclient.GormCredentialResolver, func() error, error) {
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
@@ -38,11 +37,6 @@ func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Lo
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if shouldAutoMigrateProductListingAPIRuntime(context.Background(), featureFlags) {
-		if err := db.AutoMigrate(&openaiclient.AIClientCredential{}); err != nil {
-			return nil, nil, fmt.Errorf("openai credential auto-migrate failed: %w", err)
-		}
-	}
 	resolver := openaiclient.NewGormCredentialResolver(db)
 	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	return resolver, closer, nil

@@ -16,7 +16,7 @@ type Dependencies struct {
 	LoadConfig func(string) (*config.Config, error)
 	OpenDB     func(*config.DatabaseConfig) (*gorm.DB, error)
 	CloseDB    func(*gorm.DB) error
-	MigrateAll func(*gorm.DB) error
+	MigrateAll func(context.Context, *gorm.DB) error
 }
 
 func Run(ctx context.Context, configPath string) error {
@@ -24,7 +24,6 @@ func Run(ctx context.Context, configPath string) error {
 }
 
 func runWithDependencies(ctx context.Context, configPath string, deps Dependencies) error {
-	_ = ctx
 	if deps.LoadConfig == nil {
 		deps.LoadConfig = config.LoadConfigFromFileWithoutValidation
 	}
@@ -37,7 +36,7 @@ func runWithDependencies(ctx context.Context, configPath string, deps Dependenci
 		deps.CloseDB = closeDB
 	}
 	if deps.MigrateAll == nil {
-		deps.MigrateAll = productlisting.AutoMigrateRuntime
+		deps.MigrateAll = productlisting.Migrate
 	}
 	cfg, err := deps.LoadConfig(configPath)
 	if err != nil {
@@ -54,7 +53,7 @@ func runWithDependencies(ctx context.Context, configPath string, deps Dependenci
 		return fmt.Errorf("database is not configured")
 	}
 	defer func() { _ = deps.CloseDB(db) }()
-	if err := deps.MigrateAll(db); err != nil {
+	if err := deps.MigrateAll(ctx, db); err != nil {
 		return fmt.Errorf("migrate product listing API schema: %w", err)
 	}
 	return nil

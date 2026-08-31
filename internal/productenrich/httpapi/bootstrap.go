@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/app/schema/productlisting"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httpbootstrap"
 	"task-processor/internal/infra/redisclient"
@@ -152,7 +154,7 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
 
 	if config.ProductListingAPIRuntimeAutoMigrateEnabled() {
-		if err := db.AutoMigrate(&productenrich.Task{}); err != nil {
+		if err := productlisting.Migrate(context.Background(), db); err != nil {
 			return nil, nil, fmt.Errorf("database auto-migrate failed: %w", err)
 		}
 	}

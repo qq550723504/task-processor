@@ -9,6 +9,10 @@ import (
 )
 
 func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, error) {
+	return buildRuntimeDepsWithSchemaMigrator(logger, configPath, migrateProductListingAPIRuntimeSchema)
+}
+
+func buildRuntimeDepsWithSchemaMigrator(logger *logrus.Logger, configPath string, migrateSchema productListingSchemaMigrator) (*runtimeDeps, error) {
 	timer := newStartupTimer(logger)
 
 	done := timer.phase("loadConfig")
@@ -31,19 +35,26 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		cleanupOwnedRuntimeResources(completed, ownedClosers)
 	}()
 
+	done = timer.phase("migrateProductListingSchema")
+	err = migrateProductListingSchemaIfEnabled(context.Background(), featureFlags, cfg.Database, logger, migrateSchema)
+	done()
+	if err != nil {
+		return nil, err
+	}
+
 	done = timer.phase("resolveImageWorkDir")
 	imageWorkDir := resolveImageWorkDir(cfg)
 	done()
 
 	done = timer.phase("buildPromptRuntimeDeps")
-	promptDeps, err := buildPromptRuntimeDeps(cfg, logger, featureFlags)
+	promptDeps, err := buildPromptRuntimeDeps(cfg, logger)
 	done()
 	if err != nil {
 		return nil, err
 	}
 	ownedClosers = append(ownedClosers, promptDeps.closers...)
 	done = timer.phase("buildOpenAIRuntimeDeps")
-	openaiDeps, err := buildOpenAIRuntimeDeps(cfg, logger, featureFlags)
+	openaiDeps, err := buildOpenAIRuntimeDeps(cfg, logger)
 	done()
 	if err != nil {
 		return nil, err
@@ -52,7 +63,7 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	closers := make([]func() error, 0, len(openaiDeps.closers)+len(promptDeps.closers)+1)
 	closers = append(closers, openaiDeps.closers...)
 	done = timer.phase("buildAICapabilityRuntimeDeps")
-	aiCapabilityDeps, err := buildAICapabilityRuntimeDeps(cfg, logger, featureFlags)
+	aiCapabilityDeps, err := buildAICapabilityRuntimeDeps(cfg, logger)
 	done()
 	if err != nil {
 		return nil, err

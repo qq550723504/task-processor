@@ -2,8 +2,12 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	miniredis "github.com/alicebob/miniredis/v2"
@@ -23,6 +27,49 @@ import (
 	"task-processor/internal/sdslogin"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 )
+
+func TestBuildRuntimeDepsRunsEnabledSchemaMigrationBeforeRepositoryConstruction(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+	configPath := filepath.Join(t.TempDir(), "runtime.yaml")
+	contents := []byte("featureFlags:\n  flags:\n    product-listing-runtime-auto-migrate: true\ndatabase:\n  host: 127.0.0.1\n  port: 1\n  user: test\n  password: test\n  database: test\n")
+	if err := os.WriteFile(configPath, contents, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	wantErr := errors.New("migration stopped bootstrap")
+	called := 0
+	deps, err := buildRuntimeDepsWithSchemaMigrator(logrus.New(), configPath, func(context.Context, *config.DatabaseConfig, *logrus.Logger) error {
+		called++
+		return wantErr
+	})
+	if deps != nil {
+		t.Fatal("buildRuntimeDepsWithSchemaMigrator() returned deps after migration failure")
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("buildRuntimeDepsWithSchemaMigrator() error = %v, want migration error", err)
+	}
+	if strings.Contains(err.Error(), "database connection failed") {
+		t.Fatalf("migration must run before repository construction, got %v", err)
+	}
+	if called != 1 {
+		t.Fatalf("schema migrator calls = %d, want 1", called)
+	}
+}
+
+func TestMigrateProductListingSchemaIfEnabledSkipsDisabledFlag(t *testing.T) {
+	evaluator := &recordingBoolEvaluator{value: false}
+	called := 0
+	err := migrateProductListingSchemaIfEnabled(context.Background(), evaluator, &config.DatabaseConfig{}, logrus.New(), func(context.Context, *config.DatabaseConfig, *logrus.Logger) error {
+		called++
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("migrateProductListingSchemaIfEnabled() error = %v", err)
+	}
+	if called != 0 {
+		t.Fatalf("schema migrator calls = %d, want 0", called)
+	}
+}
 
 func TestRuntimeDepsListingKitSupportHandlesNilDeps(t *testing.T) {
 	var deps *runtimeDeps

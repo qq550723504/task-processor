@@ -1,6 +1,9 @@
 package tests
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,6 +11,49 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestProductListingRepositoryBuildersDoNotCallDirectAutoMigrate(t *testing.T) {
+	for _, root := range []string{
+		filepath.Join("..", "internal", "app", "httpapi"),
+		filepath.Join("..", "internal", "app", "bootstrap", "resources"),
+		filepath.Join("..", "internal", "productimage", "httpapi"),
+		filepath.Join("..", "internal", "productenrich", "httpapi"),
+	} {
+		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+			if err != nil {
+				return err
+			}
+			ast.Inspect(file, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				switch function := call.Fun.(type) {
+				case *ast.SelectorExpr:
+					if strings.HasPrefix(function.Sel.Name, "AutoMigrate") {
+						t.Errorf("%s contains direct schema mutation call %s", path, function.Sel.Name)
+					}
+				case *ast.Ident:
+					if strings.HasPrefix(function.Name, "AutoMigrate") {
+						t.Errorf("%s contains direct schema mutation call %s", path, function.Name)
+					}
+				}
+				return true
+			})
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("scan %s: %v", root, err)
+		}
+	}
+}
 
 func TestPhase2TargetReadmesMatchApprovedOwnership(t *testing.T) {
 	platform := readRepositoryText(t, filepath.Join("..", "internal", "platform", "README.md"))

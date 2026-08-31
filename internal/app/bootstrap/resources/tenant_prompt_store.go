@@ -23,10 +23,6 @@ func NewDBTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (
 	}
 
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := db.AutoMigrate(&prompt.TenantPromptTemplate{}); err != nil {
-		return nil, nil, fmt.Errorf("tenant prompt auto-migrate failed: %w", err)
-	}
-
 	store := prompt.NewGormTenantPromptStore(db)
 	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	return store, closer, nil

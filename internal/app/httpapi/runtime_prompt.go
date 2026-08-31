@@ -15,7 +15,7 @@ type promptRuntimeDeps struct {
 	closers           []func() error
 }
 
-func buildPromptRuntimeDeps(cfg *config.Config, logger *logrus.Logger, featureFlags BoolEvaluator) (*promptRuntimeDeps, error) {
+func buildPromptRuntimeDeps(cfg *config.Config, logger *logrus.Logger) (*promptRuntimeDeps, error) {
 	initPromptRegistry(cfg, logger)
 
 	deps := &promptRuntimeDeps{closers: make([]func() error, 0)}
@@ -23,7 +23,7 @@ func buildPromptRuntimeDeps(cfg *config.Config, logger *logrus.Logger, featureFl
 		return deps, nil
 	}
 
-	tenantPromptStore, closer, err := initTenantPromptStore(cfg.Database, logger, featureFlags)
+	tenantPromptStore, closer, err := initTenantPromptStore(cfg.Database, logger)
 	if err != nil {
 		return nil, fmt.Errorf("create tenant prompt store: %w", err)
 	}
@@ -47,8 +47,8 @@ func initPromptRegistry(cfg *config.Config, logger *logrus.Logger) {
 	}
 }
 
-func initTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger, featureFlags BoolEvaluator) (prompt.TenantPromptStore, func() error, error) {
-	tenantPromptStore, closer, err := newDBTenantPromptStore(cfg, logger, featureFlags)
+func initTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (prompt.TenantPromptStore, func() error, error) {
+	tenantPromptStore, closer, err := newDBTenantPromptStore(cfg, logger)
 	if err != nil {
 		return nil, nil, err
 	}

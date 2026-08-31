@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -17,7 +16,7 @@ import (
 	productimagestore "task-processor/internal/productimage/store"
 )
 
-func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger, featureFlags BoolEvaluator) (productenrich.TaskRepository, func() error, error) {
+func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (productenrich.TaskRepository, func() error, error) {
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
@@ -27,19 +26,13 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger, feat
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-
-	if shouldAutoMigrateProductListingAPIRuntime(context.Background(), featureFlags) {
-		if err := db.AutoMigrate(&productenrich.Task{}); err != nil {
-			return nil, nil, fmt.Errorf("database auto-migrate failed: %w", err)
-		}
-	}
 
 	repo := store.NewTaskRepository(db)
 	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	return repo, closer, nil
 }
 
-func newDBImageTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger, featureFlags BoolEvaluator) (productimage.TaskRepository, func() error, error) {
+func newDBImageTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (productimage.TaskRepository, func() error, error) {
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
@@ -49,19 +42,13 @@ func newDBImageTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger,
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-
-	if shouldAutoMigrateProductListingAPIRuntime(context.Background(), featureFlags) {
-		if err := db.AutoMigrate(&productimage.Task{}); err != nil {
-			return nil, nil, fmt.Errorf("productimage auto-migrate failed: %w", err)
-		}
-	}
 
 	repo := productimagestore.NewTaskRepository(db)
 	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	return repo, closer, nil
 }
 
-func newDBAmazonListingTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger, featureFlags BoolEvaluator) (amazonlisting.Repository, func() error, error) {
+func newDBAmazonListingTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (amazonlisting.Repository, func() error, error) {
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
@@ -71,12 +58,6 @@ func newDBAmazonListingTaskRepository(cfg *config.DatabaseConfig, logger *logrus
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-
-	if shouldAutoMigrateProductListingAPIRuntime(context.Background(), featureFlags) {
-		if err := db.AutoMigrate(&amazonlisting.Task{}); err != nil {
-			return nil, nil, fmt.Errorf("amazonlisting auto-migrate failed: %w", err)
-		}
-	}
 
 	repo := amazonlistingstore.NewTaskRepository(db)
 	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }

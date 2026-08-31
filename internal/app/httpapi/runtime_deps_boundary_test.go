@@ -102,7 +102,6 @@ func TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated(t *testing.T) {
 		`"task-processor/internal/app/bootstrap/resources"`,
 		`"task-processor/internal/prompt"`,
 		"func newDBTenantPromptStore(",
-		"prompt.NewGormTenantPromptStore(",
 		"bootstrapresources.NewDBTenantPromptStore(",
 	} {
 		if strings.Contains(adaptersSource, marker) {
@@ -115,7 +114,6 @@ func TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated(t *testing.T) {
 		`"task-processor/internal/app/bootstrap/resources"`,
 		`"task-processor/internal/prompt"`,
 		"func newDBTenantPromptStore(",
-		"prompt.NewGormTenantPromptStore(",
 		"bootstrapresources.NewDBTenantPromptStore(",
 	} {
 		if !strings.Contains(promptAdaptersSource, marker) {

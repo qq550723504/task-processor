@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ import (
 func TestBuildAICapabilityRuntimeDepsKeepsLegacyModeDependencyFree(t *testing.T) {
 	deps, err := buildAICapabilityRuntimeDeps(&config.Config{
 		AICapability: config.AICapabilityConfig{StudioImageRoutingMode: "legacy"},
-	}, logrus.New(), nil)
+	}, logrus.New())
 	if err != nil {
 		t.Fatalf("buildAICapabilityRuntimeDeps() error = %v", err)
 	}
@@ -45,7 +46,7 @@ func TestBuildAICapabilityRuntimeDepsRequiresDatabaseOutsideLegacy(t *testing.T)
 		t.Run(mode, func(t *testing.T) {
 			_, err := buildAICapabilityRuntimeDeps(&config.Config{
 				AICapability: config.AICapabilityConfig{StudioImageRoutingMode: mode},
-			}, logrus.New(), nil)
+			}, logrus.New())
 			if err == nil {
 				t.Fatal("expected missing database error")
 			}
@@ -65,7 +66,7 @@ func TestBuildAICapabilityRuntimeDepsRequiresDatabaseWhenProductImageSceneEnable
 			StudioImageRoutingMode:   "legacy",
 			ProductImageSceneEnabled: true,
 		},
-	}, logrus.New(), nil)
+	}, logrus.New())
 	if err == nil {
 		t.Fatal("expected missing database error")
 	}
@@ -80,7 +81,7 @@ func TestBuildAICapabilityRuntimeDepsRequiresDatabaseWhenProductEnrichGovernance
 			StudioImageRoutingMode:   "legacy",
 			ProductEnrichTextEnabled: true,
 		},
-	}, logrus.New(), nil)
+	}, logrus.New())
 	if err == nil {
 		t.Fatal("expected missing database error")
 	}
@@ -394,10 +395,15 @@ func (h *captureLogHook) Fire(entry *logrus.Entry) error {
 }
 
 func TestAutoMigrateProductListingAPIRuntimeSchemaCreatesAIInvocationsTable(t *testing.T) {
-	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: filepath.Join(t.TempDir(), "product-listing.sqlite")}, &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
 
 	if err := AutoMigrateProductListingAPIRuntimeSchema(db); err != nil {
 		t.Fatalf("AutoMigrateProductListingAPIRuntimeSchema() error = %v", err)

@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/app/schema/productlisting"
 	"task-processor/internal/core/config"
 	platformdatabase "task-processor/internal/platform/database"
 	productimage "task-processor/internal/productimage"
@@ -36,7 +38,7 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
 
 	if config.ProductListingAPIRuntimeAutoMigrateEnabled() {
-		if err := db.AutoMigrate(&productimage.Task{}); err != nil {
+		if err := productlisting.Migrate(context.Background(), db); err != nil {
 			return nil, nil, fmt.Errorf("productimage auto-migrate failed: %w", err)
 		}
 	}

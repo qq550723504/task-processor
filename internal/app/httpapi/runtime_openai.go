@@ -15,7 +15,7 @@ type openAIRuntimeDeps struct {
 	closers           []func() error
 }
 
-func buildOpenAIRuntimeDeps(cfg *config.Config, logger *logrus.Logger, featureFlags BoolEvaluator) (*openAIRuntimeDeps, error) {
+func buildOpenAIRuntimeDeps(cfg *config.Config, logger *logrus.Logger) (*openAIRuntimeDeps, error) {
 	openaiMgr, err := newOpenAIManager(cfg.OpenAI)
 	if err != nil {
 		return nil, fmt.Errorf("create OpenAI manager: %w", err)
@@ -29,7 +29,7 @@ func buildOpenAIRuntimeDeps(cfg *config.Config, logger *logrus.Logger, featureFl
 		return deps, nil
 	}
 
-	credentialResolver, closer, err := newDBOpenAICredentialResolver(cfg.Database, logger, featureFlags)
+	credentialResolver, closer, err := newDBOpenAICredentialResolver(cfg.Database, logger)
 	if err != nil {
 		return nil, fmt.Errorf("create OpenAI credential resolver: %w", err)
 	}

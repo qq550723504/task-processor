@@ -61,12 +61,13 @@ func TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile(t *testing.T) {
 func TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile(t *testing.T) {
 	bootstrapSource := readProductImageHTTPAPIBoundaryFile(t, "bootstrap.go")
 	for _, marker := range []string{
+		`"task-processor/internal/app/schema/productlisting"`,
 		`"task-processor/internal/platform/database"`,
 		`"task-processor/internal/productimage/store"`,
 		"func buildTaskRepository(",
 		"func newDBTaskRepository(",
 		"platformdatabase.OpenShared(",
-		"db.AutoMigrate(&productimage.Task{})",
+		"productlisting.Migrate(",
 	} {
 		if strings.Contains(bootstrapSource, marker) {
 			t.Fatalf("bootstrap.go should delegate ProductImage task repository assembly to task_repository_builder.go; found %s", marker)
@@ -75,12 +76,13 @@ func TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile(t *testing.T) {
 
 	builderSource := readProductImageHTTPAPIBoundaryFile(t, "task_repository_builder.go")
 	for _, marker := range []string{
+		`"task-processor/internal/app/schema/productlisting"`,
 		`"task-processor/internal/platform/database"`,
 		`"task-processor/internal/productimage/store"`,
 		"func buildTaskRepository(",
 		"func newDBTaskRepository(",
 		"platformdatabase.OpenShared(",
-		"db.AutoMigrate(&productimage.Task{})",
+		"productlisting.Migrate(",
 	} {
 		if !strings.Contains(builderSource, marker) {
 			t.Fatalf("task_repository_builder.go missing %s", marker)
