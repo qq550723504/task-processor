@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -33,6 +34,7 @@ func TestGormStoreRepositoryMigratesRepeatableScopedSchema(t *testing.T) {
 
 	type column struct {
 		Name    string `gorm:"column:name"`
+		Type    string `gorm:"column:type"`
 		NotNull int    `gorm:"column:notnull"`
 		PK      int    `gorm:"column:pk"`
 	}
@@ -53,11 +55,52 @@ func TestGormStoreRepositoryMigratesRepeatableScopedSchema(t *testing.T) {
 	if got := byName["id"].PK; got != 1 {
 		t.Fatalf("id primary-key position = %d, want 1", got)
 	}
+	if got := strings.ToLower(byName["delete_operation_key"].Type); got != "varchar(36)" {
+		t.Fatalf("delete_operation_key type = %q, want variable-width varchar(36)", got)
+	}
 
 	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "lifecycle_status", "updated_at"}, false)
 	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "platform", "region"}, false)
 	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "create_idempotency_key"}, true)
 	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "identity_key"}, true)
+}
+
+// Mutation caught: returning the caller's pre-insert aggregate lets database
+// timestamp canonicalization make the first lifecycle Save look like an
+// immutable-field forgery.
+func TestGormStoreRepositoryCreateReturnsDurableTimestampForImmediateSave(t *testing.T) {
+	db := openStoreDB(t)
+	canonical := time.Date(2026, 8, 31, 8, 0, 0, 123456000, time.UTC)
+	if err := db.Exec(`CREATE TRIGGER canonicalize_store_timestamps
+		AFTER INSERT ON workbench_stores
+		BEGIN
+			UPDATE workbench_stores
+			SET created_at = '2026-08-31 08:00:00.123456+00:00',
+				updated_at = '2026-08-31 08:00:00.123456+00:00'
+			WHERE id = NEW.id;
+		END`).Error; err != nil {
+		t.Fatalf("create timestamp canonicalization trigger: %v", err)
+	}
+	repo, err := storecenter.NewGormStoreRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	incoming := canonical.Add(789 * time.Nanosecond)
+	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-00000000010f", "00000000-0000-4000-8000-00000000020f", "00000000-0000-4000-8000-00000000030f", "North", "SG", "external-canonical", incoming)
+
+	created, replayed, err := repo.CreateOrReplay(context.Background(), "org-a", store)
+	if err != nil || replayed {
+		t.Fatalf("CreateOrReplay = (%v, %t, %v), want durable new Store", created, replayed, err)
+	}
+	if got := created.CreatedAt(); !got.Equal(canonical) {
+		t.Errorf("returned CreatedAt = %s, want durable %s", got.Format(time.RFC3339Nano), canonical.Format(time.RFC3339Nano))
+	}
+	if err := created.TransitionTo(storecenter.StoreStatusActive, "subject-active", created.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", created, 1); err != nil {
+		t.Errorf("immediate provisioning-to-active Save error = %v", err)
+	}
 }
 
 // Mutation caught: treating all same-key requests as a replay would silently

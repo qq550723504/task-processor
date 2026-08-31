@@ -37,7 +37,7 @@ type workbenchStoreRecord struct {
 	UpdatedAt                time.Time      `gorm:"column:updated_at;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:3"`
 	DeletedAt                gorm.DeletedAt `gorm:"column:deleted_at;index"`
 	CreateIdempotencyKey     string         `gorm:"column:create_idempotency_key;type:char(36);not null;uniqueIndex:ux_workbench_stores_org_create_key,priority:2"`
-	DeleteOperationKey       string         `gorm:"column:delete_operation_key;type:char(36);not null"`
+	DeleteOperationKey       string         `gorm:"column:delete_operation_key;type:varchar(36);not null"`
 	IdentityKey              string         `gorm:"column:identity_key;size:64;not null;uniqueIndex:ux_workbench_stores_org_identity_key,priority:2"`
 	CreateRequestFingerprint string         `gorm:"column:create_request_fingerprint;size:64;not null"`
 }
@@ -79,7 +79,11 @@ func (r *GormStoreRepository) CreateOrReplay(ctx context.Context, organizationID
 
 	record := recordFromSnapshot(snapshot, identityKey(snapshot), fingerprint)
 	if err := r.db.WithContext(ctx).Create(&record).Error; err == nil {
-		return store, false, nil
+		created, err := r.Get(ctx, organizationID, snapshot.ID)
+		if err != nil {
+			return nil, false, fmt.Errorf("reload created workbench store: %w", err)
+		}
+		return created, false, nil
 	} else {
 		resolved, replayed, resolveErr := r.resolveCreateCollision(ctx, organizationID, snapshot.CreateIdempotencyKey, record.IdentityKey, fingerprint)
 		if resolveErr == nil {
