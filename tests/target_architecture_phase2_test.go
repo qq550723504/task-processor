@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -593,5 +594,58 @@ func TestIntegrationProviderBoundaryDecodesGoImportLiterals(t *testing.T) {
 	}
 	if len(violations) != 2 {
 		t.Fatalf("decoded forbidden import violations = %v, want 2", violations)
+	}
+}
+
+func TestLegacyMonitoringPathIsRetired(t *testing.T) {
+	legacyRoot := filepath.Join("..", "internal", "infra", "monitoring")
+	if _, err := os.Stat(legacyRoot); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("legacy monitoring directory must not exist: %v", err)
+	}
+	targetRoot := filepath.Join("..", "internal", "app", "monitoring")
+	targetIndex, err := loadGoFileIndex(targetRoot, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targetIndex.files) == 0 {
+		t.Fatal("internal/app/monitoring must contain tracked Go files")
+	}
+
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		for importLiteral := range facts.imports {
+			importPath, err := decodeGoImportPath(importLiteral)
+			if err != nil {
+				t.Fatalf("decode import in %s: %v", filepath.ToSlash(path), err)
+			}
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/monitoring") {
+				t.Errorf("%s imports retired monitoring path %s", filepath.ToSlash(path), importPath)
+			}
+		}
+	}
+}
+
+func TestPlatformObservabilityDoesNotImportCoreOrApp(t *testing.T) {
+	index, err := loadGoFileIndex(filepath.Join("..", "internal", "platform", "observability"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(index.files) == 0 {
+		t.Fatal("internal/platform/observability must contain tracked Go files")
+	}
+	for path, facts := range index.files {
+		for importLiteral := range facts.imports {
+			importPath, err := decodeGoImportPath(importLiteral)
+			if err != nil {
+				t.Fatalf("decode import in %s: %v", filepath.ToSlash(path), err)
+			}
+			if importMatchesPrefix(importPath, "task-processor/internal/core") ||
+				importMatchesPrefix(importPath, "task-processor/internal/app") {
+				t.Errorf("%s imports forbidden package %s", filepath.ToSlash(path), importPath)
+			}
+		}
 	}
 }

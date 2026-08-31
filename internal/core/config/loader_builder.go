@@ -19,6 +19,14 @@ func BuildConfig(v *viper.Viper) *Config {
 
 	cfg := &Config{
 		FeatureFlags: buildFeatureFlagsConfig(v),
+		Observability: ObservabilityConfig{
+			Tracing: TracingConfig{
+				Enabled:     v.GetBool("observability.tracing.enabled"),
+				ServiceName: v.GetString("observability.tracing.serviceName"),
+				Endpoint:    v.GetString("observability.tracing.endpoint"),
+				Insecure:    v.GetBool("observability.tracing.insecure"),
+			},
+		},
 		Processor: ProcessorConfig{
 			MaxRetries:       v.GetInt("processor.maxRetries"),
 			Timeout:          v.GetInt("processor.timeout"),

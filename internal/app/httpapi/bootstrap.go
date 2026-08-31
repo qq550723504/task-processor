@@ -10,6 +10,8 @@ import (
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
+const productListingTraceOperation = "product-listing-api"
+
 type bootstrapBuildDependencies struct {
 	buildRuntimeDeps   func(*logrus.Logger, string) (*runtimeDeps, error)
 	buildComposition   func(*logrus.Logger, *runtimeDeps) (httpFeatureComposition, error)
@@ -66,11 +68,17 @@ func buildBootstrapWithDependencies(logger *logrus.Logger, options Options, buil
 	if bindAddress := strings.TrimSpace(options.BindAddress); bindAddress != "" {
 		server.Addr = serverAddress(bindAddress, options.Port)
 	}
+	if deps.shared.traceRuntime != nil {
+		server.Handler = deps.shared.traceRuntime.WrapHTTPHandler(server.Handler, productListingTraceOperation)
+	}
 	done()
 	timer.total("buildBootstrap")
 	closers := append([]func() error(nil), deps.shared.closers...)
 	if deps.featureFlagsCloser != nil {
 		closers = append(closers, deps.featureFlagsCloser)
+	}
+	if deps.traceCloser != nil {
+		closers = append(closers, deps.traceCloser)
 	}
 	bootstrap := &appBootstrap{
 		productHandler: composition.productHandler(),

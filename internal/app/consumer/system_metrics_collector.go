@@ -3,7 +3,7 @@ package consumer
 import (
 	"context"
 
-	"task-processor/internal/infra/monitoring"
+	"task-processor/internal/app/monitoring"
 )
 
 type systemMetricsCollectorAdapter struct {

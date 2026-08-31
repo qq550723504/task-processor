@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"task-processor/internal/app/configadapter"
+	"task-processor/internal/app/monitoring"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/platform/queue/rabbitmq"
 
 	"github.com/sirupsen/logrus"

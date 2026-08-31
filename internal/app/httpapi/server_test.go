@@ -2385,21 +2385,21 @@ func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
 		t.Fatal("did not expect legacy shein-login HTML route")
 	}
 
-	router, ok := bootstrap.server.Handler.(*gin.Engine)
-	if !ok {
-		t.Fatalf("server handler type = %T, want *gin.Engine", bootstrap.server.Handler)
+	handler := bootstrap.server.Handler
+	if handler == nil {
+		t.Fatal("bootstrap server handler is nil")
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
+	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /health = %d, want 200", resp.Code)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/sds/categories", nil)
 	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
+	handler.ServeHTTP(resp, req)
 	if resp.Code == http.StatusNotFound {
 		t.Fatal("expected SDS catalog categories endpoint to be mounted")
 	}

@@ -56,8 +56,11 @@ func TestBuildRuntimeDepsConstructsFeatureFlagRuntimeAndRetainsFinalShutdown(t *
 	if deps.featureFlagsCloser == nil {
 		t.Fatal("feature runtime final closer is nil")
 	}
-	if len(deps.constructionClosers) != 2 {
-		t.Fatalf("construction closers = %d, want feature runtime followed by StoreAPI", len(deps.constructionClosers))
+	if len(deps.constructionClosers) != 3 {
+		t.Fatalf("construction closers = %d, want trace runtime, feature runtime, then StoreAPI", len(deps.constructionClosers))
+	}
+	if deps.shared.traceRuntime == nil || deps.traceCloser == nil {
+		t.Fatal("trace runtime ownership was not retained")
 	}
 	t.Cleanup(func() { cleanupOwnedRuntimeResources(false, deps.constructionClosers) })
 }

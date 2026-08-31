@@ -35,6 +35,7 @@ func TestBuildBootstrapCompositionFailureClosesEveryOwnedResourceInReverseConstr
 		"runtime-after-feature",
 		"feature-flags",
 		"runtime-before-feature",
+		"trace",
 	})
 }
 
@@ -63,6 +64,7 @@ func TestBuildBootstrapRuntimeBundleFailureClosesEveryOwnedResourceInReverseCons
 		"runtime-after-feature",
 		"feature-flags",
 		"runtime-before-feature",
+		"trace",
 	})
 }
 
@@ -88,8 +90,8 @@ func TestBuildBootstrapSuccessfulShutdownClosesOrdinaryResourcesForwardThenFeatu
 	if got := len(deps.shared.closers); got != 3 {
 		t.Fatalf("intermediate ordinary closers = %d, want 3 without feature shutdown", got)
 	}
-	if got := len(bootstrap.closers); got != 4 {
-		t.Fatalf("bootstrap closers = %d, want 3 ordinary closers and feature shutdown", got)
+	if got := len(bootstrap.closers); got != 5 {
+		t.Fatalf("bootstrap closers = %d, want 3 ordinary closers, feature shutdown, and trace shutdown", got)
 	}
 
 	closeResources(logrus.New(), bootstrap.closers)
@@ -98,10 +100,12 @@ func TestBuildBootstrapSuccessfulShutdownClosesOrdinaryResourcesForwardThenFeatu
 		"runtime-after-feature",
 		"composition-resource",
 		"feature-flags",
+		"trace",
 	})
 }
 
 func newBootstrapOwnershipTestDeps(order *[]string) *runtimeDeps {
+	trace := recordBootstrapClose(order, "trace")
 	beforeFeature := recordBootstrapClose(order, "runtime-before-feature")
 	featureFlags := recordBootstrapClose(order, "feature-flags")
 	afterFeature := recordBootstrapClose(order, "runtime-after-feature")
@@ -111,8 +115,9 @@ func newBootstrapOwnershipTestDeps(order *[]string) *runtimeDeps {
 			closers: []func() error{beforeFeature, afterFeature},
 		},
 		features:            &featureRuntimeState{},
-		constructionClosers: []func() error{beforeFeature, featureFlags, afterFeature},
+		constructionClosers: []func() error{trace, beforeFeature, featureFlags, afterFeature},
 		featureFlagsCloser:  featureFlags,
+		traceCloser:         trace,
 	}
 }
 

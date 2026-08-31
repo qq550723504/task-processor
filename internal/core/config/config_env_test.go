@@ -72,6 +72,48 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, 300, v.GetInt("openai.clients.image.timeout"))
 }
 
+func TestTracingConfigDefaultsToDisabledTaskProcessorService(t *testing.T) {
+	tracingType := reflect.TypeOf(TracingConfig{})
+	assert.Equal(t, 4, tracingType.NumField(), "tracing config must remain the four approved transport values")
+	cfg := BuildConfig(newViper())
+
+	assert.False(t, cfg.Observability.Tracing.Enabled)
+	assert.Equal(t, "task-processor", cfg.Observability.Tracing.ServiceName)
+	assert.Empty(t, cfg.Observability.Tracing.Endpoint)
+	assert.False(t, cfg.Observability.Tracing.Insecure)
+}
+
+func TestTracingConfigBindsEveryEnvironmentVariable(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OBSERVABILITY_TRACING_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_OBSERVABILITY_TRACING_SERVICE_NAME", "listing-api")
+	t.Setenv("TASK_PROCESSOR_OBSERVABILITY_TRACING_ENDPOINT", "collector.internal:4317")
+	t.Setenv("TASK_PROCESSOR_OBSERVABILITY_TRACING_INSECURE", "true")
+
+	cfg := BuildConfig(newViper())
+
+	assert.True(t, cfg.Observability.Tracing.Enabled)
+	assert.Equal(t, "listing-api", cfg.Observability.Tracing.ServiceName)
+	assert.Equal(t, "collector.internal:4317", cfg.Observability.Tracing.Endpoint)
+	assert.True(t, cfg.Observability.Tracing.Insecure)
+}
+
+func TestCommittedConfigArtifactsDeclareEveryTracingField(t *testing.T) {
+	for _, path := range []string{
+		filepath.Join("..", "..", "..", "config", "config-dev.yaml"),
+		filepath.Join("..", "..", "..", "config", "config-test.yaml"),
+		filepath.Join("..", "..", "..", "config", "config-prod.yaml"),
+	} {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			cfg, err := LoadConfigFromFileWithoutValidation(path)
+			require.NoError(t, err)
+			assert.False(t, cfg.Observability.Tracing.Enabled)
+			assert.Equal(t, "task-processor", cfg.Observability.Tracing.ServiceName)
+			assert.Empty(t, cfg.Observability.Tracing.Endpoint)
+			assert.False(t, cfg.Observability.Tracing.Insecure)
+		})
+	}
+}
+
 func TestGetStringSlice_SplitsCommaSeparatedSingleEntry(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES", "shein-store-a,shein-store-b,shein-store-c,shein-store-d")
 

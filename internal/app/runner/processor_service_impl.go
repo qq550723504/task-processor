@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"task-processor/internal/app/lifecycle"
+	"task-processor/internal/app/monitoring"
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
-	"task-processor/internal/infra/monitoring"
 	logger "task-processor/internal/platform/logging"
 	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/product"

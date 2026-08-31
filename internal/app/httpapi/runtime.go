@@ -2,17 +2,34 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/sirupsen/logrus"
 
 	platformfeatureflag "task-processor/internal/platform/featureflag"
+	platformobservability "task-processor/internal/platform/observability"
 )
 
+type runtimeDepsBuilders struct {
+	buildTraceRuntime func(context.Context, platformobservability.Config) (traceRuntime, error)
+	migrateSchema     productListingSchemaMigrator
+}
+
 func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, error) {
-	return buildRuntimeDepsWithSchemaMigrator(logger, configPath, migrateProductListingAPIRuntimeSchema)
+	return buildRuntimeDepsWithBuilders(logger, configPath, runtimeDepsBuilders{
+		buildTraceRuntime: buildPlatformTraceRuntime,
+		migrateSchema:     migrateProductListingAPIRuntimeSchema,
+	})
 }
 
 func buildRuntimeDepsWithSchemaMigrator(logger *logrus.Logger, configPath string, migrateSchema productListingSchemaMigrator) (*runtimeDeps, error) {
+	return buildRuntimeDepsWithBuilders(logger, configPath, runtimeDepsBuilders{
+		buildTraceRuntime: buildPlatformTraceRuntime,
+		migrateSchema:     migrateSchema,
+	})
+}
+
+func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, builders runtimeDepsBuilders) (*runtimeDeps, error) {
 	timer := newStartupTimer(logger)
 
 	done := timer.phase("loadConfig")
@@ -21,22 +38,38 @@ func buildRuntimeDepsWithSchemaMigrator(logger *logrus.Logger, configPath string
 	if err != nil {
 		return nil, err
 	}
+	if builders.buildTraceRuntime == nil {
+		return nil, fmt.Errorf("trace runtime builder is nil")
+	}
 
-	done = timer.phase("buildFeatureFlagRuntime")
-	featureFlags, err := platformfeatureflag.New(context.Background(), platformfeatureflag.Config{Flags: cfg.FeatureFlags.Flags})
+	runtimeContext := context.Background()
+	done = timer.phase("buildTraceRuntime")
+	tracing, err := builders.buildTraceRuntime(runtimeContext, traceRuntimeConfig(cfg))
 	done()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build trace runtime: %w", err)
 	}
-	featureFlagsCloser := func() error { return featureFlags.Shutdown(context.Background()) }
-	ownedClosers := []func() error{featureFlagsCloser}
+	if tracing == nil {
+		return nil, fmt.Errorf("build trace runtime: runtime is nil")
+	}
+	traceCloser := func() error { return tracing.Shutdown(context.Background()) }
+	ownedClosers := []func() error{traceCloser}
 	completed := false
 	defer func() {
 		cleanupOwnedRuntimeResources(completed, ownedClosers)
 	}()
 
+	done = timer.phase("buildFeatureFlagRuntime")
+	featureFlags, err := platformfeatureflag.New(runtimeContext, platformfeatureflag.Config{Flags: cfg.FeatureFlags.Flags})
+	done()
+	if err != nil {
+		return nil, err
+	}
+	featureFlagsCloser := func() error { return featureFlags.Shutdown(context.Background()) }
+	ownedClosers = append(ownedClosers, featureFlagsCloser)
+
 	done = timer.phase("migrateProductListingSchema")
-	err = migrateProductListingSchemaIfEnabled(context.Background(), featureFlags, cfg.Database, logger, migrateSchema)
+	err = migrateProductListingSchemaIfEnabled(runtimeContext, featureFlags, cfg.Database, logger, builders.migrateSchema)
 	done()
 	if err != nil {
 		return nil, err
@@ -94,6 +127,7 @@ func buildRuntimeDepsWithSchemaMigrator(logger *logrus.Logger, configPath string
 	return &runtimeDeps{
 		shared: &sharedRuntimeDeps{
 			cfg:                  cfg,
+			traceRuntime:         tracing,
 			featureFlags:         featureFlags,
 			closers:              closers,
 			openaiMgr:            openaiDeps.openaiMgr,
@@ -116,7 +150,12 @@ func buildRuntimeDepsWithSchemaMigrator(logger *logrus.Logger, configPath string
 		features:            &featureRuntimeState{},
 		constructionClosers: ownedClosers,
 		featureFlagsCloser:  featureFlagsCloser,
+		traceCloser:         traceCloser,
 	}, nil
+}
+
+func buildPlatformTraceRuntime(ctx context.Context, cfg platformobservability.Config) (traceRuntime, error) {
+	return platformobservability.NewTraceRuntime(ctx, cfg)
 }
 
 func cleanupOwnedRuntimeResources(completed bool, closers []func() error) {

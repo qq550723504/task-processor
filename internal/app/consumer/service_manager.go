@@ -9,10 +9,10 @@ import (
 
 	"task-processor/internal/app/configadapter"
 	"task-processor/internal/app/lifecycle"
+	"task-processor/internal/app/monitoring"
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/metrics"
-	"task-processor/internal/infra/monitoring"
 	api "task-processor/internal/listingadmin"
 	"task-processor/internal/platform/queue/rabbitmq"
 	worker "task-processor/internal/platform/workerpool"

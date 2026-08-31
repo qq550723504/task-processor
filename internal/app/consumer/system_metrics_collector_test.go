@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/infra/monitoring"
+	"task-processor/internal/app/monitoring"
 	"task-processor/internal/platform/queue/rabbitmq"
 
 	"github.com/sirupsen/logrus"
