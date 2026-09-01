@@ -22,6 +22,7 @@ var (
 	ErrStoreQuotaInvalidTransition = errors.New("store quota invalid transition")
 	ErrStoreQuotaExceeded          = errors.New("store quota exceeded")
 	ErrStoreQuotaNotConfigured     = errors.New("store quota ledger is not configured")
+	ErrStoreQuotaStale             = errors.New("store quota allocation changed after observation")
 )
 
 type StoreQuotaAllocationStatus string
@@ -40,11 +41,12 @@ type StoreQuotaReserveInput struct {
 }
 
 type StoreQuotaTransitionInput struct {
-	OrganizationID string
-	AllocationID   string
-	StoreID        string
-	RequestKey     string
-	ActorSubject   string
+	OrganizationID    string
+	AllocationID      string
+	StoreID           string
+	RequestKey        string
+	ActorSubject      string
+	ExpectedUpdatedAt *time.Time
 }
 
 type StoreQuotaAllocation struct {

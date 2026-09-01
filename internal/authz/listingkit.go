@@ -24,6 +24,14 @@ const (
 	PermissionWorkbenchStoreDelete    = "workbench.store.delete"
 )
 
+var workbenchStorePermissions = []string{
+	PermissionWorkbenchStoreRead,
+	PermissionWorkbenchStoreCreate,
+	PermissionWorkbenchStoreUpdate,
+	PermissionWorkbenchStoreLifecycle,
+	PermissionWorkbenchStoreDelete,
+}
+
 const listingKitModel = `
 [request_definition]
 r = sub, obj
@@ -124,6 +132,11 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		if _, err := enforcer.AddPolicy(role, PermissionImageAgentWrite); err != nil {
 			return nil, err
 		}
+		for _, permission := range workbenchStorePermissions {
+			if _, err := enforcer.AddPolicy(role, permission); err != nil {
+				return nil, err
+			}
+		}
 	}
 	for _, userID := range normalizeUnique(platformAdminUsers) {
 		subject := userSubject(userID)
@@ -141,6 +154,11 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		}
 		if _, err := enforcer.AddPolicy(subject, PermissionImageAgentWrite); err != nil {
 			return nil, err
+		}
+		for _, permission := range workbenchStorePermissions {
+			if _, err := enforcer.AddPolicy(subject, permission); err != nil {
+				return nil, err
+			}
 		}
 	}
 

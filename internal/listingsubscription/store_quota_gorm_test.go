@@ -301,6 +301,34 @@ func TestStoreQuotaTransitionPolicyPreservesAllocationHistory(t *testing.T) {
 	}
 }
 
+func TestStoreQuotaReleaseRejectsReservationChangedAfterReconciliationSnapshot(t *testing.T) {
+	db := openStoreQuotaTestDB(t)
+	repo := NewGormRepository(db)
+	seedStoreQuotaSubscription(t, repo, "org-reconcile-race", PlanBasic, 1)
+	now := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
+	clock := now
+	ledger := newGormStoreQuotaLedger(repo, func() time.Time { return clock })
+	input := StoreQuotaReserveInput{OrganizationID: "org-reconcile-race", RequestKey: uuid.NewString(), ActorSubject: "creator"}
+	reserved, err := ledger.Reserve(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observedUpdatedAt := reserved.Allocation.UpdatedAt
+	clock = now.Add(time.Minute)
+	transition := StoreQuotaTransitionInput{OrganizationID: input.OrganizationID, AllocationID: reserved.AllocationID, StoreID: reserved.StoreID, RequestKey: input.RequestKey, ActorSubject: "creator"}
+	if _, err := ledger.RenewReservation(context.Background(), transition); err != nil {
+		t.Fatal(err)
+	}
+	transition.ExpectedUpdatedAt = &observedUpdatedAt
+	if _, err := ledger.ReleaseReservation(context.Background(), transition); !errors.Is(err, ErrStoreQuotaStale) {
+		t.Fatalf("stale release error = %v, want stale reservation", err)
+	}
+	summary, err := ledger.Summary(context.Background(), input.OrganizationID)
+	if err != nil || summary.Reserved != 1 {
+		t.Fatalf("stale release summary = %#v, %v; want one reservation", summary, err)
+	}
+}
+
 func TestStoreQuotaSummaryUsesPlanFallbackAndKeepsReplayAfterExpiry(t *testing.T) {
 	db := openStoreQuotaTestDB(t)
 	repo := NewGormRepository(db)

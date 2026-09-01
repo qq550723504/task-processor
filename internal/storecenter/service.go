@@ -1071,8 +1071,12 @@ func (s *Service) reconcileOrphanedReservations(ctx context.Context, organizatio
 			// A transient read cannot prove that the reservation is orphaned.
 			continue
 		}
-		transition := listingsubscription.StoreQuotaTransitionInput{OrganizationID: organizationID, AllocationID: allocation.AllocationID, StoreID: allocation.StoreID, RequestKey: allocation.RequestKey, ActorSubject: allocation.CreatedBy}
+		expectedUpdatedAt := allocation.UpdatedAt
+		transition := listingsubscription.StoreQuotaTransitionInput{OrganizationID: organizationID, AllocationID: allocation.AllocationID, StoreID: allocation.StoreID, RequestKey: allocation.RequestKey, ActorSubject: allocation.CreatedBy, ExpectedUpdatedAt: &expectedUpdatedAt}
 		if err := s.releaseReservation(ctx, transition); err != nil {
+			if errors.Is(err, listingsubscription.ErrStoreQuotaStale) {
+				continue
+			}
 			return recovered, err
 		}
 		recovered++

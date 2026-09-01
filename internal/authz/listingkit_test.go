@@ -85,7 +85,7 @@ func TestListingKitAuthorizerEnforcesScopedStorePermissionMatrix(t *testing.T) {
 		{role: "listingkit_admin", want: []bool{true, true, true, true, true}},
 		{role: "platform_admin", want: []bool{true, true, true, true, true}},
 		{role: "admin", want: []bool{false, false, false, false, false}},
-		{role: "configured-role", want: []bool{false, false, false, false, false}},
+		{role: "configured-role", want: []bool{true, true, true, true, true}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.role, func(t *testing.T) {
@@ -95,7 +95,7 @@ func TestListingKitAuthorizerEnforcesScopedStorePermissionMatrix(t *testing.T) {
 		})
 	}
 	for _, permission := range permissions {
-		require.False(t, authorizer.Authorize("configured-user", nil, permission), permission)
+		require.True(t, authorizer.Authorize("configured-user", nil, permission), permission)
 	}
 }
 

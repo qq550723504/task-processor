@@ -353,6 +353,34 @@ func TestServiceCreateReconcilesStaleOrphanedReservationWhenQuotaIsFull(t *testi
 	}
 }
 
+func TestServiceCreateDoesNotReleaseReservationRenewedAfterReconciliationSnapshot(t *testing.T) {
+	request := validCreateRequest()
+	observed := time.Now().UTC().Add(-time.Hour)
+	renewed := observed.Add(time.Minute)
+	stale := listingsubscription.StoreQuotaAllocation{OrganizationID: request.OrganizationID, AllocationID: uuid.NewString(), StoreID: uuid.NewString(), RequestKey: uuid.NewString(), Status: listingsubscription.StoreQuotaReserved, CreatedBy: "abandoned-actor", CreatedAt: observed, UpdatedAt: observed}
+	ledger := &quotaLedgerFake{
+		allocation:        currentQuotaAllocation(stale, renewed),
+		reserveErr:        &listingsubscription.StoreQuotaExceededError{OrganizationID: request.OrganizationID, Committed: 1, Reserved: 1, Limit: 2},
+		reserveErrOnce:    true,
+		staleReservations: []listingsubscription.StoreQuotaAllocation{stale},
+	}
+	service, err := storecenter.NewService(newStoreRepositoryFake(), ledger, newAuditRepositoryFake(), &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrLimitReached) {
+		t.Fatalf("Create() error = %v, want limit reached after stale release rejection", err)
+	}
+	if ledger.releaseCalls != 1 || ledger.allocation.Status != listingsubscription.StoreQuotaReserved {
+		t.Fatalf("stale reconciliation release = %d/%s, want one conditional attempt and reserved state", ledger.releaseCalls, ledger.allocation.Status)
+	}
+}
+
+func currentQuotaAllocation(allocation listingsubscription.StoreQuotaAllocation, updatedAt time.Time) listingsubscription.StoreQuotaAllocation {
+	allocation.UpdatedAt = updatedAt
+	return allocation
+}
+
 func TestServiceCreateAmbiguousActivationSaveIsResolvedByScopedRead(t *testing.T) {
 	request := validCreateRequest()
 	ledger := quotaForRequest(request)
@@ -2261,10 +2289,13 @@ func (f *quotaLedgerFake) Commit(_ context.Context, _ listingsubscription.StoreQ
 	f.allocation.Status = listingsubscription.StoreQuotaAllocated
 	return listingsubscription.StoreQuotaTransitionResult{Allocation: f.allocation}, nil
 }
-func (f *quotaLedgerFake) ReleaseReservation(_ context.Context, _ listingsubscription.StoreQuotaTransitionInput) (listingsubscription.StoreQuotaTransitionResult, error) {
+func (f *quotaLedgerFake) ReleaseReservation(_ context.Context, input listingsubscription.StoreQuotaTransitionInput) (listingsubscription.StoreQuotaTransitionResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.releaseCalls++
+	if input.ExpectedUpdatedAt != nil && !f.allocation.UpdatedAt.Equal(input.ExpectedUpdatedAt.UTC()) {
+		return listingsubscription.StoreQuotaTransitionResult{}, listingsubscription.ErrStoreQuotaStale
+	}
 	if f.releaseErr != nil {
 		return listingsubscription.StoreQuotaTransitionResult{}, f.releaseErr
 	}

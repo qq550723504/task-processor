@@ -228,6 +228,9 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 		if row.StoreID != input.StoreID || row.RequestKey != input.RequestKey {
 			return ErrStoreQuotaIdentityMismatch
 		}
+		if input.ExpectedUpdatedAt != nil && !row.UpdatedAt.Equal(input.ExpectedUpdatedAt.UTC()) {
+			return ErrStoreQuotaStale
+		}
 		allocation := storeQuotaAllocationFromRow(row)
 		if allocation.Status == StoreQuotaReleased {
 			if (operation == storeQuotaReleaseReservation && row.AllocatedAt == nil && row.ReleasedAt != nil) || (operation == storeQuotaDeallocate && row.AllocatedAt != nil && row.ReleasedAt != nil) {
