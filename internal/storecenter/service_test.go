@@ -1634,7 +1634,7 @@ func TestServiceUpdateRejectsChangedPayloadForExistingIntent(t *testing.T) {
 	}
 }
 
-func TestServiceRepairsUpdateAuditAfterLaterMutation(t *testing.T) {
+func TestServiceDoesNotRepairUpdateAuditAfterLaterMutationWithoutDurableResult(t *testing.T) {
 	repository := newStoreRepositoryFake()
 	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
 	repository.stores["org-a/"+store.ID()] = cloneStore(store)
@@ -1652,14 +1652,12 @@ func TestServiceRepairsUpdateAuditAfterLaterMutation(t *testing.T) {
 	if err != nil || disable.Store.Store.Version() != store.Version()+2 {
 		t.Fatalf("later Disable() = %#v, %v", disable, err)
 	}
-	result, err := service.Update(context.Background(), update)
-	if err != nil || !result.Replayed || result.Store.Store.Version() != store.Version()+2 {
-		t.Fatalf("repaired Update() = %#v, %v", result, err)
+	if _, err := service.Update(context.Background(), update); !errors.Is(err, storecenter.ErrVersionConflict) {
+		t.Fatalf("replayed Update() = %v, want version conflict", err)
 	}
-	operationKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte("org-a\n"+store.ID()+"\nupdate\n"+fmt.Sprint(store.Version()))).String()
-	completed := audit.eventFor("org-a", operationKey, storecenter.AuditActionStoreUpdated)
-	if completed.Action != storecenter.AuditActionStoreUpdated || completed.StoreVersion != store.Version()+1 || completed.PayloadFingerprint == "" {
-		t.Fatalf("repaired update audit = %+v", completed)
+	current, err := repository.Get(context.Background(), "org-a", store.ID())
+	if err != nil || current.Name() != "After" || current.Version() != store.Version()+2 {
+		t.Fatalf("store after rejected repair = %#v, %v", current, err)
 	}
 }
 
@@ -1695,7 +1693,37 @@ func TestServiceDoesNotRepairUnpersistedUpdateAfterLaterLifecycleMutations(t *te
 	}
 }
 
-func TestServiceRepairsLifecycleAuditAfterLaterMutation(t *testing.T) {
+func TestServiceDoesNotRepairUnpersistedLifecycleAfterLaterProfileMutations(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	repository.saveErr = errors.New("save unavailable")
+	audit := newAuditRepositoryFake()
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disable := storecenter.StoreLifecycleRequest{OrganizationID: "org-a", ActorSubject: "operator", StoreID: store.ID(), ExpectedVersion: store.Version()}
+	if _, err := service.Disable(context.Background(), disable); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("failed Disable() = %v, want dependency error", err)
+	}
+	repository.saveErr = nil
+	for version, name := range []string{"First", "Second"} {
+		request := storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "editor", StoreID: store.ID(), ExpectedVersion: store.Version() + int64(version), Name: name, Region: store.Region()}
+		if _, err := service.Update(context.Background(), request); err != nil {
+			t.Fatalf("later Update(%q) = %v", name, err)
+		}
+	}
+	if _, err := service.Disable(context.Background(), disable); !errors.Is(err, storecenter.ErrVersionConflict) {
+		t.Fatalf("replayed Disable() = %v, want version conflict", err)
+	}
+	current, err := repository.Get(context.Background(), "org-a", store.ID())
+	if err != nil || current.LifecycleStatus() != storecenter.StoreStatusActive || current.Version() != store.Version()+2 {
+		t.Fatalf("store after rejected lifecycle repair = %#v, %v", current, err)
+	}
+}
+
+func TestServiceDoesNotRepairLifecycleAuditAfterLaterMutationWithoutDurableResult(t *testing.T) {
 	repository := newStoreRepositoryFake()
 	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
 	repository.stores["org-a/"+store.ID()] = cloneStore(store)
@@ -1713,14 +1741,12 @@ func TestServiceRepairsLifecycleAuditAfterLaterMutation(t *testing.T) {
 	if err != nil || enable.Store.Store.Version() != store.Version()+2 {
 		t.Fatalf("later Enable() = %#v, %v", enable, err)
 	}
-	result, err := service.Disable(context.Background(), disableRequest)
-	if err != nil || !result.Replayed || result.Store.Store.Version() != store.Version()+2 {
-		t.Fatalf("repaired Disable() = %#v, %v", result, err)
+	if _, err := service.Disable(context.Background(), disableRequest); !errors.Is(err, storecenter.ErrVersionConflict) {
+		t.Fatalf("replayed Disable() = %v, want version conflict", err)
 	}
-	operationKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte("org-a\n"+store.ID()+"\ndisable\n"+fmt.Sprint(store.Version()))).String()
-	completed := audit.eventFor("org-a", operationKey, storecenter.AuditActionStoreDisabled)
-	if completed.Action != storecenter.AuditActionStoreDisabled || completed.StoreVersion != store.Version()+1 || completed.PayloadFingerprint == "" {
-		t.Fatalf("repaired lifecycle audit = %+v", completed)
+	current, err := repository.Get(context.Background(), "org-a", store.ID())
+	if err != nil || current.LifecycleStatus() != storecenter.StoreStatusActive || current.Version() != store.Version()+2 {
+		t.Fatalf("store after rejected lifecycle repair = %#v, %v", current, err)
 	}
 }
 

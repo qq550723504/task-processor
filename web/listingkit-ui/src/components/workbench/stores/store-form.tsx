@@ -80,8 +80,8 @@ export function StoreForm(props: StoreFormProps) {
     ) {
       return;
     }
-    editBaselineRef.current = props.store;
     if (!form.formState.isDirty) {
+      editBaselineRef.current = props.store;
       form.reset({ name: props.store.name, region: props.store.region });
     }
   }, [form, form.formState.isDirty, props]);

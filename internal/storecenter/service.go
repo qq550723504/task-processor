@@ -556,29 +556,19 @@ func (s *Service) repairMutationAfterLaterVersion(ctx context.Context, request m
 	if validateMutationIntentForRepair(intent, request, store, operationKey) != nil {
 		return StoreMutationResult{}, dependencyError(ErrAuditIdentityMismatch)
 	}
-	// Lifecycle mutations do not change profile fields, so the current Store
-	// can prove a prior profile update reached version expectedVersion+1 only
-	// when the requested profile still matches. Without this check, an intent
-	// left behind by a Save failure could be falsely repaired after unrelated
-	// lifecycle mutations advanced the version.
-	if request.actionName == "update" && !request.matches(store) {
-		return StoreMutationResult{}, ErrVersionConflict
-	}
 	completed, err := s.audit.Get(ctx, request.organizationID, operationKey, request.auditAction)
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return StoreMutationResult{}, dependencyError(err)
 	}
-	if completed != nil {
-		if completed.StoreID != request.storeID || completed.AllocationID != store.QuotaAllocationID() || completed.Outcome != AuditOutcomeSucceeded || completed.StoreVersion != request.expectedVersion+1 || completed.PayloadFingerprint != request.payloadFingerprint {
-			return StoreMutationResult{}, dependencyError(ErrAuditIdentityMismatch)
-		}
-	} else {
-		event := newAuditEvent(request.organizationID, request.storeID, store.QuotaAllocationID(), operationKey, request.auditAction, AuditOutcomeSucceeded, intent.ActorSubject, intent.SafeFieldNames, intent.PreviousState, intent.NewState, AuditFailureNone, s.utcNow())
-		event.StoreVersion = request.expectedVersion + 1
-		event.PayloadFingerprint = request.payloadFingerprint
-		if _, _, err := s.audit.Record(ctx, event); err != nil {
-			return StoreMutationResult{}, dependencyError(err)
-		}
+	// Once later mutations have advanced the version, the current Store is not
+	// historical evidence that this mutation reached expectedVersion+1. Only a
+	// durable success result can authorize repairing the missing replay audit;
+	// otherwise fail closed and let the caller reconcile the version conflict.
+	if completed == nil {
+		return StoreMutationResult{}, ErrVersionConflict
+	}
+	if completed.StoreID != request.storeID || completed.AllocationID != store.QuotaAllocationID() || completed.Outcome != AuditOutcomeSucceeded || completed.StoreVersion != request.expectedVersion+1 || completed.PayloadFingerprint != request.payloadFingerprint {
+		return StoreMutationResult{}, dependencyError(ErrAuditIdentityMismatch)
 	}
 	projection, err := s.projectOne(ctx, store)
 	if err != nil {

@@ -100,14 +100,14 @@ describe("StoreForm", () => {
     expect(onConflict).toHaveBeenLastCalledWith({ name: "我的草稿", region: "CN" }, latest);
   });
 
-  it("keeps a dirty edit draft while advancing its baseline across background query projections", async () => {
+  it("keeps a dirty edit draft bound to its original baseline across background query projections", async () => {
     const user = userEvent.setup();
     const view = render(<StoreForm mode="edit" store={STORE} />);
     await user.clear(screen.getByLabelText("店铺名称")); await user.type(screen.getByLabelText("店铺名称"), "草稿");
     view.rerender(<StoreForm mode="edit" store={{ ...STORE, name: "后台刷新", version: 4 }} />);
     expect(screen.getByLabelText("店铺名称")).toHaveValue("草稿");
     await user.click(screen.getByRole("button", { name: "保存更改" }));
-    expect(update.mutate).toHaveBeenCalledWith({ id: STORE.id, version: STORE.version + 1, input: { name: "草稿", region: "CN" } }, expect.any(Object));
+    expect(update.mutate).toHaveBeenCalledWith({ id: STORE.id, version: STORE.version, input: { name: "草稿", region: "CN" } }, expect.any(Object));
   });
 
   it("advances a clean edit baseline for a newer same-lifecycle projection", async () => {
