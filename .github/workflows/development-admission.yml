@@ -6,20 +6,22 @@ on:
       - opened
       - synchronize
       - reopened
+      - edited
       - labeled
       - unlabeled
 
 permissions:
   contents: read
   pull-requests: read
+  statuses: write
 
 concurrency:
   group: development-admission-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  development-admission:
-    name: Development Admission
+  evaluate-admission:
+    name: Development Admission Evaluator
     runs-on: ubuntu-latest
     steps:
       - name: Checkout trusted policy revision
@@ -33,27 +35,65 @@ jobs:
         with:
           script: |
             const guard = require("./.github/scripts/pr-scope-guard.cjs");
-            const request = {
+            const pullRequestRequest = {
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.payload.pull_request.number,
             };
-            const initialPullRequest = (await github.rest.pulls.get(request)).data;
-            const files = await github.paginate(github.rest.pulls.listFiles, {
-              ...request,
-              per_page: 100,
-            });
-            const latestPullRequest = (await github.rest.pulls.get(request)).data;
-            guard.assertStablePullRequestSnapshot(initialPullRequest, latestPullRequest);
-            guard.assertCompleteFileList(files, latestPullRequest.changed_files);
-            const labels = latestPullRequest.labels.map(({ name }) => name);
-            const result = guard.evaluatePullRequest(files, labels);
-            const report = guard.formatEvaluation(result);
-            core.info(report);
-            await core.summary
-              .addHeading("Development admission")
-              .addCodeBlock(report)
-              .write();
-            if (!result.allowed) {
-              core.setFailed(`${report}\nSplit the change or obtain the architecture-approved label with documented design evidence.`);
+            const repositoryRequest = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            };
+            const headSha = context.payload.pull_request.head.sha;
+            const statusContext = "Development Admission";
+            const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const publishStatus = async ({ state, description }) => {
+              await github.rest.repos.createCommitStatus({
+                ...repositoryRequest,
+                sha: headSha,
+                state,
+                context: statusContext,
+                target_url: targetUrl,
+                description,
+              });
+            };
+
+            try {
+              await publishStatus({
+                state: "pending",
+                description: "Evaluating admission policy",
+              });
+              const initialPullRequest = (await github.rest.pulls.get(pullRequestRequest)).data;
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                ...pullRequestRequest,
+                per_page: 100,
+              });
+              const latestPullRequest = (await github.rest.pulls.get(pullRequestRequest)).data;
+              guard.assertStablePullRequestSnapshot(initialPullRequest, latestPullRequest);
+              guard.assertCompleteFileList(files, latestPullRequest.changed_files);
+              const labels = latestPullRequest.labels.map(({ name }) => name);
+              const result = guard.evaluatePullRequest(files, labels);
+              const report = guard.formatEvaluation(result);
+              core.info(report);
+              await core.summary
+                .addHeading("Development admission")
+                .addCodeBlock(report)
+                .write();
+              await publishStatus(guard.statusForEvaluation(result));
+              if (!result.allowed) {
+                core.setFailed(`${report}\nSplit the change or obtain the architecture-approved label with documented design evidence.`);
+              }
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              core.error(message);
+              try {
+                await publishStatus({
+                  state: "error",
+                  description: "Admission evaluation failed; retry required",
+                });
+              } catch (statusError) {
+                const statusMessage = statusError instanceof Error ? statusError.message : String(statusError);
+                core.error(`Could not publish the admission error status: ${statusMessage}`);
+              }
+              core.setFailed("Development Admission could not be completed; retry the check.");
             }

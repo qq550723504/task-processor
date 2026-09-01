@@ -17,7 +17,7 @@
 - The authoring task cannot approve its own architecture-sensitive design.
 - Reuse a shared transaction or existing repository/open-source outbox, Saga, or Temporal facility before inventing compensation infrastructure.
 - `architecture-approved` is the only size override label and cannot replace design evidence.
-- CI permissions remain read-only and CI never creates labels or edits pull requests.
+- Ordinary CI permissions remain read-only; the trusted admission workflow additionally has only `statuses: write` to publish its head-SHA commit status, and neither workflow creates labels or edits pull requests.
 - The existing `Guard Baseline` remains the authoritative import-boundary guard inventory.
 
 ---
@@ -30,7 +30,7 @@
 
 **Interfaces:**
 - Consumes: GitHub file objects `{ filename, status, additions, deletions }` and label names `string[]`.
-- Produces: `LIMITS`, `classifyFile(filename)`, `evaluatePullRequest(files, labels)`, and `formatEvaluation(result)`.
+- Produces: `LIMITS`, `classifyFile(filename)`, `evaluatePullRequest(files, labels)`, `formatEvaluation(result)`, and `statusForEvaluation(result)`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -165,13 +165,13 @@ must be separate and trusted.
 
 - [x] **Step 2: Add workflow enforcement**
 
-Keep the ordinary CI workflow read-only for repository contents and add the new trusted workflow path to both push and pull-request filters. Add the trusted workflow with `contents: read` and `pull-requests: read`, no path filter, and `pull_request_target` activity types `opened`, `synchronize`, `reopened`, `labeled`, and `unlabeled`.
+Keep the ordinary CI workflow read-only for repository contents and add the new trusted workflow path to both push and pull-request filters. Add the trusted workflow with `contents: read`, `pull-requests: read`, and `statuses: write`, no path filter, and `pull_request_target` activity types `opened`, `synchronize`, `reopened`, `edited`, `labeled`, and `unlabeled`.
 
 Keep only the proposed-policy test job in `ci.yml` and add this structure to `.github/workflows/development-admission.yml`:
 
 ~~~yaml
-development-admission:
-  name: Development Admission
+evaluate-admission:
+  name: Development Admission Evaluator
   runs-on: ubuntu-latest
   steps:
     - name: Checkout trusted policy revision
@@ -179,11 +179,11 @@ development-admission:
       with:
         ref: ${{ github.event.repository.default_branch }}
         persist-credentials: false
-    - name: Enforce pull request scope
+    - name: Enforce pull request scope and publish head status
       uses: actions/github-script@v9
 ~~~
 
-The action script imports `./.github/scripts/pr-scope-guard.cjs`, reads the PR metadata before and after `github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number, per_page: 100 })`, fails on a moving head or mismatched `changed_files`, evaluates the latest labels, writes `formatEvaluation` to logs and the step summary, and calls `core.setFailed` when `allowed` is false. The failure message instructs the author to split the change or obtain `architecture-approved` with design evidence. The ordinary CI workflow runs only `node --test .github/scripts/pr-scope-guard.test.cjs` for proposed policy changes and does not decide admission.
+The action script imports `./.github/scripts/pr-scope-guard.cjs`, publishes `pending` to the PR head SHA, reads the PR metadata before and after `github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number, per_page: 100 })`, fails on a moving head/base/update snapshot or mismatched `changed_files`, evaluates the latest labels, writes `formatEvaluation` to logs and the step summary, publishes `success`/`failure`/`error` with the fixed `Development Admission` context to the PR head SHA, and calls `core.setFailed` when the decision is not allowed or evaluation cannot complete. The failure message instructs the author to split the change or obtain `architecture-approved` with design evidence. The ordinary CI workflow runs only `node --test .github/scripts/pr-scope-guard.test.cjs` for proposed policy changes and does not decide admission.
 
 The ordinary CI notification reports `DEVELOPMENT_ADMISSION_TEST_RESULT`; the trusted admission check is a separate required status check and is not coupled to the WeCom aggregation job.
 
@@ -198,7 +198,7 @@ Expected: all tests PASS.
 
 - [x] **Step 4: Manually inspect workflow authority**
 
-Confirm the trusted workflow has no path filter, uses only the default-branch policy revision, never checks out or executes PR code, has only `contents: read` and `pull-requests: read`, re-runs on label changes, uses per-PR concurrency, fails closed on incomplete/moving snapshots, and never creates/applies labels or edits PRs. Confirm ordinary CI runs policy tests on push without a skipped job and the notification names them as tests.
+Confirm the trusted workflow has no path filter, uses only the default-branch policy revision, never checks out or executes PR code, has only `contents: read`, `pull-requests: read`, and `statuses: write`, publishes the fixed context to `pull_request.head.sha`, re-runs on label/edited changes, uses per-PR concurrency, fails closed on incomplete/moving snapshots, and never creates/applies labels or edits PRs. Confirm ordinary CI runs policy tests on push without a skipped job and the notification names them as tests.
 
 - [ ] **Step 5: Commit Task 3**
 

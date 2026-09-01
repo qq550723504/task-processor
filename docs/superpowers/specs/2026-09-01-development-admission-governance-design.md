@@ -193,18 +193,21 @@ override status in its log.
 
 The authoritative guard runs in the dedicated
 `.github/workflows/development-admission.yml` workflow on an unfiltered
-`pull_request_target` trigger for opened, synchronized, reopened, labeled, and
-unlabeled events. It checks out only the trusted default-branch policy revision;
+`pull_request_target` trigger for opened, synchronize, reopened, edited,
+labeled, and unlabeled events. It checks out only the trusted default-branch policy revision;
 it never checks out or executes pull-request code. It reads the PR metadata before
-and after pagination, fails closed if the head SHA or `changed_files` count moves,
-and fails closed if the paginated file list does not equal `changed_files`.
-Permissions are limited to read-only repository and pull-request access. The
-existing `ci.yml` workflow runs the proposed classifier's unit tests on
-`pull_request`/push events, but is not the authoritative admission decision.
-The guard never creates labels or edits the pull request. The first PR adding the
-trusted workflow is a bootstrap exception that requires maintainer review; after
-merge, branch protection must require the `Development Admission` check for the
-guard to block merges.
+and after pagination, fails closed if the head SHA, base SHA/ref, update time, or
+`changed_files` count moves, and fails closed if the paginated file list does not
+equal `changed_files`. It publishes a commit status with the fixed context
+`Development Admission` to the PR head SHA: `pending` before evaluation and
+`success`, `failure`, or `error` after evaluation. The trusted workflow has
+`contents: read`, `pull-requests: read`, and `statuses: write`; it never creates
+labels or edits the pull request. The existing `ci.yml` workflow runs the
+proposed classifier's unit tests on `pull_request`/push events, but is not the
+authoritative admission decision. The first PR adding the trusted workflow is a
+bootstrap exception that requires maintainer review; after merge, branch
+protection must require the `Development Admission` commit-status context for
+the guard to block merges.
 
 ## Repository surfaces
 
@@ -247,8 +250,11 @@ Add the authoritative `development-admission` job to the dedicated
 `.github/workflows/development-admission.yml` workflow. Keep it unfiltered so a
 PR changing any repository path is evaluated. Use `pull_request_target` so the
 workflow and checked-out policy come from the trusted default branch, and include
-label activity types so adding or removing `architecture-approved` immediately
-re-evaluates the same PR. Use `concurrency` per PR to cancel stale evaluations.
+label and `edited` activity types so adding or removing `architecture-approved`
+or retargeting immediately re-evaluates the same PR. Use `concurrency` per PR to
+cancel stale evaluations. Publish the decision as the fixed `Development
+Admission` commit-status context on `pull_request.head.sha`, because the
+workflow job's automatic check is attached to the default-branch SHA.
 
 Keep only the classifier unit-test job in `.github/workflows/ci.yml`; its
 pull-request path filters are for ordinary CI and must not be used as the
@@ -270,8 +276,10 @@ Implementation verification must include:
 - the open-source `actionlint` validator for workflow structure and expression
   correctness instead of a repository-specific YAML keyword scanner;
 - manual inspection that the trusted workflow has no path filter, uses only the
-  default-branch policy revision, keeps read-only permissions, does not execute
-  pull-request code, and does not mutate labels or pull requests;
+  default-branch policy revision, uses only `contents: read`, `pull-requests:
+  read`, and `statuses: write`, does not execute pull-request code, publishes
+  status only to `pull_request.head.sha`, and does not mutate labels or pull
+  requests;
 - `git diff --check` and the focused Go or JavaScript tests owning the new
   guard behavior.
 
@@ -282,8 +290,8 @@ prevents legitimate work from being blocked without recourse. The PR that first
 adds the trusted workflow cannot trigger that new default-branch workflow until
 it is merged, so it is a documented bootstrap exception requiring maintainer
 review. Maintainers must create the `architecture-approved` repository label and
-require the `Development Admission` check in branch protection before relying on
-the gate. If the label does not exist, ordinary pull requests continue to work;
+require the `Development Admission` commit-status context in branch protection
+before relying on the gate. If the label does not exist, ordinary pull requests continue to work;
 only oversized pull requests lack an override until the label is created.
 
 Threshold changes require an architecture-checklist update and tests in the

@@ -106,20 +106,49 @@ function assertCompleteFileList(files, changedFiles) {
 function assertStablePullRequestSnapshot(before, after) {
   const beforeSha = before?.head?.sha;
   const afterSha = after?.head?.sha;
+  const beforeBaseSha = before?.base?.sha;
+  const afterBaseSha = after?.base?.sha;
+  const beforeBaseRef = before?.base?.ref;
+  const afterBaseRef = after?.base?.ref;
   const beforeFiles = before?.changed_files;
   const afterFiles = after?.changed_files;
+  const beforeUpdatedAt = before?.updated_at;
+  const afterUpdatedAt = after?.updated_at;
   if (
     typeof beforeSha !== "string" ||
     typeof afterSha !== "string" ||
+    typeof beforeBaseSha !== "string" ||
+    typeof afterBaseSha !== "string" ||
+    typeof beforeBaseRef !== "string" ||
+    typeof afterBaseRef !== "string" ||
     !Number.isInteger(beforeFiles) ||
-    !Number.isInteger(afterFiles)
+    !Number.isInteger(afterFiles) ||
+    typeof beforeUpdatedAt !== "string" ||
+    typeof afterUpdatedAt !== "string"
   ) {
-    throw new TypeError("pull request snapshot is missing head.sha or changed_files");
+    throw new TypeError(
+      "pull request snapshot is missing head.sha, base.sha, base.ref, changed_files, or updated_at",
+    );
   }
-  if (beforeSha !== afterSha || beforeFiles !== afterFiles) {
+  if (
+    beforeSha !== afterSha ||
+    beforeBaseSha !== afterBaseSha ||
+    beforeBaseRef !== afterBaseRef ||
+    beforeFiles !== afterFiles ||
+    beforeUpdatedAt !== afterUpdatedAt
+  ) {
     throw new Error("pull request changed during evaluation; retry the check");
   }
   return after;
+}
+
+function statusForEvaluation(result) {
+  if (!result || typeof result.allowed !== "boolean") {
+    throw new TypeError("result.allowed must be a boolean");
+  }
+  return result.allowed
+    ? { state: "success", description: "Within admission limits" }
+    : { state: "failure", description: "Exceeds admission limits" };
 }
 
 function evaluatePullRequest(files, labels) {
@@ -204,4 +233,5 @@ module.exports = {
   classifyFile,
   evaluatePullRequest,
   formatEvaluation,
+  statusForEvaluation,
 };

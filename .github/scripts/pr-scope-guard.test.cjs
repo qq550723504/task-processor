@@ -9,6 +9,7 @@ const {
   classifyFile,
   evaluatePullRequest,
   formatEvaluation,
+  statusForEvaluation,
 } = require("./pr-scope-guard.cjs");
 
 function source(filename, additions = 1, deletions = 0, status = "modified") {
@@ -212,14 +213,67 @@ test("fails closed when the GitHub file list is incomplete", () => {
 });
 
 test("rejects a pull request snapshot that changes during evaluation", () => {
-  const snapshot = { head: { sha: "abc" }, changed_files: 1 };
+  const snapshot = {
+    head: { sha: "abc" },
+    base: { sha: "base-abc", ref: "main" },
+    changed_files: 1,
+    updated_at: "2026-09-01T12:00:00Z",
+  };
   assert.doesNotThrow(() => assertStablePullRequestSnapshot(snapshot, snapshot));
   assert.throws(
-    () => assertStablePullRequestSnapshot(snapshot, { head: { sha: "def" }, changed_files: 1 }),
+    () => assertStablePullRequestSnapshot(snapshot, {
+      head: { sha: "def" },
+      base: { sha: "base-abc", ref: "main" },
+      changed_files: 1,
+      updated_at: snapshot.updated_at,
+    }),
     /changed during evaluation/,
   );
   assert.throws(
-    () => assertStablePullRequestSnapshot(snapshot, { head: { sha: "abc" }, changed_files: 2 }),
+    () => assertStablePullRequestSnapshot(snapshot, {
+      head: { sha: "abc" },
+      base: { sha: "base-def", ref: "main" },
+      changed_files: 1,
+      updated_at: snapshot.updated_at,
+    }),
     /changed during evaluation/,
   );
+  assert.throws(
+    () => assertStablePullRequestSnapshot(snapshot, {
+      head: { sha: "abc" },
+      base: { sha: "base-abc", ref: "release" },
+      changed_files: 1,
+      updated_at: snapshot.updated_at,
+    }),
+    /changed during evaluation/,
+  );
+  assert.throws(
+    () => assertStablePullRequestSnapshot(snapshot, {
+      head: { sha: "abc" },
+      base: { sha: "base-abc", ref: "main" },
+      changed_files: 2,
+      updated_at: snapshot.updated_at,
+    }),
+    /changed during evaluation/,
+  );
+  assert.throws(
+    () => assertStablePullRequestSnapshot(snapshot, {
+      head: { sha: "abc" },
+      base: { sha: "base-abc", ref: "main" },
+      changed_files: 1,
+      updated_at: "2026-09-01T12:01:00Z",
+    }),
+    /changed during evaluation/,
+  );
+});
+
+test("maps an admission decision to a commit status", () => {
+  assert.deepEqual(statusForEvaluation({ allowed: true }), {
+    state: "success",
+    description: "Within admission limits",
+  });
+  assert.deepEqual(statusForEvaluation({ allowed: false }), {
+    state: "failure",
+    description: "Exceeds admission limits",
+  });
 });

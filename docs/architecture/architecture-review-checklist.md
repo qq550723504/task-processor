@@ -23,10 +23,10 @@ For structural review, use it in this order:
 Before reviewing implementation details, confirm whether the change is
 architecture-sensitive. It is architecture-sensitive when it crosses three or
 more independently owned subsystems, crosses more than one consistency
-boundary, changes a state/recovery/authorization/tenant boundary, exceeds 30
-scope-relevant files, adds more than 1,500 production lines, changes more than
-2,500 production lines, or combines foundational refactoring with feature
-delivery.
+boundary, changes a state/recovery/authorization/tenant boundary, introduces or
+changes a destructive operation, exceeds 30 scope-relevant files, adds more
+than 1,500 production lines, changes more than 2,500 production lines, or
+combines foundational refactoring with feature delivery.
 
 For architecture-sensitive work, verify:
 
@@ -46,8 +46,12 @@ For architecture-sensitive work, verify:
    reachability, and the single recovery owner.
 7. A fresh independent design review attempted to falsify the design; the
    authoring task did not approve its own design.
-8. Review evidence covers sibling paths for cross-cutting policies such as
-   tenant-context drift, cache invalidation, deadlines, and recovery routing.
+8. Independent-review evidence explicitly challenges each applicable context:
+   partial persistence and lost responses; same-key and different-key races;
+   stale snapshots and version drift; multi-tab, cache, and Cookie drift;
+   authorization revocation; slow requests, deadlines, and resource
+   retention; and sibling routes or consumers that do not share the policy.
+   Each context has evidence or an explicit `N/A` rationale.
 9. An oversized PR has the `architecture-approved` label plus an approving
    maintainer, design link, and documented reason it cannot be split safely.
    The label does not waive design, testing, security, or fault-matrix evidence.
