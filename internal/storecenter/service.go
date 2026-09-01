@@ -556,6 +556,14 @@ func (s *Service) repairMutationAfterLaterVersion(ctx context.Context, request m
 	if validateMutationIntentForRepair(intent, request, store, operationKey) != nil {
 		return StoreMutationResult{}, dependencyError(ErrAuditIdentityMismatch)
 	}
+	// Lifecycle mutations do not change profile fields, so the current Store
+	// can prove a prior profile update reached version expectedVersion+1 only
+	// when the requested profile still matches. Without this check, an intent
+	// left behind by a Save failure could be falsely repaired after unrelated
+	// lifecycle mutations advanced the version.
+	if request.actionName == "update" && !request.matches(store) {
+		return StoreMutationResult{}, ErrVersionConflict
+	}
 	completed, err := s.audit.Get(ctx, request.organizationID, operationKey, request.auditAction)
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return StoreMutationResult{}, dependencyError(err)

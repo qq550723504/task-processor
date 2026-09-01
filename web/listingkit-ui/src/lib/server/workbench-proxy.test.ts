@@ -83,6 +83,7 @@ describe("buildWorkbenchUpstreamRequest", () => {
     ["delete", "DELETE", ["stores", storeId], `http://localhost/api/workbench/stores/${storeId}`, { "Idempotency-Key": operationKey, "If-Match": '"2"' }, undefined],
     ["enable", "POST", ["stores", storeId, "enable"], `http://localhost/api/workbench/stores/${storeId}/enable`, { "If-Match": '"2"' }, undefined],
     ["disable", "POST", ["stores", storeId, "disable"], `http://localhost/api/workbench/stores/${storeId}/disable`, { "If-Match": '"2"' }, undefined],
+    ["resume", "POST", ["stores", storeId, "resume"], `http://localhost/api/workbench/stores/${storeId}/resume`, { "If-Match": '"2"' }, undefined],
   ] as const)("binds %s to match/mismatch/no-cookie Organization assertions", async (_name, method, path, url, routeHeaders, body) => {
     for (const [mode, headers] of [
       ["match", { cookie: `${WORKBENCH_COOKIE_NAME}=org-cookie`, "X-Expected-Organization-ID": "org-cookie", ...routeHeaders }],

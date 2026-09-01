@@ -1663,6 +1663,38 @@ func TestServiceRepairsUpdateAuditAfterLaterMutation(t *testing.T) {
 	}
 }
 
+func TestServiceDoesNotRepairUnpersistedUpdateAfterLaterLifecycleMutations(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	repository.saveErr = errors.New("save unavailable")
+	audit := newAuditRepositoryFake()
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	update := storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "editor", StoreID: store.ID(), ExpectedVersion: store.Version(), Name: "After", Region: store.Region()}
+	if _, err := service.Update(context.Background(), update); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("failed Update() = %v, want dependency error", err)
+	}
+	repository.saveErr = nil
+	disabled, err := service.Disable(context.Background(), storecenter.StoreLifecycleRequest{OrganizationID: "org-a", ActorSubject: "operator", StoreID: store.ID(), ExpectedVersion: store.Version()})
+	if err != nil || disabled.Store.Store.Version() != store.Version()+1 {
+		t.Fatalf("Disable() = %#v, %v", disabled, err)
+	}
+	enabled, err := service.Enable(context.Background(), storecenter.StoreLifecycleRequest{OrganizationID: "org-a", ActorSubject: "operator", StoreID: store.ID(), ExpectedVersion: store.Version() + 1})
+	if err != nil || enabled.Store.Store.Version() != store.Version()+2 {
+		t.Fatalf("Enable() = %#v, %v", enabled, err)
+	}
+	if _, err := service.Update(context.Background(), update); !errors.Is(err, storecenter.ErrVersionConflict) {
+		t.Fatalf("replay Update() = %v, want version conflict", err)
+	}
+	current, err := repository.Get(context.Background(), "org-a", store.ID())
+	if err != nil || current.Name() != "Before" || current.Version() != store.Version()+2 {
+		t.Fatalf("store after rejected repair = %#v, %v", current, err)
+	}
+}
+
 func TestServiceRepairsLifecycleAuditAfterLaterMutation(t *testing.T) {
 	repository := newStoreRepositoryFake()
 	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")

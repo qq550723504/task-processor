@@ -41,7 +41,8 @@ type WorkbenchRequestContract =
   | "store-update"
   | "store-delete"
   | "store-enable"
-  | "store-disable";
+  | "store-disable"
+  | "store-resume";
 
 type WorkbenchRouteDescriptor = {
   requestContract: WorkbenchRequestContract;
@@ -199,6 +200,9 @@ const workbenchRouteAllowlist = [
   routeDefinition("POST", "store-disable", "store-item", (path) =>
     storeActionPath(path, "disable"),
   ),
+  routeDefinition("POST", "store-resume", "store-item", (path) =>
+    storeActionPath(path, "resume"),
+  ),
 ] as const satisfies readonly WorkbenchRouteDefinition[];
 
 export async function buildWorkbenchUpstreamRequest(
@@ -336,7 +340,8 @@ export async function buildWorkbenchUpstreamRequest(
         break;
       }
       case "store-enable":
-      case "store-disable": {
+      case "store-disable":
+      case "store-resume": {
         if (!hasNoQuery(request) || !(await requestHasNoBody(request))) {
           return protocolError(400, "INVALID_REQUEST", "Request is invalid");
         }
@@ -491,7 +496,7 @@ function storeItemPath(path: string[]) {
     : null;
 }
 
-function storeActionPath(path: string[], action: "enable" | "disable") {
+function storeActionPath(path: string[], action: "enable" | "disable" | "resume") {
   return path.length === 3 &&
     path[0] === "stores" &&
     isCanonicalUUID(path[1]!) &&
