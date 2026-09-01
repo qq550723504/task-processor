@@ -29,6 +29,10 @@ func TestAutoMigrateRuntimeCreatesRepresentativeTables(t *testing.T) {
 	for _, table := range []any{
 		"ai_invocations",
 		"ai_async_jobs",
+		"product_approved_assets",
+		"product_approval_receipts",
+		"inventory_snapshots",
+		"generation_task_snapshots",
 		"source_account",
 		"listing_kit_sds_baseline_cache",
 		"listingkit_owner_scope_system_owned_exceptions",

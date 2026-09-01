@@ -7,6 +7,7 @@ import (
 
 	aicapabilitystore "task-processor/internal/aicapability/store"
 	assetrepo "task-processor/internal/asset/repository"
+	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/memberinvite"
@@ -50,6 +51,9 @@ func autoMigrateRuntime(db *gorm.DB, includeSourceAccount bool) error {
 	}
 	if err := aicapabilitystore.AutoMigrateAsyncJobBindings(db); err != nil {
 		return fmt.Errorf("ai async job binding auto-migrate failed: %w", err)
+	}
+	if err := assetpersistence.AutoMigrate(db); err != nil {
+		return fmt.Errorf("migrate approved product asset repository: %w", err)
 	}
 	if err := listingkit.AutoMigrateStudioAsyncJobRepository(db); err != nil {
 		return fmt.Errorf("migrate listingkit studio async job repository: %w", err)
