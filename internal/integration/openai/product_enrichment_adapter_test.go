@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -355,21 +356,41 @@ func TestProductEnrichmentSerializedPromptBoundaryFixtureIsIndependent(t *testin
 	if err != nil {
 		t.Fatalf("parse product enrichment adapter test source: %v", err)
 	}
-	for _, declaration := range parsed.Decls {
-		function, ok := declaration.(*ast.FuncDecl)
-		if !ok || function.Name.Name != "TestProductEnrichmentAdapterEnforcesSerializedPromptByteLimit" {
-			continue
-		}
-		ast.Inspect(function.Body, func(node ast.Node) bool {
-			identifier, ok := node.(*ast.Ident)
-			if ok && identifier.Name == "productEnrichmentPromptMaxBytes" {
-				t.Error("serialized prompt boundary fixture references production limit instead of test-local design literals")
-			}
-			return true
-		})
-		return
+	for _, violation := range productEnrichmentWireOracleDependencyViolations(parsed) {
+		t.Error(violation)
 	}
-	t.Fatal("serialized prompt boundary test function not found")
+}
+
+func TestProductEnrichmentWireOracleGuardRejectsControlledHelperMutations(t *testing.T) {
+	t.Parallel()
+
+	protectedHelpers := []string{
+		"enrichmentRequestAndOracleForPromptBytes",
+		"marshalProductEnrichmentPromptWireOracle",
+		"validEnrichmentGenerationRequest",
+	}
+	forbiddenIdentifiers := []string{
+		"productEnrichmentPromptMaxBytes",
+		"buildProductEnrichmentPrompt",
+		"buildProductEnrichmentPromptWithMarshal",
+		"canonicalRequestedFields",
+		"CanonicalEvidenceID",
+	}
+	for _, helper := range protectedHelpers {
+		for _, forbidden := range forbiddenIdentifiers {
+			t.Run(helper+"/"+forbidden, func(t *testing.T) {
+				parsed, err := parser.ParseFile(token.NewFileSet(), "controlled_wire_oracle.go", controlledProductEnrichmentWireOracleMutation(helper, forbidden), 0)
+				if err != nil {
+					t.Fatalf("parse controlled mutation: %v", err)
+				}
+				violations := productEnrichmentWireOracleDependencyViolations(parsed)
+				want := helper + " references forbidden " + forbidden
+				if !containsProductEnrichmentWireOracleViolation(violations, want) {
+					t.Fatalf("controlled mutation %s not detected; violations = %v", want, violations)
+				}
+			})
+		}
+	}
 }
 
 func TestProductEnrichmentPromptLimitMatchesDesignContract(t *testing.T) {
@@ -379,6 +400,125 @@ func TestProductEnrichmentPromptLimitMatchesDesignContract(t *testing.T) {
 	if productEnrichmentPromptMaxBytes != designPromptLimitBytes {
 		t.Fatalf("production prompt limit = %d, want design contract literal %d", productEnrichmentPromptMaxBytes, designPromptLimitBytes)
 	}
+}
+
+func controlledProductEnrichmentWireOracleMutation(mutatedFunction, forbiddenIdentifier string) string {
+	bodies := map[string]string{
+		"enrichmentRequestAndOracleForPromptBytes": "validEnrichmentGenerationRequest(); marshalProductEnrichmentPromptWireOracle()",
+		"marshalProductEnrichmentPromptWireOracle": "",
+		"validEnrichmentGenerationRequest":         "",
+	}
+	bodies[mutatedFunction] += "; _ = " + forbiddenIdentifier
+	return fmt.Sprintf(`package fixture
+func TestProductEnrichmentAdapterEnforcesSerializedPromptByteLimit() { enrichmentRequestAndOracleForPromptBytes() }
+func enrichmentRequestAndOracleForPromptBytes() { %s }
+func marshalProductEnrichmentPromptWireOracle() { %s }
+func validEnrichmentGenerationRequest() { %s }
+`,
+		bodies["enrichmentRequestAndOracleForPromptBytes"],
+		bodies["marshalProductEnrichmentPromptWireOracle"],
+		bodies["validEnrichmentGenerationRequest"],
+	)
+}
+
+func containsProductEnrichmentWireOracleViolation(violations []string, want string) bool {
+	for _, violation := range violations {
+		if violation == want {
+			return true
+		}
+	}
+	return false
+}
+
+func productEnrichmentWireOracleDependencyViolations(file *ast.File) []string {
+	const boundaryTest = "TestProductEnrichmentAdapterEnforcesSerializedPromptByteLimit"
+	protectedFunctions := []string{
+		boundaryTest,
+		"enrichmentRequestAndOracleForPromptBytes",
+		"marshalProductEnrichmentPromptWireOracle",
+		"validEnrichmentGenerationRequest",
+	}
+	forbiddenIdentifiers := map[string]struct{}{
+		"productEnrichmentPromptMaxBytes":         {},
+		"buildProductEnrichmentPrompt":            {},
+		"buildProductEnrichmentPromptWithMarshal": {},
+		"canonicalRequestedFields":                {},
+		"CanonicalEvidenceID":                     {},
+	}
+
+	functions := make(map[string]*ast.FuncDecl)
+	declarationCounts := make(map[string]int)
+	for _, declaration := range file.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		name := function.Name.Name
+		declarationCounts[name]++
+		if _, indexed := functions[name]; !indexed {
+			functions[name] = function
+		}
+	}
+
+	violations := []string{}
+	for _, name := range protectedFunctions {
+		if count := declarationCounts[name]; count != 1 {
+			violations = append(violations, fmt.Sprintf("%s declaration count = %d, want 1", name, count))
+		}
+	}
+	if declarationCounts[boundaryTest] != 1 {
+		sort.Strings(violations)
+		return violations
+	}
+
+	visited := map[string]struct{}{}
+	queued := map[string]struct{}{boundaryTest: {}}
+	queue := []string{boundaryTest}
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		delete(queued, name)
+		if _, seen := visited[name]; seen {
+			continue
+		}
+		visited[name] = struct{}{}
+		function := functions[name]
+		if function == nil || function.Body == nil {
+			continue
+		}
+		ast.Inspect(function.Body, func(node ast.Node) bool {
+			switch current := node.(type) {
+			case *ast.Ident:
+				if _, forbidden := forbiddenIdentifiers[current.Name]; forbidden {
+					violations = append(violations, name+" references forbidden "+current.Name)
+				}
+			case *ast.CallExpr:
+				callee, ok := current.Fun.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				if _, local := functions[callee.Name]; !local {
+					return true
+				}
+				if _, seen := visited[callee.Name]; seen {
+					return true
+				}
+				if _, alreadyQueued := queued[callee.Name]; !alreadyQueued {
+					queue = append(queue, callee.Name)
+					queued[callee.Name] = struct{}{}
+				}
+			}
+			return true
+		})
+	}
+
+	for _, name := range protectedFunctions {
+		if _, reached := visited[name]; !reached {
+			violations = append(violations, name+" is not in the boundary fixture call closure")
+		}
+	}
+	sort.Strings(violations)
+	return violations
 }
 
 func TestProductEnrichmentAdapterEnforcesProviderOutputByteLimit(t *testing.T) {
