@@ -18,6 +18,47 @@ For structural review, use it in this order:
    inventory. `docs/architecture/next-steps.md` only points reviewers here and
    tracks phased technical priorities; it does not duplicate the inventory.
 
+## Development Admission
+
+Before reviewing implementation details, confirm whether the change is
+architecture-sensitive. It is architecture-sensitive when it crosses three or
+more independently owned subsystems, crosses more than one consistency
+boundary, changes a state/recovery/authorization/tenant boundary, exceeds 30
+scope-relevant files, adds more than 1,500 production lines, changes more than
+2,500 production lines, or combines foundational refactoring with feature
+delivery.
+
+For architecture-sensitive work, verify:
+
+1. The change was split into independently verifiable slices, or the design
+   explains why splitting would make correctness or rollout less safe.
+2. Business, security, tenant, and destructive-operation invariants are
+   explicit and have named verification evidence.
+3. The design identifies authoritative data owners and exact transaction
+   boundaries before defining compensation.
+4. A shared transaction or Unit of Work was evaluated when durable effects use
+   one database.
+5. Existing repository capabilities and mature open-source implementations,
+   including transactional outbox, Saga, or the existing Temporal facilities,
+   were evaluated before a custom recovery protocol was introduced.
+6. Stateful behavior has a failure matrix covering every durable boundary,
+   response loss, retry identity, restart, cancellation, concurrency, recovery
+   reachability, and the single recovery owner.
+7. A fresh independent design review attempted to falsify the design; the
+   authoring task did not approve its own design.
+8. Review evidence covers sibling paths for cross-cutting policies such as
+   tenant-context drift, cache invalidation, deadlines, and recovery routing.
+9. An oversized PR has the `architecture-approved` label plus an approving
+   maintainer, design link, and documented reason it cannot be split safely.
+   The label does not waive design, testing, security, or fault-matrix evidence.
+10. A material review fix that changed a state machine, transaction boundary,
+    recovery protocol, or public contract returned to design review instead of
+    remaining a local patch.
+
+The existing `Guard Baseline` below remains the authoritative current import
+and structural boundary inventory. Development-admission checks supplement it;
+they do not duplicate or replace it.
+
 ## Required Checks
 
 Before merging a structural or feature PR, verify:
