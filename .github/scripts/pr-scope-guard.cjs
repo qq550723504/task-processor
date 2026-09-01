@@ -5,6 +5,7 @@ const LIMITS = Object.freeze({
   productionAdditions: 1500,
   productionChurn: 2500,
 });
+const DECISIVE_REVIEW_STATES = new Set(["APPROVED", "CHANGES_REQUESTED", "DISMISSED"]);
 
 const OVERRIDE_LABEL = "architecture-approved";
 const MAINTAINER_PERMISSIONS = new Set(["admin", "maintain"]);
@@ -156,6 +157,25 @@ function statusTargetForPullRequest(snapshot) {
   return mergeSha;
 }
 
+function pullRequestNumberFromEventPayload(eventName, payload) {
+  let pullRequestNumber;
+  if (eventName === "workflow_run") {
+    const pullRequests = payload?.workflow_run?.pull_requests;
+    if (!Array.isArray(pullRequests) || pullRequests.length !== 1) {
+      throw new Error("workflow_run must identify exactly one pull request");
+    }
+    pullRequestNumber = pullRequests[0]?.number;
+  } else if (eventName === "pull_request_target") {
+    pullRequestNumber = payload?.pull_request?.number;
+  } else {
+    throw new Error(`unsupported admission event: ${eventName}`);
+  }
+  if (!Number.isInteger(pullRequestNumber) || pullRequestNumber <= 0) {
+    throw new Error("admission event is missing a valid pull request number");
+  }
+  return pullRequestNumber;
+}
+
 function labelNames(labels) {
   if (!Array.isArray(labels)) {
     throw new TypeError("labels must be an array");
@@ -211,7 +231,7 @@ function latestReviewsByUser(reviews) {
   const latest = new Map();
   for (const review of reviews) {
     const login = review?.user?.login;
-    if (typeof login === "string" && login.trim() !== "") {
+    if (typeof login === "string" && login.trim() !== "" && DECISIVE_REVIEW_STATES.has(review?.state)) {
       const previous = latest.get(login);
       if (!previous || Number(review?.id) >= Number(previous?.id)) {
         latest.set(login, review);
@@ -375,6 +395,8 @@ module.exports = {
   evaluatePullRequest,
   formatEvaluation,
   hasAuthorizedArchitectureOverride,
+  latestBaseChangeAt,
+  pullRequestNumberFromEventPayload,
   statusForEvaluation,
   statusTargetForPullRequest,
 };
