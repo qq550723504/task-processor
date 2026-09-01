@@ -7,6 +7,7 @@ const LIMITS = Object.freeze({
 });
 
 const OVERRIDE_LABEL = "architecture-approved";
+const MAINTAINER_PERMISSIONS = new Set(["admin", "maintain"]);
 const LOCKFILES = new Set([
   "cargo.lock",
   "go.sum",
@@ -110,6 +111,8 @@ function assertStablePullRequestSnapshot(before, after) {
   const afterBaseSha = after?.base?.sha;
   const beforeBaseRef = before?.base?.ref;
   const afterBaseRef = after?.base?.ref;
+  const beforeMergeSha = before?.merge_commit_sha;
+  const afterMergeSha = after?.merge_commit_sha;
   const beforeFiles = before?.changed_files;
   const afterFiles = after?.changed_files;
   const beforeUpdatedAt = before?.updated_at;
@@ -121,25 +124,149 @@ function assertStablePullRequestSnapshot(before, after) {
     typeof afterBaseSha !== "string" ||
     typeof beforeBaseRef !== "string" ||
     typeof afterBaseRef !== "string" ||
+    typeof beforeMergeSha !== "string" ||
+    typeof afterMergeSha !== "string" ||
     !Number.isInteger(beforeFiles) ||
     !Number.isInteger(afterFiles) ||
     typeof beforeUpdatedAt !== "string" ||
     typeof afterUpdatedAt !== "string"
   ) {
     throw new TypeError(
-      "pull request snapshot is missing head.sha, base.sha, base.ref, changed_files, or updated_at",
+      "pull request snapshot is missing head.sha, base.sha, base.ref, merge_commit_sha, changed_files, or updated_at",
     );
   }
   if (
     beforeSha !== afterSha ||
     beforeBaseSha !== afterBaseSha ||
     beforeBaseRef !== afterBaseRef ||
+    beforeMergeSha !== afterMergeSha ||
     beforeFiles !== afterFiles ||
     beforeUpdatedAt !== afterUpdatedAt
   ) {
     throw new Error("pull request changed during evaluation; retry the check");
   }
   return after;
+}
+
+function statusTargetForPullRequest(snapshot) {
+  const mergeSha = snapshot?.merge_commit_sha;
+  if (typeof mergeSha !== "string" || mergeSha.trim() === "") {
+    throw new TypeError("pull request snapshot is missing merge_commit_sha");
+  }
+  return mergeSha;
+}
+
+function labelNames(labels) {
+  if (!Array.isArray(labels)) {
+    throw new TypeError("labels must be an array");
+  }
+  return labels
+    .map((label) => label?.name)
+    .filter((name) => typeof name === "string")
+    .sort();
+}
+
+function reviewFingerprint(reviews) {
+  if (!Array.isArray(reviews)) {
+    throw new TypeError("reviews must be an array");
+  }
+  return reviews
+    .map((review) => ({
+      id: review?.id,
+      login: review?.user?.login,
+      state: review?.state,
+      commit_id: review?.commit_id,
+      submitted_at: review?.submitted_at,
+    }))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id)));
+}
+
+function latestBaseChangeAt(events) {
+  if (!Array.isArray(events)) {
+    throw new TypeError("events must be an array");
+  }
+  const baseChanges = events
+    .filter((event) => event?.event === "base_ref_changed")
+    .map((event) => event.created_at)
+    .filter((createdAt) => typeof createdAt === "string");
+  return baseChanges.sort().at(-1) ?? null;
+}
+
+function assertStableAdmissionSnapshot(before, after, beforeReviews, afterReviews, beforeEvents = [], afterEvents = []) {
+  assertStablePullRequestSnapshot(before, after);
+  if (
+    JSON.stringify(labelNames(before?.labels)) !== JSON.stringify(labelNames(after?.labels)) ||
+    JSON.stringify(reviewFingerprint(beforeReviews)) !== JSON.stringify(reviewFingerprint(afterReviews)) ||
+    latestBaseChangeAt(beforeEvents) !== latestBaseChangeAt(afterEvents)
+  ) {
+    throw new Error("pull request admission inputs changed during evaluation; retry the check");
+  }
+  return after;
+}
+
+function latestReviewsByUser(reviews) {
+  if (!Array.isArray(reviews)) {
+    throw new TypeError("reviews must be an array");
+  }
+  const latest = new Map();
+  for (const review of reviews) {
+    const login = review?.user?.login;
+    if (typeof login === "string" && login.trim() !== "") {
+      const previous = latest.get(login);
+      if (!previous || Number(review?.id) >= Number(previous?.id)) {
+        latest.set(login, review);
+      }
+    }
+  }
+  return latest;
+}
+
+function approvalReviewersForCurrentHead(reviews, headSha) {
+  if (typeof headSha !== "string" || headSha.trim() === "") {
+    throw new TypeError("headSha must be a non-empty string");
+  }
+  return [...latestReviewsByUser(reviews).entries()]
+    .filter(([, review]) => review?.state === "APPROVED" && review?.commit_id === headSha)
+    .map(([login]) => login);
+}
+
+function hasAuthorizedArchitectureOverride({
+  labels,
+  headSha,
+  authorLogin = null,
+  baseChangedAt = null,
+  reviews,
+  permissions,
+}) {
+  if (!Array.isArray(labels)) {
+    throw new TypeError("labels must be an array");
+  }
+  if (!permissions || typeof permissions !== "object" || Array.isArray(permissions)) {
+    throw new TypeError("permissions must be an object");
+  }
+  if (authorLogin !== null && (typeof authorLogin !== "string" || authorLogin.trim() === "")) {
+    throw new TypeError("authorLogin must be null or a non-empty string");
+  }
+  if (baseChangedAt !== null && (typeof baseChangedAt !== "string" || Number.isNaN(Date.parse(baseChangedAt)))) {
+    throw new TypeError("baseChangedAt must be null or an ISO timestamp");
+  }
+  if (!labels.includes(OVERRIDE_LABEL)) {
+    return false;
+  }
+  const latestReviews = latestReviewsByUser(reviews);
+  return approvalReviewersForCurrentHead(reviews, headSha)
+    .some((login) => {
+      const review = latestReviews.get(login);
+      const roleName = permissions[login]?.role_name;
+      if (login === authorLogin || !MAINTAINER_PERMISSIONS.has(roleName)) {
+        return false;
+      }
+      return baseChangedAt === null || (
+        typeof review?.submitted_at === "string" &&
+        !Number.isNaN(Date.parse(review.submitted_at)) &&
+        Date.parse(review.submitted_at) > Date.parse(baseChangedAt)
+      );
+    });
 }
 
 function statusForEvaluation(result) {
@@ -151,12 +278,15 @@ function statusForEvaluation(result) {
     : { state: "failure", description: "Exceeds admission limits" };
 }
 
-function evaluatePullRequest(files, labels) {
+function evaluatePullRequest(files, labels, options = {}) {
   if (!Array.isArray(files)) {
     throw new TypeError("files must be an array");
   }
   if (!Array.isArray(labels)) {
     throw new TypeError("labels must be an array");
+  }
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
+    throw new TypeError("options must be an object");
   }
 
   const metrics = {
@@ -199,11 +329,15 @@ function evaluatePullRequest(files, labels) {
   }
 
   const oversized = exceeded.length > 0;
-  const overridden = oversized && labels.includes(OVERRIDE_LABEL);
+  const overrideLabelPresent = labels.includes(OVERRIDE_LABEL);
+  const overrideAuthorized = options.overrideAuthorized === true;
+  const overridden = oversized && overrideLabelPresent && overrideAuthorized;
   return {
     allowed: !oversized || overridden,
     oversized,
     overridden,
+    overrideLabelPresent,
+    overrideAuthorized,
     overrideLabel: OVERRIDE_LABEL,
     limits: LIMITS,
     metrics,
@@ -214,7 +348,11 @@ function evaluatePullRequest(files, labels) {
 
 function formatEvaluation(result) {
   const exceeded = result.exceeded.length === 0 ? "none" : result.exceeded.join(", ");
-  const override = result.overridden ? result.overrideLabel : "none";
+  const override = result.overridden
+    ? result.overrideLabel
+    : result.overrideLabelPresent
+      ? `${result.overrideLabel} (unauthorized)`
+      : "none";
   return [
     `Scope-relevant files: ${result.metrics.scopeFiles} / ${result.limits.scopeFiles}`,
     `Production additions: ${result.metrics.productionAdditions} / ${result.limits.productionAdditions}`,
@@ -227,11 +365,16 @@ function formatEvaluation(result) {
 
 module.exports = {
   LIMITS,
+  OVERRIDE_LABEL,
+  approvalReviewersForCurrentHead,
   assertCompleteFileList,
+  assertStableAdmissionSnapshot,
   assertStablePullRequestSnapshot,
   classifyFileChange,
   classifyFile,
   evaluatePullRequest,
   formatEvaluation,
+  hasAuthorizedArchitectureOverride,
   statusForEvaluation,
+  statusTargetForPullRequest,
 };

@@ -9,20 +9,27 @@ on:
       - edited
       - labeled
       - unlabeled
+  pull_request_review:
+    types:
+      - submitted
+      - edited
+      - dismissed
 
 permissions:
   contents: read
+  issues: read
   pull-requests: read
   statuses: write
 
 concurrency:
   group: development-admission-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   evaluate-admission:
     name: Development Admission Evaluator
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout trusted policy revision
         uses: actions/checkout@v4
@@ -44,13 +51,13 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
             };
-            const headSha = context.payload.pull_request.head.sha;
             const statusContext = "Development Admission";
             const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            let statusSha;
             const publishStatus = async ({ state, description }) => {
               await github.rest.repos.createCommitStatus({
                 ...repositoryRequest,
-                sha: headSha,
+                sha: statusSha,
                 state,
                 context: statusContext,
                 target_url: targetUrl,
@@ -59,41 +66,121 @@ jobs:
             };
 
             try {
+              const initialPullRequest = (await github.rest.pulls.get(pullRequestRequest)).data;
+              statusSha = guard.statusTargetForPullRequest(initialPullRequest);
               await publishStatus({
                 state: "pending",
                 description: "Evaluating admission policy",
               });
-              const initialPullRequest = (await github.rest.pulls.get(pullRequestRequest)).data;
+              const initialReviews = await github.paginate(github.rest.pulls.listReviews, {
+                ...pullRequestRequest,
+                per_page: 100,
+              });
+              const initialEvents = await github.paginate(github.rest.issues.listEventsForIssue, {
+                ...repositoryRequest,
+                issue_number: pullRequestRequest.pull_number,
+                per_page: 100,
+              });
               const files = await github.paginate(github.rest.pulls.listFiles, {
                 ...pullRequestRequest,
                 per_page: 100,
               });
               const latestPullRequest = (await github.rest.pulls.get(pullRequestRequest)).data;
-              guard.assertStablePullRequestSnapshot(initialPullRequest, latestPullRequest);
+              const latestReviews = await github.paginate(github.rest.pulls.listReviews, {
+                ...pullRequestRequest,
+                per_page: 100,
+              });
+              const latestEvents = await github.paginate(github.rest.issues.listEventsForIssue, {
+                ...repositoryRequest,
+                issue_number: pullRequestRequest.pull_number,
+                per_page: 100,
+              });
+              guard.assertStableAdmissionSnapshot(
+                initialPullRequest,
+                latestPullRequest,
+                initialReviews,
+                latestReviews,
+                initialEvents,
+                latestEvents,
+              );
               guard.assertCompleteFileList(files, latestPullRequest.changed_files);
               const labels = latestPullRequest.labels.map(({ name }) => name);
-              const result = guard.evaluatePullRequest(files, labels);
+              let overrideAuthorized = false;
+              if (labels.includes(guard.OVERRIDE_LABEL)) {
+                const approvalReviewers = guard.approvalReviewersForCurrentHead(
+                  latestReviews,
+                  latestPullRequest.head.sha,
+                );
+                const permissions = {};
+                for (const login of approvalReviewers) {
+                  try {
+                    const permissionData = (await github.rest.repos.getCollaboratorPermissionLevel({
+                      ...repositoryRequest,
+                      username: login,
+                    })).data;
+                    permissions[login] = {
+                      permission: permissionData.permission,
+                      role_name: permissionData.role_name,
+                    };
+                  } catch (permissionError) {
+                    if (permissionError.status === 404) {
+                      permissions[login] = { permission: "none", role_name: "none" };
+                      continue;
+                    }
+                    throw permissionError;
+                  }
+                }
+                overrideAuthorized = guard.hasAuthorizedArchitectureOverride({
+                  labels,
+                  headSha: latestPullRequest.head.sha,
+                  authorLogin: latestPullRequest.user.login,
+                  baseChangedAt: guard.latestBaseChangeAt(latestEvents),
+                  reviews: latestReviews,
+                  permissions,
+                });
+              }
+              const result = guard.evaluatePullRequest(files, labels, { overrideAuthorized });
               const report = guard.formatEvaluation(result);
               core.info(report);
               await core.summary
                 .addHeading("Development admission")
                 .addCodeBlock(report)
                 .write();
+              const finalPullRequest = (await github.rest.pulls.get(pullRequestRequest)).data;
+              const finalReviews = await github.paginate(github.rest.pulls.listReviews, {
+                ...pullRequestRequest,
+                per_page: 100,
+              });
+              const finalEvents = await github.paginate(github.rest.issues.listEventsForIssue, {
+                ...repositoryRequest,
+                issue_number: pullRequestRequest.pull_number,
+                per_page: 100,
+              });
+              guard.assertStableAdmissionSnapshot(
+                latestPullRequest,
+                finalPullRequest,
+                latestReviews,
+                finalReviews,
+                latestEvents,
+                finalEvents,
+              );
               await publishStatus(guard.statusForEvaluation(result));
               if (!result.allowed) {
-                core.setFailed(`${report}\nSplit the change or obtain the architecture-approved label with documented design evidence.`);
+                core.setFailed(`${report}\nSplit the change or obtain the architecture-approved label plus a maintainer/admin approval for the current head and documented design evidence.`);
               }
             } catch (error) {
               const message = error instanceof Error ? error.message : String(error);
               core.error(message);
-              try {
-                await publishStatus({
-                  state: "error",
-                  description: "Admission evaluation failed; retry required",
-                });
-              } catch (statusError) {
-                const statusMessage = statusError instanceof Error ? statusError.message : String(statusError);
-                core.error(`Could not publish the admission error status: ${statusMessage}`);
+              if (statusSha) {
+                try {
+                  await publishStatus({
+                    state: "error",
+                    description: "Admission evaluation failed; retry required",
+                  });
+                } catch (statusError) {
+                  const statusMessage = statusError instanceof Error ? statusError.message : String(statusError);
+                  core.error(`Could not publish the admission error status: ${statusMessage}`);
+                }
               }
               core.setFailed("Development Admission could not be completed; retry the check.");
             }

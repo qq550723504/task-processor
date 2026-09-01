@@ -4,12 +4,15 @@ const assert = require("node:assert/strict");
 const {
   LIMITS,
   assertCompleteFileList,
+  assertStableAdmissionSnapshot,
   assertStablePullRequestSnapshot,
   classifyFileChange,
   classifyFile,
   evaluatePullRequest,
   formatEvaluation,
+  hasAuthorizedArchitectureOverride,
   statusForEvaluation,
+  statusTargetForPullRequest,
 } = require("./pr-scope-guard.cjs");
 
 function source(filename, additions = 1, deletions = 0, status = "modified") {
@@ -175,7 +178,9 @@ test("requires the exact architecture-approved label for an oversized change", (
   const files = [source("internal/store/service.go", LIMITS.productionAdditions + 1)];
 
   assert.equal(evaluatePullRequest(files, ["architecture-review"]).allowed, false);
-  const approved = evaluatePullRequest(files, ["architecture-approved"]);
+  const approved = evaluatePullRequest(files, ["architecture-approved"], {
+    overrideAuthorized: true,
+  });
   assert.equal(approved.allowed, true);
   assert.equal(approved.overridden, true);
   assert.equal(approved.oversized, true);
@@ -216,6 +221,7 @@ test("rejects a pull request snapshot that changes during evaluation", () => {
   const snapshot = {
     head: { sha: "abc" },
     base: { sha: "base-abc", ref: "main" },
+    merge_commit_sha: "merge-abc",
     changed_files: 1,
     updated_at: "2026-09-01T12:00:00Z",
   };
@@ -224,6 +230,7 @@ test("rejects a pull request snapshot that changes during evaluation", () => {
     () => assertStablePullRequestSnapshot(snapshot, {
       head: { sha: "def" },
       base: { sha: "base-abc", ref: "main" },
+      merge_commit_sha: "merge-abc",
       changed_files: 1,
       updated_at: snapshot.updated_at,
     }),
@@ -233,6 +240,7 @@ test("rejects a pull request snapshot that changes during evaluation", () => {
     () => assertStablePullRequestSnapshot(snapshot, {
       head: { sha: "abc" },
       base: { sha: "base-def", ref: "main" },
+      merge_commit_sha: "merge-abc",
       changed_files: 1,
       updated_at: snapshot.updated_at,
     }),
@@ -242,6 +250,7 @@ test("rejects a pull request snapshot that changes during evaluation", () => {
     () => assertStablePullRequestSnapshot(snapshot, {
       head: { sha: "abc" },
       base: { sha: "base-abc", ref: "release" },
+      merge_commit_sha: "merge-abc",
       changed_files: 1,
       updated_at: snapshot.updated_at,
     }),
@@ -251,6 +260,7 @@ test("rejects a pull request snapshot that changes during evaluation", () => {
     () => assertStablePullRequestSnapshot(snapshot, {
       head: { sha: "abc" },
       base: { sha: "base-abc", ref: "main" },
+      merge_commit_sha: "merge-abc",
       changed_files: 2,
       updated_at: snapshot.updated_at,
     }),
@@ -260,11 +270,193 @@ test("rejects a pull request snapshot that changes during evaluation", () => {
     () => assertStablePullRequestSnapshot(snapshot, {
       head: { sha: "abc" },
       base: { sha: "base-abc", ref: "main" },
+      merge_commit_sha: "merge-abc",
       changed_files: 1,
       updated_at: "2026-09-01T12:01:00Z",
     }),
     /changed during evaluation/,
   );
+  assert.throws(
+    () => assertStablePullRequestSnapshot(snapshot, {
+      head: { sha: "abc" },
+      base: { sha: "base-abc", ref: "main" },
+      merge_commit_sha: "merge-def",
+      changed_files: 1,
+      updated_at: snapshot.updated_at,
+    }),
+    /changed during evaluation/,
+  );
+});
+
+test("requires an authenticated current-head approval for an override", () => {
+  const headSha = "head-abc";
+  const reviews = [
+    {
+      id: 1,
+      user: { login: "maintainer" },
+      state: "APPROVED",
+      commit_id: headSha,
+      submitted_at: "2026-09-01T12:00:00Z",
+    },
+    {
+      id: 2,
+      user: { login: "writer" },
+      state: "APPROVED",
+      commit_id: headSha,
+      submitted_at: "2026-09-01T12:00:00Z",
+    },
+    {
+      id: 3,
+      user: { login: "stale-maintainer" },
+      state: "APPROVED",
+      commit_id: "old-head",
+      submitted_at: "2026-09-01T12:00:00Z",
+    },
+  ];
+
+  assert.equal(
+    hasAuthorizedArchitectureOverride({
+      labels: ["architecture-approved"],
+      headSha,
+      reviews,
+      permissions: {
+        maintainer: { permission: "write", role_name: "maintain" },
+        writer: { permission: "write", role_name: "write" },
+        "stale-maintainer": { permission: "admin", role_name: "admin" },
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    hasAuthorizedArchitectureOverride({
+      labels: ["architecture-approved"],
+      headSha,
+      reviews: [...reviews].reverse(),
+      permissions: {
+        maintainer: { permission: "write", role_name: "maintain" },
+        writer: { permission: "write", role_name: "write" },
+        "stale-maintainer": { permission: "admin", role_name: "admin" },
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    hasAuthorizedArchitectureOverride({
+      labels: ["architecture-approved"],
+      headSha,
+      reviews: [reviews[1]],
+      permissions: { writer: { permission: "write", role_name: "write" } },
+    }),
+    false,
+  );
+  assert.equal(
+    hasAuthorizedArchitectureOverride({
+      labels: [],
+      headSha,
+      reviews: [reviews[0]],
+      permissions: { maintainer: { permission: "write", role_name: "maintain" } },
+    }),
+    false,
+  );
+  assert.equal(
+    hasAuthorizedArchitectureOverride({
+      labels: ["architecture-approved"],
+      headSha,
+      reviews: [
+        reviews[0],
+        {
+          id: 4,
+          user: { login: "maintainer" },
+          state: "CHANGES_REQUESTED",
+          commit_id: headSha,
+          submitted_at: "2026-09-01T12:01:00Z",
+        },
+      ],
+      permissions: { maintainer: { permission: "admin", role_name: "admin" } },
+    }),
+    false,
+  );
+  assert.equal(
+    hasAuthorizedArchitectureOverride({
+      labels: ["architecture-approved"],
+      headSha,
+      authorLogin: "maintainer",
+      reviews: [reviews[0]],
+      permissions: { maintainer: { permission: "write", role_name: "maintain" } },
+    }),
+    false,
+  );
+  assert.equal(
+    hasAuthorizedArchitectureOverride({
+      labels: ["architecture-approved"],
+      headSha,
+      baseChangedAt: "2026-09-01T12:01:00Z",
+      reviews: [reviews[0]],
+      permissions: { maintainer: { permission: "write", role_name: "maintain" } },
+    }),
+    false,
+  );
+});
+
+test("rejects labels, reviews, or base-change events moving during evaluation", () => {
+  const snapshot = {
+    head: { sha: "abc" },
+    base: { sha: "base-abc", ref: "main" },
+    merge_commit_sha: "merge-abc",
+    changed_files: 1,
+    updated_at: "2026-09-01T12:00:00Z",
+    labels: [{ name: "architecture-approved" }],
+  };
+  const review = {
+    id: 1,
+    user: { login: "maintainer" },
+    state: "APPROVED",
+    commit_id: "abc",
+    submitted_at: "2026-09-01T12:00:00Z",
+  };
+  const events = [{ event: "base_ref_changed", created_at: "2026-09-01T11:00:00Z" }];
+  assert.doesNotThrow(() => assertStableAdmissionSnapshot(
+    snapshot,
+    snapshot,
+    [review],
+    [review],
+    events,
+    events,
+  ));
+  assert.throws(() => assertStableAdmissionSnapshot(
+    snapshot,
+    { ...snapshot, labels: [] },
+    [review],
+    [review],
+    events,
+    events,
+  ), /admission inputs changed/);
+  assert.throws(() => assertStableAdmissionSnapshot(
+    snapshot,
+    snapshot,
+    [review],
+    [{ ...review, state: "DISMISSED" }],
+    events,
+    events,
+  ), /admission inputs changed/);
+  assert.throws(() => assertStableAdmissionSnapshot(
+    snapshot,
+    snapshot,
+    [review],
+    [review],
+    events,
+    [{ event: "base_ref_changed", created_at: "2026-09-01T12:01:00Z" }],
+  ), /admission inputs changed/);
+});
+
+test("does not treat the override label alone as authorization", () => {
+  const files = [source("internal/store/service.go", LIMITS.productionAdditions + 1)];
+  assert.equal(evaluatePullRequest(files, ["architecture-approved"]).allowed, false);
+  const approved = evaluatePullRequest(files, ["architecture-approved"], {
+    overrideAuthorized: true,
+  });
+  assert.equal(approved.allowed, true);
+  assert.equal(approved.overridden, true);
 });
 
 test("maps an admission decision to a commit status", () => {
@@ -276,4 +468,12 @@ test("maps an admission decision to a commit status", () => {
     state: "failure",
     description: "Exceeds admission limits",
   });
+});
+
+test("targets the test merge commit for required admission status", () => {
+  assert.equal(statusTargetForPullRequest({ merge_commit_sha: "merge-abc" }), "merge-abc");
+  assert.throws(
+    () => statusTargetForPullRequest({ merge_commit_sha: null }),
+    /missing merge_commit_sha/,
+  );
 });

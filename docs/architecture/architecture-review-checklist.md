@@ -36,26 +36,33 @@ For architecture-sensitive work, verify:
    explicit and have named verification evidence.
 3. The design identifies authoritative data owners and exact transaction
    boundaries before defining compensation.
-4. A shared transaction or Unit of Work was evaluated when durable effects use
+4. Any idempotency key has a documented namespace (tenant, actor, endpoint, and
+   business object), canonical payload fingerprint, same-key/same-payload
+   result, same-key/different-payload conflict behavior with no side effects,
+   in-flight/failure/timeout/recovery behavior, expiry and reuse rule, single
+   owner for same-key concurrency, and authorization-context handling.
+5. A shared transaction or Unit of Work was evaluated when durable effects use
    one database.
-5. Existing repository capabilities and mature open-source implementations,
+6. Existing repository capabilities and mature open-source implementations,
    including transactional outbox, Saga, or the existing Temporal facilities,
    were evaluated before a custom recovery protocol was introduced.
-6. Stateful behavior has a failure matrix covering every durable boundary,
+7. Stateful behavior has a failure matrix covering every durable boundary,
    response loss, retry identity, restart, cancellation, concurrency, recovery
    reachability, and the single recovery owner.
-7. A fresh independent design review attempted to falsify the design; the
+8. A fresh independent design review attempted to falsify the design; the
    authoring task did not approve its own design.
-8. Independent-review evidence explicitly challenges each applicable context:
+9. Independent-review evidence explicitly challenges each applicable context:
    partial persistence and lost responses; same-key and different-key races;
    stale snapshots and version drift; multi-tab, cache, and Cookie drift;
    authorization revocation; slow requests, deadlines, and resource
    retention; and sibling routes or consumers that do not share the policy.
    Each context has evidence or an explicit `N/A` rationale.
-9. An oversized PR has the `architecture-approved` label plus an approving
-   maintainer, design link, and documented reason it cannot be split safely.
-   The label does not waive design, testing, security, or fault-matrix evidence.
-10. A material review fix that changed a state machine, transaction boundary,
+10. An oversized PR has the `architecture-approved` label plus a maintainer or
+   administrator `APPROVED` review for the current head SHA, design link, and
+   documented reason it cannot be split safely. The label alone is not
+   authorization and does not waive design, testing, security, or fault-matrix
+   evidence.
+11. A material review fix that changed a state machine, transaction boundary,
     recovery protocol, or public contract returned to design review instead of
     remaining a local patch.
 
