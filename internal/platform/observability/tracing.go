@@ -9,6 +9,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
@@ -84,7 +85,12 @@ func (r *TraceRuntime) WrapHTTPHandler(handler http.Handler, operation string) h
 	if r == nil || r.provider == nil {
 		return handler
 	}
-	return otelhttp.NewHandler(handler, operation, otelhttp.WithTracerProvider(r.provider))
+	return otelhttp.NewHandler(
+		handler,
+		operation,
+		otelhttp.WithTracerProvider(r.provider),
+		otelhttp.WithPropagators(propagation.TraceContext{}),
+	)
 }
 
 // Shutdown flushes and closes the owned provider once.

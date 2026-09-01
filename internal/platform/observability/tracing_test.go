@@ -302,6 +302,40 @@ func TestWrappedHandlerRecordsServerSpanAndPreservesResponse(t *testing.T) {
 	}
 }
 
+func TestWrappedHandlerContinuesW3CTraceContext(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	runtime := &TraceRuntime{provider: provider, shutdown: provider.Shutdown}
+	handler := runtime.WrapHTTPHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), "product-listing-api")
+
+	request := httptest.NewRequest(http.MethodGet, "/health", nil)
+	request.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	handler.ServeHTTP(httptest.NewRecorder(), request)
+
+	ended := recorder.Ended()
+	if len(ended) != 1 {
+		t.Fatalf("ended spans = %d, want 1", len(ended))
+	}
+	wantTraceID, err := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantParentSpanID, err := trace.SpanIDFromHex("00f067aa0ba902b7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ended[0].SpanContext().TraceID(); got != wantTraceID {
+		t.Fatalf("trace ID = %s, want continued %s", got, wantTraceID)
+	}
+	parent := ended[0].Parent()
+	if parent.SpanID() != wantParentSpanID {
+		t.Fatalf("parent span ID = %s, want %s", parent.SpanID(), wantParentSpanID)
+	}
+	if !parent.IsRemote() {
+		t.Fatal("parent span context is local, want remote upstream context")
+	}
+}
+
 type recordingSpanExporter struct {
 	mu            sync.Mutex
 	exportedSpans int
