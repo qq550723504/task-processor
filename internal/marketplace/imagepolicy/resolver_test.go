@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unsafe"
 
 	productimage "task-processor/internal/product/image"
 
@@ -219,7 +220,18 @@ func TestNewResolverRejectsPolicyCountAboveResourceLimit(t *testing.T) {
 func TestNewResolverRejectsAggregatePolicyBytesAboveResourceLimit(t *testing.T) {
 	t.Parallel()
 
-	policies := make([]Policy, 513)
+	onePolicy := policyForTest(PolicyKey{
+		Marketplace:   "marketplace-a",
+		Country:       "xx",
+		Family:        "family-a",
+		SceneCategory: "category-a",
+	})
+	onePolicy.SceneDefaults.CustomSceneHint = strings.Repeat("x", 8192)
+	onePolicyResolver, err := NewResolver(PolicySet{Version: "catalog-v1", Policies: []Policy{onePolicy}})
+	require.NoError(t, err)
+	require.NotNil(t, onePolicyResolver)
+
+	policies := make([]Policy, 510)
 	for index := range policies {
 		policies[index] = policyForTest(PolicyKey{
 			Marketplace:   "marketplace-a",
@@ -229,6 +241,10 @@ func TestNewResolverRejectsAggregatePolicyBytesAboveResourceLimit(t *testing.T) 
 		})
 		policies[index].SceneDefaults.CustomSceneHint = strings.Repeat("x", 8192)
 	}
+
+	underLimit, err := NewResolver(PolicySet{Version: "catalog-v1", Policies: policies[:509]})
+	require.NoError(t, err)
+	require.NotNil(t, underLimit)
 
 	resolver, err := NewResolver(PolicySet{Version: "catalog-v1", Policies: policies})
 
@@ -304,6 +320,55 @@ func TestResolverDefensivelyOwnsPolicyData(t *testing.T) {
 	require.Equal(t, []string{"style-a"}, second.SceneDefaults.StyleReferenceIDs)
 }
 
+func TestResolverDoesNotRetainCallerStringBackingStorage(t *testing.T) {
+	t.Parallel()
+
+	key := PolicyKey{
+		Marketplace:   callerBackedString("marketplace-a"),
+		Country:       callerBackedString("xx"),
+		Family:        callerBackedString("family-a"),
+		SceneCategory: callerBackedString("category-a"),
+	}
+	policy := policyForTest(key)
+	policy.SceneDefaults = productimage.SceneOptions{
+		SceneCategory:     callerBackedString("category-a"),
+		SceneStyle:        callerBackedString("studio"),
+		BackgroundTone:    callerBackedString("neutral"),
+		Composition:       callerBackedString("centered"),
+		PropsLevel:        callerBackedString("none"),
+		AudienceHint:      callerBackedString("general"),
+		CustomSceneHint:   callerBackedString("soft-shadow"),
+		SlotRole:          callerBackedString("scene"),
+		SlotBrief:         callerBackedString("show-product"),
+		StyleReferenceIDs: []string{callerBackedString("style-a")},
+	}
+	version := callerBackedString("catalog-v1")
+	resolver, err := NewResolver(PolicySet{Version: version, Policies: []Policy{policy}})
+	require.NoError(t, err)
+
+	profile, err := resolver.Resolve(ProfileInput(key))
+	require.NoError(t, err)
+	for name, pair := range map[string][2]string{
+		"version":            {version, profile.PolicyVersion},
+		"marketplace":        {key.Marketplace, profile.Key.Marketplace},
+		"country":            {key.Country, profile.Key.Country},
+		"family":             {key.Family, profile.Key.Family},
+		"key scene category": {key.SceneCategory, profile.Key.SceneCategory},
+		"scene category":     {policy.SceneDefaults.SceneCategory, profile.SceneDefaults.SceneCategory},
+		"scene style":        {policy.SceneDefaults.SceneStyle, profile.SceneDefaults.SceneStyle},
+		"background tone":    {policy.SceneDefaults.BackgroundTone, profile.SceneDefaults.BackgroundTone},
+		"composition":        {policy.SceneDefaults.Composition, profile.SceneDefaults.Composition},
+		"props level":        {policy.SceneDefaults.PropsLevel, profile.SceneDefaults.PropsLevel},
+		"audience hint":      {policy.SceneDefaults.AudienceHint, profile.SceneDefaults.AudienceHint},
+		"custom scene hint":  {policy.SceneDefaults.CustomSceneHint, profile.SceneDefaults.CustomSceneHint},
+		"slot role":          {policy.SceneDefaults.SlotRole, profile.SceneDefaults.SlotRole},
+		"slot brief":         {policy.SceneDefaults.SlotBrief, profile.SceneDefaults.SlotBrief},
+		"style reference ID": {policy.SceneDefaults.StyleReferenceIDs[0], profile.SceneDefaults.StyleReferenceIDs[0]},
+	} {
+		require.NotEqual(t, stringDataPointer(pair[0]), stringDataPointer(pair[1]), name)
+	}
+}
+
 func TestResolverSupportsConcurrentExactReads(t *testing.T) {
 	t.Parallel()
 
@@ -355,4 +420,13 @@ func policyForTest(key PolicyKey) Policy {
 		},
 		SceneDefaults: productimage.SceneOptions{SceneCategory: key.SceneCategory},
 	}
+}
+
+func callerBackedString(value string) string {
+	backing := strings.Repeat("x", 1<<20) + value
+	return backing[len(backing)-len(value):]
+}
+
+func stringDataPointer(value string) uintptr {
+	return uintptr(unsafe.Pointer(unsafe.StringData(value)))
 }
