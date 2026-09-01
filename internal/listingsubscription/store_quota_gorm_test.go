@@ -73,6 +73,9 @@ func TestStoreQuotaReserveReplayAndTransitions(t *testing.T) {
 	if first.Existing || !second.Existing || first.AllocationID != second.AllocationID || first.StoreID != second.StoreID {
 		t.Fatalf("reserve results = %#v, %#v; want exact durable replay", first, second)
 	}
+	if !second.Allocation.UpdatedAt.After(first.Allocation.UpdatedAt) {
+		t.Fatalf("replay UpdatedAt = %s, first UpdatedAt = %s; want durable fencing touch", second.Allocation.UpdatedAt, first.Allocation.UpdatedAt)
+	}
 
 	transition := StoreQuotaTransitionInput{OrganizationID: "org-a", AllocationID: first.AllocationID, StoreID: first.StoreID, RequestKey: input.RequestKey, ActorSubject: "actor-1"}
 	committed, err := ledger.Commit(context.Background(), transition)
@@ -90,6 +93,48 @@ func TestStoreQuotaReserveReplayAndTransitions(t *testing.T) {
 	summary, err := ledger.Summary(context.Background(), "org-a")
 	if err != nil || summary.Committed != 0 || summary.Reserved != 0 || !summary.Allowed || summary.Limit == nil || *summary.Limit != 2 {
 		t.Fatalf("Summary() = %#v, %v; want available 0/0 at limit 2", summary, err)
+	}
+}
+
+func TestStoreQuotaConcurrentReservedReplaysDoNotLoseTheReservation(t *testing.T) {
+	db := openStoreQuotaTestDB(t)
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("database handle: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	repo := NewGormRepository(db)
+	seedStoreQuotaSubscription(t, repo, "org-replay", PlanBasic, 2)
+	ledger := NewGormStoreQuotaLedger(repo)
+	input := StoreQuotaReserveInput{OrganizationID: "org-replay", RequestKey: uuid.NewString(), ActorSubject: "actor-1", RequestFingerprint: strings.Repeat("c", 64)}
+	if _, err := ledger.Reserve(context.Background(), input); err != nil {
+		t.Fatalf("initial Reserve() error = %v", err)
+	}
+
+	const replayers = 8
+	errs := make(chan error, replayers)
+	var start sync.WaitGroup
+	start.Add(1)
+	for i := 0; i < replayers; i++ {
+		go func() {
+			start.Wait()
+			_, err := ledger.Reserve(context.Background(), input)
+			errs <- err
+		}()
+	}
+	start.Done()
+	for i := 0; i < replayers; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent replay Reserve() error = %v", err)
+		}
+	}
+
+	allocation, err := ledger.GetByRequestKey(context.Background(), input.OrganizationID, input.RequestKey)
+	if err != nil {
+		t.Fatalf("GetByRequestKey() error = %v", err)
+	}
+	if allocation.Status != StoreQuotaReserved || allocation.AllocatedAt != nil || allocation.ReleasedAt != nil {
+		t.Fatalf("replayed allocation = %#v; want active reservation", allocation)
 	}
 }
 

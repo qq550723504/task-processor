@@ -203,6 +203,9 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		request.ActorSubject = allocation.CreatedBy
 	}
 	transition := listingsubscription.StoreQuotaTransitionInput{OrganizationID: request.OrganizationID, AllocationID: allocation.AllocationID, StoreID: allocation.StoreID, RequestKey: request.IdempotencyKey, ActorSubject: request.ActorSubject}
+	releaseTransition := transition
+	expectedReleaseUpdatedAt := allocation.UpdatedAt
+	releaseTransition.ExpectedUpdatedAt = &expectedReleaseUpdatedAt
 	candidate, err := s.createCandidate(request, allocation)
 	if err != nil {
 		return CreateStoreResult{}, dependencyError(err)
@@ -213,7 +216,7 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		if !auditEventMatchesAllocation(*terminal, allocation.AllocationID, allocation.StoreID) {
 			return CreateStoreResult{}, dependencyError(ErrAuditIdentityMismatch)
 		}
-		if err := s.finishReleasedFailure(ctx, allocation, transition, request, *terminal); err != nil {
+		if err := s.finishReleasedFailure(ctx, allocation, releaseTransition, request, *terminal); err != nil {
 			return CreateStoreResult{}, err
 		}
 		return CreateStoreResult{}, stableFailureFromAudit(*terminal)
@@ -222,7 +225,7 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 	}
 
 	if err := s.record(ctx, allocation, request, AuditActionQuotaReserved, AuditOutcomeSucceeded, nil, "", StoreStatusProvisioning, AuditFailureNone); err != nil {
-		if releaseErr := s.releaseReservation(ctx, transition); releaseErr != nil {
+		if releaseErr := s.releaseReservation(ctx, releaseTransition); releaseErr != nil {
 			return CreateStoreResult{}, dependencyError(releaseErr)
 		}
 		if terminalErr := s.record(ctx, allocation, request, AuditActionStoreCreateFailed, AuditOutcomeFailed, nil, "", "", AuditFailureDependencyUnavailable); terminalErr != nil {
@@ -246,7 +249,7 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 				store, err = s.repository.Get(ctx, request.OrganizationID, allocation.StoreID)
 				if errors.Is(err, ErrNotFound) {
 					if errors.Is(createErr, ErrAlreadyExists) {
-						return s.compensateDefinitiveCreateFailure(ctx, allocation, transition, request, createErr)
+						return s.compensateDefinitiveCreateFailure(ctx, allocation, releaseTransition, request, createErr)
 					}
 					_ = s.record(ctx, allocation, request, AuditActionStoreCreateUnknown, AuditOutcomeUnknown, nil, "", "", AuditFailureDependencyUnavailable)
 					return CreateStoreResult{}, dependencyError(createErr)
@@ -259,6 +262,12 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 				verifyExistingCreate = true
 			}
 		case listingsubscription.StoreQuotaAllocated, listingsubscription.StoreQuotaReleased:
+			if allocation.Status == listingsubscription.StoreQuotaReleased && allocation.AllocatedAt != nil && allocation.ReleasedAt != nil {
+				// The create key already produced a Store that was subsequently
+				// deleted. It remains permanently consumed and must not be
+				// interpreted as a transient dependency failure.
+				return CreateStoreResult{}, ErrAlreadyExists
+			}
 			return CreateStoreResult{}, dependencyError(errors.New("quota allocation has no durable store"))
 		default:
 			return CreateStoreResult{}, dependencyError(errors.New("quota allocation status is invalid"))

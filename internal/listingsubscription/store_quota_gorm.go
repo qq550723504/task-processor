@@ -73,10 +73,42 @@ func (l *gormStoreQuotaLedger) Reserve(ctx context.Context, input StoreQuotaRese
 		return StoreQuotaReserveResult{}, err
 	}
 	if existing, err := l.GetByRequestKey(ctx, input.OrganizationID, input.RequestKey); err == nil {
-		if existing.RequestFingerprint != input.RequestFingerprint {
-			return StoreQuotaReserveResult{}, ErrStoreQuotaIdentityMismatch
+		for attempt := 0; ; attempt++ {
+			if existing.RequestFingerprint != input.RequestFingerprint {
+				return StoreQuotaReserveResult{}, ErrStoreQuotaIdentityMismatch
+			}
+			if existing.Status != StoreQuotaReserved {
+				return storeQuotaReserveResult(*existing, true), nil
+			}
+			// A replay is an active observation of the reservation. Fencing the
+			// previous observer with a durable timestamp prevents another API
+			// replica from releasing the reservation after this replay starts.
+			expectedUpdatedAt := existing.UpdatedAt
+			owner := existing.CreatedBy
+			if owner == "" {
+				owner = input.ActorSubject
+			}
+			renewed, renewErr := l.RenewReservation(ctx, StoreQuotaTransitionInput{
+				OrganizationID:    existing.OrganizationID,
+				AllocationID:      existing.AllocationID,
+				StoreID:           existing.StoreID,
+				RequestKey:        existing.RequestKey,
+				ActorSubject:      owner,
+				ExpectedUpdatedAt: &expectedUpdatedAt,
+			})
+			if renewErr == nil {
+				return storeQuotaReserveResult(renewed.Allocation, true), nil
+			}
+			if !errors.Is(renewErr, ErrStoreQuotaStale) || attempt >= 8 {
+				return StoreQuotaReserveResult{}, renewErr
+			}
+			// Another replica won the fencing update. Re-read its durable state
+			// before retrying so a release is observed instead of overwritten.
+			existing, err = l.GetByRequestKey(ctx, input.OrganizationID, input.RequestKey)
+			if err != nil {
+				return StoreQuotaReserveResult{}, err
+			}
 		}
-		return storeQuotaReserveResult(*existing, true), nil
 	} else if !errors.Is(err, ErrStoreQuotaNotFound) {
 		return StoreQuotaReserveResult{}, err
 	}
@@ -269,6 +301,9 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 		}
 		now := storeQuotaTimestamp(l.now().UTC(), row.UpdatedAt, bucket.UpdatedAt)
 		if operation == storeQuotaRenew {
+			if !now.After(row.UpdatedAt) {
+				now = row.UpdatedAt.Add(time.Nanosecond)
+			}
 			if err := updateStoreQuotaAllocation(tx, row, StoreQuotaReserved, input.ActorSubject, nil, nil, now); err != nil {
 				return err
 			}

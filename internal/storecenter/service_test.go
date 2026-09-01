@@ -527,6 +527,38 @@ func TestServiceCreateReplayReturnsLaterDisabledStoreWithoutReactivation(t *test
 	}
 }
 
+func TestServiceCreateReplayAfterStoreDeletionReturnsStableConflict(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	repository := newStoreRepositoryFake()
+	service, err := storecenter.NewService(repository, ledger, newAuditRepositoryFake(), &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	created, err := service.Create(context.Background(), request)
+	if err != nil {
+		t.Fatalf("initial Create(): %v", err)
+	}
+
+	allocatedAt := created.Store.UpdatedAt()
+	releasedAt := allocatedAt.Add(time.Second)
+	ledger.mu.Lock()
+	ledger.allocation.Status = listingsubscription.StoreQuotaReleased
+	ledger.allocation.AllocatedAt = &allocatedAt
+	ledger.allocation.ReleasedAt = &releasedAt
+	ledger.mu.Unlock()
+	repository.mu.Lock()
+	delete(repository.stores, request.OrganizationID+"/"+created.Store.ID())
+	repository.mu.Unlock()
+
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrAlreadyExists) {
+		t.Fatalf("replay Create() error = %v, want stable ErrAlreadyExists", err)
+	}
+	if repository.createCalls != 1 {
+		t.Fatalf("replay Create() repository calls = %d, want no new create", repository.createCalls)
+	}
+}
+
 func TestServiceCreateCrossActorReplayKeepsFirstDurableAuditActor(t *testing.T) {
 	request := validCreateRequest()
 	ledger := quotaForRequest(request)
