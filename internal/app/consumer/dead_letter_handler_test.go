@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"task-processor/internal/app/taskstatus"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
+	"task-processor/internal/platform/queue/rabbitmq"
 )
 
 type stubDeadLetterRuntime struct {

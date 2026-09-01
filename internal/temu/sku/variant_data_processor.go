@@ -3,7 +3,7 @@ package sku
 
 import (
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/strx"
+	"task-processor/internal/shared/strx"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"

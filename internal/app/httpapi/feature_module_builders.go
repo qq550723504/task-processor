@@ -7,15 +7,16 @@ import (
 	"github.com/sirupsen/logrus"
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	"task-processor/internal/app/configadapter"
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
 	imageagenthttpapi "task-processor/internal/imageagent/httpapi"
 	imageagentstore "task-processor/internal/imageagent/store"
-	"task-processor/internal/infra/database"
-	storageinfra "task-processor/internal/infra/storage"
+	s3integration "task-processor/internal/integration/s3"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
+	platformdatabase "task-processor/internal/platform/database"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	"task-processor/internal/sourceaccount"
@@ -80,12 +81,13 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 		closeWorkflowOnError()
 		return nil, fmt.Errorf("build image agent HTTP module: database config is required")
 	}
-	db, err := database.NewSharedDatabaseFromConfig(cfg.Database)
+	databaseConfig := configadapter.Database(cfg.Database)
+	db, err := platformdatabase.OpenShared(databaseConfig)
 	if err != nil {
 		closeWorkflowOnError()
 		return nil, fmt.Errorf("build image agent repository: %w", err)
 	}
-	databaseCloser := func() error { return database.CloseSharedDatabase(cfg.Database, db) }
+	databaseCloser := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	service, err := imageagent.NewService(
 		imageagentstore.NewGormRepository(db), workflowClient,
 		listingkithttpapi.NewImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db)),
@@ -124,8 +126,26 @@ func imageAgentDurableAssetPublicURLResolver(cfg *config.Config) imageagent.Dura
 	if !publisher.Enabled || !strings.EqualFold(strings.TrimSpace(publisher.Provider), "s3") || strings.TrimSpace(publisher.PublicBase) == "" || strings.TrimSpace(publisher.S3.Bucket) == "" {
 		return nil
 	}
-	return storageinfra.NewS3UploaderWithOptions(nil, storageinfra.S3UploaderOptions{
-		Bucket: publisher.S3.Bucket, PublicBase: publisher.PublicBase,
-		Endpoint: publisher.S3.Endpoint, UsePathStyle: publisher.S3.UsePathStyle,
-	})
+	return imageAgentObjectURLResolver{
+		bucket: publisher.S3.Bucket, publicBase: publisher.PublicBase,
+		endpoint: publisher.S3.Endpoint, usePathStyle: publisher.S3.UsePathStyle,
+	}
+}
+
+type imageAgentObjectURLResolver struct {
+	bucket       string
+	publicBase   string
+	endpoint     string
+	usePathStyle bool
+}
+
+func (r imageAgentObjectURLResolver) PublicURL(key string) string {
+	fallbackBase := s3integration.BuildS3PublicBase(r.endpoint, r.bucket, r.usePathStyle)
+	fallbackURL := ""
+	if fallbackBase != "" {
+		fallbackURL = strings.TrimRight(fallbackBase, "/") + "/" + strings.TrimLeft(strings.TrimSpace(key), "/")
+	} else {
+		fallbackURL = fmt.Sprintf("https://%s.s3.amazonaws.com/%s", strings.TrimSpace(r.bucket), strings.TrimLeft(strings.TrimSpace(key), "/"))
+	}
+	return s3integration.ResolveObjectURL(r.publicBase, key, fallbackURL)
 }

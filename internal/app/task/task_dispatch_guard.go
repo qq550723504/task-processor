@@ -3,9 +3,9 @@ package task
 import (
 	"fmt"
 
-	"task-processor/internal/core/logger"
 	"task-processor/internal/listingruntime"
-	"task-processor/internal/pkg/timex"
+	logger "task-processor/internal/platform/logging"
+	"task-processor/internal/shared/timex"
 )
 
 type TaskDispatchGuard struct {

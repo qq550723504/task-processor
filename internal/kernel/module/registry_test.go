@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/httproute"
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 func TestRegistryAddRoutesPreservesOrder(t *testing.T) {

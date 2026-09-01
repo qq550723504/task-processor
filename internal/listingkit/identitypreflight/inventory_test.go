@@ -24,7 +24,7 @@ func TestOwnerTableInventoryMatchesOwnerScopedModels(t *testing.T) {
 		productionNonPersistentOwnerModelExclusions(repositoryRoot),
 		filepath.Join(repositoryRoot, "internal", "listingkit"),
 		filepath.Join(repositoryRoot, "internal", "listingadmin"),
-		filepath.Join(repositoryRoot, "internal", "infra", "clients", "openai"),
+		filepath.Join(repositoryRoot, "internal", "integration", "openai"),
 	)
 	if err != nil {
 		t.Fatalf("discover owner-scoped models: %v", err)
@@ -178,7 +178,7 @@ func productionNonPersistentOwnerModelExclusions(repositoryRoot string) map[owne
 	imageAgentAcceptanceDirectory := filepath.Join(listingKitDirectory, "imageagentacceptance")
 	memberInviteDirectory := filepath.Join(listingKitDirectory, "memberinvite")
 	storeDirectory := filepath.Join(listingKitDirectory, "store")
-	openAIDirectory := filepath.Join(repositoryRoot, "internal", "infra", "clients", "openai")
+	openAIDirectory := filepath.Join(repositoryRoot, "internal", "integration", "openai")
 
 	return map[ownerModelKey]string{
 		{Directory: identityPreflightDirectory, Package: "identitypreflight", TypeName: "PersistedOwner"}:      "read-only aggregate result returned by the preflight repository",

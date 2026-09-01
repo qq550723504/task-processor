@@ -12,7 +12,7 @@ import (
 
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/shared/aiidentity"
 )

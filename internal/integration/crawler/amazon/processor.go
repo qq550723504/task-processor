@@ -43,11 +43,7 @@ func NewLegacySource(cfg *config.Config, logger *logrus.Logger) Source {
 
 // NewLegacyCrawlSource constructs a legacy-backed crawl source.
 func NewLegacyCrawlSource(cfg *config.Config, logger *logrus.Logger) *LegacyCrawlSource {
-	source := NewLegacySource(cfg, logger)
-	if source == nil {
-		return nil
-	}
-	return &LegacyCrawlSource{source: source}
+	return &LegacyCrawlSource{source: NewLegacySource(cfg, logger)}
 }
 
 // Process fetches one Amazon source product.

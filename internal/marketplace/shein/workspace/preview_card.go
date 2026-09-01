@@ -1,6 +1,6 @@
 package workspace
 
-import "task-processor/internal/pkg/strx"
+import "task-processor/internal/shared/strx"
 
 import sheinpub "task-processor/internal/publishing/shein"
 

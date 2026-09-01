@@ -11,9 +11,9 @@ import (
 	coremetrics "task-processor/internal/core/metrics"
 	"time"
 
+	appmetrics "task-processor/internal/app/consumer/metrics"
 	"task-processor/internal/core/config"
-	appmetrics "task-processor/internal/infra/metrics"
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platform/queue/rabbitmq"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
@@ -215,11 +215,7 @@ func (h *HTTPServerManager) refreshMetricsSnapshot() {
 	systemMetrics := make(map[string]float64)
 	if h.loadMonitor != nil {
 		stats = h.loadMonitor.GetStats()
-		if collector := h.loadMonitor.GetMetricsCollector(); collector != nil {
-			for name, metric := range collector.GetMetrics() {
-				systemMetrics[name] = metric.Value
-			}
-		}
+		systemMetrics = h.loadMonitor.SystemMetricsSnapshot()
 	}
 
 	h.consumerMetrics.UpdateConsumerSnapshot(appmetrics.ConsumerSnapshot{

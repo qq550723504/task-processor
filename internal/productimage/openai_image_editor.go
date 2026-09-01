@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/pkg/safeimagehttp"
+	"task-processor/internal/integration/httpimage"
 	"task-processor/internal/prompt"
 )
 
@@ -247,5 +247,5 @@ func decodeFirstEditedImage(ctx context.Context, response *imageEditResponse, do
 }
 
 func downloadGeneratedImage(ctx context.Context, imageURL string) ([]byte, error) {
-	return safeimagehttp.Download(ctx, safeimagehttp.NewPublicImageHTTPClient(), imageURL, safeimagehttp.DefaultMaxBodyBytes)
+	return httpimage.Download(ctx, httpimage.NewPublicImageHTTPClient(), imageURL, httpimage.DefaultMaxBodyBytes)
 }

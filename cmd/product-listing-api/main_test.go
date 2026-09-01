@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -30,6 +31,8 @@ import (
 )
 
 func TestStart_GenerateProductAndQueryTask(t *testing.T) {
+	runtimePaths := configureProductImageRuntimePaths(t)
+
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
@@ -133,9 +136,13 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("service did not exit after SIGTERM")
 	}
+	require.DirExists(t, runtimePaths.workDir)
+	require.DirExists(t, filepath.Join(runtimePaths.publisherOutputDir, "listingkit-inputs"))
 }
 
 func TestStart_ErrorPathsAndCleanup(t *testing.T) {
+	runtimePaths := configureProductImageRuntimePaths(t)
+
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
@@ -256,6 +263,36 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("service did not exit after SIGTERM")
 	}
+	require.DirExists(t, runtimePaths.workDir)
+	require.DirExists(t, filepath.Join(runtimePaths.publisherOutputDir, "listingkit-inputs"))
+}
+
+type productImageRuntimePaths struct {
+	workDir            string
+	publisherOutputDir string
+}
+
+func configureProductImageRuntimePaths(t *testing.T) productImageRuntimePaths {
+	t.Helper()
+	runtimeRoot, err := filepath.Abs(t.TempDir())
+	require.NoError(t, err)
+	paths := productImageRuntimePaths{
+		workDir:            filepath.Join(runtimeRoot, "productimage"),
+		publisherOutputDir: filepath.Join(runtimeRoot, "published"),
+	}
+	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_WORKDIR", paths.workDir)
+	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_OUTPUTDIR", paths.publisherOutputDir)
+	assertNoPackageLocalRuntimeArtifacts(t)
+	return paths
+}
+
+func assertNoPackageLocalRuntimeArtifacts(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		if _, err := os.Stat(".local"); !os.IsNotExist(err) {
+			t.Errorf("package-local runtime artifact .local exists or cannot be checked: %v", err)
+		}
+	})
 }
 
 const productListingAPITestBearerToken = "product-listing-api-test-token"

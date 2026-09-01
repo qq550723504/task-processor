@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/httpclient"
-	"task-processor/internal/pkg/strx"
+	logger "task-processor/internal/platform/logging"
+	"task-processor/internal/shared/strx"
 	"time"
 )
 

@@ -3,9 +3,10 @@ package httpapi
 import (
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/redisclient"
-	"task-processor/internal/infra/worker"
+	platformredis "task-processor/internal/platform/redis"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 )
@@ -23,7 +24,7 @@ func (s *poolSubmitter) Submit(taskID string) error {
 }
 
 func newRedisClient(cfg *config.RedisConfig, logger *logrus.Logger) (productenrich.RedisClient, error) {
-	rc, err := redisclient.New(cfg)
+	rc, err := platformredis.New(configadapter.Redis(cfg))
 	if err != nil {
 		return nil, err
 	}

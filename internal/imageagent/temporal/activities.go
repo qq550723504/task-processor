@@ -16,10 +16,10 @@ import (
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
-	"task-processor/internal/infra/resilience"
 	"task-processor/internal/pkg/imagex"
 	"task-processor/internal/productimage"
 	"task-processor/internal/shared/aiidentity"
+	"task-processor/internal/shared/resilience"
 )
 
 const slotResultPersistedEventType = "slot.result.persisted"

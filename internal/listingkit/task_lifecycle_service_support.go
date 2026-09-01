@@ -11,10 +11,10 @@ import (
 	"github.com/google/uuid"
 
 	"task-processor/internal/authidentity"
-	"task-processor/internal/infra/worker"
 	listingplatform "task-processor/internal/listing/platform"
 	listingsubmission "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/tenantbridge"
 )
 

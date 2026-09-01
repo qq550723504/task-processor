@@ -71,7 +71,7 @@ func TestHTTPAPILegacyBuildHandlersFacadeStaysRetired(t *testing.T) {
 
 	for _, marker := range []string{
 		"func BuildHandlers(",
-		`"task-processor/internal/infra/worker"`,
+		`"task-processor/internal/infra/` + `worker"`,
 		`"task-processor/internal/productenrich"`,
 		`"task-processor/internal/productimage/httpapi"`,
 		"productenrich.ProductHandler",

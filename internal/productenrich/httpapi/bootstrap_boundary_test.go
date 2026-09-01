@@ -6,37 +6,18 @@ import (
 	"testing"
 )
 
-func TestBootstrapKeepsLLMScorerAssemblyInDedicatedFile(t *testing.T) {
-	bootstrapSource := readProductEnrichHTTPAPIBoundaryFile(t, "bootstrap.go")
-	for _, marker := range []string{
-		"const productScorerClientName",
-		"func buildLLMScorerWithCache(",
-		"productenrich.LLMScorerConfig{",
-		"scorerCfg.TextClient = productScorerClientName",
-	} {
-		if strings.Contains(bootstrapSource, marker) {
-			t.Fatalf("bootstrap.go should delegate ProductEnrich LLM scorer assembly to scorer_builder.go; found %s", marker)
-		}
-	}
-
-	builderSource := readProductEnrichHTTPAPIBoundaryFile(t, "scorer_builder.go")
-	for _, marker := range []string{
-		"const productScorerClientName",
-		"func buildLLMScorerWithCache(",
-		"productenrich.LLMScorerConfig{",
-		"scorerCfg.TextClient = productScorerClientName",
-	} {
-		if !strings.Contains(builderSource, marker) {
-			t.Fatalf("scorer_builder.go missing %s", marker)
-		}
-	}
-}
-
-func readProductEnrichHTTPAPIBoundaryFile(t *testing.T, name string) string {
-	t.Helper()
-	data, err := os.ReadFile(name)
+func TestRepositoryBuilderDoesNotOwnRuntimeSchemaMigration(t *testing.T) {
+	source, err := os.ReadFile("bootstrap.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(data)
+	for _, forbidden := range []string{
+		`"task-processor/internal/app/schema/productlisting"`,
+		"ProductListingAPIRuntimeAutoMigrateEnabled(",
+		"productlisting.Migrate(",
+	} {
+		if strings.Contains(string(source), forbidden) {
+			t.Fatalf("productenrich repository builder must be pure construction; found %s", forbidden)
+		}
+	}
 }

@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/redisclient"
+	platformredis "task-processor/internal/platform/redis"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,12 +24,12 @@ type StoreAssignmentProvider interface {
 
 // RedisStoreAssignmentProvider reads dynamic store ownership from Redis.
 type RedisStoreAssignmentProvider struct {
-	client *redisclient.Client
+	client *platformredis.Client
 	logger *logrus.Logger
 }
 
 func NewRedisStoreAssignmentProvider(cfg *config.RedisConfig, logger *logrus.Logger) (*RedisStoreAssignmentProvider, error) {
-	client, err := redisclient.New(cfg)
+	client, err := platformredis.New(configadapter.Redis(cfg))
 	if err != nil {
 		return nil, err
 	}

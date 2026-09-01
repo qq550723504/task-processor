@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/timex"
+	"task-processor/internal/shared/timex"
 	shein "task-processor/internal/shein"
 	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/validation"

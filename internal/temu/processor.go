@@ -8,11 +8,11 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/platform/queue/rabbitmq"
+	workerpool "task-processor/internal/platform/workerpool"
 	"task-processor/internal/processor"
 	"task-processor/internal/state"
 	temuclient "task-processor/internal/temu/api/client"
@@ -101,7 +101,7 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 		rabbitmqClient:      deps.RabbitMQClient,
 	}
 
-	workerPool := worker.NewPool(p, cfg.Worker)
+	workerPool := workerpool.NewPoolWithConfig(p, platformWorkerPoolConfig(cfg.Worker))
 	p.SetWorkerPool(workerPool)
 	p.taskHandler = NewTaskHandler(p)
 	p.pipelineExecutor = p.buildPipelineExecutor()
@@ -109,7 +109,7 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 	return p, nil
 }
 
-func (p *TemuProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
+func (p *TemuProcessor) ProcessTask(ctx context.Context, job workerpool.WorkerJob) error {
 	var task model.Task
 	if err := jsonx.UnmarshalString(job.TaskData, &task, "parse task data"); err != nil {
 		return err
@@ -129,6 +129,13 @@ func (p *TemuProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) e
 
 	log.WithField(logger.FieldTaskID, task.ID).Info("task complete")
 	return nil
+}
+
+func platformWorkerPoolConfig(cfg config.WorkerConfig) workerpool.PoolConfig {
+	result := workerpool.DefaultPoolConfig()
+	result.Concurrency = cfg.Concurrency
+	result.BufferSize = cfg.BufferSize
+	return result
 }
 
 func (p *TemuProcessor) processTemuProduct(ctx context.Context, task model.Task) error {

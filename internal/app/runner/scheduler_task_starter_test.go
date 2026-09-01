@@ -14,10 +14,10 @@ import (
 )
 
 type stubSchedulerStoreRuntime struct {
-	getStoreFunc                       func(storeID int64) (*listingruntime.StoreInfo, error)
-	listAutoPricingStoreIDsFunc        func(ctx context.Context, platformName string) ([]int64, error)
-	listScheduledTaskConfigsFunc       func(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
-	listScheduledTaskConfigStatesFunc  func(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
+	getStoreFunc                      func(storeID int64) (*listingruntime.StoreInfo, error)
+	listAutoPricingStoreIDsFunc       func(ctx context.Context, platformName string) ([]int64, error)
+	listScheduledTaskConfigsFunc      func(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
+	listScheduledTaskConfigStatesFunc func(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
 }
 
 func (s *stubSchedulerStoreRuntime) GetStore(storeID int64) (*listingruntime.StoreInfo, error) {

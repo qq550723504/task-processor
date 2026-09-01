@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	studiodomain "task-processor/internal/listing/studio"
 	"task-processor/internal/shared/tenantctx"
 )

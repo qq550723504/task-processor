@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	infralock "task-processor/internal/infra/lock"
 )
 
 type blockingTask struct {
@@ -130,7 +128,7 @@ func (l *recordingLock) IsLocked(context.Context, string) (bool, error) {
 	return l.locked, nil
 }
 
-var _ infralock.DistributedLock = (*recordingLock)(nil)
+var _ DistributedLock = (*recordingLock)(nil)
 
 func TestTaskExecutorStartIsIdempotent(t *testing.T) {
 	task := &blockingTask{}

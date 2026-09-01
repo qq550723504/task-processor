@@ -1,7 +1,6 @@
 package temporal
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,7 +9,6 @@ import (
 	"fmt"
 	"image"
 	"image/png"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,9 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
 	sdkactivity "go.temporal.io/sdk/activity"
 	sdktemporal "go.temporal.io/sdk/temporal"
@@ -30,7 +25,6 @@ import (
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
 	"task-processor/internal/imageagent/store"
-	storageinfra "task-processor/internal/infra/storage"
 	"task-processor/internal/productimage"
 )
 
@@ -826,7 +820,7 @@ func TestExecuteSlotV3CancelsBlockingSDKCallBeforeLeaseExpiryWithoutTakeover(t *
 	manifest := v3StagingManifest(input, tinyPNGBytes(t))
 	seedV3ArtifactStaged(t, effects, input, manifest)
 	staged := manifest.Assets[0]
-	api := &statefulActivityS3API{
+	api := &statefulActivityObjectStore{
 		objects: map[string]activityS3Object{
 			staged.ObjectKey: {contentType: staged.ContentType, contentLength: staged.SizeBytes, metadata: map[string]string{"sha256": staged.SHA256, "size-bytes": fmt.Sprint(staged.SizeBytes)}},
 		},
@@ -862,7 +856,7 @@ func TestExecuteSlotV3CancelsBlockingSDKCallBeforeLeaseExpiryWithoutTakeover(t *
 func TestExecuteSlotV3UsesProductionStoreToReconcileLostPutAndCopyResponses(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-production-lost-responses")
 	path := writeTinyPNG(t)
-	api := &statefulActivityS3API{objects: map[string]activityS3Object{}, loseNextPutAfterWrite: true, loseNextCopyAfterWrite: true}
+	api := &statefulActivityObjectStore{objects: map[string]activityS3Object{}, loseNextPutAfterWrite: true, loseNextCopyAfterWrite: true}
 	artifacts := newProductionArtifactStore(t, api)
 	executor := &recordingStagedExecutor{generated: generatedV3Output(input, path)}
 	activities := newV3Activities(t, repository, repository.(imageagent.SlotExternalEffectV3Repository), executor, artifacts)
@@ -887,19 +881,23 @@ func TestExecuteSlotV3UsesProductionStoreToReconcileLostPutAndCopyResponses(t *t
 func TestExecuteSlotV3ProductionStoreReconcilesMultiAssetAfterLocalBytesVanish(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
-		configure func(*statefulActivityS3API, *failOnceStagedCommitRepository)
+		configure func(*statefulActivityObjectStore, *failOnceStagedCommitRepository)
 		wantPhase imageagent.SlotEffectV3Phase
 		wantError string
 	}{
-		{name: "all matching", configure: func(_ *statefulActivityS3API, repository *failOnceStagedCommitRepository) { repository.fail = true }, wantPhase: imageagent.SlotEffectV3PublicationComplete},
-		{name: "partial missing", configure: func(api *statefulActivityS3API, _ *failOnceStagedCommitRepository) { api.failPutCall = 2 }, wantPhase: imageagent.SlotEffectV3PublicationComplete},
-		{name: "mismatch", configure: func(_ *statefulActivityS3API, repository *failOnceStagedCommitRepository) { repository.fail = true }, wantPhase: imageagent.SlotEffectV3StagingUnknown, wantError: slotStagingOutcomeUnknownCode},
+		{name: "all matching", configure: func(_ *statefulActivityObjectStore, repository *failOnceStagedCommitRepository) {
+			repository.fail = true
+		}, wantPhase: imageagent.SlotEffectV3PublicationComplete},
+		{name: "partial missing", configure: func(api *statefulActivityObjectStore, _ *failOnceStagedCommitRepository) { api.failPutCall = 2 }, wantPhase: imageagent.SlotEffectV3PublicationComplete},
+		{name: "mismatch", configure: func(_ *statefulActivityObjectStore, repository *failOnceStagedCommitRepository) {
+			repository.fail = true
+		}, wantPhase: imageagent.SlotEffectV3StagingUnknown, wantError: slotStagingOutcomeUnknownCode},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repository, input := initializedSlotEffectV3Activity(t, "run-v3-production-"+strings.ReplaceAll(tc.name, " ", "-"))
 			baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
 			effects := &failOnceStagedCommitRepository{SlotExternalEffectV3Repository: baseEffects}
-			api := &statefulActivityS3API{objects: map[string]activityS3Object{}}
+			api := &statefulActivityObjectStore{objects: map[string]activityS3Object{}}
 			tc.configure(api, effects)
 			paths := []string{writeTinyPNG(t), writeTinyPNG(t)}
 			generated := generatedV3Output(input, paths[0])
@@ -948,7 +946,7 @@ func TestExecuteSlotV3ProductionStoreCompletionCrashTakesOverWithoutRecopy(t *te
 	input := ExecuteSlotV3ActivityInput{RunID: run.ID, Identity: identity, PlanRevision: 1, Slot: plan.Slots[0], Attempt: 1, IdempotencyKey: "slot-crash:plan:1:attempt:1"}
 	baseEffects := repository.(imageagent.SlotExternalEffectV3Repository)
 	effects := &failOnceCompletionRepository{SlotExternalEffectV3Repository: baseEffects, fail: true}
-	api := &statefulActivityS3API{objects: map[string]activityS3Object{}}
+	api := &statefulActivityObjectStore{objects: map[string]activityS3Object{}}
 	artifacts := newProductionArtifactStore(t, api)
 	executor := &recordingStagedExecutor{generated: generatedV3Output(input, writeTinyPNG(t))}
 	first := newV3ActivitiesWithOwner(t, repository, effects, executor, artifacts, "workflow-run/activity/1")
@@ -994,10 +992,9 @@ func newV3ActivitiesWithOwner(t *testing.T, repository imageagent.Repository, ef
 	return activities
 }
 
-func newProductionArtifactStore(t *testing.T, api *statefulActivityS3API) *objectstore.S3DurableArtifactStore {
+func newProductionArtifactStore(t *testing.T, api *statefulActivityObjectStore) *objectstore.DurableArtifactStore {
 	t.Helper()
-	uploader := storageinfra.NewS3UploaderWithAPI(api, storageinfra.S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: storageinfra.ArtifactStorageCapabilities{Mode: storageinfra.ArtifactStorageModeAWS}})
-	artifacts, err := objectstore.NewS3DurableArtifactStore(uploader, objectstore.S3DurableArtifactStoreConfig{MaxArtifactBytes: 1 << 20, MaxArtifactCount: 16, MaxAggregateBytes: 16 << 20, OperationTimeout: 100 * time.Millisecond})
+	artifacts, err := objectstore.NewDurableArtifactStore(api, objectstore.DurableArtifactStoreConfig{MaxArtifactBytes: 1 << 20, MaxArtifactCount: 16, MaxAggregateBytes: 16 << 20, OperationTimeout: 100 * time.Millisecond})
 	require.NoError(t, err)
 	return artifacts
 }
@@ -1638,7 +1635,7 @@ func (r *failOnceCompletionRepository) CompleteSlotPublicationV3(ctx context.Con
 	return r.SlotExternalEffectV3Repository.CompleteSlotPublicationV3(ctx, completion)
 }
 
-type statefulActivityS3API struct {
+type statefulActivityObjectStore struct {
 	objects                map[string]activityS3Object
 	putCalls               int
 	headCalls              int
@@ -1658,87 +1655,76 @@ type activityS3Object struct {
 	checksumSHA   string
 }
 
-func (f *statefulActivityS3API) PutObject(_ context.Context, input *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+func (f *statefulActivityObjectStore) PublicURL(key string) string {
+	return "https://cdn.example.test/" + strings.TrimLeft(key, "/")
+}
+
+func (f *statefulActivityObjectStore) PutImmutable(_ context.Context, input objectstore.ImmutableObjectPut) error {
 	f.putCalls++
 	if f.failPutCall == f.putCalls {
-		return nil, errors.New("put failed before write")
+		return errors.New("put failed before write")
 	}
 	f.savePut(input)
 	if f.loseNextPutAfterWrite {
 		f.loseNextPutAfterWrite = false
-		return nil, errors.New("put response lost after write")
+		return errors.New("put response lost after write")
 	}
-	return &s3.PutObjectOutput{}, nil
+	return nil
 }
 
-func (f *statefulActivityS3API) HeadObject(ctx context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+func (f *statefulActivityObjectStore) InspectObject(ctx context.Context, key string) (objectstore.ObjectInspection, error) {
 	f.headCalls++
 	if f.blockHead {
 		deadline, ok := ctx.Deadline()
 		if !ok {
-			return nil, errors.New("blocking SDK HEAD call has no deadline")
+			return objectstore.ObjectInspection{}, errors.New("blocking object inspection has no deadline")
 		}
 		f.headDeadline = deadline
 		<-ctx.Done()
-		return nil, ctx.Err()
+		return objectstore.ObjectInspection{}, ctx.Err()
 	}
-	object, ok := f.objects[aws.ToString(input.Key)]
+	object, ok := f.objects[key]
 	if !ok {
-		return nil, &types.NotFound{}
+		return objectstore.ObjectInspection{}, nil
 	}
-	return &s3.HeadObjectOutput{ContentType: aws.String(object.contentType), ContentLength: aws.Int64(object.contentLength), Metadata: object.metadata, ChecksumSHA256: aws.String(object.checksumSHA)}, nil
+	return objectstore.ObjectInspection{Exists: true, ContentType: object.contentType, ContentLength: object.contentLength, Metadata: object.metadata, ServerChecksumSHA256: object.checksumSHA}, nil
 }
 
-func (f *statefulActivityS3API) GetObject(_ context.Context, input *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
-	object, ok := f.objects[aws.ToString(input.Key)]
+func (f *statefulActivityObjectStore) ReadObject(_ context.Context, key string, _ int64) ([]byte, objectstore.ObjectInspection, error) {
+	object, ok := f.objects[key]
 	if !ok {
-		return nil, &types.NoSuchKey{}
+		return nil, objectstore.ObjectInspection{}, nil
 	}
-	return &s3.GetObjectOutput{
-		Body: io.NopCloser(bytes.NewReader(object.data)), ContentType: aws.String(object.contentType),
-		ContentLength: aws.Int64(object.contentLength), Metadata: object.metadata,
-		ChecksumSHA256: aws.String(object.checksumSHA),
-	}, nil
+	return append([]byte(nil), object.data...), objectstore.ObjectInspection{Exists: true, ContentType: object.contentType, ContentLength: object.contentLength, Metadata: object.metadata, ServerChecksumSHA256: object.checksumSHA}, nil
 }
 
-func (f *statefulActivityS3API) CopyObject(_ context.Context, input *s3.CopyObjectInput, _ ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
+func (f *statefulActivityObjectStore) CopyImmutable(_ context.Context, input objectstore.ImmutableObjectCopy) error {
 	f.copyCalls++
 	f.saveCopy(input)
 	if f.loseNextCopyAfterWrite {
 		f.loseNextCopyAfterWrite = false
-		return nil, errors.New("copy response lost after write")
+		return errors.New("copy response lost after write")
 	}
-	return &s3.CopyObjectOutput{}, nil
+	return nil
 }
 
-func (f *statefulActivityS3API) DeleteObject(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
-	return nil, errors.New("not implemented")
+func (f *statefulActivityObjectStore) savePut(input objectstore.ImmutableObjectPut) {
+	metadata := map[string]string{"sha256": input.SHA256, "size-bytes": fmt.Sprintf("%d", input.SizeBytes)}
+	f.objects[input.Key] = activityS3Object{data: append([]byte(nil), input.Data...), contentType: input.ContentType, contentLength: input.SizeBytes, metadata: metadata}
 }
 
-func (f *statefulActivityS3API) savePut(input *s3.PutObjectInput) {
-	metadata := make(map[string]string, len(input.Metadata))
-	for key, value := range input.Metadata {
-		metadata[key] = value
-	}
-	data, _ := io.ReadAll(input.Body)
-	f.objects[aws.ToString(input.Key)] = activityS3Object{data: data, contentType: aws.ToString(input.ContentType), contentLength: aws.ToInt64(input.ContentLength), metadata: metadata, checksumSHA: aws.ToString(input.ChecksumSHA256)}
-}
-
-func (f *statefulActivityS3API) saveCopy(input *s3.CopyObjectInput) {
-	if _, exists := f.objects[aws.ToString(input.Key)]; exists {
+func (f *statefulActivityObjectStore) saveCopy(input objectstore.ImmutableObjectCopy) {
+	if _, exists := f.objects[input.Destination.Key]; exists {
 		return
 	}
-	source := strings.TrimPrefix(aws.ToString(input.CopySource), "assets/")
-	object, ok := f.objects[source]
+	object, ok := f.objects[input.SourceKey]
 	if !ok {
 		return
 	}
-	object.contentType = aws.ToString(input.ContentType)
-	object.metadata = make(map[string]string, len(input.Metadata))
-	for key, value := range input.Metadata {
-		object.metadata[key] = value
-	}
-	f.objects[aws.ToString(input.Key)] = object
+	object.contentType = input.Destination.ContentType
+	object.contentLength = input.Destination.SizeBytes
+	object.metadata = map[string]string{"sha256": input.Destination.SHA256, "size-bytes": fmt.Sprintf("%d", input.Destination.SizeBytes)}
+	f.objects[input.Destination.Key] = object
 }
 
 func (r *lostResponseV3Repository) PrepareSlotStagingV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation, manifest imageagent.StagingManifest) (imageagent.SlotEffectV3Attempt, error) {

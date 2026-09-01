@@ -12,9 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/listingkit/ownerreconcile"
+	platformdatabase "task-processor/internal/platform/database"
 )
 
 type runtimeDependencies struct {
@@ -31,7 +32,7 @@ type runtimeDependencies struct {
 
 func defaultRuntimeDependencies() runtimeDependencies {
 	open := func(databaseConfig *config.DatabaseConfig) (*sql.DB, error) {
-		gormDB, err := database.NewDatabaseFromConfigWithoutCreate(databaseConfig)
+		gormDB, err := platformdatabase.OpenExistingReadOnly(configadapter.Database(databaseConfig))
 		if err != nil || gormDB == nil {
 			return nil, err
 		}
@@ -45,7 +46,7 @@ func defaultRuntimeDependencies() runtimeDependencies {
 		LoadConfig: config.LoadConfigFromFileWithoutValidation,
 		OpenDB:     open,
 		OpenWritableDB: func(databaseConfig *config.DatabaseConfig) (*sql.DB, error) {
-			gormDB, err := database.NewDatabaseFromConfigWithoutCreateWritable(databaseConfig)
+			gormDB, err := platformdatabase.OpenExistingWritable(configadapter.Database(databaseConfig))
 			if err != nil || gormDB == nil {
 				return nil, err
 			}

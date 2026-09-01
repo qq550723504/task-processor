@@ -9,7 +9,7 @@ import (
 func TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated(t *testing.T) {
 	typesSource := readHTTPAPIBoundaryFile(t, "types.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/clients/openai"`,
+		`"task-processor/internal/integration/openai"`,
 		"type sharedRuntimeDeps struct",
 		"openaiMgr",
 		"aiCredentialStore",
@@ -21,7 +21,7 @@ func TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated(t *testing.T) {
 
 	runtimeDepsSource := readHTTPAPIBoundaryFile(t, "runtime_shared_deps.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/clients/openai"`,
+		`"task-processor/internal/integration/openai"`,
 		"type sharedRuntimeDeps struct",
 		"openaiMgr",
 		"aiCredentialStore",
@@ -35,7 +35,7 @@ func TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated(t *testing.T) {
 func TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated(t *testing.T) {
 	adaptersSource := readHTTPAPIBoundaryFile(t, "adapters.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/clients/openai"`,
+		`"task-processor/internal/integration/openai"`,
 		"func newOpenAIManager(",
 		"func newDBOpenAICredentialResolver(",
 		"openaiclient.NewManager(",
@@ -48,7 +48,7 @@ func TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated(t *testing.T) {
 
 	openAIAdaptersSource := readHTTPAPIBoundaryFile(t, "adapters_openai.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/clients/openai"`,
+		`"task-processor/internal/integration/openai"`,
 		"func newOpenAIManager(",
 		"func newDBOpenAICredentialResolver(",
 		"openaiclient.NewManager(",
@@ -102,7 +102,6 @@ func TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated(t *testing.T) {
 		`"task-processor/internal/app/bootstrap/resources"`,
 		`"task-processor/internal/prompt"`,
 		"func newDBTenantPromptStore(",
-		"prompt.NewGormTenantPromptStore(",
 		"bootstrapresources.NewDBTenantPromptStore(",
 	} {
 		if strings.Contains(adaptersSource, marker) {
@@ -115,7 +114,6 @@ func TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated(t *testing.T) {
 		`"task-processor/internal/app/bootstrap/resources"`,
 		`"task-processor/internal/prompt"`,
 		"func newDBTenantPromptStore(",
-		"prompt.NewGormTenantPromptStore(",
 		"bootstrapresources.NewDBTenantPromptStore(",
 	} {
 		if !strings.Contains(promptAdaptersSource, marker) {
@@ -304,7 +302,7 @@ func compactHTTPAPISource(source string) string {
 func TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated(t *testing.T) {
 	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/clients/openai"`,
+		`"task-processor/internal/integration/openai"`,
 		"newOpenAIManager(",
 		"newDBOpenAICredentialResolver(",
 		"SetConfigResolver(",
@@ -317,7 +315,7 @@ func TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated(t *testing.T) {
 
 	openAIRuntimeSource := readHTTPAPIBoundaryFile(t, "runtime_openai.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/clients/openai"`,
+		`"task-processor/internal/integration/openai"`,
 		"type openAIRuntimeDeps struct",
 		"func buildOpenAIRuntimeDeps(",
 		"newOpenAIManager(",

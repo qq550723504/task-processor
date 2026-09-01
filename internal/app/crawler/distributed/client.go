@@ -11,7 +11,7 @@ import (
 
 	apptask "task-processor/internal/app/task"
 	taskdomain "task-processor/internal/domain/task"
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platform/queue/rabbitmq"
 
 	"github.com/sirupsen/logrus"
 )

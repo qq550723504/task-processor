@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
-	"task-processor/internal/pkg/timex"
+	"task-processor/internal/shared/timex"
 	"task-processor/internal/product"
 	"time"
 

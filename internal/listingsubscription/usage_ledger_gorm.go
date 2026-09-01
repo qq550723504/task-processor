@@ -23,6 +23,15 @@ type gormUsageLedger struct {
 	repo *GormRepository
 }
 
+func nextStorageSnapshotTime(candidate, prior time.Time) time.Time {
+	candidate = candidate.UTC().Truncate(time.Microsecond)
+	prior = prior.UTC().Truncate(time.Microsecond)
+	if candidate.After(prior) {
+		return candidate
+	}
+	return prior.Add(time.Microsecond)
+}
+
 func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (ReserveUsageResult, error) {
 	input, err := NormalizeAndValidateReserveUsageInput(input)
 	if err != nil {
@@ -207,6 +216,22 @@ func isRetryableSQLiteCode(code int) bool {
 	return baseCode == 5 || baseCode == 6 // SQLITE_BUSY or SQLITE_LOCKED, including extended codes.
 }
 
+func runUsageLedgerTransaction(ctx context.Context, db *gorm.DB, transaction func(*gorm.DB) error) error {
+	var err error
+	for attempt := 0; attempt < 20; attempt++ {
+		err = db.WithContext(ctx).Transaction(transaction)
+		if err == nil || !isRetryableUsageLedgerError(err) || attempt == 19 {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 5 * time.Millisecond):
+		}
+	}
+	return err
+}
+
 func (l *gormUsageLedger) Commit(ctx context.Context, eventID string) (UsageEvent, error) {
 	return l.transitionReservedEvent(ctx, eventID, UsageEventCommitted, "")
 }
@@ -221,7 +246,7 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		return UsageEvent{}, &UsageValidationError{Field: "idempotency_key"}
 	}
 	var event UsageEvent
-	err := l.repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := runUsageLedgerTransaction(ctx, l.repo.db, func(tx *gorm.DB) error {
 		var source usageEventRow
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("event_id = ?", eventID).Take(&source).Error; err != nil {
 			return err
@@ -285,8 +310,12 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		var storageSnapshotAt *time.Time
 		if source.Metric == usageMetricStorageBytesCurrent {
 			storageSnapshot = &committed
-			now := time.Now().UTC()
-			storageSnapshotAt = &now
+			prior, err := latestStorageSnapshotTime(tx, source.TenantID, source.ModuleCode, source.Metric)
+			if err != nil {
+				return err
+			}
+			next := nextStorageSnapshotTime(time.Now(), prior)
+			storageSnapshotAt = &next
 		}
 		reversal := usageEventRow{
 			EventID: uuid.NewString(), TenantID: source.TenantID, ModuleCode: source.ModuleCode,
@@ -327,9 +356,9 @@ func hasLaterDeliveredStorageSnapshot(tx *gorm.DB, source usageEventRow) (bool, 
 		Joins("JOIN saas_usage_event_outbox AS o ON o.event_id = e.event_id").
 		Where("e.event_id <> ? AND e.tenant_id = ? AND e.module_code = ? AND e.metric = ? AND e.status IN ? AND o.status NOT IN ?", source.EventID, source.TenantID, source.ModuleCode, usageMetricStorageBytesCurrent, []string{"committed", "reversed"}, []string{"reserved", "pending", "cancelled", "failed"})
 	if source.StorageSnapshotAt != nil {
-		query = query.Where("e.storage_snapshot_at > ? OR (e.storage_snapshot_at IS NULL AND e.created_at > ?)", *source.StorageSnapshotAt, source.CreatedAt)
+		query = query.Where("e.storage_snapshot_at >= ? OR (e.storage_snapshot_at IS NULL AND e.created_at >= ?)", *source.StorageSnapshotAt, source.CreatedAt)
 	} else {
-		query = query.Where("e.created_at > ?", source.CreatedAt)
+		query = query.Where("e.created_at >= ?", source.CreatedAt)
 	}
 	err := query.Count(&count).Error
 	return count > 0, err
@@ -532,7 +561,7 @@ func (l *gormUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]U
 
 func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID string, target UsageEventStatus, reason string) (UsageEvent, error) {
 	var event UsageEvent
-	err := l.repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := runUsageLedgerTransaction(ctx, l.repo.db, func(tx *gorm.DB) error {
 		var row usageEventRow
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("event_id = ?", eventID).Take(&row).Error; err != nil {
 			return err
@@ -554,6 +583,7 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 		}
 		updates := map[string]any{"reserved": reserved, "updated_at": time.Now().UTC()}
 		var storageSnapshotValue *int64
+		var storageSnapshotAt *time.Time
 		if target == UsageEventCommitted {
 			committed, ok := addUsage(bucket.Committed, row.Quantity)
 			if !ok {
@@ -571,6 +601,14 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 		if value, ok := updates["committed"].(int64); ok {
 			committed = value
 		}
+		if storageSnapshotValue != nil {
+			prior, err := latestStorageSnapshotTime(tx, row.TenantID, row.ModuleCode, row.Metric)
+			if err != nil {
+				return err
+			}
+			next := nextStorageSnapshotTime(time.Now(), prior)
+			storageSnapshotAt = &next
+		}
 		if err := validateUsageBucketTotals(row.Metric, committed, reserved); err != nil {
 			return err
 		}
@@ -580,8 +618,7 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 		row.Status = string(target)
 		if storageSnapshotValue != nil {
 			row.StorageSnapshot = cloneUsageInt64Pointer(storageSnapshotValue)
-			snapshotAt := time.Now().UTC()
-			row.StorageSnapshotAt = &snapshotAt
+			row.StorageSnapshotAt = cloneUsageTimePointer(storageSnapshotAt)
 		}
 		row.UpdatedAt = time.Now().UTC()
 		eventUpdates := map[string]any{"status": row.Status, "updated_at": row.UpdatedAt}
@@ -616,6 +653,22 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 		return nil
 	})
 	return event, err
+}
+
+func latestStorageSnapshotTime(tx *gorm.DB, tenantID, moduleCode, metric string) (time.Time, error) {
+	var event usageEventRow
+	result := tx.Select("storage_snapshot_at").
+		Where("tenant_id = ? AND module_code = ? AND metric = ? AND storage_snapshot_at IS NOT NULL", tenantID, moduleCode, metric).
+		Order("storage_snapshot_at DESC").
+		Limit(1).
+		Find(&event)
+	if result.Error != nil {
+		return time.Time{}, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return time.Time{}, nil
+	}
+	return *event.StorageSnapshotAt, nil
 }
 
 func (l *gormUsageLedger) reserveResultForExisting(tx *gorm.DB, event usageEventRow, result *ReserveUsageResult) error {

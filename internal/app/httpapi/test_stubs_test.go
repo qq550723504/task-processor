@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 type stubWorkerPool struct {

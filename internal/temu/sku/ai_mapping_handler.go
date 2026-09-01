@@ -3,7 +3,7 @@ package sku
 import (
 	"fmt"
 
-	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/integration/openai"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
@@ -25,7 +25,9 @@ func NewAISkuMappingHandler(openaiConfig *openai.ClientConfig) *AISkuMappingHand
 
 	var aiClient openai.ChatCompleter
 	if openaiConfig != nil {
-		aiClient = openai.NewClient(openaiConfig)
+		config := *openaiConfig
+		config.Logger = openai.AdaptLogrus(logger)
+		aiClient = openai.NewClient(&config)
 	}
 
 	skuBuilder := NewSkuBuilder(logger, aiClient, nil)

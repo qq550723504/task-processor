@@ -8,7 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/aicapability"
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productenrich/pipeline"
 	"task-processor/internal/shared/aiidentity"

@@ -8,7 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	storageinfra "task-processor/internal/infra/storage"
+	s3integration "task-processor/internal/integration/s3"
 	productimage "task-processor/internal/productimage"
 )
 
@@ -108,7 +108,7 @@ func newPublisherS3Client(options s3AssetPublisherOptions) (*s3.Client, error) {
 	if strings.TrimSpace(options.bucket) == "" {
 		return nil, fmt.Errorf("productimage.publisher.s3.bucket cannot be empty")
 	}
-	return storageinfra.NewS3Client(storageinfra.S3ClientConfig{
+	return s3integration.NewClient(s3integration.ClientConfig{
 		Region:          options.region,
 		Endpoint:        options.endpoint,
 		AccessKeyID:     options.accessKeyID,
@@ -126,22 +126,32 @@ func buildS3AssetPublisher(options assetPublisherOptions, logger *logrus.Logger)
 
 	publicBase := strings.TrimSpace(options.publicBase)
 	if publicBase == "" {
-		publicBase = storageinfra.BuildS3PublicBase(
+		publicBase = s3integration.BuildS3PublicBase(
 			options.s3.endpoint,
 			options.s3.bucket,
 			options.s3.usePathStyle,
 		)
 	}
 
-	uploader := storageinfra.NewS3UploaderWithOptions(client, storageinfra.S3UploaderOptions{
+	var componentLogger *logrus.Entry
+	if logger != nil {
+		componentLogger = logrus.NewEntry(logger).WithField("component", "productimage-s3")
+	}
+	uploader, err := s3integration.NewUploaderWithOptions(client, s3integration.UploaderOptions{
 		Bucket:       options.s3.bucket,
 		PublicBase:   publicBase,
 		Endpoint:     options.s3.endpoint,
 		UsePathStyle: options.s3.usePathStyle,
+		Logger:       s3integration.AdaptLogrus(componentLogger),
 	})
+	if err != nil {
+		if logger != nil {
+			logger.WithError(err).Warn("s3 image asset publisher unavailable")
+		}
+		return nil
+	}
 	publisher, err := productimage.NewS3AssetPublisher(productimage.S3AssetPublisherConfig{
-		Uploader:   uploader,
-		PublicBase: publicBase,
+		Uploader: uploader,
 	})
 	if err != nil {
 		logger.WithError(err).Warn("s3 image asset publisher unavailable")

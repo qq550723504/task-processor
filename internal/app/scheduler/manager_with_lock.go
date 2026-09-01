@@ -3,19 +3,18 @@ package scheduler
 
 import (
 	"context"
-	"task-processor/internal/infra/lock"
 	"time"
 )
 
 // ManagerWithLock 带分布式锁的调度器管理器
 type ManagerWithLock struct {
 	*Manager
-	distributedLock lock.DistributedLock
+	distributedLock DistributedLock
 	enableLock      bool
 }
 
 // NewManagerWithLock 创建带分布式锁的调度器管理器
-func NewManagerWithLock(ctx context.Context, taskTimeout time.Duration, distributedLock lock.DistributedLock, enableLock bool) *ManagerWithLock {
+func NewManagerWithLock(ctx context.Context, taskTimeout time.Duration, distributedLock DistributedLock, enableLock bool) *ManagerWithLock {
 	baseManager := NewManager(ctx, taskTimeout)
 	if enableLock && distributedLock != nil {
 		baseManager.SetDistributedLock(distributedLock, taskTimeout)
@@ -37,7 +36,7 @@ func (m *ManagerWithLock) CreateAndStartTask(config TaskConfig) error {
 }
 
 // GetDistributedLock 获取分布式锁实例
-func (m *ManagerWithLock) GetDistributedLock() lock.DistributedLock {
+func (m *ManagerWithLock) GetDistributedLock() DistributedLock {
 	return m.distributedLock
 }
 

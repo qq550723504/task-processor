@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -2355,6 +2356,8 @@ func TestBuildHTTPServerBundleFromModulesReturnsRouteBuildErrors(t *testing.T) {
 }
 
 func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
+	runtimePaths := configureProductImageRuntimePaths(t)
+
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
@@ -2382,24 +2385,26 @@ func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
 		t.Fatal("did not expect legacy shein-login HTML route")
 	}
 
-	router, ok := bootstrap.server.Handler.(*gin.Engine)
-	if !ok {
-		t.Fatalf("server handler type = %T, want *gin.Engine", bootstrap.server.Handler)
+	handler := bootstrap.server.Handler
+	if handler == nil {
+		t.Fatal("bootstrap server handler is nil")
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
+	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /health = %d, want 200", resp.Code)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/sds/categories", nil)
 	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
+	handler.ServeHTTP(resp, req)
 	if resp.Code == http.StatusNotFound {
 		t.Fatal("expected SDS catalog categories endpoint to be mounted")
 	}
+	assertRuntimeDirectory(t, runtimePaths.workDir)
+	assertRuntimeDirectory(t, filepath.Join(runtimePaths.publisherOutputDir, "listingkit-inputs"))
 }
 
 func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {

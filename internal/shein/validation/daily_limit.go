@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/timex"
+	"task-processor/internal/shared/timex"
 	"task-processor/internal/shein"
 )
 

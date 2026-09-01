@@ -13,8 +13,8 @@ import (
 
 	"task-processor/internal/core/config"
 	corelogger "task-processor/internal/core/logger"
-	"task-processor/internal/infra/database"
 	listingkitstore "task-processor/internal/listingkit/store"
+	platformdatabase "task-processor/internal/platform/database"
 )
 
 const defaultBatchSize = 200
@@ -76,11 +76,29 @@ func parseArgs(args []string) (options, error) {
 func defaultDependencies() dependencies {
 	return dependencies{
 		loadConfig: loadConfigWithoutGlobalLogs,
-		openDB:     database.NewDatabaseFromConfig,
-		migrate:    listingkitstore.AutoMigrateSheinPODImageLookupIndex,
-		backfill:   listingkitstore.BackfillSheinPODImageLookupIndexes,
-		closeDB:    database.CloseDatabase,
-		now:        time.Now,
+		openDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.Open(platformDatabaseConfig(cfg))
+		},
+		migrate:  listingkitstore.AutoMigrateSheinPODImageLookupIndex,
+		backfill: listingkitstore.BackfillSheinPODImageLookupIndexes,
+		closeDB:  platformdatabase.Close,
+		now:      time.Now,
+	}
+}
+
+func platformDatabaseConfig(cfg *config.DatabaseConfig) *platformdatabase.Config {
+	if cfg == nil {
+		return nil
+	}
+	return &platformdatabase.Config{
+		Host:                  cfg.Host,
+		Port:                  cfg.Port,
+		User:                  cfg.User,
+		Password:              cfg.Password,
+		Database:              cfg.Database,
+		MaxConnections:        cfg.MaxConnections,
+		MaxIdleConnections:    cfg.MaxIdleConnections,
+		ConnectionMaxLifetime: cfg.ConnectionMaxLifetime,
 	}
 }
 

@@ -7,8 +7,8 @@ import (
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
+	"task-processor/internal/platform/queue/rabbitmq"
 	domainProduct "task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
@@ -65,7 +65,7 @@ func (f *FetcherFactory) CreateFetcher(
 	switch fetcherType {
 	case LocalFetcher:
 		f.logger.Info("creating local product fetcher")
-		return domainProduct.NewProductFetcher(rawJsonDataClient, amazonConfig, crawlSource), nil
+		return domainProduct.NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, crawlSource, f.logger), nil
 	case RemoteAPIFetcher:
 		f.logger.Info("creating remote api product fetcher")
 		return NewRemoteAPIProductFetcher(rawJsonDataClient, amazonConfig)

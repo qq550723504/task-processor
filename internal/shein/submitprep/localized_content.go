@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/shein/aicache"
 	sheinproduct "task-processor/internal/shein/api/product"

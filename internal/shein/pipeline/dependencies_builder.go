@@ -5,8 +5,8 @@ import (
 
 	"task-processor/internal/app/taskstatus"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/state"
 )
 

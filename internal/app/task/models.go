@@ -4,7 +4,7 @@ package task
 import (
 	"time"
 
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 type ImportTaskRecord struct {

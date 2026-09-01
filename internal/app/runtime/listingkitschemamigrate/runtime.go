@@ -5,11 +5,12 @@ import (
 	"flag"
 	"fmt"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
 	listingkitschema "task-processor/internal/listingkit/schema"
 	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/pkg/appenv"
+	platformdatabase "task-processor/internal/platform/database"
 
 	"gorm.io/gorm"
 )
@@ -26,7 +27,7 @@ func defaultRuntimeDependencies() runtimeDependencies {
 	return runtimeDependencies{
 		LoadConfig: config.LoadConfigFromFileWithoutValidation,
 		OpenDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
-			return database.NewDatabaseFromConfig(cfg)
+			return platformdatabase.Open(configadapter.Database(cfg))
 		},
 		CloseDB: func(db *gorm.DB) error {
 			sqlDB, err := db.DB()

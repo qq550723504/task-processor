@@ -1,10 +1,36 @@
 package product
 
 import (
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"task-processor/internal/model"
 )
+
+func TestNilProductHelpersReturnZeroWithoutProcessLogs(t *testing.T) {
+	const childEnv = "TASK_PROCESSOR_NIL_PRODUCT_HELPERS_CHILD"
+	if os.Getenv(childEnv) == "1" {
+		if price := GetProductPrice(nil, "special"); price != 0 {
+			t.Fatalf("GetProductPrice(nil) = %v, want 0", price)
+		}
+		if inventory := GetInventory(nil); inventory != 0 {
+			t.Fatalf("GetInventory(nil) = %d, want 0", inventory)
+		}
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestNilProductHelpersReturnZeroWithoutProcessLogs$")
+	cmd.Env = append(os.Environ(), childEnv+"=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("nil-helper child test failed: %v\n%s", err, output)
+	}
+	if strings.TrimSpace(string(output)) != "PASS" {
+		t.Fatalf("nil product helpers wrote process logs: %q", output)
+	}
+}
 
 func TestGetProductPriceOriginalUsesListPriceFirst(t *testing.T) {
 	listPrice := 29.99

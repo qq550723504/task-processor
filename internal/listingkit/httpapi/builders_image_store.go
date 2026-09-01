@@ -9,7 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	storageinfra "task-processor/internal/infra/storage"
+	s3integration "task-processor/internal/integration/s3"
 	"task-processor/internal/listingkit"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -81,15 +81,27 @@ func buildS3ImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingk
 		return nil
 	}
 
+	var componentLogger *logrus.Entry
+	if logger != nil {
+		componentLogger = logrus.NewEntry(logger).WithField("component", "listingkit-s3")
+	}
+	uploader, err := s3integration.NewUploaderWithOptions(client, s3integration.UploaderOptions{
+		Bucket:       cfg.ProductImage.Publisher.S3.Bucket,
+		PublicBase:   cfg.ProductImage.Publisher.PublicBase,
+		Endpoint:     cfg.ProductImage.Publisher.S3.Endpoint,
+		UsePathStyle: cfg.ProductImage.Publisher.S3.UsePathStyle,
+		Logger:       s3integration.AdaptLogrus(componentLogger),
+	})
+	if err != nil {
+		if logger != nil {
+			logger.WithError(err).Warn("s3 listingkit image upload store unavailable")
+		}
+		return nil
+	}
 	store, err := listingkit.NewS3ImageUploadStore(listingkit.S3ImageUploadStoreConfig{
-		Bucket: cfg.ProductImage.Publisher.S3.Bucket,
-		Uploader: storageinfra.NewS3UploaderWithOptions(client, storageinfra.S3UploaderOptions{
-			Bucket:       cfg.ProductImage.Publisher.S3.Bucket,
-			PublicBase:   cfg.ProductImage.Publisher.PublicBase,
-			Endpoint:     cfg.ProductImage.Publisher.S3.Endpoint,
-			UsePathStyle: cfg.ProductImage.Publisher.S3.UsePathStyle,
-		}),
-		Reader: client,
+		Bucket:   cfg.ProductImage.Publisher.S3.Bucket,
+		Uploader: uploader,
+		Reader:   client,
 	})
 	if err != nil {
 		logger.WithError(err).Warn("s3 listingkit image upload store unavailable")
@@ -106,7 +118,7 @@ func newProductImagePublisherS3Client(cfg *config.Config) (*s3.Client, error) {
 	if strings.TrimSpace(s3Cfg.Bucket) == "" {
 		return nil, fmt.Errorf("productimage.publisher.s3.bucket cannot be empty")
 	}
-	return storageinfra.NewS3Client(storageinfra.S3ClientConfig{
+	return s3integration.NewClient(s3integration.ClientConfig{
 		Region:          s3Cfg.Region,
 		Endpoint:        s3Cfg.Endpoint,
 		AccessKeyID:     s3Cfg.AccessKeyID,

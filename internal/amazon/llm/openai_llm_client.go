@@ -3,7 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/integration/openai"
 
 	"task-processor/internal/core/logger"
 

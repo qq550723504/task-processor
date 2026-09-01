@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platform/queue/rabbitmq"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )

@@ -8,7 +8,7 @@ import (
 	aicapabilitystore "task-processor/internal/aicapability/store"
 	"task-processor/internal/amazonlisting"
 	imageagentstore "task-processor/internal/imageagent/store"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"
 	"task-processor/internal/prompt"

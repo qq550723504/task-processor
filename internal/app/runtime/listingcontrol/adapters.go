@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
 	controllib "task-processor/internal/listingcontrol"
+	"task-processor/internal/platform/queue/rabbitmq"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	goredis "github.com/redis/go-redis/v9"

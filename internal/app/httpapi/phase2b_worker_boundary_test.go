@@ -252,8 +252,8 @@ func TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport(t *testing.T) {
 	for _, marker := range []string{
 		"func newWorkerPool(",
 		"func buildLocalTaskHealthProvider(",
-		"worker.NewPoolWithConfig(",
-		"TaskTimeout:",
+		"workerpool.NewPoolWithConfig(",
+		"configadapter.WorkerPool(",
 		"GetQueueStats()",
 		"GetMetrics()",
 	} {
@@ -266,13 +266,16 @@ func TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport(t *testing.T) {
 	for _, marker := range []string{
 		"func newWorkerPool(",
 		"func buildLocalTaskHealthProvider(",
-		"worker.NewPoolWithConfig(",
-		"TaskTimeout:",
+		"workerpool.NewPoolWithConfig(",
+		"configadapter.WorkerPool(",
 		"GetQueueStats()",
 		"GetMetrics()",
 	} {
 		require.Contains(t, workerSupportContent, marker)
 	}
+	require.NotContains(t, workerSupportContent, "workerpool.PoolConfig{")
+	legacyWorkerImport := "task-processor/internal/infra/" + "worker"
+	require.NotContains(t, workerSupportContent, legacyWorkerImport)
 }
 
 func TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport(t *testing.T) {

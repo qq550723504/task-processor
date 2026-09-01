@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 )

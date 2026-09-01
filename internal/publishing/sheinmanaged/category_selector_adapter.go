@@ -3,7 +3,7 @@ package sheinmanaged
 import (
 	"context"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheincategoryselector "task-processor/internal/shein/category"
 )

@@ -5,24 +5,26 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/infra/database"
+	openaiclient "task-processor/internal/integration/openai"
+	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/productenrich"
 )
 
-func newLLMManager(cfg config.OpenAIConfig) (productenrich.LLMManager, error) {
-	manager, err := newOpenAIManager(cfg)
+func newLLMManager(cfg config.OpenAIConfig, logger *logrus.Entry) (productenrich.LLMManager, error) {
+	manager, err := newOpenAIManager(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
 	return productenrich.NewLLMManagerAdapterFromManager(manager)
 }
 
-func newOpenAIManager(cfg config.OpenAIConfig) (*openaiclient.Manager, error) {
+func newOpenAIManager(cfg config.OpenAIConfig, logger *logrus.Entry) (*openaiclient.Manager, error) {
 	return openaiclient.NewManager(&openaiclient.ManagerConfig{
 		Clients:       cfg.ToClientConfigs(),
 		DefaultClient: "default",
+		Logger:        openaiclient.AdaptLogrus(logger),
 	})
 }
 
@@ -30,17 +32,13 @@ func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Lo
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	databaseConfig := configadapter.Database(cfg)
+	db, err := platformdatabase.OpenShared(databaseConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if shouldAutoMigrateProductListingAPIRuntime() {
-		if err := db.AutoMigrate(&openaiclient.AIClientCredential{}); err != nil {
-			return nil, nil, fmt.Errorf("openai credential auto-migrate failed: %w", err)
-		}
-	}
 	resolver := openaiclient.NewGormCredentialResolver(db)
-	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
+	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	return resolver, closer, nil
 }
