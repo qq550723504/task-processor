@@ -5,7 +5,7 @@ import (
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/timex"
+	"task-processor/internal/shared/timex"
 	"task-processor/internal/state"
 	temucontext "task-processor/internal/temu/context"
 

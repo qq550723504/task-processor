@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/aicapability"
-	"task-processor/internal/pkg/hashx"
+	"task-processor/internal/shared/hashx"
 )
 
 func TestLLMScoreCacheGovernedNamespaceDoesNotReadLegacyEntries(t *testing.T) {

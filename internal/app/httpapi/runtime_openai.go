@@ -6,7 +6,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 )
 
 type openAIRuntimeDeps struct {
@@ -16,7 +16,11 @@ type openAIRuntimeDeps struct {
 }
 
 func buildOpenAIRuntimeDeps(cfg *config.Config, logger *logrus.Logger) (*openAIRuntimeDeps, error) {
-	openaiMgr, err := newOpenAIManager(cfg.OpenAI)
+	var componentLogger *logrus.Entry
+	if logger != nil {
+		componentLogger = logrus.NewEntry(logger).WithField("component", "openai")
+	}
+	openaiMgr, err := newOpenAIManager(cfg.OpenAI, componentLogger)
 	if err != nil {
 		return nil, fmt.Errorf("create OpenAI manager: %w", err)
 	}

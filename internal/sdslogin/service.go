@@ -25,14 +25,18 @@ type configuredAccount struct {
 	Password     string
 }
 
+type StateFiles struct {
+	AuthStatePath      string
+	SessionCookiesPath string
+	BrowserStatePath   string
+	LoginPayloadPath   string
+}
+
 type Service struct {
 	loginCfg         config.LoginServiceConfig
 	browserCfg       config.BrowserConfig
 	redisCfg         config.RedisConfig
-	authFile         string
-	cookieFile       string
-	browserStateFile string
-	payloadFile      string
+	stateFiles       StateFiles
 	defaultLoginURL  string
 	defaultTargetURL string
 	authStore        *sdsclient.AuthStateStore
@@ -47,8 +51,7 @@ type Service struct {
 
 var runSDSBrowserLogin = runBrowserLogin
 
-func NewService(loginCfg config.LoginServiceConfig, redisCfg config.RedisConfig, browserCfg config.BrowserConfig) (*Service, error) {
-	cfg := sdsclient.DefaultConfig()
+func NewService(loginCfg config.LoginServiceConfig, redisCfg config.RedisConfig, browserCfg config.BrowserConfig, stateFiles StateFiles) (*Service, error) {
 	redisStore, err := NewRedisStateStore(redisCfg)
 	if err != nil {
 		return nil, fmt.Errorf("initialize SDS redis state store: %w", err)
@@ -57,14 +60,11 @@ func NewService(loginCfg config.LoginServiceConfig, redisCfg config.RedisConfig,
 		loginCfg:         loginCfg,
 		browserCfg:       browserCfg,
 		redisCfg:         redisCfg,
-		authFile:         cfg.AuthFile,
-		cookieFile:       cfg.CookieFile,
-		browserStateFile: filepath.Join(filepath.Dir(cfg.AuthFile), "browser_state.json"),
-		payloadFile:      filepath.Join(filepath.Dir(cfg.AuthFile), "login_state.json"),
+		stateFiles:       stateFiles,
 		defaultLoginURL:  "https://www.sdsdiy.com/user/login?redirect=%2Fadmin%2Fmaterial",
 		defaultTargetURL: "https://www.sdsdiy.com/admin/material",
-		authStore:        sdsclient.NewAuthStateStore(cfg.AuthFile),
-		sessionStore:     sdsclient.NewSessionStore(cfg.CookieFile),
+		authStore:        sdsclient.NewAuthStateStore(stateFiles.AuthStatePath),
+		sessionStore:     sdsclient.NewSessionStore(stateFiles.SessionCookiesPath),
 		redisStore:       redisStore,
 		account: configuredAccount{
 			TenantID:     strings.TrimSpace(loginCfg.TenantID),
@@ -238,7 +238,7 @@ func (s *Service) loadPayloadLocked() (*AuthPayload, error) {
 			return payload, nil
 		}
 	}
-	data, err := os.ReadFile(s.payloadFile)
+	data, err := os.ReadFile(s.stateFiles.LoginPayloadPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -320,12 +320,6 @@ func (s *Service) ClearState() error {
 	authStore, sessionStore, _, _, browserStateFile, payloadFile := s.accountState(s.account)
 	removeBestEffort(payloadFile)
 	removeBestEffort(browserStateFile)
-	if payloadFile != s.legacyPayloadFilePath() {
-		removeBestEffort(s.legacyPayloadFilePath())
-	}
-	if browserStateFile != s.legacyBrowserStateFilePath() {
-		removeBestEffort(s.legacyBrowserStateFilePath())
-	}
 	if s.redisStore != nil {
 		if err := s.redisStore.Clear(context.Background()); err != nil {
 			return err
@@ -400,15 +394,10 @@ func (s *Service) loadPayloadForAccount(account configuredAccount) (*AuthPayload
 	_, _, _, _, _, payloadFile := s.accountState(account)
 	data, err := os.ReadFile(payloadFile)
 	if err != nil {
-		if os.IsNotExist(err) && payloadFile != s.legacyPayloadFilePath() {
-			data, err = os.ReadFile(s.legacyPayloadFilePath())
+		if os.IsNotExist(err) {
+			return nil, nil
 		}
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil, nil
-			}
-			return nil, err
-		}
+		return nil, err
 	}
 	var payload AuthPayload
 	if err := json.Unmarshal(data, &payload); err != nil {
@@ -423,11 +412,7 @@ func (s *Service) accountState(account configuredAccount) (*sdsclient.AuthStateS
 }
 
 func (s *Service) applyAccountStatePaths(account configuredAccount) {
-	authFile, cookieFile, browserStateFile, payloadFile := s.accountStatePaths(account)
-	s.authFile = authFile
-	s.cookieFile = cookieFile
-	s.browserStateFile = browserStateFile
-	s.payloadFile = payloadFile
+	authFile, cookieFile, _, _ := s.accountStatePaths(account)
 	s.authStore = sdsclient.NewAuthStateStore(authFile)
 	s.sessionStore = sdsclient.NewSessionStore(cookieFile)
 }
@@ -435,25 +420,7 @@ func (s *Service) applyAccountStatePaths(account configuredAccount) {
 func (s *Service) accountStatePaths(_ configuredAccount) (string, string, string, string) {
 	// SDS auth is shared globally across ListingKit tenants/users.
 	// Keep a single persisted state so every request reuses the same account.
-	return s.legacyAuthFilePath(), s.legacyCookieFilePath(), s.legacyBrowserStateFilePath(), s.legacyPayloadFilePath()
-}
-
-func (s *Service) legacyAuthFilePath() string {
-	cfg := sdsclient.DefaultConfig()
-	return cfg.AuthFile
-}
-
-func (s *Service) legacyCookieFilePath() string {
-	cfg := sdsclient.DefaultConfig()
-	return cfg.CookieFile
-}
-
-func (s *Service) legacyBrowserStateFilePath() string {
-	return filepath.Join(filepath.Dir(s.legacyAuthFilePath()), "browser_state.json")
-}
-
-func (s *Service) legacyPayloadFilePath() string {
-	return filepath.Join(filepath.Dir(s.legacyAuthFilePath()), "login_state.json")
+	return s.stateFiles.AuthStatePath, s.stateFiles.SessionCookiesPath, s.stateFiles.BrowserStatePath, s.stateFiles.LoginPayloadPath
 }
 
 func removeBestEffort(path string) {

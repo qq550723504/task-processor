@@ -100,7 +100,7 @@ func DefaultLogConfig() *LogConfig {
 		Level:      "INFO",
 		Format:     "text",
 		Output:     "stdout",
-		FilePath:   "tmp/logs/app.log",
+		FilePath:   "",
 		MaxSize:    100,
 		MaxBackups: 3,
 		MaxAge:     7,

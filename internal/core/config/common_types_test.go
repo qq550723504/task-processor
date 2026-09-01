@@ -31,6 +31,16 @@ func TestDefaultRetryConfig(t *testing.T) {
 	}
 }
 
+func TestDefaultLogConfigDoesNotEnableFileOutput(t *testing.T) {
+	cfg := DefaultLogConfig()
+	if cfg.Output != "stdout" {
+		t.Fatalf("Output = %q, 期望 stdout", cfg.Output)
+	}
+	if cfg.FilePath != "" {
+		t.Fatalf("FilePath = %q, 默认配置不能启用文件输出", cfg.FilePath)
+	}
+}
+
 // TestRetryConfigCustom 测试自定义重试配置
 func TestRetryConfigCustom(t *testing.T) {
 	config := &RetryConfig{

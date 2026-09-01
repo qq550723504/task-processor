@@ -628,7 +628,7 @@ func TestGlobalPortsFacadePackageStaysRetired(t *testing.T) {
 func TestLegacyResiliencePackageStaysRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "pkg", "resilience")
 	if _, err := os.Stat(path); err == nil {
-		t.Fatalf("%s still exists; use internal/infra/resilience for resilience behavior", path)
+		t.Fatalf("%s still exists; use internal/shared/resilience for runtime-neutral resilience behavior", path)
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("stat %s: %v", path, err)
 	}
@@ -803,7 +803,7 @@ func TestListingKitSheinSyncAsyncIdentityContextDoesNotImportOpenAI(t *testing.T
 		if strings.HasSuffix(filepath.Base(path), "_test.go") {
 			continue
 		}
-		if _, ok := facts.imports[`"task-processor/internal/infra/clients/openai"`]; ok {
+		if _, ok := facts.imports[`"task-processor/internal/integration/openai"`]; ok {
 			t.Errorf("%s imports the concrete OpenAI client; use shared aiidentity for SHEIN sync request context", path)
 		}
 	}
@@ -819,7 +819,7 @@ func TestListingKitSheinAdapterReviewContentOptimizerDoesNotImportOpenAI(t *test
 		if strings.HasSuffix(filepath.Base(path), "_test.go") {
 			continue
 		}
-		if _, ok := facts.imports[`"task-processor/internal/infra/clients/openai"`]; ok {
+		if _, ok := facts.imports[`"task-processor/internal/integration/openai"`]; ok {
 			t.Errorf("%s imports the concrete OpenAI client; use the neutral internal/ai contract for SHEIN review content", path)
 		}
 	}
@@ -1033,7 +1033,7 @@ func TestPublishingSheinOpenAIImportsStayAllowlisted(t *testing.T) {
 		if pathAllowed(path, allowedFiles) {
 			continue
 		}
-		if _, ok := facts.imports[`"task-processor/internal/infra/clients/openai"`]; ok {
+		if _, ok := facts.imports[`"task-processor/internal/integration/openai"`]; ok {
 			t.Errorf("%s imports OpenAI adapter directly; keep publishing/shein concrete OpenAI dependencies limited to current inference and runtime resolver seams", path)
 		}
 	}
@@ -1509,8 +1509,8 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 			continue
 		}
 		for _, bannedImport := range []string{
-			`"task-processor/internal/infra/clients/grsai"`,
-			`"task-processor/internal/infra/clients/openai"`,
+			`"task-processor/internal/integration/grsai"`,
+			`"task-processor/internal/integration/openai"`,
 		} {
 			if _, ok := facts.imports[bannedImport]; ok {
 				t.Errorf("%s imports %s; keep listingkit/httpapi concrete external clients limited to current AI runtime and bootstrap seams", path, bannedImport)
@@ -3528,7 +3528,7 @@ func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 		}
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
-			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+			if importMatchesPrefix(importPath, "task-processor/internal/integration/openai") {
 				t.Errorf("%s imports %s; keep ListingKit root contracts provider-neutral", path, importPath)
 			}
 		}
@@ -3857,8 +3857,8 @@ func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 			continue
 		}
 		for _, bannedImport := range []string{
-			`"task-processor/internal/infra/clients/grsai"`,
-			`"task-processor/internal/infra/clients/openai"`,
+			`"task-processor/internal/integration/grsai"`,
+			`"task-processor/internal/integration/openai"`,
 		} {
 			if _, ok := facts.imports[bannedImport]; ok {
 				t.Errorf("%s imports %s; keep productimage concrete external clients limited to current provider adapter and runtime builder seams", path, bannedImport)
@@ -3896,7 +3896,7 @@ func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
 			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") ||
-				importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+				importMatchesPrefix(importPath, "task-processor/internal/integration/openai") {
 				t.Errorf("%s imports %s; keep Amazon concrete external client dependencies limited to current management DTO and OpenAI LLM seams", path, importPath)
 			}
 		}
@@ -3922,7 +3922,7 @@ func TestSheinBridgeExternalClientImportsStayAllowlisted(t *testing.T) {
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
 			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") ||
-				importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+				importMatchesPrefix(importPath, "task-processor/internal/integration/openai") {
 				t.Errorf("%s imports %s; keep sheinbridge concrete external client dependencies limited to current sale-attribute runtime bridge seams", path, importPath)
 			}
 		}
@@ -4071,7 +4071,7 @@ func TestSheinOpenAIImportsStayAllowlisted(t *testing.T) {
 		}
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
-			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+			if importMatchesPrefix(importPath, "task-processor/internal/integration/openai") {
 				t.Errorf("%s imports %s; keep SHEIN concrete OpenAI client dependencies limited to current category, content, pipeline, product, submit-prep, and translate seams", path, importPath)
 			}
 		}
@@ -4095,8 +4095,8 @@ func TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted(t *testing.T
 			continue
 		}
 		for _, bannedImport := range []string{
-			`"task-processor/internal/infra/clients/grsai"`,
-			`"task-processor/internal/infra/clients/openai"`,
+			`"task-processor/internal/integration/grsai"`,
+			`"task-processor/internal/integration/openai"`,
 		} {
 			if _, ok := facts.imports[bannedImport]; ok {
 				t.Errorf("%s imports %s; keep app/httpapi free of ProductImage concrete external clients; ProductImage provider assembly belongs in internal/productimage/httpapi", path, bannedImport)
@@ -4660,7 +4660,7 @@ func TestTEMUOpenAIImportsStayAllowlisted(t *testing.T) {
 		}
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
-			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+			if importMatchesPrefix(importPath, "task-processor/internal/integration/openai") {
 				t.Errorf("%s imports %s; keep TEMU concrete OpenAI client dependencies limited to current AI, image, SKU, product, and pipeline seams", path, importPath)
 			}
 		}
@@ -4808,7 +4808,7 @@ func commandEntrypointBannedPrefixes() []string {
 }
 
 func TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters(t *testing.T) {
-	allowedFiles := map[string]struct{}{
+	orchestrationAllowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "app", "runtime")) + string(os.PathSeparator):                  {},
 		filepath.Clean(filepath.Join("..", "internal", "imageagent", "temporal")) + string(os.PathSeparator):          {},
 		filepath.Clean(filepath.Join("..", "internal", "listingkit", "temporal")) + string(os.PathSeparator):          {},
@@ -4818,13 +4818,31 @@ func TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters(t *testing.T) {
 		`"go.temporal.io/api/enums/v1"`,
 		`"go.temporal.io/api/serviceerror"`,
 		`"go.temporal.io/sdk/activity"`,
-		`"go.temporal.io/sdk/client"`,
 		`"go.temporal.io/sdk/converter"`,
 		`"go.temporal.io/sdk/temporal"`,
 		`"go.temporal.io/sdk/testsuite"`,
 		`"go.temporal.io/sdk/worker"`,
 		`"go.temporal.io/sdk/workflow"`,
-	}, allowedFiles)
+	}, orchestrationAllowedFiles)
+
+	platformClientFiles := temporalPlatformSDKClientAllowedFiles()
+	clientAllowedFiles := make(map[string]struct{}, len(orchestrationAllowedFiles)+len(platformClientFiles))
+	for path := range orchestrationAllowedFiles {
+		clientAllowedFiles[path] = struct{}{}
+	}
+	for path := range platformClientFiles {
+		clientAllowedFiles[path] = struct{}{}
+	}
+	assertNoBannedImports(t, filepath.Join("..", "internal"), []string{
+		`"go.temporal.io/sdk/client"`,
+	}, clientAllowedFiles)
+}
+
+func temporalPlatformSDKClientAllowedFiles() map[string]struct{} {
+	return map[string]struct{}{
+		filepath.Clean(filepath.Join("..", "internal", "platform", "temporal", "client.go")):      {},
+		filepath.Clean(filepath.Join("..", "internal", "platform", "temporal", "client_test.go")): {},
+	}
 }
 
 func TestTemporalRuntimePackagesDoNotImportHTTPAPI(t *testing.T) {
@@ -5210,8 +5228,7 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 		`"task-processor/internal/app/runtime"`: {},
 		`"task-processor/internal/asset/repository"`:       {},
 		`"task-processor/internal/core/config"`:            {},
-		`"task-processor/internal/infra/database"`:         {},
-		`"task-processor/internal/infra/clients/openai"`:   {},
+		`"task-processor/internal/integration/openai"`:   {},
 		`"task-processor/internal/listingadmin"`:           {},
 		`"task-processor/internal/listingkit"`:             {},
 		`"task-processor/internal/listingkit/httpapi"`:     {},
@@ -5360,38 +5377,24 @@ func imageAgentEffectPolicyInboundImportViolations(root string) ([]string, error
 func assertNoBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 
-	index, err := loadGoFileIndex(root, "")
+	violations, err := findBannedImportViolations(root, bannedImports, allowedFiles, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for path, facts := range index.files {
-		if pathAllowed(path, allowedFiles) {
-			continue
-		}
-		for _, banned := range bannedImports {
-			if _, ok := facts.imports[banned]; ok {
-				t.Errorf("%s imports banned boundary package %s", path, banned)
-			}
-		}
+	for _, violation := range violations {
+		t.Errorf("%s imports banned boundary package %q", violation.path, violation.importPath)
 	}
 }
 
 func assertNoProductionBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
 	t.Helper()
 
-	index, err := loadGoFileIndex(root, "")
+	violations, err := findBannedImportViolations(root, bannedImports, allowedFiles, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for path, facts := range index.files {
-		if strings.HasSuffix(filepath.Base(path), "_test.go") || pathAllowed(path, allowedFiles) {
-			continue
-		}
-		for _, banned := range bannedImports {
-			if _, ok := facts.imports[banned]; ok {
-				t.Errorf("%s imports banned production boundary package %s", path, banned)
-			}
-		}
+	for _, violation := range violations {
+		t.Errorf("%s imports banned production boundary package %q", violation.path, violation.importPath)
 	}
 }
 

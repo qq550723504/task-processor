@@ -2,8 +2,9 @@
 package temu
 
 import (
+	corelogger "task-processor/internal/core/logger"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/pipeline"
 	commonPipeline "task-processor/internal/pipeline"
@@ -161,12 +162,20 @@ func (pr *PipelineRegistry) createOpenAIConfig() *openai.ClientConfig {
 	if pr.runtime == nil {
 		return nil
 	}
-	return pr.runtime.GetOpenAIClientConfig()
+	config := pr.runtime.GetOpenAIClientConfig()
+	if config == nil {
+		return nil
+	}
+	cloned := *config
+	cloned.Logger = openai.AdaptLogrus(corelogger.GetGlobalLogger("temu/openai"))
+	return &cloned
 }
 
 func (p *TemuProcessor) GetOpenAIClientConfig() *openai.ClientConfig {
 	if p == nil || p.GetConfig() == nil {
 		return nil
 	}
-	return p.GetConfig().OpenAI.ToClientConfig()
+	config := p.GetConfig().OpenAI.ToClientConfig()
+	config.Logger = openai.AdaptLogrus(corelogger.GetGlobalLogger("temu/openai"))
+	return config
 }

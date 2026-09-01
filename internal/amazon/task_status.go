@@ -7,7 +7,7 @@ import (
 	amazonModel "task-processor/internal/amazon/model"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/timex"
+	"task-processor/internal/shared/timex"
 	"task-processor/internal/state"
 
 	"github.com/sirupsen/logrus"

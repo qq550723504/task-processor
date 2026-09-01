@@ -1,12 +1,15 @@
 package product
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
 )
@@ -39,24 +42,35 @@ type stubProductFetcherCrawlSource struct {
 	lastZipcode string
 }
 
-func (s *stubProductFetcherCrawlSource) Process(url, zipcode string) (*model.Product, error) {
-	return s.ProcessWithContext(context.Background(), url, zipcode)
-}
-
 func (s *stubProductFetcherCrawlSource) ProcessWithContext(_ context.Context, url, zipcode string) (*model.Product, error) {
 	s.lastURL = url
 	s.lastZipcode = zipcode
 	return &model.Product{Asin: "B001"}, nil
 }
 
-func (s *stubProductFetcherCrawlSource) Shutdown() {}
-
 type selectiveProductFetcherCrawlSource struct {
 	products map[string]*model.Product
 }
 
-func (s *selectiveProductFetcherCrawlSource) Process(url, zipcode string) (*model.Product, error) {
-	return s.ProcessWithContext(context.Background(), url, zipcode)
+func TestProductFetcherUsesDiscardLoggerWhenNoneIsInjected(t *testing.T) {
+	fetcher := NewProductFetcher(nil, nil, nil)
+	if fetcher.logger == nil || fetcher.logger.Logger.Out != io.Discard {
+		t.Fatalf("default logger output = %v, want io.Discard", fetcher.logger)
+	}
+}
+
+func TestProductFetcherKeepsExplicitLoggerInjection(t *testing.T) {
+	var output bytes.Buffer
+	log := logrus.New()
+	log.SetOutput(&output)
+	fetcher := NewProductFetcherWithLogger(nil, nil, nil, logrus.NewEntry(log))
+
+	if err := fetcher.CacheProduct(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "product is nil, skipping cache") {
+		t.Fatalf("injected logger output = %q, want product warning", output.String())
+	}
 }
 
 func (s *selectiveProductFetcherCrawlSource) ProcessWithContext(_ context.Context, url, zipcode string) (*model.Product, error) {
@@ -65,8 +79,6 @@ func (s *selectiveProductFetcherCrawlSource) ProcessWithContext(_ context.Contex
 	}
 	return nil, errors.New("product not found")
 }
-
-func (s *selectiveProductFetcherCrawlSource) Shutdown() {}
 
 func TestProductFetcherUsesSourcingDefaultZipcodePolicy(t *testing.T) {
 	source, err := os.ReadFile("product_fetcher.go")

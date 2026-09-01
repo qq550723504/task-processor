@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platform/queue/rabbitmq"
 	domainproduct "task-processor/internal/product"
 	appscheduler "task-processor/internal/scheduler"
 

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"task-processor/internal/aicapability"
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 	productimage "task-processor/internal/productimage"
 	"task-processor/internal/shared/aiidentity"
 

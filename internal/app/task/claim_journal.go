@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"task-processor/internal/app/taskstatus"
-	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
+	logger "task-processor/internal/platform/logging"
 )
 
 const defaultClaimJournalFile = "task-processor-claim-journal.json"

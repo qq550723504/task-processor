@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/infra/worker"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingkit/core"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"

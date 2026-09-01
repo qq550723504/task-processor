@@ -1237,14 +1237,21 @@ func TestServicePersistsCookieWhenManualVerificationCompletesAfterVerifyRequest(
 	}
 
 	deadline := time.Now().Add(time.Second)
+	var lastHasCookie bool
+	var lastCookieErr error
+	var lastSessionRemains bool
 	for time.Now().Before(deadline) {
-		if has, err := svc.store.HasCookie(context.Background(), 1, 2); err == nil && has && svc.loadSession(1, 2) == nil {
+		has, err := svc.store.HasCookie(context.Background(), 1, 2)
+		sessionRemains := svc.loadSession(1, 2) != nil
+		lastHasCookie = has
+		lastCookieErr = err
+		lastSessionRemains = sessionRemains
+		if err == nil && has && !sessionRemains {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	has, err := svc.store.HasCookie(context.Background(), 1, 2)
-	t.Fatalf("expected manual verification watcher to persist cookie and clear its session: has_cookie=%t cookie_error=%v session_present=%t", has, err, svc.loadSession(1, 2) != nil)
+	t.Fatalf("manual verification watcher did not complete: cookie present=%v err=%v session remains=%v", lastHasCookie, lastCookieErr, lastSessionRemains)
 }
 
 func TestServiceSubmitVerifyCodeUsesTenantScopedSessionWhenStoreIDsCollide(t *testing.T) {

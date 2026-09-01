@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"task-processor/internal/httproute"
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 type NamedWorkerPool struct {

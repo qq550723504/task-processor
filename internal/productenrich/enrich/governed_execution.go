@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 
 	"task-processor/internal/aicapability"
-	"task-processor/internal/infra/resilience"
 	productenrich "task-processor/internal/productenrich"
 	"task-processor/internal/shared/aiidentity"
+	"task-processor/internal/shared/resilience"
 )
 
 type LegacyRouteMetadataResolver interface {

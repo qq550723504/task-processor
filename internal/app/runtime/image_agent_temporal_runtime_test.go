@@ -18,7 +18,7 @@ func TestImageAgentTemporalRuntimeDisabledDoesNotDial(t *testing.T) {
 	t.Setenv(envImageAgentTemporalEnabled, "false")
 	dialed := false
 	closeFn, err := startImageAgentTemporalWorkerWithDependencies(ImageAgentTemporalDependencies{}, imageAgentTemporalRuntimeDependencies{
-		Dial: func(string, string) (sdkclient.Client, func() error, error) {
+		Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
 			dialed = true
 			return nil, nil, errors.New("must not dial")
 		},
@@ -33,16 +33,16 @@ func TestImageAgentTemporalRuntimeComposesAndClosesWorker(t *testing.T) {
 	t.Setenv(envImageAgentTemporalAddress, "temporal.internal:7233")
 	t.Setenv(envImageAgentTemporalNamespace, "listingkit")
 	worker := &recordingImageAgentWorker{}
-	clientClosed := false
+	clientCloses := 0
 	var gotAddress, gotNamespace string
 	var gotConfig imageagenttemporal.WorkerConfig
 	closeFn, err := startImageAgentTemporalWorkerWithDependencies(ImageAgentTemporalDependencies{
 		Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{}, PublisherV3: runtimePublisher{},
 		StagedSlotExecutor: runtimeSlotExecutor{}, ArtifactStore: runtimeArtifactStore{},
 	}, imageAgentTemporalRuntimeDependencies{
-		Dial: func(address, namespace string) (sdkclient.Client, func() error, error) {
+		Dial: func(_ context.Context, address, namespace string) (sdkclient.Client, func() error, error) {
 			gotAddress, gotNamespace = address, namespace
-			return nil, func() error { clientClosed = true; return nil }, nil
+			return nil, func() error { clientCloses++; return nil }, nil
 		},
 		NewWorker: func(config imageagenttemporal.WorkerConfig) (imageAgentWorker, error) {
 			gotConfig = config
@@ -59,8 +59,34 @@ func TestImageAgentTemporalRuntimeComposesAndClosesWorker(t *testing.T) {
 	require.True(t, worker.started)
 
 	require.NoError(t, closeFn())
+	require.NoError(t, closeFn())
 	require.True(t, worker.stopped)
-	require.True(t, clientClosed)
+	require.Equal(t, 1, clientCloses)
+}
+
+func TestRunImageAgentTemporalWorkerForwardsExistingContextToDial(t *testing.T) {
+	t.Setenv(envImageAgentTemporalEnabled, "true")
+	type contextKey string
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), contextKey("request"), "worker"))
+	cancel()
+	var gotContext context.Context
+	closed := false
+	err := runImageAgentTemporalWorkerWithOptionsAndDependencies(ctx, ImageAgentTemporalDependencies{
+		Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{}, PublisherV3: runtimePublisher{},
+		StagedSlotExecutor: runtimeSlotExecutor{}, ArtifactStore: runtimeArtifactStore{},
+	}, ImageAgentTemporalWorkerOptions{WireMode: imageagenttemporal.WorkerWireModeV3}, nil, imageAgentTemporalRuntimeDependencies{
+		Dial: func(callContext context.Context, _, _ string) (sdkclient.Client, func() error, error) {
+			gotContext = callContext
+			return nil, func() error { closed = true; return nil }, nil
+		},
+		NewWorker: func(imageagenttemporal.WorkerConfig) (imageAgentWorker, error) {
+			return &recordingImageAgentWorker{}, nil
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, gotContext == ctx, "dial context was not forwarded unchanged")
+	require.Equal(t, "worker", gotContext.Value(contextKey("request")))
+	require.True(t, closed)
 }
 
 func TestImageAgentTemporalRuntimeForwardsExplicitWorkerModeAndQueue(t *testing.T) {
@@ -80,7 +106,7 @@ func TestImageAgentTemporalRuntimeForwardsExplicitWorkerModeAndQueue(t *testing.
 				Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{}, PublisherV3: runtimePublisher{},
 				StagedSlotExecutor: runtimeSlotExecutor{}, ArtifactStore: runtimeArtifactStore{},
 			}, ImageAgentTemporalWorkerOptions{WireMode: test.mode, TaskQueue: test.queue}, imageAgentTemporalRuntimeDependencies{
-				Dial: func(string, string) (sdkclient.Client, func() error, error) {
+				Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
 					return nil, func() error { return nil }, nil
 				},
 				NewWorker: func(config imageagenttemporal.WorkerConfig) (imageAgentWorker, error) {
@@ -100,12 +126,13 @@ func TestImageAgentTemporalRuntimeDoesNotReplaceInvalidExplicitWorkerConfigurati
 	t.Setenv(envImageAgentTemporalEnabled, "true")
 	want := errors.New("NewWorker rejected opposite/default mismatch")
 	var got imageagenttemporal.WorkerConfig
+	closed := 0
 	_, err := startImageAgentTemporalWorkerWithOptionsAndDependencies(ImageAgentTemporalDependencies{
 		Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{}, PublisherV3: runtimePublisher{},
 		StagedSlotExecutor: runtimeSlotExecutor{}, ArtifactStore: runtimeArtifactStore{},
 	}, ImageAgentTemporalWorkerOptions{WireMode: imageagenttemporal.WorkerWireModeV2, TaskQueue: imageagenttemporal.TaskQueueV3}, imageAgentTemporalRuntimeDependencies{
-		Dial: func(string, string) (sdkclient.Client, func() error, error) {
-			return nil, func() error { return nil }, nil
+		Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
+			return nil, func() error { closed++; return nil }, nil
 		},
 		NewWorker: func(config imageagenttemporal.WorkerConfig) (imageAgentWorker, error) {
 			got = config
@@ -115,6 +142,59 @@ func TestImageAgentTemporalRuntimeDoesNotReplaceInvalidExplicitWorkerConfigurati
 	require.ErrorIs(t, err, want)
 	require.Equal(t, imageagenttemporal.WorkerWireModeV2, got.WireMode)
 	require.Equal(t, imageagenttemporal.TaskQueueV3, got.TaskQueue)
+	require.Equal(t, 1, closed)
+}
+
+func TestImageAgentTemporalRuntimeClosesClientWhenWorkerStartFails(t *testing.T) {
+	t.Setenv(envImageAgentTemporalEnabled, "true")
+	want := errors.New("worker start failed")
+	closed := 0
+	worker := &recordingImageAgentWorker{startErr: want}
+	_, err := startImageAgentTemporalWorkerWithDependencies(ImageAgentTemporalDependencies{
+		Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{}, PublisherV3: runtimePublisher{},
+		StagedSlotExecutor: runtimeSlotExecutor{}, ArtifactStore: runtimeArtifactStore{},
+	}, imageAgentTemporalRuntimeDependencies{
+		Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
+			return nil, func() error { closed++; return nil }, nil
+		},
+		NewWorker: func(imageagenttemporal.WorkerConfig) (imageAgentWorker, error) { return worker, nil },
+	})
+	require.ErrorIs(t, err, want)
+	require.True(t, worker.stopped)
+	require.Equal(t, 1, closed)
+}
+
+func TestImageAgentTemporalRuntimeRejectsMissingCloseOwnerBeforeWorkerActions(t *testing.T) {
+	t.Setenv(envImageAgentTemporalEnabled, "true")
+	for _, stage := range []string{"worker build", "worker start", "normal runtime"} {
+		t.Run(stage, func(t *testing.T) {
+			worker := &recordingImageAgentWorker{}
+			if stage == "worker start" {
+				worker.startErr = errors.New("worker start should not run")
+			}
+			builds := 0
+			closeFn, err := startImageAgentTemporalWorkerWithDependencies(ImageAgentTemporalDependencies{
+				Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{}, PublisherV3: runtimePublisher{},
+				StagedSlotExecutor: runtimeSlotExecutor{}, ArtifactStore: runtimeArtifactStore{},
+			}, imageAgentTemporalRuntimeDependencies{
+				Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
+					return nil, nil, nil
+				},
+				NewWorker: func(imageagenttemporal.WorkerConfig) (imageAgentWorker, error) {
+					builds++
+					if stage == "worker build" {
+						return nil, errors.New("worker build should not run")
+					}
+					return worker, nil
+				},
+			})
+			require.ErrorContains(t, err, "close owner")
+			require.Nil(t, closeFn)
+			require.Zero(t, builds)
+			require.False(t, worker.started)
+			require.False(t, worker.stopped)
+		})
+	}
 }
 
 func TestImageAgentTemporalRuntimeFailsClosedWithoutProductPorts(t *testing.T) {
@@ -134,9 +214,13 @@ func TestImageAgentTemporalRuntimeFailsClosedWithPartialV3Ports(t *testing.T) {
 
 func TestImageAgentCompatibilityCanaryDialsWithoutProductDependencies(t *testing.T) {
 	dialed, ran, closed := false, false, false
-	err := runImageAgentCompatibilityCanaryWithDependencies(context.Background(), nil, "image-agent-manual-v3-canary", imageAgentCompatibilityCanaryDependencies{
-		Dial: func(address, namespace string) (sdkclient.Client, func() error, error) {
+	type contextKey string
+	ctx := context.WithValue(context.Background(), contextKey("request"), "canary")
+	err := runImageAgentCompatibilityCanaryWithDependencies(ctx, nil, "image-agent-manual-v3-canary", imageAgentCompatibilityCanaryDependencies{
+		Dial: func(callContext context.Context, address, namespace string) (sdkclient.Client, func() error, error) {
 			dialed = true
+			require.True(t, callContext == ctx, "dial context was not forwarded unchanged")
+			require.Equal(t, "canary", callContext.Value(contextKey("request")))
 			require.Equal(t, "localhost:7233", address)
 			require.Equal(t, "default", namespace)
 			return nil, func() error { closed = true; return nil }, nil
@@ -154,12 +238,31 @@ func TestImageAgentCompatibilityCanaryDialsWithoutProductDependencies(t *testing
 	require.True(t, closed)
 }
 
+func TestImageAgentCompatibilityCanaryRejectsMissingCloseOwnerBeforeRun(t *testing.T) {
+	ran := false
+	err := runImageAgentCompatibilityCanaryWithDependencies(context.Background(), nil, "image-agent-manual-v3-canary", imageAgentCompatibilityCanaryDependencies{
+		Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
+			return nil, nil, nil
+		},
+		RunCanary: func(context.Context, sdkclient.Client, string) error {
+			ran = true
+			return nil
+		},
+	})
+	require.ErrorContains(t, err, "close owner")
+	require.False(t, ran)
+}
+
 func TestImageAgentCompatibilityCanaryWithWorkerStartsIsolatedQueueWorker(t *testing.T) {
 	worker := &recordingImageAgentWorker{}
 	dialed, ran, closed := false, false, false
-	err := runImageAgentCompatibilityCanaryWithWorkerDependencies(context.Background(), nil, "image-agent-manual-v3-canary", imageAgentCompatibilityCanaryWorkerDependencies{
-		Dial: func(address, namespace string) (sdkclient.Client, func() error, error) {
+	type contextKey string
+	ctx := context.WithValue(context.Background(), contextKey("request"), "worker-canary")
+	err := runImageAgentCompatibilityCanaryWithWorkerDependencies(ctx, nil, "image-agent-manual-v3-canary", imageAgentCompatibilityCanaryWorkerDependencies{
+		Dial: func(callContext context.Context, address, namespace string) (sdkclient.Client, func() error, error) {
 			dialed = true
+			require.True(t, callContext == ctx, "dial context was not forwarded unchanged")
+			require.Equal(t, "worker-canary", callContext.Value(contextKey("request")))
 			require.Equal(t, "localhost:7233", address)
 			require.Equal(t, "default", namespace)
 			return nil, func() error { closed = true; return nil }, nil
@@ -183,12 +286,33 @@ func TestImageAgentCompatibilityCanaryWithWorkerStartsIsolatedQueueWorker(t *tes
 	require.True(t, closed)
 }
 
-type recordingImageAgentWorker struct {
-	started bool
-	stopped bool
+func TestImageAgentCompatibilityCanaryWithWorkerRejectsMissingCloseOwnerBeforeWorkerActions(t *testing.T) {
+	built, ran := false, false
+	err := runImageAgentCompatibilityCanaryWithWorkerDependencies(context.Background(), nil, "image-agent-manual-v3-canary", imageAgentCompatibilityCanaryWorkerDependencies{
+		Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
+			return nil, nil, nil
+		},
+		NewWorker: func(sdkclient.Client, string) (imageAgentWorker, error) {
+			built = true
+			return &recordingImageAgentWorker{}, nil
+		},
+		RunCanary: func(context.Context, sdkclient.Client, string) error {
+			ran = true
+			return nil
+		},
+	})
+	require.ErrorContains(t, err, "close owner")
+	require.False(t, built)
+	require.False(t, ran)
 }
 
-func (w *recordingImageAgentWorker) Start() error { w.started = true; return nil }
+type recordingImageAgentWorker struct {
+	startErr error
+	started  bool
+	stopped  bool
+}
+
+func (w *recordingImageAgentWorker) Start() error { w.started = true; return w.startErr }
 func (w *recordingImageAgentWorker) Stop()        { w.stopped = true }
 
 type runtimeSlotExecutor struct{}

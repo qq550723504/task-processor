@@ -4,7 +4,7 @@ package scheduler
 import (
 	"fmt"
 	"sync"
-	"task-processor/internal/core/logger"
+	logger "task-processor/internal/platform/logging"
 
 	"github.com/sirupsen/logrus"
 )

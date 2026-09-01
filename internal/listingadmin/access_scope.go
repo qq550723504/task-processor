@@ -10,7 +10,7 @@ import (
 
 	"gorm.io/gorm"
 	"task-processor/internal/authz"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 )
 
 type requestUserIDContextKey struct{}

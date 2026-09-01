@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/httproute"
-	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {

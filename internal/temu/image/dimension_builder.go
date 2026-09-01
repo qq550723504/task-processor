@@ -4,7 +4,7 @@ package image
 import (
 	"fmt"
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/ptr"
+	"task-processor/internal/shared/ptr"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 

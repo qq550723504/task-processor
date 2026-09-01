@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/resilience"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/httpclient"
+	"task-processor/internal/shared/resilience"
 
 	"github.com/sirupsen/logrus"
 )

@@ -12,34 +12,22 @@ import (
 	"image"
 	"image/color"
 	"image/png"
-	"io"
-	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"task-processor/internal/core/logger"
 	"task-processor/internal/imageagent"
-	"task-processor/internal/infra/storage"
 	"task-processor/internal/pkg/imagex"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
 )
-
-func TestMain(m *testing.M) {
-	logger.InitGlobalLogger(&logger.LogConfig{Level: "error", Console: false})
-	os.Exit(m.Run())
-}
 
 func TestPrepareSlotArtifactsBuildsContentAddressedManifestWithoutLocalPath(t *testing.T) {
 	t.Parallel()
 
-	store := newTestStore(t, &fakeS3API{})
+	store := newTestStore(t, &fakeObjectStore{})
 	prepared, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{
 		Identity: testIdentity(),
 		Assets:   []ArtifactInput{validAsset(t, 3, 2)},
@@ -67,7 +55,7 @@ func TestPrepareSlotArtifactsBuildsContentAddressedManifestWithoutLocalPath(t *t
 
 func TestPrepareSlotArtifactsKeepsBusinessSourceIDOutOfObjectKeyGrammar(t *testing.T) {
 	t.Parallel()
-	store := newTestStore(t, &fakeS3API{})
+	store := newTestStore(t, &fakeObjectStore{})
 	sourceID := "source:" + strings.Repeat("x", 121)
 	asset := validAsset(t, 1, 1)
 	asset.SourceAssetID = sourceID
@@ -81,7 +69,7 @@ func TestPrepareSlotArtifactsKeepsBusinessSourceIDOutOfObjectKeyGrammar(t *testi
 
 func TestRecoveryBundleRehydratesGeneratedBytesAndBindsExactManifest(t *testing.T) {
 	t.Parallel()
-	api := &fakeS3API{objects: map[string]fakeObject{}}
+	api := &fakeObjectStore{objects: map[string]fakeObject{}}
 	store := newTestStore(t, api)
 	prepared := mustPrepare(t, store)
 
@@ -104,7 +92,7 @@ func TestRecoveryBundleRehydratesGeneratedBytesAndBindsExactManifest(t *testing.
 
 func TestPrepareSlotArtifactsSeparatesSameTenantRunByOwner(t *testing.T) {
 	t.Parallel()
-	store := newTestStore(t, &fakeS3API{})
+	store := newTestStore(t, &fakeObjectStore{})
 	first := testIdentity()
 	second := first
 	second.OwnerUserID = "user-b"
@@ -122,8 +110,8 @@ func TestPrepareSlotArtifactsSeparatesSameTenantRunByOwner(t *testing.T) {
 func TestEnsureStagedReconcilesLostPutResponseWithHead(t *testing.T) {
 	t.Parallel()
 
-	api := &fakeS3API{objects: map[string]fakeObject{}}
-	api.put = func(input *s3.PutObjectInput) error {
+	api := &fakeObjectStore{objects: map[string]fakeObject{}}
+	api.put = func(input ImmutableObjectPut) error {
 		api.savePut(input)
 		return errors.New("response lost after object write")
 	}
@@ -138,15 +126,13 @@ func TestEnsureStagedReconcilesLostPutResponseWithHead(t *testing.T) {
 	}
 }
 
-func TestNewS3DurableArtifactStoreRequiresPositiveOperationTimeout(t *testing.T) {
-	uploader := storage.NewS3UploaderWithAPI(&fakeS3API{}, storage.S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeAWS}})
-
-	_, err := NewS3DurableArtifactStore(uploader, S3DurableArtifactStoreConfig{MaxArtifactBytes: 2048})
+func TestNewDurableArtifactStoreRequiresPositiveOperationTimeout(t *testing.T) {
+	_, err := NewDurableArtifactStore(&fakeObjectStore{}, DurableArtifactStoreConfig{MaxArtifactBytes: 2048})
 	require.ErrorContains(t, err, "positive operation timeout")
 }
 
 func TestDurableStoreBoundsEveryHeadPutAndCopyCall(t *testing.T) {
-	api := &fakeS3API{objects: map[string]fakeObject{}}
+	api := &fakeObjectStore{objects: map[string]fakeObject{}}
 	type observedCall struct {
 		operation   string
 		hasDeadline bool
@@ -166,7 +152,7 @@ func TestDurableStoreBoundsEveryHeadPutAndCopyCall(t *testing.T) {
 	seen := map[string]bool{}
 	for _, call := range observed {
 		seen[call.operation] = true
-		require.True(t, call.hasDeadline, "%s SDK call must carry a deadline", call.operation)
+		require.True(t, call.hasDeadline, "%s object-store call must carry a deadline", call.operation)
 		require.Positive(t, call.remaining, call.operation)
 		require.Less(t, call.remaining, time.Minute, call.operation)
 	}
@@ -174,7 +160,7 @@ func TestDurableStoreBoundsEveryHeadPutAndCopyCall(t *testing.T) {
 }
 
 func TestFinalizeWithProgressRenewsBeforeEachBoundedAsset(t *testing.T) {
-	api := &fakeS3API{objects: map[string]fakeObject{}}
+	api := &fakeObjectStore{objects: map[string]fakeObject{}}
 	store := newTestStore(t, api)
 	prepared, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{Identity: testIdentity(), Assets: []ArtifactInput{validAsset(t, 3, 2), withReceipt(validAsset(t, 2, 2), "receipt-2")}})
 	if err != nil {
@@ -199,7 +185,7 @@ func TestFinalizeWithProgressRenewsBeforeEachBoundedAsset(t *testing.T) {
 func TestEnsureStagedRejectsSameKeyWithDifferentMetadata(t *testing.T) {
 	t.Parallel()
 
-	api := &fakeS3API{objects: map[string]fakeObject{}}
+	api := &fakeObjectStore{objects: map[string]fakeObject{}}
 	store := newTestStore(t, api)
 	prepared := mustPrepare(t, store)
 	ref := prepared.Manifest.Assets[0]
@@ -216,7 +202,7 @@ func TestEnsureStagedRejectsSameKeyWithDifferentMetadata(t *testing.T) {
 func TestEnsureStagedAcceptsMatchingExistingObjectWithoutPut(t *testing.T) {
 	t.Parallel()
 
-	api := &fakeS3API{objects: map[string]fakeObject{}}
+	api := &fakeObjectStore{objects: map[string]fakeObject{}}
 	store := newTestStore(t, api)
 	prepared := mustPrepare(t, store)
 	ref := prepared.Manifest.Assets[0]
@@ -233,7 +219,7 @@ func TestEnsureStagedAcceptsMatchingExistingObjectWithoutPut(t *testing.T) {
 func TestFinalizeUsesDeterministicPublicKey(t *testing.T) {
 	t.Parallel()
 
-	api := &fakeS3API{objects: map[string]fakeObject{}}
+	api := &fakeObjectStore{objects: map[string]fakeObject{}}
 	store := newTestStore(t, api)
 	prepared := mustPrepare(t, store)
 	staged := prepared.Manifest.Assets[0]
@@ -287,7 +273,7 @@ func TestFinalizePreservesOperationsWireRepresentationAndFingerprint(t *testing.
 		{name: "non-nil empty", operations: []string{}, wantJSON: emptyOperationsJSON, wantFingerprint: "e0dc66445d22e7e36962eacee7be4ec10a9c625c57578196705c3ab4523939a4"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			api := &fakeS3API{objects: map[string]fakeObject{}}
+			api := &fakeObjectStore{objects: map[string]fakeObject{}}
 			store := newTestStore(t, api)
 			staged := imageagent.StagedAssetRef{
 				ObjectKey: "image-agent/staging/tenant-a/fc95297aa4f56781f0decb7d4bf59b1447f09b3611039b80188b1c6beb03ee6a/run-1/3/slot-1/2/0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
@@ -331,7 +317,7 @@ func TestFinalizePreservesOperationsWireRepresentationAndFingerprint(t *testing.
 func TestInspectNeverTreatsETagAsSHA256(t *testing.T) {
 	t.Parallel()
 
-	api := &fakeS3API{objects: map[string]fakeObject{}}
+	api := &fakeObjectStore{objects: map[string]fakeObject{}}
 	store := newTestStore(t, api)
 	prepared := mustPrepare(t, store)
 	ref := prepared.Manifest.Assets[0]
@@ -345,7 +331,7 @@ func TestInspectNeverTreatsETagAsSHA256(t *testing.T) {
 func TestPrepareRejectsOversizeUnsupportedOrEscapingArtifacts(t *testing.T) {
 	t.Parallel()
 
-	store := newTestStore(t, &fakeS3API{})
+	store := newTestStore(t, &fakeObjectStore{})
 	for _, tc := range []struct {
 		name  string
 		input PrepareSlotArtifactsInput
@@ -369,7 +355,7 @@ func TestPrepareRejectsOversizeUnsupportedOrEscapingArtifacts(t *testing.T) {
 
 func TestPrepareAllowsCanonicalOpaqueIDsContainingTokenOrSecret(t *testing.T) {
 	t.Parallel()
-	store := newTestStore(t, &fakeS3API{})
+	store := newTestStore(t, &fakeObjectStore{})
 	asset := validAsset(t, 1, 1)
 	asset.SourceAssetID = "tokenized-source-1"
 	asset.ProviderReceiptID = "secretary-receipt-1"
@@ -380,7 +366,7 @@ func TestPrepareAllowsCanonicalOpaqueIDsContainingTokenOrSecret(t *testing.T) {
 
 func TestPrepareRejectsHostileDimensionsBeforeFullDecode(t *testing.T) {
 	t.Parallel()
-	store := newTestStore(t, &fakeS3API{})
+	store := newTestStore(t, &fakeObjectStore{})
 	fullDecodeCalled := false
 	store.inspectImage = func([]byte) (*imagex.ImageInfo, error) {
 		fullDecodeCalled = true
@@ -398,17 +384,16 @@ func TestPrepareRejectsHostileDimensionsBeforeFullDecode(t *testing.T) {
 	}
 }
 
-func newTestStore(t *testing.T, api *fakeS3API) *S3DurableArtifactStore {
+func newTestStore(t *testing.T, objectStore *fakeObjectStore) *DurableArtifactStore {
 	t.Helper()
-	uploader := storage.NewS3UploaderWithAPI(api, storage.S3UploaderOptions{Bucket: "assets", ArtifactCapabilities: storage.ArtifactStorageCapabilities{Mode: storage.ArtifactStorageModeAWS}})
-	store, err := NewS3DurableArtifactStore(uploader, S3DurableArtifactStoreConfig{MaxArtifactBytes: 2048, MaxArtifactCount: 2, MaxAggregateBytes: 3072, OperationTimeout: time.Second})
+	store, err := NewDurableArtifactStore(objectStore, DurableArtifactStoreConfig{MaxArtifactBytes: 2048, MaxArtifactCount: 2, MaxAggregateBytes: 3072, OperationTimeout: time.Second})
 	if err != nil {
-		t.Fatalf("NewS3DurableArtifactStore() error = %v", err)
+		t.Fatalf("NewDurableArtifactStore() error = %v", err)
 	}
 	return store
 }
 
-func mustPrepare(t *testing.T, store *S3DurableArtifactStore) PreparedSlotArtifacts {
+func mustPrepare(t *testing.T, store *DurableArtifactStore) PreparedSlotArtifacts {
 	t.Helper()
 	prepared, err := store.PrepareSlotArtifacts(prepareInputWith(testIdentity(), ArtifactInput{Bytes: validPNG(t, 3, 2), ContentType: "image/png", Width: 3, Height: 2, SourceAssetID: "source-1", Operations: []string{"extract_subject"}, ProviderReceiptID: "receipt-1"}))
 	if err != nil {
@@ -471,7 +456,7 @@ func withOperations(asset ArtifactInput, operations ...string) ArtifactInput {
 
 func TestPrepareSlotArtifactsRejectsAggregateAndCountLimits(t *testing.T) {
 	t.Parallel()
-	store := newTestStore(t, &fakeS3API{})
+	store := newTestStore(t, &fakeObjectStore{})
 	asset := validAsset(t, 1, 1)
 	asset.Bytes = bytes.Repeat([]byte("x"), 1600)
 	if _, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{Identity: testIdentity(), Assets: []ArtifactInput{asset, asset}}); err == nil {
@@ -504,7 +489,7 @@ func TestRecoveryRejectsNonCanonicalPersistedStagingKeysBeforeSDKCalls(t *testin
 			ref.Operations = []string{"provider=https://transient.example"}
 		},
 	} {
-		api := &fakeS3API{objects: map[string]fakeObject{}}
+		api := &fakeObjectStore{objects: map[string]fakeObject{}}
 		store := newTestStore(t, api)
 		prepared := mustPrepare(t, store)
 		mutate(&prepared.Manifest.Assets[0])
@@ -512,7 +497,7 @@ func TestRecoveryRejectsNonCanonicalPersistedStagingKeysBeforeSDKCalls(t *testin
 			t.Fatal("EnsureStaged() error = nil, want malformed manifest rejection")
 		}
 		if api.headCalls != 0 || api.putCalls != 0 || api.copyCalls != 0 {
-			t.Fatalf("SDK calls occurred for malformed manifest: head=%d put=%d copy=%d", api.headCalls, api.putCalls, api.copyCalls)
+			t.Fatalf("object-store calls occurred for malformed manifest: inspect=%d put=%d copy=%d", api.headCalls, api.putCalls, api.copyCalls)
 		}
 	}
 }
@@ -521,12 +506,12 @@ func TestPersistedManifestPreflightsEveryAssetBeforeStorageCalls(t *testing.T) {
 	t.Parallel()
 	for _, operation := range []struct {
 		name string
-		run  func(context.Context, *S3DurableArtifactStore, PreparedSlotArtifacts) error
+		run  func(context.Context, *DurableArtifactStore, PreparedSlotArtifacts) error
 	}{
-		{name: "ensure", run: func(ctx context.Context, store *S3DurableArtifactStore, prepared PreparedSlotArtifacts) error {
+		{name: "ensure", run: func(ctx context.Context, store *DurableArtifactStore, prepared PreparedSlotArtifacts) error {
 			return store.EnsureStaged(ctx, prepared)
 		}},
-		{name: "finalize", run: func(ctx context.Context, store *S3DurableArtifactStore, prepared PreparedSlotArtifacts) error {
+		{name: "finalize", run: func(ctx context.Context, store *DurableArtifactStore, prepared PreparedSlotArtifacts) error {
 			_, err := store.Finalize(ctx, prepared.Manifest)
 			return err
 		}},
@@ -541,7 +526,7 @@ func TestPersistedManifestPreflightsEveryAssetBeforeStorageCalls(t *testing.T) {
 			{name: "unsafe later operation", apply: func(ref *imageagent.StagedAssetRef) { ref.Operations = []string{"provider=https://transient.example"} }},
 		} {
 			t.Run(operation.name+"/"+mutate.name, func(t *testing.T) {
-				api := &fakeS3API{objects: map[string]fakeObject{}}
+				api := &fakeObjectStore{objects: map[string]fakeObject{}}
 				store := newTestStore(t, api)
 				prepared, err := store.PrepareSlotArtifacts(PrepareSlotArtifactsInput{Identity: testIdentity(), Assets: []ArtifactInput{validAsset(t, 1, 1), validAsset(t, 2, 1)}})
 				if err != nil {
@@ -561,7 +546,7 @@ func TestPersistedManifestPreflightsEveryAssetBeforeStorageCalls(t *testing.T) {
 
 func TestFinalizeRejectsNonCanonicalPersistedStagingKeysBeforeSDKCalls(t *testing.T) {
 	t.Parallel()
-	api := &fakeS3API{objects: map[string]fakeObject{}}
+	api := &fakeObjectStore{objects: map[string]fakeObject{}}
 	store := newTestStore(t, api)
 	prepared := mustPrepare(t, store)
 	prepared.Manifest.Assets[0].ObjectKey = strings.Replace(prepared.Manifest.Assets[0].ObjectKey, "/run-1/3/", "/run-1/03/", 1)
@@ -569,25 +554,25 @@ func TestFinalizeRejectsNonCanonicalPersistedStagingKeysBeforeSDKCalls(t *testin
 		t.Fatal("Finalize() error = nil, want malformed manifest rejection")
 	}
 	if api.headCalls != 0 || api.putCalls != 0 || api.copyCalls != 0 {
-		t.Fatalf("SDK calls occurred for malformed manifest: head=%d put=%d copy=%d", api.headCalls, api.putCalls, api.copyCalls)
+		t.Fatalf("object-store calls occurred for malformed manifest: inspect=%d put=%d copy=%d", api.headCalls, api.putCalls, api.copyCalls)
 	}
 }
 
 func TestFinalizeReconcilesLostCopyAndRejectsConflictingFinal(t *testing.T) {
 	t.Parallel()
 	t.Run("lost copy", func(t *testing.T) {
-		api := &fakeS3API{objects: map[string]fakeObject{}}
+		api := &fakeObjectStore{objects: map[string]fakeObject{}}
 		store := newTestStore(t, api)
 		prepared := mustPrepare(t, store)
 		staged := prepared.Manifest.Assets[0]
 		api.objects[staged.ObjectKey] = fakeObject{contentType: staged.ContentType, contentLength: staged.SizeBytes, metadata: map[string]string{"sha256": staged.SHA256, "size-bytes": strconv.FormatInt(staged.SizeBytes, 10)}}
-		api.copy = func(input *s3.CopyObjectInput) error { api.saveCopy(input); return errors.New("copy response lost") }
+		api.copy = func(input ImmutableObjectCopy) error { api.saveCopy(input); return errors.New("copy response lost") }
 		if _, err := store.Finalize(context.Background(), prepared.Manifest); err != nil {
 			t.Fatalf("Finalize() error = %v", err)
 		}
 	})
 	t.Run("conflicting final", func(t *testing.T) {
-		api := &fakeS3API{objects: map[string]fakeObject{}}
+		api := &fakeObjectStore{objects: map[string]fakeObject{}}
 		store := newTestStore(t, api)
 		prepared := mustPrepare(t, store)
 		staged := prepared.Manifest.Assets[0]
@@ -601,7 +586,7 @@ func TestFinalizeReconcilesLostCopyAndRejectsConflictingFinal(t *testing.T) {
 
 func TestEnsureStagedRejectsMissingRetryBytes(t *testing.T) {
 	t.Parallel()
-	store := newTestStore(t, &fakeS3API{objects: map[string]fakeObject{}})
+	store := newTestStore(t, &fakeObjectStore{objects: map[string]fakeObject{}})
 	prepared := mustPrepare(t, store)
 	encoded, err := json.Marshal(prepared)
 	if err != nil {
@@ -618,7 +603,7 @@ func TestEnsureStagedRejectsMissingRetryBytes(t *testing.T) {
 
 func TestPreparedJSONExcludesEveryTransientSentinel(t *testing.T) {
 	t.Parallel()
-	store := newTestStore(t, &fakeS3API{})
+	store := newTestStore(t, &fakeObjectStore{})
 	prepared := mustPrepare(t, store)
 	prepared.contents[prepared.Manifest.Assets[0].ObjectKey] = []byte("C:/worker/private.png https://transient.example authorization=secret")
 	prepared.Manifest.ProviderMetadata = map[string]string{"provider_metadata": "C:/worker/private.png https://transient.example authorization=secret"}
@@ -634,10 +619,10 @@ func TestPreparedJSONExcludesEveryTransientSentinel(t *testing.T) {
 	}
 }
 
-type fakeS3API struct {
+type fakeObjectStore struct {
 	objects        map[string]fakeObject
-	put            func(*s3.PutObjectInput) error
-	copy           func(*s3.CopyObjectInput) error
+	put            func(ImmutableObjectPut) error
+	copy           func(ImmutableObjectCopy) error
 	observeContext func(string, context.Context)
 	putCalls       int
 	headCalls      int
@@ -653,80 +638,79 @@ type fakeObject struct {
 	eTag          string
 }
 
-func (f *fakeS3API) PutObject(ctx context.Context, input *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+func (f *fakeObjectStore) PublicURL(key string) string {
+	return "https://cdn.example.test/" + strings.TrimLeft(key, "/")
+}
+
+func (f *fakeObjectStore) PutImmutable(ctx context.Context, input ImmutableObjectPut) error {
 	f.putCalls++
 	if f.observeContext != nil {
 		f.observeContext("PUT", ctx)
 	}
 	if f.put != nil {
 		if err := f.put(input); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	f.savePut(input)
-	return &s3.PutObjectOutput{}, nil
+	return nil
 }
 
-func (f *fakeS3API) HeadObject(ctx context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+func (f *fakeObjectStore) InspectObject(ctx context.Context, key string) (ObjectInspection, error) {
 	f.headCalls++
 	if f.observeContext != nil {
 		f.observeContext("HEAD", ctx)
 	}
-	object, ok := f.objects[aws.ToString(input.Key)]
+	object, ok := f.objects[key]
 	if !ok {
-		return nil, &types.NotFound{}
+		return ObjectInspection{}, nil
 	}
-	return &s3.HeadObjectOutput{ContentType: aws.String(object.contentType), ContentLength: aws.Int64(object.contentLength), Metadata: object.metadata, ChecksumSHA256: aws.String(object.checksumSHA), ETag: aws.String(object.eTag)}, nil
+	return ObjectInspection{Exists: true, ContentType: object.contentType, ContentLength: object.contentLength, Metadata: object.metadata, ServerChecksumSHA256: object.checksumSHA, ETag: object.eTag}, nil
 }
 
-func (f *fakeS3API) GetObject(_ context.Context, input *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
-	object, ok := f.objects[aws.ToString(input.Key)]
+func (f *fakeObjectStore) ReadObject(_ context.Context, key string, maxBytes int64) ([]byte, ObjectInspection, error) {
+	object, ok := f.objects[key]
 	if !ok {
-		return nil, &types.NoSuchKey{}
+		return nil, ObjectInspection{}, nil
 	}
-	return &s3.GetObjectOutput{
-		Body: io.NopCloser(bytes.NewReader(object.data)), ContentType: aws.String(object.contentType),
-		ContentLength: aws.Int64(object.contentLength), Metadata: object.metadata,
-		ChecksumSHA256: aws.String(object.checksumSHA), ETag: aws.String(object.eTag),
-	}, nil
+	if object.contentLength > maxBytes {
+		return nil, ObjectInspection{}, errors.New("object exceeds bounded read")
+	}
+	inspection := ObjectInspection{Exists: true, ContentType: object.contentType, ContentLength: object.contentLength, Metadata: object.metadata, ServerChecksumSHA256: object.checksumSHA, ETag: object.eTag}
+	return append([]byte(nil), object.data...), inspection, nil
 }
 
-func (f *fakeS3API) CopyObject(ctx context.Context, input *s3.CopyObjectInput, _ ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
+func (f *fakeObjectStore) CopyImmutable(ctx context.Context, input ImmutableObjectCopy) error {
 	f.copyCalls++
 	if f.observeContext != nil {
 		f.observeContext("COPY", ctx)
 	}
 	if f.copy != nil {
 		if err := f.copy(input); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	f.saveCopy(input)
-	return &s3.CopyObjectOutput{}, nil
+	return nil
 }
 
-func (f *fakeS3API) saveCopy(input *s3.CopyObjectInput) {
-	if _, ok := f.objects[aws.ToString(input.Key)]; ok {
+func (f *fakeObjectStore) saveCopy(input ImmutableObjectCopy) {
+	if _, ok := f.objects[input.Destination.Key]; ok {
 		return
 	}
-	source := strings.TrimPrefix(aws.ToString(input.CopySource), "assets/")
-	object, ok := f.objects[source]
+	object, ok := f.objects[input.SourceKey]
 	if !ok {
 		return
 	}
-	object.contentType = aws.ToString(input.ContentType)
-	object.metadata = input.Metadata
-	f.objects[aws.ToString(input.Key)] = object
+	object.contentType = input.Destination.ContentType
+	object.contentLength = input.Destination.SizeBytes
+	object.metadata = map[string]string{"sha256": input.Destination.SHA256, "size-bytes": strconv.FormatInt(input.Destination.SizeBytes, 10)}
+	f.objects[input.Destination.Key] = object
 }
 
-func (f *fakeS3API) DeleteObject(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (f *fakeS3API) savePut(input *s3.PutObjectInput) {
+func (f *fakeObjectStore) savePut(input ImmutableObjectPut) {
 	if f.objects == nil {
 		f.objects = make(map[string]fakeObject)
 	}
-	data, _ := io.ReadAll(input.Body)
-	f.objects[aws.ToString(input.Key)] = fakeObject{data: data, contentType: aws.ToString(input.ContentType), contentLength: aws.ToInt64(input.ContentLength), metadata: input.Metadata, checksumSHA: aws.ToString(input.ChecksumSHA256)}
+	f.objects[input.Key] = fakeObject{data: append([]byte(nil), input.Data...), contentType: input.ContentType, contentLength: input.SizeBytes, metadata: map[string]string{"sha256": input.SHA256, "size-bytes": strconv.FormatInt(input.SizeBytes, 10)}}
 }

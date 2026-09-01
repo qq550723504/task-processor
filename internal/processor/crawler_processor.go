@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"task-processor/internal/app/task"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/timeout"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/product"
 	"task-processor/internal/product/sourcing"
 

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	"task-processor/internal/core/logger"
+	logger "task-processor/internal/platform/logging"
 	"time"
 
 	"github.com/sirupsen/logrus"

@@ -1,9 +1,12 @@
 package fetcher
 
 import (
+	"bytes"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
 )
@@ -59,6 +62,24 @@ func TestFetcherFactoryCreateDistributedRequiresRabbitMQClient(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "distributed fetcher requires RabbitMQ client") {
 		t.Fatalf("CreateFetcher() error = %v, want RabbitMQ requirement", err)
+	}
+}
+
+func TestFetcherFactoryPassesLoggerToLocalFetcher(t *testing.T) {
+	var output bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&output)
+	factory := &FetcherFactory{logger: logrus.NewEntry(logger)}
+
+	fetcher, err := factory.CreateFetcher(LocalFetcher, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("CreateFetcher() error = %v", err)
+	}
+	if err := fetcher.CacheProduct(nil, nil); err != nil {
+		t.Fatalf("CacheProduct() error = %v", err)
+	}
+	if !strings.Contains(output.String(), "product is nil, skipping cache") {
+		t.Fatalf("local fetcher log output = %q, want product warning", output.String())
 	}
 }
 

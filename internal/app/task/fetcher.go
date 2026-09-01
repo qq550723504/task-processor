@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
-	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/core/logger"
+	logger "task-processor/internal/platform/logging"
 
 	"github.com/sirupsen/logrus"
 )

@@ -7,9 +7,8 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
-	"task-processor/internal/core/logger"
-	infralock "task-processor/internal/infra/lock"
 	"task-processor/internal/pkg/timeout"
+	logger "task-processor/internal/platform/logging"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -28,7 +27,7 @@ type TaskExecutor struct {
 	started           int32          // 执行器启动状态标志 (0: 未启动, 1: 已启动)
 	skipCount         int64          // 跳过执行次数统计
 	stats             *ExecutorStats // 执行统计
-	distributedLock   infralock.DistributedLock
+	distributedLock   DistributedLock
 	lockTTL           time.Duration
 }
 
@@ -56,7 +55,7 @@ func NewTaskExecutor(ctx context.Context, task Task, depManager *DependencyManag
 }
 
 // SetDistributedLock 为任务执行器设置分布式锁。
-func (e *TaskExecutor) SetDistributedLock(locker infralock.DistributedLock, ttl time.Duration) {
+func (e *TaskExecutor) SetDistributedLock(locker DistributedLock, ttl time.Duration) {
 	e.distributedLock = locker
 	if ttl <= 0 {
 		ttl = e.taskTimeout

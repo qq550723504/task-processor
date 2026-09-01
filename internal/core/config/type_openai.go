@@ -1,6 +1,6 @@
 package config
 
-import openaiClient "task-processor/internal/infra/clients/openai"
+import openaiClient "task-processor/internal/integration/openai"
 
 // OpenAIClientConfig 单个 OpenAI 客户端配置
 type OpenAIClientConfig struct {

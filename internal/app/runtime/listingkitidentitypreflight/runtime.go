@@ -9,12 +9,13 @@ import (
 	"os"
 	"strings"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/listingkit/identitypreflight"
 	"task-processor/internal/listingkit/ownerreconcile"
 	"task-processor/internal/listingkit/userdirectory"
 	"task-processor/internal/pkg/appenv"
+	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/tenantbridge"
 
 	"gorm.io/gorm"
@@ -42,8 +43,8 @@ type runtimeDependencies struct {
 func defaultRuntimeDependencies() runtimeDependencies {
 	return runtimeDependencies{
 		LoadConfig:     config.LoadConfigFromFileWithoutValidation,
-		OpenDB:         database.NewDatabaseFromConfigWithoutCreate,
-		OpenMetadataDB: database.NewDatabaseFromConfigWithoutCreate,
+		OpenDB:         openExistingReadOnly,
+		OpenMetadataDB: openExistingReadOnly,
 		CloseDB: func(db *gorm.DB) error {
 			sqlDB, err := db.DB()
 			if err != nil {
@@ -64,6 +65,10 @@ func defaultRuntimeDependencies() runtimeDependencies {
 		},
 		Output: os.Stdout,
 	}
+}
+
+func openExistingReadOnly(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+	return platformdatabase.OpenExistingReadOnly(configadapter.Database(cfg))
 }
 
 func Run(ctx context.Context, opts Options) error {

@@ -12,9 +12,9 @@ import (
 
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/platform/queue/rabbitmq"
+	worker "task-processor/internal/platform/workerpool"
 
 	"github.com/sirupsen/logrus"
 )
@@ -467,7 +467,7 @@ func TestHTTPServerHealthWhenRabbitMQDisconnected(t *testing.T) {
 		},
 	}
 	svc := NewRabbitMQService(cfg, logger)
-	loadMonitor := rabbitmq.NewLoadMonitor(config.LoadMonitorConfig{}, logger)
+	loadMonitor := newTestLoadMonitor(config.LoadMonitorConfig{}, logger)
 	server := NewHTTPServerManager(cfg, loadMonitor, svc, nil, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -491,7 +491,7 @@ func TestHTTPServerReadinessWhenRabbitMQDisconnected(t *testing.T) {
 		},
 	}
 	svc := NewRabbitMQService(cfg, logger)
-	loadMonitor := rabbitmq.NewLoadMonitor(config.LoadMonitorConfig{}, logger)
+	loadMonitor := newTestLoadMonitor(config.LoadMonitorConfig{}, logger)
 	server := NewHTTPServerManager(cfg, loadMonitor, svc, nil, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)

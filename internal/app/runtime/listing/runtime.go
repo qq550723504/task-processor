@@ -7,11 +7,12 @@ import (
 
 	listingruntimebootstrap "task-processor/internal/app/bootstrap/listingruntime"
 	bootstrapschedulers "task-processor/internal/app/bootstrap/schedulers"
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/appenv"
+	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/platformbase"
 
 	"github.com/sirupsen/logrus"
@@ -150,12 +151,13 @@ func runDebugTask(
 		return err
 	}
 
-	db, err := database.NewSharedDatabaseFromConfig(cfg.Database)
+	databaseConfig := configadapter.Database(cfg.Database)
+	db, err := platformdatabase.OpenShared(databaseConfig)
 	if err != nil {
 		return fmt.Errorf("initialize local debug task repository database: %w", err)
 	}
 	defer func() {
-		if err := database.CloseSharedDatabase(cfg.Database, db); err != nil {
+		if err := platformdatabase.CloseShared(databaseConfig, db); err != nil {
 			logger.WithError(err).Warn("close debug task repository database failed")
 		}
 	}()

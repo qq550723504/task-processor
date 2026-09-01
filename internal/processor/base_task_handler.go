@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
+	worker "task-processor/internal/platform/workerpool"
 	"time"
 
 	"github.com/sirupsen/logrus"

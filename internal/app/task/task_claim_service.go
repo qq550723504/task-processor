@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
+	logger "task-processor/internal/platform/logging"
 )
 
 type TaskClaimService struct {

@@ -10,9 +10,10 @@ import (
 
 	"gorm.io/gorm"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/listingadmin"
+	platformdatabase "task-processor/internal/platform/database"
 )
 
 const recoveryStoreID int64 = 986
@@ -43,10 +44,14 @@ type runtimeDependencies struct {
 
 func defaultRuntimeDependencies() runtimeDependencies {
 	return runtimeDependencies{
-		LoadConfig:     config.LoadConfigFromFileWithoutValidation,
-		OpenDB:         database.NewDatabaseFromConfigWithoutCreate,
-		OpenWritableDB: database.NewDatabaseFromConfigWithoutCreateWritable,
-		CloseDB:        closeDB,
+		LoadConfig: config.LoadConfigFromFileWithoutValidation,
+		OpenDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingReadOnly(configadapter.Database(cfg))
+		},
+		OpenWritableDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritable(configadapter.Database(cfg))
+		},
+		CloseDB: closeDB,
 		Recover: func(ctx context.Context, db *gorm.DB, req listingadmin.PlatformRecoveryRequest) (listingadmin.PlatformRecoveryReport, error) {
 			return listingadmin.NewGormImportTaskRepository(db).RecoverStore986PlatformCohort(ctx, req)
 		},

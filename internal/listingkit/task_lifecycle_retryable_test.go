@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/infra/worker"
+	openaiclient "task-processor/internal/integration/openai"
 	submissiondomain "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/productenrich"
 )
 

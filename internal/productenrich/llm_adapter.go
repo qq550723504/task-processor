@@ -1,5 +1,5 @@
 // Package productenrich 提供 LLM 基础设施适配器。
-// 将 infra/clients/openai 的 Manager/Client 适配为本包定义的 LLMManager/LLMClient 接口。
+// 将 integration/openai 的 Manager/Client 适配为本包定义的 LLMManager/LLMClient 接口。
 package productenrich
 
 import (
@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/sirupsen/logrus"
+
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/integration/openai"
 )
 
 // llmClientAdapter 将 openai.ChatCompleter 适配为 LLMClient 接口。
@@ -57,10 +59,11 @@ func (a *llmManagerAdapter) GetDefaultClient() LLMClient {
 
 // NewLLMManagerAdapter 根据 OpenAIConfig 创建满足 LLMManager 接口的适配器。
 // 供 cmd 层在组装依赖时使用。
-func NewLLMManagerAdapter(cfg config.OpenAIConfig) (LLMManager, error) {
+func NewLLMManagerAdapter(cfg config.OpenAIConfig, logger *logrus.Entry) (LLMManager, error) {
 	mgr, err := openai.NewManager(&openai.ManagerConfig{
 		Clients:       cfg.ToClientConfigs(),
 		DefaultClient: "default",
+		Logger:        openai.AdaptLogrus(logger),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("创建 OpenAI Manager 失败: %w", err)

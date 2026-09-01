@@ -4,7 +4,7 @@ import (
 	"task-processor/internal/app/ports"
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/platformbase"
 	sheinscheduler "task-processor/internal/shein/scheduler"
 	temuscheduler "task-processor/internal/temu/scheduler"

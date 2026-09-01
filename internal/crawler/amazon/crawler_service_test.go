@@ -10,8 +10,8 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/shared"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
+	worker "task-processor/internal/platform/workerpool"
 
 	"github.com/sirupsen/logrus"
 )

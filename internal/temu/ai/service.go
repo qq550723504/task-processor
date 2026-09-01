@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	openaiClient "task-processor/internal/infra/clients/openai"
+	openaiClient "task-processor/internal/integration/openai"
 	"task-processor/internal/pkg/jsonx"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"

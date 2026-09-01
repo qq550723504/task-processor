@@ -7,11 +7,12 @@ import (
 	"os"
 	"strings"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
-	"task-processor/internal/infra/redisclient"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/appenv"
+	platformdatabase "task-processor/internal/platform/database"
+	platformredis "task-processor/internal/platform/redis"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,12 +37,13 @@ func RunPausedTaskRecovery(ctx context.Context, opts PausedTaskRecoveryOptions) 
 		return fmt.Errorf("apply logging config failed: %w", err)
 	}
 
-	db, err := database.NewSharedDatabaseFromConfig(cfg.Database)
+	databaseConfig := configadapter.Database(cfg.Database)
+	db, err := platformdatabase.OpenShared(databaseConfig)
 	if err != nil {
 		return fmt.Errorf("initialize recovery database: %w", err)
 	}
 	defer func() {
-		if err := database.CloseSharedDatabase(cfg.Database, db); err != nil {
+		if err := platformdatabase.CloseShared(databaseConfig, db); err != nil {
 			logger.WithError(err).Warn("close recovery database failed")
 		}
 	}()
@@ -81,7 +83,7 @@ func newRuntimePauseReader(cfg *config.Config) (listingadmin.RuntimePauseReader,
 	if cfg == nil || cfg.Redis == nil {
 		return nil, nil, fmt.Errorf("redis config is required for paused task recovery")
 	}
-	client, err := redisclient.New(cfg.Redis)
+	client, err := platformredis.New(configadapter.Redis(cfg.Redis))
 	if err != nil {
 		return nil, nil, fmt.Errorf("initialize recovery redis client: %w", err)
 	}

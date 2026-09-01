@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/core/logger"
+	logger "task-processor/internal/platform/logging"
 )
 
 // CleanupService periodically inspects long-running tasks and reports suspicious ones.

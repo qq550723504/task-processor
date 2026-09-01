@@ -5,26 +5,15 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	platformconfig "task-processor/internal/platform/config"
 
 	"github.com/sirupsen/logrus"
 )
 
-// ConfigSource 配置源接口
-type ConfigSource interface {
-	// Read 读取配置数据
-	Read() ([]byte, error)
-
-	// Watch 监听配置变化
-	Watch(ctx context.Context, callback func([]byte)) error
-
-	// Name 返回配置源名称
-	Name() string
-}
-
 // ConfigManager 配置管理器接口
 type ConfigManager interface {
 	// Load 从配置源加载配置
-	Load(source ConfigSource) (*Config, error)
+	Load(source platformconfig.Source) (*Config, error)
 
 	// Validate 验证配置
 	Validate(cfg *Config) error
@@ -43,7 +32,7 @@ type ConfigManager interface {
 type managerImpl struct {
 	logger        *logrus.Logger
 	currentConfig *Config
-	currentSource ConfigSource
+	currentSource platformconfig.Source
 	mu            sync.RWMutex
 }
 
@@ -55,7 +44,7 @@ func NewConfigManager(logger *logrus.Logger) ConfigManager {
 }
 
 // Load 从配置源加载配置
-func (m *managerImpl) Load(source ConfigSource) (*Config, error) {
+func (m *managerImpl) Load(source platformconfig.Source) (*Config, error) {
 	if source == nil {
 		return nil, fmt.Errorf("配置源不能为空")
 	}

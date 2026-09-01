@@ -2,7 +2,7 @@
 package updater
 
 import (
-	"task-processor/internal/core/logger"
+	logger "task-processor/internal/platform/logging"
 	"time"
 )
 

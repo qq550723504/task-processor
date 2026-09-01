@@ -72,6 +72,48 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, 300, v.GetInt("openai.clients.image.timeout"))
 }
 
+func TestTracingConfigDefaultsToDisabledTaskProcessorService(t *testing.T) {
+	tracingType := reflect.TypeOf(TracingConfig{})
+	assert.Equal(t, 4, tracingType.NumField(), "tracing config must remain the four approved transport values")
+	cfg := BuildConfig(newViper())
+
+	assert.False(t, cfg.Observability.Tracing.Enabled)
+	assert.Equal(t, "task-processor", cfg.Observability.Tracing.ServiceName)
+	assert.Empty(t, cfg.Observability.Tracing.Endpoint)
+	assert.False(t, cfg.Observability.Tracing.Insecure)
+}
+
+func TestTracingConfigBindsEveryEnvironmentVariable(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OBSERVABILITY_TRACING_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_OBSERVABILITY_TRACING_SERVICE_NAME", "listing-api")
+	t.Setenv("TASK_PROCESSOR_OBSERVABILITY_TRACING_ENDPOINT", "collector.internal:4317")
+	t.Setenv("TASK_PROCESSOR_OBSERVABILITY_TRACING_INSECURE", "true")
+
+	cfg := BuildConfig(newViper())
+
+	assert.True(t, cfg.Observability.Tracing.Enabled)
+	assert.Equal(t, "listing-api", cfg.Observability.Tracing.ServiceName)
+	assert.Equal(t, "collector.internal:4317", cfg.Observability.Tracing.Endpoint)
+	assert.True(t, cfg.Observability.Tracing.Insecure)
+}
+
+func TestCommittedConfigArtifactsDeclareEveryTracingField(t *testing.T) {
+	for _, path := range []string{
+		filepath.Join("..", "..", "..", "config", "config-dev.yaml"),
+		filepath.Join("..", "..", "..", "config", "config-test.yaml"),
+		filepath.Join("..", "..", "..", "config", "config-prod.yaml"),
+	} {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			cfg, err := LoadConfigFromFileWithoutValidation(path)
+			require.NoError(t, err)
+			assert.False(t, cfg.Observability.Tracing.Enabled)
+			assert.Equal(t, "task-processor", cfg.Observability.Tracing.ServiceName)
+			assert.Empty(t, cfg.Observability.Tracing.Endpoint)
+			assert.False(t, cfg.Observability.Tracing.Insecure)
+		})
+	}
+}
+
 func TestGetStringSlice_SplitsCommaSeparatedSingleEntry(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES", "shein-store-a,shein-store-b,shein-store-c,shein-store-d")
 
@@ -113,6 +155,90 @@ func TestNewViper_BindsDatabaseEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "db.example", v.GetString("database.host"))
 	assert.Equal(t, 30432, v.GetInt("database.port"))
 	assert.Equal(t, "legacy-db", v.GetString("database.database"))
+}
+
+func TestFeatureFlagsDefaultProductListingRuntimeAutoMigrate(t *testing.T) {
+	cfg := NewDefaultConfig()
+
+	assert.Equal(t, map[string]bool{
+		"product-listing-runtime-auto-migrate": true,
+	}, cfg.FeatureFlags.Flags)
+}
+
+func TestLoadFromBytesLoadsFeatureFlagFromYAML(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+
+	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
+		"featureFlags:",
+		"  flags:",
+		"    product-listing-runtime-auto-migrate: false",
+	}, "\n")))
+	require.NoError(t, err)
+
+	assert.Equal(t, false, cfg.FeatureFlags.Flags["product-listing-runtime-auto-migrate"])
+}
+
+func TestLoadFromBytesPreservesEveryBooleanFeatureFlagFromYAML(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+	t.Setenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE", "false")
+
+	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
+		"featureFlags:",
+		"  flags:",
+		"    product-listing-runtime-auto-migrate: true",
+		"    secondary-runtime-capability: true",
+	}, "\n")))
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]bool{
+		"product-listing-runtime-auto-migrate": false,
+		"secondary-runtime-capability":         true,
+	}, cfg.FeatureFlags.Flags)
+}
+
+func TestBuildConfigReturnsIndependentFeatureFlagMaps(t *testing.T) {
+	v := newViper()
+	v.Set("featureFlags.flags.secondary-runtime-capability", true)
+
+	first := BuildConfig(v)
+	second := BuildConfig(v)
+	first.FeatureFlags.Flags["secondary-runtime-capability"] = false
+	first.FeatureFlags.Flags["test-only-mutation"] = true
+
+	assert.Equal(t, true, second.FeatureFlags.Flags["secondary-runtime-capability"])
+	assert.NotContains(t, second.FeatureFlags.Flags, "test-only-mutation")
+	assert.Equal(t, true, v.GetBool("featureFlags.flags.secondary-runtime-capability"))
+}
+
+func TestLoadFromBytesFeatureFlagEnvironmentOverride(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+	t.Setenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE", "false")
+
+	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
+		"featureFlags:",
+		"  flags:",
+		"    product-listing-runtime-auto-migrate: true",
+	}, "\n")))
+	require.NoError(t, err)
+
+	assert.Equal(t, false, cfg.FeatureFlags.Flags["product-listing-runtime-auto-migrate"])
+}
+
+func TestCommittedFeatureFlagConfigArtifactsEnableProductListingRuntimeAutoMigrate(t *testing.T) {
+	for _, configName := range []string{"config-dev.yaml", "config-prod.yaml", "config-test.yaml"} {
+		t.Run(configName, func(t *testing.T) {
+			contents, err := os.ReadFile(filepath.Join("..", "..", "..", "config", configName))
+			require.NoError(t, err)
+
+			var document map[string]any
+			require.NoError(t, yaml.Unmarshal(contents, &document))
+			featureFlags, ok := document["featureFlags"].(map[string]any)
+			require.True(t, ok, "featureFlags must be a YAML mapping")
+			flags, ok := featureFlags["flags"].(map[string]any)
+			require.True(t, ok, "featureFlags.flags must be a YAML mapping")
+			assert.Equal(t, true, flags["product-listing-runtime-auto-migrate"])
+		})
+	}
 }
 
 func TestNewViperBindsProcessingTimeoutWatchdogEnvironmentVariables(t *testing.T) {

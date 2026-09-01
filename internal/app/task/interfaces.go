@@ -2,8 +2,8 @@ package task
 
 import (
 	"context"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingruntime"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 // TaskSubmitter 任务提交器接口

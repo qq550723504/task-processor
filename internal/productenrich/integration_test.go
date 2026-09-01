@@ -15,9 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
-	"gorm.io/gorm/logger"
 
-	"task-processor/internal/infra/database"
+	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/productenrich/store"
@@ -51,16 +50,15 @@ func setupSuite(t *testing.T) (*integrationSuite, func()) {
 	pgPort, err := pgC.MappedPort(ctx, "5432")
 	require.NoError(t, err)
 
-	db, err := database.NewDatabase(&database.DatabaseConfig{
-		Host:               pgHost,
-		Port:               pgPort.Int(),
-		User:               "test",
-		Password:           "test",
-		Database:           "testdb",
-		MaxConnections:     5,
-		MaxIdleConnections: 2,
-		ConnMaxLifetime:    time.Hour,
-		LogLevel:           logger.Silent,
+	db, err := platformdatabase.Open(&platformdatabase.Config{
+		Host:                  pgHost,
+		Port:                  int(pgPort.Num()),
+		User:                  "test",
+		Password:              "test",
+		Database:              "testdb",
+		MaxConnections:        5,
+		MaxIdleConnections:    2,
+		ConnectionMaxLifetime: time.Hour,
 	})
 	require.NoError(t, err, "connect to postgres")
 
@@ -87,7 +85,7 @@ func setupSuite(t *testing.T) (*integrationSuite, func()) {
 	}
 
 	cleanup := func() {
-		_ = database.CloseDatabase(db)
+		_ = platformdatabase.Close(db)
 		_ = pgC.Terminate(ctx)
 		_ = redisC.Terminate(ctx)
 	}

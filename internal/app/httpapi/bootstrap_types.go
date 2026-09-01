@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"task-processor/internal/httproute"
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/productenrich"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )

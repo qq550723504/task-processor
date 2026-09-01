@@ -7,9 +7,10 @@ import (
 
 	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
-	geminiimage "task-processor/internal/infra/clients/geminiimage"
-	grsai "task-processor/internal/infra/clients/grsai"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	corelogger "task-processor/internal/core/logger"
+	geminiimage "task-processor/internal/integration/geminiimage"
+	grsai "task-processor/internal/integration/grsai"
+	openaiclient "task-processor/internal/integration/openai"
 )
 
 func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ChatCompleter {
@@ -22,6 +23,7 @@ func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.C
 }
 
 func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ImageGenerator {
+	providerLogger := corelogger.GetGlobalLogger("listingkit/image-provider")
 	return &strictListingKitConfiguredImageClient{
 		clientName: clientName,
 		resolver:   resolver,
@@ -40,6 +42,7 @@ func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.
 				}), nil
 			case imageAPIStyleGRSAI:
 				return grsai.NewClient(grsai.Config{
+					Logger:       grsai.AdaptLogrus(providerLogger),
 					APIKey:       cfg.APIKey,
 					Model:        cfg.Model,
 					SubmitURL:    cfg.BaseURL,
@@ -48,7 +51,9 @@ func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.
 					MaxAttempts:  cfg.MaxRetries,
 				}), nil
 			}
-			client := openaiclient.NewClient(cfg)
+			clientConfig := *cfg
+			clientConfig.Logger = openaiclient.AdaptLogrus(providerLogger)
+			client := openaiclient.NewClient(&clientConfig)
 			if client == nil {
 				return nil, fmt.Errorf("failed to initialize openai image client")
 			}
@@ -58,6 +63,7 @@ func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.
 }
 
 func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ImageGenerator {
+	providerLogger := corelogger.GetGlobalLogger("listingkit/nanobanana-provider")
 	return &strictListingKitConfiguredImageClient{
 		clientName: clientName,
 		resolver:   resolver,
@@ -76,6 +82,7 @@ func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver ope
 				}), nil
 			default:
 				return grsai.NewClient(grsai.Config{
+					Logger:       grsai.AdaptLogrus(providerLogger),
 					APIKey:       cfg.APIKey,
 					Model:        cfg.Model,
 					SubmitURL:    cfg.BaseURL,

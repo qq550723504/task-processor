@@ -14,21 +14,32 @@ import (
 func TestRunDefaultLoaderAcceptsDatabaseOnlyConfig(t *testing.T) {
 	configPath := writeDatabaseOnlyConfig(t)
 	db := &gorm.DB{}
+	ctx := context.WithValue(context.Background(), migrationContextKey{}, "migration-request")
 
-	err := runWithDependencies(context.Background(), configPath, Dependencies{
+	err := runWithDependencies(ctx, configPath, Dependencies{
 		OpenDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 			if cfg == nil || cfg.Host != "database.internal" {
 				t.Fatalf("database config = %#v", cfg)
 			}
 			return db, nil
 		},
-		CloseDB:    func(*gorm.DB) error { return nil },
-		MigrateAll: func(*gorm.DB) error { return nil },
+		CloseDB: func(*gorm.DB) error { return nil },
+		MigrateAll: func(got context.Context, migrationDB *gorm.DB) error {
+			if got.Value(migrationContextKey{}) != "migration-request" {
+				t.Fatal("migration did not receive caller context")
+			}
+			if migrationDB != db {
+				t.Fatalf("migration db = %p, want %p", migrationDB, db)
+			}
+			return nil
+		},
 	})
 	if err != nil {
 		t.Fatalf("Run() with database-only config error = %v", err)
 	}
 }
+
+type migrationContextKey struct{}
 
 func writeDatabaseOnlyConfig(t *testing.T) string {
 	t.Helper()

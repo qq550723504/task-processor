@@ -4,11 +4,10 @@ package product
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
-	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
-	corelogger "task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	"task-processor/internal/product/sourcing"
 
@@ -27,7 +26,7 @@ type ProductFetcher struct {
 func NewProductFetcher(
 	rawJsonDataClient RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	crawlSource ports.CrawlSource,
+	crawlSource sourcing.AmazonCrawlerSource,
 ) *ProductFetcher {
 	return NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, crawlSource, nil)
 }
@@ -36,11 +35,13 @@ func NewProductFetcher(
 func NewProductFetcherWithLogger(
 	rawJsonDataClient RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	crawlSource ports.CrawlSource,
+	crawlSource sourcing.AmazonCrawlerSource,
 	log *logrus.Entry,
 ) *ProductFetcher {
 	if log == nil {
-		log = corelogger.GetGlobalLogger("product.fetcher")
+		localLogger := logrus.New()
+		localLogger.SetOutput(io.Discard)
+		log = localLogger.WithField("component", "product.fetcher")
 	}
 	zipcodes := map[string]string(nil)
 	if amazonConfig != nil {

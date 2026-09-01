@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/crawler/shared"
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 // AsyncTaskProcessor 实现 worker.Processor 接口，负责 Amazon 异步任务消费。

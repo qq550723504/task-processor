@@ -121,3 +121,81 @@ func TestImportMatchesPrefixOnlyAtPackageBoundary(t *testing.T) {
 		})
 	}
 }
+
+func TestFindBannedImportViolationsDecodesLiteralsAndHonorsAllowlist(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"plain.go": `package fixture
+import sdkclient "go.temporal.io/sdk/client"
+var _ sdkclient.Client
+`,
+		"raw.go": "package fixture\nimport sdkclient `go.temporal.io/sdk/client`\nvar _ sdkclient.Client\n",
+		"escaped.go": `package fixture
+import sdkclient "go.temporal.io/sdk/\x63lient"
+var _ sdkclient.Client
+`,
+		"client_test.go": `package fixture
+import sdkclient "go.temporal.io/sdk/client"
+var _ sdkclient.Client
+`,
+		"allowed.go": `package fixture
+import sdkclient "go.temporal.io/sdk/client"
+var _ sdkclient.Client
+`,
+		filepath.Join("allowed", "nested.go"): `package fixture
+import sdkclient "go.temporal.io/sdk/client"
+var _ sdkclient.Client
+`,
+	}
+	for relative, source := range files {
+		path := filepath.Join(root, relative)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	allowed := map[string]struct{}{
+		filepath.Join(root, "allowed.go"):                         {},
+		filepath.Join(root, "allowed") + string(os.PathSeparator): {},
+	}
+
+	violations, err := findBannedImportViolations(root, []string{`"go.temporal.io/sdk/client"`}, allowed, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertBannedImportViolationFiles(t, violations, "plain.go", "raw.go", "escaped.go", "client_test.go")
+
+	productionViolations, err := findBannedImportViolations(root, []string{`"go.temporal.io/sdk/client"`}, allowed, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertBannedImportViolationFiles(t, productionViolations, "plain.go", "raw.go", "escaped.go")
+}
+
+func TestFindBannedImportViolationsRejectsMalformedBannedImportConfiguration(t *testing.T) {
+	_, err := findBannedImportViolations(t.TempDir(), []string{"not-a-go-string-literal"}, nil, false)
+	if err == nil || !strings.Contains(err.Error(), "decode banned import") {
+		t.Fatalf("error = %v, want malformed banned import configuration error", err)
+	}
+}
+
+func assertBannedImportViolationFiles(t *testing.T, violations []bannedImportViolation, wantFiles ...string) {
+	t.Helper()
+	got := make(map[string]struct{}, len(violations))
+	for _, violation := range violations {
+		if violation.importPath != "go.temporal.io/sdk/client" {
+			t.Errorf("decoded import = %q, want go.temporal.io/sdk/client", violation.importPath)
+		}
+		got[filepath.Base(violation.path)] = struct{}{}
+	}
+	if len(got) != len(wantFiles) {
+		t.Fatalf("violation files = %v, want %v", got, wantFiles)
+	}
+	for _, want := range wantFiles {
+		if _, ok := got[want]; !ok {
+			t.Errorf("missing violation for %s; got %v", want, got)
+		}
+	}
+}

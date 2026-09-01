@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
+	worker "task-processor/internal/platform/workerpool"
 )
 
 func TestRuntimeModuleRegistersRoutesAndWorkerPool(t *testing.T) {
