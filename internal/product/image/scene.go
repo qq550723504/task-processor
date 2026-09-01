@@ -52,10 +52,45 @@ type SceneProfile struct {
 	DetailAnchorMode     string
 }
 
+const (
+	MinSceneCanvasSize = 64
+	MaxSceneCanvasSize = 8192
+)
+
+type SceneLayoutInput struct {
+	CanvasSize    int
+	SubjectWidth  int
+	SubjectHeight int
+}
+
+type ScenePoint struct {
+	X int
+	Y int
+}
+
+type ScenePixelBounds struct {
+	X      int
+	Y      int
+	Width  int
+	Height int
+}
+
+type SceneLayout struct {
+	CardWidth     int
+	CardHeight    int
+	CardPoint     ScenePoint
+	SubjectPoint  ScenePoint
+	SubjectBounds ScenePixelBounds
+	CardOpacity   float64
+	Engine        string
+	QualityGrade  string
+}
+
 type ScenePlanRequest struct {
 	ProfileName string
 	Product     ProductContext
 	Options     SceneOptions
+	Geometry    SceneLayoutInput
 }
 
 type ScenePlan struct {
@@ -65,6 +100,7 @@ type ScenePlan struct {
 	Options       SceneOptions
 	Content       []SceneContent
 	Layers        []SceneLayer
+	Layout        SceneLayout
 }
 
 type SceneContent struct {
@@ -96,6 +132,7 @@ type SceneLayer struct {
 	Text        string
 	RenderOrder int
 	Bounds      SceneBounds
+	Opacity     float64
 }
 
 type sceneProfileFile struct {
@@ -222,12 +259,213 @@ func BuildScenePlan(request ScenePlanRequest) (ScenePlan, error) {
 	if options.SceneCategory == "" {
 		options.SceneCategory = inferSceneCategory(product)
 	}
+	layout, err := BuildSceneLayout(profile, request.Geometry)
+	if err != nil {
+		return ScenePlan{}, err
+	}
 	content := buildSceneContent(profile, product)
-	layers := buildSceneLayers(profile, content)
+	layers := buildSceneLayers(profile, content, layout, request.Geometry.CanvasSize)
 	return ScenePlan{
 		ProfileName: profile.Name, VisualMode: profile.VisualMode, LayoutVariant: profile.LayoutVariant,
-		Options: *options, Content: content, Layers: layers,
+		Options: *options, Content: content, Layers: layers, Layout: layout,
 	}, nil
+}
+
+func BuildSceneLayout(profile SceneProfile, input SceneLayoutInput) (SceneLayout, error) {
+	if err := validateSceneLayoutInput(profile, input); err != nil {
+		return SceneLayout{}, err
+	}
+	if profile.VisualMode == "selling_point" {
+		return buildSellingPointSceneLayout(profile, input), nil
+	}
+	return buildPresetSceneLayout(profile, input), nil
+}
+
+func validateSceneLayoutInput(profile SceneProfile, input SceneLayoutInput) error {
+	if input.CanvasSize < MinSceneCanvasSize || input.CanvasSize > MaxSceneCanvasSize ||
+		input.SubjectWidth <= 0 || input.SubjectHeight <= 0 ||
+		input.SubjectWidth > input.CanvasSize || input.SubjectHeight > input.CanvasSize ||
+		profile.MaxCopyLines <= 0 || profile.MaxCopyLines > maxMetadataValues ||
+		profile.MaxBadges <= 0 || profile.MaxBadges > maxMetadataValues {
+		return ErrInputInvalid
+	}
+	return nil
+}
+
+func buildPresetSceneLayout(profile SceneProfile, input SceneLayoutInput) SceneLayout {
+	canvasSize := input.CanvasSize
+	baseReserve := maxSceneInt(canvasSize/20, 40)
+	reserveTop := baseReserve
+	reserveRight := baseReserve
+	reserveBottom := baseReserve
+	reserveLeft := baseReserve
+
+	if profile.MaxBadges > 1 {
+		reserveTop += canvasSize / 24
+	}
+	if profile.MaxCopyLines > 2 {
+		reserveRight += canvasSize / 14
+	}
+	if profile.MeasurementMode == "dual_axis" {
+		reserveBottom += canvasSize / 12
+	}
+	if profile.DetailAnchorMode == "dual_anchor" {
+		reserveRight += canvasSize / 18
+		reserveLeft += canvasSize / 36
+	}
+
+	switch profile.LayoutVariant {
+	case "right_info_panel", "spec_sheet", "detail_grid":
+		reserveRight += canvasSize / 10
+	case "left_focus_panel":
+		reserveLeft += canvasSize / 10
+	case "hero_center", "editorial_full":
+		reserveTop = maxSceneInt(reserveTop-canvasSize/36, baseReserve/2)
+		reserveBottom = maxSceneInt(reserveBottom-canvasSize/36, baseReserve/2)
+	}
+
+	cardWidth := minSceneInt(canvasSize-(reserveLeft+reserveRight), input.SubjectWidth+reserveLeft+reserveRight)
+	cardHeight := minSceneInt(canvasSize-(reserveTop+reserveBottom), input.SubjectHeight+reserveTop+reserveBottom)
+	cardWidth = maxSceneInt(cardWidth, input.SubjectWidth+baseReserve)
+	cardHeight = maxSceneInt(cardHeight, input.SubjectHeight+baseReserve)
+	cardWidth = minSceneInt(cardWidth, canvasSize-baseReserve)
+	cardHeight = minSceneInt(cardHeight, canvasSize-baseReserve)
+	cardWidth = containSceneDimension(cardWidth, input.SubjectWidth, canvasSize)
+	cardHeight = containSceneDimension(cardHeight, input.SubjectHeight, canvasSize)
+
+	cardX := (canvasSize - cardWidth) / 2
+	cardY := (canvasSize - cardHeight) / 2
+	if reserveRight > reserveLeft {
+		cardX -= (reserveRight - reserveLeft) / 2
+	}
+	if reserveBottom > reserveTop {
+		cardY -= (reserveBottom - reserveTop) / 2
+	}
+	cardX = clampSceneInt(cardX, baseReserve/2, canvasSize-cardWidth-baseReserve/2)
+	cardY = clampSceneInt(cardY, baseReserve/2, canvasSize-cardHeight-baseReserve/2)
+	cardX = clampSceneInt(cardX, 0, canvasSize-cardWidth)
+	cardY = clampSceneInt(cardY, 0, canvasSize-cardHeight)
+
+	subjectX := cardX + reserveLeft + (cardWidth-reserveLeft-reserveRight-input.SubjectWidth)/2
+	subjectY := cardY + reserveTop + (cardHeight-reserveTop-reserveBottom-input.SubjectHeight)/2
+	subjectX = clampSceneSubject(subjectX, cardX, cardWidth, input.SubjectWidth, baseReserve/4, baseReserve/4)
+	subjectY = clampSceneSubject(subjectY, cardY, cardHeight, input.SubjectHeight, baseReserve/4, baseReserve/4)
+
+	opacity := 0.85
+	switch profile.Group {
+	case "editorial/model", "editorial":
+		opacity = 0.82
+	case "lifestyle/scene", "lifestyle":
+		opacity = 0.88
+	case "selling_point/size/spec/detail", "spec_detail":
+		opacity = 0.91
+	}
+	return newSceneLayout(cardWidth, cardHeight, cardX, cardY, subjectX, subjectY, input, opacity, "preset_layout_v1")
+}
+
+func buildSellingPointSceneLayout(profile SceneProfile, input SceneLayoutInput) SceneLayout {
+	canvasSize := input.CanvasSize
+	baseReserve := maxSceneInt(canvasSize/18, 56)
+	copyReserve := maxSceneInt(profile.MaxCopyLines, 1) * canvasSize / 18
+	badgeReserve := maxSceneInt(profile.MaxBadges, 1) * canvasSize / 28
+
+	leftReserve := baseReserve + canvasSize/16
+	rightReserve := baseReserve + copyReserve
+	topReserve := baseReserve + badgeReserve
+	bottomReserve := baseReserve
+
+	switch profile.MeasurementMode {
+	case "dual_axis":
+		bottomReserve += canvasSize / 10
+	case "callout":
+		bottomReserve += canvasSize / 14
+	}
+	switch profile.DetailAnchorMode {
+	case "dual_anchor":
+		leftReserve += canvasSize / 20
+		rightReserve += canvasSize / 20
+	case "side_stack":
+		rightReserve += canvasSize / 16
+	}
+	switch profile.LayoutVariant {
+	case "selling_point_grid":
+		rightReserve += canvasSize / 18
+	case "selling_point_stack":
+		topReserve += canvasSize / 18
+	case "selling_point_focus":
+		leftReserve += canvasSize / 12
+	}
+
+	cardWidth := minSceneInt(canvasSize-(leftReserve+rightReserve), input.SubjectWidth+leftReserve+rightReserve)
+	cardHeight := minSceneInt(canvasSize-(topReserve+bottomReserve), input.SubjectHeight+topReserve+bottomReserve)
+	cardWidth = maxSceneInt(cardWidth, input.SubjectWidth+baseReserve+canvasSize/10)
+	cardHeight = maxSceneInt(cardHeight, input.SubjectHeight+baseReserve+canvasSize/12)
+	cardWidth = minSceneInt(cardWidth, canvasSize-baseReserve)
+	cardHeight = minSceneInt(cardHeight, canvasSize-baseReserve)
+	cardWidth = containSceneDimension(cardWidth, input.SubjectWidth, canvasSize)
+	cardHeight = containSceneDimension(cardHeight, input.SubjectHeight, canvasSize)
+
+	cardX := clampSceneInt(canvasSize/14, baseReserve/2, canvasSize-cardWidth-baseReserve/2)
+	cardY := clampSceneInt((canvasSize-cardHeight)/2, baseReserve/2, canvasSize-cardHeight-baseReserve/2)
+	cardX = clampSceneInt(cardX, 0, canvasSize-cardWidth)
+	cardY = clampSceneInt(cardY, 0, canvasSize-cardHeight)
+
+	subjectX := clampSceneSubject(cardX+leftReserve/2, cardX, cardWidth, input.SubjectWidth, baseReserve/3, baseReserve/2)
+	subjectY := cardY + topReserve + (cardHeight-topReserve-bottomReserve-input.SubjectHeight)/2
+	subjectY = clampSceneSubject(subjectY, cardY, cardHeight, input.SubjectHeight, baseReserve/3, baseReserve/2)
+
+	return newSceneLayout(cardWidth, cardHeight, cardX, cardY, subjectX, subjectY, input, 0.93, "selling_point_layout_v1")
+}
+
+func newSceneLayout(cardWidth, cardHeight, cardX, cardY, subjectX, subjectY int, input SceneLayoutInput, opacity float64, engine string) SceneLayout {
+	return SceneLayout{
+		CardWidth: cardWidth, CardHeight: cardHeight, CardPoint: ScenePoint{X: cardX, Y: cardY},
+		SubjectPoint:  ScenePoint{X: subjectX, Y: subjectY},
+		SubjectBounds: ScenePixelBounds{X: subjectX, Y: subjectY, Width: input.SubjectWidth, Height: input.SubjectHeight},
+		CardOpacity:   opacity, Engine: engine, QualityGrade: "ideal",
+	}
+}
+
+func containSceneDimension(value, subjectSize, canvasSize int) int {
+	value = maxSceneInt(value, subjectSize)
+	return minSceneInt(value, canvasSize)
+}
+
+func clampSceneSubject(value, origin, size, subjectSize, leadingInset, trailingInset int) int {
+	minimum := origin + leadingInset
+	maximum := origin + size - subjectSize - trailingInset
+	if maximum < minimum {
+		minimum = origin
+		maximum = origin + size - subjectSize
+	}
+	return clampSceneInt(value, minimum, maximum)
+}
+
+func clampSceneInt(value, minimum, maximum int) int {
+	if maximum < minimum {
+		return minimum
+	}
+	if value < minimum {
+		return minimum
+	}
+	if value > maximum {
+		return maximum
+	}
+	return value
+}
+
+func minSceneInt(left, right int) int {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func maxSceneInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func normalizedSceneOptions(options SceneOptions) (SceneOptions, error) {
@@ -441,11 +679,11 @@ func appendAssignedSceneContent(destination []SceneContent, kind string, slots [
 	return destination
 }
 
-func buildSceneLayers(profile SceneProfile, content []SceneContent) []SceneLayer {
+func buildSceneLayers(profile SceneProfile, content []SceneContent, layout SceneLayout, canvasSize int) []SceneLayer {
 	layers := []SceneLayer{
-		{ID: "background", Kind: "background", Region: "full_canvas", VisualRole: "background", Alignment: "center", StyleToken: "background:" + profile.BackgroundTemplate, RenderOrder: 1, Bounds: sceneLayerBounds(profile.LayoutVariant, "full_canvas")},
-		{ID: "card", Kind: "card", Region: "content_frame", VisualRole: "card", Alignment: "center", StyleToken: "overlay:" + profile.OverlayTemplate, RenderOrder: 2, Bounds: sceneLayerBounds(profile.LayoutVariant, "content_frame")},
-		{ID: "subject", Kind: "subject", Region: "product_focus", VisualRole: "subject", Alignment: "center-left", StyleToken: "subject:" + profile.LayoutVariant, RenderOrder: 3, Bounds: sceneLayerBounds(profile.LayoutVariant, "product_focus")},
+		{ID: "background", Kind: "background", Region: "full_canvas", VisualRole: "background", Alignment: "center", StyleToken: "background:" + profile.BackgroundTemplate, RenderOrder: 1, Bounds: sceneLayerBounds(profile.LayoutVariant, "full_canvas"), Opacity: 1},
+		{ID: "card", Kind: "card", Region: "content_frame", VisualRole: "card", Alignment: "center", StyleToken: "overlay:" + profile.OverlayTemplate, RenderOrder: 2, Bounds: normalizedSceneBounds(layout.CardPoint.X, layout.CardPoint.Y, layout.CardWidth, layout.CardHeight, canvasSize), Opacity: layout.CardOpacity},
+		{ID: "subject", Kind: "subject", Region: "product_focus", VisualRole: "subject", Alignment: "center-left", StyleToken: "subject:" + profile.LayoutVariant, RenderOrder: 3, Bounds: normalizedSceneBounds(layout.SubjectBounds.X, layout.SubjectBounds.Y, layout.SubjectBounds.Width, layout.SubjectBounds.Height, canvasSize), Opacity: 1},
 	}
 	for index, item := range content {
 		region := sceneRegionForContent(profile.LayoutVariant, item.Kind)
@@ -453,10 +691,18 @@ func buildSceneLayers(profile SceneProfile, content []SceneContent) []SceneLayer
 			ID: "content:" + item.ID, Kind: sceneLayerKind(item.Kind), Region: region,
 			VisualRole: sceneVisualRole(item.Kind), Alignment: sceneLayerAlignment(region, item.Kind, item.ContentType),
 			StyleToken: sceneStyleToken(profile, item.Kind, item.ContentType), TextStyle: sceneTextStyle(item.ContentType),
-			Text: item.Text, RenderOrder: 100 + index + 1, Bounds: sceneLayerBounds(profile.LayoutVariant, region),
+			Text: item.Text, RenderOrder: 100 + index + 1, Bounds: sceneLayerBounds(profile.LayoutVariant, region), Opacity: 1,
 		})
 	}
 	return layers
+}
+
+func normalizedSceneBounds(x, y, width, height, canvasSize int) SceneBounds {
+	canvas := float64(canvasSize)
+	return SceneBounds{
+		X: float64(x) / canvas, Y: float64(y) / canvas,
+		Width: float64(width) / canvas, Height: float64(height) / canvas,
+	}
 }
 
 func sceneRegionForContent(layoutVariant, kind string) string {

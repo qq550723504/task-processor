@@ -148,6 +148,151 @@ func TestNormalizeSceneProfileRejectsNonFiniteNumbers(t *testing.T) {
 	}
 }
 
+func TestBuildSceneLayoutPreservesEditorialAndSpecGeometry(t *testing.T) {
+	t.Parallel()
+
+	geometry := SceneLayoutInput{CanvasSize: 1600, SubjectWidth: 800, SubjectHeight: 800}
+	editorial := SceneProfile{
+		Group: "editorial/model", LayoutVariant: "hero_center", VisualMode: "editorial",
+		MaxCopyLines: 2, MaxBadges: 1, MeasurementMode: "single_axis", DetailAnchorMode: "single_anchor",
+	}
+	spec := SceneProfile{
+		Group: "selling_point/size/spec/detail", LayoutVariant: "right_info_panel", VisualMode: "spec_support",
+		MaxCopyLines: 4, MaxBadges: 3, MeasurementMode: "dual_axis", DetailAnchorMode: "dual_anchor",
+	}
+
+	editorialLayout, err := BuildSceneLayout(editorial, geometry)
+	require.NoError(t, err)
+	require.Equal(t, SceneLayout{
+		CardWidth: 960, CardHeight: 880, CardPoint: ScenePoint{X: 320, Y: 360},
+		SubjectPoint:  ScenePoint{X: 400, Y: 400},
+		SubjectBounds: ScenePixelBounds{X: 400, Y: 400, Width: 800, Height: 800},
+		CardOpacity:   0.82, Engine: "preset_layout_v1", QualityGrade: "ideal",
+	}, editorialLayout)
+
+	specLayout, err := BuildSceneLayout(spec, geometry)
+	require.NoError(t, err)
+	require.Equal(t, SceneLayout{
+		CardWidth: 1034, CardHeight: 1159, CardPoint: ScenePoint{X: 124, Y: 187},
+		SubjectPoint:  ScenePoint{X: 144, Y: 333},
+		SubjectBounds: ScenePixelBounds{X: 144, Y: 333, Width: 800, Height: 800},
+		CardOpacity:   0.91, Engine: "preset_layout_v1", QualityGrade: "ideal",
+	}, specLayout)
+	require.Greater(t, specLayout.CardWidth, editorialLayout.CardWidth)
+	require.Less(t, specLayout.SubjectPoint.X, editorialLayout.SubjectPoint.X)
+}
+
+func TestBuildSceneLayoutPreservesDualAxisUpwardShift(t *testing.T) {
+	t.Parallel()
+
+	profile := SceneProfile{
+		Group: "selling_point/size/spec/detail", LayoutVariant: "spec_sheet", VisualMode: "spec_support",
+		MaxCopyLines: 2, MaxBadges: 1, MeasurementMode: "single_axis", DetailAnchorMode: "single_anchor",
+	}
+	geometry := SceneLayoutInput{CanvasSize: 1600, SubjectWidth: 700, SubjectHeight: 900}
+	singleAxis, err := BuildSceneLayout(profile, geometry)
+	require.NoError(t, err)
+	profile.MeasurementMode = "dual_axis"
+	dualAxis, err := BuildSceneLayout(profile, geometry)
+	require.NoError(t, err)
+
+	require.Equal(t, 350, singleAxis.SubjectPoint.Y)
+	require.Equal(t, 217, dualAxis.SubjectPoint.Y)
+	require.Less(t, dualAxis.SubjectPoint.Y, singleAxis.SubjectPoint.Y)
+}
+
+func TestBuildSceneLayoutUsesIndependentSellingPointBranch(t *testing.T) {
+	t.Parallel()
+
+	geometry := SceneLayoutInput{CanvasSize: 1600, SubjectWidth: 720, SubjectHeight: 720}
+	profile := SceneProfile{
+		Group: "selling_point/size/spec/detail", LayoutVariant: "selling_point_grid", VisualMode: "selling_point",
+		MaxCopyLines: 4, MaxBadges: 3, MeasurementMode: "dual_axis", DetailAnchorMode: "dual_anchor",
+	}
+	sellingPoint, err := BuildSceneLayout(profile, geometry)
+	require.NoError(t, err)
+	profile.VisualMode = "scene"
+	scene, err := BuildSceneLayout(profile, geometry)
+	require.NoError(t, err)
+
+	require.Equal(t, "selling_point_layout_v1", sellingPoint.Engine)
+	require.Equal(t, "preset_layout_v1", scene.Engine)
+	require.Equal(t, 0.93, sellingPoint.CardOpacity)
+	require.Less(t, sellingPoint.CardPoint.X, scene.CardPoint.X)
+	require.Less(t, sellingPoint.SubjectPoint.X, scene.SubjectPoint.X)
+}
+
+func TestBuildSceneLayoutUsesResolvedPresetGroupsForOpacity(t *testing.T) {
+	t.Parallel()
+
+	for name, expected := range map[string]float64{
+		"shein_model_editorial":   0.82,
+		"shein_lifestyle_gallery": 0.88,
+		"walmart_spec_support":    0.91,
+		"shein_selling_point":     0.93,
+	} {
+		t.Run(name, func(t *testing.T) {
+			profile, err := ResolveSceneProfile(name)
+			require.NoError(t, err)
+			layout, err := BuildSceneLayout(profile, SceneLayoutInput{CanvasSize: 1600, SubjectWidth: 720, SubjectHeight: 720})
+			require.NoError(t, err)
+			require.Equal(t, expected, layout.CardOpacity)
+		})
+	}
+}
+
+func TestBuildSceneLayoutRejectsUnsafeGeometryAndArithmeticInputs(t *testing.T) {
+	t.Parallel()
+
+	profile, err := ResolveSceneProfile("local_canvas_default")
+	require.NoError(t, err)
+	for name, mutate := range map[string]func(*SceneProfile, *SceneLayoutInput){
+		"canvas below minimum": func(_ *SceneProfile, input *SceneLayoutInput) { input.CanvasSize = 63 },
+		"canvas above maximum": func(_ *SceneProfile, input *SceneLayoutInput) { input.CanvasSize = 8193 },
+		"zero subject width":   func(_ *SceneProfile, input *SceneLayoutInput) { input.SubjectWidth = 0 },
+		"negative height":      func(_ *SceneProfile, input *SceneLayoutInput) { input.SubjectHeight = -1 },
+		"subject wider":        func(_ *SceneProfile, input *SceneLayoutInput) { input.SubjectWidth = 1601 },
+		"subject taller":       func(_ *SceneProfile, input *SceneLayoutInput) { input.SubjectHeight = 1601 },
+		"copy count overflow": func(profile *SceneProfile, _ *SceneLayoutInput) {
+			profile.MaxCopyLines = int(^uint(0) >> 1)
+		},
+		"badge count overflow": func(profile *SceneProfile, _ *SceneLayoutInput) {
+			profile.MaxBadges = int(^uint(0) >> 1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidateProfile := cloneSceneProfile(profile)
+			input := SceneLayoutInput{CanvasSize: 1600, SubjectWidth: 800, SubjectHeight: 800}
+			mutate(&candidateProfile, &input)
+			got, err := BuildSceneLayout(candidateProfile, input)
+			require.ErrorIs(t, err, ErrInputInvalid)
+			require.Equal(t, SceneLayout{}, got)
+		})
+	}
+}
+
+func TestBuildSceneLayoutContainsBoundaryGeometryAndIsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	profile, err := ResolveSceneProfile("shein_selling_point")
+	require.NoError(t, err)
+	original := cloneSceneProfile(profile)
+	for name, input := range map[string]SceneLayoutInput{
+		"minimum": {CanvasSize: 64, SubjectWidth: 1, SubjectHeight: 1},
+		"maximum": {CanvasSize: 8192, SubjectWidth: 8192, SubjectHeight: 8192},
+	} {
+		t.Run(name, func(t *testing.T) {
+			first, err := BuildSceneLayout(profile, input)
+			require.NoError(t, err)
+			second, err := BuildSceneLayout(profile, input)
+			require.NoError(t, err)
+			require.Equal(t, first, second)
+			requireSceneLayoutWithinCanvas(t, first, input)
+		})
+	}
+	require.Equal(t, original, profile)
+}
+
 func TestBuildScenePlanProducesDeterministicTypedSellingPointLayers(t *testing.T) {
 	t.Parallel()
 
@@ -168,9 +313,10 @@ func TestBuildScenePlanProducesDeterministicTypedSellingPointLayers(t *testing.T
 		"Size":     "12 x 8 x 3 cm",
 	}
 
-	first, err := BuildScenePlan(ScenePlanRequest{ProfileName: "shein_selling_point", Product: firstProduct})
+	geometry := SceneLayoutInput{CanvasSize: 1600, SubjectWidth: 720, SubjectHeight: 720}
+	first, err := BuildScenePlan(ScenePlanRequest{ProfileName: "shein_selling_point", Product: firstProduct, Geometry: geometry})
 	require.NoError(t, err)
-	second, err := BuildScenePlan(ScenePlanRequest{ProfileName: "shein_selling_point", Product: secondProduct})
+	second, err := BuildScenePlan(ScenePlanRequest{ProfileName: "shein_selling_point", Product: secondProduct, Geometry: geometry})
 	require.NoError(t, err)
 	require.Equal(t, first, second)
 	require.Equal(t, "selling_point", first.VisualMode)
@@ -187,7 +333,33 @@ func TestBuildScenePlanProducesDeterministicTypedSellingPointLayers(t *testing.T
 	for _, layer := range first.Layers {
 		require.Greater(t, layer.Bounds.Width, 0.0)
 		require.Greater(t, layer.Bounds.Height, 0.0)
+		for _, value := range []float64{layer.Bounds.X, layer.Bounds.Y, layer.Bounds.Width, layer.Bounds.Height} {
+			require.False(t, math.IsNaN(value) || math.IsInf(value, 0))
+		}
+		require.GreaterOrEqual(t, layer.Bounds.X, 0.0)
+		require.GreaterOrEqual(t, layer.Bounds.Y, 0.0)
+		require.LessOrEqual(t, layer.Bounds.X+layer.Bounds.Width, 1.0)
+		require.LessOrEqual(t, layer.Bounds.Y+layer.Bounds.Height, 1.0)
+		require.Greater(t, layer.Opacity, 0.0)
+		require.LessOrEqual(t, layer.Opacity, 1.0)
 	}
+	require.Equal(t, SceneLayout{
+		CardWidth: 968, CardHeight: 1010, CardPoint: ScenePoint{X: 114, Y: 295},
+		SubjectPoint:  ScenePoint{X: 248, Y: 497},
+		SubjectBounds: ScenePixelBounds{X: 248, Y: 497, Width: 720, Height: 720},
+		CardOpacity:   0.93, Engine: "selling_point_layout_v1", QualityGrade: "ideal",
+	}, first.Layout)
+	card := sceneLayerByID(t, first.Layers, "card")
+	require.InDelta(t, 0.07125, card.Bounds.X, 0.0000001)
+	require.InDelta(t, 0.184375, card.Bounds.Y, 0.0000001)
+	require.InDelta(t, 0.605, card.Bounds.Width, 0.0000001)
+	require.InDelta(t, 0.63125, card.Bounds.Height, 0.0000001)
+	require.Equal(t, 0.93, card.Opacity)
+	subject := sceneLayerByID(t, first.Layers, "subject")
+	require.InDelta(t, 0.155, subject.Bounds.X, 0.0000001)
+	require.InDelta(t, 0.310625, subject.Bounds.Y, 0.0000001)
+	require.InDelta(t, 0.45, subject.Bounds.Width, 0.0000001)
+	require.InDelta(t, 0.45, subject.Bounds.Height, 0.0000001)
 }
 
 func TestBuildScenePlanInfersOnlyProductCategoryAndDoesNotInventMarketplacePolicy(t *testing.T) {
@@ -199,6 +371,7 @@ func TestBuildScenePlanInfersOnlyProductCategoryAndDoesNotInventMarketplacePolic
 		ProfileName: "local_canvas_default",
 		Product:     product,
 		Options:     SceneOptions{SceneStyle: "studio"},
+		Geometry:    SceneLayoutInput{CanvasSize: 1600, SubjectWidth: 720, SubjectHeight: 720},
 	})
 	require.NoError(t, err)
 	require.Equal(t, "shoes", plan.Options.SceneCategory)
@@ -210,6 +383,7 @@ func TestBuildScenePlanRejectsAbnormalProductInput(t *testing.T) {
 	t.Parallel()
 
 	for name, mutate := range map[string]func(*ScenePlanRequest){
+		"missing geometry":         func(request *ScenePlanRequest) { request.Geometry = SceneLayoutInput{} },
 		"missing product key":      func(request *ScenePlanRequest) { request.Product.ProductKey = "" },
 		"noncanonical product key": func(request *ScenePlanRequest) { request.Product.ProductKey = " product-1 " },
 		"too many attributes": func(request *ScenePlanRequest) {
@@ -220,7 +394,10 @@ func TestBuildScenePlanRejectsAbnormalProductInput(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			request := ScenePlanRequest{ProfileName: "local_canvas_default", Product: validProductContext()}
+			request := ScenePlanRequest{
+				ProfileName: "local_canvas_default", Product: validProductContext(),
+				Geometry: SceneLayoutInput{CanvasSize: 1600, SubjectWidth: 720, SubjectHeight: 720},
+			}
 			mutate(&request)
 			_, err := BuildScenePlan(request)
 			require.ErrorIs(t, err, ErrInputInvalid)
@@ -235,6 +412,7 @@ func TestScenePlanResultDoesNotAliasRequest(t *testing.T) {
 		ProfileName: "shein_selling_point",
 		Product:     validProductContext(),
 		Options:     SceneOptions{StyleReferenceIDs: []string{"style-1"}},
+		Geometry:    SceneLayoutInput{CanvasSize: 1600, SubjectWidth: 720, SubjectHeight: 720},
 	}
 	plan, err := BuildScenePlan(request)
 	require.NoError(t, err)
@@ -245,4 +423,36 @@ func TestScenePlanResultDoesNotAliasRequest(t *testing.T) {
 	for _, content := range plan.Content {
 		require.NotContains(t, content.Text, "mutated")
 	}
+}
+
+func requireSceneLayoutWithinCanvas(t *testing.T, layout SceneLayout, input SceneLayoutInput) {
+	t.Helper()
+	require.Greater(t, layout.CardWidth, 0)
+	require.Greater(t, layout.CardHeight, 0)
+	require.GreaterOrEqual(t, layout.CardPoint.X, 0)
+	require.GreaterOrEqual(t, layout.CardPoint.Y, 0)
+	require.LessOrEqual(t, layout.CardPoint.X+layout.CardWidth, input.CanvasSize)
+	require.LessOrEqual(t, layout.CardPoint.Y+layout.CardHeight, input.CanvasSize)
+	require.Equal(t, layout.SubjectPoint.X, layout.SubjectBounds.X)
+	require.Equal(t, layout.SubjectPoint.Y, layout.SubjectBounds.Y)
+	require.Equal(t, input.SubjectWidth, layout.SubjectBounds.Width)
+	require.Equal(t, input.SubjectHeight, layout.SubjectBounds.Height)
+	require.GreaterOrEqual(t, layout.SubjectBounds.X, 0)
+	require.GreaterOrEqual(t, layout.SubjectBounds.Y, 0)
+	require.LessOrEqual(t, layout.SubjectBounds.X+layout.SubjectBounds.Width, input.CanvasSize)
+	require.LessOrEqual(t, layout.SubjectBounds.Y+layout.SubjectBounds.Height, input.CanvasSize)
+	require.False(t, math.IsNaN(layout.CardOpacity) || math.IsInf(layout.CardOpacity, 0))
+	require.Greater(t, layout.CardOpacity, 0.0)
+	require.LessOrEqual(t, layout.CardOpacity, 1.0)
+}
+
+func sceneLayerByID(t *testing.T, layers []SceneLayer, id string) SceneLayer {
+	t.Helper()
+	for _, layer := range layers {
+		if layer.ID == id {
+			return layer
+		}
+	}
+	t.Fatalf("scene layer %q not found", id)
+	return SceneLayer{}
 }
