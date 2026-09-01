@@ -135,17 +135,20 @@ func (c *sceneCapability) RenderScene(ctx context.Context, request SceneRequest)
 	if len(candidates) == 0 || len(candidates) > limit {
 		return nil, ErrOutputValidation
 	}
+	if err := validateGeneratedArtifactAggregate(candidates, MaxInlineArtifactAggregateBytes); err != nil {
+		return nil, ErrOutputValidation
+	}
 	validated := make([]Candidate, 0, len(candidates))
 	seenArtifacts := make(map[string]struct{}, len(candidates))
 	forbidden := forbiddenArtifactURLs(append([]Asset{cloned.Source}, cloned.StyleReferences...)...)
 	for _, candidate := range candidates {
+		identity := artifactIdentity(candidate.Asset)
+		if _, exists := seenArtifacts[identity]; exists {
+			return nil, ErrOutputValidation
+		}
 		item, err := validateCandidate(candidate, cloned.Source, RoleScene, "render_scene", forbidden)
 		if err != nil {
 			return nil, err
-		}
-		identity := artifactIdentity(item.Asset)
-		if _, exists := seenArtifacts[identity]; exists {
-			return nil, ErrOutputValidation
 		}
 		seenArtifacts[identity] = struct{}{}
 		validated = append(validated, item)
@@ -256,6 +259,9 @@ func cloneReviewRequest(request ReviewRequest) (ReviewRequest, error) {
 	if len(request.Sources) == 0 || len(request.Sources) > maxReviewCandidates || len(request.Candidates) == 0 || len(request.Candidates) > maxReviewCandidates {
 		return ReviewRequest{}, ErrInputInvalid
 	}
+	if err := validateGeneratedArtifactAggregate(request.Candidates, MaxInlineArtifactAggregateBytes); err != nil {
+		return ReviewRequest{}, ErrInputInvalid
+	}
 	product, err := validateProductContext(request.Product)
 	if err != nil {
 		return ReviewRequest{}, ErrInputInvalid
@@ -275,15 +281,21 @@ func cloneReviewRequest(request ReviewRequest) (ReviewRequest, error) {
 	}
 	candidates := make([]Candidate, len(request.Candidates))
 	allForbidden := forbiddenArtifactURLs(sources...)
+	seenArtifacts := make(map[string]struct{}, len(request.Candidates))
 	for index, candidate := range request.Candidates {
 		source, exists := byID[candidate.Asset.SourceAssetID]
 		if !exists || !isGeneratedRole(candidate.Asset.Role) {
+			return ReviewRequest{}, ErrInputInvalid
+		}
+		identity := artifactIdentity(candidate.Asset)
+		if _, exists := seenArtifacts[identity]; exists {
 			return ReviewRequest{}, ErrInputInvalid
 		}
 		cloned, err := validateCandidate(candidate, source, candidate.Asset.Role, "", allForbidden)
 		if err != nil {
 			return ReviewRequest{}, ErrInputInvalid
 		}
+		seenArtifacts[identity] = struct{}{}
 		candidates[index] = cloned
 	}
 	return ReviewRequest{Product: product, Sources: sources, Candidates: candidates}, nil
@@ -370,6 +382,24 @@ func validateGeneratedArtifact(asset Asset) error {
 	return nil
 }
 
+func validateGeneratedArtifactAggregate(candidates []Candidate, maximum int) error {
+	if maximum < 0 {
+		return ErrOutputValidation
+	}
+	used := 0
+	for _, candidate := range candidates {
+		if err := validateGeneratedArtifact(candidate.Asset); err != nil {
+			return ErrOutputValidation
+		}
+		size := len(candidate.Asset.Bytes)
+		if size > maximum-used {
+			return ErrOutputValidation
+		}
+		used += size
+	}
+	return nil
+}
+
 func forbiddenArtifactURLs(assets ...Asset) map[string]struct{} {
 	forbidden := make(map[string]struct{}, len(assets)*2)
 	for _, asset := range assets {
@@ -401,16 +431,17 @@ func validateProductContext(product ProductContext) (ProductContext, error) {
 	if !isCanonicalRequired(product.ProductKey) || !isCanonicalOptional(product.Title) || !isCanonicalOptional(product.ProductType) || len(product.Attributes) > maxProductAttributes {
 		return ProductContext{}, ErrInputInvalid
 	}
-	used := len(product.ProductKey) + len(product.Title) + len(product.ProductType)
+	used := 0
+	if !addImageStringBytes(&used, product.ProductKey) || !addImageStringBytes(&used, product.Title) || !addImageStringBytes(&used, product.ProductType) {
+		return ProductContext{}, ErrInputInvalid
+	}
+	for key, value := range product.Attributes {
+		if !isCanonicalRequired(key) || !isCanonicalRequired(value) || !addImageStringBytes(&used, key) || !addImageStringBytes(&used, value) {
+			return ProductContext{}, ErrInputInvalid
+		}
+	}
 	attributes := make(map[string]string, len(product.Attributes))
 	for key, value := range product.Attributes {
-		if !isCanonicalRequired(key) || !isCanonicalRequired(value) {
-			return ProductContext{}, ErrInputInvalid
-		}
-		used += len(key) + len(value)
-		if used > maxImageInputBytes {
-			return ProductContext{}, ErrInputInvalid
-		}
 		attributes[key] = value
 	}
 	product.Attributes = attributes
@@ -421,22 +452,21 @@ func validateOperations(operations []string, generated bool) ([]string, error) {
 	if len(operations) == 0 || len(operations) > maxOperations {
 		return nil, ErrInputInvalid
 	}
-	seen := make(map[string]struct{}, len(operations))
-	cloned := make([]string, 0, len(operations))
-	for _, operation := range operations {
-		if !isCanonicalToken(operation) {
+	used := 0
+	for index, operation := range operations {
+		if !addImageStringBytes(&used, operation) || !isCanonicalToken(operation) {
 			return nil, ErrInputInvalid
 		}
 		if generated && (strings.Contains(operation, "pass_through") || strings.Contains(operation, "placeholder") || operation == "source") {
 			return nil, ErrInputInvalid
 		}
-		if _, exists := seen[operation]; exists {
-			return nil, ErrInputInvalid
+		for previous := 0; previous < index; previous++ {
+			if operations[previous] == operation {
+				return nil, ErrInputInvalid
+			}
 		}
-		seen[operation] = struct{}{}
-		cloned = append(cloned, operation)
 	}
-	return cloned, nil
+	return append([]string(nil), operations...), nil
 }
 
 func isCanonicalToken(value string) bool {
@@ -461,7 +491,7 @@ func isCanonicalOptional(value string) bool {
 }
 
 func isCanonicalHTTPURL(value string) bool {
-	return strings.TrimSpace(value) == value && canonicalHTTPURL(value) != "" && len(value) <= maxImageStringBytes
+	return len(value) <= maxImageStringBytes && strings.TrimSpace(value) == value && canonicalHTTPURL(value) != ""
 }
 
 func sourceURLEquivalent(left, right string) bool {
@@ -470,6 +500,9 @@ func sourceURLEquivalent(left, right string) bool {
 }
 
 func canonicalHTTPURL(value string) string {
+	if len(value) == 0 || len(value) > maxImageStringBytes {
+		return ""
+	}
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
 		return ""
@@ -478,13 +511,15 @@ func canonicalHTTPURL(value string) string {
 	if scheme != "http" && scheme != "https" {
 		return ""
 	}
-	host := strings.ToLower(parsed.Hostname())
+	host, ipv6 := canonicalHTTPHost(parsed.Hostname())
 	if host == "" {
 		return ""
 	}
 	port := parsed.Port()
 	if port != "" && !((scheme == "http" && port == "80") || (scheme == "https" && port == "443")) {
 		host = net.JoinHostPort(host, port)
+	} else if ipv6 {
+		host = "[" + host + "]"
 	}
 	cleanPath := path.Clean(parsed.Path)
 	if cleanPath == "." || cleanPath == "/" {
@@ -495,6 +530,32 @@ func canonicalHTTPURL(value string) string {
 	return (&url.URL{Scheme: scheme, Host: host, Path: cleanPath, RawQuery: parsed.Query().Encode()}).String()
 }
 
+func canonicalHTTPHost(raw string) (string, bool) {
+	if raw == "" {
+		return "", false
+	}
+	address, zone, hasZone := strings.Cut(raw, "%")
+	if parsedIP := net.ParseIP(address); parsedIP != nil {
+		normalized := parsedIP.String()
+		if hasZone {
+			if zone == "" || !strings.Contains(normalized, ":") {
+				return "", false
+			}
+			normalized += "%" + zone
+		}
+		return normalized, strings.Contains(normalized, ":")
+	}
+	if hasZone {
+		return "", false
+	}
+	host := strings.ToLower(raw)
+	if strings.HasSuffix(host, "..") {
+		return "", false
+	}
+	host = strings.TrimSuffix(host, ".")
+	return host, false
+}
+
 func validDimensions(width, height int) bool {
 	return width >= 0 && height >= 0 && (width == 0) == (height == 0)
 }
@@ -503,17 +564,15 @@ func normalizedStrings(values []string, limit int) ([]string, error) {
 	if len(values) > limit {
 		return nil, ErrInputInvalid
 	}
-	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
 	used := 0
 	for _, value := range values {
-		if len(value) > maxImageStringBytes {
+		if !addImageStringBytes(&used, value) {
 			return nil, ErrInputInvalid
 		}
-		used += len(value)
-		if used > maxImageInputBytes {
-			return nil, ErrInputInvalid
-		}
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
 		value = strings.TrimSpace(value)
 		if value == "" {
 			continue
@@ -525,6 +584,14 @@ func normalizedStrings(values []string, limit int) ([]string, error) {
 		out = append(out, value)
 	}
 	return out, nil
+}
+
+func addImageStringBytes(used *int, value string) bool {
+	if len(value) > maxImageStringBytes || len(value) > maxImageInputBytes-*used {
+		return false
+	}
+	*used += len(value)
+	return true
 }
 
 func isGeneratedRole(role Role) bool {

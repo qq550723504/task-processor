@@ -172,6 +172,9 @@ func MergeSceneOptions(base, override *SceneOptions) (*SceneOptions, error) {
 }
 
 func ResolveSceneProfile(name string) (SceneProfile, error) {
+	if len(name) > maxImageStringBytes {
+		return SceneProfile{}, ErrInputInvalid
+	}
 	data, err := sceneProfileFiles.ReadFile("presets/scene_profiles.yaml")
 	if err != nil {
 		return SceneProfile{}, fmt.Errorf("%w: embedded scene profiles unavailable", ErrInputInvalid)
@@ -228,6 +231,9 @@ func BuildScenePlan(request ScenePlanRequest) (ScenePlan, error) {
 }
 
 func normalizedSceneOptions(options SceneOptions) (SceneOptions, error) {
+	if err := preflightSceneOptions(options); err != nil {
+		return SceneOptions{}, err
+	}
 	options.SceneCategory = strings.TrimSpace(options.SceneCategory)
 	options.SceneStyle = strings.TrimSpace(options.SceneStyle)
 	options.BackgroundTone = strings.TrimSpace(options.BackgroundTone)
@@ -245,19 +251,30 @@ func normalizedSceneOptions(options SceneOptions) (SceneOptions, error) {
 	return options, nil
 }
 
-func validateSceneOptions(options SceneOptions) error {
-	for _, value := range []string{
-		options.SceneCategory, options.SceneStyle, options.BackgroundTone, options.Composition,
-		options.PropsLevel, options.AudienceHint, options.CustomSceneHint, options.SlotRole, options.SlotBrief,
-	} {
-		if len(value) > maxImageStringBytes {
-			return ErrInputInvalid
-		}
-	}
+func preflightSceneOptions(options SceneOptions) error {
 	if len(options.StyleReferenceIDs) > maxStyleReferences {
 		return ErrInputInvalid
 	}
+	used := 0
+	values := [...]string{
+		options.SceneCategory, options.SceneStyle, options.BackgroundTone, options.Composition,
+		options.PropsLevel, options.AudienceHint, options.CustomSceneHint, options.SlotRole, options.SlotBrief,
+	}
+	for _, value := range values {
+		if !addImageStringBytes(&used, value) {
+			return ErrInputInvalid
+		}
+	}
+	for _, reference := range options.StyleReferenceIDs {
+		if !addImageStringBytes(&used, reference) {
+			return ErrInputInvalid
+		}
+	}
 	return nil
+}
+
+func validateSceneOptions(options SceneOptions) error {
+	return preflightSceneOptions(options)
 }
 
 func mergeSceneOptionValue(target *string, value string) {

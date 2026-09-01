@@ -124,7 +124,7 @@ func validateIPRiskInput(sourceURL string, audits []ImageAudit) error {
 }
 
 func NormalizeGenerationMetadata(metadata GenerationMetadata) (GenerationMetadata, error) {
-	if len(metadata.Values) > maxMetadataValues {
+	if err := preflightGenerationMetadata(metadata); err != nil {
 		return GenerationMetadata{}, ErrInputInvalid
 	}
 	result := GenerationMetadata{
@@ -133,12 +133,6 @@ func NormalizeGenerationMetadata(metadata GenerationMetadata) (GenerationMetadat
 		InvocationID:    strings.TrimSpace(metadata.InvocationID),
 		PromptReference: strings.TrimSpace(metadata.PromptReference),
 		PromptVersion:   strings.TrimSpace(metadata.PromptVersion),
-	}
-	used := len(result.Capability) + len(result.ModelFamily) + len(result.InvocationID) + len(result.PromptReference) + len(result.PromptVersion)
-	for _, value := range []string{result.Capability, result.ModelFamily, result.InvocationID, result.PromptReference, result.PromptVersion} {
-		if len(value) > maxImageStringBytes {
-			return GenerationMetadata{}, ErrInputInvalid
-		}
 	}
 	if len(metadata.Values) > 0 {
 		result.Values = make(map[string]string, len(metadata.Values))
@@ -151,13 +145,6 @@ func NormalizeGenerationMetadata(metadata GenerationMetadata) (GenerationMetadat
 			rawValue := metadata.Values[rawKey]
 			key, value := strings.TrimSpace(rawKey), strings.TrimSpace(rawValue)
 			if key == "" || value == "" {
-				continue
-			}
-			if len(key) > maxImageStringBytes || len(value) > maxImageStringBytes {
-				return GenerationMetadata{}, ErrInputInvalid
-			}
-			used += len(key) + len(value)
-			if used > maxImageInputBytes {
 				return GenerationMetadata{}, ErrInputInvalid
 			}
 			if _, exists := result.Values[key]; exists {
@@ -170,6 +157,28 @@ func NormalizeGenerationMetadata(metadata GenerationMetadata) (GenerationMetadat
 		}
 	}
 	return result, nil
+}
+
+func preflightGenerationMetadata(metadata GenerationMetadata) error {
+	if len(metadata.Values) > maxMetadataValues {
+		return ErrInputInvalid
+	}
+	used := 0
+	fixed := [...]string{
+		metadata.Capability, metadata.ModelFamily, metadata.InvocationID,
+		metadata.PromptReference, metadata.PromptVersion,
+	}
+	for _, value := range fixed {
+		if !addImageStringBytes(&used, value) {
+			return ErrInputInvalid
+		}
+	}
+	for key, value := range metadata.Values {
+		if !addImageStringBytes(&used, key) || !addImageStringBytes(&used, value) {
+			return ErrInputInvalid
+		}
+	}
+	return nil
 }
 
 func imageRiskReason(message, object string) string {

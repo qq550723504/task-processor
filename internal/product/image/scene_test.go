@@ -51,6 +51,48 @@ func TestMergeSceneOptionsRejectsReferenceResourceLimitViolations(t *testing.T) 
 	}
 }
 
+func TestMergeSceneOptionsPreflightsRawScalarLimitsBeforeNormalization(t *testing.T) {
+	t.Parallel()
+
+	const designMaxImageStringBytes = 8 << 10
+	const scalarBytes = 8 << 10
+	for name, options := range map[string]SceneOptions{
+		"overlong whitespace": {SceneStyle: strings.Repeat(" ", designMaxImageStringBytes+1)},
+		"aggregate scalar bytes": {
+			SceneCategory: strings.Repeat("a", scalarBytes), SceneStyle: strings.Repeat("b", scalarBytes),
+			BackgroundTone: strings.Repeat("c", scalarBytes), Composition: strings.Repeat("d", scalarBytes),
+			PropsLevel: strings.Repeat("e", scalarBytes), AudienceHint: strings.Repeat("f", scalarBytes),
+			CustomSceneHint: strings.Repeat("g", scalarBytes), SlotRole: strings.Repeat("h", scalarBytes),
+			SlotBrief: strings.Repeat("i", scalarBytes),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := MergeSceneOptions(nil, &options)
+			require.ErrorIs(t, err, ErrInputInvalid)
+			require.Nil(t, got)
+		})
+	}
+}
+
+func TestMergeSceneOptionsRejectsAggregateCreatedAcrossBaseAndOverride(t *testing.T) {
+	t.Parallel()
+
+	const scalarBytes = 8 << 10
+	base := &SceneOptions{
+		SceneCategory: strings.Repeat("a", scalarBytes), SceneStyle: strings.Repeat("b", scalarBytes),
+		BackgroundTone: strings.Repeat("c", scalarBytes), Composition: strings.Repeat("d", scalarBytes),
+	}
+	override := &SceneOptions{
+		PropsLevel: strings.Repeat("e", scalarBytes), AudienceHint: strings.Repeat("f", scalarBytes),
+		CustomSceneHint: strings.Repeat("g", scalarBytes), SlotRole: strings.Repeat("h", scalarBytes),
+		SlotBrief: strings.Repeat("i", scalarBytes),
+	}
+
+	got, err := MergeSceneOptions(base, override)
+	require.ErrorIs(t, err, ErrInputInvalid)
+	require.Nil(t, got)
+}
+
 func TestResolveSceneProfileReturnsIndependentCopiesAndRejectsUnknownProfiles(t *testing.T) {
 	t.Parallel()
 
@@ -70,6 +112,13 @@ func TestResolveSceneProfileReturnsIndependentCopiesAndRejectsUnknownProfiles(t 
 
 	_, err = ResolveSceneProfile("unknown-profile")
 	require.ErrorIs(t, err, ErrCapabilityUnsupported)
+}
+
+func TestResolveSceneProfileRejectsOverlongRawNameBeforeNormalization(t *testing.T) {
+	t.Parallel()
+
+	_, err := ResolveSceneProfile(strings.Repeat(" ", (8<<10)+1))
+	require.ErrorIs(t, err, ErrInputInvalid)
 }
 
 func TestNormalizeSceneProfileRejectsNonFiniteNumbers(t *testing.T) {

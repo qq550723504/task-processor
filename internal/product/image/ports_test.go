@@ -36,6 +36,108 @@ func (f whiteBackgroundRendererFunc) RenderWhiteBackground(ctx context.Context, 
 	return f(ctx, request)
 }
 
+var canonicalURLSink string
+
+var (
+	productContextSink ProductContext
+	stringSliceSink    []string
+	preflightErrorSink error
+)
+
+func TestCanonicalHTTPURLNormalizesDNSAndIPIdentities(t *testing.T) {
+	t.Parallel()
+
+	for name, testCase := range map[string]struct {
+		raw  string
+		want string
+	}{
+		"absolute DNS name, casing, non-default port, path and query": {
+			raw:  "HTTPS://SOURCE.EXAMPLE.:8443/catalog/../a.png?z=2&a=1",
+			want: "https://source.example:8443/a.png?a=1&z=2",
+		},
+		"IPv6 literal and default port": {
+			raw:  "https://[2001:0DB8:0:0:0:0:0:1]:443/catalog/../a.png?z=2&a=1",
+			want: "https://[2001:db8::1]/a.png?a=1&z=2",
+		},
+		"IPv6 literal and non-default port": {
+			raw:  "http://[2001:DB8::1]:8080/a.png",
+			want: "http://[2001:db8::1]:8080/a.png",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, testCase.want, canonicalHTTPURL(testCase.raw))
+		})
+	}
+}
+
+func TestCanonicalHTTPURLRejectsOversizedRawInputBeforeParsing(t *testing.T) {
+	const designMaxImageStringBytes = 8 << 10
+	oversized := "https://source.example/" + strings.Repeat("x", designMaxImageStringBytes)
+	require.Greater(t, len(oversized), designMaxImageStringBytes)
+
+	allocations := testing.AllocsPerRun(100, func() {
+		canonicalURLSink = canonicalHTTPURL(oversized)
+	})
+	require.Empty(t, canonicalURLSink)
+	require.Zero(t, allocations, "oversized raw URLs must return before URL parsing allocates")
+}
+
+func TestReviewCapabilityRejectsCanonicalIPv6SiblingSourcePassThrough(t *testing.T) {
+	t.Parallel()
+
+	main := validSourceAsset()
+	sibling := Asset{
+		URL: "https://[2001:0DB8:0:0:0:0:0:1]:443/catalog/../b.png?z=2&a=1", SourceURL: "https://ipv6-origin.example/b.png",
+		SourceAssetID: "source-2", Role: RoleSource, Width: 100, Height: 100, Operations: []string{"source"},
+	}
+	candidate := Candidate{Asset: validGeneratedAsset(RoleScene, "render_scene", "https://[2001:db8::1]/b.png?a=1&z=2")}
+	calls := 0
+	reviewer, err := NewReviewCapability(reviewerFunc(func(context.Context, ReviewRequest) (Review, error) {
+		calls++
+		return Review{Score: 1}, nil
+	}))
+	require.NoError(t, err)
+
+	_, err = reviewer.Review(context.Background(), ReviewRequest{
+		Product: validProductContext(), Sources: []Asset{main, sibling}, Candidates: []Candidate{candidate},
+	})
+	require.ErrorIs(t, err, ErrInputInvalid)
+	require.Zero(t, calls)
+}
+
+func TestStringCollectionValidatorsPreflightBeforeCloneAllocation(t *testing.T) {
+	const designMaxImageStringBytes = 8 << 10
+	overlong := strings.Repeat("x", designMaxImageStringBytes+1)
+
+	t.Run("product attributes", func(t *testing.T) {
+		input := ProductContext{ProductKey: "product-1", Attributes: map[string]string{overlong: "value"}}
+		allocations := testing.AllocsPerRun(10, func() {
+			productContextSink, preflightErrorSink = validateProductContext(input)
+		})
+		require.ErrorIs(t, preflightErrorSink, ErrInputInvalid)
+		require.Equal(t, ProductContext{}, productContextSink)
+		require.Zero(t, allocations)
+	})
+
+	t.Run("operations", func(t *testing.T) {
+		allocations := testing.AllocsPerRun(10, func() {
+			stringSliceSink, preflightErrorSink = validateOperations([]string{overlong}, false)
+		})
+		require.ErrorIs(t, preflightErrorSink, ErrInputInvalid)
+		require.Nil(t, stringSliceSink)
+		require.Zero(t, allocations)
+	})
+
+	t.Run("normalized strings", func(t *testing.T) {
+		allocations := testing.AllocsPerRun(10, func() {
+			stringSliceSink, preflightErrorSink = normalizedStrings([]string{overlong}, 1)
+		})
+		require.ErrorIs(t, preflightErrorSink, ErrInputInvalid)
+		require.Nil(t, stringSliceSink)
+		require.Zero(t, allocations)
+	})
+}
+
 func TestSceneCapabilityRejectsSourcePassThrough(t *testing.T) {
 	t.Parallel()
 
@@ -207,6 +309,162 @@ func TestSceneCapabilityRejectsDuplicateInlineArtifacts(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
+	got, err := renderer.RenderScene(context.Background(), validSceneRequest())
+	require.ErrorIs(t, err, ErrOutputValidation)
+	require.Nil(t, got)
+}
+
+func TestGeneratedArtifactAggregatePreflightUsesOverflowSafeBudget(t *testing.T) {
+	t.Parallel()
+
+	inline := func(content string) Candidate {
+		return Candidate{Asset: validInlineGeneratedAsset(RoleScene, "render_scene", []byte(content))}
+	}
+	remote := Candidate{Asset: validGeneratedAsset(RoleScene, "render_scene", "https://cdn.example/remote.png")}
+	for name, testCase := range map[string]struct {
+		candidates []Candidate
+		wantErr    bool
+	}{
+		"exact small budget": {candidates: []Candidate{inline("1234"), inline("5678")}},
+		"one byte over":      {candidates: []Candidate{inline("1234"), inline("5678"), inline("9")}, wantErr: true},
+		"remote does not consume inline budget": {
+			candidates: []Candidate{remote, inline("12345678")},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := validateGeneratedArtifactAggregate(testCase.candidates, 8)
+			if testCase.wantErr {
+				require.ErrorIs(t, err, ErrOutputValidation)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestCapabilitiesEnforceRealInlineAggregateBoundary(t *testing.T) {
+	const designSingleArtifactBytes = 32 << 20
+	const designAggregateArtifactBytes = 64 << 20
+
+	firstBytes := make([]byte, designSingleArtifactBytes)
+	secondBytes := make([]byte, designSingleArtifactBytes)
+	firstBytes[0] = 1
+	secondBytes[len(secondBytes)-1] = 2
+	exact := []Candidate{
+		{Asset: validInlineGeneratedAsset(RoleScene, "render_scene", firstBytes)},
+		{Asset: validGeneratedAsset(RoleScene, "render_scene", "https://cdn.example/remote.png")},
+		{Asset: validInlineGeneratedAsset(RoleScene, "render_scene", secondBytes)},
+	}
+	over := append(append([]Candidate(nil), exact...), Candidate{Asset: validInlineGeneratedAsset(RoleScene, "render_scene", []byte{3})})
+	require.Equal(t, designAggregateArtifactBytes, len(firstBytes)+len(secondBytes))
+
+	t.Run("scene exact aggregate with mixed remote artifact", func(t *testing.T) {
+		renderer, err := NewSceneCapability(sceneRendererFunc(func(context.Context, SceneRequest) ([]Candidate, error) {
+			return exact, nil
+		}))
+		require.NoError(t, err)
+		got, err := renderer.RenderScene(context.Background(), validSceneRequest())
+		require.NoError(t, err)
+		require.Len(t, got, 3)
+	})
+
+	t.Run("scene one byte over aggregate", func(t *testing.T) {
+		renderer, err := NewSceneCapability(sceneRendererFunc(func(context.Context, SceneRequest) ([]Candidate, error) {
+			return over, nil
+		}))
+		require.NoError(t, err)
+		got, err := renderer.RenderScene(context.Background(), validSceneRequest())
+		require.ErrorIs(t, err, ErrOutputValidation)
+		require.Nil(t, got)
+	})
+
+	t.Run("review exact aggregate with mixed remote artifact", func(t *testing.T) {
+		calls := 0
+		reviewer, err := NewReviewCapability(reviewerFunc(func(context.Context, ReviewRequest) (Review, error) {
+			calls++
+			return Review{Score: 1}, nil
+		}))
+		require.NoError(t, err)
+		_, err = reviewer.Review(context.Background(), ReviewRequest{
+			Product: validProductContext(), Sources: []Asset{validSourceAsset()}, Candidates: exact,
+		})
+		require.NoError(t, err)
+		require.Equal(t, 1, calls)
+	})
+
+	t.Run("review one byte over aggregate before dispatch", func(t *testing.T) {
+		calls := 0
+		reviewer, err := NewReviewCapability(reviewerFunc(func(context.Context, ReviewRequest) (Review, error) {
+			calls++
+			return Review{Score: 1}, nil
+		}))
+		require.NoError(t, err)
+		_, err = reviewer.Review(context.Background(), ReviewRequest{
+			Product: validProductContext(), Sources: []Asset{validSourceAsset()}, Candidates: over,
+		})
+		require.ErrorIs(t, err, ErrInputInvalid)
+		require.Zero(t, calls)
+	})
+}
+
+func TestReviewCapabilityRejectsDuplicateArtifactIdentitiesBeforeDispatch(t *testing.T) {
+	t.Parallel()
+
+	for name, candidates := range map[string][]Candidate{
+		"same inline content in different slices": {
+			{Asset: validInlineGeneratedAsset(RoleScene, "render_scene", []byte("same-content"))},
+			{Asset: validInlineGeneratedAsset(RoleScene, "render_scene", append([]byte(nil), []byte("same-content")...))},
+		},
+		"canonical equivalent remote URLs": {
+			{Asset: validGeneratedAsset(RoleScene, "render_scene", "HTTPS://CDN.EXAMPLE.:443/catalog/../scene.png?b=2&a=1")},
+			{Asset: validGeneratedAsset(RoleScene, "render_scene", "https://cdn.example/scene.png?a=1&b=2")},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			calls := 0
+			reviewer, err := NewReviewCapability(reviewerFunc(func(context.Context, ReviewRequest) (Review, error) {
+				calls++
+				return Review{Score: 1}, nil
+			}))
+			require.NoError(t, err)
+			_, err = reviewer.Review(context.Background(), ReviewRequest{
+				Product: validProductContext(), Sources: []Asset{validSourceAsset()}, Candidates: candidates,
+			})
+			require.ErrorIs(t, err, ErrInputInvalid)
+			require.Zero(t, calls)
+		})
+	}
+}
+
+func TestReviewCapabilityAcceptsDistinctInlineArtifactIdentities(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	reviewer, err := NewReviewCapability(reviewerFunc(func(context.Context, ReviewRequest) (Review, error) {
+		calls++
+		return Review{Score: 1}, nil
+	}))
+	require.NoError(t, err)
+	_, err = reviewer.Review(context.Background(), ReviewRequest{
+		Product: validProductContext(), Sources: []Asset{validSourceAsset()}, Candidates: []Candidate{
+			{Asset: validInlineGeneratedAsset(RoleScene, "render_scene", []byte("first"))},
+			{Asset: validInlineGeneratedAsset(RoleScene, "render_scene", []byte("second"))},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, calls)
+}
+
+func TestSceneCapabilityRejectsCanonicalEquivalentArtifactIdentities(t *testing.T) {
+	t.Parallel()
+
+	renderer, err := NewSceneCapability(sceneRendererFunc(func(context.Context, SceneRequest) ([]Candidate, error) {
+		return []Candidate{
+			{Asset: validGeneratedAsset(RoleScene, "render_scene", "HTTPS://CDN.EXAMPLE.:443/catalog/../scene.png?b=2&a=1")},
+			{Asset: validGeneratedAsset(RoleScene, "render_scene", "https://cdn.example/scene.png?a=1&b=2")},
+		}, nil
+	}))
+	require.NoError(t, err)
 	got, err := renderer.RenderScene(context.Background(), validSceneRequest())
 	require.ErrorIs(t, err, ErrOutputValidation)
 	require.Nil(t, got)

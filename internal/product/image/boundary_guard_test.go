@@ -90,6 +90,63 @@ func local() {
 	}
 }
 
+func TestProductImageSemanticGuardRequiresEveryForbiddenTermIndependently(t *testing.T) {
+	t.Parallel()
+
+	fixture := filepath.Join(t.TempDir(), "independent_runtime_semantics.go")
+	source := `package fixture
+var TaskOnlyMarker string
+var RepositoryOnlyMarker string
+var PublisherOnlyMarker string
+var QueueOnlyMarker string
+var WorkerOnlyMarker string
+var WorkflowOnlyMarker string
+var RetryOnlyMarker string
+var ApprovalOnlyMarker string
+var PersistenceOnlyMarker string
+var RunOnlyMarker string
+var RevisionOnlyMarker string
+var JobOnlyMarker string
+var StoreOnlyMarker string
+var SchedulerOnlyMarker string
+var DispatcherOnlyMarker string
+var LifecycleOnlyMarker string
+`
+	require.NoError(t, os.WriteFile(fixture, []byte(source), 0o600))
+
+	markers := map[string]string{
+		"task": "TaskOnlyMarker", "repository": "RepositoryOnlyMarker", "publisher": "PublisherOnlyMarker",
+		"queue": "QueueOnlyMarker", "worker": "WorkerOnlyMarker", "workflow": "WorkflowOnlyMarker",
+		"retry": "RetryOnlyMarker", "approval": "ApprovalOnlyMarker", "persistence": "PersistenceOnlyMarker",
+		"run": "RunOnlyMarker", "revision": "RevisionOnlyMarker", "job": "JobOnlyMarker",
+		"store": "StoreOnlyMarker", "scheduler": "SchedulerOnlyMarker", "dispatcher": "DispatcherOnlyMarker",
+		"lifecycle": "LifecycleOnlyMarker",
+	}
+	full, err := productImageSemanticViolationsWithTerms([]string{fixture}, forbiddenImageSemanticTerms)
+	require.NoError(t, err)
+	for term, marker := range markers {
+		require.Equal(t, []string{term}, matchingImageSemanticTerms(marker, forbiddenImageSemanticTerms), "%s must match only its own forbidden term", marker)
+		require.True(t, containsImageSemanticViolation(full, marker), "full guard missed %s", marker)
+	}
+
+	for omitted, omittedMarker := range markers {
+		terms := make([]string, 0, len(forbiddenImageSemanticTerms)-1)
+		for _, term := range forbiddenImageSemanticTerms {
+			if term != omitted {
+				terms = append(terms, term)
+			}
+		}
+		mutated, err := productImageSemanticViolationsWithTerms([]string{fixture}, terms)
+		require.NoError(t, err)
+		require.False(t, containsImageSemanticViolation(mutated, omittedMarker), "omitting %s must expose its independent marker", omitted)
+		for term, marker := range markers {
+			if term != omitted {
+				require.True(t, containsImageSemanticViolation(mutated, marker), "omitting %s unexpectedly disabled %s", omitted, term)
+			}
+		}
+	}
+}
+
 func TestProductImageDependencyGuardRejectsRuntimeAndConcreteImageProviders(t *testing.T) {
 	t.Parallel()
 
@@ -136,6 +193,10 @@ func productImageDependencyViolations(files []string, allowed map[string]struct{
 }
 
 func productImageSemanticViolations(files []string) ([]string, error) {
+	return productImageSemanticViolationsWithTerms(files, forbiddenImageSemanticTerms)
+}
+
+func productImageSemanticViolationsWithTerms(files, forbidden []string) ([]string, error) {
 	var violations []string
 	for _, file := range files {
 		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
@@ -144,7 +205,7 @@ func productImageSemanticViolations(files []string) ([]string, error) {
 		}
 		ast.Inspect(parsed, func(node ast.Node) bool {
 			visit := func(identifier *ast.Ident) {
-				if identifier != nil && isForbiddenImageSemanticIdentifier(identifier.Name) {
+				if identifier != nil && isForbiddenImageSemanticIdentifierWithTerms(identifier.Name, forbidden) {
 					violations = append(violations, fmt.Sprintf("%s declares %s", file, identifier.Name))
 				}
 			}
@@ -185,17 +246,30 @@ func productImageSemanticViolations(files []string) ([]string, error) {
 	return violations, nil
 }
 
-func isForbiddenImageSemanticIdentifier(identifier string) bool {
+var forbiddenImageSemanticTerms = []string{
+	"task", "repository", "publisher", "queue", "worker", "workflow", "retry", "approval", "persistence",
+	"run", "revision", "job", "store", "scheduler", "dispatcher", "lifecycle",
+}
+
+func isForbiddenImageSemanticIdentifierWithTerms(identifier string, forbidden []string) bool {
 	lower := strings.ToLower(identifier)
-	for _, forbidden := range []string{
-		"task", "repository", "publisher", "queue", "worker", "workflow", "retry", "approval", "persistence",
-		"run", "revision", "job", "store", "scheduler", "dispatcher", "lifecycle",
-	} {
-		if strings.Contains(lower, forbidden) {
+	for _, term := range forbidden {
+		if strings.Contains(lower, term) {
 			return true
 		}
 	}
 	return false
+}
+
+func matchingImageSemanticTerms(identifier string, forbidden []string) []string {
+	lower := strings.ToLower(identifier)
+	var matches []string
+	for _, term := range forbidden {
+		if strings.Contains(lower, term) {
+			matches = append(matches, term)
+		}
+	}
+	return matches
 }
 
 func containsImageSemanticViolation(violations []string, identifier string) bool {

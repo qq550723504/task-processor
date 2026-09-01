@@ -10,6 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	metadataResultSink GenerationMetadata
+	metadataErrorSink  error
+)
+
 func TestIsWhiteBackgroundUsesAvailableCornersForTinyImages(t *testing.T) {
 	t.Parallel()
 
@@ -102,7 +107,7 @@ func TestNormalizeGenerationMetadataDefensivelyCopiesAndCanonicalizesValues(t *t
 		InvocationID:    " invocation-1 ",
 		PromptReference: " scene/default ",
 		PromptVersion:   " v2 ",
-		Values:          map[string]string{"seed": " 42 ", "empty": " "},
+		Values:          map[string]string{"seed": " 42 "},
 	}
 
 	got, err := NormalizeGenerationMetadata(input)
@@ -137,4 +142,45 @@ func TestNormalizeGenerationMetadataRejectsKeysThatConflictAfterNormalization(t 
 		},
 	})
 	require.ErrorIs(t, err, ErrInputInvalid)
+}
+
+func TestNormalizeGenerationMetadataPreflightsRawStringsBeforeAllocationOrTrimming(t *testing.T) {
+	const designMaxImageStringBytes = 8 << 10
+	const designMaxImageInputBytes = 64 << 10
+
+	aggregateValues := make(map[string]string, 9)
+	for index := 0; index < 9; index++ {
+		aggregateValues[string(rune('a'+index))] = strings.Repeat(string(rune('a'+index)), designMaxImageStringBytes-1)
+	}
+	for name, metadata := range map[string]GenerationMetadata{
+		"overlong fixed field before trim": {Capability: strings.Repeat(" ", designMaxImageStringBytes+1)},
+		"overlong map key":                 {Values: map[string]string{strings.Repeat("k", designMaxImageStringBytes+1): "value"}},
+		"overlong map value":               {Values: map[string]string{"key": strings.Repeat("v", designMaxImageStringBytes+1)}},
+		"raw aggregate":                    {Values: aggregateValues},
+	} {
+		t.Run(name, func(t *testing.T) {
+			allocations := testing.AllocsPerRun(10, func() {
+				metadataResultSink, metadataErrorSink = NormalizeGenerationMetadata(metadata)
+			})
+			require.ErrorIs(t, metadataErrorSink, ErrInputInvalid)
+			require.Equal(t, GenerationMetadata{}, metadataResultSink)
+			require.Zero(t, allocations, "raw resource limits must be checked before result maps or sort keys are allocated")
+		})
+	}
+	require.Greater(t, 9*(designMaxImageStringBytes-1), designMaxImageInputBytes)
+}
+
+func TestNormalizeGenerationMetadataRejectsBlankCanonicalMapEntries(t *testing.T) {
+	t.Parallel()
+
+	for name, values := range map[string]map[string]string{
+		"blank key":   {" ": "value"},
+		"blank value": {"key": " "},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := NormalizeGenerationMetadata(GenerationMetadata{Values: values})
+			require.ErrorIs(t, err, ErrInputInvalid)
+			require.Equal(t, GenerationMetadata{}, got)
+		})
+	}
 }

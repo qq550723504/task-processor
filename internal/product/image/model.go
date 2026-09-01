@@ -1,6 +1,9 @@
 package image
 
-const MaxInlineArtifactBytes = 32 << 20
+const (
+	MaxInlineArtifactBytes          = 32 << 20
+	MaxInlineArtifactAggregateBytes = 64 << 20
+)
 
 type Role string
 
