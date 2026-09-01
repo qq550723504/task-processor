@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
@@ -43,19 +42,6 @@ func (m routeModule) Register(registry *kernelmodule.Registry) error {
 func route(method, path, permission string, access httproute.OrganizationAccessPolicy, handler func(*gin.Context)) httproute.Descriptor {
 	return httproute.Descriptor{
 		Method: method, Path: path, Module: ModuleName, Permission: permission,
-		AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: access, Handler: withRequestBodyReadTimeout(requestBodyReadTimeout, handler),
-	}
-}
-
-func withRequestBodyReadTimeout(timeout time.Duration, handler gin.HandlerFunc) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if c.Request.Body == nil || timeout <= 0 {
-			handler(c)
-			return
-		}
-		body := c.Request.Body
-		timer := time.AfterFunc(timeout, func() { _ = body.Close() })
-		defer timer.Stop()
-		handler(c)
+		AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: access, Handler: httproute.WithRequestBodyReadTimeout(requestBodyReadTimeout, handler),
 	}
 }

@@ -55,14 +55,21 @@ const lifecycleLabels: Record<WorkbenchStore["lifecycleStatus"], string> = {
 
 function StoreDetailContent({ canUpdate, storeId }: { canUpdate: boolean; storeId: string }) {
   const router = useRouter();
+  const context = useWorkbenchContext();
   const storeQuery = useWorkbenchStore(storeId);
   const [displayedStore, setDisplayedStore] = useState<WorkbenchStore | null>(null);
   const [recovery, setRecovery] = useState<RecoveryState>({ state: "idle" });
-  const store = displayedStore ?? (recovery.state === "idle" ? storeQuery.data : recovery.base);
+  const recoveredStore = recovery.state === "idle" ? storeQuery.data : recovery.base;
+  const store = displayedStore && (!storeQuery.data || displayedStore.version > storeQuery.data.version) ? displayedStore : recoveredStore;
+  useEffect(() => {
+    if (displayedStore && storeQuery.data && storeQuery.data.version >= displayedStore.version) {
+      setDisplayedStore(null);
+    }
+  }, [displayedStore, storeQuery.data]);
   if (storeQuery.isPending && !store) return <section className="mx-auto max-w-2xl px-4 py-8" role="status">正在加载店铺...</section>;
   if (!store) {
     const code = (storeQuery.error as Partial<WorkbenchAPIError> | undefined)?.code;
-    return <DetailError code={code} retry={() => void storeQuery.refetch()} />;
+    return <DetailError code={code} retry={() => { if (code === "ORGANIZATION_CONTEXT_CHANGED") { context.retry(); return; } void storeQuery.refetch(); }} />;
   }
 
   const loadLatest = async (

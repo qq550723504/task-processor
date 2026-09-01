@@ -121,6 +121,40 @@ func TestWorkbenchContextSwitchTargetAccepts4096ByteBodyAndRestoresIt(t *testing
 	require.Equal(t, body, string(restored))
 }
 
+func TestWorkbenchContextSwitchTargetDeadlineClosesSlowBody(t *testing.T) {
+	body := &workbenchBlockingBody{closed: make(chan struct{})}
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/workbench/context/effective-organization", body)
+	done := make(chan error, 1)
+	go func() {
+		_, err := httproute.WithRequestBodyReadTimeoutResolver(5*time.Millisecond, ResolveSwitchOrganizationTarget)(request)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err)
+	case <-time.After(250 * time.Millisecond):
+		_ = body.Close()
+		t.Fatal("slow request body was not interrupted")
+	}
+}
+
+type workbenchBlockingBody struct{ closed chan struct{} }
+
+func (body *workbenchBlockingBody) Read([]byte) (int, error) {
+	<-body.closed
+	return 0, io.ErrClosedPipe
+}
+
+func (body *workbenchBlockingBody) Close() error {
+	select {
+	case <-body.closed:
+	default:
+		close(body.closed)
+	}
+	return nil
+}
+
 func TestWorkbenchContextGetProjectsOnlyPublicIdentityContract(t *testing.T) {
 	response := serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", authidentity.AuthenticatedIdentity{
 		UserID:                  "user-1",

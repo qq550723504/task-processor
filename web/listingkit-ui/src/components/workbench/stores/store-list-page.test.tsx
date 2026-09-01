@@ -117,14 +117,13 @@ describe("StoreListPage", () => {
 
   it("honors create roles and server quota decisions without payment links", () => {
     storesQuery.value = listData({ data: { ...listData().data, quota: { used: 5, reserved: 0, limit: 5, allowed: false, reason: "store_limit_reached" } } });
-    render(<StoreListPage />);
-    expect(screen.queryByRole("link", { name: "新建店铺" })).not.toBeInTheDocument();
+    const { rerender } = render(<StoreListPage />);
+    expect(screen.getByRole("link", { name: "新建店铺" })).toHaveAttribute("href", "/workbench/stores/new");
     expect(screen.getByText(/联系管理员或升级套餐/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /升级|支付/ })).not.toBeInTheDocument();
 
     context.roles = ["listingkit_viewer"];
     storesQuery.value = listData();
-    const { rerender } = render(<StoreListPage />);
     rerender(<StoreListPage />);
     expect(screen.queryByRole("link", { name: "新建店铺" })).not.toBeInTheDocument();
   });

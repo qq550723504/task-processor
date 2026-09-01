@@ -37,6 +37,17 @@ describe("StoreDetailPage", () => {
     query.value = { isPending: false, isError: true, error: { code: "STORE_NOT_FOUND" }, refetch: vi.fn() }; rerender(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("alert")).toHaveTextContent("店铺不存在或已不可访问");
     query.value = { isPending: false, isError: true, error: { code: "PERMISSION_DENIED" }, refetch: vi.fn() }; rerender(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("alert")).toHaveTextContent("没有编辑当前企业店铺的权限");
   });
+  it("refreshes organization context before retrying a drifted detail request", async () => {
+    const refetch = vi.fn();
+    query.value = { isPending: false, isError: true, error: { code: "ORGANIZATION_CONTEXT_CHANGED" }, refetch };
+    render(<StoreDetailPage storeId={STORE.id} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "重试" }));
+
+    expect(context.retry).toHaveBeenCalledTimes(1);
+    expect(refetch).not.toHaveBeenCalled();
+  });
+
   it("keeps a safe Store identity and lifecycle information visible while hiding edit for a viewer", () => {
     context.roles = ["listingkit_viewer"];
     query.value = { isPending: false, isError: false, data: STORE, refetch: vi.fn() };
@@ -110,6 +121,23 @@ describe("StoreDetailPage", () => {
     expect(screen.getByText(/名称、区域已被其他人修改/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "使用最新版本重新保存" }));
     expect(update.mutate).toHaveBeenLastCalledWith({ id: STORE.id, version: 2, input: { name: "我的草稿", region: "CN" } }, expect.any(Object));
+  });
+  it("lets a newer background refetch replace a locally displayed mutation result", async () => {
+    const refetch = vi.fn();
+    query.value = { isPending: false, isError: false, data: STORE, refetch };
+    const user = userEvent.setup();
+    const view = render(<StoreDetailPage storeId={STORE.id} />);
+
+    await user.clear(screen.getByLabelText("店铺名称"));
+    await user.type(screen.getByLabelText("店铺名称"), "本地保存");
+    await user.click(screen.getByRole("button", { name: "保存更改" }));
+    update.mutate.mock.calls[0]?.[1].onSuccess({ ...STORE, name: "本地保存", version: 2 });
+    expect(await screen.findByDisplayValue("本地保存")).toBeInTheDocument();
+
+    query.value = { isPending: false, isError: false, data: { ...STORE, name: "其他用户保存", version: 3 }, refetch };
+    view.rerender(<StoreDetailPage storeId={STORE.id} />);
+
+    expect(screen.getByDisplayValue("其他用户保存")).toBeInTheDocument();
   });
   it("keeps the original submitted baseline when a dirty form receives a newer projection", async () => {
     const background = { ...STORE, name: "后台名称", version: 2 };

@@ -25,7 +25,7 @@ export function StoreListPage() {
   const hasFilters = Boolean(filters.platform || filters.status);
   const deletedNotice = searchParams.getAll("notice").length === 1 && searchParams.get("notice") === "store-deleted";
   const canCreateByRole = canCreateWorkbenchStore(context.roles);
-  const canCreate = Boolean(data?.quota.allowed && canCreateByRole);
+  const canCreate = Boolean(data && canCreateByRole);
 
   const updateFilters = (next: WorkbenchStoreListFilters) => {
     router.push(`${pathname}?${buildStoreSearch(next)}`);

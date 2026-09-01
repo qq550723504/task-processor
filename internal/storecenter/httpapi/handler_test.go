@@ -138,7 +138,7 @@ func TestWithRequestBodyReadTimeoutClosesSlowBody(t *testing.T) {
 	context.Request = request
 
 	var readErr error
-	withRequestBodyReadTimeout(5*time.Millisecond, func(c *gin.Context) {
+	httproute.WithRequestBodyReadTimeout(5*time.Millisecond, func(c *gin.Context) {
 		_, readErr = io.ReadAll(c.Request.Body)
 	})(context)
 

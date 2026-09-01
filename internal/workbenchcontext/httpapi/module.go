@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
@@ -9,6 +10,8 @@ import (
 )
 
 const ModuleName = "workbench-context"
+
+const requestBodyReadTimeout = 30 * time.Second
 
 type routeModule struct {
 	handler *Handler
@@ -40,7 +43,7 @@ func (m routeModule) Register(reg *kernelmodule.Registry) error {
 			Module:                     ModuleName,
 			AuthPolicy:                 httproute.AuthPolicyVerifiedIdentity,
 			OrganizationAccessPolicy:   httproute.OrganizationAccessPolicyLiveSwitch,
-			OrganizationTargetResolver: ResolveSwitchOrganizationTarget,
+			OrganizationTargetResolver: httproute.WithRequestBodyReadTimeoutResolver(requestBodyReadTimeout, ResolveSwitchOrganizationTarget),
 			Handler:                    m.handler.SwitchEffectiveOrganization,
 		},
 	)
