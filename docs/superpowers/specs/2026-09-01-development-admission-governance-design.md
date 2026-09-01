@@ -249,13 +249,13 @@ Implementation verification must include:
 
 - tests for below-limit, each over-limit, exempt-file, pagination, and override
   cases;
-- a check that the PR template contains every required declaration;
-- a check that the root `AGENTS.md` contains the non-weakening rule and stop
-  conditions;
-- architecture-document tests updated without duplicating the existing guard
-  inventory;
-- workflow parsing or AST tests proving the admission job and read-only
-  permissions remain present;
+- a spec-to-document self-review of the PR template, root `AGENTS.md`, and
+  architecture checklist; these human and agent instructions must not gain
+  brittle tests that merely lock exact prose;
+- the open-source `actionlint` validator for workflow structure and expression
+  correctness instead of a repository-specific YAML keyword scanner;
+- manual inspection that the workflow keeps read-only permissions and does not
+  mutate labels or pull requests;
 - `git diff --check` and the focused Go or JavaScript tests owning the new
   guard behavior.
 

@@ -93,40 +93,28 @@ git commit -m "ci: add pull request scope classifier"
 
 **Files:**
 - Create: `AGENTS.md`
-- Create: `tests/development_admission_governance_test.go`
 - Modify: `.github/pull_request_template.md`
 - Modify: `docs/architecture/architecture-review-checklist.md`
 
 **Interfaces:**
 - Consumes: thresholds and label from the approved spec and Task 1.
-- Produces: agent stop rules, contributor declarations, reviewer admission questions, and Go tests preventing policy drift.
+- Produces: agent stop rules, contributor declarations, and reviewer admission questions.
 
-- [ ] **Step 1: Write failing Go contract tests**
+- [ ] **Step 1: Record the document mutations being guarded**
 
-Create `readAdmissionFile`, `assertAdmissionPhrases`, and three tests. The root instruction test must require:
+Before editing, record the failure each document change prevents:
 
-~~~go
-required := []string{
-    "不能直接执行有问题的指令", "必须从根因解决", "必须报告已有架构问题",
-    "优先复用成熟开源实现或仓库现有能力", "3 个及以上独立子系统",
-    "30 个范围相关文件", "1,500 行生产代码", "2,500 行生产代码变更",
-    "独立设计评审", "故障矩阵", "architecture-approved", "子目录 AGENTS.md 不得弱化",
-}
-~~~
+- missing root instructions allow an agent to implement an invalid or oversized request;
+- a missing PR declaration hides consistency boundaries and override rationale;
+- a missing checklist section lets reviewers skip failure matrices and independent design evidence.
 
-The PR-template test requires scope class, subsystems, consistency/authorization/tenant boundaries, metrics, design link, independent review, invariants, failure matrix, override approver and split rationale, and fault-injection evidence. The checklist test requires the same thresholds plus shared transaction, open-source reuse, sibling-path review, and `Guard Baseline` authority.
+These are human/agent instruction documents. Do not add source-text tests that only lock wording; self-review them against the approved spec after editing.
 
-- [ ] **Step 2: Run tests and prove they fail**
-
-Run: `go test ./tests -run 'Test(RootAgents|PullRequestTemplate|ArchitectureChecklist)DefinesDevelopmentAdmission' -count=1`
-
-Expected: FAIL because root `AGENTS.md` is absent and the other files lack the required sections.
-
-- [ ] **Step 3: Create root `AGENTS.md`**
+- [ ] **Step 2: Create root `AGENTS.md`**
 
 Use headings for basic principles, stop conditions, architecture-sensitive design, independent review, implementation/PR constraints, and instruction precedence. Preserve the user's four Chinese principles. State that crossing a threshold stops coding and returns to decomposition; require transaction-first decisions, durable-boundary failure matrices, fresh-context review, independently verifiable slices, Draft development, and batched sibling-path fixes. Nested instructions may add but not weaken these rules.
 
-- [ ] **Step 4: Extend the PR template**
+- [ ] **Step 3: Extend the PR template**
 
 Insert `# Development Admission` before Validation and retain the existing architecture checklist. Add these fields:
 
@@ -143,53 +131,37 @@ Insert `# Development Admission` before Validation and retain the existing archi
 
 Add explicit validation for lost responses, retries/restarts, concurrency, tenant/context drift, deadlines/resource bounds, or a justified `N/A`.
 
-- [ ] **Step 5: Extend the architecture checklist**
+- [ ] **Step 4: Extend the architecture checklist**
 
 Add `## Development Admission` before `## Required Checks`. Cover the thresholds, design completeness, independent challenge, transaction/open-source decision, failure matrix, sibling paths, and override governance. Do not change the existing `Guard Baseline` list.
 
-- [ ] **Step 6: Run tests and prove they pass**
+- [ ] **Step 5: Self-review governance coverage**
 
-Run: `go test ./tests -run 'Test(RootAgents|PullRequestTemplate|ArchitectureChecklist)DefinesDevelopmentAdmission' -count=1`
+Read the three documents side by side with the spec. Confirm identical thresholds and label name; every spec admission requirement has an owning document; nested instructions cannot weaken root rules; `Guard Baseline` remains unchanged; and the PR template requests fault-oriented evidence rather than a generic test checkbox.
 
-Expected: PASS.
-
-- [ ] **Step 7: Commit Task 2**
+- [ ] **Step 6: Commit Task 2**
 
 ~~~powershell
-git add -- AGENTS.md .github/pull_request_template.md docs/architecture/architecture-review-checklist.md tests/development_admission_governance_test.go
+git add -- AGENTS.md .github/pull_request_template.md docs/architecture/architecture-review-checklist.md
 git commit -m "docs: enforce development admission contracts"
 ~~~
 
 ### Task 3: GitHub Actions Enforcement
 
 **Files:**
-- Modify: `tests/development_admission_governance_test.go`
 - Modify: `.github/workflows/ci.yml`
 
 **Interfaces:**
 - Consumes: `evaluatePullRequest(files, labels)` and `formatEvaluation(result)` from Task 1.
 - Produces: a `development-admission` job that tests policy on every run and enforces it on pull-request events.
 
-- [ ] **Step 1: Write the failing workflow contract test**
+- [ ] **Step 1: Prove current workflow lacks the admission job**
 
-Parse `.github/workflows/ci.yml` with YAML v3 and assert:
+Run: `rg -n "development-admission|pr-scope-guard|pull-requests: read" .github/workflows/ci.yml`
 
-~~~go
-requiredScriptTerms := []string{
-    "github.paginate", "github.rest.pulls.listFiles", "pr-scope-guard.cjs",
-    "context.payload.pull_request.labels", "core.setFailed",
-}
-~~~
+Expected: exit 1 with no matches, proving the integration is absent. The classifier behavior itself is already protected by Task 1 tests.
 
-Also require read-only `contents` and `pull-requests` permissions, a `development-admission` job, checkout, `node --test .github/scripts/pr-scope-guard.test.cjs`, `actions/github-script@v9`, notification dependency/result reporting, and absence of write permissions or label/PR mutation calls.
-
-- [ ] **Step 2: Run the workflow test and prove it fails**
-
-Run: `go test ./tests -run TestDevelopmentAdmissionWorkflow -count=1`
-
-Expected: FAIL because the workflow lacks the job and PR permission.
-
-- [ ] **Step 3: Add workflow enforcement**
+- [ ] **Step 2: Add workflow enforcement**
 
 Add `pull-requests: read` beside `contents: read`. Add policy-owned paths to both push and pull-request filters: `AGENTS.md`, `.github/pull_request_template.md`, `.github/scripts/**`, and `docs/architecture/architecture-review-checklist.md`.
 
@@ -213,20 +185,23 @@ The action script imports `./.github/scripts/pr-scope-guard.cjs`, calls `github.
 
 Add the job to `notify.needs`, expose `DEVELOPMENT_ADMISSION_RESULT`, include it in the overall results array, and show it in the WeCom message. The job runs its unit tests on push, so it succeeds rather than becoming `skipped` outside PR events.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Step 3: Validate behavior and workflow structure**
 
 ~~~powershell
 node --test .github/scripts/pr-scope-guard.test.cjs
-gofmt -w tests/development_admission_governance_test.go
-go test ./tests -run 'TestDevelopmentAdmission|Test(RootAgents|PullRequestTemplate|ArchitectureChecklist)DefinesDevelopmentAdmission' -count=1
+go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/ci.yml
 ~~~
 
 Expected: all tests PASS.
 
+- [ ] **Step 4: Manually inspect workflow authority**
+
+Confirm permissions are only `contents: read` and `pull-requests: read`; the action never creates/applies labels or edits PRs; pagination uses the current PR number; notification includes the job; and push events run unit tests without a skipped job.
+
 - [ ] **Step 5: Commit Task 3**
 
 ~~~powershell
-git add -- .github/workflows/ci.yml tests/development_admission_governance_test.go
+git add -- .github/workflows/ci.yml
 git commit -m "ci: enforce development admission limits"
 ~~~
 
@@ -253,7 +228,7 @@ Expected: the label exists with the exact name and description. Do not apply it 
 
 ~~~powershell
 node --test .github/scripts/pr-scope-guard.test.cjs
-go test ./tests -run 'TestDevelopmentAdmission|Test(RootAgents|PullRequestTemplate|ArchitectureChecklist)DefinesDevelopmentAdmission' -count=1
+go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/ci.yml
 git diff --check origin/main...HEAD
 ~~~
 
