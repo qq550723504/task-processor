@@ -11,6 +11,8 @@ const {
   evaluatePullRequest,
   formatEvaluation,
   hasAuthorizedArchitectureOverride,
+  latestBaseChangeAt,
+  pullRequestNumberFromEventPayload,
   statusForEvaluation,
   statusTargetForPullRequest,
 } = require("./pr-scope-guard.cjs");
@@ -398,6 +400,36 @@ test("requires an authenticated current-head approval for an override", () => {
   );
 });
 
+test("keeps an approval effective after a later comment-only review", () => {
+  const headSha = "head-abc";
+  assert.equal(
+    hasAuthorizedArchitectureOverride({
+      labels: ["architecture-approved"],
+      headSha,
+      reviews: [
+        {
+          id: 1,
+          user: { login: "maintainer" },
+          state: "APPROVED",
+          commit_id: headSha,
+          submitted_at: "2026-09-01T12:00:00Z",
+        },
+        {
+          id: 2,
+          user: { login: "maintainer" },
+          state: "COMMENTED",
+          commit_id: headSha,
+          submitted_at: "2026-09-01T12:01:00Z",
+        },
+      ],
+      permissions: {
+        maintainer: { permission: "write", role_name: "maintain" },
+      },
+    }),
+    true,
+  );
+});
+
 test("rejects labels, reviews, or base-change events moving during evaluation", () => {
   const snapshot = {
     head: { sha: "abc" },
@@ -475,5 +507,39 @@ test("targets the test merge commit for required admission status", () => {
   assert.throws(
     () => statusTargetForPullRequest({ merge_commit_sha: null }),
     /missing merge_commit_sha/,
+  );
+});
+
+test("exports and computes the latest base branch change timestamp", () => {
+  assert.equal(
+    latestBaseChangeAt([
+      { event: "base_ref_changed", created_at: "2026-09-01T12:00:00Z" },
+      { event: "labeled", created_at: "2026-09-01T12:02:00Z" },
+      { event: "base_ref_changed", created_at: "2026-09-01T12:01:00Z" },
+    ]),
+    "2026-09-01T12:01:00Z",
+  );
+});
+
+test("extracts a single pull request number from direct and workflow-run events", () => {
+  assert.equal(
+    pullRequestNumberFromEventPayload("pull_request_target", {
+      pull_request: { number: 273 },
+    }),
+    273,
+  );
+  assert.equal(
+    pullRequestNumberFromEventPayload("workflow_run", {
+      workflow_run: {
+        pull_requests: [{ number: 273 }],
+      },
+    }),
+    273,
+  );
+  assert.throws(
+    () => pullRequestNumberFromEventPayload("workflow_run", {
+      workflow_run: { pull_requests: [] },
+    }),
+    /exactly one pull request/,
   );
 });
