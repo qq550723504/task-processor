@@ -125,6 +125,161 @@ func TestCanonicalHTTPURLRejectsInvalidExplicitPortsAndAuthority(t *testing.T) {
 	}
 }
 
+func TestCanonicalHTTPURLRejectsMalformedRawAuthoritiesAcrossURLStrictModes(t *testing.T) {
+	for _, mode := range []struct {
+		name    string
+		godebug string
+	}{
+		{name: "default"},
+		{name: "urlstrictcolons disabled", godebug: "urlstrictcolons=0"},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			t.Setenv("GODEBUG", mode.godebug)
+			for name, raw := range map[string]string{
+				"empty authority":            "https:///a.png",
+				"userinfo":                   "https://user@source.example/a.png",
+				"DNS authority with colons":  "https://source.example:80:90/a.png",
+				"unbracketed IPv6 authority": "https://2001:db8::1/a.png",
+				"stray opening bracket":      "https://source[.example/a.png",
+				"extra closing bracket":      "https://[2001:db8::1]]/a.png",
+				"bracketed suffix colon":     "https://[2001:db8::1]:443:90/a.png",
+			} {
+				t.Run(name, func(t *testing.T) {
+					require.Empty(t, canonicalHTTPURL(raw))
+				})
+			}
+		})
+	}
+}
+
+func TestCanonicalHTTPURLAcceptsValidRawAuthoritiesAcrossURLStrictModes(t *testing.T) {
+	for _, mode := range []struct {
+		name    string
+		godebug string
+	}{
+		{name: "default"},
+		{name: "urlstrictcolons disabled", godebug: "urlstrictcolons=0"},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			t.Setenv("GODEBUG", mode.godebug)
+			for name, testCase := range map[string]struct {
+				raw  string
+				want string
+			}{
+				"DNS and port": {
+					raw: "https://source.example:8443/a.png", want: "https://source.example:8443/a.png",
+				},
+				"bracketed IPv6": {
+					raw: "https://[2001:0DB8::1]:443/a.png", want: "https://[2001:db8::1]/a.png",
+				},
+				"bracketed IPv6 zone": {
+					raw: "http://[fe80::1%25eth0]:8080/a.png", want: "http://[fe80::1%25eth0]:8080/a.png",
+				},
+				"path and query": {
+					raw: "https://source.example/catalog/../a.png?z=2&a=1", want: "https://source.example/a.png?a=1&z=2",
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					require.Equal(t, testCase.want, canonicalHTTPURL(testCase.raw))
+				})
+			}
+		})
+	}
+}
+
+func TestCapabilitiesFailClosedOnMalformedRawAuthority(t *testing.T) {
+	t.Setenv("GODEBUG", "urlstrictcolons=0")
+	const malformed = "https://source.example:80:90/a.png"
+
+	for name, invoke := range map[string]func() (int, error){
+		"subject input": func() (int, error) {
+			calls := 0
+			capability, err := NewSubjectCapability(subjectExtractorFunc(func(context.Context, ExtractRequest) (Candidate, error) {
+				calls++
+				return Candidate{}, nil
+			}))
+			require.NoError(t, err)
+			source := validSourceAsset()
+			source.URL = malformed
+			_, err = capability.Extract(context.Background(), ExtractRequest{Source: source, Product: validProductContext()})
+			return calls, err
+		},
+		"white background input": func() (int, error) {
+			calls := 0
+			capability, err := NewWhiteBackgroundCapability(whiteBackgroundRendererFunc(func(context.Context, RenderRequest) (Candidate, error) {
+				calls++
+				return Candidate{}, nil
+			}))
+			require.NoError(t, err)
+			source := validSourceAsset()
+			source.URL = malformed
+			_, err = capability.RenderWhiteBackground(context.Background(), RenderRequest{Source: source, Product: validProductContext()})
+			return calls, err
+		},
+		"scene input": func() (int, error) {
+			calls := 0
+			capability, err := NewSceneCapability(sceneRendererFunc(func(context.Context, SceneRequest) ([]Candidate, error) {
+				calls++
+				return nil, nil
+			}))
+			require.NoError(t, err)
+			request := validSceneRequest()
+			request.Source.URL = malformed
+			_, err = capability.RenderScene(context.Background(), request)
+			return calls, err
+		},
+		"review input": func() (int, error) {
+			calls := 0
+			capability, err := NewReviewCapability(reviewerFunc(func(context.Context, ReviewRequest) (Review, error) {
+				calls++
+				return Review{Score: 1}, nil
+			}))
+			require.NoError(t, err)
+			request := validReviewRequest()
+			request.Candidates[0].Asset.URL = malformed
+			_, err = capability.Review(context.Background(), request)
+			return calls, err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			calls, err := invoke()
+			require.ErrorIs(t, err, ErrInputInvalid)
+			require.Zero(t, calls)
+		})
+	}
+
+	for name, invoke := range map[string]func() error{
+		"subject output": func() error {
+			capability, err := NewSubjectCapability(subjectExtractorFunc(func(context.Context, ExtractRequest) (Candidate, error) {
+				return Candidate{Asset: validGeneratedAsset(RoleSubject, "extract_subject", malformed)}, nil
+			}))
+			require.NoError(t, err)
+			_, err = capability.Extract(context.Background(), ExtractRequest{Source: validSourceAsset(), Product: validProductContext()})
+			return err
+		},
+		"white background output": func() error {
+			capability, err := NewWhiteBackgroundCapability(whiteBackgroundRendererFunc(func(context.Context, RenderRequest) (Candidate, error) {
+				return Candidate{Asset: validGeneratedAsset(RoleWhiteBackground, "render_white_background", malformed)}, nil
+			}))
+			require.NoError(t, err)
+			_, err = capability.RenderWhiteBackground(context.Background(), RenderRequest{Source: validSourceAsset(), Product: validProductContext()})
+			return err
+		},
+		"scene output": func() error {
+			capability, err := NewSceneCapability(sceneRendererFunc(func(context.Context, SceneRequest) ([]Candidate, error) {
+				return []Candidate{{Asset: validGeneratedAsset(RoleScene, "render_scene", malformed)}}, nil
+			}))
+			require.NoError(t, err)
+			_, err = capability.RenderScene(context.Background(), validSceneRequest())
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorIs(t, invoke(), ErrOutputValidation)
+		})
+	}
+}
+
 func TestCanonicalHTTPURLFailsClosedOnMalformedQuery(t *testing.T) {
 	t.Parallel()
 

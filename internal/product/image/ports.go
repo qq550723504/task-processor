@@ -518,7 +518,11 @@ func canonicalHTTPURL(value string) string {
 	if len(value) == 0 || len(value) > maxImageStringBytes {
 		return ""
 	}
-	parsed, err := url.Parse(strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	if !validRawHTTPAuthority(value) {
+		return ""
+	}
+	parsed, err := url.Parse(value)
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
 		return ""
 	}
@@ -550,6 +554,53 @@ func canonicalHTTPURL(value string) string {
 		return ""
 	}
 	return (&url.URL{Scheme: scheme, Host: host, Path: cleanPath, RawQuery: query.Encode()}).String()
+}
+
+func validRawHTTPAuthority(value string) bool {
+	schemeEnd := strings.Index(value, "://")
+	if schemeEnd < 0 || !(strings.EqualFold(value[:schemeEnd], "http") || strings.EqualFold(value[:schemeEnd], "https")) {
+		return false
+	}
+	authorityStart := schemeEnd + len("://")
+	authorityEnd := len(value)
+	if separator := strings.IndexAny(value[authorityStart:], "/?#"); separator >= 0 {
+		authorityEnd = authorityStart + separator
+	}
+	authority := value[authorityStart:authorityEnd]
+	if authority == "" || strings.Contains(authority, "@") {
+		return false
+	}
+	if authority[0] == '[' {
+		if strings.Count(authority, "[") != 1 || strings.Count(authority, "]") != 1 {
+			return false
+		}
+		closing := strings.IndexByte(authority, ']')
+		if closing <= 1 {
+			return false
+		}
+		suffix := authority[closing+1:]
+		return suffix == "" || len(suffix) > 1 && suffix[0] == ':' && isASCIIDigits(suffix[1:])
+	}
+	if strings.ContainsAny(authority, "[]") {
+		return false
+	}
+	colon := strings.IndexByte(authority, ':')
+	if colon < 0 {
+		return true
+	}
+	return colon > 0 && colon == strings.LastIndexByte(authority, ':') && isASCIIDigits(authority[colon+1:])
+}
+
+func isASCIIDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		if value[index] < '0' || value[index] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func canonicalHTTPPort(authority, scheme string) (string, bool) {
