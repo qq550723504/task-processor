@@ -408,7 +408,7 @@ export async function buildWorkbenchBrowserResponse(
       headers: safeJSONHeaders(),
     });
     if (
-      contract === "context" &&
+      contract !== "context-switch" &&
       (parsedError.data.code === "ORGANIZATION_ACCESS_REVOKED" ||
         parsedError.data.code === "ORGANIZATION_ACCESS_DENIED")
     ) {

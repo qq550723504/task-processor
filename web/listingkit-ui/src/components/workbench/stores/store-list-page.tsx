@@ -34,7 +34,11 @@ export function StoreListPage() {
     updateFilters({ page: DEFAULT_PAGE, pageSize: filters.pageSize });
   const retryStores = () => {
     const code = stores.error instanceof WorkbenchAPIError ? stores.error.code : (stores.error as { code?: string } | null)?.code;
-    if (code === "ORGANIZATION_CONTEXT_CHANGED") {
+    if (
+      code === "ORGANIZATION_CONTEXT_CHANGED" ||
+      code === "ORGANIZATION_ACCESS_REVOKED" ||
+      code === "ORGANIZATION_ACCESS_DENIED"
+    ) {
       context.retry();
       return;
     }

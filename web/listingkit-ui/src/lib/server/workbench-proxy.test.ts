@@ -659,14 +659,29 @@ describe("buildWorkbenchBrowserResponse", () => {
     expect(response.headers.get("Set-Cookie")).toBeNull();
   });
 
-  it.each(["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"])(
-    "clears a stale selection when Go returns %s",
-    async (code) => {
+  it.each([
+    ["context", "context", "ORGANIZATION_ACCESS_REVOKED"],
+    ["context", "context", "ORGANIZATION_ACCESS_DENIED"],
+    ["Store list", "store-list", "ORGANIZATION_ACCESS_REVOKED"],
+    ["Store list", "store-list", "ORGANIZATION_ACCESS_DENIED"],
+    ["Store item", "store-item", "ORGANIZATION_ACCESS_REVOKED"],
+    ["Store item", "store-item", "ORGANIZATION_ACCESS_DENIED"],
+    ["Store delete", "store-delete", "ORGANIZATION_ACCESS_REVOKED"],
+    ["Store delete", "store-delete", "ORGANIZATION_ACCESS_DENIED"],
+  ] as const)(
+    "clears a stale selection when %s returns %s",
+    async (_name, contract, code) => {
       const response = await buildWorkbenchBrowserResponse(
         Response.json(
-          { code, message: "Access lost", requestId: "req-1", fieldErrors: [] },
+          {
+            code,
+            message: "Access lost",
+            requestId: "req-1",
+            fieldErrors: [],
+          },
           { status: 403 },
         ),
+        contract,
       );
 
       expect(response.headers.get("Set-Cookie")).toContain(

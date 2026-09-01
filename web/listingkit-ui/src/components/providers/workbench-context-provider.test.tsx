@@ -192,6 +192,36 @@ describe("WorkbenchContextProvider", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
   });
 
+  it("refreshes context after a switch when the query is invalidated", async () => {
+    const refreshed = {
+      ...ORG_A_CONTEXT,
+      effectiveOrganizationId: "org-b",
+      organizations: [
+        { id: "org-a", name: "硕米科技", roles: [] },
+        { id: "org-b", name: "星海贸易", roles: ["org-b-admin"] },
+      ],
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(ORG_A_CONTEXT))
+      .mockResolvedValueOnce(Response.json(ORG_B_CONTEXT))
+      .mockResolvedValueOnce(Response.json(refreshed));
+    vi.stubGlobal("fetch", fetchMock);
+    const queryClient = createQueryClient();
+
+    renderProvider(queryClient);
+    await screen.findByText("organization:硕米科技");
+    await userEvent.click(screen.getByRole("button", { name: "switch" }));
+    await screen.findByText("organization:星海贸易");
+
+    await queryClient.invalidateQueries({
+      queryKey: WORKBENCH_CONTEXT_QUERY_KEY,
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(await screen.findByText("roles:org-b-admin")).toBeInTheDocument();
+  });
+
   it("clears scoped state and exposes a blocking error after an explicit switch rejection", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

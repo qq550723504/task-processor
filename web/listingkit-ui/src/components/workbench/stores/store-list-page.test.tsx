@@ -240,12 +240,16 @@ describe("StoreListPage", () => {
     expect(screen.queryByText(/raw service message|request-id/)).not.toBeInTheDocument();
   });
 
-  it("refreshes organization context before retrying after cookie drift", async () => {
+  it.each([
+    "ORGANIZATION_CONTEXT_CHANGED",
+    "ORGANIZATION_ACCESS_REVOKED",
+    "ORGANIZATION_ACCESS_DENIED",
+  ])("refreshes organization context before retrying after %s", async (code) => {
     const refetch = vi.fn();
     storesQuery.value = {
       isPending: false,
       isError: true,
-      error: { code: "ORGANIZATION_CONTEXT_CHANGED", message: "raw", requestId: "req" },
+      error: { code, message: "raw", requestId: "req" },
       refetch,
     };
     render(<StoreListPage />);

@@ -43,41 +43,37 @@ const WorkbenchContextState = createContext<WorkbenchContextValue | null>(null);
 
 export function WorkbenchContextProvider({ children }: PropsWithChildren) {
   const queryClient = useQueryClient();
-  const [switchedContext, setSwitchedContext] =
-    useState<WorkbenchContext | null>(null);
   const [blockingError, setBlockingError] =
     useState<WorkbenchContextError | null>(null);
-  const [explicitSwitchSettled, setExplicitSwitchSettled] = useState(false);
   const guardsRef = useRef(new Set<(target: WorkbenchOrganization) => boolean | Promise<boolean>>());
   const currentContextRef = useRef<WorkbenchContext | null>(null);
   const switchRequestPendingRef = useRef(false);
   const contextQuery = useQuery({
     queryKey: WORKBENCH_CONTEXT_QUERY_KEY,
     queryFn: fetchWorkbenchContext,
-    enabled: !explicitSwitchSettled,
+    enabled: !blockingError,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
   const switchMutation = useMutation({
     mutationFn: switchEffectiveOrganization,
     onSuccess: (nextContext) => {
       switchRequestPendingRef.current = false;
-      setExplicitSwitchSettled(true);
       queryClient.clear();
       queryClient.setQueryData(WORKBENCH_CONTEXT_QUERY_KEY, nextContext);
-      setSwitchedContext(nextContext);
       setBlockingError(null);
     },
     onError: (error) => {
       switchRequestPendingRef.current = false;
-      setExplicitSwitchSettled(true);
       queryClient.clear();
-      setSwitchedContext(null);
       setBlockingError(normalizeWorkbenchError(error));
     },
   });
 
   const currentContext = blockingError
     ? null
-    : (switchedContext ?? contextQuery.data ?? null);
+    : (contextQuery.data ?? null);
   useEffect(() => {
     currentContextRef.current = currentContext;
   }, [currentContext]);
@@ -144,14 +140,11 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       effectiveOrganization,
       roles: effectiveOrganization?.roles ?? [],
       selectionRequired: currentContext?.selectionRequired ?? false,
-      isLoading: !blockingError && !switchedContext && contextQuery.isPending,
+      isLoading: !blockingError && contextQuery.isPending,
       isSwitching: switchMutation.isPending || storeMutationsPending > 0,
       error: queryError,
       blockingError,
       retry: () => {
-        // Manual refetch works while the query is disabled. Keep it disabled
-        // after a switch so exactly one response replaces switchedContext.
-        setSwitchedContext(null);
         setBlockingError(null);
         void contextQuery.refetch();
       },
@@ -164,7 +157,6 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       currentContext,
       effectiveOrganization,
       queryError,
-      switchedContext,
       switchMutation,
       storeMutationsPending,
       switchOrganization,
