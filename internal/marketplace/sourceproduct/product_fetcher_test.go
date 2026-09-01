@@ -81,11 +81,140 @@ func TestProductFetcherKeepsExplicitLoggerInjection(t *testing.T) {
 	log.SetOutput(&output)
 	fetcher := NewProductFetcherWithLogger(nil, ProductFetcherOptions{}, nil, logrus.NewEntry(log))
 
-	if err := fetcher.CacheProduct(nil, nil); err != nil {
+	if err := fetcher.CacheProduct(&FetchRequest{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "product is nil, skipping cache") {
 		t.Fatalf("injected logger output = %q, want product warning", output.String())
+	}
+}
+
+type nilRequestBoundarySpy struct {
+	cacheReadCalls   int
+	cacheWriteCalls  int
+	configuredCalls  int
+	sourceFetchCalls int
+}
+
+func (s *nilRequestBoundarySpy) GetRawJsonData(*RawJsonReq) (*RawJsonResp, error) {
+	s.cacheReadCalls++
+	return nil, errors.New("cache miss")
+}
+
+func (s *nilRequestBoundarySpy) CreateRawJsonData(*RawJsonCreateReq) (int64, error) {
+	s.cacheWriteCalls++
+	return 0, nil
+}
+
+func (s *nilRequestBoundarySpy) Configured() bool {
+	s.configuredCalls++
+	return true
+}
+
+func (s *nilRequestBoundarySpy) Fetch(context.Context, SourceFetchRequest) (*model.Product, error) {
+	s.sourceFetchCalls++
+	return &model.Product{Asin: "unexpected"}, nil
+}
+
+func TestProductFetcherPublicOperationsRejectNilRequestBeforeDependencies(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*ProductFetcher) error
+	}{
+		{
+			name: "fetch product",
+			call: func(fetcher *ProductFetcher) error {
+				_, err := fetcher.FetchProduct(context.Background(), nil)
+				return err
+			},
+		},
+		{
+			name: "fetch variants with empty IDs",
+			call: func(fetcher *ProductFetcher) error {
+				_, err := fetcher.FetchVariants(context.Background(), nil, nil)
+				return err
+			},
+		},
+		{
+			name: "fetch variants with IDs",
+			call: func(fetcher *ProductFetcher) error {
+				_, err := fetcher.FetchVariants(context.Background(), nil, []string{"B001"})
+				return err
+			},
+		},
+		{
+			name: "cache nil product",
+			call: func(fetcher *ProductFetcher) error {
+				return fetcher.CacheProduct(nil, nil)
+			},
+		},
+		{
+			name: "cache product",
+			call: func(fetcher *ProductFetcher) error {
+				return fetcher.CacheProduct(nil, &model.Product{Asin: "B001"})
+			},
+		},
+		{
+			name: "cache empty variants",
+			call: func(fetcher *ProductFetcher) error {
+				return fetcher.CacheVariants(nil, nil)
+			},
+		},
+		{
+			name: "cache variants",
+			call: func(fetcher *ProductFetcher) error {
+				return fetcher.CacheVariants(nil, []*model.Product{{Asin: "B001"}})
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			spy := &nilRequestBoundarySpy{}
+			var output bytes.Buffer
+			logger := logrus.New()
+			logger.SetOutput(&output)
+			fetcher := NewProductFetcherWithLogger(
+				spy,
+				ProductFetcherOptions{Enabled: true},
+				spy,
+				logrus.NewEntry(logger),
+			)
+
+			err := tc.call(fetcher)
+			if !errors.Is(err, ErrFetchRequestRequired) {
+				t.Fatalf("operation error = %v, want ErrFetchRequestRequired", err)
+			}
+			if spy.cacheReadCalls != 0 || spy.cacheWriteCalls != 0 || spy.configuredCalls != 0 || spy.sourceFetchCalls != 0 {
+				t.Fatalf("dependency calls = cache read %d/write %d, configured %d, source fetch %d; want all zero", spy.cacheReadCalls, spy.cacheWriteCalls, spy.configuredCalls, spy.sourceFetchCalls)
+			}
+			if output.Len() != 0 {
+				t.Fatalf("logger output = %q, want none before nil-request rejection", output.String())
+			}
+		})
+	}
+}
+
+func TestProductFetcherPreservesNonNilEmptyAndNilProductBehavior(t *testing.T) {
+	spy := &nilRequestBoundarySpy{}
+	fetcher := NewProductFetcher(spy, ProductFetcherOptions{Enabled: true}, spy)
+	req := &FetchRequest{}
+
+	variants, err := fetcher.FetchVariants(context.Background(), req, nil)
+	if err != nil {
+		t.Fatalf("FetchVariants(non-nil request, empty IDs) error = %v", err)
+	}
+	if variants == nil || len(variants) != 0 {
+		t.Fatalf("FetchVariants(non-nil request, empty IDs) = %#v, want non-nil empty slice", variants)
+	}
+	if err := fetcher.CacheProduct(req, nil); err != nil {
+		t.Fatalf("CacheProduct(non-nil request, nil product) error = %v", err)
+	}
+	if err := fetcher.CacheVariants(req, nil); err != nil {
+		t.Fatalf("CacheVariants(non-nil request, empty variants) error = %v", err)
+	}
+	if spy.cacheReadCalls != 0 || spy.cacheWriteCalls != 0 || spy.configuredCalls != 0 || spy.sourceFetchCalls != 0 {
+		t.Fatalf("dependency calls = cache read %d/write %d, configured %d, source fetch %d; want all zero", spy.cacheReadCalls, spy.cacheWriteCalls, spy.configuredCalls, spy.sourceFetchCalls)
 	}
 }
 

@@ -51,6 +51,9 @@ func NewProductFetcherWithLogger(
 
 // FetchProduct 获取产品
 func (f *ProductFetcher) FetchProduct(ctx context.Context, req *FetchRequest) (*model.Product, error) {
+	if req == nil {
+		return nil, ErrFetchRequestRequired
+	}
 	if f.cacheManager != nil && f.shouldUseCache(req) {
 		if product, err := f.cacheManager.GetFromCache(req); err == nil {
 			f.logger.Debugf("got product from cache: %s", req.ProductID)
@@ -95,6 +98,9 @@ func (f *ProductFetcher) FetchProductWithRetry(productID, region string, storeID
 
 // CacheProduct 缓存产品数据到服务端
 func (f *ProductFetcher) CacheProduct(req *FetchRequest, product *model.Product) error {
+	if req == nil {
+		return ErrFetchRequestRequired
+	}
 	if !f.shouldUseCache(req) {
 		f.logger.Debug("skip cache because request uses explicit zipcode")
 		return nil
@@ -112,6 +118,9 @@ func (f *ProductFetcher) CacheProduct(req *FetchRequest, product *model.Product)
 
 // CacheVariants 批量缓存变体数据到服务端
 func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*model.Product) error {
+	if req == nil {
+		return ErrFetchRequestRequired
+	}
 	if len(variants) == 0 {
 		return nil
 	}
@@ -124,6 +133,9 @@ func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*model.Prod
 
 // FetchVariants 批量获取变体数据
 func (f *ProductFetcher) FetchVariants(ctx context.Context, req *FetchRequest, variantASINs []string) ([]*model.Product, error) {
+	if req == nil {
+		return nil, ErrFetchRequestRequired
+	}
 	if len(variantASINs) == 0 {
 		return []*model.Product{}, nil
 	}
@@ -158,7 +170,7 @@ func (f *ProductFetcher) GetStats() map[string]any {
 }
 
 func (f *ProductFetcher) shouldUseCache(req *FetchRequest) bool {
-	return req == nil || strings.TrimSpace(req.Zipcode) == ""
+	return strings.TrimSpace(req.Zipcode) == ""
 }
 
 func (f *ProductFetcher) crawlerUnavailableError(req *FetchRequest, configured bool) error {

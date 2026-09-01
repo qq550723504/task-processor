@@ -2,10 +2,15 @@ package sourceproduct
 
 import (
 	"context"
+	"errors"
 	"reflect"
 
 	"task-processor/internal/model"
 )
+
+// ErrFetchRequestRequired classifies calls that omit the marketplace product
+// request value required by fetch and cache operations.
+var ErrFetchRequestRequired = errors.New("product fetch request is required")
 
 // ProductFetcherOptions is the marketplace-owned product fetch/cache policy
 // snapshot needed by ProductFetcher.
