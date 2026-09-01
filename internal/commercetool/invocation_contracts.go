@@ -21,6 +21,34 @@ func (f ExecutorFunc) Execute(ctx context.Context, input json.RawMessage) (json.
 	return f(ctx, input)
 }
 
+type CallMetadata struct {
+	CallID         string
+	AgentID        string
+	AgentVersion   string
+	AgentRunID     string
+	BusinessTaskID string
+	TraceID        string
+	IdempotencyKey string
+}
+
+type Call struct {
+	Tool      ToolRef
+	Metadata  CallMetadata
+	Arguments json.RawMessage
+}
+
+type AuditStatus string
+
+const (
+	AuditStatusRecorded     AuditStatus = "recorded"
+	AuditStatusRecordFailed AuditStatus = "record_failed"
+)
+
+type Result struct {
+	Output      json.RawMessage
+	AuditStatus AuditStatus
+}
+
 type Principal struct {
 	TenantID string
 	UserID   string
