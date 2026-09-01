@@ -56,12 +56,13 @@ func TestProposeBuildsOneCanonicalEvidenceBackedProposal(t *testing.T) {
 	capturedAt := time.Date(2026, time.August, 31, 9, 8, 7, 0, time.UTC)
 	request := validRequest()
 	request.Source.RawReference = sourcing.RawSourceReference{
-		ReferenceID: "raw-1",
-		SnapshotID:  "snapshot-7",
-		Checksum:    "sha256:source",
-		URL:         "https://source.example/products/B001",
-		CapturedAt:  capturedAt,
-		Metadata:    map[string]string{"etag": "v7"},
+		ReferenceType: "crawler_snapshot",
+		ReferenceID:   "raw-1",
+		SnapshotID:    "snapshot-7",
+		Checksum:      "sha256:source",
+		URL:           "https://source.example/products/B001",
+		CapturedAt:    capturedAt,
+		Metadata:      map[string]string{"etag": "v7"},
 	}
 
 	proposal, err := proposer.Propose(context.Background(), request)
@@ -69,13 +70,14 @@ func TestProposeBuildsOneCanonicalEvidenceBackedProposal(t *testing.T) {
 		t.Fatalf("Propose() error = %v", err)
 	}
 	wantEvidence := []Evidence{{
-		ID:          "raw-1",
-		ReferenceID: "raw-1",
-		SnapshotID:  "snapshot-7",
-		Checksum:    "sha256:source",
-		URL:         "https://source.example/products/B001",
-		CapturedAt:  capturedAt,
-		Metadata:    map[string]string{"etag": "v7"},
+		ReferenceType: "crawler_snapshot",
+		ID:            "raw-1",
+		ReferenceID:   "raw-1",
+		SnapshotID:    "snapshot-7",
+		Checksum:      "sha256:source",
+		URL:           "https://source.example/products/B001",
+		CapturedAt:    capturedAt,
+		Metadata:      map[string]string{"etag": "v7"},
 	}}
 	if !reflect.DeepEqual(proposal.Evidence, wantEvidence) {
 		t.Fatalf("Propose() evidence = %#v, want %#v", proposal.Evidence, wantEvidence)
@@ -168,6 +170,30 @@ func TestProposeHonorsCancellationThatOccursDuringGeneration(t *testing.T) {
 	}
 	if !reflect.DeepEqual(proposal, Proposal{}) {
 		t.Fatalf("Propose() proposal = %#v, want zero proposal after cancellation", proposal)
+	}
+}
+
+func TestProposeDoesNotGenerateWhenContextCancelsDuringInputPreparation(t *testing.T) {
+	t.Parallel()
+
+	generatorCalls := 0
+	proposer, err := NewProposer(Dependencies{Generator: candidateGeneratorFunc(func(context.Context, GenerationRequest) (Candidate, error) {
+		generatorCalls++
+		return Candidate{Changes: []FieldChange{{Field: "description", Value: "Steel bottle", EvidenceIDs: []string{"raw-1"}}}}, nil
+	})})
+	if err != nil {
+		t.Fatalf("NewProposer() error = %v", err)
+	}
+
+	proposal, err := proposer.Propose(&cancelAfterFirstErrContext{}, validRequest())
+	if err != context.Canceled {
+		t.Fatalf("Propose() error = %v, want context.Canceled", err)
+	}
+	if !reflect.DeepEqual(proposal, Proposal{}) {
+		t.Fatalf("Propose() proposal = %#v, want zero proposal", proposal)
+	}
+	if generatorCalls != 0 {
+		t.Fatalf("CandidateGenerator calls = %d, want 0", generatorCalls)
 	}
 }
 
@@ -464,6 +490,123 @@ func TestProposeReturnsStableWarningsRejectionsAndQuality(t *testing.T) {
 	}
 }
 
+func TestProposeDeduplicatesCanonicalGeneratorDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	metadata := map[string]string{"source": "raw-1"}
+	generator := candidateGeneratorFunc(func(context.Context, GenerationRequest) (Candidate, error) {
+		return Candidate{
+			Changes: []FieldChange{{Field: "description", Value: "Steel bottle", EvidenceIDs: []string{"raw-1"}}},
+			Warnings: []Warning{
+				{Code: " SOURCE_LIMITED ", Field: " description ", Message: " Only one source ", Metadata: metadata},
+				{Code: "source_limited", Field: "description", Message: "Only one source", Metadata: map[string]string{"source": "raw-1"}},
+			},
+			Rejections: []Rejection{
+				{Code: " CLAIM_UNSUPPORTED ", Field: " title ", Message: " Claim lacks evidence ", Metadata: metadata},
+				{Code: "claim_unsupported", Field: "title", Message: "Claim lacks evidence", Metadata: map[string]string{"source": "raw-1"}},
+			},
+		}, nil
+	})
+	proposer, err := NewProposer(Dependencies{Generator: generator})
+	if err != nil {
+		t.Fatalf("NewProposer() error = %v", err)
+	}
+
+	proposal, err := proposer.Propose(context.Background(), validRequest())
+	if err != ErrPolicyRejected {
+		t.Fatalf("Propose() error = %v, want ErrPolicyRejected", err)
+	}
+	if len(proposal.Warnings) != 1 {
+		t.Fatalf("Propose() warnings = %#v, want one canonical warning", proposal.Warnings)
+	}
+	if len(proposal.Rejections) != 1 {
+		t.Fatalf("Propose() rejections = %#v, want one canonical rejection", proposal.Rejections)
+	}
+}
+
+func TestProposeOrdersDistinctDiagnosticMetadataDeterministically(t *testing.T) {
+	t.Parallel()
+
+	metadataOne := map[string]string{"a": "b", "c": "d"}
+	metadataTwo := map[string]string{"a": "b\x00c\x00d"}
+	propose := func(reverse bool) Proposal {
+		t.Helper()
+
+		warnings := []Warning{
+			{Code: "same", Field: "description", Message: "same warning", Metadata: metadataOne},
+			{Code: "same", Field: "description", Message: "same warning", Metadata: metadataTwo},
+		}
+		rejections := []Rejection{
+			{Code: "same", Field: "title", Message: "same rejection", Metadata: metadataOne},
+			{Code: "same", Field: "title", Message: "same rejection", Metadata: metadataTwo},
+		}
+		if reverse {
+			warnings[0], warnings[1] = warnings[1], warnings[0]
+			rejections[0], rejections[1] = rejections[1], rejections[0]
+		}
+		proposer, err := NewProposer(Dependencies{Generator: candidateGeneratorFunc(func(context.Context, GenerationRequest) (Candidate, error) {
+			return Candidate{
+				Changes:    []FieldChange{{Field: "description", Value: "Steel bottle", EvidenceIDs: []string{"raw-1"}}},
+				Warnings:   warnings,
+				Rejections: rejections,
+			}, nil
+		})})
+		if err != nil {
+			t.Fatalf("NewProposer() error = %v", err)
+		}
+		proposal, err := proposer.Propose(context.Background(), validRequest())
+		if err != ErrPolicyRejected {
+			t.Fatalf("Propose() error = %v, want ErrPolicyRejected", err)
+		}
+		return proposal
+	}
+
+	forward := propose(false)
+	reversed := propose(true)
+	if !reflect.DeepEqual(forward, reversed) {
+		t.Fatalf("diagnostic order depends on generator order\nforward: %#v\nreverse: %#v", forward, reversed)
+	}
+	if len(forward.Warnings) != 2 || len(forward.Rejections) != 2 {
+		t.Fatalf("distinct metadata was collapsed: warnings=%#v rejections=%#v", forward.Warnings, forward.Rejections)
+	}
+}
+
+func TestProposeDeduplicatesGeneratorAndPolicyRejection(t *testing.T) {
+	t.Parallel()
+
+	request := validRequest()
+	request.Policy.AllowedFields = []string{"description", "title"}
+	request.Policy.RequiredFields = []string{"description", "title"}
+	request.Policy.MinimumQualityScore = 0
+	generator := candidateGeneratorFunc(func(context.Context, GenerationRequest) (Candidate, error) {
+		return Candidate{
+			Changes: []FieldChange{{Field: "description", Value: "Steel bottle", EvidenceIDs: []string{"raw-1"}}},
+			Rejections: []Rejection{{
+				Code:    " REQUIRED_FIELD_MISSING ",
+				Field:   " title ",
+				Message: " required field change is missing ",
+			}},
+		}, nil
+	})
+	proposer, err := NewProposer(Dependencies{Generator: generator})
+	if err != nil {
+		t.Fatalf("NewProposer() error = %v", err)
+	}
+
+	proposal, err := proposer.Propose(context.Background(), request)
+	if err != ErrPolicyRejected {
+		t.Fatalf("Propose() error = %v, want ErrPolicyRejected", err)
+	}
+	want := []Rejection{{
+		Code:    "required_field_missing",
+		Field:   "title",
+		Message: "required field change is missing",
+	}}
+	if !reflect.DeepEqual(proposal.Rejections, want) {
+		t.Fatalf("Propose() rejections = %#v, want %#v", proposal.Rejections, want)
+	}
+}
+
 func validRequest() Request {
 	return Request{
 		Snapshot: catalog.ProductSnapshot{Title: "Bottle"},
@@ -495,3 +638,18 @@ type nilCandidateGenerator struct{}
 func (*nilCandidateGenerator) Generate(context.Context, GenerationRequest) (Candidate, error) {
 	panic("typed-nil generator must be rejected before use")
 }
+
+type cancelAfterFirstErrContext struct {
+	errCalls int
+}
+
+func (*cancelAfterFirstErrContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (*cancelAfterFirstErrContext) Done() <-chan struct{}       { return nil }
+func (c *cancelAfterFirstErrContext) Err() error {
+	c.errCalls++
+	if c.errCalls == 1 {
+		return nil
+	}
+	return context.Canceled
+}
+func (*cancelAfterFirstErrContext) Value(any) any { return nil }

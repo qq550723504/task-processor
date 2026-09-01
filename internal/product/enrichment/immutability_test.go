@@ -15,6 +15,7 @@ func TestProposeIsolatesInputsGeneratorRequestAndCandidateOutput(t *testing.T) {
 	request := validRequest()
 	request.Snapshot.Attributes = []catalog.Attribute{{Name: "material", Value: "steel"}}
 	request.Snapshot.Specifications = &catalog.Specifications{Technical: map[string]string{"grade": "304"}}
+	request.Source.RawReference.ReferenceType = "crawler_snapshot"
 	request.Source.RawReference.Metadata = map[string]string{"etag": "source-v1"}
 	request.Source.ProductCandidate.Attributes = map[string]string{"finish": "matte"}
 	request.Policy.AllowedFields = []string{"description"}
@@ -37,6 +38,7 @@ func TestProposeIsolatesInputsGeneratorRequestAndCandidateOutput(t *testing.T) {
 		generated.Snapshot.Attributes[0].Value = "plastic"
 		generated.Snapshot.Specifications.Technical["grade"] = "unknown"
 		generated.Source.RawReference.Metadata["etag"] = "generator-mutated"
+		generated.Source.RawReference.ReferenceType = "generator-mutated"
 		generated.Source.ProductCandidate.Attributes["finish"] = "gloss"
 		generated.Policy.AllowedFields[0] = "title"
 		generated.Policy.RequiredFields[0] = "title"
@@ -60,6 +62,9 @@ func TestProposeIsolatesInputsGeneratorRequestAndCandidateOutput(t *testing.T) {
 	}
 	if got := proposal.Evidence[0].Metadata["etag"]; got != "source-v1" {
 		t.Fatalf("proposal evidence metadata = %q, want source-v1", got)
+	}
+	if got := proposal.Evidence[0].ReferenceType; got != "crawler_snapshot" {
+		t.Fatalf("proposal evidence reference type = %q, want crawler_snapshot", got)
 	}
 
 	returned.Changes[0].EvidenceIDs[0] = "candidate-mutated"

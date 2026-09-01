@@ -1,9 +1,9 @@
 package enrichment
 
 import (
-	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 
 	"task-processor/internal/product/catalog"
@@ -55,13 +55,14 @@ func validateEvidence(source sourcing.SourceEnvelope, changes []FieldChange) ([]
 		changes[i].EvidenceIDs = []string{id}
 	}
 	return []Evidence{{
-		ID:          id,
-		ReferenceID: raw.ReferenceID,
-		SnapshotID:  raw.SnapshotID,
-		Checksum:    raw.Checksum,
-		URL:         raw.URL,
-		CapturedAt:  raw.CapturedAt,
-		Metadata:    cloneStringMap(raw.Metadata),
+		ReferenceType: raw.ReferenceType,
+		ID:            id,
+		ReferenceID:   raw.ReferenceID,
+		SnapshotID:    raw.SnapshotID,
+		Checksum:      raw.Checksum,
+		URL:           raw.URL,
+		CapturedAt:    raw.CapturedAt,
+		Metadata:      cloneStringMap(raw.Metadata),
 	}}, nil
 }
 
@@ -160,18 +161,30 @@ func stableWarnings(items []Warning) []Warning {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]Warning, len(items))
+	type keyedWarning struct {
+		key  string
+		item Warning
+	}
+	keyed := make([]keyedWarning, len(items))
 	for i, item := range items {
-		out[i] = Warning{
+		canonical := Warning{
 			Code:     strings.ToLower(strings.TrimSpace(item.Code)),
 			Field:    strings.TrimSpace(item.Field),
 			Message:  strings.TrimSpace(item.Message),
 			Metadata: cloneStringMap(item.Metadata),
 		}
+		keyed[i] = keyedWarning{key: warningKey(canonical), item: canonical}
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		return warningKey(out[i]) < warningKey(out[j])
+	sort.Slice(keyed, func(i, j int) bool {
+		return keyed[i].key < keyed[j].key
 	})
+	out := make([]Warning, 0, len(keyed))
+	for i, item := range keyed {
+		if i > 0 && item.key == keyed[i-1].key {
+			continue
+		}
+		out = append(out, item.item)
+	}
 	return out
 }
 
@@ -179,27 +192,62 @@ func stableRejections(items []Rejection) []Rejection {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]Rejection, len(items))
+	type keyedRejection struct {
+		key  string
+		item Rejection
+	}
+	keyed := make([]keyedRejection, len(items))
 	for i, item := range items {
-		out[i] = Rejection{
+		canonical := Rejection{
 			Code:     strings.ToLower(strings.TrimSpace(item.Code)),
 			Field:    strings.TrimSpace(item.Field),
 			Message:  strings.TrimSpace(item.Message),
 			Metadata: cloneStringMap(item.Metadata),
 		}
+		keyed[i] = keyedRejection{key: rejectionKey(canonical), item: canonical}
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		return rejectionKey(out[i]) < rejectionKey(out[j])
+	sort.Slice(keyed, func(i, j int) bool {
+		return keyed[i].key < keyed[j].key
 	})
+	out := make([]Rejection, 0, len(keyed))
+	for i, item := range keyed {
+		if i > 0 && item.key == keyed[i-1].key {
+			continue
+		}
+		out = append(out, item.item)
+	}
 	return out
 }
 
 func warningKey(item Warning) string {
-	return fmt.Sprintf("%s\x00%s\x00%s", item.Code, item.Field, item.Message)
+	return diagnosticKey(item.Code, item.Field, item.Message, item.Metadata)
 }
 
 func rejectionKey(item Rejection) string {
-	return fmt.Sprintf("%s\x00%s\x00%s", item.Code, item.Field, item.Message)
+	return diagnosticKey(item.Code, item.Field, item.Message, item.Metadata)
+}
+
+func diagnosticKey(code, field, message string, metadata map[string]string) string {
+	var key strings.Builder
+	writeDiagnosticKeyPart(&key, code)
+	writeDiagnosticKeyPart(&key, field)
+	writeDiagnosticKeyPart(&key, message)
+
+	metadataKeys := make([]string, 0, len(metadata))
+	for metadataKey := range metadata {
+		metadataKeys = append(metadataKeys, metadataKey)
+	}
+	sort.Strings(metadataKeys)
+	for _, metadataKey := range metadataKeys {
+		writeDiagnosticKeyPart(&key, metadataKey)
+		writeDiagnosticKeyPart(&key, metadata[metadataKey])
+	}
+	return key.String()
+}
+
+func writeDiagnosticKeyPart(key *strings.Builder, value string) {
+	key.WriteString(strconv.Quote(value))
+	key.WriteByte(0)
 }
 
 func cloneRequest(request Request) Request {

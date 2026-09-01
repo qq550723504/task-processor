@@ -51,6 +51,9 @@ func (p *proposer) Propose(ctx context.Context, request Request) (Proposal, erro
 	}
 
 	generationInput := cloneRequest(working)
+	if err := ctx.Err(); err != nil {
+		return Proposal{}, err
+	}
 	candidate, err := p.generator.Generate(ctx, GenerationRequest{
 		Snapshot: generationInput.Snapshot,
 		Source:   generationInput.Source,

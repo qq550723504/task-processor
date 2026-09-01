@@ -42,13 +42,14 @@ type FieldChange struct {
 }
 
 type Evidence struct {
-	ID          string
-	ReferenceID string
-	SnapshotID  string
-	Checksum    string
-	URL         string
-	CapturedAt  time.Time
-	Metadata    map[string]string
+	ReferenceType string
+	ID            string
+	ReferenceID   string
+	SnapshotID    string
+	Checksum      string
+	URL           string
+	CapturedAt    time.Time
+	Metadata      map[string]string
 }
 
 type QualityScore struct {
