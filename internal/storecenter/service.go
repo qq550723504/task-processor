@@ -115,6 +115,48 @@ type Service struct {
 	audit       AuditRepository
 	connections ConnectionStatusProvider
 	now         func() time.Time
+	locks       mutationLockRegistry
+}
+
+type mutationLockRegistry struct {
+	mu    sync.Mutex
+	locks map[mutationLockKey]*mutationLock
+}
+
+type mutationLockKey struct {
+	organizationID string
+	storeID        string
+}
+
+type mutationLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func (r *mutationLockRegistry) acquire(organizationID, storeID string) func() {
+	key := mutationLockKey{organizationID: organizationID, storeID: storeID}
+	r.mu.Lock()
+	if r.locks == nil {
+		r.locks = make(map[mutationLockKey]*mutationLock)
+	}
+	lock := r.locks[key]
+	if lock == nil {
+		lock = &mutationLock{}
+		r.locks[key] = lock
+	}
+	lock.refs++
+	r.mu.Unlock()
+
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		r.mu.Lock()
+		lock.refs--
+		if lock.refs == 0 {
+			delete(r.locks, key)
+		}
+		r.mu.Unlock()
+	}
 }
 
 const orphanedStoreReservationGracePeriod = 5 * time.Minute
@@ -421,6 +463,9 @@ type mutationRequest struct {
 }
 
 func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMutationResult, error) {
+	release := s.locks.acquire(request.organizationID, request.storeID)
+	defer release()
+
 	operationKey := deterministicMutationKey(request.organizationID, request.storeID, request.actionName, request.expectedVersion)
 	store, err := s.repository.Get(ctx, request.organizationID, request.storeID)
 	if errors.Is(err, ErrNotFound) {
@@ -477,8 +522,17 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 				intent.StoreVersion = request.expectedVersion
 				intent.PayloadFingerprint = request.payloadFingerprint
 				recordedIntent, _, intentErr := s.audit.Record(ctx, intent)
-				if intentErr != nil || validateMutationIntent(&recordedIntent, request, store, operationKey) != nil {
+				if intentErr != nil {
+					if errors.Is(intentErr, ErrAuditIdentityMismatch) {
+						existingIntent, getErr := s.audit.Get(ctx, request.organizationID, operationKey, request.intentAuditAction)
+						if getErr == nil && mutationIntentHasDifferentPayload(existingIntent, request, store, operationKey) {
+							return StoreMutationResult{}, ErrVersionConflict
+						}
+					}
 					return StoreMutationResult{}, dependencyError(intentErr)
+				}
+				if validateMutationIntent(&recordedIntent, request, store, operationKey) != nil {
+					return StoreMutationResult{}, dependencyError(ErrAuditIdentityMismatch)
 				}
 				durableIntent = &recordedIntent
 				auditFields = append([]string(nil), recordedIntent.SafeFieldNames...)
@@ -521,6 +575,10 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 		return StoreMutationResult{}, err
 	}
 	return StoreMutationResult{Store: projection, Replayed: replayed || auditReplayed}, nil
+}
+
+func mutationIntentHasDifferentPayload(event *AuditEvent, request mutationRequest, store *Store, operationKey string) bool {
+	return event != nil && store != nil && event.OrganizationID == request.organizationID && event.StoreID == request.storeID && event.AllocationID == store.QuotaAllocationID() && event.RequestKey == operationKey && event.Action == request.intentAuditAction && event.Outcome == AuditOutcomeUnknown && event.FailureCode == AuditFailureNone && event.StoreVersion == request.expectedVersion && event.PayloadFingerprint != request.payloadFingerprint
 }
 
 func validateMutationIntent(event *AuditEvent, request mutationRequest, store *Store, operationKey string) error {
@@ -586,6 +644,8 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 	if err != nil {
 		return DeleteStoreResult{}, err
 	}
+	release := s.locks.acquire(normalized.OrganizationID, normalized.StoreID)
+	defer release()
 	if completed, err := s.audit.Get(ctx, normalized.OrganizationID, normalized.OperationKey, AuditActionDeleteComplete); err == nil {
 		if validateDeleteAudit(completed, normalized, AuditActionDeleteComplete) != nil {
 			return DeleteStoreResult{}, dependencyError(ErrAuditIdentityMismatch)
@@ -620,6 +680,9 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 			return DeleteStoreResult{}, dependencyError(err)
 		}
 		if persistedOperationKey != normalized.OperationKey {
+			if store.Version() != normalized.ExpectedVersion {
+				return DeleteStoreResult{}, ErrVersionConflict
+			}
 			// The persisted key is the durable ownership record. A client may
 			// lose its original key after a downstream failure, so recovery must
 			// continue the durable operation instead of leaving the Store stuck
