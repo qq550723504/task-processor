@@ -1,7 +1,6 @@
 package openai
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,16 +8,45 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	"task-processor/internal/product/enrichment"
 )
 
 const (
-	productEnrichmentPromptMaxBytes = 64 * 1024
-	productEnrichmentOutputMaxBytes = 64 * 1024
+	productEnrichmentPromptMaxBytes          = 64 * 1024
+	productEnrichmentPromptMaxRawStringBytes = 64 * 1024
+	productEnrichmentPromptMaxNodes          = 4096
+	productEnrichmentPromptMaxDepth          = 128
+	productEnrichmentOutputMaxBytes          = 64 * 1024
 )
 
 var errProductEnrichmentByteLimitExceeded = errors.New("product enrichment byte limit exceeded")
+
+type productEnrichmentPromptBudgetKind string
+
+const (
+	productEnrichmentPromptBudgetWithin         productEnrichmentPromptBudgetKind = "within_budget"
+	productEnrichmentPromptBudgetRawStringBytes productEnrichmentPromptBudgetKind = "raw_string_bytes"
+	productEnrichmentPromptBudgetNodes          productEnrichmentPromptBudgetKind = "nodes"
+	productEnrichmentPromptBudgetDepth          productEnrichmentPromptBudgetKind = "depth"
+	productEnrichmentPromptBudgetCycle          productEnrichmentPromptBudgetKind = "cycle"
+	productEnrichmentPromptBudgetUnsupported    productEnrichmentPromptBudgetKind = "unsupported_kind"
+)
+
+type productEnrichmentPromptBudget struct {
+	Kind           productEnrichmentPromptBudgetKind
+	RawStringBytes int
+	Nodes          int
+}
+
+type productEnrichmentPromptBudgetError struct {
+	Kind productEnrichmentPromptBudgetKind
+}
+
+func (e productEnrichmentPromptBudgetError) Error() string {
+	return "product enrichment prompt budget exceeded: " + string(e.Kind)
+}
 
 // TextInvocationRequest is the bounded provider-neutral request owned by this
 // Integration package. Prompt and provider output must each remain within the
@@ -57,6 +85,11 @@ func (a *ProductEnrichmentAdapter) Generate(ctx context.Context, request enrichm
 	}
 	if a == nil || isNilTextInvoker(a.invoker) {
 		return enrichment.Candidate{}, enrichment.ErrExternalCapabilityUnavailable
+	}
+	// Run before requested-field canonicalization because that step allocates a
+	// map proportional to the policy slice supplied by the caller.
+	if budget := inspectProductEnrichmentPromptBudget(request); budget.Kind != productEnrichmentPromptBudgetWithin {
+		return enrichment.Candidate{}, enrichment.ErrInputInvalid
 	}
 
 	evidenceID, err := enrichment.CanonicalEvidenceID(request.Source)
@@ -148,6 +181,23 @@ func canonicalRequestedFields(policy enrichment.PolicySnapshot) ([]string, error
 }
 
 func buildProductEnrichmentPrompt(request enrichment.GenerationRequest, evidenceID string, requestedFields []string) (string, error) {
+	return buildProductEnrichmentPromptWithMarshal(request, evidenceID, requestedFields, json.Marshal)
+}
+
+func buildProductEnrichmentPromptWithMarshal(
+	request enrichment.GenerationRequest,
+	evidenceID string,
+	requestedFields []string,
+	marshal func(any) ([]byte, error),
+) (string, error) {
+	budget := inspectProductEnrichmentPromptBudget(request)
+	if budget.Kind != productEnrichmentPromptBudgetWithin {
+		return "", productEnrichmentPromptBudgetError{Kind: budget.Kind}
+	}
+	if marshal == nil {
+		return "", enrichment.ErrInputInvalid
+	}
+
 	policy := request.Policy
 	policy.AllowedFields = append([]string(nil), policy.AllowedFields...)
 	policy.RequiredFields = append([]string(nil), policy.RequiredFields...)
@@ -167,51 +217,149 @@ func buildProductEnrichmentPrompt(request enrichment.GenerationRequest, evidence
 		EvidenceID:      evidenceID,
 		Request:         domainRequest,
 	}
-	// Encoder writes a single trailing newline. The writer admits one extra byte
-	// for that delimiter, which is removed before the provider sees the prompt.
-	writer := newBoundedJSONWriter(productEnrichmentPromptMaxBytes + 1)
-	if err := json.NewEncoder(writer).Encode(payload); err != nil {
+	encoded, err := marshal(payload)
+	if err != nil {
 		return "", err
 	}
-	encoded := writer.Bytes()
-	if len(encoded) == 0 || encoded[len(encoded)-1] != '\n' {
-		return "", enrichment.ErrInputInvalid
-	}
-	encoded = encoded[:len(encoded)-1]
 	if len(encoded) > productEnrichmentPromptMaxBytes {
 		return "", errProductEnrichmentByteLimitExceeded
 	}
 	return string(encoded), nil
 }
 
-type boundedJSONWriter struct {
-	buffer bytes.Buffer
-	limit  int
+type productEnrichmentPromptBudgetReference struct {
+	kind    reflect.Kind
+	typeOf  reflect.Type
+	pointer uintptr
 }
 
-func newBoundedJSONWriter(limit int) *boundedJSONWriter {
-	return &boundedJSONWriter{limit: limit}
+type productEnrichmentPromptBudgetWalker struct {
+	budget productEnrichmentPromptBudget
+	active map[productEnrichmentPromptBudgetReference]struct{}
 }
 
-func (w *boundedJSONWriter) Write(data []byte) (int, error) {
-	if w == nil || w.limit < 0 || len(data) > w.limit-w.buffer.Len() {
-		return 0, errProductEnrichmentByteLimitExceeded
+var productEnrichmentPromptTimeType = reflect.TypeOf(time.Time{})
+
+// inspectProductEnrichmentPromptBudget walks request structure without copying
+// slices, strings, or map keys. Its only variable allocation is active-path
+// cycle state, bounded by productEnrichmentPromptMaxDepth.
+func inspectProductEnrichmentPromptBudget(value any) productEnrichmentPromptBudget {
+	walker := &productEnrichmentPromptBudgetWalker{
+		budget: productEnrichmentPromptBudget{Kind: productEnrichmentPromptBudgetWithin},
+		active: make(map[productEnrichmentPromptBudgetReference]struct{}),
 	}
-	return w.buffer.Write(data)
+	walker.budget.Kind = walker.visit(reflect.ValueOf(value), 0)
+	return walker.budget
 }
 
-func (w *boundedJSONWriter) Len() int {
-	if w == nil {
-		return 0
+func (w *productEnrichmentPromptBudgetWalker) visit(value reflect.Value, depth int) productEnrichmentPromptBudgetKind {
+	if !value.IsValid() {
+		return productEnrichmentPromptBudgetWithin
 	}
-	return w.buffer.Len()
+	if depth > productEnrichmentPromptMaxDepth {
+		return productEnrichmentPromptBudgetDepth
+	}
+	w.budget.Nodes++
+	if w.budget.Nodes > productEnrichmentPromptMaxNodes {
+		return productEnrichmentPromptBudgetNodes
+	}
+
+	switch value.Kind() {
+	case reflect.String:
+		length := len(value.String())
+		if length > productEnrichmentPromptMaxRawStringBytes-w.budget.RawStringBytes {
+			w.budget.RawStringBytes = productEnrichmentPromptMaxRawStringBytes + 1
+			return productEnrichmentPromptBudgetRawStringBytes
+		}
+		w.budget.RawStringBytes += length
+		return productEnrichmentPromptBudgetWithin
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64,
+		reflect.Complex64, reflect.Complex128:
+		return productEnrichmentPromptBudgetWithin
+	case reflect.Interface:
+		if value.IsNil() {
+			return productEnrichmentPromptBudgetWithin
+		}
+		return w.visit(value.Elem(), depth+1)
+	case reflect.Pointer:
+		if value.IsNil() {
+			return productEnrichmentPromptBudgetWithin
+		}
+		return w.visitReference(value, func() productEnrichmentPromptBudgetKind {
+			return w.visit(value.Elem(), depth+1)
+		})
+	case reflect.Struct:
+		// time.Time is a fixed-shape JSON scalar. Traversing its unexported
+		// time.Location implementation graph would measure runtime internals,
+		// not provider-neutral request data.
+		if value.Type() == productEnrichmentPromptTimeType {
+			return productEnrichmentPromptBudgetWithin
+		}
+		for index := 0; index < value.NumField(); index++ {
+			if kind := w.visit(value.Field(index), depth+1); kind != productEnrichmentPromptBudgetWithin {
+				return kind
+			}
+		}
+		return productEnrichmentPromptBudgetWithin
+	case reflect.Slice:
+		if value.IsNil() {
+			return productEnrichmentPromptBudgetWithin
+		}
+		return w.visitReference(value, func() productEnrichmentPromptBudgetKind {
+			for index := 0; index < value.Len(); index++ {
+				if kind := w.visit(value.Index(index), depth+1); kind != productEnrichmentPromptBudgetWithin {
+					return kind
+				}
+			}
+			return productEnrichmentPromptBudgetWithin
+		})
+	case reflect.Array:
+		for index := 0; index < value.Len(); index++ {
+			if kind := w.visit(value.Index(index), depth+1); kind != productEnrichmentPromptBudgetWithin {
+				return kind
+			}
+		}
+		return productEnrichmentPromptBudgetWithin
+	case reflect.Map:
+		if value.IsNil() {
+			return productEnrichmentPromptBudgetWithin
+		}
+		return w.visitReference(value, func() productEnrichmentPromptBudgetKind {
+			iterator := value.MapRange()
+			for iterator.Next() {
+				if kind := w.visit(iterator.Key(), depth+1); kind != productEnrichmentPromptBudgetWithin {
+					return kind
+				}
+				if kind := w.visit(iterator.Value(), depth+1); kind != productEnrichmentPromptBudgetWithin {
+					return kind
+				}
+			}
+			return productEnrichmentPromptBudgetWithin
+		})
+	default:
+		return productEnrichmentPromptBudgetUnsupported
+	}
 }
 
-func (w *boundedJSONWriter) Bytes() []byte {
-	if w == nil {
-		return nil
+func (w *productEnrichmentPromptBudgetWalker) visitReference(
+	value reflect.Value,
+	visitChildren func() productEnrichmentPromptBudgetKind,
+) productEnrichmentPromptBudgetKind {
+	reference := productEnrichmentPromptBudgetReference{
+		kind:    value.Kind(),
+		typeOf:  value.Type(),
+		pointer: value.Pointer(),
 	}
-	return w.buffer.Bytes()
+	if _, cycle := w.active[reference]; cycle {
+		return productEnrichmentPromptBudgetCycle
+	}
+	w.active[reference] = struct{}{}
+	kind := visitChildren()
+	delete(w.active, reference)
+	return kind
 }
 
 func parseProductEnrichmentResponse(raw string, requestedFields []string, evidenceID string) (enrichment.Candidate, error) {

@@ -187,38 +187,100 @@ func TestProductEnrichmentAdapterDoesNotInvokeAfterPreparationCancellation(t *te
 	}
 }
 
-func TestBoundedJSONWriterEnforcesExactByteLimit(t *testing.T) {
-	t.Parallel()
-
-	exact := newBoundedJSONWriter(productEnrichmentPromptMaxBytes)
-	written, err := exact.Write(make([]byte, productEnrichmentPromptMaxBytes))
-	if err != nil || written != productEnrichmentPromptMaxBytes || exact.Len() != productEnrichmentPromptMaxBytes {
-		t.Fatalf("exact limit write = (%d, %v, len %d), want (%d, nil, len %d)", written, err, exact.Len(), productEnrichmentPromptMaxBytes, productEnrichmentPromptMaxBytes)
-	}
-
-	over := newBoundedJSONWriter(productEnrichmentPromptMaxBytes)
-	written, err = over.Write(make([]byte, productEnrichmentPromptMaxBytes+1))
-	if !errors.Is(err, errProductEnrichmentByteLimitExceeded) || written != 0 || over.Len() != 0 {
-		t.Fatalf("limit+1 write = (%d, %v, len %d), want (0, byte-limit error, len 0)", written, err, over.Len())
-	}
-}
-
-func TestProductEnrichmentAdapterRejectsOversizedPromptBeforeInvocation(t *testing.T) {
+func TestProductEnrichmentPromptPreflightRejectsHugeStringWithoutMarshal(t *testing.T) {
 	t.Parallel()
 
 	request := validEnrichmentGenerationRequest()
-	request.Snapshot.Description = strings.Repeat("x", productEnrichmentPromptMaxBytes)
-	invoker := &enrichmentTextInvokerStub{output: `{"description":"Steel bottle"}`}
+	request.Snapshot.Description = strings.Repeat("x", productEnrichmentPromptMaxRawStringBytes+1)
+	assertProductEnrichmentPromptPreflightRejectsWithoutMarshal(t, request, productEnrichmentPromptBudgetRawStringBytes)
 
+	invoker := &enrichmentTextInvokerStub{output: `{"description":"Steel bottle"}`}
 	got, err := NewProductEnrichmentAdapter(invoker).Generate(context.Background(), request)
+	if err != enrichment.ErrInputInvalid || !reflect.DeepEqual(got, enrichment.Candidate{}) || invoker.calls != 0 {
+		t.Fatalf("Generate(huge string) = (%#v, %v, calls %d), want (zero, ErrInputInvalid, calls 0)", got, err, invoker.calls)
+	}
+}
+
+func TestProductEnrichmentPromptPreflightRejectsExcessiveCollectionNodesWithoutMarshal(t *testing.T) {
+	t.Parallel()
+
+	request := validEnrichmentGenerationRequest()
+	request.Snapshot.SellingPoints = make([]string, productEnrichmentPromptMaxNodes+1)
+	assertProductEnrichmentPromptPreflightRejectsWithoutMarshal(t, request, productEnrichmentPromptBudgetNodes)
+
+	invoker := &enrichmentTextInvokerStub{output: `{"description":"Steel bottle"}`}
+	got, err := NewProductEnrichmentAdapter(invoker).Generate(context.Background(), request)
+	if err != enrichment.ErrInputInvalid || !reflect.DeepEqual(got, enrichment.Candidate{}) || invoker.calls != 0 {
+		t.Fatalf("Generate(excess nodes) = (%#v, %v, calls %d), want (zero, ErrInputInvalid, calls 0)", got, err, invoker.calls)
+	}
+}
+
+func TestProductEnrichmentPromptPreflightRejectsCyclesFailClosed(t *testing.T) {
+	t.Parallel()
+
+	type cyclicValue struct{ Next *cyclicValue }
+	value := &cyclicValue{}
+	value.Next = value
+	budget := inspectProductEnrichmentPromptBudget(value)
+	if budget.Kind != productEnrichmentPromptBudgetCycle {
+		t.Fatalf("cycle budget kind = %q, want %q", budget.Kind, productEnrichmentPromptBudgetCycle)
+	}
+}
+
+func TestProductEnrichmentPromptPreflightRejectsExcessiveDepthFailClosed(t *testing.T) {
+	t.Parallel()
+
+	type nestedValue struct{ Next *nestedValue }
+	root := &nestedValue{}
+	cursor := root
+	for range productEnrichmentPromptMaxDepth + 1 {
+		cursor.Next = &nestedValue{}
+		cursor = cursor.Next
+	}
+	budget := inspectProductEnrichmentPromptBudget(root)
+	if budget.Kind != productEnrichmentPromptBudgetDepth {
+		t.Fatalf("depth budget kind = %q, want %q", budget.Kind, productEnrichmentPromptBudgetDepth)
+	}
+}
+
+func TestProductEnrichmentAdapterEnforcesSerializedPromptByteLimit(t *testing.T) {
+	t.Parallel()
+
+	exactRequest := enrichmentRequestForPromptBytes(t, productEnrichmentPromptMaxBytes)
+	if budget := inspectProductEnrichmentPromptBudget(exactRequest); budget.Kind != productEnrichmentPromptBudgetWithin {
+		t.Fatalf("exact prompt preflight = %#v, want within budget", budget)
+	}
+	exactFields, err := canonicalRequestedFields(exactRequest.Policy)
+	if err != nil {
+		t.Fatalf("canonicalRequestedFields(exact) error = %v", err)
+	}
+	exactEvidenceID, err := enrichment.CanonicalEvidenceID(exactRequest.Source)
+	if err != nil {
+		t.Fatalf("CanonicalEvidenceID(exact) error = %v", err)
+	}
+	exactPrompt, err := buildProductEnrichmentPrompt(exactRequest, exactEvidenceID, exactFields)
+	if err != nil || len(exactPrompt) != productEnrichmentPromptMaxBytes {
+		t.Fatalf("build exact prompt = (bytes %d, err %v), want (%d, nil)", len(exactPrompt), err, productEnrichmentPromptMaxBytes)
+	}
+	exactInvoker := &enrichmentTextInvokerStub{output: `{"description":"Steel bottle"}`}
+	if _, err := NewProductEnrichmentAdapter(exactInvoker).Generate(context.Background(), exactRequest); err != nil {
+		t.Fatalf("Generate(exact prompt limit) error = %v", err)
+	}
+	if got := len(exactInvoker.request.Prompt); got != productEnrichmentPromptMaxBytes {
+		t.Fatalf("exact prompt bytes = %d, want %d", got, productEnrichmentPromptMaxBytes)
+	}
+
+	overRequest := enrichmentRequestForPromptBytes(t, productEnrichmentPromptMaxBytes+1)
+	overInvoker := &enrichmentTextInvokerStub{output: `{"description":"Steel bottle"}`}
+	got, err := NewProductEnrichmentAdapter(overInvoker).Generate(context.Background(), overRequest)
 	if err != enrichment.ErrInputInvalid {
 		t.Fatalf("Generate() error = %v, want ErrInputInvalid", err)
 	}
 	if !reflect.DeepEqual(got, enrichment.Candidate{}) {
 		t.Fatalf("Generate() candidate = %#v, want zero candidate", got)
 	}
-	if invoker.calls != 0 {
-		t.Fatalf("invocation calls = %d, want 0 for oversized prompt", invoker.calls)
+	if overInvoker.calls != 0 {
+		t.Fatalf("invocation calls = %d, want 0 for oversized serialized prompt", overInvoker.calls)
 	}
 }
 
@@ -348,6 +410,63 @@ func validEnrichmentGenerationRequest() enrichment.GenerationRequest {
 			MinimumQualityScore: 80,
 		},
 	}
+}
+
+func assertProductEnrichmentPromptPreflightRejectsWithoutMarshal(
+	t *testing.T,
+	request enrichment.GenerationRequest,
+	wantKind productEnrichmentPromptBudgetKind,
+) {
+	t.Helper()
+
+	budget := inspectProductEnrichmentPromptBudget(request)
+	if budget.Kind != wantKind {
+		t.Fatalf("preflight budget kind = %q, want %q (raw bytes %d, nodes %d)", budget.Kind, wantKind, budget.RawStringBytes, budget.Nodes)
+	}
+	requestedFields, err := canonicalRequestedFields(request.Policy)
+	if err != nil {
+		t.Fatalf("canonicalRequestedFields() error = %v", err)
+	}
+	evidenceID, err := enrichment.CanonicalEvidenceID(request.Source)
+	if err != nil {
+		t.Fatalf("CanonicalEvidenceID() error = %v", err)
+	}
+	marshalCalls := 0
+	_, err = buildProductEnrichmentPromptWithMarshal(request, evidenceID, requestedFields, func(any) ([]byte, error) {
+		marshalCalls++
+		return nil, errors.New("marshal must not be called")
+	})
+	if err == nil {
+		t.Fatal("buildProductEnrichmentPromptWithMarshal() error = nil, want preflight rejection")
+	}
+	if marshalCalls != 0 {
+		t.Fatalf("marshal calls = %d, want 0 after preflight rejection", marshalCalls)
+	}
+}
+
+func enrichmentRequestForPromptBytes(t *testing.T, targetBytes int) enrichment.GenerationRequest {
+	t.Helper()
+
+	request := validEnrichmentGenerationRequest()
+	request.Snapshot.Description = "x"
+	requestedFields, err := canonicalRequestedFields(request.Policy)
+	if err != nil {
+		t.Fatalf("canonicalRequestedFields() error = %v", err)
+	}
+	evidenceID, err := enrichment.CanonicalEvidenceID(request.Source)
+	if err != nil {
+		t.Fatalf("CanonicalEvidenceID() error = %v", err)
+	}
+	baseline, err := buildProductEnrichmentPrompt(request, evidenceID, requestedFields)
+	if err != nil {
+		t.Fatalf("buildProductEnrichmentPrompt(baseline) error = %v", err)
+	}
+	paddingBytes := targetBytes - len(baseline)
+	if paddingBytes < 0 {
+		t.Fatalf("target prompt bytes %d smaller than baseline %d", targetBytes, len(baseline))
+	}
+	request.Snapshot.Description = strings.Repeat("x", paddingBytes+1)
+	return request
 }
 
 func mustMarshalEnrichmentRequest(t *testing.T, request enrichment.GenerationRequest) []byte {
