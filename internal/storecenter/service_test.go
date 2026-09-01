@@ -1753,6 +1753,37 @@ func TestServiceUpdateIntentFailureDoesNotSaveAndRetryConverges(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateReplayUsesDurableIntentActorForStoreWrite(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	repository.saveErr = errors.New("save unavailable")
+	audit := newAuditRepositoryFake()
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "actor-a", StoreID: store.ID(), ExpectedVersion: store.Version(), Name: "After", Region: store.Region()}
+	if _, err := service.Update(context.Background(), first); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Update() = %v, want dependency error", err)
+	}
+	repository.saveErr = nil
+	retry := first
+	retry.ActorSubject = "actor-b"
+	result, err := service.Update(context.Background(), retry)
+	if err != nil {
+		t.Fatalf("cross-actor retry Update() = %v", err)
+	}
+	if result.Store.Store.UpdatedBy() != "actor-a" {
+		t.Fatalf("replayed Store UpdatedBy = %q, want durable intent actor-a", result.Store.Store.UpdatedBy())
+	}
+	operationKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte("org-a\n"+store.ID()+"\nupdate\n"+fmt.Sprint(store.Version()))).String()
+	completed := audit.eventFor("org-a", operationKey, storecenter.AuditActionStoreUpdated)
+	if completed.ActorSubject != "actor-a" {
+		t.Fatalf("completed audit actor = %q, want actor-a", completed.ActorSubject)
+	}
+}
+
 func TestServiceUpdateRejectsChangedPayloadForExistingIntent(t *testing.T) {
 	repository := newStoreRepositoryFake()
 	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")

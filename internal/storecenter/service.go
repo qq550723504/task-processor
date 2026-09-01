@@ -440,8 +440,8 @@ func (s *Service) Update(ctx context.Context, request UpdateStoreRequest) (Store
 			fields = append(fields, "region")
 		}
 		return fields
-	}, apply: func(store *Store, at time.Time) (bool, error) {
-		return store.EditBasic(normalized.Name, normalized.Region, normalized.ActorSubject, at)
+	}, apply: func(store *Store, at time.Time, actor string) (bool, error) {
+		return store.EditBasic(normalized.Name, normalized.Region, actor, at)
 	}, matches: func(store *Store) bool { return store.Name() == normalized.Name && store.Region() == normalized.Region }})
 }
 
@@ -458,11 +458,11 @@ func (s *Service) changeLifecycle(ctx context.Context, request StoreLifecycleReq
 	if err != nil {
 		return StoreMutationResult{}, err
 	}
-	return s.mutate(ctx, mutationRequest{organizationID: normalized.OrganizationID, actor: normalized.ActorSubject, storeID: normalized.StoreID, expectedVersion: normalized.ExpectedVersion, actionName: actionName, intentAuditAction: AuditActionStoreLifecycleStarted, auditAction: auditAction, fields: []string{"lifecycle_status"}, payloadFingerprint: hashTuple("store-lifecycle-request", actionName, string(from), string(to)), previous: from, next: to, apply: func(store *Store, at time.Time) (bool, error) {
+	return s.mutate(ctx, mutationRequest{organizationID: normalized.OrganizationID, actor: normalized.ActorSubject, storeID: normalized.StoreID, expectedVersion: normalized.ExpectedVersion, actionName: actionName, intentAuditAction: AuditActionStoreLifecycleStarted, auditAction: auditAction, fields: []string{"lifecycle_status"}, payloadFingerprint: hashTuple("store-lifecycle-request", actionName, string(from), string(to)), previous: from, next: to, apply: func(store *Store, at time.Time, actor string) (bool, error) {
 		if store.LifecycleStatus() != from {
 			return false, ErrInvalidTransition
 		}
-		if err := store.TransitionTo(to, normalized.ActorSubject, at); err != nil {
+		if err := store.TransitionTo(to, actor, at); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -479,7 +479,7 @@ type mutationRequest struct {
 	payloadFingerprint                         string
 	fieldsFor                                  func(*Store) []string
 	previous, next                             LifecycleStatus
-	apply                                      func(*Store, time.Time) (bool, error)
+	apply                                      func(*Store, time.Time, string) (bool, error)
 	matches                                    func(*Store) bool
 }
 
@@ -503,8 +503,14 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 		} else if !errors.Is(intentErr, ErrNotFound) {
 			return StoreMutationResult{}, dependencyError(intentErr)
 		}
-		if durableIntent != nil && store.Version() == request.expectedVersion && validateMutationIntent(durableIntent, request, store, operationKey) != nil {
-			return StoreMutationResult{}, dependencyError(ErrAuditIdentityMismatch)
+		if durableIntent != nil && store.Version() == request.expectedVersion {
+			if validateMutationIntent(durableIntent, request, store, operationKey) != nil {
+				return StoreMutationResult{}, dependencyError(ErrAuditIdentityMismatch)
+			}
+			// The intent is the durable owner of the in-flight mutation. A
+			// cross-actor retry must use that owner for the aggregate write too,
+			// otherwise UpdatedBy diverges from the audit provenance.
+			request.actor = durableIntent.ActorSubject
 		}
 	}
 	replayed := false
@@ -526,7 +532,7 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 		if request.fieldsFor != nil {
 			auditFields = request.fieldsFor(store)
 		}
-		changed, applyErr := request.apply(store, s.monotonicNow(store.UpdatedAt()))
+		changed, applyErr := request.apply(store, s.monotonicNow(store.UpdatedAt()), request.actor)
 		if applyErr != nil {
 			if errors.Is(applyErr, ErrInvalidTransition) {
 				return StoreMutationResult{}, ErrInvalidTransition
