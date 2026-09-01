@@ -137,11 +137,14 @@ ImageAgent 可以通过明确 Port 调用 `product/image` 能力、读取规范�
 `internal/app` 只负责装配：
 
 - ImageAgent Tool 与 `product/image` 能力
+- `marketplace/imagepolicy` 的不可变 Resolver 与 ImageAgent Tool
 - ImageAgent Publisher 与 S3 Adapter
 - ImageAgent Asset Catalog 与 `product/asset.Repository`
 - 产品领域需要的 Provider-neutral Port 与具体 Integration Adapter
 
 缺少生产依赖时装配必须失败。内存 Repository 只能由测试显式创建。
+
+图片策略不得复用历史项目配置加载器。版本化策略数据由专用 `internal/integration/policy/productimage` Adapter 严格解析为 `PolicySet`，再由 App 注入 Resolver；领域和 Marketplace policy package 不读取文件、环境变量、配置单例或运行时路径。策略资源缺失、schema version 不支持、条目冲突或校验失败时，worker 启动失败，不启用 builtin fallback。
 
 ## 5. 领域能力
 
@@ -188,6 +191,8 @@ Proposer 不写 ProductSnapshot、不创建任务、不持久化 Proposal、不�
 `product/image` 定义图片领域模型和窄能力接口，例如 SubjectExtractor、WhiteBackgroundRenderer、SceneRenderer 与 ImageReviewer。具体模型调用由 Integration Adapter 实现并通过 App 注入。
 
 图片能力返回候选图片及可验证元数据，不创建 ImageAgent Run、不写资产 Repository、不发布到对象存储，也不决定重试。
+
+Marketplace 图片策略是 `product/image` 的下游消费者。它只按调用方提供的结构化 `Marketplace`、`Country`、`Family`、`SceneCategory` 精确键解析注入的不可变策略；键必须在边界外已经规范，Resolver 不 trim、不做大小写折叠。它不读取 `ProductType`、Title 或其他自由文本，不进行关键词匹配、tokenization、stemming、词形兼容、category 推断、隐式 fallback，也不在 Go 代码中维护平台/category 业务穷举表。Marketplace 使用 ImageAgent 唯一的 `Run.TargetPlatform`，其余三个键在创建 Run 时显式提交；完整键随 Run 固化并进入执行 fingerprint。无法精确解析时执行失败。
 
 ### 5.5 Asset
 

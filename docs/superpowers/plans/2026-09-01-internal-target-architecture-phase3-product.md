@@ -680,14 +680,13 @@ git commit -m "refactor(product): remove enrichment task runtime"
 
 ---
 
-### Task 9: 建立纯 Product Image 能力
+### Task 9A: 建立纯 Product Image 能力
 
 **Files:**
 - Create: `internal/product/image/{model.go,ports.go,errors.go,heuristics.go,scene.go}`
 - Create/adapt pure tests from `internal/productimage/*_test.go`
 - Create/adapt into `internal/product/image/` from `internal/productimage/{cleanup_heuristics.go,generation_metadata_maps.go,inspection_heuristics.go,ip_risk.go,readable_source.go,scene_generation_metadata.go,scene_layout.go,scene_options.go,scene_preset_resolver.go,scene_profile.go,scene_prompt_resolver.go,scene_request_context.go,selling_point_content.go,selling_point_draw_output.go,selling_point_draw_preview_executor.go,selling_point_fill_input.go,selling_point_layout.go,selling_point_metadata.go,selling_point_render_blocks.go,selling_point_render_output.go,selling_point_render_output_layout.go,selling_point_render_plan.go,selling_point_slots.go}` and their unit tests
 - Create/adapt task-free types from `internal/productimage/domain/{model.go,scene_options.go}`；omit Task、TaskStatus、request persistence and SQL scanner methods
-- Create: `internal/marketplace/imagepolicy/product_image_profile.go` from `internal/productimage/marketplace_profile.go`; App injects this policy and `internal/product/image` does not import Marketplace
 - Retain only until Task 16: `internal/productimage/{lifecycle.go,model_fallback_policy.go,pipeline.go,pipeline_degradation.go,subject_fallback.go}`；none of these files may be copied into the target package
 - Copy/adapt: `internal/productimage/presets/scene_profiles.yaml` → `internal/product/image/presets/scene_profiles.yaml`；旧资源随 Task 16 删除
 - Test: `internal/product/image/{ports_test.go,heuristics_test.go,scene_test.go,boundary_guard_test.go}`
@@ -750,9 +749,105 @@ Expected: PASS；`go list -f '{{join .Imports "\n"}}' ./internal/product/image` 
 - [ ] **Step 5: 提交图片领域能力**
 
 ```powershell
-git add internal/product/image internal/marketplace/imagepolicy tests
+git add internal/product/image tests
 git diff --cached --check
 git commit -m "feat(product): define provider-neutral image capabilities"
+```
+
+---
+
+### Task 9B: 建立数据驱动的 Marketplace Image Policy Resolver
+
+> **修订约束（2026-09-02）：** 本任务不迁移 `internal/productimage/marketplace_profile.go` 的关键词匹配、词形处理、category 推断或平台 `switch`。这些逻辑把分类职责藏在图片策略中，并要求在 Go 代码里持续穷举业务词汇，属于目标架构缺陷。历史实现提交 `0244ff8a8`、`b685f1c91` 及其后未提交修订只作为迁移证据，不作为本任务目标实现。
+
+**Files:**
+- Replace: `internal/marketplace/imagepolicy/product_image_profile.go` → `internal/marketplace/imagepolicy/{model.go,resolver.go,validation.go}`
+- Replace: `internal/marketplace/imagepolicy/product_image_profile_test.go` → `internal/marketplace/imagepolicy/{resolver_test.go,boundary_guard_test.go}`
+- Do not modify: `internal/product/image/`；Task 9A 已完成且保持 Marketplace-neutral
+
+**Interfaces:**
+- Consumes: 调用方已经确定的结构化 `Marketplace`、`Country`、`Family`、`SceneCategory` 精确键，以及 App 注入的不可变 `PolicySet`。
+- Produces: 与精确键关联的 review thresholds 和 `product/image.SceneOptions`；非法输入返回稳定的 `ErrInvalidProfileInput`，合法但找不到策略时返回稳定的 `ErrPolicyNotFound`。
+- Does not consume: `ProductType`、Title、自由文本、旧配置单例、环境变量、文件路径或 Provider SDK。
+
+```go
+type PolicyKey struct {
+	Marketplace   string
+	Country       string
+	Family        string
+	SceneCategory string
+}
+
+type Thresholds struct {
+	MainReview            float64
+	WhiteBackgroundReview float64
+	WhiteCanvasPenalty    float64
+}
+
+type Policy struct {
+	Key           PolicyKey
+	Thresholds    Thresholds
+	SceneDefaults productimage.SceneOptions
+}
+
+type PolicySet struct {
+	Version  string
+	Policies []Policy
+}
+
+type ProfileInput struct {
+	Marketplace   string
+	Country       string
+	Family        string
+	SceneCategory string
+}
+
+type Resolver struct { /* constructor-owned immutable exact-key index */ }
+
+func NewResolver(PolicySet) (*Resolver, error)
+func (r *Resolver) Resolve(ProfileInput) (ProductImageProfile, error)
+```
+
+`NewResolver` 必须先完整校验再复制输入：version 非空；PolicySet 非空且条目数、字符串和总字节数有明确上限；键为规范 ASCII identifier；键不得重复；所有阈值为有限数且在 `[0,1]`；`SceneDefaults` 通过 `product/image` 的公开校验边界。构造完成后修改原始 slice、字符串引用或 `StyleReferenceIDs` 不得改变 Resolver 行为。
+
+Resolver 只做已经规范的精确键查询；输入含首尾空白、大小写不规范或非法字符时直接拒绝，不在 Resolver 中 trim 或 fold。它不实现 fallback precedence、通配符、默认平台、包含匹配、tokenization、stemming、单复数、Unicode 兼容折叠或 category 推断。若业务需要一个“默认”策略，调用方必须显式传入例如 `Family: "default"` 的完整键，并且该键必须真实存在于注入数据中；代码不得隐式降级。
+
+- [ ] **Step 1: 写通用 Resolver 契约测试**
+
+测试使用两个任意、互不相关的结构化策略 fixture，证明：
+
+1. 精确键分别返回对应阈值和完整 `SceneOptions`；
+2. 未知 family/category/marketplace/country 返回 `ErrPolicyNotFound`，不会落入另一条策略；
+3. 重复键、非法键、空集合、非有限/越界阈值和非法 SceneOptions 在构造阶段失败；
+4. 构造前后的调用方 mutation 不会修改 Resolver；并发 Resolve 无数据竞争；
+5. 边界守卫固定 `ProfileInput` 的四个结构化字段、禁止生产 package 声明 builtin `PolicySet`、禁止词法/词形依赖、`os`/文件读取和旧配置包。代码评审的硬性拒绝项是任何平台/category/lexeme 业务表或推断分支。
+
+测试不得复制生产策略全集，也不得按 marketplace/category 穷举断言；它只验证通用解析契约。
+
+- [ ] **Step 2: 运行测试确认旧实现不满足新契约**
+
+Run: `go test ./internal/marketplace/imagepolicy -count=1`
+
+Expected: FAIL，直到旧的全局函数、关键词推断和内置平台/category 分支被替换。
+
+- [ ] **Step 3: 实现不可变精确键 Resolver**
+
+删除 `ResolveProductImageProfile` 全局入口、`ProductType` 输入、所有 lexeme/family/category 推断和 hard-coded platform defaults。生产包不得提供 builtin PolicySet，也不得自行加载 YAML/JSON、环境变量或项目配置。
+
+- [ ] **Step 4: 运行 Policy 单元测试和依赖守卫**
+
+Run: `go test -race ./internal/marketplace/imagepolicy -count=1`
+
+Run: `go list -f '{{join .Imports "\n"}}' ./internal/marketplace/imagepolicy`
+
+Expected: PASS；依赖只包含标准库和 `internal/product/image`，不包含 App、Platform、Integration、旧配置或旧 ProductImage。
+
+- [ ] **Step 5: 提交通用 Resolver**
+
+```powershell
+git add internal/marketplace/imagepolicy
+git diff --cached --check
+git commit -m "refactor(marketplace): resolve image policy from injected data"
 ```
 
 ---
@@ -763,9 +858,13 @@ git commit -m "feat(product): define provider-neutral image capabilities"
 - Create: `internal/integration/openai/product_image_adapter.go`
 - Create: `internal/integration/grsai/product_image_adapter.go`
 - Create: `internal/integration/httpimage/product_image_adapter.go`
+- Create: `internal/integration/policy/productimage/{catalog.go,catalog_test.go,policies.yaml}`
 - Create: `internal/app/worker/imageagent/capabilities.go`
+- Create: `internal/app/worker/imageagent/image_policy.go`
 - Modify: `internal/app/worker/imageagent/dependencies.go`
 - Modify: `internal/app/worker/imageagent/dependencies_test.go`
+- Modify: `internal/imageagent/{model.go,ports.go,service.go,slot_effect.go}` and paired tests
+- Modify: `internal/imageagent/httpapi/{handler.go,handler_test.go,dto.go}`
 - Rename/Modify: `internal/imageagent/tools/productimage_executor.go` → `internal/imageagent/tools/product_image_executor.go`
 - Modify: `internal/imageagent/tools/productimage_executor_test.go`
 - Modify: `internal/imageagent/temporal/{activities.go,manual_acceptance_test.go,slot_effect_v3_activity_test.go}`
@@ -775,8 +874,9 @@ git commit -m "feat(product): define provider-neutral image capabilities"
 - Retain all old ProductImage files until ListingKit、SDS、AmazonListing complete Tasks 13–15；Task 16 performs the single deletion
 
 **Interfaces:**
-- Consumes: Task 9 image ports and existing ImageAgent `SlotExecutionInput`/budget contracts.
-- Produces: `imageagenttools.NewProductImageSlotExecutor(Dependencies)` with dependencies typed only as `product/image` ports; App builds concrete adapters and fails on missing production dependencies.
+- Consumes: Task 9A image ports、Task 9B `Resolver`、ImageAgent `SlotExecutionInput`/budget contracts，以及 run-scoped 的结构化 `ImagePolicyContext`。
+- Produces: `imageagenttools.NewProductImageSlotExecutor(Dependencies)`；图片能力依赖保持为 `product/image` ports，策略依赖为消费方定义的窄 `ProfileResolver` 接口。App 构造具体 adapters 和 Resolver，缺少生产依赖或策略时失败。
+- Policy data source: `internal/integration/policy/productimage/policies.yaml` 是唯一版本化策略目录；专用 Integration loader 使用仓库已有的 `gopkg.in/yaml.v3` 严格解码，再返回 `imagepolicy.PolicySet`。它不是通用配置框架，不读取旧 `config.Config`、环境变量或配置单例。
 
 - [ ] **Step 1: 改写 Executor 契约测试**
 
@@ -803,6 +903,8 @@ func (s stubSceneRenderer) RenderScene(context.Context, productimage.SceneReques
 
 `productimage` alias in测试代码必须指向 `internal/product/image`，不是旧包。
 
+另写契约测试证明 Executor 只把 immutable `Run.TargetPlatform` 作为 Marketplace，并与 `ImagePolicyContext` 的 Country/Family/SceneCategory 组成精确键传给 Resolver；它不读取 `ProductType`、Title 或 Attributes 推断策略。Resolver 返回 `ErrPolicyNotFound` 时 slot 明确失败。Catalog loader 测试使用独立小型 YAML fixture 验证 strict fields、单文档、schema version、资源上限和 PolicySet 交接，不在 Go 测试里镜像 `policies.yaml` 的业务全集。
+
 - [ ] **Step 2: 运行 Executor 测试确认仍引用旧 ProductImage**
 
 Run: `go test ./internal/imageagent/tools ./internal/app/worker/imageagent -count=1`
@@ -812,29 +914,79 @@ Expected: FAIL，直到 Tool 和生产装配切换完成。
 - [ ] **Step 3: 迁移 Adapter 与 App 组合**
 
 ```go
+type ImagePolicyContext struct {
+	Country       string
+	Family        string
+	SceneCategory string
+}
+
+type ProfileResolver interface {
+	Resolve(imagepolicy.ProfileInput) (imagepolicy.ProductImageProfile, error)
+}
+
 type ImageCapabilities struct {
 	SubjectExtractor productimage.SubjectExtractor
 	WhiteBackgroundRenderer productimage.WhiteBackgroundRenderer
 	SceneRenderer productimage.SceneRenderer
 	Reviewer productimage.Reviewer
 	UsageQuoter productimage.UsageQuoter
+	ProfileResolver ProfileResolver
 }
 
-func buildImageCapabilities(cfg *config.Config, deps providerDependencies) (ImageCapabilities, error)
+func buildImageCapabilities(deps providerDependencies, resolver ProfileResolver) (ImageCapabilities, error)
 ```
 
-生产构造必须逐项验证非 nil。`ProductImageConfig` 中仍被 ImageAgent 使用的 workdir、model、publisher 配置在 Task 16 改名为 `ImageAgentConfig`；本任务不引入第二套配置。
+专用策略 Catalog 的公开边界固定为：
+
+```go
+// LoadEmbedded 严格解析 package 内 go:embed 的 policies.yaml。
+func LoadEmbedded() (imagepolicy.PolicySet, error)
+
+// Decode 只用于同一 Adapter 的确定性 fixture 测试和 LoadEmbedded 复用；
+// 调用方不能传运行时文件路径。
+func Decode(io.Reader) (imagepolicy.PolicySet, error)
+```
+
+`policies.yaml` 使用单一、带版本的 typed schema，不允许 map-of-maps 或未声明字段：
+
+```yaml
+schema: product-image-policy/v1
+policies:
+  - marketplace: marketplace-a
+    country: xx
+    family: family-a
+    scene_category: category-a
+    thresholds:
+      main_review: 0.60
+      white_background_review: 0.70
+      white_canvas_penalty: 0.10
+    scene_defaults:
+      scene_category: category-a
+      scene_style: studio
+      background_tone: neutral
+      composition: centered
+      props_level: none
+      audience_hint: general
+```
+
+示例只说明 schema，不规定只支持该条目。业务条目只在 YAML 中维护；Go 代码和测试都不得复制该目录。
+
+`ImagePolicyContext` 是显式 run input：由创建 ImageAgent Run 的上游用结构化业务事实填写，并与唯一的 `Run.TargetPlatform` 一起持久化、参与 Start 幂等比较和 `SlotExecutionFingerprint`。HTTP `createRunRequest` 必须显式接收 `target_platform` 和 `image_policy_context`，Service 在解析 AssetCatalog 或启动 workflow 前验证它们；不从 BusinessTask、ProductType、Title 或 Attributes 回填。`SlotExecutionInput` 携带 TargetPlatform 与 PolicyContext，Temporal activity 只透传。Task 10 不负责发明 family/category 分类器；缺失字段或无精确策略均 fail closed。
+
+为保持已有 ImageAgent Temporal history 可重放，新增的 PolicyContext 字段使用可省略的新 wire 字段：新 Run ingress 必填，历史 payload 缺失时 replay 仍按旧记录完成且不会调度新的无策略 effect；不得为新执行增加旧 ProductImage fallback。增加 replay fixture 证明旧 history 的 command payload 不变，并证明新 history 的 policy key 已进入 effect fingerprint。
+
+生产构造必须逐项验证非 nil。策略装配顺序固定为 `integration catalog.Load` → `imagepolicy.NewResolver` → 作为 `ProfileResolver` 注入 Executor；任一步失败都阻止 worker 启动。Loader 只解析嵌入的版本化策略资源，不接受运行时路径，不调用历史配置加载器，也不提供代码内 fallback。Provider 运行参数由各 Integration Adapter 的 typed constructor 显式接收，再以 typed dependencies 传入；本函数不接收 `config.Config`。`ProductImageConfig` 中仍被 ImageAgent 使用的 workdir、model、publisher 配置在 Task 16 改名为 `ImageAgentConfig`；本任务不得把图片策略接入该历史配置对象。
 
 - [ ] **Step 4: 运行 ImageAgent Tool、Temporal replay 和 Worker 装配测试**
 
-Run: `go test ./internal/imageagent/tools ./internal/imageagent/temporal ./internal/app/worker/imageagent -count=1`
+Run: `go test ./internal/integration/policy/productimage ./internal/imageagent/httpapi ./internal/imageagent/tools ./internal/imageagent/temporal ./internal/app/worker/imageagent -count=1`
 
-Expected: PASS；Temporal 历史 DTO 不变，生产 Go 文件不再 import `internal/productimage`。
+Expected: PASS；已有 Temporal history 的序列化命令保持不变，新 Run 的显式 policy key 进入新 effect fingerprint，生产 Go 文件不再 import `internal/productimage`。
 
 - [ ] **Step 5: 提交 ImageAgent 能力接线**
 
 ```powershell
-git add internal/integration/openai internal/integration/grsai internal/integration/httpimage internal/imageagent internal/app/worker/imageagent
+git add internal/integration/openai internal/integration/grsai internal/integration/httpimage internal/integration/policy/productimage internal/imageagent internal/app/worker/imageagent
 git diff --cached --check
 git commit -m "refactor(imageagent): execute product image capabilities directly"
 ```
