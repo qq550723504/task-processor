@@ -1,0 +1,59 @@
+name: Development Admission
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: development-admission-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  development-admission:
+    name: Development Admission
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted policy revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Enforce pull request scope
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const guard = require("./.github/scripts/pr-scope-guard.cjs");
+            const request = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            };
+            const initialPullRequest = (await github.rest.pulls.get(request)).data;
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              ...request,
+              per_page: 100,
+            });
+            const latestPullRequest = (await github.rest.pulls.get(request)).data;
+            guard.assertStablePullRequestSnapshot(initialPullRequest, latestPullRequest);
+            guard.assertCompleteFileList(files, latestPullRequest.changed_files);
+            const labels = latestPullRequest.labels.map(({ name }) => name);
+            const result = guard.evaluatePullRequest(files, labels);
+            const report = guard.formatEvaluation(result);
+            core.info(report);
+            await core.summary
+              .addHeading("Development admission")
+              .addCodeBlock(report)
+              .write();
+            if (!result.allowed) {
+              core.setFailed(`${report}\nSplit the change or obtain the architecture-approved label with documented design evidence.`);
+            }

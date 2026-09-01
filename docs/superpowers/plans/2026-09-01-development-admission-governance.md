@@ -4,7 +4,7 @@
 
 **Goal:** Add repository-wide development admission rules and a tested CI scope guard that stops oversized or architecture-sensitive work unless a maintainer explicitly approves the exception.
 
-**Architecture:** Keep policy in four connected repository surfaces: root agent instructions, the PR declaration, the architecture checklist, and CI. Put scope classification in a pure CommonJS module tested with Node's built-in test runner; let the official `actions/github-script` action own GitHub pagination and API access. Preserve the existing architecture checklist as the import-guard inventory authority.
+**Architecture:** Keep policy in four connected repository surfaces: root agent instructions, the PR declaration, the architecture checklist, and CI. Put scope classification in a pure CommonJS module tested with Node's built-in test runner; let the official `actions/github-script` action own GitHub pagination and API access. Run the authoritative guard from a dedicated, unfiltered `pull_request_target` workflow that checks out only the trusted default branch; keep proposed-policy tests in the ordinary CI workflow. Preserve the existing architecture checklist as the import-guard inventory authority.
 
 **Tech Stack:** Markdown, CommonJS on Node.js 22, `node:test`, GitHub Actions, `actions/github-script@v9`, Go repository contract tests, YAML v3.
 
@@ -150,58 +150,60 @@ git commit -m "docs: enforce development admission contracts"
 
 **Files:**
 - Modify: `.github/workflows/ci.yml`
+- Create: `.github/workflows/development-admission.yml`
 
 **Interfaces:**
 - Consumes: `evaluatePullRequest(files, labels)` and `formatEvaluation(result)` from Task 1.
-- Produces: a `development-admission` job that tests policy on every run and enforces it on pull-request events.
+- Produces: a trusted, unfiltered `development-admission` job that enforces policy on `pull_request_target` events, plus a separate CI job that tests proposed policy code.
 
-- [ ] **Step 1: Prove current workflow lacks the admission job**
+- [x] **Step 1: Inspect the existing workflow boundary**
 
-Run: `rg -n "development-admission|pr-scope-guard|pull-requests: read" .github/workflows/ci.yml`
+The existing job was path-filtered and loaded its guard from the pull-request
+merge revision, so it could be bypassed by omitted paths or a modified policy.
+The classifier behavior is protected by unit tests; authoritative enforcement
+must be separate and trusted.
 
-Expected: exit 1 with no matches, proving the integration is absent. The classifier behavior itself is already protected by Task 1 tests.
+- [x] **Step 2: Add workflow enforcement**
 
-- [ ] **Step 2: Add workflow enforcement**
+Keep the ordinary CI workflow read-only for repository contents and add the new trusted workflow path to both push and pull-request filters. Add the trusted workflow with `contents: read` and `pull-requests: read`, no path filter, and `pull_request_target` activity types `opened`, `synchronize`, `reopened`, `labeled`, and `unlabeled`.
 
-Add `pull-requests: read` beside `contents: read`. Add policy-owned paths to both push and pull-request filters: `AGENTS.md`, `.github/pull_request_template.md`, `.github/scripts/**`, and `docs/architecture/architecture-review-checklist.md`.
-
-Add this job structure:
+Keep only the proposed-policy test job in `ci.yml` and add this structure to `.github/workflows/development-admission.yml`:
 
 ~~~yaml
 development-admission:
   name: Development Admission
   runs-on: ubuntu-latest
   steps:
-    - name: Checkout repository
+    - name: Checkout trusted policy revision
       uses: actions/checkout@v4
-    - name: Test pull request scope policy
-      run: node --test .github/scripts/pr-scope-guard.test.cjs
+      with:
+        ref: ${{ github.event.repository.default_branch }}
+        persist-credentials: false
     - name: Enforce pull request scope
-      if: github.event_name == 'pull_request'
       uses: actions/github-script@v9
 ~~~
 
-The action script imports `./.github/scripts/pr-scope-guard.cjs`, calls `github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number, per_page: 100 })`, maps `context.payload.pull_request.labels`, evaluates the files, writes `formatEvaluation` to logs and the step summary, and calls `core.setFailed` when `allowed` is false. The failure message instructs the author to split the change or obtain `architecture-approved` with design evidence.
+The action script imports `./.github/scripts/pr-scope-guard.cjs`, reads the PR metadata before and after `github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number, per_page: 100 })`, fails on a moving head or mismatched `changed_files`, evaluates the latest labels, writes `formatEvaluation` to logs and the step summary, and calls `core.setFailed` when `allowed` is false. The failure message instructs the author to split the change or obtain `architecture-approved` with design evidence. The ordinary CI workflow runs only `node --test .github/scripts/pr-scope-guard.test.cjs` for proposed policy changes and does not decide admission.
 
-Add the job to `notify.needs`, expose `DEVELOPMENT_ADMISSION_RESULT`, include it in the overall results array, and show it in the WeCom message. The job runs its unit tests on push, so it succeeds rather than becoming `skipped` outside PR events.
+The ordinary CI notification reports `DEVELOPMENT_ADMISSION_TEST_RESULT`; the trusted admission check is a separate required status check and is not coupled to the WeCom aggregation job.
 
 - [ ] **Step 3: Validate behavior and workflow structure**
 
 ~~~powershell
 node --test .github/scripts/pr-scope-guard.test.cjs
-go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/ci.yml
+go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/ci.yml .github/workflows/development-admission.yml
 ~~~
 
 Expected: all tests PASS.
 
-- [ ] **Step 4: Manually inspect workflow authority**
+- [x] **Step 4: Manually inspect workflow authority**
 
-Confirm permissions are only `contents: read` and `pull-requests: read`; the action never creates/applies labels or edits PRs; pagination uses the current PR number; notification includes the job; and push events run unit tests without a skipped job.
+Confirm the trusted workflow has no path filter, uses only the default-branch policy revision, never checks out or executes PR code, has only `contents: read` and `pull-requests: read`, re-runs on label changes, uses per-PR concurrency, fails closed on incomplete/moving snapshots, and never creates/applies labels or edits PRs. Confirm ordinary CI runs policy tests on push without a skipped job and the notification names them as tests.
 
 - [ ] **Step 5: Commit Task 3**
 
 ~~~powershell
-git add -- .github/workflows/ci.yml
+git add -- .github/workflows/ci.yml .github/workflows/development-admission.yml
 git commit -m "ci: enforce development admission limits"
 ~~~
 

@@ -164,9 +164,9 @@ not combine unrelated cleanup with the feature slice.
 
 ## Pull-request scope guard
 
-CI will inspect changed files through the GitHub pull-request API using the
-maintained open-source `actions/github-script` action instead of implementing a
-custom GitHub API client.
+The authoritative guard will inspect changed files through the GitHub
+pull-request API using the maintained open-source `actions/github-script` action
+instead of implementing a custom GitHub API client.
 
 The guard computes:
 
@@ -191,8 +191,20 @@ name the approving maintainer, link the approved design, and explain why the
 change cannot be split safely. CI will report the measured values and the
 override status in its log.
 
-The guard runs only for pull-request events. It receives read-only repository
-and pull-request permissions and never creates labels or edits the pull request.
+The authoritative guard runs in the dedicated
+`.github/workflows/development-admission.yml` workflow on an unfiltered
+`pull_request_target` trigger for opened, synchronized, reopened, labeled, and
+unlabeled events. It checks out only the trusted default-branch policy revision;
+it never checks out or executes pull-request code. It reads the PR metadata before
+and after pagination, fails closed if the head SHA or `changed_files` count moves,
+and fails closed if the paginated file list does not equal `changed_files`.
+Permissions are limited to read-only repository and pull-request access. The
+existing `ci.yml` workflow runs the proposed classifier's unit tests on
+`pull_request`/push events, but is not the authoritative admission decision.
+The guard never creates labels or edits the pull request. The first PR adding the
+trusted workflow is a bootstrap exception that requires maintainer review; after
+merge, branch protection must require the `Development Admission` check for the
+guard to block merges.
 
 ## Repository surfaces
 
@@ -229,42 +241,49 @@ Add a development-admission section before the existing structural checks. It
 will remain a review guide, while the current `Guard Baseline` remains the
 authoritative import-boundary inventory.
 
-### CI workflow
+### CI workflows
 
-Add a `development-admission` job to `.github/workflows/ci.yml`. Use
-`actions/github-script` to fetch all changed files, classify them, enforce the
-limits, and recognize the override label. Add the job to notification
-dependencies so governance failure is visible alongside backend, frontend, and
-code-health results.
+Add the authoritative `development-admission` job to the dedicated
+`.github/workflows/development-admission.yml` workflow. Keep it unfiltered so a
+PR changing any repository path is evaluated. Use `pull_request_target` so the
+workflow and checked-out policy come from the trusted default branch, and include
+label activity types so adding or removing `architecture-approved` immediately
+re-evaluates the same PR. Use `concurrency` per PR to cancel stale evaluations.
 
-The action must be pinned consistently with the repository's existing GitHub
-Actions policy. Its script will be kept in a dedicated checked-in JavaScript
-module with unit tests if the inline logic would exceed a small orchestration
-wrapper; workflow YAML must not become the long-term owner of classification
-rules.
+Keep only the classifier unit-test job in `.github/workflows/ci.yml`; its
+pull-request path filters are for ordinary CI and must not be used as the
+admission boundary. Include the trusted workflow path in those filters so
+proposed workflow changes still run the tests. The action must be pinned
+consistently with the repository's existing GitHub Actions policy. Classification
+and snapshot validation remain in a dedicated checked-in JavaScript module with
+unit tests; workflow YAML is only orchestration.
 
 ## Verification
 
 Implementation verification must include:
 
-- tests for below-limit, each over-limit, exempt-file, pagination, and override
-  cases;
+- tests for below-limit, each over-limit, exempt-file, pagination completeness,
+  rename paths, repository test suffixes, snapshot changes, and override cases;
 - a spec-to-document self-review of the PR template, root `AGENTS.md`, and
   architecture checklist; these human and agent instructions must not gain
   brittle tests that merely lock exact prose;
 - the open-source `actionlint` validator for workflow structure and expression
   correctness instead of a repository-specific YAML keyword scanner;
-- manual inspection that the workflow keeps read-only permissions and does not
-  mutate labels or pull requests;
+- manual inspection that the trusted workflow has no path filter, uses only the
+  default-branch policy revision, keeps read-only permissions, does not execute
+  pull-request code, and does not mutate labels or pull requests;
 - `git diff --check` and the focused Go or JavaScript tests owning the new
   guard behavior.
 
 ## Rollout
 
 The first release enables the CI limits immediately because the override path
-prevents legitimate work from being blocked without recourse. Maintainers must
-create the `architecture-approved` repository label before merging the workflow
-change. If the label does not exist, ordinary pull requests continue to work;
+prevents legitimate work from being blocked without recourse. The PR that first
+adds the trusted workflow cannot trigger that new default-branch workflow until
+it is merged, so it is a documented bootstrap exception requiring maintainer
+review. Maintainers must create the `architecture-approved` repository label and
+require the `Development Admission` check in branch protection before relying on
+the gate. If the label does not exist, ordinary pull requests continue to work;
 only oversized pull requests lack an override until the label is created.
 
 Threshold changes require an architecture-checklist update and tests in the

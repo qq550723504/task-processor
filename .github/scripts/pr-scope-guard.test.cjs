@@ -3,6 +3,9 @@ const assert = require("node:assert/strict");
 
 const {
   LIMITS,
+  assertCompleteFileList,
+  assertStablePullRequestSnapshot,
+  classifyFileChange,
   classifyFile,
   evaluatePullRequest,
   formatEvaluation,
@@ -48,6 +51,48 @@ test("classifies documentation, lock, generated, test, and production paths", ()
     production: true,
     kind: "production",
   });
+});
+
+test("recognizes workspace locks and repository test filename suffixes", () => {
+  assert.deepEqual(classifyFile("go.work.sum"), {
+    scopeRelevant: false,
+    production: false,
+    kind: "lockfile",
+  });
+  assert.deepEqual(classifyFile("scripts/verify.Tests.ps1"), {
+    scopeRelevant: true,
+    production: false,
+    kind: "test",
+  });
+  assert.deepEqual(classifyFile("internal/types/product.type-test.ts"), {
+    scopeRelevant: true,
+    production: false,
+    kind: "test",
+  });
+});
+
+test("classifies a rename as production when either path is production", () => {
+  const renamedToDocumentation = classifyFileChange({
+    filename: "docs/service.md",
+    previous_filename: "internal/service.go",
+  });
+  assert.deepEqual(renamedToDocumentation, {
+    scopeRelevant: true,
+    production: true,
+    kind: "production",
+  });
+
+  const renamedToTest = evaluatePullRequest([
+    {
+      filename: "tests/service_test.go",
+      previous_filename: "internal/service.go",
+      additions: 0,
+      deletions: LIMITS.productionChurn + 1,
+      status: "renamed",
+    },
+  ], []);
+  assert.equal(renamedToTest.allowed, false);
+  assert.deepEqual(renamedToTest.exceeded, ["productionChurn"]);
 });
 
 test("allows exact production limits and excludes test lines from production totals", () => {
@@ -152,4 +197,29 @@ test("rejects malformed collection inputs", () => {
   assert.throws(() => evaluatePullRequest(null, []), /files must be an array/);
   assert.throws(() => evaluatePullRequest([], null), /labels must be an array/);
   assert.throws(() => classifyFile(""), /filename must be a non-empty string/);
+});
+
+test("fails closed when the GitHub file list is incomplete", () => {
+  assert.doesNotThrow(() => assertCompleteFileList([source("internal/service.go")], 1));
+  assert.throws(
+    () => assertCompleteFileList([source("docs/rule.md")], 2),
+    /file list is incomplete.*expected 2, received 1/,
+  );
+  assert.throws(
+    () => assertCompleteFileList([], undefined),
+    /changed_files must be a non-negative integer/,
+  );
+});
+
+test("rejects a pull request snapshot that changes during evaluation", () => {
+  const snapshot = { head: { sha: "abc" }, changed_files: 1 };
+  assert.doesNotThrow(() => assertStablePullRequestSnapshot(snapshot, snapshot));
+  assert.throws(
+    () => assertStablePullRequestSnapshot(snapshot, { head: { sha: "def" }, changed_files: 1 }),
+    /changed during evaluation/,
+  );
+  assert.throws(
+    () => assertStablePullRequestSnapshot(snapshot, { head: { sha: "abc" }, changed_files: 2 }),
+    /changed during evaluation/,
+  );
 });

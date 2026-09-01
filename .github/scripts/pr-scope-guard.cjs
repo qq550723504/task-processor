@@ -10,6 +10,7 @@ const OVERRIDE_LABEL = "architecture-approved";
 const LOCKFILES = new Set([
   "cargo.lock",
   "go.sum",
+  "go.work.sum",
   "package-lock.json",
   "pnpm-lock.yaml",
   "yarn.lock",
@@ -51,11 +52,29 @@ function classifyFile(filename) {
   if (
     segments.some((segment) => TEST_PATH_SEGMENTS.has(segment)) ||
     basename.endsWith("_test.go") ||
-    /\.(?:test|spec)\.[^/]+$/.test(basename)
+    /\.(?:test|spec)\.[^/]+$/.test(basename) ||
+    basename.endsWith(".tests.ps1") ||
+    /\.type-test\.[^/]+$/.test(basename)
   ) {
     return classification("test", true, false);
   }
   return classification("production", true, true);
+}
+
+function classifyFileChange(file) {
+  const current = classifyFile(file?.filename);
+  const previousFilename = file?.previous_filename;
+  if (typeof previousFilename !== "string" || previousFilename.trim() === "") {
+    return current;
+  }
+
+  const previous = classifyFile(previousFilename);
+  const production = current.production || previous.production;
+  return classification(
+    production ? "production" : current.kind,
+    current.scopeRelevant || previous.scopeRelevant,
+    production,
+  );
 }
 
 function classification(kind, scopeRelevant, production) {
@@ -67,6 +86,40 @@ function lineCount(value) {
     return 0;
   }
   return Math.trunc(value);
+}
+
+function assertCompleteFileList(files, changedFiles) {
+  if (!Array.isArray(files)) {
+    throw new TypeError("files must be an array");
+  }
+  if (!Number.isInteger(changedFiles) || changedFiles < 0) {
+    throw new TypeError("changed_files must be a non-negative integer");
+  }
+  if (files.length !== changedFiles) {
+    throw new RangeError(
+      `file list is incomplete: expected ${changedFiles}, received ${files.length}`,
+    );
+  }
+  return files;
+}
+
+function assertStablePullRequestSnapshot(before, after) {
+  const beforeSha = before?.head?.sha;
+  const afterSha = after?.head?.sha;
+  const beforeFiles = before?.changed_files;
+  const afterFiles = after?.changed_files;
+  if (
+    typeof beforeSha !== "string" ||
+    typeof afterSha !== "string" ||
+    !Number.isInteger(beforeFiles) ||
+    !Number.isInteger(afterFiles)
+  ) {
+    throw new TypeError("pull request snapshot is missing head.sha or changed_files");
+  }
+  if (beforeSha !== afterSha || beforeFiles !== afterFiles) {
+    throw new Error("pull request changed during evaluation; retry the check");
+  }
+  return after;
 }
 
 function evaluatePullRequest(files, labels) {
@@ -92,7 +145,7 @@ function evaluatePullRequest(files, labels) {
   };
 
   for (const file of files) {
-    const fileClass = classifyFile(file?.filename);
+    const fileClass = classifyFileChange(file);
     kinds[fileClass.kind] += 1;
     if (fileClass.scopeRelevant) {
       metrics.scopeFiles += 1;
@@ -145,6 +198,9 @@ function formatEvaluation(result) {
 
 module.exports = {
   LIMITS,
+  assertCompleteFileList,
+  assertStablePullRequestSnapshot,
+  classifyFileChange,
   classifyFile,
   evaluatePullRequest,
   formatEvaluation,
