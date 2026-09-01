@@ -86,12 +86,13 @@ func (tools *BoundToolSet) preflight(ctx context.Context, call Call, state *invo
 	if err != nil {
 		return registeredTool{}, NewError(ErrorIdentityIntegrity, "verified principal is unavailable", err)
 	}
+	principal = clonePrincipal(principal)
 	if err := principal.validate(); err != nil {
 		return registeredTool{}, NewError(ErrorIdentityIntegrity, "verified principal is unavailable", err)
 	}
 	state.principal = principal
 
-	if err := tools.deps.Authorizer.Authorize(ctx, principal, registered.definition.Permission); err != nil {
+	if err := tools.deps.Authorizer.Authorize(ctx, clonePrincipal(principal), registered.definition.Permission); err != nil {
 		return registeredTool{}, NewError(ErrorPermissionDenied, "tool permission denied", err)
 	}
 

@@ -104,6 +104,12 @@ func (s *recordingAuthorizer) Authorize(_ context.Context, principal Principal, 
 	return s.err
 }
 
+type authorizerFunc func(context.Context, Principal, PermissionRequirement) error
+
+func (f authorizerFunc) Authorize(ctx context.Context, principal Principal, requirement PermissionRequirement) error {
+	return f(ctx, principal, requirement)
+}
+
 type contextRecordingAuditStub struct {
 	records      []AuditRecord
 	err          error
@@ -195,6 +201,113 @@ func TestInvokeAuthorizesTrustedPrincipalForRegisteredPermission(t *testing.T) {
 	require.Equal(t, 1, authorizer.calls)
 	require.Equal(t, verifiedPrincipal(), authorizer.principal)
 	require.Equal(t, validDefinition().Permission, authorizer.requirement)
+}
+
+func TestInvokeProtectsTrustedPrincipalSnapshotFromSynchronousAuthorizerMutation(t *testing.T) {
+	sourceRoles := []string{"listingkit_admin"}
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.PrincipalResolver = resolverStub{principal: Principal{
+		TenantID: "tenant-1",
+		UserID:   "user-1",
+		Roles:    sourceRoles,
+	}}
+	deps.Authorizer = authorizerFunc(func(_ context.Context, principal Principal, requirement PermissionRequirement) error {
+		require.Equal(t, validDefinition().Permission, requirement)
+		principal.Roles[0] = "authorizer-mutated"
+		return nil
+	})
+	deps.Recorder = recorder
+	var executorPrincipal Principal
+	bound := bindToolForTest(t, ExecutorFunc(func(_ context.Context, envelope ExecutionEnvelope, _ json.RawMessage) (ExecutionResult, error) {
+		executorPrincipal = envelope.Principal()
+		return ExecutionResult{Output: json.RawMessage(`{"task_id":"task-1"}`)}, nil
+	}), deps)
+
+	result, err := bound.Invoke(context.Background(), validCall())
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"listingkit_admin"}, sourceRoles)
+	require.Equal(t, Principal{
+		TenantID: "tenant-1",
+		UserID:   "user-1",
+		Roles:    []string{"listingkit_admin"},
+	}, executorPrincipal)
+	require.JSONEq(t, `{"task_id":"task-1"}`, string(result.Output))
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, "tenant-1", recorder.records[0].TenantID)
+	require.Equal(t, "user-1", recorder.records[0].UserID)
+	require.Equal(t, validDefinition().Permission.Permission, recorder.records[0].Permission)
+	require.Equal(t, AuditOutcomeSucceeded, recorder.records[0].Outcome)
+}
+
+func TestPreflightProtectsTrustedPrincipalStateFromAuthorizerRetainedSliceMutation(t *testing.T) {
+	sourceRoles := []string{"listingkit_admin"}
+	var retainedRoles []string
+	var executorPrincipal Principal
+	deps := validInvocationDependencies()
+	deps.PrincipalResolver = resolverStub{principal: Principal{
+		TenantID: "tenant-1",
+		UserID:   "user-1",
+		Roles:    sourceRoles,
+	}}
+	deps.Authorizer = authorizerFunc(func(_ context.Context, principal Principal, _ PermissionRequirement) error {
+		retainedRoles = principal.Roles
+		return nil
+	})
+	bound := bindToolForTest(t, ExecutorFunc(func(_ context.Context, envelope ExecutionEnvelope, _ json.RawMessage) (ExecutionResult, error) {
+		executorPrincipal = envelope.Principal()
+		return ExecutionResult{Output: json.RawMessage(`{"task_id":"task-1"}`)}, nil
+	}), deps)
+	state := newInvocationState(time.Unix(0, 0), validCall())
+
+	registered, err := bound.preflight(context.Background(), state.call, &state)
+	require.NoError(t, err)
+	require.NotEmpty(t, retainedRoles)
+	retainedRoles[0] = "authorizer-late-mutation"
+
+	require.Equal(t, []string{"listingkit_admin"}, sourceRoles)
+	require.Equal(t, []string{"listingkit_admin"}, state.principal.Roles)
+	_, err = registered.executor.Execute(
+		context.Background(),
+		newExecutionEnvelope(state.call.Tool, state.call.Metadata, state.principal),
+		cloneRaw(state.call.Arguments),
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{"listingkit_admin"}, executorPrincipal.Roles)
+}
+
+func TestInvokeProtectsTrustedPrincipalSnapshotFromResolverSourceMutationAfterResolve(t *testing.T) {
+	sourceRoles := []string{"listingkit_admin"}
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.PrincipalResolver = resolverStub{principal: Principal{
+		TenantID: "tenant-1",
+		UserID:   "user-1",
+		Roles:    sourceRoles,
+	}}
+	deps.Authorizer = authorizerFunc(func(_ context.Context, _ Principal, _ PermissionRequirement) error {
+		sourceRoles[0] = "resolver-source-mutated"
+		return nil
+	})
+	deps.Recorder = recorder
+	var executorPrincipal Principal
+	bound := bindToolForTest(t, ExecutorFunc(func(_ context.Context, envelope ExecutionEnvelope, _ json.RawMessage) (ExecutionResult, error) {
+		executorPrincipal = envelope.Principal()
+		return ExecutionResult{Output: json.RawMessage(`{"task_id":"task-1"}`)}, nil
+	}), deps)
+
+	result, err := bound.Invoke(context.Background(), validCall())
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"resolver-source-mutated"}, sourceRoles)
+	require.Equal(t, []string{"listingkit_admin"}, executorPrincipal.Roles)
+	require.JSONEq(t, `{"task_id":"task-1"}`, string(result.Output))
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, "tenant-1", recorder.records[0].TenantID)
+	require.Equal(t, "user-1", recorder.records[0].UserID)
+	require.Equal(t, validDefinition().Permission.Permission, recorder.records[0].Permission)
+	require.Equal(t, AuditOutcomeSucceeded, recorder.records[0].Outcome)
 }
 
 func TestInvokeRejectsAuthorityFieldsOutsideInputSchema(t *testing.T) {
