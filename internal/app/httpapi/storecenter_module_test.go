@@ -235,8 +235,8 @@ func TestStoreCenterRoutesRegisterOnceAfterWorkbenchContextRoutes(t *testing.T) 
 	if lastContextIndex < 0 || firstStoreIndex <= lastContextIndex {
 		t.Fatalf("route order context=%d store=%d", lastContextIndex, firstStoreIndex)
 	}
-	if storeRoutes != 7 {
-		t.Fatalf("Store Center route count = %d, want 7", storeRoutes)
+	if storeRoutes != 8 {
+		t.Fatalf("Store Center route count = %d, want 8", storeRoutes)
 	}
 }
 
