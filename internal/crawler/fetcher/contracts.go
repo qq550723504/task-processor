@@ -65,7 +65,7 @@ func (f *FetcherFactory) CreateFetcher(
 	switch fetcherType {
 	case LocalFetcher:
 		f.logger.Info("creating local product fetcher")
-		return domainProduct.NewProductFetcher(rawJsonDataClient, amazonConfig, crawlSource), nil
+		return domainProduct.NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, crawlSource, f.logger), nil
 	case RemoteAPIFetcher:
 		f.logger.Info("creating remote api product fetcher")
 		return NewRemoteAPIProductFetcher(rawJsonDataClient, amazonConfig)
