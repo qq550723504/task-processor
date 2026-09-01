@@ -5,6 +5,9 @@ on:
     branches:
       - main
     paths:
+      - "AGENTS.md"
+      - ".github/pull_request_template.md"
+      - ".github/scripts/**"
       - ".github/workflows/ci.yml"
       - ".github/workflows/listingkit-deploy.yml"
       - ".github/workflows/listingkit-ui-deploy.yml"
@@ -34,10 +37,14 @@ on:
       - "scripts/**"
       - "Makefile"
       - "docs/refactoring/code-health-decisions.md"
+      - "docs/architecture/architecture-review-checklist.md"
       - "tests/**"
       - "web/listingkit-ui/**"
   pull_request:
     paths:
+      - "AGENTS.md"
+      - ".github/pull_request_template.md"
+      - ".github/scripts/**"
       - ".github/workflows/ci.yml"
       - ".github/workflows/listingkit-deploy.yml"
       - ".github/workflows/listingkit-ui-deploy.yml"
@@ -67,17 +74,53 @@ on:
       - "scripts/**"
       - "Makefile"
       - "docs/refactoring/code-health-decisions.md"
+      - "docs/architecture/architecture-review-checklist.md"
       - "tests/**"
       - "web/listingkit-ui/**"
 
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   NODE_VERSION: "22"
 
 jobs:
+  development-admission:
+    name: Development Admission
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test pull request scope policy
+        run: node --test .github/scripts/pr-scope-guard.test.cjs
+
+      - name: Enforce pull request scope
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const guard = require("./.github/scripts/pr-scope-guard.cjs");
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+            const labels = (context.payload.pull_request.labels ?? []).map(({ name }) => name);
+            const result = guard.evaluatePullRequest(files, labels);
+            const report = guard.formatEvaluation(result);
+            core.info(report);
+            await core.summary
+              .addHeading("Development admission")
+              .addCodeBlock(report)
+              .write();
+            if (!result.allowed) {
+              core.setFailed(`${report}\nSplit the change or obtain the architecture-approved label with documented design evidence.`);
+            }
+
   release-authority:
     name: Release Authority Policy
     runs-on: ubuntu-latest
@@ -215,6 +258,7 @@ jobs:
   notify:
     name: WeCom Notification
     needs:
+      - development-admission
       - backend
       - frontend
       - code-health
@@ -223,6 +267,7 @@ jobs:
     continue-on-error: true
     env:
       WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+      DEVELOPMENT_ADMISSION_RESULT: ${{ needs.development-admission.result }}
       BACKEND_RESULT: ${{ needs.backend.result }}
       FRONTEND_RESULT: ${{ needs.frontend.result }}
       CODE_HEALTH_RESULT: ${{ needs.code-health.result }}
@@ -249,7 +294,8 @@ jobs:
           backend = os.environ.get("BACKEND_RESULT", "unknown")
           frontend = os.environ.get("FRONTEND_RESULT", "unknown")
           code_health = os.environ.get("CODE_HEALTH_RESULT", "unknown")
-          results = [backend, frontend, code_health]
+          development_admission = os.environ.get("DEVELOPMENT_ADMISSION_RESULT", "unknown")
+          results = [development_admission, backend, frontend, code_health]
 
           if all(result == "success" for result in results):
               overall = "✅ 成功"
@@ -266,6 +312,7 @@ jobs:
               f"> 仓库：`{os.environ.get('REPOSITORY', '-')}`",
               f"> 分支：`{os.environ.get('CI_BRANCH') or '-'}`",
               f"> 事件：`{os.environ.get('CI_EVENT') or '-'}`",
+              f"> Development Admission：`{development_admission}`",
               f"> Backend：`{backend}`",
               f"> Frontend：`{frontend}`",
               f"> Code Health：`{code_health}`",
