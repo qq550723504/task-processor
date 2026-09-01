@@ -4,7 +4,6 @@ package product
 import (
 	"regexp"
 	"strconv"
-	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 )
 
@@ -13,7 +12,6 @@ import (
 func GetProductPrice(amazonProduct *model.Product, priceType string) float64 {
 	// 空指针检查
 	if amazonProduct == nil {
-		logger.GetGlobalLogger("product/price_helper.go").Warn("⚠️ GetProductPrice 接收到 nil 产品指针，返回价格 0")
 		return 0
 	}
 
@@ -56,7 +54,6 @@ func GetFreight(amazonProduct *model.Product) float64 {
 func GetInventory(amazonProduct *model.Product) int {
 	// 空指针检查
 	if amazonProduct == nil {
-		logger.GetGlobalLogger("product/price_helper.go").Warn("⚠️ GetInventory 接收到 nil 产品指针，返回库存 0")
 		return 0
 	}
 

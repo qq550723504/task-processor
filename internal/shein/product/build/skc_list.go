@@ -1,7 +1,7 @@
 package build
 
 import (
-	openaiClient "task-processor/internal/infra/clients/openai"
+	openaiClient "task-processor/internal/integration/openai"
 	shein "task-processor/internal/shein"
 	productapi "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/product/attribute"

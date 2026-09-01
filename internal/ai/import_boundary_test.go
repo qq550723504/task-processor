@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"task-processor/internal/ai"
-	"task-processor/internal/infra/clients/geminiimage"
-	"task-processor/internal/infra/clients/grsai"
-	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/integration/geminiimage"
+	"task-processor/internal/integration/grsai"
+	"task-processor/internal/integration/openai"
 )
 
 var (
@@ -26,15 +26,15 @@ func TestProviderAdaptersDoNotImportOpenAIForSharedContracts(t *testing.T) {
 	}
 	root := filepath.Dir(currentFile)
 	for _, relative := range []string{
-		filepath.Join("..", "infra", "clients", "geminiimage", "client.go"),
-		filepath.Join("..", "infra", "clients", "grsai", "client.go"),
+		filepath.Join("..", "integration", "geminiimage", "client.go"),
+		filepath.Join("..", "integration", "grsai", "client.go"),
 	} {
 		path := filepath.Join(root, relative)
 		content, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
-		if strings.Contains(string(content), "task-processor/internal/infra/clients/openai") {
+		if strings.Contains(string(content), "task-processor/internal/integration/openai") {
 			t.Fatalf("provider adapter %s imports the OpenAI implementation package", path)
 		}
 	}

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"task-processor/internal/aicapability"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 )
 
 const (

@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"task-processor/internal/pkg/safeimagehttp"
+	"task-processor/internal/integration/httpimage"
 )
 
 func NormalizeAssetCatalog(catalog AssetCatalog) (AssetCatalog, error) {
@@ -189,7 +189,7 @@ func ValidateSubmittedPlanAgainstCatalog(plan Plan, catalog AssetCatalog) error 
 }
 
 func ValidateSafeImageURL(raw string) (string, error) {
-	validated, err := safeimagehttp.ValidatePublicHTTPSURL(raw)
+	validated, err := httpimage.ValidatePublicHTTPSURL(raw)
 	if err != nil {
 		return "", err
 	}

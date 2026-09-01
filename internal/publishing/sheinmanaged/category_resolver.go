@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 

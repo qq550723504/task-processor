@@ -1,24 +1,17 @@
 package httpapi
 
 import (
-	"time"
-
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/worker"
+	workerpool "task-processor/internal/platform/workerpool"
 	"task-processor/internal/taskrpcapi"
 )
 
-func newWorkerPool(processor worker.Processor, cfg *config.Config) worker.WorkerPool {
-	return worker.NewPoolWithConfig(processor, worker.PoolConfig{
-		Concurrency:     cfg.Worker.Concurrency,
-		BufferSize:      cfg.Worker.BufferSize,
-		TaskTimeout:     15 * time.Minute,
-		EnableMetrics:   true,
-		ShutdownTimeout: 30 * time.Second,
-	})
+func newWorkerPool(processor workerpool.Processor, cfg *config.Config) workerpool.WorkerPool {
+	return workerpool.NewPoolWithConfig(processor, configadapter.WorkerPool(cfg.Worker))
 }
 
-func buildLocalTaskHealthProvider(pools map[string]worker.WorkerPool) taskrpcapi.LocalStatusProvider {
+func buildLocalTaskHealthProvider(pools map[string]workerpool.WorkerPool) taskrpcapi.LocalStatusProvider {
 	return func() map[string]any {
 		summary := map[string]any{
 			"poolCount":           0,

@@ -6,7 +6,204 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
+
+func TestPhase2TargetDirectionDepguardRulesCoverApprovedBoundaries(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	rules := loadDepguardRules(t, configPath)
+	targetRule := requireDepguardRule(t, rules, "target_domain_concrete_infrastructure")
+	platformRule := requireDepguardRule(t, rules, "platform_domain_dependencies")
+	targetFiles := stringSet(targetRule.Files)
+	platformFiles := stringSet(platformRule.Files)
+	targetDeny := depguardDenyPackageSet(targetRule)
+	platformDeny := depguardDenyPackageSet(platformRule)
+
+	domains := []string{
+		"listing", "product", "marketplace", "agent", "knowledge",
+		"resourcecatalog", "commercial", "ledger", "organization",
+	}
+	for _, domain := range domains {
+		for _, glob := range []string{
+			fmt.Sprintf("**/internal/%s/*.go", domain),
+			fmt.Sprintf("**/internal/%s/**/*.go", domain),
+		} {
+			if _, ok := targetFiles[glob]; !ok {
+				t.Errorf("target_domain_concrete_infrastructure must cover %s", glob)
+			}
+		}
+
+		packagePath := "task-processor/internal/" + domain
+		for _, suffix := range []string{"$", "/"} {
+			pattern := packagePath + suffix
+			if _, ok := platformDeny[pattern]; !ok {
+				t.Errorf("platform_domain_dependencies must deny %s", pattern)
+			}
+		}
+	}
+
+	for _, glob := range []string{
+		"**/internal/platform/*.go",
+		"**/internal/platform/**/*.go",
+	} {
+		if _, ok := platformFiles[glob]; !ok {
+			t.Errorf("platform_domain_dependencies must cover %s", glob)
+		}
+	}
+
+	for _, packagePath := range []string{
+		"task-processor/internal/platform",
+		"task-processor/internal/integration",
+		"task-processor/internal/infra",
+		"task-processor/internal/app",
+		"gorm.io",
+		"go.temporal.io",
+		"go.opentelemetry.io",
+		"github.com/open-feature",
+		"github.com/aws",
+		"github.com/redis",
+		"github.com/rabbitmq",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			pattern := packagePath + suffix
+			if _, ok := targetDeny[pattern]; !ok {
+				t.Errorf("target_domain_concrete_infrastructure must deny %s", pattern)
+			}
+		}
+	}
+}
+
+func TestDepguardRuleParsingUsesYAMLSemantics(t *testing.T) {
+	rules := parseDepguardRules(t, []byte(`
+linters-settings:
+  depguard:
+    rules:
+      semantic_rule:
+        files:
+          # - "**/internal/commented/*.go"
+          - '**/internal/single-quoted/*.go'
+        deny:
+          # - pkg: "task-processor/internal/commented$"
+          - pkg: task-processor/internal/unquoted$
+`))
+	rule := requireDepguardRule(t, rules, "semantic_rule")
+	files := stringSet(rule.Files)
+	denied := depguardDenyPackageSet(rule)
+
+	if _, ok := files["**/internal/commented/*.go"]; ok {
+		t.Fatal("commented file glob must not be a semantic depguard entry")
+	}
+	if _, ok := denied["task-processor/internal/commented$"]; ok {
+		t.Fatal("commented deny package must not be a semantic depguard entry")
+	}
+	if _, ok := files["**/internal/single-quoted/*.go"]; !ok {
+		t.Fatal("single-quoted file glob must retain its YAML value")
+	}
+	if _, ok := denied["task-processor/internal/unquoted$"]; !ok {
+		t.Fatal("unquoted deny package must retain its YAML value")
+	}
+}
+
+func TestPhase2RetiredRuntimePathsHavePermanentDepguardRules(t *testing.T) {
+	rules := loadDepguardRules(t, filepath.Join("..", ".golangci.yml"))
+	rule := requireDepguardRule(t, rules, "phase2_retired_runtime_paths")
+	files := stringSet(rule.Files)
+	denied := depguardDenyPackageSet(rule)
+
+	for _, glob := range []string{"**/internal/*.go", "**/internal/**/*.go"} {
+		if _, ok := files[glob]; !ok {
+			t.Errorf("phase2_retired_runtime_paths must cover production files with %s", glob)
+		}
+	}
+	for _, path := range []string{
+		"task-processor/internal/core/lifecycle",
+		"task-processor/internal/infra/database",
+		"task-processor/internal/infra/redisclient",
+		"task-processor/internal/infra/lock",
+		"task-processor/internal/infra/rabbitmq",
+		"task-processor/internal/infra/worker",
+		"task-processor/internal/infra/clients/openai",
+		"task-processor/internal/infra/clients/geminiimage",
+		"task-processor/internal/infra/clients/grsai",
+		"task-processor/internal/infra/storage",
+		"task-processor/internal/infra/resilience",
+		"task-processor/internal/infra/metrics",
+		"task-processor/internal/infra/monitoring",
+		"task-processor/internal/pkg/safeimagehttp",
+		"task-processor/internal/pkg/hashx",
+		"task-processor/internal/pkg/mathx",
+		"task-processor/internal/pkg/ptr",
+		"task-processor/internal/pkg/strx",
+		"task-processor/internal/pkg/timex",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			if _, ok := denied[path+suffix]; !ok {
+				t.Errorf("phase2_retired_runtime_paths must deny %s", path+suffix)
+			}
+		}
+	}
+}
+
+type depguardConfig struct {
+	LintersSettings struct {
+		Depguard struct {
+			Rules map[string]depguardRule `yaml:"rules"`
+		} `yaml:"depguard"`
+	} `yaml:"linters-settings"`
+}
+
+type depguardRule struct {
+	Files []string       `yaml:"files"`
+	Deny  []depguardDeny `yaml:"deny"`
+}
+
+type depguardDeny struct {
+	Package string `yaml:"pkg"`
+}
+
+func loadDepguardRules(t *testing.T, configPath string) map[string]depguardRule {
+	t.Helper()
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+	return parseDepguardRules(t, content)
+}
+
+func parseDepguardRules(t *testing.T, content []byte) map[string]depguardRule {
+	t.Helper()
+	var config depguardConfig
+	if err := yaml.Unmarshal(content, &config); err != nil {
+		t.Fatalf("parse depguard YAML: %v", err)
+	}
+	return config.LintersSettings.Depguard.Rules
+}
+
+func requireDepguardRule(t *testing.T, rules map[string]depguardRule, ruleName string) depguardRule {
+	t.Helper()
+	rule, ok := rules[ruleName]
+	if !ok {
+		t.Fatalf(".golangci.yml must define %s", ruleName)
+	}
+	return rule
+}
+
+func stringSet(values []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		result[value] = struct{}{}
+	}
+	return result
+}
+
+func depguardDenyPackageSet(rule depguardRule) map[string]struct{} {
+	result := make(map[string]struct{}, len(rule.Deny))
+	for _, deny := range rule.Deny {
+		result[deny.Package] = struct{}{}
+	}
+	return result
+}
 
 func TestPlatformRegistrationDepguardPatternsRespectPackageBoundaries(t *testing.T) {
 	configPath := filepath.Join("..", ".golangci.yml")

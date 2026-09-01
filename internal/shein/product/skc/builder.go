@@ -2,7 +2,7 @@ package skc
 
 import (
 	"task-processor/internal/core/logger"
-	openaiClient "task-processor/internal/infra/clients/openai"
+	openaiClient "task-processor/internal/integration/openai"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/product/image"

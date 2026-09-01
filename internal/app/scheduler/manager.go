@@ -5,8 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"task-processor/internal/core/logger"
-	infralock "task-processor/internal/infra/lock"
+	logger "task-processor/internal/platform/logging"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -19,7 +18,7 @@ type Manager struct {
 	dependencyManager *DependencyManager
 	monitorService    *MonitorService
 	taskTimeout       time.Duration
-	distributedLock   infralock.DistributedLock
+	distributedLock   DistributedLock
 	lockTTL           time.Duration
 	mutex             sync.RWMutex
 	ctx               context.Context
@@ -28,7 +27,7 @@ type Manager struct {
 }
 
 // SetDistributedLock configures a lock shared by every task executor created by this manager.
-func (m *Manager) SetDistributedLock(locker infralock.DistributedLock, ttl time.Duration) {
+func (m *Manager) SetDistributedLock(locker DistributedLock, ttl time.Duration) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.distributedLock = locker

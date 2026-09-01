@@ -4,7 +4,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"task-processor/internal/core/logger"
+	logger "task-processor/internal/platform/logging"
 	"time"
 
 	"github.com/spf13/viper"
@@ -18,6 +18,15 @@ func BuildConfig(v *viper.Viper) *Config {
 	listingKitAllowedRoles := getStringSlice(v, "listingkit.zitadel.allowedRoles")
 
 	cfg := &Config{
+		FeatureFlags: buildFeatureFlagsConfig(v),
+		Observability: ObservabilityConfig{
+			Tracing: TracingConfig{
+				Enabled:     v.GetBool("observability.tracing.enabled"),
+				ServiceName: v.GetString("observability.tracing.serviceName"),
+				Endpoint:    v.GetString("observability.tracing.endpoint"),
+				Insecure:    v.GetBool("observability.tracing.insecure"),
+			},
+		},
 		Processor: ProcessorConfig{
 			MaxRetries:       v.GetInt("processor.maxRetries"),
 			Timeout:          v.GetInt("processor.timeout"),
@@ -288,6 +297,22 @@ func BuildConfig(v *viper.Viper) *Config {
 	}
 
 	return cfg
+}
+
+func buildFeatureFlagsConfig(v *viper.Viper) FeatureFlagsConfig {
+	const (
+		flagsConfigKey = "featureFlags.flags"
+		autoMigrateKey = "product-listing-runtime-auto-migrate"
+	)
+
+	rawFlags := v.GetStringMap(flagsConfigKey)
+	flags := make(map[string]bool, len(rawFlags)+1)
+	for key := range rawFlags {
+		flags[key] = v.GetBool(flagsConfigKey + "." + key)
+	}
+	flags[autoMigrateKey] = v.GetBool(flagsConfigKey + "." + autoMigrateKey)
+
+	return FeatureFlagsConfig{Flags: flags}
 }
 
 func legacyListingKitUsernameAllowlistConfigured(v *viper.Viper) bool {

@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	referenceanalysis "task-processor/internal/listing/studio/referenceanalysis"
-	"task-processor/internal/pkg/safeimagehttp"
+	"task-processor/internal/integration/httpimage"
 )
 
 const maxStudioReferenceAnalysisImages = 1
@@ -222,7 +222,7 @@ func studioReferenceUploadedImageKeyCandidates(rawURL string) []string {
 }
 
 func validateStudioReferencePublicHTTPSURL(rawURL string) (string, error) {
-	return safeimagehttp.ValidatePublicHTTPSURL(rawURL)
+	return httpimage.ValidatePublicHTTPSURL(rawURL)
 }
 
 func isStudioReferencePrivateIP(ip net.IP) bool {

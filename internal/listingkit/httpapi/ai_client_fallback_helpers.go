@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 )
 
 func buildListingKitClientFallback(cfg *config.Config, clientName string) *openaiclient.ClientConfig {

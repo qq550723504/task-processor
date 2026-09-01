@@ -45,8 +45,9 @@ type memUsageEvent struct {
 }
 
 type memUsageBucket struct {
-	committed int64
-	reserved  int64
+	committed             int64
+	reserved              int64
+	lastStorageSnapshotAt time.Time
 }
 
 func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (ReserveUsageResult, error) {
@@ -195,6 +196,9 @@ func (l *memUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, r
 		return UsageEvent{}, &UsageValidationError{Field: "usage"}
 	}
 	bucket.committed = committed
+	if source.event.Metric == usageMetricStorageBytesCurrent {
+		bucket.lastStorageSnapshotAt = nextStorageSnapshotTime(time.Now(), bucket.lastStorageSnapshotAt)
+	}
 	l.buckets[bucketKey] = bucket
 
 	now := time.Now().UTC()
@@ -216,7 +220,7 @@ func (l *memUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, r
 	if source.event.Metric == usageMetricStorageBytesCurrent {
 		snapshot := bucket.committed
 		reversal.StorageSnapshot = &snapshot
-		snapshotAt := now
+		snapshotAt := bucket.lastStorageSnapshotAt
 		reversal.StorageSnapshotAt = &snapshotAt
 	}
 	l.eventsByID[reversal.EventID] = memUsageEvent{event: reversal, periodKey: source.periodKey}
@@ -235,10 +239,10 @@ func (l *memUsageLedger) hasLaterDeliveredStorageSnapshot(source UsageEvent) boo
 			continue
 		}
 		if source.StorageSnapshotAt != nil && record.event.StorageSnapshotAt != nil {
-			if record.event.StorageSnapshotAt.After(*source.StorageSnapshotAt) {
+			if !record.event.StorageSnapshotAt.Before(*source.StorageSnapshotAt) {
 				return true
 			}
-		} else if record.event.CreatedAt.After(source.CreatedAt) {
+		} else if !record.event.CreatedAt.Before(source.CreatedAt) {
 			return true
 		}
 	}
@@ -434,6 +438,9 @@ func (l *memUsageLedger) transitionReservedEvent(ctx context.Context, eventID st
 			return UsageEvent{}, &UsageQuotaError{Metric: record.event.Metric, CommittedUsage: bucket.committed, ReservedUsage: bucket.reserved, Quantity: record.event.Quantity}
 		}
 		bucket.committed = committed
+		if record.event.Metric == usageMetricStorageBytesCurrent {
+			bucket.lastStorageSnapshotAt = nextStorageSnapshotTime(time.Now(), bucket.lastStorageSnapshotAt)
+		}
 	}
 	if err := validateUsageBucketTotals(record.event.Metric, bucket.committed, bucket.reserved); err != nil {
 		return UsageEvent{}, err
@@ -458,7 +465,10 @@ func (l *memUsageLedger) transitionReservedEvent(ctx context.Context, eventID st
 	if record.event.Metric == usageMetricStorageBytesCurrent {
 		snapshot := bucket.committed
 		record.event.StorageSnapshot = &snapshot
-		snapshotAt := time.Now().UTC()
+		snapshotAt := bucket.lastStorageSnapshotAt
+		if target != UsageEventCommitted {
+			snapshotAt = time.Now().UTC()
+		}
 		record.event.StorageSnapshotAt = &snapshotAt
 	}
 	l.eventsByID[eventID] = record

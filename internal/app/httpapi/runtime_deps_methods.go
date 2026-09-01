@@ -33,6 +33,7 @@ func (d *runtimeDeps) addClosers(closers ...func() error) {
 			continue
 		}
 		d.shared.closers = append(d.shared.closers, closer)
+		d.constructionClosers = append(d.constructionClosers, closer)
 	}
 }
 

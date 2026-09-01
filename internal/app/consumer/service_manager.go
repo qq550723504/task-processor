@@ -7,13 +7,15 @@ import (
 	"strings"
 	"sync"
 
+	"task-processor/internal/app/configadapter"
+	"task-processor/internal/app/lifecycle"
+	"task-processor/internal/app/monitoring"
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/core/config"
-	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/core/metrics"
-	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/infra/worker"
 	api "task-processor/internal/listingadmin"
+	"task-processor/internal/platform/queue/rabbitmq"
+	worker "task-processor/internal/platform/workerpool"
 
 	"github.com/sirupsen/logrus"
 )
@@ -185,15 +187,9 @@ func (sm *ServiceManager) buildResultReporter() *ResultReporter {
 }
 
 func (sm *ServiceManager) buildLoadMonitor() *rabbitmq.LoadMonitor {
-	cfg := sm.config
-	monitorCfg := rabbitmq.MonitorConfig{
-		UpdateInterval: cfg.LoadMonitor.UpdateInterval,
-		EnableCPU:      cfg.LoadMonitor.EnableCPU,
-		EnableMemory:   cfg.LoadMonitor.EnableMemory,
-		EnableTasks:    cfg.LoadMonitor.EnableTasks,
-	}
-
-	return rabbitmq.NewLoadMonitor(monitorCfg, sm.logger)
+	monitorCfg := configadapter.LoadMonitor(sm.config.LoadMonitor)
+	collector := monitoring.NewMetricsCollector(sm.logger, monitorCfg.UpdateInterval)
+	return rabbitmq.NewLoadMonitor(monitorCfg, newSystemMetricsCollectorAdapter(collector), sm.logger)
 }
 
 func (sm *ServiceManager) buildHTTPServerManager(loadMonitor *rabbitmq.LoadMonitor) *HTTPServerManager {

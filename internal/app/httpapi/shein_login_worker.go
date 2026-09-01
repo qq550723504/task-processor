@@ -12,9 +12,10 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/listingadmin"
+	platformdatabase "task-processor/internal/platform/database"
 	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 )
 
@@ -164,12 +165,12 @@ func buildSheinLoginWorkerDatabaseStoreAPI(cfg *config.Config) (listingadmin.Sto
 	if cfg == nil || cfg.Database == nil || strings.TrimSpace(cfg.Database.Host) == "" {
 		return nil, nil, nil
 	}
-	db, err := database.NewDatabaseFromConfig(cfg.Database)
+	db, err := platformdatabase.Open(configadapter.Database(cfg.Database))
 	if err != nil {
 		return nil, nil, err
 	}
 	return listingadmin.NewGormStoreAPI(listingadmin.NewGormStoreRepository(db)), func() error {
-		return database.CloseDatabase(db)
+		return platformdatabase.Close(db)
 	}, nil
 }
 

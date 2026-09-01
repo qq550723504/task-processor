@@ -13,7 +13,7 @@ func TestOpenAICompatibleRenderersUseLocalImageEditPort(t *testing.T) {
 	} {
 		source := readProductImageBoundaryFile(t, fileName)
 		for _, marker := range []string{
-			`"task-processor/internal/infra/clients/openai"`,
+			`"task-processor/internal/integration/openai"`,
 			"openaiclient.ImageEditRequest",
 			"openaiclient.ImageResponse",
 		} {
@@ -25,7 +25,7 @@ func TestOpenAICompatibleRenderersUseLocalImageEditPort(t *testing.T) {
 
 	adapterSource := readProductImageBoundaryFile(t, "openai_image_edit_adapter.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/clients/openai"`,
+		`"task-processor/internal/integration/openai"`,
 		"type openAIImageEditClientAdapter struct",
 		"func newOpenAIImageEditClientAdapter",
 	} {

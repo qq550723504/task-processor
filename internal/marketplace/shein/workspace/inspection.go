@@ -2,7 +2,7 @@ package workspace
 
 import (
 	"strconv"
-	"task-processor/internal/pkg/strx"
+	"task-processor/internal/shared/strx"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )

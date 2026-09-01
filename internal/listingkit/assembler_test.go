@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"

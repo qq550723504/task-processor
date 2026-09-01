@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"task-processor/internal/aicapability"
-	"task-processor/internal/infra/clients/grsai"
+	"task-processor/internal/integration/grsai"
 	"task-processor/internal/shared/aiidentity"
 )
 

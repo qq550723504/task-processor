@@ -19,7 +19,7 @@ import (
 
 	amazonimage "task-processor/internal/amazon/image"
 	"task-processor/internal/pkg/imagex"
-	"task-processor/internal/pkg/safeimagehttp"
+	"task-processor/internal/integration/httpimage"
 	"task-processor/internal/pkg/watermark"
 )
 
@@ -53,11 +53,11 @@ func newRealImageComponents(workDir string, options ...RealImageComponentOptions
 	}
 	runtime := &realImageComponents{
 		workDir:     workDir,
-		imageClient: safeimagehttp.NewPublicImageHTTPClient(),
+		imageClient: httpimage.NewPublicImageHTTPClient(),
 		processor:   amazonimage.NewAmazonImageProcessor(),
 	}
 	runtime.sourceImageFetcher = func(ctx context.Context, imageURL string, maxBytes int64) ([]byte, error) {
-		return safeimagehttp.Download(ctx, runtime.imageClient, imageURL, maxBytes)
+		return httpimage.Download(ctx, runtime.imageClient, imageURL, maxBytes)
 	}
 	if len(options) == 1 && options[0].SourceImageFetcher != nil {
 		runtime.sourceImageFetcher = options[0].SourceImageFetcher

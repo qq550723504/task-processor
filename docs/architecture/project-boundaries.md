@@ -155,23 +155,27 @@ Must not depend on:
 
 ### 3.6 Platform and integration modules
 
-Future target examples:
+Current runtime-foundation owners:
 
 - `internal/platform/config`
 - `internal/platform/logging`
-- `internal/platform/metrics`
 - `internal/platform/database`
 - `internal/platform/redis`
+- `internal/platform/queue/rabbitmq`
+- `internal/platform/workerpool`
 - `internal/platform/temporal`
-- `internal/platform/objectstore`
+- `internal/platform/featureflags`
+- `internal/platform/observability`
 - `internal/integration/openai`
+- `internal/integration/geminiimage`
+- `internal/integration/grsai`
 - `internal/integration/s3`
-- `internal/integration/playwright`
+- `internal/integration/httpimage`
 
 Own:
 
-- Runtime infrastructure adapters.
-- External client construction.
+- Platform owns application runtime mechanisms and connection lifecycle.
+- Integration owns external client construction and transport adaptation.
 - Health checks.
 - Low-level connection and retry behavior.
 
@@ -182,6 +186,37 @@ Must not depend on:
 - ListingKit business services.
 - Marketplace business rules.
 - HTTP handlers.
+
+#### Phase 2 closure boundary
+
+Application assembly owns lifecycle, provider registration, migration
+execution, instrumentation, and shutdown. Platform owns config mechanics,
+logging, database/Goose, Redis, RabbitMQ, worker pool, Temporal dial, feature
+flags, and tracing. Integration owns OpenAI, Gemini, GRSAI, S3, and remote
+image HTTP.
+
+The following retained packages are explicit migration debt, not new homes:
+
+- `internal/core/config` retains application-shaped schemas; later domain
+  phases split those schemas while `internal/platform/config` remains the
+  generic loading mechanism.
+- `internal/core/logger` is a forwarding-only compatibility facade with an
+  82-importer non-growth ceiling. State and implementation live in platform;
+  later owners replace facade calls with local logger ports.
+- `internal/core/metrics` moves with listing and marketplace business metrics.
+- `internal/infra/auth` moves after organization ports exist; its later owner
+  is an organization integration adapter.
+- `internal/infra/httpx` is split between app HTTP mechanics and later
+  product/marketplace crawler adapters.
+- `internal/crawler` and mixed GORM persistence packages remain frozen until
+  product, marketplace, listing, agent, and organization owners expose ports.
+
+Only these nine target roots satisfy the final no-concrete-infrastructure rule
+at Phase 2 close: `internal/listing`, `internal/product`,
+`internal/marketplace`, `internal/agent`, `internal/knowledge`,
+`internal/resourcecatalog`, `internal/commercial`, `internal/ledger`, and
+`internal/organization`. MCP, pgvector, and TigerBeetle are not admitted
+technologies; adding one requires a separate approved architecture decision.
 
 ### 3.7 `internal/compatibility/listingkit`
 
@@ -289,8 +324,8 @@ Use this table when adding new code:
 | SHEIN workspace/editor/repair rules | `internal/marketplace/shein/workspace` |
 | Amazon-specific rules | `internal/amazon` now; later `internal/marketplace/amazon` |
 | TEMU-specific rules | `internal/temu` now; later `internal/marketplace/temu` |
-| OpenAI client adapter | `internal/infra/clients/openai` now; later `internal/integration/openai` |
-| S3/object storage adapter | current object storage package now; later `internal/platform/objectstore` or `internal/integration/s3` |
+| OpenAI client adapter | `internal/integration/openai`; app wires a domain-local port |
+| S3/object storage adapter | `internal/integration/s3`; app wires a domain-local port |
 
 For product modeling, keep `internal/catalog/canonical.Product` as the
 platform-neutral source of product facts. `internal/publishing/shein.Package`

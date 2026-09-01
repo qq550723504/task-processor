@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/watermark"
+	logger "task-processor/internal/platform/logging"
 
 	"github.com/spf13/viper"
 )
@@ -25,6 +25,8 @@ var (
 )
 
 type Config struct {
+	FeatureFlags        FeatureFlagsConfig        `yaml:"featureFlags"`
+	Observability       ObservabilityConfig       `yaml:"observability"`
 	Logging             LoggingConfig             `yaml:"logging"`
 	Processor           ProcessorConfig           `yaml:"processor"`
 	Worker              WorkerConfig              `yaml:"worker"`
@@ -43,6 +45,21 @@ type Config struct {
 	ListingKit          ListingKitConfig          `yaml:"listingkit"`
 	ListingControlPlane ListingControlPlaneConfig `yaml:"listingControlPlane"`
 	AICapability        AICapabilityConfig        `yaml:"aiCapability"`
+}
+
+type FeatureFlagsConfig struct {
+	Flags map[string]bool `yaml:"flags"`
+}
+
+type ObservabilityConfig struct {
+	Tracing TracingConfig `yaml:"tracing"`
+}
+
+type TracingConfig struct {
+	Enabled     bool   `yaml:"enabled"`
+	ServiceName string `yaml:"serviceName"`
+	Endpoint    string `yaml:"endpoint"`
+	Insecure    bool   `yaml:"insecure"`
 }
 
 type DebugConfig struct {
@@ -219,6 +236,21 @@ func bindKnownEnvs(v *viper.Viper) {
 
 func knownEnvBindings() map[string]envBinding {
 	return map[string]envBinding{
+		"observability.tracing.enabled": {
+			Primary: "TASK_PROCESSOR_OBSERVABILITY_TRACING_ENABLED",
+		},
+		"observability.tracing.serviceName": {
+			Primary: "TASK_PROCESSOR_OBSERVABILITY_TRACING_SERVICE_NAME",
+		},
+		"observability.tracing.endpoint": {
+			Primary: "TASK_PROCESSOR_OBSERVABILITY_TRACING_ENDPOINT",
+		},
+		"observability.tracing.insecure": {
+			Primary: "TASK_PROCESSOR_OBSERVABILITY_TRACING_INSECURE",
+		},
+		"featureFlags.flags.product-listing-runtime-auto-migrate": {
+			Primary: "TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE",
+		},
 		"aiCapability.studioImageRoutingMode": {
 			Primary: "TASK_PROCESSOR_AI_CAPABILITY_STUDIO_IMAGE_ROUTING_MODE",
 		},

@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/store"

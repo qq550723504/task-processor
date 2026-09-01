@@ -8,6 +8,11 @@ import (
 
 func setDefaults(v *viper.Viper) {
 	defaults := NewDefaultConfig()
+	v.SetDefault("featureFlags.flags.product-listing-runtime-auto-migrate", defaults.FeatureFlags.Flags["product-listing-runtime-auto-migrate"])
+	v.SetDefault("observability.tracing.enabled", defaults.Observability.Tracing.Enabled)
+	v.SetDefault("observability.tracing.serviceName", defaults.Observability.Tracing.ServiceName)
+	v.SetDefault("observability.tracing.endpoint", defaults.Observability.Tracing.Endpoint)
+	v.SetDefault("observability.tracing.insecure", defaults.Observability.Tracing.Insecure)
 
 	v.SetDefault("processor.maxRetries", defaults.Processor.MaxRetries)
 	v.SetDefault("processor.timeout", defaults.Processor.Timeout)

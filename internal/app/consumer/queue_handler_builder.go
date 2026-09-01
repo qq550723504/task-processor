@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platform/queue/rabbitmq"
 )
 
 type queueHandlerBuilder struct {

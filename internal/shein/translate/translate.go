@@ -4,7 +4,7 @@ package translate
 import (
 	"strings"
 	"task-processor/internal/core/logger"
-	openaiClient "task-processor/internal/infra/clients/openai"
+	openaiClient "task-processor/internal/integration/openai"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/languageconfig"
 	"task-processor/internal/shein/namelimit"

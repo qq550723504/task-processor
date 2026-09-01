@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	openaiClient "task-processor/internal/infra/clients/openai"
+	openaiClient "task-processor/internal/integration/openai"
 	"task-processor/internal/shein/aicache"
 	apiattribute "task-processor/internal/shein/api/attribute"
 	productapi "task-processor/internal/shein/api/product"

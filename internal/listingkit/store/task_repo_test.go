@@ -10,7 +10,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/store"

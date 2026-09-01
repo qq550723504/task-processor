@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"task-processor/internal/core/config"
-	grsai "task-processor/internal/infra/clients/grsai"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	grsai "task-processor/internal/integration/grsai"
+	openaiclient "task-processor/internal/integration/openai"
 	productenrich "task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"
 )
@@ -61,7 +63,7 @@ func remoteImageServiceOptionsFromConfig(cfg config.ProductImageModelConfig) *re
 	return &remoteImageServiceOptions{endpoint: cfg.Endpoint, apiKey: cfg.APIKey, timeout: cfg.Timeout}
 }
 
-func buildModelProvider(options modelProviderOptions, llmMgr productenrich.LLMManager, openaiMgr *openaiclient.Manager, imageWorkDir string, sourceImageFetcher productimage.SourceImageFetcher) (productimage.ProductImageModelProvider, error) {
+func buildModelProvider(options modelProviderOptions, llmMgr productenrich.LLMManager, openaiMgr *openaiclient.Manager, imageWorkDir string, sourceImageFetcher productimage.SourceImageFetcher, logger *logrus.Logger) (productimage.ProductImageModelProvider, error) {
 	componentOptions := productimage.RealImageComponentOptions{SourceImageFetcher: sourceImageFetcher}
 
 	var faithfulEditor productimage.FaithfulEditor
@@ -88,7 +90,12 @@ func buildModelProvider(options modelProviderOptions, llmMgr productenrich.LLMMa
 		faithfulEditor = editor
 		sceneGenerator = generator
 	} else if options.nanobanana != nil {
+		var componentLogger *logrus.Entry
+		if logger != nil {
+			componentLogger = logrus.NewEntry(logger).WithField("component", "productimage-grsai")
+		}
 		imageClient := grsai.NewClient(grsai.Config{
+			Logger:       grsai.AdaptLogrus(componentLogger),
 			APIKey:       options.nanobanana.apiKey,
 			Model:        options.nanobanana.model,
 			SubmitURL:    options.nanobanana.baseURL,

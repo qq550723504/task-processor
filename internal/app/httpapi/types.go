@@ -21,8 +21,11 @@ import (
 )
 
 type runtimeDeps struct {
-	shared   *sharedRuntimeDeps
-	features *featureRuntimeState
+	shared              *sharedRuntimeDeps
+	features            *featureRuntimeState
+	constructionClosers []func() error
+	featureFlagsCloser  func() error
+	traceCloser         func() error
 }
 
 type featureRuntimeState struct {

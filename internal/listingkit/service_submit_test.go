@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"

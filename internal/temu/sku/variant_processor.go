@@ -3,7 +3,7 @@ package sku
 
 import (
 	"fmt"
-	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/integration/openai"
 	"task-processor/internal/model"
 	models "task-processor/internal/temu/api/product"
 	temutemplate "task-processor/internal/temu/api/template"

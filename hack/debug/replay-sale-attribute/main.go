@@ -12,8 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 )
 
 type debugFileData struct {
@@ -107,6 +109,7 @@ func main() {
 		clientCfg.Timeout = time.Duration(*timeoutSec) * time.Second
 	}
 
+	clientCfg.Logger = openaiclient.AdaptLogrus(logrus.NewEntry(logrus.New()).WithField("component", "replay-sale-attribute"))
 	client := openaiclient.NewClient(clientCfg)
 	if client == nil {
 		fatalf("create OpenAI client failed")

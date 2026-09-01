@@ -10,9 +10,10 @@ import (
 	"os"
 	"strings"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
 	"task-processor/internal/listingkit/ownerreconcile"
+	platformdatabase "task-processor/internal/platform/database"
 )
 
 const approvedExceptionReason = "approved current orphaned owner"
@@ -30,7 +31,7 @@ type runtimeDependencies struct {
 }
 
 func openSQL(databaseConfig *config.DatabaseConfig) (*sql.DB, error) {
-	gormDB, err := database.NewDatabaseFromConfigWithoutCreate(databaseConfig)
+	gormDB, err := platformdatabase.OpenExistingReadOnly(configadapter.Database(databaseConfig))
 	if err != nil || gormDB == nil {
 		return nil, err
 	}
@@ -42,7 +43,7 @@ func defaultRuntimeDependencies() runtimeDependencies {
 		LoadConfig: config.LoadConfigFromFileWithoutValidation,
 		OpenDB:     openSQL,
 		OpenWritableDB: func(databaseConfig *config.DatabaseConfig) (*sql.DB, error) {
-			gormDB, err := database.NewDatabaseFromConfigWithoutCreateWritable(databaseConfig)
+			gormDB, err := platformdatabase.OpenExistingWritable(configadapter.Database(databaseConfig))
 			if err != nil || gormDB == nil {
 				return nil, err
 			}

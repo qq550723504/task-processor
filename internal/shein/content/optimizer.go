@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	openaiClient "task-processor/internal/infra/clients/openai"
+	openaiClient "task-processor/internal/integration/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 	"task-processor/internal/shein/aicache"

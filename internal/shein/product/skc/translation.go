@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"task-processor/internal/core/logger"
-	openaiClient "task-processor/internal/infra/clients/openai"
+	openaiClient "task-processor/internal/integration/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/prompt"

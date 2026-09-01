@@ -123,4 +123,3 @@ func TestRecoveryPreservesExistingErrorMessage(t *testing.T) {
 		t.Fatalf("ErrorMessage=%q, want processor crashed", input.ErrorMessage)
 	}
 }
-

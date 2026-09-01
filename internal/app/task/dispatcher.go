@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/core/logger"
+	logger "task-processor/internal/platform/logging"
 )
 
 // fetchAndDispatchTasks pulls tasks from management and dispatches them to platform workers.

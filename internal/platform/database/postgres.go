@@ -1,0 +1,287 @@
+// Package database 提供数据访问层实现
+package database
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+type sharedDatabaseEntry struct {
+	db   *gorm.DB
+	refs int
+}
+
+var sharedDatabases = struct {
+	mu      sync.Mutex
+	entries map[string]*sharedDatabaseEntry
+}{
+	entries: make(map[string]*sharedDatabaseEntry),
+}
+
+func sharedDatabaseKey(cfg *Config) string {
+	if cfg == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d:%s:%s", cfg.Host, cfg.Port, cfg.User, cfg.Database)
+}
+
+func quoteIdentifier(name string) string {
+	name = strings.ReplaceAll(name, `"`, `""`)
+	return fmt.Sprintf(`"%s"`, name)
+}
+
+func createDatabaseIfNotExists(cfg *Config) error {
+	dsn := fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable TimeZone=Asia/Shanghai",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password,
+	)
+
+	adminDB, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		return fmt.Errorf("连接管理员数据库失败: %w", err)
+	}
+
+	sqlDB, err := adminDB.DB()
+	if err != nil {
+		return fmt.Errorf("获取管理员 sql.DB 失败: %w", err)
+	}
+
+	if err := sqlDB.Ping(); err != nil {
+		return fmt.Errorf("管理员数据库连通性检查失败: %w", err)
+	}
+
+	var count int64
+	if err := adminDB.Raw("SELECT count(*) FROM pg_database WHERE datname = ?", cfg.Database).Scan(&count).Error; err != nil {
+		return fmt.Errorf("检查数据库是否存在失败: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	if err := adminDB.Exec(fmt.Sprintf("CREATE DATABASE %s", quoteIdentifier(cfg.Database))).Error; err != nil {
+		return fmt.Errorf("创建数据库失败: %w", err)
+	}
+	return nil
+}
+
+type databaseOpenOptions struct {
+	readOnly        bool
+	createIfMissing bool
+}
+
+type databaseOpener func(string) (*gorm.DB, error)
+type databaseCreator func(*Config) error
+
+func databaseDSN(cfg *Config, readOnly bool) string {
+	dsn := fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable TimeZone=Asia/Shanghai",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Database,
+	)
+	if readOnly {
+		dsn += " default_transaction_read_only=on"
+	}
+	return dsn
+}
+
+func openPostgresDatabase(dsn string) (*gorm.DB, error) {
+	return gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger:  logger.Default.LogMode(logger.Silent),
+		NowFunc: func() time.Time { return time.Now().UTC() },
+	})
+}
+
+func openDatabase(
+	cfg *Config,
+	options databaseOpenOptions,
+	open databaseOpener,
+	create databaseCreator,
+) (*gorm.DB, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+
+	dsn := databaseDSN(cfg, options.readOnly)
+	db, err := open(dsn)
+	if err != nil {
+		if options.createIfMissing && (strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "database \""+cfg.Database+"\" does not exist")) {
+			if err2 := create(cfg); err2 != nil {
+				return nil, err2
+			}
+			db, err = open(dsn)
+			if err != nil {
+				return nil, fmt.Errorf("连接数据库失败: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("连接数据库失败: %w", err)
+		}
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("获取 sql.DB 失败: %w", err)
+	}
+
+	maxConn := cfg.MaxConnections
+	if maxConn <= 0 {
+		// 从环境变量读取，默认10
+		if envMax := os.Getenv("DATABASE_MAX_CONNECTIONS"); envMax != "" {
+			if parsed, err := strconv.Atoi(envMax); err == nil && parsed > 0 {
+				maxConn = parsed
+			} else {
+				maxConn = 10
+			}
+		} else {
+			maxConn = 10
+		}
+	}
+	maxIdle := cfg.MaxIdleConnections
+	if maxIdle <= 0 {
+		// 从环境变量读取，默认5
+		if envMaxIdle := os.Getenv("DATABASE_MAX_IDLE_CONNECTIONS"); envMaxIdle != "" {
+			if parsed, err := strconv.Atoi(envMaxIdle); err == nil && parsed > 0 {
+				maxIdle = parsed
+			} else {
+				maxIdle = 5
+			}
+		} else {
+			maxIdle = 5
+		}
+	}
+	lifetime := cfg.ConnectionMaxLifetime
+	if lifetime <= 0 {
+		lifetime = time.Hour
+	}
+
+	sqlDB.SetMaxOpenConns(maxConn)
+	sqlDB.SetMaxIdleConns(maxIdle)
+	sqlDB.SetConnMaxLifetime(lifetime)
+
+	if err := sqlDB.Ping(); err != nil {
+		return nil, fmt.Errorf("数据库连通性检查失败: %w", err)
+	}
+
+	return db, nil
+}
+
+// Open creates a database connection from cfg. A nil cfg returns (nil, nil).
+// 普通应用启动保持既有行为：目标数据库缺失时尝试创建后重连。
+func Open(cfg *Config) (*gorm.DB, error) {
+	return openDatabase(
+		cfg,
+		databaseOpenOptions{createIfMissing: true},
+		openPostgresDatabase,
+		createDatabaseIfNotExists,
+	)
+}
+
+func openExistingReadOnly(cfg *Config, open databaseOpener) (*gorm.DB, error) {
+	return openDatabase(
+		cfg,
+		databaseOpenOptions{readOnly: true},
+		open,
+		nil,
+	)
+}
+
+// OpenExistingReadOnly opens an existing target database with a
+// read-only PostgreSQL session and never attempts to create a missing database.
+func OpenExistingReadOnly(cfg *Config) (*gorm.DB, error) {
+	return openExistingReadOnly(cfg, openPostgresDatabase)
+}
+
+// OpenExistingWritable opens an existing target database
+// without creating it and without forcing the session read-only. It is reserved
+// for explicitly confirmed maintenance operations; normal readers must use
+// OpenExistingReadOnly.
+func OpenExistingWritable(cfg *Config) (*gorm.DB, error) {
+	return openDatabase(
+		cfg,
+		databaseOpenOptions{createIfMissing: false},
+		openPostgresDatabase,
+		nil,
+	)
+}
+
+// OpenShared returns a process-local shared *gorm.DB for the
+// given config. Repeated calls with the same config reuse one underlying sql.DB.
+func OpenShared(cfg *Config) (*gorm.DB, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+
+	key := sharedDatabaseKey(cfg)
+	sharedDatabases.mu.Lock()
+	if entry := sharedDatabases.entries[key]; entry != nil {
+		entry.refs++
+		db := entry.db
+		sharedDatabases.mu.Unlock()
+		return db, nil
+	}
+	sharedDatabases.mu.Unlock()
+
+	db, err := Open(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	sharedDatabases.mu.Lock()
+	if entry := sharedDatabases.entries[key]; entry != nil {
+		entry.refs++
+		sharedDatabases.mu.Unlock()
+		_ = Close(db)
+		return entry.db, nil
+	}
+	sharedDatabases.entries[key] = &sharedDatabaseEntry{
+		db:   db,
+		refs: 1,
+	}
+	sharedDatabases.mu.Unlock()
+	return db, nil
+}
+
+// Close closes a database connection.
+func Close(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("获取 sql.DB 失败: %w", err)
+	}
+	return sqlDB.Close()
+}
+
+// CloseShared releases one reference to a shared database handle and
+// closes the underlying sql.DB only when the last caller releases it.
+func CloseShared(cfg *Config, db *gorm.DB) error {
+	if cfg == nil || db == nil {
+		return nil
+	}
+
+	key := sharedDatabaseKey(cfg)
+	sharedDatabases.mu.Lock()
+	entry := sharedDatabases.entries[key]
+	if entry == nil || entry.db != db {
+		sharedDatabases.mu.Unlock()
+		return Close(db)
+	}
+
+	entry.refs--
+	if entry.refs > 0 {
+		sharedDatabases.mu.Unlock()
+		return nil
+	}
+
+	delete(sharedDatabases.entries, key)
+	sharedDatabases.mu.Unlock()
+	return Close(db)
+}

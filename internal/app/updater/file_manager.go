@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"task-processor/internal/core/logger"
+	logger "task-processor/internal/platform/logging"
 	"time"
 )
 

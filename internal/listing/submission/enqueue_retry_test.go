@@ -2,11 +2,15 @@ package submission
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
-
-	"task-processor/internal/infra/worker"
 )
+
+type fakeQueueFullError struct{}
+
+func (fakeQueueFullError) Error() string   { return "queue full" }
+func (fakeQueueFullError) QueueFull() bool { return true }
 
 func TestNextEnqueueRetryDelay(t *testing.T) {
 	t.Parallel()
@@ -46,7 +50,7 @@ func TestRetryEnqueueSubmit(t *testing.T) {
 		err := RetryEnqueueSubmit("task-1", 300*time.Millisecond, func(string) error {
 			attempts++
 			if attempts == 1 {
-				return worker.ErrQueueFull
+				return fmt.Errorf("wrapped: %w", fakeQueueFullError{})
 			}
 			return nil
 		})

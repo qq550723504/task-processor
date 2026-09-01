@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/errors"
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 
 	"github.com/sirupsen/logrus"
 )

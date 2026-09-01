@@ -7,13 +7,13 @@ import (
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/database"
-	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	types "task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
+	platformdatabase "task-processor/internal/platform/database"
+	"task-processor/internal/platform/queue/rabbitmq"
+	workerpool "task-processor/internal/platform/workerpool"
 	"task-processor/internal/processor"
 	"task-processor/internal/shein/aicache"
 	sheinclient "task-processor/internal/shein/client"
@@ -115,18 +115,34 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 	if cfg.Database == nil {
 		logger.Warn("[SHEIN] database config is nil, AI cache will fall back to memory")
 	}
-	db, err := database.NewDatabaseFromConfig(cfg.Database)
+	db, err := platformdatabase.Open(platformDatabaseConfig(cfg.Database))
 	if err != nil {
 		logger.Warnf("[SHEIN] database unavailable, AI cache falling back to memory: %v", err)
 	}
 	p.aiCache = aicache.New(db)
 
-	workerPool := worker.NewPool(p, cfg.Worker)
+	workerPool := workerpool.NewPoolWithConfig(p, platformWorkerPoolConfig(cfg.Worker))
 	p.SetWorkerPool(workerPool)
 	p.taskHandler = NewTaskHandler(p)
 	p.pipeline = p.buildPipeline()
 
 	return p, nil
+}
+
+func platformDatabaseConfig(cfg *config.DatabaseConfig) *platformdatabase.Config {
+	if cfg == nil {
+		return nil
+	}
+	return &platformdatabase.Config{
+		Host:                  cfg.Host,
+		Port:                  cfg.Port,
+		User:                  cfg.User,
+		Password:              cfg.Password,
+		Database:              cfg.Database,
+		MaxConnections:        cfg.MaxConnections,
+		MaxIdleConnections:    cfg.MaxIdleConnections,
+		ConnectionMaxLifetime: cfg.ConnectionMaxLifetime,
+	}
 }
 
 func (p *SheinProcessor) buildPipeline() *Pipeline {
@@ -142,13 +158,20 @@ func (p *SheinProcessor) Start(ctx context.Context) error {
 	return nil
 }
 
-func (p *SheinProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
+func (p *SheinProcessor) ProcessTask(ctx context.Context, job workerpool.WorkerJob) error {
 	var task types.Task
 	if err := jsonx.UnmarshalString(job.TaskData, &task, "parse task data"); err != nil {
 		return err
 	}
 
 	return p.taskHandler.ProcessTask(ctx, task, p.pipeline)
+}
+
+func platformWorkerPoolConfig(cfg config.WorkerConfig) workerpool.PoolConfig {
+	result := workerpool.DefaultPoolConfig()
+	result.Concurrency = cfg.Concurrency
+	result.BufferSize = cfg.BufferSize
+	return result
 }
 
 func (p *SheinProcessor) GetAICache() *aicache.Cache {

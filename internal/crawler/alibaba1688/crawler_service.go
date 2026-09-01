@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/httpx"
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 
 	"github.com/sirupsen/logrus"
 )

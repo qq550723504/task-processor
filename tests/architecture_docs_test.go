@@ -1,12 +1,199 @@
 package tests
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 )
+
+func TestPhase2ClosureDocumentsRuntimeOwnershipAndDeferredDebt(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "development", "repository-structure.md"), []string{
+		"Phase 2 runtime foundation closure",
+		"lifecycle", "provider registration", "migration execution", "instrumentation", "shutdown",
+		"only nine target domain roots",
+	})
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "project-boundaries.md"), []string{
+		"Phase 2 closure boundary",
+		"internal/core/config", "internal/core/logger", "forwarding-only compatibility facade",
+		"internal/core/metrics", "internal/infra/auth", "internal/infra/httpx",
+		"MCP", "pgvector", "TigerBeetle", "not admitted",
+	})
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "refactoring", "module-target-mapping.md"), []string{
+		"Phase 2 closure landing rules",
+		"product owner", "marketplace owner", "organization owner",
+	})
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "refactoring", "phase2-runtime-inventory.md"), []string{
+		"Final closure inventory",
+		"`core/logger` | 82", "`platform/logging` | 9", "`platform/database` | 21", "`integration/s3` | 4",
+		"same-platform workerpool", "Goose migration owner", "Legacy consumer register",
+	})
+	requireDocumentPhrases(t, filepath.Join("..", "internal", "platform", "README.md"), []string{
+		"Goose", "RabbitMQ", "worker pool", "Temporal dial", "feature flags", "tracing",
+	})
+	requireDocumentPhrases(t, filepath.Join("..", "internal", "integration", "README.md"), []string{
+		"OpenAI", "Gemini", "GRSAI", "S3", "remote image HTTP",
+	})
+}
+
+func TestPhase2InventoryNamesEveryRemainingLegacyConcreteConsumer(t *testing.T) {
+	path := filepath.Join("..", "docs", "refactoring", "phase2-runtime-inventory.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	section := markdownSection(t, string(content), "## Legacy consumer register")
+	targets := []string{
+		"task-processor/internal/core/logger",
+		"task-processor/internal/platform/logging",
+		"task-processor/internal/platform/database",
+		"task-processor/internal/platform/redis",
+		"task-processor/internal/platform/queue/rabbitmq",
+		"task-processor/internal/platform/workerpool",
+		"task-processor/internal/integration/openai",
+		"task-processor/internal/integration/geminiimage",
+		"task-processor/internal/integration/grsai",
+		"task-processor/internal/integration/s3",
+		"task-processor/internal/integration/httpimage",
+	}
+	importersByTarget := directInternalImporterMap(t, targets)
+	register, parseErrors := parseLegacyConsumerRegister(section)
+	for _, parseErr := range parseErrors {
+		t.Error(parseErr)
+	}
+	allowedTargets := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		allowedTargets[target] = struct{}{}
+		expected := make(map[string]struct{})
+		for _, importer := range importersByTarget[target] {
+			if isPhase2IntentionalConcreteWiring(importer) {
+				continue
+			}
+			expected[importer] = struct{}{}
+		}
+		actual := register[target]
+		for importer := range expected {
+			if _, ok := actual[importer]; !ok {
+				t.Errorf("%s register is missing %s -> %s", path, target, importer)
+			}
+		}
+		for importer := range actual {
+			if _, ok := expected[importer]; !ok {
+				t.Errorf("%s register has stale or wrong-target row %s -> %s", path, target, importer)
+			}
+		}
+	}
+	for target := range register {
+		if _, ok := allowedTargets[target]; !ok {
+			t.Errorf("%s register has unapproved target %s", path, target)
+		}
+	}
+}
+
+type legacyConsumerRegisterEntry struct {
+	class string
+	owner string
+}
+
+func parseLegacyConsumerRegister(section string) (map[string]map[string]legacyConsumerRegisterEntry, []string) {
+	register := make(map[string]map[string]legacyConsumerRegisterEntry)
+	var problems []string
+	inTable := false
+	for lineNumber, line := range strings.Split(section, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "| Target import path | Exact consumer package | Class | Explicit later owner / phase |" {
+			inTable = true
+			continue
+		}
+		if !inTable || !strings.HasPrefix(trimmed, "|") {
+			continue
+		}
+		columns := strings.Split(line, "|")
+		if len(columns) != 6 {
+			problems = append(problems, fmt.Sprintf("legacy consumer register line %d must have exactly four columns", lineNumber+1))
+			continue
+		}
+		target := strings.Trim(strings.TrimSpace(columns[1]), "`")
+		consumer := strings.Trim(strings.TrimSpace(columns[2]), "`")
+		class := strings.TrimSpace(columns[3])
+		owner := strings.TrimSpace(columns[4])
+		if strings.HasPrefix(target, "---") {
+			continue
+		}
+		if !strings.HasPrefix(target, "task-processor/internal/") || !strings.HasPrefix(consumer, "task-processor/internal/") {
+			problems = append(problems, fmt.Sprintf("legacy consumer register line %d must use full internal import paths", lineNumber+1))
+			continue
+		}
+		if class == "" || owner == "" {
+			problems = append(problems, fmt.Sprintf("legacy consumer register line %d must name class and later owner", lineNumber+1))
+			continue
+		}
+		if register[target] == nil {
+			register[target] = make(map[string]legacyConsumerRegisterEntry)
+		}
+		if _, exists := register[target][consumer]; exists {
+			problems = append(problems, fmt.Sprintf("legacy consumer register line %d duplicates %s -> %s", lineNumber+1, target, consumer))
+			continue
+		}
+		register[target][consumer] = legacyConsumerRegisterEntry{class: class, owner: owner}
+	}
+	return register, problems
+}
+
+func isPhase2IntentionalConcreteWiring(importer string) bool {
+	for _, prefix := range []string{
+		"task-processor/internal/app",
+		"task-processor/internal/platform",
+		"task-processor/internal/integration",
+	} {
+		if importMatchesPrefix(importer, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func requireDocumentPhrases(t *testing.T, path string, required []string) {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q", path, phrase)
+		}
+	}
+}
+
+func directInternalImporterMap(t *testing.T, targets []string) map[string][]string {
+	t.Helper()
+	cmd := exec.Command("go", "list", "-f", `{{.ImportPath}}|{{join .Imports ","}}`, "./internal/...")
+	cmd.Dir = ".."
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list internal importers: %v\n%s", err, out)
+	}
+	result := make(map[string][]string, len(targets))
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		importer, imports, ok := strings.Cut(strings.TrimSpace(line), "|")
+		if !ok {
+			continue
+		}
+		for _, target := range targets {
+			for _, imported := range strings.Split(imports, ",") {
+				if imported == target || strings.HasPrefix(imported, target+"/") {
+					result[target] = append(result[target], importer)
+					break
+				}
+			}
+		}
+	}
+	return result
+}
 
 func TestTemporalBoundaryDocumentDefinesStableReviewRules(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "temporal-boundaries.md")

@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"task-processor/internal/infra/storage"
 )
 
 type s3AssetUploadWriter interface {
@@ -15,23 +13,18 @@ type s3AssetUploadWriter interface {
 }
 
 type S3AssetPublisherConfig struct {
-	Uploader   s3AssetUploadWriter
-	PublicBase string
+	Uploader s3AssetUploadWriter
 }
 
 type s3AssetPublisher struct {
-	uploader   s3AssetUploadWriter
-	publicBase string
+	uploader s3AssetUploadWriter
 }
 
 func NewS3AssetPublisher(cfg S3AssetPublisherConfig) (AssetPublisher, error) {
 	if cfg.Uploader == nil {
 		return nil, fmt.Errorf("uploader cannot be nil")
 	}
-	return &s3AssetPublisher{
-		uploader:   cfg.Uploader,
-		publicBase: strings.TrimRight(strings.TrimSpace(cfg.PublicBase), "/"),
-	}, nil
+	return &s3AssetPublisher{uploader: cfg.Uploader}, nil
 }
 
 func (p *s3AssetPublisher) Publish(ctx context.Context, req *ImageProcessRequest, result *ImageProcessResult) error {
@@ -74,7 +67,7 @@ func (p *s3AssetPublisher) publishAsset(ctx context.Context, taskKey string, ass
 
 	targetName := buildPublishedFilename(prefix, localPath)
 	key := filepath.ToSlash(filepath.Join(taskKey, targetName))
-	fallbackURL, err := p.uploader.Upload(ctx, key, data, detectAssetContentType(localPath, data))
+	publishedURL, err := p.uploader.Upload(ctx, key, data, detectAssetContentType(localPath, data))
 	if err != nil {
 		return fmt.Errorf("upload asset %q to s3: %w", localPath, err)
 	}
@@ -88,7 +81,7 @@ func (p *s3AssetPublisher) publishAsset(ctx context.Context, taskKey string, ass
 	delete(asset.Metadata, "published_path")
 	asset.Metadata["published_size_bytes"] = fmt.Sprintf("%d", len(data))
 	asset.Metadata["published_key"] = key
-	asset.Metadata["published_url"] = storage.ResolveObjectURL(p.publicBase, key, fallbackURL)
+	asset.Metadata["published_url"] = strings.TrimSpace(publishedURL)
 	asset.URL = asset.Metadata["published_url"]
 	return nil
 }

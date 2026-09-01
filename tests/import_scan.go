@@ -1,11 +1,14 @@
 package tests
 
 import (
+	"fmt"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -17,6 +20,11 @@ type goFileIndex struct {
 type goFileFacts struct {
 	source  []byte
 	imports map[string]struct{}
+}
+
+type bannedImportViolation struct {
+	path       string
+	importPath string
 }
 
 var (
@@ -109,6 +117,48 @@ func pathAllowed(path string, allowed map[string]struct{}) bool {
 		}
 	}
 	return false
+}
+
+func decodeGoImportPath(importLiteral string) (string, error) {
+	return strconv.Unquote(importLiteral)
+}
+
+func findBannedImportViolations(root string, bannedImportLiterals []string, allowedFiles map[string]struct{}, productionOnly bool) ([]bannedImportViolation, error) {
+	bannedImports := make(map[string]struct{}, len(bannedImportLiterals))
+	for _, literal := range bannedImportLiterals {
+		importPath, err := decodeGoImportPath(literal)
+		if err != nil {
+			return nil, fmt.Errorf("decode banned import %q: %w", literal, err)
+		}
+		bannedImports[importPath] = struct{}{}
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		return nil, err
+	}
+	var violations []bannedImportViolation
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) || (productionOnly && strings.HasSuffix(filepath.Base(path), "_test.go")) {
+			continue
+		}
+		for literal := range facts.imports {
+			importPath, err := decodeGoImportPath(literal)
+			if err != nil {
+				return nil, fmt.Errorf("decode import in %s: %w", path, err)
+			}
+			if _, banned := bannedImports[importPath]; banned {
+				violations = append(violations, bannedImportViolation{path: path, importPath: importPath})
+			}
+		}
+	}
+	sort.Slice(violations, func(i, j int) bool {
+		if violations[i].path == violations[j].path {
+			return violations[i].importPath < violations[j].importPath
+		}
+		return violations[i].path < violations[j].path
+	})
+	return violations, nil
 }
 
 func importMatchesPrefix(importPath, prefix string) bool {

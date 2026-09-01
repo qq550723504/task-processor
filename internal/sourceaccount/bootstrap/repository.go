@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
+	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/sourceaccount"
 )
 
@@ -35,14 +35,31 @@ func openRepositoryDatabase(cfg *config.DatabaseConfig, logger *logrus.Logger) (
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewSharedDatabaseFromConfig(cfg)
+	databaseConfig := platformDatabaseConfig(cfg)
+	db, err := platformdatabase.OpenShared(databaseConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
 	if logger != nil {
 		logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
 	}
-	return db, func() error { return database.CloseSharedDatabase(cfg, db) }, nil
+	return db, func() error { return platformdatabase.CloseShared(databaseConfig, db) }, nil
+}
+
+func platformDatabaseConfig(cfg *config.DatabaseConfig) *platformdatabase.Config {
+	if cfg == nil {
+		return nil
+	}
+	return &platformdatabase.Config{
+		Host:                  cfg.Host,
+		Port:                  cfg.Port,
+		User:                  cfg.User,
+		Password:              cfg.Password,
+		Database:              cfg.Database,
+		MaxConnections:        cfg.MaxConnections,
+		MaxIdleConnections:    cfg.MaxIdleConnections,
+		ConnectionMaxLifetime: cfg.ConnectionMaxLifetime,
+	}
 }
 
 func autoMigrateRepository(db *gorm.DB) error {

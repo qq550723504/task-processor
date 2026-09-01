@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
@@ -34,7 +34,7 @@ func productEnrichInvocationErrorHandler(logger *logrus.Logger) func(aicapabilit
 			return
 		}
 		logger.WithError(err).WithFields(logrus.Fields{
-			"invocation_id": string(record.InvocationID),
+			"invocation_id": record.InvocationID,
 			"capability":    string(record.Capability),
 			"operation":     string(record.Operation),
 		}).Warn("ai invocation ledger write failed")

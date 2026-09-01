@@ -6,10 +6,11 @@ import (
 	"os"
 	"time"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/core/logger"
-	infralock "task-processor/internal/infra/lock"
+	logger "task-processor/internal/platform/logging"
+	platformredis "task-processor/internal/platform/redis"
 )
 
 // initializeResources 初始化资源
@@ -70,7 +71,7 @@ func (s *schedulerServiceImpl) configureSchedulerDistributedLock(cfg *config.Con
 		s.logger.Warn("调度任务未配置 Redis 分布式锁，当前仅能防止单进程内重复执行")
 		return nil
 	}
-	locker, err := infralock.NewRedisLock(cfg.Redis, schedulerLockOwner(), s.logger)
+	locker, err := platformredis.NewRedisLock(configadapter.Redis(cfg.Redis), schedulerLockOwner(), s.logger)
 	if err != nil {
 		return fmt.Errorf("初始化调度任务分布式锁失败: %w", err)
 	}

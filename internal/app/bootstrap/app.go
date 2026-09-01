@@ -8,10 +8,11 @@ import (
 	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	bootstrapschedulers "task-processor/internal/app/bootstrap/schedulers"
 	"task-processor/internal/app/consumer"
+	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/infra/rabbitmq"
+	platformconfig "task-processor/internal/platform/config"
+	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/platformbase"
 	"task-processor/internal/product"
 	"task-processor/internal/shein/pipeline"
@@ -125,7 +126,7 @@ func (a *ApplicationBootstrap) GetLifecycleManager() lifecycle.LifecycleManager 
 
 func (a *ApplicationBootstrap) loadConfiguration(configPath string) error {
 	a.logger.Infof("loading configuration from %s", configPath)
-	source := config.NewFileConfigSource(configPath)
+	source := platformconfig.NewFileSource(configPath)
 	cfg, err := a.configManager.Load(source)
 	if err != nil {
 		return err

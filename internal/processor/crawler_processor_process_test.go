@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
@@ -29,7 +29,7 @@ func TestCrawlerProcessorReturnsErrorInsteadOfPanickingOnNilProduct(t *testing.T
 	)
 	processor := NewCrawlerProcessor(logrus.New(), fetcher, nil, nil)
 	job := worker.WorkerJob{
-		TaskID: 1,
+		TaskID:   1,
 		TaskData: `{"id":1,"tenantId":1,"storeId":2,"platform":"amazon.crawler","sourcePlatform":"amazon","region":"us","productId":"B001"}`,
 	}
 

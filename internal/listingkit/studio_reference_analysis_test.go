@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 )
 
 type stubReferenceAnalysisCompleter struct {

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/pkg/strx"
+	"task-processor/internal/shared/strx"
 	productenrich "task-processor/internal/productenrich"
 	"task-processor/internal/prompt"
 

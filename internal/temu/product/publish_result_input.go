@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/ptr"
+	"task-processor/internal/shared/ptr"
 	pkgproduct "task-processor/internal/product"
 	temuapi "task-processor/internal/temu/api"
 	models "task-processor/internal/temu/api/product"

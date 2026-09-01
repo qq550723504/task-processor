@@ -161,7 +161,6 @@ func TestS3AssetPublisherPublishSetsPublishedMetadata(t *testing.T) {
 		Uploader: &stubS3AssetUploader{
 			url: "https://listingkit-assets.s3.amazonaws.com/productimage/task/main.jpg",
 		},
-		PublicBase: "https://cdn.example.com/productimage",
 	})
 	require.NoError(t, err)
 
@@ -178,7 +177,7 @@ func TestS3AssetPublisherPublishSetsPublishedMetadata(t *testing.T) {
 	require.NotNil(t, result.MainImage)
 	require.Equal(t, "s3", result.MainImage.Metadata["published_provider"])
 	require.NotEmpty(t, result.MainImage.Metadata["published_key"])
-	require.Contains(t, result.MainImage.URL, "https://cdn.example.com/productimage/")
+	require.Equal(t, "https://listingkit-assets.s3.amazonaws.com/productimage/task/main.jpg", result.MainImage.URL)
 	require.Empty(t, result.MainImage.Metadata["published_path"])
 	CleanupTemporaryAsset(result.MainImage)
 	_, statErr := os.Stat(sourcePath)

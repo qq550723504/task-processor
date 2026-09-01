@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/model"
 	sheinattr "task-processor/internal/shein/product/attribute"
 )

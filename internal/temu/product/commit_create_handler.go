@@ -7,7 +7,7 @@ import (
 	temupublishing "task-processor/internal/marketplace/temu/publishing"
 	types "task-processor/internal/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/strx"
+	"task-processor/internal/shared/strx"
 	temuapi "task-processor/internal/temu/api"
 	temucontext "task-processor/internal/temu/context"
 

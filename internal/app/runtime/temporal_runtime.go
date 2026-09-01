@@ -1,16 +1,32 @@
 package runtime
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 	sdkclient "go.temporal.io/sdk/client"
 
 	"task-processor/internal/listingkit"
 	listingtemporal "task-processor/internal/listingkit/temporal"
+	platformtemporal "task-processor/internal/platform/temporal"
 )
+
+var errTemporalCloseOwnerRequired = errors.New("temporal dial succeeded without close owner")
+
+func validateTemporalDialResult(client sdkclient.Client, closeFn func() error, err error) (sdkclient.Client, func() error, error) {
+	if err != nil {
+		return nil, nil, err
+	}
+	if closeFn == nil {
+		return nil, nil, errTemporalCloseOwnerRequired
+	}
+	return client, closeFn, nil
+}
 
 const (
 	envListingKitTemporalEnabled   = "LISTINGKIT_TEMPORAL_ENABLED"
@@ -23,22 +39,18 @@ func DialListingKitSheinPublishTemporalClient(logger *logrus.Logger) (listingkit
 	if !envBool(envListingKitTemporalEnabled) {
 		return nil, nil, nil
 	}
-	rawClient, address, namespace, err := dialListingKitTemporalSDKClient()
+	rawClient, closeClient, config, err := dialListingKitTemporalSDKClient(context.Background(), platformtemporal.Dial)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial temporal: %w", err)
 	}
 	if logger != nil {
 		logger.WithFields(logrus.Fields{
-			"address":   address,
-			"namespace": namespace,
+			"address":   config.Address,
+			"namespace": config.Namespace,
 			"taskQueue": listingtemporal.TaskQueueSheinSubmitPublishName(),
 		}).Info("connected listingkit shein publish temporal client")
 	}
-	closeFn := func() error {
-		rawClient.Close()
-		return nil
-	}
-	return listingtemporal.NewClient(rawClient), closeFn, nil
+	return listingtemporal.NewClient(rawClient), closeClient, nil
 }
 
 type listingKitTemporalWorkerService interface {
@@ -46,50 +58,85 @@ type listingKitTemporalWorkerService interface {
 	listingkit.LayerWorkflowActivityHostSource
 }
 
+type listingKitTemporalWorker interface {
+	Start() error
+	Stop()
+}
+
+type listingKitTemporalDial func(context.Context, platformtemporal.Config) (sdkclient.Client, func() error, error)
+
+type listingKitTemporalRuntimeDependencies struct {
+	Dial            listingKitTemporalDial
+	NewActivityHost func(any) (listingkit.SheinPublishActivityHost, error)
+	NewLayerHost    func(any) (listingkit.LayerWorkflowActivityHost, error)
+	NewWorker       func(listingtemporal.WorkerConfig) (listingKitTemporalWorker, error)
+}
+
 func StartListingKitSheinPublishTemporalWorker(svc listingKitTemporalWorkerService, logger *logrus.Logger) (func() error, error) {
+	return startListingKitSheinPublishTemporalWorkerWithDependencies(context.Background(), svc, logger, defaultListingKitTemporalRuntimeDependencies())
+}
+
+func startListingKitSheinPublishTemporalWorkerWithDependencies(ctx context.Context, svc any, logger *logrus.Logger, dependencies listingKitTemporalRuntimeDependencies) (func() error, error) {
 	if !envBool(envListingKitTemporalEnabled) {
 		return nil, nil
 	}
-	rawClient, address, namespace, err := dialListingKitTemporalSDKClient()
+	defaults := defaultListingKitTemporalRuntimeDependencies()
+	if dependencies.Dial == nil {
+		dependencies.Dial = defaults.Dial
+	}
+	if dependencies.NewActivityHost == nil {
+		dependencies.NewActivityHost = defaults.NewActivityHost
+	}
+	if dependencies.NewLayerHost == nil {
+		dependencies.NewLayerHost = defaults.NewLayerHost
+	}
+	if dependencies.NewWorker == nil {
+		dependencies.NewWorker = defaults.NewWorker
+	}
+	rawClient, closeClient, config, err := dialListingKitTemporalSDKClient(ctx, dependencies.Dial)
 	if err != nil {
 		return nil, fmt.Errorf("dial temporal: %w", err)
 	}
 
-	host, err := listingkit.NewSheinPublishActivityHost(svc)
+	host, err := dependencies.NewActivityHost(svc)
 	if err != nil {
-		rawClient.Close()
+		_ = closeClient()
 		return nil, err
 	}
-	layerHost, err := listingkit.NewLayerWorkflowActivityHost(svc)
+	layerHost, err := dependencies.NewLayerHost(svc)
 	if err != nil {
-		rawClient.Close()
+		_ = closeClient()
 		return nil, err
 	}
-	worker, err := listingtemporal.NewWorker(listingtemporal.WorkerConfig{
+	worker, err := dependencies.NewWorker(listingtemporal.WorkerConfig{
 		Client:    rawClient,
 		Host:      host,
 		LayerHost: layerHost,
 	})
 	if err != nil {
-		rawClient.Close()
+		_ = closeClient()
 		return nil, err
 	}
 	if err := worker.Start(); err != nil {
-		rawClient.Close()
+		_ = closeClient()
 		return nil, fmt.Errorf("start temporal worker: %w", err)
 	}
 	if logger != nil {
 		logger.WithFields(logrus.Fields{
-			"address":   address,
-			"namespace": namespace,
+			"address":   config.Address,
+			"namespace": config.Namespace,
 			"taskQueue": listingtemporal.TaskQueueSheinSubmitPublishName(),
 		}).Info("started listingkit shein publish temporal worker")
 	}
 
+	var once sync.Once
+	var closeErr error
 	closeFn := func() error {
-		worker.Stop()
-		rawClient.Close()
-		return nil
+		once.Do(func() {
+			worker.Stop()
+			closeErr = closeClient()
+		})
+		return closeErr
 	}
 	return closeFn, nil
 }
@@ -102,7 +149,7 @@ func ShouldStartListingKitSheinPublishTemporalWorkerInProcess() bool {
 	return envBool(envListingKitTemporalWorker)
 }
 
-func dialListingKitTemporalSDKClient() (sdkclient.Client, string, string, error) {
+func dialListingKitTemporalSDKClient(ctx context.Context, dial listingKitTemporalDial) (sdkclient.Client, func() error, platformtemporal.Config, error) {
 	address := strings.TrimSpace(os.Getenv(envListingKitTemporalAddress))
 	if address == "" {
 		address = "localhost:7233"
@@ -111,14 +158,23 @@ func dialListingKitTemporalSDKClient() (sdkclient.Client, string, string, error)
 	if namespace == "" {
 		namespace = "default"
 	}
-	rawClient, err := sdkclient.Dial(sdkclient.Options{
-		HostPort:  address,
-		Namespace: namespace,
-	})
+	config := platformtemporal.Config{Address: address, Namespace: namespace}
+	rawClient, closeClient, err := validateTemporalDialResult(dial(ctx, config))
 	if err != nil {
-		return nil, "", "", err
+		return nil, nil, platformtemporal.Config{}, err
 	}
-	return rawClient, address, namespace, nil
+	return rawClient, closeClient, config, nil
+}
+
+func defaultListingKitTemporalRuntimeDependencies() listingKitTemporalRuntimeDependencies {
+	return listingKitTemporalRuntimeDependencies{
+		Dial:            platformtemporal.Dial,
+		NewActivityHost: listingkit.NewSheinPublishActivityHost,
+		NewLayerHost:    listingkit.NewLayerWorkflowActivityHost,
+		NewWorker: func(config listingtemporal.WorkerConfig) (listingKitTemporalWorker, error) {
+			return listingtemporal.NewWorker(config)
+		},
+	}
 }
 
 func envBool(name string) bool {

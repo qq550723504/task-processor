@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"task-processor/internal/core/config"
-	loggerPkg "task-processor/internal/core/logger"
 	"task-processor/internal/pkg/appenv"
+	loggerPkg "task-processor/internal/platform/logging"
 )
 
 func TestApplyLoggingConfigFromConfig_WritesToConfiguredFile(t *testing.T) {

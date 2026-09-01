@@ -5,7 +5,7 @@ import (
 
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platform/queue/rabbitmq"
 
 	"github.com/sirupsen/logrus"
 )

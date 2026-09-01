@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	taskapp "task-processor/internal/app/task"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
+	"task-processor/internal/platform/queue/rabbitmq"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )

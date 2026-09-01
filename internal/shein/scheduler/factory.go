@@ -6,9 +6,9 @@ import (
 
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/platformbase"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/pricing"

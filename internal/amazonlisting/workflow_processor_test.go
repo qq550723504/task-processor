@@ -7,7 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"task-processor/internal/infra/worker"
+	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/shared/aiidentity"
 )
 

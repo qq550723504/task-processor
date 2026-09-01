@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/ai"
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/integration/openai"
 )
 
 type openAICompatibleImageGenerator interface {
