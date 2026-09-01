@@ -21,10 +21,13 @@ func TestProductImageHasOnlyPureCapabilityDependencies(t *testing.T) {
 
 	allowed := map[string]struct{}{
 		"context":          {},
+		"crypto/sha256":    {},
 		"embed":            {},
+		"encoding/hex":     {},
 		"errors":           {},
 		"fmt":              {},
 		"image":            {},
+		"math":             {},
 		"image/color":      {},
 		"net":              {},
 		"net/url":          {},
@@ -56,9 +59,14 @@ func TestProductImageSemanticGuardCoversEveryDeclarationKind(t *testing.T) {
 	source := `package fixture
 type WorkflowEnvelope struct{}
 type Candidate struct { RepositoryClient string }
+type RunEnvelope struct{}
+type RevisionStore struct{}
 func PublishTask() {}
+func DispatchJob() {}
 func (queueReceiver Candidate) Retry(retryParameter string) (workerResult string) { return "" }
 var ApprovalState string
+var SchedulerLifecycle string
+var DispatcherMode string
 const PersistenceMode = "active"
 func local() {
 	var publisherVariable string
@@ -75,7 +83,8 @@ func local() {
 	for _, identifier := range []string{
 		"WorkflowEnvelope", "RepositoryClient", "PublishTask", "queueReceiver", "Retry",
 		"retryParameter", "workerResult", "ApprovalState", "PersistenceMode", "publisherVariable",
-		"retryQueue", "taskIndex", "workflowValue",
+		"retryQueue", "taskIndex", "workflowValue", "RunEnvelope", "RevisionStore", "DispatchJob",
+		"SchedulerLifecycle", "DispatcherMode",
 	} {
 		require.True(t, containsImageSemanticViolation(violations, identifier), "guard missed %s: %v", identifier, violations)
 	}
@@ -180,6 +189,7 @@ func isForbiddenImageSemanticIdentifier(identifier string) bool {
 	lower := strings.ToLower(identifier)
 	for _, forbidden := range []string{
 		"task", "repository", "publisher", "queue", "worker", "workflow", "retry", "approval", "persistence",
+		"run", "revision", "job", "store", "scheduler", "dispatcher", "lifecycle",
 	} {
 		if strings.Contains(lower, forbidden) {
 			return true

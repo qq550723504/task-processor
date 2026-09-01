@@ -3,6 +3,7 @@ package image
 import (
 	"embed"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -266,6 +267,11 @@ func mergeSceneOptionValue(target *string, value string) {
 }
 
 func normalizeSceneProfile(raw sceneProfileYAML) (SceneProfile, error) {
+	for _, value := range []float64{raw.BlurRadius, raw.BackgroundBrightness, raw.BackgroundContrast, raw.SubjectScale} {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return SceneProfile{}, ErrInputInvalid
+		}
+	}
 	copySlots, err := normalizedProfileSlots(raw.CopySlots)
 	if err != nil {
 		return SceneProfile{}, err

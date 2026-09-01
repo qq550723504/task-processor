@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,6 +27,16 @@ func TestIsWhiteBackgroundUsesAvailableCornersForTinyImages(t *testing.T) {
 	require.False(t, IsWhiteBackground(nil))
 }
 
+func TestIsWhiteBackgroundHandlesTypedNilImage(t *testing.T) {
+	t.Parallel()
+
+	var typedNil *image.NRGBA
+	var source image.Image = typedNil
+	require.NotPanics(t, func() {
+		require.False(t, IsWhiteBackground(source))
+	})
+}
+
 func TestAssessIPRiskIsDeterministicAndDoesNotMutateAudits(t *testing.T) {
 	t.Parallel()
 
@@ -36,14 +47,50 @@ func TestAssessIPRiskIsDeterministicAndDoesNotMutateAudits(t *testing.T) {
 	before := append([]ImageAudit(nil), audits...)
 	before[0].Issues = append([]string(nil), audits[0].Issues...)
 
-	first := AssessIPRisk("https://detail.1688.com/offer/1", audits)
-	second := AssessIPRisk("https://detail.1688.com/offer/1", []ImageAudit{audits[1], audits[0]})
+	first, err := AssessIPRisk("https://detail.1688.com/offer/1", audits)
+	require.NoError(t, err)
+	second, err := AssessIPRisk("https://detail.1688.com/offer/1", []ImageAudit{audits[1], audits[0]})
+	require.NoError(t, err)
 
 	require.Equal(t, RiskHigh, first.Level)
 	require.Equal(t, 1.0, first.Score)
 	require.Equal(t, first, second)
 	require.True(t, reflect.DeepEqual(before, audits), "AssessIPRisk mutated its input")
 	require.IsNonDecreasing(t, first.Reasons)
+}
+
+func TestAssessIPRiskRejectsResourceExhaustionWithoutDroppingReasons(t *testing.T) {
+	t.Parallel()
+
+	tooManyAudits := make([]ImageAudit, 65)
+	for index := range tooManyAudits {
+		tooManyAudits[index] = ImageAudit{ImageURL: "https://cdn.example/" + string(rune(0x7000+index)) + ".png"}
+	}
+	tooManyIssues := make([]string, 65)
+	for index := range tooManyIssues {
+		tooManyIssues[index] = "issue-" + string(rune(0x7100+index))
+	}
+	largeTotal := make([]ImageAudit, 10)
+	for index := range largeTotal {
+		largeTotal[index] = ImageAudit{ImageURL: "https://cdn.example/" + strings.Repeat(string(rune('a'+index)), 7000) + ".png"}
+	}
+
+	for name, testCase := range map[string]struct {
+		sourceURL string
+		audits    []ImageAudit
+	}{
+		"65 audits":           {sourceURL: "https://source.example/a.png", audits: tooManyAudits},
+		"65 issue reasons":    {sourceURL: "https://source.example/a.png", audits: []ImageAudit{{ImageURL: "https://cdn.example/a.png", Issues: tooManyIssues}}},
+		"overlong source URL": {sourceURL: "https://source.example/" + strings.Repeat("x", 8193), audits: nil},
+		"overlong object":     {sourceURL: "https://source.example/a.png", audits: []ImageAudit{{ImageURL: "https://cdn.example/a.png", HasLogo: true, PrimaryObject: strings.Repeat("x", 8193)}}},
+		"aggregate bytes":     {sourceURL: "https://source.example/a.png", audits: largeTotal},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := AssessIPRisk(testCase.sourceURL, testCase.audits)
+			require.ErrorIs(t, err, ErrInputInvalid)
+			require.Equal(t, IPRiskAssessment{}, got)
+		})
+	}
 }
 
 func TestNormalizeGenerationMetadataDefensivelyCopiesAndCanonicalizesValues(t *testing.T) {

@@ -1,5 +1,7 @@
 package image
 
+const MaxInlineArtifactBytes = 32 << 20
+
 type Role string
 
 const (
@@ -11,6 +13,8 @@ const (
 
 type Asset struct {
 	URL           string
+	Bytes         []byte
+	MediaType     string
 	SourceURL     string
 	SourceAssetID string
 	Role          Role

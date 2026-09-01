@@ -3,12 +3,13 @@ package image
 import (
 	"fmt"
 	"image"
+	"reflect"
 	"sort"
 	"strings"
 )
 
 func IsWhiteBackground(source image.Image) bool {
-	if source == nil {
+	if source == nil || isNilImage(source) {
 		return false
 	}
 	bounds := source.Bounds()
@@ -38,7 +39,10 @@ func IsWhiteBackground(source image.Image) bool {
 	return white*4 >= len(unique)*3
 }
 
-func AssessIPRisk(sourceURL string, audits []ImageAudit) IPRiskAssessment {
+func AssessIPRisk(sourceURL string, audits []ImageAudit) (IPRiskAssessment, error) {
+	if err := validateIPRiskInput(sourceURL, audits); err != nil {
+		return IPRiskAssessment{}, err
+	}
 	reasons := make([]string, 0)
 	score := 0.0
 	level := RiskLow
@@ -70,12 +74,53 @@ func AssessIPRisk(sourceURL string, audits []ImageAudit) IPRiskAssessment {
 			level = RiskHigh
 		}
 	}
-	reasons, _ = normalizedStrings(reasons, maxReviewCandidates)
+	reasons, err := normalizedStrings(reasons, maxIPReasons)
+	if err != nil {
+		return IPRiskAssessment{}, err
+	}
 	sort.Strings(reasons)
 	if score > 1 {
 		score = 1
 	}
-	return IPRiskAssessment{Level: level, Score: score, Reasons: reasons}
+	return IPRiskAssessment{Level: level, Score: score, Reasons: reasons}, nil
+}
+
+const (
+	maxIPAudits    = 64
+	maxAuditIssues = 64
+	maxIPReasons   = 1 + 4*maxIPAudits
+)
+
+func validateIPRiskInput(sourceURL string, audits []ImageAudit) error {
+	if len(audits) > maxIPAudits || len(sourceURL) > maxImageStringBytes {
+		return ErrInputInvalid
+	}
+	if sourceURL != "" && !isCanonicalHTTPURL(sourceURL) {
+		return ErrInputInvalid
+	}
+	used := len(sourceURL)
+	for _, audit := range audits {
+		if len(audit.Issues) > maxAuditIssues || len(audit.ImageURL) > maxImageStringBytes || len(audit.PrimaryObject) > maxImageStringBytes {
+			return ErrInputInvalid
+		}
+		if audit.ImageURL != "" && !isCanonicalHTTPURL(audit.ImageURL) {
+			return ErrInputInvalid
+		}
+		used += len(audit.ImageURL) + len(audit.PrimaryObject)
+		if used > maxImageInputBytes {
+			return ErrInputInvalid
+		}
+		for _, issue := range audit.Issues {
+			if len(issue) > maxImageStringBytes {
+				return ErrInputInvalid
+			}
+			used += len(issue)
+			if used > maxImageInputBytes {
+				return ErrInputInvalid
+			}
+		}
+	}
+	return nil
 }
 
 func NormalizeGenerationMetadata(metadata GenerationMetadata) (GenerationMetadata, error) {
@@ -157,4 +202,14 @@ func minInteger(left, right int) int {
 		return left
 	}
 	return right
+}
+
+func isNilImage(source image.Image) bool {
+	value := reflect.ValueOf(source)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }

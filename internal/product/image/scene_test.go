@@ -2,6 +2,7 @@ package image
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 
@@ -69,6 +70,33 @@ func TestResolveSceneProfileReturnsIndependentCopiesAndRejectsUnknownProfiles(t 
 
 	_, err = ResolveSceneProfile("unknown-profile")
 	require.ErrorIs(t, err, ErrCapabilityUnsupported)
+}
+
+func TestNormalizeSceneProfileRejectsNonFiniteNumbers(t *testing.T) {
+	t.Parallel()
+
+	valid := sceneProfileYAML{
+		Name: "test", SubjectScale: 0.5, BlurRadius: 1,
+		BackgroundBrightness: 1, BackgroundContrast: 1,
+		LayoutVariant: "center", VisualMode: "catalog",
+	}
+	for name, mutate := range map[string]func(*sceneProfileYAML){
+		"blur NaN":               func(profile *sceneProfileYAML) { profile.BlurRadius = math.NaN() },
+		"blur infinity":          func(profile *sceneProfileYAML) { profile.BlurRadius = math.Inf(1) },
+		"brightness NaN":         func(profile *sceneProfileYAML) { profile.BackgroundBrightness = math.NaN() },
+		"brightness infinity":    func(profile *sceneProfileYAML) { profile.BackgroundBrightness = math.Inf(-1) },
+		"contrast NaN":           func(profile *sceneProfileYAML) { profile.BackgroundContrast = math.NaN() },
+		"contrast infinity":      func(profile *sceneProfileYAML) { profile.BackgroundContrast = math.Inf(1) },
+		"subject scale NaN":      func(profile *sceneProfileYAML) { profile.SubjectScale = math.NaN() },
+		"subject scale infinity": func(profile *sceneProfileYAML) { profile.SubjectScale = math.Inf(1) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			profile := valid
+			mutate(&profile)
+			_, err := normalizeSceneProfile(profile)
+			require.ErrorIs(t, err, ErrInputInvalid)
+		})
+	}
 }
 
 func TestBuildScenePlanProducesDeterministicTypedSellingPointLayers(t *testing.T) {

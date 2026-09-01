@@ -2,7 +2,10 @@ package image
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"math"
 	"net"
 	"net/url"
 	"path"
@@ -63,13 +66,13 @@ func (c *subjectCapability) Extract(ctx context.Context, request ExtractRequest)
 		return Candidate{}, err
 	}
 	candidate, err := c.backend.Extract(ctx, cloned)
+	if contextErr := contextError(ctx); contextErr != nil {
+		return Candidate{}, contextErr
+	}
 	if err != nil {
 		return Candidate{}, capabilityError(err)
 	}
-	if err := contextError(ctx); err != nil {
-		return Candidate{}, err
-	}
-	return validateCandidate(candidate, cloned.Source, RoleSubject, "extract_subject")
+	return validateCandidate(candidate, cloned.Source, RoleSubject, "extract_subject", forbiddenArtifactURLs(cloned.Source))
 }
 
 type whiteBackgroundCapability struct{ backend WhiteBackgroundRenderer }
@@ -93,13 +96,13 @@ func (c *whiteBackgroundCapability) RenderWhiteBackground(ctx context.Context, r
 		return Candidate{}, err
 	}
 	candidate, err := c.backend.RenderWhiteBackground(ctx, cloned)
+	if contextErr := contextError(ctx); contextErr != nil {
+		return Candidate{}, contextErr
+	}
 	if err != nil {
 		return Candidate{}, capabilityError(err)
 	}
-	if err := contextError(ctx); err != nil {
-		return Candidate{}, err
-	}
-	return validateCandidate(candidate, cloned.Source, RoleWhiteBackground, "render_white_background")
+	return validateCandidate(candidate, cloned.Source, RoleWhiteBackground, "render_white_background", forbiddenArtifactURLs(cloned.Source))
 }
 
 type sceneCapability struct{ backend SceneRenderer }
@@ -123,27 +126,28 @@ func (c *sceneCapability) RenderScene(ctx context.Context, request SceneRequest)
 		return nil, err
 	}
 	candidates, err := c.backend.RenderScene(ctx, cloned)
+	if contextErr := contextError(ctx); contextErr != nil {
+		return nil, contextErr
+	}
 	if err != nil {
 		return nil, capabilityError(err)
-	}
-	if err := contextError(ctx); err != nil {
-		return nil, err
 	}
 	if len(candidates) == 0 || len(candidates) > limit {
 		return nil, ErrOutputValidation
 	}
 	validated := make([]Candidate, 0, len(candidates))
-	seenURLs := make(map[string]struct{}, len(candidates))
+	seenArtifacts := make(map[string]struct{}, len(candidates))
+	forbidden := forbiddenArtifactURLs(append([]Asset{cloned.Source}, cloned.StyleReferences...)...)
 	for _, candidate := range candidates {
-		item, err := validateCandidate(candidate, cloned.Source, RoleScene, "render_scene")
+		item, err := validateCandidate(candidate, cloned.Source, RoleScene, "render_scene", forbidden)
 		if err != nil {
 			return nil, err
 		}
-		identity := canonicalHTTPURL(item.Asset.URL)
-		if _, exists := seenURLs[identity]; exists {
+		identity := artifactIdentity(item.Asset)
+		if _, exists := seenArtifacts[identity]; exists {
 			return nil, ErrOutputValidation
 		}
-		seenURLs[identity] = struct{}{}
+		seenArtifacts[identity] = struct{}{}
 		validated = append(validated, item)
 	}
 	return validated, nil
@@ -170,13 +174,13 @@ func (c *reviewCapability) Review(ctx context.Context, request ReviewRequest) (R
 		return Review{}, err
 	}
 	review, err := c.backend.Review(ctx, cloned)
+	if contextErr := contextError(ctx); contextErr != nil {
+		return Review{}, contextErr
+	}
 	if err != nil {
 		return Review{}, capabilityError(err)
 	}
-	if err := contextError(ctx); err != nil {
-		return Review{}, err
-	}
-	if review.Score < 0 || review.Score > 1 {
+	if math.IsNaN(review.Score) || math.IsInf(review.Score, 0) || review.Score < 0 || review.Score > 1 {
 		return Review{}, ErrOutputValidation
 	}
 	reasons, err := normalizedStrings(review.Reasons, maxMetadataValues)
@@ -223,7 +227,7 @@ func cloneSceneRequest(request SceneRequest) (SceneRequest, int, error) {
 		return SceneRequest{}, 0, ErrInputInvalid
 	}
 	styleReferences := make([]Asset, len(request.StyleReferences))
-	seen := make(map[string]struct{}, len(request.StyleReferences))
+	seen := map[string]struct{}{source.SourceAssetID: {}}
 	for index, styleReference := range request.StyleReferences {
 		cloned, err := validateSourceAsset(styleReference)
 		if err != nil {
@@ -249,8 +253,11 @@ func cloneSceneRequest(request SceneRequest) (SceneRequest, int, error) {
 }
 
 func cloneReviewRequest(request ReviewRequest) (ReviewRequest, error) {
+	if len(request.Sources) == 0 || len(request.Sources) > maxReviewCandidates || len(request.Candidates) == 0 || len(request.Candidates) > maxReviewCandidates {
+		return ReviewRequest{}, ErrInputInvalid
+	}
 	product, err := validateProductContext(request.Product)
-	if err != nil || len(request.Sources) == 0 || len(request.Candidates) == 0 || len(request.Candidates) > maxReviewCandidates {
+	if err != nil {
 		return ReviewRequest{}, ErrInputInvalid
 	}
 	sources := make([]Asset, len(request.Sources))
@@ -267,12 +274,13 @@ func cloneReviewRequest(request ReviewRequest) (ReviewRequest, error) {
 		sources[index] = cloned
 	}
 	candidates := make([]Candidate, len(request.Candidates))
+	allForbidden := forbiddenArtifactURLs(sources...)
 	for index, candidate := range request.Candidates {
 		source, exists := byID[candidate.Asset.SourceAssetID]
 		if !exists || !isGeneratedRole(candidate.Asset.Role) {
 			return ReviewRequest{}, ErrInputInvalid
 		}
-		cloned, err := validateCandidate(candidate, source, candidate.Asset.Role, "")
+		cloned, err := validateCandidate(candidate, source, candidate.Asset.Role, "", allForbidden)
 		if err != nil {
 			return ReviewRequest{}, ErrInputInvalid
 		}
@@ -294,7 +302,10 @@ func validatedInput(source Asset, product ProductContext) (Asset, ProductContext
 }
 
 func validateSourceAsset(asset Asset) (Asset, error) {
-	if asset.Role != RoleSource || !isCanonicalRequired(asset.SourceAssetID) || !isCanonicalHTTPURL(asset.URL) || !isCanonicalHTTPURL(asset.SourceURL) {
+	if asset.Role != RoleSource || asset.Bytes != nil || !isCanonicalRequired(asset.SourceAssetID) || !isCanonicalHTTPURL(asset.URL) || !isCanonicalHTTPURL(asset.SourceURL) {
+		return Asset{}, ErrInputInvalid
+	}
+	if asset.MediaType != "" && !isCanonicalImageMediaType(asset.MediaType) {
 		return Asset{}, ErrInputInvalid
 	}
 	if !validDimensions(asset.Width, asset.Height) {
@@ -305,19 +316,25 @@ func validateSourceAsset(asset Asset) (Asset, error) {
 		return Asset{}, ErrInputInvalid
 	}
 	asset.Operations = operations
+	asset.Bytes = nil
 	return asset, nil
 }
 
-func validateCandidate(candidate Candidate, source Asset, role Role, requiredOperation string) (Candidate, error) {
+func validateCandidate(candidate Candidate, source Asset, role Role, requiredOperation string, forbiddenURLs map[string]struct{}) (Candidate, error) {
 	asset := candidate.Asset
 	if asset.Role != role || role == RoleSource || !isCanonicalRequired(asset.SourceAssetID) || asset.SourceAssetID != source.SourceAssetID {
 		return Candidate{}, ErrOutputValidation
 	}
-	if !isCanonicalHTTPURL(asset.URL) || !isCanonicalHTTPURL(asset.SourceURL) || !validDimensions(asset.Width, asset.Height) || asset.Width == 0 {
+	if !isCanonicalHTTPURL(asset.SourceURL) || !validDimensions(asset.Width, asset.Height) || asset.Width == 0 {
 		return Candidate{}, ErrOutputValidation
 	}
-	if sourceURLEquivalent(asset.URL, source.URL) || sourceURLEquivalent(asset.URL, source.SourceURL) {
+	if err := validateGeneratedArtifact(asset); err != nil {
 		return Candidate{}, ErrOutputValidation
+	}
+	if asset.URL != "" {
+		if _, forbidden := forbiddenURLs[canonicalHTTPURL(asset.URL)]; forbidden {
+			return Candidate{}, ErrOutputValidation
+		}
 	}
 	if !sourceURLEquivalent(asset.SourceURL, source.URL) && !sourceURLEquivalent(asset.SourceURL, source.SourceURL) {
 		return Candidate{}, ErrOutputValidation
@@ -331,7 +348,53 @@ func validateCandidate(candidate Candidate, source Asset, role Role, requiredOpe
 		return Candidate{}, ErrOutputValidation
 	}
 	asset.Operations = operations
+	asset.Bytes = append([]byte(nil), asset.Bytes...)
 	return Candidate{Asset: asset, Metadata: metadata}, nil
+}
+
+func validateGeneratedArtifact(asset Asset) error {
+	hasURL := asset.URL != ""
+	hasInline := asset.Bytes != nil
+	if hasURL == hasInline {
+		return ErrOutputValidation
+	}
+	if hasURL {
+		if !isCanonicalHTTPURL(asset.URL) || asset.MediaType != "" && !isCanonicalImageMediaType(asset.MediaType) {
+			return ErrOutputValidation
+		}
+		return nil
+	}
+	if len(asset.Bytes) == 0 || len(asset.Bytes) > MaxInlineArtifactBytes || !isCanonicalImageMediaType(asset.MediaType) {
+		return ErrOutputValidation
+	}
+	return nil
+}
+
+func forbiddenArtifactURLs(assets ...Asset) map[string]struct{} {
+	forbidden := make(map[string]struct{}, len(assets)*2)
+	for _, asset := range assets {
+		for _, candidate := range []string{asset.URL, asset.SourceURL} {
+			if canonical := canonicalHTTPURL(candidate); canonical != "" {
+				forbidden[canonical] = struct{}{}
+			}
+		}
+	}
+	return forbidden
+}
+
+func artifactIdentity(asset Asset) string {
+	if asset.URL != "" {
+		return "url:" + canonicalHTTPURL(asset.URL)
+	}
+	digest := sha256.Sum256(asset.Bytes)
+	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func isCanonicalImageMediaType(value string) bool {
+	if strings.TrimSpace(value) != value {
+		return false
+	}
+	return value == "image/jpeg" || value == "image/png" || value == "image/webp"
 }
 
 func validateProductContext(product ProductContext) (ProductContext, error) {
@@ -442,13 +505,18 @@ func normalizedStrings(values []string, limit int) ([]string, error) {
 	}
 	seen := make(map[string]struct{}, len(values))
 	out := make([]string, 0, len(values))
+	used := 0
 	for _, value := range values {
+		if len(value) > maxImageStringBytes {
+			return nil, ErrInputInvalid
+		}
+		used += len(value)
+		if used > maxImageInputBytes {
+			return nil, ErrInputInvalid
+		}
 		value = strings.TrimSpace(value)
 		if value == "" {
 			continue
-		}
-		if len(value) > maxImageStringBytes {
-			return nil, ErrInputInvalid
 		}
 		if _, exists := seen[value]; exists {
 			continue
