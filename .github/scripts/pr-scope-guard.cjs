@@ -8,6 +8,12 @@ const LIMITS = Object.freeze({
 const DECISIVE_REVIEW_STATES = new Set(["APPROVED", "CHANGES_REQUESTED", "DISMISSED"]);
 
 const OVERRIDE_LABEL = "architecture-approved";
+const EVALUATION_ERROR_SUMMARY = "Admission evaluation failed; retry required";
+const POLICY_RESULT_SUMMARIES = new Set([
+  "Allowed by authorized architecture override",
+  "Within admission limits",
+  "Exceeds admission limits",
+]);
 const MAINTAINER_PERMISSIONS = new Set(["admin", "maintain"]);
 const LOCKFILES = new Set([
   "cargo.lock",
@@ -381,8 +387,12 @@ function needsAdmissionReconciliation({
     .reduce((latest, createdAt) => Math.max(latest, createdAt), -Infinity);
   const terminalRuns = checkRuns
     .filter((run) => run?.status === "completed" && typeof run?.conclusion === "string")
-    .map((run) => Date.parse(run?.completed_at))
-    .filter((completedAt) => Number.isFinite(completedAt));
+    .map((run) => ({
+      completedAtMs: Date.parse(run?.completed_at),
+      startedAtMs: Date.parse(run?.started_at || run?.created_at),
+      isPolicyResult: POLICY_RESULT_SUMMARIES.has(run?.output?.summary),
+    }))
+    .filter(({ completedAtMs }) => Number.isFinite(completedAtMs));
   const staleInProgress = checkRuns.some((run) => {
     if (run?.status === "completed") {
       return false;
@@ -396,14 +406,17 @@ function needsAdmissionReconciliation({
   if (checkRuns.some((run) => run?.status !== "completed")) {
     return false;
   }
-  const latestTerminalMs = terminalRuns.reduce(
-    (latest, completedAt) => Math.max(latest, completedAt),
-    -Infinity,
+  const latestTerminal = terminalRuns.reduce(
+    (latest, run) => !latest || run.completedAtMs > latest.completedAtMs ? run : latest,
+    null,
   );
-  if (Number.isFinite(latestRemovalMs)) {
-    return !Number.isFinite(latestTerminalMs) || latestTerminalMs < latestRemovalMs;
+  if (!latestTerminal || !latestTerminal.isPolicyResult) {
+    return true;
   }
-  return !Number.isFinite(latestTerminalMs);
+  if (Number.isFinite(latestRemovalMs)) {
+    return !Number.isFinite(latestTerminal.startedAtMs) || latestTerminal.startedAtMs <= latestRemovalMs;
+  }
+  return false;
 }
 
 function statusForEvaluation(result) {
@@ -507,6 +520,7 @@ function formatEvaluation(result) {
 }
 
 module.exports = {
+  EVALUATION_ERROR_SUMMARY,
   LIMITS,
   OVERRIDE_LABEL,
   approvalReviewersForCurrentHead,

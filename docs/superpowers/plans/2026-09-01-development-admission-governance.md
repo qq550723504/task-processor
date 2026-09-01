@@ -191,7 +191,11 @@ the `Development Admission` Check Run through the GitHub Actions application;
 the required branch rule must bind that check to app ID 15368. The evaluator
 filters override evidence against eligible current-head approvers, the
 reconciler includes recent override-label removals, and direct PR/dispatch
-events still publish an error Check Run when target resolution fails.
+events still publish an error Check Run when target resolution fails. The
+reconciler accepts a default-base result only when the latest terminal Check
+Run has a recognized policy summary and, after label removal, started after
+that removal; evaluator-error or ambiguous terminal results continue to
+reconcile.
 
 The ordinary CI notification reports `DEVELOPMENT_ADMISSION_TEST_RESULT`; the trusted admission Check Run is a separate required check and is not coupled to the WeCom aggregation job.
 

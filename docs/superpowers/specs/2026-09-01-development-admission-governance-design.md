@@ -259,7 +259,13 @@ the named approver must be in the authorized maintainer/admin subset. The
 dispatch workflow has only `actions: write`, `contents: read`, `issues: read`,
 and `pull-requests: read`; it sends the PR number and merge target SHA as
 workflow-dispatch inputs, retries transient dispatch failures, and continues
-dispatching other candidates when one PR fails.
+dispatching other candidates when one PR fails. For default-base PRs without
+the override label, reconciliation continues until the latest terminal
+`Development Admission` Check Run is a recognized policy result that started
+after the latest override-label removal. A terminal evaluator-error result,
+an unrecognized result, or a run that started before that removal remains
+eligible for retry; this prevents a failed evaluator from being mistaken for
+durable policy evaluation.
 
 The admission evaluator's failure matrix is:
 

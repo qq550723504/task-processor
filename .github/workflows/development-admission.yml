@@ -310,7 +310,7 @@ jobs:
                 try {
                   await publishStatus({
                     state: "error",
-                    description: "Admission evaluation failed; retry required",
+                    description: guard.EVALUATION_ERROR_SUMMARY,
                   });
                 } catch (statusError) {
                   const statusMessage = statusError instanceof Error ? statusError.message : String(statusError);

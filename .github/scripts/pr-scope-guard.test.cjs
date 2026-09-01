@@ -12,6 +12,7 @@ const {
   classifyFileChange,
   classifyFile,
   evaluatePullRequest,
+  EVALUATION_ERROR_SUMMARY,
   formatEvaluation,
   hasAuthorizedArchitectureOverride,
   hasRecentLabelRemoval,
@@ -729,9 +730,48 @@ test("keeps reconciling after label removal until a terminal check exists", () =
   assert.equal(
     needsAdmissionReconciliation({
       ...base,
-      checkRuns: [{ status: "completed", conclusion: "failure", completed_at: "2026-09-01T12:01:00Z" }],
+      checkRuns: [{
+        status: "completed",
+        conclusion: "failure",
+        created_at: "2026-09-01T12:00:30Z",
+        started_at: "2026-09-01T11:59:30Z",
+        completed_at: "2026-09-01T12:01:00Z",
+      }],
+    }),
+    true,
+  );
+  assert.equal(
+    needsAdmissionReconciliation({
+      ...base,
+      checkRuns: [{
+        status: "completed",
+        conclusion: "failure",
+        created_at: "2026-09-01T12:00:30Z",
+        started_at: "2026-09-01T12:00:01Z",
+        completed_at: "2026-09-01T12:01:00Z",
+        output: { summary: "Exceeds admission limits" },
+      }],
     }),
     false,
+  );
+});
+
+test("retries terminal evaluator errors instead of treating them as policy results", () => {
+  assert.equal(
+    needsAdmissionReconciliation({
+      labels: [],
+      baseRef: "main",
+      defaultBranch: "main",
+      events: [],
+      checkRuns: [{
+        status: "completed",
+        conclusion: "failure",
+        completed_at: "2026-09-01T12:01:00Z",
+        output: { summary: EVALUATION_ERROR_SUMMARY },
+      }],
+      now: "2026-09-01T12:02:00Z",
+    }),
+    true,
   );
 });
 
