@@ -49,6 +49,7 @@ func compileSchema(location string, raw json.RawMessage) (*jsonschema.Schema, er
 
 	compiler := jsonschema.NewCompiler()
 	compiler.DefaultDraft(jsonschema.Draft2020)
+	compiler.UseLoader(jsonschema.SchemeURLLoader{})
 	if err := compiler.AddResource(location, document); err != nil {
 		return nil, err
 	}
