@@ -41,10 +41,13 @@ func (tools *BoundToolSet) Invoke(ctx context.Context, call Call) (Result, error
 		cloneRaw(state.call.Arguments),
 	)
 	output := cloneRaw(execution.Output)
+	aiInvocationID, aiInvocationErr := validatedAIInvocationID(registered.definition, execution.AIInvocationID)
 	if callCtx.Err() != nil {
 		callErr = NewError(ErrorDeadlineExceeded, "tool deadline exceeded", callCtx.Err())
 	} else if callErr != nil {
 		callErr = normalizeExecutorError(callErr)
+	} else if aiInvocationErr != nil {
+		callErr = NewError(ErrorInternal, "tool execution failed", aiInvocationErr)
 	} else if err := registered.schemas.validateOutput(output); err != nil {
 		callErr = err
 	} else if err := validateNoReservedAuthorityFields(
@@ -55,7 +58,7 @@ func (tools *BoundToolSet) Invoke(ctx context.Context, call Call) (Result, error
 		callErr = err
 	}
 
-	return tools.finish(callCtx, state, output, execution.AIInvocationID, callErr)
+	return tools.finish(callCtx, state, output, aiInvocationID, callErr)
 }
 
 func newInvocationState(startedAt time.Time, call Call) invocationState {

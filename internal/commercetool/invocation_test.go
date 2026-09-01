@@ -32,6 +32,13 @@ func validCall() Call {
 	}
 }
 
+func validAICapabilityDefinition() Definition {
+	definition := validDefinition()
+	definition.Risk = RiskPropose
+	definition.Usage.Owner = UsageOwnerAICapability
+	return definition
+}
+
 func bindToolForTest(t *testing.T, executor Executor, deps InvocationDependencies) *BoundToolSet {
 	t.Helper()
 	return bindDefinitionForTest(t, validDefinition(), executor, deps)
@@ -829,7 +836,7 @@ func TestInvokeReturnsAndAuditsApplicableAIInvocationIDOutsideModelOutput(t *tes
 	recorder := &recordingAuditStub{}
 	deps := validInvocationDependencies()
 	deps.Recorder = recorder
-	bound := bindToolForTest(t, ExecutorFunc(func(
+	bound := bindDefinitionForTest(t, validAICapabilityDefinition(), ExecutorFunc(func(
 		context.Context,
 		ExecutionEnvelope,
 		json.RawMessage,
@@ -854,7 +861,7 @@ func TestInvokePreservesApplicableAIInvocationIDWhenExecutionFails(t *testing.T)
 	recorder := &recordingAuditStub{}
 	deps := validInvocationDependencies()
 	deps.Recorder = recorder
-	bound := bindToolForTest(t, ExecutorFunc(func(
+	bound := bindDefinitionForTest(t, validAICapabilityDefinition(), ExecutorFunc(func(
 		context.Context,
 		ExecutionEnvelope,
 		json.RawMessage,
@@ -873,6 +880,311 @@ func TestInvokePreservesApplicableAIInvocationIDWhenExecutionFails(t *testing.T)
 	require.Len(t, recorder.records, 1)
 	require.Equal(t, "ai-invocation-1", recorder.records[0].AIInvocationID)
 	require.Equal(t, "e7f5f6e5a781d62f599ff51c8cfdbe866f8ff4a971b5bbb569bf22f69e5295f2", recorder.records[0].OutputHash)
+}
+
+func TestInvokeFailsClosedAndScrubsNonApplicableAIInvocationIDOnSuccess(t *testing.T) {
+	tests := []struct {
+		name              string
+		risk              RiskLevel
+		usageOwner        UsageOwner
+		aiInvocationID    string
+		sensitiveFragment string
+	}{
+		{name: "read unmetered forged ledger ID", risk: RiskRead, usageOwner: UsageOwnerUnmetered, aiInvocationID: "forged-ai-invocation", sensitiveFragment: "forged"},
+		{name: "propose unmetered forged ledger ID", risk: RiskPropose, usageOwner: UsageOwnerUnmetered, aiInvocationID: "forged-propose-invocation", sensitiveFragment: "forged"},
+		{name: "unmetered credential-shaped token", risk: RiskRead, usageOwner: UsageOwnerUnmetered, aiInvocationID: "sk-live-secret-token", sensitiveFragment: "sk-live-secret"},
+		{name: "unmetered provider error with newline", risk: RiskRead, usageOwner: UsageOwnerUnmetered, aiInvocationID: "provider error\ncredential=secret", sensitiveFragment: "provider error"},
+		{name: "propose domain ledger forged ID", risk: RiskPropose, usageOwner: UsageOwnerDomainLedger, aiInvocationID: "forged-domain-ledger-id", sensitiveFragment: "forged"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := &recordingAuditStub{}
+			deps := validInvocationDependencies()
+			deps.Recorder = recorder
+			definition := validDefinition()
+			definition.Risk = tt.risk
+			definition.Usage.Owner = tt.usageOwner
+			bound := bindDefinitionForTest(t, definition, ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+				return ExecutionResult{
+					Output:         json.RawMessage(`{"task_id":"task-1"}`),
+					AIInvocationID: tt.aiInvocationID,
+				}, nil
+			}), deps)
+
+			result, err := bound.Invoke(context.Background(), validCall())
+
+			require.Error(t, err)
+			require.Equal(t, ErrorInternal, CodeOf(err))
+			require.Equal(t, "internal: tool execution failed", err.Error())
+			require.NotContains(t, err.Error(), tt.sensitiveFragment)
+			require.Nil(t, result.Output)
+			require.Empty(t, result.AIInvocationID)
+			require.Len(t, recorder.records, 1)
+			require.Equal(t, AuditOutcomeFailed, recorder.records[0].Outcome)
+			require.Equal(t, ErrorInternal, recorder.records[0].ErrorCode)
+			require.Empty(t, recorder.records[0].AIInvocationID)
+			require.Equal(t, "8076f8fc7f4e66be2f5b3ebd07dba6328ab7043e838b3d7b50037ec25021c811", recorder.records[0].OutputHash)
+			encoded, marshalErr := json.Marshal(struct {
+				Result Result
+				Audit  AuditRecord
+			}{Result: result, Audit: recorder.records[0]})
+			require.NoError(t, marshalErr)
+			require.NotContains(t, string(encoded), tt.sensitiveFragment)
+		})
+	}
+}
+
+func TestInvokeScrubsNonApplicableAIInvocationIDWithoutOverridingExecutorError(t *testing.T) {
+	tests := []struct {
+		name           string
+		risk           RiskLevel
+		usageOwner     UsageOwner
+		aiInvocationID string
+	}{
+		{name: "read unmetered forged ledger ID", risk: RiskRead, usageOwner: UsageOwnerUnmetered, aiInvocationID: "forged-ai-invocation"},
+		{name: "propose unmetered forged ledger ID", risk: RiskPropose, usageOwner: UsageOwnerUnmetered, aiInvocationID: "forged-propose-invocation"},
+		{name: "unmetered credential-shaped token", risk: RiskRead, usageOwner: UsageOwnerUnmetered, aiInvocationID: "sk-live-secret-token"},
+		{name: "unmetered provider error with newline", risk: RiskRead, usageOwner: UsageOwnerUnmetered, aiInvocationID: "provider error\ncredential=secret"},
+		{name: "propose domain ledger forged ID", risk: RiskPropose, usageOwner: UsageOwnerDomainLedger, aiInvocationID: "forged-domain-ledger-id"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := &recordingAuditStub{}
+			deps := validInvocationDependencies()
+			deps.Recorder = recorder
+			definition := validDefinition()
+			definition.Risk = tt.risk
+			definition.Usage.Owner = tt.usageOwner
+			bound := bindDefinitionForTest(t, definition, ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+				return ExecutionResult{
+					Output:         json.RawMessage(`{"unexpected":true}`),
+					AIInvocationID: tt.aiInvocationID,
+				}, NewError(ErrorConflict, "safe conflict", errors.New("provider credential"))
+			}), deps)
+
+			result, err := bound.Invoke(context.Background(), validCall())
+
+			require.Equal(t, ErrorConflict, CodeOf(err))
+			require.Equal(t, "conflict: safe conflict", err.Error())
+			require.NotContains(t, err.Error(), tt.aiInvocationID)
+			require.Nil(t, result.Output)
+			require.Empty(t, result.AIInvocationID)
+			require.Len(t, recorder.records, 1)
+			require.Equal(t, AuditOutcomeFailed, recorder.records[0].Outcome)
+			require.Equal(t, ErrorConflict, recorder.records[0].ErrorCode)
+			require.Empty(t, recorder.records[0].AIInvocationID)
+			require.Equal(t, "e7f5f6e5a781d62f599ff51c8cfdbe866f8ff4a971b5bbb569bf22f69e5295f2", recorder.records[0].OutputHash)
+		})
+	}
+}
+
+func TestInvokeFailsClosedAndScrubsInvalidApplicableAIInvocationIDOnSuccess(t *testing.T) {
+	tests := []struct {
+		name           string
+		aiInvocationID string
+	}{
+		{name: "whitespace only", aiInvocationID: " \t"},
+		{name: "leading whitespace", aiInvocationID: " ai-invocation-1"},
+		{name: "trailing whitespace", aiInvocationID: "ai-invocation-1 "},
+		{name: "over 128 bytes", aiInvocationID: strings.Repeat("a", 129)},
+		{name: "unsafe slash", aiInvocationID: "ai/invocation"},
+		{name: "unsafe equals", aiInvocationID: "ai=credential"},
+		{name: "newline", aiInvocationID: "ai-invocation\ncredential"},
+		{name: "unsafe first character", aiInvocationID: "-ai-invocation"},
+		{name: "non ASCII", aiInvocationID: "ai-invocación"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := &recordingAuditStub{}
+			deps := validInvocationDependencies()
+			deps.Recorder = recorder
+			bound := bindDefinitionForTest(t, validAICapabilityDefinition(), ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+				return ExecutionResult{
+					Output:         json.RawMessage(`{"task_id":"task-1"}`),
+					AIInvocationID: tt.aiInvocationID,
+				}, nil
+			}), deps)
+
+			result, err := bound.Invoke(context.Background(), validCall())
+
+			require.Error(t, err)
+			require.Equal(t, ErrorInternal, CodeOf(err))
+			require.Equal(t, "internal: tool execution failed", err.Error())
+			require.Nil(t, result.Output)
+			require.Empty(t, result.AIInvocationID)
+			require.Len(t, recorder.records, 1)
+			require.Equal(t, AuditOutcomeFailed, recorder.records[0].Outcome)
+			require.Equal(t, ErrorInternal, recorder.records[0].ErrorCode)
+			require.Empty(t, recorder.records[0].AIInvocationID)
+			require.Equal(t, "8076f8fc7f4e66be2f5b3ebd07dba6328ab7043e838b3d7b50037ec25021c811", recorder.records[0].OutputHash)
+		})
+	}
+}
+
+func TestInvokeScrubsInvalidApplicableAIInvocationIDWithoutOverridingExecutorError(t *testing.T) {
+	tests := []struct {
+		name           string
+		aiInvocationID string
+	}{
+		{name: "whitespace", aiInvocationID: " ai-invocation-1"},
+		{name: "over 128 bytes", aiInvocationID: strings.Repeat("a", 129)},
+		{name: "newline", aiInvocationID: "ai-invocation\ncredential"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := &recordingAuditStub{}
+			deps := validInvocationDependencies()
+			deps.Recorder = recorder
+			bound := bindDefinitionForTest(t, validAICapabilityDefinition(), ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+				return ExecutionResult{
+					Output:         json.RawMessage(`{"unexpected":true}`),
+					AIInvocationID: tt.aiInvocationID,
+				}, NewError(ErrorConflict, "safe conflict", errors.New("provider credential"))
+			}), deps)
+
+			result, err := bound.Invoke(context.Background(), validCall())
+
+			require.Equal(t, ErrorConflict, CodeOf(err))
+			require.Equal(t, "conflict: safe conflict", err.Error())
+			require.Nil(t, result.Output)
+			require.Empty(t, result.AIInvocationID)
+			require.Len(t, recorder.records, 1)
+			require.Equal(t, AuditOutcomeFailed, recorder.records[0].Outcome)
+			require.Equal(t, ErrorConflict, recorder.records[0].ErrorCode)
+			require.Empty(t, recorder.records[0].AIInvocationID)
+			require.Equal(t, "e7f5f6e5a781d62f599ff51c8cfdbe866f8ff4a971b5bbb569bf22f69e5295f2", recorder.records[0].OutputHash)
+		})
+	}
+}
+
+func TestInvokeAIInvocationIDContractPrecedesOutputSchemaValidation(t *testing.T) {
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.Recorder = recorder
+	bound := bindDefinitionForTest(t, validAICapabilityDefinition(), ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+		return ExecutionResult{
+			Output:         json.RawMessage(`{"unexpected":true}`),
+			AIInvocationID: " invalid-ai-invocation",
+		}, nil
+	}), deps)
+
+	result, err := bound.Invoke(context.Background(), validCall())
+
+	require.Equal(t, ErrorInternal, CodeOf(err))
+	require.Equal(t, "internal: tool execution failed", err.Error())
+	require.Nil(t, result.Output)
+	require.Empty(t, result.AIInvocationID)
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, AuditOutcomeFailed, recorder.records[0].Outcome)
+	require.Equal(t, ErrorInternal, recorder.records[0].ErrorCode)
+	require.Empty(t, recorder.records[0].AIInvocationID)
+	require.Equal(t, "e7f5f6e5a781d62f599ff51c8cfdbe866f8ff4a971b5bbb569bf22f69e5295f2", recorder.records[0].OutputHash)
+}
+
+func TestInvokeDeadlinePrecedesAIInvocationIDContractAndScrubsInvalidID(t *testing.T) {
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.Recorder = recorder
+	bound := bindDefinitionForTest(t, validAICapabilityDefinition(), ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+		return ExecutionResult{
+			Output:         json.RawMessage(`{"unexpected":true}`),
+			AIInvocationID: " invalid-ai-invocation",
+		}, nil
+	}), deps)
+	expiredCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	result, err := bound.Invoke(expiredCtx, validCall())
+
+	require.Equal(t, ErrorDeadlineExceeded, CodeOf(err))
+	require.Equal(t, "deadline_exceeded: tool deadline exceeded", err.Error())
+	require.Nil(t, result.Output)
+	require.Empty(t, result.AIInvocationID)
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, AuditOutcomeFailed, recorder.records[0].Outcome)
+	require.Equal(t, ErrorDeadlineExceeded, recorder.records[0].ErrorCode)
+	require.Empty(t, recorder.records[0].AIInvocationID)
+	require.Equal(t, "e7f5f6e5a781d62f599ff51c8cfdbe866f8ff4a971b5bbb569bf22f69e5295f2", recorder.records[0].OutputHash)
+}
+
+func TestInvokeAcceptsSafeApplicableAIInvocationIDBoundaries(t *testing.T) {
+	tests := []struct {
+		name           string
+		aiInvocationID string
+	}{
+		{name: "one byte", aiInvocationID: "a"},
+		{name: "128 bytes", aiInvocationID: strings.Repeat("a", 128)},
+		{name: "safe token characters", aiInvocationID: "AI_9.test:+-id"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := &recordingAuditStub{}
+			deps := validInvocationDependencies()
+			deps.Recorder = recorder
+			bound := bindDefinitionForTest(t, validAICapabilityDefinition(), ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+				return ExecutionResult{
+					Output:         json.RawMessage(`{"task_id":"task-1"}`),
+					AIInvocationID: tt.aiInvocationID,
+				}, nil
+			}), deps)
+
+			result, err := bound.Invoke(context.Background(), validCall())
+
+			require.NoError(t, err)
+			require.JSONEq(t, `{"task_id":"task-1"}`, string(result.Output))
+			require.Equal(t, tt.aiInvocationID, result.AIInvocationID)
+			require.Len(t, recorder.records, 1)
+			require.Equal(t, AuditOutcomeSucceeded, recorder.records[0].Outcome)
+			require.Empty(t, recorder.records[0].ErrorCode)
+			require.Equal(t, tt.aiInvocationID, recorder.records[0].AIInvocationID)
+			require.Equal(t, "8076f8fc7f4e66be2f5b3ebd07dba6328ab7043e838b3d7b50037ec25021c811", recorder.records[0].OutputHash)
+		})
+	}
+}
+
+func TestInvokeAllowsEmptyAIInvocationIDForAICapabilityUsage(t *testing.T) {
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.Recorder = recorder
+	bound := bindDefinitionForTest(t, validAICapabilityDefinition(), ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+		return ExecutionResult{Output: json.RawMessage(`{"task_id":"task-1"}`)}, nil
+	}), deps)
+
+	result, err := bound.Invoke(context.Background(), validCall())
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{"task_id":"task-1"}`, string(result.Output))
+	require.Empty(t, result.AIInvocationID)
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, AuditOutcomeSucceeded, recorder.records[0].Outcome)
+	require.Empty(t, recorder.records[0].AIInvocationID)
+}
+
+func TestInvokeRecorderFailurePreservesValidatedAIInvocationID(t *testing.T) {
+	recorder := &recordingAuditStub{err: errors.New("audit store failed")}
+	deps := validInvocationDependencies()
+	deps.Recorder = recorder
+	bound := bindDefinitionForTest(t, validAICapabilityDefinition(), ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+		return ExecutionResult{
+			Output:         json.RawMessage(`{"task_id":"task-1"}`),
+			AIInvocationID: "ai-invocation-1",
+		}, nil
+	}), deps)
+
+	result, err := bound.Invoke(context.Background(), validCall())
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{"task_id":"task-1"}`, string(result.Output))
+	require.Equal(t, "ai-invocation-1", result.AIInvocationID)
+	require.Equal(t, AuditStatusRecordFailed, result.AuditStatus)
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, "ai-invocation-1", recorder.records[0].AIInvocationID)
+	require.Equal(t, AuditOutcomeSucceeded, recorder.records[0].Outcome)
 }
 
 func TestInvokeClonesArgumentsBeforeCallingExecutor(t *testing.T) {
