@@ -257,7 +257,7 @@ function approvalReviewersForCurrentHead(reviews, headSha) {
     .map(([login]) => login);
 }
 
-function hasAuthorizedArchitectureOverride({
+function authorizedArchitectureApprovers({
   labels,
   headSha,
   authorLogin = null,
@@ -278,11 +278,11 @@ function hasAuthorizedArchitectureOverride({
     throw new TypeError("baseChangedAt must be null or an ISO timestamp");
   }
   if (!labels.includes(OVERRIDE_LABEL)) {
-    return false;
+    return [];
   }
   const latestReviews = latestReviewsByUser(reviews);
   return approvalReviewersForCurrentHead(reviews, headSha)
-    .some((login) => {
+    .filter((login) => {
       const review = latestReviews.get(login);
       const roleName = permissions[login]?.role_name;
       if (login === authorLogin || !MAINTAINER_PERMISSIONS.has(roleName)) {
@@ -296,6 +296,10 @@ function hasAuthorizedArchitectureOverride({
   });
 }
 
+function hasAuthorizedArchitectureOverride(options) {
+  return authorizedArchitectureApprovers(options).length > 0;
+}
+
 function hasRequiredOverrideEvidence(body, approvedLogins) {
   if (typeof body !== "string" || !Array.isArray(approvedLogins)) {
     return false;
@@ -304,7 +308,7 @@ function hasRequiredOverrideEvidence(body, approvedLogins) {
   const valueFor = (pattern) => {
     const match = normalizedBody.match(pattern);
     const value = match?.[1]?.trim();
-    return value && !/(?:^|[\s;,:])(?:n\/a|none|tbd|todo)(?:$|[\s;,:\.])/i.test(value)
+    return value && !/^(?:n\/a|none|tbd|todo)(?=$|[\s:.,;])/i.test(value)
       ? value
       : null;
   };
@@ -325,6 +329,27 @@ function hasRequiredOverrideEvidence(body, approvedLogins) {
     return new RegExp(`(?:^|[^A-Za-z0-9_.-])${escapedLogin}(?:$|[^A-Za-z0-9_.-])`, "i").test(approver || "");
   });
   return Boolean(hasDesignLink && independentReview && approver && splitRationale && hasApprovedLogin);
+}
+
+function hasRecentLabelRemoval(events, labelName, now = Date.now(), windowMs = 15 * 60 * 1000) {
+  if (!Array.isArray(events)) {
+    throw new TypeError("events must be an array");
+  }
+  if (typeof labelName !== "string" || labelName.trim() === "") {
+    throw new TypeError("labelName must be a non-empty string");
+  }
+  const nowMs = typeof now === "number" ? now : Date.parse(now);
+  if (!Number.isFinite(nowMs) || !Number.isFinite(windowMs) || windowMs <= 0) {
+    throw new TypeError("now and windowMs must be valid time values");
+  }
+  return events.some((event) => {
+    const createdAt = Date.parse(event?.created_at);
+    return event?.event === "unlabeled" &&
+      event?.label?.name === labelName &&
+      Number.isFinite(createdAt) &&
+      createdAt >= nowMs - windowMs &&
+      createdAt <= nowMs;
+  });
 }
 
 function statusForEvaluation(result) {
@@ -431,6 +456,7 @@ module.exports = {
   LIMITS,
   OVERRIDE_LABEL,
   approvalReviewersForCurrentHead,
+  authorizedArchitectureApprovers,
   assertCompleteFileList,
   assertStableAdmissionSnapshot,
   assertStablePullRequestSnapshot,
@@ -440,6 +466,7 @@ module.exports = {
   formatEvaluation,
   hasAuthorizedArchitectureOverride,
   hasRequiredOverrideEvidence,
+  hasRecentLabelRemoval,
   latestBaseChangeAt,
   pullRequestNumberFromEventPayload,
   statusForEvaluation,

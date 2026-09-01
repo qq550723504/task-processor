@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const {
   LIMITS,
+  authorizedArchitectureApprovers,
   assertCompleteFileList,
   assertStableAdmissionSnapshot,
   assertStablePullRequestSnapshot,
@@ -13,6 +14,7 @@ const {
   evaluatePullRequest,
   formatEvaluation,
   hasAuthorizedArchitectureOverride,
+  hasRecentLabelRemoval,
   hasRequiredOverrideEvidence,
   latestBaseChangeAt,
   pullRequestNumberFromEventPayload,
@@ -608,6 +610,88 @@ test("requires explicit design and split evidence for an oversized override", ()
     true,
   );
   assert.equal(hasRequiredOverrideEvidence(null), false);
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "the consistency boundary cannot be split safely",
+        "Cannot split because none of the intermediate states is safe",
+      ),
+      ["Henry"],
+    ),
+    true,
+  );
+});
+
+test("binds override evidence to an authorized approver", () => {
+  const headSha = "head-abc";
+  const reviews = [
+    {
+      id: 1,
+      user: { login: "writer" },
+      state: "APPROVED",
+      commit_id: headSha,
+      submitted_at: "2026-09-01T12:00:00Z",
+    },
+    {
+      id: 2,
+      user: { login: "maintainer" },
+      state: "APPROVED",
+      commit_id: headSha,
+      submitted_at: "2026-09-01T12:00:00Z",
+    },
+  ];
+  const permissions = {
+    writer: { permission: "write", role_name: "write" },
+    maintainer: { permission: "write", role_name: "maintain" },
+  };
+  assert.deepEqual(
+    authorizedArchitectureApprovers({
+      labels: ["architecture-approved"],
+      headSha,
+      authorLogin: "author",
+      reviews,
+      permissions,
+    }),
+    ["maintainer"],
+  );
+  const body = [
+    "- Design: docs/design.md",
+    "- Independent design review: approved",
+    "- Override approver: writer",
+    "- Split rationale: cannot split safely",
+  ].join("\n");
+  assert.equal(
+    hasRequiredOverrideEvidence(body, ["writer"]),
+    true,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(body, ["maintainer"]),
+    false,
+  );
+});
+
+test("detects a recent removal of the override label", () => {
+  const now = "2026-09-01T12:10:00Z";
+  assert.equal(
+    hasRecentLabelRemoval([
+      {
+        event: "unlabeled",
+        label: { name: "architecture-approved" },
+        created_at: "2026-09-01T12:06:00Z",
+      },
+    ], "architecture-approved", now, 5 * 60 * 1000),
+    true,
+  );
+  assert.equal(
+    hasRecentLabelRemoval([
+      {
+        event: "unlabeled",
+        label: { name: "architecture-approved" },
+        created_at: "2026-09-01T12:00:00Z",
+      },
+    ], "architecture-approved", now, 5 * 60 * 1000),
+    false,
+  );
 });
 
 test("keeps review and reconciliation triggers on the trusted event path", () => {
@@ -630,13 +714,22 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   ).replaceAll("\r\n", "\n");
 
   assert.match(admissionWorkflow, /workflow_dispatch:/);
-  assert.match(admissionWorkflow, /needs: resolve-admission/);
+  assert.match(admissionWorkflow, /always\(\)/);
   assert.match(
     admissionWorkflow,
-    /group: development-admission-\$\{\{ github\.event\.repository\.full_name \}\}-\$\{\{ needs\.resolve-admission\.outputs\.pull_request_number \}\}/,
+    /group: development-admission-\$\{\{ github\.event\.repository\.full_name \}\}-\$\{\{ needs\.resolve-admission\.outputs\.pull_request_number \|\| github\.event\.pull_request\.number/,
   );
   assert.match(admissionWorkflow, /context\.payload\.pull_request\?\.merge_commit_sha/);
-  assert.match(admissionWorkflow, /hasRequiredOverrideEvidence\(latestPullRequest\.body, approvalReviewers\)/);
+  assert.match(admissionWorkflow, /checks\.create/);
+  assert.doesNotMatch(admissionWorkflow, /createCommitStatus/);
+  assert.match(
+    admissionWorkflow,
+    /if \(statusSha\) \{[\s\S]*await publishStatus\([\s\S]*const initialPullRequest/,
+  );
+  assert.match(
+    admissionWorkflow,
+    /hasRequiredOverrideEvidence\([\s\S]*authorizedApprovalReviewers/,
+  );
   assert.match(signalWorkflow, /permissions: \{\}/);
   assert.match(signalWorkflow, /development-admission-review-\$\{\{ github\.run_id \}\}/);
   assert.match(reconcileWorkflow, /schedule:/);
@@ -649,6 +742,8 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   assert.match(baseSignalWorkflow, /permissions: \{\}/);
   assert.match(reconcileWorkflow, /pullRequest\.base\.ref === baseBranch/);
   assert.match(reconcileWorkflow, /architecture-approved/);
+  assert.match(reconcileWorkflow, /hasRecentLabelRemoval/);
+  assert.match(reconcileWorkflow, /issues: read/);
   assert.match(
     reconcileWorkflow,
     /pullRequest\.base\.ref !== defaultBranch/,

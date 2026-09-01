@@ -17,7 +17,7 @@
 - The authoring task cannot approve its own architecture-sensitive design.
 - Reuse a shared transaction or existing repository/open-source outbox, Saga, or Temporal facility before inventing compensation infrastructure.
 - `architecture-approved` is the only size override label; it must be paired with a maintainer/admin `APPROVED` review for the current head SHA and cannot replace design evidence.
-- Ordinary CI permissions remain read-only; the trusted admission workflow additionally has only `issues: read` and `statuses: write` to read base-change events and publish its test-merge-SHA commit status, and neither workflow creates labels or edits pull requests.
+- Ordinary CI permissions remain read-only; the trusted admission workflow additionally has only `issues: read` and `checks: write` to read base-change events and publish its test-merge-SHA Check Run, and neither workflow creates labels or edits pull requests.
 - The existing `Guard Baseline` remains the authoritative import-boundary guard inventory.
 
 ---
@@ -166,7 +166,7 @@ must be separate and trusted.
 
 - [x] **Step 2: Add workflow enforcement**
 
-Keep the ordinary CI workflow read-only for repository contents and add the new trusted workflow paths to both push and pull-request filters. Add the trusted workflow with `actions: read`, `contents: read`, `issues: read`, `pull-requests: read`, and `statuses: write`, no path filter, and `pull_request_target` activity types `opened`, `synchronize`, `reopened`, `edited`, `labeled`, and `unlabeled`. Add a separate `Development Admission Review Signal` workflow with no permissions for `pull_request_review` activity types `submitted`, `edited`, and `dismissed`; it writes only the event PR number to a short-lived artifact, and the trusted evaluator receives those events through `workflow_run`, validates the artifact number against the associated PR set, and never executes PR code. Add a no-permission base-branch signal workflow on all `push` events. Trigger the trusted reconciliation workflow from that signal's `workflow_run` and dispatch only open PRs whose base branch matches the signaled branch. Its five-minute schedule dispatches only open PRs carrying `architecture-approved` or targeting a non-default base branch, bounding permission-revocation fan-out while covering long-lived base branches that do not yet contain the signal workflow. Before setting `overrideAuthorized`, validate non-placeholder PR-body evidence for the design link, independent review, and split rationale. Resolve the PR number in a prerequisite job so direct, review, and reconciliation evaluations share the same per-PR concurrency group.
+Keep the ordinary CI workflow read-only for repository contents and add the new trusted workflow paths to both push and pull-request filters. Add the trusted workflow with `actions: read`, `checks: write`, `contents: read`, `issues: read`, and `pull-requests: read`, no path filter, and `pull_request_target` activity types `opened`, `synchronize`, `reopened`, `edited`, `labeled`, and `unlabeled`. Add a separate `Development Admission Review Signal` workflow with no permissions for `pull_request_review` activity types `submitted`, `edited`, and `dismissed`; it writes only the event PR number to a short-lived artifact, and the trusted evaluator receives those events through `workflow_run`, validates the artifact number against the associated PR set, and never executes PR code. Add a no-permission base-branch signal workflow on all `push` events. Trigger the trusted reconciliation workflow from that signal's `workflow_run` and dispatch only open PRs whose base branch matches the signaled branch. Its five-minute schedule dispatches only open PRs carrying `architecture-approved`, targeting a non-default base branch, or having a recent `architecture-approved` label removal, bounding permission-revocation fan-out while covering long-lived base branches that do not yet contain the signal workflow. Before setting `overrideAuthorized`, fetch permissions for all current-head approvals, retain only eligible maintainer/admin approvals, and validate non-placeholder PR-body evidence against that authorized subset. Resolve the PR number in a prerequisite job so direct, review, and reconciliation evaluations share the same per-PR concurrency group; direct PR and dispatch events still run the evaluator when target resolution fails so the event merge SHA can receive an error Check Run.
 
 Keep only the proposed-policy test job in `ci.yml` and add this structure to `.github/workflows/development-admission.yml`:
 
@@ -186,7 +186,14 @@ evaluate-admission:
 
 The action script imports `./.github/scripts/pr-scope-guard.cjs`, publishes `pending` to the PR `merge_commit_sha`, reads the PR metadata before and after `github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number, per_page: 100 })`, and also snapshots labels, reviews, and base-reference-change events before and after evaluation. It fails on a moving head/base/merge/update/label/review snapshot or mismatched `changed_files`, evaluates the latest labels, and when the override label is present verifies a current-head `APPROVED` review from a non-author collaborator with `role_name` `maintain` or `admin`, submitted after the latest base retarget. It writes `formatEvaluation` to logs and the step summary, publishes `success`/`failure`/`error` with the fixed `Development Admission` context to the PR `merge_commit_sha`, and calls `core.setFailed` when the decision is not allowed or evaluation cannot complete. The failure message instructs the author to split the change or obtain the label plus protected current-head approval and design evidence. The ordinary CI workflow runs only `node --test .github/scripts/pr-scope-guard.test.cjs` for proposed policy changes and does not decide admission.
 
-The ordinary CI notification reports `DEVELOPMENT_ADMISSION_TEST_RESULT`; the trusted admission check is a separate required status check and is not coupled to the WeCom aggregation job.
+Implementation update: the trusted workflow grants `checks: write` and creates
+the `Development Admission` Check Run through the GitHub Actions application;
+the required branch rule must bind that check to app ID 15368. The evaluator
+filters override evidence against eligible current-head approvers, the
+reconciler includes recent override-label removals, and direct PR/dispatch
+events still publish an error Check Run when target resolution fails.
+
+The ordinary CI notification reports `DEVELOPMENT_ADMISSION_TEST_RESULT`; the trusted admission Check Run is a separate required check and is not coupled to the WeCom aggregation job.
 
 - [ ] **Step 3: Validate behavior and workflow structure**
 
