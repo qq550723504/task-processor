@@ -352,6 +352,60 @@ function hasRecentLabelRemoval(events, labelName, now = Date.now(), windowMs = 1
   });
 }
 
+function needsAdmissionReconciliation({
+  labels,
+  baseRef,
+  defaultBranch,
+  events,
+  checkRuns,
+  now = Date.now(),
+  inProgressTimeoutMs = 10 * 60 * 1000,
+}) {
+  if (!Array.isArray(labels) || !Array.isArray(events) || !Array.isArray(checkRuns)) {
+    throw new TypeError("labels, events, and checkRuns must be arrays");
+  }
+  if (typeof baseRef !== "string" || typeof defaultBranch !== "string") {
+    throw new TypeError("baseRef and defaultBranch must be strings");
+  }
+  const nowMs = typeof now === "number" ? now : Date.parse(now);
+  if (!Number.isFinite(nowMs) || !Number.isFinite(inProgressTimeoutMs) || inProgressTimeoutMs <= 0) {
+    throw new TypeError("now and inProgressTimeoutMs must be valid time values");
+  }
+  if (baseRef !== defaultBranch || labels.includes(OVERRIDE_LABEL)) {
+    return true;
+  }
+  const latestRemovalMs = events
+    .filter((event) => event?.event === "unlabeled" && event?.label?.name === OVERRIDE_LABEL)
+    .map((event) => Date.parse(event?.created_at))
+    .filter((createdAt) => Number.isFinite(createdAt))
+    .reduce((latest, createdAt) => Math.max(latest, createdAt), -Infinity);
+  const terminalRuns = checkRuns
+    .filter((run) => run?.status === "completed" && typeof run?.conclusion === "string")
+    .map((run) => Date.parse(run?.completed_at))
+    .filter((completedAt) => Number.isFinite(completedAt));
+  const staleInProgress = checkRuns.some((run) => {
+    if (run?.status === "completed") {
+      return false;
+    }
+    const startedAt = Date.parse(run?.started_at || run?.created_at);
+    return Number.isFinite(startedAt) && startedAt <= nowMs - inProgressTimeoutMs;
+  });
+  if (staleInProgress) {
+    return true;
+  }
+  if (checkRuns.some((run) => run?.status !== "completed")) {
+    return false;
+  }
+  const latestTerminalMs = terminalRuns.reduce(
+    (latest, completedAt) => Math.max(latest, completedAt),
+    -Infinity,
+  );
+  if (Number.isFinite(latestRemovalMs)) {
+    return !Number.isFinite(latestTerminalMs) || latestTerminalMs < latestRemovalMs;
+  }
+  return !Number.isFinite(latestTerminalMs);
+}
+
 function statusForEvaluation(result) {
   if (!result || typeof result.allowed !== "boolean") {
     throw new TypeError("result.allowed must be a boolean");
@@ -467,6 +521,7 @@ module.exports = {
   hasAuthorizedArchitectureOverride,
   hasRequiredOverrideEvidence,
   hasRecentLabelRemoval,
+  needsAdmissionReconciliation,
   latestBaseChangeAt,
   pullRequestNumberFromEventPayload,
   statusForEvaluation,

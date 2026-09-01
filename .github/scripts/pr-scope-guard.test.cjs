@@ -16,6 +16,7 @@ const {
   hasAuthorizedArchitectureOverride,
   hasRecentLabelRemoval,
   hasRequiredOverrideEvidence,
+  needsAdmissionReconciliation,
   latestBaseChangeAt,
   pullRequestNumberFromEventPayload,
   statusForEvaluation,
@@ -704,6 +705,63 @@ test("detects a recent removal of the override label", () => {
   );
 });
 
+test("keeps reconciling after label removal until a terminal check exists", () => {
+  const base = {
+    labels: [],
+    baseRef: "main",
+    defaultBranch: "main",
+    events: [
+      {
+        event: "unlabeled",
+        label: { name: "architecture-approved" },
+        created_at: "2026-09-01T12:00:00Z",
+      },
+    ],
+    now: "2026-09-01T13:00:00Z",
+  };
+  assert.equal(
+    needsAdmissionReconciliation({
+      ...base,
+      checkRuns: [{ status: "completed", conclusion: "success", completed_at: "2026-09-01T11:59:00Z" }],
+    }),
+    true,
+  );
+  assert.equal(
+    needsAdmissionReconciliation({
+      ...base,
+      checkRuns: [{ status: "completed", conclusion: "failure", completed_at: "2026-09-01T12:01:00Z" }],
+    }),
+    false,
+  );
+});
+
+test("reconciles a check that remains in progress beyond the recovery window", () => {
+  assert.equal(
+    needsAdmissionReconciliation({
+      labels: [],
+      baseRef: "main",
+      defaultBranch: "main",
+      events: [],
+      checkRuns: [{ status: "in_progress", started_at: "2026-09-01T12:00:00Z" }],
+      now: "2026-09-01T12:11:00Z",
+      inProgressTimeoutMs: 10 * 60 * 1000,
+    }),
+    true,
+  );
+  assert.equal(
+    needsAdmissionReconciliation({
+      labels: [],
+      baseRef: "main",
+      defaultBranch: "main",
+      events: [],
+      checkRuns: [{ status: "in_progress", started_at: "2026-09-01T12:05:00Z" }],
+      now: "2026-09-01T12:11:00Z",
+      inProgressTimeoutMs: 10 * 60 * 1000,
+    }),
+    false,
+  );
+});
+
 test("keeps review and reconciliation triggers on the trusted event path", () => {
   const workflowRoot = path.join(__dirname, "..", "workflows");
   const admissionWorkflow = fs.readFileSync(
@@ -755,8 +813,9 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   assert.match(baseSignalWorkflow, /permissions: \{\}/);
   assert.match(reconcileWorkflow, /pullRequest\.base\.ref === baseBranch/);
   assert.match(reconcileWorkflow, /architecture-approved/);
-  assert.match(reconcileWorkflow, /hasRecentLabelRemoval/);
+  assert.match(reconcileWorkflow, /needsAdmissionReconciliation/);
   assert.match(reconcileWorkflow, /issues: read/);
+  assert.match(reconcileWorkflow, /checks: read/);
   assert.match(reconcileWorkflow, /try \{[\s\S]*createWorkflowDispatch/);
   assert.match(reconcileWorkflow, /dispatchFailures/);
   assert.match(admissionWorkflow, /finalPermissions/);

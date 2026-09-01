@@ -11,6 +11,7 @@ on:
 
 permissions:
   actions: write
+  checks: read
   contents: read
   issues: read
   pull-requests: read
@@ -62,13 +63,28 @@ jobs:
                   continue;
                 }
                 try {
-                  const events = await github.paginate(github.rest.issues.listEventsForIssue, {
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: pullRequest.number,
-                    per_page: 100,
+                  const [events, checkRuns] = await Promise.all([
+                    github.paginate(github.rest.issues.listEventsForIssue, {
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: pullRequest.number,
+                      per_page: 100,
+                    }),
+                    github.paginate(github.rest.checks.listForRef, {
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      ref: pullRequest.merge_commit_sha,
+                      check_name: "Development Admission",
+                      per_page: 100,
+                    }),
+                  ]);
+                  candidateFlags[index] = guard.needsAdmissionReconciliation({
+                    labels: pullRequest.labels.map(({ name }) => name),
+                    baseRef: pullRequest.base.ref,
+                    defaultBranch,
+                    events,
+                    checkRuns,
                   });
-                  candidateFlags[index] = guard.hasRecentLabelRemoval(events, "architecture-approved");
                 } catch (error) {
                   core.warning(`Could not inspect label history for PR #${pullRequest.number}; dispatching a fail-closed evaluation: ${error}`);
                   candidateFlags[index] = true;
