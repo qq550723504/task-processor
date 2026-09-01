@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/enrichment"
@@ -114,7 +116,9 @@ func TestProductEnrichmentAdapterPreservesContextAndCancellation(t *testing.T) {
 
 	type contextKey string
 	const key contextKey = "trace"
-	ctx := context.WithValue(context.Background(), key, "trace-7")
+	deadline := time.Now().Add(time.Hour).Round(0)
+	ctx, cancelDeadline := context.WithDeadline(context.WithValue(context.Background(), key, "trace-7"), deadline)
+	defer cancelDeadline()
 	invoker := &enrichmentTextInvokerStub{output: `{"description":"Steel bottle"}`}
 	adapter := NewProductEnrichmentAdapter(invoker)
 
@@ -123,6 +127,21 @@ func TestProductEnrichmentAdapterPreservesContextAndCancellation(t *testing.T) {
 	}
 	if got := invoker.contextValue(key); got != "trace-7" {
 		t.Fatalf("invocation context value = %v, want trace-7", got)
+	}
+	if invoker.ctx != ctx {
+		t.Fatal("adapter replaced the caller context")
+	}
+	if got, ok := invoker.ctx.Deadline(); !ok || !got.Equal(deadline) {
+		t.Fatalf("invocation deadline = %v, %v; want %v, true", got, ok, deadline)
+	}
+	if invoker.request.MaxOutputBytes != productEnrichmentOutputMaxBytes {
+		t.Fatalf("MaxOutputBytes = %d, want %d", invoker.request.MaxOutputBytes, productEnrichmentOutputMaxBytes)
+	}
+	if len(invoker.request.Prompt) > productEnrichmentPromptMaxBytes {
+		t.Fatalf("prompt bytes = %d, limit = %d", len(invoker.request.Prompt), productEnrichmentPromptMaxBytes)
+	}
+	if strings.HasSuffix(invoker.request.Prompt, "\n") {
+		t.Fatal("streaming JSON encoder newline leaked into provider prompt")
 	}
 
 	canceled, cancel := context.WithCancel(context.Background())
@@ -144,6 +163,90 @@ func TestProductEnrichmentAdapterPreservesContextAndCancellation(t *testing.T) {
 	}
 	if _, err := NewProductEnrichmentAdapter(cancelingInvoker).Generate(cancelDuringCall, validEnrichmentGenerationRequest()); err != context.Canceled {
 		t.Fatalf("Generate(canceled during call) error = %v, want context.Canceled", err)
+	}
+}
+
+func TestProductEnrichmentAdapterDoesNotInvokeAfterPreparationCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx := &successiveEnrichmentErrContext{value: "trace-before-provider"}
+	invoker := &enrichmentTextInvokerStub{output: `{"description":"Steel bottle"}`}
+
+	got, err := NewProductEnrichmentAdapter(invoker).Generate(ctx, validEnrichmentGenerationRequest())
+	if err != context.Canceled {
+		t.Fatalf("Generate() error = %v, want context.Canceled", err)
+	}
+	if !reflect.DeepEqual(got, enrichment.Candidate{}) {
+		t.Fatalf("Generate() candidate = %#v, want zero candidate", got)
+	}
+	if invoker.calls != 0 {
+		t.Fatalf("invocation calls = %d, want 0 after preparation cancellation", invoker.calls)
+	}
+	if ctx.errCalls != 2 {
+		t.Fatalf("context Err calls = %d, want initial and pre-invocation checks", ctx.errCalls)
+	}
+}
+
+func TestBoundedJSONWriterEnforcesExactByteLimit(t *testing.T) {
+	t.Parallel()
+
+	exact := newBoundedJSONWriter(productEnrichmentPromptMaxBytes)
+	written, err := exact.Write(make([]byte, productEnrichmentPromptMaxBytes))
+	if err != nil || written != productEnrichmentPromptMaxBytes || exact.Len() != productEnrichmentPromptMaxBytes {
+		t.Fatalf("exact limit write = (%d, %v, len %d), want (%d, nil, len %d)", written, err, exact.Len(), productEnrichmentPromptMaxBytes, productEnrichmentPromptMaxBytes)
+	}
+
+	over := newBoundedJSONWriter(productEnrichmentPromptMaxBytes)
+	written, err = over.Write(make([]byte, productEnrichmentPromptMaxBytes+1))
+	if !errors.Is(err, errProductEnrichmentByteLimitExceeded) || written != 0 || over.Len() != 0 {
+		t.Fatalf("limit+1 write = (%d, %v, len %d), want (0, byte-limit error, len 0)", written, err, over.Len())
+	}
+}
+
+func TestProductEnrichmentAdapterRejectsOversizedPromptBeforeInvocation(t *testing.T) {
+	t.Parallel()
+
+	request := validEnrichmentGenerationRequest()
+	request.Snapshot.Description = strings.Repeat("x", productEnrichmentPromptMaxBytes)
+	invoker := &enrichmentTextInvokerStub{output: `{"description":"Steel bottle"}`}
+
+	got, err := NewProductEnrichmentAdapter(invoker).Generate(context.Background(), request)
+	if err != enrichment.ErrInputInvalid {
+		t.Fatalf("Generate() error = %v, want ErrInputInvalid", err)
+	}
+	if !reflect.DeepEqual(got, enrichment.Candidate{}) {
+		t.Fatalf("Generate() candidate = %#v, want zero candidate", got)
+	}
+	if invoker.calls != 0 {
+		t.Fatalf("invocation calls = %d, want 0 for oversized prompt", invoker.calls)
+	}
+}
+
+func TestProductEnrichmentAdapterEnforcesProviderOutputByteLimit(t *testing.T) {
+	t.Parallel()
+
+	prefix := `{"description":"`
+	suffix := `"}`
+	exactValue := strings.Repeat("x", productEnrichmentOutputMaxBytes-len(prefix)-len(suffix))
+	exactOutput := prefix + exactValue + suffix
+	if len(exactOutput) != productEnrichmentOutputMaxBytes {
+		t.Fatalf("exact output fixture bytes = %d, want %d", len(exactOutput), productEnrichmentOutputMaxBytes)
+	}
+	exact, err := NewProductEnrichmentAdapter(&enrichmentTextInvokerStub{output: exactOutput}).Generate(context.Background(), validEnrichmentGenerationRequest())
+	if err != nil {
+		t.Fatalf("Generate(exact limit) error = %v", err)
+	}
+	if got := exact.Changes[0].Value; got != exactValue {
+		t.Fatalf("Generate(exact limit) value bytes = %d, want %d", len(got), len(exactValue))
+	}
+
+	oversizedOutput := prefix + exactValue + "x" + suffix
+	got, err := NewProductEnrichmentAdapter(&enrichmentTextInvokerStub{output: oversizedOutput}).Generate(context.Background(), validEnrichmentGenerationRequest())
+	if err != enrichment.ErrOutputValidation {
+		t.Fatalf("Generate(limit+1) error = %v, want ErrOutputValidation", err)
+	}
+	if !reflect.DeepEqual(got, enrichment.Candidate{}) {
+		t.Fatalf("Generate(limit+1) candidate = %#v, want zero candidate", got)
 	}
 }
 
@@ -213,8 +316,8 @@ func TestProductEnrichmentAdapterBuildsDeterministicRequestFromDomainFacts(t *te
 	if _, err := NewProductEnrichmentAdapter(secondInvoker).Generate(context.Background(), second); err != nil {
 		t.Fatalf("second Generate() error = %v", err)
 	}
-	if firstInvoker.prompt != secondInvoker.prompt {
-		t.Fatalf("semantically equal requests produced different prompts\nfirst:  %s\nsecond: %s", firstInvoker.prompt, secondInvoker.prompt)
+	if firstInvoker.request.Prompt != secondInvoker.request.Prompt {
+		t.Fatalf("semantically equal requests produced different prompts\nfirst:  %s\nsecond: %s", firstInvoker.request.Prompt, secondInvoker.request.Prompt)
 	}
 }
 
@@ -259,21 +362,37 @@ func mustMarshalEnrichmentRequest(t *testing.T, request enrichment.GenerationReq
 type enrichmentTextInvokerStub struct {
 	output     string
 	err        error
-	prompt     string
+	request    TextInvocationRequest
 	ctx        context.Context
 	calls      int
 	onGenerate func()
 }
 
-func (s *enrichmentTextInvokerStub) Generate(ctx context.Context, prompt string) (string, error) {
+func (s *enrichmentTextInvokerStub) Generate(ctx context.Context, request TextInvocationRequest) (string, error) {
 	s.calls++
 	s.ctx = ctx
-	s.prompt = prompt
+	s.request = request
 	if s.onGenerate != nil {
 		s.onGenerate()
 	}
 	return s.output, s.err
 }
+
+type successiveEnrichmentErrContext struct {
+	errCalls int
+	value    any
+}
+
+func (*successiveEnrichmentErrContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (*successiveEnrichmentErrContext) Done() <-chan struct{}       { return nil }
+func (c *successiveEnrichmentErrContext) Err() error {
+	c.errCalls++
+	if c.errCalls > 1 {
+		return context.Canceled
+	}
+	return nil
+}
+func (c *successiveEnrichmentErrContext) Value(any) any { return c.value }
 
 func (s *enrichmentTextInvokerStub) contextValue(key any) any {
 	if s.ctx == nil {

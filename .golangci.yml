@@ -121,7 +121,9 @@ linters-settings:
           - pkg: gorm.io/gorm
           - pkg: go.temporal.io
           - pkg: github.com/aws/aws-sdk-go-v2
+          - pkg: github.com/aws/smithy-go
           - pkg: github.com/sashabaranov/go-openai
+          - pkg: github.com/tencentcloud/tencentcloud-sdk-go
 
       platform_domain_dependencies:
         files:

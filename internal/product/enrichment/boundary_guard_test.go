@@ -22,12 +22,16 @@ func TestProductEnrichmentRuntimeSemanticGuardCoversEveryDeclarationKind(t *test
 type QueueEnvelope struct{}
 type Candidate struct { ProviderClient string }
 func DispatchRetry() {}
-func (Candidate) SubmitTask() {}
+func (providerReceiver Candidate) SubmitTask(taskParameter string) (retryResult string) { return "" }
 var WorkerTaskState string
 const ProviderMode = "active"
 func local() {
+	var queueVariable string
+	const taskConstant = "local"
 	retryQueue := "scheduled"
-	_ = retryQueue
+	for taskIndex, providerValue := range []string{"value"} {
+		_, _, _, _, _ = queueVariable, taskConstant, retryQueue, taskIndex, providerValue
+	}
 }
 `
 	if err := os.WriteFile(fixture, []byte(source), 0o600); err != nil {
@@ -38,7 +42,22 @@ func local() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, identifier := range []string{"QueueEnvelope", "ProviderClient", "DispatchRetry", "SubmitTask", "WorkerTaskState", "ProviderMode", "retryQueue"} {
+	for _, identifier := range []string{
+		"QueueEnvelope",
+		"ProviderClient",
+		"DispatchRetry",
+		"providerReceiver",
+		"SubmitTask",
+		"taskParameter",
+		"retryResult",
+		"WorkerTaskState",
+		"ProviderMode",
+		"queueVariable",
+		"taskConstant",
+		"retryQueue",
+		"taskIndex",
+		"providerValue",
+	} {
 		if !containsRuntimeSemanticViolation(violations, identifier) {
 			t.Errorf("runtime semantic guard missed %s; violations = %v", identifier, violations)
 		}
@@ -52,9 +71,11 @@ func TestProductEnrichmentDependencyGuardRejectsCurrentRuntimeAndProviderSDKs(t 
 	source := `package fixture
 import (
 	_ "github.com/aws/aws-sdk-go-v2/service/s3"
+	_ "github.com/aws/smithy-go"
 	_ "github.com/rabbitmq/amqp091-go"
 	_ "github.com/redis/go-redis/v9"
 	_ "github.com/sashabaranov/go-openai"
+	_ "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	_ "go.temporal.io/sdk/workflow"
 	_ "gorm.io/gorm"
 )
@@ -67,8 +88,8 @@ import (
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(violations) != 6 {
-		t.Fatalf("runtime/provider import violations = %v, want all six current dependency roots", violations)
+	if len(violations) != 8 {
+		t.Fatalf("runtime/provider import violations = %v, want all eight current dependency roots", violations)
 	}
 }
 
@@ -153,14 +174,8 @@ func inspectRuntimeSemanticIdentifiers(file *ast.File, visit func(string)) {
 			visit(declaration.Name.Name)
 		case *ast.ValueSpec:
 			visitIdentifiers(declaration.Names, visit)
-		case *ast.StructType:
-			for _, field := range declaration.Fields.List {
-				visitIdentifiers(field.Names, visit)
-			}
-		case *ast.InterfaceType:
-			for _, method := range declaration.Methods.List {
-				visitIdentifiers(method.Names, visit)
-			}
+		case *ast.Field:
+			visitIdentifiers(declaration.Names, visit)
 		case *ast.AssignStmt:
 			if declaration.Tok == token.DEFINE {
 				for _, expression := range declaration.Lhs {
@@ -237,8 +252,10 @@ func isBannedExternalImport(path string) bool {
 		"github.com/sirupsen/logrus",
 		"github.com/sashabaranov/go-openai",
 		"github.com/aws/aws-sdk-go-v2",
+		"github.com/aws/smithy-go",
 		"github.com/redis/",
 		"github.com/rabbitmq/",
+		"github.com/tencentcloud/tencentcloud-sdk-go",
 	} {
 		if strings.HasPrefix(path, prefix) {
 			return true

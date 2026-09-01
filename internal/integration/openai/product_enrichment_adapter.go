@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,11 +13,29 @@ import (
 	"task-processor/internal/product/enrichment"
 )
 
+const (
+	productEnrichmentPromptMaxBytes = 64 * 1024
+	productEnrichmentOutputMaxBytes = 64 * 1024
+)
+
+var errProductEnrichmentByteLimitExceeded = errors.New("product enrichment byte limit exceeded")
+
+// TextInvocationRequest is the bounded provider-neutral request owned by this
+// Integration package. Prompt and provider output must each remain within the
+// advertised byte limits.
+type TextInvocationRequest struct {
+	Prompt         string
+	MaxOutputBytes int
+}
+
 // TextInvoker is the narrow Integration-owned capability required by product
 // enrichment. OpenAI clients may implement it without exposing provider request
-// or response types to the product domain.
+// or response types to the product domain. The caller/App owns the business
+// deadline. Implementations must honor the context and MaxOutputBytes, and own
+// any shorter provider transport timeout without replacing or extending the
+// caller's deadline.
 type TextInvoker interface {
-	Generate(context.Context, string) (string, error)
+	Generate(context.Context, TextInvocationRequest) (string, error)
 }
 
 // ProductEnrichmentAdapter translates the provider-neutral enrichment request
@@ -53,7 +72,13 @@ func (a *ProductEnrichmentAdapter) Generate(ctx context.Context, request enrichm
 		return enrichment.Candidate{}, enrichment.ErrInputInvalid
 	}
 
-	response, err := a.invoker.Generate(ctx, prompt)
+	if err := ctx.Err(); err != nil {
+		return enrichment.Candidate{}, canonicalContextError(err)
+	}
+	response, err := a.invoker.Generate(ctx, TextInvocationRequest{
+		Prompt:         prompt,
+		MaxOutputBytes: productEnrichmentOutputMaxBytes,
+	})
 	if contextErr := ctx.Err(); contextErr != nil {
 		return enrichment.Candidate{}, canonicalContextError(contextErr)
 	}
@@ -62,6 +87,9 @@ func (a *ProductEnrichmentAdapter) Generate(ctx context.Context, request enrichm
 			return enrichment.Candidate{}, canonicalContextError(err)
 		}
 		return enrichment.Candidate{}, enrichment.ErrExternalCapabilityUnavailable
+	}
+	if len(response) > productEnrichmentOutputMaxBytes {
+		return enrichment.Candidate{}, enrichment.ErrOutputValidation
 	}
 
 	candidate, err := parseProductEnrichmentResponse(response, requestedFields, evidenceID)
@@ -139,11 +167,51 @@ func buildProductEnrichmentPrompt(request enrichment.GenerationRequest, evidence
 		EvidenceID:      evidenceID,
 		Request:         domainRequest,
 	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
+	// Encoder writes a single trailing newline. The writer admits one extra byte
+	// for that delimiter, which is removed before the provider sees the prompt.
+	writer := newBoundedJSONWriter(productEnrichmentPromptMaxBytes + 1)
+	if err := json.NewEncoder(writer).Encode(payload); err != nil {
 		return "", err
 	}
+	encoded := writer.Bytes()
+	if len(encoded) == 0 || encoded[len(encoded)-1] != '\n' {
+		return "", enrichment.ErrInputInvalid
+	}
+	encoded = encoded[:len(encoded)-1]
+	if len(encoded) > productEnrichmentPromptMaxBytes {
+		return "", errProductEnrichmentByteLimitExceeded
+	}
 	return string(encoded), nil
+}
+
+type boundedJSONWriter struct {
+	buffer bytes.Buffer
+	limit  int
+}
+
+func newBoundedJSONWriter(limit int) *boundedJSONWriter {
+	return &boundedJSONWriter{limit: limit}
+}
+
+func (w *boundedJSONWriter) Write(data []byte) (int, error) {
+	if w == nil || w.limit < 0 || len(data) > w.limit-w.buffer.Len() {
+		return 0, errProductEnrichmentByteLimitExceeded
+	}
+	return w.buffer.Write(data)
+}
+
+func (w *boundedJSONWriter) Len() int {
+	if w == nil {
+		return 0
+	}
+	return w.buffer.Len()
+}
+
+func (w *boundedJSONWriter) Bytes() []byte {
+	if w == nil {
+		return nil
+	}
+	return w.buffer.Bytes()
 }
 
 func parseProductEnrichmentResponse(raw string, requestedFields []string, evidenceID string) (enrichment.Candidate, error) {

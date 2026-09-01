@@ -2,8 +2,12 @@ package tests
 
 import (
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -33,7 +37,9 @@ func TestPhase3ProductTargetDependencies(t *testing.T) {
 			"github.com/redis",
 			"github.com/rabbitmq",
 			"github.com/aws/aws-sdk-go-v2",
+			"github.com/aws/smithy-go",
 			"github.com/sashabaranov/go-openai",
+			"github.com/tencentcloud/tencentcloud-sdk-go",
 		}, nil)
 	}
 
@@ -46,6 +52,125 @@ func TestPhase3ProductTargetDependencies(t *testing.T) {
 		"task-processor/internal/product/image",
 		"task-processor/internal/productenrich",
 	}, nil)
+}
+
+func TestPhase3ProductEnrichmentRuntimeSemanticGuardCoversDeclarationIdentifiers(t *testing.T) {
+	fixture := filepath.Join(t.TempDir(), "runtime_semantics.go")
+	source := `package fixture
+type QueueEnvelope struct{}
+type Candidate struct { ProviderClient string }
+func DispatchRetry() {}
+func (providerReceiver Candidate) SubmitTask(taskParameter string) (retryResult string) { return "" }
+var WorkerTaskState string
+const ProviderMode = "active"
+func local() {
+	var queueVariable string
+	const taskConstant = "local"
+	retryQueue := "scheduled"
+	for taskIndex, providerValue := range []string{"value"} {
+		_, _, _, _, _ = queueVariable, taskConstant, retryQueue, taskIndex, providerValue
+	}
+}
+`
+	require.NoError(t, os.WriteFile(fixture, []byte(source), 0o600))
+
+	violations, err := phase3ProductRuntimeSemanticViolations([]string{fixture})
+	require.NoError(t, err)
+	for _, identifier := range []string{
+		"QueueEnvelope", "ProviderClient", "DispatchRetry", "providerReceiver", "SubmitTask",
+		"taskParameter", "retryResult", "WorkerTaskState", "ProviderMode", "queueVariable",
+		"taskConstant", "retryQueue", "taskIndex", "providerValue",
+	} {
+		require.Contains(t, violations, identifier)
+	}
+}
+
+func TestPhase3ProductEnrichmentHasNoRuntimeSemanticDeclarations(t *testing.T) {
+	files, err := phase3ProductProductionFiles(filepath.Join("..", "internal", "product", "enrichment"))
+	require.NoError(t, err)
+
+	violations, err := phase3ProductRuntimeSemanticViolations(files)
+	require.NoError(t, err)
+	require.Empty(t, violations)
+}
+
+func phase3ProductRuntimeSemanticViolations(files []string) ([]string, error) {
+	violations := []string{}
+	for _, path := range files {
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return nil, err
+		}
+		ast.Inspect(parsed, func(node ast.Node) bool {
+			visit := func(identifier *ast.Ident) {
+				if identifier != nil && phase3ProductForbiddenRuntimeIdentifier(identifier.Name) {
+					violations = append(violations, identifier.Name)
+				}
+			}
+			visitIdentifiers := func(identifiers []*ast.Ident) {
+				for _, identifier := range identifiers {
+					visit(identifier)
+				}
+			}
+
+			switch declaration := node.(type) {
+			case *ast.FuncDecl:
+				visit(declaration.Name)
+			case *ast.TypeSpec:
+				visit(declaration.Name)
+			case *ast.ValueSpec:
+				visitIdentifiers(declaration.Names)
+			case *ast.Field:
+				visitIdentifiers(declaration.Names)
+			case *ast.AssignStmt:
+				if declaration.Tok == token.DEFINE {
+					for _, expression := range declaration.Lhs {
+						if identifier, ok := expression.(*ast.Ident); ok {
+							visit(identifier)
+						}
+					}
+				}
+			case *ast.RangeStmt:
+				if declaration.Tok == token.DEFINE {
+					for _, expression := range []ast.Expr{declaration.Key, declaration.Value} {
+						if identifier, ok := expression.(*ast.Ident); ok {
+							visit(identifier)
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+	return violations, nil
+}
+
+func phase3ProductForbiddenRuntimeIdentifier(identifier string) bool {
+	lower := strings.ToLower(identifier)
+	for _, forbidden := range []string{"task", "repository", "retry", "queue", "provider"} {
+		if strings.Contains(lower, forbidden) {
+			return true
+		}
+	}
+	return false
+}
+
+func phase3ProductProductionFiles(root string) ([]string, error) {
+	production := []string{}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		production = append(production, path)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return production, nil
 }
 
 func TestPhase3LegacyProductRootsDoNotGrow(t *testing.T) {
