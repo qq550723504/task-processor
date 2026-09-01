@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 const defaultVariantSKU = "DEFAULT-001"

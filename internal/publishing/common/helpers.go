@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productimage"
 )
 

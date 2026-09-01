@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	"task-processor/internal/shared/aiidentity"

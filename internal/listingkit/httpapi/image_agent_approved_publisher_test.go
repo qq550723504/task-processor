@@ -13,7 +13,7 @@ import (
 
 	"task-processor/internal/asset"
 	"task-processor/internal/authidentity"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/listingkit"
 	listingkitstore "task-processor/internal/listingkit/store"
@@ -303,7 +303,7 @@ func newApprovedPublisherDatabase(t *testing.T) (context.Context, *gorm.DB, list
 }
 
 func approvedPublisherTask() *listingkit.Task {
-	return &listingkit.Task{ID: "task-1", TenantID: "tenant-a", UserID: "user-a", Result: &listingkit.ListingKitResult{Platforms: []string{"shein"}, StandardProductSnapshot: &listingkit.StandardProductSnapshot{CatalogProduct: &catalog.Product{Title: "Travel Bottle", CategoryPath: []string{"Outdoors", "Bottles"}, Attributes: []catalog.Attribute{{Name: "Material", Value: "Steel"}}}, AssetBundle: &asset.Bundle{Assets: []asset.Asset{{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://source.example/1.png"}}}}}}
+	return &listingkit.Task{ID: "task-1", TenantID: "tenant-a", UserID: "user-a", Result: &listingkit.ListingKitResult{Platforms: []string{"shein"}, StandardProductSnapshot: &listingkit.StandardProductSnapshot{CatalogProduct: &catalog.ProductSnapshot{Title: "Travel Bottle", CategoryPath: []string{"Outdoors", "Bottles"}, Attributes: []catalog.Attribute{{Name: "Material", Value: "Steel"}}}, AssetBundle: &asset.Bundle{Assets: []asset.Asset{{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://source.example/1.png"}}}}}}
 }
 
 func approvedProjection() imageagent.RunProjection {

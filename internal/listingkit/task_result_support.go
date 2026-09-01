@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/catalog"
 	submissiondomain "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	"task-processor/internal/product/catalog"
 )
 
 func persistClassifiedTaskFailure(ctx context.Context, repo Repository, taskID string, errorMsg string, cause error) error {
@@ -50,14 +50,15 @@ func (s *service) buildTaskResultPayload(ctx context.Context, task *Task) (*List
 	return copied, nil
 }
 
-func effectiveCatalogProduct(result *ListingKitResult) *catalog.Product {
+func effectiveCatalogProduct(result *ListingKitResult) *catalog.ProductSnapshot {
 	if result == nil {
 		return nil
 	}
 	if result.CatalogProduct != nil {
 		return result.CatalogProduct
 	}
-	return catalog.BuildProduct(result.CanonicalProduct)
+	snapshot, _ := catalog.Normalize(result.CanonicalProduct)
+	return snapshot
 }
 
 func cloneListingKitResult(result *ListingKitResult) (*ListingKitResult, error) {

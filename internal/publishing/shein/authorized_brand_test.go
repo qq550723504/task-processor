@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sharedtenantctx "task-processor/internal/shared/tenantctx"
 	"task-processor/internal/shein/authorizedbrand"

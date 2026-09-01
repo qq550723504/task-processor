@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
-	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productimage"
 )
 
@@ -22,7 +22,12 @@ func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result
 		return fmt.Errorf("failed to build SDS studio product")
 	}
 	result.CanonicalProduct = canonicalProduct
-	result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
+	catalogProduct, err := catalog.Normalize(canonicalProduct)
+	if err != nil {
+		stage.Fail("sds_catalog_product_failed", "Failed to normalize SDS studio product", err.Error())
+		return err
+	}
+	result.CatalogProduct = catalogProduct
 	rebuildAssetBundlesForRetry(result, canonicalProduct, task.Request)
 	markChildTask(result, "sds_catalog_product", "", string(core.TaskStatusCompleted), "")
 	stage.Complete()
@@ -32,7 +37,11 @@ func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result
 		sdsOptions = task.Request.Options.SDS
 	}
 	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSDesignResult, sdsOptions) {
-		result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
+		catalogProduct, err = catalog.Normalize(canonicalProduct)
+		if err != nil {
+			return err
+		}
+		result.CatalogProduct = catalogProduct
 		rebuildAssetBundlesForRetry(result, canonicalProduct, task.Request)
 	}
 	result.Summary = ensureGenerationSummary(result.Summary)
@@ -67,7 +76,11 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 	}
 	if result.CanonicalProduct != nil {
 		if applySDSSyncMetadataToCanonical(result.CanonicalProduct, result.SDSDesignResult, sdsOptions) {
-			result.CatalogProduct = catalog.BuildProduct(result.CanonicalProduct)
+			catalogProduct, err := catalog.Normalize(result.CanonicalProduct)
+			if err != nil {
+				return err
+			}
+			result.CatalogProduct = catalogProduct
 			rebuildAssetBundlesForRetry(result, result.CanonicalProduct, task.Request)
 		}
 	}

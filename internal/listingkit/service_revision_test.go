@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productimage"

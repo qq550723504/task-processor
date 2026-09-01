@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	openaiclient "task-processor/internal/integration/openai"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	amazonmodel "task-processor/internal/marketplace/amazon/model"
 	"task-processor/internal/shared/aiidentity"
 )

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"task-processor/internal/catalog"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productimage"
 	sdsadapter "task-processor/internal/sds/adapter"
@@ -74,7 +74,7 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 			TaskID:    "task-sds-design",
 			Status:    string(core.TaskStatusCompleted),
 			Platforms: []string{"shein"},
-			CatalogProduct: &catalog.Product{
+			CatalogProduct: &catalog.ProductSnapshot{
 				Title: "Floor Mat",
 			},
 			CanonicalProduct: &canonical.Product{

@@ -21,7 +21,7 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"

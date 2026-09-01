@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 // SourceFactsGenerateRequestInput is the narrow bridge input from normalized

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"task-processor/internal/aicapability"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	productenrich "task-processor/internal/productenrich"
 
 	"github.com/sirupsen/logrus"

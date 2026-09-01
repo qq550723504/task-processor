@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 // Context represents a product-oriented image asset view assembled from
@@ -43,7 +43,7 @@ type AssetRef struct {
 }
 
 // BuildContext assembles a product image context from catalog and asset layers.
-func BuildContext(product *catalog.Product, inventory *asset.Inventory) Context {
+func BuildContext(product *catalog.ProductSnapshot, inventory *asset.Inventory) Context {
 	ctx := Context{}
 	if product != nil {
 		ctx.Product = ProductFacts{
@@ -105,7 +105,7 @@ func BuildContext(product *catalog.Product, inventory *asset.Inventory) Context 
 	return ctx
 }
 
-func collectSources(product *catalog.Product) []SourceRef {
+func collectSources(product *catalog.ProductSnapshot) []SourceRef {
 	seen := map[string]struct{}{}
 	result := make([]SourceRef, 0, len(product.Images))
 

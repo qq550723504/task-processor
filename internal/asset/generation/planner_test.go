@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/productimage"
 )
 
@@ -653,7 +653,7 @@ func TestServiceExecuteUsesPipelineBackedWhiteBgAndCutout(t *testing.T) {
 	})
 	result, err := service.Execute(context.Background(), assetgeneration.Request{
 		TaskID: "task-3",
-		Product: &catalog.Product{
+		Product: &catalog.ProductSnapshot{
 			Title:        "Women Dress",
 			CategoryPath: []string{"Fashion", "Dresses"},
 			Attributes: []catalog.Attribute{
@@ -782,7 +782,7 @@ func TestServiceDispatchCompletesDeferredGenerationTasks(t *testing.T) {
 	service := assetgeneration.NewService(assetgeneration.Config{})
 	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
 		TaskID: "task-4",
-		Product: &catalog.Product{
+		Product: &catalog.ProductSnapshot{
 			Title:        "Winter Coat",
 			CategoryPath: []string{"Fashion", "Coats"},
 		},
@@ -871,7 +871,7 @@ func TestServiceDispatchUsesDeferredRendererForSceneAndSellingPoint(t *testing.T
 
 	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
 		TaskID: "task-5",
-		Product: &catalog.Product{
+		Product: &catalog.ProductSnapshot{
 			Title:        "Portable Speaker",
 			CategoryPath: []string{"Electronics", "Audio"},
 		},
@@ -938,7 +938,7 @@ func TestProductImageDeferredRendererMapsSceneAssets(t *testing.T) {
 
 	record, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
 		TaskID: "task-renderer-1",
-		Product: &catalog.Product{
+		Product: &catalog.ProductSnapshot{
 			Title:        "Portable Speaker",
 			CategoryPath: []string{"Electronics", "Audio"},
 			Attributes: []catalog.Attribute{
@@ -1020,7 +1020,7 @@ func TestProductImageDeferredRendererPreservesPublicSceneURL(t *testing.T) {
 
 	record, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
 		TaskID:    "task-renderer-published-url",
-		Product:   &catalog.Product{Title: "Portable Speaker"},
+		Product:   &catalog.ProductSnapshot{Title: "Portable Speaker"},
 		Task:      assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
 		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
 	})
@@ -1217,7 +1217,7 @@ func TestProductImageDeferredRendererPublishesLocalSceneOutput(t *testing.T) {
 
 	record, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
 		TaskID:    "task-renderer-publisher",
-		Product:   &catalog.Product{Title: "Portable Speaker"},
+		Product:   &catalog.ProductSnapshot{Title: "Portable Speaker"},
 		Task:      assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
 		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
 	})
@@ -1329,7 +1329,7 @@ func TestProductImageDeferredRendererPropagatesSellingPointSlotPlan(t *testing.T
 
 	record, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
 		TaskID: "task-renderer-2",
-		Product: &catalog.Product{
+		Product: &catalog.ProductSnapshot{
 			Title:        "Portable Speaker",
 			CategoryPath: []string{"Electronics", "Audio"},
 		},

@@ -2,7 +2,7 @@ package sourcing
 
 import (
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 // CatalogProductFactsFromEnvelope converts a normalized source envelope into

@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 type standardWorkflowState struct {
@@ -37,7 +37,10 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	}
 
 	result.CanonicalProduct = canonicalProduct
-	result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
+	result.CatalogProduct, err = catalog.Normalize(canonicalProduct)
+	if err != nil {
+		return &standardWorkflowState{result: result}, err
+	}
 	if !shouldProcessImages(task.Request) {
 		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
 		result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)

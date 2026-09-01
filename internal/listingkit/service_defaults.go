@@ -9,7 +9,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"

@@ -5,7 +5,7 @@ import (
 
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	previewdomain "task-processor/internal/listing/preview"
 	"task-processor/internal/listingkit/core"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
@@ -17,7 +17,7 @@ type ListingKitPreview struct {
 	SelectedPlatform            string                         `json:"selected_platform,omitempty"`
 	Platforms                   []string                       `json:"platforms,omitempty"`
 	NeedsReview                 bool                           `json:"needs_review"`
-	Catalog                     *catalog.Product               `json:"catalog,omitempty"`
+	Catalog                     *catalog.ProductSnapshot               `json:"catalog,omitempty"`
 	Assets                      *asset.Bundle                  `json:"assets,omitempty"`
 	AssetInventory              *asset.InventorySummary        `json:"asset_inventory,omitempty"`
 	AssetRenderPreviews         []AssetRenderPreview           `json:"asset_render_previews,omitempty"`

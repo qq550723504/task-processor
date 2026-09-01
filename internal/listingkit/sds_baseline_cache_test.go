@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/store"
 )

@@ -5,7 +5,7 @@ import (
 
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 type ListingKitExport struct {
@@ -16,7 +16,7 @@ type ListingKitExport struct {
 	MimeType                    string                        `json:"mime_type"`
 	GeneratedAt                 time.Time                     `json:"generated_at"`
 	Platforms                   []string                      `json:"platforms,omitempty"`
-	CatalogProduct              *catalog.Product              `json:"catalog_product,omitempty"`
+	CatalogProduct              *catalog.ProductSnapshot              `json:"catalog_product,omitempty"`
 	AssetBundle                 *asset.Bundle                 `json:"asset_bundle,omitempty"`
 	AssetInventorySummary       *asset.InventorySummary       `json:"asset_inventory_summary,omitempty"`
 	AssetRenderPreviews         []AssetRenderPreview          `json:"asset_render_previews,omitempty"`

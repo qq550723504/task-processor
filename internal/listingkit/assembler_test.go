@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"task-processor/internal/amazonlisting"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"

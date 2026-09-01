@@ -15,7 +15,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/listingkit/core"
 	listinggeneration "task-processor/internal/listingkit/generation"
 	"task-processor/internal/listingkit/reviewstore"
@@ -1118,7 +1118,7 @@ func TestExecuteTaskGenerationActionRunsRetryableTarget(t *testing.T) {
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID:         "task-generation-action-retry-1",
-			CatalogProduct: &catalog.Product{Title: "Portable Speaker"},
+			CatalogProduct: &catalog.ProductSnapshot{Title: "Portable Speaker"},
 			Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
 				Platform: "amazon",
 				MissingSlots: []common.MissingSlot{{

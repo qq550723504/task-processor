@@ -2,7 +2,7 @@ package listingkit
 
 import (
 	assetrecipe "task-processor/internal/asset/recipe"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	listingplatform "task-processor/internal/listing/platform"
 )
 

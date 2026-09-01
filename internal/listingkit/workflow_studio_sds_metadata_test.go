@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sdsadapter "task-processor/internal/sds/adapter"

@@ -3,7 +3,7 @@ package shein
 import (
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 func buildCategoryFamilyConflictSummary(canonical *canonical.Product, pkg *Package) (bool, string) {

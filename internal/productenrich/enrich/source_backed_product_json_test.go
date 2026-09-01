@@ -3,7 +3,7 @@ package enrich
 import (
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	productenrich "task-processor/internal/productenrich"
 )
 

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -164,8 +164,8 @@ func TestStandardSnapshotFromTaskBuildsFallbackFromLegacyResult(t *testing.T) {
 var catalogProductForTest = catalogProductStub()
 var assetInventorySummaryForTest = asset.InventorySummary{TotalRecords: 1, SelectedCount: 1}
 
-func catalogProductStub() catalog.Product {
-	return catalog.Product{
+func catalogProductStub() catalog.ProductSnapshot {
+	return catalog.ProductSnapshot{
 		Title: "Legacy catalog product",
 	}
 }

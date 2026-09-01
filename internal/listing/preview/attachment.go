@@ -2,19 +2,19 @@ package preview
 
 import (
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 // Attachment captures the preview-facing product and asset data that is already
 // platform-neutral and can move with the shared preview shell.
 type Attachment struct {
-	CatalogProduct        *catalog.Product        `json:"catalog,omitempty"`
+	CatalogProduct        *catalog.ProductSnapshot        `json:"catalog,omitempty"`
 	AssetBundle           *asset.Bundle           `json:"assets,omitempty"`
 	AssetInventorySummary *asset.InventorySummary `json:"asset_inventory,omitempty"`
 }
 
 type AttachmentInput struct {
-	CatalogProduct        *catalog.Product
+	CatalogProduct        *catalog.ProductSnapshot
 	AssetBundle           *asset.Bundle
 	AssetInventorySummary *asset.InventorySummary
 }

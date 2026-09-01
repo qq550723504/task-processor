@@ -4,11 +4,11 @@ import (
 	"testing"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 func TestBuildContext_UsesInventoryMainAndSelection(t *testing.T) {
-	product := &catalog.Product{
+	product := &catalog.ProductSnapshot{
 		Title:        " Demo Tee ",
 		Brand:        " ACME ",
 		CategoryPath: []string{"Apparel", "Tops"},

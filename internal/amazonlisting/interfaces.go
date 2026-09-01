@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	amazonapi "task-processor/internal/amazon/api"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )

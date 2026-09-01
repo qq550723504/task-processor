@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	sdsdesign "task-processor/internal/sds/design"
 	sdstemplate "task-processor/internal/sds/template"
 	"task-processor/internal/sdslogin"

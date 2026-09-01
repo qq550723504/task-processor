@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 func TestGenerateRequestFromSourceFactsMapsNeutralFacts(t *testing.T) {

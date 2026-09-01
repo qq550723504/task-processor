@@ -3,7 +3,7 @@ package listingkit
 import (
 	"testing"
 
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	previewdomain "task-processor/internal/listing/preview"
 )
 
@@ -13,7 +13,7 @@ func TestBuildListingKitReadProjectionCombinesOverviewAndAttachment(t *testing.T
 	projection := buildListingKitReadProjection(&ListingKitResult{
 		Country:        "US",
 		Language:       "en_US",
-		CatalogProduct: &catalog.Product{Title: "Wireless Earbuds"},
+		CatalogProduct: &catalog.ProductSnapshot{Title: "Wireless Earbuds"},
 		ReviewReasons:  []string{"reason"},
 		Summary:        &GenerationSummary{NeedsReview: true, SourceType: "text"},
 		AssetRenderPreviews: []AssetRenderPreview{
@@ -43,7 +43,7 @@ func TestBuildProjectionConsumersFromReadProjection(t *testing.T) {
 	projection := buildListingKitReadProjection(&ListingKitResult{
 		Country:        "US",
 		Language:       "en_US",
-		CatalogProduct: &catalog.Product{Title: "Wireless Earbuds"},
+		CatalogProduct: &catalog.ProductSnapshot{Title: "Wireless Earbuds"},
 		ReviewReasons:  []string{"reason"},
 		Summary: &GenerationSummary{
 			NeedsReview:  true,
@@ -95,7 +95,7 @@ func TestReadProjectionOwnsPreviewDomainReadModelInput(t *testing.T) {
 				PlatformCards: []previewdomain.PlatformCard{{Platform: "shein", Status: "blocked"}},
 			},
 			Attachment: &previewdomain.AttachmentInput{
-				CatalogProduct: &catalog.Product{Title: "Wireless Earbuds"},
+				CatalogProduct: &catalog.ProductSnapshot{Title: "Wireless Earbuds"},
 			},
 		},
 		PlatformCards: []ListingKitPlatformCard{{Platform: "shein", Status: "blocked"}},

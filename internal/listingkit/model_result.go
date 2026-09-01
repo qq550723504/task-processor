@@ -6,8 +6,8 @@ import (
 
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
-	"task-processor/internal/catalog"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	listingplatform "task-processor/internal/listing/platform"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -22,7 +22,7 @@ type ListingKitResult struct {
 	Language                        string                                      `json:"language,omitempty"`
 	PodExecution                    *PodExecutionSummary                        `json:"pod_execution,omitempty"`
 	StandardProductSnapshot         *StandardProductSnapshot                    `json:"standard_product_snapshot,omitempty"`
-	CatalogProduct                  *catalog.Product                            `json:"catalog_product,omitempty"`
+	CatalogProduct                  *catalog.ProductSnapshot                            `json:"catalog_product,omitempty"`
 	AssetBundle                     *asset.Bundle                               `json:"asset_bundle,omitempty"`
 	AssetInventorySummary           *asset.InventorySummary                     `json:"asset_inventory_summary,omitempty"`
 	AssetBundlesByTarget            map[string]*asset.Bundle                    `json:"asset_bundles_by_target,omitempty"`
@@ -171,7 +171,7 @@ func (r *ListingKitResult) compatibilityProjectionTarget() string {
 // on the task result so the standard layer can later be executed and resumed
 // independently from platform-specific workflows such as SHEIN adaptation.
 type StandardProductSnapshot struct {
-	CatalogProduct                  *catalog.Product                            `json:"catalog_product,omitempty"`
+	CatalogProduct                  *catalog.ProductSnapshot                            `json:"catalog_product,omitempty"`
 	CanonicalProduct                *canonical.Product                          `json:"canonical_product,omitempty"`
 	AssetBundle                     *asset.Bundle                               `json:"asset_bundle,omitempty"`
 	AssetInventorySummary           *asset.InventorySummary                     `json:"asset_inventory_summary,omitempty"`

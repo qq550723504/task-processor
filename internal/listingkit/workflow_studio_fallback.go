@@ -3,7 +3,7 @@ package listingkit
 import (
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	listingworkflow "task-processor/internal/listingkit/workflow"
 )
 

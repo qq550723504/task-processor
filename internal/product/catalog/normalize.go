@@ -5,15 +5,15 @@ import (
 	"sort"
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 )
 
-func BuildProduct(product *canonical.Product) *Product {
+func Normalize(product *canonical.Product) (*ProductSnapshot, error) {
 	if product == nil {
-		return nil
+		return nil, ErrInvalidSnapshot
 	}
 
-	catalogProduct := &Product{
+	snapshot := &ProductSnapshot{
 		Title:          product.Title,
 		Brand:          product.Brand,
 		CategoryPath:   cloneStrings(product.CategoryPath),
@@ -28,7 +28,7 @@ func BuildProduct(product *canonical.Product) *Product {
 		Sources:        collectSources(product),
 	}
 
-	return catalogProduct
+	return snapshot, nil
 }
 
 func buildAttributes(attrs map[string]canonical.Attribute) []Attribute {
@@ -213,7 +213,9 @@ func collectReviewReasons(product *canonical.Product) []string {
 		reasons = append(reasons, fmt.Sprintf("%s待人工确认", label))
 	}
 
-	for key, attr := range product.Attributes {
+	attributeKeys := sortedAttributeKeys(product.Attributes)
+	for _, key := range attributeKeys {
+		attr := product.Attributes[key]
 		if attr.Trace.NeedsReview {
 			reasons = append(reasons, fmt.Sprintf("属性待确认: %s", key))
 		}
@@ -223,7 +225,9 @@ func collectReviewReasons(product *canonical.Product) []string {
 			reasons = append(reasons, fmt.Sprintf("变体待确认: %s", firstNonEmpty(variant.SKU, "未命名SKU")))
 			continue
 		}
-		for key, attr := range variant.Attributes {
+		variantAttributeKeys := sortedAttributeKeys(variant.Attributes)
+		for _, key := range variantAttributeKeys {
+			attr := variant.Attributes[key]
 			if attr.Trace.NeedsReview {
 				reasons = append(reasons, fmt.Sprintf("变体属性待确认: %s/%s", firstNonEmpty(variant.SKU, "未命名SKU"), key))
 				break
@@ -284,7 +288,22 @@ func uniqueSourceRecords(items []SourceRecord) []SourceRecord {
 		seen[key] = struct{}{}
 		result = append(result, item)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Type != result[j].Type {
+			return result[i].Type < result[j].Type
+		}
+		return result[i].Detail < result[j].Detail
+	})
 	return result
+}
+
+func sortedAttributeKeys(attributes map[string]canonical.Attribute) []string {
+	keys := make([]string, 0, len(attributes))
+	for key := range attributes {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func uniqueStrings(items []string) []string {

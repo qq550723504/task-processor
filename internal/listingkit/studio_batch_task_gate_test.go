@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/sdslogin"
 )
 

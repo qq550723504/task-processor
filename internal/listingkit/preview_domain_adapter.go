@@ -2,7 +2,7 @@ package listingkit
 
 import (
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	previewdomain "task-processor/internal/listing/preview"
 	"task-processor/internal/listingkit/core"
 )
@@ -61,7 +61,7 @@ func adaptPreviewDomainHeader(base *previewdomain.Header) *ListingKitPreviewHead
 	return header
 }
 
-func adaptPreviewDomainCatalog(base *previewdomain.Attachment) *catalog.Product {
+func adaptPreviewDomainCatalog(base *previewdomain.Attachment) *catalog.ProductSnapshot {
 	if base == nil {
 		return nil
 	}

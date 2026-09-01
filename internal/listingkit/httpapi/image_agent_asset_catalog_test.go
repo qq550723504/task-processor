@@ -9,7 +9,7 @@ import (
 
 	"task-processor/internal/asset"
 	"task-processor/internal/authidentity"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/listingkit"
 )
@@ -35,7 +35,7 @@ func TestListingKitImageAgentCatalogUsesOwnedCanonicalSourceAssetsAndNoSynthetic
 	tasks := listingTaskSourceStub{task: &listingkit.Task{
 		ID: "task-1", TenantID: "tenant-a", UserID: "user-a",
 		Request: &listingkit.GenerateRequest{ImageURLs: []string{"https://source.example/request-only.png"}},
-		Result: &listingkit.ListingKitResult{StandardProductSnapshot: &listingkit.StandardProductSnapshot{CatalogProduct: &catalog.Product{Title: " Travel Bottle ", CategoryPath: []string{"Outdoors", " Bottles "}, Attributes: []catalog.Attribute{{Name: " Material ", Value: " Steel "}, {Name: "", Value: "ignored"}}}, AssetBundle: &asset.Bundle{Assets: []asset.Asset{
+		Result: &listingkit.ListingKitResult{StandardProductSnapshot: &listingkit.StandardProductSnapshot{CatalogProduct: &catalog.ProductSnapshot{Title: " Travel Bottle ", CategoryPath: []string{"Outdoors", " Bottles "}, Attributes: []catalog.Attribute{{Name: " Material ", Value: " Steel "}, {Name: "", Value: "ignored"}}}, AssetBundle: &asset.Bundle{Assets: []asset.Asset{
 			{ID: "source-canonical", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/source.png", Labels: []string{"Canonical source"}, Width: 1200, Height: 900, Metadata: map[string]string{"origin": "canonical"}},
 			{ID: "source-unsafe", Kind: asset.KindSourceImage, URL: "javascript:alert(1)"},
 			{ID: "generated-1", Kind: asset.KindSceneImage, URL: "https://cdn.example.test/generated.png"},

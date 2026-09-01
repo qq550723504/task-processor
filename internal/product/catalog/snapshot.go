@@ -5,7 +5,7 @@ import (
 	"sort"
 )
 
-type Product struct {
+type ProductSnapshot struct {
 	Title          string          `json:"title,omitempty"`
 	Brand          string          `json:"brand,omitempty"`
 	CategoryPath   []string        `json:"category_path,omitempty"`
@@ -20,13 +20,13 @@ type Product struct {
 	Sources        []SourceRecord  `json:"sources,omitempty"`
 }
 
-func (p *Product) UnmarshalJSON(data []byte) error {
-	type productAlias Product
+func (p *ProductSnapshot) UnmarshalJSON(data []byte) error {
+	type productSnapshotAlias ProductSnapshot
 	var raw struct {
-		*productAlias
+		*productSnapshotAlias
 		Attributes json.RawMessage `json:"attributes,omitempty"`
 	}
-	raw.productAlias = (*productAlias)(p)
+	raw.productSnapshotAlias = (*productSnapshotAlias)(p)
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}

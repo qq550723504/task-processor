@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
 	productenrich "task-processor/internal/productenrich"

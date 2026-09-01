@@ -10,7 +10,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/listingkit/core"
 )
 
@@ -32,7 +32,7 @@ func TestGetTaskPreviewIncludesGenerationTasks(t *testing.T) {
 		Result: &ListingKitResult{
 			TaskID:         "task-preview-generation-1",
 			Platforms:      []string{"amazon"},
-			CatalogProduct: &catalog.Product{Title: "Portable Speaker"},
+			CatalogProduct: &catalog.ProductSnapshot{Title: "Portable Speaker"},
 			Amazon:         &AmazonPackage{},
 		},
 	}

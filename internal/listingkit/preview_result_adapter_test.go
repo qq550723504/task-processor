@@ -4,14 +4,14 @@ import (
 	"testing"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	previewdomain "task-processor/internal/listing/preview"
 )
 
 func TestAdaptPreviewDomainResultProjectionPreservesListingKitPreviewExtras(t *testing.T) {
 	t.Parallel()
 
-	catalogProduct := &catalog.Product{Title: "Wireless Earbuds"}
+	catalogProduct := &catalog.ProductSnapshot{Title: "Wireless Earbuds"}
 	assetBundle := &asset.Bundle{Assets: []asset.Asset{{ID: "asset-1"}}}
 	assetInventory := &asset.InventorySummary{TotalRecords: 1}
 	queue := &GenerationWorkQueue{Summary: &GenerationWorkQueueSummary{TotalItems: 1}}

@@ -16,7 +16,7 @@ func TestSourceFactsBridgeImportsOnlyNeutralFacts(t *testing.T) {
 		"sort":                          {},
 		"strings":                       {},
 		"task-processor/internal/asset":  {},
-		"task-processor/internal/catalog": {},
+		"task-processor/internal/product/catalog": {},
 	}
 
 	_, filename, _, ok := runtime.Caller(0)

@@ -7,27 +7,27 @@ import (
 
 	"task-processor/internal/asset"
 	assetrecipe "task-processor/internal/asset/recipe"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 type Request struct {
 	TaskID          string
 	TargetPlatforms []string
-	Product         *catalog.Product
+	Product         *catalog.ProductSnapshot
 	Inventory       *asset.Inventory
 	Recipes         []assetrecipe.AssetRecipe
 }
 
 type DispatchRequest struct {
 	TaskID    string
-	Product   *catalog.Product
+	Product   *catalog.ProductSnapshot
 	Inventory *asset.Inventory
 	Tasks     []Task
 }
 
 type DeferredRenderRequest struct {
 	TaskID    string
-	Product   *catalog.Product
+	Product   *catalog.ProductSnapshot
 	Task      Task
 	BaseAsset asset.AssetRecord
 }

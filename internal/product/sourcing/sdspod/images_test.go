@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 func TestApplyCanonicalAssignsRenderedVariantImages(t *testing.T) {

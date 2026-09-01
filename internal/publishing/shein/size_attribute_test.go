@@ -3,7 +3,7 @@ package shein
 import (
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheinproduct "task-processor/internal/shein/api/product"
 )

@@ -3,7 +3,7 @@ package listingkit
 import (
 	amazonlisting "task-processor/internal/amazonlisting"
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 )

@@ -14,8 +14,8 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
-	"task-processor/internal/catalog"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
 )
@@ -300,7 +300,7 @@ func newRetryPersistenceFailureFixture(t *testing.T, taskID string) *retryPersis
 			TaskID:           taskID,
 			Platforms:        []string{"amazon"},
 			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
-			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.ProductSnapshot{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
 			Amazon: &AmazonPackage{
 				ImageBundle: &common.PublishImageBundle{
 					Auxiliary: []common.BundleSlot{{
@@ -811,7 +811,7 @@ func TestRetryTaskGenerationTasksIncludesMatchedQueueSummary(t *testing.T) {
 			TaskID:           "task-generation-retry-match-1",
 			Platforms:        []string{"amazon"},
 			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
-			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.ProductSnapshot{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
 			Amazon: &AmazonPackage{
 				ImageBundle: &common.PublishImageBundle{
 					Platform: "amazon",
@@ -1330,7 +1330,7 @@ func TestRetryTaskGenerationTasksReplacesFallbackAssetAndPersistsResult(t *testi
 			TaskID:           "task-generation-retry-1",
 			Platforms:        []string{"amazon"},
 			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
-			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.ProductSnapshot{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
 			AssetBundle: &asset.Bundle{
 				Assets: []asset.Asset{
 					{ID: "gallery-1", Kind: asset.KindGalleryImage, URL: "file:///tmp/gallery.jpg", SourceURL: "https://example.com/gallery.jpg"},
@@ -1453,7 +1453,7 @@ func TestRetryTaskGenerationTasksMergesReturnedTasksAndRefreshesRetriedAssets(t 
 			TaskID:           "task-generation-retry-merge-1",
 			Platforms:        []string{"amazon"},
 			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
-			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.ProductSnapshot{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
 			Amazon: &AmazonPackage{
 				ImageBundle: &common.PublishImageBundle{
 					Auxiliary: []common.BundleSlot{{
@@ -1579,7 +1579,7 @@ func TestRetryTaskGenerationTasksDispatchesEachPlatformAgainstTargetInventory(t 
 		Result: &ListingKitResult{
 			TaskID:         taskID,
 			Platforms:      []string{"amazon", "shein"},
-			CatalogProduct: &catalog.Product{Title: "Portable Speaker"},
+			CatalogProduct: &catalog.ProductSnapshot{Title: "Portable Speaker"},
 			AssetBundlesByTarget: map[string]*asset.Bundle{
 				"amazon": {Assets: []asset.Asset{{ID: "main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/amazon-main.jpg"}}},
 				"shein":  {Assets: []asset.Asset{{ID: "main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/shein-main.jpg"}}},
@@ -1647,7 +1647,7 @@ func TestRetryGenerationResultProjectionRebuildsListingKitResult(t *testing.T) {
 			TaskID:           "task-generation-retry-projection-1",
 			Platforms:        []string{"amazon"},
 			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
-			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.ProductSnapshot{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
 			AssetBundle: &asset.Bundle{
 				Assets: []asset.Asset{
 					{ID: "gallery-1", Kind: asset.KindGalleryImage, URL: "file:///tmp/gallery.jpg"},
@@ -1815,7 +1815,7 @@ func TestRetryGenerationResultProjectionBuildsQueues(t *testing.T) {
 			TaskID:           "task-generation-retry-projection-queues-1",
 			Platforms:        []string{"amazon"},
 			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
-			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.ProductSnapshot{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
 			Amazon:           &AmazonPackage{},
 		},
 	}
@@ -1913,7 +1913,7 @@ func TestRetryGenerationResultProjectionHandlesNilTaskRequest(t *testing.T) {
 			TaskID:           "task-generation-retry-projection-nil-request-1",
 			Platforms:        []string{"amazon"},
 			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
-			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.ProductSnapshot{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
 			Amazon: &AmazonPackage{
 				ImageBundle: &common.PublishImageBundle{
 					Auxiliary: []common.BundleSlot{{
@@ -3693,7 +3693,7 @@ func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
 			TaskID:           "task-generation-retry-nil-dispatch-1",
 			Platforms:        []string{"amazon"},
 			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
-			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.ProductSnapshot{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
 			Amazon: &AmazonPackage{
 				ImageBundle: &common.PublishImageBundle{
 					Auxiliary: []common.BundleSlot{{
@@ -3913,7 +3913,7 @@ func TestRetryTaskGenerationTasksEmptySelectionSkipsPersistence(t *testing.T) {
 			TaskID:           "task-generation-retry-empty-selection-1",
 			Platforms:        []string{"amazon"},
 			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Electronics", "Audio"}},
-			CatalogProduct:   &catalog.Product{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
+			CatalogProduct:   &catalog.ProductSnapshot{Title: "Portable Speaker", CategoryPath: []string{"Electronics", "Audio"}},
 		},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -3977,7 +3977,7 @@ func TestRetryTaskGenerationTasksCanFilterFallbackSlotsOnly(t *testing.T) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
-		Result:    &ListingKitResult{TaskID: "task-generation-retry-filter-1", CatalogProduct: &catalog.Product{Title: "Tee"}},
+		Result:    &ListingKitResult{TaskID: "task-generation-retry-filter-1", CatalogProduct: &catalog.ProductSnapshot{Title: "Tee"}},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
@@ -4073,7 +4073,7 @@ func TestRetryTaskGenerationTasksPlansMissingQueueFallbackSlot(t *testing.T) {
 			TaskID:           "task-generation-retry-plan-missing-1",
 			Platforms:        []string{"shein"},
 			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Home", "Cushions"}},
-			CatalogProduct:   &catalog.Product{Title: "Bench Cushion", CategoryPath: []string{"Home", "Cushions"}},
+			CatalogProduct:   &catalog.ProductSnapshot{Title: "Bench Cushion", CategoryPath: []string{"Home", "Cushions"}},
 			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
 				Platform: "shein",
 				Gallery: []common.BundleSlot{{
@@ -4159,7 +4159,7 @@ func TestRetryTaskGenerationTasksPassesNormalizedRequestedTargetsToMissingTaskPl
 			TaskID:           "task-generation-retry-plan-targets-1",
 			Platforms:        []string{"shein", "amazon"},
 			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Home"}},
-			CatalogProduct:   &catalog.Product{Title: "Retry plan targets", CategoryPath: []string{"Home"}},
+			CatalogProduct:   &catalog.ProductSnapshot{Title: "Retry plan targets", CategoryPath: []string{"Home"}},
 		},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {

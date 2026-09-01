@@ -3,7 +3,7 @@ package listingkit
 import (
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	sdspod "task-processor/internal/product/sourcing/sdspod"
 	sheinpub "task-processor/internal/publishing/shein"
 )

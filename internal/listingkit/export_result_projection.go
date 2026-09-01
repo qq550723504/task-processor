@@ -2,7 +2,7 @@ package listingkit
 
 import (
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 type listingKitExportProjection struct {
@@ -11,7 +11,7 @@ type listingKitExportProjection struct {
 }
 
 type listingKitExportProjectionAttachment struct {
-	catalog             *catalog.Product
+	catalog             *catalog.ProductSnapshot
 	assetBundle         *asset.Bundle
 	assetInventory      *asset.InventorySummary
 	assetRenderPreviews []AssetRenderPreview

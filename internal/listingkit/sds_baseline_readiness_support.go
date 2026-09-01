@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	sdspod "task-processor/internal/product/sourcing/sdspod"
 )
 

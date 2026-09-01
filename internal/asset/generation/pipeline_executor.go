@@ -7,7 +7,7 @@ import (
 
 	"task-processor/internal/asset"
 	assetrecipe "task-processor/internal/asset/recipe"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/productimage"
 )
 
@@ -61,7 +61,7 @@ func toProductImageAsset(record asset.AssetRecord) *productimage.ImageAsset {
 
 // BuildProductContext is the canonical catalog-to-provider projection shared
 // by the generation pipeline and durable image-agent run snapshots.
-func BuildProductContext(product *catalog.Product) *productimage.ProductContext {
+func BuildProductContext(product *catalog.ProductSnapshot) *productimage.ProductContext {
 	if product == nil {
 		return nil
 	}

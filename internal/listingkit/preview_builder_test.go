@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	listingplatform "task-processor/internal/listing/platform"
 	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
@@ -319,7 +319,7 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 			Platforms: []string{"amazon", "shein", "temu"},
 			Country:   "US",
 			Language:  "en_US",
-			CatalogProduct: &catalog.Product{
+			CatalogProduct: &catalog.ProductSnapshot{
 				Title: "Wireless Earbuds",
 				Brand: "DemoBrand",
 			},

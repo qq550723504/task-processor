@@ -3,7 +3,7 @@ package common
 import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 type Variant struct {

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	sheinapi "task-processor/internal/shein/api"
 	sheincategory "task-processor/internal/shein/api/category"
 )

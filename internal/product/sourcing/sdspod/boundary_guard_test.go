@@ -12,7 +12,7 @@ import (
 
 func TestPackageImportsStayPlatformNeutral(t *testing.T) {
 	allowed := map[string]struct{}{
-		"task-processor/internal/catalog/canonical": {},
+		"task-processor/internal/product/catalog/canonical": {},
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {

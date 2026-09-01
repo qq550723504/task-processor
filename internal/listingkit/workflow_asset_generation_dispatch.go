@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	listingplatform "task-processor/internal/listing/platform"
 )
 
@@ -14,7 +14,7 @@ func dispatchGenerationTasksByPlatform(
 	ctx context.Context,
 	generator assetgeneration.Service,
 	taskID string,
-	product *catalog.Product,
+	product *catalog.ProductSnapshot,
 	listingResult *ListingKitResult,
 	sharedInventory *asset.Inventory,
 	tasks []assetgeneration.Task,

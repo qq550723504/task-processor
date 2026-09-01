@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 func applyVariantDraftEdit(draft *AmazonListingDraft, index int, subfield string, edit DraftFieldEdit) error {

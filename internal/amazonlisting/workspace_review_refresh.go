@@ -1,7 +1,7 @@
 package amazonlisting
 
 import (
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	amazonworkspace "task-processor/internal/marketplace/amazon/workspace"
 )
 

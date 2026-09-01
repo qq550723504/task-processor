@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	legacylistingkit "task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 )
@@ -21,7 +21,7 @@ func TestAdaptLegacyPreviewShell(t *testing.T) {
 		SelectedPlatform: "shein",
 		Platforms:        []string{"shein", "amazon"},
 		NeedsReview:      true,
-		Catalog:          &catalog.Product{Title: "Wireless Earbuds"},
+		Catalog:          &catalog.ProductSnapshot{Title: "Wireless Earbuds"},
 		Assets:           &asset.Bundle{Assets: []asset.Asset{{ID: "asset-1"}}},
 		AssetInventory:   &asset.InventorySummary{TotalRecords: 3},
 		CreatedAt:        createdAt,

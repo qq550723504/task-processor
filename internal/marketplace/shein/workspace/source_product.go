@@ -3,7 +3,7 @@ package workspace
 import (
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 type SourceProductSummary struct {

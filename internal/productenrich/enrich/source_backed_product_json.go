@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	productenrich "task-processor/internal/productenrich"
 )
 

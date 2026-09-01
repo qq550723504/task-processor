@@ -3,7 +3,7 @@ package preview
 import (
 	"testing"
 
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 func TestBuildReadModel(t *testing.T) {
@@ -12,7 +12,7 @@ func TestBuildReadModel(t *testing.T) {
 	preview := BuildReadModel(ReadModelInput{
 		NeedsReview: true,
 		Attachment: &AttachmentInput{
-			CatalogProduct: &catalog.Product{Title: "Wireless Earbuds"},
+			CatalogProduct: &catalog.ProductSnapshot{Title: "Wireless Earbuds"},
 		},
 		Overview: &HeaderInput{
 			Country:       "US",

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	assetrepo "task-processor/internal/asset/repository"
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 

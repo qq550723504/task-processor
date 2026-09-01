@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/asset"
 	assetrecipe "task-processor/internal/asset/recipe"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/productimage"
 )
 
@@ -161,7 +161,7 @@ func TestServiceExecuteMirrorsPromptObservabilityIntoTaskMetadata(t *testing.T) 
 
 	result, err := service.Execute(context.Background(), Request{
 		TaskID: "task-5-observability",
-		Product: &catalog.Product{
+		Product: &catalog.ProductSnapshot{
 			Title:        "Sneaker",
 			CategoryPath: []string{"Shoes", "Sneakers"},
 		},

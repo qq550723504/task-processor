@@ -1077,7 +1077,7 @@ func TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets(t *testing.T
 		root string
 	}{
 		{name: "publishing common", root: filepath.Join("..", "internal", "publishing", "common")},
-		{name: "catalog", root: filepath.Join("..", "internal", "catalog")},
+		{name: "catalog", root: filepath.Join("..", "internal", "product", "catalog")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			index, err := loadGoFileIndex(tc.root, "")
@@ -3653,7 +3653,7 @@ func TestBusinessDomainsDoNotImportAppHTTPAPI(t *testing.T) {
 		filepath.Join("..", "internal", "amazon"),
 		filepath.Join("..", "internal", "amazonlisting"),
 		filepath.Join("..", "internal", "asset"),
-		filepath.Join("..", "internal", "catalog"),
+		filepath.Join("..", "internal", "product", "catalog"),
 		filepath.Join("..", "internal", "listing"),
 		filepath.Join("..", "internal", "listingkit"),
 		filepath.Join("..", "internal", "marketplace"),
@@ -3677,7 +3677,7 @@ func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
 	for _, domainRoot := range []string{
 		filepath.Join("..", "internal", "amazon"),
 		filepath.Join("..", "internal", "asset"),
-		filepath.Join("..", "internal", "catalog"),
+		filepath.Join("..", "internal", "product", "catalog"),
 		filepath.Join("..", "internal", "infra"),
 		filepath.Join("..", "internal", "integration"),
 		filepath.Join("..", "internal", "marketplace"),
@@ -3721,7 +3721,7 @@ func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 				"task-processor/internal/amazon",
 				"task-processor/internal/amazonlisting",
 				"task-processor/internal/asset",
-				"task-processor/internal/catalog",
+				"task-processor/internal/product/catalog",
 				"task-processor/internal/listing",
 				"task-processor/internal/listingkit",
 				"task-processor/internal/marketplace",
@@ -3747,7 +3747,7 @@ func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
 		filepath.Join("..", "internal", "amazon"),
 		filepath.Join("..", "internal", "amazonlisting"),
 		filepath.Join("..", "internal", "asset"),
-		filepath.Join("..", "internal", "catalog"),
+		filepath.Join("..", "internal", "product", "catalog"),
 		filepath.Join("..", "internal", "listing"),
 		filepath.Join("..", "internal", "listingkit"),
 		filepath.Join("..", "internal", "marketplace"),
@@ -4669,7 +4669,7 @@ func TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages(t *testing.T) 
 	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "platforms"), []string{
 		"task-processor/internal/app/httpapi",
 		"task-processor/internal/asset",
-		"task-processor/internal/catalog",
+		"task-processor/internal/product/catalog",
 		"task-processor/internal/listingkit",
 		"task-processor/internal/marketplace",
 		"task-processor/internal/productimage",
@@ -4792,7 +4792,7 @@ func commandEntrypointBannedPrefixes() []string {
 		"task-processor/internal/amazon",
 		"task-processor/internal/amazonlisting",
 		"task-processor/internal/asset",
-		"task-processor/internal/catalog",
+		"task-processor/internal/product/catalog",
 		"task-processor/internal/infra",
 		"task-processor/internal/listingkit",
 		"task-processor/internal/marketplace",

@@ -3,7 +3,7 @@ package amazonlisting
 import (
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 func syncDraftFromCanonical(draft *AmazonListingDraft, product *canonical.Product) {
