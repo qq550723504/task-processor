@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/core/config"
 	"task-processor/internal/marketplace/sourceproduct"
 	worker "task-processor/internal/platform/workerpool"
 
@@ -24,7 +23,7 @@ func (stubCrawlerProcessorRawJSONClient) CreateRawJsonData(*sourceproduct.RawJso
 func TestCrawlerProcessorReturnsErrorInsteadOfPanickingOnNilProduct(t *testing.T) {
 	fetcher := sourceproduct.NewProductFetcher(
 		stubCrawlerProcessorRawJSONClient{},
-		&config.AmazonConfig{Enabled: true},
+		sourceproduct.ProductFetcherOptions{Enabled: true},
 		nil,
 	)
 	processor := NewCrawlerProcessor(logrus.New(), fetcher, nil, nil)

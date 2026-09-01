@@ -1,4 +1,4 @@
-// Package product 提供产品领域服务
+// Package sourceproduct owns marketplace source fetch/cache execution.
 package sourceproduct
 
 import (
@@ -7,8 +7,6 @@ import (
 	"io"
 	"strings"
 
-	"task-processor/internal/core/config"
-	sourceamazon "task-processor/internal/integration/crawler/amazon"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -17,25 +15,25 @@ import (
 // ProductFetcher 产品获取器
 type ProductFetcher struct {
 	cacheManager  *CacheManager
-	amazonConfig  *config.AmazonConfig
-	sourceFetcher sourceamazon.AmazonSourceFetcher
+	options       ProductFetcherOptions
+	sourceFetcher SourceFetcher
 	logger        *logrus.Entry
 }
 
 // NewProductFetcher 创建产品获取器
 func NewProductFetcher(
 	rawJsonDataClient RawJsonDataClient,
-	amazonConfig *config.AmazonConfig,
-	crawlSource sourceamazon.AmazonCrawlerSource,
+	options ProductFetcherOptions,
+	sourceFetcher SourceFetcher,
 ) *ProductFetcher {
-	return NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, crawlSource, nil)
+	return NewProductFetcherWithLogger(rawJsonDataClient, options, sourceFetcher, nil)
 }
 
 // NewProductFetcherWithLogger 创建产品获取器，支持传入自定义 logger。
 func NewProductFetcherWithLogger(
 	rawJsonDataClient RawJsonDataClient,
-	amazonConfig *config.AmazonConfig,
-	crawlSource sourceamazon.AmazonCrawlerSource,
+	options ProductFetcherOptions,
+	sourceFetcher SourceFetcher,
 	log *logrus.Entry,
 ) *ProductFetcher {
 	if log == nil {
@@ -43,30 +41,12 @@ func NewProductFetcherWithLogger(
 		localLogger.SetOutput(io.Discard)
 		log = localLogger.WithField("component", "product.fetcher")
 	}
-	zipcodes := map[string]string(nil)
-	if amazonConfig != nil {
-		zipcodes = amazonConfig.Zipcodes
-	}
 	return &ProductFetcher{
-		cacheManager: NewCacheManagerWithFreshness(rawJsonDataClient, log, amazonConfigFreshnessDays(amazonConfig)),
-		amazonConfig: amazonConfig,
-		sourceFetcher: sourceamazon.AmazonSourceFetcher{
-			Planner: sourceamazon.AmazonCrawlRequestPlanner{
-				DomainResolver: sourceamazon.AmazonDefaultDomainResolver{},
-				ZipcodePolicy:  sourceamazon.AmazonDefaultZipcodePolicy{},
-				Zipcodes:       zipcodes,
-			},
-			Source: crawlSource,
-		},
-		logger: log,
+		cacheManager:  NewCacheManagerWithFreshness(rawJsonDataClient, log, options.DataFreshnessDays),
+		options:       options,
+		sourceFetcher: sourceFetcher,
+		logger:        log,
 	}
-}
-
-func amazonConfigFreshnessDays(cfg *config.AmazonConfig) int {
-	if cfg == nil {
-		return 0
-	}
-	return cfg.DataFreshnessDays
 }
 
 // FetchProduct 获取产品
@@ -78,16 +58,24 @@ func (f *ProductFetcher) FetchProduct(ctx context.Context, req *FetchRequest) (*
 		}
 	}
 
-	if f.sourceFetcher.Configured() && f.amazonConfig != nil && f.amazonConfig.Enabled {
+	configured := sourceFetcherConfigured(f.sourceFetcher)
+	if configured && f.options.Enabled {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		f.logger.Debugf("fetching product via crawler: %s", req.ProductID)
-		return f.sourceFetcher.Fetch(ctx, sourceamazon.AmazonCrawlRequestInput{
+		product, err := f.sourceFetcher.Fetch(ctx, SourceFetchRequest{
 			Region:    req.Region,
 			ProductID: req.ProductID,
 			Zipcode:   req.Zipcode,
 		})
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return product, err
 	}
 
-	return nil, f.crawlerUnavailableError(req)
+	return nil, f.crawlerUnavailableError(req, configured)
 }
 
 // FetchProductWithRetry 带重试的产品获取
@@ -173,7 +161,7 @@ func (f *ProductFetcher) shouldUseCache(req *FetchRequest) bool {
 	return req == nil || strings.TrimSpace(req.Zipcode) == ""
 }
 
-func (f *ProductFetcher) crawlerUnavailableError(req *FetchRequest) error {
+func (f *ProductFetcher) crawlerUnavailableError(req *FetchRequest, configured bool) error {
 	productID := ""
 	region := ""
 	if req != nil {
@@ -182,9 +170,9 @@ func (f *ProductFetcher) crawlerUnavailableError(req *FetchRequest) error {
 	}
 
 	switch {
-	case !f.sourceFetcher.Configured():
+	case !configured:
 		return fmt.Errorf("crawler source is not configured for product fetch: product_id=%s region=%s", productID, region)
-	case f.amazonConfig == nil || !f.amazonConfig.Enabled:
+	case !f.options.Enabled:
 		return fmt.Errorf("amazon crawler is disabled for product fetch: product_id=%s region=%s", productID, region)
 	default:
 		return fmt.Errorf("crawler fetch is unavailable for product fetch: product_id=%s region=%s", productID, region)

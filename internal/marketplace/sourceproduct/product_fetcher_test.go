@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
-	"task-processor/internal/core/config"
 	"task-processor/internal/model"
 )
 
@@ -37,23 +36,40 @@ func (s *recordingProductFetcherRawJSONClient) CreateRawJsonData(req *RawJsonCre
 	return int64(len(s.created)), nil
 }
 
-type stubProductFetcherCrawlSource struct {
-	lastURL     string
-	lastZipcode string
+type stubProductFetcherSource struct {
+	configured  bool
+	calls       int
+	lastContext context.Context
+	lastRequest SourceFetchRequest
+	product     *model.Product
+	err         error
 }
 
-func (s *stubProductFetcherCrawlSource) ProcessWithContext(_ context.Context, url, zipcode string) (*model.Product, error) {
-	s.lastURL = url
-	s.lastZipcode = zipcode
-	return &model.Product{Asin: "B001"}, nil
+func (s *stubProductFetcherSource) Configured() bool {
+	if s == nil {
+		panic("Configured called on typed-nil source fetcher")
+	}
+	return s.configured
 }
 
-type selectiveProductFetcherCrawlSource struct {
+func (s *stubProductFetcherSource) Fetch(ctx context.Context, req SourceFetchRequest) (*model.Product, error) {
+	if s == nil {
+		panic("Fetch called on typed-nil source fetcher")
+	}
+	s.lastContext = ctx
+	s.lastRequest = req
+	s.calls++
+	return s.product, s.err
+}
+
+type selectiveProductFetcherSource struct {
 	products map[string]*model.Product
 }
 
+func (*selectiveProductFetcherSource) Configured() bool { return true }
+
 func TestProductFetcherUsesDiscardLoggerWhenNoneIsInjected(t *testing.T) {
-	fetcher := NewProductFetcher(nil, nil, nil)
+	fetcher := NewProductFetcher(nil, ProductFetcherOptions{}, nil)
 	if fetcher.logger == nil || fetcher.logger.Logger.Out != io.Discard {
 		t.Fatalf("default logger output = %v, want io.Discard", fetcher.logger)
 	}
@@ -63,7 +79,7 @@ func TestProductFetcherKeepsExplicitLoggerInjection(t *testing.T) {
 	var output bytes.Buffer
 	log := logrus.New()
 	log.SetOutput(&output)
-	fetcher := NewProductFetcherWithLogger(nil, nil, nil, logrus.NewEntry(log))
+	fetcher := NewProductFetcherWithLogger(nil, ProductFetcherOptions{}, nil, logrus.NewEntry(log))
 
 	if err := fetcher.CacheProduct(nil, nil); err != nil {
 		t.Fatal(err)
@@ -73,39 +89,11 @@ func TestProductFetcherKeepsExplicitLoggerInjection(t *testing.T) {
 	}
 }
 
-func (s *selectiveProductFetcherCrawlSource) ProcessWithContext(_ context.Context, url, zipcode string) (*model.Product, error) {
-	if product, ok := s.products[url]; ok {
+func (s *selectiveProductFetcherSource) Fetch(_ context.Context, req SourceFetchRequest) (*model.Product, error) {
+	if product, ok := s.products[req.ProductID]; ok {
 		return product, nil
 	}
 	return nil, errors.New("product not found")
-}
-
-func TestProductFetcherUsesAmazonAdapterDefaultZipcodePolicy(t *testing.T) {
-	source, err := os.ReadFile("product_fetcher.go")
-	if err != nil {
-		t.Fatalf("ReadFile(product_fetcher.go) error = %v", err)
-	}
-	content := string(source)
-	if !strings.Contains(content, "ZipcodePolicy:  sourceamazon.AmazonDefaultZipcodePolicy{}") {
-		t.Fatal("ProductFetcher should delegate Amazon default zipcode policy to internal/integration/crawler/amazon")
-	}
-	if strings.Contains(content, "type productAmazonZipcodePolicy struct{}") {
-		t.Fatal("product_fetcher.go should not own Amazon default zipcode policy")
-	}
-}
-
-func TestProductFetcherUsesAmazonAdapterDefaultDomainResolver(t *testing.T) {
-	source, err := os.ReadFile("product_fetcher.go")
-	if err != nil {
-		t.Fatalf("ReadFile(product_fetcher.go) error = %v", err)
-	}
-	content := string(source)
-	if !strings.Contains(content, "DomainResolver: sourceamazon.AmazonDefaultDomainResolver{}") {
-		t.Fatal("ProductFetcher should delegate Amazon domain and URL planning to internal/integration/crawler/amazon")
-	}
-	if strings.Contains(content, "DomainResolver: NewDomainResolver()") {
-		t.Fatal("product_fetcher.go should not construct the product package Amazon domain resolver")
-	}
 }
 
 func TestProductDomainResolverCompatibilityLayerIsRetired(t *testing.T) {
@@ -126,11 +114,12 @@ func TestProductRepositoryServiceCompatibilityLayerIsRetired(t *testing.T) {
 	}
 }
 
-func TestProductFetcherUsesExplicitZipcodeForCrawlerRequest(t *testing.T) {
-	source := &stubProductFetcherCrawlSource{}
-	fetcher := NewProductFetcher(stubProductFetcherRawJSONClient{}, &config.AmazonConfig{Enabled: true}, source)
+func TestProductFetcherMapsNeutralSourceRequestAndPreservesContext(t *testing.T) {
+	source := &stubProductFetcherSource{configured: true, product: &model.Product{Asin: "B001"}}
+	fetcher := NewProductFetcher(stubProductFetcherRawJSONClient{}, ProductFetcherOptions{Enabled: true}, source)
+	ctx := context.WithValue(context.Background(), struct{}{}, "sentinel")
 
-	product, err := fetcher.FetchProduct(context.Background(), &FetchRequest{
+	product, err := fetcher.FetchProduct(ctx, &FetchRequest{
 		Region:    "uk",
 		ProductID: "B001",
 		Zipcode:   "EC1A 1BB",
@@ -141,36 +130,17 @@ func TestProductFetcherUsesExplicitZipcodeForCrawlerRequest(t *testing.T) {
 	if product == nil || product.Asin != "B001" {
 		t.Fatalf("FetchProduct() = %+v, want crawler product", product)
 	}
-	if source.lastZipcode != "EC1A 1BB" {
-		t.Fatalf("zipcode = %q, want explicit zipcode", source.lastZipcode)
+	if source.lastContext != ctx {
+		t.Fatal("SourceFetcher received a different context")
 	}
-	if source.lastURL != "https://www.amazon.co.uk/dp/B001?th=1&psc=1&language=en_GB" {
-		t.Fatalf("url = %q, want UK Amazon URL", source.lastURL)
-	}
-}
-
-func TestProductFetcherUsesConfiguredDefaultZipcodeForCrawlerRequest(t *testing.T) {
-	source := &stubProductFetcherCrawlSource{}
-	fetcher := NewProductFetcher(stubProductFetcherRawJSONClient{}, &config.AmazonConfig{
-		Enabled:  true,
-		Zipcodes: map[string]string{"uk": "W1A 1AA"},
-	}, source)
-
-	_, err := fetcher.FetchProduct(context.Background(), &FetchRequest{
-		Region:    "UK",
-		ProductID: "B002",
-	})
-	if err != nil {
-		t.Fatalf("FetchProduct() error = %v", err)
-	}
-	if source.lastZipcode != "W1A 1AA" {
-		t.Fatalf("zipcode = %q, want configured default zipcode", source.lastZipcode)
+	if source.lastRequest != (SourceFetchRequest{Region: "uk", ProductID: "B001", Zipcode: "EC1A 1BB"}) {
+		t.Fatalf("source request = %+v, want complete neutral request", source.lastRequest)
 	}
 }
 
 func TestProductFetcherFetchVariantsPreservesExplicitZipcode(t *testing.T) {
-	source := &stubProductFetcherCrawlSource{}
-	fetcher := NewProductFetcher(stubProductFetcherRawJSONClient{}, &config.AmazonConfig{Enabled: true}, source)
+	source := &stubProductFetcherSource{configured: true, product: &model.Product{Asin: "B-variant"}}
+	fetcher := NewProductFetcher(stubProductFetcherRawJSONClient{}, ProductFetcherOptions{Enabled: true}, source)
 
 	_, err := fetcher.FetchVariants(context.Background(), &FetchRequest{
 		Region:    "uk",
@@ -180,13 +150,13 @@ func TestProductFetcherFetchVariantsPreservesExplicitZipcode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchVariants() error = %v", err)
 	}
-	if source.lastZipcode != "EC1A 1BB" {
-		t.Fatalf("variant zipcode = %q, want inherited explicit zipcode", source.lastZipcode)
+	if source.lastRequest.Zipcode != "EC1A 1BB" {
+		t.Fatalf("variant zipcode = %q, want inherited explicit zipcode", source.lastRequest.Zipcode)
 	}
 }
 
 func TestProductFetcherReturnsErrorWhenCrawlerUnavailableAfterCacheMiss(t *testing.T) {
-	fetcher := NewProductFetcher(stubProductFetcherRawJSONClient{}, &config.AmazonConfig{Enabled: true}, nil)
+	fetcher := NewProductFetcher(stubProductFetcherRawJSONClient{}, ProductFetcherOptions{Enabled: true}, nil)
 
 	product, err := fetcher.FetchProduct(context.Background(), &FetchRequest{
 		Region:    "us",
@@ -200,15 +170,67 @@ func TestProductFetcherReturnsErrorWhenCrawlerUnavailableAfterCacheMiss(t *testi
 	}
 }
 
+func TestProductFetcherTreatsTypedNilSourceFetcherAsUnavailable(t *testing.T) {
+	var source *stubProductFetcherSource
+	fetcher := NewProductFetcher(stubProductFetcherRawJSONClient{}, ProductFetcherOptions{Enabled: true}, source)
+
+	product, err := fetcher.FetchProduct(context.Background(), &FetchRequest{Region: "us", ProductID: "B003"})
+	if err == nil {
+		t.Fatal("FetchProduct() error = nil, want crawler unavailable error")
+	}
+	if product != nil {
+		t.Fatalf("FetchProduct() product = %+v, want nil", product)
+	}
+}
+
+func TestProductFetcherReturnsContextErrorAfterSourceCall(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	wantSourceErr := errors.New("source failed")
+	source := &cancelingProductFetcherSource{cancel: cancel, err: wantSourceErr}
+	fetcher := NewProductFetcher(stubProductFetcherRawJSONClient{}, ProductFetcherOptions{Enabled: true}, source)
+
+	_, err := fetcher.FetchProduct(ctx, &FetchRequest{Region: "us", ProductID: "B004", Zipcode: "10001"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("FetchProduct() error = %v, want context cancellation over source error", err)
+	}
+}
+
+func TestProductFetcherDoesNotDispatchCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	source := &stubProductFetcherSource{configured: true, product: &model.Product{Asin: "unused"}}
+	fetcher := NewProductFetcher(stubProductFetcherRawJSONClient{}, ProductFetcherOptions{Enabled: true}, source)
+
+	_, err := fetcher.FetchProduct(ctx, &FetchRequest{Region: "us", ProductID: "B005", Zipcode: "10001"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("FetchProduct() error = %v, want context cancellation", err)
+	}
+	if source.calls != 0 {
+		t.Fatalf("SourceFetcher calls = %d, want 0 for already canceled context", source.calls)
+	}
+}
+
+type cancelingProductFetcherSource struct {
+	cancel context.CancelFunc
+	err    error
+}
+
+func (*cancelingProductFetcherSource) Configured() bool { return true }
+
+func (s *cancelingProductFetcherSource) Fetch(context.Context, SourceFetchRequest) (*model.Product, error) {
+	s.cancel()
+	return nil, s.err
+}
+
 func TestProductFetcherFetchVariantsCachesEachSuccessfulVariantImmediately(t *testing.T) {
 	rawClient := &recordingProductFetcherRawJSONClient{}
-	source := &selectiveProductFetcherCrawlSource{
+	source := &selectiveProductFetcherSource{
 		products: map[string]*model.Product{
-			"https://www.amazon.com/dp/B-success-1?th=1&psc=1&language=en_US": {Asin: "B-success-1", ShipsFrom: "Amazon.com"},
-			"https://www.amazon.com/dp/B-success-2?th=1&psc=1&language=en_US": {Asin: "B-success-2", ShipsFrom: "Amazon.com"},
+			"B-success-1": {Asin: "B-success-1", ShipsFrom: "Amazon.com"},
+			"B-success-2": {Asin: "B-success-2", ShipsFrom: "Amazon.com"},
 		},
 	}
-	fetcher := NewProductFetcher(rawClient, &config.AmazonConfig{Enabled: true}, source)
+	fetcher := NewProductFetcher(rawClient, ProductFetcherOptions{Enabled: true}, source)
 
 	variants, err := fetcher.FetchVariants(context.Background(), &FetchRequest{
 		TenantID:  1,
@@ -233,16 +255,16 @@ func TestProductFetcherFetchVariantsCachesEachSuccessfulVariantImmediately(t *te
 
 func TestProductFetcherFetchVariantsPreservesRequestedASINWhenCrawlerRedirects(t *testing.T) {
 	rawClient := &recordingProductFetcherRawJSONClient{}
-	source := &selectiveProductFetcherCrawlSource{
+	source := &selectiveProductFetcherSource{
 		products: map[string]*model.Product{
-			"https://www.amazon.com/dp/B-requested?th=1&psc=1&language=en_US": {
+			"B-requested": {
 				Asin:       "B-redirected",
 				ParentAsin: "PARENT-1",
 				ShipsFrom:  "Amazon.com",
 			},
 		},
 	}
-	fetcher := NewProductFetcher(rawClient, &config.AmazonConfig{Enabled: true}, source)
+	fetcher := NewProductFetcher(rawClient, ProductFetcherOptions{Enabled: true}, source)
 
 	variants, err := fetcher.FetchVariants(context.Background(), &FetchRequest{
 		TenantID:  1,
