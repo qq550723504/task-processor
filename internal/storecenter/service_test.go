@@ -1130,18 +1130,18 @@ func TestServiceDeleteUsesDurableStartedActorBeforeConcurrentSave(t *testing.T) 
 	audit := newAuditRepositoryFake()
 	_, _, err := audit.Record(context.Background(), storecenter.AuditEvent{
 		OrganizationID: store.OrganizationID(),
-		StoreID:       store.ID(),
-		AllocationID:  store.QuotaAllocationID(),
-		RequestKey:    operationKey,
-		Action:        storecenter.AuditActionDeleteStarted,
-		Outcome:       storecenter.AuditOutcomeUnknown,
-		ActorSubject:  "actor-a",
+		StoreID:        store.ID(),
+		AllocationID:   store.QuotaAllocationID(),
+		RequestKey:     operationKey,
+		Action:         storecenter.AuditActionDeleteStarted,
+		Outcome:        storecenter.AuditOutcomeUnknown,
+		ActorSubject:   "actor-a",
 		SafeFieldNames: []string{"lifecycle_status"},
-		PreviousState: storecenter.StoreStatusActive,
-		NewState:      storecenter.StoreStatusDeleting,
-		FailureCode:   storecenter.AuditFailureNone,
-		StoreVersion:  store.Version(),
-		OccurredAt:    time.Now().UTC(),
+		PreviousState:  storecenter.StoreStatusActive,
+		NewState:       storecenter.StoreStatusDeleting,
+		FailureCode:    storecenter.AuditFailureNone,
+		StoreVersion:   store.Version(),
+		OccurredAt:     time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("seed delete_started: %v", err)
@@ -1864,6 +1864,40 @@ func TestServiceUpdateReplayUsesDurableIntentActorForStoreWrite(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateRacedIntentUsesRecordedActorForStoreWrite(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	audit := newAuditRepositoryFake()
+	audit.beforeRecord = func(event storecenter.AuditEvent) {
+		if event.Action != storecenter.AuditActionStoreUpdateStarted {
+			return
+		}
+		existing := event
+		existing.ActorSubject = "actor-a"
+		audit.events[event.OrganizationID+"/"+event.RequestKey+"/"+string(event.Action)] = existing
+	}
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.Update(context.Background(), storecenter.UpdateStoreRequest{
+		OrganizationID: store.OrganizationID(), ActorSubject: "actor-b", StoreID: store.ID(), ExpectedVersion: store.Version(), Name: "After", Region: store.Region(),
+	})
+	if err != nil {
+		t.Fatalf("raced Update() = %v", err)
+	}
+	if result.Store.Store.UpdatedBy() != "actor-a" {
+		t.Fatalf("raced Store UpdatedBy = %q, want recorded actor-a", result.Store.Store.UpdatedBy())
+	}
+	operationKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte(store.OrganizationID()+"\n"+store.ID()+"\nupdate\n"+fmt.Sprint(store.Version()))).String()
+	completed := audit.eventFor(store.OrganizationID(), operationKey, storecenter.AuditActionStoreUpdated)
+	if completed.ActorSubject != "actor-a" {
+		t.Fatalf("raced completed audit actor = %q, want actor-a", completed.ActorSubject)
+	}
+}
+
 func TestServiceUpdateRejectsChangedPayloadForExistingIntent(t *testing.T) {
 	repository := newStoreRepositoryFake()
 	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
@@ -2571,18 +2605,24 @@ func (f *quotaLedgerFake) ListReservedBefore(context.Context, string, time.Time)
 }
 
 type auditRepositoryFake struct {
-	mu          sync.Mutex
-	events      map[string]storecenter.AuditEvent
-	recordErr   error
-	failActions map[storecenter.AuditAction]int
-	recordCalls int
-	onRecord    func(storecenter.AuditEvent)
+	mu           sync.Mutex
+	events       map[string]storecenter.AuditEvent
+	recordErr    error
+	failActions  map[storecenter.AuditAction]int
+	recordCalls  int
+	onRecord     func(storecenter.AuditEvent)
+	beforeRecord func(storecenter.AuditEvent)
 }
 
 func newAuditRepositoryFake() *auditRepositoryFake {
 	return &auditRepositoryFake{events: map[string]storecenter.AuditEvent{}}
 }
 func (f *auditRepositoryFake) Record(_ context.Context, event storecenter.AuditEvent) (storecenter.AuditEvent, bool, error) {
+	if f.beforeRecord != nil {
+		beforeRecord := f.beforeRecord
+		f.beforeRecord = nil
+		beforeRecord(event)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.recordCalls++

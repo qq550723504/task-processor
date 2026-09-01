@@ -541,7 +541,13 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 		if request.fieldsFor != nil {
 			auditFields = request.fieldsFor(store)
 		}
-		changed, applyErr := request.apply(store, s.monotonicNow(store.UpdatedAt()), request.actor)
+		originalSnapshot := store.Snapshot()
+		candidate, rehydrateErr := RehydrateStore(originalSnapshot)
+		if rehydrateErr != nil {
+			return StoreMutationResult{}, dependencyError(rehydrateErr)
+		}
+		applyActor := request.actor
+		changed, applyErr := request.apply(candidate, s.monotonicNow(candidate.UpdatedAt()), applyActor)
 		if applyErr != nil {
 			if errors.Is(applyErr, ErrInvalidTransition) {
 				return StoreMutationResult{}, ErrInvalidTransition
@@ -552,9 +558,9 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 			if request.intentAuditAction != "" {
 				intentPrevious, intentNext := request.previous, request.next
 				if request.actionName == "update" {
-					intentPrevious, intentNext = store.LifecycleStatus(), store.LifecycleStatus()
+					intentPrevious, intentNext = candidate.LifecycleStatus(), candidate.LifecycleStatus()
 				}
-				intent := newAuditEvent(request.organizationID, request.storeID, store.QuotaAllocationID(), operationKey, request.intentAuditAction, AuditOutcomeUnknown, request.actor, auditFields, intentPrevious, intentNext, AuditFailureNone, s.utcNow())
+				intent := newAuditEvent(request.organizationID, request.storeID, candidate.QuotaAllocationID(), operationKey, request.intentAuditAction, AuditOutcomeUnknown, applyActor, auditFields, intentPrevious, intentNext, AuditFailureNone, s.utcNow())
 				intent.StoreVersion = request.expectedVersion
 				intent.PayloadFingerprint = request.payloadFingerprint
 				recordedIntent, _, intentErr := s.audit.Record(ctx, intent)
@@ -567,12 +573,26 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 					}
 					return StoreMutationResult{}, dependencyError(intentErr)
 				}
-				if validateMutationIntent(&recordedIntent, request, store, operationKey) != nil {
+				if validateMutationIntent(&recordedIntent, request, candidate, operationKey) != nil {
 					return StoreMutationResult{}, dependencyError(ErrAuditIdentityMismatch)
 				}
 				durableIntent = &recordedIntent
 				auditFields = append([]string(nil), recordedIntent.SafeFieldNames...)
+				if recordedIntent.ActorSubject != applyActor {
+					candidate, rehydrateErr = RehydrateStore(originalSnapshot)
+					if rehydrateErr != nil {
+						return StoreMutationResult{}, dependencyError(rehydrateErr)
+					}
+					changed, applyErr = request.apply(candidate, s.monotonicNow(candidate.UpdatedAt()), recordedIntent.ActorSubject)
+					if applyErr != nil {
+						return StoreMutationResult{}, applyErr
+					}
+					if !changed {
+						return StoreMutationResult{}, dependencyError(errors.New("durable mutation intent could not be applied"))
+					}
+				}
 			}
+			store = candidate
 			if err := s.repository.Save(ctx, request.organizationID, store, request.expectedVersion); err != nil {
 				resolved, readErr := s.repository.Get(ctx, request.organizationID, request.storeID)
 				if readErr != nil || !matchesStoreScope(resolved, request.organizationID, request.storeID) {
