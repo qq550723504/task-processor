@@ -39,6 +39,11 @@ func bindToolForTest(t *testing.T, executor Executor, deps InvocationDependencie
 func bindDefinitionForTest(t *testing.T, definition Definition, executor Executor, deps InvocationDependencies) *BoundToolSet {
 	t.Helper()
 	definition.Timeout.Duration = 25 * time.Millisecond
+	return bindExactDefinitionForTest(t, definition, executor, deps)
+}
+
+func bindExactDefinitionForTest(t *testing.T, definition Definition, executor Executor, deps InvocationDependencies) *BoundToolSet {
+	t.Helper()
 	registry, err := NewRegistry(Tool{Definition: definition, Executor: executor})
 	require.NoError(t, err)
 	bound, err := registry.Bind(agentAllowing(definition.Ref), deps)
@@ -287,19 +292,57 @@ func TestInvokeRequiresIdempotencyKeyWhenDefinitionRequiresIt(t *testing.T) {
 }
 
 func TestInvokePreflightUsesFixedFailClosedOrder(t *testing.T) {
-	t.Run("metadata before bound tool and principal", func(t *testing.T) {
+	t.Run("metadata before bound agent and dependencies", func(t *testing.T) {
 		resolver := &countingResolver{principal: verifiedPrincipal()}
+		authorizer := &recordingAuthorizer{}
+		recorder := &recordingAuditStub{}
+		deps := validInvocationDependencies()
+		deps.PrincipalResolver = resolver
+		deps.Authorizer = authorizer
+		deps.Recorder = recorder
 		calls := 0
-		bound := boundToolSetForTest(t, &calls, resolver)
+		bound := bindToolForTest(t, ExecutorFunc(func(context.Context, json.RawMessage) (json.RawMessage, error) {
+			calls++
+			return json.RawMessage(`{"task_id":"task-1"}`), nil
+		}), deps)
 		call := validCall()
 		call.Metadata.CallID = ""
-		call.Tool = ToolRef{ID: "missing.tool", Version: "v1.0.0"}
+		call.Metadata.AgentID = "other.agent"
 
-		_, err := bound.Invoke(context.Background(), call)
+		result, err := bound.Invoke(context.Background(), call)
 
 		require.Equal(t, ErrorInvalidInput, CodeOf(err))
 		require.Equal(t, 0, resolver.calls)
+		require.Equal(t, 0, authorizer.calls)
 		require.Equal(t, 0, calls)
+		require.Len(t, recorder.records, 1)
+		require.Equal(t, AuditStatusRecorded, result.AuditStatus)
+	})
+
+	t.Run("bound agent before dependencies", func(t *testing.T) {
+		resolver := &countingResolver{principal: verifiedPrincipal()}
+		authorizer := &recordingAuthorizer{}
+		recorder := &recordingAuditStub{}
+		deps := validInvocationDependencies()
+		deps.PrincipalResolver = resolver
+		deps.Authorizer = authorizer
+		deps.Recorder = recorder
+		calls := 0
+		bound := bindToolForTest(t, ExecutorFunc(func(context.Context, json.RawMessage) (json.RawMessage, error) {
+			calls++
+			return json.RawMessage(`{"task_id":"task-1"}`), nil
+		}), deps)
+		call := validCall()
+		call.Metadata.AgentID = "other.agent"
+
+		result, err := bound.Invoke(context.Background(), call)
+
+		require.Equal(t, ErrorToolNotAllowed, CodeOf(err))
+		require.Equal(t, 0, resolver.calls)
+		require.Equal(t, 0, authorizer.calls)
+		require.Equal(t, 0, calls)
+		require.Len(t, recorder.records, 1)
+		require.Equal(t, AuditStatusRecorded, result.AuditStatus)
 	})
 
 	t.Run("bound tool before principal", func(t *testing.T) {
@@ -388,6 +431,45 @@ func TestInvokePreflightUsesFixedFailClosedOrder(t *testing.T) {
 		require.Equal(t, "invalid_input: idempotency key is required", err.Error())
 		require.Equal(t, 0, calls)
 	})
+}
+
+func TestInvokeRejectsIncompletePrincipalBeforeAuthorization(t *testing.T) {
+	tests := []struct {
+		name      string
+		principal Principal
+	}{
+		{name: "missing tenant", principal: Principal{UserID: "user-1", Roles: []string{"admin"}}},
+		{name: "missing user", principal: Principal{TenantID: "tenant-1", Roles: []string{"admin"}}},
+		{name: "missing roles", principal: Principal{TenantID: "tenant-1", UserID: "user-1"}},
+		{name: "blank role", principal: Principal{TenantID: "tenant-1", UserID: "user-1", Roles: []string{" "}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolver := &countingResolver{principal: tt.principal}
+			authorizer := &recordingAuthorizer{}
+			recorder := &recordingAuditStub{}
+			deps := validInvocationDependencies()
+			deps.PrincipalResolver = resolver
+			deps.Authorizer = authorizer
+			deps.Recorder = recorder
+			calls := 0
+			bound := bindToolForTest(t, ExecutorFunc(func(context.Context, json.RawMessage) (json.RawMessage, error) {
+				calls++
+				return json.RawMessage(`{"task_id":"task-1"}`), nil
+			}), deps)
+
+			result, err := bound.Invoke(context.Background(), validCall())
+
+			require.Equal(t, ErrorIdentityIntegrity, CodeOf(err))
+			require.Equal(t, 1, resolver.calls)
+			require.Equal(t, 0, authorizer.calls)
+			require.Equal(t, 0, calls)
+			require.Len(t, recorder.records, 1)
+			require.Equal(t, ErrorIdentityIntegrity, recorder.records[0].ErrorCode)
+			require.Equal(t, AuditStatusRecorded, result.AuditStatus)
+		})
+	}
 }
 
 func TestInvokeAuditsEveryPreflightFailureWithoutCallingExecutor(t *testing.T) {
@@ -550,19 +632,92 @@ func TestInvokeMapsDeadlineWithoutRetrying(t *testing.T) {
 	require.Equal(t, AuditStatusRecorded, result.AuditStatus)
 }
 
+func TestInvokePreservesCanceledParentContextForExecutor(t *testing.T) {
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.Recorder = recorder
+	calls := 0
+	var executorContextErr error
+	var executorContextDone bool
+	bound := bindToolForTest(t, ExecutorFunc(func(ctx context.Context, _ json.RawMessage) (json.RawMessage, error) {
+		calls++
+		executorContextErr = ctx.Err()
+		select {
+		case <-ctx.Done():
+			executorContextDone = true
+		default:
+		}
+		return json.RawMessage(`{"unexpected":true}`), nil
+	}), deps)
+	parentCtx, cancelParent := context.WithCancel(context.Background())
+	cancelParent()
+
+	result, err := bound.Invoke(parentCtx, validCall())
+
+	require.Equal(t, ErrorDeadlineExceeded, CodeOf(err))
+	require.ErrorIs(t, executorContextErr, context.Canceled)
+	require.True(t, executorContextDone)
+	require.Equal(t, 1, calls)
+	require.Nil(t, result.Output)
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, ErrorDeadlineExceeded, recorder.records[0].ErrorCode)
+}
+
+func TestInvokeUsesEarlierParentDeadlineWithoutRebuildingContext(t *testing.T) {
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.Recorder = recorder
+	definition := validDefinition()
+	definition.Timeout.Duration = 2 * time.Hour
+	parentDeadline := time.Now().Add(time.Hour)
+	parentCtx, cancelParent := context.WithDeadline(context.Background(), parentDeadline)
+	defer cancelParent()
+	calls := 0
+	var executorDeadline time.Time
+	var executorHasDeadline bool
+	var executorContextErr error
+	bound := bindExactDefinitionForTest(t, definition, ExecutorFunc(func(ctx context.Context, _ json.RawMessage) (json.RawMessage, error) {
+		calls++
+		executorDeadline, executorHasDeadline = ctx.Deadline()
+		cancelParent()
+		select {
+		case <-ctx.Done():
+		default:
+		}
+		executorContextErr = ctx.Err()
+		return json.RawMessage(`{"unexpected":true}`), nil
+	}), deps)
+
+	result, err := bound.Invoke(parentCtx, validCall())
+
+	require.Equal(t, ErrorDeadlineExceeded, CodeOf(err))
+	require.True(t, executorHasDeadline)
+	require.True(t, executorDeadline.Equal(parentDeadline))
+	require.ErrorIs(t, executorContextErr, context.Canceled)
+	require.Equal(t, 1, calls)
+	require.Nil(t, result.Output)
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, ErrorDeadlineExceeded, recorder.records[0].ErrorCode)
+}
+
 func TestInvokeDiscardsOutputWhenExecutorReturnsAfterDeadline(t *testing.T) {
 	calls := 0
-	bound := boundToolSetWithExecutor(t, ExecutorFunc(func(ctx context.Context, _ json.RawMessage) (json.RawMessage, error) {
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.Recorder = recorder
+	bound := bindToolForTest(t, ExecutorFunc(func(ctx context.Context, _ json.RawMessage) (json.RawMessage, error) {
 		calls++
 		<-ctx.Done()
-		return json.RawMessage(`{"task_id":"must-not-escape"}`), nil
-	}))
+		return json.RawMessage(`{"unexpected":true}`), nil
+	}), deps)
 
 	result, err := bound.Invoke(context.Background(), validCall())
 
 	require.Equal(t, ErrorDeadlineExceeded, CodeOf(err))
 	require.Equal(t, 1, calls)
 	require.Nil(t, result.Output)
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, ErrorDeadlineExceeded, recorder.records[0].ErrorCode)
 }
 
 func TestInvokeRejectsInvalidExecutorOutput(t *testing.T) {
@@ -587,7 +742,7 @@ func TestInvokeMapsOrdinaryExecutorErrorToSafeInternal(t *testing.T) {
 	deps.Recorder = recorder
 	bound := bindToolForTest(t, ExecutorFunc(func(context.Context, json.RawMessage) (json.RawMessage, error) {
 		calls++
-		return json.RawMessage(`{"task_id":"output-secret"}`), errors.New("database password leaked")
+		return json.RawMessage(`{"unexpected":true}`), errors.New("database password leaked")
 	}), deps)
 
 	result, err := bound.Invoke(context.Background(), validCall())
@@ -598,22 +753,29 @@ func TestInvokeMapsOrdinaryExecutorErrorToSafeInternal(t *testing.T) {
 	require.Equal(t, 1, calls)
 	require.Nil(t, result.Output)
 	require.Len(t, recorder.records, 1)
-	require.Equal(t, "7b6d9a3196a583cb81ae34ff6a33897516cb1b67f2b35154c8b6a531b61a178a", recorder.records[0].OutputHash)
+	require.Equal(t, ErrorInternal, recorder.records[0].ErrorCode)
+	require.Equal(t, "e7f5f6e5a781d62f599ff51c8cfdbe866f8ff4a971b5bbb569bf22f69e5295f2", recorder.records[0].OutputHash)
 }
 
 func TestInvokePreservesToolErrorCodeAndSafeMessageOnly(t *testing.T) {
 	calls := 0
-	bound := boundToolSetWithExecutor(t, ExecutorFunc(func(context.Context, json.RawMessage) (json.RawMessage, error) {
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.Recorder = recorder
+	bound := bindToolForTest(t, ExecutorFunc(func(context.Context, json.RawMessage) (json.RawMessage, error) {
 		calls++
-		return nil, NewError(ErrorConflict, "safe conflict", errors.New("credential secret"))
-	}))
+		return json.RawMessage(`{"unexpected":true}`), NewError(ErrorConflict, "safe conflict", errors.New("credential secret"))
+	}), deps)
 
-	_, err := bound.Invoke(context.Background(), validCall())
+	result, err := bound.Invoke(context.Background(), validCall())
 
 	require.Equal(t, ErrorConflict, CodeOf(err))
 	require.Equal(t, "conflict: safe conflict", err.Error())
 	require.NotContains(t, err.Error(), "credential")
 	require.Equal(t, 1, calls)
+	require.Nil(t, result.Output)
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, ErrorConflict, recorder.records[0].ErrorCode)
 }
 
 func TestInvokeAuditUsesTrustedPrincipalHashesPayloadsAndRecordsTiming(t *testing.T) {
@@ -679,6 +841,24 @@ func TestInvokeAuditUsesTrustedPrincipalHashesPayloadsAndRecordsTiming(t *testin
 			require.True(t, strings.HasSuffix(name, "hash"), "raw payload field %q must not exist", name)
 		}
 	}
+}
+
+func TestInvokeAllowsEmptyTraceIDWithoutForgingAuditCorrelation(t *testing.T) {
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.Recorder = recorder
+	bound := bindToolForTest(t, ExecutorFunc(func(context.Context, json.RawMessage) (json.RawMessage, error) {
+		return json.RawMessage(`{"task_id":"task-1"}`), nil
+	}), deps)
+	call := validCall()
+	call.Metadata.TraceID = ""
+
+	result, err := bound.Invoke(context.Background(), call)
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{"task_id":"task-1"}`, string(result.Output))
+	require.Len(t, recorder.records, 1)
+	require.Empty(t, recorder.records[0].TraceID)
 }
 
 func TestInvokeAuditsSuccessAndFailureExactlyOnce(t *testing.T) {
@@ -802,6 +982,32 @@ func TestInvokeCreatesGovernedOpenTelemetrySpanWithoutRawArguments(t *testing.T)
 	require.Len(t, recorder.records, 1)
 	require.Equal(t, "trace-1", recorder.records[0].TraceID)
 	require.NotEqual(t, recorder.records[0].TraceID, span.SpanContext().TraceID().String())
+}
+
+func TestInvokePreflightRejectionDoesNotCreateInvocationSpan(t *testing.T) {
+	spanRecorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.Tracer = provider.Tracer("commercetool-test")
+	deps.Recorder = recorder
+	calls := 0
+	bound := bindToolForTest(t, ExecutorFunc(func(context.Context, json.RawMessage) (json.RawMessage, error) {
+		calls++
+		return json.RawMessage(`{"task_id":"task-1"}`), nil
+	}), deps)
+	call := validCall()
+	call.Metadata.CallID = ""
+
+	result, err := bound.Invoke(context.Background(), call)
+
+	require.Equal(t, ErrorInvalidInput, CodeOf(err))
+	require.Equal(t, 0, calls)
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, AuditStatusRecorded, result.AuditStatus)
+	require.Empty(t, spanRecorder.Started())
+	require.Empty(t, spanRecorder.Ended())
 }
 
 func verifiedPrincipal() Principal {
