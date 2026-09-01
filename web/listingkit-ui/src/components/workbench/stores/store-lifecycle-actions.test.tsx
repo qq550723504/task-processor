@@ -290,7 +290,11 @@ describe("StoreLifecycleActions", () => {
     expect(remove.mutate).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"])(
+  it.each([
+    "ORGANIZATION_ACCESS_REVOKED",
+    "ORGANIZATION_ACCESS_DENIED",
+    "ORGANIZATION_CONTEXT_CHANGED",
+  ])(
     "fails closed on %s by removing only this Organization Store queries and retrying context",
     async (code) => {
       const user = userEvent.setup(); render(<StoreLifecycleActions store={STORE} />);

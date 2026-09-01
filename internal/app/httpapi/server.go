@@ -27,6 +27,7 @@ func buildHTTPServerFromRoutesAtWithAuthDependencies(bindAddress string, port in
 		Addr:              serverAddress(bindAddress, port),
 		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
 	}
 }
 

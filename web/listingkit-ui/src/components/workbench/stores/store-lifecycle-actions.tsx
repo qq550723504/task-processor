@@ -546,7 +546,11 @@ function ScopedStoreLifecycleActions({
 }
 
 function isOrganizationAccessError(code?: string) {
-  return code === "ORGANIZATION_ACCESS_REVOKED" || code === "ORGANIZATION_ACCESS_DENIED";
+  return (
+    code === "ORGANIZATION_ACCESS_REVOKED" ||
+    code === "ORGANIZATION_ACCESS_DENIED" ||
+    code === "ORGANIZATION_CONTEXT_CHANGED"
+  );
 }
 
 function StoreLifecycleControls({
