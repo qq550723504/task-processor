@@ -11,6 +11,7 @@ const context = vi.hoisted(() => ({
 const queryClient = vi.hoisted(() => ({ removeQueries: vi.fn() }));
 const enable = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
 const disable = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
+const resumeCreate = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
 const remove = vi.hoisted(() => ({ mutate: vi.fn(), retryLast: vi.fn(), resume: vi.fn(), canRetryLast: false, isPending: false }));
 
 vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => queryClient }));
@@ -18,6 +19,7 @@ vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkben
 vi.mock("@/lib/query/use-workbench-stores", () => ({
   useEnableWorkbenchStore: () => enable,
   useDisableWorkbenchStore: () => disable,
+  useResumeWorkbenchStore: () => resumeCreate,
   useDeleteWorkbenchStore: () => remove,
   workbenchStoreKeys: { root: (organizationId: string) => ["workbench", organizationId, "stores"] },
 }));
@@ -44,6 +46,7 @@ describe("StoreLifecycleActions", () => {
     context.retry.mockReset(); queryClient.removeQueries.mockReset();
     enable.mutate.mockReset(); enable.isPending = false;
     disable.mutate.mockReset(); disable.isPending = false;
+    resumeCreate.mutate.mockReset(); resumeCreate.isPending = false;
     remove.mutate.mockReset(); remove.retryLast.mockReset(); remove.resume.mockReset(); remove.canRetryLast = false; remove.isPending = false;
   });
 
@@ -163,6 +166,16 @@ describe("StoreLifecycleActions", () => {
     await user.click(screen.getByRole("button", { name: "恢复删除" }));
     expect(remove.resume).toHaveBeenCalledWith({ id: STORE.id, version: STORE.version });
     expect(remove.retryLast).not.toHaveBeenCalled();
+  });
+
+  it("resumes a provisioning Store through the durable create operation", async () => {
+    const user = userEvent.setup();
+    render(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "provisioning" }} />);
+    await user.click(screen.getByRole("button", { name: "恢复创建" }));
+    expect(resumeCreate.mutate).toHaveBeenCalledWith(
+      { id: STORE.id, version: STORE.version },
+      expect.any(Object),
+    );
   });
 
   it("never exposes an eligible deleting retry after the current role loses delete permission", () => {

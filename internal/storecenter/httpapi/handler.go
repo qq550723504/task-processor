@@ -34,6 +34,7 @@ var (
 type StoreService interface {
 	List(context.Context, storecenter.ListStoresRequest) (storecenter.ListStoresResult, error)
 	Create(context.Context, storecenter.CreateStoreRequest) (storecenter.CreateStoreResult, error)
+	ResumeCreate(context.Context, storecenter.ResumeCreateStoreRequest) (storecenter.CreateStoreResult, error)
 	Get(context.Context, storecenter.GetStoreRequest) (storecenter.StoreProjection, error)
 	Update(context.Context, storecenter.UpdateStoreRequest) (storecenter.StoreMutationResult, error)
 	Disable(context.Context, storecenter.StoreLifecycleRequest) (storecenter.StoreMutationResult, error)
@@ -156,7 +157,38 @@ func (h *Handler) Create(c *gin.Context) {
 		writeStoreError(c, err)
 		return
 	}
-	if result.Store == nil || result.Store.OrganizationID() != identity.EffectiveOrganizationID {
+	h.writeCreateResponse(c, result, identity.EffectiveOrganizationID, http.StatusCreated)
+}
+
+func (h *Handler) ResumeCreate(c *gin.Context) {
+	identity, storeID, ok := h.itemIdentity(c)
+	if !ok {
+		return
+	}
+	version, err := requiredIfMatch(c.Request)
+	if err != nil {
+		writeInvalid(c, "If-Match", "invalid")
+		return
+	}
+	if err := requireNoBody(c.Request.Body); err != nil {
+		writeInvalid(c, "body", "not_allowed")
+		return
+	}
+	result, err := h.service.ResumeCreate(c.Request.Context(), storecenter.ResumeCreateStoreRequest{
+		OrganizationID:  identity.EffectiveOrganizationID,
+		ActorSubject:    identity.UserID,
+		StoreID:         storeID,
+		ExpectedVersion: version,
+	})
+	if err != nil {
+		writeStoreError(c, err)
+		return
+	}
+	h.writeCreateResponse(c, result, identity.EffectiveOrganizationID, http.StatusOK)
+}
+
+func (h *Handler) writeCreateResponse(c *gin.Context, result storecenter.CreateStoreResult, organizationID string, status int) {
+	if result.Store == nil || result.Store.OrganizationID() != organizationID {
 		writeStoreError(c, storecenter.ErrDependencyUnavailable)
 		return
 	}
@@ -165,17 +197,17 @@ func (h *Handler) Create(c *gin.Context) {
 		writeStoreError(c, storecenter.ErrDependencyUnavailable)
 		return
 	}
-	projection, err := h.service.Get(c.Request.Context(), storecenter.GetStoreRequest{OrganizationID: identity.EffectiveOrganizationID, StoreID: storeID})
+	projection, err := h.service.Get(c.Request.Context(), storecenter.GetStoreRequest{OrganizationID: organizationID, StoreID: storeID})
 	if err != nil {
 		writeStoreError(c, storecenter.ErrDependencyUnavailable)
 		return
 	}
-	response, err := projectionResponse(projection, identity.EffectiveOrganizationID, storeID)
+	response, err := projectionResponse(projection, organizationID, storeID)
 	if err != nil {
 		writeStoreError(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, response)
+	c.JSON(status, response)
 }
 
 func (h *Handler) Get(c *gin.Context) {

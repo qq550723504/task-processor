@@ -34,6 +34,7 @@ const (
 type storeServiceStub struct {
 	listResult     storecenter.ListStoresResult
 	createResult   storecenter.CreateStoreResult
+	resumeResult   storecenter.CreateStoreResult
 	getResult      storecenter.StoreProjection
 	mutationResult storecenter.StoreMutationResult
 	deleteResult   storecenter.DeleteStoreResult
@@ -41,6 +42,7 @@ type storeServiceStub struct {
 	calls          []string
 	listRequest    storecenter.ListStoresRequest
 	createRequest  storecenter.CreateStoreRequest
+	resumeRequest  storecenter.ResumeCreateStoreRequest
 	getRequest     storecenter.GetStoreRequest
 	updateRequest  storecenter.UpdateStoreRequest
 	disableRequest storecenter.StoreLifecycleRequest
@@ -57,6 +59,11 @@ func (s *storeServiceStub) Create(_ context.Context, request storecenter.CreateS
 	s.calls = append(s.calls, "create")
 	s.createRequest = request
 	return s.createResult, s.err
+}
+func (s *storeServiceStub) ResumeCreate(_ context.Context, request storecenter.ResumeCreateStoreRequest) (storecenter.CreateStoreResult, error) {
+	s.calls = append(s.calls, "resume-create")
+	s.resumeRequest = request
+	return s.resumeResult, s.err
 }
 func (s *storeServiceStub) Get(_ context.Context, request storecenter.GetStoreRequest) (storecenter.StoreProjection, error) {
 	s.calls = append(s.calls, "get")
@@ -96,13 +103,14 @@ func TestModuleRegistersExactScopedStoreRoutes(t *testing.T) {
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, module.Register(registry))
 	routes := registry.Routes()
-	require.Len(t, routes, 7)
+	require.Len(t, routes, 8)
 	want := []struct {
 		method, path, permission string
 		access                   httproute.OrganizationAccessPolicy
 	}{
 		{http.MethodGet, "/api/v1/workbench/stores", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyCachedRead},
 		{http.MethodPost, "/api/v1/workbench/stores", authz.PermissionWorkbenchStoreCreate, httproute.OrganizationAccessPolicyLiveWrite},
+		{http.MethodPost, "/api/v1/workbench/stores/:store_id/resume", authz.PermissionWorkbenchStoreCreate, httproute.OrganizationAccessPolicyLiveWrite},
 		{http.MethodGet, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyCachedRead},
 		{http.MethodPut, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreUpdate, httproute.OrganizationAccessPolicyLiveWrite},
 		{http.MethodPost, "/api/v1/workbench/stores/:store_id/disable", authz.PermissionWorkbenchStoreLifecycle, httproute.OrganizationAccessPolicyLiveWrite},
@@ -139,6 +147,7 @@ func TestHandlerDerivesEveryServiceRequestOnlyFromEffectiveOrganizationIdentity(
 	}{
 		{http.MethodGet, "/api/v1/workbench/stores?page=2&pageSize=5&platform=shein&status=active", "", nil},
 		{http.MethodPost, "/api/v1/workbench/stores", `{"name":" Store ","platform":"shein","region":" SG ","externalStoreId":" ext "}`, map[string][]string{"Idempotency-Key": {testCreateKey}}},
+		{http.MethodPost, "/api/v1/workbench/stores/" + testStoreID + "/resume", "", map[string][]string{"If-Match": {`"1"`}}},
 		{http.MethodGet, "/api/v1/workbench/stores/" + testStoreID, "", nil},
 		{http.MethodPut, "/api/v1/workbench/stores/" + testStoreID, `{"name":" Renamed ","region":" US "}`, map[string][]string{"If-Match": {`"2"`}}},
 		{http.MethodPost, "/api/v1/workbench/stores/" + testStoreID + "/disable", "", map[string][]string{"If-Match": {`"2"`}}},
@@ -152,6 +161,7 @@ func TestHandlerDerivesEveryServiceRequestOnlyFromEffectiveOrganizationIdentity(
 	require.Equal(t, "org-effective", service.listRequest.OrganizationID)
 	require.Equal(t, storecenter.ListStoresRequest{OrganizationID: "org-effective", Page: 2, PageSize: 5, Platform: "shein", Status: storecenter.StoreStatusActive}, service.listRequest)
 	require.Equal(t, "org-effective", service.createRequest.OrganizationID)
+	require.Equal(t, storecenter.ResumeCreateStoreRequest{OrganizationID: "org-effective", ActorSubject: "user-1", StoreID: testStoreID, ExpectedVersion: 1}, service.resumeRequest)
 	require.Equal(t, "user-1", service.createRequest.ActorSubject)
 	require.Equal(t, "Store", service.createRequest.Name)
 	require.Equal(t, "SG", service.createRequest.Region)
@@ -564,6 +574,7 @@ func newStoreServiceStub(t *testing.T) *storeServiceStub {
 	return &storeServiceStub{
 		listResult:     storecenter.ListStoresResult{Items: []storecenter.StoreProjection{projection}, Total: 1, Page: 1, PageSize: 20, Quota: storecenter.StoreQuotaProjection{Used: 1, Limit: &limit, Allowed: true}},
 		createResult:   storecenter.CreateStoreResult{Store: &projection.Store, Replayed: true},
+		resumeResult:   storecenter.CreateStoreResult{Store: &projection.Store, Replayed: true},
 		getResult:      projection,
 		mutationResult: storecenter.StoreMutationResult{Store: projection, Replayed: true},
 		deleteResult:   storecenter.DeleteStoreResult{StoreID: testStoreID, Version: 3, Replayed: true},

@@ -27,6 +27,7 @@ func (m routeModule) Register(registry *kernelmodule.Registry) error {
 	registry.AddRoutes(
 		route(http.MethodGet, "/api/v1/workbench/stores", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyCachedRead, m.handler.List),
 		route(http.MethodPost, "/api/v1/workbench/stores", authz.PermissionWorkbenchStoreCreate, httproute.OrganizationAccessPolicyLiveWrite, m.handler.Create),
+		route(http.MethodPost, "/api/v1/workbench/stores/:store_id/resume", authz.PermissionWorkbenchStoreCreate, httproute.OrganizationAccessPolicyLiveWrite, m.handler.ResumeCreate),
 		route(http.MethodGet, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyCachedRead, m.handler.Get),
 		route(http.MethodPut, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreUpdate, httproute.OrganizationAccessPolicyLiveWrite, m.handler.Update),
 		route(http.MethodPost, "/api/v1/workbench/stores/:store_id/disable", authz.PermissionWorkbenchStoreLifecycle, httproute.OrganizationAccessPolicyLiveWrite, m.handler.Disable),

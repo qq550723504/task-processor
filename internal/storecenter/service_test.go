@@ -186,7 +186,7 @@ func TestServiceCreateRejectsTypedNilAndInconsistentQuotaExceeded(t *testing.T) 
 	}
 }
 
-func TestServiceCreateCommitFailureResumesWithoutRecreate(t *testing.T) {
+func TestServiceResumeCreateAfterCommitFailureReusesDurableCreateKey(t *testing.T) {
 	request := validCreateRequest()
 	ledger := quotaForRequest(request)
 	ledger.commitErr = errors.New("ledger unavailable")
@@ -204,7 +204,12 @@ func TestServiceCreateCommitFailureResumesWithoutRecreate(t *testing.T) {
 		t.Fatalf("commit failure Store = %v/%v, want provisioning durable Store", created, err)
 	}
 	ledger.commitErr = nil
-	result, err := service.Create(context.Background(), request)
+	result, err := service.ResumeCreate(context.Background(), storecenter.ResumeCreateStoreRequest{
+		OrganizationID:  request.OrganizationID,
+		ActorSubject:    "recovery-actor",
+		StoreID:         ledger.allocation.StoreID,
+		ExpectedVersion: 1,
+	})
 	if err != nil {
 		t.Fatalf("replay Create() error = %v", err)
 	}

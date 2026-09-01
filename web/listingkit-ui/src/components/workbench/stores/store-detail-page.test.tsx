@@ -9,6 +9,7 @@ const update = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
 const create = vi.hoisted(() => ({ mutate: vi.fn(), retryLast: vi.fn(), canRetryLast: false, isPending: false }));
 const enable = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
 const disable = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
+const resumeCreate = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
 const remove = vi.hoisted(() => ({ mutate: vi.fn(), retryLast: vi.fn(), canRetryLast: false, isPending: false }));
 const queryClient = vi.hoisted(() => ({ removeQueries: vi.fn() }));
 
@@ -21,6 +22,7 @@ vi.mock("@/lib/query/use-workbench-stores", () => ({
   useCreateWorkbenchStore: () => create,
   useEnableWorkbenchStore: () => enable,
   useDisableWorkbenchStore: () => disable,
+  useResumeWorkbenchStore: () => resumeCreate,
   useDeleteWorkbenchStore: () => remove,
   workbenchStoreKeys: { root: (organizationId: string) => ["workbench", organizationId, "stores"] },
 }));
@@ -29,7 +31,7 @@ import { StoreDetailPage } from "@/components/workbench/stores/store-detail-page
 
 const STORE = { id: "11111111-1111-4111-8111-111111111111", name: "店铺", platform: "shein" as const, region: "CN", externalStoreId: "", lifecycleStatus: "active" as const, connectionStatus: "disconnected" as const, version: 1, createdAt: "2026-08-31T00:00:00Z", updatedAt: "2026-08-31T00:00:00Z" };
 describe("StoreDetailPage", () => {
-  afterEach(() => { query.value = {}; update.mutate.mockReset(); update.isPending = false; create.mutate.mockReset(); enable.mutate.mockReset(); enable.isPending = false; disable.mutate.mockReset(); disable.isPending = false; remove.mutate.mockReset(); remove.retryLast.mockReset(); remove.canRetryLast = false; remove.isPending = false; queryClient.removeQueries.mockReset(); context.retry.mockReset(); context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] }; context.roles = ["listingkit_operator"]; context.registerOrganizationSwitchGuard.mockReset(); context.registerOrganizationSwitchGuard.mockImplementation(() => vi.fn()); router.push.mockReset(); router.replace.mockReset(); });
+  afterEach(() => { query.value = {}; update.mutate.mockReset(); update.isPending = false; create.mutate.mockReset(); enable.mutate.mockReset(); enable.isPending = false; disable.mutate.mockReset(); disable.isPending = false; resumeCreate.mutate.mockReset(); resumeCreate.isPending = false; remove.mutate.mockReset(); remove.retryLast.mockReset(); remove.canRetryLast = false; remove.isPending = false; queryClient.removeQueries.mockReset(); context.retry.mockReset(); context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] }; context.roles = ["listingkit_operator"]; context.registerOrganizationSwitchGuard.mockReset(); context.registerOrganizationSwitchGuard.mockImplementation(() => vi.fn()); router.push.mockReset(); router.replace.mockReset(); });
   it("renders stable loading, not-found, access, and dependency states", () => {
     query.value = { isPending: true }; const { rerender } = render(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("status")).toHaveTextContent("正在加载店铺");
     query.value = { isPending: false, isError: true, error: { code: "STORE_NOT_FOUND" }, refetch: vi.fn() }; rerender(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("alert")).toHaveTextContent("店铺不存在或已不可访问");

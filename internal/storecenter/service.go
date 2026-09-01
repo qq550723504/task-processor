@@ -41,6 +41,13 @@ type GetStoreRequest struct {
 	StoreID        string
 }
 
+type ResumeCreateStoreRequest struct {
+	OrganizationID  string
+	ActorSubject    string
+	StoreID         string
+	ExpectedVersion int64
+}
+
 type StoreProjection struct {
 	Store            Store
 	ConnectionStatus ConnectionStatus
@@ -322,6 +329,38 @@ func (s *Service) Get(ctx context.Context, request GetStoreRequest) (StoreProjec
 		return StoreProjection{}, dependencyError(errors.New("store read identity mismatch"))
 	}
 	return s.projectOne(ctx, store)
+}
+
+func (s *Service) ResumeCreate(ctx context.Context, request ResumeCreateStoreRequest) (CreateStoreResult, error) {
+	normalized, err := normalizeResumeCreateStoreRequest(request)
+	if err != nil {
+		return CreateStoreResult{}, err
+	}
+	store, err := s.repository.Get(ctx, normalized.OrganizationID, normalized.StoreID)
+	if errors.Is(err, ErrNotFound) {
+		return CreateStoreResult{}, ErrNotFound
+	}
+	if err != nil || !matchesStoreScope(store, normalized.OrganizationID, normalized.StoreID) {
+		return CreateStoreResult{}, dependencyError(err)
+	}
+	if store.Version() != normalized.ExpectedVersion {
+		return CreateStoreResult{}, ErrVersionConflict
+	}
+	if store.LifecycleStatus() == StoreStatusActive {
+		return CreateStoreResult{Store: store, Replayed: true}, nil
+	}
+	if store.LifecycleStatus() != StoreStatusProvisioning {
+		return CreateStoreResult{}, ErrInvalidTransition
+	}
+	return s.Create(ctx, CreateStoreRequest{
+		OrganizationID:  normalized.OrganizationID,
+		ActorSubject:    normalized.ActorSubject,
+		IdempotencyKey:  store.CreateIdempotencyKey(),
+		Name:            store.Name(),
+		Platform:        string(store.Platform()),
+		Region:          store.Region(),
+		ExternalStoreID: store.ExternalStoreID(),
+	})
 }
 
 func (s *Service) Update(ctx context.Context, request UpdateStoreRequest) (StoreMutationResult, error) {
@@ -796,6 +835,15 @@ func normalizeLifecycleRequest(request StoreLifecycleRequest) (StoreLifecycleReq
 	identity, err := normalizeMutationIdentity(request.OrganizationID, request.ActorSubject, request.StoreID, request.ExpectedVersion)
 	if err != nil {
 		return StoreLifecycleRequest{}, err
+	}
+	request.OrganizationID, request.ActorSubject, request.StoreID = identity.OrganizationID, identity.ActorSubject, identity.StoreID
+	return request, nil
+}
+
+func normalizeResumeCreateStoreRequest(request ResumeCreateStoreRequest) (ResumeCreateStoreRequest, error) {
+	identity, err := normalizeMutationIdentity(request.OrganizationID, request.ActorSubject, request.StoreID, request.ExpectedVersion)
+	if err != nil {
+		return ResumeCreateStoreRequest{}, err
 	}
 	request.OrganizationID, request.ActorSubject, request.StoreID = identity.OrganizationID, identity.ActorSubject, identity.StoreID
 	return request, nil

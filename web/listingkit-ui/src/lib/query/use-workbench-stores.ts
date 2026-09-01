@@ -18,6 +18,7 @@ import {
   enableWorkbenchStore,
   getWorkbenchStore,
   listWorkbenchStores,
+  resumeWorkbenchStore,
   updateWorkbenchStore,
   type WorkbenchStoreCreateInput,
   type WorkbenchStore,
@@ -248,10 +249,15 @@ export function useDeleteWorkbenchStore() {
   };
 }
 
+export function useResumeWorkbenchStore() {
+  return useStoreStateMutation(resumeWorkbenchStore, "resume");
+}
+
 function useStoreStateMutation(
   action: (storeId: string, version: number, expectedOrganizationId: string) => ReturnType<
     typeof enableWorkbenchStore
   >,
+  actionName = action === enableWorkbenchStore ? "enable" : "disable",
 ) {
   const organizationId = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
@@ -262,7 +268,7 @@ function useStoreStateMutation(
   >({
     mutationKey: workbenchStoreKeys.mutation(
       organizationId,
-      action === enableWorkbenchStore ? "enable" : "disable",
+      actionName,
     ),
     mutationFn: (operation: CapturedOperation<StoreVersionInput>) => {
       requireEffectiveOrganization(operation.organizationId);

@@ -211,6 +211,20 @@ export async function getWorkbenchStore(
   );
 }
 
+export async function resumeWorkbenchStore(
+  storeId: string,
+  version: number,
+  expectedOrganizationId: string,
+): Promise<WorkbenchStore> {
+  return requestWorkbenchStores(
+    `${storePath(storeId)}/resume`,
+    { method: "POST", headers: { "If-Match": ifMatch(version) } },
+    workbenchStoreSchema,
+    200,
+    expectedOrganizationId,
+  );
+}
+
 export async function createWorkbenchStore(
   input: WorkbenchStoreCreateInput,
   idempotencyKey: string,
