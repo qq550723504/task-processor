@@ -574,10 +574,10 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 				t.Fatal(err)
 			}
 			name, _ := body["name"].(string)
-			organizationID, _ := body["organizationId"].(string)
-			if body["orgId"] != organizationID {
-				t.Fatalf("stable organization ids = %#v/%#v", body["organizationId"], body["orgId"])
+			if len(body) != 1 || name == "" {
+				t.Fatalf("create organization body = %#v, want name only", body)
 			}
+			organizationID := fmt.Sprintf("provider-org-%d", len(organizations)+1)
 			created := organization{ID: organizationID, Name: name, State: "ORGANIZATION_STATE_ACTIVE"}
 			organizations = append(organizations, created)
 			writeJSON(t, w, map[string]any{"organizationId": created.ID})
@@ -664,8 +664,8 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 	want := MultiOrganizationAcceptanceResult{
 		UserID: "user-1", ProjectID: "project-1",
 		Organizations: []AcceptanceOrganizationResult{
-			{OrganizationID: "org-1", OrganizationName: "Acceptance Organization A", RoleKeys: []string{"listingkit_admin"}},
-			{OrganizationID: "org-2", OrganizationName: "Acceptance Organization B", RoleKeys: []string{"listingkit_viewer"}},
+			{OrganizationID: "provider-org-1", OrganizationName: "Acceptance Organization A", RoleKeys: []string{"listingkit_admin"}},
+			{OrganizationID: "provider-org-2", OrganizationName: "Acceptance Organization B", RoleKeys: []string{"listingkit_viewer"}},
 		},
 	}
 	if !reflect.DeepEqual(result, want) {
@@ -779,44 +779,26 @@ func TestProvisionLocalMultiOrganizationAcceptanceErrorsAndResultsAreSecretSafe(
 	}
 }
 
-func TestProvisionLocalMultiOrganizationAcceptanceRejectsSameNameWithUnmanagedID(t *testing.T) {
+func TestEnsureAcceptanceOrganizationUsesProviderIDFromExactNameMatch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requireAuth(t, r)
-		if r.URL.Path != "/v2/organizations/_search" {
-			t.Fatalf("unexpected mutation after unmanaged name collision: %s %s", r.Method, r.URL.Path)
-		}
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatal(err)
-		}
+		body := decodeTestJSONMap(t, r)
 		queries, _ := body["queries"].([]any)
-		if len(queries) != 1 {
-			t.Fatalf("organization queries = %#v, want one exact query", body["queries"])
-		}
 		query, _ := queries[0].(map[string]any)
 		if _, byID := query["idQuery"]; byID {
 			writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 0}, "result": []any{}})
 			return
 		}
-		nameQuery, byName := query["nameQuery"].(map[string]any)
-		if !byName || nameQuery["name"] != "Acceptance Organization A" || nameQuery["method"] != "TEXT_QUERY_METHOD_EQUALS" {
-			t.Fatalf("organization name query = %#v", query)
-		}
 		writeJSON(t, w, map[string]any{
 			"details": map[string]any{"totalResult": 1},
-			"result":  []map[string]any{{"id": "unmanaged-org", "name": "Acceptance Organization A", "state": "ORGANIZATION_STATE_ACTIVE"}},
+			"result":  []map[string]any{{"id": "provider-org", "name": "Acceptance Organization A", "state": "ORGANIZATION_STATE_ACTIVE"}},
 		})
 	}))
 	defer server.Close()
 
-	_, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), Config{
-		IssuerURL: server.URL, ManagementToken: "token", ProjectID: "project-1", AcceptanceOrganizationIDs: []string{"managed-org-a", "managed-org-b"},
-	}, MultiOrganizationAcceptanceSpec{UserID: "user-1", Organizations: []AcceptanceOrganizationSpec{
-		{Name: "Acceptance Organization A", RoleKeys: []string{"listingkit_admin"}},
-		{Name: "Acceptance Organization B", RoleKeys: []string{"listingkit_viewer"}},
-	}})
-	if err == nil || !strings.Contains(err.Error(), "same name") {
-		t.Fatalf("ProvisionLocalMultiOrganizationAcceptance() error = %v, want unmanaged same-name rejection", err)
+	organizationID, err := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"}).ensureAcceptanceOrganization(context.Background(), "preferred-org", "Acceptance Organization A")
+	if err != nil || organizationID != "provider-org" {
+		t.Fatalf("ensureAcceptanceOrganization() = %q, %v, want provider-org", organizationID, err)
 	}
 }
 
@@ -965,11 +947,11 @@ func TestProvisionLocalMultiOrganizationAcceptanceRecoversCreateConflictsByReadB
 			writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 0}, "result": []any{}})
 		case "/v2/organizations":
 			body := decodeTestJSONMap(t, r)
-			organizationID, _ := body["organizationId"].(string)
-			if body["orgId"] != organizationID || organizationID == "" {
-				t.Fatalf("create organization stable ids = %#v/%#v", body["organizationId"], body["orgId"])
-			}
 			name, _ := body["name"].(string)
+			if len(body) != 1 || name == "" {
+				t.Fatalf("create organization body = %#v, want name only", body)
+			}
+			organizationID := "provider-" + strings.ReplaceAll(strings.ToLower(name), " ", "-")
 			organizations[organizationID] = organizationRecord{ID: organizationID, Name: name, State: "ORGANIZATION_STATE_ACTIVE"}
 			w.WriteHeader(http.StatusConflict)
 		case "/zitadel.project.v2.ProjectService/ListProjectGrants":
@@ -999,7 +981,7 @@ func TestProvisionLocalMultiOrganizationAcceptanceRecoversCreateConflictsByReadB
 		case "/zitadel.authorization.v2.AuthorizationService/CreateAuthorization":
 			body := decodeTestJSONMap(t, r)
 			organizationID, _ := body["organizationId"].(string)
-			if organizationID == "managed-org-b" && failAuthorizationBOnce {
+			if strings.Contains(organizationID, "organization-b") && failAuthorizationBOnce {
 				failAuthorizationBOnce = false
 				w.WriteHeader(http.StatusInternalServerError)
 				return
@@ -1051,6 +1033,17 @@ func TestEnsureAcceptanceOrganizationHandlesConcurrentCreateConflict(t *testing.
 			body := decodeTestJSONMap(t, r)
 			queries, _ := body["queries"].([]any)
 			query, _ := queries[0].(map[string]any)
+			if nameQuery, isName := query["nameQuery"].(map[string]any); isName {
+				mu.Lock()
+				isCreated := created
+				mu.Unlock()
+				if isCreated && nameQuery["name"] == "Acceptance Organization A" {
+					writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 1}, "result": []map[string]any{{
+						"id": "managed-org-a", "name": "Acceptance Organization A", "state": "ORGANIZATION_STATE_ACTIVE",
+					}}})
+					return
+				}
+			}
 			if _, isID := query["idQuery"]; isID {
 				mu.Lock()
 				if !created && initialIDReads < 2 {
@@ -1075,7 +1068,7 @@ func TestEnsureAcceptanceOrganizationHandlesConcurrentCreateConflict(t *testing.
 			writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 0}, "result": []any{}})
 		case "/v2/organizations":
 			body := decodeTestJSONMap(t, r)
-			if body["organizationId"] != "managed-org-a" || body["orgId"] != "managed-org-a" {
+			if len(body) != 1 || body["name"] != "Acceptance Organization A" {
 				t.Fatalf("create organization body = %#v", body)
 			}
 			mu.Lock()
@@ -1098,7 +1091,8 @@ func TestEnsureAcceptanceOrganizationHandlesConcurrentCreateConflict(t *testing.
 	errorsByCall := make(chan error, 2)
 	for range 2 {
 		go func() {
-			errorsByCall <- client.ensureAcceptanceOrganization(context.Background(), "managed-org-a", "Acceptance Organization A")
+			_, err := client.ensureAcceptanceOrganization(context.Background(), "managed-org-a", "Acceptance Organization A")
+			errorsByCall <- err
 		}()
 	}
 	for range 2 {
@@ -1142,7 +1136,7 @@ func TestEnsureAcceptanceOrganizationRetriesEventuallyConsistentReadBack(t *test
 	defer server.Close()
 
 	client := newClient(Config{IssuerURL: server.URL, ManagementToken: "token"})
-	if err := client.ensureAcceptanceOrganization(context.Background(), "managed-org-a", "Acceptance Organization A"); err != nil {
+	if _, err := client.ensureAcceptanceOrganization(context.Background(), "managed-org-a", "Acceptance Organization A"); err != nil {
 		t.Fatalf("ensureAcceptanceOrganization() error = %v", err)
 	}
 	if postCreateReads != 3 {
@@ -1226,6 +1220,9 @@ func TestEnsureAuthorizationRetriesEventuallyConsistentReadBack(t *testing.T) {
 }
 
 func TestLoopbackOnlyClientRejectsAmbiguousIssuerAndResolverPollution(t *testing.T) {
+	if err := validateLocalIssuer("http://localhost:8080/"); err != nil {
+		t.Fatalf("validateLocalIssuer() trailing root slash error = %v", err)
+	}
 	for _, raw := range []string{
 		"ftp://localhost:8080", "http://user@localhost:8080", "http://localhost:8080/path",
 		"http://localhost:8080?query=1", "http://localhost:8080#fragment", "http://2130706433:8080",

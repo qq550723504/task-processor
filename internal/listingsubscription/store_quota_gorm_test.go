@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -50,11 +51,20 @@ func TestStoreQuotaReserveReplayAndTransitions(t *testing.T) {
 	repo := NewGormRepository(db)
 	seedStoreQuotaSubscription(t, repo, "org-a", PlanBasic, 2)
 	ledger := NewGormStoreQuotaLedger(repo)
-	input := StoreQuotaReserveInput{OrganizationID: "org-a", RequestKey: uuid.NewString(), ActorSubject: "actor-1"}
+	fingerprint := strings.Repeat("a", 64)
+	input := StoreQuotaReserveInput{OrganizationID: "org-a", RequestKey: uuid.NewString(), ActorSubject: "actor-1", RequestFingerprint: fingerprint}
 
 	first, err := ledger.Reserve(context.Background(), input)
 	if err != nil {
 		t.Fatalf("Reserve() error = %v", err)
+	}
+	if first.Allocation.RequestFingerprint != fingerprint {
+		t.Fatalf("stored request fingerprint = %q, want %q", first.Allocation.RequestFingerprint, fingerprint)
+	}
+	changed := input
+	changed.RequestFingerprint = strings.Repeat("b", 64)
+	if _, err := ledger.Reserve(context.Background(), changed); !errors.Is(err, ErrStoreQuotaIdentityMismatch) {
+		t.Fatalf("changed request fingerprint error = %v, want identity mismatch", err)
 	}
 	second, err := ledger.Reserve(context.Background(), input)
 	if err != nil {
@@ -196,6 +206,9 @@ func TestStoreQuotaMigrationIsRepeatableAndCreatesScopedIndexes(t *testing.T) {
 		if !db.Migrator().HasIndex(&storeQuotaAllocationRow{}, index) {
 			t.Fatalf("missing allocation index %s", index)
 		}
+	}
+	if !db.Migrator().HasColumn(&storeQuotaAllocationRow{}, "request_fingerprint") {
+		t.Fatal("missing allocation request_fingerprint column")
 	}
 }
 

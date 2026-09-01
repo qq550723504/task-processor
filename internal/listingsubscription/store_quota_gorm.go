@@ -12,17 +12,18 @@ import (
 )
 
 type storeQuotaAllocationRow struct {
-	AllocationID   string     `gorm:"column:allocation_id;primaryKey;size:36"`
-	OrganizationID string     `gorm:"column:organization_id;not null;size:200;uniqueIndex:idx_saas_store_quota_org_request,priority:1;uniqueIndex:idx_saas_store_quota_org_store,priority:1;index:idx_saas_store_quota_org_status,priority:1"`
-	StoreID        string     `gorm:"column:store_id;not null;size:36;uniqueIndex:idx_saas_store_quota_org_store,priority:2"`
-	RequestKey     string     `gorm:"column:request_key;not null;size:36;uniqueIndex:idx_saas_store_quota_org_request,priority:2"`
-	Status         string     `gorm:"column:status;not null;size:16;check:status IN ('reserved','allocated','released');index:idx_saas_store_quota_org_status,priority:2"`
-	CreatedBy      string     `gorm:"column:created_by;not null;size:200"`
-	UpdatedBy      string     `gorm:"column:updated_by;not null;size:200"`
-	AllocatedAt    *time.Time `gorm:"column:allocated_at"`
-	ReleasedAt     *time.Time `gorm:"column:released_at"`
-	CreatedAt      time.Time  `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt      time.Time  `gorm:"column:updated_at;autoUpdateTime"`
+	AllocationID       string     `gorm:"column:allocation_id;primaryKey;size:36"`
+	OrganizationID     string     `gorm:"column:organization_id;not null;size:200;uniqueIndex:idx_saas_store_quota_org_request,priority:1;uniqueIndex:idx_saas_store_quota_org_store,priority:1;index:idx_saas_store_quota_org_status,priority:1"`
+	StoreID            string     `gorm:"column:store_id;not null;size:36;uniqueIndex:idx_saas_store_quota_org_store,priority:2"`
+	RequestKey         string     `gorm:"column:request_key;not null;size:36;uniqueIndex:idx_saas_store_quota_org_request,priority:2"`
+	RequestFingerprint string     `gorm:"column:request_fingerprint;size:64"`
+	Status             string     `gorm:"column:status;not null;size:16;check:status IN ('reserved','allocated','released');index:idx_saas_store_quota_org_status,priority:2"`
+	CreatedBy          string     `gorm:"column:created_by;not null;size:200"`
+	UpdatedBy          string     `gorm:"column:updated_by;not null;size:200"`
+	AllocatedAt        *time.Time `gorm:"column:allocated_at"`
+	ReleasedAt         *time.Time `gorm:"column:released_at"`
+	CreatedAt          time.Time  `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt          time.Time  `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (storeQuotaAllocationRow) TableName() string { return "saas_store_quota_allocations" }
@@ -72,6 +73,9 @@ func (l *gormStoreQuotaLedger) Reserve(ctx context.Context, input StoreQuotaRese
 		return StoreQuotaReserveResult{}, err
 	}
 	if existing, err := l.GetByRequestKey(ctx, input.OrganizationID, input.RequestKey); err == nil {
+		if existing.RequestFingerprint != input.RequestFingerprint {
+			return StoreQuotaReserveResult{}, ErrStoreQuotaIdentityMismatch
+		}
 		return storeQuotaReserveResult(*existing, true), nil
 	} else if !errors.Is(err, ErrStoreQuotaNotFound) {
 		return StoreQuotaReserveResult{}, err
@@ -87,6 +91,9 @@ func (l *gormStoreQuotaLedger) Reserve(ctx context.Context, input StoreQuotaRese
 		err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND request_key = ?", input.OrganizationID, input.RequestKey).Take(&existing).Error
 		if err == nil {
 			allocation := storeQuotaAllocationFromRow(existing)
+			if allocation.RequestFingerprint != input.RequestFingerprint {
+				return ErrStoreQuotaIdentityMismatch
+			}
 			result = storeQuotaReserveResult(allocation, true)
 			return nil
 		}
@@ -104,7 +111,7 @@ func (l *gormStoreQuotaLedger) Reserve(ctx context.Context, input StoreQuotaRese
 			return &StoreQuotaExceededError{OrganizationID: input.OrganizationID, Committed: bucket.Committed, Reserved: bucket.Reserved, Limit: limit}
 		}
 		now := storeQuotaTimestamp(l.now().UTC(), bucket.UpdatedAt)
-		row := storeQuotaAllocationRow{AllocationID: uuid.NewString(), OrganizationID: input.OrganizationID, StoreID: uuid.NewString(), RequestKey: input.RequestKey, Status: string(StoreQuotaReserved), CreatedBy: input.ActorSubject, UpdatedBy: input.ActorSubject, CreatedAt: now, UpdatedAt: now}
+		row := storeQuotaAllocationRow{AllocationID: uuid.NewString(), OrganizationID: input.OrganizationID, StoreID: uuid.NewString(), RequestKey: input.RequestKey, RequestFingerprint: input.RequestFingerprint, Status: string(StoreQuotaReserved), CreatedBy: input.ActorSubject, UpdatedBy: input.ActorSubject, CreatedAt: now, UpdatedAt: now}
 		created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
 		if created.Error != nil {
 			return created.Error
@@ -112,7 +119,11 @@ func (l *gormStoreQuotaLedger) Reserve(ctx context.Context, input StoreQuotaRese
 		if created.RowsAffected != 1 {
 			var replay storeQuotaAllocationRow
 			if replayErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND request_key = ?", input.OrganizationID, input.RequestKey).Take(&replay).Error; replayErr == nil {
-				result = storeQuotaReserveResult(storeQuotaAllocationFromRow(replay), true)
+				allocation := storeQuotaAllocationFromRow(replay)
+				if allocation.RequestFingerprint != input.RequestFingerprint {
+					return ErrStoreQuotaIdentityMismatch
+				}
+				result = storeQuotaReserveResult(allocation, true)
 				return nil
 			} else if !errors.Is(replayErr, gorm.ErrRecordNotFound) {
 				return replayErr
@@ -464,7 +475,7 @@ func storeQuotaLimit(tx *gorm.DB, organizationID string, now time.Time) (int64, 
 }
 
 func storeQuotaAllocationFromRow(row storeQuotaAllocationRow) StoreQuotaAllocation {
-	return StoreQuotaAllocation{OrganizationID: row.OrganizationID, AllocationID: row.AllocationID, StoreID: row.StoreID, RequestKey: row.RequestKey, Status: StoreQuotaAllocationStatus(row.Status), CreatedBy: row.CreatedBy, UpdatedBy: row.UpdatedBy, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, AllocatedAt: cloneStoreQuotaTime(row.AllocatedAt), ReleasedAt: cloneStoreQuotaTime(row.ReleasedAt)}
+	return StoreQuotaAllocation{OrganizationID: row.OrganizationID, AllocationID: row.AllocationID, StoreID: row.StoreID, RequestKey: row.RequestKey, RequestFingerprint: row.RequestFingerprint, Status: StoreQuotaAllocationStatus(row.Status), CreatedBy: row.CreatedBy, UpdatedBy: row.UpdatedBy, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, AllocatedAt: cloneStoreQuotaTime(row.AllocatedAt), ReleasedAt: cloneStoreQuotaTime(row.ReleasedAt)}
 }
 
 func storeQuotaReserveResult(allocation StoreQuotaAllocation, existing bool) StoreQuotaReserveResult {

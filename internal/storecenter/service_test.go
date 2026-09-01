@@ -1223,6 +1223,34 @@ func TestServiceDeleteDeallocationFailureLeavesOwnedDeletingStoreAndSameKeyResum
 	}
 }
 
+func TestServiceDeleteRecoversMarkedDeletingAuditWithNewKey(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	ledger := &quotaLedgerFake{allocation: listingsubscription.StoreQuotaAllocation{OrganizationID: "org-a", AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), Status: listingsubscription.StoreQuotaAllocated}}
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionStoreMarkedDeleting: 1}
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, func() time.Time { return time.Now().UTC().Add(time.Hour) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "admin", StoreID: store.ID(), ExpectedVersion: store.Version(), OperationKey: uuid.NewString()}
+	if _, err := service.Delete(context.Background(), first); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Delete() = %v", err)
+	}
+	deleting, err := repository.Get(context.Background(), "org-a", store.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumed := first
+	resumed.ExpectedVersion = deleting.Version()
+	resumed.OperationKey = uuid.NewString()
+	result, err := service.Delete(context.Background(), resumed)
+	if err != nil || result.Version != deleting.Version()+1 || !result.Replayed {
+		t.Fatalf("new-key recovery Delete() = %#v, %v", result, err)
+	}
+}
+
 // Controller contract: only the exact same operation key may retry with the
 // original pre-delete version after the durable begin-delete Save advanced it
 // once. The companion test above covers retrying with the current version.
@@ -1999,12 +2027,17 @@ type quotaLedgerFake struct {
 	deallocateCalls                         int
 }
 
-func (f *quotaLedgerFake) Reserve(_ context.Context, _ listingsubscription.StoreQuotaReserveInput) (listingsubscription.StoreQuotaReserveResult, error) {
+func (f *quotaLedgerFake) Reserve(_ context.Context, input listingsubscription.StoreQuotaReserveInput) (listingsubscription.StoreQuotaReserveResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.reserveCalls++
 	if f.reserveErr != nil {
 		return listingsubscription.StoreQuotaReserveResult{}, f.reserveErr
+	}
+	if f.allocation.RequestFingerprint == "" {
+		f.allocation.RequestFingerprint = input.RequestFingerprint
+	} else if f.allocation.RequestFingerprint != input.RequestFingerprint {
+		return listingsubscription.StoreQuotaReserveResult{}, listingsubscription.ErrStoreQuotaIdentityMismatch
 	}
 	return listingsubscription.StoreQuotaReserveResult{Allocation: f.allocation, AllocationID: f.allocation.AllocationID, StoreID: f.allocation.StoreID, Existing: f.reserveCalls > 1}, nil
 }

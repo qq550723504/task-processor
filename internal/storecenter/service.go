@@ -122,11 +122,12 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 	if err != nil {
 		return CreateStoreResult{}, err
 	}
-	reserved, err := s.quota.Reserve(ctx, listingsubscription.StoreQuotaReserveInput{OrganizationID: request.OrganizationID, RequestKey: request.IdempotencyKey, ActorSubject: request.ActorSubject})
+	requestFingerprint := createQuotaRequestFingerprint(request)
+	reserved, err := s.quota.Reserve(ctx, listingsubscription.StoreQuotaReserveInput{OrganizationID: request.OrganizationID, RequestKey: request.IdempotencyKey, ActorSubject: request.ActorSubject, RequestFingerprint: requestFingerprint})
 	if err != nil {
 		return CreateStoreResult{}, mapQuotaError(err)
 	}
-	allocation, err := validateReserveResult(request, reserved)
+	allocation, err := validateReserveResult(request, requestFingerprint, reserved)
 	if err != nil {
 		return CreateStoreResult{}, dependencyError(err)
 	}
@@ -498,7 +499,24 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 		return DeleteStoreResult{}, dependencyError(getErr)
 	}
 	replayed := false
-	resumingSameOperation := store.LifecycleStatus() == StoreStatusDeleting && store.DeleteOperationKey() == normalized.OperationKey && (store.Version() == normalized.ExpectedVersion || store.Version() == normalized.ExpectedVersion+1)
+	if store.LifecycleStatus() == StoreStatusDeleting {
+		persistedOperationKey := store.DeleteOperationKey()
+		if _, err := canonicalUUID(persistedOperationKey); err != nil {
+			return DeleteStoreResult{}, dependencyError(err)
+		}
+		if persistedOperationKey != normalized.OperationKey {
+			// A fresh client may recover only the narrow window after the
+			// versioned save and before the marked-deleting audit. Once that
+			// audit exists, a different operation key is a real conflict.
+			if _, err := s.audit.Get(ctx, normalized.OrganizationID, persistedOperationKey, AuditActionStoreMarkedDeleting); err == nil {
+				return DeleteStoreResult{}, ErrInvalidTransition
+			} else if !errors.Is(err, ErrNotFound) {
+				return DeleteStoreResult{}, dependencyError(err)
+			}
+			normalized.OperationKey = persistedOperationKey
+		}
+	}
+	resumingSameOperation := store.LifecycleStatus() == StoreStatusDeleting && (store.Version() == normalized.ExpectedVersion || store.Version() == normalized.ExpectedVersion+1)
 	if store.Version() != normalized.ExpectedVersion && !resumingSameOperation {
 		return DeleteStoreResult{}, ErrVersionConflict
 	}
@@ -507,9 +525,6 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 	}
 	previous := LifecycleStatus("")
 	if store.LifecycleStatus() == StoreStatusDeleting {
-		if store.DeleteOperationKey() != normalized.OperationKey {
-			return DeleteStoreResult{}, ErrInvalidTransition
-		}
 		started, auditErr := s.audit.Get(ctx, normalized.OrganizationID, normalized.OperationKey, AuditActionDeleteStarted)
 		if auditErr != nil || validateDeleteAudit(started, normalized, AuditActionDeleteStarted) != nil || started.AllocationID != store.QuotaAllocationID() {
 			return DeleteStoreResult{}, dependencyError(auditErr)
@@ -862,9 +877,9 @@ func (s *Service) record(ctx context.Context, allocation listingsubscription.Sto
 	return err
 }
 
-func validateReserveResult(request CreateStoreRequest, reserved listingsubscription.StoreQuotaReserveResult) (listingsubscription.StoreQuotaAllocation, error) {
+func validateReserveResult(request CreateStoreRequest, requestFingerprint string, reserved listingsubscription.StoreQuotaReserveResult) (listingsubscription.StoreQuotaAllocation, error) {
 	a := reserved.Allocation
-	if a.OrganizationID != request.OrganizationID || a.RequestKey != request.IdempotencyKey || a.AllocationID != reserved.AllocationID || a.StoreID != reserved.StoreID || a.Status == "" {
+	if a.OrganizationID != request.OrganizationID || a.RequestKey != request.IdempotencyKey || a.RequestFingerprint != requestFingerprint || a.AllocationID != reserved.AllocationID || a.StoreID != reserved.StoreID || a.Status == "" {
 		return listingsubscription.StoreQuotaAllocation{}, errors.New("quota reservation identity mismatch")
 	}
 	if _, err := canonicalUUID(a.AllocationID); err != nil {
@@ -875,6 +890,10 @@ func validateReserveResult(request CreateStoreRequest, reserved listingsubscript
 	}
 	return a, nil
 }
+func createQuotaRequestFingerprint(request CreateStoreRequest) string {
+	return hashTuple("store-create-reservation", request.OrganizationID, request.Name, request.Platform, request.Region, request.ExternalStoreID)
+}
+
 func validateTransitionAllocation(a listingsubscription.StoreQuotaAllocation, input listingsubscription.StoreQuotaTransitionInput, status listingsubscription.StoreQuotaAllocationStatus) error {
 	if a.OrganizationID != input.OrganizationID || a.AllocationID != input.AllocationID || a.StoreID != input.StoreID || a.RequestKey != input.RequestKey || a.Status != status {
 		return errors.New("quota transition identity mismatch")
@@ -897,6 +916,9 @@ func mapQuotaError(err error) error {
 	}
 	if errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
 		return fmt.Errorf("%w", listingsubscription.ErrSubscriptionRequired)
+	}
+	if errors.Is(err, listingsubscription.ErrStoreQuotaIdentityMismatch) {
+		return ErrAlreadyExists
 	}
 	return dependencyError(err)
 }

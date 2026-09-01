@@ -24,6 +24,7 @@ const STORE_QUERY_MAX_BYTES = 2 * 1024;
 
 export type WorkbenchResponseContract =
   | "context"
+  | "context-switch"
   | "store-list"
   | "store-create"
   | "store-item"
@@ -176,7 +177,7 @@ const workbenchRouteAllowlist = [
   routeDefinition("GET", "context-get", "context", (path) =>
     exactPath(path, "context") ? "context" : null,
   ),
-  routeDefinition("PUT", "context-switch", "context", (path) =>
+  routeDefinition("PUT", "context-switch", "context-switch", (path) =>
     exactPath(path, "context", "effective-organization")
       ? "context/effective-organization"
       : null,
@@ -421,7 +422,7 @@ export async function buildWorkbenchBrowserResponse(
     headers: safeJSONHeaders(),
   });
 
-  if (contract === "context") {
+  if (contract === "context" || contract === "context-switch") {
     const effectiveOrganizationId = validatedPayload.effectiveOrganizationId;
     if (effectiveOrganizationId) {
       response.cookies.set(WORKBENCH_COOKIE_NAME, String(effectiveOrganizationId), {
@@ -988,7 +989,7 @@ function parseSuccessfulPayload(
   body: ParsedJSONBody | null,
 ): Record<string, unknown> | null {
   if (!body) return null;
-  if (contract === "context") {
+  if (contract === "context" || contract === "context-switch") {
     if (status !== 200) return null;
     const parsed = parseWorkbenchContextPayload(body.payload);
     return parsed.success ? parsed.data : null;

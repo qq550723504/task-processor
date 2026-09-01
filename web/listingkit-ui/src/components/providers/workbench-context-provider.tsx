@@ -149,6 +149,10 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       error: queryError,
       blockingError,
       retry: () => {
+        // Manual refetch works while the query is disabled. Keep it disabled
+        // after a switch so exactly one response replaces switchedContext.
+        setSwitchedContext(null);
+        setBlockingError(null);
         void contextQuery.refetch();
       },
       switchOrganization,

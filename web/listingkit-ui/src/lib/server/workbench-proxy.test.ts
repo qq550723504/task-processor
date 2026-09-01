@@ -628,6 +628,7 @@ describe("buildWorkbenchBrowserResponse", () => {
         },
         { status: 403 },
       ),
+      "context-switch",
     );
 
     expect(response.headers.get("Set-Cookie")).toBeNull();

@@ -42,9 +42,8 @@ function ContextProbe() {
       <p>organization:{context.effectiveOrganization?.name ?? "none"}</p>
       <p>roles:{context.roles.join(",") || "none"}</p>
       <p>selection:{String(context.selectionRequired)}</p>
-      <button onClick={() => context.switchOrganization("org-b")}>
-        switch
-      </button>
+      <button onClick={() => context.switchOrganization("org-b")}>switch</button>
+      <button onClick={context.retry}>retry</button>
     </div>
   );
 }
@@ -165,6 +164,32 @@ describe("WorkbenchContextProvider", () => {
     expect(sentinelStateWhenNextContextWasInstalled.length).toBeGreaterThan(0);
     expect(sentinelStateWhenNextContextWasInstalled).not.toContain("old-data");
     unsubscribe();
+  });
+
+  it("makes a successful retry authoritative after an explicit switch", async () => {
+    const refreshed = {
+      ...ORG_A_CONTEXT,
+      effectiveOrganizationId: null,
+      selectionRequired: true,
+      organizations: ORG_A_CONTEXT.organizations,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(ORG_A_CONTEXT))
+      .mockResolvedValueOnce(Response.json(ORG_B_CONTEXT))
+      .mockResolvedValueOnce(Response.json(refreshed));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderProvider();
+    await screen.findByText("organization:硕米科技");
+    await userEvent.click(screen.getByRole("button", { name: "switch" }));
+    await screen.findByText("organization:星海贸易");
+    await userEvent.click(screen.getByRole("button", { name: "retry" }));
+
+    expect(await screen.findByText("organization:none")).toBeInTheDocument();
+    expect(screen.getByText("roles:none")).toBeInTheDocument();
+    expect(screen.getByText("selection:true")).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
   });
 
   it("clears scoped state and exposes a blocking error after an explicit switch rejection", async () => {

@@ -2,6 +2,7 @@ package listingsubscription
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -32,9 +33,10 @@ const (
 )
 
 type StoreQuotaReserveInput struct {
-	OrganizationID string
-	RequestKey     string
-	ActorSubject   string
+	OrganizationID     string
+	RequestKey         string
+	ActorSubject       string
+	RequestFingerprint string
 }
 
 type StoreQuotaTransitionInput struct {
@@ -46,17 +48,18 @@ type StoreQuotaTransitionInput struct {
 }
 
 type StoreQuotaAllocation struct {
-	OrganizationID string
-	AllocationID   string
-	StoreID        string
-	RequestKey     string
-	Status         StoreQuotaAllocationStatus
-	CreatedBy      string
-	UpdatedBy      string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	AllocatedAt    *time.Time
-	ReleasedAt     *time.Time
+	OrganizationID     string
+	AllocationID       string
+	StoreID            string
+	RequestKey         string
+	RequestFingerprint string
+	Status             StoreQuotaAllocationStatus
+	CreatedBy          string
+	UpdatedBy          string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	AllocatedAt        *time.Time
+	ReleasedAt         *time.Time
 }
 
 type StoreQuotaReserveResult struct {
@@ -120,6 +123,9 @@ func NormalizeAndValidateStoreQuotaReserveInput(input StoreQuotaReserveInput) (S
 	if err := validateStoreQuotaText(input.ActorSubject, "actor_subject"); err != nil {
 		return StoreQuotaReserveInput{}, err
 	}
+	if input.RequestFingerprint != "" && !isLowerHexSHA256(input.RequestFingerprint) {
+		return StoreQuotaReserveInput{}, &StoreQuotaValidationError{Field: "request_fingerprint"}
+	}
 	return input, nil
 }
 
@@ -136,6 +142,14 @@ func normalizeAndValidateStoreQuotaTransitionInput(input StoreQuotaTransitionInp
 		return StoreQuotaTransitionInput{}, err
 	}
 	return input, nil
+}
+
+func isLowerHexSHA256(value string) bool {
+	if len(value) != 64 || strings.ToLower(value) != value {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 32
 }
 
 func validateStoreQuotaText(value, field string) error {

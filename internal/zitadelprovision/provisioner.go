@@ -346,11 +346,12 @@ func ProvisionLocalMultiOrganizationAcceptance(ctx context.Context, cfg Config, 
 	client := newClient(cfg)
 	organizationIDs := make(map[string]string, len(normalizedSpec.Organizations))
 	for index, requested := range normalizedSpec.Organizations {
-		stableID := acceptanceOrganizationIDs[index]
-		if ensureErr := client.ensureAcceptanceOrganization(ctx, stableID, requested.Name); ensureErr != nil {
+		preferredID := acceptanceOrganizationIDs[index]
+		organizationID, ensureErr := client.ensureAcceptanceOrganization(ctx, preferredID, requested.Name)
+		if ensureErr != nil {
 			return MultiOrganizationAcceptanceResult{}, ensureErr
 		}
-		organizationIDs[requested.Name] = stableID
+		organizationIDs[requested.Name] = organizationID
 	}
 
 	for _, requested := range normalizedSpec.Organizations {
@@ -633,7 +634,7 @@ func findApplicationByType(applications []applicationRecord, name string, kind a
 func validateLocalIssuer(raw string) error {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
-		parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return errors.New("local ZITADEL issuer URL is invalid")
 	}
 	host := strings.ToLower(parsed.Hostname())
@@ -985,13 +986,11 @@ func (c client) findOrganizationByName(ctx context.Context, name string) (organi
 	return matches[0], true, nil
 }
 
-func (c client) createOrganization(ctx context.Context, organizationID, name string) (string, error) {
+func (c client) createOrganization(ctx context.Context, name string) (string, error) {
 	var response struct {
 		OrganizationID string `json:"organizationId"`
 	}
-	if err := c.doJSON(ctx, http.MethodPost, "/v2/organizations", map[string]any{
-		"name": name, "organizationId": organizationID, "orgId": organizationID,
-	}, &response); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/v2/organizations", map[string]any{"name": name}, &response); err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(response.OrganizationID) == "" {
@@ -1004,72 +1003,67 @@ func (c client) activateOrganization(ctx context.Context, organizationID string)
 	return c.doJSON(ctx, http.MethodPost, "/v2/organizations/"+url.PathEscape(organizationID)+"/activate", nil, &struct{}{})
 }
 
-func (c client) ensureAcceptanceOrganization(ctx context.Context, organizationID, name string) error {
-	existing, found, err := c.findOrganizationByID(ctx, organizationID)
+func (c client) ensureAcceptanceOrganization(ctx context.Context, preferredOrganizationID, name string) (string, error) {
+	existing, found, err := c.findOrganizationByID(ctx, preferredOrganizationID)
 	if err != nil {
-		return fmt.Errorf("find acceptance organization by stable id: %w", err)
+		return "", fmt.Errorf("find acceptance organization by preferred id: %w", err)
+	}
+	if found && strings.TrimSpace(existing.Name) != name {
+		return "", errors.New("preferred acceptance organization id is owned by a different organization")
 	}
 	if !found {
-		nameMatch, nameFound, nameErr := c.findOrganizationByName(ctx, name)
-		if nameErr != nil {
-			return fmt.Errorf("check acceptance organization name ownership: %w", nameErr)
+		existing, found, err = c.findOrganizationByName(ctx, name)
+		if err != nil {
+			return "", fmt.Errorf("check acceptance organization name ownership: %w", err)
 		}
-		if nameFound && strings.TrimSpace(nameMatch.ID) != organizationID {
-			return errors.New("organization with the same name is not owned by this acceptance provisioner")
-		}
-		createdID, createErr := c.createOrganization(ctx, organizationID, name)
-		if createErr != nil && !isProviderConflict(createErr) {
-			return fmt.Errorf("create acceptance organization: %w", createErr)
-		}
-		if createErr == nil && createdID != organizationID {
-			return errors.New("ZITADEL did not honor the stable acceptance organization id")
-		}
-		matched, readErr := waitForAcceptanceReadBack(ctx, func() (bool, error) {
-			existing, found, err = c.findOrganizationByID(ctx, organizationID)
-			if err != nil || !found {
-				return false, err
+		if !found {
+			createdID, createErr := c.createOrganization(ctx, name)
+			if createErr != nil && !isProviderConflict(createErr) {
+				return "", fmt.Errorf("create acceptance organization: %w", createErr)
 			}
-			if strings.TrimSpace(existing.Name) != name {
-				return false, errors.New("acceptance organization ownership read-back did not match")
+			matched, readErr := waitForAcceptanceReadBack(ctx, func() (bool, error) {
+				if createErr == nil {
+					existing, found, err = c.findOrganizationByID(ctx, createdID)
+				} else {
+					existing, found, err = c.findOrganizationByName(ctx, name)
+				}
+				return found && strings.TrimSpace(existing.Name) == name, err
+			})
+			if readErr != nil {
+				return "", fmt.Errorf("read back created acceptance organization: %w", readErr)
 			}
-			return true, nil
-		})
-		if readErr != nil {
-			return fmt.Errorf("read back created acceptance organization: %w", readErr)
-		}
-		if !matched {
-			return errors.New("acceptance organization ownership read-back did not match")
+			if !matched {
+				return "", errors.New("acceptance organization ownership read-back did not match")
+			}
 		}
 	}
-	if !found || strings.TrimSpace(existing.Name) != name {
-		return errors.New("acceptance organization ownership read-back did not match")
+	organizationID := strings.TrimSpace(existing.ID)
+	if organizationID == "" || strings.TrimSpace(existing.Name) != name {
+		return "", errors.New("acceptance organization ownership read-back did not match")
 	}
 	switch existing.State {
 	case "ORGANIZATION_STATE_ACTIVE":
-		return nil
+		return organizationID, nil
 	case "ORGANIZATION_STATE_INACTIVE", "ORGANIZATION_STATE_DEACTIVATED":
 		if err := c.activateOrganization(ctx, organizationID); err != nil {
-			return fmt.Errorf("activate acceptance organization: %w", err)
+			return "", fmt.Errorf("activate acceptance organization: %w", err)
 		}
 		matched, readErr := waitForAcceptanceReadBack(ctx, func() (bool, error) {
 			existing, found, err = c.findOrganizationByID(ctx, organizationID)
-			if err != nil || !found {
+			if err != nil || !found || strings.TrimSpace(existing.Name) != name {
 				return false, err
-			}
-			if strings.TrimSpace(existing.Name) != name {
-				return false, errors.New("acceptance organization activation read-back did not match")
 			}
 			return existing.State == "ORGANIZATION_STATE_ACTIVE", nil
 		})
 		if readErr != nil {
-			return fmt.Errorf("read back activated acceptance organization: %w", readErr)
+			return "", fmt.Errorf("read back activated acceptance organization: %w", readErr)
 		}
 		if !matched {
-			return errors.New("acceptance organization activation read-back did not match")
+			return "", errors.New("acceptance organization activation read-back did not match")
 		}
-		return nil
+		return organizationID, nil
 	default:
-		return errors.New("acceptance organization is not active")
+		return "", errors.New("acceptance organization is not active")
 	}
 }
 
