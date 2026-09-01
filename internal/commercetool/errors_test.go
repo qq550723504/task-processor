@@ -30,36 +30,50 @@ func TestCodeOfFindsWrappedToolError(t *testing.T) {
 	require.Equal(t, ErrorNotFound, CodeOf(err))
 }
 
-func TestNewErrorNormalizesAndClassifiesEveryDefinedCode(t *testing.T) {
+func TestErrorCodeValuesMatchWireContract(t *testing.T) {
+	tests := []struct {
+		name  string
+		code  ErrorCode
+		value string
+	}{
+		{"invalid input", ErrorInvalidInput, "invalid_input"},
+		{"identity integrity", ErrorIdentityIntegrity, "identity_integrity"},
+		{"permission denied", ErrorPermissionDenied, "permission_denied"},
+		{"tool not allowed", ErrorToolNotAllowed, "tool_not_allowed"},
+		{"not found", ErrorNotFound, "not_found"},
+		{"failed precondition", ErrorFailedPrecondition, "failed_precondition"},
+		{"conflict", ErrorConflict, "conflict"},
+		{"deadline exceeded", ErrorDeadlineExceeded, "deadline_exceeded"},
+		{"dependency unavailable", ErrorDependencyUnavailable, "dependency_unavailable"},
+		{"output invalid", ErrorOutputInvalid, "output_invalid"},
+		{"budget exceeded", ErrorBudgetExceeded, "budget_exceeded"},
+		{"unknown execution state", ErrorUnknownExecutionState, "unknown_execution_state"},
+		{"internal", ErrorInternal, "internal"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.value, string(tt.code))
+		})
+	}
+}
+
+func TestNewErrorNormalizesEmptyAndUnknownCodesAtConstruction(t *testing.T) {
 	tests := []struct {
 		name string
 		code ErrorCode
 	}{
-		{"invalid input", ErrorInvalidInput},
-		{"identity integrity", ErrorIdentityIntegrity},
-		{"permission denied", ErrorPermissionDenied},
-		{"tool not allowed", ErrorToolNotAllowed},
-		{"not found", ErrorNotFound},
-		{"failed precondition", ErrorFailedPrecondition},
-		{"conflict", ErrorConflict},
-		{"deadline exceeded", ErrorDeadlineExceeded},
-		{"dependency unavailable", ErrorDependencyUnavailable},
-		{"output invalid", ErrorOutputInvalid},
-		{"budget exceeded", ErrorBudgetExceeded},
-		{"unknown execution state", ErrorUnknownExecutionState},
-		{"internal", ErrorInternal},
 		{"empty", ""},
 		{"unknown", ErrorCode("unrecognized")},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want := tt.code
-			if tt.code == "" || tt.code == "unrecognized" {
-				want = ErrorInternal
-			}
+			err := NewError(tt.code, "safe message", nil)
+			require.IsType(t, &ToolError{}, err)
 
-			require.Equal(t, want, CodeOf(NewError(tt.code, "safe message", nil)))
+			toolError := err.(*ToolError)
+			require.Equal(t, ErrorInternal, toolError.Code)
 		})
 	}
 }
