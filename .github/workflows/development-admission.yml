@@ -9,11 +9,11 @@ on:
       - edited
       - labeled
       - unlabeled
-  pull_request_review:
+  workflow_run:
+    workflows:
+      - Development Admission Review Signal
     types:
-      - submitted
-      - edited
-      - dismissed
+      - completed
 
 permissions:
   contents: read
@@ -42,10 +42,14 @@ jobs:
         with:
           script: |
             const guard = require("./.github/scripts/pr-scope-guard.cjs");
+            const pullRequestNumber = guard.pullRequestNumberFromEventPayload(
+              context.eventName,
+              context.payload,
+            );
             const pullRequestRequest = {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number,
+              pull_number: pullRequestNumber,
             };
             const repositoryRequest = {
               owner: context.repo.owner,

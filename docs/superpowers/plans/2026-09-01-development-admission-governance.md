@@ -166,7 +166,7 @@ must be separate and trusted.
 
 - [x] **Step 2: Add workflow enforcement**
 
-Keep the ordinary CI workflow read-only for repository contents and add the new trusted workflow path to both push and pull-request filters. Add the trusted workflow with `contents: read`, `issues: read`, `pull-requests: read`, and `statuses: write`, no path filter, `pull_request_target` activity types `opened`, `synchronize`, `reopened`, `edited`, `labeled`, and `unlabeled`, and `pull_request_review` activity types `submitted`, `edited`, and `dismissed`.
+Keep the ordinary CI workflow read-only for repository contents and add the new trusted workflow paths to both push and pull-request filters. Add the trusted workflow with `contents: read`, `issues: read`, `pull-requests: read`, and `statuses: write`, no path filter, and `pull_request_target` activity types `opened`, `synchronize`, `reopened`, `edited`, `labeled`, and `unlabeled`. Add a separate `Development Admission Review Signal` workflow with no permissions for `pull_request_review` activity types `submitted`, `edited`, and `dismissed`; the trusted evaluator receives those events through `workflow_run`, derives the PR number from exactly one associated pull request, and never consumes PR-provided artifacts.
 
 Keep only the proposed-policy test job in `ci.yml` and add this structure to `.github/workflows/development-admission.yml`:
 

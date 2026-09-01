@@ -229,6 +229,13 @@ trusted workflow is a bootstrap exception that requires maintainer review; after
 merge, branch protection must require the `Development Admission` commit-status
 context for the guard to block merges.
 
+Review changes are delivered through a separate read-only
+`Development Admission Review Signal` workflow. The privileged evaluator
+receives that workflow's completion through `workflow_run`, requires exactly
+one associated pull request, and re-reads the PR from the API. It does not
+consume artifacts or execute PR-provided code. This keeps fork and Dependabot
+review events from attempting status writes with a read-only token.
+
 The admission evaluator's failure matrix is:
 
 | Boundary | Durable state after failure | Retry identity and result | Recovery owner | Verification |
@@ -236,7 +243,7 @@ The admission evaluator's failure matrix is:
 | PR metadata, review, or event read fails | No new status is trusted; any prior status is not refreshed | The PR number and current test-merge SHA identify the next run; retry on the next PR/review event or manual rerun | GitHub Actions and maintainer | API-error and timeout path |
 | Any PR input changes between snapshots | The old target receives `error` when possible; no success is published for the stale snapshot | Same PR event is retried against the newly fetched head/base/merge/review state | Per-PR serialized evaluator | Moving-snapshot tests |
 | Status publish fails | Evaluation result is not considered authoritative | Retry the same PR event; no local write can substitute for the missing repository status | GitHub Actions/GitHub status service | Status-write failure path |
-| Review approval, label, or maintainer role is revoked | The next review event evaluates as blocked and publishes `failure` when the token permits it | Current head plus latest review state is re-read; stale approval is never reused | Trusted evaluator, with branch protection/ruleset as final owner | Dismissed-review, label, and role-change tests |
+| Review approval, label, or maintainer role is revoked | The read-only review signal completes and the trusted `workflow_run` evaluator publishes `failure` | Current head plus latest review state is re-read; stale approval is never reused | Trusted evaluator, with branch protection/ruleset as final owner | Dismissed-review, label, and role-change tests |
 
 The current repository has no branch-protection required status check or ruleset;
 the rollout must enable the `Development Admission` status after this workflow
@@ -286,9 +293,11 @@ Add the authoritative `development-admission` job to the dedicated
 PR changing any repository path is evaluated. Use `pull_request_target` so the
 workflow and checked-out policy come from the trusted default branch, and include
 label and `edited` activity types so adding or removing `architecture-approved`
-or retargeting immediately re-evaluates the same PR. Also trigger on
-`pull_request_review` `submitted`, `edited`, and `dismissed` events so approval
-and revocation cannot leave a stale result. Use `concurrency` per PR to serialize
+or retargeting immediately re-evaluates the same PR. Add a separate review
+signal workflow with no permissions for `pull_request_review` `submitted`,
+`edited`, and `dismissed`; trigger the trusted evaluator on that workflow's
+`workflow_run` completion so approval and revocation cannot leave a stale
+result even for fork or Dependabot PRs. Use `concurrency` per PR to serialize
 evaluations and give the job a bounded deadline. Publish the decision as the fixed `Development
 Admission` commit-status context on the PR's `merge_commit_sha`, because the
 workflow job's automatic check is attached to the default-branch SHA and a
@@ -322,7 +331,8 @@ Implementation verification must include:
   `pull-requests: read`, and `statuses: write`, does not execute pull-request code, publishes
   status only to the current `merge_commit_sha`, verifies current-head review
   authorization before applying an override, and does not mutate labels or pull
-  requests;
+  requests; confirm the review signal has no write permissions and the
+  `workflow_run` evaluator accepts exactly one associated PR;
 - `git diff --check` and the focused Go or JavaScript tests owning the new
   guard behavior.
 
