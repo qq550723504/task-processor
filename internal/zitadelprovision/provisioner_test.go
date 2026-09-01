@@ -1022,7 +1022,9 @@ func TestProvisionLocalMultiOrganizationAcceptanceRecoversCreateConflictsByReadB
 func TestEnsureAcceptanceOrganizationHandlesConcurrentCreateConflict(t *testing.T) {
 	var mu sync.Mutex
 	initialIDReads := 0
-	initialReadsDone := make(chan struct{})
+	initialIDReadsDone := make(chan struct{})
+	initialNameReads := 0
+	initialNameReadsDone := make(chan struct{})
 	created := false
 	createCalls := 0
 
@@ -1035,6 +1037,16 @@ func TestEnsureAcceptanceOrganizationHandlesConcurrentCreateConflict(t *testing.
 			query, _ := queries[0].(map[string]any)
 			if nameQuery, isName := query["nameQuery"].(map[string]any); isName {
 				mu.Lock()
+				if !created && initialNameReads < 2 {
+					initialNameReads++
+					if initialNameReads == 2 {
+						close(initialNameReadsDone)
+					}
+					mu.Unlock()
+					<-initialNameReadsDone
+					writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 0}, "result": []any{}})
+					return
+				}
 				isCreated := created
 				mu.Unlock()
 				if isCreated && nameQuery["name"] == "Acceptance Organization A" {
@@ -1049,10 +1061,10 @@ func TestEnsureAcceptanceOrganizationHandlesConcurrentCreateConflict(t *testing.
 				if !created && initialIDReads < 2 {
 					initialIDReads++
 					if initialIDReads == 2 {
-						close(initialReadsDone)
+						close(initialIDReadsDone)
 					}
 					mu.Unlock()
-					<-initialReadsDone
+					<-initialIDReadsDone
 					writeJSON(t, w, map[string]any{"details": map[string]any{"totalResult": 0}, "result": []any{}})
 					return
 				}
