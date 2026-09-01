@@ -3,6 +3,7 @@ package storecenter
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -101,30 +102,40 @@ func (r *GormStoreRepository) List(ctx context.Context, organizationID string, q
 	if err != nil {
 		return StorePage{}, err
 	}
-	base := r.scopedActiveRecords(ctx, organizationID)
-	if query.Platform != "" {
-		base = base.Where("platform = ?", string(query.Platform))
-	}
-	if query.Status != "" {
-		base = base.Where("lifecycle_status = ?", string(query.Status))
-	}
-	var total int64
-	if err := base.Count(&total).Error; err != nil {
-		return StorePage{}, fmt.Errorf("count workbench stores: %w", err)
-	}
-	var records []workbenchStoreRecord
-	if err := base.Order("updated_at DESC").Order("id ASC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&records).Error; err != nil {
-		return StorePage{}, fmt.Errorf("list workbench stores: %w", err)
-	}
-	stores := make([]Store, 0, len(records))
-	for _, record := range records {
-		store, err := rehydrateRecord(record)
-		if err != nil {
-			return StorePage{}, fmt.Errorf("rehydrate workbench store: %w", err)
+	var result StorePage
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		base := tx.Model(&workbenchStoreRecord{}).
+			Where("organization_id = ?", organizationID).
+			Where("deleted_at IS NULL")
+		if query.Platform != "" {
+			base = base.Where("platform = ?", string(query.Platform))
 		}
-		stores = append(stores, *store)
+		if query.Status != "" {
+			base = base.Where("lifecycle_status = ?", string(query.Status))
+		}
+		var total int64
+		if err := base.Count(&total).Error; err != nil {
+			return fmt.Errorf("count workbench stores: %w", err)
+		}
+		var records []workbenchStoreRecord
+		if err := base.Order("updated_at DESC").Order("id ASC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&records).Error; err != nil {
+			return fmt.Errorf("list workbench stores: %w", err)
+		}
+		stores := make([]Store, 0, len(records))
+		for _, record := range records {
+			store, err := rehydrateRecord(record)
+			if err != nil {
+				return fmt.Errorf("rehydrate workbench store: %w", err)
+			}
+			stores = append(stores, *store)
+		}
+		result = StorePage{Stores: stores, Total: total}
+		return nil
+	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	if err != nil {
+		return StorePage{}, err
 	}
-	return StorePage{Stores: stores, Total: total}, nil
+	return result, nil
 }
 
 func (r *GormStoreRepository) Get(ctx context.Context, organizationID string, storeID string) (*Store, error) {

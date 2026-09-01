@@ -65,6 +65,30 @@ func TestValidateWorkbenchZitadelConfigAllowsDisabledOrCompleteConfiguration(t *
 	))
 }
 
+func TestValidateWorkbenchZitadelConfigRejectsUnsupportedAuthorizationAPIURL(t *testing.T) {
+	for _, raw := range []string{
+		"authorization.example",
+		"ftp://authorization.example",
+		"https://",
+		"https://authorization.example/%zz",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			errors := ValidateWorkbenchConfig(
+				&WorkbenchConfig{Enabled: true},
+				&ListingKitZitadelConfig{
+					ProjectID:           "project-1",
+					IssuerURL:           "https://issuer.example",
+					AuthorizationAPIURL: raw,
+					ClientID:            "client-1",
+				},
+			)
+			require.Len(t, errors, 1)
+			assert.Contains(t, errors[0].Error(), "authorizationAPIURL")
+			assert.Contains(t, errors[0].Error(), "absolute HTTP(S)")
+		})
+	}
+}
+
 func TestConfigValidateWithErrorIncludesWorkbenchZitadelConfig(t *testing.T) {
 	cfg := NewDefaultConfig()
 	cfg.OpenAI.APIKey = "test-openai-key"

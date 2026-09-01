@@ -505,15 +505,12 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 			return DeleteStoreResult{}, dependencyError(err)
 		}
 		if persistedOperationKey != normalized.OperationKey {
-			// A fresh client may recover only the narrow window after the
-			// versioned save and before the marked-deleting audit. Once that
-			// audit exists, a different operation key is a real conflict.
-			if _, err := s.audit.Get(ctx, normalized.OrganizationID, persistedOperationKey, AuditActionStoreMarkedDeleting); err == nil {
-				return DeleteStoreResult{}, ErrInvalidTransition
-			} else if !errors.Is(err, ErrNotFound) {
-				return DeleteStoreResult{}, dependencyError(err)
-			}
+			// The persisted key is the durable ownership record. A client may
+			// lose its original key after a downstream failure, so recovery must
+			// continue the durable operation instead of leaving the Store stuck
+			// in deleting with its quota already released.
 			normalized.OperationKey = persistedOperationKey
+			replayed = true
 		}
 	}
 	resumingSameOperation := store.LifecycleStatus() == StoreStatusDeleting && (store.Version() == normalized.ExpectedVersion || store.Version() == normalized.ExpectedVersion+1)

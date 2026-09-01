@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { WorkbenchAPIError, type WorkbenchStore } from "@/lib/api/workbench-stores";
 import { useWorkbenchStore } from "@/lib/query/use-workbench-stores";
 import type { WorkbenchStoreUpdateInput } from "@/lib/validation/workbench-store";
+import { canUpdateWorkbenchStore } from "@/lib/workbench/permissions";
 
 type RecoveryState =
   | { state: "idle" }
@@ -39,13 +40,12 @@ export function StoreDetailPage({ storeId }: { storeId: string }) {
   return (
     <StoreDetailContent
       key={`${organizationId}:${storeId}`}
-      canUpdate={context.roles.some((role) => updateRoles.has(role))}
+      canUpdate={canUpdateWorkbenchStore(context.roles)}
       storeId={storeId}
     />
   );
 }
 
-const updateRoles = new Set(["listingkit_operator", "listingkit_admin", "platform_admin"]);
 const lifecycleLabels: Record<WorkbenchStore["lifecycleStatus"], string> = {
   provisioning: "开通中",
   active: "已启用",
@@ -90,7 +90,7 @@ function StoreDetailContent({ canUpdate, storeId }: { canUpdate: boolean; storeI
       <div className="mt-4"><StoreLifecycleActions onDeleted={() => router.push("/workbench/stores?notice=store-deleted")} onRefreshStore={refreshLifecycleStore} onStoreUpdated={(next) => { setDisplayedStore(next); setRecovery({ state: "idle" }); }} store={store} /></div>
     </section>
     {recovery.state === "failed" ? <section className="mx-auto mt-6 max-w-2xl rounded-xl border bg-card p-4" role="alert"><p>无法确认店铺最新版本，草稿已保留。</p><Button className="mt-3" onClick={() => void loadLatest(recovery.draft, recovery.base)} variant="outline">重试获取最新版本</Button></section> : null}
-    {canUpdate && store.lifecycleStatus !== "deleting" ? <StoreForm conflict={recovery.state === "ready" ? { latest: recovery.latest, changedFields: recovery.changedFields } : null} mode="edit" onConflict={(draft, baseline) => void loadLatest(draft, baseline)} onSaved={(next) => { setDisplayedStore(next); setRecovery({ state: "idle" }); }} recoveryState={recovery.state === "loading" || recovery.state === "failed" ? recovery.state : "idle"} store={store} /> : null}
+    {canUpdate && (store.lifecycleStatus === "active" || store.lifecycleStatus === "disabled") ? <StoreForm conflict={recovery.state === "ready" ? { latest: recovery.latest, changedFields: recovery.changedFields } : null} mode="edit" onConflict={(draft, baseline) => void loadLatest(draft, baseline)} onSaved={(next) => { setDisplayedStore(next); setRecovery({ state: "idle" }); }} recoveryState={recovery.state === "loading" || recovery.state === "failed" ? recovery.state : "idle"} store={store} /> : null}
   </>;
 }
 

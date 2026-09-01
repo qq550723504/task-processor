@@ -1212,13 +1212,12 @@ func TestServiceDeleteDeallocationFailureLeavesOwnedDeletingStoreAndSameKeyResum
 	wrong := first
 	wrong.ExpectedVersion = deleting.Version()
 	wrong.OperationKey = uuid.NewString()
-	if _, err := service.Delete(context.Background(), wrong); !errors.Is(err, storecenter.ErrInvalidTransition) {
-		t.Fatalf("wrong-key Delete() = %v", err)
+	if _, err := service.Delete(context.Background(), wrong); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("recovery before quota is available = %v", err)
 	}
 	ledger.deallocateErr = nil
-	first.ExpectedVersion = deleting.Version()
-	result, err := service.Delete(context.Background(), first)
-	if err != nil || result.Version != deleting.Version()+1 || repository.saveCalls != 1 || ledger.deallocateCalls != 2 {
+	result, err := service.Delete(context.Background(), wrong)
+	if err != nil || result.Version != deleting.Version()+1 || repository.saveCalls != 1 || ledger.deallocateCalls != 3 {
 		t.Fatalf("resumed Delete() = %#v, %v saves=%d dealloc=%d", result, err, repository.saveCalls, ledger.deallocateCalls)
 	}
 }
@@ -1248,6 +1247,34 @@ func TestServiceDeleteRecoversMarkedDeletingAuditWithNewKey(t *testing.T) {
 	result, err := service.Delete(context.Background(), resumed)
 	if err != nil || result.Version != deleting.Version()+1 || !result.Replayed {
 		t.Fatalf("new-key recovery Delete() = %#v, %v", result, err)
+	}
+}
+
+func TestServiceDeleteRecoversReleasedQuotaAfterDeallocationAuditFailureWithNewKey(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	ledger := &quotaLedgerFake{allocation: listingsubscription.StoreQuotaAllocation{OrganizationID: "org-a", AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), Status: listingsubscription.StoreQuotaAllocated}}
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionQuotaDeallocated: 1}
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "admin", StoreID: store.ID(), ExpectedVersion: store.Version(), OperationKey: uuid.NewString()}
+	if _, err := service.Delete(context.Background(), first); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Delete() = %v", err)
+	}
+	deleting, err := repository.Get(context.Background(), "org-a", store.ID())
+	if err != nil || deleting.LifecycleStatus() != storecenter.StoreStatusDeleting || ledger.allocation.Status != listingsubscription.StoreQuotaReleased {
+		t.Fatalf("durable state after audit failure = %#v/%v quota=%s", deleting, err, ledger.allocation.Status)
+	}
+	resumed := first
+	resumed.ExpectedVersion = deleting.Version()
+	resumed.OperationKey = uuid.NewString()
+	result, err := service.Delete(context.Background(), resumed)
+	if err != nil || result.Version != deleting.Version()+1 || !result.Replayed || repository.softDeleteCalls != 1 {
+		t.Fatalf("new-key recovery after released quota = %#v, %v soft-deletes=%d", result, err, repository.softDeleteCalls)
 	}
 }
 

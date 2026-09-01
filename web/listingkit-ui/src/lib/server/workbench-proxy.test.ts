@@ -158,11 +158,35 @@ describe("buildWorkbenchUpstreamRequest", () => {
     expect(result.init.method).toBe("GET");
     expect(result.init.body).toBeUndefined();
     const headers = new Headers(result.init.headers);
+    expect(headers.get("X-Request-ID")).toMatch(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/);
+    headers.delete("X-Request-ID");
     expect(Object.fromEntries(headers.entries())).toEqual({
       accept: "application/json",
       authorization: "Bearer server-token",
       "x-requested-organization-id": "org-cookie",
     });
+  });
+
+  it.each([
+    ["preserves", "request-123/worker", "request-123/worker"],
+    ["trims", " request-123 ", "request-123"],
+    ["replaces unsafe", "request id", null],
+    ["replaces oversized", "r" + "x".repeat(128), null],
+  ])("%s a bounded request ID for the upstream", async (_name, incoming, expected) => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request("http://localhost/api/workbench/context", {
+        headers: { "X-Request-ID": incoming },
+      }),
+      ["context"],
+      "server-token",
+    );
+    expect(result).not.toBeInstanceOf(Response);
+    if (result instanceof Response) return;
+    const requestId = new Headers(result.init.headers).get("X-Request-ID");
+    expect(requestId).toBeTruthy();
+    if (expected) expect(requestId).toBe(expected);
+    else expect(requestId).not.toBe(incoming);
+    expect(new TextEncoder().encode(requestId ?? "").byteLength).toBeLessThanOrEqual(128);
   });
 
   it("canonicalizes the validated PUT body and uses the same organization for its trusted header", async () => {

@@ -51,8 +51,8 @@ export function StoreForm(props: StoreFormProps) {
   const confirmationPendingRef = useRef(false);
   const submissionPendingRef = useRef(false);
   const [submissionPending, setSubmissionPending] = useState(false);
-  const [editBaseline, setEditBaseline] = useState<WorkbenchStore | null>(
-    () => (props.mode === "edit" ? props.store : null),
+  const editBaselineRef = useRef<WorkbenchStore | null>(
+    props.mode === "edit" ? props.store : null,
   );
   const form = useForm<WorkbenchStoreCreateInput | WorkbenchStoreUpdateInput>({
     resolver: zodResolver(
@@ -71,6 +71,21 @@ export function StoreForm(props: StoreFormProps) {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+
+  useEffect(() => {
+    if (
+      props.mode !== "edit" ||
+      !editBaselineRef.current ||
+      props.store.version <= editBaselineRef.current.version ||
+      props.store.lifecycleStatus === editBaselineRef.current.lifecycleStatus
+    ) {
+      return;
+    }
+    editBaselineRef.current = props.store;
+    if (!form.formState.isDirty) {
+      form.reset({ name: props.store.name, region: props.store.region });
+    }
+  }, [form, form.formState.isDirty, props]);
 
   useEffect(() => {
     if (!organization || organization.id === mountedOrganizationId) return;
@@ -118,7 +133,7 @@ export function StoreForm(props: StoreFormProps) {
       });
       return;
     }
-    const baseline = editBaseline;
+    const baseline = editBaselineRef.current;
     if (
       props.conflict ||
       props.recoveryState === "loading" ||
@@ -133,7 +148,7 @@ export function StoreForm(props: StoreFormProps) {
     update.mutate(
       { id: baseline.id, version: baseline.version, input: values as WorkbenchStoreUpdateInput },
       {
-        onSuccess: (store) => { submissionPendingRef.current = false; setSubmissionPending(false); setEditBaseline(store); form.reset({ name: store.name, region: store.region }); props.onSaved?.(store); },
+        onSuccess: (store) => { submissionPendingRef.current = false; setSubmissionPending(false); editBaselineRef.current = store; form.reset({ name: store.name, region: store.region }); props.onSaved?.(store); },
         onError: (error) => {
           if (error.code === "STORE_VERSION_CONFLICT") {
             submissionPendingRef.current = false; setSubmissionPending(false); props.onConflict?.(values as WorkbenchStoreUpdateInput, baseline);
@@ -156,7 +171,7 @@ export function StoreForm(props: StoreFormProps) {
     );
   };
   const retryConflict = () => {
-    if (isPending || props.mode !== "edit" || !props.conflict || !editBaseline || submissionPendingRef.current) return;
+    if (isPending || props.mode !== "edit" || !props.conflict || !editBaselineRef.current || submissionPendingRef.current) return;
     const conflict = props.conflict;
     const draft = workbenchStoreUpdateSchema.safeParse(form.getValues());
     if (!draft.success) return;
@@ -164,9 +179,9 @@ export function StoreForm(props: StoreFormProps) {
     setSubmissionPending(true);
     setFormError(null);
     update.mutate(
-      { id: editBaseline.id, version: conflict.latest.version, input: draft.data },
+      { id: editBaselineRef.current.id, version: conflict.latest.version, input: draft.data },
       {
-        onSuccess: (store) => { submissionPendingRef.current = false; setSubmissionPending(false); setEditBaseline(store); form.reset({ name: store.name, region: store.region }); props.onSaved?.(store); },
+        onSuccess: (store) => { submissionPendingRef.current = false; setSubmissionPending(false); editBaselineRef.current = store; form.reset({ name: store.name, region: store.region }); props.onSaved?.(store); },
         onError: (error) => {
           submissionPendingRef.current = false; setSubmissionPending(false);
           if (error.code === "STORE_VERSION_CONFLICT") {

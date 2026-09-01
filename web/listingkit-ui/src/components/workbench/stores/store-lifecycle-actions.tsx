@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { Button } from "@/components/ui/button";
 import type { WorkbenchStore } from "@/lib/api/workbench-stores";
+import { canDeleteWorkbenchStore, canUpdateWorkbenchStore } from "@/lib/workbench/permissions";
 import {
   useDeleteWorkbenchStore,
   useDisableWorkbenchStore,
@@ -41,13 +42,6 @@ type ActionState =
 
 type DeleteTerminal = "retryable" | "semantic" | null;
 
-const updateRoles = new Set([
-  "listingkit_operator",
-  "listingkit_admin",
-  "platform_admin",
-]);
-const deleteRoles = new Set(["listingkit_admin", "platform_admin"]);
-
 export function StoreLifecycleActions({
   store,
   onStoreUpdated,
@@ -58,9 +52,9 @@ export function StoreLifecycleActions({
   const organization = context.effectiveOrganization;
   const organizationId = organization?.id ?? "";
   const organizationName = organization?.name ?? "当前企业";
-  const canUpdate = context.roles.some((role) => updateRoles.has(role));
+  const canUpdate = canUpdateWorkbenchStore(context.roles);
   const canDelete = Boolean(
-    organizationId && context.roles.some((role) => deleteRoles.has(role)),
+    organizationId && canDeleteWorkbenchStore(context.roles),
   );
   const scopeKey = [organizationId, store.id].join("\u0000");
   const confirmationScopeKey = [
@@ -172,7 +166,7 @@ function ScopedStoreLifecycleActions({
     operationScope: string,
     operationOrganizationId: string,
   ) => {
-    if (error.code === "ORGANIZATION_ACCESS_REVOKED") {
+    if (isOrganizationAccessError(error.code)) {
       revoke(operationScope, operationOrganizationId);
       return;
     }
@@ -289,7 +283,7 @@ function ScopedStoreLifecycleActions({
     operationScope: string,
     operationOrganizationId: string,
   ) => {
-    if (error.code === "ORGANIZATION_ACCESS_REVOKED") {
+    if (isOrganizationAccessError(error.code)) {
       revoke(operationScope, operationOrganizationId);
       return;
     }
@@ -401,7 +395,7 @@ function ScopedStoreLifecycleActions({
         className="rounded-md border border-destructive/30 p-3 text-sm text-destructive"
         role="alert"
       >
-        当前企业访问已被撤销，正在重新验证企业访问。
+        当前企业访问已不可用，正在重新验证企业访问。
       </p>
     );
   }
@@ -484,6 +478,10 @@ function ScopedStoreLifecycleActions({
       terminal={deleteTerminal}
     />
   );
+}
+
+function isOrganizationAccessError(code?: string) {
+  return code === "ORGANIZATION_ACCESS_REVOKED" || code === "ORGANIZATION_ACCESS_DENIED";
 }
 
 function StoreLifecycleControls({

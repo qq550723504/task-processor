@@ -10,15 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { WorkbenchAPIError, type WorkbenchStoreListFilters } from "@/lib/api/workbench-stores";
 import { useWorkbenchStores } from "@/lib/query/use-workbench-stores";
+import { canCreateWorkbenchStore } from "@/lib/workbench/permissions";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 20;
-const createRoles = new Set([
-  "listingkit_operator",
-  "listingkit_admin",
-  "platform_admin",
-]);
-
 export function StoreListPage() {
   const pathname = usePathname() || "/workbench/stores";
   const router = useRouter();
@@ -29,7 +24,7 @@ export function StoreListPage() {
   const data = stores.data;
   const hasFilters = Boolean(filters.platform || filters.status);
   const deletedNotice = searchParams.getAll("notice").length === 1 && searchParams.get("notice") === "store-deleted";
-  const canCreateByRole = context.roles.some((role) => createRoles.has(role));
+  const canCreateByRole = canCreateWorkbenchStore(context.roles);
   const canCreate = Boolean(data?.quota.allowed && canCreateByRole);
 
   const updateFilters = (next: WorkbenchStoreListFilters) => {

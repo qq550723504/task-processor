@@ -269,13 +269,16 @@ describe("StoreLifecycleActions", () => {
     expect(remove.mutate).toHaveBeenCalledTimes(1);
   });
 
-  it("fails closed on a revoked grant by removing only this Organization Store queries and retrying context", async () => {
-    const user = userEvent.setup(); render(<StoreLifecycleActions store={STORE} />);
-    await user.click(screen.getByRole("button", { name: "停用店铺" }));
-    disable.mutate.mock.calls[0]?.[1].onError({ status: 403, code: "ORGANIZATION_ACCESS_REVOKED" });
-    expect(queryClient.removeQueries).toHaveBeenCalledWith({ queryKey: ["workbench", "org-a", "stores"] });
-    expect(context.retry).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole("alert")).toHaveTextContent("当前企业访问已被撤销");
-    expect(screen.queryByRole("button", { name: "停用店铺" })).not.toBeInTheDocument();
-  });
+  it.each(["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"])(
+    "fails closed on %s by removing only this Organization Store queries and retrying context",
+    async (code) => {
+      const user = userEvent.setup(); render(<StoreLifecycleActions store={STORE} />);
+      await user.click(screen.getByRole("button", { name: "停用店铺" }));
+      disable.mutate.mock.calls[0]?.[1].onError({ status: 403, code });
+      expect(queryClient.removeQueries).toHaveBeenCalledWith({ queryKey: ["workbench", "org-a", "stores"] });
+      expect(context.retry).toHaveBeenCalledTimes(1);
+      expect(await screen.findByRole("alert")).toHaveTextContent("当前企业访问已不可用");
+      expect(screen.queryByRole("button", { name: "停用店铺" })).not.toBeInTheDocument();
+    },
+  );
 });

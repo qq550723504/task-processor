@@ -109,6 +109,19 @@ describe("StoreForm", () => {
     expect(update.mutate).toHaveBeenCalledWith({ id: STORE.id, version: STORE.version, input: { name: "草稿", region: "CN" } }, expect.any(Object));
   });
 
+  it("refreshes a clean edit baseline and form after a lifecycle projection advances", async () => {
+    const view = render(<StoreForm mode="edit" store={STORE} />);
+    view.rerender(<StoreForm mode="edit" store={{ ...STORE, name: "已停用店铺", lifecycleStatus: "disabled" as const, version: 4 }} />);
+    await waitFor(() => {
+      expect(screen.getByLabelText("店铺名称")).toHaveValue("已停用店铺");
+    });
+    await userEvent.setup().click(screen.getByRole("button", { name: "保存更改" }));
+    expect(update.mutate).toHaveBeenCalledWith(
+      { id: STORE.id, version: 4, input: { name: "已停用店铺", region: "CN" } },
+      expect.any(Object),
+    );
+  });
+
   it("guards dirty Organization switches and waits for the actual context change before navigating", async () => {
     let guard: ((target: { id: string; name: string; roles: string[] }) => boolean) | undefined;
     context.registerOrganizationSwitchGuard.mockImplementation(((next: (target: { id: string; name: string; roles: string[] }) => boolean) => { guard = next; return vi.fn(); }) as never);

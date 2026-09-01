@@ -11,6 +11,7 @@ import {
   parseWorkbenchContextPayload,
   parseWorkbenchErrorEnvelopePayload,
 } from "@/lib/api/workbench-context";
+import { newRequestLogId } from "@/lib/server/request-log";
 
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
 const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
@@ -21,6 +22,7 @@ const STORE_REQUEST_BODY_MAX_BYTES = 16 * 1024;
 const REQUEST_BODY_READ_TIMEOUT_MS = 15_000;
 const UPSTREAM_RESPONSE_MAX_BYTES = 1024 * 1024;
 const STORE_QUERY_MAX_BYTES = 2 * 1024;
+const REQUEST_ID_MAX_BYTES = 128;
 
 export type WorkbenchResponseContract =
   | "context"
@@ -228,6 +230,7 @@ export async function buildWorkbenchUpstreamRequest(
     Accept: "application/json",
     Authorization: `Bearer ${accessToken}`,
   });
+  headers.set("X-Request-ID", readRequestId(request.headers));
   let body: string | undefined;
   let query = "";
 
@@ -717,6 +720,18 @@ function hasUnicodeControl(value: string) {
 function readCanonicalUUIDHeader(headers: Headers, name: string) {
   const value = headers.get(name);
   return value && isCanonicalUUID(value) ? value : "";
+}
+
+function readRequestId(headers: Headers) {
+  const value = headers.get("X-Request-ID")?.trim() ?? "";
+  if (
+    value &&
+    new TextEncoder().encode(value).byteLength <= REQUEST_ID_MAX_BYTES &&
+    /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(value)
+  ) {
+    return value;
+  }
+  return newRequestLogId();
 }
 
 function readIfMatchHeader(headers: Headers) {
