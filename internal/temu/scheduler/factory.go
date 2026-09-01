@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/platformbase"
 	platformtask "task-processor/internal/platformtask"
@@ -66,7 +67,7 @@ func NewTemuTaskFactory(
 		rabbitmqClient,
 		Dependencies{
 			ClientManager:  client.NewAPIClientManager(schedulerRuntime),
-			FetcherBuilder: platformbase.NewDefaultProductFetcherBuilder(),
+			FetcherBuilder: appfetcher.NewProductFetcherBuilder(schedulerRuntime.GetRawJsonDataAdapter(), crawlSource),
 		},
 	)
 }
@@ -99,7 +100,6 @@ func NewTemuTaskFactoryWithDependencies(
 	rabbitmqClient *rabbitmq.Client,
 	deps Dependencies,
 ) *TemuTaskFactory {
-	_ = crawlSource
 	runtime := schedulerRuntime
 	if runtime == nil {
 		return nil

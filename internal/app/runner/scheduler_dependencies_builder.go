@@ -4,8 +4,8 @@ import (
 	"task-processor/internal/app/ports"
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/platform/queue/rabbitmq"
-	"task-processor/internal/platformbase"
 	sheinscheduler "task-processor/internal/shein/scheduler"
 	temuscheduler "task-processor/internal/temu/scheduler"
 )
@@ -17,7 +17,7 @@ func buildSchedulerDependencies(
 	rabbitmqClient *rabbitmq.Client,
 ) SchedulerDependencies {
 	_ = cfg
-	boundFetcherBuilder := platformbase.BindProductFetcherBuilder(platformbase.NewDefaultProductFetcherBuilder(), crawlSource)
+	boundFetcherBuilder := appfetcher.NewProductFetcherBuilder(schedulerRuntime.GetRawJsonDataAdapter(), crawlSource)
 	return SchedulerDependencies{
 		TemuFactoryCreator: func(cfg *config.Config) scheduler.TaskFactory {
 			return temuscheduler.NewTemuTaskFactoryWithFetcherBuilder(

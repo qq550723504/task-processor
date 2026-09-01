@@ -42,6 +42,49 @@ type ProductFetcher interface {
 	ProductFetcherStats
 }
 
+type ProductFetcherBuilder struct {
+	factory           *FetcherFactory
+	rawJsonDataClient sourceproduct.RawJsonDataClient
+	crawlSource       ports.CrawlSource
+}
+
+func NewProductFetcherBuilder(
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
+	crawlSource ports.CrawlSource,
+) *ProductFetcherBuilder {
+	return &ProductFetcherBuilder{
+		factory:           NewFetcherFactory(),
+		rawJsonDataClient: rawJsonDataClient,
+		crawlSource:       crawlSource,
+	}
+}
+
+func (b *ProductFetcherBuilder) Build(
+	amazonConfig *config.AmazonConfig,
+	rabbitmqClient *rabbitmq.Client,
+) (ProductFetcher, error) {
+	return b.factory.CreateFetcher(
+		resolveProductFetcherType(amazonConfig, rabbitmqClient),
+		b.rawJsonDataClient,
+		amazonConfig,
+		b.crawlSource,
+		rabbitmqClient,
+	)
+}
+
+func resolveProductFetcherType(
+	amazonConfig *config.AmazonConfig,
+	rabbitmqClient *rabbitmq.Client,
+) FetcherType {
+	if rabbitmqClient != nil {
+		return DistributedFetcher
+	}
+	if amazonConfig != nil && amazonConfig.RemoteAPI.Enabled {
+		return RemoteAPIFetcher
+	}
+	return LocalFetcher
+}
+
 type FetcherFactory struct {
 	logger *logrus.Entry
 }
