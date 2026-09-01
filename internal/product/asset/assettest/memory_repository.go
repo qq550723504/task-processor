@@ -57,6 +57,9 @@ func (r *MemoryRepository) CommitApproval(ctx context.Context, commit asset.Appr
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return asset.ApprovalReceipt{}, err
+	}
 
 	key := actionKey{tenantID: commit.TenantID, actionID: commit.ActionID}
 	if existing, ok := r.actions[key]; ok {
@@ -96,6 +99,9 @@ func (r *MemoryRepository) GetApprovedInventory(ctx context.Context, scope asset
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	if err := ctx.Err(); err != nil {
+		return asset.ApprovedAssetInventory{}, err
+	}
 	approved, ok := r.inventories[inventoryKey{tenantID: scope.TenantID, productKey: scope.ProductKey}]
 	if !ok || len(approved) == 0 {
 		return asset.ApprovedAssetInventory{}, asset.ErrApprovedAssetsNotReady

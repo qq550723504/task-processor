@@ -68,6 +68,58 @@ func TestCommitApprovalRejectsUnsupportedRoleAndInvalidDimensions(t *testing.T) 
 	}
 }
 
+func TestCommitApprovalRejectsWhitespaceOnlyOrPaddedExternalFacts(t *testing.T) {
+	t.Parallel()
+
+	fields := []struct {
+		name   string
+		mutate func(*asset.ApprovalCommit, string)
+	}{
+		{name: "tenant", mutate: func(c *asset.ApprovalCommit, value string) { c.TenantID = value }},
+		{name: "product", mutate: func(c *asset.ApprovalCommit, value string) { c.ProductKey = value }},
+		{name: "action", mutate: func(c *asset.ApprovalCommit, value string) { c.ActionID = value }},
+		{name: "asset id", mutate: func(c *asset.ApprovalCommit, value string) { c.Assets[0].ID = value }},
+		{name: "run id", mutate: func(c *asset.ApprovalCommit, value string) { c.Assets[0].RunID = value }},
+		{name: "slot id", mutate: func(c *asset.ApprovalCommit, value string) { c.Assets[0].SlotID = value }},
+		{name: "source asset id", mutate: func(c *asset.ApprovalCommit, value string) { c.Assets[0].SourceAssetID = value }},
+		{name: "url", mutate: func(c *asset.ApprovalCommit, value string) { c.Assets[0].URL = value }},
+	}
+	values := []struct {
+		name  string
+		value string
+	}{
+		{name: "whitespace only", value: " \t "},
+		{name: "leading whitespace", value: " padded"},
+		{name: "trailing whitespace", value: "padded "},
+	}
+
+	for _, field := range fields {
+		for _, value := range values {
+			t.Run(field.name+"/"+value.name, func(t *testing.T) {
+				repo := assettest.NewMemoryRepository()
+				commit := validCommit("tenant-a", "product-1", "approve-1", "asset-1")
+				field.mutate(&commit, value.value)
+
+				_, err := repo.CommitApproval(context.Background(), commit)
+				if !errors.Is(err, asset.ErrInvalidApproval) {
+					t.Fatalf("CommitApproval() error = %v, want ErrInvalidApproval", err)
+				}
+			})
+		}
+	}
+}
+
+func TestCommitApprovalAcceptsCanonicalOptionalSourceAssetID(t *testing.T) {
+	t.Parallel()
+
+	repo := assettest.NewMemoryRepository()
+	commit := validCommit("tenant-a", "product-1", "approve-1", "asset-1")
+	commit.Assets[0].SourceAssetID = "source-1"
+	if _, err := repo.CommitApproval(context.Background(), commit); err != nil {
+		t.Fatalf("CommitApproval() error = %v, want canonical source asset identity accepted", err)
+	}
+}
+
 func TestCommitApprovalRequiresAtLeastOneApprovedAsset(t *testing.T) {
 	t.Parallel()
 
@@ -102,6 +154,25 @@ func TestGetApprovedInventoryRejectsMissingScopeIdentity(t *testing.T) {
 	for _, scope := range []asset.InventoryScope{
 		{TenantID: "", ProductKey: "product-1"},
 		{TenantID: "tenant-a", ProductKey: ""},
+	} {
+		_, err := repo.GetApprovedInventory(context.Background(), scope)
+		if !errors.Is(err, asset.ErrInvalidInventoryScope) {
+			t.Fatalf("GetApprovedInventory(%+v) error = %v, want ErrInvalidInventoryScope", scope, err)
+		}
+	}
+}
+
+func TestGetApprovedInventoryRejectsWhitespaceOnlyOrPaddedScopeIdentity(t *testing.T) {
+	t.Parallel()
+
+	repo := assettest.NewMemoryRepository()
+	for _, scope := range []asset.InventoryScope{
+		{TenantID: " ", ProductKey: "product-1"},
+		{TenantID: " tenant-a", ProductKey: "product-1"},
+		{TenantID: "tenant-a ", ProductKey: "product-1"},
+		{TenantID: "tenant-a", ProductKey: " "},
+		{TenantID: "tenant-a", ProductKey: " product-1"},
+		{TenantID: "tenant-a", ProductKey: "product-1 "},
 	} {
 		_, err := repo.GetApprovedInventory(context.Background(), scope)
 		if !errors.Is(err, asset.ErrInvalidInventoryScope) {

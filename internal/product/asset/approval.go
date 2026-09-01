@@ -3,6 +3,7 @@ package asset
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type ApprovalCommit struct {
@@ -19,13 +20,13 @@ type ApprovalReceipt struct {
 
 func ValidateApprovalCommit(commit ApprovalCommit) error {
 	if !validIdentityPart(commit.TenantID) {
-		return fmt.Errorf("%w: tenant id is required", ErrInvalidApproval)
+		return fmt.Errorf("%w: tenant id must be non-empty and canonical", ErrInvalidApproval)
 	}
 	if !validIdentityPart(commit.ProductKey) {
-		return fmt.Errorf("%w: product key is required", ErrInvalidApproval)
+		return fmt.Errorf("%w: product key must be non-empty and canonical", ErrInvalidApproval)
 	}
 	if !validIdentityPart(commit.ActionID) {
-		return fmt.Errorf("%w: action id is required", ErrInvalidApproval)
+		return fmt.Errorf("%w: action id must be non-empty and canonical", ErrInvalidApproval)
 	}
 	if len(commit.Assets) == 0 {
 		return fmt.Errorf("%w: at least one approved asset is required", ErrInvalidApproval)
@@ -83,8 +84,11 @@ func validateApprovedAsset(approved ApprovedAsset) error {
 		"url":      approved.URL,
 	} {
 		if !validIdentityPart(value) {
-			return fmt.Errorf("%s is required", name)
+			return fmt.Errorf("%s must be non-empty and canonical", name)
 		}
+	}
+	if approved.SourceAssetID != "" && !validIdentityPart(approved.SourceAssetID) {
+		return errors.New("source asset id must be canonical when provided")
 	}
 	if approved.PlanRevision <= 0 {
 		return errors.New("plan revision must be positive")
@@ -102,7 +106,7 @@ func validateApprovedAsset(approved ApprovedAsset) error {
 }
 
 func validIdentityPart(value string) bool {
-	return value != ""
+	return value != "" && strings.TrimSpace(value) == value
 }
 
 func CloneApprovalCommit(commit ApprovalCommit) ApprovalCommit {
