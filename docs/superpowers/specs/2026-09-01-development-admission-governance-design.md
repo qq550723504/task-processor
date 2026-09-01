@@ -238,12 +238,18 @@ API. It does not execute PR-provided code. This keeps fork and Dependabot
 review events from attempting status writes with a read-only token, including
 when one head is associated with multiple PRs.
 
-A trusted `Development Admission Reconcile` workflow dispatches one evaluator
-run per open PR on every repository push and every five minutes. This covers
-merge-SHA changes caused by base-branch advancement and reviewer-permission
-revocation, for which GitHub does not provide a usable direct Actions trigger.
-The dispatch workflow has only `actions: write`, `contents: read`, and
-`pull-requests: read`; it sends the PR number as a workflow-dispatch input.
+A read-only `Development Admission Base Signal` workflow runs on every push,
+including pushes to non-default base branches. A trusted
+`Development Admission Reconcile` workflow receives that signal through
+`workflow_run`, filters open PRs whose base branch matches the pushed branch,
+and dispatches one evaluator per matching PR. The reconciler also runs every
+five minutes, but the scheduled fan-out is limited to open PRs carrying the
+`architecture-approved` label because only those PRs depend on a mutable
+reviewer permission override. This covers merge-SHA changes caused by
+base-branch advancement and reviewer-permission revocation without running a
+privileged workflow from an arbitrary branch. The dispatch workflow has only
+`actions: write`, `contents: read`, and `pull-requests: read`; it sends the PR
+number as a workflow-dispatch input.
 
 The admission evaluator's failure matrix is:
 
@@ -253,7 +259,7 @@ The admission evaluator's failure matrix is:
 | Any PR input changes between snapshots | The old target receives `error` when possible; no success is published for the stale snapshot | Same PR event is retried against the newly fetched head/base/merge/review state | Per-PR serialized evaluator | Moving-snapshot tests |
 | Status publish fails | Evaluation result is not considered authoritative | Retry the same PR event; no local write can substitute for the missing repository status | GitHub Actions/GitHub status service | Status-write failure path |
 | Review approval, label, or maintainer role is revoked | The read-only review signal or five-minute reconciliation causes the trusted evaluator to publish `failure` | Current head plus latest review state and role are re-read; stale approval is never reused | Trusted evaluator, with branch protection/ruleset as final owner | Dismissed-review, label, and permission-reconciliation tests |
-| Base branch advances or a merge SHA changes | Reconciliation dispatch evaluates every open PR on the current test-merge SHA | The PR number is the dispatch input and the evaluator publishes only to the current `merge_commit_sha` | Trusted reconciler and evaluator | Base-push reconciliation test |
+| Base branch advances or a merge SHA changes | The read-only base signal triggers trusted reconciliation for open PRs targeting the pushed branch; the schedule covers labeled override PRs | The PR number is the dispatch input and the evaluator publishes only to the current `merge_commit_sha` | Trusted signal, reconciler, and evaluator | Base-push reconciliation test |
 
 The current repository has no branch-protection required status check or ruleset;
 the rollout must enable the `Development Admission` status after this workflow
@@ -309,10 +315,12 @@ signal workflow with no permissions for `pull_request_review` `submitted`,
 `workflow_run` completion so approval and revocation cannot leave a stale
 result even for fork or Dependabot PRs. Have the signal write only the event
 PR number to a short-lived artifact, and validate it against the workflow-run
-association before using it. Add a separate trusted reconciliation workflow
-on all `push` events and a five-minute `schedule` to dispatch `workflow_dispatch`
-evaluations for every open PR, covering base advancement and permission
-revocation. Resolve the PR number before entering a per-PR concurrency group
+association before using it. Add a read-only base-branch signal on all `push`
+events and trigger the trusted reconciliation workflow through `workflow_run`;
+the reconciler dispatches only open PRs whose base matches the pushed branch.
+Its five-minute `schedule` dispatches only open PRs with the
+`architecture-approved` label to bound permission-revocation fan-out. Resolve
+the PR number before entering a per-PR concurrency group
 so direct, review, and reconciliation runs serialize together. Use
 `concurrency` per PR to serialize
 evaluations and give the job a bounded deadline. Publish the decision as the fixed `Development

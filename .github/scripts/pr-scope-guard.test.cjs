@@ -582,6 +582,10 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
     path.join(workflowRoot, "development-admission-reconcile.yml"),
     "utf8",
   ).replaceAll("\r\n", "\n");
+  const baseSignalWorkflow = fs.readFileSync(
+    path.join(workflowRoot, "development-admission-base-signal.yml"),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
 
   assert.match(admissionWorkflow, /workflow_dispatch:/);
   assert.match(admissionWorkflow, /needs: resolve-admission/);
@@ -594,8 +598,13 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   assert.match(reconcileWorkflow, /schedule:/);
   assert.match(
     reconcileWorkflow,
-    /dispatch-open-pull-requests:\n    if: github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/,
+    /workflow_run:[\s\S]*Development Admission Base Signal/,
   );
+  assert.doesNotMatch(reconcileWorkflow, /^  push:\s*$/m);
+  assert.match(baseSignalWorkflow, /^  push:\s*$/m);
+  assert.match(baseSignalWorkflow, /permissions: \{\}/);
+  assert.match(reconcileWorkflow, /pullRequest\.base\.ref === baseBranch/);
+  assert.match(reconcileWorkflow, /architecture-approved/);
   assert.match(reconcileWorkflow, /github\.rest\.actions\.createWorkflowDispatch/);
 });
 
