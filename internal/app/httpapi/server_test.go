@@ -46,8 +46,8 @@ func TestBuildHTTPServerFromRoutesAtBindsLoopback(t *testing.T) {
 	if server.Addr != "127.0.0.1:18085" {
 		t.Fatalf("server address = %q, want loopback-only listener", server.Addr)
 	}
-	if server.ReadTimeout != 30*time.Second {
-		t.Fatalf("server read timeout = %s, want 30s", server.ReadTimeout)
+	if server.ReadTimeout != 0 {
+		t.Fatalf("server read timeout = %s, want route-scoped body deadlines", server.ReadTimeout)
 	}
 	if got := buildHTTPServerFromRoutes(18085, nil).Addr; got != ":18085" {
 		t.Fatalf("default server address = %q, want backward-compatible wildcard", got)

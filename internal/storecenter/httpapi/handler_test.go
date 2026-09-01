@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -128,6 +129,36 @@ func TestModuleRegistersExactScopedStoreRoutes(t *testing.T) {
 		require.Nil(t, route.OrganizationTargetResolver)
 		require.NotNil(t, route.Handler)
 	}
+}
+
+func TestWithRequestBodyReadTimeoutClosesSlowBody(t *testing.T) {
+	body := &blockingRequestBody{closed: make(chan struct{})}
+	request := httptest.NewRequest(http.MethodPost, "/", body)
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = request
+
+	var readErr error
+	withRequestBodyReadTimeout(5*time.Millisecond, func(c *gin.Context) {
+		_, readErr = io.ReadAll(c.Request.Body)
+	})(context)
+
+	require.ErrorIs(t, readErr, io.ErrClosedPipe)
+}
+
+type blockingRequestBody struct{ closed chan struct{} }
+
+func (b *blockingRequestBody) Read([]byte) (int, error) {
+	<-b.closed
+	return 0, io.ErrClosedPipe
+}
+
+func (b *blockingRequestBody) Close() error {
+	select {
+	case <-b.closed:
+	default:
+		close(b.closed)
+	}
+	return nil
 }
 
 func TestHandlerDerivesEveryServiceRequestOnlyFromEffectiveOrganizationIdentity(t *testing.T) {

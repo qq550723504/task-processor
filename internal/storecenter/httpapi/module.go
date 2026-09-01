@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -12,6 +13,8 @@ import (
 )
 
 const ModuleName = "store-center"
+
+const requestBodyReadTimeout = 30 * time.Second
 
 type routeModule struct{ handler *Handler }
 
@@ -40,6 +43,19 @@ func (m routeModule) Register(registry *kernelmodule.Registry) error {
 func route(method, path, permission string, access httproute.OrganizationAccessPolicy, handler func(*gin.Context)) httproute.Descriptor {
 	return httproute.Descriptor{
 		Method: method, Path: path, Module: ModuleName, Permission: permission,
-		AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: access, Handler: handler,
+		AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: access, Handler: withRequestBodyReadTimeout(requestBodyReadTimeout, handler),
+	}
+}
+
+func withRequestBodyReadTimeout(timeout time.Duration, handler gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Body == nil || timeout <= 0 {
+			handler(c)
+			return
+		}
+		body := c.Request.Body
+		timer := time.AfterFunc(timeout, func() { _ = body.Close() })
+		defer timer.Stop()
+		handler(c)
 	}
 }

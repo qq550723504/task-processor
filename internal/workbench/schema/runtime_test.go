@@ -17,7 +17,7 @@ type sqliteColumnInfo struct {
 	NotNull int    `gorm:"column:notnull"`
 }
 
-func TestWorkbenchAutoMigrateCreatesExactlyFourOwnedTablesAndIsRepeatable(t *testing.T) {
+func TestWorkbenchAutoMigrateCreatesOwnedTablesAndIsRepeatable(t *testing.T) {
 	db := openWorkbenchSchemaTestDB(t)
 	if err := db.Exec(`CREATE TABLE listing_store (id integer primary key, marker text not null)`).Error; err != nil {
 		t.Fatalf("create legacy sentinel: %v", err)
@@ -35,8 +35,11 @@ func TestWorkbenchAutoMigrateCreatesExactlyFourOwnedTablesAndIsRepeatable(t *tes
 
 	wantTables := []string{
 		"listing_store",
+		"saas_plan_modules",
 		"saas_store_quota_allocations",
 		"saas_store_quota_buckets",
+		"saas_tenant_entitlements",
+		"saas_tenant_subscriptions",
 		"workbench_store_audit_logs",
 		"workbench_stores",
 	}

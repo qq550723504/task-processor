@@ -24,6 +24,9 @@ func AutoMigrateRuntime(db *gorm.DB) error {
 	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
 		return fmt.Errorf("migrate Workbench store audit: %w", err)
 	}
+	if err := listingsubscription.AutoMigrateStoreQuotaPrerequisites(db); err != nil {
+		return fmt.Errorf("migrate Workbench store quota prerequisites: %w", err)
+	}
 	if err := listingsubscription.AutoMigrateStoreQuotaLedger(db); err != nil {
 		return fmt.Errorf("migrate Workbench store quota: %w", err)
 	}
