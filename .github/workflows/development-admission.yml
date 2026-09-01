@@ -105,7 +105,9 @@ jobs:
             };
             const statusContext = "Development Admission";
             const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            let statusSha;
+            let statusSha = context.eventName === "pull_request_target"
+              ? context.payload.pull_request?.merge_commit_sha
+              : null;
             const publishStatus = async ({ state, description }) => {
               await github.rest.repos.createCommitStatus({
                 ...repositoryRequest,
@@ -159,11 +161,11 @@ jobs:
               const labels = latestPullRequest.labels.map(({ name }) => name);
               let overrideAuthorized = false;
               if (labels.includes(guard.OVERRIDE_LABEL)) {
-                if (guard.hasRequiredOverrideEvidence(latestPullRequest.body)) {
-                  const approvalReviewers = guard.approvalReviewersForCurrentHead(
-                    latestReviews,
-                    latestPullRequest.head.sha,
-                  );
+                const approvalReviewers = guard.approvalReviewersForCurrentHead(
+                  latestReviews,
+                  latestPullRequest.head.sha,
+                );
+                if (guard.hasRequiredOverrideEvidence(latestPullRequest.body, approvalReviewers)) {
                   const permissions = {};
                   for (const login of approvalReviewers) {
                     try {

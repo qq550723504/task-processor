@@ -296,24 +296,35 @@ function hasAuthorizedArchitectureOverride({
   });
 }
 
-function hasRequiredOverrideEvidence(body) {
-  if (typeof body !== "string") {
+function hasRequiredOverrideEvidence(body, approvedLogins) {
+  if (typeof body !== "string" || !Array.isArray(approvedLogins)) {
     return false;
   }
+  const normalizedBody = body.replaceAll("`", "");
   const valueFor = (pattern) => {
-    const match = body.match(pattern);
+    const match = normalizedBody.match(pattern);
     const value = match?.[1]?.trim();
-    return value && !/(?:^|[\s;,])(?:n\/a|none|tbd|todo)(?:$|[\s;,\.])/i.test(value)
+    return value && !/(?:^|[\s;,:])(?:n\/a|none|tbd|todo)(?:$|[\s;,:\.])/i.test(value)
       ? value
       : null;
   };
   const design = valueFor(/^\s*-\s*Design:\s*(.+)$/im);
   const independentReview = valueFor(/^\s*-\s*Independent design review:\s*(.+)$/im);
+  const approver = valueFor(
+    /^\s*-\s*(?:Override approver[^:\n]*|architecture-approved[^:\n]*approval review[^:\n]*split rationale[^:\n]*):\s*(.+)$/im,
+  );
   const splitRationale = valueFor(
-    /^\s*-\s*architecture-approved[^:\n]*split rationale[^:\n]*:\s*(.+)$/im,
+    /^\s*-\s*(?:Split rationale[^:\n]*|architecture-approved[^:\n]*split rationale[^:\n]*):\s*(.+)$/im,
   );
   const hasDesignLink = design && /https?:\/\/\S+|(?:^|\s)(?:docs|designs?)\/\S+/i.test(design);
-  return Boolean(hasDesignLink && independentReview && splitRationale);
+  const hasApprovedLogin = approvedLogins.some((login) => {
+    if (typeof login !== "string" || login.trim() === "") {
+      return false;
+    }
+    const escapedLogin = login.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?:^|[^A-Za-z0-9_.-])${escapedLogin}(?:$|[^A-Za-z0-9_.-])`, "i").test(approver || "");
+  });
+  return Boolean(hasDesignLink && independentReview && approver && splitRationale && hasApprovedLogin);
 }
 
 function statusForEvaluation(result) {

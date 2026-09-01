@@ -573,16 +573,39 @@ test("requires explicit design and split evidence for an oversized override", ()
   const completeBody = [
     "- Design: docs/superpowers/specs/2026-09-01-design.md",
     "- Independent design review: reviewer approved the failure matrix",
-    "- architecture-approved approver and split rationale: Henry approved; the consistency boundary cannot be split safely",
+    "- Override approver: Henry",
+    "- Split rationale (only when oversized): the consistency boundary cannot be split safely",
   ].join("\n");
-  assert.equal(hasRequiredOverrideEvidence(completeBody), true);
+  assert.equal(hasRequiredOverrideEvidence(completeBody, ["Henry"]), true);
+  assert.equal(hasRequiredOverrideEvidence(completeBody, ["Other reviewer"]), false);
   assert.equal(
-    hasRequiredOverrideEvidence(completeBody.replace("docs/superpowers/specs/2026-09-01-design.md", "N/A")),
+    hasRequiredOverrideEvidence(
+      completeBody.replace("docs/superpowers/specs/2026-09-01-design.md", "N/A"),
+      ["Henry"],
+    ),
     false,
   );
   assert.equal(
-    hasRequiredOverrideEvidence(completeBody.replace("the consistency boundary cannot be split safely", "N/A")),
+    hasRequiredOverrideEvidence(
+      completeBody.replace("the consistency boundary cannot be split safely", "N/A"),
+      ["Henry"],
+    ),
     false,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace("the consistency boundary cannot be split safely", "TODO: explain"),
+      ["Henry"],
+    ),
+    false,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence([
+      "- Design: docs/superpowers/specs/2026-09-01-design.md",
+      "- Independent design review: reviewer approved the failure matrix",
+      "- `architecture-approved` label, maintainer/admin approval review for the current head SHA, and split rationale (only when oversized): Henry approved; cannot split safely",
+    ].join("\n"), ["Henry"]),
+    true,
   );
   assert.equal(hasRequiredOverrideEvidence(null), false);
 });
@@ -612,7 +635,8 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
     admissionWorkflow,
     /group: development-admission-\$\{\{ github\.event\.repository\.full_name \}\}-\$\{\{ needs\.resolve-admission\.outputs\.pull_request_number \}\}/,
   );
-  assert.match(admissionWorkflow, /hasRequiredOverrideEvidence\(latestPullRequest\.body\)/);
+  assert.match(admissionWorkflow, /context\.payload\.pull_request\?\.merge_commit_sha/);
+  assert.match(admissionWorkflow, /hasRequiredOverrideEvidence\(latestPullRequest\.body, approvalReviewers\)/);
   assert.match(signalWorkflow, /permissions: \{\}/);
   assert.match(signalWorkflow, /development-admission-review-\$\{\{ github\.run_id \}\}/);
   assert.match(reconcileWorkflow, /schedule:/);

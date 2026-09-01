@@ -12,7 +12,8 @@
 - Design:
 - Independent design review:
 - Invariants and failure matrix:
-- `architecture-approved` label, maintainer/admin approval review for the current head SHA, and split rationale (only when oversized):
+- Override approver (must match a current-head maintainer/admin approval review, only when oversized):
+- Split rationale (only when oversized):
 
 Admission checklist:
 
