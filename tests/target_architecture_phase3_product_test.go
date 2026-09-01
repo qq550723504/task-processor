@@ -24,6 +24,8 @@ func TestPhase3ProductTargetDependencies(t *testing.T) {
 			"go.temporal.io",
 			"github.com/redis",
 			"github.com/rabbitmq",
+			"github.com/aws/aws-sdk-go-v2",
+			"github.com/sashabaranov/go-openai",
 		}, nil)
 	}
 }

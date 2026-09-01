@@ -94,10 +94,11 @@ counts and the direct internal importer counts for `core`, `infra`, and
 
 ### `internal/product`
 
-The root `internal/product` package is not the new Catalog. Its fetching,
-caching, pricing, and cross-platform filtering responsibilities will split into
-Marketplace-owned packages; it must not be migrated wholesale or relabeled as
-`internal/product/catalog`.
+The root `internal/product` package is not the new Catalog. Its fetching and
+caching responsibilities move to `internal/marketplace/sourceproduct`; its
+cross-platform filtering and pricing-policy responsibilities move to
+`internal/marketplace/productpolicy`. It must not be migrated wholesale or
+relabeled as `internal/product/catalog`.
 
 ### Technical `internal/pkg`
 

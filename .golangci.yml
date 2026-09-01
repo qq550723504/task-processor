@@ -120,6 +120,8 @@ linters-settings:
           - pkg: task-processor/internal/integration
           - pkg: gorm.io/gorm
           - pkg: go.temporal.io
+          - pkg: github.com/aws/aws-sdk-go-v2
+          - pkg: github.com/sashabaranov/go-openai
 
       platform_domain_dependencies:
         files:

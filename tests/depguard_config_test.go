@@ -98,6 +98,8 @@ func TestPhase3ProductDomainBoundaryDepguardRuleCoversOnlyTargetSubpackages(t *t
 		"task-processor/internal/integration",
 		"gorm.io/gorm",
 		"go.temporal.io",
+		"github.com/aws/aws-sdk-go-v2",
+		"github.com/sashabaranov/go-openai",
 	} {
 		if _, ok := denied[packagePath]; !ok {
 			t.Errorf("phase3_product_domain_boundaries must deny %s", packagePath)
