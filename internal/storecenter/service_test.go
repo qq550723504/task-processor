@@ -264,6 +264,41 @@ func TestServiceCreateFinalAuditFailureResumesWithoutReactivation(t *testing.T) 
 	}
 }
 
+func TestServiceResumeCreateActiveRepairsMissingTerminalAudit(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	repository := newStoreRepositoryFake()
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionStoreCreationCommitted: 1}
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("initial Create() error = %v, want dependency unavailable", err)
+	}
+	store := repository.stores[request.OrganizationID+"/"+ledger.allocation.StoreID]
+	if store == nil || store.LifecycleStatus() != storecenter.StoreStatusActive {
+		t.Fatalf("durable Store = %#v, want active Store", store)
+	}
+
+	result, err := service.ResumeCreate(context.Background(), storecenter.ResumeCreateStoreRequest{
+		OrganizationID:  request.OrganizationID,
+		ActorSubject:    "recovery-actor",
+		StoreID:         store.ID(),
+		ExpectedVersion: store.Version(),
+	})
+	if err != nil {
+		t.Fatalf("ResumeCreate() error = %v", err)
+	}
+	if !result.Replayed || result.Store.LifecycleStatus() != storecenter.StoreStatusActive || repository.saveCalls != 1 {
+		t.Fatalf("ResumeCreate() = %+v saves=%d, want active replay without reactivation", result, repository.saveCalls)
+	}
+	if _, err := audit.Get(context.Background(), request.OrganizationID, request.IdempotencyKey, storecenter.AuditActionStoreCreationCommitted); err != nil {
+		t.Fatalf("terminal creation audit = %v, want repaired audit", err)
+	}
+}
+
 func TestServiceCreateAuditFailuresPauseAtTheirDurableBoundary(t *testing.T) {
 	for _, tt := range []struct {
 		name                                  string

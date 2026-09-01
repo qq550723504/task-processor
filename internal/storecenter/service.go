@@ -389,7 +389,15 @@ func (s *Service) ResumeCreate(ctx context.Context, request ResumeCreateStoreReq
 		return CreateStoreResult{}, ErrVersionConflict
 	}
 	if store.LifecycleStatus() == StoreStatusActive {
-		return CreateStoreResult{Store: store, Replayed: true}, nil
+		return s.Create(ctx, CreateStoreRequest{
+			OrganizationID:  normalized.OrganizationID,
+			ActorSubject:    normalized.ActorSubject,
+			IdempotencyKey:  store.CreateIdempotencyKey(),
+			Name:            store.Name(),
+			Platform:        string(store.Platform()),
+			Region:          store.Region(),
+			ExternalStoreID: store.ExternalStoreID(),
+		})
 	}
 	if store.LifecycleStatus() != StoreStatusProvisioning {
 		return CreateStoreResult{}, ErrInvalidTransition
