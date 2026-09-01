@@ -88,6 +88,8 @@ internal/app/
 
 `internal/pipeline` 不属于产品域。代码证据表明其生产消费者几乎全部位于 TEMU/Marketplace；阶段二清单把它归入产品阶段的判断不准确。阶段三只冻结其增长，阶段四再按 Marketplace 所有权拆分。
 
+计划阶段进一步确认，现有 `internal/product` 根包中的抓取、缓存、价格和筛选代码也不是规范产品事实：其直接消费者主要位于 TEMU、SHEIN、Crawler 与 Marketplace 运行时。阶段三将抓取/缓存职责迁入 `internal/marketplace/sourceproduct`，将跨平台筛选职责迁入 `internal/marketplace/productpolicy`；最终 `internal/product` 根目录不再形成 Go package，只保留本设计列出的五个目标子包和说明文档。该迁移是职责归属修复，不是兼容 Facade。
+
 ## 4. 所有权和依赖规则
 
 ### 4.1 产品域

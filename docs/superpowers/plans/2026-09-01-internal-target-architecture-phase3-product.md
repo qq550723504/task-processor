@@ -1,0 +1,1353 @@
+# 阶段三产品域目标架构实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 在一个最终 PR 内建立唯一的产品事实、来源、丰富化、资产和图片能力边界，令 ImageAgent 成为唯一图片工作流，并删除旧 ProductEnrich/ProductImage 任务体系及五个旧产品根目录。
+
+**Architecture:** 先建立可单独验证的目标契约，再按 Catalog/Sourcing、Asset、Enrichment、Image 的顺序迁移纯领域能力；具体 GORM、Crawler、OpenAI、GRSAI、HTTP 图片和 S3 实现留在 Integration，运行时只由 App 装配。ListingKit、SDS、AmazonListing 改成读取 `ProductSnapshot` 和 `ApprovedAssetInventory`，ImageAgent 负责图片计划、执行、恢复、审批以及批准资产提交。
+
+**Tech Stack:** Go 1.25、Gin、GORM、Goose、Temporal、golangci-lint/depguard、Testify、OpenAPI、pnpm 11、TypeScript 6。
+
+**Spec:** `docs/superpowers/specs/2026-09-01-internal-target-architecture-phase3-product-design.md`
+
+## Global Constraints
+
+- 最终 PR 必须删除 `internal/catalog`、`internal/asset`、`internal/imageasset`、`internal/productenrich`、`internal/productimage`，且不得保留转发包、Deprecated Facade、类型别名兼容层或双写。
+- `internal/product/{catalog,sourcing,enrichment,asset,image}` 不得导入 `internal/app`、`internal/platform`、`internal/integration`、GORM、Temporal、Redis、RabbitMQ 或 Provider SDK。
+- `internal/product/asset` 不得导入 `internal/product/image`；候选图片到批准资产的映射由 ImageAgent 完成。
+- ImageAgent 是唯一产品图片任务、计划、预算、重试、恢复和审批所有者；不得新增 ProductImage Queue、Worker、Task 或 HTTP API。
+- 本阶段不实现 ProductAgent；Enrichment 只产生无持久化副作用的 `Proposal`。
+- ListingKit、SDS、AmazonListing 只能读取 `ProductSnapshot` 和 `ApprovedAssetInventory`；缺失时返回明确的未就绪错误，禁止选择来源图或第一张图兜底。
+- 生产装配缺少数据库、ImageAgent 能力、Artifact Store 或 Asset Repository 时必须失败；内存实现只能由测试显式构造。
+- 停止代码读写 `product_enrich_tasks`、`product_image_tasks`，但不得在本 PR 中物理删表。
+- `internal/pipeline` 保持现状且禁止增长；它的 TEMU/Marketplace 拆分属于阶段四。
+- 现有 `internal/product` 根包不是规范产品域：其中抓取/缓存运行时迁入 `internal/marketplace/sourceproduct`，跨平台筛选规则迁入 `internal/marketplace/productpolicy`；最终 `internal/product` 根目录只包含五个目标子包和说明文档。
+- 每个任务遵循红—绿—重构顺序；每次提交前运行该任务列出的聚焦测试和 `git diff --check`。
+
+---
+
+## 文件与职责映射
+
+| 目标 | 文件/目录 | 职责 |
+|---|---|---|
+| 产品事实 | `internal/product/catalog/{snapshot.go,trace.go,normalize.go,errors.go}` | 规范 `ProductSnapshot`、来源证据、确定性归一化 |
+| 来源交接 | `internal/product/sourcing/{source_envelope.go,source_identity.go,source_request.go,normalize.go}` | Provider-neutral 来源身份、证据、lineage、warnings |
+| 丰富化 | `internal/product/enrichment/{model.go,ports.go,proposer.go,validation.go,scoring.go,errors.go}` | 只读输入、Proposal、验证与评分 |
+| 资产事实 | `internal/product/asset/{model.go,inventory.go,repository.go,approval.go,errors.go}` | 已批准资产、血缘、幂等审批提交 Port |
+| 图片能力 | `internal/product/image/{model.go,ports.go,errors.go,heuristics.go,scene.go}` | Provider-neutral 图片输入、候选与窄能力 Port |
+| 资产持久化 | `internal/integration/persistence/product/asset/{model.go,repository.go,repository_contract_test.go}` | GORM Adapter、tenant scope、审批幂等性 |
+| 来源 Adapter | `internal/integration/crawler/{a1688,amazon}/product_source.go`、`internal/sds/adapter/product_source.go` | 将具体来源结构转换成 `SourceEnvelope` |
+| 图片 Adapter | `internal/integration/{openai,grsai,httpimage}/*product_image*.go` | 实现 `product/image` 定义的能力接口 |
+| ImageAgent 接线 | `internal/imageagent/tools/product_image_executor.go`、`internal/imageagent/assetpublication/publisher.go` | 能力执行、错误映射、批准资产原子提交 |
+| App 装配 | `internal/app/worker/imageagent/{capabilities.go,dependencies.go}`、`internal/app/httpapi/*` | 生产依赖检查、ImageAgent Worker/API 装配、旧模块退役 |
+| 消费方 | `internal/listingkit/*`、`internal/sds/*`、`internal/amazonlisting/*` | 只读 Snapshot/Approved Inventory，不触发工作流 |
+| 架构护栏 | `tests/target_architecture_phase3_product_test.go`、`.golangci.yml`、`tests/depguard_config_test.go` | 旧目录消失、依赖方向、单一编排所有者 |
+
+---
+
+### Task 1: 建立阶段三迁移护栏和基线
+
+**Files:**
+- Create: `tests/target_architecture_phase3_product_test.go`
+- Modify: `tests/depguard_config_test.go`
+- Modify: `.golangci.yml`
+- Modify: `docs/refactoring/phase2-runtime-inventory.md`
+
+**Interfaces:**
+- Consumes: `tests/import_scan_test.go` 中现有 AST/import 扫描帮助函数。
+- Produces: `TestPhase3ProductTargetDependencies`、`TestPhase3LegacyProductRootsDoNotGrow`、`TestPhase3PipelineDoesNotGrow`；最终任务会把 legacy growth test 收紧为目录不存在。
+
+- [ ] **Step 1: 写目标依赖和增长基线测试**
+
+```go
+func TestPhase3ProductTargetDependencies(t *testing.T) {
+	for _, name := range []string{"catalog", "sourcing", "enrichment", "asset", "image"} {
+		root := filepath.Join("..", "internal", "product", name)
+		if _, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		assertNoBannedImportPrefixes(t, root, []string{
+			"task-processor/internal/app", "task-processor/internal/platform",
+			"task-processor/internal/integration", "gorm.io/gorm",
+			"go.temporal.io", "github.com/redis", "github.com/rabbitmq",
+		}, nil)
+	}
+}
+
+func TestPhase3LegacyProductRootsDoNotGrow(t *testing.T) {
+	want := map[string]int{"catalog": 6, "asset": 31, "imageasset": 1, "productenrich": 74, "productimage": 92}
+	for root, max := range want {
+		if got := productionGoFileCount(t, filepath.Join("..", "internal", root)); got > max {
+			t.Errorf("internal/%s production files = %d, baseline max = %d", root, got, max)
+		}
+	}
+}
+```
+
+基线只统计生产 `.go` 文件；先用 `rg --files` 重新确认当前数字并把实测值写入测试，不猜测测试文件数量。
+
+- [ ] **Step 2: 运行测试确认当前依赖缺陷被准确捕获**
+
+Run: `go test ./tests -run 'TestPhase3(ProductTargetDependencies|LegacyProductRootsDoNotGrow|PipelineDoesNotGrow)' -count=1 -v`
+
+Expected: growth tests PASS；依赖测试仅报告目标子包当前存在的具体违规，不把 `internal/product` 根包误算为目标子包。
+
+- [ ] **Step 3: 配置只覆盖五个目标子包的 depguard 规则**
+
+```yaml
+phase3_product_domain_boundaries:
+  files:
+    - "**/internal/product/catalog/**/*.go"
+    - "**/internal/product/sourcing/**/*.go"
+    - "**/internal/product/enrichment/**/*.go"
+    - "**/internal/product/asset/**/*.go"
+    - "**/internal/product/image/**/*.go"
+  deny:
+    - pkg: task-processor/internal/app
+    - pkg: task-processor/internal/platform
+    - pkg: task-processor/internal/integration
+    - pkg: gorm.io/gorm
+    - pkg: go.temporal.io
+```
+
+在 `tests/depguard_config_test.go` 逐项断言五个 glob 和禁用包存在。更新阶段二 inventory，记录 `internal/product` 根包将按职责拆到 Marketplace，而不是成为新 Catalog。
+
+- [ ] **Step 4: 运行护栏测试**
+
+Run: `go test ./tests -run 'TestPhase3|TestDepguard' -count=1`
+
+Expected: PASS。
+
+- [ ] **Step 5: 提交护栏**
+
+```powershell
+git add .golangci.yml tests/target_architecture_phase3_product_test.go tests/depguard_config_test.go docs/refactoring/phase2-runtime-inventory.md
+git diff --cached --check
+git commit -m "test(architecture): guard phase 3 product boundaries"
+```
+
+---
+
+### Task 2: 清空旧 `internal/product` 根包的错误所有权
+
+**Files:**
+- Create: `internal/marketplace/sourceproduct/doc.go`
+- Move: `internal/product/{cache_manager.go,cache_manager_test.go,data_parser.go,product_fetcher.go,product_fetcher_test.go,source_request.go,source_request_test.go,source_request_boundary_test.go,types.go,validator.go}` → `internal/marketplace/sourceproduct/`
+- Create: `internal/marketplace/productpolicy/doc.go`
+- Move: `internal/product/{filter_rule.go,fulfillment.go,price_helper.go,price_helper_test.go,rule_checker.go}` → `internal/marketplace/productpolicy/`
+- Modify: all exact importers returned by `rg -l '"task-processor/internal/product"' internal tests --glob '*.go'`
+- Modify: `tests/target_architecture_phase3_product_test.go`
+
+**Interfaces:**
+- Consumes: `sourcing.AmazonCrawlerSource` and legacy marketplace `model.Product` without changing behavior.
+- Produces: `sourceproduct.FetchRequest`、`sourceproduct.ProductFetcher`、`productpolicy.FilterRule` and pricing/filter helpers; no root `package product` remains.
+
+- [ ] **Step 1: 写根包消失和职责包依赖测试**
+
+```go
+func TestPhase3ProductRootContainsNoGoPackage(t *testing.T) {
+	entries, err := filepath.Glob(filepath.Join("..", "internal", "product", "*.go"))
+	require.NoError(t, err)
+	require.Empty(t, entries)
+}
+```
+
+为 `marketplace/sourceproduct` 保留现有 fetch/cache 测试，为 `marketplace/productpolicy` 保留价格、库存和规则测试；测试包名与生产包名同步修改。
+
+- [ ] **Step 2: 运行测试确认根包仍存在**
+
+Run: `go test ./tests -run TestPhase3ProductRootContainsNoGoPackage -count=1 -v`
+
+Expected: FAIL，列出 `internal/product/*.go`。
+
+- [ ] **Step 3: 按职责移动文件并一次性更新调用方**
+
+```go
+// internal/marketplace/sourceproduct/doc.go
+// Package sourceproduct owns legacy marketplace source fetch/cache execution.
+// It is not the canonical product domain and must not be imported by internal/product/*.
+package sourceproduct
+
+// internal/marketplace/productpolicy/doc.go
+// Package productpolicy owns marketplace screening and price/inventory policy.
+package productpolicy
+```
+
+所有调用点直接改成新包名；不得在 `internal/product` 留 alias。更新 `tests/target_architecture_phase2_test.go` 中旧 import 字符串和目标说明。
+
+- [ ] **Step 4: 运行迁移包和调用方测试**
+
+Run: `go test ./internal/marketplace/sourceproduct ./internal/marketplace/productpolicy ./internal/crawler/fetcher ./internal/processor ./internal/temu/... ./internal/shein/... ./internal/app/bootstrap/... ./internal/app/runner/... ./tests -run 'TestPhase3ProductRootContainsNoGoPackage|TestFetch|TestPrice|TestInventory|TestRule' -count=1`
+
+Expected: PASS，且 `rg -n '"task-processor/internal/product"' internal tests --glob '*.go'` 返回零结果。
+
+- [ ] **Step 5: 提交所有权修复**
+
+```powershell
+git add internal/product internal/marketplace internal/crawler internal/processor internal/temu internal/shein internal/app tests
+git diff --cached --check
+git commit -m "refactor(product): move marketplace runtime out of product root"
+```
+
+---
+
+### Task 3: 迁移 Catalog 并建立 `ProductSnapshot`
+
+**Files:**
+- Move: `internal/catalog/` → `internal/product/catalog/`
+- Rename: `internal/product/catalog/model.go` → `snapshot.go`
+- Rename: `internal/product/catalog/from_canonical.go` → `normalize.go`
+- Create: `internal/product/catalog/errors.go`
+- Modify: every file returned by `rg -l 'task-processor/internal/catalog' internal tests --glob '*.go'`
+- Modify: `tests/import_scan_test.go`
+- Test: `internal/product/catalog/{model_test.go,from_canonical_test.go,boundary_guard_test.go}` renamed with production files
+
+**Interfaces:**
+- Consumes: `catalog/canonical.Product` only inside Catalog normalization.
+- Produces: `catalog.ProductSnapshot` and `catalog.Normalize(*canonical.Product) (*ProductSnapshot, error)`.
+
+- [ ] **Step 1: 把现有 Catalog 测试改成目标名称**
+
+```go
+func TestNormalizeProducesDeterministicSnapshot(t *testing.T) {
+	input := &canonical.Product{Title: "Bottle", Attributes: map[string]canonical.Attribute{
+		"material": {Value: "steel"}, "color": {Value: "black"},
+	}}
+	first, err := Normalize(input)
+	require.NoError(t, err)
+	second, err := Normalize(input)
+	require.NoError(t, err)
+	require.Equal(t, first, second)
+	require.Equal(t, []string{"color", "material"}, []string{first.Attributes[0].Name, first.Attributes[1].Name})
+}
+```
+
+- [ ] **Step 2: 运行目标包测试确认新路径尚不存在**
+
+Run: `go test ./internal/product/catalog/... -count=1`
+
+Expected: FAIL，目标包不存在。
+
+- [ ] **Step 3: 移动包并公开 Snapshot 契约**
+
+```go
+var ErrInvalidSnapshot = errors.New("invalid product snapshot")
+
+type ProductSnapshot struct {
+	Title          string
+	Brand          string
+	CategoryPath   []string
+	Description    string
+	SellingPoints  []string
+	SEOKeywords    []string
+	Attributes     []Attribute
+	Specifications *Specifications
+	Variants       []Variant
+	Images         []Image
+	Review         *ReviewState
+	Sources        []SourceRecord
+}
+
+func Normalize(product *canonical.Product) (*ProductSnapshot, error)
+```
+
+保留 JSON 字段契约，所有 map 转 slice 和 source 收集必须排序。直接更新调用方为 `product/catalog` 和 `ProductSnapshot`；不得留下 `type Product = ProductSnapshot`。
+
+- [ ] **Step 4: 运行 Catalog 与全体直接调用方测试**
+
+Run: `go test ./internal/product/catalog/... ./internal/product/sourcing/... ./internal/listingkit/... ./internal/amazonlisting/... ./internal/publishing/... ./internal/marketplace/... ./tests -count=1`
+
+Expected: PASS；`rg -n 'task-processor/internal/catalog' internal tests --glob '*.go'` 返回零结果。
+
+- [ ] **Step 5: 提交 Catalog 迁移**
+
+```powershell
+git add internal/catalog internal/product/catalog internal/listingkit internal/amazonlisting internal/publishing internal/marketplace internal/product/sourcing tests
+git diff --cached --check
+git commit -m "refactor(product): establish canonical product catalog"
+```
+
+---
+
+### Task 4: 纯化 Sourcing 并把具体来源转换移到 Adapter
+
+**Files:**
+- Modify: `internal/product/sourcing/{source_envelope.go,source_identity.go,source_request.go,source_result.go,doc.go}`
+- Create: `internal/product/sourcing/normalize.go`
+- Move: `internal/product/sourcing/{a1688_scraped_data.go,a1688_snapshot.go,a1688_source_envelope.go,a1688_source_result.go}` → `internal/integration/crawler/a1688/product_source.go`
+- Move: `internal/product/sourcing/{amazon_crawl_requests.go,amazon_source_envelope.go,amazon_source_fetcher.go,amazon_source_platform.go}` → `internal/integration/crawler/amazon/product_source.go`
+- Move: `internal/product/sourcing/sdspod/` → `internal/sds/adapter/product_source/`
+- Modify: `internal/product/sourcing/catalog_asset_handoff.go`
+- Test: move corresponding source-specific tests with their adapters
+
+**Interfaces:**
+- Consumes: source adapters create `sourcing.SourceEnvelope`.
+- Produces: `sourcing.Normalize(SourceEnvelope) (SourceEnvelope, error)` and `sourcing.ToSnapshot(SourceEnvelope) (catalog.ProductSnapshot, error)`; Sourcing no longer imports `internal/model`、ProductEnrich、Asset 或具体 Crawler。
+
+- [ ] **Step 1: 写证据保留和禁止具体依赖测试**
+
+```go
+func TestNormalizePreservesEvidenceLineageAndWarnings(t *testing.T) {
+	in := SourceEnvelope{
+		Identity: SourceIdentity{SourceType: " AMAZON ", SourceID: " B001 "},
+		RawReference: RawSourceReference{ReferenceID: "raw-1", Checksum: "sha256:abc"},
+		Warnings: []SourceWarning{{Code: " Missing_Title ", Field: " title ", Message: " missing "}},
+		Trace: SourceTrace{SourceRunID: "run-1", Notes: []string{"crawler evidence"}},
+	}
+	out, err := Normalize(in)
+	require.NoError(t, err)
+	require.Equal(t, "missing_title", out.Warnings[0].Code)
+	require.Equal(t, in.RawReference.Checksum, out.RawReference.Checksum)
+	require.Equal(t, in.Trace.SourceRunID, out.Trace.SourceRunID)
+}
+```
+
+- [ ] **Step 2: 运行测试确认当前具体依赖违规**
+
+Run: `go test ./internal/product/sourcing/... ./tests -run 'TestNormalizePreservesEvidenceLineageAndWarnings|TestPhase3ProductTargetDependencies' -count=1 -v`
+
+Expected: FAIL，违规只来自现有 source-specific 文件和旧 Asset/ProductEnrich import。
+
+- [ ] **Step 3: 移动 Adapter 并收紧归一化入口**
+
+```go
+func Normalize(in SourceEnvelope) (SourceEnvelope, error) {
+	out := in.Normalize()
+	if !out.Identity.Valid() {
+		return SourceEnvelope{}, ErrSourceIdentityRequired
+	}
+	return out, nil
+}
+
+func ToSnapshot(in SourceEnvelope) (catalog.ProductSnapshot, error) {
+	normalized, err := Normalize(in)
+	if err != nil {
+		return catalog.ProductSnapshot{}, err
+	}
+	return catalog.ProductSnapshot{
+		Title: normalized.ProductCandidate.Title,
+		Brand: normalized.ProductCandidate.Brand,
+		Description: normalized.ProductCandidate.Description,
+		Sources: []catalog.SourceRecord{{Type: normalized.Identity.SourceType, Detail: normalized.RawReference.ReferenceID}},
+	}, nil
+}
+```
+
+`catalog_asset_handoff.go` 只产生 Catalog Snapshot；资产候选保留在 Envelope，后续由 ImageAgent 授权目录 Adapter 转换，不再让 Sourcing import Asset。
+
+- [ ] **Step 4: 运行领域和 Adapter 测试**
+
+Run: `go test ./internal/product/sourcing ./internal/integration/crawler/a1688 ./internal/integration/crawler/amazon ./internal/sds/adapter/... ./tests -run 'TestPhase3ProductTargetDependencies|Test.*Source' -count=1`
+
+Expected: PASS；`go list -f '{{join .Imports "\n"}}' ./internal/product/sourcing` 不含 `internal/model`、`internal/integration`、`internal/productenrich`、`internal/asset`。
+
+- [ ] **Step 5: 提交 Sourcing 纯化**
+
+```powershell
+git add internal/product/sourcing internal/integration/crawler internal/sds/adapter tests
+git diff --cached --check
+git commit -m "refactor(product): isolate source envelopes from adapters"
+```
+
+---
+
+### Task 5: 建立批准资产领域契约
+
+**Files:**
+- Create: `internal/product/asset/{model.go,inventory.go,approval.go,repository.go,errors.go}`
+- Create/adapt from: `internal/asset/{facts.go,inventory.go,inventory_test.go,model.go}`；旧文件保留到 Task 13，避免尚未迁移的 ListingKit 在中间提交断编译
+- Create/adapt from: `internal/asset/{policy,recipe}/` → `internal/product/asset/{policy,recipe}/`；不创建跨路径 alias
+- Create: `internal/product/asset/assettest/memory_repository.go`
+- Test: `internal/product/asset/{approval_test.go,repository_contract_test.go,boundary_guard_test.go}`
+
+**Interfaces:**
+- Consumes: ImageAgent 后续提交 `ApprovalCommit`；消费方读取 `ApprovedAssetInventory`。
+- Produces: `asset.Repository.CommitApproval`、`asset.Repository.GetApprovedInventory`、`assettest.NewMemoryRepository()` 和 `assettest.ExerciseRepositoryContract(t, factory)`。
+
+- [ ] **Step 1: 写 tenant、幂等性和未就绪契约测试**
+
+```go
+type RepositoryFactory func(t *testing.T) asset.Repository
+
+func ExerciseRepositoryContract(t *testing.T, factory RepositoryFactory) {
+	t.Helper()
+	repo := factory(t)
+	commit := asset.ApprovalCommit{
+		TenantID: "tenant-a", ProductKey: "product-1", ActionID: "approve-1",
+		Assets: []asset.ApprovedAsset{{
+			ID: "asset-1", RunID: "run-1", PlanRevision: 2, SlotID: "main", Attempt: 1,
+			Role: asset.RoleMain, URL: "https://cdn.example/asset-1.png",
+		}},
+	}
+	first, err := repo.CommitApproval(context.Background(), commit)
+	require.NoError(t, err)
+	second, err := repo.CommitApproval(context.Background(), commit)
+	require.NoError(t, err)
+	require.Equal(t, first, second)
+	inventory, err := repo.GetApprovedInventory(context.Background(), asset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"})
+	require.NoError(t, err)
+	require.Len(t, inventory.Assets, 1)
+}
+```
+
+- [ ] **Step 2: 运行测试确认目标契约尚不存在**
+
+Run: `go test ./internal/product/asset/... -count=1`
+
+Expected: FAIL，目标包或类型不存在。
+
+- [ ] **Step 3: 实现不可变批准资产模型和 Repository Port**
+
+```go
+var ErrApprovedAssetsNotReady = errors.New("approved product assets are not ready")
+
+type InventoryScope struct { TenantID, ProductKey string }
+
+type Role string
+
+const (
+	RoleDesign Role = "design"
+	RoleMain Role = "main"
+	RoleWhiteBackground Role = "white_background"
+	RoleGallery Role = "gallery"
+)
+
+type ApprovedAsset struct {
+	ID, RunID, SlotID, URL, SourceAssetID string
+	Role Role
+	PlanRevision int64
+	Attempt int
+	Width, Height int
+	Operations []string
+}
+
+type ApprovalCommit struct {
+	TenantID, ProductKey, ActionID string
+	Assets []ApprovedAsset
+}
+
+type ApprovalReceipt struct { ActionID string; AssetIDs []string }
+
+type ApprovedAssetInventory struct {
+	Scope InventoryScope
+	Assets []ApprovedAsset
+}
+
+type Repository interface {
+	CommitApproval(context.Context, ApprovalCommit) (ApprovalReceipt, error)
+	GetApprovedInventory(context.Context, InventoryScope) (ApprovedAssetInventory, error)
+}
+```
+
+校验唯一身份至少覆盖 tenant、run、revision、slot、attempt、action；Inventory 只含批准资产。测试内存实现和导出的契约测试函数放在 `assettest`，生产代码不得 import 它；架构测试扫描所有非 `_test.go` 生产文件并拒绝 `internal/product/asset/assettest` import。
+
+- [ ] **Step 4: 运行 Asset 领域测试**
+
+Run: `go test ./internal/product/asset/... ./tests -run 'TestPhase3ProductTargetDependencies|Test.*Asset' -count=1`
+
+Expected: PASS；`rg -n 'product/image|productimage|gorm.io' internal/product/asset --glob '*.go'` 返回零结果。
+
+- [ ] **Step 5: 提交 Asset 契约**
+
+```powershell
+git add internal/product/asset tests
+git diff --cached --check
+git commit -m "feat(product): define approved asset inventory"
+```
+
+---
+
+### Task 6: 把 Asset GORM 实现迁入 Integration
+
+**Files:**
+- Create: `internal/integration/persistence/product/asset/{model.go,repository.go,repository_contract_test.go}`
+- Modify: `internal/listingkit/schema/runtime.go`
+- Modify: `internal/app/schema/productlisting/runtime.go`
+- Modify: `internal/app/schema/productlisting/runtime_test.go`
+
+**Interfaces:**
+- Consumes: `product/asset.Repository` from Task 5.
+- Produces: `assetpersistence.NewRepository(*gorm.DB) (asset.Repository, error)`；唯一索引实现审批幂等性。
+
+- [ ] **Step 1: 用同一契约测试 GORM Adapter**
+
+```go
+func TestRepositoryContract(t *testing.T) {
+	assettest.ExerciseRepositoryContract(t, func(t *testing.T) productasset.Repository {
+		db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
+		require.NoError(t, err)
+		require.NoError(t, db.AutoMigrate(&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}))
+		repo, err := NewRepository(db)
+		require.NoError(t, err)
+		return repo
+	})
+}
+```
+
+增加跨 tenant 查询返回 `ErrApprovedAssetsNotReady`、同一 action 不同 payload 返回 `ErrApprovalConflict`、事务失败不产生半批记录的测试。
+
+- [ ] **Step 2: 运行测试确认 Adapter 不存在**
+
+Run: `go test ./internal/integration/persistence/product/asset -count=1`
+
+Expected: FAIL，包不存在。
+
+- [ ] **Step 3: 实现记录模型和原子提交**
+
+```go
+type ApprovedAssetRecord struct {
+	TenantID string `gorm:"primaryKey;size:128"`
+	RunID string `gorm:"primaryKey;size:128"`
+	PlanRevision int64 `gorm:"primaryKey"`
+	SlotID string `gorm:"primaryKey;size:128"`
+	Attempt int `gorm:"primaryKey"`
+	ActionID string `gorm:"primaryKey;size:128"`
+	AssetID string `gorm:"uniqueIndex:ux_product_approved_asset_id;size:128"`
+	ProductKey string `gorm:"index:ix_product_approved_inventory,priority:2;size:128"`
+	PayloadJSON []byte `gorm:"type:json"`
+}
+
+type ApprovalReceiptRecord struct {
+	TenantID string `gorm:"primaryKey;size:128"`
+	ActionID string `gorm:"primaryKey;size:128"`
+	PayloadHash string `gorm:"size:64;not null"`
+	AssetIDsJSON []byte `gorm:"type:json;not null"`
+}
+```
+
+`CommitApproval` 在一个事务中锁定/读取 action receipt、比较 canonical payload hash、插入全部资产和 receipt。`GetApprovedInventory` 必须同时过滤 tenant 和 product key。
+
+- [ ] **Step 4: 更新 schema 但不删除旧表**
+
+`listingkit/schema.AutoMigrateRuntime` 和 `app/schema/productlisting.AutoMigrateRuntime` 在本任务只新增批准资产表；旧 Asset generation snapshot 仍服务尚未迁移的 ListingKit，Task 16 再移除其新建依赖。不得调用 `DropTable`。运行：
+
+Run: `go test ./internal/integration/persistence/product/asset ./internal/listingkit/schema ./internal/app/schema/productlisting -count=1`
+
+Expected: PASS；schema 测试证明新库创建批准资产表；旧 task 表依赖的最终移除由 Task 16 验证。
+
+- [ ] **Step 5: 提交持久化迁移**
+
+```powershell
+git add internal/integration/persistence/product/asset internal/listingkit/schema internal/app/schema/productlisting
+git diff --cached --check
+git commit -m "refactor(persistence): move product assets behind domain port"
+```
+
+---
+
+### Task 7: 定义无副作用的 Enrichment Proposal
+
+**Files:**
+- Create: `internal/product/enrichment/{model.go,ports.go,proposer.go,validation.go,scoring.go,errors.go}`
+- Move/adapt tests from: `internal/productenrich/{validator_test.go,validator_extra_test.go,result_validator_test.go,scorer_test.go,strategy_test.go,suggester_test.go}`
+- Test: `internal/product/enrichment/{proposer_test.go,immutability_test.go,boundary_guard_test.go}`
+
+**Interfaces:**
+- Consumes: `catalog.ProductSnapshot`、`sourcing.SourceEnvelope`、显式 `PolicySnapshot`。
+- Produces: `enrichment.Proposer.Propose(context.Context, Request) (Proposal, error)`；不暴露 Provider、Task、Repository 或重试类型。
+
+- [ ] **Step 1: 写输入不变和 Proposal 证据测试**
+
+```go
+func TestProposeDoesNotMutateSnapshot(t *testing.T) {
+	snapshot := catalog.ProductSnapshot{Title: "Bottle"}
+	before, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	generator := candidateGeneratorFunc(func(context.Context, GenerationRequest) (Candidate, error) {
+		return Candidate{Changes: []FieldChange{{Field: "description", Value: "Steel bottle", EvidenceIDs: []string{"raw-1"}}}}, nil
+	})
+	proposer, err := NewProposer(Dependencies{Generator: generator})
+	require.NoError(t, err)
+	source := sourcing.SourceEnvelope{RawReference: sourcing.RawSourceReference{ReferenceID: "raw-1"}}
+	proposal, err := proposer.Propose(context.Background(), Request{Snapshot: snapshot, Source: source, Policy: PolicySnapshot{Version: "v1"}})
+	require.NoError(t, err)
+	after, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	require.JSONEq(t, string(before), string(after))
+	require.Equal(t, "raw-1", proposal.Changes[0].EvidenceIDs[0])
+}
+
+type candidateGeneratorFunc func(context.Context, GenerationRequest) (Candidate, error)
+
+func (f candidateGeneratorFunc) Generate(ctx context.Context, req GenerationRequest) (Candidate, error) {
+	return f(ctx, req)
+}
+```
+
+- [ ] **Step 2: 运行测试确认新契约不存在**
+
+Run: `go test ./internal/product/enrichment -count=1`
+
+Expected: FAIL，目标包不存在。
+
+- [ ] **Step 3: 实现 Proposal 和窄生成 Port**
+
+```go
+type Proposer interface { Propose(context.Context, Request) (Proposal, error) }
+
+type CandidateGenerator interface {
+	Generate(context.Context, GenerationRequest) (Candidate, error)
+}
+
+type Request struct {
+	Snapshot catalog.ProductSnapshot
+	Source sourcing.SourceEnvelope
+	Policy PolicySnapshot
+}
+
+type Proposal struct {
+	Changes []FieldChange
+	Evidence []Evidence
+	Quality QualityScore
+	Validation ValidationResult
+	Warnings []Warning
+	Rejections []Rejection
+}
+```
+
+`NewProposer` 必须拒绝 nil Generator；验证顺序固定为输入校验、生成、证据校验、评分、输出校验。任何失败都只返回稳定领域错误。
+
+- [ ] **Step 4: 运行 Enrichment 测试**
+
+Run: `go test ./internal/product/enrichment/... ./tests -run 'TestPhase3ProductTargetDependencies|TestPropose' -count=1`
+
+Expected: PASS，且包中没有 GORM、Gin、Logrus、OpenAI 或 queue import。
+
+- [ ] **Step 5: 提交 Enrichment 契约**
+
+```powershell
+git add internal/product/enrichment internal/productenrich tests
+git diff --cached --check
+git commit -m "feat(product): define enrichment proposals"
+```
+
+---
+
+### Task 8: 提取 Enrichment 实现并删除任务语义
+
+**Files:**
+- Create/adapt into `internal/product/enrichment/` from `internal/productenrich/{failure.go,generator.go,governed_scoring.go,llm_score_cache.go,llm_scorer_prompt.go,parser.go,pipeline.go,quality_scoring_metadata.go,response.go,result_validator.go,scorer.go,strategy.go,suggester.go,understanding.go,url_validation.go,validation_cache.go,validator.go,variant.go}` and their unit tests
+- Create/adapt into `internal/product/enrichment/` from `internal/productenrich/enrich/{category_path.go,generator_json.go,identity_errors.go,parser.go,source_backed_product_json.go,variant.go,variant_scraped.go}` and their unit tests
+- Create/adapt into the OpenAI adapter from `internal/productenrich/{llm_adapter.go,llm_mock.go,llm_scorer.go}` and `internal/productenrich/enrich/{generator.go,governed_execution.go,image_governance.go,prompt_templates.go,text_governance.go,understanding.go}`
+- Create/adapt `internal/integration/crawler/a1688/product_enrichment_input.go` from `internal/productenrich/enrich/scraper_adapter.go`
+- Create: `internal/integration/openai/product_enrichment_adapter.go`
+- Create: `internal/integration/openai/product_enrichment_adapter_test.go`
+- Retain unchanged until Task 16: `internal/productenrich/{api,httpapi,pipeline,store}/` and root Task/Service runtime files, because ListingKit/AmazonListing/App still compile against them in this intermediate commit
+- Do not modify: `internal/app/httpapi/runtime_productenrich.go`; production ProductAgent composition is intentionally not added
+
+**Interfaces:**
+- Consumes: Task 7 `CandidateGenerator`。
+- Produces: OpenAI Adapter 实现 `enrichment.CandidateGenerator`；领域包保留验证、评分、Prompt-neutral 解析规则。
+
+- [ ] **Step 1: 为 Adapter 写 Provider 错误隔离测试**
+
+```go
+func TestProductEnrichmentAdapterDoesNotExposeProviderTypes(t *testing.T) {
+	adapter := NewProductEnrichmentAdapter(stubTextInvoker{output: `{"description":"Steel bottle"}`})
+	got, err := adapter.Generate(context.Background(), enrichment.GenerationRequest{Prompt: "describe"})
+	require.NoError(t, err)
+	require.Equal(t, "Steel bottle", got.Changes[0].Value)
+}
+```
+
+增加 Provider 失败映射为 `enrichment.ErrExternalCapabilityUnavailable`、非法 JSON 映射为 `enrichment.ErrOutputValidation` 的测试。
+
+- [ ] **Step 2: 运行迁移测试确认旧实现仍耦合运行时**
+
+Run: `go test ./internal/product/enrichment ./internal/integration/openai -run 'TestProductEnrichment|TestPropose' -count=1`
+
+Expected: FAIL，新 Adapter 尚不存在。
+
+- [ ] **Step 3: 复制/抽取纯逻辑并隔离 Provider Adapter**
+
+保留的算法按职责拆入 `validation.go`、`scoring.go`、`parser.go`、`prompt.go`；OpenAI invocation、capability routing 和配置解析全部留在 Integration/App。新目标包不得定义 `GenerateRequest`、`Task`、`TaskResult`、`ProductService`、`TaskSubmitter`、Redis fallback 或 worker processor；旧包等消费方切换后由 Task 16 一次删除。
+
+- [ ] **Step 4: 运行领域、Integration 和旧符号扫描**
+
+Run: `go test ./internal/product/enrichment/... ./internal/integration/openai ./internal/app/httpapi -count=1`
+
+Run: `rg -n 'CreateGenerateTask|product_enrich_tasks|internal/productenrich/(api|httpapi|pipeline|store)' internal/product internal/integration --glob '*.go'`
+
+Expected: tests PASS；扫描在目标 Product 和 Integration 树中返回零结果；旧运行时只存在于尚待切换的旧包/App/消费方。
+
+- [ ] **Step 5: 提交 Enrichment 提取**
+
+```powershell
+git add internal/product/enrichment internal/integration/openai internal/integration/crawler/a1688
+git diff --cached --check
+git commit -m "refactor(product): remove enrichment task runtime"
+```
+
+---
+
+### Task 9: 建立纯 Product Image 能力
+
+**Files:**
+- Create: `internal/product/image/{model.go,ports.go,errors.go,heuristics.go,scene.go}`
+- Create/adapt pure tests from `internal/productimage/*_test.go`
+- Create/adapt into `internal/product/image/` from `internal/productimage/{cleanup_heuristics.go,generation_metadata_maps.go,inspection_heuristics.go,ip_risk.go,readable_source.go,scene_generation_metadata.go,scene_layout.go,scene_options.go,scene_preset_resolver.go,scene_profile.go,scene_prompt_resolver.go,scene_request_context.go,selling_point_content.go,selling_point_draw_output.go,selling_point_draw_preview_executor.go,selling_point_fill_input.go,selling_point_layout.go,selling_point_metadata.go,selling_point_render_blocks.go,selling_point_render_output.go,selling_point_render_output_layout.go,selling_point_render_plan.go,selling_point_slots.go}` and their unit tests
+- Create/adapt task-free types from `internal/productimage/domain/{model.go,scene_options.go}`；omit Task、TaskStatus、request persistence and SQL scanner methods
+- Create: `internal/marketplace/imagepolicy/product_image_profile.go` from `internal/productimage/marketplace_profile.go`; App injects this policy and `internal/product/image` does not import Marketplace
+- Retain only until Task 16: `internal/productimage/{lifecycle.go,model_fallback_policy.go,pipeline.go,pipeline_degradation.go,subject_fallback.go}`；none of these files may be copied into the target package
+- Copy/adapt: `internal/productimage/presets/scene_profiles.yaml` → `internal/product/image/presets/scene_profiles.yaml`；旧资源随 Task 16 删除
+- Test: `internal/product/image/{ports_test.go,heuristics_test.go,scene_test.go,boundary_guard_test.go}`
+
+**Interfaces:**
+- Consumes: Provider-neutral `ProductContext` and source assets.
+- Produces: `SubjectExtractor`、`WhiteBackgroundRenderer`、`SceneRenderer`、`Reviewer` and `UsageQuoter` ports; no task/result/publisher types.
+
+- [ ] **Step 1: 写能力边界和禁止降级测试**
+
+```go
+func TestSceneRendererRejectsSourcePassThrough(t *testing.T) {
+	renderer := NewSceneCapability(stubSceneBackend{assets: []Asset{{URL: "https://source.example/a.png", Operations: []string{"pass_through"}}}})
+	_, err := renderer.RenderScene(context.Background(), SceneRequest{Source: Asset{URL: "https://source.example/a.png"}})
+	require.ErrorIs(t, err, ErrOutputValidation)
+}
+
+type stubSceneBackend struct { assets []Asset }
+
+func (s stubSceneBackend) Render(context.Context, SceneRequest) ([]Asset, error) {
+	return append([]Asset(nil), s.assets...), nil
+}
+```
+
+- [ ] **Step 2: 运行测试确认目标包不存在**
+
+Run: `go test ./internal/product/image/... -count=1`
+
+Expected: FAIL，目标包不存在。
+
+- [ ] **Step 3: 实现无工作流状态的模型和 Port**
+
+```go
+type Asset struct {
+	URL, SourceURL, SourceAssetID string
+	Role Role
+	Width, Height int
+	Operations []string
+}
+
+type ProductContext struct {
+	ProductKey, Title, ProductType string
+	Attributes map[string]string
+}
+
+type SubjectExtractor interface { Extract(context.Context, ExtractRequest) (Candidate, error) }
+type WhiteBackgroundRenderer interface { RenderWhiteBackground(context.Context, RenderRequest) (Candidate, error) }
+type SceneRenderer interface { RenderScene(context.Context, SceneRequest) ([]Candidate, error) }
+type Reviewer interface { Review(context.Context, ReviewRequest) (Review, error) }
+```
+
+删除 `TaskStatus`、`ImageProcessRequest`、`ImageProcessResult`、`ReviewTaskRequest`、Repository、Publisher 和生命周期状态。纯算法不得读取环境变量或配置单例。
+
+- [ ] **Step 4: 运行 Product Image 领域测试**
+
+Run: `go test ./internal/product/image/... ./tests -run 'TestPhase3ProductTargetDependencies|Test.*Image' -count=1`
+
+Expected: PASS；`go list -f '{{join .Imports "\n"}}' ./internal/product/image` 不含 App/Platform/Integration/Provider SDK。
+
+- [ ] **Step 5: 提交图片领域能力**
+
+```powershell
+git add internal/product/image internal/marketplace/imagepolicy tests
+git diff --cached --check
+git commit -m "feat(product): define provider-neutral image capabilities"
+```
+
+---
+
+### Task 10: 把具体图片实现放入 Integration 并改接 ImageAgent Tool
+
+**Files:**
+- Create: `internal/integration/openai/product_image_adapter.go`
+- Create: `internal/integration/grsai/product_image_adapter.go`
+- Create: `internal/integration/httpimage/product_image_adapter.go`
+- Create: `internal/app/worker/imageagent/capabilities.go`
+- Modify: `internal/app/worker/imageagent/dependencies.go`
+- Modify: `internal/app/worker/imageagent/dependencies_test.go`
+- Rename/Modify: `internal/imageagent/tools/productimage_executor.go` → `internal/imageagent/tools/product_image_executor.go`
+- Modify: `internal/imageagent/tools/productimage_executor_test.go`
+- Modify: `internal/imageagent/temporal/{activities.go,manual_acceptance_test.go,slot_effect_v3_activity_test.go}`
+- Create/adapt OpenAI-facing adapters from `internal/productimage/{default_model_provider.go,governed_scene_generator.go,llm_review_model.go,model_provider.go,model_review_assessor.go,model_scene_renderer.go,model_subject_extractor.go,model_white_background_renderer.go,openai_image_edit_adapter.go,openai_image_editor.go,openai_scene_generator.go,prompt_templates.go,remote_faithful_editor.go,remote_scene_generator.go,scene_client.go}`
+- Create/adapt HTTP/segmentation adapters from `internal/productimage/{background_client.go,image_edit_client.go,segmenter_client.go}`
+- Create/adapt App-only composition from `internal/productimage/{capability_usage.go,component_helpers.go,default_components.go,real_components.go,scene_renderer.go,tenant_model_gate.go,usage_quote.go}` and `internal/productimage/httpapi/{ai_capability_scene_catalog.go,governed_model_invocations.go,image_agent_capabilities.go,image_pipeline_component_builder.go,model_provider_builder.go,scene_governance_builder.go,tenant_gated_model.go}`
+- Retain all old ProductImage files until ListingKit、SDS、AmazonListing complete Tasks 13–15；Task 16 performs the single deletion
+
+**Interfaces:**
+- Consumes: Task 9 image ports and existing ImageAgent `SlotExecutionInput`/budget contracts.
+- Produces: `imageagenttools.NewProductImageSlotExecutor(Dependencies)` with dependencies typed only as `product/image` ports; App builds concrete adapters and fails on missing production dependencies.
+
+- [ ] **Step 1: 改写 Executor 契约测试**
+
+```go
+func TestExecutorUsesProductImagePortsAndRejectsFallbackCandidate(t *testing.T) {
+	executor := NewProductImageSlotExecutor(Dependencies{SceneRenderer: stubSceneRenderer{
+		candidates: []productimage.Candidate{{Asset: productimage.Asset{URL: "https://source.example/a.png", Operations: []string{"pass_through"}}}},
+	}})
+	input := imageagent.SlotExecutionInput{
+		RunID: "run-1", TenantID: "tenant-a", UserID: "user-a", PlanRevision: 1, Attempt: 1, IdempotencyKey: "attempt-1",
+		Slot: imageagent.Slot{ID: "scene-1", Role: imageagent.SlotRoleScene, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-1"},
+		AssetCatalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/a.png", SourceURL: "https://source.example/a.png"}}},
+	}
+	_, err := executor.ExecuteSlot(context.Background(), input)
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+}
+
+type stubSceneRenderer struct { candidates []productimage.Candidate }
+
+func (s stubSceneRenderer) RenderScene(context.Context, productimage.SceneRequest) ([]productimage.Candidate, error) {
+	return append([]productimage.Candidate(nil), s.candidates...), nil
+}
+```
+
+`productimage` alias in测试代码必须指向 `internal/product/image`，不是旧包。
+
+- [ ] **Step 2: 运行 Executor 测试确认仍引用旧 ProductImage**
+
+Run: `go test ./internal/imageagent/tools ./internal/app/worker/imageagent -count=1`
+
+Expected: FAIL，直到 Tool 和生产装配切换完成。
+
+- [ ] **Step 3: 迁移 Adapter 与 App 组合**
+
+```go
+type ImageCapabilities struct {
+	SubjectExtractor productimage.SubjectExtractor
+	WhiteBackgroundRenderer productimage.WhiteBackgroundRenderer
+	SceneRenderer productimage.SceneRenderer
+	Reviewer productimage.Reviewer
+	UsageQuoter productimage.UsageQuoter
+}
+
+func buildImageCapabilities(cfg *config.Config, deps providerDependencies) (ImageCapabilities, error)
+```
+
+生产构造必须逐项验证非 nil。`ProductImageConfig` 中仍被 ImageAgent 使用的 workdir、model、publisher 配置在 Task 16 改名为 `ImageAgentConfig`；本任务不引入第二套配置。
+
+- [ ] **Step 4: 运行 ImageAgent Tool、Temporal replay 和 Worker 装配测试**
+
+Run: `go test ./internal/imageagent/tools ./internal/imageagent/temporal ./internal/app/worker/imageagent -count=1`
+
+Expected: PASS；Temporal 历史 DTO 不变，生产 Go 文件不再 import `internal/productimage`。
+
+- [ ] **Step 5: 提交 ImageAgent 能力接线**
+
+```powershell
+git add internal/integration/openai internal/integration/grsai internal/integration/httpimage internal/imageagent internal/app/worker/imageagent
+git diff --cached --check
+git commit -m "refactor(imageagent): execute product image capabilities directly"
+```
+
+---
+
+### Task 11: 让 ImageAgent 原子提交批准资产
+
+**Files:**
+- Create: `internal/imageagent/assetpublication/publisher.go`
+- Create: `internal/imageagent/assetpublication/publisher_test.go`
+- Modify: `internal/imageagent/ports.go`
+- Modify: `internal/imageagent/model.go`
+- Modify: `internal/app/worker/imageagent/dependencies.go`
+- Move/adapt behavior from: `internal/listingkit/httpapi/image_agent_approved_publisher.go`
+- Delete: `internal/listingkit/httpapi/image_agent_approved_publisher.go` and its tests after migration
+
+**Interfaces:**
+- Consumes: ImageAgent projection、`product/asset.Repository`、durable public URL resolver.
+- Produces: `assetpublication.NewPublisher(projections, assets, publicURLs)` implementing `imageagent.ApprovedAssetPublisherV3`；批准不再修改 ListingKit task JSON。
+
+- [ ] **Step 1: 写批准前不写、重复批准不重复写测试**
+
+```go
+func TestPublisherCommitsApprovedAssetsExactlyOnce(t *testing.T) {
+	repo := assettest.NewMemoryRepository()
+	projection := approvedV3Projection(t)
+	publisher, err := NewPublisher(staticProjectionSource{projection: projection}, repo, staticPublicURLResolver{})
+	require.NoError(t, err)
+	input := approvedV3PublicationInput(projection)
+	first, err := publisher.PublishApprovedV3(context.Background(), input)
+	require.NoError(t, err)
+	second, err := publisher.PublishApprovedV3(context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, first, second)
+	inventory, err := repo.GetApprovedInventory(context.Background(), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"})
+	require.NoError(t, err)
+	require.Len(t, inventory.Assets, 2)
+}
+```
+
+把现有 `approvedV3Projection`、`approvedV3PublicationInput`、`staticProjectionSource` 和 `staticPublicURLResolver` 测试帮助函数从被删除的 ListingKit publisher 测试原样迁入本测试文件，再把资产断言改成 `product/asset` 类型。
+
+- [ ] **Step 2: 运行测试确认新 Publisher 尚不存在**
+
+Run: `go test ./internal/imageagent/assetpublication -count=1`
+
+Expected: FAIL，包不存在。
+
+- [ ] **Step 3: 实现 Projection 校验和 ApprovalCommit 映射**
+
+Publisher 必须验证 tenant/user/run/revision/result digest、候选批准状态、durable object identity、slot 和 attempt；以 ImageAgent `ActionID` 作为批准动作身份，使用 `ProductContextRef.ProductID` 作为 ProductKey。Repository 失败时返回错误，Temporal 不得把 Run 标记完成。
+
+- [ ] **Step 4: 运行 Publisher、Repository 和 Temporal 恢复测试**
+
+Run: `go test ./internal/imageagent/assetpublication ./internal/integration/persistence/product/asset ./internal/imageagent/temporal ./internal/app/worker/imageagent -count=1`
+
+Expected: PASS；ListingKit transaction repository 不再参与批准路径。
+
+- [ ] **Step 5: 提交批准资产所有权迁移**
+
+```powershell
+git add internal/imageagent internal/integration/persistence/product/asset internal/app/worker/imageagent internal/listingkit/httpapi
+git diff --cached --check
+git commit -m "feat(imageagent): publish approvals to product assets"
+```
+
+---
+
+### Task 12: 将 ListingKit 产品流程改为只读 Snapshot
+
+**Files:**
+- Modify: `internal/listingkit/interfaces_dependencies.go`
+- Modify: `internal/listingkit/service_config_groups.go`
+- Modify: `internal/listingkit/service_config_prepare.go`
+- Modify: `internal/listingkit/service_workflow_dependencies.go`
+- Modify: `internal/listingkit/workflow_standard_canonical_phase.go`
+- Modify: `internal/listingkit/canonical_product_cache.go`
+- Modify: `internal/listingkit/standard_snapshot.go`
+- Modify: `internal/listingkit/assembler.go`
+- Modify: `internal/listingkit/httpapi/{bootstrap_contracts.go,bootstrap_service_config.go,runtime_builder.go}`
+- Delete/update tests that stub `productenrich.ProductService`; add `internal/listingkit/product_snapshot_reader_test.go`
+
+**Interfaces:**
+- Consumes: Catalog `ProductSnapshot` from Task 3.
+- Produces: ListingKit-local `ProductSnapshotReader.GetProductSnapshot(context.Context, ProductSnapshotQuery) (catalog.ProductSnapshot, error)`。
+
+- [ ] **Step 1: 写只读 Snapshot 和未就绪测试**
+
+```go
+type ProductSnapshotQuery struct { TenantID, ProductKey string }
+
+type ProductSnapshotReader interface {
+	GetProductSnapshot(context.Context, ProductSnapshotQuery) (catalog.ProductSnapshot, error)
+}
+
+type recordingSnapshotReader struct { snapshot catalog.ProductSnapshot; calls int }
+
+func (r *recordingSnapshotReader) GetProductSnapshot(context.Context, ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
+	r.calls++
+	return r.snapshot, nil
+}
+
+func TestCanonicalPhaseReadsSnapshotOnce(t *testing.T) {
+	reader := &recordingSnapshotReader{snapshot: catalog.ProductSnapshot{Title: "Bottle"}}
+	phase := standardWorkflowCanonicalPhase{snapshots: reader}
+	got, err := phase.run(context.Background(), ProductSnapshotQuery{TenantID: "tenant-a", ProductKey: "product-1"})
+	require.NoError(t, err)
+	require.Equal(t, "Bottle", got.Title)
+	require.Equal(t, 1, reader.calls)
+}
+```
+
+增加 Snapshot 不存在时返回 `ErrProductSnapshotNotReady` 且 ListingKit task 进入明确 blocked/review 状态的测试。
+
+- [ ] **Step 2: 运行测试确认现有 workflow 仍创建 ProductEnrich task**
+
+Run: `go test ./internal/listingkit -run 'TestCanonicalPhaseReadsSnapshotOnce|Test.*SnapshotNotReady' -count=1 -v`
+
+Expected: FAIL。
+
+- [ ] **Step 3: 替换 ProductService 为读取 Port**
+
+删除 `ProductService`、`resolveWorkflowProductService`、child product task ID、Create/Get/Process 调用和相关恢复语义。现有 canonical cache repository 可实现 ListingKit-local reader，但返回值必须先经 Catalog Normalize；不得调用 Enrichment。
+
+- [ ] **Step 4: 运行 ListingKit 核心和 HTTP bootstrap 测试**
+
+Run: `go test ./internal/listingkit/... -run 'Test.*(Snapshot|Canonical|Workflow|Bootstrap)' -count=1`
+
+Expected: PASS；`rg -n 'ProductService|CreateGenerateTask\(ctx.*productenrich|ProcessProduct|internal/productenrich' internal/listingkit --glob '*.go'` 返回零结果。
+
+- [ ] **Step 5: 提交 ListingKit Snapshot 读取迁移**
+
+```powershell
+git add internal/listingkit
+git diff --cached --check
+git commit -m "refactor(listingkit): read canonical product snapshots"
+```
+
+---
+
+### Task 13: 删除 ListingKit 图片编排和 Asset Generation
+
+**Files:**
+- Modify: `internal/listingkit/interfaces_dependencies.go`
+- Modify: `internal/listingkit/workflow_standard_asset_phase.go`
+- Modify: `internal/listingkit/workflow_standard.go`
+- Modify: `internal/listingkit/model_result.go`
+- Modify: `internal/listingkit/standard_snapshot.go`
+- Create: `internal/listingkit/approved_asset_reader_test.go`
+- Delete: `internal/listingkit/{workflow_asset_generation_dispatch.go,workflow_platform_asset_dispatch_apply.go,workflow_platform_asset_dispatch_bundle_apply.go,workflow_platform_asset_dispatch_bundle_reshape.go,workflow_platform_asset_dispatch_persist.go,workflow_platform_asset_dispatch_phase.go,workflow_platform_asset_dispatch_task_merge.go}`
+- Delete: `internal/listingkit/{task_generation_current_state_snapshot.go,task_generation_retry_mutation.go,task_generation_retry_persist.go,task_generation_retry_projection.go,task_generation_service.go,task_generation_tasks_read_snapshot.go}` and paired tests
+- Delete: `internal/listingkit/{asset_generation_projection.go,asset_workflow_platform_support.go,generation_queue_tasks.go,generation_review_state.go,generation_task_list.go,model_generation_tasks.go}` and paired tests
+- Delete: `internal/listingkit/{service_generation_actions_test.go,service_generation_navigation_dispatch_test.go,service_generation_queue_test.go,service_generation_retry_test.go,service_generation_tasks_test.go,service_generation_test.go,task_generation_service_test.go,workflow_assets_test.go,workflow_model_generation_test.go}`
+- Delete: `internal/listingkit/generation/{asset_targets.go,retry_selection.go,summary_stats.go}`
+- Delete: `internal/asset/{bundle,generation}/` and all paired tests after their ListingKit callers are removed
+- Delete: `internal/asset/{from_productimage.go,from_productimage_test.go}`; ImageAgent publication now maps candidates directly to `product/asset.ApprovalCommit`
+- Delete: `internal/asset/{policy,recipe,repository}/` and `internal/asset/{facts.go,inventory.go,inventory_test.go,model.go,boundary_guard_test.go}` after all imports switch to `internal/product/asset`
+- Modify: `internal/listing/preview/{attachment.go,projection_test.go,read_model_test.go,task_read_model_test.go}`、`internal/compatibility/listingkit/preview_adapter_test.go`、`internal/publishing/common/{helpers.go,types.go,selection_image_test.go,variant_fallback.go,variant_fallback_test.go}` and `internal/publishing/shein/{assembler.go,derived_refresh.go}` to consume approved asset values or consumer-local projections
+- Modify to remove generation fields/calls: `internal/listingkit/{export_model.go,preview_model_shell.go,service_defaults.go,service_task_generation_support_helpers.go,service_task_layer_processing_helpers.go,service_task_layers_logic.go,service_task_wiring_support.go,service_types.go,service_workflow_dependencies.go,task_export_service.go,task_preview_service_support.go,workflow_platform_adaptation.go,workflow_platform_finalize_phase.go}`
+- Delete: `internal/listingkit/api/studio_product_images_handler.go`
+- Delete: `internal/listingkit/api/studio_product_image_usage_admission.go` and product-image-specific tests
+- Delete: `internal/listingkit/httpapi/{studio_product_image_usage.go,studio_product_image_usage_test.go}` and remove the product-image ledger wiring from bootstrap
+- Modify: `internal/listingkit/api/{studio_async_jobs_handler_entrypoints.go,studio_async_jobs_handler_runner.go}` to remove `/studio/product-images` while preserving design jobs
+- Modify: `internal/listingkit/{service_studio_batch_wiring_support.go,service_studio_media_generation_entrypoints.go,task_studio_media_service.go}` to remove only product-image generation methods while preserving Studio design/media reads
+- Modify: `internal/listingkit/httpapi/routes_descriptor_task.go` and route interfaces/tests
+- Modify: `docs/api/listingkit-asset.openapi.yaml`
+
+**Interfaces:**
+- Consumes: `product/asset.ApprovedAssetInventory`。
+- Produces: ListingKit-local `ApprovedAssetInventoryReader.GetApprovedAssetInventory(context.Context, asset.InventoryScope) (asset.ApprovedAssetInventory, error)`；无生成/重试/审批接口。
+
+- [ ] **Step 1: 写只消费批准资产且不回退来源图的测试**
+
+```go
+func TestWorkflowRequiresApprovedAssets(t *testing.T) {
+	reader := approvedAssetReaderFunc(func(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+		return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+	})
+	phase := standardWorkflowAssetPhase{approvedAssets: reader}
+	_, err := phase.run(context.Background(), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"})
+	require.ErrorIs(t, err, productasset.ErrApprovedAssetsNotReady)
+}
+
+type approvedAssetReaderFunc func(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error)
+
+func (f approvedAssetReaderFunc) GetApprovedAssetInventory(ctx context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	return f(ctx, scope)
+}
+```
+
+增加 inventory 只含 gallery、缺少批准 main 时明确未就绪的测试；不得断言“取第一张”。
+
+- [ ] **Step 2: 运行测试确认现有 Asset Generation 仍被调用**
+
+Run: `go test ./internal/listingkit -run 'TestWorkflowRequiresApprovedAssets|Test.*ApprovedAsset' -count=1 -v`
+
+Expected: FAIL。
+
+- [ ] **Step 3: 用批准资产投影替代生成状态**
+
+ListingKit result 只投影批准资产及 role，不保存 `AssetGenerationTasks`、`PendingGeneration`、execution mode 或 ProductImage result。删除 `/api/v1/listing-kits/studio/product-images` 及异步 `/studio/product-images` 分支；ImageAgent API 是唯一生成入口。
+
+- [ ] **Step 4: 运行 ListingKit、OpenAPI 和扫描测试**
+
+Run: `go test ./internal/listingkit/... ./internal/app/httpapi -count=1`
+
+Run: `rg -n 'asset/generation|CreateProcessTask|ProcessImages|GenerateStudioProductImages|studio/product-images|internal/productimage' internal/listingkit docs/api/listingkit-asset.openapi.yaml --glob '*.go' --glob '*.yaml'`
+
+Expected: tests PASS；扫描返回零结果。
+
+- [ ] **Step 5: 提交 ListingKit 图片编排退役**
+
+```powershell
+git add internal/listingkit docs/api/listingkit-asset.openapi.yaml
+git diff --cached --check
+git commit -m "refactor(listingkit): consume approved assets only"
+```
+
+---
+
+### Task 14: 将 SDS 改为只读取批准资产
+
+**Files:**
+- Delete: `internal/sds/workflow/productimage.go`
+- Create: `internal/sds/workflow/approved_asset.go`
+- Modify: `internal/sds/workflow/{service.go,types.go,service_test.go}`
+- Modify: `internal/sds/usecase/{service.go,types.go,service_test.go}`
+- Modify: `internal/sds/adapter/{service.go,types.go,service_test.go}`
+- Modify: `internal/sds/httpbootstrap/{support.go,support_test.go}`
+
+**Interfaces:**
+- Consumes: SDS-local `ApprovedAssetReader` 返回 `product/asset.ApprovedAssetInventory`。
+- Produces: `SelectApprovedDesignAsset(inventory) (asset.ApprovedAsset, error)`，只接受批准且具有明确 design/main/white-background role 的资产。
+
+- [ ] **Step 1: 写禁止第一张图兜底测试**
+
+```go
+func TestSelectApprovedDesignAssetRejectsUnassignedGallery(t *testing.T) {
+	inventory := productasset.ApprovedAssetInventory{Assets: []productasset.ApprovedAsset{{ID: "gallery-1", Role: productasset.RoleGallery}}}
+	_, err := SelectApprovedDesignAsset(inventory)
+	require.ErrorIs(t, err, productasset.ErrApprovedAssetsNotReady)
+}
+```
+
+- [ ] **Step 2: 运行测试确认旧选择器仍接收 ProductImage result**
+
+Run: `go test ./internal/sds/... -run 'TestSelectApprovedDesignAsset|Test.*ProductImage' -count=1 -v`
+
+Expected: FAIL，新选择器不存在或旧测试仍依赖 ProductImage。
+
+- [ ] **Step 3: 替换输入契约并删除旧选择器**
+
+优先级只能基于显式已批准 role：`design` → `main` → `white_background`；无匹配返回未就绪。SDS 不导入 ImageAgent store/Temporal 或 ProductImage。
+
+- [ ] **Step 4: 运行 SDS 测试和 import 扫描**
+
+Run: `go test ./internal/sds/... -count=1`
+
+Run: `rg -n 'internal/productimage|internal/imageagent/(store|temporal)|ImageProcessResult' internal/sds --glob '*.go'`
+
+Expected: tests PASS；扫描返回零结果。
+
+- [ ] **Step 5: 提交 SDS 读取迁移**
+
+```powershell
+git add internal/sds
+git diff --cached --check
+git commit -m "refactor(sds): select approved product assets"
+```
+
+---
+
+### Task 15: 删除 AmazonListing 未投产的旧编排依赖
+
+**Files:**
+- Modify: `internal/amazonlisting/interfaces.go`
+- Modify: `internal/amazonlisting/workflow_listing.go`
+- Modify: `internal/amazonlisting/publishing_assembler.go`
+- Modify: `internal/amazonlisting/model_types.go`
+- Modify: `internal/amazonlisting/httpapi/{bootstrap.go,runtime_builder.go}`
+- Modify/delete tests: `internal/amazonlisting/{workflow_test.go,service_process_recovery_test.go,service_submit_test.go,service_task_test.go,assembler_test.go,review_items_test.go}`
+- Modify: `internal/marketplace/amazon/workspace/review_items.go`
+
+**Interfaces:**
+- Consumes: AmazonListing-local `ProductSnapshotReader` 和 `ApprovedAssetInventoryReader`。
+- Produces: assembler 直接接受 `catalog.ProductSnapshot` 和 `asset.ApprovedAssetInventory`；无 ProductEnrich/ProductImage task。
+
+- [ ] **Step 1: 写未就绪和只读装配测试**
+
+```go
+func TestBuildDraftRequiresSnapshotAndApprovedMainAsset(t *testing.T) {
+	assembler := NewAssembler()
+	_, err := assembler.Build(DraftInput{Snapshot: catalog.ProductSnapshot{Title: "Bottle"}})
+	require.ErrorIs(t, err, productasset.ErrApprovedAssetsNotReady)
+}
+```
+
+- [ ] **Step 2: 运行测试确认旧服务依赖仍存在**
+
+Run: `go test ./internal/amazonlisting/... -run 'TestBuildDraftRequiresSnapshotAndApprovedMainAsset|Test.*Workflow' -count=1 -v`
+
+Expected: FAIL。
+
+- [ ] **Step 3: 删除 ProductService/ImageService 和 child task 流程**
+
+`Assembler` 改成 `Build(DraftInput) (*AmazonListingDraft, error)`；未投产模块不保留旧 request/result JSON 兼容字段。HTTP bootstrap 仅装配读取 Port、Repository、Validator、Exporter 和 Amazon submitter。
+
+- [ ] **Step 4: 运行 AmazonListing 和 Marketplace 测试**
+
+Run: `go test ./internal/amazonlisting/... ./internal/marketplace/amazon/... -count=1`
+
+Run: `rg -n 'internal/(productenrich|productimage)|CreateGenerateTask|CreateProcessTask|ProcessImages' internal/amazonlisting internal/marketplace/amazon --glob '*.go'`
+
+Expected: tests PASS；扫描返回零结果。
+
+- [ ] **Step 5: 提交 AmazonListing 依赖退役**
+
+```powershell
+git add internal/amazonlisting internal/marketplace/amazon
+git diff --cached --check
+git commit -m "refactor(amazonlisting): read product facts and approved assets"
+```
+
+---
+
+### Task 16: 退役旧 HTTP、Worker、配置和 schema 依赖
+
+**Files:**
+- Delete: `internal/productenrich/` after every caller has switched to Catalog/Enrichment or been removed
+- Delete: `internal/productimage/` after ImageAgent、ListingKit、SDS、AmazonListing and Publishing callers have switched
+- Modify: `internal/app/httpapi/{adapters_openai.go,adapters_task_repositories.go,adapters.go,bootstrap.go,bootstrap_types.go,types.go,http_modules.go,feature_builder_listingkit.go,feature_module_builders.go,runtime.go,runtime_deps_methods.go,runtime_shared_deps.go,runtime_paths.go,options.go}` and paired tests
+- Delete: `internal/app/httpapi/{runtime_productenrich.go,runtime_productenrich_effective_test.go}`
+- Modify: `internal/core/config/type_productimage.go` → `type_imageagent.go`
+- Modify: `internal/core/config/{config.go,defaults.go,loader.go,loader_builder.go,type_ai_capability.go,validator_ai_capability.go}` and paired tests
+- Modify: `config/{config-test.yaml,config-dev.yaml,config-prod.yaml,worker.yaml}`
+- Modify: `internal/app/schema/productlisting/runtime.go` and tests
+- Modify: `cmd/product-listing-api/{main_test.go,wire_test.go,README.md}`
+
+**Interfaces:**
+- Consumes: ImageAgent HTTP module and worker dependencies only.
+- Produces: App 启动不再构造 ProductEnrich/ProductImage module、queue、worker pool 或 task repository；ImageAgent config 是唯一图片运行配置。
+
+- [ ] **Step 1: 写旧路由 404 和生产依赖失败测试**
+
+```go
+func TestLegacyProductRoutesAreNotRegistered(t *testing.T) {
+	bundle, err := (httpFeatureComposition{}).buildRuntimeBundle(&config.Config{})
+	require.NoError(t, err)
+	server, _ := bundle.buildServerBundle(0)
+	for _, route := range []struct{ method, path string }{
+		{http.MethodPost, "/api/v1/products/generate"},
+		{http.MethodGet, "/api/v1/products/tasks/task-1"},
+		{http.MethodPost, "/api/v1/images/process"},
+		{http.MethodGet, "/api/v1/images/tasks/task-1"},
+		{http.MethodPost, "/api/v1/images/tasks/task-1/review"},
+	} {
+		request := httptest.NewRequest(route.method, route.path, nil)
+		response := httptest.NewRecorder()
+		server.Handler.ServeHTTP(response, request)
+		require.Equal(t, http.StatusNotFound, response.Code)
+	}
+}
+```
+
+增加生产 `ResolveImageAgentTemporalDependencies` 在缺少数据库、Artifact Store、Image capabilities 或 Asset Repository 时返回 error 的测试。
+
+- [ ] **Step 2: 运行测试确认旧路由仍注册**
+
+Run: `go test ./internal/app/httpapi ./cmd/product-listing-api -run 'TestLegacyProductRoutesAreNotRegistered|Test.*Dependencies' -count=1 -v`
+
+Expected: FAIL，旧路由当前可用。
+
+- [ ] **Step 3: 删除旧模块并改名配置**
+
+把 ImageAgent 仍使用的 model/workdir/publisher/lifecycle 配置移入 `Config.ImageAgent`；删除 ProductEnrich debug/capability 开关和旧 ProductImage scene 开关。保留通用 OpenAI capability routing 配置，不保留旧模块命名。
+
+- [ ] **Step 4: 停止 schema 对旧 task 表的依赖**
+
+从 `AutoMigrateRuntime` 模型列表移除 ProductEnrich/ProductImage Task 以及旧 Asset `InventorySnapshot`/`GenerationTaskSnapshot`；测试新数据库没有这些旧表也能启动。不得加入 drop migration，已有生产表保持原状。
+
+Run: `go test ./internal/core/config ./internal/app/schema/productlisting ./internal/app/httpapi ./internal/app/worker/imageagent ./cmd/product-listing-api -count=1`
+
+Expected: PASS。
+
+- [ ] **Step 5: 提交运行时退役**
+
+```powershell
+git add internal/productenrich internal/productimage internal/app internal/core/config config cmd/product-listing-api
+git diff --cached --check
+git commit -m "refactor(app): retire legacy product task runtimes"
+```
+
+---
+
+### Task 17: 删除旧目录、同步契约并启用最终护栏
+
+**Files:**
+- Verify absent: `internal/catalog/` (Task 3)
+- Verify absent: `internal/asset/` (Task 13)
+- Delete: `internal/imageasset/`
+- Verify absent: `internal/productenrich/` and `internal/productimage/` (Task 16)
+- Modify: `docs/api/listingkit-asset.openapi.yaml`
+- Modify: `web/listingkit-ui/src/lib/api/generated/{types.gen.ts,index.ts}`
+- Modify: `cmd/product-listing-api/README.md`
+- Modify: `tests/target_architecture_phase3_product_test.go`
+- Modify: `tests/{depguard_config_test.go,import_boundaries_test.go,import_scan_test.go}`
+- Modify: `.golangci.yml`
+- Modify: `docs/refactoring/phase2-runtime-inventory.md`
+
+**Interfaces:**
+- Consumes: Tasks 2–16 的全部目标包和只读 Port。
+- Produces: 最终不可回退护栏；旧目录、旧 import、旧路由、旧 queue/table runtime 引用全部为零。
+
+- [ ] **Step 1: 把增长测试收紧为旧目录不存在**
+
+```go
+func TestPhase3LegacyProductRootsAreAbsent(t *testing.T) {
+	for _, name := range []string{"catalog", "asset", "imageasset", "productenrich", "productimage"} {
+		_, err := os.Stat(filepath.Join("..", "internal", name))
+		require.ErrorIs(t, err, os.ErrNotExist, "legacy root %s must be deleted", name)
+	}
+}
+
+func TestPhase3ConsumersCannotOrchestrateProductImage(t *testing.T) {
+	for _, root := range []string{"listingkit", "sds", "amazonlisting"} {
+		assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", root), []string{
+			"task-processor/internal/product/image",
+			"task-processor/internal/imageagent/store",
+			"task-processor/internal/imageagent/temporal",
+		}, nil)
+	}
+}
+```
+
+增加扫描断言：生产文件不得 import `internal/product/asset/assettest`；旧 import 前缀、五条旧 API、`product_enrich_tasks`、`product_image_tasks`、两个 worker pool/queue 名称在生产 Go/config/OpenAPI 中为零；历史设计文档不参与运行时扫描。
+
+- [ ] **Step 2: 运行最终护栏确认剩余引用**
+
+Run: `go test ./tests -run 'TestPhase3|TestDepguard|Test.*Import' -count=1 -v`
+
+Expected: FAIL，并精确列出剩余旧文件或引用。
+
+- [ ] **Step 3: 清理剩余目录、文档和生成客户端**
+
+删除空目录和旧测试。更新 OpenAPI 后使用仓库已固定的生成器版本：
+
+```powershell
+Push-Location web/listingkit-ui
+$generated = Join-Path ([System.IO.Path]::GetTempPath()) ("task-processor-openapi-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $generated | Out-Null
+pnpm exec openapi-ts -i ../../docs/api/listingkit-asset.openapi.yaml -o $generated -p @hey-api/typescript
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$names = @(Get-ChildItem -LiteralPath $generated -File | Sort-Object Name | Select-Object -ExpandProperty Name)
+if (($names -join ',') -ne 'index.ts,types.gen.ts') { throw "unexpected OpenAPI output: $($names -join ',')" }
+Copy-Item -LiteralPath (Join-Path $generated 'index.ts') -Destination src/lib/api/generated/index.ts -Force
+Copy-Item -LiteralPath (Join-Path $generated 'types.gen.ts') -Destination src/lib/api/generated/types.gen.ts -Force
+Pop-Location
+```
+
+`@hey-api/typescript` 是仓库锁定版本提供的 type-only 插件；输出不是精确两个文件时立即失败，不得手写保留旧 endpoint 类型。
+
+- [ ] **Step 4: 运行聚焦验证**
+
+Run: `go test ./internal/product/... ./internal/imageagent/... ./internal/listingkit/... ./internal/sds/... ./internal/amazonlisting/... ./internal/integration/persistence/product/asset -count=1`
+
+Run: `go test ./tests -run 'Test(Product|ImageAgent|LegacyProductRoots|TargetDomains|Phase3|.*Depguard.*)' -count=1`
+
+Run: `golangci-lint run ./internal/product/... ./internal/imageagent/... ./internal/app/...`
+
+Expected: 全部 PASS。
+
+- [ ] **Step 5: 运行 UI 契约验证**
+
+```powershell
+Push-Location web/listingkit-ui
+pnpm typecheck
+pnpm test
+Pop-Location
+```
+
+Expected: PASS；生成客户端不再包含旧 ProductEnrich/ProductImage 和 ListingKit Studio product-images endpoint。
+
+- [ ] **Step 6: 运行全仓最终验证**
+
+```powershell
+go test ./tests -count=1
+go test ./... -count=1 -timeout 20m
+git diff --check
+rg -n 'task-processor/internal/(catalog|asset|imageasset|productenrich|productimage)' internal tests --glob '*.go'
+rg -n '/api/v1/(products/generate|products/tasks|images/process|images/tasks)|product_enrich_tasks|product_image_tasks' internal cmd config docs/api web/listingkit-ui/src/lib/api/generated
+```
+
+Expected: 两组 `go test` 和 `git diff --check` PASS；两个 `rg` 命令返回退出码 1（零匹配）。
+
+- [ ] **Step 7: 提交最终硬切**
+
+```powershell
+git add .golangci.yml internal tests docs config cmd web/listingkit-ui
+git diff --cached --check
+git commit -m "refactor(architecture): complete phase 3 product hard cut"
+```
+
+---
+
+## 最终验收清单
+
+- [ ] `internal/product` 根目录没有生产 `.go` 文件，只有 `catalog`、`sourcing`、`enrichment`、`asset`、`image` 子包和说明文档。
+- [ ] 五个旧产品根目录不存在，全仓旧 import 为零。
+- [ ] ProductEnrich/ProductImage Task、Queue、Worker、HTTP API 和 GORM task repository 不存在。
+- [ ] ImageAgent 是唯一图片工作流，并把人工批准结果幂等提交到产品资产 Repository。
+- [ ] ListingKit、SDS、AmazonListing 只读 Snapshot/Approved Inventory，未就绪时不回退来源图。
+- [ ] 产品目标包没有具体运行时、持久化或 Provider 依赖。
+- [ ] `product_enrich_tasks`、`product_image_tasks` 未被物理删除，但应用不再创建、查询或写入它们。
+- [ ] `internal/pipeline` 未迁入产品域且生产文件数没有增长。
+- [ ] Go 聚焦测试、架构护栏、lint、全仓测试以及 UI typecheck/test 全部通过。
