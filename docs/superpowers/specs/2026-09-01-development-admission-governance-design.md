@@ -230,11 +230,20 @@ merge, branch protection must require the `Development Admission` commit-status
 context for the guard to block merges.
 
 Review changes are delivered through a separate read-only
-`Development Admission Review Signal` workflow. The privileged evaluator
-receives that workflow's completion through `workflow_run`, requires exactly
-one associated pull request, and re-reads the PR from the API. It does not
-consume artifacts or execute PR-provided code. This keeps fork and Dependabot
-review events from attempting status writes with a read-only token.
+`Development Admission Review Signal` workflow. That signal writes only its
+GitHub-provided PR number to a short-lived artifact; the privileged evaluator
+receives the signal through `workflow_run`, validates that the artifact number
+belongs to the workflow run's associated PR set, and re-reads the PR from the
+API. It does not execute PR-provided code. This keeps fork and Dependabot
+review events from attempting status writes with a read-only token, including
+when one head is associated with multiple PRs.
+
+A trusted `Development Admission Reconcile` workflow dispatches one evaluator
+run per open PR on every repository push and every five minutes. This covers
+merge-SHA changes caused by base-branch advancement and reviewer-permission
+revocation, for which GitHub does not provide a usable direct Actions trigger.
+The dispatch workflow has only `actions: write`, `contents: read`, and
+`pull-requests: read`; it sends the PR number as a workflow-dispatch input.
 
 The admission evaluator's failure matrix is:
 
@@ -243,7 +252,8 @@ The admission evaluator's failure matrix is:
 | PR metadata, review, or event read fails | No new status is trusted; any prior status is not refreshed | The PR number and current test-merge SHA identify the next run; retry on the next PR/review event or manual rerun | GitHub Actions and maintainer | API-error and timeout path |
 | Any PR input changes between snapshots | The old target receives `error` when possible; no success is published for the stale snapshot | Same PR event is retried against the newly fetched head/base/merge/review state | Per-PR serialized evaluator | Moving-snapshot tests |
 | Status publish fails | Evaluation result is not considered authoritative | Retry the same PR event; no local write can substitute for the missing repository status | GitHub Actions/GitHub status service | Status-write failure path |
-| Review approval, label, or maintainer role is revoked | The read-only review signal completes and the trusted `workflow_run` evaluator publishes `failure` | Current head plus latest review state is re-read; stale approval is never reused | Trusted evaluator, with branch protection/ruleset as final owner | Dismissed-review, label, and role-change tests |
+| Review approval, label, or maintainer role is revoked | The read-only review signal or five-minute reconciliation causes the trusted evaluator to publish `failure` | Current head plus latest review state and role are re-read; stale approval is never reused | Trusted evaluator, with branch protection/ruleset as final owner | Dismissed-review, label, and permission-reconciliation tests |
+| Base branch advances or a merge SHA changes | Reconciliation dispatch evaluates every open PR on the current test-merge SHA | The PR number is the dispatch input and the evaluator publishes only to the current `merge_commit_sha` | Trusted reconciler and evaluator | Base-push reconciliation test |
 
 The current repository has no branch-protection required status check or ruleset;
 the rollout must enable the `Development Admission` status after this workflow
@@ -297,7 +307,14 @@ or retargeting immediately re-evaluates the same PR. Add a separate review
 signal workflow with no permissions for `pull_request_review` `submitted`,
 `edited`, and `dismissed`; trigger the trusted evaluator on that workflow's
 `workflow_run` completion so approval and revocation cannot leave a stale
-result even for fork or Dependabot PRs. Use `concurrency` per PR to serialize
+result even for fork or Dependabot PRs. Have the signal write only the event
+PR number to a short-lived artifact, and validate it against the workflow-run
+association before using it. Add a separate trusted reconciliation workflow
+on all `push` events and a five-minute `schedule` to dispatch `workflow_dispatch`
+evaluations for every open PR, covering base advancement and permission
+revocation. Resolve the PR number before entering a per-PR concurrency group
+so direct, review, and reconciliation runs serialize together. Use
+`concurrency` per PR to serialize
 evaluations and give the job a bounded deadline. Publish the decision as the fixed `Development
 Admission` commit-status context on the PR's `merge_commit_sha`, because the
 workflow job's automatic check is attached to the default-branch SHA and a
@@ -332,7 +349,10 @@ Implementation verification must include:
   status only to the current `merge_commit_sha`, verifies current-head review
   authorization before applying an override, and does not mutate labels or pull
   requests; confirm the review signal has no write permissions and the
-  `workflow_run` evaluator accepts exactly one associated PR;
+  `workflow_run` evaluator validates the trusted signal artifact against its
+  associated PR set, resolves the PR before the per-PR concurrency group, and
+  the reconciliation workflow covers push and scheduled permission/base
+  changes;
 - `git diff --check` and the focused Go or JavaScript tests owning the new
   guard behavior.
 

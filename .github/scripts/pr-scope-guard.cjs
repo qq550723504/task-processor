@@ -157,16 +157,23 @@ function statusTargetForPullRequest(snapshot) {
   return mergeSha;
 }
 
-function pullRequestNumberFromEventPayload(eventName, payload) {
+function pullRequestNumberFromEventPayload(eventName, payload, signalPullRequestNumber = null) {
   let pullRequestNumber;
   if (eventName === "workflow_run") {
     const pullRequests = payload?.workflow_run?.pull_requests;
-    if (!Array.isArray(pullRequests) || pullRequests.length !== 1) {
-      throw new Error("workflow_run must identify exactly one pull request");
+    if (
+      !Array.isArray(pullRequests) ||
+      !Number.isInteger(signalPullRequestNumber) ||
+      signalPullRequestNumber <= 0 ||
+      !pullRequests.some(({ number }) => number === signalPullRequestNumber)
+    ) {
+      throw new Error("trusted signal must identify one associated pull request");
     }
-    pullRequestNumber = pullRequests[0]?.number;
+    pullRequestNumber = signalPullRequestNumber;
   } else if (eventName === "pull_request_target") {
     pullRequestNumber = payload?.pull_request?.number;
+  } else if (eventName === "workflow_dispatch") {
+    pullRequestNumber = Number(payload?.inputs?.pull_request_number);
   } else {
     throw new Error(`unsupported admission event: ${eventName}`);
   }

@@ -1,0 +1,40 @@
+name: Development Admission Reconcile
+
+on:
+  push:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  dispatch-open-pull-requests:
+    name: Reconcile open pull requests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch trusted admission evaluations
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const pullRequests = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            for (const pullRequest of pullRequests) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: "development-admission.yml",
+                ref: context.payload.repository.default_branch,
+                inputs: {
+                  pull_request_number: String(pullRequest.number),
+                },
+              });
+            }
+            core.info(`Dispatched ${pullRequests.length} admission evaluations`);

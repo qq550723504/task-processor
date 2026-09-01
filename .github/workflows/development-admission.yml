@@ -14,22 +14,71 @@ on:
       - Development Admission Review Signal
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: Pull request number to reconcile
+        required: true
+        type: number
 
 permissions:
+  actions: read
   contents: read
   issues: read
   pull-requests: read
   statuses: write
 
-concurrency:
-  group: development-admission-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
-
 jobs:
+  resolve-admission:
+    name: Resolve admission target
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      pull_request_number: ${{ steps.resolve.outputs.pull_request_number }}
+    steps:
+      - name: Checkout trusted policy revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Download review signal identity
+        if: ${{ github.event_name == 'workflow_run' }}
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: development-admission-review-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/development-admission-review-signal
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve pull request number
+        id: resolve
+        uses: actions/github-script@v9
+        env:
+          SIGNAL_PATH: ${{ runner.temp }}/development-admission-review-signal/pr_number
+        with:
+          script: |
+            const fs = require("node:fs");
+            const guard = require("./.github/scripts/pr-scope-guard.cjs");
+            const signalPullRequestNumber = context.eventName === "workflow_run"
+              ? Number(fs.readFileSync(process.env.SIGNAL_PATH, "utf8").trim())
+              : null;
+            const pullRequestNumber = guard.pullRequestNumberFromEventPayload(
+              context.eventName,
+              context.payload,
+              signalPullRequestNumber,
+            );
+            core.setOutput("pull_request_number", String(pullRequestNumber));
+
   evaluate-admission:
     name: Development Admission Evaluator
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    needs: resolve-admission
+    if: ${{ needs.resolve-admission.result == 'success' }}
+    concurrency:
+      group: development-admission-${{ github.event.repository.full_name }}-${{ needs.resolve-admission.outputs.pull_request_number }}
+      cancel-in-progress: false
     steps:
       - name: Checkout trusted policy revision
         uses: actions/checkout@v4
@@ -39,13 +88,12 @@ jobs:
 
       - name: Enforce pull request scope
         uses: actions/github-script@v9
+        env:
+          PULL_REQUEST_NUMBER: ${{ needs.resolve-admission.outputs.pull_request_number }}
         with:
           script: |
             const guard = require("./.github/scripts/pr-scope-guard.cjs");
-            const pullRequestNumber = guard.pullRequestNumberFromEventPayload(
-              context.eventName,
-              context.payload,
-            );
+            const pullRequestNumber = Number(process.env.PULL_REQUEST_NUMBER);
             const pullRequestRequest = {
               owner: context.repo.owner,
               repo: context.repo.repo,

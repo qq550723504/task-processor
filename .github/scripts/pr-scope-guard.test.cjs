@@ -568,6 +568,33 @@ test("runs admission guard tests when policy files change", () => {
   );
 });
 
+test("keeps review and reconciliation triggers on the trusted event path", () => {
+  const workflowRoot = path.join(__dirname, "..", "workflows");
+  const admissionWorkflow = fs.readFileSync(
+    path.join(workflowRoot, "development-admission.yml"),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
+  const signalWorkflow = fs.readFileSync(
+    path.join(workflowRoot, "development-admission-review-signal.yml"),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
+  const reconcileWorkflow = fs.readFileSync(
+    path.join(workflowRoot, "development-admission-reconcile.yml"),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
+
+  assert.match(admissionWorkflow, /workflow_dispatch:/);
+  assert.match(admissionWorkflow, /needs: resolve-admission/);
+  assert.match(
+    admissionWorkflow,
+    /group: development-admission-\$\{\{ github\.event\.repository\.full_name \}\}-\$\{\{ needs\.resolve-admission\.outputs\.pull_request_number \}\}/,
+  );
+  assert.match(signalWorkflow, /permissions: \{\}/);
+  assert.match(signalWorkflow, /development-admission-review-\$\{\{ github\.run_id \}\}/);
+  assert.match(reconcileWorkflow, /schedule:/);
+  assert.match(reconcileWorkflow, /github\.rest\.actions\.createWorkflowDispatch/);
+});
+
 test("targets the test merge commit for required admission status", () => {
   assert.equal(statusTargetForPullRequest({ merge_commit_sha: "merge-abc" }), "merge-abc");
   assert.throws(
@@ -587,7 +614,7 @@ test("exports and computes the latest base branch change timestamp", () => {
   );
 });
 
-test("extracts a single pull request number from direct and workflow-run events", () => {
+test("extracts a pull request number from direct, workflow-run, and dispatch events", () => {
   assert.equal(
     pullRequestNumberFromEventPayload("pull_request_target", {
       pull_request: { number: 273 },
@@ -597,15 +624,21 @@ test("extracts a single pull request number from direct and workflow-run events"
   assert.equal(
     pullRequestNumberFromEventPayload("workflow_run", {
       workflow_run: {
-        pull_requests: [{ number: 273 }],
+        pull_requests: [{ number: 272 }, { number: 273 }],
       },
-    }),
+    }, 273),
     273,
   );
   assert.throws(
     () => pullRequestNumberFromEventPayload("workflow_run", {
-      workflow_run: { pull_requests: [] },
+      workflow_run: { pull_requests: [{ number: 272 }, { number: 273 }] },
     }),
-    /exactly one pull request/,
+    /trusted signal must identify one associated pull request/,
+  );
+  assert.equal(
+    pullRequestNumberFromEventPayload("workflow_dispatch", {
+      inputs: { pull_request_number: "273" },
+    }),
+    273,
   );
 });
