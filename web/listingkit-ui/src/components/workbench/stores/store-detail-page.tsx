@@ -64,7 +64,7 @@ function StoreDetailContent({ canUpdate, storeId }: { canUpdate: boolean; storeI
   if (storeQuery.isPending && !store) return <section className="mx-auto max-w-2xl px-4 py-8" role="status">正在加载店铺...</section>;
   if (!store) {
     const code = (storeQuery.error as Partial<WorkbenchAPIError> | undefined)?.code;
-    return <DetailError code={code} retry={() => { if (code === "ORGANIZATION_CONTEXT_CHANGED") { context.retry(); return; } void storeQuery.refetch(); }} />;
+    return <DetailError code={code} retry={() => { if (code === "ORGANIZATION_CONTEXT_CHANGED" || code === "ORGANIZATION_ACCESS_REVOKED" || code === "ORGANIZATION_ACCESS_DENIED") { context.retry(); return; } void storeQuery.refetch(); }} />;
   }
 
   const loadLatest = async (

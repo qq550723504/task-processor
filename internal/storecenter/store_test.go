@@ -86,6 +86,7 @@ func TestStoreCreateRejectsInvalidInput(t *testing.T) {
 		{"actor invalid utf8", func(in *storecenter.CreateStoreInput) { in.ActorSubject = string([]byte{0xff}) }},
 		{"blank name", func(in *storecenter.CreateStoreInput) { in.Name = "\u2002\t" }},
 		{"name control character", func(in *storecenter.CreateStoreInput) { in.Name = "North\nShop" }},
+		{"name browser-trim discrepant character", func(in *storecenter.CreateStoreInput) { in.Name = "North Shop\ufeff" }},
 		{"name invalid utf8", func(in *storecenter.CreateStoreInput) { in.Name = string([]byte{0xff}) }},
 		{"blank platform", func(in *storecenter.CreateStoreInput) { in.Platform = " " }},
 		{"unsupported platform", func(in *storecenter.CreateStoreInput) { in.Platform = "amazon" }},

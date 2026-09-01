@@ -456,6 +456,9 @@ func validateOpaqueOptionalValue(field, value string) (string, error) {
 	if !utf8.ValidString(value) {
 		return "", fmt.Errorf("%s must be valid UTF-8", field)
 	}
+	if containsBrowserTrimDiscrepantCharacter(value) {
+		return "", fmt.Errorf("%s contains a browser-trim discrepant character", field)
+	}
 	if containsControlCharacter(value) {
 		return "", fmt.Errorf("%s contains a control character", field)
 	}
@@ -476,6 +479,9 @@ func validateNormalizedUserValue(field, value string, maxCodePoints int, require
 func normalizeUserValue(field, value string, maxCodePoints int, required bool) (string, error) {
 	if !utf8.ValidString(value) {
 		return "", fmt.Errorf("%s must be valid UTF-8", field)
+	}
+	if containsBrowserTrimDiscrepantCharacter(value) {
+		return "", fmt.Errorf("%s contains a browser-trim discrepant character", field)
 	}
 	if containsControlCharacter(value) {
 		return "", fmt.Errorf("%s contains a control character", field)
@@ -503,6 +509,10 @@ func normalizePlatform(value string) (Platform, error) {
 
 func containsControlCharacter(value string) bool {
 	return strings.IndexFunc(value, unicode.IsControl) >= 0
+}
+
+func containsBrowserTrimDiscrepantCharacter(value string) bool {
+	return strings.ContainsRune(value, '\ufeff')
 }
 
 func copyTimePointer(value *time.Time) *time.Time {

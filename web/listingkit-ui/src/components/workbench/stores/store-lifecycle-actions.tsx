@@ -117,6 +117,7 @@ function ScopedStoreLifecycleActions({
     kind: "idle",
     scopeKey,
   });
+  const [deleteCompletionToken, setDeleteCompletionToken] = useState(0);
   const actionRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -287,6 +288,7 @@ function ScopedStoreLifecycleActions({
   const finishDelete = (operationScope: string, operationOrganizationId: string) => {
     actionRef.current = false;
     if (!mountedRef.current || organizationId !== operationOrganizationId) return;
+    setDeleteCompletionToken((token) => token + 1);
     setAction({ kind: "idle", scopeKey: operationScope });
     onDeleted?.();
   };
@@ -324,6 +326,10 @@ function ScopedStoreLifecycleActions({
   ) => {
     if (isOrganizationAccessError(error.code)) {
       revoke(operationScope, operationOrganizationId);
+      return;
+    }
+    if (error.code === "STORE_NOT_FOUND") {
+      finishDelete(operationScope, operationOrganizationId);
       return;
     }
     if (error.code === "STORE_VERSION_CONFLICT") {
@@ -533,7 +539,7 @@ function ScopedStoreLifecycleActions({
       canDelete={canDelete}
       canUpdate={canUpdate}
       isBusy={isBusy}
-      key={confirmationScopeKey}
+      key={`${confirmationScopeKey}:${deleteCompletionToken}`}
       onConfirmDelete={submitDelete}
       onRetryDelete={retryDelete}
       onStateAction={runStateAction}

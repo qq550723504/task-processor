@@ -122,6 +122,24 @@ describe("StoreLifecycleActions", () => {
     expect(remove.mutate).toHaveBeenCalledTimes(1);
   });
 
+  it("treats a missing Store after delete as a concurrent terminal delete", async () => {
+    const user = userEvent.setup();
+    const onDeleted = vi.fn();
+    render(<StoreLifecycleActions onDeleted={onDeleted} store={STORE} />);
+    await user.click(screen.getByRole("button", { name: "删除店铺" }));
+    await user.type(screen.getByLabelText("确认删除文本"), "删除 企业 A 的店铺 华东旗舰店");
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+
+    remove.mutate.mock.calls[0]?.[1].onError({
+      status: 404,
+      code: "STORE_NOT_FOUND",
+    });
+
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "删除店铺" })).toBeInTheDocument();
+  });
+
   it("permanently locks normal confirmation after a semantic delete failure and never exposes retryLast", async () => {
     const user = userEvent.setup(); remove.canRetryLast = true;
     render(<StoreLifecycleActions store={STORE} />);

@@ -189,6 +189,11 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 	if err != nil {
 		return CreateStoreResult{}, dependencyError(err)
 	}
+	if reserved.Existing && allocation.CreatedBy != "" {
+		// A replay may be issued by another actor after the reservation was
+		// persisted. Keep all recovery writes attributed to the durable owner.
+		request.ActorSubject = allocation.CreatedBy
+	}
 	transition := listingsubscription.StoreQuotaTransitionInput{OrganizationID: request.OrganizationID, AllocationID: allocation.AllocationID, StoreID: allocation.StoreID, RequestKey: request.IdempotencyKey, ActorSubject: request.ActorSubject}
 	candidate, err := s.createCandidate(request, allocation)
 	if err != nil {

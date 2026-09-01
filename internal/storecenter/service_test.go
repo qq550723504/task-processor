@@ -568,6 +568,37 @@ func TestServiceCreateCrossActorReplayKeepsFirstDurableAuditActor(t *testing.T) 
 	}
 }
 
+func TestServiceCreateCrossActorRecoveryKeepsReservationOwner(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	ledger.allocation.CreatedBy = request.ActorSubject
+	repository := newStoreRepositoryFake()
+	repository.getErr = errors.New("temporary read failure")
+	repository.getErrOnce = true
+	audit := newAuditRepositoryFake()
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Create() error = %v, want dependency unavailable", err)
+	}
+
+	retry := request
+	retry.ActorSubject = "actor-2"
+	result, err := service.Create(context.Background(), retry)
+	if err != nil {
+		t.Fatalf("cross-actor recovery Create(): %v", err)
+	}
+	if result.Store.CreatedBy() != request.ActorSubject {
+		t.Fatalf("recovered Store creator = %q, want reservation owner %q", result.Store.CreatedBy(), request.ActorSubject)
+	}
+	event, err := audit.Get(context.Background(), request.OrganizationID, request.IdempotencyKey, storecenter.AuditActionQuotaReserved)
+	if err != nil || event.ActorSubject != request.ActorSubject {
+		t.Fatalf("recovered quota audit actor = %v/%v, want reservation owner", event, err)
+	}
+}
+
 func TestServiceCreateFoundStoreVerifiesImmutableCreateFingerprint(t *testing.T) {
 	request := validCreateRequest()
 	request.ExternalStoreID = "external-a"
@@ -2182,6 +2213,7 @@ type storeRepositoryFake struct {
 	createErrOnce                bool
 	storeOnCreateError           *storecenter.Store
 	getErr                       error
+	getErrOnce                   bool
 	getErrAfterCreate            error
 	saveErr                      error
 	storeOnSaveError             *storecenter.Store
@@ -2252,7 +2284,11 @@ func (f *storeRepositoryFake) Get(_ context.Context, organizationID, storeID str
 	defer f.mu.Unlock()
 	f.getCalls++
 	if f.getErr != nil {
-		return nil, f.getErr
+		err := f.getErr
+		if f.getErrOnce {
+			f.getErr = nil
+		}
+		return nil, err
 	}
 	store := f.stores[organizationID+"/"+storeID]
 	if store == nil {

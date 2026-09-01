@@ -166,6 +166,38 @@ describe("WorkbenchContextProvider", () => {
     unsubscribe();
   });
 
+  it("cancels an in-flight context refresh before switching and ignores its late response", async () => {
+    let resolveRefresh!: (response: Response) => void;
+    let refreshSignal: AbortSignal | undefined;
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(ORG_A_CONTEXT))
+      .mockImplementationOnce((_input, init) => {
+        refreshSignal = init?.signal ?? undefined;
+        return new Promise<Response>((resolve) => {
+          resolveRefresh = resolve;
+        });
+      })
+      .mockResolvedValueOnce(Response.json(ORG_B_CONTEXT));
+    vi.stubGlobal("fetch", fetchMock);
+    const queryClient = createQueryClient();
+    const user = userEvent.setup();
+
+    renderProvider(queryClient);
+    await screen.findByText("organization:硕米科技");
+    void queryClient.invalidateQueries({ queryKey: WORKBENCH_CONTEXT_QUERY_KEY });
+    await waitFor(() => expect(refreshSignal).toBeDefined());
+
+    await user.click(screen.getByRole("button", { name: "switch" }));
+    expect(refreshSignal?.aborted).toBe(true);
+    expect(await screen.findByText("organization:星海贸易")).toBeInTheDocument();
+
+    resolveRefresh(Response.json(ORG_A_CONTEXT));
+    await waitFor(() =>
+      expect(screen.getByText("organization:星海贸易")).toBeInTheDocument(),
+    );
+  });
+
   it("makes a successful retry authoritative after an explicit switch", async () => {
     const refreshed = {
       ...ORG_A_CONTEXT,

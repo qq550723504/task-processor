@@ -38,6 +38,24 @@ describe("workbench context API", () => {
     });
   });
 
+  it("forwards a query abort signal to context reads", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json(VALID_CONTEXT));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await expect(fetchWorkbenchContext(controller.signal)).resolves.toEqual(
+      VALID_CONTEXT,
+    );
+    expect(fetchMock).toHaveBeenCalledWith("/api/workbench/context", {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+  });
+
   it.each([
     [
       "zero accessible Organizations",

@@ -50,7 +50,7 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
   const switchRequestPendingRef = useRef(false);
   const contextQuery = useQuery({
     queryKey: WORKBENCH_CONTEXT_QUERY_KEY,
-    queryFn: fetchWorkbenchContext,
+    queryFn: ({ signal }) => fetchWorkbenchContext(signal),
     enabled: !blockingError,
     staleTime: 30_000,
     refetchInterval: 30_000,
@@ -125,11 +125,13 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
           }
         }
         if (switchRequestPendingRef.current || hasPendingStoreMutation()) return;
+        await queryClient.cancelQueries({ queryKey: WORKBENCH_CONTEXT_QUERY_KEY });
+        if (switchRequestPendingRef.current || hasPendingStoreMutation()) return;
         switchRequestPendingRef.current = true;
         switchMutation.mutate(organizationId);
       })();
     },
-    [hasPendingStoreMutation, switchMutation],
+    [hasPendingStoreMutation, queryClient, switchMutation],
   );
 
   const value = useMemo<WorkbenchContextValue>(

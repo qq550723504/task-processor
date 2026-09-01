@@ -130,11 +130,12 @@ export class WorkbenchContextError extends Error {
   }
 }
 
-export function fetchWorkbenchContext(): Promise<WorkbenchContext> {
+export function fetchWorkbenchContext(signal?: AbortSignal): Promise<WorkbenchContext> {
   return requestWorkbenchContext("/api/workbench/context", {
     method: "GET",
     credentials: "same-origin",
     headers: { Accept: "application/json" },
+    ...(signal ? { signal } : {}),
   });
 }
 

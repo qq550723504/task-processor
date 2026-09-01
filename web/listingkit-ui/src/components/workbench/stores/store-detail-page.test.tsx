@@ -37,9 +37,13 @@ describe("StoreDetailPage", () => {
     query.value = { isPending: false, isError: true, error: { code: "STORE_NOT_FOUND" }, refetch: vi.fn() }; rerender(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("alert")).toHaveTextContent("店铺不存在或已不可访问");
     query.value = { isPending: false, isError: true, error: { code: "PERMISSION_DENIED" }, refetch: vi.fn() }; rerender(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("alert")).toHaveTextContent("没有编辑当前企业店铺的权限");
   });
-  it("refreshes organization context before retrying a drifted detail request", async () => {
+  it.each([
+    "ORGANIZATION_CONTEXT_CHANGED",
+    "ORGANIZATION_ACCESS_REVOKED",
+    "ORGANIZATION_ACCESS_DENIED",
+  ])("refreshes organization context before retrying a detail request after %s", async (code) => {
     const refetch = vi.fn();
-    query.value = { isPending: false, isError: true, error: { code: "ORGANIZATION_CONTEXT_CHANGED" }, refetch };
+    query.value = { isPending: false, isError: true, error: { code }, refetch };
     render(<StoreDetailPage storeId={STORE.id} />);
 
     await userEvent.click(screen.getByRole("button", { name: "重试" }));
