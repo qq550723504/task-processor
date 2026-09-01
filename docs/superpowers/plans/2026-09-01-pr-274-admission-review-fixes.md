@@ -64,7 +64,7 @@ test("runs admission guard tests when policy files change", () => {
   );
   assert.match(
     workflow,
-    /needs:\s*[\\s\\S]*development-admission-tests:/,
+    /needs:\s*[\\s\\S]*-\\s+development-admission-tests\\b/,
   );
 });
 ```
