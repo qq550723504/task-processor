@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/go-openapi/jsonpointer"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -49,7 +51,7 @@ func compileSchema(location string, raw json.RawMessage) (*jsonschema.Schema, er
 	if err := requireClosedRootObject(document); err != nil {
 		return nil, err
 	}
-	if err := auditSchema(document, "#"); err != nil {
+	if err := auditSchemaDocument(document); err != nil {
 		return nil, err
 	}
 
@@ -65,7 +67,38 @@ func compileSchema(location string, raw json.RawMessage) (*jsonschema.Schema, er
 
 const draft202012SchemaURL = "https://json-schema.org/draft/2020-12/schema"
 
-func auditSchema(value any, path string) error {
+type schemaTarget struct {
+	value any
+	path  string
+}
+
+type schemaAuditor struct {
+	document any
+	visited  map[string]struct{}
+	indexed  map[string]struct{}
+	anchors  map[string][]schemaTarget
+}
+
+func auditSchemaDocument(document any) error {
+	auditor := &schemaAuditor{
+		document: document,
+		visited:  make(map[string]struct{}),
+		indexed:  make(map[string]struct{}),
+		anchors:  make(map[string][]schemaTarget),
+	}
+	if err := auditor.indexReachableSchemas(document, "#"); err != nil {
+		return err
+	}
+
+	return auditor.auditSchema(document, "#")
+}
+
+func (auditor *schemaAuditor) auditSchema(value any, path string) error {
+	if _, alreadyVisited := auditor.visited[path]; alreadyVisited {
+		return nil
+	}
+	auditor.visited[path] = struct{}{}
+
 	switch schema := value.(type) {
 	case bool:
 		if schema {
@@ -73,17 +106,20 @@ func auditSchema(value any, path string) error {
 		}
 		return nil
 	case map[string]any:
-		return auditSchemaObject(schema, path)
+		return auditor.auditSchemaObject(schema, path)
 	default:
 		return nil
 	}
 }
 
-func auditSchemaObject(schema map[string]any, path string) error {
+func (auditor *schemaAuditor) auditSchemaObject(schema map[string]any, path string) error {
 	if dialect, exists := schema["$schema"]; exists {
 		if dialect != draft202012SchemaURL {
 			return fmt.Errorf("schema dialect must be JSON Schema Draft 2020-12 at %s", path)
 		}
+	}
+	if _, exists := schema["$id"]; exists {
+		return fmt.Errorf("schema resource identifiers are not supported at %s", path)
 	}
 
 	for _, keyword := range []string{"$ref", "$dynamicRef"} {
@@ -100,10 +136,13 @@ func auditSchemaObject(schema map[string]any, path string) error {
 	if err := auditSchemaLiterals(schema, path); err != nil {
 		return err
 	}
-	if err := auditSubschemas(schema, path); err != nil {
+	if err := auditor.auditSubschemas(schema, path); err != nil {
 		return err
 	}
 	if err := requireStaticallySafeValueShape(schema, path); err != nil {
+		return err
+	}
+	if err := auditor.auditReferencedTargets(schema); err != nil {
 		return err
 	}
 
@@ -175,7 +214,11 @@ func auditSchemaLiterals(schema map[string]any, path string) error {
 	return nil
 }
 
-func auditSubschemas(schema map[string]any, path string) error {
+func (auditor *schemaAuditor) auditSubschemas(schema map[string]any, path string) error {
+	return visitSubschemas(schema, path, auditor.auditSchema)
+}
+
+func visitSubschemas(schema map[string]any, path string, visit func(any, string) error) error {
 	mapKeywords := []string{
 		"$defs",
 		"definitions",
@@ -186,7 +229,7 @@ func auditSubschemas(schema map[string]any, path string) error {
 	for _, keyword := range mapKeywords {
 		children, _ := schema[keyword].(map[string]any)
 		for _, name := range sortedSchemaKeys(children) {
-			if err := auditSchema(children[name], schemaPath(path, keyword, name)); err != nil {
+			if err := visit(children[name], schemaPath(path, keyword, name)); err != nil {
 				return err
 			}
 		}
@@ -210,7 +253,7 @@ func auditSubschemas(schema map[string]any, path string) error {
 		if !exists {
 			continue
 		}
-		if err := auditSchema(child, schemaPath(path, keyword)); err != nil {
+		if err := visit(child, schemaPath(path, keyword)); err != nil {
 			return err
 		}
 	}
@@ -219,7 +262,7 @@ func auditSubschemas(schema map[string]any, path string) error {
 	for _, keyword := range arrayKeywords {
 		children, _ := schema[keyword].([]any)
 		for index, child := range children {
-			if err := auditSchema(child, schemaPath(path, keyword, fmt.Sprintf("%d", index))); err != nil {
+			if err := visit(child, schemaPath(path, keyword, fmt.Sprintf("%d", index))); err != nil {
 				return err
 			}
 		}
@@ -231,13 +274,132 @@ func auditSubschemas(schema map[string]any, path string) error {
 			if _, isPropertyList := child.([]any); isPropertyList {
 				continue
 			}
-			if err := auditSchema(child, schemaPath(path, "dependencies", name)); err != nil {
+			if err := visit(child, schemaPath(path, "dependencies", name)); err != nil {
 				return err
 			}
 		}
 	}
 
 	return nil
+}
+
+func (auditor *schemaAuditor) auditReferencedTargets(schema map[string]any) error {
+	for _, keyword := range []string{"$ref", "$dynamicRef"} {
+		reference, exists := schema[keyword].(string)
+		if !exists {
+			continue
+		}
+
+		for _, target := range auditor.resolveLocalReference(reference) {
+			if err := auditor.auditSchema(target.value, target.path); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (auditor *schemaAuditor) resolveLocalReference(reference string) []schemaTarget {
+	fragment, err := url.PathUnescape(strings.TrimPrefix(reference, "#"))
+	if err != nil {
+		return nil
+	}
+	if fragment == "" {
+		return []schemaTarget{{value: auditor.document, path: "#"}}
+	}
+	if !strings.HasPrefix(fragment, "/") {
+		return auditor.anchors[fragment]
+	}
+
+	target, ok := auditor.resolveJSONPointer(fragment)
+	if !ok {
+		return nil
+	}
+	return []schemaTarget{target}
+}
+
+func (auditor *schemaAuditor) resolveJSONPointer(pointer string) (schemaTarget, bool) {
+	if !hasValidJSONPointerEscapes(pointer) {
+		return schemaTarget{}, false
+	}
+	parsed, err := jsonpointer.New(pointer)
+	if err != nil {
+		return schemaTarget{}, false
+	}
+	value, _, err := parsed.Get(auditor.document)
+	if err != nil {
+		return schemaTarget{}, false
+	}
+
+	path := "#"
+	for _, token := range parsed.DecodedTokens() {
+		path = schemaPath(path, token)
+	}
+
+	return schemaTarget{value: value, path: path}, true
+}
+
+func (auditor *schemaAuditor) indexReachableSchemas(value any, path string) error {
+	if _, alreadyIndexed := auditor.indexed[path]; alreadyIndexed {
+		return nil
+	}
+	auditor.indexed[path] = struct{}{}
+
+	schema, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	for _, keyword := range []string{"$anchor", "$dynamicAnchor"} {
+		if anchor, ok := schema[keyword].(string); ok {
+			auditor.anchors[anchor] = append(auditor.anchors[anchor], schemaTarget{value: value, path: path})
+		}
+	}
+	if err := visitSubschemas(schema, path, auditor.indexReachableSchemas); err != nil {
+		return err
+	}
+
+	for _, keyword := range []string{"$ref", "$dynamicRef"} {
+		reference, ok := schema[keyword].(string)
+		if !ok || !strings.HasPrefix(reference, "#") {
+			continue
+		}
+		fragment, err := url.PathUnescape(strings.TrimPrefix(reference, "#"))
+		if err != nil {
+			continue
+		}
+		if fragment == "" {
+			if err := auditor.indexReachableSchemas(auditor.document, "#"); err != nil {
+				return err
+			}
+			continue
+		}
+		if !strings.HasPrefix(fragment, "/") {
+			continue
+		}
+		target, resolved := auditor.resolveJSONPointer(fragment)
+		if !resolved {
+			continue
+		}
+		if err := auditor.indexReachableSchemas(target.value, target.path); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func hasValidJSONPointerEscapes(pointer string) bool {
+	for index := 0; index < len(pointer); index++ {
+		if pointer[index] != '~' {
+			continue
+		}
+		if index+1 >= len(pointer) || (pointer[index+1] != '0' && pointer[index+1] != '1') {
+			return false
+		}
+		index++
+	}
+	return true
 }
 
 func requireStaticallySafeValueShape(schema map[string]any, path string) error {

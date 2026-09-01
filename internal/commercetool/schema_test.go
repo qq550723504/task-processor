@@ -28,6 +28,230 @@ func TestCompileSchemasRejectsInvalidSchemaAtConstruction(t *testing.T) {
 	require.NotContains(t, err.Error(), "schema root")
 }
 
+func TestCompileSchemasRejectsReservedAuthorityInReferencedAnnotationTargets(t *testing.T) {
+	tests := []struct {
+		name     string
+		schema   json.RawMessage
+		reserved string
+	}{
+		{
+			name: "default target",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"payload":{"$ref":"#/default"}},
+				"default":{"type":"object","additionalProperties":false,"properties":{"tenant_id":{"type":"string"}}}
+			}`),
+			reserved: "tenant_id",
+		},
+		{
+			name: "examples target",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"payload":{"$ref":"#/examples/0"}},
+				"examples":[{"type":"object","additionalProperties":false,"properties":{"user_id":{"type":"string"}}}]
+			}`),
+			reserved: "user_id",
+		},
+		{
+			name: "escaped pointer target",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"payload":{"$ref":"#/x~1target~0schema"}},
+				"x/target~schema":{"type":"object","additionalProperties":false,"properties":{"roles":{"type":"array","items":{"type":"string"}}}}
+			}`),
+			reserved: "roles",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := compileSchema("urn:test:referenced-annotation", tt.schema)
+
+			require.Error(t, err)
+			require.ErrorContains(t, err, fmt.Sprintf("reserved authority field %q", tt.reserved))
+		})
+	}
+}
+
+func TestCompileSchemasRejectsUnsafeReferencedAnnotationTargets(t *testing.T) {
+	tests := []struct {
+		name       string
+		target     string
+		errorMatch string
+	}{
+		{
+			name:       "old dialect",
+			target:     `{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","additionalProperties":false}`,
+			errorMatch: "schema dialect must be JSON Schema Draft 2020-12",
+		},
+		{
+			name:       "open object",
+			target:     `{"type":"object"}`,
+			errorMatch: "cannot prove object schema excludes reserved authority fields",
+		},
+		{
+			name:       "reserved pattern",
+			target:     `{"type":"object","additionalProperties":false,"patternProperties":{"^tenant_.*$":{"type":"string"}}}`,
+			errorMatch: "patternProperties pattern matches reserved authority field",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := json.RawMessage(fmt.Sprintf(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"payload":{"$ref":"#/default"}},
+				"default":%s
+			}`, tt.target))
+
+			_, err := compileSchema("urn:test:unsafe-referenced-annotation", schema)
+
+			require.Error(t, err)
+			require.ErrorContains(t, err, tt.errorMatch)
+		})
+	}
+}
+
+func TestCompileSchemasDoesNotAuditUnreferencedAnnotationBusinessData(t *testing.T) {
+	tests := []struct {
+		name   string
+		schema json.RawMessage
+	}{
+		{
+			name: "business examples",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"task_id":{"type":"string"}},
+				"default":{"tenant_id":"business-example"},
+				"examples":[{"user_id":"business-example"}]
+			}`),
+		},
+		{
+			name: "irrelevant annotation anchor",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"payload":{"$dynamicRef":"#payload"}},
+				"$defs":{"payload":{"$dynamicAnchor":"payload","type":"object","additionalProperties":false}},
+				"examples":[{"$dynamicAnchor":"payload","tenant_id":"business-example"}]
+			}`),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			compiled, err := compileSchema("urn:test:unreferenced-annotations", tt.schema)
+
+			require.NoError(t, err)
+			require.NoError(t, compiled.Validate(map[string]any{}))
+		})
+	}
+}
+
+func TestCompileSchemasAcceptsReachableLocalAnchorsAndCycles(t *testing.T) {
+	tests := []struct {
+		name   string
+		schema json.RawMessage
+	}{
+		{
+			name: "anchor",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"payload":{"$ref":"#payload"}},
+				"$defs":{"payload":{"$anchor":"payload","type":"object","additionalProperties":false,"properties":{"sku":{"type":"string"}}}}
+			}`),
+		},
+		{
+			name: "dynamic anchor",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"payload":{"$dynamicRef":"#payload"}},
+				"$defs":{"payload":{"$dynamicAnchor":"payload","type":"object","additionalProperties":false,"properties":{"sku":{"type":"string"}}}}
+			}`),
+		},
+		{
+			name: "circular annotation targets",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"payload":{"$ref":"#/default"}},
+				"default":{"type":"object","additionalProperties":false,"properties":{"next":{"$ref":"#/examples/0"}}},
+				"examples":[{"type":"object","additionalProperties":false,"properties":{"next":{"$ref":"#/default"}}}]
+			}`),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			compiled, err := compileSchema("urn:test:local-reference-graph", tt.schema)
+
+			require.NoError(t, err)
+			require.NoError(t, compiled.Validate(map[string]any{"payload": map[string]any{}}))
+		})
+	}
+}
+
+func TestCompileSchemasLeavesInvalidOrUnresolvedFragmentsToCompiler(t *testing.T) {
+	tests := []struct {
+		reference   string
+		compilerErr string
+	}{
+		{reference: "#/missing", compilerErr: "json-pointer in"},
+		{reference: "#/bad~2pointer", compilerErr: "invalid json-pointer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.reference, func(t *testing.T) {
+			schema := json.RawMessage(fmt.Sprintf(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"payload":{"$ref":%q}}
+			}`, tt.reference))
+
+			_, err := compileSchema("urn:test:invalid-fragment", schema)
+
+			require.Error(t, err)
+			require.ErrorContains(t, err, tt.compilerErr)
+		})
+	}
+}
+
+func TestCompileSchemasRejectsEmbeddedResourceIdentifiers(t *testing.T) {
+	schema := json.RawMessage(`{
+		"$schema":"https://json-schema.org/draft/2020-12/schema",
+		"type":"object",
+		"additionalProperties":false,
+		"properties":{
+			"payload":{
+				"$id":"urn:test:nested-resource",
+				"$ref":"#/default",
+				"default":{"type":"object","additionalProperties":false,"properties":{"tenant_id":{"type":"string"}}}
+			}
+		}
+	}`)
+
+	_, err := compileSchema("urn:test:embedded-resource", schema)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "schema resource identifiers are not supported")
+}
+
 func TestCompileSchemasRejectsUndeclaredInputAuthority(t *testing.T) {
 	schemas, err := compileSchemas(validDefinition())
 	require.NoError(t, err)
