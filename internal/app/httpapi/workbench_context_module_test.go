@@ -172,6 +172,7 @@ func TestWorkbenchCompositionRegistersRoutesExactlyOnceWhenEnabled(t *testing.T)
 }
 
 func TestBuildBootstrapFailsClosedWhenWorkbenchIsEnabledWithoutDatabase(t *testing.T) {
+	configureProductImageRuntimePaths(t)
 	restoreAuth := listingkithttpapi.SetListingKitZitadelAuthConfigForTesting(nil)
 	t.Cleanup(restoreAuth)
 	logger := logrus.New()
