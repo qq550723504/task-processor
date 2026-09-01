@@ -293,7 +293,27 @@ function hasAuthorizedArchitectureOverride({
         !Number.isNaN(Date.parse(review.submitted_at)) &&
         Date.parse(review.submitted_at) > Date.parse(baseChangedAt)
       );
-    });
+  });
+}
+
+function hasRequiredOverrideEvidence(body) {
+  if (typeof body !== "string") {
+    return false;
+  }
+  const valueFor = (pattern) => {
+    const match = body.match(pattern);
+    const value = match?.[1]?.trim();
+    return value && !/(?:^|[\s;,])(?:n\/a|none|tbd|todo)(?:$|[\s;,\.])/i.test(value)
+      ? value
+      : null;
+  };
+  const design = valueFor(/^\s*-\s*Design:\s*(.+)$/im);
+  const independentReview = valueFor(/^\s*-\s*Independent design review:\s*(.+)$/im);
+  const splitRationale = valueFor(
+    /^\s*-\s*architecture-approved[^:\n]*split rationale[^:\n]*:\s*(.+)$/im,
+  );
+  const hasDesignLink = design && /https?:\/\/\S+|(?:^|\s)(?:docs|designs?)\/\S+/i.test(design);
+  return Boolean(hasDesignLink && independentReview && splitRationale);
 }
 
 function statusForEvaluation(result) {
@@ -408,6 +428,7 @@ module.exports = {
   evaluatePullRequest,
   formatEvaluation,
   hasAuthorizedArchitectureOverride,
+  hasRequiredOverrideEvidence,
   latestBaseChangeAt,
   pullRequestNumberFromEventPayload,
   statusForEvaluation,

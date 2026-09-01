@@ -244,12 +244,14 @@ including pushes to non-default base branches. A trusted
 `workflow_run`, filters open PRs whose base branch matches the pushed branch,
 and dispatches one evaluator per matching PR. The reconciler also runs every
 five minutes, but the scheduled fan-out is limited to open PRs carrying the
-`architecture-approved` label because only those PRs depend on a mutable
-reviewer permission override. This covers merge-SHA changes caused by
+`architecture-approved` label or targeting a non-default base branch that may
+not yet contain the signal workflow. This covers merge-SHA changes caused by
 base-branch advancement and reviewer-permission revocation without running a
-privileged workflow from an arbitrary branch. The dispatch workflow has only
-`actions: write`, `contents: read`, and `pull-requests: read`; it sends the PR
-number as a workflow-dispatch input.
+privileged workflow from an arbitrary branch. Before accepting an override,
+the evaluator also requires non-placeholder PR-body evidence for the design
+link, independent review, and why the change cannot be safely split. The
+dispatch workflow has only `actions: write`, `contents: read`, and
+`pull-requests: read`; it sends the PR number as a workflow-dispatch input.
 
 The admission evaluator's failure matrix is:
 
@@ -319,8 +321,12 @@ association before using it. Add a read-only base-branch signal on all `push`
 events and trigger the trusted reconciliation workflow through `workflow_run`;
 the reconciler dispatches only open PRs whose base matches the pushed branch.
 Its five-minute `schedule` dispatches only open PRs with the
-`architecture-approved` label to bound permission-revocation fan-out. Resolve
-the PR number before entering a per-PR concurrency group
+`architecture-approved` label or a non-default base branch to bound
+permission-revocation fan-out while covering long-lived branches that do not
+yet contain the signal workflow. Before setting `overrideAuthorized`, validate
+non-placeholder PR-body evidence for the design link, independent review, and
+split rationale. Resolve the PR number before entering a per-PR concurrency
+group
 so direct, review, and reconciliation runs serialize together. Use
 `concurrency` per PR to serialize
 evaluations and give the job a bounded deadline. Publish the decision as the fixed `Development

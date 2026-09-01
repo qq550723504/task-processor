@@ -159,37 +159,39 @@ jobs:
               const labels = latestPullRequest.labels.map(({ name }) => name);
               let overrideAuthorized = false;
               if (labels.includes(guard.OVERRIDE_LABEL)) {
-                const approvalReviewers = guard.approvalReviewersForCurrentHead(
-                  latestReviews,
-                  latestPullRequest.head.sha,
-                );
-                const permissions = {};
-                for (const login of approvalReviewers) {
-                  try {
-                    const permissionData = (await github.rest.repos.getCollaboratorPermissionLevel({
-                      ...repositoryRequest,
-                      username: login,
-                    })).data;
-                    permissions[login] = {
-                      permission: permissionData.permission,
-                      role_name: permissionData.role_name,
-                    };
-                  } catch (permissionError) {
-                    if (permissionError.status === 404) {
-                      permissions[login] = { permission: "none", role_name: "none" };
-                      continue;
+                if (guard.hasRequiredOverrideEvidence(latestPullRequest.body)) {
+                  const approvalReviewers = guard.approvalReviewersForCurrentHead(
+                    latestReviews,
+                    latestPullRequest.head.sha,
+                  );
+                  const permissions = {};
+                  for (const login of approvalReviewers) {
+                    try {
+                      const permissionData = (await github.rest.repos.getCollaboratorPermissionLevel({
+                        ...repositoryRequest,
+                        username: login,
+                      })).data;
+                      permissions[login] = {
+                        permission: permissionData.permission,
+                        role_name: permissionData.role_name,
+                      };
+                    } catch (permissionError) {
+                      if (permissionError.status === 404) {
+                        permissions[login] = { permission: "none", role_name: "none" };
+                        continue;
+                      }
+                      throw permissionError;
                     }
-                    throw permissionError;
                   }
+                  overrideAuthorized = guard.hasAuthorizedArchitectureOverride({
+                    labels,
+                    headSha: latestPullRequest.head.sha,
+                    authorLogin: latestPullRequest.user.login,
+                    baseChangedAt: guard.latestBaseChangeAt(latestEvents),
+                    reviews: latestReviews,
+                    permissions,
+                  });
                 }
-                overrideAuthorized = guard.hasAuthorizedArchitectureOverride({
-                  labels,
-                  headSha: latestPullRequest.head.sha,
-                  authorLogin: latestPullRequest.user.login,
-                  baseChangedAt: guard.latestBaseChangeAt(latestEvents),
-                  reviews: latestReviews,
-                  permissions,
-                });
               }
               const result = guard.evaluatePullRequest(files, labels, { overrideAuthorized });
               const report = guard.formatEvaluation(result);

@@ -34,10 +34,13 @@ jobs:
             const baseBranch = context.eventName === "workflow_run"
               ? context.payload.workflow_run.head_branch
               : null;
+            const defaultBranch = context.payload.repository.default_branch;
             const candidates = baseBranch
               ? pullRequests.filter((pullRequest) => pullRequest.base.ref === baseBranch)
               : pullRequests.filter((pullRequest) =>
-                  pullRequest.labels.some(({ name }) => name === "architecture-approved"),
+                  pullRequest.base.ref !== defaultBranch || pullRequest.labels.some(
+                    ({ name }) => name === "architecture-approved",
+                  ),
                 );
             for (const pullRequest of candidates) {
               await github.rest.actions.createWorkflowDispatch({
