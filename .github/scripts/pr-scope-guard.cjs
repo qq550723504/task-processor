@@ -293,6 +293,12 @@ function statusForEvaluation(result) {
   if (!result || typeof result.allowed !== "boolean") {
     throw new TypeError("result.allowed must be a boolean");
   }
+  if (result.allowed && result.overridden === true) {
+    return {
+      state: "success",
+      description: "Allowed by authorized architecture override",
+    };
+  }
   return result.allowed
     ? { state: "success", description: "Within admission limits" }
     : { state: "failure", description: "Exceeds admission limits" };
