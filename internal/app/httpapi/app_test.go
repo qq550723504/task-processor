@@ -15,7 +15,7 @@ import (
 
 func TestRun_GracefulShutdown(t *testing.T) {
 	runtimePaths := configureProductImageRuntimePaths(t)
-	configContents, err := os.ReadFile("config/config-test.yaml")
+	configContents, err := os.ReadFile("../../../config/config-test.yaml")
 	if err != nil {
 		t.Fatalf("read test config: %v", err)
 	}
