@@ -12,6 +12,7 @@ import (
 )
 
 func TestRun_GracefulShutdown(t *testing.T) {
+	configureProductImageRuntimePaths(t)
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
