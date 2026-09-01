@@ -864,6 +864,32 @@ func TestServiceUpdateAuditFailureRepairsWithoutSecondSave(t *testing.T) {
 	}
 }
 
+func TestServiceMutationReplayPreservesOriginalActor(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionStoreUpdated: 1}
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "actor-a", StoreID: store.ID(), ExpectedVersion: store.Version(), Name: "After", Region: store.Region()}
+	if _, err := service.Update(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Update() = %v", err)
+	}
+	retry := request
+	retry.ActorSubject = "actor-b"
+	if _, err := service.Update(context.Background(), retry); err != nil {
+		t.Fatalf("cross-actor replay Update() = %v", err)
+	}
+	operationKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte("org-a\n"+store.ID()+"\nupdate\n"+fmt.Sprint(store.Version()))).String()
+	completed := audit.eventFor("org-a", operationKey, storecenter.AuditActionStoreUpdated)
+	if completed.ActorSubject != "actor-a" {
+		t.Fatalf("repaired audit actor = %q, want original actor-a", completed.ActorSubject)
+	}
+}
+
 func TestServiceUpdateRepairRequiresValidAuthoritativeIntent(t *testing.T) {
 	for _, corrupt := range []bool{false, true} {
 		name := "missing"
@@ -1330,6 +1356,34 @@ func TestServiceDeleteRecoversReleasedQuotaAfterDeallocationAuditFailureWithNewK
 	result, err := service.Delete(context.Background(), resumed)
 	if err != nil || result.Version != deleting.Version()+1 || !result.Replayed || repository.softDeleteCalls != 1 {
 		t.Fatalf("new-key recovery after released quota = %#v, %v soft-deletes=%d", result, err, repository.softDeleteCalls)
+	}
+}
+
+func TestServiceDeleteReplaysMissingCompletionAfterSoftDeleteWithReplacementKey(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	ledger := &quotaLedgerFake{allocation: listingsubscription.StoreQuotaAllocation{OrganizationID: "org-a", AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), Status: listingsubscription.StoreQuotaAllocated}}
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionDeleteComplete: 1}
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "actor-a", StoreID: store.ID(), ExpectedVersion: store.Version(), OperationKey: uuid.NewString()}
+	if _, err := service.Delete(context.Background(), first); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Delete() = %v", err)
+	}
+	retry := first
+	retry.ActorSubject = "actor-b"
+	retry.OperationKey = uuid.NewString()
+	result, err := service.Delete(context.Background(), retry)
+	if err != nil || !result.Replayed || result.Version != first.ExpectedVersion+2 {
+		t.Fatalf("replacement-key Delete() = %#v, %v", result, err)
+	}
+	completed := audit.eventFor("org-a", first.OperationKey, storecenter.AuditActionDeleteComplete)
+	if completed.ActorSubject != "actor-a" {
+		t.Fatalf("repaired delete actor = %q, want original actor-a", completed.ActorSubject)
 	}
 }
 
@@ -2378,6 +2432,23 @@ func (f *auditRepositoryFake) Get(_ context.Context, organizationID, requestKey 
 		return nil, storecenter.ErrNotFound
 	}
 	return &event, nil
+}
+func (f *auditRepositoryFake) GetByStoreID(_ context.Context, organizationID, storeID string, action storecenter.AuditAction) (*storecenter.AuditEvent, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var found *storecenter.AuditEvent
+	for _, event := range f.events {
+		if event.OrganizationID == organizationID && event.StoreID == storeID && event.Action == action {
+			copy := event
+			if found == nil || copy.OccurredAt.After(found.OccurredAt) {
+				found = &copy
+			}
+		}
+	}
+	if found == nil {
+		return nil, storecenter.ErrNotFound
+	}
+	return found, nil
 }
 func (f *auditRepositoryFake) actionsFor(organizationID, requestKey string) []string {
 	f.mu.Lock()

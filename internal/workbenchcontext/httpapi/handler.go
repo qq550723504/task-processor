@@ -11,14 +11,27 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/authidentity"
+	"task-processor/internal/authz"
 )
 
 const switchOrganizationRequestBodyMaxBytes = 4096
 
 // Handler exposes only the verified, resolved workbench identity projection.
-type Handler struct{}
+type Handler struct {
+	workbenchAuthorizer *authz.ListingKitAuthorizer
+}
 
 func NewHandler() *Handler { return &Handler{} }
+
+func NewHandlerWithWorkbenchAuthorizer(authorizer *authz.ListingKitAuthorizer) *Handler {
+	return &Handler{workbenchAuthorizer: authorizer}
+}
+
+func (h *Handler) SetWorkbenchAuthorizer(authorizer *authz.ListingKitAuthorizer) {
+	if h != nil {
+		h.workbenchAuthorizer = authorizer
+	}
+}
 
 // ResolveSwitchOrganizationTarget decodes a switch candidate and restores the
 // request body for the downstream handler.
@@ -92,6 +105,9 @@ func (h *Handler) writeContext(c *gin.Context) {
 	organizations := make([]organizationResponse, 0, len(identity.OrganizationGrants))
 	for _, grant := range identity.OrganizationGrants {
 		roles := append([]string(nil), grant.Roles...)
+		if h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, roles, authz.PermissionWorkbenchStoreDelete) && !containsRole(roles, "platform_admin") {
+			roles = append(roles, "platform_admin")
+		}
 		if roles == nil {
 			roles = []string{}
 		}
@@ -113,6 +129,15 @@ func (h *Handler) writeContext(c *gin.Context) {
 		SelectionRequired:       effectiveOrganizationID == nil && len(organizations) > 1,
 		Organizations:           organizations,
 	})
+}
+
+func containsRole(roles []string, want string) bool {
+	for _, role := range roles {
+		if role == want {
+			return true
+		}
+	}
+	return false
 }
 
 type contextResponse struct {

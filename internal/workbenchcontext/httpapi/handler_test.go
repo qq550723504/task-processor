@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/authidentity"
+	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
@@ -21,6 +22,20 @@ type workbenchBodyBoundaryReader struct {
 	payload          []byte
 	offset           int
 	readsPastPayload int
+}
+
+func TestWorkbenchContextExposesConfiguredPlatformAdminToBrowserRoleChecks(t *testing.T) {
+	authorizer, err := authz.NewListingKitAuthorizer([]string{"configured-user"}, []string{"configured-role"})
+	require.NoError(t, err)
+	response := serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", authidentity.AuthenticatedIdentity{
+		UserID: "configured-user",
+		HomeOrganizationID: "org-a",
+		EffectiveOrganizationID: "org-a",
+		OrganizationGrants: []authidentity.OrganizationGrant{{OrganizationID: "org-a", OrganizationName: "Organization A", Roles: []string{"custom-role"}}},
+	}, NewHandlerWithWorkbenchAuthorizer(authorizer).GetContext)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.JSONEq(t, `{"user":{"id":"configured-user"},"homeOrganizationId":"org-a","effectiveOrganizationId":"org-a","selectionRequired":false,"organizations":[{"id":"org-a","name":"Organization A","roles":["custom-role","platform_admin"]}]}`, response.Body.String())
 }
 
 func (reader *workbenchBodyBoundaryReader) Read(buffer []byte) (int, error) {

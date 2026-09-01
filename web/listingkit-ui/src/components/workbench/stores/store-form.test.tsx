@@ -54,6 +54,8 @@ describe("StoreForm", () => {
     options.onError({ code: "DEPENDENCY_UNAVAILABLE", status: 503, fieldErrors: [] });
     await waitFor(() => expect(screen.getByRole("button", { name: "创建店铺" })).toBeDisabled());
     expect(await screen.findByRole("button", { name: "重试创建" })).toBeInTheDocument();
+    expect(screen.getByLabelText("店铺名称")).toBeDisabled();
+    expect(screen.getByLabelText("区域")).toBeDisabled();
     create.retryLast.mockResolvedValue({ id: STORE.id });
     await user.click(screen.getByRole("button", { name: "重试创建" }));
     expect(create.retryLast).toHaveBeenCalledTimes(1);

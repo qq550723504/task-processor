@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/authruntime/zitadel"
+	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/workbenchcontext"
@@ -84,6 +85,13 @@ func buildWorkbenchContextModule(cfg *config.Config, logger *logrus.Logger, fact
 	grantResolver := factories.newGrantResolver(authorizationClient, cache)
 	resolver := factories.newResolver(grantResolver, zitadelConfig.ProjectID, workbenchAuthorizationContractVersion, nil)
 	handler := factories.newHandler()
+	if handler != nil {
+		workbenchAuthorizer, authorizerErr := authz.NewListingKitAuthorizer(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles)
+		if authorizerErr != nil {
+			return workbenchContextBuildResult{}, fmt.Errorf("build workbench context authorizer: %w", authorizerErr)
+		}
+		handler.SetWorkbenchAuthorizer(workbenchAuthorizer)
+	}
 	module := factories.newModule(handler)
 	authDependencies := newRouteAuthDependencies()
 	authDependencies.workbenchVerifier = verifier

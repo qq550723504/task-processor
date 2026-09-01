@@ -93,7 +93,7 @@ func TestValidateWorkbenchZitadelConfigRejectsUnsupportedAuthorizationAPIURL(t *
 }
 
 func TestValidateWorkbenchZitadelConfigRejectsUnsupportedIssuerURL(t *testing.T) {
-	for _, raw := range []string{"zitadel.internal", "ftp://issuer.example", "https://", "https://issuer.example?tenant=a", "https://issuer.example#fragment"} {
+	for _, raw := range []string{"zitadel.internal", "ftp://issuer.example", "https://", "https://issuer.example?tenant=a", "https://issuer.example?", "https://issuer.example#fragment", "https://issuer.example#"} {
 		t.Run(raw, func(t *testing.T) {
 			errors := ValidateWorkbenchConfig(&WorkbenchConfig{Enabled: true}, &ListingKitZitadelConfig{
 				ProjectID: "project-1", IssuerURL: raw, AuthorizationAPIURL: "https://authorization.example", ClientID: "client-1", ClientSecret: "secret-1",

@@ -81,6 +81,7 @@ type AuditEvent struct {
 type AuditRepository interface {
 	Record(context.Context, AuditEvent) (event AuditEvent, replayed bool, err error)
 	Get(ctx context.Context, organizationID, requestKey string, action AuditAction) (*AuditEvent, error)
+	GetByStoreID(ctx context.Context, organizationID, storeID string, action AuditAction) (*AuditEvent, error)
 }
 
 type GormAuditRepository struct{ db *gorm.DB }
@@ -166,6 +167,32 @@ func (r *GormAuditRepository) Get(ctx context.Context, organizationID, requestKe
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get store audit: %w", err)
+	}
+	event, err := auditEventFromRecord(record)
+	if err != nil {
+		return nil, fmt.Errorf("rehydrate store audit: %w", err)
+	}
+	return &event, nil
+}
+
+func (r *GormAuditRepository) GetByStoreID(ctx context.Context, organizationID, storeID string, action AuditAction) (*AuditEvent, error) {
+	organizationID, err := validateOpaqueIdentity("organization ID", organizationID, MaxOrganizationIDBytes)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := canonicalUUID(storeID); err != nil {
+		return nil, fmt.Errorf("store ID: %w", err)
+	}
+	if !validAuditAction(action) {
+		return nil, errors.New("audit action is invalid")
+	}
+	var record workbenchStoreAuditLogRecord
+	err = r.db.WithContext(ctx).Where("organization_id = ? AND store_id = ? AND action = ?", organizationID, storeID, string(action)).Order("created_at DESC").First(&record).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get store audit by store ID: %w", err)
 	}
 	event, err := auditEventFromRecord(record)
 	if err != nil {

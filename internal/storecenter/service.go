@@ -564,6 +564,9 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 		previous, next = store.LifecycleStatus(), store.LifecycleStatus()
 	}
 	event := newAuditEvent(request.organizationID, request.storeID, store.QuotaAllocationID(), operationKey, auditAction, AuditOutcomeSucceeded, request.actor, auditFields, previous, next, AuditFailureNone, s.utcNow())
+	if durableIntent != nil {
+		event.ActorSubject = durableIntent.ActorSubject
+	}
 	event.StoreVersion = store.Version()
 	event.PayloadFingerprint = request.payloadFingerprint
 	_, auditReplayed, err := s.audit.Record(ctx, event)
@@ -657,6 +660,29 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 
 	store, getErr := s.repository.Get(ctx, normalized.OrganizationID, normalized.StoreID)
 	if errors.Is(getErr, ErrNotFound) {
+		if deallocated, auditErr := s.audit.GetByStoreID(ctx, normalized.OrganizationID, normalized.StoreID, AuditActionQuotaDeallocated); auditErr == nil {
+			recovery := normalized
+			recovery.OperationKey = deallocated.RequestKey
+			recovery.ActorSubject = deallocated.ActorSubject
+			if validateDeleteAudit(deallocated, recovery, AuditActionQuotaDeallocated) != nil {
+				return DeleteStoreResult{}, dependencyError(ErrAuditIdentityMismatch)
+			}
+			if _, completeErr := s.audit.Get(ctx, recovery.OrganizationID, recovery.OperationKey, AuditActionDeleteComplete); completeErr == nil {
+				// A different operation key arriving after a completed delete is
+				// not a replay of the original ownership claim. The normal
+				// same-key lookup above already handles legitimate idempotency.
+				return DeleteStoreResult{}, ErrNotFound
+			} else if !errors.Is(completeErr, ErrNotFound) {
+				return DeleteStoreResult{}, dependencyError(completeErr)
+			}
+			version := deallocated.StoreVersion + 1
+			if err := s.recordDeletePhase(ctx, recovery, deallocated.AllocationID, AuditActionDeleteComplete, StoreStatusDeleting, "", version); err != nil {
+				return DeleteStoreResult{}, dependencyError(err)
+			}
+			return DeleteStoreResult{StoreID: recovery.StoreID, Version: version, Replayed: true}, nil
+		} else if !errors.Is(auditErr, ErrNotFound) {
+			return DeleteStoreResult{}, dependencyError(auditErr)
+		}
 		deallocated, auditErr := s.audit.Get(ctx, normalized.OrganizationID, normalized.OperationKey, AuditActionQuotaDeallocated)
 		if errors.Is(auditErr, ErrNotFound) {
 			return DeleteStoreResult{}, ErrNotFound
@@ -704,6 +730,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 		if auditErr != nil || validateDeleteAudit(started, normalized, AuditActionDeleteStarted) != nil || started.AllocationID != store.QuotaAllocationID() {
 			return DeleteStoreResult{}, dependencyError(auditErr)
 		}
+		normalized.ActorSubject = started.ActorSubject
 		previous = started.PreviousState
 		replayed = true
 	} else {
