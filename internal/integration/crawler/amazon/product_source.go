@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"task-processor/internal/model"
 	"task-processor/internal/product/sourcing"
@@ -288,12 +289,18 @@ func amazonRawReference(product *model.Product, snapshot string) sourcing.RawSou
 	ref := sourcing.RawSourceReference{
 		ReferenceType: amazonSourceReferenceType,
 		SnapshotID:    strings.TrimSpace(snapshot),
+		Checksum:      sourcing.RawSnapshotChecksum(snapshot),
 	}
 	if product == nil {
 		return ref
 	}
 	ref.ReferenceID = strings.TrimSpace(product.Asin)
 	ref.URL = strings.TrimSpace(product.URL)
+	if product.Timestamp.Time != nil && !product.Timestamp.IsZero() {
+		capturedAt := product.Timestamp.UTC()
+		ref.CapturedAt = capturedAt
+		ref.Metadata = map[string]string{"timestamp": capturedAt.Format(time.RFC3339Nano)}
+	}
 	return ref
 }
 

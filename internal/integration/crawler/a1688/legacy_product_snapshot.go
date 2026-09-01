@@ -49,6 +49,8 @@ func SnapshotFromLegacyProduct(product *model.Product1688) *Alibaba1688ProductSn
 		Brand:        product.Brand,
 		Keywords:     slices.Clone(product.Keywords),
 		IsCustomized: product.IsCustomized,
+		CrawledAt:    product.CrawledAt,
+		UpdatedAt:    product.UpdatedAt,
 	}
 
 	snapshot.Videos = make([]Alibaba1688VideoSnapshot, len(product.Videos))

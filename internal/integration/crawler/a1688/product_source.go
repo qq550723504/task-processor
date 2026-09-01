@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/product/sourcing"
@@ -41,6 +42,8 @@ type Alibaba1688ProductSnapshot struct {
 	Brand            string
 	Keywords         []string
 	IsCustomized     bool
+	CrawledAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type Alibaba1688VideoSnapshot struct {
@@ -529,6 +532,7 @@ func alibaba1688RawReference(input Alibaba1688CrawlRequestInput, product *Alibab
 	ref := sourcing.RawSourceReference{
 		ReferenceType: alibaba1688SourceReferenceType,
 		SnapshotID:    strings.TrimSpace(snapshot),
+		Checksum:      sourcing.RawSnapshotChecksum(snapshot),
 		URL:           NormalizeAlibaba1688URL(input.URL),
 	}
 	if product != nil {
@@ -536,11 +540,31 @@ func alibaba1688RawReference(input Alibaba1688CrawlRequestInput, product *Alibab
 		if url := NormalizeAlibaba1688URL(product.URL); url != "" {
 			ref.URL = url
 		}
+		ref.Metadata = sourceTimeMetadata(product.CrawledAt, product.UpdatedAt)
+		if !product.CrawledAt.IsZero() {
+			ref.CapturedAt = product.CrawledAt.UTC()
+		} else if !product.UpdatedAt.IsZero() {
+			ref.CapturedAt = product.UpdatedAt.UTC()
+		}
 	}
 	if ref.ReferenceID == "" {
 		ref.ReferenceID = ExtractAlibaba1688ProductID(ref.URL)
 	}
 	return ref
+}
+
+func sourceTimeMetadata(crawledAt, updatedAt time.Time) map[string]string {
+	metadata := map[string]string{}
+	if !crawledAt.IsZero() {
+		metadata["crawled_at"] = crawledAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !updatedAt.IsZero() {
+		metadata["updated_at"] = updatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if len(metadata) == 0 {
+		return nil
+	}
+	return metadata
 }
 
 func alibaba1688ProductCandidate(product *Alibaba1688ProductSnapshot) sourcing.ProductCandidate {

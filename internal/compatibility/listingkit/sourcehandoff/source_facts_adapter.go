@@ -18,9 +18,10 @@ func catalogProductFactsFromEnvelope(envelope sourcing.SourceEnvelope) catalog.P
 	if err != nil {
 		return catalog.ProductFacts{}
 	}
-	identity := normalized.Identity
-	candidate := normalized.ProductCandidate
+	return catalogProductFactsFromSnapshot(normalized.Identity, snapshot, normalized.Warnings)
+}
 
+func catalogProductFactsFromSnapshot(identity sourcing.SourceIdentity, snapshot catalog.ProductSnapshot, warnings []sourcing.SourceWarning) catalog.ProductFacts {
 	return catalog.ProductFacts{
 		SourceKey:      identity.SourceKey(),
 		SourceType:     identity.SourceType,
@@ -30,9 +31,9 @@ func catalogProductFactsFromEnvelope(envelope sourcing.SourceEnvelope) catalog.P
 		Title:          snapshot.Title,
 		Description:    snapshot.Description,
 		Brand:          snapshot.Brand,
-		Attributes:     copyStringMap(candidate.Attributes),
-		Variants:       catalogVariantFacts(candidate.Variants),
-		Warnings:       catalogWarnings(normalized.Warnings),
+		Attributes:     catalogAttributeFacts(snapshot.Attributes),
+		Variants:       catalogVariantFacts(snapshot.Variants),
+		Warnings:       catalogWarnings(warnings),
 	}
 }
 
@@ -56,18 +57,29 @@ func assetFactsFromEnvelope(envelope sourcing.SourceEnvelope) asset.Facts {
 	}
 }
 
-func catalogVariantFacts(candidates []sourcing.ProductVariantCandidate) []catalog.VariantFacts {
-	if len(candidates) == 0 {
+func catalogVariantFacts(variants []catalog.Variant) []catalog.VariantFacts {
+	if len(variants) == 0 {
 		return nil
 	}
-	facts := make([]catalog.VariantFacts, 0, len(candidates))
-	for _, candidate := range candidates {
+	facts := make([]catalog.VariantFacts, 0, len(variants))
+	for _, variant := range variants {
 		facts = append(facts, catalog.VariantFacts{
-			SourceID:   candidate.SourceID,
-			Title:      candidate.Title,
-			SKU:        candidate.SKU,
-			Attributes: copyStringMap(candidate.Attributes),
+			SourceID:   variant.SourceID,
+			Title:      variant.Title,
+			SKU:        variant.SKU,
+			Attributes: catalogAttributeFacts(variant.Attributes),
 		})
+	}
+	return facts
+}
+
+func catalogAttributeFacts(attributes []catalog.Attribute) map[string]string {
+	if len(attributes) == 0 {
+		return nil
+	}
+	facts := make(map[string]string, len(attributes))
+	for _, attribute := range attributes {
+		facts[attribute.Name] = attribute.Value
 	}
 	return facts
 }
@@ -109,17 +121,6 @@ func assetWarnings(warnings []sourcing.SourceWarning) []asset.FactWarning {
 	for _, warning := range warnings {
 		warning = warning.Normalize()
 		out = append(out, asset.FactWarning{Code: warning.Code, Message: warning.Message, Field: warning.Field})
-	}
-	return out
-}
-
-func copyStringMap(values map[string]string) map[string]string {
-	if len(values) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(values))
-	for key, value := range values {
-		out[key] = value
 	}
 	return out
 }

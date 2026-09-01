@@ -3,6 +3,7 @@ package sourcehandoff
 import (
 	"testing"
 
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -56,6 +57,45 @@ func TestCatalogProductFactsFromEnvelopeMapsNeutralFacts(t *testing.T) {
 	}
 	if facts.Variants[0].Attributes["Color"] != "Blue" {
 		t.Fatalf("variant attributes mutated through source map, got %q", facts.Variants[0].Attributes["Color"])
+	}
+}
+
+func TestCatalogProductFactsFromSnapshotConsumesCanonicalProductProjection(t *testing.T) {
+	snapshot := catalog.ProductSnapshot{
+		Title:       "Snapshot title",
+		Brand:       "Snapshot brand",
+		Description: "Snapshot description",
+		Attributes: []catalog.Attribute{
+			{Name: "category", Value: "Shirts"},
+			{Name: "material", Value: "Cotton"},
+		},
+		Variants: []catalog.Variant{{
+			SourceID: "B001-BLUE-M",
+			Title:    "Blue / M",
+			SKU:      "SKU-1",
+			Attributes: []catalog.Attribute{
+				{Name: "Color", Value: "Blue"},
+				{Name: "Size", Value: "M"},
+			},
+		}},
+	}
+	identity := sourcing.SourceIdentity{
+		SourceType:     sourcing.SourceTypeCrawler,
+		SourcePlatform: "amazon",
+		SourceID:       "B001",
+		SourceURL:      "https://www.amazon.com/dp/B001",
+	}
+
+	facts := catalogProductFactsFromSnapshot(identity, snapshot, nil)
+
+	if facts.Attributes["category"] != "Shirts" || facts.Attributes["material"] != "Cotton" {
+		t.Fatalf("Attributes = %+v, want snapshot attributes", facts.Attributes)
+	}
+	if len(facts.Variants) != 1 || facts.Variants[0].SourceID != "B001-BLUE-M" || facts.Variants[0].Title != "Blue / M" || facts.Variants[0].SKU != "SKU-1" {
+		t.Fatalf("Variants = %+v, want snapshot variant identity", facts.Variants)
+	}
+	if facts.Variants[0].Attributes["Color"] != "Blue" || facts.Variants[0].Attributes["Size"] != "M" {
+		t.Fatalf("Variant attributes = %+v, want snapshot variant attributes", facts.Variants[0].Attributes)
 	}
 }
 

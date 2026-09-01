@@ -75,6 +75,13 @@ func TestToSnapshotProducesCanonicalFactsWithoutAssets(t *testing.T) {
 			Title:       "Test Shirt",
 			Brand:       "Test Brand",
 			Description: "Test description",
+			Attributes:  map[string]string{"zeta": "last", "category": "Shirts", "alpha": "first"},
+			Variants: []ProductVariantCandidate{{
+				SourceID:   "B001-BLUE-M",
+				Title:      "Blue / M",
+				SKU:        "SKU-1",
+				Attributes: map[string]string{"Size": "M", "Color": "Blue"},
+			}},
 		},
 		AssetCandidates: []AssetCandidate{{URL: "https://img.example/1.jpg", Role: "primary"}},
 	}
@@ -91,5 +98,17 @@ func TestToSnapshotProducesCanonicalFactsWithoutAssets(t *testing.T) {
 	}
 	if len(got.Images) != 0 {
 		t.Fatalf("ToSnapshot() images = %+v, want asset candidates to remain in the envelope", got.Images)
+	}
+	if len(got.Attributes) != 3 || got.Attributes[0].Name != "alpha" || got.Attributes[1].Name != "category" || got.Attributes[2].Name != "zeta" {
+		t.Fatalf("ToSnapshot() attributes = %+v, want deterministic candidate attributes", got.Attributes)
+	}
+	if len(got.Variants) != 1 || got.Variants[0].SKU != "SKU-1" {
+		t.Fatalf("ToSnapshot() variants = %+v, want candidate variant", got.Variants)
+	}
+	if got.Variants[0].SourceID != "B001-BLUE-M" || got.Variants[0].Title != "Blue / M" {
+		t.Fatalf("ToSnapshot() variant identity = %+v, want source ID and title", got.Variants[0])
+	}
+	if len(got.Variants[0].Attributes) != 2 || got.Variants[0].Attributes[0].Name != "Color" || got.Variants[0].Attributes[1].Name != "Size" {
+		t.Fatalf("ToSnapshot() variant attributes = %+v, want deterministic attributes", got.Variants[0].Attributes)
 	}
 }

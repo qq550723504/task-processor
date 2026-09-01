@@ -1,6 +1,8 @@
 package sourcing
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"time"
 )
@@ -45,6 +47,17 @@ type RawSourceReference struct {
 	Checksum      string
 	CapturedAt    time.Time
 	Metadata      map[string]string
+}
+
+// RawSnapshotChecksum returns a stable content checksum for non-empty raw
+// source evidence. Whitespace is evidence content and is therefore hashed
+// exactly as supplied; whitespace-only values are treated as absent.
+func RawSnapshotChecksum(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(raw))
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 // ProductCandidate carries platform-neutral product facts that can later be

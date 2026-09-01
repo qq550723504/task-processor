@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"task-processor/internal/model"
 	"task-processor/internal/product/sourcing"
@@ -218,6 +219,28 @@ func TestAmazonSourceEnvelopeMapsProductFacts(t *testing.T) {
 	}
 	if len(envelope.Warnings) != 0 {
 		t.Fatalf("Warnings = %+v, want none", envelope.Warnings)
+	}
+}
+
+func TestAmazonSourceEnvelopeBindsCrawlerTimestampEvidence(t *testing.T) {
+	timestamp := time.Date(2026, time.August, 31, 18, 19, 20, 456, time.FixedZone("PDT", -7*60*60))
+	envelope := AmazonSourceEnvelope(AmazonSourceEnvelopeInput{
+		Product: &model.Product{
+			Asin:      "B001",
+			URL:       "https://www.amazon.com/dp/B001",
+			Timestamp: model.NullableTime{Time: &timestamp},
+		},
+		RawSnapshot: "raw-amazon-1",
+	})
+
+	if !envelope.RawReference.CapturedAt.Equal(timestamp.UTC()) {
+		t.Fatalf("CapturedAt = %s, want source Timestamp %s", envelope.RawReference.CapturedAt, timestamp.UTC())
+	}
+	if got := envelope.RawReference.Metadata["timestamp"]; got != timestamp.UTC().Format(time.RFC3339Nano) {
+		t.Fatalf("metadata[timestamp] = %q, want UTC source timestamp", got)
+	}
+	if got := envelope.RawReference.Checksum; got != "sha256:b1acfa1dfa853476d6cabb719c5dcff43acb65b027e901c353c7d49bbb515caf" {
+		t.Fatalf("Checksum = %q, want stable SHA-256 evidence checksum", got)
 	}
 }
 

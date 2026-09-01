@@ -51,6 +51,8 @@ type Image struct {
 }
 
 type Variant struct {
+	SourceID   string      `json:"source_id,omitempty"`
+	Title      string      `json:"title,omitempty"`
 	SKU        string      `json:"sku,omitempty"`
 	Attributes []Attribute `json:"attributes,omitempty"`
 	Price      *Price      `json:"price,omitempty"`

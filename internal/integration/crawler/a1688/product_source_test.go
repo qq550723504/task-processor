@@ -5,7 +5,9 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
+	crawlermodel "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -226,6 +228,52 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 	}
 	if len(envelope.Warnings) != 0 {
 		t.Fatalf("Warnings = %+v, want none", envelope.Warnings)
+	}
+}
+
+func TestAlibaba1688SourceEnvelopeBindsLegacyCaptureEvidence(t *testing.T) {
+	crawledAt := time.Date(2026, time.August, 31, 10, 11, 12, 123, time.FixedZone("CST", 8*60*60))
+	updatedAt := crawledAt.Add(2 * time.Hour)
+	product := SnapshotFromLegacyProduct(&crawlermodel.Product1688{
+		ID:        "123",
+		URL:       "https://detail.1688.com/offer/123.html",
+		CrawledAt: crawledAt,
+		UpdatedAt: updatedAt,
+	})
+
+	envelope := Alibaba1688SourceEnvelope(Alibaba1688SourceEnvelopeInput{
+		Product:     product,
+		RawSnapshot: "raw-1688-1",
+	})
+
+	if !envelope.RawReference.CapturedAt.Equal(crawledAt.UTC()) {
+		t.Fatalf("CapturedAt = %s, want CrawledAt %s", envelope.RawReference.CapturedAt, crawledAt.UTC())
+	}
+	if got := envelope.RawReference.Metadata["crawled_at"]; got != crawledAt.UTC().Format(time.RFC3339Nano) {
+		t.Fatalf("metadata[crawled_at] = %q, want UTC crawler timestamp", got)
+	}
+	if got := envelope.RawReference.Metadata["updated_at"]; got != updatedAt.UTC().Format(time.RFC3339Nano) {
+		t.Fatalf("metadata[updated_at] = %q, want UTC update timestamp", got)
+	}
+	if got := envelope.RawReference.Checksum; got != "sha256:ae61ffcfff451b2bca3eafa7ba0d7254095b8d3146d99f21d1323727051373c7" {
+		t.Fatalf("Checksum = %q, want stable SHA-256 evidence checksum", got)
+	}
+}
+
+func TestAlibaba1688SourceEnvelopeFallsBackToUpdatedAt(t *testing.T) {
+	updatedAt := time.Date(2026, time.August, 31, 8, 0, 0, 0, time.UTC)
+	envelope := Alibaba1688SourceEnvelope(Alibaba1688SourceEnvelopeInput{
+		Product: SnapshotFromLegacyProduct(&crawlermodel.Product1688{
+			ID:        "123",
+			UpdatedAt: updatedAt,
+		}),
+	})
+
+	if !envelope.RawReference.CapturedAt.Equal(updatedAt) {
+		t.Fatalf("CapturedAt = %s, want UpdatedAt fallback %s", envelope.RawReference.CapturedAt, updatedAt)
+	}
+	if _, ok := envelope.RawReference.Metadata["crawled_at"]; ok {
+		t.Fatalf("metadata = %+v, want no zero crawled_at", envelope.RawReference.Metadata)
 	}
 }
 
