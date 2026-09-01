@@ -721,7 +721,11 @@ func TestIntegrationProviderAdaptersEnforceRootSpecificContractMatrix(t *testing
 				"task-processor/internal/product/enrichment",
 				"task-processor/internal/product/image",
 			},
-			forbidden: []string{"task-processor/internal/product/image/runtime", "task-processor/internal/product/catalog"},
+			forbidden: []string{
+				"task-processor/internal/integration/httpimage/child",
+				"task-processor/internal/product/image/runtime",
+				"task-processor/internal/product/catalog",
+			},
 		},
 		{
 			name: "geminiimage",
@@ -730,17 +734,31 @@ func TestIntegrationProviderAdaptersEnforceRootSpecificContractMatrix(t *testing
 				"task-processor/internal/shared/strx",
 				"task-processor/internal/integration/httpimage",
 			},
-			forbidden: []string{"task-processor/internal/product/enrichment", "task-processor/internal/product/image"},
+			forbidden: []string{
+				"task-processor/internal/integration/httpimage/child",
+				"task-processor/internal/product/enrichment",
+				"task-processor/internal/product/image",
+			},
 		},
 		{
-			name:      "grsai",
-			allowed:   []string{"task-processor/internal/ai", "task-processor/internal/shared/strx", "task-processor/internal/integration/httpimage", "task-processor/internal/product/image"},
-			forbidden: []string{"task-processor/internal/product/enrichment", "task-processor/internal/product/image/runtime"},
+			name:    "grsai",
+			allowed: []string{"task-processor/internal/ai", "task-processor/internal/shared/strx", "task-processor/internal/integration/httpimage", "task-processor/internal/product/image"},
+			forbidden: []string{
+				"task-processor/internal/integration/httpimage/child",
+				"task-processor/internal/product/enrichment",
+				"task-processor/internal/product/image/runtime",
+			},
 		},
 		{
-			name:      "httpimage",
-			allowed:   []string{"task-processor/internal/product/image"},
-			forbidden: []string{"task-processor/internal/ai", "task-processor/internal/shared/strx", "task-processor/internal/integration/httpimage", "task-processor/internal/product/enrichment"},
+			name:    "httpimage",
+			allowed: []string{"task-processor/internal/product/image"},
+			forbidden: []string{
+				"task-processor/internal/ai",
+				"task-processor/internal/shared/strx",
+				"task-processor/internal/integration/httpimage",
+				"task-processor/internal/integration/httpimage/child",
+				"task-processor/internal/product/enrichment",
+			},
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
