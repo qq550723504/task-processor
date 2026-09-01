@@ -4,7 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
+
+// MaxIdentityLength is the character limit for Asset domain identity facts.
+// Persistence adapters use the same limit for their indexed varchar columns.
+const MaxIdentityLength = 128
 
 type ApprovalCommit struct {
 	TenantID   string          `json:"tenant_id"`
@@ -81,11 +86,13 @@ func validateApprovedAsset(approved ApprovedAsset) error {
 		"asset id": approved.ID,
 		"run id":   approved.RunID,
 		"slot id":  approved.SlotID,
-		"url":      approved.URL,
 	} {
 		if !validIdentityPart(value) {
 			return fmt.Errorf("%s must be non-empty and canonical", name)
 		}
+	}
+	if !validCanonicalExternalFact(approved.URL) {
+		return errors.New("url must be non-empty and canonical")
 	}
 	if approved.SourceAssetID != "" && !validIdentityPart(approved.SourceAssetID) {
 		return errors.New("source asset id must be canonical when provided")
@@ -106,6 +113,12 @@ func validateApprovedAsset(approved ApprovedAsset) error {
 }
 
 func validIdentityPart(value string) bool {
+	return validCanonicalExternalFact(value) &&
+		utf8.ValidString(value) &&
+		utf8.RuneCountInString(value) <= MaxIdentityLength
+}
+
+func validCanonicalExternalFact(value string) bool {
 	return value != "" && strings.TrimSpace(value) == value
 }
 

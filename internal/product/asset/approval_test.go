@@ -120,6 +120,46 @@ func TestCommitApprovalAcceptsCanonicalOptionalSourceAssetID(t *testing.T) {
 	}
 }
 
+func TestApprovalIdentitiesRejectInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	invalidUTF8 := string([]byte{0xff})
+	for _, test := range []struct {
+		name   string
+		mutate func(*asset.ApprovalCommit)
+	}{
+		{name: "tenant", mutate: func(c *asset.ApprovalCommit) { c.TenantID = invalidUTF8 }},
+		{name: "product", mutate: func(c *asset.ApprovalCommit) { c.ProductKey = invalidUTF8 }},
+		{name: "action", mutate: func(c *asset.ApprovalCommit) { c.ActionID = invalidUTF8 }},
+		{name: "asset", mutate: func(c *asset.ApprovalCommit) { c.Assets[0].ID = invalidUTF8 }},
+		{name: "run", mutate: func(c *asset.ApprovalCommit) { c.Assets[0].RunID = invalidUTF8 }},
+		{name: "slot", mutate: func(c *asset.ApprovalCommit) { c.Assets[0].SlotID = invalidUTF8 }},
+		{name: "source asset", mutate: func(c *asset.ApprovalCommit) { c.Assets[0].SourceAssetID = invalidUTF8 }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			commit := validCommit("tenant-a", "product-1", "approve-1", "asset-1")
+			test.mutate(&commit)
+			if err := asset.ValidateApprovalCommit(commit); !errors.Is(err, asset.ErrInvalidApproval) {
+				t.Fatalf("ValidateApprovalCommit() error = %v, want ErrInvalidApproval", err)
+			}
+		})
+	}
+}
+
+func TestInventoryScopeIdentitiesRejectInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	invalidUTF8 := string([]byte{0xff})
+	for _, scope := range []asset.InventoryScope{
+		{TenantID: invalidUTF8, ProductKey: "product-1"},
+		{TenantID: "tenant-a", ProductKey: invalidUTF8},
+	} {
+		if err := asset.ValidateInventoryScope(scope); !errors.Is(err, asset.ErrInvalidInventoryScope) {
+			t.Fatalf("ValidateInventoryScope(%+v) error = %v, want ErrInvalidInventoryScope", scope, err)
+		}
+	}
+}
+
 func TestCommitApprovalRequiresAtLeastOneApprovedAsset(t *testing.T) {
 	t.Parallel()
 

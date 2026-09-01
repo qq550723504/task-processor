@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -229,6 +230,63 @@ func ExerciseRepositoryContract(t *testing.T, factory RepositoryFactory) {
 		_, err = repo.GetApprovedInventory(ctx, asset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("GetApprovedInventory(canceled) error = %v, want context.Canceled", err)
+		}
+	})
+
+	t.Run("maximum identity length is accepted as characters", func(t *testing.T) {
+		repo := factory(t)
+		maximum := strings.Repeat("界", asset.MaxIdentityLength)
+		commit := contractCommit(maximum, maximum, maximum, maximum)
+		commit.Assets[0].RunID = maximum
+		commit.Assets[0].SlotID = maximum
+		commit.Assets[0].SourceAssetID = maximum
+		commit.Assets[0].URL = "https://cdn.example/" + strings.Repeat("x", asset.MaxIdentityLength+1) + ".png"
+		if _, err := repo.CommitApproval(context.Background(), commit); err != nil {
+			t.Fatalf("CommitApproval(maximum identities) error = %v", err)
+		}
+		_, err := repo.GetApprovedInventory(context.Background(), asset.InventoryScope{TenantID: maximum, ProductKey: maximum})
+		assertNoError(t, err)
+	})
+
+	t.Run("oversized approval identities are rejected", func(t *testing.T) {
+		oversized := strings.Repeat("x", asset.MaxIdentityLength+1)
+		for _, test := range []struct {
+			name   string
+			mutate func(*asset.ApprovalCommit)
+		}{
+			{name: "tenant", mutate: func(commit *asset.ApprovalCommit) { commit.TenantID = oversized }},
+			{name: "product", mutate: func(commit *asset.ApprovalCommit) { commit.ProductKey = oversized }},
+			{name: "action", mutate: func(commit *asset.ApprovalCommit) { commit.ActionID = oversized }},
+			{name: "asset", mutate: func(commit *asset.ApprovalCommit) { commit.Assets[0].ID = oversized }},
+			{name: "run", mutate: func(commit *asset.ApprovalCommit) { commit.Assets[0].RunID = oversized }},
+			{name: "slot", mutate: func(commit *asset.ApprovalCommit) { commit.Assets[0].SlotID = oversized }},
+			{name: "source asset", mutate: func(commit *asset.ApprovalCommit) { commit.Assets[0].SourceAssetID = oversized }},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				repo := factory(t)
+				commit := contractCommit("tenant-a", "product-1", "approve-1", "asset-1")
+				test.mutate(&commit)
+				if _, err := repo.CommitApproval(context.Background(), commit); !errors.Is(err, asset.ErrInvalidApproval) {
+					t.Fatalf("CommitApproval() error = %v, want ErrInvalidApproval", err)
+				}
+			})
+		}
+	})
+
+	t.Run("inventory scope enforces identity character limit", func(t *testing.T) {
+		maximum := strings.Repeat("界", asset.MaxIdentityLength)
+		oversized := strings.Repeat("x", asset.MaxIdentityLength+1)
+		repo := factory(t)
+		if _, err := repo.GetApprovedInventory(context.Background(), asset.InventoryScope{TenantID: maximum, ProductKey: maximum}); !errors.Is(err, asset.ErrApprovedAssetsNotReady) {
+			t.Fatalf("maximum scope error = %v, want ErrApprovedAssetsNotReady", err)
+		}
+		for _, scope := range []asset.InventoryScope{
+			{TenantID: oversized, ProductKey: "product-1"},
+			{TenantID: "tenant-a", ProductKey: oversized},
+		} {
+			if _, err := repo.GetApprovedInventory(context.Background(), scope); !errors.Is(err, asset.ErrInvalidInventoryScope) {
+				t.Fatalf("GetApprovedInventory(%+v) error = %v, want ErrInvalidInventoryScope", scope, err)
+			}
 		}
 	})
 }

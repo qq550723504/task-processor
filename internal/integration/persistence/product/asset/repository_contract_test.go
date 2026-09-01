@@ -2,12 +2,16 @@ package assetpersistence
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	sqlite3 "github.com/mattn/go-sqlite3"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -33,9 +37,7 @@ func TestRepositoryContract(t *testing.T) {
 
 func TestNewRepositoryRejectsNilDatabase(t *testing.T) {
 	repo, err := NewRepository(nil)
-	if err == nil {
-		t.Fatal("NewRepository(nil) error = nil, want error")
-	}
+	assertStableRepositoryError(t, err, productasset.ErrRepositoryUnavailable)
 	if repo != nil {
 		t.Fatalf("NewRepository(nil) repository = %T, want nil", repo)
 	}
@@ -72,6 +74,12 @@ func TestCommitApprovalRollsBackWholeBatchAndReceiptOnInsertFailure(t *testing.T
 		t.Fatal("CommitApproval() error = nil, want injected transaction failure")
 	} else if errors.Is(err, productasset.ErrApprovalConflict) {
 		t.Fatalf("CommitApproval() error = %v, want storage failure rather than approval conflict", err)
+	} else {
+		assertStableRepositoryError(t, err, productasset.ErrRepositoryUnavailable)
+		var driverError sqlite3.Error
+		if errors.As(err, &driverError) {
+			t.Fatalf("CommitApproval() error chain exposes SQLite driver error: %v", err)
+		}
 	}
 	for _, model := range []any{&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}} {
 		var count int64
@@ -263,6 +271,148 @@ func TestCommitApprovalConcurrentReplayIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestRepositoryMapsClosedDatabaseFailuresToUnavailable(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	if err := AutoMigrate(db); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = repo.CommitApproval(context.Background(), repositoryTestCommit("tenant-a", "product-1", "approve-1", "asset-1"))
+	assertStableRepositoryError(t, err, productasset.ErrRepositoryUnavailable)
+	_, err = repo.GetApprovedInventory(context.Background(), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"})
+	assertStableRepositoryError(t, err, productasset.ErrRepositoryUnavailable)
+	err = AutoMigrate(db)
+	assertStableRepositoryError(t, err, productasset.ErrRepositoryUnavailable)
+}
+
+func TestRepositoryPreservesContextFailureAfterInitialValidation(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	if err := AutoMigrate(db); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, contextError := range []error{context.Canceled, context.DeadlineExceeded} {
+		_, err = repo.CommitApproval(newFailedAfterFirstCheckContext(contextError), repositoryTestCommit("tenant-a", "product-1", "approve-1", "asset-1"))
+		if !errors.Is(err, contextError) || errors.Is(err, productasset.ErrRepositoryUnavailable) {
+			t.Fatalf("CommitApproval() error = %v, want only %v classification", err, contextError)
+		}
+		_, err = repo.GetApprovedInventory(newFailedAfterFirstCheckContext(contextError), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"})
+		if !errors.Is(err, contextError) || errors.Is(err, productasset.ErrRepositoryUnavailable) {
+			t.Fatalf("GetApprovedInventory() error = %v, want only %v classification", err, contextError)
+		}
+	}
+}
+
+func TestRepositoryMapsMalformedPersistedAssetToStateInvalid(t *testing.T) {
+	mismatchedPayload, err := json.Marshal(canonicalApprovedAssetFromDomain(repositoryTestCommit("tenant-a", "product-1", "approve-1", "other-asset").Assets[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name    string
+		payload []byte
+	}{
+		{name: "invalid JSON", payload: []byte("{")},
+		{name: "identity mismatch", payload: mismatchedPayload},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := openRepositoryTestDB(t)
+			if err := AutoMigrate(db); err != nil {
+				t.Fatal(err)
+			}
+			repo, err := NewRepository(db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			record := ApprovedAssetRecord{
+				TenantID: "tenant-a", ProductKey: "product-1", ActionID: "approve-1",
+				AssetID: "asset-1", RunID: "run-1", PlanRevision: 1, SlotID: "main", Attempt: 1,
+				PayloadJSON: test.payload,
+			}
+			if err := db.Create(&record).Error; err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = repo.GetApprovedInventory(context.Background(), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"})
+			assertStableRepositoryError(t, err, productasset.ErrRepositoryStateInvalid)
+		})
+	}
+}
+
+func TestRepositoryMapsMalformedReceiptStateToStateInvalid(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		payloadHash  func(productasset.ApprovalCommit) string
+		assetIDsJSON []byte
+	}{
+		{name: "hash", payloadHash: func(productasset.ApprovalCommit) string { return "not-a-sha256-hash" }, assetIDsJSON: []byte(`[]`)},
+		{name: "asset ids", payloadHash: func(commit productasset.ApprovalCommit) string {
+			hash, err := approvalPayloadHash(commit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return hash
+		}, assetIDsJSON: []byte("{")},
+		{name: "asset ids mismatch", payloadHash: func(commit productasset.ApprovalCommit) string {
+			hash, err := approvalPayloadHash(commit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return hash
+		}, assetIDsJSON: []byte(`["other-asset"]`)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := openRepositoryTestDB(t)
+			if err := AutoMigrate(db); err != nil {
+				t.Fatal(err)
+			}
+			commit := repositoryTestCommit("tenant-a", "product-1", "approve-1", "asset-1")
+			record := ApprovalReceiptRecord{
+				TenantID: "tenant-a", ActionID: "approve-1",
+				PayloadHash: test.payloadHash(commit), AssetIDsJSON: test.assetIDsJSON,
+			}
+			if err := db.Create(&record).Error; err != nil {
+				t.Fatal(err)
+			}
+			repo, err := NewRepository(db)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = repo.CommitApproval(context.Background(), commit)
+			assertStableRepositoryError(t, err, productasset.ErrRepositoryStateInvalid)
+		})
+	}
+}
+
+func TestMissingReceiptAfterConflictPathIsStateInvalid(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	if err := AutoMigrate(db); err != nil {
+		t.Fatal(err)
+	}
+	commit := repositoryTestCommit("tenant-a", "product-1", "approve-1", "asset-1")
+	var receipt productasset.ApprovalReceipt
+	err := db.Transaction(func(tx *gorm.DB) error {
+		return loadExistingReceipt(tx, commit, "irrelevant", &receipt)
+	})
+	assertStableRepositoryError(t, err, productasset.ErrRepositoryStateInvalid)
+}
+
 func openRepositoryTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := filepath.Join(t.TempDir(), "approved-assets.sqlite")
@@ -304,4 +454,36 @@ func repositoryTestCommit(tenantID, productKey, actionID, assetID string) produc
 			Width: 1200, Height: 1200, Operations: []string{"remove_background", "approve"},
 		}},
 	}
+}
+
+func assertStableRepositoryError(t *testing.T, err, want error) {
+	t.Helper()
+	if !errors.Is(err, want) {
+		t.Fatalf("error = %v, want errors.Is(%v)", err, want)
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("error chain exposes gorm.ErrRecordNotFound: %v", err)
+	}
+}
+
+type failedAfterFirstCheckContext struct {
+	done          chan struct{}
+	terminalError error
+	calls         atomic.Int32
+}
+
+func newFailedAfterFirstCheckContext(terminalError error) context.Context {
+	done := make(chan struct{})
+	close(done)
+	return &failedAfterFirstCheckContext{done: done, terminalError: terminalError}
+}
+
+func (c *failedAfterFirstCheckContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (c *failedAfterFirstCheckContext) Done() <-chan struct{}       { return c.done }
+func (c *failedAfterFirstCheckContext) Value(any) any               { return nil }
+func (c *failedAfterFirstCheckContext) Err() error {
+	if c.calls.Add(1) == 1 {
+		return nil
+	}
+	return c.terminalError
 }
