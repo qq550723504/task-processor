@@ -126,6 +126,16 @@ func (l *gormStoreQuotaLedger) Reserve(ctx context.Context, input StoreQuotaRese
 			if allocation.RequestFingerprint != input.RequestFingerprint {
 				return ErrStoreQuotaIdentityMismatch
 			}
+			if allocation.Status == StoreQuotaReserved {
+				owner := existing.CreatedBy
+				if owner == "" {
+					owner = input.ActorSubject
+				}
+				if err := l.renewReservedAllocation(tx, &existing, bucket, owner); err != nil {
+					return err
+				}
+			}
+			allocation = storeQuotaAllocationFromRow(existing)
 			result = storeQuotaReserveResult(allocation, true)
 			return nil
 		}
@@ -154,6 +164,16 @@ func (l *gormStoreQuotaLedger) Reserve(ctx context.Context, input StoreQuotaRese
 				allocation := storeQuotaAllocationFromRow(replay)
 				if allocation.RequestFingerprint != input.RequestFingerprint {
 					return ErrStoreQuotaIdentityMismatch
+				}
+				if allocation.Status == StoreQuotaReserved {
+					owner := replay.CreatedBy
+					if owner == "" {
+						owner = input.ActorSubject
+					}
+					if err := l.renewReservedAllocation(tx, &replay, bucket, owner); err != nil {
+						return err
+					}
+					allocation = storeQuotaAllocationFromRow(replay)
 				}
 				result = storeQuotaReserveResult(allocation, true)
 				return nil
@@ -301,9 +321,7 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 		}
 		now := storeQuotaTimestamp(l.now().UTC(), row.UpdatedAt, bucket.UpdatedAt)
 		if operation == storeQuotaRenew {
-			if !now.After(row.UpdatedAt) {
-				now = row.UpdatedAt.Add(time.Nanosecond)
-			}
+			now = storeQuotaRenewalTimestamp(l.now().UTC(), row.UpdatedAt, bucket.UpdatedAt)
 			if err := updateStoreQuotaAllocation(tx, row, StoreQuotaReserved, input.ActorSubject, nil, nil, now); err != nil {
 				return err
 			}
@@ -331,6 +349,15 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 		return nil
 	})
 	return result, err
+}
+
+func (l *gormStoreQuotaLedger) renewReservedAllocation(tx *gorm.DB, row *storeQuotaAllocationRow, bucket storeQuotaBucketRow, actor string) error {
+	now := storeQuotaRenewalTimestamp(l.now().UTC(), row.UpdatedAt, bucket.UpdatedAt)
+	if err := updateStoreQuotaAllocation(tx, *row, StoreQuotaReserved, actor, nil, nil, now); err != nil {
+		return err
+	}
+	row.UpdatedBy, row.UpdatedAt = actor, now
+	return nil
 }
 
 func (l *gormStoreQuotaLedger) GetByRequestKey(ctx context.Context, organizationID, requestKey string) (*StoreQuotaAllocation, error) {
@@ -564,6 +591,20 @@ func storeQuotaTimestamp(now time.Time, durableTimes ...time.Time) time.Time {
 	for _, durable := range durableTimes {
 		if durable.After(result) {
 			result = durable
+		}
+	}
+	return result
+}
+
+// PostgreSQL timestamps use microsecond precision by default. Keep renewal
+// timestamps on that precision and advance at least one durable tick so the
+// value returned to callers is the same value the database stores.
+func storeQuotaRenewalTimestamp(now time.Time, durableTimes ...time.Time) time.Time {
+	result := storeQuotaTimestamp(now, durableTimes...).Truncate(time.Microsecond)
+	for _, durable := range durableTimes {
+		durable = durable.UTC().Truncate(time.Microsecond)
+		if !result.After(durable) {
+			result = durable.Add(time.Microsecond)
 		}
 	}
 	return result

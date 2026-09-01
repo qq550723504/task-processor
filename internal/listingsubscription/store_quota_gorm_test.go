@@ -504,6 +504,17 @@ func TestStoreQuotaConcurrentSameRequestKeyReplaysOneDurableReservation(t *testi
 	if len(observed) != 2 || observed[0].AllocationID != observed[1].AllocationID || observed[0].StoreID != observed[1].StoreID || observed[0].Existing == observed[1].Existing {
 		t.Fatalf("same-key results = %#v, want one new and one exact replay", observed)
 	}
+	var created, replayed StoreQuotaReserveResult
+	for _, result := range observed {
+		if result.Existing {
+			replayed = result
+		} else {
+			created = result
+		}
+	}
+	if !replayed.Allocation.UpdatedAt.After(created.Allocation.UpdatedAt) {
+		t.Fatalf("transactional replay UpdatedAt = %s, created UpdatedAt = %s; want durable fencing touch", replayed.Allocation.UpdatedAt, created.Allocation.UpdatedAt)
+	}
 	summary, err := ledger.Summary(context.Background(), "org-same-key")
 	if err != nil || summary.Reserved != 1 || summary.Committed != 0 {
 		t.Fatalf("same-key summary = %#v, %v", summary, err)
