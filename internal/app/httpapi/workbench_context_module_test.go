@@ -181,6 +181,7 @@ func TestBuildBootstrapFailsClosedWhenWorkbenchIsEnabledWithoutDatabase(t *testi
 	t.Setenv("TASK_PROCESSOR_WORKBENCH_ENABLED", "true")
 	t.Setenv("ZITADEL_ISSUER_URL", "http://127.0.0.1:1")
 	t.Setenv("ZITADEL_CLIENT_ID", "client-1")
+	t.Setenv("ZITADEL_CLIENT_SECRET", "secret-1")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID", "project-1")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHORIZATION_API_URL", "http://127.0.0.1:1")
 
