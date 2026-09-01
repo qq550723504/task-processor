@@ -121,12 +121,20 @@ func TestCommerceToolDepguardUsesExactStrictAllowlist(t *testing.T) {
 
 	wantAllow := []string{
 		"$gostd",
-		"golang.org/x/mod/semver",
-		"github.com/santhosh-tekuri/jsonschema/v6",
-		"go.opentelemetry.io/otel/attribute",
-		"go.opentelemetry.io/otel/trace",
+		"golang.org/x/mod/semver$",
+		"github.com/santhosh-tekuri/jsonschema/v6$",
+		"go.opentelemetry.io/otel/attribute$",
+		"go.opentelemetry.io/otel/trace$",
 	}
 	assertExactStringSet(t, "commercetool_boundaries allow", rule.Allow, wantAllow)
+	for _, packagePath := range rule.Allow {
+		if strings.HasPrefix(packagePath, "$") {
+			continue
+		}
+		if !strings.HasSuffix(packagePath, "$") {
+			t.Errorf("commercetool_boundaries non-variable allow entry %q must use depguard exact-match suffix $", packagePath)
+		}
+	}
 
 	allowed := stringSet(rule.Allow)
 	for category, packagePaths := range map[string][]string{

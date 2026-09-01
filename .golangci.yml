@@ -527,10 +527,10 @@ linters-settings:
           - "**/internal/commercetool/**/*.go"
         allow:
           - "$gostd"
-          - "golang.org/x/mod/semver"
-          - "github.com/santhosh-tekuri/jsonschema/v6"
-          - "go.opentelemetry.io/otel/attribute"
-          - "go.opentelemetry.io/otel/trace"
+          - "golang.org/x/mod/semver$"
+          - "github.com/santhosh-tekuri/jsonschema/v6$"
+          - "go.opentelemetry.io/otel/attribute$"
+          - "go.opentelemetry.io/otel/trace$"
 
       imageagent_effectpolicy_boundaries:
         list-mode: strict
