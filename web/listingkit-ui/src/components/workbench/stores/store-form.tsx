@@ -224,7 +224,7 @@ export function StoreForm(props: StoreFormProps) {
         <ReadOnlyField label="平台" value="SHEIN" />
         {props.mode === "create" ? <TextField control={form} name="externalStoreId" label="外部店铺 ID（可选）" disabled={isPending} /> : <ReadOnlyField label="外部店铺 ID" value={props.store.externalStoreId || "未设置"} />}
         {props.mode === "edit" ? <ReadOnlyField label="连接状态" value={connectionLabel(props.store.connectionStatus)} /> : null}
-        <Button disabled={isPending || (props.mode === "edit" && (Boolean(props.conflict) || props.recoveryState === "loading" || props.recoveryState === "failed"))} type="submit">
+        <Button disabled={isPending || (props.mode === "create" && create.canRetryLast) || (props.mode === "edit" && (Boolean(props.conflict) || props.recoveryState === "loading" || props.recoveryState === "failed"))} type="submit">
           {isPending ? "正在提交..." : props.mode === "create" ? "创建店铺" : "保存更改"}
         </Button>
         {props.mode === "create" && create.canRetryLast ? <Button disabled={isPending} onClick={retryCreate} type="button" variant="outline">重试创建</Button> : null}

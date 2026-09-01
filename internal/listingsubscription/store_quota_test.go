@@ -15,6 +15,9 @@ func TestStoreQuotaLedgerContractHasOnlyStoreAllocationOperations(t *testing.T) 
 		"Reserve": reflect.TypeOf(func(context.Context, StoreQuotaReserveInput) (StoreQuotaReserveResult, error) {
 			return StoreQuotaReserveResult{}, nil
 		}),
+		"RenewReservation": reflect.TypeOf(func(context.Context, StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error) {
+			return StoreQuotaTransitionResult{}, nil
+		}),
 		"Commit": reflect.TypeOf(func(context.Context, StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error) {
 			return StoreQuotaTransitionResult{}, nil
 		}),

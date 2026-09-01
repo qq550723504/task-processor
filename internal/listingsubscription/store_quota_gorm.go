@@ -143,6 +143,10 @@ func (l *gormStoreQuotaLedger) Commit(ctx context.Context, input StoreQuotaTrans
 	return l.transition(ctx, input, StoreQuotaAllocated, storeQuotaCommit)
 }
 
+func (l *gormStoreQuotaLedger) RenewReservation(ctx context.Context, input StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error) {
+	return l.transition(ctx, input, StoreQuotaReserved, storeQuotaRenew)
+}
+
 func (l *gormStoreQuotaLedger) ReleaseReservation(ctx context.Context, input StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error) {
 	return l.transition(ctx, input, StoreQuotaReleased, storeQuotaReleaseReservation)
 }
@@ -162,7 +166,7 @@ func (l *gormStoreQuotaLedger) ListReservedBefore(ctx context.Context, organizat
 		return nil, ErrStoreQuotaInvalidInput
 	}
 	var rows []storeQuotaAllocationRow
-	if err := l.repo.db.WithContext(ctx).Where("organization_id = ? AND status = ? AND created_at < ?", organizationID, string(StoreQuotaReserved), before.UTC()).Order("created_at ASC").Find(&rows).Error; err != nil {
+	if err := l.repo.db.WithContext(ctx).Where("organization_id = ? AND status = ? AND updated_at < ?", organizationID, string(StoreQuotaReserved), before.UTC()).Order("updated_at ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	allocations := make([]StoreQuotaAllocation, 0, len(rows))
@@ -178,6 +182,7 @@ const (
 	storeQuotaCommit             storeQuotaOperation = "commit"
 	storeQuotaReleaseReservation storeQuotaOperation = "release_reservation"
 	storeQuotaDeallocate         storeQuotaOperation = "deallocate"
+	storeQuotaRenew              storeQuotaOperation = "renew"
 )
 
 func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaTransitionInput, target StoreQuotaAllocationStatus, operation storeQuotaOperation) (StoreQuotaTransitionResult, error) {
@@ -260,7 +265,12 @@ func (l *gormStoreQuotaLedger) transition(ctx context.Context, input StoreQuotaT
 			return ErrStoreQuotaInvalidTransition
 		}
 		now := storeQuotaTimestamp(l.now().UTC(), row.UpdatedAt, bucket.UpdatedAt)
-		if operation == storeQuotaCommit {
+		if operation == storeQuotaRenew {
+			if err := updateStoreQuotaAllocation(tx, row, StoreQuotaReserved, input.ActorSubject, nil, nil, now); err != nil {
+				return err
+			}
+			row.UpdatedBy, row.UpdatedAt = input.ActorSubject, now
+		} else if operation == storeQuotaCommit {
 			if err := updateStoreQuotaBucket(tx, bucket, bucket.Committed+1, bucket.Reserved-1, now); err != nil {
 				return err
 			}

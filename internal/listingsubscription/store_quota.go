@@ -87,6 +87,7 @@ type StoreQuotaSummary struct {
 // the generic usage ledger. Store Center receives only this domain contract.
 type StoreQuotaLedger interface {
 	Reserve(context.Context, StoreQuotaReserveInput) (StoreQuotaReserveResult, error)
+	RenewReservation(context.Context, StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error)
 	Commit(context.Context, StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error)
 	ReleaseReservation(context.Context, StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error)
 	Deallocate(context.Context, StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error)

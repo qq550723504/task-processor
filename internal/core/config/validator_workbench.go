@@ -73,7 +73,7 @@ func ValidateWorkbenchConfig(workbench *WorkbenchConfig, zitadel *ListingKitZita
 
 func isSupportedAbsoluteHTTPURL(raw string) bool {
 	parsed, err := url.Parse(raw)
-	if err != nil || !parsed.IsAbs() || parsed.Hostname() == "" {
+	if err != nil || !parsed.IsAbs() || parsed.Hostname() == "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" || parsed.User != nil {
 		return false
 	}
 	scheme := strings.ToLower(parsed.Scheme)

@@ -2183,6 +2183,11 @@ func (f *quotaLedgerFake) Reserve(_ context.Context, input listingsubscription.S
 	}
 	return listingsubscription.StoreQuotaReserveResult{Allocation: f.allocation, AllocationID: f.allocation.AllocationID, StoreID: f.allocation.StoreID, Existing: f.reserveCalls > 1}, nil
 }
+func (f *quotaLedgerFake) RenewReservation(_ context.Context, _ listingsubscription.StoreQuotaTransitionInput) (listingsubscription.StoreQuotaTransitionResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return listingsubscription.StoreQuotaTransitionResult{Allocation: f.allocation}, nil
+}
 func (f *quotaLedgerFake) Commit(_ context.Context, _ listingsubscription.StoreQuotaTransitionInput) (listingsubscription.StoreQuotaTransitionResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

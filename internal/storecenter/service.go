@@ -168,6 +168,8 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		}
 		return CreateStoreResult{}, dependencyError(err)
 	}
+	stopReservationLease := s.keepReservationLeaseAlive(ctx, transition)
+	defer stopReservationLease()
 
 	store, err := s.repository.Get(ctx, request.OrganizationID, allocation.StoreID)
 	verifyExistingCreate := false
@@ -967,6 +969,28 @@ func (s *Service) reconcileOrphanedReservations(ctx context.Context, organizatio
 		recovered++
 	}
 	return recovered, nil
+}
+
+func (s *Service) keepReservationLeaseAlive(ctx context.Context, input listingsubscription.StoreQuotaTransitionInput) func() {
+	leaseCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-leaseCtx.Done():
+				return
+			case <-ticker.C:
+				_, _ = s.quota.RenewReservation(leaseCtx, input)
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }
 
 func (s *Service) record(ctx context.Context, allocation listingsubscription.StoreQuotaAllocation, request CreateStoreRequest, action AuditAction, outcome AuditOutcome, store *Store, previous, next LifecycleStatus, failure AuditFailureCode) error {

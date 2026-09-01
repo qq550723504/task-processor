@@ -44,14 +44,15 @@ describe("StoreForm", () => {
   });
 
   it("keeps create drafts and exposes only the keyed retry after a retryable failure", async () => {
-    create.canRetryLast = true;
     const user = userEvent.setup();
     render(<StoreForm mode="create" />);
     await user.type(screen.getByLabelText("店铺名称"), "新店铺");
     await user.type(screen.getByLabelText("区域"), "CN");
     await user.click(screen.getByRole("button", { name: "创建店铺" }));
     const options = create.mutate.mock.calls[0]?.[1];
+    create.canRetryLast = true;
     options.onError({ code: "DEPENDENCY_UNAVAILABLE", status: 503, fieldErrors: [] });
+    await waitFor(() => expect(screen.getByRole("button", { name: "创建店铺" })).toBeDisabled());
     expect(await screen.findByRole("button", { name: "重试创建" })).toBeInTheDocument();
     create.retryLast.mockResolvedValue({ id: STORE.id });
     await user.click(screen.getByRole("button", { name: "重试创建" }));
