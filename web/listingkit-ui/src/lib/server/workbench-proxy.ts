@@ -62,6 +62,7 @@ type WorkbenchUpstreamRequest = {
   url: string;
   init: RequestInit;
   responseContract: WorkbenchResponseContract;
+  expectedStoreId?: string;
 };
 
 type ParsedJSONBody = {
@@ -175,6 +176,24 @@ const deleteStoreResponseSchema = z
     version: positiveSafeIntegerSchema,
   })
   .strict();
+
+const documentedWorkbenchErrorStatuses: Readonly<Record<string, number>> = {
+  INVALID_REQUEST: 400,
+  AUTHENTICATION_REQUIRED: 401,
+  ORGANIZATION_SELECTION_REQUIRED: 409,
+  ORGANIZATION_ACCESS_DENIED: 403,
+  ORGANIZATION_ACCESS_REVOKED: 403,
+  ORGANIZATION_SUSPENDED: 403,
+  PERMISSION_DENIED: 403,
+  DEPENDENCY_UNAVAILABLE: 503,
+  STORE_NOT_FOUND: 404,
+  STORE_ALREADY_EXISTS: 409,
+  STORE_VERSION_CONFLICT: 409,
+  STORE_INVALID_STATE: 422,
+  SUBSCRIPTION_REQUIRED: 409,
+  STORE_LIMIT_REACHED: 409,
+  ORGANIZATION_CONTEXT_CHANGED: 409,
+};
 
 const workbenchRouteAllowlist = [
   routeDefinition("GET", "context-get", "context", (path) =>
@@ -369,12 +388,18 @@ export async function buildWorkbenchUpstreamRequest(
       cache: "no-store",
     },
     responseContract: route.responseContract,
+    expectedStoreId:
+      route.responseContract === "store-item" ||
+      route.responseContract === "store-delete"
+        ? path[1]
+        : undefined,
   };
 }
 
 export async function buildWorkbenchBrowserResponse(
   upstream: Response,
   contract: WorkbenchResponseContract = "context",
+  expectedStoreId?: string,
 ) {
   let body: Uint8Array;
   try {
@@ -403,6 +428,12 @@ export async function buildWorkbenchBrowserResponse(
       : null;
   if (!upstream.ok) {
     if (!parsedError?.success) return invalidUpstreamResponse();
+    if (
+      documentedWorkbenchErrorStatuses[parsedError.data.code] !== undefined &&
+      documentedWorkbenchErrorStatuses[parsedError.data.code] !== upstream.status
+    ) {
+      return invalidUpstreamResponse();
+    }
     const response = new NextResponse(JSON.stringify(parsedError.data), {
       status: upstream.status,
       headers: safeJSONHeaders(),
@@ -421,6 +452,7 @@ export async function buildWorkbenchBrowserResponse(
     contract,
     upstream.status,
     parsedBody,
+    expectedStoreId,
   );
   if (!validatedPayload) {
     return invalidUpstreamResponse();
@@ -1007,6 +1039,7 @@ function parseSuccessfulPayload(
   contract: WorkbenchResponseContract,
   status: number,
   body: ParsedJSONBody | null,
+  expectedStoreId?: string,
 ): Record<string, unknown> | null {
   if (!body) return null;
   if (contract === "context" || contract === "context-switch") {
@@ -1024,7 +1057,15 @@ function parseSuccessfulPayload(
   if (status !== expectedStatus) return null;
   if (!hasCanonicalStoreIntegerTokens(contract, body)) return null;
   const parsed = parser.safeParse(body.payload);
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) return null;
+  if (
+    (contract === "store-item" || contract === "store-delete") &&
+    expectedStoreId !== undefined &&
+    (!("id" in parsed.data) || parsed.data.id !== expectedStoreId)
+  ) {
+    return null;
+  }
+  return parsed.data;
 }
 
 function invalidUpstreamResponse() {

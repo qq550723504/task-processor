@@ -116,6 +116,7 @@ type Service struct {
 	connections ConnectionStatusProvider
 	now         func() time.Time
 	locks       mutationLockRegistry
+	createLocks mutationLockRegistry
 }
 
 type mutationLockRegistry struct {
@@ -173,6 +174,13 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 	if err != nil {
 		return CreateStoreResult{}, err
 	}
+	// Reserve is durable, but the audit, Store write, and quota transition are
+	// intentionally separate boundaries. Serialize the complete create state
+	// machine for one organization/idempotency key so a replay cannot observe a
+	// reservation while its owner is compensating a failed audit write.
+	releaseCreate := s.createLocks.acquire(request.OrganizationID, request.IdempotencyKey)
+	defer releaseCreate()
+
 	requestFingerprint := createQuotaRequestFingerprint(request)
 	reserved, err := s.quota.Reserve(ctx, listingsubscription.StoreQuotaReserveInput{OrganizationID: request.OrganizationID, RequestKey: request.IdempotencyKey, ActorSubject: request.ActorSubject, RequestFingerprint: requestFingerprint})
 	if err != nil && errors.Is(err, listingsubscription.ErrStoreQuotaExceeded) {

@@ -463,7 +463,7 @@ describe("buildWorkbenchBrowserResponse", () => {
       fieldErrors: [],
     };
     const upstream = Response.json(payload, {
-      status: 423,
+      status: 403,
       headers: {
         "cache-control": "no-store",
         etag: '"context-1"',
@@ -476,7 +476,7 @@ describe("buildWorkbenchBrowserResponse", () => {
 
     const response = await buildWorkbenchBrowserResponse(upstream);
 
-    expect(response.status).toBe(423);
+    expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual(payload);
     expect(response.headers.get("Content-Type")).toBe("application/json");
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
@@ -610,6 +610,24 @@ describe("buildWorkbenchBrowserResponse", () => {
     ],
   ])("rejects a body/status mismatch: %s", async (_name, upstream) => {
     const response = await buildWorkbenchBrowserResponse(upstream);
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "DEPENDENCY_UNAVAILABLE",
+    });
+  });
+
+  it.each([
+    ["permission denied", "PERMISSION_DENIED", 404],
+    ["Store not found", "STORE_NOT_FOUND", 503],
+    ["dependency unavailable", "DEPENDENCY_UNAVAILABLE", 500],
+  ])("maps a known error/status mismatch to stable 502: %s", async (_name, code, status) => {
+    const response = await buildWorkbenchBrowserResponse(
+      Response.json(
+        { code, message: "mismatched", requestId: "req-1", fieldErrors: [] },
+        { status },
+      ),
+    );
+
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toMatchObject({
       code: "DEPENDENCY_UNAVAILABLE",
@@ -1390,6 +1408,27 @@ describe("strict Store Center response boundary", () => {
     expect(deleted.status).toBe(200);
     await expect(deleted.json()).resolves.toEqual(deletePayload);
   });
+
+  it.each(["store-item", "store-delete"] as const)(
+    "rejects a successful %s payload for a different Store ID",
+    async (contract) => {
+      const otherStoreId = "33333333-3333-4333-8333-33333333333c";
+      const payload =
+        contract === "store-item"
+          ? { ...storePayload, id: otherStoreId }
+          : { id: otherStoreId, deleted: true, version: 3 };
+      const response = await buildWorkbenchBrowserResponse(
+        Response.json(payload),
+        contract,
+        storeId,
+      );
+
+      expect(response.status).toBe(502);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "DEPENDENCY_UNAVAILABLE",
+      });
+    },
+  );
 
   it.each([
     ["unknown field", { ...storePayload, organizationId: "org-secret" }],

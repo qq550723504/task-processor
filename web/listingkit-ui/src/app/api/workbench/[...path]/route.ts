@@ -48,6 +48,7 @@ async function proxyWorkbenchRequest(
     return await buildWorkbenchBrowserResponse(
       upstream,
       upstreamRequest.responseContract,
+      upstreamRequest.expectedStoreId,
     );
   } catch {
     return workbenchProtocolError(
