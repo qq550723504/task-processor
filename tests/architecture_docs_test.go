@@ -39,6 +39,23 @@ func TestPhase2ClosureDocumentsRuntimeOwnershipAndDeferredDebt(t *testing.T) {
 	})
 }
 
+func TestCommerceToolBoundaryDocumentsDefineNeutralRegistryOwnership(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "project-target-architecture.md"), []string{
+		"internal/commercetool",
+		"Tool Definition", "Schema", "Registry", "Agent Allowlist", "Invocation Policy", "Tool Audit Port",
+		"kernel/module.Registry", "startup contribution collection", "not the Tool Runtime",
+		"Service/Query ports", "composition root",
+		"Phase 2A", "read", "compute", "propose", "write", "publish",
+		"depguard: commercetool_boundaries",
+	})
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "development", "repository-structure.md"), []string{
+		"internal/commercetool",
+		"Framework", "Transport", "Workflow", "Persistence", "Provider SDK", "Marketplace Client",
+		"domain implementation packages",
+		"depguard: commercetool_boundaries",
+	})
+}
+
 func TestPhase2InventoryNamesEveryRemainingLegacyConcreteConsumer(t *testing.T) {
 	path := filepath.Join("..", "docs", "refactoring", "phase2-runtime-inventory.md")
 	content, err := os.ReadFile(path)
