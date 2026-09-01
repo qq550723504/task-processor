@@ -4,13 +4,13 @@ import (
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/platform/queue/rabbitmq"
-	domainProduct "task-processor/internal/product"
 )
 
 type ProductFetcherBuilder interface {
 	Build(
-		rawJsonDataClient domainProduct.RawJsonDataClient,
+		rawJsonDataClient sourceproduct.RawJsonDataClient,
 		amazonConfig *config.AmazonConfig,
 		crawlSource ports.CrawlSource,
 		rabbitmqClient *rabbitmq.Client,
@@ -26,7 +26,7 @@ func NewDefaultProductFetcherBuilder() *DefaultProductFetcherBuilder {
 }
 
 func (b *DefaultProductFetcherBuilder) Build(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
@@ -65,7 +65,7 @@ func BindProductFetcherBuilder(base ProductFetcherBuilder, crawlSource ports.Cra
 }
 
 func (b *boundProductFetcherBuilder) Build(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,

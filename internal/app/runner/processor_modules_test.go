@@ -5,7 +5,7 @@ import (
 
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/product"
+	"task-processor/internal/marketplace/sourceproduct"
 )
 
 func TestBuildRuntimeProductFetcherUsesPlatformFetchModeForShein(t *testing.T) {
@@ -51,10 +51,10 @@ func TestShouldStartSchedulerServiceUsesProcessorSwitch(t *testing.T) {
 
 type fakeRawJSONDataClient struct{}
 
-func (fakeRawJSONDataClient) GetRawJsonData(*product.RawJsonReq) (*product.RawJsonResp, error) {
+func (fakeRawJSONDataClient) GetRawJsonData(*sourceproduct.RawJsonReq) (*sourceproduct.RawJsonResp, error) {
 	return nil, nil
 }
 
-func (fakeRawJSONDataClient) CreateRawJsonData(*product.RawJsonCreateReq) (int64, error) {
+func (fakeRawJSONDataClient) CreateRawJsonData(*sourceproduct.RawJsonCreateReq) (int64, error) {
 	return 0, nil
 }

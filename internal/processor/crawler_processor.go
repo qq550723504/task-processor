@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"task-processor/internal/app/task"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/timeout"
 	worker "task-processor/internal/platform/workerpool"
-	"task-processor/internal/product"
 	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
@@ -19,7 +19,7 @@ import (
 
 // CrawlerProcessor Amazon爬虫处理器
 type CrawlerProcessor struct {
-	productFetcher *product.ProductFetcher
+	productFetcher *sourceproduct.ProductFetcher
 	taskSubmitter  VariantTaskSubmitter
 	rabbitmqClient RabbitMQPublisher
 	messageAdapter *task.MessageAdapter
@@ -34,7 +34,7 @@ type RabbitMQPublisher interface {
 // NewCrawlerProcessor 创建爬虫处理器
 func NewCrawlerProcessor(
 	logger *logrus.Logger,
-	productFetcher *product.ProductFetcher,
+	productFetcher *sourceproduct.ProductFetcher,
 	taskSubmitter VariantTaskSubmitter,
 	rabbitmqClient RabbitMQPublisher,
 ) *CrawlerProcessor {
@@ -140,8 +140,8 @@ func (p *CrawlerProcessor) GetStatus() map[string]any {
 	}
 }
 
-func (p *CrawlerProcessor) fetchRequestFromTask(task model.Task, platform string) *product.FetchRequest {
-	return &product.FetchRequest{
+func (p *CrawlerProcessor) fetchRequestFromTask(task model.Task, platform string) *sourceproduct.FetchRequest {
+	return &sourceproduct.FetchRequest{
 		TenantID:   task.TenantID,
 		Platform:   platform,
 		Region:     task.Region,

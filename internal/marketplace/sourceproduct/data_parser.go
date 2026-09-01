@@ -1,5 +1,5 @@
 // Package product 提供产品数据解析功能
-package product
+package sourceproduct
 
 import (
 	"encoding/json"

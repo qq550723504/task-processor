@@ -11,8 +11,8 @@ import (
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/platform/queue/rabbitmq"
-	"task-processor/internal/product"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
@@ -20,13 +20,13 @@ import (
 )
 
 type platformProcessorResources struct {
-	rawJSONDataClient product.RawJsonDataClient
+	rawJSONDataClient sourceproduct.RawJsonDataClient
 	processorRuntime  consumer.ProcessorRuntime
 	crawlSource       ports.CrawlSource
 	rabbitmqClient    *rabbitmq.Client
 }
 
-func newPlatformProcessorResources(rawJSONDataClient product.RawJsonDataClient, processorRuntime consumer.ProcessorRuntime, crawlSource ports.CrawlSource, rabbitmqClient *rabbitmq.Client) platformProcessorResources {
+func newPlatformProcessorResources(rawJSONDataClient sourceproduct.RawJsonDataClient, processorRuntime consumer.ProcessorRuntime, crawlSource ports.CrawlSource, rabbitmqClient *rabbitmq.Client) platformProcessorResources {
 	return platformProcessorResources{
 		rawJSONDataClient: rawJSONDataClient,
 		processorRuntime:  processorRuntime,

@@ -6,9 +6,9 @@ import (
 	"math/rand"
 
 	api "task-processor/internal/listingadmin"
+	"task-processor/internal/marketplace/productpolicy"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
-	pkgproduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
 	"task-processor/internal/core/logger"
@@ -144,7 +144,7 @@ func (ph *PriceHandler) getSupplierCost(runtime *temucontext.SKUBuildRuntime, va
 	priceType := ph.getPriceTypeFromRuntime(runtime)
 
 	// 根据价格类型获取价格(包含运费) - 使用公共函数
-	return pkgproduct.GetProductPrice(variant, priceType)
+	return productpolicy.GetProductPrice(variant, priceType)
 }
 
 // getPriceTypeFromContext 从上下文获取价格类型

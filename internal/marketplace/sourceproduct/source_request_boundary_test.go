@@ -1,4 +1,4 @@
-package product
+package sourceproduct
 
 import (
 	"os"
@@ -12,8 +12,8 @@ func TestFetchersUseVariantFetchRequestAdapter(t *testing.T) {
 
 	files := []string{
 		filepath.Join("product_fetcher.go"),
-		filepath.Join("..", "crawler", "fetcher", "remote_fetcher.go"),
-		filepath.Join("..", "crawler", "fetcher", "distributed_fetcher.go"),
+		filepath.Join("..", "..", "crawler", "fetcher", "remote_fetcher.go"),
+		filepath.Join("..", "..", "crawler", "fetcher", "distributed_fetcher.go"),
 	}
 	for _, file := range files {
 		data, err := os.ReadFile(file)

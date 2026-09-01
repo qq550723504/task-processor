@@ -2,20 +2,20 @@ package local
 
 import (
 	api "task-processor/internal/listingadmin"
-	"task-processor/internal/product"
+	"task-processor/internal/marketplace/sourceproduct"
 )
 
-// RawJsonDataAdapter 将 api.RawJsonDataAPI 适配为 domain/product.RawJsonDataClient
+// RawJsonDataAdapter 将 api.RawJsonDataAPI 适配为 domain/sourceproduct.RawJsonDataClient
 type RawJsonDataAdapter struct {
 	client api.RawJsonDataAPI
 }
 
 // NewRawJsonDataAdapter 创建适配器
-func NewRawJsonDataAdapter(client api.RawJsonDataAPI) product.RawJsonDataClient {
+func NewRawJsonDataAdapter(client api.RawJsonDataAPI) sourceproduct.RawJsonDataClient {
 	return &RawJsonDataAdapter{client: client}
 }
 
-func (a *RawJsonDataAdapter) GetRawJsonData(req *product.RawJsonReq) (*product.RawJsonResp, error) {
+func (a *RawJsonDataAdapter) GetRawJsonData(req *sourceproduct.RawJsonReq) (*sourceproduct.RawJsonResp, error) {
 	resp, err := a.client.GetRawJsonData(&api.RawJsonDataReqDTO{
 		TenantID:   req.TenantID,
 		Platform:   req.Platform,
@@ -31,7 +31,7 @@ func (a *RawJsonDataAdapter) GetRawJsonData(req *product.RawJsonReq) (*product.R
 	if resp == nil {
 		return nil, nil
 	}
-	return &product.RawJsonResp{
+	return &sourceproduct.RawJsonResp{
 		ID:          resp.ID,
 		Platform:    resp.Platform,
 		ProductID:   resp.ProductID,
@@ -42,7 +42,7 @@ func (a *RawJsonDataAdapter) GetRawJsonData(req *product.RawJsonReq) (*product.R
 	}, nil
 }
 
-func (a *RawJsonDataAdapter) GetRawJsonDataAnyFreshness(req *product.RawJsonReq) (*product.RawJsonResp, error) {
+func (a *RawJsonDataAdapter) GetRawJsonDataAnyFreshness(req *sourceproduct.RawJsonReq) (*sourceproduct.RawJsonResp, error) {
 	freshClient, ok := a.client.(interface {
 		GetRawJsonDataAnyFreshness(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error)
 	})
@@ -65,7 +65,7 @@ func (a *RawJsonDataAdapter) GetRawJsonDataAnyFreshness(req *product.RawJsonReq)
 	if resp == nil {
 		return nil, nil
 	}
-	return &product.RawJsonResp{
+	return &sourceproduct.RawJsonResp{
 		ID:          resp.ID,
 		Platform:    resp.Platform,
 		ProductID:   resp.ProductID,
@@ -76,7 +76,7 @@ func (a *RawJsonDataAdapter) GetRawJsonDataAnyFreshness(req *product.RawJsonReq)
 	}, nil
 }
 
-func (a *RawJsonDataAdapter) CreateRawJsonData(req *product.RawJsonCreateReq) (int64, error) {
+func (a *RawJsonDataAdapter) CreateRawJsonData(req *sourceproduct.RawJsonCreateReq) (int64, error) {
 	return a.client.CreateRawJsonData(&api.RawJsonDataCreateReqDTO{
 		TenantID:    req.TenantID,
 		StoreID:     req.StoreID,

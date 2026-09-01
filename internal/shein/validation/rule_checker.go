@@ -1,8 +1,8 @@
 package validation
 
 import (
+	"task-processor/internal/marketplace/productpolicy"
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 
 	shein "task-processor/internal/shein"
 
@@ -13,24 +13,24 @@ import (
 
 // FilterRuleChecker 筛选规则检查器（SHEIN平台包装器）
 type FilterRuleChecker struct {
-	checker *product.RuleChecker
+	checker *productpolicy.RuleChecker
 }
 
 // NewFilterRuleChecker 创建新的筛选规则检查器
 func NewFilterRuleChecker() *FilterRuleChecker {
 	return &FilterRuleChecker{
-		checker: product.NewRuleChecker(),
+		checker: productpolicy.NewRuleChecker(),
 	}
 }
 
 // GetProductPrice 获取产品价格（使用公共函数）
 func GetProductPrice(amazonProduct *model.Product, priceType string) float64 {
-	return product.GetProductPrice(amazonProduct, priceType)
+	return productpolicy.GetProductPrice(amazonProduct, priceType)
 }
 
 // getInventory 获取库存（使用公共函数）
 func (h *FilterRuleChecker) getInventory(amazonProduct *model.Product) int {
-	return product.GetInventory(amazonProduct)
+	return productpolicy.GetInventory(amazonProduct)
 }
 
 // getDeliveryTime 获取发货时效（固定返回24小时）
@@ -39,7 +39,7 @@ func (h *FilterRuleChecker) getDeliveryTime(_ *model.Product) int {
 }
 
 // CheckPriceRange 校验价格范围
-func (c *FilterRuleChecker) CheckPriceRange(filterRule *product.FilterRule, priceValue float64) error {
+func (c *FilterRuleChecker) CheckPriceRange(filterRule *productpolicy.FilterRule, priceValue float64) error {
 	if err := c.checker.CheckPriceRange(filterRule, priceValue); err != nil {
 		return shein.NewFilteredError(err.Error())
 	}
@@ -47,7 +47,7 @@ func (c *FilterRuleChecker) CheckPriceRange(filterRule *product.FilterRule, pric
 }
 
 // CheckInventory 校验库存
-func (c *FilterRuleChecker) CheckInventory(filterRule *product.FilterRule, inventory int) error {
+func (c *FilterRuleChecker) CheckInventory(filterRule *productpolicy.FilterRule, inventory int) error {
 	if err := c.checker.CheckInventory(filterRule, inventory); err != nil {
 		return shein.NewFilteredError(err.Error())
 	}
@@ -55,7 +55,7 @@ func (c *FilterRuleChecker) CheckInventory(filterRule *product.FilterRule, inven
 }
 
 // CheckDeliveryTime 校验发货时效
-func (c *FilterRuleChecker) CheckDeliveryTime(filterRule *product.FilterRule, deliveryTime int) error {
+func (c *FilterRuleChecker) CheckDeliveryTime(filterRule *productpolicy.FilterRule, deliveryTime int) error {
 	if err := c.checker.CheckDeliveryTime(filterRule, deliveryTime); err != nil {
 		return shein.NewFilteredError(err.Error())
 	}
@@ -63,7 +63,7 @@ func (c *FilterRuleChecker) CheckDeliveryTime(filterRule *product.FilterRule, de
 }
 
 // CheckRating 校验评论星级
-func (c *FilterRuleChecker) CheckRating(filterRule *product.FilterRule, rating float64) error {
+func (c *FilterRuleChecker) CheckRating(filterRule *productpolicy.FilterRule, rating float64) error {
 	if err := c.checker.CheckRating(filterRule, rating); err != nil {
 		return shein.NewFilteredError(err.Error())
 	}
@@ -71,7 +71,7 @@ func (c *FilterRuleChecker) CheckRating(filterRule *product.FilterRule, rating f
 }
 
 // CheckReviewCount 校验评论数量
-func (c *FilterRuleChecker) CheckReviewCount(filterRule *product.FilterRule, reviewCount int) error {
+func (c *FilterRuleChecker) CheckReviewCount(filterRule *productpolicy.FilterRule, reviewCount int) error {
 	if err := c.checker.CheckReviewCount(filterRule, reviewCount); err != nil {
 		return shein.NewFilteredError(err.Error())
 	}
@@ -79,9 +79,9 @@ func (c *FilterRuleChecker) CheckReviewCount(filterRule *product.FilterRule, rev
 }
 
 // CheckFulfillmentType 校验配送方式
-func (c *FilterRuleChecker) CheckFulfillmentType(filterRule *product.FilterRule, amazonProduct *model.Product) error {
-	isFBA := product.IsFBAFulfillment(amazonProduct.ShipsFrom)
-	isAMZ := product.IsAMZSeller(amazonProduct.SellerName)
+func (c *FilterRuleChecker) CheckFulfillmentType(filterRule *productpolicy.FilterRule, amazonProduct *model.Product) error {
+	isFBA := productpolicy.IsFBAFulfillment(amazonProduct.ShipsFrom)
+	isAMZ := productpolicy.IsAMZSeller(amazonProduct.SellerName)
 
 	logger.GetGlobalLogger("shein/validation").WithFields(logrus.Fields{
 		"asin":          amazonProduct.Asin,

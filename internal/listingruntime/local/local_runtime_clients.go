@@ -2,7 +2,7 @@ package local
 
 import (
 	"task-processor/internal/listingadmin"
-	"task-processor/internal/product"
+	"task-processor/internal/marketplace/sourceproduct"
 )
 
 func NewLocalStoreAPI(provider *LocalDataProvider, cookieProvider SheinCookieProvider) listingadmin.StoreAPI {
@@ -56,7 +56,7 @@ func (r *LocalRuntime) GetStoreAPI() listingadmin.StoreAPI {
 	return NewLocalStoreAPIFromResources(r.resources, r.provider, r.cookieProvider)
 }
 
-func (r *LocalRuntime) GetRawJsonDataAdapter() product.RawJsonDataClient {
+func (r *LocalRuntime) GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient {
 	if r == nil || r.resources == nil {
 		return nil
 	}

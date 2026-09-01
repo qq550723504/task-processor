@@ -14,11 +14,12 @@ import (
 	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	"task-processor/internal/marketplace/productpolicy"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pricing"
-	"task-processor/internal/product"
 	shein_product "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/productsync"
 
@@ -48,7 +49,7 @@ type inventorySyncServiceImpl struct {
 	strategyProvider    pricing.OperationStrategyProvider
 	productAPI          shein_product.ProductAPI
 	productFetcher      fetcher.ProductFetcher
-	rawJsonDataClient   product.RawJsonDataClient
+	rawJsonDataClient   sourceproduct.RawJsonDataClient
 	inventoryRecordRepo listingadmin.InventoryRecordRepository
 	storeService        listingruntime.StoreService
 	storeRepo           sheinInventoryStoreFinder
@@ -72,7 +73,7 @@ func NewInventorySyncService(
 	productAPI shein_product.ProductAPI,
 	productFetcher fetcher.ProductFetcher,
 	monitorConfig *config.MonitorConfig,
-	rawJsonDataClient product.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	inventoryRecordRepo listingadmin.InventoryRecordRepository,
 	storeService listingruntime.StoreService,
 	storeRepo sheinInventoryStoreFinder,
@@ -97,7 +98,7 @@ func NewInventorySyncServiceWithSyncedProductFeed(
 	productAPI shein_product.ProductAPI,
 	productFetcher fetcher.ProductFetcher,
 	monitorConfig *config.MonitorConfig,
-	rawJsonDataClient product.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	inventoryRecordRepo listingadmin.InventoryRecordRepository,
 	storeService listingruntime.StoreService,
 	storeRepo sheinInventoryStoreFinder,
@@ -378,7 +379,7 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 					var newStock int
 					var asin string
 					if amazonProduct := update.AmazonProduct; amazonProduct != nil {
-						currentPrice = product.GetProductPrice(amazonProduct, priceType)
+						currentPrice = productpolicy.GetProductPrice(amazonProduct, priceType)
 						newStock = s.extractStockFromProduct(amazonProduct)
 						asin = amazonProduct.Asin
 						sku.AmazonMonitorData = &AmazonMonitorData{

@@ -1,5 +1,5 @@
 // Package product 提供产品数据缓存管理功能
-package product
+package sourceproduct
 
 import (
 	"encoding/json"

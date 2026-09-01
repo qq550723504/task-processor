@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 )
 
 // getAmazonProductData 获取Amazon产品数据（使用分布式或本地ProductFetcher，自动处理缓存）
@@ -15,7 +15,7 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 	asin, region string,
 	tenantID, storeID int64,
 ) (*model.Product, error) {
-	fetchReq := &product.FetchRequest{
+	fetchReq := &sourceproduct.FetchRequest{
 		TenantID:  tenantID,
 		Platform:  "Amazon",
 		Region:    region,

@@ -12,8 +12,8 @@ import (
 
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
-	domainProduct "task-processor/internal/product"
 	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
@@ -70,7 +70,7 @@ type remoteTaskResponse struct {
 }
 
 type RemoteAPIProductFetcher struct {
-	cacheManager *domainProduct.CacheManager
+	cacheManager *sourceproduct.CacheManager
 	cacheEnabled bool
 	amazonConfig *config.AmazonConfig
 	client       *http.Client
@@ -79,7 +79,7 @@ type RemoteAPIProductFetcher struct {
 }
 
 func newRemoteAPIProductFetcher(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 ) (*RemoteAPIProductFetcher, error) {
 	if amazonConfig == nil {
@@ -94,7 +94,7 @@ func newRemoteAPIProductFetcher(
 
 	logger := coreLogger.GetGlobalLogger("RemoteAPIProductFetcher")
 	return &RemoteAPIProductFetcher{
-		cacheManager: domainProduct.NewCacheManagerWithFreshness(rawJsonDataClient, logger, amazonConfig.DataFreshnessDays),
+		cacheManager: sourceproduct.NewCacheManagerWithFreshness(rawJsonDataClient, logger, amazonConfig.DataFreshnessDays),
 		cacheEnabled: rawJsonDataClient != nil,
 		amazonConfig: amazonConfig,
 		client: &http.Client{
@@ -109,7 +109,7 @@ func newRemoteAPIProductFetcher(
 	}, nil
 }
 
-func (f *RemoteAPIProductFetcher) FetchProduct(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error) {
+func (f *RemoteAPIProductFetcher) FetchProduct(ctx context.Context, req *sourceproduct.FetchRequest) (*model.Product, error) {
 	if f.canUseCache(req) {
 		if product, err := f.cacheManager.GetFromCache(req); err == nil && product != nil {
 			f.logger.Debugf("got product from cache: %s", req.ProductID)
@@ -141,14 +141,14 @@ func (f *RemoteAPIProductFetcher) FetchProduct(ctx context.Context, req *domainP
 	return product, nil
 }
 
-func (f *RemoteAPIProductFetcher) canUseCache(req *domainProduct.FetchRequest) bool {
+func (f *RemoteAPIProductFetcher) canUseCache(req *sourceproduct.FetchRequest) bool {
 	if !f.cacheEnabled || f.cacheManager == nil {
 		return false
 	}
 	return req == nil || strings.TrimSpace(req.Zipcode) == ""
 }
 
-func (f *RemoteAPIProductFetcher) buildRequest(ctx context.Context, req *domainProduct.FetchRequest) (*http.Request, error) {
+func (f *RemoteAPIProductFetcher) buildRequest(ctx context.Context, req *sourceproduct.FetchRequest) (*http.Request, error) {
 	region := strings.ToLower(req.Region)
 	payload := remoteFetchRequest{
 		ASIN:   req.ProductID,
@@ -171,7 +171,7 @@ func (f *RemoteAPIProductFetcher) buildRequest(ctx context.Context, req *domainP
 	return httpReq, nil
 }
 
-func (f *RemoteAPIProductFetcher) handleFetchResponse(ctx context.Context, resp *http.Response, req *domainProduct.FetchRequest) (*model.Product, error) {
+func (f *RemoteAPIProductFetcher) handleFetchResponse(ctx context.Context, resp *http.Response, req *sourceproduct.FetchRequest) (*model.Product, error) {
 	if resp.StatusCode == http.StatusOK {
 		var payload remoteFetchResponse
 		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -227,7 +227,7 @@ func (f *RemoteAPIProductFetcher) shouldFallbackToAsync(statusCode int, payload 
 	}
 }
 
-func (f *RemoteAPIProductFetcher) fetchProductAsync(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error) {
+func (f *RemoteAPIProductFetcher) fetchProductAsync(ctx context.Context, req *sourceproduct.FetchRequest) (*model.Product, error) {
 	taskID, err := f.submitAsyncCrawl(ctx, req)
 	if err != nil {
 		return nil, err
@@ -235,7 +235,7 @@ func (f *RemoteAPIProductFetcher) fetchProductAsync(ctx context.Context, req *do
 	return f.pollAsyncResult(ctx, taskID)
 }
 
-func (f *RemoteAPIProductFetcher) submitAsyncCrawl(ctx context.Context, req *domainProduct.FetchRequest) (string, error) {
+func (f *RemoteAPIProductFetcher) submitAsyncCrawl(ctx context.Context, req *sourceproduct.FetchRequest) (string, error) {
 	region := strings.ToLower(req.Region)
 	payload := remoteFetchRequest{
 		ASIN:   req.ProductID,
@@ -285,7 +285,7 @@ func (f *RemoteAPIProductFetcher) submitAsyncCrawl(ctx context.Context, req *dom
 	return payloadResp.Data.TaskID, nil
 }
 
-func (f *RemoteAPIProductFetcher) resolveZipcode(req *domainProduct.FetchRequest) string {
+func (f *RemoteAPIProductFetcher) resolveZipcode(req *sourceproduct.FetchRequest) string {
 	if req == nil {
 		return ""
 	}
@@ -403,28 +403,28 @@ func decodeProductMap(data map[string]any) (*model.Product, error) {
 	return &product, nil
 }
 
-func (f *RemoteAPIProductFetcher) CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error {
+func (f *RemoteAPIProductFetcher) CacheProduct(req *sourceproduct.FetchRequest, product *model.Product) error {
 	if !f.canUseCache(req) {
 		return nil
 	}
 	return f.cacheManager.CacheProduct(req, product)
 }
 
-func (f *RemoteAPIProductFetcher) CacheVariants(req *domainProduct.FetchRequest, variants []*model.Product) error {
+func (f *RemoteAPIProductFetcher) CacheVariants(req *sourceproduct.FetchRequest, variants []*model.Product) error {
 	if !f.canUseCache(req) {
 		return nil
 	}
 	return f.cacheManager.CacheVariants(req, variants)
 }
 
-func (f *RemoteAPIProductFetcher) FetchVariants(ctx context.Context, req *domainProduct.FetchRequest, variantASINs []string) ([]*model.Product, error) {
+func (f *RemoteAPIProductFetcher) FetchVariants(ctx context.Context, req *sourceproduct.FetchRequest, variantASINs []string) ([]*model.Product, error) {
 	if len(variantASINs) == 0 {
 		return []*model.Product{}, nil
 	}
 
 	var variants []*model.Product
 	for _, asin := range variantASINs {
-		variantReq := domainProduct.VariantFetchRequest(req, asin)
+		variantReq := sourceproduct.VariantFetchRequest(req, asin)
 		product, err := f.FetchProduct(ctx, variantReq)
 		if err != nil {
 			f.logger.WithError(err).Warnf("fetch variant via crawler api failed: %s", asin)

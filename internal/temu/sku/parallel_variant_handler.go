@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	appProduct "task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/perf"
-	domainProduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
 	"task-processor/internal/core/logger"
@@ -117,7 +117,7 @@ func (h *ParallelVariantHandler) fetchVariantsParallel(temuCtx *temucontext.Temu
 		return nil, fmt.Errorf("任务信息为空")
 	}
 
-	req := &domainProduct.FetchRequest{
+	req := &sourceproduct.FetchRequest{
 		TenantID:   task.TenantID,
 		Platform:   task.Platform,
 		Region:     task.Region,

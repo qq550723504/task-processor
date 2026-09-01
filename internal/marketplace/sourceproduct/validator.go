@@ -1,5 +1,5 @@
 // Package product 提供产品数据验证功能
-package product
+package sourceproduct
 
 import (
 	"fmt"

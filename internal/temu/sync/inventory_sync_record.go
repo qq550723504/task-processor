@@ -5,11 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/marketplace/productpolicy"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/shared/timex"
-	"task-processor/internal/product"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -77,7 +77,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 
 	// 如果没有找到历史价格，使用当前价格作为原价（首次记录）
 	priceType := s.getStorePriceType(storeID)
-	currentPrice := product.GetProductPrice(amazonProduct, priceType)
+	currentPrice := productpolicy.GetProductPrice(amazonProduct, priceType)
 
 	if originalPrice == 0 {
 		originalPrice = currentPrice
@@ -168,7 +168,7 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 				newStock := s.extractStockFromProduct(amazonProduct)
 
 				// 使用公共函数获取价格（根据店铺配置的价格类型）
-				currentPrice := product.GetProductPrice(amazonProduct, priceType)
+				currentPrice := productpolicy.GetProductPrice(amazonProduct, priceType)
 
 				// 更新Amazon监控数据
 				sku.AmazonMonitorData = &TemuAmazonMonitorData{

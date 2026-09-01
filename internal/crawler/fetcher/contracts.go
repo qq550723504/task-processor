@@ -7,9 +7,9 @@ import (
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/platform/queue/rabbitmq"
-	domainProduct "task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,13 +23,13 @@ const (
 )
 
 type ProductReader interface {
-	FetchProduct(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error)
-	FetchVariants(ctx context.Context, req *domainProduct.FetchRequest, variantASINs []string) ([]*model.Product, error)
+	FetchProduct(ctx context.Context, req *sourceproduct.FetchRequest) (*model.Product, error)
+	FetchVariants(ctx context.Context, req *sourceproduct.FetchRequest, variantASINs []string) ([]*model.Product, error)
 }
 
 type ProductCache interface {
-	CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error
-	CacheVariants(req *domainProduct.FetchRequest, variants []*model.Product) error
+	CacheProduct(req *sourceproduct.FetchRequest, product *model.Product) error
+	CacheVariants(req *sourceproduct.FetchRequest, variants []*model.Product) error
 }
 
 type ProductFetcherStats interface {
@@ -54,7 +54,7 @@ func NewFetcherFactory() *FetcherFactory {
 
 func (f *FetcherFactory) CreateFetcher(
 	fetcherType FetcherType,
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
@@ -65,7 +65,7 @@ func (f *FetcherFactory) CreateFetcher(
 	switch fetcherType {
 	case LocalFetcher:
 		f.logger.Info("creating local product fetcher")
-		return domainProduct.NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, crawlSource, f.logger), nil
+		return sourceproduct.NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, crawlSource, f.logger), nil
 	case RemoteAPIFetcher:
 		f.logger.Info("creating remote api product fetcher")
 		return NewRemoteAPIProductFetcher(rawJsonDataClient, amazonConfig)
@@ -82,7 +82,7 @@ func (f *FetcherFactory) CreateFetcher(
 
 func (f *FetcherFactory) CreateFetcherFromConfig(
 	cfg *config.Config,
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (ProductFetcher, error) {
@@ -113,7 +113,7 @@ func (f *FetcherFactory) GetRecommendedFetcher(cfg *config.Config) FetcherType {
 }
 
 func NewDistributedProductFetcher(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 	rabbitmqClient *rabbitmq.Client,
 ) (ProductFetcher, error) {
@@ -121,7 +121,7 @@ func NewDistributedProductFetcher(
 }
 
 func NewRemoteAPIProductFetcher(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 ) (ProductFetcher, error) {
 	return newRemoteAPIProductFetcher(rawJsonDataClient, amazonConfig)

@@ -5,24 +5,24 @@ import (
 	"testing"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/marketplace/sourceproduct"
 	worker "task-processor/internal/platform/workerpool"
-	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
 
 type stubCrawlerProcessorRawJSONClient struct{}
 
-func (stubCrawlerProcessorRawJSONClient) GetRawJsonData(*product.RawJsonReq) (*product.RawJsonResp, error) {
+func (stubCrawlerProcessorRawJSONClient) GetRawJsonData(*sourceproduct.RawJsonReq) (*sourceproduct.RawJsonResp, error) {
 	return nil, nil
 }
 
-func (stubCrawlerProcessorRawJSONClient) CreateRawJsonData(*product.RawJsonCreateReq) (int64, error) {
+func (stubCrawlerProcessorRawJSONClient) CreateRawJsonData(*sourceproduct.RawJsonCreateReq) (int64, error) {
 	return 0, nil
 }
 
 func TestCrawlerProcessorReturnsErrorInsteadOfPanickingOnNilProduct(t *testing.T) {
-	fetcher := product.NewProductFetcher(
+	fetcher := sourceproduct.NewProductFetcher(
 		stubCrawlerProcessorRawJSONClient{},
 		&config.AmazonConfig{Enabled: true},
 		nil,

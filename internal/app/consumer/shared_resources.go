@@ -11,10 +11,10 @@ import (
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/platform/queue/rabbitmq"
 	worker "task-processor/internal/platform/workerpool"
 	platformtask "task-processor/internal/platformtask"
-	"task-processor/internal/product"
 	temupricingruntime "task-processor/internal/temu/pricing"
 	temusyncruntime "task-processor/internal/temu/sync"
 
@@ -25,7 +25,7 @@ type SchedulerFactoryRuntime interface {
 	runner.SchedulerRuntimeProvider
 	GetStoreAPI() listingadmin.StoreAPI
 	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error)
-	GetRawJsonDataAdapter() product.RawJsonDataClient
+	GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient
 	GetPricingRuleClient() listingadmin.PricingRuleAPI
 	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
 	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI

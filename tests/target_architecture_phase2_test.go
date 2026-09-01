@@ -579,7 +579,8 @@ func TestSharedPackagesDoNotImportAppDomainPlatformOrIntegration(t *testing.T) {
 	forbidden := []string{
 		"task-processor/internal/app",
 		"task-processor/internal/listing",
-		"task-processor/internal/product",
+		"task-processor/internal/marketplace/sourceproduct",
+		"task-processor/internal/marketplace/productpolicy",
 		"task-processor/internal/marketplace",
 		"task-processor/internal/agent",
 		"task-processor/internal/knowledge",

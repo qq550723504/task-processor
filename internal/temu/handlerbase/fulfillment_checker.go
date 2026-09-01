@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	api "task-processor/internal/listingadmin"
+	"task-processor/internal/marketplace/productpolicy"
 	"task-processor/internal/model"
-	productpkg "task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -34,8 +34,8 @@ func (c *FulfillmentChecker) CheckFulfillmentTypeRuleDetailed(p *model.Product, 
 		return &FilterCheckResult{Passed: true}
 	}
 
-	isFBA := productpkg.IsFBAFulfillment(p.ShipsFrom)
-	isAMZ := productpkg.IsAMZSeller(p.SellerName)
+	isFBA := productpolicy.IsFBAFulfillment(p.ShipsFrom)
+	isAMZ := productpolicy.IsAMZSeller(p.SellerName)
 
 	c.logger.WithFields(logrus.Fields{
 		"asin":          p.Asin,
@@ -46,7 +46,7 @@ func (c *FulfillmentChecker) CheckFulfillmentTypeRuleDetailed(p *model.Product, 
 		"required_type": rule.FulfillmentType,
 	}).Debug("检查配送方式规则")
 
-	checker := productpkg.NewRuleChecker()
+	checker := productpolicy.NewRuleChecker()
 	if err := checker.CheckFulfillmentType(rule.ToFilterRule(), p); err != nil {
 		return &FilterCheckResult{
 			Passed:        false,

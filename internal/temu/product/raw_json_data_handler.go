@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	appProduct "task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
-	domainProduct "task-processor/internal/product"
 
 	"task-processor/internal/core/logger"
 
@@ -60,7 +60,7 @@ func (h *RawJsonDataHandlerV2) Handle(ctx pipeline.TaskContext) error {
 	}
 
 	// 使用公共ProductFetcher获取产品数据
-	req := &domainProduct.FetchRequest{
+	req := &sourceproduct.FetchRequest{
 		TenantID:   task.TenantID,
 		Platform:   task.GetSourcePlatformOrDefault(),
 		Region:     task.Region,

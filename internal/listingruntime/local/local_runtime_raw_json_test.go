@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
-	"task-processor/internal/product"
+	"task-processor/internal/marketplace/sourceproduct"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -19,7 +19,7 @@ func TestLocalRuntimeRawJSONDataAdapterUsesResourcesWithoutCompatibilityProvider
 		t.Fatal("GetRawJsonDataAdapter() returned nil")
 	}
 
-	id, err := client.CreateRawJsonData(&product.RawJsonCreateReq{
+	id, err := client.CreateRawJsonData(&sourceproduct.RawJsonCreateReq{
 		TenantID:     246,
 		StoreID:      986,
 		ImportTaskID: 704,
@@ -37,7 +37,7 @@ func TestLocalRuntimeRawJSONDataAdapterUsesResourcesWithoutCompatibilityProvider
 		t.Fatal("CreateRawJsonData() returned zero id")
 	}
 
-	data, err := client.GetRawJsonData(&product.RawJsonReq{
+	data, err := client.GetRawJsonData(&sourceproduct.RawJsonReq{
 		TenantID:  246,
 		StoreID:   986,
 		Platform:  "shein",

@@ -5,8 +5,8 @@ import (
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	"task-processor/internal/marketplace/sourceproduct"
 	platformtask "task-processor/internal/platformtask"
-	domainproduct "task-processor/internal/product"
 	temuclient "task-processor/internal/temu/api/client"
 	temupricingruntime "task-processor/internal/temu/pricing"
 	schedulerservice "task-processor/internal/temu/sync"
@@ -15,7 +15,7 @@ import (
 type runtime interface {
 	temuclient.StoreRuntime
 	platformtask.AutoPricingStoreConfigProvider
-	GetRawJsonDataAdapter() domainproduct.RawJsonDataClient
+	GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient
 	GetStoreAPI() listingadmin.StoreAPI
 	GetPricingRuleClient() listingadmin.PricingRuleAPI
 	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
@@ -30,7 +30,7 @@ type SchedulerRuntime = runtime
 type runtimeSource interface {
 	temuclient.StoreRuntime
 	platformtask.AutoPricingStoreConfigProvider
-	GetRawJsonDataAdapter() domainproduct.RawJsonDataClient
+	GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient
 	GetPricingRuleClient() listingadmin.PricingRuleAPI
 	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
 	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI
@@ -60,7 +60,7 @@ func (r schedulerRuntime) GetAutoPricingStoreConfig(ctx context.Context, storeID
 	return r.source.GetAutoPricingStoreConfig(ctx, storeID)
 }
 
-func (r schedulerRuntime) GetRawJsonDataAdapter() domainproduct.RawJsonDataClient {
+func (r schedulerRuntime) GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient {
 	if r.source == nil {
 		return nil
 	}

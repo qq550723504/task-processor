@@ -5,7 +5,15 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
+
+func TestPhase3ProductRootContainsNoGoPackage(t *testing.T) {
+	entries, err := filepath.Glob(filepath.Join("..", "internal", "product", "*.go"))
+	require.NoError(t, err)
+	require.Empty(t, entries)
+}
 
 func TestPhase3ProductTargetDependencies(t *testing.T) {
 	for _, name := range []string{"catalog", "sourcing", "enrichment", "asset", "image"} {

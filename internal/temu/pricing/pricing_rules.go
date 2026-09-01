@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 	temupricing "task-processor/internal/temu/api/pricing"
 
 	"github.com/sirupsen/logrus"
@@ -54,7 +54,7 @@ func (s *PricingDecisionService) getAmazonProductWithCache(ctx context.Context, 
 		}
 	}
 
-	req := &product.FetchRequest{
+	req := &sourceproduct.FetchRequest{
 		TenantID:  tenantID,
 		Platform:  "Amazon",
 		Region:    region,

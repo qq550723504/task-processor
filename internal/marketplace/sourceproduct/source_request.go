@@ -1,4 +1,4 @@
-package product
+package sourceproduct
 
 import "task-processor/internal/product/sourcing"
 

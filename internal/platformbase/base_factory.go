@@ -7,15 +7,15 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	appfetcher "task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/platform/queue/rabbitmq"
-	domainproduct "task-processor/internal/product"
 	appscheduler "task-processor/internal/scheduler"
 
 	"github.com/sirupsen/logrus"
 )
 
 type Runtime interface {
-	GetRawJsonDataAdapter() domainproduct.RawJsonDataClient
+	GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient
 }
 
 // BaseFactoryConfig 基础工厂配置

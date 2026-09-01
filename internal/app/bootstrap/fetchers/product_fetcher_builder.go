@@ -6,15 +6,15 @@ import (
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/platformbase"
-	"task-processor/internal/product"
 )
 
 func BuildPlatformProductFetcher(
 	cfg *config.Config,
 	platform string,
-	rawJsonDataClient product.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (appfetcher.ProductFetcher, error) {
