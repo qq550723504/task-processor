@@ -511,22 +511,60 @@ test("identifies an authorized architecture override in the commit status", () =
   });
 });
 
+test("does not label ordinary or failed decisions as architecture overrides", () => {
+  assert.deepEqual(statusForEvaluation({ allowed: true, overridden: false }), {
+    state: "success",
+    description: "Within admission limits",
+  });
+  assert.deepEqual(statusForEvaluation({ allowed: true, overridden: "true" }), {
+    state: "success",
+    description: "Within admission limits",
+  });
+  assert.deepEqual(statusForEvaluation({ allowed: false, overridden: true }), {
+    state: "failure",
+    description: "Exceeds admission limits",
+  });
+});
+
 test("runs admission guard tests when policy files change", () => {
   const workflowPath = path.join(__dirname, "..", "workflows", "ci.yml");
-  const workflow = fs.readFileSync(workflowPath, "utf8");
-
-  assert.equal(
-    workflow.match(/- "\.github\/scripts\/\*\*"/g)?.length,
-    2,
+  const workflow = fs.readFileSync(workflowPath, "utf8").replaceAll("\r\n", "\n");
+  const pushSection = workflow.slice(
+    workflow.indexOf("\n  push:\n"),
+    workflow.indexOf("\n  pull_request:\n"),
   );
-  assert.match(workflow, /development-admission-tests:/);
+  const pullRequestSection = workflow.slice(
+    workflow.indexOf("\n  pull_request:\n"),
+    workflow.indexOf("\n\npermissions:"),
+  );
+  const admissionJob = workflow.slice(
+    workflow.indexOf("\n  development-admission-tests:\n"),
+    workflow.indexOf("\n  release-authority:\n"),
+  );
+  const notifyJob = workflow.slice(workflow.indexOf("\n  notify:\n"));
+
+  assert.match(pushSection, /^\s+- "\.github\/scripts\/\*\*"\s*$/m);
+  assert.match(pullRequestSection, /^\s+- "\.github\/scripts\/\*\*"\s*$/m);
+  assert.match(admissionJob, /name: Development Admission Policy Tests/);
   assert.match(
-    workflow,
+    admissionJob,
     /run: node --test \.github\/scripts\/pr-scope-guard\.test\.cjs/,
   );
   assert.match(
-    workflow,
+    notifyJob,
     /needs:\s*[\s\S]*-\s+development-admission-tests\b/,
+  );
+  assert.match(
+    notifyJob,
+    /DEVELOPMENT_ADMISSION_TEST_RESULT:\s*\$\{\{\s*needs\.development-admission-tests\.result\s*\}\}/,
+  );
+  assert.match(
+    notifyJob,
+    /results = \[development_admission_tests, backend, frontend, code_health\]/,
+  );
+  assert.match(
+    notifyJob,
+    /> Development Admission tests：`\{development_admission_tests\}`/,
   );
 });
 
