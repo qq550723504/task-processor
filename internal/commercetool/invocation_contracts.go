@@ -12,13 +12,13 @@ import (
 )
 
 type Executor interface {
-	Execute(context.Context, json.RawMessage) (json.RawMessage, error)
+	Execute(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error)
 }
 
-type ExecutorFunc func(context.Context, json.RawMessage) (json.RawMessage, error)
+type ExecutorFunc func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error)
 
-func (f ExecutorFunc) Execute(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
-	return f(ctx, input)
+func (f ExecutorFunc) Execute(ctx context.Context, envelope ExecutionEnvelope, input json.RawMessage) (ExecutionResult, error) {
+	return f(ctx, envelope, input)
 }
 
 type CallMetadata struct {
@@ -37,6 +37,37 @@ type Call struct {
 	Arguments json.RawMessage
 }
 
+type ExecutionEnvelope struct {
+	tool      ToolRef
+	metadata  CallMetadata
+	principal Principal
+}
+
+func newExecutionEnvelope(tool ToolRef, metadata CallMetadata, principal Principal) ExecutionEnvelope {
+	return ExecutionEnvelope{
+		tool:      tool,
+		metadata:  metadata,
+		principal: clonePrincipal(principal),
+	}
+}
+
+func (envelope ExecutionEnvelope) Tool() ToolRef {
+	return envelope.tool
+}
+
+func (envelope ExecutionEnvelope) Metadata() CallMetadata {
+	return envelope.metadata
+}
+
+func (envelope ExecutionEnvelope) Principal() Principal {
+	return clonePrincipal(envelope.principal)
+}
+
+type ExecutionResult struct {
+	Output         json.RawMessage
+	AIInvocationID string
+}
+
 type AuditStatus string
 
 const (
@@ -45,14 +76,20 @@ const (
 )
 
 type Result struct {
-	Output      json.RawMessage
-	AuditStatus AuditStatus
+	Output         json.RawMessage
+	AIInvocationID string
+	AuditStatus    AuditStatus
 }
 
 type Principal struct {
 	TenantID string
 	UserID   string
 	Roles    []string
+}
+
+func clonePrincipal(principal Principal) Principal {
+	principal.Roles = append([]string(nil), principal.Roles...)
+	return principal
 }
 
 func (principal Principal) validate() error {

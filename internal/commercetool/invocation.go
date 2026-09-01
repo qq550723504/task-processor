@@ -27,7 +27,7 @@ func (tools *BoundToolSet) Invoke(ctx context.Context, call Call) (Result, error
 	state := newInvocationState(tools.deps.Now().UTC(), call)
 	registered, err := tools.preflight(ctx, state.call, &state)
 	if err != nil {
-		return tools.finish(ctx, state, nil, err)
+		return tools.finish(ctx, state, nil, "", err)
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, registered.definition.Timeout.Duration)
@@ -35,17 +35,27 @@ func (tools *BoundToolSet) Invoke(ctx context.Context, call Call) (Result, error
 	callCtx, span := tools.startSpan(callCtx, registered.definition, state.call.Metadata)
 	defer span.End()
 
-	output, callErr := registered.executor.Execute(callCtx, cloneRaw(state.call.Arguments))
+	execution, callErr := registered.executor.Execute(
+		callCtx,
+		newExecutionEnvelope(state.call.Tool, state.call.Metadata, state.principal),
+		cloneRaw(state.call.Arguments),
+	)
+	output := cloneRaw(execution.Output)
 	if callCtx.Err() != nil {
-		output = nil
 		callErr = NewError(ErrorDeadlineExceeded, "tool deadline exceeded", callCtx.Err())
 	} else if callErr != nil {
 		callErr = normalizeExecutorError(callErr)
 	} else if err := registered.schemas.validateOutput(output); err != nil {
 		callErr = err
+	} else if err := validateNoReservedAuthorityFields(
+		output,
+		ErrorOutputInvalid,
+		"tool output does not match schema",
+	); err != nil {
+		callErr = err
 	}
 
-	return tools.finish(callCtx, state, output, callErr)
+	return tools.finish(callCtx, state, output, execution.AIInvocationID, callErr)
 }
 
 func newInvocationState(startedAt time.Time, call Call) invocationState {
@@ -92,8 +102,46 @@ func (tools *BoundToolSet) preflight(ctx context.Context, call Call, state *invo
 	if err := registered.schemas.validateInput(call.Arguments); err != nil {
 		return registeredTool{}, err
 	}
+	if err := validateNoReservedAuthorityFields(
+		call.Arguments,
+		ErrorInvalidInput,
+		"tool input does not match schema",
+	); err != nil {
+		return registeredTool{}, err
+	}
 
 	return registered, nil
+}
+
+func validateNoReservedAuthorityFields(raw json.RawMessage, code ErrorCode, safeMessage string) error {
+	document, err := decodeJSON(raw)
+	if err == nil && containsReservedAuthorityField(document) {
+		err = errors.New("payload contains a reserved authority field")
+	}
+	if err != nil {
+		return NewError(code, safeMessage, err)
+	}
+
+	return nil
+}
+
+func containsReservedAuthorityField(document any) bool {
+	switch value := document.(type) {
+	case map[string]any:
+		for name, child := range value {
+			if isReservedAuthorityField(name) || containsReservedAuthorityField(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range value {
+			if containsReservedAuthorityField(child) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func completeMetadata(metadata CallMetadata) bool {
@@ -136,9 +184,15 @@ func (tools *BoundToolSet) startSpan(
 	))
 }
 
-func (tools *BoundToolSet) finish(ctx context.Context, state invocationState, output json.RawMessage, callErr error) (Result, error) {
+func (tools *BoundToolSet) finish(
+	ctx context.Context,
+	state invocationState,
+	output json.RawMessage,
+	aiInvocationID string,
+	callErr error,
+) (Result, error) {
 	finishedAt := tools.deps.Now().UTC()
-	record := state.auditRecord(finishedAt, output, callErr)
+	record := state.auditRecord(finishedAt, output, aiInvocationID, callErr)
 	auditCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), tools.deps.AuditTimeout)
 	defer cancel()
 
@@ -147,14 +201,19 @@ func (tools *BoundToolSet) finish(ctx context.Context, state invocationState, ou
 		status = AuditStatusRecordFailed
 	}
 
-	result := Result{AuditStatus: status}
+	result := Result{AIInvocationID: aiInvocationID, AuditStatus: status}
 	if callErr == nil {
 		result.Output = cloneRaw(output)
 	}
 	return result, callErr
 }
 
-func (state invocationState) auditRecord(finishedAt time.Time, output json.RawMessage, callErr error) AuditRecord {
+func (state invocationState) auditRecord(
+	finishedAt time.Time,
+	output json.RawMessage,
+	aiInvocationID string,
+	callErr error,
+) AuditRecord {
 	metadata := state.call.Metadata
 	record := AuditRecord{
 		CallID:         metadata.CallID,
@@ -173,6 +232,7 @@ func (state invocationState) auditRecord(finishedAt time.Time, output json.RawMe
 		InputHash:      hashRaw(state.call.Arguments),
 		OutputHash:     hashRaw(output),
 		Outcome:        AuditOutcomeSucceeded,
+		AIInvocationID: aiInvocationID,
 	}
 	if state.hasTool {
 		record.ToolID = state.definition.Ref.ID

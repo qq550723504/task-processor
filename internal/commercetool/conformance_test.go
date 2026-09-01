@@ -12,13 +12,14 @@ func TestFakeAgentUsesRegistryBindInvokeContract(t *testing.T) {
 	calls := 0
 	tool := Tool{
 		Definition: validDefinition(),
-		Executor: ExecutorFunc(func(_ context.Context, input json.RawMessage) (json.RawMessage, error) {
+		Executor: ExecutorFunc(func(_ context.Context, _ ExecutionEnvelope, input json.RawMessage) (ExecutionResult, error) {
 			calls++
 			var request struct {
 				TaskID string `json:"task_id"`
 			}
 			require.NoError(t, json.Unmarshal(input, &request))
-			return json.Marshal(map[string]string{"task_id": request.TaskID})
+			output, err := json.Marshal(map[string]string{"task_id": request.TaskID})
+			return ExecutionResult{Output: output}, err
 		}),
 	}
 
@@ -41,8 +42,8 @@ func TestFakeAgentCannotSubstituteAnotherToolVersion(t *testing.T) {
 	definitionV1 := validDefinition()
 	definitionV2 := validDefinition()
 	definitionV2.Ref.Version = "v1.0.1"
-	executor := ExecutorFunc(func(_ context.Context, input json.RawMessage) (json.RawMessage, error) {
-		return cloneRaw(input), nil
+	executor := ExecutorFunc(func(_ context.Context, _ ExecutionEnvelope, input json.RawMessage) (ExecutionResult, error) {
+		return ExecutionResult{Output: cloneRaw(input)}, nil
 	})
 	registry, err := NewRegistry(
 		Tool{Definition: definitionV1, Executor: executor},

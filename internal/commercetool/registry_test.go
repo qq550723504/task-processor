@@ -19,11 +19,11 @@ type stubExecutor struct {
 	calls  *int
 }
 
-func (s *stubExecutor) Execute(context.Context, json.RawMessage) (json.RawMessage, error) {
+func (s *stubExecutor) Execute(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
 	if s.calls != nil {
 		*s.calls = *s.calls + 1
 	}
-	return cloneRaw(s.output), s.err
+	return ExecutionResult{Output: cloneRaw(s.output)}, s.err
 }
 
 type resolverStub struct {
@@ -42,12 +42,16 @@ func (s authorizerStub) Authorize(context.Context, Principal, PermissionRequirem
 }
 
 type recordingAuditStub struct {
-	records []AuditRecord
-	err     error
+	records  []AuditRecord
+	err      error
+	onRecord func()
 }
 
 func (s *recordingAuditStub) RecordToolCall(_ context.Context, record AuditRecord) error {
 	s.records = append(s.records, record)
+	if s.onRecord != nil {
+		s.onRecord()
+	}
 	return s.err
 }
 
@@ -371,12 +375,12 @@ func mutateSchemaStringTypeToNumber(t *testing.T, schema json.RawMessage) {
 
 func TestExecutorFuncDelegatesToFunction(t *testing.T) {
 	want := json.RawMessage(`{"task_id":"task-1"}`)
-	executor := ExecutorFunc(func(context.Context, json.RawMessage) (json.RawMessage, error) {
-		return want, errors.New("executor failure")
+	executor := ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+		return ExecutionResult{Output: want}, errors.New("executor failure")
 	})
 
-	output, err := executor.Execute(context.Background(), nil)
+	result, err := executor.Execute(context.Background(), ExecutionEnvelope{}, nil)
 
-	require.Equal(t, want, output)
+	require.Equal(t, want, result.Output)
 	require.EqualError(t, err, "executor failure")
 }
