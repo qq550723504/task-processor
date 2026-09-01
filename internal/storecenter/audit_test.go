@@ -220,7 +220,7 @@ func TestAuditRepositoryAcceptsOnlyTaskFiveLifecycleActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, action := range []storecenter.AuditAction{
-		storecenter.AuditActionStoreUpdateStarted, storecenter.AuditActionStoreUpdated, storecenter.AuditActionStoreUpdateNoOp, storecenter.AuditActionStoreDisabled, storecenter.AuditActionStoreEnabled,
+		storecenter.AuditActionStoreUpdateStarted, storecenter.AuditActionStoreUpdated, storecenter.AuditActionStoreUpdateNoOp, storecenter.AuditActionStoreLifecycleStarted, storecenter.AuditActionStoreDisabled, storecenter.AuditActionStoreEnabled,
 		storecenter.AuditActionDeleteStarted, storecenter.AuditActionStoreMarkedDeleting, storecenter.AuditActionQuotaDeallocated, storecenter.AuditActionDeleteComplete,
 	} {
 		event := taskFiveAuditEvent(action)
@@ -291,6 +291,8 @@ func taskFiveAuditEvent(action storecenter.AuditAction) storecenter.AuditEvent {
 		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"name"}, storecenter.StoreStatusActive, storecenter.StoreStatusActive
 	case storecenter.AuditActionStoreUpdateNoOp:
 		event.SafeFieldNames, event.PreviousState, event.NewState = nil, storecenter.StoreStatusActive, storecenter.StoreStatusActive
+	case storecenter.AuditActionStoreLifecycleStarted:
+		event.Outcome, event.SafeFieldNames, event.PreviousState, event.NewState = storecenter.AuditOutcomeUnknown, []string{"lifecycle_status"}, storecenter.StoreStatusActive, storecenter.StoreStatusDisabled
 	case storecenter.AuditActionStoreDisabled:
 		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"lifecycle_status"}, storecenter.StoreStatusActive, storecenter.StoreStatusDisabled
 	case storecenter.AuditActionStoreEnabled:

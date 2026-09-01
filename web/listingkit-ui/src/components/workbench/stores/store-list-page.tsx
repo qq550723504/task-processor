@@ -32,6 +32,14 @@ export function StoreListPage() {
   };
   const resetFilters = () =>
     updateFilters({ page: DEFAULT_PAGE, pageSize: filters.pageSize });
+  const retryStores = () => {
+    const code = stores.error instanceof WorkbenchAPIError ? stores.error.code : (stores.error as { code?: string } | null)?.code;
+    if (code === "ORGANIZATION_CONTEXT_CHANGED") {
+      context.retry();
+      return;
+    }
+    void stores.refetch();
+  };
 
   return (
     <section className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
@@ -75,7 +83,7 @@ export function StoreListPage() {
       {deletedNotice ? <p className="mt-4 rounded-md border p-3 text-sm" role="status">店铺已删除。界面不提供恢复；如需运营恢复，请由管理员通过数据库软删除恢复流程处理。</p> : null}
 
       {stores.isPending ? <LoadingState /> : stores.isError ? (
-        <ErrorState error={stores.error} retry={() => void stores.refetch()} />
+        <ErrorState error={stores.error} retry={retryStores} />
       ) : data ? (
         <div className="mt-6 space-y-4">
           <QuotaSummary quota={data.quota} />

@@ -279,6 +279,30 @@ describe("WorkspaceAppShell", () => {
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 
+  it("leaves the no-Organization route after a later context refresh grants access", async () => {
+    navigation.pathname = "/workbench/no-organization";
+    injectedWorkbenchContext.value = {
+      user: { id: "user-1" },
+      homeOrganizationId: "org-a",
+      organizations: [{ id: "org-a", name: "硕米科技", roles: ["role-a"] }],
+      effectiveOrganization: { id: "org-a", name: "硕米科技", roles: ["role-a"] },
+      roles: ["role-a"],
+      selectionRequired: false,
+      isLoading: false,
+      isSwitching: false,
+      error: null,
+      blockingError: null,
+      retry: vi.fn(),
+      switchOrganization: vi.fn(),
+      registerOrganizationSwitchGuard: vi.fn(() => vi.fn()),
+    };
+
+    render(<WorkspaceAppShell><p>organization child</p></WorkspaceAppShell>);
+
+    await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith("/workbench"));
+    expect(screen.queryByText("organization child")).not.toBeInTheDocument();
+  });
+
   it("renders stable-code copy for initial errors and recovers only on explicit retry", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

@@ -71,6 +71,12 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
     !context.blockingError &&
     context.organizations.length === 0 &&
     pathname !== NO_ORGANIZATION_ROUTE;
+  const shouldLeaveNoOrganization =
+    !context.isLoading &&
+    !context.error &&
+    !context.blockingError &&
+    context.organizations.length > 0 &&
+    pathname === NO_ORGANIZATION_ROUTE;
 
   const redirectToLogin = () => {
     const returnTo = `${pathname}${window.location.search}`;
@@ -80,8 +86,10 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (shouldRedirectToNoOrganization) {
       router.replace(NO_ORGANIZATION_ROUTE);
+    } else if (shouldLeaveNoOrganization) {
+      router.replace("/workbench");
     }
-  }, [router, shouldRedirectToNoOrganization]);
+  }, [router, shouldLeaveNoOrganization, shouldRedirectToNoOrganization]);
 
   if (context.isLoading) {
     return (
@@ -119,7 +127,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (shouldRedirectToNoOrganization) {
+  if (shouldRedirectToNoOrganization || shouldLeaveNoOrganization) {
     return (
       <main className="flex min-h-svh items-center justify-center bg-background px-6">
         <p className="text-sm text-muted-foreground" role="status">

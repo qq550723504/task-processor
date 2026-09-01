@@ -2,6 +2,7 @@ package storecenter
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +30,7 @@ const (
 	AuditActionStoreUpdateStarted     AuditAction = "store_update_started"
 	AuditActionStoreUpdated           AuditAction = "store_updated"
 	AuditActionStoreUpdateNoOp        AuditAction = "store_update_noop"
+	AuditActionStoreLifecycleStarted  AuditAction = "store_lifecycle_started"
 	AuditActionStoreDisabled          AuditAction = "store_disabled"
 	AuditActionStoreEnabled           AuditAction = "store_enabled"
 	AuditActionDeleteStarted          AuditAction = "delete_started"
@@ -57,20 +59,21 @@ const (
 // no extensible payload: provider/authentication material must never cross
 // this boundary.
 type AuditEvent struct {
-	EventID        string           `json:"eventId"`
-	OrganizationID string           `json:"-"`
-	StoreID        string           `json:"storeId"`
-	AllocationID   string           `json:"allocationId"`
-	RequestKey     string           `json:"requestKey"`
-	Action         AuditAction      `json:"action"`
-	Outcome        AuditOutcome     `json:"outcome"`
-	ActorSubject   string           `json:"actorSubject"`
-	SafeFieldNames []string         `json:"safeFieldNames"`
-	PreviousState  LifecycleStatus  `json:"previousState"`
-	NewState       LifecycleStatus  `json:"newState"`
-	FailureCode    AuditFailureCode `json:"failureCode"`
-	StoreVersion   int64            `json:"storeVersion"`
-	OccurredAt     time.Time        `json:"occurredAt"`
+	EventID            string           `json:"eventId"`
+	OrganizationID     string           `json:"-"`
+	StoreID            string           `json:"storeId"`
+	AllocationID       string           `json:"allocationId"`
+	RequestKey         string           `json:"requestKey"`
+	Action             AuditAction      `json:"action"`
+	Outcome            AuditOutcome     `json:"outcome"`
+	ActorSubject       string           `json:"actorSubject"`
+	SafeFieldNames     []string         `json:"safeFieldNames"`
+	PayloadFingerprint string           `json:"payloadFingerprint,omitempty"`
+	PreviousState      LifecycleStatus  `json:"previousState"`
+	NewState           LifecycleStatus  `json:"newState"`
+	FailureCode        AuditFailureCode `json:"failureCode"`
+	StoreVersion       int64            `json:"storeVersion"`
+	OccurredAt         time.Time        `json:"occurredAt"`
 }
 
 // AuditRepository is independent from the Store repository so composition can
@@ -83,21 +86,22 @@ type AuditRepository interface {
 type GormAuditRepository struct{ db *gorm.DB }
 
 type workbenchStoreAuditLogRecord struct {
-	EventID        string    `gorm:"column:event_id;type:char(36);primaryKey;not null"`
-	OrganizationID string    `gorm:"column:organization_id;size:200;not null;index:idx_workbench_store_audit_org_store_created,priority:1;uniqueIndex:ux_workbench_store_audit_org_request_action,priority:1"`
-	StoreID        string    `gorm:"column:store_id;type:char(36);not null;index:idx_workbench_store_audit_org_store_created,priority:2"`
-	AllocationID   string    `gorm:"column:allocation_id;type:char(36);not null"`
-	RequestKey     string    `gorm:"column:request_key;type:char(36);not null;uniqueIndex:ux_workbench_store_audit_org_request_action,priority:2"`
-	Action         string    `gorm:"column:action;size:64;not null;uniqueIndex:ux_workbench_store_audit_org_request_action,priority:3"`
-	Outcome        string    `gorm:"column:outcome;size:32;not null"`
-	ActorSubject   string    `gorm:"column:actor_subject;size:200;not null"`
-	SafeFieldNames string    `gorm:"column:safe_field_names;not null"`
-	PreviousState  string    `gorm:"column:previous_state;size:32;not null"`
-	NewState       string    `gorm:"column:new_state;size:32;not null"`
-	FailureCode    string    `gorm:"column:failure_code;size:64;not null"`
-	StoreVersion   int64     `gorm:"column:store_version;not null"`
-	CreatedAt      time.Time `gorm:"column:created_at;not null;index:idx_workbench_store_audit_org_store_created,priority:3"`
-	OccurredAt     time.Time `gorm:"column:occurred_at;not null"`
+	EventID            string    `gorm:"column:event_id;type:char(36);primaryKey;not null"`
+	OrganizationID     string    `gorm:"column:organization_id;size:200;not null;index:idx_workbench_store_audit_org_store_created,priority:1;uniqueIndex:ux_workbench_store_audit_org_request_action,priority:1"`
+	StoreID            string    `gorm:"column:store_id;type:char(36);not null;index:idx_workbench_store_audit_org_store_created,priority:2"`
+	AllocationID       string    `gorm:"column:allocation_id;type:char(36);not null"`
+	RequestKey         string    `gorm:"column:request_key;type:char(36);not null;uniqueIndex:ux_workbench_store_audit_org_request_action,priority:2"`
+	Action             string    `gorm:"column:action;size:64;not null;uniqueIndex:ux_workbench_store_audit_org_request_action,priority:3"`
+	Outcome            string    `gorm:"column:outcome;size:32;not null"`
+	ActorSubject       string    `gorm:"column:actor_subject;size:200;not null"`
+	SafeFieldNames     string    `gorm:"column:safe_field_names;not null"`
+	PayloadFingerprint string    `gorm:"column:payload_fingerprint;size:64;not null;default:''"`
+	PreviousState      string    `gorm:"column:previous_state;size:32;not null"`
+	NewState           string    `gorm:"column:new_state;size:32;not null"`
+	FailureCode        string    `gorm:"column:failure_code;size:64;not null"`
+	StoreVersion       int64     `gorm:"column:store_version;not null"`
+	CreatedAt          time.Time `gorm:"column:created_at;not null;index:idx_workbench_store_audit_org_store_created,priority:3"`
+	OccurredAt         time.Time `gorm:"column:occurred_at;not null"`
 }
 
 func (workbenchStoreAuditLogRecord) TableName() string { return "workbench_store_audit_logs" }
@@ -202,6 +206,12 @@ func normalizeAuditEvent(event AuditEvent) (AuditEvent, error) {
 	if event.StoreVersion < 0 {
 		return AuditEvent{}, errors.New("audit store version is invalid")
 	}
+	if event.PayloadFingerprint != "" {
+		decoded, decodeErr := hex.DecodeString(event.PayloadFingerprint)
+		if decodeErr != nil || len(decoded) != 32 {
+			return AuditEvent{}, errors.New("audit payload fingerprint is invalid")
+		}
+	}
 	fields, err := normalizeSafeFieldNames(event.SafeFieldNames)
 	if err != nil {
 		return AuditEvent{}, err
@@ -228,6 +238,8 @@ func validTaskFiveAuditCombination(event AuditEvent) bool {
 		return succeeded && sameMutableState && profileFields
 	case AuditActionStoreUpdateNoOp:
 		return succeeded && sameMutableState && len(event.SafeFieldNames) == 0
+	case AuditActionStoreLifecycleStarted:
+		return unknown && ((event.PreviousState == StoreStatusActive && event.NewState == StoreStatusDisabled) || (event.PreviousState == StoreStatusDisabled && event.NewState == StoreStatusActive)) && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
 	case AuditActionStoreDisabled:
 		return succeeded && event.PreviousState == StoreStatusActive && event.NewState == StoreStatusDisabled && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
 	case AuditActionStoreEnabled:
@@ -264,7 +276,7 @@ func normalizeSafeFieldNames(fields []string) ([]string, error) {
 
 func validAuditAction(action AuditAction) bool {
 	switch action {
-	case AuditActionQuotaReserved, AuditActionStoreCreated, AuditActionQuotaCommitStarted, AuditActionQuotaCommitFailed, AuditActionStoreCreateFailed, AuditActionStoreCreateUnknown, AuditActionStoreCreationCommitted, AuditActionStoreUpdateStarted, AuditActionStoreUpdated, AuditActionStoreUpdateNoOp, AuditActionStoreDisabled, AuditActionStoreEnabled, AuditActionDeleteStarted, AuditActionStoreMarkedDeleting, AuditActionQuotaDeallocated, AuditActionDeleteComplete:
+	case AuditActionQuotaReserved, AuditActionStoreCreated, AuditActionQuotaCommitStarted, AuditActionQuotaCommitFailed, AuditActionStoreCreateFailed, AuditActionStoreCreateUnknown, AuditActionStoreCreationCommitted, AuditActionStoreUpdateStarted, AuditActionStoreUpdated, AuditActionStoreUpdateNoOp, AuditActionStoreLifecycleStarted, AuditActionStoreDisabled, AuditActionStoreEnabled, AuditActionDeleteStarted, AuditActionStoreMarkedDeleting, AuditActionQuotaDeallocated, AuditActionDeleteComplete:
 		return true
 	}
 	return false
@@ -282,7 +294,7 @@ func auditRecordFromEvent(event AuditEvent) (workbenchStoreAuditLogRecord, error
 	if err != nil {
 		return workbenchStoreAuditLogRecord{}, err
 	}
-	return workbenchStoreAuditLogRecord{EventID: event.EventID, OrganizationID: event.OrganizationID, StoreID: event.StoreID, AllocationID: event.AllocationID, RequestKey: event.RequestKey, Action: string(event.Action), Outcome: string(event.Outcome), ActorSubject: event.ActorSubject, SafeFieldNames: string(fields), PreviousState: string(event.PreviousState), NewState: string(event.NewState), FailureCode: string(event.FailureCode), StoreVersion: event.StoreVersion, CreatedAt: time.Now().UTC(), OccurredAt: event.OccurredAt.UTC()}, nil
+	return workbenchStoreAuditLogRecord{EventID: event.EventID, OrganizationID: event.OrganizationID, StoreID: event.StoreID, AllocationID: event.AllocationID, RequestKey: event.RequestKey, Action: string(event.Action), Outcome: string(event.Outcome), ActorSubject: event.ActorSubject, SafeFieldNames: string(fields), PayloadFingerprint: event.PayloadFingerprint, PreviousState: string(event.PreviousState), NewState: string(event.NewState), FailureCode: string(event.FailureCode), StoreVersion: event.StoreVersion, CreatedAt: time.Now().UTC(), OccurredAt: event.OccurredAt.UTC()}, nil
 }
 
 func auditEventFromRecord(record workbenchStoreAuditLogRecord) (AuditEvent, error) {
@@ -290,7 +302,7 @@ func auditEventFromRecord(record workbenchStoreAuditLogRecord) (AuditEvent, erro
 	if err := json.Unmarshal([]byte(record.SafeFieldNames), &fields); err != nil {
 		return AuditEvent{}, err
 	}
-	return normalizeAuditEvent(AuditEvent{EventID: record.EventID, OrganizationID: record.OrganizationID, StoreID: record.StoreID, AllocationID: record.AllocationID, RequestKey: record.RequestKey, Action: AuditAction(record.Action), Outcome: AuditOutcome(record.Outcome), ActorSubject: record.ActorSubject, SafeFieldNames: fields, PreviousState: LifecycleStatus(record.PreviousState), NewState: LifecycleStatus(record.NewState), FailureCode: AuditFailureCode(record.FailureCode), StoreVersion: record.StoreVersion, OccurredAt: record.OccurredAt})
+	return normalizeAuditEvent(AuditEvent{EventID: record.EventID, OrganizationID: record.OrganizationID, StoreID: record.StoreID, AllocationID: record.AllocationID, RequestKey: record.RequestKey, Action: AuditAction(record.Action), Outcome: AuditOutcome(record.Outcome), ActorSubject: record.ActorSubject, SafeFieldNames: fields, PayloadFingerprint: record.PayloadFingerprint, PreviousState: LifecycleStatus(record.PreviousState), NewState: LifecycleStatus(record.NewState), FailureCode: AuditFailureCode(record.FailureCode), StoreVersion: record.StoreVersion, OccurredAt: record.OccurredAt})
 }
 
 func sameAuditSemanticPayload(a, b AuditEvent) bool {

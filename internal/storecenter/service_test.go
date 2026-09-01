@@ -1578,6 +1578,93 @@ func TestServiceUpdateIntentFailureDoesNotSaveAndRetryConverges(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateRejectsChangedPayloadForExistingIntent(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	repository.saveErr = errors.New("save unavailable")
+	audit := newAuditRepositoryFake()
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "editor", StoreID: store.ID(), ExpectedVersion: store.Version(), Name: "First", Region: store.Region()}
+	if _, err := service.Update(context.Background(), first); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Update() = %v, want dependency error", err)
+	}
+	repository.saveErr = nil
+	second := first
+	second.Name = "Second"
+	if _, err := service.Update(context.Background(), second); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("changed retry Update() = %v, want dependency error", err)
+	}
+	if repository.saveCalls != 1 {
+		t.Fatalf("changed retry Save calls = %d, want 1", repository.saveCalls)
+	}
+	current, err := repository.Get(context.Background(), "org-a", store.ID())
+	if err != nil || current.Name() != "Before" || current.Version() != store.Version() {
+		t.Fatalf("store after changed retry = %#v, %v", current, err)
+	}
+}
+
+func TestServiceRepairsUpdateAuditAfterLaterMutation(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionStoreUpdated: 1}
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	update := storecenter.UpdateStoreRequest{OrganizationID: "org-a", ActorSubject: "editor", StoreID: store.ID(), ExpectedVersion: store.Version(), Name: "After", Region: store.Region()}
+	if _, err := service.Update(context.Background(), update); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Update() = %v, want dependency error", err)
+	}
+	disable, err := service.Disable(context.Background(), storecenter.StoreLifecycleRequest{OrganizationID: "org-a", ActorSubject: "operator", StoreID: store.ID(), ExpectedVersion: store.Version() + 1})
+	if err != nil || disable.Store.Store.Version() != store.Version()+2 {
+		t.Fatalf("later Disable() = %#v, %v", disable, err)
+	}
+	result, err := service.Update(context.Background(), update)
+	if err != nil || !result.Replayed || result.Store.Store.Version() != store.Version()+2 {
+		t.Fatalf("repaired Update() = %#v, %v", result, err)
+	}
+	operationKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte("org-a\n"+store.ID()+"\nupdate\n"+fmt.Sprint(store.Version()))).String()
+	completed := audit.eventFor("org-a", operationKey, storecenter.AuditActionStoreUpdated)
+	if completed.Action != storecenter.AuditActionStoreUpdated || completed.StoreVersion != store.Version()+1 || completed.PayloadFingerprint == "" {
+		t.Fatalf("repaired update audit = %+v", completed)
+	}
+}
+
+func TestServiceRepairsLifecycleAuditAfterLaterMutation(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Before")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionStoreDisabled: 1}
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disableRequest := storecenter.StoreLifecycleRequest{OrganizationID: "org-a", ActorSubject: "operator", StoreID: store.ID(), ExpectedVersion: store.Version()}
+	if _, err := service.Disable(context.Background(), disableRequest); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Disable() = %v, want dependency error", err)
+	}
+	enable, err := service.Enable(context.Background(), storecenter.StoreLifecycleRequest{OrganizationID: "org-a", ActorSubject: "operator", StoreID: store.ID(), ExpectedVersion: store.Version() + 1})
+	if err != nil || enable.Store.Store.Version() != store.Version()+2 {
+		t.Fatalf("later Enable() = %#v, %v", enable, err)
+	}
+	result, err := service.Disable(context.Background(), disableRequest)
+	if err != nil || !result.Replayed || result.Store.Store.Version() != store.Version()+2 {
+		t.Fatalf("repaired Disable() = %#v, %v", result, err)
+	}
+	operationKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte("org-a\n"+store.ID()+"\ndisable\n"+fmt.Sprint(store.Version()))).String()
+	completed := audit.eventFor("org-a", operationKey, storecenter.AuditActionStoreDisabled)
+	if completed.Action != storecenter.AuditActionStoreDisabled || completed.StoreVersion != store.Version()+1 || completed.PayloadFingerprint == "" {
+		t.Fatalf("repaired lifecycle audit = %+v", completed)
+	}
+}
+
 // A deterministic identity collision is a safe business conflict, not an
 // infrastructure outage. The service must preserve the stable sentinel and
 // never expose SQLite/GORM details.
@@ -2139,7 +2226,7 @@ func (f *auditRepositoryFake) Record(_ context.Context, event storecenter.AuditE
 	}
 	key := event.OrganizationID + "/" + event.RequestKey + "/" + string(event.Action)
 	if existing, ok := f.events[key]; ok {
-		if existing.StoreID != event.StoreID || existing.AllocationID != event.AllocationID || existing.Outcome != event.Outcome || existing.PreviousState != event.PreviousState || existing.NewState != event.NewState || existing.FailureCode != event.FailureCode || existing.StoreVersion != event.StoreVersion || !sameStrings(existing.SafeFieldNames, event.SafeFieldNames) {
+		if existing.StoreID != event.StoreID || existing.AllocationID != event.AllocationID || existing.Outcome != event.Outcome || existing.PayloadFingerprint != event.PayloadFingerprint || existing.PreviousState != event.PreviousState || existing.NewState != event.NewState || existing.FailureCode != event.FailureCode || existing.StoreVersion != event.StoreVersion || !sameStrings(existing.SafeFieldNames, event.SafeFieldNames) {
 			return storecenter.AuditEvent{}, false, storecenter.ErrAuditIdentityMismatch
 		}
 		return existing, true, nil

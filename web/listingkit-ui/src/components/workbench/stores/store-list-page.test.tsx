@@ -10,6 +10,7 @@ const navigation = vi.hoisted(() => ({
 const context = vi.hoisted(() => ({
   roles: ["listingkit_operator"],
   effectiveOrganization: { id: "org-a", name: "企业 A", roles: [] },
+  retry: vi.fn(),
 }));
 const storesQuery = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const useWorkbenchStores = vi.hoisted(() => vi.fn(() => storesQuery.value));
@@ -65,6 +66,7 @@ describe("StoreListPage", () => {
     useWorkbenchStores.mockClear();
     context.roles = ["listingkit_operator"];
     context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] };
+    context.retry.mockReset();
     storesQuery.value = {};
     table.props = [];
   });
@@ -237,6 +239,22 @@ describe("StoreListPage", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent(expectedCopy);
     expect(screen.queryByText(/raw service message|request-id/)).not.toBeInTheDocument();
+  });
+
+  it("refreshes organization context before retrying after cookie drift", async () => {
+    const refetch = vi.fn();
+    storesQuery.value = {
+      isPending: false,
+      isError: true,
+      error: { code: "ORGANIZATION_CONTEXT_CHANGED", message: "raw", requestId: "req" },
+      refetch,
+    };
+    render(<StoreListPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "重试" }));
+
+    expect(context.retry).toHaveBeenCalledTimes(1);
+    expect(refetch).not.toHaveBeenCalled();
   });
 
   it("hides stale quota, table, and pagination whenever access has errored", () => {
