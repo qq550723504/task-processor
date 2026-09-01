@@ -4,14 +4,15 @@ import (
 	"strings"
 	"testing"
 
-	"task-processor/internal/listingkit"
+	"task-processor/internal/compatibility/listingkit/sourcehandoff"
+	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/product/sourcing"
 )
 
 func TestAlibaba1688SourceFactsFlowProducesListingKitRequest(t *testing.T) {
-	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
-		Request: sourcing.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/321.html?spm=flow", StoreID: 11},
-		Product: &sourcing.Alibaba1688ProductSnapshot{
+	envelope := sourcea1688.Alibaba1688SourceEnvelope(sourcea1688.Alibaba1688SourceEnvelopeInput{
+		Request: sourcea1688.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/321.html?spm=flow", StoreID: 11},
+		Product: &sourcea1688.Alibaba1688ProductSnapshot{
 			ID:               "321",
 			Title:            "Insulated Lunch Bag",
 			URL:              "https://detail.1688.com/offer/321.html?foo=bar",
@@ -23,16 +24,16 @@ func TestAlibaba1688SourceFactsFlowProducesListingKitRequest(t *testing.T) {
 			Unit:             "个",
 			Category:         "Bags>Lunch Bags",
 			Brand:            "Factory Lunch",
-			Supplier: sourcing.Alibaba1688SupplierSnapshot{
+			Supplier: sourcea1688.Alibaba1688SupplierSnapshot{
 				ID:   "supplier-321",
 				Name: "Lunch Factory",
 			},
-			Specifications: []sourcing.Alibaba1688SpecificationSnapshot{{Name: "Material", Value: "Oxford cloth"}},
-			ProductDetails: []sourcing.Alibaba1688ProductDetailSnapshot{{
+			Specifications: []sourcea1688.Alibaba1688SpecificationSnapshot{{Name: "Material", Value: "Oxford cloth"}},
+			ProductDetails: []sourcea1688.Alibaba1688ProductDetailSnapshot{{
 				Content: "Thermal lunch bag with zipper.",
 				Images:  []string{"https://img.example/321-detail.jpg"},
 			}},
-			Variants: []sourcing.Alibaba1688VariantSnapshot{{
+			Variants: []sourcea1688.Alibaba1688VariantSnapshot{{
 				Name:       "Black",
 				Image:      "https://img.example/321-black.jpg",
 				Stock:      50,
@@ -52,33 +53,21 @@ func TestAlibaba1688SourceFactsFlowProducesListingKitRequest(t *testing.T) {
 		t.Fatalf("SourceEnvelope warnings = %+v, want none", envelope.Warnings)
 	}
 
-	productFacts := sourcing.CatalogProductFactsFromEnvelope(envelope)
-	assetFacts := sourcing.AssetFactsFromEnvelope(envelope)
-
-	if !productFacts.HasIdentity() {
-		t.Fatal("catalog product facts should preserve source identity")
+	snapshot, err := sourcing.ToSnapshot(envelope)
+	if err != nil {
+		t.Fatalf("ToSnapshot() error = %v", err)
 	}
-	if productFacts.SourcePlatform != sourcing.Alibaba1688SourcePlatform || productFacts.SourceID != "321" {
-		t.Fatalf("catalog source = %q/%q, want 1688/321", productFacts.SourcePlatform, productFacts.SourceID)
+	if snapshot.Title != "Insulated Lunch Bag" || snapshot.Brand != "Factory Lunch" {
+		t.Fatalf("snapshot facts = %+v, want source title and brand", snapshot)
 	}
-	if productFacts.Title != "Insulated Lunch Bag" {
-		t.Fatalf("catalog title = %q, want source title", productFacts.Title)
-	}
-	if productFacts.Attributes["category"] != "Bags>Lunch Bags" {
-		t.Fatalf("catalog category = %q, want source category", productFacts.Attributes["category"])
-	}
-	if len(productFacts.Variants) != 1 || productFacts.Variants[0].Attributes["Color"] != "Black" {
-		t.Fatalf("catalog variants = %+v, want one black variant", productFacts.Variants)
-	}
-	if !assetFacts.HasAssets() {
-		t.Fatal("asset facts should preserve 1688 source images")
+	if len(snapshot.Sources) != 1 || snapshot.Sources[0].Type != sourcing.SourceTypeCrawler || snapshot.Sources[0].Detail != "321" {
+		t.Fatalf("snapshot sources = %+v, want crawler/raw product lineage", snapshot.Sources)
 	}
 
-	req := listingkit.GenerateRequestFromSourceFacts(listingkit.SourceFactsGenerateRequestInput{
+	req := sourcehandoff.GenerateRequestFromEnvelope(sourcehandoff.ListingKitRequestInput{
+		Envelope:     envelope,
 		TenantID:     " tenant-1688 ",
 		UserID:       " user-1688 ",
-		Product:      productFacts,
-		Assets:       assetFacts,
 		Platforms:    []string{" SHEIN ", "shein"},
 		Country:      " US ",
 		Language:     " en_US ",

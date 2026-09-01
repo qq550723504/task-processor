@@ -19,7 +19,6 @@ import (
 	crawler1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/product/sourcing"
 	"task-processor/internal/sourceaccount"
 )
 
@@ -64,8 +63,8 @@ func TestCreateListingKitTaskReturnsCreatedTask(t *testing.T) {
 func TestCreateListingKitTaskReturnsBadRequestWithHandoff(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &fakeTaskCommandService{err: errors.New("1688 source cannot create listingkit task: crawler failed")}
-	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
-		Request: sourcing.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/1000.html"},
+	envelope := crawler1688.Alibaba1688SourceEnvelope(crawler1688.Alibaba1688SourceEnvelopeInput{
+		Request: crawler1688.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/1000.html"},
 		Error:   errors.New("crawler failed"),
 	})
 	service.result = &a1688.CreateTaskResult{Handoff: &a1688.ListingKitTaskHandoff{Envelope: envelope}}
@@ -310,15 +309,15 @@ func (f *fakeTaskCommandService) CreateTask(_ context.Context, command a1688.Cre
 	if f.result != nil {
 		return f.result, nil
 	}
-	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
-		Request: sourcing.Alibaba1688CrawlRequestInput{URL: command.URL, AccountID: command.SourceAccountID},
+	envelope := crawler1688.Alibaba1688SourceEnvelope(crawler1688.Alibaba1688SourceEnvelopeInput{
+		Request: crawler1688.Alibaba1688CrawlRequestInput{URL: command.URL, AccountID: command.SourceAccountID},
 		Product: crawler1688.SnapshotFromLegacyProduct(command.Product),
 	})
 	return &a1688.CreateTaskResult{
 		Task: &listingkit.Task{ID: "task-http", TenantID: command.TenantID, Status: core.TaskStatusPending},
 		Handoff: &a1688.ListingKitTaskHandoff{
 			Envelope: envelope,
-			Request:  listingkit.GenerateRequest{ProductURL: sourcing.NormalizeAlibaba1688URL(command.URL)},
+			Request:  listingkit.GenerateRequest{ProductURL: crawler1688.NormalizeAlibaba1688URL(command.URL)},
 		},
 	}, nil
 }

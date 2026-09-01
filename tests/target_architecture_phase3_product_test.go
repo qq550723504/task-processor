@@ -36,6 +36,16 @@ func TestPhase3ProductTargetDependencies(t *testing.T) {
 			"github.com/sashabaranov/go-openai",
 		}, nil)
 	}
+
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "product", "sourcing"), []string{
+		"task-processor/internal/asset",
+		"task-processor/internal/crawler",
+		"task-processor/internal/model",
+		"task-processor/internal/product/asset",
+		"task-processor/internal/product/enrichment",
+		"task-processor/internal/product/image",
+		"task-processor/internal/productenrich",
+	}, nil)
 }
 
 func TestPhase3LegacyProductRootsDoNotGrow(t *testing.T) {

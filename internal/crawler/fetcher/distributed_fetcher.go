@@ -11,10 +11,10 @@ import (
 	"task-processor/internal/app/crawler/distributed"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
+	sourceamazon "task-processor/internal/integration/crawler/amazon"
 	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/platform/queue/rabbitmq"
-	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
 )
@@ -120,7 +120,7 @@ func (f *DistributedProductFetcher) FetchProduct(ctx context.Context, req *sourc
 
 // fetchFromDistributedCrawler 从分布式爬虫获取产品数据
 func (f *DistributedProductFetcher) fetchFromDistributedCrawler(ctx context.Context, req *sourceproduct.FetchRequest) (*model.Product, error) {
-	crawlerPlatform := sourcing.CrawlerPlatformForSource(req.Platform)
+	crawlerPlatform := sourceamazon.CrawlerPlatformForSource(req.Platform)
 
 	// 构建爬虫请求
 	crawlReq := &distributed.CrawlRequest{
@@ -188,7 +188,7 @@ func (f *DistributedProductFetcher) calculatePriority(req *sourceproduct.FetchRe
 
 // shouldUseCrawler 判断是否应该使用爬虫
 func (f *DistributedProductFetcher) shouldUseCrawler(platform string) bool {
-	return sourcing.SupportsCrawlerSource(platform)
+	return sourceamazon.SupportsCrawlerSource(platform)
 }
 
 // CacheProduct 缓存产品数据到服务器
@@ -237,7 +237,7 @@ func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *sour
 			continue
 		}
 
-		crawlerPlatform := sourcing.CrawlerPlatformForSource(req.Platform)
+		crawlerPlatform := sourceamazon.CrawlerPlatformForSource(req.Platform)
 		crawlReqs = append(crawlReqs, &distributed.CrawlRequest{
 			TaskID:         crawlTaskID(asin, req.Region),
 			TenantID:       req.TenantID,

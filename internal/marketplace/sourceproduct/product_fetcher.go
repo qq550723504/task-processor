@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"task-processor/internal/core/config"
+	sourceamazon "task-processor/internal/integration/crawler/amazon"
 	"task-processor/internal/model"
-	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
 )
@@ -18,7 +18,7 @@ import (
 type ProductFetcher struct {
 	cacheManager  *CacheManager
 	amazonConfig  *config.AmazonConfig
-	sourceFetcher sourcing.AmazonSourceFetcher
+	sourceFetcher sourceamazon.AmazonSourceFetcher
 	logger        *logrus.Entry
 }
 
@@ -26,7 +26,7 @@ type ProductFetcher struct {
 func NewProductFetcher(
 	rawJsonDataClient RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	crawlSource sourcing.AmazonCrawlerSource,
+	crawlSource sourceamazon.AmazonCrawlerSource,
 ) *ProductFetcher {
 	return NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, crawlSource, nil)
 }
@@ -35,7 +35,7 @@ func NewProductFetcher(
 func NewProductFetcherWithLogger(
 	rawJsonDataClient RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	crawlSource sourcing.AmazonCrawlerSource,
+	crawlSource sourceamazon.AmazonCrawlerSource,
 	log *logrus.Entry,
 ) *ProductFetcher {
 	if log == nil {
@@ -50,10 +50,10 @@ func NewProductFetcherWithLogger(
 	return &ProductFetcher{
 		cacheManager: NewCacheManagerWithFreshness(rawJsonDataClient, log, amazonConfigFreshnessDays(amazonConfig)),
 		amazonConfig: amazonConfig,
-		sourceFetcher: sourcing.AmazonSourceFetcher{
-			Planner: sourcing.AmazonCrawlRequestPlanner{
-				DomainResolver: sourcing.AmazonDefaultDomainResolver{},
-				ZipcodePolicy:  sourcing.AmazonDefaultZipcodePolicy{},
+		sourceFetcher: sourceamazon.AmazonSourceFetcher{
+			Planner: sourceamazon.AmazonCrawlRequestPlanner{
+				DomainResolver: sourceamazon.AmazonDefaultDomainResolver{},
+				ZipcodePolicy:  sourceamazon.AmazonDefaultZipcodePolicy{},
 				Zipcodes:       zipcodes,
 			},
 			Source: crawlSource,
@@ -80,7 +80,7 @@ func (f *ProductFetcher) FetchProduct(ctx context.Context, req *FetchRequest) (*
 
 	if f.sourceFetcher.Configured() && f.amazonConfig != nil && f.amazonConfig.Enabled {
 		f.logger.Debugf("fetching product via crawler: %s", req.ProductID)
-		return f.sourceFetcher.Fetch(ctx, sourcing.AmazonCrawlRequestInput{
+		return f.sourceFetcher.Fetch(ctx, sourceamazon.AmazonCrawlRequestInput{
 			Region:    req.Region,
 			ProductID: req.ProductID,
 			Zipcode:   req.Zipcode,

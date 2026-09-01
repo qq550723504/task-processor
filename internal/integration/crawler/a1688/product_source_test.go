@@ -1,10 +1,113 @@
-package sourcing
+package a1688
 
 import (
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
+
+	"task-processor/internal/product/sourcing"
 )
+
+func TestConvert1688ProductToScrapedDataMapsVariantDimensionsAndVariants(t *testing.T) {
+	product := &Alibaba1688ProductSnapshot{
+		Title:    "Sneaker",
+		Images:   []string{" https://example.com/main.jpg ", "", "https://example.com/main.jpg"},
+		MinPrice: 29.9,
+		Currency: "CNY",
+		VariationValues: []Alibaba1688VariationValueSnapshot{
+			{Name: "颜色", Values: []string{"红色", "蓝色", "红色"}},
+			{Name: "尺码", Values: []string{"42", "43"}},
+		},
+		Variants: []Alibaba1688VariantSnapshot{
+			{
+				Attributes: map[string]any{"颜色": "红色", "尺码": "42"},
+				Image:      "https://example.com/red-42.jpg",
+				Price:      35.5,
+				Stock:      12,
+			},
+			{
+				Attributes: map[string]any{"颜色": "蓝色", "尺码": "43"},
+				Price:      36.5,
+				Stock:      8,
+			},
+		},
+	}
+
+	scraped := Convert1688ProductToScrapedData(product)
+	if scraped == nil {
+		t.Fatal("Convert1688ProductToScrapedData() returned nil")
+	}
+	if len(scraped.VariantDimensions) != 2 {
+		t.Fatalf("len(VariantDimensions) = %d, want 2", len(scraped.VariantDimensions))
+	}
+	if got := scraped.VariantDimensions[0].Name; got != "颜色" {
+		t.Fatalf("VariantDimensions[0].Name = %q, want 颜色", got)
+	}
+	if len(scraped.VariantDimensions[0].Values) != 2 {
+		t.Fatalf("len(VariantDimensions[0].Values) = %d, want 2", len(scraped.VariantDimensions[0].Values))
+	}
+	if len(scraped.Variants) != 2 {
+		t.Fatalf("len(Variants) = %d, want 2", len(scraped.Variants))
+	}
+	if len(scraped.Images) != 1 || scraped.Images[0] != "https://example.com/main.jpg" {
+		t.Fatalf("Images = %+v, want trimmed unique main image", scraped.Images)
+	}
+	if got := scraped.Variants[0].Attributes["颜色"]; got != "红色" {
+		t.Fatalf("Variants[0].Attributes[颜色] = %q, want 红色", got)
+	}
+	if got := scraped.Variants[1].Images[0]; got != "https://example.com/main.jpg" {
+		t.Fatalf("Variants[1].Images[0] = %q, want main image fallback", got)
+	}
+	if scraped.Variants[0].Price == nil || scraped.Variants[0].Price.Amount != 35.5 {
+		t.Fatal("expected variant price to be mapped")
+	}
+}
+
+func TestConvert1688ProductToScrapedDataCleansSpecsAndDescription(t *testing.T) {
+	product := &Alibaba1688ProductSnapshot{
+		Title: "Fallback title",
+		Specifications: []Alibaba1688SpecificationSnapshot{
+			{Name: " Material ", Value: " Cotton "},
+			{Name: " Empty ", Value: " "},
+			{Name: " ", Value: "ignored"},
+		},
+		ProductDetails: []Alibaba1688ProductDetailSnapshot{
+			{Content: "  "},
+			{Content: " First line "},
+			{Content: "\nSecond line\n"},
+		},
+	}
+
+	scraped := Convert1688ProductToScrapedData(product)
+	if scraped == nil {
+		t.Fatal("Convert1688ProductToScrapedData() returned nil")
+	}
+	if got := scraped.Specs["Material"]; got != "Cotton" {
+		t.Fatalf("Specs[Material] = %q, want Cotton", got)
+	}
+	if _, ok := scraped.Specs["Empty"]; ok {
+		t.Fatalf("Specs contains empty value: %+v", scraped.Specs)
+	}
+	if got := scraped.Description; got != "First line\nSecond line" {
+		t.Fatalf("Description = %q, want trimmed joined detail lines", got)
+	}
+}
+
+func TestConvert1688ProductToScrapedDataDescriptionFallsBackToTitleForBlankDetails(t *testing.T) {
+	product := &Alibaba1688ProductSnapshot{
+		Title:          "Fallback title",
+		ProductDetails: []Alibaba1688ProductDetailSnapshot{{Content: "  "}},
+	}
+
+	scraped := Convert1688ProductToScrapedData(product)
+	if scraped == nil {
+		t.Fatal("Convert1688ProductToScrapedData() returned nil")
+	}
+	if scraped.Description != "Fallback title" {
+		t.Fatalf("Description = %q, want title fallback", scraped.Description)
+	}
+}
 
 func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 	product := &Alibaba1688ProductSnapshot{
@@ -66,7 +169,7 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 		RequestID:   "request-1",
 	})
 
-	if envelope.Identity.SourceType != SourceTypeCrawler {
+	if envelope.Identity.SourceType != sourcing.SourceTypeCrawler {
 		t.Fatalf("SourceType = %q, want crawler", envelope.Identity.SourceType)
 	}
 	if envelope.Identity.SourcePlatform != Alibaba1688SourcePlatform {
@@ -88,7 +191,7 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 		t.Fatalf("RawReference.URL = %q, want normalized URL without query", envelope.RawReference.URL)
 	}
 	if envelope.ProductCandidate.Title != "Canvas Tote Bag" || envelope.ProductCandidate.Brand != "Factory Brand" {
-		t.Fatalf("ProductCandidate = %+v, want title and brand", envelope.ProductCandidate)
+		t.Fatalf("sourcing.ProductCandidate = %+v, want title and brand", envelope.ProductCandidate)
 	}
 	if envelope.ProductCandidate.Description != "Durable bag" {
 		t.Fatalf("Description = %q, want product detail content", envelope.ProductCandidate.Description)
@@ -113,7 +216,7 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 		t.Fatalf("first asset role = %q, want primary", envelope.AssetCandidates[0].Role)
 	}
 	if envelope.SupplierOrCostFacts.SupplierID != "supplier-1" || envelope.SupplierOrCostFacts.Price != "8.5" {
-		t.Fatalf("SupplierOrCostFacts = %+v, want supplier and min price", envelope.SupplierOrCostFacts)
+		t.Fatalf("sourcing.SupplierOrCostFacts = %+v, want supplier and min price", envelope.SupplierOrCostFacts)
 	}
 	if envelope.SupplierOrCostFacts.Facts["is_gold_supplier"] != "true" {
 		t.Fatalf("is_gold_supplier = %q, want true", envelope.SupplierOrCostFacts.Facts["is_gold_supplier"])
@@ -181,5 +284,101 @@ func TestAlibaba1688SourceEnvelopeHandlesMissingProductAndError(t *testing.T) {
 	}
 	if !codes["missing_product"] || !codes["source_error"] {
 		t.Fatalf("warning codes = %+v, want missing_product and source_error", codes)
+	}
+}
+
+func TestAlibaba1688CrawlRequestJSONOmitsPublicAccountSelector(t *testing.T) {
+	payload, err := json.Marshal(Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/1.html"})
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if string(payload) != `{"url":"https://detail.1688.com/offer/1.html"}` {
+		t.Fatalf("public request JSON = %s, want account selector omitted", payload)
+	}
+}
+
+func TestAlibaba1688CrawlRequestJSONIncludesAccountSelectorForAssistedMode(t *testing.T) {
+	payload, err := json.Marshal(Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/1.html", AccountID: 42})
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if string(payload) != `{"url":"https://detail.1688.com/offer/1.html","account_id":42}` {
+		t.Fatalf("assisted request JSON = %s, want account selector", payload)
+	}
+}
+
+func TestAlibaba1688SourceRequestUsesOfferIDIdentity(t *testing.T) {
+	got := Alibaba1688SourceRequest(Alibaba1688CrawlRequestInput{
+		URL:       " HTTPS://DETAIL.1688.COM/offer/123456789.html?spm=abc#sku ",
+		AccountID: 42,
+	}).Identity()
+
+	if got.Platform != "1688" || got.Region != "cn" || got.ProductID != "123456789" || got.StoreID != 0 {
+		t.Fatalf("Identity() = %+v, want 1688 cn offer identity", got)
+	}
+	if key := got.Key(); key != "1688:cn:123456789" {
+		t.Fatalf("Key() = %q, want 1688:cn:123456789", key)
+	}
+}
+
+func TestAlibaba1688SourceRequestDoesNotProjectAccountIntoNeutralStoreIdentity(t *testing.T) {
+	got := Alibaba1688SourceRequest(Alibaba1688CrawlRequestInput{
+		URL:       "https://detail.1688.com/offer/123.html",
+		AccountID: 3001,
+	}).Identity()
+
+	if got.StoreID != 0 {
+		t.Fatalf("Identity().StoreID = %d, want neutral store id omitted", got.StoreID)
+	}
+}
+
+func TestAlibaba1688SourceRequestFallsBackToCleanURL(t *testing.T) {
+	got := Alibaba1688SourceRequest(Alibaba1688CrawlRequestInput{
+		URL: "detail.1688.com/item/custom?foo=bar#frag",
+	}).Identity()
+
+	if got.ProductID != "https://detail.1688.com/item/custom" {
+		t.Fatalf("ProductID fallback = %q, want cleaned URL", got.ProductID)
+	}
+}
+
+func TestNormalizeAlibaba1688SourceResultAttachesIdentity(t *testing.T) {
+	wantErr := errors.New("captcha")
+	product := &Alibaba1688ProductSnapshot{ID: "123", Title: "sample"}
+
+	got := NormalizeAlibaba1688SourceResult(Alibaba1688CrawlRequestInput{
+		URL: "https://detail.1688.com/offer/123.html",
+	}, product, wantErr)
+
+	if got.Identity.Key() != "1688:cn:123" {
+		t.Fatalf("Identity.Key() = %q, want 1688:cn:123", got.Identity.Key())
+	}
+	if got.Product != product {
+		t.Fatalf("Product was not preserved")
+	}
+	if !errors.Is(got.Error, wantErr) {
+		t.Fatalf("Error = %v, want %v", got.Error, wantErr)
+	}
+}
+
+func TestNormalizeAlibaba1688BatchResultsAlignsShortResults(t *testing.T) {
+	requests := []Alibaba1688CrawlRequestInput{
+		{URL: "https://detail.1688.com/offer/1.html"},
+		{URL: "https://detail.1688.com/offer/2.html"},
+	}
+	results := []Alibaba1688CrawlResultInput{
+		{Product: &Alibaba1688ProductSnapshot{ID: "1", Title: "first"}},
+	}
+
+	got := NormalizeAlibaba1688BatchResults(requests, results)
+
+	if len(got) != 2 {
+		t.Fatalf("len(got) = %d, want 2", len(got))
+	}
+	if got[0].Identity.Key() != "1688:cn:1" || got[0].Product.Title != "first" {
+		t.Fatalf("got[0] = %+v, want first request result", got[0])
+	}
+	if got[1].Identity.Key() != "1688:cn:2" || got[1].Product != nil || got[1].Error != nil {
+		t.Fatalf("got[1] = %+v, want empty result aligned to second request", got[1])
 	}
 }

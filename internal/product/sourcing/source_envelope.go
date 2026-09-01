@@ -1,6 +1,9 @@
 package sourcing
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // SourceEnvelope is the neutral handoff shape from source adapters into product,
 // catalog, asset, and ListingKit orchestration. It should not carry target
@@ -18,9 +21,17 @@ type SourceEnvelope struct {
 // Normalize returns a copy with normalized identity and warning metadata.
 func (e SourceEnvelope) Normalize() SourceEnvelope {
 	e.Identity = NormalizeSourceIdentity(e.Identity)
-	for i := range e.Warnings {
-		e.Warnings[i] = e.Warnings[i].Normalize()
+	e.RawReference.Metadata = cloneSourceMetadata(e.RawReference.Metadata)
+	e.Trace.Notes = append([]string(nil), e.Trace.Notes...)
+	if len(e.Warnings) == 0 {
+		e.Warnings = nil
+		return e
 	}
+	warnings := make([]SourceWarning, len(e.Warnings))
+	for i := range e.Warnings {
+		warnings[i] = e.Warnings[i].Normalize()
+	}
+	e.Warnings = warnings
 	return e
 }
 
@@ -32,6 +43,8 @@ type RawSourceReference struct {
 	URL           string
 	SnapshotID    string
 	Checksum      string
+	CapturedAt    time.Time
+	Metadata      map[string]string
 }
 
 // ProductCandidate carries platform-neutral product facts that can later be
@@ -95,4 +108,15 @@ type SourceTrace struct {
 	SourceRunID string
 	RequestID   string
 	Notes       []string
+}
+
+func cloneSourceMetadata(metadata map[string]string) map[string]string {
+	if len(metadata) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(metadata))
+	for key, value := range metadata {
+		out[key] = value
+	}
+	return out
 }

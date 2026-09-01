@@ -42,7 +42,7 @@ func TestWorkflowStudioSDSMetadataSupportBoundary(t *testing.T) {
 	}
 
 	adapterFile := parseListingKitGoFile(t, "sds_canonical_metadata.go")
-	if !hasImportPath(adapterFile, "task-processor/internal/product/sourcing/sdspod") {
+	if !hasImportPath(adapterFile, "task-processor/internal/sds/adapter/product_source") {
 		t.Fatal("sds_canonical_metadata.go should import sdspod")
 	}
 	if !hasSelectorCall(adapterFile, "sdspod", "ApplyCanonical") {

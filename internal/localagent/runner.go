@@ -8,12 +8,11 @@ import (
 	alibaba1688 "task-processor/internal/crawler/alibaba1688"
 	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/integration/crawler/a1688"
-	"task-processor/internal/product/sourcing"
 )
 
 type Jobs interface {
 	Claim(context.Context) (*Claim, error)
-	SubmitSuccess(context.Context, string, string, *sourcing.Alibaba1688ProductSnapshot) (Job, error)
+	SubmitSuccess(context.Context, string, string, *a1688.Alibaba1688ProductSnapshot) (Job, error)
 	SubmitFailure(context.Context, string, string, Failure) (Job, error)
 }
 

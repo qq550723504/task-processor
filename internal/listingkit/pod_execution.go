@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	sdspod "task-processor/internal/product/sourcing/sdspod"
+	sdspod "task-processor/internal/sds/adapter/product_source"
 )
 
 const (

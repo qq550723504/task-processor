@@ -4,18 +4,17 @@ import (
 	"slices"
 
 	"task-processor/internal/crawler/alibaba1688/model"
-	"task-processor/internal/product/sourcing"
 )
 
 // SnapshotFromLegacyProduct converts the legacy crawler DTO into the narrow
 // product-sourcing contract. All mutable fields are copied so product-domain
 // normalization cannot mutate crawler-owned data.
-func SnapshotFromLegacyProduct(product *model.Product1688) *sourcing.Alibaba1688ProductSnapshot {
+func SnapshotFromLegacyProduct(product *model.Product1688) *Alibaba1688ProductSnapshot {
 	if product == nil {
 		return nil
 	}
 
-	snapshot := &sourcing.Alibaba1688ProductSnapshot{
+	snapshot := &Alibaba1688ProductSnapshot{
 		ID:               product.ID,
 		Title:            product.Title,
 		URL:              product.URL,
@@ -26,7 +25,7 @@ func SnapshotFromLegacyProduct(product *model.Product1688) *sourcing.Alibaba1688
 		Currency:         product.Currency,
 		MinOrderQuantity: product.MinOrderQuantity,
 		Unit:             product.Unit,
-		Supplier: sourcing.Alibaba1688SupplierSnapshot{
+		Supplier: Alibaba1688SupplierSnapshot{
 			ID:              product.Supplier.ID,
 			Name:            product.Supplier.Name,
 			CompanyName:     product.Supplier.CompanyName,
@@ -42,7 +41,7 @@ func SnapshotFromLegacyProduct(product *model.Product1688) *sourcing.Alibaba1688
 		SalesVolume: product.SalesVolume,
 		ReviewCount: product.ReviewCount,
 		Rating:      product.Rating,
-		Shipping: sourcing.Alibaba1688ShippingSnapshot{
+		Shipping: Alibaba1688ShippingSnapshot{
 			ShippingFrom:   product.ShippingInfo.ShippingFrom,
 			ProcessingTime: product.ShippingInfo.ProcessingTime,
 		},
@@ -52,32 +51,32 @@ func SnapshotFromLegacyProduct(product *model.Product1688) *sourcing.Alibaba1688
 		IsCustomized: product.IsCustomized,
 	}
 
-	snapshot.Videos = make([]sourcing.Alibaba1688VideoSnapshot, len(product.Videos))
+	snapshot.Videos = make([]Alibaba1688VideoSnapshot, len(product.Videos))
 	for index, video := range product.Videos {
-		snapshot.Videos[index] = sourcing.Alibaba1688VideoSnapshot{
+		snapshot.Videos[index] = Alibaba1688VideoSnapshot{
 			VideoURL: video.VideoURL,
 			CoverURL: video.CoverURL,
 		}
 	}
 
-	snapshot.Specifications = make([]sourcing.Alibaba1688SpecificationSnapshot, len(product.Specifications))
+	snapshot.Specifications = make([]Alibaba1688SpecificationSnapshot, len(product.Specifications))
 	for index, specification := range product.Specifications {
-		snapshot.Specifications[index] = sourcing.Alibaba1688SpecificationSnapshot{
+		snapshot.Specifications[index] = Alibaba1688SpecificationSnapshot{
 			Name:  specification.Name,
 			Value: specification.Value,
 		}
 	}
 
-	snapshot.ProductDetails = make([]sourcing.Alibaba1688ProductDetailSnapshot, len(product.ProductDetails))
+	snapshot.ProductDetails = make([]Alibaba1688ProductDetailSnapshot, len(product.ProductDetails))
 	for index, detail := range product.ProductDetails {
-		snapshot.ProductDetails[index] = sourcing.Alibaba1688ProductDetailSnapshot{
+		snapshot.ProductDetails[index] = Alibaba1688ProductDetailSnapshot{
 			Content: detail.Content,
 			Images:  slices.Clone(detail.Images),
 		}
 	}
 
 	if product.PackInfo != nil {
-		snapshot.PackInfo = &sourcing.Alibaba1688PackInfoSnapshot{
+		snapshot.PackInfo = &Alibaba1688PackInfoSnapshot{
 			PackageType:   product.PackInfo.PackageType,
 			Weight:        product.PackInfo.Weight,
 			PackageImages: slices.Clone(product.PackInfo.PackageImages),
@@ -85,21 +84,21 @@ func SnapshotFromLegacyProduct(product *model.Product1688) *sourcing.Alibaba1688
 		}
 	}
 
-	snapshot.VariationValues = make([]sourcing.Alibaba1688VariationValueSnapshot, len(product.VariationsValues))
+	snapshot.VariationValues = make([]Alibaba1688VariationValueSnapshot, len(product.VariationsValues))
 	for index, variation := range product.VariationsValues {
-		snapshot.VariationValues[index] = sourcing.Alibaba1688VariationValueSnapshot{
+		snapshot.VariationValues[index] = Alibaba1688VariationValueSnapshot{
 			Name:   variation.VariantName,
 			Values: slices.Clone(variation.Values),
 		}
 	}
 
-	snapshot.Variants = make([]sourcing.Alibaba1688VariantSnapshot, len(product.Variants))
+	snapshot.Variants = make([]Alibaba1688VariantSnapshot, len(product.Variants))
 	for index, variant := range product.Variants {
 		attributes := make(map[string]any, len(variant.Attributes))
 		for key, value := range variant.Attributes {
 			attributes[key] = value
 		}
-		snapshot.Variants[index] = sourcing.Alibaba1688VariantSnapshot{
+		snapshot.Variants[index] = Alibaba1688VariantSnapshot{
 			Attributes: attributes,
 			Name:       variant.Name,
 			Image:      variant.Image,

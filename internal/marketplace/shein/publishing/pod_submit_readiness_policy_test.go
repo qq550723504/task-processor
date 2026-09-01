@@ -3,7 +3,7 @@ package publishing
 import (
 	"testing"
 
-	sdspod "task-processor/internal/product/sourcing/sdspod"
+	sdspod "task-processor/internal/sds/adapter/product_source"
 )
 
 func TestEvaluatePODSubmitReadiness(t *testing.T) {

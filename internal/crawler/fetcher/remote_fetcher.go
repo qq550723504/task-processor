@@ -12,9 +12,9 @@ import (
 
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
+	sourceamazon "task-processor/internal/integration/crawler/amazon"
 	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
-	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
 )
@@ -294,8 +294,8 @@ func (f *RemoteAPIProductFetcher) resolveZipcode(req *sourceproduct.FetchRequest
 	if f.amazonConfig != nil {
 		zipcodes = f.amazonConfig.Zipcodes
 	}
-	planner := sourcing.AmazonCrawlRequestPlanner{
-		ZipcodePolicy: sourcing.AmazonDefaultZipcodePolicy{},
+	planner := sourceamazon.AmazonCrawlRequestPlanner{
+		ZipcodePolicy: sourceamazon.AmazonDefaultZipcodePolicy{},
 		Zipcodes:      zipcodes,
 	}
 	return planner.ResolveZipcode(req.Region, req.Zipcode)

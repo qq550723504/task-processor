@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/localagent"
-	"task-processor/internal/product/sourcing"
 )
 
 func TestNewRejectsNonLoopbackHTTP(t *testing.T) {
@@ -65,7 +65,7 @@ func TestClientSubmitSuccessUsesSnakeCaseSnapshotPayload(t *testing.T) {
 	defer server.Close()
 	client, err := New(server.URL, "token", server.Client())
 	require.NoError(t, err)
-	snapshot := &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html", MainImage: "https://img/main.jpg", MinPrice: 12.5}
+	snapshot := &sourcea1688.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html", MainImage: "https://img/main.jpg", MinPrice: 12.5}
 	if field := reflect.ValueOf(snapshot).Elem().FieldByName("PriceRangeCount"); field.IsValid() && field.CanSet() {
 		field.SetInt(2)
 	}
@@ -87,7 +87,7 @@ func TestClientPreservesOversizedSnapshotError(t *testing.T) {
 	defer server.Close()
 	client, err := New(server.URL, "token", server.Client())
 	require.NoError(t, err)
-	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html"})
+	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcea1688.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html"})
 	require.ErrorIs(t, err, localagent.ErrSnapshotTooLarge)
 }
 
@@ -99,7 +99,7 @@ func TestClientPreservesInvalidSnapshotError(t *testing.T) {
 	defer server.Close()
 	client, err := New(server.URL, "token", server.Client())
 	require.NoError(t, err)
-	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html"})
+	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcea1688.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html"})
 	require.ErrorIs(t, err, localagent.ErrSnapshotInvalid)
 }
 
@@ -110,7 +110,7 @@ func TestClientMapsUnencodableSnapshotToInvalidSnapshot(t *testing.T) {
 	defer server.Close()
 	client, err := New(server.URL, "token", server.Client())
 	require.NoError(t, err)
-	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcing.Alibaba1688ProductSnapshot{
+	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcea1688.Alibaba1688ProductSnapshot{
 		ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html", MinPrice: math.NaN(),
 	})
 	require.ErrorIs(t, err, localagent.ErrSnapshotInvalid)

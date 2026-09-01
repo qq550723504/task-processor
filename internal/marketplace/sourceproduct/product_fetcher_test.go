@@ -80,28 +80,28 @@ func (s *selectiveProductFetcherCrawlSource) ProcessWithContext(_ context.Contex
 	return nil, errors.New("product not found")
 }
 
-func TestProductFetcherUsesSourcingDefaultZipcodePolicy(t *testing.T) {
+func TestProductFetcherUsesAmazonAdapterDefaultZipcodePolicy(t *testing.T) {
 	source, err := os.ReadFile("product_fetcher.go")
 	if err != nil {
 		t.Fatalf("ReadFile(product_fetcher.go) error = %v", err)
 	}
 	content := string(source)
-	if !strings.Contains(content, "ZipcodePolicy:  sourcing.AmazonDefaultZipcodePolicy{}") {
-		t.Fatal("ProductFetcher should delegate Amazon default zipcode policy to internal/product/sourcing")
+	if !strings.Contains(content, "ZipcodePolicy:  sourceamazon.AmazonDefaultZipcodePolicy{}") {
+		t.Fatal("ProductFetcher should delegate Amazon default zipcode policy to internal/integration/crawler/amazon")
 	}
 	if strings.Contains(content, "type productAmazonZipcodePolicy struct{}") {
 		t.Fatal("product_fetcher.go should not own Amazon default zipcode policy")
 	}
 }
 
-func TestProductFetcherUsesSourcingDefaultDomainResolver(t *testing.T) {
+func TestProductFetcherUsesAmazonAdapterDefaultDomainResolver(t *testing.T) {
 	source, err := os.ReadFile("product_fetcher.go")
 	if err != nil {
 		t.Fatalf("ReadFile(product_fetcher.go) error = %v", err)
 	}
 	content := string(source)
-	if !strings.Contains(content, "DomainResolver: sourcing.AmazonDefaultDomainResolver{}") {
-		t.Fatal("ProductFetcher should delegate Amazon domain and URL planning to internal/product/sourcing")
+	if !strings.Contains(content, "DomainResolver: sourceamazon.AmazonDefaultDomainResolver{}") {
+		t.Fatal("ProductFetcher should delegate Amazon domain and URL planning to internal/integration/crawler/amazon")
 	}
 	if strings.Contains(content, "DomainResolver: NewDomainResolver()") {
 		t.Fatal("product_fetcher.go should not construct the product package Amazon domain resolver")
@@ -110,7 +110,7 @@ func TestProductFetcherUsesSourcingDefaultDomainResolver(t *testing.T) {
 
 func TestProductDomainResolverCompatibilityLayerIsRetired(t *testing.T) {
 	if _, err := os.Stat("domain_resolver.go"); err == nil {
-		t.Fatal("domain_resolver.go still exists; Amazon source URL and zipcode rules belong in internal/product/sourcing")
+		t.Fatal("domain_resolver.go still exists; Amazon source URL and zipcode rules belong in internal/integration/crawler/amazon")
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("stat domain_resolver.go: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestProductDomainResolverCompatibilityLayerIsRetired(t *testing.T) {
 func TestProductRepositoryServiceCompatibilityLayerIsRetired(t *testing.T) {
 	for _, file := range []string{"repository.go", "service.go"} {
 		if _, err := os.Stat(file); err == nil {
-			t.Fatalf("%s still exists; use ProductFetcher and product/sourcing instead of the unwired repository-style product crawler service", file)
+			t.Fatalf("%s still exists; use ProductFetcher and the Amazon adapter instead of the unwired repository-style product crawler service", file)
 		} else if !os.IsNotExist(err) {
 			t.Fatalf("stat %s: %v", file, err)
 		}

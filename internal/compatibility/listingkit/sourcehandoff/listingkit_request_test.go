@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/product/sourcing"
 )
@@ -79,9 +80,9 @@ func TestCreateGenerateTaskFromEnvelopeRequiresCreator(t *testing.T) {
 
 func testAlibaba1688Envelope(t *testing.T) sourcing.SourceEnvelope {
 	t.Helper()
-	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
-		Request: sourcing.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/654.html?spm=handoff", StoreID: 11},
-		Product: &sourcing.Alibaba1688ProductSnapshot{
+	envelope := sourcea1688.Alibaba1688SourceEnvelope(sourcea1688.Alibaba1688SourceEnvelopeInput{
+		Request: sourcea1688.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/654.html?spm=handoff", StoreID: 11},
+		Product: &sourcea1688.Alibaba1688ProductSnapshot{
 			ID:             "654",
 			Title:          "Insulated Lunch Bag",
 			URL:            "https://detail.1688.com/offer/654.html?foo=bar",
@@ -91,9 +92,9 @@ func testAlibaba1688Envelope(t *testing.T) sourcing.SourceEnvelope {
 			Currency:       "CNY",
 			Category:       "Bags>Lunch Bags",
 			Brand:          "Factory Lunch",
-			Supplier:       sourcing.Alibaba1688SupplierSnapshot{ID: "supplier-654", Name: "Lunch Factory"},
-			Variants:       []sourcing.Alibaba1688VariantSnapshot{{Name: "Black", Image: "https://img.example/654-black.jpg", Price: 19.9, Attributes: map[string]any{"Color": "Black"}}},
-			ProductDetails: []sourcing.Alibaba1688ProductDetailSnapshot{{Content: "Thermal lunch bag with zipper."}},
+			Supplier:       sourcea1688.Alibaba1688SupplierSnapshot{ID: "supplier-654", Name: "Lunch Factory"},
+			Variants:       []sourcea1688.Alibaba1688VariantSnapshot{{Name: "Black", Image: "https://img.example/654-black.jpg", Price: 19.9, Attributes: map[string]any{"Color": "Black"}}},
+			ProductDetails: []sourcea1688.Alibaba1688ProductDetailSnapshot{{Content: "Thermal lunch bag with zipper."}},
 		},
 	})
 	if len(envelope.Warnings) != 0 {

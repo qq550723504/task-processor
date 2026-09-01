@@ -9,7 +9,7 @@ import (
 
 	alibaba1688 "task-processor/internal/crawler/alibaba1688"
 	"task-processor/internal/crawler/alibaba1688/model"
-	"task-processor/internal/product/sourcing"
+	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 )
 
 func TestRunnerSubmitsSanitizedChallenge(t *testing.T) {
@@ -147,7 +147,7 @@ func TestRunnerSubmitsCancellationFailureWithLiveContext(t *testing.T) {
 type fakeJobsAPI struct {
 	claim                      *Claim
 	submittedFailure           Failure
-	submittedProduct           *sourcing.Alibaba1688ProductSnapshot
+	submittedProduct           *sourcea1688.Alibaba1688ProductSnapshot
 	submitSuccessErr           error
 	order                      *[]string
 	submittedFailureContextErr error
@@ -159,7 +159,7 @@ func (f *fakeJobsAPI) Claim(context.Context) (*Claim, error) {
 	}
 	return f.claim, nil
 }
-func (f *fakeJobsAPI) SubmitSuccess(_ context.Context, _ string, _ string, product *sourcing.Alibaba1688ProductSnapshot) (Job, error) {
+func (f *fakeJobsAPI) SubmitSuccess(_ context.Context, _ string, _ string, product *sourcea1688.Alibaba1688ProductSnapshot) (Job, error) {
 	if f.order != nil {
 		*f.order = append(*f.order, "success")
 	}

@@ -1,31 +1,35 @@
-package sourcing
+package sourcehandoff
 
-import "testing"
+import (
+	"testing"
+
+	"task-processor/internal/product/sourcing"
+)
 
 func TestCatalogProductFactsFromEnvelopeMapsNeutralFacts(t *testing.T) {
-	envelope := SourceEnvelope{
-		Identity: SourceIdentity{
-			SourceType:     SourceTypeCrawler,
-			SourcePlatform: AmazonSourcePlatform,
+	envelope := sourcing.SourceEnvelope{
+		Identity: sourcing.SourceIdentity{
+			SourceType:     sourcing.SourceTypeCrawler,
+			SourcePlatform: "amazon",
 			SourceID:       "B001",
 			SourceURL:      "https://www.amazon.com/dp/B001",
 		},
-		ProductCandidate: ProductCandidate{
+		ProductCandidate: sourcing.ProductCandidate{
 			Title:       "Test Shirt",
 			Description: "Test description",
 			Brand:       "Test Brand",
 			Attributes:  map[string]string{"asin": "B001", "category": "Shirts"},
-			Variants: []ProductVariantCandidate{{
+			Variants: []sourcing.ProductVariantCandidate{{
 				SourceID:   "B001-BLUE-M",
 				Title:      "Blue / M",
 				SKU:        "SKU-1",
 				Attributes: map[string]string{"Color": "Blue", "Size": "M"},
 			}},
 		},
-		Warnings: []SourceWarning{{Code: " Missing_Description ", Field: "description", Message: " description is weak "}},
+		Warnings: []sourcing.SourceWarning{{Code: " Missing_Description ", Field: "description", Message: " description is weak "}},
 	}
 
-	facts := CatalogProductFactsFromEnvelope(envelope)
+	facts := catalogProductFactsFromEnvelope(envelope)
 	if !facts.HasIdentity() {
 		t.Fatal("HasIdentity() = false, want true")
 	}
@@ -56,23 +60,23 @@ func TestCatalogProductFactsFromEnvelopeMapsNeutralFacts(t *testing.T) {
 }
 
 func TestAssetFactsFromEnvelopeMapsNeutralAssets(t *testing.T) {
-	envelope := SourceEnvelope{
-		Identity: SourceIdentity{
-			SourceType:     SourceTypeCrawler,
-			SourcePlatform: AmazonSourcePlatform,
+	envelope := sourcing.SourceEnvelope{
+		Identity: sourcing.SourceIdentity{
+			SourceType:     sourcing.SourceTypeCrawler,
+			SourcePlatform: "amazon",
 			SourceID:       "B001",
 		},
-		AssetCandidates: []AssetCandidate{{
+		AssetCandidates: []sourcing.AssetCandidate{{
 			SourceID:  "img-1",
 			URL:       "https://img.example/1.jpg",
 			MediaType: "image",
 			Role:      "primary",
 			Checksum:  "sha256:1",
 		}},
-		Warnings: []SourceWarning{{Code: " Missing_Alt_Text ", Field: "images", Message: " image alt text missing "}},
+		Warnings: []sourcing.SourceWarning{{Code: " Missing_Alt_Text ", Field: "images", Message: " image alt text missing "}},
 	}
 
-	facts := AssetFactsFromEnvelope(envelope)
+	facts := assetFactsFromEnvelope(envelope)
 	if !facts.HasAssets() {
 		t.Fatal("HasAssets() = false, want true")
 	}

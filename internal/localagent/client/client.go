@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/localagent"
 	"task-processor/internal/product/sourcing"
 )
@@ -99,7 +100,7 @@ type shippingPayload struct {
 	ProcessingTime string `json:"processing_time"`
 }
 
-func snapshotPayload(snapshot *sourcing.Alibaba1688ProductSnapshot) *productSnapshotPayload {
+func snapshotPayload(snapshot *sourcea1688.Alibaba1688ProductSnapshot) *productSnapshotPayload {
 	if snapshot == nil {
 		return nil
 	}
@@ -174,7 +175,7 @@ func (c *Client) ClaimJob(ctx context.Context, jobID string) (*localagent.Claim,
 	return &localagent.Claim{Job: response.toJob(), ExecutionToken: response.ExecutionToken}, nil
 }
 
-func (c *Client) SubmitSuccess(ctx context.Context, jobID, token string, snapshot *sourcing.Alibaba1688ProductSnapshot) (localagent.Job, error) {
+func (c *Client) SubmitSuccess(ctx context.Context, jobID, token string, snapshot *sourcea1688.Alibaba1688ProductSnapshot) (localagent.Job, error) {
 	var response terminalResponse
 	err := c.doJSON(ctx, http.MethodPost, "/api/v1/local-agent/1688-jobs/"+url.PathEscape(jobID)+"/result", map[string]any{
 		"execution_token":  token,

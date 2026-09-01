@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
-	sdspod "task-processor/internal/product/sourcing/sdspod"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
+	sdspod "task-processor/internal/sds/adapter/product_source"
 )
 
 func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest) {

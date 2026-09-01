@@ -10,7 +10,6 @@ import (
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	crawler1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/listingkit"
-	"task-processor/internal/product/sourcing"
 	"task-processor/internal/sourceaccount"
 	"task-processor/internal/tenantbridge"
 )
@@ -91,8 +90,8 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 	}
 
 	task, handoff, err := CreateListingKitTask(ctx, s.creator, ListingKitTaskInput{
-		Source: sourcing.Alibaba1688SourceEnvelopeInput{
-			Request:     sourcing.Alibaba1688CrawlRequestInput{URL: url, AccountID: command.SourceAccountID},
+		Source: crawler1688.Alibaba1688SourceEnvelopeInput{
+			Request:     crawler1688.Alibaba1688CrawlRequestInput{URL: url, AccountID: command.SourceAccountID},
 			Product:     crawler1688.SnapshotFromLegacyProduct(command.Product),
 			RawSnapshot: command.RawSnapshot,
 			SourceRunID: command.SourceRunID,
