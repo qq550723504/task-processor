@@ -115,7 +115,351 @@ func TestCompileSchemasRejectsUnregisteredExternalSchemaReferences(t *testing.T)
 	_, err := compileSchemas(definition)
 
 	require.Error(t, err)
-	require.ErrorContains(t, err, "no URLLoader registered")
+	require.ErrorContains(t, err, "schema reference must use a current-document fragment")
+}
+
+func TestCompileSchemasRejectsNonDraft202012Dialects(t *testing.T) {
+	tests := []struct {
+		name      string
+		direction string
+		schema    json.RawMessage
+	}{
+		{
+			name:      "input root draft 7",
+			direction: "input",
+			schema: json.RawMessage(`{
+				"$schema":"http://json-schema.org/draft-07/schema#",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"task_id":{"type":"string"}}
+			}`),
+		},
+		{
+			name:      "output root draft 2019-09",
+			direction: "output",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2019-09/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"task_id":{"type":"string"}}
+			}`),
+		},
+		{
+			name:      "input nested resource changes dialect",
+			direction: "input",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"task_id":{"$ref":"#/$defs/task"}},
+				"$defs":{"task":{"$id":"nested-task","$schema":"http://json-schema.org/draft-07/schema#","type":"string"}}
+			}`),
+		},
+		{
+			name:      "output nested resource changes dialect",
+			direction: "output",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"task_id":{"type":"string"}},
+				"$defs":{"legacy":{"$id":"nested-legacy","$schema":"https://json-schema.org/draft/2019-09/schema","type":"string"}}
+			}`),
+		},
+		{
+			name:      "input content schema changes dialect",
+			direction: "input",
+			schema: json.RawMessage(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"document":{
+					"type":"string",
+					"contentMediaType":"application/json",
+					"contentSchema":{
+						"$schema":"http://json-schema.org/draft-07/schema#",
+						"type":"object",
+						"additionalProperties":false
+					}
+				}}
+			}`),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			definition := validDefinition()
+			setDefinitionSchema(&definition, tt.direction, tt.schema)
+
+			_, err := compileSchemas(definition)
+
+			require.ErrorContains(t, err, "schema dialect must be JSON Schema Draft 2020-12")
+			require.NotContains(t, err.Error(), "schema root")
+		})
+	}
+}
+
+func TestCompileSchemasRejectsNonLocalSchemaReferences(t *testing.T) {
+	tests := []struct {
+		name      string
+		keyword   string
+		reference string
+	}{
+		{
+			name:      "built-in metaschema URL",
+			keyword:   "$ref",
+			reference: "https://json-schema.org/draft/2020-12/schema",
+		},
+		{
+			name:      "HTTP URL",
+			keyword:   "$ref",
+			reference: "https://schemas.example.test/task.json#/$defs/task",
+		},
+		{
+			name:      "relative URL",
+			keyword:   "$ref",
+			reference: "task.json#/$defs/task",
+		},
+		{
+			name:      "file URL",
+			keyword:   "$ref",
+			reference: "file:///tmp/task.json",
+		},
+		{
+			name:      "dynamic HTTP URL",
+			keyword:   "$dynamicRef",
+			reference: "https://schemas.example.test/dynamic.json#task",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			definition := validDefinition()
+			definition.InputSchema = json.RawMessage(fmt.Sprintf(`{
+				"$schema":"https://json-schema.org/draft/2020-12/schema",
+				"type":"object",
+				"additionalProperties":false,
+				"properties":{"task_id":{%q:%q}}
+			}`, tt.keyword, tt.reference))
+
+			_, err := compileSchemas(definition)
+
+			require.ErrorContains(t, err, "schema reference must use a current-document fragment")
+		})
+	}
+}
+
+func TestCompileSchemasRejectsReservedAuthorityPropertiesInInputAndOutput(t *testing.T) {
+	reservedFields := []string{
+		"tenant_id",
+		"user_id",
+		"roles",
+		"call_id",
+		"agent_id",
+		"agent_version",
+		"agent_run_id",
+		"business_task_id",
+		"trace_id",
+		"idempotency_key",
+		"tool_id",
+		"tool_version",
+		"permission",
+	}
+
+	for _, direction := range []string{"input", "output"} {
+		for _, field := range reservedFields {
+			t.Run(direction+" "+field, func(t *testing.T) {
+				definition := validDefinition()
+				schema := json.RawMessage(fmt.Sprintf(`{
+					"$schema":"https://json-schema.org/draft/2020-12/schema",
+					"type":"object",
+					"additionalProperties":false,
+					"properties":{%q:{"type":"string"}}
+				}`, field))
+				setDefinitionSchema(&definition, direction, schema)
+
+				_, err := compileSchemas(definition)
+
+				require.ErrorContains(t, err, fmt.Sprintf("reserved authority field %q", field))
+			})
+		}
+	}
+}
+
+func TestCompileSchemasRejectsReservedAuthorityPaths(t *testing.T) {
+	tests := []struct {
+		name      string
+		direction string
+		schema    json.RawMessage
+		field     string
+	}{
+		{
+			name:      "nested property",
+			direction: "input",
+			schema: json.RawMessage(`{
+				"type":"object","additionalProperties":false,
+				"properties":{"payload":{"type":"object","additionalProperties":false,"properties":{"tenant_id":{"type":"string"}}}}
+			}`),
+			field: "tenant_id",
+		},
+		{
+			name:      "$defs property",
+			direction: "output",
+			schema: json.RawMessage(`{
+				"type":"object","additionalProperties":false,
+				"properties":{"payload":{"$ref":"#/$defs/payload"}},
+				"$defs":{"payload":{"type":"object","additionalProperties":false,"properties":{"user_id":{"type":"string"}}}}
+			}`),
+			field: "user_id",
+		},
+		{
+			name:      "definitions property",
+			direction: "input",
+			schema: json.RawMessage(`{
+				"type":"object","additionalProperties":false,
+				"properties":{"task_id":{"type":"string"}},
+				"definitions":{"metadata":{"type":"object","additionalProperties":false,"properties":{"trace_id":{"type":"string"}}}}
+			}`),
+			field: "trace_id",
+		},
+		{
+			name:      "combination branch",
+			direction: "output",
+			schema: json.RawMessage(`{
+				"type":"object","additionalProperties":false,
+				"properties":{"payload":{"oneOf":[
+					{"type":"object","additionalProperties":false,"properties":{"agent_id":{"type":"string"}}},
+					{"type":"string"}
+				]}}
+			}`),
+			field: "agent_id",
+		},
+		{
+			name:      "required name",
+			direction: "input",
+			schema: json.RawMessage(`{
+				"type":"object","additionalProperties":false,
+				"required":["tool_version"],"properties":{}
+			}`),
+			field: "tool_version",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			definition := validDefinition()
+			setDefinitionSchema(&definition, tt.direction, tt.schema)
+
+			_, err := compileSchemas(definition)
+
+			require.ErrorContains(t, err, fmt.Sprintf("reserved authority field %q", tt.field))
+		})
+	}
+}
+
+func TestCompileSchemasRejectsPatternsMatchingReservedAuthorityFields(t *testing.T) {
+	definition := validDefinition()
+	definition.OutputSchema = json.RawMessage(`{
+		"type":"object",
+		"additionalProperties":false,
+		"patternProperties":{"^(tenant_id|sku)$":{"type":"string"}}
+	}`)
+
+	_, err := compileSchemas(definition)
+
+	require.ErrorContains(t, err, "patternProperties pattern matches reserved authority field \"tenant_id\"")
+}
+
+func TestCompileSchemasRejectsObjectPathsThatCannotProveAuthorityExclusion(t *testing.T) {
+	tests := []struct {
+		name   string
+		schema json.RawMessage
+	}{
+		{
+			name: "nested open object",
+			schema: json.RawMessage(`{
+				"type":"object","additionalProperties":false,
+				"properties":{"payload":{"type":"object","properties":{"sku":{"type":"string"}}}}
+			}`),
+		},
+		{
+			name: "open object in $defs",
+			schema: json.RawMessage(`{
+				"type":"object","additionalProperties":false,
+				"properties":{"task_id":{"type":"string"}},
+				"$defs":{"payload":{"type":"object","additionalProperties":true}}
+			}`),
+		},
+		{
+			name: "open combination branch",
+			schema: json.RawMessage(`{
+				"type":"object","additionalProperties":false,
+				"properties":{"payload":{"anyOf":[{"type":"object"},{"type":"string"}]}}
+			}`),
+		},
+		{
+			name: "unconstrained pattern value",
+			schema: json.RawMessage(`{
+				"type":"object","additionalProperties":false,
+				"patternProperties":{"^business_[a-z]+$":{}}
+			}`),
+		},
+		{
+			name: "unconstrained array item",
+			schema: json.RawMessage(`{
+				"type":"object","additionalProperties":false,
+				"properties":{"items":{"type":"array","items":{}}}
+			}`),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			definition := validDefinition()
+			definition.InputSchema = tt.schema
+
+			_, err := compileSchemas(definition)
+
+			require.ErrorContains(t, err, "cannot prove object schema excludes reserved authority fields")
+		})
+	}
+}
+
+func TestCompileSchemasAcceptsLocalRefsAndClosedNestedBusinessObjects(t *testing.T) {
+	definition := validDefinition()
+	definition.InputSchema = json.RawMessage(`{
+		"$schema":"https://json-schema.org/draft/2020-12/schema",
+		"type":"object",
+		"additionalProperties":false,
+		"required":["product"],
+		"properties":{"product":{"$ref":"#/$defs/product"}},
+		"$defs":{"product":{
+			"type":"object",
+			"additionalProperties":false,
+			"required":["sku","facts"],
+			"properties":{
+				"sku":{"type":"string"},
+				"facts":{"type":"object","additionalProperties":false,"patternProperties":{"^business_[a-z]+$":{"type":"string"}}}
+			}
+		}}
+	}`)
+	definition.OutputSchema = append(json.RawMessage(nil), definition.InputSchema...)
+
+	schemas, err := compileSchemas(definition)
+	require.NoError(t, err)
+	payload := json.RawMessage(`{"product":{"sku":"sku-1","facts":{"business_color":"blue"}}}`)
+
+	require.NoError(t, schemas.validateInput(payload))
+	require.NoError(t, schemas.validateOutput(payload))
+}
+
+func setDefinitionSchema(definition *Definition, direction string, schema json.RawMessage) {
+	if direction == "input" {
+		definition.InputSchema = schema
+		return
+	}
+
+	definition.OutputSchema = schema
 }
 
 func TestCompileSchemasRejectsTrailingJSON(t *testing.T) {
