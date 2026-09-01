@@ -92,6 +92,13 @@ counts and the direct internal importer counts for `core`, `infra`, and
 | `infra/storage` | S3/object-storage adapter moves to `integration/objectstore/s3`; consuming domains define object-store ports and app wires them. |
 | `infra/worker` | Worker-pool runtime moves to `platform/workerpool`; domains expose submit/queue-local contracts and app wires them. |
 
+### `internal/product`
+
+The root `internal/product` package is not the new Catalog. Its fetching,
+caching, pricing, and cross-platform filtering responsibilities will split into
+Marketplace-owned packages; it must not be migrated wholesale or relabeled as
+`internal/product/catalog`.
+
 ### Technical `internal/pkg`
 
 | Current directory | Approved disposition |

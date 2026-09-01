@@ -107,6 +107,20 @@ linters-settings:
           - pkg: "github.com/rabbitmq/"
             desc: "RabbitMQ SDKs belong to platform adapters"
 
+      phase3_product_domain_boundaries:
+        files:
+          - "**/internal/product/catalog/**/*.go"
+          - "**/internal/product/sourcing/**/*.go"
+          - "**/internal/product/enrichment/**/*.go"
+          - "**/internal/product/asset/**/*.go"
+          - "**/internal/product/image/**/*.go"
+        deny:
+          - pkg: task-processor/internal/app
+          - pkg: task-processor/internal/platform
+          - pkg: task-processor/internal/integration
+          - pkg: gorm.io/gorm
+          - pkg: go.temporal.io
+
       platform_domain_dependencies:
         files:
           - "**/internal/platform/*.go"

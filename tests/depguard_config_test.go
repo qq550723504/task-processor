@@ -74,6 +74,37 @@ func TestPhase2TargetDirectionDepguardRulesCoverApprovedBoundaries(t *testing.T)
 	}
 }
 
+func TestPhase3ProductDomainBoundaryDepguardRuleCoversOnlyTargetSubpackages(t *testing.T) {
+	rules := loadDepguardRules(t, filepath.Join("..", ".golangci.yml"))
+	rule := requireDepguardRule(t, rules, "phase3_product_domain_boundaries")
+	files := stringSet(rule.Files)
+	denied := depguardDenyPackageSet(rule)
+
+	for _, glob := range []string{
+		"**/internal/product/catalog/**/*.go",
+		"**/internal/product/sourcing/**/*.go",
+		"**/internal/product/enrichment/**/*.go",
+		"**/internal/product/asset/**/*.go",
+		"**/internal/product/image/**/*.go",
+	} {
+		if _, ok := files[glob]; !ok {
+			t.Errorf("phase3_product_domain_boundaries must cover %s", glob)
+		}
+	}
+
+	for _, packagePath := range []string{
+		"task-processor/internal/app",
+		"task-processor/internal/platform",
+		"task-processor/internal/integration",
+		"gorm.io/gorm",
+		"go.temporal.io",
+	} {
+		if _, ok := denied[packagePath]; !ok {
+			t.Errorf("phase3_product_domain_boundaries must deny %s", packagePath)
+		}
+	}
+}
+
 func TestDepguardRuleParsingUsesYAMLSemantics(t *testing.T) {
 	rules := parseDepguardRules(t, []byte(`
 linters-settings:
