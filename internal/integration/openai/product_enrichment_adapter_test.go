@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -301,9 +305,13 @@ func TestProductEnrichmentPromptPreflightRejectsExcessiveDepthFailClosed(t *test
 func TestProductEnrichmentAdapterEnforcesSerializedPromptByteLimit(t *testing.T) {
 	t.Parallel()
 
-	exactRequest, exactOracle := enrichmentRequestAndOracleForPromptBytes(t, productEnrichmentPromptMaxBytes)
-	if len(exactOracle) != productEnrichmentPromptMaxBytes {
-		t.Fatalf("exact oracle bytes = %d, want %d", len(exactOracle), productEnrichmentPromptMaxBytes)
+	const (
+		exactPromptBytes     = 65536
+		oversizedPromptBytes = 65537
+	)
+	exactRequest, exactOracle := enrichmentRequestAndOracleForPromptBytes(t, exactPromptBytes)
+	if len(exactOracle) != exactPromptBytes {
+		t.Fatalf("exact oracle bytes = %d, want %d", len(exactOracle), exactPromptBytes)
 	}
 	if budget := inspectProductEnrichmentPromptBudget(exactRequest); budget.Kind != productEnrichmentPromptBudgetWithin {
 		t.Fatalf("exact prompt preflight = %#v, want within budget", budget)
@@ -312,16 +320,16 @@ func TestProductEnrichmentAdapterEnforcesSerializedPromptByteLimit(t *testing.T)
 	if _, err := NewProductEnrichmentAdapter(exactInvoker).Generate(context.Background(), exactRequest); err != nil {
 		t.Fatalf("Generate(exact prompt limit) error = %v", err)
 	}
-	if got := len(exactInvoker.request.Prompt); got != productEnrichmentPromptMaxBytes {
-		t.Fatalf("exact prompt bytes = %d, want %d", got, productEnrichmentPromptMaxBytes)
+	if got := len(exactInvoker.request.Prompt); got != exactPromptBytes {
+		t.Fatalf("exact prompt bytes = %d, want %d", got, exactPromptBytes)
 	}
 	if exactInvoker.request.Prompt != string(exactOracle) {
 		t.Fatal("captured exact-limit prompt differs from independent wire oracle")
 	}
 
-	overRequest, overOracle := enrichmentRequestAndOracleForPromptBytes(t, productEnrichmentPromptMaxBytes+1)
-	if len(overOracle) != productEnrichmentPromptMaxBytes+1 {
-		t.Fatalf("limit+1 oracle bytes = %d, want %d", len(overOracle), productEnrichmentPromptMaxBytes+1)
+	overRequest, overOracle := enrichmentRequestAndOracleForPromptBytes(t, oversizedPromptBytes)
+	if len(overOracle) != oversizedPromptBytes {
+		t.Fatalf("limit+1 oracle bytes = %d, want %d", len(overOracle), oversizedPromptBytes)
 	}
 	overInvoker := &enrichmentTextInvokerStub{output: `{"description":"Steel bottle"}`}
 	got, err := NewProductEnrichmentAdapter(overInvoker).Generate(context.Background(), overRequest)
@@ -333,6 +341,43 @@ func TestProductEnrichmentAdapterEnforcesSerializedPromptByteLimit(t *testing.T)
 	}
 	if overInvoker.calls != 0 {
 		t.Fatalf("invocation calls = %d, want 0 for oversized serialized prompt", overInvoker.calls)
+	}
+}
+
+func TestProductEnrichmentSerializedPromptBoundaryFixtureIsIndependent(t *testing.T) {
+	t.Parallel()
+
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot resolve product enrichment adapter test source")
+	}
+	parsed, err := parser.ParseFile(token.NewFileSet(), filename, nil, 0)
+	if err != nil {
+		t.Fatalf("parse product enrichment adapter test source: %v", err)
+	}
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Name.Name != "TestProductEnrichmentAdapterEnforcesSerializedPromptByteLimit" {
+			continue
+		}
+		ast.Inspect(function.Body, func(node ast.Node) bool {
+			identifier, ok := node.(*ast.Ident)
+			if ok && identifier.Name == "productEnrichmentPromptMaxBytes" {
+				t.Error("serialized prompt boundary fixture references production limit instead of test-local design literals")
+			}
+			return true
+		})
+		return
+	}
+	t.Fatal("serialized prompt boundary test function not found")
+}
+
+func TestProductEnrichmentPromptLimitMatchesDesignContract(t *testing.T) {
+	t.Parallel()
+
+	const designPromptLimitBytes = 65536
+	if productEnrichmentPromptMaxBytes != designPromptLimitBytes {
+		t.Fatalf("production prompt limit = %d, want design contract literal %d", productEnrichmentPromptMaxBytes, designPromptLimitBytes)
 	}
 }
 
