@@ -428,15 +428,14 @@ func isCanonicalImageMediaType(value string) bool {
 }
 
 func validateProductContext(product ProductContext) (ProductContext, error) {
-	if !isCanonicalRequired(product.ProductKey) || !isCanonicalOptional(product.Title) || !isCanonicalOptional(product.ProductType) || len(product.Attributes) > maxProductAttributes {
+	if err := preflightProductContextResources(product); err != nil {
 		return ProductContext{}, ErrInputInvalid
 	}
-	used := 0
-	if !addImageStringBytes(&used, product.ProductKey) || !addImageStringBytes(&used, product.Title) || !addImageStringBytes(&used, product.ProductType) {
+	if !isCanonicalRequired(product.ProductKey) || !isCanonicalOptional(product.Title) || !isCanonicalOptional(product.ProductType) {
 		return ProductContext{}, ErrInputInvalid
 	}
 	for key, value := range product.Attributes {
-		if !isCanonicalRequired(key) || !isCanonicalRequired(value) || !addImageStringBytes(&used, key) || !addImageStringBytes(&used, value) {
+		if !isCanonicalRequired(key) || !isCanonicalRequired(value) {
 			return ProductContext{}, ErrInputInvalid
 		}
 	}
@@ -446,6 +445,22 @@ func validateProductContext(product ProductContext) (ProductContext, error) {
 	}
 	product.Attributes = attributes
 	return product, nil
+}
+
+func preflightProductContextResources(product ProductContext) error {
+	if len(product.Attributes) > maxProductAttributes {
+		return ErrInputInvalid
+	}
+	used := 0
+	if !addImageStringBytes(&used, product.ProductKey) || !addImageStringBytes(&used, product.Title) || !addImageStringBytes(&used, product.ProductType) {
+		return ErrInputInvalid
+	}
+	for key, value := range product.Attributes {
+		if !addImageStringBytes(&used, key) || !addImageStringBytes(&used, value) {
+			return ErrInputInvalid
+		}
+	}
+	return nil
 }
 
 func validateOperations(operations []string, generated bool) ([]string, error) {
@@ -515,8 +530,11 @@ func canonicalHTTPURL(value string) string {
 	if host == "" {
 		return ""
 	}
-	port := parsed.Port()
-	if port != "" && !((scheme == "http" && port == "80") || (scheme == "https" && port == "443")) {
+	port, valid := canonicalHTTPPort(parsed.Host, scheme)
+	if !valid {
+		return ""
+	}
+	if port != "" {
 		host = net.JoinHostPort(host, port)
 	} else if ipv6 {
 		host = "[" + host + "]"
@@ -527,7 +545,60 @@ func canonicalHTTPURL(value string) string {
 	} else if !strings.HasPrefix(cleanPath, "/") {
 		cleanPath = "/" + cleanPath
 	}
-	return (&url.URL{Scheme: scheme, Host: host, Path: cleanPath, RawQuery: parsed.Query().Encode()}).String()
+	query, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil {
+		return ""
+	}
+	return (&url.URL{Scheme: scheme, Host: host, Path: cleanPath, RawQuery: query.Encode()}).String()
+}
+
+func canonicalHTTPPort(authority, scheme string) (string, bool) {
+	rawPort, explicit := explicitHTTPPort(authority)
+	if !explicit {
+		return "", true
+	}
+	if rawPort == "" {
+		return "", false
+	}
+	value := 0
+	for index := 0; index < len(rawPort); index++ {
+		digit := rawPort[index]
+		if digit < '0' || digit > '9' {
+			return "", false
+		}
+		digitValue := int(digit - '0')
+		if value > (65535-digitValue)/10 {
+			return "", false
+		}
+		value = value*10 + digitValue
+	}
+	if value == 0 {
+		return "", false
+	}
+	if (scheme == "http" && value == 80) || (scheme == "https" && value == 443) {
+		return "", true
+	}
+	normalized := strings.TrimLeft(rawPort, "0")
+	return normalized, true
+}
+
+func explicitHTTPPort(authority string) (string, bool) {
+	if strings.HasPrefix(authority, "[") {
+		closing := strings.LastIndexByte(authority, ']')
+		if closing < 0 || closing == len(authority)-1 {
+			return "", false
+		}
+		suffix := authority[closing+1:]
+		if !strings.HasPrefix(suffix, ":") {
+			return "", false
+		}
+		return suffix[1:], true
+	}
+	colon := strings.LastIndexByte(authority, ':')
+	if colon < 0 {
+		return "", false
+	}
+	return authority[colon+1:], true
 }
 
 func canonicalHTTPHost(raw string) (string, bool) {

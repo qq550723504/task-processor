@@ -147,6 +147,36 @@ var LifecycleOnlyMarker string
 	}
 }
 
+func TestValidateProductContextRunsRawResourcePreflightFirst(t *testing.T) {
+	t.Parallel()
+
+	_, currentFile, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	parsed, err := parser.ParseFile(token.NewFileSet(), filepath.Join(filepath.Dir(currentFile), "ports.go"), nil, 0)
+	require.NoError(t, err)
+
+	var target *ast.FuncDecl
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if ok && function.Name.Name == "validateProductContext" {
+			target = function
+			break
+		}
+	}
+	require.NotNil(t, target)
+	require.NotEmpty(t, target.Body.List)
+	first, ok := target.Body.List[0].(*ast.IfStmt)
+	require.True(t, ok, "resource preflight must be the first statement")
+	assignment, ok := first.Init.(*ast.AssignStmt)
+	require.True(t, ok, "first statement must bind the resource preflight error")
+	require.Len(t, assignment.Rhs, 1)
+	call, ok := assignment.Rhs[0].(*ast.CallExpr)
+	require.True(t, ok)
+	identifier, ok := call.Fun.(*ast.Ident)
+	require.True(t, ok)
+	require.Equal(t, "preflightProductContextResources", identifier.Name)
+}
+
 func TestProductImageDependencyGuardRejectsRuntimeAndConcreteImageProviders(t *testing.T) {
 	t.Parallel()
 

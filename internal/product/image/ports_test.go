@@ -70,6 +70,86 @@ func TestCanonicalHTTPURLNormalizesDNSAndIPIdentities(t *testing.T) {
 	}
 }
 
+func TestCanonicalHTTPURLNormalizesStrictExplicitPorts(t *testing.T) {
+	t.Parallel()
+
+	for name, testCase := range map[string]struct {
+		raw  string
+		want string
+	}{
+		"HTTPS numeric default with leading zeros": {
+			raw: "https://source.example:00443/a.png", want: "https://source.example/a.png",
+		},
+		"HTTP numeric default with leading zeros": {
+			raw: "http://source.example:00080/a.png", want: "http://source.example/a.png",
+		},
+		"DNS non-default with leading zero": {
+			raw: "https://source.example:08443/a.png", want: "https://source.example:8443/a.png",
+		},
+		"IPv6 numeric default with leading zeros": {
+			raw: "https://[2001:DB8::1]:00443/a.png", want: "https://[2001:db8::1]/a.png",
+		},
+		"IPv6 non-default with leading zero": {
+			raw: "https://[2001:DB8::1]:08443/a.png", want: "https://[2001:db8::1]:8443/a.png",
+		},
+		"lowest valid port": {
+			raw: "https://source.example:1/a.png", want: "https://source.example:1/a.png",
+		},
+		"highest valid port": {
+			raw: "https://source.example:65535/a.png", want: "https://source.example:65535/a.png",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, testCase.want, canonicalHTTPURL(testCase.raw))
+		})
+	}
+}
+
+func TestCanonicalHTTPURLRejectsInvalidExplicitPortsAndAuthority(t *testing.T) {
+	t.Parallel()
+
+	for name, raw := range map[string]string{
+		"DNS trailing colon":       "https://source.example:/a.png",
+		"IPv6 trailing colon":      "https://[2001:db8::1]:/a.png",
+		"non-numeric port":         "https://source.example:abc/a.png",
+		"signed port":              "https://source.example:-443/a.png",
+		"explicit zero port":       "https://source.example:000/a.png",
+		"port above 65535":         "https://source.example:65536/a.png",
+		"userinfo":                 "https://user@source.example/a.png",
+		"fragment":                 "https://source.example/a.png#fragment",
+		"invalid escaped hostname": "https://source%2Fexample.com/a.png",
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Empty(t, canonicalHTTPURL(raw))
+		})
+	}
+}
+
+func TestCanonicalHTTPURLFailsClosedOnMalformedQuery(t *testing.T) {
+	t.Parallel()
+
+	for name, raw := range map[string]string{
+		"semicolon separator": "https://source.example/a.png?first=1;second=2",
+		"bad query escape":    "https://source.example/a.png?first=%zz",
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Empty(t, canonicalHTTPURL(raw))
+		})
+	}
+}
+
+func TestCanonicalHTTPURLDefinesRepeatedQueryKeyOrdering(t *testing.T) {
+	t.Parallel()
+
+	first := canonicalHTTPURL("https://source.example/a.png?z=9&a=2&a=1&b=3")
+	second := canonicalHTTPURL("https://source.example/a.png?b=3&a=2&a=1&z=9")
+	reversedValues := canonicalHTTPURL("https://source.example/a.png?b=3&a=1&a=2&z=9")
+
+	require.Equal(t, "https://source.example/a.png?a=2&a=1&b=3&z=9", first)
+	require.Equal(t, first, second, "query key order is not part of canonical identity")
+	require.NotEqual(t, first, reversedValues, "repeated values preserve their order")
+}
+
 func TestCanonicalHTTPURLRejectsOversizedRawInputBeforeParsing(t *testing.T) {
 	const designMaxImageStringBytes = 8 << 10
 	oversized := "https://source.example/" + strings.Repeat("x", designMaxImageStringBytes)
@@ -105,6 +185,147 @@ func TestReviewCapabilityRejectsCanonicalIPv6SiblingSourcePassThrough(t *testing
 	require.Zero(t, calls)
 }
 
+func TestEveryCapabilityRejectsCanonicalPortAliasPassThrough(t *testing.T) {
+	t.Parallel()
+
+	t.Run("subject numeric default alias", func(t *testing.T) {
+		source := validSourceAsset()
+		candidate := validGeneratedAsset(RoleSubject, "extract_subject", "https://source.example:0443/a.png")
+		extractor, err := NewSubjectCapability(subjectExtractorFunc(func(context.Context, ExtractRequest) (Candidate, error) {
+			return Candidate{Asset: candidate}, nil
+		}))
+		require.NoError(t, err)
+		_, err = extractor.Extract(context.Background(), ExtractRequest{Source: source, Product: validProductContext()})
+		require.ErrorIs(t, err, ErrOutputValidation)
+	})
+
+	t.Run("white background non-default leading zero alias", func(t *testing.T) {
+		source := validSourceAsset()
+		source.URL = "https://source.example:8443/a.png"
+		candidate := validGeneratedAsset(RoleWhiteBackground, "render_white_background", "https://source.example:08443/a.png")
+		candidate.SourceURL = source.URL
+		renderer, err := NewWhiteBackgroundCapability(whiteBackgroundRendererFunc(func(context.Context, RenderRequest) (Candidate, error) {
+			return Candidate{Asset: candidate}, nil
+		}))
+		require.NoError(t, err)
+		_, err = renderer.RenderWhiteBackground(context.Background(), RenderRequest{Source: source, Product: validProductContext()})
+		require.ErrorIs(t, err, ErrOutputValidation)
+	})
+
+	t.Run("scene style non-default leading zero alias", func(t *testing.T) {
+		request := validSceneRequest()
+		request.StyleReferences = []Asset{{
+			URL: "https://style.example:8443/reference.png", SourceURL: "https://style-origin.example/reference.png",
+			SourceAssetID: "style-1", Role: RoleSource, Width: 100, Height: 100, Operations: []string{"source"},
+		}}
+		candidate := validGeneratedAsset(RoleScene, "render_scene", "https://style.example:08443/reference.png")
+		renderer, err := NewSceneCapability(sceneRendererFunc(func(context.Context, SceneRequest) ([]Candidate, error) {
+			return []Candidate{{Asset: candidate}}, nil
+		}))
+		require.NoError(t, err)
+		got, err := renderer.RenderScene(context.Background(), request)
+		require.ErrorIs(t, err, ErrOutputValidation)
+		require.Nil(t, got)
+	})
+
+	t.Run("review IPv6 default alias", func(t *testing.T) {
+		source := validSourceAsset()
+		source.URL = "https://[2001:0DB8:0:0:0:0:0:1]:443/a.png"
+		candidate := validGeneratedAsset(RoleScene, "render_scene", "https://[2001:db8::1]:00443/a.png")
+		candidate.SourceURL = source.URL
+		calls := 0
+		reviewer, err := NewReviewCapability(reviewerFunc(func(context.Context, ReviewRequest) (Review, error) {
+			calls++
+			return Review{Score: 1}, nil
+		}))
+		require.NoError(t, err)
+		_, err = reviewer.Review(context.Background(), ReviewRequest{
+			Product: validProductContext(), Sources: []Asset{source}, Candidates: []Candidate{{Asset: candidate}},
+		})
+		require.ErrorIs(t, err, ErrInputInvalid)
+		require.Zero(t, calls)
+	})
+}
+
+func TestCapabilityAllowsArtifactAtGenuinelyDifferentPort(t *testing.T) {
+	t.Parallel()
+
+	source := validSourceAsset()
+	source.URL = "https://source.example:8443/a.png"
+	candidate := validGeneratedAsset(RoleSubject, "extract_subject", "https://source.example:8444/a.png")
+	candidate.SourceURL = source.URL
+	extractor, err := NewSubjectCapability(subjectExtractorFunc(func(context.Context, ExtractRequest) (Candidate, error) {
+		return Candidate{Asset: candidate}, nil
+	}))
+	require.NoError(t, err)
+	got, err := extractor.Extract(context.Background(), ExtractRequest{Source: source, Product: validProductContext()})
+	require.NoError(t, err)
+	require.Equal(t, "https://source.example:8444/a.png", got.Asset.URL)
+}
+
+func TestMalformedQueryURLsHaveStableCapabilityErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("source input prevents dispatch", func(t *testing.T) {
+		source := validSourceAsset()
+		source.URL = "https://source.example/a.png?first=1;second=2"
+		calls := 0
+		extractor, err := NewSubjectCapability(subjectExtractorFunc(func(context.Context, ExtractRequest) (Candidate, error) {
+			calls++
+			return Candidate{}, nil
+		}))
+		require.NoError(t, err)
+		_, err = extractor.Extract(context.Background(), ExtractRequest{Source: source, Product: validProductContext()})
+		require.ErrorIs(t, err, ErrInputInvalid)
+		require.Zero(t, calls)
+	})
+
+	for name, build := range map[string]func(string) error{
+		"subject output": func(raw string) error {
+			extractor, err := NewSubjectCapability(subjectExtractorFunc(func(context.Context, ExtractRequest) (Candidate, error) {
+				return Candidate{Asset: validGeneratedAsset(RoleSubject, "extract_subject", raw)}, nil
+			}))
+			require.NoError(t, err)
+			_, err = extractor.Extract(context.Background(), ExtractRequest{Source: validSourceAsset(), Product: validProductContext()})
+			return err
+		},
+		"white background output": func(raw string) error {
+			renderer, err := NewWhiteBackgroundCapability(whiteBackgroundRendererFunc(func(context.Context, RenderRequest) (Candidate, error) {
+				return Candidate{Asset: validGeneratedAsset(RoleWhiteBackground, "render_white_background", raw)}, nil
+			}))
+			require.NoError(t, err)
+			_, err = renderer.RenderWhiteBackground(context.Background(), RenderRequest{Source: validSourceAsset(), Product: validProductContext()})
+			return err
+		},
+		"scene output": func(raw string) error {
+			renderer, err := NewSceneCapability(sceneRendererFunc(func(context.Context, SceneRequest) ([]Candidate, error) {
+				return []Candidate{{Asset: validGeneratedAsset(RoleScene, "render_scene", raw)}}, nil
+			}))
+			require.NoError(t, err)
+			_, err = renderer.RenderScene(context.Background(), validSceneRequest())
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorIs(t, build("https://cdn.example/a.png?first=1;second=2"), ErrOutputValidation)
+		})
+	}
+
+	t.Run("review input prevents dispatch", func(t *testing.T) {
+		request := validReviewRequest()
+		request.Candidates[0].Asset.URL = "https://cdn.example/a.png?first=%zz"
+		calls := 0
+		reviewer, err := NewReviewCapability(reviewerFunc(func(context.Context, ReviewRequest) (Review, error) {
+			calls++
+			return Review{Score: 1}, nil
+		}))
+		require.NoError(t, err)
+		_, err = reviewer.Review(context.Background(), request)
+		require.ErrorIs(t, err, ErrInputInvalid)
+		require.Zero(t, calls)
+	})
+}
+
 func TestStringCollectionValidatorsPreflightBeforeCloneAllocation(t *testing.T) {
 	const designMaxImageStringBytes = 8 << 10
 	overlong := strings.Repeat("x", designMaxImageStringBytes+1)
@@ -136,6 +357,37 @@ func TestStringCollectionValidatorsPreflightBeforeCloneAllocation(t *testing.T) 
 		require.Nil(t, stringSliceSink)
 		require.Zero(t, allocations)
 	})
+}
+
+func TestProductContextRawResourcePreflightIsAllocationFreeAndCanonicalAgnostic(t *testing.T) {
+	boundedNonCanonical := ProductContext{
+		ProductKey: " product-1 ",
+		Attributes: map[string]string{" material ": " steel "},
+	}
+	allocations := testing.AllocsPerRun(10, func() {
+		preflightErrorSink = preflightProductContextResources(boundedNonCanonical)
+	})
+	require.NoError(t, preflightErrorSink)
+	require.Zero(t, allocations, "raw resource preflight must not trim, canonicalize or clone")
+
+	got, err := validateProductContext(boundedNonCanonical)
+	require.ErrorIs(t, err, ErrInputInvalid)
+	require.Equal(t, ProductContext{}, got)
+}
+
+func TestProductContextRejectsRawAggregateBeforeCanonicalPhase(t *testing.T) {
+	const designMaxImageStringBytes = 8 << 10
+	attributes := make(map[string]string, 8)
+	for index := 0; index < 8; index++ {
+		attributes[string(rune('a'+index))] = strings.Repeat(string(rune('a'+index)), designMaxImageStringBytes)
+	}
+	input := ProductContext{ProductKey: " product-1 ", Attributes: attributes}
+
+	allocations := testing.AllocsPerRun(10, func() {
+		preflightErrorSink = preflightProductContextResources(input)
+	})
+	require.ErrorIs(t, preflightErrorSink, ErrInputInvalid)
+	require.Zero(t, allocations, "aggregate overflow must stop before canonical checks or map cloning")
 }
 
 func TestSceneCapabilityRejectsSourcePassThrough(t *testing.T) {
