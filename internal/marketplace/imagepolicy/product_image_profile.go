@@ -36,11 +36,11 @@ type ProductImageProfile struct {
 }
 
 type familyRule struct {
-	family   string
-	keywords string
-	main     float64
-	white    float64
-	penalty  float64
+	family  string
+	lexemes string
+	main    float64
+	white   float64
+	penalty float64
 }
 
 func ResolveProductImageProfile(input ProfileInput) (ProductImageProfile, error) {
@@ -56,6 +56,9 @@ func ResolveProductImageProfile(input ProfileInput) (ProductImageProfile, error)
 
 	productType := normalize(input.ProductType)
 	category := normalize(input.SceneCategory)
+	if category != "" && !supportedSceneCategory(category) {
+		return ProductImageProfile{}, ErrInvalidProfileInput
+	}
 	profile := ProductImageProfile{
 		Family:                         "default",
 		Marketplace:                    marketplace,
@@ -88,6 +91,10 @@ func ResolveProductImageProfile(input ProfileInput) (ProductImageProfile, error)
 		profile.SceneDefaultsSource = "platform"
 	}
 	return profile, nil
+}
+
+func supportedSceneCategory(category string) bool {
+	return category == "shoes" || category == "jewelry" || category == "bags"
 }
 
 func validRawProfileInput(input ProfileInput) bool {
@@ -132,7 +139,7 @@ func isASCIIDigit(value byte) bool {
 
 func resolveAmazonUSFamily(productType string) (familyRule, bool) {
 	for _, rule := range amazonUSFamilyRuleSet() {
-		if containsProductKeyword(productType, rule.keywords) {
+		if containsAcceptedLexeme(productType, rule.lexemes) {
 			return rule, true
 		}
 	}
@@ -141,40 +148,40 @@ func resolveAmazonUSFamily(productType string) (familyRule, bool) {
 
 func amazonUSFamilyRuleSet() [7]familyRule {
 	return [7]familyRule{
-		{family: "footwear", keywords: "slipper|shoe|sandal|boot|sneaker", main: 0.61, white: 0.68, penalty: 0.04},
-		{family: "apparel", keywords: "apparel|clothing|shirt|dress|hoodie|jacket|pants|sock|glove", main: 0.62, white: 0.68, penalty: 0.05},
-		{family: "bags_accessories", keywords: "bag|handbag|backpack|wallet|purse|hat|cap|belt|tote|satchel|crossbody", main: 0.63, white: 0.69, penalty: 0.06},
-		{family: "home_textiles", keywords: "pillow|blanket|textile|curtain|cushion|sheet|towel", main: 0.63, white: 0.69, penalty: 0.06},
-		{family: "electronics", keywords: "electronic|phone|smartphone|tablet|laptop|camera|charger|headphone|speaker", main: 0.69, white: 0.75, penalty: 0.12},
-		{family: "jewelry_watch", keywords: "jewelry|jewellery|watch|ring|bracelet|necklace|earring", main: 0.70, white: 0.76, penalty: 0.14},
-		{family: "beauty_bottle", keywords: "bottle|cosmetic|serum|cream|lotion|perfume", main: 0.68, white: 0.74, penalty: 0.12},
+		{family: "footwear", lexemes: "slipper|slippers|shoe|shoes|sandal|sandals|boot|boots|sneaker|sneakers", main: 0.61, white: 0.68, penalty: 0.04},
+		{family: "apparel", lexemes: "apparel|clothing|shirt|shirts|dress|dresses|hoodie|hoodies|jacket|jackets|pants|sock|socks|glove|gloves", main: 0.62, white: 0.68, penalty: 0.05},
+		{family: "bags_accessories", lexemes: "bag|bags|handbag|handbags|backpack|backpacks|wallet|wallets|purse|purses|hat|hats|cap|caps|belt|belts|tote|totes|satchel|satchels|crossbody|crossbodies", main: 0.63, white: 0.69, penalty: 0.06},
+		{family: "home_textiles", lexemes: "pillow|pillows|blanket|blankets|textile|textiles|curtain|curtains|cushion|cushions|sheet|sheets|towel|towels", main: 0.63, white: 0.69, penalty: 0.06},
+		{family: "electronics", lexemes: "electronic|electronics|phone|phones|smartphone|smartphones|tablet|tablets|laptop|laptops|camera|cameras|charger|chargers|headphone|headphones|speaker|speakers", main: 0.69, white: 0.75, penalty: 0.12},
+		{family: "jewelry_watch", lexemes: "jewelry|jewellery|watch|watches|ring|rings|bracelet|bracelets|necklace|necklaces|earring|earrings", main: 0.70, white: 0.76, penalty: 0.14},
+		{family: "beauty_bottle", lexemes: "bottle|bottles|cosmetic|cosmetics|serum|serums|cream|creams|lotion|lotions|perfume|perfumes", main: 0.68, white: 0.74, penalty: 0.12},
 	}
 }
 
 func inferSceneCategory(productType string) string {
 	switch {
-	case containsProductKeyword(productType, "sneaker|shoe|boot|sandal|slipper|heel|loafer"):
+	case containsAcceptedLexeme(productType, "sneaker|sneakers|shoe|shoes|boot|boots|sandal|sandals|slipper|slippers|heel|heels|loafer|loafers"):
 		return "shoes"
-	case containsProductKeyword(productType, "necklace|ring|earring|bracelet|jewelry|jewellery|pendant|brooch"):
+	case containsAcceptedLexeme(productType, "necklace|necklaces|ring|rings|earring|earrings|bracelet|bracelets|jewelry|jewellery|pendant|pendants|brooch|brooches"):
 		return "jewelry"
-	case containsProductKeyword(productType, "handbag|backpack|bag|purse|tote|satchel|crossbody"):
+	case containsAcceptedLexeme(productType, "handbag|handbags|backpack|backpacks|bag|bags|purse|purses|tote|totes|satchel|satchels|crossbody|crossbodies"):
 		return "bags"
 	default:
 		return ""
 	}
 }
 
-func containsProductKeyword(value, keywordList string) bool {
+func containsAcceptedLexeme(value, acceptedLexemes string) bool {
 	for tokenStart := -1; ; {
 		tokenEnd := len(value)
 		for index, character := range value {
 			if tokenStart < 0 {
-				if unicode.IsLetter(character) || unicode.IsDigit(character) {
+				if isProductTokenCharacter(character) {
 					tokenStart = index
 				}
 				continue
 			}
-			if !unicode.IsLetter(character) && !unicode.IsDigit(character) {
+			if !isProductTokenCharacter(character) {
 				tokenEnd = index
 				break
 			}
@@ -182,7 +189,7 @@ func containsProductKeyword(value, keywordList string) bool {
 		if tokenStart < 0 {
 			return false
 		}
-		if tokenMatchesKeywordList(value[tokenStart:tokenEnd], keywordList) {
+		if tokenMatchesAcceptedLexeme(value[tokenStart:tokenEnd], acceptedLexemes) {
 			return true
 		}
 		if tokenEnd == len(value) {
@@ -193,28 +200,24 @@ func containsProductKeyword(value, keywordList string) bool {
 	}
 }
 
-func tokenMatchesKeywordList(token, keywordList string) bool {
-	for keywordList != "" {
-		keyword := keywordList
-		if separator := strings.IndexByte(keywordList, '|'); separator >= 0 {
-			keyword = keywordList[:separator]
-			keywordList = keywordList[separator+1:]
+func isProductTokenCharacter(character rune) bool {
+	return unicode.IsLetter(character) || unicode.IsNumber(character) || unicode.IsMark(character)
+}
+
+func tokenMatchesAcceptedLexeme(token, acceptedLexemes string) bool {
+	for acceptedLexemes != "" {
+		lexeme := acceptedLexemes
+		if separator := strings.IndexByte(acceptedLexemes, '|'); separator >= 0 {
+			lexeme = acceptedLexemes[:separator]
+			acceptedLexemes = acceptedLexemes[separator+1:]
 		} else {
-			keywordList = ""
+			acceptedLexemes = ""
 		}
-		if tokenMatchesKeyword(token, keyword) {
+		if token == lexeme {
 			return true
 		}
 	}
 	return false
-}
-
-func tokenMatchesKeyword(token, keyword string) bool {
-	if !strings.HasPrefix(token, keyword) {
-		return false
-	}
-	suffix := token[len(keyword):]
-	return suffix == "" || suffix == "s" || suffix == "es"
 }
 
 func platformSceneDefaults(marketplace string) (productimage.SceneOptions, bool) {

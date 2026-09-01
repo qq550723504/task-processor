@@ -72,7 +72,7 @@ func TestResolveProductImageProfileEnforcesAggregateRawInputBoundary(t *testing.
 		Marketplace:   "amazon",
 		Country:       "us",
 		ProductType:   strings.Repeat("x", 8192),
-		SceneCategory: strings.Repeat("y", 8184),
+		SceneCategory: strings.Repeat(" ", 8179) + "shoes",
 	})
 	require.NoError(t, err, "fixture is exactly 16384 raw bytes")
 
@@ -80,7 +80,7 @@ func TestResolveProductImageProfileEnforcesAggregateRawInputBoundary(t *testing.
 		Marketplace:   "amazon",
 		Country:       "us",
 		ProductType:   strings.Repeat("x", 8192),
-		SceneCategory: strings.Repeat("y", 8185),
+		SceneCategory: strings.Repeat(" ", 8180) + "shoes",
 	})
 	require.ErrorIs(t, err, ErrInvalidProfileInput, "fixture is 16385 raw bytes")
 }
@@ -149,6 +149,57 @@ func TestResolveProductImageProfileDoesNotClassifySubstringFalsePositives(t *tes
 		})
 		require.NoError(t, err)
 		require.NotEqual(t, "default", profile.Family, productType)
+	}
+}
+
+func TestResolveProductImageProfileAcceptsOnlyExplicitFamilyLexemes(t *testing.T) {
+	t.Parallel()
+
+	accepted := []struct {
+		productType string
+		family      string
+	}{
+		{productType: "caps", family: "bags_accessories"},
+		{productType: "shoes", family: "footwear"},
+		{productType: "dresses", family: "apparel"},
+		{productType: "handbags", family: "bags_accessories"},
+		{productType: "backpacks", family: "bags_accessories"},
+		{productType: "pants", family: "apparel"},
+		{productType: "electronics", family: "electronics"},
+	}
+	for _, testCase := range accepted {
+		profile, err := ResolveProductImageProfile(ProfileInput{Marketplace: "amazon", Country: "us", ProductType: testCase.productType})
+		require.NoError(t, err)
+		require.Equal(t, testCase.family, profile.Family, testCase.productType)
+	}
+
+	for _, productType := range []string{"capes", "shoees", "dresss", "handbages", "backpackes", "pantss", "electronicss"} {
+		profile, err := ResolveProductImageProfile(ProfileInput{Marketplace: "amazon", Country: "us", ProductType: productType})
+		require.NoError(t, err)
+		require.Equal(t, "default", profile.Family, productType)
+	}
+}
+
+func TestResolveProductImageProfileTreatsCombiningMarksAsTokenCharacters(t *testing.T) {
+	t.Parallel()
+
+	profile, err := ResolveProductImageProfile(ProfileInput{
+		Marketplace: "amazon", Country: "us", ProductType: "cap\u0301acity",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "default", profile.Family)
+}
+
+func TestResolveProductImageProfileFamilyPriorityIsIndependentOfTokenOrder(t *testing.T) {
+	t.Parallel()
+
+	productTypes := []string{"shoe ring", "ring shoe", "shoe-ring", "ring/shoe"}
+	for range 100 {
+		for _, productType := range productTypes {
+			profile, err := ResolveProductImageProfile(ProfileInput{Marketplace: "amazon", Country: "us", ProductType: productType})
+			require.NoError(t, err)
+			require.Equal(t, "footwear", profile.Family, productType)
+		}
 	}
 }
 
@@ -237,6 +288,59 @@ func TestResolveProductImageProfileSelectsExplicitDerivedAndPlatformSceneDefault
 			require.Equal(t, testCase.want, profile.SceneDefaults)
 		})
 	}
+}
+
+func TestResolveProductImageProfileRejectsUnsupportedExplicitSceneCategory(t *testing.T) {
+	t.Parallel()
+
+	for _, marketplace := range []string{"amazon", "etsy"} {
+		for _, category := range []string{"unknown", "bad/category", "\x00", "\x1f"} {
+			profile, err := ResolveProductImageProfile(ProfileInput{
+				Marketplace: marketplace, Country: "us", ProductType: "running shoe", SceneCategory: category,
+			})
+			require.ErrorIs(t, err, ErrInvalidProfileInput, "%s/%q", marketplace, category)
+			require.Equal(t, ProductImageProfile{}, profile)
+		}
+	}
+}
+
+func TestResolveProductImageProfileSupportedCategoriesComposeWithProductImage(t *testing.T) {
+	t.Parallel()
+
+	for _, category := range []string{"shoes", "jewelry", "bags"} {
+		profile, err := ResolveProductImageProfile(ProfileInput{
+			Marketplace: "amazon", Country: "us", ProductType: "desk lamp", SceneCategory: category,
+		})
+		require.NoError(t, err)
+		require.Equal(t, "platform_category", profile.SceneDefaultsSource)
+		require.Equal(t, category, profile.SceneDefaults.SceneCategory)
+
+		options, err := productimage.MergeSceneOptions(nil, &profile.SceneDefaults)
+		require.NoError(t, err)
+		require.NotNil(t, options)
+		plan, err := productimage.BuildScenePlan(productimage.ScenePlanRequest{
+			ProfileName: "local_canvas_default",
+			Product: productimage.ProductContext{
+				ProductKey: "product-1", Title: "Desk Lamp", ProductType: "desk lamp",
+			},
+			Options:  *options,
+			Geometry: productimage.SceneLayoutInput{CanvasSize: 1600, SubjectWidth: 720, SubjectHeight: 720},
+		})
+		require.NoError(t, err)
+		require.Equal(t, category, plan.Options.SceneCategory)
+	}
+}
+
+func TestResolveProductImageProfileUnknownMarketplaceKeepsNoDefaultsForSupportedCategory(t *testing.T) {
+	t.Parallel()
+
+	profile, err := ResolveProductImageProfile(ProfileInput{
+		Marketplace: "etsy", Country: "us", ProductType: "desk lamp", SceneCategory: "shoes",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "default", profile.Family)
+	require.Equal(t, "none", profile.SceneDefaultsSource)
+	require.Equal(t, productimage.SceneOptions{}, profile.SceneDefaults)
 }
 
 func TestResolveProductImageProfilePreservesFourMarketplaceSceneDefaults(t *testing.T) {
