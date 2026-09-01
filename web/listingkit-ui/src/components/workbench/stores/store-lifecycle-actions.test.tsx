@@ -74,6 +74,21 @@ describe("StoreLifecycleActions", () => {
     expect(screen.getByRole("button", { name: "重新启用店铺" })).toBeInTheDocument();
   });
 
+  it("keeps ordinary lifecycle failures visible and blocks an immediate retry", async () => {
+    const user = userEvent.setup();
+    render(<StoreLifecycleActions store={STORE} />);
+    await user.click(screen.getByRole("button", { name: "停用店铺" }));
+    disable.mutate.mock.calls[0]?.[1].onError({
+      status: 403,
+      code: "PERMISSION_DENIED",
+    });
+
+    expect(
+      await screen.findByText("店铺操作未获授权，请刷新店铺信息后重试。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "停用店铺" })).not.toBeInTheDocument();
+  });
+
   it("locks a local lifecycle action synchronously against a double click", async () => {
     const user = userEvent.setup(); render(<StoreLifecycleActions store={STORE} />);
     const action = screen.getByRole("button", { name: "停用店铺" });

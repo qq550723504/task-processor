@@ -39,6 +39,7 @@ type ActionState =
       retryable: boolean;
       refreshing: boolean;
     }
+  | { kind: "lifecycle-error"; scopeKey: string; message: string }
   | { kind: "revoked"; scopeKey: string };
 
 type DeleteTerminal = "retryable" | "semantic" | null;
@@ -181,7 +182,13 @@ function ScopedStoreLifecycleActions({
       beginConflict("lifecycle", baselineVersion, operationScope);
       return;
     }
-    setIdle(operationScope);
+    actionRef.current = false;
+    if (!mountedRef.current) return;
+    setAction({
+      kind: "lifecycle-error",
+      scopeKey: operationScope,
+      message: lifecycleFailureMessage(error.code),
+    });
   };
   const runStateAction = (nextAction: "enable" | "disable") => {
     if (
@@ -446,6 +453,16 @@ function ScopedStoreLifecycleActions({
       </p>
     );
   }
+  if (currentAction.kind === "lifecycle-error") {
+    return (
+      <p
+        className="rounded-md border border-destructive/30 p-3 text-sm text-destructive"
+        role="alert"
+      >
+        {currentAction.message}
+      </p>
+    );
+  }
   if (
     currentAction.kind === "conflict" ||
     currentAction.kind === "refreshing"
@@ -557,6 +574,16 @@ function isOrganizationAccessError(code?: string) {
     code === "ORGANIZATION_ACCESS_DENIED" ||
     code === "ORGANIZATION_CONTEXT_CHANGED"
   );
+}
+
+function lifecycleFailureMessage(code?: string) {
+  if (code === "PERMISSION_DENIED") {
+    return "店铺操作未获授权，请刷新店铺信息后重试。";
+  }
+  if (code === "STORE_NOT_FOUND") {
+    return "店铺已不存在，请刷新店铺列表。";
+  }
+  return "店铺操作未完成，请刷新店铺信息后重试。";
 }
 
 function StoreLifecycleControls({

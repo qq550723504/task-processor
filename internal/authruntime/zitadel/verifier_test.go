@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -92,6 +93,27 @@ func TestVerifierReturnsCanonicalIdentity(t *testing.T) {
 
 	require.Equal(t, int32(1), discoveryHits.Load())
 	require.Equal(t, int32(2), introspectionHits.Load())
+}
+
+func TestVerifierRejectsOversizedIntrospectionResponseBeforeDecoding(t *testing.T) {
+	server := newAuthServer(t, map[string]any{
+		"active":                                true,
+		"sub":                                   "user-1",
+		"urn:zitadel:iam:user:resourceowner:id": "org-1",
+		"padding":                               strings.Repeat("x", (1<<20)+1),
+	})
+	defer server.Close()
+
+	verifier := NewVerifier(Config{
+		IssuerURL:  server.URL,
+		ClientID:   "api",
+		HTTPClient: server.Client(),
+	})
+
+	_, err := verifier.Verify(context.Background(), "user-token")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "response is too large")
+	require.True(t, IsVerificationDependencyUnavailable(err))
 }
 
 func TestVerifierRejectsExpiredActiveToken(t *testing.T) {

@@ -22,6 +22,8 @@ var (
 	errTokenExpired         = errors.New("ZITADEL token introspection returned an expired token")
 )
 
+const introspectionResponseMaxBytes = 1 << 20
+
 type verificationFailureKind uint8
 
 const (
@@ -141,9 +143,12 @@ func (v *verifier) introspect(ctx context.Context, token string) (*Introspection
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, introspectionResponseMaxBytes+1))
 	if err != nil {
 		return nil, unavailableVerification(fmt.Errorf("ZITADEL token introspection response is invalid: %w", err))
+	}
+	if len(data) > introspectionResponseMaxBytes {
+		return nil, unavailableVerification(errors.New("ZITADEL token introspection response is too large"))
 	}
 
 	var payload IntrospectionResponse

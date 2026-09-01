@@ -48,10 +48,11 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
   const guardsRef = useRef(new Set<(target: WorkbenchOrganization) => boolean | Promise<boolean>>());
   const currentContextRef = useRef<WorkbenchContext | null>(null);
   const switchRequestPendingRef = useRef(false);
+  const [switchPreparing, setSwitchPreparing] = useState(false);
   const contextQuery = useQuery({
     queryKey: WORKBENCH_CONTEXT_QUERY_KEY,
     queryFn: ({ signal }) => fetchWorkbenchContext(signal),
-    enabled: !blockingError,
+    enabled: !blockingError && !switchPreparing,
     staleTime: 30_000,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
@@ -60,12 +61,14 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
     mutationFn: switchEffectiveOrganization,
     onSuccess: (nextContext) => {
       switchRequestPendingRef.current = false;
+      setSwitchPreparing(false);
       queryClient.clear();
       queryClient.setQueryData(WORKBENCH_CONTEXT_QUERY_KEY, nextContext);
       setBlockingError(null);
     },
     onError: (error) => {
       switchRequestPendingRef.current = false;
+      setSwitchPreparing(false);
       queryClient.clear();
       setBlockingError(normalizeWorkbenchError(error));
     },
@@ -125,9 +128,14 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
           }
         }
         if (switchRequestPendingRef.current || hasPendingStoreMutation()) return;
-        await queryClient.cancelQueries({ queryKey: WORKBENCH_CONTEXT_QUERY_KEY });
-        if (switchRequestPendingRef.current || hasPendingStoreMutation()) return;
+        setSwitchPreparing(true);
         switchRequestPendingRef.current = true;
+        await queryClient.cancelQueries({ queryKey: WORKBENCH_CONTEXT_QUERY_KEY });
+        if (hasPendingStoreMutation()) {
+          switchRequestPendingRef.current = false;
+          setSwitchPreparing(false);
+          return;
+        }
         switchMutation.mutate(organizationId);
       })();
     },

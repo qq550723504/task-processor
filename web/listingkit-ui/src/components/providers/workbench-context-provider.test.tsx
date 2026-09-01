@@ -198,6 +198,32 @@ describe("WorkbenchContextProvider", () => {
     );
   });
 
+  it("pauses interval and focus refreshes for the entire switch request", async () => {
+    let resolveSwitch!: (response: Response) => void;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
+      if (input === "/api/workbench/context/effective-organization") {
+        return new Promise<Response>((resolve) => {
+          resolveSwitch = resolve;
+        });
+      }
+      return Promise.resolve(Response.json(ORG_A_CONTEXT));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const queryClient = createQueryClient();
+
+    renderProvider(queryClient);
+    await screen.findByText("organization:硕米科技");
+    await userEvent.click(screen.getByRole("button", { name: "switch" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    void queryClient.invalidateQueries({ queryKey: WORKBENCH_CONTEXT_QUERY_KEY });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    resolveSwitch(Response.json(ORG_B_CONTEXT));
+    expect(await screen.findByText("organization:星海贸易")).toBeInTheDocument();
+  });
+
   it("makes a successful retry authoritative after an explicit switch", async () => {
     const refreshed = {
       ...ORG_A_CONTEXT,
