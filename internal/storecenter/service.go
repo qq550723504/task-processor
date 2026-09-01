@@ -137,9 +137,6 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 	}
 	replayed := reserved.Existing
 
-	if err := s.record(ctx, allocation, request, AuditActionQuotaReserved, AuditOutcomeSucceeded, nil, "", StoreStatusProvisioning, AuditFailureNone); err != nil {
-		return CreateStoreResult{}, dependencyError(err)
-	}
 	if terminal, err := s.audit.Get(ctx, request.OrganizationID, request.IdempotencyKey, AuditActionStoreCreateFailed); err == nil {
 		if !auditEventMatchesAllocation(*terminal, allocation.AllocationID, allocation.StoreID) {
 			return CreateStoreResult{}, dependencyError(ErrAuditIdentityMismatch)
@@ -149,6 +146,16 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		}
 		return CreateStoreResult{}, stableFailureFromAudit(*terminal)
 	} else if !errors.Is(err, ErrNotFound) {
+		return CreateStoreResult{}, dependencyError(err)
+	}
+
+	if err := s.record(ctx, allocation, request, AuditActionQuotaReserved, AuditOutcomeSucceeded, nil, "", StoreStatusProvisioning, AuditFailureNone); err != nil {
+		if releaseErr := s.releaseReservation(ctx, transition); releaseErr != nil {
+			return CreateStoreResult{}, dependencyError(releaseErr)
+		}
+		if terminalErr := s.record(ctx, allocation, request, AuditActionStoreCreateFailed, AuditOutcomeFailed, nil, "", "", AuditFailureDependencyUnavailable); terminalErr != nil {
+			return CreateStoreResult{}, dependencyError(terminalErr)
+		}
 		return CreateStoreResult{}, dependencyError(err)
 	}
 
@@ -519,6 +526,9 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 		}
 		if err := s.repository.Save(ctx, normalized.OrganizationID, store, normalized.ExpectedVersion); err != nil {
 			resolved, readErr := s.repository.Get(ctx, normalized.OrganizationID, normalized.StoreID)
+			if readErr == nil && matchesStoreScope(resolved, normalized.OrganizationID, normalized.StoreID) && resolved.LifecycleStatus() == StoreStatusDeleting && resolved.DeleteOperationKey() != normalized.OperationKey {
+				return DeleteStoreResult{}, ErrInvalidTransition
+			}
 			if readErr != nil || !matchesStoreScope(resolved, normalized.OrganizationID, normalized.StoreID) || resolved.Version() != normalized.ExpectedVersion+1 || resolved.LifecycleStatus() != StoreStatusDeleting || resolved.DeleteOperationKey() != normalized.OperationKey {
 				return DeleteStoreResult{}, dependencyError(err)
 			}

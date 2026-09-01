@@ -362,6 +362,10 @@ func parseListRequest(rawQuery string) (storecenter.ListStoresRequest, string, e
 		}
 		request.PageSize = int(parsed)
 	}
+	maxInt := int64(^uint(0) >> 1)
+	if int64(request.Page-1) > maxInt/int64(request.PageSize) {
+		return storecenter.ListStoresRequest{}, "page", errors.New("page offset overflows")
+	}
 	if value, ok := query["platform"]; ok {
 		if value[0] != string(storecenter.PlatformShein) {
 			return storecenter.ListStoresRequest{}, "platform", errors.New("invalid platform")

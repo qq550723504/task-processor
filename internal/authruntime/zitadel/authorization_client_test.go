@@ -351,6 +351,21 @@ func TestAuthorizationClientRejectsDependencyFailuresWithoutSensitiveResponseDat
 	}
 }
 
+func TestAuthorizationClientRejectsOversizedResponseBeforeDecoding(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(strings.Repeat("x", (1<<20)+1)))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := NewAuthorizationClient(server.URL, server.Client())
+	_, err := client.ListOwnProjectAuthorizations(context.Background(), "token", "user-1", "project-1")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "response is too large")
+}
+
 func TestAuthorizationClientFailsClosedAboveOneThousandReturnedAuthorizations(t *testing.T) {
 	server := newAuthorizationListServer(t, 1001, []map[string]any{
 		authorizationFixture("auth-1", "user-1", "project-1", "org-1", "Organization 1", "STATE_ACTIVE", "viewer"),

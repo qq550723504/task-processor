@@ -310,6 +310,36 @@ describe("WorkspaceAppShell", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("redirects authentication failures to login instead of retrying the stale session", async () => {
+    const retry = vi.fn();
+    injectedWorkbenchContext.value = {
+      user: null,
+      homeOrganizationId: null,
+      organizations: [],
+      effectiveOrganization: null,
+      roles: [],
+      selectionRequired: false,
+      isLoading: false,
+      isSwitching: false,
+      error: { code: "AUTHENTICATION_REQUIRED" },
+      blockingError: null,
+      retry,
+      switchOrganization: vi.fn(),
+    };
+
+    render(<WorkspaceAppShell><p>organization child</p></WorkspaceAppShell>);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "登录状态已失效，请重新登录",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "重新加载" }));
+
+    expect(navigation.replace).toHaveBeenCalledWith(
+      "/login?returnTo=%2Fworkbench",
+    );
+    expect(retry).not.toHaveBeenCalled();
+  });
+
   it("removes old scoped children and blocks after an explicit switch failure", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

@@ -72,6 +72,11 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
     context.organizations.length === 0 &&
     pathname !== NO_ORGANIZATION_ROUTE;
 
+  const redirectToLogin = () => {
+    const returnTo = `${pathname}${window.location.search}`;
+    router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+  };
+
   useEffect(() => {
     if (shouldRedirectToNoOrganization) {
       router.replace(NO_ORGANIZATION_ROUTE);
@@ -91,14 +96,27 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   if (context.blockingError) {
     return (
       <AccessState
-        action={() => window.location.reload()}
+        action={
+          context.blockingError.code === "AUTHENTICATION_REQUIRED"
+            ? redirectToLogin
+            : () => window.location.reload()
+        }
         code={context.blockingError.code}
       />
     );
   }
 
   if (context.error) {
-    return <AccessState action={context.retry} code={context.error.code} />;
+    return (
+      <AccessState
+        action={
+          context.error.code === "AUTHENTICATION_REQUIRED"
+            ? redirectToLogin
+            : context.retry
+        }
+        code={context.error.code}
+      />
+    );
   }
 
   if (shouldRedirectToNoOrganization) {

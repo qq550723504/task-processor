@@ -227,6 +227,7 @@ func TestHandlerRejectsOrganizationSpoofInputsWithoutCallingService(t *testing.T
 func TestHandlerStrictlyRejectsMalformedCollectionQueriesAndPaths(t *testing.T) {
 	tests := []string{
 		"?page=01", "?page=0", "?page=-1", "?page=1&page=2", "?pageSize=0", "?pageSize=101", "?pageSize=20&pageSize=20",
+		fmt.Sprintf("?page=%d&pageSize=100", int64(^uint(0)>>1)),
 		"?platform=amazon", "?status=deleted", "?unknown=x",
 	}
 	for _, query := range tests {

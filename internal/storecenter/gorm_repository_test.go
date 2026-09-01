@@ -296,6 +296,10 @@ func TestGormStoreRepositoryListsOnlyMatchingOrganizationFiltersAndPage(t *testi
 	if err != nil || len(second.Stores) != 1 || second.Stores[0].ID() != want[2] {
 		t.Fatalf("second page = (%v, %v), want final stable row", second.Stores, err)
 	}
+	_, err = repo.List(context.Background(), "org-a", storecenter.StoreListQuery{Page: int(^uint(0) >> 1), PageSize: 100})
+	if err == nil || !strings.Contains(err.Error(), "page offset overflows") {
+		t.Fatalf("overflowing page error = %v, want page offset overflow", err)
+	}
 }
 
 // Mutation caught: probing by ID without Organization or treating a missing

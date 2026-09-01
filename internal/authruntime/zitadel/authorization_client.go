@@ -20,6 +20,7 @@ const (
 	authorizationListEndpoint      = "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations"
 	authorizationListPageSize      = 100
 	authorizationListMaximumResult = 1000
+	authorizationResponseMaxBytes  = 1 << 20
 )
 
 // AuthorizationClient reads the current user's organization-scoped ZITADEL
@@ -213,8 +214,16 @@ func (c *AuthorizationClient) listAuthorizationPage(
 		return authorizationListResponse{}, fmt.Errorf("ZITADEL authorization request failed: HTTP %d", response.StatusCode)
 	}
 
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, authorizationResponseMaxBytes+1))
+	if err != nil {
+		return authorizationListResponse{}, errors.New("ZITADEL authorization response is invalid JSON")
+	}
+	if len(responseBody) > authorizationResponseMaxBytes {
+		return authorizationListResponse{}, errors.New("ZITADEL authorization response is too large")
+	}
+
 	var result authorizationListResponse
-	decoder := json.NewDecoder(response.Body)
+	decoder := json.NewDecoder(bytes.NewReader(responseBody))
 	if err := decoder.Decode(&result); err != nil {
 		return authorizationListResponse{}, errors.New("ZITADEL authorization response is invalid JSON")
 	}

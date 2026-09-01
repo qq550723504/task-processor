@@ -830,7 +830,7 @@ function parseJSONBody(body: Uint8Array): ParsedJSONBody | null {
       allowTrailingComma: false,
       disallowComments: true,
     });
-    return errors.length === 0 && root?.type === "object"
+    return errors.length === 0 && root?.type === "object" && hasUniqueObjectKeys(root)
       ? { payload: value as Record<string, unknown>, root, text }
       : null;
   } catch {

@@ -97,7 +97,10 @@ func (r *GormStoreRepository) CreateOrReplay(ctx context.Context, organizationID
 }
 
 func (r *GormStoreRepository) List(ctx context.Context, organizationID string, query StoreListQuery) (StorePage, error) {
-	page, pageSize := normalizeStorePage(query.Page, query.PageSize)
+	page, pageSize, err := normalizeStorePage(query.Page, query.PageSize)
+	if err != nil {
+		return StorePage{}, err
+	}
 	base := r.scopedActiveRecords(ctx, organizationID)
 	if query.Platform != "" {
 		base = base.Where("platform = ?", string(query.Platform))
@@ -396,7 +399,7 @@ func validateSaveSnapshot(durable, incoming StoreSnapshot) error {
 	return errors.New("store save must change profile or lifecycle state")
 }
 
-func normalizeStorePage(page, pageSize int) (int, int) {
+func normalizeStorePage(page, pageSize int) (int, int, error) {
 	if page <= 0 {
 		page = 1
 	}
@@ -406,7 +409,10 @@ func normalizeStorePage(page, pageSize int) (int, int) {
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	return page, pageSize
+	if page-1 > int(^uint(0)>>1)/pageSize {
+		return 0, 0, ErrPageOffsetOverflow
+	}
+	return page, pageSize, nil
 }
 
 func identityKey(snapshot StoreSnapshot) string {

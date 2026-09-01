@@ -261,12 +261,13 @@ func TestServiceCreateFinalAuditFailureResumesWithoutReactivation(t *testing.T) 
 
 func TestServiceCreateAuditFailuresPauseAtTheirDurableBoundary(t *testing.T) {
 	for _, tt := range []struct {
-		name                     string
-		action                   storecenter.AuditAction
-		wantCreates, wantCommits int
+		name                                  string
+		action                                storecenter.AuditAction
+		wantCreates, wantCommits, wantRelease int
+		wantRetrySuccess                      bool
 	}{
-		{name: "before store", action: storecenter.AuditActionQuotaReserved, wantCreates: 0, wantCommits: 0},
-		{name: "after store", action: storecenter.AuditActionStoreCreated, wantCreates: 1, wantCommits: 0},
+		{name: "before store", action: storecenter.AuditActionQuotaReserved, wantCreates: 0, wantCommits: 0, wantRelease: 1, wantRetrySuccess: false},
+		{name: "after store", action: storecenter.AuditActionStoreCreated, wantCreates: 1, wantCommits: 0, wantRelease: 0, wantRetrySuccess: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			request := validCreateRequest()
@@ -284,6 +285,15 @@ func TestServiceCreateAuditFailuresPauseAtTheirDurableBoundary(t *testing.T) {
 			if repository.createCalls != tt.wantCreates || ledger.commitCalls != tt.wantCommits {
 				t.Fatalf("paused calls create/commit = %d/%d, want %d/%d", repository.createCalls, ledger.commitCalls, tt.wantCreates, tt.wantCommits)
 			}
+			if ledger.releaseCalls != tt.wantRelease {
+				t.Fatalf("paused release calls = %d, want %d", ledger.releaseCalls, tt.wantRelease)
+			}
+			if !tt.wantRetrySuccess {
+				if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+					t.Fatalf("released retry Create(): %v, want dependency unavailable", err)
+				}
+				return
+			}
 			result, err := service.Create(context.Background(), request)
 			if err != nil {
 				t.Fatalf("replay Create(): %v", err)
@@ -292,6 +302,27 @@ func TestServiceCreateAuditFailuresPauseAtTheirDurableBoundary(t *testing.T) {
 				t.Fatalf("replay = %+v release=%d, want active/no compensation", result, ledger.releaseCalls)
 			}
 		})
+	}
+}
+
+func TestServiceCreateReleasesReservationWhenInitialAuditFails(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{storecenter.AuditActionQuotaReserved: 1}
+	service, err := storecenter.NewService(newStoreRepositoryFake(), ledger, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("Create() error = %v, want dependency unavailable", err)
+	}
+	if ledger.releaseCalls != 1 || ledger.allocation.Status != listingsubscription.StoreQuotaReleased {
+		t.Fatalf("released reservation = %d/%s, want one released reservation", ledger.releaseCalls, ledger.allocation.Status)
+	}
+	if event := audit.eventFor(request.OrganizationID, request.IdempotencyKey, storecenter.AuditActionStoreCreateFailed); event.FailureCode != storecenter.AuditFailureDependencyUnavailable {
+		t.Fatalf("terminal audit after initial failure = %+v, want dependency failure", event)
 	}
 }
 
@@ -1666,6 +1697,29 @@ func TestServiceConcurrentDifferentDeleteKeysHaveOneOwner(t *testing.T) {
 	}
 	if successes != 1 || failures != 1 || ledger.deallocateCalls != 1 {
 		t.Fatalf("different-key deletes success/failure/deallocate = %d/%d/%d", successes, failures, ledger.deallocateCalls)
+	}
+}
+
+func TestServiceDeletePreservesLostDeleteOwnershipAsInvalidTransition(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+
+	otherKey := uuid.NewString()
+	other := cloneStore(store)
+	if err := other.BeginDelete(otherKey, "other-admin", store.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	repository.saveErr = storecenter.ErrVersionConflict
+	repository.storeOnSaveError = other
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{allocation: listingsubscription.StoreQuotaAllocation{OrganizationID: "org-a", AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), Status: listingsubscription.StoreQuotaAllocated}}, newAuditRepositoryFake(), &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = service.Delete(context.Background(), storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "admin", StoreID: store.ID(), ExpectedVersion: store.Version(), OperationKey: uuid.NewString()})
+	if !errors.Is(err, storecenter.ErrInvalidTransition) {
+		t.Fatalf("lost delete ownership error = %v, want ErrInvalidTransition", err)
 	}
 }
 

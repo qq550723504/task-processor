@@ -540,6 +540,33 @@ describe("buildWorkbenchBrowserResponse", () => {
 
   it.each([
     [
+      "duplicate context success key",
+      new Response(
+        '{"user":{"id":"user-1"},"homeOrganizationId":"org-a","effectiveOrganizationId":"org-a","effectiveOrganizationId":"org-b","selectionRequired":false,"organizations":[{"id":"org-a","name":"Organization A","roles":[]},{"id":"org-b","name":"Organization B","roles":[]}]}',
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ],
+    [
+      "duplicate context error key",
+      new Response(
+        '{"code":"ORGANIZATION_ACCESS_DENIED","code":"DEPENDENCY_UNAVAILABLE","message":"Denied","requestId":"req-duplicate","fieldErrors":[]}',
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      ),
+    ],
+  ])(
+    "rejects %s before accepting the parsed payload",
+    async (_name, upstream) => {
+      const response = await buildWorkbenchBrowserResponse(upstream);
+
+      expect(response.status).toBe(502);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "DEPENDENCY_UNAVAILABLE",
+      });
+    },
+  );
+
+  it.each([
+    [
       "success status carrying an error",
       Response.json({
         code: "PERMISSION_DENIED",

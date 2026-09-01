@@ -28,6 +28,7 @@ var (
 	ErrAlreadyExists         = errors.New("store already exists")
 	ErrVersionConflict       = errors.New("store version conflict")
 	ErrInvalidTransition     = errors.New("invalid store lifecycle transition")
+	ErrPageOffsetOverflow    = errors.New("store page offset overflows")
 	ErrLimitReached          = errors.New("store limit reached")
 	ErrDependencyUnavailable = errors.New("store dependency unavailable")
 )
