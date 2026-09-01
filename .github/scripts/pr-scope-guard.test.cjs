@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const {
   LIMITS,
@@ -500,6 +502,32 @@ test("maps an admission decision to a commit status", () => {
     state: "failure",
     description: "Exceeds admission limits",
   });
+});
+
+test("identifies an authorized architecture override in the commit status", () => {
+  assert.deepEqual(statusForEvaluation({ allowed: true, overridden: true }), {
+    state: "success",
+    description: "Allowed by authorized architecture override",
+  });
+});
+
+test("runs admission guard tests when policy files change", () => {
+  const workflowPath = path.join(__dirname, "..", "workflows", "ci.yml");
+  const workflow = fs.readFileSync(workflowPath, "utf8");
+
+  assert.equal(
+    workflow.match(/- "\.github\/scripts\/\*\*"/g)?.length,
+    2,
+  );
+  assert.match(workflow, /development-admission-tests:/);
+  assert.match(
+    workflow,
+    /run: node --test \.github\/scripts\/pr-scope-guard\.test\.cjs/,
+  );
+  assert.match(
+    workflow,
+    /needs:\s*[\s\S]*-\s+development-admission-tests\b/,
+  );
 });
 
 test("targets the test merge commit for required admission status", () => {
