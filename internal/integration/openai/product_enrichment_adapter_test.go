@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -215,7 +216,32 @@ func TestProductEnrichmentPromptPreflightRejectsExcessiveCollectionNodesWithoutM
 	}
 }
 
-func TestProductEnrichmentPromptPreflightRejectsCyclesFailClosed(t *testing.T) {
+func TestProductEnrichmentPromptPreflightAcceptsSamePointerDifferentLengthSlice(t *testing.T) {
+	t.Parallel()
+
+	value := make([]any, 1)
+	value[0] = value[:0]
+	budget := inspectProductEnrichmentPromptBudget(value)
+	if budget.Kind != productEnrichmentPromptBudgetWithin {
+		t.Fatalf("same-pointer empty subslice budget = %#v, want within budget", budget)
+	}
+	if budget.Nodes != 3 || budget.RawStringBytes != 0 {
+		t.Fatalf("same-pointer empty subslice budget = %#v, want 3 nodes and 0 raw bytes", budget)
+	}
+}
+
+func TestProductEnrichmentPromptPreflightRejectsTrueSliceCycle(t *testing.T) {
+	t.Parallel()
+
+	value := make([]any, 1)
+	value[0] = value
+	budget := inspectProductEnrichmentPromptBudget(value)
+	if budget.Kind != productEnrichmentPromptBudgetCycle {
+		t.Fatalf("true slice cycle budget kind = %q, want %q", budget.Kind, productEnrichmentPromptBudgetCycle)
+	}
+}
+
+func TestProductEnrichmentPromptPreflightRejectsPointerCycleFailClosed(t *testing.T) {
 	t.Parallel()
 
 	type cyclicValue struct{ Next *cyclicValue }
@@ -224,6 +250,35 @@ func TestProductEnrichmentPromptPreflightRejectsCyclesFailClosed(t *testing.T) {
 	budget := inspectProductEnrichmentPromptBudget(value)
 	if budget.Kind != productEnrichmentPromptBudgetCycle {
 		t.Fatalf("cycle budget kind = %q, want %q", budget.Kind, productEnrichmentPromptBudgetCycle)
+	}
+}
+
+func TestProductEnrichmentPromptPreflightAcceptsCompletedSharedReferences(t *testing.T) {
+	t.Parallel()
+
+	type sharedValue struct{ Text string }
+	sharedPointer := &sharedValue{Text: "pointer"}
+	sharedMap := map[string]string{"map-key": "map-value"}
+	sharedSlice := []string{"slice-value"}
+	value := struct {
+		PointerA *sharedValue
+		PointerB *sharedValue
+		MapA     map[string]string
+		MapB     map[string]string
+		SliceA   []string
+		SliceB   []string
+	}{
+		PointerA: sharedPointer,
+		PointerB: sharedPointer,
+		MapA:     sharedMap,
+		MapB:     sharedMap,
+		SliceA:   sharedSlice,
+		SliceB:   sharedSlice,
+	}
+
+	budget := inspectProductEnrichmentPromptBudget(value)
+	if budget.Kind != productEnrichmentPromptBudgetWithin {
+		t.Fatalf("completed shared references budget = %#v, want within budget", budget)
 	}
 }
 
@@ -246,21 +301,12 @@ func TestProductEnrichmentPromptPreflightRejectsExcessiveDepthFailClosed(t *test
 func TestProductEnrichmentAdapterEnforcesSerializedPromptByteLimit(t *testing.T) {
 	t.Parallel()
 
-	exactRequest := enrichmentRequestForPromptBytes(t, productEnrichmentPromptMaxBytes)
+	exactRequest, exactOracle := enrichmentRequestAndOracleForPromptBytes(t, productEnrichmentPromptMaxBytes)
+	if len(exactOracle) != productEnrichmentPromptMaxBytes {
+		t.Fatalf("exact oracle bytes = %d, want %d", len(exactOracle), productEnrichmentPromptMaxBytes)
+	}
 	if budget := inspectProductEnrichmentPromptBudget(exactRequest); budget.Kind != productEnrichmentPromptBudgetWithin {
 		t.Fatalf("exact prompt preflight = %#v, want within budget", budget)
-	}
-	exactFields, err := canonicalRequestedFields(exactRequest.Policy)
-	if err != nil {
-		t.Fatalf("canonicalRequestedFields(exact) error = %v", err)
-	}
-	exactEvidenceID, err := enrichment.CanonicalEvidenceID(exactRequest.Source)
-	if err != nil {
-		t.Fatalf("CanonicalEvidenceID(exact) error = %v", err)
-	}
-	exactPrompt, err := buildProductEnrichmentPrompt(exactRequest, exactEvidenceID, exactFields)
-	if err != nil || len(exactPrompt) != productEnrichmentPromptMaxBytes {
-		t.Fatalf("build exact prompt = (bytes %d, err %v), want (%d, nil)", len(exactPrompt), err, productEnrichmentPromptMaxBytes)
 	}
 	exactInvoker := &enrichmentTextInvokerStub{output: `{"description":"Steel bottle"}`}
 	if _, err := NewProductEnrichmentAdapter(exactInvoker).Generate(context.Background(), exactRequest); err != nil {
@@ -269,8 +315,14 @@ func TestProductEnrichmentAdapterEnforcesSerializedPromptByteLimit(t *testing.T)
 	if got := len(exactInvoker.request.Prompt); got != productEnrichmentPromptMaxBytes {
 		t.Fatalf("exact prompt bytes = %d, want %d", got, productEnrichmentPromptMaxBytes)
 	}
+	if exactInvoker.request.Prompt != string(exactOracle) {
+		t.Fatal("captured exact-limit prompt differs from independent wire oracle")
+	}
 
-	overRequest := enrichmentRequestForPromptBytes(t, productEnrichmentPromptMaxBytes+1)
+	overRequest, overOracle := enrichmentRequestAndOracleForPromptBytes(t, productEnrichmentPromptMaxBytes+1)
+	if len(overOracle) != productEnrichmentPromptMaxBytes+1 {
+		t.Fatalf("limit+1 oracle bytes = %d, want %d", len(overOracle), productEnrichmentPromptMaxBytes+1)
+	}
 	overInvoker := &enrichmentTextInvokerStub{output: `{"description":"Steel bottle"}`}
 	got, err := NewProductEnrichmentAdapter(overInvoker).Generate(context.Background(), overRequest)
 	if err != enrichment.ErrInputInvalid {
@@ -444,29 +496,45 @@ func assertProductEnrichmentPromptPreflightRejectsWithoutMarshal(
 	}
 }
 
-func enrichmentRequestForPromptBytes(t *testing.T, targetBytes int) enrichment.GenerationRequest {
+type productEnrichmentPromptWireOracle struct {
+	Instruction     string                       `json:"instruction"`
+	RequestedFields []string                     `json:"requested_fields"`
+	EvidenceID      string                       `json:"evidence_id"`
+	Request         enrichment.GenerationRequest `json:"request"`
+}
+
+func enrichmentRequestAndOracleForPromptBytes(t *testing.T, targetBytes int) (enrichment.GenerationRequest, []byte) {
 	t.Helper()
 
 	request := validEnrichmentGenerationRequest()
 	request.Snapshot.Description = "x"
-	requestedFields, err := canonicalRequestedFields(request.Policy)
-	if err != nil {
-		t.Fatalf("canonicalRequestedFields() error = %v", err)
-	}
-	evidenceID, err := enrichment.CanonicalEvidenceID(request.Source)
-	if err != nil {
-		t.Fatalf("CanonicalEvidenceID() error = %v", err)
-	}
-	baseline, err := buildProductEnrichmentPrompt(request, evidenceID, requestedFields)
-	if err != nil {
-		t.Fatalf("buildProductEnrichmentPrompt(baseline) error = %v", err)
-	}
+	baseline := marshalProductEnrichmentPromptWireOracle(t, request)
 	paddingBytes := targetBytes - len(baseline)
 	if paddingBytes < 0 {
 		t.Fatalf("target prompt bytes %d smaller than baseline %d", targetBytes, len(baseline))
 	}
 	request.Snapshot.Description = strings.Repeat("x", paddingBytes+1)
-	return request
+	return request, marshalProductEnrichmentPromptWireOracle(t, request)
+}
+
+func marshalProductEnrichmentPromptWireOracle(t *testing.T, request enrichment.GenerationRequest) []byte {
+	t.Helper()
+
+	request.Policy.AllowedFields = append([]string(nil), request.Policy.AllowedFields...)
+	request.Policy.RequiredFields = append([]string(nil), request.Policy.RequiredFields...)
+	sort.Strings(request.Policy.AllowedFields)
+	sort.Strings(request.Policy.RequiredFields)
+	wire := productEnrichmentPromptWireOracle{
+		Instruction:     "Return exactly one JSON object. Use only requested field paths as keys and non-empty strings as values. Return no markdown, metadata, scores, or explanations.",
+		RequestedFields: []string{"description"},
+		EvidenceID:      "raw-1",
+		Request:         request,
+	}
+	encoded, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatalf("json.Marshal(test-owned product enrichment wire): %v", err)
+	}
+	return encoded
 }
 
 func mustMarshalEnrichmentRequest(t *testing.T, request enrichment.GenerationRequest) []byte {

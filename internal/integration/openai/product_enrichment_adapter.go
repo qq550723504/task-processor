@@ -231,6 +231,7 @@ type productEnrichmentPromptBudgetReference struct {
 	kind    reflect.Kind
 	typeOf  reflect.Type
 	pointer uintptr
+	length  int
 }
 
 type productEnrichmentPromptBudgetWalker struct {
@@ -352,6 +353,11 @@ func (w *productEnrichmentPromptBudgetWalker) visitReference(
 		kind:    value.Kind(),
 		typeOf:  value.Type(),
 		pointer: value.Pointer(),
+	}
+	// Different-length views over the same backing array are distinct JSON
+	// values. Capacity does not affect JSON identity and is intentionally absent.
+	if value.Kind() == reflect.Slice {
+		reference.length = value.Len()
 	}
 	if _, cycle := w.active[reference]; cycle {
 		return productEnrichmentPromptBudgetCycle
