@@ -935,6 +935,39 @@ func TestInvokeFailsClosedAndScrubsNonApplicableAIInvocationIDOnSuccess(t *testi
 	}
 }
 
+func TestInvokeFailsClosedWhenPostBindAIDefinitionRiskInvariantIsCorrupted(t *testing.T) {
+	recorder := &recordingAuditStub{}
+	deps := validInvocationDependencies()
+	deps.Recorder = recorder
+	definition := validAICapabilityDefinition()
+	bound := bindDefinitionForTest(t, definition, ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+		return ExecutionResult{
+			Output:         json.RawMessage(`{"task_id":"task-1"}`),
+			AIInvocationID: "ai-invocation-1",
+		}, nil
+	}), deps)
+
+	// NewRegistry rejects this inconsistent matrix through Definition.Validate.
+	// This package-internal copy/write simulates post-Bind invariant corruption so
+	// the runtime defense-in-depth cannot regress without exposing a mutation API.
+	registered := bound.tools[definition.Ref]
+	registered.definition.Risk = RiskRead
+	bound.tools[definition.Ref] = registered
+
+	result, err := bound.Invoke(context.Background(), validCall())
+
+	require.Error(t, err)
+	require.Equal(t, ErrorInternal, CodeOf(err))
+	require.Equal(t, "internal: tool execution failed", err.Error())
+	require.Nil(t, result.Output)
+	require.Empty(t, result.AIInvocationID)
+	require.Len(t, recorder.records, 1)
+	require.Equal(t, AuditOutcomeFailed, recorder.records[0].Outcome)
+	require.Equal(t, ErrorInternal, recorder.records[0].ErrorCode)
+	require.Empty(t, recorder.records[0].AIInvocationID)
+	require.Equal(t, "8076f8fc7f4e66be2f5b3ebd07dba6328ab7043e838b3d7b50037ec25021c811", recorder.records[0].OutputHash)
+}
+
 func TestInvokeScrubsNonApplicableAIInvocationIDWithoutOverridingExecutorError(t *testing.T) {
 	tests := []struct {
 		name           string
