@@ -9,10 +9,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
+	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/database"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingsubscription"
+	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/storecenter"
 	storecenterhttpapi "task-processor/internal/storecenter/httpapi"
 )
@@ -40,8 +41,12 @@ type storeCenterFactories struct {
 
 func defaultStoreCenterFactories() storeCenterFactories {
 	return storeCenterFactories{
-		openDatabase:  database.NewSharedDatabaseFromConfig,
-		closeDatabase: database.CloseSharedDatabase,
+		openDatabase: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenShared(configadapter.Database(cfg))
+		},
+		closeDatabase: func(cfg *config.DatabaseConfig, db *gorm.DB) error {
+			return platformdatabase.CloseShared(configadapter.Database(cfg), db)
+		},
 		newStoreRepository: func(db *gorm.DB) (storecenter.Repository, error) {
 			return storecenter.NewGormStoreRepository(db)
 		},
