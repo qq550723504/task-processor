@@ -25,5 +25,5 @@ func (s *scraper1688) Scrape(ctx context.Context, url string) (*productenrich.Sc
 		return nil, fmt.Errorf("1688 scrape failed: %w", err)
 	}
 
-	return crawler1688.Convert1688ProductToScrapedData(crawler1688.SnapshotFromLegacyProduct(product)), nil
+	return convert1688ProductToScrapedData(crawler1688.SnapshotFromLegacyProduct(product)), nil
 }

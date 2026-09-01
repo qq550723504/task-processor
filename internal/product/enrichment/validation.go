@@ -38,9 +38,9 @@ func validateRequest(request Request) error {
 
 func validateEvidence(source sourcing.SourceEnvelope, changes []FieldChange) ([]Evidence, error) {
 	raw := source.RawReference
-	id := firstCanonical(raw.ReferenceID, raw.SnapshotID, raw.Checksum)
-	if id == "" {
-		return nil, ErrEvidenceInsufficient
+	id, err := CanonicalEvidenceID(source)
+	if err != nil {
+		return nil, err
 	}
 	for i := range changes {
 		change := changes[i]
@@ -64,6 +64,18 @@ func validateEvidence(source sourcing.SourceEnvelope, changes []FieldChange) ([]
 		CapturedAt:    raw.CapturedAt,
 		Metadata:      cloneStringMap(raw.Metadata),
 	}}, nil
+}
+
+// CanonicalEvidenceID returns the only raw-evidence identity that a generated
+// field change may cite. SourceIdentity is deliberately not a fallback because
+// it identifies the product source, not the captured evidence.
+func CanonicalEvidenceID(source sourcing.SourceEnvelope) (string, error) {
+	raw := source.RawReference
+	id := firstCanonical(raw.ReferenceID, raw.SnapshotID, raw.Checksum)
+	if id == "" {
+		return "", ErrEvidenceInsufficient
+	}
+	return id, nil
 }
 
 func validateProposal(proposal *Proposal, policy PolicySnapshot) error {

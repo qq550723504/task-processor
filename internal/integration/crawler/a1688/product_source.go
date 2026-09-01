@@ -9,9 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/product/sourcing"
-	"task-processor/internal/productenrich"
 )
 
 // Alibaba1688ProductSnapshot contains the 1688 facts consumed by product
@@ -100,37 +98,12 @@ type Alibaba1688ShippingSnapshot struct {
 	ProcessingTime string
 }
 
-// Convert1688ProductToScrapedData normalizes a raw 1688 crawler product into
-// the product enrichment scraped-data contract.
-func Convert1688ProductToScrapedData(product *Alibaba1688ProductSnapshot) *productenrich.ScrapedData {
+// NormalizedDescription returns the source description used by downstream
+// consumers without exposing crawler payload types.
+func (product *Alibaba1688ProductSnapshot) NormalizedDescription() string {
 	if product == nil {
-		return nil
+		return ""
 	}
-	images := normalize1688Images(product.Images)
-
-	specs := make(map[string]string, len(product.Specifications))
-	for _, sp := range product.Specifications {
-		name := strings.TrimSpace(sp.Name)
-		value := strings.TrimSpace(sp.Value)
-		if name == "" || value == "" {
-			continue
-		}
-		specs[name] = value
-	}
-
-	return &productenrich.ScrapedData{
-		Title:             product.Title,
-		Category:          product.Category,
-		Description:       build1688Description(product),
-		Images:            images,
-		Price:             product.MinPrice,
-		Specs:             specs,
-		VariantDimensions: build1688VariantDimensions(product.VariationValues),
-		Variants:          build1688ScrapedVariants(product, images),
-	}
-}
-
-func build1688Description(product *Alibaba1688ProductSnapshot) string {
 	if len(product.ProductDetails) == 0 {
 		return product.Title
 	}
@@ -151,97 +124,9 @@ func build1688Description(product *Alibaba1688ProductSnapshot) string {
 	return sb.String()
 }
 
-func build1688VariantDimensions(values []Alibaba1688VariationValueSnapshot) []canonical.ScrapedVariantDimension {
-	if len(values) == 0 {
-		return nil
-	}
-
-	dimensions := make([]canonical.ScrapedVariantDimension, 0, len(values))
-	for _, item := range values {
-		name := strings.TrimSpace(item.Name)
-		if name == "" {
-			continue
-		}
-
-		dimension := canonical.ScrapedVariantDimension{Name: name}
-		seen := make(map[string]struct{}, len(item.Values))
-		for _, raw := range item.Values {
-			value := strings.TrimSpace(raw)
-			if value == "" {
-				continue
-			}
-			if _, exists := seen[value]; exists {
-				continue
-			}
-			seen[value] = struct{}{}
-			dimension.Values = append(dimension.Values, value)
-		}
-		if len(dimension.Values) == 0 {
-			continue
-		}
-		dimensions = append(dimensions, dimension)
-	}
-
-	if len(dimensions) == 0 {
-		return nil
-	}
-	return dimensions
-}
-
-func build1688ScrapedVariants(product *Alibaba1688ProductSnapshot, fallbackImages []string) []productenrich.ProductVariant {
-	if product == nil || len(product.Variants) == 0 {
-		return nil
-	}
-
-	variants := make([]productenrich.ProductVariant, 0, len(product.Variants))
-	for idx, variant := range product.Variants {
-		converted := productenrich.ProductVariant{
-			Attributes: convert1688VariantAttributes(variant.Attributes),
-			Stock:      variant.Stock,
-			Images:     collect1688VariantImages(variant, fallbackImages),
-			IsDefault:  idx == 0,
-		}
-		converted.SKU = buildScrapedVariantSKU(idx, converted.Attributes)
-		if variant.Price > 0 {
-			converted.Price = &canonical.PriceInfo{
-				Currency:  default1688Currency(product.Currency),
-				Amount:    variant.Price,
-				CostPrice: variant.Price,
-			}
-		}
-		variants = append(variants, converted)
-	}
-
-	if len(variants) == 0 {
-		return nil
-	}
-	return variants
-}
-
-func normalize1688Images(images []string) []string {
-	if len(images) == 0 {
-		return nil
-	}
-	normalized := make([]string, 0, len(images))
-	seen := make(map[string]struct{}, len(images))
-	for _, raw := range images {
-		image := strings.TrimSpace(raw)
-		if image == "" {
-			continue
-		}
-		if _, exists := seen[image]; exists {
-			continue
-		}
-		seen[image] = struct{}{}
-		normalized = append(normalized, image)
-	}
-	if len(normalized) == 0 {
-		return nil
-	}
-	return normalized
-}
-
-func convert1688VariantAttributes(attributes map[string]any) map[string]string {
+// NormalizedAttributes returns stable string facts for one source variant.
+func (variant Alibaba1688VariantSnapshot) NormalizedAttributes() map[string]string {
+	attributes := variant.Attributes
 	if len(attributes) == 0 {
 		return map[string]string{}
 	}
@@ -297,24 +182,13 @@ func stringify1688VariantValue(value any) string {
 	}
 }
 
-func collect1688VariantImages(variant Alibaba1688VariantSnapshot, fallback []string) []string {
-	images := make([]string, 0, 2)
-	if image := strings.TrimSpace(variant.Image); image != "" {
-		images = append(images, image)
+// NormalizedCurrency returns the source currency, defaulting missing 1688
+// values to CNY.
+func (product *Alibaba1688ProductSnapshot) NormalizedCurrency() string {
+	if product == nil {
+		return "CNY"
 	}
-	if len(images) == 0 && len(fallback) > 0 {
-		if image := strings.TrimSpace(fallback[0]); image != "" {
-			images = append(images, image)
-		}
-	}
-	if len(images) == 0 {
-		return nil
-	}
-	return images
-}
-
-func default1688Currency(currency string) string {
-	currency = strings.TrimSpace(currency)
+	currency := strings.TrimSpace(product.Currency)
 	if currency == "" {
 		return "CNY"
 	}
@@ -347,6 +221,11 @@ func buildScrapedVariantSKU(index int, attributes map[string]string) string {
 	}
 	parts = append(parts, fmt.Sprintf("%03d", index+1))
 	return strings.Join(parts, "-")
+}
+
+// SourceSKU returns the stable source-side identity for one variant.
+func (variant Alibaba1688VariantSnapshot) SourceSKU(index int) string {
+	return buildScrapedVariantSKU(index, variant.NormalizedAttributes())
 }
 
 var alibaba1688OfferIDPattern = regexp.MustCompile(`(?i)(?:/offer/|offer[/=])(\d+)`)
@@ -572,7 +451,7 @@ func alibaba1688ProductCandidate(product *Alibaba1688ProductSnapshot) sourcing.P
 	addStringAttribute(attributes, "source_product_id", product.ID)
 	addStringAttribute(attributes, "category", product.Category)
 	addStringAttribute(attributes, "brand", product.Brand)
-	addStringAttribute(attributes, "currency", default1688Currency(product.Currency))
+	addStringAttribute(attributes, "currency", product.NormalizedCurrency())
 	addStringAttribute(attributes, "unit", product.Unit)
 	addStringAttribute(attributes, "shipping_from", product.Shipping.ShippingFrom)
 	addStringAttribute(attributes, "processing_time", product.Shipping.ProcessingTime)
@@ -602,7 +481,7 @@ func alibaba1688ProductCandidate(product *Alibaba1688ProductSnapshot) sourcing.P
 
 	return sourcing.ProductCandidate{
 		Title:       strings.TrimSpace(product.Title),
-		Description: build1688Description(product),
+		Description: product.NormalizedDescription(),
 		Brand:       strings.TrimSpace(product.Brand),
 		Attributes:  attributes,
 		Variants:    alibaba1688VariantCandidates(product.Variants),
@@ -615,11 +494,12 @@ func alibaba1688VariantCandidates(variants []Alibaba1688VariantSnapshot) []sourc
 	}
 	candidates := make([]sourcing.ProductVariantCandidate, 0, len(variants))
 	for idx, variant := range variants {
-		attributes := convert1688VariantAttributes(variant.Attributes)
+		attributes := variant.NormalizedAttributes()
+		sourceSKU := variant.SourceSKU(idx)
 		candidate := sourcing.ProductVariantCandidate{
-			SourceID:   buildScrapedVariantSKU(idx, attributes),
+			SourceID:   sourceSKU,
 			Title:      strings.TrimSpace(variant.Name),
-			SKU:        buildScrapedVariantSKU(idx, attributes),
+			SKU:        sourceSKU,
 			Attributes: attributes,
 		}
 		if candidate.Title == "" && len(candidate.Attributes) == 0 && strings.TrimSpace(variant.Image) == "" && variant.Price <= 0 && variant.Stock == 0 {
@@ -690,7 +570,7 @@ func alibaba1688SupplierOrCostFacts(product *Alibaba1688ProductSnapshot) sourcin
 	return sourcing.SupplierOrCostFacts{
 		SupplierID:   strings.TrimSpace(product.Supplier.ID),
 		SupplierName: strings.TrimSpace(product.Supplier.Name),
-		Currency:     default1688Currency(product.Currency),
+		Currency:     product.NormalizedCurrency(),
 		Cost:         formatOptionalPrice(product.MinPrice),
 		Price:        formatOptionalPrice(product.MinPrice),
 		Facts:        facts,
