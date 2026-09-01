@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 const context = vi.hoisted(() => ({
   effectiveOrganization: { id: "org-a", name: "企业 A", roles: [] as string[] },
+  isSwitching: false,
   registerOrganizationSwitchGuard: vi.fn(() => vi.fn()),
 }));
 const create = vi.hoisted(() => ({ mutate: vi.fn(), retryLast: vi.fn(), canRetryLast: false, isPending: false }));
@@ -27,7 +28,7 @@ const STORE = {
 };
 
 describe("StoreForm", () => {
-  afterEach(() => { vi.restoreAllMocks(); router.push.mockReset(); router.replace.mockReset(); create.mutate.mockReset(); create.retryLast.mockReset(); create.canRetryLast = false; create.isPending = false; update.mutate.mockReset(); update.isPending = false; context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] }; context.registerOrganizationSwitchGuard.mockClear(); });
+  afterEach(() => { vi.restoreAllMocks(); router.push.mockReset(); router.replace.mockReset(); create.mutate.mockReset(); create.retryLast.mockReset(); create.canRetryLast = false; create.isPending = false; update.mutate.mockReset(); update.isPending = false; context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] }; context.isSwitching = false; context.registerOrganizationSwitchGuard.mockClear(); });
 
   it("validates and canonicalizes create input while keeping SHEIN trusted and read-only", async () => {
     const user = userEvent.setup();
@@ -41,6 +42,15 @@ describe("StoreForm", () => {
     await user.click(screen.getByRole("button", { name: "创建店铺" }));
     expect(create.mutate).toHaveBeenCalledWith({ name: "新店铺", platform: "shein", region: "CN" }, expect.any(Object));
     expect(document.body.textContent).not.toMatch(/username|password|token|secret|cookie|credential/i);
+  });
+
+  it("blocks Store form submission for the full Organization switch", async () => {
+    const user = userEvent.setup();
+    context.isSwitching = true;
+    render(<StoreForm mode="create" />);
+    expect(screen.getByRole("button", { name: "创建店铺" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "创建店铺" }));
+    expect(create.mutate).not.toHaveBeenCalled();
   });
 
   it("keeps create drafts and exposes only the keyed retry after a retryable failure", async () => {

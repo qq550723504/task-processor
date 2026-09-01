@@ -120,20 +120,30 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
         ) {
           return;
         }
+        switchRequestPendingRef.current = true;
+        setSwitchPreparing(true);
+        const cancelPreparation = () => {
+          switchRequestPendingRef.current = false;
+          setSwitchPreparing(false);
+        };
         for (const guard of [...guardsRef.current]) {
           try {
-            if (!(await guard(target))) return;
+            if (!(await guard(target))) {
+              cancelPreparation();
+              return;
+            }
           } catch {
+            cancelPreparation();
             return;
           }
         }
-        if (switchRequestPendingRef.current || hasPendingStoreMutation()) return;
-        setSwitchPreparing(true);
-        switchRequestPendingRef.current = true;
+        if (!switchRequestPendingRef.current || hasPendingStoreMutation()) {
+          cancelPreparation();
+          return;
+        }
         await queryClient.cancelQueries({ queryKey: WORKBENCH_CONTEXT_QUERY_KEY });
         if (hasPendingStoreMutation()) {
-          switchRequestPendingRef.current = false;
-          setSwitchPreparing(false);
+          cancelPreparation();
           return;
         }
         switchMutation.mutate(organizationId);
@@ -151,7 +161,7 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       roles: effectiveOrganization?.roles ?? [],
       selectionRequired: currentContext?.selectionRequired ?? false,
       isLoading: !blockingError && contextQuery.isPending,
-      isSwitching: switchMutation.isPending || storeMutationsPending > 0,
+      isSwitching: switchPreparing || switchMutation.isPending || storeMutationsPending > 0,
       error: queryError,
       blockingError,
       retry: () => {
@@ -169,6 +179,7 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       queryError,
       switchMutation,
       storeMutationsPending,
+      switchPreparing,
       switchOrganization,
       registerOrganizationSwitchGuard,
     ],

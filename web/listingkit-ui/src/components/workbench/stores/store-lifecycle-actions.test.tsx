@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 
 const context = vi.hoisted(() => ({
   effectiveOrganization: { id: "org-a", name: "企业 A", roles: [] as string[] },
+  isSwitching: false,
   roles: ["listingkit_admin"],
   retry: vi.fn(),
 }));
@@ -43,6 +44,7 @@ describe("StoreLifecycleActions", () => {
   afterEach(() => {
     context.roles = ["listingkit_admin"];
     context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] };
+    context.isSwitching = false;
     context.retry.mockReset(); queryClient.removeQueries.mockReset();
     enable.mutate.mockReset(); enable.isPending = false;
     disable.mutate.mockReset(); disable.isPending = false;
@@ -60,6 +62,20 @@ describe("StoreLifecycleActions", () => {
     render(<StoreLifecycleActions store={STORE} />);
     expect(screen.queryByRole("button", { name: "停用店铺" }) !== null).toBe(canUpdate);
     expect(screen.queryByRole("button", { name: "删除店铺" }) !== null).toBe(canDelete);
+  });
+
+  it("blocks lifecycle mutations while an Organization switch is pending", async () => {
+    const user = userEvent.setup();
+    context.isSwitching = true;
+    render(<StoreLifecycleActions store={STORE} />);
+    const disableButton = screen.getByRole("button", { name: "停用店铺" });
+    const deleteButton = screen.getByRole("button", { name: "删除店铺" });
+    expect(disableButton).toBeDisabled();
+    expect(deleteButton).toBeDisabled();
+    await user.click(disableButton);
+    await user.click(deleteButton);
+    expect(disable.mutate).not.toHaveBeenCalled();
+    expect(remove.mutate).not.toHaveBeenCalled();
   });
 
   it("uses the active/disabled action labels and exact displayed version", async () => {

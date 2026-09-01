@@ -771,7 +771,16 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 		replayed = true
 	} else {
 		previous = store.LifecycleStatus()
-		if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionDeleteStarted, previous, StoreStatusDeleting, store.Version()); err != nil {
+		if started, auditErr := s.audit.Get(ctx, normalized.OrganizationID, normalized.OperationKey, AuditActionDeleteStarted); auditErr == nil {
+			if validateDeleteAudit(started, normalized, AuditActionDeleteStarted) != nil || started.AllocationID != store.QuotaAllocationID() {
+				return DeleteStoreResult{}, dependencyError(ErrAuditIdentityMismatch)
+			}
+			normalized.ActorSubject = started.ActorSubject
+			previous = started.PreviousState
+			replayed = true
+		} else if !errors.Is(auditErr, ErrNotFound) {
+			return DeleteStoreResult{}, dependencyError(auditErr)
+		} else if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionDeleteStarted, previous, StoreStatusDeleting, store.Version()); err != nil {
 			return DeleteStoreResult{}, dependencyError(err)
 		}
 		if err := store.BeginDelete(normalized.OperationKey, normalized.ActorSubject, s.monotonicNow(store.UpdatedAt())); err != nil {

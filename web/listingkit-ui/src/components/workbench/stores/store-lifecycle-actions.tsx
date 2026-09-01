@@ -130,6 +130,7 @@ function ScopedStoreLifecycleActions({
 
   const currentAction = action;
   const isBusy =
+    context.isSwitching ||
     currentAction.kind === "pending" ||
     currentAction.kind === "refreshing" ||
     (currentAction.kind === "delete-interrupted" && currentAction.refreshing) ||

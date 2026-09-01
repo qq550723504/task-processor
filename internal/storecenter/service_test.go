@@ -1122,6 +1122,54 @@ func TestServiceDeleteDeallocatesThenSoftDeletesAndReplays(t *testing.T) {
 	}
 }
 
+func TestServiceDeleteUsesDurableStartedActorBeforeConcurrentSave(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	operationKey := uuid.NewString()
+	audit := newAuditRepositoryFake()
+	_, _, err := audit.Record(context.Background(), storecenter.AuditEvent{
+		OrganizationID: store.OrganizationID(),
+		StoreID:       store.ID(),
+		AllocationID:  store.QuotaAllocationID(),
+		RequestKey:    operationKey,
+		Action:        storecenter.AuditActionDeleteStarted,
+		Outcome:       storecenter.AuditOutcomeUnknown,
+		ActorSubject:  "actor-a",
+		SafeFieldNames: []string{"lifecycle_status"},
+		PreviousState: storecenter.StoreStatusActive,
+		NewState:      storecenter.StoreStatusDeleting,
+		FailureCode:   storecenter.AuditFailureNone,
+		StoreVersion:  store.Version(),
+		OccurredAt:    time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("seed delete_started: %v", err)
+	}
+	ledger := &quotaLedgerFake{allocation: listingsubscription.StoreQuotaAllocation{
+		OrganizationID: store.OrganizationID(), AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), Status: listingsubscription.StoreQuotaAllocated,
+	}}
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, func() time.Time { return store.UpdatedAt().Add(time.Minute) })
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.Delete(context.Background(), storecenter.DeleteStoreRequest{
+		OrganizationID: store.OrganizationID(), ActorSubject: "actor-b", StoreID: store.ID(), ExpectedVersion: store.Version(), OperationKey: operationKey,
+	})
+	if err != nil || !result.Replayed {
+		t.Fatalf("Delete() = %#v, %v; want successful durable replay", result, err)
+	}
+	marked := audit.eventFor(store.OrganizationID(), operationKey, storecenter.AuditActionStoreMarkedDeleting)
+	if marked.ActorSubject != "actor-a" {
+		t.Fatalf("store_marked_deleting actor = %q, want durable actor-a", marked.ActorSubject)
+	}
+	completed := audit.eventFor(store.OrganizationID(), operationKey, storecenter.AuditActionDeleteComplete)
+	if completed.ActorSubject != "actor-a" {
+		t.Fatalf("delete_complete actor = %q, want durable actor-a", completed.ActorSubject)
+	}
+}
+
 func TestServiceDeleteAuditsWriteAheadIntentAndTruthfulDurablePhases(t *testing.T) {
 	repository := newStoreRepositoryFake()
 	store := activeServiceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "Store")

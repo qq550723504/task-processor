@@ -42,6 +42,7 @@ function ContextProbe() {
       <p>organization:{context.effectiveOrganization?.name ?? "none"}</p>
       <p>roles:{context.roles.join(",") || "none"}</p>
       <p>selection:{String(context.selectionRequired)}</p>
+      <p>switching:{String(context.isSwitching)}</p>
       <button onClick={() => context.switchOrganization("org-b")}>switch</button>
       <button onClick={context.retry}>retry</button>
     </div>
@@ -215,6 +216,7 @@ describe("WorkbenchContextProvider", () => {
     await screen.findByText("organization:硕米科技");
     await userEvent.click(screen.getByRole("button", { name: "switch" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("switching:true")).toBeInTheDocument();
 
     void queryClient.invalidateQueries({ queryKey: WORKBENCH_CONTEXT_QUERY_KEY });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -222,6 +224,7 @@ describe("WorkbenchContextProvider", () => {
 
     resolveSwitch(Response.json(ORG_B_CONTEXT));
     expect(await screen.findByText("organization:星海贸易")).toBeInTheDocument();
+    expect(screen.getByText("switching:false")).toBeInTheDocument();
   });
 
   it("makes a successful retry authoritative after an explicit switch", async () => {

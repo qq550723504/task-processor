@@ -66,6 +66,7 @@ export function StoreForm(props: StoreFormProps) {
   const update = useUpdateWorkbenchStore();
   const [formError, setFormError] = useState<string | null>(null);
   const isPending = submissionPending || create.isPending || update.isPending;
+  const isSwitching = context.isSwitching;
   const createRetryAvailable = props.mode === "create" && create.canRetryLast;
 
   useEffect(() => {
@@ -117,6 +118,7 @@ export function StoreForm(props: StoreFormProps) {
   const submit = (values: WorkbenchStoreCreateInput | WorkbenchStoreUpdateInput) => {
     if (
       isPending ||
+      isSwitching ||
       submissionPendingRef.current ||
       !organization ||
       organizationChanged
@@ -161,7 +163,7 @@ export function StoreForm(props: StoreFormProps) {
   };
 
   const retryCreate = () => {
-    if (isPending || !create.canRetryLast || submissionPendingRef.current) return;
+    if (isPending || isSwitching || !create.canRetryLast || submissionPendingRef.current) return;
     submissionPendingRef.current = true;
     setSubmissionPending(true);
     setFormError(null);
@@ -171,7 +173,7 @@ export function StoreForm(props: StoreFormProps) {
     );
   };
   const retryConflict = () => {
-    if (isPending || props.mode !== "edit" || !props.conflict || !editBaselineRef.current || submissionPendingRef.current) return;
+    if (isPending || isSwitching || props.mode !== "edit" || !props.conflict || !editBaselineRef.current || submissionPendingRef.current) return;
     const conflict = props.conflict;
     const draft = workbenchStoreUpdateSchema.safeParse(form.getValues());
     if (!draft.success) return;
@@ -219,15 +221,15 @@ export function StoreForm(props: StoreFormProps) {
       {props.mode === "edit" && props.recoveryState === "loading" ? <p className="mt-4 rounded-md border p-3 text-sm" role="status">正在获取店铺最新版本，当前草稿已保留。</p> : null}
       {formError ? <p className="mt-4 rounded-md border border-destructive/30 p-3 text-sm text-destructive" role="alert">{formError}</p> : null}
       <form className="mt-6 space-y-5 rounded-xl border bg-card p-5" noValidate onSubmit={(event) => { void form.handleSubmit(submit)(event); }}>
-        <TextField control={form} name="name" label="店铺名称" disabled={isPending || createRetryAvailable} />
-        <TextField control={form} name="region" label="区域" disabled={isPending || createRetryAvailable} />
+        <TextField control={form} name="name" label="店铺名称" disabled={isPending || isSwitching || createRetryAvailable} />
+        <TextField control={form} name="region" label="区域" disabled={isPending || isSwitching || createRetryAvailable} />
         <ReadOnlyField label="平台" value="SHEIN" />
-        {props.mode === "create" ? <TextField control={form} name="externalStoreId" label="外部店铺 ID（可选）" disabled={isPending || createRetryAvailable} /> : <ReadOnlyField label="外部店铺 ID" value={props.store.externalStoreId || "未设置"} />}
+        {props.mode === "create" ? <TextField control={form} name="externalStoreId" label="外部店铺 ID（可选）" disabled={isPending || isSwitching || createRetryAvailable} /> : <ReadOnlyField label="外部店铺 ID" value={props.store.externalStoreId || "未设置"} />}
         {props.mode === "edit" ? <ReadOnlyField label="连接状态" value={connectionLabel(props.store.connectionStatus)} /> : null}
-        <Button disabled={isPending || (props.mode === "create" && create.canRetryLast) || (props.mode === "edit" && (Boolean(props.conflict) || props.recoveryState === "loading" || props.recoveryState === "failed"))} type="submit">
+        <Button disabled={isPending || isSwitching || (props.mode === "create" && create.canRetryLast) || (props.mode === "edit" && (Boolean(props.conflict) || props.recoveryState === "loading" || props.recoveryState === "failed"))} type="submit">
           {isPending ? "正在提交..." : props.mode === "create" ? "创建店铺" : "保存更改"}
         </Button>
-        {props.mode === "create" && create.canRetryLast ? <Button disabled={isPending} onClick={retryCreate} type="button" variant="outline">重试创建</Button> : null}
+        {props.mode === "create" && create.canRetryLast ? <Button disabled={isPending || isSwitching} onClick={retryCreate} type="button" variant="outline">重试创建</Button> : null}
         <Button aria-label="连接能力尚未开放" disabled type="button" variant="outline">连接能力尚未开放</Button>
       </form>
     </section>
