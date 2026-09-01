@@ -17,13 +17,15 @@ jobs:
       - name: Write trusted pull request identity
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
           mkdir -p "${RUNNER_TEMP}/development-admission-review-signal"
           printf '%s\n' "$PR_NUMBER" > "${RUNNER_TEMP}/development-admission-review-signal/pr_number"
+          printf '%s\n' "$MERGE_COMMIT_SHA" > "${RUNNER_TEMP}/development-admission-review-signal/merge_commit_sha"
 
       - name: Upload trusted pull request identity
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: development-admission-review-${{ github.run_id }}
-          path: ${{ runner.temp }}/development-admission-review-signal/pr_number
+          path: ${{ runner.temp }}/development-admission-review-signal
           retention-days: 1

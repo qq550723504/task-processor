@@ -43,40 +43,76 @@ jobs:
               ? context.payload.workflow_run.head_branch
               : null;
             const defaultBranch = context.payload.repository.default_branch;
-            const candidates = [];
-            for (const pullRequest of pullRequests) {
-              if (baseBranch) {
-                if (pullRequest.base.ref === baseBranch) {
-                  candidates.push(pullRequest);
+            const candidateFlags = new Array(pullRequests.length).fill(false);
+            let nextIndex = 0;
+            const inspectPullRequests = async () => {
+              while (nextIndex < pullRequests.length) {
+                const index = nextIndex;
+                nextIndex += 1;
+                const pullRequest = pullRequests[index];
+                if (baseBranch) {
+                  candidateFlags[index] = pullRequest.base.ref === baseBranch;
+                  continue;
                 }
-                continue;
+                if (
+                  pullRequest.base.ref !== defaultBranch ||
+                  pullRequest.labels.some(({ name }) => name === "architecture-approved")
+                ) {
+                  candidateFlags[index] = true;
+                  continue;
+                }
+                try {
+                  const events = await github.paginate(github.rest.issues.listEventsForIssue, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pullRequest.number,
+                    per_page: 100,
+                  });
+                  candidateFlags[index] = guard.hasRecentLabelRemoval(events, "architecture-approved");
+                } catch (error) {
+                  core.warning(`Could not inspect label history for PR #${pullRequest.number}; dispatching a fail-closed evaluation: ${error}`);
+                  candidateFlags[index] = true;
+                }
               }
-              if (
-                pullRequest.base.ref !== defaultBranch ||
-                pullRequest.labels.some(({ name }) => name === "architecture-approved")
-              ) {
-                candidates.push(pullRequest);
-                continue;
+            };
+            await Promise.all(
+              Array.from({ length: Math.min(8, pullRequests.length) }, () => inspectPullRequests()),
+            );
+            const candidates = pullRequests.filter((_, index) => candidateFlags[index]);
+            const dispatchFailures = [];
+            const dispatchAdmission = async (pullRequest) => {
+              let lastError;
+              for (let attempt = 1; attempt <= 3; attempt += 1) {
+                try {
+                  await github.rest.actions.createWorkflowDispatch({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    workflow_id: "development-admission.yml",
+                    ref: context.payload.repository.default_branch,
+                    inputs: {
+                      pull_request_number: String(pullRequest.number),
+                      merge_commit_sha: pullRequest.merge_commit_sha,
+                    },
+                  });
+                  return;
+                } catch (error) {
+                  lastError = error;
+                  if (attempt < 3) {
+                    await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+                  }
+                }
               }
-              const events = await github.paginate(github.rest.issues.listEventsForIssue, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: pullRequest.number,
-                per_page: 100,
-              });
-              if (guard.hasRecentLabelRemoval(events, "architecture-approved")) {
-                candidates.push(pullRequest);
-              }
-            }
+              throw lastError;
+            };
             for (const pullRequest of candidates) {
-              await github.rest.actions.createWorkflowDispatch({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: "development-admission.yml",
-                ref: context.payload.repository.default_branch,
-                inputs: {
-                  pull_request_number: String(pullRequest.number),
-                },
-              });
+              try {
+                await dispatchAdmission(pullRequest);
+              } catch (error) {
+                dispatchFailures.push(pullRequest.number);
+                core.error(`Could not dispatch admission evaluation for PR #${pullRequest.number}: ${error}`);
+              }
             }
-            core.info(`Dispatched ${candidates.length} admission evaluations`);
+            core.info(`Dispatched ${candidates.length - dispatchFailures.length} admission evaluations`);
+            if (dispatchFailures.length > 0) {
+              core.setFailed(`Admission dispatch failed for PRs: ${dispatchFailures.join(", ")}`);
+            }

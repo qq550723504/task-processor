@@ -308,7 +308,7 @@ function hasRequiredOverrideEvidence(body, approvedLogins) {
   const valueFor = (pattern) => {
     const match = normalizedBody.match(pattern);
     const value = match?.[1]?.trim();
-    return value && !/^(?:n\/a|none|tbd|todo)(?=$|[\s:.,;])/i.test(value)
+    return value && !/^(?:n\/a|none|tbd|todo)(?:\s*:\s*|$)/i.test(value)
       ? value
       : null;
   };

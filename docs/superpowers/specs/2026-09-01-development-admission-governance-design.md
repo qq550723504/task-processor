@@ -235,9 +235,10 @@ merges.
 
 Review changes are delivered through a separate read-only
 `Development Admission Review Signal` workflow. That signal writes only its
-GitHub-provided PR number to a short-lived artifact; the privileged evaluator
-receives the signal through `workflow_run`, validates that the artifact number
-belongs to the workflow run's associated PR set, and re-reads the PR from the
+GitHub-provided PR number and merge target SHA to a short-lived artifact; the
+privileged evaluator receives the signal through `workflow_run`, validates that
+the artifact identity belongs to the workflow-run association and the current
+PR, and re-reads the PR from the
 API. It does not execute PR-provided code. This keeps fork and Dependabot
 review events from attempting status writes with a read-only token, including
 when one head is associated with multiple PRs.
@@ -256,7 +257,9 @@ override, the evaluator also requires non-placeholder PR-body evidence for the
 design link, independent review, and why the change cannot be safely split, and
 the named approver must be in the authorized maintainer/admin subset. The
 dispatch workflow has only `actions: write`, `contents: read`, `issues: read`,
-and `pull-requests: read`; it sends the PR number as a workflow-dispatch input.
+and `pull-requests: read`; it sends the PR number and merge target SHA as
+workflow-dispatch inputs, retries transient dispatch failures, and continues
+dispatching other candidates when one PR fails.
 
 The admission evaluator's failure matrix is:
 
@@ -335,10 +338,11 @@ split rationale. Resolve the PR number before entering a per-PR concurrency
 group
 so direct, review, and reconciliation runs serialize together. Use
 `concurrency` per PR to serialize
-evaluations and give the job a bounded deadline. Publish the decision as the fixed `Development
-Admission` commit-status context on the PR's `merge_commit_sha`, because the
-workflow job's automatic check is attached to the default-branch SHA and a
-head-only status can be shared by PRs with different base branches. Require the
+evaluations and give the job a bounded deadline. Publish the decision as the
+trusted `Development Admission` Check Run on the PR's `merge_commit_sha`,
+because the workflow job's automatic check is attached to the default-branch
+SHA and a head-only result can be shared by PRs with different base branches.
+Require the
 current-head maintainer/admin review described above before accepting the
 override label.
 
@@ -364,9 +368,9 @@ Implementation verification must include:
 - the open-source `actionlint` validator for workflow structure and expression
   correctness instead of a repository-specific YAML keyword scanner;
 - manual inspection that the trusted workflow has no path filter, uses only the
-  default-branch policy revision, uses only `contents: read`, `issues: read`,
-  `pull-requests: read`, and `statuses: write`, does not execute pull-request code, publishes
-  status only to the current `merge_commit_sha`, verifies current-head review
+  default-branch policy revision, uses only `checks: write`, `contents: read`,
+  `issues: read`, and `pull-requests: read`, does not execute pull-request code,
+  publishes a Check Run only to the current `merge_commit_sha`, verifies current-head review
   authorization before applying an override, and does not mutate labels or pull
   requests; confirm the review signal has no write permissions and the
   `workflow_run` evaluator validates the trusted signal artifact against its
@@ -383,8 +387,9 @@ prevents legitimate work from being blocked without recourse. The PR that first
 adds the trusted workflow cannot trigger that new default-branch workflow until
 it is merged, so it is a documented bootstrap exception requiring maintainer
 review. Maintainers must create the `architecture-approved` repository label and
-require the `Development Admission` commit-status context in branch protection
-before relying on the gate. The label is only a declaration; the workflow also
+require the `Development Admission` Check Run from the configured trusted
+publisher, or require the workflow through a ruleset, before relying on the gate.
+The label is only a declaration; the workflow also
 requires the current-head `APPROVED` review from a collaborator with `maintain`
 or `admin` permission. If the label does not exist, ordinary pull requests
 continue to work; only oversized pull requests lack an override until the label

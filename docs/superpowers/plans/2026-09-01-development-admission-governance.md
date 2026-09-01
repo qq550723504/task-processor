@@ -206,7 +206,7 @@ Expected: all tests PASS.
 
 - [x] **Step 4: Manually inspect workflow authority**
 
-Confirm the trusted workflow has no path filter, uses only the default-branch policy revision, never checks out or executes PR code, has only `contents: read`, `issues: read`, `pull-requests: read`, and `statuses: write`, publishes the fixed context to `merge_commit_sha`, re-runs on label/edited/review changes, serializes evaluations per PR, verifies current-head maintainer/admin review and base-retarget freshness before accepting an override, fails closed on incomplete/moving snapshots, has a five-minute job deadline, and never creates/applies labels or edits PRs. Confirm ordinary CI runs policy tests on push without a skipped job and the notification names them as tests.
+Confirm the trusted workflow has no path filter, uses only the default-branch policy revision, never checks out or executes PR code, has only `checks: write`, `contents: read`, `issues: read`, and `pull-requests: read`, publishes the trusted Check Run to `merge_commit_sha`, re-runs on label/edited/review changes, serializes evaluations per PR, verifies current-head maintainer/admin review and base-retarget freshness before accepting an override, rechecks permissions immediately before publishing an override success, fails closed on incomplete/moving snapshots, has a five-minute job deadline, and never creates/applies labels or edits PRs. Confirm ordinary CI runs policy tests on push without a skipped job and the notification names them as tests.
 
 - [ ] **Step 5: Commit Task 3**
 

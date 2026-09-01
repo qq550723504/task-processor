@@ -620,6 +620,16 @@ test("requires explicit design and split evidence for an oversized override", ()
     ),
     true,
   );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "the consistency boundary cannot be split safely",
+        "None of the intermediate states is safe",
+      ),
+      ["Henry"],
+    ),
+    true,
+  );
 });
 
 test("binds override evidence to an authorized approver", () => {
@@ -720,6 +730,7 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
     /group: development-admission-\$\{\{ github\.event\.repository\.full_name \}\}-\$\{\{ needs\.resolve-admission\.outputs\.pull_request_number \|\| github\.event\.pull_request\.number/,
   );
   assert.match(admissionWorkflow, /context\.payload\.pull_request\?\.merge_commit_sha/);
+  assert.match(admissionWorkflow, /merge_commit_sha:/);
   assert.match(admissionWorkflow, /checks\.create/);
   assert.doesNotMatch(admissionWorkflow, /createCommitStatus/);
   assert.match(
@@ -731,6 +742,8 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
     /hasRequiredOverrideEvidence\([\s\S]*authorizedApprovalReviewers/,
   );
   assert.match(signalWorkflow, /permissions: \{\}/);
+  assert.match(signalWorkflow, /MERGE_COMMIT_SHA/);
+  assert.match(signalWorkflow, /merge_commit_sha/);
   assert.match(signalWorkflow, /development-admission-review-\$\{\{ github\.run_id \}\}/);
   assert.match(reconcileWorkflow, /schedule:/);
   assert.match(
@@ -744,6 +757,9 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   assert.match(reconcileWorkflow, /architecture-approved/);
   assert.match(reconcileWorkflow, /hasRecentLabelRemoval/);
   assert.match(reconcileWorkflow, /issues: read/);
+  assert.match(reconcileWorkflow, /try \{[\s\S]*createWorkflowDispatch/);
+  assert.match(reconcileWorkflow, /dispatchFailures/);
+  assert.match(admissionWorkflow, /finalPermissions/);
   assert.match(
     reconcileWorkflow,
     /pullRequest\.base\.ref !== defaultBranch/,

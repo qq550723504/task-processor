@@ -20,6 +20,10 @@ on:
         description: Pull request number to reconcile
         required: true
         type: number
+      merge_commit_sha:
+        description: Current test merge commit from the trusted reconciler
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -35,6 +39,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       pull_request_number: ${{ steps.resolve.outputs.pull_request_number }}
+      merge_commit_sha: ${{ steps.resolve.outputs.merge_commit_sha }}
     steps:
       - name: Checkout trusted policy revision
         uses: actions/checkout@v4
@@ -56,6 +61,7 @@ jobs:
         uses: actions/github-script@v9
         env:
           SIGNAL_PATH: ${{ runner.temp }}/development-admission-review-signal/pr_number
+          TARGET_PATH: ${{ runner.temp }}/development-admission-review-signal/merge_commit_sha
         with:
           script: |
             const fs = require("node:fs");
@@ -63,21 +69,30 @@ jobs:
             const signalPullRequestNumber = context.eventName === "workflow_run"
               ? Number(fs.readFileSync(process.env.SIGNAL_PATH, "utf8").trim())
               : null;
+            const signalMergeCommitSha = context.eventName === "workflow_run"
+              ? fs.readFileSync(process.env.TARGET_PATH, "utf8").trim()
+              : null;
+            if (context.eventName === "workflow_run" && !/^[0-9a-f]{40}$/i.test(signalMergeCommitSha)) {
+              throw new TypeError("trusted signal must include a valid merge commit SHA");
+            }
             const pullRequestNumber = guard.pullRequestNumberFromEventPayload(
               context.eventName,
               context.payload,
               signalPullRequestNumber,
             );
             core.setOutput("pull_request_number", String(pullRequestNumber));
+            if (signalMergeCommitSha) {
+              core.setOutput("merge_commit_sha", signalMergeCommitSha);
+            }
 
   evaluate-admission:
     name: Development Admission Evaluator
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: resolve-admission
-    if: ${{ always() && (needs.resolve-admission.result == 'success' || github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ always() }}
     concurrency:
-      group: development-admission-${{ github.event.repository.full_name }}-${{ needs.resolve-admission.outputs.pull_request_number || github.event.pull_request.number || inputs.pull_request_number || github.run_id }}
+      group: development-admission-${{ github.event.repository.full_name }}-${{ needs.resolve-admission.outputs.pull_request_number || github.event.pull_request.number || inputs.pull_request_number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
       cancel-in-progress: false
     steps:
       - name: Checkout trusted policy revision
@@ -90,13 +105,19 @@ jobs:
         uses: actions/github-script@v9
         env:
           PULL_REQUEST_NUMBER: ${{ needs.resolve-admission.outputs.pull_request_number || github.event.pull_request.number || inputs.pull_request_number }}
+          TARGET_MERGE_COMMIT_SHA: ${{ needs.resolve-admission.outputs.merge_commit_sha || github.event.pull_request.merge_commit_sha || inputs.merge_commit_sha }}
+          WORKFLOW_RUN_PULL_REQUESTS: ${{ toJSON(github.event.workflow_run.pull_requests) }}
         with:
           script: |
             const guard = require("./.github/scripts/pr-scope-guard.cjs");
-            const pullRequestNumber = Number(process.env.PULL_REQUEST_NUMBER);
-            if (!Number.isSafeInteger(pullRequestNumber) || pullRequestNumber <= 0) {
-              throw new TypeError("pull request number is unavailable after target resolution failed");
-            }
+            const workflowRunPullRequests = process.env.WORKFLOW_RUN_PULL_REQUESTS
+              ? JSON.parse(process.env.WORKFLOW_RUN_PULL_REQUESTS)
+              : [];
+            const fallbackPullRequestNumber = context.eventName === "workflow_run" &&
+              Array.isArray(workflowRunPullRequests) && workflowRunPullRequests.length === 1
+              ? Number(workflowRunPullRequests[0]?.number)
+              : null;
+            const pullRequestNumber = Number(process.env.PULL_REQUEST_NUMBER) || fallbackPullRequestNumber;
             const pullRequestRequest = {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -110,7 +131,7 @@ jobs:
             const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             let statusSha = context.eventName === "pull_request_target"
               ? context.payload.pull_request?.merge_commit_sha
-              : null;
+              : process.env.TARGET_MERGE_COMMIT_SHA || null;
             let initialStatusPublished = false;
             const publishStatus = async ({ state, description }) => {
               const checkRun = {
@@ -129,8 +150,33 @@ jobs:
               }
               await github.rest.checks.create(checkRun);
             };
+            const readPermissions = async (logins) => {
+              const permissions = {};
+              for (const login of logins) {
+                try {
+                  const permissionData = (await github.rest.repos.getCollaboratorPermissionLevel({
+                    ...repositoryRequest,
+                    username: login,
+                  })).data;
+                  permissions[login] = {
+                    permission: permissionData.permission,
+                    role_name: permissionData.role_name,
+                  };
+                } catch (permissionError) {
+                  if (permissionError.status === 404) {
+                    permissions[login] = { permission: "none", role_name: "none" };
+                    continue;
+                  }
+                  throw permissionError;
+                }
+              }
+              return permissions;
+            };
 
             try {
+              if (!Number.isSafeInteger(pullRequestNumber) || pullRequestNumber <= 0) {
+                throw new TypeError("pull request number is unavailable after target resolution failed");
+              }
               if (statusSha) {
                 await publishStatus({
                   state: "pending",
@@ -139,7 +185,11 @@ jobs:
                 initialStatusPublished = true;
               }
               const initialPullRequest = (await github.rest.pulls.get(pullRequestRequest)).data;
-              statusSha = guard.statusTargetForPullRequest(initialPullRequest);
+              const resolvedStatusSha = guard.statusTargetForPullRequest(initialPullRequest);
+              if (statusSha && statusSha !== resolvedStatusSha) {
+                throw new Error("trusted target SHA changed before evaluation; retry the check");
+              }
+              statusSha = resolvedStatusSha;
               if (!initialStatusPublished) {
                 await publishStatus({
                   state: "pending",
@@ -185,25 +235,7 @@ jobs:
                   latestReviews,
                   latestPullRequest.head.sha,
                 );
-                const permissions = {};
-                for (const login of approvalReviewers) {
-                  try {
-                    const permissionData = (await github.rest.repos.getCollaboratorPermissionLevel({
-                      ...repositoryRequest,
-                      username: login,
-                    })).data;
-                    permissions[login] = {
-                      permission: permissionData.permission,
-                      role_name: permissionData.role_name,
-                    };
-                  } catch (permissionError) {
-                    if (permissionError.status === 404) {
-                      permissions[login] = { permission: "none", role_name: "none" };
-                      continue;
-                    }
-                    throw permissionError;
-                  }
-                }
+                const permissions = await readPermissions(approvalReviewers);
                 const overrideAuthorization = {
                   labels,
                   headSha: latestPullRequest.head.sha,
@@ -246,6 +278,27 @@ jobs:
                 latestEvents,
                 finalEvents,
               );
+              if (result.overridden) {
+                const finalApprovalReviewers = guard.approvalReviewersForCurrentHead(
+                  finalReviews,
+                  finalPullRequest.head.sha,
+                );
+                const finalPermissions = await readPermissions(finalApprovalReviewers);
+                const finalAuthorizedApprovalReviewers = guard.authorizedArchitectureApprovers({
+                  labels: finalPullRequest.labels.map(({ name }) => name),
+                  headSha: finalPullRequest.head.sha,
+                  authorLogin: finalPullRequest.user.login,
+                  baseChangedAt: guard.latestBaseChangeAt(finalEvents),
+                  reviews: finalReviews,
+                  permissions: finalPermissions,
+                });
+                if (!guard.hasRequiredOverrideEvidence(
+                  finalPullRequest.body,
+                  finalAuthorizedApprovalReviewers,
+                )) {
+                  throw new Error("override authorization changed during final verification; retry the check");
+                }
+              }
               await publishStatus(guard.statusForEvaluation(result));
               if (!result.allowed) {
                 core.setFailed(`${report}\nSplit the change or obtain the architecture-approved label plus a maintainer/admin approval for the current head and documented design evidence.`);
