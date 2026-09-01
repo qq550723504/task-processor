@@ -20,11 +20,21 @@ func ValidateWorkbenchConfig(workbench *WorkbenchConfig, zitadel *ListingKitZita
 			Hint:    "configure the ListingKit ZITADEL project ID or disable workbench",
 		})
 	}
-	if zitadel == nil || strings.TrimSpace(zitadel.IssuerURL) == "" {
+	issuerURL := ""
+	if zitadel != nil {
+		issuerURL = strings.TrimSpace(zitadel.IssuerURL)
+	}
+	if issuerURL == "" {
 		errors = append(errors, &ValidationError{
 			Field:   "listingkit.zitadel.issuerURL",
 			Message: "is required when workbench is enabled",
 			Hint:    "configure the ZITADEL issuer URL or disable workbench",
+		})
+	} else if !isSupportedAbsoluteHTTPURL(issuerURL) {
+		errors = append(errors, &ValidationError{
+			Field:   "listingkit.zitadel.issuerURL",
+			Message: "must be an absolute HTTP(S) URL",
+			Hint:    "configure an issuer URL such as https://issuer.example",
 		})
 	}
 	if zitadel == nil || strings.TrimSpace(zitadel.ClientID) == "" {
@@ -32,6 +42,13 @@ func ValidateWorkbenchConfig(workbench *WorkbenchConfig, zitadel *ListingKitZita
 			Field:   "listingkit.zitadel.clientID",
 			Message: "is required when workbench is enabled",
 			Hint:    "configure the ZITADEL client ID or disable workbench",
+		})
+	}
+	if zitadel == nil || strings.TrimSpace(zitadel.ClientSecret) == "" {
+		errors = append(errors, &ValidationError{
+			Field:   "listingkit.zitadel.clientSecret",
+			Message: "is required when workbench is enabled",
+			Hint:    "configure the ZITADEL introspection client secret or disable workbench",
 		})
 	}
 	authorizationAPIURL := ""

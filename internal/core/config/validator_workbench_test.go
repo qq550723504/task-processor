@@ -16,17 +16,17 @@ func TestValidateWorkbenchZitadelConfigRequiresCompleteInputsWhenEnabled(t *test
 	}{
 		{
 			name:    "missing project id",
-			zitadel: ListingKitZitadelConfig{IssuerURL: "https://issuer.example", AuthorizationAPIURL: "https://issuer.example", ClientID: "client-1"},
+			zitadel: ListingKitZitadelConfig{IssuerURL: "https://issuer.example", AuthorizationAPIURL: "https://issuer.example", ClientID: "client-1", ClientSecret: "secret-1"},
 			field:   "listingkit.zitadel.projectID",
 		},
 		{
 			name:    "missing issuer URL",
-			zitadel: ListingKitZitadelConfig{ProjectID: "project-1", AuthorizationAPIURL: "https://authorization.example", ClientID: "client-1"},
+			zitadel: ListingKitZitadelConfig{ProjectID: "project-1", AuthorizationAPIURL: "https://authorization.example", ClientID: "client-1", ClientSecret: "secret-1"},
 			field:   "listingkit.zitadel.issuerURL",
 		},
 		{
 			name:    "missing authorization API URL",
-			zitadel: ListingKitZitadelConfig{ProjectID: "project-1", IssuerURL: "https://issuer.example", ClientID: "client-1"},
+			zitadel: ListingKitZitadelConfig{ProjectID: "project-1", IssuerURL: "https://issuer.example", ClientID: "client-1", ClientSecret: "secret-1"},
 			field:   "listingkit.zitadel.authorizationAPIURL",
 		},
 		{
@@ -35,6 +35,7 @@ func TestValidateWorkbenchZitadelConfigRequiresCompleteInputsWhenEnabled(t *test
 				ProjectID:           "project-1",
 				IssuerURL:           "https://issuer.example",
 				AuthorizationAPIURL: "https://authorization.example",
+				ClientSecret:        "secret-1",
 			},
 			field: "listingkit.zitadel.clientID",
 		},
@@ -61,6 +62,7 @@ func TestValidateWorkbenchZitadelConfigAllowsDisabledOrCompleteConfiguration(t *
 			IssuerURL:           "https://issuer.example",
 			AuthorizationAPIURL: "https://authorization.example",
 			ClientID:            "client-1",
+			ClientSecret:        "secret-1",
 		},
 	))
 }
@@ -80,6 +82,7 @@ func TestValidateWorkbenchZitadelConfigRejectsUnsupportedAuthorizationAPIURL(t *
 					IssuerURL:           "https://issuer.example",
 					AuthorizationAPIURL: raw,
 					ClientID:            "client-1",
+					ClientSecret:        "secret-1",
 				},
 			)
 			require.Len(t, errors, 1)
@@ -87,6 +90,27 @@ func TestValidateWorkbenchZitadelConfigRejectsUnsupportedAuthorizationAPIURL(t *
 			assert.Contains(t, errors[0].Error(), "absolute HTTP(S)")
 		})
 	}
+}
+
+func TestValidateWorkbenchZitadelConfigRejectsUnsupportedIssuerURL(t *testing.T) {
+	for _, raw := range []string{"zitadel.internal", "ftp://issuer.example", "https://"} {
+		t.Run(raw, func(t *testing.T) {
+			errors := ValidateWorkbenchConfig(&WorkbenchConfig{Enabled: true}, &ListingKitZitadelConfig{
+				ProjectID: "project-1", IssuerURL: raw, AuthorizationAPIURL: "https://authorization.example", ClientID: "client-1", ClientSecret: "secret-1",
+			})
+			require.Len(t, errors, 1)
+			assert.Contains(t, errors[0].Error(), "issuerURL")
+			assert.Contains(t, errors[0].Error(), "absolute HTTP(S)")
+		})
+	}
+}
+
+func TestValidateWorkbenchZitadelConfigRequiresClientSecret(t *testing.T) {
+	errors := ValidateWorkbenchConfig(&WorkbenchConfig{Enabled: true}, &ListingKitZitadelConfig{
+		ProjectID: "project-1", IssuerURL: "https://issuer.example", AuthorizationAPIURL: "https://authorization.example", ClientID: "client-1",
+	})
+	require.Len(t, errors, 1)
+	assert.Contains(t, errors[0].Error(), "clientSecret")
 }
 
 func TestConfigValidateWithErrorIncludesWorkbenchZitadelConfig(t *testing.T) {

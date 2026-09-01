@@ -151,6 +151,27 @@ func (l *gormStoreQuotaLedger) Deallocate(ctx context.Context, input StoreQuotaT
 	return l.transition(ctx, input, StoreQuotaReleased, storeQuotaDeallocate)
 }
 
+func (l *gormStoreQuotaLedger) ListReservedBefore(ctx context.Context, organizationID string, before time.Time) ([]StoreQuotaAllocation, error) {
+	if err := l.configurationError(); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if organizationID == "" || before.IsZero() {
+		return nil, ErrStoreQuotaInvalidInput
+	}
+	var rows []storeQuotaAllocationRow
+	if err := l.repo.db.WithContext(ctx).Where("organization_id = ? AND status = ? AND created_at < ?", organizationID, string(StoreQuotaReserved), before.UTC()).Order("created_at ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	allocations := make([]StoreQuotaAllocation, 0, len(rows))
+	for _, row := range rows {
+		allocations = append(allocations, storeQuotaAllocationFromRow(row))
+	}
+	return allocations, nil
+}
+
 type storeQuotaOperation string
 
 const (

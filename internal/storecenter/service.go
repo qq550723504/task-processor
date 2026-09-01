@@ -110,6 +110,8 @@ type Service struct {
 	now         func() time.Time
 }
 
+const orphanedStoreReservationGracePeriod = 5 * time.Minute
+
 func NewService(repository Repository, quota listingsubscription.StoreQuotaLedger, audit AuditRepository, connections ConnectionStatusProvider, now func() time.Time) (*Service, error) {
 	if isNilDependency(repository) || isNilDependency(quota) || isNilDependency(audit) || isNilDependency(connections) || now == nil {
 		return nil, errors.New("store service dependencies are required")
@@ -124,6 +126,13 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 	}
 	requestFingerprint := createQuotaRequestFingerprint(request)
 	reserved, err := s.quota.Reserve(ctx, listingsubscription.StoreQuotaReserveInput{OrganizationID: request.OrganizationID, RequestKey: request.IdempotencyKey, ActorSubject: request.ActorSubject, RequestFingerprint: requestFingerprint})
+	if err != nil && errors.Is(err, listingsubscription.ErrStoreQuotaExceeded) {
+		if recovered, reconcileErr := s.reconcileOrphanedReservations(ctx, request.OrganizationID); reconcileErr != nil {
+			return CreateStoreResult{}, dependencyError(reconcileErr)
+		} else if recovered > 0 {
+			reserved, err = s.quota.Reserve(ctx, listingsubscription.StoreQuotaReserveInput{OrganizationID: request.OrganizationID, RequestKey: request.IdempotencyKey, ActorSubject: request.ActorSubject, RequestFingerprint: requestFingerprint})
+		}
+	}
 	if err != nil {
 		return CreateStoreResult{}, mapQuotaError(err)
 	}
@@ -930,6 +939,34 @@ func (s *Service) releaseReservation(ctx context.Context, input listingsubscript
 		return err
 	}
 	return validateTransitionAllocation(released.Allocation, input, listingsubscription.StoreQuotaReleased)
+}
+
+func (s *Service) reconcileOrphanedReservations(ctx context.Context, organizationID string) (int, error) {
+	reconciler, ok := s.quota.(listingsubscription.StoreQuotaReservationReconciler)
+	if !ok {
+		return 0, nil
+	}
+	allocations, err := reconciler.ListReservedBefore(ctx, organizationID, s.utcNow().Add(-orphanedStoreReservationGracePeriod))
+	if err != nil {
+		return 0, err
+	}
+	recovered := 0
+	for _, allocation := range allocations {
+		_, getErr := s.repository.Get(ctx, organizationID, allocation.StoreID)
+		if getErr == nil {
+			continue
+		}
+		if !errors.Is(getErr, ErrNotFound) {
+			// A transient read cannot prove that the reservation is orphaned.
+			continue
+		}
+		transition := listingsubscription.StoreQuotaTransitionInput{OrganizationID: organizationID, AllocationID: allocation.AllocationID, StoreID: allocation.StoreID, RequestKey: allocation.RequestKey, ActorSubject: allocation.CreatedBy}
+		if err := s.releaseReservation(ctx, transition); err != nil {
+			return recovered, err
+		}
+		recovered++
+	}
+	return recovered, nil
 }
 
 func (s *Service) record(ctx context.Context, allocation listingsubscription.StoreQuotaAllocation, request CreateStoreRequest, action AuditAction, outcome AuditOutcome, store *Store, previous, next LifecycleStatus, failure AuditFailureCode) error {

@@ -326,6 +326,28 @@ func TestServiceCreateReleasesReservationWhenInitialAuditFails(t *testing.T) {
 	}
 }
 
+func TestServiceCreateReconcilesStaleOrphanedReservationWhenQuotaIsFull(t *testing.T) {
+	request := validCreateRequest()
+	allocation := listingsubscription.StoreQuotaAllocation{OrganizationID: request.OrganizationID, AllocationID: uuid.NewString(), StoreID: uuid.NewString(), RequestKey: request.IdempotencyKey, Status: listingsubscription.StoreQuotaReserved, CreatedBy: request.ActorSubject}
+	stale := listingsubscription.StoreQuotaAllocation{OrganizationID: request.OrganizationID, AllocationID: uuid.NewString(), StoreID: uuid.NewString(), RequestKey: uuid.NewString(), Status: listingsubscription.StoreQuotaReserved, CreatedBy: "abandoned-actor", CreatedAt: time.Now().Add(-time.Hour)}
+	ledger := &quotaLedgerFake{allocation: allocation, reserveErr: &listingsubscription.StoreQuotaExceededError{OrganizationID: request.OrganizationID, Committed: 1, Reserved: 1, Limit: 2}, reserveErrOnce: true, staleReservations: []listingsubscription.StoreQuotaAllocation{stale}, releaseOverride: func() *listingsubscription.StoreQuotaAllocation {
+		released := stale
+		released.Status = listingsubscription.StoreQuotaReleased
+		return &released
+	}()}
+	repository := newStoreRepositoryFake()
+	service, err := storecenter.NewService(repository, ledger, newAuditRepositoryFake(), &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Create(context.Background(), request); err != nil {
+		t.Fatalf("Create() after orphan reconciliation = %v", err)
+	}
+	if ledger.reserveCalls != 2 || ledger.releaseCalls != 1 {
+		t.Fatalf("quota reserve/release calls = %d/%d, want 2/1", ledger.reserveCalls, ledger.releaseCalls)
+	}
+}
+
 func TestServiceCreateAmbiguousActivationSaveIsResolvedByScopedRead(t *testing.T) {
 	request := validCreateRequest()
 	ledger := quotaForRequest(request)
@@ -2132,7 +2154,9 @@ type quotaLedgerFake struct {
 	allocation                              listingsubscription.StoreQuotaAllocation
 	releaseOverride                         *listingsubscription.StoreQuotaAllocation
 	reserveErr, commitErr, releaseErr       error
+	reserveErrOnce                          bool
 	reserveCalls, commitCalls, releaseCalls int
+	staleReservations                       []listingsubscription.StoreQuotaAllocation
 	summary                                 listingsubscription.StoreQuotaSummary
 	summaryErr                              error
 	summaryCalls                            int
@@ -2146,7 +2170,11 @@ func (f *quotaLedgerFake) Reserve(_ context.Context, input listingsubscription.S
 	defer f.mu.Unlock()
 	f.reserveCalls++
 	if f.reserveErr != nil {
-		return listingsubscription.StoreQuotaReserveResult{}, f.reserveErr
+		err := f.reserveErr
+		if f.reserveErrOnce {
+			f.reserveErr = nil
+		}
+		return listingsubscription.StoreQuotaReserveResult{}, err
 	}
 	if f.allocation.RequestFingerprint == "" {
 		f.allocation.RequestFingerprint = input.RequestFingerprint
@@ -2199,6 +2227,12 @@ func (f *quotaLedgerFake) Summary(context.Context, string) (listingsubscription.
 	defer f.mu.Unlock()
 	f.summaryCalls++
 	return f.summary, f.summaryErr
+}
+
+func (f *quotaLedgerFake) ListReservedBefore(context.Context, string, time.Time) ([]listingsubscription.StoreQuotaAllocation, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]listingsubscription.StoreQuotaAllocation(nil), f.staleReservations...), nil
 }
 
 type auditRepositoryFake struct {

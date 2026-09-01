@@ -94,6 +94,13 @@ type StoreQuotaLedger interface {
 	Summary(context.Context, string) (StoreQuotaSummary, error)
 }
 
+// StoreQuotaReservationReconciler is an optional ledger capability used by
+// Store Center when admission is blocked. It exposes only old reservations;
+// the caller must still verify that no Store exists before releasing one.
+type StoreQuotaReservationReconciler interface {
+	ListReservedBefore(context.Context, string, time.Time) ([]StoreQuotaAllocation, error)
+}
+
 type StoreQuotaValidationError struct{ Field string }
 
 func (e *StoreQuotaValidationError) Error() string {
