@@ -592,6 +592,10 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   assert.match(signalWorkflow, /permissions: \{\}/);
   assert.match(signalWorkflow, /development-admission-review-\$\{\{ github\.run_id \}\}/);
   assert.match(reconcileWorkflow, /schedule:/);
+  assert.match(
+    reconcileWorkflow,
+    /dispatch-open-pull-requests:\n    if: github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/,
+  );
   assert.match(reconcileWorkflow, /github\.rest\.actions\.createWorkflowDispatch/);
 });
 
