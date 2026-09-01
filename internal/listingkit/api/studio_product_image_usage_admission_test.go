@@ -297,7 +297,7 @@ func TestReconcileStudioProductImageUsageReleasesExpiredSynchronousReservation(t
 	ctx := listingkit.WithTenantID(context.Background(), "tenant-sync-recovery")
 	svc := newStudioProductImageAdmissionService(t, "tenant-sync-recovery", 2)
 	old := time.Now().UTC().Add(-2 * time.Hour)
-	if _, err := svc.RecordUsage(ctx, "tenant-sync-recovery", listingsubscription.ModuleStudio, "product_image_jobs", 1); err != nil {
+	if _, err := svc.RecordUsageForPeriod(ctx, "tenant-sync-recovery", listingsubscription.ModuleStudio, "product_image_jobs", old.Format("2006-01"), 1); err != nil {
 		t.Fatalf("RecordUsage() error = %v", err)
 	}
 	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{

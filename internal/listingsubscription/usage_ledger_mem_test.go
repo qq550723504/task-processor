@@ -58,7 +58,7 @@ func TestMemUsageLedgerReserveDoesNotDoubleCountMirroredLegacyUsage(t *testing.T
 	}); err != nil {
 		t.Fatalf("UpsertEntitlement() error = %v", err)
 	}
-	if _, err := svc.RecordUsage(ctx, "tenant-legacy-mirror", ModuleStudio, "product_image_jobs", 5); err != nil {
+	if _, err := svc.RecordUsageForPeriod(ctx, "tenant-legacy-mirror", ModuleStudio, "product_image_jobs", period, 5); err != nil {
 		t.Fatalf("seed legacy usage: %v", err)
 	}
 	ledger := NewMemUsageLedger(repo)
@@ -83,13 +83,13 @@ func TestMemUsageLedgerReserveDoesNotDoubleCountMirroredLegacyUsage(t *testing.T
 	if _, err := metadataUpdater.UpdateMetadata(ctx, first.Event.EventID, map[string]string{"listingkit_legacy_counter_mirror": "settled"}); err != nil {
 		t.Fatalf("first mirror metadata: %v", err)
 	}
-	if _, err := svc.RecordUsage(ctx, "tenant-legacy-mirror", ModuleStudio, "product_image_jobs", 1); err != nil {
+	if _, err := svc.RecordUsageForPeriod(ctx, "tenant-legacy-mirror", ModuleStudio, "product_image_jobs", period, 1); err != nil {
 		t.Fatalf("mirror legacy usage: %v", err)
 	}
 	if _, err := ledger.Reserve(ctx, input("mirror-2")); err != nil {
 		t.Fatalf("second Reserve() error = %v, want mirrored usage to be counted once", err)
 	}
-	if _, err := svc.RecordUsage(ctx, "tenant-legacy-mirror", ModuleStudio, "product_image_jobs", 1); err != nil {
+	if _, err := svc.RecordUsageForPeriod(ctx, "tenant-legacy-mirror", ModuleStudio, "product_image_jobs", period, 1); err != nil {
 		t.Fatalf("mirror second legacy usage: %v", err)
 	}
 	if _, err := ledger.Reserve(ctx, input("mirror-3")); !errors.Is(err, ErrUsageQuotaExceeded) {
@@ -99,6 +99,7 @@ func TestMemUsageLedgerReserveDoesNotDoubleCountMirroredLegacyUsage(t *testing.T
 
 func TestMemUsageLedgerReserveDoesNotSubtractUnmirroredReservationsFromLegacyUsage(t *testing.T) {
 	ctx := context.Background()
+	period := "2026-08"
 	repo := NewMemRepository()
 	svc, err := NewService(repo)
 	if err != nil {
@@ -110,7 +111,7 @@ func TestMemUsageLedgerReserveDoesNotSubtractUnmirroredReservationsFromLegacyUsa
 	}); err != nil {
 		t.Fatalf("UpsertEntitlement() error = %v", err)
 	}
-	if _, err := svc.RecordUsage(ctx, "tenant-legacy-unmirrored", ModuleStudio, "product_image_jobs", 5); err != nil {
+	if _, err := svc.RecordUsageForPeriod(ctx, "tenant-legacy-unmirrored", ModuleStudio, "product_image_jobs", period, 5); err != nil {
 		t.Fatalf("seed legacy usage: %v", err)
 	}
 	ledger := NewMemUsageLedger(repo)
@@ -118,7 +119,7 @@ func TestMemUsageLedgerReserveDoesNotSubtractUnmirroredReservationsFromLegacyUsa
 		return ReserveUsageInput{
 			TenantID: "tenant-legacy-unmirrored", ModuleCode: ModuleStudio,
 			Metric: usageMetricProductImageJobsSucceeded, LegacyUsageMetric: "product_image_jobs",
-			Quantity: 1, PeriodKey: "2026-08", SourceType: "listingkit_product_image",
+			Quantity: 1, PeriodKey: period, SourceType: "listingkit_product_image",
 			SourceID: key, IdempotencyKey: key, OccurredAt: time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC),
 		}
 	}

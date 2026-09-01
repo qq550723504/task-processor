@@ -410,24 +410,20 @@ func TestGormUsageLedgerZeroOccurredAtReplayUsesPersistedPeriod(t *testing.T) {
 	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 2})
 	ledger := NewGormUsageLedger(repo)
 	input := usageLedgerReserveInput("tenant-17", "zero-time-replay", 1)
-	input.OccurredAt = time.Time{}
 	first, err := ledger.Reserve(context.Background(), input)
 	if err != nil {
 		t.Fatalf("first Reserve() error = %v", err)
 	}
-	// Simulate a retry after the persisted event's period has become older
-	// than the caller's current calendar month.
-	if err := db.Model(&usageEventRow{}).Where("event_id = ?", first.Event.EventID).Updates(map[string]any{"period_key": "2026-07", "occurred_at": time.Date(2026, 7, 31, 23, 0, 0, 0, time.UTC)}).Error; err != nil {
-		t.Fatalf("age persisted event: %v", err)
-	}
-	if err := db.Model(&usageBucketRow{}).Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-17", ModuleStudio, "2026-08", usageMetricStudioDesignJobsSucceeded).Update("period_key", "2026-07").Error; err != nil {
-		t.Fatalf("age persisted bucket: %v", err)
-	}
-	replay, err := ledger.Reserve(context.Background(), input)
+	// Simulate a retry in a later billing period. Legacy callers without an
+	// occurrence time must replay the event using its persisted period.
+	replayInput := input
+	replayInput.PeriodKey = "2026-09"
+	replayInput.OccurredAt = time.Time{}
+	replay, err := ledger.Reserve(context.Background(), replayInput)
 	if err != nil {
 		t.Fatalf("replay Reserve() error = %v", err)
 	}
-	if !replay.Existing || replay.Event.EventID != first.Event.EventID || replay.Event.PeriodKey != "2026-07" {
+	if !replay.Existing || replay.Event.EventID != first.Event.EventID || replay.Event.PeriodKey != input.PeriodKey {
 		t.Fatalf("replay = %#v, want existing event with persisted period", replay)
 	}
 }
@@ -616,17 +612,19 @@ func TestGormUsageLedgerUsesPlanLimitsWhenLegacyEntitlementSnapshotLacksMetric(t
 		t.Fatalf("create tenant subscription: %v", err)
 	}
 	ledger := NewGormUsageLedger(repo)
-	first, err := ledger.Reserve(context.Background(), ReserveUsageInput{TenantID: "tenant-legacy", ModuleCode: ModuleStudio, Metric: usageMetricSheinDraftsSucceeded, Quantity: 1, PeriodKey: "2026-08", SourceType: "listing", SourceID: "draft-1", IdempotencyKey: "legacy-shein-1", OccurredAt: time.Now().UTC()})
+	now := time.Now().UTC()
+	period := now.Format("2006-01")
+	first, err := ledger.Reserve(context.Background(), ReserveUsageInput{TenantID: "tenant-legacy", ModuleCode: ModuleStudio, Metric: usageMetricSheinDraftsSucceeded, Quantity: 1, PeriodKey: period, SourceType: "listing", SourceID: "draft-1", IdempotencyKey: "legacy-shein-1", OccurredAt: now})
 	if err != nil {
 		t.Fatalf("Reserve() using plan fallback error = %v", err)
 	}
 	if first.Limit == nil || *first.Limit != 2 {
 		t.Fatalf("Reserve() limit = %v, want plan-module limit 2", first.Limit)
 	}
-	if _, err = ledger.Reserve(context.Background(), ReserveUsageInput{TenantID: "tenant-legacy", ModuleCode: ModuleStudio, Metric: usageMetricSheinDraftsSucceeded, Quantity: 1, PeriodKey: "2026-08", SourceType: "listing", SourceID: "draft-2", IdempotencyKey: "legacy-shein-2", OccurredAt: time.Now().UTC()}); err != nil {
+	if _, err = ledger.Reserve(context.Background(), ReserveUsageInput{TenantID: "tenant-legacy", ModuleCode: ModuleStudio, Metric: usageMetricSheinDraftsSucceeded, Quantity: 1, PeriodKey: period, SourceType: "listing", SourceID: "draft-2", IdempotencyKey: "legacy-shein-2", OccurredAt: now}); err != nil {
 		t.Fatalf("second Reserve() using plan fallback error = %v", err)
 	}
-	if _, err = ledger.Reserve(context.Background(), ReserveUsageInput{TenantID: "tenant-legacy", ModuleCode: ModuleStudio, Metric: usageMetricSheinDraftsSucceeded, Quantity: 1, PeriodKey: "2026-08", SourceType: "listing", SourceID: "draft-3", IdempotencyKey: "legacy-shein-3", OccurredAt: time.Now().UTC()}); !errors.Is(err, ErrUsageQuotaExceeded) {
+	if _, err = ledger.Reserve(context.Background(), ReserveUsageInput{TenantID: "tenant-legacy", ModuleCode: ModuleStudio, Metric: usageMetricSheinDraftsSucceeded, Quantity: 1, PeriodKey: period, SourceType: "listing", SourceID: "draft-3", IdempotencyKey: "legacy-shein-3", OccurredAt: now}); !errors.Is(err, ErrUsageQuotaExceeded) {
 		t.Fatalf("Reserve() beyond plan fallback limit error = %v, want ErrUsageQuotaExceeded", err)
 	}
 }
