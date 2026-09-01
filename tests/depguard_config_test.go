@@ -121,6 +121,7 @@ func TestCommerceToolDepguardUsesExactStrictAllowlist(t *testing.T) {
 
 	wantAllow := []string{
 		"$gostd",
+		"github.com/go-openapi/jsonpointer$",
 		"golang.org/x/mod/semver$",
 		"github.com/santhosh-tekuri/jsonschema/v6$",
 		"go.opentelemetry.io/otel/attribute$",
