@@ -30,6 +30,8 @@ internal/
     worker/
     runtime/
 
+  commercetool/
+
   platform/
     config/
     logging/
@@ -227,6 +229,25 @@ Its long-term role:
 
 New business logic should not be added here unless it is genuinely compatibility-only.
 
+### 3.9 `internal/commercetool`
+
+Owns the framework-neutral commerce Tool contract: Tool Definition, Schema,
+Registry, Agent Allowlist, Invocation Policy, and Tool Audit Port. It owns the
+policy and invocation boundary, not business-domain implementations or runtime
+framework integration.
+
+`kernel/module.Registry` remains limited to startup contribution collection; it
+is not the Tool Runtime. A domain Tool adapter receives only narrow
+Service/Query ports and implements the Executor contract. The `internal/app`
+composition root constructs those adapters, injects the ports, and registers
+the resulting Tools with the commerce Registry.
+
+Phase 2A admits only `read`, `compute`, and `propose` risk classes. `write` and
+`publish` remain outside this phase until later governance adds their controls.
+The import boundary is enforced by `depguard: commercetool_boundaries`, a
+strict allowlist that keeps application, domain, framework, transport,
+workflow, persistence, and provider implementations outside this owner.
+
 ## 4. Strategic Architectural Decisions
 
 ### 4.1 Business-domain-first packaging
@@ -289,8 +310,12 @@ cmd
 
 app
   -> listing / product / marketplace
+  -> commercetool
   -> platform / integration
   -> shared
+
+commercetool
+  -> standard library / contract validation / tracing APIs
 
 listing
   -> product
@@ -323,6 +348,9 @@ Important consequences:
 - `product` must not depend on `listing`.
 - `marketplace/*` must not depend on `compatibility/listingkit`.
 - `app/*` must remain wiring-focused.
+- `commercetool` must remain independent from application and domain
+  implementations; adapters cross the boundary only through Executor and
+  narrow Service/Query ports assembled at the composition root.
 - `compatibility/*` may depend inward on the new domains, but the new domains should not depend back on compatibility.
 
 For the 1688 source loop, internal/integration/crawler/a1688 converts legacy crawler DTOs into internal/product/sourcing snapshots. The product boundary is enforced by the rule that internal/product must not import internal/listingkit, internal/compatibility, internal/crawler, or internal/integration. The existing ListingKit command and HTTP compatibility path is owned by internal/compatibility/listingkit/sourcehandoff.

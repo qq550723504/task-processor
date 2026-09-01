@@ -516,6 +516,23 @@ linters-settings:
           - "gorm.io/gorm"
           - "task-processor/internal/aicapability"
 
+      commercetool_boundaries:
+        # Commerce Tool contracts and registry policy remain independent from
+        # application, domain, framework, transport, workflow, persistence,
+        # and provider implementations. Keep this list exact rather than
+        # admitting an internal package tree or an entire SDK namespace.
+        list-mode: strict
+        files:
+          - "**/internal/commercetool/*.go"
+          - "**/internal/commercetool/**/*.go"
+        allow:
+          - "$gostd"
+          - "github.com/go-openapi/jsonpointer$"
+          - "golang.org/x/mod/semver$"
+          - "github.com/santhosh-tekuri/jsonschema/v6$"
+          - "go.opentelemetry.io/otel/attribute$"
+          - "go.opentelemetry.io/otel/trace$"
+
       imageagent_effectpolicy_boundaries:
         list-mode: strict
         files:

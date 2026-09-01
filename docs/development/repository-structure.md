@@ -80,6 +80,7 @@
 - `TestSDSLoginRuntimeStateStaysOutOfInternalPackages`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
+- `depguard: commercetool_boundaries`
 
 如果需要新增正式入口、调试目录或平台注册文件，应在同一变更中更新这份文档和对应 allowlist。
 
@@ -98,6 +99,10 @@
   - 产品主域兼容 facade，承接 ListingKit 的任务、工作台、审核、提交编排、多租户产品能力。
   - `internal/listingkit/httpapi` 是 ListingKit 专属 HTTP 装配、认证运行时和 AI client helper 的稳定归属地。
   - 新增平台规则、商品事实规则、可复用资产规则不应继续放入 root `internal/listingkit`。
+- `internal/commercetool`
+  - 拥有框架中立的 Tool Definition、Schema、Registry、Agent Allowlist、Invocation Policy 和 Tool Audit Port。
+  - 生产代码不得依赖 Framework、Transport、Workflow、Persistence、Provider SDK、Marketplace Client 或 domain implementation packages；领域能力由装配层通过窄 Service/Query ports 注入 Executor。
+  - `depguard: commercetool_boundaries` 对该目录全部生产 Go 文件使用 strict allowlist，禁止通过宽泛 `internal` 或 SDK 父命名空间绕过边界。
 - `internal/listing`
   - 平台中立的 Listing 子领域目标位置，当前包括 `preview`、`studio`、`submission` 等已抽出的稳定 seam。
 - `internal/shein` / `internal/temu` / `internal/amazon`
