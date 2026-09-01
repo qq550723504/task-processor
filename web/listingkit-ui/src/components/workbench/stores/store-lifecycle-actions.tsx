@@ -367,17 +367,19 @@ function ScopedStoreLifecycleActions({
       actionRef.current ||
       isBusy ||
       !canDelete ||
-      !remove.canRetryLast ||
-      (!deletingStore && !interruptedRetry)
+      (!deletingStore && (!interruptedRetry || !remove.canRetryLast))
     ) {
       return;
     }
     const operationScope = scopeKey;
     const operationOrganizationId = organizationId;
     const baselineVersion = store.version;
-    actionRef.current = true;
+      actionRef.current = true;
     setAction({ kind: "pending", scopeKey: operationScope });
-    void Promise.resolve(remove.retryLast()).then(
+    const recovery = remove.canRetryLast
+      ? remove.retryLast()
+      : remove.resume({ id: store.id, version: baselineVersion });
+    void Promise.resolve(recovery).then(
       () => finishDelete(operationScope, operationOrganizationId),
       (error) =>
         handleDeleteError(
@@ -400,19 +402,24 @@ function ScopedStoreLifecycleActions({
     );
   }
   if (store.lifecycleStatus === "deleting") {
+    const deleteRecoveryAvailable =
+      currentAction.kind === "idle" ||
+      (currentAction.kind === "delete-interrupted" &&
+        currentAction.retryable &&
+        !currentAction.refreshing);
     return (
       <div className="space-y-2">
         <p className="text-sm text-muted-foreground">
           删除正在进行中，暂不能编辑或更改店铺状态。
         </p>
-        {canDelete && remove.canRetryLast ? (
+        {canDelete && deleteRecoveryAvailable ? (
           <Button
             disabled={isBusy}
             onClick={retryDelete}
             size="sm"
             variant="outline"
           >
-            重试删除
+            {remove.canRetryLast ? "重试删除" : "恢复删除"}
           </Button>
         ) : (
           <p className="text-sm text-muted-foreground">

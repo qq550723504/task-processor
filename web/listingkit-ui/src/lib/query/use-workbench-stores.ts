@@ -223,6 +223,10 @@ export function useDeleteWorkbenchStore() {
     setRetryState,
     organizationId,
   );
+  const resume = (input: StoreVersionInput) =>
+    organizationId
+      ? mutation.mutateAsync(...submit(input))
+      : Promise.reject(missingOrganizationError());
   return {
     ...mutation,
     variables: mutation.variables?.input,
@@ -239,6 +243,7 @@ export function useDeleteWorkbenchStore() {
         ? mutation.mutateAsync(...submit(input, options))
         : Promise.reject(missingOrganizationError()),
     retryLast,
+    resume,
     canRetryLast: retryState?.available === true && retryState.organizationId === organizationId,
   };
 }

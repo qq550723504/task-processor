@@ -109,7 +109,7 @@ describe("StoreDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "使用最新版本重新保存" }));
     expect(update.mutate).toHaveBeenLastCalledWith({ id: STORE.id, version: 2, input: { name: "我的草稿", region: "CN" } }, expect.any(Object));
   });
-  it("compares conflict fields against the immutable submitted baseline rather than a background query projection", async () => {
+  it("advances the submitted baseline when a background query projection is newer", async () => {
     const background = { ...STORE, name: "后台名称", version: 2 };
     const latest = { ...background, region: "US", version: 3 };
     const refetch = vi.fn().mockResolvedValue({ data: latest, isSuccess: true, isError: false });
@@ -119,9 +119,10 @@ describe("StoreDetailPage", () => {
     query.value = { isPending: false, isError: false, data: background, refetch };
     view.rerender(<StoreDetailPage storeId={STORE.id} />);
     await user.click(screen.getByRole("button", { name: "保存更改" }));
-    expect(update.mutate).toHaveBeenCalledWith({ id: STORE.id, version: 1, input: { name: "我的草稿", region: "CN" } }, expect.any(Object));
+    expect(update.mutate).toHaveBeenCalledWith({ id: STORE.id, version: 2, input: { name: "我的草稿", region: "CN" } }, expect.any(Object));
     update.mutate.mock.calls[0]?.[1].onError({ code: "STORE_VERSION_CONFLICT", status: 409, fieldErrors: [] });
-    expect(await screen.findByText(/名称、区域已被其他人修改/)).toBeInTheDocument();
+    expect(await screen.findByText(/区域已被其他人修改/)).toBeInTheDocument();
+    expect(screen.queryByText(/名称、区域已被其他人修改/)).not.toBeInTheDocument();
   });
   it("fails closed when latest conflict fetch fails and repeats conflict recovery", async () => {
     const latest = { ...STORE, version: 2, name: "服务端名称" };

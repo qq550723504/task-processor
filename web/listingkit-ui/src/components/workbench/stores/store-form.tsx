@@ -76,8 +76,7 @@ export function StoreForm(props: StoreFormProps) {
     if (
       props.mode !== "edit" ||
       !editBaselineRef.current ||
-      props.store.version <= editBaselineRef.current.version ||
-      props.store.lifecycleStatus === editBaselineRef.current.lifecycleStatus
+      props.store.version <= editBaselineRef.current.version
     ) {
       return;
     }

@@ -11,7 +11,7 @@ const context = vi.hoisted(() => ({
 const queryClient = vi.hoisted(() => ({ removeQueries: vi.fn() }));
 const enable = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
 const disable = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
-const remove = vi.hoisted(() => ({ mutate: vi.fn(), retryLast: vi.fn(), canRetryLast: false, isPending: false }));
+const remove = vi.hoisted(() => ({ mutate: vi.fn(), retryLast: vi.fn(), resume: vi.fn(), canRetryLast: false, isPending: false }));
 
 vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => queryClient }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => context }));
@@ -44,7 +44,7 @@ describe("StoreLifecycleActions", () => {
     context.retry.mockReset(); queryClient.removeQueries.mockReset();
     enable.mutate.mockReset(); enable.isPending = false;
     disable.mutate.mockReset(); disable.isPending = false;
-    remove.mutate.mockReset(); remove.retryLast.mockReset(); remove.canRetryLast = false; remove.isPending = false;
+    remove.mutate.mockReset(); remove.retryLast.mockReset(); remove.resume.mockReset(); remove.canRetryLast = false; remove.isPending = false;
   });
 
   it.each([
@@ -151,10 +151,18 @@ describe("StoreLifecycleActions", () => {
     const { rerender } = render(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "deleting" }} />);
     expect(screen.getByText(/删除正在进行中/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /停用|重新启用|删除店铺/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/刷新页面或联系支持/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "恢复删除" })).toBeInTheDocument();
     remove.canRetryLast = true;
     rerender(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "deleting" }} />);
     expect(screen.getByRole("button", { name: "重试删除" })).toBeInTheDocument();
+  });
+
+  it("resumes a deleting Store with a new key after reload", async () => {
+    const user = userEvent.setup();
+    render(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "deleting" }} />);
+    await user.click(screen.getByRole("button", { name: "恢复删除" }));
+    expect(remove.resume).toHaveBeenCalledWith({ id: STORE.id, version: STORE.version });
+    expect(remove.retryLast).not.toHaveBeenCalled();
   });
 
   it("never exposes an eligible deleting retry after the current role loses delete permission", () => {
