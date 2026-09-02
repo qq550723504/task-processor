@@ -56,6 +56,13 @@ type providerDependencies struct {
 	Review          reviewProvider
 }
 
+// buildProductionImageCapabilities is completed by the fail-closed production
+// provider assembly slice. Keeping the default explicit prevents the worker
+// from silently falling back to the retired ProductImage runtime.
+func buildProductionImageCapabilities(imageCapabilityRuntime) (ImageCapabilities, error) {
+	return ImageCapabilities{}, fmt.Errorf("image agent production providers are not configured")
+}
+
 func buildImageCapabilities(deps providerDependencies, resolver ProfileResolver) (ImageCapabilities, error) {
 	if nilDependency(resolver) {
 		return ImageCapabilities{}, fmt.Errorf("image agent policy resolver is required")

@@ -19,15 +19,13 @@ import (
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	openaiclient "task-processor/internal/integration/openai"
 	s3integration "task-processor/internal/integration/s3"
-	"task-processor/internal/productimage"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
 func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPublisherAndCloser(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-runtime?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	closed := 0
-	var capabilityInput productimagehttpapi.RuntimeBuildInput
+	var capabilityInput imageCapabilityRuntime
 	resolver := imageAgentWorkerDependencyResolver{
 		LoadConfig: func(path string) (*config.Config, error) {
 			require.Equal(t, "config/worker.yaml", path)
@@ -41,12 +39,9 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 		BuildAI: func(*config.Config, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
 			return nil, nil, nil, nil
 		},
-		BuildCapabilities: func(input productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error) {
+		BuildCapabilities: func(input imageCapabilityRuntime) (ImageCapabilities, error) {
 			capabilityInput = input
-			return productimagehttpapi.ImageAgentCapabilities{
-				SubjectExtractor: runtimeSubjectExtractor{}, WhiteBackgroundRenderer: runtimeWhiteBackgroundRenderer{},
-				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
-			}, nil
+			return completeWorkerImageCapabilities(), nil
 		},
 		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 			return stubWorkerArtifactStore{}, nil
@@ -60,7 +55,7 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 	require.NotNil(t, dependencies.StagedSlotExecutor)
 	require.NotNil(t, dependencies.ArtifactStore)
 	require.NotNil(t, dependencies.Publisher)
-	require.Equal(t, "worker-images", capabilityInput.ImageWorkDir)
+	require.Nil(t, capabilityInput.OpenAIManager)
 	require.NoError(t, closeFn())
 	require.Equal(t, 1, closed)
 }
@@ -78,11 +73,8 @@ func TestResolveImageAgentTemporalDependenciesForV2SkipsV3ValidationAndDurableCo
 		BuildAI: func(*config.Config, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
 			return nil, nil, nil, nil
 		},
-		BuildCapabilities: func(productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error) {
-			return productimagehttpapi.ImageAgentCapabilities{
-				SubjectExtractor: runtimeSubjectExtractor{}, WhiteBackgroundRenderer: runtimeWhiteBackgroundRenderer{},
-				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
-			}, nil
+		BuildCapabilities: func(imageCapabilityRuntime) (ImageCapabilities, error) {
+			return completeWorkerImageCapabilities(), nil
 		},
 		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 			storeBuilds++
@@ -117,11 +109,8 @@ func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *t
 		BuildAI: func(*config.Config, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
 			return nil, nil, nil, nil
 		},
-		BuildCapabilities: func(productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error) {
-			return productimagehttpapi.ImageAgentCapabilities{
-				SubjectExtractor: runtimeSubjectExtractor{}, WhiteBackgroundRenderer: runtimeWhiteBackgroundRenderer{},
-				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
-			}, nil
+		BuildCapabilities: func(imageCapabilityRuntime) (ImageCapabilities, error) {
+			return completeWorkerImageCapabilities(), nil
 		},
 		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 			storeBuilds++
@@ -335,26 +324,10 @@ func (stubWorkerArtifactStore) FinalizeWithProgress(context.Context, imageagent.
 
 var _ imageagenttemporal.DurableArtifactStore = stubWorkerArtifactStore{}
 
-type runtimeSubjectExtractor struct{}
-
-func (runtimeSubjectExtractor) Extract(context.Context, string, *productimage.ProductContext) (*productimage.ImageAsset, error) {
-	return &productimage.ImageAsset{}, nil
-}
-
-type runtimeWhiteBackgroundRenderer struct{}
-
-func (runtimeWhiteBackgroundRenderer) Render(context.Context, *productimage.ImageAsset, *productimage.ProductContext) (*productimage.ImageAsset, error) {
-	return &productimage.ImageAsset{}, nil
-}
-
-type runtimeSceneRenderer struct{}
-
-func (runtimeSceneRenderer) Render(context.Context, *productimage.ImageAsset, *productimage.ProductContext) ([]productimage.ImageAsset, error) {
-	return nil, nil
-}
-
-type runtimeAssetPublisher struct{}
-
-func (runtimeAssetPublisher) Publish(context.Context, *productimage.ImageProcessRequest, *productimage.ImageProcessResult) error {
-	return nil
+func completeWorkerImageCapabilities() ImageCapabilities {
+	capabilities, err := buildImageCapabilities(completeProviderDependencies(), &stubProfileResolver{})
+	if err != nil {
+		panic(err)
+	}
+	return capabilities
 }

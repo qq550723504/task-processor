@@ -5,35 +5,8 @@ import (
 	"testing"
 )
 
-func TestNormalizeStagingManifestRestrictsOperationsToTrustedVocabulary(t *testing.T) {
-	validOperations := []string{
-		"select_subject",
-		"extract_subject_placeholder",
-		"cleanup_placeholder",
-		"remove_overlay_text_placeholder",
-		"remove_promo_badge_placeholder",
-		"remove_logo_overlay_placeholder",
-		"render_white_bg_placeholder",
-		"extract_subject",
-		"cleanup_image",
-		"render_white_bg",
-		"extract_subject_bbox",
-		"extract_subject_segmenter",
-		"render_white_bg_model",
-		"compose_on_white_canvas",
-		"cleanup_overlay_signal",
-		"cleanup_quality",
-		"remove_overlay_regions",
-		"resize",
-		"render_scene_model",
-		"render_image_model",
-		"extract_subject_model",
-		"normalize_for_amazon",
-		"download_source",
-		"optimize_for_amazon",
-		"render_scene_canvas",
-	}
-	for _, operation := range validOperations {
+func TestNormalizeStagingManifestValidatesOperationIdentifiersWithoutBusinessVocabulary(t *testing.T) {
+	for _, operation := range []string{"extract_subject", "render_white_background", "render_scene", "future_capability_v2"} {
 		t.Run(operation, func(t *testing.T) {
 			if _, err := NormalizeStagingManifest(StagingManifest{Assets: []StagedAssetRef{testOperationAsset(operation)}}); err != nil {
 				t.Fatalf("NormalizeStagingManifest(%q) error = %v", operation, err)
@@ -41,7 +14,7 @@ func TestNormalizeStagingManifestRestrictsOperationsToTrustedVocabulary(t *testi
 		})
 	}
 
-	for _, operation := range []string{"provider=https://transient.example", "authorization=secret", "C:/worker/generated.png", "unknown_operation"} {
+	for _, operation := range []string{"provider=https://transient.example", "authorization=secret", "C:/worker/generated.png", "UpperCase", "has space", "trailing_"} {
 		t.Run("reject "+operation, func(t *testing.T) {
 			if _, err := NormalizeStagingManifest(StagingManifest{Assets: []StagedAssetRef{testOperationAsset(operation)}}); err == nil {
 				t.Fatalf("NormalizeStagingManifest(%q) error = nil, want validation failure", operation)

@@ -61,6 +61,7 @@ type DurableAssetIdentity struct {
 
 var sha256Pattern = regexp.MustCompile(`^[a-fA-F0-9]{64}$`)
 var artifactKeyIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+var artifactOperationIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$`)
 
 const maxArtifactOwnerIDLength = 128
 
@@ -109,22 +110,6 @@ const (
 	maxArtifactOperations      = 8
 	maxArtifactOperationLength = 64
 )
-
-// trustedArtifactOperations is the provider-neutral persistence vocabulary for
-// generated-image provenance. It deliberately stores only finite operation
-// names, never provider metadata or free-form descriptions.
-var trustedArtifactOperations = map[string]struct{}{
-	"select_subject": {}, "extract_subject_placeholder": {}, "cleanup_placeholder": {},
-	"remove_overlay_text_placeholder": {}, "remove_promo_badge_placeholder": {},
-	"remove_logo_overlay_placeholder": {}, "render_white_bg_placeholder": {},
-	"extract_subject": {}, "cleanup_image": {}, "render_white_bg": {},
-	"extract_subject_bbox": {}, "extract_subject_segmenter": {}, "render_white_bg_model": {},
-	"compose_on_white_canvas": {}, "cleanup_overlay_signal": {}, "cleanup_quality": {},
-	"remove_overlay_regions": {}, "resize": {},
-	"render_scene_model": {}, "render_image_model": {}, "extract_subject_model": {},
-	"normalize_for_amazon": {}, "download_source": {}, "optimize_for_amazon": {},
-	"render_scene_canvas": {},
-}
 
 func ValidateStagingManifest(manifest StagingManifest) error {
 	_, err := NormalizeStagingManifest(manifest)
@@ -323,8 +308,8 @@ func normalizePublishedAssetRef(asset PublishedAssetRef) (PublishedAssetRef, err
 	return asset, nil
 }
 
-// NormalizeArtifactOperations validates and defensively copies the only
-// operation values permitted in a persisted artifact manifest.
+// NormalizeArtifactOperations validates provider-neutral operation identifiers
+// without embedding a business capability vocabulary in the persistence layer.
 func NormalizeArtifactOperations(operations []string) ([]string, error) {
 	if len(operations) > maxArtifactOperations {
 		return nil, ErrValidation
@@ -334,10 +319,7 @@ func NormalizeArtifactOperations(operations []string) ([]string, error) {
 	}
 	normalized := make([]string, len(operations))
 	for index, operation := range operations {
-		if len(operation) == 0 || len(operation) > maxArtifactOperationLength {
-			return nil, ErrValidation
-		}
-		if _, ok := trustedArtifactOperations[operation]; !ok {
+		if len(operation) > maxArtifactOperationLength || !artifactOperationIdentifierPattern.MatchString(operation) {
 			return nil, ErrValidation
 		}
 		normalized[index] = operation

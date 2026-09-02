@@ -115,13 +115,16 @@ type SlotExternalEffectIdentity struct {
 }
 
 type GeneratedAsset struct {
-	URL        string
-	Type       string
-	SourceURL  string
-	Operations []string
-	Width      int
-	Height     int
-	Metadata   map[string]string
+	URL               string
+	Bytes             []byte `json:"-"`
+	ContentType       string `json:",omitempty"`
+	Type              string
+	SourceURL         string
+	Operations        []string
+	Width             int
+	Height            int
+	Metadata          map[string]string
+	ProviderReceiptID string `json:",omitempty"`
 }
 
 type SlotGeneratedOutput struct {

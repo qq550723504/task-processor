@@ -2,7 +2,6 @@ package imageagentworker
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,15 +23,21 @@ import (
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
 	platformdatabase "task-processor/internal/platform/database"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
+
+type imageCapabilityRuntime struct {
+	OpenAIManager      *openaiclient.Manager
+	CredentialResolver openaiclient.ClientConfigResolver
+	InvocationRecorder aicapability.InvocationRecorder
+	Logger             *logrus.Logger
+}
 
 type imageAgentWorkerDependencyResolver struct {
 	LoadConfig         func(string) (*config.Config, error)
 	OpenDB             func(*config.DatabaseConfig) (*gorm.DB, error)
 	CloseDB            func(*config.DatabaseConfig, *gorm.DB) error
 	BuildAI            func(*config.Config, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error)
-	BuildCapabilities  func(productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error)
+	BuildCapabilities  func(imageCapabilityRuntime) (ImageCapabilities, error)
 	BuildArtifactStore func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error)
 	ArtifactTiming     imageAgentArtifactTiming
 }
@@ -56,7 +61,7 @@ func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResol
 		CloseDB: func(cfg *config.DatabaseConfig, db *gorm.DB) error {
 			return platformdatabase.CloseShared(configadapter.Database(cfg), db)
 		},
-		BuildAI: buildImageAgentWorkerAI, BuildCapabilities: productimagehttpapi.BuildImageAgentCapabilities,
+		BuildAI: buildImageAgentWorkerAI, BuildCapabilities: buildProductionImageCapabilities,
 		BuildArtifactStore: buildImageAgentDurableArtifactStore,
 		ArtifactTiming:     defaultImageAgentArtifactTiming,
 	}
@@ -126,21 +131,22 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent provider runtime: %w", err)
 	}
-	workDir := strings.TrimSpace(cfg.ProductImage.WorkDir)
-	if workDir == "" {
-		workDir = filepath.Join(".", "tmp", "productimage")
+	if resolver.BuildCapabilities == nil {
+		_ = closeDB()
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent capability builder is required")
 	}
-	capabilities, err := resolver.BuildCapabilities(productimagehttpapi.RuntimeBuildInput{
-		Logger: logger, Config: cfg, OpenAIManager: manager, AICredentialResolver: credentialResolver,
-		AIInvocationRecorder: recorder, ImageWorkDir: workDir,
+	capabilities, err := resolver.BuildCapabilities(imageCapabilityRuntime{
+		OpenAIManager: manager, CredentialResolver: credentialResolver, InvocationRecorder: recorder, Logger: logger,
 	})
 	if err != nil {
 		_ = closeDB()
-		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent ProductImage capabilities: %w", err)
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent capabilities: %w", err)
 	}
-	if capabilities.SubjectExtractor == nil || capabilities.WhiteBackgroundRenderer == nil || capabilities.SceneRenderer == nil || capabilities.AssetPublisher == nil {
+	if nilDependency(capabilities.SubjectExtractor) || nilDependency(capabilities.WhiteBackgroundRenderer) ||
+		nilDependency(capabilities.SceneRenderer) || nilDependency(capabilities.Reviewer) ||
+		nilDependency(capabilities.UsageQuoter) || nilDependency(capabilities.ProfileResolver) {
 		_ = closeDB()
-		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent ProductImage capabilities are incomplete")
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent capabilities are incomplete")
 	}
 	repository := imageagentstore.NewGormRepository(db)
 	publisher, err := listingkithttpapi.NewImageAgentApprovedPublisher(repository, listingkitstore.NewImageAgentPublicationTransactionRepository(db))
@@ -150,7 +156,8 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	}
 	executor := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
 		SubjectExtractor: capabilities.SubjectExtractor, WhiteBackgroundRenderer: capabilities.WhiteBackgroundRenderer,
-		SceneRenderer: capabilities.SceneRenderer, AssetPublisher: capabilities.AssetPublisher,
+		SceneRenderer: capabilities.SceneRenderer, UsageQuoter: capabilities.UsageQuoter,
+		ProfileResolver: capabilities.ProfileResolver,
 	})
 	dependencies := appruntime.ImageAgentTemporalDependencies{Repository: repository, SlotExecutor: executor, Publisher: publisher}
 	if mode == imageagenttemporal.WorkerWireModeV2 {

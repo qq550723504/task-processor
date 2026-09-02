@@ -43,6 +43,30 @@ func TestExecuteSlotV3RestoresProductImageBusinessIdentity(t *testing.T) {
 	}, executor.ProductImageIdentity())
 }
 
+func TestPrepareGeneratedSlotArtifactsUsesInlineBytesWithoutFilesystemFallback(t *testing.T) {
+	data := tinyPNGBytes(t)
+	input := imageagent.SlotExecutionInput{
+		RunID: "run-inline", TenantID: "tenant-a", UserID: "user-a", PlanRevision: 1, Attempt: 1,
+		Slot: imageagent.Slot{ID: "scene-1"},
+	}
+	generated := imageagent.SlotGeneratedOutput{
+		SlotID: "scene-1", Attempt: 1, SourceAssetID: "source-1",
+		Assets: []imageagent.GeneratedAsset{{
+			Bytes: data, ContentType: "image/png", Width: 1, Height: 1,
+			Operations: []string{"render_scene"}, ProviderReceiptID: "request-1",
+		}},
+	}
+	store := &recordingArtifactStore{}
+
+	prepared, err := prepareGeneratedSlotArtifacts(input, generated, store)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, store.prepareCalls)
+	require.Equal(t, "request-1", prepared.Manifest.Assets[0].ProviderReceiptID)
+	cleanupGeneratedSlotTemporaryAssets(&generated)
+	require.Nil(t, generated.Assets[0].Bytes)
+}
+
 func TestExecuteSlotV3CleansGeneratedLocalFileOnlyAfterDurableStaging(t *testing.T) {
 	t.Run("durably staged", func(t *testing.T) {
 		repository, input := initializedSlotEffectV3Activity(t, "run-v3-cleanup-staged")

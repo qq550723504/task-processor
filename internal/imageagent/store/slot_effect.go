@@ -390,6 +390,7 @@ func cloneSlotEffect(effect imageagent.SlotExternalEffectAttempt) imageagent.Slo
 func cloneGeneratedOutput(output imageagent.SlotGeneratedOutput) imageagent.SlotGeneratedOutput {
 	assets := make([]imageagent.GeneratedAsset, len(output.Assets))
 	for index, item := range output.Assets {
+		item.Bytes = append([]byte(nil), item.Bytes...)
 		item.Operations = append([]string(nil), item.Operations...)
 		item.Metadata = cloneMetadata(item.Metadata)
 		assets[index] = item

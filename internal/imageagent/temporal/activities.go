@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -17,7 +18,6 @@ import (
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
 	"task-processor/internal/pkg/imagex"
-	"task-processor/internal/productimage"
 	"task-processor/internal/shared/aiidentity"
 	"task-processor/internal/shared/resilience"
 )
@@ -1004,16 +1004,20 @@ func prepareGeneratedSlotArtifacts(input imageagent.SlotExecutionInput, generate
 	}
 	assets := make([]objectstore.ArtifactInput, len(generated.Assets))
 	for index, generatedAsset := range generated.Assets {
-		localPath := strings.TrimSpace(generatedAsset.Metadata["local_path"])
-		if localPath == "" && !strings.Contains(generatedAsset.URL, "://") {
-			localPath = strings.TrimSpace(generatedAsset.URL)
-		}
-		if localPath == "" {
-			return objectstore.PreparedSlotArtifacts{}, imageagent.ErrValidation
-		}
-		data, err := os.ReadFile(localPath)
-		if err != nil {
-			return objectstore.PreparedSlotArtifacts{}, fmt.Errorf("read generated artifact %d: %w", index, err)
+		data := append([]byte(nil), generatedAsset.Bytes...)
+		if data == nil {
+			localPath := strings.TrimSpace(generatedAsset.Metadata["local_path"])
+			if localPath == "" && !strings.Contains(generatedAsset.URL, "://") {
+				localPath = strings.TrimSpace(generatedAsset.URL)
+			}
+			if localPath == "" {
+				return objectstore.PreparedSlotArtifacts{}, imageagent.ErrValidation
+			}
+			var err error
+			data, err = os.ReadFile(localPath)
+			if err != nil {
+				return objectstore.PreparedSlotArtifacts{}, fmt.Errorf("read generated artifact %d: %w", index, err)
+			}
 		}
 		info, err := imagex.Inspect(data)
 		if err != nil {
@@ -1023,9 +1027,14 @@ func prepareGeneratedSlotArtifacts(input imageagent.SlotExecutionInput, generate
 		if contentType == "" {
 			return objectstore.PreparedSlotArtifacts{}, imageagent.ErrValidation
 		}
+		if generatedAsset.ContentType != "" && generatedAsset.ContentType != contentType ||
+			generatedAsset.Width > 0 && generatedAsset.Width != info.Width || generatedAsset.Height > 0 && generatedAsset.Height != info.Height {
+			return objectstore.PreparedSlotArtifacts{}, imageagent.ErrValidation
+		}
 		assets[index] = objectstore.ArtifactInput{
 			Bytes: data, ContentType: contentType, Width: info.Width, Height: info.Height,
 			SourceAssetID: generated.SourceAssetID, Operations: generatedAsset.Operations,
+			ProviderReceiptID: generatedAsset.ProviderReceiptID,
 		}
 	}
 	return store.PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput{Identity: slotEffectReservationV3(input).Identity, Assets: assets})
@@ -1037,10 +1046,32 @@ func cleanupGeneratedSlotTemporaryAssets(generated *imageagent.SlotGeneratedOutp
 	}
 	for index := range generated.Assets {
 		asset := &generated.Assets[index]
-		transient := productimage.ImageAsset{URL: asset.URL, Metadata: asset.Metadata}
-		productimage.CleanupTemporaryAsset(&transient)
-		asset.Metadata = transient.Metadata
+		asset.Bytes = nil
+		cleanupGeneratedSlotLocalAsset(asset)
 	}
+}
+
+func cleanupGeneratedSlotLocalAsset(asset *imageagent.GeneratedAsset) {
+	if asset == nil || asset.Metadata == nil {
+		return
+	}
+	localPath := strings.TrimSpace(asset.Metadata["local_path"])
+	if localPath == "" {
+		return
+	}
+	publishedPath := strings.TrimSpace(asset.Metadata["published_path"])
+	if publishedPath != "" && filepath.Clean(localPath) == filepath.Clean(publishedPath) {
+		asset.Metadata["temp_file_cleaned"] = "skipped_same_as_published"
+		return
+	}
+	if err := os.Remove(localPath); err != nil && !os.IsNotExist(err) {
+		asset.Metadata["temp_file_cleaned"] = "false"
+		asset.Metadata["temp_file_cleanup_error"] = err.Error()
+		return
+	}
+	asset.Metadata["temp_file_cleaned"] = "true"
+	asset.Metadata["temp_local_path"] = localPath
+	delete(asset.Metadata, "local_path")
 }
 
 func expectedFinalManifestV3(input imageagent.SlotExecutionInput, staging imageagent.StagingManifest) (imageagent.FinalManifest, error) {
