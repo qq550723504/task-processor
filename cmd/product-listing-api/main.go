@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 
 	"task-processor/internal/app/httpapi"
 	"task-processor/internal/pkg/appenv"
@@ -23,7 +24,16 @@ var (
 )
 
 func start(logger *logrus.Logger, options httpapi.Options) error {
-	return httpapicmd.Run(logger, "product listing API service", options)
+	return startWithApplication(logger, options, httpapicmd.Run)
+}
+
+type applicationRunner func(*logrus.Logger, string, httpapi.Options) error
+
+func startWithApplication(logger *logrus.Logger, options httpapi.Options, application applicationRunner) error {
+	if application == nil {
+		return fmt.Errorf("product listing application runner is required")
+	}
+	return application(logger, "product listing API service", options)
 }
 
 func main() {
