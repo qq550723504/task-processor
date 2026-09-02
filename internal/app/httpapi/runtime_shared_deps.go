@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 
+	"gorm.io/gorm"
+
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/integration/openai"
@@ -42,6 +44,7 @@ type sharedRuntimeDeps struct {
 	imageWorkDir         string
 	sourceImageFetcher   productimage.SourceImageFetcher
 	storeAPI             listingadmin.StoreAPI
+	productCatalogDB     *gorm.DB
 }
 
 func traceRuntimeConfig(cfg *config.Config) platformobservability.Config {

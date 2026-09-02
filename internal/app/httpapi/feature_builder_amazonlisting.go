@@ -13,7 +13,11 @@ import (
 type amazonListingProductSnapshotReader func(context.Context, string, string) (catalog.ProductSnapshot, error)
 
 func (r amazonListingProductSnapshotReader) GetProductSnapshot(ctx context.Context, query amazonlisting.ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
-	return r(ctx, query.TenantID, query.ProductKey)
+	snapshot, err := r(ctx, query.TenantID, query.ProductKey)
+	if isProductSnapshotNotReadyForHTTPAPI(err) {
+		return catalog.ProductSnapshot{}, amazonlisting.ErrProductSnapshotNotReady
+	}
+	return snapshot, err
 }
 
 type amazonListingFeatureBuilder struct {

@@ -166,6 +166,8 @@ Sourcing 不调用 ImageAgent、ListingKit 或 Marketplace 服务，也不生成
 
 来源 Envelope 经确定性归一化后产生 ProductSnapshot。相同有效输入必须产生等价事实；警告和证据不能在归一化时丢失。
 
+Catalog 同时拥有 Snapshot 的精确 tenant/product 身份、不可变版本、原子发布契约与 Repository Port。阶段三只建立显式的结构化发布用例及其生产持久化 Adapter，不新建临时 HTTP、Queue、Worker 或 ProductAgent；现有来源入口尚未具备完整结构化身份时必须失败关闭，不能从自由文本、旧 ProductEnrich task/result 或已删除的 canonical cache 推断。Enrichment 始终是只读 Proposal 生产者，不是 Snapshot 写入方。
+
 ### 5.3 Enrichment
 
 丰富化能力的核心契约为：

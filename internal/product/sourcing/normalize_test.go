@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"task-processor/internal/product/catalog"
 )
 
 func TestNormalizePreservesEvidenceLineageAndWarnings(t *testing.T) {
@@ -110,5 +112,42 @@ func TestToSnapshotProducesCanonicalFactsWithoutAssets(t *testing.T) {
 	}
 	if len(got.Variants[0].Attributes) != 2 || got.Variants[0].Attributes[0].Name != "Color" || got.Variants[0].Attributes[1].Name != "Size" {
 		t.Fatalf("ToSnapshot() variant attributes = %+v, want deterministic attributes", got.Variants[0].Attributes)
+	}
+}
+
+func TestToSnapshotPreservesStructuredWarningsAndRawEvidence(t *testing.T) {
+	capturedAt := time.Date(2026, time.September, 2, 8, 0, 0, 0, time.UTC)
+	got, err := ToSnapshot(SourceEnvelope{
+		Identity: SourceIdentity{SourceType: "crawler", SourcePlatform: "amazon", SourceID: "B001", SourceVersion: "v1"},
+		RawReference: RawSourceReference{
+			ReferenceType: "amazon_product", ReferenceID: "raw-1", URL: "https://example.test/B001",
+			SnapshotID: "snapshot-1", Checksum: "sha256:abc", CapturedAt: capturedAt,
+			Metadata: map[string]string{"etag": "one"},
+		},
+		Trace:            SourceTrace{SourceRunID: "source-run-1", RequestID: "request-1", Notes: []string{"crawler evidence"}},
+		Warnings:         []SourceWarning{{Code: "missing_brand", Field: "brand", Message: "brand unavailable"}},
+		ProductCandidate: ProductCandidate{Title: "Bottle"},
+	})
+	if err != nil {
+		t.Fatalf("ToSnapshot() error = %v", err)
+	}
+	if got.Review == nil || !got.Review.NeedsReview || !reflect.DeepEqual(got.Review.Reasons, []string{"brand unavailable"}) {
+		t.Fatalf("snapshot review = %+v, want preserved source warning", got.Review)
+	}
+	if !reflect.DeepEqual(got.Warnings, []catalog.Warning{{Code: "missing_brand", Field: "brand", Message: "brand unavailable"}}) {
+		t.Fatalf("snapshot warnings = %+v, want structured source warning", got.Warnings)
+	}
+	if len(got.Sources) != 1 {
+		t.Fatalf("snapshot sources = %+v, want one structured source", got.Sources)
+	}
+	source := got.Sources[0]
+	if source.Type != "crawler" || source.Detail != "raw-1" || source.Platform != "amazon" || source.SourceID != "B001" || source.SourceVersion != "v1" {
+		t.Fatalf("snapshot source identity = %+v", source)
+	}
+	if source.ReferenceType != "amazon_product" || source.URL != "https://example.test/B001" || source.SnapshotID != "snapshot-1" || source.Checksum != "sha256:abc" || !source.CapturedAt.Equal(capturedAt) {
+		t.Fatalf("snapshot raw evidence = %+v", source)
+	}
+	if source.Metadata["etag"] != "one" || source.SourceRunID != "source-run-1" || source.RequestID != "request-1" || !reflect.DeepEqual(source.Notes, []string{"crawler evidence"}) {
+		t.Fatalf("snapshot lineage = %+v", source)
 	}
 }

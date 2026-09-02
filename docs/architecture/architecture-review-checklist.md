@@ -91,6 +91,7 @@ consider the applicable guards, including:
 - `TestListingKitRootServiceGenerationFilesStayAllowlisted`
 - `TestListingKitRootGenerationFilesStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
+- `TestProductCatalogPersistenceAdapterImplementsOnlyApprovedBusinessPort`
 - `depguard: infrastructure_business_boundaries`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 - `depguard: source_handoff_legacy_http`

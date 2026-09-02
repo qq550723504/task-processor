@@ -10,6 +10,7 @@ import (
 	imageagentstore "task-processor/internal/imageagent/store"
 	openaiclient "task-processor/internal/integration/openai"
 	assetpersistence "task-processor/internal/integration/persistence/product/asset"
+	catalogpersistence "task-processor/internal/integration/persistence/product/catalog"
 	"task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"
 	"task-processor/internal/prompt"
@@ -35,6 +36,9 @@ func AutoMigrateRuntime(db *gorm.DB) error {
 	}
 	if err := assetpersistence.AutoMigrate(db); err != nil {
 		return fmt.Errorf("approved product asset auto-migrate failed: %w", err)
+	}
+	if err := catalogpersistence.AutoMigrate(db); err != nil {
+		return fmt.Errorf("product snapshot auto-migrate failed: %w", err)
 	}
 	if err := db.AutoMigrate(&prompt.TenantPromptTemplate{}); err != nil {
 		return fmt.Errorf("tenant prompt auto-migrate failed: %w", err)

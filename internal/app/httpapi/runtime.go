@@ -5,15 +5,17 @@ import (
 	"fmt"
 
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 
 	platformfeatureflag "task-processor/internal/platform/featureflag"
 	platformobservability "task-processor/internal/platform/observability"
 )
 
 type runtimeDepsBuilders struct {
-	buildTraceRuntime       func(context.Context, platformobservability.Config) (traceRuntime, error)
-	buildFeatureFlagRuntime func(context.Context, platformfeatureflag.Config) (featureFlagRuntime, error)
-	migrateSchema           productListingSchemaMigrator
+	buildTraceRuntime           func(context.Context, platformobservability.Config) (traceRuntime, error)
+	buildFeatureFlagRuntime     func(context.Context, platformfeatureflag.Config) (featureFlagRuntime, error)
+	migrateSchema               productListingSchemaMigrator
+	buildProductCatalogDatabase productCatalogDatabaseBuilder
 }
 
 type featureFlagRuntime interface {
@@ -23,17 +25,19 @@ type featureFlagRuntime interface {
 
 func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, error) {
 	return buildRuntimeDepsWithBuilders(logger, configPath, runtimeDepsBuilders{
-		buildTraceRuntime:       buildPlatformTraceRuntime,
-		buildFeatureFlagRuntime: buildPlatformFeatureFlagRuntime,
-		migrateSchema:           migrateProductListingAPIRuntimeSchema,
+		buildTraceRuntime:           buildPlatformTraceRuntime,
+		buildFeatureFlagRuntime:     buildPlatformFeatureFlagRuntime,
+		migrateSchema:               migrateProductListingAPIRuntimeSchema,
+		buildProductCatalogDatabase: openProductCatalogDatabase,
 	})
 }
 
 func buildRuntimeDepsWithSchemaMigrator(logger *logrus.Logger, configPath string, migrateSchema productListingSchemaMigrator) (*runtimeDeps, error) {
 	return buildRuntimeDepsWithBuilders(logger, configPath, runtimeDepsBuilders{
-		buildTraceRuntime:       buildPlatformTraceRuntime,
-		buildFeatureFlagRuntime: buildPlatformFeatureFlagRuntime,
-		migrateSchema:           migrateSchema,
+		buildTraceRuntime:           buildPlatformTraceRuntime,
+		buildFeatureFlagRuntime:     buildPlatformFeatureFlagRuntime,
+		migrateSchema:               migrateSchema,
+		buildProductCatalogDatabase: openProductCatalogDatabase,
 	})
 }
 
@@ -86,6 +90,21 @@ func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, buil
 		return nil, err
 	}
 
+	closers := make([]func() error, 0)
+	var productCatalogDB *gorm.DB
+	if builders.buildProductCatalogDatabase != nil {
+		var databaseCloser func() error
+		var databaseErr error
+		productCatalogDB, databaseCloser, databaseErr = builders.buildProductCatalogDatabase(cfg.Database, logger)
+		if databaseErr != nil {
+			return nil, fmt.Errorf("build product catalog database: %w", databaseErr)
+		}
+		if databaseCloser != nil {
+			ownedClosers = append(ownedClosers, databaseCloser)
+			closers = append(closers, databaseCloser)
+		}
+	}
+
 	done = timer.phase("resolveImageWorkDir")
 	imageWorkDir := resolveImageWorkDir(cfg)
 	done()
@@ -104,7 +123,6 @@ func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, buil
 		return nil, err
 	}
 	ownedClosers = append(ownedClosers, openaiDeps.closers...)
-	closers := make([]func() error, 0, len(openaiDeps.closers)+len(promptDeps.closers)+1)
 	closers = append(closers, openaiDeps.closers...)
 	done = timer.phase("buildAICapabilityRuntimeDeps")
 	aiCapabilityDeps, err := buildAICapabilityRuntimeDeps(cfg, logger)
@@ -157,6 +175,7 @@ func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, buil
 			scoringImageAnalyzer: productEnrichDeps.scoringImageAnalyzer,
 			imageWorkDir:         imageWorkDir,
 			storeAPI:             storeAPI,
+			productCatalogDB:     productCatalogDB,
 		},
 		features:            &featureRuntimeState{},
 		constructionClosers: ownedClosers,

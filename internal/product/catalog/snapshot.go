@@ -3,6 +3,7 @@ package catalog
 import (
 	"encoding/json"
 	"sort"
+	"time"
 )
 
 type ProductSnapshot struct {
@@ -18,6 +19,7 @@ type ProductSnapshot struct {
 	Images         []Image         `json:"images,omitempty"`
 	Review         *ReviewState    `json:"review,omitempty"`
 	Sources        []SourceRecord  `json:"sources,omitempty"`
+	Warnings       []Warning       `json:"warnings,omitempty"`
 }
 
 func (p *ProductSnapshot) UnmarshalJSON(data []byte) error {
@@ -119,6 +121,14 @@ type ReviewState struct {
 	Reasons     []string `json:"reasons,omitempty"`
 }
 
+// Warning preserves structured source validation information in the canonical
+// snapshot instead of flattening it into free text alone.
+type Warning struct {
+	Code    string `json:"code"`
+	Field   string `json:"field,omitempty"`
+	Message string `json:"message"`
+}
+
 type Trace struct {
 	Sources     []SourceRecord `json:"sources,omitempty"`
 	Confidence  float64        `json:"confidence,omitempty"`
@@ -127,8 +137,20 @@ type Trace struct {
 }
 
 type SourceRecord struct {
-	Type   string `json:"type,omitempty"`
-	Detail string `json:"detail,omitempty"`
+	Type          string            `json:"type,omitempty"`
+	Detail        string            `json:"detail,omitempty"`
+	Platform      string            `json:"platform,omitempty"`
+	SourceID      string            `json:"source_id,omitempty"`
+	SourceVersion string            `json:"source_version,omitempty"`
+	ReferenceType string            `json:"reference_type,omitempty"`
+	URL           string            `json:"url,omitempty"`
+	SnapshotID    string            `json:"snapshot_id,omitempty"`
+	Checksum      string            `json:"checksum,omitempty"`
+	CapturedAt    time.Time         `json:"captured_at,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	SourceRunID   string            `json:"source_run_id,omitempty"`
+	RequestID     string            `json:"request_id,omitempty"`
+	Notes         []string          `json:"notes,omitempty"`
 }
 
 func unmarshalAttributeList(data json.RawMessage) ([]Attribute, error) {

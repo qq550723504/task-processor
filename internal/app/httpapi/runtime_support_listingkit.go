@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -17,6 +18,31 @@ import (
 )
 
 var newSDSSyncServiceForHTTPAPI = sdsbootstrap.NewSyncService
+
+type listingKitProductSnapshotReader struct {
+	reader catalog.SnapshotReader
+}
+
+func newListingKitProductSnapshotReader(reader catalog.SnapshotReader) listingkit.ProductSnapshotReader {
+	return listingKitProductSnapshotReader{reader: reader}
+}
+
+func (r listingKitProductSnapshotReader) GetProductSnapshot(ctx context.Context, query listingkit.ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
+	published, err := r.reader.GetCurrentSnapshot(ctx, catalog.SnapshotIdentity{
+		TenantID: query.TenantID, ProductKey: query.ProductKey,
+	})
+	if errors.Is(err, catalog.ErrSnapshotNotReady) {
+		return catalog.ProductSnapshot{}, listingkit.ErrProductSnapshotNotReady
+	}
+	if err != nil {
+		return catalog.ProductSnapshot{}, err
+	}
+	return catalog.CloneProductSnapshot(published.Snapshot)
+}
+
+func isProductSnapshotNotReadyForHTTPAPI(err error) bool {
+	return errors.Is(err, listingkit.ErrProductSnapshotNotReady) || errors.Is(err, catalog.ErrSnapshotNotReady)
+}
 
 func readProductSnapshotForHTTPAPI(ctx context.Context, deps *runtimeDeps, tenantID, productKey string) (catalog.ProductSnapshot, error) {
 	if deps == nil || deps.features == nil || deps.features.productSnapshotReader == nil {

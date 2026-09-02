@@ -81,6 +81,12 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 				shared:   &sharedRuntimeDeps{},
 				features: &featureRuntimeState{},
 			}
+			if tt.options.includeListingKit {
+				deps.features.productSnapshotReader = stubCompositionProductSnapshotReader{}
+				deps.features.listingKitSupport = &listingKitSupport{
+					approvedAssetReader: stubCompositionApprovedAssetReader{},
+				}
+			}
 			order := make([]string, 0, 3)
 			productService := &stubCompositionProductService{}
 			imageService := &stubCompositionImageService{}

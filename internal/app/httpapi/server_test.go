@@ -2265,7 +2265,8 @@ func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
 		t.Fatal("expected SDS catalog categories endpoint to be mounted")
 	}
 	assertRuntimeDirectory(t, runtimePaths.workDir)
-	assertRuntimeDirectory(t, filepath.Join(runtimePaths.publisherOutputDir, "listingkit-inputs"))
+	require.NoDirExists(t, filepath.Join(runtimePaths.publisherOutputDir, "listingkit-inputs"),
+		"listingkit must stay disabled when the test config has no Catalog database")
 }
 
 func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {

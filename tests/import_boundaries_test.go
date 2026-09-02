@@ -3721,7 +3721,6 @@ func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 				"task-processor/internal/amazon",
 				"task-processor/internal/amazonlisting",
 				"task-processor/internal/asset",
-				"task-processor/internal/product/catalog",
 				"task-processor/internal/listing",
 				"task-processor/internal/listingkit",
 				"task-processor/internal/marketplace",
@@ -3735,6 +3734,34 @@ func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 				"task-processor/internal/workspace",
 			}, nil)
 		})
+	}
+}
+
+func TestProductCatalogPersistenceAdapterImplementsOnlyApprovedBusinessPort(t *testing.T) {
+	adapterRoot := filepath.Join("..", "internal", "integration", "persistence", "product", "catalog")
+	assertNoBannedImportPrefixes(t, adapterRoot, []string{
+		"task-processor/internal/amazon",
+		"task-processor/internal/amazonlisting",
+		"task-processor/internal/asset",
+		"task-processor/internal/listing",
+		"task-processor/internal/listingkit",
+		"task-processor/internal/marketplace",
+		"task-processor/internal/pricing",
+		"task-processor/internal/productenrich",
+		"task-processor/internal/productimage",
+		"task-processor/internal/publishing",
+		"task-processor/internal/sds",
+		"task-processor/internal/shein",
+		"task-processor/internal/temu",
+		"task-processor/internal/workspace",
+	}, nil)
+
+	repositorySource, err := os.ReadFile(filepath.Join(adapterRoot, "repository.go"))
+	if err != nil {
+		t.Fatalf("read Catalog persistence adapter: %v", err)
+	}
+	if !strings.Contains(string(repositorySource), `"task-processor/internal/product/catalog"`) {
+		t.Fatal("Catalog persistence adapter must implement the Catalog-owned repository port")
 	}
 }
 
@@ -5226,7 +5253,7 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 		`"task-processor/internal/app/runtime"`: {},
 		`"task-processor/internal/asset/repository"`:       {},
 		`"task-processor/internal/core/config"`:            {},
-		`"task-processor/internal/integration/openai"`:   {},
+		`"task-processor/internal/integration/openai"`:     {},
 		`"task-processor/internal/listingadmin"`:           {},
 		`"task-processor/internal/listingkit"`:             {},
 		`"task-processor/internal/listingkit/httpapi"`:     {},

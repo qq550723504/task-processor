@@ -43,6 +43,9 @@ func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (httpFeatureComposition, error) {
 	var composition httpFeatureComposition
 	timer := newStartupTimer(logger)
+	if err := initializeProductSnapshotReader(deps); err != nil {
+		return composition, err
+	}
 
 	done := timer.phase("buildProductImageModules")
 	listingKitFeatures, err := listingKitFeatureBuilder{

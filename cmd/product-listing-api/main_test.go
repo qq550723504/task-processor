@@ -113,7 +113,8 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 		t.Fatal("service did not exit after SIGTERM")
 	}
 	require.DirExists(t, runtimePaths.workDir)
-	require.DirExists(t, filepath.Join(runtimePaths.publisherOutputDir, "listingkit-inputs"))
+	require.NoDirExists(t, filepath.Join(runtimePaths.publisherOutputDir, "listingkit-inputs"),
+		"listingkit must stay disabled when the test config has no Catalog database")
 }
 
 func TestStart_ErrorPathsAndCleanup(t *testing.T) {
@@ -203,7 +204,8 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 		t.Fatal("service did not exit after SIGTERM")
 	}
 	require.DirExists(t, runtimePaths.workDir)
-	require.DirExists(t, filepath.Join(runtimePaths.publisherOutputDir, "listingkit-inputs"))
+	require.NoDirExists(t, filepath.Join(runtimePaths.publisherOutputDir, "listingkit-inputs"),
+		"listingkit must stay disabled when the test config has no Catalog database")
 }
 
 type productImageRuntimePaths struct {

@@ -81,6 +81,12 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 	}
 
 	if options.includeListingKit {
+		if deps == nil || deps.features == nil || deps.features.productSnapshotReader == nil {
+			return features, nil
+		}
+		if ensureApprovedAssetReader(logger, deps) == nil {
+			return features, nil
+		}
 		listingKitModule, err := b.buildListingKit(newListingKitRuntimeBuildInput(logger, deps))
 		if err != nil {
 			return features, err

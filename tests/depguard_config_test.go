@@ -490,7 +490,6 @@ func TestDomainAppHTTPAPIDepguardPatternCoversBusinessTrees(t *testing.T) {
 		"amazon",
 		"amazonlisting",
 		"asset",
-		"product/catalog",
 		"listing",
 		"listingkit",
 		"marketplace",
@@ -553,7 +552,6 @@ func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testi
 		"amazon",
 		"amazonlisting",
 		"asset",
-		"product/catalog",
 		"listing",
 		"listingkit",
 		"marketplace",
@@ -571,6 +569,12 @@ func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testi
 			if !strings.Contains(config, pattern) {
 				t.Errorf("%s must deny business package-tree pattern %s", configPath, pattern)
 			}
+		}
+	}
+	for _, suffix := range []string{"$", "/"} {
+		pattern := fmt.Sprintf(`- pkg: "task-processor/internal/product/catalog%s"`, suffix)
+		if strings.Contains(config, pattern) {
+			t.Errorf("%s must allow the production persistence adapter to implement Catalog-owned ports; found %s", configPath, pattern)
 		}
 	}
 }

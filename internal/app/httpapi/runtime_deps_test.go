@@ -12,9 +12,12 @@ import (
 
 	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
+	platformfeatureflag "task-processor/internal/platform/featureflag"
+	platformobservability "task-processor/internal/platform/observability"
 	productasset "task-processor/internal/product/asset"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
@@ -53,6 +56,43 @@ func TestBuildRuntimeDepsRunsEnabledSchemaMigrationBeforeRepositoryConstruction(
 	}
 	if called != 1 {
 		t.Fatalf("schema migrator calls = %d, want 1", called)
+	}
+}
+
+func TestBuildRuntimeDepsPropagatesTypedProductCatalogDatabaseConstructionFailure(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+	configPath := filepath.Join(t.TempDir(), "runtime.yaml")
+	contents := []byte("featureFlags:\n  flags:\n    product-listing-runtime-auto-migrate: true\ndatabase:\n  host: database.internal\n  port: 5432\n  user: test\n  password: test\n  database: test\n")
+	if err := os.WriteFile(configPath, contents, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	wantErr := errors.New("catalog database unavailable")
+	called := false
+
+	deps, err := buildRuntimeDepsWithBuilders(logrus.New(), configPath, runtimeDepsBuilders{
+		buildTraceRuntime: func(context.Context, platformobservability.Config) (traceRuntime, error) {
+			return &stubTraceRuntime{}, nil
+		},
+		buildFeatureFlagRuntime: func(context.Context, platformfeatureflag.Config) (featureFlagRuntime, error) {
+			return &stubFeatureFlagRuntime{enabled: true}, nil
+		},
+		migrateSchema: func(context.Context, *config.DatabaseConfig, *logrus.Logger) error { return nil },
+		buildProductCatalogDatabase: func(got *config.DatabaseConfig, _ *logrus.Logger) (*gorm.DB, func() error, error) {
+			called = true
+			if got == nil || got.Host != "database.internal" {
+				t.Fatalf("database config = %+v", got)
+			}
+			return nil, nil, wantErr
+		},
+	})
+	if deps != nil {
+		t.Fatal("buildRuntimeDepsWithBuilders() returned deps after catalog database failure")
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("buildRuntimeDepsWithBuilders() error = %v, want %v", err, wantErr)
+	}
+	if !called {
+		t.Fatal("typed product catalog database builder was not called")
 	}
 }
 

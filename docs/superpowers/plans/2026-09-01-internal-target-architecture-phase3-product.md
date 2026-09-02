@@ -1345,39 +1345,43 @@ git commit -m "refactor(amazonlisting): read product facts and approved assets"
 **Files:**
 - Modify: `internal/product/catalog/`，为 canonical Product Snapshot 定义 repository port、版本/身份与写入契约
 - Create: `internal/integration/persistence/product/catalog/`，实现 snapshot repository 和 schema
-- Modify: Product intake/enrichment 的目标架构写入方，使其在完成规范化后原子发布 Product Snapshot
+- Modify: `internal/product/sourcing/` 与 Catalog 的显式发布用例边界，使结构化来源输入在确定性归一化后原子发布 Product Snapshot；Enrichment 保持只读且不写 Snapshot
 - Modify: `internal/app/httpapi/`，通过 typed dependency 注入生产 `ProductSnapshotReader`
 - Modify: `internal/app/schema/productlisting/` and tests
+- Modify: `.golangci.yml`、`tests/import_boundaries_test.go`、`tests/depguard_config_test.go`、`docs/architecture/architecture-review-checklist.md`，移除阻止生产 persistence adapter 实现 Catalog-owned Port 的旧单条禁令，保留其他业务域禁令，并同步架构守卫清单
 
 **Interfaces:**
 - Product Catalog 是 Product Snapshot 的唯一 owner；写入方发布规范化、带 tenant/product 精确身份的不可变版本，读取方只能按精确身份读取当前版本。
 - Persistence adapter 同时实现写 Port 与只读 Port；App 只负责 typed composition，不接收或复用历史 `config.Config` 加载器，不通过 ProductEnrich task/result、canonical cache 或 JSON 兼容字段中转。
 - AmazonListing 和 ListingKit 只依赖窄 Reader；生产 module 只在 Snapshot reader 与批准资产 reader 都存在时注册。
+- 本阶段不虚构新的 intake HTTP/Queue/Worker/ProductAgent。Catalog 暴露显式、结构化、可由未来 intake 调用的 Publisher；App 用现有数据库 typed dependency 组装其生产 Repository，并只把窄 Reader 交给消费方。现有入口若缺 tenant/product/发布幂等身份则失败关闭。
 
-- [ ] **Step 1: 写 repository contract 与生产组合失败/成功测试**
+> **实施补充（2026-09-02）：** 既有 `infrastructure_business_boundaries` 把 `internal/product/catalog` 视为基础设施永远不得导入的业务实现，这与本任务批准的“Persistence adapter 实现 Catalog-owned Port”相冲突。Task 15A 只移除这一条旧 Catalog 禁令，并增加正负守卫覆盖；其他业务域禁令以及 Integration 间的依赖规则保持不变。
+
+- [x] **Step 1: 写 repository contract 与生产组合失败/成功测试**
 
 覆盖 tenant/product 隔离、原子发布、幂等重放、当前版本读取、无 snapshot 的稳定未就绪错误，以及 App 缺依赖不注册、有真实 reader 才注册。
 
-- [ ] **Step 2: 运行测试确认缺少生产所有者和 Reader**
+- [x] **Step 2: 运行测试确认缺少生产所有者和 Reader**
 
 Run: `go test ./internal/product/catalog/... ./internal/integration/persistence/product/catalog/... ./internal/app/httpapi -count=1`
 
 Expected: FAIL，直到 owner、persistence、writer 与 typed composition 全部存在。
 
-- [ ] **Step 3: 实现 Product Snapshot owner、repository 和发布边界**
+- [x] **Step 3: 实现 Product Snapshot owner、repository 和发布边界**
 
-不得恢复已删除的 canonical cache，不得让 AmazonListing/ListingKit 写 snapshot，不得调用历史配置加载器或新增兼容 fallback。若现有 intake 尚无足够结构化输入，先定义显式发布命令并让调用方失败关闭，不从自由文本或旧 task result 猜测字段。
+不得恢复已删除的 canonical cache，不得让 AmazonListing/ListingKit 或 Enrichment 写 snapshot，不得调用历史配置加载器或新增兼容 fallback。Catalog Publisher 接受精确 tenant/product/发布幂等身份和已经确定性归一化的 Snapshot；Sourcing 只负责把结构化 SourceEnvelope 转成 Snapshot 后调用该 Publisher。若现有 intake 尚无足够结构化身份，保留显式发布用例供未来入口调用并让现有入口失败关闭，不从自由文本或旧 task result 猜测字段，也不为本阶段新建临时入口或编排器。
 
-- [ ] **Step 4: 启用生产 Reader 并运行端到端验证**
+- [x] **Step 4: 启用生产 Reader 并运行端到端验证**
 
 Run: `go test ./internal/product/catalog/... ./internal/integration/persistence/product/catalog/... ./internal/app/httpapi ./cmd/product-listing-api -count=1`
 
 Expected: PASS；测试先发布 snapshot 与批准资产，再通过生产组合生成 AmazonListing；不存在旧 ProductEnrich/ProductImage 编排或配置加载依赖。
 
-- [ ] **Step 5: 提交 Product Snapshot 生产链路**
+- [x] **Step 5: 提交 Product Snapshot 生产链路**
 
 ```powershell
-git add internal/product/catalog internal/integration/persistence/product/catalog internal/app/httpapi internal/app/schema/productlisting cmd/product-listing-api
+git add internal/product/catalog internal/product/sourcing internal/integration/persistence/product/catalog internal/app/httpapi internal/app/schema/productlisting cmd/product-listing-api docs/superpowers/specs/2026-09-01-internal-target-architecture-phase3-product-design.md docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
 git diff --cached --check
 git commit -m "feat(product): publish production product snapshots"
 ```

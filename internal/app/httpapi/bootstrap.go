@@ -13,14 +13,16 @@ import (
 const productListingTraceOperation = "product-listing-api"
 
 type bootstrapBuildDependencies struct {
-	buildRuntimeDeps   func(*logrus.Logger, string) (*runtimeDeps, error)
-	buildComposition   func(*logrus.Logger, *runtimeDeps) (httpFeatureComposition, error)
-	buildRuntimeBundle func(httpFeatureComposition, *config.Config) (runtimeBundle, error)
+	buildRuntimeDeps            func(*logrus.Logger, string) (*runtimeDeps, error)
+	configureRouteAuthorization func(*config.Config) error
+	buildComposition            func(*logrus.Logger, *runtimeDeps) (httpFeatureComposition, error)
+	buildRuntimeBundle          func(httpFeatureComposition, *config.Config) (runtimeBundle, error)
 }
 
 func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, error) {
 	return buildBootstrapWithDependencies(logger, options, bootstrapBuildDependencies{
-		buildRuntimeDeps: buildRuntimeDeps,
+		buildRuntimeDeps:            buildRuntimeDeps,
+		configureRouteAuthorization: configureRouteAuthorization,
 		buildComposition: func(logger *logrus.Logger, deps *runtimeDeps) (httpFeatureComposition, error) {
 			return newHTTPFeatureCompositionBuilder().build(logger, deps)
 		},
@@ -44,6 +46,11 @@ func buildBootstrapWithDependencies(logger *logrus.Logger, options Options, buil
 		cleanupOwnedRuntimeResources(completed, deps.constructionClosers)
 	}()
 	deps.shared.sourceImageFetcher = options.SourceImageFetcher
+	if builders.configureRouteAuthorization != nil {
+		if err := builders.configureRouteAuthorization(deps.shared.cfg); err != nil {
+			return nil, err
+		}
+	}
 
 	done = timer.phase("configureSheinLoginAccount")
 	configureSheinLoginAccount(deps)

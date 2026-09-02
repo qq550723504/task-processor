@@ -233,6 +233,14 @@ func TestHTTPE2E_ListingKitProductSnapshotBuildsSheinPreview(t *testing.T) {
 	inputParser, err := productenrichenrich.NewInputParser(logger, &productenrich.InputParserConfig{}, e2e1688WebScraper{imageURL: imageURL})
 	require.NoError(t, err)
 
+	approvedAssets := e2eApprovedAssetReader{inventory: productasset.ApprovedAssetInventory{
+		Scope: productasset.InventoryScope{TenantID: "app-http-test-tenant", ProductKey: "snapshot-earbuds-1"},
+		Assets: []productasset.ApprovedAsset{{
+			ID:   "approved-main",
+			Role: productasset.RoleMain,
+			URL:  imageURL,
+		}},
+	}}
 	deps := &runtimeDeps{
 		shared: &sharedRuntimeDeps{
 			cfg:           cfg,
@@ -241,7 +249,7 @@ func TestHTTPE2E_ListingKitProductSnapshotBuildsSheinPreview(t *testing.T) {
 			understanding: understanding,
 			imageWorkDir:  cfg.ProductImage.WorkDir,
 		},
-		features: &featureRuntimeState{},
+		features: &featureRuntimeState{listingKitSupport: &listingKitSupport{approvedAssetReader: approvedAssets}},
 	}
 	deps.features.productSnapshotReader = e2eProductSnapshotReader{snapshot: catalog.ProductSnapshot{
 		Title:  "Product Snapshot 蓝牙耳机",
@@ -270,14 +278,7 @@ func TestHTTPE2E_ListingKitProductSnapshotBuildsSheinPreview(t *testing.T) {
 			return storeRepo, nil, nil
 		}
 		input.Runtime.Support.Repositories.Core.ApprovedAsset = func(*config.Config, *logrus.Logger) (listingkit.ApprovedAssetInventoryReader, []func() error, error) {
-			return e2eApprovedAssetReader{inventory: productasset.ApprovedAssetInventory{
-				Scope: productasset.InventoryScope{TenantID: "app-http-test-tenant", ProductKey: "snapshot-earbuds-1"},
-				Assets: []productasset.ApprovedAsset{{
-					ID:   "approved-main",
-					Role: productasset.RoleMain,
-					URL:  imageURL,
-				}},
-			}}, nil, nil
+			return approvedAssets, nil, nil
 		}
 		return buildListingKit(input)
 	}
