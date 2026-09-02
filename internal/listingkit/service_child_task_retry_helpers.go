@@ -20,8 +20,8 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 	if sdsOptions == nil {
 		return core.ErrChildTaskNotRetryable
 	}
-	if shouldRunRemoteSDSDesignSync(task.Request) {
-		s.syncSDSDesignFromRemote(ctx, task, result, recorder)
+	if shouldRunSDSDesignSync(task.Request) {
+		s.syncSDSDesignFromApprovedAssets(ctx, task, result, recorder)
 	} else {
 		return core.ErrChildTaskNotRetryable
 	}

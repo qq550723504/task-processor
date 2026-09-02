@@ -6,6 +6,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/listingkit"
+	sdsadapter "task-processor/internal/sds/adapter"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsbootstrap "task-processor/internal/sds/httpbootstrap"
 	sdsusecase "task-processor/internal/sds/usecase"
@@ -42,11 +43,15 @@ func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) 
 }
 
 func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Service {
-	if deps == nil || deps.shared == nil || deps.features == nil || deps.features.imageService == nil {
+	if deps == nil || deps.shared == nil || deps.features == nil {
+		return nil
+	}
+	approvedAssets := ensureApprovedAssetReader(logger, deps)
+	if approvedAssets == nil {
 		return nil
 	}
 
-	svc, authState, err := newSDSSyncServiceForHTTPAPI(deps.features.imageService, sdshttpapi.BuildClientConfig(deps.shared.cfg))
+	svc, authState, err := newSDSSyncServiceForHTTPAPI(approvedAssets, sdshttpapi.BuildClientConfig(deps.shared.cfg))
 	if err != nil {
 		logger.WithError(err).Warn("failed to initialize SDS client; SDS sync disabled")
 		return nil
@@ -61,6 +66,32 @@ func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Se
 	}
 
 	return svc
+}
+
+func ensureApprovedAssetReader(logger *logrus.Logger, deps *runtimeDeps) sdsadapter.ApprovedAssetReader {
+	if deps == nil || deps.shared == nil || deps.features == nil {
+		return nil
+	}
+	support := deps.ensureListingKitSupport()
+	if support == nil {
+		return nil
+	}
+	if support.approvedAssetReader != nil {
+		return support.approvedAssetReader
+	}
+	reader, closers, err := newApprovedAssetReaderForHTTPAPI(deps.shared.cfg, logger)
+	if err != nil {
+		if logger != nil {
+			logger.WithError(err).Warn("failed to initialize approved product asset reader; SDS sync disabled")
+		}
+		return nil
+	}
+	if reader == nil {
+		return nil
+	}
+	support.approvedAssetReader = reader
+	deps.addClosers(closers...)
+	return support.approvedAssetReader
 }
 
 func buildSDSBaselineRemoteProvider(logger *logrus.Logger, deps *runtimeDeps) listingkit.SDSBaselineRemoteProvider {

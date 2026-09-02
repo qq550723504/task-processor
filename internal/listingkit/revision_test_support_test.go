@@ -9,7 +9,6 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsusecase "task-processor/internal/sds/usecase"
-	sdsworkflow "task-processor/internal/sds/workflow"
 )
 
 type stubApplyRevisionRepo struct {
@@ -102,15 +101,6 @@ func boolPtr(value bool) *bool { return &value }
 
 type stubWorkflowSDSSyncService struct{}
 
-func (*stubWorkflowSDSSyncService) SyncFromRemoteImage(context.Context, sdsusecase.RemoteImageInput) (*sdsworkflow.SyncResult, error) {
-	return nil, nil
-}
-func (*stubWorkflowSDSSyncService) SyncFromLocalFile(context.Context, sdsusecase.LocalFileInput) (*sdsworkflow.SyncResult, error) {
-	return nil, nil
-}
-func (*stubWorkflowSDSSyncService) SyncFromImageResult(context.Context, sdsusecase.ImageResultInput) (*sdsadapter.SyncResult, error) {
-	return nil, nil
-}
-func (*stubWorkflowSDSSyncService) SyncFromImageRequest(context.Context, sdsusecase.ImageRequestInput) (*sdsadapter.SyncResult, error) {
+func (*stubWorkflowSDSSyncService) SyncFromApprovedAssets(context.Context, sdsusecase.ApprovedAssetsInput) (*sdsadapter.SyncResult, error) {
 	return nil, nil
 }

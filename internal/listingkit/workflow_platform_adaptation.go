@@ -20,7 +20,7 @@ func (s *service) runPlatformAdaptation(
 		"task_id":   task.ID,
 	})
 
-	if shouldSkipPlatformAdaptationAfterBlockedRemoteSDS(task, snapshot) {
+	if shouldSkipPlatformAdaptationAfterBlockedSDS(task, snapshot) {
 		log.WithField("pod_status", func() string {
 			if snapshot == nil || snapshot.PodExecution == nil {
 				return ""
@@ -73,8 +73,8 @@ func (s *service) runPlatformAdaptation(
 	return final
 }
 
-func shouldSkipPlatformAdaptationAfterBlockedRemoteSDS(task *Task, snapshot *StandardProductSnapshot) bool {
-	if task == nil || !shouldRunRemoteSDSDesignSync(task.Request) || snapshot == nil {
+func shouldSkipPlatformAdaptationAfterBlockedSDS(task *Task, snapshot *StandardProductSnapshot) bool {
+	if task == nil || !shouldRunSDSDesignSync(task.Request) || snapshot == nil {
 		return false
 	}
 	return podSubmissionBlocked(snapshot.PodExecution)

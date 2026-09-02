@@ -13,6 +13,7 @@ import (
 	productimage "task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
+	sdsadapter "task-processor/internal/sds/adapter"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	"task-processor/internal/sheinlogin"
@@ -43,6 +44,7 @@ type featureRuntimeState struct {
 type listingKitSupport struct {
 	sdsBaselineRemoteProvider listingkit.SDSBaselineRemoteProvider
 	sheinCookieStore          *sheinlogin.RedisStore
+	approvedAssetReader       sdsadapter.ApprovedAssetReader
 }
 
 type httpFeatureComposition struct {

@@ -9,12 +9,11 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"task-processor/internal/pkg/downloader"
-	"task-processor/internal/productimage"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/sds/design"
 )
 
@@ -50,25 +49,14 @@ func newServiceWithDeps(designService designSyncService, dl imageDownloader) *Se
 	}
 }
 
-// PrepareUploadRequestFromURL 下载远程图片并构造 SDS 上传请求。
-func (s *Service) PrepareUploadRequestFromURL(_ context.Context, source ImageSource) (design.UploadRequest, error) {
-	if strings.TrimSpace(source.URL) == "" {
-		return design.UploadRequest{}, fmt.Errorf("image url is required")
-	}
-	if s.downloader == nil {
-		return design.UploadRequest{}, fmt.Errorf("image downloader is not configured")
-	}
-
-	content, fileName, err := s.downloader.DownloadImage(source.URL)
+func (s *Service) prepareUploadRequestFromApprovedAsset(asset productasset.ApprovedAsset) (design.UploadRequest, error) {
+	content, fileName, err := s.readAssetContent(asset)
 	if err != nil {
 		return design.UploadRequest{}, err
 	}
-	if strings.TrimSpace(source.FileName) != "" {
-		fileName = source.FileName
-	}
 
-	width := source.Width
-	height := source.Height
+	width := asset.Width
+	height := asset.Height
 	if width <= 0 || height <= 0 {
 		detectedWidth, detectedHeight, detectErr := detectImageSize(content)
 		if detectErr != nil {
@@ -82,55 +70,11 @@ func (s *Service) PrepareUploadRequestFromURL(_ context.Context, source ImageSou
 		}
 	}
 
-	return buildUploadRequest(content, fileName, source.ContentType, width, height), nil
+	return buildUploadRequest(content, fileName, "", width, height), nil
 }
 
-// PrepareUploadRequestFromAsset 从 productimage 资产构造 SDS 上传请求。
-func (s *Service) PrepareUploadRequestFromAsset(_ context.Context, source AssetSource) (design.UploadRequest, error) {
-	if source.Asset == nil {
-		return design.UploadRequest{}, fmt.Errorf("asset is required")
-	}
-
-	content, fileName, err := s.readAssetContent(source.Asset)
-	if err != nil {
-		return design.UploadRequest{}, err
-	}
-
-	width := source.Asset.Width
-	height := source.Asset.Height
-	if width <= 0 || height <= 0 {
-		detectedWidth, detectedHeight, detectErr := detectImageSize(content)
-		if detectErr != nil {
-			return design.UploadRequest{}, detectErr
-		}
-		if width <= 0 {
-			width = detectedWidth
-		}
-		if height <= 0 {
-			height = detectedHeight
-		}
-	}
-
-	contentType := ""
-	if source.Asset.Metadata != nil {
-		contentType = source.Asset.Metadata["content_type"]
-	}
-
-	return buildUploadRequest(content, fileName, contentType, width, height), nil
-}
-
-// SyncDesignFromURL 把远程图片直接同步到 SDS 设计页。
-func (s *Service) SyncDesignFromURL(ctx context.Context, input SyncInput, source ImageSource) (*SyncResult, error) {
-	upload, err := s.PrepareUploadRequestFromURL(ctx, source)
-	if err != nil {
-		return nil, err
-	}
-	return s.sync(ctx, input, upload)
-}
-
-// SyncDesignFromAsset 把 productimage 资产同步到 SDS 设计页。
-func (s *Service) SyncDesignFromAsset(ctx context.Context, input SyncInput, source AssetSource) (*SyncResult, error) {
-	upload, err := s.PrepareUploadRequestFromAsset(ctx, source)
+func (s *Service) syncDesignFromApprovedAsset(ctx context.Context, input SyncInput, approved productasset.ApprovedAsset) (*SyncResult, error) {
+	upload, err := s.prepareUploadRequestFromApprovedAsset(approved)
 	if err != nil {
 		return nil, err
 	}
@@ -176,25 +120,10 @@ func cloneRelatedVariantLayerIDs(values map[int64]string) map[int64]string {
 	return cloned
 }
 
-func (s *Service) readAssetContent(asset *productimage.ImageAsset) ([]byte, string, error) {
-	if asset == nil {
-		return nil, "", fmt.Errorf("asset is nil")
-	}
-
-	if localPath := resolveAssetLocalPath(asset); localPath != "" {
-		content, err := os.ReadFile(localPath)
-		if err != nil {
-			return nil, "", fmt.Errorf("read local asset %q: %w", localPath, err)
-		}
-		return content, filepath.Base(localPath), nil
-	}
-
-	remoteURL := strings.TrimSpace(asset.SourceURL)
+func (s *Service) readAssetContent(asset productasset.ApprovedAsset) ([]byte, string, error) {
+	remoteURL := strings.TrimSpace(asset.URL)
 	if remoteURL == "" {
-		remoteURL = strings.TrimSpace(asset.URL)
-	}
-	if remoteURL == "" {
-		return nil, "", fmt.Errorf("asset has no readable source")
+		return nil, "", fmt.Errorf("approved asset has no readable URL")
 	}
 	if s.downloader == nil {
 		return nil, "", fmt.Errorf("image downloader is not configured")
@@ -205,40 +134,6 @@ func (s *Service) readAssetContent(asset *productimage.ImageAsset) ([]byte, stri
 		return nil, "", err
 	}
 	return content, fileName, nil
-}
-
-func resolveAssetLocalPath(asset *productimage.ImageAsset) string {
-	if asset == nil {
-		return ""
-	}
-	if asset.Metadata != nil {
-		if publishedPath := existingLocalPath(asset.Metadata["published_path"]); publishedPath != "" {
-			return publishedPath
-		}
-		if localPath := existingLocalPath(asset.Metadata["local_path"]); localPath != "" {
-			return localPath
-		}
-	}
-	if value := existingLocalPath(asset.URL); value != "" {
-		return value
-	}
-	return ""
-}
-
-func existingLocalPath(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" || isRemoteURL(value) {
-		return ""
-	}
-	if _, err := os.Stat(value); err != nil {
-		return ""
-	}
-	return value
-}
-
-func isRemoteURL(value string) bool {
-	lower := strings.ToLower(strings.TrimSpace(value))
-	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
 }
 
 func buildUploadRequest(content []byte, fileName, contentType string, width, height int) design.UploadRequest {

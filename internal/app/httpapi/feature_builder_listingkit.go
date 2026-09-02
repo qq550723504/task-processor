@@ -9,6 +9,8 @@ import (
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
+var newApprovedAssetReaderForHTTPAPI = listingkithttpapi.BuildApprovedAssetInventoryReader
+
 type listingKitFeatureBuildOptions struct {
 	includeImage      bool
 	includeListingKit bool
@@ -91,20 +93,23 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 }
 
 func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps) listingkithttpapi.RuntimeBuildInput {
+	approvedAssets := ensureApprovedAssetReader(logger, deps)
+	support := listingkithttpapi.BuildRuntimeSupport(listingkithttpapi.RuntimeSupportInput{
+		SheinCookieStore:          ensureListingKitSheinCookieStore(logger, deps),
+		ApprovedAssets:            approvedAssets,
+		SDSSyncService:            buildSDSSyncService(logger, deps),
+		SDSLoginStatusProvider:    deps.features.sdsLoginStatusProvider,
+		SDSBaselineRemoteProvider: buildSDSBaselineRemoteProvider(logger, deps),
+	})
 	return listingkithttpapi.RuntimeBuildInput{
 		Logger: logger,
 		Runtime: listingkithttpapi.RuntimeDependencies{
-			Config:                deps.shared.cfg,
-			ProductSnapshotReader: deps.features.productSnapshotReader,
-			AICredentialStore:     deps.shared.aiCredentialStore,
-			AIInvocationRecorder:  deps.shared.aiInvocationRecorder,
-			AIAsyncJobStore:       deps.shared.aiAsyncJobStore,
-			Support: listingkithttpapi.BuildRuntimeSupport(listingkithttpapi.RuntimeSupportInput{
-				SheinCookieStore:          ensureListingKitSheinCookieStore(logger, deps),
-				SDSSyncService:            buildSDSSyncService(logger, deps),
-				SDSLoginStatusProvider:    deps.features.sdsLoginStatusProvider,
-				SDSBaselineRemoteProvider: buildSDSBaselineRemoteProvider(logger, deps),
-			}),
+			Config:                             deps.shared.cfg,
+			ProductSnapshotReader:              deps.features.productSnapshotReader,
+			AICredentialStore:                  deps.shared.aiCredentialStore,
+			AIInvocationRecorder:               deps.shared.aiInvocationRecorder,
+			AIAsyncJobStore:                    deps.shared.aiAsyncJobStore,
+			Support:                            support,
 			ShouldStartTemporalWorkerInProcess: appruntime.ShouldStartListingKitSheinPublishTemporalWorkerInProcess(),
 		},
 	}

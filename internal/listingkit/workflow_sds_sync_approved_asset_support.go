@@ -2,26 +2,28 @@ package listingkit
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/listingkit/core"
+	productasset "task-processor/internal/product/asset"
 	sdsclient "task-processor/internal/sds/client"
 	sdsusecase "task-processor/internal/sds/usecase"
 	sdsworkflow "task-processor/internal/sds/workflow"
 )
 
-func (s *service) runSingleSDSDesignFromRemote(ctx context.Context, task *Task, result *ListingKitResult, imageURL string, recorder *workflowRecorder, log *logrus.Entry) {
+func (s *service) runSingleSDSDesignFromApprovedAssets(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder, log *logrus.Entry) {
 	options := task.Request.Options.SDS
 	recorder, stage := beginSDSSyncStage(result, task.Request, recorder)
 	log.WithFields(logrus.Fields{
 		"variant_id":         options.VariantID,
 		"parent_product_id":  options.ParentProductID,
 		"prototype_group_id": options.PrototypeGroupID,
-	}).Info("starting remote SDS design sync")
+	}).Info("starting approved-asset SDS design sync")
 
-	syncResult, err := s.performSingleSDSRemoteSync(ctx, task, imageURL, options)
+	syncResult, err := s.performSingleSDSApprovedAssetSync(ctx, task, options)
 	if err != nil {
 		if reasonCode, retryable := sdsclient.RetryableUploadFailure(err); retryable {
 			if scheduleErr := s.ScheduleSDSChildRetry(ctx, task, reasonCode, err); scheduleErr != nil {
@@ -29,7 +31,7 @@ func (s *service) runSingleSDSDesignFromRemote(ctx context.Context, task *Task, 
 			}
 		}
 		failSDSSyncStage(result, task.Request, recorder, stage, options.VariantID, "sds template render failed: ", "sds_template_render_failed", "SDS template render failed", err)
-		log.WithError(err).Error("remote SDS design sync failed")
+		log.WithError(err).Error("approved-asset SDS design sync failed")
 		return
 	}
 
@@ -41,11 +43,35 @@ func (s *service) runSingleSDSDesignFromRemote(ctx context.Context, task *Task, 
 		"status":        result.SDSDesignResult.Status,
 		"mockup_count":  len(result.SDSDesignResult.MockupImageURLs),
 		"variant_count": len(result.SDSDesignResult.VariantResults),
-	}).Info("remote SDS design sync completed")
+	}).Info("approved-asset SDS design sync completed")
 }
 
-func (s *service) performSingleSDSRemoteSync(ctx context.Context, task *Task, imageURL string, options *SDSSyncOptions) (*sdsworkflow.SyncResult, error) {
-	syncInput := sdsusecase.SyncInput{
+func (s *service) performSingleSDSApprovedAssetSync(ctx context.Context, task *Task, options *SDSSyncOptions) (*sdsworkflow.SyncResult, error) {
+	syncService := resolveSDSSyncService(s)
+	if syncService == nil {
+		return nil, fmt.Errorf("sds sync service is not configured")
+	}
+	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeout)
+	defer cancel()
+
+	result, err := syncService.SyncFromApprovedAssets(syncCtx, sdsusecase.ApprovedAssetsInput{
+		Sync:  singleSDSApprovedAssetSyncInput(options),
+		Scope: approvedAssetScopeFromTask(task),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil || result.DesignSync == nil {
+		return nil, fmt.Errorf("sds approved-asset sync returned no design result")
+	}
+	return result.DesignSync, nil
+}
+
+func singleSDSApprovedAssetSyncInput(options *SDSSyncOptions) sdsusecase.SyncInput {
+	if options == nil {
+		return sdsusecase.SyncInput{}
+	}
+	return sdsusecase.SyncInput{
 		VariantID:        options.VariantID,
 		ParentProductID:  options.ParentProductID,
 		PrototypeGroupID: options.PrototypeGroupID,
@@ -55,27 +81,18 @@ func (s *service) performSingleSDSRemoteSync(ctx context.Context, task *Task, im
 		ResizeMode:       options.ResizeMode,
 		BlankDesignURL:   options.BlankDesignURL,
 	}
-	if syncResult, handled, err := s.syncSDSDesignFromUploadedImagePath(ctx, task, imageURL, syncInput); handled {
-		return syncResult, err
-	}
-
-	syncService := resolveSDSSyncService(s)
-	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeout)
-	defer cancel()
-
-	return syncService.SyncFromRemoteImage(syncCtx, sdsusecase.RemoteImageInput{
-		Sync: syncInput,
-		Image: sdsusecase.ImageSource{
-			URL:      imageURL,
-			FileName: studioSDSMaterialFileName(task),
-		},
-	})
 }
 
-func (s *service) collectSDSVariantRemoteSummaries(
+func approvedAssetScopeFromTask(task *Task) productasset.InventoryScope {
+	if task == nil || task.Request == nil {
+		return productasset.InventoryScope{}
+	}
+	return productasset.InventoryScope{TenantID: task.TenantID, ProductKey: task.Request.ProductKey}
+}
+
+func (s *service) collectSDSVariantApprovedAssetSummaries(
 	ctx context.Context,
 	task *Task,
-	imageURL string,
 	options *SDSSyncOptions,
 	representatives []SDSSyncVariantOption,
 	recorder *workflowRecorder,
@@ -85,7 +102,7 @@ func (s *service) collectSDSVariantRemoteSummaries(
 	for _, variant := range representatives {
 		stage := recorder.Start("sds_design_sync", "")
 		stage.SetTaskID(strings.TrimSpace(variant.VariantSKU))
-		syncResult, err := s.performVariantSDSRemoteSync(ctx, task, imageURL, options, variant, syncService)
+		syncResult, err := s.performVariantSDSApprovedAssetSync(ctx, task, options, variant, syncService)
 		if err != nil {
 			if reasonCode, retryable := sdsclient.RetryableUploadFailure(err); retryable {
 				if scheduleErr := s.ScheduleSDSChildRetry(ctx, task, reasonCode, err); scheduleErr != nil {
@@ -93,13 +110,7 @@ func (s *service) collectSDSVariantRemoteSummaries(
 				}
 			}
 			finishSDSStageWithError(stage, recorder, "sds_variant_render_failed", "SDS variant render failed", err)
-			failedSummary := failedSDSVariantSyncSummary(variant, err.Error())
-			if strings.TrimSpace(imageURL) != "" {
-				failedSummary.Diagnostics = &SDSSyncDiagnostics{
-					MaterialImageURL: strings.TrimSpace(imageURL),
-				}
-			}
-			summaries = append(summaries, failedSummary)
+			summaries = append(summaries, failedSDSVariantSyncSummary(variant, err.Error()))
 			continue
 		}
 		if syncResult == nil {
@@ -113,10 +124,9 @@ func (s *service) collectSDSVariantRemoteSummaries(
 	return summaries
 }
 
-func (s *service) performVariantSDSRemoteSync(
+func (s *service) performVariantSDSApprovedAssetSync(
 	ctx context.Context,
 	task *Task,
-	imageURL string,
 	options *SDSSyncOptions,
 	variant SDSSyncVariantOption,
 	syncService sdsusecase.Service,
@@ -131,24 +141,22 @@ func (s *service) performVariantSDSRemoteSync(
 		ResizeMode:       options.ResizeMode,
 		BlankDesignURL:   firstNonEmptyString(variant.BlankDesignURL, options.BlankDesignURL),
 	}
-	if key, ok := uploadedListingKitImageKeyFromURL(imageURL); ok {
-		result, handled, err := s.syncSDSDesignFromUploadedImageKey(ctx, task, key, syncInput, sdsDesignSyncTimeoutForVariantCount(1))
-		if handled {
-			return result, err
-		}
-	}
 	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeoutForVariantCount(1))
 	defer cancel()
-	return syncService.SyncFromRemoteImage(syncCtx, sdsusecase.RemoteImageInput{
-		Sync: syncInput,
-		Image: sdsusecase.ImageSource{
-			URL:      imageURL,
-			FileName: studioSDSMaterialFileName(task),
-		},
+	result, err := syncService.SyncFromApprovedAssets(syncCtx, sdsusecase.ApprovedAssetsInput{
+		Sync:  syncInput,
+		Scope: approvedAssetScopeFromTask(task),
 	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil || result.DesignSync == nil {
+		return nil, fmt.Errorf("sds approved-asset sync returned no design result")
+	}
+	return result.DesignSync, nil
 }
 
-func finalizeSDSVariantRemoteSummaries(result *ListingKitResult, req *GenerateRequest, recorder *workflowRecorder, options *SDSSyncOptions, summaries []SDSSyncSummary) {
+func finalizeSDSVariantApprovedAssetSummaries(result *ListingKitResult, req *GenerateRequest, recorder *workflowRecorder, options *SDSSyncOptions, summaries []SDSSyncSummary) {
 	result.SDSDesignResult = mergeSDSVariantSyncSummaries(options, summaries)
 	if result.SDSDesignResult.Status == "failed" {
 		appendWarning(result, result.SDSDesignResult.Error)

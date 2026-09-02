@@ -1128,49 +1128,6 @@ func TestBuildResolveUploadedImagePublicURLFuncFailsWhenRepoAndStorePublicURLsAr
 	}
 }
 
-func TestUploadedListingKitImageKeyFromURL(t *testing.T) {
-	testCases := []struct {
-		name   string
-		rawURL string
-		want   string
-		ok     bool
-	}{
-		{
-			name:   "relative uploaded path",
-			rawURL: "/api/v1/listing-kits/uploads/files/folder/reference.png",
-			want:   "folder/reference.png",
-			ok:     true,
-		},
-		{
-			name:   "localhost uploaded url",
-			rawURL: "http://localhost:3000/api/v1/listing-kits/uploads/files/folder/reference.png",
-			want:   "folder/reference.png",
-			ok:     true,
-		},
-		{
-			name:   "remote host uploaded url rejected",
-			rawURL: "https://assets.example.com/api/v1/listing-kits/uploads/files/folder/reference.png",
-			want:   "",
-			ok:     false,
-		},
-		{
-			name:   "non upload path rejected",
-			rawURL: "https://example.com/reference.png",
-			want:   "",
-			ok:     false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, ok := uploadedListingKitImageKeyFromURL(tc.rawURL)
-			if got != tc.want || ok != tc.ok {
-				t.Fatalf("uploadedListingKitImageKeyFromURL(%q) = (%q, %v), want (%q, %v)", tc.rawURL, got, ok, tc.want, tc.ok)
-			}
-		})
-	}
-}
-
 func TestStudioReferenceUploadedImageKeyFromURL(t *testing.T) {
 	testCases := []struct {
 		name   string

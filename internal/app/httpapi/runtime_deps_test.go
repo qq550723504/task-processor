@@ -15,6 +15,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
+	productasset "task-processor/internal/product/asset"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
@@ -23,7 +24,6 @@ import (
 	sdsdesign "task-processor/internal/sds/design"
 	sdstemplate "task-processor/internal/sds/template"
 	sdsusecase "task-processor/internal/sds/usecase"
-	sdsworkflow "task-processor/internal/sds/workflow"
 	"task-processor/internal/sdslogin"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 )
@@ -192,18 +192,19 @@ func TestNewListingKitRuntimeBuildInputRoutesSDSStatusProviderThroughRuntimeSupp
 	logger := logrus.New()
 	statusProvider := stubCompositionSDSStatusProvider{}
 	syncService := stubRuntimeDepsSDSSyncService{}
+	approvedAssets := &stubRuntimeDepsApprovedAssetReader{}
 	deps := &runtimeDeps{
 		shared: &sharedRuntimeDeps{},
 		features: &featureRuntimeState{
 			sdsLoginStatusProvider: statusProvider,
-			imageService:           stubRuntimeDepsImageService{},
+			listingKitSupport:      &listingKitSupport{approvedAssetReader: approvedAssets},
 		},
 	}
 	previousFactory := newSDSSyncServiceForHTTPAPI
 	t.Cleanup(func() {
 		newSDSSyncServiceForHTTPAPI = previousFactory
 	})
-	newSDSSyncServiceForHTTPAPI = func(productimage.Service, *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
+	newSDSSyncServiceForHTTPAPI = func(sdsadapter.ApprovedAssetReader, *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
 		return syncService, &sdsclient.AuthState{AccessToken: "test-token"}, nil
 	}
 
@@ -226,6 +227,16 @@ func TestNewListingKitRuntimeBuildInputRoutesSDSStatusProviderThroughRuntimeSupp
 	}
 	if input.Runtime.Support.SDSBaselineRemoteProvider == nil {
 		t.Fatal("expected SDS baseline remote provider to be routed through runtime support")
+	}
+	sharedReader, closers, err := input.Runtime.Support.Repositories.Core.ApprovedAsset(&config.Config{}, logger)
+	if err != nil {
+		t.Fatalf("approved asset repository builder error = %v", err)
+	}
+	if sharedReader != approvedAssets {
+		t.Fatalf("ListingKit approved asset reader = %v, want shared reader %v", sharedReader, approvedAssets)
+	}
+	if len(closers) != 0 {
+		t.Fatalf("shared approved asset reader builder returned %d closers, want app-owned lifetime", len(closers))
 	}
 }
 
@@ -376,20 +387,14 @@ func (stubRuntimeDepsImageService) SetTaskSubmitter(productimage.TaskSubmitter) 
 
 type stubRuntimeDepsSDSSyncService struct{}
 
-func (stubRuntimeDepsSDSSyncService) SyncFromRemoteImage(context.Context, sdsusecase.RemoteImageInput) (*sdsworkflow.SyncResult, error) {
+func (stubRuntimeDepsSDSSyncService) SyncFromApprovedAssets(context.Context, sdsusecase.ApprovedAssetsInput) (*sdsadapter.SyncResult, error) {
 	return nil, nil
 }
 
-func (stubRuntimeDepsSDSSyncService) SyncFromLocalFile(context.Context, sdsusecase.LocalFileInput) (*sdsworkflow.SyncResult, error) {
-	return nil, nil
-}
+type stubRuntimeDepsApprovedAssetReader struct{}
 
-func (stubRuntimeDepsSDSSyncService) SyncFromImageResult(context.Context, sdsusecase.ImageResultInput) (*sdsadapter.SyncResult, error) {
-	return nil, nil
-}
-
-func (stubRuntimeDepsSDSSyncService) SyncFromImageRequest(context.Context, sdsusecase.ImageRequestInput) (*sdsadapter.SyncResult, error) {
-	return nil, nil
+func (stubRuntimeDepsApprovedAssetReader) GetApprovedInventory(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
 }
 
 type stubRuntimeDepsSDSBaselineProvider struct{}

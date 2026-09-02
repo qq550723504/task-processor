@@ -1231,12 +1231,18 @@ git commit -m "refactor(listingkit): consume approved assets only"
 - Modify: `internal/sds/usecase/{service.go,types.go,service_test.go}`
 - Modify: `internal/sds/adapter/{service.go,types.go,service_test.go}`
 - Modify: `internal/sds/httpbootstrap/{support.go,support_test.go}`
+- Modify: `internal/listingkit/workflow_sds_sync.go` and SDS service test stubs
+- Create: `internal/listingkit/workflow_sds_sync_approved_asset_support.go`
+- Delete: `internal/listingkit/{workflow_sds_sync_remote_support.go,workflow_sds_sync_uploaded_support.go}`
+- Modify: `internal/app/httpapi/{runtime_support_listingkit.go,feature_builder_listingkit.go,types.go}` and runtime composition tests
 
 **Interfaces:**
 - Consumes: SDS-local `ApprovedAssetReader` 返回 `product/asset.ApprovedAssetInventory`。
 - Produces: `SelectApprovedDesignAsset(inventory) (asset.ApprovedAsset, error)`，只接受批准且具有明确 design/main/white-background role 的资产。
 
-- [ ] **Step 1: 写禁止第一张图兜底测试**
+ListingKit 必须把 `InventoryScope` 交给 SDS 用例，由 SDS 自己读取批准资产；不得继续把批准资产降级成裸 URL/本地文件后调用通用入口。App 只构造一个批准资产 Reader，并将同一实例装配给 ListingKit 与 SDS，避免新增无生产调用的 Reader 或重复数据库连接。
+
+- [x] **Step 1: 写禁止第一张图兜底测试**
 
 ```go
 func TestSelectApprovedDesignAssetRejectsUnassignedGallery(t *testing.T) {
@@ -1246,17 +1252,17 @@ func TestSelectApprovedDesignAssetRejectsUnassignedGallery(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认旧选择器仍接收 ProductImage result**
+- [x] **Step 2: 运行测试确认旧选择器仍接收 ProductImage result**
 
 Run: `go test ./internal/sds/... -run 'TestSelectApprovedDesignAsset|Test.*ProductImage' -count=1 -v`
 
 Expected: FAIL，新选择器不存在或旧测试仍依赖 ProductImage。
 
-- [ ] **Step 3: 替换输入契约并删除旧选择器**
+- [x] **Step 3: 替换输入契约并删除旧选择器**
 
-优先级只能基于显式已批准 role：`design` → `main` → `white_background`；无匹配返回未就绪。SDS 不导入 ImageAgent store/Temporal 或 ProductImage。
+优先级只能基于显式已批准 role：`design` → `main` → `white_background`；无匹配返回未就绪。删除 SDS 的 raw URL、本地文件和 ProductImage 入口，只保留批准资产 URL 的下载细节。SDS 不导入 ImageAgent store/Temporal 或 ProductImage。
 
-- [ ] **Step 4: 运行 SDS 测试和 import 扫描**
+- [x] **Step 4: 运行 SDS 测试和 import 扫描**
 
 Run: `go test ./internal/sds/... -count=1`
 
@@ -1264,7 +1270,7 @@ Run: `rg -n 'internal/productimage|internal/imageagent/(store|temporal)|ImagePro
 
 Expected: tests PASS；扫描返回零结果。
 
-- [ ] **Step 5: 提交 SDS 读取迁移**
+- [x] **Step 5: 提交 SDS 读取迁移**
 
 ```powershell
 git add internal/sds

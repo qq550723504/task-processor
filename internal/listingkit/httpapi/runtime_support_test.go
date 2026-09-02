@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"task-processor/internal/listingkit"
+	productasset "task-processor/internal/product/asset"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsdesign "task-processor/internal/sds/design"
 	sdstemplate "task-processor/internal/sds/template"
 	sdsusecase "task-processor/internal/sds/usecase"
-	sdsworkflow "task-processor/internal/sds/workflow"
 	"task-processor/internal/sdslogin"
 )
 
@@ -31,6 +31,23 @@ func TestBuildRuntimeSupportProvidesRepositoryAndHookBundles(t *testing.T) {
 	}
 	if support.Hooks.ConfigureAuthorization == nil {
 		t.Fatal("expected authorization hook")
+	}
+}
+
+func TestBuildRuntimeSupportUsesProvidedApprovedAssetReader(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubRuntimeSupportApprovedAssetReader{}
+	support := BuildRuntimeSupport(RuntimeSupportInput{ApprovedAssets: reader})
+	built, closers, err := support.Repositories.Core.ApprovedAsset(nil, nil)
+	if err != nil {
+		t.Fatalf("build approved asset reader: %v", err)
+	}
+	if built != reader {
+		t.Fatalf("approved asset reader = %v, want shared %v", built, reader)
+	}
+	if len(closers) != 0 {
+		t.Fatalf("approved asset reader closers = %d, want 0 because app owns the shared reader", len(closers))
 	}
 }
 
@@ -91,19 +108,13 @@ var _ listingkit.SDSBaselineRemoteProvider = stubRuntimeSupportSDSBaselineProvid
 
 type stubRuntimeSupportSDSService struct{}
 
-func (stubRuntimeSupportSDSService) SyncFromRemoteImage(context.Context, sdsusecase.RemoteImageInput) (*sdsworkflow.SyncResult, error) {
-	return nil, nil
+type stubRuntimeSupportApprovedAssetReader struct{}
+
+func (*stubRuntimeSupportApprovedAssetReader) GetApprovedInventory(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	return productasset.ApprovedAssetInventory{}, nil
 }
 
-func (stubRuntimeSupportSDSService) SyncFromLocalFile(context.Context, sdsusecase.LocalFileInput) (*sdsworkflow.SyncResult, error) {
-	return nil, nil
-}
-
-func (stubRuntimeSupportSDSService) SyncFromImageResult(context.Context, sdsusecase.ImageResultInput) (*sdsadapter.SyncResult, error) {
-	return nil, nil
-}
-
-func (stubRuntimeSupportSDSService) SyncFromImageRequest(context.Context, sdsusecase.ImageRequestInput) (*sdsadapter.SyncResult, error) {
+func (stubRuntimeSupportSDSService) SyncFromApprovedAssets(context.Context, sdsusecase.ApprovedAssetsInput) (*sdsadapter.SyncResult, error) {
 	return nil, nil
 }
 

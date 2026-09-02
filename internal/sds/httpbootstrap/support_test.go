@@ -4,29 +4,15 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/productimage"
+	productasset "task-processor/internal/product/asset"
 	sdsclient "task-processor/internal/sds/client"
 )
 
-type stubImageService struct{}
+type stubApprovedAssetReader struct{}
 
-func (stubImageService) CreateProcessTask(context.Context, *productimage.ImageProcessRequest) (*productimage.Task, error) {
-	return nil, nil
+func (stubApprovedAssetReader) GetApprovedInventory(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
 }
-
-func (stubImageService) GetTaskResult(context.Context, string) (*productimage.TaskResult, error) {
-	return nil, nil
-}
-
-func (stubImageService) ReviewTask(context.Context, string, *productimage.ReviewTaskRequest) (*productimage.TaskResult, error) {
-	return nil, nil
-}
-
-func (stubImageService) ProcessImages(context.Context, *productimage.Task) (*productimage.ImageProcessResult, error) {
-	return nil, nil
-}
-
-func (stubImageService) SetTaskSubmitter(productimage.TaskSubmitter) {}
 
 func TestNewSyncServiceReturnsServiceWithoutAuthState(t *testing.T) {
 	cfg := sdsclient.DefaultConfig()
@@ -35,7 +21,7 @@ func TestNewSyncServiceReturnsServiceWithoutAuthState(t *testing.T) {
 	cfg.BaseURL = "http://127.0.0.1:1"
 	cfg.AuthBootstrap = sdsclient.AuthBootstrapConfig{}
 
-	svc, authState, err := NewSyncService(stubImageService{}, cfg)
+	svc, authState, err := NewSyncService(stubApprovedAssetReader{}, cfg)
 	if err != nil {
 		t.Fatalf("NewSyncService() error = %v", err)
 	}

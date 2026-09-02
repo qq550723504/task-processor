@@ -1,13 +1,41 @@
 package listingkit
 
-import "testing"
+import (
+	"context"
+	"testing"
 
-func TestStudioSDSMaterialFileNameUsesTaskID(t *testing.T) {
+	productasset "task-processor/internal/product/asset"
+	sdsadapter "task-processor/internal/sds/adapter"
+	sdsusecase "task-processor/internal/sds/usecase"
+	sdsworkflow "task-processor/internal/sds/workflow"
+)
+
+type recordingApprovedSDSSyncService struct {
+	input sdsusecase.ApprovedAssetsInput
+}
+
+func (s *recordingApprovedSDSSyncService) SyncFromApprovedAssets(_ context.Context, input sdsusecase.ApprovedAssetsInput) (*sdsadapter.SyncResult, error) {
+	s.input = input
+	return &sdsadapter.SyncResult{DesignSync: &sdsworkflow.SyncResult{}}, nil
+}
+
+func TestPerformSingleSDSApprovedAssetSyncUsesTaskScope(t *testing.T) {
 	t.Parallel()
 
-	got := studioSDSMaterialFileName(&Task{TenantID: "tenant-test", ID: "a0991cd2-f5d0-439a-bde7-f0530591ab12"})
-	if got != "listingkit-studio-design-a0991cd2.png" {
-		t.Fatalf("filename = %q", got)
+	syncService := &recordingApprovedSDSSyncService{}
+	svc := &service{supportDeps: supportDependencies{sdsSyncService: syncService}}
+	task := &Task{TenantID: "tenant-a", Request: &GenerateRequest{ProductKey: "product-1"}}
+
+	result, err := svc.performSingleSDSApprovedAssetSync(context.Background(), task, &SDSSyncOptions{VariantID: 89764})
+	if err != nil {
+		t.Fatalf("performSingleSDSApprovedAssetSync() error = %v", err)
+	}
+	if result == nil {
+		t.Fatal("performSingleSDSApprovedAssetSync() returned nil result")
+	}
+	wantScope := productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}
+	if syncService.input.Scope != wantScope {
+		t.Fatalf("SDS scope = %+v, want %+v", syncService.input.Scope, wantScope)
 	}
 }
 

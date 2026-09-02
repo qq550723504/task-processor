@@ -1,5 +1,12 @@
 package httpapi
 
+import (
+	"github.com/sirupsen/logrus"
+
+	"task-processor/internal/core/config"
+	"task-processor/internal/listingkit"
+)
+
 func buildRuntimeSupportRepositories() BuildServiceRepositories {
 	return BuildServiceRepositories{
 		Core: CoreRepositoryBuilders{
@@ -35,4 +42,14 @@ func buildRuntimeSupportRepositories() BuildServiceRepositories {
 			ProductData:             BuildListingAdminProductDataRepository,
 		},
 	}
+}
+
+func withApprovedAssetReader(repositories BuildServiceRepositories, approvedAssets listingkit.ApprovedAssetInventoryReader) BuildServiceRepositories {
+	if approvedAssets == nil {
+		return repositories
+	}
+	repositories.Core.ApprovedAsset = func(*config.Config, *logrus.Logger) (listingkit.ApprovedAssetInventoryReader, []func() error, error) {
+		return approvedAssets, nil, nil
+	}
+	return repositories
 }
