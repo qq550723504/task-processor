@@ -1,4 +1,5 @@
 import { act, render, screen, within } from "@testing-library/react";
+import { useLayoutEffect, useRef } from "react";
 import { renderToString } from "react-dom/server";
 
 import { HeroSystemVisual } from "@/components/marketing/hero-system-visual";
@@ -122,4 +123,33 @@ it("enters the boot state without interpolating from the active state", async ()
   });
 
   act(() => frames.shift()?.(0));
+});
+
+it("applies the boot state before the first hydrated paint", () => {
+  const frames: FrameRequestCallback[] = [];
+  const layoutSnapshots: string[] = [];
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames.push(callback);
+    return frames.length;
+  });
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+  function LayoutProbe() {
+    const rootRef = useRef<HTMLDivElement>(null);
+
+    useLayoutEffect(() => {
+      const core = rootRef.current?.querySelector('[class*="coreAnchor"]');
+      layoutSnapshots.push(core?.getAttribute("style") ?? "");
+    }, []);
+
+    return (
+      <div ref={rootRef}>
+        <HeroSystemVisual />
+      </div>
+    );
+  }
+
+  render(<LayoutProbe />);
+
+  expect(layoutSnapshots[0]).toContain("opacity: 0");
 });

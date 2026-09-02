@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useLayoutEffect, useSyncExternalStore } from "react";
 import {
   Bot,
   Boxes,
@@ -99,6 +99,10 @@ const PARTICLES = [
   { left: "71.7%", top: "72.8%" },
 ] as const;
 
+const subscribeToHydration = () => () => {};
+const getClientHydrationSnapshot = () => true;
+const getServerHydrationSnapshot = () => false;
+
 const coreVariants: Variants = {
   boot: { opacity: 0, scale: 0.55 },
   active: {
@@ -163,10 +167,16 @@ const particleVariants: Variants = {
 
 export function HeroSystemVisual() {
   const reduceMotion = Boolean(useReducedMotion());
+  const isHydrated = useSyncExternalStore(
+    subscribeToHydration,
+    getClientHydrationSnapshot,
+    getServerHydrationSnapshot,
+  );
   const animationControls = useAnimationControls();
+  const initialAnimationState = isHydrated && !reduceMotion ? "boot" : false;
 
-  useEffect(() => {
-    if (reduceMotion) {
+  useLayoutEffect(() => {
+    if (reduceMotion || !isHydrated) {
       return;
     }
 
@@ -178,7 +188,7 @@ export function HeroSystemVisual() {
     return () => {
       window.cancelAnimationFrame(revealFrame);
     };
-  }, [animationControls, reduceMotion]);
+  }, [animationControls, isHydrated, reduceMotion]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -196,6 +206,7 @@ export function HeroSystemVisual() {
           direction={360}
           index={0}
           animationControls={animationControls}
+          initialAnimationState={initialAnimationState}
           reduceMotion={reduceMotion}
         />
         <OrbitRing
@@ -203,6 +214,7 @@ export function HeroSystemVisual() {
           direction={-360}
           index={1}
           animationControls={animationControls}
+          initialAnimationState={initialAnimationState}
           reduceMotion={reduceMotion}
         />
         <OrbitRing
@@ -210,6 +222,7 @@ export function HeroSystemVisual() {
           direction={360}
           index={2}
           animationControls={animationControls}
+          initialAnimationState={initialAnimationState}
           reduceMotion={reduceMotion}
         />
 
@@ -230,7 +243,7 @@ export function HeroSystemVisual() {
             <motion.line
               animate={animationControls}
               custom={index}
-              initial={false}
+              initial={initialAnimationState}
               key={`${connection.x2}-${connection.y2}`}
               stroke="url(#hero-connection-gradient)"
               strokeWidth="1"
@@ -246,7 +259,7 @@ export function HeroSystemVisual() {
         <motion.div
           animate={animationControls}
           className={styles.coreAnchor}
-          initial={false}
+          initial={initialAnimationState}
           variants={coreVariants}
         >
           <div className={styles.core}>
@@ -290,7 +303,7 @@ export function HeroSystemVisual() {
                 animate={animationControls}
                 className={`${styles.capabilityCard} ${styles[capability.position]}`}
                 custom={index}
-                initial={false}
+                initial={initialAnimationState}
                 key={capability.key}
                 variants={capabilityVariants}
               >
@@ -312,7 +325,7 @@ export function HeroSystemVisual() {
             animate={animationControls}
             className={styles.particle}
             custom={index}
-            initial={false}
+            initial={initialAnimationState}
             key={`${particle.left}-${particle.top}`}
             style={particle}
             variants={particleVariants}
@@ -328,12 +341,14 @@ function OrbitRing({
   direction,
   index,
   animationControls,
+  initialAnimationState,
   reduceMotion,
 }: {
   animationControls: ReturnType<typeof useAnimationControls>;
   className: string;
   direction: number;
   index: number;
+  initialAnimationState: "boot" | false;
   reduceMotion: boolean;
 }) {
   return (
@@ -342,7 +357,7 @@ function OrbitRing({
       animate={animationControls}
       className={`${styles.ringLayer} ${className}`}
       custom={index}
-      initial={false}
+      initial={initialAnimationState}
       variants={ringVariants}
     >
       <motion.span
