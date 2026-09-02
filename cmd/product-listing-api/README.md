@@ -13,7 +13,32 @@
 - ListingKit（仅在 Product Snapshot 与 Approved Asset reader 可用时注册）
 - SDS、Prompt、登录和任务状态支持模块
 
-实际注册路由以服务启动日志和各模块的 `httpapi` 路由定义为准。
+## 当前主要路由
+
+AmazonListing 只读取指定 `product_key` 的 Product Snapshot 和 Approved Asset inventory：
+
+- `POST /api/v1/amazon/listings/generate`
+- `GET /api/v1/amazon/listings/tasks/:task_id`
+- `GET /api/v1/amazon/listings/tasks/:task_id/workbench`
+- `POST /api/v1/amazon/listings/tasks/:task_id/review`
+- `POST /api/v1/amazon/listings/tasks/:task_id/submit`
+
+完整定义见 [AmazonListing route descriptors](../../internal/amazonlisting/httpapi/routes.go)。
+
+ListingKit 同样只读 Product Snapshot 和 Approved Asset inventory；生成、预览和导出只消费 inventory 中的已批准图片：
+
+- `POST /api/v1/listing-kits/generate`
+- `GET /api/v1/listing-kits/tasks/:task_id`
+- `GET /api/v1/listing-kits/tasks/:task_id/preview`
+- `GET /api/v1/listing-kits/tasks/:task_id/revision-history`
+- `GET /api/v1/listing-kits/tasks/:task_id/revision-history/:revision_id`
+- `GET /api/v1/listing-kits/tasks/:task_id/export`
+- `POST /api/v1/listing-kits/tasks/:task_id/revision`
+- `POST /api/v1/listing-kits/tasks/:task_id/revision/validate`
+
+完整定义见 [ListingKit entrypoints](../../internal/listingkit/httpapi/routes_descriptor_entrypoints.go) 和 [ListingKit task route descriptors](../../internal/listingkit/httpapi/routes_descriptor_task.go)。
+
+ImageAgent 当前入口以 `/api/v1/image-agent/runs` 为根，完整定义见 [ImageAgent route descriptors](../../internal/imageagent/httpapi/routes.go)。SDS 查询入口以 `/api/v1/sds` 为根，完整定义见 [SDS HTTP module](../../internal/sds/httpapi/http_module.go)。
 
 ## 启动
 
