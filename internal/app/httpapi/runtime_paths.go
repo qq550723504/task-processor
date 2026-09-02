@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"os"
 	"path/filepath"
 
 	"task-processor/internal/core/config"
@@ -8,12 +9,12 @@ import (
 
 func resolveImageWorkDir(cfg *config.Config) string {
 	if cfg == nil {
-		return filepath.Join(".", "tmp", "productimage")
+		return filepath.Join(os.TempDir(), "task-processor", "productimage")
 	}
 
 	workDir := filepath.Clean(cfg.ProductImage.WorkDir)
 	if workDir == "" || workDir == "." {
-		return filepath.Join(".", "tmp", "productimage")
+		return filepath.Join(os.TempDir(), "task-processor", "productimage")
 	}
 
 	return workDir

@@ -335,7 +335,7 @@ func TestHTTPAPIRuntimeKeepsPathResolutionDedicated(t *testing.T) {
 		`"path/filepath"`,
 		"func resolveImageWorkDir(",
 		"filepath.Clean(",
-		`filepath.Join(".", "tmp", "productimage")`,
+		`filepath.Join(os.TempDir(), "task-processor", "productimage")`,
 	} {
 		if strings.Contains(runtimeSource, marker) {
 			t.Fatalf("runtime.go should keep path resolution in runtime_paths.go; found %s", marker)
@@ -347,7 +347,7 @@ func TestHTTPAPIRuntimeKeepsPathResolutionDedicated(t *testing.T) {
 		`"path/filepath"`,
 		"func resolveImageWorkDir(",
 		"filepath.Clean(",
-		`filepath.Join(".", "tmp", "productimage")`,
+		`filepath.Join(os.TempDir(), "task-processor", "productimage")`,
 	} {
 		if !strings.Contains(pathSource, marker) {
 			t.Fatalf("runtime_paths.go missing %s", marker)

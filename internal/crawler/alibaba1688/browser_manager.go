@@ -3,6 +3,7 @@ package alibaba1688
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"task-processor/internal/core/config"
@@ -97,7 +98,7 @@ func resolveAlibaba1688UserDataDir(cfg *config.Config) string {
 			return dir
 		}
 	}
-	return filepath.Join(".", "tmp", "browser-profiles", "1688")
+	return filepath.Join(os.TempDir(), "task-processor", "browser-profiles", "1688")
 }
 
 // CreateBrowser 创建浏览器实例（保持向后兼容的API）

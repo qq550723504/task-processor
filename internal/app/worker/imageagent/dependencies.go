@@ -2,6 +2,7 @@ package imageagentworker
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -128,7 +129,7 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	}
 	workDir := strings.TrimSpace(cfg.ProductImage.WorkDir)
 	if workDir == "" {
-		workDir = filepath.Join(".", "tmp", "productimage")
+		workDir = filepath.Join(os.TempDir(), "task-processor", "productimage")
 	}
 	capabilities, err := resolver.BuildCapabilities(productimagehttpapi.RuntimeBuildInput{
 		Logger: logger, Config: cfg, OpenAIManager: manager, AICredentialResolver: credentialResolver,

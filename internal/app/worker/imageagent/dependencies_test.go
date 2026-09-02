@@ -3,6 +3,8 @@ package imageagentworker
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -110,6 +112,7 @@ func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *t
 	cfg := &config.Config{Database: &config.DatabaseConfig{}}
 	cfg.ProductImage.Publisher = durablePublisherConfig("", false)
 	storeBuilds := 0
+	var capabilityInput productimagehttpapi.RuntimeBuildInput
 	dependencies, closeFn, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV2, imageAgentWorkerDependencyResolver{
 		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
 		OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
@@ -117,7 +120,8 @@ func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *t
 		BuildAI: func(*config.Config, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
 			return nil, nil, nil, nil
 		},
-		BuildCapabilities: func(productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error) {
+		BuildCapabilities: func(input productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error) {
+			capabilityInput = input
 			return productimagehttpapi.ImageAgentCapabilities{
 				SubjectExtractor: runtimeSubjectExtractor{}, WhiteBackgroundRenderer: runtimeWhiteBackgroundRenderer{},
 				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
@@ -139,6 +143,7 @@ func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *t
 	require.Nil(t, dependencies.PublisherV3)
 	require.Zero(t, dependencies.PublicationLeaseDuration)
 	require.Zero(t, storeBuilds)
+	require.Equal(t, filepath.Join(os.TempDir(), "task-processor", "productimage"), capabilityInput.ImageWorkDir)
 }
 
 func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseOnInvalidPolicy(t *testing.T) {

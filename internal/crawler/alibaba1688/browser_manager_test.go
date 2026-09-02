@@ -1,6 +1,8 @@
 package alibaba1688
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"task-processor/internal/core/config"
@@ -20,12 +22,11 @@ func TestResolveAlibaba1688UserDataDirUsesConfiguredValue(t *testing.T) {
 }
 
 func TestResolveAlibaba1688UserDataDirUsesSharedDefault(t *testing.T) {
-	cfg := config.NewDefaultConfig()
-
-	got := resolveAlibaba1688UserDataDir(cfg)
-
-	if got == "" {
-		t.Fatal("expected non-empty default user data dir")
+	want := filepath.Join(os.TempDir(), "task-processor", "browser-profiles", "1688")
+	for _, cfg := range []*config.Config{nil, &config.Config{}} {
+		if got := resolveAlibaba1688UserDataDir(cfg); got != want {
+			t.Fatalf("resolveAlibaba1688UserDataDir(%v) = %q, want %q", cfg, got, want)
+		}
 	}
 }
 
