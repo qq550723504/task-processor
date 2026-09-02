@@ -24,7 +24,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
-	"task-processor/internal/amazonlisting"
 	"task-processor/internal/app/httpapi"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
@@ -97,34 +96,11 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	resp.Body.Close()
 	waitForProductImageTaskSuccess(t, client, port, imgTaskID)
 
-	// 创建 Amazon listing 任务
-	amazonReqBody := amazonlisting.GenerateRequest{
-		Marketplace: "amazon",
-		Text:        strings.Repeat("durable blue running shoe with breathable mesh upper, cushioned sole, stable fit, and everyday training comfort ", 12),
-		ImageURLs: []string{
-			fixture.imageURL("amazon-listing.png"),
-			fixture.imageURL("amazon-listing-2.png"),
-			fixture.imageURL("amazon-listing-3.png"),
-		},
-	}
-	b3, err := json.Marshal(amazonReqBody)
+	// Product Snapshot 尚无生产所有者时，不暴露一个必然失败的 AmazonListing 路由。
+	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader([]byte(`{"marketplace":"amazon","product_key":"amazon-main-smoke-product"}`)))
 	require.NoError(t, err)
-	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader(b3))
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	var amazonResp map[string]any
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&amazonResp))
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
-	amazonTaskID, ok := amazonResp["task_id"].(string)
-	require.True(t, ok)
-	require.NotEmpty(t, amazonTaskID)
-
-	// 查询 Amazon task
-	resp, err = client.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/amazon/listings/tasks/" + amazonTaskID)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
-	waitForAmazonListingTaskTerminal(t, client, port, amazonTaskID)
 	fixture.assertNoUnhandled()
 
 	// 优雅退出
@@ -211,48 +187,11 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
 
-	// 400 for amazon listing generate invalid request
+	// AmazonListing is not registered until a production Product Snapshot reader exists.
 	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader([]byte(`{"text":""}`)))
 	require.NoError(t, err)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
-
-	// Create an amazon listing task for review/submit branch coverage
-	amazonReqBody := amazonlisting.GenerateRequest{
-		Marketplace: "amazon",
-		Text:        strings.Repeat("durable blue running shoe with breathable mesh upper, cushioned sole, stable fit, and everyday training comfort ", 12),
-		ImageURLs: []string{
-			fixture.imageURL("amazon-listing.png"),
-			fixture.imageURL("amazon-listing-2.png"),
-			fixture.imageURL("amazon-listing-3.png"),
-		},
-	}
-	b3, err := json.Marshal(amazonReqBody)
-	require.NoError(t, err)
-	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader(b3))
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	var amazonResp map[string]any
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&amazonResp))
-	resp.Body.Close()
-	amazonTaskID, ok := amazonResp["task_id"].(string)
-	require.True(t, ok)
-	require.NotEmpty(t, amazonTaskID)
-
-	// 400 for unsupported review action on existing task
-	reviewBody2 := bytes.NewReader([]byte(`{"action":"unsupported"}`))
-	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/tasks/"+amazonTaskID+"/review", "application/json", reviewBody2)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	resp.Body.Close()
-
-	// 400 for invalid submit body on an existing Amazon listing task.
-	submitBody2 := bytes.NewReader([]byte(`{"action":`))
-	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/tasks/"+amazonTaskID+"/submit", "application/json", submitBody2)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	resp.Body.Close()
-	waitForAmazonListingTaskTerminal(t, client, port, amazonTaskID)
 	fixture.assertNoUnhandled()
 
 	// 优雅退出并确保关闭
@@ -509,26 +448,6 @@ func waitForProductImageTaskSuccess(t *testing.T, client *http.Client, port int,
 		time.Sleep(25 * time.Millisecond)
 	}
 	t.Fatalf("image task %s did not reach a terminal successful status", taskID)
-}
-
-func waitForAmazonListingTaskTerminal(t *testing.T, client *http.Client, port int, taskID string) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		response, err := client.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/amazon/listings/tasks/" + taskID)
-		require.NoError(t, err)
-		var task amazonlisting.TaskResult
-		require.NoError(t, json.NewDecoder(response.Body).Decode(&task))
-		response.Body.Close()
-		switch task.Status {
-		case amazonlisting.TaskStatusCompleted, amazonlisting.TaskStatusNeedsReview:
-			return
-		case amazonlisting.TaskStatusFailed, amazonlisting.TaskStatusRejected:
-			t.Fatalf("Amazon listing task %s ended unsuccessfully: %s", taskID, task.Error)
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	t.Fatalf("Amazon listing task %s did not reach a terminal status", taskID)
 }
 
 type productListingAPITestBearerTransport struct {

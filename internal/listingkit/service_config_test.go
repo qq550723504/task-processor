@@ -335,7 +335,10 @@ func TestNewServiceWithConfigUsesResolutionCacheForDefaultSheinCategoryResolver(
 			cfg.Shein.SheinResolutionCacheStore = store
 		}),
 	))
-	result := cfg.Assets.Assembler.Assemble(task, testCatalogSnapshot(t, product), nil)
+	result, err := cfg.Assets.Assembler.Assemble(task, testCatalogSnapshot(t, product), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Shein == nil || result.Shein.CategoryResolution == nil {
 		t.Fatal("expected SHEIN category resolution")

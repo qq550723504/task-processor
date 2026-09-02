@@ -9,12 +9,11 @@ import (
 func TestGetTaskWorkbenchGroupsManualActions(t *testing.T) {
 	repo := &stubRepository{}
 	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: &stubProductService{},
-		Assembler:      NewAssembler(),
-		ExportBuilder:  NewExportBuilder(),
-		Validator:      NewValidator(),
-		AutoFixer:      NewAutoFixer(),
+		Repository:    repo,
+		Assembler:     NewAssembler(),
+		ExportBuilder: NewExportBuilder(),
+		Validator:     NewValidator(),
+		AutoFixer:     NewAutoFixer(),
 	})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -43,7 +42,7 @@ func TestGetTaskWorkbenchGroupsManualActions(t *testing.T) {
 					IsInferred:     true,
 					Evidence: []AmazonReviewEvidence{
 						{Type: "user_text", Detail: "generate_request.text"},
-						{Type: "llm", Detail: "productenrich_product_json"},
+						{Type: "catalog", Detail: "product_snapshot"},
 					},
 				},
 			},
@@ -128,12 +127,11 @@ func TestGetTaskWorkbenchGroupsManualActions(t *testing.T) {
 func TestGetTaskWorkbenchBuildsBucketsFromStructuredReviewItems(t *testing.T) {
 	repo := &stubRepository{}
 	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: &stubProductService{},
-		Assembler:      NewAssembler(),
-		ExportBuilder:  NewExportBuilder(),
-		Validator:      NewValidator(),
-		AutoFixer:      NewAutoFixer(),
+		Repository:    repo,
+		Assembler:     NewAssembler(),
+		ExportBuilder: NewExportBuilder(),
+		Validator:     NewValidator(),
+		AutoFixer:     NewAutoFixer(),
 	})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -177,15 +175,14 @@ func TestGetTaskWorkbenchBuildsBucketsFromStructuredReviewItems(t *testing.T) {
 	}
 }
 
-func TestListTaskQueueFiltersByActionAndChildStatus(t *testing.T) {
+func TestListTaskQueueFiltersByActionAndSource(t *testing.T) {
 	repo := &stubRepository{}
 	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: &stubProductService{},
-		Assembler:      NewAssembler(),
-		ExportBuilder:  NewExportBuilder(),
-		Validator:      NewValidator(),
-		AutoFixer:      NewAutoFixer(),
+		Repository:    repo,
+		Assembler:     NewAssembler(),
+		ExportBuilder: NewExportBuilder(),
+		Validator:     NewValidator(),
+		AutoFixer:     NewAutoFixer(),
 	})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -198,9 +195,6 @@ func TestListTaskQueueFiltersByActionAndChildStatus(t *testing.T) {
 		UpdatedAt: time.Now(),
 		Result: &AmazonListingDraft{
 			TaskID: "task-queue-1",
-			ChildTasks: []ChildTaskState{
-				{Kind: "product_image", Status: "failed"},
-			},
 			ReviewItems: []AmazonReviewItem{
 				{Field: "brand", Action: OperatorActionFillBrand, Severity: "warning", NeedsHuman: true, Source: "user_text,llm"},
 			},
@@ -209,12 +203,11 @@ func TestListTaskQueueFiltersByActionAndChildStatus(t *testing.T) {
 
 	needsHuman := true
 	result, err := svc.ListTaskQueue(context.Background(), TaskQueueQuery{
-		Status:      []TaskStatus{TaskStatusNeedsReview},
-		Action:      OperatorActionFillBrand,
-		ChildStatus: "failed",
-		Source:      "llm",
-		NeedsHuman:  &needsHuman,
-		Limit:       10,
+		Status:     []TaskStatus{TaskStatusNeedsReview},
+		Action:     OperatorActionFillBrand,
+		Source:     "llm",
+		NeedsHuman: &needsHuman,
+		Limit:      10,
 	})
 	if err != nil {
 		t.Fatalf("ListTaskQueue: %v", err)

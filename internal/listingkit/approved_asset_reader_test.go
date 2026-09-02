@@ -90,7 +90,10 @@ func TestAssemblerUsesOnlyApprovedAssetImages(t *testing.T) {
 	}
 	task := &Task{TenantID: "tenant-a", Request: &GenerateRequest{ProductKey: "product-1"}}
 
-	result := NewAssembler(nil).Assemble(task, &snapshot, &inventory)
+	result, err := NewAssembler(nil).Assemble(task, &snapshot, &inventory)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.CanonicalProduct == nil {
 		t.Fatal("canonical product = nil")

@@ -7,8 +7,6 @@ import (
 
 type service struct {
 	repo             Repository
-	productService   ProductService
-	imageService     ImageService
 	assembler        Assembler
 	exportBuilder    ExportBuilder
 	listingSubmitter ListingSubmitter
@@ -19,16 +17,16 @@ type service struct {
 }
 
 type ServiceConfig struct {
-	Repository       Repository
-	ProductService   ProductService
-	ImageService     ImageService
-	Assembler        Assembler
-	ExportBuilder    ExportBuilder
-	ListingSubmitter ListingSubmitter
-	Validator        Validator
-	AutoFixer        AutoFixer
-	Workflow         ListingWorkflow
-	TaskSubmitter    TaskSubmitter
+	Repository                   Repository
+	ProductSnapshotReader        ProductSnapshotReader
+	ApprovedAssetInventoryReader ApprovedAssetInventoryReader
+	Assembler                    Assembler
+	ExportBuilder                ExportBuilder
+	ListingSubmitter             ListingSubmitter
+	Validator                    Validator
+	AutoFixer                    AutoFixer
+	Workflow                     ListingWorkflow
+	TaskSubmitter                TaskSubmitter
 }
 
 func NewService(config *ServiceConfig) (Service, error) {
@@ -37,9 +35,6 @@ func NewService(config *ServiceConfig) (Service, error) {
 	}
 	if config.Repository == nil {
 		return nil, fmt.Errorf("repository cannot be nil")
-	}
-	if config.ProductService == nil {
-		return nil, fmt.Errorf("product service cannot be nil")
 	}
 	if config.Assembler == nil {
 		config.Assembler = NewAssembler()
@@ -54,12 +49,10 @@ func NewService(config *ServiceConfig) (Service, error) {
 		config.AutoFixer = NewAutoFixer()
 	}
 	if config.Workflow == nil {
-		config.Workflow = NewListingWorkflow(config.ProductService, config.ImageService, config.Assembler, config.AutoFixer, config.ExportBuilder)
+		config.Workflow = NewListingWorkflow(config.ProductSnapshotReader, config.ApprovedAssetInventoryReader, config.Assembler, config.AutoFixer, config.ExportBuilder)
 	}
 	return &service{
 		repo:             config.Repository,
-		productService:   config.ProductService,
-		imageService:     config.ImageService,
 		assembler:        config.Assembler,
 		exportBuilder:    config.ExportBuilder,
 		listingSubmitter: config.ListingSubmitter,
@@ -81,13 +74,11 @@ func normalizeGenerateRequest(req *GenerateRequest) {
 	req.Marketplace = strings.ToLower(strings.TrimSpace(req.Marketplace))
 	req.Country = strings.ToUpper(strings.TrimSpace(req.Country))
 	req.Language = strings.TrimSpace(req.Language)
+	req.ProductKey = strings.TrimSpace(req.ProductKey)
 	if req.Country == "" {
 		req.Country = "US"
 	}
 	if req.Language == "" {
 		req.Language = "en_US"
-	}
-	if req.Options == nil {
-		req.Options = &GenerateOptions{ProcessImages: true}
 	}
 }

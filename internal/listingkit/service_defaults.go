@@ -6,7 +6,8 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/listingkit/reviewstore"
-	"task-processor/internal/product/catalog/canonical"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/sdslogin"
 )
@@ -125,17 +126,25 @@ func newAmazonDraftBuilder() AmazonDraftBuilder {
 	return &amazonDraftBuilder{assembler: amazonlisting.NewAssembler()}
 }
 
-func (b *amazonDraftBuilder) Build(req *GenerateRequest, canonical *canonical.Product) *amazonlisting.AmazonListingDraft {
-	task := &amazonlisting.Task{
-		ID: "listingkit-amazon-preview",
+func (b *amazonDraftBuilder) Build(req *GenerateRequest, snapshot *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*amazonlisting.AmazonListingDraft, error) {
+	if req == nil || snapshot == nil || approved == nil {
+		return nil, productasset.ErrApprovedAssetsNotReady
+	}
+	draft, err := b.assembler.Build(amazonlisting.DraftInput{
+		TaskID: "listingkit-amazon-preview",
 		Request: &amazonlisting.GenerateRequest{
 			Marketplace:        "amazon",
 			Country:            req.Country,
 			Language:           req.Language,
-			Text:               req.Text,
+			ProductKey:         req.ProductKey,
 			TargetCategoryHint: req.TargetCategoryHint,
 			BrandHint:          req.BrandHint,
 		},
+		Snapshot:       *snapshot,
+		ApprovedAssets: *approved,
+	})
+	if err != nil {
+		return nil, err
 	}
-	return b.assembler.Assemble(task, canonical, nil)
+	return draft, nil
 }

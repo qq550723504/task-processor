@@ -6,7 +6,6 @@ import (
 	"time"
 
 	amazonapi "task-processor/internal/amazon/api"
-	"task-processor/internal/productenrich"
 )
 
 type mockListingSubmitter struct {
@@ -17,22 +16,9 @@ type mockListingSubmitter struct {
 	err          error
 }
 
-type stubProductService struct{}
-
 type stubRepository struct {
-	task *Task
-}
-
-func (s *stubProductService) CreateGenerateTask(_ context.Context, _ *productenrich.GenerateRequest) (*productenrich.Task, error) {
-	return nil, nil
-}
-
-func (s *stubProductService) GetTaskResult(_ context.Context, _ string) (*productenrich.TaskResult, error) {
-	return nil, nil
-}
-
-func (s *stubProductService) ProcessProduct(_ context.Context, _ *productenrich.Task) (*productenrich.ProductJSON, error) {
-	return nil, nil
+	task          *Task
+	markFailedErr error
 }
 
 func (r *stubRepository) CreateTask(_ context.Context, task *Task) error {
@@ -69,7 +55,10 @@ func (r *stubRepository) ListTasks(_ context.Context, statuses []TaskStatus, lim
 	return []*Task{&copied}, nil
 }
 
-func (r *stubRepository) MarkProcessing(_ context.Context, _ string) error { return nil }
+func (r *stubRepository) MarkProcessing(_ context.Context, _ string) error {
+	r.task.Status = TaskStatusProcessing
+	return nil
+}
 func (r *stubRepository) MarkCompleted(_ context.Context, _ string, result *AmazonListingDraft) error {
 	r.task.Result = result
 	r.task.Status = TaskStatusCompleted
@@ -87,11 +76,18 @@ func (r *stubRepository) MarkRejected(_ context.Context, _ string, reason string
 	return nil
 }
 func (r *stubRepository) MarkFailed(_ context.Context, _ string, errorMsg string) error {
+	if r.markFailedErr != nil {
+		return r.markFailedErr
+	}
 	r.task.Status = TaskStatusFailed
 	r.task.Error = errorMsg
 	return nil
 }
-func (r *stubRepository) PrepareRetry(_ context.Context, _ string) error        { return nil }
+func (r *stubRepository) PrepareRetry(_ context.Context, _ string) error {
+	r.task.Status = TaskStatusPending
+	r.task.Error = ""
+	return nil
+}
 func (r *stubRepository) IncrementRetryCount(_ context.Context, _ string) error { return nil }
 func (r *stubRepository) UpdateTaskStatus(_ context.Context, _ string, status TaskStatus) error {
 	r.task.Status = status
@@ -128,7 +124,6 @@ func TestSubmitTaskPreviewStoresSubmissionRecord(t *testing.T) {
 	repo := &stubRepository{}
 	svc, err := NewService(&ServiceConfig{
 		Repository:       repo,
-		ProductService:   &stubProductService{},
 		Assembler:        NewAssembler(),
 		ExportBuilder:    NewExportBuilder(),
 		Validator:        NewValidator(),
@@ -182,12 +177,11 @@ func TestSubmitTaskPreviewStoresSubmissionRecord(t *testing.T) {
 func TestSubmitTaskPreviewAndFixAppliesAmazonIssueFixes(t *testing.T) {
 	repo := &stubRepository{}
 	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: &stubProductService{},
-		Assembler:      NewAssembler(),
-		ExportBuilder:  NewExportBuilder(),
-		Validator:      NewValidator(),
-		AutoFixer:      NewAutoFixer(),
+		Repository:    repo,
+		Assembler:     NewAssembler(),
+		ExportBuilder: NewExportBuilder(),
+		Validator:     NewValidator(),
+		AutoFixer:     NewAutoFixer(),
 		ListingSubmitter: &mockListingSubmitter{previewQueue: []*amazonapi.ListingResponse{
 			{
 				SKU:    "SKU-1",
@@ -287,12 +281,11 @@ func TestSubmitTaskPreviewAndFixAppliesAmazonIssueFixes(t *testing.T) {
 func TestSubmitTaskPreviewAndFixMarksNeedsReviewForManualIssues(t *testing.T) {
 	repo := &stubRepository{}
 	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: &stubProductService{},
-		Assembler:      NewAssembler(),
-		ExportBuilder:  NewExportBuilder(),
-		Validator:      NewValidator(),
-		AutoFixer:      NewAutoFixer(),
+		Repository:    repo,
+		Assembler:     NewAssembler(),
+		ExportBuilder: NewExportBuilder(),
+		Validator:     NewValidator(),
+		AutoFixer:     NewAutoFixer(),
 		ListingSubmitter: &mockListingSubmitter{previewQueue: []*amazonapi.ListingResponse{
 			{
 				SKU:    "SKU-2",
@@ -382,12 +375,11 @@ func TestSubmitTaskPreviewAndFixMarksNeedsReviewForManualIssues(t *testing.T) {
 func TestSubmitTaskRequiresConfiguredSubmitter(t *testing.T) {
 	repo := &stubRepository{}
 	svc, err := NewService(&ServiceConfig{
-		Repository:     repo,
-		ProductService: &stubProductService{},
-		Assembler:      NewAssembler(),
-		ExportBuilder:  NewExportBuilder(),
-		Validator:      NewValidator(),
-		AutoFixer:      NewAutoFixer(),
+		Repository:    repo,
+		Assembler:     NewAssembler(),
+		ExportBuilder: NewExportBuilder(),
+		Validator:     NewValidator(),
+		AutoFixer:     NewAutoFixer(),
 	})
 	if err != nil {
 		t.Fatalf("new service: %v", err)

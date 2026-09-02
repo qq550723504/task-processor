@@ -1036,6 +1036,21 @@ func (r *stubInlineTaskRepo) MarkFailed(_ context.Context, taskID string, errorM
 	return nil
 }
 
+func (r *stubInlineTaskRepo) MarkFailedIfProcessing(_ context.Context, taskID string, errorMsg string) (bool, error) {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return false, core.ErrTaskNotFound
+	}
+	if task.Status != core.TaskStatusProcessing {
+		return false, nil
+	}
+	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
+	task.Error = errorMsg
+	task.UpdatedAt = time.Now()
+	return true, nil
+}
+
 func (r *stubInlineTaskRepo) MarkBlockedRetryable(_ context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	task := r.tasks[taskID]
 	task.Status = core.TaskStatusBlockedRetryable

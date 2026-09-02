@@ -110,7 +110,16 @@ func (r *MemTaskRepository) MarkRejected(ctx context.Context, taskID string, rea
 }
 
 func (r *MemTaskRepository) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
-	return r.UpdateTaskError(ctx, taskID, errorMsg)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	task.Status = amazonlisting.TaskStatusFailed
+	task.Error = errorMsg
+	task.UpdatedAt = time.Now()
+	return nil
 }
 
 func (r *MemTaskRepository) PrepareRetry(ctx context.Context, taskID string) error {

@@ -20,12 +20,7 @@ func (s *service) ProcessListing(ctx context.Context, task *Task) (*AmazonListin
 
 	artifacts, err := s.workflow.Run(ctx, task)
 	if err != nil {
-		var workflowErr *WorkflowError
-		if errors.As(err, &workflowErr) && workflowErr.Artifacts != nil && workflowErr.Artifacts.Draft != nil {
-			_ = s.repo.SaveTaskResult(ctx, task.ID, workflowErr.Artifacts.Draft)
-		}
-		_ = s.repo.MarkFailed(ctx, task.ID, err.Error())
-		return nil, err
+		return nil, joinTaskFailurePersistenceError(err, s.repo.MarkFailed(ctx, task.ID, err.Error()))
 	}
 
 	draft := artifacts.Draft
@@ -60,4 +55,11 @@ func (s *service) ProcessListing(ctx context.Context, task *Task) (*AmazonListin
 		return nil, err
 	}
 	return draft, nil
+}
+
+func joinTaskFailurePersistenceError(cause, persistenceErr error) error {
+	if persistenceErr == nil {
+		return cause
+	}
+	return errors.Join(cause, fmt.Errorf("persist terminal task failure: %w", persistenceErr))
 }

@@ -37,7 +37,10 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 	result.Summary = ensureGenerationSummary(result.Summary)
 	result.Summary.NeedsReview = false
 	snapshot := buildStandardProductSnapshot(result)
-	final := s.runPlatformAdaptation(ctx, task, snapshot)
+	final, err := s.runPlatformAdaptation(ctx, task, snapshot)
+	if err != nil {
+		return err
+	}
 	*result = *final
 	return nil
 }

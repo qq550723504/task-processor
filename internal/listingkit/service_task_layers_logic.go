@@ -2,6 +2,8 @@ package listingkit
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -18,12 +20,12 @@ func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string
 	}
 	state, err := s.runStandardProductWorkflow(ctx, task)
 	if err != nil {
+		var saveErr error
 		if state != nil && state.result != nil {
 			state.result.Status = string(core.TaskStatusProcessing)
-			_ = s.repo.SaveTaskResult(ctx, task.ID, mergeStandardProductLayerResult(task.Result, state.result))
+			saveErr = s.repo.SaveTaskResult(ctx, task.ID, mergeStandardProductLayerResult(task.Result, state.result))
 		}
-		_ = s.repo.MarkFailed(ctx, task.ID, err.Error())
-		return nil, err
+		return nil, errors.Join(err, saveErr)
 	}
 	state.result.Status = string(core.TaskStatusProcessing)
 	if err := s.repo.SaveTaskResult(ctx, task.ID, mergeStandardProductLayerResult(task.Result, state.result)); err != nil {
@@ -60,9 +62,44 @@ func (s *service) ProcessPlatformAdaptationLayer(ctx context.Context, taskID str
 		adaptationTask.Request = &adaptationRequest
 		task = &adaptationTask
 	}
-	result := s.runPlatformAdaptation(ctx, task, snapshot)
+	result, err := s.runPlatformAdaptation(ctx, task, snapshot)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.persistProcessedTaskResult(ctx, task.ID, result); err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+func (s *service) PersistLayerFailure(ctx context.Context, taskID string, errorMessage string) error {
+	taskID = strings.TrimSpace(taskID)
+	errorMessage = strings.TrimSpace(errorMessage)
+	if taskID == "" {
+		return fmt.Errorf("task ID is required")
+	}
+	if errorMessage == "" {
+		return fmt.Errorf("failure message is required")
+	}
+	failureRepo, ok := s.repo.(ProcessingFailureRepository)
+	if !ok {
+		return fmt.Errorf("mark layer task failed: processing failure repository is required")
+	}
+	updated, err := failureRepo.MarkFailedIfProcessing(ctx, taskID, errorMessage)
+	if err != nil {
+		return fmt.Errorf("mark layer task failed: %w", err)
+	}
+	if updated {
+		return nil
+	}
+	task, err := s.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return fmt.Errorf("load layer task after failure conflict: %w", err)
+	}
+	switch task.Status {
+	case core.TaskStatusCompleted, core.TaskStatusNeedsReview, core.TaskStatusFailed:
+		return nil
+	default:
+		return fmt.Errorf("mark layer task failed from status %q: %w", task.Status, core.ErrTaskNotRecoverable)
+	}
 }

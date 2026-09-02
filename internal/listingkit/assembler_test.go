@@ -2,11 +2,13 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"task-processor/internal/amazonlisting"
 	openaiclient "task-processor/internal/integration/openai"
 	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinmanaged "task-processor/internal/publishing/sheinmanaged"
@@ -15,6 +17,8 @@ import (
 )
 
 type stubAmazonDraftBuilder struct{}
+
+type failingAmazonDraftBuilder struct{ err error }
 
 type stubSheinCategoryAPI struct {
 	info *sheincategory.CategoryInfo
@@ -49,18 +53,45 @@ func (s *scriptedListingKitLLM) GetDefaultModel() string {
 	return "test"
 }
 
-func (stubAmazonDraftBuilder) Build(req *GenerateRequest, canonical *canonical.Product) *amazonlisting.AmazonListingDraft {
+func (stubAmazonDraftBuilder) Build(req *GenerateRequest, snapshot *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*amazonlisting.AmazonListingDraft, error) {
 	mainImage := ""
-	if canonical != nil && len(canonical.Images) > 0 {
-		mainImage = canonical.Images[0].URL
+	if approved != nil {
+		for _, asset := range approved.Assets {
+			if asset.Role == productasset.RoleMain {
+				mainImage = asset.URL
+				break
+			}
+		}
+	}
+	title, brand := "", ""
+	if snapshot != nil {
+		title, brand = snapshot.Title, snapshot.Brand
 	}
 	return &amazonlisting.AmazonListingDraft{
 		Marketplace: "amazon",
-		Title:       canonical.Title,
-		Brand:       canonical.Brand,
+		Title:       title,
+		Brand:       brand,
 		Images: &amazonlisting.AmazonImageBundle{
 			MainImage: mainImage,
 		},
+	}, nil
+}
+
+func (b failingAmazonDraftBuilder) Build(*GenerateRequest, *catalog.ProductSnapshot, *productasset.ApprovedAssetInventory) (*amazonlisting.AmazonListingDraft, error) {
+	return nil, b.err
+}
+
+func TestAssemblerPropagatesAmazonDraftBuildFailure(t *testing.T) {
+	want := errors.New("approved inventory is invalid")
+	assembler := NewAssembler(failingAmazonDraftBuilder{err: want})
+	task := &Task{Request: &GenerateRequest{Platforms: []string{"amazon"}, ProductKey: "product-1"}}
+
+	result, err := assembler.Assemble(task, &catalog.ProductSnapshot{Title: "Bottle"}, &productasset.ApprovedAssetInventory{})
+	if !errors.Is(err, want) {
+		t.Fatalf("Assemble() error = %v, want %v", err, want)
+	}
+	if result != nil {
+		t.Fatalf("Assemble() result = %+v, want nil on failed Amazon draft", result)
 	}
 }
 
@@ -158,7 +189,10 @@ func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 		},
 	}
 
-	result := NewAssembler(stubAmazonDraftBuilder{}).Assemble(task, testCatalogSnapshot(t, canonical), approvedAssets)
+	result, err := NewAssembler(stubAmazonDraftBuilder{}).Assemble(task, testCatalogSnapshot(t, canonical), approvedAssets)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Amazon == nil || result.Amazon.Draft == nil {
 		t.Fatal("expected amazon package")
@@ -349,7 +383,10 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 		},
 	}
 
-	result := assembler.Assemble(task, testCatalogSnapshot(t, canonical), nil)
+	result, err := assembler.Assemble(task, testCatalogSnapshot(t, canonical), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Shein == nil || result.Shein.CategoryResolution == nil {
 		t.Fatal("expected shein category resolution")

@@ -24,7 +24,7 @@ func TestRepositoryContract(t *testing.T) {
 	assettest.ExerciseRepositoryContract(t, func(t *testing.T) productasset.Repository {
 		t.Helper()
 		db := openRepositoryTestDB(t)
-		if err := db.AutoMigrate(&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}); err != nil {
+		if err := AutoMigrate(db); err != nil {
 			t.Fatalf("AutoMigrate() error = %v", err)
 		}
 		repo, err := NewRepository(db)
@@ -45,7 +45,7 @@ func TestNewRepositoryRejectsNilDatabase(t *testing.T) {
 
 func TestCommitApprovalRollsBackWholeBatchAndReceiptOnInsertFailure(t *testing.T) {
 	db := openRepositoryTestDB(t)
-	if err := db.AutoMigrate(&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}); err != nil {
+	if err := AutoMigrate(db); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`
@@ -81,7 +81,7 @@ func TestCommitApprovalRollsBackWholeBatchAndReceiptOnInsertFailure(t *testing.T
 			t.Fatalf("CommitApproval() error chain exposes SQLite driver error: %v", err)
 		}
 	}
-	for _, model := range []any{&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}} {
+	for _, model := range []any{&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}, &ApprovedInventoryHeadRecord{}} {
 		var count int64
 		if err := db.Model(model).Count(&count).Error; err != nil {
 			t.Fatal(err)
@@ -107,7 +107,7 @@ func TestCommitApprovalRollsBackWholeBatchAndReceiptOnInsertFailure(t *testing.T
 
 func TestCommitApprovalPersistsFullTenantQualifiedIdentity(t *testing.T) {
 	db := openRepositoryTestDB(t)
-	if err := db.AutoMigrate(&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}); err != nil {
+	if err := AutoMigrate(db); err != nil {
 		t.Fatal(err)
 	}
 	repo, err := NewRepository(db)
@@ -134,19 +134,23 @@ func TestCommitApprovalPersistsFullTenantQualifiedIdentity(t *testing.T) {
 
 func TestGetApprovedInventoryHasStableReconstructionOrder(t *testing.T) {
 	db := openRepositoryTestDB(t)
-	if err := db.AutoMigrate(&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}); err != nil {
+	if err := AutoMigrate(db); err != nil {
 		t.Fatal(err)
 	}
 	repo, err := NewRepository(db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index, assetID := range []string{"asset-b", "asset-a"} {
-		commit := repositoryTestCommit("tenant-a", "product-1", fmt.Sprintf("approve-%d", index+1), assetID)
-		commit.Assets[0].RunID = fmt.Sprintf("run-%d", 2-index)
-		if _, err := repo.CommitApproval(context.Background(), commit); err != nil {
-			t.Fatal(err)
-		}
+	commit := repositoryTestCommit("tenant-a", "product-1", "approve-1", "asset-b")
+	commit.Assets[0].SlotID = "slot-b"
+	secondAsset := commit.Assets[0]
+	secondAsset.ID = "asset-a"
+	secondAsset.SlotID = "slot-a"
+	secondAsset.Role = productasset.RoleGallery
+	secondAsset.URL = "https://cdn.example/asset-a.png"
+	commit.Assets = append(commit.Assets, secondAsset)
+	if _, err := repo.CommitApproval(context.Background(), commit); err != nil {
+		t.Fatal(err)
 	}
 	first, err := repo.GetApprovedInventory(context.Background(), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"})
 	if err != nil {
@@ -345,6 +349,9 @@ func TestRepositoryMapsMalformedPersistedAssetToStateInvalid(t *testing.T) {
 				PayloadJSON: test.payload,
 			}
 			if err := db.Create(&record).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Create(&ApprovedInventoryHeadRecord{TenantID: "tenant-a", ProductKey: "product-1", ActionID: "approve-1"}).Error; err != nil {
 				t.Fatal(err)
 			}
 

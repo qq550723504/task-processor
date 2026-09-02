@@ -102,11 +102,28 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 	})
 	require.NoError(t, err)
 	deps.attachImageModule(imageModule)
+	const amazonProductKey = "amazon-e2e-earbuds-1"
 	amazonModule, err := amazonlistinghttpapi.BuildRuntimeModule(amazonlistinghttpapi.RuntimeBuildInput{
-		Logger:         logger,
-		Config:         deps.shared.cfg,
-		ProductService: deps.features.productService,
-		ImageService:   deps.features.imageService,
+		Logger: logger,
+		Config: deps.shared.cfg,
+		ProductSnapshotReader: amazonListingProductSnapshotReader(func(_ context.Context, tenantID, productKey string) (catalog.ProductSnapshot, error) {
+			require.Equal(t, "app-http-test-tenant", tenantID)
+			require.Equal(t, amazonProductKey, productKey)
+			return catalog.ProductSnapshot{
+				Title:         "Product Snapshot 蓝牙耳机",
+				Description:   "高品质蓝牙耳机，支持主动降噪、蓝牙 5.3 和舒适佩戴。",
+				SellingPoints: []string{"30 小时续航", "双麦克风通话降噪"},
+				Variants: []catalog.Variant{{
+					SKU: "SNAPSHOT-EARBUDS-001", IsDefault: true,
+				}},
+			}, nil
+		}),
+		ApprovedAssetInventoryReader: e2eApprovedAssetReader{inventory: productasset.ApprovedAssetInventory{
+			Scope: productasset.InventoryScope{TenantID: "app-http-test-tenant", ProductKey: amazonProductKey},
+			Assets: []productasset.ApprovedAsset{{
+				ID: "approved-amazon-main", Role: productasset.RoleMain, URL: "https://cdn.example.test/amazon-main.png",
+			}},
+		}},
 	})
 	require.NoError(t, err)
 	deps.attachAmazonListingModule(amazonModule)
@@ -171,8 +188,7 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 
 	amazonTaskID := createTaskViaAPI[map[string]any](t, client, testServer.URL+"/api/v1/amazon/listings/generate", map[string]any{
 		"marketplace": "amazon",
-		"text":        "高品质蓝牙耳机，支持主动降噪、蓝牙 5.3、30 小时续航和舒适佩戴，适合通勤、会议与运动使用。",
-		"image_urls":  imageURLs,
+		"product_key": amazonProductKey,
 	}, func(resp map[string]any) string {
 		taskID, _ := resp["task_id"].(string)
 		return taskID
@@ -187,21 +203,9 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 	workbench := getJSON[amazonlisting.TaskWorkbench](t, client, testServer.URL+"/api/v1/amazon/listings/tasks/"+amazonTaskID+"/workbench")
 	require.Equal(t, amazonTaskID, workbench.TaskID)
 	require.True(t, workbench.Ready)
-	require.Len(t, workbench.ChildTasks, 2)
 	require.NotNil(t, workbench.ReviewSummary)
 	require.GreaterOrEqual(t, workbench.ReviewSummary.TotalCount, 0)
 	require.NotEmpty(t, workbench.ActionBuckets)
-	var itemWithEvidence *amazonlisting.AmazonReviewItem
-	for i := range workbench.ReviewItems {
-		if len(workbench.ReviewItems[i].Evidence) > 0 {
-			itemWithEvidence = &workbench.ReviewItems[i]
-			break
-		}
-	}
-	require.NotNil(t, itemWithEvidence)
-	require.NotZero(t, itemWithEvidence.Confidence)
-	require.NotEmpty(t, itemWithEvidence.Evidence[0].Type)
-	require.NotEmpty(t, itemWithEvidence.Evidence[0].Detail)
 }
 
 func TestHTTPE2E_ListingKitProductSnapshotBuildsSheinPreview(t *testing.T) {

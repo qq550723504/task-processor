@@ -27,3 +27,15 @@ type ApprovalReceiptRecord struct {
 }
 
 func (ApprovalReceiptRecord) TableName() string { return "product_approval_receipts" }
+
+// ApprovedInventoryHeadRecord points at the one approval action whose full
+// asset set is currently authoritative for a tenant-qualified product.
+// Historical approved assets remain immutable and queryable for audit, while
+// consumers never have to infer recency from opaque run or action IDs.
+type ApprovedInventoryHeadRecord struct {
+	TenantID   string `gorm:"primaryKey;size:128"`
+	ProductKey string `gorm:"primaryKey;size:128"`
+	ActionID   string `gorm:"size:128;not null"`
+}
+
+func (ApprovedInventoryHeadRecord) TableName() string { return "product_approved_inventory_heads" }

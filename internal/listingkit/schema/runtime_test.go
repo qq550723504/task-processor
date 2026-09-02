@@ -31,6 +31,7 @@ func TestAutoMigrateRuntimeCreatesRepresentativeTables(t *testing.T) {
 		"ai_async_jobs",
 		"product_approved_assets",
 		"product_approval_receipts",
+		"product_approved_inventory_heads",
 		"source_account",
 		"listing_kit_sds_baseline_cache",
 		"listingkit_owner_scope_system_owned_exceptions",

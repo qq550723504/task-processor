@@ -171,6 +171,8 @@ func TestHTTPAPICompositionBuilderDoesNotOwnAmazonListingRuntimeInput(t *testing
 		"deps.attachAmazonListingModule(",
 		"ProductService:",
 		"ImageService:",
+		"ProductSnapshotReader:",
+		"ApprovedAssetInventoryReader:",
 	} {
 		require.NotContains(t, compositionContent, marker)
 	}
@@ -181,10 +183,13 @@ func TestHTTPAPICompositionBuilderDoesNotOwnAmazonListingRuntimeInput(t *testing
 	for _, marker := range []string{
 		"amazonlistinghttpapi.RuntimeBuildInput{",
 		"deps.attachAmazonListingModule(",
-		"ProductService:",
-		"ImageService:",
+		"ProductSnapshotReader:",
+		"ApprovedAssetInventoryReader:",
 	} {
 		require.Contains(t, featureBuilderContent, marker)
+	}
+	for _, marker := range []string{"ProductService:", "ImageService:"} {
+		require.NotContains(t, featureBuilderContent, marker)
 	}
 }
 

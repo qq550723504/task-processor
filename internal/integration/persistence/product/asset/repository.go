@@ -29,7 +29,7 @@ func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return repositoryUnavailable("migrate schema", errors.New("database is nil"))
 	}
-	return mapRepositoryError("migrate schema", db.AutoMigrate(&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}))
+	return mapRepositoryError("migrate schema", db.AutoMigrate(&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}, &ApprovedInventoryHeadRecord{}))
 }
 
 func (r *repository) CommitApproval(ctx context.Context, commit productasset.ApprovalCommit) (productasset.ApprovalReceipt, error) {
@@ -84,6 +84,14 @@ func (r *repository) CommitApproval(ctx context.Context, commit productasset.App
 		if inserted.RowsAffected != int64(len(assetRecords)) {
 			return productasset.ErrApprovalConflict
 		}
+		head := ApprovedInventoryHeadRecord{TenantID: commit.TenantID, ProductKey: commit.ProductKey, ActionID: commit.ActionID}
+		updatedHead := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "product_key"}},
+			DoUpdates: clause.AssignmentColumns([]string{"action_id"}),
+		}).Create(&head)
+		if updatedHead.Error != nil {
+			return mapRepositoryError("advance approved inventory head", updatedHead.Error)
+		}
 		receipt = productasset.ApprovalReceipt{ActionID: commit.ActionID, AssetIDs: append([]string(nil), assetIDs...)}
 		return nil
 	})
@@ -135,16 +143,27 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 		return productasset.ApprovedAssetInventory{}, err
 	}
 
-	var records []ApprovedAssetRecord
+	var head ApprovedInventoryHeadRecord
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND product_key = ?", scope.TenantID, scope.ProductKey).
-		Order("run_id ASC, plan_revision ASC, slot_id ASC, attempt ASC, action_id ASC, asset_id ASC").
+		Take(&head).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+	}
+	if err != nil {
+		return productasset.ApprovedAssetInventory{}, mapRepositoryError("load approved inventory head", err)
+	}
+
+	var records []ApprovedAssetRecord
+	err = r.db.WithContext(ctx).
+		Where("tenant_id = ? AND product_key = ? AND action_id = ?", scope.TenantID, scope.ProductKey, head.ActionID).
+		Order("slot_id ASC, attempt ASC, asset_id ASC").
 		Find(&records).Error
 	if err != nil {
 		return productasset.ApprovedAssetInventory{}, mapRepositoryError("load approved asset inventory", err)
 	}
 	if len(records) == 0 {
-		return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+		return productasset.ApprovedAssetInventory{}, repositoryStateInvalid("load approved asset inventory", errors.New("inventory head has no approved assets"))
 	}
 	approved := make([]productasset.ApprovedAsset, len(records))
 	for index, record := range records {

@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"context"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/product/catalog"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsbootstrap "task-processor/internal/sds/httpbootstrap"
@@ -15,6 +17,13 @@ import (
 )
 
 var newSDSSyncServiceForHTTPAPI = sdsbootstrap.NewSyncService
+
+func readProductSnapshotForHTTPAPI(ctx context.Context, deps *runtimeDeps, tenantID, productKey string) (catalog.ProductSnapshot, error) {
+	if deps == nil || deps.features == nil || deps.features.productSnapshotReader == nil {
+		return catalog.ProductSnapshot{}, listingkit.ErrProductSnapshotNotReady
+	}
+	return deps.features.productSnapshotReader.GetProductSnapshot(ctx, listingkit.ProductSnapshotQuery{TenantID: tenantID, ProductKey: productKey})
+}
 
 func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) *sheinlogin.RedisStore {
 	if deps == nil || deps.shared == nil || deps.shared.cfg == nil {

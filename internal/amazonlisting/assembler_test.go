@@ -4,79 +4,54 @@ import (
 	"reflect"
 	"testing"
 
-	"task-processor/internal/product/catalog/canonical"
-	"task-processor/internal/productimage"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 )
 
 func TestAssemblerUsesTargetCategoryHintPath(t *testing.T) {
-	assembled := NewAssembler().Assemble(&Task{
-		ID: "task-1",
-		Request: &GenerateRequest{
-			Marketplace:        "amazon",
-			Country:            "US",
-			TargetCategoryHint: "Electronics > Headphones",
+	assembled, err := NewAssembler().Build(DraftInput{
+		TaskID:  "task-1",
+		Request: &GenerateRequest{Marketplace: "amazon", Country: "US", TargetCategoryHint: "Electronics > Headphones"},
+		Snapshot: catalog.ProductSnapshot{
+			Title:        "Wireless Headphones",
+			Description:  "Over-ear wireless headphones with long battery life.",
+			CategoryPath: []string{"Consumer Goods", "Audio"},
 		},
-	}, &canonical.Product{
-		Title:        "Wireless Headphones",
-		Description:  "Over-ear wireless headphones with long battery life.",
-		CategoryPath: []string{"Consumer Goods", "Audio"},
-	}, nil)
-
+		ApprovedAssets: productasset.ApprovedAssetInventory{Assets: []productasset.ApprovedAsset{
+			{ID: "main-1", Role: productasset.RoleMain, URL: "https://cdn.example.com/main.jpg"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
 	if assembled.ProductType != "Headphones" {
 		t.Fatalf("expected product type from hint, got %q", assembled.ProductType)
 	}
-
-	expected := []string{"Electronics", "Headphones"}
-	if !reflect.DeepEqual(assembled.CategoryPath, expected) {
+	if expected := []string{"Electronics", "Headphones"}; !reflect.DeepEqual(assembled.CategoryPath, expected) {
 		t.Fatalf("expected category path %v, got %v", expected, assembled.CategoryPath)
 	}
 }
 
-func TestAssemblerKeepsProductCategoryWhenTargetCategoryHintMissing(t *testing.T) {
-	assembled := NewAssembler().Assemble(&Task{
-		ID: "task-2",
-		Request: &GenerateRequest{
-			Marketplace: "amazon",
-			Country:     "US",
+func TestAssemblerKeepsSnapshotCategoryWhenTargetCategoryHintMissing(t *testing.T) {
+	assembled, err := NewAssembler().Build(DraftInput{
+		TaskID:  "task-2",
+		Request: &GenerateRequest{Marketplace: "amazon", Country: "US"},
+		Snapshot: catalog.ProductSnapshot{
+			Title:        "Ceramic Mug",
+			Description:  "A ceramic mug for coffee and tea.",
+			CategoryPath: []string{"Home & Kitchen", "Drinkware"},
 		},
-	}, &canonical.Product{
-		Title:        "Ceramic Mug",
-		Description:  "A ceramic mug for coffee and tea.",
-		CategoryPath: []string{"Home & Kitchen", "Drinkware"},
-	}, nil)
-
-	if assembled.ProductType != "Drinkware" {
-		t.Fatalf("expected product type from product category, got %q", assembled.ProductType)
-	}
-
-	expected := []string{"Home & Kitchen", "Drinkware"}
-	if !reflect.DeepEqual(assembled.CategoryPath, expected) {
-		t.Fatalf("expected category path %v, got %v", expected, assembled.CategoryPath)
-	}
-}
-
-func TestAssemblerCarriesImageIPRiskIntoListingIPRisk(t *testing.T) {
-	assembled := NewAssembler().Assemble(&Task{
-		ID: "task-3",
-		Request: &GenerateRequest{
-			Marketplace: "amazon",
-			Country:     "US",
-		},
-	}, &canonical.Product{
-		Title:       "Ceramic Mug",
-		Description: "A ceramic mug for coffee and tea.",
-	}, &productimage.ImageProcessResult{
-		IPRisk: &productimage.IPRiskReport{
-			Level:   "medium",
-			Score:   0.4,
-			Reasons: []string{"image contains logo or watermark risk"},
-		},
+		ApprovedAssets: productasset.ApprovedAssetInventory{Assets: []productasset.ApprovedAsset{
+			{ID: "main-1", Role: productasset.RoleMain, URL: "https://cdn.example.com/main.jpg"},
+		}},
 	})
-
-	if assembled.ListingIPRisk == nil {
-		t.Fatal("expected listing ip risk to be populated")
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
 	}
-	if assembled.ListingIPRisk.Level != "medium" {
-		t.Fatalf("listing ip risk level = %q, want medium", assembled.ListingIPRisk.Level)
+	if assembled.ProductType != "Drinkware" {
+		t.Fatalf("expected product type from snapshot category, got %q", assembled.ProductType)
+	}
+	if expected := []string{"Home & Kitchen", "Drinkware"}; !reflect.DeepEqual(assembled.CategoryPath, expected) {
+		t.Fatalf("expected category path %v, got %v", expected, assembled.CategoryPath)
 	}
 }

@@ -81,4 +81,5 @@ type InternalListingKitService interface {
 	ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error)
 	ProcessStandardProductLayer(ctx context.Context, taskID string) (*StandardProductSnapshot, error)
 	ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error)
+	PersistLayerFailure(ctx context.Context, taskID string, errorMessage string) error
 }

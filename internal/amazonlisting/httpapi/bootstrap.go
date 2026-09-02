@@ -13,8 +13,6 @@ import (
 	"task-processor/internal/httpbootstrap"
 	platformdatabase "task-processor/internal/platform/database"
 	worker "task-processor/internal/platform/workerpool"
-	"task-processor/internal/productenrich"
-	"task-processor/internal/productimage"
 )
 
 type Module struct {
@@ -24,10 +22,10 @@ type Module struct {
 }
 
 type BuildModuleInput struct {
-	Config         *config.Config
-	Logger         *logrus.Logger
-	ProductService productenrich.ProductService
-	ImageService   productimage.Service
+	Config                       *config.Config
+	Logger                       *logrus.Logger
+	ProductSnapshotReader        amazonlisting.ProductSnapshotReader
+	ApprovedAssetInventoryReader amazonlisting.ApprovedAssetInventoryReader
 }
 
 func BuildModule(input BuildModuleInput) (*Module, error) {
@@ -37,25 +35,24 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 	}
 
 	svc, err := amazonlisting.NewService(&amazonlisting.ServiceConfig{
-		Repository:       repo,
-		ProductService:   input.ProductService,
-		ImageService:     input.ImageService,
-		Assembler:        amazonlisting.NewAssembler(),
-		ListingSubmitter: amazonlisting.NewSPAPISubmitter(input.Config),
-		Validator:        amazonlisting.NewValidator(),
+		Repository:                   repo,
+		ProductSnapshotReader:        input.ProductSnapshotReader,
+		ApprovedAssetInventoryReader: input.ApprovedAssetInventoryReader,
+		Assembler:                    amazonlisting.NewAssembler(),
+		ListingSubmitter:             amazonlisting.NewSPAPISubmitter(input.Config),
+		Validator:                    amazonlisting.NewValidator(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create amazon listing service: %w", err)
 	}
 
-	processor, err := amazonlisting.NewProcessor(svc, repo, input.Logger, 2)
+	processor, err := amazonlisting.NewProcessor(svc, repo, input.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("create amazon listing processor: %w", err)
 	}
 	pool := httpbootstrap.NewWorkerPool(processor, input.Config)
 	submitter := &httpbootstrap.PoolSubmitter{Pool: pool}
 	svc.SetTaskSubmitter(submitter)
-	processor.SetTaskSubmitter(submitter)
 
 	handler, err := amazonlistingapi.NewHandler(svc)
 	if err != nil {

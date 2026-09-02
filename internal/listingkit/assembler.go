@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	productasset "task-processor/internal/product/asset"
@@ -51,15 +52,15 @@ func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
 	}
 }
 
-func (a *assembler) Assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) *ListingKitResult {
+func (a *assembler) Assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*ListingKitResult, error) {
 	return a.assemble(task, product, approved)
 }
 
-func (a *assembler) AssembleForTargets(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) *ListingKitResult {
+func (a *assembler) AssembleForTargets(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*ListingKitResult, error) {
 	return a.assemble(task, product, approved)
 }
 
-func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) *ListingKitResult {
+func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*ListingKitResult, error) {
 	now := time.Now()
 	result := initResult(task)
 	result.UpdatedAt = now
@@ -76,13 +77,17 @@ func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, appro
 	result.Summary = buildSummary(task, canonicalProduct)
 
 	if task == nil || task.Request == nil {
-		return result
+		return result, nil
 	}
 
 	for _, platform := range task.Request.Platforms {
 		switch platform {
 		case "amazon":
-			result.Amazon = &AmazonPackage{Draft: a.amazonBuilder.Build(task.Request, canonicalProduct)}
+			draft, err := a.amazonBuilder.Build(task.Request, product, approved)
+			if err != nil {
+				return nil, fmt.Errorf("build amazon draft: %w", err)
+			}
+			result.Amazon = &AmazonPackage{Draft: draft}
 		case "shein":
 			result.Shein = sheinpub.NewAssembler(a.buildSheinAssemblerConfig()).Build(buildSheinPublishRequestForTask(task, task.Request), canonicalProduct)
 			refreshSheinReviewState(result.Shein, common.CollectReviewNotes(canonicalProduct)...)
@@ -93,7 +98,7 @@ func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, appro
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 func buildSheinPublishRequest(req *GenerateRequest) *sheinpub.BuildRequest {

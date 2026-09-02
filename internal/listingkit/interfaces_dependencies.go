@@ -9,7 +9,6 @@ import (
 	"task-processor/internal/listingkit/core"
 	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
-	"task-processor/internal/product/catalog/canonical"
 )
 
 type TaskSubmitter interface{ Submit(taskID string) error }
@@ -53,6 +52,13 @@ type Repository interface {
 	PrepareRetry(ctx context.Context, taskID string) error
 	IncrementRetryCount(ctx context.Context, taskID string) error
 	SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error
+}
+
+// ProcessingFailureRepository provides the compare-and-set boundary used by
+// durable workflows when recording a terminal failure. It must never replace
+// a completed or needs-review result after an activity response is lost.
+type ProcessingFailureRepository interface {
+	MarkFailedIfProcessing(ctx context.Context, taskID string, errorMessage string) (bool, error)
 }
 
 // UsageSettlementRepository is an optional task-repository extension used to
@@ -146,15 +152,15 @@ type SDSRetirementRepository interface {
 }
 
 type Assembler interface {
-	Assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) *ListingKitResult
+	Assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*ListingKitResult, error)
 }
 
 type TargetAwareAssembler interface {
-	AssembleForTargets(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) *ListingKitResult
+	AssembleForTargets(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*ListingKitResult, error)
 }
 
 type AmazonDraftBuilder interface {
-	Build(req *GenerateRequest, canonical *canonical.Product) *amazonlisting.AmazonListingDraft
+	Build(req *GenerateRequest, snapshot *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*amazonlisting.AmazonListingDraft, error)
 }
 
 type TaskSubmitterConfigurer interface {

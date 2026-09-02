@@ -59,3 +59,10 @@ type PlatformAdaptWorkflowInput struct {
 	RequestedAt     time.Time                           `json:"requested_at"`
 	TriggeredByUser string                              `json:"triggered_by_user,omitempty"`
 }
+
+// LayerFailureInput records the terminal state only after a layer activity has
+// exhausted its workflow-level retry policy.
+type LayerFailureInput struct {
+	TaskID string `json:"task_id"`
+	Error  string `json:"error"`
+}

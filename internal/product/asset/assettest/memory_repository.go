@@ -14,10 +14,10 @@ import (
 )
 
 type MemoryRepository struct {
-	mu          sync.RWMutex
-	actions     map[actionKey]actionRecord
-	inventories map[inventoryKey][]asset.ApprovedAsset
-	assetIDs    map[tenantAssetKey]struct{}
+	mu       sync.RWMutex
+	actions  map[actionKey]actionRecord
+	heads    map[inventoryKey]actionKey
+	assetIDs map[tenantAssetKey]struct{}
 }
 
 type actionKey struct {
@@ -42,9 +42,9 @@ type actionRecord struct {
 
 func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
-		actions:     make(map[actionKey]actionRecord),
-		inventories: make(map[inventoryKey][]asset.ApprovedAsset),
-		assetIDs:    make(map[tenantAssetKey]struct{}),
+		actions:  make(map[actionKey]actionRecord),
+		heads:    make(map[inventoryKey]actionKey),
+		assetIDs: make(map[tenantAssetKey]struct{}),
 	}
 }
 
@@ -83,7 +83,7 @@ func (r *MemoryRepository) CommitApproval(ctx context.Context, commit asset.Appr
 	storedReceipt := asset.CloneApprovalReceipt(receipt)
 	r.actions[key] = actionRecord{commit: storedCommit, receipt: storedReceipt}
 	invKey := inventoryKey{tenantID: commit.TenantID, productKey: commit.ProductKey}
-	r.inventories[invKey] = append(r.inventories[invKey], asset.CloneApprovalCommit(commit).Assets...)
+	r.heads[invKey] = key
 	for _, approved := range commit.Assets {
 		r.assetIDs[tenantAssetKey{tenantID: commit.TenantID, assetID: approved.ID}] = struct{}{}
 	}
@@ -103,11 +103,15 @@ func (r *MemoryRepository) GetApprovedInventory(ctx context.Context, scope asset
 	if err := ctx.Err(); err != nil {
 		return asset.ApprovedAssetInventory{}, err
 	}
-	approved, ok := r.inventories[inventoryKey{tenantID: scope.TenantID, productKey: scope.ProductKey}]
-	if !ok || len(approved) == 0 {
+	head, ok := r.heads[inventoryKey{tenantID: scope.TenantID, productKey: scope.ProductKey}]
+	if !ok {
 		return asset.ApprovedAssetInventory{}, asset.ErrApprovedAssetsNotReady
 	}
-	return asset.CloneApprovedAssetInventory(asset.ApprovedAssetInventory{Scope: scope, Assets: approved}), nil
+	record, ok := r.actions[head]
+	if !ok || record.commit.ProductKey != scope.ProductKey || len(record.commit.Assets) == 0 {
+		return asset.ApprovedAssetInventory{}, asset.ErrRepositoryStateInvalid
+	}
+	return asset.CloneApprovedAssetInventory(asset.ApprovedAssetInventory{Scope: scope, Assets: record.commit.Assets}), nil
 }
 
 type RepositoryFactory func(t *testing.T) asset.Repository
@@ -131,6 +135,29 @@ func ExerciseRepositoryContract(t *testing.T, factory RepositoryFactory) {
 		assertNoError(t, err)
 		if len(inventory.Assets) != 1 || inventory.Assets[0].ID != "asset-1" {
 			t.Fatalf("inventory = %+v, want exactly approved asset-1", inventory)
+		}
+	})
+
+	t.Run("latest approval atomically replaces the current inventory", func(t *testing.T) {
+		repo := factory(t)
+		first := contractCommit("tenant-a", "product-1", "approve-1", "asset-1")
+		second := contractCommit("tenant-a", "product-1", "approve-2", "asset-2")
+		second.Assets[0].RunID = "run-2"
+		assertNoError(t, commitOnly(repo, first))
+		assertNoError(t, commitOnly(repo, second))
+
+		inventory, err := repo.GetApprovedInventory(context.Background(), asset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"})
+		assertNoError(t, err)
+		if len(inventory.Assets) != 1 || inventory.Assets[0].ID != "asset-2" {
+			t.Fatalf("inventory = %+v, want only latest approved asset-2", inventory)
+		}
+
+		// Replaying an older idempotency action must not move the inventory head backward.
+		assertNoError(t, commitOnly(repo, first))
+		inventory, err = repo.GetApprovedInventory(context.Background(), asset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"})
+		assertNoError(t, err)
+		if len(inventory.Assets) != 1 || inventory.Assets[0].ID != "asset-2" {
+			t.Fatalf("inventory after replay = %+v, want latest approved asset-2", inventory)
 		}
 	})
 
@@ -300,6 +327,11 @@ func contractCommit(tenantID, productKey, actionID, assetID string) asset.Approv
 			Width: 1200, Height: 1200, Operations: []string{"remove_background", "approve"},
 		}},
 	}
+}
+
+func commitOnly(repo asset.Repository, commit asset.ApprovalCommit) error {
+	_, err := repo.CommitApproval(context.Background(), commit)
+	return err
 }
 
 func assertNoError(t *testing.T, err error) {

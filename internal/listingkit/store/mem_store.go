@@ -194,6 +194,23 @@ func (r *MemTaskRepository) MarkFailed(ctx context.Context, taskID string, error
 	return nil
 }
 
+func (r *MemTaskRepository) MarkFailedIfProcessing(ctx context.Context, taskID string, errorMsg string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return false, core.ErrTaskNotFound
+	}
+	if task.Status != core.TaskStatusProcessing {
+		return false, nil
+	}
+	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
+	task.Error = errorMsg
+	task.UpdatedAt = time.Now()
+	return true, nil
+}
+
 func (r *MemTaskRepository) MarkBlockedRetryable(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

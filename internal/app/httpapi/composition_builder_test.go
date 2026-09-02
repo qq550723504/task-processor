@@ -14,6 +14,8 @@ import (
 	imageagenthttpapi "task-processor/internal/imageagent/httpapi"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
@@ -60,8 +62,13 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 
 	logger := logrus.New()
 	deps := &runtimeDeps{
-		shared:   &sharedRuntimeDeps{},
-		features: &featureRuntimeState{},
+		shared: &sharedRuntimeDeps{},
+		features: &featureRuntimeState{
+			productSnapshotReader: stubCompositionProductSnapshotReader{},
+			listingKitSupport: &listingKitSupport{
+				approvedAssetReader: stubCompositionApprovedAssetReader{},
+			},
+		},
 	}
 	order := make([]string, 0, 9)
 	sheinClosed := false
@@ -183,6 +190,30 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	require.True(t, sdsClosed)
 }
 
+func TestAmazonListingFeatureBuilderSkipsModuleWithoutProductSnapshotReader(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	builder := amazonListingFeatureBuilder{
+		buildAmazonListing: func(amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
+			called = true
+			return &amazonlistinghttpapi.Module{}, nil
+		},
+	}
+	deps := &runtimeDeps{
+		shared: &sharedRuntimeDeps{},
+		features: &featureRuntimeState{listingKitSupport: &listingKitSupport{
+			approvedAssetReader: stubCompositionApprovedAssetReader{},
+		}},
+	}
+
+	module, err := builder.build(logrus.New(), deps)
+
+	require.NoError(t, err)
+	require.Nil(t, module)
+	require.False(t, called)
+}
+
 func TestHTTPFeatureCompositionIncludesImageAgentRouteModule(t *testing.T) {
 	module := imageagenthttpapi.NewHTTPModule(nil)
 	composition := httpFeatureComposition{imageAgentModule: &imageagenthttpapi.BuildResult{Module: module}}
@@ -270,4 +301,16 @@ type stubCompositionSDSStatusProvider struct{}
 
 func (stubCompositionSDSStatusProvider) Status(context.Context) (*sdslogin.Status, error) {
 	return nil, nil
+}
+
+type stubCompositionProductSnapshotReader struct{}
+
+func (stubCompositionProductSnapshotReader) GetProductSnapshot(context.Context, listingkit.ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
+	return catalog.ProductSnapshot{}, nil
+}
+
+type stubCompositionApprovedAssetReader struct{}
+
+func (stubCompositionApprovedAssetReader) GetApprovedInventory(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	return productasset.ApprovedAssetInventory{}, nil
 }

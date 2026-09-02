@@ -2,7 +2,6 @@ package amazonlisting
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -29,18 +28,17 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 		RetryCount: 0,
 	}
 	identityEnvelope, envelopeErr := aiidentity.CaptureExecutionEnvelope(ctx, task.ID, "amazon", "listing")
-	if envelopeErr == nil {
-		task.SetExecutionEnvelope(identityEnvelope)
-	} else if !errors.Is(envelopeErr, aiidentity.ErrMissingIdentity) {
+	if envelopeErr != nil {
 		return nil, fmt.Errorf("capture execution identity: %w", envelopeErr)
 	}
+	task.SetExecutionEnvelope(identityEnvelope)
 	if err := s.repo.CreateTask(ctx, task); err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 	if s.taskSubmitter != nil {
 		if err := s.taskSubmitter.Submit(task.ID); err != nil {
-			_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to submit task: %v", err))
-			return nil, fmt.Errorf("failed to submit task: %w", err)
+			submitErr := fmt.Errorf("failed to submit task: %w", err)
+			return nil, joinTaskFailurePersistenceError(submitErr, s.repo.MarkFailed(ctx, task.ID, submitErr.Error()))
 		}
 	}
 	return task, nil
@@ -101,8 +99,8 @@ func (s *service) ReviewTask(ctx context.Context, taskID string, req *ReviewTask
 		}
 		if s.taskSubmitter != nil {
 			if err := s.taskSubmitter.Submit(taskID); err != nil {
-				_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to resubmit task: %v", err))
-				return nil, err
+				resubmitErr := fmt.Errorf("failed to resubmit task: %w", err)
+				return nil, joinTaskFailurePersistenceError(resubmitErr, s.repo.MarkFailed(ctx, task.ID, resubmitErr.Error()))
 			}
 		}
 	case "apply_edits":
@@ -112,15 +110,10 @@ func (s *service) ReviewTask(ctx context.Context, taskID string, req *ReviewTask
 		if len(req.Edits) == 0 {
 			return nil, fmt.Errorf("edit request is empty")
 		}
-		ensureCanonicalProduct(task)
-		if err := applyCanonicalEdits(task.Result.CanonicalProduct, req.Edits); err != nil {
-			return nil, err
-		}
-		syncDraftFromCanonical(task.Result, task.Result.CanonicalProduct)
 		if err := applyDraftEdits(task.Result, req.Edits); err != nil {
 			return nil, err
 		}
-		task.Result.ReviewItems = refreshCanonicalReviewItems(removeResolvedReviewItems(task.Result.ReviewItems, req.Edits), task.Result.CanonicalProduct)
+		task.Result.ReviewItems = removeResolvedReviewItems(task.Result.ReviewItems, req.Edits)
 		if s.exportBuilder != nil {
 			task.Result.Export = s.exportBuilder.Build(task.Request, task.Result)
 		}

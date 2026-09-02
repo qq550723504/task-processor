@@ -1290,12 +1290,19 @@ git commit -m "refactor(sds): select approved product assets"
 - Modify: `internal/amazonlisting/httpapi/{bootstrap.go,runtime_builder.go}`
 - Modify/delete tests: `internal/amazonlisting/{workflow_test.go,service_process_recovery_test.go,service_submit_test.go,service_task_test.go,assembler_test.go,review_items_test.go}`
 - Modify: `internal/marketplace/amazon/workspace/review_items.go`
+- Modify actual consumers/guards: `internal/listingkit/{assembler.go,interfaces_dependencies.go,service_defaults.go}`、`internal/app/httpapi/{feature_builder_amazonlisting.go,runtime_support_listingkit.go,e2e_test.go,phase2_boundary_test.go}`、`cmd/product-listing-api/main_test.go`
+- Modify lifecycle contract exposed by fail-closed readers: `internal/amazonlisting/store/{mem_store.go,task_repo_contract_test.go}`
+- Modify review-remediation paths: `internal/amazonlisting/{workflow_process_service.go,workflow_processor.go,workflow_processor_test.go}`、`internal/listingkit/{interfaces_dependencies.go,layer_temporal_contract.go,workflow.go,workflow_platform_adaptation.go,service_task_layers_logic.go,service_child_task_retry_helpers.go}`、`internal/listingkit/temporal/{activities_layers.go,workflow_layers.go,workflow_layers_test.go}`、`internal/listingkit/store/{mem_store.go,task_repo_status.go,task_repo_processing_failure_test.go}`、`internal/product/asset/assettest/memory_repository.go`、`internal/integration/persistence/product/asset/{model.go,repository.go,repository_contract_test.go}`、`internal/{listingkit/schema,app/schema/productlisting}/runtime_test.go`
+
+> **实施补充（2026-09-02）：** 原文件清单遗漏了 Amazon assembler 的真实调用方和 App 装配。若只改 AmazonListing 包，ListingKit 会继续把 Snapshot 降级成 canonical 后调用旧签名，App 也会继续注入 ProductService/ImageService，因此本任务同步切换这些直接消费方，但不提前执行 Task 16 的旧模块全局删除。只读 Reader 未装配时还暴露了内存仓储 `MarkFailed` 不进入终态的问题；本任务以跨 GORM/内存实现的契约测试修复该状态机缺陷。复审又发现三项根因：自动重试会把失败任务重新打开且吞掉提交错误，ListingKit Amazon adapter 会吞掉 assembler error，批准资产的追加列表无法表达“当前批准版本”。本任务因此移除 Amazon 自动重试、逐层传播 ListingKit assembler error，并以不可变批准历史加原子 head 建模当前资产清单。终态持久化也纳入同一错误契约：Amazon 返回原始处理错误与 `MarkFailed` 错误的 error chain；ListingKit 的 Temporal layer activity 在业务重试耗尽后执行独立、可重试的失败持久化 activity，若落库仍失败则把处理错误与持久化错误同时返回，任务不会静默遗留在 `processing`。失败落库使用 repository CAS，只允许 `processing → failed`；若 Activity 已提交 `completed`/`needs_review` 但响应丢失，后续失败 Activity 按幂等成功处理，不会覆盖真实成功终态。
+>
+> Task 12 删除旧 canonical cache 后，仓库内没有 Product Snapshot 的生产 owner、writer 或 repository；仅构造一个读取器既无数据可读，也会形成新的临时兼容债务。因此本任务在生产组合中 fail closed：缺少真实 `ProductSnapshotReader` 或批准资产 Reader 时不注册 AmazonListing module，而不是暴露一个必然进入失败态的路由。直接注入 Reader 的模块级 E2E 继续覆盖完整成功路径。生产启用由 Task 15A 完成。
 
 **Interfaces:**
 - Consumes: AmazonListing-local `ProductSnapshotReader` 和 `ApprovedAssetInventoryReader`。
 - Produces: assembler 直接接受 `catalog.ProductSnapshot` 和 `asset.ApprovedAssetInventory`；无 ProductEnrich/ProductImage task。
 
-- [ ] **Step 1: 写未就绪和只读装配测试**
+- [x] **Step 1: 写未就绪和只读装配测试**
 
 ```go
 func TestBuildDraftRequiresSnapshotAndApprovedMainAsset(t *testing.T) {
@@ -1305,30 +1312,74 @@ func TestBuildDraftRequiresSnapshotAndApprovedMainAsset(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认旧服务依赖仍存在**
+- [x] **Step 2: 运行测试确认旧服务依赖仍存在**
 
 Run: `go test ./internal/amazonlisting/... -run 'TestBuildDraftRequiresSnapshotAndApprovedMainAsset|Test.*Workflow' -count=1 -v`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 删除 ProductService/ImageService 和 child task 流程**
+- [x] **Step 3: 删除 ProductService/ImageService 和 child task 流程**
 
 `Assembler` 改成 `Build(DraftInput) (*AmazonListingDraft, error)`；未投产模块不保留旧 request/result JSON 兼容字段。HTTP bootstrap 仅装配读取 Port、Repository、Validator、Exporter 和 Amazon submitter。
 
-- [ ] **Step 4: 运行 AmazonListing 和 Marketplace 测试**
+- [x] **Step 4: 运行 AmazonListing 和 Marketplace 测试**
 
 Run: `go test ./internal/amazonlisting/... ./internal/marketplace/amazon/... -count=1`
 
-Run: `rg -n 'internal/(productenrich|productimage)|CreateGenerateTask|CreateProcessTask|ProcessImages' internal/amazonlisting internal/marketplace/amazon --glob '*.go'`
+Run: `rg -n 'internal/(productenrich|productimage)|CreateProcessTask|ProcessImages|ProductService|ImageService' internal/amazonlisting internal/marketplace/amazon --glob '*.go'`
 
-Expected: tests PASS；扫描返回零结果。
+Expected: tests PASS；扫描返回零结果。原命令中的 `CreateGenerateTask` 会匹配 AmazonListing 自身的父任务入口，并不能证明 ProductEnrich 子任务已删除，因此改为扫描旧包 import、旧图片任务调用和旧服务依赖。
 
-- [ ] **Step 5: 提交 AmazonListing 依赖退役**
+- [x] **Step 5: 提交 AmazonListing 依赖退役**
 
 ```powershell
-git add internal/amazonlisting internal/marketplace/amazon
+git add internal/amazonlisting internal/marketplace/amazon internal/listingkit internal/app/httpapi cmd/product-listing-api docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
 git diff --cached --check
 git commit -m "refactor(amazonlisting): read product facts and approved assets"
+```
+
+---
+
+### Task 15A: 建立 Product Snapshot 所有权和生产读写链路
+
+**Files:**
+- Modify: `internal/product/catalog/`，为 canonical Product Snapshot 定义 repository port、版本/身份与写入契约
+- Create: `internal/integration/persistence/product/catalog/`，实现 snapshot repository 和 schema
+- Modify: Product intake/enrichment 的目标架构写入方，使其在完成规范化后原子发布 Product Snapshot
+- Modify: `internal/app/httpapi/`，通过 typed dependency 注入生产 `ProductSnapshotReader`
+- Modify: `internal/app/schema/productlisting/` and tests
+
+**Interfaces:**
+- Product Catalog 是 Product Snapshot 的唯一 owner；写入方发布规范化、带 tenant/product 精确身份的不可变版本，读取方只能按精确身份读取当前版本。
+- Persistence adapter 同时实现写 Port 与只读 Port；App 只负责 typed composition，不接收或复用历史 `config.Config` 加载器，不通过 ProductEnrich task/result、canonical cache 或 JSON 兼容字段中转。
+- AmazonListing 和 ListingKit 只依赖窄 Reader；生产 module 只在 Snapshot reader 与批准资产 reader 都存在时注册。
+
+- [ ] **Step 1: 写 repository contract 与生产组合失败/成功测试**
+
+覆盖 tenant/product 隔离、原子发布、幂等重放、当前版本读取、无 snapshot 的稳定未就绪错误，以及 App 缺依赖不注册、有真实 reader 才注册。
+
+- [ ] **Step 2: 运行测试确认缺少生产所有者和 Reader**
+
+Run: `go test ./internal/product/catalog/... ./internal/integration/persistence/product/catalog/... ./internal/app/httpapi -count=1`
+
+Expected: FAIL，直到 owner、persistence、writer 与 typed composition 全部存在。
+
+- [ ] **Step 3: 实现 Product Snapshot owner、repository 和发布边界**
+
+不得恢复已删除的 canonical cache，不得让 AmazonListing/ListingKit 写 snapshot，不得调用历史配置加载器或新增兼容 fallback。若现有 intake 尚无足够结构化输入，先定义显式发布命令并让调用方失败关闭，不从自由文本或旧 task result 猜测字段。
+
+- [ ] **Step 4: 启用生产 Reader 并运行端到端验证**
+
+Run: `go test ./internal/product/catalog/... ./internal/integration/persistence/product/catalog/... ./internal/app/httpapi ./cmd/product-listing-api -count=1`
+
+Expected: PASS；测试先发布 snapshot 与批准资产，再通过生产组合生成 AmazonListing；不存在旧 ProductEnrich/ProductImage 编排或配置加载依赖。
+
+- [ ] **Step 5: 提交 Product Snapshot 生产链路**
+
+```powershell
+git add internal/product/catalog internal/integration/persistence/product/catalog internal/app/httpapi internal/app/schema/productlisting cmd/product-listing-api
+git diff --cached --check
+git commit -m "feat(product): publish production product snapshots"
 ```
 
 ---

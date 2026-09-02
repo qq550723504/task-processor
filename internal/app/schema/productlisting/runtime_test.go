@@ -107,7 +107,7 @@ func TestAutoMigrateRuntimeCreatesExecutionEnvelopeColumns(t *testing.T) {
 			t.Fatalf("missing table %s", table)
 		}
 	}
-	for _, table := range []string{"product_approved_assets", "product_approval_receipts"} {
+	for _, table := range []string{"product_approved_assets", "product_approval_receipts", "product_approved_inventory_heads"} {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("missing table %s", table)
 		}

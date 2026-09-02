@@ -14,7 +14,7 @@ func (s *service) runPlatformAdaptation(
 	ctx context.Context,
 	task *Task,
 	snapshot *StandardProductSnapshot,
-) *ListingKitResult {
+) (*ListingKitResult, error) {
 	log := logrus.WithFields(logrus.Fields{
 		"component": "listingkit/platform_adaptation",
 		"task_id":   task.ID,
@@ -38,7 +38,7 @@ func (s *service) runPlatformAdaptation(
 		}
 		final.Summary.NeedsReview = true
 		newWorkflowRecorder(final).FinalizeSummary()
-		return final
+		return final, nil
 	}
 
 	var productSnapshot *catalog.ProductSnapshot
@@ -51,10 +51,14 @@ func (s *service) runPlatformAdaptation(
 	log.Info("starting listing kit platform adaptation")
 	assembler := resolveAssembler(s)
 	var final *ListingKitResult
+	var err error
 	if targetAware, ok := assembler.(TargetAwareAssembler); ok {
-		final = targetAware.AssembleForTargets(task, productSnapshot, approvedAssets)
+		final, err = targetAware.AssembleForTargets(task, productSnapshot, approvedAssets)
 	} else {
-		final = assembler.Assemble(task, productSnapshot, approvedAssets)
+		final, err = assembler.Assemble(task, productSnapshot, approvedAssets)
+	}
+	if err != nil {
+		return nil, err
 	}
 	if final == nil {
 		final = initResult(task)
@@ -70,7 +74,7 @@ func (s *service) runPlatformAdaptation(
 			return final.Summary.WarningCount
 		}(),
 	}).Info("listing kit platform adaptation finished")
-	return final
+	return final, nil
 }
 
 func shouldSkipPlatformAdaptationAfterBlockedSDS(task *Task, snapshot *StandardProductSnapshot) bool {

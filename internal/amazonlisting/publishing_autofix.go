@@ -26,7 +26,6 @@ func (f *autoFixer) Fix(req *GenerateRequest, draft *AmazonListingDraft) {
 	f.fixBulletPoints(draft)
 	f.fixPricing(req, draft)
 	f.fixVariants(draft)
-	f.fixImages(draft)
 }
 
 func (f *autoFixer) FixIssues(req *GenerateRequest, draft *AmazonListingDraft, issues []AmazonIssue) []AmazonFixRecord {
@@ -62,7 +61,6 @@ func (f *autoFixer) FixIssues(req *GenerateRequest, draft *AmazonListingDraft, i
 			if draft.Images != nil {
 				before = draft.Images.MainImage
 			}
-			f.fixImages(draft)
 			record.Action = "fill_main_image"
 			record.Success = draft.Images != nil && strings.TrimSpace(draft.Images.MainImage) != "" && draft.Images.MainImage != before || draft.Images != nil && strings.TrimSpace(draft.Images.MainImage) != ""
 		case "missing_price", "invalid_price":
@@ -209,15 +207,6 @@ func (f *autoFixer) fixVariants(draft *AmazonListingDraft) {
 	}
 	if defaultCount == 0 {
 		draft.Variants[0].IsDefault = true
-	}
-}
-
-func (f *autoFixer) fixImages(draft *AmazonListingDraft) {
-	if draft.Images == nil {
-		return
-	}
-	if draft.Images.MainImage == "" && len(draft.Images.RawInputImages) > 0 {
-		draft.Images.MainImage = draft.Images.RawInputImages[0]
 	}
 }
 

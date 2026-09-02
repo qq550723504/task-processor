@@ -13,6 +13,5 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	if state.blocked {
 		return state.result, nil
 	}
-	final := s.runPlatformAdaptation(ctx, task, state.snapshot)
-	return final, nil
+	return s.runPlatformAdaptation(ctx, task, state.snapshot)
 }

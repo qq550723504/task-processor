@@ -20,9 +20,7 @@ func TestAutoFixerFixesTitleBrandBulletsAndVariants(t *testing.T) {
 		Variants: []AmazonVariantDraft{
 			{},
 		},
-		Images: &AmazonImageBundle{
-			RawInputImages: []string{"https://example.com/raw.jpg"},
-		},
+		Images: &AmazonImageBundle{MainImage: "https://cdn.example.com/approved-main.jpg"},
 	}
 
 	fixer.Fix(&GenerateRequest{BrandHint: "Acme", Country: "US"}, draft)
@@ -42,7 +40,7 @@ func TestAutoFixerFixesTitleBrandBulletsAndVariants(t *testing.T) {
 	if len(draft.Variants) != 1 || draft.Variants[0].SKU == "" || !draft.Variants[0].IsDefault {
 		t.Fatalf("expected variant SKU/default to be auto-fixed")
 	}
-	if draft.Images.MainImage == "" {
-		t.Fatalf("expected main image to fall back from raw input")
+	if draft.Images.MainImage != "https://cdn.example.com/approved-main.jpg" {
+		t.Fatalf("approved main image was changed: %q", draft.Images.MainImage)
 	}
 }

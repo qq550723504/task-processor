@@ -40,14 +40,13 @@ func (s *service) ListTaskQueue(ctx context.Context, query TaskQueueQuery) (*Tas
 		Items: items,
 		Count: len(items),
 		Query: TaskQueueQuery{
-			Status:      statuses,
-			Action:      strings.TrimSpace(query.Action),
-			Field:       strings.TrimSpace(query.Field),
-			Severity:    strings.TrimSpace(query.Severity),
-			Source:      strings.TrimSpace(query.Source),
-			ChildStatus: strings.TrimSpace(query.ChildStatus),
-			NeedsHuman:  query.NeedsHuman,
-			Limit:       limit,
+			Status:     statuses,
+			Action:     strings.TrimSpace(query.Action),
+			Field:      strings.TrimSpace(query.Field),
+			Severity:   strings.TrimSpace(query.Severity),
+			Source:     strings.TrimSpace(query.Source),
+			NeedsHuman: query.NeedsHuman,
+			Limit:      limit,
 		},
 	}, nil
 }
@@ -65,7 +64,6 @@ func buildTaskWorkbench(task *Task) *TaskWorkbench {
 		return workbench
 	}
 	workbench.Ready = task.Result.Compliance != nil && task.Result.Compliance.Ready
-	workbench.ChildTasks = cloneChildTasks(task.Result.ChildTasks)
 	workbench.ReviewItems = append([]AmazonReviewItem(nil), task.Result.ReviewItems...)
 	workbench.ReviewSummary = buildReviewItemSummary(task.Result.ReviewItems)
 	workbench.ActionBuckets = buildWorkbenchBuckets(task.Result)
@@ -106,7 +104,6 @@ func matchesTaskQueueQuery(workbench *TaskWorkbench, query TaskQueueQuery) bool 
 	field := strings.TrimSpace(query.Field)
 	severity := strings.TrimSpace(query.Severity)
 	source := strings.TrimSpace(query.Source)
-	childStatus := strings.TrimSpace(query.ChildStatus)
 
 	if query.NeedsHuman != nil {
 		matched := false
@@ -139,18 +136,6 @@ func matchesTaskQueueQuery(workbench *TaskWorkbench, query TaskQueueQuery) bool 
 		return strings.Contains(strings.ToLower(strings.TrimSpace(item.Source)), strings.ToLower(source))
 	}) {
 		return false
-	}
-	if childStatus != "" {
-		found := false
-		for _, child := range workbench.ChildTasks {
-			if strings.EqualFold(strings.TrimSpace(child.Status), childStatus) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
 	}
 	return true
 }
