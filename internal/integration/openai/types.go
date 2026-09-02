@@ -70,9 +70,4 @@ type PoolConfig struct {
 	MaxConcurrent int             `json:"max_concurrent"`
 }
 
-// ImageRouteSelection binds an image call to the credential configuration
-// selected by the capability router.
-type ImageRouteSelection struct {
-	CredentialReference  string
-	ConfigurationVersion string
-}
+type ImageRouteSelection = ai.ImageRouteSelection

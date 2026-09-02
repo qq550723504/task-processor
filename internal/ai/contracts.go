@@ -135,3 +135,18 @@ type ImageGenerator interface {
 	SubmitImageEdit(ctx context.Context, req *ImageEditRequest) (*ImageAsyncSubmitResponse, error)
 	QueryImageGeneration(ctx context.Context, jobID string) (*ImageAsyncQueryResponse, error)
 }
+
+// ImageRouteSelection binds an image call to an already resolved credential
+// configuration. It contains no provider-specific client or configuration
+// representation.
+type ImageRouteSelection struct {
+	CredentialReference  string
+	ConfigurationVersion string
+}
+
+// RouteBoundImageGenerator executes an image edit only on the exact route
+// selected before dispatch.
+type RouteBoundImageGenerator interface {
+	ImageGenerator
+	EditImageWithRoute(context.Context, *ImageEditRequest, ImageRouteSelection) (*ImageResponse, error)
+}
