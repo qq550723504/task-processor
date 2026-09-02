@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 
-	imagepolicy "task-processor/internal/marketplace/imagepolicy"
 	productimage "task-processor/internal/product/image"
 
 	"gopkg.in/yaml.v3"
@@ -22,6 +21,30 @@ var ErrInvalidCatalog = errors.New("product image policy catalog is invalid")
 
 //go:embed policies.yaml
 var embeddedCatalog []byte
+
+type Catalog struct {
+	Version  string
+	Policies []Policy
+}
+
+type PolicyKey struct {
+	Marketplace   string
+	Country       string
+	Family        string
+	SceneCategory string
+}
+
+type Thresholds struct {
+	MainReview            float64
+	WhiteBackgroundReview float64
+	WhiteCanvasPenalty    float64
+}
+
+type Policy struct {
+	Key           PolicyKey
+	Thresholds    Thresholds
+	SceneDefaults productimage.SceneOptions
+}
 
 type catalogDocument struct {
 	Schema   string          `yaml:"schema"`
@@ -56,45 +79,53 @@ type catalogSceneDefaults struct {
 	StyleReferenceIDs []string `yaml:"style_reference_ids"`
 }
 
-func LoadEmbedded() (imagepolicy.PolicySet, error) {
+func LoadEmbedded() (Catalog, error) {
 	return Decode(bytes.NewReader(embeddedCatalog))
 }
 
-func Decode(reader io.Reader) (imagepolicy.PolicySet, error) {
+func Decode(reader io.Reader) (Catalog, error) {
 	if reader == nil {
-		return imagepolicy.PolicySet{}, ErrInvalidCatalog
+		return Catalog{}, ErrInvalidCatalog
 	}
 	data, err := io.ReadAll(io.LimitReader(reader, maxCatalogDocumentBytes+1))
 	if err != nil || len(data) == 0 || len(data) > maxCatalogDocumentBytes {
-		return imagepolicy.PolicySet{}, catalogError("read bounded catalog", err)
+		return Catalog{}, catalogError("read bounded catalog", err)
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	var document catalogDocument
 	if err := decoder.Decode(&document); err != nil {
-		return imagepolicy.PolicySet{}, catalogError("decode strict catalog", err)
+		return Catalog{}, catalogError("decode strict catalog", err)
 	}
 	var additional any
 	if err := decoder.Decode(&additional); !errors.Is(err, io.EOF) {
-		return imagepolicy.PolicySet{}, catalogError("catalog must contain exactly one document", err)
+		return Catalog{}, catalogError("catalog must contain exactly one document", err)
 	}
 	if document.Schema != catalogSchema || len(document.Policies) == 0 {
-		return imagepolicy.PolicySet{}, ErrInvalidCatalog
+		return Catalog{}, ErrInvalidCatalog
 	}
 
-	set := imagepolicy.PolicySet{Version: document.Schema, Policies: make([]imagepolicy.Policy, len(document.Policies))}
+	catalog := Catalog{Version: document.Schema, Policies: make([]Policy, len(document.Policies))}
+	seen := make(map[PolicyKey]struct{}, len(document.Policies))
 	for index, policy := range document.Policies {
 		if policy.Thresholds.MainReview == nil || policy.Thresholds.WhiteBackgroundReview == nil || policy.Thresholds.WhiteCanvasPenalty == nil {
-			return imagepolicy.PolicySet{}, ErrInvalidCatalog
+			return Catalog{}, ErrInvalidCatalog
 		}
-		set.Policies[index] = imagepolicy.Policy{
-			Key: imagepolicy.PolicyKey{
+		key := PolicyKey{
+			Marketplace: policy.Marketplace, Country: policy.Country, Family: policy.Family, SceneCategory: policy.SceneCategory,
+		}
+		if _, duplicate := seen[key]; duplicate {
+			return Catalog{}, ErrInvalidCatalog
+		}
+		seen[key] = struct{}{}
+		catalog.Policies[index] = Policy{
+			Key: PolicyKey{
 				Marketplace:   policy.Marketplace,
 				Country:       policy.Country,
 				Family:        policy.Family,
 				SceneCategory: policy.SceneCategory,
 			},
-			Thresholds: imagepolicy.Thresholds{
+			Thresholds: Thresholds{
 				MainReview:            *policy.Thresholds.MainReview,
 				WhiteBackgroundReview: *policy.Thresholds.WhiteBackgroundReview,
 				WhiteCanvasPenalty:    *policy.Thresholds.WhiteCanvasPenalty,
@@ -113,10 +144,7 @@ func Decode(reader io.Reader) (imagepolicy.PolicySet, error) {
 			},
 		}
 	}
-	if _, err := imagepolicy.NewResolver(set); err != nil {
-		return imagepolicy.PolicySet{}, catalogError("validate policy set", err)
-	}
-	return set, nil
+	return catalog, nil
 }
 
 func catalogError(operation string, err error) error {

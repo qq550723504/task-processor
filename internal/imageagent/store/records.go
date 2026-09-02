@@ -8,6 +8,7 @@ type runRecord struct {
 	ID                 string `gorm:"primaryKey;type:varchar(64)"`
 	BusinessTaskID     string `gorm:"type:varchar(64);index"`
 	TargetPlatform     string `gorm:"type:varchar(64);not null;default:''"`
+	PolicyContextJSON  []byte
 	Mode               string `gorm:"type:varchar(32);not null"`
 	IdempotencyKey     string `gorm:"type:varchar(128);not null;uniqueIndex:idx_image_agent_v2_runs_owner_idempotency,priority:3"`
 	Status             string `gorm:"type:varchar(32);index;not null"`

@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -4076,7 +4077,11 @@ func TestServiceCapturesVerifiedIdentityAndRejectsNonManualStarts(t *testing.T) 
 	workflows := &recordingDomainWorkflowClient{}
 	service, err := imageagent.NewService(repository, workflows, workflowCatalogResolver{})
 	require.NoError(t, err)
-	input := imageagent.StartRunInput{RunID: "run-1", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-1", Plan: sevenSlotPlan()}
+	input := imageagent.StartRunInput{
+		RunID: "run-1", BusinessTaskID: "task-1", TargetPlatform: "shein",
+		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"},
+		Mode:               imageagent.RunModeManual, IdempotencyKey: "run-key-1", Plan: sevenSlotPlan(),
+	}
 
 	require.ErrorContains(t, service.Start(context.Background(), input), "verified")
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
@@ -4122,7 +4127,10 @@ func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 	client := NewClient(raw)
 	startedAt := time.Date(2026, time.August, 29, 0, 0, 0, 0, time.UTC)
 	start := imageagent.WorkflowStart{
-		Run:  imageagent.Run{ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual, StartedAt: startedAt},
+		Run: imageagent.Run{
+			ID: "run-1", TenantID: "tenant-a", UserID: "user-a", Mode: imageagent.RunModeManual, StartedAt: startedAt,
+			TargetPlatform: "shein", ImagePolicyContext: imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"},
+		},
 		Plan: sevenSlotPlan(), Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"}, MaxConcurrentSlots: 3,
 	}
 
@@ -4134,6 +4142,8 @@ func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 	require.Equal(t, enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY, raw.startOptions.WorkflowIDReusePolicy)
 	require.Equal(t, workflowNameImageAgent, raw.workflowName)
 	require.Equal(t, imageagent.RunModeManual, raw.workflowInput.Mode)
+	require.Equal(t, "shein", raw.workflowInput.TargetPlatform)
+	require.Equal(t, &start.Run.ImagePolicyContext, raw.workflowInput.ImagePolicyContext)
 	require.True(t, raw.workflowInput.WaitForCommands)
 	require.Equal(t, startedAt.Add(V3WorkflowExecutionTimeout-V3LifecycleDeadlineSafetyMargin), raw.workflowInput.LifecycleDeadlineAt)
 
@@ -4146,6 +4156,44 @@ func TestTemporalClientUsesStableWorkflowAndProjectionQuery(t *testing.T) {
 	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ResultDigest: sevenSlotResultDigest, ActorID: "attacker", ActionID: "spoofed", Identity: start.Identity}), "actor")
 	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ActorID: "user-a", ActionID: "missing-digest", Identity: start.Identity}), "digest")
 	require.ErrorContains(t, client.ApproveResults(context.Background(), imageagent.ApproveResultsCommand{RunID: "run-1", PlanRevision: 1, ResultDigest: " " + sevenSlotResultDigest, ActorID: "user-a", ActionID: "spaced-digest", Identity: start.Identity}), "digest")
+}
+
+func TestV3ActivityInputCarriesPolicyContextIntoExecutionFingerprint(t *testing.T) {
+	t.Parallel()
+
+	policyContext := &imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"}
+	input := ExecuteSlotV3ActivityInput{
+		RunID: "run-1", Identity: imageagent.ExecutionIdentity{TenantID: "tenant-a", UserID: "user-a"},
+		TargetPlatform: "shein", ImagePolicyContext: policyContext,
+		PlanRevision: 1, Slot: imageagent.Slot{ID: "slot-1"}, Attempt: 1, IdempotencyKey: "attempt-1",
+	}
+
+	execution := slotExecutionInputV3(input)
+
+	require.Equal(t, "shein", execution.TargetPlatform)
+	require.Equal(t, policyContext, execution.ImagePolicyContext)
+	withoutPolicy := execution
+	withoutPolicy.TargetPlatform = ""
+	withoutPolicy.ImagePolicyContext = nil
+	require.NotEqual(t, imageagent.SlotExecutionFingerprint(withoutPolicy), imageagent.SlotExecutionFingerprint(execution))
+}
+
+func TestTemporalWireOmitsPolicyFieldsForHistoricalPayloads(t *testing.T) {
+	t.Parallel()
+
+	for _, payload := range []any{WorkflowInput{}, SlotWorkflowV3Input{}, ExecuteSlotV3ActivityInput{}, EffectRecoveryWorkflowInput{}} {
+		encoded, err := json.Marshal(payload)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), "TargetPlatform")
+		require.NotContains(t, string(encoded), "ImagePolicyContext")
+	}
+}
+
+func TestPolicyContextPointerPreservesHistoricalFieldAbsence(t *testing.T) {
+	require.Nil(t, policyContextPointer(imageagent.ImagePolicyContext{}))
+
+	context := imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"}
+	require.Equal(t, &context, policyContextPointer(context))
 }
 
 func TestRunProjectionCommitIDIsScopedToTemporalExecution(t *testing.T) {

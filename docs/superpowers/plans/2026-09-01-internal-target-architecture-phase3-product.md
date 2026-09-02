@@ -876,7 +876,7 @@ git commit -m "refactor(marketplace): resolve image policy from injected data"
 **Interfaces:**
 - Consumes: Task 9A image ports、Task 9B `Resolver`、ImageAgent `SlotExecutionInput`/budget contracts，以及 run-scoped 的结构化 `ImagePolicyContext`。
 - Produces: `imageagenttools.NewProductImageSlotExecutor(Dependencies)`；图片能力依赖保持为 `product/image` ports，策略依赖为消费方定义的窄 `ProfileResolver` 接口。App 构造具体 adapters 和 Resolver，缺少生产依赖或策略时失败。
-- Policy data source: `internal/integration/policy/productimage/policies.yaml` 是唯一版本化策略目录；专用 Integration loader 使用仓库已有的 `gopkg.in/yaml.v3` 严格解码，再返回 `imagepolicy.PolicySet`。它不是通用配置框架，不读取旧 `config.Config`、环境变量或配置单例。
+- Policy data source: `internal/integration/policy/productimage/policies.yaml` 是唯一版本化策略目录；专用 Integration loader 使用仓库已有的 `gopkg.in/yaml.v3` 严格解码为不依赖 Marketplace 的 typed `Catalog` DTO。App composition 是唯一同时依赖该 Catalog 与 `imagepolicy` 的边界，并把 Catalog 映射为 `imagepolicy.PolicySet` 后构造 Resolver。它不是通用配置框架，不读取旧 `config.Config`、环境变量或配置单例。
 
 > **执行切片裁决（2026-09-02）：** 实施审查实测本任务列出的旧 Provider/App 生产文件约 4,569 行，尚未包含 ImageAgent、Temporal、HTTP 和 Worker 改造，不能作为一个超过 1,500 行准入阈值的单一开发单元执行。目标接口和最终验收不变，但按依赖顺序拆为独立、始终可编译并分别复审的切片：10A 专用策略 Catalog Adapter；10B Run/HTTP/Store/Temporal 的结构化 PolicyContext；10C Executor 切换到 `product/image` 和精确 Resolver；10D1 OpenAI Adapter；10D2 HTTP Image/GRSAI Adapter；10D3 App-only provider composition；10E Worker fail-closed 装配及 Task 10 全量清理。旧 `productimage` 只可在尚未迁移的切片中暂存，不能增加兼容入口或 fallback；10E 完成时一次性满足本任务的 scoped import 验收。
 
@@ -938,16 +938,18 @@ type ImageCapabilities struct {
 func buildImageCapabilities(deps providerDependencies, resolver ProfileResolver) (ImageCapabilities, error)
 ```
 
-专用策略 Catalog 的公开边界固定为：
+专用策略 Catalog 的公开边界固定为基础设施 DTO，不能直接 import Marketplace 业务域：
 
 ```go
 // LoadEmbedded 严格解析 package 内 go:embed 的 policies.yaml。
-func LoadEmbedded() (imagepolicy.PolicySet, error)
+func LoadEmbedded() (Catalog, error)
 
 // Decode 只用于同一 Adapter 的确定性 fixture 测试和 LoadEmbedded 复用；
 // 调用方不能传运行时文件路径。
-func Decode(io.Reader) (imagepolicy.PolicySet, error)
+func Decode(io.Reader) (Catalog, error)
 ```
+
+`internal/app/worker/imageagent` 负责 `Catalog -> imagepolicy.PolicySet -> imagepolicy.NewResolver`。这是依赖反转边界，不得通过给 Infrastructure→Marketplace 增加 import guard 例外来规避。
 
 `policies.yaml` 使用单一、带版本的 typed schema，不允许 map-of-maps 或未声明字段：
 
@@ -977,7 +979,7 @@ policies:
 
 为保持已有 ImageAgent Temporal history 可重放，新增的 PolicyContext 字段使用可省略的新 wire 字段：新 Run ingress 必填，历史 payload 缺失时 replay 仍按旧记录完成且不会调度新的无策略 effect；不得为新执行增加旧 ProductImage fallback。增加 replay fixture 证明旧 history 的 command payload 不变，并证明新 history 的 policy key 已进入 effect fingerprint。
 
-生产构造必须逐项验证非 nil。策略装配顺序固定为 `integration catalog.Load` → `imagepolicy.NewResolver` → 作为 `ProfileResolver` 注入 Executor；任一步失败都阻止 worker 启动。Loader 只解析嵌入的版本化策略资源，不接受运行时路径，不调用历史配置加载器，也不提供代码内 fallback。Provider 运行参数由各 Integration Adapter 的 typed constructor 显式接收，再以 typed dependencies 传入；本函数不接收 `config.Config`。`ProductImageConfig` 中仍被 ImageAgent 使用的 workdir、model、publisher 配置在 Task 16 改名为 `ImageAgentConfig`；本任务不得把图片策略接入该历史配置对象。
+生产构造必须逐项验证非 nil。策略装配顺序固定为 `integration catalog.Load` → App 映射 typed Catalog 为 `imagepolicy.PolicySet` → `imagepolicy.NewResolver` → 作为 `ProfileResolver` 注入 Executor；任一步失败都阻止 worker 启动。Loader 只解析嵌入的版本化策略资源，不接受运行时路径，不调用历史配置加载器，也不提供代码内 fallback。Provider 运行参数由各 Integration Adapter 的 typed constructor 显式接收，再以 typed dependencies 传入；本函数不接收 `config.Config`。`ProductImageConfig` 中仍被 ImageAgent 使用的 workdir、model、publisher 配置在 Task 16 改名为 `ImageAgentConfig`；本任务不得把图片策略接入该历史配置对象。
 
 - [ ] **Step 4: 运行 ImageAgent Tool、Temporal replay 和 Worker 装配测试**
 

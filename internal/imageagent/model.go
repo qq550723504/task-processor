@@ -69,12 +69,18 @@ type Plan struct {
 	CreatedBy         string
 }
 
+type ImagePolicyContext struct {
+	Country       string
+	Family        string
+	SceneCategory string
+}
+
 type Run struct {
 	ID             string
 	BusinessTaskID string
-	// TargetPlatform is the immutable ListingKit target selected when a
-	// target-keyed task starts a run. Empty retains scalar-task compatibility.
+	// TargetPlatform is the immutable marketplace selected when the run starts.
 	TargetPlatform     string
+	ImagePolicyContext ImagePolicyContext
 	TenantID           string
 	UserID             string
 	Mode               RunMode

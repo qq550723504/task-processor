@@ -64,7 +64,7 @@ func buildResolver(set PolicySet) (*Resolver, error) {
 }
 
 func (r *Resolver) Resolve(input ProfileInput) (ProductImageProfile, error) {
-	if r == nil || !validPolicyKey(PolicyKey(input)) {
+	if r == nil || ValidateProfileInput(input) != nil {
 		return ProductImageProfile{}, ErrInvalidProfileInput
 	}
 	profile, ok := r.policies[PolicyKey(input)]
@@ -73,6 +73,13 @@ func (r *Resolver) Resolve(input ProfileInput) (ProductImageProfile, error) {
 	}
 	profile.SceneDefaults = cloneSceneOptions(profile.SceneDefaults)
 	return profile, nil
+}
+
+func ValidateProfileInput(input ProfileInput) error {
+	if !validPolicyKey(PolicyKey(input)) {
+		return ErrInvalidProfileInput
+	}
+	return nil
 }
 
 func cloneSceneOptions(options productimage.SceneOptions) productimage.SceneOptions {

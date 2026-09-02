@@ -152,27 +152,29 @@ func newBlockDTO(value *imageagent.Block) *blockDTO {
 }
 
 type runDTO struct {
-	ID                 string               `json:"id"`
-	BusinessTaskID     string               `json:"business_task_id,omitempty"`
-	TargetPlatform     string               `json:"target_platform,omitempty"`
-	TenantID           string               `json:"tenant_id"`
-	UserID             string               `json:"user_id"`
-	Mode               imageagent.RunMode   `json:"mode"`
-	IdempotencyKey     string               `json:"idempotency_key"`
-	Status             imageagent.RunStatus `json:"status"`
-	CurrentNode        string               `json:"current_node"`
-	ActivePlanRevision int64                `json:"active_plan_revision"`
-	Version            int64                `json:"version"`
-	MaxConcurrentSlots int                  `json:"max_concurrent_slots"`
-	Budget             budgetDTO            `json:"budget"`
-	Usage              budgetUsageDTO       `json:"usage"`
-	Block              *blockDTO            `json:"block,omitempty"`
+	ID                 string                `json:"id"`
+	BusinessTaskID     string                `json:"business_task_id,omitempty"`
+	TargetPlatform     string                `json:"target_platform,omitempty"`
+	ImagePolicyContext imagePolicyContextDTO `json:"image_policy_context"`
+	TenantID           string                `json:"tenant_id"`
+	UserID             string                `json:"user_id"`
+	Mode               imageagent.RunMode    `json:"mode"`
+	IdempotencyKey     string                `json:"idempotency_key"`
+	Status             imageagent.RunStatus  `json:"status"`
+	CurrentNode        string                `json:"current_node"`
+	ActivePlanRevision int64                 `json:"active_plan_revision"`
+	Version            int64                 `json:"version"`
+	MaxConcurrentSlots int                   `json:"max_concurrent_slots"`
+	Budget             budgetDTO             `json:"budget"`
+	Usage              budgetUsageDTO        `json:"usage"`
+	Block              *blockDTO             `json:"block,omitempty"`
 }
 
 func newRunDTO(run imageagent.Run) runDTO {
 	return runDTO{
 		ID: run.ID, BusinessTaskID: run.BusinessTaskID, TargetPlatform: run.TargetPlatform, TenantID: run.TenantID, UserID: run.UserID,
-		Mode: run.Mode, IdempotencyKey: run.IdempotencyKey, Status: run.Status, CurrentNode: run.CurrentNode,
+		ImagePolicyContext: imagePolicyContextDTO{Country: run.ImagePolicyContext.Country, Family: run.ImagePolicyContext.Family, SceneCategory: run.ImagePolicyContext.SceneCategory},
+		Mode:               run.Mode, IdempotencyKey: run.IdempotencyKey, Status: run.Status, CurrentNode: run.CurrentNode,
 		ActivePlanRevision: run.ActivePlanRevision, Version: run.Version, MaxConcurrentSlots: run.MaxConcurrentSlots,
 		Budget: newBudgetDTO(run.Budget),
 		Usage:  newBudgetUsageDTO(run.Usage), Block: newBlockDTO(run.Block),

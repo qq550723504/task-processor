@@ -85,9 +85,22 @@ func (h *imageAgentWorkspaceHandler) GetImageAgentAssets(c *gin.Context) {
 }
 
 type createImageAgentWorkspaceRunRequest struct {
-	TargetPlatform string   `json:"target_platform"`
-	SourceAssetID  string   `json:"source_asset_id"`
-	StyleAssetIDs  []string `json:"style_asset_ids"`
+	TargetPlatform     string                                  `json:"target_platform"`
+	ImagePolicyContext imageAgentWorkspacePolicyContextRequest `json:"image_policy_context"`
+	SourceAssetID      string                                  `json:"source_asset_id"`
+	StyleAssetIDs      []string                                `json:"style_asset_ids"`
+}
+
+type imageAgentWorkspacePolicyContextRequest struct {
+	Country       string `json:"country"`
+	Family        string `json:"family"`
+	SceneCategory string `json:"scene_category"`
+}
+
+func (request imageAgentWorkspacePolicyContextRequest) domain() imageagent.ImagePolicyContext {
+	return imageagent.ImagePolicyContext{
+		Country: request.Country, Family: request.Family, SceneCategory: request.SceneCategory,
+	}
 }
 
 func (h *imageAgentWorkspaceHandler) CreateImageAgentRun(c *gin.Context) {
@@ -102,6 +115,11 @@ func (h *imageAgentWorkspaceHandler) CreateImageAgentRun(c *gin.Context) {
 	}
 	assets, target, err := resolveImageAgentWorkspaceAssets(task, request.TargetPlatform)
 	if err != nil {
+		writeImageAgentWorkspaceError(c, err)
+		return
+	}
+	policyContext := request.ImagePolicyContext.domain()
+	if err := imageagent.ValidateImagePolicyContext(target, policyContext); err != nil {
 		writeImageAgentWorkspaceError(c, err)
 		return
 	}
@@ -126,7 +144,8 @@ func (h *imageAgentWorkspaceHandler) CreateImageAgentRun(c *gin.Context) {
 	}
 	if err := h.application.Start(c.Request.Context(), imageagent.StartRunInput{
 		RunID: runID, BusinessTaskID: task.ID, TargetPlatform: target, Mode: imageagent.RunModeManual,
-		IdempotencyKey: "image-agent-run-" + h.newID(), Plan: plan,
+		ImagePolicyContext: policyContext,
+		IdempotencyKey:     "image-agent-run-" + h.newID(), Plan: plan,
 		Budget: imageagent.Budget{MaxImages: imageAgentWorkspaceMainSlotMaxImages, EnabledLimits: imageagent.BudgetLimitImages},
 	}); err != nil {
 		writeImageAgentWorkspaceError(c, err)

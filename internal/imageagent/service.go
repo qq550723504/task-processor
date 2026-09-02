@@ -94,8 +94,10 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	input.RunID = strings.TrimSpace(input.RunID)
 	input.BusinessTaskID = strings.TrimSpace(input.BusinessTaskID)
-	input.TargetPlatform = strings.TrimSpace(input.TargetPlatform)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	if err := ValidateImagePolicyContext(input.TargetPlatform, input.ImagePolicyContext); err != nil {
+		return err
+	}
 	if err := ValidateMaxConcurrentSlots(input.MaxConcurrentSlots); err != nil {
 		return err
 	}
@@ -119,7 +121,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: input.RunID}
 	if existing, getErr := s.repository.GetProjection(ctx, scope); getErr == nil {
-		if existing.Run.BusinessTaskID != input.BusinessTaskID || existing.Run.TargetPlatform != input.TargetPlatform || existing.Run.IdempotencyKey != input.IdempotencyKey || existing.Run.Budget != input.Budget || existing.Run.MaxConcurrentSlots != input.MaxConcurrentSlots || !reflect.DeepEqual(existing.Plan, input.Plan) {
+		if existing.Run.BusinessTaskID != input.BusinessTaskID || existing.Run.TargetPlatform != input.TargetPlatform || existing.Run.ImagePolicyContext != input.ImagePolicyContext || existing.Run.IdempotencyKey != input.IdempotencyKey || existing.Run.Budget != input.Budget || existing.Run.MaxConcurrentSlots != input.MaxConcurrentSlots || !reflect.DeepEqual(existing.Plan, input.Plan) {
 			return ErrRevisionConflict
 		}
 		if existing.Run.Status == RunStatusCompleted || existing.Run.Status == RunStatusCancelled {
@@ -152,7 +154,8 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	run := Run{
 		ID: input.RunID, BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
-		TenantID: identity.TenantID, UserID: identity.UserID,
+		ImagePolicyContext: input.ImagePolicyContext,
+		TenantID:           identity.TenantID, UserID: identity.UserID,
 		Mode: RunModeManual, IdempotencyKey: input.IdempotencyKey,
 		Status: RunStatusPlanning, CurrentNode: "plan", Version: 1, ActivePlanRevision: input.Plan.Revision,
 		Budget: input.Budget, MaxConcurrentSlots: input.MaxConcurrentSlots,

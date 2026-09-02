@@ -62,15 +62,17 @@ type PublicationAcknowledgement struct {
 }
 
 type SlotExecutionInput struct {
-	RunID          string
-	TenantID       string
-	UserID         string
-	PlanRevision   int64
-	Slot           Slot
-	Attempt        int
-	IdempotencyKey string
-	AssetCatalog   AssetCatalog
-	ProductContext ProductContextRef
+	RunID              string
+	TenantID           string
+	UserID             string
+	TargetPlatform     string              `json:",omitempty"`
+	ImagePolicyContext *ImagePolicyContext `json:",omitempty"`
+	PlanRevision       int64
+	Slot               Slot
+	Attempt            int
+	IdempotencyKey     string
+	AssetCatalog       AssetCatalog
+	ProductContext     ProductContextRef
 }
 
 type SlotExecutionResult struct {
@@ -113,6 +115,7 @@ type StartRunInput struct {
 	RunID              string
 	BusinessTaskID     string
 	TargetPlatform     string
+	ImagePolicyContext ImagePolicyContext
 	Mode               RunMode
 	IdempotencyKey     string
 	Plan               Plan

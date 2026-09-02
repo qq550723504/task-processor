@@ -82,6 +82,11 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 	if input.RunID == "" || input.Identity.TenantID == "" || input.Identity.UserID == "" {
 		return WorkflowResult{}, fmt.Errorf("run ID and verified execution identity are required")
 	}
+	if input.TargetPlatform != "" || input.ImagePolicyContext != nil {
+		if input.ImagePolicyContext == nil || imageagent.ValidateImagePolicyContext(input.TargetPlatform, *input.ImagePolicyContext) != nil {
+			return WorkflowResult{}, fmt.Errorf("validate image policy context: %w", imageagent.ErrValidation)
+		}
+	}
 	input.enforceIngressPlanPolicy = workflow.GetVersion(ctx, commandIngressPlanPolicyPatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 	validatePlan := imageagent.ValidatePlan
 	if input.enforceIngressPlanPolicy {
@@ -1969,6 +1974,7 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 	if activityWire.useV3Slot {
 		future := workflow.ExecuteChildWorkflow(childCtx, ImageSlotWorkflowV3, SlotWorkflowV3Input{
 			RunID: slotInput.RunID, Identity: slotInput.Identity, PlanRevision: slotInput.PlanRevision,
+			TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 			Slot: slotInput.Slot, Attempt: slotInput.Attempt, AssetCatalog: slotInput.AssetCatalog,
 			ExecuteActivityName: activityWire.executeSlot,
 			BudgetAuthorization: input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy, DeadlineAt: input.DeadlineAt, LifecycleDeadlineAt: input.LifecycleDeadlineAt,
@@ -2079,12 +2085,21 @@ func effectRecoveryInputsForCancellation(input WorkflowInput, results []SlotWork
 			}
 			inputs = append(inputs, EffectRecoveryWorkflowInput{
 				RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
+				TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 				Slot: input.Plan.Slots[index], Attempt: effect.Attempt, AssetCatalog: input.AssetCatalog,
 			})
 			break
 		}
 	}
 	return inputs
+}
+
+func clonePolicyContext(value *imageagent.ImagePolicyContext) *imageagent.ImagePolicyContext {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func markBlockedProjectionCode(result *WorkflowResult, code string) {

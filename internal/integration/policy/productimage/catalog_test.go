@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	imagepolicy "task-processor/internal/marketplace/imagepolicy"
 	productimage "task-processor/internal/product/image"
 
 	"github.com/stretchr/testify/require"
@@ -16,16 +15,16 @@ func TestDecodeReturnsTypedPolicySetFromStrictDocument(t *testing.T) {
 	set, err := Decode(strings.NewReader(validCatalogFixture))
 
 	require.NoError(t, err)
-	require.Equal(t, imagepolicy.PolicySet{
+	require.Equal(t, Catalog{
 		Version: "product-image-policy/v1",
-		Policies: []imagepolicy.Policy{{
-			Key: imagepolicy.PolicyKey{
+		Policies: []Policy{{
+			Key: PolicyKey{
 				Marketplace:   "marketplace-a",
 				Country:       "xx",
 				Family:        "family-a",
 				SceneCategory: "category-a",
 			},
-			Thresholds: imagepolicy.Thresholds{
+			Thresholds: Thresholds{
 				MainReview:            0.61,
 				WhiteBackgroundReview: 0.72,
 				WhiteCanvasPenalty:    0.08,
@@ -73,7 +72,7 @@ func TestDecodeRejectsUnsupportedSchemaAndMissingRequiredThreshold(t *testing.T)
 	require.ErrorIs(t, err, ErrInvalidCatalog)
 }
 
-func TestDecodeRejectsDuplicatePoliciesThroughResolverContract(t *testing.T) {
+func TestDecodeRejectsDuplicatePolicyKeys(t *testing.T) {
 	t.Parallel()
 
 	duplicate := strings.Replace(validCatalogFixture, "policies:\n", "policies:\n"+strings.TrimPrefix(validCatalogPolicy, "policies:\n"), 1)
@@ -92,17 +91,13 @@ func TestDecodeRejectsCatalogAboveRawResourceLimit(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidCatalog)
 }
 
-func TestLoadEmbeddedReturnsResolverReadyCatalogWithoutRuntimePath(t *testing.T) {
+func TestLoadEmbeddedReturnsFreshStrictCatalogWithoutRuntimePath(t *testing.T) {
 	t.Parallel()
 
 	first, err := LoadEmbedded()
 	require.NoError(t, err)
 	require.NotEmpty(t, first.Version)
 	require.NotEmpty(t, first.Policies)
-	resolver, err := imagepolicy.NewResolver(first)
-	require.NoError(t, err)
-	require.NotNil(t, resolver)
-
 	first.Policies[0].Key.Marketplace = "mutated"
 	second, err := LoadEmbedded()
 	require.NoError(t, err)

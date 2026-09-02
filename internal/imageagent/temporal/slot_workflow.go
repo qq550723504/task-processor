@@ -98,6 +98,7 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 	ctx = workflow.WithActivityOptions(ctx, slotWorkflowV3ActivityOptions(startToClose, input.ExternalEffectFinalization))
 	activityInput := ExecuteSlotV3ActivityInput{
 		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
+		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 		Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey:             slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
 		AssetCatalog:               input.AssetCatalog,

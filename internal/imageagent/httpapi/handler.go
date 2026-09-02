@@ -75,13 +75,15 @@ func NewHandler(application Application, options ...HandlerOption) (*Handler, er
 }
 
 type createRunRequest struct {
-	RunID              string             `json:"run_id"`
-	BusinessTaskID     string             `json:"business_task_id"`
-	Mode               imageagent.RunMode `json:"mode"`
-	IdempotencyKey     string             `json:"idempotency_key"`
-	Plan               planDTO            `json:"plan"`
-	Budget             budgetInputDTO     `json:"budget"`
-	MaxConcurrentSlots int                `json:"max_concurrent_slots"`
+	RunID              string                `json:"run_id"`
+	BusinessTaskID     string                `json:"business_task_id"`
+	TargetPlatform     string                `json:"target_platform"`
+	ImagePolicyContext imagePolicyContextDTO `json:"image_policy_context"`
+	Mode               imageagent.RunMode    `json:"mode"`
+	IdempotencyKey     string                `json:"idempotency_key"`
+	Plan               planDTO               `json:"plan"`
+	Budget             budgetInputDTO        `json:"budget"`
+	MaxConcurrentSlots int                   `json:"max_concurrent_slots"`
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -99,7 +101,8 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 	if err := h.application.Start(c.Request.Context(), imageagent.StartRunInput{
-		RunID: request.RunID, BusinessTaskID: request.BusinessTaskID, Mode: request.Mode,
+		RunID: request.RunID, BusinessTaskID: request.BusinessTaskID, TargetPlatform: request.TargetPlatform,
+		ImagePolicyContext: request.ImagePolicyContext.domain(), Mode: request.Mode,
 		IdempotencyKey: request.IdempotencyKey, Plan: request.Plan.domain(), Budget: budget,
 		MaxConcurrentSlots: request.MaxConcurrentSlots,
 	}); err != nil {
@@ -107,6 +110,16 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusAccepted, gin.H{"run_id": request.RunID, "status": "accepted"})
+}
+
+type imagePolicyContextDTO struct {
+	Country       string `json:"country"`
+	Family        string `json:"family"`
+	SceneCategory string `json:"scene_category"`
+}
+
+func (value imagePolicyContextDTO) domain() imageagent.ImagePolicyContext {
+	return imageagent.ImagePolicyContext{Country: value.Country, Family: value.Family, SceneCategory: value.SceneCategory}
 }
 
 func (h *Handler) Get(c *gin.Context) {

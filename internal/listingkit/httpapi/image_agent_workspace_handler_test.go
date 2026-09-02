@@ -55,7 +55,7 @@ func TestImageAgentWorkspaceCreateBuildsSingleSourceServerOwnedRun(t *testing.T)
 	router := gin.New()
 	router.POST("/api/v1/listing-kits/tasks/:task_id/image-agent-runs", handler.CreateImageAgentRun)
 
-	response := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","source_asset_id":"shein-source","style_asset_ids":["shein-style","shein-style"]}`)
+	response := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","image_policy_context":{"country":"us","family":"default","scene_category":"shoes"},"source_asset_id":"shein-source","style_asset_ids":["shein-style","shein-style"]}`)
 
 	require.Equal(t, http.StatusAccepted, response.Code)
 	require.JSONEq(t, `{"run_id":"image-agent-run","status":"accepted"}`, response.Body.String())
@@ -64,6 +64,7 @@ func TestImageAgentWorkspaceCreateBuildsSingleSourceServerOwnedRun(t *testing.T)
 	require.Equal(t, "image-agent-run", start.RunID)
 	require.Equal(t, "task-1", start.BusinessTaskID)
 	require.Equal(t, "shein", start.TargetPlatform)
+	require.Equal(t, imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"}, start.ImagePolicyContext)
 	require.Equal(t, imageagent.RunModeManual, start.Mode)
 	require.Equal(t, []string{"shein-source"}, start.Plan.SourceAssetIDs)
 	require.Equal(t, []string{"shein-style"}, start.Plan.StyleReferenceIDs)
@@ -81,7 +82,10 @@ func TestImageAgentWorkspaceCreateRejectsUnknownBrowserFieldsAndUnownedSelection
 	unknownField := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","source_asset_id":"shein-source","run_id":"forged"}`)
 	require.Equal(t, http.StatusBadRequest, unknownField.Code)
 
-	wrongSource := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","source_asset_id":"amazon-source"}`)
+	missingPolicy := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","source_asset_id":"shein-source"}`)
+	require.Equal(t, http.StatusBadRequest, missingPolicy.Code)
+
+	wrongSource := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","image_policy_context":{"country":"us","family":"default","scene_category":"shoes"},"source_asset_id":"amazon-source"}`)
 	require.Equal(t, http.StatusBadRequest, wrongSource.Code)
 	require.Empty(t, application.starts)
 }

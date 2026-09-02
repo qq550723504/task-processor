@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	imagepolicy "task-processor/internal/marketplace/imagepolicy"
 )
 
 // MaxActionIDLength leaves bounded headroom for the longest projection commit
@@ -24,6 +26,15 @@ const MaxJSONSafePlanRevision int64 = 1<<53 - 1
 const MaxPlanSlots = 32
 
 var actionIDPattern = regexp.MustCompile(fmt.Sprintf(`^[A-Za-z0-9][A-Za-z0-9._:+-]{0,%d}$`, MaxActionIDLength-1))
+
+func ValidateImagePolicyContext(marketplace string, context ImagePolicyContext) error {
+	if err := imagepolicy.ValidateProfileInput(imagepolicy.ProfileInput{
+		Marketplace: marketplace, Country: context.Country, Family: context.Family, SceneCategory: context.SceneCategory,
+	}); err != nil {
+		return fmt.Errorf("%w: image policy key must contain canonical marketplace, country, family, and scene category", ErrValidation)
+	}
+	return nil
+}
 
 func ValidateActionID(value string) error {
 	if len(value) > MaxActionIDLength || !actionIDPattern.MatchString(value) {
