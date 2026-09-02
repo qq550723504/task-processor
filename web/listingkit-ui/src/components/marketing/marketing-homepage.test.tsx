@@ -85,7 +85,7 @@ describe("MarketingHomepage", () => {
     expect(screen.getByText("每一个电商岗位，都可以拥有一位 AI 员工")).toBeInTheDocument();
     expect(screen.getByText("连接商品、货盘与工厂，让好产品快速进入市场")).toBeInTheDocument();
     expect(screen.getByText("不同的业务起点，同一套 AI 增长能力")).toBeInTheDocument();
-    expect(screen.getByText("价格与服务")).toBeInTheDocument();
+    expect(screen.getByText("价格与服务方案")).toBeInTheDocument();
     expect(screen.queryByText("让每个人，都拥有一支智能电商团队")).not.toBeInTheDocument();
     expect(document.getElementById("contact")).toBeNull();
   });
