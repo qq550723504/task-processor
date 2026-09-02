@@ -154,8 +154,9 @@ AI Token       → AI 点数
 
 #### 套餐与权益
 
-第一阶段为只读链路：
+第一阶段为只读业务链路，但包含其所依赖的企业资源账本基础：
 
+- 第一阶段最小企业资源账本；
 - 套餐与权益总览；
 - 单一基础方案与计费规则；
 - 企业权益；
@@ -171,7 +172,6 @@ AI Token       → AI 点数
 - 绑定与激活分离；
 - 店铺连接状态、服务状态和记录生命周期分离；
 - 显式激活、续费和到期状态；
-- 第一阶段最小企业资源账本；
 - 版本冲突、幂等和企业隔离。
 
 ### 4.3 明确不包含
@@ -375,11 +375,12 @@ AuthenticatedWorkbenchBoundary
 ### 7.4 主题
 
 - Console 使用独立 `shuomi-console-theme` 存储键；
-- 默认主题为深色；
 - 所有页面使用语义 Token，不在业务组件内写深浅主题分支；
 - Shell 以 `393:321` 和 `411:323` 对照验收；
 - 详细页面的浅色稿为像素基准；深色详细页由统一 Token 转换并通过可访问性与视觉回归测试；
-- 若深色详细页未达到发布门槛，主题开关通过特性开关保持关闭，但不删除主题基础设施。
+- `SHUOMI_CONSOLE_DARK_THEME_ENABLED=false` 时强制浅色并隐藏主题开关；
+- `SHUOMI_CONSOLE_DARK_THEME_ENABLED=true` 时默认深色、允许用户切换并保存偏好；
+- 特性开关打开前必须通过所有首批详细页的深色视觉与对比度验收。
 
 ### 7.5 导航状态
 
@@ -650,6 +651,7 @@ Store 记录增加：
 ```text
 connection_status
 service_status
+record_status
 service_started_at
 service_expires_at
 service_version
@@ -1003,6 +1005,8 @@ SHUOMI_CONSOLE_DARK_THEME_ENABLED
 
 ### Slice 4：企业权益只读链路
 
+- 第一阶段最小企业资源账本；
+- 初始余额迁移和受控授予；
 - 总览；
 - 计费规则；
 - 企业权益；
@@ -1011,7 +1015,6 @@ SHUOMI_CONSOLE_DARK_THEME_ENABLED
 
 ### Slice 5：店铺中心新 UI 与显式激活
 
-- 第一阶段最小企业资源账本；
 - 新列表、详情和表单；
 - 连接状态与服务状态拆分；
 - 绑定不计费；
