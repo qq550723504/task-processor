@@ -224,11 +224,8 @@ func NewDefaultConfig() *Config {
 		},
 		ListingKit: ListingKitConfig{
 			GenerationUsageLedgerEnabled: false,
-			ImageUpload: ListingKitImageUploadConfig{
-				Provider: "local",
-				Local:    ListingKitImageUploadLocalConfig{RootDir: "./.local/tmp/listingkit-uploads"},
-			},
-			Zitadel: ListingKitZitadelConfig{},
+			ImageUpload:                  ListingKitImageUploadConfig{},
+			Zitadel:                      ListingKitZitadelConfig{},
 		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    false,

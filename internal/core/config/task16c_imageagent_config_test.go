@@ -103,3 +103,45 @@ listingkit:
 	assert.True(t, upload.S3.UsePathStyle)
 	assert.Equal(t, "https://listingkit-cdn.example.test", upload.S3.PublicBase)
 }
+
+func TestNewDefaultConfigDoesNotSelectListingKitImageUploadStorage(t *testing.T) {
+	cfg := NewDefaultConfig()
+
+	assert.Empty(t, cfg.ListingKit.ImageUpload.Provider)
+	assert.Empty(t, cfg.ListingKit.ImageUpload.Local.RootDir)
+}
+
+func TestLoadFromBytesDoesNotDefaultListingKitImageUploadToLocal(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_PROVIDER", "")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_LOCAL_ROOT_DIR", "")
+
+	cfg, err := LoadFromBytes([]byte("openai:\n  apiKey: test-key\n"))
+	require.NoError(t, err)
+
+	assert.Empty(t, cfg.ListingKit.ImageUpload.Provider)
+	assert.Empty(t, cfg.ListingKit.ImageUpload.Local.RootDir)
+}
+
+func TestLoadFromBytesBindsListingKitImageUploadS3Environment(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_PROVIDER", "s3")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_BUCKET", "env-listingkit-inputs")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_REGION", "ap-southeast-1")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_ENDPOINT", "https://env-listingkit-s3.example.test")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_ACCESS_KEY_ID", "env-listingkit-access")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_SECRET_ACCESS_KEY", "env-listingkit-secret")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_USE_PATH_STYLE", "true")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_PUBLIC_BASE", "https://env-listingkit-cdn.example.test")
+
+	cfg, err := LoadFromBytes([]byte("openai:\n  apiKey: test-key\n"))
+	require.NoError(t, err)
+
+	upload := cfg.ListingKit.ImageUpload
+	assert.Equal(t, "s3", upload.Provider)
+	assert.Equal(t, "env-listingkit-inputs", upload.S3.Bucket)
+	assert.Equal(t, "ap-southeast-1", upload.S3.Region)
+	assert.Equal(t, "https://env-listingkit-s3.example.test", upload.S3.Endpoint)
+	assert.Equal(t, "env-listingkit-access", upload.S3.AccessKeyID)
+	assert.Equal(t, "env-listingkit-secret", upload.S3.SecretAccessKey)
+	assert.True(t, upload.S3.UsePathStyle)
+	assert.Equal(t, "https://env-listingkit-cdn.example.test", upload.S3.PublicBase)
+}

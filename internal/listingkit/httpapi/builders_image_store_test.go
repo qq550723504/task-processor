@@ -81,3 +81,36 @@ func TestBuildSubmitModulePropagatesSelectedS3ConstructionFailure(t *testing.T) 
 	_, statErr := os.Stat(localRoot)
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
+
+func TestBuildImageUploadStoreRejectsLoadedConfigWithoutExplicitProvider(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_PROVIDER", "")
+	cfg, err := config.LoadFromBytes([]byte("openai:\n  apiKey: test-key\n"))
+	require.NoError(t, err)
+	cfg.ListingKit.ImageUpload.Local.RootDir = filepath.Join(t.TempDir(), "must-not-exist")
+
+	store, err := BuildImageUploadStore(cfg, logrus.New())
+
+	require.ErrorContains(t, err, "listingkit.imageUpload.provider must be explicitly local or s3")
+	require.Nil(t, store)
+	_, statErr := os.Stat(cfg.ListingKit.ImageUpload.Local.RootDir)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestBuildSubmitModuleRejectsLoadedConfigWithoutExplicitImageUploadProvider(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_PROVIDER", "")
+	cfg, err := config.LoadFromBytes([]byte("openai:\n  apiKey: test-key\n"))
+	require.NoError(t, err)
+	cfg.ListingKit.ImageUpload.Local.RootDir = filepath.Join(t.TempDir(), "must-not-exist")
+
+	module, err := buildSubmitModule(submitModuleInput{
+		Config: cfg,
+		Logger: logrus.New(),
+		Hooks:  submitModuleHooks{ImageUploadStoreBuilder: BuildImageUploadStore},
+	})
+
+	require.ErrorContains(t, err, "build ListingKit image upload store")
+	require.ErrorContains(t, err, "listingkit.imageUpload.provider must be explicitly local or s3")
+	require.Equal(t, submitModule{}, module)
+	_, statErr := os.Stat(cfg.ListingKit.ImageUpload.Local.RootDir)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
