@@ -13,15 +13,15 @@ import (
 	"task-processor/internal/app/configadapter"
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/core/config"
+	"task-processor/internal/imageagent/assetpublication"
 	"task-processor/internal/imageagent/objectstore"
 	imageagentstore "task-processor/internal/imageagent/store"
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	imageagenttools "task-processor/internal/imageagent/tools"
 	"task-processor/internal/integration/httpimage"
 	openaiclient "task-processor/internal/integration/openai"
+	productassetpersistence "task-processor/internal/integration/persistence/product/asset"
 	s3integration "task-processor/internal/integration/s3"
-	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	listingkitstore "task-processor/internal/listingkit/store"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -149,10 +149,15 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent capabilities are incomplete")
 	}
 	repository := imageagentstore.NewGormRepository(db)
-	publisher, err := listingkithttpapi.NewImageAgentApprovedPublisher(repository, listingkitstore.NewImageAgentPublicationTransactionRepository(db))
+	assetRepository, err := productassetpersistence.NewRepository(db)
 	if err != nil {
 		_ = closeDB()
-		return appruntime.ImageAgentTemporalDependencies{}, nil, err
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build product asset repository: %w", err)
+	}
+	publisher, err := assetpublication.NewV2Publisher(repository, assetRepository)
+	if err != nil {
+		_ = closeDB()
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent v2 asset publisher: %w", err)
 	}
 	executor := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
 		SubjectExtractor: capabilities.SubjectExtractor, WhiteBackgroundRenderer: capabilities.WhiteBackgroundRenderer,
@@ -163,10 +168,10 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	if mode == imageagenttemporal.WorkerWireModeV2 {
 		return dependencies, closeDB, nil
 	}
-	publisherV3, err := listingkithttpapi.NewImageAgentApprovedPublisherV3(repository, listingkitstore.NewImageAgentPublicationTransactionRepository(db), artifactStore)
+	publisherV3, err := assetpublication.NewPublisher(repository, assetRepository, artifactStore)
 	if err != nil {
 		_ = closeDB()
-		return appruntime.ImageAgentTemporalDependencies{}, nil, err
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent v3 asset publisher: %w", err)
 	}
 	dependencies.StagedSlotExecutor = executor
 	dependencies.ArtifactStore = artifactStore

@@ -57,6 +57,13 @@ var knownSlotRoles = map[SlotRole]struct{}{
 	SlotRoleMain: {}, SlotRoleScene: {}, SlotRoleDetail: {}, SlotRoleSellingPoint: {}, SlotRoleSize: {},
 }
 
+func ValidateSlotRole(role SlotRole) error {
+	if _, known := knownSlotRoles[role]; !known {
+		return fmt.Errorf("%w: unknown slot role %q", ErrValidation, role)
+	}
+	return nil
+}
+
 func ValidatePlan(plan Plan) error {
 	if plan.Revision <= 0 {
 		return fmt.Errorf("revision must be positive")
@@ -106,8 +113,8 @@ func ValidatePlan(plan Plan) error {
 			return fmt.Errorf("duplicate slot id %q", id)
 		}
 		slotIDs[id] = struct{}{}
-		if _, known := knownSlotRoles[slot.Role]; !known {
-			return fmt.Errorf("unknown slot role %q", slot.Role)
+		if err := ValidateSlotRole(slot.Role); err != nil {
+			return err
 		}
 		if slot.Role == SlotRoleMain {
 			mainSlots++

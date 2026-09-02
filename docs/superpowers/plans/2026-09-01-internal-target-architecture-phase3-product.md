@@ -1012,7 +1012,7 @@ git commit -m "refactor(imageagent): execute product image capabilities directly
 - Consumes: ImageAgent projection、`product/asset.Repository`、durable public URL resolver.
 - Produces: `assetpublication.NewPublisher(projections, assets, publicURLs)` implementing `imageagent.ApprovedAssetPublisherV3`；批准不再修改 ListingKit task JSON。
 
-- [ ] **Step 1: 写批准前不写、重复批准不重复写测试**
+- [x] **Step 1: 写批准前不写、重复批准不重复写测试**
 
 ```go
 func TestPublisherCommitsApprovedAssetsExactlyOnce(t *testing.T) {
@@ -1034,23 +1034,23 @@ func TestPublisherCommitsApprovedAssetsExactlyOnce(t *testing.T) {
 
 把现有 `approvedV3Projection`、`approvedV3PublicationInput`、`staticProjectionSource` 和 `staticPublicURLResolver` 测试帮助函数从被删除的 ListingKit publisher 测试原样迁入本测试文件，再把资产断言改成 `product/asset` 类型。
 
-- [ ] **Step 2: 运行测试确认新 Publisher 尚不存在**
+- [x] **Step 2: 运行测试确认新 Publisher 尚不存在**
 
 Run: `go test ./internal/imageagent/assetpublication -count=1`
 
 Expected: FAIL，包不存在。
 
-- [ ] **Step 3: 实现 Projection 校验和 ApprovalCommit 映射**
+- [x] **Step 3: 实现 Projection 校验和 ApprovalCommit 映射**
 
 Publisher 必须验证 tenant/user/run/revision/result digest、候选批准状态、durable object identity、slot 和 attempt；以 ImageAgent `ActionID` 作为批准动作身份，使用 `ProductContextRef.ProductID` 作为 ProductKey。Repository 失败时返回错误，Temporal 不得把 Run 标记完成。
 
-- [ ] **Step 4: 运行 Publisher、Repository 和 Temporal 恢复测试**
+- [x] **Step 4: 运行 Publisher、Repository 和 Temporal 恢复测试**
 
 Run: `go test ./internal/imageagent/assetpublication ./internal/integration/persistence/product/asset ./internal/imageagent/temporal ./internal/app/worker/imageagent -count=1`
 
 Expected: PASS；ListingKit transaction repository 不再参与批准路径。
 
-- [ ] **Step 5: 提交批准资产所有权迁移**
+- [x] **Step 5: 提交批准资产所有权迁移**
 
 ```powershell
 git add internal/imageagent internal/integration/persistence/product/asset internal/app/worker/imageagent internal/listingkit/httpapi

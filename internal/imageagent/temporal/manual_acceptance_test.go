@@ -1069,7 +1069,7 @@ type recordingAcceptanceApprovalPublisher struct {
 
 func (p *recordingAcceptanceApprovalPublisher) PublishApprovedV3(_ context.Context, input imageagent.PublishApprovedV3Input) (imageagent.PublicationAcknowledgement, error) {
 	p.input = input
-	return imageagent.PublicationAcknowledgement{IdempotencyKey: input.IdempotencyKey}, nil
+	return imageagent.PublicationAcknowledgement{ActionID: input.IdempotencyKey}, nil
 }
 
 type podLossAcceptanceObject struct {

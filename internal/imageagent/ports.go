@@ -53,12 +53,12 @@ type DurableAssetPublicURLResolver interface {
 }
 
 type PublicationAcknowledgement struct {
-	TaskID            string
-	RunID             string
-	PlanRevision      int64
-	ResultDigest      string
-	IdempotencyKey    string
-	CandidateAssetIDs []string
+	ProductKey   string
+	RunID        string
+	PlanRevision int64
+	ResultDigest string
+	ActionID     string
+	AssetIDs     []string
 }
 
 type SlotExecutionInput struct {
