@@ -1,0 +1,67 @@
+import { render, screen, within } from "@testing-library/react";
+
+import { MarketingHomepage } from "@/components/marketing/marketing-homepage";
+
+describe("MarketingHomepage hero", () => {
+  it("presents the AI commerce operating-system promise and routes entry to the workbench", () => {
+    render(<MarketingHomepage />);
+
+    const hero = document.getElementById("home");
+    expect(hero).not.toBeNull();
+    expect(within(hero!).getByRole("heading", { level: 1 })).toHaveTextContent(
+      "让智能，成为电商经营的默认能力",
+    );
+    expect(
+      within(hero!).getByRole("link", { name: /进入硕米 OS/ }),
+    ).toHaveAttribute("href", "/login?returnTo=%2Fworkbench");
+    expect(
+      within(hero!).getByRole("link", { name: "查看系统架构" }),
+    ).toHaveAttribute("href", "#architecture");
+  });
+
+  it("uses the focused product navigation and sends the header entry to the workbench", () => {
+    render(<MarketingHomepage />);
+
+    const nav = screen.getByRole("navigation", { name: "官网导航" });
+    expect(within(nav).getByRole("link", { name: "产品架构" })).toHaveAttribute(
+      "href",
+      "#architecture",
+    );
+    expect(within(nav).getByRole("link", { name: "能力中心" })).toHaveAttribute(
+      "href",
+      "#agents",
+    );
+    expect(within(nav).getByRole("link", { name: "场景方案" })).toHaveAttribute(
+      "href",
+      "#solutions",
+    );
+    expect(within(nav).queryByRole("link", { name: "开发者" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "进入系统" })).toHaveAttribute(
+      "href",
+      "/login?returnTo=%2Fworkbench",
+    );
+  });
+
+  it("describes the six real commerce-platform capabilities without a device-edge claim", () => {
+    render(<MarketingHomepage />);
+
+    const architecture = screen.getByRole("img", {
+      name: "硕米 AI 电商能力架构",
+    });
+    for (const label of [
+      "模型与调用治理",
+      "智能体运行时",
+      "商品智能",
+      "电商工具",
+      "上架执行面",
+      "平台连接器",
+    ]) {
+      expect(within(architecture).getByText(label)).toBeInTheDocument();
+    }
+    expect(within(architecture).queryByText("设备与边缘")).not.toBeInTheDocument();
+    expect(architecture).toHaveAttribute(
+      "data-motion-sequence",
+      "boot-reveal-active-pulse",
+    );
+  });
+});
