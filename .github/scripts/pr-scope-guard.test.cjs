@@ -108,6 +108,23 @@ test("classifies a rename as production when either path is production", () => {
   assert.deepEqual(renamedToTest.exceeded, ["productionChurn"]);
 });
 
+test("fails closed for a classification-changing pure production rename", () => {
+  const result = evaluatePullRequest([
+    {
+      filename: "internal/service.go",
+      previous_filename: "tests/service_test.go",
+      additions: 0,
+      deletions: 0,
+      status: "renamed",
+    },
+  ], []);
+
+  assert.equal(result.allowed, false);
+  assert.deepEqual(result.exceeded, ["productionAdditions", "productionChurn"]);
+  assert.equal(result.metrics.productionAdditions, LIMITS.productionAdditions + 1);
+  assert.equal(result.metrics.productionChurn, LIMITS.productionChurn + 1);
+});
+
 test("allows exact production limits and excludes test lines from production totals", () => {
   const result = evaluatePullRequest([
     source("internal/store/service.go", LIMITS.productionAdditions, 1000),
@@ -644,6 +661,26 @@ test("requires explicit design and split evidence for an oversized override", ()
       completeBody.replace(
         "reviewer approved the failure matrix",
         "not performed",
+      ),
+      ["Henry"],
+    ),
+    false,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "reviewer approved the failure matrix",
+        "not reviewed",
+      ),
+      ["Henry"],
+    ),
+    false,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "reviewer approved the failure matrix",
+        "never reviewed",
       ),
       ["Henry"],
     ),

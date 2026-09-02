@@ -99,6 +99,22 @@ function lineCount(value) {
   return Math.trunc(value);
 }
 
+function isUnverifiableProductionRename(file) {
+  if (file?.status !== "renamed") {
+    return false;
+  }
+  const previousFilename = file?.previous_filename;
+  if (typeof previousFilename !== "string" || previousFilename.trim() === "") {
+    return false;
+  }
+  const current = classifyFile(file.filename);
+  const previous = classifyFile(previousFilename);
+  return current.production !== previous.production &&
+    (current.production || previous.production) &&
+    lineCount(file.additions) === 0 &&
+    lineCount(file.deletions) === 0;
+}
+
 function assertCompleteFileList(files, changedFiles) {
   if (!Array.isArray(files)) {
     throw new TypeError("files must be an array");
@@ -327,7 +343,7 @@ function hasRequiredOverrideEvidence(body, approvedLogins) {
   const independentReview = valueFor(
     /^\s*-\s*Independent design review:\s*(.+)$/im,
     [
-      /\b(?:not|never)\s+(?:performed|conducted|completed|done)\b/i,
+      /\b(?:not|never)\s+(?:performed|conducted|completed|done|reviewed)\b/i,
       /\bno\s+(?:independent\s+)?(?:design\s+)?review\b/i,
       /\bwithout\b.*\breview\b/i,
       /\b(?:pending|awaiting|waiting|in\s+progress)\b/i,
@@ -518,6 +534,17 @@ function evaluatePullRequest(files, labels, options = {}) {
       metrics.scopeFiles += 1;
     }
     if (fileClass.production) {
+      if (isUnverifiableProductionRename(file)) {
+        metrics.productionAdditions = Math.max(
+          metrics.productionAdditions,
+          LIMITS.productionAdditions + 1,
+        );
+        metrics.productionChurn = Math.max(
+          metrics.productionChurn,
+          LIMITS.productionChurn + 1,
+        );
+        continue;
+      }
       const additions = lineCount(file.additions);
       const deletions = lineCount(file.deletions);
       metrics.productionAdditions += additions;
