@@ -28,7 +28,7 @@ func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIUsesResolvedSto
 	task := &Task{
 		TenantID: "373211199677923496",
 		UserID:   "user-submit",
-		Request:  &GenerateRequest{SheinStoreID: 903},
+		Request:  &GenerateRequest{ProductKey: "test-product", SheinStoreID: 903},
 	}
 
 	api, err := exec.buildSheinSubmitProductAPI(context.Background(), task)
@@ -55,7 +55,7 @@ func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIRequiresBuilder
 
 	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{})
 
-	api, err := exec.buildSheinSubmitProductAPI(context.Background(), &Task{})
+	api, err := exec.buildSheinSubmitProductAPI(context.Background(), &Task{TenantID: "tenant-test"})
 	if err == nil {
 		t.Fatal("err = nil, want configuration error")
 	}
@@ -79,7 +79,7 @@ func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIRejectsMissingS
 	task := &Task{
 		TenantID: "373211199677923496",
 		UserID:   "user-submit",
-		Request:  &GenerateRequest{},
+		Request:  &GenerateRequest{ProductKey: "test-product"},
 	}
 
 	api, err := exec.buildSheinSubmitProductAPI(context.Background(), task)
@@ -106,7 +106,7 @@ func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIRejectsBuilderF
 	task := &Task{
 		TenantID: "373211199677923496",
 		UserID:   "user-submit",
-		Request:  &GenerateRequest{SheinStoreID: 903},
+		Request:  &GenerateRequest{ProductKey: "test-product", SheinStoreID: 903},
 	}
 
 	api, err := exec.buildSheinSubmitProductAPI(context.Background(), task)
@@ -134,7 +134,7 @@ func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIReturnsStoreRes
 	task := &Task{
 		TenantID: "373211199677923496",
 		UserID:   "user-submit",
-		Request:  &GenerateRequest{},
+		Request:  &GenerateRequest{ProductKey: "test-product"},
 	}
 
 	api, err := exec.buildSheinSubmitProductAPI(context.Background(), task)
@@ -165,7 +165,7 @@ func TestTaskSubmissionExecutionServiceBuildSheinSubmitTranslateAPISkipsBuilderW
 	task := &Task{
 		TenantID: "373211199677923496",
 		UserID:   "user-submit",
-		Request:  &GenerateRequest{Country: "US"},
+		Request:  &GenerateRequest{ProductKey: "test-product", Country: "US"},
 	}
 	product := &sheinproduct.Product{
 		MultiLanguageNameList: []sheinproduct.LanguageContent{
@@ -204,7 +204,7 @@ func TestTaskSubmissionExecutionServiceBuildSheinSubmitTranslateAPIUsesResolvedS
 	task := &Task{
 		TenantID: "373211199677923496",
 		UserID:   "user-submit",
-		Request:  &GenerateRequest{Country: "US"},
+		Request:  &GenerateRequest{ProductKey: "test-product", Country: "US"},
 	}
 	product := &sheinproduct.Product{}
 
@@ -225,7 +225,7 @@ func TestTaskSubmissionExecutionServiceUploadSheinSubmitImagesRequiresBuilder(t 
 
 	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{})
 
-	err := exec.uploadSheinSubmitImages(context.Background(), &Task{}, &SheinPackage{}, &sheinproduct.Product{})
+	err := exec.uploadSheinSubmitImages(context.Background(), &Task{TenantID: "tenant-test"}, &SheinPackage{}, &sheinproduct.Product{})
 	if err == nil {
 		t.Fatal("err = nil, want configuration error")
 	}
@@ -246,7 +246,7 @@ func TestTaskSubmissionExecutionServiceUploadSheinSubmitImagesRejectsMissingStor
 	task := &Task{
 		TenantID: "373211199677923496",
 		UserID:   "user-submit",
-		Request:  &GenerateRequest{},
+		Request:  &GenerateRequest{ProductKey: "test-product"},
 	}
 
 	err := exec.uploadSheinSubmitImages(context.Background(), task, &SheinPackage{}, &sheinproduct.Product{})
@@ -270,7 +270,7 @@ func TestTaskSubmissionExecutionServiceUploadSheinSubmitImagesRejectsBuilderFall
 	task := &Task{
 		TenantID: "373211199677923496",
 		UserID:   "user-submit",
-		Request:  &GenerateRequest{SheinStoreID: 903},
+		Request:  &GenerateRequest{ProductKey: "test-product", SheinStoreID: 903},
 	}
 
 	err := exec.uploadSheinSubmitImages(context.Background(), task, &SheinPackage{}, &sheinproduct.Product{})

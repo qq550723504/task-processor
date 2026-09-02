@@ -6,7 +6,6 @@ import (
 
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrepo "task-processor/internal/asset/repository"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
 
@@ -36,16 +35,16 @@ func (s *stubModelMetadataSceneRenderer) Render(ctx context.Context, asset *prod
 func TestRunWorkflowPersistsModelBackedGenerationMetadata(t *testing.T) {
 	t.Parallel()
 
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID: "product-task-model-meta",
-		Request: &productenrich.GenerateRequest{
+		Request: &stubProductSnapshotRequest{
 			ImageURLs: []string{"https://example.com/source-4.jpg"},
 			Text:      "portable speaker",
 		},
 	}
-	productSvc := &stubWorkflowProductService{
+	productSvc := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:       "Portable Speaker",
 			Description: "Wireless speaker",
 			Category:    []string{"Electronics", "Audio"},
@@ -67,9 +66,8 @@ func TestRunWorkflowPersistsModelBackedGenerationMetadata(t *testing.T) {
 		}),
 	), productSvc, nil)
 
-	task := &Task{
-		ID: "listingkit-task-model-meta",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-model-meta",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source-4.jpg"},
 			Text:      "portable speaker",
 			Platforms: []string{"amazon"},

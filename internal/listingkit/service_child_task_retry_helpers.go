@@ -88,7 +88,7 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 	result.Summary.NeedsReview = false
 	snapshot := buildStandardProductSnapshot(result)
 	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(s)
-	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, snapshot.CanonicalProduct)
+	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, canonicalProductFromStandardSnapshot(snapshot))
 	final := s.runPlatformAdaptation(ctx, task, snapshot, recipesByPlatform, nil, nil, nil, shouldGenerateAssets(task.Request), sdsOptions)
 	*result = *final
 	return nil

@@ -37,7 +37,7 @@ type ServiceCoreDependencies struct {
 	StudioBatchRepository         StudioBatchRepository
 	StudioBatchRunRepository      StudioBatchRunRepository
 	StudioBatchTaskLinkRepository StudioBatchTaskLinkRepository
-	ProductService                ProductService
+	ProductSnapshotReader         ProductSnapshotReader
 	ImageService                  ImageService
 	SDSSyncService                sdsusecase.Service
 	SDSLoginStatusProvider        SDSLoginStatusProvider

@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingsubscription"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/product/catalog"
 
 	"github.com/sirupsen/logrus"
 )
@@ -177,47 +177,39 @@ func TestListingKitProcessFlowReconcilesCanceledProviderCallBeforeUsageRelease(t
 	}
 }
 
-type processUsageProductService struct {
-	task         *productenrich.Task
-	product      *productenrich.ProductJSON
+type processUsageProductSnapshotReader struct {
+	task         *stubProductSnapshotTask
+	product      *stubProductSnapshotFixture
 	processErr   error
 	processCalls int
 }
 
-func (s *processUsageProductService) CreateGenerateTask(context.Context, *productenrich.GenerateRequest) (*productenrich.Task, error) {
-	return s.task, nil
-}
-
-func (s *processUsageProductService) GetTaskResult(context.Context, string) (*productenrich.TaskResult, error) {
-	return nil, nil
-}
-
-func (s *processUsageProductService) ProcessProduct(context.Context, *productenrich.Task) (*productenrich.ProductJSON, error) {
+func (s *processUsageProductSnapshotReader) GetProductSnapshot(context.Context, ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
 	s.processCalls++
 	if s.processErr != nil {
-		return nil, s.processErr
+		return catalog.ProductSnapshot{}, s.processErr
 	}
-	return s.product, nil
+	return s.product.catalogSnapshot()
 }
 
-func newProcessUsageFixture(t *testing.T, settlement GenerationUsageSettlement, productErr error) (Service, *stubProcessStatusRepo, *processUsageProductService, *Task) {
+func newProcessUsageFixture(t *testing.T, settlement GenerationUsageSettlement, productErr error) (Service, *stubProcessStatusRepo, *processUsageProductSnapshotReader, *Task) {
 	t.Helper()
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}}
-	productService := &processUsageProductService{
-		task:       &productenrich.Task{ID: "product-task-usage", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
-		product:    &productenrich.ProductJSON{Title: "Travel Bag", Category: []string{"bags"}, Attributes: map[string]string{"color": "black"}},
+	productService := &processUsageProductSnapshotReader{
+		task:       &stubProductSnapshotTask{ID: "product-task-usage", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}},
+		product:    &stubProductSnapshotFixture{Title: "Travel Bag", Category: []string{"bags"}, Attributes: map[string]string{"color": "black"}},
 		processErr: productErr,
 	}
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
 	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-usage-1", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-usage-1", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -235,7 +227,7 @@ func TestProcessListingKitReservesBeforeWorkflow(t *testing.T) {
 		t.Fatalf("ProcessListingKit() error = %v", err)
 	}
 	if productService.processCalls != 1 {
-		t.Fatalf("ProcessProduct calls = %d, want 1", productService.processCalls)
+		t.Fatalf("GetProductSnapshot calls = %d, want 1", productService.processCalls)
 	}
 	if len(settlement.calls) < 2 || settlement.calls[0] != "reserve" || settlement.calls[len(settlement.calls)-1] != "commit" {
 		t.Fatalf("settlement calls = %#v, want reserve before commit", settlement.calls)
@@ -262,7 +254,7 @@ func TestProcessListingKitQuotaRejectionSkipsWorkflow(t *testing.T) {
 		t.Fatalf("ProcessListingKit() error = %v, want quota error", err)
 	}
 	if productService.processCalls != 0 {
-		t.Fatalf("ProcessProduct calls = %d, want 0 after quota rejection", productService.processCalls)
+		t.Fatalf("GetProductSnapshot calls = %d, want 0 after quota rejection", productService.processCalls)
 	}
 	if len(settlement.calls) != 1 || settlement.calls[0] != "reserve" {
 		t.Fatalf("settlement calls = %#v, want reserve only", settlement.calls)
@@ -274,12 +266,12 @@ func TestProcessListingKitReconcilesReservationWhenPostReservePersistenceFails(t
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{markGenerationUsageErr: errors.New("task store unavailable")}}
 	settlement := &recordingGenerationUsageSettlement{}
-	productService := &processUsageProductService{task: &productenrich.Task{ID: "product-task-post-reserve", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}}, product: &productenrich.ProductJSON{Title: "Travel Bag", Category: []string{"bags"}}}
-	svc, err := NewService(newTestServiceConfig(repo, withTestProductService(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
+	productService := &processUsageProductSnapshotReader{task: &stubProductSnapshotTask{ID: "product-task-post-reserve", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}}, product: &stubProductSnapshotFixture{Title: "Travel Bag", Category: []string{"bags"}}}
+	svc, err := NewService(newTestServiceConfig(repo, withTestProductSnapshotReader(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-post-reserve", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-post-reserve", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -304,12 +296,12 @@ func TestProcessListingKitQuotaRejectionFallbackRemainsRecoverable(t *testing.T)
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, failedErrs: []error{errors.New("store unavailable"), errors.New("store unavailable"), errors.New("store unavailable")}}
 	settlement := &recordingGenerationUsageSettlement{reserveErr: listingsubscription.ErrUsageQuotaExceeded}
-	productService := &processUsageProductService{task: &productenrich.Task{ID: "product-task-quota-fallback", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}}}
-	svc, err := NewService(newTestServiceConfig(repo, withTestProductService(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
+	productService := &processUsageProductSnapshotReader{task: &stubProductSnapshotTask{ID: "product-task-quota-fallback", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}}}
+	svc, err := NewService(newTestServiceConfig(repo, withTestProductSnapshotReader(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-quota-fallback", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-quota-fallback", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -388,13 +380,13 @@ func TestProcessListingKitReconcilesExistingIntentWhenBeginFails(t *testing.T) {
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{beginGenerationUsageErr: core.ErrTaskNotRecoverable}}
 	settlement := &recordingGenerationUsageSettlement{}
-	productService := &processUsageProductService{task: &productenrich.Task{ID: "product-task-begin-replay", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}}, product: &productenrich.ProductJSON{Title: "Travel Bag"}}
-	svc, err := NewService(newTestServiceConfig(repo, withTestProductService(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
+	productService := &processUsageProductSnapshotReader{task: &stubProductSnapshotTask{ID: "product-task-begin-replay", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}}, product: &stubProductSnapshotFixture{Title: "Travel Bag"}}
+	svc, err := NewService(newTestServiceConfig(repo, withTestProductSnapshotReader(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
 	leaseUntil := time.Now().UTC().Add(-time.Minute)
-	task := &Task{ID: "listingkit-begin-replay", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-begin-replay", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -469,7 +461,7 @@ func TestProcessListingKitKeepsLegacyUsageOutsideGenerationLedgerCohort(t *testi
 	_, repo, productService, task := newProcessUsageFixture(t, settlement, nil)
 	configured, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) {
 			cfg.Core.GenerationUsageLedger = settlement
@@ -483,7 +475,7 @@ func TestProcessListingKitKeepsLegacyUsageOutsideGenerationLedgerCohort(t *testi
 		t.Fatalf("ProcessListingKit() error = %v", err)
 	}
 	if productService.processCalls != 1 {
-		t.Fatalf("ProcessProduct calls = %d, want legacy workflow execution", productService.processCalls)
+		t.Fatalf("GetProductSnapshot calls = %d, want snapshot read", productService.processCalls)
 	}
 	if len(settlement.calls) != 0 {
 		t.Fatalf("settlement calls = %#v, want none outside the configured cohort", settlement.calls)
@@ -499,7 +491,7 @@ func TestProcessListingKitReplaysExistingGenerationReservationAfterCohortNarrows
 	task.GenerationUsageReservationState = GenerationUsageReservationStatePending
 	configured, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) {
 			cfg.Core.GenerationUsageLedger = settlement
@@ -525,7 +517,7 @@ func TestProcessListingKitKeepsBlankBillingTenantOnLegacyPath(t *testing.T) {
 	_, repo, productService, task := newProcessUsageFixture(t, settlement, nil)
 	configured, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) {
 			cfg.Core.GenerationUsageLedger = settlement
@@ -551,7 +543,7 @@ func TestProcessListingKitKeepsLegacyRetryPersistenceOutsideGenerationUsageCohor
 	_, repo, productService, task := newProcessUsageFixture(t, settlement, errors.New("OpenAI API error: insufficient credits in account balance"))
 	configured, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) {
 			cfg.Core.GenerationUsageLedger = settlement
@@ -751,20 +743,20 @@ func TestProcessListingKitPreservesReleaseRecoveryWhenRetryableBlockPersistenceF
 		},
 	}
 	settlement := &recordingGenerationUsageSettlement{}
-	productService := &processUsageProductService{
-		task:       &productenrich.Task{ID: "product-task-retryable-persist", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
+	productService := &processUsageProductSnapshotReader{
+		task:       &stubProductSnapshotTask{ID: "product-task-retryable-persist", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}},
 		processErr: errors.New("OpenAI API error: insufficient credits in account balance"),
 	}
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
 	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-retryable-persist", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-retryable-persist", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -793,7 +785,7 @@ func TestProcessListingKitReconcilesAmbiguousRetryableReservationFailure(t *test
 		t.Fatal("ProcessListingKit() error = nil, want reservation failure")
 	}
 	if productService.processCalls != 0 {
-		t.Fatalf("ProcessProduct calls = %d, want 0 after reservation failure", productService.processCalls)
+		t.Fatalf("GetProductSnapshot calls = %d, want 0 after reservation failure", productService.processCalls)
 	}
 	stored, err := repo.GetTask(context.Background(), task.ID)
 	if err != nil {
@@ -809,12 +801,12 @@ func TestProcessListingKitReconcilesReservationFailureWithCleanupContext(t *test
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, requireLiveBlockContext: true}
 	settlement := &recordingGenerationUsageSettlement{reserveErr: context.DeadlineExceeded}
-	productService := &processUsageProductService{task: &productenrich.Task{ID: "product-task-reservation-canceled", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}}}
-	svc, err := NewService(newTestServiceConfig(repo, withTestProductService(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
+	productService := &processUsageProductSnapshotReader{task: &stubProductSnapshotTask{ID: "product-task-reservation-canceled", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}}}
+	svc, err := NewService(newTestServiceConfig(repo, withTestProductSnapshotReader(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-reservation-canceled", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-reservation-canceled", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -892,20 +884,20 @@ func TestProcessListingKitPersistsCommitPendingAfterCanceledContext(t *testing.T
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, requireLiveBlockContext: true}
 	settlement := &recordingGenerationUsageSettlement{commitErr: context.DeadlineExceeded}
-	productService := &processUsageProductService{
-		task:    &productenrich.Task{ID: "product-task-canceled-commit", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
-		product: &productenrich.ProductJSON{Title: "Travel Bag"},
+	productService := &processUsageProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task-canceled-commit", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}},
+		product: &stubProductSnapshotFixture{Title: "Travel Bag"},
 	}
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
 	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-canceled-commit", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-canceled-commit", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -928,20 +920,20 @@ func TestProcessListingKitPersistsReleasePendingAfterCanceledContext(t *testing.
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, completedErr: errors.New("task store unavailable"), requireLiveBlockContext: true}
 	settlement := &recordingGenerationUsageSettlement{releaseErr: context.DeadlineExceeded}
-	productService := &processUsageProductService{
-		task:    &productenrich.Task{ID: "product-task-canceled-release", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
-		product: &productenrich.ProductJSON{Title: "Travel Bag"},
+	productService := &processUsageProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task-canceled-release", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}},
+		product: &stubProductSnapshotFixture{Title: "Travel Bag"},
 	}
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
 	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-canceled-release", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-canceled-release", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -968,20 +960,20 @@ func TestProcessListingKitRetriesTerminalFailureStateAfterRelease(t *testing.T) 
 		resolveUsageReleaseErrs: []error{errors.New("task store unavailable")},
 	}
 	settlement := &recordingGenerationUsageSettlement{}
-	productService := &processUsageProductService{
-		task:    &productenrich.Task{ID: "product-task-terminal-failed-state", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
-		product: &productenrich.ProductJSON{Title: "Travel Bag"},
+	productService := &processUsageProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task-terminal-failed-state", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}},
+		product: &stubProductSnapshotFixture{Title: "Travel Bag"},
 	}
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
 	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-terminal-failed-state", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-terminal-failed-state", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -1005,20 +997,20 @@ func TestProcessListingKitPersistsFailureAndReleasesWhenTerminalPersistenceFails
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, completedErr: errors.New("task store unavailable")}
 	settlement := &recordingGenerationUsageSettlement{}
-	productService := &processUsageProductService{
-		task:    &productenrich.Task{ID: "product-task-terminal-persist", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
-		product: &productenrich.ProductJSON{Title: "Travel Bag", Category: []string{"bags"}},
+	productService := &processUsageProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task-terminal-persist", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}},
+		product: &stubProductSnapshotFixture{Title: "Travel Bag", Category: []string{"bags"}},
 	}
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
 	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-terminal-persist", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-terminal-persist", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -1042,20 +1034,20 @@ func TestProcessListingKitPersistsTerminalFallbackAfterReleasedWorkflowFailure(t
 		resolveUsageReleaseErrs: []error{errors.New("task store unavailable")},
 	}
 	settlement := &recordingGenerationUsageSettlement{}
-	productService := &processUsageProductService{
-		task:       &productenrich.Task{ID: "product-task-released-workflow-failure", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
+	productService := &processUsageProductSnapshotReader{
+		task:       &stubProductSnapshotTask{ID: "product-task-released-workflow-failure", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}},
 		processErr: errors.New("product payload is invalid"),
 	}
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
 	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-released-workflow-failure", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-released-workflow-failure", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -1073,7 +1065,7 @@ func TestProcessListingKitPersistsTerminalFallbackAfterReleasedWorkflowFailure(t
 	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != usageReleasePendingReason {
 		t.Fatalf("stored task = %#v, want usage release recovery", stored)
 	}
-	if got, want := stored.RetryableBlock.TerminalError, "product enrichment failed: product payload is invalid"; got != want {
+	if got, want := stored.RetryableBlock.TerminalError, "product payload is invalid"; got != want {
 		t.Fatalf("release recovery terminal error = %q, want %q", got, want)
 	}
 	if stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
@@ -1086,20 +1078,20 @@ func TestProcessListingKitKeepsReleaseFailureRecoverableAfterTerminalPersistence
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, completedErr: errors.New("task store unavailable")}
 	settlement := &recordingGenerationUsageSettlement{releaseErr: errors.New("ledger context deadline exceeded")}
-	productService := &processUsageProductService{
-		task:    &productenrich.Task{ID: "product-task-release-persist", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
-		product: &productenrich.ProductJSON{Title: "Travel Bag", Category: []string{"bags"}},
+	productService := &processUsageProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task-release-persist", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}},
+		product: &stubProductSnapshotFixture{Title: "Travel Bag", Category: []string{"bags"}},
 	}
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
 		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
 	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-release-persist", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-release-persist", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -1191,20 +1183,20 @@ func TestProcessListingKitCommitsNeedsReviewResult(t *testing.T) {
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}}
 	settlement := &recordingGenerationUsageSettlement{repo: repo}
-	productService := &processUsageProductService{
-		task:    &productenrich.Task{ID: "product-task-review", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
-		product: &productenrich.ProductJSON{Title: "Travel Bag", Category: []string{"bags"}},
+	productService := &processUsageProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task-review", Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"}},
+		product: &stubProductSnapshotFixture{Title: "Travel Bag", Category: []string{"bags"}},
 	}
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{NeedsReview: true, Warnings: []string{"manual review"}}}}),
 		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
 	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	task := &Task{ID: "listingkit-usage-review", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	task := &Task{ID: "listingkit-usage-review", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -1284,7 +1276,7 @@ func TestProcessListingKitDoesNotDoubleReserveOrRunOnCommittedReplay(t *testing.
 		t.Fatalf("ProcessListingKit() error = %v, want committed replay result", err)
 	}
 	if productService.processCalls != 0 {
-		t.Fatalf("ProcessProduct calls = %d, want 0 on committed replay", productService.processCalls)
+		t.Fatalf("GetProductSnapshot calls = %d, want 0 on committed replay", productService.processCalls)
 	}
 	if result == nil || result.Status != string(core.TaskStatusCompleted) {
 		t.Fatalf("result = %#v, want persisted completed result", result)

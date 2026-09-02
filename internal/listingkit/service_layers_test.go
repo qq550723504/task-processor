@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/product/catalog"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/product/catalog"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -17,14 +16,14 @@ func TestProcessStandardProductLayerStartsPlatformAdaptTemporalWhenEnabled(t *te
 
 	repo := NewInMemoryRepositoryForTest()
 	platformClient := &stubPlatformAdaptWorkflowClient{}
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{
 			ID: "product-task-standard-layer-1",
-			Request: &productenrich.GenerateRequest{
+			Request: &stubProductSnapshotRequest{
 				Text: "standard layer request",
 			},
 		},
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title: "Standard Layer Product",
 		},
 	}
@@ -44,7 +43,7 @@ func TestProcessStandardProductLayerStartsPlatformAdaptTemporalWhenEnabled(t *te
 		Status:    core.TaskStatusPending,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "standard layer request",
 			Platforms: []string{"amazon", "shein"},
 			TenantID:  "tenant-1",
@@ -59,8 +58,8 @@ func TestProcessStandardProductLayerStartsPlatformAdaptTemporalWhenEnabled(t *te
 	if err != nil {
 		t.Fatalf("ProcessStandardProductLayer() error = %v", err)
 	}
-	if snapshot == nil || snapshot.CanonicalProduct == nil {
-		t.Fatalf("snapshot = %+v, want canonical product snapshot", snapshot)
+	if snapshot == nil || snapshot.CatalogProduct == nil {
+		t.Fatalf("snapshot = %+v, want catalog product snapshot", snapshot)
 	}
 	if len(platformClient.calls) != 1 {
 		t.Fatalf("platform temporal calls = %+v, want 1 call", platformClient.calls)
@@ -74,14 +73,14 @@ func TestProcessStandardProductLayerPreservesExistingPlatformCache(t *testing.T)
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{
 			ID: "product-task-standard-layer-cache",
-			Request: &productenrich.GenerateRequest{
+			Request: &stubProductSnapshotRequest{
 				Text: "standard layer cache request",
 			},
 		},
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title: "Updated Standard Product",
 		},
 	}
@@ -97,7 +96,7 @@ func TestProcessStandardProductLayerPreservesExistingPlatformCache(t *testing.T)
 		Status:    core.TaskStatusNeedsReview,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "standard layer cache request",
 			Platforms: []string{"shein"},
 			TenantID:  "tenant-1",
@@ -118,7 +117,7 @@ func TestProcessStandardProductLayerPreservesExistingPlatformCache(t *testing.T)
 	if err != nil {
 		t.Fatalf("ProcessStandardProductLayer() error = %v", err)
 	}
-	if snapshot == nil || snapshot.CanonicalProduct == nil {
+	if snapshot == nil || snapshot.CatalogProduct == nil {
 		t.Fatalf("snapshot = %+v, want updated standard product snapshot", snapshot)
 	}
 	updated, err := repo.GetTask(context.Background(), task.ID)
@@ -128,16 +127,15 @@ func TestProcessStandardProductLayerPreservesExistingPlatformCache(t *testing.T)
 	if updated.Result == nil || updated.Result.Shein == nil || updated.Result.Shein.SpuName != "cached shein package" {
 		t.Fatalf("persisted shein package = %+v, want cached package preserved while platform layer reruns", updated.Result)
 	}
-	if updated.Result.StandardProductSnapshot == nil || updated.Result.StandardProductSnapshot.CanonicalProduct == nil {
+	if updated.Result.StandardProductSnapshot == nil || updated.Result.StandardProductSnapshot.CatalogProduct == nil {
 		t.Fatalf("persisted standard snapshot = %+v, want updated standard layer data", updated.Result.StandardProductSnapshot)
 	}
 }
 
-func TestStandardSnapshotFromTaskBuildsFallbackFromLegacyResult(t *testing.T) {
+func TestStandardSnapshotFromTaskRejectsResultWithoutPersistedSnapshot(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID: "legacy-task-1",
+	task := &Task{TenantID: "tenant-test", ID: "legacy-task-1",
 		Result: &ListingKitResult{
 			CatalogProduct:        &catalogProductForTest,
 			AssetInventorySummary: &assetInventorySummaryForTest,
@@ -146,18 +144,8 @@ func TestStandardSnapshotFromTaskBuildsFallbackFromLegacyResult(t *testing.T) {
 		},
 	}
 
-	snapshot, err := standardSnapshotFromTask(task)
-	if err != nil {
-		t.Fatalf("standardSnapshotFromTask() error = %v", err)
-	}
-	if snapshot == nil {
-		t.Fatalf("snapshot = nil, want fallback snapshot")
-	}
-	if snapshot.CatalogProduct == nil || snapshot.AssetInventorySummary == nil || snapshot.SDSSync == nil {
-		t.Fatalf("snapshot = %+v, want legacy result fields copied into snapshot", snapshot)
-	}
-	if len(snapshot.WorkflowStages) != 1 || snapshot.WorkflowStages[0].Kind != "sds_design_sync" {
-		t.Fatalf("snapshot workflow stages = %+v, want preserved legacy stages", snapshot.WorkflowStages)
+	if _, err := standardSnapshotFromTask(task); err == nil {
+		t.Fatal("standardSnapshotFromTask() error = nil, want persisted snapshot requirement")
 	}
 }
 

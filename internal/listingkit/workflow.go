@@ -10,6 +10,9 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 		}
 		return state.result, err
 	}
+	if state.blocked {
+		return state.result, nil
+	}
 	final := s.runPlatformAdaptation(
 		ctx,
 		task,

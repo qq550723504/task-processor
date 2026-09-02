@@ -48,13 +48,12 @@ func standardSnapshotFromTask(task *Task) (*StandardProductSnapshot, error) {
 		return nil, fmt.Errorf("standard product snapshot is required before platform adaptation")
 	}
 	if task.Result.StandardProductSnapshot != nil {
+		if task.Result.StandardProductSnapshot.CatalogProduct == nil {
+			return nil, fmt.Errorf("product snapshot is required before platform adaptation")
+		}
 		return task.Result.StandardProductSnapshot, nil
 	}
-	snapshot := buildStandardProductSnapshot(task.Result)
-	if standardProductSnapshotEmpty(snapshot) {
-		return nil, fmt.Errorf("standard product snapshot is required before platform adaptation")
-	}
-	return snapshot, nil
+	return nil, fmt.Errorf("standard product snapshot is required before platform adaptation")
 }
 
 func (s *service) loadPlatformAdaptationAssets(ctx context.Context, task *Task, snapshot *StandardProductSnapshot) (*assetpkg.Inventory, []assetgeneration.Task) {

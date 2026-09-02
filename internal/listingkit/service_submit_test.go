@@ -11,7 +11,6 @@ import (
 
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinimage "task-processor/internal/shein/api/image"
@@ -174,13 +173,13 @@ func (r *stubSubmitRepo) MutateTaskResult(ctx context.Context, taskID string, mu
 
 func cloneSubmitTestTask(task *Task) (Task, error) {
 	if task == nil {
-		return Task{}, nil
+		return Task{TenantID: "tenant-test"}, nil
 	}
 	copied := *task
 	if task.Result != nil {
 		result, err := cloneListingKitResult(task.Result)
 		if err != nil {
-			return Task{}, err
+			return Task{TenantID: "tenant-test"}, err
 		}
 		copied.Result = result
 	}
@@ -196,20 +195,6 @@ func (r *stubSubmitRepo) hasSavedSubmissionPhase(phase string) bool {
 		}
 	}
 	return false
-}
-
-type stubSubmitProductService struct{}
-
-func (stubSubmitProductService) CreateGenerateTask(ctx context.Context, req *productenrich.GenerateRequest) (*productenrich.Task, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (stubSubmitProductService) GetTaskResult(ctx context.Context, taskID string) (*productenrich.TaskResult, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (stubSubmitProductService) ProcessProduct(ctx context.Context, task *productenrich.Task) (*productenrich.ProductJSON, error) {
-	return nil, errors.New("not implemented")
 }
 
 type stubSheinPublishWorkflowClient struct {
@@ -565,7 +550,7 @@ func makeReadySheinTask() *Task {
 		ID:       "submit-task-1",
 		TenantID: "373211199677923496",
 		UserID:   "user-submit",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			SheinStoreID: 869,
 		},
 		Status: core.TaskStatusCompleted,
@@ -745,7 +730,7 @@ func TestBuildSheinSubmitProductAPIUsesExplicitStoreID(t *testing.T) {
 
 	task := &Task{
 		TenantID: "505",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			SheinStoreID: 903,
 		},
 	}
@@ -775,7 +760,7 @@ func TestBuildSheinSubmitProductAPIRejectsDisabledStoreBeforeBuildingClient(t *t
 		},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "505", UserID: "user-e"})
-	task := &Task{TenantID: "505", Request: &GenerateRequest{SheinStoreID: 903}}
+	task := &Task{TenantID: "505", Request: &GenerateRequest{ProductKey: "test-product", SheinStoreID: 903}}
 
 	_, err := svc.taskSubmissionExecutionOrDefault().buildSheinSubmitProductAPI(ctx, task)
 	if got := StoreAccessErrorCode(err); got != StoreAccessDisabled {
@@ -805,7 +790,7 @@ func TestBuildSheinSubmitProductAPIInjectsTaskTenantIntoBuilderContext(t *testin
 	task := &Task{
 		TenantID: "373211199677923496",
 		UserID:   "user-submit",
-		Request:  &GenerateRequest{SheinStoreID: 870},
+		Request:  &GenerateRequest{ProductKey: "test-product", SheinStoreID: 870},
 	}
 
 	api, err := svc.taskSubmissionExecutionOrDefault().buildSheinSubmitProductAPI(context.Background(), task)
@@ -843,7 +828,7 @@ func TestUploadSheinSubmitImagesInjectsTaskTenantIntoBuilderContext(t *testing.T
 	task := &Task{
 		TenantID: "373211199677923496",
 		UserID:   "user-submit",
-		Request:  &GenerateRequest{SheinStoreID: 870},
+		Request:  &GenerateRequest{ProductKey: "test-product", SheinStoreID: 870},
 	}
 	product := &sheinproduct.Product{
 		ImageInfo: &sheinproduct.ImageInfo{

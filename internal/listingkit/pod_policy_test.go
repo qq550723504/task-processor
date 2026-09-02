@@ -5,7 +5,7 @@ import "testing"
 func TestDeterminePODExecutionPolicyRequiresRemoteSDSBackedTasks(t *testing.T) {
 	t.Parallel()
 
-	policy := determinePODExecutionPolicy(&GenerateRequest{
+	policy := determinePODExecutionPolicy(&GenerateRequest{ProductKey: "test-product",
 		Platforms: []string{"shein"},
 		ImageURLs: []string{"https://cdn.example.com/source.png"},
 		Options: &GenerateOptions{
@@ -30,7 +30,7 @@ func TestDeterminePODExecutionPolicyRequiresRemoteSDSBackedTasks(t *testing.T) {
 func TestDeterminePODExecutionPolicyDisablesSDSCatalogOnlyTasks(t *testing.T) {
 	t.Parallel()
 
-	policy := determinePODExecutionPolicy(&GenerateRequest{
+	policy := determinePODExecutionPolicy(&GenerateRequest{ProductKey: "test-product",
 		Platforms: []string{"amazon"},
 		ImageURLs: []string{"https://cdn.example.com/catalog-source.png"},
 		Options: &GenerateOptions{
@@ -59,7 +59,7 @@ func TestDeterminePODExecutionPolicyDisablesSDSCatalogOnlyTasks(t *testing.T) {
 func TestDeterminePODExecutionPolicyDisablesNonPODTasks(t *testing.T) {
 	t.Parallel()
 
-	policy := determinePODExecutionPolicy(&GenerateRequest{
+	policy := determinePODExecutionPolicy(&GenerateRequest{ProductKey: "test-product",
 		Platforms: []string{"shein"},
 		Options:   &GenerateOptions{},
 	})
@@ -78,7 +78,7 @@ func TestDeterminePODExecutionPolicyDisablesNonPODTasks(t *testing.T) {
 func TestDeterminePODExecutionPolicyAllowsAIGeneratedSizeImageFallbackAsOptional(t *testing.T) {
 	t.Parallel()
 
-	policy := determinePODExecutionPolicy(&GenerateRequest{
+	policy := determinePODExecutionPolicy(&GenerateRequest{ProductKey: "test-product",
 		Platforms: []string{"shein"},
 		ImageURLs: []string{"https://cdn.example.com/source.png"},
 		Options: &GenerateOptions{

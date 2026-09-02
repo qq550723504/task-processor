@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
-	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productimage"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsdesign "task-processor/internal/sds/design"
@@ -27,8 +27,7 @@ func TestRetryTaskChildTaskRejectsProcessingTask(t *testing.T) {
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
-	task := &Task{
-		ID:     "task-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-1",
 		Status: core.TaskStatusProcessing,
 		Result: &ListingKitResult{
 			ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(core.TaskStatusFailed)}},
@@ -47,10 +46,9 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
-	task := &Task{
-		ID:     "task-sds-design",
+	task := &Task{TenantID: "tenant-test", ID: "task-sds-design",
 		Status: core.TaskStatusCompleted,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source.jpg"},
 			Text:      "floor mat",
 			Platforms: []string{"shein"},
@@ -208,10 +206,9 @@ func TestRetryTaskChildTaskRetriesSDSCatalogProduct(t *testing.T) {
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
-	task := &Task{
-		ID:     "task-sds-catalog",
+	task := &Task{TenantID: "tenant-test", ID: "task-sds-catalog",
 		Status: core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source.jpg"},
 			Text:      "fallback title",
 			Platforms: []string{"shein"},

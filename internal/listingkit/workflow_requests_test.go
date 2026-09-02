@@ -8,7 +8,7 @@ import (
 )
 
 func TestImageProcessRequestsRequireExplicitSupportedTargets(t *testing.T) {
-	task := &Task{Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
 		ProductURL: "https://example.test/product",
 		Options:    &GenerateOptions{ProcessImages: true},
 	}}
@@ -49,7 +49,7 @@ func TestListingKitResultKeepsMultiTargetAssetsOutOfLegacyScalars(t *testing.T) 
 }
 
 func TestImageProcessRequestsKeepEachNormalizedTarget(t *testing.T) {
-	task := &Task{Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
 		ProductURL: "https://example.test/product",
 		Platforms:  []string{" TEMU ", "shein", "temu"},
 		Options:    &GenerateOptions{ProcessImages: true},
@@ -74,7 +74,7 @@ func TestImageProcessRequestsKeepEachNormalizedTarget(t *testing.T) {
 
 func TestProcessableImageRequestWithoutSupportedTargetFailsValidation(t *testing.T) {
 	for _, platforms := range [][]string{nil, {}, {"unsupported"}} {
-		req := &GenerateRequest{
+		req := &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.test/image.jpg"},
 			Platforms: platforms,
 			Options:   &GenerateOptions{ProcessImages: true},

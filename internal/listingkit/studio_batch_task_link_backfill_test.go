@@ -321,7 +321,7 @@ func newStudioBatchTaskLinkBackfillFixture(t *testing.T, ctx context.Context) *s
 		ID:       "task-1",
 		TenantID: "tenant-a",
 		Status:   core.TaskStatusPending,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			TenantID:  "tenant-a",
 			ImageURLs: []string{"https://example.com/design.png"},
 			Options: &GenerateOptions{

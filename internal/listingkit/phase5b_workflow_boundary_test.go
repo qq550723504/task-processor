@@ -16,7 +16,7 @@ func TestWorkflowStandardFileDelegatesExecutionBranchesToPhaseSeams(t *testing.T
 	content := string(src)
 
 	for _, needle := range []string{
-		"buildStandardWorkflowCanonicalPhase(s).run(ctx, task, result, recorder, log)",
+		"buildStandardWorkflowCanonicalPhase(s).run(ctx, productSnapshotQueryForTask(task))",
 		"buildStandardWorkflowMediaPhase(s).run(ctx, task, result, canonicalProduct, recorder, log)",
 		"buildStandardWorkflowAssetPhase(s).run(",
 	} {

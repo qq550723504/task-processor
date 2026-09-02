@@ -25,7 +25,7 @@ func TestInterfacesFilesOwnDependencyAndServiceFamilies(t *testing.T) {
 
 	for _, needle := range []string{
 		"type Repository interface {",
-		"type ProductService interface {",
+		"type ProductSnapshotReader interface {",
 		"type TaskLifecycleService interface {",
 		"type StoreAdminService interface {",
 	} {
@@ -42,9 +42,8 @@ func TestInterfacesFilesOwnDependencyAndServiceFamilies(t *testing.T) {
 
 	for _, needle := range []string{
 		"type TaskSubmitter interface{ Submit(taskID string) error }",
-		"type ProductService interface {",
+		"type ProductSnapshotReader interface {",
 		"type Repository interface {",
-		"type CanonicalProductCacheRepository interface {",
 		"type WorkflowClientConfigurer interface {",
 	} {
 		if !strings.Contains(depContent, needle) {

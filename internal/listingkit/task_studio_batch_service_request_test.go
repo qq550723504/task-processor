@@ -31,6 +31,7 @@ func TestBuildStudioBatchTaskGenerateRequestIncludesOwnerContext(t *testing.T) {
 				SheinStoreID: "870",
 			},
 			SelectionSnapshot: SheinStudioSelection{
+				ProductKey:      " product-1 ",
 				ProductName:     "wallet",
 				VariantID:       1,
 				ParentProductID: 2,
@@ -52,6 +53,9 @@ func TestBuildStudioBatchTaskGenerateRequestIncludesOwnerContext(t *testing.T) {
 	}
 	if req.UserID != "user-1" {
 		t.Fatalf("UserID = %q, want user-1", req.UserID)
+	}
+	if req.ProductKey != "product-1" {
+		t.Fatalf("ProductKey = %q, want product-1", req.ProductKey)
 	}
 }
 
@@ -1198,7 +1202,7 @@ func TestTaskStudioBatchServiceRecoversCreatedTaskWhenLinkPersistenceFails(t *te
 		ctx,
 		&StudioBatchRecord{TenantID: "tenant-a"},
 		candidate,
-		&Task{ID: "task-created-after-link-error"},
+		&Task{TenantID: "tenant-test", ID: "task-created-after-link-error"},
 		linkErr,
 	); err != nil {
 		t.Fatalf("recoverStudioBatchTaskAfterLinkPersistenceFailure() error = %v", err)
@@ -1243,7 +1247,7 @@ func TestTaskStudioBatchServiceKeepsReservationWhenTaskTerminationFails(t *testi
 		markTaskFailed: func(context.Context, string, string) error { return errors.New("task store temporarily unavailable") },
 	}
 	linkErr := errors.New("link persistence temporarily unavailable")
-	if err := service.recoverStudioBatchTaskAfterLinkPersistenceFailure(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, candidate, &Task{ID: "task-created-after-link-error"}, linkErr); err == nil {
+	if err := service.recoverStudioBatchTaskAfterLinkPersistenceFailure(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, candidate, &Task{TenantID: "tenant-test", ID: "task-created-after-link-error"}, linkErr); err == nil {
 		t.Fatal("recoverStudioBatchTaskAfterLinkPersistenceFailure() error = nil, want termination failure")
 	}
 	link, err := links.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
@@ -1435,7 +1439,7 @@ func TestCreatedTaskFromDurableLinkAcceptsMatchingAISettingsIdentity(t *testing.
 	}
 	service := &taskStudioBatchService{
 		getTask: func(context.Context, string) (*Task, error) {
-			return &Task{Request: &GenerateRequest{Options: &GenerateOptions{
+			return &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{
 				SheinStudio: &SheinStudioOptions{ProductImageURLs: []string{"https://example.com/generated.png"}},
 			}}}, nil
 		},
@@ -1580,15 +1584,14 @@ func TestBuildStudioBatchRecordFromSessionDraftCopiesProductImageSettings(t *tes
 func TestStudioBatchTaskMatchesSelectionRejectsDifferentImageStrategy(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		Request: &GenerateRequest{
-			ImageURLs: []string{"https://example.com/design.png"},
-			Options: &GenerateOptions{
-				ImageStrategy: sheinImageStrategySDSOfficial,
-				SheinStudio:   &SheinStudioOptions{StyleID: "style-1"},
-				SDS:           &SDSSyncOptions{VariantID: 1, ParentProductID: 2, PrototypeGroupID: 3, LayerID: "layer-1"},
-			},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		ImageURLs: []string{"https://example.com/design.png"},
+		Options: &GenerateOptions{
+			ImageStrategy: sheinImageStrategySDSOfficial,
+			SheinStudio:   &SheinStudioOptions{StyleID: "style-1"},
+			SDS:           &SDSSyncOptions{VariantID: 1, ParentProductID: 2, PrototypeGroupID: 3, LayerID: "layer-1"},
 		},
+	},
 	}
 	candidate := studioBatchTaskCandidate{
 		Design:        StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
@@ -1607,15 +1610,14 @@ func TestStudioBatchTaskMatchesSelectionRejectsDifferentImageStrategy(t *testing
 func TestStudioBatchTaskMatchesSelectionRejectsAIWithoutGeneratedProductImages(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		Request: &GenerateRequest{
-			ImageURLs: []string{"https://example.com/design.png"},
-			Options: &GenerateOptions{
-				ImageStrategy: sheinImageStrategyAIGenerated,
-				SheinStudio:   &SheinStudioOptions{StyleID: "style-1"},
-				SDS:           &SDSSyncOptions{VariantID: 1, ParentProductID: 2, PrototypeGroupID: 3, LayerID: "layer-1"},
-			},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		ImageURLs: []string{"https://example.com/design.png"},
+		Options: &GenerateOptions{
+			ImageStrategy: sheinImageStrategyAIGenerated,
+			SheinStudio:   &SheinStudioOptions{StyleID: "style-1"},
+			SDS:           &SDSSyncOptions{VariantID: 1, ParentProductID: 2, PrototypeGroupID: 3, LayerID: "layer-1"},
 		},
+	},
 	}
 	candidate := studioBatchTaskCandidate{
 		Design:        StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
@@ -1698,7 +1700,7 @@ func TestStudioBatchTaskLinkMatchesImageStrategyRejectsHistoricalAIMismatch(t *t
 	t.Parallel()
 
 	link := &StudioBatchTaskLinkRecord{ImageStrategy: ""}
-	task := &Task{Request: &GenerateRequest{Options: &GenerateOptions{ImageStrategy: sheinImageStrategyAIGenerated}}}
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{ImageStrategy: sheinImageStrategyAIGenerated}}}
 	candidate := studioBatchTaskCandidate{ImageStrategy: sheinImageStrategySDSOfficial}
 	if studioBatchTaskLinkMatchesImageStrategy(link, task, candidate) {
 		t.Fatal("historical AI task unexpectedly matched SDS candidate")
@@ -1737,7 +1739,7 @@ func TestReserveStudioBatchTaskCandidateDisambiguatesHistoricalStrategyCollision
 		batchTaskLinkRepo: links,
 		currentTime:       time.Now,
 		getTask: func(context.Context, string) (*Task, error) {
-			return &Task{Request: &GenerateRequest{Options: &GenerateOptions{ImageStrategy: sheinImageStrategyAIGenerated}}}, nil
+			return &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{ImageStrategy: sheinImageStrategyAIGenerated}}}, nil
 		},
 	}
 	candidate := studioBatchTaskCandidate{
@@ -1790,7 +1792,7 @@ func TestPersistStudioBatchTaskLinkDisambiguatesStrategyCollision(t *testing.T) 
 		batchTaskLinkRepo: links,
 		currentTime:       time.Now,
 		getTask: func(context.Context, string) (*Task, error) {
-			return &Task{Request: &GenerateRequest{Options: &GenerateOptions{ImageStrategy: sheinImageStrategyAIGenerated}}}, nil
+			return &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{ImageStrategy: sheinImageStrategyAIGenerated}}}, nil
 		},
 	}
 	candidate := studioBatchTaskCandidate{
@@ -1836,7 +1838,7 @@ func TestFindDurableStudioBatchTaskChecksHistoricalCandidateKey(t *testing.T) {
 		batchTaskLinkRepo: links,
 		currentTime:       time.Now,
 		getTask: func(context.Context, string) (*Task, error) {
-			return &Task{ID: "old-ai-task", Request: &GenerateRequest{Options: &GenerateOptions{
+			return &Task{TenantID: "tenant-test", ID: "old-ai-task", Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{
 				ImageStrategy: sheinImageStrategyAIGenerated,
 				SheinStudio:   &SheinStudioOptions{ProductImageURLs: []string{"https://example.com/generated.png"}},
 			}}}, nil
@@ -1876,7 +1878,7 @@ func TestFindDurableStudioBatchTaskMatchUsesHistoricalCandidateIdentity(t *testi
 		batchTaskLinkRepo: links,
 		currentTime:       time.Now,
 		getTask: func(context.Context, string) (*Task, error) {
-			return &Task{ID: "old-ai-task", Request: &GenerateRequest{Options: &GenerateOptions{
+			return &Task{TenantID: "tenant-test", ID: "old-ai-task", Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{
 				ImageStrategy: sheinImageStrategyAIGenerated,
 				SheinStudio:   &SheinStudioOptions{ProductImageURLs: []string{"https://example.com/generated.png"}},
 			}}}, nil

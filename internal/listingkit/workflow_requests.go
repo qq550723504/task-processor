@@ -6,20 +6,8 @@ import (
 
 	listingplatform "task-processor/internal/listing/platform"
 	listingworkflow "task-processor/internal/listingkit/workflow"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
-
-func toProductGenerateRequest(task *Task) *productenrich.GenerateRequest {
-	if task == nil || task.Request == nil {
-		return &productenrich.GenerateRequest{}
-	}
-	return &productenrich.GenerateRequest{
-		ImageURLs:  append([]string(nil), task.Request.ImageURLs...),
-		Text:       task.Request.Text,
-		ProductURL: task.Request.ProductURL,
-	}
-}
 
 func toImageProcessRequests(task *Task) ([]*productimage.ImageProcessRequest, error) {
 	if task == nil || task.Request == nil {

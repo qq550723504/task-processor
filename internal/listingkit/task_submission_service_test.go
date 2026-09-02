@@ -1061,7 +1061,7 @@ func TestApplySubmissionRefreshMutationAppendsRunningEventBeforeConfirmation(t *
 func TestValidateSubmissionRefreshMutationRejectsMissingTaskResult(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{ID: "task-no-result"}
+	task := &Task{TenantID: "tenant-test", ID: "task-no-result"}
 
 	_, err := validateSubmissionRefreshMutation(task, "publish", "refresh-123")
 	if err == nil {

@@ -4,23 +4,21 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	"task-processor/internal/productenrich"
 )
 
 func TestRunWorkflowOptimizesSheinContentBeforeFinalReview(t *testing.T) {
 	t.Parallel()
 
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID: "product-task-shein-copy",
-		Request: &productenrich.GenerateRequest{
+		Request: &stubProductSnapshotRequest{
 			ImageURLs: []string{"https://example.com/pillow.jpg"},
 			Text:      "pillow cover",
 		},
 	}
-	productSvc := &stubWorkflowProductService{
+	productSvc := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:         "Envelope style pillow cover",
 			Description:   "Simple pillow cover for home decor.",
 			Category:      []string{"Home", "Textiles", "Pillow Covers"},
@@ -41,9 +39,8 @@ func TestRunWorkflowOptimizesSheinContentBeforeFinalReview(t *testing.T) {
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
 
-	task := &Task{
-		ID: "listingkit-task-shein-copy",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-shein-copy",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/pillow.jpg"},
 			Text:      "pillow cover",
 			Platforms: []string{"shein"},

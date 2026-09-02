@@ -23,12 +23,11 @@ func TestGetTaskGenerationQueueReturnsNotModifiedWhenDeltaMatches(t *testing.T) 
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-queue-delta-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-queue-delta-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-queue-delta-1",
 			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
@@ -78,12 +77,11 @@ func TestGetTaskGenerationQueueBuildsEmptyQueueFinalResponseShape(t *testing.T) 
 	}), assetRepository, nil, nil, nil)
 
 	updatedAt := time.Date(2026, 5, 30, 11, 0, 0, 0, time.UTC)
-	task := &Task{
-		ID:        "task-generation-queue-empty-final-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-queue-empty-final-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: updatedAt,
 		UpdatedAt: updatedAt,
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result:    &ListingKitResult{TaskID: "task-generation-queue-empty-final-1"},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -133,12 +131,11 @@ func TestGetTaskGenerationQueueFinalResponseRetainsReviewSummaryAndDeltaSensitiv
 	}), assetRepository, nil, nil, nil)
 
 	updatedAt := time.Date(2026, 5, 30, 11, 5, 0, 0, time.UTC)
-	task := &Task{
-		ID:        "task-generation-queue-review-final-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-queue-review-final-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: updatedAt,
 		UpdatedAt: updatedAt,
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-queue-review-final-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -223,12 +220,11 @@ func TestGetTaskGenerationQueueFinalResponseIncludesQueueResourceDescriptors(t *
 	}), assetRepository, nil, nil, nil)
 
 	updatedAt := time.Date(2026, 5, 30, 11, 10, 0, 0, time.UTC)
-	task := &Task{
-		ID:        "task-generation-queue-descriptors-final-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-queue-descriptors-final-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: updatedAt,
 		UpdatedAt: updatedAt,
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-queue-descriptors-final-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -346,12 +342,11 @@ func TestGetTaskGenerationQueueDeferredOnlyReviewSummaryChangeInvalidatesOldToke
 	}), assetRepository, nil, nil, nil)
 
 	now := time.Date(2026, 5, 30, 12, 5, 0, 0, time.UTC)
-	task := &Task{
-		ID:        "task-generation-queue-deferred-not-modified-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-queue-deferred-not-modified-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: now,
 		UpdatedAt: now,
-		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon", "shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-queue-deferred-not-modified-1",
 			AssetRenderPreviews: []AssetRenderPreview{
@@ -560,8 +555,7 @@ func TestTaskGenerationQueueReadSnapshotRunPropagatesLoadErrors(t *testing.T) {
 		{
 			name: "list asset generation tasks",
 			service: &taskGenerationService{
-				repo: &stubGenerationRepo{task: &Task{
-					ID:     "task-generation-queue-snapshot-error-1",
+				repo: &stubGenerationRepo{task: &Task{TenantID: "tenant-test", ID: "task-generation-queue-snapshot-error-1",
 					Result: &ListingKitResult{TaskID: "task-generation-queue-snapshot-error-1"},
 				}},
 				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
@@ -577,8 +571,7 @@ func TestTaskGenerationQueueReadSnapshotRunPropagatesLoadErrors(t *testing.T) {
 		{
 			name: "list generation reviews",
 			service: &taskGenerationService{
-				repo: &stubGenerationRepo{task: &Task{
-					ID:     "task-generation-queue-snapshot-error-2",
+				repo: &stubGenerationRepo{task: &Task{TenantID: "tenant-test", ID: "task-generation-queue-snapshot-error-2",
 					Result: &ListingKitResult{TaskID: "task-generation-queue-snapshot-error-2"},
 				}},
 				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
@@ -610,8 +603,7 @@ func TestTaskGenerationQueueReadSnapshotRunUsesSingleReviewedResultHandoff(t *te
 	taskCalls := 0
 	reviewCalls := 0
 	svc := &taskGenerationService{
-		repo: &stubGenerationRepo{task: &Task{
-			ID: taskID,
+		repo: &stubGenerationRepo{task: &Task{TenantID: "tenant-test", ID: taskID,
 			Result: &ListingKitResult{
 				TaskID: taskID,
 				Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
@@ -705,8 +697,7 @@ func TestTaskGenerationQueueReadPageRunBuildsEmptyQueueResponseShape(t *testing.
 
 	updatedAt := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
 	page := buildTaskGenerationQueueReadPagePhase().run(&taskGenerationQueueReadSnapshot{
-		task: &Task{
-			ID:        "task-generation-queue-read-page-empty-1",
+		task: &Task{TenantID: "tenant-test", ID: "task-generation-queue-read-page-empty-1",
 			UpdatedAt: updatedAt,
 		},
 	}, &GenerationQueueQuery{
@@ -734,8 +725,7 @@ func TestTaskGenerationQueueReadPageRunAppliesFilteringSortingAndPaging(t *testi
 	t.Parallel()
 
 	page := buildTaskGenerationQueueReadPagePhase().run(&taskGenerationQueueReadSnapshot{
-		task: &Task{
-			ID:        "task-generation-queue-read-page-list-1",
+		task: &Task{TenantID: "tenant-test", ID: "task-generation-queue-read-page-list-1",
 			UpdatedAt: time.Date(2026, 5, 30, 10, 5, 0, 0, time.UTC),
 		},
 		queue: &GenerationWorkQueue{
@@ -774,8 +764,7 @@ func TestTaskGenerationQueueReadPageRunAttachesReviewSummaryBeforeDeltaTokenBuil
 
 	query := &GenerationQueueQuery{Platform: "shein"}
 	snapshot := &taskGenerationQueueReadSnapshot{
-		task: &Task{
-			ID:        "task-generation-queue-read-page-review-1",
+		task: &Task{TenantID: "tenant-test", ID: "task-generation-queue-read-page-review-1",
 			UpdatedAt: time.Date(2026, 5, 30, 10, 10, 0, 0, time.UTC),
 		},
 		result: &ListingKitResult{
@@ -1042,12 +1031,11 @@ func TestTaskGenerationReviewReadsPropagateSnapshotLoadErrors(t *testing.T) {
 		},
 	}
 
-	task := &Task{
-		ID:        "task-generation-review-error-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-review-error-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result:    &ListingKitResult{TaskID: "task-generation-review-error-1"},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -1530,12 +1518,11 @@ func TestGetTaskGenerationQueueAppliesFilteringSortingAndPaging(t *testing.T) {
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-queue-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-queue-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon", "shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-queue-1",
 			Amazon: &AmazonPackage{
@@ -1609,12 +1596,11 @@ func TestGetTaskGenerationQueueFiltersByExecutionQuality(t *testing.T) {
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-queue-quality-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-queue-quality-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon", "shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-queue-quality-1",
 			Amazon: &AmazonPackage{
@@ -1683,12 +1669,11 @@ func TestGetTaskGenerationQueueFiltersByRenderPreviewAvailability(t *testing.T) 
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-queue-preview-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-queue-preview-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon", "shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-queue-preview-1",
 			AssetRenderPreviews: []AssetRenderPreview{
@@ -1771,12 +1756,11 @@ func TestGetTaskGenerationQueueBuildsOperationalSummaryAndTemplateSort(t *testin
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-queue-summary-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-queue-summary-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon", "shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-queue-summary-1",
 			Amazon: &AmazonPackage{
@@ -1873,12 +1857,11 @@ func TestGetTaskGenerationQueueFiltersByQualityGrade(t *testing.T) {
 		repo: repo,
 	}, assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-queue-grade-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-queue-grade-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon", "shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-queue-grade-1",
 			Amazon: &AmazonPackage{

@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/product/catalog/canonical"
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -221,8 +221,7 @@ func TestApplyTaskRevisionReturnsAppliedChanges(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubApplyRevisionRepo{}
-	task := &Task{
-		ID:     "task-apply-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-apply-1",
 		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-1",
@@ -386,8 +385,7 @@ func TestApplyTaskRevisionTrimsRevisionHistory(t *testing.T) {
 			Platform:  "shein",
 		})
 	}
-	task := &Task{
-		ID:     "task-apply-2",
+	task := &Task{TenantID: "tenant-test", ID: "task-apply-2",
 		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID:               "task-apply-2",
@@ -439,9 +437,8 @@ func TestApplyTaskRevisionRefreshesSheinDerivedStateAfterCategoryChange(t *testi
 	t.Parallel()
 
 	repo := &stubApplyRevisionRepo{}
-	task := &Task{
-		ID: "task-apply-shein-category-refresh",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-apply-shein-category-refresh",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms:    []string{"shein"},
 			Country:      "US",
 			Language:     "en_US",
@@ -558,9 +555,8 @@ func TestApplyTaskRevisionKeepsManualCategoryReviewConfirmationAfterRefresh(t *t
 	categoryID := 2645
 	productTypeID := 539
 	topCategoryID := 2374
-	task := &Task{
-		ID: "task-apply-shein-category-confirm",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-apply-shein-category-confirm",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms:    []string{"shein"},
 			Country:      "US",
 			Language:     "en_US",
@@ -660,9 +656,8 @@ func TestApplyTaskRevisionDowngradesSaleAttributesWhenCategoryRefreshLacksValueI
 	t.Parallel()
 
 	repo := &stubApplyRevisionRepo{}
-	task := &Task{
-		ID: "task-apply-shein-category-rerun-sale-attributes",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-apply-shein-category-rerun-sale-attributes",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms:    []string{"shein"},
 			Country:      "US",
 			Language:     "en_US",
@@ -757,9 +752,8 @@ func TestApplyTaskRevisionDowngradesManualResolvedSaleAttributesWithoutValueIDs(
 	t.Parallel()
 
 	repo := &stubApplyRevisionRepo{}
-	task := &Task{
-		ID: "task-apply-shein-sale-confirm-without-value-ids",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-apply-shein-sale-confirm-without-value-ids",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms:    []string{"shein"},
 			Country:      "US",
 			Language:     "en_US",
@@ -846,7 +840,7 @@ func TestApplyTaskRevisionRefreshUsesTaskIdentityForSheinRuntime(t *testing.T) {
 		ID:       "task-apply-shein-runtime-context",
 		TenantID: "373211199677923496",
 		UserID:   "user-ctx-1",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms:    []string{"shein"},
 			Country:      "US",
 			Language:     "en_US",
@@ -930,7 +924,7 @@ func TestApplyTaskRevisionClearsStaleSheinCookieBlockersAfterOnlineRefresh(t *te
 		ID:       "task-apply-shein-cookie-stale",
 		TenantID: "227",
 		UserID:   "user-cookie-1",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms:    []string{"shein"},
 			Country:      "US",
 			Language:     "en_US",
@@ -1057,7 +1051,7 @@ func TestApplyTaskRevisionDecoratesPreviewWithLiveSheinCookieBlocker(t *testing.
 		ID:       "task-apply-shein-cookie-live-blocker",
 		TenantID: "227",
 		UserID:   "user-cookie-2",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms:    []string{"shein"},
 			Country:      "US",
 			Language:     "en_US",
@@ -1167,9 +1161,8 @@ func TestApplyTaskRevisionRegeneratesSheinSaleAttributesWithoutCategoryConfirmat
 	t.Parallel()
 
 	repo := &stubApplyRevisionRepo{}
-	task := &Task{
-		ID: "task-apply-shein-regenerate-sale-attributes",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-apply-shein-regenerate-sale-attributes",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms:    []string{"shein"},
 			Country:      "US",
 			Language:     "en_US",
@@ -1249,9 +1242,8 @@ func TestApplyTaskRevisionRegeneratesSheinAttributesWithoutTouchingSaleAttribute
 
 	repo := &stubApplyRevisionRepo{}
 	secondaryValueID := 417
-	task := &Task{
-		ID: "task-apply-shein-regenerate-attributes",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-apply-shein-regenerate-attributes",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms:    []string{"shein"},
 			Country:      "US",
 			Language:     "en_US",
@@ -1361,8 +1353,7 @@ func TestRefreshSheinDerivedStateClearsAttributeCacheForRegeneration(t *testing.
 			attributeResolver: resolver,
 		},
 	}
-	task := &Task{
-		Request: &GenerateRequest{SheinStoreID: 869},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", SheinStoreID: 869},
 		Result: &ListingKitResult{
 			CanonicalProduct: &canonical.Product{Title: "metal wall sign"},
 			Shein: &SheinPackage{
@@ -1383,8 +1374,7 @@ func TestRefreshSheinDerivedStateClearsAttributeCacheForRegeneration(t *testing.
 }
 
 func TestRefreshSheinDerivedStateUsesSheinTargetImagesWithoutCompatibilityScalar(t *testing.T) {
-	task := &Task{
-		Request: &GenerateRequest{Platforms: []string{"temu", "shein"}},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", Platforms: []string{"temu", "shein"}},
 		Result: &ListingKitResult{
 			CanonicalProduct: &canonical.Product{Title: "Target-aware refresh"},
 			ImageAssetsByTarget: map[string]*productimage.ImageProcessResult{
@@ -1410,10 +1400,9 @@ func TestRefreshSheinDerivedStateUsesSheinTargetImagesWithoutCompatibilityScalar
 
 func TestRefreshSheinDerivedStateAppliesSDSStyleToEveryCanonicalVariant(t *testing.T) {
 	styleName := "  Studio B6C753EB  "
-	task := &Task{
-		Request: &GenerateRequest{Options: &GenerateOptions{
-			SDS: &SDSSyncOptions{StyleName: styleName},
-		}},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{
+		SDS: &SDSSyncOptions{StyleName: styleName},
+	}},
 		Result: &ListingKitResult{
 			CanonicalProduct: &canonical.Product{
 				Title:      "Existing title",
@@ -1465,10 +1454,9 @@ func TestRefreshSheinDerivedStateAppliesSDSStyleToEveryCanonicalVariant(t *testi
 }
 
 func TestRefreshSheinDerivedStateReappliesCompletedSDSCanonicalMetadata(t *testing.T) {
-	task := &Task{
-		Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
-			StyleName: "Studio A1",
-		}}},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
+		StyleName: "Studio A1",
+	}}},
 		Result: &ListingKitResult{
 			CanonicalProduct: &canonical.Product{
 				Title:      "Stale title",
@@ -1521,8 +1509,7 @@ func TestApplyTaskRevisionSupportsRestoreFromRevisionID(t *testing.T) {
 
 	repo := &stubApplyRevisionRepo{}
 	restoreName := "Restored Bottle"
-	task := &Task{
-		ID:     "task-apply-restore",
+	task := &Task{TenantID: "tenant-test", ID: "task-apply-restore",
 		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-restore",
@@ -1682,8 +1669,7 @@ func TestApplyTaskRevisionReturnsNotFoundForMissingRestoreRevision(t *testing.T)
 	t.Parallel()
 
 	repo := &stubApplyRevisionRepo{}
-	task := &Task{
-		ID:     "task-apply-restore-missing",
+	task := &Task{TenantID: "tenant-test", ID: "task-apply-restore-missing",
 		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-restore-missing",
@@ -1713,8 +1699,7 @@ func TestApplyTaskRevisionPersistsAtomically(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubApplyRevisionRepo{failOnSaveCall: 2}
-	task := &Task{
-		ID:     "task-apply-atomic",
+	task := &Task{TenantID: "tenant-test", ID: "task-apply-atomic",
 		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-atomic",

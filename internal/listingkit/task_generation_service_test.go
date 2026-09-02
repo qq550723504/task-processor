@@ -16,8 +16,7 @@ func TestTaskGenerationServiceGetTaskGenerationTasksAppliesFilters(t *testing.T)
 	t.Parallel()
 
 	repo := &stubGenerationRepo{}
-	task := &Task{
-		ID:        "task-generation-service-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-service-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -139,8 +138,7 @@ func TestTaskGenerationTasksReadSnapshotRunPropagatesLoadErrors(t *testing.T) {
 		{
 			name: "list asset generation tasks",
 			service: &taskGenerationService{
-				repo: &stubGenerationRepo{task: &Task{
-					ID:     "task-generation-tasks-snapshot-error-1",
+				repo: &stubGenerationRepo{task: &Task{TenantID: "tenant-test", ID: "task-generation-tasks-snapshot-error-1",
 					Result: &ListingKitResult{TaskID: "task-generation-tasks-snapshot-error-1"},
 				}},
 				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
@@ -335,8 +333,7 @@ func TestTaskGenerationCurrentStateSnapshotPropagatesLoadErrors(t *testing.T) {
 		{
 			name: "list asset generation tasks",
 			service: &taskGenerationService{
-				repo: &stubGenerationRepo{task: &Task{
-					ID:     "task-generation-current-state-error-1",
+				repo: &stubGenerationRepo{task: &Task{TenantID: "tenant-test", ID: "task-generation-current-state-error-1",
 					Result: &ListingKitResult{TaskID: "task-generation-current-state-error-1"},
 				}},
 				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
@@ -352,8 +349,7 @@ func TestTaskGenerationCurrentStateSnapshotPropagatesLoadErrors(t *testing.T) {
 		{
 			name: "list generation reviews",
 			service: &taskGenerationService{
-				repo: &stubGenerationRepo{task: &Task{
-					ID:     "task-generation-current-state-error-2",
+				repo: &stubGenerationRepo{task: &Task{TenantID: "tenant-test", ID: "task-generation-current-state-error-2",
 					Result: &ListingKitResult{TaskID: "task-generation-current-state-error-2"},
 				}},
 				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
@@ -476,8 +472,7 @@ func TestTaskGenerationTasksReadPagePhaseReturnsStableEmptyShape(t *testing.T) {
 	t.Parallel()
 
 	page := buildTaskGenerationTasksReadPagePhase().run(&taskGenerationTasksReadSnapshot{
-		task: &Task{
-			ID:        "task-generation-read-page-empty-1",
+		task: &Task{TenantID: "tenant-test", ID: "task-generation-read-page-empty-1",
 			UpdatedAt: time.Date(2026, 5, 30, 13, 0, 0, 0, time.UTC),
 		},
 	}, &GenerationTaskQuery{Page: 3, PageSize: 250})
@@ -503,8 +498,7 @@ func TestTaskGenerationTasksReadPagePhaseUsesFilteredSetForSummaryAndPagedSetFor
 	t.Parallel()
 
 	snapshot := &taskGenerationTasksReadSnapshot{
-		task: &Task{
-			ID:        "task-generation-read-page-filtered-summary-1",
+		task: &Task{TenantID: "tenant-test", ID: "task-generation-read-page-filtered-summary-1",
 			UpdatedAt: time.Date(2026, 5, 30, 14, 0, 0, 0, time.UTC),
 		},
 		tasks: []assetgeneration.Task{
@@ -549,12 +543,11 @@ func TestTaskGenerationServiceRetryTaskGenerationTasksReturnsEmptyPageWithoutSel
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	task := &Task{
-		ID:        "task-generation-retry-service-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-service-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result:    &ListingKitResult{TaskID: "task-generation-retry-service-1"},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {

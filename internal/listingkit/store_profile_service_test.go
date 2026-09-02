@@ -81,7 +81,7 @@ func TestResolveSheinStoreIDUsesExplicitRequestStore(t *testing.T) {
 
 	storeID, err := svc.resolveSheinStoreID(ctx, &Task{
 		TenantID: "303",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			SheinStoreID: 901,
 		},
 	})
@@ -114,7 +114,7 @@ func TestResolveSheinStoreIDUsesSnapshotWhenRequestStoreMissing(t *testing.T) {
 
 	storeID, err := svc.resolveSheinStoreID(ctx, &Task{
 		TenantID: "404",
-		Request:  &GenerateRequest{},
+		Request:  &GenerateRequest{ProductKey: "test-product"},
 		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
 			StoreID:          911,
 			Site:             "US",

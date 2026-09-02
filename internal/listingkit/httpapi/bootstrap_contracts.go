@@ -16,7 +16,6 @@ import (
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/listingsubscription"
 	worker "task-processor/internal/platform/workerpool"
-	productenrich "task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
@@ -164,7 +163,7 @@ type BuildServiceHooks struct {
 type BuildServiceInput struct {
 	Config                     *config.Config
 	Logger                     *logrus.Logger
-	ProductService             productenrich.ProductService
+	ProductSnapshotReader      listingkit.ProductSnapshotReader
 	ImageService               productimage.Service
 	SDSSyncService             sdsusecase.Service
 	SDSLoginStatusProvider     listingkit.SDSLoginStatusProvider

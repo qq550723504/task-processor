@@ -13,7 +13,8 @@ type SourceReference struct {
 }
 
 type GenerateRequest struct {
-	TenantID string `json:"tenant_id,omitempty"`
+	TenantID   string `json:"tenant_id,omitempty"`
+	ProductKey string `json:"product_key"`
 	// BillingTenantID is set only by the authenticated HTTP boundary after its
 	// subscription check. It is intentionally excluded from the persisted
 	// request JSON; Task owns the durable billing identity separately from the

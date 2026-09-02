@@ -757,6 +757,7 @@ func newStudioBatchRecordForTest(batchID string, now time.Time) *StudioBatchReco
 			SheinStoreID: "9001",
 			Eligible:     true,
 			Selection: SheinStudioSelection{
+				ProductKey:         "product-3003",
 				ProductID:          3003,
 				ParentProductID:    7001,
 				VariantID:          3003,

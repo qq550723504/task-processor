@@ -41,12 +41,11 @@ func TestSelectedPlatformPreviewAndExportUseTargetKeyedAssetsWithReversedTargets
 			},
 		}},
 	}
-	task := &Task{
-		ID:        "targeted-preview-export",
+	task := &Task{TenantID: "tenant-test", ID: "targeted-preview-export",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now().Add(-time.Minute),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"temu", "shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"temu", "shein"}},
 		Result:    result,
 	}
 

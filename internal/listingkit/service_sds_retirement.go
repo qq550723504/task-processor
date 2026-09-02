@@ -285,7 +285,7 @@ func sdsRetirementSourceSKUsFromTasks(tasks []Task) []string {
 			set[sku] = struct{}{}
 		}
 		if snapshot := tasks[i].Result.StandardProductSnapshot; snapshot != nil {
-			for _, sku := range sdsRetirementSourceSKUs(snapshot.CanonicalProduct) {
+			for _, sku := range sdsRetirementSourceSKUs(canonicalProductFromStandardSnapshot(snapshot)) {
 				set[sku] = struct{}{}
 			}
 		}

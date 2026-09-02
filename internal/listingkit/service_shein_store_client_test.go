@@ -78,7 +78,7 @@ func TestResolveSheinStoreInfoUsesTenantScopedStoreClient(t *testing.T) {
 	task := &Task{
 		ID:       "task-store-tenant",
 		TenantID: "227",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			SheinStoreID: 869,
 		},
 	}
@@ -117,7 +117,7 @@ func TestNewSheinAPIClientRejectsStaleStoreSnapshotBeforeCreatingClient(t *testi
 	}}
 	task := &Task{
 		TenantID: "227",
-		Request:  &GenerateRequest{},
+		Request:  &GenerateRequest{ProductKey: "test-product"},
 		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
 			StoreID: 869,
 		},
@@ -148,7 +148,7 @@ func TestNewSheinAPIClientRejectsSnapshotWhenCatalogNoLongerMatchesStore(t *test
 	}}
 	task := &Task{
 		TenantID: "227",
-		Request:  &GenerateRequest{},
+		Request:  &GenerateRequest{ProductKey: "test-product"},
 		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
 			StoreID: 869,
 		},
@@ -168,8 +168,7 @@ func TestResolveSheinStoreIDPrefersPersistedSnapshotOverMutableRequest(t *testin
 	t.Parallel()
 
 	resolver := buildSubmitRuntimeContextResolver(&service{})
-	storeID, err := resolver.resolveStoreID(context.Background(), &Task{
-		Request: &GenerateRequest{SheinStoreID: 870},
+	storeID, err := resolver.resolveStoreID(context.Background(), &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", SheinStoreID: 870},
 		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
 			StoreID: 869,
 		},

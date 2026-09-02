@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"task-processor/internal/amazonlisting"
-	"task-processor/internal/product/catalog/canonical"
 	openaiclient "task-processor/internal/integration/openai"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -93,9 +93,8 @@ func (s stubSheinAttributeAPI) AddCustomAttributeValue(req *sheinattribute.AddCu
 func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID: "task-1",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-1",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "test product",
 			Platforms: []string{"amazon", "shein", "temu", "walmart"},
 			Country:   "US",
@@ -167,7 +166,7 @@ func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 		},
 	}
 
-	result := NewAssembler(stubAmazonDraftBuilder{}).Assemble(task, canonical, imageResult)
+	result := NewAssembler(stubAmazonDraftBuilder{}).Assemble(task, testCatalogSnapshot(t, canonical), imageResult)
 
 	if result.Amazon == nil || result.Amazon.Draft == nil {
 		t.Fatal("expected amazon package")
@@ -326,9 +325,8 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 		}, nil),
 	})
 
-	task := &Task{
-		ID: "task-2",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-2",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:               "test product",
 			Platforms:          []string{"shein"},
 			Country:            "US",
@@ -363,7 +361,7 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 		},
 	}
 
-	result := assembler.Assemble(task, canonical, nil)
+	result := assembler.Assemble(task, testCatalogSnapshot(t, canonical), nil)
 
 	if result.Shein == nil || result.Shein.CategoryResolution == nil {
 		t.Fatal("expected shein category resolution")
@@ -479,7 +477,7 @@ func TestBuildTemuPackageKeepsCanonicalGalleryWhenGeneratedGalleryIsEmpty(t *tes
 		Variants: []canonical.Variant{{SKU: "SKU-1"}},
 	}
 
-	pkg := buildTemuPackage(&GenerateRequest{}, product, nil)
+	pkg := buildTemuPackage(&GenerateRequest{ProductKey: "test-product"}, product, nil)
 	if pkg == nil || len(pkg.SkcList) != 1 {
 		t.Fatalf("temu package = %#v, want one SKC", pkg)
 	}
@@ -492,7 +490,7 @@ func TestManagedSheinCategoryResolverFallsBackWithoutStoreID(t *testing.T) {
 	t.Parallel()
 
 	resolver := sheinmanaged.NewCategoryResolver(nil)
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Text:      "wireless earbuds",
 		Country:   "US",
 		Language:  "en_US",
@@ -523,7 +521,7 @@ func TestManagedSheinAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 	t.Parallel()
 
 	resolver := sheinmanaged.NewAttributeResolver(nil, nil)
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Text:      "wireless earbuds",
 		Country:   "US",
 		Language:  "en_US",
@@ -555,7 +553,7 @@ func TestManagedSheinSaleAttributeResolverFallsBackWithoutStoreID(t *testing.T) 
 	t.Parallel()
 
 	resolver := sheinmanaged.NewSaleAttributeResolver(nil, nil)
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Text:      "wireless earbuds",
 		Country:   "US",
 		Language:  "en_US",
@@ -590,7 +588,7 @@ func TestBuildSheinPublishRequestForTaskIncludesTaskIdentity(t *testing.T) {
 	t.Parallel()
 
 	task := &Task{TenantID: "tenant-1", UserID: "user-1"}
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Country:            "US",
 		Language:           "en_US",
 		Text:               "wireless earbuds",
@@ -618,7 +616,7 @@ func TestBuildSheinPublishRequestIncludesSDSProductSize(t *testing.T) {
 	t.Parallel()
 
 	productSize := `[[{"content":"尺码"},{"content":"肩宽(cm/in)"}],[{"content":"M"},{"content":"55cm/21.7in"}]]`
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Options: &GenerateOptions{
 			SDS: &SDSSyncOptions{
 				ProductSize: productSize,
@@ -636,11 +634,10 @@ func TestBuildSheinPublishRequestIncludesSDSProductSize(t *testing.T) {
 func TestBuildSummaryIncludesCanonicalAndImageReviewState(t *testing.T) {
 	t.Parallel()
 
-	summary := buildSummary(&Task{
-		Request: &GenerateRequest{
-			Text:      "wireless earbuds",
-			ImageURLs: []string{"https://example.com/1.jpg", "https://example.com/2.jpg"},
-		},
+	summary := buildSummary(&Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		Text:      "wireless earbuds",
+		ImageURLs: []string{"https://example.com/1.jpg", "https://example.com/2.jpg"},
+	},
 	}, &canonical.Product{
 		NeedsReview: true,
 		Variants: []canonical.Variant{

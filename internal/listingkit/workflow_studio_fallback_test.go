@@ -12,34 +12,33 @@ import (
 )
 
 func TestBuildStudioFallbackCanonicalProductUsesSDSMetadata(t *testing.T) {
-	task := &Task{
-		Request: &GenerateRequest{
-			ImageURLs: []string{"https://cdn.example.com/mockup-1.png"},
-			Text:      "botanical cushion print",
-			Options: &GenerateOptions{
-				SDS: &SDSSyncOptions{
-					VariantID:              212097,
-					ParentProductID:        212096,
-					ProductName:            "Custom Pillow Cover",
-					ProductSKU:             "NS212096",
-					CategoryPath:           []string{"Home", "Decor", "Cushions"},
-					Material:               "Polyester",
-					MaterialDescription:    "Soft polyester fabric",
-					ProductionProcess:      "Heat transfer",
-					ProductPerformance:     "Comfortable printed pillow cover for home decor.",
-					ProductSize:            "10x10inch",
-					PackagingSpecification: "1 piece per poly bag, 22x16x3cm, 0.2kg",
-					SpecialDescription:     "Invisible zipper closure.",
-					ApplicableScenarios:    "Living room, bedroom",
-					VariantSKU:             "NS212096001",
-					VariantSize:            "10x10inch",
-					VariantColor:           "White",
-					VariantPrice:           12.8,
-					VariantWeight:          180,
-					ProductionCycle:        48,
-				},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		ImageURLs: []string{"https://cdn.example.com/mockup-1.png"},
+		Text:      "botanical cushion print",
+		Options: &GenerateOptions{
+			SDS: &SDSSyncOptions{
+				VariantID:              212097,
+				ParentProductID:        212096,
+				ProductName:            "Custom Pillow Cover",
+				ProductSKU:             "NS212096",
+				CategoryPath:           []string{"Home", "Decor", "Cushions"},
+				Material:               "Polyester",
+				MaterialDescription:    "Soft polyester fabric",
+				ProductionProcess:      "Heat transfer",
+				ProductPerformance:     "Comfortable printed pillow cover for home decor.",
+				ProductSize:            "10x10inch",
+				PackagingSpecification: "1 piece per poly bag, 22x16x3cm, 0.2kg",
+				SpecialDescription:     "Invisible zipper closure.",
+				ApplicableScenarios:    "Living room, bedroom",
+				VariantSKU:             "NS212096001",
+				VariantSize:            "10x10inch",
+				VariantColor:           "White",
+				VariantPrice:           12.8,
+				VariantWeight:          180,
+				ProductionCycle:        48,
 			},
 		},
+	},
 	}
 
 	canonical := buildStudioFallbackCanonicalProduct(task)
@@ -92,23 +91,22 @@ func TestBuildStudioFallbackCanonicalProductUsesSDSMetadata(t *testing.T) {
 }
 
 func TestBuildStudioFallbackCanonicalProductExpandsSDSVariantsWithStyleSuffix(t *testing.T) {
-	task := &Task{
-		Request: &GenerateRequest{
-			ImageURLs: []string{"https://cdn.example.com/design.png"},
-			Text:      "cute dog print",
-			Options: &GenerateOptions{
-				SDS: &SDSSyncOptions{
-					ProductName: "Adult T-Shirt",
-					ProductSKU:  "NS6001064",
-					StyleID:     "a1b2-c3d4-extra",
-					Variants: []SDSSyncVariantOption{
-						{VariantID: 89764, VariantSKU: "NS6001064001", Size: "S", Color: "Black", Price: 19.8},
-						{VariantID: 89765, VariantSKU: "NS6001064002", Size: "M", Color: "Black", Price: 19.8},
-						{VariantID: 89772, VariantSKU: "NS6001064009", Size: "S", Color: "White", Price: 19.8},
-					},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		ImageURLs: []string{"https://cdn.example.com/design.png"},
+		Text:      "cute dog print",
+		Options: &GenerateOptions{
+			SDS: &SDSSyncOptions{
+				ProductName: "Adult T-Shirt",
+				ProductSKU:  "NS6001064",
+				StyleID:     "a1b2-c3d4-extra",
+				Variants: []SDSSyncVariantOption{
+					{VariantID: 89764, VariantSKU: "NS6001064001", Size: "S", Color: "Black", Price: 19.8},
+					{VariantID: 89765, VariantSKU: "NS6001064002", Size: "M", Color: "Black", Price: 19.8},
+					{VariantID: 89772, VariantSKU: "NS6001064009", Size: "S", Color: "White", Price: 19.8},
 				},
 			},
 		},
+	},
 	}
 
 	canonical := buildStudioFallbackCanonicalProduct(task)
@@ -130,17 +128,16 @@ func TestBuildStudioFallbackCanonicalProductExpandsSDSVariantsWithStyleSuffix(t 
 }
 
 func TestApplySDSSyncMetadataToCanonicalOverridesStaleStudioTitle(t *testing.T) {
-	task := &Task{
-		Request: &GenerateRequest{
-			ImageURLs: []string{"https://cdn.example.com/design.png"},
-			Text:      "cute dog transparent print",
-			Options: &GenerateOptions{
-				SDS: &SDSSyncOptions{
-					VariantID:   212097,
-					ProductName: "Custom Pillow Cover",
-				},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		ImageURLs: []string{"https://cdn.example.com/design.png"},
+		Text:      "cute dog transparent print",
+		Options: &GenerateOptions{
+			SDS: &SDSSyncOptions{
+				VariantID:   212097,
+				ProductName: "Custom Pillow Cover",
 			},
 		},
+	},
 	}
 	canonical := buildStudioFallbackCanonicalProduct(task)
 	if canonical == nil {
@@ -733,7 +730,7 @@ func TestApplySelectedSDSImagesToSheinUsesExplicitSelection(t *testing.T) {
 		},
 	}
 
-	applied := applySelectedSDSImagesToShein(pkg, &GenerateRequest{
+	applied := applySelectedSDSImagesToShein(pkg, &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{sourceImage},
 		Options: &GenerateOptions{
 			SheinStudio: &SheinStudioOptions{
@@ -803,7 +800,7 @@ func TestApplySDSOfficialImagesToSheinPrefersRenderedVariantMockupsOverSelectedR
 			}},
 		},
 	}
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{sourceImage},
 		Options: &GenerateOptions{
 			SheinStudio: &SheinStudioOptions{
@@ -864,7 +861,7 @@ func TestApplySDSTemplateImagesToSheinSkipsWithoutRenderedMockups(t *testing.T) 
 }
 
 func TestShouldRunStudioInlineKeepsAIGeneratedStrategyInline(t *testing.T) {
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://cdn.example.com/source.png"},
 		Platforms: []string{"shein"},
 		Options: &GenerateOptions{
@@ -879,7 +876,7 @@ func TestShouldRunStudioInlineKeepsAIGeneratedStrategyInline(t *testing.T) {
 }
 
 func TestShouldRunRemoteSDSDesignSyncAllowsSDSOfficialMultiPlatform(t *testing.T) {
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://cdn.example.com/source.png"},
 		Platforms: []string{"shein", "temu", "amazon"},
 		Options: &GenerateOptions{
@@ -912,7 +909,7 @@ func TestApplySheinStudioAIImagesToSheinReplacesDraftImages(t *testing.T) {
 		},
 	}
 
-	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{
+	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://cdn.example.com/source-style.png"},
 		Options: &GenerateOptions{
 			ImageStrategy: sheinImageStrategyAIGenerated,
@@ -965,7 +962,7 @@ func TestApplySheinStudioAIImagesToSheinAppendsForHybrid(t *testing.T) {
 		},
 	}
 
-	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{
+	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{ProductKey: "test-product",
 		Options: &GenerateOptions{
 			ImageStrategy: sheinImageStrategyHybrid,
 			SheinStudio: &SheinStudioOptions{
@@ -1009,7 +1006,7 @@ func TestApplySheinStudioAIImagesToSheinFallsBackToSDSMockupsWhenNoProductImages
 		},
 	}
 
-	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{
+	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{sourceImage},
 		Options: &GenerateOptions{
 			ImageStrategy: sheinImageStrategyAIGenerated,
@@ -1091,7 +1088,7 @@ func TestApplySheinStudioAIImagesToSheinUsesVariantImagesForSKCs(t *testing.T) {
 		},
 	}
 
-	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{
+	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://cdn.example.com/source-style.png"},
 		Options: &GenerateOptions{
 			ImageStrategy: sheinImageStrategyAIGenerated,
@@ -1157,7 +1154,7 @@ func TestEnforceSheinVariantImageCoverageBlocksSharedSingleImageAcrossMultipleSK
 		},
 	}
 
-	warning, blocked := enforceSheinVariantImageCoverage(pkg, &GenerateRequest{
+	warning, blocked := enforceSheinVariantImageCoverage(pkg, &GenerateRequest{ProductKey: "test-product",
 		Options: &GenerateOptions{
 			ImageStrategy: sheinImageStrategyAIGenerated,
 			SheinStudio: &SheinStudioOptions{
@@ -1193,7 +1190,7 @@ func TestEnforceSheinVariantImageCoverageAllowsCompleteVariantImages(t *testing.
 		},
 	}
 
-	warning, blocked := enforceSheinVariantImageCoverage(pkg, &GenerateRequest{
+	warning, blocked := enforceSheinVariantImageCoverage(pkg, &GenerateRequest{ProductKey: "test-product",
 		Options: &GenerateOptions{
 			ImageStrategy: sheinImageStrategyAIGenerated,
 			SheinStudio: &SheinStudioOptions{
@@ -1240,7 +1237,7 @@ func TestEnforceSheinVariantImageCoverageAllowsFallbackSplitSKCsForSameColor(t *
 		},
 	}
 
-	warning, blocked := enforceSheinVariantImageCoverage(pkg, &GenerateRequest{
+	warning, blocked := enforceSheinVariantImageCoverage(pkg, &GenerateRequest{ProductKey: "test-product",
 		Options: &GenerateOptions{
 			ImageStrategy: sheinImageStrategyAIGenerated,
 			SheinStudio: &SheinStudioOptions{

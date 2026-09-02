@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/shared/tenantctx"
@@ -16,7 +15,6 @@ import (
 type MemTaskRepository struct {
 	mu                sync.RWMutex
 	tasks             map[string]*listingkit.Task
-	canonicalProduct  map[string]*listingkit.CanonicalProductCacheEntry
 	sdsBaselineCache  map[string]*listingkit.SDSBaselineCacheEntry
 	sdsChildRetryJobs map[string]listingkit.SDSChildRetryJob
 }
@@ -24,7 +22,6 @@ type MemTaskRepository struct {
 func NewMemTaskRepository() listingkit.Repository {
 	return &MemTaskRepository{
 		tasks:             make(map[string]*listingkit.Task),
-		canonicalProduct:  make(map[string]*listingkit.CanonicalProductCacheEntry),
 		sdsBaselineCache:  make(map[string]*listingkit.SDSBaselineCacheEntry),
 		sdsChildRetryJobs: make(map[string]listingkit.SDSChildRetryJob),
 	}
@@ -623,37 +620,6 @@ func (r *MemTaskRepository) ReplaceTaskSDSOptionsForRetry(ctx context.Context, t
 	return &copied, nil
 }
 
-func (r *MemTaskRepository) GetCanonicalProductCache(ctx context.Context, fingerprint string) (*canonical.Product, error) {
-	if fingerprint == "" {
-		return nil, nil
-	}
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if r.canonicalProduct == nil {
-		return nil, nil
-	}
-	entry := r.canonicalProduct[canonicalCacheKey(ctx, fingerprint)]
-	if entry == nil {
-		return nil, nil
-	}
-	return entry.CanonicalProduct()
-}
-
-func (r *MemTaskRepository) SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error {
-	entry, err := listingkit.NewCanonicalProductCacheEntry(fingerprint, product, sourceTaskID)
-	if err != nil {
-		return err
-	}
-	entry.TenantID = tenantctx.TenantIDFromContext(ctx)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.canonicalProduct == nil {
-		r.canonicalProduct = make(map[string]*listingkit.CanonicalProductCacheEntry)
-	}
-	r.canonicalProduct[canonicalCacheKey(ctx, fingerprint)] = entry
-	return nil
-}
-
 func (r *MemTaskRepository) GetSDSBaselineCache(ctx context.Context, tenantID, baselineKey string) (*listingkit.SDSBaselineCacheEntry, error) {
 	resolvedTenantID, logicalKey, storageKey, err := listingkit.ResolveSDSBaselineCacheScope(ctx, tenantID, baselineKey)
 	if err != nil {
@@ -705,10 +671,6 @@ func matchesTenantScope(ctx context.Context, recordTenantID string) bool {
 		return true
 	}
 	return tenantctx.MatchesTenant(recordTenantID, tenantID)
-}
-
-func canonicalCacheKey(ctx context.Context, fingerprint string) string {
-	return tenantctx.TenantIDFromContext(ctx) + ":" + fingerprint
 }
 
 func cloneSDSBaselineCacheEntry(entry *listingkit.SDSBaselineCacheEntry) (*listingkit.SDSBaselineCacheEntry, error) {

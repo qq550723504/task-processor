@@ -16,7 +16,7 @@ func TestGetSubmissionEventsIncludesStoreResolutionSnapshot(t *testing.T) {
 	task := &Task{
 		ID:       "task-submission-events-store-resolution",
 		TenantID: "808",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "demo",
 			Platforms: []string{"shein"},
 		},

@@ -28,6 +28,7 @@ func buildStudioBatchTaskGenerateRequest(
 	req := &GenerateRequest{
 		TenantID:     strings.TrimSpace(batch.TenantID),
 		UserID:       strings.TrimSpace(batch.UserID),
+		ProductKey:   strings.TrimSpace(selection.ProductKey),
 		Text:         studioBatchTaskPrompt(session, batch),
 		ImageURLs:    []string{strings.TrimSpace(design.ImageURL)},
 		Platforms:    []string{"shein"},

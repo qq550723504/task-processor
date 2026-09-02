@@ -30,6 +30,7 @@ type runtimeDeps struct {
 
 type featureRuntimeState struct {
 	productService         productenrich.ProductService
+	productSnapshotReader  listingkit.ProductSnapshotReader
 	imageService           productimage.Service
 	sdsLoginStatusProvider listingkit.SDSLoginStatusProvider
 	imageSubjectExtractor  productimage.SubjectExtractor

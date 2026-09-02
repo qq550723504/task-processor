@@ -7,11 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/product/catalog/canonical"
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingkit/core"
 	worker "task-processor/internal/platform/workerpool"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsdesign "task-processor/internal/sds/design"
@@ -22,7 +20,7 @@ import (
 func TestNormalizeGenerateRequestDefaults(t *testing.T) {
 	t.Parallel()
 
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Text:      "demo",
 		Platforms: []string{" Amazon ", "shein", "amazon", "invalid", "TEMU"},
 	}
@@ -49,7 +47,7 @@ func TestNormalizeGenerateRequestDefaults(t *testing.T) {
 func TestNormalizeGenerateRequestAbsolutizesUploadedImageURLs(t *testing.T) {
 	t.Parallel()
 
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Text:      "demo",
 		ImageURLs: []string{"/api/v1/listing-kits/uploads/files/20260610/demo.png", " https://example.com/keep.png "},
 		Platforms: []string{"shein"},
@@ -68,7 +66,7 @@ func TestNormalizeGenerateRequestAbsolutizesUploadedImageURLs(t *testing.T) {
 func TestNormalizeGenerateRequestEnablesProcessImagesWhenSceneOptionsProvided(t *testing.T) {
 	t.Parallel()
 
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		ProductURL: "https://detail.1688.com/offer/123.html",
 		Platforms:  []string{"shein"},
 		Options: &GenerateOptions{
@@ -91,7 +89,7 @@ func TestNormalizeGenerateRequestEnablesProcessImagesWhenSceneOptionsProvided(t 
 func TestNormalizeGenerateRequestDoesNotCreateSDSSourceContract(t *testing.T) {
 	t.Parallel()
 
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}},
 	}
 	normalizeGenerateRequest(req)
@@ -114,7 +112,7 @@ func TestNormalizeTrustedGenerateRequestCreatesValidatedSDSSourceContract(t *tes
 			},
 		},
 	}}
-	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}}}
+	req := &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}}}
 	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
 
 	if got := req.Source; got == nil || got.Type != "sds" || got.Platform != "sds" || got.ID != "41661" || got.URL != "https://www.sdsdiy.com/portal/detail/41661" {
@@ -130,7 +128,7 @@ func TestNormalizeTrustedGenerateRequestCreatesValidatedVariantOnlySDSSourceCont
 			designProduct: &sdsdesign.DesignProductPage{Product: sdsdesign.DesignProduct{ID: 41662}},
 		},
 	}}
-	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 41662}}}
+	req := &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 41662}}}
 	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
 
 	if got := req.Source; got == nil || got.Type != "sds" || got.Platform != "sds" || got.ID != "41662" || got.URL != "" || got.Key != "sds:variant:41662" {
@@ -146,7 +144,7 @@ func TestNormalizeTrustedGenerateRequestRejectsUnverifiedSDSParentFromDesignProd
 			designProduct: &sdsdesign.DesignProductPage{Product: sdsdesign.DesignProduct{ID: 41662}},
 		},
 	}}
-	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}}}
+	req := &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}}}
 	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
 
 	if req.Source != nil {
@@ -162,7 +160,7 @@ func TestNormalizeTrustedGenerateRequestDoesNotCreateUnvalidatedSDSSourceContrac
 			productDetail: &sdstemplate.ProductDetail{ProductSummary: sdstemplate.ProductSummary{ID: 41661}},
 		},
 	}}
-	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 99999, VariantID: 99998}}}
+	req := &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 99999, VariantID: 99998}}}
 	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
 
 	if req.Source != nil {
@@ -176,7 +174,7 @@ func TestNormalizeTrustedGenerateRequestBoundsSDSValidation(t *testing.T) {
 		cancelled: make(chan struct{}),
 	}
 	svc := &service{supportDeps: supportDependencies{sdsBaselineRemoteProvider: provider}}
-	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661}}}
+	req := &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661}}}
 
 	startedAt := time.Now()
 	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
@@ -224,7 +222,7 @@ func TestNormalizeGenerateRequestPreservesExplicitSourceOverSDSOptions(t *testin
 	t.Parallel()
 
 	explicit := &SourceReference{Type: "crawler", Platform: "1688", ID: "888", URL: "https://detail.1688.com/offer/888.html"}
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Source:  explicit,
 		Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661}},
 	}
@@ -238,7 +236,7 @@ func TestNormalizeGenerateRequestPreservesExplicitSourceOverSDSOptions(t *testin
 func TestNormalizeGenerateRequestCreatesProductURLSourceContract(t *testing.T) {
 	t.Parallel()
 
-	req := &GenerateRequest{ProductURL: " https://detail.example/item/123 "}
+	req := &GenerateRequest{ProductKey: "test-product", ProductURL: " https://detail.example/item/123 "}
 	normalizeGenerateRequest(req)
 
 	if got := req.Source; got == nil || got.Type != "product_url" || got.URL != "https://detail.example/item/123" {
@@ -284,7 +282,7 @@ func TestBuildListingKitRequestPreparationNormalizesNonSheinRequestWithoutSheinS
 	t.Parallel()
 
 	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{})
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Text:      "demo",
 		Platforms: []string{" Amazon "},
 	}
@@ -318,13 +316,19 @@ func TestValidateRequest(t *testing.T) {
 	}{
 		{
 			name: "valid text request",
-			req: &GenerateRequest{
+			req: &GenerateRequest{ProductKey: "test-product",
 				Text:      "demo",
 				Platforms: []string{"amazon"},
 			},
 		},
 		{
-			name: "missing inputs",
+			name: "snapshot-only request",
+			req: &GenerateRequest{ProductKey: "test-product",
+				Platforms: []string{"amazon"},
+			},
+		},
+		{
+			name: "missing product key",
 			req: &GenerateRequest{
 				Platforms: []string{"amazon"},
 			},
@@ -332,21 +336,21 @@ func TestValidateRequest(t *testing.T) {
 		},
 		{
 			name: "missing platforms",
-			req: &GenerateRequest{
+			req: &GenerateRequest{ProductKey: "test-product",
 				Text: "demo",
 			},
 			wantErr: true,
 		},
 		{
 			name: "many images are accepted",
-			req: &GenerateRequest{
+			req: &GenerateRequest{ProductKey: "test-product",
 				ImageURLs: []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"},
 				Platforms: []string{"amazon"},
 			},
 		},
 		{
 			name: "shein studio gallery ratio mismatch",
-			req: &GenerateRequest{
+			req: &GenerateRequest{ProductKey: "test-product",
 				Text:      "demo",
 				Platforms: []string{"shein"},
 				Options: &GenerateOptions{
@@ -589,15 +593,15 @@ func TestListTasksFiltersBySourceReadinessAndSubmissionStatus(t *testing.T) {
 func TestCreateGenerateTaskRunsInlineWithoutSubmitter(t *testing.T) {
 	t.Parallel()
 
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID: "product-task-inline",
-		Request: &productenrich.GenerateRequest{
+		Request: &stubProductSnapshotRequest{
 			Text: "inline product",
 		},
 	}
-	productSvc := &stubWorkflowProductService{
+	productSvc := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:       "Inline Product",
 			Description: "Inline description",
 			Category:    []string{"Home"},
@@ -617,7 +621,7 @@ func TestCreateGenerateTaskRunsInlineWithoutSubmitter(t *testing.T) {
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, imageSvc)
 
-	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
 		Text:      "inline listing kit",
 		Platforms: []string{"amazon"},
 	})
@@ -667,7 +671,7 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
 	}
 
-	task, err := svc.CreateGenerateTask(ctx, &GenerateRequest{
+	task, err := svc.CreateGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		Text:         "snapshot demo",
 		Platforms:    []string{"shein"},
 		Country:      "GB",
@@ -739,7 +743,7 @@ func TestCreateGenerateTaskRequiresExplicitSheinStoreInsteadOfInferringRoutingRu
 	}); err != nil {
 		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
 	}
-	_, err := svc.CreateGenerateTask(ctx, &GenerateRequest{
+	_, err := svc.CreateGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		Text:      "snapshot demo",
 		Platforms: []string{"shein"},
 		Country:   "GB",
@@ -763,7 +767,7 @@ func TestCreateGenerateTaskStartsStandardProductTemporalWhenEnabled(t *testing.T
 		},
 	}
 
-	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
 		Text:      "temporal standard task",
 		Platforms: []string{"amazon"},
 	})
@@ -796,7 +800,7 @@ func TestCreateGenerateTaskRetriesQueueFullAsynchronously(t *testing.T) {
 		},
 	}
 
-	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
 		Text:      "async retry task",
 		Platforms: []string{"amazon"},
 	})
@@ -846,7 +850,7 @@ func TestCreateGenerateTaskKeepsTaskPendingWhileQueueRemainsFull(t *testing.T) {
 		},
 	}
 
-	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
 		Text:      "persistent queue full task",
 		Platforms: []string{"amazon"},
 	})
@@ -953,12 +957,11 @@ func (r *stubTaskListRepo) ListTaskSummaryTasks(_ context.Context, query *TaskLi
 
 func makeTaskListFixture(id string, createdAt time.Time, workflowStatus string, blockerKey string) Task {
 	colorValueID := 271
-	task := Task{
-		ID:        id,
+	task := Task{TenantID: "tenant-test", ID: id,
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: createdAt,
 		UpdatedAt: createdAt,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      id,
 			Platforms: []string{"shein"},
 		},
@@ -1172,14 +1175,6 @@ func (r *stubInlineTaskRepo) SaveTaskResult(_ context.Context, taskID string, re
 	task := r.tasks[taskID]
 	task.Result = result
 	task.UpdatedAt = time.Now()
-	return nil
-}
-
-func (r *stubInlineTaskRepo) GetCanonicalProductCache(context.Context, string) (*canonical.Product, error) {
-	return nil, nil
-}
-
-func (r *stubInlineTaskRepo) SaveCanonicalProductCache(context.Context, string, *canonical.Product, string) error {
 	return nil
 }
 

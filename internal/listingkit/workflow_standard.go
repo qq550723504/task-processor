@@ -2,13 +2,13 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
-	"task-processor/internal/product/catalog"
 )
 
 type standardWorkflowState struct {
@@ -20,6 +20,7 @@ type standardWorkflowState struct {
 	persistedGenerationTasks []assetgeneration.Task
 	enableAssetGeneration    bool
 	sdsOptions               *SDSSyncOptions
+	blocked                  bool
 }
 
 func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*standardWorkflowState, error) {
@@ -31,16 +32,25 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 		"task_id":   task.ID,
 	})
 
-	canonicalProduct, err := buildStandardWorkflowCanonicalPhase(s).run(ctx, task, result, recorder, log)
+	stage := recorder.Start(productSnapshotStageKind, "")
+	productSnapshot, err := buildStandardWorkflowCanonicalPhase(s).run(ctx, productSnapshotQueryForTask(task))
 	if err != nil {
+		if errors.Is(err, ErrProductSnapshotNotReady) {
+			stage.Fail(productSnapshotNotReadyIssueCode, productSnapshotNotReadyMessage, err.Error())
+			recorder.FinalizeSummary()
+			snapshot := buildStandardProductSnapshot(result)
+			result.StandardProductSnapshot = snapshot
+			return &standardWorkflowState{result: result, snapshot: snapshot, blocked: true}, nil
+		}
+		stage.Fail("product_snapshot_read_failed", "Product snapshot could not be read", err.Error())
+		recorder.FinalizeSummary()
 		return &standardWorkflowState{result: result}, err
 	}
+	stage.Complete()
 
+	result.CatalogProduct = &productSnapshot
+	canonicalProduct := canonicalProductFromSnapshot(productSnapshot)
 	result.CanonicalProduct = canonicalProduct
-	result.CatalogProduct, err = catalog.Normalize(canonicalProduct)
-	if err != nil {
-		return &standardWorkflowState{result: result}, err
-	}
 	if !shouldProcessImages(task.Request) {
 		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
 		result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)

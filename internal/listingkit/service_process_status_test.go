@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -36,7 +35,7 @@ type stubProcessStatusRepo struct {
 	requireLiveBlockContext bool
 }
 
-func (a *stubProcessStatusAssembler) Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult {
+func (a *stubProcessStatusAssembler) Assemble(task *Task, product *catalog.ProductSnapshot, image *productimage.ImageProcessResult) *ListingKitResult {
 	if a.result == nil {
 		return &ListingKitResult{Summary: &GenerationSummary{}}
 	}
@@ -123,13 +122,13 @@ func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T
 	t.Parallel()
 
 	repo := &stubGenerationRepo{}
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID:      "product-task-1",
-		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
+		Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"},
 	}
-	productService := &stubWorkflowProductService{
+	productService := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:      "Travel Bag",
 			Category:   []string{"bags"},
 			Attributes: map[string]string{"color": "black"},
@@ -138,7 +137,7 @@ func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T
 
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{
 			result: &ListingKitResult{
 				TaskID:  "listingkit-needs-review-1",
@@ -151,10 +150,9 @@ func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	task := &Task{
-		ID:        "listingkit-needs-review-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-needs-review-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -191,13 +189,13 @@ func TestProcessListingKitMarksCompletedWhenSummaryDoesNotRequireReview(t *testi
 	t.Parallel()
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}}
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID:      "product-task-completed-1",
-		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
+		Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"},
 	}
-	productService := &stubWorkflowProductService{
+	productService := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:      "Travel Bag",
 			Category:   []string{"bags"},
 			Attributes: map[string]string{"color": "black"},
@@ -206,7 +204,7 @@ func TestProcessListingKitMarksCompletedWhenSummaryDoesNotRequireReview(t *testi
 
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{
 			result: &ListingKitResult{
 				TaskID:  "listingkit-completed-1",
@@ -219,10 +217,9 @@ func TestProcessListingKitMarksCompletedWhenSummaryDoesNotRequireReview(t *testi
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	task := &Task{
-		ID:        "listingkit-completed-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-completed-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -287,13 +284,13 @@ func TestProcessListingKitMarksSheinCookieUnavailableAsBlockingIssue(t *testing.
 	t.Parallel()
 
 	repo := &stubGenerationRepo{}
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID:      "product-task-cookie-1",
-		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
+		Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"},
 	}
-	productService := &stubWorkflowProductService{
+	productService := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:      "Travel Bag",
 			Category:   []string{"bags"},
 			Attributes: map[string]string{"color": "black"},
@@ -303,7 +300,7 @@ func TestProcessListingKitMarksSheinCookieUnavailableAsBlockingIssue(t *testing.
 
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{
 			result: &ListingKitResult{
 				TaskID: "listingkit-cookie-blocking-1",
@@ -318,10 +315,9 @@ func TestProcessListingKitMarksSheinCookieUnavailableAsBlockingIssue(t *testing.
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	task := &Task{
-		ID:        "listingkit-cookie-blocking-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-cookie-blocking-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -364,28 +360,27 @@ func TestProcessListingKitPersistsPartialResultBeforeMarkingFailed(t *testing.T)
 	t.Parallel()
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}}
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID:      "product-task-failed-1",
-		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
+		Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"},
 	}
-	productService := &stubWorkflowProductService{
+	productService := &stubWorkflowProductSnapshotReader{
 		task:       productTask,
-		processErr: errors.New("upstream product enrich failed"),
+		processErr: errors.New("upstream product snapshot failed"),
 	}
 
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{}),
 	))
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	task := &Task{
-		ID:        "listingkit-failed-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-failed-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -403,8 +398,8 @@ func TestProcessListingKitPersistsPartialResultBeforeMarkingFailed(t *testing.T)
 	if repo.failedCalls != 1 || repo.failedTaskID != task.ID {
 		t.Fatalf("MarkFailed calls = %d for %q, want 1 for %q", repo.failedCalls, repo.failedTaskID, task.ID)
 	}
-	if repo.failedError == "" || !strings.Contains(repo.failedError, "product enrichment failed") {
-		t.Fatalf("MarkFailed error = %q, want wrapped product enrichment error", repo.failedError)
+	if repo.failedError == "" || !strings.Contains(repo.failedError, "product snapshot failed") {
+		t.Fatalf("MarkFailed error = %q, want product snapshot read error", repo.failedError)
 	}
 	if len(repo.savedResults) != 1 || repo.savedResults[0] == nil {
 		t.Fatalf("saved results = %+v, want one partial result before failure", repo.savedResults)
@@ -419,15 +414,11 @@ func TestProcessListingKitPersistsPartialResultBeforeMarkingFailed(t *testing.T)
 	if stored.Status != core.TaskStatusFailed {
 		t.Fatalf("stored status = %q, want %q", stored.Status, core.TaskStatusFailed)
 	}
-	foundFailedChild := false
-	for _, child := range stored.Result.ChildTasks {
-		if child.Kind == "product_enrich" && child.Status == string(core.TaskStatusFailed) {
-			foundFailedChild = true
-			break
-		}
+	if len(stored.Result.ChildTasks) != 0 {
+		t.Fatalf("child tasks = %+v, want no product child task", stored.Result.ChildTasks)
 	}
-	if !foundFailedChild {
-		t.Fatalf("child tasks = %+v, want failed product_enrich child in persisted result", stored.Result.ChildTasks)
+	if !hasWorkflowStageStatus(stored.Result.WorkflowStages, productSnapshotStageKind, WorkflowStageStatusFailed) {
+		t.Fatalf("workflow stages = %+v, want failed product snapshot read", stored.Result.WorkflowStages)
 	}
 }
 
@@ -436,10 +427,9 @@ func TestGetTaskResultTreatsNeedsReviewAsTerminal(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	now := time.Now()
-	task := &Task{
-		ID:        "listingkit-terminal-needs-review-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-terminal-needs-review-1",
 		Status:    core.TaskStatusNeedsReview,
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result:    &ListingKitResult{TaskID: "listingkit-terminal-needs-review-1"},
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,
@@ -466,10 +456,9 @@ func TestGetTaskResultReturnsStructuredReviewReasons(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	now := time.Now()
-	task := &Task{
-		ID:     "listingkit-review-reasons-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-review-reasons-1",
 		Status: core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 		},
 		Result: &ListingKitResult{
@@ -501,10 +490,9 @@ func TestGetTaskResultIncludesDerivedSheinSubmissionStatus(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	now := time.Now()
-	task := &Task{
-		ID:     "listingkit-shein-published-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-shein-published-1",
 		Status: core.TaskStatusCompleted,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 		},
 		Result: &ListingKitResult{
@@ -553,10 +541,9 @@ func TestGetTaskResultDerivesPodExecutionForLegacyStoredResults(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	now := time.Now()
-	task := &Task{
-		ID:     "listingkit-pod-execution-legacy-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-pod-execution-legacy-1",
 		Status: core.TaskStatusCompleted,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 			ImageURLs: []string{"https://cdn.example.com/source.png"},
 			Options: &GenerateOptions{
@@ -605,10 +592,9 @@ func TestGetTaskResultPrefersWorkflowIssuesForReviewReasons(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	now := time.Now()
-	task := &Task{
-		ID:     "listingkit-review-reasons-workflow-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-review-reasons-workflow-1",
 		Status: core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 		},
 		Result: &ListingKitResult{
@@ -648,10 +634,9 @@ func TestGetTaskResultFallsBackToTaskErrorForReviewReasons(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	now := time.Now()
-	task := &Task{
-		ID:     "listingkit-review-reasons-fallback-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-review-reasons-fallback-1",
 		Status: core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 		},
 		Error:     "single fallback reason",
@@ -677,10 +662,9 @@ func TestGetTaskResultFallsBackToSummaryWarningsForReviewReasons(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	now := time.Now()
-	task := &Task{
-		ID:     "listingkit-review-reasons-summary-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-review-reasons-summary-1",
 		Status: core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 		},
 		Result: &ListingKitResult{
@@ -710,10 +694,9 @@ func TestGetTaskResultRefreshesStaleSheinCookieReviewState(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	now := time.Now()
-	task := &Task{
-		ID:     "listingkit-review-reasons-cookie-refresh-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-review-reasons-cookie-refresh-1",
 		Status: core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 		},
 		Result: &ListingKitResult{
@@ -785,13 +768,13 @@ func TestProcessListingKitInitializesDefaultSheinPricing(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubGenerationRepo{}
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID:      "product-task-pricing-1",
-		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
+		Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"},
 	}
-	productService := &stubWorkflowProductService{
+	productService := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:      "Travel Bag",
 			Category:   []string{"bags"},
 			Attributes: map[string]string{"color": "black"},
@@ -800,7 +783,7 @@ func TestProcessListingKitInitializesDefaultSheinPricing(t *testing.T) {
 
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestAssembler(&stubProcessStatusAssembler{
 			result: &ListingKitResult{
 				TaskID: "listingkit-pricing-1",
@@ -827,10 +810,9 @@ func TestProcessListingKitInitializesDefaultSheinPricing(t *testing.T) {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	task := &Task{
-		ID:        "listingkit-pricing-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-pricing-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -864,13 +846,13 @@ func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	cacheStore := &submitResolutionCacheStore{}
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID:      "product-task-pricing-cache-1",
-		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
+		Request: &stubProductSnapshotRequest{ProductURL: "https://example.com/product"},
 	}
-	productService := &stubWorkflowProductService{
+	productService := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:      "Travel Bag",
 			Category:   []string{"bags"},
 			Attributes: map[string]string{"color": "black"},
@@ -879,7 +861,7 @@ func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
 
 	svc, err := NewService(newTestServiceConfig(
 		repo,
-		withTestProductService(productService),
+		withTestProductSnapshotReader(productService),
 		withTestConfig(func(cfg *ServiceConfig) {
 			cfg.Shein.SheinResolutionCacheStore = cacheStore
 		}),
@@ -937,9 +919,8 @@ func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	seedTask := &Task{
-		ID: "seed-pricing-cache-1",
-		Request: &GenerateRequest{
+	seedTask := &Task{TenantID: "tenant-test", ID: "seed-pricing-cache-1",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms:    []string{"shein"},
 			SheinStoreID: 869,
 		},
@@ -999,10 +980,9 @@ func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
 	}
 	svc.(*service).rememberSheinSubmittedPricing(seedTask, "publish")
 
-	task := &Task{
-		ID:        "listingkit-pricing-cache-1",
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-pricing-cache-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}, SheinStoreID: 869},
+		Request:   &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"shein"}, SheinStoreID: 869},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}

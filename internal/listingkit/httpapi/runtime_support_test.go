@@ -93,8 +93,8 @@ func TestBuildRuntimeModuleAndTemporalRuntimeAcceptRuntimeSupport(t *testing.T) 
 	statusProvider := stubRuntimeSupportSDSStatusProvider{}
 	remoteProvider := stubRuntimeSupportSDSBaselineProvider{}
 	runtime := RuntimeDependencies{
-		Config:         serviceInput.Config,
-		ProductService: serviceInput.ProductService,
+		Config:                serviceInput.Config,
+		ProductSnapshotReader: serviceInput.ProductSnapshotReader,
 		Support: BuildRuntimeSupport(RuntimeSupportInput{
 			SDSSyncService:            syncService,
 			SDSLoginStatusProvider:    statusProvider,

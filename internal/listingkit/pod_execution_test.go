@@ -9,17 +9,16 @@ import (
 func TestEnsureTaskPodExecutionMarksRequiredSDSFailureAsBlocking(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		Request: &GenerateRequest{
-			Platforms: []string{"shein"},
-			ImageURLs: []string{"https://cdn.example.com/source.png"},
-			Options: &GenerateOptions{
-				ProcessImages: false,
-				SDS: &SDSSyncOptions{
-					VariantID: 901,
-				},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		Platforms: []string{"shein"},
+		ImageURLs: []string{"https://cdn.example.com/source.png"},
+		Options: &GenerateOptions{
+			ProcessImages: false,
+			SDS: &SDSSyncOptions{
+				VariantID: 901,
 			},
 		},
+	},
 		Result: &ListingKitResult{
 			SDSDesignResult: &SDSSyncSummary{
 				VariantID: 901,
@@ -75,11 +74,10 @@ func TestEnsureTaskPodExecutionMarksRequiredSDSFailureAsBlocking(t *testing.T) {
 func TestEnsureTaskPodExecutionDisablesPODWhenNoPlatformDependency(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		Request: &GenerateRequest{
-			Platforms: []string{"shein"},
-			Options:   &GenerateOptions{},
-		},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		Platforms: []string{"shein"},
+		Options:   &GenerateOptions{},
+	},
 		Result: &ListingKitResult{},
 	}
 
@@ -101,21 +99,20 @@ func TestEnsureTaskPodExecutionDisablesPODWhenNoPlatformDependency(t *testing.T)
 func TestEnsureTaskPodExecutionMarksOptionalAIPODFailureAsDegraded(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		Request: &GenerateRequest{
-			Platforms: []string{"shein"},
-			ImageURLs: []string{"https://cdn.example.com/source.png"},
-			Options: &GenerateOptions{
-				ProcessImages: false,
-				ImageStrategy: sheinImageStrategyAIGenerated,
-				SheinStudio: &SheinStudioOptions{
-					RenderSizeImagesWithSDS: true,
-				},
-				SDS: &SDSSyncOptions{
-					VariantID: 901,
-				},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		Platforms: []string{"shein"},
+		ImageURLs: []string{"https://cdn.example.com/source.png"},
+		Options: &GenerateOptions{
+			ProcessImages: false,
+			ImageStrategy: sheinImageStrategyAIGenerated,
+			SheinStudio: &SheinStudioOptions{
+				RenderSizeImagesWithSDS: true,
+			},
+			SDS: &SDSSyncOptions{
+				VariantID: 901,
 			},
 		},
+	},
 		Result: &ListingKitResult{
 			SDSDesignResult: &SDSSyncSummary{
 				VariantID: 901,
@@ -165,17 +162,16 @@ func TestEnsureTaskPodExecutionMarksOptionalAIPODFailureAsDegraded(t *testing.T)
 func TestEnsureTaskPodExecutionDoesNotDuplicateAuditHistoryWhenStateIsStable(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		Request: &GenerateRequest{
-			Platforms: []string{"shein"},
-			ImageURLs: []string{"https://cdn.example.com/source.png"},
-			Options: &GenerateOptions{
-				ProcessImages: false,
-				SDS: &SDSSyncOptions{
-					VariantID: 901,
-				},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		Platforms: []string{"shein"},
+		ImageURLs: []string{"https://cdn.example.com/source.png"},
+		Options: &GenerateOptions{
+			ProcessImages: false,
+			SDS: &SDSSyncOptions{
+				VariantID: 901,
 			},
 		},
+	},
 		Result: &ListingKitResult{
 			SDSDesignResult: &SDSSyncSummary{
 				VariantID: 901,
@@ -218,7 +214,7 @@ func TestDerivePodExecutionSummaryUsesProcessingChildTaskOverStaleSDSFailure(t *
 			Kind:   "sds_design_sync",
 			Status: string(core.TaskStatusProcessing),
 		}},
-		&GenerateRequest{
+		&GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 			ImageURLs: []string{"https://cdn.example.com/source.png"},
 			Options: &GenerateOptions{
@@ -262,7 +258,7 @@ func TestDerivePodExecutionSummaryClearsFailureDetailsAfterSuccess(t *testing.T)
 			Status:    "completed",
 		},
 		nil,
-		&GenerateRequest{
+		&GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 			ImageURLs: []string{"https://cdn.example.com/source.png"},
 			Options: &GenerateOptions{
@@ -301,7 +297,7 @@ func TestDerivePodExecutionSummaryClearsSDSFailureDetailsAfterSuccess(t *testing
 		},
 		&SDSSyncSummary{Status: "completed", Error: "old timeout"},
 		nil,
-		&GenerateRequest{
+		&GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 			ImageURLs: []string{"https://cdn.example.com/source.png"},
 			Options:   &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 901}},

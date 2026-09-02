@@ -19,7 +19,7 @@ func TestDecorateSheinCookieAvailabilityPreviewUsesSheinTargetBundleWithoutCompa
 			"scene_category":        "fashion",
 		},
 	}}}
-	task := &Task{Result: &ListingKitResult{
+	task := &Task{TenantID: "tenant-test", Result: &ListingKitResult{
 		AssetBundlesByTarget: map[string]*asset.Bundle{
 			"temu": {Assets: []asset.Asset{{
 				ID:       "shared-main",
@@ -52,13 +52,12 @@ func TestDecorateSheinCookieAvailabilityPreviewUsesSheinTargetBundleWithoutCompa
 func TestDecorateSheinCookieAvailabilityPreviewPreservesSourceMetadata(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		Request: &GenerateRequest{Source: &SourceReference{
-			Type:     "crawler",
-			Platform: "1688",
-			ID:       "888",
-			URL:      "https://detail.1688.com/offer/888.html",
-		}},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", Source: &SourceReference{
+		Type:     "crawler",
+		Platform: "1688",
+		ID:       "888",
+		URL:      "https://detail.1688.com/offer/888.html",
+	}},
 		Result: &ListingKitResult{
 			Shein: &SheinPackage{RequestDraft: &SheinRequestDraft{}},
 		},

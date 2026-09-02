@@ -18,7 +18,7 @@ func TestGetTaskSDSRepairReturnsCurrentLayersForFailedVariant(t *testing.T) {
 		ID:       "task-sds-repair-1",
 		TenantID: "tenant-1",
 		Status:   core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+		Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 			VariantID:        101,
 			ParentProductID:  200,
 			PrototypeGroupID: 300,
@@ -92,7 +92,7 @@ func TestRepairAndRetryTaskSDSRejectsLayerMissingFromCurrentVariantPage(t *testi
 		ID:       "task-sds-repair-invalid-layer",
 		TenantID: "tenant-1",
 		Status:   core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+		Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 			VariantID: 101, ParentProductID: 200, PrototypeGroupID: 300, LayerID: "10033204",
 			Variants: []SDSSyncVariantOption{{
 				VariantID: 101, VariantSKU: "white-s", Color: "white", PrototypeGroupID: 300, LayerID: "10033204",
@@ -131,7 +131,7 @@ func TestRepairAndRetryTaskSDSReplacesPersistedVariantLayerBeforeRetry(t *testin
 		ID:       "task-sds-repair-success",
 		TenantID: "tenant-1",
 		Status:   core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source.png"},
 			Options: &GenerateOptions{SDS: &SDSSyncOptions{
 				VariantID: 101, ParentProductID: 200, PrototypeGroupID: 300, LayerID: "10033204",
@@ -187,7 +187,7 @@ func TestRepairAndRetryTaskSDSCancelsPendingDurableRetry(t *testing.T) {
 	}}
 	if err := repo.CreateTask(context.Background(), &Task{
 		ID: "task-sds-repair-cancel", TenantID: "tenant-1", Status: core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
+		Request: &GenerateRequest{ProductKey: "test-product", ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
 			VariantID: 101, ParentProductID: 200, PrototypeGroupID: 300, LayerID: "10033204",
 			Variants: []SDSSyncVariantOption{{VariantID: 101, VariantSKU: "white-s", PrototypeGroupID: 300, LayerID: "10033204"}},
 		}}},
@@ -227,7 +227,7 @@ func TestRepairAndRetryTaskSDSPreservesSiblingDurableRetry(t *testing.T) {
 	}}
 	if err := repo.CreateTask(context.Background(), &Task{
 		ID: "task-sds-repair-sibling", TenantID: "tenant-1", Status: core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
+		Request: &GenerateRequest{ProductKey: "test-product", ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
 			VariantID: 101, ParentProductID: 200, PrototypeGroupID: 300, LayerID: "10033204",
 			Variants: []SDSSyncVariantOption{{VariantID: 101, VariantSKU: "white-s", PrototypeGroupID: 300, LayerID: "10033204"}},
 		}}},
@@ -261,7 +261,7 @@ func TestRepairAndRetryTaskSDSRevalidatesTaskAfterRepairLease(t *testing.T) {
 	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest(), jobs: make(map[string]SDSChildRetryJob)}
 	if err := repo.CreateTask(context.Background(), &Task{
 		ID: "task-sds-repair-revalidate", TenantID: "tenant-1", Status: core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
+		Request: &GenerateRequest{ProductKey: "test-product", ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
 			VariantID: 101, ParentProductID: 200, PrototypeGroupID: 300, LayerID: "10033204",
 			Variants: []SDSSyncVariantOption{{VariantID: 101, VariantSKU: "white-s", PrototypeGroupID: 300, LayerID: "10033204"}},
 		}}},
@@ -303,7 +303,7 @@ func TestRepairAndRetryTaskSDSRejectsActiveDurableRetry(t *testing.T) {
 	}}
 	if err := repo.CreateTask(context.Background(), &Task{
 		ID: "task-sds-repair-active", TenantID: "tenant-1", Status: core.TaskStatusNeedsReview,
-		Request: &GenerateRequest{ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
+		Request: &GenerateRequest{ProductKey: "test-product", ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
 			VariantID: 101, ParentProductID: 200, PrototypeGroupID: 300, LayerID: "10033204",
 			Variants: []SDSSyncVariantOption{{VariantID: 101, VariantSKU: "white-s", PrototypeGroupID: 300, LayerID: "10033204"}},
 		}}},

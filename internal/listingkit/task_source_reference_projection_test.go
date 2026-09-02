@@ -10,10 +10,9 @@ import (
 func TestBuildTaskListItemIncludesSourceReferenceForPendingTask(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID:     "task-source-reference",
+	task := &Task{TenantID: "tenant-test", ID: "task-source-reference",
 		Status: core.TaskStatusPending,
-		Request: &GenerateRequest{Source: &SourceReference{
+		Request: &GenerateRequest{ProductKey: "test-product", Source: &SourceReference{
 			Key:      "crawler:1688:888",
 			Type:     "crawler",
 			Platform: "1688",
@@ -44,10 +43,9 @@ func TestBuildTaskListItemIncludesSourceReferenceForPendingTask(t *testing.T) {
 func TestBuildTaskListItemOmitsLegacySourceReference(t *testing.T) {
 	t.Parallel()
 
-	item := buildTaskListItem(&Task{
-		ID:      "task-legacy",
+	item := buildTaskListItem(&Task{TenantID: "tenant-test", ID: "task-legacy",
 		Status:  core.TaskStatusPending,
-		Request: &GenerateRequest{Text: "legacy"},
+		Request: &GenerateRequest{ProductKey: "test-product", Text: "legacy"},
 	})
 	if item.SourceReference != nil {
 		t.Fatalf("source_reference = %+v, want nil for legacy task", item.SourceReference)

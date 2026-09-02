@@ -3,6 +3,7 @@ package listingkit
 import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productimage"
 )
 
@@ -13,7 +14,6 @@ func buildStandardProductSnapshot(result *ListingKitResult) *StandardProductSnap
 	}
 	return normalizeStandardProductSnapshotSemanticFields(&StandardProductSnapshot{
 		CatalogProduct:                  result.CatalogProduct,
-		CanonicalProduct:                result.CanonicalProduct,
 		AssetBundle:                     result.AssetBundle,
 		AssetInventorySummary:           result.AssetInventorySummary,
 		ImageAssets:                     result.ImageAssets,
@@ -37,7 +37,6 @@ func applyStandardProductSnapshot(result *ListingKitResult, snapshot *StandardPr
 	}
 	result.StandardProductSnapshot = snapshot
 	result.CatalogProduct = snapshot.CatalogProduct
-	result.CanonicalProduct = snapshot.CanonicalProduct
 	result.AssetBundle = snapshot.AssetBundle
 	result.AssetInventorySummary = snapshot.AssetInventorySummary
 	result.ImageAssets = snapshot.ImageAssets
@@ -134,12 +133,18 @@ func cloneGenerationSummary(summary *GenerationSummary) *GenerationSummary {
 	return &cloned
 }
 
+func canonicalProductFromStandardSnapshot(snapshot *StandardProductSnapshot) *canonical.Product {
+	if snapshot == nil || snapshot.CatalogProduct == nil {
+		return nil
+	}
+	return canonicalProductFromSnapshot(*snapshot.CatalogProduct)
+}
+
 func standardProductSnapshotEmpty(snapshot *StandardProductSnapshot) bool {
 	if snapshot == nil {
 		return true
 	}
 	return snapshot.CatalogProduct == nil &&
-		snapshot.CanonicalProduct == nil &&
 		snapshot.AssetBundle == nil &&
 		snapshot.AssetInventorySummary == nil &&
 		snapshot.ImageAssets == nil &&

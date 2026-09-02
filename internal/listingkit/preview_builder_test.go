@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
-	"task-processor/internal/product/catalog"
-	"task-processor/internal/product/catalog/canonical"
 	listingplatform "task-processor/internal/listing/platform"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -82,9 +82,8 @@ func TestNormalizePreviewPlatform(t *testing.T) {
 func TestBuildListingKitPreviewBackfillsSheinSourceProductSDSIdentity(t *testing.T) {
 	t.Parallel()
 
-	preview, err := buildListingKitPreview(&Task{
-		ID: "task-sds-source-link",
-		Request: &GenerateRequest{
+	preview, err := buildListingKitPreview(&Task{TenantID: "tenant-test", ID: "task-sds-source-link",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 			Source: &SourceReference{
 				Key:      "sds:41661",
@@ -137,9 +136,8 @@ func TestBuildListingKitPreviewBackfillsSheinSourceProductSDSIdentity(t *testing
 func TestBuildListingKitPreviewUsesPersistedNonSDSSourceReference(t *testing.T) {
 	t.Parallel()
 
-	preview, err := buildListingKitPreview(&Task{
-		ID: "task-1688-source-link",
-		Request: &GenerateRequest{
+	preview, err := buildListingKitPreview(&Task{TenantID: "tenant-test", ID: "task-1688-source-link",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 			Source: &SourceReference{
 				Key:      "crawler:1688:888",
@@ -183,9 +181,8 @@ func TestBuildListingKitPreviewUsesPersistedNonSDSSourceReference(t *testing.T) 
 func TestBuildListingKitPreviewPrefersExplicitSourceReferenceOverSDSOptions(t *testing.T) {
 	t.Parallel()
 
-	preview, err := buildListingKitPreview(&Task{
-		ID: "task-source-precedence",
-		Request: &GenerateRequest{
+	preview, err := buildListingKitPreview(&Task{TenantID: "tenant-test", ID: "task-source-precedence",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 			Source:    &SourceReference{Type: "crawler", Platform: "1688", ID: "888", URL: "https://detail.1688.com/offer/888.html"},
 			Options:   &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}},
@@ -210,9 +207,8 @@ func TestBuildListingKitPreviewPrefersExplicitSourceReferenceOverSDSOptions(t *t
 func TestBuildListingKitPreviewUsesSDSVariantIDWhenParentProductIsMissing(t *testing.T) {
 	t.Parallel()
 
-	preview, err := buildListingKitPreview(&Task{
-		ID: "task-sds-variant-only",
-		Request: &GenerateRequest{
+	preview, err := buildListingKitPreview(&Task{TenantID: "tenant-test", ID: "task-sds-variant-only",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 			Source: &SourceReference{
 				Key:      "sds:variant:41662",
@@ -242,9 +238,8 @@ func TestBuildListingKitPreviewUsesSDSVariantIDWhenParentProductIsMissing(t *tes
 func TestBuildListingKitPreviewDoesNotInferSDSSourceFromOptions(t *testing.T) {
 	t.Parallel()
 
-	preview, err := buildListingKitPreview(&Task{
-		ID: "task-sds-source-contract-missing",
-		Request: &GenerateRequest{
+	preview, err := buildListingKitPreview(&Task{TenantID: "tenant-test", ID: "task-sds-source-contract-missing",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 			Options:   &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}},
 		},
@@ -268,9 +263,8 @@ func TestBuildListingKitPreviewDoesNotInferSDSSourceFromOptions(t *testing.T) {
 func TestBuildListingKitPreviewOmitsSourceProductWithoutSourceReference(t *testing.T) {
 	t.Parallel()
 
-	preview, err := buildListingKitPreview(&Task{
-		ID:      "task-no-source",
-		Request: &GenerateRequest{Platforms: []string{"shein"}},
+	preview, err := buildListingKitPreview(&Task{TenantID: "tenant-test", ID: "task-no-source",
+		Request: &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID:           "task-no-source",
 			Platforms:        []string{"shein"},
@@ -292,9 +286,8 @@ func TestBuildListingKitPreviewOmitsSourceProductWithoutSourceReference(t *testi
 func TestPreviewPlatformsPrefersResultPlatforms(t *testing.T) {
 	t.Parallel()
 
-	got := previewPlatforms(&Task{
-		Request: &GenerateRequest{Platforms: []string{"amazon"}},
-		Result:  &ListingKitResult{Platforms: []string{"shein", "temu"}},
+	got := previewPlatforms(&Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
+		Result: &ListingKitResult{Platforms: []string{"shein", "temu"}},
 	})
 	if len(got) != 2 || got[0] != "shein" || got[1] != "temu" {
 		t.Fatalf("previewPlatforms() = %#v, want result platforms", got)
@@ -305,12 +298,11 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	task := &Task{
-		ID:        "task-preview-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-preview-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"amazon", "shein", "temu"},
 		},
 		Result: &ListingKitResult{
@@ -612,7 +604,7 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 func TestBuildListingKitPreviewRejectsUnsupportedPlatform(t *testing.T) {
 	t.Parallel()
 
-	_, err := buildListingKitPreview(&Task{ID: "task-preview-2"}, "ebay")
+	_, err := buildListingKitPreview(&Task{TenantID: "tenant-test", ID: "task-preview-2"}, "ebay")
 	if err == nil {
 		t.Fatal("expected unsupported platform error")
 	}
@@ -624,8 +616,7 @@ func TestBuildListingKitPreviewRejectsUnsupportedPlatform(t *testing.T) {
 func TestBuildListingKitPreviewReturnsPendingHeaderWhenResultMissing(t *testing.T) {
 	t.Parallel()
 
-	preview, err := buildListingKitPreview(&Task{
-		ID:     "task-preview-pending",
+	preview, err := buildListingKitPreview(&Task{TenantID: "tenant-test", ID: "task-preview-pending",
 		Status: core.TaskStatusProcessing,
 	}, "")
 	if err != nil {
@@ -643,8 +634,7 @@ func TestBuildListingKitPreviewIncludesRevisionHistoryMeta(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	task := &Task{
-		ID:        "task-preview-history",
+	task := &Task{TenantID: "tenant-test", ID: "task-preview-history",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,

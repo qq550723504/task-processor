@@ -7,7 +7,7 @@ import (
 )
 
 func TestResolveSheinSizeReferenceImagesUsesRenderedSDSImage(t *testing.T) {
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Options: &GenerateOptions{
 			SheinStudio: &SheinStudioOptions{
 				SizeReferenceImageURLs: []string{"https://cdn.sdspod.com/raw-size.jpg"},
@@ -34,7 +34,7 @@ func TestResolveSheinSizeReferenceImagesUsesRenderedSDSImage(t *testing.T) {
 }
 
 func TestResolveSheinSizeReferenceImagesFallsBackToRawImage(t *testing.T) {
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Options: &GenerateOptions{
 			SheinStudio: &SheinStudioOptions{
 				SizeReferenceImageURLs: []string{"https://cdn.sdspod.com/raw-size.jpg"},
@@ -52,7 +52,7 @@ func TestResolveSheinSizeReferenceImagesFallsBackToRawImage(t *testing.T) {
 }
 
 func TestResolveSheinSizeReferenceImagesUsesVariantRenderedImage(t *testing.T) {
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Options: &GenerateOptions{
 			SDS: &SDSSyncOptions{
 				Variants: []SDSSyncVariantOption{

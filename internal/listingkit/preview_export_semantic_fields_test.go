@@ -36,8 +36,7 @@ func TestBuildSheinPreviewPayloadPopulatesSemanticFields(t *testing.T) {
 }
 
 func TestBuildListingKitExportPopulatesSemanticFields(t *testing.T) {
-	task := &Task{
-		ID: "task-semantic-export",
+	task := &Task{TenantID: "tenant-test", ID: "task-semantic-export",
 		Result: &ListingKitResult{
 			Shein: &sheinpub.Package{
 				DraftPayload:   &sheinpub.RequestDraft{SpuName: "Semantic Export Product"},

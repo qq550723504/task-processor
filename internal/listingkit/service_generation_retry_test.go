@@ -14,9 +14,9 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
-	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -290,12 +290,11 @@ func newRetryPersistenceFailureFixture(t *testing.T, taskID string) *retryPersis
 
 	repo := &recordingRetryPersistenceServiceRepo{delegate: &stubGenerationRepo{}}
 	assetRepository := newRecordingRetryPersistenceAssetRepo()
-	task := &Task{
-		ID:        taskID,
+	task := &Task{TenantID: "tenant-test", ID: taskID,
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID:           taskID,
 			Platforms:        []string{"amazon"},
@@ -416,12 +415,11 @@ func newTaskGenerationActionQueueFixture(t *testing.T, taskID string) (*Task, *t
 	t.Helper()
 
 	repo := &stubGenerationRepo{}
-	task := &Task{
-		ID:        taskID,
+	task := &Task{TenantID: "tenant-test", ID: taskID,
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID: taskID,
 			Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
@@ -801,12 +799,11 @@ func TestRetryTaskGenerationTasksIncludesMatchedQueueSummary(t *testing.T) {
 		DeferredRenderer: renderer,
 	}))
 
-	task := &Task{
-		ID:        "task-generation-retry-match-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-match-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID:           "task-generation-retry-match-1",
 			Platforms:        []string{"amazon"},
@@ -929,12 +926,11 @@ func TestRetryTaskGenerationTasksFiltersByExecutionQuality(t *testing.T) {
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
-	task := &Task{
-		ID:        "task-generation-retry-quality-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-quality-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon", "shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-retry-quality-1",
 			Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
@@ -1027,12 +1023,11 @@ func TestRetryTaskGenerationTasksFiltersByExecutionQualityLabel(t *testing.T) {
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
-	task := &Task{
-		ID:        "task-generation-retry-quality-label-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-quality-label-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-retry-quality-label-1",
 			Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
@@ -1095,12 +1090,11 @@ func TestRetryTaskGenerationTasksFiltersByQualityGradeLabel(t *testing.T) {
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
-	task := &Task{
-		ID:        "task-generation-retry-grade-label-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-grade-label-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-retry-grade-label-1",
 			Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
@@ -1163,12 +1157,11 @@ func TestRetryTaskGenerationTasksFiltersByQualityGrade(t *testing.T) {
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
-	task := &Task{
-		ID:        "task-generation-retry-grade-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-grade-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-retry-grade-1",
 			Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
@@ -1231,12 +1224,11 @@ func TestRetryTaskGenerationTasksReturnsEmptyPageWhenQueueFilterMatchesNothing(t
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
-	task := &Task{
-		ID:        "task-generation-retry-empty-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-empty-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-retry-empty-1",
 			Shein: &SheinPackage{
@@ -1320,12 +1312,11 @@ func TestRetryTaskGenerationTasksReplacesFallbackAssetAndPersistsResult(t *testi
 		DeferredRenderer: renderer,
 	}))
 
-	task := &Task{
-		ID:        "task-generation-retry-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID:           "task-generation-retry-1",
 			Platforms:        []string{"amazon"},
@@ -1443,12 +1434,11 @@ func TestRetryTaskGenerationTasksMergesReturnedTasksAndRefreshesRetriedAssets(t 
 		DeferredRenderer: renderer,
 	}))
 
-	task := &Task{
-		ID:        "task-generation-retry-merge-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-merge-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID:           "task-generation-retry-merge-1",
 			Platforms:        []string{"amazon"},
@@ -1570,12 +1560,11 @@ func TestRetryTaskGenerationTasksDispatchesEachPlatformAgainstTargetInventory(t 
 	assetRepository := assetrepo.NewMemRepository()
 	generator := &stubWorkflowAssetGenerator{}
 	taskID := "task-generation-retry-target-inventory"
-	task := &Task{
-		ID:        taskID,
+	task := &Task{TenantID: "tenant-test", ID: taskID,
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon", "shein"}},
 		Result: &ListingKitResult{
 			TaskID:         taskID,
 			Platforms:      []string{"amazon", "shein"},
@@ -1639,10 +1628,9 @@ func TestRetryGenerationResultProjectionRebuildsListingKitResult(t *testing.T) {
 	t.Parallel()
 
 	reviewedAt := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
-	task := &Task{
-		ID:        "task-generation-retry-projection-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-projection-1",
 		UpdatedAt: reviewedAt,
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID:           "task-generation-retry-projection-1",
 			Platforms:        []string{"amazon"},
@@ -1807,10 +1795,9 @@ func TestRetryGenerationResultProjectionRebuildsListingKitResult(t *testing.T) {
 func TestRetryGenerationResultProjectionBuildsQueues(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID:        "task-generation-retry-projection-queues-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-projection-queues-1",
 		UpdatedAt: time.Date(2026, 5, 30, 10, 5, 0, 0, time.UTC),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID:           "task-generation-retry-projection-queues-1",
 			Platforms:        []string{"amazon"},
@@ -1905,8 +1892,7 @@ func TestRetryGenerationResultProjectionBuildsQueues(t *testing.T) {
 func TestRetryGenerationResultProjectionHandlesNilTaskRequest(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID:        "task-generation-retry-projection-nil-request-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-projection-nil-request-1",
 		UpdatedAt: time.Date(2026, 5, 30, 10, 10, 0, 0, time.UTC),
 		Request:   nil,
 		Result: &ListingKitResult{
@@ -3317,7 +3303,7 @@ func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testi
 			Status:    core.TaskStatusCompleted,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
-			Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+			Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 			Result: &ListingKitResult{
 				TaskID: taskID,
 				AssetRenderPreviews: []AssetRenderPreview{{
@@ -3345,7 +3331,7 @@ func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testi
 			Status:    core.TaskStatusCompleted,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
-			Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+			Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 			Result: &ListingKitResult{
 				TaskID: taskID,
 				AssetRenderPreviews: []AssetRenderPreview{{
@@ -3371,7 +3357,7 @@ func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testi
 			Status:    core.TaskStatusCompleted,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
-			Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+			Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 			Result: &ListingKitResult{
 				TaskID: taskID,
 				AssetRenderPreviews: []AssetRenderPreview{{
@@ -3487,12 +3473,11 @@ func TestTaskGenerationActionRefreshHydratesCurrentResultFallbacks(t *testing.T)
 	t.Parallel()
 
 	repo := &stubGenerationRepo{}
-	task := &Task{
-		ID:        "task-generation-action-refresh-fallbacks-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-action-refresh-fallbacks-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-action-refresh-fallbacks-1",
 		},
@@ -3683,12 +3668,11 @@ func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := newRecordingRetryPersistenceAssetRepo()
-	task := &Task{
-		ID:        "task-generation-retry-nil-dispatch-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-nil-dispatch-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID:           "task-generation-retry-nil-dispatch-1",
 			Platforms:        []string{"amazon"},
@@ -3903,12 +3887,11 @@ func TestRetryTaskGenerationTasksEmptySelectionSkipsPersistence(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := newRecordingRetryPersistenceAssetRepo()
-	task := &Task{
-		ID:        "task-generation-retry-empty-selection-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-empty-selection-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID:           "task-generation-retry-empty-selection-1",
 			Platforms:        []string{"amazon"},
@@ -3971,12 +3954,11 @@ func TestRetryTaskGenerationTasksCanFilterFallbackSlotsOnly(t *testing.T) {
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
-	task := &Task{
-		ID:        "task-generation-retry-filter-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-filter-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result:    &ListingKitResult{TaskID: "task-generation-retry-filter-1", CatalogProduct: &catalog.ProductSnapshot{Title: "Tee"}},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -4063,12 +4045,11 @@ func TestRetryTaskGenerationTasksPlansMissingQueueFallbackSlot(t *testing.T) {
 		DeferredRenderer: renderer,
 	}))
 
-	task := &Task{
-		ID:        "task-generation-retry-plan-missing-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-plan-missing-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID:           "task-generation-retry-plan-missing-1",
 			Platforms:        []string{"shein"},
@@ -4147,12 +4128,11 @@ func TestRetryTaskGenerationTasksPassesNormalizedRequestedTargetsToMissingTaskPl
 	assetRepository := assetrepo.NewMemRepository()
 	assetGenerator := &stubRetryNilDispatchGenerator{}
 	owner := seedWorkflowAssets(seedWorkflowDeps(&service{}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetGenerator)
-	task := &Task{
-		ID:        "task-generation-retry-plan-targets-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-retry-plan-targets-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request: &GenerateRequest{Platforms: []string{
+		Request: &GenerateRequest{ProductKey: "test-product", Platforms: []string{
 			" SHEIN ", "amazon", "shein", "unsupported",
 		}},
 		Result: &ListingKitResult{

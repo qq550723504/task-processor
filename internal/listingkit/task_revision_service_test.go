@@ -14,8 +14,7 @@ func TestTaskRevisionServiceApplyTaskRevisionInvokesSheinCollaborators(t *testin
 	t.Parallel()
 
 	repo := &stubApplyRevisionRepo{}
-	task := &Task{
-		ID:     "task-revision-service-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-revision-service-1",
 		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-revision-service-1",
@@ -109,8 +108,7 @@ func TestTaskRevisionServiceGetTaskRevisionHistoryAttachesStoreResolution(t *tes
 
 	now := time.Now().UTC()
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-revision-history-service-1",
+		task: &Task{TenantID: "tenant-test", ID: "task-revision-history-service-1",
 			SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
 				StoreID:          903,
 				Site:             "GB",

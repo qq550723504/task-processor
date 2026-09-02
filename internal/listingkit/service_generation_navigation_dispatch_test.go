@@ -16,12 +16,11 @@ func TestTaskGenerationNavigationPrimaryRunRoutesDispatchKinds(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-primary-route-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-primary-route-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-primary-route-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -240,12 +239,11 @@ func TestTaskGenerationNavigationPrimaryServiceDelegatesToPhase(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-service-guard-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-service-guard-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-service-guard-1",
 		},
@@ -282,12 +280,11 @@ func TestTaskGenerationNavigationPrimaryPhaseOwnsPrimaryRouting(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-primary-guard-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-primary-guard-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-primary-guard-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -498,12 +495,11 @@ func TestDispatchTaskGenerationNavigationDefaultsPlanModeToPrimaryOnly(t *testin
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-default-plan-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-default-plan-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-default-plan-1",
 			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
@@ -549,12 +545,11 @@ func TestDispatchTaskGenerationNavigationRoutesSessionTarget(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-session-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-session-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-session-1",
 			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
@@ -603,12 +598,11 @@ func TestDispatchTaskGenerationNavigationReturnsPatchOnlyPanelUpdateForSession(t
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-session-patch-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-session-patch-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-session-patch-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -672,12 +666,11 @@ func TestDispatchTaskGenerationNavigationRoutesActionTarget(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-action-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-action-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-action-1",
 		},
@@ -730,12 +723,11 @@ func TestDispatchTaskGenerationNavigationBuildsChangedDescriptorsForReviewWorkfl
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-action-descriptor-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-action-descriptor-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-action-descriptor-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -797,12 +789,11 @@ func TestDispatchTaskGenerationNavigationReturnsPatchOnlyPanelUpdateForAction(t 
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-action-patch-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-action-patch-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-action-patch-1",
 		},
@@ -849,12 +840,11 @@ func TestDispatchTaskGenerationNavigationReturnsNoChangesForPreviewNotModified(t
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-preview-not-modified-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-preview-not-modified-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-preview-not-modified-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -920,12 +910,11 @@ func TestDispatchTaskGenerationNavigationReturnsNoChangesForQueueNotModified(t *
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-queue-not-modified-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-queue-not-modified-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-queue-not-modified-1",
 			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
@@ -979,12 +968,11 @@ func TestDispatchTaskGenerationNavigationExecutesDispatchPlanForSessionTarget(t 
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-session-plan-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-session-plan-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-session-plan-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -1075,12 +1063,11 @@ func TestDispatchTaskGenerationNavigationExecutesDispatchPlanForActionTarget(t *
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-action-plan-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-action-plan-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-action-plan-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -1325,12 +1312,11 @@ func TestTaskGenerationNavigationDispatchPlanRunChoosesExecutionModeAndAppliesRu
 			return nil, nil
 		},
 	}
-	task := &Task{
-		ID:        "task-generation-navigation-plan-mode-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-plan-mode-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-plan-mode-1",
 			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
@@ -1428,12 +1414,11 @@ func TestExecuteGenerationNavigationDispatchPlanDeduplicatesDuplicateSteps(t *te
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-plan-dedupe-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-plan-dedupe-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-plan-dedupe-1",
 			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
@@ -1498,12 +1483,11 @@ func TestTaskGenerationNavigationDispatchParallelPhaseDeduplicatesAndReplaysSour
 			return nil, nil
 		},
 	}
-	task := &Task{
-		ID:        "task-generation-navigation-plan-parallel-seam-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-plan-parallel-seam-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-plan-parallel-seam-1",
 			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
@@ -1586,12 +1570,11 @@ func TestTaskGenerationNavigationDispatchStepExecutionRunBuildsStepResults(t *te
 			return nil, nil
 		},
 	}
-	task := &Task{
-		ID:        "task-generation-navigation-step-seam-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-step-seam-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-step-seam-1",
 			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
@@ -1707,12 +1690,11 @@ func TestTaskGenerationNavigationDispatchStepExecutionRunSequentialBackfillsSkip
 			return nil, nil
 		},
 	}
-	task := &Task{
-		ID:        "task-generation-navigation-step-sequential-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-step-sequential-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-step-sequential-1",
 			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{

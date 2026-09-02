@@ -95,7 +95,7 @@ func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps) li
 		Logger: logger,
 		Runtime: listingkithttpapi.RuntimeDependencies{
 			Config:                     deps.shared.cfg,
-			ProductService:             deps.features.productService,
+			ProductSnapshotReader:      deps.features.productSnapshotReader,
 			ImageService:               deps.features.imageService,
 			ImageSubjectExtractor:      deps.features.imageSubjectExtractor,
 			ImageWhiteBackgroundRender: deps.features.imageWhiteBgRenderer,

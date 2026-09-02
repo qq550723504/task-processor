@@ -2,21 +2,27 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"task-processor/internal/amazonlisting"
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productimage"
 )
 
 type TaskSubmitter interface{ Submit(taskID string) error }
 
-type ProductService interface {
-	CreateGenerateTask(ctx context.Context, req *productenrich.GenerateRequest) (*productenrich.Task, error)
-	GetTaskResult(ctx context.Context, taskID string) (*productenrich.TaskResult, error)
-	ProcessProduct(ctx context.Context, task *productenrich.Task) (*productenrich.ProductJSON, error)
+var ErrProductSnapshotNotReady = errors.New("product snapshot is not ready")
+
+type ProductSnapshotQuery struct {
+	TenantID   string
+	ProductKey string
+}
+
+type ProductSnapshotReader interface {
+	GetProductSnapshot(ctx context.Context, query ProductSnapshotQuery) (catalog.ProductSnapshot, error)
 }
 
 type ImageService interface {
@@ -125,11 +131,6 @@ type SheinSourceSDSMetadataSource interface {
 	ListSheinSourceSDSMetadata(ctx context.Context, query *SheinSourceSDSMetadataQuery) ([]SheinSourceSDSMetadataRecord, error)
 }
 
-type CanonicalProductCacheRepository interface {
-	GetCanonicalProductCache(ctx context.Context, fingerprint string) (*canonical.Product, error)
-	SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error
-}
-
 type SDSBaselineCacheRepository interface {
 	// tenantID is optional. When empty, implementations resolve the tenant from ctx.
 	// If both tenantID and ctx resolve to a tenant, they must match or the call fails.
@@ -147,11 +148,11 @@ type SDSRetirementRepository interface {
 }
 
 type Assembler interface {
-	Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult
+	Assemble(task *Task, product *catalog.ProductSnapshot, image *productimage.ImageProcessResult) *ListingKitResult
 }
 
 type TargetAwareAssembler interface {
-	AssembleForTargets(task *Task, canonical *canonical.Product, images map[string]*productimage.ImageProcessResult) *ListingKitResult
+	AssembleForTargets(task *Task, product *catalog.ProductSnapshot, images map[string]*productimage.ImageProcessResult) *ListingKitResult
 }
 
 type AmazonDraftBuilder interface {

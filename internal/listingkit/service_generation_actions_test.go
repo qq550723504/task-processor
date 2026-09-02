@@ -15,10 +15,10 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
-	"task-processor/internal/product/catalog"
 	"task-processor/internal/listingkit/core"
 	listinggeneration "task-processor/internal/listingkit/generation"
 	"task-processor/internal/listingkit/reviewstore"
+	"task-processor/internal/product/catalog"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -104,12 +104,11 @@ func newTaskGenerationActionEntryReviewFixture(t *testing.T, taskID string) (*Ta
 	t.Helper()
 
 	repo := &stubGenerationRepo{}
-	task := &Task{
-		ID:        taskID,
+	task := &Task{TenantID: "tenant-test", ID: taskID,
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: taskID,
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -493,12 +492,11 @@ func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *tes
 		},
 	}
 
-	task := &Task{
-		ID:        "task-generation-action-standard-temporal-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-action-standard-temporal-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result:    &ListingKitResult{TaskID: "task-generation-action-standard-temporal-1"},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -550,12 +548,11 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflow(t *testi
 		},
 	}
 
-	task := &Task{
-		ID:        "task-generation-action-platform-temporal-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-action-platform-temporal-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result:    &ListingKitResult{TaskID: "task-generation-action-platform-temporal-1"},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -610,12 +607,11 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflowUsesParse
 		},
 	}
 
-	task := &Task{
-		ID:        "task-generation-action-platform-temporal-navigation-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-action-platform-temporal-navigation-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result:    &ListingKitResult{TaskID: "task-generation-action-platform-temporal-navigation-1"},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -1110,12 +1106,11 @@ func TestExecuteTaskGenerationActionRunsRetryableTarget(t *testing.T) {
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
-	task := &Task{
-		ID:        "task-generation-action-retry-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-action-retry-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID:         "task-generation-action-retry-1",
 			CatalogProduct: &catalog.ProductSnapshot{Title: "Portable Speaker"},
@@ -1206,12 +1201,11 @@ func TestExecuteTaskGenerationActionRunsQueueOnlyTarget(t *testing.T) {
 		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-action-queue-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-action-queue-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-action-queue-1",
 			Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
@@ -1328,12 +1322,11 @@ func TestExecuteTaskGenerationActionSupportsPatchOnlyResponseMode(t *testing.T) 
 		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-action-patch-only-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-action-patch-only-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-action-patch-only-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -1405,12 +1398,11 @@ func TestGetTaskGenerationReviewSessionReturnsNotModifiedWhenDeltaMatches(t *tes
 		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-review-session-delta-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-review-session-delta-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-review-session-delta-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -1473,12 +1465,11 @@ func TestGetTaskGenerationReviewPreviewReturnsNotModifiedWhenDeltaMatches(t *tes
 		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-review-preview-delta-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-review-preview-delta-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-review-preview-delta-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -1541,12 +1532,11 @@ func TestGetTaskGenerationReviewSessionSupportsPatchOnlyNavigationRead(t *testin
 		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-review-session-patch-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-review-session-patch-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-review-session-patch-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -1621,12 +1611,11 @@ func TestExecuteTaskGenerationActionBuildsRetryReviewSessionFromExecutedQueue(t 
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
-	task := &Task{
-		ID:        "task-generation-action-retry-review-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-action-retry-review-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-action-retry-review-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -1800,12 +1789,11 @@ func TestExecuteTaskGenerationActionAppliesSectionReviewOutcome(t *testing.T) {
 		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-action-section-review-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-action-section-review-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-action-section-review-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -2332,12 +2320,11 @@ func TestGetTaskGenerationReviewPreviewReportsRevisionMismatch(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-preview-mismatch-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-preview-mismatch-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-preview-mismatch-1",
 			AssetRenderPreviews: []AssetRenderPreview{{

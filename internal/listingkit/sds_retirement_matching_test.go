@@ -7,7 +7,7 @@ import (
 )
 
 func TestSDSRetirementTaskMatchesIdentityFromRequestOptions(t *testing.T) {
-	task := Task{Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+	task := Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 		ParentProductID:  238915,
 		PrototypeGroupID: 28345,
 		VariantID:        238916,
@@ -28,7 +28,7 @@ func TestSDSRetirementTaskMatchesIdentityFromRequestOptions(t *testing.T) {
 }
 
 func TestSDSRetirementTaskMatchingRequiresSelectedVariantIdentity(t *testing.T) {
-	task := Task{Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+	task := Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 		ParentProductID:  238915,
 		PrototypeGroupID: 28345,
 		VariantID:        238916,

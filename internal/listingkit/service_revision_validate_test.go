@@ -73,8 +73,7 @@ func TestValidateTaskRevisionReturnsFieldErrorsAndHints(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubValidateRepo{}
-	task := &Task{
-		ID: "task-validate-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-validate-1",
 		Result: &ListingKitResult{
 			TaskID: "task-validate-1",
 			AssetBundlesByTarget: map[string]*asset.Bundle{
@@ -154,8 +153,7 @@ func TestValidateTaskRevisionReturnsRestorePreview(t *testing.T) {
 
 	repo := &stubValidateRepo{}
 	spuName := "Restore Bottle"
-	task := &Task{
-		ID: "task-validate-restore",
+	task := &Task{TenantID: "tenant-test", ID: "task-validate-restore",
 		Result: &ListingKitResult{
 			TaskID: "task-validate-restore",
 			Shein: &SheinPackage{

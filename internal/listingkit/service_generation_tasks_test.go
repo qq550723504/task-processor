@@ -10,8 +10,8 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
-	"task-processor/internal/product/catalog"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/product/catalog"
 )
 
 func TestGetTaskPreviewIncludesGenerationTasks(t *testing.T) {
@@ -23,12 +23,11 @@ func TestGetTaskPreviewIncludesGenerationTasks(t *testing.T) {
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
-	task := &Task{
-		ID:        "task-preview-generation-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-preview-generation-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID:         "task-preview-generation-1",
 			Platforms:      []string{"amazon"},
@@ -74,12 +73,11 @@ func TestGetTaskGenerationTasksAppliesQueryFiltersAndRebuildsSummary(t *testing.
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-query-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-query-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon", "shein"}},
 		Result:    &ListingKitResult{TaskID: "task-generation-query-1"},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -121,12 +119,11 @@ func TestGetTaskGenerationTasksAppliesPaginationAndSorting(t *testing.T) {
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
-	task := &Task{
-		ID:        "task-generation-query-page-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-query-page-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon", "shein"}},
 		Result:    &ListingKitResult{TaskID: "task-generation-query-page-1"},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {

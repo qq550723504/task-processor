@@ -26,6 +26,55 @@ type SDSBaselineIdentity struct {
 	SelectedVariantIDs []int64 `json:"selected_variant_ids,omitempty"`
 }
 
+type SDSBaselineCanonicalProductPayload canonical.Product
+
+func newSDSBaselineCanonicalProductPayload(product *canonical.Product) (*SDSBaselineCanonicalProductPayload, error) {
+	if product == nil {
+		return nil, fmt.Errorf("canonical product cannot be nil")
+	}
+	raw, err := json.Marshal(product)
+	if err != nil {
+		return nil, err
+	}
+	var payload SDSBaselineCanonicalProductPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, err
+	}
+	return &payload, nil
+}
+
+func (p SDSBaselineCanonicalProductPayload) Value() (driver.Value, error) {
+	return json.Marshal(p)
+}
+
+func (p *SDSBaselineCanonicalProductPayload) Scan(value any) error {
+	var raw []byte
+	switch typed := value.(type) {
+	case []byte:
+		raw = typed
+	case string:
+		raw = []byte(typed)
+	default:
+		return errors.New("type assertion to []byte failed")
+	}
+	return json.Unmarshal(raw, p)
+}
+
+func (p *SDSBaselineCanonicalProductPayload) CanonicalProduct() (*canonical.Product, error) {
+	if p == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return nil, err
+	}
+	var product canonical.Product
+	if err := json.Unmarshal(raw, &product); err != nil {
+		return nil, err
+	}
+	return &product, nil
+}
+
 func (i SDSBaselineIdentity) Value() (driver.Value, error) {
 	return json.Marshal(i)
 }
@@ -44,19 +93,19 @@ func (i *SDSBaselineIdentity) Scan(value any) error {
 }
 
 type SDSBaselineCacheEntry struct {
-	TenantID             string                        `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
-	BaselineKey          string                        `json:"baseline_key" gorm:"primaryKey;type:varchar(128)"`
-	Status               string                        `json:"status,omitempty" gorm:"type:varchar(20);index"`
-	Version              int                           `json:"version"`
-	SourceTaskID         string                        `json:"source_task_id,omitempty" gorm:"type:varchar(36);index"`
-	Identity             SDSBaselineIdentity           `json:"identity" gorm:"type:text"`
-	CanonicalProductBase *CanonicalProductCachePayload `json:"canonical_product_base,omitempty" gorm:"type:text"`
-	ValidationStatus     string                        `json:"validation_status,omitempty" gorm:"type:varchar(20);index"`
-	ValidationReasonCode string                        `json:"validation_reason_code,omitempty" gorm:"type:varchar(64);index"`
-	ValidationReason     string                        `json:"validation_reason,omitempty" gorm:"type:text"`
-	ValidatedAt          *time.Time                    `json:"validated_at,omitempty"`
-	CreatedAt            time.Time                     `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt            time.Time                     `json:"updated_at" gorm:"autoUpdateTime"`
+	TenantID             string                              `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	BaselineKey          string                              `json:"baseline_key" gorm:"primaryKey;type:varchar(128)"`
+	Status               string                              `json:"status,omitempty" gorm:"type:varchar(20);index"`
+	Version              int                                 `json:"version"`
+	SourceTaskID         string                              `json:"source_task_id,omitempty" gorm:"type:varchar(36);index"`
+	Identity             SDSBaselineIdentity                 `json:"identity" gorm:"type:text"`
+	CanonicalProductBase *SDSBaselineCanonicalProductPayload `json:"canonical_product_base,omitempty" gorm:"type:text"`
+	ValidationStatus     string                              `json:"validation_status,omitempty" gorm:"type:varchar(20);index"`
+	ValidationReasonCode string                              `json:"validation_reason_code,omitempty" gorm:"type:varchar(64);index"`
+	ValidationReason     string                              `json:"validation_reason,omitempty" gorm:"type:text"`
+	ValidatedAt          *time.Time                          `json:"validated_at,omitempty"`
+	CreatedAt            time.Time                           `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt            time.Time                           `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 func (SDSBaselineCacheEntry) TableName() string {
@@ -81,7 +130,7 @@ func (e *SDSBaselineCacheEntry) Clone() (*SDSBaselineCacheEntry, error) {
 		if err != nil {
 			return nil, err
 		}
-		payload, err := newCanonicalProductCachePayload(product)
+		payload, err := newSDSBaselineCanonicalProductPayload(product)
 		if err != nil {
 			return nil, err
 		}

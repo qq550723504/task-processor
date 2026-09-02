@@ -19,7 +19,7 @@ func TestTaskLifecycleServiceRejectsForeignSheinStoreBeforePersistingTask(t *tes
 	})
 	ctx := WithTenantID(context.Background(), "101")
 
-	_, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{
+	_, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		TenantID:     "101",
 		ProductURL:   "https://example.com/product",
 		Platforms:    []string{"shein"},
@@ -43,7 +43,7 @@ func TestTaskLifecycleServiceRequiresExplicitSheinStoreBeforePersistingTask(t *t
 		},
 	})
 
-	_, err := lifecycle.CreateGenerateTask(context.Background(), &GenerateRequest{
+	_, err := lifecycle.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
 		ProductURL: "https://example.test/product",
 		Platforms:  []string{"shein"},
 	})
@@ -65,7 +65,7 @@ func TestTaskLifecycleServiceAllowsNonSheinTaskWithoutSheinStore(t *testing.T) {
 		},
 	})
 
-	_, err := lifecycle.CreateGenerateTask(context.Background(), &GenerateRequest{
+	_, err := lifecycle.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
 		ProductURL: "https://example.test/product",
 		Platforms:  []string{"amazon"},
 	})
@@ -103,7 +103,7 @@ func TestTaskLifecycleServiceValidatesOwnedSheinStoreBeforePersistingTask(t *tes
 	})
 	ctx := WithTenantID(context.Background(), "101")
 
-	_, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{
+	_, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		TenantID:     "101",
 		ProductURL:   "https://example.com/product",
 		Platforms:    []string{"shein"},
@@ -133,7 +133,7 @@ func TestTaskLifecycleServiceUsesAuthenticatedTenantForSheinStoreValidation(t *t
 	})
 	ctx := authidentity.WithAuthenticatedIdentity(WithTenantID(context.Background(), "202"), authidentity.AuthenticatedIdentity{TenantID: "101", UserID: "user-1"})
 
-	task, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{
+	task, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		TenantID:     "202",
 		ProductURL:   "https://example.com/product",
 		Platforms:    []string{"shein"},
@@ -163,7 +163,7 @@ func TestTaskLifecycleServicePersistsTenantAdminStoreAccessDecision(t *testing.T
 	})
 	ctx := WithRequestRoles(WithTenantID(context.Background(), "101"), []string{"listingkit_admin"})
 
-	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{
+	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		TenantID:     "101",
 		UserID:       "user-1",
 		ProductURL:   "https://example.com/product",
@@ -182,7 +182,7 @@ func TestTaskLifecycleServiceKeepsCanonicalOwnerSeparateFromBillingTenant(t *tes
 	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{})
 	ctx := WithTenantID(context.Background(), "canonical-tenant")
 
-	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{
+	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		TenantID:        "canonical-tenant",
 		BillingTenantID: "227",
 		UserID:          "user-1",
@@ -204,7 +204,7 @@ func TestTaskLifecycleServiceLeavesBillingTenantBlankWithoutExplicitAdmission(t 
 	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{})
 	ctx := WithTenantID(context.Background(), "canonical-tenant")
 
-	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{TenantID: "canonical-tenant", ProductURL: "https://example.com/product", Platforms: []string{"amazon"}})
+	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product", TenantID: "canonical-tenant", ProductURL: "https://example.com/product", Platforms: []string{"amazon"}})
 	if err != nil {
 		t.Fatalf("prepareGenerateTask() error = %v", err)
 	}
@@ -223,7 +223,7 @@ func TestTaskLifecycleServicePersistsTenantAdminAccessWhenStoreProfileResolution
 	})
 	ctx := WithRequestRoles(WithTenantID(context.Background(), "101"), []string{"listingkit_admin"})
 
-	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{
+	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		TenantID:     "101",
 		UserID:       "user-1",
 		ProductURL:   "https://example.com/product",

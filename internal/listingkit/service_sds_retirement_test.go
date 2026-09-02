@@ -22,7 +22,7 @@ func TestSDSRetirementBuildItemsRejectsMissingSourceSKUs(t *testing.T) {
 func TestSDSRetirementCreateRunRefreshesSheinProductsAndPersistsMatches(t *testing.T) {
 	repo := &sdsRetirementServiceRepoStub{
 		listTasks: []Task{{
-			Request: &GenerateRequest{
+			Request: &GenerateRequest{ProductKey: "test-product",
 				Country: "US",
 				Options: &GenerateOptions{SDS: &SDSSyncOptions{
 					ParentProductID:  238915,
@@ -96,7 +96,7 @@ func TestSDSRetirementCreateRunFallsBackToUSSiteSelectionWhenSourceCountryMissin
 	repo := &sdsRetirementServiceRepoStub{
 		listTasks: []Task{{
 			ID: "task-1",
-			Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+			Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 				ParentProductID:  238915,
 				PrototypeGroupID: 28345,
 				VariantID:        238916,
@@ -152,7 +152,7 @@ func TestSDSRetirementDiscoveredItemsConfirmWithoutManualSiteSelection(t *testin
 	createRepo := &sdsRetirementServiceRepoStub{
 		listTasks: []Task{{
 			ID: "task-1",
-			Request: &GenerateRequest{
+			Request: &GenerateRequest{ProductKey: "test-product",
 				Country: "US",
 				Options: &GenerateOptions{SDS: &SDSSyncOptions{
 					ParentProductID:  238915,
@@ -244,7 +244,7 @@ func TestSDSRetirementCreateRunDoesNotCrossMatchDifferentSelectedVariantSets(t *
 		listTasks: []Task{
 			{
 				ID: "task-selected-3001",
-				Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+				Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 					ParentProductID:  238915,
 					PrototypeGroupID: 28345,
 					VariantID:        238916,
@@ -262,7 +262,7 @@ func TestSDSRetirementCreateRunDoesNotCrossMatchDifferentSelectedVariantSets(t *
 			},
 			{
 				ID: "task-selected-3002",
-				Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+				Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 					ParentProductID:  238915,
 					PrototypeGroupID: 28345,
 					VariantID:        238916,
@@ -385,7 +385,7 @@ func TestSDSRetirementUpdateSelectionRequiresExplicitTenantScope(t *testing.T) {
 func TestSDSRetirementCreateRunRejectsNonNumericTenantForSheinRefresh(t *testing.T) {
 	repo := &sdsRetirementServiceRepoStub{
 		listTasks: []Task{{
-			Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+			Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 				ParentProductID:  238915,
 				PrototypeGroupID: 28345,
 				VariantID:        238916,
@@ -420,7 +420,7 @@ func TestSDSRetirementCreateRunScopesTaskDiscoveryToResolvedTenant(t *testing.T)
 		listTasksByTenant: map[string][]Task{
 			"18": {{
 				ID: "task-tenant-a",
-				Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+				Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 					ParentProductID:  238915,
 					PrototypeGroupID: 28345,
 					VariantID:        238916,
@@ -473,7 +473,7 @@ func TestSDSRetirementCreateRunPagesThroughAllTaskPages(t *testing.T) {
 			make([]Task, 100),
 			{{
 				ID: "task-page-2",
-				Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+				Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 					ParentProductID:  238915,
 					PrototypeGroupID: 28345,
 					VariantID:        238916,
@@ -491,7 +491,7 @@ func TestSDSRetirementCreateRunPagesThroughAllTaskPages(t *testing.T) {
 		},
 	}
 	for i := range repo.listTasksPages[0] {
-		repo.listTasksPages[0][i] = Task{ID: "task-ignore"}
+		repo.listTasksPages[0][i] = Task{TenantID: "tenant-test", ID: "task-ignore"}
 	}
 	shein := &sdsRetirementSheinSyncStub{
 		supportsImmediateRefresh: true,
@@ -526,7 +526,7 @@ func TestSDSRetirementCreateRunPagesThroughAllSyncedProducts(t *testing.T) {
 	repo := &sdsRetirementServiceRepoStub{
 		listTasks: []Task{{
 			ID: "task-1",
-			Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+			Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 				ParentProductID:  238915,
 				PrototypeGroupID: 28345,
 				VariantID:        238916,
@@ -576,7 +576,7 @@ func TestSDSRetirementCreateRunRejectsAsyncOnlySheinRefresh(t *testing.T) {
 	repo := &sdsRetirementServiceRepoStub{
 		listTasks: []Task{{
 			ID: "task-1",
-			Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+			Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{SDS: &SDSSyncOptions{
 				ParentProductID:  238915,
 				PrototypeGroupID: 28345,
 				VariantID:        238916,

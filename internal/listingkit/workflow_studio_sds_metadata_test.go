@@ -7,7 +7,6 @@ import (
 
 	"task-processor/internal/asset"
 	"task-processor/internal/product/catalog/canonical"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsdesign "task-processor/internal/sds/design"
@@ -292,7 +291,7 @@ func TestApplySDSSyncMetadataToCanonicalPromotesSDSIdentityAttributes(t *testing
 	}
 }
 
-func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing.T) {
+func TestRunStandardProductWorkflowUsesSnapshotInsteadOfCachedSDSBaseline(t *testing.T) {
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
@@ -301,9 +300,8 @@ func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing
 		t.Fatal("mem task repository does not expose SDS baseline cache repository")
 	}
 
-	task := &Task{
-		ID: "task-baseline-hit",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-baseline-hit",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "baseline task",
 			Platforms: []string{"amazon"},
 			Options: &GenerateOptions{
@@ -318,12 +316,12 @@ func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing
 		},
 	}
 
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{
 		Title:  "Baseline Title",
 		Images: []canonical.Image{{URL: "https://example.com/baseline.jpg", Role: "primary"}},
 	})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	if err := baselineRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
 		TenantID:             "",
@@ -336,9 +334,9 @@ func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing
 		t.Fatalf("SaveSDSBaselineCache: %v", err)
 	}
 
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{ID: "unexpected-product-task"},
-		product: &productenrich.ProductJSON{
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{ID: "unexpected-product-task"},
+		product: &stubProductSnapshotFixture{
 			Title: "Unexpected Product",
 		},
 	}
@@ -352,8 +350,8 @@ func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing
 	if err != nil {
 		t.Fatalf("runStandardProductWorkflow() error = %v", err)
 	}
-	if productSvc.lastReq != nil {
-		t.Fatalf("product enrich request = %+v, want skipped when baseline is cached", productSvc.lastReq)
+	if productSvc.lastReq == nil {
+		t.Fatal("product snapshot query = nil, want authoritative snapshot read")
 	}
 	if state.result.CanonicalProduct == nil {
 		t.Fatal("expected canonical product from baseline")
@@ -361,8 +359,8 @@ func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing
 	if state.result.CanonicalProduct.Title != "Runtime Overlay Title" {
 		t.Fatalf("canonical title = %q, want runtime overlay title", state.result.CanonicalProduct.Title)
 	}
-	if len(state.result.CanonicalProduct.Images) != 1 || state.result.CanonicalProduct.Images[0].URL != "https://example.com/baseline.jpg" {
-		t.Fatalf("canonical images = %+v, want baseline images preserved", state.result.CanonicalProduct.Images)
+	if len(state.result.CanonicalProduct.Images) != 0 {
+		t.Fatalf("canonical images = %+v, want cached baseline images ignored", state.result.CanonicalProduct.Images)
 	}
 }
 
@@ -375,9 +373,8 @@ func TestRunStandardProductWorkflow_DoesNotReuseBlockedSDSBaseline(t *testing.T)
 		t.Fatal("mem task repository does not expose SDS baseline cache repository")
 	}
 
-	task := &Task{
-		ID: "task-blocked-baseline-fallback",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-blocked-baseline-fallback",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "fallback product title",
 			Platforms: []string{"amazon"},
 			Options: &GenerateOptions{
@@ -391,12 +388,12 @@ func TestRunStandardProductWorkflow_DoesNotReuseBlockedSDSBaseline(t *testing.T)
 		},
 	}
 
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{
 		Title:  "Blocked Baseline Title",
 		Images: []canonical.Image{{URL: "https://example.com/blocked-baseline.jpg", Role: "primary"}},
 	})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	if err := baselineRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
 		BaselineKey:          sdsBaselineKey("", task.Request.Options.SDS),
@@ -410,9 +407,9 @@ func TestRunStandardProductWorkflow_DoesNotReuseBlockedSDSBaseline(t *testing.T)
 		t.Fatalf("SaveSDSBaselineCache: %v", err)
 	}
 
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{ID: "unexpected-product-task"},
-		product: &productenrich.ProductJSON{
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{ID: "unexpected-product-task"},
+		product: &stubProductSnapshotFixture{
 			Title: "Unexpected Product",
 		},
 	}
@@ -426,8 +423,8 @@ func TestRunStandardProductWorkflow_DoesNotReuseBlockedSDSBaseline(t *testing.T)
 	if err != nil {
 		t.Fatalf("runStandardProductWorkflow() error = %v", err)
 	}
-	if productSvc.lastReq != nil {
-		t.Fatalf("product enrich request = %+v, want studio fallback path after blocked baseline", productSvc.lastReq)
+	if productSvc.lastReq == nil {
+		t.Fatal("product snapshot query = nil, want authoritative snapshot read")
 	}
 	if state.result.CanonicalProduct == nil {
 		t.Fatal("expected fallback canonical product")
@@ -440,7 +437,7 @@ func TestRunStandardProductWorkflow_DoesNotReuseBlockedSDSBaseline(t *testing.T)
 	}
 }
 
-func TestRunStandardProductWorkflowUsesTaskTenantIDWhenRequestTenantMissing(t *testing.T) {
+func TestRunStandardProductWorkflowQueriesSnapshotWithTaskTenantID(t *testing.T) {
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
@@ -452,7 +449,7 @@ func TestRunStandardProductWorkflowUsesTaskTenantIDWhenRequestTenantMissing(t *t
 	task := &Task{
 		ID:       "task-baseline-tenant-fallback",
 		TenantID: "tenant-a",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "baseline tenant fallback",
 			Platforms: []string{"amazon"},
 			Options: &GenerateOptions{
@@ -467,11 +464,11 @@ func TestRunStandardProductWorkflowUsesTaskTenantIDWhenRequestTenantMissing(t *t
 		},
 	}
 
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{
 		Title: "Baseline Title",
 	})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	if err := baselineRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
 		TenantID:             "tenant-a",
@@ -484,9 +481,9 @@ func TestRunStandardProductWorkflowUsesTaskTenantIDWhenRequestTenantMissing(t *t
 		t.Fatalf("SaveSDSBaselineCache: %v", err)
 	}
 
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{ID: "unexpected-product-task"},
-		product: &productenrich.ProductJSON{
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{ID: "unexpected-product-task"},
+		product: &stubProductSnapshotFixture{
 			Title: "Unexpected Product",
 		},
 	}
@@ -500,20 +497,20 @@ func TestRunStandardProductWorkflowUsesTaskTenantIDWhenRequestTenantMissing(t *t
 	if err != nil {
 		t.Fatalf("runStandardProductWorkflow() error = %v", err)
 	}
-	if productSvc.lastReq != nil {
-		t.Fatalf("product enrich request = %+v, want skipped when task tenant id can resolve baseline", productSvc.lastReq)
+	if productSvc.lastReq == nil || productSvc.lastReq.TenantID != "tenant-a" {
+		t.Fatalf("product snapshot query = %+v, want tenant-a", productSvc.lastReq)
 	}
 	if state.result.CanonicalProduct == nil || state.result.CanonicalProduct.Title != "Runtime Overlay Title" {
 		t.Fatalf("canonical product = %+v, want baseline with runtime overlay", state.result.CanonicalProduct)
 	}
 }
 
-func TestRunStandardProductWorkflowFallsBackToStudioCanonicalWhenSDSBaselineMissing(t *testing.T) {
+func TestRunStandardProductWorkflowUsesSnapshotWhenSDSBaselineMissing(t *testing.T) {
 	t.Parallel()
 
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{ID: "unexpected-product-task"},
-		product: &productenrich.ProductJSON{
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{ID: "unexpected-product-task"},
+		product: &stubProductSnapshotFixture{
 			Title:      "Enriched Title",
 			Category:   []string{"Home"},
 			Images:     []string{"https://example.com/enriched.jpg"},
@@ -525,9 +522,8 @@ func TestRunStandardProductWorkflowFallsBackToStudioCanonicalWhenSDSBaselineMiss
 	}, supportDependencySeed{
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
-	task := &Task{
-		ID: "task-baseline-miss",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-baseline-miss",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "fallback task",
 			Platforms: []string{"amazon"},
 			Options: &GenerateOptions{
@@ -545,64 +541,14 @@ func TestRunStandardProductWorkflowFallsBackToStudioCanonicalWhenSDSBaselineMiss
 	if err != nil {
 		t.Fatalf("runStandardProductWorkflow() error = %v", err)
 	}
-	if productSvc.lastReq != nil {
-		t.Fatalf("product enrich request = %+v, want existing studio fallback path to remain", productSvc.lastReq)
+	if productSvc.lastReq == nil {
+		t.Fatal("product snapshot query = nil, want authoritative snapshot read")
 	}
 	if state.result.CanonicalProduct == nil {
-		t.Fatal("expected fallback canonical product when baseline is missing")
+		t.Fatal("expected canonical projection from product snapshot")
 	}
-	if state.result.CanonicalProduct.Title != "fallback task" {
-		t.Fatalf("canonical title = %q, want studio fallback title", state.result.CanonicalProduct.Title)
-	}
-}
-
-func TestRunStandardProductWorkflowReusesCanonicalCacheBeforeProductEnrich(t *testing.T) {
-	t.Parallel()
-
-	repo := newCanonicalProductCacheTestRepo()
-
-	task := &Task{
-		ID: "task-canonical-cache-hit",
-		Request: &GenerateRequest{
-			ProductURL: "https://example.com/product/123",
-			Platforms:  []string{"amazon"},
-			Options: &GenerateOptions{
-				ProcessImages: false,
-			},
-		},
-	}
-	cachedProduct := &canonical.Product{
-		Title:  "Cached Canonical Product",
-		Images: []canonical.Image{{URL: "https://example.com/cached.jpg", Role: "primary"}},
-	}
-	if err := repo.SaveCanonicalProductCache(context.Background(), canonicalProductFingerprintForTask(task), cachedProduct, "source-task-1"); err != nil {
-		t.Fatalf("SaveCanonicalProductCache: %v", err)
-	}
-
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{ID: "unexpected-product-task"},
-		product: &productenrich.ProductJSON{
-			Title: "Unexpected Product",
-		},
-	}
-	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{
-		repo: repo,
-	}, supportDependencySeed{
-		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
-
-	state, err := svc.runStandardProductWorkflow(context.Background(), task)
-	if err != nil {
-		t.Fatalf("runStandardProductWorkflow() error = %v", err)
-	}
-	if productSvc.lastReq != nil {
-		t.Fatalf("product enrich request = %+v, want skipped when canonical cache is hit", productSvc.lastReq)
-	}
-	if state.result.CanonicalProduct == nil || state.result.CanonicalProduct.Title != "Cached Canonical Product" {
-		t.Fatalf("canonical product = %+v, want cached canonical product", state.result.CanonicalProduct)
-	}
-	if len(state.result.ChildTasks) == 0 || state.result.ChildTasks[0].Kind != "product_enrich" || state.result.ChildTasks[0].Status != string(productenrich.TaskStatusCompleted) {
-		t.Fatalf("child tasks = %+v, want completed product_enrich cache hit", state.result.ChildTasks)
+	if state.result.CanonicalProduct.Title != "Enriched Title" {
+		t.Fatalf("canonical title = %q, want snapshot title", state.result.CanonicalProduct.Title)
 	}
 }
 
@@ -650,9 +596,8 @@ func TestRunStandardProductWorkflowReappliesSDSMetadataWithoutDroppingProcessedA
 		sdsSyncService: sdsSvc,
 		assembler:      NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), nil, imageSvc)
-	task := &Task{
-		ID: "task-sds-assets",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-sds-assets",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source.jpg"},
 			Text:      "fallback task",
 			Platforms: []string{"amazon"},
@@ -696,7 +641,7 @@ func TestRunStandardProductWorkflowReappliesSDSMetadataWithoutDroppingProcessedA
 	}
 }
 
-func TestRunStandardProductWorkflowContinuesWhenSDSBaselineLookupErrors(t *testing.T) {
+func TestRunStandardProductWorkflowSnapshotReadIsIndependentOfSDSBaselineLookupErrors(t *testing.T) {
 	t.Parallel()
 
 	svc := seedSupportDeps(&service{
@@ -707,9 +652,8 @@ func TestRunStandardProductWorkflowContinuesWhenSDSBaselineLookupErrors(t *testi
 	}, supportDependencySeed{
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	})
-	task := &Task{
-		ID: "task-baseline-error",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-baseline-error",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "fallback on error",
 			Platforms: []string{"amazon"},
 			Options: &GenerateOptions{
@@ -727,8 +671,8 @@ func TestRunStandardProductWorkflowContinuesWhenSDSBaselineLookupErrors(t *testi
 	if err != nil {
 		t.Fatalf("runStandardProductWorkflow() error = %v, want baseline lookup errors to degrade gracefully", err)
 	}
-	if state.result.CanonicalProduct == nil || state.result.CanonicalProduct.Title != "fallback on error" {
-		t.Fatalf("canonical product = %+v, want studio fallback canonical product after baseline error", state.result.CanonicalProduct)
+	if state.result.CanonicalProduct == nil || state.result.CanonicalProduct.Title != "Test Product" {
+		t.Fatalf("canonical product = %+v, want product snapshot despite baseline error", state.result.CanonicalProduct)
 	}
 }
 
@@ -745,8 +689,8 @@ func TestRunStandardProductWorkflowIgnoresUnavailableOrMalformedSDSBaselineEntri
 				BaselineKey: "placeholder",
 				Status:      "pending",
 				Version:     1,
-				CanonicalProductBase: func() *CanonicalProductCachePayload {
-					payload, _ := newCanonicalProductCachePayload(&canonical.Product{Title: "Pending Baseline"})
+				CanonicalProductBase: func() *SDSBaselineCanonicalProductPayload {
+					payload, _ := newSDSBaselineCanonicalProductPayload(&canonical.Product{Title: "Pending Baseline"})
 					return payload
 				}(),
 			},
@@ -768,9 +712,8 @@ func TestRunStandardProductWorkflowIgnoresUnavailableOrMalformedSDSBaselineEntri
 			if !ok {
 				t.Fatal("mem task repository does not expose SDS baseline cache repository")
 			}
-			task := &Task{
-				ID: "task-baseline-fallback-" + tt.name,
-				Request: &GenerateRequest{
+			task := &Task{TenantID: "tenant-test", ID: "task-baseline-fallback-" + tt.name,
+				Request: &GenerateRequest{ProductKey: "test-product",
 					Text:      "baseline fallback",
 					Platforms: []string{"amazon"},
 					Options: &GenerateOptions{
@@ -799,8 +742,8 @@ func TestRunStandardProductWorkflowIgnoresUnavailableOrMalformedSDSBaselineEntri
 			if err != nil {
 				t.Fatalf("runStandardProductWorkflow() error = %v", err)
 			}
-			if state.result.CanonicalProduct == nil || state.result.CanonicalProduct.Title != "baseline fallback" {
-				t.Fatalf("canonical product = %+v, want workflow fallback canonical product", state.result.CanonicalProduct)
+			if state.result.CanonicalProduct == nil || state.result.CanonicalProduct.Title != "Test Product" {
+				t.Fatalf("canonical product = %+v, want product snapshot", state.result.CanonicalProduct)
 			}
 		})
 	}

@@ -126,13 +126,12 @@ func TestScheduleStudioBatchSDSChildRetriesQueuesOnlyFailedSDSChildren(t *testin
 	failed := &Task{
 		ID:       "task-failed",
 		TenantID: "tenant-1",
-		Request:  &GenerateRequest{SheinStoreID: 177},
+		Request:  &GenerateRequest{ProductKey: "test-product", SheinStoreID: 177},
 		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
 			Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed), Error: "upload timed out",
 		}}},
 	}
-	completed := &Task{
-		ID: "task-completed", Request: &GenerateRequest{SheinStoreID: 177},
+	completed := &Task{TenantID: "tenant-test", ID: "task-completed", Request: &GenerateRequest{ProductKey: "test-product", SheinStoreID: 177},
 		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusCompleted)}}},
 	}
 	if err := repo.CreateTask(ctx, failed); err != nil {
@@ -176,7 +175,7 @@ func TestScheduleTaskChildRetryQueuesSDSDesignSyncWithoutRunningRemoteWork(t *te
 		ID:       "task-manual-retry",
 		TenantID: "tenant-1",
 		Status:   core.TaskStatusNeedsReview,
-		Request:  &GenerateRequest{SheinStoreID: 1038},
+		Request:  &GenerateRequest{ProductKey: "test-product", SheinStoreID: 1038},
 		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
 			Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed), Error: "SHEIN cookie unavailable",
 		}}},
@@ -213,7 +212,7 @@ func TestScheduleTaskChildRetryQueuesSDSCatalogProduct(t *testing.T) {
 		ID:       "task-catalog-retry",
 		TenantID: "tenant-1",
 		Status:   core.TaskStatusNeedsReview,
-		Request:  &GenerateRequest{SheinStoreID: 1038},
+		Request:  &GenerateRequest{ProductKey: "test-product", SheinStoreID: 1038},
 		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
 			Kind: string(catalogKind), Status: string(core.TaskStatusFailed), Error: "catalog failed",
 		}}},
@@ -242,7 +241,7 @@ func TestRunSDSChildRetryRestoresTenantContext(t *testing.T) {
 		ID:       "task-tenant-retry",
 		TenantID: "tenant-policy-1",
 		Status:   core.TaskStatusNeedsReview,
-		Request:  &GenerateRequest{SheinStoreID: 1038},
+		Request:  &GenerateRequest{ProductKey: "test-product", SheinStoreID: 1038},
 		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
 			Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed), Error: "retry failed",
 		}}},
@@ -267,7 +266,7 @@ func TestRunSDSChildRetryPreservesDomainFailure(t *testing.T) {
 		ID:       "task-domain-failure",
 		TenantID: "tenant-1",
 		Status:   core.TaskStatusNeedsReview,
-		Request:  &GenerateRequest{Options: &GenerateOptions{}},
+		Request:  &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{}},
 		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
 			Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed),
 		}}},
@@ -299,7 +298,7 @@ func TestGetTaskResultIncludesDurableSDSChildRetryStatus(t *testing.T) {
 	task := &Task{
 		ID:       "task-retry-status",
 		Status:   core.TaskStatusNeedsReview,
-		Request:  &GenerateRequest{},
+		Request:  &GenerateRequest{ProductKey: "test-product"},
 		Result:   &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed)}}},
 		TenantID: "tenant-1",
 	}

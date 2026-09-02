@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/product/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -16,10 +16,9 @@ import (
 func TestBuildTaskListItemIncludesCanonicalProductSummary(t *testing.T) {
 	t.Parallel()
 
-	item := buildTaskListItem(&Task{
-		ID:      "task-canonical-summary",
+	item := buildTaskListItem(&Task{TenantID: "tenant-test", ID: "task-canonical-summary",
 		Status:  core.TaskStatusCompleted,
-		Request: &GenerateRequest{Platforms: []string{"shein"}},
+		Request: &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{CanonicalProduct: &canonical.Product{
 			Title:        "  Canvas Tote  ",
 			Brand:        "Studio",
@@ -48,8 +47,7 @@ func TestBuildTaskListItemIncludesSheinRemoteSubmissionSummary(t *testing.T) {
 	t.Parallel()
 
 	checkedAt := time.Date(2026, 5, 7, 12, 30, 0, 0, time.UTC)
-	task := &Task{
-		ID:     "task-remote-summary",
+	task := &Task{TenantID: "tenant-test", ID: "task-remote-summary",
 		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			Shein: &SheinPackage{
@@ -138,10 +136,9 @@ func TestApplySheinSubmissionRemoteSummaryFallsBackToPublishRecord(t *testing.T)
 func TestBuildTaskListItemUsesLatestSubmissionOutcomeInsteadOfPhaseEvent(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID:     "task-phase-event-summary",
+	task := &Task{TenantID: "tenant-test", ID: "task-phase-event-summary",
 		Status: core.TaskStatusCompleted,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 		},
 		Result: &ListingKitResult{
@@ -174,9 +171,8 @@ func TestBuildTaskListItemUsesLatestSubmissionOutcomeInsteadOfPhaseEvent(t *test
 func TestBuildTaskListItemPrefersRenderedImageCount(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID: "task-rendered-count",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-rendered-count",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://cdn.example.com/input.png"},
 		},
 		Status: core.TaskStatusCompleted,
@@ -206,9 +202,8 @@ func TestBuildTaskListItemPrefersRenderedImageCount(t *testing.T) {
 func TestBuildTaskListItemDoesNotCountSourceImagesAsRenderedImages(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID: "task-rendered-count-with-source",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-rendered-count-with-source",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://cdn.example.com/input.png"},
 		},
 		Status: core.TaskStatusCompleted,
@@ -239,8 +234,7 @@ func TestBuildTaskListItemIncludesSheinStatusOverview(t *testing.T) {
 	t.Parallel()
 
 	colorValueID := 271
-	task := &Task{
-		ID:     "task-status-overview",
+	task := &Task{TenantID: "tenant-test", ID: "task-status-overview",
 		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			Shein: &SheinPackage{
@@ -341,10 +335,9 @@ func TestBuildTaskListItemIncludesSheinStatusOverview(t *testing.T) {
 func TestBuildTaskListItemIncludesResolvedSheinStoreContext(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID:     "task-store-context",
+	task := &Task{TenantID: "tenant-test", ID: "task-store-context",
 		Status: core.TaskStatusCompleted,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			SheinStoreID: 869,
 			Country:      "US",
 		},
@@ -402,10 +395,9 @@ func TestBuildTaskListItemIncludesResolvedSheinStoreContext(t *testing.T) {
 func TestBuildTaskListItemIncludesPodExecutionSummary(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID:     "task-pod-summary",
+	task := &Task{TenantID: "tenant-test", ID: "task-pod-summary",
 		Status: core.TaskStatusCompleted,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"shein"},
 		},
 		Result: &ListingKitResult{

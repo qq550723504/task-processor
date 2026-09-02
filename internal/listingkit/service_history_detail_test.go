@@ -13,8 +13,7 @@ func TestGetTaskRevisionHistoryDetailReturnsMatchedRecord(t *testing.T) {
 	now := time.Now().UTC()
 	spuName := "Snapshot Bottle"
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-detail-1",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-detail-1",
 			SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
 				StoreID:          903,
 				Site:             "GB",
@@ -104,8 +103,7 @@ func TestGetTaskRevisionHistoryDetailSupportsLegacyRecordID(t *testing.T) {
 	legacy := ListingKitRevisionRecord{Platform: "shein", UpdatedAt: now}
 	legacyID := revisionHistoryRecordID(legacy, 0)
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-detail-2",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-detail-2",
 			Result: &ListingKitResult{
 				TaskID:          "task-history-detail-2",
 				RevisionHistory: []ListingKitRevisionRecord{legacy},
@@ -130,8 +128,7 @@ func TestGetTaskRevisionHistoryDetailReturnsNotFound(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-detail-3",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-detail-3",
 			Result: &ListingKitResult{
 				TaskID:          "task-history-detail-3",
 				RevisionHistory: []ListingKitRevisionRecord{{RevisionID: "rev-1"}},
@@ -151,8 +148,7 @@ func TestGetTaskRevisionHistoryDetailBuildsRestoreDraftFromEditorContext(t *test
 
 	now := time.Now().UTC()
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-detail-4",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-detail-4",
 			Result: &ListingKitResult{
 				TaskID: "task-history-detail-4",
 				RevisionHistory: []ListingKitRevisionRecord{
@@ -196,8 +192,7 @@ func TestGetTaskRevisionHistoryDetailBuildsComparePreview(t *testing.T) {
 	prevName := "Old Bottle"
 	currentName := "New Bottle"
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-detail-5",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-detail-5",
 			Result: &ListingKitResult{
 				TaskID: "task-history-detail-5",
 				Shein: &SheinPackage{
@@ -263,8 +258,7 @@ func TestGetTaskRevisionHistoryDetailReturnsNotFoundForMissingCompareTarget(t *t
 
 	now := time.Now().UTC()
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-detail-6",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-detail-6",
 			Result: &ListingKitResult{
 				TaskID:          "task-history-detail-6",
 				RevisionHistory: []ListingKitRevisionRecord{{RevisionID: "rev-1", Platform: "shein", UpdatedAt: now}},
@@ -286,8 +280,7 @@ func TestGetTaskRevisionHistoryDetailBuildsComparePreviewAgainstCurrent(t *testi
 	oldName := "Historic Bottle"
 	currentName := "Current Bottle"
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-detail-7",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-detail-7",
 			Result: &ListingKitResult{
 				TaskID: "task-history-detail-7",
 				Shein: &SheinPackage{
@@ -339,8 +332,7 @@ func TestGetTaskRevisionHistoryDetailBuildsRestoreSafetyWarnings(t *testing.T) {
 	now := time.Now().UTC()
 	currentName := "Current Bottle"
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-detail-8",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-detail-8",
 			Result: &ListingKitResult{
 				TaskID: "task-history-detail-8",
 				Shein: &SheinPackage{
@@ -391,8 +383,7 @@ func TestGetTaskRevisionHistoryDetailMarksRestoreUnsupportedWithoutCurrentShein(
 
 	now := time.Now().UTC()
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-detail-9",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-detail-9",
 			Result: &ListingKitResult{
 				TaskID: "task-history-detail-9",
 				RevisionHistory: []ListingKitRevisionRecord{

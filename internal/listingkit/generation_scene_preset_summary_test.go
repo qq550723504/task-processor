@@ -64,12 +64,11 @@ func TestGetTaskGenerationReviewPreviewIncludesScenePreset(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-scene-preset-preview-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-scene-preset-preview-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		Result: &ListingKitResult{
 			TaskID: "task-scene-preset-preview-1",
 			AssetBundle: &asset.Bundle{

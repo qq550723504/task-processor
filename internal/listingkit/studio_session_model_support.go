@@ -22,6 +22,7 @@ type SheinStudioSelectionVariant struct {
 }
 
 type SheinStudioSelection struct {
+	ProductKey             string                        `json:"product_key"`
 	ProductID              int64                         `json:"product_id,omitempty"`
 	ParentProductID        int64                         `json:"parent_product_id,omitempty"`
 	VariantID              int64                         `json:"variant_id,omitempty"`

@@ -3,8 +3,8 @@ package listingkit
 import (
 	"context"
 
-	"task-processor/internal/product/catalog/canonical"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -105,7 +105,7 @@ func sheinFreshnessCanonicalProduct(task *Task) *canonical.Product {
 		return task.Result.CanonicalProduct
 	}
 	if task.Result.StandardProductSnapshot != nil {
-		return task.Result.StandardProductSnapshot.CanonicalProduct
+		return canonicalProductFromStandardSnapshot(task.Result.StandardProductSnapshot)
 	}
 	return nil
 }

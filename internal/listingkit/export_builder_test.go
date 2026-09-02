@@ -13,9 +13,8 @@ import (
 func TestBuildListingKitExportForSelectedPlatform(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID: "task-export-1",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-export-1",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"amazon", "shein", "temu", "walmart"},
 		},
 		Result: &ListingKitResult{
@@ -278,9 +277,8 @@ func TestBuildListingKitExportForSelectedPlatform(t *testing.T) {
 func TestBuildListingKitExportReturnsBundleByDefault(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID: "task-export-2",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-export-2",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Platforms: []string{"temu", "walmart"},
 		},
 		Result: &ListingKitResult{
@@ -310,7 +308,7 @@ func TestBuildListingKitExportReturnsBundleByDefault(t *testing.T) {
 func TestBuildListingKitExportRejectsUnsupportedPlatform(t *testing.T) {
 	t.Parallel()
 
-	_, err := buildListingKitExport(&Task{ID: "task-export-invalid"}, " ebay ")
+	_, err := buildListingKitExport(&Task{TenantID: "tenant-test", ID: "task-export-invalid"}, " ebay ")
 	if err != ErrUnsupportedPreviewPlatform {
 		t.Fatalf("error = %v, want %v", err, ErrUnsupportedPreviewPlatform)
 	}

@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
-	"task-processor/internal/product/catalog/canonical"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/productimage"
 )
 
@@ -50,11 +50,11 @@ func (s *service) runPlatformAdaptation(
 		return final
 	}
 
-	var canonicalProduct *canonical.Product
+	var productSnapshot *catalog.ProductSnapshot
 	var imageAssets *productimage.ImageProcessResult
 	var imageAssetsByTarget map[string]*productimage.ImageProcessResult
 	if snapshot != nil {
-		canonicalProduct = snapshot.CanonicalProduct
+		productSnapshot = snapshot.CatalogProduct
 		imageAssets = snapshot.ImageAssets
 		imageAssetsByTarget = snapshot.ImageAssetsByTarget
 	}
@@ -63,9 +63,9 @@ func (s *service) runPlatformAdaptation(
 	assembler := resolveAssembler(s)
 	var final *ListingKitResult
 	if targetAware, ok := assembler.(TargetAwareAssembler); ok && len(imageAssetsByTarget) > 0 {
-		final = targetAware.AssembleForTargets(task, canonicalProduct, imageAssetsByTarget)
+		final = targetAware.AssembleForTargets(task, productSnapshot, imageAssetsByTarget)
 	} else {
-		final = assembler.Assemble(task, canonicalProduct, imageAssets)
+		final = assembler.Assemble(task, productSnapshot, imageAssets)
 	}
 	if final == nil {
 		final = initResult(task)

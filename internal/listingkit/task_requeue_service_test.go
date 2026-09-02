@@ -17,19 +17,19 @@ func TestRequeuePendingTasksRequeuesOnlyPendingTasks(t *testing.T) {
 			ID:       "task-pending",
 			TenantID: "tenant-requeue",
 			Status:   core.TaskStatusPending,
-			Request:  &GenerateRequest{TenantID: "tenant-requeue", Platforms: []string{"shein"}, Text: "pending"},
+			Request:  &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-requeue", Platforms: []string{"shein"}, Text: "pending"},
 		},
 		{
 			ID:       "task-review",
 			TenantID: "tenant-requeue",
 			Status:   core.TaskStatusNeedsReview,
-			Request:  &GenerateRequest{TenantID: "tenant-requeue", Platforms: []string{"shein"}, Text: "review"},
+			Request:  &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-requeue", Platforms: []string{"shein"}, Text: "review"},
 		},
 		{
 			ID:       "task-processing",
 			TenantID: "tenant-requeue",
 			Status:   core.TaskStatusProcessing,
-			Request:  &GenerateRequest{TenantID: "tenant-requeue", Platforms: []string{"shein"}, Text: "processing"},
+			Request:  &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-requeue", Platforms: []string{"shein"}, Text: "processing"},
 		},
 	} {
 		if err := repo.CreateTask(ctx, task); err != nil {
@@ -75,7 +75,7 @@ func TestRequeuePendingTasksUsesStandardWorkflowWhenEnabled(t *testing.T) {
 		ID:       "task-pending-temporal",
 		TenantID: "tenant-requeue-temporal",
 		Status:   core.TaskStatusPending,
-		Request:  &GenerateRequest{TenantID: "tenant-requeue-temporal", Platforms: []string{"shein"}, Text: "pending temporal"},
+		Request:  &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-requeue-temporal", Platforms: []string{"shein"}, Text: "pending temporal"},
 	}
 	if err := repo.CreateTask(ctx, task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
@@ -123,7 +123,7 @@ func TestRequeuePendingTasksReportsSubmitFailures(t *testing.T) {
 		ID:       "task-submit-fail",
 		TenantID: "tenant-requeue-fail",
 		Status:   core.TaskStatusPending,
-		Request:  &GenerateRequest{TenantID: "tenant-requeue-fail", Platforms: []string{"shein"}, Text: "pending"},
+		Request:  &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-requeue-fail", Platforms: []string{"shein"}, Text: "pending"},
 	}
 	if err := repo.CreateTask(ctx, task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)

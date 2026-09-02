@@ -270,12 +270,11 @@ func TestGenerationQueueExposesUnifiedConditionalMetadata(t *testing.T) {
 
 func newConditionalContractTestTask(taskID string) *Task {
 	now := time.Now()
-	return &Task{
-		ID:        taskID,
+	return &Task{TenantID: "tenant-test", ID: taskID,
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: now,
 		UpdatedAt: now,
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: taskID,
 			AssetRenderPreviews: []AssetRenderPreview{{

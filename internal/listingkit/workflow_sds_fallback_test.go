@@ -5,7 +5,7 @@ import "testing"
 func TestStudioSDSMaterialFileNameUsesTaskID(t *testing.T) {
 	t.Parallel()
 
-	got := studioSDSMaterialFileName(&Task{ID: "a0991cd2-f5d0-439a-bde7-f0530591ab12"})
+	got := studioSDSMaterialFileName(&Task{TenantID: "tenant-test", ID: "a0991cd2-f5d0-439a-bde7-f0530591ab12"})
 	if got != "listingkit-studio-design-a0991cd2.png" {
 		t.Fatalf("filename = %q", got)
 	}

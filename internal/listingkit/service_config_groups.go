@@ -83,7 +83,7 @@ func buildWorkflowDependencies(config *ServiceConfig) workflowDependencies {
 		return workflowDependencies{}
 	}
 	return workflowDependencies{
-		productService:         config.Core.ProductService,
+		productSnapshots:       config.Core.ProductSnapshotReader,
 		imageService:           config.Core.ImageService,
 		assetRepository:        config.Assets.AssetRepository,
 		assetRecipeResolver:    config.Assets.AssetRecipeResolver,

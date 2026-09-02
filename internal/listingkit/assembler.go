@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
@@ -50,14 +51,14 @@ func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
 	}
 }
 
-func (a *assembler) Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult {
-	result := a.assemble(task, canonical, func(string) *productimage.ImageProcessResult { return image })
+func (a *assembler) Assemble(task *Task, product *catalog.ProductSnapshot, image *productimage.ImageProcessResult) *ListingKitResult {
+	result := a.assemble(task, product, func(string) *productimage.ImageProcessResult { return image })
 	result.ImageAssets = image
 	return result
 }
 
-func (a *assembler) AssembleForTargets(task *Task, canonical *canonical.Product, images map[string]*productimage.ImageProcessResult) *ListingKitResult {
-	result := a.assemble(task, canonical, func(target string) *productimage.ImageProcessResult { return images[target] })
+func (a *assembler) AssembleForTargets(task *Task, product *catalog.ProductSnapshot, images map[string]*productimage.ImageProcessResult) *ListingKitResult {
+	result := a.assemble(task, product, func(target string) *productimage.ImageProcessResult { return images[target] })
 	result.ImageAssetsByTarget = cloneImageAssetsByTarget(images)
 	if task != nil {
 		result.applyCompatibilityAssetProjectionForRequest(task.Request)
@@ -65,12 +66,20 @@ func (a *assembler) AssembleForTargets(task *Task, canonical *canonical.Product,
 	return result
 }
 
-func (a *assembler) assemble(task *Task, canonical *canonical.Product, imageForTarget func(string) *productimage.ImageProcessResult) *ListingKitResult {
+func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, imageForTarget func(string) *productimage.ImageProcessResult) *ListingKitResult {
 	now := time.Now()
 	result := initResult(task)
 	result.UpdatedAt = now
-	result.CanonicalProduct = canonical
-	result.Summary = buildSummary(task, canonical, nil)
+	var canonicalProduct *canonical.Product
+	if product != nil {
+		cloned, err := cloneProductSnapshot(*product)
+		if err == nil {
+			result.CatalogProduct = &cloned
+			canonicalProduct = canonicalProductFromSnapshot(cloned)
+		}
+	}
+	result.CanonicalProduct = canonicalProduct
+	result.Summary = buildSummary(task, canonicalProduct, nil)
 
 	if task == nil || task.Request == nil {
 		return result
@@ -80,14 +89,14 @@ func (a *assembler) assemble(task *Task, canonical *canonical.Product, imageForT
 		image := imageForTarget(platform)
 		switch platform {
 		case "amazon":
-			result.Amazon = &AmazonPackage{Draft: a.amazonBuilder.Build(task.Request, canonical, image)}
+			result.Amazon = &AmazonPackage{Draft: a.amazonBuilder.Build(task.Request, canonicalProduct, image)}
 		case "shein":
-			result.Shein = sheinpub.NewAssembler(a.buildSheinAssemblerConfig()).Build(buildSheinPublishRequestForTask(task, task.Request), canonical, image)
-			refreshSheinReviewState(result.Shein, common.CollectReviewNotes(canonical, image)...)
+			result.Shein = sheinpub.NewAssembler(a.buildSheinAssemblerConfig()).Build(buildSheinPublishRequestForTask(task, task.Request), canonicalProduct, image)
+			refreshSheinReviewState(result.Shein, common.CollectReviewNotes(canonicalProduct, image)...)
 		case "temu":
-			result.Temu = buildTemuPackage(task.Request, canonical, image)
+			result.Temu = buildTemuPackage(task.Request, canonicalProduct, image)
 		case "walmart":
-			result.Walmart = buildWalmartPackage(task.Request, canonical, image)
+			result.Walmart = buildWalmartPackage(task.Request, canonicalProduct, image)
 		}
 	}
 

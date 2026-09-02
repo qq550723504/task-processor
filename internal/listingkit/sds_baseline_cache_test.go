@@ -8,9 +8,9 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/store"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 func TestSDSBaselineKeyFromOptionsStableAcrossImageAndCopyChanges(t *testing.T) {
@@ -56,7 +56,7 @@ func TestMemTaskRepositorySaveAndGetSDSBaselineCache(t *testing.T) {
 		t.Fatal("mem task repository does not expose SDS baseline cache repository")
 	}
 
-	payload := listingkit.CanonicalProductCachePayload(canonical.Product{Title: "Baseline Product"})
+	payload := listingkit.SDSBaselineCanonicalProductPayload(canonical.Product{Title: "Baseline Product"})
 	entry := &listingkit.SDSBaselineCacheEntry{
 		TenantID:    "tenant-a",
 		BaselineKey: "baseline-key",
@@ -99,7 +99,7 @@ func TestTaskRepositorySaveAndGetSDSBaselineCache(t *testing.T) {
 		t.Fatal("task repository does not expose SDS baseline cache repository")
 	}
 
-	payload := listingkit.CanonicalProductCachePayload(canonical.Product{Title: "Persisted Baseline"})
+	payload := listingkit.SDSBaselineCanonicalProductPayload(canonical.Product{Title: "Persisted Baseline"})
 	entry := &listingkit.SDSBaselineCacheEntry{
 		TenantID:    "tenant-a",
 		BaselineKey: "baseline-key",
@@ -324,7 +324,7 @@ func newDBSDSBaselineCacheRepository(t *testing.T) listingkit.SDSBaselineCacheRe
 }
 
 func newSDSBaselineCacheEntry(baselineKey string, tenantID string) *listingkit.SDSBaselineCacheEntry {
-	payload := listingkit.CanonicalProductCachePayload(canonical.Product{Title: "Baseline Product"})
+	payload := listingkit.SDSBaselineCanonicalProductPayload(canonical.Product{Title: "Baseline Product"})
 	return &listingkit.SDSBaselineCacheEntry{
 		TenantID:    tenantID,
 		BaselineKey: baselineKey,

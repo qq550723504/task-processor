@@ -1078,7 +1078,7 @@ git commit -m "feat(imageagent): publish approvals to product assets"
 - Consumes: Catalog `ProductSnapshot` from Task 3.
 - Produces: ListingKit-local `ProductSnapshotReader.GetProductSnapshot(context.Context, ProductSnapshotQuery) (catalog.ProductSnapshot, error)`。
 
-- [ ] **Step 1: 写只读 Snapshot 和未就绪测试**
+- [x] **Step 1: 写只读 Snapshot 和未就绪测试**
 
 ```go
 type ProductSnapshotQuery struct { TenantID, ProductKey string }
@@ -1106,23 +1106,23 @@ func TestCanonicalPhaseReadsSnapshotOnce(t *testing.T) {
 
 增加 Snapshot 不存在时返回 `ErrProductSnapshotNotReady` 且 ListingKit task 进入明确 blocked/review 状态的测试。
 
-- [ ] **Step 2: 运行测试确认现有 workflow 仍创建 ProductEnrich task**
+- [x] **Step 2: 运行测试确认现有 workflow 仍创建 ProductEnrich task**
 
 Run: `go test ./internal/listingkit -run 'TestCanonicalPhaseReadsSnapshotOnce|Test.*SnapshotNotReady' -count=1 -v`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 替换 ProductService 为读取 Port**
+- [x] **Step 3: 替换 ProductService 为读取 Port**
 
 删除 `ProductService`、`resolveWorkflowProductService`、child product task ID、Create/Get/Process 调用和相关恢复语义。现有 canonical cache repository 可实现 ListingKit-local reader，但返回值必须先经 Catalog Normalize；不得调用 Enrichment。
 
-- [ ] **Step 4: 运行 ListingKit 核心和 HTTP bootstrap 测试**
+- [x] **Step 4: 运行 ListingKit 核心和 HTTP bootstrap 测试**
 
 Run: `go test ./internal/listingkit/... -run 'Test.*(Snapshot|Canonical|Workflow|Bootstrap)' -count=1`
 
 Expected: PASS；`rg -n 'ProductService|CreateGenerateTask\(ctx.*productenrich|ProcessProduct|internal/productenrich' internal/listingkit --glob '*.go'` 返回零结果。
 
-- [ ] **Step 5: 提交 ListingKit Snapshot 读取迁移**
+- [x] **Step 5: 提交 ListingKit Snapshot 读取迁移**
 
 ```powershell
 git add internal/listingkit

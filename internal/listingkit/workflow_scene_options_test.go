@@ -7,24 +7,23 @@ import (
 )
 
 func TestToImageProcessRequestCopiesSceneOptions(t *testing.T) {
-	task := &Task{
-		Request: &GenerateRequest{
-			ProductURL: "https://detail.1688.com/offer/123.html",
-			Platforms:  []string{"amazon"},
-			Country:    "US",
-			Options: &GenerateOptions{
-				ProcessImages: true,
-				Scene: &productimage.SceneGenerationOptions{
-					SceneCategory:   "shoes",
-					SceneStyle:      "lifestyle",
-					BackgroundTone:  "warm",
-					Composition:     "close_up",
-					PropsLevel:      "light",
-					AudienceHint:    "sporty",
-					CustomSceneHint: "show subtle motion energy",
-				},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		ProductURL: "https://detail.1688.com/offer/123.html",
+		Platforms:  []string{"amazon"},
+		Country:    "US",
+		Options: &GenerateOptions{
+			ProcessImages: true,
+			Scene: &productimage.SceneGenerationOptions{
+				SceneCategory:   "shoes",
+				SceneStyle:      "lifestyle",
+				BackgroundTone:  "warm",
+				Composition:     "close_up",
+				PropsLevel:      "light",
+				AudienceHint:    "sporty",
+				CustomSceneHint: "show subtle motion energy",
 			},
 		},
+	},
 	}
 
 	req := singleImageProcessRequest(t, task)
@@ -43,7 +42,7 @@ func TestToImageProcessRequestCopiesSceneOptions(t *testing.T) {
 }
 
 func TestShouldProcessImagesAllowsProductURLSource(t *testing.T) {
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		ProductURL: "https://detail.1688.com/offer/123.html",
 		Options: &GenerateOptions{
 			ProcessImages: true,
@@ -56,13 +55,12 @@ func TestShouldProcessImagesAllowsProductURLSource(t *testing.T) {
 }
 
 func TestToImageProcessRequestDoesNotInjectPlatformSceneDefaults(t *testing.T) {
-	task := &Task{
-		Request: &GenerateRequest{
-			Platforms: []string{"amazon"},
-			Options: &GenerateOptions{
-				ProcessImages: true,
-			},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		Platforms: []string{"amazon"},
+		Options: &GenerateOptions{
+			ProcessImages: true,
 		},
+	},
 	}
 
 	req := singleImageProcessRequest(t, task)
@@ -72,17 +70,16 @@ func TestToImageProcessRequestDoesNotInjectPlatformSceneDefaults(t *testing.T) {
 }
 
 func TestToImageProcessRequestCopiesExplicitSceneOptionsWithoutMutatingThem(t *testing.T) {
-	task := &Task{
-		Request: &GenerateRequest{
-			Platforms: []string{"shein"},
-			Options: &GenerateOptions{
-				ProcessImages: true,
-				Scene: &productimage.SceneGenerationOptions{
-					SceneCategory: "bags",
-					Composition:   "multi_angle",
-				},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		Platforms: []string{"shein"},
+		Options: &GenerateOptions{
+			ProcessImages: true,
+			Scene: &productimage.SceneGenerationOptions{
+				SceneCategory: "bags",
+				Composition:   "multi_angle",
 			},
 		},
+	},
 	}
 
 	req := singleImageProcessRequest(t, task)

@@ -336,8 +336,8 @@ func (s *taskLifecycleService) persistEnqueueFailure(ctx context.Context, taskID
 }
 
 func validateRequest(req *GenerateRequest) error {
-	if len(req.ImageURLs) == 0 && strings.TrimSpace(req.Text) == "" && strings.TrimSpace(req.ProductURL) == "" {
-		return fmt.Errorf("at least one of image_urls, text, or product_url must be provided")
+	if req == nil || strings.TrimSpace(req.ProductKey) == "" {
+		return fmt.Errorf("product_key is required")
 	}
 	if len(req.Platforms) == 0 {
 		return fmt.Errorf("at least one platform is required")

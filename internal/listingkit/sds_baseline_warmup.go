@@ -69,7 +69,7 @@ func (s *service) persistSDSBaselineCanonical(ctx context.Context, task *Task, p
 	if baselineKey == "" {
 		return nil
 	}
-	payload, err := newCanonicalProductCachePayload(product)
+	payload, err := newSDSBaselineCanonicalProductPayload(product)
 	if err != nil {
 		return err
 	}

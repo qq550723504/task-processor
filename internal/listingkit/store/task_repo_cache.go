@@ -8,45 +8,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit"
-	"task-processor/internal/shared/tenantctx"
 )
-
-func (r *taskRepository) GetCanonicalProductCache(ctx context.Context, fingerprint string) (*canonical.Product, error) {
-	if fingerprint == "" {
-		return nil, nil
-	}
-	var entry listingkit.CanonicalProductCacheEntry
-	db := applyTenantScope(r.db.WithContext(ctx), ctx, "tenant_id")
-	if err := db.Where("fingerprint = ?", storedCanonicalFingerprint(ctx, fingerprint)).First(&entry).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return entry.CanonicalProduct()
-}
-
-func (r *taskRepository) SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error {
-	entry, err := listingkit.NewCanonicalProductCacheEntry(fingerprint, product, sourceTaskID)
-	if err != nil {
-		return err
-	}
-	entry.TenantID = tenantctx.TenantIDFromContext(ctx)
-	entry.Fingerprint = storedCanonicalFingerprint(ctx, fingerprint)
-	return r.db.WithContext(ctx).
-		Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "fingerprint"}},
-			DoUpdates: clause.Assignments(map[string]any{
-				"product":        entry.Product,
-				"tenant_id":      entry.TenantID,
-				"source_task_id": sourceTaskID,
-				"updated_at":     currentTimestampValue(r.db),
-			}),
-		}).
-		Create(entry).Error
-}
 
 func (r *taskRepository) GetSDSBaselineCache(ctx context.Context, tenantID, baselineKey string) (*listingkit.SDSBaselineCacheEntry, error) {
 	resolvedTenantID, logicalKey, storedKey, err := listingkit.ResolveSDSBaselineCacheScope(ctx, tenantID, baselineKey)
@@ -104,12 +67,4 @@ func (r *taskRepository) SaveSDSBaselineCache(ctx context.Context, entry *listin
 			}),
 		}).
 		Create(cloned).Error
-}
-
-func storedCanonicalFingerprint(ctx context.Context, fingerprint string) string {
-	tenantID := tenantctx.TenantIDFromContext(ctx)
-	if tenantID == tenantctx.DefaultTenantID {
-		return fingerprint
-	}
-	return tenantID + ":" + fingerprint
 }

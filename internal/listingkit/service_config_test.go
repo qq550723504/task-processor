@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -14,8 +15,10 @@ type testServiceConfigOption func(*ServiceConfig)
 func newTestServiceConfig(repo Repository, opts ...testServiceConfigOption) *ServiceConfig {
 	cfg := &ServiceConfig{
 		Core: ServiceCoreDependencies{
-			Repository:     repo,
-			ProductService: stubSubmitProductService{},
+			Repository: repo,
+			ProductSnapshotReader: &stubWorkflowProductSnapshotReader{snapshot: catalog.ProductSnapshot{
+				Title: "Test product",
+			}},
 		},
 	}
 	cfg.Shein.SheinStoreCatalog = testSheinStoreCatalog{}
@@ -38,9 +41,9 @@ func (testSheinStoreCatalog) ListStoreOptions(context.Context, int64) ([]SheinSt
 	return nil, nil
 }
 
-func withTestProductService(productSvc ProductService) testServiceConfigOption {
+func withTestProductSnapshotReader(reader ProductSnapshotReader) testServiceConfigOption {
 	return func(cfg *ServiceConfig) {
-		cfg.Core.ProductService = productSvc
+		cfg.Core.ProductSnapshotReader = reader
 	}
 }
 
@@ -280,9 +283,8 @@ func TestNewServiceWithConfigUsesResolutionCacheForDefaultSheinCategoryResolver(
 	t.Parallel()
 
 	store := &submitResolutionCacheStore{}
-	task := &Task{
-		ID: "task-default-category-cache",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-default-category-cache",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:         "linen tablecloth",
 			Platforms:    []string{"shein"},
 			Country:      "US",
@@ -328,7 +330,7 @@ func TestNewServiceWithConfigUsesResolutionCacheForDefaultSheinCategoryResolver(
 			cfg.Shein.SheinResolutionCacheStore = store
 		}),
 	))
-	result := cfg.Assets.Assembler.Assemble(task, product, nil)
+	result := cfg.Assets.Assembler.Assemble(task, testCatalogSnapshot(t, product), nil)
 
 	if result.Shein == nil || result.Shein.CategoryResolution == nil {
 		t.Fatal("expected SHEIN category resolution")
@@ -393,7 +395,7 @@ func TestNewServiceWithConfigSeedsSharedSheinDependenciesPerOwnerGroup(t *testin
 func TestNewServiceWithConfigSeedsWorkflowDependenciesWithoutLegacyMirrors(t *testing.T) {
 	t.Parallel()
 
-	productSvc := &stubWorkflowProductService{}
+	productSnapshots := &stubWorkflowProductSnapshotReader{}
 	imageSvc := &stubWorkflowImageService{}
 	assetRepository := assetrepo.NewMemRepository()
 	assetRecipeResolver := newDefaultAssetRecipeResolver()
@@ -403,7 +405,7 @@ func TestNewServiceWithConfigSeedsWorkflowDependenciesWithoutLegacyMirrors(t *te
 	svc := newServiceWithConfig(newTestServiceConfig(
 		&stubSubmitRepo{},
 		withTestConfig(func(cfg *ServiceConfig) {
-			cfg.Core.ProductService = productSvc
+			cfg.Core.ProductSnapshotReader = productSnapshots
 			cfg.Core.ImageService = imageSvc
 			cfg.Assets.AssetRepository = assetRepository
 			cfg.Assets.AssetRecipeResolver = assetRecipeResolver
@@ -412,8 +414,8 @@ func TestNewServiceWithConfigSeedsWorkflowDependenciesWithoutLegacyMirrors(t *te
 		}),
 	))
 
-	if svc.workflowDeps.productService != productSvc {
-		t.Fatalf("workflow deps product service = %v, want seeded service", svc.workflowDeps.productService)
+	if svc.workflowDeps.productSnapshots != productSnapshots {
+		t.Fatalf("workflow deps product snapshots = %v, want seeded reader", svc.workflowDeps.productSnapshots)
 	}
 	if svc.workflowDeps.imageService != imageSvc {
 		t.Fatalf("workflow deps image service = %v, want seeded service", svc.workflowDeps.imageService)
@@ -431,8 +433,8 @@ func TestNewServiceWithConfigSeedsWorkflowDependenciesWithoutLegacyMirrors(t *te
 		t.Fatalf("workflow deps asset generation service = %v, want seeded service", svc.workflowDeps.assetGenerationService)
 	}
 
-	if got := resolveWorkflowProductService(svc); got != productSvc {
-		t.Fatalf("resolveWorkflowProductService() = %v, want seeded service", got)
+	if got := resolveWorkflowProductSnapshots(svc); got != productSnapshots {
+		t.Fatalf("resolveWorkflowProductSnapshots() = %v, want seeded reader", got)
 	}
 	if got := resolveWorkflowImageService(svc); got != imageSvc {
 		t.Fatalf("resolveWorkflowImageService() = %v, want seeded service", got)

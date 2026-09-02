@@ -6,7 +6,6 @@ import (
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
@@ -18,7 +17,7 @@ type RuntimeBuildInput struct {
 
 type RuntimeDependencies struct {
 	Config                             *config.Config
-	ProductService                     productenrich.ProductService
+	ProductSnapshotReader              listingkit.ProductSnapshotReader
 	ImageService                       productimage.Service
 	SDSSyncService                     sdsusecase.Service
 	SDSLoginStatusProvider             listingkit.SDSLoginStatusProvider
@@ -48,7 +47,7 @@ func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies
 	return BuildServiceInput{
 		Config:                     runtime.Config,
 		Logger:                     logger,
-		ProductService:             runtime.ProductService,
+		ProductSnapshotReader:      runtime.ProductSnapshotReader,
 		ImageService:               runtime.ImageService,
 		SDSSyncService:             support.SDSSyncService,
 		SDSLoginStatusProvider:     support.SDSLoginStatusProvider,

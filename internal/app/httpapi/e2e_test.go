@@ -21,13 +21,14 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	worker "task-processor/internal/platform/workerpool"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
@@ -35,6 +36,14 @@ import (
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	"task-processor/internal/tenantbridge"
 )
+
+type e2eProductSnapshotReader struct {
+	snapshot catalog.ProductSnapshot
+}
+
+func (r e2eProductSnapshotReader) GetProductSnapshot(context.Context, listingkit.ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
+	return r.snapshot, nil
+}
 
 func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 	logger := logrus.New()
@@ -186,7 +195,7 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 	require.NotEmpty(t, itemWithEvidence.Evidence[0].Detail)
 }
 
-func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
+func TestHTTPE2E_ListingKitProductSnapshotBuildsSheinPreview(t *testing.T) {
 	const (
 		sheinTenantID = int64(227)
 		sheinStoreID  = int64(869)
@@ -221,6 +230,13 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 		},
 		features: &featureRuntimeState{},
 	}
+	deps.features.productSnapshotReader = e2eProductSnapshotReader{snapshot: catalog.ProductSnapshot{
+		Title:  "Product Snapshot 蓝牙耳机",
+		Images: []catalog.Image{{URL: imageURL, Role: "primary"}},
+		Variants: []catalog.Variant{{
+			SKU: "SNAPSHOT-EARBUDS-001", Images: []catalog.Image{{URL: imageURL, Role: "primary"}}, IsDefault: true,
+		}},
+	}}
 
 	storeRepo := &e2eListingStoreRepository{store: listingadmin.Store{
 		ID:       sheinStoreID,
@@ -281,7 +297,7 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 	enableListingKitSubscriptionModule(t, client, testServer.URL, "studio")
 
 	taskID := createTaskViaAPI[map[string]any](t, client, testServer.URL+"/api/v1/listing-kits/generate", map[string]any{
-		"product_url":    "https://detail.1688.com/offer/123456789.html",
+		"product_key":    "snapshot-earbuds-1",
 		"platforms":      []string{"shein"},
 		"country":        "US",
 		"language":       "en",
@@ -297,16 +313,14 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 	task := waitForTaskResult[listingkit.TaskResult](t, client, testServer.URL+"/api/v1/listing-kits/tasks/"+taskID, listingKitTaskTerminal)
 	require.NotEqual(t, core.TaskStatusFailed, task.Status)
 	require.NotNil(t, task.Result)
+	require.NotNil(t, task.Result.CatalogProduct)
+	require.Equal(t, "Product Snapshot 蓝牙耳机", task.Result.CatalogProduct.Title)
 	require.NotNil(t, task.Result.CanonicalProduct)
-	require.Equal(t, "1688 蓝牙耳机源商品", task.Result.CanonicalProduct.Title)
+	require.Equal(t, "Product Snapshot 蓝牙耳机", task.Result.CanonicalProduct.Title)
 	require.NotEmpty(t, task.Result.CanonicalProduct.Images)
-	require.Contains(t, canonicalTraceSourceTypes(task.Result.CanonicalProduct.FieldTraces["title"]), canonical.SourceProductURL)
-	require.Contains(t, canonicalTraceSourceTypes(task.Result.CanonicalProduct.FieldTraces["title"]), canonical.SourceScrapedData)
 	require.NotNil(t, task.Result.Shein)
 	require.NotNil(t, task.Result.Shein.PreviewProduct)
 	require.NotEmpty(t, task.Result.Shein.PreviewProduct.SPUName)
-	require.Equal(t, "true", task.Result.Shein.Metadata["source_fact_review_required"])
-	require.NotEmpty(t, task.Result.Shein.Metadata["source_fact_review_fields"])
 	require.NotNil(t, task.Result.Shein.RequestDraft.ImageInfo)
 	require.NotEmpty(t, task.Result.Shein.RequestDraft.ImageInfo.Source)
 	require.NotEmpty(t, task.Result.Shein.RequestDraft.SKCList)

@@ -15,7 +15,6 @@ import (
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -29,29 +28,6 @@ import (
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
 )
-
-type stubWorkflowProductService struct {
-	task       *productenrich.Task
-	product    *productenrich.ProductJSON
-	processErr error
-	lastReq    *productenrich.GenerateRequest
-}
-
-func (s *stubWorkflowProductService) CreateGenerateTask(ctx context.Context, req *productenrich.GenerateRequest) (*productenrich.Task, error) {
-	s.lastReq = req
-	return s.task, nil
-}
-
-func (s *stubWorkflowProductService) GetTaskResult(ctx context.Context, taskID string) (*productenrich.TaskResult, error) {
-	return nil, nil
-}
-
-func (s *stubWorkflowProductService) ProcessProduct(ctx context.Context, task *productenrich.Task) (*productenrich.ProductJSON, error) {
-	if s.processErr != nil {
-		return nil, s.processErr
-	}
-	return s.product, nil
-}
 
 type stubWorkflowAssetGenerator struct {
 	planResult       *assetgeneration.Result
@@ -297,9 +273,9 @@ func (s *stubWorkflowImageService) ProcessImages(ctx context.Context, task *prod
 }
 
 func TestStandardWorkflowProcessesImagesForEveryTarget(t *testing.T) {
-	productSvc := &stubWorkflowProductService{
-		task:    &productenrich.Task{ID: "product-task"},
-		product: &productenrich.ProductJSON{Title: "Targeted product", Images: []string{"https://example.test/image.jpg"}},
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task"},
+		product: &stubProductSnapshotFixture{Title: "Targeted product", Images: []string{"https://example.test/image.jpg"}},
 	}
 	imageSvc := &stubWorkflowImageService{
 		task:   &productimage.Task{ID: "image-task"},
@@ -314,7 +290,7 @@ func TestStandardWorkflowProcessesImagesForEveryTarget(t *testing.T) {
 		newDefaultAssetBundleBuilder(),
 		newDefaultAssetGenerationService(),
 	), productSvc, imageSvc)
-	task := &Task{ID: "listing-task", Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listing-task", Request: &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://example.test/image.jpg"},
 		Platforms: []string{"temu", "shein"},
 		Options:   &GenerateOptions{ProcessImages: true},
@@ -336,9 +312,9 @@ func TestStandardWorkflowProcessesImagesForEveryTarget(t *testing.T) {
 }
 
 func TestStandardWorkflowKeepsSuccessfulTargetAfterOtherTargetFails(t *testing.T) {
-	productSvc := &stubWorkflowProductService{
-		task:    &productenrich.Task{ID: "product-task"},
-		product: &productenrich.ProductJSON{Title: "Targeted product", Images: []string{"https://example.test/image.jpg"}},
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task"},
+		product: &stubProductSnapshotFixture{Title: "Targeted product", Images: []string{"https://example.test/image.jpg"}},
 	}
 	imageSvc := &stubWorkflowImageService{
 		taskByTarget: map[string]*productimage.Task{
@@ -359,7 +335,7 @@ func TestStandardWorkflowKeepsSuccessfulTargetAfterOtherTargetFails(t *testing.T
 		newDefaultAssetBundleBuilder(),
 		newDefaultAssetGenerationService(),
 	), productSvc, imageSvc)
-	task := &Task{ID: "listing-task", Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listing-task", Request: &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://example.test/image.jpg"},
 		Platforms: []string{"temu", "shein"},
 		Options:   &GenerateOptions{ProcessImages: true},
@@ -394,9 +370,9 @@ func TestStandardWorkflowKeepsSuccessfulTargetAfterOtherTargetFails(t *testing.T
 }
 
 func TestStandardWorkflowFailsClosedOnMalformedProductImageEnvelope(t *testing.T) {
-	productSvc := &stubWorkflowProductService{
-		task:    &productenrich.Task{ID: "product-task"},
-		product: &productenrich.ProductJSON{Title: "Identity guarded product", Images: []string{"https://example.test/image.jpg"}},
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task"},
+		product: &stubProductSnapshotFixture{Title: "Identity guarded product", Images: []string{"https://example.test/image.jpg"}},
 	}
 	imageSvc := &stubWorkflowImageService{task: &productimage.Task{
 		ID: "image-task-malformed-envelope",
@@ -414,7 +390,7 @@ func TestStandardWorkflowFailsClosedOnMalformedProductImageEnvelope(t *testing.T
 		newDefaultAssetBundleBuilder(),
 		newDefaultAssetGenerationService(),
 	), productSvc, imageSvc)
-	task := &Task{ID: "listing-task", Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listing-task", Request: &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://example.test/image.jpg"},
 		Platforms: []string{"shein"},
 		Options:   &GenerateOptions{ProcessImages: true},
@@ -434,9 +410,9 @@ func TestStandardWorkflowFailsClosedOnMalformedProductImageEnvelope(t *testing.T
 }
 
 func TestStandardWorkflowFailsClosedOnGovernedProductImageIdentityFailure(t *testing.T) {
-	productSvc := &stubWorkflowProductService{
-		task:    &productenrich.Task{ID: "product-task"},
-		product: &productenrich.ProductJSON{Title: "Identity guarded product", Images: []string{"https://example.test/image.jpg"}},
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task"},
+		product: &stubProductSnapshotFixture{Title: "Identity guarded product", Images: []string{"https://example.test/image.jpg"}},
 	}
 	imageSvc := &stubWorkflowImageService{
 		task: &productimage.Task{ID: "image-task-governed-identity"},
@@ -453,7 +429,7 @@ func TestStandardWorkflowFailsClosedOnGovernedProductImageIdentityFailure(t *tes
 		newDefaultAssetBundleBuilder(),
 		newDefaultAssetGenerationService(),
 	), productSvc, imageSvc)
-	task := &Task{ID: "listing-task", Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listing-task", Request: &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://example.test/image.jpg"},
 		Platforms: []string{"shein"},
 		Options:   &GenerateOptions{ProcessImages: true},
@@ -485,9 +461,9 @@ func TestRunWorkflowKeepsPlatformImageBundlesIsolatedAcrossTargetOrder(t *testin
 	for _, platforms := range [][]string{{"shein", "temu"}, {"temu", "shein"}} {
 		platforms := append([]string(nil), platforms...)
 		t.Run(strings.Join(platforms, "_then_"), func(t *testing.T) {
-			productSvc := &stubWorkflowProductService{
-				task: &productenrich.Task{ID: "product-task-target-bundles"},
-				product: &productenrich.ProductJSON{
+			productSvc := &stubWorkflowProductSnapshotReader{
+				task: &stubProductSnapshotTask{ID: "product-task-target-bundles"},
+				product: &stubProductSnapshotFixture{
 					Title:  "Target-isolated product",
 					Images: []string{"https://source.example.test/product.jpg"},
 				},
@@ -512,7 +488,7 @@ func TestRunWorkflowKeepsPlatformImageBundlesIsolatedAcrossTargetOrder(t *testin
 				newDefaultAssetBundleBuilder(),
 				assetGenerator,
 			), productSvc, imageSvc)
-			task := &Task{ID: "listing-task-target-bundles", Request: &GenerateRequest{
+			task := &Task{TenantID: "tenant-test", ID: "listing-task-target-bundles", Request: &GenerateRequest{ProductKey: "test-product",
 				ImageURLs: []string{"https://source.example.test/product.jpg"},
 				Platforms: platforms,
 				Options:   &GenerateOptions{ProcessImages: true},
@@ -542,9 +518,9 @@ func TestRunWorkflowKeepsGeneratedAssetsIsolatedAcrossTargetOrder(t *testing.T) 
 	for _, platforms := range [][]string{{"shein", "amazon"}, {"amazon", "shein"}} {
 		platforms := append([]string(nil), platforms...)
 		t.Run(strings.Join(platforms, "_then_"), func(t *testing.T) {
-			productSvc := &stubWorkflowProductService{
-				task:    &productenrich.Task{ID: "product-task-generated-target-bundles"},
-				product: &productenrich.ProductJSON{Title: "Generated target product", Images: []string{"https://source.example.test/product.jpg"}},
+			productSvc := &stubWorkflowProductSnapshotReader{
+				task:    &stubProductSnapshotTask{ID: "product-task-generated-target-bundles"},
+				product: &stubProductSnapshotFixture{Title: "Generated target product", Images: []string{"https://source.example.test/product.jpg"}},
 			}
 			imageSvc := &stubWorkflowImageService{
 				taskByTarget: map[string]*productimage.Task{
@@ -566,7 +542,7 @@ func TestRunWorkflowKeepsGeneratedAssetsIsolatedAcrossTargetOrder(t *testing.T) 
 				newDefaultAssetBundleBuilder(),
 				assetGenerator,
 			), productSvc, imageSvc)
-			task := &Task{ID: "listing-task-generated-target-bundles", Request: &GenerateRequest{
+			task := &Task{TenantID: "tenant-test", ID: "listing-task-generated-target-bundles", Request: &GenerateRequest{ProductKey: "test-product",
 				ImageURLs: []string{"https://source.example.test/product.jpg"},
 				Platforms: platforms,
 				Options:   &GenerateOptions{ProcessImages: true},
@@ -727,9 +703,9 @@ func TestPlatformAssetInventoryDoesNotCloneLegacyScalarBundleAcrossTaggedTargets
 func TestRunWorkflowPassesNormalizedRequestedTargetsToPlatformGenerationPlan(t *testing.T) {
 	t.Parallel()
 
-	productSvc := &stubWorkflowProductService{
-		task:    &productenrich.Task{ID: "product-task-platform-plan-targets"},
-		product: &productenrich.ProductJSON{Title: "Plan targets", Images: []string{"https://source.example.test/plan-targets.jpg"}},
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task-platform-plan-targets"},
+		product: &stubProductSnapshotFixture{Title: "Plan targets", Images: []string{"https://source.example.test/plan-targets.jpg"}},
 	}
 	imageSvc := &stubWorkflowImageService{
 		taskByTarget: map[string]*productimage.Task{
@@ -749,7 +725,7 @@ func TestRunWorkflowPassesNormalizedRequestedTargetsToPlatformGenerationPlan(t *
 		newDefaultAssetBundleBuilder(),
 		assetGenerator,
 	), productSvc, imageSvc)
-	task := &Task{ID: "listing-task-platform-plan-targets", Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listing-task-platform-plan-targets", Request: &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://source.example.test/plan-targets.jpg"},
 		Platforms: []string{" SHEIN ", "amazon", "shein", "unsupported"},
 		Options:   &GenerateOptions{ProcessImages: true},
@@ -798,9 +774,9 @@ func assertPublishBundleHasOnlyTargetGeneratedURLs(t *testing.T, target string, 
 }
 
 func TestRunWorkflowDoesNotProjectSuccessfulTargetAssetsIntoFailedTargetPackage(t *testing.T) {
-	productSvc := &stubWorkflowProductService{
-		task:    &productenrich.Task{ID: "product-task-partial-target-bundles"},
-		product: &productenrich.ProductJSON{Title: "Partial target product", Images: []string{"https://source.example.test/product.jpg"}},
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task-partial-target-bundles"},
+		product: &stubProductSnapshotFixture{Title: "Partial target product", Images: []string{"https://source.example.test/product.jpg"}},
 	}
 	imageSvc := &stubWorkflowImageService{
 		taskByTarget: map[string]*productimage.Task{
@@ -821,7 +797,7 @@ func TestRunWorkflowDoesNotProjectSuccessfulTargetAssetsIntoFailedTargetPackage(
 		newDefaultAssetBundleBuilder(),
 		&stubWorkflowAssetGenerator{planResult: &assetgeneration.Result{}},
 	), productSvc, imageSvc)
-	task := &Task{ID: "listing-task-partial-target-bundles", Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listing-task-partial-target-bundles", Request: &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://source.example.test/product.jpg"},
 		Platforms: []string{"temu", "shein"},
 		Options:   &GenerateOptions{ProcessImages: true},
@@ -940,9 +916,9 @@ func TestStandardWorkflowDoesNotOverwriteSingleSDSFailureForMultipleTargets(t *t
 
 func runTwoTargetSDSWorkflow(t *testing.T, platforms []string, sdsSvc *stubWorkflowSDSSyncService) *standardWorkflowState {
 	t.Helper()
-	productSvc := &stubWorkflowProductService{
-		task:    &productenrich.Task{ID: "product-task-two-target-sds"},
-		product: &productenrich.ProductJSON{Title: "Two target SDS product", Images: []string{"https://source.example.test/product.jpg"}},
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task-two-target-sds"},
+		product: &stubProductSnapshotFixture{Title: "Two target SDS product", Images: []string{"https://source.example.test/product.jpg"}},
 	}
 	imageSvc := &stubWorkflowImageService{
 		taskByTarget: map[string]*productimage.Task{
@@ -958,7 +934,7 @@ func runTwoTargetSDSWorkflow(t *testing.T, platforms []string, sdsSvc *stubWorkf
 		sdsSyncService: sdsSvc,
 		assembler:      NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), assetrepo.NewMemRepository(), newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), &stubWorkflowAssetGenerator{}), productSvc, imageSvc)
-	task := &Task{ID: "listing-task-two-target-sds", Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listing-task-two-target-sds", Request: &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://source.example.test/product.jpg"},
 		Platforms: append([]string(nil), platforms...),
 		Options: &GenerateOptions{
@@ -1027,16 +1003,16 @@ func (s *stubWorkflowSceneRenderer) Render(ctx context.Context, asset *productim
 func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T) {
 	t.Parallel()
 
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID: "product-task-1",
-		Request: &productenrich.GenerateRequest{
+		Request: &stubProductSnapshotRequest{
 			ImageURLs: []string{"https://example.com/source-1.jpg"},
 			Text:      "wireless earbuds",
 		},
 	}
-	productSvc := &stubWorkflowProductService{
+	productSvc := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:       "Wireless Earbuds",
 			Description: "Noise cancelling earbuds",
 			Category:    []string{"Electronics", "Headphones"},
@@ -1058,9 +1034,8 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), assetRepository, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, imageSvc)
 
-	task := &Task{
-		ID: "listingkit-task-1",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-1",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source-1.jpg"},
 			Text:      "wireless earbuds",
 			Platforms: []string{"amazon", "shein", "temu", "walmart"},
@@ -1086,8 +1061,8 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	if result.StandardProductSnapshot == nil {
 		t.Fatal("expected persisted standard product snapshot")
 	}
-	if result.StandardProductSnapshot.CanonicalProduct == nil || result.StandardProductSnapshot.CatalogProduct == nil {
-		t.Fatalf("standard snapshot = %+v, want canonical/catalog product", result.StandardProductSnapshot)
+	if result.StandardProductSnapshot.CatalogProduct == nil {
+		t.Fatalf("standard snapshot = %+v, want catalog product", result.StandardProductSnapshot)
 	}
 	if result.StandardProductSnapshot.AssetInventorySummary != nil {
 		t.Fatalf("standard snapshot legacy inventory = %+v, want unset for unselected multi-target result", result.StandardProductSnapshot.AssetInventorySummary)
@@ -1790,7 +1765,7 @@ func TestPlatformAssetDispatchPersistPhaseRunDecoratesAndPersistsGenerationTasks
 		CanExecute:      true,
 	}}
 
-	got := phase.run(context.Background(), &Task{ID: "task-persist"}, final, tasks)
+	got := phase.run(context.Background(), &Task{TenantID: "tenant-test", ID: "task-persist"}, final, tasks)
 
 	if !reflect.DeepEqual(got, tasks) {
 		t.Fatalf("returned generation tasks = %+v, want %+v", got, tasks)
@@ -1823,7 +1798,7 @@ func TestPlatformAssetDispatchPersistPhaseRunAddsWarningIssueWhenPersistenceFail
 		ExecutionStatus: "planned",
 	}}
 
-	phase.run(context.Background(), &Task{ID: "task-persist-error"}, final, tasks)
+	phase.run(context.Background(), &Task{TenantID: "tenant-test", ID: "task-persist-error"}, final, tasks)
 
 	if len(final.Summary.Warnings) != 1 || !strings.Contains(final.Summary.Warnings[0], "asset generation task persistence failed: write failed") {
 		t.Fatalf("summary warnings = %+v, want persistence warning", final.Summary.Warnings)
@@ -1982,7 +1957,7 @@ func TestPlatformAssetDispatchPhaseRunOrchestratesDispatchMutationAndPersistence
 
 	got := phase.run(
 		context.Background(),
-		&Task{ID: "task-dispatch-phase"},
+		&Task{TenantID: "tenant-test", ID: "task-dispatch-phase"},
 		final,
 		inventory,
 		recipesByPlatform,
@@ -2035,16 +2010,16 @@ func TestPlatformAssetDispatchPhaseRunOrchestratesDispatchMutationAndPersistence
 func TestRunWorkflowAppliesSheinPlatformFinalizationDecorations(t *testing.T) {
 	t.Parallel()
 
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID: "product-task-shein-copy",
-		Request: &productenrich.GenerateRequest{
+		Request: &stubProductSnapshotRequest{
 			ImageURLs: []string{"https://example.com/pillow.jpg"},
 			Text:      "pillow cover",
 		},
 	}
-	productSvc := &stubWorkflowProductService{
+	productSvc := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:         "Envelope style pillow cover",
 			Description:   "Simple pillow cover for home decor.",
 			Category:      []string{"Home", "Textiles", "Pillow Covers"},
@@ -2063,9 +2038,8 @@ func TestRunWorkflowAppliesSheinPlatformFinalizationDecorations(t *testing.T) {
 	}, supportDependencySeed{
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
-	task := &Task{
-		ID: "listingkit-task-shein-copy",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-shein-copy",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/pillow.jpg"},
 			Text:      "pillow cover",
 			Platforms: []string{"shein"},
@@ -2107,21 +2081,21 @@ func TestRunWorkflowAppliesSheinPlatformFinalizationDecorations(t *testing.T) {
 func TestRunWorkflowAppliesVariantCoverageGuardAfterSheinReview(t *testing.T) {
 	t.Parallel()
 
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{
 			ID: "product-task-variant-coverage",
-			Request: &productenrich.GenerateRequest{
+			Request: &stubProductSnapshotRequest{
 				ImageURLs: []string{"https://example.com/shared-main.jpg"},
 				Text:      "insulated tumbler",
 			},
 		},
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:       "Insulated Tumbler",
 			Description: "Double wall tumbler",
 			Category:    []string{"Home", "Kitchen"},
 			Images:      []string{"https://example.com/shared-main.jpg"},
 			Attributes:  map[string]string{"brand": "DemoBrand"},
-			Variants: []productenrich.ProductVariant{
+			Variants: []stubProductVariantFixture{
 				{
 					SKU:        "RED-20OZ",
 					Attributes: map[string]string{"Color": "red", "Size": "20oz"},
@@ -2198,9 +2172,8 @@ func TestRunWorkflowAppliesVariantCoverageGuardAfterSheinReview(t *testing.T) {
 			}, nil),
 		}),
 	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
-	task := &Task{
-		ID: "listingkit-task-variant-coverage",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-variant-coverage",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs:          []string{"https://example.com/shared-main.jpg"},
 			Text:               "insulated tumbler",
 			Platforms:          []string{"shein"},
@@ -2256,16 +2229,16 @@ func TestRunWorkflowAppliesVariantCoverageGuardAfterSheinReview(t *testing.T) {
 func TestRunWorkflowRecordsDegradedImageStageWhenImageProcessingFails(t *testing.T) {
 	t.Parallel()
 
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID: "product-task-image-fail",
-		Request: &productenrich.GenerateRequest{
+		Request: &stubProductSnapshotRequest{
 			ImageURLs: []string{"https://example.com/source-image-fail.jpg"},
 			Text:      "canvas tote",
 		},
 	}
-	productSvc := &stubWorkflowProductService{
+	productSvc := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:      "Canvas Tote",
 			Category:   []string{"Bags"},
 			Images:     []string{"https://example.com/source-image-fail.jpg"},
@@ -2280,9 +2253,8 @@ func TestRunWorkflowRecordsDegradedImageStageWhenImageProcessingFails(t *testing
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), assetrepo.NewMemRepository(), newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, imageSvc)
 
-	task := &Task{
-		ID: "listingkit-task-image-fail",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-image-fail",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source-image-fail.jpg"},
 			Text:      "canvas tote",
 			Platforms: []string{"amazon"},
@@ -2311,9 +2283,9 @@ func TestRunWorkflowRecordsDegradedImageStageWhenImageProcessingFails(t *testing
 }
 
 func TestStandardWorkflowPropagatesImageReviewToParentWorkflow(t *testing.T) {
-	productSvc := &stubWorkflowProductService{
-		task:    &productenrich.Task{ID: "product-task-image-review"},
-		product: &productenrich.ProductJSON{Title: "Reviewed product", Images: []string{"https://example.test/image.jpg"}},
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task:    &stubProductSnapshotTask{ID: "product-task-image-review"},
+		product: &stubProductSnapshotFixture{Title: "Reviewed product", Images: []string{"https://example.test/image.jpg"}},
 	}
 	imageSvc := &stubWorkflowImageService{
 		taskByTarget: map[string]*productimage.Task{
@@ -2338,7 +2310,7 @@ func TestStandardWorkflowPropagatesImageReviewToParentWorkflow(t *testing.T) {
 		newDefaultAssetGenerationService(),
 	), productSvc, imageSvc)
 
-	task := &Task{ID: "listing-task-image-review", Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listing-task-image-review", Request: &GenerateRequest{ProductKey: "test-product",
 		ImageURLs: []string{"https://example.test/image.jpg"},
 		Platforms: []string{"amazon"},
 		Options:   &GenerateOptions{ProcessImages: true},
@@ -2363,13 +2335,14 @@ func TestStandardWorkflowPropagatesImageReviewToParentWorkflow(t *testing.T) {
 	}
 }
 
-func TestRunWorkflowUsesSDSCatalogCanonicalAndSkipsImageProcessing(t *testing.T) {
+func TestRunWorkflowUsesProductSnapshotAsCatalogSourceForSDSTask(t *testing.T) {
 	t.Parallel()
 
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{ID: "unexpected-product-task"},
-		product: &productenrich.ProductJSON{
-			Title: "Unexpected enrich result",
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{ID: "unexpected-product-task"},
+		product: &stubProductSnapshotFixture{
+			Title:    "Snapshot product",
+			Variants: []stubProductVariantFixture{{SKU: "SNAPSHOT-001", IsDefault: true}},
 		},
 	}
 	imageSvc := &stubWorkflowImageService{
@@ -2385,12 +2358,10 @@ func TestRunWorkflowUsesSDSCatalogCanonicalAndSkipsImageProcessing(t *testing.T)
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), productSvc, imageSvc)
 
-	task := &Task{
-		ID: "listingkit-task-sds-catalog",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-sds-catalog",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://cdn.example.com/sds-source.jpg"},
 			Text:      "SDS supplied title",
-			Platforms: []string{"amazon"},
 			Options: &GenerateOptions{
 				ProcessImages: true,
 				SDS: &SDSSyncOptions{
@@ -2409,17 +2380,17 @@ func TestRunWorkflowUsesSDSCatalogCanonicalAndSkipsImageProcessing(t *testing.T)
 	if err != nil {
 		t.Fatalf("runWorkflow() error = %v", err)
 	}
-	if productSvc.lastReq != nil {
-		t.Fatalf("product enrich request = %+v, want skipped for SDS catalog task", productSvc.lastReq)
+	if productSvc.lastReq == nil {
+		t.Fatal("product snapshot query = nil, want authoritative snapshot read")
 	}
-	if result.CanonicalProduct == nil || result.CanonicalProduct.Title != "SDS Clock" {
-		t.Fatalf("canonical product = %+v, want SDS catalog title", result.CanonicalProduct)
+	if result.CatalogProduct == nil || result.CatalogProduct.Title != "Snapshot product" {
+		t.Fatalf("catalog product = %+v, want reader snapshot", result.CatalogProduct)
 	}
-	if !hasWorkflowStageStatus(result.WorkflowStages, "sds_catalog_product", WorkflowStageStatusCompleted) {
-		t.Fatalf("workflow stages = %+v, want completed sds_catalog_product", result.WorkflowStages)
+	if result.CanonicalProduct == nil || result.CanonicalProduct.Title != "Snapshot product" {
+		t.Fatalf("canonical product = %+v, want projection from product snapshot", result.CanonicalProduct)
 	}
-	if hasWorkflowStageStatus(result.WorkflowStages, "product_enrich", WorkflowStageStatusCompleted) {
-		t.Fatalf("workflow stages = %+v, product_enrich should not run", result.WorkflowStages)
+	if !hasWorkflowStageStatus(result.WorkflowStages, productSnapshotStageKind, WorkflowStageStatusCompleted) {
+		t.Fatalf("workflow stages = %+v, want completed product snapshot read", result.WorkflowStages)
 	}
 	if imageSvc.lastReq != nil {
 		t.Fatalf("image processing request = %+v, want skipped for SDS catalog task", imageSvc.lastReq)
@@ -2457,9 +2428,8 @@ func TestRunStandardProductWorkflowRunsRemoteSDSSyncWhenImageProcessingIsDisable
 		sdsSyncService: sdsSvc,
 		assembler:      NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService())
-	task := &Task{
-		ID: "task-remote-sds-sync",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-remote-sds-sync",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source-remote.jpg"},
 			Text:      "remote sds sync",
 			Platforms: []string{"shein"},
@@ -2494,19 +2464,18 @@ func TestRunStandardProductWorkflowRunsRemoteSDSSyncWhenImageProcessingIsDisable
 	}
 }
 
-func TestRunWorkflowRecordsBlockingProductEnrichFailure(t *testing.T) {
+func TestRunWorkflowRecordsProductSnapshotReadFailure(t *testing.T) {
 	t.Parallel()
 
-	productSvc := &stubWorkflowProductService{
-		task:       &productenrich.Task{ID: "product-task-blocking", Request: &productenrich.GenerateRequest{Text: "unknown product"}},
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task:       &stubProductSnapshotTask{ID: "product-task-blocking", Request: &stubProductSnapshotRequest{Text: "unknown product"}},
 		processErr: fmt.Errorf("llm unavailable"),
 	}
 	svc := seedWorkflowServices(seedSupportDeps(&service{}, supportDependencySeed{
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), productSvc, nil)
-	task := &Task{
-		ID: "listingkit-task-product-blocking",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-product-blocking",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "unknown product",
 			Platforms: []string{"amazon"},
 			Country:   "US",
@@ -2517,13 +2486,13 @@ func TestRunWorkflowRecordsBlockingProductEnrichFailure(t *testing.T) {
 
 	result, err := svc.runWorkflow(context.Background(), task)
 	if err == nil {
-		t.Fatal("runWorkflow() error = nil, want product enrichment failure")
+		t.Fatal("runWorkflow() error = nil, want product snapshot read failure")
 	}
-	if !hasWorkflowStageStatus(result.WorkflowStages, "product_enrich", WorkflowStageStatusFailed) {
-		t.Fatalf("workflow stages = %+v, want failed product_enrich", result.WorkflowStages)
+	if !hasWorkflowStageStatus(result.WorkflowStages, productSnapshotStageKind, WorkflowStageStatusFailed) {
+		t.Fatalf("workflow stages = %+v, want failed product snapshot read", result.WorkflowStages)
 	}
-	if !hasWorkflowIssue(result.WorkflowIssues, "product_enrich", WorkflowIssueSeverityBlocking, "product_enrich_failed") {
-		t.Fatalf("workflow issues = %+v, want blocking product enrich issue", result.WorkflowIssues)
+	if !hasWorkflowIssue(result.WorkflowIssues, productSnapshotStageKind, WorkflowIssueSeverityBlocking, "product_snapshot_read_failed") {
+		t.Fatalf("workflow issues = %+v, want blocking product snapshot issue", result.WorkflowIssues)
 	}
 	if result.Summary == nil || result.Summary.BlockingCount != 1 {
 		t.Fatalf("summary = %+v, want blocking count", result.Summary)
@@ -2533,9 +2502,9 @@ func TestRunWorkflowRecordsBlockingProductEnrichFailure(t *testing.T) {
 func TestRunWorkflowRecordsAssetGenerationDispatchFailure(t *testing.T) {
 	t.Parallel()
 
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{ID: "product-task-asset-dispatch", Request: &productenrich.GenerateRequest{ImageURLs: []string{"https://example.com/source.jpg"}, Text: "poster"}},
-		product: &productenrich.ProductJSON{
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{ID: "product-task-asset-dispatch", Request: &stubProductSnapshotRequest{ImageURLs: []string{"https://example.com/source.jpg"}, Text: "poster"}},
+		product: &stubProductSnapshotFixture{
 			Title:      "Poster",
 			Category:   []string{"Home"},
 			Images:     []string{"https://example.com/source.jpg"},
@@ -2563,9 +2532,8 @@ func TestRunWorkflowRecordsAssetGenerationDispatchFailure(t *testing.T) {
 	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{}, supportDependencySeed{
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), assetrepo.NewMemRepository(), newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), assetGenerator), productSvc, imageSvc)
-	task := &Task{
-		ID: "listingkit-task-asset-dispatch",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-asset-dispatch",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source.jpg"},
 			Text:      "poster",
 			Platforms: []string{"amazon"},
@@ -2593,9 +2561,9 @@ func TestRunWorkflowRecordsAssetGenerationDispatchFailure(t *testing.T) {
 func TestRunWorkflowRecordsDeferredAssetGenerationDispatchFailure(t *testing.T) {
 	t.Parallel()
 
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{ID: "product-task-deferred-asset-dispatch", Request: &productenrich.GenerateRequest{ImageURLs: []string{"https://example.com/source.jpg"}, Text: "poster"}},
-		product: &productenrich.ProductJSON{
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{ID: "product-task-deferred-asset-dispatch", Request: &stubProductSnapshotRequest{ImageURLs: []string{"https://example.com/source.jpg"}, Text: "poster"}},
+		product: &stubProductSnapshotFixture{
 			Title:      "Poster",
 			Category:   []string{"Home"},
 			Images:     []string{"https://example.com/source.jpg"},
@@ -2623,9 +2591,8 @@ func TestRunWorkflowRecordsDeferredAssetGenerationDispatchFailure(t *testing.T) 
 	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{}, supportDependencySeed{
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), assetrepo.NewMemRepository(), newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), assetGenerator), productSvc, imageSvc)
-	task := &Task{
-		ID: "listingkit-task-deferred-asset-dispatch",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-deferred-asset-dispatch",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source.jpg"},
 			Text:      "poster",
 			Platforms: []string{"amazon"},
@@ -2766,7 +2733,7 @@ func TestRunWorkflowFinalizesSummaryAfterPlatformDispatch(t *testing.T) {
 func TestPlatformSummaryPhaseFinalizesCompletionState(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{ID: "listingkit-task-summary-phase", Request: &GenerateRequest{Platforms: []string{"shein"}}}
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-summary-phase", Request: &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}}}
 	final := &ListingKitResult{
 		AssetBundle: &asset.Bundle{
 			Assets: []asset.Asset{{
@@ -2822,7 +2789,7 @@ func TestPlatformSummaryPhaseFinalizesCompletionState(t *testing.T) {
 func TestPlatformFinalizePhasePreparesReviewBeforeCompletion(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{ID: "listingkit-task-finalize-phase", Request: &GenerateRequest{Platforms: []string{"shein"}}}
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-finalize-phase", Request: &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}}}
 	final := &ListingKitResult{
 		Shein: &SheinPackage{
 			Inspection: &SheinInspection{
@@ -2972,15 +2939,15 @@ func runWorkflowWithDeferredDispatchFixture(
 ) (*ListingKitResult, *assetrepo.MemRepository) {
 	t.Helper()
 
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{
 			ID: "product-task-" + taskID,
-			Request: &productenrich.GenerateRequest{
+			Request: &stubProductSnapshotRequest{
 				ImageURLs: []string{"https://example.com/source.jpg"},
 				Text:      "poster",
 			},
 		},
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:      "Poster",
 			Category:   []string{"Home"},
 			Images:     []string{"https://example.com/source.jpg"},
@@ -2997,9 +2964,8 @@ func runWorkflowWithDeferredDispatchFixture(
 	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{}, supportDependencySeed{
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), assetRepository, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), assetGenerator), productSvc, imageSvc)
-	task := &Task{
-		ID: taskID,
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: taskID,
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source.jpg"},
 			Text:      "poster",
 			Platforms: []string{"amazon"},
@@ -3019,16 +2985,16 @@ func runWorkflowWithDeferredDispatchFixture(
 func TestRunWorkflowSkipsAssetGenerationWhenProcessImagesDisabled(t *testing.T) {
 	t.Parallel()
 
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID: "product-task-2",
-		Request: &productenrich.GenerateRequest{
+		Request: &stubProductSnapshotRequest{
 			ImageURLs: []string{"https://example.com/source-2.jpg"},
 			Text:      "travel bottle",
 		},
 	}
-	productSvc := &stubWorkflowProductService{
+	productSvc := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:       "Travel Bottle",
 			Description: "Portable insulated bottle",
 			Category:    []string{"Home", "Kitchen"},
@@ -3042,9 +3008,8 @@ func TestRunWorkflowSkipsAssetGenerationWhenProcessImagesDisabled(t *testing.T) 
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), assetRepository, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
 
-	task := &Task{
-		ID: "listingkit-task-2",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-2",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source-2.jpg"},
 			Text:      "travel bottle",
 			Platforms: []string{"amazon", "shein"},
@@ -3079,16 +3044,16 @@ func TestRunWorkflowSkipsAssetGenerationWhenProcessImagesDisabled(t *testing.T) 
 func TestRunWorkflowSyncsSDSDesignWhenConfigured(t *testing.T) {
 	t.Parallel()
 
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID: "product-task-sds",
-		Request: &productenrich.GenerateRequest{
+		Request: &stubProductSnapshotRequest{
 			ImageURLs: []string{"https://example.com/source-sds.jpg"},
 			Text:      "sports bottle",
 		},
 	}
-	productSvc := &stubWorkflowProductService{
+	productSvc := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:      "Sports Bottle",
 			Category:   []string{"Sports", "Drinkware"},
 			Images:     []string{"https://example.com/source-sds.jpg"},
@@ -3132,9 +3097,8 @@ func TestRunWorkflowSyncsSDSDesignWhenConfigured(t *testing.T) {
 		assembler:      NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), assetrepo.NewMemRepository(), newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, imageSvc)
 
-	task := &Task{
-		ID: "listingkit-task-sds",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-sds",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source-sds.jpg"},
 			Text:      "sports bottle",
 			Platforms: []string{"amazon"},
@@ -3209,9 +3173,8 @@ func TestSyncSDSDesignVariantsSubmitsEachRepresentativeVariantAsPrimary(t *testi
 		},
 	}
 	svc := seedSupportDeps(&service{}, supportDependencySeed{sdsSyncService: sdsSvc})
-	task := &Task{
-		ID: "listingkit-task-variants",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-variants",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://cdn.example.com/style.png"},
 			Options: &GenerateOptions{
 				SDS: &SDSSyncOptions{
@@ -3287,9 +3250,8 @@ func TestSyncSDSDesignFromRemoteUsesLocalFileForUploadedImagePath(t *testing.T) 
 	svc := seedSupportDeps(&service{
 		studioDeps: studioDependencies{uploadStore: store},
 	}, supportDependencySeed{sdsSyncService: sdsSvc})
-	task := &Task{
-		ID: "listingkit-task-uploaded-remote-sds",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-uploaded-remote-sds",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{buildUploadedImagePath(saved.Key)},
 			Options: &GenerateOptions{
 				SDS: &SDSSyncOptions{
@@ -3369,7 +3331,7 @@ func TestSyncSDSDesignFromRemoteResolvesUploadedImageIDToStorageKeyFromTaskTenan
 	task := &Task{
 		ID:       "listingkit-task-uploaded-storage-key-sds",
 		TenantID: "227",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"http://localhost:3000" + buildUploadedImagePath(uploadID)},
 			Options: &GenerateOptions{SDS: &SDSSyncOptions{
 				VariantID:        53064,
@@ -3434,9 +3396,8 @@ func TestSyncSDSDesignVariantsFromRemoteUsesLocalFileForUploadedImagePath(t *tes
 	svc := seedSupportDeps(&service{
 		studioDeps: studioDependencies{uploadStore: store},
 	}, supportDependencySeed{sdsSyncService: sdsSvc})
-	task := &Task{
-		ID: "listingkit-task-uploaded-variant-sds",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-uploaded-variant-sds",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{buildUploadedImagePath(saved.Key)},
 			Options: &GenerateOptions{
 				SDS: &SDSSyncOptions{
@@ -3472,16 +3433,16 @@ func TestSyncSDSDesignVariantsFromRemoteUsesLocalFileForUploadedImagePath(t *tes
 func TestRunWorkflowKeepsMainFlowWhenSDSSyncFails(t *testing.T) {
 	t.Parallel()
 
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID: "product-task-sds-fail",
-		Request: &productenrich.GenerateRequest{
+		Request: &stubProductSnapshotRequest{
 			ImageURLs: []string{"https://example.com/source-sds-fail.jpg"},
 			Text:      "sports towel",
 		},
 	}
-	productSvc := &stubWorkflowProductService{
+	productSvc := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:      "Sports Towel",
 			Category:   []string{"Sports"},
 			Images:     []string{"https://example.com/source-sds-fail.jpg"},
@@ -3503,9 +3464,8 @@ func TestRunWorkflowKeepsMainFlowWhenSDSSyncFails(t *testing.T) {
 		assembler:      NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), assetrepo.NewMemRepository(), newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, imageSvc)
 
-	task := &Task{
-		ID: "listingkit-task-sds-fail",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-sds-fail",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source-sds-fail.jpg"},
 			Text:      "sports towel",
 			Platforms: []string{"amazon"},
@@ -3549,9 +3509,8 @@ func TestRunWorkflowSkipsPlatformAdaptationWhenRequiredRemoteSDSFails(t *testing
 		assembler:      NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	})
 
-	task := &Task{
-		ID: "listingkit-task-remote-sds-blocked",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-remote-sds-blocked",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs:    []string{"https://example.com/source-remote-sds.jpg"},
 			Text:         "beer cap metal sign",
 			Platforms:    []string{"shein"},
@@ -3595,8 +3554,8 @@ func TestRunWorkflowSkipsPlatformAdaptationWhenRequiredRemoteSDSFails(t *testing
 	if result.Shein != nil {
 		t.Fatalf("shein package = %+v, want platform adaptation to be skipped", result.Shein)
 	}
-	if result.CanonicalProduct == nil {
-		t.Fatal("canonical product = nil, want preserved standard snapshot")
+	if result.CatalogProduct == nil {
+		t.Fatal("catalog product = nil, want preserved product snapshot")
 	}
 }
 
@@ -3609,9 +3568,8 @@ func TestSyncSDSDesignVariantsFromRemoteSurfacesAuthFailureReason(t *testing.T) 
 		},
 	}
 	svc := seedSupportDeps(&service{}, supportDependencySeed{sdsSyncService: sdsSvc})
-	task := &Task{
-		ID: "listingkit-task-variants-auth",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-variants-auth",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://cdn.example.com/style.png"},
 			Options: &GenerateOptions{
 				SDS: &SDSSyncOptions{
@@ -3642,9 +3600,9 @@ func TestSyncSDSDesignVariantsFromRemoteSurfacesAuthFailureReason(t *testing.T) 
 func TestRunWorkflowMarksSDSAuthRequiredAsBlockingIssue(t *testing.T) {
 	t.Parallel()
 
-	productSvc := &stubWorkflowProductService{
-		task: &productenrich.Task{ID: "product-task-sds-auth"},
-		product: &productenrich.ProductJSON{
+	productSvc := &stubWorkflowProductSnapshotReader{
+		task: &stubProductSnapshotTask{ID: "product-task-sds-auth"},
+		product: &stubProductSnapshotFixture{
 			Title:      "Sports Towel",
 			Category:   []string{"Sports"},
 			Images:     []string{"https://example.com/source-sds-auth.jpg"},
@@ -3670,9 +3628,8 @@ func TestRunWorkflowMarksSDSAuthRequiredAsBlockingIssue(t *testing.T) {
 		assembler:      NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), assetrepo.NewMemRepository(), newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, imageSvc)
 
-	task := &Task{
-		ID: "listingkit-task-sds-auth",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-sds-auth",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source-sds-auth.jpg"},
 			Text:      "sports towel",
 			Platforms: []string{"amazon"},
@@ -3732,16 +3689,16 @@ func hasWorkflowIssue(issues []WorkflowIssue, stage string, severity WorkflowIss
 func TestRunWorkflowSkipsDeferredGenerationWhenProcessImagesDisabled(t *testing.T) {
 	t.Parallel()
 
-	productTask := &productenrich.Task{
+	productTask := &stubProductSnapshotTask{
 		ID: "product-task-3",
-		Request: &productenrich.GenerateRequest{
+		Request: &stubProductSnapshotRequest{
 			ImageURLs: []string{"https://example.com/source-3.jpg"},
 			Text:      "portable speaker",
 		},
 	}
-	productSvc := &stubWorkflowProductService{
+	productSvc := &stubWorkflowProductSnapshotReader{
 		task: productTask,
-		product: &productenrich.ProductJSON{
+		product: &stubProductSnapshotFixture{
 			Title:       "Portable Speaker",
 			Description: "Wireless speaker",
 			Category:    []string{"Electronics", "Audio"},
@@ -3763,9 +3720,8 @@ func TestRunWorkflowSkipsDeferredGenerationWhenProcessImagesDisabled(t *testing.
 		}),
 	), productSvc, nil)
 
-	task := &Task{
-		ID: "listingkit-task-3",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-3",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://example.com/source-3.jpg"},
 			Text:      "portable speaker",
 			Platforms: []string{"amazon"},

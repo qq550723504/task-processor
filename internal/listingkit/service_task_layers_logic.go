@@ -56,7 +56,7 @@ func (s *service) ProcessPlatformAdaptationLayer(ctx context.Context, taskID str
 		return nil, err
 	}
 	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(s)
-	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, snapshot.CanonicalProduct)
+	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, canonicalProductFromStandardSnapshot(snapshot))
 	if normalized := strings.ToLower(strings.TrimSpace(platform)); normalized != "" && normalized != "all" {
 		filtered := map[string][]assetrecipe.AssetRecipe{}
 		if recipes, ok := recipesByPlatform[normalized]; ok {

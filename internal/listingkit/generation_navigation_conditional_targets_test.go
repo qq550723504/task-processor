@@ -267,12 +267,11 @@ func TestDispatchTaskGenerationNavigationUsesTargetConditionalBaseline(t *testin
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-conditional-baseline-1",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-conditional-baseline-1",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-conditional-baseline-1",
 			AssetRenderPreviews: []AssetRenderPreview{{
@@ -337,12 +336,11 @@ func TestDispatchTaskGenerationNavigationKeepsExplicitQueryOverConditionalBaseli
 
 	repo := &stubGenerationRepo{}
 	svc := &service{repo: repo}
-	task := &Task{
-		ID:        "task-generation-navigation-conditional-baseline-2",
+	task := &Task{TenantID: "tenant-test", ID: "task-generation-navigation-conditional-baseline-2",
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"shein"}},
 		Result: &ListingKitResult{
 			TaskID: "task-generation-navigation-conditional-baseline-2",
 			AssetRenderPreviews: []AssetRenderPreview{{

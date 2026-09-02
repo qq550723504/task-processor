@@ -23,11 +23,11 @@ func TestGetSDSBaselineReadinessReturnsBaselineCachedForUsableBaseline(t *testin
 		VariantID:          101,
 		SelectedVariantIDs: []int64{102, 101},
 	}
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{
 		Title: "Baseline Product",
 	})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	if err := cacheRepo.SaveSDSBaselineCache(WithTenantID(context.Background(), "tenant-a"), &SDSBaselineCacheEntry{
 		TenantID:             "tenant-a",
@@ -66,9 +66,8 @@ func TestSDSBaselineGetCachedBaseline_RejectsBlockedValidation(t *testing.T) {
 	if !ok {
 		t.Fatal("mem task repository does not expose SDS baseline cache repository")
 	}
-	task := &Task{
-		ID: "task-blocked-baseline",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-blocked-baseline",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Options: &GenerateOptions{
 				SDS: &SDSSyncOptions{
 					ParentProductID:  9001,
@@ -78,9 +77,9 @@ func TestSDSBaselineGetCachedBaseline_RejectsBlockedValidation(t *testing.T) {
 			},
 		},
 	}
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{Title: "Blocked Baseline"})
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{Title: "Blocked Baseline"})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	if err := cacheRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
 		BaselineKey:          sdsBaselineKey("", task.Request.Options.SDS),
@@ -111,9 +110,8 @@ func TestSDSBaselineGetCachedBaseline_RejectsUnknownValidation(t *testing.T) {
 	if !ok {
 		t.Fatal("mem task repository does not expose SDS baseline cache repository")
 	}
-	task := &Task{
-		ID: "task-unknown-baseline",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-unknown-baseline",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Options: &GenerateOptions{
 				SDS: &SDSSyncOptions{
 					ParentProductID:  9001,
@@ -123,9 +121,9 @@ func TestSDSBaselineGetCachedBaseline_RejectsUnknownValidation(t *testing.T) {
 			},
 		},
 	}
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{Title: "Unknown Baseline"})
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{Title: "Unknown Baseline"})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	if err := cacheRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
 		BaselineKey:          sdsBaselineKey("", task.Request.Options.SDS),
@@ -161,11 +159,11 @@ func TestGetSDSBaselineReadinessTreatsReadyCacheStatusAsUsable(t *testing.T) {
 		VariantID:          212095,
 		SelectedVariantIDs: []int64{212095},
 	}
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{
 		Title: "Ready Baseline Product",
 	})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	if err := cacheRepo.SaveSDSBaselineCache(WithTenantID(context.Background(), "tenant-a"), &SDSBaselineCacheEntry{
 		TenantID:             "tenant-a",
@@ -215,11 +213,11 @@ func TestGetSDSBaselineReadinessTreatsReadyCacheStatusWithUnknownValidationAsRea
 		VariantID:          212095,
 		SelectedVariantIDs: []int64{212095},
 	}
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{
 		Title: "Legacy Ready Baseline Product",
 	})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	if err := cacheRepo.SaveSDSBaselineCache(WithTenantID(context.Background(), "tenant-a"), &SDSBaselineCacheEntry{
 		TenantID:             "tenant-a",
@@ -318,11 +316,11 @@ func TestGetSDSBaselineReadinessClearsCachedLoginCredentialBlockWhenAccessTokenE
 		VariantID:          101,
 		SelectedVariantIDs: []int64{101},
 	}
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{
 		Title: "Baseline Product",
 	})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	ctx := WithTenantID(context.Background(), DefaultTenantID)
 	if err := cacheRepo.SaveSDSBaselineCache(ctx, &SDSBaselineCacheEntry{
@@ -373,11 +371,11 @@ func TestGetSDSBaselineReadinessClearsCachedLoginInProgressBlockWhenLoginHasComp
 		VariantID:          101,
 		SelectedVariantIDs: []int64{101},
 	}
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{
 		Title: "Baseline Product",
 	})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	ctx := WithTenantID(context.Background(), DefaultTenantID)
 	if err := cacheRepo.SaveSDSBaselineCache(ctx, &SDSBaselineCacheEntry{
@@ -430,11 +428,11 @@ func TestGetSDSBaselineReadinessClearsCachedDesignSurfaceCredentialFailureWhenAc
 		VariantID:          101,
 		SelectedVariantIDs: []int64{101},
 	}
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{
 		Title: "Baseline Product",
 	})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	ctx := WithTenantID(context.Background(), DefaultTenantID)
 	if err := cacheRepo.SaveSDSBaselineCache(ctx, &SDSBaselineCacheEntry{
@@ -513,9 +511,9 @@ func TestGetSDSBaselineReadinessClearsOtherCachedCompletedLoginFailures(t *testi
 				VariantID:          101,
 				SelectedVariantIDs: []int64{101},
 			}
-			payload, err := newCanonicalProductCachePayload(&canonical.Product{Title: "Baseline Product"})
+			payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{Title: "Baseline Product"})
 			if err != nil {
-				t.Fatalf("newCanonicalProductCachePayload: %v", err)
+				t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 			}
 			ctx := WithTenantID(context.Background(), DefaultTenantID)
 			if err := cacheRepo.SaveSDSBaselineCache(ctx, &SDSBaselineCacheEntry{

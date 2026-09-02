@@ -9,7 +9,6 @@ import (
 
 	"task-processor/internal/asset"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productimage"
 	"task-processor/internal/shared/aiidentity"
@@ -134,11 +133,6 @@ func (p *standardWorkflowMediaPhase) run(
 		sdsOptions = task.Request.Options.SDS
 	}
 	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSDesignResult, sdsOptions) {
-		catalogProduct, err := catalog.Normalize(canonicalProduct)
-		if err != nil {
-			return imageResult, sdsOptions, err
-		}
-		result.CatalogProduct = catalogProduct
 		for target, targetImageResult := range result.ImageAssetsByTarget {
 			bundle := asset.BuildBundle(canonicalProduct, targetImageResult)
 			result.recordTargetImageAssets(target, targetImageResult, bundle, asset.InventorySummaryFromBundle(bundle))

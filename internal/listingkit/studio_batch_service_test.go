@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -3185,6 +3186,7 @@ func TestServiceCreateStudioBatchTasksUsesItemSelectionOwnershipForGroupedProduc
 	batch := newStudioBatchRecordForTest("batch-1", now)
 	batch.GroupedImageMode = "per_product"
 	batch.Selection = SheinStudioSelectionSnapshot{
+		ProductKey:       "product-3003",
 		ProductID:        1001,
 		ParentProductID:  2002,
 		VariantID:        3003,
@@ -3201,6 +3203,7 @@ func TestServiceCreateStudioBatchTasksUsesItemSelectionOwnershipForGroupedProduc
 			SheinStoreID: "870",
 			Eligible:     true,
 			Selection: SheinStudioSelection{
+				ProductKey:         "product-4004",
 				ProductID:          1002,
 				ParentProductID:    2002,
 				VariantID:          4004,
@@ -3739,10 +3742,9 @@ func TestServiceCreateStudioBatchTasks_ReusesLegacyLinkWriteFailureSurfacesFaile
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	taskRepo.tasks["legacy-task-1"] = &Task{
-		ID:     "legacy-task-1",
+	taskRepo.tasks["legacy-task-1"] = &Task{TenantID: "tenant-test", ID: "legacy-task-1",
 		Status: core.TaskStatusPending,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://cdn.example.com/design-1.png"},
 			Options: &GenerateOptions{
 				SheinStudio: &SheinStudioOptions{StyleID: buildStudioBatchTaskStyleID("design-1")},
@@ -3900,7 +3902,7 @@ func TestServiceCreateStudioBatchTasks_ConcurrentSlowOwnerReturnsOneTask(t *test
 			startedOnce.Do(func() { close(started) })
 			createCalls.Add(1)
 			<-release
-			task := &Task{ID: "slow-task-1", Status: core.TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
+			task := &Task{TenantID: "tenant-test", ID: "slow-task-1", Status: core.TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
 			if err := taskRepo.CreateTask(ctx, task); err != nil {
 				return nil, err
 			}
@@ -4013,7 +4015,7 @@ func TestServiceCreateStudioBatchTasks_ConcurrentStaleCreatingRecoveryCreatesOne
 		batchTaskLinkRepo: linkRepo,
 		createGenerateTask: func(ctx context.Context, req *GenerateRequest) (*Task, error) {
 			id := fmt.Sprintf("stale-recovery-task-%d", sequence.Add(1))
-			task := &Task{ID: id, Status: core.TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
+			task := &Task{TenantID: "tenant-test", ID: id, Status: core.TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
 			if err := taskRepo.CreateTask(ctx, task); err != nil {
 				return nil, err
 			}
@@ -4139,10 +4141,9 @@ func TestStudioBatchDetail_LoadsCreatedTasksPreservesLegacyMetadataFromDurableLi
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
-	taskRepo.tasks["task-1"] = &Task{
-		ID:     "task-1",
+	taskRepo.tasks["task-1"] = &Task{TenantID: "tenant-test", ID: "task-1",
 		Status: core.TaskStatusPending,
-		Request: &GenerateRequest{Options: &GenerateOptions{
+		Request: &GenerateRequest{ProductKey: "test-product", Options: &GenerateOptions{
 			SheinStudio: &SheinStudioOptions{StyleID: "legacy-style-1"},
 		}},
 	}
@@ -4225,8 +4226,7 @@ func TestStudioBatchDetail_ProjectsCreatedTaskSubmissionStateFromListingKitTask(
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
-	taskRepo.tasks["task-1"] = &Task{
-		ID:     "task-1",
+	taskRepo.tasks["task-1"] = &Task{TenantID: "tenant-test", ID: "task-1",
 		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			Shein: &SheinPackage{
@@ -4480,7 +4480,7 @@ func TestServiceCreateStudioBatchTasks_RecoversStaleCreatingCandidate(t *testing
 		repo:              batchRepo,
 		batchTaskLinkRepo: linkRepo,
 		createGenerateTask: func(ctx context.Context, req *GenerateRequest) (*Task, error) {
-			task := &Task{ID: "recovered-task-1", Status: core.TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
+			task := &Task{TenantID: "tenant-test", ID: "recovered-task-1", Status: core.TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
 			if err := taskRepo.CreateTask(ctx, task); err != nil {
 				return nil, err
 			}
@@ -4604,10 +4604,9 @@ func TestServiceCreateStudioBatchTasksReusesLegacyStyleIDTasks(t *testing.T) {
 			},
 		},
 	}
-	taskRepo.tasks["legacy-task-1"] = &Task{
-		ID:     "legacy-task-1",
+	taskRepo.tasks["legacy-task-1"] = &Task{TenantID: "tenant-test", ID: "legacy-task-1",
 		Status: core.TaskStatusPending,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			ImageURLs: []string{"https://cdn.example.com/design-1.png"},
 			Options: &GenerateOptions{
 				SheinStudio: &SheinStudioOptions{
@@ -4750,6 +4749,7 @@ func studioBatchFanOutSelection(
 		SheinStoreID: storeID,
 		Eligible:     true,
 		Selection: SheinStudioSelection{
+			ProductKey:         "product-" + strconv.FormatInt(variantID, 10),
 			ProductID:          variantID,
 			ParentProductID:    7001,
 			VariantID:          variantID,

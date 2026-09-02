@@ -23,7 +23,7 @@ import (
 	"task-processor/internal/listingkit/reviewstore"
 	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/listingsubscription"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/product/catalog"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinimageapi "task-processor/internal/shein/api/image"
 	sheinproductapi "task-processor/internal/shein/api/product"
@@ -396,8 +396,8 @@ func TestAssembleServiceBundleMapsRuntimeDependenciesAndClosers(t *testing.T) {
 	taskRepo := listingkitstore.NewMemTaskRepository()
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
 		Core: listingkit.ServiceCoreDependencies{
-			Repository:     taskRepo,
-			ProductService: httpapiStubProductService{},
+			Repository:            taskRepo,
+			ProductSnapshotReader: httpapiStubProductSnapshotReader{},
 		},
 	})
 	if err != nil {
@@ -1162,8 +1162,8 @@ func TestBuildTemporalModuleExposesWorkerRuntime(t *testing.T) {
 	taskRepo := listingkitstore.NewMemTaskRepository()
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
 		Core: listingkit.ServiceCoreDependencies{
-			Repository:     taskRepo,
-			ProductService: httpapiStubProductService{},
+			Repository:            taskRepo,
+			ProductSnapshotReader: httpapiStubProductSnapshotReader{},
 		},
 	})
 	if err != nil {
@@ -1703,7 +1703,7 @@ func TestBuildServiceComposesSubmitRegistrarThroughPublicEntryPoint(t *testing.T
 func buildSuccessfulServiceInputFixture() BuildServiceInput {
 	input := buildServiceInputFixture()
 	input.Logger = logrus.New()
-	input.ProductService = httpapiStubProductService{}
+	input.ProductSnapshotReader = httpapiStubProductSnapshotReader{}
 	input.Repositories.Core.Task = func(*config.Config, *logrus.Logger) (listingkit.Repository, []func() error, error) {
 		return listingkitstore.NewMemTaskRepository(), nil, nil
 	}
@@ -1742,8 +1742,8 @@ func newTestModuleService(t *testing.T) moduleService {
 
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
 		Core: listingkit.ServiceCoreDependencies{
-			Repository:     listingkitstore.NewMemTaskRepository(),
-			ProductService: httpapiStubProductService{},
+			Repository:            listingkitstore.NewMemTaskRepository(),
+			ProductSnapshotReader: httpapiStubProductSnapshotReader{},
 		},
 	})
 	if err != nil {
@@ -1756,7 +1756,7 @@ func newTestModuleService(t *testing.T) moduleService {
 	return moduleSvc
 }
 
-type httpapiStubProductService struct{}
+type httpapiStubProductSnapshotReader struct{}
 
 type httpapiStubChatCompleter struct {
 	id string
@@ -1914,16 +1914,6 @@ func containsString(values []string, target string) bool {
 	return false
 }
 
-func (httpapiStubProductService) CreateGenerateTask(context.Context, *productenrich.GenerateRequest) (*productenrich.Task, error) {
-	return nil, nil
+func (httpapiStubProductSnapshotReader) GetProductSnapshot(context.Context, listingkit.ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
+	return catalog.ProductSnapshot{Title: "Test product"}, nil
 }
-
-func (httpapiStubProductService) GetTaskResult(context.Context, string) (*productenrich.TaskResult, error) {
-	return nil, nil
-}
-
-func (httpapiStubProductService) ProcessProduct(context.Context, *productenrich.Task) (*productenrich.ProductJSON, error) {
-	return nil, nil
-}
-
-func (httpapiStubProductService) SetTaskSubmitter(productenrich.TaskSubmitter) {}

@@ -15,6 +15,7 @@ import (
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 	worker "task-processor/internal/platform/workerpool"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/productimage"
@@ -84,6 +85,9 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 
 	inputParser, err := productenrichenrich.NewInputParser(logger, &productenrich.InputParserConfig{}, e2eWebScraper{})
 	require.NoError(t, err)
+	imageServer := newE2EImageServer()
+	defer imageServer.Close()
+	imageURL := imageServer.URL + "/product.png"
 
 	deps := &runtimeDeps{
 		shared: &sharedRuntimeDeps{
@@ -96,6 +100,13 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 		},
 		features: &featureRuntimeState{},
 	}
+	deps.features.productSnapshotReader = e2eProductSnapshotReader{snapshot: catalog.ProductSnapshot{
+		Title:  "Snapshot Bluetooth Headphones",
+		Images: []catalog.Image{{URL: imageURL, Role: "primary"}},
+		Variants: []catalog.Variant{{
+			SKU: "SNAPSHOT-HEADPHONES-001", Images: []catalog.Image{{URL: imageURL, Role: "primary"}}, IsDefault: true,
+		}},
+	}}
 
 	previousFactory := newSDSSyncServiceForHTTPAPI
 	t.Cleanup(func() {
@@ -140,14 +151,11 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 	client := authenticatedAppHTTPTestClient(testServer.Client())
 	enableListingKitSubscriptionModule(t, client, testServer.URL, "studio")
 
-	imageServer := newE2EImageServer()
-	defer imageServer.Close()
-	imageURL := imageServer.URL + "/product.png"
-
 	taskID := createTaskViaAPI[map[string]any](t, client, testServer.URL+"/api/v1/listing-kits/generate", map[string]any{
-		"text":       "高品质蓝牙耳机，支持主动降噪、蓝牙 5.3、30 小时续航和舒适佩戴。",
-		"image_urls": []string{imageURL},
-		"platforms":  []string{"amazon"},
+		"product_key": "snapshot-headphones-1",
+		"text":        "高品质蓝牙耳机，支持主动降噪、蓝牙 5.3、30 小时续航和舒适佩戴。",
+		"image_urls":  []string{imageURL},
+		"platforms":   []string{"amazon"},
 		"options": map[string]any{
 			"process_images": true,
 			"sds": map[string]any{

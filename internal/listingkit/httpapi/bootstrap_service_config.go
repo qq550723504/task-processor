@@ -31,7 +31,7 @@ func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listi
 		StudioBatchRepository:         in.repositories.studioBatchRepository,
 		StudioBatchRunRepository:      in.repositories.studioBatchRunRepository,
 		StudioBatchTaskLinkRepository: in.repositories.studioBatchTaskLinkRepository,
-		ProductService:                in.input.ProductService,
+		ProductSnapshotReader:         in.input.ProductSnapshotReader,
 		ImageService:                  in.input.ImageService,
 		SDSSyncService:                in.input.SDSSyncService,
 		SDSLoginStatusProvider:        in.input.SDSLoginStatusProvider,

@@ -481,7 +481,7 @@ func TestServiceCreateStudioBatchTasks_ContinuesAfterGateRejectsCandidate(t *tes
 		}},
 		createGenerateTask: func(_ context.Context, _ *GenerateRequest) (*Task, error) {
 			created++
-			return &Task{ID: "task-created"}, nil
+			return &Task{TenantID: "tenant-test", ID: "task-created"}, nil
 		},
 	})
 
@@ -574,9 +574,9 @@ func newEligibleStudioBatchGateEvaluation(t *testing.T) *studioBatchTaskGateEval
 func baselineEntryForStudioBatchGateTest(t *testing.T, validationStatus string, version int) *SDSBaselineCacheEntry {
 	t.Helper()
 
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{Title: "Baseline Product"})
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{Title: "Baseline Product"})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	return &SDSBaselineCacheEntry{
 		Status:               SDSBaselineStatusBaselineCached,

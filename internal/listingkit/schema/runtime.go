@@ -150,7 +150,6 @@ func autoMigrateRuntime(db *gorm.DB, includeSourceAccount bool) error {
 func autoMigrateTaskRepository(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&listingkit.Task{},
-		&listingkit.CanonicalProductCacheEntry{},
 		&listingkit.SDSBaselineCacheEntry{},
 	); err != nil {
 		return err

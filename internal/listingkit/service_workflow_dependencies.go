@@ -8,7 +8,7 @@ import (
 )
 
 type workflowDependencies struct {
-	productService         ProductService
+	productSnapshots       ProductSnapshotReader
 	imageService           ImageService
 	assetRepository        assetrepo.Repository
 	assetRecipeResolver    assetrecipe.Resolver
@@ -16,11 +16,11 @@ type workflowDependencies struct {
 	assetGenerationService assetgeneration.Service
 }
 
-func resolveWorkflowProductService(s *service) ProductService {
+func resolveWorkflowProductSnapshots(s *service) ProductSnapshotReader {
 	if s == nil {
 		return nil
 	}
-	return s.workflowDeps.productService
+	return s.workflowDeps.productSnapshots
 }
 
 func resolveWorkflowImageService(s *service) ImageService {
