@@ -27,12 +27,12 @@ import {
 import {
   buildSheinCustomerIssues,
   type CustomerIssue,
-} from "@/lib/shein-studio/shein-customer-issues";
+} from "@/lib/shein/customer-issues";
 import { getSheinSubmissionState } from "@/lib/listingkit/semantic-fields";
 import {
   sheinPublishInFlight,
   sheinPublishSucceeded,
-} from "@/lib/shein-studio/shein-submission-display";
+} from "@/lib/shein/submission-display";
 import type { UpdateSheinFinalDraftRequest } from "@/lib/api/shein-final-draft";
 import type {
   SheinPreviewPayload,

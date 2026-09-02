@@ -47,11 +47,11 @@ type AISelector interface {
 
 // OpenAISelector OpenAI选择器实现
 type OpenAISelector struct {
-	openaiClient openaiClient.ChatCompleter
+	openaiClient openaiClient.TextChatCompleter
 }
 
 // NewOpenAISelector 创建新的OpenAI选择器
-func NewOpenAISelector(client openaiClient.ChatCompleter) *OpenAISelector {
+func NewOpenAISelector(client openaiClient.TextChatCompleter) *OpenAISelector {
 	return &OpenAISelector{
 		openaiClient: client,
 	}

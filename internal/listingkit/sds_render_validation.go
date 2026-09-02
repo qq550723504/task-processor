@@ -2,9 +2,12 @@ package listingkit
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"math"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/disintegration/imaging"
 )
@@ -21,15 +24,35 @@ func sdsRenderedLooksBlank(ctx context.Context, summary *SDSSyncSummary, options
 		return false
 	}
 
-	rendered, err := downloadImageForComposite(ctx, renderedURL)
+	rendered, err := downloadImageForSDSValidation(ctx, renderedURL)
 	if err != nil {
 		return false
 	}
-	blank, err := downloadImageForComposite(ctx, blankURL)
+	blank, err := downloadImageForSDSValidation(ctx, blankURL)
 	if err != nil {
 		return false
 	}
 	return normalizedImageDiff(rendered, blank) < sdsBlankRenderDiffThreshold
+}
+
+func downloadImageForSDSValidation(ctx context.Context, imageURL string) (image.Image, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := (&http.Client{Timeout: 45 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("download SDS render validation image: status %d", resp.StatusCode)
+	}
+	img, err := imaging.Decode(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("decode SDS render validation image: %w", err)
+	}
+	return img, nil
 }
 
 func normalizedImageDiff(a image.Image, b image.Image) float64 {

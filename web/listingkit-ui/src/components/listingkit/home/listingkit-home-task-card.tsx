@@ -9,7 +9,7 @@ import {
 import {
   sheinSubmissionRemoteStatusLabel,
   sheinWorkflowStatusLabel,
-} from "@/lib/shein-studio/shein-submission-display";
+} from "@/lib/shein/submission-display";
 import {
   hasActionablePodExecution,
   podExecutionBadgeLabel,

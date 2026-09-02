@@ -35,14 +35,6 @@ func (c *strictListingKitChatClient) Generate(ctx context.Context, prompt string
 	return client.Generate(ctx, prompt)
 }
 
-func (c *strictListingKitChatClient) AnalyzeImage(ctx context.Context, imageURL string, prompt string) (string, error) {
-	client, err := c.resolve(ctx)
-	if err != nil {
-		return "", err
-	}
-	return client.AnalyzeImage(ctx, imageURL, prompt)
-}
-
 func (c *strictListingKitChatClient) GetDefaultModel() string {
 	return ""
 }

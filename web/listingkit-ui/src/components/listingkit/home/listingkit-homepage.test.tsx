@@ -45,9 +45,7 @@ describe("Home", () => {
     expect(
       screen.getByRole("link", { name: "新建 ListingKit 任务" }),
     ).toHaveAttribute("href", "/listing-kits/new");
-    expect(
-      screen.getByRole("link", { name: "POD" }),
-    ).toHaveAttribute("href", "/listing-kits/sds");
+    expect(screen.queryByRole("link", { name: "POD" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "SHEIN 上架工作台" })).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "任务列表" }),

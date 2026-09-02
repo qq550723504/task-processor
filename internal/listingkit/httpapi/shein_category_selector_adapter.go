@@ -12,7 +12,7 @@ type sheinCategorySelectorAdapter struct {
 	selector sheincategoryselector.AISelector
 }
 
-func newSheinCategorySelectorAdapter(llm openaiclient.ChatCompleter) sheinpub.CategoryAISelector {
+func newSheinCategorySelectorAdapter(llm openaiclient.TextChatCompleter) sheinpub.CategoryAISelector {
 	if llm == nil {
 		return nil
 	}

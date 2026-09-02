@@ -282,28 +282,6 @@ describe("buildListingKitUpstreamHeaders", () => {
     expect(headers.get("X-Tenant-ID")).toBeNull();
   });
 
-  it("forwards shein studio trace headers to the upstream request", () => {
-    const request = new Request("http://localhost/api/listing-kits/studio/async-jobs", {
-      headers: {
-        accept: "application/json",
-        "x-listingkit-batch-run-id": "run-1",
-        "x-listingkit-batch-id": "batch-1",
-        "x-listingkit-studio-session-id": "session-1",
-        "x-listingkit-queue-mode": "generate",
-        "x-listingkit-queue-index": "2",
-        "x-listingkit-queue-total": "5",
-      },
-    });
-
-    const headers = buildListingKitUpstreamHeaders(request.headers);
-
-    expect(headers.get("X-ListingKit-Batch-Run-Id")).toBe("run-1");
-    expect(headers.get("X-ListingKit-Batch-Id")).toBe("batch-1");
-    expect(headers.get("X-ListingKit-Studio-Session-Id")).toBe("session-1");
-    expect(headers.get("X-ListingKit-Queue-Mode")).toBe("generate");
-    expect(headers.get("X-ListingKit-Queue-Index")).toBe("2");
-    expect(headers.get("X-ListingKit-Queue-Total")).toBe("5");
-  });
 });
 
 describe("verifyListingKitRequestIdentity", () => {

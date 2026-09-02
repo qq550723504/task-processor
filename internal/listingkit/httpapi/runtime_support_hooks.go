@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"task-processor/internal/ai"
+	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -15,13 +15,13 @@ func buildRuntimeSupportHooks(cookieStore *sheinlogin.RedisStore) BuildServiceHo
 		LegacyTenantResolverConfigurator: ConfigureLegacyTenantResolver,
 		SheinCategoryLLMClientBuilder:    BuildSheinCategoryLLMClient,
 		SheinSaleAttributeLLMBuilder:     BuildSheinSaleAttributeLLMClient,
-		SheinCategoryResolverBuilder: func(storeRepo listingadmin.StoreRepository, llm ai.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+		SheinCategoryResolverBuilder: func(storeRepo listingadmin.StoreRepository, llm openaiclient.TextChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
 			return buildListingKitSheinCategoryResolver(storeRepo, cookieStore, llm, cache)
 		},
-		SheinAttributeResolverBuilder: func(storeRepo listingadmin.StoreRepository, llm ai.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
+		SheinAttributeResolverBuilder: func(storeRepo listingadmin.StoreRepository, llm openaiclient.TextChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
 			return buildListingKitSheinAttributeResolver(storeRepo, cookieStore, llm, cache)
 		},
-		SheinSaleAttributeResolverBuilder: func(storeRepo listingadmin.StoreRepository, llm ai.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
+		SheinSaleAttributeResolverBuilder: func(storeRepo listingadmin.StoreRepository, llm openaiclient.TextChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
 			return buildListingKitSheinSaleAttributeResolver(storeRepo, cookieStore, llm, cache)
 		},
 		SheinProductAPIBuilderFactory: func(storeRepo listingadmin.StoreRepository) sheinpub.ProductAPIBuilder {

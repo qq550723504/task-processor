@@ -182,7 +182,7 @@ describe("subscription API schema", () => {
           {
             plan_code: "professional",
             module_code: "studio",
-            limits: { design_jobs: 100 },
+            limits: { listingkit_generations_succeeded: 100 },
             sort_order: 50,
           },
         ],
@@ -208,12 +208,12 @@ describe("subscription API schema", () => {
             tenant_id: "org-286",
             module_code: "studio",
             status: "active",
-            limits: { design_jobs: 10 },
+            limits: { listingkit_generations_succeeded: 10 },
           },
           usage: [],
           allowed: true,
-          limits: { design_jobs: 10 },
-          used: { design_jobs: 2 },
+          limits: { listingkit_generations_succeeded: 10 },
+          used: { listingkit_generations_succeeded: 2 },
         },
       ],
     });
@@ -221,7 +221,7 @@ describe("subscription API schema", () => {
     expect(parsed.tenant_id).toBe("org-286");
     expect(parsed.current_plan?.plan.name).toBe("专业版");
     expect(parsed.entitlements[0]?.allowed).toBe(true);
-    expect(parsed.entitlements[0]?.limits?.design_jobs).toBe(10);
+    expect(parsed.entitlements[0]?.limits?.listingkit_generations_succeeded).toBe(10);
   });
 
   it("parses subscription plans", () => {
@@ -238,7 +238,7 @@ describe("subscription API schema", () => {
             {
               plan_code: "professional",
               module_code: "studio",
-              limits: { design_jobs: 100 },
+              limits: { listingkit_generations_succeeded: 100 },
               sort_order: 50,
             },
           ],
@@ -247,7 +247,7 @@ describe("subscription API schema", () => {
     });
 
     expect(plans[0]?.plan.code).toBe("professional");
-    expect(plans[0]?.modules[0]?.limits?.design_jobs).toBe(100);
+    expect(plans[0]?.modules[0]?.limits?.listingkit_generations_succeeded).toBe(100);
   });
 
   it("parses tenant overviews with display names", () => {
@@ -311,7 +311,7 @@ describe("subscription API schema", () => {
     const payload = parseSubscriptionRequiredPayload({
       error: "quota_exceeded",
       module_code: "studio",
-      metric: "design_jobs",
+      metric: "listingkit_generations_succeeded",
       limit: 1,
       used: 2,
     });

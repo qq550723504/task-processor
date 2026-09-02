@@ -24,14 +24,14 @@ import {
 import {
   buildSheinCustomerIssues,
   type CustomerIssue,
-} from "@/lib/shein-studio/shein-customer-issues";
+} from "@/lib/shein/customer-issues";
 import {
   sheinLatestSubmissionSummary,
   sheinLatestSubmissionTitle,
   sheinPublishInFlight,
   sheinPublishSucceeded,
   sheinSubmitPhaseLabel,
-} from "@/lib/shein-studio/shein-submission-display";
+} from "@/lib/shein/submission-display";
 import type {
   SheinImageUploadPreflight,
   SheinReadinessItem,

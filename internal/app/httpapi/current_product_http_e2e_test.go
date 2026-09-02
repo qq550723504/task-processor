@@ -190,13 +190,13 @@ func TestHTTPE2E_CurrentListingKitUsesReadOnlySnapshotAndApprovedAssets(t *testi
 		input.Runtime.Support.Hooks.ImageUploadStoreBuilder = func(*config.Config, *logrus.Logger) (listingkit.ImageUploadStore, error) {
 			return uploadStore, nil
 		}
-		input.Runtime.Support.Hooks.SheinCategoryResolverBuilder = func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+		input.Runtime.Support.Hooks.SheinCategoryResolverBuilder = func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
 			return categoryResolver
 		}
-		input.Runtime.Support.Hooks.SheinAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
+		input.Runtime.Support.Hooks.SheinAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
 			return currentE2EResolvedAttributes{}
 		}
-		input.Runtime.Support.Hooks.SheinSaleAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
+		input.Runtime.Support.Hooks.SheinSaleAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
 			return currentE2EResolvedSaleAttributes{}
 		}
 		input.Runtime.Support.Hooks.SheinAPIClientFactoryBuilder = func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory {
@@ -393,13 +393,13 @@ func TestHTTPE2E_CurrentListingKitPersistsFailedWhenRemoteResolutionIsUnavailabl
 		input.Runtime.Support.Hooks.ImageUploadStoreBuilder = func(*config.Config, *logrus.Logger) (listingkit.ImageUploadStore, error) {
 			return uploadStore, nil
 		}
-		input.Runtime.Support.Hooks.SheinCategoryResolverBuilder = func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+		input.Runtime.Support.Hooks.SheinCategoryResolverBuilder = func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
 			return currentE2EUnavailableCategory{}
 		}
-		input.Runtime.Support.Hooks.SheinAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
+		input.Runtime.Support.Hooks.SheinAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
 			return currentE2EResolvedAttributes{}
 		}
-		input.Runtime.Support.Hooks.SheinSaleAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
+		input.Runtime.Support.Hooks.SheinSaleAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
 			return currentE2EResolvedSaleAttributes{}
 		}
 		input.Runtime.Support.Hooks.SheinAPIClientFactoryBuilder = func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory {

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Session } from "next-auth";
 
-import { LISTINGKIT_TRACE_HEADER_NAMES } from "@/lib/listingkit/request-trace";
 import {
   getZitadelAuthOptions,
   readZitadelSessionClientID,
@@ -140,10 +139,6 @@ export function buildListingKitUpstreamHeaders(
   copyHeader(requestHeaders, headers, "if-none-match", "If-None-Match");
   copyHeader(requestHeaders, headers, "content-type", "Content-Type");
   copyHeader(requestHeaders, headers, "authorization", "Authorization");
-  for (const headerName of Object.values(LISTINGKIT_TRACE_HEADER_NAMES)) {
-    copyHeader(requestHeaders, headers, headerName, headerName);
-  }
-
   const tenantID = stringifyIdentityValue(verifiedIdentity?.tenantId);
   const userID = stringifyIdentityValue(verifiedIdentity?.userId);
   const userType = stringifyIdentityValue(verifiedIdentity?.userType);

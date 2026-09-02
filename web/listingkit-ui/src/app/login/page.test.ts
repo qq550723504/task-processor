@@ -16,12 +16,12 @@ describe("LoginPage", () => {
   it("redirects to the ZITADEL login endpoint with a normalized returnTo", async () => {
     await LoginPage({
       searchParams: Promise.resolve({
-        returnTo: "/listing-kits/sds?step=generate",
+        returnTo: "/listing-kits/canonical-products?source=import",
       }),
     });
 
     expect(redirectMock).toHaveBeenCalledWith(
-      "/api/zitadel-auth/login?returnTo=%2Flisting-kits%2Fsds%3Fstep%3Dgenerate",
+      "/api/zitadel-auth/login?returnTo=%2Flisting-kits%2Fcanonical-products%3Fsource%3Dimport",
     );
   });
 

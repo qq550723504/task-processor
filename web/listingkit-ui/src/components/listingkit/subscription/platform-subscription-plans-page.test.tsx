@@ -89,7 +89,7 @@ describe("PlatformSubscriptionPlansPage", () => {
           {
             plan_code: "professional",
             module_code: "studio",
-            limits: { design_jobs: 100 },
+            limits: { listingkit_generations_succeeded: 100 },
             sort_order: 50,
           },
         ],

@@ -74,12 +74,12 @@ describe("SubscriptionPage", () => {
             tenant_id: "org-286",
             module_code: "studio",
             status: "active",
-            limits: { design_jobs: 10 },
+            limits: { listingkit_generations_succeeded: 10 },
           },
           usage: [],
           allowed: true,
-          limits: { design_jobs: 10 },
-          used: { design_jobs: 2 },
+          limits: { listingkit_generations_succeeded: 10 },
+          used: { listingkit_generations_succeeded: 2 },
         },
         {
           module: {
@@ -108,7 +108,7 @@ describe("SubscriptionPage", () => {
       tenant_id: "org-286",
       module_code: "studio",
       status: "active",
-      limits: { design_jobs: 10 },
+      limits: { listingkit_generations_succeeded: 10 },
     });
   });
 
@@ -116,11 +116,11 @@ describe("SubscriptionPage", () => {
     renderWithQueryClient(<SubscriptionPage />);
 
     expect(await screen.findByText("Studio")).toBeInTheDocument();
-    expect(screen.getByText("控制生成任务、工作台和图片生产类能力。")).toBeInTheDocument();
+    expect(screen.getByText("控制 ListingKit 生成任务能力与额度。")).toBeInTheDocument();
     expect(screen.getByText("当前套餐：专业版")).toBeInTheDocument();
     expect(screen.getAllByText("已开通").length).toBeGreaterThan(0);
-    expect(screen.getByText("设计任务额度: 10")).toBeInTheDocument();
-    expect(screen.getByText("设计任务额度: 2")).toBeInTheDocument();
+    expect(screen.getByText("ListingKit 生成额度: 10")).toBeInTheDocument();
+    expect(screen.getByText("ListingKit 生成额度: 2")).toBeInTheDocument();
     expect(screen.getByText("存储额度: 1 MB")).toBeInTheDocument();
     expect(screen.getByText("存储额度: 2 KB")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "配置" })).not.toBeInTheDocument();

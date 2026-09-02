@@ -5,7 +5,7 @@ import type {
   SheinSubmissionRecord,
   SheinSubmissionReport,
 } from "@/lib/types/listingkit";
-import { sheinSubmitPhaseLabel } from "@/lib/shein-studio/shein-submission-display";
+import { sheinSubmitPhaseLabel } from "@/lib/shein/submission-display";
 
 export function SubmitActionCard({
   canRunSubmitActions,

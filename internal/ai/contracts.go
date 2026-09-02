@@ -58,11 +58,15 @@ type ChatCompletionResponse struct {
 	Usage   Usage                  `json:"usage"`
 }
 
-type ChatCompleter interface {
+type TextChatCompleter interface {
 	CreateChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error)
 	Generate(ctx context.Context, prompt string) (string, error)
-	AnalyzeImage(ctx context.Context, imageURL string, prompt string) (string, error)
 	GetDefaultModel() string
+}
+
+type ChatCompleter interface {
+	TextChatCompleter
+	AnalyzeImage(ctx context.Context, imageURL string, prompt string) (string, error)
 }
 
 type ImageGenerateRequest struct {

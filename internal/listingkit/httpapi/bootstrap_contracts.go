@@ -132,11 +132,11 @@ type BuildServiceHooks struct {
 	SheinPricingPolicyBuilder         func(*config.Config) sheinpub.PricingPolicy
 	ImageUploadStoreBuilder           func(*config.Config, *logrus.Logger) (listingkit.ImageUploadStore, error)
 	LegacyTenantResolverConfigurator  func(*config.Config, *logrus.Logger) (func() error, error)
-	SheinCategoryLLMClientBuilder     func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
-	SheinSaleAttributeLLMBuilder      func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
-	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
-	SheinAttributeResolverBuilder     func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
-	SheinSaleAttributeResolverBuilder func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
+	SheinCategoryLLMClientBuilder     func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.TextChatCompleter
+	SheinSaleAttributeLLMBuilder      func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.TextChatCompleter
+	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
+	SheinAttributeResolverBuilder     func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
+	SheinSaleAttributeResolverBuilder func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
 	SheinProductAPIBuilderFactory     func(listingadmin.StoreRepository) sheinpub.ProductAPIBuilder
 	SheinImageAPIBuilderFactory       func(listingadmin.StoreRepository) sheinpub.ImageAPIBuilder
 	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder

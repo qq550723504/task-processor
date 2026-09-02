@@ -18,6 +18,7 @@ type ChatCompletionChoice = ai.ChatCompletionChoice
 type Usage = ai.Usage
 type ChatCompletionResponse = ai.ChatCompletionResponse
 type ChatCompleter = ai.ChatCompleter
+type TextChatCompleter = ai.TextChatCompleter
 type ImageGenerateRequest = ai.ImageGenerateRequest
 type ImageEditRequest = ai.ImageEditRequest
 type ImageData = ai.ImageData

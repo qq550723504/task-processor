@@ -70,8 +70,8 @@ describe("ZitadelAuthGate", () => {
     );
     const assign = vi.fn();
     const location = {
-      pathname: "/listing-kits/sds",
-      search: "?step=generate",
+      pathname: "/listing-kits/canonical-products",
+      search: "?source=import",
       assign,
     };
     vi.stubGlobal(
@@ -97,10 +97,10 @@ describe("ZitadelAuthGate", () => {
 
     await waitFor(() => {
       expect(assign).toHaveBeenCalledWith(
-        "/login?returnTo=%2Flisting-kits%2Fsds%3Fstep%3Dgenerate",
+        "/login?returnTo=%2Flisting-kits%2Fcanonical-products%3Fsource%3Dimport",
       );
     });
-    expect(assign).not.toHaveBeenCalledWith("/listing-kits/sds?step=generate");
+    expect(assign).not.toHaveBeenCalledWith("/listing-kits/canonical-products?source=import");
 
     window.history.replaceState({}, "", "/");
   });

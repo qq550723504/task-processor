@@ -3,7 +3,6 @@ package httpapi
 import (
 	"fmt"
 
-	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/integration/openai"
 )
@@ -12,11 +11,11 @@ const (
 	sheinSaleAttributeClientName = "scorer"
 )
 
-func BuildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ChatCompleter {
+func BuildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.TextChatCompleter {
 	return buildStrictListingKitChatClient(cfg, resolver, "default")
 }
 
-func BuildSheinSaleAttributeLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ChatCompleter {
+func BuildSheinSaleAttributeLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.TextChatCompleter {
 	return buildStrictListingKitChatClient(cfg, resolver, sheinSaleAttributeClientName)
 }
 

@@ -27,7 +27,7 @@ import { useRecoverTaskNow } from "@/lib/query/use-task-recovery";
 import {
   sheinSubmissionRemoteStatusLabel,
   sheinWorkflowStatusLabel,
-} from "@/lib/shein-studio/shein-submission-display";
+} from "@/lib/shein/submission-display";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 function formatStatusDate(value?: string) {

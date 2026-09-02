@@ -1,6 +1,7 @@
 package shein
 
 import (
+	"strconv"
 	"strings"
 
 	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
@@ -142,20 +143,26 @@ func SubmitPricingReady(pkg *Package) bool {
 	if pkg == nil || pkg.DraftPayload == nil {
 		return false
 	}
-	skus := make([]sheinmarketpub.SubmitPricingSKUInput, 0)
+	hasSKU := false
 	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
-			item := sheinmarketpub.SubmitPricingSKUInput{
-				BasePrice:      sku.BasePrice,
-				SiteBasePrices: make([]string, 0, len(sku.SitePriceList)),
+			hasSKU = true
+			if !positiveSubmitMoney(sku.BasePrice) || len(sku.SitePriceList) == 0 {
+				return false
 			}
 			for _, sitePrice := range sku.SitePriceList {
-				item.SiteBasePrices = append(item.SiteBasePrices, sitePrice.BasePrice)
+				if !positiveSubmitMoney(sitePrice.BasePrice) {
+					return false
+				}
 			}
-			skus = append(skus, item)
 		}
 	}
-	return sheinmarketpub.SubmitPricingReady(skus)
+	return hasSKU
+}
+
+func positiveSubmitMoney(value string) bool {
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	return err == nil && parsed > 0
 }
 
 // FinalReviewReady reports whether final review confirmation allows the submit action to continue.

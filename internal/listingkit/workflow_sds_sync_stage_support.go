@@ -37,7 +37,7 @@ func failSDSSyncStage(result *ListingKitResult, req *GenerateRequest, recorder *
 
 func finalizeSDSSyncSummary(ctx context.Context, result *ListingKitResult, req *GenerateRequest, recorder *workflowRecorder, stage *workflowStageHandle, summary *SDSSyncSummary, options *SDSSyncOptions) bool {
 	result.SDSDesignResult = summary
-	if needsLocalSDSMockupFallback(result.SDSDesignResult, options) {
+	if sdsRenderedImageSetIncomplete(result.SDSDesignResult, options) {
 		appendWarning(result, "SDS render returned fewer images than expected; local fallback disabled")
 		recorder.AddIssue(WorkflowIssueSeverityWarning, "sds_design_sync", "sds_render_incomplete", "SDS render returned fewer images than expected", "local fallback disabled")
 	}
@@ -54,6 +54,18 @@ func finalizeSDSSyncSummary(ctx context.Context, result *ListingKitResult, req *
 	stage.Complete()
 	ensureResultPodExecution(result, req)
 	return true
+}
+
+func sdsRenderedImageSetIncomplete(summary *SDSSyncSummary, options *SDSSyncOptions) bool {
+	if summary == nil || options == nil || len(options.MockupImageURLs) == 0 {
+		return false
+	}
+	renderedCount := len(uniqueNonEmptyStrings(summary.MockupImageURLs))
+	if renderedCount == 0 {
+		return true
+	}
+	expectedCount := len(uniqueNonEmptyStrings(options.MockupImageURLs))
+	return expectedCount > 1 && renderedCount < expectedCount
 }
 
 func failedSDSVariantSyncSummary(variant SDSSyncVariantOption, errorMsg string) SDSSyncSummary {

@@ -356,10 +356,6 @@ func (s *stubSheinContentAI) Generate(context.Context, string) (string, error) {
 	return "", nil
 }
 
-func (s *stubSheinContentAI) AnalyzeImage(context.Context, string, string) (string, error) {
-	return "", nil
-}
-
 func (s *stubSheinContentAI) GetDefaultModel() string {
 	return "test"
 }

@@ -44,10 +44,6 @@ func (s *scriptedListingKitLLM) Generate(context.Context, string) (string, error
 	return response, nil
 }
 
-func (s *scriptedListingKitLLM) AnalyzeImage(context.Context, string, string) (string, error) {
-	return "", nil
-}
-
 func (s *scriptedListingKitLLM) GetDefaultModel() string {
 	return "test"
 }

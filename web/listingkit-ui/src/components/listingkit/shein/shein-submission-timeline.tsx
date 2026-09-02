@@ -3,7 +3,7 @@ import {
   sheinSubmissionActionLabel,
   sheinSubmissionStatusLabel,
   sheinSubmitPhaseLabel,
-} from "@/lib/shein-studio/shein-submission-display";
+} from "@/lib/shein/submission-display";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 

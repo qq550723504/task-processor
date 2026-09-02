@@ -278,7 +278,7 @@ describe("TaskListPage", () => {
     render(<TaskListPage />);
 
     expect(screen.getByRole("button", { name: "刷新" })).toHaveClass("w-full");
-    expect(screen.getAllByRole("link", { name: "新建 POD 批次" })[0]).toHaveClass("w-full");
+    expect(screen.queryByRole("link", { name: "新建 POD 批次" })).not.toBeInTheDocument();
     for (const combobox of screen.getAllByRole("combobox")) {
       expect(combobox).toHaveClass("w-full");
     }

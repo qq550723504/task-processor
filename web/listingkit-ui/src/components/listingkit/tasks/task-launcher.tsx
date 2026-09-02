@@ -51,12 +51,6 @@ export function TaskLauncher() {
           <Button variant="secondary" onClick={() => router.push("/listing-kits/new")}>
             Create New Task
           </Button>
-          <Button variant="secondary" onClick={() => router.push("/listing-kits/sds")}>
-            Open POD
-          </Button>
-          <Button variant="secondary" onClick={() => router.push("/listing-kits/sds")}>
-            Open POD
-          </Button>
           <Button
             disabled={!normalizedTaskId}
             onClick={() => openTask("workspace", normalizedTaskId)}

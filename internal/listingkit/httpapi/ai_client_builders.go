@@ -1,12 +1,11 @@
 package httpapi
 
 import (
-	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/integration/openai"
 )
 
-func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ChatCompleter {
+func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.TextChatCompleter {
 	return &strictListingKitChatClient{
 		clientName: clientName,
 		resolver:   resolver,

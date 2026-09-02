@@ -2,6 +2,20 @@ package shein
 
 import "testing"
 
+func TestNormalizePricingSKUIdentityIgnoresTransientPublishingTokens(t *testing.T) {
+	t.Parallel()
+
+	for input, want := range map[string]string{
+		"MG8006062004-V96697-TB9B6431C-RA8CD5E-E5BADD24": "MG8006062004",
+		"MG8006062004-TB9B6431C-RA8CD5E-E5BADD24":        "MG8006062004",
+		"MG8006062004-EF926739":                          "MG8006062004",
+	} {
+		if got := normalizePricingSKUIdentity(input); got != want {
+			t.Fatalf("normalizePricingSKUIdentity(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestReconcilePricingCacheReviewRemapsManualOverrideToCurrentDraftSKU(t *testing.T) {
 	t.Parallel()
 

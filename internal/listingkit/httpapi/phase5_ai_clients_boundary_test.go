@@ -29,7 +29,7 @@ func TestAIClientsFileStaysFocusedOnClientBuilderAndResolverAssembly(t *testing.
 	require.NotContains(t, content, "func buildStrictListingKitNanobananaImageClient(")
 	require.NotContains(t, content, "func buildListingKitRoutedImageClient(")
 
-	require.Contains(t, content, "func BuildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ChatCompleter {")
+	require.Contains(t, content, "func BuildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.TextChatCompleter {")
 }
 
 func TestAIClientFallbackHelpersFileOwnsFallbackSanitizingAndNaming(t *testing.T) {
@@ -53,6 +53,7 @@ func TestAIClientStrictChatFileOwnsStrictChatResolution(t *testing.T) {
 
 	require.Contains(t, content, "type strictListingKitChatClient struct {")
 	require.Contains(t, content, "func resolveStrictListingKitClient(")
+	require.NotContains(t, content, "AnalyzeImage")
 }
 
 func TestAIClientBuildersFileOwnsStrictClientConstruction(t *testing.T) {
@@ -62,6 +63,6 @@ func TestAIClientBuildersFileOwnsStrictClientConstruction(t *testing.T) {
 	require.NoError(t, err)
 	content := string(src)
 
-	require.Contains(t, content, "func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ChatCompleter {")
+	require.Contains(t, content, "func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.TextChatCompleter {")
 	require.NotContains(t, content, "ImageGenerator")
 }

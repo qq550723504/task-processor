@@ -39,6 +39,7 @@ function buildMockBundle(taskId: string, focusCapability?: string): ListingKitMo
     preview: {
       task_id: taskId,
       status: "completed",
+      created_at: "2026-04-19T00:00:00Z",
       selected_platform: shared.reviewSession.selected_platform,
       platforms: ["shein", "temu"],
       needs_review: true,
