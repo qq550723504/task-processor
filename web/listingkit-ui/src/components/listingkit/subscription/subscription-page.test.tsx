@@ -46,9 +46,9 @@ describe("SubscriptionPage", () => {
       },
       modules: [
         {
-          code: "studio",
+          code: "listingkit",
           name: "Studio",
-          description: "Design jobs",
+          description: "ListingKit generation",
           sort_order: 50,
           active: true,
         },
@@ -63,16 +63,16 @@ describe("SubscriptionPage", () => {
       entitlements: [
         {
           module: {
-            code: "studio",
+            code: "listingkit",
             name: "Studio",
-            description: "Design jobs",
+            description: "ListingKit generation",
             sort_order: 50,
             active: true,
           },
           entitlement: {
             id: 1,
             tenant_id: "org-286",
-            module_code: "studio",
+            module_code: "listingkit",
             status: "active",
             limits: { listingkit_generations_succeeded: 10 },
           },
@@ -106,7 +106,7 @@ describe("SubscriptionPage", () => {
     mockedUpdateSubscriptionEntitlement.mockResolvedValue({
       id: 1,
       tenant_id: "org-286",
-      module_code: "studio",
+      module_code: "listingkit",
       status: "active",
       limits: { listingkit_generations_succeeded: 10 },
     });

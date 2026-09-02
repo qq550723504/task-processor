@@ -116,8 +116,8 @@ func pocMeterRequests(names pocNames) []openmeterapi.CreateMeterRequest {
 	quantity := "$.quantity"
 	return []openmeterapi.CreateMeterRequest{
 		{
-			Name:        names.StudioMeterKey,
-			Key:         names.StudioMeterKey,
+			Name:        names.ListingKitMeterKey,
+			Key:         names.ListingKitMeterKey,
 			Aggregation: openmeterapi.MeterAggregationCount,
 			EventType:   eventTypeForMetric(MetricListingKitGenerationsSucceeded),
 		},
@@ -159,7 +159,7 @@ func pocCustomerRequests(names pocNames) []openmeterapi.CreateCustomerRequest {
 	}
 }
 
-func pocPlanRequest(names pocNames, studioFeatureID, sheinFeatureID, storageFeatureID string) (openmeterapi.CreatePlanRequest, error) {
+func pocPlanRequest(names pocNames, listingkitFeatureID, sheinFeatureID, storageFeatureID string) (openmeterapi.CreatePlanRequest, error) {
 	freePrice, err := openmeterapi.PriceFromPriceFree(openmeterapi.PriceFree{})
 	if err != nil {
 		return openmeterapi.CreatePlanRequest{}, fmt.Errorf("construct OpenMeter free price: %w", err)
@@ -171,7 +171,7 @@ func pocPlanRequest(names pocNames, studioFeatureID, sheinFeatureID, storageFeat
 		featureID string
 		limit     float64
 	}{
-		{key: names.StudioFeatureKey, featureID: studioFeatureID, limit: 5},
+		{key: names.ListingKitFeatureKey, featureID: listingkitFeatureID, limit: 5},
 		{key: names.SheinFeatureKey, featureID: sheinFeatureID, limit: 3},
 		{key: names.StorageFeatureKey, featureID: storageFeatureID, limit: 10 * 1024 * 1024},
 	}
@@ -270,7 +270,7 @@ func setupPoCFixture(ctx context.Context, sdk *openmeterapi.Client, environment 
 	}
 
 	featureRequests := []openmeterapi.CreateFeatureRequest{
-		{Name: names.StudioFeatureKey, Key: names.StudioFeatureKey, Meter: &openmeterapi.FeatureMeterReferenceInput{ID: fixture.Meters[0].ID}},
+		{Name: names.ListingKitFeatureKey, Key: names.ListingKitFeatureKey, Meter: &openmeterapi.FeatureMeterReferenceInput{ID: fixture.Meters[0].ID}},
 		{Name: names.SheinFeatureKey, Key: names.SheinFeatureKey, Meter: &openmeterapi.FeatureMeterReferenceInput{ID: fixture.Meters[1].ID}},
 		{Name: names.StorageFeatureKey, Key: names.StorageFeatureKey, Meter: &openmeterapi.FeatureMeterReferenceInput{ID: fixture.Meters[2].ID}},
 	}
@@ -651,7 +651,7 @@ func TestPoCMeterRequestsMatchUsageContract(t *testing.T) {
 		eventType     string
 		valueProperty string
 	}{
-		{key: "poc_run_42_studio_meter", aggregation: openmeterapi.MeterAggregationCount, eventType: "listingkit.usage.listingkit_generations_succeeded"},
+		{key: "poc_run_42_listingkit_meter", aggregation: openmeterapi.MeterAggregationCount, eventType: "listingkit.usage.listingkit_generations_succeeded"},
 		{key: "poc_run_42_shein_meter", aggregation: openmeterapi.MeterAggregationCount, eventType: "listingkit.usage.shein_drafts_succeeded"},
 		{key: "poc_run_42_storage_meter", aggregation: openmeterapi.MeterAggregationLatest, eventType: "listingkit.usage.storage_bytes_current", valueProperty: "$.quantity"},
 	}
@@ -695,7 +695,7 @@ func TestPoCCustomerRequestsUseUniqueSubjects(t *testing.T) {
 
 func TestPoCPlanRequestUsesOfficialFreePriceAndMeteredEntitlements(t *testing.T) {
 	names := pocNamesForRunID("run-42")
-	request, err := pocPlanRequest(names, "feature-studio", "feature-shein", "feature-storage")
+	request, err := pocPlanRequest(names, "feature-listingkit", "feature-shein", "feature-storage")
 	if err != nil {
 		t.Fatalf("pocPlanRequest() error = %v", err)
 	}
@@ -713,8 +713,8 @@ func TestPoCPlanRequestUsesOfficialFreePriceAndMeteredEntitlements(t *testing.T)
 		t.Fatalf("pocPlanRequest() rate cards = %d, want 3", len(phase.RateCards))
 	}
 
-	wantFeatures := []string{"feature-studio", "feature-shein", "feature-storage"}
-	wantRateCardKeys := []string{names.StudioFeatureKey, names.SheinFeatureKey, names.StorageFeatureKey}
+	wantFeatures := []string{"feature-listingkit", "feature-shein", "feature-storage"}
+	wantRateCardKeys := []string{names.ListingKitFeatureKey, names.SheinFeatureKey, names.StorageFeatureKey}
 	wantLimits := []float64{5, 3, 10 * 1024 * 1024}
 	for index, rateCard := range phase.RateCards {
 		if rateCard.Key != wantRateCardKeys[index] {
@@ -746,7 +746,7 @@ func TestPoCPlanRequestUsesOfficialFreePriceAndMeteredEntitlements(t *testing.T)
 }
 
 func TestValidatePoCPlanAcceptsServerDefaultedEntitlementUsagePeriod(t *testing.T) {
-	request, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-studio", "feature-shein", "feature-storage")
+	request, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-listingkit", "feature-shein", "feature-storage")
 	if err != nil {
 		t.Fatalf("pocPlanRequest() error = %v", err)
 	}
@@ -774,7 +774,7 @@ func TestPoCFixtureValidationRejectsIncompatibleExistingResources(t *testing.T) 
 
 	meterRequest := pocMeterRequests(names)[0]
 	meter := openmeterapi.Meter{
-		ID:            "meter-studio",
+		ID:            "meter-listingkit",
 		Name:          meterRequest.Name,
 		Key:           meterRequest.Key,
 		Aggregation:   meterRequest.Aggregation,
@@ -795,16 +795,16 @@ func TestPoCFixtureValidationRejectsIncompatibleExistingResources(t *testing.T) 
 	}
 
 	featureRequest := openmeterapi.CreateFeatureRequest{
-		Name:  "poc_run_42_studio_feature",
-		Key:   "poc_run_42_studio_feature",
-		Meter: &openmeterapi.FeatureMeterReferenceInput{ID: "meter-studio"},
+		Name:  "poc_run_42_listingkit_feature",
+		Key:   "poc_run_42_listingkit_feature",
+		Meter: &openmeterapi.FeatureMeterReferenceInput{ID: "meter-listingkit"},
 	}
 	feature := openmeterapi.Feature{
-		ID:   "feature-studio",
+		ID:   "feature-listingkit",
 		Name: featureRequest.Name,
 		Key:  featureRequest.Key,
 		Meter: &openmeterapi.FeatureMeterReference{
-			ID: "meter-studio",
+			ID: "meter-listingkit",
 		},
 	}
 	if err := validatePoCFeature(featureRequest, &feature); err != nil {
@@ -814,7 +814,7 @@ func TestPoCFixtureValidationRejectsIncompatibleExistingResources(t *testing.T) 
 	if err := validatePoCFeature(featureRequest, &feature); err == nil {
 		t.Fatal("validatePoCFeature() incompatible error = nil")
 	}
-	feature.Meter.ID = "meter-studio"
+	feature.Meter.ID = "meter-listingkit"
 	feature.Meter.Filters = map[string]openmeterapi.QueryFilterStringMapItem{"region": {}}
 	if err := validatePoCFeature(featureRequest, &feature); err == nil {
 		t.Fatal("validatePoCFeature() unexpected meter filters error = nil")
@@ -836,7 +836,7 @@ func TestPoCFixtureValidationRejectsIncompatibleExistingResources(t *testing.T) 
 		t.Fatal("validatePoCCustomer() incompatible error = nil")
 	}
 
-	planRequest, err := pocPlanRequest(names, "feature-studio", "feature-shein", "feature-storage")
+	planRequest, err := pocPlanRequest(names, "feature-listingkit", "feature-shein", "feature-storage")
 	if err != nil {
 		t.Fatalf("pocPlanRequest() error = %v", err)
 	}
@@ -890,7 +890,7 @@ func TestWaitForPoCMeterCancelsInFlightRequestAtTotalDeadline(t *testing.T) {
 	parentContext, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
 	startedAt := time.Now()
-	_, err = waitForPoCMeterWithin(parentContext, sdk, "meter-studio", time.Millisecond, 20*time.Millisecond)
+	_, err = waitForPoCMeterWithin(parentContext, sdk, "meter-listingkit", time.Millisecond, 20*time.Millisecond)
 	elapsed := time.Since(startedAt)
 	if err == nil {
 		t.Fatal("waitForPoCMeterWithin() error = nil, want total-deadline error")
@@ -909,7 +909,7 @@ func TestWaitForPoCMeterCancelsInFlightRequestAtTotalDeadline(t *testing.T) {
 func TestEnsurePoCMeterConflictFetchesExactKeyAndRejectsIncompatibleConfig(t *testing.T) {
 	request := pocMeterRequests(pocNamesForRunID("run-42"))[0]
 	existing := openmeterapi.Meter{
-		ID:          "meter-studio",
+		ID:          "meter-listingkit",
 		Name:        request.Name,
 		Key:         request.Key,
 		Aggregation: request.Aggregation,
@@ -937,16 +937,16 @@ func TestEnsurePoCMeterConflictFetchesExactKeyAndRejectsIncompatibleConfig(t *te
 
 func TestEnsurePoCFeatureConflictFetchesExactKeyAndRejectsFilters(t *testing.T) {
 	request := openmeterapi.CreateFeatureRequest{
-		Name:  "poc_run_42_studio_feature",
-		Key:   "poc_run_42_studio_feature",
-		Meter: &openmeterapi.FeatureMeterReferenceInput{ID: "meter-studio"},
+		Name:  "poc_run_42_listingkit_feature",
+		Key:   "poc_run_42_listingkit_feature",
+		Meter: &openmeterapi.FeatureMeterReferenceInput{ID: "meter-listingkit"},
 	}
 	existing := openmeterapi.Feature{
-		ID:   "feature-studio",
+		ID:   "feature-listingkit",
 		Name: request.Name,
 		Key:  request.Key,
 		Meter: &openmeterapi.FeatureMeterReference{
-			ID:      "meter-studio",
+			ID:      "meter-listingkit",
 			Filters: map[string]openmeterapi.QueryFilterStringMapItem{"region": {}},
 		},
 	}
@@ -1000,7 +1000,7 @@ func TestEnsurePoCCustomerConflictFetchesExactKeyAndRejectsAttribution(t *testin
 }
 
 func TestEnsurePoCPlanFindsExactKeyAndRejectsIncompatibleConfig(t *testing.T) {
-	request, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-studio", "feature-shein", "feature-storage")
+	request, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-listingkit", "feature-shein", "feature-storage")
 	if err != nil {
 		t.Fatalf("pocPlanRequest() error = %v", err)
 	}
@@ -1026,7 +1026,7 @@ func TestEnsurePoCPlanFindsExactKeyAndRejectsIncompatibleConfig(t *testing.T) {
 }
 
 func TestEnsurePoCPlanReusesExistingActiveVersionWithoutCreatingDraft(t *testing.T) {
-	request, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-studio", "feature-shein", "feature-storage")
+	request, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-listingkit", "feature-shein", "feature-storage")
 	if err != nil {
 		t.Fatalf("pocPlanRequest() error = %v", err)
 	}
@@ -1055,7 +1055,7 @@ func TestEnsurePoCPlanReusesExistingActiveVersionWithoutCreatingDraft(t *testing
 }
 
 func TestEnsurePoCPlanPublishesDraftAndSubscriptionCreatesThenReuses(t *testing.T) {
-	planRequest, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-studio", "feature-shein", "feature-storage")
+	planRequest, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-listingkit", "feature-shein", "feature-storage")
 	if err != nil {
 		t.Fatalf("pocPlanRequest() error = %v", err)
 	}

@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	generationUsageModuleCode = "studio"
+	generationUsageModuleCode = "listingkit"
 	generationUsageMetric     = "listingkit_generations_succeeded"
 	generationUsageSourceType = "listingkit_generation"
 )

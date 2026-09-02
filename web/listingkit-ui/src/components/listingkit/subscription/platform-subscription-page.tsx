@@ -89,7 +89,7 @@ const MODULE_GUIDANCE: Record<string, { recommendedMetrics?: Array<{ key: string
   },
   operation_strategy: {
   },
-  studio: {
+  listingkit: {
     recommendedMetrics: [
       {
         key: "listingkit_generations_succeeded",

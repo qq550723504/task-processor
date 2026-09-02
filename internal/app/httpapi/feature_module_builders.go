@@ -36,18 +36,6 @@ type listingKitRepositoryBuilder func(*config.DatabaseConfig, *logrus.Logger) (l
 
 type imageAgentModuleBuilder func(*config.Config, *logrus.Logger) (*imageagenthttpapi.BuildResult, error)
 
-func attachImageAgentWorkspace(listingKitModule *listingkithttpapi.Module, imageAgentModule *imageagenthttpapi.BuildResult) error {
-	if listingKitModule == nil || listingKitModule.TaskRepository == nil || imageAgentModule == nil || imageAgentModule.Application == nil {
-		return nil
-	}
-	handler, err := listingkithttpapi.NewImageAgentWorkspaceHandler(listingKitModule.TaskRepository, imageAgentModule.Application)
-	if err != nil {
-		return err
-	}
-	listingKitModule.ImageAgentWorkspaceHandler = handler
-	return nil
-}
-
 func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
 	return amazonlistinghttpapi.BuildRuntimeModule(input)
 }
@@ -86,7 +74,7 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 	databaseCloser := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	service, err := newImageAgentHTTPService(
 		imageagentstore.NewGormRepository(db), workflowClient,
-		listingkithttpapi.NewImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db)),
+		newImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db)),
 	)
 	if err != nil {
 		_ = databaseCloser()

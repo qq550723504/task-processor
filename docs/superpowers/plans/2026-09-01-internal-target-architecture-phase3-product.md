@@ -1669,6 +1669,8 @@ Expected: FAIL，并精确指出当前 generator/contracts/routes/config 分支�
 2. **Task 16E2 — 聚合清除：** 删除不可达的 Studio session/batch/batch-run/media/reference/background-removal/async 领域与仓储、`SheinStudio` 请求选项、专属 schema migration/owner inventory；不得保留只供测试引用的生产类型。
 3. **Task 16E3 — 架构封口：** 增加全仓负向守卫，禁止 ListingKit production 重新出现 image generator/edit/async、Studio 路由/表/配置键或 ImageAgent 编排桥；验证手工上传与 ApprovedAsset 只读流程。
 
+> **16E3 封口补充（2026-09-03）：** 16E2 复审后预检发现，订阅权威模块仍以 `ModuleStudio = "studio"` 承载 ListingKit generation、ImageAgent 与 SHEIN 发布额度，前端通用代理仍为已退役 `/studio/*` 保留超时分支，运维脚本仍示例查询旧 Studio 表。这些是同一兼容命名和死路由残留，不能被负向测试永久豁免。16E3 先将订阅模块原子硬切为 `ModuleListingKit = "listingkit"`（后端、默认 plan、usage settlement、管理端 UI/测试同步，不保留旧 module alias/双读），删除 proxy/script 残留，再建立精确架构守卫。`scene_style = "studio"` 等 ImageAgent 摄影场景值不是 ListingKit Studio 聚合，不在禁用范围。
+
 - [ ] **Step 4: 运行 ListingKit、ImageAgent、App、配置和架构验证**
 
 Run: `go test ./internal/listingkit/... ./internal/imageagent/... ./internal/app/httpapi ./internal/core/config ./tests -run 'Test(ListingKit|ImageAgent|Phase3|.*Boundary|.*Route)' -count=1`

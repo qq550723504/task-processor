@@ -148,7 +148,7 @@ func usageMetricModuleMatches(moduleCode, metric string) bool {
 	if metric == usageMetricStorageBytesCurrent {
 		return moduleCode == ModuleOSSStorage
 	}
-	return moduleCode == ModuleStudio
+	return moduleCode == ModuleListingKit
 }
 
 // unrepresentedLegacyUsage returns only legacy counter usage that is not

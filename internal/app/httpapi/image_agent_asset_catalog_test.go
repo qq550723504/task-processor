@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/product/catalog"
 )
 
-func TestListingKitImageAgentCatalogReadsOnlyProductSnapshotCatalogImages(t *testing.T) {
+func TestAppImageAgentCatalogReadsOnlyProductSnapshotCatalogImages(t *testing.T) {
 	task := catalogTaskFixture()
 	got, err := imageAgentCatalogFromTask(task, []string{"catalog-image-2"})
 	require.NoError(t, err)
@@ -25,7 +25,7 @@ func TestListingKitImageAgentCatalogReadsOnlyProductSnapshotCatalogImages(t *tes
 	require.Equal(t, imageagent.AuthorizedAssetStyle, got.Assets[2].Type)
 }
 
-func TestListingKitImageAgentCatalogUsesExplicitSourceSelection(t *testing.T) {
+func TestAppImageAgentCatalogUsesExplicitSourceSelection(t *testing.T) {
 	task := catalogTaskFixture()
 	got, err := imageAgentCatalogFromTaskTargetSelection(task, "", "catalog-image-3", []string{"catalog-image-2"})
 	require.NoError(t, err)
@@ -35,9 +35,9 @@ func TestListingKitImageAgentCatalogUsesExplicitSourceSelection(t *testing.T) {
 	require.ErrorIs(t, err, imageagent.ErrValidation)
 }
 
-func TestListingKitImageAgentCatalogRequiresOwnedTaskAndSnapshot(t *testing.T) {
+func TestAppImageAgentCatalogRequiresOwnedTaskAndSnapshot(t *testing.T) {
 	task := catalogTaskFixture()
-	resolver := NewImageAgentAuthorizedAssetCatalog(listingTaskSourceStub{task: task})
+	resolver := newImageAgentAuthorizedAssetCatalog(listingTaskSourceStub{task: task})
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
 	_, err := resolver.Resolve(ctx, imageagent.AssetCatalogScope{TenantID: "tenant-a", OwnerUserID: "user-a", BusinessTaskID: "task-1"})
 	require.NoError(t, err)

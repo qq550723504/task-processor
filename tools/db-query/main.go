@@ -115,7 +115,7 @@ func printUsage() {
 
 示例:
   # 查询批次的所有任务ID
-  db-query --table shein_studio_sessions --where "id='batch-id'" --fields created_tasks
+  db-query --table listing_kit_tasks --where "task_id='task-id'" --fields task_id,status
 
   # 查询待处理的任务
   db-query --table listing_kit_tasks --where "status='pending'" --fields task_id,status --limit 50

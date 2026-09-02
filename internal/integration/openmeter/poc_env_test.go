@@ -21,18 +21,18 @@ type pocEnvironment struct {
 }
 
 type pocNames struct {
-	StudioMeterKey    string
-	SheinMeterKey     string
-	StorageMeterKey   string
-	StudioFeatureKey  string
-	SheinFeatureKey   string
-	StorageFeatureKey string
-	CustomerAKey      string
-	CustomerBKey      string
-	SubjectA          string
-	SubjectB          string
-	PlanKey           string
-	PhaseKey          string
+	ListingKitMeterKey   string
+	SheinMeterKey        string
+	StorageMeterKey      string
+	ListingKitFeatureKey string
+	SheinFeatureKey      string
+	StorageFeatureKey    string
+	CustomerAKey         string
+	CustomerBKey         string
+	SubjectA             string
+	SubjectB             string
+	PlanKey              string
+	PhaseKey             string
 }
 
 func loadPoCEnvironment() (pocEnvironment, error) {
@@ -73,18 +73,18 @@ func pocNamesForRunID(runID string) pocNames {
 	resourcePrefix := "poc_" + strings.ReplaceAll(runID, "-", "_")
 	subjectPrefix := "poc-" + runID
 	return pocNames{
-		StudioMeterKey:    resourcePrefix + "_studio_meter",
-		SheinMeterKey:     resourcePrefix + "_shein_meter",
-		StorageMeterKey:   resourcePrefix + "_storage_meter",
-		StudioFeatureKey:  resourcePrefix + "_studio_feature",
-		SheinFeatureKey:   resourcePrefix + "_shein_feature",
-		StorageFeatureKey: resourcePrefix + "_storage_feature",
-		CustomerAKey:      resourcePrefix + "_customer_a",
-		CustomerBKey:      resourcePrefix + "_customer_b",
-		SubjectA:          "tenant:" + subjectPrefix + "-a",
-		SubjectB:          "tenant:" + subjectPrefix + "-b",
-		PlanKey:           resourcePrefix + "_plan",
-		PhaseKey:          resourcePrefix + "_phase",
+		ListingKitMeterKey:   resourcePrefix + "_listingkit_meter",
+		SheinMeterKey:        resourcePrefix + "_shein_meter",
+		StorageMeterKey:      resourcePrefix + "_storage_meter",
+		ListingKitFeatureKey: resourcePrefix + "_listingkit_feature",
+		SheinFeatureKey:      resourcePrefix + "_shein_feature",
+		StorageFeatureKey:    resourcePrefix + "_storage_feature",
+		CustomerAKey:         resourcePrefix + "_customer_a",
+		CustomerBKey:         resourcePrefix + "_customer_b",
+		SubjectA:             "tenant:" + subjectPrefix + "-a",
+		SubjectB:             "tenant:" + subjectPrefix + "-b",
+		PlanKey:              resourcePrefix + "_plan",
+		PhaseKey:             resourcePrefix + "_phase",
 	}
 }
 
@@ -227,18 +227,18 @@ func TestPoCNamesDeriveOnlyFromSanitizedRunID(t *testing.T) {
 	}
 
 	want := pocNames{
-		StudioMeterKey:    "poc_run_42_studio_meter",
-		SheinMeterKey:     "poc_run_42_shein_meter",
-		StorageMeterKey:   "poc_run_42_storage_meter",
-		StudioFeatureKey:  "poc_run_42_studio_feature",
-		SheinFeatureKey:   "poc_run_42_shein_feature",
-		StorageFeatureKey: "poc_run_42_storage_feature",
-		CustomerAKey:      "poc_run_42_customer_a",
-		CustomerBKey:      "poc_run_42_customer_b",
-		SubjectA:          "tenant:poc-run-42-a",
-		SubjectB:          "tenant:poc-run-42-b",
-		PlanKey:           "poc_run_42_plan",
-		PhaseKey:          "poc_run_42_phase",
+		ListingKitMeterKey:   "poc_run_42_listingkit_meter",
+		SheinMeterKey:        "poc_run_42_shein_meter",
+		StorageMeterKey:      "poc_run_42_storage_meter",
+		ListingKitFeatureKey: "poc_run_42_listingkit_feature",
+		SheinFeatureKey:      "poc_run_42_shein_feature",
+		StorageFeatureKey:    "poc_run_42_storage_feature",
+		CustomerAKey:         "poc_run_42_customer_a",
+		CustomerBKey:         "poc_run_42_customer_b",
+		SubjectA:             "tenant:poc-run-42-a",
+		SubjectB:             "tenant:poc-run-42-b",
+		PlanKey:              "poc_run_42_plan",
+		PhaseKey:             "poc_run_42_phase",
 	}
 	if first != want {
 		t.Fatalf("pocNamesForRunID() = %+v, want %+v", first, want)
@@ -247,16 +247,16 @@ func TestPoCNamesDeriveOnlyFromSanitizedRunID(t *testing.T) {
 
 func TestPoCNamesUseServerCompatibleResourceKeys(t *testing.T) {
 	names := pocNamesForRunID("om-20260813-220837")
-	plan, err := pocPlanRequest(names, "feature-studio", "feature-shein", "feature-storage")
+	plan, err := pocPlanRequest(names, "feature-listingkit", "feature-shein", "feature-storage")
 	if err != nil {
 		t.Fatalf("pocPlanRequest() error = %v", err)
 	}
 
 	keys := []string{
-		names.StudioMeterKey,
+		names.ListingKitMeterKey,
 		names.SheinMeterKey,
 		names.StorageMeterKey,
-		names.StudioFeatureKey,
+		names.ListingKitFeatureKey,
 		names.SheinFeatureKey,
 		names.StorageFeatureKey,
 		names.CustomerAKey,

@@ -104,18 +104,6 @@ type ImageAgentRun = {
   block?: ImageAgentBlock;
 };
 
-type ImageAgentWorkspaceAsset = {
-  id: string;
-  label: string;
-  display_url: string;
-};
-
-export type ImageAgentWorkspaceAssets = {
-  target_platform?: string;
-  source_assets: ImageAgentWorkspaceAsset[];
-  style_candidates: ImageAgentWorkspaceAsset[];
-};
-
 export type ImageAgentAuthorizedAsset = {
   id: string;
   type: "source" | "style";

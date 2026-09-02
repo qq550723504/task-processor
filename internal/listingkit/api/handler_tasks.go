@@ -13,7 +13,7 @@ import (
 )
 
 func (h *handler) GenerateListingKit(c *gin.Context) {
-	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+	if !h.requireSubscription(c, listingsubscription.ModuleListingKit) {
 		return
 	}
 	var req listingkit.GenerateRequest

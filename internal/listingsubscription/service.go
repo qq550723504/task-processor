@@ -239,7 +239,7 @@ func DefaultModules() []Module {
 		{Code: ModuleTaskImport, Name: "任务导入", Description: "导入任务和商品导入映射", SortOrder: 20, Active: true, CreatedAt: now, UpdatedAt: now},
 		{Code: ModuleRules, Name: "规则", Description: "筛选、利润、核价规则和敏感词", SortOrder: 30, Active: true, CreatedAt: now, UpdatedAt: now},
 		{Code: ModuleOperationStrategy, Name: "运营策略", Description: "运营策略配置和应用", SortOrder: 40, Active: true, CreatedAt: now, UpdatedAt: now},
-		{Code: ModuleStudio, Name: "Studio", Description: "设计生成、产品图生成和异步任务", SortOrder: 50, Active: true, CreatedAt: now, UpdatedAt: now},
+		{Code: ModuleListingKit, Name: "ListingKit", Description: "ListingKit 标准生成、审核和发布能力", SortOrder: 50, Active: true, CreatedAt: now, UpdatedAt: now},
 		{Code: ModuleOSSStorage, Name: "OSS 存储", Description: "对象存储上传容量计费", SortOrder: 60, Active: true, CreatedAt: now, UpdatedAt: now},
 	}
 }
@@ -257,13 +257,13 @@ func DefaultPlans() []PlanBundle {
 			},
 		},
 		{
-			Plan: Plan{Code: PlanProfessional, Name: "专业版", Description: "包含运营策略、Studio 和 10GB OSS 存储", SortOrder: 20, Active: true, CreatedAt: now, UpdatedAt: now},
+			Plan: Plan{Code: PlanProfessional, Name: "专业版", Description: "包含运营策略、ListingKit 和 10GB OSS 存储", SortOrder: 20, Active: true, CreatedAt: now, UpdatedAt: now},
 			Modules: []PlanModule{
 				{PlanCode: PlanProfessional, ModuleCode: ModuleStoreManagement, SortOrder: 10},
 				{PlanCode: PlanProfessional, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 1000}, SortOrder: 20},
 				{PlanCode: PlanProfessional, ModuleCode: ModuleRules, SortOrder: 30},
 				{PlanCode: PlanProfessional, ModuleCode: ModuleOperationStrategy, SortOrder: 40},
-				{PlanCode: PlanProfessional, ModuleCode: ModuleStudio, Limits: map[string]int{"listingkit_generations_succeeded": 100, "product_image_jobs": 100, "shein_drafts_succeeded": 100, "shein_publishes_succeeded": 100}, SortOrder: 50},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleListingKit, Limits: map[string]int{"listingkit_generations_succeeded": 100, "product_image_jobs": 100, "shein_drafts_succeeded": 100, "shein_publishes_succeeded": 100}, SortOrder: 50},
 				{PlanCode: PlanProfessional, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 10 * 1024 * 1024 * 1024}, SortOrder: 60},
 			},
 		},
@@ -274,7 +274,7 @@ func DefaultPlans() []PlanBundle {
 				{PlanCode: PlanEnterprise, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 10000}, SortOrder: 20},
 				{PlanCode: PlanEnterprise, ModuleCode: ModuleRules, SortOrder: 30},
 				{PlanCode: PlanEnterprise, ModuleCode: ModuleOperationStrategy, SortOrder: 40},
-				{PlanCode: PlanEnterprise, ModuleCode: ModuleStudio, Limits: map[string]int{"listingkit_generations_succeeded": 1000, "product_image_jobs": 1000, "shein_drafts_succeeded": 1000, "shein_publishes_succeeded": 1000}, SortOrder: 50},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleListingKit, Limits: map[string]int{"listingkit_generations_succeeded": 1000, "product_image_jobs": 1000, "shein_drafts_succeeded": 1000, "shein_publishes_succeeded": 1000}, SortOrder: 50},
 				{PlanCode: PlanEnterprise, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 100 * 1024 * 1024 * 1024}, SortOrder: 60},
 			},
 		},
@@ -747,14 +747,14 @@ func (s *Service) resolveEffectiveEntitlement(entitlementByModule map[string]Ent
 	if moduleCode != ModuleOSSStorage {
 		return nil, false
 	}
-	studio, ok := entitlementByModule[ModuleStudio]
+	listingkit, ok := entitlementByModule[ModuleListingKit]
 	if !ok {
 		return nil, false
 	}
-	// Studio task creation depends on upload storage. When storage is not
-	// configured separately, inherit the studio entitlement as the minimum
+	// ListingKit task creation depends on upload storage. When storage is not
+	// configured separately, inherit the ListingKit entitlement as the minimum
 	// capability floor instead of blocking the workflow mid-flight.
-	fallback := studio
+	fallback := listingkit
 	fallback.ID = 0
 	fallback.ModuleCode = ModuleOSSStorage
 	fallback.Limits = nil

@@ -22,7 +22,7 @@ func (h *handler) GetSheinSettings(c *gin.Context) {
 }
 
 func (h *handler) UpdateSheinSettings(c *gin.Context) {
-	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+	if !h.requireSubscription(c, listingsubscription.ModuleListingKit) {
 		return
 	}
 	payload, err := c.GetRawData()
@@ -61,7 +61,7 @@ func (h *handler) PreviewSheinPrice(c *gin.Context) {
 }
 
 func (h *handler) UpdateSheinFinalDraft(c *gin.Context) {
-	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+	if !h.requireSubscription(c, listingsubscription.ModuleListingKit) {
 		return
 	}
 	var req listingkit.SheinFinalDraftUpdateRequest

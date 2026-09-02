@@ -131,9 +131,6 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 		if imageAgentModule != nil {
 			deps.addClosers(imageAgentModule.Closers...)
 		}
-		if workspaceErr := attachImageAgentWorkspace(composition.listingKitModule, imageAgentModule); workspaceErr != nil {
-			return composition, workspaceErr
-		}
 	}
 
 	done = timer.phase("buildSupportModules")

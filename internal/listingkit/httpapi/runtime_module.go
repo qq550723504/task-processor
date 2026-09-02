@@ -28,7 +28,6 @@ func (m runtimeModule) Register(reg *module.Registry) error {
 		return nil
 	}
 	reg.AddRoutes(AppendRouteDescriptors(nil, m.built.Handler)...)
-	reg.AddRoutes(AppendImageAgentWorkspaceRouteDescriptors(nil, m.built.ImageAgentWorkspaceHandler)...)
 	if m.built.Pool != nil {
 		if err := reg.AddWorkerPool(workerPoolName, m.built.Pool); err != nil {
 			return err

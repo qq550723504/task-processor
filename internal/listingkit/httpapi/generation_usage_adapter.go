@@ -128,7 +128,7 @@ func generationUsageFactForAdapter(tenantID, taskID string, occurredAt time.Time
 	taskID = strings.TrimSpace(taskID)
 	return adapterGenerationUsageFact{
 		tenantID:       tenantID,
-		moduleCode:     "studio",
+		moduleCode:     "listingkit",
 		metric:         "listingkit_generations_succeeded",
 		quantity:       1,
 		sourceType:     "listingkit_generation",

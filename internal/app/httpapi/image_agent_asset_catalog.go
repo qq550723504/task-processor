@@ -13,13 +13,13 @@ import (
 	"task-processor/internal/product/catalog"
 )
 
-type ImageAgentTaskSource interface {
+type imageAgentTaskSource interface {
 	GetTask(context.Context, string) (*listingkit.Task, error)
 }
 
-type listingKitAuthorizedAssetCatalog struct{ tasks ImageAgentTaskSource }
+type listingKitAuthorizedAssetCatalog struct{ tasks imageAgentTaskSource }
 
-func NewImageAgentAuthorizedAssetCatalog(tasks ImageAgentTaskSource) imageagent.AuthorizedAssetCatalog {
+func newImageAgentAuthorizedAssetCatalog(tasks imageAgentTaskSource) imageagent.AuthorizedAssetCatalog {
 	return &listingKitAuthorizedAssetCatalog{tasks: tasks}
 }
 

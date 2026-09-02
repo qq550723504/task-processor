@@ -181,7 +181,7 @@ describe("subscription API schema", () => {
         modules: [
           {
             plan_code: "professional",
-            module_code: "studio",
+            module_code: "listingkit",
             limits: { listingkit_generations_succeeded: 100 },
             sort_order: 50,
           },
@@ -189,7 +189,7 @@ describe("subscription API schema", () => {
       },
       modules: [
         {
-          code: "studio",
+          code: "listingkit",
           name: "Studio",
           sort_order: 50,
           active: true,
@@ -198,7 +198,7 @@ describe("subscription API schema", () => {
       entitlements: [
         {
           module: {
-            code: "studio",
+            code: "listingkit",
             name: "Studio",
             sort_order: 50,
             active: true,
@@ -206,7 +206,7 @@ describe("subscription API schema", () => {
           entitlement: {
             id: 1,
             tenant_id: "org-286",
-            module_code: "studio",
+            module_code: "listingkit",
             status: "active",
             limits: { listingkit_generations_succeeded: 10 },
           },
@@ -237,7 +237,7 @@ describe("subscription API schema", () => {
           modules: [
             {
               plan_code: "professional",
-              module_code: "studio",
+              module_code: "listingkit",
               limits: { listingkit_generations_succeeded: 100 },
               sort_order: 50,
             },
@@ -301,7 +301,7 @@ describe("subscription API schema", () => {
       parseSubscriptionEntitlement({
         id: 1,
         tenant_id: "org-286",
-        module_code: "studio",
+        module_code: "listingkit",
         status: "pending",
       }),
     ).toThrow(ApiError);
@@ -310,7 +310,7 @@ describe("subscription API schema", () => {
   it("parses and formats subscription 402 payloads", () => {
     const payload = parseSubscriptionRequiredPayload({
       error: "quota_exceeded",
-      module_code: "studio",
+      module_code: "listingkit",
       metric: "listingkit_generations_succeeded",
       limit: 1,
       used: 2,

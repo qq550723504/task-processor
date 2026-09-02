@@ -57,7 +57,7 @@ func TestPlatformSubscriptionAuditActorUsesAuthenticatedSubject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-target/entitlements/studio", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-target/entitlements/listingkit", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-User-ID", "forged-audit-actor")
 	req = withAuthenticatedIdentity(req, "admin-tenant", "zitadel-subject-101", "platform_admin")

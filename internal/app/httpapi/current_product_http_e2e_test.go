@@ -224,7 +224,7 @@ func TestHTTPE2E_CurrentListingKitUsesReadOnlySnapshotAndApprovedAssets(t *testi
 	httpServer := httptest.NewServer(server.Handler)
 	t.Cleanup(httpServer.Close)
 	client := authenticatedAppHTTPTestClient(httpServer.Client())
-	enableCurrentE2EListingKitSubscription(t, client, httpServer.URL, "studio")
+	enableCurrentE2EListingKitSubscription(t, client, httpServer.URL, "listingkit")
 
 	taskID := createCurrentE2ETask(t, client, httpServer.URL+"/api/v1/listing-kits/generate", map[string]any{
 		"product_key": productKey, "platforms": []string{"shein"}, "country": "US", "language": "en",
@@ -427,7 +427,7 @@ func TestHTTPE2E_CurrentListingKitPersistsFailedWhenRemoteResolutionIsUnavailabl
 	httpServer := httptest.NewServer(server.Handler)
 	t.Cleanup(httpServer.Close)
 	client := authenticatedAppHTTPTestClient(httpServer.Client())
-	enableCurrentE2EListingKitSubscription(t, client, httpServer.URL, "studio")
+	enableCurrentE2EListingKitSubscription(t, client, httpServer.URL, "listingkit")
 
 	taskID := createCurrentE2ETask(t, client, httpServer.URL+"/api/v1/listing-kits/generate", map[string]any{
 		"product_key": productKey, "platforms": []string{"shein"}, "country": "US", "language": "en",

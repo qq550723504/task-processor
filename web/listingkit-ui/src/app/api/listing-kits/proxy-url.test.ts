@@ -40,25 +40,6 @@ describe("buildListingKitProxyUrl", () => {
     );
   });
 
-  it.each([
-    ["GET", ["tasks", "task_123", "image-agent-assets"]],
-    ["POST", ["tasks", "task_123", "image-agent-runs"]],
-  ])("permits the exact task-scoped image-agent %s route", (method, path) => {
-    expect(() => buildListingKitProxyUrl(
-      "http://localhost:8080/api/v1/listing-kits", path, "", method,
-    )).not.toThrow();
-  });
-
-  it.each([
-    ["POST", ["tasks", "task_123", "image-agent-assets"]],
-    ["GET", ["tasks", "task_123", "image-agent-runs"]],
-    ["GET", ["tasks", "task_123", "image-agent-secrets"]],
-  ])("rejects unlisted task-scoped image-agent %s route", (method, path) => {
-    expect(() => buildListingKitProxyUrl(
-      "http://localhost:8080/api/v1/listing-kits", path, "", method,
-    )).toThrow("image-agent task proxy route is not allowed");
-  });
-
   it("forwards every backend-valid action ID on the resume route", () => {
     const result = buildListingKitProxyUrl(
       "http://localhost:8080/api/v1/listing-kits",

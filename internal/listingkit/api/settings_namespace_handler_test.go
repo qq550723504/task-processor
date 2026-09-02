@@ -303,7 +303,7 @@ func TestUpdateSheinSettingsPersistsCurrentFields(t *testing.T) {
 	h, err := NewHandler(
 		&stubHandlerCoreService{},
 		WithSettingsHandlerService(svc),
-		WithSubscriptionService(activeStudioOnlySubscriptionService(t)),
+		WithSubscriptionService(activeListingKitOnlySubscriptionService(t)),
 	)
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
@@ -349,7 +349,7 @@ func TestUpdateSheinSettingsIgnoresLegacyUnknownField(t *testing.T) {
 	h, err := NewHandler(
 		&stubHandlerCoreService{},
 		WithSettingsHandlerService(svc),
-		WithSubscriptionService(activeStudioOnlySubscriptionService(t)),
+		WithSubscriptionService(activeListingKitOnlySubscriptionService(t)),
 	)
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)

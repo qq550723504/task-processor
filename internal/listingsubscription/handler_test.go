@@ -36,7 +36,7 @@ func TestHandlerReturnsSummaryAndUpdatesEntitlement(t *testing.T) {
 		t.Fatal("unconfigured module should not be allowed")
 	}
 
-	req = httptest.NewRequest(http.MethodPut, "/admin/subscription/entitlements/studio", strings.NewReader(`{"status":"active","limits":{"listingkit_generations_succeeded":10}}`))
+	req = httptest.NewRequest(http.MethodPut, "/admin/subscription/entitlements/listingkit", strings.NewReader(`{"status":"active","limits":{"listingkit_generations_succeeded":10}}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", "org-286")
 	resp = httptest.NewRecorder()
@@ -45,7 +45,7 @@ func TestHandlerReturnsSummaryAndUpdatesEntitlement(t *testing.T) {
 		t.Fatalf("upsert status = %d body=%s", resp.Code, resp.Body.String())
 	}
 
-	result, err := svc.Check(t.Context(), "org-286", ModuleStudio)
+	result, err := svc.Check(t.Context(), "org-286", ModuleListingKit)
 	if err != nil || !result.Allowed {
 		t.Fatalf("Check() = %+v, %v; want allowed", result, err)
 	}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { type ReactNode, useState } from "react";
 
 import { RecoverySummaryCard } from "@/components/listingkit/review/recovery-summary-card";
@@ -11,7 +11,6 @@ import { SheinFlowNav } from "@/components/listingkit/shein/shein-flow-nav";
 import { TaskRevisionHistoryPanel } from "@/components/listingkit/tasks/task-revision-history-panel";
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { TaskProgressNotice } from "@/components/listingkit/tasks/task-progress-notice";
-import { ImageAgentLaunchPanel } from "@/components/listingkit/image-agent/image-agent-launch-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -87,7 +86,6 @@ function WorkspaceScreenContent({
   taskId: string;
   searchParams: ReturnType<typeof useSearchParams>;
 }) {
-	const router = useRouter();
   const routeSearch = searchParams.toString();
   const routeParams = new URLSearchParams(routeSearch);
   const requestedImageAgentRunId = routeParams.get("image_agent_run_id")?.trim();
@@ -233,12 +231,6 @@ function WorkspaceScreenContent({
     ) : (
       legacyPanel
     );
-	const handleImageAgentCreated = (runId: string) => {
-		const params = new URLSearchParams(routeSearch);
-		params.set("image_agent_run_id", runId);
-		router.replace(`/listing-kits/${taskId}/workspace?${params.toString()}`);
-	};
-
   const handleRunStandardProductTemporal = () => {
     layerAction.mutate({
       action_key: "run_standard_product_temporal",
@@ -509,11 +501,6 @@ function WorkspaceScreenContent({
         }
         actions={
           <div className="space-y-4">
-			{imageAgentRunId ? null : <ImageAgentLaunchPanel
-				taskId={taskId}
-				targetPlatform={selectedPlatform}
-				onCreated={handleImageAgentCreated}
-			/>}
             <TaskProgressNotice task={taskResult.data} />
             <Card className="p-4">
               <details>

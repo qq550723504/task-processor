@@ -22,7 +22,7 @@ func (h *handler) GetAIClientSettings(c *gin.Context) {
 }
 
 func (h *handler) UpdateAIClientSettings(c *gin.Context) {
-	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+	if !h.requireSubscription(c, listingsubscription.ModuleListingKit) {
 		return
 	}
 	payload, err := c.GetRawData()

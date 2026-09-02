@@ -22,8 +22,6 @@ import {
   PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_ENROLLMENT_EXECUTE_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS,
-  PROXY_STUDIO_BATCH_TASK_CREATION_UPSTREAM_TIMEOUT_MS,
-  PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
   buildListingKitProxyFailureMessage,
   resolveListingKitProxyTimeoutMs,
   shouldProxyListingKitResponseAsBinary,
@@ -128,29 +126,6 @@ describe("resolveListingKitProxyTimeoutMs", () => {
     );
   });
 
-  it("extends the timeout for studio batch generation routes", () => {
-    expect(resolveListingKitProxyTimeoutMs("POST", ["studio", "async-jobs"])).toBe(
-      PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
-    );
-    expect(resolveListingKitProxyTimeoutMs("POST", ["studio", "batch-runs"])).toBe(
-      PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
-    );
-    expect(
-      resolveListingKitProxyTimeoutMs("GET", ["studio", "batch-runs", "run-1"]),
-    ).toBe(PROXY_STUDIO_UPSTREAM_TIMEOUT_MS);
-    expect(
-      resolveListingKitProxyTimeoutMs("POST", ["studio", "sessions", "session-1", "designs", "append"]),
-    ).toBe(PROXY_STUDIO_UPSTREAM_TIMEOUT_MS);
-    expect(resolveListingKitProxyTimeoutMs("POST", ["studio", "batches"])).toBe(
-      PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
-    );
-  });
-
-  it("extends the timeout for studio batch task creation routes", () => {
-    expect(
-      resolveListingKitProxyTimeoutMs("POST", ["studio", "batches", "batch-1", "tasks"]),
-    ).toBe(PROXY_STUDIO_BATCH_TASK_CREATION_UPSTREAM_TIMEOUT_MS);
-  });
 });
 
 describe("buildListingKitProxyFailureMessage", () => {

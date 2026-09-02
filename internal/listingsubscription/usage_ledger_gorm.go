@@ -711,13 +711,13 @@ func loadEffectiveUsageEntitlement(tx *gorm.DB, tenantID, moduleCode string) (te
 	if err == nil || moduleCode != ModuleOSSStorage || !errors.Is(err, ErrEntitlementNotFound) {
 		return entitlement, err
 	}
-	studio, err := loadUsageEntitlement(tx, tenantID, ModuleStudio)
+	listingkit, err := loadUsageEntitlement(tx, tenantID, ModuleListingKit)
 	if err != nil {
 		return tenantEntitlementRow{}, err
 	}
-	studio.ModuleCode = ModuleOSSStorage
-	studio.LimitsJSON = "{}"
-	return studio, nil
+	listingkit.ModuleCode = ModuleOSSStorage
+	listingkit.LimitsJSON = "{}"
+	return listingkit, nil
 }
 
 func loadOrCreateUsageBucket(tx *gorm.DB, input ReserveUsageInput) (usageBucketRow, error) {

@@ -3,7 +3,7 @@
   task_import: "控制任务导入与批量导入能力是否可用。",
   rules: "控制规则、映射和限制类配置能力是否可用。",
   operation_strategy: "控制运营策略相关配置能力是否可用。",
-  studio: "控制 ListingKit 生成任务能力与额度。",
+  listingkit: "控制 ListingKit 生成任务能力与额度。",
   oss_storage: "控制文件存储额度，适合按存储空间进行配额管理。",
 };
 

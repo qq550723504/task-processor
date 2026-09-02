@@ -303,7 +303,7 @@ func TestUploadListingKitImagesReturnsQuotaExceededWhenStorageLimitIsExceeded(t 
 	t.Fatal("oss storage entitlement view missing")
 }
 
-func TestUploadListingKitImagesAllowsStudioBackedStorageFallback(t *testing.T) {
+func TestUploadListingKitImagesAllowsListingKitBackedStorageFallback(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
@@ -312,7 +312,7 @@ func TestUploadListingKitImagesAllowsStudioBackedStorageFallback(t *testing.T) {
 			ImageURLs: []string{"/api/v1/listing-kits/uploads/files/style.jpg"},
 		},
 	}
-	subscriptionService := activeStudioOnlySubscriptionService(t)
+	subscriptionService := activeListingKitOnlySubscriptionService(t)
 	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
@@ -587,16 +587,16 @@ func activeOSSStorageSubscriptionService(t *testing.T, limits map[string]int) *l
 	return svc
 }
 
-func activeStudioOnlySubscriptionService(t *testing.T) *listingsubscription.Service {
+func activeListingKitOnlySubscriptionService(t *testing.T) *listingsubscription.Service {
 	t.Helper()
 	svc, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
 	if err != nil {
 		t.Fatalf("create subscription service: %v", err)
 	}
-	if _, err := svc.UpsertEntitlement(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+	if _, err := svc.UpsertEntitlement(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleListingKit, listingsubscription.EntitlementInput{
 		Status: listingsubscription.StatusActive,
 	}); err != nil {
-		t.Fatalf("upsert studio entitlement: %v", err)
+		t.Fatalf("upsert listingkit entitlement: %v", err)
 	}
 	return svc
 }

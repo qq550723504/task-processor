@@ -41,7 +41,7 @@ func TestPlatformSubscriptionCanOpenModuleForTenant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	putReq := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-target/entitlements/studio", bytes.NewReader(body))
+	putReq := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-target/entitlements/listingkit", bytes.NewReader(body))
 	putReq.Header.Set("Content-Type", "application/json")
 	putReq = withAuthenticatedIdentity(putReq, "admin-tenant", "admin-1", "platform_admin")
 	putResp := httptest.NewRecorder()
@@ -66,15 +66,15 @@ func TestPlatformSubscriptionCanOpenModuleForTenant(t *testing.T) {
 	if summary.TenantID != "org-target" {
 		t.Fatalf("tenant id = %q, want org-target", summary.TenantID)
 	}
-	var studio *listingsubscription.EntitlementView
+	var listingkit *listingsubscription.EntitlementView
 	for i := range summary.Entitlements {
-		if summary.Entitlements[i].Module.Code == listingsubscription.ModuleStudio {
-			studio = &summary.Entitlements[i]
+		if summary.Entitlements[i].Module.Code == listingsubscription.ModuleListingKit {
+			listingkit = &summary.Entitlements[i]
 			break
 		}
 	}
-	if studio == nil || !studio.Allowed || studio.Limits["listingkit_generations_succeeded"] != 12 {
-		t.Fatalf("studio entitlement = %#v", studio)
+	if listingkit == nil || !listingkit.Allowed || listingkit.Limits["listingkit_generations_succeeded"] != 12 {
+		t.Fatalf("listingkit entitlement = %#v", listingkit)
 	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/platform/subscriptions", nil)
@@ -118,7 +118,7 @@ func TestPlatformSubscriptionListReturnsResolvedTenantDisplayName(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	putReq := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-target/entitlements/studio", bytes.NewReader(body))
+	putReq := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-target/entitlements/listingkit", bytes.NewReader(body))
 	putReq.Header.Set("Content-Type", "application/json")
 	putReq = withAuthenticatedIdentity(putReq, "admin-tenant", "admin-1", "platform_admin")
 	putResp := httptest.NewRecorder()
@@ -578,7 +578,7 @@ func TestPlatformSubscriptionCanManagePlans(t *testing.T) {
 		"sort_order":  25,
 		"active":      true,
 		"modules": []map[string]any{
-			{"module_code": listingsubscription.ModuleStudio, "limits": map[string]int{"listingkit_generations_succeeded": 50}, "sort_order": 10},
+			{"module_code": listingsubscription.ModuleListingKit, "limits": map[string]int{"listingkit_generations_succeeded": 50}, "sort_order": 10},
 		},
 	})
 	if err != nil {
@@ -622,7 +622,7 @@ func TestPlatformSubscriptionCanManagePlans(t *testing.T) {
 		t.Fatalf("status update = %d, want %d; body=%s", statusResp.Code, http.StatusOK, statusResp.Body.String())
 	}
 
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/platform/subscription-plans/growth/modules/studio", nil)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/platform/subscription-plans/growth/modules/listingkit", nil)
 	deleteReq = withAuthenticatedIdentity(deleteReq, "admin-tenant", "admin-1", "platform_admin")
 	deleteResp := httptest.NewRecorder()
 	router.ServeHTTP(deleteResp, deleteReq)

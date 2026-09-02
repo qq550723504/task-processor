@@ -220,7 +220,7 @@ func TestClientListCustomerAccessReturnsFeatureAccess(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 			t.Errorf("Authorization = %q, want Bearer test-token", got)
 		}
-		_, _ = w.Write([]byte(`{"data":[{"type":"boolean","feature_key":"studio","has_access":true}]}`))
+		_, _ = w.Write([]byte(`{"data":[{"type":"boolean","feature_key":"listingkit","has_access":true}]}`))
 	}))
 	t.Cleanup(server.Close)
 
@@ -232,7 +232,7 @@ func TestClientListCustomerAccessReturnsFeatureAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListCustomerAccess() error = %v", err)
 	}
-	if len(access) != 1 || access[0].FeatureKey != "studio" || !access[0].HasAccess {
-		t.Errorf("ListCustomerAccess() = %#v, want studio access", access)
+	if len(access) != 1 || access[0].FeatureKey != "listingkit" || !access[0].HasAccess {
+		t.Errorf("ListCustomerAccess() = %#v, want listingkit access", access)
 	}
 }

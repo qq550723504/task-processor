@@ -88,7 +88,7 @@ describe("PlatformSubscriptionPage", () => {
         modules: [
           {
             plan_code: "professional",
-            module_code: "studio",
+            module_code: "listingkit",
             limits: { listingkit_generations_succeeded: 100 },
             sort_order: 50,
           },
@@ -127,7 +127,7 @@ describe("PlatformSubscriptionPage", () => {
       entitlements: [
         {
           module: {
-            code: "studio",
+            code: "listingkit",
             name: "Studio",
             sort_order: 50,
             active: true,
@@ -143,7 +143,7 @@ describe("PlatformSubscriptionPage", () => {
     mockedUpdatePlatformTenantSubscriptionEntitlement.mockResolvedValue({
       id: 1,
       tenant_id: "org-target",
-      module_code: "studio",
+      module_code: "listingkit",
       status: "active",
       limits: { listingkit_generations_succeeded: 10 },
     });
@@ -166,7 +166,7 @@ describe("PlatformSubscriptionPage", () => {
     await waitFor(() => {
       expect(mockedUpdatePlatformTenantSubscriptionEntitlement).toHaveBeenCalledWith(
         "org-target",
-        "studio",
+        "listingkit",
         expect.objectContaining({
           status: "active",
           limits: { listingkit_generations_succeeded: 10 },
@@ -415,9 +415,9 @@ describe("PlatformSubscriptionPage", () => {
       entitlements: [
         {
           module: {
-            code: "studio",
+            code: "listingkit",
             name: "Studio",
-            description: "Design jobs",
+            description: "ListingKit generation",
             sort_order: 50,
             active: true,
           },

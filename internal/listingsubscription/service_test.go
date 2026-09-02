@@ -9,7 +9,7 @@ import (
 
 func TestSubscriptionGuardRequiresConfiguredEntitlement(t *testing.T) {
 	svc := newTestService(t)
-	result, err := svc.Check(context.Background(), "org-286", ModuleStudio)
+	result, err := svc.Check(context.Background(), "org-286", ModuleListingKit)
 	if !errors.Is(err, ErrSubscriptionRequired) {
 		t.Fatalf("Check() error = %v, want subscription required", err)
 	}
@@ -20,11 +20,11 @@ func TestSubscriptionGuardRequiresConfiguredEntitlement(t *testing.T) {
 
 func TestSubscriptionGuardAllowsActiveEntitlement(t *testing.T) {
 	svc := newTestService(t)
-	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleStudio, EntitlementInput{Status: StatusActive})
+	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleListingKit, EntitlementInput{Status: StatusActive})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := svc.Check(context.Background(), "org-286", ModuleStudio)
+	result, err := svc.Check(context.Background(), "org-286", ModuleListingKit)
 	if err != nil {
 		t.Fatalf("Check() error = %v", err)
 	}
@@ -38,13 +38,13 @@ func TestSubscriptionGuardRejectsExpiredEntitlement(t *testing.T) {
 	now := time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return now }
 	expiredAt := now.Add(-time.Hour)
-	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleStudio, EntitlementInput{
+	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleListingKit, EntitlementInput{
 		Status: StatusActive, ExpiresAt: &expiredAt,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := svc.Check(context.Background(), "org-286", ModuleStudio)
+	result, err := svc.Check(context.Background(), "org-286", ModuleListingKit)
 	if !errors.Is(err, ErrSubscriptionRequired) {
 		t.Fatalf("Check() error = %v, want subscription required", err)
 	}
@@ -55,17 +55,17 @@ func TestSubscriptionGuardRejectsExpiredEntitlement(t *testing.T) {
 
 func TestSubscriptionGuardRejectsQuotaExceeded(t *testing.T) {
 	svc := newTestService(t)
-	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleStudio, EntitlementInput{
+	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleListingKit, EntitlementInput{
 		Status: StatusActive,
 		Limits: map[string]int{"listingkit_generations_succeeded": 1},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.CheckUsage(context.Background(), "org-286", ModuleStudio, "listingkit_generations_succeeded", 1); err != nil {
+	if _, err := svc.CheckUsage(context.Background(), "org-286", ModuleListingKit, "listingkit_generations_succeeded", 1); err != nil {
 		t.Fatalf("first usage error = %v", err)
 	}
-	result, err := svc.CheckUsage(context.Background(), "org-286", ModuleStudio, "listingkit_generations_succeeded", 1)
+	result, err := svc.CheckUsage(context.Background(), "org-286", ModuleListingKit, "listingkit_generations_succeeded", 1)
 	if !errors.Is(err, ErrSubscriptionQuotaExceed) {
 		t.Fatalf("second usage error = %v, want quota exceeded", err)
 	}
@@ -104,9 +104,9 @@ func TestSubscriptionUsageRecordsWithoutLimit(t *testing.T) {
 	t.Fatal("oss storage summary missing")
 }
 
-func TestSubscriptionUsageAllowsOSSStorageViaStudioFallback(t *testing.T) {
+func TestSubscriptionUsageAllowsOSSStorageViaListingKitFallback(t *testing.T) {
 	svc := newTestService(t)
-	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleStudio, EntitlementInput{
+	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleListingKit, EntitlementInput{
 		Status: StatusActive,
 		Limits: map[string]int{"listingkit_generations_succeeded": 10},
 	})
@@ -118,7 +118,7 @@ func TestSubscriptionUsageAllowsOSSStorageViaStudioFallback(t *testing.T) {
 		t.Fatalf("AuthorizeUsage() error = %v", err)
 	}
 	if !result.Allowed || result.Used != 2048 || result.Limit != 0 {
-		t.Fatalf("authorize result = %#v, want studio-backed unlimited oss access", result)
+		t.Fatalf("authorize result = %#v, want listingkit-backed unlimited oss access", result)
 	}
 	summary, err := svc.GetSummary(context.Background(), "org-286")
 	if err != nil {
@@ -127,7 +127,7 @@ func TestSubscriptionUsageAllowsOSSStorageViaStudioFallback(t *testing.T) {
 	for _, view := range summary.Entitlements {
 		if view.Module.Code == ModuleOSSStorage {
 			if !view.Allowed {
-				t.Fatalf("oss storage view = %#v, want allowed via studio fallback", view)
+				t.Fatalf("oss storage view = %#v, want allowed via listingkit fallback", view)
 			}
 			if view.Entitlement == nil || view.Entitlement.ModuleCode != ModuleOSSStorage {
 				t.Fatalf("oss storage entitlement = %#v, want synthesized oss entitlement", view.Entitlement)
@@ -138,9 +138,9 @@ func TestSubscriptionUsageAllowsOSSStorageViaStudioFallback(t *testing.T) {
 	t.Fatal("oss storage summary missing")
 }
 
-func TestSubscriptionUsagePrefersExplicitOSSStorageEntitlementOverStudioFallback(t *testing.T) {
+func TestSubscriptionUsagePrefersExplicitOSSStorageEntitlementOverListingKitFallback(t *testing.T) {
 	svc := newTestService(t)
-	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleStudio, EntitlementInput{
+	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleListingKit, EntitlementInput{
 		Status: StatusActive,
 	})
 	if err != nil {
@@ -253,14 +253,14 @@ func TestSubscriptionRecordUsageClampsNegativeAdjustmentsAtZero(t *testing.T) {
 
 func TestSubscriptionUsageAdjustmentWritesAuditLog(t *testing.T) {
 	svc := newTestService(t)
-	_, err := svc.UpsertEntitlementWithAudit(context.Background(), "org-286", ModuleStudio, EntitlementInput{
+	_, err := svc.UpsertEntitlementWithAudit(context.Background(), "org-286", ModuleListingKit, EntitlementInput{
 		Status: StatusActive,
 		Limits: map[string]int{"listingkit_generations_succeeded": 10},
 	}, "admin-1", "manual open")
 	if err != nil {
 		t.Fatal(err)
 	}
-	counter, err := svc.SetUsage(context.Background(), "org-286", ModuleStudio, UsageAdjustmentInput{
+	counter, err := svc.SetUsage(context.Background(), "org-286", ModuleListingKit, UsageAdjustmentInput{
 		PeriodKey: "2026-05",
 		Metric:    "listingkit_generations_succeeded",
 		Used:      3,
@@ -338,17 +338,17 @@ func TestSubscriptionPlanApplyCreatesEntitlements(t *testing.T) {
 	if summary.CurrentPlan == nil || summary.CurrentPlan.Plan.Code != PlanProfessional {
 		t.Fatalf("summary current plan = %#v, want professional plan", summary.CurrentPlan)
 	}
-	var studio, storage *EntitlementView
+	var listingkit, storage *EntitlementView
 	for i := range summary.Entitlements {
 		switch summary.Entitlements[i].Module.Code {
-		case ModuleStudio:
-			studio = &summary.Entitlements[i]
+		case ModuleListingKit:
+			listingkit = &summary.Entitlements[i]
 		case ModuleOSSStorage:
 			storage = &summary.Entitlements[i]
 		}
 	}
-	if studio == nil || !studio.Allowed || studio.Limits["listingkit_generations_succeeded"] != 100 {
-		t.Fatalf("studio entitlement = %#v", studio)
+	if listingkit == nil || !listingkit.Allowed || listingkit.Limits["listingkit_generations_succeeded"] != 100 {
+		t.Fatalf("listingkit entitlement = %#v", listingkit)
 	}
 	if storage == nil || !storage.Allowed || storage.Limits["storage_bytes"] != 10*1024*1024*1024 {
 		t.Fatalf("storage entitlement = %#v", storage)
@@ -386,7 +386,7 @@ func TestSubscriptionPlanManagementUpdatesPlanAndModules(t *testing.T) {
 		Active:      true,
 		Modules: []PlanModuleInput{
 			{ModuleCode: ModuleStoreManagement, SortOrder: 10},
-			{ModuleCode: ModuleStudio, Limits: map[string]int{"listingkit_generations_succeeded": 50}, SortOrder: 20},
+			{ModuleCode: ModuleListingKit, Limits: map[string]int{"listingkit_generations_succeeded": 50}, SortOrder: 20},
 		},
 	}, "operator-1")
 	if err != nil {
@@ -470,7 +470,7 @@ func TestListTenantOverviewsResolvesDisplayNameAndFallsBackToTenantID(t *testing
 	svc.SetTenantDisplayNameResolver(staticTenantDisplayNameResolver{
 		"org-alpha": "北美租户",
 	})
-	if _, err := svc.UpsertEntitlement(context.Background(), "org-alpha", ModuleStudio, EntitlementInput{Status: StatusActive}); err != nil {
+	if _, err := svc.UpsertEntitlement(context.Background(), "org-alpha", ModuleListingKit, EntitlementInput{Status: StatusActive}); err != nil {
 		t.Fatalf("seed alpha entitlement: %v", err)
 	}
 	if _, err := svc.UpsertEntitlement(context.Background(), "org-beta", ModuleOSSStorage, EntitlementInput{Status: StatusActive}); err != nil {

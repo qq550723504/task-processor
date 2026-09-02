@@ -592,11 +592,11 @@ func resolveMemUsageEntitlement(repo *MemRepository, tenantID, moduleCode string
 	if err == nil || moduleCode != ModuleOSSStorage || !errors.Is(err, ErrEntitlementNotFound) {
 		return entitlement, err
 	}
-	studio, err := repo.GetEntitlement(context.Background(), tenantID, ModuleStudio)
+	listingkit, err := repo.GetEntitlement(context.Background(), tenantID, ModuleListingKit)
 	if err != nil {
 		return nil, err
 	}
-	clone := *studio
+	clone := *listingkit
 	clone.ModuleCode = ModuleOSSStorage
 	clone.Limits = nil
 	return &clone, nil
