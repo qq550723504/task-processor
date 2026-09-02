@@ -3635,8 +3635,6 @@ func TestCmdPackagesDoNotImportAppCompatibilityLayers(t *testing.T) {
 
 func TestDomainHTTPPackagesDoNotImportAppHTTPAPI(t *testing.T) {
 	for _, domainRoot := range []string{
-		filepath.Join("..", "internal", "productenrich", "httpapi"),
-		filepath.Join("..", "internal", "productimage", "httpapi"),
 		filepath.Join("..", "internal", "amazonlisting", "httpapi"),
 		filepath.Join("..", "internal", "listingkit", "httpapi"),
 	} {
@@ -3658,8 +3656,6 @@ func TestBusinessDomainsDoNotImportAppHTTPAPI(t *testing.T) {
 		filepath.Join("..", "internal", "listingkit"),
 		filepath.Join("..", "internal", "marketplace"),
 		filepath.Join("..", "internal", "pricing"),
-		filepath.Join("..", "internal", "productenrich"),
-		filepath.Join("..", "internal", "productimage"),
 		filepath.Join("..", "internal", "publishing"),
 		filepath.Join("..", "internal", "sds"),
 		filepath.Join("..", "internal", "shein"),
@@ -3683,7 +3679,6 @@ func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
 		filepath.Join("..", "internal", "marketplace"),
 		filepath.Join("..", "internal", "platform"),
 		filepath.Join("..", "internal", "product", "sourcing"),
-		filepath.Join("..", "internal", "productimage"),
 		filepath.Join("..", "internal", "publishing"),
 		filepath.Join("..", "internal", "shein"),
 		filepath.Join("..", "internal", "temu"),
@@ -3856,8 +3851,6 @@ func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
 		filepath.Join("..", "internal", "listingkit"),
 		filepath.Join("..", "internal", "marketplace"),
 		filepath.Join("..", "internal", "pricing"),
-		filepath.Join("..", "internal", "productenrich"),
-		filepath.Join("..", "internal", "productimage"),
 		filepath.Join("..", "internal", "publishing"),
 		filepath.Join("..", "internal", "sds"),
 		filepath.Join("..", "internal", "shein"),
@@ -3886,9 +3879,6 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "kernel", "module")) + string(os.PathSeparator):          {},
 		filepath.Clean(filepath.Join(root, "listingkit", "api")) + string(os.PathSeparator):         {},
 		filepath.Clean(filepath.Join(root, "listingkit", "httpapi")) + string(os.PathSeparator):     {},
-		filepath.Clean(filepath.Join(root, "productimage", "httpapi")) + string(os.PathSeparator):   {},
-		filepath.Clean(filepath.Join(root, "productenrich", "api")) + string(os.PathSeparator):      {},
-		filepath.Clean(filepath.Join(root, "productenrich", "httpapi")) + string(os.PathSeparator):  {},
 		filepath.Clean(filepath.Join(root, "promptmgmt", "api")) + string(os.PathSeparator):         {},
 		filepath.Clean(filepath.Join(root, "sds", "httpapi")) + string(os.PathSeparator):            {},
 		filepath.Clean(filepath.Join(root, "sdslogin")) + string(os.PathSeparator):                  {},
@@ -3914,7 +3904,6 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "listingadmin", "store_statistics_handler.go")):          {},
 		filepath.Clean(filepath.Join(root, "listingkit", "studio_session_handler.go")):              {},
 		filepath.Clean(filepath.Join(root, "listingsubscription", "handler.go")):                    {},
-		filepath.Clean(filepath.Join(root, "productenrich", "handler.go")):                          {},
 	}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "localagent", "httpapi"))+string(os.PathSeparator)] = struct{}{}
@@ -3931,52 +3920,6 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 			t.Errorf("%s imports gin directly; keep HTTP framework dependencies in api/httpapi or explicitly registered legacy HTTP adapter packages", path)
 		}
 	}
-}
-
-func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
-	root := filepath.Join("..", "internal", "productimage")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "failure_test.go")):                                {},
-		filepath.Clean(filepath.Join(root, "openai_scene_generator_route_test.go")):           {},
-		filepath.Clean(filepath.Join(root, "httpapi", "model_provider_builder.go")):           {},
-		filepath.Clean(filepath.Join(root, "httpapi", "model_provider_defaults_test.go")):     {},
-		filepath.Clean(filepath.Join(root, "httpapi", "ai_capability_scene_catalog.go")):      {},
-		filepath.Clean(filepath.Join(root, "httpapi", "ai_capability_scene_catalog_test.go")): {},
-		filepath.Clean(filepath.Join(root, "httpapi", "scene_governance_builder.go")):         {},
-		filepath.Clean(filepath.Join(root, "httpapi", "scene_governance_builder_test.go")):    {},
-		filepath.Clean(filepath.Join(root, "httpapi", "runtime_builder.go")):                  {},
-		filepath.Clean(filepath.Join(root, "openai_image_edit_adapter.go")):                   {},
-		filepath.Clean(filepath.Join(root, "pipeline_test.go")):                               {},
-	}
-
-	index, err := loadGoFileIndex(root, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for path, facts := range index.files {
-		if pathAllowed(path, allowedFiles) {
-			continue
-		}
-		for _, bannedImport := range []string{
-			`"task-processor/internal/integration/grsai"`,
-			`"task-processor/internal/integration/openai"`,
-		} {
-			if _, ok := facts.imports[bannedImport]; ok {
-				t.Errorf("%s imports %s; keep productimage concrete external clients limited to current provider adapter and runtime builder seams", path, bannedImport)
-			}
-		}
-	}
-}
-
-func TestProductImageBusinessPackagesDoNotImportGlobalConfig(t *testing.T) {
-	root := filepath.Join("..", "internal", "productimage")
-	allowedComposition := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "httpapi")) + string(os.PathSeparator): {},
-	}
-	assertNoProductionBannedImports(t, root, []string{
-		`"task-processor/internal/core/config"`,
-	}, allowedComposition)
 }
 
 func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {

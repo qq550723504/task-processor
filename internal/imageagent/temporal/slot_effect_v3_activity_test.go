@@ -25,7 +25,7 @@ import (
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
 	"task-processor/internal/imageagent/store"
-	"task-processor/internal/productimage"
+	"task-processor/internal/shared/aiidentity"
 )
 
 func TestExecuteSlotV3RestoresProductImageBusinessIdentity(t *testing.T) {
@@ -38,9 +38,9 @@ func TestExecuteSlotV3RestoresProductImageBusinessIdentity(t *testing.T) {
 	_, err := activities.ExecuteSlotV3(context.Background(), input)
 
 	require.NoError(t, err)
-	require.Equal(t, productimage.AIIdentity{
+	require.Equal(t, aiidentity.Identity{
 		TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "task-product-image", TraceID: "trace-product-image",
-	}, executor.ProductImageIdentity())
+	}, executor.AIIdentity())
 }
 
 func TestPrepareGeneratedSlotArtifactsUsesInlineBytesWithoutFilesystemFallback(t *testing.T) {
@@ -1120,7 +1120,7 @@ type recordingStagedExecutor struct {
 	generateCalls               int
 	buildCalls                  int
 	mutateResult                func(*imageagent.SlotExecutionResult)
-	identity                    productimage.AIIdentity
+	identity                    aiidentity.Identity
 	started                     chan struct{}
 	onGenerate                  func()
 	waitForCancellation         bool
@@ -1148,7 +1148,7 @@ func (e *recordingStagedExecutor) ExecuteSlot(context.Context, imageagent.SlotEx
 func (e *recordingStagedExecutor) GenerateSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
 	e.mu.Lock()
 	e.generateCalls++
-	e.identity = productimage.AIIdentityFromContext(ctx)
+	e.identity = aiidentity.FromContext(ctx)
 	generated, generateErr := e.generated, e.generateErr
 	started, onGenerate, waitForCancellation := e.started, e.onGenerate, e.waitForCancellation
 	e.mu.Unlock()
@@ -1330,7 +1330,7 @@ func (e *recordingStagedExecutor) BuildSawCancelledContext() bool {
 	return e.buildSawCancelledContext
 }
 
-func (e *recordingStagedExecutor) ProductImageIdentity() productimage.AIIdentity {
+func (e *recordingStagedExecutor) AIIdentity() aiidentity.Identity {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.identity

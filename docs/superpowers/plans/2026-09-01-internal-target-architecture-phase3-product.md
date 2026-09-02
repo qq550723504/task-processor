@@ -1440,41 +1440,45 @@ git commit -m "refactor(app): retire legacy product http runtimes"
 **Files:**
 - Delete: `internal/productenrich/`
 - Delete: `internal/productimage/`
-- Modify: remaining tests/guards that import or enumerate the retired roots, including `internal/imageagent/temporal/slot_effect_v3_activity_test.go` and `tests/*`
+- Delete: `hack/debug/test-analyzeimage/`
+- Delete: `hack/debug/test-productenrich/`
+- Modify: remaining tests/guards that import or enumerate the retired roots, including `internal/imageagent/temporal/slot_effect_v3_activity_test.go`、`internal/{marketplace/imagepolicy,product/image}/*boundary_guard_test.go` and `tests/*`
 
 **Interfaces:**
 - Consumes: Task 16A 已切断的生产 App 边界，以及 Tasks 7–10 已迁出的 `product/enrichment`、`product/image` 能力。
-- Produces: 两个旧根目录和全仓 Go import 均不存在；测试不得复制旧 production 类型形成隐性兼容层。
+- Produces: 两个旧根目录、两个仅服务旧 runtime 的 debug 目录和全仓真实 Go import declaration 均不存在；absence/depguard 测试可以把旧路径作为禁用数据声明，但不得通过字符串拆分来规避扫描。测试不得复制旧 production 类型形成隐性兼容层。
 - 历史 Temporal 测试若只需身份值，使用当前 ImageAgent/product-image contract 或测试本地值对象；不得保留 `internal/productimage` alias/package。
 
-- [ ] **Step 1: 把两棵旧目录的 absence/import 护栏写成 RED**
+- [x] **Step 1: 把旧根与专用 legacy debug 入口的 absence/import 护栏写成 RED**
 
 护栏检查目录不存在、全仓生产与测试 Go 文件没有旧 import，且 `internal/product/{enrichment,image}` 与 ImageAgent 的行为测试仍覆盖已迁移能力。
 
-- [ ] **Step 2: 运行护栏确认旧根仍存在**
+- [x] **Step 2: 运行护栏确认旧根和真实旧 import 仍存在**
 
 Run: `go test ./tests -run 'TestPhase3.*Legacy|TestPhase3.*Import|Test.*Product.*Boundary' -count=1 -v`
 
 Expected: FAIL，并精确指出两个旧根目录或 import。
 
-- [ ] **Step 3: 删除旧根并清理外部测试依赖**
+- [x] **Step 3: 删除旧根、专用 legacy debug 入口并清理外部测试依赖**
 
-直接删除全部生产/测试文件；不得保留转发包、Deprecated facade、type alias、JSON 兼容结构或旧 task/result fixture。只迁移仍验证当前架构的测试；纯旧运行时测试随目录删除。
+直接删除两个旧根及 `hack/debug/test-{analyzeimage,productenrich}` 的全部文件；不得保留转发包、Deprecated facade、type alias、JSON 兼容结构、旧 task/result fixture 或为已退休 runtime 改接的新 debug 编排。只迁移仍验证当前架构的测试；纯旧运行时测试随目录删除。
 
-- [ ] **Step 4: 运行目标域、ImageAgent、架构和全仓编译验证**
+- [x] **Step 4: 运行目标域、ImageAgent、架构和全仓编译验证**
 
 Run: `go test ./internal/product/... ./internal/imageagent/... ./tests -run 'Test(Product|ImageAgent|Phase3|.*Import.*|.*Depguard.*)' -count=1`
 
 Run: `go test ./... -run '^$' -count=1`
 
-Run: `rg -n 'task-processor/internal/(productenrich|productimage)' internal cmd tests --glob '*.go'`
+Run: `go test ./tests -run 'TestPhase3.*Legacy|TestPhase3.*Import|Test.*Product.*Boundary' -count=1 -v`
 
-Expected: tests/compile PASS；扫描零匹配。
+Run: 使用 `go/parser`/现有 `loadGoFileIndex` 扫描 `internal`、`cmd`、`tests`、`hack` 的 import declarations，拒绝 `task-processor/internal/productenrich`、`task-processor/internal/productimage` 及其子包；不要用原始文本 `rg` 误伤护栏中的禁用路径字面量。
 
-- [ ] **Step 5: 提交旧根删除**
+Expected: tests/compile PASS；旧目录不存在；真实 import declaration 零匹配。护栏 fixture 中作为数据出现的旧路径仍可被测试识别并拒绝。
+
+- [x] **Step 5: 提交旧根删除**
 
 ```powershell
-git add internal/productenrich internal/productimage internal/imageagent tests
+git add -A internal/productenrich internal/productimage hack/debug/test-analyzeimage hack/debug/test-productenrich internal/imageagent internal/marketplace/imagepolicy internal/product/image internal/app/httpapi tests docs/refactoring/phase2-runtime-inventory.md docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
 git diff --cached --check
 git commit -m "refactor(product): remove legacy product task roots"
 ```
@@ -1523,6 +1527,95 @@ Expected: tests PASS；扫描零匹配。
 git add internal/core/config internal/app internal/listingkit/httpapi cmd config docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
 git diff --cached --check
 git commit -m "refactor(config): make imageagent own image runtime settings"
+```
+
+---
+
+### Task 16D1: 删除 AmazonListing/ListingKit 生产仓储静默降级
+
+> **实施补充（2026-09-02）：** Task 16A 的独立审查证明，AmazonListing 与 ListingKit 的 production builder 在缺少数据库时会自动选择内存 Task/支持仓储。该行为会让进程以非持久化状态继续运行，并使生产 E2E 假绿；它不是需要保留的兼容能力。测试内存实现可以继续作为显式 fixture，但 production composition 不得自动选择它们。
+
+**Files:**
+- Modify: `internal/amazonlisting/httpapi/{bootstrap.go,runtime_builder.go}` and tests
+- Modify: `internal/listingkit/httpapi/builders_repositories*.go`、bootstrap contracts/validation and tests
+- Modify: `internal/app/httpapi/` production composition and tests
+- Modify: `cmd/product-listing-api/README.md`
+
+**Interfaces:**
+- Production module construction requires explicitly assembled persistent repository dependencies or a valid production database configuration; missing persistence fails closed before route/pool registration.
+- Existing in-memory repositories remain test utilities only. Production builders do not call `NewMem*` and do not use a generic `buildRepositoryWithFallback` path.
+- New dependency seams accept narrow repository interfaces or typed groups. They do not accept the historical whole-project config loader, logger-backed factories, environment aliases, or nil/default fallback.
+
+- [ ] **Step 1: 写 production fail-closed 与持久化身份测试**
+
+覆盖 AmazonListing/ListingKit 缺 production persistence 时不注册 module/pool；显式注入 temporary SQLite production repositories 时真实 HTTP 流程可完成，并由 fresh connection/repository 复读。增加生产源码守卫，拒绝 production builder 选择 `NewMem*` 或 `buildRepositoryWithFallback`。
+
+- [ ] **Step 2: 运行测试确认当前静默内存降级**
+
+Run: `go test ./internal/amazonlisting/httpapi ./internal/listingkit/httpapi ./internal/app/httpapi -run 'Test.*(Persistence|Repository|Fallback|FailClosed)' -count=1 -v`
+
+Expected: FAIL，并精确证明缺数据库时仍注册模块或选择内存仓储。
+
+- [ ] **Step 3: 硬切 production repository composition**
+
+删除 production 自动内存降级；把持久化依赖变成窄 typed dependency。不得删除单元测试显式构造的 memory repositories，不得用 `config.Config` factory、Deprecated builder、alias 或环境默认值替代旧 fallback。
+
+- [ ] **Step 4: 运行消费者、App 与全仓验证**
+
+Run: `go test ./internal/amazonlisting/... ./internal/listingkit/... ./internal/app/httpapi ./cmd/product-listing-api -count=1`
+
+Run: `go test ./... -run '^$' -count=1`
+
+- [ ] **Step 5: 提交仓储 fail-closed 硬切**
+
+```powershell
+git add internal/amazonlisting/httpapi internal/listingkit/httpapi internal/app/httpapi cmd/product-listing-api docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
+git diff --cached --check
+git commit -m "refactor(product): fail closed without persistent consumer stores"
+```
+
+---
+
+### Task 16D2: 删除 ListingKit 解析器的隐式 fallback
+
+> **实施补充（2026-09-02）：** Task 16A 的 current-only E2E 还证明，缺少 SHEIN category/attribute/sale-attribute resolver、cookie 或 API 能力时，ListingKit 会构造默认 resolver，并以 `source=fallback`、`status=partial` 或 `needs_review` 继续。目标架构不在 Go 代码中维护类别、关键词或词形穷举，也不把缺依赖伪装成可审核业务结果；缺失生产能力必须在组合边界失败关闭。
+
+**Files:**
+- Modify: `internal/listingkit/{service_defaults.go,service_config_groups.go,service_shein_runtime_dependencies.go}` and tests
+- Modify: `internal/listingkit/httpapi/{bootstrap_submit_module.go,bootstrap_validation.go,runtime_support_hooks.go,runtime_support_shein.go}` and tests
+- Modify: `internal/app/httpapi/` ListingKit production composition and E2E
+
+**Interfaces:**
+- Category、attribute、sale-attribute resolver 及所需 cookie/API capability 是显式 typed production dependencies；缺失时 module/pool 不注册或请求明确失败，不生成 fallback/partial 伪结果。
+- 不迁移或新建 marketplace/category/lexeme 表、关键词匹配、tokenization、stemming、单复数或代码内默认分类。策略/分类数据来自外部结构化事实或专用 Integration adapter。
+- 业务 resolver 显式返回的真实 partial/review 结果仍按其契约处理；本任务只删除“依赖缺失时自动构造默认实现”的隐式降级。
+
+- [ ] **Step 1: 写缺依赖 fail-closed 与非穷举守卫**
+
+覆盖三类 resolver、cookie/API capability 任一缺失时 fail closed；完整 typed dependencies 时 current E2E 严格 `completed`，三类 resolution 的 source/status 均来自注入能力且不是 fallback。源码守卫拒绝 production `NewCategoryResolver(nil)`、内置类别/词形表和缺依赖默认构造。
+
+- [ ] **Step 2: 运行测试确认当前 fallback/partial 行为**
+
+Run: `go test ./internal/listingkit ./internal/listingkit/httpapi ./internal/app/httpapi -run 'Test.*(Resolver|Capability|Fallback|FailClosed|CurrentListingKit)' -count=1 -v`
+
+Expected: FAIL，并精确指出当前默认 resolver 或 fallback/partial 路径。
+
+- [ ] **Step 3: 删除隐式 resolver/capability fallback**
+
+以窄 typed dependencies 替代默认构造；不得把测试 fixture、静态 category、关键词、历史配置或远端调用 fallback 搬进生产代码。
+
+- [ ] **Step 4: 运行 ListingKit、App、架构和全仓验证**
+
+Run: `go test ./internal/listingkit/... ./internal/app/httpapi ./tests -run 'Test(ListingKit|Phase3|.*Boundary|.*Fallback)' -count=1`
+
+Run: `go test ./... -run '^$' -count=1`
+
+- [ ] **Step 5: 提交解析能力 fail-closed 硬切**
+
+```powershell
+git add internal/listingkit internal/app/httpapi tests docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
+git diff --cached --check
+git commit -m "refactor(listingkit): fail closed without resolution capabilities"
 ```
 
 ---

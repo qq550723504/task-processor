@@ -19,6 +19,47 @@ func TestPhase3ProductRootContainsNoGoPackage(t *testing.T) {
 	require.Empty(t, entries)
 }
 
+func TestPhase3LegacyProductRootsAreAbsent(t *testing.T) {
+	for _, path := range []string{
+		filepath.Join("..", "internal", "productenrich"),
+		filepath.Join("..", "internal", "productimage"),
+		filepath.Join("..", "hack", "debug", "test-analyzeimage"),
+		filepath.Join("..", "hack", "debug", "test-productenrich"),
+	} {
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("%s still exists; keep the retired product task root deleted", path)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("stat %s: %v", path, err)
+		}
+	}
+}
+
+func TestPhase3LegacyProductImportDeclarationsAreAbsent(t *testing.T) {
+	for _, root := range []string{
+		filepath.Join("..", "internal"),
+		filepath.Join("..", "cmd"),
+		".",
+		filepath.Join("..", "hack"),
+	} {
+		index, err := loadGoFileIndex(root, "")
+		require.NoError(t, err)
+		for path, facts := range index.files {
+			for literal := range facts.imports {
+				importPath, err := decodeGoImportPath(literal)
+				require.NoError(t, err)
+				for _, prefix := range []string{
+					"task-processor/internal/productenrich",
+					"task-processor/internal/productimage",
+				} {
+					if importMatchesPrefix(importPath, prefix) {
+						t.Errorf("%s imports retired product task package %s", path, importPath)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestPhase3ProductTargetDependencies(t *testing.T) {
 	for _, name := range []string{"catalog", "sourcing", "enrichment", "asset", "image"} {
 		root := filepath.Join("..", "internal", "product", name)
@@ -173,13 +214,11 @@ func phase3ProductProductionFiles(root string) ([]string, error) {
 	return production, nil
 }
 
-func TestPhase3LegacyProductRootsDoNotGrow(t *testing.T) {
+func TestPhase3RemainingLegacyProductRootsDoNotGrow(t *testing.T) {
 	for root, max := range map[string]int{
-		"catalog":       5,
-		"asset":         26,
-		"imageasset":    1,
-		"productenrich": 62,
-		"productimage":  88,
+		"catalog":    5,
+		"asset":      26,
+		"imageasset": 1,
 	} {
 		if got := productionGoFileCount(t, filepath.Join("..", "internal", root)); got > max {
 			t.Errorf("internal/%s production files = %d, baseline max = %d", root, got, max)

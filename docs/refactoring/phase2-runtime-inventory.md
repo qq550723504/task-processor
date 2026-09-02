@@ -152,7 +152,6 @@ startup. These are recorded and frozen rather than renamed into `integration`:
 
 | Owning phase | Current adapter-bearing packages |
 | --- | --- |
-| Phase 3 — product | `internal/asset/repository`, `internal/productenrich`, `internal/productenrich/store`, `internal/productimage/store` |
 | Phase 4 — marketplace | `internal/amazonlisting/store`, `internal/publishing/shein`, `internal/shein/aicache`, `internal/shein/productsync`, `internal/temu/sync` |
 | Phase 5 — listing | `internal/listingadmin`, `internal/listingkit`, `internal/listingkit/api`, `internal/listingkit/httpapi`, `internal/listingkit/imageagentacceptance`, `internal/listingkit/memberinvite`, `internal/listingkit/reviewstore`, `internal/listingkit/schema`, `internal/listingkit/sheinsync`, `internal/listingkit/store`, `internal/listingkit/studiostore`, `internal/listingruntime/local` |
 | Phase 6 — agent/knowledge/resource catalog | `internal/aicapability/store`, `internal/imageagent/store`, `internal/imageagent/temporal`, `internal/prompt`, `internal/promptmgmt/api` |
@@ -203,10 +202,6 @@ internal wiring is intentionally excluded; no other package class is excluded.
 | `task-processor/internal/core/logger` | `task-processor/internal/platformbase` | runtime-support debt | app retirement / Phase 8 |
 | `task-processor/internal/core/logger` | `task-processor/internal/platformtask` | runtime-support debt | app retirement / Phase 8 |
 | `task-processor/internal/core/logger` | `task-processor/internal/processor` | runtime-support debt | app retirement / Phase 8 |
-| `task-processor/internal/core/logger` | `task-processor/internal/productenrich` | product business consumer | product owner / Phase 3 |
-| `task-processor/internal/core/logger` | `task-processor/internal/productenrich/api` | product business consumer | product owner / Phase 3 |
-| `task-processor/internal/core/logger` | `task-processor/internal/productenrich/enrich` | product business consumer | product owner / Phase 3 |
-| `task-processor/internal/core/logger` | `task-processor/internal/productimage` | product business consumer | product owner / Phase 3 |
 | `task-processor/internal/core/logger` | `task-processor/internal/prompt` | agent business consumer | agent owner / Phase 6 |
 | `task-processor/internal/core/logger` | `task-processor/internal/publishing/shein` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/core/logger` | `task-processor/internal/sds/client` | marketplace business consumer | marketplace owner / Phase 4 |
@@ -264,14 +259,11 @@ internal wiring is intentionally excluded; no other package class is excluded.
 | `task-processor/internal/platform/database` | `task-processor/internal/amazonlisting/httpapi` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/platform/database` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/platform/database` | `task-processor/internal/listingruntime/local` | listing business consumer | listing owner / Phase 5 |
-| `task-processor/internal/platform/database` | `task-processor/internal/productenrich/httpapi` | product business consumer | product owner / Phase 3 |
-| `task-processor/internal/platform/database` | `task-processor/internal/productimage/httpapi` | product business consumer | product owner / Phase 3 |
 | `task-processor/internal/platform/database` | `task-processor/internal/shein/pipeline` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/platform/database` | `task-processor/internal/sourceaccount/bootstrap` | organization persistence consumer | organization owner / Phase 7 |
 | `task-processor/internal/platform/database` | `task-processor/internal/tenantbridge/bootstrap` | organization persistence consumer | organization owner / Phase 7 |
 | `task-processor/internal/platform/redis` | `task-processor/internal/crawler/amazon` | crawler business consumer | product + marketplace / Phases 3-4 |
 | `task-processor/internal/platform/redis` | `task-processor/internal/crawler/shared` | crawler business consumer | product + marketplace / Phases 3-4 |
-| `task-processor/internal/platform/redis` | `task-processor/internal/productenrich/httpapi` | product business consumer | product owner / Phase 3 |
 | `task-processor/internal/platform/queue/rabbitmq` | `task-processor/internal/crawler/fetcher` | crawler business consumer | product + marketplace / Phases 3-4 |
 | `task-processor/internal/platform/queue/rabbitmq` | `task-processor/internal/listingcontrol` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/platform/queue/rabbitmq` | `task-processor/internal/platformbase` | runtime-support debt | app retirement / Phase 8 |
@@ -291,10 +283,6 @@ internal wiring is intentionally excluded; no other package class is excluded.
 | `task-processor/internal/platform/workerpool` | `task-processor/internal/listingkit` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/platform/workerpool` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/platform/workerpool` | `task-processor/internal/processor` | runtime-support debt | app retirement / Phase 8 |
-| `task-processor/internal/platform/workerpool` | `task-processor/internal/productenrich/httpapi` | product business consumer | product owner / Phase 3 |
-| `task-processor/internal/platform/workerpool` | `task-processor/internal/productenrich/pipeline` | product business consumer | product owner / Phase 3 |
-| `task-processor/internal/platform/workerpool` | `task-processor/internal/productimage/httpapi` | product business consumer | product owner / Phase 3 |
-| `task-processor/internal/platform/workerpool` | `task-processor/internal/productimage/pipeline` | product business consumer | product owner / Phase 3 |
 | `task-processor/internal/platform/workerpool` | `task-processor/internal/shein/pipeline` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/platform/workerpool` | `task-processor/internal/temu` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/amazon` | marketplace business consumer | marketplace owner / Phase 4 |
@@ -302,10 +290,6 @@ internal wiring is intentionally excluded; no other package class is excluded.
 | `task-processor/internal/integration/openai` | `task-processor/internal/core/config` | application schema | owning domains / Phases 3-7 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/listingadmin` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
-| `task-processor/internal/integration/openai` | `task-processor/internal/productenrich` | product business consumer | product owner / Phase 3 |
-| `task-processor/internal/integration/openai` | `task-processor/internal/productenrich/httpapi` | product business consumer | product owner / Phase 3 |
-| `task-processor/internal/integration/openai` | `task-processor/internal/productimage` | product business consumer | product owner / Phase 3 |
-| `task-processor/internal/integration/openai` | `task-processor/internal/productimage/httpapi` | product business consumer | product owner / Phase 3 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/publishing/sheinmanaged` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/shein/category` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/shein/content` | marketplace business consumer | marketplace owner / Phase 4 |
@@ -324,13 +308,10 @@ internal wiring is intentionally excluded; no other package class is excluded.
 | `task-processor/internal/integration/openai` | `task-processor/internal/temu/sku` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/integration/geminiimage` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/integration/grsai` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
-| `task-processor/internal/integration/grsai` | `task-processor/internal/productimage/httpapi` | product business consumer | product owner / Phase 3 |
 | `task-processor/internal/integration/s3` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
-| `task-processor/internal/integration/s3` | `task-processor/internal/productimage/httpapi` | product business consumer | product owner / Phase 3 |
 | `task-processor/internal/integration/httpimage` | `task-processor/internal/imageagent` | agent business consumer | agent owner / Phase 6 |
 | `task-processor/internal/integration/httpimage` | `task-processor/internal/listingkit` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/integration/httpimage` | `task-processor/internal/listingruntime/local` | listing business consumer | listing owner / Phase 5 |
-| `task-processor/internal/integration/httpimage` | `task-processor/internal/productimage` | product business consumer | product owner / Phase 3 |
 
 ## Historical pre-migration snapshot
 
