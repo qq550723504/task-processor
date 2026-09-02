@@ -23,6 +23,19 @@ func TestInstallationNamespaceIsStableAcrossRestarts(t *testing.T) {
 	}
 }
 
+func TestNamespaceForExecutableUsesStableInstallationDirectory(t *testing.T) {
+	first := namespaceForExecutable(`C:\install\one\task-processor.exe`)
+	restartedFromAnotherWorkingDirectory := namespaceForExecutable(`C:\install\one\task-processor.exe`)
+	otherInstallation := namespaceForExecutable(`C:\install\two\task-processor.exe`)
+
+	if first != restartedFromAnotherWorkingDirectory {
+		t.Fatal("restarting from another working directory must keep the installation namespace")
+	}
+	if first == otherInstallation {
+		t.Fatal("different executable installations must not share a namespace")
+	}
+}
+
 func TestNamespacedTempPathUsesSystemTempDirectory(t *testing.T) {
 	got := NamespacedTempPath("productimage")
 	root := filepath.Join(os.TempDir(), "task-processor", "productimage")

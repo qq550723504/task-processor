@@ -24,11 +24,22 @@ func NamespaceForDirectory(directory string) string {
 
 // InstallationNamespace identifies the current checkout or installation.
 func InstallationNamespace() string {
+	executable, err := os.Executable()
+	if err == nil {
+		return namespaceForExecutable(executable)
+	}
 	directory, err := os.Getwd()
 	if err != nil {
 		directory = "unknown"
 	}
 	return NamespaceForDirectory(directory)
+}
+
+func namespaceForExecutable(executable string) string {
+	if resolvedExecutable, err := filepath.EvalSymlinks(executable); err == nil {
+		executable = resolvedExecutable
+	}
+	return NamespaceForDirectory(filepath.Dir(executable))
 }
 
 // NamespacedTempPath returns a path under the system temp directory isolated by installation.

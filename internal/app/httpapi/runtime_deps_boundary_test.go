@@ -345,9 +345,10 @@ func TestHTTPAPIRuntimeKeepsPathResolutionDedicated(t *testing.T) {
 	pathSource := readHTTPAPIBoundaryFile(t, "runtime_paths.go")
 	for _, marker := range []string{
 		`"path/filepath"`,
+		`"task-processor/internal/pkg/runtimepath"`,
 		"func resolveImageWorkDir(",
 		"filepath.Clean(",
-		`filepath.Join(os.TempDir(), "task-processor", "productimage")`,
+		`runtimepath.NamespacedTempPath("productimage")`,
 	} {
 		if !strings.Contains(pathSource, marker) {
 			t.Fatalf("runtime_paths.go missing %s", marker)
