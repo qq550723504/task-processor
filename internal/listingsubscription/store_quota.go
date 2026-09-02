@@ -1,0 +1,183 @@
+package listingsubscription
+
+import (
+	"context"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
+)
+
+const storeQuotaMetric = "store_count"
+
+var (
+	ErrStoreQuotaInvalidInput      = errors.New("store quota invalid input")
+	ErrStoreQuotaNotFound          = errors.New("store quota allocation not found")
+	ErrStoreQuotaIdentityMismatch  = errors.New("store quota allocation identity mismatch")
+	ErrStoreQuotaInvalidTransition = errors.New("store quota invalid transition")
+	ErrStoreQuotaExceeded          = errors.New("store quota exceeded")
+	ErrStoreQuotaNotConfigured     = errors.New("store quota ledger is not configured")
+	ErrStoreQuotaStale             = errors.New("store quota allocation changed after observation")
+)
+
+type StoreQuotaAllocationStatus string
+
+const (
+	StoreQuotaReserved  StoreQuotaAllocationStatus = "reserved"
+	StoreQuotaAllocated StoreQuotaAllocationStatus = "allocated"
+	StoreQuotaReleased  StoreQuotaAllocationStatus = "released"
+)
+
+type StoreQuotaReserveInput struct {
+	OrganizationID     string
+	RequestKey         string
+	ActorSubject       string
+	RequestFingerprint string
+}
+
+type StoreQuotaTransitionInput struct {
+	OrganizationID    string
+	AllocationID      string
+	StoreID           string
+	RequestKey        string
+	ActorSubject      string
+	ExpectedUpdatedAt *time.Time
+}
+
+type StoreQuotaAllocation struct {
+	OrganizationID     string
+	AllocationID       string
+	StoreID            string
+	RequestKey         string
+	RequestFingerprint string
+	Status             StoreQuotaAllocationStatus
+	CreatedBy          string
+	UpdatedBy          string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	AllocatedAt        *time.Time
+	ReleasedAt         *time.Time
+}
+
+type StoreQuotaReserveResult struct {
+	Allocation   StoreQuotaAllocation
+	AllocationID string
+	StoreID      string
+	Existing     bool
+}
+
+type StoreQuotaTransitionResult struct {
+	Allocation StoreQuotaAllocation
+	Existing   bool
+}
+
+type StoreQuotaSummary struct {
+	OrganizationID string
+	Committed      int64
+	Reserved       int64
+	Limit          *int64
+	Allowed        bool
+	Reason         string
+}
+
+// StoreQuotaLedger owns durable Store allocation admission independently from
+// the generic usage ledger. Store Center receives only this domain contract.
+type StoreQuotaLedger interface {
+	Reserve(context.Context, StoreQuotaReserveInput) (StoreQuotaReserveResult, error)
+	RenewReservation(context.Context, StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error)
+	Commit(context.Context, StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error)
+	ReleaseReservation(context.Context, StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error)
+	Deallocate(context.Context, StoreQuotaTransitionInput) (StoreQuotaTransitionResult, error)
+	GetByRequestKey(context.Context, string, string) (*StoreQuotaAllocation, error)
+	Summary(context.Context, string) (StoreQuotaSummary, error)
+}
+
+// StoreQuotaReservationReconciler is an optional ledger capability used by
+// Store Center when admission is blocked. It exposes only old reservations;
+// the caller must still verify that no Store exists before releasing one.
+type StoreQuotaReservationReconciler interface {
+	ListReservedBefore(context.Context, string, time.Time) ([]StoreQuotaAllocation, error)
+}
+
+type StoreQuotaValidationError struct{ Field string }
+
+func (e *StoreQuotaValidationError) Error() string {
+	return fmt.Sprintf("store quota invalid %s", e.Field)
+}
+func (e *StoreQuotaValidationError) Is(target error) bool { return target == ErrStoreQuotaInvalidInput }
+
+type StoreQuotaExceededError struct {
+	OrganizationID string
+	Committed      int64
+	Reserved       int64
+	Limit          int64
+}
+
+func (e *StoreQuotaExceededError) Error() string {
+	return fmt.Sprintf("store quota exceeded for organization %q: committed=%d reserved=%d limit=%d", e.OrganizationID, e.Committed, e.Reserved, e.Limit)
+}
+func (e *StoreQuotaExceededError) Is(target error) bool { return target == ErrStoreQuotaExceeded }
+
+func NormalizeAndValidateStoreQuotaReserveInput(input StoreQuotaReserveInput) (StoreQuotaReserveInput, error) {
+	if err := validateStoreQuotaText(input.OrganizationID, "organization_id"); err != nil {
+		return StoreQuotaReserveInput{}, err
+	}
+	if err := validateStoreQuotaUUID(input.RequestKey, "request_key"); err != nil {
+		return StoreQuotaReserveInput{}, err
+	}
+	if err := validateStoreQuotaText(input.ActorSubject, "actor_subject"); err != nil {
+		return StoreQuotaReserveInput{}, err
+	}
+	if input.RequestFingerprint != "" && !isLowerHexSHA256(input.RequestFingerprint) {
+		return StoreQuotaReserveInput{}, &StoreQuotaValidationError{Field: "request_fingerprint"}
+	}
+	return input, nil
+}
+
+func normalizeAndValidateStoreQuotaTransitionInput(input StoreQuotaTransitionInput) (StoreQuotaTransitionInput, error) {
+	if err := validateStoreQuotaText(input.OrganizationID, "organization_id"); err != nil {
+		return StoreQuotaTransitionInput{}, err
+	}
+	for field, value := range map[string]string{"allocation_id": input.AllocationID, "store_id": input.StoreID, "request_key": input.RequestKey} {
+		if err := validateStoreQuotaUUID(value, field); err != nil {
+			return StoreQuotaTransitionInput{}, err
+		}
+	}
+	if err := validateStoreQuotaText(input.ActorSubject, "actor_subject"); err != nil {
+		return StoreQuotaTransitionInput{}, err
+	}
+	return input, nil
+}
+
+func isLowerHexSHA256(value string) bool {
+	if len(value) != 64 || strings.ToLower(value) != value {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 32
+}
+
+func validateStoreQuotaText(value, field string) error {
+	if value == "" || len(value) > 200 || !utf8.ValidString(value) || strings.TrimSpace(value) != value {
+		return &StoreQuotaValidationError{Field: field}
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return &StoreQuotaValidationError{Field: field}
+		}
+	}
+	return nil
+}
+
+func validateStoreQuotaUUID(value, field string) error {
+	parsed, err := uuid.Parse(value)
+	if err != nil || parsed == uuid.Nil || parsed.String() != value {
+		return &StoreQuotaValidationError{Field: field}
+	}
+	return nil
+}

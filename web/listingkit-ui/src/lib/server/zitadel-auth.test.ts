@@ -3,9 +3,36 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   authorizeZitadelIdentity,
   getZitadelAuthOptions,
+  normalizeReturnTo,
   readZitadelIdentityFromSession,
   verifyZitadelAccessToken,
 } from "@/lib/server/zitadel-auth";
+
+describe("normalizeReturnTo", () => {
+  it.each([
+    ["/", "/"],
+    ["/listing-kits/sds?step=generate", "/listing-kits/sds?step=generate"],
+    ["/workbench", "/workbench"],
+    ["/workbench/stores", "/workbench/stores"],
+    [
+      "/workbench/no-organization?returnTo=https%3A%2F%2Fevil.example",
+      "/workbench/no-organization?returnTo=https%3A%2F%2Fevil.example",
+    ],
+  ])("allows the local protected return target %s", (value, expected) => {
+    expect(normalizeReturnTo(value)).toBe(expected);
+  });
+
+  it.each([
+    "https://evil.example/workbench",
+    "//evil.example/workbench",
+    "/\\evil.example/workbench",
+    "/\t/evil.example/workbench",
+    "/workbench/%",
+    "/admin/workbench",
+  ])("rejects the unsafe or unrelated return target %s", (value) => {
+    expect(normalizeReturnTo(value)).toBe("/");
+  });
+});
 
 describe("getZitadelAuthOptions", () => {
   afterEach(() => {

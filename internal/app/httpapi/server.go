@@ -16,9 +16,13 @@ func buildHTTPServerFromRoutes(port int, routes []httproute.Descriptor) *http.Se
 }
 
 func buildHTTPServerFromRoutesAt(bindAddress string, port int, routes []httproute.Descriptor) *http.Server {
+	return buildHTTPServerFromRoutesAtWithAuthDependencies(bindAddress, port, routes, newRouteAuthDependencies())
+}
+
+func buildHTTPServerFromRoutesAtWithAuthDependencies(bindAddress string, port int, routes []httproute.Descriptor, dependencies routeAuthDependencies) *http.Server {
 	router := gin.New()
 	router.Use(gin.Recovery())
-	mountRoutes(router, routes)
+	mountRoutesWithAuthDependencies(router, routes, dependencies)
 	return &http.Server{
 		Addr:              serverAddress(bindAddress, port),
 		Handler:           router,
@@ -34,9 +38,12 @@ func serverAddress(bindAddress string, port int) string {
 }
 
 func mountRoutes(r *gin.Engine, routes []httproute.Descriptor) {
-	zitadelAuth := newZitadelAuthMiddleware()
+	mountRoutesWithAuthDependencies(r, routes, newRouteAuthDependencies())
+}
+
+func mountRoutesWithAuthDependencies(r *gin.Engine, routes []httproute.Descriptor, dependencies routeAuthDependencies) {
 	for _, route := range routes {
-		handlers := append(routeAuthHandlers(route, zitadelAuth), route.Handler)
+		handlers := append(routeAuthHandlersWithDependencies(route, dependencies), route.Handler)
 		r.Handle(route.Method, route.Path, handlers...)
 	}
 }

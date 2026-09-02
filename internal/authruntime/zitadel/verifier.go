@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"task-processor/internal/authidentity"
 )
@@ -18,7 +19,43 @@ import (
 var (
 	errResourceOwnerMissing = errors.New("ZITADEL resource owner is required")
 	errSubjectMissing       = errors.New("ZITADEL subject is required")
+	errTokenExpired         = errors.New("ZITADEL token introspection returned an expired token")
 )
+
+const introspectionResponseMaxBytes = 1 << 20
+
+type verificationFailureKind uint8
+
+const (
+	verificationInvalid verificationFailureKind = iota + 1
+	verificationDependencyUnavailable
+)
+
+type verificationFailure struct {
+	kind  verificationFailureKind
+	cause error
+}
+
+func (failure *verificationFailure) Error() string { return failure.cause.Error() }
+func (failure *verificationFailure) Unwrap() error { return failure.cause }
+
+func IsVerificationInvalid(err error) bool {
+	var failure *verificationFailure
+	return errors.As(err, &failure) && failure.kind == verificationInvalid
+}
+
+func IsVerificationDependencyUnavailable(err error) bool {
+	var failure *verificationFailure
+	return errors.As(err, &failure) && failure.kind == verificationDependencyUnavailable
+}
+
+func invalidVerification(cause error) error {
+	return &verificationFailure{kind: verificationInvalid, cause: cause}
+}
+
+func unavailableVerification(cause error) error {
+	return &verificationFailure{kind: verificationDependencyUnavailable, cause: cause}
+}
 
 type Verifier interface {
 	Verify(context.Context, string) (authidentity.AuthenticatedIdentity, error)
@@ -28,6 +65,7 @@ type verifier struct {
 	cfg       Config
 	mu        sync.Mutex
 	discovery discoveryDocument
+	now       func() time.Time
 }
 
 func NewVerifier(cfg Config) Verifier {
@@ -35,13 +73,13 @@ func NewVerifier(cfg Config) Verifier {
 }
 
 func newVerifier(cfg Config) *verifier {
-	return &verifier{cfg: cfg}
+	return &verifier{cfg: cfg, now: time.Now}
 }
 
 func (v *verifier) Verify(ctx context.Context, token string) (authidentity.AuthenticatedIdentity, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return authidentity.AuthenticatedIdentity{}, errors.New("ZITADEL bearer token is required")
+		return authidentity.AuthenticatedIdentity{}, invalidVerification(errors.New("ZITADEL bearer token is required"))
 	}
 
 	payload, err := v.introspect(ctx, token)
@@ -51,27 +89,39 @@ func (v *verifier) Verify(ctx context.Context, token string) (authidentity.Authe
 
 	tenantID := strings.TrimSpace(payload.ResourceID)
 	if tenantID == "" {
-		return authidentity.AuthenticatedIdentity{}, errResourceOwnerMissing
+		return authidentity.AuthenticatedIdentity{}, invalidVerification(errResourceOwnerMissing)
 	}
 	userID := strings.TrimSpace(payload.Subject)
 	if userID == "" {
-		return authidentity.AuthenticatedIdentity{}, errSubjectMissing
+		return authidentity.AuthenticatedIdentity{}, invalidVerification(errSubjectMissing)
 	}
 
-	return authidentity.AuthenticatedIdentity{
-		TenantID: tenantID,
-		UserID:   userID,
-		Roles:    append([]string(nil), payload.Roles...),
-	}, nil
+	identity := authidentity.AuthenticatedIdentity{
+		TenantID:           tenantID,
+		UserID:             userID,
+		Roles:              append([]string(nil), payload.Roles...),
+		HomeOrganizationID: tenantID,
+	}
+	if payload.ExpiresAt > 0 {
+		identity.TokenExpiresAt = time.Unix(payload.ExpiresAt, 0).UTC()
+	}
+	return identity, nil
+}
+
+func (v *verifier) tokenExpired(expiresAt int64) bool {
+	if expiresAt <= 0 {
+		return false
+	}
+	return !time.Unix(expiresAt, 0).After(v.now())
 }
 
 func (v *verifier) introspect(ctx context.Context, token string) (*IntrospectionResponse, error) {
 	discovery, err := v.getDiscovery(ctx)
 	if err != nil {
-		return nil, err
+		return nil, unavailableVerification(err)
 	}
 	if discovery.IntrospectionEndpoint == "" {
-		return nil, errors.New("ZITADEL introspection endpoint is not available")
+		return nil, unavailableVerification(errors.New("ZITADEL introspection endpoint is not available"))
 	}
 
 	form := url.Values{}
@@ -80,7 +130,7 @@ func (v *verifier) introspect(ctx context.Context, token string) (*Introspection
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, discovery.IntrospectionEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return nil, err
+		return nil, unavailableVerification(err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if v.cfg.ClientSecret != "" {
@@ -89,27 +139,33 @@ func (v *verifier) introspect(ctx context.Context, token string) (*Introspection
 
 	resp, err := v.cfg.HTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("ZITADEL token introspection failed: %w", err)
+		return nil, unavailableVerification(fmt.Errorf("ZITADEL token introspection failed: %w", err))
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, introspectionResponseMaxBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("ZITADEL token introspection response is invalid: %w", err)
+		return nil, unavailableVerification(fmt.Errorf("ZITADEL token introspection response is invalid: %w", err))
+	}
+	if len(data) > introspectionResponseMaxBytes {
+		return nil, unavailableVerification(errors.New("ZITADEL token introspection response is too large"))
 	}
 
 	var payload IntrospectionResponse
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, fmt.Errorf("ZITADEL token introspection response is invalid: %w", err)
+		return nil, unavailableVerification(fmt.Errorf("ZITADEL token introspection response is invalid: %w", err))
 	}
 	payload.Extra = data
 	payload.Roles = ParseRolesForProject(data, v.cfg.ProjectID)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("ZITADEL token introspection failed: %d", resp.StatusCode)
+		return nil, unavailableVerification(fmt.Errorf("ZITADEL token introspection failed: %d", resp.StatusCode))
 	}
 	if !payload.Active {
-		return nil, errors.New("ZITADEL token introspection returned an inactive token; check whether the UI and API are using the same ZITADEL issuer/client configuration")
+		return nil, invalidVerification(errors.New("ZITADEL token introspection returned an inactive token; check whether the UI and API are using the same ZITADEL issuer/client configuration"))
+	}
+	if v.tokenExpired(payload.ExpiresAt) {
+		return nil, invalidVerification(errTokenExpired)
 	}
 	return &payload, nil
 }

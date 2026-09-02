@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"fmt"
+
 	"github.com/sirupsen/logrus"
 
 	a1688handoff "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
@@ -11,32 +13,36 @@ import (
 )
 
 type httpFeatureCompositionBuilder struct {
-	buildProduct       productModuleBuilder
-	buildImage         imageModuleBuilder
-	buildAmazonListing amazonListingModuleBuilder
-	buildSheinLogin    sheinLoginModuleBuilder
-	buildSDSLogin      sdsLoginModuleBuilder
-	buildListingKit    listingKitModuleBuilder
-	buildPrompt        promptModuleBuilder
-	buildTaskRPC       taskRPCModuleBuilder
-	buildSDS           sdsModuleBuilder
-	buildSourceAccount sourceAccountRepositoryBuilder
-	buildImageAgent    imageAgentModuleBuilder
+	buildProduct          productModuleBuilder
+	buildImage            imageModuleBuilder
+	buildAmazonListing    amazonListingModuleBuilder
+	buildSheinLogin       sheinLoginModuleBuilder
+	buildSDSLogin         sdsLoginModuleBuilder
+	buildListingKit       listingKitModuleBuilder
+	buildPrompt           promptModuleBuilder
+	buildTaskRPC          taskRPCModuleBuilder
+	buildSDS              sdsModuleBuilder
+	buildSourceAccount    sourceAccountRepositoryBuilder
+	buildImageAgent       imageAgentModuleBuilder
+	buildWorkbenchContext workbenchContextModuleBuilder
+	buildStoreCenter      storeCenterModuleBuilder
 }
 
 func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 	return httpFeatureCompositionBuilder{
-		buildProduct:       buildProductModuleResult,
-		buildImage:         buildImageModuleResult,
-		buildAmazonListing: buildAmazonListingModuleResult,
-		buildSheinLogin:    buildSheinLoginModuleResult,
-		buildSDSLogin:      buildSDSLoginModuleResult,
-		buildListingKit:    buildListingKitModuleResult,
-		buildPrompt:        buildPromptModuleResult,
-		buildTaskRPC:       buildTaskRPCModuleResult,
-		buildSDS:           buildSDSModuleResult,
-		buildSourceAccount: buildSourceAccountRepository,
-		buildImageAgent:    buildImageAgentModuleResult,
+		buildProduct:          buildProductModuleResult,
+		buildImage:            buildImageModuleResult,
+		buildAmazonListing:    buildAmazonListingModuleResult,
+		buildSheinLogin:       buildSheinLoginModuleResult,
+		buildSDSLogin:         buildSDSLoginModuleResult,
+		buildListingKit:       buildListingKitModuleResult,
+		buildPrompt:           buildPromptModuleResult,
+		buildTaskRPC:          buildTaskRPCModuleResult,
+		buildSDS:              buildSDSModuleResult,
+		buildSourceAccount:    buildSourceAccountRepository,
+		buildImageAgent:       buildImageAgentModuleResult,
+		buildWorkbenchContext: buildDefaultWorkbenchContextModule,
+		buildStoreCenter:      buildDefaultStoreCenterModule,
 	}
 }
 
@@ -151,7 +157,41 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	composition.promptModule = supportFeatures.promptModule
 	composition.taskRPCResult = supportFeatures.taskRPCResult
 	composition.sdsModule = supportFeatures.sdsModule
+
+	done = timer.phase("buildWorkbenchModules")
+	if err := b.buildWorkbenchModules(logger, deps, &composition); err != nil {
+		done()
+		return composition, err
+	}
+	done()
 	timer.total("buildHTTPFeatureComposition")
 
 	return composition, nil
+}
+
+func (b httpFeatureCompositionBuilder) buildWorkbenchModules(logger *logrus.Logger, deps *runtimeDeps, composition *httpFeatureComposition) error {
+	if deps == nil || deps.shared == nil || composition == nil {
+		return fmt.Errorf("build Workbench modules: runtime dependencies are required")
+	}
+	if b.buildWorkbenchContext != nil {
+		workbenchResult, err := b.buildWorkbenchContext(deps.shared.cfg, logger)
+		if err != nil {
+			return err
+		}
+		composition.workbenchContextModule = workbenchResult.module
+		composition.workbenchAuthDependencies = workbenchResult.authDependencies
+	}
+	if b.buildStoreCenter == nil {
+		return nil
+	}
+	if deps.shared.cfg != nil && deps.shared.cfg.Workbench.Enabled && (composition.workbenchContextModule == nil || composition.workbenchAuthDependencies == nil) {
+		return fmt.Errorf("build Store Center: Workbench context dependencies are required")
+	}
+	storeResult, err := b.buildStoreCenter(deps.shared.cfg, logger)
+	if err != nil {
+		return err
+	}
+	composition.storeCenterModule = storeResult.module
+	deps.addClosers(storeResult.closer)
+	return nil
 }

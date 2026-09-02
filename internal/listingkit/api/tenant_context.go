@@ -24,6 +24,9 @@ func detachedRequestContext(c *gin.Context, candidates ...string) context.Contex
 }
 
 func requestTenantID(c *gin.Context, candidates ...string) string {
+	if identity, ok := authenticatedIdentity(c); ok {
+		return strings.TrimSpace(identity.TenantID)
+	}
 	if tenantID, ok := requestExplicitTenantID(c, candidates...); ok {
 		return tenantID
 	}
@@ -32,7 +35,8 @@ func requestTenantID(c *gin.Context, candidates ...string) string {
 
 func requestExplicitTenantID(c *gin.Context, candidates ...string) (string, bool) {
 	if identity, ok := authenticatedIdentity(c); ok {
-		return identity.TenantID, true
+		tenantID := strings.TrimSpace(identity.TenantID)
+		return tenantID, tenantID != ""
 	}
 	for _, candidate := range candidates {
 		if trimmed := strings.TrimSpace(candidate); trimmed != "" {

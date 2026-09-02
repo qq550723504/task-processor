@@ -6,7 +6,9 @@ import { ListingKitAppShell } from "@/components/listingkit/shared/listingkit-ap
 import { QueryProvider } from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ToastProvider } from "@/components/providers/toast-provider";
+import { WorkbenchContextProvider } from "@/components/providers/workbench-context-provider";
 import { ZitadelAuthGate } from "@/components/providers/zitadel-auth-gate";
+import { WorkspaceAppShell } from "@/components/workbench/workspace-app-shell";
 
 const publicRoutes = new Set([
   "/",
@@ -22,6 +24,13 @@ export function isPublicRoute(pathname: string | null): boolean {
   return pathname !== null && publicRoutes.has(pathname);
 }
 
+export function isWorkbenchRoute(pathname: string | null): boolean {
+  return (
+    pathname !== null &&
+    (pathname === "/workbench" || pathname.startsWith("/workbench/"))
+  );
+}
+
 export function ApplicationFrame({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
 
@@ -31,11 +40,27 @@ export function ApplicationFrame({ children }: Readonly<{ children: React.ReactN
     return <>{children}</>;
   }
 
+  if (isWorkbenchRoute(pathname)) {
+    return (
+      <ThemeProvider>
+        <QueryProvider>
+          <ToastProvider>
+            <WorkbenchContextProvider>
+              <WorkspaceAppShell>{children}</WorkspaceAppShell>
+            </WorkbenchContextProvider>
+          </ToastProvider>
+        </QueryProvider>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider>
       <QueryProvider>
         <ToastProvider>
-          <ZitadelAuthGate><ListingKitAppShell>{children}</ListingKitAppShell></ZitadelAuthGate>
+          <ZitadelAuthGate>
+            <ListingKitAppShell>{children}</ListingKitAppShell>
+          </ZitadelAuthGate>
         </ToastProvider>
       </QueryProvider>
     </ThemeProvider>

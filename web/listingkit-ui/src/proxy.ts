@@ -5,6 +5,7 @@ import { serverAuth } from "@/auth";
 import {
   authorizeZitadelIdentity,
   isZitadelAuthConfigured,
+  normalizeReturnTo,
   readZitadelIdentityFromSession,
   readZitadelSessionError,
 } from "@/lib/server/zitadel-auth";
@@ -23,7 +24,7 @@ export { authenticatedProxy as proxy };
 export default authenticatedProxy;
 
 async function handleProxy(request: AuthenticatedProxyRequest) {
-  if (!isListingKitPagePath(request.nextUrl.pathname)) {
+  if (!isProtectedPagePath(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
 
@@ -44,6 +45,10 @@ async function handleProxy(request: AuthenticatedProxyRequest) {
   const identity = readZitadelIdentityFromSession(session);
   if (!identity) {
     return redirectToZitadelLogin(request);
+  }
+
+  if (isWorkbenchPagePath(request.nextUrl.pathname)) {
+    return NextResponse.next();
   }
 
   const authorization = authorizeZitadelIdentity(identity);
@@ -69,6 +74,14 @@ function isListingKitPagePath(pathname: string) {
   return pathname === "/listing-kits" || pathname.startsWith("/listing-kits/");
 }
 
+function isWorkbenchPagePath(pathname: string) {
+  return pathname === "/workbench" || pathname.startsWith("/workbench/");
+}
+
+function isProtectedPagePath(pathname: string) {
+  return isListingKitPagePath(pathname) || isWorkbenchPagePath(pathname);
+}
+
 function redirectToZitadelLogin(request: NextRequest) {
   const loginUrl = request.nextUrl.clone();
   loginUrl.pathname = "/login";
@@ -78,13 +91,11 @@ function redirectToZitadelLogin(request: NextRequest) {
 }
 
 function buildReturnTo(request: NextRequest) {
-  const returnTo = `${request.nextUrl.pathname}${request.nextUrl.search}`;
-  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) {
-    return "/";
-  }
-  return returnTo;
+  return normalizeReturnTo(
+    `${request.nextUrl.pathname}${request.nextUrl.search}`,
+  );
 }
 
 export const config = {
-  matcher: ["/listing-kits/:path*"],
+  matcher: ["/listing-kits/:path*", "/workbench/:path*"],
 };
