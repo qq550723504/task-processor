@@ -20,11 +20,11 @@ func (f *runtimeAPIFactory) BuildBaseClient(ctx context.Context, storeID int64) 
 	}
 	if !apiClient.HasCookies() {
 		if err := apiClient.ForceRefreshCookies(); err != nil {
-			return nil, "SHEIN 店铺 cookie 不可用，已降级为离线解析"
+			return nil, "SHEIN 店铺 cookie 不可用，在线解析失败"
 		}
 	}
 	if !apiClient.HasCookies() {
-		return nil, "SHEIN 店铺 cookie 不可用，已降级为离线解析"
+		return nil, "SHEIN 店铺 cookie 不可用，在线解析失败"
 	}
 
 	return newRuntimeBaseClient(apiClient, storeID), ""

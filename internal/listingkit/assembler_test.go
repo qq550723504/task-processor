@@ -11,7 +11,6 @@ import (
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinmanaged "task-processor/internal/publishing/sheinmanaged"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
 )
@@ -189,7 +188,7 @@ func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 		},
 	}
 
-	result, err := NewAssembler(stubAmazonDraftBuilder{}).Assemble(task, testCatalogSnapshot(t, canonical), approvedAssets)
+	result, err := NewAssemblerWithConfig(completeFailClosedAssemblerConfig()).Assemble(task, testCatalogSnapshot(t, canonical), approvedAssets)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,104 +461,6 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 	}
 	if result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList[0].AttributeID != 502 {
 		t.Fatalf("shein preview sku sale attribute id = %d, want 502", result.Shein.PreviewProduct.SKCList[0].SKUS[0].SaleAttributeList[0].AttributeID)
-	}
-}
-
-func TestManagedSheinCategoryResolverFallsBackWithoutStoreID(t *testing.T) {
-	t.Parallel()
-
-	resolver := sheinmanaged.NewCategoryResolver(nil)
-	req := &GenerateRequest{ProductKey: "test-product",
-		Text:      "wireless earbuds",
-		Country:   "US",
-		Language:  "en_US",
-		Platforms: []string{"shein"},
-	}
-	canonical := &canonical.Product{
-		Title:        "Wireless Earbuds",
-		CategoryPath: []string{"Electronics", "Headphones"},
-	}
-	pkg := &SheinPackage{
-		CategoryName: "Headphones",
-		CategoryPath: []string{"Electronics", "Headphones"},
-	}
-
-	resolution := resolver.Resolve(buildSheinPublishRequest(req), canonical, pkg)
-	if resolution == nil {
-		t.Fatal("expected resolution")
-	}
-	if resolution.Status != "partial" {
-		t.Fatalf("resolution status = %q, want %q", resolution.Status, "partial")
-	}
-	if len(resolution.ReviewNotes) == 0 {
-		t.Fatal("expected review notes when shein_store_id is missing")
-	}
-}
-
-func TestManagedSheinAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
-	t.Parallel()
-
-	resolver := sheinmanaged.NewAttributeResolver(nil, nil)
-	req := &GenerateRequest{ProductKey: "test-product",
-		Text:      "wireless earbuds",
-		Country:   "US",
-		Language:  "en_US",
-		Platforms: []string{"shein"},
-	}
-	canonical := &canonical.Product{
-		Title: "Wireless Earbuds",
-	}
-	pkg := &SheinPackage{
-		CategoryID: 4004,
-		ProductAttributes: []PlatformAttribute{
-			{Name: "color", Value: "Black"},
-		},
-	}
-
-	resolution := resolver.Resolve(buildSheinPublishRequest(req), canonical, pkg)
-	if resolution == nil {
-		t.Fatal("expected resolution")
-	}
-	if resolution.Status != "partial" {
-		t.Fatalf("resolution status = %q, want %q", resolution.Status, "partial")
-	}
-	if len(resolution.ReviewNotes) == 0 {
-		t.Fatal("expected review notes when shein_store_id is missing")
-	}
-}
-
-func TestManagedSheinSaleAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
-	t.Parallel()
-
-	resolver := sheinmanaged.NewSaleAttributeResolver(nil, nil)
-	req := &GenerateRequest{ProductKey: "test-product",
-		Text:      "wireless earbuds",
-		Country:   "US",
-		Language:  "en_US",
-		Platforms: []string{"shein"},
-	}
-	canonical := &canonical.Product{
-		Title: "Wireless Earbuds",
-	}
-	pkg := &SheinPackage{
-		CategoryID: 4004,
-		SkcList: []SheinSKCPackage{{
-			Attributes: map[string]string{"color": "Black"},
-			SKUs: []PlatformVariant{{
-				Attributes: map[string]string{"size": "M"},
-			}},
-		}},
-	}
-
-	resolution := resolver.Resolve(buildSheinPublishRequest(req), canonical, pkg)
-	if resolution == nil {
-		t.Fatal("expected resolution")
-	}
-	if resolution.Status != "partial" {
-		t.Fatalf("resolution status = %q, want %q", resolution.Status, "partial")
-	}
-	if len(resolution.ReviewNotes) == 0 {
-		t.Fatal("expected review notes when shein_store_id is missing")
 	}
 }
 

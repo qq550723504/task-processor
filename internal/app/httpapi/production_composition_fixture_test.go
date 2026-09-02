@@ -24,6 +24,7 @@ func buildPersistentProductionCompositionFixture(t *testing.T) (httpFeatureCompo
 	t.Helper()
 
 	cfg := currentE2EConfig(t)
+	configureCurrentE2ESheinCookieRedis(t, cfg)
 	cfg.Database = nil
 	cfg.ListingKit.ImageUpload.Provider = "local"
 	cfg.ListingKit.ImageUpload.Local.RootDir = t.TempDir()

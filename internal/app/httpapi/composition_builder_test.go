@@ -28,6 +28,7 @@ import (
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sdslogin"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
+	"task-processor/internal/sheinlogin"
 	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 	"task-processor/internal/taskrpcapi"
 )
@@ -61,6 +62,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 			productSnapshotReader: stubCompositionProductSnapshotReader{},
 			listingKitSupport: &listingKitSupport{
 				approvedAssetReader: stubCompositionApprovedAssetReader{},
+				sheinCookieStore:    &sheinlogin.RedisStore{},
 			},
 		},
 	}

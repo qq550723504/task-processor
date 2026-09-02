@@ -171,6 +171,21 @@ func buildSubmitModule(in submitModuleInput) (submitModule, error) {
 	if in.Hooks.StudioBackgroundRemoverBuilder != nil {
 		studioBackgroundRemover = in.Hooks.StudioBackgroundRemoverBuilder(in.Config, in.AICredentialStore)
 	}
+	sheinDependencies := submitSheinDependencies{
+		categoryResolver:      sheinCategoryResolver,
+		attributeResolver:     sheinAttributeResolver,
+		saleAttributeResolver: sheinSaleAttributeResolver,
+		sizeHeaderResolver:    sheinSizeHeaderResolver,
+		pricingPolicy:         sheinPricingPolicy,
+		productAPIBuilder:     sheinProductAPIBuilder,
+		imageAPIBuilder:       sheinImageAPIBuilder,
+		translateAPIBuilder:   sheinTranslateAPIBuilder,
+		apiClientFactory:      sheinAPIClientFactory,
+		contentOptimizer:      sheinCategoryLLMClient,
+	}
+	if err := sheinDependencies.validate(); err != nil {
+		return submitModule{}, err
+	}
 
 	module := submitModule{
 		assets: submitAssetDependencies{
@@ -184,18 +199,7 @@ func buildSubmitModule(in submitModuleInput) (submitModule, error) {
 			}),
 			imageUploadStore: imageUploadStore,
 		},
-		shein: submitSheinDependencies{
-			categoryResolver:      sheinCategoryResolver,
-			attributeResolver:     sheinAttributeResolver,
-			saleAttributeResolver: sheinSaleAttributeResolver,
-			sizeHeaderResolver:    sheinSizeHeaderResolver,
-			pricingPolicy:         sheinPricingPolicy,
-			productAPIBuilder:     sheinProductAPIBuilder,
-			imageAPIBuilder:       sheinImageAPIBuilder,
-			translateAPIBuilder:   sheinTranslateAPIBuilder,
-			apiClientFactory:      sheinAPIClientFactory,
-			contentOptimizer:      sheinCategoryLLMClient,
-		},
+		shein: sheinDependencies,
 		studio: submitStudioDependencies{
 			imageGenerator:    adaptListingKitAIImageGenerator(studioImageGenerator),
 			backgroundRemover: studioBackgroundRemover,
@@ -244,4 +248,25 @@ func buildSubmitModule(in submitModuleInput) (submitModule, error) {
 	}
 	module.studio.imageGenerator = adapter
 	return module, nil
+}
+
+func (d submitSheinDependencies) validate() error {
+	switch {
+	case d.categoryResolver == nil:
+		return fmt.Errorf("SHEIN category resolver builder returned nil")
+	case d.attributeResolver == nil:
+		return fmt.Errorf("SHEIN attribute resolver builder returned nil")
+	case d.saleAttributeResolver == nil:
+		return fmt.Errorf("SHEIN sale-attribute resolver builder returned nil")
+	case d.productAPIBuilder == nil:
+		return fmt.Errorf("SHEIN product API builder factory returned nil")
+	case d.imageAPIBuilder == nil:
+		return fmt.Errorf("SHEIN image API builder factory returned nil")
+	case d.translateAPIBuilder == nil:
+		return fmt.Errorf("SHEIN translate API builder factory returned nil")
+	case d.apiClientFactory == nil:
+		return fmt.Errorf("SHEIN API client factory builder returned nil")
+	default:
+		return nil
+	}
 }

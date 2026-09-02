@@ -6,14 +6,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/mattn/go-sqlite3"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
@@ -136,6 +139,7 @@ func TestHTTPE2E_CurrentListingKitUsesReadOnlySnapshotAndApprovedAssets(t *testi
 
 	logger := currentE2ELogger()
 	cfg := currentE2EConfig(t)
+	configureCurrentE2ESheinCookieRedis(t, cfg)
 	originalSnapshot := catalog.ProductSnapshot{
 		Title:         "Snapshot Bluetooth Earbuds",
 		Brand:         "SoundPeak",
@@ -311,6 +315,117 @@ func TestHTTPE2E_CurrentListingKitUsesReadOnlySnapshotAndApprovedAssets(t *testi
 	require.Equal(t, originalSnapshot, published.Snapshot, "production workflow mutated the persisted Snapshot")
 }
 
+func TestHTTPE2E_CurrentListingKitPersistsFailedWhenRemoteResolutionIsUnavailable(t *testing.T) {
+	const (
+		productKey    = "listingkit-resolution-unavailable-e2e-1"
+		sheinTenantID = int64(227)
+		sheinStoreID  = int64(869)
+	)
+
+	logger := currentE2ELogger()
+	cfg := currentE2EConfig(t)
+	configureCurrentE2ESheinCookieRedis(t, cfg)
+	snapshot := catalog.ProductSnapshot{
+		Title:  "Remote Resolution Required Earbuds",
+		Images: []catalog.Image{{URL: "https://source.example.test/earbuds.png", Role: "primary"}},
+		Variants: []catalog.Variant{{
+			SKU: "REMOTE-REQUIRED-001", Stock: 10, IsDefault: true,
+			Price: &catalog.Price{Currency: "USD", Amount: 29.99, CostPrice: 12},
+		}},
+	}
+	inventory := productasset.ApprovedAssetInventory{
+		Scope: productasset.InventoryScope{TenantID: "app-http-test-tenant", ProductKey: productKey},
+		Assets: []productasset.ApprovedAsset{{
+			ID: "approved-resolution-main", RunID: "resolution-image-run-1", PlanRevision: 1,
+			SlotID: "main", Attempt: 1, Role: productasset.RoleMain, URL: "https://cdn.example.test/resolution-main.png",
+		}},
+	}
+	db, dbPath, _, assets := currentE2EProductReaders(t, productKey, snapshot, inventory)
+	require.NoError(t, listingkithttpapi.AutoMigrateListingKitRuntimeSchema(db))
+	taskRepo := listingkitstore.NewTaskRepository(db)
+	repositories, err := listingkithttpapi.NewPersistentRepositories(db)
+	require.NoError(t, err)
+	deps := &runtimeDeps{
+		shared: &sharedRuntimeDeps{cfg: cfg, productCatalogDB: db},
+		features: &featureRuntimeState{listingKitSupport: &listingKitSupport{
+			approvedAssetReader: assets, repositories: repositories,
+		}},
+	}
+	require.NoError(t, initializeProductSnapshotReader(deps))
+
+	storeRepo := &currentE2EListingStoreRepository{store: listingadmin.Store{
+		ID: sheinStoreID, TenantID: sheinTenantID, StoreID: "869", Name: "Unavailable Resolution SHEIN Store",
+		Username: "unavailable-resolution-store", LoginURL: "https://example.test/shein-login",
+		ShopType: "marketplace", Region: "US", Platform: "shein", Status: 0,
+	}}
+	uploadStore, err := listingkit.NewLocalImageUploadStore(t.TempDir())
+	require.NoError(t, err)
+	builder := newListingKitFeatureBuilder()
+	productionBuild := builder.buildListingKit
+	builder.buildListingKit = func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
+		input.Runtime.Support.Repositories.Core.Task = taskRepo
+		input.Runtime.Support.Repositories.Admin.Store = storeRepo
+		input.Runtime.Support.Repositories.Core.ApprovedAsset = assets
+		input.Runtime.Support.Hooks.ImageUploadStoreBuilder = func(*config.Config, *logrus.Logger) (listingkit.ImageUploadStore, error) {
+			return uploadStore, nil
+		}
+		input.Runtime.Support.Hooks.SheinCategoryResolverBuilder = func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+			return currentE2EUnavailableCategory{}
+		}
+		input.Runtime.Support.Hooks.SheinAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
+			return currentE2EResolvedAttributes{}
+		}
+		input.Runtime.Support.Hooks.SheinSaleAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
+			return currentE2EResolvedSaleAttributes{}
+		}
+		input.Runtime.Support.Hooks.SheinAPIClientFactoryBuilder = func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory {
+			return currentE2ESheinAPIClientFactory{tenantID: sheinTenantID}
+		}
+		return productionBuild(input)
+	}
+	module, err := builder.build(logger, deps)
+	require.NoError(t, err)
+	require.NotNil(t, module)
+	t.Cleanup(func() { closeCurrentE2EClosers(t, deps.shared.closers) })
+
+	restoreTenantResolver := tenantbridge.ConfigureLegacyTenantResolver(currentE2ELegacyTenantResolver{
+		tenantID: "app-http-test-tenant", legacyTenantID: sheinTenantID,
+	})
+	t.Cleanup(restoreTenantResolver)
+
+	composition := httpFeatureComposition{listingKitModule: module}
+	bundle, err := composition.buildRuntimeBundle(appHTTPTestConfig)
+	require.NoError(t, err)
+	requireCurrentE2EPool(t, bundle, "listing_kit")
+	startCurrentE2EPools(t, bundle.pools())
+
+	server, _ := bundle.buildServerBundle(0, appHTTPTestRouteAuthorization)
+	httpServer := httptest.NewServer(server.Handler)
+	t.Cleanup(httpServer.Close)
+	client := authenticatedAppHTTPTestClient(httpServer.Client())
+	enableCurrentE2EListingKitSubscription(t, client, httpServer.URL, "studio")
+
+	taskID := createCurrentE2ETask(t, client, httpServer.URL+"/api/v1/listing-kits/generate", map[string]any{
+		"product_key": productKey, "platforms": []string{"shein"}, "country": "US", "language": "en",
+		"shein_store_id": sheinStoreID,
+	})
+	task := waitForCurrentE2ETask(t, client, httpServer.URL+"/api/v1/listing-kits/tasks/"+taskID, listingKitTaskTerminal)
+	require.Equal(t, core.TaskStatusFailed, task.Status)
+	require.Contains(t, task.Error, "category resolution is unavailable")
+	if task.Result != nil {
+		require.Nil(t, task.Result.Shein, "unavailable capability must not synthesize a fallback SHEIN package")
+	}
+
+	freshTaskRepo := listingkitstore.NewTaskRepository(openCurrentE2ESQLite(t, dbPath))
+	persistedTask, err := freshTaskRepo.GetTask(listingkit.WithTenantID(context.Background(), "app-http-test-tenant"), taskID)
+	require.NoError(t, err)
+	require.Equal(t, core.TaskStatusFailed, persistedTask.Status)
+	require.Contains(t, persistedTask.Error, "category resolution is unavailable")
+	if persistedTask.Result != nil {
+		require.Nil(t, persistedTask.Result.Shein, "fresh read must not expose a fabricated fallback SHEIN package")
+	}
+}
+
 func currentE2EProductReaders(t *testing.T, productKey string, snapshot catalog.ProductSnapshot, inventory productasset.ApprovedAssetInventory) (*gorm.DB, string, catalog.Repository, productasset.Repository) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "current-product-http-e2e.sqlite")
@@ -390,6 +505,12 @@ func (currentE2EResolvedCategory) Resolve(*sheinpub.BuildRequest, *canonical.Pro
 	}
 }
 
+type currentE2EUnavailableCategory struct{}
+
+func (currentE2EUnavailableCategory) Resolve(*sheinpub.BuildRequest, *canonical.Product, *sheinpub.Package) *sheinpub.CategoryResolution {
+	return nil
+}
+
 type currentE2EResolvedAttributes struct{}
 
 func (currentE2EResolvedAttributes) Resolve(*sheinpub.BuildRequest, *canonical.Product, *sheinpub.Package) *sheinpub.AttributeResolution {
@@ -465,6 +586,16 @@ func currentE2EConfig(t *testing.T) *config.Config {
 	cfg, err := config.LoadConfigFromFileWithoutValidation("../../../config/config-test.yaml")
 	require.NoError(t, err)
 	return cfg
+}
+
+func configureCurrentE2ESheinCookieRedis(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	server := miniredis.RunT(t)
+	host, portText, err := net.SplitHostPort(server.Addr())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	cfg.Platforms.Shein.CookieRedis = config.RedisConfig{Host: host, Port: port}
 }
 
 func requireCurrentE2EPool(t *testing.T, bundle runtimeBundle, name string) {

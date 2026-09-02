@@ -1583,38 +1583,41 @@ git commit -m "refactor(product): fail closed without persistent consumer stores
 ### Task 16D2: 删除 ListingKit 解析器的隐式 fallback
 
 > **实施补充（2026-09-02）：** Task 16A 的 current-only E2E 还证明，缺少 SHEIN category/attribute/sale-attribute resolver、cookie 或 API 能力时，ListingKit 会构造默认 resolver，并以 `source=fallback`、`status=partial` 或 `needs_review` 继续。目标架构不在 Go 代码中维护类别、关键词或词形穷举，也不把缺依赖伪装成可审核业务结果；缺失生产能力必须在组合边界失败关闭。
+>
+> **运行时根因裁定（2026-09-03）：** 隐式降级还存在于 `internal/publishing/shein/runtime_{category,attribute,sale_attribute}_resolver.go`：这些 adapter 持有离线 resolver，store/cookie/API client 不可用时把缺能力改写成 partial。Task 16D2 必须同时删除这三个 runtime fallback。production composition 缺 Cookie Store 或任一 resolver/API builder 时直接失败；请求期 store ID、cookie 或 API client 不可用时不得调用 nil API resolver 或生成 fallback/partial，而要让 ListingKit generation 返回错误并进入失败持久化路径。resolver 对真实远端数据作出的 partial/review 仍保留。
 
 **Files:**
 - Modify: `internal/listingkit/{service_defaults.go,service_config_groups.go,service_shein_runtime_dependencies.go}` and tests
 - Modify: `internal/listingkit/httpapi/{bootstrap_submit_module.go,bootstrap_validation.go,runtime_support_hooks.go,runtime_support_shein.go}` and tests
 - Modify: `internal/app/httpapi/` ListingKit production composition and E2E
+- Modify: `internal/publishing/shein/runtime_{category,attribute,sale_attribute}_resolver.go` and focused tests; only capability-unavailable fallback is in scope
 
 **Interfaces:**
 - Category、attribute、sale-attribute resolver 及所需 cookie/API capability 是显式 typed production dependencies；缺失时 module/pool 不注册或请求明确失败，不生成 fallback/partial 伪结果。
 - 不迁移或新建 marketplace/category/lexeme 表、关键词匹配、tokenization、stemming、单复数或代码内默认分类。策略/分类数据来自外部结构化事实或专用 Integration adapter。
 - 业务 resolver 显式返回的真实 partial/review 结果仍按其契约处理；本任务只删除“依赖缺失时自动构造默认实现”的隐式降级。
 
-- [ ] **Step 1: 写缺依赖 fail-closed 与非穷举守卫**
+- [x] **Step 1: 写缺依赖 fail-closed 与非穷举守卫**
 
 覆盖三类 resolver、cookie/API capability 任一缺失时 fail closed；完整 typed dependencies 时 current E2E 严格 `completed`，三类 resolution 的 source/status 均来自注入能力且不是 fallback。源码守卫拒绝 production `NewCategoryResolver(nil)`、内置类别/词形表和缺依赖默认构造。
 
-- [ ] **Step 2: 运行测试确认当前 fallback/partial 行为**
+- [x] **Step 2: 运行测试确认当前 fallback/partial 行为**
 
 Run: `go test ./internal/listingkit ./internal/listingkit/httpapi ./internal/app/httpapi -run 'Test.*(Resolver|Capability|Fallback|FailClosed|CurrentListingKit)' -count=1 -v`
 
 Expected: FAIL，并精确指出当前默认 resolver 或 fallback/partial 路径。
 
-- [ ] **Step 3: 删除隐式 resolver/capability fallback**
+- [x] **Step 3: 删除隐式 resolver/capability fallback**
 
-以窄 typed dependencies 替代默认构造；不得把测试 fixture、静态 category、关键词、历史配置或远端调用 fallback 搬进生产代码。
+以窄 typed dependencies 替代默认构造；删除三个 SHEIN runtime resolver 对 nil request/store/cookie/API client 的离线 fallback，ListingKit 对缺失 resolution 返回生成错误。不得把测试 fixture、静态 category、关键词、历史配置或远端调用 fallback 搬进生产代码。
 
-- [ ] **Step 4: 运行 ListingKit、App、架构和全仓验证**
+- [x] **Step 4: 运行 ListingKit、App、架构和全仓验证**
 
 Run: `go test ./internal/listingkit/... ./internal/app/httpapi ./tests -run 'Test(ListingKit|Phase3|.*Boundary|.*Fallback)' -count=1`
 
 Run: `go test ./... -run '^$' -count=1`
 
-- [ ] **Step 5: 提交解析能力 fail-closed 硬切**
+- [x] **Step 5: 提交解析能力 fail-closed 硬切**
 
 ```powershell
 git add internal/listingkit internal/app/httpapi tests docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md

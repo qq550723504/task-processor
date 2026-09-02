@@ -15,7 +15,7 @@ import (
 func (config *ServiceConfig) applyDefaults() {
 	runServiceConfigInitializers(
 		config,
-		(*ServiceConfig).ensureSheinResolvers,
+		(*ServiceConfig).ensureSheinSizeHeaderResolver,
 		(*ServiceConfig).ensureAssembler,
 		(*ServiceConfig).ensureAssetDependencies,
 		(*ServiceConfig).ensureCoreRepositories,
@@ -23,29 +23,7 @@ func (config *ServiceConfig) applyDefaults() {
 	)
 }
 
-func (config *ServiceConfig) ensureSheinResolvers() {
-	cacheStore := config.Shein.SheinResolutionCacheStore
-	if config.Shein.SheinCategoryResolver == nil {
-		resolver := sheinpub.NewCategoryResolver(nil)
-		if cacheStore != nil {
-			resolver = sheinpub.NewCachedCategoryResolver(resolver, cacheStore)
-		}
-		config.Shein.SheinCategoryResolver = resolver
-	}
-	if config.Shein.SheinAttributeResolver == nil {
-		resolver := sheinpub.NewAttributeResolver(nil, nil)
-		if cacheStore != nil {
-			resolver = sheinpub.NewCachedAttributeResolver(resolver, cacheStore)
-		}
-		config.Shein.SheinAttributeResolver = resolver
-	}
-	if config.Shein.SheinSaleAttributeResolver == nil {
-		resolver := sheinpub.NewSaleAttributeResolver(nil, nil)
-		if cacheStore != nil {
-			resolver = sheinpub.NewCachedSaleAttributeResolver(resolver, cacheStore)
-		}
-		config.Shein.SheinSaleAttributeResolver = resolver
-	}
+func (config *ServiceConfig) ensureSheinSizeHeaderResolver() {
 	if config.Shein.SheinSizeHeaderResolver == nil {
 		config.Shein.SheinSizeHeaderResolver = sheinpub.NewSizeAttributeHeaderResolver(config.Shein.SheinContentOptimizer)
 	}

@@ -24,7 +24,11 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 	if ensureApprovedAssetReader(logger, deps) == nil {
 		return nil, nil
 	}
-	listingKitModule, err := b.buildListingKit(newListingKitRuntimeBuildInput(logger, deps, deps.ensureListingKitSupport().repositories))
+	input, err := newListingKitRuntimeBuildInput(logger, deps, deps.ensureListingKitSupport().repositories)
+	if err != nil {
+		return nil, err
+	}
+	listingKitModule, err := b.buildListingKit(input)
 	if err != nil {
 		return nil, err
 	}
@@ -32,11 +36,15 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 	return listingKitModule, nil
 }
 
-func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps, repositories listingkithttpapi.BuildServiceRepositories) listingkithttpapi.RuntimeBuildInput {
+func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps, repositories listingkithttpapi.BuildServiceRepositories) (listingkithttpapi.RuntimeBuildInput, error) {
 	approvedAssets := ensureApprovedAssetReader(logger, deps)
+	cookieStore, err := ensureListingKitSheinCookieStore(logger, deps)
+	if err != nil {
+		return listingkithttpapi.RuntimeBuildInput{}, err
+	}
 	support := listingkithttpapi.BuildRuntimeSupport(listingkithttpapi.RuntimeSupportInput{
 		Repositories:              repositories,
-		SheinCookieStore:          ensureListingKitSheinCookieStore(logger, deps),
+		SheinCookieStore:          cookieStore,
 		ApprovedAssets:            approvedAssets,
 		SDSSyncService:            buildSDSSyncService(logger, deps),
 		SDSLoginStatusProvider:    deps.features.sdsLoginStatusProvider,
@@ -53,5 +61,5 @@ func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps, re
 			Support:                            support,
 			ShouldStartTemporalWorkerInProcess: appruntime.ShouldStartListingKitSheinPublishTemporalWorkerInProcess(),
 		},
-	}
+	}, nil
 }

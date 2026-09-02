@@ -89,7 +89,13 @@ func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, appro
 			}
 			result.Amazon = &AmazonPackage{Draft: draft}
 		case "shein":
+			if err := a.validateSheinResolvers(); err != nil {
+				return nil, fmt.Errorf("build shein draft: %w", err)
+			}
 			result.Shein = sheinpub.NewAssembler(a.buildSheinAssemblerConfig()).Build(buildSheinPublishRequestForTask(task, task.Request), canonicalProduct)
+			if err := validateSheinResolutions(result.Shein); err != nil {
+				return nil, fmt.Errorf("build shein draft: %w", err)
+			}
 			refreshSheinReviewState(result.Shein, common.CollectReviewNotes(canonicalProduct)...)
 		case "temu":
 			result.Temu = buildTemuPackage(task.Request, canonicalProduct)
@@ -99,6 +105,32 @@ func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, appro
 	}
 
 	return result, nil
+}
+
+func (a *assembler) validateSheinResolvers() error {
+	switch {
+	case a == nil || a.sheinCategoryResolver == nil:
+		return fmt.Errorf("category resolver is required")
+	case a.sheinAttributeResolver == nil:
+		return fmt.Errorf("attribute resolver is required")
+	case a.sheinSaleAttributeResolver == nil:
+		return fmt.Errorf("sale-attribute resolver is required")
+	default:
+		return nil
+	}
+}
+
+func validateSheinResolutions(pkg *sheinpub.Package) error {
+	switch {
+	case pkg == nil || pkg.CategoryResolution == nil:
+		return fmt.Errorf("category resolution is unavailable")
+	case pkg.AttributeResolution == nil:
+		return fmt.Errorf("attribute resolution is unavailable")
+	case pkg.SaleAttributeResolution == nil:
+		return fmt.Errorf("sale-attribute resolution is unavailable")
+	default:
+		return nil
+	}
 }
 
 func buildSheinPublishRequest(req *GenerateRequest) *sheinpub.BuildRequest {

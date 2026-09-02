@@ -284,7 +284,7 @@ func TestNewServiceWithConfigSeedsSheinRuntimeDependenciesWithoutLegacyMirrors(t
 	}
 }
 
-func TestNewServiceWithConfigUsesResolutionCacheForDefaultSheinCategoryResolver(t *testing.T) {
+func TestNewServiceWithConfigUsesExplicitCachedSheinCategoryResolver(t *testing.T) {
 	t.Parallel()
 
 	store := &submitResolutionCacheStore{}
@@ -328,11 +328,15 @@ func TestNewServiceWithConfigUsesResolutionCacheForDefaultSheinCategoryResolver(
 		ProductTypeID:  99,
 		TopCategoryID:  2030,
 	})
+	explicitCacheResolver := sheinpub.NewCachedCategoryResolver(sheinpub.NewCategoryResolver(nil), store)
 
 	cfg := prepareServiceConfig(newTestServiceConfig(
 		&stubSubmitRepo{},
 		withTestConfig(func(cfg *ServiceConfig) {
 			cfg.Shein.SheinResolutionCacheStore = store
+			cfg.Shein.SheinCategoryResolver = explicitCacheResolver
+			cfg.Shein.SheinAttributeResolver = failClosedAttributeResolver{resolution: &sheinpub.AttributeResolution{Status: "resolved", Source: "remote_fixture", CategoryID: 8185}}
+			cfg.Shein.SheinSaleAttributeResolver = failClosedSaleAttributeResolver{resolution: &sheinpub.SaleAttributeResolution{Status: "resolved", Source: "remote_fixture", CategoryID: 8185}}
 		}),
 	))
 	result, err := cfg.Assets.Assembler.Assemble(task, testCatalogSnapshot(t, product), nil)

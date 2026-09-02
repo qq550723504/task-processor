@@ -27,16 +27,13 @@ func (r *attributeResolver) CachedAttributeResolutionIsFresh(_ *BuildRequest, _ 
 }
 
 func (r *runtimeAttributeResolver) CachedAttributeResolutionIsFresh(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *AttributeResolution) (bool, string) {
-	if r == nil {
-		return true, ""
+	if r == nil || req == nil {
+		return false, "SHEIN attribute API capability is unavailable"
 	}
-	if req == nil {
-		if validator, ok := r.fallback.(attributeResolutionCacheValidator); ok {
-			return validator.CachedAttributeResolutionIsFresh(req, canonical, pkg, resolution)
-		}
-		return true, ""
+	api := r.buildAPI(req.Context, req.SheinStoreID)
+	if api == nil {
+		return false, "SHEIN attribute API capability is unavailable"
 	}
-	api, _ := r.buildAPI(req.Context, req.SheinStoreID)
 	return (&attributeResolver{api: api}).CachedAttributeResolutionIsFresh(req, canonical, pkg, resolution)
 }
 

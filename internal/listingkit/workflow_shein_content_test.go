@@ -36,7 +36,7 @@ func TestRunWorkflowOptimizesSheinContentBeforeFinalReview(t *testing.T) {
 			contentOptimizer: ai,
 		},
 	}, supportDependencySeed{
-		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assembler: NewAssemblerWithConfig(completeFailClosedAssemblerConfig()),
 	}), productSvc)
 
 	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-shein-copy",

@@ -27,6 +27,7 @@ import (
 	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/sdslogin"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
+	"task-processor/internal/sheinlogin"
 )
 
 func TestBuildRuntimeDepsRunsEnabledSchemaMigrationBeforeRepositoryConstruction(t *testing.T) {
@@ -226,10 +227,13 @@ func TestNewListingKitRuntimeBuildInputRoutesSDSStatusProviderThroughRuntimeSupp
 	syncService := stubRuntimeDepsSDSSyncService{}
 	approvedAssets := &stubRuntimeDepsApprovedAssetReader{}
 	deps := &runtimeDeps{
-		shared: &sharedRuntimeDeps{},
+		shared: &sharedRuntimeDeps{cfg: &config.Config{}},
 		features: &featureRuntimeState{
 			sdsLoginStatusProvider: statusProvider,
-			listingKitSupport:      &listingKitSupport{approvedAssetReader: approvedAssets},
+			listingKitSupport: &listingKitSupport{
+				approvedAssetReader: approvedAssets,
+				sheinCookieStore:    &sheinlogin.RedisStore{},
+			},
 		},
 	}
 	previousFactory := newSDSSyncServiceForHTTPAPI
@@ -240,7 +244,10 @@ func TestNewListingKitRuntimeBuildInputRoutesSDSStatusProviderThroughRuntimeSupp
 		return syncService, &sdsclient.AuthState{AccessToken: "test-token"}, nil
 	}
 
-	input := newListingKitRuntimeBuildInput(logger, deps, listingkithttpapi.BuildServiceRepositories{})
+	input, err := newListingKitRuntimeBuildInput(logger, deps, listingkithttpapi.BuildServiceRepositories{})
+	if err != nil {
+		t.Fatalf("newListingKitRuntimeBuildInput() error = %v", err)
+	}
 	if input.Runtime.Support.SDSSyncService != syncService {
 		t.Fatal("expected SDS sync service to be routed through runtime support")
 	}
@@ -255,16 +262,19 @@ func TestNewListingKitRuntimeBuildInputRoutesSDSStatusProviderThroughRuntimeSupp
 	}
 }
 
-func TestEnsureListingKitSheinCookieStoreReturnsNilWithoutRedisConfig(t *testing.T) {
+func TestEnsureListingKitSheinCookieStoreFailsWithoutRedisConfig(t *testing.T) {
 	deps := &runtimeDeps{
 		shared:   &sharedRuntimeDeps{cfg: &config.Config{}},
 		features: &featureRuntimeState{},
 	}
 
-	store := ensureListingKitSheinCookieStore(logrus.New(), deps)
+	store, err := ensureListingKitSheinCookieStore(logrus.New(), deps)
 
 	if store != nil {
 		t.Fatal("expected nil store without redis config")
+	}
+	if err == nil || !strings.Contains(err.Error(), "cookie store") {
+		t.Fatalf("ensureListingKitSheinCookieStore() error = %v, want explicit cookie store error", err)
 	}
 	if len(deps.shared.closers) != 0 {
 		t.Fatalf("closers = %d, want 0", len(deps.shared.closers))
@@ -296,11 +306,17 @@ func TestEnsureListingKitSheinCookieStoreCachesStoreAndRegistersCloser(t *testin
 	}
 
 	logger := logrus.New()
-	first := ensureListingKitSheinCookieStore(logger, deps)
+	first, err := ensureListingKitSheinCookieStore(logger, deps)
+	if err != nil {
+		t.Fatalf("first ensureListingKitSheinCookieStore() error = %v", err)
+	}
 	if first == nil {
 		t.Fatal("expected redis store")
 	}
-	second := ensureListingKitSheinCookieStore(logger, deps)
+	second, err := ensureListingKitSheinCookieStore(logger, deps)
+	if err != nil {
+		t.Fatalf("second ensureListingKitSheinCookieStore() error = %v", err)
+	}
 	if second != first {
 		t.Fatalf("cached store = %p, want %p", second, first)
 	}

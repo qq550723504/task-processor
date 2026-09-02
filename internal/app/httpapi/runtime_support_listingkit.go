@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -52,30 +53,27 @@ func readProductSnapshotForHTTPAPI(ctx context.Context, deps *runtimeDeps, tenan
 	return deps.features.productSnapshotReader.GetProductSnapshot(ctx, listingkit.ProductSnapshotQuery{TenantID: tenantID, ProductKey: productKey})
 }
 
-func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) *sheinlogin.RedisStore {
+func ensureListingKitSheinCookieStore(_ *logrus.Logger, deps *runtimeDeps) (*sheinlogin.RedisStore, error) {
 	if deps == nil || deps.shared == nil || deps.shared.cfg == nil {
-		return nil
+		return nil, errors.New("ListingKit SHEIN cookie store configuration is required")
 	}
 	support := deps.ensureListingKitSupport()
 	if support == nil {
-		return nil
+		return nil, errors.New("ListingKit SHEIN cookie store support is required")
 	}
 	if support.sheinCookieStore != nil {
-		return support.sheinCookieStore
+		return support.sheinCookieStore, nil
 	}
 	store, err := sheinloginbootstrap.BuildRedisStore(deps.shared.cfg)
 	if err != nil {
-		if logger != nil {
-			logger.WithError(err).Warn("failed to initialize listingkit shein cookie store; shein runtime will degrade")
-		}
-		return nil
+		return nil, fmt.Errorf("initialize ListingKit SHEIN cookie store: %w", err)
 	}
 	if store == nil {
-		return nil
+		return nil, errors.New("ListingKit SHEIN cookie store configuration is required")
 	}
 	support.sheinCookieStore = store
 	deps.addClosers(store.Close)
-	return store
+	return store, nil
 }
 
 func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Service {
