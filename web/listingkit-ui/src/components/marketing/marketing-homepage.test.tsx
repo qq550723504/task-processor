@@ -13,7 +13,7 @@ describe("MarketingHomepage", () => {
 
     const banner = screen.getByRole("banner");
     expect(within(banner).getByRole("link", { name: "硕米智能引擎首页" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("硕米智能引擎");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("让智能，成为电商经营的默认能力");
     expect(screen.queryByText("ListingKit", { exact: true })).not.toBeInTheDocument();
   });
 
@@ -22,52 +22,54 @@ describe("MarketingHomepage", () => {
 
     const nav = screen.getByRole("navigation", { name: "官网导航" });
     const expectedLinks = [
-      ["首页", "#home"],
-      ["电商智能体", "#agents"],
-      ["供应链与数据", "#supply-chain"],
-      ["解决方案", "#solutions"],
-      ["服务生态", "#services"],
-      ["应用实践", "#practices"],
-      ["价格与服务", "#pricing"],
+      ["产品架构", "#architecture"],
+      ["能力中心", "#agents"],
+      ["场景方案", "#solutions"],
     ];
 
     for (const [name, href] of expectedLinks) {
       expect(within(nav).getByRole("link", { name })).toHaveAttribute("href", href);
     }
 
-    expect(screen.getByRole("link", { name: "进入硕米" })).toHaveAttribute(
+    expect(within(nav).queryByRole("link", { name: "开发者" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "进入系统" })).toHaveAttribute(
       "href",
-      "/login?returnTo=%2Flisting-kits%2Fhome",
+      "/login?returnTo=%2Fworkbench",
     );
     const hero = document.getElementById("home");
     expect(hero).not.toBeNull();
-    expect(within(hero!).getByRole("link", { name: /了解平台能力/ })).toHaveAttribute("href", "#agents");
-    expect(within(hero!).getByRole("link", { name: /查看解决方案/ })).toHaveAttribute("href", "#solutions");
+    expect(within(hero!).getByRole("link", { name: /进入硕米 OS/ })).toHaveAttribute(
+      "href",
+      "/login?returnTo=%2Fworkbench",
+    );
+    expect(within(hero!).getByRole("link", { name: "查看系统架构" })).toHaveAttribute(
+      "href",
+      "#architecture",
+    );
   });
 
-  it("renders the Figma hero motion layers as decorative content", () => {
+  it("renders the staged hero motion as an accessible commerce architecture visual", () => {
     render(<MarketingHomepage />);
 
-    const hero = document.getElementById("home");
-    expect(hero).not.toBeNull();
-    const decorativeMotion = hero!.querySelector('[aria-hidden="true"]');
-    expect(decorativeMotion).not.toBeNull();
-
-    for (const nodeId of ["356:303", "356:304", "356:306", "356:308", "356:310", "356:311", "356:312"]) {
-      const layer = hero!.querySelector(`[data-node-id="${nodeId}"]`);
-      expect(layer).not.toBeNull();
-      expect(decorativeMotion).toContainElement(layer as HTMLElement);
-    }
+    const architecture = screen.getByRole("img", { name: "硕米 AI 电商能力架构" });
+    expect(architecture).toHaveAttribute(
+      "data-motion-sequence",
+      "boot-reveal-active-pulse",
+    );
+    expect(within(architecture).getByText("模型与调用治理")).toBeInTheDocument();
+    expect(within(architecture).getByText("平台连接器")).toBeInTheDocument();
   });
 
-  it("brings the wide-screen hero copy closer to the commerce network without changing narrower breakpoints", () => {
-    const styles = readFileSync("src/components/marketing/marketing-homepage.module.css", "utf8");
+  it("uses dedicated responsive layouts instead of shrinking the orbit into overlapping mobile nodes", () => {
+    const styles = readFileSync("src/components/marketing/marketing-hero.module.css", "utf8");
 
     expect(styles).toMatch(
-      /@media \(min-width: 1200px\) \{[\s\S]*?\.heroContent \{ left: 120px; width: 570px; \}/,
+      /@media \(max-width: 1180px\) \{[\s\S]*?\.heroInner \{[^}]*?grid-template-columns:/,
     );
-    expect(styles).toMatch(/@media \(max-width: 1180px\) \{[\s\S]*?\.heroContent \{ left: 48px; \}/);
-    expect(styles).toMatch(/@media \(max-width: 980px\) \{[\s\S]*?\.nav \{ display: none; \}/);
+    expect(styles).toMatch(/@media \(max-width: 980px\) \{[\s\S]*?\.nav \{[^}]*?display: none;/);
+    expect(styles).toMatch(
+      /@media \(max-width: 620px\) \{[\s\S]*?\.systemVisual \{[^}]*?display: grid;[^}]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[\s\S]*?\.capabilityCard \{[^}]*?position: relative;/,
+    );
   });
 
   it("keeps anchored sections below the sticky site header", () => {
