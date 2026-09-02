@@ -131,6 +131,20 @@ func TestNewProductImageHTTPAdapterRequiresAtLeastOneTypedEndpoint(t *testing.T)
 	require.Error(t, err)
 }
 
+func TestProductImageHTTPAdapterQuoteCarriesProviderIdentity(t *testing.T) {
+	t.Parallel()
+
+	adapter, err := NewProductImageAdapter(ProductImageAdapterConfig{
+		Subject: productImageHTTPEndpoint("https://provider.example/subject", "segmenter"),
+	})
+	require.NoError(t, err)
+	quote, err := adapter.QuoteUsage(context.Background(), productimage.UsageQuoteRequest{
+		Operation: "extract_subject", InputFingerprint: "input-v1", MaximumOutputs: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "http-image", quote.Provider)
+}
+
 func productImageHTTPEndpoint(endpoint, model string) *ProductImageEndpointConfig {
 	return &ProductImageEndpointConfig{
 		Endpoint: endpoint, BearerToken: "secret", Provider: "http-image", Model: model,

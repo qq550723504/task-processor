@@ -87,6 +87,7 @@ type UsageQuoteRequest struct {
 
 type UsageQuote struct {
 	Operation            string
+	Provider             string
 	RouteReference       string
 	Model                string
 	CredentialReference  string

@@ -150,6 +150,7 @@ func TestProductImageAdapterQuotesExactTypedOperation(t *testing.T) {
 	second, err := adapter.QuoteUsage(context.Background(), productimage.UsageQuoteRequest{Operation: "render_scene", InputFingerprint: "input-b", MaximumOutputs: 2})
 	require.NoError(t, err)
 	require.Equal(t, int64(2), first.MaximumOutputs)
+	require.Equal(t, "openai", first.Provider)
 	require.Equal(t, int64(1), first.MaximumModelCalls)
 	require.Equal(t, int64(200), first.MaximumCostMicros)
 	require.True(t, first.CostUpperBoundKnown)

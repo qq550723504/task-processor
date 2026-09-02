@@ -195,7 +195,7 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 	}
 	digest := sha256.Sum256(encoded)
 	return productimage.UsageQuote{
-		Operation: request.Operation, RouteReference: endpoint.RouteReference, Model: endpoint.Model,
+		Operation: request.Operation, Provider: endpoint.Provider, RouteReference: endpoint.RouteReference, Model: endpoint.Model,
 		CredentialReference: endpoint.CredentialReference, ConfigurationVersion: endpoint.ConfigurationVersion,
 		PricingVersion: endpoint.PricingVersion, Fingerprint: hex.EncodeToString(digest[:]),
 		MaximumOutputs: maximumOutputs, MaximumModelCalls: 1, MaximumCostMicros: maximumCost,
