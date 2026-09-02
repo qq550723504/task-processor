@@ -184,8 +184,9 @@ The guard computes:
 - production additions;
 - production churn (`additions + deletions`).
 
-Documentation, lockfiles, generated files, snapshots, and test-only files do
-not count as production lines. Test files still remain visible in the pull
+Documentation and lockfiles do not count as production lines. Files that look
+generated are counted as source unless they also match a documented
+documentation, lockfile, or test-only rule. Test files still remain visible in the pull
 request declaration and review; they are excluded only from the production-line
 threshold. Documentation-only pull requests are outside the size guard.
 

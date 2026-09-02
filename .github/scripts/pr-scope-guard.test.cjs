@@ -28,7 +28,7 @@ function source(filename, additions = 1, deletions = 0, status = "modified") {
   return { filename, status, additions, deletions };
 }
 
-test("classifies documentation, lock, generated, test, and production paths", () => {
+test("classifies documentation, lock, source, test, and production paths", () => {
   assert.deepEqual(classifyFile("docs/architecture/rule.md"), {
     scopeRelevant: false,
     production: false,
@@ -40,14 +40,14 @@ test("classifies documentation, lock, generated, test, and production paths", ()
     kind: "lockfile",
   });
   assert.deepEqual(classifyFile("internal/api/generated/model.json"), {
-    scopeRelevant: false,
-    production: false,
-    kind: "generated",
+    scopeRelevant: true,
+    production: true,
+    kind: "production",
   });
   assert.deepEqual(classifyFile("internal/api/model.pb.go"), {
-    scopeRelevant: false,
-    production: false,
-    kind: "generated",
+    scopeRelevant: true,
+    production: true,
+    kind: "production",
   });
   assert.deepEqual(classifyFile("internal/store/service_test.go"), {
     scopeRelevant: true,
@@ -167,19 +167,26 @@ test("counts deleted production files and treats absent line counts as zero", ()
   });
 });
 
-test("does not count documentation, locks, or generated files toward limits", () => {
+test("counts generated-looking source files toward limits by default", () => {
   const result = evaluatePullRequest([
     source("README.md", 10000, 10000),
     source("go.sum", 10000, 10000),
     source("internal/generated/large.gen.go", 10000, 10000),
   ], []);
 
-  assert.equal(result.allowed, true);
+  assert.equal(result.allowed, false);
   assert.deepEqual(result.metrics, {
     totalFiles: 3,
-    scopeFiles: 0,
-    productionAdditions: 0,
-    productionChurn: 0,
+    scopeFiles: 1,
+    productionAdditions: 10000,
+    productionChurn: 20000,
+  });
+  assert.deepEqual(result.kinds, {
+    documentation: 1,
+    lockfile: 1,
+    generated: 0,
+    test: 0,
+    production: 1,
   });
 });
 

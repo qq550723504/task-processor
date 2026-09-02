@@ -61,14 +61,6 @@ function classifyFile(filename) {
     return classification("lockfile", false, false);
   }
   if (
-    segments.includes("generated") ||
-    segments.includes("__snapshots__") ||
-    basename.endsWith(".pb.go") ||
-    basename.endsWith(".gen.go")
-  ) {
-    return classification("generated", false, false);
-  }
-  if (
     segments.some((segment) => TEST_PATH_SEGMENTS.has(segment)) ||
     basename.endsWith("_test.go") ||
     /\.(?:test|spec)\.[^/]+$/.test(basename) ||

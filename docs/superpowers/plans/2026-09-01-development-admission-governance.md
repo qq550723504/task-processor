@@ -45,7 +45,7 @@ const { LIMITS, classifyFile, evaluatePullRequest, formatEvaluation } = require(
 test("classifies policy paths", () => {
   assert.equal(classifyFile("docs/rule.md").kind, "documentation");
   assert.equal(classifyFile("web/pnpm-lock.yaml").kind, "lockfile");
-  assert.equal(classifyFile("internal/api/model.pb.go").kind, "generated");
+  assert.equal(classifyFile("internal/api/model.pb.go").kind, "production");
   assert.equal(classifyFile("internal/store/service_test.go").kind, "test");
   assert.equal(classifyFile("internal/store/service.go").kind, "production");
 });
@@ -74,7 +74,7 @@ const LIMITS = Object.freeze({ scopeFiles: 30, productionAdditions: 1500, produc
 //   exceeded, kinds }
 ~~~
 
-Normalize slashes and case. Classification precedence is documentation, lockfile, generated, test, then production. Documentation includes `docs/**`, `*.md`, and `*.mdx`; locks include Go, npm, pnpm, Yarn, and Cargo lockfiles; generated includes a `generated` path segment, `*.pb.go`, `*.gen.go`, and generated snapshots; tests include `tests`, `test`, `__tests__`, `testdata`, and `fixtures` segments plus Go/JS test suffixes. Scope-file count excludes documentation, locks, and generated files but includes tests. Production totals exclude tests as well. Invalid non-array input throws; absent line counts become zero.
+Normalize slashes and case. Classification precedence is documentation, lockfile, test, then production. Documentation includes `docs/**`, `*.md`, and `*.mdx`; locks include Go, npm, pnpm, Yarn, and Cargo lockfiles; files that merely look generated are treated as source because filename-based exemptions are not verifiable. Tests include `tests`, `test`, `__tests__`, `testdata`, and `fixtures` segments plus Go/JS test suffixes. Scope-file count excludes documentation and locks but includes tests and generated-looking source. Production totals exclude tests as well. Invalid non-array input throws; absent line counts become zero.
 
 `formatEvaluation` reports measured values, limits, exceeded keys, and override status without GitHub calls.
 
