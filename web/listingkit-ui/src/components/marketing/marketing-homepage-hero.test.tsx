@@ -1,5 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 
+import { HeroSystemVisual } from "@/components/marketing/hero-system-visual";
 import { MarketingHomepage } from "@/components/marketing/marketing-homepage";
 
 describe("MarketingHomepage hero", () => {
@@ -45,9 +47,11 @@ describe("MarketingHomepage hero", () => {
   it("describes the six real commerce-platform capabilities without a device-edge claim", () => {
     render(<MarketingHomepage />);
 
-    const architecture = screen.getByRole("img", {
+    const architecture = screen.getByRole("group", {
       name: "硕米 AI 电商能力架构",
     });
+    const capabilities = within(architecture).getByRole("list");
+    expect(within(capabilities).getAllByRole("listitem")).toHaveLength(6);
     for (const label of [
       "模型与调用治理",
       "智能体运行时",
@@ -56,7 +60,7 @@ describe("MarketingHomepage hero", () => {
       "上架执行面",
       "平台连接器",
     ]) {
-      expect(within(architecture).getByText(label)).toBeInTheDocument();
+      expect(within(capabilities).getByText(label)).toBeInTheDocument();
     }
     expect(within(architecture).queryByText("设备与边缘")).not.toBeInTheDocument();
     expect(architecture).toHaveAttribute(
@@ -64,4 +68,29 @@ describe("MarketingHomepage hero", () => {
       "boot-reveal-active-pulse",
     );
   });
+
+  it("keeps the capability status text readable at its rendered size", () => {
+    render(<MarketingHomepage />);
+
+    expect(
+      getComputedStyle(
+        screen.getByText("Agent · 商品 · 工具 · 平台执行能力已连接"),
+      ).color,
+    ).toBe("rgb(157, 181, 216)");
+  });
+
+  it("allows capability labels to wrap inside narrow cards", () => {
+    render(<MarketingHomepage />);
+
+    expect(
+      getComputedStyle(screen.getByText("模型与调用治理")).whiteSpace,
+    ).toBe("normal");
+  });
+});
+
+it("keeps the architecture visible in server-rendered markup", () => {
+  const markup = renderToString(<HeroSystemVisual />);
+
+  expect(markup).toContain("模型与调用治理");
+  expect(markup).not.toMatch(/opacity:0(?:;|\"|})/);
 });
