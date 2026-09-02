@@ -878,6 +878,8 @@ git commit -m "refactor(marketplace): resolve image policy from injected data"
 - Produces: `imageagenttools.NewProductImageSlotExecutor(Dependencies)`；图片能力依赖保持为 `product/image` ports，策略依赖为消费方定义的窄 `ProfileResolver` 接口。App 构造具体 adapters 和 Resolver，缺少生产依赖或策略时失败。
 - Policy data source: `internal/integration/policy/productimage/policies.yaml` 是唯一版本化策略目录；专用 Integration loader 使用仓库已有的 `gopkg.in/yaml.v3` 严格解码，再返回 `imagepolicy.PolicySet`。它不是通用配置框架，不读取旧 `config.Config`、环境变量或配置单例。
 
+> **执行切片裁决（2026-09-02）：** 实施审查实测本任务列出的旧 Provider/App 生产文件约 4,569 行，尚未包含 ImageAgent、Temporal、HTTP 和 Worker 改造，不能作为一个超过 1,500 行准入阈值的单一开发单元执行。目标接口和最终验收不变，但按依赖顺序拆为独立、始终可编译并分别复审的切片：10A 专用策略 Catalog Adapter；10B Run/HTTP/Store/Temporal 的结构化 PolicyContext；10C Executor 切换到 `product/image` 和精确 Resolver；10D1 OpenAI Adapter；10D2 HTTP Image/GRSAI Adapter；10D3 App-only provider composition；10E Worker fail-closed 装配及 Task 10 全量清理。旧 `productimage` 只可在尚未迁移的切片中暂存，不能增加兼容入口或 fallback；10E 完成时一次性满足本任务的 scoped import 验收。
+
 - [ ] **Step 1: 改写 Executor 契约测试**
 
 ```go

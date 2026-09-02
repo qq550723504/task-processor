@@ -1,0 +1,74 @@
+schema: product-image-policy/v1
+policies:
+  - marketplace: amazon
+    country: us
+    family: default
+    scene_category: shoes
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: shoes, scene_style: studio, background_tone: bright, composition: centered, props_level: none, audience_hint: premium}
+  - marketplace: amazon
+    country: us
+    family: default
+    scene_category: jewelry
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: jewelry, scene_style: studio, background_tone: cool, composition: close_up, props_level: none, audience_hint: premium}
+  - marketplace: amazon
+    country: us
+    family: default
+    scene_category: bags
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: bags, scene_style: studio, background_tone: neutral, composition: centered, props_level: none, audience_hint: premium}
+  - marketplace: shein
+    country: us
+    family: default
+    scene_category: shoes
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: shoes, scene_style: lifestyle, background_tone: warm, composition: close_up, props_level: light, audience_hint: youthful}
+  - marketplace: shein
+    country: us
+    family: default
+    scene_category: jewelry
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: jewelry, scene_style: lifestyle, background_tone: warm, composition: close_up, props_level: light, audience_hint: youthful}
+  - marketplace: shein
+    country: us
+    family: default
+    scene_category: bags
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: bags, scene_style: lifestyle, background_tone: warm, composition: multi_angle, props_level: light, audience_hint: youthful}
+  - marketplace: temu
+    country: us
+    family: default
+    scene_category: shoes
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: shoes, scene_style: lifestyle, background_tone: bright, composition: multi_angle, props_level: moderate, audience_hint: sporty}
+  - marketplace: temu
+    country: us
+    family: default
+    scene_category: jewelry
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: jewelry, scene_style: lifestyle, background_tone: bright, composition: close_up, props_level: light, audience_hint: youthful}
+  - marketplace: temu
+    country: us
+    family: default
+    scene_category: bags
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: bags, scene_style: lifestyle, background_tone: bright, composition: multi_angle, props_level: moderate, audience_hint: sporty}
+  - marketplace: walmart
+    country: us
+    family: default
+    scene_category: shoes
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: shoes, scene_style: lifestyle, background_tone: neutral, composition: centered, props_level: light, audience_hint: homey}
+  - marketplace: walmart
+    country: us
+    family: default
+    scene_category: jewelry
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: jewelry, scene_style: studio, background_tone: neutral, composition: close_up, props_level: none, audience_hint: premium}
+  - marketplace: walmart
+    country: us
+    family: default
+    scene_category: bags
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: bags, scene_style: lifestyle, background_tone: neutral, composition: centered, props_level: light, audience_hint: homey}
