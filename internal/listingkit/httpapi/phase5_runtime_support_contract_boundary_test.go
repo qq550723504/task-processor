@@ -44,5 +44,5 @@ func TestRuntimeSupportHooksFileOwnsHookBundleBuilders(t *testing.T) {
 
 	require.Contains(t, content, "func buildRuntimeSupportHooks(cookieStore *sheinlogin.RedisStore) BuildServiceHooks {")
 	require.Contains(t, content, "SheinCategoryResolverBuilder:")
-	require.Contains(t, content, "StudioImageGeneratorBuilder: BuildStudioImageGenerator,")
+	require.NotContains(t, content, "StudioImageGeneratorBuilder:")
 }

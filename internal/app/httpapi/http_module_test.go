@@ -155,19 +155,6 @@ func TestListingKitHTTPModuleRegistersRoutes(t *testing.T) {
 	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
 }
 
-func TestListingKitStudioHTTPModuleRegistersRoutes(t *testing.T) {
-	t.Parallel()
-
-	reg := kernelmodule.NewRegistry()
-
-	err := listingkithttpapi.NewStudioHTTPModule(&stubStudioSessionHandler{}).Register(reg)
-	require.NoError(t, err)
-
-	keys := routeKeys(reg.Routes())
-	require.NotContains(t, keys, "POST /api/v1/listing-kits/generate")
-	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
-}
-
 func TestPromptTemplateHTTPModuleRegistersRoutes(t *testing.T) {
 	t.Parallel()
 

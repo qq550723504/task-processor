@@ -169,6 +169,7 @@ func (noopTaskSubmitter) Submit(string) error { return nil }
 type supportDependencySeed struct {
 	sdsSyncService            sdsusecase.Service
 	sdsBaselineRemoteProvider SDSBaselineRemoteProvider
+	imageUploadStore          ImageUploadStore
 	uploadedImageRepository   UploadedImageRepository
 	assembler                 Assembler
 	reviewRepository          reviewstore.Repository
@@ -200,6 +201,9 @@ func seedSupportDeps(s *service, deps supportDependencySeed) *service {
 	}
 	if s.supportDeps.sdsBaselineRemoteProvider == nil {
 		s.supportDeps.sdsBaselineRemoteProvider = deps.sdsBaselineRemoteProvider
+	}
+	if s.supportDeps.imageUploadStore == nil {
+		s.supportDeps.imageUploadStore = deps.imageUploadStore
 	}
 	if s.supportDeps.uploadedImageRepository == nil {
 		s.supportDeps.uploadedImageRepository = deps.uploadedImageRepository

@@ -21,9 +21,6 @@ func buildListingKitServiceConfig(in buildListingKitServiceConfigInput) *listing
 func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceCoreDependencies {
 	return listingkit.ServiceCoreDependencies{
 		Repository:                in.repositories.taskRepository,
-		StudioSessionRepository:   in.repositories.studioSessionRepository,
-		StudioBatchRepository:     in.repositories.studioBatchRepository,
-		StudioBatchRunRepository:  in.repositories.studioBatchRunRepository,
 		ProductSnapshotReader:     in.input.ProductSnapshotReader,
 		SDSSyncService:            in.input.SDSSyncService,
 		SDSLoginStatusProvider:    in.input.SDSLoginStatusProvider,
@@ -67,9 +64,6 @@ func buildListingKitSheinDependencies(in buildListingKitServiceConfigInput) list
 		SheinImageAPIBuilder:       in.submit.shein.imageAPIBuilder,
 		SheinTranslateAPIBuilder:   in.submit.shein.translateAPIBuilder,
 		SheinContentOptimizer:      in.submit.shein.contentOptimizer,
-		StudioPromptDiversifier:    in.submit.shein.contentOptimizer,
-		StudioImageGenerator:       in.submit.studio.imageGenerator,
-		StudioBackgroundRemover:    in.submit.studio.backgroundRemover,
 	}
 }
 

@@ -174,9 +174,6 @@ func BuildConfig(v *viper.Viper) *Config {
 		Debug: DebugConfig{
 			SavePublishJSON: v.GetBool("debug.save_publish_json"),
 		},
-		AICapability: AICapabilityConfig{
-			StudioImageRoutingMode: v.GetString("aiCapability.studioImageRoutingMode"),
-		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    v.GetBool("listingControlPlane.enabled"),
 			Platform:                   v.GetString("listingControlPlane.platform"),

@@ -16,7 +16,6 @@ func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 		c.imageAgentHTTPModule(),
 		c.productSourcingHTTPModule(),
 		c.promptHTTPModule(),
-		c.listingKitStudioHTTPModule(),
 		c.sdsHTTPModule(),
 		c.sheinLoginHTTPModule(),
 		c.sdsLoginHTTPModule(),

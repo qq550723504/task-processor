@@ -3,11 +3,9 @@ package httpapi
 import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/kernel/module"
-	"task-processor/internal/listingkit"
 )
 
 const httpModuleName = "listing-kit"
-const studioHTTPModuleName = "listing-kit-studio"
 
 type httpModule struct {
 	name     string
@@ -19,16 +17,6 @@ func NewHTTPModule(handler RouteHandler) module.Module {
 		name: httpModuleName,
 		register: func(reg *module.Registry) error {
 			reg.AddRoutes(AppendRouteDescriptors(nil, handler)...)
-			return nil
-		},
-	}
-}
-
-func NewStudioHTTPModule(handler listingkit.StudioSessionHandler) module.Module {
-	return httpModule{
-		name: studioHTTPModuleName,
-		register: func(reg *module.Registry) error {
-			reg.AddRoutes(AppendStudioSessionRouteDescriptors(nil, handler)...)
 			return nil
 		},
 	}

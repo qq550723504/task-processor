@@ -5,7 +5,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
@@ -22,7 +21,6 @@ import (
 type Module struct {
 	Handler                    RouteHandler
 	ImageAgentWorkspaceHandler ImageAgentWorkspaceRouteHandler
-	StudioSessionHandler       listingkit.StudioSessionHandler
 	TaskLifecycleService       listingkit.TaskLifecycleService
 	TaskRepository             listingkit.Repository
 	StoreAccessValidator       listingkit.StoreAccessValidator
@@ -34,7 +32,6 @@ type Module struct {
 type ServiceBundle struct {
 	TemporalWorkerService           TemporalWorkerService
 	TaskRepository                  listingkit.Repository
-	StudioAsyncJobRepository        listingkit.StudioAsyncJobRepository
 	StoreRepository                 listingadmin.StoreRepository
 	StoreStatisticsRepository       listingadmin.StoreStatisticsRepository
 	DispatchEventRepository         listingadmin.DispatchEventRepository
@@ -77,11 +74,9 @@ type moduleService interface {
 	listingkit.ChildTaskRetryService
 	listingkit.SDSBaselineWarmService
 	listingkit.StoreAdminService
-	listingkit.StudioBatchRunService
-	listingkit.StudioMediaService
+	listingkit.UploadedImageService
 	listingkit.InternalListingKitService
 	listingkit.TaskSubmitterConfigurer
-	listingkit.StudioSessionHandlerService
 	listingkit.WorkflowClientConfigurer
 	TemporalWorkerService
 }
@@ -117,16 +112,12 @@ type AdminRepositories struct {
 
 type CoreRepositories struct {
 	Task                  listingkit.Repository
-	StudioAsyncJob        listingkit.StudioAsyncJobRepository
-	StudioBatch           listingkit.StudioBatchRepository
-	StudioBatchRun        listingkit.StudioBatchRunRepository
 	SheinSync             listingkit.SheinSyncRepository
 	Subscription          listingsubscription.Repository
 	GenerationUsageLedger listingsubscription.UsageLedger
 	MemberInvitationAudit memberinvite.AuditRepository
 	ApprovedAsset         listingkit.ApprovedAssetInventoryReader
 	Review                reviewstore.Repository
-	StudioSession         listingkit.StudioSessionRepository
 	UploadedImage         listingkit.UploadedImageRepository
 	StoreProfile          listingkit.StoreProfileRepository
 	SheinResolutionCache  sheinpub.ResolutionCacheStore
@@ -150,9 +141,6 @@ type BuildServiceHooks struct {
 	SheinImageAPIBuilderFactory       func(listingadmin.StoreRepository) sheinpub.ImageAPIBuilder
 	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder
 	SheinAPIClientFactoryBuilder      func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory
-	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
-	StudioAICapabilityRouterBuilder   func(openaiclient.ClientConfigResolver) aicapability.Router
-	StudioBackgroundRemoverBuilder    func(*config.Config, openaiclient.ClientConfigResolver) listingkit.StudioBackgroundRemover
 }
 
 type BuildServiceInput struct {
@@ -163,8 +151,6 @@ type BuildServiceInput struct {
 	SDSLoginStatusProvider    listingkit.SDSLoginStatusProvider
 	SDSBaselineRemoteProvider listingkit.SDSBaselineRemoteProvider
 	AICredentialStore         aiCredentialStore
-	AIInvocationRecorder      aicapability.InvocationRecorder
-	AIAsyncJobStore           aicapability.AsyncJobBindingStore
 	Repositories              BuildServiceRepositories
 	Hooks                     BuildServiceHooks
 }

@@ -61,7 +61,7 @@ func (h *handler) UploadListingKitImages(c *gin.Context) {
 		return
 	}
 
-	response, err := h.studioMediaService.UploadImages(requestContext(c), request)
+	response, err := h.uploadedImageService.UploadImages(requestContext(c), request)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "invalid request") {
@@ -79,7 +79,7 @@ func (h *handler) UploadListingKitImages(c *gin.Context) {
 
 func (h *handler) GetUploadedListingKitImage(c *gin.Context) {
 	key := strings.TrimPrefix(c.Param("key"), "/")
-	file, err := h.studioMediaService.GetUploadedImage(requestContext(c), key)
+	file, err := h.uploadedImageService.GetUploadedImage(requestContext(c), key)
 	if err != nil {
 		if errors.Is(err, listingkit.ErrUploadedImageNotFound) {
 			writeUploadedImageNotFound(c)
@@ -181,4 +181,25 @@ func publicizeUploadedImageURLsWithBase(baseURL string, urls []string) []string 
 		public = append(public, baseURL+path)
 	}
 	return public
+}
+
+func requestBaseURL(c *gin.Context) string {
+	scheme := "http"
+	forwardedProto := firstForwardedValue(c.GetHeader("X-Forwarded-Proto"))
+	if c.Request.TLS != nil || strings.EqualFold(forwardedProto, "https") {
+		scheme = "https"
+	}
+	host := firstForwardedValue(c.GetHeader("X-Forwarded-Host"))
+	if !validForwardedHost(host) {
+		host = c.Request.Host
+	}
+	return scheme + "://" + host
+}
+
+func firstForwardedValue(value string) string {
+	return strings.TrimSpace(strings.Split(value, ",")[0])
+}
+
+func validForwardedHost(host string) bool {
+	return host != "" && !strings.ContainsAny(host, "\r\n /\\")
 }

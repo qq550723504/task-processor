@@ -113,10 +113,26 @@ func TestNewServiceWithConfigInitializesSubmitLockManager(t *testing.T) {
 	}
 }
 
+func TestNewServiceWithConfigDoesNotInitializeRetiredStudioCollaborators(t *testing.T) {
+	t.Parallel()
+
+	svc := newServiceWithConfig(newTestServiceConfig(&stubSubmitRepo{}))
+	svc.initializeCollaborators()
+
+	if svc.studio.sessionGroup.session != nil || svc.studio.sessionGroup.batchDraft != nil || svc.studio.sessionGroup.media != nil {
+		t.Fatalf("studio session collaborators = %+v, want uninitialized", svc.studio.sessionGroup)
+	}
+	if svc.studio.batchGroup.batchGeneration != nil || svc.studio.batchGroup.batch != nil {
+		t.Fatalf("studio batch collaborators = %+v, want uninitialized", svc.studio.batchGroup)
+	}
+	if svc.studio.runGroup.batchRun != nil || svc.studio.runGroup.runExecutor != nil || svc.studio.runGroup.runCoordinator != nil {
+		t.Fatalf("studio run collaborators = %+v, want uninitialized", svc.studio.runGroup)
+	}
+}
+
 func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyRuntimeMirrors(t *testing.T) {
 	t.Parallel()
 
-	sessionRepo := &studioBatchRunExecutorSessionRepoStub{}
 	syncSvc := &stubWorkflowSDSSyncService{}
 	statusProvider := stubSDSLoginStatusProvider{}
 	credentialStore := &fakeAIClientCredentialStore{}
@@ -127,7 +143,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyRuntimeMirrors(t *
 		&stubSubmitRepo{},
 		withTestTaskSubmitter(submitter),
 		withTestConfig(func(cfg *ServiceConfig) {
-			cfg.Core.StudioSessionRepository = sessionRepo
 			cfg.Core.SDSSyncService = syncSvc
 			cfg.Core.SDSLoginStatusProvider = statusProvider
 			cfg.Core.AIClientCredentialStore = credentialStore
@@ -141,9 +156,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyRuntimeMirrors(t *
 	}
 	if svc.taskDeps.taskSubmitter != submitter {
 		t.Fatalf("task deps submitter = %v, want seeded submitter", svc.taskDeps.taskSubmitter)
-	}
-	if svc.studioDeps.sessionRepo != sessionRepo {
-		t.Fatalf("studio deps session repo = %v, want seeded repo", svc.studioDeps.sessionRepo)
 	}
 	if svc.supportDeps.sdsSyncService != syncSvc {
 		t.Fatalf("support deps sync service = %v, want seeded service", svc.supportDeps.sdsSyncService)
@@ -160,9 +172,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyRuntimeMirrors(t *
 
 	if got := resolveTaskSubmitter(svc); got != submitter {
 		t.Fatalf("resolveTaskSubmitter() = %v, want seeded submitter", got)
-	}
-	if got := resolveStudioSessionRepo(svc); got != sessionRepo {
-		t.Fatalf("resolveStudioSessionRepo() = %v, want seeded repo", got)
 	}
 	if got := resolveSDSSyncService(svc); got != syncSvc {
 		t.Fatalf("resolveSDSSyncService() = %v, want seeded service", got)

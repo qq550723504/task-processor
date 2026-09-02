@@ -14,7 +14,6 @@ import (
 	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/reviewstore"
 	listingkitstore "task-processor/internal/listingkit/store"
-	"task-processor/internal/listingkit/studiostore"
 	"task-processor/internal/listingsubscription"
 	platformdatabase "task-processor/internal/platform/database"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -66,16 +65,12 @@ func NewPersistentRepositories(db *gorm.DB) (BuildServiceRepositories, error) {
 	return BuildServiceRepositories{
 		Core: CoreRepositories{
 			Task:                  listingkitstore.NewTaskRepository(db),
-			StudioAsyncJob:        listingkit.NewGormStudioAsyncJobRepository(db),
-			StudioBatch:           listingkit.NewGormStudioBatchRepository(db),
-			StudioBatchRun:        listingkit.NewGormStudioBatchRunRepository(db),
 			SheinSync:             listingkitstore.NewSheinSyncRepository(db),
 			Subscription:          subscriptions,
 			GenerationUsageLedger: listingsubscription.NewGormUsageLedger(subscriptions),
 			MemberInvitationAudit: memberinvite.NewGormAuditRepository(db),
 			ApprovedAsset:         approvedAssets,
 			Review:                reviewstore.NewGormRepository(db),
-			StudioSession:         studiostore.NewGormRepository(db),
 			UploadedImage:         listingkit.NewGormUploadedImageRepository(db),
 			StoreProfile:          listingkit.NewGormStoreProfileRepository(db),
 			SheinResolutionCache:  sheinpub.NewGormResolutionCacheStore(db),

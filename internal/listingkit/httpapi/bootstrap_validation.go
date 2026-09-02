@@ -6,12 +6,6 @@ func (b CoreRepositories) Validate() error {
 	switch {
 	case b.Task == nil:
 		return fmt.Errorf("repository core.task is required")
-	case b.StudioAsyncJob == nil:
-		return fmt.Errorf("repository core.studio_async_job is required")
-	case b.StudioBatch == nil:
-		return fmt.Errorf("repository core.studio_batch is required")
-	case b.StudioBatchRun == nil:
-		return fmt.Errorf("repository core.studio_batch_run is required")
 	case b.SheinSync == nil:
 		return fmt.Errorf("repository core.shein_sync is required")
 	case b.Subscription == nil:
@@ -24,8 +18,6 @@ func (b CoreRepositories) Validate() error {
 		return fmt.Errorf("repository core.approved_asset is required")
 	case b.Review == nil:
 		return fmt.Errorf("repository core.review is required")
-	case b.StudioSession == nil:
-		return fmt.Errorf("repository core.studio_session is required")
 	case b.UploadedImage == nil:
 		return fmt.Errorf("repository core.uploaded_image is required")
 	case b.StoreProfile == nil:
@@ -100,8 +92,6 @@ func (h BuildServiceHooks) Validate() error {
 		return fmt.Errorf("build service hook shein translate api builder is required")
 	case h.SheinAPIClientFactoryBuilder == nil:
 		return fmt.Errorf("build service hook shein api client factory is required")
-	case h.StudioImageGeneratorBuilder == nil:
-		return fmt.Errorf("build service hook studio image generator is required")
 	default:
 		return nil
 	}

@@ -68,15 +68,9 @@ func createModuleRuntime(input BuildModuleInput, bundle *ServiceBundle, closers 
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
 
-	studioSessionHandler, err := listingkitapi.NewStudioSessionHandler(bundle.runtime.service, bundle.runtime.handlerDependencies.Subscription.Service)
-	if err != nil {
-		return nil, fmt.Errorf("create listing kit studio session handler: %w", err)
-	}
-
 	return &Module{
 		Handler:              handler,
 		TaskRepository:       bundle.runtime.taskRepository,
-		StudioSessionHandler: studioSessionHandler,
 		TaskLifecycleService: bundle.runtime.service,
 		StoreAccessValidator: listingAdminStoreAccessValidator{repo: bundle.StoreRepository},
 		StoreRepository:      bundle.StoreRepository,

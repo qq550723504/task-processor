@@ -29,20 +29,7 @@ func TestAIClientsFileStaysFocusedOnClientBuilderAndResolverAssembly(t *testing.
 	require.NotContains(t, content, "func buildStrictListingKitNanobananaImageClient(")
 	require.NotContains(t, content, "func buildListingKitRoutedImageClient(")
 
-	require.Contains(t, content, "func BuildStudioImageGenerator(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ImageGenerator {")
-}
-
-func TestAIClientImageRoutingHelpersFileOwnsRoutedImageLogic(t *testing.T) {
-	t.Parallel()
-
-	src, err := os.ReadFile("ai_client_image_routing.go")
-	require.NoError(t, err)
-	content := string(src)
-
-	require.Contains(t, content, "type listingKitRoutedImageClient struct {")
-	require.Contains(t, content, "func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ImageGenerator {")
-	require.Contains(t, content, "func normalizeListingKitImageSelector(selector string) string {")
-	require.Contains(t, content, "func enforceListingKitImageClientTimeout(clientName string, cfg *openaiclient.ClientConfig) *openaiclient.ClientConfig {")
+	require.Contains(t, content, "func BuildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ChatCompleter {")
 }
 
 func TestAIClientFallbackHelpersFileOwnsFallbackSanitizingAndNaming(t *testing.T) {
@@ -68,17 +55,6 @@ func TestAIClientStrictChatFileOwnsStrictChatResolution(t *testing.T) {
 	require.Contains(t, content, "func resolveStrictListingKitClient(")
 }
 
-func TestAIClientStrictImageFileOwnsStrictImageResolution(t *testing.T) {
-	t.Parallel()
-
-	src, err := os.ReadFile("ai_client_strict_image.go")
-	require.NoError(t, err)
-	content := string(src)
-
-	require.Contains(t, content, "type strictListingKitConfiguredImageClient struct {")
-	require.Contains(t, content, "func resolveStrictListingKitImageClient(")
-}
-
 func TestAIClientBuildersFileOwnsStrictClientConstruction(t *testing.T) {
 	t.Parallel()
 
@@ -87,7 +63,5 @@ func TestAIClientBuildersFileOwnsStrictClientConstruction(t *testing.T) {
 	content := string(src)
 
 	require.Contains(t, content, "func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ChatCompleter {")
-	require.Contains(t, content, "func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ImageGenerator {")
-	require.Contains(t, content, "func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ImageGenerator {")
-	require.Contains(t, content, "grsai.NewClient(")
+	require.NotContains(t, content, "ImageGenerator")
 }

@@ -9,6 +9,7 @@ import (
 )
 
 var retiredProductRuntimeYAMLKeys = map[string]string{
+	"aicapability.studioimageroutingmode":               "aiCapability.studioImageRoutingMode",
 	"debug.productenrichmockllm":                        "debug.productEnrichMockLLM",
 	"aicapability.productimagesceneenabled":             "aiCapability.productImageSceneEnabled",
 	"aicapability.productimagesceneallowedtenantids":    "aiCapability.productImageSceneAllowedTenantIDs",
@@ -21,6 +22,8 @@ var retiredProductRuntimeYAMLKeys = map[string]string{
 }
 
 var retiredProductRuntimeEnvironmentVariables = map[string]struct{}{
+	"TASK_PROCESSOR_AI_CAPABILITY_STUDIO_IMAGE_ROUTING_MODE":                 {},
+	"TASK_PROCESSOR_AICAPABILITY_STUDIOIMAGEROUTINGMODE":                     {},
 	"TASK_PROCESSOR_DEBUG_PRODUCTENRICHMOCKLLM":                              {},
 	"TASK_PROCESSOR_DEBUG_PRODUCTENRICH_MOCK_LLM":                            {},
 	"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED":               {},

@@ -102,16 +102,8 @@ func (storeOnlyRouteHandler) UpdateTenantStore(c *gin.Context)      {}
 func (storeOnlyRouteHandler) DeleteTenantStore(c *gin.Context)      {}
 func (storeOnlyRouteHandler) ListSimpleTenantStores(c *gin.Context) {}
 
-type studioGenerationOnlyRouteHandler struct{}
-
-func (studioGenerationOnlyRouteHandler) AnalyzeStudioReferenceStyle(c *gin.Context) {}
-func (studioGenerationOnlyRouteHandler) GenerateStudioDesigns(c *gin.Context)       {}
-func (studioGenerationOnlyRouteHandler) StartStudioAsyncJob(c *gin.Context)         {}
-func (studioGenerationOnlyRouteHandler) GetStudioAsyncJob(c *gin.Context)           {}
-
 var _ SettingsRouteHandler = settingsOnlyRouteHandler{}
 var _ TaskRouteHandler = taskOnlyRouteHandler{}
 var _ SubscriptionRouteHandler = subscriptionOnlyRouteHandler{}
 var _ PlatformAdminRouteHandler = platformAdminSubscriptionRouteHandler{}
 var _ StoreRouteHandler = storeOnlyRouteHandler{}
-var _ StudioGenerationRouteHandler = studioGenerationOnlyRouteHandler{}

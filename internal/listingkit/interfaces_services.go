@@ -55,9 +55,13 @@ type SDSRetirementService interface {
 	RetrySDSRetirementRun(ctx context.Context, runID string) (*SDSRetirementRunDetail, error)
 }
 
-type StudioMediaService interface {
+type UploadedImageService interface {
 	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
 	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)
+}
+
+type StudioMediaService interface {
+	UploadedImageService
 	AnalyzeStudioReferenceStyle(ctx context.Context, req *StudioReferenceAnalysisRequest) (*StudioReferenceAnalysisResponse, error)
 	GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error)
 }

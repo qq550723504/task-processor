@@ -2,24 +2,14 @@ package httpapi
 
 import (
 	"fmt"
-	"time"
 
 	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/integration/openai"
-	"task-processor/internal/listingkit"
 )
 
 const (
-	listingKitImageClientName                     = "image"
-	listingKitImageClientNameGPTImage2            = listingkit.ImageAIClientNameGPTImage2
-	listingKitImageClientNameNanobanana           = "image_nanobanana"
-	listingKitImageClientNameBackgroundRemoval    = "image_background_removal"
-	listingKitImageModelSelectorGPTImage2         = "gpt-image-2"
-	listingKitImageModelSelectorNano              = "nanobanana"
-	listingKitImageModelSelectorBackgroundRemoval = "background-removal"
-	sheinSaleAttributeClientName                  = "scorer"
-	listingKitStudioImageMinTimeout               = 300 * time.Second
+	sheinSaleAttributeClientName = "scorer"
 )
 
 func BuildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ChatCompleter {
@@ -28,14 +18,6 @@ func BuildSheinCategoryLLMClient(cfg *config.Config, resolver openaiclient.Clien
 
 func BuildSheinSaleAttributeLLMClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ChatCompleter {
 	return buildStrictListingKitChatClient(cfg, resolver, sheinSaleAttributeClientName)
-}
-
-func BuildStudioImageGenerator(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ImageGenerator {
-	return buildListingKitRoutedImageClient(cfg, resolver)
-}
-
-func BuildStudioBackgroundRemover(cfg *config.Config, resolver openaiclient.ClientConfigResolver) listingkit.StudioBackgroundRemover {
-	return adaptListingKitBackgroundRemover(buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientNameBackgroundRemoval))
 }
 
 func errListingKitAIClientNotConfigured(clientName string) error {

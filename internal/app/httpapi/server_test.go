@@ -1332,39 +1332,27 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 		t.Fatal("GenerateListingKit handler was not called")
 	}
 
-	handler.generateStudioDesignsCalled = false
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/designs", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp = httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/listing-kits/studio/designs = %d, want 200", resp.Code)
-	}
-	if !handler.generateStudioDesignsCalled {
-		t.Fatal("listing kit GenerateStudioDesigns handler was not called")
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("POST /api/v1/listing-kits/studio/designs = %d, want 404", resp.Code)
 	}
 
-	handler.startStudioAsyncJobCalled = false
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/async-jobs", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp = httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusAccepted {
-		t.Fatalf("POST /api/v1/listing-kits/studio/async-jobs = %d, want 202", resp.Code)
-	}
-	if !handler.startStudioAsyncJobCalled {
-		t.Fatal("listing kit StartStudioAsyncJob handler was not called")
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("POST /api/v1/listing-kits/studio/async-jobs = %d, want 404", resp.Code)
 	}
 
-	handler.getStudioAsyncJobCalled = false
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/studio/async-jobs/studio-job-1", nil)
 	resp = httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/listing-kits/studio/async-jobs/:job_id = %d, want 200", resp.Code)
-	}
-	if !handler.getStudioAsyncJobCalled {
-		t.Fatal("listing kit GetStudioAsyncJob handler was not called")
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("GET /api/v1/listing-kits/studio/async-jobs/:job_id = %d, want 404", resp.Code)
 	}
 
 	handler.uploadImagesCalled = false
@@ -2110,7 +2098,6 @@ func TestBuildHTTPServerBundleFromModulesMountsRegisteredRoutes(t *testing.T) {
 		amazonlistinghttpapi.NewHTTPModule(&stubAmazonListingHandler{}),
 		listingkithttpapi.NewHTTPModule(&stubListingKitHandler{}),
 		promptmgmtapi.NewHTTPModule(&stubPromptTemplateHandler{}),
-		listingkithttpapi.NewStudioHTTPModule(&stubStudioSessionHandler{}),
 		sheinlogin.NewHTTPModule(&stubSheinLoginHandler{}),
 		sdslogin.NewHTTPModule(&stubSDSLoginHandler{}),
 		taskrpcapi.NewHTTPModule(&stubTaskRPCHandler{}),

@@ -41,10 +41,3 @@ func (c httpFeatureComposition) listingKitHTTPModule() kernelmodule.Module {
 	}
 	return listingkithttpapi.NewHTTPModule(nil)
 }
-
-func (c httpFeatureComposition) listingKitStudioHTTPModule() kernelmodule.Module {
-	if c.listingKitModule != nil {
-		return nil
-	}
-	return listingkithttpapi.NewStudioHTTPModule(nil)
-}

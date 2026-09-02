@@ -219,9 +219,6 @@ func NewDefaultConfig() *Config {
 		Debug: DebugConfig{
 			SavePublishJSON: false,
 		},
-		AICapability: AICapabilityConfig{
-			StudioImageRoutingMode: "legacy",
-		},
 		ListingKit: ListingKitConfig{
 			GenerationUsageLedgerEnabled: false,
 			ImageUpload:                  ListingKitImageUploadConfig{},

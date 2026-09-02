@@ -284,9 +284,6 @@ func TestLoadFromBytesAppliesListingControlPlaneEnvOverrides(t *testing.T) {
 
 func TestConfigValidation(t *testing.T) {
 	validConfig := &Config{
-		AICapability: AICapabilityConfig{
-			StudioImageRoutingMode: "legacy",
-		},
 		Worker: WorkerConfig{
 			Concurrency:      5,
 			BufferSize:       100,

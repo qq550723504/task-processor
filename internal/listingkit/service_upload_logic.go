@@ -37,7 +37,7 @@ func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*
 }
 
 func (s *service) uploadListingKitImage(ctx context.Context, file ImageUploadInput) (*uploadedImageMaterialization, error) {
-	uploadStore := resolveStudioUploadStore(s)
+	uploadStore := resolveImageUploadStore(s)
 	if uploadStore == nil {
 		return nil, fmt.Errorf("image upload store is not configured")
 	}
@@ -115,7 +115,7 @@ func uploadImageWithLegacyStore(ctx context.Context, file ImageUploadInput, uplo
 }
 
 func (s *service) GetUploadedImage(ctx context.Context, uploadID string) (*UploadedImageFile, error) {
-	uploadStore := resolveStudioUploadStore(s)
+	uploadStore := resolveImageUploadStore(s)
 	if uploadStore == nil {
 		return nil, ErrUploadedImageNotFound
 	}
@@ -164,7 +164,7 @@ func (s *service) GetUploadedImage(ctx context.Context, uploadID string) (*Uploa
 }
 
 func (s *service) DeleteUploadedImage(ctx context.Context, uploadID string) (*DeletedUploadedImage, error) {
-	uploadStore := resolveStudioUploadStore(s)
+	uploadStore := resolveImageUploadStore(s)
 	if uploadStore == nil {
 		return nil, ErrUploadedImageNotFound
 	}

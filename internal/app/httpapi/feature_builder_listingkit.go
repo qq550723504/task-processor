@@ -56,8 +56,6 @@ func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps, re
 			Config:                             deps.shared.cfg,
 			ProductSnapshotReader:              deps.features.productSnapshotReader,
 			AICredentialStore:                  deps.shared.aiCredentialStore,
-			AIInvocationRecorder:               deps.shared.aiInvocationRecorder,
-			AIAsyncJobStore:                    deps.shared.aiAsyncJobStore,
 			Support:                            support,
 			ShouldStartTemporalWorkerInProcess: appruntime.ShouldStartListingKitSheinPublishTemporalWorkerInProcess(),
 		},

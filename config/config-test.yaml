@@ -46,8 +46,6 @@ openai:
       model: "nanobanana"
       timeout: 300
 
-aiCapability:
-  studioImageRoutingMode: legacy
 
 listingkit:
   sheinSubmitDebugDumpDir: ""

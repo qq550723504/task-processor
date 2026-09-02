@@ -6,11 +6,8 @@ import (
 	"task-processor/internal/listingkit"
 )
 
-func newHandlerWithDefaults(studioAsyncJobs studioAsyncJobStoreService) *handler {
-	return &handler{
-		studioBatchRunService: nil,
-		studioAsyncJobs:       studioAsyncJobs,
-	}
+func newHandlerWithDefaults() *handler {
+	return &handler{}
 }
 
 func (h *handler) attachCoreServices(service handlerCoreService) {
@@ -18,7 +15,7 @@ func (h *handler) attachCoreServices(service handlerCoreService) {
 		return
 	}
 	h.taskLifecycleService = service
-	h.studioMediaService = service
+	h.uploadedImageService = service
 }
 
 func (h *handler) attachOptionalServices(service any) {
@@ -42,12 +39,6 @@ func (h *handler) attachOptionalServices(service any) {
 	}
 	if requeueService, ok := any(service).(listingkit.TaskRequeueService); ok {
 		h.taskRequeueService = requeueService
-	}
-	if sessionService, ok := service.(studioSessionAsyncJobService); ok {
-		h.studioSessionService = sessionService
-	}
-	if batchRunService, ok := service.(studioBatchRunHandlerService); ok {
-		h.studioBatchRunService = batchRunService
 	}
 	if warmService, ok := service.(listingkit.SDSBaselineWarmService); ok {
 		h.sdsBaselineWarmService = warmService
@@ -79,18 +70,14 @@ func (h *handler) finalize() error {
 	if h.taskLifecycleService == nil {
 		return errors.New("task lifecycle service is not configured")
 	}
-	if h.studioMediaService == nil {
-		return errors.New("studio media service is not configured")
+	if h.uploadedImageService == nil {
+		return errors.New("uploaded image service is not configured")
 	}
 	return nil
 }
 
 func NewHandler(service HandlerService, opts ...HandlerOption) (*handler, error) {
-	studioAsyncJobs, err := newStudioAsyncJobStore(nil)
-	if err != nil {
-		return nil, err
-	}
-	h := newHandlerWithDefaults(studioAsyncJobs)
+	h := newHandlerWithDefaults()
 	h.attachCoreServices(service)
 	h.attachOptionalServices(service)
 	h.applyOptions(opts)

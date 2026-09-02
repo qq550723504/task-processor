@@ -17,9 +17,6 @@ func buildRepositories(input BuildServiceInput) (*builtRepositories, error) {
 	}
 	return &builtRepositories{
 		taskRepository:                    values.Core.Task,
-		studioAsyncJobRepository:          values.Core.StudioAsyncJob,
-		studioBatchRepository:             values.Core.StudioBatch,
-		studioBatchRunRepository:          values.Core.StudioBatchRun,
 		sheinSyncRepository:               values.Core.SheinSync,
 		storeRepository:                   values.Admin.Store,
 		storeStatisticsRepository:         values.Admin.StoreStatistics,
@@ -40,7 +37,6 @@ func buildRepositories(input BuildServiceInput) (*builtRepositories, error) {
 		memberInvitationAuditRepository:   values.Core.MemberInvitationAudit,
 		approvedAssetInventoryReader:      values.Core.ApprovedAsset,
 		reviewRepository:                  values.Core.Review,
-		studioSessionRepository:           values.Core.StudioSession,
 		uploadedImageRepository:           values.Core.UploadedImage,
 		storeProfileRepository:            values.Core.StoreProfile,
 		resolutionCacheStore:              values.Core.SheinResolutionCache,

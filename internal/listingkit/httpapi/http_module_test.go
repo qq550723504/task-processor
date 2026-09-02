@@ -27,7 +27,7 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	require.Contains(t, keys, "POST /api/v1/listing-kits/generate")
 	require.Contains(t, keys, "GET /readyz")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/settings-health")
-	require.Contains(t, keys, "POST /api/v1/listing-kits/studio/reference-style/analyze")
+	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/reference-style/analyze")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/tasks/requeue")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/integrations/zitadel/sms")
@@ -67,36 +67,13 @@ func TestAppendRouteDescriptorsIncludesAuthContextForSupportingHandler(t *testin
 	require.Contains(t, routeKeys(routes), "GET /api/v1/listing-kits/auth-context")
 }
 
-func TestNewStudioHTTPModuleRegistersStudioRoutes(t *testing.T) {
-	t.Parallel()
-
-	reg := kernelmodule.NewRegistry()
-	module := NewStudioHTTPModule(stubStudioSessionRouteHandler{})
-
-	require.Equal(t, "listing-kit-studio", module.Name())
-	require.True(t, module.Enabled(nil))
-	require.NoError(t, module.Register(reg))
-
-	keys := routeKeys(reg.Routes())
-	require.NotContains(t, keys, "POST /api/v1/listing-kits/generate")
-	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
-	require.Contains(t, keys, "POST /api/v1/listing-kits/studio/batches/:batch_id/designs/background-removal/retry")
-	require.Contains(t, keys, "POST /api/v1/listing-kits/studio/batches/:batch_id/designs/:design_id/manual-background-removal")
-	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/sessions")
-	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/:session_id")
-	require.NotContains(t, keys, "PATCH /api/v1/listing-kits/studio/sessions/:session_id")
-	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/sessions/:session_id/designs")
-	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/sessions/:session_id/designs/append")
-}
-
 func TestNewRuntimeModuleRegistersRoutesAndWorkerPool(t *testing.T) {
 	t.Parallel()
 
 	reg := kernelmodule.NewRegistry()
 	module := NewRuntimeModule(&Module{
-		Handler:              stubRouteHandler{},
-		StudioSessionHandler: stubStudioSessionRouteHandler{},
-		Pool:                 stubWorkerPool{},
+		Handler: stubRouteHandler{},
+		Pool:    stubWorkerPool{},
 	})
 
 	require.Equal(t, "listing-kit", module.Name())
@@ -105,7 +82,7 @@ func TestNewRuntimeModuleRegistersRoutesAndWorkerPool(t *testing.T) {
 
 	keys := routeKeys(reg.Routes())
 	require.Contains(t, keys, "POST /api/v1/listing-kits/generate")
-	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
+	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
 	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/sessions")
 	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/:session_id")
 	require.NotContains(t, keys, "PATCH /api/v1/listing-kits/studio/sessions/:session_id")
@@ -138,21 +115,6 @@ func TestAppendRouteDescriptorsIncludesSheinSyncRoutes(t *testing.T) {
 	require.Contains(t, keys, "GET /api/v1/listing-kits/shein-pod-image-lookup/stores/:store_id")
 }
 
-type stubStudioSessionRouteHandler struct{}
-
-func (stubStudioSessionRouteHandler) ListStudioSessionGallery(*gin.Context)                {}
-func (stubStudioSessionRouteHandler) ListStudioBatches(*gin.Context)                       {}
-func (stubStudioSessionRouteHandler) GetStudioBatch(*gin.Context)                          {}
-func (stubStudioSessionRouteHandler) StartStudioBatchGeneration(*gin.Context)              {}
-func (stubStudioSessionRouteHandler) RetryStudioBatchItems(*gin.Context)                   {}
-func (stubStudioSessionRouteHandler) RetryStudioBatchDesignBackgroundRemoval(*gin.Context) {}
-func (stubStudioSessionRouteHandler) ApplyManualStudioBatchDesignBackgroundRemoval(*gin.Context) {
-}
-func (stubStudioSessionRouteHandler) RetryStudioBatchSDSChildTasks(*gin.Context) {}
-func (stubStudioSessionRouteHandler) ApproveStudioBatchDesigns(*gin.Context)     {}
-func (stubStudioSessionRouteHandler) UpsertStudioBatch(*gin.Context)             {}
-func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)             {}
-
 type stubRouteHandler struct{}
 
 type stubRouteHandlerWithAuthContext struct{ stubRouteHandler }
@@ -174,10 +136,6 @@ func (stubRouteHandler) RetrySDSRetirementRun(*gin.Context)                     
 func (stubRouteHandler) UploadListingKitImages(*gin.Context)                      {}
 func (stubRouteHandler) GetUploadedListingKitImage(*gin.Context)                  {}
 func (stubRouteHandler) DeleteUploadedListingKitImage(*gin.Context)               {}
-func (stubRouteHandler) AnalyzeStudioReferenceStyle(*gin.Context)                 {}
-func (stubRouteHandler) GenerateStudioDesigns(*gin.Context)                       {}
-func (stubRouteHandler) StartStudioAsyncJob(*gin.Context)                         {}
-func (stubRouteHandler) GetStudioAsyncJob(*gin.Context)                           {}
 func (stubRouteHandler) GetTaskResult(*gin.Context)                               {}
 func (stubRouteHandler) RequeuePendingTasks(*gin.Context)                         {}
 func (stubRouteHandler) RecoverTaskNow(*gin.Context)                              {}

@@ -29,9 +29,6 @@ type service struct {
 
 type ServiceCoreDependencies struct {
 	Repository                Repository
-	StudioSessionRepository   StudioSessionRepository
-	StudioBatchRepository     StudioBatchRepository
-	StudioBatchRunRepository  StudioBatchRunRepository
 	ProductSnapshotReader     ProductSnapshotReader
 	SDSSyncService            sdsusecase.Service
 	SDSLoginStatusProvider    SDSLoginStatusProvider
@@ -65,9 +62,6 @@ type ServiceSheinDependencies struct {
 	SheinImageAPIBuilder       sheinpub.ImageAPIBuilder
 	SheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder
 	SheinContentOptimizer      AIChatCompleter
-	StudioPromptDiversifier    AIChatCompleter
-	StudioImageGenerator       AIImageGenerator
-	StudioBackgroundRemover    StudioBackgroundRemover
 }
 
 type ServiceWorkflowDependencies struct {

@@ -18,21 +18,6 @@ func buildTaskDependencies(config *ServiceConfig) taskDependencies {
 	}
 }
 
-func buildStudioDependencies(config *ServiceConfig) studioDependencies {
-	if config == nil {
-		return studioDependencies{}
-	}
-	return studioDependencies{
-		sessionRepo:       config.Core.StudioSessionRepository,
-		batchRepo:         config.Core.StudioBatchRepository,
-		batchRunRepo:      config.Core.StudioBatchRunRepository,
-		promptDiversifier: config.Shein.StudioPromptDiversifier,
-		imageGenerator:    config.Shein.StudioImageGenerator,
-		backgroundRemover: config.Shein.StudioBackgroundRemover,
-		uploadStore:       config.Core.ImageUploadStore,
-	}
-}
-
 func buildAdminDependencies(config *ServiceConfig) adminDependencies {
 	if config == nil {
 		return adminDependencies{}
@@ -106,6 +91,7 @@ func buildSupportDependencies(config *ServiceConfig) supportDependencies {
 	return supportDependencies{
 		sdsSyncService:            config.Core.SDSSyncService,
 		sdsBaselineRemoteProvider: config.Core.SDSBaselineRemoteProvider,
+		imageUploadStore:          config.Core.ImageUploadStore,
 		uploadedImageRepository:   config.Core.UploadedImageRepository,
 		assembler:                 config.Assets.Assembler,
 		reviewRepository:          config.Assets.ReviewRepository,
@@ -117,7 +103,6 @@ func applyServiceDependencyGroups(svc *service, config *ServiceConfig) {
 		return
 	}
 	svc.taskDeps = buildTaskDependencies(config)
-	svc.studioDeps = buildStudioDependencies(config)
 	svc.submission = buildSubmissionCollaborators()
 	svc.adminDeps = buildAdminDependencies(config)
 	svc.submissionDeps = buildSubmissionDependencies(config)

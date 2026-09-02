@@ -34,7 +34,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("openai.timeout", defaults.OpenAI.Timeout)
 
 	v.SetDefault("debug.save_publish_json", defaults.Debug.SavePublishJSON)
-	v.SetDefault("aiCapability.studioImageRoutingMode", defaults.AICapability.StudioImageRoutingMode)
 	v.SetDefault("listingkit.sheinSubmitDebugDumpDir", defaults.ListingKit.SheinSubmitDebugDumpDir)
 	v.SetDefault("listingkit.generationUsageLedgerEnabled", defaults.ListingKit.GenerationUsageLedgerEnabled)
 	v.SetDefault("listingkit.generationUsageLedgerTenantIDs", defaults.ListingKit.GenerationUsageLedgerTenantIDs)

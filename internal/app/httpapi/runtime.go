@@ -120,14 +120,6 @@ func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, buil
 	}
 	ownedClosers = append(ownedClosers, openaiDeps.closers...)
 	closers = append(closers, openaiDeps.closers...)
-	done = timer.phase("buildAICapabilityRuntimeDeps")
-	aiCapabilityDeps, err := buildAICapabilityRuntimeDeps(cfg, logger)
-	done()
-	if err != nil {
-		return nil, err
-	}
-	ownedClosers = append(ownedClosers, aiCapabilityDeps.closers...)
-	closers = append(closers, aiCapabilityDeps.closers...)
 	closers = append(closers, promptDeps.closers...)
 	done = timer.phase("buildStoreAPI")
 	storeAPI, storeCloser, err := buildHTTPAPIStoreAPI(cfg, logger)
@@ -150,8 +142,6 @@ func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, buil
 			closers:              closers,
 			openaiMgr:            openaiDeps.openaiMgr,
 			aiCredentialStore:    openaiDeps.aiCredentialStore,
-			aiInvocationRecorder: aiCapabilityDeps.invocationRecorder,
-			aiAsyncJobStore:      aiCapabilityDeps.asyncJobStore,
 			tenantPromptStore:    promptDeps.tenantPromptStore,
 			storeAPI:             storeAPI,
 			productCatalogDB:     productCatalogDB,

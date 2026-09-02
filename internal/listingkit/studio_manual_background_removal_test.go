@@ -157,7 +157,7 @@ func TestStudioBatchManualBackgroundRemovalUploadsPNGAndAppliesReturnedURL(t *te
 				batch: newTaskStudioBatchService(taskStudioBatchServiceConfig{repo: repo}),
 			},
 		},
-	}, supportDependencySeed{uploadedImageRepository: NewMemUploadedImageRepository()})
+	}, supportDependencySeed{imageUploadStore: store, uploadedImageRepository: NewMemUploadedImageRepository()})
 
 	detail, err := svc.ApplyManualStudioBatchDesignBackgroundRemoval(ctx, "batch-1", "design-1", &ImageUploadInput{
 		Filename: "manual.png",
@@ -190,7 +190,7 @@ func TestStudioBatchManualBackgroundRemovalDeletesNewUploadWhenApplyFails(t *tes
 				batch: newTaskStudioBatchService(taskStudioBatchServiceConfig{}),
 			},
 		},
-	}, supportDependencySeed{uploadedImageRepository: NewMemUploadedImageRepository()})
+	}, supportDependencySeed{imageUploadStore: store, uploadedImageRepository: NewMemUploadedImageRepository()})
 
 	_, err := svc.ApplyManualStudioBatchDesignBackgroundRemoval(ctx, "batch-1", "design-1", &ImageUploadInput{
 		Filename: "manual.png",
@@ -220,6 +220,9 @@ func TestStudioBatchManualBackgroundRemovalDeletesLegacyUploadByStoredKeyWhenApp
 	}
 	svc := &service{
 		studioDeps: studioDependencies{uploadStore: store},
+		supportDeps: supportDependencies{
+			imageUploadStore: store,
+		},
 		studio: studioCollaborators{
 			batchGroup: taskStudioBatchCollaborators{
 				batch: newTaskStudioBatchService(taskStudioBatchServiceConfig{}),
@@ -284,7 +287,7 @@ func TestStudioBatchManualBackgroundRemovalRetainsCommittedUploadWhenDetailReadF
 				batch: newTaskStudioBatchService(taskStudioBatchServiceConfig{repo: repo}),
 			},
 		},
-	}, supportDependencySeed{uploadedImageRepository: NewMemUploadedImageRepository()})
+	}, supportDependencySeed{imageUploadStore: store, uploadedImageRepository: NewMemUploadedImageRepository()})
 
 	_, err := svc.ApplyManualStudioBatchDesignBackgroundRemoval(ctx, "batch-1", "design-1", &ImageUploadInput{
 		Filename: "manual.png",
@@ -312,7 +315,7 @@ func TestStudioBatchManualBackgroundRemovalClassifiesTruncatedPNGAsValidation(t 
 	store := &stubMetadataImageUploadStore{}
 	svc := seedSupportDeps(&service{
 		studioDeps: studioDependencies{uploadStore: store},
-	}, supportDependencySeed{uploadedImageRepository: NewMemUploadedImageRepository()})
+	}, supportDependencySeed{imageUploadStore: store, uploadedImageRepository: NewMemUploadedImageRepository()})
 	pngData := studioTestOpaquePNG(t)
 
 	_, err := svc.ApplyManualStudioBatchDesignBackgroundRemoval(ctx, "batch-1", "design-1", &ImageUploadInput{
@@ -339,7 +342,7 @@ func TestStudioBatchManualBackgroundRemovalRejectsJPEGBytesBeforeUpload(t *testi
 				batch: newTaskStudioBatchService(taskStudioBatchServiceConfig{}),
 			},
 		},
-	}, supportDependencySeed{uploadedImageRepository: NewMemUploadedImageRepository()})
+	}, supportDependencySeed{imageUploadStore: store, uploadedImageRepository: NewMemUploadedImageRepository()})
 
 	_, err := svc.ApplyManualStudioBatchDesignBackgroundRemoval(ctx, "batch-1", "design-1", &ImageUploadInput{
 		Filename: "manual.jpg",

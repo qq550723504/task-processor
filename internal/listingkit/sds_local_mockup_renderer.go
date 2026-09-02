@@ -24,7 +24,7 @@ type localSDSMockupRenderInput struct {
 }
 
 func (s *service) renderLocalSDSMockups(ctx context.Context, input localSDSMockupRenderInput) ([]string, error) {
-	uploadStore := resolveStudioUploadStore(s)
+	uploadStore := resolveImageUploadStore(s)
 	if s == nil || uploadStore == nil {
 		return nil, nil
 	}

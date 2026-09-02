@@ -19,7 +19,6 @@ func (config *ServiceConfig) applyDefaults() {
 		(*ServiceConfig).ensureAssembler,
 		(*ServiceConfig).ensureAssetDependencies,
 		(*ServiceConfig).ensureCoreRepositories,
-		(*ServiceConfig).ensureSheinDefaults,
 	)
 }
 
@@ -53,12 +52,6 @@ func (config *ServiceConfig) ensureAssetDependencies() {
 func (config *ServiceConfig) ensureCoreRepositories() {
 	if config.Core.StoreProfileRepository == nil {
 		config.Core.StoreProfileRepository = newInMemoryStoreProfileRepository()
-	}
-}
-
-func (config *ServiceConfig) ensureSheinDefaults() {
-	if config.Shein.StudioPromptDiversifier == nil {
-		config.Shein.StudioPromptDiversifier = config.Shein.SheinContentOptimizer
 	}
 }
 

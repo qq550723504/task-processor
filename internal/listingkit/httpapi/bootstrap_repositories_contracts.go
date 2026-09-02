@@ -11,9 +11,6 @@ import (
 
 type builtRepositories struct {
 	taskRepository                    listingkit.Repository
-	studioAsyncJobRepository          listingkit.StudioAsyncJobRepository
-	studioBatchRepository             listingkit.StudioBatchRepository
-	studioBatchRunRepository          listingkit.StudioBatchRunRepository
 	sheinSyncRepository               listingkit.SheinSyncRepository
 	storeRepository                   listingadmin.StoreRepository
 	storeStatisticsRepository         listingadmin.StoreStatisticsRepository
@@ -34,7 +31,6 @@ type builtRepositories struct {
 	memberInvitationAuditRepository   memberinvite.AuditRepository
 	approvedAssetInventoryReader      listingkit.ApprovedAssetInventoryReader
 	reviewRepository                  reviewstore.Repository
-	studioSessionRepository           listingkit.StudioSessionRepository
 	uploadedImageRepository           listingkit.UploadedImageRepository
 	storeProfileRepository            listingkit.StoreProfileRepository
 	resolutionCacheStore              sheinpub.ResolutionCacheStore

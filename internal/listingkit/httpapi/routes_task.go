@@ -15,10 +15,6 @@ type TaskActionRouteHandler interface {
 	UploadListingKitImages(c *gin.Context)
 	GetUploadedListingKitImage(c *gin.Context)
 	DeleteUploadedListingKitImage(c *gin.Context)
-	AnalyzeStudioReferenceStyle(c *gin.Context)
-	GenerateStudioDesigns(c *gin.Context)
-	StartStudioAsyncJob(c *gin.Context)
-	GetStudioAsyncJob(c *gin.Context)
 	GetTaskResult(c *gin.Context)
 	RequeuePendingTasks(c *gin.Context)
 	RecoverTaskNow(c *gin.Context)
@@ -43,19 +39,4 @@ type TaskActionRouteHandler interface {
 
 type TaskRouteHandler interface {
 	TaskActionRouteHandler
-}
-
-type StudioGenerationRouteHandler interface {
-	AnalyzeStudioReferenceStyle(c *gin.Context)
-	GenerateStudioDesigns(c *gin.Context)
-	StartStudioAsyncJob(c *gin.Context)
-	GetStudioAsyncJob(c *gin.Context)
-}
-
-type studioBatchRunRouteHandler interface {
-	CreateStudioBatchRun(c *gin.Context)
-	GetStudioBatchRun(c *gin.Context)
-	ListStudioBatchRunItems(c *gin.Context)
-	CancelStudioBatchRun(c *gin.Context)
-	RecoverStudioBatchRun(c *gin.Context)
 }

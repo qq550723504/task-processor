@@ -104,7 +104,6 @@ func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleServ
 	return &ServiceBundle{
 		TemporalWorkerService:           workerService,
 		TaskRepository:                  repositories.taskRepository,
-		StudioAsyncJobRepository:        repositories.studioAsyncJobRepository,
 		StoreRepository:                 repositories.storeRepository,
 		StoreStatisticsRepository:       repositories.storeStatisticsRepository,
 		DispatchEventRepository:         repositories.dispatchEventRepository,
@@ -149,8 +148,7 @@ func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOp
 		),
 		listingkitapi.WithStoreAdminService(runtime.service),
 		listingkitapi.WithSettingsHandlerService(runtime.service),
-		listingkitapi.WithStudioMediaService(runtime.service),
-		listingkitapi.WithStudioBatchRunService(runtime.service),
+		listingkitapi.WithUploadedImageService(runtime.service),
 		listingkitapi.WithDependencies(runtime.handlerDependencies),
 		listingkitapi.WithSheinSyncRepository(runtime.sheinSyncRepository),
 		listingkitapi.WithSheinSyncServices(runtime.sheinSyncService, runtime.sheinCandidateService, runtime.sheinEnrollmentService),

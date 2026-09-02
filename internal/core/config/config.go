@@ -43,7 +43,6 @@ type Config struct {
 	Debug               DebugConfig               `yaml:"debug"`
 	ListingKit          ListingKitConfig          `yaml:"listingkit"`
 	ListingControlPlane ListingControlPlaneConfig `yaml:"listingControlPlane"`
-	AICapability        AICapabilityConfig        `yaml:"aiCapability"`
 }
 
 type FeatureFlagsConfig struct {
@@ -248,9 +247,6 @@ func knownEnvBindings() map[string]envBinding {
 		},
 		"featureFlags.flags.product-listing-runtime-auto-migrate": {
 			Primary: "TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE",
-		},
-		"aiCapability.studioImageRoutingMode": {
-			Primary: "TASK_PROCESSOR_AI_CAPABILITY_STUDIO_IMAGE_ROUTING_MODE",
 		},
 		"imageagent.artifactStore.enabled": {
 			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_ENABLED",

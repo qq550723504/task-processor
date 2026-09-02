@@ -1631,6 +1631,10 @@ git commit -m "refactor(listingkit): fail closed without resolution capabilities
 
 > **实施补充（2026-09-02）：** Task 16C 预检发现 `aiCapability.studioImageRoutingMode` 的 legacy/shadow/active 分支仍包裹 ListingKit 自己的 `AIImageGenerator`，并由 ListingKit 直接执行图片生成、编辑和异步查询。把模式固定为 active 仍会留下第二条图片工作流，违背“ImageAgent 是唯一图片工作流”和 ListingKit 只读 Product Snapshot/ApprovedAsset 的目标。ListingKit 尚未投入使用，不为这些入口保留兼容代理。
 
+> **根因裁决（2026-09-02）：** Studio session/batch/batch-run、reference analysis、background removal、async job 及其持久化模型共同构成 ListingKit 自有的图片生产聚合，不是可独立保留的“手工上传”。其中 `manual-background-removal` 仍依赖 Studio batch/design 状态，保留它会迫使已退役聚合继续存在。因此 Task 16E 的保留边界只有通用 `/uploads/images` 与上传文件读删，以及标准 ListingKit 流程对 Product Snapshot/ApprovedAsset 的只读消费；其余 Studio 图片生产路由、服务、请求字段、仓储、表迁移和 capability/config 分支全部删除。不会把这些入口代理到 ImageAgent，也不会保留空壳类型、弃用别名或兼容表。
+
+> **实施拆分：** 为让每次变更都能独立编译和审查，Task 16E 分成三个连续子任务，并以三者全部完成作为原子架构结果：16E1 先切断所有 production 路由、bootstrap、AI client/capability/config 与 Service 暴露；16E2 删除已不可达的 Studio application/domain/persistence 聚合及 schema/request 残留；16E3 增加全局负向架构守卫和端到端保留能力验证。中间提交不是兼容版本，不得发布，也不得增加桥接代码。
+
 **Files:**
 - Delete/modify: `internal/listingkit/{ai_contracts.go,studio_ai_capability_adapter.go,task_studio_media_service*.go,service_studio*_dependencies.go}` and paired tests that only cover direct AI image generation/editing
 - Delete/modify: `internal/listingkit/httpapi/{ai_image_generator_adapter.go,ai_client_image_routing.go,ai_client_strict_image.go,bootstrap_submit_module.go}` and paired tests/hooks
@@ -1658,6 +1662,12 @@ Expected: FAIL，并精确指出当前 generator/contracts/routes/config 分支�
 - [ ] **Step 3: 原子删除直接 AI 图片工作流**
 
 删除 contracts、adapters、handlers/routes、async binding 与配置开关；不保留 Deprecated API、proxy、alias、双写或 always-active 包装器。只保留手工上传和 ApprovedAsset 读取。
+
+具体执行顺序：
+
+1. **Task 16E1 — production 断路：** 删除 Studio 路由注册、API handler 暴露、bootstrap AI 图片客户端/路由模式、Service Studio 依赖装配和 `studioImageRoutingMode` 配置；确认所有旧 Studio 路由 404，而通用上传路由仍工作。
+2. **Task 16E2 — 聚合清除：** 删除不可达的 Studio session/batch/batch-run/media/reference/background-removal/async 领域与仓储、`SheinStudio` 请求选项、专属 schema migration/owner inventory；不得保留只供测试引用的生产类型。
+3. **Task 16E3 — 架构封口：** 增加全仓负向守卫，禁止 ListingKit production 重新出现 image generator/edit/async、Studio 路由/表/配置键或 ImageAgent 编排桥；验证手工上传与 ApprovedAsset 只读流程。
 
 - [ ] **Step 4: 运行 ListingKit、ImageAgent、App、配置和架构验证**
 

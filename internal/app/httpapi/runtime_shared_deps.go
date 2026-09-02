@@ -6,7 +6,6 @@ import (
 
 	"gorm.io/gorm"
 
-	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
@@ -26,8 +25,6 @@ type sharedRuntimeDeps struct {
 	closers              []func() error
 	openaiMgr            *openaiclient.Manager
 	aiCredentialStore    *openaiclient.GormCredentialResolver
-	aiInvocationRecorder aicapability.InvocationRecorder
-	aiAsyncJobStore      aicapability.AsyncJobBindingStore
 	tenantPromptStore    prompt.TenantPromptStore
 	storeAPI             listingadmin.StoreAPI
 	productCatalogDB     *gorm.DB

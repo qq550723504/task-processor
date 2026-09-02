@@ -11,7 +11,6 @@ func (s *service) initializeCollaborators() {
 func (s *service) initializeTaskCollaborators() {
 	s.runCollaboratorInitializers(
 		s.initializeTaskReadCollaborators,
-		s.initializeTaskStudioCollaborators,
 	)
 }
 
