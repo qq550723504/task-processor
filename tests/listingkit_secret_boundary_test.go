@@ -74,8 +74,8 @@ func TestListingKitWorkloadsUseLeastPrivilegeSharedSecretKeys(t *testing.T) {
 		"base/imgproxy-deployment.yaml": {
 			"IMGPROXY_KEY":          "IMGPROXY_KEY",
 			"IMGPROXY_SALT":         "IMGPROXY_SALT",
-			"AWS_ACCESS_KEY_ID":     "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID",
-			"AWS_SECRET_ACCESS_KEY": "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY",
+			"AWS_ACCESS_KEY_ID":     "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_ACCESS_KEY_ID",
+			"AWS_SECRET_ACCESS_KEY": "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_SECRET_ACCESS_KEY",
 		},
 		"jobs/product-listing-api-schema-migrate-job.yaml": databaseSecretKeys(),
 		"jobs/listingkit-schema-migrate-job.yaml":          databaseSecretKeys(),

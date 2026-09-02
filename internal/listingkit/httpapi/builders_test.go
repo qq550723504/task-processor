@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"path/filepath"
 	"testing"
 
 	"gorm.io/driver/sqlite"
@@ -204,33 +203,17 @@ func TestLegacyTenantResolverDatabaseConfigsEnumeratesCandidateDatabases(t *test
 	}
 }
 
-func TestShouldUseS3ImageUploadStoreMatchesConfiguredProvider(t *testing.T) {
-	t.Parallel()
-
-	if shouldUseS3ImageUploadStore(nil) {
-		t.Fatal("expected nil config to skip s3 image upload store")
-	}
-	if shouldUseS3ImageUploadStore(&config.Config{}) {
-		t.Fatal("expected blank provider to skip s3 image upload store")
-	}
-	if !shouldUseS3ImageUploadStore(&config.Config{ProductImage: config.ProductImageConfig{Publisher: config.ProductImagePublisherConfig{Provider: " S3 "}}}) {
-		t.Fatal("expected s3 provider to enable s3 image upload store")
-	}
-}
-
-func TestLocalImageUploadRootDirUsesPublisherOutputDir(t *testing.T) {
+func TestLocalImageUploadRootDirUsesListingKitOwnedRoot(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
-		ProductImage: config.ProductImageConfig{
-			Publisher: config.ProductImagePublisherConfig{
-				OutputDir: filepath.Join("tmp", "publisher"),
-			},
-		},
+		ListingKit: config.ListingKitConfig{ImageUpload: config.ListingKitImageUploadConfig{
+			Local: config.ListingKitImageUploadLocalConfig{RootDir: "listingkit-owned-root"},
+		}},
 	}
 
 	got := localImageUploadRootDir(cfg)
-	want := filepath.Join(cfg.ProductImage.Publisher.OutputDir, "listingkit-inputs")
+	want := cfg.ListingKit.ImageUpload.Local.RootDir
 	if got != want {
 		t.Fatalf("root dir = %q, want %q", got, want)
 	}

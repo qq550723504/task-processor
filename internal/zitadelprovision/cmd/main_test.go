@@ -226,9 +226,8 @@ func TestAuthorizePhaseVerifiesBrowserTokenBeforeGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(runtimeData), "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED=true\n") ||
-		!strings.Contains(string(runtimeData), "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS=org-1\n") {
-		t.Fatalf("runtime file missing token-derived worker tenant policy: %s", runtimeData)
+	if strings.Contains(string(runtimeData), "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_") {
+		t.Fatalf("runtime file contains retired ImageAgent tenant gate: %s", runtimeData)
 	}
 }
 

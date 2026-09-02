@@ -33,15 +33,3 @@ func TestBuildAICapabilityRuntimeDepsRequiresDatabaseOutsideLegacyStudioMode(t *
 		})
 	}
 }
-
-func TestBuildAICapabilityRuntimeDepsRequiresDatabaseForImageAgentGate(t *testing.T) {
-	_, err := buildAICapabilityRuntimeDeps(&config.Config{
-		AICapability: config.AICapabilityConfig{
-			StudioImageRoutingMode:   "legacy",
-			ProductImageSceneEnabled: true,
-		},
-	}, logrus.New())
-	if err == nil || !strings.Contains(err.Error(), "AI capability") {
-		t.Fatalf("error = %v, want missing AI capability database", err)
-	}
-}

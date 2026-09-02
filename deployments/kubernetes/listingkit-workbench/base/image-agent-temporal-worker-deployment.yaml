@@ -38,51 +38,6 @@ spec:
                 configMapKeyRef:
                   name: listingkit-workbench-config
                   key: IMAGE_AGENT_TEMPORAL_NAMESPACE
-            - name: TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED
-              valueFrom:
-                configMapKeyRef:
-                  name: listingkit-workbench-config
-                  key: TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED
-            - name: TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS
-              valueFrom:
-                configMapKeyRef:
-                  name: listingkit-workbench-config
-                  key: TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS
-            - name: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED
-              valueFrom:
-                configMapKeyRef:
-                  name: listingkit-workbench-config
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED
-            - name: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER
-              valueFrom:
-                configMapKeyRef:
-                  name: listingkit-workbench-config
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER
-            - name: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE
-              valueFrom:
-                configMapKeyRef:
-                  name: listingkit-workbench-config
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE
-            - name: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET
-              valueFrom:
-                configMapKeyRef:
-                  name: listingkit-workbench-config
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET
-            - name: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION
-              valueFrom:
-                configMapKeyRef:
-                  name: listingkit-workbench-config
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION
-            - name: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT
-              valueFrom:
-                configMapKeyRef:
-                  name: listingkit-workbench-config
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT
-            - name: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE
-              valueFrom:
-                configMapKeyRef:
-                  name: listingkit-workbench-config
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE
             - name: TASK_PROCESSOR_DATABASE_HOST
               valueFrom:
                 secretKeyRef:
@@ -142,18 +97,6 @@ spec:
                 secretKeyRef:
                   name: listingkit-workbench-secret
                   key: TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL
-                  optional: false
-            - name: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID
-              valueFrom:
-                secretKeyRef:
-                  name: listingkit-workbench-secret
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID
-                  optional: false
-            - name: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY
-              valueFrom:
-                secretKeyRef:
-                  name: listingkit-workbench-secret
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY
                   optional: false
           volumeMounts:
             - name: tmp

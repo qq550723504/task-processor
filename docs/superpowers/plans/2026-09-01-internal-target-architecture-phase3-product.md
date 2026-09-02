@@ -1495,25 +1495,26 @@ git commit -m "refactor(product): remove legacy product task roots"
 - Modify: `internal/listingkit/httpapi/` and ListingKit config only if retained manual-upload storage needs its own typed ownership
 
 **Interfaces:**
-- `Config.ImageAgent` 是唯一产品图片运行配置，只保留 ImageAgent 实际消费的 workdir、artifact publication/storage 和 lifecycle 字段；删除旧 Segmenter/WhiteBackground/Scene 配置、ProductEnrich debug/capability 开关和 ProductImage scene 开关。
+- `Config.ImageAgent` 是唯一产品图片运行配置，只保留 ImageAgent 当前真实消费的 durable artifact publication/storage 字段。预检确认 WorkDir 和 Lifecycle 已无生产消费者，因此与旧 Segmenter/WhiteBackground/Scene 一并删除，不以“可能将来使用”为由保留死配置。
 - 不接受 `productimage` YAML、`TASK_PROCESSOR_PRODUCTIMAGE_*`、`TASK_PROCESSOR_PRODUCTENRICH_*` 或旧字段 fallback/alias；保留通用 OpenAI capability routing 配置。
-- ListingKit 不得读取 `Config.ImageAgent`。若 Studio 手工上传仍需对象存储，使用 ListingKit 自己的显式 typed 配置/依赖；不得从旧 ProductImage 或新 ImageAgent 配置隐式继承、复制默认值或 fallback。
+- ListingKit 不得读取 `Config.ImageAgent`。Studio 手工上传使用 `Config.ListingKit` 自己的显式 typed image-upload 配置/依赖；不得从旧 ProductImage 或新 ImageAgent 配置隐式继承、复制默认值或 fallback。选择 S3 时构造失败必须失败关闭，不得自动切到 local；local 只能由 ListingKit 配置显式选择。
+- `aiCapability.studioImageRoutingMode` 暂不在本切片做孤立改名或强制 active；预检确认它控制的是 ListingKit 自有的直接 AI 生成/编辑链，而不是 ImageAgent。该整条工作流及配置在 Task 16E 原子删除，避免先维护一个马上废弃的过渡路由。
 
-- [ ] **Step 1: 写新配置所有权与旧键拒绝测试**
+- [x] **Step 1: 写新配置所有权与旧键拒绝测试**
 
-覆盖 YAML/env 只接受 `imageagent` 新键，旧 ProductImage/ProductEnrich 配置不再绑定；ImageAgent worker 使用新 typed 配置；ListingKit 不读取 ImageAgent 配置。测试使用独立字面 fixture，不镜像 loader 的字段表。
+覆盖 YAML/env 只接受 `imageagent` 新键，旧 ProductImage/ProductEnrich 根、debug/capability 键及环境变量被明确拒绝而不是静默忽略；ImageAgent worker 使用新 typed 配置；ListingKit 不读取 ImageAgent 配置。测试使用独立字面 fixture，不镜像 loader 的字段表。
 
-- [ ] **Step 2: 运行测试确认仍依赖旧配置名**
+- [x] **Step 2: 运行测试确认仍依赖旧配置名**
 
 Run: `go test ./internal/core/config ./internal/app/worker/imageagent ./internal/app/httpapi ./internal/listingkit/httpapi ./cmd/image-agent-temporal-worker -count=1`
 
 Expected: FAIL，直到旧配置字段和调用方全部硬切。
 
-- [ ] **Step 3: 硬改名并删除旧配置语义**
+- [x] **Step 3: 硬改名并删除旧配置语义**
 
-更新 Go 类型、YAML、env binding 和所有真实调用方；不得双读、迁移 fallback 或保留 Deprecated 字段。ListingKit 手工上传若保留，必须由 ListingKit-owned config/typed builder 组装，不能继续借用图片发布配置。
+更新 Go 类型、YAML、env binding 和所有真实调用方；不得双读、迁移 fallback 或保留 Deprecated 字段。旧 YAML/env 必须在 load preflight 明确报错，不能因为 Viper 未绑定而悄悄忽略。ListingKit 手工上传由 ListingKit-owned config/typed builder 组装，不能继续借用图片发布配置；S3 构造失败不得降级 local。
 
-- [ ] **Step 4: 运行配置/worker/App/ListingKit 验证和扫描**
+- [x] **Step 4: 运行配置/worker/App/ListingKit 验证和扫描**
 
 Run: `go test ./internal/core/config ./internal/app/worker/imageagent ./internal/app/httpapi ./internal/listingkit/httpapi ./cmd/image-agent-temporal-worker ./cmd/product-listing-api -count=1`
 
@@ -1521,7 +1522,7 @@ Run: `rg -n 'ProductImageConfig|ProductImagePublisher|ProductEnrich(Text|Vision|
 
 Expected: tests PASS；扫描零匹配。
 
-- [ ] **Step 5: 提交配置所有权硬切**
+- [x] **Step 5: 提交配置所有权硬切**
 
 ```powershell
 git add internal/core/config internal/app internal/listingkit/httpapi cmd config docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
@@ -1616,6 +1617,54 @@ Run: `go test ./... -run '^$' -count=1`
 git add internal/listingkit internal/app/httpapi tests docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
 git diff --cached --check
 git commit -m "refactor(listingkit): fail closed without resolution capabilities"
+```
+
+---
+
+### Task 16E: 删除 ListingKit Studio 的直接 AI 图片工作流
+
+> **实施补充（2026-09-02）：** Task 16C 预检发现 `aiCapability.studioImageRoutingMode` 的 legacy/shadow/active 分支仍包裹 ListingKit 自己的 `AIImageGenerator`，并由 ListingKit 直接执行图片生成、编辑和异步查询。把模式固定为 active 仍会留下第二条图片工作流，违背“ImageAgent 是唯一图片工作流”和 ListingKit 只读 Product Snapshot/ApprovedAsset 的目标。ListingKit 尚未投入使用，不为这些入口保留兼容代理。
+
+**Files:**
+- Delete/modify: `internal/listingkit/{ai_contracts.go,studio_ai_capability_adapter.go,task_studio_media_service*.go,service_studio*_dependencies.go}` and paired tests that only cover direct AI image generation/editing
+- Delete/modify: `internal/listingkit/httpapi/{ai_image_generator_adapter.go,ai_client_image_routing.go,ai_client_strict_image.go,bootstrap_submit_module.go}` and paired tests/hooks
+- Modify/delete: ListingKit Studio image generation/edit/query handlers and route descriptors; retain only explicit manual-upload and read-only approved-asset flows
+- Modify: `internal/app/httpapi/runtime_ai_capability.go` and App composition
+- Modify: `internal/core/config/{type_ai_capability.go,defaults.go,loader_builder.go,config.go,validator_ai_capability.go}` and YAML/env tests
+- Delete/modify: `internal/aicapability/` image-routing compatibility types only if they have no remaining non-ListingKit production consumer
+
+**Interfaces:**
+- ImageAgent HTTP/Temporal is the sole AI image generation/edit workflow.
+- ListingKit may upload operator-provided files through its own store and may read ApprovedAsset inventory; it cannot own or invoke `AIImageGenerator`, image provider clients, async image jobs, capability shadow routing, or a legacy generator.
+- Delete `aiCapability.studioImageRoutingMode` YAML/env/config and legacy/shadow/active compatibility branches atomically with their consumers. Do not replace them with an always-active adapter or proxy facade.
+- If a caller needs generated assets, it starts an ImageAgent Run through the ImageAgent-owned API and later consumes approved assets; Task 16E does not add a hidden ListingKit-to-ImageAgent orchestration bridge.
+
+- [ ] **Step 1: 写唯一图片工作流与路由退役测试**
+
+覆盖 ListingKit production types/routes/imports 中不存在 image generator/edit/async contracts；旧 Studio AI image routes 固定 404；manual upload 和 ApprovedAsset read paths 保持可用；配置 loader 明确拒绝 `studioImageRoutingMode` 旧键/env。
+
+- [ ] **Step 2: 运行测试确认 ListingKit 仍直接生成图片**
+
+Run: `go test ./internal/listingkit/... ./internal/app/httpapi ./internal/core/config -run 'Test.*(Studio.*Image|Image.*Workflow|Legacy.*Route|RoutingMode)' -count=1 -v`
+
+Expected: FAIL，并精确指出当前 generator/contracts/routes/config 分支。
+
+- [ ] **Step 3: 原子删除直接 AI 图片工作流**
+
+删除 contracts、adapters、handlers/routes、async binding 与配置开关；不保留 Deprecated API、proxy、alias、双写或 always-active 包装器。只保留手工上传和 ApprovedAsset 读取。
+
+- [ ] **Step 4: 运行 ListingKit、ImageAgent、App、配置和架构验证**
+
+Run: `go test ./internal/listingkit/... ./internal/imageagent/... ./internal/app/httpapi ./internal/core/config ./tests -run 'Test(ListingKit|ImageAgent|Phase3|.*Boundary|.*Route)' -count=1`
+
+Run: `go test ./... -run '^$' -count=1`
+
+- [ ] **Step 5: 提交唯一图片工作流硬切**
+
+```powershell
+git add -A internal/listingkit internal/imageagent internal/app/httpapi internal/core/config internal/aicapability config tests docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
+git diff --cached --check
+git commit -m "refactor(listingkit): retire direct ai image workflow"
 ```
 
 ---

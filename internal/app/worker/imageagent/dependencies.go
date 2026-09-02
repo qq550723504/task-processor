@@ -68,7 +68,7 @@ func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResol
 }
 
 // ResolveImageAgentTemporalDependencies builds the dedicated production worker
-// from the same database, ProductImage provider/storage, and ListingKit result
+// from the same database, ImageAgent artifact storage, and ListingKit result
 // ownership adapters used by the API runtime.
 func ResolveImageAgentTemporalDependencies(configPath string, logger *logrus.Logger) (appruntime.ImageAgentTemporalDependencies, func() error, error) {
 	return ResolveImageAgentTemporalDependenciesForMode(configPath, logger, imageagenttemporal.WorkerWireModeV3)
@@ -110,7 +110,7 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		if err := timing.validate(); err != nil {
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact timing: %w", err)
 		}
-		if _, err := artifactStorageCapabilitiesFromConfig(cfg.ProductImage.Publisher); err != nil {
+		if _, err := artifactStorageCapabilitiesFromConfig(cfg.ImageAgent.ArtifactStore); err != nil {
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact configuration: %w", err)
 		}
 		if resolver.BuildArtifactStore == nil {
@@ -180,33 +180,33 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	return dependencies, closeDB, nil
 }
 
-func artifactStorageCapabilitiesFromConfig(publisher config.ProductImagePublisherConfig) (s3integration.ArtifactStorageCapabilities, error) {
-	if !publisher.Enabled {
+func artifactStorageCapabilitiesFromConfig(store config.ImageAgentArtifactStoreConfig) (s3integration.ArtifactStorageCapabilities, error) {
+	if !store.Enabled {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact publication is disabled")
 	}
-	if strings.TrimSpace(publisher.Provider) != "s3" {
+	if strings.TrimSpace(store.Provider) != "s3" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact provider must be s3")
 	}
-	if strings.TrimSpace(publisher.S3.Bucket) == "" {
+	if strings.TrimSpace(store.S3.Bucket) == "" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact bucket is required")
 	}
-	if strings.TrimSpace(publisher.S3.Region) == "" {
+	if strings.TrimSpace(store.S3.Region) == "" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact region is required")
 	}
-	if strings.TrimSpace(publisher.PublicBase) == "" {
+	if strings.TrimSpace(store.PublicBase) == "" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact public base URL is required")
 	}
-	if strings.TrimSpace(publisher.S3.AccessKeyID) == "" || strings.TrimSpace(publisher.S3.SecretAccessKey) == "" {
+	if strings.TrimSpace(store.S3.AccessKeyID) == "" || strings.TrimSpace(store.S3.SecretAccessKey) == "" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact access key ID and secret access key are both required")
 	}
-	switch strings.TrimSpace(publisher.S3.ArtifactMode) {
+	switch strings.TrimSpace(store.S3.ArtifactMode) {
 	case string(s3integration.ArtifactStorageModeAWS):
 		return s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeAWS}, nil
 	case string(s3integration.ArtifactStorageModeCOS):
-		if strings.TrimSpace(publisher.S3.Endpoint) == "" {
+		if strings.TrimSpace(store.S3.Endpoint) == "" {
 			return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact COS endpoint is required")
 		}
-		if !publisher.S3.COSImmutableNonVersionedBucketPolicy {
+		if !store.S3.COSImmutableNonVersionedBucketPolicy {
 			return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact COS immutable non-versioned bucket policy must be confirmed")
 		}
 		return s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeCOS, COSImmutableNonVersionedBucketPolicy: true}, nil
@@ -222,12 +222,12 @@ func buildImageAgentDurableArtifactStore(cfg *config.Config, timing imageAgentAr
 	if err := timing.validate(); err != nil {
 		return nil, err
 	}
-	publisher := cfg.ProductImage.Publisher
-	capabilities, err := artifactStorageCapabilitiesFromConfig(publisher)
+	storeConfig := cfg.ImageAgent.ArtifactStore
+	capabilities, err := artifactStorageCapabilitiesFromConfig(storeConfig)
 	if err != nil {
 		return nil, err
 	}
-	s3Config := publisher.S3
+	s3Config := storeConfig.S3
 	client, err := s3integration.NewClient(s3integration.ClientConfig{
 		Region: s3Config.Region, Endpoint: s3Config.Endpoint, AccessKeyID: s3Config.AccessKeyID,
 		SecretAccessKey: s3Config.SecretAccessKey, UsePathStyle: s3Config.UsePathStyle,
@@ -240,7 +240,7 @@ func buildImageAgentDurableArtifactStore(cfg *config.Config, timing imageAgentAr
 		componentLogger = logrus.NewEntry(logger).WithField("component", "image-agent-s3")
 	}
 	uploader, err := s3integration.NewUploaderWithOptions(client, s3integration.UploaderOptions{
-		Bucket: s3Config.Bucket, PublicBase: publisher.PublicBase, Endpoint: s3Config.Endpoint,
+		Bucket: s3Config.Bucket, PublicBase: storeConfig.PublicBase, Endpoint: s3Config.Endpoint,
 		UsePathStyle: s3Config.UsePathStyle, ArtifactCapabilities: capabilities,
 		Logger: s3integration.AdaptLogrus(componentLogger),
 	})

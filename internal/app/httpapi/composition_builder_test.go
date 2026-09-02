@@ -10,8 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	"task-processor/internal/authidentity"
 	"task-processor/internal/core/config"
+	"task-processor/internal/imageagent"
 	imageagenthttpapi "task-processor/internal/imageagent/httpapi"
+	imageagentstore "task-processor/internal/imageagent/store"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productasset "task-processor/internal/product/asset"
@@ -176,15 +179,57 @@ func TestHTTPFeatureCompositionIncludesImageAgentRouteModule(t *testing.T) {
 
 func TestImageAgentDurableAssetPublicURLResolverUsesPublisherConfiguration(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.ProductImage.Publisher.Enabled = true
-	cfg.ProductImage.Publisher.Provider = "s3"
-	cfg.ProductImage.Publisher.PublicBase = "https://cdn.example.test/assets"
-	cfg.ProductImage.Publisher.S3.Bucket = "listingkit-assets"
+	cfg.ImageAgent.ArtifactStore.Enabled = true
+	cfg.ImageAgent.ArtifactStore.Provider = "s3"
+	cfg.ImageAgent.ArtifactStore.PublicBase = "https://cdn.example.test/assets"
+	cfg.ImageAgent.ArtifactStore.S3.Bucket = "image-agent-assets"
 
 	resolver := imageAgentDurableAssetPublicURLResolver(cfg)
 
 	require.NotNil(t, resolver)
 	require.Equal(t, "https://cdn.example.test/assets/image-agent/public/tenant-a/run-1/result.png", resolver.PublicURL("image-agent/public/tenant-a/run-1/result.png"))
+}
+
+func TestNewImageAgentHTTPServiceStartsWithoutRetiredSceneTenantGate(t *testing.T) {
+	workflows := &recordingCompositionImageAgentWorkflowClient{}
+	service, err := newImageAgentHTTPService(
+		imageagentstore.NewMemoryRepository(),
+		workflows,
+		staticCompositionImageAgentCatalog{catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{
+			ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example.test/source-1.png", Width: 1200, Height: 900,
+		}}}},
+	)
+	require.NoError(t, err)
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-not-in-retired-allowlist", UserID: "user-a"})
+
+	err = service.Start(ctx, imageagent.StartRunInput{
+		RunID: "run-1", BusinessTaskID: "task-1", TargetPlatform: "shein",
+		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"},
+		Mode:               imageagent.RunModeManual, IdempotencyKey: "run-key-1",
+		Plan: imageagent.Plan{
+			Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"},
+			Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusPending}},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, workflows.starts)
+}
+
+type staticCompositionImageAgentCatalog struct{ catalog imageagent.AssetCatalog }
+
+func (catalog staticCompositionImageAgentCatalog) Resolve(context.Context, imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
+	return catalog.catalog, nil
+}
+
+type recordingCompositionImageAgentWorkflowClient struct {
+	imageagent.WorkflowClient
+	starts int
+}
+
+func (client *recordingCompositionImageAgentWorkflowClient) StartManual(context.Context, imageagent.WorkflowStart) error {
+	client.starts++
+	return nil
 }
 
 type stubCompositionTaskLifecycleService struct {

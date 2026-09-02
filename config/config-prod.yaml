@@ -60,13 +60,23 @@ openai:
 
 aiCapability:
   studioImageRoutingMode: legacy
-  productImageSceneEnabled: false
-  productImageSceneAllowedTenantIDs: []
 
 listingkit:
   sheinSubmitDebugDumpDir: ""
   platformAdminUsers: []
   platformAdminRoles: []
+  imageUpload:
+    provider: "local"
+    local:
+      rootDir: "./.local/tmp/listingkit-uploads"
+    s3:
+      bucket: ""
+      region: ""
+      endpoint: ""
+      accessKeyID: ""
+      secretAccessKey: ""
+      usePathStyle: false
+      publicBase: ""
   zitadel:
     # issuer/client secret are injected at runtime in Kubernetes.
     issuerURL: "https://auth.shuomiai.com"
@@ -281,27 +291,10 @@ database:
   max_idle_connections: 5
   connection_max_lifetime: "1h"
 
-productimage:
-  workDir: "./.local/tmp/productimage"
-  segmenter:
+imageagent:
+  artifactStore:
     enabled: false
-    endpoint: ""
-    apiKey: ""
-    timeout: 45
-  whiteBackground:
-    enabled: false
-    endpoint: ""
-    apiKey: ""
-    timeout: 45
-  scene:
-    enabled: false
-    endpoint: ""
-    apiKey: ""
-    timeout: 60
-  publisher:
-    enabled: true
-    provider: "local"
-    outputDir: "./.local/tmp/productimage-published"
+    provider: "s3"
     publicBase: ""
     s3:
       bucket: ""
@@ -310,6 +303,5 @@ productimage:
       accessKeyID: ""
       secretAccessKey: ""
       usePathStyle: false
-  lifecycle:
-    cleanupTemporaryFiles: true
-    reuseExistingAssets: true
+      artifactMode: ""
+      cosImmutableNonVersionedBucketPolicy: false

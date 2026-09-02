@@ -209,32 +209,7 @@ func NewDefaultConfig() *Config {
 				DefaultCondition:       "New",
 			},
 		},
-		ProductImage: ProductImageConfig{
-			WorkDir: "./.local/tmp/productimage",
-			Segmenter: ProductImageModelConfig{
-				Enabled: false,
-				Timeout: 45,
-			},
-			WhiteBackground: ProductImageModelConfig{
-				Enabled: false,
-				Timeout: 45,
-			},
-			Scene: ProductImageModelConfig{
-				Enabled: false,
-				Timeout: 60,
-			},
-			Publisher: ProductImagePublisherConfig{
-				Enabled:    true,
-				Provider:   "local",
-				OutputDir:  "./.local/tmp/productimage-published",
-				PublicBase: "",
-				S3:         ProductImagePublisherS3Config{},
-			},
-			Lifecycle: ProductImageLifecycleConfig{
-				CleanupTemporaryFiles: true,
-				ReuseExistingAssets:   true,
-			},
-		},
+		ImageAgent: ImageAgentConfig{},
 		Updater: UpdaterConfig{
 			Enabled:            false,
 			UpdateURL:          "https://auto-update-1303159911.cos.ap-shanghai.myqcloud.com/task-processor/version.json",
@@ -242,23 +217,18 @@ func NewDefaultConfig() *Config {
 			InsecureSkipVerify: false,
 		},
 		Debug: DebugConfig{
-			SavePublishJSON:      false,
-			ProductEnrichMockLLM: false,
+			SavePublishJSON: false,
 		},
 		AICapability: AICapabilityConfig{
-			StudioImageRoutingMode:               "legacy",
-			ProductImageSceneEnabled:             false,
-			ProductImageSceneAllowedTenantIDs:    nil,
-			ProductEnrichTextEnabled:             false,
-			ProductEnrichTextAllowedTenantIDs:    nil,
-			ProductEnrichVisionEnabled:           false,
-			ProductEnrichVisionAllowedTenantIDs:  nil,
-			ProductEnrichListingEnabled:          false,
-			ProductEnrichListingAllowedTenantIDs: nil,
+			StudioImageRoutingMode: "legacy",
 		},
 		ListingKit: ListingKitConfig{
 			GenerationUsageLedgerEnabled: false,
-			Zitadel:                      ListingKitZitadelConfig{},
+			ImageUpload: ListingKitImageUploadConfig{
+				Provider: "local",
+				Local:    ListingKitImageUploadLocalConfig{RootDir: "./.local/tmp/listingkit-uploads"},
+			},
+			Zitadel: ListingKitZitadelConfig{},
 		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    false,

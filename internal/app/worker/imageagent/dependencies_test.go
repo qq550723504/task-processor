@@ -30,8 +30,7 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 		LoadConfig: func(path string) (*config.Config, error) {
 			require.Equal(t, "config/worker.yaml", path)
 			cfg := &config.Config{Database: &config.DatabaseConfig{}}
-			cfg.ProductImage.WorkDir = "worker-images"
-			cfg.ProductImage.Publisher = durablePublisherConfig("aws", true)
+			cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("aws", true)
 			return cfg, nil
 		},
 		OpenDB:  func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
@@ -64,7 +63,7 @@ func TestResolveImageAgentTemporalDependenciesForV2SkipsV3ValidationAndDurableCo
 	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-v2-runtime?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	cfg := &config.Config{Database: &config.DatabaseConfig{}}
-	cfg.ProductImage.Publisher = durablePublisherConfig("invalid-v3-mode", false)
+	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("invalid-v3-mode", false)
 	storeBuilds := 0
 	resolver := imageAgentWorkerDependencyResolver{
 		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
@@ -100,7 +99,7 @@ func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *t
 	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-v2-no-v3-fields?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	cfg := &config.Config{Database: &config.DatabaseConfig{}}
-	cfg.ProductImage.Publisher = durablePublisherConfig("", false)
+	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("", false)
 	storeBuilds := 0
 	dependencies, closeFn, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV2, imageAgentWorkerDependencyResolver{
 		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
@@ -132,7 +131,7 @@ func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *t
 
 func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseOnInvalidPolicy(t *testing.T) {
 	cfg := &config.Config{Database: &config.DatabaseConfig{}}
-	cfg.ProductImage.Publisher = durablePublisherConfig("cos", false)
+	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("cos", false)
 	databaseOpens, storeBuilds := 0, 0
 	_, _, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV3, imageAgentWorkerDependencyResolver{
 		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
@@ -152,7 +151,7 @@ func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseOnInvalidP
 
 func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseWhenArtifactModeIsAbsent(t *testing.T) {
 	cfg := &config.Config{Database: &config.DatabaseConfig{}}
-	cfg.ProductImage.Publisher = durablePublisherConfig("", false)
+	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("", false)
 	databaseOpens, storeBuilds := 0, 0
 	_, _, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV3, imageAgentWorkerDependencyResolver{
 		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
@@ -171,28 +170,28 @@ func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseWhenArtifa
 }
 
 func TestArtifactStorageCapabilitiesFromConfigFailsClosed(t *testing.T) {
-	validAWS := durablePublisherConfig("aws", true)
-	validCOS := durablePublisherConfig("cos", true)
+	validAWS := durableArtifactStoreConfig("aws", true)
+	validCOS := durableArtifactStoreConfig("cos", true)
 	tests := []struct {
 		name    string
-		mutate  func(*config.ProductImagePublisherConfig)
+		mutate  func(*config.ImageAgentArtifactStoreConfig)
 		want    s3integration.ArtifactStorageCapabilities
 		wantErr string
 	}{
 		{name: "aws", want: s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeAWS}},
-		{name: "cos", mutate: func(cfg *config.ProductImagePublisherConfig) { *cfg = validCOS }, want: s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeCOS, COSImmutableNonVersionedBucketPolicy: true}},
-		{name: "disabled", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.Enabled = false }, wantErr: "disabled"},
-		{name: "wrong provider", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.Provider = "local" }, wantErr: "provider must be s3"},
-		{name: "missing bucket", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.Bucket = "" }, wantErr: "bucket"},
-		{name: "missing region", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.Region = "" }, wantErr: "region"},
-		{name: "missing public URL", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.PublicBase = "" }, wantErr: "public base"},
-		{name: "missing credentials", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.AccessKeyID = ""; cfg.S3.SecretAccessKey = "" }, wantErr: "access key ID and secret access key"},
-		{name: "missing access key", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.AccessKeyID = "" }, wantErr: "access key ID and secret access key"},
-		{name: "missing secret key", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.SecretAccessKey = "" }, wantErr: "access key ID and secret access key"},
-		{name: "empty mode", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.ArtifactMode = "" }, wantErr: "artifact mode"},
-		{name: "unknown mode", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.ArtifactMode = "minio" }, wantErr: "artifact mode"},
-		{name: "COS missing endpoint", mutate: func(cfg *config.ProductImagePublisherConfig) { *cfg = validCOS; cfg.S3.Endpoint = "" }, wantErr: "COS endpoint"},
-		{name: "COS policy unconfirmed", mutate: func(cfg *config.ProductImagePublisherConfig) {
+		{name: "cos", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { *cfg = validCOS }, want: s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeCOS, COSImmutableNonVersionedBucketPolicy: true}},
+		{name: "disabled", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.Enabled = false }, wantErr: "disabled"},
+		{name: "wrong provider", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.Provider = "local" }, wantErr: "provider must be s3"},
+		{name: "missing bucket", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.Bucket = "" }, wantErr: "bucket"},
+		{name: "missing region", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.Region = "" }, wantErr: "region"},
+		{name: "missing public URL", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.PublicBase = "" }, wantErr: "public base"},
+		{name: "missing credentials", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.AccessKeyID = ""; cfg.S3.SecretAccessKey = "" }, wantErr: "access key ID and secret access key"},
+		{name: "missing access key", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.AccessKeyID = "" }, wantErr: "access key ID and secret access key"},
+		{name: "missing secret key", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.SecretAccessKey = "" }, wantErr: "access key ID and secret access key"},
+		{name: "empty mode", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.ArtifactMode = "" }, wantErr: "artifact mode"},
+		{name: "unknown mode", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.ArtifactMode = "minio" }, wantErr: "artifact mode"},
+		{name: "COS missing endpoint", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { *cfg = validCOS; cfg.S3.Endpoint = "" }, wantErr: "COS endpoint"},
+		{name: "COS policy unconfirmed", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) {
 			*cfg = validCOS
 			cfg.S3.COSImmutableNonVersionedBucketPolicy = false
 		}, wantErr: "immutable non-versioned"},
@@ -226,9 +225,9 @@ func TestResolveImageAgentTemporalDependenciesRejectsCredentialsBeforeDatabaseOp
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{Database: &config.DatabaseConfig{}}
-			cfg.ProductImage.Publisher = durablePublisherConfig("aws", true)
-			cfg.ProductImage.Publisher.S3.AccessKeyID = tc.access
-			cfg.ProductImage.Publisher.S3.SecretAccessKey = tc.secret
+			cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("aws", true)
+			cfg.ImageAgent.ArtifactStore.S3.AccessKeyID = tc.access
+			cfg.ImageAgent.ArtifactStore.S3.SecretAccessKey = tc.secret
 			dbOpens, storeBuilds := 0, 0
 			_, _, err := resolveImageAgentTemporalDependencies("config/worker.yaml", nil, imageAgentWorkerDependencyResolver{
 				LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
@@ -263,7 +262,7 @@ func TestResolveImageAgentTemporalDependenciesRejectsOperationTimeoutOutsidePubl
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{Database: &config.DatabaseConfig{}}
-			cfg.ProductImage.Publisher = durablePublisherConfig("aws", true)
+			cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("aws", true)
 			storeBuilds, databaseOpens := 0, 0
 			_, _, err := resolveImageAgentTemporalDependencies("config/worker.yaml", nil, imageAgentWorkerDependencyResolver{
 				ArtifactTiming: tc.timing,
@@ -286,16 +285,16 @@ func TestResolveImageAgentTemporalDependenciesRejectsOperationTimeoutOutsidePubl
 }
 
 func TestBuildImageAgentDurableArtifactStoreUsesConfiguredS3ClientPath(t *testing.T) {
-	cfg := &config.Config{ProductImage: config.ProductImageConfig{Publisher: durablePublisherConfig("aws", true)}}
+	cfg := &config.Config{ImageAgent: config.ImageAgentConfig{ArtifactStore: durableArtifactStoreConfig("aws", true)}}
 	artifactStore, err := buildImageAgentDurableArtifactStore(cfg, defaultImageAgentArtifactTiming, logrus.New())
 	require.NoError(t, err)
 	require.NotNil(t, artifactStore)
 }
 
-func durablePublisherConfig(mode string, cosPolicy bool) config.ProductImagePublisherConfig {
-	return config.ProductImagePublisherConfig{
+func durableArtifactStoreConfig(mode string, cosPolicy bool) config.ImageAgentArtifactStoreConfig {
+	return config.ImageAgentArtifactStoreConfig{
 		Enabled: true, Provider: "s3", PublicBase: "https://cdn.example.test/images",
-		S3: config.ProductImagePublisherS3Config{Bucket: "image-assets", Region: "ap-southeast-1", Endpoint: "https://s3.example.test", AccessKeyID: "test-access", SecretAccessKey: "test-secret", ArtifactMode: mode, COSImmutableNonVersionedBucketPolicy: cosPolicy},
+		S3: config.ImageAgentArtifactStoreS3Config{Bucket: "image-assets", Region: "ap-southeast-1", Endpoint: "https://s3.example.test", AccessKeyID: "test-access", SecretAccessKey: "test-secret", ArtifactMode: mode, COSImmutableNonVersionedBucketPolicy: cosPolicy},
 	}
 }
 

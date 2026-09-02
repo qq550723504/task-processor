@@ -1,24 +1,21 @@
 # ListingKit 对象存储开发说明
 
-这份说明覆盖本地开发时如何把 ListingKit 图片上传和 `productimage` 资产发布切到 S3 兼容对象存储。
+这份说明覆盖本地开发时如何把 ListingKit 图片上传切到 S3 兼容对象存储。ImageAgent durable artifact publication 使用独立的 `imageagent.artifactStore` 配置，不与 ListingKit 共享配置所有权。
 
 当前实现约束：
 
-- 配置复用 `productimage.publisher.*`
+- 配置只读 `listingkit.imageUpload.*`
 - `provider=local` 时，ListingKit 上传仍走本地磁盘
-- `provider=s3` 时：
-  - ListingKit 上传走 S3 兼容存储
-  - `productimage` 资产发布也走同一套对象存储配置
+- `provider=s3` 时，ListingKit 上传走 S3 兼容存储；client、uploader 或 store 构造失败会阻止模块启动，不会降级到 local
 
 ## 配置字段
 
 ```yaml
-productimage:
-  publisher:
-    enabled: true
+listingkit:
+  imageUpload:
     provider: "s3"
-    outputDir: "./.local/tmp/productimage-published"
-    publicBase: "http://127.0.0.1:9100/listingkit-assets" # 可选
+    local:
+      rootDir: "./.local/tmp/listingkit-uploads"
     s3:
       bucket: "listingkit-assets"
       region: "us-east-1"
@@ -26,6 +23,7 @@ productimage:
       accessKeyID: "minioadmin"
       secretAccessKey: "minioadmin"
       usePathStyle: true
+      publicBase: "http://127.0.0.1:9100/listingkit-assets" # 可选
 ```
 
 字段语义：
@@ -72,15 +70,14 @@ docker run --rm --entrypoint /bin/sh --network host minio/mc -c "mc alias set lo
 
 ### 3. 准备测试配置
 
-推荐从 `config/config-test.yaml` 复制一份，只替换 `productimage.publisher`：
+推荐从 `config/config-test.yaml` 复制一份，只替换 `listingkit.imageUpload`：
 
 ```yaml
-productimage:
-  publisher:
-    enabled: true
+listingkit:
+  imageUpload:
     provider: "s3"
-    outputDir: "./.local/tmp/productimage-published-test"
-    publicBase: "http://127.0.0.1:9100/listingkit-assets"
+    local:
+      rootDir: "./.local/tmp/listingkit-uploads-test"
     s3:
       bucket: "listingkit-assets"
       region: "us-east-1"
@@ -88,6 +85,7 @@ productimage:
       accessKeyID: "minioadmin"
       secretAccessKey: "minioadmin"
       usePathStyle: true
+      publicBase: "http://127.0.0.1:9100/listingkit-assets"
 ```
 
 ### 4. 启动后端
@@ -137,6 +135,5 @@ LISTINGKIT_API_BASE=http://localhost:8086/api/v1/listing-kits
 
 ## 当前限制
 
-- 这轮是最小可用的 S3 兼容接入
 - 没做 presigned upload，上传仍由后端接收文件再写对象存储
 - `GET /api/v1/listing-kits/uploads/files/*key` 仍然保留，主要用于 `local` provider；S3 模式下前端默认直接使用对象 URL

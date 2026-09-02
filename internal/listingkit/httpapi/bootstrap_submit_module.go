@@ -15,7 +15,7 @@ import (
 
 type submitModuleHooks struct {
 	SheinPricingPolicyBuilder         func(*config.Config) sheinpub.PricingPolicy
-	ImageUploadStoreBuilder           func(*config.Config, *logrus.Logger) listingkit.ImageUploadStore
+	ImageUploadStoreBuilder           func(*config.Config, *logrus.Logger) (listingkit.ImageUploadStore, error)
 	SheinCategoryLLMClientBuilder     func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
 	SheinSaleAttributeLLMBuilder      func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
 	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
@@ -156,7 +156,11 @@ func buildSubmitModule(in submitModuleInput) (submitModule, error) {
 
 	var imageUploadStore listingkit.ImageUploadStore
 	if in.Hooks.ImageUploadStoreBuilder != nil {
-		imageUploadStore = in.Hooks.ImageUploadStoreBuilder(in.Config, in.Logger)
+		var err error
+		imageUploadStore, err = in.Hooks.ImageUploadStoreBuilder(in.Config, in.Logger)
+		if err != nil {
+			return submitModule{}, fmt.Errorf("build ListingKit image upload store: %w", err)
+		}
 	}
 
 	var studioImageGenerator openaiclient.ImageGenerator

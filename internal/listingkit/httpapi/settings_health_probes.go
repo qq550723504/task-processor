@@ -12,7 +12,7 @@ func buildSettingsHealthProbesFromConfig(cfg *config.Config) listingkit.Settings
 		return listingkit.SettingsHealthProbes{
 			SheinIntegration: missingProbe("shein.loginService.baseURL 缺失"),
 			SDSLogin:         missingProbe("sds.loginService.baseURL 缺失", "sds.loginService.tenantID 缺失", "sds.loginService.identifier 缺失"),
-			ObjectStorage:    missingProbe("productimage.publisher.provider 缺失"),
+			ObjectStorage:    missingProbe("listingkit.imageUpload.provider 缺失"),
 		}
 	}
 	return listingkit.SettingsHealthProbes{
@@ -60,27 +60,27 @@ func sdsLoginProbe(cfg *config.Config) listingkit.SettingsHealthProbe {
 }
 
 func objectStorageProbe(cfg *config.Config) listingkit.SettingsHealthProbe {
-	publisher := cfg.ProductImage.Publisher
-	if !publisher.Enabled {
-		return missingProbe("productimage.publisher.enabled 未启用")
+	upload := cfg.ListingKit.ImageUpload
+	provider := strings.TrimSpace(strings.ToLower(upload.Provider))
+	switch provider {
+	case "":
+		return missingProbe("listingkit.imageUpload.provider 缺失")
+	case "local":
+		missing := requiredStringFields("listingkit.imageUpload.local", map[string]string{
+			"rootDir": upload.Local.RootDir,
+		})
+		return probeFromMissing(missing)
+	case "s3":
+		missing := requiredStringFields("listingkit.imageUpload.s3", map[string]string{
+			"bucket":          upload.S3.Bucket,
+			"region":          upload.S3.Region,
+			"accessKeyID":     upload.S3.AccessKeyID,
+			"secretAccessKey": upload.S3.SecretAccessKey,
+		})
+		return probeFromMissing(missing)
+	default:
+		return missingProbe("listingkit.imageUpload.provider 不支持: " + upload.Provider)
 	}
-	provider := strings.TrimSpace(strings.ToLower(publisher.Provider))
-	if provider == "" || provider == "local" || provider == "filesystem" || provider == "file" {
-		if publisher.Enabled && strings.TrimSpace(publisher.PublicBase) == "" {
-			return missingProbe("productimage.publisher.publicBase 缺失")
-		}
-		return listingkit.SettingsHealthProbe{Configured: true}
-	}
-	if provider != "s3" {
-		return missingProbe("productimage.publisher.provider 不支持: " + publisher.Provider)
-	}
-	missing := requiredStringFields("productimage.publisher.s3", map[string]string{
-		"bucket":          publisher.S3.Bucket,
-		"endpoint":        publisher.S3.Endpoint,
-		"accessKeyID":     publisher.S3.AccessKeyID,
-		"secretAccessKey": publisher.S3.SecretAccessKey,
-	})
-	return probeFromMissing(missing)
 }
 
 func requiredStringFields(prefix string, values map[string]string) []string {

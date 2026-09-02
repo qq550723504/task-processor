@@ -9,7 +9,6 @@ import (
 )
 
 func TestLegacyProductRoutesAreNotRegistered(t *testing.T) {
-	configureProductImageRuntimePaths(t)
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
 
 	bootstrap, err := buildBootstrap(quietTestLogger(), Options{
@@ -41,7 +40,6 @@ func TestLegacyProductRoutesAreNotRegistered(t *testing.T) {
 }
 
 func TestRuntimeRegistryHasNoLegacyProductModulesOrWorkerPools(t *testing.T) {
-	configureProductImageRuntimePaths(t)
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
 
 	logger := quietTestLogger()

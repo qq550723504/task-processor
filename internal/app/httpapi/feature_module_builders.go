@@ -74,13 +74,9 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 		return nil, fmt.Errorf("build image agent repository: %w", err)
 	}
 	databaseCloser := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
-	service, err := imageagent.NewService(
+	service, err := newImageAgentHTTPService(
 		imageagentstore.NewGormRepository(db), workflowClient,
 		listingkithttpapi.NewImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db)),
-		imageagent.WithTenantStartGate(imageagent.TenantAllowlistStartGate{
-			Enabled:          cfg.AICapability.ProductImageSceneEnabled,
-			AllowedTenantIDs: cfg.AICapability.ProductImageSceneAllowedTenantIDs,
-		}),
 	)
 	if err != nil {
 		_ = databaseCloser()
@@ -104,17 +100,21 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 	return built, nil
 }
 
+func newImageAgentHTTPService(repository imageagent.Repository, workflows imageagent.WorkflowClient, catalog imageagent.AuthorizedAssetCatalog) (*imageagent.Service, error) {
+	return imageagent.NewService(repository, workflows, catalog)
+}
+
 func imageAgentDurableAssetPublicURLResolver(cfg *config.Config) imageagent.DurableAssetPublicURLResolver {
 	if cfg == nil {
 		return nil
 	}
-	publisher := cfg.ProductImage.Publisher
-	if !publisher.Enabled || !strings.EqualFold(strings.TrimSpace(publisher.Provider), "s3") || strings.TrimSpace(publisher.PublicBase) == "" || strings.TrimSpace(publisher.S3.Bucket) == "" {
+	store := cfg.ImageAgent.ArtifactStore
+	if !store.Enabled || !strings.EqualFold(strings.TrimSpace(store.Provider), "s3") || strings.TrimSpace(store.PublicBase) == "" || strings.TrimSpace(store.S3.Bucket) == "" {
 		return nil
 	}
 	return imageAgentObjectURLResolver{
-		bucket: publisher.S3.Bucket, publicBase: publisher.PublicBase,
-		endpoint: publisher.S3.Endpoint, usePathStyle: publisher.S3.UsePathStyle,
+		bucket: store.S3.Bucket, publicBase: store.PublicBase,
+		endpoint: store.S3.Endpoint, usePathStyle: store.S3.UsePathStyle,
 	}
 }
 

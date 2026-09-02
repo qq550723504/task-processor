@@ -140,19 +140,9 @@ func TestConfigBuild(t *testing.T) {
 	v.Set("platforms.sds.authRedis.host", "sds.redis")
 	v.Set("platforms.sds.authRedis.port", 6381)
 	v.Set("platforms.sds.authRedis.db", 9)
-	v.Set("productimage.workDir", "./.local/tmp/images")
-	v.Set("productimage.segmenter.enabled", true)
-	v.Set("productimage.segmenter.endpoint", "http://segmenter.local")
-	v.Set("productimage.whiteBackground.timeout", 90)
-	v.Set("productimage.scene.enabled", true)
-	v.Set("productimage.scene.endpoint", "http://scene.local")
 	v.Set("openai.clients.image.model", "nanobanana")
 	v.Set("openai.clients.image.timeout", 180)
 	v.Set("openai.clients.image.apiStyle", "nanobanana")
-	v.Set("productimage.publisher.outputDir", "./published")
-	v.Set("productimage.publisher.publicBase", "https://cdn.example.com/productimage")
-	v.Set("productimage.lifecycle.cleanupTemporaryFiles", true)
-	v.Set("productimage.lifecycle.reuseExistingAssets", true)
 
 	cfg := BuildConfig(v)
 
@@ -179,80 +169,18 @@ func TestConfigBuild(t *testing.T) {
 	assert.Equal(t, "sds.redis", cfg.Platforms.SDS.AuthRedis.Host)
 	assert.Equal(t, 6381, cfg.Platforms.SDS.AuthRedis.Port)
 	assert.Equal(t, 9, cfg.Platforms.SDS.AuthRedis.DB)
-	assert.Equal(t, "./.local/tmp/images", cfg.ProductImage.WorkDir)
-	assert.True(t, cfg.ProductImage.Segmenter.Enabled)
-	assert.Equal(t, "http://segmenter.local", cfg.ProductImage.Segmenter.Endpoint)
-	assert.Equal(t, 90, cfg.ProductImage.WhiteBackground.Timeout)
-	assert.True(t, cfg.ProductImage.Scene.Enabled)
-	assert.Equal(t, "http://scene.local", cfg.ProductImage.Scene.Endpoint)
 	assert.Equal(t, "nanobanana", cfg.OpenAI.Clients["image"].Model)
 	assert.Equal(t, 180, cfg.OpenAI.Clients["image"].Timeout)
 	assert.Equal(t, "nanobanana", cfg.OpenAI.Clients["image"].APIStyle)
-	assert.Equal(t, "./published", cfg.ProductImage.Publisher.OutputDir)
-	assert.Equal(t, "https://cdn.example.com/productimage", cfg.ProductImage.Publisher.PublicBase)
-	assert.True(t, cfg.ProductImage.Lifecycle.CleanupTemporaryFiles)
-	assert.True(t, cfg.ProductImage.Lifecycle.ReuseExistingAssets)
-}
-
-func TestConfigBuildIncludesProductImagePublisherS3Config(t *testing.T) {
-	v := viper.New()
-	v.Set("productimage.publisher.provider", "s3")
-	v.Set("productimage.publisher.publicBase", "https://cdn.example.com/productimage")
-	v.Set("productimage.publisher.s3.bucket", "listingkit-assets")
-	v.Set("productimage.publisher.s3.region", "ap-southeast-1")
-	v.Set("productimage.publisher.s3.endpoint", "https://s3.example.com")
-	v.Set("productimage.publisher.s3.accessKeyID", "test-access-key")
-	v.Set("productimage.publisher.s3.secretAccessKey", "test-secret-key")
-	v.Set("productimage.publisher.s3.usePathStyle", true)
-	v.Set("productimage.publisher.s3.artifactMode", "aws")
-	v.Set("productimage.publisher.s3.cosImmutableNonVersionedBucketPolicy", true)
-
-	cfg := BuildConfig(v)
-
-	assert.Equal(t, "s3", cfg.ProductImage.Publisher.Provider)
-	assert.Equal(t, "https://cdn.example.com/productimage", cfg.ProductImage.Publisher.PublicBase)
-	assert.Equal(t, "listingkit-assets", cfg.ProductImage.Publisher.S3.Bucket)
-	assert.Equal(t, "ap-southeast-1", cfg.ProductImage.Publisher.S3.Region)
-	assert.Equal(t, "https://s3.example.com", cfg.ProductImage.Publisher.S3.Endpoint)
-	assert.Equal(t, "test-access-key", cfg.ProductImage.Publisher.S3.AccessKeyID)
-	assert.Equal(t, "test-secret-key", cfg.ProductImage.Publisher.S3.SecretAccessKey)
-	assert.True(t, cfg.ProductImage.Publisher.S3.UsePathStyle)
-	assert.Equal(t, "aws", cfg.ProductImage.Publisher.S3.ArtifactMode)
-	assert.True(t, cfg.ProductImage.Publisher.S3.COSImmutableNonVersionedBucketPolicy)
-}
-
-func TestLoadFromBytesIncludesProductImageArtifactStorageCapabilities(t *testing.T) {
-	cfg, err := LoadFromBytes([]byte(`
-openai:
-  apiKey: "test-key"
-productimage:
-  publisher:
-    s3:
-      artifactMode: cos
-      cosImmutableNonVersionedBucketPolicy: true
-`))
-	require.NoError(t, err)
-
-	assert.Equal(t, "cos", cfg.ProductImage.Publisher.S3.ArtifactMode)
-	assert.True(t, cfg.ProductImage.Publisher.S3.COSImmutableNonVersionedBucketPolicy)
-}
-
-func TestProductImageArtifactStorageCapabilitiesHaveNoUnsafeDefaults(t *testing.T) {
-	cfg := BuildConfig(viper.New())
-
-	assert.Empty(t, cfg.ProductImage.Publisher.S3.ArtifactMode)
-	assert.False(t, cfg.ProductImage.Publisher.S3.COSImmutableNonVersionedBucketPolicy)
 }
 
 func TestConfigBuildIncludesDebugConfig(t *testing.T) {
 	v := viper.New()
 	v.Set("debug.save_publish_json", true)
-	v.Set("debug.productEnrichMockLLM", true)
 
 	cfg := BuildConfig(v)
 
 	assert.True(t, cfg.Debug.SavePublishJSON)
-	assert.True(t, cfg.Debug.ProductEnrichMockLLM)
 }
 
 func TestConfigBuildIncludesListingKitConfig(t *testing.T) {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"task-processor/internal/pkg/watermark"
@@ -37,7 +36,7 @@ type Config struct {
 	Updater             UpdaterConfig             `yaml:"updater"`
 	Platforms           PlatformsConfig           `yaml:"platforms"`
 	Watermark           *watermark.Config         `yaml:"watermark"`
-	ProductImage        ProductImageConfig        `yaml:"productimage"`
+	ImageAgent          ImageAgentConfig          `yaml:"imageagent"`
 	Database            *DatabaseConfig           `yaml:"database"`
 	Redis               *RedisConfig              `yaml:"redis"`
 	Prompts             PromptsConfig             `yaml:"prompts"`
@@ -63,8 +62,7 @@ type TracingConfig struct {
 }
 
 type DebugConfig struct {
-	SavePublishJSON      bool `yaml:"save_publish_json"`
-	ProductEnrichMockLLM bool `yaml:"productEnrichMockLLM"`
+	SavePublishJSON bool `yaml:"save_publish_json"`
 }
 
 type PromptsConfig struct {
@@ -254,29 +252,38 @@ func knownEnvBindings() map[string]envBinding {
 		"aiCapability.studioImageRoutingMode": {
 			Primary: "TASK_PROCESSOR_AI_CAPABILITY_STUDIO_IMAGE_ROUTING_MODE",
 		},
-		"aiCapability.productImageSceneEnabled": {
-			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED",
+		"imageagent.artifactStore.enabled": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_ENABLED",
 		},
-		"aiCapability.productImageSceneAllowedTenantIDs": {
-			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS",
+		"imageagent.artifactStore.provider": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_PROVIDER",
 		},
-		"aiCapability.productEnrichTextEnabled": {
-			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_TEXT_ENABLED",
+		"imageagent.artifactStore.publicBase": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_PUBLIC_BASE",
 		},
-		"aiCapability.productEnrichTextAllowedTenantIDs": {
-			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_TEXT_ALLOWED_TENANT_IDS",
+		"imageagent.artifactStore.s3.bucket": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_BUCKET",
 		},
-		"aiCapability.productEnrichVisionEnabled": {
-			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_VISION_ENABLED",
+		"imageagent.artifactStore.s3.region": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_REGION",
 		},
-		"aiCapability.productEnrichVisionAllowedTenantIDs": {
-			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_VISION_ALLOWED_TENANT_IDS",
+		"imageagent.artifactStore.s3.endpoint": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ENDPOINT",
 		},
-		"aiCapability.productEnrichListingEnabled": {
-			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_LISTING_ENABLED",
+		"imageagent.artifactStore.s3.accessKeyID": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ACCESS_KEY_ID",
 		},
-		"aiCapability.productEnrichListingAllowedTenantIDs": {
-			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_LISTING_ALLOWED_TENANT_IDS",
+		"imageagent.artifactStore.s3.secretAccessKey": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_SECRET_ACCESS_KEY",
+		},
+		"imageagent.artifactStore.s3.usePathStyle": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_USE_PATH_STYLE",
+		},
+		"imageagent.artifactStore.s3.artifactMode": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ARTIFACT_MODE",
+		},
+		"imageagent.artifactStore.s3.cosImmutableNonVersionedBucketPolicy": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_COS_IMMUTABLE_NON_VERSIONED_BUCKET_POLICY",
 		},
 		"openai.apiKey": {
 			Primary:    "TASK_PROCESSOR_OPENAI_API_KEY",
@@ -686,8 +693,32 @@ func knownEnvBindings() map[string]envBinding {
 		"platforms.sds.authBootstrap.loginExtraInfo": {
 			Primary: "TASK_PROCESSOR_SDS_EXTRA_INFO",
 		},
-		"debug.productEnrichMockLLM": {
-			Primary: "TASK_PROCESSOR_PRODUCTENRICH_MOCK_LLM",
+		"listingkit.imageUpload.provider": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_PROVIDER",
+		},
+		"listingkit.imageUpload.local.rootDir": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_LOCAL_ROOT_DIR",
+		},
+		"listingkit.imageUpload.s3.bucket": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_BUCKET",
+		},
+		"listingkit.imageUpload.s3.region": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_REGION",
+		},
+		"listingkit.imageUpload.s3.endpoint": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_ENDPOINT",
+		},
+		"listingkit.imageUpload.s3.accessKeyID": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_ACCESS_KEY_ID",
+		},
+		"listingkit.imageUpload.s3.secretAccessKey": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_SECRET_ACCESS_KEY",
+		},
+		"listingkit.imageUpload.s3.usePathStyle": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_USE_PATH_STYLE",
+		},
+		"listingkit.imageUpload.s3.publicBase": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_PUBLIC_BASE",
 		},
 		"listingkit.sheinSubmitDebugDumpDir": {
 			Primary: "LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR",
@@ -793,7 +824,7 @@ func logDeprecatedEnvUsage() {
 }
 
 func loadWithViper(v *viper.Viper) (*Config, error) {
-	if err := validateProductImageSceneEnabledValue(v); err != nil {
+	if err := rejectRetiredProductRuntimeConfig(v); err != nil {
 		return nil, err
 	}
 	cfg := BuildConfig(v)
@@ -803,37 +834,11 @@ func loadWithViper(v *viper.Viper) (*Config, error) {
 	return cfg, nil
 }
 
-func validateProductImageSceneEnabledValue(v *viper.Viper) error {
-	if v == nil {
-		return nil
+func loadWithViperWithoutValidation(v *viper.Viper) (*Config, error) {
+	if err := rejectRetiredProductRuntimeConfig(v); err != nil {
+		return nil, err
 	}
-	raw := v.Get("aiCapability.productImageSceneEnabled")
-	if raw == nil {
-		return nil
-	}
-	switch value := raw.(type) {
-	case bool:
-		return nil
-	case string:
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			return nil
-		}
-		lowered := strings.ToLower(trimmed)
-		if lowered != "true" && lowered != "false" {
-			return fmt.Errorf("invalid boolean value for aiCapability.productImageSceneEnabled: %q", value)
-		}
-		if _, err := strconv.ParseBool(trimmed); err != nil {
-			return fmt.Errorf("invalid boolean value for aiCapability.productImageSceneEnabled: %q", value)
-		}
-		return nil
-	default:
-		return fmt.Errorf("invalid boolean value for aiCapability.productImageSceneEnabled: %v", raw)
-	}
-}
-
-func loadWithViperWithoutValidation(v *viper.Viper) *Config {
-	return BuildConfig(v)
+	return BuildConfig(v), nil
 }
 
 func LoadConfig() (*Config, error) {
@@ -901,5 +906,5 @@ func LoadConfigFromFileWithoutValidation(configFile string) (*Config, error) {
 	}
 
 	logger.GetGlobalLogger("core/config").Infof("loaded config file: %s", v.ConfigFileUsed())
-	return loadWithViperWithoutValidation(v), nil
+	return loadWithViperWithoutValidation(v)
 }
