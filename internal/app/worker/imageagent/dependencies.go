@@ -2,8 +2,6 @@ package imageagentworker
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,6 +22,7 @@ import (
 	s3integration "task-processor/internal/integration/s3"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
+	"task-processor/internal/pkg/runtimepath"
 	platformdatabase "task-processor/internal/platform/database"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
@@ -129,7 +128,7 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	}
 	workDir := strings.TrimSpace(cfg.ProductImage.WorkDir)
 	if workDir == "" {
-		workDir = filepath.Join(os.TempDir(), "task-processor", "productimage")
+		workDir = runtimepath.NamespacedTempPath("productimage")
 	}
 	capabilities, err := resolver.BuildCapabilities(productimagehttpapi.RuntimeBuildInput{
 		Logger: logger, Config: cfg, OpenAIManager: manager, AICredentialResolver: credentialResolver,

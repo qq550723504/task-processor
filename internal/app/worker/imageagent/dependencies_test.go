@@ -3,8 +3,6 @@ package imageagentworker
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -21,6 +19,7 @@ import (
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	openaiclient "task-processor/internal/integration/openai"
 	s3integration "task-processor/internal/integration/s3"
+	"task-processor/internal/pkg/runtimepath"
 	"task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
@@ -143,7 +142,7 @@ func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *t
 	require.Nil(t, dependencies.PublisherV3)
 	require.Zero(t, dependencies.PublicationLeaseDuration)
 	require.Zero(t, storeBuilds)
-	require.Equal(t, filepath.Join(os.TempDir(), "task-processor", "productimage"), capabilityInput.ImageWorkDir)
+	require.Equal(t, runtimepath.NamespacedTempPath("productimage"), capabilityInput.ImageWorkDir)
 }
 
 func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseOnInvalidPolicy(t *testing.T) {
