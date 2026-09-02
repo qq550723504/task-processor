@@ -108,29 +108,37 @@ func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, appro
 }
 
 func (a *assembler) validateSheinResolvers() error {
-	switch {
-	case a == nil || a.sheinCategoryResolver == nil:
-		return fmt.Errorf("category resolver is required")
-	case a.sheinAttributeResolver == nil:
-		return fmt.Errorf("attribute resolver is required")
-	case a.sheinSaleAttributeResolver == nil:
-		return fmt.Errorf("sale-attribute resolver is required")
-	default:
-		return nil
+	if err := validateSheinResolver("category", a != nil && a.sheinCategoryResolver != nil); err != nil {
+		return err
 	}
+	if err := validateSheinResolver("attribute", a.sheinAttributeResolver != nil); err != nil {
+		return err
+	}
+	return validateSheinResolver("sale-attribute", a.sheinSaleAttributeResolver != nil)
+}
+
+func validateSheinResolver(name string, available bool) error {
+	if !available {
+		return fmt.Errorf("%s resolver is required", name)
+	}
+	return nil
 }
 
 func validateSheinResolutions(pkg *sheinpub.Package) error {
-	switch {
-	case pkg == nil || pkg.CategoryResolution == nil:
-		return fmt.Errorf("category resolution is unavailable")
-	case pkg.AttributeResolution == nil:
-		return fmt.Errorf("attribute resolution is unavailable")
-	case pkg.SaleAttributeResolution == nil:
-		return fmt.Errorf("sale-attribute resolution is unavailable")
-	default:
-		return nil
+	if err := validateSheinResolution("category", pkg != nil && pkg.CategoryResolution != nil); err != nil {
+		return err
 	}
+	if err := validateSheinResolution("attribute", pkg.AttributeResolution != nil); err != nil {
+		return err
+	}
+	return validateSheinResolution("sale-attribute", pkg.SaleAttributeResolution != nil)
+}
+
+func validateSheinResolution(name string, available bool) error {
+	if !available {
+		return fmt.Errorf("%s resolution is unavailable", name)
+	}
+	return nil
 }
 
 func buildSheinPublishRequest(req *GenerateRequest) *sheinpub.BuildRequest {

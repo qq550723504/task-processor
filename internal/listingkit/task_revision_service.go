@@ -13,7 +13,7 @@ type taskRevisionServiceConfig struct {
 	repo                                    Repository
 	resolveManualSheinSaleAttributeValueIDs func(context.Context, *Task, *ApplyRevisionRequest) error
 	recovery                                *taskSubmissionRecoveryService
-	refreshSheinDerivedState                func(*Task, *ApplyRevisionRequest)
+	refreshSheinDerivedState                func(*Task, *ApplyRevisionRequest) error
 	refreshSheinTaskResultState             func(context.Context, *Task, *ListingKitResult)
 	buildTaskPreview                        func(context.Context, *Task, string) (*ListingKitPreview, error)
 }
@@ -22,7 +22,7 @@ type taskRevisionService struct {
 	repo                                    Repository
 	resolveManualSheinSaleAttributeValueIDs func(context.Context, *Task, *ApplyRevisionRequest) error
 	recovery                                *taskSubmissionRecoveryService
-	refreshSheinDerivedState                func(*Task, *ApplyRevisionRequest)
+	refreshSheinDerivedState                func(*Task, *ApplyRevisionRequest) error
 	refreshSheinTaskResultState             func(context.Context, *Task, *ListingKitResult)
 	buildTaskPreview                        func(context.Context, *Task, string) (*ListingKitPreview, error)
 }
@@ -68,7 +68,9 @@ func (s *taskRevisionService) ApplyTaskRevision(ctx context.Context, taskID stri
 			return err
 		}
 		if effectiveReq.Platform == "shein" && s.refreshSheinDerivedState != nil {
-			s.refreshSheinDerivedState(task, effectiveReq)
+			if err := s.refreshSheinDerivedState(task, effectiveReq); err != nil {
+				return err
+			}
 		}
 		if effectiveReq.Platform == "shein" && s.refreshSheinTaskResultState != nil {
 			s.refreshSheinTaskResultState(ctx, task, task.Result)

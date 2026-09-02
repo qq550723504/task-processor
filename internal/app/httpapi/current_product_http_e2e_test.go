@@ -180,6 +180,7 @@ func TestHTTPE2E_CurrentListingKitUsesReadOnlySnapshotAndApprovedAssets(t *testi
 	}}
 	uploadStore, err := listingkit.NewLocalImageUploadStore(t.TempDir())
 	require.NoError(t, err)
+	categoryResolver := &currentE2ESwitchableCategory{resolution: currentE2EResolvedCategory{}.Resolve(nil, nil, nil)}
 	builder := newListingKitFeatureBuilder()
 	productionBuild := builder.buildListingKit
 	builder.buildListingKit = func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
@@ -190,7 +191,7 @@ func TestHTTPE2E_CurrentListingKitUsesReadOnlySnapshotAndApprovedAssets(t *testi
 			return uploadStore, nil
 		}
 		input.Runtime.Support.Hooks.SheinCategoryResolverBuilder = func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
-			return currentE2EResolvedCategory{}
+			return categoryResolver
 		}
 		input.Runtime.Support.Hooks.SheinAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
 			return currentE2EResolvedAttributes{}
@@ -254,6 +255,29 @@ func TestHTTPE2E_CurrentListingKitUsesReadOnlySnapshotAndApprovedAssets(t *testi
 	require.NotNil(t, task.Result.Shein.RequestDraft.ImageInfo)
 	require.Equal(t, approvedMainURL, task.Result.Shein.RequestDraft.ImageInfo.MainImage)
 	require.Empty(t, task.Result.Shein.RequestDraft.ImageInfo.Source)
+
+	beforeFailedRevision := getCurrentE2EJSON[listingkit.TaskResult](t, client, httpServer.URL+"/api/v1/listing-kits/tasks/"+taskID)
+	categoryResolver.resolution = nil
+	revisionBody, err := json.Marshal(map[string]any{
+		"platform": "shein", "actor": "current-e2e", "reason": "verify category refresh rollback",
+		"shein": map[string]any{"category_resolution": map[string]any{"source": "manual_refresh"}},
+	})
+	require.NoError(t, err)
+	revisionRequest, err := http.NewRequest(http.MethodPost, httpServer.URL+"/api/v1/listing-kits/tasks/"+taskID+"/revision", bytes.NewReader(revisionBody))
+	require.NoError(t, err)
+	revisionRequest.Header.Set("Content-Type", "application/json")
+	revisionResponse, err := client.Do(revisionRequest)
+	require.NoError(t, err)
+	defer revisionResponse.Body.Close()
+	require.Equal(t, http.StatusInternalServerError, revisionResponse.StatusCode)
+	var revisionError struct {
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.NewDecoder(revisionResponse.Body).Decode(&revisionError))
+	require.Contains(t, revisionError.Message, "category resolution is unavailable")
+	afterFailedRevision := getCurrentE2EJSON[listingkit.TaskResult](t, client, httpServer.URL+"/api/v1/listing-kits/tasks/"+taskID)
+	require.Equal(t, beforeFailedRevision, afterFailedRevision, "failed revision must not commit task/result/status/error/history changes")
+	categoryResolver.resolution = currentE2EResolvedCategory{}.Resolve(nil, nil, nil)
 
 	preview := getCurrentE2EJSON[listingkit.ListingKitPreview](t, client, httpServer.URL+"/api/v1/listing-kits/tasks/"+taskID+"/preview?platform=shein")
 	require.Equal(t, taskID, preview.TaskID)
@@ -503,6 +527,14 @@ func (currentE2EResolvedCategory) Resolve(*sheinpub.BuildRequest, *canonical.Pro
 		ProductTypeID:  4004,
 		TopCategoryID:  1001,
 	}
+}
+
+type currentE2ESwitchableCategory struct {
+	resolution *sheinpub.CategoryResolution
+}
+
+func (r *currentE2ESwitchableCategory) Resolve(*sheinpub.BuildRequest, *canonical.Product, *sheinpub.Package) *sheinpub.CategoryResolution {
+	return r.resolution
 }
 
 type currentE2EUnavailableCategory struct{}
