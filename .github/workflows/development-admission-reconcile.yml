@@ -9,12 +9,7 @@ on:
   schedule:
     - cron: "*/5 * * * *"
 
-permissions:
-  actions: write
-  checks: read
-  contents: read
-  issues: read
-  pull-requests: read
+permissions: {}
 
 jobs:
   dispatch-open-pull-requests:
@@ -27,27 +22,31 @@ jobs:
         id: admission-app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
-          app-id: ${{ secrets.DEVELOPMENT_ADMISSION_APP_ID }}
+          app-id: 4799675 # AI Commerce Governance
           private-key: ${{ secrets.DEVELOPMENT_ADMISSION_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
           permission-actions: write
           permission-checks: read
-          permission-contents: read
+          permission-contents: write
           permission-issues: read
           permission-pull-requests: read
 
+      - name: Verify dedicated admission App installation
+        if: ${{ steps.admission-app-token.outputs.installation-id != '158369358' }}
+        run: exit 1
+
       - name: Checkout trusted policy revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           token: ${{ steps.admission-app-token.outputs.token }}
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       - name: Dispatch trusted admission evaluations
-        uses: actions/github-script@v9
+        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
         env:
-          TRUSTED_CHECK_APP_ID: ${{ secrets.DEVELOPMENT_ADMISSION_APP_ID }}
+          TRUSTED_CHECK_APP_ID: 4799675
         with:
           github-token: ${{ steps.admission-app-token.outputs.token }}
           script: |
@@ -126,13 +125,12 @@ jobs:
               let lastError;
               for (let attempt = 1; attempt <= 3; attempt += 1) {
                 try {
-                  await github.rest.actions.createWorkflowDispatch({
+                  await github.rest.repos.createDispatchEvent({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    workflow_id: "development-admission.yml",
-                    ref: context.payload.repository.default_branch,
-                    inputs: {
-                      pull_request_number: String(pullRequest.number),
+                    event_type: "development-admission",
+                    client_payload: {
+                      pull_request_number: pullRequest.number,
                       merge_commit_sha: pullRequest.merge_commit_sha,
                     },
                   });

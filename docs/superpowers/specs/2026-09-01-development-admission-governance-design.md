@@ -226,9 +226,9 @@ evaluation starts a new run. Each active evaluation also uses a stable
 external identity per PR and merge target to recover an existing nonterminal
 run when a create response is lost; completed runs are never selected for
 update. An unknown create result is never retried
-by issuing a second create. Only the expected GitHub Actions app and external
-identity are eligible for recovery or reconciliation; unknown Check Run status
-or timestamp data is treated as untrusted. Reconciliation considers only the
+by issuing a second create. Only the dedicated `AI Commerce Governance` App
+and external identity are eligible for recovery or reconciliation; unknown
+Check Run status or timestamp data is treated as untrusted. Reconciliation considers only the
 newest Check Run for the target, so timed-out retries reuse one active run
 instead of creating an unbounded set of orphaned pending checks.
 Evaluations
@@ -237,16 +237,22 @@ override label is present, the workflow reads pull-request reviews and the
 reviewer's repository `role_name`; only a non-author collaborator with `maintain`
 or `admin` role plus an `APPROVED` review for the current head submitted after
 the latest base retarget can authorize the override, and the PR body must name
-that authorized reviewer. The trusted workflow has `checks: write`,
-`contents: read`, `issues: read`, and `pull-requests: read`; it never creates
-labels or edits the pull request. The existing `ci.yml`
+that authorized reviewer. Both trusted workflows declare `permissions: {}` and
+mint repository-scoped tokens for the dedicated App. The evaluator uses that
+token for `checks: write`, `contents: read`, `issues: read`, and
+`pull-requests: read`; the reconciler additionally uses `contents: write` only
+for `repository_dispatch`. Neither workflow creates labels or edits the pull
+request. The existing `ci.yml`
 workflow runs the proposed classifier's unit tests on `pull_request`/push events,
 but is not the authoritative admission decision. The first PR adding the
 trusted workflow is a bootstrap exception that requires maintainer review; after
 merge, branch protection must require the `Development Admission` Check Run and
-bind it to the configured `DEVELOPMENT_ADMISSION_APP_ID` for the guard to block
-merges. The App installation is restricted to this repository, and its workflow
-token uses only the permissions needed by the evaluator or reconciler.
+bind it to App ID `4799675` for the guard to block merges. The App installation
+is restricted to this repository, and the evaluator/reconciler verify the
+expected installation ID before using the token. The evaluator is triggered by
+trusted `pull_request_target`/`workflow_run` events or by the reconciler's
+`repository_dispatch`; it intentionally has no privileged `workflow_dispatch`
+trigger, so a PR branch cannot supply arbitrary privileged inputs.
 
 Review changes are delivered through a separate read-only
 `Development Admission Review Signal` workflow. That signal writes only its
@@ -262,7 +268,9 @@ A read-only `Development Admission Base Signal` workflow runs on every push,
 including pushes to non-default base branches. A trusted
 `Development Admission Reconcile` workflow receives that signal through
 `workflow_run`, filters open PRs whose base branch matches the pushed branch,
-and dispatches one evaluator per matching PR. The reconciler also runs every
+and dispatches one evaluator per matching PR using a repository-scoped App token.
+The evaluator consumes the dispatch on the default-branch workflow revision.
+The reconciler also runs every
 five minutes, but the scheduled fan-out is limited to open PRs carrying the
 `architecture-approved` label, targeting a non-default base branch, or having
 recently removed that label. This covers merge-SHA changes caused by base-branch
@@ -271,9 +279,12 @@ running a privileged workflow from an arbitrary branch. Before accepting an
 override, the evaluator also requires non-placeholder PR-body evidence for the
 design link, independent review, and why the change cannot be safely split, and
 the named approver must be in the authorized maintainer/admin subset. The
-dispatch workflow has only `actions: write`, `contents: read`, `issues: read`,
-and `pull-requests: read`; it sends the PR number and merge target SHA as
-workflow-dispatch inputs, retries transient dispatch failures, and continues
+reconciler declares `permissions: {}` and mints a repository-scoped token for
+the dedicated `AI Commerce Governance` GitHub App with `actions: write`,
+`contents: write`, `checks: read`, `issues: read`, and `pull-requests: read`;
+`contents: write` is used only for the `repository_dispatch` API call. It
+sends the PR number and merge target SHA as repository-dispatch client payload,
+retries transient dispatch failures, and continues
 dispatching other candidates when one PR fails. For default-base PRs without
 the override label, reconciliation continues until the latest terminal
 `Development Admission` Check Run is a recognized policy result that started
@@ -286,15 +297,20 @@ The admission evaluator's failure matrix is:
 
 | Boundary | Durable state after failure | Retry identity and result | Recovery owner | Verification |
 | --- | --- | --- | --- | --- |
-| PR metadata, review, or event read fails | No new Check Run is trusted; any prior result is not refreshed | The PR number and current test-merge SHA identify the next run; retry on the next PR/review event or manual rerun | GitHub Actions and maintainer | API-error and timeout path |
+| PR metadata, review, or event read fails | No new Check Run is trusted; any prior result is not refreshed | The PR number and current test-merge SHA identify the next run; retry on the next PR/review event, trusted signal, repository dispatch, or scheduled reconciliation | GitHub Actions and maintainer | API-error and timeout path |
 | Any PR input changes between snapshots | The old target receives `error` when possible; no success is published for the stale snapshot | Same PR event is retried against the newly fetched head/base/merge/review state | Per-PR serialized evaluator | Moving-snapshot tests |
 | Check Run publish fails | Evaluation result is not considered authoritative | Retry the same PR event; no local write can substitute for the missing repository check | GitHub Actions/GitHub Checks service | Check-write failure path |
 | Review approval, label, or maintainer role is revoked | The read-only review signal or five-minute reconciliation causes the trusted evaluator to publish `failure` | Current head plus latest review state and role are re-read; stale approval is never reused | Trusted evaluator, with branch protection/ruleset as final owner | Dismissed-review, label, and permission-reconciliation tests |
 | Base branch advances or a merge SHA changes | The read-only base signal triggers trusted reconciliation for open PRs targeting the pushed branch; the schedule covers labeled override PRs | The PR number is the dispatch input and the evaluator publishes only to the current `merge_commit_sha` | Trusted signal, reconciler, and evaluator | Base-push reconciliation test |
+| Dedicated App is revoked or its private key is invalidated | No replacement Check Run can be written; a previous success on the same SHA remains immutable | Restore the App/key or remove/disable the required gate before merging; do not treat the old success as fresh evidence | Repository maintainer/administrator | App-permission and incident-response runbook |
 
 The current repository has no branch-protection required status check or ruleset;
 the rollout must enable the `Development Admission` Check Run after this
-workflow is merged and bind it to the dedicated App. Merge-queue
+workflow is merged and bind it to App ID `4799675`. GitHub does not provide a
+workflow primitive that invalidates an already-completed Check Run when its App
+is later revoked, so App revocation/key loss is an administrative fail-closed
+incident response: restore the App or remove/disable the required gate before
+merging. Merge-queue
 support is not claimed by this PR: if a `merge_group`
 required workflow is introduced later, it needs a separate adapter for its
 merge-group SHA and constituent PRs before the gate is required there.

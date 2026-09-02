@@ -965,7 +965,8 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
     "utf8",
   ).replaceAll("\r\n", "\n");
 
-  assert.match(admissionWorkflow, /workflow_dispatch:/);
+  assert.match(admissionWorkflow, /repository_dispatch:/);
+  assert.doesNotMatch(admissionWorkflow, /^  workflow_dispatch:/m);
   assert.match(admissionWorkflow, /always\(\)/);
   assert.match(
     admissionWorkflow,
@@ -986,7 +987,7 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   assert.doesNotMatch(admissionWorkflow, /createCommitStatus/);
   assert.match(
     admissionWorkflow,
-    /if \(statusSha\) \{[\s\S]*await publishStatus\([\s\S]*const initialPullRequest/,
+    /const initialPullRequest[\s\S]*statusSha[\s\S]*await publishStatus\(/,
   );
   assert.match(
     admissionWorkflow,
@@ -1011,14 +1012,15 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   assert.match(reconcileWorkflow, /checks: read/);
   assert.match(reconcileWorkflow, /trustedCheckAppId/);
   assert.match(reconcileWorkflow, /external_id === admissionCheckExternalId/);
-  assert.match(reconcileWorkflow, /try \{[\s\S]*createWorkflowDispatch/);
+  assert.match(reconcileWorkflow, /try \{[\s\S]*createDispatchEvent/);
+  assert.doesNotMatch(reconcileWorkflow, /createWorkflowDispatch/);
   assert.match(reconcileWorkflow, /dispatchFailures/);
   assert.match(admissionWorkflow, /finalPermissions/);
   assert.match(
     reconcileWorkflow,
     /pullRequest\.base\.ref !== defaultBranch/,
   );
-  assert.match(reconcileWorkflow, /github\.rest\.actions\.createWorkflowDispatch/);
+  assert.match(reconcileWorkflow, /github\.rest\.repos\.createDispatchEvent/);
 });
 
 test("uses the dedicated App installation identity for privileged admission API calls", () => {
@@ -1032,24 +1034,36 @@ test("uses the dedicated App installation identity for privileged admission API 
     "utf8",
   ).replaceAll("\r\n", "\n");
   const appTokenAction = /uses: actions\/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3/;
-  const appIdSecret = /app-id: \$\{\{ secrets\.DEVELOPMENT_ADMISSION_APP_ID \}\}/;
   const privateKeySecret = /private-key: \$\{\{ secrets\.DEVELOPMENT_ADMISSION_APP_PRIVATE_KEY \}\}/;
   const appTokenReference = /github-token: \$\{\{ steps\.admission-app-token\.outputs\.token \}\}/g;
 
   assert.match(admissionWorkflow, appTokenAction);
-  assert.match(admissionWorkflow, appIdSecret);
+  assert.match(admissionWorkflow, /app-id: 4799675 # AI Commerce Governance/);
   assert.match(admissionWorkflow, privateKeySecret);
+  assert.match(admissionWorkflow, /outputs\.installation-id/);
+  assert.match(admissionWorkflow, /!= ['"]158369358['"]/);
+  assert.match(admissionWorkflow, /^permissions:\s*\{\}\s*$/m);
+  assert.doesNotMatch(admissionWorkflow, /^  workflow_dispatch:/m);
+  assert.doesNotMatch(admissionWorkflow, /secrets\.GITHUB_TOKEN|github\.token/);
+  assert.match(admissionWorkflow, /actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4\.2\.2/);
+  assert.match(admissionWorkflow, /actions\/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9/);
   assert.equal(
     (admissionWorkflow.match(appTokenReference) || []).length,
-    (admissionWorkflow.match(/uses: actions\/github-script@v9/g) || []).length +
+    (admissionWorkflow.match(/uses: actions\/github-script@373c709c69115d41ff229c7e5df9f8788daa9553/g) || []).length +
       (admissionWorkflow.match(/uses: actions\/download-artifact@/g) || []).length,
   );
   assert.match(admissionWorkflow, /TRUSTED_CHECK_APP_ID/);
   assert.doesNotMatch(admissionWorkflow, /trustedCheckAppId = 15368/);
 
   assert.match(reconcileWorkflow, appTokenAction);
-  assert.match(reconcileWorkflow, appIdSecret);
+  assert.match(reconcileWorkflow, /app-id: 4799675 # AI Commerce Governance/);
   assert.match(reconcileWorkflow, privateKeySecret);
+  assert.match(reconcileWorkflow, /outputs\.installation-id/);
+  assert.match(reconcileWorkflow, /!= ['"]158369358['"]/);
+  assert.match(reconcileWorkflow, /^permissions:\s*\{\}\s*$/m);
+  assert.doesNotMatch(reconcileWorkflow, /secrets\.GITHUB_TOKEN|github\.token/);
+  assert.match(reconcileWorkflow, /actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4\.2\.2/);
+  assert.match(reconcileWorkflow, /actions\/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9/);
   assert.equal((reconcileWorkflow.match(appTokenReference) || []).length, 1);
   assert.match(reconcileWorkflow, /TRUSTED_CHECK_APP_ID/);
   assert.doesNotMatch(reconcileWorkflow, /trustedCheckAppId = 15368/);
@@ -1074,7 +1088,7 @@ test("exports and computes the latest base branch change timestamp", () => {
   );
 });
 
-test("extracts a pull request number from direct, workflow-run, and dispatch events", () => {
+test("extracts a pull request number from direct, workflow-run, and repository dispatch events", () => {
   assert.equal(
     pullRequestNumberFromEventPayload("pull_request_target", {
       pull_request: { number: 273 },
@@ -1096,8 +1110,8 @@ test("extracts a pull request number from direct, workflow-run, and dispatch eve
     /trusted signal must identify one associated pull request/,
   );
   assert.equal(
-    pullRequestNumberFromEventPayload("workflow_dispatch", {
-      inputs: { pull_request_number: "273" },
+    pullRequestNumberFromEventPayload("repository_dispatch", {
+      client_payload: { pull_request_number: 273 },
     }),
     273,
   );

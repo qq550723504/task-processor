@@ -189,8 +189,8 @@ function pullRequestNumberFromEventPayload(eventName, payload, signalPullRequest
     pullRequestNumber = signalPullRequestNumber;
   } else if (eventName === "pull_request_target") {
     pullRequestNumber = payload?.pull_request?.number;
-  } else if (eventName === "workflow_dispatch") {
-    pullRequestNumber = Number(payload?.inputs?.pull_request_number);
+  } else if (eventName === "repository_dispatch") {
+    pullRequestNumber = Number(payload?.client_payload?.pull_request_number);
   } else {
     throw new Error(`unsupported admission event: ${eventName}`);
   }
