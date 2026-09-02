@@ -171,6 +171,7 @@ AI Token       → AI 点数
 - 绑定与激活分离；
 - 店铺连接状态、服务状态和记录生命周期分离；
 - 显式激活、续费和到期状态；
+- 第一阶段最小企业资源账本；
 - 版本冲突、幂等和企业隔离。
 
 ### 4.3 明确不包含
@@ -533,7 +534,7 @@ manual_grant
 店铺到期时间：2026-11-01
 ```
 
-用量页不再次扣减人民币；人民币付款、钱包余额和资源使用不能混为同一余额。
+用量页不再次扣减人民币；人民币付款、钱包余额和资源使用不能混为同一余额。只有存在可信的价格版本或购买成本快照时才显示“折算成本”；没有可信成本依据时显示 `—`，不得根据当前价格反算历史成本。
 
 ### 9.5 第一阶段资源来源
 
@@ -544,6 +545,59 @@ manual_grant
 - 明确版本的活动赠送。
 
 当企业没有续费期数时，激活接口返回 `INSUFFICIENT_RENEWAL_PERIODS`。前端显示真实不足状态和联系客服入口，不模拟充值成功，也不跳转到尚未实现的钱包页面。
+
+### 9.6 第一阶段最小企业资源账本
+
+即使企业钱包延后，店铺显式激活和真实企业余额仍需要一个可核对、可并发控制的资源账本。第一阶段新增企业级资源账本，但不包含成员钱包和成员月度限额：
+
+```text
+resource_type
+├── store_renewal_period
+├── ai_point
+└── data_row
+```
+
+建议持久化：
+
+```text
+saas_organization_resource_buckets
+- organization_id
+- resource_type
+- available
+- reserved
+- consumed
+- version
+- updated_at
+
+saas_organization_resource_events
+- event_id
+- organization_id
+- resource_type
+- operation_type
+- quantity
+- balance_after
+- idempotency_key
+- request_fingerprint
+- business_type
+- business_id
+- reversal_of
+- actor_user_id
+- occurred_at
+```
+
+第一阶段操作类型：
+
+```text
+grant
+reserve
+commit
+release
+reverse
+expire
+migration_credit
+```
+
+钱包和支付后续只需要通过已支付订单向这个企业资源账本写入 `purchase_credit`，不改变现有消费语义。
 
 ## 10. 店铺绑定与显式激活
 
@@ -576,11 +630,10 @@ ConnectionStatus
 ├── error
 └── disconnected
 
-ServiceStatus
+ServiceStatus（持久化）
 ├── pending_activation
 ├── activating
 ├── active
-├── expiring
 ├── expired
 └── suspended
 
@@ -589,6 +642,8 @@ RecordStatus
 ├── deleting
 └── deleted
 ```
+
+“即将到期”不是持久化状态，而是根据 `service_expires_at` 与告警阈值计算出的展示状态，避免调度延迟造成状态不一致。
 
 Store 记录增加：
 
@@ -636,7 +691,7 @@ last_connection_checked_at
 → 写入店铺服务事件和审计记录
 ```
 
-激活失败时必须释放预留，不能出现“期数已扣但店铺仍待激活”。
+激活固定消耗 1 期，客户端不能传入任意激活期数。激活失败时必须释放预留；若在资源提交后发生进程中断，恢复任务必须依据同一幂等键完成 Store 状态或执行冲正，不能出现“期数已扣但店铺仍永久待激活”。
 
 ### 10.5 续费
 
@@ -692,7 +747,15 @@ POST /api/workbench/stores/{storeId}/renew
 POST /api/workbench/stores/{storeId}/check-connection
 ```
 
-激活和续费请求必须包含：
+激活请求包含：
+
+```text
+idempotencyKey
+expectedStoreVersion
+expectedServiceVersion
+```
+
+续费请求包含：
 
 ```text
 idempotencyKey
@@ -842,23 +905,26 @@ store.delete
 
 ### 15.2 现有店铺迁移
 
-对现有 `active` 店铺：
+只有在历史数据能够证明有效服务期限时，才将现有 Store 迁移为 `service_status = active`：
 
 ```text
 connection_status = connected
 service_status = active
-service_started_at = 可证明的历史开始时间；无法证明时使用迁移时间并记录来源
-service_expires_at = 来自现有真实到期数据；没有真实数据时不得伪造长期有效
+service_started_at = 可证明时写入，否则保持 null
+service_expires_at = 来自真实历史到期数据
+migration_source = 历史数据来源
 ```
 
-如果没有可靠的到期数据，迁移为：
+无法证明到期时间时，不使用迁移时间伪造服务开始或到期时间，而是迁移为：
 
 ```text
 connection_status = connected
 service_status = pending_activation
+service_started_at = null
+service_expires_at = null
 ```
 
-并由管理员或用户显式激活。迁移结果必须生成报告，不静默猜测。
+现有 `disabled` Store 在能够证明历史服务仍有效时映射为 `service_status = suspended`；否则映射为 `pending_activation`。迁移结果必须生成逐店报告，不静默猜测。
 
 ### 15.3 特性开关
 
@@ -888,7 +954,7 @@ SHUOMI_CONSOLE_DARK_THEME_ENABLED
 
 - 组织隔离和跨企业拒绝；
 - 激活与续费状态机；
-- 续费期数预留、提交、释放和重放；
+- 企业资源账本的授予、预留、提交、释放和冲正；
 - 并发激活只扣减一次；
 - 版本冲突；
 - 店铺名额与续费期数严格分离；
@@ -945,11 +1011,14 @@ SHUOMI_CONSOLE_DARK_THEME_ENABLED
 
 ### Slice 5：店铺中心新 UI 与显式激活
 
+- 第一阶段最小企业资源账本；
 - 新列表、详情和表单；
 - 连接状态与服务状态拆分；
 - 绑定不计费；
 - 激活和续费；
-- 数据迁移、并发、幂等和审计。
+- 数据迁移、恢复、并发、幂等和审计。
+
+这五个 Slice 分别编写实施计划并按依赖顺序交付，不生成一个覆盖全部子系统的超大计划。书面规格批准后从 Slice 1 开始。
 
 后续项目按独立设计进入：
 
@@ -974,12 +1043,13 @@ SHUOMI_CONSOLE_DARK_THEME_ENABLED
 8. 企业真实资源与成员月度限额概念不混用。
 9. 企业钱包未实现前不展示伪充值入口。
 10. 店铺绑定成功后保持待激活，且不消耗续费期数。
-11. 激活和续费具备幂等、版本控制和余额不足保护。
+11. 激活和续费具备幂等、版本控制、故障恢复和余额不足保护。
 12. 店铺名额与店铺续费期数是两个独立资源。
 13. 企业切换后不残留上一企业的账户、权益、用量或店铺数据。
 14. 生产页面不显示 Figma 示例数字和示例用户。
 15. 所有接口在后端重新验证 Effective Organization、权限、权益和资源归属。
 16. 深浅主题和响应式实现不依赖逐页复制的硬编码颜色与绝对坐标。
+17. 资源余额可以通过企业资源事件逐笔核对，不允许直接无流水改余额。
 
 ## 19. 设计结论
 
@@ -990,6 +1060,7 @@ SHUOMI_CONSOLE_DARK_THEME_ENABLED
 + 新 Console Shell
 + 清晰的个人与企业作用域
 + 企业权益只读模型
++ 企业级资源账本
 + 可审计的店铺绑定与显式激活
 ```
 
