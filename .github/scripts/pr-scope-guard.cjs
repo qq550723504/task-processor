@@ -14,6 +14,13 @@ const POLICY_RESULT_SUMMARIES = new Set([
   "Within admission limits",
   "Exceeds admission limits",
 ]);
+const NONTERMINAL_CHECK_STATUSES = new Set([
+  "queued",
+  "in_progress",
+  "waiting",
+  "requested",
+  "pending",
+]);
 const MAINTAINER_PERMISSIONS = new Set(["admin", "maintain"]);
 const LOCKFILES = new Set([
   "cargo.lock",
@@ -30,6 +37,10 @@ const TEST_PATH_SEGMENTS = new Set([
   "testdata",
   "tests",
 ]);
+
+function parseTimestamp(value) {
+  return typeof value === "string" ? Date.parse(value) : NaN;
+}
 
 function normalizeFilename(filename) {
   if (typeof filename !== "string" || filename.trim() === "") {
@@ -280,7 +291,7 @@ function authorizedArchitectureApprovers({
   if (authorLogin !== null && (typeof authorLogin !== "string" || authorLogin.trim() === "")) {
     throw new TypeError("authorLogin must be null or a non-empty string");
   }
-  if (baseChangedAt !== null && (typeof baseChangedAt !== "string" || Number.isNaN(Date.parse(baseChangedAt)))) {
+  if (baseChangedAt !== null && (typeof baseChangedAt !== "string" || Number.isNaN(parseTimestamp(baseChangedAt)))) {
     throw new TypeError("baseChangedAt must be null or an ISO timestamp");
   }
   if (!labels.includes(OVERRIDE_LABEL)) {
@@ -296,8 +307,8 @@ function authorizedArchitectureApprovers({
       }
       return baseChangedAt === null || (
         typeof review?.submitted_at === "string" &&
-        !Number.isNaN(Date.parse(review.submitted_at)) &&
-        Date.parse(review.submitted_at) > Date.parse(baseChangedAt)
+        !Number.isNaN(parseTimestamp(review.submitted_at)) &&
+        parseTimestamp(review.submitted_at) > parseTimestamp(baseChangedAt)
       );
   });
 }
@@ -344,12 +355,12 @@ function hasRecentLabelRemoval(events, labelName, now = Date.now(), windowMs = 1
   if (typeof labelName !== "string" || labelName.trim() === "") {
     throw new TypeError("labelName must be a non-empty string");
   }
-  const nowMs = typeof now === "number" ? now : Date.parse(now);
+  const nowMs = typeof now === "number" ? now : parseTimestamp(now);
   if (!Number.isFinite(nowMs) || !Number.isFinite(windowMs) || windowMs <= 0) {
     throw new TypeError("now and windowMs must be valid time values");
   }
   return events.some((event) => {
-    const createdAt = Date.parse(event?.created_at);
+    const createdAt = parseTimestamp(event?.created_at);
     return event?.event === "unlabeled" &&
       event?.label?.name === labelName &&
       Number.isFinite(createdAt) &&
@@ -373,48 +384,67 @@ function needsAdmissionReconciliation({
   if (typeof baseRef !== "string" || typeof defaultBranch !== "string") {
     throw new TypeError("baseRef and defaultBranch must be strings");
   }
-  const nowMs = typeof now === "number" ? now : Date.parse(now);
+  const nowMs = typeof now === "number" ? now : parseTimestamp(now);
   if (!Number.isFinite(nowMs) || !Number.isFinite(inProgressTimeoutMs) || inProgressTimeoutMs <= 0) {
     throw new TypeError("now and inProgressTimeoutMs must be valid time values");
   }
   if (baseRef !== defaultBranch || labels.includes(OVERRIDE_LABEL)) {
     return true;
   }
-  const latestRemovalMs = events
-    .filter((event) => event?.event === "unlabeled" && event?.label?.name === OVERRIDE_LABEL)
-    .map((event) => Date.parse(event?.created_at))
-    .filter((createdAt) => Number.isFinite(createdAt))
-    .reduce((latest, createdAt) => Math.max(latest, createdAt), -Infinity);
-  const terminalRuns = checkRuns
-    .filter((run) => run?.status === "completed" && typeof run?.conclusion === "string")
-    .map((run) => ({
-      completedAtMs: Date.parse(run?.completed_at),
-      startedAtMs: Date.parse(run?.started_at || run?.created_at),
-      isPolicyResult: POLICY_RESULT_SUMMARIES.has(run?.output?.summary),
-    }))
-    .filter(({ completedAtMs }) => Number.isFinite(completedAtMs));
-  const staleInProgress = checkRuns.some((run) => {
-    if (run?.status === "completed") {
-      return false;
-    }
-    const startedAt = Date.parse(run?.started_at || run?.created_at);
-    return Number.isFinite(startedAt) && startedAt <= nowMs - inProgressTimeoutMs;
-  });
-  if (staleInProgress) {
+  const overrideLabelRemovalEvents = events
+    .filter((event) => event?.event === "unlabeled" && event?.label?.name === OVERRIDE_LABEL);
+  if (overrideLabelRemovalEvents.some((event) => !Number.isFinite(parseTimestamp(event?.created_at)))) {
     return true;
   }
-  if (checkRuns.some((run) => run?.status !== "completed")) {
-    return false;
+  const latestRemovalMs = overrideLabelRemovalEvents
+    .map((event) => parseTimestamp(event?.created_at))
+    .filter((createdAt) => Number.isFinite(createdAt))
+    .reduce((latest, createdAt) => Math.max(latest, createdAt), -Infinity);
+  if (checkRuns.some((run) => !Number.isFinite(parseTimestamp(run?.created_at)))) {
+    return true;
   }
-  const latestTerminal = terminalRuns.reduce(
-    (latest, run) => !latest || run.completedAtMs > latest.completedAtMs ? run : latest,
-    null,
-  );
-  if (!latestTerminal || !latestTerminal.isPolicyResult) {
+  const latestRun = checkRuns.reduce((latest, run) => {
+    if (!latest) {
+      return run;
+    }
+    const latestCreatedAtMs = parseTimestamp(latest?.created_at);
+    const createdAtMs = parseTimestamp(run?.created_at);
+    if (createdAtMs < latestCreatedAtMs) {
+      return latest;
+    }
+    if (createdAtMs > latestCreatedAtMs) {
+      return run;
+    }
+    return Number(run?.id) > Number(latest?.id) ? run : latest;
+  }, null);
+  if (!latestRun) {
+    return true;
+  }
+  if (latestRun.status !== "completed") {
+    if (!NONTERMINAL_CHECK_STATUSES.has(latestRun.status)) {
+      return true;
+    }
+    const startedAtMs = parseTimestamp(latestRun?.started_at || latestRun?.created_at);
+    return !Number.isFinite(startedAtMs) || startedAtMs <= nowMs - inProgressTimeoutMs;
+  }
+  const startedAtMs = parseTimestamp(latestRun?.started_at);
+  const completedAtMs = parseTimestamp(latestRun?.completed_at);
+  if (
+    !Number.isFinite(startedAtMs) ||
+    !Number.isFinite(completedAtMs) ||
+    startedAtMs > completedAtMs
+  ) {
+    return true;
+  }
+  if (
+    typeof latestRun.conclusion !== "string" ||
+    !POLICY_RESULT_SUMMARIES.has(latestRun?.output?.summary)
+  ) {
     return true;
   }
   if (Number.isFinite(latestRemovalMs)) {
-    return !Number.isFinite(latestTerminal.startedAtMs) || latestTerminal.startedAtMs <= latestRemovalMs;
+    const startedAtMs = parseTimestamp(latestRun?.started_at || latestRun?.created_at);
+    return !Number.isFinite(startedAtMs) || startedAtMs <= latestRemovalMs;
   }
   return false;
 }

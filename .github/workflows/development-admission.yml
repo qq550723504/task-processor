@@ -128,16 +128,82 @@ jobs:
               repo: context.repo.repo,
             };
             const statusContext = "Development Admission";
+            const trustedCheckAppId = 15368;
+            const nonterminalCheckStatuses = new Set([
+              "queued",
+              "in_progress",
+              "waiting",
+              "requested",
+              "pending",
+            ]);
+            const parseTimestamp = (value) => typeof value === "string" ? Date.parse(value) : NaN;
             const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             let statusSha = context.eventName === "pull_request_target"
               ? context.payload.pull_request?.merge_commit_sha
               : process.env.TARGET_MERGE_COMMIT_SHA || null;
+            const checkRunExternalId = () => statusSha
+              ? `development-admission:${pullRequestNumber}:${statusSha}`
+              : null;
+            let admissionCheckRunId = null;
             let initialStatusPublished = false;
+            const findExistingCheckRun = async ({ includeCompleted = false } = {}) => {
+              const externalId = checkRunExternalId();
+              if (!externalId) {
+                return null;
+              }
+              const checkRuns = await github.paginate(github.rest.checks.listForRef, {
+                ...repositoryRequest,
+                ref: statusSha,
+                check_name: statusContext,
+                per_page: 100,
+              });
+              const matchingCheckRuns = checkRuns
+                .filter((run) => run?.external_id === externalId && run?.app?.id === trustedCheckAppId)
+                .sort((left, right) => {
+                  const leftCreatedAt = parseTimestamp(left?.created_at);
+                  const rightCreatedAt = parseTimestamp(right?.created_at);
+                  if (!Number.isFinite(leftCreatedAt) && Number.isFinite(rightCreatedAt)) {
+                    return 1;
+                  }
+                  if (Number.isFinite(leftCreatedAt) && !Number.isFinite(rightCreatedAt)) {
+                    return -1;
+                  }
+                  if (leftCreatedAt !== rightCreatedAt) {
+                    return rightCreatedAt - leftCreatedAt;
+                  }
+                  return Number(right?.id) - Number(left?.id);
+                });
+              const untrustedCheckRun = matchingCheckRuns.find((run) => {
+                if (!Number.isFinite(parseTimestamp(run?.created_at))) {
+                  return true;
+                }
+                if (nonterminalCheckStatuses.has(run?.status)) {
+                  return false;
+                }
+                if (run?.status !== "completed") {
+                  return true;
+                }
+                const startedAt = parseTimestamp(run?.started_at);
+                const completedAt = parseTimestamp(run?.completed_at);
+                return !Number.isFinite(startedAt) ||
+                  !Number.isFinite(completedAt) ||
+                  startedAt > completedAt;
+              });
+              if (untrustedCheckRun) {
+                return { kind: "untrusted", run: untrustedCheckRun };
+              }
+              const recoverableCheckRun = matchingCheckRuns.find((run) => nonterminalCheckStatuses.has(run?.status));
+              if (recoverableCheckRun) {
+                return { kind: "reusable", run: recoverableCheckRun };
+              }
+              return includeCompleted && matchingCheckRuns[0]
+                ? { kind: "completed", run: matchingCheckRuns[0] }
+                : null;
+            };
             const publishStatus = async ({ state, description }) => {
               const checkRun = {
-                ...repositoryRequest,
                 name: statusContext,
-                head_sha: statusSha,
+                external_id: checkRunExternalId(),
                 status: state === "pending" ? "in_progress" : "completed",
                 details_url: targetUrl,
                 output: {
@@ -147,8 +213,73 @@ jobs:
               };
               if (state !== "pending") {
                 checkRun.conclusion = state === "success" ? "success" : "failure";
+              } else {
+                checkRun.started_at = new Date().toISOString();
               }
-              await github.rest.checks.create(checkRun);
+              if (!admissionCheckRunId) {
+                const existingCheckRun = await findExistingCheckRun();
+                if (existingCheckRun?.kind === "untrusted") {
+                  throw new Error("existing admission Check Run has untrusted status or timestamps");
+                }
+                admissionCheckRunId = existingCheckRun?.run?.id || null;
+              }
+              if (admissionCheckRunId) {
+                await github.rest.checks.update({
+                  ...repositoryRequest,
+                  check_run_id: admissionCheckRunId,
+                  ...checkRun,
+                });
+                return;
+              }
+              const createdCheckRun = await github.rest.checks.create({
+                ...repositoryRequest,
+                head_sha: statusSha,
+                ...checkRun,
+              });
+              admissionCheckRunId = createdCheckRun.data.id;
+            };
+            const recoverCheckRunAfterFailure = async () => {
+              if (!statusSha) {
+                return;
+              }
+              if (!admissionCheckRunId) {
+                try {
+                  const existingCheckRun = await findExistingCheckRun({ includeCompleted: true });
+                  if (existingCheckRun?.kind === "untrusted") {
+                    core.warning("Admission Check Run has untrusted status or timestamps; leaving recovery to the next reconciler run");
+                    return;
+                  }
+                  admissionCheckRunId = existingCheckRun?.run?.id || null;
+                } catch (lookupError) {
+                  const lookupMessage = lookupError instanceof Error ? lookupError.message : String(lookupError);
+                  core.error(`Could not recover the admission Check Run identity: ${lookupMessage}`);
+                }
+              }
+              if (!admissionCheckRunId) {
+                core.warning("Admission Check Run identity is unknown; leaving recovery to the next reconciler run");
+                return;
+              }
+              try {
+                const currentCheckRun = (await github.rest.checks.get({
+                  ...repositoryRequest,
+                  check_run_id: admissionCheckRunId,
+                })).data;
+                if (currentCheckRun.status === "completed") {
+                  core.warning("Admission Check Run already completed; preserving its durable result");
+                  return;
+                }
+                if (!nonterminalCheckStatuses.has(currentCheckRun.status)) {
+                  core.warning("Admission Check Run has an unknown status; leaving recovery to the next reconciler run");
+                  return;
+                }
+                await publishStatus({
+                  state: "error",
+                  description: guard.EVALUATION_ERROR_SUMMARY,
+                });
+              } catch (recoveryError) {
+                const recoveryMessage = recoveryError instanceof Error ? recoveryError.message : String(recoveryError);
+                core.error(`Could not publish the admission error status: ${recoveryMessage}`);
+              }
             };
             const readPermissions = async (logins) => {
               const permissions = {};
@@ -306,16 +437,6 @@ jobs:
             } catch (error) {
               const message = error instanceof Error ? error.message : String(error);
               core.error(message);
-              if (statusSha) {
-                try {
-                  await publishStatus({
-                    state: "error",
-                    description: guard.EVALUATION_ERROR_SUMMARY,
-                  });
-                } catch (statusError) {
-                  const statusMessage = statusError instanceof Error ? statusError.message : String(statusError);
-                  core.error(`Could not publish the admission error status: ${statusMessage}`);
-                }
-              }
+              await recoverCheckRunAfterFailure();
               core.setFailed("Development Admission could not be completed; retry the check.");
             }

@@ -44,6 +44,7 @@ jobs:
               ? context.payload.workflow_run.head_branch
               : null;
             const defaultBranch = context.payload.repository.default_branch;
+            const trustedCheckAppId = 15368;
             const candidateFlags = new Array(pullRequests.length).fill(false);
             let nextIndex = 0;
             const inspectPullRequests = async () => {
@@ -78,12 +79,16 @@ jobs:
                       per_page: 100,
                     }),
                   ]);
+                  const admissionCheckExternalId = `development-admission:${pullRequest.number}:${pullRequest.merge_commit_sha}`;
+                  const trustedCheckRuns = checkRuns.filter((run) =>
+                    run?.app?.id === trustedCheckAppId && run?.external_id === admissionCheckExternalId,
+                  );
                   candidateFlags[index] = guard.needsAdmissionReconciliation({
                     labels: pullRequest.labels.map(({ name }) => name),
                     baseRef: pullRequest.base.ref,
                     defaultBranch,
                     events,
-                    checkRuns,
+                    checkRuns: trustedCheckRuns,
                   });
                 } catch (error) {
                   core.warning(`Could not inspect label history for PR #${pullRequest.number}; dispatching a fail-closed evaluation: ${error}`);

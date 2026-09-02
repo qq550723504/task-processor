@@ -195,7 +195,15 @@ events still publish an error Check Run when target resolution fails. The
 reconciler accepts a default-base result only when the latest terminal Check
 Run has a recognized policy summary and, after label removal, started after
 that removal; evaluator-error or ambiguous terminal results continue to
-reconcile.
+reconcile. Each evaluator updates the Check Run it created instead of creating
+a second terminal run, and reconciliation ignores superseded older runs.
+The stable PR/merge-target external identity allows recovery after a lost
+create response; if the identity cannot be recovered, the evaluator leaves
+the result for the scheduled reconciler rather than issuing another create.
+Completed Check Runs are not reopened; a later evaluation creates a new run,
+while the active run belonging to the current evaluation is always updated.
+Unknown Check Run status or timestamp data is left for the fail-closed
+reconciler rather than being reused.
 
 The ordinary CI notification reports `DEVELOPMENT_ADMISSION_TEST_RESULT`; the trusted admission Check Run is a separate required check and is not coupled to the WeCom aggregation job.
 

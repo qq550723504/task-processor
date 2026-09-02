@@ -756,6 +756,20 @@ test("keeps reconciling after label removal until a terminal check exists", () =
   );
 });
 
+test("fails closed for an active check with no recovery timestamp", () => {
+  assert.equal(
+    needsAdmissionReconciliation({
+      labels: [],
+      baseRef: "main",
+      defaultBranch: "main",
+      events: [],
+      checkRuns: [{ status: "queued" }],
+      now: "2026-09-01T12:20:00Z",
+    }),
+    true,
+  );
+});
+
 test("retries terminal evaluator errors instead of treating them as policy results", () => {
   assert.equal(
     needsAdmissionReconciliation({
@@ -782,7 +796,7 @@ test("reconciles a check that remains in progress beyond the recovery window", (
       baseRef: "main",
       defaultBranch: "main",
       events: [],
-      checkRuns: [{ status: "in_progress", started_at: "2026-09-01T12:00:00Z" }],
+      checkRuns: [{ status: "in_progress", created_at: "2026-09-01T12:00:00Z", started_at: "2026-09-01T12:00:00Z" }],
       now: "2026-09-01T12:11:00Z",
       inProgressTimeoutMs: 10 * 60 * 1000,
     }),
@@ -794,11 +808,141 @@ test("reconciles a check that remains in progress beyond the recovery window", (
       baseRef: "main",
       defaultBranch: "main",
       events: [],
-      checkRuns: [{ status: "in_progress", started_at: "2026-09-01T12:05:00Z" }],
+      checkRuns: [{ status: "in_progress", created_at: "2026-09-01T12:05:00Z", started_at: "2026-09-01T12:05:00Z" }],
       now: "2026-09-01T12:11:00Z",
       inProgressTimeoutMs: 10 * 60 * 1000,
     }),
     false,
+  );
+});
+
+test("ignores a superseded stale check when a newer policy result exists", () => {
+  assert.equal(
+    needsAdmissionReconciliation({
+      labels: [],
+      baseRef: "main",
+      defaultBranch: "main",
+      events: [],
+      checkRuns: [
+        {
+          id: 1,
+          status: "in_progress",
+          created_at: "2026-09-01T11:00:00Z",
+          started_at: "2026-09-01T11:00:00Z",
+        },
+        {
+          id: 2,
+          status: "completed",
+          conclusion: "success",
+          created_at: "2026-09-01T12:00:00Z",
+          started_at: "2026-09-01T12:00:01Z",
+          completed_at: "2026-09-01T12:01:00Z",
+          output: { summary: "Within admission limits" },
+        },
+      ],
+      now: "2026-09-01T12:20:00Z",
+    }),
+    false,
+  );
+});
+
+test("fails closed for an unknown check status or timestamp", () => {
+  assert.equal(
+    needsAdmissionReconciliation({
+      labels: [],
+      baseRef: "main",
+      defaultBranch: "main",
+      events: [],
+      checkRuns: [{ status: "future_status", created_at: "2026-09-01T12:00:00Z" }],
+      now: "2026-09-01T12:01:00Z",
+    }),
+    true,
+  );
+  assert.equal(
+    needsAdmissionReconciliation({
+      labels: [],
+      baseRef: "main",
+      defaultBranch: "main",
+      events: [],
+      checkRuns: [{ status: "completed", conclusion: "success", completed_at: "2026-09-01T12:00:00Z" }],
+      now: "2026-09-01T12:01:00Z",
+    }),
+    true,
+  );
+});
+
+test("fails closed when an override-label removal event has an invalid timestamp", () => {
+  assert.equal(
+    needsAdmissionReconciliation({
+      labels: [],
+      baseRef: "main",
+      defaultBranch: "main",
+      events: [{
+        event: "unlabeled",
+        label: { name: "architecture-approved" },
+        created_at: "not-a-timestamp",
+      }],
+      checkRuns: [{
+        status: "completed",
+        conclusion: "success",
+        created_at: "2026-09-01T12:00:00Z",
+        started_at: "2026-09-01T12:00:00Z",
+        completed_at: "2026-09-01T12:01:00Z",
+        output: { summary: "Within admission limits" },
+      }],
+      now: "2026-09-01T12:02:00Z",
+    }),
+    true,
+  );
+});
+
+test("fails closed when a terminal check has incomplete timestamps", () => {
+  const base = {
+    labels: [],
+    baseRef: "main",
+    defaultBranch: "main",
+    events: [],
+    now: "2026-09-01T12:02:00Z",
+  };
+  assert.equal(
+    needsAdmissionReconciliation({
+      ...base,
+      checkRuns: [{
+        status: "completed",
+        conclusion: "success",
+        created_at: "2026-09-01T12:00:00Z",
+        output: { summary: "Within admission limits" },
+      }],
+    }),
+    true,
+  );
+  assert.equal(
+    needsAdmissionReconciliation({
+      ...base,
+      checkRuns: [{
+        status: "completed",
+        conclusion: "success",
+        created_at: "2026-09-01T12:00:00Z",
+        started_at: "2026-09-01T12:00:00Z",
+        completed_at: "not-a-timestamp",
+        output: { summary: "Within admission limits" },
+      }],
+    }),
+    true,
+  );
+  assert.equal(
+    needsAdmissionReconciliation({
+      ...base,
+      checkRuns: [{
+        status: "completed",
+        conclusion: "success",
+        created_at: 0,
+        started_at: "2026-09-01T12:00:00Z",
+        completed_at: "2026-09-01T12:01:00Z",
+        output: { summary: "Within admission limits" },
+      }],
+    }),
+    true,
   );
 });
 
@@ -830,6 +974,15 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   assert.match(admissionWorkflow, /context\.payload\.pull_request\?\.merge_commit_sha/);
   assert.match(admissionWorkflow, /merge_commit_sha:/);
   assert.match(admissionWorkflow, /checks\.create/);
+  assert.match(admissionWorkflow, /checks\.update/);
+  assert.match(admissionWorkflow, /admissionCheckRunId/);
+  assert.match(admissionWorkflow, /external_id/);
+  assert.match(admissionWorkflow, /checks\.listForRef/);
+  assert.match(admissionWorkflow, /checks\.get/);
+  assert.match(admissionWorkflow, /findExistingCheckRun\(\{ includeCompleted: true \}\)/);
+  assert.match(admissionWorkflow, /nonterminalCheckStatuses/);
+  assert.match(admissionWorkflow, /nonterminalCheckStatuses\.has\(currentCheckRun\.status\)/);
+  assert.match(admissionWorkflow, /started_at/);
   assert.doesNotMatch(admissionWorkflow, /createCommitStatus/);
   assert.match(
     admissionWorkflow,
@@ -856,6 +1009,8 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   assert.match(reconcileWorkflow, /needsAdmissionReconciliation/);
   assert.match(reconcileWorkflow, /issues: read/);
   assert.match(reconcileWorkflow, /checks: read/);
+  assert.match(reconcileWorkflow, /trustedCheckAppId/);
+  assert.match(reconcileWorkflow, /external_id === admissionCheckExternalId/);
   assert.match(reconcileWorkflow, /try \{[\s\S]*createWorkflowDispatch/);
   assert.match(reconcileWorkflow, /dispatchFailures/);
   assert.match(admissionWorkflow, /finalPermissions/);

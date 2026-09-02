@@ -217,7 +217,19 @@ file list does not equal `changed_files`. It publishes a Check Run named
 after evaluation. The Check Run is created by the GitHub Actions application,
 so branch protection can bind the required check to that application instead of
 trusting a user-writable status context. This keeps evaluations for the same
-head against different base branches from overwriting one another. Evaluations
+head against different base branches from overwriting one another. Each
+evaluation retains the created nonterminal Check Run ID and updates that same
+run when it finishes. A completed Check Run is immutable, so a later
+evaluation starts a new run. Each active evaluation also uses a stable
+external identity per PR and merge target to recover an existing nonterminal
+run when a create response is lost; completed runs are never selected for
+update. An unknown create result is never retried
+by issuing a second create. Only the expected GitHub Actions app and external
+identity are eligible for recovery or reconciliation; unknown Check Run status
+or timestamp data is treated as untrusted. Reconciliation considers only the
+newest Check Run for the target, so timed-out retries reuse one active run
+instead of creating an unbounded set of orphaned pending checks.
+Evaluations
 are serialized per PR so an older run cannot overwrite a newer result. When the
 override label is present, the workflow reads pull-request reviews and the
 reviewer's repository `role_name`; only a non-author collaborator with `maintain`
