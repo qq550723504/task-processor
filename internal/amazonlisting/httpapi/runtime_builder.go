@@ -12,6 +12,7 @@ type RuntimeBuildInput struct {
 	Config                       *config.Config
 	ProductSnapshotReader        amazonlisting.ProductSnapshotReader
 	ApprovedAssetInventoryReader amazonlisting.ApprovedAssetInventoryReader
+	Repositories                 RepositoryDependencies
 }
 
 func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
@@ -20,5 +21,6 @@ func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
 		Logger:                       input.Logger,
 		ProductSnapshotReader:        input.ProductSnapshotReader,
 		ApprovedAssetInventoryReader: input.ApprovedAssetInventoryReader,
+		Repositories:                 input.Repositories,
 	})
 }

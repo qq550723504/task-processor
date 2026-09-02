@@ -49,4 +49,4 @@ go run ./cmd/product-listing-api \
   -log-level info
 ```
 
-配置缺少模块所需的生产数据库、Catalog/Asset Repository 或外部工作流依赖时，模块不会通过内存实现静默降级。
+AmazonListing 与 ListingKit 的产品事实只读自 Catalog Product Snapshot，图片只读自 Approved Asset inventory。退役的 ProductEnrich/ProductImage HTTP Task、Queue、Worker Pool 和 Task Repository 不再由该进程装配。

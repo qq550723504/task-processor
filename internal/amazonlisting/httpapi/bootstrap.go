@@ -26,10 +26,15 @@ type BuildModuleInput struct {
 	Logger                       *logrus.Logger
 	ProductSnapshotReader        amazonlisting.ProductSnapshotReader
 	ApprovedAssetInventoryReader amazonlisting.ApprovedAssetInventoryReader
+	Repositories                 RepositoryDependencies
+}
+
+type RepositoryDependencies struct {
+	Task amazonlisting.Repository
 }
 
 func BuildModule(input BuildModuleInput) (*Module, error) {
-	repo, closers, err := buildTaskRepository(input.Config, input.Logger)
+	repo, closers, err := resolveTaskRepository(input)
 	if err != nil {
 		return nil, err
 	}
@@ -64,6 +69,13 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		Pool:    pool,
 		Closers: closers,
 	}, nil
+}
+
+func resolveTaskRepository(input BuildModuleInput) (amazonlisting.Repository, []func() error, error) {
+	if input.Repositories.Task != nil {
+		return input.Repositories.Task, nil, nil
+	}
+	return buildTaskRepository(input.Config, input.Logger)
 }
 
 func buildTaskRepository(cfg *config.Config, logger *logrus.Logger) (amazonlisting.Repository, []func() error, error) {
