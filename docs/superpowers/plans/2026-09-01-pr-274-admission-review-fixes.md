@@ -1,5 +1,9 @@
 # PR #274 Admission Review Fixes Implementation Plan
 
+> Superseded implementation plan: the active policy has no architecture
+> override path or review/reconciliation workflows. This file is retained as
+> historical context.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Resolve the remaining PR #274 review findings while preserving the trusted development-admission authorization boundary.

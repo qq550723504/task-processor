@@ -1,5 +1,9 @@
 # PR #274 Development Admission Review Fixes
 
+> Superseded by the current single-developer policy: the active evaluator has
+> no architecture override path, review-signal workflow, or reconciliation
+> workflow. This file records the earlier design and is retained for history.
+
 ## Scope
 
 This follow-up resolves the three review findings on PR #274. The first finding is already present in the current PR head (`ef63f92`): non-decision reviews do not replace a maintainer's current-head approval. This change preserves that implementation and adds regression coverage only where needed.

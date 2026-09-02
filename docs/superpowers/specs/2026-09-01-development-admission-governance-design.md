@@ -1,5 +1,11 @@
 # Development Admission Governance Design
 
+> Historical design note: the current single-developer implementation uses a
+> deliberately smaller policy. It keeps only fixed size thresholds and requires
+> oversized changes to be split. The label-based override, PR-body evidence,
+> review-signal workflows, and reconciliation workflow described below are not
+> active implementation requirements.
+
 ## Context
 
 PR #270 showed that a capable model and high reasoning effort do not replace

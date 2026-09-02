@@ -57,11 +57,8 @@ For architecture-sensitive work, verify:
    authorization revocation; slow requests, deadlines, and resource
    retention; and sibling routes or consumers that do not share the policy.
    Each context has evidence or an explicit `N/A` rationale.
-10. An oversized PR has the `architecture-approved` label plus a maintainer or
-   administrator `APPROVED` review for the current head SHA, design link, and
-   documented reason it cannot be split safely. The label alone is not
-   authorization and does not waive design, testing, security, or fault-matrix
-   evidence.
+10. An oversized PR is split into independently verifiable pull requests. The
+   admission check has no override label or review-based bypass.
 11. A material review fix that changed a state machine, transaction boundary,
     recovery protocol, or public contract returned to design review instead of
     remaining a local patch.

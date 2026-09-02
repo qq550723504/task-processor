@@ -1,5 +1,9 @@
 # Development Admission Governance Implementation Plan
 
+> Superseded implementation plan: the active policy keeps only fixed size
+> thresholds and requires oversized changes to be split. Override, review
+> signal, and reconciliation steps below are historical.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add repository-wide development admission rules and a tested CI scope guard that stops oversized or architecture-sensitive work unless a maintainer explicitly approves the exception.

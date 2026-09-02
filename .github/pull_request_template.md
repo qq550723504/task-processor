@@ -12,12 +12,11 @@
 - Design:
 - Independent design review:
 - Invariants and failure matrix:
-- Override approver (must match a current-head maintainer/admin approval review, only when oversized):
-- Split rationale (only when oversized):
+- Split rationale (required when oversized):
 
 Admission checklist:
 
-- [ ] The change is at or below 30 scope-relevant files, 1,500 production additions, and 2,500 production churn, or has the documented `architecture-approved` exception with a maintainer/admin approval review for the current head SHA.
+- [ ] The change is at or below 30 scope-relevant files, 1,500 production additions, and 2,500 production churn; oversized changes are split into smaller pull requests.
 - [ ] Architecture-sensitive work has an approved design and a fresh independent design review.
 - [ ] Stateful or multi-boundary work documents durable states, retry identity, recovery ownership, and a failure matrix.
 - [ ] A shared transaction and existing repository or mature open-source facilities were evaluated before adding compensation infrastructure.
