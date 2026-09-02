@@ -3,6 +3,7 @@ package alibaba1688
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"task-processor/internal/core/config"
@@ -21,12 +22,28 @@ func TestResolveAlibaba1688UserDataDirUsesConfiguredValue(t *testing.T) {
 	}
 }
 
-func TestResolveAlibaba1688UserDataDirUsesSharedDefault(t *testing.T) {
-	want := filepath.Join(os.TempDir(), "task-processor", "browser-profiles", "1688")
+func TestResolveAlibaba1688UserDataDirUsesNamespacedDefault(t *testing.T) {
 	for _, cfg := range []*config.Config{nil, &config.Config{}} {
-		if got := resolveAlibaba1688UserDataDir(cfg); got != want {
-			t.Fatalf("resolveAlibaba1688UserDataDir(%v) = %q, want %q", cfg, got, want)
+		got := resolveAlibaba1688UserDataDir(cfg)
+		if !strings.HasPrefix(got, filepath.Join(os.TempDir(), "task-processor", "browser-profiles", "1688")) {
+			t.Fatalf("resolveAlibaba1688UserDataDir(%v) = %q, want a namespaced path under the system temp directory", cfg, got)
 		}
+	}
+}
+
+func TestAlibaba1688BrowserProfileNamespaceSeparatesInstallationsAndProcesses(t *testing.T) {
+	first := alibaba1688BrowserProfileNamespace(`C:\checkout\one`, 1001)
+	secondInstallation := alibaba1688BrowserProfileNamespace(`C:\checkout\two`, 1001)
+	secondProcess := alibaba1688BrowserProfileNamespace(`C:\checkout\one`, 1002)
+
+	if first == secondInstallation {
+		t.Fatal("different installations must not share the default browser profile namespace")
+	}
+	if first == secondProcess {
+		t.Fatal("different processes must not share the default browser profile namespace")
+	}
+	if len(first) == 0 || strings.ContainsAny(first, `/\\:`) {
+		t.Fatalf("namespace = %q, want a non-empty path-safe value", first)
 	}
 }
 

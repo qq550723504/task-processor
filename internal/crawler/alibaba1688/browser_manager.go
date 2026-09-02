@@ -2,9 +2,12 @@
 package alibaba1688
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
@@ -98,7 +101,26 @@ func resolveAlibaba1688UserDataDir(cfg *config.Config) string {
 			return dir
 		}
 	}
-	return filepath.Join(os.TempDir(), "task-processor", "browser-profiles", "1688")
+	installationDir, err := os.Getwd()
+	if err != nil {
+		installationDir = "unknown"
+	}
+	return filepath.Join(
+		os.TempDir(),
+		"task-processor",
+		"browser-profiles",
+		"1688",
+		alibaba1688BrowserProfileNamespace(installationDir, os.Getpid()),
+	)
+}
+
+func alibaba1688BrowserProfileNamespace(installationDir string, pid int) string {
+	installationDir = filepath.Clean(installationDir)
+	if absoluteDir, err := filepath.Abs(installationDir); err == nil {
+		installationDir = absoluteDir
+	}
+	digest := sha256.Sum256([]byte(installationDir))
+	return hex.EncodeToString(digest[:8]) + "-" + strconv.Itoa(pid)
 }
 
 // CreateBrowser 创建浏览器实例（保持向后兼容的API）
