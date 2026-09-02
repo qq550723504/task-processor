@@ -169,10 +169,18 @@ export function HeroSystemVisual() {
       return;
     }
 
-    setVisualState("boot");
-    const frame = window.requestAnimationFrame(() => setVisualState("active"));
+    let revealFrame: number | undefined;
+    const bootFrame = window.requestAnimationFrame(() => {
+      setVisualState("boot");
+      revealFrame = window.requestAnimationFrame(() => setVisualState("active"));
+    });
 
-    return () => window.cancelAnimationFrame(frame);
+    return () => {
+      window.cancelAnimationFrame(bootFrame);
+      if (revealFrame !== undefined) {
+        window.cancelAnimationFrame(revealFrame);
+      }
+    };
   }, [reduceMotion]);
 
   return (

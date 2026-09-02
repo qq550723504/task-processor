@@ -718,7 +718,8 @@
     width: 100%;
     height: auto;
     aspect-ratio: auto;
-    display: block;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .visualGlow,
@@ -739,10 +740,8 @@
   }
 
   .capabilityList {
-    position: relative;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    position: static;
+    display: contents;
   }
 
   .core {

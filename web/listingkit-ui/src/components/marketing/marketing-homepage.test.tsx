@@ -51,7 +51,7 @@ describe("MarketingHomepage", () => {
   it("renders the staged hero motion as an accessible commerce architecture visual", () => {
     render(<MarketingHomepage />);
 
-    const architecture = screen.getByRole("img", { name: "硕米 AI 电商能力架构" });
+    const architecture = screen.getByRole("group", { name: "硕米 AI 电商能力架构" });
     expect(architecture).toHaveAttribute(
       "data-motion-sequence",
       "boot-reveal-active-pulse",
