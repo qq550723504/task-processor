@@ -314,20 +314,33 @@ function hasRequiredOverrideEvidence(body, approvedLogins) {
     return false;
   }
   const normalizedBody = body.replaceAll("`", "");
-  const valueFor = (pattern) => {
+  const valueFor = (pattern, contradictoryPatterns = []) => {
     const match = normalizedBody.match(pattern);
     const value = match?.[1]?.trim();
-    return value && !/^(?:n\/a|none|tbd|todo)(?:\s*:\s*|$)/i.test(value)
+    return value &&
+      !/^(?:n\/a|none|tbd|todo)(?:\s*:\s*|$)/i.test(value) &&
+      !contradictoryPatterns.some((contradictoryPattern) => contradictoryPattern.test(value))
       ? value
       : null;
   };
   const design = valueFor(/^\s*-\s*Design:\s*(.+)$/im);
-  const independentReview = valueFor(/^\s*-\s*Independent design review:\s*(.+)$/im);
+  const independentReview = valueFor(
+    /^\s*-\s*Independent design review:\s*(.+)$/im,
+    [
+      /\b(?:not|never)\s+(?:performed|conducted|completed|done)\b/i,
+      /\bno\b.*\breview\b/i,
+      /\bwithout\b.*\breview\b/i,
+    ],
+  );
   const approver = valueFor(
     /^\s*-\s*(?:Override approver[^:\n]*|architecture-approved[^:\n]*approval review[^:\n]*split rationale[^:\n]*):\s*(.+)$/im,
   );
   const splitRationale = valueFor(
     /^\s*-\s*(?:Split rationale[^:\n]*|architecture-approved[^:\n]*split rationale[^:\n]*):\s*(.+)$/im,
+    [
+      /\b(?:can|could|may|should)\b.*\b(?:be\s+)?split\b/i,
+      /\b(?:safe|safely)\s+to\s+split\b/i,
+    ],
   );
   const hasDesignLink = design && /https?:\/\/\S+|(?:^|\s)(?:docs|designs?)\/\S+/i.test(design);
   const hasApprovedLogin = approvedLogins.some((login) => {
