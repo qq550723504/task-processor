@@ -6,24 +6,27 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"task-processor/internal/core/logger"
+	"task-processor/internal/integration/httpimage"
 	"task-processor/internal/sds/client"
 	sdstemplate "task-processor/internal/sds/template"
 )
 
 // Service 封装 SDS 设计相关请求。
 type Service struct {
-	client *client.Client
+	client          *client.Client
+	imageHTTPClient *http.Client
 }
 
 // NewService 创建设计服务。
 func NewService(c *client.Client) *Service {
-	return &Service{client: c}
+	return &Service{client: c, imageHTTPClient: httpimage.NewPublicImageHTTPClient()}
 }
 
 // Upload 上传设计图文件。

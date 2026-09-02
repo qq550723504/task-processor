@@ -36,9 +36,7 @@ func (s *service) runSingleSDSDesignFromApprovedAssets(ctx context.Context, task
 	}
 
 	summary := buildSDSSyncSummary(options, syncResult.DesignResult)
-	if !finalizeSDSSyncSummary(ctx, result, task.Request, recorder, stage, summary, options) {
-		return
-	}
+	finalizeSDSSyncSummary(result, task.Request, recorder, stage, summary, options)
 	log.WithFields(logrus.Fields{
 		"status":        result.SDSDesignResult.Status,
 		"mockup_count":  len(result.SDSDesignResult.MockupImageURLs),

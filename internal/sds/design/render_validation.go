@@ -1,6 +1,7 @@
 package design
 
 import (
+	"bytes"
 	"context"
 	"image"
 	_ "image/gif"
@@ -10,9 +11,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"task-processor/internal/integration/httpimage"
 )
 
-const blankRenderedDiffThreshold = 0.035
+const (
+	blankRenderedDiffThreshold = 0.035
+	maxComparisonImagePixels   = 40_000_000
+)
 
 func (s *Service) renderedCandidateLooksBlank(ctx context.Context, urls []string, blankURL string) bool {
 	renderedURL := firstRenderedURL(urls)
@@ -20,11 +26,11 @@ func (s *Service) renderedCandidateLooksBlank(ctx context.Context, urls []string
 	if renderedURL == "" || blankURL == "" {
 		return false
 	}
-	rendered, ok := downloadImageForComparison(ctx, renderedURL)
+	rendered, ok := downloadImageForComparisonWithClient(ctx, renderedURL, s.comparisonImageHTTPClient())
 	if !ok {
 		return false
 	}
-	blank, ok := downloadImageForComparison(ctx, blankURL)
+	blank, ok := downloadImageForComparisonWithClient(ctx, blankURL, s.comparisonImageHTTPClient())
 	if !ok {
 		return false
 	}
@@ -42,30 +48,45 @@ func firstRenderedURL(urls []string) string {
 	return ""
 }
 
-func downloadImageForComparison(ctx context.Context, imageURL string) (image.Image, bool) {
+func downloadImageForComparisonWithClient(ctx context.Context, imageURL string, client *http.Client) (image.Image, bool) {
 	imageURL = strings.TrimSpace(imageURL)
 	if imageURL == "" {
 		return nil, false
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, imageURL, nil)
+	if client == nil {
+		client = httpimage.NewPublicImageHTTPClient()
+	}
+	data, err := httpimage.Download(reqCtx, client, imageURL, httpimage.DefaultMaxBodyBytes)
 	if err != nil {
 		return nil, false
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
+	config, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || !supportedComparisonImageFormat(format) || config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > maxComparisonImagePixels {
 		return nil, false
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, false
-	}
-	img, _, err := image.Decode(resp.Body)
+	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, false
 	}
 	return img, true
+}
+
+func (s *Service) comparisonImageHTTPClient() *http.Client {
+	if s == nil {
+		return nil
+	}
+	return s.imageHTTPClient
+}
+
+func supportedComparisonImageFormat(format string) bool {
+	switch format {
+	case "gif", "jpeg", "png":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizedRenderedImageDiff(a, b image.Image, width, height int) float64 {

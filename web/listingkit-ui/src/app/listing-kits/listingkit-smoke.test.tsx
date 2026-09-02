@@ -36,6 +36,11 @@ describe("ListingKit lightweight smoke", () => {
       },
     });
 
-    expect(payload).toEqual({ task_id: "task-1", status: "completed" });
+    expect(payload).toEqual({
+      task_id: "task-1",
+      status: "completed",
+      needs_review: false,
+      created_at: "2026-04-19T00:00:00Z",
+    });
   });
 });

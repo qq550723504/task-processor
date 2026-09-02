@@ -323,26 +323,6 @@ export type CreateListingKitTaskRequest = {
       audience_hint?: string;
       custom_scene_hint?: string;
     };
-    shein_studio?: {
-      style_id?: string;
-      style_name?: string;
-      source_design_urls?: string[];
-      source_design_width?: number;
-      source_design_height?: number;
-      product_image_urls?: string[];
-      selected_sds_images?: Array<{
-        image_url?: string;
-        variant_sku?: string;
-        color?: string;
-      }>;
-      variant_product_images?: Array<{
-        variant_sku?: string;
-        color?: string;
-        image_urls?: string[];
-      }>;
-      size_reference_image_urls?: string[];
-      render_size_images_with_sds?: boolean;
-    };
     sds?: {
       variant_id: number;
       parent_product_id?: number;
