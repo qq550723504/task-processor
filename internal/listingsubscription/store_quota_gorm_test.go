@@ -96,6 +96,75 @@ func TestStoreQuotaReserveReplayAndTransitions(t *testing.T) {
 	}
 }
 
+func TestStoreQuotaReserveReturnsDatabasePrecisionForCompensation(t *testing.T) {
+	db := openStoreQuotaTestDB(t)
+	repo := NewGormRepository(db)
+	seedStoreQuotaSubscription(t, repo, "org-precision", PlanBasic, 1)
+	clock := time.Date(2026, 9, 2, 12, 34, 56, 123456789, time.UTC)
+	ledger := newGormStoreQuotaLedger(repo, func() time.Time { return clock })
+	input := StoreQuotaReserveInput{
+		OrganizationID: "org-precision",
+		RequestKey:     uuid.NewString(),
+		ActorSubject:   "actor-precision",
+	}
+
+	reserved, err := ledger.Reserve(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Reserve() error = %v", err)
+	}
+	expectedUpdatedAt := clock.UTC().Truncate(time.Microsecond)
+	if !reserved.Allocation.UpdatedAt.Equal(expectedUpdatedAt) {
+		t.Fatalf("Reserve() UpdatedAt = %s, want database precision %s", reserved.Allocation.UpdatedAt, expectedUpdatedAt)
+	}
+
+	var row storeQuotaAllocationRow
+	if err := db.Where("organization_id = ? AND request_key = ?", input.OrganizationID, input.RequestKey).Take(&row).Error; err != nil {
+		t.Fatalf("load persisted allocation: %v", err)
+	}
+	if !reserved.Allocation.UpdatedAt.Equal(row.UpdatedAt) {
+		t.Fatalf("Reserve() UpdatedAt = %s, persisted UpdatedAt = %s", reserved.Allocation.UpdatedAt, row.UpdatedAt)
+	}
+	var bucket storeQuotaBucketRow
+	if err := db.Where("organization_id = ?", input.OrganizationID).Take(&bucket).Error; err != nil {
+		t.Fatalf("load persisted bucket: %v", err)
+	}
+	if !bucket.UpdatedAt.Equal(expectedUpdatedAt) {
+		t.Fatalf("persisted bucket UpdatedAt = %s, want database precision %s", bucket.UpdatedAt, expectedUpdatedAt)
+	}
+
+	_, err = ledger.ReleaseReservation(context.Background(), StoreQuotaTransitionInput{
+		OrganizationID:    input.OrganizationID,
+		AllocationID:      reserved.AllocationID,
+		StoreID:           reserved.StoreID,
+		RequestKey:        input.RequestKey,
+		ActorSubject:      input.ActorSubject,
+		ExpectedUpdatedAt: &reserved.Allocation.UpdatedAt,
+	})
+	if err != nil {
+		t.Fatalf("ReleaseReservation() with Reserve() timestamp error = %v", err)
+	}
+}
+
+func TestEstablishStoreQuotaBucketUsesDatabasePrecision(t *testing.T) {
+	db := openStoreQuotaTestDB(t)
+	clock := time.Date(2026, 9, 2, 12, 34, 56, 123456789, time.UTC)
+	expectedUpdatedAt := clock.UTC().Truncate(time.Microsecond)
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		bucket, err := establishAndLockStoreQuotaBucket(tx, "org-bucket-precision", clock)
+		if err != nil {
+			return err
+		}
+		if !bucket.UpdatedAt.Equal(expectedUpdatedAt) {
+			t.Fatalf("established bucket UpdatedAt = %s, want database precision %s", bucket.UpdatedAt, expectedUpdatedAt)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("establish bucket transaction: %v", err)
+	}
+}
+
 func TestStoreQuotaConcurrentReservedReplaysDoNotLoseTheReservation(t *testing.T) {
 	db := openStoreQuotaTestDB(t)
 	sqlDB, err := db.DB()

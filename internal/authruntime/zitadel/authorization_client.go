@@ -66,11 +66,13 @@ type authorizationIDFilter struct {
 	ID string `json:"id"`
 }
 
+type authorizationPaginationResponse struct {
+	TotalResult *zitadelprotojson.Uint64 `json:"totalResult"`
+}
+
 type authorizationListResponse struct {
-	Pagination struct {
-		TotalResult zitadelprotojson.Uint64 `json:"totalResult"`
-	} `json:"pagination"`
-	Authorizations []authorizationRecordV2 `json:"authorizations"`
+	Pagination     *authorizationPaginationResponse `json:"pagination"`
+	Authorizations *[]authorizationRecordV2         `json:"authorizations"`
 }
 
 type authorizationRecordV2 struct {
@@ -130,7 +132,7 @@ func (c *AuthorizationClient) ListOwnProjectAuthorizations(
 		if err != nil {
 			return nil, err
 		}
-		totalResult := uint64(response.Pagination.TotalResult)
+		totalResult := uint64(*response.Pagination.TotalResult)
 		if firstPage {
 			firstTotalResult = totalResult
 			firstPage = false
@@ -141,7 +143,7 @@ func (c *AuthorizationClient) ListOwnProjectAuthorizations(
 			return nil, errors.New("ZITADEL authorization query returned more than 1,000 authorizations")
 		}
 
-		for _, authorization := range response.Authorizations {
+		for _, authorization := range *response.Authorizations {
 			authorizationID := strings.TrimSpace(authorization.ID)
 			if authorizationID == "" {
 				return nil, errors.New("ZITADEL authorization contains a blank authorization id")
@@ -165,7 +167,7 @@ func (c *AuthorizationClient) ListOwnProjectAuthorizations(
 		if returned == firstTotalResult {
 			return sortedOrganizationGrants(grants), nil
 		}
-		if len(response.Authorizations) == 0 {
+		if len(*response.Authorizations) == 0 {
 			return nil, errors.New("ZITADEL authorization pagination made no progress")
 		}
 		offset = len(seenAuthorizationIDs)
@@ -230,6 +232,15 @@ func (c *AuthorizationClient) listAuthorizationPage(
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return authorizationListResponse{}, errors.New("ZITADEL authorization response is invalid JSON")
+	}
+	if result.Pagination == nil {
+		return authorizationListResponse{}, errors.New("ZITADEL authorization response is missing pagination")
+	}
+	if result.Pagination.TotalResult == nil {
+		return authorizationListResponse{}, errors.New("ZITADEL authorization response is missing totalResult")
+	}
+	if result.Authorizations == nil {
+		return authorizationListResponse{}, errors.New("ZITADEL authorization response is missing authorizations")
 	}
 	return result, nil
 }

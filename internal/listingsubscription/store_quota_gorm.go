@@ -473,6 +473,7 @@ func loadStoreQuotaBucket(tx *gorm.DB, organizationID string) (storeQuotaBucketR
 }
 
 func establishAndLockStoreQuotaBucket(tx *gorm.DB, organizationID string, now time.Time) (storeQuotaBucketRow, error) {
+	now = storeQuotaTimestamp(now)
 	created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&storeQuotaBucketRow{OrganizationID: organizationID, Version: 1, UpdatedAt: now})
 	if created.Error != nil {
 		return storeQuotaBucketRow{}, created.Error
@@ -491,6 +492,7 @@ func updateStoreQuotaBucket(tx *gorm.DB, bucket storeQuotaBucketRow, committed, 
 	if committed < 0 || reserved < 0 || committed > math.MaxInt64-reserved {
 		return ErrStoreQuotaInvalidTransition
 	}
+	now = storeQuotaTimestamp(now)
 	result := tx.Model(&storeQuotaBucketRow{}).Where("organization_id = ? AND version = ?", bucket.OrganizationID, bucket.Version).Updates(map[string]any{"committed": committed, "reserved": reserved, "version": bucket.Version + 1, "updated_at": now})
 	if result.Error != nil {
 		return result.Error
@@ -507,6 +509,15 @@ func updateStoreQuotaAllocation(tx *gorm.DB, row storeQuotaAllocationRow, status
 	}
 	if releasedAt == nil {
 		releasedAt = row.ReleasedAt
+	}
+	updatedAt = storeQuotaTimestamp(updatedAt)
+	if allocatedAt != nil {
+		normalized := storeQuotaTimestamp(*allocatedAt)
+		allocatedAt = &normalized
+	}
+	if releasedAt != nil {
+		normalized := storeQuotaTimestamp(*releasedAt)
+		releasedAt = &normalized
 	}
 	result := tx.Model(&storeQuotaAllocationRow{}).Where("organization_id = ? AND allocation_id = ? AND status = ?", row.OrganizationID, row.AllocationID, row.Status).Updates(map[string]any{"status": string(status), "updated_by": actor, "updated_at": updatedAt, "allocated_at": allocatedAt, "released_at": releasedAt})
 	if result.Error != nil {
@@ -587,8 +598,9 @@ func cloneStoreQuotaTime(value *time.Time) *time.Time {
 }
 
 func storeQuotaTimestamp(now time.Time, durableTimes ...time.Time) time.Time {
-	result := now.UTC()
+	result := now.UTC().Truncate(time.Microsecond)
 	for _, durable := range durableTimes {
+		durable = durable.UTC().Truncate(time.Microsecond)
 		if durable.After(result) {
 			result = durable
 		}

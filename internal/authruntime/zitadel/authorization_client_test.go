@@ -155,6 +155,51 @@ func TestAuthorizationClientAcceptsProtoJSONUint64Pagination(t *testing.T) {
 	}
 }
 
+func TestAuthorizationClientRequiresCompleteSuccessfulResponse(t *testing.T) {
+	testCases := []struct {
+		name          string
+		responseBody  string
+		expectedError string
+	}{
+		{name: "missing pagination", responseBody: `{}`, expectedError: "missing pagination"},
+		{name: "missing total result", responseBody: `{"pagination":{},"authorizations":[]}`, expectedError: "missing totalResult"},
+		{name: "missing authorizations", responseBody: `{"pagination":{"totalResult":"0"}}`, expectedError: "missing authorizations"},
+		{name: "null pagination", responseBody: `{"pagination":null,"authorizations":[]}`, expectedError: "missing pagination"},
+		{name: "null total result", responseBody: `{"pagination":{"totalResult":null},"authorizations":[]}`, expectedError: "missing totalResult"},
+		{name: "null authorizations", responseBody: `{"pagination":{"totalResult":"0"},"authorizations":null}`, expectedError: "missing authorizations"},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, err := w.Write([]byte(tt.responseBody))
+				require.NoError(t, err)
+			}))
+			defer server.Close()
+
+			client := NewAuthorizationClient(server.URL, server.Client())
+			_, err := client.ListOwnProjectAuthorizations(context.Background(), "token", "user-1", "project-1")
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedError)
+		})
+	}
+}
+
+func TestAuthorizationClientAcceptsExplicitEmptySuccessfulResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeAuthorizationListResponseValue(t, w, "0", []map[string]any{})
+	}))
+	defer server.Close()
+
+	client := NewAuthorizationClient(server.URL, server.Client())
+	got, err := client.ListOwnProjectAuthorizations(context.Background(), "token", "user-1", "project-1")
+
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
 func TestAuthorizationClientRejectsRepeatedAuthorizationIDAcrossNonEmptyPages(t *testing.T) {
 	const opaqueAuthorizationID = "opaque/auth:id-not-an-integer"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -389,7 +434,7 @@ func TestAuthorizationClientRejectsPaginationThatMakesNoProgress(t *testing.T) {
 			})
 			return
 		}
-		writeAuthorizationListResponse(t, w, 2, nil)
+		writeAuthorizationListResponse(t, w, 2, []map[string]any{})
 	}))
 	defer server.Close()
 
