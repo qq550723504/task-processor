@@ -1,11 +1,5 @@
 package httpapi
 
-import (
-	"github.com/sirupsen/logrus"
-
-	"task-processor/internal/core/config"
-)
-
 func BuildModule(input BuildModuleInput) (_ *Module, err error) {
 	bundle, err := BuildService(input.ServiceInput)
 	if err != nil {
@@ -25,7 +19,7 @@ func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {
 		}
 		_ = closers.Close()
 	}()
-	repositories, err := buildRepositories(input, closers)
+	repositories, err := buildRepositories(input)
 	if err != nil {
 		return nil, err
 	}
@@ -33,14 +27,4 @@ func BuildService(input BuildServiceInput) (_ *ServiceBundle, err error) {
 		input.Logger.WithField("component", "listingkit/httpapi").Info("listingkit repositories ready")
 	}
 	return buildServiceRuntime(input, repositories, closers)
-}
-
-func buildWithClosers[T any](builder func(*config.Config, *logrus.Logger) (T, []func() error, error), cfg *config.Config, logger *logrus.Logger, closers *closerStack) (T, error) {
-	value, items, err := builder(cfg, logger)
-	if err != nil {
-		var zero T
-		return zero, err
-	}
-	closers.Add(items...)
-	return value, nil
 }

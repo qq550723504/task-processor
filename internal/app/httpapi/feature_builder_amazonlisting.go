@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	"task-processor/internal/core/config"
 	"task-processor/internal/product/catalog"
 )
 
@@ -22,6 +24,7 @@ func (r amazonListingProductSnapshotReader) GetProductSnapshot(ctx context.Conte
 
 type amazonListingFeatureBuilder struct {
 	buildAmazonListing amazonListingModuleBuilder
+	buildRepository    amazonListingRepositoryBuilder
 }
 
 func (b amazonListingFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (*amazonlistinghttpapi.Module, error) {
@@ -35,14 +38,34 @@ func (b amazonListingFeatureBuilder) build(logger *logrus.Logger, deps *runtimeD
 	productSnapshots := amazonListingProductSnapshotReader(func(ctx context.Context, tenantID, productKey string) (catalog.ProductSnapshot, error) {
 		return readProductSnapshotForHTTPAPI(ctx, deps, tenantID, productKey)
 	})
+	if b.buildRepository == nil {
+		return nil, fmt.Errorf("build amazon listing: task repository builder is required")
+	}
+	var database *config.DatabaseConfig
+	if deps.shared != nil && deps.shared.cfg != nil {
+		database = deps.shared.cfg.Database
+	}
+	repository, closer, err := b.buildRepository(database, logger)
+	if err != nil {
+		return nil, fmt.Errorf("build amazon listing task repository: %w", err)
+	}
 	amazonListingModule, err := b.buildAmazonListing(amazonlistinghttpapi.RuntimeBuildInput{
 		Logger:                       logger,
 		Config:                       deps.shared.cfg,
 		ProductSnapshotReader:        productSnapshots,
 		ApprovedAssetInventoryReader: approvedAssets,
+		Repositories: amazonlistinghttpapi.RepositoryDependencies{
+			Task: repository,
+		},
 	})
 	if err != nil {
+		if closer != nil {
+			_ = closer()
+		}
 		return nil, err
+	}
+	if closer != nil {
+		amazonListingModule.Closers = append(amazonListingModule.Closers, closer)
 	}
 	deps.attachAmazonListingModule(amazonListingModule)
 	return amazonListingModule, nil

@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/product/catalog"
 	sdsadapter "task-processor/internal/sds/adapter"
@@ -114,7 +115,10 @@ func ensureApprovedAssetReader(logger *logrus.Logger, deps *runtimeDeps) sdsadap
 	if support.approvedAssetReader != nil {
 		return support.approvedAssetReader
 	}
-	reader, closers, err := newApprovedAssetReaderForHTTPAPI(deps.shared.cfg, logger)
+	if deps.shared.productCatalogDB == nil {
+		return nil
+	}
+	reader, err := assetpersistence.NewRepository(deps.shared.productCatalogDB)
 	if err != nil {
 		if logger != nil {
 			logger.WithError(err).Warn("failed to initialize approved product asset reader; SDS sync disabled")
@@ -125,7 +129,6 @@ func ensureApprovedAssetReader(logger *logrus.Logger, deps *runtimeDeps) sdsadap
 		return nil
 	}
 	support.approvedAssetReader = reader
-	deps.addClosers(closers...)
 	return support.approvedAssetReader
 }
 

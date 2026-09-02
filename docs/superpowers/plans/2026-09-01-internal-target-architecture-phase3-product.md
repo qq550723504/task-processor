@@ -1535,6 +1535,8 @@ git commit -m "refactor(config): make imageagent own image runtime settings"
 ### Task 16D1: 删除 AmazonListing/ListingKit 生产仓储静默降级
 
 > **实施补充（2026-09-02）：** Task 16A 的独立审查证明，AmazonListing 与 ListingKit 的 production builder 在缺少数据库时会自动选择内存 Task/支持仓储。该行为会让进程以非持久化状态继续运行，并使生产 E2E 假绿；它不是需要保留的兼容能力。测试内存实现可以继续作为显式 fixture，但 production composition 不得自动选择它们。
+>
+> **组合根因裁定（2026-09-02）：** ListingKit 当前把完整 `Config + Logger` 注入约 28 个 repository builder，再由每个 builder 决定 DB、memory 或 nil；这不是窄依赖注入，而是把降级决策分散到运行时。硬切后由 production composition 基于一个已验证的数据库配置/连接一次性组装 typed persistent repository set，并把实际 repository 接口值及其 ownership/closer 交给模块。`BuildService`/`BuildModule` 不再接收 repository factory bundle，也不在业务 bootstrap 内读取数据库配置。测试可显式注入 memory repository set，但 production runtime support 不得构造它。SourceAccount 不再借道 ListingKit 的通用 fallback helper，改由其自身 bootstrap/显式依赖负责。
 
 **Files:**
 - Modify: `internal/amazonlisting/httpapi/{bootstrap.go,runtime_builder.go}` and tests
@@ -1546,28 +1548,29 @@ git commit -m "refactor(config): make imageagent own image runtime settings"
 - Production module construction requires explicitly assembled persistent repository dependencies or a valid production database configuration; missing persistence fails closed before route/pool registration.
 - Existing in-memory repositories remain test utilities only. Production builders do not call `NewMem*` and do not use a generic `buildRepositoryWithFallback` path.
 - New dependency seams accept narrow repository interfaces or typed groups. They do not accept the historical whole-project config loader, logger-backed factories, environment aliases, or nil/default fallback.
+- 一个 production repository set 共享一个明确拥有者的数据库连接/生命周期；不得继续按 repository 重复打开连接并堆叠 closers。
 
-- [ ] **Step 1: 写 production fail-closed 与持久化身份测试**
+- [x] **Step 1: 写 production fail-closed 与持久化身份测试**
 
 覆盖 AmazonListing/ListingKit 缺 production persistence 时不注册 module/pool；显式注入 temporary SQLite production repositories 时真实 HTTP 流程可完成，并由 fresh connection/repository 复读。增加生产源码守卫，拒绝 production builder 选择 `NewMem*` 或 `buildRepositoryWithFallback`。
 
-- [ ] **Step 2: 运行测试确认当前静默内存降级**
+- [x] **Step 2: 运行测试确认当前静默内存降级**
 
 Run: `go test ./internal/amazonlisting/httpapi ./internal/listingkit/httpapi ./internal/app/httpapi -run 'Test.*(Persistence|Repository|Fallback|FailClosed)' -count=1 -v`
 
 Expected: FAIL，并精确证明缺数据库时仍注册模块或选择内存仓储。
 
-- [ ] **Step 3: 硬切 production repository composition**
+- [x] **Step 3: 硬切 production repository composition**
 
-删除 production 自动内存降级；把持久化依赖变成窄 typed dependency。不得删除单元测试显式构造的 memory repositories，不得用 `config.Config` factory、Deprecated builder、alias 或环境默认值替代旧 fallback。
+删除 production 自动内存降级；把持久化依赖变成实际 repository 接口组成的窄 typed dependency。production composition 只打开一次持久化连接并构造完整 repository set，模块不再逐仓储执行 `func(*config.Config, *logrus.Logger)` 工厂。不得删除单元测试显式构造的 memory repositories，不得用 `config.Config` factory、Deprecated builder、alias 或环境默认值替代旧 fallback。
 
-- [ ] **Step 4: 运行消费者、App 与全仓验证**
+- [x] **Step 4: 运行消费者、App 与全仓验证**
 
 Run: `go test ./internal/amazonlisting/... ./internal/listingkit/... ./internal/app/httpapi ./cmd/product-listing-api -count=1`
 
 Run: `go test ./... -run '^$' -count=1`
 
-- [ ] **Step 5: 提交仓储 fail-closed 硬切**
+- [x] **Step 5: 提交仓储 fail-closed 硬切**
 
 ```powershell
 git add internal/amazonlisting/httpapi internal/listingkit/httpapi internal/app/httpapi cmd/product-listing-api docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md

@@ -2169,11 +2169,24 @@ func TestBuildHTTPServerBundleFromModulesReturnsRouteBuildErrors(t *testing.T) {
 func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
-	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+	deps := &runtimeDeps{
+		shared:   &sharedRuntimeDeps{cfg: &config.Config{}},
+		features: &featureRuntimeState{},
+	}
+	composition := httpFeatureComposition{
+		sdsModule: &sdshttpapi.BuildResult{
+			Module: sdshttpapi.NewHTTPModule(&stubSDSCatalogRouteHandler{}),
+		},
+	}
 
-	bootstrap, err := buildBootstrap(logger, Options{
-		ConfigPath: "../../../config/config-test.yaml",
-		Port:       18080,
+	bootstrap, err := buildBootstrapWithDependencies(logger, Options{Port: 18080}, bootstrapBuildDependencies{
+		buildRuntimeDeps: func(*logrus.Logger, string) (*runtimeDeps, error) { return deps, nil },
+		buildComposition: func(*logrus.Logger, *runtimeDeps) (httpFeatureComposition, error) {
+			return composition, nil
+		},
+		buildRuntimeBundle: func(composition httpFeatureComposition, cfg *config.Config) (runtimeBundle, error) {
+			return composition.buildRuntimeBundle(cfg)
+		},
 	})
 	if err != nil {
 		t.Fatalf("buildBootstrap returned error: %v", err)

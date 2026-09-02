@@ -2,82 +2,39 @@ package httpapi
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestBootstrapRepositoryFamiliesOwnSeparatedResponsibilities(t *testing.T) {
+func TestBootstrapRepositoryFamiliesUseTypedValuesAndOnePersistentConstructor(t *testing.T) {
 	t.Parallel()
 
-	dir := "."
+	contracts := readBootstrapRepositoryFileContent(t, "bootstrap_contracts.go")
+	assembly := readBootstrapRepositoryFileContent(t, "bootstrap_repositories_merge.go")
+	persistent := readBootstrapRepositoryFileContent(t, "builders_db_repository_support.go")
 
-	contractsFile := readBootstrapRepositoryFileContent(t, filepath.Join(dir, "bootstrap_repositories_contracts.go"))
-	coreFile := readBootstrapRepositoryFileContent(t, filepath.Join(dir, "bootstrap_repositories_core.go"))
-	adminFile := readBootstrapRepositoryFileContent(t, filepath.Join(dir, "bootstrap_repositories_admin.go"))
-	mergeFile := readBootstrapRepositoryFileContent(t, filepath.Join(dir, "bootstrap_repositories_merge.go"))
-
-	assertBootstrapRepositoryNoFile(t, filepath.Join(dir, "bootstrap_repositories.go"))
-
-	assertBootstrapRepositoryContainsAll(t, contractsFile,
-		"type builtRepositories struct {",
-		"type builtCoreRepositories struct {",
-		"type builtAdminRepositories struct {",
-		"type repositoryAssembly struct {",
-	)
-	assertBootstrapRepositoryNotContainsAny(t, contractsFile,
-		"func buildCoreRepositories(",
-		"func buildAdminRepositories(",
-		"func assembleRepositories(",
-	)
-
-	assertBootstrapRepositoryContainsAll(t, coreFile,
-		"func buildCoreRepositories(",
-		"func buildLateCoreRepositories(",
-		"func buildSubscriptionService(",
-	)
-	assertBootstrapRepositoryNotContainsAny(t, coreFile,
-		"type builtRepositories struct {",
-		"func buildAdminRepositories(",
-		"func assembleRepositories(",
-	)
-
-	assertBootstrapRepositoryContainsAll(t, adminFile,
-		"func buildAdminRepositories(",
-		"func buildAdminCatalogRepositories(",
-		"func buildAdminRuleRepositories(",
-	)
-	assertBootstrapRepositoryNotContainsAny(t, adminFile,
-		"type builtRepositories struct {",
-		"func buildCoreRepositories(",
-		"func assembleRepositories(",
-	)
-
-	assertBootstrapRepositoryContainsAll(t, mergeFile,
-		"func applyCoreRepositories(",
-		"func applyAdminRepositories(",
-		"func mergeBuiltRepositories(",
-		"func assembleRepositories(",
-		"func buildRepositories(",
-	)
-	assertBootstrapRepositoryNotContainsAny(t, mergeFile,
-		"type builtRepositories struct {",
-		"func buildAdminCatalogRepositories(",
-		"func buildSubscriptionService(",
-	)
-}
-
-func assertBootstrapRepositoryNoFile(t *testing.T, path string) {
-	t.Helper()
-
-	if _, err := os.Stat(path); err == nil {
-		t.Fatalf("expected %s to be removed", path)
+	for _, retired := range []string{"bootstrap_repositories_core.go", "bootstrap_repositories_admin.go", "builders_repositories.go"} {
+		if _, err := os.Stat(retired); !os.IsNotExist(err) {
+			t.Fatalf("retired repository factory file %s still exists: %v", retired, err)
+		}
 	}
+	assertBootstrapRepositoryContainsAll(t, contracts,
+		"type CoreRepositories struct {",
+		"type AdminRepositories struct {",
+		"type BuildServiceRepositories struct {",
+	)
+	assertBootstrapRepositoryNotContainsAny(t, contracts, "CoreRepositoryBuilders", "AdminRepositoryBuilders")
+	assertBootstrapRepositoryContainsAll(t, assembly, "func buildRepositories(input BuildServiceInput)")
+	assertBootstrapRepositoryNotContainsAny(t, assembly, "buildNamedWithClosers", "input.Config.Database")
+	assertBootstrapRepositoryContainsAll(t, persistent,
+		"func BuildPersistentRepositories(",
+		"func NewPersistentRepositories(",
+		"openListingKitRepositoryDB",
+	)
 }
 
 func readBootstrapRepositoryFileContent(t *testing.T, path string) string {
 	t.Helper()
-
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -87,7 +44,6 @@ func readBootstrapRepositoryFileContent(t *testing.T, path string) string {
 
 func assertBootstrapRepositoryContainsAll(t *testing.T, content string, snippets ...string) {
 	t.Helper()
-
 	for _, snippet := range snippets {
 		if !strings.Contains(content, snippet) {
 			t.Fatalf("expected content to contain %q", snippet)
@@ -97,7 +53,6 @@ func assertBootstrapRepositoryContainsAll(t *testing.T, content string, snippets
 
 func assertBootstrapRepositoryNotContainsAny(t *testing.T, content string, snippets ...string) {
 	t.Helper()
-
 	for _, snippet := range snippets {
 		if strings.Contains(content, snippet) {
 			t.Fatalf("expected content to exclude %q", snippet)

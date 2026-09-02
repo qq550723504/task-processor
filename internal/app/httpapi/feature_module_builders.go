@@ -6,6 +6,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/app/configadapter"
 	appruntime "task-processor/internal/app/runtime"
@@ -18,15 +19,20 @@ import (
 	listingkitstore "task-processor/internal/listingkit/store"
 	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/sourceaccount"
+	sourceaccountbootstrap "task-processor/internal/sourceaccount/bootstrap"
 )
 
 type sourceAccountRepositoryBuilder func(*config.Config, *logrus.Logger) (sourceaccount.Repository, []func() error, error)
 
-var buildSourceAccountRepository = listingkithttpapi.BuildSourceAccountRepository
+var buildSourceAccountRepository = sourceaccountbootstrap.BuildRepository
 
 type amazonListingModuleBuilder func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)
 
+type amazonListingRepositoryBuilder func(*config.DatabaseConfig, *logrus.Logger) (amazonlisting.Repository, func() error, error)
+
 type listingKitModuleBuilder func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)
+
+type listingKitRepositoryBuilder func(*config.DatabaseConfig, *logrus.Logger) (listingkithttpapi.BuildServiceRepositories, func() error, error)
 
 type imageAgentModuleBuilder func(*config.Config, *logrus.Logger) (*imageagenthttpapi.BuildResult, error)
 
@@ -48,6 +54,10 @@ func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput
 
 func buildListingKitModuleResult(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
 	return listingkithttpapi.BuildRuntimeModule(input)
+}
+
+func buildListingKitPersistentRepositories(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkithttpapi.BuildServiceRepositories, func() error, error) {
+	return listingkithttpapi.BuildPersistentRepositories(cfg, logger)
 }
 
 func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*imageagenthttpapi.BuildResult, error) {

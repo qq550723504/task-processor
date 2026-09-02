@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"runtime"
 	"testing"
@@ -9,7 +10,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	amazonlistingstore "task-processor/internal/amazonlisting/store"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
@@ -17,6 +20,7 @@ import (
 	imageagentstore "task-processor/internal/imageagent/store"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	listingkitstore "task-processor/internal/listingkit/store"
 	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
 	prompt "task-processor/internal/prompt"
@@ -52,7 +56,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 
 	logger := logrus.New()
 	deps := &runtimeDeps{
-		shared: &sharedRuntimeDeps{},
+		shared: &sharedRuntimeDeps{cfg: &config.Config{}},
 		features: &featureRuntimeState{
 			productSnapshotReader: stubCompositionProductSnapshotReader{},
 			listingKitSupport: &listingKitSupport{
@@ -66,6 +70,14 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	statusProvider := &stubCompositionSDSStatusProvider{}
 
 	builder := httpFeatureCompositionBuilder{
+		buildAmazonRepo: func(*config.DatabaseConfig, *logrus.Logger) (amazonlisting.Repository, func() error, error) {
+			return amazonlistingstore.NewMemTaskRepository(), nil, nil
+		},
+		buildListingRepos: func(*config.DatabaseConfig, *logrus.Logger) (listingkithttpapi.BuildServiceRepositories, func() error, error) {
+			return listingkithttpapi.BuildServiceRepositories{Core: listingkithttpapi.CoreRepositories{
+				Task: listingkitstore.NewMemTaskRepository(),
+			}}, nil, nil
+		},
 		buildAmazonListing: func(amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
 			order = append(order, "amazon")
 			return &amazonlistinghttpapi.Module{}, nil
@@ -89,9 +101,6 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 			require.NotNil(t, input.Runtime.Support.Repositories.Core.Task)
 			require.NotNil(t, input.Runtime.Support.Hooks.SheinPricingPolicyBuilder)
 			require.Equal(t, statusProvider, input.Runtime.Support.SDSLoginStatusProvider)
-			require.Nil(t, input.Runtime.SDSLoginStatusProvider)
-			require.Nil(t, input.Runtime.Repositories.Core.Task)
-			require.Nil(t, input.Runtime.Hooks.SheinPricingPolicyBuilder)
 			return &listingkithttpapi.Module{
 				TaskLifecycleService: stubCompositionTaskLifecycleService{},
 				StoreAccessValidator: stubCompositionStoreAccessValidator{},
@@ -145,6 +154,34 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	require.NoError(t, deps.shared.closers[1]())
 	require.True(t, sheinClosed)
 	require.True(t, sdsClosed)
+}
+
+func TestHTTPFeatureCompositionBuilderFailsBeforeModulesWhenPersistentRepositoriesAreUnavailable(t *testing.T) {
+	t.Parallel()
+
+	moduleCalled := false
+	deps := &runtimeDeps{
+		shared: &sharedRuntimeDeps{cfg: &config.Config{Database: &config.DatabaseConfig{Host: "persistent"}}},
+		features: &featureRuntimeState{
+			productSnapshotReader: stubCompositionProductSnapshotReader{},
+		},
+	}
+	builder := httpFeatureCompositionBuilder{
+		buildListingRepos: func(*config.DatabaseConfig, *logrus.Logger) (listingkithttpapi.BuildServiceRepositories, func() error, error) {
+			return listingkithttpapi.BuildServiceRepositories{}, nil, errors.New("database unavailable")
+		},
+		buildAmazonListing: func(amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
+			moduleCalled = true
+			return &amazonlistinghttpapi.Module{}, nil
+		},
+	}
+
+	composition, err := builder.build(logrus.New(), deps)
+
+	require.EqualError(t, err, "build listingkit repositories: database unavailable")
+	require.Equal(t, httpFeatureComposition{}, composition)
+	require.False(t, moduleCalled)
+	require.Empty(t, deps.shared.closers)
 }
 
 func TestAmazonListingFeatureBuilderSkipsModuleWithoutProductSnapshotReader(t *testing.T) {

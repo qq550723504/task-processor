@@ -35,6 +35,7 @@ type listingKitSupport struct {
 	sdsBaselineRemoteProvider listingkit.SDSBaselineRemoteProvider
 	sheinCookieStore          *sheinlogin.RedisStore
 	approvedAssetReader       sdsadapter.ApprovedAssetReader
+	repositories              listingkithttpapi.BuildServiceRepositories
 }
 
 type httpFeatureComposition struct {

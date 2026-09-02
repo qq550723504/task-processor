@@ -1,84 +1,48 @@
 package httpapi
 
-func applyCoreRepositories(repos *builtRepositories, core *builtCoreRepositories) {
-	if repos == nil || core == nil {
-		return
-	}
-	repos.taskRepository = core.taskRepository
-	repos.studioAsyncJobRepository = core.studioAsyncJobRepository
-	repos.studioBatchRepository = core.studioBatchRepository
-	repos.studioBatchRunRepository = core.studioBatchRunRepository
-	repos.sheinSyncRepository = core.sheinSyncRepository
-}
+import (
+	"fmt"
 
-func applyLateCoreRepositories(repos *builtRepositories, lateCore *builtLateCoreRepositories) {
-	if repos == nil || lateCore == nil {
-		return
-	}
-	repos.subscriptionService = lateCore.subscriptionService
-	repos.memberInvitationAuditRepository = lateCore.memberInvitationAuditRepository
-	repos.approvedAssetInventoryReader = lateCore.approvedAssetInventoryReader
-	repos.reviewRepository = lateCore.reviewRepository
-	repos.studioSessionRepository = lateCore.studioSessionRepository
-	repos.uploadedImageRepository = lateCore.uploadedImageRepository
-	repos.storeProfileRepository = lateCore.storeProfileRepository
-	repos.resolutionCacheStore = lateCore.resolutionCacheStore
-}
+	"task-processor/internal/listingsubscription"
+)
 
-func applyAdminRepositories(repos *builtRepositories, admin *builtAdminRepositories) {
-	if repos == nil || admin == nil {
-		return
-	}
-	repos.storeRepository = admin.storeRepository
-	repos.storeStatisticsRepository = admin.storeStatisticsRepository
-	repos.dispatchEventRepository = admin.dispatchEventRepository
-	repos.importTaskRepository = admin.importTaskRepository
-	repos.filterRuleRepository = admin.filterRuleRepository
-	repos.profitRuleRepository = admin.profitRuleRepository
-	repos.pricingRuleRepository = admin.pricingRuleRepository
-	repos.operationStrategyRepository = admin.operationStrategyRepository
-	repos.scheduledTaskConfigRepository = admin.scheduledTaskConfigRepository
-	repos.sensitiveWordRepository = admin.sensitiveWordRepository
-	repos.generationTopicOverrideRepository = admin.generationTopicOverrideRepository
-	repos.generationTopicPolicyRepository = admin.generationTopicPolicyRepository
-	repos.productImportMappingRepository = admin.productImportMappingRepository
-	repos.categoryRepository = admin.categoryRepository
-	repos.productDataRepository = admin.productDataRepository
-}
-
-func mergeBuiltRepositories(core *builtCoreRepositories, lateCore *builtLateCoreRepositories, admin *builtAdminRepositories) *builtRepositories {
-	repos := &builtRepositories{}
-	applyCoreRepositories(repos, core)
-	applyLateCoreRepositories(repos, lateCore)
-	applyAdminRepositories(repos, admin)
-	return repos
-}
-
-func assembleRepositories(input BuildServiceInput, closers *closerStack) (*repositoryAssembly, error) {
-	coreRepos, err := buildCoreRepositories(input, closers)
+func buildRepositories(input BuildServiceInput) (*builtRepositories, error) {
+	values := input.Repositories
+	subscriptionService, err := listingsubscription.NewServiceWithLedger(
+		values.Core.Subscription,
+		values.Core.GenerationUsageLedger,
+	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create listing subscription service with usage ledger: %w", err)
 	}
-	adminRepos, err := buildAdminRepositories(input, closers)
-	if err != nil {
-		return nil, err
-	}
-	lateCoreRepos, err := buildLateCoreRepositories(input, closers)
-	if err != nil {
-		return nil, err
-	}
-	return &repositoryAssembly{
-		core:     coreRepos,
-		admin:    adminRepos,
-		lateCore: lateCoreRepos,
-		merged:   mergeBuiltRepositories(coreRepos, lateCoreRepos, adminRepos),
+	return &builtRepositories{
+		taskRepository:                    values.Core.Task,
+		studioAsyncJobRepository:          values.Core.StudioAsyncJob,
+		studioBatchRepository:             values.Core.StudioBatch,
+		studioBatchRunRepository:          values.Core.StudioBatchRun,
+		sheinSyncRepository:               values.Core.SheinSync,
+		storeRepository:                   values.Admin.Store,
+		storeStatisticsRepository:         values.Admin.StoreStatistics,
+		dispatchEventRepository:           values.Admin.DispatchEvent,
+		importTaskRepository:              values.Admin.ImportTask,
+		filterRuleRepository:              values.Admin.FilterRule,
+		profitRuleRepository:              values.Admin.ProfitRule,
+		pricingRuleRepository:             values.Admin.PricingRule,
+		operationStrategyRepository:       values.Admin.OperationStrategy,
+		scheduledTaskConfigRepository:     values.Admin.ScheduledTaskConfig,
+		sensitiveWordRepository:           values.Admin.SensitiveWord,
+		generationTopicOverrideRepository: values.Admin.GenerationTopicOverride,
+		generationTopicPolicyRepository:   values.Admin.GenerationTopicPolicy,
+		productImportMappingRepository:    values.Admin.ProductImportMapping,
+		categoryRepository:                values.Admin.Category,
+		productDataRepository:             values.Admin.ProductData,
+		subscriptionService:               subscriptionService,
+		memberInvitationAuditRepository:   values.Core.MemberInvitationAudit,
+		approvedAssetInventoryReader:      values.Core.ApprovedAsset,
+		reviewRepository:                  values.Core.Review,
+		studioSessionRepository:           values.Core.StudioSession,
+		uploadedImageRepository:           values.Core.UploadedImage,
+		storeProfileRepository:            values.Core.StoreProfile,
+		resolutionCacheStore:              values.Core.SheinResolutionCache,
 	}, nil
-}
-
-func buildRepositories(input BuildServiceInput, closers *closerStack) (*builtRepositories, error) {
-	assembly, err := assembleRepositories(input, closers)
-	if err != nil {
-		return nil, err
-	}
-	return assembly.merged, nil
 }

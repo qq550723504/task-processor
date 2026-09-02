@@ -7,8 +7,6 @@ import (
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 )
 
-var newApprovedAssetReaderForHTTPAPI = listingkithttpapi.BuildApprovedAssetInventoryReader
-
 type listingKitFeatureBuilder struct {
 	buildListingKit listingKitModuleBuilder
 }
@@ -26,7 +24,7 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 	if ensureApprovedAssetReader(logger, deps) == nil {
 		return nil, nil
 	}
-	listingKitModule, err := b.buildListingKit(newListingKitRuntimeBuildInput(logger, deps))
+	listingKitModule, err := b.buildListingKit(newListingKitRuntimeBuildInput(logger, deps, deps.ensureListingKitSupport().repositories))
 	if err != nil {
 		return nil, err
 	}
@@ -34,9 +32,10 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 	return listingKitModule, nil
 }
 
-func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps) listingkithttpapi.RuntimeBuildInput {
+func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps, repositories listingkithttpapi.BuildServiceRepositories) listingkithttpapi.RuntimeBuildInput {
 	approvedAssets := ensureApprovedAssetReader(logger, deps)
 	support := listingkithttpapi.BuildRuntimeSupport(listingkithttpapi.RuntimeSupportInput{
+		Repositories:              repositories,
 		SheinCookieStore:          ensureListingKitSheinCookieStore(logger, deps),
 		ApprovedAssets:            approvedAssets,
 		SDSSyncService:            buildSDSSyncService(logger, deps),

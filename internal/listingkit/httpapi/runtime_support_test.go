@@ -13,21 +13,21 @@ import (
 	"task-processor/internal/sdslogin"
 )
 
-func TestBuildRuntimeSupportProvidesRepositoryAndHookBundles(t *testing.T) {
+func TestBuildRuntimeSupportRequiresCallerProvidedRepositoryValues(t *testing.T) {
 	t.Parallel()
 
 	support := BuildRuntimeSupport(RuntimeSupportInput{})
-	if support.Repositories.Core.Task == nil {
-		t.Fatal("expected core task repository builder")
+	if support.Repositories.Core.Task != nil {
+		t.Fatal("runtime support must not construct a core task repository")
 	}
-	if support.Repositories.Admin.Store == nil {
-		t.Fatal("expected admin store repository builder")
+	if support.Repositories.Admin.Store != nil {
+		t.Fatal("runtime support must not construct an admin store repository")
 	}
 	if support.Hooks.SheinPricingPolicyBuilder == nil {
 		t.Fatal("expected shein pricing policy builder")
 	}
-	if support.Repositories.Admin.GenerationTopicPolicy == nil {
-		t.Fatal("expected generation topic policy admin repository builder")
+	if support.Repositories.Admin.GenerationTopicPolicy != nil {
+		t.Fatal("runtime support must not construct a generation topic policy repository")
 	}
 }
 
@@ -36,15 +36,8 @@ func TestBuildRuntimeSupportUsesProvidedApprovedAssetReader(t *testing.T) {
 
 	reader := &stubRuntimeSupportApprovedAssetReader{}
 	support := BuildRuntimeSupport(RuntimeSupportInput{ApprovedAssets: reader})
-	built, closers, err := support.Repositories.Core.ApprovedAsset(nil, nil)
-	if err != nil {
-		t.Fatalf("build approved asset reader: %v", err)
-	}
-	if built != reader {
-		t.Fatalf("approved asset reader = %v, want shared %v", built, reader)
-	}
-	if len(closers) != 0 {
-		t.Fatalf("approved asset reader closers = %d, want 0 because app owns the shared reader", len(closers))
+	if support.Repositories.Core.ApprovedAsset != reader {
+		t.Fatalf("approved asset reader = %v, want shared %v", support.Repositories.Core.ApprovedAsset, reader)
 	}
 }
 

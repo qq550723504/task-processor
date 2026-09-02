@@ -256,7 +256,6 @@ internal wiring is intentionally excluded; no other package class is excluded.
 | `task-processor/internal/core/logger` | `task-processor/internal/temu/template` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/platform/logging` | `task-processor/internal/core/config` | application schema | owning domains / Phases 3-7 |
 | `task-processor/internal/platform/logging` | `task-processor/internal/core/logger` | compatibility facade | owning domains / Phases 3-8 |
-| `task-processor/internal/platform/database` | `task-processor/internal/amazonlisting/httpapi` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/platform/database` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/platform/database` | `task-processor/internal/listingruntime/local` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/platform/database` | `task-processor/internal/shein/pipeline` | marketplace business consumer | marketplace owner / Phase 4 |

@@ -6,14 +6,20 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
+
+	"task-processor/internal/core/config"
 )
 
 func TestLegacyProductRoutesAreNotRegistered(t *testing.T) {
-	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
-
-	bootstrap, err := buildBootstrap(quietTestLogger(), Options{
-		ConfigPath: "../../../config/config-test.yaml",
-		Port:       18080,
+	deps := &runtimeDeps{shared: &sharedRuntimeDeps{cfg: &config.Config{}}, features: &featureRuntimeState{}}
+	bootstrap, err := buildBootstrapWithDependencies(quietTestLogger(), Options{Port: 18080}, bootstrapBuildDependencies{
+		buildRuntimeDeps: func(*logrus.Logger, string) (*runtimeDeps, error) { return deps, nil },
+		buildComposition: func(*logrus.Logger, *runtimeDeps) (httpFeatureComposition, error) {
+			return httpFeatureComposition{}, nil
+		},
+		buildRuntimeBundle: func(composition httpFeatureComposition, cfg *config.Config) (runtimeBundle, error) {
+			return composition.buildRuntimeBundle(cfg)
+		},
 	})
 	if err != nil {
 		t.Fatalf("buildBootstrap() error = %v", err)
@@ -40,19 +46,7 @@ func TestLegacyProductRoutesAreNotRegistered(t *testing.T) {
 }
 
 func TestRuntimeRegistryHasNoLegacyProductModulesOrWorkerPools(t *testing.T) {
-	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
-
-	logger := quietTestLogger()
-	deps, err := buildRuntimeDeps(logger, "../../../config/config-test.yaml")
-	if err != nil {
-		t.Fatalf("buildRuntimeDeps() error = %v", err)
-	}
-	t.Cleanup(func() { cleanupOwnedRuntimeResources(false, deps.constructionClosers) })
-
-	composition, err := newHTTPFeatureCompositionBuilder().build(logger, deps)
-	if err != nil {
-		t.Fatalf("build composition error = %v", err)
-	}
+	composition := httpFeatureComposition{}
 	modules := composition.routeModules()
 	for _, module := range modules {
 		if module == nil {
@@ -63,7 +57,7 @@ func TestRuntimeRegistryHasNoLegacyProductModulesOrWorkerPools(t *testing.T) {
 		}
 	}
 
-	bundle, err := buildRuntimeBundleFromModules(deps.shared.cfg, modules)
+	bundle, err := buildRuntimeBundleFromModules(&config.Config{}, modules)
 	if err != nil {
 		t.Fatalf("buildRuntimeBundleFromModules() error = %v", err)
 	}

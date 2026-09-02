@@ -12,6 +12,8 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	amazonlistingstore "task-processor/internal/amazonlisting/store"
+	"task-processor/internal/core/config"
 	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	catalogpersistence "task-processor/internal/integration/persistence/product/catalog"
 	"task-processor/internal/listingkit"
@@ -105,16 +107,21 @@ func TestAmazonListingFeatureBuilderMapsCatalogNotReadyAndRequiresBothReaders(t 
 	}
 
 	called := false
-	builder := amazonListingFeatureBuilder{buildAmazonListing: func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
-		called = true
-		_, readErr := input.ProductSnapshotReader.GetProductSnapshot(context.Background(), amazonlisting.ProductSnapshotQuery{
-			TenantID: "tenant-a", ProductKey: "missing",
-		})
-		if !errors.Is(readErr, amazonlisting.ErrProductSnapshotNotReady) {
-			t.Fatalf("Amazon reader missing error = %v, want ErrProductSnapshotNotReady", readErr)
-		}
-		return &amazonlistinghttpapi.Module{}, nil
-	}}
+	builder := amazonListingFeatureBuilder{
+		buildRepository: func(*config.DatabaseConfig, *logrus.Logger) (amazonlisting.Repository, func() error, error) {
+			return amazonlistingstore.NewMemTaskRepository(), nil, nil
+		},
+		buildAmazonListing: func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
+			called = true
+			_, readErr := input.ProductSnapshotReader.GetProductSnapshot(context.Background(), amazonlisting.ProductSnapshotQuery{
+				TenantID: "tenant-a", ProductKey: "missing",
+			})
+			if !errors.Is(readErr, amazonlisting.ErrProductSnapshotNotReady) {
+				t.Fatalf("Amazon reader missing error = %v, want ErrProductSnapshotNotReady", readErr)
+			}
+			return &amazonlistinghttpapi.Module{}, nil
+		},
+	}
 	module, err := builder.build(logrus.New(), deps)
 	if err != nil {
 		t.Fatalf("builder.build() error = %v", err)
@@ -180,13 +187,18 @@ func TestProductionCompositionBuildsAmazonListingFromPublishedSnapshotAndApprove
 		t.Fatalf("initializeProductSnapshotReader() error = %v", err)
 	}
 	var artifacts *amazonlisting.WorkflowArtifacts
-	builder := amazonListingFeatureBuilder{buildAmazonListing: func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
-		workflow := amazonlisting.NewListingWorkflow(input.ProductSnapshotReader, input.ApprovedAssetInventoryReader, amazonlisting.NewAssembler(), nil, nil)
-		task := &amazonlisting.Task{ID: "amazon-task-1", Request: &amazonlisting.GenerateRequest{Marketplace: "amazon", ProductKey: "product-1"}}
-		task.ExecutionTenantID = "tenant-a"
-		artifacts, err = workflow.Run(context.Background(), task)
-		return &amazonlistinghttpapi.Module{}, err
-	}}
+	builder := amazonListingFeatureBuilder{
+		buildRepository: func(*config.DatabaseConfig, *logrus.Logger) (amazonlisting.Repository, func() error, error) {
+			return amazonlistingstore.NewMemTaskRepository(), nil, nil
+		},
+		buildAmazonListing: func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
+			workflow := amazonlisting.NewListingWorkflow(input.ProductSnapshotReader, input.ApprovedAssetInventoryReader, amazonlisting.NewAssembler(), nil, nil)
+			task := &amazonlisting.Task{ID: "amazon-task-1", Request: &amazonlisting.GenerateRequest{Marketplace: "amazon", ProductKey: "product-1"}}
+			task.ExecutionTenantID = "tenant-a"
+			artifacts, err = workflow.Run(context.Background(), task)
+			return &amazonlistinghttpapi.Module{}, err
+		},
+	}
 	module, err := builder.build(logrus.New(), deps)
 	if err != nil {
 		t.Fatalf("builder.build() error = %v", err)

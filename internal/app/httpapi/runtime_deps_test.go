@@ -16,6 +16,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
+	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	platformfeatureflag "task-processor/internal/platform/featureflag"
 	platformobservability "task-processor/internal/platform/observability"
 	productasset "task-processor/internal/product/asset"
@@ -239,17 +240,7 @@ func TestNewListingKitRuntimeBuildInputRoutesSDSStatusProviderThroughRuntimeSupp
 		return syncService, &sdsclient.AuthState{AccessToken: "test-token"}, nil
 	}
 
-	input := newListingKitRuntimeBuildInput(logger, deps)
-
-	if input.Runtime.SDSSyncService != nil {
-		t.Fatal("expected legacy runtime SDS sync service to remain unset")
-	}
-	if input.Runtime.SDSLoginStatusProvider != nil {
-		t.Fatal("expected legacy runtime SDS login status provider to remain unset")
-	}
-	if input.Runtime.SDSBaselineRemoteProvider != nil {
-		t.Fatal("expected legacy runtime SDS baseline remote provider to remain unset")
-	}
+	input := newListingKitRuntimeBuildInput(logger, deps, listingkithttpapi.BuildServiceRepositories{})
 	if input.Runtime.Support.SDSSyncService != syncService {
 		t.Fatal("expected SDS sync service to be routed through runtime support")
 	}
@@ -259,15 +250,8 @@ func TestNewListingKitRuntimeBuildInputRoutesSDSStatusProviderThroughRuntimeSupp
 	if input.Runtime.Support.SDSBaselineRemoteProvider == nil {
 		t.Fatal("expected SDS baseline remote provider to be routed through runtime support")
 	}
-	sharedReader, closers, err := input.Runtime.Support.Repositories.Core.ApprovedAsset(&config.Config{}, logger)
-	if err != nil {
-		t.Fatalf("approved asset repository builder error = %v", err)
-	}
-	if sharedReader != approvedAssets {
-		t.Fatalf("ListingKit approved asset reader = %v, want shared reader %v", sharedReader, approvedAssets)
-	}
-	if len(closers) != 0 {
-		t.Fatalf("shared approved asset reader builder returned %d closers, want app-owned lifetime", len(closers))
+	if input.Runtime.Support.Repositories.Core.ApprovedAsset != approvedAssets {
+		t.Fatalf("ListingKit approved asset reader = %v, want shared reader %v", input.Runtime.Support.Repositories.Core.ApprovedAsset, approvedAssets)
 	}
 }
 

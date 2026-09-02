@@ -21,7 +21,6 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/amazonlisting"
-	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/integration/openai"
@@ -76,10 +75,12 @@ func TestHTTPE2E_CurrentAmazonListingUsesSnapshotAndApprovedAssets(t *testing.T)
 	}
 	require.NoError(t, initializeProductSnapshotReader(deps))
 
-	module, err := (amazonListingFeatureBuilder{buildAmazonListing: func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
-		input.Repositories.Task = taskRepo
-		return buildAmazonListingModuleResult(input)
-	}}).build(logger, deps)
+	module, err := (amazonListingFeatureBuilder{
+		buildRepository: func(*config.DatabaseConfig, *logrus.Logger) (amazonlisting.Repository, func() error, error) {
+			return taskRepo, nil, nil
+		},
+		buildAmazonListing: buildAmazonListingModuleResult,
+	}).build(logger, deps)
 	require.NoError(t, err)
 	require.NotNil(t, module)
 	t.Cleanup(func() { closeCurrentE2EClosers(t, deps.shared.closers) })
@@ -156,12 +157,14 @@ func TestHTTPE2E_CurrentListingKitUsesReadOnlySnapshotAndApprovedAssets(t *testi
 		}},
 	}
 	db, dbPath, snapshots, assets := currentE2EProductReaders(t, productKey, originalSnapshot, inventory)
-	require.NoError(t, db.AutoMigrate(&listingkit.Task{}, &listingkit.SDSChildRetryJob{}))
+	require.NoError(t, listingkithttpapi.AutoMigrateListingKitRuntimeSchema(db))
 	taskRepo := listingkitstore.NewTaskRepository(db)
+	repositories, err := listingkithttpapi.NewPersistentRepositories(db)
+	require.NoError(t, err)
 	deps := &runtimeDeps{
 		shared: &sharedRuntimeDeps{cfg: cfg, productCatalogDB: db},
 		features: &featureRuntimeState{
-			listingKitSupport: &listingKitSupport{approvedAssetReader: assets},
+			listingKitSupport: &listingKitSupport{approvedAssetReader: assets, repositories: repositories},
 		},
 	}
 	require.NoError(t, initializeProductSnapshotReader(deps))
@@ -176,15 +179,9 @@ func TestHTTPE2E_CurrentListingKitUsesReadOnlySnapshotAndApprovedAssets(t *testi
 	builder := newListingKitFeatureBuilder()
 	productionBuild := builder.buildListingKit
 	builder.buildListingKit = func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
-		input.Runtime.Support.Repositories.Core.Task = func(*config.Config, *logrus.Logger) (listingkit.Repository, []func() error, error) {
-			return taskRepo, nil, nil
-		}
-		input.Runtime.Support.Repositories.Admin.Store = func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
-			return storeRepo, nil, nil
-		}
-		input.Runtime.Support.Repositories.Core.ApprovedAsset = func(*config.Config, *logrus.Logger) (listingkit.ApprovedAssetInventoryReader, []func() error, error) {
-			return assets, nil, nil
-		}
+		input.Runtime.Support.Repositories.Core.Task = taskRepo
+		input.Runtime.Support.Repositories.Admin.Store = storeRepo
+		input.Runtime.Support.Repositories.Core.ApprovedAsset = assets
 		input.Runtime.Support.Hooks.ImageUploadStoreBuilder = func(*config.Config, *logrus.Logger) (listingkit.ImageUploadStore, error) {
 			return uploadStore, nil
 		}

@@ -97,43 +97,44 @@ type BuildModuleInput struct {
 	ShouldStartTemporalWorkerInProcess bool
 }
 
-type AdminRepositoryBuilders struct {
-	Store                   func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error)
-	StoreStatistics         func(*config.Config, *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error)
-	DispatchEvent           func(*config.Config, *logrus.Logger) (listingadmin.DispatchEventRepository, []func() error, error)
-	ImportTask              func(*config.Config, *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error)
-	FilterRule              func(*config.Config, *logrus.Logger) (listingadmin.FilterRuleRepository, []func() error, error)
-	ProfitRule              func(*config.Config, *logrus.Logger) (listingadmin.ProfitRuleRepository, []func() error, error)
-	PricingRule             func(*config.Config, *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error)
-	OperationStrategy       func(*config.Config, *logrus.Logger) (listingadmin.OperationStrategyRepository, []func() error, error)
-	ScheduledTaskConfig     func(*config.Config, *logrus.Logger) (listingadmin.ScheduledTaskConfigRepository, []func() error, error)
-	SensitiveWord           func(*config.Config, *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error)
-	GenerationTopicOverride func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicOverrideRepository, []func() error, error)
-	GenerationTopicPolicy   func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, []func() error, error)
-	ProductImportMapping    func(*config.Config, *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error)
-	Category                func(*config.Config, *logrus.Logger) (listingadmin.CategoryRepository, []func() error, error)
-	ProductData             func(*config.Config, *logrus.Logger) (listingadmin.ProductDataRepository, []func() error, error)
+type AdminRepositories struct {
+	Store                   listingadmin.StoreRepository
+	StoreStatistics         listingadmin.StoreStatisticsRepository
+	DispatchEvent           listingadmin.DispatchEventRepository
+	ImportTask              listingadmin.ImportTaskRepository
+	FilterRule              listingadmin.FilterRuleRepository
+	ProfitRule              listingadmin.ProfitRuleRepository
+	PricingRule             listingadmin.PricingRuleRepository
+	OperationStrategy       listingadmin.OperationStrategyRepository
+	ScheduledTaskConfig     listingadmin.ScheduledTaskConfigRepository
+	SensitiveWord           listingadmin.SensitiveWordRepository
+	GenerationTopicOverride listingadmin.GenerationTopicOverrideRepository
+	GenerationTopicPolicy   listingadmin.GenerationTopicPolicyRepository
+	ProductImportMapping    listingadmin.ProductImportMappingRepository
+	Category                listingadmin.CategoryRepository
+	ProductData             listingadmin.ProductDataRepository
 }
 
-type CoreRepositoryBuilders struct {
-	Task                  func(*config.Config, *logrus.Logger) (listingkit.Repository, []func() error, error)
-	StudioAsyncJob        func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error)
-	StudioBatch           func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRepository, []func() error, error)
-	StudioBatchRun        func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error)
-	SheinSync             func(*config.Config, *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error)
-	Subscription          func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error)
-	MemberInvitationAudit func(*config.Config, *logrus.Logger) (memberinvite.AuditRepository, []func() error, error)
-	ApprovedAsset         func(*config.Config, *logrus.Logger) (listingkit.ApprovedAssetInventoryReader, []func() error, error)
-	Review                func(*config.Config, *logrus.Logger) (reviewstore.Repository, []func() error, error)
-	StudioSession         func(*config.Config, *logrus.Logger) (listingkit.StudioSessionRepository, []func() error, error)
-	UploadedImage         func(*config.Config, *logrus.Logger) (listingkit.UploadedImageRepository, []func() error, error)
-	StoreProfile          func(*config.Config, *logrus.Logger) (listingkit.StoreProfileRepository, []func() error, error)
-	SheinResolutionCache  func(*config.Config, *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error)
+type CoreRepositories struct {
+	Task                  listingkit.Repository
+	StudioAsyncJob        listingkit.StudioAsyncJobRepository
+	StudioBatch           listingkit.StudioBatchRepository
+	StudioBatchRun        listingkit.StudioBatchRunRepository
+	SheinSync             listingkit.SheinSyncRepository
+	Subscription          listingsubscription.Repository
+	GenerationUsageLedger listingsubscription.UsageLedger
+	MemberInvitationAudit memberinvite.AuditRepository
+	ApprovedAsset         listingkit.ApprovedAssetInventoryReader
+	Review                reviewstore.Repository
+	StudioSession         listingkit.StudioSessionRepository
+	UploadedImage         listingkit.UploadedImageRepository
+	StoreProfile          listingkit.StoreProfileRepository
+	SheinResolutionCache  sheinpub.ResolutionCacheStore
 }
 
 type BuildServiceRepositories struct {
-	Core  CoreRepositoryBuilders
-	Admin AdminRepositoryBuilders
+	Core  CoreRepositories
+	Admin AdminRepositories
 }
 
 type BuildServiceHooks struct {

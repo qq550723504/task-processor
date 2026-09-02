@@ -21,7 +21,7 @@ func TestBootstrapFamiliesOwnSeparatedResponsibilities(t *testing.T) {
 	assertBootstrapContainsAll(t, entryFile,
 		"func BuildModule(",
 		"func BuildService(",
-		"buildRepositories(input, closers)",
+		"buildRepositories(input)",
 		"buildServiceRuntime(input, repositories, closers)",
 	)
 	assertBootstrapNotContainsAny(t, entryFile,
@@ -44,8 +44,8 @@ func TestBootstrapFamiliesOwnSeparatedResponsibilities(t *testing.T) {
 	)
 
 	assertBootstrapContainsAll(t, validationFile,
-		"func (b CoreRepositoryBuilders) Validate() error {",
-		"func (b AdminRepositoryBuilders) Validate() error {",
+		"func (b CoreRepositories) Validate() error {",
+		"func (b AdminRepositories) Validate() error {",
 		"func (h BuildServiceHooks) Validate() error {",
 		"func (in BuildServiceInput) Validate() error {",
 	)
@@ -58,8 +58,8 @@ func TestBootstrapFamiliesOwnSeparatedResponsibilities(t *testing.T) {
 	assertBootstrapContainsAll(t, closersFile,
 		"type closerStack struct {",
 		"func (s *closerStack) Add(",
-		"func buildNamedWithClosers",
 	)
+	assertBootstrapNotContainsAny(t, closersFile, "func buildNamedWithClosers")
 	assertBootstrapNotContainsAny(t, closersFile,
 		"func BuildService(",
 		"type BuildServiceInput struct",

@@ -2,69 +2,73 @@ package httpapi
 
 import "fmt"
 
-func (b CoreRepositoryBuilders) Validate() error {
+func (b CoreRepositories) Validate() error {
 	switch {
 	case b.Task == nil:
-		return fmt.Errorf("core repository builder task is required")
+		return fmt.Errorf("repository core.task is required")
 	case b.StudioAsyncJob == nil:
-		return fmt.Errorf("core repository builder studio async job is required")
+		return fmt.Errorf("repository core.studio_async_job is required")
 	case b.StudioBatch == nil:
-		return fmt.Errorf("core repository builder studio batch is required")
+		return fmt.Errorf("repository core.studio_batch is required")
 	case b.StudioBatchRun == nil:
-		return fmt.Errorf("core repository builder studio batch run is required")
+		return fmt.Errorf("repository core.studio_batch_run is required")
 	case b.SheinSync == nil:
-		return fmt.Errorf("core repository builder shein sync is required")
+		return fmt.Errorf("repository core.shein_sync is required")
 	case b.Subscription == nil:
-		return fmt.Errorf("core repository builder subscription is required")
+		return fmt.Errorf("repository core.subscription is required")
+	case b.GenerationUsageLedger == nil:
+		return fmt.Errorf("repository core.generation_usage_ledger is required")
+	case b.MemberInvitationAudit == nil:
+		return fmt.Errorf("repository core.member_invitation_audit is required")
 	case b.ApprovedAsset == nil:
-		return fmt.Errorf("core repository builder approved asset is required")
+		return fmt.Errorf("repository core.approved_asset is required")
 	case b.Review == nil:
-		return fmt.Errorf("core repository builder review is required")
+		return fmt.Errorf("repository core.review is required")
 	case b.StudioSession == nil:
-		return fmt.Errorf("core repository builder studio session is required")
+		return fmt.Errorf("repository core.studio_session is required")
 	case b.UploadedImage == nil:
-		return fmt.Errorf("core repository builder uploaded image is required")
+		return fmt.Errorf("repository core.uploaded_image is required")
 	case b.StoreProfile == nil:
-		return fmt.Errorf("core repository builder store profile is required")
+		return fmt.Errorf("repository core.store_profile is required")
 	case b.SheinResolutionCache == nil:
-		return fmt.Errorf("core repository builder shein resolution cache is required")
+		return fmt.Errorf("repository core.shein_resolution_cache is required")
 	default:
 		return nil
 	}
 }
 
-func (b AdminRepositoryBuilders) Validate() error {
+func (b AdminRepositories) Validate() error {
 	switch {
 	case b.Store == nil:
-		return fmt.Errorf("admin repository builder store is required")
+		return fmt.Errorf("repository admin.store is required")
 	case b.StoreStatistics == nil:
-		return fmt.Errorf("admin repository builder store statistics is required")
+		return fmt.Errorf("repository admin.store_statistics is required")
 	case b.DispatchEvent == nil:
-		return fmt.Errorf("admin repository builder dispatch event is required")
+		return fmt.Errorf("repository admin.dispatch_event is required")
 	case b.ImportTask == nil:
-		return fmt.Errorf("admin repository builder import task is required")
+		return fmt.Errorf("repository admin.import_task is required")
 	case b.FilterRule == nil:
-		return fmt.Errorf("admin repository builder filter rule is required")
+		return fmt.Errorf("repository admin.filter_rule is required")
 	case b.ProfitRule == nil:
-		return fmt.Errorf("admin repository builder profit rule is required")
+		return fmt.Errorf("repository admin.profit_rule is required")
 	case b.PricingRule == nil:
-		return fmt.Errorf("admin repository builder pricing rule is required")
+		return fmt.Errorf("repository admin.pricing_rule is required")
 	case b.OperationStrategy == nil:
-		return fmt.Errorf("admin repository builder operation strategy is required")
+		return fmt.Errorf("repository admin.operation_strategy is required")
 	case b.ScheduledTaskConfig == nil:
-		return fmt.Errorf("admin repository builder scheduled task config is required")
+		return fmt.Errorf("repository admin.scheduled_task_config is required")
 	case b.SensitiveWord == nil:
-		return fmt.Errorf("admin repository builder sensitive word is required")
+		return fmt.Errorf("repository admin.sensitive_word is required")
 	case b.GenerationTopicOverride == nil:
-		return fmt.Errorf("admin repository builder generation topic override is required")
+		return fmt.Errorf("repository admin.generation_topic_override is required")
 	case b.GenerationTopicPolicy == nil:
-		return fmt.Errorf("admin repository builder generation topic policy is required")
+		return fmt.Errorf("repository admin.generation_topic_policy is required")
 	case b.ProductImportMapping == nil:
-		return fmt.Errorf("admin repository builder product import mapping is required")
+		return fmt.Errorf("repository admin.product_import_mapping is required")
 	case b.Category == nil:
-		return fmt.Errorf("admin repository builder category is required")
+		return fmt.Errorf("repository admin.category is required")
 	case b.ProductData == nil:
-		return fmt.Errorf("admin repository builder product data is required")
+		return fmt.Errorf("repository admin.product_data is required")
 	default:
 		return nil
 	}

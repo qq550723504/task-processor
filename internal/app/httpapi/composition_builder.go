@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"fmt"
+
 	"github.com/sirupsen/logrus"
 
 	a1688handoff "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
@@ -12,9 +14,11 @@ import (
 
 type httpFeatureCompositionBuilder struct {
 	buildAmazonListing amazonListingModuleBuilder
+	buildAmazonRepo    amazonListingRepositoryBuilder
 	buildSheinLogin    sheinLoginModuleBuilder
 	buildSDSLogin      sdsLoginModuleBuilder
 	buildListingKit    listingKitModuleBuilder
+	buildListingRepos  listingKitRepositoryBuilder
 	buildPrompt        promptModuleBuilder
 	buildTaskRPC       taskRPCModuleBuilder
 	buildSDS           sdsModuleBuilder
@@ -25,9 +29,11 @@ type httpFeatureCompositionBuilder struct {
 func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 	return httpFeatureCompositionBuilder{
 		buildAmazonListing: buildAmazonListingModuleResult,
+		buildAmazonRepo:    newDBAmazonListingTaskRepository,
 		buildSheinLogin:    buildSheinLoginModuleResult,
 		buildSDSLogin:      buildSDSLoginModuleResult,
 		buildListingKit:    buildListingKitModuleResult,
+		buildListingRepos:  buildListingKitPersistentRepositories,
 		buildPrompt:        buildPromptModuleResult,
 		buildTaskRPC:       buildTaskRPCModuleResult,
 		buildSDS:           buildSDSModuleResult,
@@ -42,10 +48,23 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	if err := initializeProductSnapshotReader(deps); err != nil {
 		return composition, err
 	}
+	if deps == nil || deps.shared == nil || deps.shared.cfg == nil {
+		return composition, fmt.Errorf("build product repositories: runtime config is required")
+	}
+	if b.buildListingRepos == nil {
+		return composition, fmt.Errorf("build product repositories: listingkit repository builder is required")
+	}
+	listingKitRepositories, listingKitCloser, err := b.buildListingRepos(deps.shared.cfg.Database, logger)
+	if err != nil {
+		return composition, fmt.Errorf("build listingkit repositories: %w", err)
+	}
+	deps.ensureListingKitSupport().repositories = listingKitRepositories
+	deps.addClosers(listingKitCloser)
 
 	done := timer.phase("buildAmazonListingModule")
 	amazonListingModule, err := amazonListingFeatureBuilder{
 		buildAmazonListing: b.buildAmazonListing,
+		buildRepository:    b.buildAmazonRepo,
 	}.build(logger, deps)
 	done()
 	if err != nil {

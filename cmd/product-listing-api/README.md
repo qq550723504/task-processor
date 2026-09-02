@@ -50,3 +50,5 @@ go run ./cmd/product-listing-api \
 ```
 
 AmazonListing 与 ListingKit 的产品事实只读自 Catalog Product Snapshot，图片只读自 Approved Asset inventory。退役的 ProductEnrich/ProductImage HTTP Task、Queue、Worker Pool 和 Task Repository 不再由该进程装配。
+
+AmazonListing 与 ListingKit 的可变状态必须使用显式持久化仓储。生产组合层为完整 ListingKit repository set 只打开一次数据库连接，并独占其唯一 closer；模块 bootstrap 不读取数据库配置，也不会在配置缺失、连接失败或 repository 缺失时回退到内存实现。以上情况会在注册 route 或 worker pool 前使启动失败。内存仓储只允许由测试显式注入。SourceAccount 继续由自身 bootstrap 管理，私有账号存储不可用不会阻断无需账号的 1688 公共抓取。

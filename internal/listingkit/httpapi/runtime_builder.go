@@ -6,7 +6,6 @@ import (
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
-	sdsusecase "task-processor/internal/sds/usecase"
 )
 
 type RuntimeBuildInput struct {
@@ -17,15 +16,10 @@ type RuntimeBuildInput struct {
 type RuntimeDependencies struct {
 	Config                             *config.Config
 	ProductSnapshotReader              listingkit.ProductSnapshotReader
-	SDSSyncService                     sdsusecase.Service
-	SDSLoginStatusProvider             listingkit.SDSLoginStatusProvider
-	SDSBaselineRemoteProvider          listingkit.SDSBaselineRemoteProvider
 	AICredentialStore                  aiCredentialStore
 	AIInvocationRecorder               aicapability.InvocationRecorder
 	AIAsyncJobStore                    aicapability.AsyncJobBindingStore
 	Support                            RuntimeSupport
-	Repositories                       BuildServiceRepositories
-	Hooks                              BuildServiceHooks
 	ShouldStartTemporalWorkerInProcess bool
 }
 
@@ -37,7 +31,7 @@ func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
 }
 
 func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies) BuildServiceInput {
-	support := resolveRuntimeSupport(runtime)
+	support := runtime.Support
 	return BuildServiceInput{
 		Config:                    runtime.Config,
 		Logger:                    logger,
@@ -51,25 +45,4 @@ func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies
 		Repositories:              support.Repositories,
 		Hooks:                     support.Hooks,
 	}
-}
-
-func resolveRuntimeSupport(runtime RuntimeDependencies) RuntimeSupport {
-	if hasRuntimeSupport(runtime.Support) {
-		return runtime.Support
-	}
-	return RuntimeSupport{
-		Repositories:              runtime.Repositories,
-		Hooks:                     runtime.Hooks,
-		SDSSyncService:            runtime.SDSSyncService,
-		SDSLoginStatusProvider:    runtime.SDSLoginStatusProvider,
-		SDSBaselineRemoteProvider: runtime.SDSBaselineRemoteProvider,
-	}
-}
-
-func hasRuntimeSupport(support RuntimeSupport) bool {
-	return support.Repositories.Core.Task != nil ||
-		support.Hooks.SheinPricingPolicyBuilder != nil ||
-		support.SDSSyncService != nil ||
-		support.SDSLoginStatusProvider != nil ||
-		support.SDSBaselineRemoteProvider != nil
 }

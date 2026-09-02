@@ -8,7 +8,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/listingkit"
 	productasset "task-processor/internal/product/asset"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsclient "task-processor/internal/sds/client"
@@ -35,32 +34,20 @@ func TestBuildSDSSyncServiceReturnsNilWithoutApprovedAssetReader(t *testing.T) {
 	}
 }
 
-func TestEnsureApprovedAssetReaderBuildsOnceAndRegistersOwnedCloser(t *testing.T) {
-	previousFactory := newApprovedAssetReaderForHTTPAPI
-	t.Cleanup(func() { newApprovedAssetReaderForHTTPAPI = previousFactory })
-
-	reader := &stubHTTPAPIApprovedAssetReader{}
-	buildCalls := 0
-	closer := func() error { return nil }
-	newApprovedAssetReaderForHTTPAPI = func(*config.Config, *logrus.Logger) (listingkit.ApprovedAssetInventoryReader, []func() error, error) {
-		buildCalls++
-		return reader, []func() error{closer}, nil
-	}
+func TestEnsureApprovedAssetReaderUsesSharedPersistentDatabaseWithoutAnotherCloser(t *testing.T) {
+	db := openHTTPAPICatalogTestDB(t)
 	deps := &runtimeDeps{
-		shared:   &sharedRuntimeDeps{cfg: &config.Config{}},
+		shared:   &sharedRuntimeDeps{cfg: &config.Config{}, productCatalogDB: db},
 		features: &featureRuntimeState{},
 	}
 
 	first := ensureApprovedAssetReader(logrus.New(), deps)
 	second := ensureApprovedAssetReader(logrus.New(), deps)
-	if first != reader || second != reader {
-		t.Fatalf("approved asset readers = (%v, %v), want shared %v", first, second, reader)
+	if first == nil || second != first {
+		t.Fatalf("approved asset readers = (%v, %v), want one shared reader", first, second)
 	}
-	if buildCalls != 1 {
-		t.Fatalf("approved asset reader build calls = %d, want 1", buildCalls)
-	}
-	if len(deps.shared.closers) != 1 || len(deps.constructionClosers) != 1 {
-		t.Fatalf("registered closers = shared:%d construction:%d, want 1 each", len(deps.shared.closers), len(deps.constructionClosers))
+	if len(deps.shared.closers) != 0 || len(deps.constructionClosers) != 0 {
+		t.Fatalf("registered closers = shared:%d construction:%d, want database owner to remain unique", len(deps.shared.closers), len(deps.constructionClosers))
 	}
 }
 
