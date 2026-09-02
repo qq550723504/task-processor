@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -44,9 +45,28 @@ func (p *Publisher) Publish(ctx context.Context, request PublishRequest) (Publis
 	}
 	published.Snapshot, err = CloneProductSnapshot(published.Snapshot)
 	if err != nil {
-		return PublishedSnapshot{}, err
+		return PublishedSnapshot{}, fmt.Errorf("%w: writer returned invalid snapshot: %v", ErrRepositoryStateInvalid, err)
+	}
+	equivalent, err := equivalentProductSnapshots(request.Snapshot, published.Snapshot)
+	if err != nil {
+		return PublishedSnapshot{}, fmt.Errorf("%w: compare writer snapshot: %v", ErrRepositoryStateInvalid, err)
+	}
+	if !equivalent {
+		return PublishedSnapshot{}, fmt.Errorf("%w: writer returned mismatched snapshot payload", ErrRepositoryStateInvalid)
 	}
 	return published, nil
+}
+
+func equivalentProductSnapshots(left, right ProductSnapshot) (bool, error) {
+	leftJSON, err := json.Marshal(left)
+	if err != nil {
+		return false, err
+	}
+	rightJSON, err := json.Marshal(right)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(leftJSON, rightJSON), nil
 }
 
 func ValidatePublishRequest(request PublishRequest) error {

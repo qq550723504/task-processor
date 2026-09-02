@@ -66,14 +66,18 @@ func listingKitRouteRequiredPermission(route httproute.Descriptor) string {
 }
 
 func NewRouteRoleMiddleware(route httproute.Descriptor) gin.HandlerFunc {
-	requiredPermission := listingKitRouteRequiredPermission(route)
-	if requiredPermission == "" {
-		return nil
-	}
 	runtimeCfg := currentListingKitZitadelRuntimeConfig()
 	var authorizer *authz.ListingKitAuthorizer
 	if runtimeCfg != nil {
 		authorizer = runtimeCfg.Authorizer
+	}
+	return NewRouteRoleMiddlewareWithAuthorizer(route, authorizer)
+}
+
+func NewRouteRoleMiddlewareWithAuthorizer(route httproute.Descriptor, authorizer *authz.ListingKitAuthorizer) gin.HandlerFunc {
+	requiredPermission := listingKitRouteRequiredPermission(route)
+	if requiredPermission == "" {
+		return nil
 	}
 	if authorizer == nil {
 		var err error

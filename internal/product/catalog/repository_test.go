@@ -108,3 +108,24 @@ func TestPublisherRejectsWriterResultWithDifferentIdentity(t *testing.T) {
 		t.Fatalf("Publish() error = %v, want ErrRepositoryStateInvalid", err)
 	}
 }
+
+func TestPublisherRejectsWriterResultWithDifferentSnapshot(t *testing.T) {
+	t.Parallel()
+
+	identity := SnapshotIdentity{TenantID: "tenant-a", ProductKey: "product-1"}
+	writer := &recordingSnapshotWriter{result: PublishedSnapshot{
+		Identity: identity, Version: 1, PublicationID: "source-run-1",
+		Snapshot: ProductSnapshot{Title: "different product facts"},
+	}}
+	publisher, err := NewPublisher(writer)
+	if err != nil {
+		t.Fatalf("NewPublisher() error = %v", err)
+	}
+	_, err = publisher.Publish(context.Background(), PublishRequest{
+		Identity: identity, PublicationID: "source-run-1",
+		Snapshot: ProductSnapshot{Title: "requested product facts"},
+	})
+	if !errors.Is(err, ErrRepositoryStateInvalid) {
+		t.Fatalf("Publish() error = %v, want ErrRepositoryStateInvalid", err)
+	}
+}

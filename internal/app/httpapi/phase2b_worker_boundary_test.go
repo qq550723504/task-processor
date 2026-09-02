@@ -197,7 +197,7 @@ func TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers(t *testing.T) {
 	for _, marker := range []string{
 		"func buildHTTPServerBundleFromModules(",
 		"buildRuntimeBundleFromModules(cfg, modules)",
-		"bundle.buildServerBundle(port)",
+		"bundle.buildServerBundle(port, authorization)",
 	} {
 		require.NotContains(t, appContent, marker)
 	}
@@ -209,7 +209,7 @@ func TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers(t *testing.T) {
 		"func buildHTTPServerBundleFromModules(",
 		"func buildRegisteredRoutesForModules(",
 		"buildRuntimeBundleFromModules(cfg, modules)",
-		"bundle.buildServerBundle(port)",
+		"bundle.buildServerBundle(port, authorization)",
 	} {
 		require.Contains(t, moduleRuntimeContent, marker)
 	}
@@ -236,11 +236,19 @@ func TestHTTPAPIServerDoesNotOwnListingKitAuthMiddlewareSelection(t *testing.T) 
 	authContent := string(authSrc)
 	for _, marker := range []string{
 		`"task-processor/internal/listingkit/httpapi"`,
-		"NewZitadelAuthMiddlewareFromEnv(",
+		"zitadelruntime.NewMiddleware(",
 		"RouteRequiresZitadelAuth(",
-		"NewRouteRoleMiddleware(",
+		"NewRouteRoleMiddlewareWithAuthorizer(",
 	} {
 		require.Contains(t, authContent, marker)
+	}
+	for _, forbidden := range []string{
+		"ConfigureListingKitZitadelAuth(",
+		"ConfigureListingKitAuthorization(",
+		"NewZitadelAuthMiddlewareFromEnv(",
+		"NewRouteRoleMiddleware(route)",
+	} {
+		require.NotContains(t, authContent, forbidden)
 	}
 }
 

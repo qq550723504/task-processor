@@ -3709,6 +3709,8 @@ func TestProductDomainDoesNotDependOnOuterAdapters(t *testing.T) {
 }
 
 func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
+	catalogAdapterDirectory := filepath.Clean(filepath.Join("..", "internal", "integration", "persistence", "product", "catalog")) + string(os.PathSeparator)
+	catalogAdapterOnly := map[string]struct{}{catalogAdapterDirectory: {}}
 	for _, infraRoot := range []string{
 		filepath.Join("..", "internal", "infra"),
 		filepath.Join("..", "internal", "integration"),
@@ -3733,7 +3735,23 @@ func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 				"task-processor/internal/temu",
 				"task-processor/internal/workspace",
 			}, nil)
+			assertNoBannedImportPrefixes(t, infraRoot, []string{
+				"task-processor/internal/product/catalog",
+			}, catalogAdapterOnly)
 		})
+	}
+}
+
+func TestInfrastructureCatalogGuardRejectsNonAdapterFixture(t *testing.T) {
+	fixtureRoot := filepath.Join("testdata", "infrastructure_catalog_violation")
+	violations, err := findBannedImportViolations(fixtureRoot, []string{
+		`"task-processor/internal/product/catalog"`,
+	}, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 || violations[0].importPath != "task-processor/internal/product/catalog" {
+		t.Fatalf("Catalog guard violations = %+v, want the non-adapter fixture rejected", violations)
 	}
 }
 

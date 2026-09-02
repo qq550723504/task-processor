@@ -40,7 +40,5 @@ func buildRuntimeSupportHooks(cookieStore *sheinlogin.RedisStore) BuildServiceHo
 		StudioImageGeneratorBuilder:     BuildStudioImageGenerator,
 		StudioAICapabilityRouterBuilder: BuildStudioAICapabilityRouter,
 		StudioBackgroundRemoverBuilder:  BuildStudioBackgroundRemover,
-		ConfigureZitadelAuth:            ConfigureListingKitZitadelAuth,
-		ConfigureAuthorization:          ConfigureListingKitAuthorization,
 	}
 }

@@ -37,8 +37,8 @@ func buildRuntimeBundleFromModules(cfg *config.Config, modules []kernelmodule.Mo
 	}, nil
 }
 
-func (b runtimeBundle) buildServerBundle(port int) (*http.Server, []httproute.Descriptor) {
-	return buildHTTPServerFromRoutes(port, b.routes), b.routes
+func (b runtimeBundle) buildServerBundle(port int, authorization routeAuthorization) (*http.Server, []httproute.Descriptor) {
+	return buildHTTPServerFromRoutes(port, b.routes, authorization), b.routes
 }
 
 func (b runtimeBundle) pools() []worker.WorkerPool {

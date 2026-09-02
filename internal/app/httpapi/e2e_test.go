@@ -150,7 +150,7 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 		productModule:       productModule,
 		imageModule:         imageModule,
 		amazonListingModule: amazonModule,
-	}.buildServerBundle(0, nil)
+	}.buildServerBundle(0, appHTTPTestConfig)
 	require.NoError(t, err)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
@@ -313,7 +313,7 @@ func TestHTTPE2E_ListingKitProductSnapshotBuildsSheinPreview(t *testing.T) {
 	routerServer, _, err := httpFeatureComposition{
 		productModule:    features.productModule,
 		listingKitModule: features.listingKitModule,
-	}.buildServerBundle(0, nil)
+	}.buildServerBundle(0, appHTTPTestConfig)
 	require.NoError(t, err)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()

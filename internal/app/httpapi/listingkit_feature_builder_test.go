@@ -114,9 +114,9 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 					order = append(order, "listingkit")
 					require.Equal(t, productService, deps.features.productService)
 					require.NotNil(t, input.Runtime.Support.Repositories.Core.Task)
-					require.NotNil(t, input.Runtime.Support.Hooks.ConfigureAuthorization)
+					require.NotNil(t, input.Runtime.Support.Hooks.SheinPricingPolicyBuilder)
 					require.Nil(t, input.Runtime.Repositories.Core.Task)
-					require.Nil(t, input.Runtime.Hooks.ConfigureAuthorization)
+					require.Nil(t, input.Runtime.Hooks.SheinPricingPolicyBuilder)
 					return &listingkithttpapi.Module{
 						Pool: stubWorkerPool{},
 					}, nil

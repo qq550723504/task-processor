@@ -29,9 +29,6 @@ func TestBuildRuntimeSupportProvidesRepositoryAndHookBundles(t *testing.T) {
 	if support.Repositories.Admin.GenerationTopicPolicy == nil {
 		t.Fatal("expected generation topic policy admin repository builder")
 	}
-	if support.Hooks.ConfigureAuthorization == nil {
-		t.Fatal("expected authorization hook")
-	}
 }
 
 func TestBuildRuntimeSupportUsesProvidedApprovedAssetReader(t *testing.T) {

@@ -3,42 +3,60 @@ package httpapi
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
+	zitadelruntime "task-processor/internal/authruntime/zitadel"
+	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 )
 
-// configureRouteAuthorization initializes the authentication state consumed by
-// the application-wide route middleware. It must not depend on construction of
-// the optional ListingKit module, because other modules also publish protected
-// routes.
-func configureRouteAuthorization(cfg *config.Config) error {
-	if cfg == nil {
-		return nil
-	}
-	listingkithttpapi.ConfigureListingKitZitadelAuth(cfg.ListingKit.Zitadel)
-	if err := listingkithttpapi.ConfigureListingKitAuthorization(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles); err != nil {
-		return fmt.Errorf("configure route authorization: %w", err)
-	}
-	return nil
+type routeAuthorization struct {
+	identityMiddleware gin.HandlerFunc
+	authorizer         *authz.ListingKitAuthorizer
 }
 
-func routeAuthHandlers(route httproute.Descriptor, zitadelAuth gin.HandlerFunc) []gin.HandlerFunc {
+// buildRouteAuthorization creates the immutable authorization dependency owned
+// by one HTTP server. It does not publish configuration through package globals.
+func buildRouteAuthorization(cfg *config.Config) (routeAuthorization, error) {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+	zitadel := cfg.ListingKit.Zitadel
+	legacyUsernameAllowlistConfigured := zitadel.LegacyUsernameAllowlistConfigured || len(zitadel.AllowedUsernames) > 0
+	authorizer, err := authz.NewListingKitAuthorizer(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles)
+	if err != nil {
+		return routeAuthorization{}, fmt.Errorf("build route authorizer: %w", err)
+	}
+	return routeAuthorization{
+		identityMiddleware: zitadelruntime.NewMiddleware(zitadelruntime.Config{
+			IssuerURL:    strings.TrimRight(strings.TrimSpace(zitadel.IssuerURL), "/"),
+			ClientID:     strings.TrimSpace(zitadel.ClientID),
+			ClientSecret: strings.TrimSpace(zitadel.ClientSecret),
+			ProjectID:    strings.TrimSpace(zitadel.ProjectID),
+		}, zitadelruntime.AuthorizationConfig{
+			Required:                          zitadel.AuthorizationRequired || legacyUsernameAllowlistConfigured,
+			LegacyUsernameAllowlistConfigured: legacyUsernameAllowlistConfigured,
+			AllowedTenantIDs:                  zitadelruntime.StringSliceToSet(zitadel.AllowedTenantIDs),
+			AllowedUserIDs:                    zitadelruntime.StringSliceToSet(zitadel.AllowedUserIDs),
+			AllowedRoles:                      zitadelruntime.StringSliceToSet(zitadel.AllowedRoles),
+		}),
+		authorizer: authorizer,
+	}, nil
+}
+
+func routeAuthHandlers(route httproute.Descriptor, authorization routeAuthorization) []gin.HandlerFunc {
 	if route.Method == http.MethodOptions {
 		return nil
 	}
-	if zitadelAuth == nil || !listingkithttpapi.RouteRequiresZitadelAuth(route) {
+	if authorization.identityMiddleware == nil || !listingkithttpapi.RouteRequiresZitadelAuth(route) {
 		return nil
 	}
-	if roleAuth := listingkithttpapi.NewRouteRoleMiddleware(route); roleAuth != nil {
-		return []gin.HandlerFunc{zitadelAuth, roleAuth}
+	if roleAuth := listingkithttpapi.NewRouteRoleMiddlewareWithAuthorizer(route, authorization.authorizer); roleAuth != nil {
+		return []gin.HandlerFunc{authorization.identityMiddleware, roleAuth}
 	}
-	return []gin.HandlerFunc{zitadelAuth}
-}
-
-func newZitadelAuthMiddleware() gin.HandlerFunc {
-	return listingkithttpapi.NewZitadelAuthMiddlewareFromEnv()
+	return []gin.HandlerFunc{authorization.identityMiddleware}
 }

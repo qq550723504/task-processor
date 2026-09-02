@@ -14,21 +14,17 @@ import (
 
 func prepareModuleServiceEnvironment(input BuildServiceInput, closers *closerStack) error {
 	configureModuleServicePolicies(input)
-	return configureModuleServiceAuthorization(input, closers)
+	return configureModuleServiceTenantResolution(input, closers)
 }
 
 func configureModuleServicePolicies(input BuildServiceInput) {
 	listingkit.ConfigureSheinSubmitDebugDumpDir(input.Config.ListingKit.SheinSubmitDebugDumpDir)
 	listingkit.EnableOwnerScope()
 	listingadmin.EnableOwnerScope()
-	input.Hooks.ConfigureZitadelAuth(input.Config.ListingKit.Zitadel)
 }
 
-func configureModuleServiceAuthorization(input BuildServiceInput, closers *closerStack) error {
+func configureModuleServiceTenantResolution(input BuildServiceInput, closers *closerStack) error {
 	hooks := input.Hooks
-	if err := hooks.ConfigureAuthorization(input.Config.ListingKit.PlatformAdminUsers, input.Config.ListingKit.PlatformAdminRoles); err != nil {
-		return fmt.Errorf("configure listing kit authorization: %w", err)
-	}
 	legacyTenantResolverCloser, err := hooks.LegacyTenantResolverConfigurator(input.Config, input.Logger)
 	if err != nil {
 		return fmt.Errorf("configure listing kit legacy tenant resolver: %w", err)

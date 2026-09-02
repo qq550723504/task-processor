@@ -33,26 +33,97 @@ func init() {
 }
 
 func TestBuildHTTPServerFromRoutesAtBindsLoopback(t *testing.T) {
-	server := buildHTTPServerFromRoutesAt("127.0.0.1", 18085, nil)
+	server := buildHTTPServerFromRoutesAt("127.0.0.1", 18085, nil, appHTTPTestRouteAuthorization)
 	if server.Addr != "127.0.0.1:18085" {
 		t.Fatalf("server address = %q, want loopback-only listener", server.Addr)
 	}
-	if got := buildHTTPServerFromRoutes(18085, nil).Addr; got != ":18085" {
+	if got := buildHTTPServerFromRoutes(18085, nil, appHTTPTestRouteAuthorization).Addr; got != ":18085" {
 		t.Fatalf("default server address = %q, want backward-compatible wildcard", got)
 	}
 }
 
-func TestListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFalse(t *testing.T) {
-	restore := listingkithttpapi.SetListingKitZitadelAuthConfigForTesting(nil)
-	t.Cleanup(restore)
-	listingkithttpapi.ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
-		IssuerURL:             "https://issuer.example",
-		ClientID:              "listingkit-client",
-		AuthorizationRequired: false,
-	})
-	if err := listingkithttpapi.ConfigureListingKitAuthorization(nil, []string{"platform_admin"}); err != nil {
-		t.Fatal(err)
+func TestHTTPServersKeepRouteAuthorizationIsolated(t *testing.T) {
+	issuerA := newRouteAuthorizationIssuer(t, "token-a", "role-a")
+	issuerB := newRouteAuthorizationIssuer(t, "token-b", "role-b")
+
+	authA, err := buildRouteAuthorization(&config.Config{ListingKit: config.ListingKitConfig{
+		PlatformAdminRoles: []string{"role-a"},
+		Zitadel: config.ListingKitZitadelConfig{
+			IssuerURL: issuerA.URL,
+			ClientID:  "client-a",
+		},
+	}})
+	require.NoError(t, err)
+	authB, err := buildRouteAuthorization(&config.Config{ListingKit: config.ListingKitConfig{
+		PlatformAdminRoles: []string{"role-b"},
+		Zitadel: config.ListingKitZitadelConfig{
+			IssuerURL: issuerB.URL,
+			ClientID:  "client-b",
+		},
+	}})
+	require.NoError(t, err)
+
+	route := httproute.Descriptor{
+		Method: http.MethodPost,
+		Path:   "/api/v1/listing-kits/platform/test",
+		Module: "listing-kit-platform-admin",
+		Handler: func(c *gin.Context) {
+			c.Status(http.StatusNoContent)
+		},
 	}
+	serverA := buildHTTPServerFromRoutes(0, []httproute.Descriptor{route}, authA)
+	serverB := buildHTTPServerFromRoutes(0, []httproute.Descriptor{route}, authB)
+
+	assertStatus := func(server *http.Server, token string, want int) {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodPost, route.Path, nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		server.Handler.ServeHTTP(response, request)
+		require.Equal(t, want, response.Code, response.Body.String())
+	}
+	assertStatus(serverA, "token-a", http.StatusNoContent)
+	assertStatus(serverB, "token-b", http.StatusNoContent)
+	assertStatus(serverA, "token-b", http.StatusUnauthorized)
+	assertStatus(serverB, "token-a", http.StatusUnauthorized)
+}
+
+func newRouteAuthorizationIssuer(t *testing.T, acceptedToken, role string) *httptest.Server {
+	t.Helper()
+	var issuer *httptest.Server
+	issuer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"introspection_endpoint": issuer.URL + "/oauth/v2/introspect",
+			})
+		case "/oauth/v2/introspect":
+			active := r.FormValue("token") == acceptedToken
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"active":                                active,
+				"sub":                                   "user-" + role,
+				"user_id":                               "user-" + role,
+				"urn:zitadel:iam:user:resourceowner:id": "tenant-" + role,
+				"urn:zitadel:iam:org:project:roles":     map[string]any{role: map[string]any{}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(issuer.Close)
+	return issuer
+}
+
+func TestListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFalse(t *testing.T) {
+	authorization, err := buildRouteAuthorization(&config.Config{ListingKit: config.ListingKitConfig{
+		PlatformAdminRoles: []string{"platform_admin"},
+		Zitadel: config.ListingKitZitadelConfig{
+			IssuerURL:             "https://issuer.example",
+			ClientID:              "listingkit-client",
+			AuthorizationRequired: false,
+		},
+	}})
+	require.NoError(t, err)
 
 	handlerCalled := false
 	server := buildHTTPServerFromRoutes(0, []httproute.Descriptor{{
@@ -63,7 +134,7 @@ func TestListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFal
 			handlerCalled = true
 			c.Status(http.StatusCreated)
 		},
-	}})
+	}}, authorization)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/platform/tenants/org-1/members/invitations", strings.NewReader(`{"email":"victim@example.com"}`))
 	request.Header.Set("X-User-ID", "forged-admin")
 	request.Header.Set("X-User-Roles", "platform_admin")
@@ -101,7 +172,7 @@ func TestZitadelSMSWebhookBypassesBearerWithoutRelaxingListingKitRoutes(t *testi
 				c.Status(http.StatusOK)
 			},
 		},
-	})
+	}, appHTTPTestRouteAuthorization)
 
 	webhookResponse := httptest.NewRecorder()
 	server.Handler.ServeHTTP(webhookResponse, httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/integrations/zitadel/sms", nil))
@@ -115,7 +186,7 @@ func TestZitadelSMSWebhookBypassesBearerWithoutRelaxingListingKitRoutes(t *testi
 }
 
 func TestListingKitPromptRoutesRequireVerifiedIdentity(t *testing.T) {
-	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}))
+	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}), appHTTPTestRouteAuthorization)
 	tests := []struct {
 		method string
 		path   string
@@ -145,7 +216,7 @@ func TestListingKitPromptRoutesRequireVerifiedIdentity(t *testing.T) {
 
 func TestListingKitAuthContextRouteRequiresVerifiedIdentity(t *testing.T) {
 	handler := &stubListingKitHandler{}
-	server := buildHTTPServerFromRoutes(0, listingkithttpapi.AppendRouteDescriptors(nil, handler))
+	server := buildHTTPServerFromRoutes(0, listingkithttpapi.AppendRouteDescriptors(nil, handler), appHTTPTestRouteAuthorization)
 
 	unauthenticated := httptest.NewRecorder()
 	server.Handler.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/auth-context", nil))
@@ -159,7 +230,7 @@ func TestListingKitAuthContextRouteRequiresVerifiedIdentity(t *testing.T) {
 }
 
 func TestListingKitPromptRoutesAllowVerifiedIdentity(t *testing.T) {
-	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}))
+	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}), appHTTPTestRouteAuthorization)
 	request := withAppHTTPTestBearer(httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/prompts/catalog", nil))
 	response := httptest.NewRecorder()
 
@@ -171,7 +242,7 @@ func TestListingKitPromptRoutesAllowVerifiedIdentity(t *testing.T) {
 }
 
 func TestListingKitPromptWritesRejectVerifiedViewer(t *testing.T) {
-	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}))
+	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}), appHTTPTestRouteAuthorization)
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/listing-kits/prompts", strings.NewReader(`{}`))
 	request.Header.Set("Authorization", "Bearer "+appHTTPTestViewerBearerToken)
 	response := httptest.NewRecorder()
@@ -2132,7 +2203,7 @@ func TestBuildRouteDescriptorsMatchMountedRoutes(t *testing.T) {
 
 	routes, err := buildRegisteredRoutesForModules(nil, modules)
 	require.NoError(t, err)
-	mountRoutes(router, routes)
+	mountRoutes(router, routes, appHTTPTestRouteAuthorization)
 
 	registered := router.Routes()
 	if len(registered) != len(routes) {
@@ -2167,7 +2238,7 @@ func TestBuildHTTPServerBundleFromModulesMountsRegisteredRoutes(t *testing.T) {
 		sdshttpapi.NewHTTPModule(&stubSDSCatalogRouteHandler{}),
 	)
 
-	server, routes, err := buildHTTPServerBundleFromModules(18080, nil, modules)
+	server, routes, err := buildHTTPServerBundleFromModules(18080, appHTTPTestConfig, modules)
 	if err != nil {
 		t.Fatalf("buildHTTPServerBundleFromModules returned error: %v", err)
 	}
@@ -2299,7 +2370,7 @@ func mustBuildTestRouterFromModules(t *testing.T, modules ...kernelmodule.Module
 		withAppHTTPTestBearer(c.Request)
 		c.Next()
 	})
-	mountRoutes(router, routes)
+	mountRoutes(router, routes, appHTTPTestRouteAuthorization)
 	return router
 }
 

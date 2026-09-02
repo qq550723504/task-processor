@@ -490,6 +490,7 @@ func TestDomainAppHTTPAPIDepguardPatternCoversBusinessTrees(t *testing.T) {
 		"amazon",
 		"amazonlisting",
 		"asset",
+		"product/catalog",
 		"listing",
 		"listingkit",
 		"marketplace",
@@ -547,11 +548,20 @@ func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testi
 			}
 		}
 	}
+	for _, pattern := range []string{
+		`- "!**/internal/integration/persistence/product/catalog/*.go"`,
+		`- "!**/internal/integration/persistence/product/catalog/**/*.go"`,
+	} {
+		if !strings.Contains(config, pattern) {
+			t.Errorf("%s must exclude only the approved Catalog persistence adapter with %s", configPath, pattern)
+		}
+	}
 
 	for _, packagePath := range []string{
 		"amazon",
 		"amazonlisting",
 		"asset",
+		"product/catalog",
 		"listing",
 		"listingkit",
 		"marketplace",
@@ -571,11 +581,30 @@ func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testi
 			}
 		}
 	}
-	for _, suffix := range []string{"$", "/"} {
-		pattern := fmt.Sprintf(`- pkg: "task-processor/internal/product/catalog%s"`, suffix)
-		if strings.Contains(config, pattern) {
-			t.Errorf("%s must allow the production persistence adapter to implement Catalog-owned ports; found %s", configPath, pattern)
+	adapterRule := requireDepguardRule(t, loadDepguardRules(t, configPath), "product_catalog_persistence_boundary")
+	adapterFiles := stringSet(adapterRule.Files)
+	for _, pattern := range []string{
+		"**/internal/integration/persistence/product/catalog/*.go",
+		"**/internal/integration/persistence/product/catalog/**/*.go",
+	} {
+		if _, ok := adapterFiles[pattern]; !ok {
+			t.Errorf("product_catalog_persistence_boundary must cover only the approved adapter with %s", pattern)
 		}
+	}
+	adapterDeny := depguardDenyPackageSet(adapterRule)
+	for _, packagePath := range []string{
+		"task-processor/internal/amazonlisting$",
+		"task-processor/internal/listingkit$",
+		"task-processor/internal/marketplace$",
+		"task-processor/internal/productenrich$",
+		"task-processor/internal/productimage$",
+	} {
+		if _, ok := adapterDeny[packagePath]; !ok {
+			t.Errorf("product_catalog_persistence_boundary must keep adapter free of %s", packagePath)
+		}
+	}
+	if _, denied := adapterDeny["task-processor/internal/product/catalog$"]; denied {
+		t.Error("product_catalog_persistence_boundary must allow the adapter to implement Catalog-owned ports")
 	}
 }
 

@@ -98,10 +98,6 @@ func (h BuildServiceHooks) Validate() error {
 		return fmt.Errorf("build service hook shein api client factory is required")
 	case h.StudioImageGeneratorBuilder == nil:
 		return fmt.Errorf("build service hook studio image generator is required")
-	case h.ConfigureZitadelAuth == nil:
-		return fmt.Errorf("build service hook configure zitadel auth is required")
-	case h.ConfigureAuthorization == nil:
-		return fmt.Errorf("build service hook configure authorization is required")
 	default:
 		return nil
 	}

@@ -68,7 +68,7 @@ func resolveRuntimeSupport(runtime RuntimeDependencies) RuntimeSupport {
 
 func hasRuntimeSupport(support RuntimeSupport) bool {
 	return support.Repositories.Core.Task != nil ||
-		support.Hooks.ConfigureAuthorization != nil ||
+		support.Hooks.SheinPricingPolicyBuilder != nil ||
 		support.SDSSyncService != nil ||
 		support.SDSLoginStatusProvider != nil ||
 		support.SDSBaselineRemoteProvider != nil

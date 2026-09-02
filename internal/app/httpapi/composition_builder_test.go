@@ -124,11 +124,11 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 			require.Equal(t, whiteBgRenderer, deps.features.imageWhiteBgRenderer)
 			require.Equal(t, sceneRenderer, deps.features.imageSceneRenderer)
 			require.NotNil(t, input.Runtime.Support.Repositories.Core.Task)
-			require.NotNil(t, input.Runtime.Support.Hooks.ConfigureAuthorization)
+			require.NotNil(t, input.Runtime.Support.Hooks.SheinPricingPolicyBuilder)
 			require.Equal(t, statusProvider, input.Runtime.Support.SDSLoginStatusProvider)
 			require.Nil(t, input.Runtime.SDSLoginStatusProvider)
 			require.Nil(t, input.Runtime.Repositories.Core.Task)
-			require.Nil(t, input.Runtime.Hooks.ConfigureAuthorization)
+			require.Nil(t, input.Runtime.Hooks.SheinPricingPolicyBuilder)
 			return &listingkithttpapi.Module{
 				TaskLifecycleService: stubCompositionTaskLifecycleService{},
 				StoreAccessValidator: stubCompositionStoreAccessValidator{},

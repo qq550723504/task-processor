@@ -152,8 +152,6 @@ type BuildServiceHooks struct {
 	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
 	StudioAICapabilityRouterBuilder   func(openaiclient.ClientConfigResolver) aicapability.Router
 	StudioBackgroundRemoverBuilder    func(*config.Config, openaiclient.ClientConfigResolver) listingkit.StudioBackgroundRemover
-	ConfigureZitadelAuth              func(config.ListingKitZitadelConfig)
-	ConfigureAuthorization            func([]string, []string) error
 }
 
 type BuildServiceInput struct {

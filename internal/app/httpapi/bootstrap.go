@@ -13,16 +13,16 @@ import (
 const productListingTraceOperation = "product-listing-api"
 
 type bootstrapBuildDependencies struct {
-	buildRuntimeDeps            func(*logrus.Logger, string) (*runtimeDeps, error)
-	configureRouteAuthorization func(*config.Config) error
-	buildComposition            func(*logrus.Logger, *runtimeDeps) (httpFeatureComposition, error)
-	buildRuntimeBundle          func(httpFeatureComposition, *config.Config) (runtimeBundle, error)
+	buildRuntimeDeps        func(*logrus.Logger, string) (*runtimeDeps, error)
+	buildRouteAuthorization func(*config.Config) (routeAuthorization, error)
+	buildComposition        func(*logrus.Logger, *runtimeDeps) (httpFeatureComposition, error)
+	buildRuntimeBundle      func(httpFeatureComposition, *config.Config) (runtimeBundle, error)
 }
 
 func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, error) {
 	return buildBootstrapWithDependencies(logger, options, bootstrapBuildDependencies{
-		buildRuntimeDeps:            buildRuntimeDeps,
-		configureRouteAuthorization: configureRouteAuthorization,
+		buildRuntimeDeps:        buildRuntimeDeps,
+		buildRouteAuthorization: buildRouteAuthorization,
 		buildComposition: func(logger *logrus.Logger, deps *runtimeDeps) (httpFeatureComposition, error) {
 			return newHTTPFeatureCompositionBuilder().build(logger, deps)
 		},
@@ -46,10 +46,13 @@ func buildBootstrapWithDependencies(logger *logrus.Logger, options Options, buil
 		cleanupOwnedRuntimeResources(completed, deps.constructionClosers)
 	}()
 	deps.shared.sourceImageFetcher = options.SourceImageFetcher
-	if builders.configureRouteAuthorization != nil {
-		if err := builders.configureRouteAuthorization(deps.shared.cfg); err != nil {
-			return nil, err
-		}
+	routeAuthorizationBuilder := builders.buildRouteAuthorization
+	if routeAuthorizationBuilder == nil {
+		routeAuthorizationBuilder = buildRouteAuthorization
+	}
+	authorization, err := routeAuthorizationBuilder(deps.shared.cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	done = timer.phase("configureSheinLoginAccount")
@@ -71,7 +74,7 @@ func buildBootstrapWithDependencies(logger *logrus.Logger, options Options, buil
 	}
 
 	done = timer.phase("buildHTTPServerBundle")
-	server, routes := runtimeBundle.buildServerBundle(options.Port)
+	server, routes := runtimeBundle.buildServerBundle(options.Port, authorization)
 	if bindAddress := strings.TrimSpace(options.BindAddress); bindAddress != "" {
 		server.Addr = serverAddress(bindAddress, options.Port)
 	}
