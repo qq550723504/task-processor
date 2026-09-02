@@ -253,6 +253,13 @@ expected installation ID before using the token. The evaluator is triggered by
 trusted `pull_request_target`/`workflow_run` events or by the reconciler's
 `repository_dispatch`; it intentionally has no privileged `workflow_dispatch`
 trigger, so a PR branch cannot supply arbitrary privileged inputs.
+For a trusted direct `unlabeled` event that removes `architecture-approved`,
+the evaluator publishes a new pending Check Run against the event-provided
+merge SHA before its first PR API read. If that read fails, the catch path can
+complete this newly created run as an evaluator error instead of preserving a
+previous completed success. Dispatch and workflow-run targets are validated
+against the PR API before any status publication because their payloads are
+not direct PR event facts.
 
 The App private key is stored only as the `DEVELOPMENT_ADMISSION_APP_PRIVATE_KEY`
 secret in the protected `development-admission-publisher` environment; it is

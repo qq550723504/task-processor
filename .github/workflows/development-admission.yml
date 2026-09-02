@@ -341,6 +341,16 @@ jobs:
               if (!Number.isSafeInteger(pullRequestNumber) || pullRequestNumber <= 0) {
                 throw new TypeError("pull request number is unavailable after target resolution failed");
               }
+              const directOverrideRemoval = context.eventName === "pull_request_target" &&
+                context.payload.action === "unlabeled" &&
+                context.payload.label?.name === guard.OVERRIDE_LABEL;
+              if (directOverrideRemoval && /^[0-9a-f]{40}$/i.test(statusSha || "")) {
+                await publishStatus({
+                  state: "pending",
+                  description: "Invalidating admission after architecture-approved removal",
+                });
+                initialStatusPublished = true;
+              }
               const initialPullRequest = (await github.rest.pulls.get(pullRequestRequest)).data;
               const resolvedStatusSha = guard.statusTargetForPullRequest(initialPullRequest);
               if (statusSha && statusSha !== resolvedStatusSha) {

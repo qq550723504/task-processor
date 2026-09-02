@@ -991,6 +991,10 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   );
   assert.match(
     admissionWorkflow,
+    /const directOverrideRemoval[\s\S]*await publishStatus\([\s\S]*Invalidating admission after architecture-approved removal[\s\S]*const initialPullRequest/,
+  );
+  assert.match(
+    admissionWorkflow,
     /hasRequiredOverrideEvidence\([\s\S]*authorizedApprovalReviewers/,
   );
   assert.match(signalWorkflow, /permissions: \{\}/);
