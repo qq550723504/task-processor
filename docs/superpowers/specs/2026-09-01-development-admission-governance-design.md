@@ -254,6 +254,18 @@ trusted `pull_request_target`/`workflow_run` events or by the reconciler's
 `repository_dispatch`; it intentionally has no privileged `workflow_dispatch`
 trigger, so a PR branch cannot supply arbitrary privileged inputs.
 
+The App private key is stored only as the `DEVELOPMENT_ADMISSION_APP_PRIVATE_KEY`
+secret in the protected `development-admission-publisher` environment; it is
+not a repository secret. Every privileged evaluator and reconciliation job
+declares that environment, which requires the configured reviewer before the
+job can start. Ordinary `pull_request` workflows do not reference the secret or
+the environment, so a PR-controlled workflow cannot mint the publisher token
+without an environment approval. This personal repository currently has only
+the owner available as a required reviewer, so `Prevent self-review` cannot be
+enabled without making the bootstrap PR un-runnable; strict two-person
+separation requires adding a distinct maintainer or moving the repository to an
+organization.
+
 Review changes are delivered through a separate read-only
 `Development Admission Review Signal` workflow. That signal writes only its
 GitHub-provided PR number and merge target SHA to a short-lived artifact; the

@@ -18,6 +18,7 @@
 - Reuse a shared transaction or existing repository/open-source outbox, Saga, or Temporal facility before inventing compensation infrastructure.
 - `architecture-approved` is the only size override label; it must be paired with a maintainer/admin `APPROVED` review for the current head SHA and cannot replace design evidence.
 - Ordinary CI permissions remain read-only; the trusted admission and reconciliation workflows declare `permissions: {}` and use repository-scoped tokens from the dedicated GitHub App, and neither workflow creates labels or edits pull requests.
+- The App private key is stored only in the protected `development-admission-publisher` environment; privileged jobs bind that environment and ordinary PR workflows do not reference the key. The personal-repository bootstrap uses the owner as the required reviewer with administrator bypass disabled; strict two-person approval requires a distinct maintainer or organization-owned repository.
 - The existing `Guard Baseline` remains the authoritative import-boundary guard inventory.
 
 ---
@@ -227,7 +228,7 @@ Expected: all tests PASS.
 
 - [x] **Step 4: Manually inspect workflow authority**
 
-Confirm the trusted workflow has no path filter, uses only the default-branch policy revision, declares `permissions: {}`, uses a pinned dedicated-App token, never checks out or executes PR code, publishes the trusted Check Run to `merge_commit_sha`, re-runs on label/edited/review changes, serializes evaluations per PR, verifies current-head maintainer/admin review and base-retarget freshness before accepting an override, rechecks permissions immediately before publishing an override success, fails closed on incomplete/moving snapshots, has a five-minute job deadline, and never creates/applies labels or edits PRs. Confirm ordinary CI runs policy tests on push without a skipped job and the notification names them as tests.
+Confirm the trusted workflow has no path filter, uses only the default-branch policy revision, declares `permissions: {}`, binds the protected `development-admission-publisher` environment for every private-key consumer, uses a pinned dedicated-App token, never checks out or executes PR code, publishes the trusted Check Run to `merge_commit_sha`, re-runs on label/edited/review changes, serializes evaluations per PR, verifies current-head maintainer/admin review and base-retarget freshness before accepting an override, rechecks permissions immediately before publishing an override success, fails closed on incomplete/moving snapshots, has a five-minute job deadline, and never creates/applies labels or edits PRs. Confirm ordinary CI runs policy tests on push without a skipped job and the notification names them as tests.
 
 - [ ] **Step 5: Commit Task 3**
 

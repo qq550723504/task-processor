@@ -1033,6 +1033,10 @@ test("uses the dedicated App installation identity for privileged admission API 
     path.join(workflowRoot, "development-admission-reconcile.yml"),
     "utf8",
   ).replaceAll("\r\n", "\n");
+  const ordinaryCiWorkflow = fs.readFileSync(
+    path.join(workflowRoot, "ci.yml"),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
   const appTokenAction = /uses: actions\/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3/;
   const privateKeySecret = /private-key: \$\{\{ secrets\.DEVELOPMENT_ADMISSION_APP_PRIVATE_KEY \}\}/;
   const appTokenReference = /github-token: \$\{\{ steps\.admission-app-token\.outputs\.token \}\}/g;
@@ -1040,6 +1044,10 @@ test("uses the dedicated App installation identity for privileged admission API 
   assert.match(admissionWorkflow, appTokenAction);
   assert.match(admissionWorkflow, /app-id: 4799675 # AI Commerce Governance/);
   assert.match(admissionWorkflow, privateKeySecret);
+  assert.equal(
+    (admissionWorkflow.match(/^    environment: development-admission-publisher$/gm) || []).length,
+    2,
+  );
   assert.match(admissionWorkflow, /outputs\.installation-id/);
   assert.match(admissionWorkflow, /!= ['"]158369358['"]/);
   assert.match(admissionWorkflow, /^permissions:\s*\{\}\s*$/m);
@@ -1058,6 +1066,10 @@ test("uses the dedicated App installation identity for privileged admission API 
   assert.match(reconcileWorkflow, appTokenAction);
   assert.match(reconcileWorkflow, /app-id: 4799675 # AI Commerce Governance/);
   assert.match(reconcileWorkflow, privateKeySecret);
+  assert.equal(
+    (reconcileWorkflow.match(/^    environment: development-admission-publisher$/gm) || []).length,
+    1,
+  );
   assert.match(reconcileWorkflow, /outputs\.installation-id/);
   assert.match(reconcileWorkflow, /!= ['"]158369358['"]/);
   assert.match(reconcileWorkflow, /^permissions:\s*\{\}\s*$/m);
@@ -1067,6 +1079,7 @@ test("uses the dedicated App installation identity for privileged admission API 
   assert.equal((reconcileWorkflow.match(appTokenReference) || []).length, 1);
   assert.match(reconcileWorkflow, /TRUSTED_CHECK_APP_ID/);
   assert.doesNotMatch(reconcileWorkflow, /trustedCheckAppId = 15368/);
+  assert.doesNotMatch(ordinaryCiWorkflow, /DEVELOPMENT_ADMISSION_APP_PRIVATE_KEY/);
 });
 
 test("targets the test merge commit for required admission status", () => {

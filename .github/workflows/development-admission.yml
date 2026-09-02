@@ -23,6 +23,7 @@ jobs:
   resolve-admission:
     name: Resolve admission target
     runs-on: ubuntu-latest
+    environment: development-admission-publisher
     timeout-minutes: 2
     outputs:
       pull_request_number: ${{ steps.resolve.outputs.pull_request_number }}
@@ -95,6 +96,7 @@ jobs:
   evaluate-admission:
     name: Development Admission Evaluator
     runs-on: ubuntu-latest
+    environment: development-admission-publisher
     timeout-minutes: 5
     needs: resolve-admission
     if: ${{ always() }}
