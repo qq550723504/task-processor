@@ -41,9 +41,24 @@ jobs:
       pull_request_number: ${{ steps.resolve.outputs.pull_request_number }}
       merge_commit_sha: ${{ steps.resolve.outputs.merge_commit_sha }}
     steps:
+      - name: Create dedicated admission App token
+        id: admission-app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.DEVELOPMENT_ADMISSION_APP_ID }}
+          private-key: ${{ secrets.DEVELOPMENT_ADMISSION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-actions: read
+          permission-checks: write
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+
       - name: Checkout trusted policy revision
         uses: actions/checkout@v4
         with:
+          token: ${{ steps.admission-app-token.outputs.token }}
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
@@ -54,15 +69,13 @@ jobs:
           name: development-admission-review-${{ github.event.workflow_run.id }}
           path: ${{ runner.temp }}/development-admission-review-signal
           run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ steps.admission-app-token.outputs.token }}
 
       - name: Resolve pull request number
         id: resolve
         uses: actions/github-script@v9
-        env:
-          SIGNAL_PATH: ${{ runner.temp }}/development-admission-review-signal/pr_number
-          TARGET_PATH: ${{ runner.temp }}/development-admission-review-signal/merge_commit_sha
         with:
+          github-token: ${{ steps.admission-app-token.outputs.token }}
           script: |
             const fs = require("node:fs");
             const guard = require("./.github/scripts/pr-scope-guard.cjs");
@@ -84,6 +97,9 @@ jobs:
             if (signalMergeCommitSha) {
               core.setOutput("merge_commit_sha", signalMergeCommitSha);
             }
+        env:
+          SIGNAL_PATH: ${{ runner.temp }}/development-admission-review-signal/pr_number
+          TARGET_PATH: ${{ runner.temp }}/development-admission-review-signal/merge_commit_sha
 
   evaluate-admission:
     name: Development Admission Evaluator
@@ -95,9 +111,24 @@ jobs:
       group: development-admission-${{ github.event.repository.full_name }}-${{ needs.resolve-admission.outputs.pull_request_number || github.event.pull_request.number || inputs.pull_request_number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
       cancel-in-progress: false
     steps:
+      - name: Create dedicated admission App token
+        id: admission-app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.DEVELOPMENT_ADMISSION_APP_ID }}
+          private-key: ${{ secrets.DEVELOPMENT_ADMISSION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-actions: read
+          permission-checks: write
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+
       - name: Checkout trusted policy revision
         uses: actions/checkout@v4
         with:
+          token: ${{ steps.admission-app-token.outputs.token }}
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
@@ -107,7 +138,9 @@ jobs:
           PULL_REQUEST_NUMBER: ${{ needs.resolve-admission.outputs.pull_request_number || github.event.pull_request.number || inputs.pull_request_number }}
           TARGET_MERGE_COMMIT_SHA: ${{ needs.resolve-admission.outputs.merge_commit_sha || github.event.pull_request.merge_commit_sha || inputs.merge_commit_sha }}
           WORKFLOW_RUN_PULL_REQUESTS: ${{ toJSON(github.event.workflow_run.pull_requests) }}
+          TRUSTED_CHECK_APP_ID: ${{ secrets.DEVELOPMENT_ADMISSION_APP_ID }}
         with:
+          github-token: ${{ steps.admission-app-token.outputs.token }}
           script: |
             const guard = require("./.github/scripts/pr-scope-guard.cjs");
             const workflowRunPullRequests = process.env.WORKFLOW_RUN_PULL_REQUESTS
@@ -128,7 +161,10 @@ jobs:
               repo: context.repo.repo,
             };
             const statusContext = "Development Admission";
-            const trustedCheckAppId = 15368;
+            const trustedCheckAppId = Number(process.env.TRUSTED_CHECK_APP_ID);
+            if (!Number.isInteger(trustedCheckAppId) || trustedCheckAppId <= 0) {
+              throw new TypeError("trusted admission App ID must be a positive integer");
+            }
             const nonterminalCheckStatuses = new Set([
               "queued",
               "in_progress",

@@ -1021,6 +1021,40 @@ test("keeps review and reconciliation triggers on the trusted event path", () =>
   assert.match(reconcileWorkflow, /github\.rest\.actions\.createWorkflowDispatch/);
 });
 
+test("uses the dedicated App installation identity for privileged admission API calls", () => {
+  const workflowRoot = path.join(__dirname, "..", "workflows");
+  const admissionWorkflow = fs.readFileSync(
+    path.join(workflowRoot, "development-admission.yml"),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
+  const reconcileWorkflow = fs.readFileSync(
+    path.join(workflowRoot, "development-admission-reconcile.yml"),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
+  const appTokenAction = /uses: actions\/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3/;
+  const appIdSecret = /app-id: \$\{\{ secrets\.DEVELOPMENT_ADMISSION_APP_ID \}\}/;
+  const privateKeySecret = /private-key: \$\{\{ secrets\.DEVELOPMENT_ADMISSION_APP_PRIVATE_KEY \}\}/;
+  const appTokenReference = /github-token: \$\{\{ steps\.admission-app-token\.outputs\.token \}\}/g;
+
+  assert.match(admissionWorkflow, appTokenAction);
+  assert.match(admissionWorkflow, appIdSecret);
+  assert.match(admissionWorkflow, privateKeySecret);
+  assert.equal(
+    (admissionWorkflow.match(appTokenReference) || []).length,
+    (admissionWorkflow.match(/uses: actions\/github-script@v9/g) || []).length +
+      (admissionWorkflow.match(/uses: actions\/download-artifact@/g) || []).length,
+  );
+  assert.match(admissionWorkflow, /TRUSTED_CHECK_APP_ID/);
+  assert.doesNotMatch(admissionWorkflow, /trustedCheckAppId = 15368/);
+
+  assert.match(reconcileWorkflow, appTokenAction);
+  assert.match(reconcileWorkflow, appIdSecret);
+  assert.match(reconcileWorkflow, privateKeySecret);
+  assert.equal((reconcileWorkflow.match(appTokenReference) || []).length, 1);
+  assert.match(reconcileWorkflow, /TRUSTED_CHECK_APP_ID/);
+  assert.doesNotMatch(reconcileWorkflow, /trustedCheckAppId = 15368/);
+});
+
 test("targets the test merge commit for required admission status", () => {
   assert.equal(statusTargetForPullRequest({ merge_commit_sha: "merge-abc" }), "merge-abc");
   assert.throws(

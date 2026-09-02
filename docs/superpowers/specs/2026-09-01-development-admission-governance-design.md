@@ -214,8 +214,10 @@ reviews, or base-reference-change events move, and fails closed if the paginated
 file list does not equal `changed_files`. It publishes a Check Run named
 `Development Admission` to the PR's current test merge commit
 (`merge_commit_sha`): `in_progress` before evaluation and `success` or `failure`
-after evaluation. The Check Run is created by the GitHub Actions application,
-so branch protection can bind the required check to that application instead of
+after evaluation. The Check Run is created with a repository-scoped token minted
+for the dedicated `AI Commerce Governance` GitHub App from protected repository
+secrets, so branch protection can bind the required check to that configured App
+instead of
 trusting a user-writable status context. This keeps evaluations for the same
 head against different base branches from overwriting one another. Each
 evaluation retains the created nonterminal Check Run ID and updates that same
@@ -242,8 +244,9 @@ workflow runs the proposed classifier's unit tests on `pull_request`/push events
 but is not the authoritative admission decision. The first PR adding the
 trusted workflow is a bootstrap exception that requires maintainer review; after
 merge, branch protection must require the `Development Admission` Check Run and
-bind it to the GitHub Actions application (app ID 15368) for the guard to block
-merges.
+bind it to the configured `DEVELOPMENT_ADMISSION_APP_ID` for the guard to block
+merges. The App installation is restricted to this repository, and its workflow
+token uses only the permissions needed by the evaluator or reconciler.
 
 Review changes are delivered through a separate read-only
 `Development Admission Review Signal` workflow. That signal writes only its
@@ -291,7 +294,7 @@ The admission evaluator's failure matrix is:
 
 The current repository has no branch-protection required status check or ruleset;
 the rollout must enable the `Development Admission` Check Run after this
-workflow is merged and bind it to the GitHub Actions application. Merge-queue
+workflow is merged and bind it to the dedicated App. Merge-queue
 support is not claimed by this PR: if a `merge_group`
 required workflow is introduced later, it needs a separate adapter for its
 merge-group SHA and constituent PRs before the gate is required there.

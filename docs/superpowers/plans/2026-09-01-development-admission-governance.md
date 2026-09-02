@@ -186,9 +186,11 @@ evaluate-admission:
 
 The action script imports `./.github/scripts/pr-scope-guard.cjs`, publishes `pending` to the PR `merge_commit_sha`, reads the PR metadata before and after `github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number, per_page: 100 })`, and also snapshots labels, reviews, and base-reference-change events before and after evaluation. It fails on a moving head/base/merge/update/label/review snapshot or mismatched `changed_files`, evaluates the latest labels, and when the override label is present verifies a current-head `APPROVED` review from a non-author collaborator with `role_name` `maintain` or `admin`, submitted after the latest base retarget. It writes `formatEvaluation` to logs and the step summary, publishes `success`/`failure`/`error` with the fixed `Development Admission` context to the PR `merge_commit_sha`, and calls `core.setFailed` when the decision is not allowed or evaluation cannot complete. The failure message instructs the author to split the change or obtain the label plus protected current-head approval and design evidence. The ordinary CI workflow runs only `node --test .github/scripts/pr-scope-guard.test.cjs` for proposed policy changes and does not decide admission.
 
-Implementation update: the trusted workflow grants `checks: write` and creates
-the `Development Admission` Check Run through the GitHub Actions application;
-the required branch rule must bind that check to app ID 15368. The evaluator
+Implementation update: the trusted workflow mints a repository-scoped token for
+the dedicated `AI Commerce Governance` GitHub App from repository secrets and
+creates the `Development Admission` Check Run with that identity; the required
+branch rule must bind that check to the configured `DEVELOPMENT_ADMISSION_APP_ID`.
+The evaluator
 filters override evidence against eligible current-head approvers, the
 reconciler includes recent override-label removals, and direct PR/dispatch
 events still publish an error Check Run when target resolution fails. The

@@ -23,15 +23,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Create dedicated admission App token
+        id: admission-app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.DEVELOPMENT_ADMISSION_APP_ID }}
+          private-key: ${{ secrets.DEVELOPMENT_ADMISSION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-actions: write
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+
       - name: Checkout trusted policy revision
         uses: actions/checkout@v4
         with:
+          token: ${{ steps.admission-app-token.outputs.token }}
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       - name: Dispatch trusted admission evaluations
         uses: actions/github-script@v9
+        env:
+          TRUSTED_CHECK_APP_ID: ${{ secrets.DEVELOPMENT_ADMISSION_APP_ID }}
         with:
+          github-token: ${{ steps.admission-app-token.outputs.token }}
           script: |
             const guard = require("./.github/scripts/pr-scope-guard.cjs");
             const pullRequests = await github.paginate(github.rest.pulls.list, {
@@ -44,7 +62,10 @@ jobs:
               ? context.payload.workflow_run.head_branch
               : null;
             const defaultBranch = context.payload.repository.default_branch;
-            const trustedCheckAppId = 15368;
+            const trustedCheckAppId = Number(process.env.TRUSTED_CHECK_APP_ID);
+            if (!Number.isInteger(trustedCheckAppId) || trustedCheckAppId <= 0) {
+              throw new TypeError("trusted admission App ID must be a positive integer");
+            }
             const candidateFlags = new Array(pullRequests.length).fill(false);
             let nextIndex = 0;
             const inspectPullRequests = async () => {
