@@ -105,7 +105,7 @@ test("classifies a rename as production when either path is production", () => {
     },
   ], []);
   assert.equal(renamedToTest.allowed, false);
-  assert.deepEqual(renamedToTest.exceeded, ["productionChurn"]);
+  assert.deepEqual(renamedToTest.exceeded, ["productionAdditions", "productionChurn"]);
 });
 
 test("fails closed for a classification-changing pure production rename", () => {
@@ -123,6 +123,18 @@ test("fails closed for a classification-changing pure production rename", () => 
   assert.deepEqual(result.exceeded, ["productionAdditions", "productionChurn"]);
   assert.equal(result.metrics.productionAdditions, LIMITS.productionAdditions + 1);
   assert.equal(result.metrics.productionChurn, LIMITS.productionChurn + 1);
+
+  const editedRename = evaluatePullRequest([
+    {
+      filename: "internal/service.go",
+      previous_filename: "tests/service_test.go",
+      additions: 1,
+      deletions: 0,
+      status: "renamed",
+    },
+  ], []);
+  assert.equal(editedRename.allowed, false);
+  assert.deepEqual(editedRename.exceeded, ["productionAdditions", "productionChurn"]);
 });
 
 test("allows exact production limits and excludes test lines from production totals", () => {
@@ -731,6 +743,26 @@ test("requires explicit design and split evidence for an oversized override", ()
       completeBody.replace(
         "the consistency boundary cannot be split safely",
         "This can only be split by breaking the shared transaction",
+      ),
+      ["Henry"],
+    ),
+    true,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "the consistency boundary cannot be split safely",
+        "This change is not safe to split because it breaks the shared transaction",
+      ),
+      ["Henry"],
+    ),
+    true,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "the consistency boundary cannot be split safely",
+        "This change may not be safe to split because it breaks the shared transaction",
       ),
       ["Henry"],
     ),

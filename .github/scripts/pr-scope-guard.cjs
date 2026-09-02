@@ -110,9 +110,7 @@ function isUnverifiableProductionRename(file) {
   const current = classifyFile(file.filename);
   const previous = classifyFile(previousFilename);
   return current.production !== previous.production &&
-    (current.production || previous.production) &&
-    lineCount(file.additions) === 0 &&
-    lineCount(file.deletions) === 0;
+    (current.production || previous.production);
 }
 
 function assertCompleteFileList(files, changedFiles) {
@@ -363,12 +361,15 @@ function hasRequiredOverrideEvidence(body, approvedLogins) {
   );
   const splitRationale = valueFor(
     /^\s*-\s*(?:Split rationale[^:\n]*|architecture-approved[^:\n]*split rationale[^:\n]*):\s*(.+)$/im,
-    [
-      /\b(?:can|could|may|should)\b(?![^\n.]*\bonly\s+be\s+split\s+by\b)[^\n.]*\b(?:safe|safely)\b[^\n.]*\bsplit\b/i,
-      /\b(?:can|could|may|should)\b(?![^\n.]*\bonly\s+be\s+split\s+by\b)[^\n.]*\bsplit\b[^\n.]*\b(?:safe|safely)\b/i,
-      /\b(?:safe|safely)\s+to\s+split\b/i,
-    ],
   );
+  const safeSplitClaim = splitRationale &&
+    /(?:\b(?:can|could|may|should)\b[^\n.]*\b(?:safe|safely)\b[^\n.]*\bsplit\b|\b(?:can|could|may|should)\b[^\n.]*\bsplit\b[^\n.]*\b(?:safe|safely)\b|\b(?:safe|safely)\s+to\s+split\b)/i.test(
+      splitRationale,
+    ) &&
+    !/\b(?:not|never|may\s+not|might\s+not|can(?:not|\s+not)|could\s+not|should\s+not|is\s+not|isn't)\b[^\n.]*\b(?:safe|safely)\b[^\n.]*\bsplit\b|\b(?:not|never|may\s+not|might\s+not|can(?:not|\s+not)|could\s+not|should\s+not|is\s+not|isn't)\b[^\n.]*\bsplit\b[^\n.]*\b(?:safe|safely)\b/i.test(
+      splitRationale,
+    );
+  const validatedSplitRationale = safeSplitClaim ? null : splitRationale;
   const hasDesignLink = design && /https?:\/\/\S+|(?:^|\s)(?:docs|designs?)\/\S+/i.test(design);
   const hasApprovedLogin = approvedLogins.some((login) => {
     if (typeof login !== "string" || login.trim() === "") {
@@ -381,7 +382,7 @@ function hasRequiredOverrideEvidence(body, approvedLogins) {
     hasDesignLink &&
       completedIndependentReview &&
       approver &&
-      splitRationale &&
+      validatedSplitRationale &&
       hasApprovedLogin,
   );
 }
