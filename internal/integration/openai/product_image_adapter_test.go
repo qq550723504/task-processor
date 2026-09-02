@@ -149,6 +149,19 @@ func TestNewProductImageAdapterRejectsIncompleteRuntime(t *testing.T) {
 	require.ErrorContains(t, err, "route pinning")
 }
 
+func TestProductImageAdapterBoundsAggregateInlineOutputBeforeCapabilityReturn(t *testing.T) {
+	t.Parallel()
+
+	used, err := consumeProductImageArtifactBudget(0, productimage.MaxInlineArtifactBytes)
+	require.NoError(t, err)
+	used, err = consumeProductImageArtifactBudget(used, productimage.MaxInlineArtifactBytes)
+	require.NoError(t, err)
+	require.Equal(t, productimage.MaxInlineArtifactAggregateBytes, used)
+
+	_, err = consumeProductImageArtifactBudget(used, 1)
+	require.ErrorIs(t, err, productimage.ErrOutputValidation)
+}
+
 func validProductImageAdapterConfig(images ai.ImageGenerator, chat ai.ChatCompleter) ProductImageAdapterConfig {
 	return ProductImageAdapterConfig{
 		ImageClient: images, ReviewClient: chat, Provider: "openai", ImageModel: "gpt-image-1", ReviewModel: "gpt-5-mini",

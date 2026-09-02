@@ -1,16 +1,12 @@
 package openai
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"image"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"reflect"
 	"strings"
@@ -18,8 +14,6 @@ import (
 	"task-processor/internal/ai"
 	"task-processor/internal/integration/httpimage"
 	productimage "task-processor/internal/product/image"
-
-	_ "golang.org/x/image/webp"
 )
 
 const maxProductImagePromptBytes = 64 << 10
@@ -252,12 +246,17 @@ func (a *ProductImageAdapter) imageCandidates(ctx context.Context, response *ai.
 		return nil, productimage.ErrOutputValidation
 	}
 	candidates := make([]productimage.Candidate, len(response.Data))
+	usedArtifactBytes := 0
 	for index, item := range response.Data {
 		content, err := a.generatedImageBytes(ctx, item)
 		if err != nil {
 			return nil, err
 		}
-		mediaType, width, height, err := decodedProductImage(content)
+		usedArtifactBytes, err = consumeProductImageArtifactBudget(usedArtifactBytes, len(content))
+		if err != nil {
+			return nil, err
+		}
+		mediaType, width, height, err := httpimage.InspectGeneratedArtifact(content)
 		if err != nil {
 			return nil, err
 		}
@@ -274,6 +273,13 @@ func (a *ProductImageAdapter) imageCandidates(ctx context.Context, response *ai.
 		}
 	}
 	return candidates, nil
+}
+
+func consumeProductImageArtifactBudget(used, size int) (int, error) {
+	if used < 0 || size <= 0 || size > productimage.MaxInlineArtifactBytes || size > productimage.MaxInlineArtifactAggregateBytes-used {
+		return 0, productimage.ErrOutputValidation
+	}
+	return used + size, nil
 }
 
 func (a *ProductImageAdapter) generatedImageBytes(ctx context.Context, item ai.ImageData) ([]byte, error) {
@@ -299,19 +305,6 @@ func (a *ProductImageAdapter) generatedImageBytes(ctx context.Context, item ai.I
 		return nil, productimage.ErrOutputValidation
 	}
 	return append([]byte(nil), downloaded...), nil
-}
-
-func decodedProductImage(content []byte) (string, int, int, error) {
-	config, format, err := image.DecodeConfig(bytes.NewReader(content))
-	if err != nil || config.Width <= 0 || config.Height <= 0 {
-		return "", 0, 0, productimage.ErrOutputValidation
-	}
-	mediaTypes := map[string]string{"jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
-	mediaType := mediaTypes[format]
-	if mediaType == "" {
-		return "", 0, 0, productimage.ErrOutputValidation
-	}
-	return mediaType, config.Width, config.Height, nil
 }
 
 func productImagePrompt(base string, product productimage.ProductContext, details any) (string, error) {
