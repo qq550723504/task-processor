@@ -3,11 +3,11 @@ package alibaba1688
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
+	"task-processor/internal/pkg/runtimepath"
 
 	"github.com/mxschmitt/playwright-go"
 )
@@ -97,7 +97,7 @@ func resolveAlibaba1688UserDataDir(cfg *config.Config) string {
 			return dir
 		}
 	}
-	return filepath.Join(".", "tmp", "browser-profiles", "1688")
+	return runtimepath.NamespacedTempPath("browser-profiles", "1688")
 }
 
 // CreateBrowser 创建浏览器实例（保持向后兼容的API）
