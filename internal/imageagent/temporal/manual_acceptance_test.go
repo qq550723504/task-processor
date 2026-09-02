@@ -1037,7 +1037,8 @@ type acceptanceUsageQuoter struct{}
 
 func (acceptanceUsageQuoter) QuoteUsage(_ context.Context, request productimage.UsageQuoteRequest) (productimage.UsageQuote, error) {
 	return productimage.UsageQuote{
-		Operation: request.Operation, Provider: "acceptance", Model: "acceptance-model", PricingVersion: "acceptance-v1",
+		Operation: request.Operation, Provider: "acceptance", RouteReference: "acceptance-route", Model: "acceptance-model",
+		CredentialReference: "acceptance-credential", ConfigurationVersion: "acceptance-config-v1", PricingVersion: "acceptance-v1",
 		Fingerprint: request.Operation + "-acceptance-v1", MaximumOutputs: request.MaximumOutputs,
 		MaximumModelCalls: 1, CostUpperBoundKnown: true,
 	}, nil

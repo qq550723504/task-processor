@@ -94,6 +94,9 @@ func (a *ProductImageAdapter) Extract(ctx context.Context, request productimage.
 	if a == nil || a.subject == nil {
 		return productimage.Candidate{}, productimage.ErrCapabilityUnsupported
 	}
+	if err := authorizeProductImageEndpoint(request.Authorization, "extract_subject", 1, *a.subject); err != nil {
+		return productimage.Candidate{}, err
+	}
 	response, err := a.invoke(ctx, *a.subject, productImageHTTPRequest{
 		Task: "subject_extract", SourceURL: request.Source.URL, Product: newProductImageHTTPProduct(request.Product),
 	}, request.Source)
@@ -107,6 +110,9 @@ func (a *ProductImageAdapter) RenderWhiteBackground(ctx context.Context, request
 	if a == nil || a.whiteBackground == nil {
 		return productimage.Candidate{}, productimage.ErrCapabilityUnsupported
 	}
+	if err := authorizeProductImageEndpoint(request.Authorization, "render_white_background", 1, *a.whiteBackground); err != nil {
+		return productimage.Candidate{}, err
+	}
 	response, err := a.invoke(ctx, *a.whiteBackground, productImageHTTPRequest{
 		Task: "white_background", SourceURL: request.Subject.Asset.URL, Product: newProductImageHTTPProduct(request.Product),
 	}, request.Subject.Asset)
@@ -119,6 +125,9 @@ func (a *ProductImageAdapter) RenderWhiteBackground(ctx context.Context, request
 func (a *ProductImageAdapter) RenderScene(ctx context.Context, request productimage.SceneRequest) ([]productimage.Candidate, error) {
 	if a == nil || a.scene == nil {
 		return nil, productimage.ErrCapabilityUnsupported
+	}
+	if err := authorizeProductImageEndpoint(request.Authorization, "render_scene", int64(request.MaximumOutputs), *a.scene); err != nil {
+		return nil, err
 	}
 	if request.MaximumOutputs < 1 || request.MaximumOutputs > a.maximumSceneOutputs {
 		return nil, productimage.ErrCapabilityUnsupported
@@ -155,6 +164,22 @@ func (a *ProductImageAdapter) RenderScene(ctx context.Context, request productim
 		candidates[index] = productImageHTTPCandidate(content, mediaType, width, height, request.Source, productimage.RoleScene, "render_scene", *a.scene)
 	}
 	return candidates, nil
+}
+
+func authorizeProductImageEndpoint(authorization *productimage.UsageQuote, operation string, maximumOutputs int64, endpoint ProductImageEndpointConfig) error {
+	if authorization == nil {
+		return nil
+	}
+	quote, err := productimage.NormalizeUsageAuthorization(*authorization, operation)
+	if err != nil || quote.MaximumOutputs != maximumOutputs {
+		return productimage.ErrInputInvalid
+	}
+	if quote.Provider != endpoint.Provider || quote.RouteReference != endpoint.RouteReference || quote.Model != endpoint.Model ||
+		quote.CredentialReference != endpoint.CredentialReference || quote.ConfigurationVersion != endpoint.ConfigurationVersion ||
+		quote.PricingVersion != endpoint.PricingVersion {
+		return productimage.ErrCapabilityUnsupported
+	}
+	return nil
 }
 
 func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage.UsageQuoteRequest) (productimage.UsageQuote, error) {

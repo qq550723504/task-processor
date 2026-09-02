@@ -26,6 +26,16 @@ type ProductImagePrompts struct {
 	Version         string
 }
 
+func DefaultProductImagePrompts() ProductImagePrompts {
+	return ProductImagePrompts{
+		Subject:         "isolate the exact product without changing its design",
+		WhiteBackground: "place the extracted product on a clean white background without changing the product",
+		Scene:           "create a controlled product scene using only the supplied product and explicit scene options",
+		Review:          "review whether the generated image faithfully preserves the supplied product",
+		Version:         "product-image-prompts-v1",
+	}
+}
+
 type ProductImageAdapterConfig struct {
 	ImageClient  ai.ImageGenerator
 	ReviewClient ai.ChatCompleter
@@ -85,14 +95,23 @@ func NewProductImageAdapter(config ProductImageAdapterConfig) (*ProductImageAdap
 }
 
 func (a *ProductImageAdapter) Extract(ctx context.Context, request productimage.ExtractRequest) (productimage.Candidate, error) {
+	if err := a.authorize(request.Authorization, "extract_subject", 1); err != nil {
+		return productimage.Candidate{}, err
+	}
 	return a.editOne(ctx, request.Source, request.Source, request.Product, productimage.RoleSubject, "extract_subject", a.config.Prompts.Subject)
 }
 
 func (a *ProductImageAdapter) RenderWhiteBackground(ctx context.Context, request productimage.RenderRequest) (productimage.Candidate, error) {
+	if err := a.authorize(request.Authorization, "render_white_background", 1); err != nil {
+		return productimage.Candidate{}, err
+	}
 	return a.editOne(ctx, request.Subject.Asset, request.Source, request.Product, productimage.RoleWhiteBackground, "render_white_background", a.config.Prompts.WhiteBackground)
 }
 
 func (a *ProductImageAdapter) RenderScene(ctx context.Context, request productimage.SceneRequest) ([]productimage.Candidate, error) {
+	if err := a.authorize(request.Authorization, "render_scene", int64(request.MaximumOutputs)); err != nil {
+		return nil, err
+	}
 	if request.MaximumOutputs < 1 || request.MaximumOutputs > a.config.MaximumSceneOutputs {
 		return nil, productimage.ErrCapabilityUnsupported
 	}
@@ -121,6 +140,9 @@ func (a *ProductImageAdapter) RenderScene(ctx context.Context, request productim
 }
 
 func (a *ProductImageAdapter) Review(ctx context.Context, request productimage.ReviewRequest) (productimage.Review, error) {
+	if err := a.authorize(request.Authorization, "review", 1); err != nil {
+		return productimage.Review{}, err
+	}
 	summary, err := json.Marshal(struct {
 		Product        productImagePromptContext `json:"product"`
 		SourceCount    int                       `json:"source_count"`
@@ -162,6 +184,26 @@ func (a *ProductImageAdapter) Review(ctx context.Context, request productimage.R
 		return productimage.Review{}, productimage.ErrOutputValidation
 	}
 	return productimage.Review{Score: payload.Score, NeedsHumanReview: payload.NeedsHumanReview, Reasons: payload.Reasons}, nil
+}
+
+func (a *ProductImageAdapter) authorize(authorization *productimage.UsageQuote, operation string, maximumOutputs int64) error {
+	if authorization == nil {
+		return nil
+	}
+	quote, err := productimage.NormalizeUsageAuthorization(*authorization, operation)
+	if err != nil || quote.MaximumOutputs != maximumOutputs {
+		return productimage.ErrInputInvalid
+	}
+	model := a.config.ImageModel
+	if operation == "review" {
+		model = a.config.ReviewModel
+	}
+	if quote.Provider != a.config.Provider || quote.RouteReference != a.config.RouteReference || quote.Model != model ||
+		quote.CredentialReference != a.config.CredentialReference || quote.ConfigurationVersion != a.config.ConfigurationVersion ||
+		quote.PricingVersion != a.config.PricingVersion {
+		return productimage.ErrCapabilityUnsupported
+	}
+	return nil
 }
 
 func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage.UsageQuoteRequest) (productimage.UsageQuote, error) {

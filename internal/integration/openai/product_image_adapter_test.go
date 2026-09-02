@@ -160,6 +160,25 @@ func TestProductImageAdapterQuotesExactTypedOperation(t *testing.T) {
 	require.ErrorIs(t, err, productimage.ErrCapabilityUnsupported)
 }
 
+func TestProductImageAdapterRejectsExecutionOutsideQuotedRouteBeforeDispatch(t *testing.T) {
+	images := &productImageGeneratorStub{}
+	adapter, err := NewProductImageAdapter(validProductImageAdapterConfig(images, &productImageChatStub{}))
+	require.NoError(t, err)
+	authorization, err := adapter.QuoteUsage(context.Background(), productimage.UsageQuoteRequest{
+		Operation: "extract_subject", InputFingerprint: "input-v1", MaximumOutputs: 1,
+	})
+	require.NoError(t, err)
+	authorization.ConfigurationVersion = "rotated-config"
+
+	_, err = adapter.Extract(context.Background(), productimage.ExtractRequest{
+		Source: productImageSource("source-1", "https://source.example/item.png"), Product: productImageContext(),
+		Authorization: &authorization,
+	})
+
+	require.ErrorIs(t, err, productimage.ErrCapabilityUnsupported)
+	require.Nil(t, images.lastEdit)
+}
+
 func TestNewProductImageAdapterRejectsIncompleteRuntime(t *testing.T) {
 	t.Parallel()
 

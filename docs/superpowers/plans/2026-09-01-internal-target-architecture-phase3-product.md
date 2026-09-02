@@ -880,7 +880,7 @@ git commit -m "refactor(marketplace): resolve image policy from injected data"
 
 > **执行切片裁决（2026-09-02）：** 实施审查实测本任务列出的旧 Provider/App 生产文件约 4,569 行，尚未包含 ImageAgent、Temporal、HTTP 和 Worker 改造，不能作为一个超过 1,500 行准入阈值的单一开发单元执行。目标接口和最终验收不变，但按依赖顺序拆为独立、始终可编译并分别复审的切片：10A 专用策略 Catalog Adapter；10B Run/HTTP/Store/Temporal 的结构化 PolicyContext；10D1 OpenAI Adapter；10D2 HTTP Image/GRSAI Adapter；10D3 App-only provider composition；10C Executor 与 Worker 一次性切换到 `product/image` 和精确 Resolver；10E fail-closed 装配收尾及 Task 10 全量清理。10B 后的实施审查确认，若在 provider adapters 和 App composition 之前切 Executor，唯一能维持编译的方法是新增临时 legacy bridge/constructor；这与禁止兼容债务冲突，因此先完成可独立编译的 adapters，再原子切换消费方。旧 `productimage` 只可在尚未迁移的切片中暂存，不能增加兼容入口或 fallback；10E 完成时一次性满足本任务的 scoped import 验收。
 
-- [ ] **Step 1: 改写 Executor 契约测试**
+- [x] **Step 1: 改写 Executor 契约测试**
 
 ```go
 func TestExecutorUsesProductImagePortsAndRejectsFallbackCandidate(t *testing.T) {
@@ -907,13 +907,13 @@ func (s stubSceneRenderer) RenderScene(context.Context, productimage.SceneReques
 
 另写契约测试证明 Executor 只把 immutable `Run.TargetPlatform` 作为 Marketplace，并与 `ImagePolicyContext` 的 Country/Family/SceneCategory 组成精确键传给 Resolver；它不读取 `ProductType`、Title 或 Attributes 推断策略。Resolver 返回 `ErrPolicyNotFound` 时 slot 明确失败。Catalog loader 测试使用独立小型 YAML fixture 验证 strict fields、单文档、schema version、资源上限和 PolicySet 交接，不在 Go 测试里镜像 `policies.yaml` 的业务全集。
 
-- [ ] **Step 2: 运行 Executor 测试确认仍引用旧 ProductImage**
+- [x] **Step 2: 运行 Executor 测试确认仍引用旧 ProductImage**
 
 Run: `go test ./internal/imageagent/tools ./internal/app/worker/imageagent -count=1`
 
 Expected: FAIL，直到 Tool 和生产装配切换完成。
 
-- [ ] **Step 3: 迁移 Adapter 与 App 组合**
+- [x] **Step 3: 迁移 Adapter 与 App 组合**
 
 ```go
 type ImagePolicyContext struct {
@@ -981,13 +981,13 @@ policies:
 
 生产构造必须逐项验证非 nil。策略装配顺序固定为 `integration catalog.Load` → App 映射 typed Catalog 为 `imagepolicy.PolicySet` → `imagepolicy.NewResolver` → 作为 `ProfileResolver` 注入 Executor；任一步失败都阻止 worker 启动。Loader 只解析嵌入的版本化策略资源，不接受运行时路径，不调用历史配置加载器，也不提供代码内 fallback。Provider 运行参数由各 Integration Adapter 的 typed constructor 显式接收，再以 typed dependencies 传入；本函数不接收 `config.Config`。`ProductImageConfig` 中仍被 ImageAgent 使用的 workdir、model、publisher 配置在 Task 16 改名为 `ImageAgentConfig`；本任务不得把图片策略接入该历史配置对象。
 
-- [ ] **Step 4: 运行 ImageAgent Tool、Temporal replay 和 Worker 装配测试**
+- [x] **Step 4: 运行 ImageAgent Tool、Temporal replay 和 Worker 装配测试**
 
 Run: `go test ./internal/integration/policy/productimage ./internal/imageagent/httpapi ./internal/imageagent/tools ./internal/imageagent/temporal ./internal/app/worker/imageagent -count=1`
 
 Expected: PASS；已有 Temporal history 的序列化命令保持不变，新 Run 的显式 policy key 进入新 effect fingerprint，生产 Go 文件不再 import `internal/productimage`。
 
-- [ ] **Step 5: 提交 ImageAgent 能力接线**
+- [x] **Step 5: 提交 ImageAgent 能力接线**
 
 ```powershell
 git add internal/integration/openai internal/integration/grsai internal/integration/httpimage internal/integration/policy/productimage internal/imageagent internal/app/worker/imageagent

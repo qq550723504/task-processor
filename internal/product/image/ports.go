@@ -200,7 +200,11 @@ func cloneExtractRequest(request ExtractRequest) (ExtractRequest, error) {
 	if err != nil {
 		return ExtractRequest{}, err
 	}
-	return ExtractRequest{Source: source, Product: product}, nil
+	authorization, err := cloneUsageAuthorization(request.Authorization, "extract_subject")
+	if err != nil {
+		return ExtractRequest{}, err
+	}
+	return ExtractRequest{Source: source, Product: product, Authorization: authorization}, nil
 }
 
 func cloneRenderRequest(request RenderRequest) (RenderRequest, error) {
@@ -214,7 +218,11 @@ func cloneRenderRequest(request RenderRequest) (RenderRequest, error) {
 	if err != nil {
 		return RenderRequest{}, ErrInputInvalid
 	}
-	return RenderRequest{Source: source, Subject: subject, Product: product}, nil
+	authorization, err := cloneUsageAuthorization(request.Authorization, "render_white_background")
+	if err != nil {
+		return RenderRequest{}, err
+	}
+	return RenderRequest{Source: source, Subject: subject, Product: product, Authorization: authorization}, nil
 }
 
 func cloneSceneRequest(request SceneRequest) (SceneRequest, int, error) {
@@ -255,9 +263,14 @@ func cloneSceneRequest(request SceneRequest) (SceneRequest, int, error) {
 	if limit < 1 || limit > maxSceneCandidates {
 		return SceneRequest{}, 0, ErrInputInvalid
 	}
+	authorization, err := cloneUsageAuthorization(request.Authorization, "render_scene")
+	if err != nil {
+		return SceneRequest{}, 0, err
+	}
 	return SceneRequest{
 		Source: source, Product: product, Options: *options,
 		ProfileName: request.ProfileName, StyleReferences: styleReferences, MaximumOutputs: limit,
+		Authorization: authorization,
 	}, limit, nil
 }
 
@@ -304,7 +317,39 @@ func cloneReviewRequest(request ReviewRequest) (ReviewRequest, error) {
 		seenArtifacts[identity] = struct{}{}
 		candidates[index] = cloned
 	}
-	return ReviewRequest{Product: product, Sources: sources, Candidates: candidates}, nil
+	authorization, err := cloneUsageAuthorization(request.Authorization, "review")
+	if err != nil {
+		return ReviewRequest{}, err
+	}
+	return ReviewRequest{Product: product, Sources: sources, Candidates: candidates, Authorization: authorization}, nil
+}
+
+// NormalizeUsageAuthorization validates the complete non-secret provider
+// identity that was quoted before dispatch. A nil authorization is allowed for
+// unbudgeted callers; a present value must bind the exact technical operation.
+func NormalizeUsageAuthorization(quote UsageQuote, operation string) (UsageQuote, error) {
+	if !isCanonicalToken(operation) || quote.Operation != operation ||
+		!isCanonicalToken(quote.Operation) || !isCanonicalRequired(quote.Provider) ||
+		!isCanonicalRequired(quote.RouteReference) || !isCanonicalRequired(quote.Model) ||
+		!isCanonicalRequired(quote.CredentialReference) || !isCanonicalRequired(quote.ConfigurationVersion) ||
+		!isCanonicalRequired(quote.PricingVersion) || !isCanonicalRequired(quote.Fingerprint) ||
+		quote.MaximumOutputs < 1 || quote.MaximumOutputs > maxSceneCandidates ||
+		quote.MaximumModelCalls < 0 || quote.MaximumCostMicros < 0 ||
+		!quote.CostUpperBoundKnown && quote.MaximumCostMicros != 0 {
+		return UsageQuote{}, ErrInputInvalid
+	}
+	return quote, nil
+}
+
+func cloneUsageAuthorization(authorization *UsageQuote, operation string) (*UsageQuote, error) {
+	if authorization == nil {
+		return nil, nil
+	}
+	normalized, err := NormalizeUsageAuthorization(*authorization, operation)
+	if err != nil {
+		return nil, err
+	}
+	return &normalized, nil
 }
 
 func validatedInput(source Asset, product ProductContext) (Asset, ProductContext, error) {

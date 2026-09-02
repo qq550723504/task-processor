@@ -83,8 +83,8 @@ func (e *ProductImageSlotExecutor) quoteSlot(ctx context.Context, input imageage
 		if quoteErr != nil {
 			return quotedSlotExecution{}, fmt.Errorf("%w: quote %s: %v", imageagent.ErrBudgetQuoteUnavailable, operation, quoteErr)
 		}
-		if capability.Operation != operation || strings.TrimSpace(capability.Provider) == "" || strings.TrimSpace(capability.Model) == "" ||
-			strings.TrimSpace(capability.Fingerprint) == "" || capability.MaximumOutputs != 1 || capability.MaximumModelCalls < 0 || capability.MaximumCostMicros < 0 {
+		capability, quoteErr = productimage.NormalizeUsageAuthorization(capability, operation)
+		if quoteErr != nil || capability.MaximumOutputs != 1 {
 			return quotedSlotExecution{}, fmt.Errorf("%w: %s capability returned an invalid quote", imageagent.ErrBudgetQuoteUnavailable, operation)
 		}
 		if policy.CostMicros.Enabled && !capability.CostUpperBoundKnown {
@@ -179,12 +179,15 @@ func (e *ProductImageSlotExecutor) generateMain(ctx context.Context, input resol
 	if e.dependencies.SubjectExtractor == nil || e.dependencies.WhiteBackgroundRenderer == nil {
 		return nil, imageagent.SlotUsageReceipt{}, fmt.Errorf("%w: main image capabilities are incomplete", imageagent.ErrValidation)
 	}
-	subject, err := e.dependencies.SubjectExtractor.Extract(ctx, productimage.ExtractRequest{Source: input.source, Product: input.product})
+	subject, err := e.dependencies.SubjectExtractor.Extract(ctx, productimage.ExtractRequest{
+		Source: input.source, Product: input.product, Authorization: capabilityAuthorization(quoted, "extract_subject"),
+	})
 	if err != nil {
 		return nil, imageagent.SlotUsageReceipt{}, dispatchedCapabilityError("extract subject", err, false)
 	}
 	white, err := e.dependencies.WhiteBackgroundRenderer.RenderWhiteBackground(ctx, productimage.RenderRequest{
 		Source: input.source, Subject: subject, Product: input.product,
+		Authorization: capabilityAuthorization(quoted, "render_white_background"),
 	})
 	if err != nil {
 		return nil, imageagent.SlotUsageReceipt{}, dispatchedCapabilityError("render white background", err, true)
@@ -207,6 +210,7 @@ func (e *ProductImageSlotExecutor) generateScene(ctx context.Context, input reso
 	candidates, err := e.dependencies.SceneRenderer.RenderScene(ctx, productimage.SceneRequest{
 		Source: input.source, Product: input.product, Options: *options,
 		StyleReferences: input.styles, MaximumOutputs: 1,
+		Authorization: capabilityAuthorization(quoted, "render_scene"),
 	})
 	if err != nil {
 		return nil, imageagent.SlotUsageReceipt{}, dispatchedCapabilityError("render scene", err, false)
@@ -215,6 +219,19 @@ func (e *ProductImageSlotExecutor) generateScene(ctx context.Context, input reso
 		return nil, imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderDispatchedUnknown, imageagent.ErrValidation)
 	}
 	return candidates, receiptForQuote(quoted, int64(len(candidates)), candidates), nil
+}
+
+func capabilityAuthorization(quoted *quotedSlotExecution, operation string) *productimage.UsageQuote {
+	if quoted == nil {
+		return nil
+	}
+	for _, candidate := range quoted.operations {
+		if candidate.capability.Operation == operation {
+			authorization := candidate.capability
+			return &authorization
+		}
+	}
+	return nil
 }
 
 func (e *ProductImageSlotExecutor) ExecuteSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotExecutionResult, error) {

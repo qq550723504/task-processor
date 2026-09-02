@@ -1359,3 +1359,41 @@ func validReviewRequest() ReviewRequest {
 		}},
 	}
 }
+
+func TestSubjectCapabilityCarriesExactUsageAuthorizationDefensively(t *testing.T) {
+	authorization := validUsageAuthorization("extract_subject")
+	called := false
+	extractor, err := NewSubjectCapability(subjectExtractorFunc(func(_ context.Context, request ExtractRequest) (Candidate, error) {
+		called = true
+		require.NotNil(t, request.Authorization)
+		require.Equal(t, authorization, *request.Authorization)
+		request.Authorization.Provider = "mutated"
+		return Candidate{Asset: validGeneratedAsset(RoleSubject, "extract_subject", "https://cdn.example/subject.png")}, nil
+	}))
+	require.NoError(t, err)
+
+	_, err = extractor.Extract(context.Background(), ExtractRequest{
+		Source: validSourceAsset(), Product: validProductContext(), Authorization: &authorization,
+	})
+	require.NoError(t, err)
+	require.True(t, called)
+	require.Equal(t, "provider-a", authorization.Provider)
+
+	invalid := authorization
+	invalid.Operation = "render_scene"
+	called = false
+	_, err = extractor.Extract(context.Background(), ExtractRequest{
+		Source: validSourceAsset(), Product: validProductContext(), Authorization: &invalid,
+	})
+	require.ErrorIs(t, err, ErrInputInvalid)
+	require.False(t, called)
+}
+
+func validUsageAuthorization(operation string) UsageQuote {
+	return UsageQuote{
+		Operation: operation, Provider: "provider-a", RouteReference: "route-a", Model: "model-a",
+		CredentialReference: "credential-a", ConfigurationVersion: "config-v1", PricingVersion: "pricing-v1",
+		Fingerprint: operation + "-quote-v1", MaximumOutputs: 1, MaximumModelCalls: 1,
+		MaximumCostMicros: 10, CostUpperBoundKnown: true,
+	}
+}

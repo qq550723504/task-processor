@@ -48,14 +48,16 @@ type Candidate struct {
 }
 
 type ExtractRequest struct {
-	Source  Asset
-	Product ProductContext
+	Source        Asset
+	Product       ProductContext
+	Authorization *UsageQuote
 }
 
 type RenderRequest struct {
-	Source  Asset
-	Subject Candidate
-	Product ProductContext
+	Source        Asset
+	Subject       Candidate
+	Product       ProductContext
+	Authorization *UsageQuote
 }
 
 type SceneRequest struct {
@@ -65,12 +67,14 @@ type SceneRequest struct {
 	ProfileName     string
 	StyleReferences []Asset
 	MaximumOutputs  int
+	Authorization   *UsageQuote
 }
 
 type ReviewRequest struct {
-	Product    ProductContext
-	Sources    []Asset
-	Candidates []Candidate
+	Product       ProductContext
+	Sources       []Asset
+	Candidates    []Candidate
+	Authorization *UsageQuote
 }
 
 type Review struct {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	openaiclient "task-processor/internal/integration/openai"
 	imagepolicy "task-processor/internal/marketplace/imagepolicy"
 	productimage "task-processor/internal/product/image"
 )
@@ -111,6 +112,33 @@ func TestBuildImageCapabilitiesPreservesExactResolver(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, resolver.profile, profile)
 	require.Equal(t, input, resolver.input)
+}
+
+func TestBuildProductionImageCapabilitiesQuotesCurrentRouteAndRejectsStaleAuthorization(t *testing.T) {
+	clientConfig := openaiclient.NewClientConfig("test-key", "gpt-image-test", "https://provider.example.test/v1", 30)
+	manager, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
+		Clients:       map[string]*openaiclient.ClientConfig{imageAgentOpenAIClientName: clientConfig},
+		DefaultClient: imageAgentOpenAIClientName,
+	})
+	require.NoError(t, err)
+	capabilities, err := buildProductionImageCapabilities(imageCapabilityRuntime{OpenAIManager: manager})
+	require.NoError(t, err)
+
+	quote, err := capabilities.UsageQuoter.QuoteUsage(context.Background(), productimage.UsageQuoteRequest{
+		Operation: "render_scene", InputFingerprint: "slot-fingerprint-v1", MaximumOutputs: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "openai", quote.Provider)
+	require.Equal(t, "gpt-image-test", quote.Model)
+	require.Equal(t, imageAgentOpenAIClientName, quote.CredentialReference)
+	require.NotEmpty(t, quote.ConfigurationVersion)
+	require.False(t, quote.CostUpperBoundKnown)
+
+	provider, err := newRoutedOpenAIProductImageProvider(manager)
+	require.NoError(t, err)
+	quote.ConfigurationVersion = "stale-configuration"
+	_, err = provider.adapter(context.Background(), "render_scene", &quote)
+	require.ErrorIs(t, err, productimage.ErrCapabilityUnsupported)
 }
 
 func completeProviderDependencies() providerDependencies {

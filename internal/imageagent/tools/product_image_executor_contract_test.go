@@ -91,13 +91,15 @@ func TestExecutorChainsSubjectIntoWhiteBackgroundAndRetainsOriginalProvenance(t 
 
 func TestExecutorQuotesExactOperationWithExecutingProviderIdentity(t *testing.T) {
 	quoter := &recordingProductUsageQuoter{quote: productimage.UsageQuote{
-		Operation: "render_scene", Provider: "openai", Model: "gpt-image-1", PricingVersion: "pricing-v1",
+		Operation: "render_scene", Provider: "openai", RouteReference: "image-route", Model: "gpt-image-1",
+		CredentialReference: "image-credential", ConfigurationVersion: "config-v1", PricingVersion: "pricing-v1",
 		Fingerprint: "provider-quote-v1", MaximumOutputs: 1, MaximumModelCalls: 1,
 		MaximumCostMicros: 10, CostUpperBoundKnown: true,
 	}}
+	renderer := &recordingProductSceneRenderer{candidates: []productimage.Candidate{testSceneCandidate(t, "https://source.example/item.png")}}
 	executor := NewProductImageSlotExecutor(Dependencies{
 		SubjectExtractor: testProductSubjectExtractor{}, WhiteBackgroundRenderer: testProductWhiteRenderer{},
-		SceneRenderer: &recordingProductSceneRenderer{}, UsageQuoter: quoter,
+		SceneRenderer: renderer, UsageQuoter: quoter,
 		ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
 	})
 
@@ -109,6 +111,10 @@ func TestExecutorQuotesExactOperationWithExecutingProviderIdentity(t *testing.T)
 	require.Len(t, quote.Operations, 1)
 	require.Equal(t, "openai", quote.Operations[0].Provider)
 	require.Equal(t, "gpt-image-1", quote.Operations[0].Model)
+	_, err = executor.GenerateQuotedSlot(context.Background(), testProductImageExecutionInput(), quote)
+	require.NoError(t, err)
+	require.NotNil(t, renderer.request.Authorization)
+	require.Equal(t, quoter.quote, *renderer.request.Authorization)
 }
 
 func testProductImageExecutionInput() imageagent.SlotExecutionInput {
@@ -233,7 +239,8 @@ type testProductUsageQuoter struct{}
 
 func (testProductUsageQuoter) QuoteUsage(_ context.Context, request productimage.UsageQuoteRequest) (productimage.UsageQuote, error) {
 	return productimage.UsageQuote{
-		Operation: request.Operation, Provider: "test", Model: "test-model", PricingVersion: "test-pricing",
+		Operation: request.Operation, Provider: "test", RouteReference: "test-route", Model: "test-model",
+		CredentialReference: "test-credential", ConfigurationVersion: "test-config", PricingVersion: "test-pricing",
 		Fingerprint: request.Operation + "-quote", MaximumOutputs: request.MaximumOutputs,
 		MaximumModelCalls: 1, CostUpperBoundKnown: true,
 	}, nil
