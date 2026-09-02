@@ -59,6 +59,12 @@ function StoreDetailContent({ canUpdate, storeId }: { canUpdate: boolean; storeI
   const storeQuery = useWorkbenchStore(storeId);
   const [displayedStore, setDisplayedStore] = useState<WorkbenchStore | null>(null);
   const [recovery, setRecovery] = useState<RecoveryState>({ state: "idle" });
+  const displayStore = (next: WorkbenchStore) => {
+    setDisplayedStore((current) => {
+      if (!current || (next.version >= current.version && !(current.lifecycleStatus === "deleting" && next.lifecycleStatus !== "deleting"))) return next;
+      return current;
+    });
+  };
   const recoveredStore = recovery.state === "idle" ? storeQuery.data : recovery.base;
   const store = displayedStore && (!storeQuery.data || displayedStore.version > storeQuery.data.version) ? displayedStore : recoveredStore;
   if (storeQuery.isPending && !store) return <section className="mx-auto max-w-2xl px-4 py-8" role="status">正在加载店铺...</section>;
@@ -77,6 +83,11 @@ function StoreDetailContent({ canUpdate, storeId }: { canUpdate: boolean; storeI
       setRecovery({ state: "failed", base, draft });
       return;
     }
+    if (result.data.lifecycleStatus === "deleting") {
+      displayStore(result.data);
+      setRecovery({ state: "idle" });
+      return;
+    }
     setRecovery({ state: "ready", base, draft, latest: result.data, changedFields: changedFields(base, result.data) });
   };
   const refreshLifecycleStore = async () => {
@@ -89,10 +100,10 @@ function StoreDetailContent({ canUpdate, storeId }: { canUpdate: boolean; storeI
       <p className="text-sm text-muted-foreground">店铺中心</p>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight">{store.name}</h1>
       <p className="mt-2 text-sm text-muted-foreground">店铺状态：{lifecycleLabels[store.lifecycleStatus]}</p>
-      <div className="mt-4"><StoreLifecycleActions onDeleted={() => router.push("/workbench/stores?notice=store-deleted")} onRefreshStore={refreshLifecycleStore} onStoreUpdated={(next) => { setDisplayedStore(next); setRecovery({ state: "idle" }); }} store={store} /></div>
+      <div className="mt-4"><StoreLifecycleActions onDeleted={() => router.push("/workbench/stores?notice=store-deleted")} onRefreshStore={refreshLifecycleStore} onStoreUpdated={(next) => { displayStore(next); setRecovery({ state: "idle" }); }} store={store} /></div>
     </section>
     {recovery.state === "failed" ? <section className="mx-auto mt-6 max-w-2xl rounded-xl border bg-card p-4" role="alert"><p>无法确认店铺最新版本，草稿已保留。</p><Button className="mt-3" onClick={() => void loadLatest(recovery.draft, recovery.base)} variant="outline">重试获取最新版本</Button></section> : null}
-    {canUpdate && (store.lifecycleStatus === "active" || store.lifecycleStatus === "disabled") ? <StoreForm conflict={recovery.state === "ready" ? { latest: recovery.latest, changedFields: recovery.changedFields } : null} mode="edit" onConflict={(draft, baseline) => void loadLatest(draft, baseline)} onSaved={(next) => { setDisplayedStore(next); setRecovery({ state: "idle" }); }} recoveryState={recovery.state === "loading" || recovery.state === "failed" ? recovery.state : "idle"} store={store} /> : null}
+    {canUpdate && (store.lifecycleStatus === "active" || store.lifecycleStatus === "disabled") ? <StoreForm conflict={recovery.state === "ready" ? { latest: recovery.latest, changedFields: recovery.changedFields } : null} mode="edit" onConflict={(draft, baseline) => void loadLatest(draft, baseline)} onSaved={(next) => { displayStore(next); setRecovery({ state: "idle" }); }} recoveryState={recovery.state === "loading" || recovery.state === "failed" ? recovery.state : "idle"} store={store} /> : null}
   </>;
 }
 

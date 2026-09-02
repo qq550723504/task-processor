@@ -126,6 +126,23 @@ describe("StoreDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "使用最新版本重新保存" }));
     expect(update.mutate).toHaveBeenLastCalledWith({ id: STORE.id, version: 2, input: { name: "我的草稿", region: "CN" } }, expect.any(Object));
   });
+  it("switches to deleting lifecycle recovery when conflict refetch returns deleting", async () => {
+    const deleting = { ...STORE, lifecycleStatus: "deleting" as const, version: 2 };
+    const refetch = vi.fn().mockResolvedValue({ data: deleting, isSuccess: true, isError: false });
+    query.value = { isPending: false, isError: false, data: STORE, refetch };
+    const user = userEvent.setup(); render(<StoreDetailPage storeId={STORE.id} />);
+    await user.clear(screen.getByLabelText("店铺名称")); await user.type(screen.getByLabelText("店铺名称"), "我的草稿");
+    await user.click(screen.getByRole("button", { name: "保存更改" }));
+    update.mutate.mock.calls[0]?.[1].onError({ code: "STORE_VERSION_CONFLICT", status: 409, fieldErrors: [] });
+
+    expect(await screen.findByText(/店铺状态：删除中/)).toBeInTheDocument();
+    expect(screen.getByText(/删除正在进行中/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "使用最新版本重新保存" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
+    update.mutate.mock.calls[0]?.[1].onSuccess({ ...STORE, version: 3 });
+    expect(screen.getByText(/店铺状态：删除中/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
+  });
   it("lets a newer background refetch replace a locally displayed mutation result", async () => {
     const refetch = vi.fn();
     query.value = { isPending: false, isError: false, data: STORE, refetch };

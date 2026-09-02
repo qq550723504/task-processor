@@ -225,16 +225,16 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 	}
 
 	if err := s.record(ctx, allocation, request, AuditActionQuotaReserved, AuditOutcomeSucceeded, nil, "", StoreStatusProvisioning, AuditFailureNone); err != nil {
-		if releaseErr := s.releaseReservation(ctx, releaseTransition); releaseErr != nil {
-			return CreateStoreResult{}, dependencyError(releaseErr)
-		}
 		if terminalErr := s.record(ctx, allocation, request, AuditActionStoreCreateFailed, AuditOutcomeFailed, nil, "", "", AuditFailureDependencyUnavailable); terminalErr != nil {
 			return CreateStoreResult{}, dependencyError(terminalErr)
 		}
+		if releaseErr := s.releaseReservation(ctx, releaseTransition); releaseErr != nil {
+			return CreateStoreResult{}, dependencyError(releaseErr)
+		}
 		return CreateStoreResult{}, dependencyError(err)
 	}
-	stopReservationLease := s.keepReservationLeaseAlive(ctx, transition)
-	defer stopReservationLease()
+	reservationLease := s.keepReservationLeaseAlive(ctx, transition, time.Minute)
+	defer func() { _ = reservationLease.stop() }()
 
 	store, err := s.repository.Get(ctx, request.OrganizationID, allocation.StoreID)
 	verifyExistingCreate := false
@@ -249,7 +249,11 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 				store, err = s.repository.Get(ctx, request.OrganizationID, allocation.StoreID)
 				if errors.Is(err, ErrNotFound) {
 					if errors.Is(createErr, ErrAlreadyExists) {
-						return s.compensateDefinitiveCreateFailure(ctx, allocation, releaseTransition, request, createErr)
+						refreshedTransition, refreshErr := s.stopReservationLeaseAndRefresh(ctx, reservationLease, releaseTransition)
+						if refreshErr != nil {
+							return CreateStoreResult{}, dependencyError(refreshErr)
+						}
+						return s.compensateDefinitiveCreateFailure(ctx, allocation, refreshedTransition, request, createErr)
 					}
 					_ = s.record(ctx, allocation, request, AuditActionStoreCreateUnknown, AuditOutcomeUnknown, nil, "", "", AuditFailureDependencyUnavailable)
 					return CreateStoreResult{}, dependencyError(createErr)
@@ -1163,6 +1167,18 @@ func (s *Service) reconcileOrphanedReservations(ctx context.Context, organizatio
 			// A transient read cannot prove that the reservation is orphaned.
 			continue
 		}
+		terminal, auditErr := s.audit.Get(ctx, organizationID, allocation.RequestKey, AuditActionStoreCreateFailed)
+		if errors.Is(auditErr, ErrNotFound) {
+			// A reservation without a durable terminal failure may still belong to
+			// an in-flight create. Only the create state machine can release it.
+			continue
+		}
+		if auditErr != nil {
+			return recovered, auditErr
+		}
+		if terminal == nil || terminal.Outcome != AuditOutcomeFailed || !auditEventMatchesAllocation(*terminal, allocation.AllocationID, allocation.StoreID) {
+			return recovered, ErrAuditIdentityMismatch
+		}
 		expectedUpdatedAt := allocation.UpdatedAt
 		transition := listingsubscription.StoreQuotaTransitionInput{OrganizationID: organizationID, AllocationID: allocation.AllocationID, StoreID: allocation.StoreID, RequestKey: allocation.RequestKey, ActorSubject: allocation.CreatedBy, ExpectedUpdatedAt: &expectedUpdatedAt}
 		if err := s.releaseReservation(ctx, transition); err != nil {
@@ -1176,26 +1192,89 @@ func (s *Service) reconcileOrphanedReservations(ctx context.Context, organizatio
 	return recovered, nil
 }
 
-func (s *Service) keepReservationLeaseAlive(ctx context.Context, input listingsubscription.StoreQuotaTransitionInput) func() {
+const reservationLeaseStopTimeout = 5 * time.Second
+
+type reservationLease struct {
+	mu        sync.Mutex
+	input     listingsubscription.StoreQuotaTransitionInput
+	updatedAt *time.Time
+	cancel    context.CancelFunc
+	done      chan struct{}
+	stopOnce  sync.Once
+	stopErr   error
+}
+
+func (s *Service) keepReservationLeaseAlive(ctx context.Context, input listingsubscription.StoreQuotaTransitionInput, renewInterval time.Duration) *reservationLease {
 	leaseCtx, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
+	lease := &reservationLease{input: input, cancel: cancel, done: make(chan struct{})}
 	go func() {
-		defer close(done)
-		ticker := time.NewTicker(time.Minute)
+		defer close(lease.done)
+		ticker := time.NewTicker(renewInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-leaseCtx.Done():
 				return
 			case <-ticker.C:
-				_, _ = s.quota.RenewReservation(leaseCtx, input)
+				result, err := s.quota.RenewReservation(leaseCtx, input)
+				if err != nil || result.Allocation.UpdatedAt.IsZero() {
+					continue
+				}
+				lease.mu.Lock()
+				updatedAt := result.Allocation.UpdatedAt.UTC()
+				lease.updatedAt = &updatedAt
+				lease.mu.Unlock()
 			}
 		}
 	}()
-	return func() {
-		cancel()
-		<-done
+	return lease
+}
+
+func (lease *reservationLease) stop() error {
+	lease.stopOnce.Do(func() {
+		lease.cancel()
+		timer := time.NewTimer(reservationLeaseStopTimeout)
+		defer timer.Stop()
+		select {
+		case <-lease.done:
+		case <-timer.C:
+			lease.stopErr = context.DeadlineExceeded
+		}
+	})
+	return lease.stopErr
+}
+
+func (lease *reservationLease) transition() listingsubscription.StoreQuotaTransitionInput {
+	lease.mu.Lock()
+	defer lease.mu.Unlock()
+	input := lease.input
+	if lease.updatedAt != nil {
+		updatedAt := *lease.updatedAt
+		input.ExpectedUpdatedAt = &updatedAt
 	}
+	return input
+}
+
+func (s *Service) stopReservationLeaseAndRefresh(ctx context.Context, lease *reservationLease, fallback listingsubscription.StoreQuotaTransitionInput) (listingsubscription.StoreQuotaTransitionInput, error) {
+	if err := lease.stop(); err != nil {
+		return listingsubscription.StoreQuotaTransitionInput{}, err
+	}
+	latest, err := s.quota.GetByRequestKey(ctx, fallback.OrganizationID, fallback.RequestKey)
+	if err != nil {
+		return listingsubscription.StoreQuotaTransitionInput{}, err
+	}
+	if latest == nil || latest.OrganizationID != fallback.OrganizationID || latest.AllocationID != fallback.AllocationID || latest.StoreID != fallback.StoreID || latest.RequestKey != fallback.RequestKey || latest.Status != listingsubscription.StoreQuotaReserved {
+		return listingsubscription.StoreQuotaTransitionInput{}, errors.New("quota reservation changed before compensation")
+	}
+	refreshed := lease.transition()
+	refreshed.OrganizationID = fallback.OrganizationID
+	refreshed.AllocationID = fallback.AllocationID
+	refreshed.StoreID = fallback.StoreID
+	refreshed.RequestKey = fallback.RequestKey
+	refreshed.ActorSubject = fallback.ActorSubject
+	expectedUpdatedAt := latest.UpdatedAt.UTC()
+	refreshed.ExpectedUpdatedAt = &expectedUpdatedAt
+	return refreshed, nil
 }
 
 func (s *Service) record(ctx context.Context, allocation listingsubscription.StoreQuotaAllocation, request CreateStoreRequest, action AuditAction, outcome AuditOutcome, store *Store, previous, next LifecycleStatus, failure AuditFailureCode) error {

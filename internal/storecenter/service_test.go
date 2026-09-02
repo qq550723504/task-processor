@@ -366,6 +366,36 @@ func TestServiceCreateReleasesReservationWhenInitialAuditFails(t *testing.T) {
 	}
 }
 
+func TestServiceCreateKeepsReservationWhenTerminalFailureAuditFails(t *testing.T) {
+	request := validCreateRequest()
+	ledger := quotaForRequest(request)
+	audit := newAuditRepositoryFake()
+	audit.failActions = map[storecenter.AuditAction]int{
+		storecenter.AuditActionQuotaReserved:     1,
+		storecenter.AuditActionStoreCreateFailed: 1,
+	}
+	repository := newStoreRepositoryFake()
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrDependencyUnavailable) {
+		t.Fatalf("first Create() error = %v, want dependency unavailable", err)
+	}
+	if ledger.releaseCalls != 0 || ledger.allocation.Status != listingsubscription.StoreQuotaReserved {
+		t.Fatalf("failed terminal audit released reservation = %d/%s, want reserved/no release", ledger.releaseCalls, ledger.allocation.Status)
+	}
+
+	result, err := service.Create(context.Background(), request)
+	if err != nil {
+		t.Fatalf("retry Create() error = %v, want recovery to continue", err)
+	}
+	if result.Store == nil || result.Store.LifecycleStatus() != storecenter.StoreStatusActive || ledger.commitCalls != 1 {
+		t.Fatalf("retry result = %+v, commit calls = %d, want active/one commit", result, ledger.commitCalls)
+	}
+}
+
 func TestServiceCreateReconcilesStaleOrphanedReservationWhenQuotaIsFull(t *testing.T) {
 	request := validCreateRequest()
 	allocation := listingsubscription.StoreQuotaAllocation{OrganizationID: request.OrganizationID, AllocationID: uuid.NewString(), StoreID: uuid.NewString(), RequestKey: request.IdempotencyKey, Status: listingsubscription.StoreQuotaReserved, CreatedBy: request.ActorSubject}
@@ -376,7 +406,11 @@ func TestServiceCreateReconcilesStaleOrphanedReservationWhenQuotaIsFull(t *testi
 		return &released
 	}()}
 	repository := newStoreRepositoryFake()
-	service, err := storecenter.NewService(repository, ledger, newAuditRepositoryFake(), &serviceConnectionProvider{}, time.Now)
+	audit := newAuditRepositoryFake()
+	if _, _, err := audit.Record(context.Background(), storecenter.AuditEvent{EventID: uuid.NewString(), OrganizationID: stale.OrganizationID, StoreID: stale.StoreID, AllocationID: stale.AllocationID, RequestKey: stale.RequestKey, Action: storecenter.AuditActionStoreCreateFailed, Outcome: storecenter.AuditOutcomeFailed, ActorSubject: stale.CreatedBy, FailureCode: storecenter.AuditFailureDependencyUnavailable, OccurredAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("seed orphan failure audit: %v", err)
+	}
+	service, err := storecenter.NewService(repository, ledger, audit, &serviceConnectionProvider{}, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,6 +419,24 @@ func TestServiceCreateReconcilesStaleOrphanedReservationWhenQuotaIsFull(t *testi
 	}
 	if ledger.reserveCalls != 2 || ledger.releaseCalls != 1 {
 		t.Fatalf("quota reserve/release calls = %d/%d, want 2/1", ledger.reserveCalls, ledger.releaseCalls)
+	}
+}
+
+func TestServiceCreateDoesNotReconcileOrphanedReservationWithoutTerminalFailureAudit(t *testing.T) {
+	request := validCreateRequest()
+	allocation := listingsubscription.StoreQuotaAllocation{OrganizationID: request.OrganizationID, AllocationID: uuid.NewString(), StoreID: uuid.NewString(), RequestKey: request.IdempotencyKey, Status: listingsubscription.StoreQuotaReserved, CreatedBy: request.ActorSubject}
+	stale := listingsubscription.StoreQuotaAllocation{OrganizationID: request.OrganizationID, AllocationID: uuid.NewString(), StoreID: uuid.NewString(), RequestKey: uuid.NewString(), Status: listingsubscription.StoreQuotaReserved, CreatedBy: "abandoned-actor", CreatedAt: time.Now().Add(-time.Hour)}
+	ledger := &quotaLedgerFake{allocation: allocation, reserveErr: &listingsubscription.StoreQuotaExceededError{OrganizationID: request.OrganizationID, Committed: 1, Reserved: 1, Limit: 2}, staleReservations: []listingsubscription.StoreQuotaAllocation{stale}}
+	service, err := storecenter.NewService(newStoreRepositoryFake(), ledger, newAuditRepositoryFake(), &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.Create(context.Background(), request); !errors.Is(err, storecenter.ErrLimitReached) {
+		t.Fatalf("Create() error = %v, want quota limit reached", err)
+	}
+	if ledger.releaseCalls != 0 || ledger.allocation.Status != listingsubscription.StoreQuotaReserved {
+		t.Fatalf("orphan without terminal audit release = %d/%s, want no release/reserved", ledger.releaseCalls, ledger.allocation.Status)
 	}
 }
 
@@ -399,7 +451,11 @@ func TestServiceCreateDoesNotReleaseReservationRenewedAfterReconciliationSnapsho
 		reserveErrOnce:    true,
 		staleReservations: []listingsubscription.StoreQuotaAllocation{stale},
 	}
-	service, err := storecenter.NewService(newStoreRepositoryFake(), ledger, newAuditRepositoryFake(), &serviceConnectionProvider{}, time.Now)
+	audit := newAuditRepositoryFake()
+	if _, _, err := audit.Record(context.Background(), storecenter.AuditEvent{EventID: uuid.NewString(), OrganizationID: stale.OrganizationID, StoreID: stale.StoreID, AllocationID: stale.AllocationID, RequestKey: stale.RequestKey, Action: storecenter.AuditActionStoreCreateFailed, Outcome: storecenter.AuditOutcomeFailed, ActorSubject: stale.CreatedBy, FailureCode: storecenter.AuditFailureDependencyUnavailable, OccurredAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("seed orphan failure audit: %v", err)
+	}
+	service, err := storecenter.NewService(newStoreRepositoryFake(), ledger, audit, &serviceConnectionProvider{}, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2589,7 +2645,10 @@ func (f *quotaLedgerFake) Deallocate(_ context.Context, _ listingsubscription.St
 	return listingsubscription.StoreQuotaTransitionResult{Allocation: f.allocation, Existing: f.deallocateCalls > 1}, nil
 }
 func (f *quotaLedgerFake) GetByRequestKey(context.Context, string, string) (*listingsubscription.StoreQuotaAllocation, error) {
-	return nil, errors.New("not used")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	allocation := f.allocation
+	return &allocation, nil
 }
 func (f *quotaLedgerFake) Summary(context.Context, string) (listingsubscription.StoreQuotaSummary, error) {
 	f.mu.Lock()
