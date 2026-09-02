@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Bot,
   Boxes,
@@ -161,17 +162,29 @@ const particleVariants: Variants = {
 
 export function HeroSystemVisual() {
   const reduceMotion = Boolean(useReducedMotion());
+  const [visualState, setVisualState] = useState<"active" | "boot">("active");
+
+  useEffect(() => {
+    if (reduceMotion) {
+      return;
+    }
+
+    setVisualState("boot");
+    const frame = window.requestAnimationFrame(() => setVisualState("active"));
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [reduceMotion]);
 
   return (
     <MotionConfig reducedMotion="user">
       <motion.div
-        animate="active"
+        animate={visualState}
         aria-label="硕米 AI 电商能力架构"
         className={styles.systemVisual}
         data-motion-sequence="boot-reveal-active-pulse"
         data-node-id="10:144"
-        initial={reduceMotion ? false : "boot"}
-        role="img"
+        initial={false}
+        role="group"
       >
         <div aria-hidden="true" className={styles.visualGlow} />
 
@@ -256,25 +269,30 @@ export function HeroSystemVisual() {
           </div>
         </motion.div>
 
-        {CAPABILITIES.map((capability, index) => {
-          const Icon = capability.icon;
-          return (
-            <motion.div
-              className={`${styles.capabilityCard} ${styles[capability.position]}`}
-              custom={index}
-              key={capability.key}
-              variants={capabilityVariants}
-            >
-              <span aria-hidden="true" className={styles.capabilityIcon}>
-                <Icon size={16} strokeWidth={1.8} />
-              </span>
-              <span className={styles.capabilityCopy}>
-                <strong>{capability.eyebrow}</strong>
-                <span>{capability.label}</span>
-              </span>
-            </motion.div>
-          );
-        })}
+        <motion.ul
+          aria-label="电商能力节点"
+          className={styles.capabilityList}
+        >
+          {CAPABILITIES.map((capability, index) => {
+            const Icon = capability.icon;
+            return (
+              <motion.li
+                className={`${styles.capabilityCard} ${styles[capability.position]}`}
+                custom={index}
+                key={capability.key}
+                variants={capabilityVariants}
+              >
+                <span aria-hidden="true" className={styles.capabilityIcon}>
+                  <Icon size={16} strokeWidth={1.8} />
+                </span>
+                <span className={styles.capabilityCopy}>
+                  <strong>{capability.eyebrow}</strong>
+                  <span>{capability.label}</span>
+                </span>
+              </motion.li>
+            );
+          })}
+        </motion.ul>
 
         {PARTICLES.map((particle, index) => (
           <motion.span
