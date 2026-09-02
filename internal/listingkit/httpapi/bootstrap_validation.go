@@ -12,14 +12,12 @@ func (b CoreRepositoryBuilders) Validate() error {
 		return fmt.Errorf("core repository builder studio batch is required")
 	case b.StudioBatchRun == nil:
 		return fmt.Errorf("core repository builder studio batch run is required")
-	case b.StudioBatchTaskLink == nil:
-		return fmt.Errorf("core repository builder studio batch task link is required")
 	case b.SheinSync == nil:
 		return fmt.Errorf("core repository builder shein sync is required")
 	case b.Subscription == nil:
 		return fmt.Errorf("core repository builder subscription is required")
-	case b.Asset == nil:
-		return fmt.Errorf("core repository builder asset is required")
+	case b.ApprovedAsset == nil:
+		return fmt.Errorf("core repository builder approved asset is required")
 	case b.Review == nil:
 		return fmt.Errorf("core repository builder review is required")
 	case b.StudioSession == nil:

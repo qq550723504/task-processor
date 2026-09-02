@@ -5,10 +5,8 @@ func buildAmazonExportPayloadFromInput(input amazonExportPayloadInput) *AmazonEx
 		return nil
 	}
 	return &AmazonExportPayload{
-		Draft:          input.draft,
-		ImageBundle:    input.visualBase.imageBundle,
-		RenderPreviews: input.visualBase.renderPreviews,
-		ScenePresets:   input.visualBase.scenePresets,
+		Draft:       input.draft,
+		ImageBundle: input.visualBase.imageBundle,
 	}
 }
 
@@ -17,10 +15,8 @@ func buildTemuExportPayloadFromInput(input reviewableExportPayloadInput, pkg *Te
 		return nil
 	}
 	return &TemuExportPayload{
-		ImageBundle:    input.visualBase.imageBundle,
-		RenderPreviews: input.visualBase.renderPreviews,
-		ScenePresets:   input.visualBase.scenePresets,
-		Package:        pkg,
+		ImageBundle: input.visualBase.imageBundle,
+		Package:     pkg,
 	}
 }
 
@@ -29,9 +25,7 @@ func buildWalmartExportPayloadFromInput(input reviewableExportPayloadInput, pkg 
 		return nil
 	}
 	return &WalmartExportPayload{
-		ImageBundle:    input.visualBase.imageBundle,
-		RenderPreviews: input.visualBase.renderPreviews,
-		ScenePresets:   input.visualBase.scenePresets,
-		Package:        pkg,
+		ImageBundle: input.visualBase.imageBundle,
+		Package:     pkg,
 	}
 }

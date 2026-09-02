@@ -44,8 +44,8 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	if got := result.Handoff.Envelope.Identity.Key(); got != "1688:cn:888" {
 		t.Fatalf("Key() = %q, want neutral source identity", got)
 	}
-	if result.Handoff.Request.ProductURL != "https://detail.1688.com/offer/888.html" {
-		t.Fatalf("ProductURL = %q, want normalized command URL", result.Handoff.Request.ProductURL)
+	if result.Handoff.Request.ProductKey != "crawler:1688:888" {
+		t.Fatalf("ProductKey = %q, want normalized source identity", result.Handoff.Request.ProductKey)
 	}
 	if result.Handoff.Request.TenantID != "101" || result.Handoff.Request.UserID != "user-1688" {
 		t.Fatalf("request tenant/user = %q/%q, want trimmed values", result.Handoff.Request.TenantID, result.Handoff.Request.UserID)
@@ -56,7 +56,7 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	if len(result.Handoff.Request.Platforms) != 1 || result.Handoff.Request.Platforms[0] != "shein" {
 		t.Fatalf("Platforms = %#v, want normalized deduped shein", result.Handoff.Request.Platforms)
 	}
-	if creator.request == nil || creator.request.ProductURL != "https://detail.1688.com/offer/888.html" {
+	if creator.request == nil || creator.request.ProductKey != "crawler:1688:888" {
 		t.Fatalf("creator request = %+v, want normalized request", creator.request)
 	}
 	if creator.request.Source == nil {
@@ -224,8 +224,8 @@ func TestTaskCommandServiceCreateTaskFallsBackToProductURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
-	if result.Handoff.Request.ProductURL != "https://detail.1688.com/offer/889.html" {
-		t.Fatalf("ProductURL = %q, want product URL fallback", result.Handoff.Request.ProductURL)
+	if result.Handoff.Request.ProductKey != "crawler:1688:889" {
+		t.Fatalf("ProductKey = %q, want source identity from product URL fallback", result.Handoff.Request.ProductKey)
 	}
 }
 

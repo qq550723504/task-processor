@@ -95,11 +95,7 @@ func podExecutionPolicyChildren(children []ChildTaskState) []sdspod.ChildTask {
 }
 
 func shouldUsePODPlatform(req *GenerateRequest) bool {
-	return shouldRunRemoteSDSDesignSync(req) || shouldRunImageResultSDSDesignSync(req)
-}
-
-func shouldRunImageResultSDSDesignSync(req *GenerateRequest) bool {
-	return shouldSyncSDS(req) && shouldProcessImages(req)
+	return shouldRunRemoteSDSDesignSync(req)
 }
 
 func inferPODProvider(req *GenerateRequest) string {

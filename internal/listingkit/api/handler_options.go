@@ -18,7 +18,6 @@ func (h *handler) attachCoreServices(service handlerCoreService) {
 		return
 	}
 	h.taskLifecycleService = service
-	h.generationTaskService = service
 	h.studioMediaService = service
 }
 
@@ -79,9 +78,6 @@ func (h *handler) finalize() error {
 	}
 	if h.taskLifecycleService == nil {
 		return errors.New("task lifecycle service is not configured")
-	}
-	if h.generationTaskService == nil {
-		return errors.New("generation task service is not configured")
 	}
 	if h.studioMediaService == nil {
 		return errors.New("studio media service is not configured")

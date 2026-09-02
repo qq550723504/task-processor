@@ -24,7 +24,6 @@ func (h *handler) GenerateListingKit(c *gin.Context) {
 	// Source is internal lineage populated by the normalized source-facts bridge,
 	// not a field callers may forge through the legacy public endpoint.
 	req.Source = nil
-	req.ImageURLs = absolutizeUploadedImageURLs(c, req.ImageURLs)
 	// Task ownership remains the canonical request tenant so the caller can
 	// later retrieve it through the normal tenant access scope. The subscription
 	// guard may instead have admitted its legacy numeric fallback, which becomes

@@ -9,19 +9,15 @@ import (
 
 type listingStudioBatchServiceRunner = studiodomain.BatchService[
 	StudioBatchDetail,
-	CreateStudioBatchTasksResult,
 	ApproveStudioBatchDesignsRequest,
 	RetryStudioBatchItemsRequest,
-	CreateStudioBatchTasksRequest,
 ]
 
 func newListingStudioBatchServiceRunner(s *taskStudioBatchService) *listingStudioBatchServiceRunner {
 	return studiodomain.NewBatchService(studiodomain.BatchServiceConfig[
 		StudioBatchDetail,
-		CreateStudioBatchTasksResult,
 		ApproveStudioBatchDesignsRequest,
 		RetryStudioBatchItemsRequest,
-		CreateStudioBatchTasksRequest,
 	]{
 		GetDetail: func(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
 			s.ensureDetailRunner()
@@ -92,56 +88,6 @@ func newListingStudioBatchServiceRunner(s *taskStudioBatchService) *listingStudi
 				return normalizeStudioBatchItemIDs(nil)
 			}
 			return normalizeStudioBatchItemIDs(req.ItemIDs)
-		},
-		CreateTasks: func(ctx context.Context, batchID string, designIDs []string) (*CreateStudioBatchTasksResult, error) {
-			if s == nil || s.repo == nil {
-				return nil, fmt.Errorf("studio batch repository is not configured")
-			}
-			state, err := s.prepareStudioBatchTaskExecuteCandidates(ctx, batchID, designIDs)
-			if err != nil {
-				return nil, err
-			}
-			ctx = withStudioBatchTaskState(ctx, batchID, state)
-			designIDs = state.DesignIDs
-			s.ensureTaskExecuteRunner()
-			if s.taskExecuteRunner == nil {
-				return nil, fmt.Errorf("studio batch task execute service is not configured")
-			}
-			return s.taskExecuteRunner.Execute(ctx, batchID, designIDs)
-		},
-		PrepareCreateTasks: func(ctx context.Context, batchID string, designIDs []string) (*CreateStudioBatchTasksResult, error) {
-			if s == nil || s.repo == nil {
-				return nil, fmt.Errorf("studio batch repository is not configured")
-			}
-			state, err := s.buildStudioBatchTaskState(ctx, batchID, designIDs)
-			if err != nil {
-				return nil, err
-			}
-			_, session, _, err := s.prepareStudioBatchTaskCreation(ctx, batchID, studioBatchTaskCreationRequest(ctx, state.DesignIDs))
-			if err != nil {
-				return nil, err
-			}
-			if session == nil {
-				session = state.Session
-			}
-			if session == nil {
-				session = fallbackStudioBatchTaskSession(batchID, state.Batch, state.DesignIDs, "")
-			}
-			s.ensureTaskPrepareRunner()
-			if s.taskPrepareRunner == nil {
-				return nil, fmt.Errorf("studio batch task prepare runner is not configured")
-			}
-			return s.taskPrepareRunner.PrepareTaskCreation(ctx, batchID, listingStudioBatchTaskPrepareState{
-				Session:   session,
-				Batch:     state.Batch,
-				DesignIDs: state.DesignIDs,
-			})
-		},
-		TaskCreationDesignIDs: func(req *CreateStudioBatchTasksRequest) []string {
-			if req == nil {
-				return normalizeStudioBatchDesignIDs(nil)
-			}
-			return normalizeStudioBatchDesignIDs(req.DesignIDs)
 		},
 	})
 }

@@ -52,8 +52,6 @@ func (s *service) RetryTaskChildTask(ctx context.Context, taskID string, req *Re
 	pruneChildTaskRetryArtifacts(result, kind)
 	recorder := newWorkflowRecorder(result)
 	switch kind {
-	case "sds_catalog_product":
-		err = s.retrySDSCatalogProduct(ctx, task, result, recorder)
 	case "sds_design_sync":
 		err = s.retrySDSDesignSync(ctx, task, result, recorder)
 	default:

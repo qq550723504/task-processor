@@ -6,7 +6,6 @@ import (
 	"gorm.io/gorm"
 
 	aicapabilitystore "task-processor/internal/aicapability/store"
-	assetrepo "task-processor/internal/asset/repository"
 	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
@@ -63,9 +62,6 @@ func autoMigrateRuntime(db *gorm.DB, includeSourceAccount bool) error {
 	}
 	if err := listingkit.AutoMigrateStudioBatchRepository(db); err != nil {
 		return fmt.Errorf("migrate listingkit studio batch repository: %w", err)
-	}
-	if err := listingkit.AutoMigrateStudioBatchTaskLinkRepository(db); err != nil {
-		return fmt.Errorf("migrate listingkit studio batch task link repository: %w", err)
 	}
 	if err := db.AutoMigrate(&listingkit.SDSChildRetryJob{}); err != nil {
 		return fmt.Errorf("migrate listingkit sds child retry repository: %w", err)
@@ -131,9 +127,6 @@ func autoMigrateRuntime(db *gorm.DB, includeSourceAccount bool) error {
 	}
 	if err := db.AutoMigrate(&sheinpub.SheinResolutionCacheEntry{}); err != nil {
 		return fmt.Errorf("migrate shein resolution cache store: %w", err)
-	}
-	if err := db.AutoMigrate(&assetrepo.InventorySnapshot{}, &assetrepo.GenerationTaskSnapshot{}); err != nil {
-		return fmt.Errorf("migrate asset repository: %w", err)
 	}
 	if err := db.AutoMigrate(&reviewstore.ReviewRecord{}); err != nil {
 		return fmt.Errorf("migrate listingkit review repository: %w", err)

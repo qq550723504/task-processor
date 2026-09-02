@@ -64,48 +64,14 @@ func isStudioSessionGenerationMetadataOnlyUpdate(req *UpdateStudioSessionRequest
 		req.PromptMode == nil &&
 		req.StyleCount == nil &&
 		req.VariationIntensity == nil &&
-		req.ProductImageCount == nil &&
-		req.ProductImagePrompt == nil &&
-		req.ProductImagePrompts == nil &&
 		req.ArtworkModel == nil &&
-		req.ImageStrategy == nil &&
 		req.GroupedImageMode == nil &&
 		req.SelectedSDSImages == nil &&
 		req.GroupedSelections == nil &&
 		req.TransparentBackground == nil &&
 		req.RenderSizeImagesWithSDS == nil &&
 		req.SheinStoreID == nil &&
-		req.ApprovedDesignIDs == nil &&
-		req.CreatedTasks == nil
-}
-
-func isStudioSessionReviewTaskMetadataOnlyUpdate(req *UpdateStudioSessionRequest) bool {
-	if req == nil {
-		return false
-	}
-	hasReviewTaskMetadata := req.ApprovedDesignIDs != nil || req.CreatedTasks != nil
-	if !hasReviewTaskMetadata {
-		return false
-	}
-	return req.Status == nil &&
-		req.Prompt == nil &&
-		req.PromptMode == nil &&
-		req.StyleCount == nil &&
-		req.VariationIntensity == nil &&
-		req.ProductImageCount == nil &&
-		req.ProductImagePrompt == nil &&
-		req.ProductImagePrompts == nil &&
-		req.ArtworkModel == nil &&
-		req.ImageStrategy == nil &&
-		req.GroupedImageMode == nil &&
-		req.SelectedSDSImages == nil &&
-		req.GroupedSelections == nil &&
-		req.TransparentBackground == nil &&
-		req.RenderSizeImagesWithSDS == nil &&
-		req.SheinStoreID == nil &&
-		req.GenerationJobID == nil &&
-		req.GenerationJobs == nil &&
-		req.GenerationError == nil
+		req.ApprovedDesignIDs == nil
 }
 
 func (s *taskStudioSessionService) ensureRunner() {
@@ -127,13 +93,6 @@ func (s *taskStudioSessionService) ensureGenerationMetadataRunner() {
 		return
 	}
 	s.generationMetadataRunner = newListingStudioSessionGenerationMetadataService(s.repo)
-}
-
-func (s *taskStudioSessionService) ensureReviewTaskMetadataRunner() {
-	if s == nil || s.reviewTaskMetadataRunner != nil || s.repo == nil {
-		return
-	}
-	s.reviewTaskMetadataRunner = newListingStudioSessionReviewTaskMetadataService(s.repo)
 }
 
 func (s *taskStudioSessionService) ensureGeneralMetadataRunner() {

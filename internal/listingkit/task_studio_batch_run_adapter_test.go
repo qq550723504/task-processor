@@ -18,7 +18,7 @@ func TestStudioBatchRunAdapterPersistsTenantAdminAccess(t *testing.T) {
 	adapter := studioBatchRunRepositoryAdapter{repo: repo}
 	run := &studiodomain.BatchRunRecord{
 		ID:            "run-admin",
-		Mode:          string(StudioBatchRunModeCreateTasks),
+		Mode:          string(StudioBatchRunModeGenerate),
 		FailurePolicy: string(StudioBatchRunFailurePolicyContinueOnError),
 		Status:        string(StudioBatchRunStatusPending),
 		TotalBatches:  1,

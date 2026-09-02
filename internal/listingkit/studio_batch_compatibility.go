@@ -24,6 +24,17 @@ func buildStudioBatchCompatibilityFingerprint(selection SheinStudioSelection) st
 	return hex.EncodeToString(sum[:])
 }
 
+func studioBatchCompatibilityFingerprintComplete(selection SheinStudioSelection) bool {
+	return selection.ParentProductID > 0 &&
+		selection.PrototypeGroupID > 0 &&
+		strings.TrimSpace(selection.LayerID) != "" &&
+		strings.TrimSpace(selection.DesignType) != "" &&
+		selection.PrintableWidth > 0 &&
+		selection.PrintableHeight > 0 &&
+		strings.TrimSpace(selection.TemplateImageURL) != "" &&
+		strings.TrimSpace(selection.MaskImageURL) != ""
+}
+
 func int64String(v int64) string {
 	return strconv.FormatInt(v, 10)
 }

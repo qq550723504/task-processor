@@ -34,6 +34,19 @@ type taskStudioMediaService struct {
 	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
+func nonNilErrors(errs []error) []error {
+	result := make([]error, 0, len(errs))
+	for _, err := range errs {
+		if err != nil {
+			result = append(result, err)
+		}
+	}
+	if len(result) == 0 {
+		result = append(result, fmt.Errorf("studio design generation returned no usable images"))
+	}
+	return result
+}
+
 func newTaskStudioMediaService(config taskStudioMediaServiceConfig) *taskStudioMediaService {
 	service := &taskStudioMediaService{
 		imageGenerator:                config.imageGenerator,
@@ -310,74 +323,6 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 			errList = append(errList, diversifyErr)
 		}
 		return nil, errors.Join(errList...)
-	}
-	return response, nil
-}
-
-func (s *taskStudioMediaService) GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
-	if req == nil {
-		return nil, fmt.Errorf("invalid request: request is required")
-	}
-	theme := strings.TrimSpace(req.Prompt)
-	if theme == "" {
-		return nil, fmt.Errorf("invalid request: prompt is required")
-	}
-	sourceURL := strings.TrimSpace(req.SourceDesignURL)
-	if sourceURL == "" {
-		return nil, fmt.Errorf("invalid request: source_design_url is required")
-	}
-	if s.imageGenerator == nil {
-		return nil, fmt.Errorf("studio image generator is not configured")
-	}
-
-	count := req.Count
-	if count <= 0 {
-		count = maxStudioProductImageCount
-	}
-	if count > maxStudioProductImageCount {
-		count = maxStudioProductImageCount
-	}
-
-	roles := selectStudioProductImageRoles(count)
-	images := make([]StudioGeneratedImage, len(roles))
-	errs := make([]error, len(roles))
-	sem := make(chan struct{}, studioProductImageConcurrencyLimit(len(roles)))
-	var wg sync.WaitGroup
-	for idx, role := range roles {
-		idx, role := idx, role
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			promptText := buildStudioProductImagePrompt(req, role, idx+1, len(roles))
-			imageURL, err := s.generateOneStudioProductImage(ctx, req, sourceURL, promptText)
-			if err != nil {
-				errs[idx] = fmt.Errorf("%s: %w", role.Label, err)
-				return
-			}
-			images[idx] = StudioGeneratedImage{
-				ID:            uuid.NewString(),
-				ImageURL:      imageURL,
-				RevisedPrompt: fmt.Sprintf("%s %s", firstNonEmptyString(req.StyleName, req.ProductName, "AI"), role.Label),
-				Role:          role.Key,
-				RoleLabel:     role.Label,
-			}
-		}()
-	}
-	wg.Wait()
-
-	response := &StudioProductImageResponse{
-		Images: make([]StudioGeneratedImage, 0, len(roles)),
-	}
-	for _, image := range images {
-		if strings.TrimSpace(image.ImageURL) != "" {
-			response.Images = append(response.Images, image)
-		}
-	}
-	if len(response.Images) == 0 {
-		return nil, errors.Join(nonNilErrors(errs)...)
 	}
 	return response, nil
 }

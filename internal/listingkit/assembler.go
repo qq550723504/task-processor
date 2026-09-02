@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
-	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -51,22 +51,15 @@ func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
 	}
 }
 
-func (a *assembler) Assemble(task *Task, product *catalog.ProductSnapshot, image *productimage.ImageProcessResult) *ListingKitResult {
-	result := a.assemble(task, product, func(string) *productimage.ImageProcessResult { return image })
-	result.ImageAssets = image
-	return result
+func (a *assembler) Assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) *ListingKitResult {
+	return a.assemble(task, product, approved)
 }
 
-func (a *assembler) AssembleForTargets(task *Task, product *catalog.ProductSnapshot, images map[string]*productimage.ImageProcessResult) *ListingKitResult {
-	result := a.assemble(task, product, func(target string) *productimage.ImageProcessResult { return images[target] })
-	result.ImageAssetsByTarget = cloneImageAssetsByTarget(images)
-	if task != nil {
-		result.applyCompatibilityAssetProjectionForRequest(task.Request)
-	}
-	return result
+func (a *assembler) AssembleForTargets(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) *ListingKitResult {
+	return a.assemble(task, product, approved)
 }
 
-func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, imageForTarget func(string) *productimage.ImageProcessResult) *ListingKitResult {
+func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) *ListingKitResult {
 	now := time.Now()
 	result := initResult(task)
 	result.UpdatedAt = now
@@ -75,28 +68,28 @@ func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, image
 		cloned, err := cloneProductSnapshot(*product)
 		if err == nil {
 			result.CatalogProduct = &cloned
-			canonicalProduct = canonicalProductFromSnapshot(cloned)
+			canonicalProduct = canonicalProductFromApprovedAssets(cloned, approved)
 		}
 	}
+	result.ApprovedAssetInventory = cloneApprovedAssetInventory(approved)
 	result.CanonicalProduct = canonicalProduct
-	result.Summary = buildSummary(task, canonicalProduct, nil)
+	result.Summary = buildSummary(task, canonicalProduct)
 
 	if task == nil || task.Request == nil {
 		return result
 	}
 
 	for _, platform := range task.Request.Platforms {
-		image := imageForTarget(platform)
 		switch platform {
 		case "amazon":
-			result.Amazon = &AmazonPackage{Draft: a.amazonBuilder.Build(task.Request, canonicalProduct, image)}
+			result.Amazon = &AmazonPackage{Draft: a.amazonBuilder.Build(task.Request, canonicalProduct)}
 		case "shein":
-			result.Shein = sheinpub.NewAssembler(a.buildSheinAssemblerConfig()).Build(buildSheinPublishRequestForTask(task, task.Request), canonicalProduct, image)
-			refreshSheinReviewState(result.Shein, common.CollectReviewNotes(canonicalProduct, image)...)
+			result.Shein = sheinpub.NewAssembler(a.buildSheinAssemblerConfig()).Build(buildSheinPublishRequestForTask(task, task.Request), canonicalProduct)
+			refreshSheinReviewState(result.Shein, common.CollectReviewNotes(canonicalProduct)...)
 		case "temu":
-			result.Temu = buildTemuPackage(task.Request, canonicalProduct, image)
+			result.Temu = buildTemuPackage(task.Request, canonicalProduct)
 		case "walmart":
-			result.Walmart = buildWalmartPackage(task.Request, canonicalProduct, image)
+			result.Walmart = buildWalmartPackage(task.Request, canonicalProduct)
 		}
 	}
 
@@ -136,19 +129,15 @@ func buildSheinPublishRequestForTask(task *Task, req *GenerateRequest) *sheinpub
 	}
 }
 
-func buildSummary(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *GenerationSummary {
+func buildSummary(task *Task, canonical *canonical.Product) *GenerationSummary {
 	summary := &GenerationSummary{}
 	if task != nil && task.Request != nil {
 		summary.SourceType = detectSourceType(task.Request)
-		summary.ImageCount = len(task.Request.ImageURLs)
 	}
 	if canonical != nil {
+		summary.ImageCount = len(canonical.Images)
 		summary.VariantCount = len(canonical.Variants)
 		summary.NeedsReview = canonical.NeedsReview
-	}
-	if image != nil && image.Review != nil && image.Review.NeedsReview {
-		summary.NeedsReview = true
-		summary.Warnings = append(summary.Warnings, image.Review.Reasons...)
 	}
 	return summary
 }

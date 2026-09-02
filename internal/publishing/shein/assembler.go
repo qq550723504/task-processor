@@ -6,7 +6,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/product/catalog/canonical"
-	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 	"task-processor/internal/shein/authorizedbrand"
 )
@@ -21,7 +20,7 @@ type AssemblerConfig struct {
 }
 
 type Assembler interface {
-	Build(req *BuildRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *Package
+	Build(req *BuildRequest, canonical *canonical.Product) *Package
 }
 
 type assembler struct {
@@ -44,13 +43,13 @@ func NewAssembler(config AssemblerConfig) Assembler {
 	}
 }
 
-func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *productimage.ImageProcessResult) *Package {
+func (a *assembler) Build(req *BuildRequest, product *canonical.Product) *Package {
 	if product == nil {
 		return &Package{ReviewNotes: []string{"canonical product is empty"}}
 	}
 	log := sheinLogger("shein/assembler")
 
-	images := common.BuildImages(product, image)
+	images := common.BuildImages(product)
 	spuName := common.WithBrandHint(product.Title, req.BrandHint)
 	copy := buildSheinListingCopy(req.Context, product, spuName, a.titleOptimizer)
 	brand := common.ResolveBrand(req.BrandHint, product)
@@ -272,11 +271,19 @@ func buildRequestSKCs(groups []variantGroup, images *common.ImageSet, siteList [
 	if len(groups) == 0 {
 		return nil
 	}
+	var imageMain string
+	var imageGallery []string
+	var whiteBackgroundImage string
+	if images != nil {
+		imageMain = images.MainImage
+		imageGallery = images.Gallery
+		whiteBackgroundImage = images.WhiteBgImage
+	}
 	result := make([]SKCRequestDraft, 0, len(groups))
 	for idx, group := range groups {
 		skus := make([]SKUDraft, 0, len(group.skus))
 		for _, variant := range group.skus {
-			skus = append(skus, buildSKUDraft(variant, canonical, common.FirstNonEmpty(variant.Image, group.mainImageURL, images.MainImage), siteList, pricingPolicy))
+			skus = append(skus, buildSKUDraft(variant, canonical, common.FirstNonEmpty(variant.Image, group.mainImageURL, imageMain), siteList, pricingPolicy))
 		}
 		result = append(result, SKCRequestDraft{
 			SkcName:      group.skcName,
@@ -288,8 +295,8 @@ func buildRequestSKCs(groups []variantGroup, images *common.ImageSet, siteList [
 			},
 			ImageInfo: BuildImageDraft(&common.ImageSet{
 				MainImage:    group.mainImageURL,
-				Gallery:      append([]string(nil), images.Gallery...),
-				WhiteBgImage: images.WhiteBgImage,
+				Gallery:      append([]string(nil), imageGallery...),
+				WhiteBgImage: whiteBackgroundImage,
 			}),
 			SKUList: skus,
 		})

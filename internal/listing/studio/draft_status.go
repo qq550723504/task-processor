@@ -4,15 +4,13 @@ package studio
 type DraftStatus string
 
 const (
-	DraftStatusSelecting    DraftStatus = "selecting"
-	DraftStatusGenerating   DraftStatus = "generating"
-	DraftStatusReviewing    DraftStatus = "reviewing"
-	DraftStatusTasksCreated DraftStatus = "tasks_created"
+	DraftStatusSelecting  DraftStatus = "selecting"
+	DraftStatusGenerating DraftStatus = "generating"
+	DraftStatusReviewing  DraftStatus = "reviewing"
 )
 
 type DraftStatusInput struct {
 	GenerationJobCount int
-	CreatedTaskCount   int
 	DesignCount        int
 }
 
@@ -23,8 +21,6 @@ func ResolveDraftStatus(input DraftStatusInput) DraftStatus {
 	switch {
 	case input.GenerationJobCount > 0:
 		return DraftStatusGenerating
-	case input.CreatedTaskCount > 0:
-		return DraftStatusTasksCreated
 	case input.DesignCount > 0:
 		return DraftStatusReviewing
 	default:

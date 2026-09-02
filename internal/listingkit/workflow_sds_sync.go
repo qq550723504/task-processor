@@ -9,8 +9,7 @@ import (
 
 	"task-processor/internal/listingkit/core"
 	listingworkflow "task-processor/internal/listingkit/workflow"
-	"task-processor/internal/productimage"
-	sdsusecase "task-processor/internal/sds/usecase"
+	productasset "task-processor/internal/product/asset"
 )
 
 const sdsDesignSyncTimeout = listingworkflow.SDSDesignSyncTimeout
@@ -18,48 +17,6 @@ const sdsDesignSyncExtraPollCap = listingworkflow.SDSDesignSyncExtraPollCap
 
 func sdsDesignSyncTimeoutForVariantCount(targetCount int) time.Duration {
 	return listingworkflow.SDSDesignSyncTimeoutForVariantCount(targetCount)
-}
-
-func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *ListingKitResult, imageResult *productimage.ImageProcessResult, recorder *workflowRecorder) {
-	syncService := resolveSDSSyncService(s)
-	if syncService == nil || !shouldSyncSDS(task.Request) || imageResult == nil {
-		return
-	}
-	result = normalizeListingKitResultSemanticFields(result)
-	defer normalizeListingKitResultSemanticFields(result)
-	options := task.Request.Options.SDS
-	recorder, stage := beginSDSSyncStage(result, task.Request, recorder)
-
-	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeout)
-	defer cancel()
-
-	syncResult, err := syncService.SyncFromImageResult(syncCtx, sdsusecase.ImageResultInput{
-		Sync: sdsusecase.SyncInput{
-			VariantID:        options.VariantID,
-			ParentProductID:  options.ParentProductID,
-			PrototypeGroupID: options.PrototypeGroupID,
-			DesignType:       options.DesignType,
-			LayerID:          options.LayerID,
-			FitLevel:         options.FitLevel,
-			ResizeMode:       options.ResizeMode,
-			BlankDesignURL:   options.BlankDesignURL,
-		},
-		ImageResult: imageResult,
-	})
-	if err != nil {
-		failSDSSyncStage(result, task.Request, recorder, stage, options.VariantID, "sds design sync failed: ", "sds_design_sync_failed", "SDS design sync failed", err)
-		return
-	}
-
-	var summary *SDSSyncSummary
-	if syncResult != nil && syncResult.DesignSync != nil && syncResult.DesignSync.DesignResult != nil {
-		summary = buildSDSSyncSummary(options, syncResult.DesignSync.DesignResult)
-	} else {
-		summary = buildSDSSyncSummary(options, nil)
-	}
-	if !finalizeSDSSyncSummary(ctx, result, task.Request, recorder, stage, summary, options) {
-		return
-	}
 }
 
 func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) {
@@ -75,9 +32,9 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 	})
 
 	options := task.Request.Options.SDS
-	imageURL := strings.TrimSpace(task.Request.ImageURLs[0])
+	imageURL := approvedMainImageURL(result)
 	if imageURL == "" {
-		log.Warn("skipping remote SDS design sync because source image URL is empty")
+		log.Warn("skipping remote SDS design sync because approved main asset is unavailable")
 		return
 	}
 	if len(options.Variants) > 0 {
@@ -100,6 +57,25 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 		return
 	}
 	s.runSingleSDSDesignFromRemote(ctx, task, result, imageURL, recorder, log)
+}
+
+func approvedMainImageURL(result *ListingKitResult) string {
+	if result == nil {
+		return ""
+	}
+	inventory := result.ApprovedAssetInventory
+	if inventory == nil && result.StandardProductSnapshot != nil {
+		inventory = result.StandardProductSnapshot.ApprovedAssetInventory
+	}
+	if inventory == nil {
+		return ""
+	}
+	for _, approved := range inventory.Assets {
+		if approved.Role == productasset.RoleMain {
+			return strings.TrimSpace(approved.URL)
+		}
+	}
+	return ""
 }
 
 func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Task, result *ListingKitResult, imageURL string, recorder *workflowRecorder) {

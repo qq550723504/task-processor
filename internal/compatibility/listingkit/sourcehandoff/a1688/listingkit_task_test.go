@@ -11,13 +11,14 @@ import (
 
 func TestPrepareListingKitTaskHandoffBuildsRequest(t *testing.T) {
 	handoff, err := PrepareListingKitTaskHandoff(ListingKitTaskInput{
-		Source:       testAlibaba1688SourceEnvelopeInput(),
-		TenantID:     " tenant-1688 ",
-		UserID:       " user-1688 ",
-		Platforms:    []string{" SHEIN ", "shein"},
-		Country:      " US ",
-		Language:     " en_US ",
-		SheinStoreID: 168811,
+		Source:             testAlibaba1688SourceEnvelopeInput(),
+		TenantID:           " tenant-1688 ",
+		UserID:             " user-1688 ",
+		Platforms:          []string{" SHEIN ", "shein"},
+		Country:            " US ",
+		Language:           " en_US ",
+		SheinStoreID:       168811,
+		TargetCategoryHint: " Bags>Lunch Bags ",
 	})
 	if err != nil {
 		t.Fatalf("PrepareListingKitTaskHandoff() error = %v", err)
@@ -28,17 +29,17 @@ func TestPrepareListingKitTaskHandoffBuildsRequest(t *testing.T) {
 	if got := handoff.Envelope.Identity.SourceKey(); got != "crawler:1688:777" {
 		t.Fatalf("SourceKey() = %q, want crawler:1688:777", got)
 	}
-	if handoff.Request.ProductURL != "https://detail.1688.com/offer/777.html" {
-		t.Fatalf("ProductURL = %q, want normalized 1688 URL", handoff.Request.ProductURL)
+	if handoff.Request.ProductKey != "crawler:1688:777" {
+		t.Fatalf("ProductKey = %q, want normalized source identity", handoff.Request.ProductKey)
 	}
 	if handoff.Request.BrandHint != "Factory Lunch" {
 		t.Fatalf("BrandHint = %q, want source brand", handoff.Request.BrandHint)
 	}
 	if handoff.Request.TargetCategoryHint != "Bags>Lunch Bags" {
-		t.Fatalf("TargetCategoryHint = %q, want source category", handoff.Request.TargetCategoryHint)
+		t.Fatalf("TargetCategoryHint = %q, want explicit category hint", handoff.Request.TargetCategoryHint)
 	}
-	if len(handoff.Request.ImageURLs) != 3 {
-		t.Fatalf("ImageURLs = %#v, want main/gallery/variant images", handoff.Request.ImageURLs)
+	if handoff.Request.Source == nil || handoff.Request.Source.URL != "https://detail.1688.com/offer/777.html" {
+		t.Fatalf("Source = %#v, want normalized source reference", handoff.Request.Source)
 	}
 	if len(handoff.Request.Platforms) != 1 || handoff.Request.Platforms[0] != "shein" {
 		t.Fatalf("Platforms = %#v, want normalized deduped shein", handoff.Request.Platforms)
@@ -62,10 +63,10 @@ func TestCreateListingKitTaskDelegatesToCreator(t *testing.T) {
 	if task == nil || task.ID != "task-1688" {
 		t.Fatalf("task = %+v, want delegated task", task)
 	}
-	if handoff == nil || handoff.Request.ProductURL == "" {
+	if handoff == nil || handoff.Request.ProductKey == "" {
 		t.Fatalf("handoff = %+v, want prepared request", handoff)
 	}
-	if creator.request == nil || creator.request.ProductURL != "https://detail.1688.com/offer/777.html" {
+	if creator.request == nil || creator.request.ProductKey != "crawler:1688:777" {
 		t.Fatalf("creator request = %+v, want normalized source request", creator.request)
 	}
 }

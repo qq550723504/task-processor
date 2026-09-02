@@ -10,7 +10,7 @@ func TestBatchGenerationServiceStartGenerationRefreshesThenContinues(t *testing.
 	t.Parallel()
 
 	var calls []string
-	service := NewBatchGenerationService(BatchGenerationServiceConfig[string, string]{
+	service := NewBatchGenerationService(BatchGenerationServiceConfig[string]{
 		RefreshGraph: func(ctx context.Context, batchID string) error {
 			calls = append(calls, "refresh:"+batchID)
 			return nil
@@ -37,30 +37,14 @@ func TestBatchGenerationServiceStartGenerationRefreshesThenContinues(t *testing.
 	}
 }
 
-func TestBatchGenerationServiceResumeGenerationUsesTaskResumeBranch(t *testing.T) {
+func TestBatchGenerationServiceResumeGenerationEnsuresGraphThenContinues(t *testing.T) {
 	t.Parallel()
 
 	var calls []string
-	service := NewBatchGenerationService(BatchGenerationServiceConfig[string, int]{
+	service := NewBatchGenerationService(BatchGenerationServiceConfig[string]{
 		EnsureGraphForResume: func(ctx context.Context, batchID string) error {
 			calls = append(calls, "ensure:"+batchID)
 			return nil
-		},
-		ShouldResumeTaskCreation: func(ctx context.Context, batchID string) bool {
-			calls = append(calls, "should:"+batchID)
-			return true
-		},
-		ResumeTaskCreation: func(ctx context.Context, batchID string) (*int, error) {
-			calls = append(calls, "resume:"+batchID)
-			value := 7
-			return &value, nil
-		},
-		AdaptResumeResult: func(result *int) *string {
-			if result == nil {
-				return nil
-			}
-			value := "resumed"
-			return &value
 		},
 		ContinueGeneration: func(ctx context.Context, batchID string) (*string, error) {
 			calls = append(calls, "continue:"+batchID)
@@ -73,10 +57,10 @@ func TestBatchGenerationServiceResumeGenerationUsesTaskResumeBranch(t *testing.T
 	if err != nil {
 		t.Fatalf("ResumeGeneration() error = %v", err)
 	}
-	if result == nil || *result != "resumed" {
+	if result == nil || *result != "continued" {
 		t.Fatalf("ResumeGeneration() result = %#v", result)
 	}
-	if got, want := calls, []string{"ensure:batch-2", "should:batch-2", "resume:batch-2"}; len(got) != len(want) {
+	if got, want := calls, []string{"ensure:batch-2", "continue:batch-2"}; len(got) != len(want) {
 		t.Fatalf("calls = %#v, want %#v", got, want)
 	} else {
 		for i := range want {
@@ -91,7 +75,7 @@ func TestBatchGenerationServiceRetryItemsPreparesThenContinues(t *testing.T) {
 	t.Parallel()
 
 	var calls []string
-	service := NewBatchGenerationService(BatchGenerationServiceConfig[string, string]{
+	service := NewBatchGenerationService(BatchGenerationServiceConfig[string]{
 		PrepareRetryItems: func(ctx context.Context, batchID string, itemIDs []string) (*string, error) {
 			calls = append(calls, "prepare:"+batchID)
 			value := "prepared"
@@ -126,7 +110,7 @@ func TestBatchGenerationServicePrepareGenerationReturnsRefreshError(t *testing.T
 	t.Parallel()
 
 	wantErr := errors.New("boom")
-	service := NewBatchGenerationService(BatchGenerationServiceConfig[string, string]{
+	service := NewBatchGenerationService(BatchGenerationServiceConfig[string]{
 		RefreshGraph: func(ctx context.Context, batchID string) error {
 			return wantErr
 		},

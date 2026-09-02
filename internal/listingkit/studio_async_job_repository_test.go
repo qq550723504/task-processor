@@ -53,7 +53,7 @@ func TestMemStudioAsyncJobRepositoryRejectsHeartbeatForTerminalJob(t *testing.T)
 	ctx := WithTenantID(context.Background(), "tenant-terminal-heartbeat")
 	now := time.Now().UTC()
 	if err := repo.CreateStudioAsyncJob(ctx, &StudioAsyncJobRecord{
-		ID: "terminal-heartbeat-job", TenantID: "tenant-terminal-heartbeat", Path: "/studio/product-images",
+		ID: "terminal-heartbeat-job", TenantID: "tenant-terminal-heartbeat", Path: "/studio/designs",
 		Status: StudioAsyncJobStatusFailed, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("create job: %v", err)
@@ -71,7 +71,7 @@ func TestStudioAsyncJobRepositoryConditionalRecoveryKeepsHeartbeatOwner(t *testi
 	ctx := WithTenantID(context.Background(), "tenant-conditional-recovery")
 	old := time.Now().UTC().Add(-time.Hour)
 	if err := repo.CreateStudioAsyncJob(ctx, &StudioAsyncJobRecord{
-		ID: "conditional-recovery-job", TenantID: "tenant-conditional-recovery", Path: "/studio/product-images",
+		ID: "conditional-recovery-job", TenantID: "tenant-conditional-recovery", Path: "/studio/designs",
 		Status: StudioAsyncJobStatusRunning, CreatedAt: old, UpdatedAt: old,
 	}); err != nil {
 		t.Fatalf("create job: %v", err)
@@ -82,7 +82,7 @@ func TestStudioAsyncJobRepositoryConditionalRecoveryKeepsHeartbeatOwner(t *testi
 	}
 
 	recovery := &StudioAsyncJobRecord{
-		ID: "conditional-recovery-job", TenantID: "tenant-conditional-recovery", Path: "/studio/product-images",
+		ID: "conditional-recovery-job", TenantID: "tenant-conditional-recovery", Path: "/studio/designs",
 		Status: StudioAsyncJobStatusFailed, Error: "stale", UpstreamStatus: 500,
 		UpdatedAt: time.Now().UTC(),
 	}
@@ -109,7 +109,7 @@ func TestStudioAsyncJobRepositoryRejectsSuccessAfterLeaseLoss(t *testing.T) {
 	ctx := WithTenantID(context.Background(), "tenant-success-lease")
 	now := time.Now().UTC()
 	if err := repo.CreateStudioAsyncJob(ctx, &StudioAsyncJobRecord{
-		ID: "success-lease-job", TenantID: "tenant-success-lease", Path: "/studio/product-images",
+		ID: "success-lease-job", TenantID: "tenant-success-lease", Path: "/studio/designs",
 		Status: StudioAsyncJobStatusFailed, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("create job: %v", err)
@@ -138,7 +138,7 @@ func TestGormStudioAsyncJobRepositoryHeartbeatUpdatesRunningJob(t *testing.T) {
 	ctx := WithTenantID(context.Background(), "tenant-heartbeat")
 	createdAt := time.Now().UTC().Add(-time.Minute)
 	if err := repo.CreateStudioAsyncJob(ctx, &StudioAsyncJobRecord{
-		ID: "heartbeat-job", TenantID: "tenant-heartbeat", Path: "/studio/product-images",
+		ID: "heartbeat-job", TenantID: "tenant-heartbeat", Path: "/studio/designs",
 		Status: StudioAsyncJobStatusRunning, CreatedAt: createdAt, UpdatedAt: createdAt,
 	}); err != nil {
 		t.Fatalf("create job: %v", err)
@@ -172,7 +172,7 @@ func TestGormStudioAsyncJobRepositoryConditionalRecoveryRequiresObservedHeartbea
 	ctx := WithTenantID(context.Background(), "tenant-conditional-gorm")
 	old := time.Now().UTC().Add(-time.Hour).Truncate(time.Microsecond)
 	if err := repo.CreateStudioAsyncJob(ctx, &StudioAsyncJobRecord{
-		ID: "conditional-gorm-job", TenantID: "tenant-conditional-gorm", Path: "/studio/product-images",
+		ID: "conditional-gorm-job", TenantID: "tenant-conditional-gorm", Path: "/studio/designs",
 		Status: StudioAsyncJobStatusRunning, CreatedAt: old, UpdatedAt: old,
 	}); err != nil {
 		t.Fatalf("create job: %v", err)
@@ -183,7 +183,7 @@ func TestGormStudioAsyncJobRepositoryConditionalRecoveryRequiresObservedHeartbea
 	}
 
 	claimed, err := repo.UpdateStudioAsyncJobIfRunningSinceForTenant(ctx, "tenant-conditional-gorm", "conditional-gorm-job", old, &StudioAsyncJobRecord{
-		ID: "conditional-gorm-job", TenantID: "tenant-conditional-gorm", Path: "/studio/product-images",
+		ID: "conditional-gorm-job", TenantID: "tenant-conditional-gorm", Path: "/studio/designs",
 		Status: StudioAsyncJobStatusFailed, Error: "stale", UpstreamStatus: 500, UpdatedAt: time.Now().UTC(),
 	})
 	if err != nil {
@@ -256,7 +256,7 @@ func TestGormStudioAsyncJobRepositoryTenantRecoveryBypassesUserScope(t *testing.
 	ctxB := WithRequestIdentity(WithTenantID(context.Background(), "tenant-a"), RequestIdentity{TenantID: "tenant-a", UserID: "user-b"})
 	old := time.Now().UTC().Add(-time.Hour)
 	if err := repo.CreateStudioAsyncJob(ctxA, &StudioAsyncJobRecord{
-		ID: "job-recovery", TenantID: "tenant-a", UserID: "user-a", Path: "/studio/product-images",
+		ID: "job-recovery", TenantID: "tenant-a", UserID: "user-a", Path: "/studio/designs",
 		Status: StudioAsyncJobStatusRunning, CreatedAt: old, UpdatedAt: old,
 	}); err != nil {
 		t.Fatalf("create job: %v", err)

@@ -317,7 +317,7 @@ func (f *fakeTaskCommandService) CreateTask(_ context.Context, command a1688.Cre
 		Task: &listingkit.Task{ID: "task-http", TenantID: command.TenantID, Status: core.TaskStatusPending},
 		Handoff: &a1688.ListingKitTaskHandoff{
 			Envelope: envelope,
-			Request:  listingkit.GenerateRequest{ProductURL: crawler1688.NormalizeAlibaba1688URL(command.URL)},
+			Request:  listingkit.GenerateRequest{ProductKey: "crawler:1688:999", Source: &listingkit.SourceReference{URL: crawler1688.NormalizeAlibaba1688URL(command.URL)}},
 		},
 	}, nil
 }

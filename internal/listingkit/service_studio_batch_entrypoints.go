@@ -91,11 +91,3 @@ func (s *service) ApplyManualStudioBatchDesignBackgroundRemoval(ctx context.Cont
 func (s *service) ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error) {
 	return s.taskStudioBatchOrDefault().ApproveStudioBatchDesigns(ctx, batchID, req)
 }
-
-func (s *service) CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
-	return s.taskStudioBatchOrDefault().CreateStudioBatchTasks(ctx, batchID, req)
-}
-
-func (s *service) PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
-	return s.taskStudioBatchOrDefault().PrepareCreateStudioBatchTasks(ctx, batchID, req)
-}

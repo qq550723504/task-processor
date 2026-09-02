@@ -5,11 +5,8 @@ import (
 	"sort"
 	"testing"
 
-	assetbundle "task-processor/internal/asset/bundle"
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
-	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/listingkit/reviewstore"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
 	sdsusecase "task-processor/internal/sds/usecase"
@@ -33,6 +30,28 @@ type stubWorkflowProductSnapshotReader struct {
 	err        error
 	lastReq    *ProductSnapshotQuery
 	calls      []ProductSnapshotQuery
+}
+
+type stubWorkflowApprovedAssetReader struct {
+	inventory productasset.ApprovedAssetInventory
+	err       error
+}
+
+func (s *stubWorkflowApprovedAssetReader) GetApprovedInventory(_ context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	if s.err != nil {
+		return productasset.ApprovedAssetInventory{}, s.err
+	}
+	if len(s.inventory.Assets) > 0 {
+		inventory := productasset.CloneApprovedAssetInventory(s.inventory)
+		inventory.Scope = scope
+		return inventory, nil
+	}
+	return productasset.ApprovedAssetInventory{
+		Scope: scope,
+		Assets: []productasset.ApprovedAsset{{
+			ID: "approved-main", Role: productasset.RoleMain, URL: "https://example.com/approved-main.png",
+		}},
+	}, nil
 }
 
 func (s *stubWorkflowProductSnapshotReader) GetProductSnapshot(_ context.Context, query ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
@@ -173,6 +192,9 @@ func seedSupportDeps(s *service, deps supportDependencySeed) *service {
 			Variants: []catalog.Variant{{SKU: "TEST-001", IsDefault: true}},
 		}}
 	}
+	if s.workflowDeps.approvedAssets == nil {
+		s.workflowDeps.approvedAssets = &stubWorkflowApprovedAssetReader{}
+	}
 	if s.supportDeps.sdsSyncService == nil {
 		s.supportDeps.sdsSyncService = deps.sdsSyncService
 	}
@@ -201,40 +223,12 @@ func seedTaskDeps(s *service, deps taskDependencySeed) *service {
 	return s
 }
 
-func seedWorkflowServices(s *service, productSnapshots ProductSnapshotReader, imageSvc ImageService) *service {
+func seedWorkflowServices(s *service, productSnapshots ProductSnapshotReader) *service {
 	if s == nil {
 		return nil
 	}
 	if productSnapshots != nil {
 		s.workflowDeps.productSnapshots = productSnapshots
-	}
-	if imageSvc != nil {
-		s.workflowDeps.imageService = imageSvc
-	}
-	return s
-}
-
-func seedWorkflowAssets(
-	s *service,
-	assetRepo assetrepo.Repository,
-	assetRecipeResolver assetrecipe.Resolver,
-	assetBundleBuilder assetbundle.Builder,
-	assetGenerator assetgeneration.Service,
-) *service {
-	if s == nil {
-		return nil
-	}
-	if s.workflowDeps.assetRepository == nil {
-		s.workflowDeps.assetRepository = assetRepo
-	}
-	if s.workflowDeps.assetRecipeResolver == nil {
-		s.workflowDeps.assetRecipeResolver = assetRecipeResolver
-	}
-	if s.workflowDeps.assetBundleBuilder == nil {
-		s.workflowDeps.assetBundleBuilder = assetBundleBuilder
-	}
-	if s.workflowDeps.assetGenerationService == nil {
-		s.workflowDeps.assetGenerationService = assetGenerator
 	}
 	return s
 }

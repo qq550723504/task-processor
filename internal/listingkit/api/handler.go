@@ -20,7 +20,6 @@ type handler struct {
 	taskRequeueService            listingkit.TaskRequeueService
 	sdsBaselineWarmService        listingkit.SDSBaselineWarmService
 	sdsRetirementService          listingkit.SDSRetirementService
-	generationTaskService         listingkit.GenerationTaskService
 	childTaskRetryService         childTaskRetryService
 	taskSDSRepairService          taskSDSRepairService
 	studioMediaService            listingkit.StudioMediaService
@@ -86,7 +85,6 @@ type subscriptionDependencies struct {
 
 type handlerCoreService interface {
 	listingkit.TaskLifecycleService
-	listingkit.GenerationTaskService
 	listingkit.StudioMediaService
 }
 
@@ -247,12 +245,6 @@ func WithTaskRecoveryService(service listingkit.TaskRecoveryService) HandlerOpti
 func WithTaskRequeueService(service listingkit.TaskRequeueService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.taskRequeueService = service
-	})
-}
-
-func WithGenerationTaskService(service listingkit.GenerationTaskService) HandlerOption {
-	return withHandlerState(func(h *handler) {
-		h.generationTaskService = service
 	})
 }
 

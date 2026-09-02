@@ -27,6 +27,7 @@ import (
 	"task-processor/internal/listingkit/core"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	worker "task-processor/internal/platform/workerpool"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/productenrich"
@@ -43,6 +44,14 @@ type e2eProductSnapshotReader struct {
 
 func (r e2eProductSnapshotReader) GetProductSnapshot(context.Context, listingkit.ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
 	return r.snapshot, nil
+}
+
+type e2eApprovedAssetReader struct {
+	inventory productasset.ApprovedAssetInventory
+}
+
+func (r e2eApprovedAssetReader) GetApprovedInventory(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	return productasset.CloneApprovedAssetInventory(r.inventory), nil
 }
 
 func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
@@ -256,6 +265,16 @@ func TestHTTPE2E_ListingKitProductSnapshotBuildsSheinPreview(t *testing.T) {
 		input.Runtime.Support.Repositories.Admin.Store = func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
 			return storeRepo, nil, nil
 		}
+		input.Runtime.Support.Repositories.Core.ApprovedAsset = func(*config.Config, *logrus.Logger) (listingkit.ApprovedAssetInventoryReader, []func() error, error) {
+			return e2eApprovedAssetReader{inventory: productasset.ApprovedAssetInventory{
+				Scope: productasset.InventoryScope{TenantID: "app-http-test-tenant", ProductKey: "snapshot-earbuds-1"},
+				Assets: []productasset.ApprovedAsset{{
+					ID:   "approved-main",
+					Role: productasset.RoleMain,
+					URL:  imageURL,
+				}},
+			}}, nil, nil
+		}
 		return buildListingKit(input)
 	}
 	features, err := featureBuilder.build(logger, deps, listingKitFeatureBuildOptions{
@@ -302,9 +321,6 @@ func TestHTTPE2E_ListingKitProductSnapshotBuildsSheinPreview(t *testing.T) {
 		"country":        "US",
 		"language":       "en",
 		"shein_store_id": sheinStoreID,
-		"options": map[string]any{
-			"process_images": false,
-		},
 	}, func(resp map[string]any) string {
 		taskID, _ := resp["task_id"].(string)
 		return taskID
@@ -314,6 +330,7 @@ func TestHTTPE2E_ListingKitProductSnapshotBuildsSheinPreview(t *testing.T) {
 	require.NotEqual(t, core.TaskStatusFailed, task.Status)
 	require.NotNil(t, task.Result)
 	require.NotNil(t, task.Result.CatalogProduct)
+	require.NotNil(t, task.Result.ApprovedAssetInventory)
 	require.Equal(t, "Product Snapshot 蓝牙耳机", task.Result.CatalogProduct.Title)
 	require.NotNil(t, task.Result.CanonicalProduct)
 	require.Equal(t, "Product Snapshot 蓝牙耳机", task.Result.CanonicalProduct.Title)
@@ -322,7 +339,8 @@ func TestHTTPE2E_ListingKitProductSnapshotBuildsSheinPreview(t *testing.T) {
 	require.NotNil(t, task.Result.Shein.PreviewProduct)
 	require.NotEmpty(t, task.Result.Shein.PreviewProduct.SPUName)
 	require.NotNil(t, task.Result.Shein.RequestDraft.ImageInfo)
-	require.NotEmpty(t, task.Result.Shein.RequestDraft.ImageInfo.Source)
+	require.NotEmpty(t, task.Result.Shein.RequestDraft.ImageInfo.MainImage)
+	require.Empty(t, task.Result.Shein.RequestDraft.ImageInfo.Source)
 	require.NotEmpty(t, task.Result.Shein.RequestDraft.SKCList)
 }
 
@@ -580,6 +598,15 @@ func productTaskTerminal(result productenrich.TaskResult) (bool, string) {
 func imageTaskTerminal(result productimage.TaskResult) (bool, string) {
 	switch result.Status {
 	case productimage.TaskStatusCompleted, productimage.TaskStatusNeedsReview, productimage.TaskStatusRejected, productimage.TaskStatusFailed:
+		return true, string(result.Status)
+	default:
+		return false, string(result.Status)
+	}
+}
+
+func listingKitTaskTerminal(result listingkit.TaskResult) (bool, string) {
+	switch result.Status {
+	case core.TaskStatusCompleted, core.TaskStatusNeedsReview, core.TaskStatusFailed:
 		return true, string(result.Status)
 	default:
 		return false, string(result.Status)

@@ -46,7 +46,6 @@ func TestResolveDraftStatusPrioritizesGenerationTasksThenDesigns(t *testing.T) {
 		want  DraftStatus
 	}{
 		{name: "generation jobs", input: DraftStatusInput{GenerationJobCount: 1}, want: DraftStatusGenerating},
-		{name: "created tasks", input: DraftStatusInput{CreatedTaskCount: 1}, want: DraftStatusTasksCreated},
 		{name: "designs", input: DraftStatusInput{DesignCount: 1}, want: DraftStatusReviewing},
 		{name: "empty", want: DraftStatusSelecting},
 	}

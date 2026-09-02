@@ -85,46 +85,6 @@ func TestBuildRuntimeSupportWithoutSDSCollaboratorsDegradesSafely(t *testing.T) 
 	}
 }
 
-func TestBuildRuntimeModuleAndTemporalRuntimeAcceptRuntimeSupport(t *testing.T) {
-	t.Parallel()
-
-	serviceInput := buildSuccessfulServiceInputFixture()
-	syncService := stubRuntimeSupportSDSService{}
-	statusProvider := stubRuntimeSupportSDSStatusProvider{}
-	remoteProvider := stubRuntimeSupportSDSBaselineProvider{}
-	runtime := RuntimeDependencies{
-		Config:                serviceInput.Config,
-		ProductSnapshotReader: serviceInput.ProductSnapshotReader,
-		Support: BuildRuntimeSupport(RuntimeSupportInput{
-			SDSSyncService:            syncService,
-			SDSLoginStatusProvider:    statusProvider,
-			SDSBaselineRemoteProvider: remoteProvider,
-		}),
-	}
-
-	module, err := BuildRuntimeModule(RuntimeBuildInput{
-		Logger:  serviceInput.Logger,
-		Runtime: runtime,
-	})
-	if err != nil {
-		t.Fatalf("BuildRuntimeModule() error = %v", err)
-	}
-	if module == nil {
-		t.Fatal("expected module")
-	}
-
-	result, err := BuildTemporalRuntime(TemporalRuntimeBuildInput{
-		Logger:  serviceInput.Logger,
-		Runtime: runtime,
-	})
-	if err != nil {
-		t.Fatalf("BuildTemporalRuntime() error = %v", err)
-	}
-	if err := result.Validate(); err != nil {
-		t.Fatalf("Validate() error = %v", err)
-	}
-}
-
 var _ sdsusecase.Service = stubRuntimeSupportSDSService{}
 var _ listingkit.SDSLoginStatusProvider = stubRuntimeSupportSDSStatusProvider{}
 var _ listingkit.SDSBaselineRemoteProvider = stubRuntimeSupportSDSBaselineProvider{}

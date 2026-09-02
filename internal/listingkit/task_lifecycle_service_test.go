@@ -21,7 +21,6 @@ func TestTaskLifecycleServiceRejectsForeignSheinStoreBeforePersistingTask(t *tes
 
 	_, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		TenantID:     "101",
-		ProductURL:   "https://example.com/product",
 		Platforms:    []string{"shein"},
 		SheinStoreID: 202,
 	})
@@ -44,8 +43,7 @@ func TestTaskLifecycleServiceRequiresExplicitSheinStoreBeforePersistingTask(t *t
 	})
 
 	_, err := lifecycle.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
-		ProductURL: "https://example.test/product",
-		Platforms:  []string{"shein"},
+		Platforms: []string{"shein"},
 	})
 
 	if err == nil || err.Error() != "invalid request: shein_store_id is required for SHEIN tasks" {
@@ -66,8 +64,7 @@ func TestTaskLifecycleServiceAllowsNonSheinTaskWithoutSheinStore(t *testing.T) {
 	})
 
 	_, err := lifecycle.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
-		ProductURL: "https://example.test/product",
-		Platforms:  []string{"amazon"},
+		Platforms: []string{"amazon"},
 	})
 
 	if err != nil {
@@ -105,7 +102,6 @@ func TestTaskLifecycleServiceValidatesOwnedSheinStoreBeforePersistingTask(t *tes
 
 	_, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		TenantID:     "101",
-		ProductURL:   "https://example.com/product",
 		Platforms:    []string{"shein"},
 		SheinStoreID: 202,
 	})
@@ -135,7 +131,6 @@ func TestTaskLifecycleServiceUsesAuthenticatedTenantForSheinStoreValidation(t *t
 
 	task, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		TenantID:     "202",
-		ProductURL:   "https://example.com/product",
 		Platforms:    []string{"shein"},
 		SheinStoreID: 303,
 	})
@@ -166,7 +161,6 @@ func TestTaskLifecycleServicePersistsTenantAdminStoreAccessDecision(t *testing.T
 	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		TenantID:     "101",
 		UserID:       "user-1",
-		ProductURL:   "https://example.com/product",
 		Platforms:    []string{"shein"},
 		SheinStoreID: 202,
 	})
@@ -186,7 +180,6 @@ func TestTaskLifecycleServiceKeepsCanonicalOwnerSeparateFromBillingTenant(t *tes
 		TenantID:        "canonical-tenant",
 		BillingTenantID: "227",
 		UserID:          "user-1",
-		ProductURL:      "https://example.com/product",
 		Platforms:       []string{"amazon"},
 	})
 	if err != nil {
@@ -204,7 +197,7 @@ func TestTaskLifecycleServiceLeavesBillingTenantBlankWithoutExplicitAdmission(t 
 	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{})
 	ctx := WithTenantID(context.Background(), "canonical-tenant")
 
-	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product", TenantID: "canonical-tenant", ProductURL: "https://example.com/product", Platforms: []string{"amazon"}})
+	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product", TenantID: "canonical-tenant", Platforms: []string{"amazon"}})
 	if err != nil {
 		t.Fatalf("prepareGenerateTask() error = %v", err)
 	}
@@ -226,7 +219,6 @@ func TestTaskLifecycleServicePersistsTenantAdminAccessWhenStoreProfileResolution
 	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		TenantID:     "101",
 		UserID:       "user-1",
-		ProductURL:   "https://example.com/product",
 		Platforms:    []string{"shein"},
 		SheinStoreID: 202,
 	})

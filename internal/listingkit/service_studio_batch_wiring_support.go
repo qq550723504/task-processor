@@ -10,27 +10,15 @@ import (
 )
 
 type taskStudioBatchServiceWiring struct {
-	repo                     StudioBatchRepository
-	batchRunRepo             StudioBatchRunRepository
-	batchTaskLinkRepo        StudioBatchTaskLinkRepository
-	studioSessionRepo        StudioSessionRepository
-	baselineChecker          StudioBatchBaselineReadinessChecker
-	sdsProductDetailProvider SDSBaselineRemoteProvider
-	storeValidator           StudioBatchStoreValidator
-	generator                *studioBatchGenerationService
-	createGenerateTask       func(context.Context, *GenerateRequest) (*Task, error)
-	generateProductImages    func(context.Context, *StudioProductImageRequest) (*StudioProductImageResponse, error)
-	getTask                  func(context.Context, string) (*Task, error)
-	markTaskFailed           func(context.Context, string, string) error
-	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
-	ensureGraph              func(context.Context, string) error
-	loadDetail               func(context.Context, string) (*StudioBatchDetail, error)
-	resetRetryItems          func(context.Context, []StudioBatchItemRecord) error
-	currentTime              func() time.Time
-
-	productImageUsage             StudioProductImageUsage
-	generationUsageAdmission      GenerationUsageAdmission
-	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
+	repo                   StudioBatchRepository
+	batchRunRepo           StudioBatchRunRepository
+	studioSessionRepo      StudioSessionRepository
+	generator              *studioBatchGenerationService
+	retryBackgroundRemoval func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
+	ensureGraph            func(context.Context, string) error
+	loadDetail             func(context.Context, string) (*StudioBatchDetail, error)
+	resetRetryItems        func(context.Context, []StudioBatchItemRecord) error
+	currentTime            func() time.Time
 }
 
 type taskStudioBatchServiceConfigWiring struct {
@@ -38,8 +26,6 @@ type taskStudioBatchServiceConfigWiring struct {
 	detailRunner *listingStudioBatchDetailRunner
 	reviewRunner *listingStudioBatchReviewRunner
 	retryRunner  *listingStudioBatchRetryPrepareRunner
-	taskPrepare  *listingStudioBatchTaskPrepareRunner
-	taskResume   *listingStudioBatchTaskResumeRunner
 }
 
 type taskStudioBatchCollaboratorWiring struct {
@@ -62,31 +48,13 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 	if s == nil {
 		return taskStudioBatchServiceWiring{}
 	}
-	repository := buildServiceRepositoryWiring(s)
 	repo := resolveStudioBatchRepo(s)
 	studioSessionRepo := resolveStudioSessionRepo(s)
 	return taskStudioBatchServiceWiring{
-		repo:                     repo,
-		batchRunRepo:             resolveStudioBatchRunRepo(s),
-		batchTaskLinkRepo:        resolveStudioBatchTaskLinkRepo(s),
-		studioSessionRepo:        studioSessionRepo,
-		baselineChecker:          resolveStudioBatchBaselineReadinessChecker(s),
-		sdsProductDetailProvider: resolveSDSBaselineRemoteProvider(s),
-		storeValidator:           resolveStudioBatchStoreValidator(s),
-		generator:                generator,
-		createGenerateTask:       s.CreateGenerateTask,
-		generateProductImages: func(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
-			media := s.taskStudioMediaOrDefault()
-			if media == nil {
-				return nil, fmt.Errorf("studio media service is not configured")
-			}
-			return media.GenerateStudioProductImages(ctx, req)
-		},
-		productImageUsage:             s.studioDeps.productImageUsage,
-		generationUsageAdmission:      s.studioDeps.generationUsageAdmission,
-		resolveUploadedImagePublicURL: buildResolveUploadedImagePublicURLFunc(s),
-		getTask:                       repository.getTask,
-		markTaskFailed:                repository.markTaskFailed,
+		repo:              repo,
+		batchRunRepo:      resolveStudioBatchRunRepo(s),
+		studioSessionRepo: studioSessionRepo,
+		generator:         generator,
 		retryBackgroundRemoval: func(ctx context.Context, sourceURL string, filename string) (*studioBackgroundRemovalMaterialization, error) {
 			media := s.taskStudioMediaOrDefault()
 			if media == nil {
@@ -102,13 +70,9 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 		},
 		resetRetryItems: func(ctx context.Context, items []StudioBatchItemRecord) error {
 			batchService := &taskStudioBatchService{
-				repo:                          repo,
-				batchRunRepo:                  resolveStudioBatchRunRepo(s),
-				currentTime:                   time.Now,
-				sdsProductDetailProvider:      resolveSDSBaselineRemoteProvider(s),
-				productImageUsage:             s.studioDeps.productImageUsage,
-				generationUsageAdmission:      s.studioDeps.generationUsageAdmission,
-				resolveUploadedImagePublicURL: buildResolveUploadedImagePublicURLFunc(s),
+				repo:         repo,
+				batchRunRepo: resolveStudioBatchRunRepo(s),
+				currentTime:  time.Now,
 			}
 			return batchService.resetStudioBatchRetryItems(ctx, items)
 		},
@@ -121,7 +85,7 @@ func buildTaskStudioBatchServiceWiring(s *service) taskStudioBatchServiceWiring 
 }
 
 func (w taskStudioBatchServiceWiring) newDetailRunner() *listingStudioBatchDetailRunner {
-	return newListingStudioBatchDetailService(w.repo, w.studioSessionRepo, w.batchTaskLinkRepo, w.getTask, w.ensureGraph)
+	return newListingStudioBatchDetailService(w.repo, w.studioSessionRepo, w.ensureGraph)
 }
 
 func (w taskStudioBatchServiceWiring) newReviewRunner() *listingStudioBatchReviewRunner {
@@ -130,55 +94,11 @@ func (w taskStudioBatchServiceWiring) newReviewRunner() *listingStudioBatchRevie
 
 func buildTaskStudioBatchServiceConfigWiringWithGenerator(s *service, generator *studioBatchGenerationService) taskStudioBatchServiceConfigWiring {
 	batch := buildTaskStudioBatchServiceWiringWithGenerator(s, generator)
-	var updateSession func(context.Context, *SheinStudioSession) error
-	if sessionUpdater, ok := batch.studioSessionRepo.(interface {
-		UpdateSession(context.Context, *SheinStudioSession) error
-	}); ok {
-		updateSession = sessionUpdater.UpdateSession
-	}
-	var updateBatch func(context.Context, *StudioBatchRecord) error
-	if batch.repo != nil {
-		updateBatch = batch.repo.UpdateStudioBatch
-	}
 	return taskStudioBatchServiceConfigWiring{
 		batch:        batch,
 		detailRunner: batch.newDetailRunner(),
 		reviewRunner: batch.newReviewRunner(),
-		retryRunner:  newListingStudioBatchRetryPrepareService(batch.repo, batch.batchTaskLinkRepo, batch.loadDetail, batch.resetRetryItems),
-		taskPrepare: newListingStudioBatchTaskPrepareService(
-			updateSession,
-			updateBatch,
-			func(ctx context.Context, batchID string) (*CreateStudioBatchTasksResult, error) {
-				detail, err := batch.loadDetail(ctx, batchID)
-				if err != nil {
-					return nil, err
-				}
-				return &CreateStudioBatchTasksResult{
-					Batch:        detail.Batch,
-					Items:        detail.Items,
-					CreatedTasks: detail.CreatedTasks,
-					FailedTasks:  detail.FailedTasks,
-				}, nil
-			},
-			batch.currentTime,
-		),
-		taskResume: newListingStudioBatchTaskResumeService(
-			updateSession,
-			updateBatch,
-			func(ctx context.Context, batchID string) (*CreateStudioBatchTasksResult, error) {
-				detail, err := batch.loadDetail(ctx, batchID)
-				if err != nil {
-					return nil, err
-				}
-				return &CreateStudioBatchTasksResult{
-					Batch:        detail.Batch,
-					Items:        detail.Items,
-					CreatedTasks: detail.CreatedTasks,
-					FailedTasks:  detail.FailedTasks,
-				}, nil
-			},
-			batch.currentTime,
-		),
+		retryRunner:  newListingStudioBatchRetryPrepareService(batch.repo, batch.loadDetail, batch.resetRetryItems),
 	}
 }
 
@@ -302,50 +222,13 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 	config taskStudioBatchServiceConfigWiring,
 ) taskStudioBatchServiceConfig {
 	return taskStudioBatchServiceConfig{
-		repo:                     config.batch.repo,
-		batchRunRepo:             config.batch.batchRunRepo,
-		batchTaskLinkRepo:        config.batch.batchTaskLinkRepo,
-		studioSessionRepo:        config.batch.studioSessionRepo,
-		baselineChecker:          config.batch.baselineChecker,
-		sdsProductDetailProvider: config.batch.sdsProductDetailProvider,
-		storeValidator:           config.batch.storeValidator,
-		generator:                config.batch.generator,
-		createGenerateTask:       config.batch.createGenerateTask,
-		generateProductImages:    config.batch.generateProductImages,
-		getTask:                  config.batch.getTask,
-		markTaskFailed:           config.batch.markTaskFailed,
-		retryBackgroundRemoval:   config.batch.retryBackgroundRemoval,
-		detailRunner:             config.detailRunner,
-		reviewRunner:             config.reviewRunner,
-		retryRunner:              config.retryRunner,
-		taskPrepareRunner:        config.taskPrepare,
-		taskResumeRunner:         config.taskResume,
-
-		productImageUsage:             config.batch.productImageUsage,
-		generationUsageAdmission:      config.batch.generationUsageAdmission,
-		resolveUploadedImagePublicURL: config.batch.resolveUploadedImagePublicURL,
+		repo:                   config.batch.repo,
+		batchRunRepo:           config.batch.batchRunRepo,
+		studioSessionRepo:      config.batch.studioSessionRepo,
+		generator:              config.batch.generator,
+		retryBackgroundRemoval: config.batch.retryBackgroundRemoval,
+		detailRunner:           config.detailRunner,
+		reviewRunner:           config.reviewRunner,
+		retryRunner:            config.retryRunner,
 	}
-}
-
-func resolveStudioBatchBaselineReadinessChecker(s *service) StudioBatchBaselineReadinessChecker {
-	if s == nil {
-		return nil
-	}
-	repository := buildServiceRepositoryWiring(s)
-	if _, ok := repository.repo.(SDSBaselineCacheRepository); !ok {
-		return nil
-	}
-	if readinessService := s.sdsBaselineOrDefault(); readinessService != nil {
-		return studioBatchBaselineCacheReadinessChecker{readinessService: readinessService}
-	}
-	return nil
-}
-
-func resolveStudioBatchStoreValidator(s *service) StudioBatchStoreValidator {
-	repo := resolveAdminStoreProfileRepo(s)
-	accessValidator := resolveSheinStoreAccessValidator(s)
-	if repo != nil || accessValidator != nil {
-		return studioBatchStoreProfileValidator{repo: repo, accessValidator: accessValidator}
-	}
-	return nil
 }

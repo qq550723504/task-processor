@@ -1,31 +1,31 @@
 package listingkit
 
-func buildAmazonExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *AmazonExportPayload {
-	input, ok := buildAmazonExportPayloadInputFromResult(result, platformPreviews)
+func buildAmazonExportPayloadFromResult(result *ListingKitResult) *AmazonExportPayload {
+	input, ok := buildAmazonExportPayloadInputFromResult(result)
 	if !ok {
 		return nil
 	}
 	return buildAmazonExportPayloadFromInput(input)
 }
 
-func buildSheinExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *SheinExportPayload {
-	payload, ok := buildSheinExportPayloadFromResultInput(result, platformPreviews)
+func buildSheinExportPayloadFromResult(result *ListingKitResult) *SheinExportPayload {
+	payload, ok := buildSheinExportPayloadFromResultInput(result)
 	if !ok {
 		return nil
 	}
 	return payload
 }
 
-func buildTemuExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *TemuExportPayload {
-	input, pkg, ok := buildTemuExportPayloadInputFromResult(result, platformPreviews)
+func buildTemuExportPayloadFromResult(result *ListingKitResult) *TemuExportPayload {
+	input, pkg, ok := buildTemuExportPayloadInputFromResult(result)
 	if !ok {
 		return nil
 	}
 	return buildTemuExportPayloadFromInput(input, pkg)
 }
 
-func buildWalmartExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *WalmartExportPayload {
-	input, pkg, ok := buildWalmartExportPayloadInputFromResult(result, platformPreviews)
+func buildWalmartExportPayloadFromResult(result *ListingKitResult) *WalmartExportPayload {
+	input, pkg, ok := buildWalmartExportPayloadInputFromResult(result)
 	if !ok {
 		return nil
 	}

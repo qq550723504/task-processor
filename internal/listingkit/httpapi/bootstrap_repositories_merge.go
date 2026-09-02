@@ -8,7 +8,6 @@ func applyCoreRepositories(repos *builtRepositories, core *builtCoreRepositories
 	repos.studioAsyncJobRepository = core.studioAsyncJobRepository
 	repos.studioBatchRepository = core.studioBatchRepository
 	repos.studioBatchRunRepository = core.studioBatchRunRepository
-	repos.studioBatchTaskLinkRepository = core.studioBatchTaskLinkRepository
 	repos.sheinSyncRepository = core.sheinSyncRepository
 }
 
@@ -18,7 +17,7 @@ func applyLateCoreRepositories(repos *builtRepositories, lateCore *builtLateCore
 	}
 	repos.subscriptionService = lateCore.subscriptionService
 	repos.memberInvitationAuditRepository = lateCore.memberInvitationAuditRepository
-	repos.assetRepository = lateCore.assetRepository
+	repos.approvedAssetInventoryReader = lateCore.approvedAssetInventoryReader
 	repos.reviewRepository = lateCore.reviewRepository
 	repos.studioSessionRepository = lateCore.studioSessionRepository
 	repos.uploadedImageRepository = lateCore.uploadedImageRepository

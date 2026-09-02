@@ -27,6 +27,14 @@ func buildStudioDesignPrompt(req *StudioDesignRequest) string {
 	return buildStudioDesignPromptWithContext(context.Background(), req, strings.TrimSpace(req.Prompt))
 }
 
+func renderPromptFallback(tmpl string, vars map[string]any) string {
+	rendered, err := prompt.NewTemplateRenderer().Render(tmpl, vars)
+	if err != nil {
+		return tmpl
+	}
+	return strings.TrimSpace(rendered)
+}
+
 func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) string {
 	return buildStudioDesignPromptWithContext(context.Background(), req, theme)
 }

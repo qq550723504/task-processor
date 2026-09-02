@@ -33,8 +33,6 @@ func resolveProjectedStudioBatchStatus(current StudioBatchStatus, items []Studio
 		items,
 		studioBatchItemStatus,
 		studioBatchStatusSet(),
-		func(status StudioBatchStatus) bool {
-			return status == StudioBatchStatusTasksCreated
-		},
+		nil,
 	)
 }

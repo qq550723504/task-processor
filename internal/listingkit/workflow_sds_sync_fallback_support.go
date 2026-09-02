@@ -2,9 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"strings"
-
-	"task-processor/internal/productimage"
 )
 
 func needsLocalSDSMockupFallback(summary *SDSSyncSummary, options *SDSSyncOptions) bool {
@@ -47,31 +44,4 @@ func (s *service) applyLocalSDSMockupFallback(ctx context.Context, result *Listi
 		result.SDSDesignResult.Error = "SDS render unavailable; used local SDS mockup composite"
 	}
 	ensureResultPodExecution(result, nil)
-}
-
-func firstImageResultURL(imageResult *productimage.ImageProcessResult) string {
-	if imageResult == nil {
-		return ""
-	}
-	for _, asset := range []*productimage.ImageAsset{
-		imageResult.MainImage,
-		imageResult.WhiteBgImage,
-		imageResult.SubjectCutout,
-	} {
-		if asset != nil && strings.TrimSpace(asset.URL) != "" {
-			return strings.TrimSpace(asset.URL)
-		}
-		if asset != nil && strings.TrimSpace(asset.SourceURL) != "" {
-			return strings.TrimSpace(asset.SourceURL)
-		}
-	}
-	for _, asset := range imageResult.GalleryImages {
-		if strings.TrimSpace(asset.URL) != "" {
-			return strings.TrimSpace(asset.URL)
-		}
-		if strings.TrimSpace(asset.SourceURL) != "" {
-			return strings.TrimSpace(asset.SourceURL)
-		}
-	}
-	return ""
 }

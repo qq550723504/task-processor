@@ -77,7 +77,7 @@ func TestAssemblerBuildAppliesStructuredProductSizeToPreviewPayload(t *testing.T
 	}
 	productSize := `[[{"content":"尺码","remark":""},{"content":"肩宽(cm/in)","remark":""},{"content":"胸围(cm/in)","remark":""}],[{"content":"M","remark":""},{"content":"55cm/21.7in","remark":""},{"content":"112cm /44.1in","remark":""}],[{"content":"L","remark":""},{"content":"58cm/22.8in","remark":""},{"content":"118cm /46.5in","remark":""}]]`
 
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", ProductSize: productSize}, canonicalProduct, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", ProductSize: productSize}, canonicalProduct)
 
 	if pkg == nil || pkg.PreviewPayload == nil {
 		t.Fatal("expected preview payload")
@@ -153,7 +153,7 @@ func TestAssemblerBuildUsesTemplateSizeChartAttributeIDs(t *testing.T) {
 	}
 	productSize := `[[{"content":"尺码","remark":""},{"content":"胸围(cm/in)","remark":""},{"content":"衣长(cm/in)","remark":""}],[{"content":"M","remark":""},{"content":"112cm /44.1in","remark":""},{"content":"71cm/28in","remark":""}]]`
 
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", ProductSize: productSize}, canonicalProduct, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", ProductSize: productSize}, canonicalProduct)
 
 	if pkg == nil || pkg.PreviewPayload == nil {
 		t.Fatal("expected preview payload")
@@ -230,7 +230,7 @@ func TestAssemblerBuildUsesSizeAttributeHeaderResolverForUnknownSDSHeader(t *tes
 	}
 	productSize := `[[{"content":"尺码","remark":""},{"content":"下摆围(cm/in)","remark":""}],[{"content":"M","remark":""},{"content":"112cm /44.1in","remark":""}]]`
 
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", ProductSize: productSize}, canonicalProduct, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", ProductSize: productSize}, canonicalProduct)
 
 	if resolver.calls != 1 {
 		t.Fatalf("resolver calls = %d, want 1", resolver.calls)
@@ -317,7 +317,7 @@ func TestAssemblerBuildSkipsOptionalTemplateSizeChartAttributes(t *testing.T) {
 	}
 	productSize := `[[{"content":"尺码","remark":""},{"content":"胸围(cm/in)","remark":""},{"content":"下摆围(cm/in)","remark":""}],[{"content":"M","remark":""},{"content":"112cm /44.1in","remark":""},{"content":"96cm /37.8in","remark":""}]]`
 
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", ProductSize: productSize}, canonicalProduct, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", ProductSize: productSize}, canonicalProduct)
 
 	if resolver.calls != 0 {
 		t.Fatalf("resolver calls = %d, want 0 when size chart template attributes are optional", resolver.calls)
@@ -386,7 +386,7 @@ func TestAssemblerBuildSkipsSizeHeaderResolverWhenNoSizeSaleAttributeExists(t *t
 	}
 	productSize := `[[{"content":"尺码","remark":""},{"content":"长(cm/in)","remark":""},{"content":"宽(cm/in)","remark":""}],[{"content":"12 \"×20 \"","remark":""},{"content":"50/20","remark":""},{"content":"30/12","remark":""}]]`
 
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", ProductSize: productSize}, canonicalProduct, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", ProductSize: productSize}, canonicalProduct)
 
 	if resolver.calls != 0 {
 		t.Fatalf("resolver calls = %d, want 0 when no size sale attribute exists", resolver.calls)

@@ -28,8 +28,6 @@ type SheinPreviewPayload struct {
 	WorkspaceOverview *sheinworkspace.WorkspaceOverview `json:"workspace_overview,omitempty"`
 	EditorContext     *SheinEditorContext               `json:"editor_context,omitempty"`
 	ImageBundle       *common.PublishImageBundle        `json:"image_bundle,omitempty"`
-	RenderPreviews    *PlatformAssetRenderPreviews      `json:"render_previews,omitempty"`
-	ScenePresets      []PlatformScenePresetSummary      `json:"scene_presets,omitempty"`
 	RequestDraft      *sheinpub.RequestDraft            `json:"request_draft,omitempty"`
 	DraftPayload      *sheinpub.RequestDraft            `json:"draft_payload,omitempty"`
 	PreviewProduct    *sheinproduct.Product             `json:"preview_product,omitempty"`

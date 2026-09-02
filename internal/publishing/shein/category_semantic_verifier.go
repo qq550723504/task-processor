@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/prompt"
 )
 

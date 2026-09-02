@@ -350,7 +350,6 @@ func (s *stubImageHandler) ReviewTask(c *gin.Context) {
 type stubListingKitHandler struct {
 	generateCalled                         bool
 	generateStudioDesignsCalled            bool
-	generateStudioProductImagesCalled      bool
 	startStudioAsyncJobCalled              bool
 	getStudioAsyncJobCalled                bool
 	uploadImagesCalled                     bool
@@ -358,14 +357,7 @@ type stubListingKitHandler struct {
 	listTasksCalled                        bool
 	getResultCalled                        bool
 	getPreviewCalled                       bool
-	getGenerationCalled                    bool
-	getGenerationQueueCalled               bool
-	getGenerationReviewSessionCalled       bool
-	getGenerationReviewPreviewCalled       bool
-	dispatchGenerationNavigationCalled     bool
-	retryGenerationCalled                  bool
 	retryChildTaskCalled                   bool
-	executeGenerationActionCalled          bool
 	getHistoryCalled                       bool
 	getHistoryDetailCalled                 bool
 	getExportCalled                        bool
@@ -432,11 +424,6 @@ func (s *stubListingKitHandler) AnalyzeStudioReferenceStyle(c *gin.Context) {
 
 func (s *stubListingKitHandler) GenerateStudioDesigns(c *gin.Context) {
 	s.generateStudioDesignsCalled = true
-	c.JSON(http.StatusOK, gin.H{"images": []any{}})
-}
-
-func (s *stubListingKitHandler) GenerateStudioProductImages(c *gin.Context) {
-	s.generateStudioProductImagesCalled = true
 	c.JSON(http.StatusOK, gin.H{"images": []any{}})
 }
 
@@ -951,36 +938,6 @@ func (s *stubListingKitHandler) LookupSheinPODImages(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": []gin.H{}, "total": 0})
 }
 
-func (s *stubListingKitHandler) GetTaskGenerationTasks(c *gin.Context) {
-	s.getGenerationCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "tasks": []any{}})
-}
-
-func (s *stubListingKitHandler) GetTaskGenerationQueue(c *gin.Context) {
-	s.getGenerationQueueCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "items": []any{}})
-}
-
-func (s *stubListingKitHandler) GetTaskGenerationReviewSession(c *gin.Context) {
-	s.getGenerationReviewSessionCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "slot": c.Query("slot")})
-}
-
-func (s *stubListingKitHandler) GetTaskGenerationReviewPreview(c *gin.Context) {
-	s.getGenerationReviewPreviewCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "slot": c.Query("slot")})
-}
-
-func (s *stubListingKitHandler) DispatchTaskGenerationNavigation(c *gin.Context) {
-	s.dispatchGenerationNavigationCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "dispatch_kind": "session"})
-}
-
-func (s *stubListingKitHandler) RetryTaskGenerationTasks(c *gin.Context) {
-	s.retryGenerationCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "retried"})
-}
-
 func (s *stubListingKitHandler) RetryTaskChildTask(c *gin.Context) {
 	s.retryChildTaskCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "retried"})
@@ -992,11 +949,6 @@ func (s *stubListingKitHandler) GetTaskSDSRepair(c *gin.Context) {
 
 func (s *stubListingKitHandler) RepairAndRetryTaskSDS(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "retried"})
-}
-
-func (s *stubListingKitHandler) ExecuteTaskGenerationAction(c *gin.Context) {
-	s.executeGenerationActionCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "executed"})
 }
 
 func (s *stubListingKitHandler) GetTaskRevisionHistory(c *gin.Context) {
@@ -1438,18 +1390,6 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 	}
 	if !handler.generateStudioDesignsCalled {
 		t.Fatal("listing kit GenerateStudioDesigns handler was not called")
-	}
-
-	handler.generateStudioProductImagesCalled = false
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/product-images", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/listing-kits/studio/product-images = %d, want 200", resp.Code)
-	}
-	if !handler.generateStudioProductImagesCalled {
-		t.Fatal("listing kit GenerateStudioProductImages handler was not called")
 	}
 
 	handler.startStudioAsyncJobCalled = false
@@ -1996,85 +1936,6 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 	}
 	if !handler.getHistoryCalled {
 		t.Fatal("listing kit GetTaskRevisionHistory handler was not called")
-	}
-
-	handler.getGenerationCalled = false
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-tasks", nil)
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-tasks = %d, want 200", resp.Code)
-	}
-	if !handler.getGenerationCalled {
-		t.Fatal("listing kit GetTaskGenerationTasks handler was not called")
-	}
-
-	handler.getGenerationQueueCalled = false
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-queue", nil)
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-queue = %d, want 200", resp.Code)
-	}
-	if !handler.getGenerationQueueCalled {
-		t.Fatal("listing kit GetTaskGenerationQueue handler was not called")
-	}
-
-	handler.getGenerationReviewSessionCalled = false
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-review-session?platform=shein&slot=main", nil)
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-review-session = %d, want 200", resp.Code)
-	}
-	if !handler.getGenerationReviewSessionCalled {
-		t.Fatal("listing kit GetTaskGenerationReviewSession handler was not called")
-	}
-
-	handler.getGenerationReviewPreviewCalled = false
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-review-preview?platform=shein&slot=main", nil)
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-review-preview = %d, want 200", resp.Code)
-	}
-	if !handler.getGenerationReviewPreviewCalled {
-		t.Fatal("listing kit GetTaskGenerationReviewPreview handler was not called")
-	}
-
-	handler.dispatchGenerationNavigationCalled = false
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-123/generation-navigation/dispatch", bytes.NewReader([]byte(`{"target":{"dispatch_kind":"session","session_query":{"platform":"shein","slot":"main"}}}`)))
-	req.Header.Set("Content-Type", "application/json")
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/listing-kits/tasks/task-123/generation-navigation/dispatch = %d, want 200", resp.Code)
-	}
-	if !handler.dispatchGenerationNavigationCalled {
-		t.Fatal("listing kit DispatchTaskGenerationNavigation handler was not called")
-	}
-
-	handler.retryGenerationCalled = false
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-123/generation-tasks/retry", bytes.NewReader([]byte(`{"task_ids":["amazon:amazon-lifestyle"]}`)))
-	req.Header.Set("Content-Type", "application/json")
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/listing-kits/tasks/task-123/generation-tasks/retry = %d, want 200", resp.Code)
-	}
-	if !handler.retryGenerationCalled {
-		t.Fatal("listing kit RetryTaskGenerationTasks handler was not called")
-	}
-
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-123/generation-actions/execute", bytes.NewReader([]byte(`{"action_key":"generate_missing_assets"}`)))
-	req.Header.Set("Content-Type", "application/json")
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/listing-kits/tasks/task-123/generation-actions/execute = %d, want 200", resp.Code)
-	}
-	if !handler.executeGenerationActionCalled {
-		t.Fatal("listing kit ExecuteTaskGenerationAction handler was not called")
 	}
 
 	handler.getHistoryDetailCalled = false

@@ -172,10 +172,8 @@ func TestBuildTaskListItemPrefersRenderedImageCount(t *testing.T) {
 	t.Parallel()
 
 	task := &Task{TenantID: "tenant-test", ID: "task-rendered-count",
-		Request: &GenerateRequest{ProductKey: "test-product",
-			ImageURLs: []string{"https://cdn.example.com/input.png"},
-		},
-		Status: core.TaskStatusCompleted,
+		Request: &GenerateRequest{ProductKey: "test-product"},
+		Status:  core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			SDSSync: &SDSSyncSummary{
 				Status: "completed",
@@ -203,10 +201,8 @@ func TestBuildTaskListItemDoesNotCountSourceImagesAsRenderedImages(t *testing.T)
 	t.Parallel()
 
 	task := &Task{TenantID: "tenant-test", ID: "task-rendered-count-with-source",
-		Request: &GenerateRequest{ProductKey: "test-product",
-			ImageURLs: []string{"https://cdn.example.com/input.png"},
-		},
-		Status: core.TaskStatusCompleted,
+		Request: &GenerateRequest{ProductKey: "test-product"},
+		Status:  core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			Shein: &SheinPackage{
 				RequestDraft: &sheinpub.RequestDraft{

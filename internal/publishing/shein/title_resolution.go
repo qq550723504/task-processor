@@ -6,9 +6,9 @@ import (
 	"regexp"
 	"strings"
 
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 type titleCandidate struct {

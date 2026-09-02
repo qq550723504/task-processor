@@ -1,8 +1,7 @@
 package common
 
 import (
-	"task-processor/internal/asset"
-	assetgeneration "task-processor/internal/asset/generation"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog/canonical"
 )
 
@@ -32,15 +31,14 @@ type ImageSet struct {
 }
 
 type PublishImageBundle struct {
-	Platform          string                 `json:"platform,omitempty"`
-	Main              *BundleSlot            `json:"main,omitempty"`
-	Gallery           []BundleSlot           `json:"gallery,omitempty"`
-	Auxiliary         []BundleSlot           `json:"auxiliary,omitempty"`
-	MissingSlots      []MissingSlot          `json:"missing_slots,omitempty"`
-	PendingGeneration []assetgeneration.Task `json:"pending_generation,omitempty"`
-	Warnings          []string               `json:"warnings,omitempty"`
-	RecipeIDs         []string               `json:"recipe_ids,omitempty"`
-	SelectedAssetIDs  []string               `json:"selected_asset_ids,omitempty"`
+	Platform         string        `json:"platform,omitempty"`
+	Main             *BundleSlot   `json:"main,omitempty"`
+	Gallery          []BundleSlot  `json:"gallery,omitempty"`
+	Auxiliary        []BundleSlot  `json:"auxiliary,omitempty"`
+	MissingSlots     []MissingSlot `json:"missing_slots,omitempty"`
+	Warnings         []string      `json:"warnings,omitempty"`
+	RecipeIDs        []string      `json:"recipe_ids,omitempty"`
+	SelectedAssetIDs []string      `json:"selected_asset_ids,omitempty"`
 }
 
 type BundleSlot struct {
@@ -61,11 +59,11 @@ type BundleSlot struct {
 }
 
 type BundleSelectionRule struct {
-	Platform       string       `json:"platform,omitempty"`
-	Slot           string       `json:"slot,omitempty"`
-	Optional       bool         `json:"optional,omitempty"`
-	MaxItems       int          `json:"max_items,omitempty"`
-	PreferredKinds []asset.Kind `json:"preferred_kinds,omitempty"`
+	Platform       string              `json:"platform,omitempty"`
+	Slot           string              `json:"slot,omitempty"`
+	Optional       bool                `json:"optional,omitempty"`
+	MaxItems       int                 `json:"max_items,omitempty"`
+	PreferredRoles []productasset.Role `json:"preferred_roles,omitempty"`
 }
 
 type MissingSlot struct {

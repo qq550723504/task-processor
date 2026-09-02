@@ -3,11 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
-
-	"task-processor/internal/listingkit/core"
-	sheinpub "task-processor/internal/publishing/shein"
 
 	"gorm.io/gorm"
 )
@@ -32,9 +28,6 @@ func resolveStudioBatchDetailWithoutGraph(ctx context.Context, studioSessionRepo
 func projectStudioBatchDetail(
 	detail *StudioBatchDetailGraph,
 	draftUpdatedAt *time.Time,
-	createdTasks []SheinStudioCreatedTask,
-	rejectedTasks []SheinStudioRejectedTask,
-	failedTasks []SheinStudioFailedTask,
 ) *StudioBatchDetail {
 	if detail == nil {
 		return &StudioBatchDetail{}
@@ -50,13 +43,7 @@ func projectStudioBatchDetail(
 		})
 	}
 
-	projected := &StudioBatchDetail{
-		Batch:         batch,
-		Items:         items,
-		CreatedTasks:  append([]SheinStudioCreatedTask(nil), createdTasks...),
-		RejectedTasks: append([]SheinStudioRejectedTask(nil), rejectedTasks...),
-		FailedTasks:   append([]SheinStudioFailedTask(nil), failedTasks...),
-	}
+	projected := &StudioBatchDetail{Batch: batch, Items: items}
 	projected.StatusGroups = BuildStudioBatchStatusGroups(projected)
 	return projected
 }
@@ -74,10 +61,8 @@ func projectStudioBatchRecord(batch *StudioBatchRecord, items []StudioBatchItemR
 func loadStudioBatchDraftState(
 	ctx context.Context,
 	studioSessionRepo studioBatchSeedSessionRepository,
-	taskLinkRepo StudioBatchTaskLinkRepository,
-	getTask func(context.Context, string) (*Task, error),
 	batchID string,
-) (*time.Time, []SheinStudioCreatedTask, []SheinStudioRejectedTask, []SheinStudioFailedTask, error) {
+) (*time.Time, error) {
 	var session *SheinStudioSession
 	if studioSessionRepo != nil {
 		loaded, err := studioSessionRepo.GetSession(ctx, batchID)
@@ -86,187 +71,17 @@ func loadStudioBatchDraftState(
 			session = loaded
 		case errors.Is(err, gorm.ErrRecordNotFound):
 		case err != nil:
-			return nil, nil, nil, nil, err
+			return nil, err
 		}
-	}
-	activeStrategy := sheinImageStrategySDSOfficial
-	if session != nil && strings.TrimSpace(session.ImageStrategy) != "" {
-		activeStrategy = sessionImageStrategy(session)
-	}
-	linkTasks, err := loadStudioBatchCreatedTasksFromLinks(ctx, taskLinkRepo, getTask, batchID)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-	linkRejectedTasks, err := loadStudioBatchRejectedTasksFromLinks(ctx, taskLinkRepo, batchID, activeStrategy)
-	if err != nil {
-		return nil, nil, nil, nil, err
 	}
 	if studioSessionRepo == nil || session == nil {
-		return nil, linkTasks, linkRejectedTasks, nil, nil
+		return nil, nil
 	}
 	if !session.SavedAsBatch {
-		return nil, linkTasks, linkRejectedTasks, nil, nil
+		return nil, nil
 	}
 	updatedAt := session.UpdatedAt.UTC()
-	createdTasks := mergeStudioCreatedTasks(linkTasks, session.CreatedTasks)
-	return &updatedAt, createdTasks, linkRejectedTasks, append([]SheinStudioFailedTask(nil), session.FailedTasks...), nil
-}
-
-func loadStudioBatchCreatedTasksFromLinks(
-	ctx context.Context,
-	taskLinkRepo StudioBatchTaskLinkRepository,
-	getTask func(context.Context, string) (*Task, error),
-	batchID string,
-) ([]SheinStudioCreatedTask, error) {
-	if taskLinkRepo == nil {
-		return nil, nil
-	}
-	links, err := taskLinkRepo.ListStudioBatchTaskLinksByBatchID(ctx, batchID)
-	if err != nil {
-		return nil, err
-	}
-	tasks := make([]SheinStudioCreatedTask, 0, len(links))
-	seen := make(map[string]struct{}, len(links))
-	for _, link := range links {
-		taskID := strings.TrimSpace(link.ListingKitTaskID)
-		if taskID == "" || link.Status != studioBatchTaskLinkStatusCreated {
-			continue
-		}
-		if _, ok := seen[taskID]; ok {
-			continue
-		}
-		var task *Task
-		if getTask != nil {
-			task, err = getTask(ctx, taskID)
-			if err != nil || task == nil || task.Status == core.TaskStatusFailed {
-				continue
-			}
-		}
-		seen[taskID] = struct{}{}
-		created := SheinStudioCreatedTask{
-			ID:                       taskID,
-			Title:                    strings.TrimSpace(link.DesignID),
-			DesignID:                 strings.TrimSpace(link.DesignID),
-			ItemID:                   strings.TrimSpace(link.ItemID),
-			SelectionID:              strings.TrimSpace(link.SelectionID),
-			CompatibilityFingerprint: strings.TrimSpace(link.CompatibilityFingerprint),
-			Status:                   studioBatchCreatedTaskStatus,
-			Source:                   resolveStudioBatchTaskLinkSource(&link, task),
-			ReasonCode:               strings.TrimSpace(link.ReasonCode),
-			Message:                  strings.TrimSpace(link.Message),
-		}
-		created = projectStudioBatchCreatedTaskFromListingTask(created, task)
-		tasks = append(tasks, created)
-	}
-	return tasks, nil
-}
-
-func loadStudioBatchRejectedTasksFromLinks(
-	ctx context.Context,
-	taskLinkRepo StudioBatchTaskLinkRepository,
-	batchID string,
-	activeStrategy string,
-) ([]SheinStudioRejectedTask, error) {
-	if taskLinkRepo == nil {
-		return nil, nil
-	}
-	links, err := taskLinkRepo.ListStudioBatchTaskLinksByBatchID(ctx, batchID)
-	if err != nil {
-		return nil, err
-	}
-	rejected := make([]SheinStudioRejectedTask, 0)
-	seen := make(map[string]struct{}, len(links))
-	activeStrategy = normalizeSheinImageStrategy(activeStrategy)
-	if activeStrategy == "" {
-		activeStrategy = sheinImageStrategySDSOfficial
-	}
-	for _, link := range links {
-		if link.Status != studioBatchTaskLinkStatusFailed ||
-			strings.TrimSpace(link.ListingKitTaskID) != "" ||
-			strings.TrimSpace(link.ReasonCode) == "task_create_failed" {
-			continue
-		}
-		// A blank strategy predates this field and is therefore applicable to
-		// the active strategy; only an explicitly different strategy is stale.
-		if rawStrategy := strings.TrimSpace(link.ImageStrategy); rawStrategy != "" {
-			if linkStrategy := normalizeSheinImageStrategy(rawStrategy); linkStrategy != activeStrategy {
-				continue
-			}
-		}
-		key := strings.Join([]string{
-			strings.TrimSpace(link.DesignID),
-			strings.TrimSpace(link.ItemID),
-			strings.TrimSpace(link.SelectionID),
-			strings.TrimSpace(link.ReasonCode),
-		}, "|")
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		rejected = append(rejected, SheinStudioRejectedTask{
-			DesignID:    strings.TrimSpace(link.DesignID),
-			ItemID:      strings.TrimSpace(link.ItemID),
-			SelectionID: strings.TrimSpace(link.SelectionID),
-			Source:      firstNonEmptyString(strings.TrimSpace(link.Source), studioBatchTaskLinkSourceRejected),
-			ReasonCode:  strings.TrimSpace(link.ReasonCode),
-			Message:     strings.TrimSpace(link.Message),
-		})
-	}
-	return rejected, nil
-}
-
-func projectStudioBatchCreatedTaskFromListingTask(created SheinStudioCreatedTask, task *Task) SheinStudioCreatedTask {
-	if task == nil {
-		return created
-	}
-	if strings.TrimSpace(created.Status) == "" {
-		created.Status = studioBatchCreatedTaskStatus
-	}
-	switch task.Status {
-	case core.TaskStatusNeedsReview:
-		created.Status = "needs_review"
-	case core.TaskStatusFailed:
-		created.Status = "submit_failed"
-		if strings.TrimSpace(created.Message) == "" {
-			created.Message = strings.TrimSpace(task.Error)
-		}
-	}
-	if task.Result == nil || task.Result.Shein == nil {
-		return created
-	}
-	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
-	if pkg == nil || pkg.SubmissionState == nil {
-		if task.Status == core.TaskStatusCompleted && sheinSubmitReadinessReady(buildSheinSubmitReadiness(pkg)) {
-			created.Status = "ready_to_submit"
-		}
-		return created
-	}
-	latestStatus := strings.TrimSpace(pkg.SubmissionState.LastStatus)
-	latestAction := strings.TrimSpace(pkg.SubmissionState.LastAction)
-	if latestStatus != "" {
-		created.SubmissionState = latestStatus
-	}
-	if latestAction != "" {
-		created.LastSubmissionAction = latestAction
-	}
-	switch {
-	case latestStatus == sheinpub.SubmissionStatusFailed:
-		created.Status = "submit_failed"
-		if strings.TrimSpace(created.Message) == "" {
-			created.Message = strings.TrimSpace(pkg.SubmissionState.LastError)
-		}
-	case latestStatus == sheinpub.SubmissionStatusSuccess && latestAction == "publish":
-		created.Status = "published"
-	case latestStatus == sheinpub.SubmissionStatusSuccess && latestAction == "save_draft":
-		created.Status = "draft_saved"
-	case sheinSubmitReadinessReady(buildSheinSubmitReadiness(pkg)):
-		created.Status = "ready_to_submit"
-	}
-	return created
-}
-
-func sheinSubmitReadinessReady(readiness *SheinSubmitReadiness) bool {
-	return readiness != nil && readiness.Ready
+	return &updatedAt, nil
 }
 
 func shouldSyncStudioBatchGraphOnRead(session *SheinStudioSession) bool {
@@ -291,10 +106,8 @@ func buildStudioBatchDraftOnlyDetail(session *SheinStudioSession) *StudioBatchDe
 	updatedAt := session.UpdatedAt.UTC()
 	batch.DraftUpdatedAt = &updatedAt
 	detail := &StudioBatchDetail{
-		Batch:        batch,
-		Items:        []StudioBatchItemDetail{},
-		CreatedTasks: append([]SheinStudioCreatedTask(nil), session.CreatedTasks...),
-		FailedTasks:  append([]SheinStudioFailedTask(nil), session.FailedTasks...),
+		Batch: batch,
+		Items: []StudioBatchItemDetail{},
 	}
 	detail.StatusGroups = BuildStudioBatchStatusGroups(detail)
 	return detail

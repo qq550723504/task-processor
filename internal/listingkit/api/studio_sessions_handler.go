@@ -214,15 +214,6 @@ func (h *studioSessionHandler) ApplyManualStudioBatchDesignBackgroundRemoval(c *
 	c.JSON(http.StatusOK, detail)
 }
 
-func (h *studioSessionHandler) RetryStudioBatchSDSChildTasks(c *gin.Context) {
-	result, err := h.service.ScheduleStudioBatchSDSChildRetries(requestContext(c), c.Param("batch_id"))
-	if err != nil {
-		writeStudioBatchActionError(c, "studio_batch_sds_retry_failed", err)
-		return
-	}
-	c.JSON(http.StatusAccepted, result)
-}
-
 func (h *studioSessionHandler) ApproveStudioBatchDesigns(c *gin.Context) {
 	var req listingkit.ApproveStudioBatchDesignsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -235,22 +226,6 @@ func (h *studioSessionHandler) ApproveStudioBatchDesigns(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, detail)
-}
-
-func (h *studioSessionHandler) CreateStudioBatchTasks(c *gin.Context) {
-	var req listingkit.CreateStudioBatchTasksRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
-		return
-	}
-	batchID := c.Param("batch_id")
-	result, err := h.service.PrepareCreateStudioBatchTasks(requestContext(c), batchID, &req)
-	if err != nil {
-		writeStudioBatchActionError(c, "studio_batch_tasks_failed", err)
-		return
-	}
-	h.launchBatchResume(c, batchID)
-	c.JSON(http.StatusAccepted, result)
 }
 
 func (h *studioSessionHandler) UpsertStudioBatch(c *gin.Context) {

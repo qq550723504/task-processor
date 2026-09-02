@@ -68,8 +68,8 @@ func TestAlibaba1688HTTPReplayCreatesTaskAndPreservesSourceFacts(t *testing.T) {
 	if creator.request.SheinStoreID != 168811 {
 		t.Fatalf("request SHEIN store = %d, want 168811", creator.request.SheinStoreID)
 	}
-	if creator.request.ProductURL != "https://detail.1688.com/offer/321.html" {
-		t.Fatalf("request product URL = %q, want normalized source URL", creator.request.ProductURL)
+	if creator.request.ProductKey != "crawler:1688:321" {
+		t.Fatalf("request product key = %q, want normalized source identity", creator.request.ProductKey)
 	}
 	if creator.request.Source == nil || creator.request.Source.Key != "crawler:1688:321" ||
 		creator.request.Source.Platform != "1688" || creator.request.Source.ID != "321" ||
@@ -97,8 +97,8 @@ func TestAlibaba1688HTTPReplayCreatesTaskAndPreservesSourceFacts(t *testing.T) {
 			t.Fatalf("request text = %q, missing %q", creator.request.Text, want)
 		}
 	}
-	if len(creator.request.ImageURLs) != 4 {
-		t.Fatalf("request images = %#v, want four source/variant images", creator.request.ImageURLs)
+	if creator.request.Source == nil || creator.request.Source.URL != "https://detail.1688.com/offer/321.html" {
+		t.Fatalf("request source = %#v, want normalized source reference", creator.request.Source)
 	}
 }
 

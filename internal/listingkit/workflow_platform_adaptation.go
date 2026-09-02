@@ -6,23 +6,14 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"task-processor/internal/asset"
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
-	"task-processor/internal/productimage"
 )
 
 func (s *service) runPlatformAdaptation(
 	ctx context.Context,
 	task *Task,
 	snapshot *StandardProductSnapshot,
-	recipesByPlatform map[string][]assetrecipe.AssetRecipe,
-	generationPlan *assetgeneration.Result,
-	inventory *asset.Inventory,
-	persistedGenerationTasks []assetgeneration.Task,
-	enableAssetGeneration bool,
-	sdsOptions *SDSSyncOptions,
 ) *ListingKitResult {
 	log := logrus.WithFields(logrus.Fields{
 		"component": "listingkit/platform_adaptation",
@@ -51,38 +42,25 @@ func (s *service) runPlatformAdaptation(
 	}
 
 	var productSnapshot *catalog.ProductSnapshot
-	var imageAssets *productimage.ImageProcessResult
-	var imageAssetsByTarget map[string]*productimage.ImageProcessResult
+	var approvedAssets *productasset.ApprovedAssetInventory
 	if snapshot != nil {
 		productSnapshot = snapshot.CatalogProduct
-		imageAssets = snapshot.ImageAssets
-		imageAssetsByTarget = snapshot.ImageAssetsByTarget
+		approvedAssets = snapshot.ApprovedAssetInventory
 	}
 
 	log.Info("starting listing kit platform adaptation")
 	assembler := resolveAssembler(s)
 	var final *ListingKitResult
-	if targetAware, ok := assembler.(TargetAwareAssembler); ok && len(imageAssetsByTarget) > 0 {
-		final = targetAware.AssembleForTargets(task, productSnapshot, imageAssetsByTarget)
+	if targetAware, ok := assembler.(TargetAwareAssembler); ok {
+		final = targetAware.AssembleForTargets(task, productSnapshot, approvedAssets)
 	} else {
-		final = assembler.Assemble(task, productSnapshot, imageAssets)
+		final = assembler.Assemble(task, productSnapshot, approvedAssets)
 	}
 	if final == nil {
 		final = initResult(task)
 	}
 	applyStandardProductSnapshot(final, snapshot)
-	final = buildPlatformFinalizePhase(s).run(
-		ctx,
-		task,
-		final,
-		snapshot,
-		recipesByPlatform,
-		generationPlan,
-		inventory,
-		persistedGenerationTasks,
-		enableAssetGeneration,
-		sdsOptions,
-	)
+	final = buildPlatformFinalizePhase(s).run(ctx, task, final, snapshot)
 	log.WithFields(logrus.Fields{
 		"needs_review": final.Summary != nil && final.Summary.NeedsReview,
 		"warning_count": func() int {

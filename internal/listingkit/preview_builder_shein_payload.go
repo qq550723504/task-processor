@@ -3,17 +3,14 @@ package listingkit
 import (
 	"strings"
 
-	"task-processor/internal/asset"
-	"task-processor/internal/product/catalog/canonical"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
 type sheinPreviewPayloadBodyInput struct {
 	pkg               *sheinpub.Package
 	canonical         *canonical.Product
-	assetBundle       *asset.Bundle
-	renderPreviews    *PlatformAssetRenderPreviews
 	needsReview       bool
 	summary           []string
 	readiness         *SheinSubmitReadiness
@@ -28,7 +25,7 @@ func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPrev
 	if pkg == nil {
 		return nil
 	}
-	visualBase := buildPlatformVisualPresentationBase(pkg.ImageBundle, input.assetBundle, input.renderPreviews)
+	visualBase := buildPlatformVisualPresentationBase(pkg.ImageBundle)
 	return &SheinPreviewPayload{
 		Headline:        sheinDisplayTitle(pkg),
 		BrandName:       pkg.BrandName,
@@ -56,8 +53,6 @@ func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPrev
 		WorkspaceOverview: input.workspaceOverview,
 		EditorContext:     sheinworkspace.BuildEditorContext(pkg),
 		ImageBundle:       visualBase.imageBundle,
-		RenderPreviews:    visualBase.renderPreviews,
-		ScenePresets:      visualBase.scenePresets,
 		DraftPayload:      pkg.DraftPayload,
 		PreviewPayload:    pkg.PreviewPayload,
 		SubmissionState:   pkg.SubmissionState,

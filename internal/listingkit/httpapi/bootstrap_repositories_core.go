@@ -17,12 +17,11 @@ func buildCoreRepositories(input BuildServiceInput, closers *closerStack) (*buil
 		return nil, err
 	}
 	return &builtCoreRepositories{
-		taskRepository:                taskRepos.taskRepository,
-		studioAsyncJobRepository:      asyncRepos.studioAsyncJobRepository,
-		studioBatchRepository:         asyncRepos.studioBatchRepository,
-		studioBatchRunRepository:      asyncRepos.studioBatchRunRepository,
-		studioBatchTaskLinkRepository: asyncRepos.studioBatchTaskLinkRepository,
-		sheinSyncRepository:           asyncRepos.sheinSyncRepository,
+		taskRepository:           taskRepos.taskRepository,
+		studioAsyncJobRepository: asyncRepos.studioAsyncJobRepository,
+		studioBatchRepository:    asyncRepos.studioBatchRepository,
+		studioBatchRunRepository: asyncRepos.studioBatchRunRepository,
+		sheinSyncRepository:      asyncRepos.sheinSyncRepository,
 	}, nil
 }
 
@@ -49,20 +48,15 @@ func buildCoreAsyncRepositories(input BuildServiceInput, closers *closerStack) (
 	if err != nil {
 		return nil, err
 	}
-	studioBatchTaskLinkRepository, err := buildNamedWithClosers("core.studio_batch_task_link", input.Repositories.Core.StudioBatchTaskLink, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
 	sheinSyncRepository, err := buildNamedWithClosers("core.shein_sync", input.Repositories.Core.SheinSync, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
 	return &coreAsyncRepositories{
-		studioAsyncJobRepository:      studioAsyncJobRepository,
-		studioBatchRepository:         studioBatchRepository,
-		studioBatchRunRepository:      studioBatchRunRepository,
-		studioBatchTaskLinkRepository: studioBatchTaskLinkRepository,
-		sheinSyncRepository:           sheinSyncRepository,
+		studioAsyncJobRepository: studioAsyncJobRepository,
+		studioBatchRepository:    studioBatchRepository,
+		studioBatchRunRepository: studioBatchRunRepository,
+		sheinSyncRepository:      sheinSyncRepository,
 	}, nil
 }
 
@@ -83,7 +77,7 @@ func buildLateCoreRepositories(input BuildServiceInput, closers *closerStack) (*
 	return &builtLateCoreRepositories{
 		subscriptionService:             subscriptionService,
 		memberInvitationAuditRepository: memberInvitationAuditRepository,
-		assetRepository:                 dependencies.assetRepository,
+		approvedAssetInventoryReader:    dependencies.approvedAssetInventoryReader,
 		reviewRepository:                dependencies.reviewRepository,
 		studioSessionRepository:         dependencies.studioSessionRepository,
 		uploadedImageRepository:         dependencies.uploadedImageRepository,
@@ -137,7 +131,7 @@ func buildGenerationUsageLedger(repo listingsubscription.Repository) (listingsub
 func buildLateCoreRepositoryDependencies(input BuildServiceInput, closers *closerStack) (*lateCoreRepositoryDependencies, error) {
 	repoBuilders := input.Repositories.Core
 
-	assetRepository, err := buildNamedWithClosers("core.asset", repoBuilders.Asset, input.Config, input.Logger, closers)
+	approvedAssets, err := buildNamedWithClosers("core.approved_asset", repoBuilders.ApprovedAsset, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
@@ -163,11 +157,11 @@ func buildLateCoreRepositoryDependencies(input BuildServiceInput, closers *close
 	}
 
 	return &lateCoreRepositoryDependencies{
-		assetRepository:         assetRepository,
-		reviewRepository:        reviewRepository,
-		studioSessionRepository: studioSessionRepository,
-		uploadedImageRepository: uploadedImageRepository,
-		storeProfileRepository:  storeProfileRepository,
-		resolutionCacheStore:    resolutionCacheStore,
+		approvedAssetInventoryReader: approvedAssets,
+		reviewRepository:             reviewRepository,
+		studioSessionRepository:      studioSessionRepository,
+		uploadedImageRepository:      uploadedImageRepository,
+		storeProfileRepository:       storeProfileRepository,
+		resolutionCacheStore:         resolutionCacheStore,
 	}, nil
 }

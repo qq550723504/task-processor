@@ -6,7 +6,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/aicapability"
-	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
@@ -16,7 +15,6 @@ import (
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/listingsubscription"
 	worker "task-processor/internal/platform/workerpool"
-	productimage "task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
@@ -76,7 +74,6 @@ type TemporalWorkerService interface {
 
 type moduleService interface {
 	listingkit.TaskLifecycleService
-	listingkit.GenerationTaskService
 	listingkit.ChildTaskRetryService
 	listingkit.SDSBaselineWarmService
 	listingkit.StoreAdminService
@@ -123,11 +120,10 @@ type CoreRepositoryBuilders struct {
 	StudioAsyncJob        func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error)
 	StudioBatch           func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRepository, []func() error, error)
 	StudioBatchRun        func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error)
-	StudioBatchTaskLink   func(*config.Config, *logrus.Logger) (listingkit.StudioBatchTaskLinkRepository, []func() error, error)
 	SheinSync             func(*config.Config, *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error)
 	Subscription          func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error)
 	MemberInvitationAudit func(*config.Config, *logrus.Logger) (memberinvite.AuditRepository, []func() error, error)
-	Asset                 func(*config.Config, *logrus.Logger) (assetrepo.Repository, []func() error, error)
+	ApprovedAsset         func(*config.Config, *logrus.Logger) (listingkit.ApprovedAssetInventoryReader, []func() error, error)
 	Review                func(*config.Config, *logrus.Logger) (reviewstore.Repository, []func() error, error)
 	StudioSession         func(*config.Config, *logrus.Logger) (listingkit.StudioSessionRepository, []func() error, error)
 	UploadedImage         func(*config.Config, *logrus.Logger) (listingkit.UploadedImageRepository, []func() error, error)
@@ -161,20 +157,15 @@ type BuildServiceHooks struct {
 }
 
 type BuildServiceInput struct {
-	Config                     *config.Config
-	Logger                     *logrus.Logger
-	ProductSnapshotReader      listingkit.ProductSnapshotReader
-	ImageService               productimage.Service
-	SDSSyncService             sdsusecase.Service
-	SDSLoginStatusProvider     listingkit.SDSLoginStatusProvider
-	SDSBaselineRemoteProvider  listingkit.SDSBaselineRemoteProvider
-	ImageSubjectExtractor      productimage.SubjectExtractor
-	ImageWhiteBackgroundRender productimage.WhiteBackgroundRenderer
-	ImageSceneRenderer         productimage.SceneRenderer
-	ImageAssetPublisher        productimage.AssetPublisher
-	AICredentialStore          aiCredentialStore
-	AIInvocationRecorder       aicapability.InvocationRecorder
-	AIAsyncJobStore            aicapability.AsyncJobBindingStore
-	Repositories               BuildServiceRepositories
-	Hooks                      BuildServiceHooks
+	Config                    *config.Config
+	Logger                    *logrus.Logger
+	ProductSnapshotReader     listingkit.ProductSnapshotReader
+	SDSSyncService            sdsusecase.Service
+	SDSLoginStatusProvider    listingkit.SDSLoginStatusProvider
+	SDSBaselineRemoteProvider listingkit.SDSBaselineRemoteProvider
+	AICredentialStore         aiCredentialStore
+	AIInvocationRecorder      aicapability.InvocationRecorder
+	AIAsyncJobStore           aicapability.AsyncJobBindingStore
+	Repositories              BuildServiceRepositories
+	Hooks                     BuildServiceHooks
 }

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"task-processor/internal/product/catalog/canonical"
 	openaiclient "task-processor/internal/integration/openai"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 type stubCategorySemanticLLM struct {

@@ -5,13 +5,8 @@ import (
 	"time"
 
 	"task-processor/internal/amazonlisting"
-	assetbundle "task-processor/internal/asset/bundle"
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
-	assetrepo "task-processor/internal/asset/repository"
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit/reviewstore"
-	"task-processor/internal/productimage"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/sdslogin"
 )
@@ -71,20 +66,8 @@ func (config *ServiceConfig) ensureAssembler() {
 }
 
 func (config *ServiceConfig) ensureAssetDependencies() {
-	if config.Assets.AssetRepository == nil {
-		config.Assets.AssetRepository = assetrepo.NewMemRepository()
-	}
 	if config.Assets.ReviewRepository == nil {
 		config.Assets.ReviewRepository = reviewstore.NewMemRepository()
-	}
-	if config.Assets.AssetRecipeResolver == nil {
-		config.Assets.AssetRecipeResolver = newDefaultAssetRecipeResolver()
-	}
-	if config.Assets.AssetBundleBuilder == nil {
-		config.Assets.AssetBundleBuilder = newDefaultAssetBundleBuilder()
-	}
-	if config.Assets.AssetGenerationService == nil {
-		config.Assets.AssetGenerationService = newDefaultAssetGenerationService()
 	}
 }
 
@@ -142,34 +125,17 @@ func newAmazonDraftBuilder() AmazonDraftBuilder {
 	return &amazonDraftBuilder{assembler: amazonlisting.NewAssembler()}
 }
 
-func newDefaultAssetRecipeResolver() assetrecipe.Resolver {
-	return assetrecipe.NewStaticResolver()
-}
-
-func newDefaultAssetBundleBuilder() assetbundle.Builder {
-	return assetbundle.NewBuilder()
-}
-
-func newDefaultAssetGenerationService() assetgeneration.Service {
-	return assetgeneration.NewService(assetgeneration.Config{})
-}
-
-func (b *amazonDraftBuilder) Build(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft {
+func (b *amazonDraftBuilder) Build(req *GenerateRequest, canonical *canonical.Product) *amazonlisting.AmazonListingDraft {
 	task := &amazonlisting.Task{
 		ID: "listingkit-amazon-preview",
 		Request: &amazonlisting.GenerateRequest{
 			Marketplace:        "amazon",
 			Country:            req.Country,
 			Language:           req.Language,
-			ImageURLs:          append([]string(nil), req.ImageURLs...),
 			Text:               req.Text,
-			ProductURL:         req.ProductURL,
 			TargetCategoryHint: req.TargetCategoryHint,
 			BrandHint:          req.BrandHint,
-			Options: &amazonlisting.GenerateOptions{
-				ProcessImages: req.Options != nil && req.Options.ProcessImages,
-			},
 		},
 	}
-	return b.assembler.Assemble(task, canonical, image)
+	return b.assembler.Assemble(task, canonical, nil)
 }

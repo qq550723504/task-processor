@@ -1,31 +1,28 @@
 package preview
 
 import (
-	"task-processor/internal/asset"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
 )
 
 // Attachment captures the preview-facing product and asset data that is already
 // platform-neutral and can move with the shared preview shell.
 type Attachment struct {
-	CatalogProduct        *catalog.ProductSnapshot        `json:"catalog,omitempty"`
-	AssetBundle           *asset.Bundle           `json:"assets,omitempty"`
-	AssetInventorySummary *asset.InventorySummary `json:"asset_inventory,omitempty"`
+	CatalogProduct         *catalog.ProductSnapshot             `json:"catalog,omitempty"`
+	ApprovedAssetInventory *productasset.ApprovedAssetInventory `json:"approved_asset_inventory,omitempty"`
 }
 
 type AttachmentInput struct {
-	CatalogProduct        *catalog.ProductSnapshot
-	AssetBundle           *asset.Bundle
-	AssetInventorySummary *asset.InventorySummary
+	CatalogProduct         *catalog.ProductSnapshot
+	ApprovedAssetInventory *productasset.ApprovedAssetInventory
 }
 
 func BuildAttachment(input AttachmentInput) *Attachment {
-	if input.CatalogProduct == nil && input.AssetBundle == nil && input.AssetInventorySummary == nil {
+	if input.CatalogProduct == nil && input.ApprovedAssetInventory == nil {
 		return nil
 	}
 	return &Attachment{
-		CatalogProduct:        input.CatalogProduct,
-		AssetBundle:           input.AssetBundle,
-		AssetInventorySummary: input.AssetInventorySummary,
+		CatalogProduct:         input.CatalogProduct,
+		ApprovedAssetInventory: input.ApprovedAssetInventory,
 	}
 }

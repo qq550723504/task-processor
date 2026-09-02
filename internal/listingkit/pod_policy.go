@@ -25,11 +25,5 @@ func determinePODExecutionPolicy(req *GenerateRequest) podExecutionPolicy {
 }
 
 func shouldUseOptionalPODFallback(req *GenerateRequest) bool {
-	if req == nil {
-		return false
-	}
-	if !shouldRunRemoteSDSDesignSync(req) {
-		return false
-	}
-	return resolveSheinImageStrategy(req) == sheinImageStrategyAIGenerated
+	return false
 }

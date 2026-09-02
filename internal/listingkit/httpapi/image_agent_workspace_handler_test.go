@@ -10,10 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"task-processor/internal/asset"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/product/catalog"
 )
 
 func TestImageAgentWorkspacePreflightUsesOnlyRequestedTargetBundle(t *testing.T) {
@@ -25,13 +25,13 @@ func TestImageAgentWorkspacePreflightUsesOnlyRequestedTargetBundle(t *testing.T)
 	response := performImageAgentWorkspaceRequest(router, http.MethodGet, "/api/v1/listing-kits/tasks/task-1/image-agent-assets?target_platform=%20SHEIN%20", "")
 
 	require.Equal(t, http.StatusOK, response.Code)
-	require.JSONEq(t, `{"target_platform":"shein","source_assets":[{"id":"shein-source","label":"Shein source","display_url":"https://cdn.example.test/shein-source.png"}],"style_candidates":[{"id":"shein-style","label":"Shein style","display_url":"https://cdn.example.test/shein-style.png"}]}`, response.Body.String())
+	require.JSONEq(t, `{"target_platform":"shein","source_assets":[{"id":"catalog-image-1","label":"Product image","display_url":"https://cdn.example.test/source.png"}],"style_candidates":[{"id":"catalog-image-2","label":"Product image","display_url":"https://cdn.example.test/style.png"}]}`, response.Body.String())
 }
 
 func TestImageAgentWorkspacePreflightReturnsEmptyStyleArrayWhenNoStyleAssetsExist(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	task := imageAgentWorkspaceTask()
-	task.Result.AssetBundlesByTarget["shein"].Assets = task.Result.AssetBundlesByTarget["shein"].Assets[:1]
+	task.Result.StandardProductSnapshot.CatalogProduct.Images = task.Result.StandardProductSnapshot.CatalogProduct.Images[:1]
 	handler := requireImageAgentWorkspaceHandler(t, task, &imageAgentWorkspaceApplicationStub{})
 	router := gin.New()
 	router.GET("/api/v1/listing-kits/tasks/:task_id/image-agent-assets", handler.GetImageAgentAssets)
@@ -39,7 +39,7 @@ func TestImageAgentWorkspacePreflightReturnsEmptyStyleArrayWhenNoStyleAssetsExis
 	response := performImageAgentWorkspaceRequest(router, http.MethodGet, "/api/v1/listing-kits/tasks/task-1/image-agent-assets?target_platform=shein", "")
 
 	require.Equal(t, http.StatusOK, response.Code)
-	require.JSONEq(t, `{"target_platform":"shein","source_assets":[{"id":"shein-source","label":"Shein source","display_url":"https://cdn.example.test/shein-source.png"}],"style_candidates":[]}`, response.Body.String())
+	require.JSONEq(t, `{"target_platform":"shein","source_assets":[{"id":"catalog-image-1","label":"Product image","display_url":"https://cdn.example.test/source.png"}],"style_candidates":[]}`, response.Body.String())
 }
 
 func TestImageAgentWorkspaceCreateBuildsSingleSourceServerOwnedRun(t *testing.T) {
@@ -55,7 +55,7 @@ func TestImageAgentWorkspaceCreateBuildsSingleSourceServerOwnedRun(t *testing.T)
 	router := gin.New()
 	router.POST("/api/v1/listing-kits/tasks/:task_id/image-agent-runs", handler.CreateImageAgentRun)
 
-	response := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","image_policy_context":{"country":"us","family":"default","scene_category":"shoes"},"source_asset_id":"shein-source","style_asset_ids":["shein-style","shein-style"]}`)
+	response := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","image_policy_context":{"country":"us","family":"default","scene_category":"shoes"},"source_asset_id":"catalog-image-1","style_asset_ids":["catalog-image-2","catalog-image-2"]}`)
 
 	require.Equal(t, http.StatusAccepted, response.Code)
 	require.JSONEq(t, `{"run_id":"image-agent-run","status":"accepted"}`, response.Body.String())
@@ -66,10 +66,10 @@ func TestImageAgentWorkspaceCreateBuildsSingleSourceServerOwnedRun(t *testing.T)
 	require.Equal(t, "shein", start.TargetPlatform)
 	require.Equal(t, imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"}, start.ImagePolicyContext)
 	require.Equal(t, imageagent.RunModeManual, start.Mode)
-	require.Equal(t, []string{"shein-source"}, start.Plan.SourceAssetIDs)
-	require.Equal(t, []string{"shein-style"}, start.Plan.StyleReferenceIDs)
+	require.Equal(t, []string{"catalog-image-1"}, start.Plan.SourceAssetIDs)
+	require.Equal(t, []string{"catalog-image-2"}, start.Plan.StyleReferenceIDs)
 	require.Equal(t, imageagent.Budget{MaxImages: 2, EnabledLimits: imageagent.BudgetLimitImages}, start.Budget)
-	require.Equal(t, []imageagent.Slot{{ID: "main", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"shein-source"}, StyleReferenceIDs: []string{"shein-style"}, IdempotencyKey: "image-agent-slot-main-slot", Status: imageagent.SlotStatusPending}}, start.Plan.Slots)
+	require.Equal(t, []imageagent.Slot{{ID: "main", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"catalog-image-1"}, StyleReferenceIDs: []string{"catalog-image-2"}, IdempotencyKey: "image-agent-slot-main-slot", Status: imageagent.SlotStatusPending}}, start.Plan.Slots)
 }
 
 func TestImageAgentWorkspaceCreateRejectsUnknownBrowserFieldsAndUnownedSelection(t *testing.T) {
@@ -79,13 +79,13 @@ func TestImageAgentWorkspaceCreateRejectsUnknownBrowserFieldsAndUnownedSelection
 	router := gin.New()
 	router.POST("/api/v1/listing-kits/tasks/:task_id/image-agent-runs", handler.CreateImageAgentRun)
 
-	unknownField := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","source_asset_id":"shein-source","run_id":"forged"}`)
+	unknownField := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","source_asset_id":"catalog-image-1","run_id":"forged"}`)
 	require.Equal(t, http.StatusBadRequest, unknownField.Code)
 
-	missingPolicy := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","source_asset_id":"shein-source"}`)
+	missingPolicy := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","source_asset_id":"catalog-image-1"}`)
 	require.Equal(t, http.StatusBadRequest, missingPolicy.Code)
 
-	wrongSource := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","image_policy_context":{"country":"us","family":"default","scene_category":"shoes"},"source_asset_id":"amazon-source"}`)
+	wrongSource := performImageAgentWorkspaceRequest(router, http.MethodPost, "/api/v1/listing-kits/tasks/task-1/image-agent-runs", `{"target_platform":"shein","image_policy_context":{"country":"us","family":"default","scene_category":"shoes"},"source_asset_id":"catalog-image-3"}`)
 	require.Equal(t, http.StatusBadRequest, wrongSource.Code)
 	require.Empty(t, application.starts)
 }
@@ -98,16 +98,13 @@ func requireImageAgentWorkspaceHandler(t *testing.T, task *listingkit.Task, appl
 }
 
 func imageAgentWorkspaceTask() *listingkit.Task {
-	return &listingkit.Task{ID: "task-1", TenantID: "tenant-a", UserID: "user-a", Result: &listingkit.ListingKitResult{
-		StandardProductSnapshot: &listingkit.StandardProductSnapshot{},
-		AssetBundlesByTarget: map[string]*asset.Bundle{
-			"shein": {Assets: []asset.Asset{
-				{ID: "shein-source", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/shein-source.png", Labels: []string{"Shein source"}},
-				{ID: "shein-style", Kind: asset.KindSceneImage, URL: "https://cdn.example.test/shein-style.png", Labels: []string{"Shein style"}},
-			}},
-			"amazon": {Assets: []asset.Asset{{ID: "amazon-source", Kind: asset.KindSourceImage, URL: "https://cdn.example.test/amazon-source.png"}}},
-		},
-	}}
+	return &listingkit.Task{ID: "task-1", TenantID: "tenant-a", UserID: "user-a",
+		Request: &listingkit.GenerateRequest{ProductKey: "product-1"},
+		Result: &listingkit.ListingKitResult{StandardProductSnapshot: &listingkit.StandardProductSnapshot{CatalogProduct: &catalog.ProductSnapshot{Images: []catalog.Image{
+			{URL: "https://cdn.example.test/source.png", Role: "source"},
+			{URL: "https://cdn.example.test/style.png", Role: "style"},
+		}}}},
+	}
 }
 
 func performImageAgentWorkspaceRequest(router http.Handler, method, target, body string) *httptest.ResponseRecorder {

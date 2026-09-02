@@ -36,8 +36,6 @@ type StudioBatchService interface {
 	RetryStudioBatchDesignBackgroundRemoval(ctx context.Context, batchID string, req *RetryStudioBatchDesignBackgroundRemovalRequest) (*StudioBatchDetail, error)
 	ApplyManualStudioBatchDesignBackgroundRemoval(ctx context.Context, batchID string, designID string, imageURL string) (*StudioBatchDetail, error)
 	ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error)
-	PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
-	CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
 }
 
 type RetryStudioBatchDesignBackgroundRemovalRequest struct {
@@ -45,13 +43,9 @@ type RetryStudioBatchDesignBackgroundRemovalRequest struct {
 }
 
 type StudioBatchDetail struct {
-	Batch         *StudioBatchRecord        `json:"batch,omitempty"`
-	Items         []StudioBatchItemDetail   `json:"items,omitempty"`
-	CreatedTasks  []SheinStudioCreatedTask  `json:"created_tasks,omitempty"`
-	ReusedTasks   []SheinStudioCreatedTask  `json:"reused_tasks,omitempty"`
-	RejectedTasks []SheinStudioRejectedTask `json:"rejected_tasks,omitempty"`
-	FailedTasks   []SheinStudioFailedTask   `json:"failed_tasks,omitempty"`
-	StatusGroups  StudioBatchStatusGroups   `json:"status_groups,omitempty"`
+	Batch        *StudioBatchRecord      `json:"batch,omitempty"`
+	Items        []StudioBatchItemDetail `json:"items,omitempty"`
+	StatusGroups StudioBatchStatusGroups `json:"status_groups,omitempty"`
 }
 
 type StudioBatchItemDetail struct {
@@ -64,49 +58,16 @@ type ApproveStudioBatchDesignsRequest struct {
 	DesignIDs []string `json:"design_ids,omitempty"`
 }
 
-type SheinStudioRejectedTask struct {
-	DesignID    string `json:"design_id,omitempty"`
-	ItemID      string `json:"item_id,omitempty"`
-	SelectionID string `json:"selection_id,omitempty"`
-	Source      string `json:"source,omitempty"`
-	ReasonCode  string `json:"reason_code,omitempty"`
-	Message     string `json:"message,omitempty"`
-}
-
-type CreateStudioBatchTasksResult struct {
-	Batch         *StudioBatchRecord        `json:"batch,omitempty"`
-	Items         []StudioBatchItemDetail   `json:"items,omitempty"`
-	CreatedTasks  []SheinStudioCreatedTask  `json:"created_tasks,omitempty"`
-	ReusedTasks   []SheinStudioCreatedTask  `json:"reused_tasks,omitempty"`
-	RejectedTasks []SheinStudioRejectedTask `json:"rejected_tasks,omitempty"`
-	FailedTasks   []SheinStudioFailedTask   `json:"failed_tasks,omitempty"`
-}
-
 type taskStudioBatchServiceConfig struct {
 	repo                     StudioBatchRepository
 	batchRunRepo             StudioBatchRunRepository
-	batchTaskLinkRepo        StudioBatchTaskLinkRepository
 	studioSessionRepo        studioBatchSeedSessionRepository
-	baselineChecker          StudioBatchBaselineReadinessChecker
 	sdsProductDetailProvider SDSBaselineRemoteProvider
-	storeValidator           StudioBatchStoreValidator
 	generator                studioBatchGenerator
-	createGenerateTask       func(ctx context.Context, req *GenerateRequest) (*Task, error)
-	generateProductImages    func(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error)
-	getTask                  func(ctx context.Context, taskID string) (*Task, error)
-	markTaskFailed           func(ctx context.Context, taskID string, errorMsg string) error
 	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
 	serviceRunner            *listingStudioBatchServiceRunner
 	batchRunner              *listingStudioBatchGenerationRunner
 	detailRunner             *listingStudioBatchDetailRunner
 	reviewRunner             *listingStudioBatchReviewRunner
 	retryRunner              *listingStudioBatchRetryPrepareRunner
-	taskCreationRunner       *listingStudioBatchTaskCreationRunner
-	taskExecuteRunner        *listingStudioBatchTaskExecuteRunner
-	taskPrepareRunner        *listingStudioBatchTaskPrepareRunner
-	taskResumeRunner         *listingStudioBatchTaskResumeRunner
-
-	productImageUsage             StudioProductImageUsage
-	generationUsageAdmission      GenerationUsageAdmission
-	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }

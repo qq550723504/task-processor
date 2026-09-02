@@ -94,7 +94,6 @@ func (r *studioSessionRepoStub) ReplaceDesigns(_ context.Context, sessionID stri
 			ID:                    design.ID,
 			SessionID:             sessionID,
 			ImageURL:              design.ImageURL,
-			ProductImageURLs:      append(SheinStudioStringList(nil), design.ProductImageURLs...),
 			Prompt:                design.Prompt,
 			RevisedPrompt:         design.RevisedPrompt,
 			ImageModel:            design.ImageModel,
@@ -131,7 +130,6 @@ func (r *studioSessionRepoStub) UpsertDesigns(_ context.Context, sessionID strin
 			ID:                    design.ID,
 			SessionID:             sessionID,
 			ImageURL:              design.ImageURL,
-			ProductImageURLs:      append(SheinStudioStringList(nil), design.ProductImageURLs...),
 			Prompt:                design.Prompt,
 			RevisedPrompt:         design.RevisedPrompt,
 			ImageModel:            design.ImageModel,
@@ -217,10 +215,7 @@ func cloneSession(session *SheinStudioSession) *SheinStudioSession {
 	}
 	cloned := *session
 	cloned.SelectedVariantIDs = append(SheinStudioInt64List(nil), session.SelectedVariantIDs...)
-	cloned.ProductImagePrompts = append(SheinStudioProductImagePromptList(nil), session.ProductImagePrompts...)
 	cloned.ApprovedDesignIDs = append(SheinStudioStringList(nil), session.ApprovedDesignIDs...)
-	cloned.CreatedTaskIDs = append(SheinStudioStringList(nil), session.CreatedTaskIDs...)
-	cloned.CreatedTasks = append(SheinStudioCreatedTaskList(nil), session.CreatedTasks...)
 	cloned.GenerationJobs = append(SheinStudioGenerationJobList(nil), session.GenerationJobs...)
 	cloned.GroupedSelections = append(SheinStudioGroupedSelectionList(nil), session.GroupedSelections...)
 	cloned.Selection = session.Selection
@@ -1122,19 +1117,16 @@ func TestTaskStudioSessionServiceUsesListingStudioGenerationMetadataRunner(t *te
 	}
 }
 
-func TestTaskStudioSessionServiceUsesListingStudioReviewTaskMetadataRunner(t *testing.T) {
+func TestTaskStudioSessionServiceUpdatesApprovedDesignMetadata(t *testing.T) {
 	repo := newStudioSessionRepoStub()
 	repo.sessions["session-1"] = &SheinStudioSession{ID: "session-1"}
 	svc := newTaskStudioSessionService(taskStudioSessionServiceConfig{
-		repo:                     repo,
-		reviewTaskMetadataRunner: newListingStudioSessionReviewTaskMetadataService(repo),
+		repo:                  repo,
+		generalMetadataRunner: newListingStudioSessionGeneralMetadataService(repo),
 	})
 
 	updated, err := svc.UpdateStudioSession(context.Background(), "session-1", &UpdateStudioSessionRequest{
 		ApprovedDesignIDs: []string{"design-1"},
-		CreatedTasks: []SheinStudioCreatedTask{
-			{ID: "task-1", DesignID: "design-1"},
-		},
 	})
 	if err != nil {
 		t.Fatalf("UpdateStudioSession() error = %v", err)
@@ -1142,14 +1134,8 @@ func TestTaskStudioSessionServiceUsesListingStudioReviewTaskMetadataRunner(t *te
 	if updated.Session == nil || len(updated.Session.ApprovedDesignIDs) != 1 || updated.Session.ApprovedDesignIDs[0] != "design-1" {
 		t.Fatalf("updated.Session = %+v, want approved design metadata", updated.Session)
 	}
-	if len(updated.Session.CreatedTasks) != 1 || updated.Session.CreatedTasks[0].ID != "task-1" {
-		t.Fatalf("updated.Session.CreatedTasks = %+v, want created task metadata", updated.Session.CreatedTasks)
-	}
-	if len(updated.Session.CreatedTaskIDs) != 1 || updated.Session.CreatedTaskIDs[0] != "task-1" {
-		t.Fatalf("updated.Session.CreatedTaskIDs = %+v, want derived task ids", updated.Session.CreatedTaskIDs)
-	}
 	if repo.listDesignsCalls != 0 {
-		t.Fatalf("list designs calls = %d, want 0 for review/task metadata runner path", repo.listDesignsCalls)
+		t.Fatalf("list designs calls = %d, want metadata-only update", repo.listDesignsCalls)
 	}
 }
 

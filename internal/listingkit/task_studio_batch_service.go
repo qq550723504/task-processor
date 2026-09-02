@@ -11,72 +11,37 @@ import (
 )
 
 type taskStudioBatchService struct {
-	repo                     StudioBatchRepository
-	batchRunRepo             StudioBatchRunRepository
-	batchTaskLinkRepo        StudioBatchTaskLinkRepository
-	studioSessionRepo        studioBatchSeedSessionRepository
-	baselineChecker          StudioBatchBaselineReadinessChecker
-	sdsProductDetailProvider SDSBaselineRemoteProvider
-	storeValidator           StudioBatchStoreValidator
-	generator                studioBatchGenerator
-	createGenerateTask       func(context.Context, *GenerateRequest) (*Task, error)
-	generateProductImages    func(context.Context, *StudioProductImageRequest) (*StudioProductImageResponse, error)
-	getTask                  func(context.Context, string) (*Task, error)
-	markTaskFailed           func(context.Context, string, string) error
-	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
-	currentTime              func() time.Time
-	serviceRunner            *listingStudioBatchServiceRunner
-	batchRunner              *listingStudioBatchGenerationRunner
-	detailRunner             *listingStudioBatchDetailRunner
-	reviewRunner             *listingStudioBatchReviewRunner
-	retryRunner              *listingStudioBatchRetryPrepareRunner
-	taskCreationRunner       *listingStudioBatchTaskCreationRunner
-	taskExecuteRunner        *listingStudioBatchTaskExecuteRunner
-	taskPrepareRunner        *listingStudioBatchTaskPrepareRunner
-	taskResumeRunner         *listingStudioBatchTaskResumeRunner
-
-	productImageUsage             StudioProductImageUsage
-	generationUsageAdmission      GenerationUsageAdmission
-	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
+	repo                   StudioBatchRepository
+	batchRunRepo           StudioBatchRunRepository
+	studioSessionRepo      studioBatchSeedSessionRepository
+	generator              studioBatchGenerator
+	retryBackgroundRemoval func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
+	currentTime            func() time.Time
+	serviceRunner          *listingStudioBatchServiceRunner
+	batchRunner            *listingStudioBatchGenerationRunner
+	detailRunner           *listingStudioBatchDetailRunner
+	reviewRunner           *listingStudioBatchReviewRunner
+	retryRunner            *listingStudioBatchRetryPrepareRunner
 }
 
 func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioBatchService {
 	service := &taskStudioBatchService{
-		repo:                          config.repo,
-		batchRunRepo:                  config.batchRunRepo,
-		batchTaskLinkRepo:             config.batchTaskLinkRepo,
-		studioSessionRepo:             config.studioSessionRepo,
-		baselineChecker:               config.baselineChecker,
-		sdsProductDetailProvider:      config.sdsProductDetailProvider,
-		storeValidator:                config.storeValidator,
-		generator:                     config.generator,
-		createGenerateTask:            config.createGenerateTask,
-		generateProductImages:         config.generateProductImages,
-		productImageUsage:             config.productImageUsage,
-		generationUsageAdmission:      config.generationUsageAdmission,
-		resolveUploadedImagePublicURL: config.resolveUploadedImagePublicURL,
-		getTask:                       config.getTask,
-		markTaskFailed:                config.markTaskFailed,
-		retryBackgroundRemoval:        config.retryBackgroundRemoval,
-		currentTime:                   time.Now,
-		serviceRunner:                 config.serviceRunner,
-		batchRunner:                   config.batchRunner,
-		detailRunner:                  config.detailRunner,
-		reviewRunner:                  config.reviewRunner,
-		retryRunner:                   config.retryRunner,
-		taskCreationRunner:            config.taskCreationRunner,
-		taskExecuteRunner:             config.taskExecuteRunner,
-		taskPrepareRunner:             config.taskPrepareRunner,
-		taskResumeRunner:              config.taskResumeRunner,
+		repo:                   config.repo,
+		batchRunRepo:           config.batchRunRepo,
+		studioSessionRepo:      config.studioSessionRepo,
+		generator:              config.generator,
+		retryBackgroundRemoval: config.retryBackgroundRemoval,
+		currentTime:            time.Now,
+		serviceRunner:          config.serviceRunner,
+		batchRunner:            config.batchRunner,
+		detailRunner:           config.detailRunner,
+		reviewRunner:           config.reviewRunner,
+		retryRunner:            config.retryRunner,
 	}
 	service.ensureBatchRunner()
 	service.ensureDetailRunner()
 	service.ensureReviewRunner()
 	service.ensureRetryRunner()
-	service.ensureTaskCreationRunner()
-	service.ensureTaskExecuteRunner()
-	service.ensureTaskPrepareRunner()
-	service.ensureTaskResumeRunner()
 	service.ensureServiceRunner()
 	return service
 }
@@ -196,9 +161,6 @@ func (s *taskStudioBatchService) RetryStudioBatchDesignBackgroundRemoval(ctx con
 	for _, target := range targets {
 		designIDs = append(designIDs, target.DesignID)
 	}
-	if err := s.rejectStudioBackgroundRemovalForOwnedTasks(ctx, batchID, designIDs); err != nil {
-		return nil, err
-	}
 	now := time.Now().UTC()
 	if s.currentTime != nil {
 		now = s.currentTime().UTC()
@@ -282,9 +244,6 @@ func (s *taskStudioBatchService) applyManualStudioBatchDesignBackgroundRemovalTa
 	if err != nil {
 		return nil, adaptStudioBackgroundRemovalSelectionError(err)
 	}
-	if err := s.rejectStudioBackgroundRemovalForOwnedTasks(ctx, batchID, []string{target.ID}); err != nil {
-		return nil, err
-	}
 
 	now := time.Now().UTC()
 	if s.currentTime != nil {
@@ -350,9 +309,6 @@ func (s *taskStudioBatchService) validateManualStudioBatchDesignBackgroundRemova
 		return nil, nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s is not part of batch %s", strings.TrimSpace(designID), strings.TrimSpace(batchID)))
 	}
 	target := designPointers[designIndex]
-	if err := s.rejectStudioBackgroundRemovalForOwnedTasks(ctx, batchID, []string{target.ID}); err != nil {
-		return nil, nil, err
-	}
 	return detail, target, nil
 }
 
@@ -381,32 +337,6 @@ func (s *taskStudioBatchService) claimStudioBackgroundRemoval(ctx context.Contex
 	return true, s.repo.UpdateStudioMaterializedDesign(ctx, design)
 }
 
-func (s *taskStudioBatchService) rejectStudioBackgroundRemovalForOwnedTasks(ctx context.Context, batchID string, designIDs []string) error {
-	if s == nil || s.batchTaskLinkRepo == nil || len(designIDs) == 0 {
-		return nil
-	}
-	links, err := s.batchTaskLinkRepo.ListStudioBatchTaskLinksByBatchID(ctx, batchID)
-	if err != nil {
-		return err
-	}
-	targetDesignIDs := make(map[string]struct{}, len(designIDs))
-	for _, designID := range designIDs {
-		targetDesignIDs[strings.TrimSpace(designID)] = struct{}{}
-	}
-	for _, link := range links {
-		if strings.TrimSpace(link.ListingKitTaskID) == "" &&
-			(link.Status != studioBatchTaskLinkStatusCreating || s.studioBatchTaskLinkIsStale(&link)) {
-			continue
-		}
-		designID := strings.TrimSpace(link.DesignID)
-		if _, ok := targetDesignIDs[designID]; !ok {
-			continue
-		}
-		return NewStudioBatchActionValidationError(fmt.Sprintf("design %s already owns ListingKit task %s", designID, strings.TrimSpace(link.ListingKitTaskID)))
-	}
-	return nil
-}
-
 func (s *taskStudioBatchService) updateStudioBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) error {
 	if repository, ok := s.repo.(studioBackgroundRemovalRepository); ok {
 		return repository.UpdateStudioMaterializedDesignBackgroundRemoval(ctx, design)
@@ -420,28 +350,4 @@ func adaptStudioBackgroundRemovalSelectionError(err error) error {
 		return NewStudioBatchActionValidationError(validationErr.Error())
 	}
 	return err
-}
-
-func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
-	s.ensureServiceRunner()
-	if s.serviceRunner == nil {
-		return nil, fmt.Errorf("studio batch service is not configured")
-	}
-	if req != nil && req.AllowPartialWhileGenerating {
-		ctx = withStudioBatchPartialTaskCreationAllowed(ctx)
-	}
-	ctx = withStudioBatchTaskImageStrategy(ctx, req)
-	return s.serviceRunner.CreateTasks(ctx, batchID, req)
-}
-
-func (s *taskStudioBatchService) PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
-	s.ensureServiceRunner()
-	if s.serviceRunner == nil {
-		return nil, fmt.Errorf("studio batch service is not configured")
-	}
-	if req != nil && req.AllowPartialWhileGenerating {
-		ctx = withStudioBatchPartialTaskCreationAllowed(ctx)
-	}
-	ctx = withStudioBatchTaskImageStrategy(ctx, req)
-	return s.serviceRunner.PrepareCreateTasks(ctx, batchID, req)
 }

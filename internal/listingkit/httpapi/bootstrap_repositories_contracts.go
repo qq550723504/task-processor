@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/memberinvite"
@@ -15,7 +14,6 @@ type builtRepositories struct {
 	studioAsyncJobRepository          listingkit.StudioAsyncJobRepository
 	studioBatchRepository             listingkit.StudioBatchRepository
 	studioBatchRunRepository          listingkit.StudioBatchRunRepository
-	studioBatchTaskLinkRepository     listingkit.StudioBatchTaskLinkRepository
 	sheinSyncRepository               listingkit.SheinSyncRepository
 	storeRepository                   listingadmin.StoreRepository
 	storeStatisticsRepository         listingadmin.StoreStatisticsRepository
@@ -34,7 +32,7 @@ type builtRepositories struct {
 	productDataRepository             listingadmin.ProductDataRepository
 	subscriptionService               *listingsubscription.Service
 	memberInvitationAuditRepository   memberinvite.AuditRepository
-	assetRepository                   assetrepo.Repository
+	approvedAssetInventoryReader      listingkit.ApprovedAssetInventoryReader
 	reviewRepository                  reviewstore.Repository
 	studioSessionRepository           listingkit.StudioSessionRepository
 	uploadedImageRepository           listingkit.UploadedImageRepository
@@ -43,12 +41,11 @@ type builtRepositories struct {
 }
 
 type builtCoreRepositories struct {
-	taskRepository                listingkit.Repository
-	studioAsyncJobRepository      listingkit.StudioAsyncJobRepository
-	studioBatchRepository         listingkit.StudioBatchRepository
-	studioBatchRunRepository      listingkit.StudioBatchRunRepository
-	studioBatchTaskLinkRepository listingkit.StudioBatchTaskLinkRepository
-	sheinSyncRepository           listingkit.SheinSyncRepository
+	taskRepository           listingkit.Repository
+	studioAsyncJobRepository listingkit.StudioAsyncJobRepository
+	studioBatchRepository    listingkit.StudioBatchRepository
+	studioBatchRunRepository listingkit.StudioBatchRunRepository
+	sheinSyncRepository      listingkit.SheinSyncRepository
 }
 
 type coreTaskRepositories struct {
@@ -56,17 +53,16 @@ type coreTaskRepositories struct {
 }
 
 type coreAsyncRepositories struct {
-	studioAsyncJobRepository      listingkit.StudioAsyncJobRepository
-	studioBatchRepository         listingkit.StudioBatchRepository
-	studioBatchRunRepository      listingkit.StudioBatchRunRepository
-	studioBatchTaskLinkRepository listingkit.StudioBatchTaskLinkRepository
-	sheinSyncRepository           listingkit.SheinSyncRepository
+	studioAsyncJobRepository listingkit.StudioAsyncJobRepository
+	studioBatchRepository    listingkit.StudioBatchRepository
+	studioBatchRunRepository listingkit.StudioBatchRunRepository
+	sheinSyncRepository      listingkit.SheinSyncRepository
 }
 
 type builtLateCoreRepositories struct {
 	subscriptionService             *listingsubscription.Service
 	memberInvitationAuditRepository memberinvite.AuditRepository
-	assetRepository                 assetrepo.Repository
+	approvedAssetInventoryReader    listingkit.ApprovedAssetInventoryReader
 	reviewRepository                reviewstore.Repository
 	studioSessionRepository         listingkit.StudioSessionRepository
 	uploadedImageRepository         listingkit.UploadedImageRepository
@@ -75,12 +71,12 @@ type builtLateCoreRepositories struct {
 }
 
 type lateCoreRepositoryDependencies struct {
-	assetRepository         assetrepo.Repository
-	reviewRepository        reviewstore.Repository
-	studioSessionRepository listingkit.StudioSessionRepository
-	uploadedImageRepository listingkit.UploadedImageRepository
-	storeProfileRepository  listingkit.StoreProfileRepository
-	resolutionCacheStore    sheinpub.ResolutionCacheStore
+	approvedAssetInventoryReader listingkit.ApprovedAssetInventoryReader
+	reviewRepository             reviewstore.Repository
+	studioSessionRepository      listingkit.StudioSessionRepository
+	uploadedImageRepository      listingkit.UploadedImageRepository
+	storeProfileRepository       listingkit.StoreProfileRepository
+	resolutionCacheStore         sheinpub.ResolutionCacheStore
 }
 
 type builtAdminRepositories struct {

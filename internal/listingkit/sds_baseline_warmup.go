@@ -35,7 +35,11 @@ func (s *service) warmSDSBaseline(ctx context.Context, req *WarmSDSBaselineReque
 	}
 
 	task := buildSDSBaselineWarmTask(ctx, req)
-	product := buildSDSBaselineCanonicalProduct(task)
+	product := buildStudioFallbackCanonicalProductFromSDS(
+		task.Request.Text,
+		req.SDS,
+		normalizedSDSBaselineSourceImageURLs(req.ImageURLs, req.SDS),
+	)
 	if product == nil {
 		return nil, fmt.Errorf("failed to build SDS baseline canonical product")
 	}
@@ -95,11 +99,9 @@ func buildSDSBaselineWarmTask(ctx context.Context, req *WarmSDSBaselineRequest) 
 		Request: &GenerateRequest{
 			TenantID:  tenantID,
 			Text:      firstNonEmptyString(req.SDS.ProductName, req.SDS.ProductEnglishName),
-			ImageURLs: normalizedSDSBaselineSourceImageURLs(req.ImageURLs, req.SDS),
 			Platforms: []string{"shein"},
 			Options: &GenerateOptions{
-				ProcessImages: false,
-				SDS:           req.SDS,
+				SDS: req.SDS,
 			},
 		},
 	}
@@ -109,21 +111,11 @@ func buildSDSBaselineCanonicalProduct(task *Task) *canonical.Product {
 	if task == nil || task.Request == nil || task.Request.Options == nil || task.Request.Options.SDS == nil {
 		return nil
 	}
-	baselineTask := &Task{
-		ID:       task.ID,
-		TenantID: task.TenantID,
-		Request: &GenerateRequest{
-			TenantID:  task.Request.TenantID,
-			Text:      firstNonEmptyString(task.Request.Options.SDS.ProductName, task.Request.Text, task.Request.Options.SDS.ProductEnglishName),
-			ImageURLs: normalizedSDSBaselineSourceImageURLs(task.Request.ImageURLs, task.Request.Options.SDS),
-			Platforms: []string{"shein"},
-			Options: &GenerateOptions{
-				ProcessImages: false,
-				SDS:           task.Request.Options.SDS,
-			},
-		},
-	}
-	return buildStudioFallbackCanonicalProduct(baselineTask)
+	return buildStudioFallbackCanonicalProductFromSDS(
+		firstNonEmptyString(task.Request.Options.SDS.ProductName, task.Request.Text, task.Request.Options.SDS.ProductEnglishName),
+		task.Request.Options.SDS,
+		normalizedSDSBaselineSourceImageURLs(nil, task.Request.Options.SDS),
+	)
 }
 
 func normalizedSDSBaselineSourceImageURLs(requestImageURLs []string, options *SDSSyncOptions) []string {

@@ -3,8 +3,8 @@ package httpapi
 import (
 	"github.com/sirupsen/logrus"
 
-	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
+	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingsubscription"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -24,10 +24,10 @@ func BuildMemberInvitationAuditRepository(cfg *config.Config, logger *logrus.Log
 	})
 }
 
-func BuildAssetRepository(cfg *config.Config, logger *logrus.Logger) (assetrepo.Repository, []func() error, error) {
-	return buildRepositoryWithFallback(cfg, logger, newDBAssetRepository, func(logger *logrus.Logger) (assetrepo.Repository, []func() error, error) {
-		logger.Warn("database not configured, using in-memory asset repository")
-		return assetrepo.NewMemRepository(), nil, nil
+func BuildApprovedAssetInventoryReader(cfg *config.Config, logger *logrus.Logger) (listingkit.ApprovedAssetInventoryReader, []func() error, error) {
+	return buildRepositoryWithFallback(cfg, logger, newDBApprovedAssetInventoryReader, func(logger *logrus.Logger) (listingkit.ApprovedAssetInventoryReader, []func() error, error) {
+		logger.Warn("database not configured, approved product assets are unavailable")
+		return nil, nil, nil
 	})
 }
 

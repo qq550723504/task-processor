@@ -150,7 +150,6 @@ func (stubStudioSessionRouteHandler) ApplyManualStudioBatchDesignBackgroundRemov
 }
 func (stubStudioSessionRouteHandler) RetryStudioBatchSDSChildTasks(*gin.Context) {}
 func (stubStudioSessionRouteHandler) ApproveStudioBatchDesigns(*gin.Context)     {}
-func (stubStudioSessionRouteHandler) CreateStudioBatchTasks(*gin.Context)        {}
 func (stubStudioSessionRouteHandler) UpsertStudioBatch(*gin.Context)             {}
 func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)             {}
 
@@ -177,23 +176,14 @@ func (stubRouteHandler) GetUploadedListingKitImage(*gin.Context)                
 func (stubRouteHandler) DeleteUploadedListingKitImage(*gin.Context)               {}
 func (stubRouteHandler) AnalyzeStudioReferenceStyle(*gin.Context)                 {}
 func (stubRouteHandler) GenerateStudioDesigns(*gin.Context)                       {}
-func (stubRouteHandler) GenerateStudioProductImages(*gin.Context)                 {}
 func (stubRouteHandler) StartStudioAsyncJob(*gin.Context)                         {}
 func (stubRouteHandler) GetStudioAsyncJob(*gin.Context)                           {}
-func (stubRouteHandler) RegenerateSheinDataImage(*gin.Context)                    {}
 func (stubRouteHandler) GetTaskResult(*gin.Context)                               {}
 func (stubRouteHandler) RequeuePendingTasks(*gin.Context)                         {}
 func (stubRouteHandler) RecoverTaskNow(*gin.Context)                              {}
 func (stubRouteHandler) BulkRecoverTasks(*gin.Context)                            {}
 func (stubRouteHandler) GetTaskPreview(*gin.Context)                              {}
-func (stubRouteHandler) GetTaskGenerationTasks(*gin.Context)                      {}
-func (stubRouteHandler) GetTaskGenerationQueue(*gin.Context)                      {}
-func (stubRouteHandler) GetTaskGenerationReviewSession(*gin.Context)              {}
-func (stubRouteHandler) GetTaskGenerationReviewPreview(*gin.Context)              {}
-func (stubRouteHandler) DispatchTaskGenerationNavigation(*gin.Context)            {}
-func (stubRouteHandler) RetryTaskGenerationTasks(*gin.Context)                    {}
 func (stubRouteHandler) RetryTaskChildTask(*gin.Context)                          {}
-func (stubRouteHandler) ExecuteTaskGenerationAction(*gin.Context)                 {}
 func (stubRouteHandler) GetTaskRevisionHistory(*gin.Context)                      {}
 func (stubRouteHandler) GetTaskRevisionHistoryDetail(*gin.Context)                {}
 func (stubRouteHandler) GetTaskExport(*gin.Context)                               {}

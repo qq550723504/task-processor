@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
 )
 
@@ -139,7 +140,7 @@ func TestAssemblerConsumesProductSnapshot(t *testing.T) {
 		Images: []catalog.Image{{URL: "https://example.test/bottle.jpg"}},
 	}
 
-	result := NewAssembler(stubAmazonDraftBuilder{}).Assemble(task, snapshot, nil)
+	result := NewAssembler(stubAmazonDraftBuilder{}).Assemble(task, snapshot, &productasset.ApprovedAssetInventory{Assets: []productasset.ApprovedAsset{{ID: "main", Role: productasset.RoleMain, URL: "https://example.test/approved-bottle.jpg"}}})
 	if result == nil || result.CatalogProduct == nil || result.CatalogProduct.Title != "Snapshot Bottle" {
 		t.Fatalf("assembler result = %+v, want catalog snapshot", result)
 	}

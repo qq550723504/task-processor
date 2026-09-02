@@ -36,11 +36,6 @@ func (s *service) buildTaskResultPayload(ctx context.Context, task *Task) (*List
 	}
 	copied := cloneListingKitResultForReadState(task.Result)
 	ensureResultPodExecution(copied, task.Request)
-	tasks, err := s.listAssetGenerationTasks(ctx, task.ID)
-	if err != nil {
-		return nil, err
-	}
-	decorateListingKitResultGeneration(copied, tasks)
 	s.refreshSheinTaskResultState(ctx, task, copied)
 	if copied.Shein != nil {
 		if selection, selectionErr := s.resolveSheinStoreSelection(ctx, task); selectionErr == nil {

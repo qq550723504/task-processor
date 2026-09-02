@@ -6,10 +6,6 @@ func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRe
 	return s.taskStudioMediaOrDefault().GenerateStudioDesigns(ctx, req)
 }
 
-func (s *service) GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
-	return s.taskStudioMediaOrDefault().GenerateStudioProductImages(ctx, req)
-}
-
 func (s *service) SubmitStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest) (*studioDesignAsyncSubmitResponse, error) {
 	asyncService := s.taskStudioMediaOrDefault()
 	if asyncService == nil {

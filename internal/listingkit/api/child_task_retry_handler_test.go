@@ -190,4 +190,3 @@ func TestRetryTaskChildTaskBindsKind(t *testing.T) {
 		t.Fatalf("child retry req = %+v, want kind bound", svc.req)
 	}
 }
-

@@ -22,7 +22,6 @@ type taskStudioSessionConfigWiring struct {
 	runner                   *listingStudioSessionRunner
 	asyncJobRunner           *listingStudioSessionAsyncJobRunner
 	generationMetadataRunner *listingStudioSessionGenerationMetadataRunner
-	reviewTaskMetadataRunner *listingStudioSessionReviewTaskMetadataRunner
 	generalMetadataRunner    *listingStudioSessionGeneralMetadataRunner
 	batchDraftRunner         *listingStudioBatchDraftRunner
 }
@@ -72,10 +71,6 @@ func (w taskStudioSessionWiring) newGenerationMetadataRunner() *listingStudioSes
 	return newListingStudioSessionGenerationMetadataService(w.repo)
 }
 
-func (w taskStudioSessionWiring) newReviewTaskMetadataRunner() *listingStudioSessionReviewTaskMetadataRunner {
-	return newListingStudioSessionReviewTaskMetadataService(w.repo)
-}
-
 func (w taskStudioSessionWiring) newGeneralMetadataRunner() *listingStudioSessionGeneralMetadataRunner {
 	return newListingStudioSessionGeneralMetadataService(w.repo)
 }
@@ -95,7 +90,6 @@ func buildTaskStudioSessionConfigWiring(s *service) taskStudioSessionConfigWirin
 		runner:                   session.newSessionRunner(),
 		asyncJobRunner:           session.newAsyncJobRunner(),
 		generationMetadataRunner: session.newGenerationMetadataRunner(),
-		reviewTaskMetadataRunner: session.newReviewTaskMetadataRunner(),
 		generalMetadataRunner:    session.newGeneralMetadataRunner(),
 		batchDraftRunner:         session.newBatchDraftRunner(),
 	}
@@ -155,7 +149,6 @@ func buildTaskStudioSessionServiceConfigWithWiring(config taskStudioSessionConfi
 		runner:                   config.runner,
 		asyncJobRunner:           config.asyncJobRunner,
 		generationMetadataRunner: config.generationMetadataRunner,
-		reviewTaskMetadataRunner: config.reviewTaskMetadataRunner,
 		generalMetadataRunner:    config.generalMetadataRunner,
 	}
 }

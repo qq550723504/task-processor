@@ -26,7 +26,6 @@ func (e *studioBatchRunItemStillRunningError) Unwrap() error {
 type taskStudioBatchRunExecutorConfig struct {
 	repo               StudioBatchRunRepository
 	executeGenerateOne func(ctx context.Context, batchID string) error
-	executeCreateTasks func(ctx context.Context, batchID string) error
 	now                func() time.Time
 	waitStillRunning   func(context.Context) error
 	completionRunner   *listingStudioBatchRunCompletionRunner
@@ -35,7 +34,6 @@ type taskStudioBatchRunExecutorConfig struct {
 type taskStudioBatchRunExecutor struct {
 	repo               StudioBatchRunRepository
 	executeGenerateOne func(ctx context.Context, batchID string) error
-	executeCreateTasks func(ctx context.Context, batchID string) error
 	now                func() time.Time
 	waitStillRunning   func(context.Context) error
 	completionRunner   *listingStudioBatchRunCompletionRunner
@@ -45,7 +43,6 @@ func newTaskStudioBatchRunExecutor(config taskStudioBatchRunExecutorConfig) *tas
 	return &taskStudioBatchRunExecutor{
 		repo:               config.repo,
 		executeGenerateOne: config.executeGenerateOne,
-		executeCreateTasks: config.executeCreateTasks,
 		now:                config.now,
 		waitStillRunning:   config.waitStillRunning,
 		completionRunner:   config.completionRunner,
@@ -56,7 +53,7 @@ func (e *taskStudioBatchRunExecutor) Run(ctx context.Context, runID string) erro
 	if e == nil || e.repo == nil {
 		return fmt.Errorf("studio batch run repository is not configured")
 	}
-	if e.executeGenerateOne == nil && e.executeCreateTasks == nil {
+	if e.executeGenerateOne == nil {
 		return fmt.Errorf("studio batch run executor is not configured")
 	}
 
@@ -226,11 +223,6 @@ func (e *taskStudioBatchRunExecutor) executeOneForMode(ctx context.Context, mode
 			return fmt.Errorf("studio batch generation executor is not configured")
 		}
 		return e.executeGenerateOne(ctx, batchID)
-	case StudioBatchRunModeCreateTasks:
-		if e.executeCreateTasks == nil {
-			return fmt.Errorf("studio batch task executor is not configured")
-		}
-		return e.executeCreateTasks(ctx, batchID)
 	default:
 		return fmt.Errorf("studio batch run mode %s is not supported", mode)
 	}
@@ -332,59 +324,6 @@ func (s *service) executeStudioBatchRunItem(ctx context.Context, batchID string)
 		return &studioBatchRunItemStillRunningError{AsyncJobID: resolveStudioBatchRunAsyncJobID(detail)}
 	}
 	return studioBatchRunDetailError(detail)
-}
-
-func (s *service) executeStudioBatchRunTaskCreation(ctx context.Context, batchID string) error {
-	if s == nil {
-		return fmt.Errorf("listingkit service is not configured")
-	}
-	detail, err := s.taskStudioBatchOrDefault().GetStudioBatchDetail(ctx, strings.TrimSpace(batchID))
-	if err != nil {
-		return err
-	}
-	if detail == nil || detail.Batch == nil {
-		return ErrStudioSessionNotFound
-	}
-	designIDs := collectApprovedStudioBatchDesignIDs(detail)
-	if len(designIDs) == 0 {
-		return NewStudioBatchActionValidationError("approved design_ids is required")
-	}
-	result, err := s.taskStudioBatchOrDefault().CreateStudioBatchTasks(ctx, batchID, &CreateStudioBatchTasksRequest{
-		DesignIDs: designIDs,
-	})
-	if err != nil {
-		return err
-	}
-	if result == nil || result.Batch == nil {
-		return ErrStudioSessionNotFound
-	}
-	if len(result.FailedTasks) > 0 {
-		return fmt.Errorf("%s", strings.TrimSpace(result.FailedTasks[0].Message))
-	}
-	if result.Batch.Status == StudioBatchStatusTasksCreated {
-		return nil
-	}
-	return fmt.Errorf("studio batch %s task creation finished with status %s", result.Batch.ID, result.Batch.Status)
-}
-
-func collectApprovedStudioBatchDesignIDs(detail *StudioBatchDetail) []string {
-	if detail == nil {
-		return nil
-	}
-	designIDs := make([]string, 0)
-	for _, item := range detail.Items {
-		for _, design := range item.Designs {
-			if design.ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
-				continue
-			}
-			designID := strings.TrimSpace(design.ID)
-			if designID == "" {
-				continue
-			}
-			designIDs = append(designIDs, designID)
-		}
-	}
-	return normalizeStudioBatchDesignIDs(designIDs)
 }
 
 func isStudioBatchRunDetailStillRunning(detail *StudioBatchDetail) bool {

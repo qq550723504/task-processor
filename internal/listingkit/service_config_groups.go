@@ -23,16 +23,13 @@ func buildStudioDependencies(config *ServiceConfig) studioDependencies {
 		return studioDependencies{}
 	}
 	return studioDependencies{
-		sessionRepo:              config.Core.StudioSessionRepository,
-		batchRepo:                config.Core.StudioBatchRepository,
-		batchRunRepo:             config.Core.StudioBatchRunRepository,
-		batchTaskLinkRepo:        config.Core.StudioBatchTaskLinkRepository,
-		promptDiversifier:        config.Shein.StudioPromptDiversifier,
-		imageGenerator:           config.Shein.StudioImageGenerator,
-		backgroundRemover:        config.Shein.StudioBackgroundRemover,
-		uploadStore:              config.Core.ImageUploadStore,
-		productImageUsage:        config.Core.StudioProductImageUsage,
-		generationUsageAdmission: config.Core.GenerationUsageAdmission,
+		sessionRepo:       config.Core.StudioSessionRepository,
+		batchRepo:         config.Core.StudioBatchRepository,
+		batchRunRepo:      config.Core.StudioBatchRunRepository,
+		promptDiversifier: config.Shein.StudioPromptDiversifier,
+		imageGenerator:    config.Shein.StudioImageGenerator,
+		backgroundRemover: config.Shein.StudioBackgroundRemover,
+		uploadStore:       config.Core.ImageUploadStore,
 	}
 }
 
@@ -83,12 +80,8 @@ func buildWorkflowDependencies(config *ServiceConfig) workflowDependencies {
 		return workflowDependencies{}
 	}
 	return workflowDependencies{
-		productSnapshots:       config.Core.ProductSnapshotReader,
-		imageService:           config.Core.ImageService,
-		assetRepository:        config.Assets.AssetRepository,
-		assetRecipeResolver:    config.Assets.AssetRecipeResolver,
-		assetBundleBuilder:     config.Assets.AssetBundleBuilder,
-		assetGenerationService: config.Assets.AssetGenerationService,
+		productSnapshots: config.Core.ProductSnapshotReader,
+		approvedAssets:   config.Assets.ApprovedAssetInventoryReader,
 	}
 }
 

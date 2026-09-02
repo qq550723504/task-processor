@@ -4,27 +4,6 @@ import (
 	"context"
 )
 
-func buildTaskGenerationServiceConfig(s *service) taskGenerationServiceConfig {
-	repository := buildTaskRepositoryWiring(s)
-	return taskGenerationServiceConfig{
-		repo:                              repository.repo,
-		assetRepo:                         resolveWorkflowAssetRepository(s),
-		assetRecipeResolver:               resolveWorkflowAssetRecipeResolver(s),
-		assetBundleBuilder:                resolveWorkflowAssetBundleBuilder(s),
-		assetGenerator:                    resolveWorkflowAssetGenerationService(s),
-		listAssetGenerationTasks:          s.listAssetGenerationTasks,
-		listGenerationReviews:             s.listGenerationReviews,
-		buildRetryGenerationTaskSelection: s.buildRetryGenerationTaskSelection,
-		persistGenerationReviewDecision:   s.persistGenerationReviewDecision,
-		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
-			return resolveStandardWorkflowClient(s)
-		},
-		platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
-			return resolvePlatformAdaptWorkflowClient(s)
-		},
-	}
-}
-
 func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
 	preview := buildTaskPreviewAccessWiring(s)
 	repository := buildTaskRepositoryWiring(s)
@@ -54,10 +33,9 @@ func buildTaskPreviewServiceConfig(s *service) taskPreviewServiceConfig {
 }
 
 func buildTaskExportServiceConfig(s *service) taskExportServiceConfig {
-	wiring := buildTaskPreviewExportReadWiring(s)
+	wiring := buildTaskRepositoryWiring(s)
 	return taskExportServiceConfig{
-		repo:                     wiring.repo,
-		listAssetGenerationTasks: wiring.listAssetGenerationTasks,
+		repo: wiring.repo,
 	}
 }
 

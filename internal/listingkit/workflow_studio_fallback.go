@@ -4,22 +4,7 @@ import (
 	"strings"
 
 	"task-processor/internal/product/catalog/canonical"
-	listingworkflow "task-processor/internal/listingkit/workflow"
 )
-
-func shouldUseStudioProductFallback(task *Task) bool {
-	if task == nil {
-		return false
-	}
-	return listingworkflow.ShouldUseStudioProductFallback(buildWorkflowRequestPolicyInput(task.Request))
-}
-
-func shouldUseStudioCatalogCanonical(task *Task) bool {
-	if task == nil {
-		return false
-	}
-	return listingworkflow.ShouldUseStudioCatalogCanonical(buildWorkflowRequestPolicyInput(task.Request))
-}
 
 func buildStudioFallbackCanonicalProduct(task *Task) *canonical.Product {
 	if task == nil || task.Request == nil {
@@ -32,7 +17,11 @@ func buildStudioFallbackCanonicalProduct(task *Task) *canonical.Product {
 		sds = options.SDS
 	}
 
-	title := strings.TrimSpace(task.Request.Text)
+	return buildStudioFallbackCanonicalProductFromSDS(task.Request.Text, sds, normalizedSDSBaselineSourceImageURLs(nil, sds))
+}
+
+func buildStudioFallbackCanonicalProductFromSDS(text string, sds *SDSSyncOptions, imageURLs []string) *canonical.Product {
+	title := strings.TrimSpace(text)
 	if sds != nil {
 		title = firstNonEmptyString(sds.ProductName, title, sds.ProductEnglishName)
 	}
@@ -40,13 +29,14 @@ func buildStudioFallbackCanonicalProduct(task *Task) *canonical.Product {
 		title = "SDS studio product"
 	}
 
-	sources := []canonical.Source{
-		{Type: canonical.SourceUserImage, Detail: productenrichSummaryImageSources(task.Request.ImageURLs)},
+	sources := make([]canonical.Source, 0, 3)
+	if len(imageURLs) > 0 {
+		sources = append(sources, canonical.Source{Type: canonical.SourceUserImage, Detail: productenrichSummaryImageSources(imageURLs)})
 	}
-	if strings.TrimSpace(task.Request.Text) != "" {
+	if strings.TrimSpace(text) != "" {
 		sources = append(sources, canonical.Source{
 			Type:   canonical.SourceUserText,
-			Detail: productenrichSummaryUserText(task.Request.Text),
+			Detail: productenrichSummaryUserText(text),
 		})
 	}
 	sources = append(sources, canonical.Source{
@@ -61,8 +51,8 @@ func buildStudioFallbackCanonicalProduct(task *Task) *canonical.Product {
 		NeedsReview: false,
 	}
 
-	images := make([]canonical.Image, 0, len(task.Request.ImageURLs))
-	for index, imageURL := range task.Request.ImageURLs {
+	images := make([]canonical.Image, 0, len(imageURLs))
+	for index, imageURL := range imageURLs {
 		role := "gallery"
 		if index == 0 {
 			role = "primary"
@@ -79,7 +69,7 @@ func buildStudioFallbackCanonicalProduct(task *Task) *canonical.Product {
 		"description": trace,
 	}
 
-	description := strings.TrimSpace(task.Request.Text)
+	description := strings.TrimSpace(text)
 	if sds != nil {
 		description = firstNonEmptyString(
 			sds.ProductPerformance,

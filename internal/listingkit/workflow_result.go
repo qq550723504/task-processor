@@ -19,7 +19,6 @@ func initResult(task *Task) *ListingKitResult {
 		UpdatedAt: task.UpdatedAt,
 		Summary: &GenerationSummary{
 			SourceType: detectSourceType(task.Request),
-			ImageCount: len(task.Request.ImageURLs),
 		},
 	})
 	ensureResultPodExecution(result, task.Request)
@@ -57,14 +56,8 @@ func detectSourceType(req *GenerateRequest) string {
 		return ""
 	}
 	switch {
-	case strings.TrimSpace(req.ProductURL) != "" && len(req.ImageURLs) > 0 && strings.TrimSpace(req.Text) != "":
-		return "mixed"
-	case strings.TrimSpace(req.ProductURL) != "":
-		return "product_url"
-	case len(req.ImageURLs) > 0 && strings.TrimSpace(req.Text) != "":
-		return "images_and_text"
-	case len(req.ImageURLs) > 0:
-		return "images"
+	case strings.TrimSpace(req.ProductKey) != "":
+		return "product_snapshot"
 	case strings.TrimSpace(req.Text) != "":
 		return "text"
 	default:

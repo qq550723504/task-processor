@@ -18,10 +18,7 @@ type StudioSessionHandlerService interface {
 	RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	RetryStudioBatchDesignBackgroundRemoval(ctx context.Context, batchID string, req *RetryStudioBatchDesignBackgroundRemovalRequest) (*StudioBatchDetail, error)
 	ApplyManualStudioBatchDesignBackgroundRemoval(ctx context.Context, batchID string, designID string, input *ImageUploadInput) (*StudioBatchDetail, error)
-	ScheduleStudioBatchSDSChildRetries(ctx context.Context, batchID string) (*StudioBatchSDSChildRetryResult, error)
 	ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error)
-	PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
-	CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
 	UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*StudioBatchDraftDetail, error)
 	DeleteStudioBatch(ctx context.Context, batchID string) error
 }
@@ -34,9 +31,7 @@ type StudioSessionHandler interface {
 	RetryStudioBatchItems(c *gin.Context)
 	RetryStudioBatchDesignBackgroundRemoval(c *gin.Context)
 	ApplyManualStudioBatchDesignBackgroundRemoval(c *gin.Context)
-	RetryStudioBatchSDSChildTasks(c *gin.Context)
 	ApproveStudioBatchDesigns(c *gin.Context)
-	CreateStudioBatchTasks(c *gin.Context)
 	UpsertStudioBatch(c *gin.Context)
 	DeleteStudioBatch(c *gin.Context)
 }

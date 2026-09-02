@@ -1,9 +1,8 @@
 package listingkit
 
 import (
-	"task-processor/internal/asset"
-	"task-processor/internal/product/catalog/canonical"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -11,8 +10,6 @@ func buildSheinPreviewPayload(
 	pkg *sheinpub.Package,
 	pod *PodExecutionSummary,
 	canonical *canonical.Product,
-	assetBundle *asset.Bundle,
-	renderPreviews *PlatformAssetRenderPreviews,
 ) *SheinPreviewPayload {
 	if pkg == nil {
 		return nil
@@ -21,8 +18,6 @@ func buildSheinPreviewPayload(
 		pkg,
 		pod,
 		canonical,
-		assetBundle,
-		renderPreviews,
 	)
 	return buildSheinPreviewPayloadFromInput(input)
 }
@@ -31,8 +26,6 @@ func buildSheinPreviewPayloadInput(
 	pkg *sheinpub.Package,
 	pod *PodExecutionSummary,
 	canonical *canonical.Product,
-	assetBundle *asset.Bundle,
-	renderPreviews *PlatformAssetRenderPreviews,
 ) sheinPreviewPayloadInput {
 	sheinpub.NormalizePackageSemanticFields(pkg)
 	needsReview, summary := sheinworkspace.BuildPreviewReviewSummary(pkg)
@@ -46,8 +39,6 @@ func buildSheinPreviewPayloadInput(
 	return sheinPreviewPayloadInput{
 		pkg:               pkg,
 		canonical:         canonical,
-		visualAssetBundle: assetBundle,
-		renderPreviews:    renderPreviews,
 		needsReview:       needsReview,
 		summary:           summary,
 		readiness:         readiness,

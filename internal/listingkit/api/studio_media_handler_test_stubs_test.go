@@ -13,19 +13,12 @@ type stubStudioMediaHandlerService struct {
 	uploadedImageFile       *listingkit.UploadedImageFile
 	deletedUploadedImage    *listingkit.DeletedUploadedImage
 	studioDesigns           *listingkit.StudioDesignResponse
-	studioProductImages     *listingkit.StudioProductImageResponse
-	regeneratedSheinImage   *listingkit.RegenerateSheinDataImageResponse
 	err                     error
 	uploadedImageKey        string
 	deletedUploadedImageKey string
 	uploadImagesReq         *listingkit.UploadImagesRequest
 	studioDesignCtx         context.Context
 	studioDesignReq         *listingkit.StudioDesignRequest
-	studioProductImageCtx   context.Context
-	studioProductImageReq   *listingkit.StudioProductImageRequest
-	regenerateSheinImageCtx context.Context
-	regenerateSheinImageID  string
-	regenerateSheinImageReq *listingkit.RegenerateSheinDataImageRequest
 	updatedStudioSessionCtx context.Context
 	updatedStudioSessionID  string
 	updatedStudioSessionReq *listingkit.UpdateStudioSessionRequest
@@ -66,22 +59,6 @@ func (s *stubStudioMediaHandlerService) GenerateStudioDesigns(ctx context.Contex
 	s.studioDesignCtx = ctx
 	s.studioDesignReq = req
 	return s.studioDesigns, s.err
-}
-
-func (s *stubStudioMediaHandlerService) GenerateStudioProductImages(ctx context.Context, req *listingkit.StudioProductImageRequest) (*listingkit.StudioProductImageResponse, error) {
-	s.studioProductImageCtx = ctx
-	s.studioProductImageReq = req
-	return s.studioProductImages, s.err
-}
-
-func (s *stubStudioMediaHandlerService) RegenerateSheinDataImage(ctx context.Context, taskID string, req *listingkit.RegenerateSheinDataImageRequest) (*listingkit.RegenerateSheinDataImageResponse, error) {
-	s.regenerateSheinImageCtx = ctx
-	s.regenerateSheinImageID = taskID
-	s.regenerateSheinImageReq = req
-	if s.regeneratedSheinImage != nil || s.err != nil {
-		return s.regeneratedSheinImage, s.err
-	}
-	return nil, errors.New("not implemented")
 }
 
 func (s *stubStudioMediaHandlerService) SyncStudioDesignAsyncJob(ctx context.Context, sessionID string, jobStatus listingkit.StudioAsyncJobStatus, jobID string, errMessage string) error {

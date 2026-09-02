@@ -2,57 +2,12 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
-	"sort"
 	"strings"
 	"time"
 
-	"task-processor/internal/asset"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/product/catalog"
-	"task-processor/internal/product/catalog/canonical"
-	"task-processor/internal/productimage"
 )
-
-func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) error {
-	stage := recorder.Start("sds_catalog_product", "")
-	canonicalProduct := buildStudioFallbackCanonicalProduct(task)
-	if canonicalProduct == nil {
-		stage.Fail("sds_catalog_product_failed", "Failed to build SDS studio product", "")
-		return fmt.Errorf("failed to build SDS studio product")
-	}
-	result.CanonicalProduct = canonicalProduct
-	catalogProduct, err := catalog.Normalize(canonicalProduct)
-	if err != nil {
-		stage.Fail("sds_catalog_product_failed", "Failed to normalize SDS studio product", err.Error())
-		return err
-	}
-	result.CatalogProduct = catalogProduct
-	rebuildAssetBundlesForRetry(result, canonicalProduct, task.Request)
-	markChildTask(result, "sds_catalog_product", "", string(core.TaskStatusCompleted), "")
-	stage.Complete()
-
-	var sdsOptions *SDSSyncOptions
-	if task.Request != nil && task.Request.Options != nil {
-		sdsOptions = task.Request.Options.SDS
-	}
-	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSDesignResult, sdsOptions) {
-		catalogProduct, err = catalog.Normalize(canonicalProduct)
-		if err != nil {
-			return err
-		}
-		result.CatalogProduct = catalogProduct
-		rebuildAssetBundlesForRetry(result, canonicalProduct, task.Request)
-	}
-	result.Summary = ensureGenerationSummary(result.Summary)
-	result.Summary.NeedsReview = false
-	snapshot := buildStandardProductSnapshot(result)
-	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(s)
-	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, canonicalProduct)
-	final := s.runPlatformAdaptation(ctx, task, snapshot, recipesByPlatform, nil, nil, nil, shouldGenerateAssets(task.Request), sdsOptions)
-	*result = *final
-	return nil
-}
 
 func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) error {
 	if task == nil || task.Request == nil {
@@ -65,11 +20,7 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 	if sdsOptions == nil {
 		return core.ErrChildTaskNotRetryable
 	}
-	if len(result.ImageAssetsByTarget) > 0 {
-		s.syncSDSDesign(ctx, task, result, deterministicSDSImageResult(result), recorder)
-	} else if result.ImageAssets != nil {
-		s.syncSDSDesign(ctx, task, result, result.ImageAssets, recorder)
-	} else if shouldRunRemoteSDSDesignSync(task.Request) {
+	if shouldRunRemoteSDSDesignSync(task.Request) {
 		s.syncSDSDesignFromRemote(ctx, task, result, recorder)
 	} else {
 		return core.ErrChildTaskNotRetryable
@@ -81,53 +32,14 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 				return err
 			}
 			result.CatalogProduct = catalogProduct
-			rebuildAssetBundlesForRetry(result, result.CanonicalProduct, task.Request)
 		}
 	}
 	result.Summary = ensureGenerationSummary(result.Summary)
 	result.Summary.NeedsReview = false
 	snapshot := buildStandardProductSnapshot(result)
-	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(s)
-	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, canonicalProductFromStandardSnapshot(snapshot))
-	final := s.runPlatformAdaptation(ctx, task, snapshot, recipesByPlatform, nil, nil, nil, shouldGenerateAssets(task.Request), sdsOptions)
+	final := s.runPlatformAdaptation(ctx, task, snapshot)
 	*result = *final
 	return nil
-}
-
-func rebuildAssetBundlesForRetry(result *ListingKitResult, canonicalProduct *canonical.Product, req *GenerateRequest) {
-	if result == nil {
-		return
-	}
-	if len(result.ImageAssetsByTarget) > 0 {
-		if result.AssetBundlesByTarget == nil {
-			result.AssetBundlesByTarget = map[string]*asset.Bundle{}
-		}
-		if result.AssetInventorySummariesByTarget == nil {
-			result.AssetInventorySummariesByTarget = map[string]*asset.InventorySummary{}
-		}
-		for target, imageResult := range result.ImageAssetsByTarget {
-			bundle := asset.BuildBundle(canonicalProduct, imageResult)
-			result.AssetBundlesByTarget[target] = bundle
-			result.AssetInventorySummariesByTarget[target] = asset.InventorySummaryFromBundle(bundle)
-		}
-		result.applyCompatibilityAssetProjectionForRequest(req)
-		return
-	}
-	if result.AssetBundle == nil {
-		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
-	}
-	result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
-}
-
-func sortedImageAssetTargets(images map[string]*productimage.ImageProcessResult) []string {
-	targets := make([]string, 0, len(images))
-	for target, imageResult := range images {
-		if imageResult != nil {
-			targets = append(targets, target)
-		}
-	}
-	sort.Strings(targets)
-	return targets
 }
 
 func (s *service) persistRetriedChildTaskResult(ctx context.Context, task *Task, result *ListingKitResult, kind string, retryErr error) (*TaskResult, error) {
@@ -175,7 +87,7 @@ func (s *service) persistRetriedChildTaskResult(ctx context.Context, task *Task,
 
 func childTaskRetrySupportedKind(kind string) bool {
 	switch strings.TrimSpace(kind) {
-	case "sds_catalog_product", "sds_design_sync":
+	case "sds_design_sync":
 		return true
 	default:
 		return false

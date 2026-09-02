@@ -20,7 +20,7 @@ func TestBuildSheinPreviewPayloadPopulatesSemanticFields(t *testing.T) {
 	}
 	sheinpub.NormalizePackageSemanticFields(pkg)
 
-	payload := buildSheinPreviewPayload(pkg, nil, nil, nil, nil)
+	payload := buildSheinPreviewPayload(pkg, nil, nil)
 	if payload == nil {
 		t.Fatal("payload = nil")
 	}
@@ -70,7 +70,7 @@ func TestPreviewAndExportJSONIncludeLegacyAndSemanticFieldNames(t *testing.T) {
 	}
 	sheinpub.NormalizePackageSemanticFields(pkg)
 
-	previewPayload := buildSheinPreviewPayload(pkg, nil, nil, nil, nil)
+	previewPayload := buildSheinPreviewPayload(pkg, nil, nil)
 	if previewPayload == nil {
 		t.Fatal("preview payload = nil")
 	}
@@ -124,7 +124,7 @@ func TestBuildSheinPreviewPayloadDoesNotFallbackHeadlineOrFinalReviewTitle(t *te
 	}
 	sheinpub.NormalizePackageSemanticFields(pkg)
 
-	payload := buildSheinPreviewPayload(pkg, nil, nil, nil, nil)
+	payload := buildSheinPreviewPayload(pkg, nil, nil)
 	if payload == nil {
 		t.Fatal("payload = nil")
 	}

@@ -12,7 +12,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/listingkit"
-	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingsubscription"
 )
 
@@ -24,7 +23,7 @@ var studioAsyncJobHeartbeatFailureRecoveryAfter = 30 * time.Minute
 
 var errStudioAsyncJobHeartbeatLost = errors.New("studio async job heartbeat lost")
 
-func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, sessionID string, baseURL string, usageMetric string, usageReservationID string) {
+func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, sessionID string, baseURL string, usageMetric string) {
 	startedAt := time.Now()
 	studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
 		"job_id":       jobID,
@@ -111,26 +110,8 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		}
 		h.syncStudioDesignAsyncJobSession(ctx, sessionID, listingkit.StudioAsyncJobStatusSucceeded, jobID, "")
 		result = response
-	case "/studio/product-images":
-		var req listingkit.StudioProductImageRequest
-		if decodeErr := json.Unmarshal(body, &req); decodeErr != nil {
-			err = decodeErr
-			status = http.StatusBadRequest
-			break
-		}
-		response, callErr := h.studioMediaService.GenerateStudioProductImages(jobCtx, &req)
-		if callErr != nil {
-			err = callErr
-			break
-		}
-		if response != nil {
-			for idx := range response.Images {
-				response.Images[idx].ImageURL = publicizeUploadedImageURLsWithBase(baseURL, []string{response.Images[idx].ImageURL})[0]
-			}
-		}
-		result = response
 	default:
-		err = core.ErrTaskNotFound
+		err = fmt.Errorf("unsupported studio async job path")
 		status = http.StatusBadRequest
 	}
 	if err == nil && jobCtx.Err() != nil {
@@ -148,10 +129,6 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		failureErr := err
 		if persistErr := h.studioAsyncJobs.failWithError(ctx, jobID, err, status); persistErr != nil {
 			failureErr = errors.Join(failureErr, fmt.Errorf("persist async job failure: %w", persistErr))
-		} else if strings.TrimSpace(usageReservationID) != "" {
-			if releaseErr := releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "generation_failed"); releaseErr != nil {
-				failureErr = errors.Join(failureErr, fmt.Errorf("release product image usage: %w", releaseErr))
-			}
 		}
 		if path == "/studio/designs" {
 			h.syncStudioDesignAsyncJobSession(ctx, sessionID, listingkit.StudioAsyncJobStatusFailed, jobID, failureErr.Error())
@@ -166,26 +143,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		})).WithError(failureErr).Warn("studio async job failed")
 		return
 	}
-	if strings.TrimSpace(usageReservationID) != "" {
-		if successErr := h.studioAsyncJobs.succeedWithError(ctx, jobID, result); successErr != nil {
-			failureErr := successErr
-			if persistErr := h.studioAsyncJobs.failWithError(ctx, jobID, successErr, http.StatusInternalServerError); persistErr != nil {
-				failureErr = errors.Join(failureErr, fmt.Errorf("persist async job failure: %w", persistErr))
-			} else if releaseErr := releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "success_persistence_failed"); releaseErr != nil {
-				failureErr = errors.Join(failureErr, fmt.Errorf("release product image usage: %w", releaseErr))
-			}
-			studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
-				"job_id": jobID, "path": path, "usage_metric": usageMetric,
-			})).WithError(failureErr).Warn("studio async success persistence failed")
-			return
-		}
-		if commitErr := commitStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID); commitErr != nil {
-			studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
-				"job_id": jobID, "path": path, "usage_metric": usageMetric,
-			})).WithError(commitErr).Warn("studio async usage commit pending reconciliation")
-			return
-		}
-	} else if h.subscriptionService != nil && strings.TrimSpace(usageMetric) != "" {
+	if h.subscriptionService != nil && strings.TrimSpace(usageMetric) != "" {
 		_, _ = h.subscriptionService.RecordUsage(ctx, listingkit.TenantIDFromContext(ctx), listingsubscription.ModuleStudio, usageMetric, 1)
 		if successErr := h.studioAsyncJobs.succeedWithError(ctx, jobID, result); successErr != nil {
 			studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{

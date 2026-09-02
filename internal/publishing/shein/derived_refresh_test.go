@@ -101,7 +101,6 @@ func TestRefreshDerivedStateRecomputesSaleAttributesAndClearsSuggestion(t *testi
 	RefreshDerivedState(
 		&BuildRequest{Country: "US"},
 		canonical,
-		nil,
 		pkg,
 		nil,
 		refreshDerivedStubAttributeResolver{},
@@ -204,7 +203,6 @@ func TestRefreshDerivedStatePreservesVariantSpecificSKCImagesWhenFallbackSplitsG
 	RefreshDerivedState(
 		&BuildRequest{Country: "US"},
 		canonicalProduct,
-		nil,
 		pkg,
 		nil,
 		nil,
@@ -270,7 +268,6 @@ func TestRefreshDerivedStateRebuildsSizeAttributesIntoPreviewPayload(t *testing.
 	RefreshDerivedState(
 		&BuildRequest{Country: "US", Language: "en", ProductSize: productSize},
 		canonicalProduct,
-		nil,
 		pkg,
 		nil,
 		nil,
@@ -327,7 +324,6 @@ func TestRefreshDerivedStateNilRequestDoesNotPanicOnProductSizeAccess(t *testing
 	RefreshDerivedState(
 		nil,
 		canonicalProduct,
-		nil,
 		pkg,
 		nil,
 		nil,
@@ -408,7 +404,6 @@ func TestRefreshDerivedStateClearsStaleSizeAttributesWhenProductSizeInvalid(t *t
 			RefreshDerivedState(
 				&BuildRequest{Country: "US", Language: "en", ProductSize: tc.productSize},
 				canonicalProduct,
-				nil,
 				pkg,
 				nil,
 				nil,

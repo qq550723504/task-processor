@@ -5,8 +5,6 @@ import (
 	"strings"
 	"time"
 
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
 	"task-processor/internal/listingkit/core"
 )
 
@@ -55,37 +53,14 @@ func (s *service) ProcessPlatformAdaptationLayer(ctx context.Context, taskID str
 	if err != nil {
 		return nil, err
 	}
-	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(s)
-	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, canonicalProductFromStandardSnapshot(snapshot))
 	if normalized := strings.ToLower(strings.TrimSpace(platform)); normalized != "" && normalized != "all" {
-		filtered := map[string][]assetrecipe.AssetRecipe{}
-		if recipes, ok := recipesByPlatform[normalized]; ok {
-			filtered[normalized] = recipes
-		} else {
-			filtered[normalized] = nil
-		}
-		recipesByPlatform = filtered
+		adaptationTask := *task
+		adaptationRequest := *task.Request
+		adaptationRequest.Platforms = []string{normalized}
+		adaptationTask.Request = &adaptationRequest
+		task = &adaptationTask
 	}
-	inventory, persistedGenerationTasks := s.loadPlatformAdaptationAssets(ctx, task, snapshot)
-	var generationPlan *assetgeneration.Result
-	if len(persistedGenerationTasks) > 0 {
-		generationPlan = &assetgeneration.Result{Tasks: assetgeneration.CloneTasks(persistedGenerationTasks)}
-	}
-	var sdsOptions *SDSSyncOptions
-	if task.Request != nil && task.Request.Options != nil {
-		sdsOptions = task.Request.Options.SDS
-	}
-	result := s.runPlatformAdaptation(
-		ctx,
-		task,
-		snapshot,
-		recipesByPlatform,
-		generationPlan,
-		inventory,
-		persistedGenerationTasks,
-		shouldGenerateAssets(task.Request),
-		sdsOptions,
-	)
+	result := s.runPlatformAdaptation(ctx, task, snapshot)
 	if err := s.persistProcessedTaskResult(ctx, task.ID, result); err != nil {
 		return nil, err
 	}

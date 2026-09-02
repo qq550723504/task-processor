@@ -57,7 +57,6 @@ func sheinVariantImageCoverageStatus(pkg *sheinpub.Package) (string, bool) {
 
 func sheinVariantImageCoverageCount(req *GenerateRequest, sdsSummary *SDSSyncSummary) int {
 	counts := []int{
-		len(normalizeSheinStudioVariantImageSets(req.Options.SheinStudio.VariantProductImages)),
 		len(selectedSDSVariantImageCoverage(req.Options.SheinStudio.SelectedSDSImages)),
 		len(completedSDSVariantCoverage(sdsSummary)),
 	}

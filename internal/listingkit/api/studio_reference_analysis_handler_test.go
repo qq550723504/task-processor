@@ -59,12 +59,16 @@ func (s *stubStudioReferenceAnalysisService) GenerateStudioDesigns(context.Conte
 	return nil, errors.New("not used")
 }
 
-func (s *stubStudioReferenceAnalysisService) GenerateStudioProductImages(context.Context, *listingkit.StudioProductImageRequest) (*listingkit.StudioProductImageResponse, error) {
-	return nil, errors.New("not used")
-}
-
-func (s *stubStudioReferenceAnalysisService) RegenerateSheinDataImage(context.Context, string, *listingkit.RegenerateSheinDataImageRequest) (*listingkit.RegenerateSheinDataImageResponse, error) {
-	return nil, errors.New("not used")
+func activeStudioSubscriptionService(t *testing.T) *listingsubscription.Service {
+	t.Helper()
+	svc, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpsertEntitlement(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{Status: listingsubscription.StatusActive}); err != nil {
+		t.Fatal(err)
+	}
+	return svc
 }
 
 func TestAnalyzeStudioReferenceStyleHandlerReturnsBrief(t *testing.T) {

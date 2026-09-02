@@ -6,27 +6,18 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"task-processor/internal/asset"
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
+	productasset "task-processor/internal/product/asset"
 )
 
 type standardWorkflowState struct {
-	result                   *ListingKitResult
-	snapshot                 *StandardProductSnapshot
-	recipesByPlatform        map[string][]assetrecipe.AssetRecipe
-	generationPlan           *assetgeneration.Result
-	inventory                *asset.Inventory
-	persistedGenerationTasks []assetgeneration.Task
-	enableAssetGeneration    bool
-	sdsOptions               *SDSSyncOptions
-	blocked                  bool
+	result   *ListingKitResult
+	snapshot *StandardProductSnapshot
+	blocked  bool
 }
 
 func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*standardWorkflowState, error) {
 	result := initResult(task)
 	recorder := newWorkflowRecorder(result)
-	enableAssetGeneration := shouldGenerateAssets(task.Request)
 	log := logrus.WithFields(logrus.Fields{
 		"component": "listingkit/workflow_standard",
 		"task_id":   task.ID,
@@ -51,10 +42,6 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	result.CatalogProduct = &productSnapshot
 	canonicalProduct := canonicalProductFromSnapshot(productSnapshot)
 	result.CanonicalProduct = canonicalProduct
-	if !shouldProcessImages(task.Request) {
-		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
-		result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
-	}
 	log.WithFields(logrus.Fields{
 		"has_canonical": canonicalProduct != nil,
 		"image_count": func() int {
@@ -76,31 +63,30 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 		log.WithError(validationErr).Warn("sds baseline validation persistence failed")
 	}
 
-	_, sdsOptions, mediaErr := buildStandardWorkflowMediaPhase(s).run(ctx, task, result, canonicalProduct, recorder, log)
-	if mediaErr != nil {
-		return &standardWorkflowState{result: result}, mediaErr
+	assetStage := recorder.Start("approved_assets", "")
+	approvedInventory, assetErr := buildStandardWorkflowAssetPhase(s).run(ctx, productasset.InventoryScope{
+		TenantID: task.TenantID, ProductKey: task.Request.ProductKey,
+	})
+	if assetErr != nil {
+		if errors.Is(assetErr, productasset.ErrApprovedAssetsNotReady) {
+			assetStage.Fail("approved_assets_not_ready", "Approved product assets are not ready", assetErr.Error())
+			recorder.FinalizeSummary()
+			snapshot := buildStandardProductSnapshot(result)
+			result.StandardProductSnapshot = snapshot
+			return &standardWorkflowState{result: result, snapshot: snapshot, blocked: true}, nil
+		}
+		assetStage.Fail("approved_assets_read_failed", "Approved product assets could not be read", assetErr.Error())
+		recorder.FinalizeSummary()
+		return &standardWorkflowState{result: result}, assetErr
 	}
-
-	inventory, recipesByPlatform, generationPlan, persistedGenerationTasks := buildStandardWorkflowAssetPhase(s).run(
-		ctx,
-		task,
-		result,
-		canonicalProduct,
-		recorder,
-		enableAssetGeneration,
-	)
+	assetStage.Complete()
+	result.ApprovedAssetInventory = &approvedInventory
 
 	recorder.FinalizeSummary()
 	snapshot := buildStandardProductSnapshot(result)
 	result.StandardProductSnapshot = snapshot
 	return &standardWorkflowState{
-		result:                   result,
-		snapshot:                 snapshot,
-		recipesByPlatform:        recipesByPlatform,
-		generationPlan:           generationPlan,
-		inventory:                inventory,
-		persistedGenerationTasks: persistedGenerationTasks,
-		enableAssetGeneration:    enableAssetGeneration,
-		sdsOptions:               sdsOptions,
+		result:   result,
+		snapshot: snapshot,
 	}, nil
 }

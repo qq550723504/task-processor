@@ -11,12 +11,22 @@ import (
 	"github.com/google/uuid"
 
 	"task-processor/internal/authidentity"
-	listingplatform "task-processor/internal/listing/platform"
 	listingsubmission "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
 	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/tenantbridge"
 )
+
+type taskDispatchCancellationContextKey struct{}
+
+func taskDispatchCancellationPreserved(ctx context.Context) bool {
+	preserve, _ := ctx.Value(taskDispatchCancellationContextKey{}).(bool)
+	return preserve
+}
+
+func withTaskDispatchCancellation(ctx context.Context) context.Context {
+	return context.WithValue(ctx, taskDispatchCancellationContextKey{}, true)
+}
 
 func buildTaskListSummary(tasks []Task) *TaskListSummary {
 	if len(tasks) == 0 {
@@ -224,9 +234,6 @@ func (s *taskLifecycleService) dispatchGenerateTask(ctx context.Context, task *T
 	if s.taskSubmitter == nil || s.taskSubmitter() == nil {
 		return s.runGenerateTaskInline(ctx, task)
 	}
-	if shouldRunStudioInline(task.Request) {
-		return s.dispatchStudioTask(ctx, task)
-	}
 	if err := s.enqueueGenerateTask(ctx, task); err != nil {
 		return nil, err
 	}
@@ -341,9 +348,6 @@ func validateRequest(req *GenerateRequest) error {
 	}
 	if len(req.Platforms) == 0 {
 		return fmt.Errorf("at least one platform is required")
-	}
-	if shouldProcessImages(req) && hasImageProcessingInput(req) && len(listingplatform.NormalizeSupportedPlatforms(req.Platforms)) == 0 {
-		return fmt.Errorf("image processing requires at least one supported target platform")
 	}
 	if err := validateSheinStudioAspectRatio(req); err != nil {
 		return err

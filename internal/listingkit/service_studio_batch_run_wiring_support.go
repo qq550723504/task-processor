@@ -147,7 +147,6 @@ func buildTaskStudioBatchRunExecutorConfigWithWiring(
 	return taskStudioBatchRunExecutorConfig{
 		repo:               wiring.repo,
 		executeGenerateOne: s.executeStudioBatchRunItem,
-		executeCreateTasks: s.executeStudioBatchRunTaskCreation,
 		completionRunner:   wiring.newCompletionRunner(nil),
 	}
 }

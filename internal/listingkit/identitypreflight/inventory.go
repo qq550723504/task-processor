@@ -36,7 +36,6 @@ var ownerTableInventory = [...]OwnerTable{
 	{Table: "listingkit_studio_batch_items", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},
 	{Table: "listingkit_studio_generation_attempts", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},
 	{Table: "listingkit_studio_materialized_designs", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},
-	{Table: "listingkit_studio_batch_task_links", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},
 	{Table: "listingkit_studio_batch_runs", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},
 	{Table: "listingkit_studio_batch_run_items", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},
 	{Table: "shein_studio_sessions", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},

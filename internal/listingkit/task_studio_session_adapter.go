@@ -23,11 +23,6 @@ type listingStudioSessionGenerationMetadataRunner = studiodomain.SessionGenerati
 	SheinStudioGenerationJob,
 ]
 
-type listingStudioSessionReviewTaskMetadataRunner = studiodomain.SessionReviewTaskMetadataService[
-	SheinStudioSession,
-	SheinStudioCreatedTask,
-]
-
 type listingStudioSessionGeneralMetadataRunner = studiodomain.SessionGeneralMetadataService[
 	SheinStudioSession,
 	UpdateStudioSessionRequest,
@@ -78,17 +73,6 @@ func newListingStudioSessionGenerationMetadataService(repo studioSessionDraftRep
 		SetGenerationJobID: setListingStudioSessionGenerationJobID,
 		SetGenerationJobs:  setListingStudioSessionGenerationJobs,
 		SetGenerationError: setListingStudioSessionGenerationError,
-	})
-}
-
-func newListingStudioSessionReviewTaskMetadataService(repo studioSessionDraftRepository) *listingStudioSessionReviewTaskMetadataRunner {
-	return studiodomain.NewSessionReviewTaskMetadataService(studiodomain.SessionReviewTaskMetadataServiceConfig[
-		SheinStudioSession,
-		SheinStudioCreatedTask,
-	]{
-		Repo:                 studioSessionMutationRepositoryAdapter{repo: repo},
-		SetApprovedDesignIDs: setListingStudioSessionApprovedDesignIDs,
-		SetCreatedTasks:      setListingStudioSessionCreatedTasks,
 	})
 }
 

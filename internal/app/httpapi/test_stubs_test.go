@@ -86,10 +86,6 @@ func (stubStudioSessionHandler) ApproveStudioBatchDesigns(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"batch_id": c.Param("batch_id")})
 }
 
-func (stubStudioSessionHandler) CreateStudioBatchTasks(c *gin.Context) {
-	c.JSON(http.StatusAccepted, gin.H{"batch_id": c.Param("batch_id")})
-}
-
 func (stubStudioSessionHandler) UpsertStudioBatch(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"saved": true})
 }

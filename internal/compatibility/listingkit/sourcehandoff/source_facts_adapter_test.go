@@ -98,38 +98,3 @@ func TestCatalogProductFactsFromSnapshotConsumesCanonicalProductProjection(t *te
 		t.Fatalf("Variant attributes = %+v, want snapshot variant attributes", facts.Variants[0].Attributes)
 	}
 }
-
-func TestAssetFactsFromEnvelopeMapsNeutralAssets(t *testing.T) {
-	envelope := sourcing.SourceEnvelope{
-		Identity: sourcing.SourceIdentity{
-			SourceType:     sourcing.SourceTypeCrawler,
-			SourcePlatform: "amazon",
-			SourceID:       "B001",
-		},
-		AssetCandidates: []sourcing.AssetCandidate{{
-			SourceID:  "img-1",
-			URL:       "https://img.example/1.jpg",
-			MediaType: "image",
-			Role:      "primary",
-			Checksum:  "sha256:1",
-		}},
-		Warnings: []sourcing.SourceWarning{{Code: " Missing_Alt_Text ", Field: "images", Message: " image alt text missing "}},
-	}
-
-	facts := assetFactsFromEnvelope(envelope)
-	if !facts.HasAssets() {
-		t.Fatal("HasAssets() = false, want true")
-	}
-	if facts.SourceKey != "crawler:amazon:B001" {
-		t.Fatalf("SourceKey = %q, want crawler:amazon:B001", facts.SourceKey)
-	}
-	if len(facts.Items) != 1 {
-		t.Fatalf("items = %d, want 1", len(facts.Items))
-	}
-	if facts.Items[0].URL != "https://img.example/1.jpg" || facts.Items[0].Role != "primary" {
-		t.Fatalf("asset item = %+v, want mapped asset facts", facts.Items[0])
-	}
-	if len(facts.Warnings) != 1 || facts.Warnings[0].Code != "missing_alt_text" {
-		t.Fatalf("warnings = %+v, want normalized warning", facts.Warnings)
-	}
-}

@@ -52,7 +52,7 @@ func TestAssemblerBuildWritesAuthorizedBrandMetadataAndPreviewBrandCode(t *testi
 		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
-	pkg := NewAssembler(AssemblerConfig{}).Build(req, product, nil)
+	pkg := NewAssembler(AssemblerConfig{}).Build(req, product)
 	if pkg == nil {
 		t.Fatal("Build() = nil, want package")
 	}

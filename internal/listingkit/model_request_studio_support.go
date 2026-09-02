@@ -6,9 +6,7 @@ type SheinStudioOptions struct {
 	SourceDesignURLs        []string                      `json:"source_design_urls,omitempty"`
 	SourceDesignWidth       int                           `json:"source_design_width,omitempty"`
 	SourceDesignHeight      int                           `json:"source_design_height,omitempty"`
-	ProductImageURLs        []string                      `json:"product_image_urls,omitempty"`
 	SelectedSDSImages       []SheinStudioSelectedSDSImage `json:"selected_sds_images,omitempty"`
-	VariantProductImages    []SheinStudioVariantImageSet  `json:"variant_product_images,omitempty"`
 	SizeReferenceImageURLs  []string                      `json:"size_reference_image_urls,omitempty"`
 	RenderSizeImagesWithSDS bool                          `json:"render_size_images_with_sds,omitempty"`
 }
@@ -17,35 +15,6 @@ type SheinStudioSelectedSDSImage struct {
 	ImageURL   string `json:"image_url,omitempty"`
 	VariantSKU string `json:"variant_sku,omitempty"`
 	Color      string `json:"color,omitempty"`
-}
-
-type SheinStudioVariantImageSet struct {
-	VariantSKU string   `json:"variant_sku,omitempty"`
-	Color      string   `json:"color,omitempty"`
-	ImageURLs  []string `json:"image_urls,omitempty"`
-}
-
-type StudioProductImageRequest struct {
-	Prompt                    string                     `json:"prompt,omitempty"`
-	PromptMode                string                     `json:"prompt_mode,omitempty"`
-	ProductName               string                     `json:"product_name,omitempty"`
-	CategoryPath              []string                   `json:"category_path,omitempty"`
-	StyleName                 string                     `json:"style_name,omitempty"`
-	SourceDesignURL           string                     `json:"source_design_url,omitempty"`
-	ProductReferenceImageURLs []string                   `json:"product_reference_image_urls,omitempty"`
-	CustomPrompt              string                     `json:"custom_prompt,omitempty"`
-	ImagePrompts              []StudioProductImagePrompt `json:"image_prompts,omitempty"`
-	Count                     int                        `json:"count,omitempty"`
-}
-
-type StudioProductImagePrompt struct {
-	Role   string `json:"role,omitempty"`
-	Prompt string `json:"prompt,omitempty"`
-}
-
-type StudioProductImageResponse struct {
-	Images   []StudioGeneratedImage `json:"images,omitempty"`
-	Warnings []string               `json:"warnings,omitempty"`
 }
 
 type StudioGeneratedImage struct {

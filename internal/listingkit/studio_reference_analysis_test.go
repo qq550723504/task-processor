@@ -1226,24 +1226,6 @@ func TestStudioReferenceUploadedImageKeyFromURL(t *testing.T) {
 	}
 }
 
-func TestNormalizeGenerateRequestImageURLs(t *testing.T) {
-	got := normalizeGenerateRequestImageURLs([]string{
-		"",
-		" /api/v1/listing-kits/uploads/files/folder/reference.png ",
-		"http://localhost:3000/api/v1/listing-kits/uploads/files/folder/already-local.png",
-		"https://example.com/remote.png",
-	})
-
-	want := []string{
-		"http://localhost:3000/api/v1/listing-kits/uploads/files/folder/reference.png",
-		"http://localhost:3000/api/v1/listing-kits/uploads/files/folder/already-local.png",
-		"https://example.com/remote.png",
-	}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("normalizeGenerateRequestImageURLs() = %#v, want %#v", got, want)
-	}
-}
-
 type stubResolveUploadedImageRepository struct {
 	record *UploadedImageRecord
 	err    error

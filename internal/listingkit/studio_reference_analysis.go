@@ -10,8 +10,8 @@ import (
 	"path"
 	"strings"
 
-	referenceanalysis "task-processor/internal/listing/studio/referenceanalysis"
 	"task-processor/internal/integration/httpimage"
+	referenceanalysis "task-processor/internal/listing/studio/referenceanalysis"
 )
 
 const maxStudioReferenceAnalysisImages = 1

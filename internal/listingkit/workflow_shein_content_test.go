@@ -31,22 +31,20 @@ func TestRunWorkflowOptimizesSheinContentBeforeFinalReview(t *testing.T) {
 		response: `{"title":"Botanical Envelope Pillow Cover for Sofa Couch Bedroom Decor, Soft Polyester Accent Cushion Case","description":"A soft polyester envelope pillow cover designed to refresh sofas, beds, and reading corners with a botanical accent print. The overlap closure keeps the insert tucked in while making everyday styling changes easy."}`,
 	}
 
-	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{
+	svc := seedWorkflowServices(seedSupportDeps(&service{
 		sheinSharedDeps: sheinSharedDependencies{
 			contentOptimizer: ai,
 		},
 	}, supportDependencySeed{
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
+	}), productSvc)
 
 	task := &Task{TenantID: "tenant-test", ID: "listingkit-task-shein-copy",
 		Request: &GenerateRequest{ProductKey: "test-product",
-			ImageURLs: []string{"https://example.com/pillow.jpg"},
 			Text:      "pillow cover",
 			Platforms: []string{"shein"},
 			Country:   "US",
 			Language:  "en_US",
-			Options:   &GenerateOptions{ProcessImages: false},
 		},
 	}
 
@@ -67,7 +65,7 @@ func TestRunWorkflowOptimizesSheinContentBeforeFinalReview(t *testing.T) {
 		t.Fatalf("shein description = %q", got)
 	}
 
-	preview := buildSheinPreviewPayload(result.Shein, result.PodExecution, result.CanonicalProduct, nil, nil)
+	preview := buildSheinPreviewPayload(result.Shein, result.PodExecution, result.CanonicalProduct)
 	if preview == nil || preview.FinalReview == nil {
 		t.Fatalf("preview final review = %+v", preview)
 	}

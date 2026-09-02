@@ -1,7 +1,5 @@
 package listingkit
 
-import "strings"
-
 type StudioBatchStatusGroups struct {
 	Items []StudioBatchStatusGroup          `json:"items,omitempty"`
 	ByKey map[string]StudioBatchStatusGroup `json:"by_key,omitempty"`
@@ -35,13 +33,6 @@ func BuildStudioBatchStatusGroups(detail *StudioBatchDetail) StudioBatchStatusGr
 		}
 	}
 
-	for _, task := range detail.FailedTasks {
-		builder.add("submission_failed", "提交失败", firstNonEmptyString(task.DesignID, task.Title))
-	}
-	for _, task := range detail.CreatedTasks {
-		key, label := studioBatchCreatedTaskGroup(task)
-		builder.add(key, label, firstNonEmptyString(task.ID, task.DesignID, task.Title))
-	}
 	return builder.result()
 }
 
@@ -88,36 +79,4 @@ func studioBatchItemNeedsFix(item StudioBatchItemDetail) bool {
 		}
 	}
 	return false
-}
-
-func studioBatchCreatedTaskGroup(task SheinStudioCreatedTask) (string, string) {
-	switch strings.TrimSpace(task.Status) {
-	case "":
-		if taskPublishedHint(task) {
-			return "published", "已发布"
-		}
-		return "task_created", "任务已创建"
-	case "task_created":
-		return "task_created", "任务已创建"
-	case "needs_review":
-		return "needs_review", "待审核"
-	case "ready_to_submit":
-		return "ready_to_submit", "待提交"
-	case "draft_saved":
-		return "draft_saved", "草稿已保存"
-	case "published":
-		return "published", "已发布"
-	case "submit_failed":
-		return "submission_failed", "提交失败"
-	default:
-		return "task_created", "任务已创建"
-	}
-}
-
-func taskPublishedHint(task SheinStudioCreatedTask) bool {
-	return containsFold(task.Title, "published") || containsFold(task.Title, "已发布")
-}
-
-func containsFold(value string, needle string) bool {
-	return strings.Contains(strings.ToLower(value), strings.ToLower(needle))
 }

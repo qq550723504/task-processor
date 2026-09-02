@@ -5,7 +5,6 @@ func (s *service) initializeTaskReadCollaborators() {
 		return
 	}
 	s.taskLifecycleOrDefault()
-	s.taskGenerationOrDefault()
 	s.taskRevisionOrDefault()
 	s.taskPreviewOrDefault()
 	s.taskExportOrDefault()

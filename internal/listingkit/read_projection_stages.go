@@ -9,16 +9,12 @@ func calculateListingKitNeedsReview(result *ListingKitResult) bool {
 func assembleListingKitReadProjection(
 	previewInput previewdomain.ReadModelInput,
 	platformCards []ListingKitPlatformCard,
-	attachmentExtras listingKitReadProjectionAttachmentExtras,
+	_ listingKitReadProjectionAttachmentExtras,
 	revisionMeta *previewdomain.RevisionHistoryMetaInput,
 ) *listingKitReadProjection {
 	previewInput.RevisionHistoryMeta = revisionMeta
 	return &listingKitReadProjection{
-		PreviewInput:                previewInput,
-		PlatformCards:               platformCards,
-		AssetRenderPreviews:         attachmentExtras.AssetRenderPreviews,
-		PlatformAssetRenderPreviews: attachmentExtras.PlatformAssetRenderPreviews,
-		AssetGenerationQueue:        attachmentExtras.AssetGenerationQueue,
-		AssetGenerationOverview:     attachmentExtras.AssetGenerationOverview,
+		PreviewInput:  previewInput,
+		PlatformCards: platformCards,
 	}
 }

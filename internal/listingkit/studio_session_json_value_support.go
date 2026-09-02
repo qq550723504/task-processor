@@ -42,16 +42,6 @@ func (value *SheinStudioStringList) Scan(input any) error {
 	return unmarshalStudioSessionJSON(input, value)
 }
 
-type SheinStudioProductImagePromptList []SheinStudioProductImagePrompt
-
-func (value SheinStudioProductImagePromptList) Value() (driver.Value, error) {
-	return marshalStudioSessionJSON(value)
-}
-
-func (value *SheinStudioProductImagePromptList) Scan(input any) error {
-	return unmarshalStudioSessionJSON(input, value)
-}
-
 type SheinStudioSelectedSDSImageList []SheinStudioSelectedSDSImageRecord
 
 func (value SheinStudioSelectedSDSImageList) Value() (driver.Value, error) {
@@ -59,26 +49,6 @@ func (value SheinStudioSelectedSDSImageList) Value() (driver.Value, error) {
 }
 
 func (value *SheinStudioSelectedSDSImageList) Scan(input any) error {
-	return unmarshalStudioSessionJSON(input, value)
-}
-
-type SheinStudioCreatedTaskList []SheinStudioCreatedTask
-
-func (value SheinStudioCreatedTaskList) Value() (driver.Value, error) {
-	return marshalStudioSessionJSON(value)
-}
-
-func (value *SheinStudioCreatedTaskList) Scan(input any) error {
-	return unmarshalStudioSessionJSON(input, value)
-}
-
-type SheinStudioFailedTaskList []SheinStudioFailedTask
-
-func (value SheinStudioFailedTaskList) Value() (driver.Value, error) {
-	return marshalStudioSessionJSON(value)
-}
-
-func (value *SheinStudioFailedTaskList) Scan(input any) error {
 	return unmarshalStudioSessionJSON(input, value)
 }
 

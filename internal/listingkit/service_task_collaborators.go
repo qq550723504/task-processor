@@ -1,11 +1,5 @@
 package listingkit
 
-func (s *service) taskGenerationOrDefault() *taskGenerationService {
-	return groupedCollaboratorOrBuild(&s.task.generation, func() *taskGenerationService {
-		return newTaskGenerationService(buildTaskGenerationServiceConfig(s))
-	})
-}
-
 func (s *service) taskRevisionOrDefault() *taskRevisionService {
 	return groupedCollaboratorOrBuild(&s.task.revision, func() *taskRevisionService {
 		return newTaskRevisionService(buildTaskRevisionServiceConfig(s))

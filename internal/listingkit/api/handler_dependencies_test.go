@@ -259,7 +259,6 @@ func TestNewHandlerAllowsExplicitCoreServicesWithoutBaseService(t *testing.T) {
 	core := &stubHandlerCoreService{}
 	h, err := NewHandler(nil,
 		WithTaskLifecycleService(core),
-		WithGenerationTaskService(core),
 		WithStudioMediaService(core),
 	)
 	if err != nil {
@@ -267,9 +266,6 @@ func TestNewHandlerAllowsExplicitCoreServicesWithoutBaseService(t *testing.T) {
 	}
 	if h.taskLifecycleService != core {
 		t.Fatal("expected explicit task lifecycle service to be attached")
-	}
-	if h.generationTaskService != core {
-		t.Fatal("expected explicit generation task service to be attached")
 	}
 	if h.studioMediaService != core {
 		t.Fatal("expected explicit studio media service to be attached")

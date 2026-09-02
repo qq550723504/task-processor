@@ -10,7 +10,6 @@ import (
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingkit/core"
 	worker "task-processor/internal/platform/workerpool"
-	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsdesign "task-processor/internal/sds/design"
 	sdstemplate "task-processor/internal/sds/template"
@@ -33,56 +32,14 @@ func TestNormalizeGenerateRequestDefaults(t *testing.T) {
 	if req.Language != "en_US" {
 		t.Fatalf("language = %q, want en_US", req.Language)
 	}
-	if req.Options == nil || !req.Options.ProcessImages {
-		t.Fatal("expected default options with process_images=true")
+	if req.Options == nil {
+		t.Fatal("expected normalized options")
 	}
 	if got, want := len(req.Platforms), 3; got != want {
 		t.Fatalf("platform count = %d, want %d", got, want)
 	}
 	if req.Platforms[0] != "amazon" || req.Platforms[1] != "shein" || req.Platforms[2] != "temu" {
 		t.Fatalf("normalized platforms = %#v", req.Platforms)
-	}
-}
-
-func TestNormalizeGenerateRequestAbsolutizesUploadedImageURLs(t *testing.T) {
-	t.Parallel()
-
-	req := &GenerateRequest{ProductKey: "test-product",
-		Text:      "demo",
-		ImageURLs: []string{"/api/v1/listing-kits/uploads/files/20260610/demo.png", " https://example.com/keep.png "},
-		Platforms: []string{"shein"},
-	}
-
-	normalizeGenerateRequest(req)
-
-	if got, want := req.ImageURLs[0], "http://localhost:3000/api/v1/listing-kits/uploads/files/20260610/demo.png"; got != want {
-		t.Fatalf("first image url = %q, want %q", got, want)
-	}
-	if got, want := req.ImageURLs[1], "https://example.com/keep.png"; got != want {
-		t.Fatalf("second image url = %q, want %q", got, want)
-	}
-}
-
-func TestNormalizeGenerateRequestEnablesProcessImagesWhenSceneOptionsProvided(t *testing.T) {
-	t.Parallel()
-
-	req := &GenerateRequest{ProductKey: "test-product",
-		ProductURL: "https://detail.1688.com/offer/123.html",
-		Platforms:  []string{"shein"},
-		Options: &GenerateOptions{
-			Scene: &productimage.SceneGenerationOptions{
-				SceneCategory: "shoes",
-			},
-		},
-	}
-
-	normalizeGenerateRequest(req)
-
-	if req.Options == nil {
-		t.Fatal("expected options to remain present")
-	}
-	if !req.Options.ProcessImages {
-		t.Fatal("expected process_images=true when scene options are provided")
 	}
 }
 
@@ -233,17 +190,6 @@ func TestNormalizeGenerateRequestPreservesExplicitSourceOverSDSOptions(t *testin
 	}
 }
 
-func TestNormalizeGenerateRequestCreatesProductURLSourceContract(t *testing.T) {
-	t.Parallel()
-
-	req := &GenerateRequest{ProductKey: "test-product", ProductURL: " https://detail.example/item/123 "}
-	normalizeGenerateRequest(req)
-
-	if got := req.Source; got == nil || got.Type != "product_url" || got.URL != "https://detail.example/item/123" {
-		t.Fatalf("source = %+v, want normalized product URL source contract", got)
-	}
-}
-
 func TestBuildListingKitServiceContractOmitsRequestDefaultsWiring(t *testing.T) {
 	t.Parallel()
 
@@ -340,13 +286,6 @@ func TestValidateRequest(t *testing.T) {
 				Text: "demo",
 			},
 			wantErr: true,
-		},
-		{
-			name: "many images are accepted",
-			req: &GenerateRequest{ProductKey: "test-product",
-				ImageURLs: []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"},
-				Platforms: []string{"amazon"},
-			},
 		},
 		{
 			name: "shein studio gallery ratio mismatch",
@@ -587,52 +526,6 @@ func TestListTasksFiltersBySourceReadinessAndSubmissionStatus(t *testing.T) {
 	}
 	if page.Items[0].SourceType != "sds" || page.Items[0].SheinLatestSubmissionStatus != sheinpub.SubmissionStatusFailed {
 		t.Fatalf("page item = %+v, want source and submission fields", page.Items[0])
-	}
-}
-
-func TestCreateGenerateTaskRunsInlineWithoutSubmitter(t *testing.T) {
-	t.Parallel()
-
-	productTask := &stubProductSnapshotTask{
-		ID: "product-task-inline",
-		Request: &stubProductSnapshotRequest{
-			Text: "inline product",
-		},
-	}
-	productSvc := &stubWorkflowProductSnapshotReader{
-		task: productTask,
-		product: &stubProductSnapshotFixture{
-			Title:       "Inline Product",
-			Description: "Inline description",
-			Category:    []string{"Home"},
-			Images:      []string{"https://example.com/source-1.jpg"},
-		},
-	}
-	imageSvc := &stubWorkflowImageService{
-		task: &productimage.Task{ID: "image-task-inline"},
-		result: &productimage.ImageProcessResult{
-			MainImage: &productimage.ImageAsset{URL: "https://cdn.example.com/main.jpg"},
-		},
-	}
-	repo := NewInMemoryRepositoryForTest()
-	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{
-		repo: repo,
-	}, supportDependencySeed{
-		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, imageSvc)
-
-	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
-		Text:      "inline listing kit",
-		Platforms: []string{"amazon"},
-	})
-	if err != nil {
-		t.Fatalf("CreateGenerateTask error = %v", err)
-	}
-	if task.Status == core.TaskStatusPending {
-		t.Fatalf("task status = %q, want non-pending after inline execution", task.Status)
-	}
-	if task.Result == nil {
-		t.Fatalf("task result = nil, want inline workflow result")
 	}
 }
 

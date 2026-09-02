@@ -16,7 +16,6 @@ type taskStudioSessionServiceConfig struct {
 	runner                   *listingStudioSessionRunner
 	asyncJobRunner           *listingStudioSessionAsyncJobRunner
 	generationMetadataRunner *listingStudioSessionGenerationMetadataRunner
-	reviewTaskMetadataRunner *listingStudioSessionReviewTaskMetadataRunner
 	generalMetadataRunner    *listingStudioSessionGeneralMetadataRunner
 }
 
@@ -25,7 +24,6 @@ type taskStudioSessionService struct {
 	runner                   *listingStudioSessionRunner
 	asyncJobRunner           *listingStudioSessionAsyncJobRunner
 	generationMetadataRunner *listingStudioSessionGenerationMetadataRunner
-	reviewTaskMetadataRunner *listingStudioSessionReviewTaskMetadataRunner
 	generalMetadataRunner    *listingStudioSessionGeneralMetadataRunner
 }
 
@@ -37,13 +35,11 @@ func newTaskStudioSessionService(config taskStudioSessionServiceConfig) *taskStu
 		runner:                   config.runner,
 		asyncJobRunner:           config.asyncJobRunner,
 		generationMetadataRunner: config.generationMetadataRunner,
-		reviewTaskMetadataRunner: config.reviewTaskMetadataRunner,
 		generalMetadataRunner:    config.generalMetadataRunner,
 	}
 	service.ensureRunner()
 	service.ensureAsyncJobRunner()
 	service.ensureGenerationMetadataRunner()
-	service.ensureReviewTaskMetadataRunner()
 	service.ensureGeneralMetadataRunner()
 	return service
 }
@@ -113,30 +109,6 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 			"generation_job_id":     strings.TrimSpace(session.GenerationJobID),
 			"generation_jobs_count": len(session.GenerationJobs),
 			"approved_design_count": len(session.ApprovedDesignIDs),
-			"created_task_count":    len(session.CreatedTasks),
-		})).Info("studio session updated")
-		return studioSessionDetailWithoutDesigns(session), nil
-	}
-	if isStudioSessionReviewTaskMetadataOnlyUpdate(req) {
-		s.ensureReviewTaskMetadataRunner()
-		if s.reviewTaskMetadataRunner == nil {
-			return nil, fmt.Errorf("studio session repository is not configured")
-		}
-		session, err = s.reviewTaskMetadataRunner.Patch(ctx, studiodomain.SessionReviewTaskMetadataPatchRequest[SheinStudioCreatedTask]{
-			SessionID:         sessionID,
-			ApprovedDesignIDs: req.ApprovedDesignIDs,
-			CreatedTasks:      req.CreatedTasks,
-		})
-		if err != nil {
-			return nil, adaptStudioSessionError(err)
-		}
-		studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
-			"session_id":            session.ID,
-			"status":                session.Status,
-			"generation_job_id":     strings.TrimSpace(session.GenerationJobID),
-			"generation_jobs_count": len(session.GenerationJobs),
-			"approved_design_count": len(session.ApprovedDesignIDs),
-			"created_task_count":    len(session.CreatedTasks),
 		})).Info("studio session updated")
 		return studioSessionDetailWithoutDesigns(session), nil
 	}
@@ -158,7 +130,6 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 		"generation_job_id":     strings.TrimSpace(session.GenerationJobID),
 		"generation_jobs_count": len(session.GenerationJobs),
 		"approved_design_count": len(session.ApprovedDesignIDs),
-		"created_task_count":    len(session.CreatedTasks),
 	})).Info("studio session updated")
 	return studioSessionDetailWithoutDesigns(session), nil
 }

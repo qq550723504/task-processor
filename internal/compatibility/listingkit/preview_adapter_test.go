@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/asset"
-	"task-processor/internal/product/catalog"
 	legacylistingkit "task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 )
 
 func TestAdaptLegacyPreviewShell(t *testing.T) {
@@ -22,10 +22,12 @@ func TestAdaptLegacyPreviewShell(t *testing.T) {
 		Platforms:        []string{"shein", "amazon"},
 		NeedsReview:      true,
 		Catalog:          &catalog.ProductSnapshot{Title: "Wireless Earbuds"},
-		Assets:           &asset.Bundle{Assets: []asset.Asset{{ID: "asset-1"}}},
-		AssetInventory:   &asset.InventorySummary{TotalRecords: 3},
-		CreatedAt:        createdAt,
-		CompletedAt:      &completedAt,
+		ApprovedAssetInventory: &productasset.ApprovedAssetInventory{
+			Scope:  productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"},
+			Assets: []productasset.ApprovedAsset{{ID: "asset-1", Role: productasset.RoleMain, URL: "https://example.test/main.jpg"}},
+		},
+		CreatedAt:   createdAt,
+		CompletedAt: &completedAt,
 		RevisionHistoryMeta: &legacylistingkit.ListingKitRevisionHistoryMeta{
 			TotalRecords:    8,
 			ReturnedRecords: 3,
@@ -52,8 +54,6 @@ func TestAdaptLegacyPreviewShell(t *testing.T) {
 					ApprovedSections:      1,
 					DeferredSections:      1,
 					ReviewPendingSections: 1,
-					PrimaryActionKey:      "open",
-					PrimaryCTAKind:        "review",
 				},
 			},
 		},
@@ -73,17 +73,14 @@ func TestAdaptLegacyPreviewShell(t *testing.T) {
 	if adapted.Attachment == nil || adapted.Attachment.CatalogProduct == nil || adapted.Attachment.CatalogProduct.Title != "Wireless Earbuds" {
 		t.Fatalf("adapted attachment = %+v", adapted.Attachment)
 	}
-	if adapted.Attachment.AssetBundle == nil || len(adapted.Attachment.AssetBundle.Assets) != 1 {
-		t.Fatalf("adapted assets = %+v", adapted.Attachment)
-	}
-	if adapted.Attachment.AssetInventorySummary == nil || adapted.Attachment.AssetInventorySummary.TotalRecords != 3 {
-		t.Fatalf("adapted asset inventory = %+v", adapted.Attachment)
+	if adapted.Attachment.ApprovedAssetInventory == nil || len(adapted.Attachment.ApprovedAssetInventory.Assets) != 1 {
+		t.Fatalf("adapted approved asset inventory = %+v", adapted.Attachment)
 	}
 	if len(adapted.Overview.PlatformCards) != 1 {
 		t.Fatalf("platform cards = %+v", adapted.Overview.PlatformCards)
 	}
 	card := adapted.Overview.PlatformCards[0]
-	if card.Platform != "shein" || card.PrimaryCTAKind != "review" {
+	if card.Platform != "shein" {
 		t.Fatalf("adapted card = %+v", card)
 	}
 }

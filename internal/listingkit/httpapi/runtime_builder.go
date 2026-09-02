@@ -6,7 +6,6 @@ import (
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
-	"task-processor/internal/productimage"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
@@ -18,14 +17,9 @@ type RuntimeBuildInput struct {
 type RuntimeDependencies struct {
 	Config                             *config.Config
 	ProductSnapshotReader              listingkit.ProductSnapshotReader
-	ImageService                       productimage.Service
 	SDSSyncService                     sdsusecase.Service
 	SDSLoginStatusProvider             listingkit.SDSLoginStatusProvider
 	SDSBaselineRemoteProvider          listingkit.SDSBaselineRemoteProvider
-	ImageSubjectExtractor              productimage.SubjectExtractor
-	ImageWhiteBackgroundRender         productimage.WhiteBackgroundRenderer
-	ImageSceneRenderer                 productimage.SceneRenderer
-	ImageAssetPublisher                productimage.AssetPublisher
 	AICredentialStore                  aiCredentialStore
 	AIInvocationRecorder               aicapability.InvocationRecorder
 	AIAsyncJobStore                    aicapability.AsyncJobBindingStore
@@ -45,22 +39,17 @@ func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
 func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies) BuildServiceInput {
 	support := resolveRuntimeSupport(runtime)
 	return BuildServiceInput{
-		Config:                     runtime.Config,
-		Logger:                     logger,
-		ProductSnapshotReader:      runtime.ProductSnapshotReader,
-		ImageService:               runtime.ImageService,
-		SDSSyncService:             support.SDSSyncService,
-		SDSLoginStatusProvider:     support.SDSLoginStatusProvider,
-		SDSBaselineRemoteProvider:  support.SDSBaselineRemoteProvider,
-		ImageSubjectExtractor:      runtime.ImageSubjectExtractor,
-		ImageWhiteBackgroundRender: runtime.ImageWhiteBackgroundRender,
-		ImageSceneRenderer:         runtime.ImageSceneRenderer,
-		ImageAssetPublisher:        runtime.ImageAssetPublisher,
-		AICredentialStore:          runtime.AICredentialStore,
-		AIInvocationRecorder:       runtime.AIInvocationRecorder,
-		AIAsyncJobStore:            runtime.AIAsyncJobStore,
-		Repositories:               support.Repositories,
-		Hooks:                      support.Hooks,
+		Config:                    runtime.Config,
+		Logger:                    logger,
+		ProductSnapshotReader:     runtime.ProductSnapshotReader,
+		SDSSyncService:            support.SDSSyncService,
+		SDSLoginStatusProvider:    support.SDSLoginStatusProvider,
+		SDSBaselineRemoteProvider: support.SDSBaselineRemoteProvider,
+		AICredentialStore:         runtime.AICredentialStore,
+		AIInvocationRecorder:      runtime.AIInvocationRecorder,
+		AIAsyncJobStore:           runtime.AIAsyncJobStore,
+		Repositories:              support.Repositories,
+		Hooks:                     support.Hooks,
 	}
 }
 

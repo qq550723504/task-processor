@@ -8,9 +8,9 @@ import (
 
 	"gorm.io/gorm"
 
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/shared/tenantctx"
 )

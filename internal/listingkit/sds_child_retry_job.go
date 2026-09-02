@@ -103,4 +103,3 @@ type StudioBatchSDSChildRetryFail struct {
 	TaskID  string `json:"task_id,omitempty"`
 	Message string `json:"message"`
 }
-

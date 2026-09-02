@@ -128,14 +128,6 @@ func setListingStudioSessionApprovedDesignIDs(session *SheinStudioSession, ids [
 	}
 }
 
-func setListingStudioSessionCreatedTasks(session *SheinStudioSession, tasks []SheinStudioCreatedTask) {
-	if session == nil {
-		return
-	}
-	session.CreatedTasks = append(SheinStudioCreatedTaskList(nil), tasks...)
-	session.CreatedTaskIDs = buildCreatedTaskIDs(tasks)
-}
-
 func applyListingStudioSessionGeneralMetadataPatch(session *SheinStudioSession, req *UpdateStudioSessionRequest) {
 	if session == nil || req == nil {
 		return
@@ -155,20 +147,8 @@ func applyListingStudioSessionGeneralMetadataPatch(session *SheinStudioSession, 
 	if req.VariationIntensity != nil {
 		session.VariationIntensity = *req.VariationIntensity
 	}
-	if req.ProductImageCount != nil {
-		session.ProductImageCount = *req.ProductImageCount
-	}
-	if req.ProductImagePrompt != nil {
-		session.ProductImagePrompt = *req.ProductImagePrompt
-	}
-	if req.ProductImagePrompts != nil {
-		session.ProductImagePrompts = append(SheinStudioProductImagePromptList(nil), req.ProductImagePrompts...)
-	}
 	if req.ArtworkModel != nil {
 		session.ArtworkModel = *req.ArtworkModel
-	}
-	if req.ImageStrategy != nil {
-		session.ImageStrategy = *req.ImageStrategy
 	}
 	if req.GroupedImageMode != nil {
 		session.GroupedImageMode = *req.GroupedImageMode
@@ -203,9 +183,6 @@ func applyListingStudioSessionGeneralMetadataPatch(session *SheinStudioSession, 
 	}
 	if req.ApprovedDesignIDs != nil {
 		session.ApprovedDesignIDs = slices.Clone(req.ApprovedDesignIDs)
-	}
-	if req.CreatedTasks != nil {
-		setListingStudioSessionCreatedTasks(session, req.CreatedTasks)
 	}
 }
 

@@ -1149,6 +1149,7 @@ git commit -m "refactor(listingkit): read canonical product snapshots"
 - Delete: `internal/asset/{bundle,generation}/` and all paired tests after their ListingKit callers are removed
 - Delete: `internal/asset/{from_productimage.go,from_productimage_test.go}`; ImageAgent publication now maps candidates directly to `product/asset.ApprovalCommit`
 - Delete: `internal/asset/{policy,recipe,repository}/` and `internal/asset/{facts.go,inventory.go,inventory_test.go,model.go,boundary_guard_test.go}` after all imports switch to `internal/product/asset`
+- Delete: `internal/imageasset/`; its only production file is an unreferenced compatibility context over the retired `internal/asset` model, so retaining it would keep the old aggregate alive without a consumer
 - Modify: `internal/listing/preview/{attachment.go,projection_test.go,read_model_test.go,task_read_model_test.go}`、`internal/compatibility/listingkit/preview_adapter_test.go`、`internal/publishing/common/{helpers.go,types.go,selection_image_test.go,variant_fallback.go,variant_fallback_test.go}` and `internal/publishing/shein/{assembler.go,derived_refresh.go}` to consume approved asset values or consumer-local projections
 - Modify to remove generation fields/calls: `internal/listingkit/{export_model.go,preview_model_shell.go,service_defaults.go,service_task_generation_support_helpers.go,service_task_layer_processing_helpers.go,service_task_layers_logic.go,service_task_wiring_support.go,service_types.go,service_workflow_dependencies.go,task_export_service.go,task_preview_service_support.go,workflow_platform_adaptation.go,workflow_platform_finalize_phase.go}`
 - Delete: `internal/listingkit/api/studio_product_images_handler.go`
@@ -1161,9 +1162,18 @@ git commit -m "refactor(listingkit): read canonical product snapshots"
 
 **Interfaces:**
 - Consumes: `product/asset.ApprovedAssetInventory`。
-- Produces: ListingKit-local `ApprovedAssetInventoryReader.GetApprovedAssetInventory(context.Context, asset.InventoryScope) (asset.ApprovedAssetInventory, error)`；无生成/重试/审批接口。
+- Produces: ListingKit-local `ApprovedAssetInventoryReader.GetApprovedInventory(context.Context, asset.InventoryScope) (asset.ApprovedAssetInventory, error)`；无生成/重试/审批接口。
 
-- [ ] **Step 1: 写只消费批准资产且不回退来源图的测试**
+**实施切片（按依赖顺序完成，不设置兼容层）：**
+
+1. 13A：建立批准资产只读 Port，并让标准工作流及平台装配只消费 `ApprovedAssetInventory`。
+2. 13B：删除 ListingKit 内的生成、重试、队列和执行状态。
+3. 13C：删除 Studio 商品图生成 API、路由和用量账本，仅保留 design job 与媒体读取。
+4. 13D：迁移 preview/publishing 等剩余投影，删除 `internal/asset` 与无消费者的 `internal/imageasset`。
+
+13C 同时删除 Studio batch 内部“批准设计 → 生成商品图 → 创建 ListingKit 任务”的隐藏物化链路及其 task-link/usage 状态；否则公开 API 虽被删除，ListingKit 仍会继续充当商品图生成器。批量设计生成、审核、背景处理和媒体读取保留，未来任务创建只能消费 Product Snapshot 与 ImageAgent 已批准资产。
+
+- [x] **Step 1: 写只消费批准资产且不回退来源图的测试**
 
 ```go
 func TestWorkflowRequiresApprovedAssets(t *testing.T) {
@@ -1177,24 +1187,24 @@ func TestWorkflowRequiresApprovedAssets(t *testing.T) {
 
 type approvedAssetReaderFunc func(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error)
 
-func (f approvedAssetReaderFunc) GetApprovedAssetInventory(ctx context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+func (f approvedAssetReaderFunc) GetApprovedInventory(ctx context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
 	return f(ctx, scope)
 }
 ```
 
 增加 inventory 只含 gallery、缺少批准 main 时明确未就绪的测试；不得断言“取第一张”。
 
-- [ ] **Step 2: 运行测试确认现有 Asset Generation 仍被调用**
+- [x] **Step 2: 运行测试确认现有 Asset Generation 仍被调用**
 
 Run: `go test ./internal/listingkit -run 'TestWorkflowRequiresApprovedAssets|Test.*ApprovedAsset' -count=1 -v`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 用批准资产投影替代生成状态**
+- [x] **Step 3: 用批准资产投影替代生成状态**
 
 ListingKit result 只投影批准资产及 role，不保存 `AssetGenerationTasks`、`PendingGeneration`、execution mode 或 ProductImage result。删除 `/api/v1/listing-kits/studio/product-images` 及异步 `/studio/product-images` 分支；ImageAgent API 是唯一生成入口。
 
-- [ ] **Step 4: 运行 ListingKit、OpenAPI 和扫描测试**
+- [x] **Step 4: 运行 ListingKit、OpenAPI 和扫描测试**
 
 Run: `go test ./internal/listingkit/... ./internal/app/httpapi -count=1`
 
@@ -1202,7 +1212,7 @@ Run: `rg -n 'asset/generation|CreateProcessTask|ProcessImages|GenerateStudioProd
 
 Expected: tests PASS；扫描返回零结果。
 
-- [ ] **Step 5: 提交 ListingKit 图片编排退役**
+- [x] **Step 5: 提交 ListingKit 图片编排退役**
 
 ```powershell
 git add internal/listingkit docs/api/listingkit-asset.openapi.yaml

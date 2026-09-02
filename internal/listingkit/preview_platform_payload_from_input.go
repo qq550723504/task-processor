@@ -8,8 +8,6 @@ func buildSheinPreviewPayloadFromInput(input sheinPreviewPayloadInput) *SheinPre
 	return normalizeSheinPreviewPayloadSemanticFields(buildSheinPreviewPayloadBody(sheinPreviewPayloadBodyInput{
 		pkg:               input.pkg,
 		canonical:         input.canonical,
-		assetBundle:       input.visualAssetBundle,
-		renderPreviews:    input.renderPreviews,
 		needsReview:       input.needsReview,
 		summary:           input.summary,
 		readiness:         input.readiness,

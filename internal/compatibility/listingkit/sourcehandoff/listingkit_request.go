@@ -35,12 +35,10 @@ type ListingKitRequestInput struct {
 // ListingKit depend on source-specific crawler DTOs.
 func GenerateRequestFromEnvelope(input ListingKitRequestInput) listingkit.GenerateRequest {
 	productFacts := catalogProductFactsFromEnvelope(input.Envelope)
-	assetFacts := assetFactsFromEnvelope(input.Envelope)
 	return listingkit.GenerateRequestFromSourceFacts(listingkit.SourceFactsGenerateRequestInput{
 		TenantID:           input.TenantID,
 		UserID:             input.UserID,
 		Product:            productFacts,
-		Assets:             assetFacts,
 		Platforms:          input.Platforms,
 		Country:            input.Country,
 		Language:           input.Language,

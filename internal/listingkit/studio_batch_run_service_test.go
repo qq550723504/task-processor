@@ -53,32 +53,6 @@ func TestStudioBatchRunServiceCreateReturnsOrderedItemsFromSavedBatchIDs(t *test
 	}
 }
 
-func TestStudioBatchRunServiceCreateUsesRequestedMode(t *testing.T) {
-	repo := NewMemStudioBatchRunRepository()
-	sessionRepo := newStudioBatchRunTestSessionRepo()
-	svc := newTaskStudioBatchRunService(taskStudioBatchRunServiceConfig{
-		repo:              repo,
-		studioSessionRepo: sessionRepo,
-		startRun: func(context.Context, string) error {
-			return nil
-		},
-	})
-	ctx := WithTenantID(context.Background(), "tenant-a")
-
-	seedStudioBatchRunSavedBatch(t, sessionRepo, ctx, "batch-1")
-
-	run, _, err := svc.CreateStudioBatchRun(ctx, &CreateStudioBatchRunRequest{
-		BatchIDs: []string{"batch-1"},
-		Mode:     string(StudioBatchRunModeCreateTasks),
-	})
-	if err != nil {
-		t.Fatalf("CreateStudioBatchRun() error = %v", err)
-	}
-	if run.Mode != StudioBatchRunModeCreateTasks {
-		t.Fatalf("run.Mode = %q, want %q", run.Mode, StudioBatchRunModeCreateTasks)
-	}
-}
-
 func TestStudioBatchRunServiceCreateRejectsUnsupportedMode(t *testing.T) {
 	repo := NewMemStudioBatchRunRepository()
 	sessionRepo := newStudioBatchRunTestSessionRepo()
@@ -587,10 +561,7 @@ func cloneStudioBatchRunTestSession(session *SheinStudioSession) *SheinStudioSes
 	}
 	cloned := *session
 	cloned.SelectedVariantIDs = append(SheinStudioInt64List(nil), session.SelectedVariantIDs...)
-	cloned.ProductImagePrompts = append(SheinStudioProductImagePromptList(nil), session.ProductImagePrompts...)
 	cloned.ApprovedDesignIDs = append(SheinStudioStringList(nil), session.ApprovedDesignIDs...)
-	cloned.CreatedTaskIDs = append(SheinStudioStringList(nil), session.CreatedTaskIDs...)
-	cloned.CreatedTasks = append(SheinStudioCreatedTaskList(nil), session.CreatedTasks...)
 	cloned.GenerationJobs = append(SheinStudioGenerationJobList(nil), session.GenerationJobs...)
 	cloned.GroupedSelections = append(SheinStudioGroupedSelectionList(nil), session.GroupedSelections...)
 	cloned.Selection = session.Selection

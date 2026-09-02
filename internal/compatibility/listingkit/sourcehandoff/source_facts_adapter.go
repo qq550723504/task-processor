@@ -1,7 +1,6 @@
 package sourcehandoff
 
 import (
-	"task-processor/internal/asset"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
@@ -37,26 +36,6 @@ func catalogProductFactsFromSnapshot(identity sourcing.SourceIdentity, snapshot 
 	}
 }
 
-// assetFactsFromEnvelope converts a normalized source envelope into
-// platform-neutral asset facts. It preserves source lineage and warnings without
-// making product sourcing own downstream asset storage or marketplace usage.
-func assetFactsFromEnvelope(envelope sourcing.SourceEnvelope) asset.Facts {
-	normalized, err := sourcing.Normalize(envelope)
-	if err != nil {
-		return asset.Facts{}
-	}
-	identity := normalized.Identity
-
-	return asset.Facts{
-		SourceKey:      identity.SourceKey(),
-		SourceType:     identity.SourceType,
-		SourcePlatform: identity.SourcePlatform,
-		SourceID:       identity.SourceID,
-		Items:          assetItemFacts(normalized.AssetCandidates),
-		Warnings:       assetWarnings(normalized.Warnings),
-	}
-}
-
 func catalogVariantFacts(variants []catalog.Variant) []catalog.VariantFacts {
 	if len(variants) == 0 {
 		return nil
@@ -84,23 +63,6 @@ func catalogAttributeFacts(attributes []catalog.Attribute) map[string]string {
 	return facts
 }
 
-func assetItemFacts(candidates []sourcing.AssetCandidate) []asset.ItemFacts {
-	if len(candidates) == 0 {
-		return nil
-	}
-	facts := make([]asset.ItemFacts, 0, len(candidates))
-	for _, candidate := range candidates {
-		facts = append(facts, asset.ItemFacts{
-			SourceID:  candidate.SourceID,
-			URL:       candidate.URL,
-			MediaType: candidate.MediaType,
-			Role:      candidate.Role,
-			Checksum:  candidate.Checksum,
-		})
-	}
-	return facts
-}
-
 func catalogWarnings(warnings []sourcing.SourceWarning) []catalog.FactWarning {
 	if len(warnings) == 0 {
 		return nil
@@ -109,18 +71,6 @@ func catalogWarnings(warnings []sourcing.SourceWarning) []catalog.FactWarning {
 	for _, warning := range warnings {
 		warning = warning.Normalize()
 		out = append(out, catalog.FactWarning{Code: warning.Code, Message: warning.Message, Field: warning.Field})
-	}
-	return out
-}
-
-func assetWarnings(warnings []sourcing.SourceWarning) []asset.FactWarning {
-	if len(warnings) == 0 {
-		return nil
-	}
-	out := make([]asset.FactWarning, 0, len(warnings))
-	for _, warning := range warnings {
-		warning = warning.Normalize()
-		out = append(out, asset.FactWarning{Code: warning.Code, Message: warning.Message, Field: warning.Field})
 	}
 	return out
 }

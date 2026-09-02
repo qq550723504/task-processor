@@ -26,8 +26,8 @@ func TestGenerateRequestFromEnvelopeUsesNeutralFacts(t *testing.T) {
 	if request.TenantID != "tenant-1688" || request.UserID != "user-1688" {
 		t.Fatalf("request tenant/user = %q/%q, want trimmed values", request.TenantID, request.UserID)
 	}
-	if request.ProductURL != "https://detail.1688.com/offer/654.html" {
-		t.Fatalf("ProductURL = %q, want normalized source URL", request.ProductURL)
+	if request.ProductKey != "crawler:1688:654" {
+		t.Fatalf("ProductKey = %q, want normalized source identity", request.ProductKey)
 	}
 	if request.BrandHint != "Factory Lunch" {
 		t.Fatalf("BrandHint = %q, want source brand", request.BrandHint)
@@ -38,8 +38,8 @@ func TestGenerateRequestFromEnvelopeUsesNeutralFacts(t *testing.T) {
 	if len(request.Platforms) != 1 || request.Platforms[0] != "shein" {
 		t.Fatalf("Platforms = %#v, want normalized deduped shein", request.Platforms)
 	}
-	if len(request.ImageURLs) != 3 {
-		t.Fatalf("ImageURLs = %#v, want main/gallery/variant images", request.ImageURLs)
+	if request.Source == nil || request.Source.URL != "https://detail.1688.com/offer/654.html" {
+		t.Fatalf("Source = %#v, want normalized source reference", request.Source)
 	}
 }
 
@@ -63,8 +63,8 @@ func TestCreateGenerateTaskFromEnvelopeDelegatesToCreator(t *testing.T) {
 	if creator.request == nil {
 		t.Fatal("creator did not receive request")
 	}
-	if creator.request.ProductURL != "https://detail.1688.com/offer/654.html" {
-		t.Fatalf("creator request ProductURL = %q, want source URL", creator.request.ProductURL)
+	if creator.request.ProductKey != "crawler:1688:654" {
+		t.Fatalf("creator request ProductKey = %q, want source identity", creator.request.ProductKey)
 	}
 	if creator.request.Text == "" {
 		t.Fatal("creator request Text is empty")

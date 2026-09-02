@@ -1,26 +1,15 @@
 package listingkit
 
-import (
-	"task-processor/internal/asset"
-	common "task-processor/internal/publishing/common"
-)
+import common "task-processor/internal/publishing/common"
 
-func buildPlatformVisualExportPayloadInput(
-	platform string,
-	imageBundle *common.PublishImageBundle,
-	assetBundle *asset.Bundle,
-	platformPreviews []PlatformAssetRenderPreviews,
-) platformVisualExportBase {
-	return buildPlatformVisualPresentationBaseForPlatform(platform, imageBundle, assetBundle, platformPreviews)
+func buildPlatformVisualExportPayloadInput(imageBundle *common.PublishImageBundle) platformVisualExportBase {
+	return buildPlatformVisualPresentationBase(imageBundle)
 }
 
 func buildReviewablePlatformExportPayloadInput(
-	platform string,
 	imageBundle *common.PublishImageBundle,
-	assetBundle *asset.Bundle,
-	platformPreviews []PlatformAssetRenderPreviews,
 ) reviewableExportPayloadInput {
 	return reviewableExportPayloadInput{
-		visualBase: buildPlatformVisualExportPayloadInput(platform, imageBundle, assetBundle, platformPreviews),
+		visualBase: buildPlatformVisualExportPayloadInput(imageBundle),
 	}
 }

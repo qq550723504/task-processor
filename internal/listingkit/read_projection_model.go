@@ -5,20 +5,11 @@ import (
 )
 
 type listingKitReadProjection struct {
-	PreviewInput                previewdomain.ReadModelInput
-	PlatformCards               []ListingKitPlatformCard
-	AssetRenderPreviews         []AssetRenderPreview
-	PlatformAssetRenderPreviews []PlatformAssetRenderPreviews
-	AssetGenerationQueue        *GenerationWorkQueue
-	AssetGenerationOverview     *AssetGenerationOverview
+	PreviewInput  previewdomain.ReadModelInput
+	PlatformCards []ListingKitPlatformCard
 }
 
-type listingKitReadProjectionAttachmentExtras struct {
-	AssetRenderPreviews         []AssetRenderPreview
-	PlatformAssetRenderPreviews []PlatformAssetRenderPreviews
-	AssetGenerationQueue        *GenerationWorkQueue
-	AssetGenerationOverview     *AssetGenerationOverview
-}
+type listingKitReadProjectionAttachmentExtras struct{}
 
 func (projection *listingKitReadProjection) previewDomainReadModelInput() previewdomain.ReadModelInput {
 	if projection == nil {

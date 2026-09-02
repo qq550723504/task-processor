@@ -1,9 +1,5 @@
 package listingkit
 
-import (
-	"task-processor/internal/productimage"
-)
-
 type SourceReference struct {
 	Key      string `json:"key,omitempty"`
 	Type     string `json:"type,omitempty"`
@@ -21,9 +17,7 @@ type GenerateRequest struct {
 	// caller-facing ownership tenant.
 	BillingTenantID    string           `json:"-"`
 	UserID             string           `json:"user_id,omitempty"`
-	ImageURLs          []string         `json:"image_urls,omitempty"`
 	Text               string           `json:"text,omitempty"`
-	ProductURL         string           `json:"product_url,omitempty"`
 	Source             *SourceReference `json:"source,omitempty"`
 	Platforms          []string         `json:"platforms,omitempty"`
 	Country            string           `json:"country,omitempty"`
@@ -41,10 +35,6 @@ type WarmSDSBaselineRequest struct {
 }
 
 type GenerateOptions struct {
-	ImageStrategy               string                               `json:"image_strategy,omitempty"`
-	ProcessImages               bool                                 `json:"process_images"`
-	CompatibilityTargetPlatform string                               `json:"compatibility_target_platform,omitempty"`
-	Scene                       *productimage.SceneGenerationOptions `json:"scene,omitempty"`
-	SheinStudio                 *SheinStudioOptions                  `json:"shein_studio,omitempty"`
-	SDS                         *SDSSyncOptions                      `json:"sds,omitempty"`
+	SheinStudio *SheinStudioOptions `json:"shein_studio,omitempty"`
+	SDS         *SDSSyncOptions     `json:"sds,omitempty"`
 }

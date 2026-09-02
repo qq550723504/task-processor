@@ -1,13 +1,8 @@
 package listingkit
 
-import (
-	"context"
-
-	assetgeneration "task-processor/internal/asset/generation"
-)
+import "context"
 
 type taskPreviewDecorationWiring struct {
-	listAssetGenerationTasks               func(context.Context, string) ([]assetgeneration.Task, error)
 	decorateSheinCookieAvailabilityPreview func(context.Context, *Task, *ListingKitPreview)
 	decorateSheinStoreResolutionPreview    func(context.Context, *Task, *ListingKitPreview)
 }
@@ -30,9 +25,6 @@ func buildTaskPreviewAccessWiring(s *service) taskPreviewAccessWiring {
 
 func buildTaskPreviewDecorationWiring(s *service) taskPreviewDecorationWiring {
 	return taskPreviewDecorationWiring{
-		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
-			return s.listAssetGenerationTasks(ctx, taskID)
-		},
 		decorateSheinCookieAvailabilityPreview: func(ctx context.Context, task *Task, preview *ListingKitPreview) {
 			s.decorateSheinCookieAvailabilityPreview(ctx, task, preview)
 		},
@@ -54,27 +46,8 @@ func buildTaskPreview(ctx context.Context, task *Task, platform string, decorato
 }
 
 func finalizeTaskPreview(ctx context.Context, task *Task, preview *ListingKitPreview, decorators taskPreviewDecorationWiring) error {
-	tasks, err := decorators.listAssetGenerationTasks(ctx, task.ID)
-	if err != nil {
-		return err
-	}
-	projection := buildAssetGenerationProjection(task.Result, tasks)
-	applyAssetGenerationProjectionToPreview(preview, projection)
-	backfillTaskPreviewRenderPreviews(preview, task.Result)
 	if decorators.decorateSheinStoreResolutionPreview != nil {
 		decorators.decorateSheinStoreResolutionPreview(ctx, task, preview)
 	}
 	return nil
-}
-
-func backfillTaskPreviewRenderPreviews(preview *ListingKitPreview, result *ListingKitResult) {
-	if preview == nil || result == nil {
-		return
-	}
-	if len(preview.AssetRenderPreviews) == 0 {
-		preview.AssetRenderPreviews = buildAssetRenderPreviews(result.AssetBundle)
-	}
-	if len(preview.PlatformAssetRenderPreviews) == 0 {
-		preview.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(result)
-	}
 }

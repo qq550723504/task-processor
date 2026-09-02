@@ -4,27 +4,21 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
-	"unicode/utf8"
 
-	"task-processor/internal/asset"
-	assetgeneration "task-processor/internal/asset/generation"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
-	listingplatform "task-processor/internal/listing/platform"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/product/catalog"
 )
 
-// ImageAgentTaskSource is the minimal ListingKit task read port required to
-// snapshot run-authorized source assets.
 type ImageAgentTaskSource interface {
 	GetTask(context.Context, string) (*listingkit.Task, error)
 }
 
 type listingKitAuthorizedAssetCatalog struct{ tasks ImageAgentTaskSource }
 
-// NewImageAgentAuthorizedAssetCatalog keeps ListingKit task ownership and
-// canonical asset translation inside the ListingKit HTTP adapter boundary.
 func NewImageAgentAuthorizedAssetCatalog(tasks ImageAgentTaskSource) imageagent.AuthorizedAssetCatalog {
 	return &listingKitAuthorizedAssetCatalog{tasks: tasks}
 }
@@ -56,38 +50,29 @@ func imageAgentCatalogFromTaskTarget(task *listingkit.Task, targetPlatform strin
 }
 
 func imageAgentCatalogFromTaskTargetSelection(task *listingkit.Task, targetPlatform, selectedSourceID string, selectedStyleIDs ...[]string) (imageagent.AssetCatalog, error) {
-	if task == nil || task.Result == nil || task.Result.StandardProductSnapshot == nil {
-		return imageagent.AssetCatalog{}, fmt.Errorf("business task standard product snapshot is required")
-	}
-	bundle, err := imageAgentBundleForTarget(task, targetPlatform)
+	snapshot, err := taskCatalogSnapshot(task)
 	if err != nil {
 		return imageagent.AssetCatalog{}, err
 	}
-	snapshot := task.Result.StandardProductSnapshot
-	var styles []string
-	if len(selectedStyleIDs) > 0 {
-		styles = selectedStyleIDs[0]
-	}
-	assets, err := authorizedAssetsFromBundle(bundle, selectedSourceID, styles)
+	assets := authorizedAssetsFromCatalogImages(snapshot.Images)
+	assets, err = selectAuthorizedAssets(assets, selectedSourceID, firstStringSlice(selectedStyleIDs), len(selectedStyleIDs) > 0)
 	if err != nil {
 		return imageagent.AssetCatalog{}, err
 	}
 	if len(assets) == 0 {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task has no authorized source assets")
 	}
-	context := imageagent.ProductContextRef{ProductID: strings.TrimSpace(task.ID)}
-	if product := snapshot.CatalogProduct; product != nil {
-		providerContext := assetgeneration.BuildProductContext(product)
-		context.Title = providerContext.Title
-		context.ProductType = providerContext.ProductType
-		context.Attributes = providerContext.Attributes
+	productKey := strings.TrimSpace(task.Request.ProductKey)
+	contextRef := imageagent.ProductContextRef{
+		ProductID:   productKey,
+		Title:       snapshot.Title,
+		ProductType: strings.Join(snapshot.CategoryPath, " / "),
+		Attributes:  catalogAttributes(snapshot.Attributes),
 	}
-	normalized, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{Assets: assets, ProductContext: context})
+	normalized, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{Assets: assets, ProductContext: contextRef})
 	if err != nil {
 		return imageagent.AssetCatalog{}, err
 	}
-	// Keep source material first for callers that render the catalog by role;
-	// the service boundary re-normalizes the immutable snapshot before storage.
 	sort.SliceStable(normalized.Assets, func(i, j int) bool {
 		return normalized.Assets[i].Type == imageagent.AuthorizedAssetSource && normalized.Assets[j].Type == imageagent.AuthorizedAssetStyle
 	})
@@ -95,134 +80,87 @@ func imageAgentCatalogFromTaskTargetSelection(task *listingkit.Task, targetPlatf
 	return normalized, nil
 }
 
-func imageAgentBundleForTarget(task *listingkit.Task, targetPlatform string) (*asset.Bundle, error) {
-	if task == nil || task.Result == nil || task.Result.StandardProductSnapshot == nil {
-		return nil, fmt.Errorf("business task standard product snapshot is required")
+func taskCatalogSnapshot(task *listingkit.Task) (*catalog.ProductSnapshot, error) {
+	if task == nil || task.Request == nil || task.Result == nil || task.Result.StandardProductSnapshot == nil || task.Result.StandardProductSnapshot.CatalogProduct == nil {
+		return nil, fmt.Errorf("business task product snapshot is required")
 	}
-	if len(task.Result.AssetBundlesByTarget) == 0 {
-		if strings.TrimSpace(targetPlatform) != "" {
-			return nil, fmt.Errorf("%w: scalar task assets do not accept an image-agent target", imageagent.ErrValidation)
-		}
-		return task.Result.StandardProductSnapshot.AssetBundle, nil
-	}
-	targetPlatform = listingplatform.Normalize(targetPlatform)
-	if targetPlatform == "" {
-		return nil, fmt.Errorf("%w: target-keyed asset bundles require explicit image-agent target authorization", imageagent.ErrValidation)
-	}
-	bundle := task.Result.AssetBundlesByTarget[targetPlatform]
-	if bundle == nil {
-		return nil, fmt.Errorf("%w: image-agent target %q has no asset bundle", imageagent.ErrValidation, targetPlatform)
-	}
-	return bundle, nil
+	return task.Result.StandardProductSnapshot.CatalogProduct, nil
 }
 
-func authorizedAssetsFromBundle(bundle *asset.Bundle, selectedSourceID string, selectedStyleIDs []string) ([]imageagent.AuthorizedAsset, error) {
-	selected := make(map[string]struct{}, len(selectedStyleIDs))
-	for _, rawID := range selectedStyleIDs {
-		if id := strings.TrimSpace(rawID); id != "" {
-			selected[id] = struct{}{}
+func authorizedAssetsFromCatalogImages(images []catalog.Image) []imageagent.AuthorizedAsset {
+	assets := make([]imageagent.AuthorizedAsset, 0, len(images))
+	for index, item := range images {
+		url, err := imageagent.ValidateSafeImageURL(item.URL)
+		if err != nil {
+			continue
+		}
+		assetType := imageagent.AuthorizedAssetSource
+		if strings.EqualFold(strings.TrimSpace(item.Role), "style") {
+			assetType = imageagent.AuthorizedAssetStyle
+		}
+		assets = append(assets, imageagent.AuthorizedAsset{
+			ID: "catalog-image-" + strconv.Itoa(index+1), Type: assetType,
+			URL: url, SourceURL: url, DisplayURL: url, Label: "Product image",
+		})
+	}
+	return assets
+}
+
+func selectAuthorizedAssets(assets []imageagent.AuthorizedAsset, selectedSourceID string, selectedStyleIDs []string, styleSelectionProvided bool) ([]imageagent.AuthorizedAsset, error) {
+	selectedSourceID = strings.TrimSpace(selectedSourceID)
+	selectedStyles := make(map[string]struct{}, len(selectedStyleIDs))
+	for _, id := range selectedStyleIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			selectedStyles[id] = struct{}{}
 		}
 	}
-	assets := sourceAssetsFromBundle(bundle)
-	if selectedSourceID = strings.TrimSpace(selectedSourceID); selectedSourceID != "" {
-		selectedSource := make([]imageagent.AuthorizedAsset, 0, 1)
-		for _, item := range assets {
-			if item.ID == selectedSourceID {
-				selectedSource = append(selectedSource, item)
-				break
-			}
-		}
-		if len(selectedSource) == 0 {
-			return nil, fmt.Errorf("%w: unknown source asset %q", imageagent.ErrValidation, selectedSourceID)
-		}
-		assets = selectedSource
-	}
-	if bundle == nil {
-		return assets, nil
-	}
-	for index := range bundle.Assets {
-		item := &bundle.Assets[index]
-		if item.Kind == asset.KindSourceImage {
-			if _, err := displayLabel(item); err != nil {
-				return nil, err
-			}
-		}
-	}
-	seen := make(map[string]struct{}, len(assets))
+	out := make([]imageagent.AuthorizedAsset, 0, len(assets))
+	foundSource := selectedSourceID == ""
+	foundStyles := make(map[string]struct{}, len(selectedStyles))
 	for _, item := range assets {
-		seen[item.ID] = struct{}{}
-	}
-	for id := range selected {
-		if _, isSource := seen[id]; isSource {
-			return nil, fmt.Errorf("%w: source asset cannot be selected as a style", imageagent.ErrValidation)
-		}
-		var found *asset.Asset
-		for index := range bundle.Assets {
-			if strings.TrimSpace(bundle.Assets[index].ID) == id {
-				found = &bundle.Assets[index]
-				break
+		if item.Type == imageagent.AuthorizedAssetSource {
+			if selectedSourceID == "" || item.ID == selectedSourceID {
+				out = append(out, item)
+				foundSource = true
 			}
+			continue
 		}
-		if found == nil {
+		if !styleSelectionProvided {
+			out = append(out, item)
+			continue
+		}
+		if _, ok := selectedStyles[item.ID]; ok {
+			out = append(out, item)
+			foundStyles[item.ID] = struct{}{}
+		}
+	}
+	if !foundSource {
+		return nil, fmt.Errorf("%w: unknown source asset %q", imageagent.ErrValidation, selectedSourceID)
+	}
+	for id := range selectedStyles {
+		if _, ok := foundStyles[id]; !ok {
 			return nil, fmt.Errorf("%w: unknown style asset %q", imageagent.ErrValidation, id)
 		}
-		if strings.TrimSpace(found.URL) == "" {
-			return nil, fmt.Errorf("%w: style asset %q has no URL", imageagent.ErrValidation, id)
-		}
-		url, err := imageagent.ValidateSafeImageURL(found.URL)
-		if err != nil {
-			return nil, fmt.Errorf("%w: style asset %q URL is unsafe", imageagent.ErrValidation, id)
-		}
-		label, err := displayLabel(found)
-		if err != nil {
-			return nil, err
-		}
-		assets = append(assets, imageagent.AuthorizedAsset{ID: id, Type: imageagent.AuthorizedAssetStyle, URL: url, SourceURL: url, DisplayURL: url, Label: label, Width: found.Width, Height: found.Height})
 	}
-	return assets, nil
+	return out, nil
 }
 
-func sourceAssetsFromBundle(bundle *asset.Bundle) []imageagent.AuthorizedAsset {
-	if bundle != nil {
-		var out []imageagent.AuthorizedAsset
-		for _, item := range bundle.Assets {
-			if item.Kind != asset.KindSourceImage || strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.URL) == "" {
-				continue
-			}
-			url, err := imageagent.ValidateSafeImageURL(item.URL)
-			if err != nil {
-				continue
-			}
-			sourceURL := strings.TrimSpace(item.SourceURL)
-			if sourceURL == "" {
-				sourceURL = url
-			} else if sourceURL, err = imageagent.ValidateSafeImageURL(sourceURL); err != nil {
-				continue
-			}
-			label, err := displayLabel(&item)
-			if err != nil {
-				continue
-			}
-			// ProductImage slot execution needs only canonical URLs and dimensions.
-			// Task metadata is intentionally not copied into the run authorization
-			// snapshot because the canonical asset contract does not classify it as
-			// safe provider input.
-			out = append(out, imageagent.AuthorizedAsset{ID: strings.TrimSpace(item.ID), Type: imageagent.AuthorizedAssetSource, URL: url, SourceURL: sourceURL, DisplayURL: url, Label: label, Width: item.Width, Height: item.Height})
-		}
-		if len(out) > 0 {
-			return out
-		}
+func firstStringSlice(values [][]string) []string {
+	if len(values) == 0 {
+		return nil
 	}
-	return nil
+	return values[0]
 }
 
-func displayLabel(item *asset.Asset) (string, error) {
-	label := "Source image"
-	if item != nil && len(item.Labels) > 0 && strings.TrimSpace(item.Labels[0]) != "" {
-		label = strings.TrimSpace(item.Labels[0])
+func catalogAttributes(attributes []catalog.Attribute) map[string]string {
+	if len(attributes) == 0 {
+		return nil
 	}
-	if utf8.RuneCountInString(label) > 256 {
-		label = string([]rune(label)[:256])
+	out := make(map[string]string, len(attributes))
+	for _, attribute := range attributes {
+		if name := strings.TrimSpace(attribute.Name); name != "" {
+			out[name] = strings.TrimSpace(attribute.Value)
+		}
 	}
-	return label, nil
+	return out
 }

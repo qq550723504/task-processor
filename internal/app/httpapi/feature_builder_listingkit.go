@@ -94,16 +94,11 @@ func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps) li
 	return listingkithttpapi.RuntimeBuildInput{
 		Logger: logger,
 		Runtime: listingkithttpapi.RuntimeDependencies{
-			Config:                     deps.shared.cfg,
-			ProductSnapshotReader:      deps.features.productSnapshotReader,
-			ImageService:               deps.features.imageService,
-			ImageSubjectExtractor:      deps.features.imageSubjectExtractor,
-			ImageWhiteBackgroundRender: deps.features.imageWhiteBgRenderer,
-			ImageSceneRenderer:         deps.features.imageSceneRenderer,
-			ImageAssetPublisher:        deps.features.imageAssetPublisher,
-			AICredentialStore:          deps.shared.aiCredentialStore,
-			AIInvocationRecorder:       deps.shared.aiInvocationRecorder,
-			AIAsyncJobStore:            deps.shared.aiAsyncJobStore,
+			Config:                deps.shared.cfg,
+			ProductSnapshotReader: deps.features.productSnapshotReader,
+			AICredentialStore:     deps.shared.aiCredentialStore,
+			AIInvocationRecorder:  deps.shared.aiInvocationRecorder,
+			AIAsyncJobStore:       deps.shared.aiAsyncJobStore,
 			Support: listingkithttpapi.BuildRuntimeSupport(listingkithttpapi.RuntimeSupportInput{
 				SheinCookieStore:          ensureListingKitSheinCookieStore(logger, deps),
 				SDSSyncService:            buildSDSSyncService(logger, deps),

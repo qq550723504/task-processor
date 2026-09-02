@@ -142,7 +142,6 @@ func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleServ
 func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOption {
 	options := []listingkitapi.HandlerOption{
 		listingkitapi.WithTaskLifecycleService(runtime.service),
-		listingkitapi.WithGenerationTaskService(runtime.service),
 		listingkitapi.WithChildTaskRetryService(runtime.service),
 		listingkitapi.WithSDSBaselineWarmService(runtime.service),
 		listingkitapi.WithSDSRetirementService(

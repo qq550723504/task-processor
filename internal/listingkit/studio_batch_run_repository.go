@@ -33,8 +33,7 @@ const (
 type StudioBatchRunMode string
 
 const (
-	StudioBatchRunModeGenerate    StudioBatchRunMode = "generate"
-	StudioBatchRunModeCreateTasks StudioBatchRunMode = "create_tasks"
+	StudioBatchRunModeGenerate StudioBatchRunMode = "generate"
 )
 
 type StudioBatchRunFailurePolicy string

@@ -1,7 +1,7 @@
 package listingkit
 
 import (
-	"task-processor/internal/asset"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
 )
 
@@ -11,13 +11,8 @@ type listingKitExportProjection struct {
 }
 
 type listingKitExportProjectionAttachment struct {
-	catalog             *catalog.ProductSnapshot
-	assetBundle         *asset.Bundle
-	assetInventory      *asset.InventorySummary
-	assetRenderPreviews []AssetRenderPreview
-	platformPreviews    []PlatformAssetRenderPreviews
-	generationQueue     *GenerationWorkQueue
-	generationOverview  *AssetGenerationOverview
+	catalog        *catalog.ProductSnapshot
+	approvedAssets *productasset.ApprovedAssetInventory
 }
 
 func buildListingKitExportProjection(result *ListingKitResult, selectedPlatform string) listingKitExportProjection {
@@ -28,13 +23,8 @@ func buildListingKitExportProjection(result *ListingKitResult, selectedPlatform 
 	attachment := readProjection.PreviewInput.Attachment
 	return listingKitExportProjection{
 		attachment: listingKitExportProjectionAttachment{
-			catalog:             attachment.CatalogProduct,
-			assetBundle:         attachment.AssetBundle,
-			assetInventory:      attachment.AssetInventorySummary,
-			assetRenderPreviews: readProjection.AssetRenderPreviews,
-			platformPreviews:    readProjection.PlatformAssetRenderPreviews,
-			generationQueue:     readProjection.AssetGenerationQueue,
-			generationOverview:  readProjection.AssetGenerationOverview,
+			catalog:        attachment.CatalogProduct,
+			approvedAssets: attachment.ApprovedAssetInventory,
 		},
 		overview: buildListingKitExportMetaFromReadProjection(readProjection),
 	}
@@ -45,11 +35,6 @@ func applyListingKitExportProjection(export *ListingKitExport, projection listin
 		return
 	}
 	export.CatalogProduct = projection.attachment.catalog
-	export.AssetBundle = projection.attachment.assetBundle
-	export.AssetInventorySummary = projection.attachment.assetInventory
-	export.AssetRenderPreviews = projection.attachment.assetRenderPreviews
-	export.PlatformAssetRenderPreviews = projection.attachment.platformPreviews
-	export.AssetGenerationQueue = projection.attachment.generationQueue
-	export.AssetGenerationOverview = projection.attachment.generationOverview
+	export.ApprovedAssetInventory = cloneApprovedAssetInventory(projection.attachment.approvedAssets)
 	export.Overview = projection.overview
 }

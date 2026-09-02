@@ -24,7 +24,6 @@ func TestStartStudioBatchGenerationExpandsPerProductIntoSeparateItems(t *testing
 			StyleCount:       "1",
 			ArtworkModel:     "gpt-image-1",
 			GroupedImageMode: "per_product",
-			ImageStrategy:    "sds_official",
 			SheinStoreID:     "store-1",
 			Selection:        SheinStudioSelectionSnapshot(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)),
 			GroupedSelections: SheinStudioGroupedSelectionList{

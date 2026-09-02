@@ -65,32 +65,33 @@ func TestAlibaba1688SourceFactsFlowProducesListingKitRequest(t *testing.T) {
 	}
 
 	req := sourcehandoff.GenerateRequestFromEnvelope(sourcehandoff.ListingKitRequestInput{
-		Envelope:     envelope,
-		TenantID:     " tenant-1688 ",
-		UserID:       " user-1688 ",
-		Platforms:    []string{" SHEIN ", "shein"},
-		Country:      " US ",
-		Language:     " en_US ",
-		SheinStoreID: 168811,
+		Envelope:           envelope,
+		TenantID:           " tenant-1688 ",
+		UserID:             " user-1688 ",
+		Platforms:          []string{" SHEIN ", "shein"},
+		Country:            " US ",
+		Language:           " en_US ",
+		SheinStoreID:       168811,
+		TargetCategoryHint: " Bags>Lunch Bags ",
 	})
 
 	if req.TenantID != "tenant-1688" || req.UserID != "user-1688" {
 		t.Fatalf("request tenant/user = %q/%q, want trimmed values", req.TenantID, req.UserID)
 	}
-	if req.ProductURL != "https://detail.1688.com/offer/321.html" {
-		t.Fatalf("ProductURL = %q, want normalized 1688 source URL", req.ProductURL)
+	if req.ProductKey != "crawler:1688:321" {
+		t.Fatalf("ProductKey = %q, want normalized source identity", req.ProductKey)
 	}
 	if req.BrandHint != "Factory Lunch" {
 		t.Fatalf("BrandHint = %q, want source brand", req.BrandHint)
 	}
 	if req.TargetCategoryHint != "Bags>Lunch Bags" {
-		t.Fatalf("TargetCategoryHint = %q, want source category", req.TargetCategoryHint)
+		t.Fatalf("TargetCategoryHint = %q, want explicit category hint", req.TargetCategoryHint)
 	}
 	if len(req.Platforms) != 1 || req.Platforms[0] != "shein" {
 		t.Fatalf("Platforms = %#v, want normalized deduped shein platform", req.Platforms)
 	}
-	if len(req.ImageURLs) != 4 {
-		t.Fatalf("ImageURLs = %#v, want main/side/detail/variant images", req.ImageURLs)
+	if req.Source == nil || req.Source.URL != "https://detail.1688.com/offer/321.html" {
+		t.Fatalf("Source = %#v, want normalized source reference", req.Source)
 	}
 	for _, want := range []string{
 		"Title: Insulated Lunch Bag",

@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"task-processor/internal/asset"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
 	listingplatform "task-processor/internal/listing/platform"
@@ -178,22 +177,19 @@ type imageAgentWorkspaceAssets struct {
 }
 
 func resolveImageAgentWorkspaceAssets(task *listingkit.Task, targetPlatform string) (imageAgentWorkspaceAssets, string, error) {
-	bundle, err := imageAgentBundleForTarget(task, targetPlatform)
+	catalog, err := imageAgentCatalogFromTaskTarget(task, targetPlatform)
 	if err != nil {
 		return imageAgentWorkspaceAssets{}, "", err
 	}
-	target := ""
-	if task != nil && task.Result != nil && len(task.Result.AssetBundlesByTarget) > 0 {
-		target = listingplatform.Normalize(targetPlatform)
+	target := listingplatform.Normalize(targetPlatform)
+	if target == "" && task != nil && task.Request != nil && len(task.Request.Platforms) == 1 {
+		target = listingplatform.Normalize(task.Request.Platforms[0])
 	}
 	assets := imageAgentWorkspaceAssets{
 		sources: make([]imageAgentWorkspaceAsset, 0),
 		styles:  make([]imageAgentWorkspaceAsset, 0),
 	}
-	if bundle == nil {
-		return imageAgentWorkspaceAssets{}, "", fmt.Errorf("%w: task has no asset bundle", imageagent.ErrValidation)
-	}
-	for _, item := range bundle.Assets {
+	for _, item := range catalog.Assets {
 		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.URL) == "" {
 			continue
 		}
@@ -201,12 +197,8 @@ func resolveImageAgentWorkspaceAssets(task *listingkit.Task, targetPlatform stri
 		if err != nil {
 			continue
 		}
-		label, err := displayLabel(&item)
-		if err != nil {
-			continue
-		}
-		candidate := imageAgentWorkspaceAsset{ID: strings.TrimSpace(item.ID), Label: label, DisplayURL: url}
-		if item.Kind == asset.KindSourceImage {
+		candidate := imageAgentWorkspaceAsset{ID: strings.TrimSpace(item.ID), Label: strings.TrimSpace(item.Label), DisplayURL: url}
+		if item.Type == imageagent.AuthorizedAssetSource {
 			assets.sources = append(assets.sources, candidate)
 			continue
 		}

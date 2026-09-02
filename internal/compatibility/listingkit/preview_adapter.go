@@ -32,9 +32,8 @@ func adaptLegacyPreviewAttachmentInput(legacy *legacylistingkit.ListingKitPrevie
 		return nil
 	}
 	return &previewdomain.AttachmentInput{
-		CatalogProduct:        legacy.Catalog,
-		AssetBundle:           legacy.Assets,
-		AssetInventorySummary: legacy.AssetInventory,
+		CatalogProduct:         legacy.Catalog,
+		ApprovedAssetInventory: legacy.ApprovedAssetInventory,
 	}
 }
 
@@ -64,8 +63,6 @@ func adaptLegacyPreviewHeaderInput(legacy *legacylistingkit.ListingKitPreviewHea
 				ApprovedSections:      card.ApprovedSections,
 				DeferredSections:      card.DeferredSections,
 				ReviewPendingSections: card.ReviewPendingSections,
-				PrimaryActionKey:      card.PrimaryActionKey,
-				PrimaryCTAKind:        card.PrimaryCTAKind,
 				Warnings:              append([]string(nil), legacy.Warnings...),
 			})
 		}

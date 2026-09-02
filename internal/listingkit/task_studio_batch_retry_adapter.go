@@ -14,12 +14,10 @@ type listingStudioBatchRetryPrepareRunner = studiodomain.BatchRetryPrepareServic
 
 type studioBatchRetryDetailGraph struct {
 	*StudioBatchDetailGraph
-	TaskLinks []StudioBatchTaskLinkRecord
 }
 
 func newListingStudioBatchRetryPrepareService(
 	repo StudioBatchRepository,
-	taskLinkRepo StudioBatchTaskLinkRepository,
 	loadDetail func(context.Context, string) (*StudioBatchDetail, error),
 	resetItems func(context.Context, []StudioBatchItemRecord) error,
 ) *listingStudioBatchRetryPrepareRunner {
@@ -37,14 +35,6 @@ func newListingStudioBatchRetryPrepareService(
 				return nil, err
 			}
 			graph := &studioBatchRetryDetailGraph{StudioBatchDetailGraph: detail}
-			if taskLinkRepo == nil {
-				return graph, nil
-			}
-			links, err := taskLinkRepo.ListStudioBatchTaskLinksByBatchID(ctx, batchID)
-			if err != nil {
-				return nil, err
-			}
-			graph.TaskLinks = links
 			return graph, nil
 		},
 		SelectItems: selectStudioBatchRetryItems,

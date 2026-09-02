@@ -9,11 +9,11 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 
-	"task-processor/internal/product/catalog/canonical"
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/store"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )

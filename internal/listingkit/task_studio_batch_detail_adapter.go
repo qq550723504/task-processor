@@ -16,8 +16,6 @@ type listingStudioBatchDetailRunner = studiodomain.BatchDetailService[
 func newListingStudioBatchDetailService(
 	repo StudioBatchRepository,
 	studioSessionRepo studioBatchSeedSessionRepository,
-	taskLinkRepo StudioBatchTaskLinkRepository,
-	getTask func(context.Context, string) (*Task, error),
 	ensureGraph func(context.Context, string) error,
 ) *listingStudioBatchDetailRunner {
 	return studiodomain.NewBatchDetailService(studiodomain.BatchDetailServiceConfig[
@@ -38,11 +36,11 @@ func newListingStudioBatchDetailService(
 		},
 		EnsureGraph: ensureGraph,
 		ProjectDetail: func(ctx context.Context, batchID string, detail *StudioBatchDetailGraph) (*StudioBatchDetail, error) {
-			draftUpdatedAt, createdTasks, rejectedTasks, failedTasks, err := loadStudioBatchDraftState(ctx, studioSessionRepo, taskLinkRepo, getTask, batchID)
+			draftUpdatedAt, err := loadStudioBatchDraftState(ctx, studioSessionRepo, batchID)
 			if err != nil {
 				return nil, err
 			}
-			return projectStudioBatchDetail(detail, draftUpdatedAt, createdTasks, rejectedTasks, failedTasks), nil
+			return projectStudioBatchDetail(detail, draftUpdatedAt), nil
 		},
 	})
 }

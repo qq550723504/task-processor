@@ -3,8 +3,8 @@ package httpapi
 import (
 	"github.com/sirupsen/logrus"
 
-	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
+	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/reviewstore"
@@ -21,12 +21,17 @@ func newDBSheinResolutionCacheStore(cfg *config.DatabaseConfig, logger *logrus.L
 	return sheinpub.NewGormResolutionCacheStore(db), closer, nil
 }
 
-func newDBAssetRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (assetrepo.Repository, func() error, error) {
+func newDBApprovedAssetInventoryReader(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.ApprovedAssetInventoryReader, func() error, error) {
 	db, closer, err := openListingKitRepositoryDB(cfg, logger)
 	if err != nil {
 		return nil, nil, err
 	}
-	return assetrepo.NewGormRepository(db), closer, nil
+	repository, err := assetpersistence.NewRepository(db)
+	if err != nil {
+		_ = closer()
+		return nil, nil, err
+	}
+	return repository, closer, nil
 }
 
 func newDBListingKitReviewRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (reviewstore.Repository, func() error, error) {

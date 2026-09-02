@@ -3,10 +3,6 @@ package listingkit
 import (
 	"sync"
 
-	assetbundle "task-processor/internal/asset/bundle"
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
-	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/listingkit/reviewstore"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
@@ -32,33 +28,27 @@ type service struct {
 }
 
 type ServiceCoreDependencies struct {
-	Repository                    Repository
-	StudioSessionRepository       StudioSessionRepository
-	StudioBatchRepository         StudioBatchRepository
-	StudioBatchRunRepository      StudioBatchRunRepository
-	StudioBatchTaskLinkRepository StudioBatchTaskLinkRepository
-	ProductSnapshotReader         ProductSnapshotReader
-	ImageService                  ImageService
-	SDSSyncService                sdsusecase.Service
-	SDSLoginStatusProvider        SDSLoginStatusProvider
-	SDSBaselineRemoteProvider     SDSBaselineRemoteProvider
-	ImageUploadStore              ImageUploadStore
-	UploadedImageRepository       UploadedImageRepository
-	StoreProfileRepository        StoreProfileRepository
-	TaskSubmitter                 TaskSubmitter
-	AIClientCredentialStore       AIClientCredentialStore
-	GenerationUsageLedger         GenerationUsageSettlement
-	GenerationUsageAdmission      GenerationUsageAdmission
-	StudioProductImageUsage       StudioProductImageUsage
+	Repository                Repository
+	StudioSessionRepository   StudioSessionRepository
+	StudioBatchRepository     StudioBatchRepository
+	StudioBatchRunRepository  StudioBatchRunRepository
+	ProductSnapshotReader     ProductSnapshotReader
+	SDSSyncService            sdsusecase.Service
+	SDSLoginStatusProvider    SDSLoginStatusProvider
+	SDSBaselineRemoteProvider SDSBaselineRemoteProvider
+	ImageUploadStore          ImageUploadStore
+	UploadedImageRepository   UploadedImageRepository
+	StoreProfileRepository    StoreProfileRepository
+	TaskSubmitter             TaskSubmitter
+	AIClientCredentialStore   AIClientCredentialStore
+	GenerationUsageLedger     GenerationUsageSettlement
+	GenerationUsageAdmission  GenerationUsageAdmission
 }
 
 type ServiceAssetDependencies struct {
-	Assembler              Assembler
-	AssetRepository        assetrepo.Repository
-	ReviewRepository       reviewstore.Repository
-	AssetRecipeResolver    assetrecipe.Resolver
-	AssetBundleBuilder     assetbundle.Builder
-	AssetGenerationService assetgeneration.Service
+	ApprovedAssetInventoryReader ApprovedAssetInventoryReader
+	Assembler                    Assembler
+	ReviewRepository             reviewstore.Repository
 }
 
 type ServiceSheinDependencies struct {

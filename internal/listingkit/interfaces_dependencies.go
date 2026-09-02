@@ -7,9 +7,9 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/listingkit/core"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
-	"task-processor/internal/productimage"
 )
 
 type TaskSubmitter interface{ Submit(taskID string) error }
@@ -25,10 +25,8 @@ type ProductSnapshotReader interface {
 	GetProductSnapshot(ctx context.Context, query ProductSnapshotQuery) (catalog.ProductSnapshot, error)
 }
 
-type ImageService interface {
-	CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error)
-	GetTaskResult(ctx context.Context, taskID string) (*productimage.TaskResult, error)
-	ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error)
+type ApprovedAssetInventoryReader interface {
+	GetApprovedInventory(ctx context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error)
 }
 
 type AIClientCredentialStore interface {
@@ -148,15 +146,15 @@ type SDSRetirementRepository interface {
 }
 
 type Assembler interface {
-	Assemble(task *Task, product *catalog.ProductSnapshot, image *productimage.ImageProcessResult) *ListingKitResult
+	Assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) *ListingKitResult
 }
 
 type TargetAwareAssembler interface {
-	AssembleForTargets(task *Task, product *catalog.ProductSnapshot, images map[string]*productimage.ImageProcessResult) *ListingKitResult
+	AssembleForTargets(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) *ListingKitResult
 }
 
 type AmazonDraftBuilder interface {
-	Build(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft
+	Build(req *GenerateRequest, canonical *canonical.Product) *amazonlisting.AmazonListingDraft
 }
 
 type TaskSubmitterConfigurer interface {

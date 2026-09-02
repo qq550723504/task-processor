@@ -7,10 +7,6 @@ import (
 	"task-processor/internal/listingkit"
 )
 
-func (s *stubGenerationTaskService) SearchSheinCategories(ctx context.Context, taskID string, query string) (*listingkit.SheinCategorySearchResult, error) {
-	return nil, errors.New("not implemented")
-}
-
 func (s *stubHistoryDetailService) SearchSheinCategories(ctx context.Context, taskID string, query string) (*listingkit.SheinCategorySearchResult, error) {
 	return nil, errors.New("not implemented")
 }

@@ -6,137 +6,72 @@ export type ClientOptions = {
 
 export type TargetPlatform = 'amazon' | 'shein' | 'temu' | 'walmart';
 
-export type ImageProcessRequest = ImageUrlsOnlyProcessRequest | ProductUrlOnlyProcessRequest | CombinedImageSourcesProcessRequest;
-
-export type ImageUrlsOnlyProcessRequest = ImageUrlsOnlyTargetProcessRequest | ImageUrlsOnlyMarketplaceProcessRequest;
-
-export type ImageUrlsOnlyTargetProcessRequest = {
-    image_urls: Array<string>;
-    text?: string;
-    target_platform: TargetPlatform;
-    /**
-     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
-     */
-    marketplace?: TargetPlatform;
-    country?: CountryCode;
-    scene?: SceneGenerationOptions;
-};
-
-export type ImageUrlsOnlyMarketplaceProcessRequest = {
-    image_urls: Array<string>;
-    text?: string;
-    target_platform?: TargetPlatform;
-    /**
-     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
-     */
-    marketplace: TargetPlatform;
-    country?: CountryCode;
-    scene?: SceneGenerationOptions;
-};
-
-export type ProductUrlOnlyProcessRequest = ProductUrlOnlyTargetProcessRequest | ProductUrlOnlyMarketplaceProcessRequest;
-
-export type ProductUrlOnlyTargetProcessRequest = {
-    product_url: string;
-    text?: string;
-    target_platform: TargetPlatform;
-    /**
-     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
-     */
-    marketplace?: TargetPlatform;
-    country?: CountryCode;
-    scene?: SceneGenerationOptions;
-};
-
-export type ProductUrlOnlyMarketplaceProcessRequest = {
-    product_url: string;
-    text?: string;
-    target_platform?: TargetPlatform;
-    /**
-     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
-     */
-    marketplace: TargetPlatform;
-    country?: CountryCode;
-    scene?: SceneGenerationOptions;
-};
-
-export type CombinedImageSourcesProcessRequest = CombinedImageSourcesTargetProcessRequest | CombinedImageSourcesMarketplaceProcessRequest;
-
-export type CombinedImageSourcesTargetProcessRequest = {
-    image_urls: Array<string>;
-    product_url: string;
-    text?: string;
-    target_platform: TargetPlatform;
-    /**
-     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
-     */
-    marketplace?: TargetPlatform;
-    country?: CountryCode;
-    scene?: SceneGenerationOptions;
-};
-
-export type CombinedImageSourcesMarketplaceProcessRequest = {
-    image_urls: Array<string>;
-    product_url: string;
-    text?: string;
-    target_platform?: TargetPlatform;
-    /**
-     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
-     */
-    marketplace: TargetPlatform;
-    country?: CountryCode;
-    scene?: SceneGenerationOptions;
-};
-
-/**
- * ISO 3166-1 alpha-2 country code consumed by the ProductImage marketplace profile.
- */
-export type CountryCode = string;
-
-export type SceneGenerationOptions = {
-    scene_category?: string;
-    scene_style?: string;
-    background_tone?: string;
-    composition?: string;
-    props_level?: string;
-    audience_hint?: string;
-    custom_scene_hint?: string;
-};
-
-export type ImageTaskCreated = {
-    task_id: string;
-    status: ImageTaskStatus;
-    created_at: string;
-};
-
-export type ImageTaskStatus = 'pending' | 'processing' | 'completed' | 'needs_review' | 'rejected' | 'failed';
-
-export type ImageTaskResult = {
-    task_id: string;
-    status: ImageTaskStatus;
-    target_platform: TargetPlatform;
-    result?: ImageProcessResult;
-    error?: string;
-    created_at: string;
-    completed_at?: string;
-};
-
-export type ImageProcessResult = {
-    main_image?: ImageAsset;
-    white_bg_image?: ImageAsset;
-    gallery_images?: Array<ImageAsset>;
-};
-
-export type ImageAsset = {
-    url: string;
-    type: string;
-};
-
 export type ListingKitPreview = {
     task_id: string;
     status: string;
     selected_platform?: TargetPlatform;
     platforms?: Array<TargetPlatform>;
+    needs_review: boolean;
+    catalog?: ProductSnapshot;
+    approved_asset_inventory?: ApprovedAssetInventory;
+    created_at: string;
+    completed_at?: string;
+};
+
+export type ProductSnapshot = {
+    title?: string;
+    brand?: string;
+    category_path?: Array<string>;
+    description?: string;
+    selling_points?: Array<string>;
+    seo_keywords?: Array<string>;
+    attributes?: Array<ProductAttribute>;
+    variants?: Array<ProductVariant>;
+    images?: Array<ProductSnapshotImage>;
+};
+
+export type ProductAttribute = {
+    name?: string;
+    value?: string;
+};
+
+export type ProductVariant = {
+    source_id?: string;
+    title?: string;
+    sku?: string;
+    stock?: number;
+    barcode?: string;
+    is_default?: boolean;
+    images?: Array<ProductSnapshotImage>;
+};
+
+export type ProductSnapshotImage = {
+    url?: string;
+    role?: string;
+};
+
+export type ApprovedAssetInventory = {
+    scope: ApprovedAssetScope;
+    assets: Array<ApprovedAsset>;
+};
+
+export type ApprovedAssetScope = {
+    tenant_id: string;
+    product_key: string;
+};
+
+export type ApprovedAsset = {
+    id: string;
+    run_id?: string;
+    plan_revision?: number;
+    slot_id?: string;
+    attempt?: number;
+    role: 'design' | 'main' | 'white_background' | 'gallery';
+    url: string;
+    source_asset_id?: string;
+    width?: number;
+    height?: number;
+    operations?: Array<string>;
 };
 
 export type ErrorEnvelope = {
@@ -145,62 +80,6 @@ export type ErrorEnvelope = {
 };
 
 export type TaskId = string;
-
-export type ProcessImagesData = {
-    body: ImageProcessRequest;
-    path?: never;
-    query?: never;
-    url: '/api/v1/images/process';
-};
-
-export type ProcessImagesErrors = {
-    /**
-     * Invalid request, including a missing or unsupported target platform.
-     */
-    400: ErrorEnvelope;
-};
-
-export type ProcessImagesError = ProcessImagesErrors[keyof ProcessImagesErrors];
-
-export type ProcessImagesResponses = {
-    /**
-     * Image processing task queued.
-     */
-    200: ImageTaskCreated;
-};
-
-export type ProcessImagesResponse = ProcessImagesResponses[keyof ProcessImagesResponses];
-
-export type GetImageTaskData = {
-    body?: never;
-    path: {
-        task_id: string;
-    };
-    query?: never;
-    url: '/api/v1/images/tasks/{task_id}';
-};
-
-export type GetImageTaskErrors = {
-    /**
-     * Image task was not found.
-     */
-    404: ErrorEnvelope;
-    /**
-     * Persisted task has no supported target platform and cannot be returned as a target-specific result.
-     */
-    409: ErrorEnvelope;
-};
-
-export type GetImageTaskError = GetImageTaskErrors[keyof GetImageTaskErrors];
-
-export type GetImageTaskResponses = {
-    /**
-     * Image processing task state and target-specific result.
-     */
-    200: ImageTaskResult;
-};
-
-export type GetImageTaskResponse = GetImageTaskResponses[keyof GetImageTaskResponses];
 
 export type GetListingKitPreviewData = {
     body?: never;
@@ -222,6 +101,10 @@ export type GetListingKitPreviewErrors = {
      * Task or requested platform preview was not found.
      */
     404: ErrorEnvelope;
+    /**
+     * Product Snapshot or approved assets are not ready.
+     */
+    409: ErrorEnvelope;
 };
 
 export type GetListingKitPreviewError = GetListingKitPreviewErrors[keyof GetListingKitPreviewErrors];

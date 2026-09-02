@@ -14,9 +14,9 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 
-	"task-processor/internal/product/catalog/canonical"
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/product/catalog/canonical"
 	sharedtenantctx "task-processor/internal/shared/tenantctx"
 )
 

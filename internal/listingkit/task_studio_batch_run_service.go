@@ -133,7 +133,7 @@ func resolveStudioBatchRunBatchStatus(detail *StudioBatchDetailGraph) StudioBatc
 		return ""
 	}
 	status := aggregateStudioBatchStatus(detail.Items)
-	if status != "" && detail.Batch.Status != StudioBatchStatusTasksCreating && detail.Batch.Status != StudioBatchStatusTasksCreated {
+	if status != "" {
 		return status
 	}
 	return detail.Batch.Status

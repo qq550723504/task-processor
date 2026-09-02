@@ -7,16 +7,10 @@ import (
 	studiodomain "task-processor/internal/listing/studio"
 )
 
-type listingStudioBatchGenerationRunner = studiodomain.BatchGenerationService[
-	StudioBatchDetail,
-	CreateStudioBatchTasksResult,
-]
+type listingStudioBatchGenerationRunner = studiodomain.BatchGenerationService[StudioBatchDetail]
 
 func newListingStudioBatchGenerationService(s *taskStudioBatchService) *listingStudioBatchGenerationRunner {
-	return studiodomain.NewBatchGenerationService(studiodomain.BatchGenerationServiceConfig[
-		StudioBatchDetail,
-		CreateStudioBatchTasksResult,
-	]{
+	return studiodomain.NewBatchGenerationService(studiodomain.BatchGenerationServiceConfig[StudioBatchDetail]{
 		RefreshGraph: func(ctx context.Context, batchID string) error {
 			if s == nil || s.repo == nil {
 				return fmt.Errorf("studio batch repository is not configured")
@@ -38,19 +32,6 @@ func newListingStudioBatchGenerationService(s *taskStudioBatchService) *listingS
 			}
 			return s.GetStudioBatchDetail(ctx, batchID)
 		},
-		ShouldResumeTaskCreation: func(ctx context.Context, batchID string) bool {
-			if s == nil {
-				return false
-			}
-			return shouldResumeStudioBatchTaskCreation(ctx, s.repo, batchID)
-		},
-		ResumeTaskCreation: func(ctx context.Context, batchID string) (*CreateStudioBatchTasksResult, error) {
-			if s == nil || s.repo == nil {
-				return nil, fmt.Errorf("studio batch repository is not configured")
-			}
-			return s.resumeStudioBatchTaskCreation(ctx, batchID)
-		},
-		AdaptResumeResult: adaptCreateStudioBatchTasksResultToDetail,
 		PrepareRetryItems: func(ctx context.Context, batchID string, itemIDs []string) (*StudioBatchDetail, error) {
 			if s == nil || s.repo == nil {
 				return nil, fmt.Errorf("studio batch repository is not configured")
@@ -68,18 +49,4 @@ func newListingStudioBatchGenerationService(s *taskStudioBatchService) *listingS
 			return s.retryRunner.PrepareRetryItems(ctx, batchID, itemIDs)
 		},
 	})
-}
-
-func adaptCreateStudioBatchTasksResultToDetail(result *CreateStudioBatchTasksResult) *StudioBatchDetail {
-	if result == nil {
-		return nil
-	}
-	return &StudioBatchDetail{
-		Batch:         result.Batch,
-		Items:         result.Items,
-		CreatedTasks:  result.CreatedTasks,
-		ReusedTasks:   result.ReusedTasks,
-		RejectedTasks: result.RejectedTasks,
-		FailedTasks:   result.FailedTasks,
-	}
 }

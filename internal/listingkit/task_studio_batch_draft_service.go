@@ -142,11 +142,7 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	session.PromptMode = fields.PromptMode
 	session.StyleCount = fields.StyleCount
 	session.VariationIntensity = fields.VariationIntensity
-	session.ProductImageCount = fields.ProductImageCount
-	session.ProductImagePrompt = fields.ProductImagePrompt
-	session.ProductImagePrompts = toStudioProductImagePromptList(fields.ProductImagePrompts)
 	session.ArtworkModel = fields.ArtworkModel
-	session.ImageStrategy = fields.ImageStrategy
 	session.GroupedImageMode = fields.GroupedImageMode
 	session.SelectedSDSImages = toStudioSelectedSDSImageList(fields.SelectedSDSImages)
 	session.GroupedSelections = toStudioGroupedSelectionList(fields.GroupedSelections)
@@ -158,8 +154,6 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	session.HotStyleReferencePrompt = fields.HotStyleReferencePrompt
 	session.SheinStoreID = fields.SheinStoreID
 	session.ApprovedDesignIDs = append(SheinStudioStringList(nil), fields.ApprovedDesignIDs...)
-	session.CreatedTasks = toStudioCreatedTaskList(fields.CreatedTasks)
-	session.CreatedTaskIDs = append(SheinStudioStringList(nil), fields.CreatedTaskIDs...)
 	session.GenerationJobs = append(SheinStudioGenerationJobList(nil), fields.GenerationJobs...)
 	session.SavedAsBatch = true
 	session.BatchName, err = s.resolveBatchName(ctx, studiodomain.BatchNameResolutionInput{
@@ -188,7 +182,6 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 		"status":                  session.Status,
 		"design_count":            len(batchReq.Designs),
 		"approved_design_count":   len(fields.ApprovedDesignIDs),
-		"created_task_count":      len(fields.CreatedTasks),
 		"generation_jobs_count":   len(fields.GenerationJobs),
 		"grouped_selection_count": len(fields.GroupedSelections),
 		"shein_store_id":          session.SheinStoreID,
@@ -200,18 +193,14 @@ func applyListingStudioBatchDraftFields(
 	req *UpsertStudioBatchRequest,
 	isCreate bool,
 ) studiodomain.BatchDraftFields[
-	SheinStudioProductImagePrompt,
 	SheinStudioSelectedSDSImage,
 	SheinStudioGroupedSelection,
-	SheinStudioCreatedTask,
 	SheinStudioGenerationJob,
 ] {
 	selection := req.Selection
 	return studiodomain.ApplyBatchDraftFields(studiodomain.BatchDraftInput[
-		SheinStudioProductImagePrompt,
 		SheinStudioSelectedSDSImage,
 		SheinStudioGroupedSelection,
-		SheinStudioCreatedTask,
 		SheinStudioGenerationJob,
 	]{
 		Selection: studiodomain.SelectionKeyInput{
@@ -229,11 +218,7 @@ func applyListingStudioBatchDraftFields(
 		PromptMode:                 req.PromptMode,
 		StyleCount:                 req.StyleCount,
 		VariationIntensity:         req.VariationIntensity,
-		ProductImageCount:          req.ProductImageCount,
-		ProductImagePrompt:         req.ProductImagePrompt,
-		ProductImagePrompts:        req.ProductImagePrompts,
 		ArtworkModel:               req.ArtworkModel,
-		ImageStrategy:              req.ImageStrategy,
 		GroupedImageMode:           req.GroupedImageMode,
 		SelectedSDSImages:          req.SelectedSDSImages,
 		GroupedSelections:          req.GroupedSelections,
@@ -245,12 +230,9 @@ func applyListingStudioBatchDraftFields(
 		HotStyleReferencePrompt:    req.HotStyleReferencePrompt,
 		SheinStoreID:               req.SheinStoreID,
 		ApprovedDesignIDs:          req.ApprovedDesignIDs,
-		CreatedTasks:               req.CreatedTasks,
 		GenerationJobs:             req.GenerationJobs,
 		DesignCount:                len(req.Designs),
-	}, isCreate, func(task SheinStudioCreatedTask) string {
-		return task.ID
-	})
+	}, isCreate)
 }
 
 func (s *taskStudioBatchDraftService) DeleteStudioBatch(ctx context.Context, batchID string) error {

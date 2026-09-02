@@ -19,6 +19,7 @@ import (
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/sheinpodimage"
 	"task-processor/internal/listingkit/store"
+	productasset "task-processor/internal/product/asset"
 	commonpub "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -547,15 +548,20 @@ func makeSheinPODLookupTask(taskID string, storeID int64, supplierCode, sellerSK
 		Request: &listingkit.GenerateRequest{
 			Text:         "朋克叛逆人人格标签",
 			SheinStoreID: storeID,
-			ImageURLs: []string{
-				"https://oss.shuomiai.com/listingkit-assets/20260530/d669b6d0-833c-4567-a39f-480e03a58fc3.png",
-			},
 		},
 		SheinStoreResolutionSnapshot: &listingkit.SheinStoreResolutionSnapshot{StoreID: storeID, Site: "US"},
 		Status:                       core.TaskStatusCompleted,
 		Result: &listingkit.ListingKitResult{
 			TaskID: taskID,
 			Status: string(core.TaskStatusCompleted),
+			ApprovedAssetInventory: &productasset.ApprovedAssetInventory{
+				Scope: productasset.InventoryScope{TenantID: "tenant-a", ProductKey: taskID},
+				Assets: []productasset.ApprovedAsset{{
+					ID:   "approved-main",
+					Role: productasset.RoleMain,
+					URL:  "https://oss.shuomiai.com/listingkit-assets/20260530/d669b6d0-833c-4567-a39f-480e03a58fc3.png",
+				}},
+			},
 			Shein: &sheinpub.Package{
 				Images: &commonpub.ImageSet{
 					MainImage: "https://cdn.sdspod.com/out/0/202605/f95d77f558fa121c28ba51b1f1926f5d.jpg",

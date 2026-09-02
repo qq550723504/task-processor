@@ -2,7 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	studiodomain "task-processor/internal/listing/studio"
@@ -19,7 +18,6 @@ type StudioSessionService interface {
 	PrepareRetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error)
-	CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
 	UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*StudioBatchDraftDetail, error)
 	DeleteStudioBatch(ctx context.Context, batchID string) error
 	SyncStudioDesignAsyncJob(ctx context.Context, sessionID string, jobStatus StudioAsyncJobStatus, jobID string, errMessage string) error
@@ -47,7 +45,6 @@ func deriveBatchStatus(req *UpsertStudioBatchRequest) SheinStudioSessionStatus {
 	}
 	return SheinStudioSessionStatus(studiodomain.ResolveDraftStatus(studiodomain.DraftStatusInput{
 		GenerationJobCount: len(req.GenerationJobs),
-		CreatedTaskCount:   len(req.CreatedTasks),
 		DesignCount:        len(req.Designs),
 	}))
 }
@@ -67,11 +64,7 @@ func mapStudioBatchListItem(session *SheinStudioSession, designCount int) SheinS
 		PromptMode:                 session.PromptMode,
 		StyleCount:                 session.StyleCount,
 		VariationIntensity:         session.VariationIntensity,
-		ProductImageCount:          session.ProductImageCount,
-		ProductImagePrompt:         session.ProductImagePrompt,
-		ProductImagePrompts:        []SheinStudioProductImagePrompt(session.ProductImagePrompts),
 		ArtworkModel:               session.ArtworkModel,
-		ImageStrategy:              session.ImageStrategy,
 		GroupedImageMode:           session.GroupedImageMode,
 		TransparentBackground:      transparencyMode != StudioTransparencyModeNone,
 		TransparentBackgroundMode:  transparencyMode,
@@ -83,14 +76,9 @@ func mapStudioBatchListItem(session *SheinStudioSession, designCount int) SheinS
 		Selection:                  &selection,
 		GroupedSelections:          []SheinStudioGroupedSelection(session.GroupedSelections),
 		ApprovedDesignIDs:          []string(session.ApprovedDesignIDs),
-		CreatedTasks:               []SheinStudioCreatedTask(session.CreatedTasks),
 		DesignCount:                designCount,
 		UpdatedAt:                  session.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
-}
-
-func toStudioProductImagePromptList(items []SheinStudioProductImagePrompt) SheinStudioProductImagePromptList {
-	return append(SheinStudioProductImagePromptList(nil), items...)
 }
 
 func toStudioSelectedSDSImageList(items []SheinStudioSelectedSDSImage) SheinStudioSelectedSDSImageList {
@@ -108,23 +96,6 @@ func toStudioSelectedSDSImageList(items []SheinStudioSelectedSDSImage) SheinStud
 	return result
 }
 
-func toStudioCreatedTaskList(items []SheinStudioCreatedTask) SheinStudioCreatedTaskList {
-	return append(SheinStudioCreatedTaskList(nil), items...)
-}
-
 func toStudioGroupedSelectionList(items []SheinStudioGroupedSelection) SheinStudioGroupedSelectionList {
 	return append(SheinStudioGroupedSelectionList(nil), items...)
-}
-
-func buildCreatedTaskIDs(items []SheinStudioCreatedTask) SheinStudioStringList {
-	if len(items) == 0 {
-		return nil
-	}
-	result := make(SheinStudioStringList, 0, len(items))
-	for _, item := range items {
-		if strings.TrimSpace(item.ID) != "" {
-			result = append(result, item.ID)
-		}
-	}
-	return result
 }

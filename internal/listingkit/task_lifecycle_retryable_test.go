@@ -167,7 +167,7 @@ func TestProcessFlowMarksOpenAICreditFailureAsBlockedRetryable(t *testing.T) {
 
 	task := &Task{TenantID: "tenant-test", ID: "retryable-openai-credits-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -224,7 +224,7 @@ func TestProcessFlowReturnsPersistenceErrorWhenFailureStateCannotBeStored(t *tes
 
 	task := &Task{TenantID: "tenant-test", ID: "retryable-openai-persist-failure-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -261,7 +261,7 @@ func TestProcessFlowReturnsPartialResultSaveErrorWhenFailureResultCannotBeStored
 
 	task := &Task{TenantID: "tenant-test", ID: "retryable-openai-save-failure-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductKey: "test-product", ProductURL: "https://example.com/product", Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
