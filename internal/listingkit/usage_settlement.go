@@ -8,7 +8,7 @@ import (
 
 const (
 	generationUsageModuleCode = "studio"
-	generationUsageMetric     = "studio_design_jobs_succeeded"
+	generationUsageMetric     = "listingkit_generations_succeeded"
 	generationUsageSourceType = "listingkit_generation"
 )
 

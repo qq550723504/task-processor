@@ -34,7 +34,7 @@ func (s *staticPolicyResolver) ResolvePolicy(_ context.Context, request RouteReq
 func TestPolicyRouterUsesRequestedRoutingKeyWhenAllowed(t *testing.T) {
 	policy := TenantModelPolicy{
 		TenantID:             "tenant-a",
-		Capability:           CapabilityListingKitStudioImage,
+		Capability:           CapabilityProductImageScene,
 		AllowedRoutingKeys:   []string{"gpt-image-2", "nanobanana"},
 		PreferredRoutingKeys: []string{"gpt-image-2"},
 		Version:              "legacy-studio-v1",
@@ -45,7 +45,7 @@ func TestPolicyRouterUsesRequestedRoutingKeyWhenAllowed(t *testing.T) {
 			ModelID:              "nano-banana-pro",
 			RoutingKey:           "nanobanana",
 			CredentialReference:  "image_nanobanana",
-			Features:             []ModelFeature{FeatureImageGenerate, FeatureImageEdit, FeatureAsyncImageJob},
+			Features:             []ModelFeature{FeatureVisionAnalyze, FeatureVisionAnalyze, FeatureTextGenerate},
 			Enabled:              true,
 			ConfigurationVersion: "credential-7",
 		},
@@ -56,10 +56,10 @@ func TestPolicyRouterUsesRequestedRoutingKeyWhenAllowed(t *testing.T) {
 	decision, err := router.Decide(context.Background(), RouteRequest{
 		TenantID:            " tenant-a ",
 		UserID:              " user-a ",
-		Capability:          CapabilityListingKitStudioImage,
-		Operation:           OperationImageEdit,
+		Capability:          CapabilityProductImageScene,
+		Operation:           OperationProductImageReview,
 		RequestedRoutingKey: " nanobanana ",
-		RequiredFeatures:    []ModelFeature{FeatureImageEdit},
+		RequiredFeatures:    []ModelFeature{FeatureVisionAnalyze},
 	})
 	if err != nil {
 		t.Fatalf("Decide() error = %v", err)
@@ -83,13 +83,13 @@ func TestPolicyRouterUsesPreferredKeyWhenRequestIsNotAllowed(t *testing.T) {
 		"gpt-image-2": {RoutingKey: "gpt-image-2", Enabled: true},
 	}}, &staticPolicyResolver{policy: TenantModelPolicy{
 		TenantID:             "tenant-a",
-		Capability:           CapabilityListingKitStudioImage,
+		Capability:           CapabilityProductImageScene,
 		AllowedRoutingKeys:   []string{"gpt-image-2"},
 		PreferredRoutingKeys: []string{"gpt-image-2"},
 	}})
 
 	decision, err := router.Decide(context.Background(), RouteRequest{
-		TenantID: "tenant-a", Capability: CapabilityListingKitStudioImage, Operation: OperationImageGenerate, RequestedRoutingKey: "blocked",
+		TenantID: "tenant-a", Capability: CapabilityProductImageScene, Operation: OperationProductImageSceneGenerate, RequestedRoutingKey: "blocked",
 	})
 	if err != nil {
 		t.Fatalf("Decide() error = %v", err)
@@ -104,7 +104,7 @@ func TestPolicyRouterOnlyFallsBackWhenPolicyAllowsIt(t *testing.T) {
 		"first":  {RoutingKey: "first", Enabled: false},
 		"second": {RoutingKey: "second", Enabled: true},
 	}
-	request := RouteRequest{TenantID: "tenant-a", Capability: CapabilityListingKitStudioImage, Operation: OperationImageGenerate}
+	request := RouteRequest{TenantID: "tenant-a", Capability: CapabilityProductImageScene, Operation: OperationProductImageSceneGenerate}
 
 	for _, tc := range []struct {
 		name          string
@@ -117,7 +117,7 @@ func TestPolicyRouterOnlyFallsBackWhenPolicyAllowsIt(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			router := NewPolicyRouter(stubCatalog{models: models}, &staticPolicyResolver{policy: TenantModelPolicy{
-				TenantID: "tenant-a", Capability: CapabilityListingKitStudioImage, PreferredRoutingKeys: []string{"first", "second"}, AllowCrossProviderFallback: tc.allowFallback,
+				TenantID: "tenant-a", Capability: CapabilityProductImageScene, PreferredRoutingKeys: []string{"first", "second"}, AllowCrossProviderFallback: tc.allowFallback,
 			}})
 			decision, err := router.Decide(context.Background(), request)
 			if tc.wantCategory != "" {
@@ -135,13 +135,13 @@ func TestPolicyRouterOnlyFallsBackWhenPolicyAllowsIt(t *testing.T) {
 
 func TestPolicyRouterRejectsModelWithoutRequiredFeatureOrDataTag(t *testing.T) {
 	router := NewPolicyRouter(stubCatalog{models: map[string]ModelDefinition{
-		"gpt-image-2": {RoutingKey: "gpt-image-2", Features: []ModelFeature{FeatureImageGenerate}, DataPolicyTags: []string{"public"}, Enabled: true},
+		"gpt-image-2": {RoutingKey: "gpt-image-2", Features: []ModelFeature{FeatureVisionAnalyze}, DataPolicyTags: []string{"public"}, Enabled: true},
 	}}, &staticPolicyResolver{policy: TenantModelPolicy{
-		TenantID: "tenant-a", Capability: CapabilityListingKitStudioImage, PreferredRoutingKeys: []string{"gpt-image-2"}, RequiredDataPolicyTags: []string{"restricted"},
+		TenantID: "tenant-a", Capability: CapabilityProductImageScene, PreferredRoutingKeys: []string{"gpt-image-2"}, RequiredDataPolicyTags: []string{"restricted"},
 	}})
 
 	_, err := router.Decide(context.Background(), RouteRequest{
-		TenantID: "tenant-a", Capability: CapabilityListingKitStudioImage, Operation: OperationImageEdit, RequiredFeatures: []ModelFeature{FeatureImageEdit},
+		TenantID: "tenant-a", Capability: CapabilityProductImageScene, Operation: OperationProductImageReview, RequiredFeatures: []ModelFeature{FeatureVisionAnalyze},
 	})
 	if CategoryOf(err) != ErrorCapabilityUnavailable {
 		t.Fatalf("CategoryOf(err) = %q, want %q", CategoryOf(err), ErrorCapabilityUnavailable)
@@ -151,7 +151,7 @@ func TestPolicyRouterRejectsModelWithoutRequiredFeatureOrDataTag(t *testing.T) {
 func TestPolicyRouterRejectsPolicyResolverFailure(t *testing.T) {
 	router := NewPolicyRouter(stubCatalog{}, &staticPolicyResolver{err: errors.New("policy missing")})
 	_, err := router.Decide(context.Background(), RouteRequest{
-		TenantID: "tenant-a", Capability: CapabilityListingKitStudioImage, Operation: OperationImageGenerate,
+		TenantID: "tenant-a", Capability: CapabilityProductImageScene, Operation: OperationProductImageSceneGenerate,
 	})
 	if CategoryOf(err) != ErrorPolicyDenied {
 		t.Fatalf("CategoryOf(err) = %q, want %q", CategoryOf(err), ErrorPolicyDenied)

@@ -57,15 +57,15 @@ func TestSubscriptionGuardRejectsQuotaExceeded(t *testing.T) {
 	svc := newTestService(t)
 	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleStudio, EntitlementInput{
 		Status: StatusActive,
-		Limits: map[string]int{"design_jobs": 1},
+		Limits: map[string]int{"listingkit_generations_succeeded": 1},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.CheckUsage(context.Background(), "org-286", ModuleStudio, "design_jobs", 1); err != nil {
+	if _, err := svc.CheckUsage(context.Background(), "org-286", ModuleStudio, "listingkit_generations_succeeded", 1); err != nil {
 		t.Fatalf("first usage error = %v", err)
 	}
-	result, err := svc.CheckUsage(context.Background(), "org-286", ModuleStudio, "design_jobs", 1)
+	result, err := svc.CheckUsage(context.Background(), "org-286", ModuleStudio, "listingkit_generations_succeeded", 1)
 	if !errors.Is(err, ErrSubscriptionQuotaExceed) {
 		t.Fatalf("second usage error = %v, want quota exceeded", err)
 	}
@@ -108,7 +108,7 @@ func TestSubscriptionUsageAllowsOSSStorageViaStudioFallback(t *testing.T) {
 	svc := newTestService(t)
 	_, err := svc.UpsertEntitlement(context.Background(), "org-286", ModuleStudio, EntitlementInput{
 		Status: StatusActive,
-		Limits: map[string]int{"design_jobs": 10},
+		Limits: map[string]int{"listingkit_generations_succeeded": 10},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -255,14 +255,14 @@ func TestSubscriptionUsageAdjustmentWritesAuditLog(t *testing.T) {
 	svc := newTestService(t)
 	_, err := svc.UpsertEntitlementWithAudit(context.Background(), "org-286", ModuleStudio, EntitlementInput{
 		Status: StatusActive,
-		Limits: map[string]int{"design_jobs": 10},
+		Limits: map[string]int{"listingkit_generations_succeeded": 10},
 	}, "admin-1", "manual open")
 	if err != nil {
 		t.Fatal(err)
 	}
 	counter, err := svc.SetUsage(context.Background(), "org-286", ModuleStudio, UsageAdjustmentInput{
 		PeriodKey: "2026-05",
-		Metric:    "design_jobs",
+		Metric:    "listingkit_generations_succeeded",
 		Used:      3,
 		Reason:    "manual correction",
 	}, "admin-1")
@@ -347,7 +347,7 @@ func TestSubscriptionPlanApplyCreatesEntitlements(t *testing.T) {
 			storage = &summary.Entitlements[i]
 		}
 	}
-	if studio == nil || !studio.Allowed || studio.Limits["design_jobs"] != 100 {
+	if studio == nil || !studio.Allowed || studio.Limits["listingkit_generations_succeeded"] != 100 {
 		t.Fatalf("studio entitlement = %#v", studio)
 	}
 	if storage == nil || !storage.Allowed || storage.Limits["storage_bytes"] != 10*1024*1024*1024 {
@@ -386,7 +386,7 @@ func TestSubscriptionPlanManagementUpdatesPlanAndModules(t *testing.T) {
 		Active:      true,
 		Modules: []PlanModuleInput{
 			{ModuleCode: ModuleStoreManagement, SortOrder: 10},
-			{ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 50}, SortOrder: 20},
+			{ModuleCode: ModuleStudio, Limits: map[string]int{"listingkit_generations_succeeded": 50}, SortOrder: 20},
 		},
 	}, "operator-1")
 	if err != nil {

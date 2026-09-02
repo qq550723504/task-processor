@@ -10,32 +10,3 @@ func (s *service) initializeTaskReadCollaborators() {
 	s.taskExportOrDefault()
 	s.sdsBaselineOrDefault()
 }
-
-func (s *service) initializeTaskStudioCollaborators() {
-	if s == nil {
-		return
-	}
-	s.initializeTaskStudioSessionCollaborators()
-	s.initializeTaskStudioBatchCollaborators()
-}
-
-func (s *service) initializeTaskStudioSessionCollaborators() {
-	if s == nil {
-		return
-	}
-	s.taskStudioSessionOrDefault()
-	s.taskStudioBatchDraftOrDefault()
-	s.taskStudioMediaOrDefault()
-}
-
-func (s *service) initializeTaskStudioBatchCollaborators() {
-	if s == nil {
-		return
-	}
-	s.studioBatchGenerationOrDefault()
-	s.taskStudioBatchOrDefault()
-	s.taskStudioBatchRunOrDefault()
-	s.studioBatchRunExecutorOrDefault()
-	s.studioBatchRunCoordinatorOrDefault()
-	s.initializeStudioBatchRunRecovery()
-}

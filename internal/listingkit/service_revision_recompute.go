@@ -31,7 +31,7 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 			)
 		} else {
 			sdspod.ApplyCanonical(task.Result.CanonicalProduct, sdspod.CanonicalMetadata{
-				StyleName: studioStyleName(sdsOptions),
+				StyleName: sdsStyleName(sdsOptions),
 			})
 		}
 	}

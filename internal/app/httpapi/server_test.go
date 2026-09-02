@@ -382,9 +382,6 @@ func (s *stubTaskRPCHandler) GetQueueStats(c *gin.Context) {
 
 type stubListingKitHandler struct {
 	generateCalled                         bool
-	generateStudioDesignsCalled            bool
-	startStudioAsyncJobCalled              bool
-	getStudioAsyncJobCalled                bool
 	uploadImagesCalled                     bool
 	getUploadedImageCalled                 bool
 	listTasksCalled                        bool
@@ -455,27 +452,12 @@ func (s *stubListingKitHandler) AnalyzeStudioReferenceStyle(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"style": gin.H{}})
 }
 
-func (s *stubListingKitHandler) GenerateStudioDesigns(c *gin.Context) {
-	s.generateStudioDesignsCalled = true
-	c.JSON(http.StatusOK, gin.H{"images": []any{}})
-}
-
 func (s *stubListingKitHandler) GetSDSBaselineReadiness(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ready"})
 }
 
 func (s *stubListingKitHandler) WarmSDSBaseline(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ready"})
-}
-
-func (s *stubListingKitHandler) StartStudioAsyncJob(c *gin.Context) {
-	s.startStudioAsyncJobCalled = true
-	c.JSON(http.StatusAccepted, gin.H{"job_id": "studio-job-1", "status": "running"})
-}
-
-func (s *stubListingKitHandler) GetStudioAsyncJob(c *gin.Context) {
-	s.getStudioAsyncJobCalled = true
-	c.JSON(http.StatusOK, gin.H{"job_id": c.Param("job_id"), "status": "succeeded"})
 }
 
 func (s *stubListingKitHandler) UploadListingKitImages(c *gin.Context) {

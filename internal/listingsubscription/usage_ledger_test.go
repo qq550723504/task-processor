@@ -9,7 +9,7 @@ func TestReserveUsageInputNormalizesIdentifiersAndClonesMetadata(t *testing.T) {
 	got, err := NormalizeAndValidateReserveUsageInput(ReserveUsageInput{
 		TenantID:       " tenant-17 ",
 		ModuleCode:     " studio ",
-		Metric:         " studio_design_jobs_succeeded ",
+		Metric:         " listingkit_generations_succeeded ",
 		Quantity:       1,
 		PeriodKey:      " 2026-08 ",
 		SourceType:     " design_job ",
@@ -20,7 +20,7 @@ func TestReserveUsageInputNormalizesIdentifiersAndClonesMetadata(t *testing.T) {
 		t.Fatalf("NormalizeAndValidateReserveUsageInput() error = %v", err)
 	}
 
-	if got.TenantID != "tenant-17" || got.ModuleCode != "studio" || got.Metric != "studio_design_jobs_succeeded" || got.PeriodKey != "2026-08" || got.SourceType != "design_job" || got.SourceID != "job-42" || got.IdempotencyKey != "request-42" {
+	if got.TenantID != "tenant-17" || got.ModuleCode != "studio" || got.Metric != "listingkit_generations_succeeded" || got.PeriodKey != "2026-08" || got.SourceType != "design_job" || got.SourceID != "job-42" || got.IdempotencyKey != "request-42" {
 		t.Fatalf("normalized input = %+v, want trimmed identifiers", got)
 	}
 	if got.Metadata != nil {
@@ -29,7 +29,7 @@ func TestReserveUsageInputNormalizesIdentifiersAndClonesMetadata(t *testing.T) {
 }
 
 func TestReserveUsageInputRejectsProviderUnsafeMetadata(t *testing.T) {
-	input := ReserveUsageInput{TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricStudioDesignJobsSucceeded, Quantity: 1, PeriodKey: "2026-08", SourceType: "design_job", SourceID: "job-42", IdempotencyKey: "request-42", Metadata: map[string]string{"source": "studio"}}
+	input := ReserveUsageInput{TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricListingKitGenerationsSucceeded, Quantity: 1, PeriodKey: "2026-08", SourceType: "design_job", SourceID: "job-42", IdempotencyKey: "request-42", Metadata: map[string]string{"source": "studio"}}
 	if _, err := NormalizeAndValidateReserveUsageInput(input); !errors.Is(err, ErrUsageOutboxUnsafeMetadata) {
 		t.Fatalf("NormalizeAndValidateReserveUsageInput() error = %v, want ErrUsageOutboxUnsafeMetadata", err)
 	}
@@ -39,7 +39,7 @@ func TestReserveUsageInputRejectsInvalidValues(t *testing.T) {
 	valid := ReserveUsageInput{
 		TenantID:       "tenant-17",
 		ModuleCode:     "studio",
-		Metric:         "studio_design_jobs_succeeded",
+		Metric:         "listingkit_generations_succeeded",
 		Quantity:       1,
 		PeriodKey:      "2026-08",
 		SourceType:     "design_job",

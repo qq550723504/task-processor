@@ -113,23 +113,6 @@ func TestNewServiceWithConfigInitializesSubmitLockManager(t *testing.T) {
 	}
 }
 
-func TestNewServiceWithConfigDoesNotInitializeRetiredStudioCollaborators(t *testing.T) {
-	t.Parallel()
-
-	svc := newServiceWithConfig(newTestServiceConfig(&stubSubmitRepo{}))
-	svc.initializeCollaborators()
-
-	if svc.studio.sessionGroup.session != nil || svc.studio.sessionGroup.batchDraft != nil || svc.studio.sessionGroup.media != nil {
-		t.Fatalf("studio session collaborators = %+v, want uninitialized", svc.studio.sessionGroup)
-	}
-	if svc.studio.batchGroup.batchGeneration != nil || svc.studio.batchGroup.batch != nil {
-		t.Fatalf("studio batch collaborators = %+v, want uninitialized", svc.studio.batchGroup)
-	}
-	if svc.studio.runGroup.batchRun != nil || svc.studio.runGroup.runExecutor != nil || svc.studio.runGroup.runCoordinator != nil {
-		t.Fatalf("studio run collaborators = %+v, want uninitialized", svc.studio.runGroup)
-	}
-}
-
 func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyRuntimeMirrors(t *testing.T) {
 	t.Parallel()
 

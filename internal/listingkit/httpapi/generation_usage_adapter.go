@@ -129,7 +129,7 @@ func generationUsageFactForAdapter(tenantID, taskID string, occurredAt time.Time
 	return adapterGenerationUsageFact{
 		tenantID:       tenantID,
 		moduleCode:     "studio",
-		metric:         "studio_design_jobs_succeeded",
+		metric:         "listingkit_generations_succeeded",
 		quantity:       1,
 		sourceType:     "listingkit_generation",
 		sourceID:       taskID,

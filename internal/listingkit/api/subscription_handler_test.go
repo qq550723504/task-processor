@@ -36,7 +36,7 @@ func TestPlatformSubscriptionCanOpenModuleForTenant(t *testing.T) {
 
 	body, err := json.Marshal(map[string]any{
 		"status": "active",
-		"limits": map[string]int{"design_jobs": 12},
+		"limits": map[string]int{"listingkit_generations_succeeded": 12},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +73,7 @@ func TestPlatformSubscriptionCanOpenModuleForTenant(t *testing.T) {
 			break
 		}
 	}
-	if studio == nil || !studio.Allowed || studio.Limits["design_jobs"] != 12 {
+	if studio == nil || !studio.Allowed || studio.Limits["listingkit_generations_succeeded"] != 12 {
 		t.Fatalf("studio entitlement = %#v", studio)
 	}
 
@@ -113,7 +113,7 @@ func TestPlatformSubscriptionListReturnsResolvedTenantDisplayName(t *testing.T) 
 	}
 	body, err := json.Marshal(map[string]any{
 		"status": "active",
-		"limits": map[string]int{"design_jobs": 12},
+		"limits": map[string]int{"listingkit_generations_succeeded": 12},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -578,7 +578,7 @@ func TestPlatformSubscriptionCanManagePlans(t *testing.T) {
 		"sort_order":  25,
 		"active":      true,
 		"modules": []map[string]any{
-			{"module_code": listingsubscription.ModuleStudio, "limits": map[string]int{"design_jobs": 50}, "sort_order": 10},
+			{"module_code": listingsubscription.ModuleStudio, "limits": map[string]int{"listingkit_generations_succeeded": 50}, "sort_order": 10},
 		},
 	})
 	if err != nil {

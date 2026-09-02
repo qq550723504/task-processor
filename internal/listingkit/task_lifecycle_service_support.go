@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -106,10 +105,6 @@ func pruneEmptyTaskListSummary(summary *TaskListSummary) *TaskListSummary {
 		return nil
 	}
 	return summary
-}
-
-func (s *taskLifecycleService) enqueueOrRunStudioTask(ctx context.Context, task *Task) (*Task, error) {
-	return s.dispatchStudioTask(ctx, task)
 }
 
 func (s *taskLifecycleService) runTaskInline(ctx context.Context, task *Task) (*Task, error) {
@@ -240,16 +235,6 @@ func (s *taskLifecycleService) dispatchGenerateTask(ctx context.Context, task *T
 	return task, nil
 }
 
-func (s *taskLifecycleService) dispatchStudioTask(ctx context.Context, task *Task) (*Task, error) {
-	if s.taskSubmitter != nil && s.taskSubmitter() != nil {
-		if err := s.enqueueGenerateTask(ctx, task); err != nil {
-			return nil, err
-		}
-		return task, nil
-	}
-	return s.runGenerateTaskInline(ctx, task)
-}
-
 func (s *taskLifecycleService) runGenerateTaskInline(ctx context.Context, task *Task) (*Task, error) {
 	runCtx := context.WithoutCancel(ctx)
 	preserveCancellation := taskDispatchCancellationPreserved(ctx)
@@ -348,26 +333,6 @@ func validateRequest(req *GenerateRequest) error {
 	}
 	if len(req.Platforms) == 0 {
 		return fmt.Errorf("at least one platform is required")
-	}
-	if err := validateSheinStudioAspectRatio(req); err != nil {
-		return err
-	}
-	return nil
-}
-
-func validateSheinStudioAspectRatio(req *GenerateRequest) error {
-	if req == nil || req.Options == nil || req.Options.SheinStudio == nil || req.Options.SDS == nil {
-		return nil
-	}
-	studio := req.Options.SheinStudio
-	sds := req.Options.SDS
-	if studio.SourceDesignWidth <= 0 || studio.SourceDesignHeight <= 0 || sds.PrintableWidth <= 0 || sds.PrintableHeight <= 0 {
-		return nil
-	}
-	sourceRatio := float64(studio.SourceDesignWidth) / float64(studio.SourceDesignHeight)
-	targetRatio := float64(sds.PrintableWidth) / float64(sds.PrintableHeight)
-	if math.Abs(sourceRatio-targetRatio)/targetRatio > 0.25 {
-		return fmt.Errorf("shein studio source image ratio differs too much from SDS printable area ratio")
 	}
 	return nil
 }

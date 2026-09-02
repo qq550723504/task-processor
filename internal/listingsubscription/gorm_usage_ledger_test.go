@@ -73,7 +73,7 @@ func TestGormUsageLedgerReserveIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewGormUsageLedger(repo)
 	input := usageLedgerReserveInput("tenant-17", "request-42", 1)
 
@@ -99,7 +99,7 @@ func TestGormUsageLedgerReplayRejectsExplicitPeriodChangeAcrossBoundary(t *testi
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-period-replay", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+	seedUsageLedgerEntitlement(t, repo, "tenant-period-replay", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewGormUsageLedger(repo)
 	firstInput := usageLedgerReserveInput("tenant-period-replay", "period-boundary", 1)
 	firstInput.PeriodKey = "2026-07"
@@ -119,7 +119,7 @@ func TestGormUsageLedgerRejectsIdempotencyKeyForDifferentUsageFact(t *testing.T)
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 10})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 10})
 	ledger := NewGormUsageLedger(repo)
 	input := usageLedgerReserveInput("tenant-17", "request-fact", 1)
 	if _, err := ledger.Reserve(ctx, input); err != nil {
@@ -137,7 +137,7 @@ func TestGormUsageLedgerCommitAndReleaseAreIdempotent(t *testing.T) {
 	t.Run("commit", func(t *testing.T) {
 		db := openUsageLedgerTestDB(t)
 		repo := NewGormRepository(db)
-		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 		ledger := NewGormUsageLedger(repo)
 		reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-commit", 1))
 		if err != nil {
@@ -160,7 +160,7 @@ func TestGormUsageLedgerCommitAndReleaseAreIdempotent(t *testing.T) {
 	t.Run("release", func(t *testing.T) {
 		db := openUsageLedgerTestDB(t)
 		repo := NewGormRepository(db)
-		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 		ledger := NewGormUsageLedger(repo)
 		reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-release", 1))
 		if err != nil {
@@ -407,7 +407,7 @@ func TestGormUsageLedgerConcurrentStorageCommitsAllocateStrictSnapshotTimes(t *t
 func TestGormUsageLedgerZeroOccurredAtReplayUsesPersistedPeriod(t *testing.T) {
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 2})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewGormUsageLedger(repo)
 	input := usageLedgerReserveInput("tenant-17", "zero-time-replay", 1)
 	first, err := ledger.Reserve(context.Background(), input)
@@ -433,7 +433,7 @@ func TestUsageLedgerQuotaReservationAndStorageDeltas(t *testing.T) {
 	t.Run("positive quantity", func(t *testing.T) {
 		db := openUsageLedgerTestDB(t)
 		repo := NewGormRepository(db)
-		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 		ledger := NewGormUsageLedger(repo)
 		for _, key := range []string{"request-one", "request-one-b"} {
 			if _, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", key, 1)); err != nil {
@@ -445,7 +445,7 @@ func TestUsageLedgerQuotaReservationAndStorageDeltas(t *testing.T) {
 		if !errors.As(err, &quotaErr) {
 			t.Fatalf("Reserve() over limit error = %v, want *UsageQuotaError", err)
 		}
-		if quotaErr.Metric != "studio_design_jobs_succeeded" || quotaErr.Limit == nil || *quotaErr.Limit != 2 || quotaErr.CommittedUsage != 0 || quotaErr.ReservedUsage != 2 || quotaErr.Quantity != 1 {
+		if quotaErr.Metric != "listingkit_generations_succeeded" || quotaErr.Limit == nil || *quotaErr.Limit != 2 || quotaErr.CommittedUsage != 0 || quotaErr.ReservedUsage != 2 || quotaErr.Quantity != 1 {
 			t.Fatalf("quota error = %+v, want metric/limit/committed/reserved/quantity", quotaErr)
 		}
 	})
@@ -585,7 +585,7 @@ func TestUsageLedgerQuotaReservationAndStorageDeltas(t *testing.T) {
 	t.Run("zero limit is unlimited", func(t *testing.T) {
 		db := openUsageLedgerTestDB(t)
 		repo := NewGormRepository(db)
-		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 0})
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 0})
 		if _, err := NewGormUsageLedger(repo).Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-unlimited", 1)); err != nil {
 			t.Fatalf("zero-limit Reserve() error = %v, want unlimited semantics", err)
 		}
@@ -604,7 +604,7 @@ func TestGormUsageLedgerUsesStudioFallbackForStorage(t *testing.T) {
 func TestGormUsageLedgerUsesPlanLimitsWhenLegacyEntitlementSnapshotLacksMetric(t *testing.T) {
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-legacy", ModuleStudio, map[string]int{"design_jobs": 1})
+	seedUsageLedgerEntitlement(t, repo, "tenant-legacy", ModuleStudio, map[string]int{"listingkit_generations_succeeded": 1})
 	if err := db.Create(&subscriptionPlanModuleRow{PlanCode: PlanProfessional, ModuleCode: ModuleStudio, LimitsJSON: `{"shein_drafts_succeeded":2}`}).Error; err != nil {
 		t.Fatalf("create plan module: %v", err)
 	}
@@ -633,8 +633,8 @@ func TestGormUsageLedgerConcurrentQuotaReservations(t *testing.T) {
 	ctx := context.Background()
 	db := openConcurrentUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-concurrent", "studio", map[string]int{"studio_design_jobs_succeeded": 10})
-	if err := db.Create(&usageBucketRow{TenantID: "tenant-concurrent", ModuleCode: "studio", PeriodKey: "2026-08", Metric: "studio_design_jobs_succeeded"}).Error; err != nil {
+	seedUsageLedgerEntitlement(t, repo, "tenant-concurrent", "studio", map[string]int{"listingkit_generations_succeeded": 10})
+	if err := db.Create(&usageBucketRow{TenantID: "tenant-concurrent", ModuleCode: "studio", PeriodKey: "2026-08", Metric: "listingkit_generations_succeeded"}).Error; err != nil {
 		t.Fatalf("seed concurrent usage bucket: %v", err)
 	}
 	ledger := NewGormUsageLedger(repo)
@@ -692,7 +692,7 @@ func TestGormUsageLedgerConcurrentQuotaReservations(t *testing.T) {
 	}
 
 	var bucket usageBucketRow
-	if err := db.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-concurrent", "studio", "2026-08", "studio_design_jobs_succeeded").Take(&bucket).Error; err != nil {
+	if err := db.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-concurrent", "studio", "2026-08", "listingkit_generations_succeeded").Take(&bucket).Error; err != nil {
 		t.Fatalf("load concurrent usage bucket: %v", err)
 	}
 	var events, outbox int64
@@ -721,7 +721,7 @@ func TestGormUsageLedgerListsPendingOutbox(t *testing.T) {
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewGormUsageLedger(repo)
 	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-outbox", 1))
 	if err != nil {
@@ -743,7 +743,7 @@ func TestGormUsageLedgerClaimedOutboxBlocksReverseUntilResolved(t *testing.T) {
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 2})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewGormUsageLedger(repo)
 	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-claim-reverse", 1))
 	if err != nil {
@@ -765,7 +765,7 @@ func TestGormUsageLedgerHonorsOutboxRetrySchedule(t *testing.T) {
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"design_jobs": 2})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewGormUsageLedger(repo)
 	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-retry-schedule", 1))
 	if err != nil {
@@ -800,7 +800,7 @@ func TestGormUsageLedgerPendingOutboxExcludesReleasedAndReversalRows(t *testing.
 	t.Run("released", func(t *testing.T) {
 		db := openUsageLedgerTestDB(t)
 		repo := NewGormRepository(db)
-		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 		ledger := NewGormUsageLedger(repo)
 		reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-release-queue", 1))
 		if err != nil {
@@ -820,7 +820,7 @@ func TestGormUsageLedgerPendingOutboxExcludesReleasedAndReversalRows(t *testing.
 	t.Run("reversal", func(t *testing.T) {
 		db := openUsageLedgerTestDB(t)
 		repo := NewGormRepository(db)
-		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 		ledger := NewGormUsageLedger(repo)
 		reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-reversal-queue", 1))
 		if err != nil {
@@ -846,7 +846,7 @@ func TestGormUsageLedgerReverseCreatesImmutableReversal(t *testing.T) {
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewGormUsageLedger(repo)
 	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-original", 1))
 	if err != nil {
@@ -912,7 +912,7 @@ func TestGormUsageLedgerProjectsReversalAfterDeliveryAndRejectsCountCorrection(t
 	t.Run("count", func(t *testing.T) {
 		db := openUsageLedgerTestDB(t)
 		repo := NewGormRepository(db)
-		seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"design_jobs": 2})
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"listingkit_generations_succeeded": 2})
 		ledger := NewGormUsageLedger(repo)
 		reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "count-delivered", 1))
 		if err != nil {
@@ -1097,7 +1097,7 @@ func TestGormUsageLedgerDoesNotReverseAmbiguousFailedDelivery(t *testing.T) {
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"design_jobs": 2})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewGormUsageLedger(repo)
 	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "count-failed-delivery", 1))
 	if err != nil {
@@ -1118,7 +1118,7 @@ func TestGormUsageLedgerReverseRejectsIdempotencyKeyOwnedByAnotherEvent(t *testi
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewGormUsageLedger(repo)
 	source, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-source", 1))
 	if err != nil {
@@ -1141,7 +1141,7 @@ func TestGormUsageLedgerReverseRejectsExistingReversalForNonCommittedSource(t *t
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewGormUsageLedger(repo)
 	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-reserved-source", 1))
 	if err != nil {
@@ -1170,7 +1170,7 @@ func TestGormUsageLedgerReserveRejectsInactiveEntitlementWindow(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := openUsageLedgerTestDB(t)
 			repo := NewGormRepository(db)
-			seedUsageLedgerEntitlementWithWindow(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2}, tt.startsAt, tt.expiresAt)
+			seedUsageLedgerEntitlementWithWindow(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 2}, tt.startsAt, tt.expiresAt)
 			_, err := NewGormUsageLedger(repo).Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-window-"+tt.name, 1))
 			if !errors.Is(err, ErrSubscriptionRequired) {
 				t.Fatalf("Reserve() entitlement %s error = %v, want ErrSubscriptionRequired", tt.name, err)
@@ -1180,7 +1180,7 @@ func TestGormUsageLedgerReserveRejectsInactiveEntitlementWindow(t *testing.T) {
 }
 
 func usageLedgerReserveInput(tenantID, idempotencyKey string, quantity int64) ReserveUsageInput {
-	return ReserveUsageInput{TenantID: tenantID, ModuleCode: "studio", Metric: "studio_design_jobs_succeeded", Quantity: quantity, PeriodKey: "2026-08", SourceType: "design_job", SourceID: "job-42", IdempotencyKey: idempotencyKey, OccurredAt: time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)}
+	return ReserveUsageInput{TenantID: tenantID, ModuleCode: "studio", Metric: "listingkit_generations_succeeded", Quantity: quantity, PeriodKey: "2026-08", SourceType: "design_job", SourceID: "job-42", IdempotencyKey: idempotencyKey, OccurredAt: time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)}
 }
 
 func usageLedgerStorageInput(tenantID, idempotencyKey string, quantity int64) ReserveUsageInput {
@@ -1219,7 +1219,7 @@ func assertUsageLedgerCounts(t *testing.T, db *gorm.DB, eventID string, events i
 		t.Fatalf("count usage outbox: %v", err)
 	}
 	var bucket usageBucketRow
-	if err := db.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-17", "studio", "2026-08", "studio_design_jobs_succeeded").Take(&bucket).Error; err != nil {
+	if err := db.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-17", "studio", "2026-08", "listingkit_generations_succeeded").Take(&bucket).Error; err != nil {
 		t.Fatalf("load usage bucket: %v", err)
 	}
 	if gotEvents != events || gotOutbox != outbox || bucket.Committed != committed || bucket.Reserved != reserved {
@@ -1332,14 +1332,14 @@ func TestAutoMigrateRepositoryEnforcesUsageLedgerConstraints(t *testing.T) {
 			t.Fatalf("outbox defaults = %+v, want openmeter/pending/0", outbox)
 		}
 
-		if err := db.Exec("INSERT INTO saas_usage_buckets (tenant_id, module_code, period_key, metric) VALUES (?, ?, ?, ?)", "tenant-17", "studio", "2026-08", "studio_design_jobs_succeeded").Error; err != nil {
+		if err := db.Exec("INSERT INTO saas_usage_buckets (tenant_id, module_code, period_key, metric) VALUES (?, ?, ?, ?)", "tenant-17", "studio", "2026-08", "listingkit_generations_succeeded").Error; err != nil {
 			t.Fatalf("insert usage bucket: %v", err)
 		}
 		var bucket struct {
 			Committed int64
 			Reserved  int64
 		}
-		if err := db.Raw("SELECT committed, reserved FROM saas_usage_buckets WHERE tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-17", "studio", "2026-08", "studio_design_jobs_succeeded").Scan(&bucket).Error; err != nil {
+		if err := db.Raw("SELECT committed, reserved FROM saas_usage_buckets WHERE tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-17", "studio", "2026-08", "listingkit_generations_succeeded").Scan(&bucket).Error; err != nil {
 			t.Fatalf("load bucket defaults: %v", err)
 		}
 		if bucket.Committed != 0 || bucket.Reserved != 0 {
@@ -1392,14 +1392,14 @@ func insertUsageEvent(db *gorm.DB, eventID, tenantID, idempotencyKey, status str
 	return db.Exec(`INSERT INTO saas_usage_events (
 		event_id, tenant_id, module_code, metric, quantity, period_key,
 		source_type, source_id, idempotency_key, status, occurred_at
-	) VALUES (?, ?, 'studio', 'studio_design_jobs_succeeded', 1, '2026-08', 'design_job', 'job-42', ?, ?, CURRENT_TIMESTAMP)`, eventID, tenantID, idempotencyKey, status).Error
+	) VALUES (?, ?, 'studio', 'listingkit_generations_succeeded', 1, '2026-08', 'design_job', 'job-42', ?, ?, CURRENT_TIMESTAMP)`, eventID, tenantID, idempotencyKey, status).Error
 }
 
 func insertUsageReversal(db *gorm.DB, eventID, idempotencyKey, reversalOf string) error {
 	return db.Exec(`INSERT INTO saas_usage_events (
 		event_id, tenant_id, module_code, metric, quantity, period_key,
 		source_type, source_id, idempotency_key, status, occurred_at, reversal_of
-	) VALUES (?, 'tenant-17', 'studio', 'studio_design_jobs_succeeded', -1, '2026-08', 'design_job', 'job-42', ?, 'reversed', CURRENT_TIMESTAMP, ?)`, eventID, idempotencyKey, reversalOf).Error
+	) VALUES (?, 'tenant-17', 'studio', 'listingkit_generations_succeeded', -1, '2026-08', 'design_job', 'job-42', ?, 'reversed', CURRENT_TIMESTAMP, ?)`, eventID, idempotencyKey, reversalOf).Error
 }
 
 func TestGormUsageLedgerReserveIncludesLegacyCounterInQuota(t *testing.T) {

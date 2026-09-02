@@ -10,7 +10,7 @@ func TestUsageLedgerReconciliationDoesNotReportValidLifecycleOrIdempotentReplay(
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 20})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 20})
 	ledger := NewGormUsageLedger(repo)
 
 	committedReservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-committed", 1))
@@ -69,7 +69,7 @@ func TestUsageLedgerReconciliationReportsBucketAndOutboxMismatchesWithSafeContex
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 20})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 20})
 	ledger := NewGormUsageLedger(repo)
 
 	committedReservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-committed", 1))
@@ -84,7 +84,7 @@ func TestUsageLedgerReconciliationReportsBucketAndOutboxMismatchesWithSafeContex
 		t.Fatalf("Reserve(reserved) error = %v", err)
 	}
 	if err := db.Model(&usageBucketRow{}).
-		Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-17", "studio", "2026-08", "studio_design_jobs_succeeded").
+		Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-17", "studio", "2026-08", "listingkit_generations_succeeded").
 		Updates(map[string]any{"committed": 9, "reserved": 8}).Error; err != nil {
 		t.Fatalf("tamper bucket: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestUsageLedgerReconciliationReportsBucketAndOutboxMismatchesWithSafeContex
 		if !ok {
 			t.Fatalf("unexpected reconciliation finding = %#v", finding)
 		}
-		if finding.TenantID != "tenant-17" || finding.Metric != "studio_design_jobs_succeeded" || finding.EventID != wantEventID || finding.SafeReason == "" {
+		if finding.TenantID != "tenant-17" || finding.Metric != "listingkit_generations_succeeded" || finding.EventID != wantEventID || finding.SafeReason == "" {
 			t.Fatalf("finding = %#v, want safe tenant/metric/event context", finding)
 		}
 		delete(want, finding.Category)
@@ -126,7 +126,7 @@ func TestUsageLedgerReconciliationReportsMissingAndOrphanOutboxWithSafeContext(t
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
-	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 20})
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 20})
 	ledger := NewGormUsageLedger(repo)
 
 	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-missing-outbox", 1))
@@ -146,7 +146,7 @@ func TestUsageLedgerReconciliationReportsMissingAndOrphanOutboxWithSafeContext(t
 	}
 	want := map[UsageLedgerReconciliationCategory]UsageLedgerReconciliationFinding{
 		UsageLedgerOutboxMissing: {
-			Category: UsageLedgerOutboxMissing, TenantID: "tenant-17", Metric: "studio_design_jobs_succeeded", EventID: reservation.Event.EventID,
+			Category: UsageLedgerOutboxMissing, TenantID: "tenant-17", Metric: "listingkit_generations_succeeded", EventID: reservation.Event.EventID,
 		},
 		UsageLedgerOutboxEventMissing: {
 			Category: UsageLedgerOutboxEventMissing, TenantID: "unknown", Metric: "unknown", EventID: "event-orphan",
@@ -174,16 +174,16 @@ func TestUsageLedgerReconciliationReportsMissingAndOrphanOutboxWithSafeContext(t
 }
 
 func TestUsageLedgerReconciliationReportsLifecycleMismatch(t *testing.T) {
-	event := usageEventRow{EventID: "event-mismatch", TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricStudioDesignJobsSucceeded, Quantity: 1, PeriodKey: "2026-08", Status: string(UsageEventReserved)}
-	report := reconcileUsageLedgerRows([]usageEventRow{event}, []usageBucketRow{{TenantID: "tenant-17", ModuleCode: ModuleStudio, PeriodKey: "2026-08", Metric: usageMetricStudioDesignJobsSucceeded, Reserved: 1}}, []usageEventOutboxRow{{EventID: event.EventID, Status: "sent"}})
+	event := usageEventRow{EventID: "event-mismatch", TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricListingKitGenerationsSucceeded, Quantity: 1, PeriodKey: "2026-08", Status: string(UsageEventReserved)}
+	report := reconcileUsageLedgerRows([]usageEventRow{event}, []usageBucketRow{{TenantID: "tenant-17", ModuleCode: ModuleStudio, PeriodKey: "2026-08", Metric: usageMetricListingKitGenerationsSucceeded, Reserved: 1}}, []usageEventOutboxRow{{EventID: event.EventID, Status: "sent"}})
 	if len(report.Findings) != 1 || report.Findings[0].Category != UsageLedgerOutboxLifecycleMismatch {
 		t.Fatalf("findings = %#v, want lifecycle mismatch only", report.Findings)
 	}
 }
 
 func TestUsageLedgerReconciliationAcceptsCancelledSourceAfterReversal(t *testing.T) {
-	source := usageEventRow{EventID: "event-source", TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricStudioDesignJobsSucceeded, Quantity: 1, PeriodKey: "2026-08", Status: string(UsageEventCommitted)}
-	reversal := usageEventRow{EventID: "event-reversal", TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricStudioDesignJobsSucceeded, Quantity: -1, PeriodKey: "2026-08", Status: string(UsageEventReversed), ReversalOf: source.EventID}
+	source := usageEventRow{EventID: "event-source", TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricListingKitGenerationsSucceeded, Quantity: 1, PeriodKey: "2026-08", Status: string(UsageEventCommitted)}
+	reversal := usageEventRow{EventID: "event-reversal", TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricListingKitGenerationsSucceeded, Quantity: -1, PeriodKey: "2026-08", Status: string(UsageEventReversed), ReversalOf: source.EventID}
 	report := reconcileUsageLedgerRows([]usageEventRow{source, reversal}, nil, []usageEventOutboxRow{{EventID: source.EventID, Status: "cancelled"}, {EventID: reversal.EventID, Status: "cancelled"}})
 	for _, finding := range report.Findings {
 		if finding.Category == UsageLedgerOutboxLifecycleMismatch {

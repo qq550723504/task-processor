@@ -29,12 +29,10 @@ type GenerateRequest struct {
 }
 
 type WarmSDSBaselineRequest struct {
-	TenantID  string          `json:"tenant_id,omitempty"`
-	ImageURLs []string        `json:"image_urls,omitempty"`
-	SDS       *SDSSyncOptions `json:"sds,omitempty"`
+	TenantID string          `json:"tenant_id,omitempty"`
+	SDS      *SDSSyncOptions `json:"sds,omitempty"`
 }
 
 type GenerateOptions struct {
-	SheinStudio *SheinStudioOptions `json:"shein_studio,omitempty"`
-	SDS         *SDSSyncOptions     `json:"sds,omitempty"`
+	SDS *SDSSyncOptions `json:"sds,omitempty"`
 }

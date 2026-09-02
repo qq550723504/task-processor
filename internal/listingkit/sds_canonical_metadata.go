@@ -57,12 +57,8 @@ func buildSDSPODCanonicalMetadata(
 		if strings.TrimSpace(metadata.ProductName) == "" {
 			metadata.ProductName = options.ProductName
 		}
-		metadata.StyleName = studioStyleName(options)
-		metadata.Attributes = map[string]string{}
-		for key, attr := range studioAttributes(
-			options, canonical.FieldTrace{}) {
-			metadata.Attributes[key] = attr.Value
-		}
+		metadata.StyleName = sdsStyleName(options)
+		metadata.Attributes = sdsCanonicalAttributes(options)
 	}
 	metadata.VariantLookup = buildSDSPODVariantLookups(product)
 	return metadata

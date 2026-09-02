@@ -12,8 +12,6 @@ type Options struct {
 	ManualReviewOutput    string
 	UnresolvedTasksJSON   string
 	UnresolvedTasksCSV    string
-	UnresolvedStudioJSON  string
-	UnresolvedStudioCSV   string
 	UnresolvedSummaryJSON string
 	Execute               bool
 	ConfirmReport         string
@@ -42,8 +40,6 @@ func ParseFlagsFrom(fs *flag.FlagSet, args ...string) Options {
 	fs.StringVar(&options.ManualReviewOutput, "manual-review-output", ".local/tmp/listingkit-owner-scope-manual-review.json", "manual review report path")
 	fs.StringVar(&options.UnresolvedTasksJSON, "unresolved-tasks-json", ".local/tmp/listingkit-owner-scope-unresolved-tasks.json", "unresolved task report path")
 	fs.StringVar(&options.UnresolvedTasksCSV, "unresolved-tasks-csv", ".local/tmp/listingkit-owner-scope-unresolved-tasks.csv", "unresolved task CSV path")
-	fs.StringVar(&options.UnresolvedStudioJSON, "unresolved-studio-json", ".local/tmp/listingkit-owner-scope-unresolved-studio-sessions.json", "unresolved studio report path")
-	fs.StringVar(&options.UnresolvedStudioCSV, "unresolved-studio-csv", ".local/tmp/listingkit-owner-scope-unresolved-studio-sessions.csv", "unresolved studio CSV path")
 	fs.StringVar(&options.UnresolvedSummaryJSON, "unresolved-summary-json", ".local/tmp/listingkit-owner-scope-unresolved-summary.json", "unresolved summary report path")
 	fs.BoolVar(&options.Execute, "execute", false, "apply a confirmed unique backfill (disabled until explicit confirmation)")
 	fs.StringVar(&options.ConfirmReport, "confirm-report", "", "exact report fingerprint required for execute mode")

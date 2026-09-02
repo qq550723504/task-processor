@@ -30,7 +30,6 @@ func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
 		route.Module == "listing-kit-admin" ||
 		route.Module == "listing-kit-platform-admin" ||
 		route.Module == "listing-kit-prompts" ||
-		route.Module == "listing-kit-studio" ||
 		route.Module == "shein-login" ||
 		route.Module == "sds" ||
 		route.Module == "sds-login" ||

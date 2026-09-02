@@ -243,23 +243,20 @@ func TestOpenMetadataDBFailsClosedOnCandidateConnectionError(t *testing.T) {
 	}
 }
 
-func TestWriteArtifactsSeparatesTaskAndStudioFindings(t *testing.T) {
+func TestWriteArtifactsSeparatesTaskFindings(t *testing.T) {
 	directory := t.TempDir()
 	taskJSON := filepath.Join(directory, "tasks.json")
-	studioJSON := filepath.Join(directory, "studio.json")
 	taskCSV := filepath.Join(directory, "tasks.csv")
-	studioCSV := filepath.Join(directory, "studio.csv")
 	report := ownerreconcile.NewReport("config.yaml", "app-db", []ownerreconcile.Finding{
 		{Table: "listing_product_import_task", Rows: 2, Reason: "no_candidate"},
-		{Table: "listingkit_studio_batches", Rows: 3, Reason: "conflicting_candidates"},
 		{Table: "listing_store", Rows: 4, Reason: "unmapped_candidate"},
 	}, 0)
-	options := Options{UnresolvedTasksJSON: taskJSON, UnresolvedStudioJSON: studioJSON, UnresolvedTasksCSV: taskCSV, UnresolvedStudioCSV: studioCSV}
+	options := Options{UnresolvedTasksJSON: taskJSON, UnresolvedTasksCSV: taskCSV}
 	if err := writeArtifacts(options, report); err != nil {
 		t.Fatal(err)
 	}
-	var tasksReport, studioReport ownerreconcile.Report
-	for path, target := range map[string]*ownerreconcile.Report{taskJSON: &tasksReport, studioJSON: &studioReport} {
+	var tasksReport ownerreconcile.Report
+	for path, target := range map[string]*ownerreconcile.Report{taskJSON: &tasksReport} {
 		contents, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -271,10 +268,7 @@ func TestWriteArtifactsSeparatesTaskAndStudioFindings(t *testing.T) {
 	if len(tasksReport.Findings) != 1 || tasksReport.Findings[0].Table != "listing_product_import_task" {
 		t.Fatalf("task report = %+v, want only task findings", tasksReport.Findings)
 	}
-	if len(studioReport.Findings) != 1 || studioReport.Findings[0].Table != "listingkit_studio_batches" {
-		t.Fatalf("studio report = %+v, want only studio findings", studioReport.Findings)
-	}
-	for path := range map[string]struct{}{taskCSV: {}, studioCSV: {}} {
+	for path := range map[string]struct{}{taskCSV: {}} {
 		contents, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)

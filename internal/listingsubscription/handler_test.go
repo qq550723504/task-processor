@@ -36,7 +36,7 @@ func TestHandlerReturnsSummaryAndUpdatesEntitlement(t *testing.T) {
 		t.Fatal("unconfigured module should not be allowed")
 	}
 
-	req = httptest.NewRequest(http.MethodPut, "/admin/subscription/entitlements/studio", strings.NewReader(`{"status":"active","limits":{"design_jobs":10}}`))
+	req = httptest.NewRequest(http.MethodPut, "/admin/subscription/entitlements/studio", strings.NewReader(`{"status":"active","limits":{"listingkit_generations_succeeded":10}}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", "org-286")
 	resp = httptest.NewRecorder()

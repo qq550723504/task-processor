@@ -35,11 +35,7 @@ func (s *service) warmSDSBaseline(ctx context.Context, req *WarmSDSBaselineReque
 	}
 
 	task := buildSDSBaselineWarmTask(ctx, req)
-	product := buildStudioFallbackCanonicalProductFromSDS(
-		task.Request.Text,
-		req.SDS,
-		normalizedSDSBaselineSourceImageURLs(req.ImageURLs, req.SDS),
-	)
+	product := newSDSBaselineCanonicalProduct(task.Request.Text, req.SDS)
 	if product == nil {
 		return nil, fmt.Errorf("failed to build SDS baseline canonical product")
 	}
@@ -111,44 +107,10 @@ func buildSDSBaselineCanonicalProduct(task *Task) *canonical.Product {
 	if task == nil || task.Request == nil || task.Request.Options == nil || task.Request.Options.SDS == nil {
 		return nil
 	}
-	return buildStudioFallbackCanonicalProductFromSDS(
+	return newSDSBaselineCanonicalProduct(
 		firstNonEmptyString(task.Request.Options.SDS.ProductName, task.Request.Text, task.Request.Options.SDS.ProductEnglishName),
 		task.Request.Options.SDS,
-		normalizedSDSBaselineSourceImageURLs(nil, task.Request.Options.SDS),
 	)
-}
-
-func normalizedSDSBaselineSourceImageURLs(requestImageURLs []string, options *SDSSyncOptions) []string {
-	seen := make(map[string]struct{})
-	out := make([]string, 0)
-	appendURL := func(raw string) {
-		trimmed := strings.TrimSpace(raw)
-		if trimmed == "" {
-			return
-		}
-		if _, ok := seen[trimmed]; ok {
-			return
-		}
-		seen[trimmed] = struct{}{}
-		out = append(out, trimmed)
-	}
-	if options != nil {
-		for _, imageURL := range options.MockupImageURLs {
-			appendURL(imageURL)
-		}
-		for _, variant := range options.Variants {
-			appendURL(variant.MockupImageURL)
-			for _, imageURL := range variant.MockupImageURLs {
-				appendURL(imageURL)
-			}
-		}
-		appendURL(options.TemplateImageURL)
-		appendURL(options.BlankDesignURL)
-	}
-	for _, imageURL := range requestImageURLs {
-		appendURL(imageURL)
-	}
-	return out
 }
 
 func selectedVariantIDsFromOptions(options *SDSSyncOptions) []int64 {

@@ -16,7 +16,7 @@ func requestContext(c *gin.Context, candidates ...string) context.Context {
 	ctx := listingkit.WithTenantID(c.Request.Context(), tenantID)
 	ctx = listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: tenantID, UserID: requestUserID(c)})
 	ctx = listingkit.WithRequestRoles(ctx, requestRoles(c))
-	return listingkit.WithRequestTrace(ctx, requestTrace(c))
+	return ctx
 }
 
 func detachedRequestContext(c *gin.Context, candidates ...string) context.Context {
@@ -104,18 +104,4 @@ func authenticatedIdentity(c *gin.Context) (authidentity.AuthenticatedIdentity, 
 		return authidentity.AuthenticatedIdentity{}, false
 	}
 	return authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
-}
-
-func requestTrace(c *gin.Context) listingkit.RequestTrace {
-	if c == nil {
-		return listingkit.RequestTrace{}
-	}
-	return listingkit.ParseRequestTrace(
-		c.GetHeader("X-ListingKit-Batch-Run-Id"),
-		c.GetHeader("X-ListingKit-Batch-Id"),
-		c.GetHeader("X-ListingKit-Studio-Session-Id"),
-		c.GetHeader("X-ListingKit-Queue-Mode"),
-		c.GetHeader("X-ListingKit-Queue-Index"),
-		c.GetHeader("X-ListingKit-Queue-Total"),
-	)
 }

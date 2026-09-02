@@ -9,8 +9,6 @@ param(
     [string]$ManualReviewOutputPath = ".local/tmp/listingkit-owner-scope-manual-review.sql",
     [string]$UnresolvedTasksJsonPath = ".local/tmp/listingkit-owner-scope-unresolved-tasks.json",
     [string]$UnresolvedTasksCsvPath = ".local/tmp/listingkit-owner-scope-unresolved-tasks.csv",
-    [string]$UnresolvedStudioJsonPath = ".local/tmp/listingkit-owner-scope-unresolved-studio-sessions.json",
-    [string]$UnresolvedStudioCsvPath = ".local/tmp/listingkit-owner-scope-unresolved-studio-sessions.csv",
     [string]$UnresolvedSummaryJsonPath = ".local/tmp/listingkit-owner-scope-unresolved-summary.json",
     [switch]$Execute,
     [string]$ConfirmReport = "",
@@ -30,8 +28,6 @@ $args = @(
     "--manual-review-output", $ManualReviewOutputPath,
     "--unresolved-tasks-json", $UnresolvedTasksJsonPath,
     "--unresolved-tasks-csv", $UnresolvedTasksCsvPath,
-    "--unresolved-studio-json", $UnresolvedStudioJsonPath,
-    "--unresolved-studio-csv", $UnresolvedStudioCsvPath,
     "--unresolved-summary-json", $UnresolvedSummaryJsonPath,
     "--batch-size", $BatchSize
 )

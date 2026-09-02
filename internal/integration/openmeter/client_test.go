@@ -94,7 +94,7 @@ func TestClientIngestUsesOfficialV3EventEndpoint(t *testing.T) {
 			t.Errorf("event identity = %#v, want ID=%q source=%q subject=%q type=%q", body, event.ID, event.Source, event.Subject, event.Type)
 		}
 		data, ok := body["data"].(map[string]any)
-		if !ok || data["quantity"] != "1" || data["metric"] != string(MetricStudioDesignJobsSucceeded) {
+		if !ok || data["quantity"] != "1" || data["metric"] != string(MetricListingKitGenerationsSucceeded) {
 			t.Errorf("event data = %#v, want count metric with quantity 1", body["data"])
 		}
 		w.WriteHeader(http.StatusNoContent)

@@ -7,10 +7,6 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 	return s.taskLifecycleOrDefault().CreateGenerateTask(ctx, req)
 }
 
-func (s *service) enqueueOrRunStudioTask(ctx context.Context, task *Task) (*Task, error) {
-	return s.taskLifecycleOrDefault().enqueueOrRunStudioTask(ctx, task)
-}
-
 func (s *service) runTaskInline(ctx context.Context, task *Task) (*Task, error) {
 	return s.taskLifecycleOrDefault().runTaskInline(ctx, task)
 }

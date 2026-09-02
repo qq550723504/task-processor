@@ -12,8 +12,6 @@ type service struct {
 	repo             Repository
 	task             taskCollaborators
 	taskDeps         taskDependencies
-	studio           studioCollaborators
-	studioDeps       studioDependencies
 	admin            adminCollaborators
 	adminDeps        adminDependencies
 	submission       submissionCollaborators

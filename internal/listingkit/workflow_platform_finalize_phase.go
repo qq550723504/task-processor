@@ -62,7 +62,6 @@ func (p *platformPostprocessPhase) run(
 	p.service.applyDefaultSheinPricing(task.Request, final.Shein)
 	if shouldSyncSDS(task.Request) {
 		applySDSOfficialImagesToShein(final.Shein, task.Request, final.SDSDesignResult, sdsOptions)
-		applySheinSizeReferenceImages(final.Shein, resolveSheinSizeReferenceImages(task.Request, final.SDSDesignResult))
 	}
 }
 

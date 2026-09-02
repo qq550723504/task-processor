@@ -36,8 +36,6 @@ func (taskOnlyRouteHandler) GetUploadedListingKitImage(c *gin.Context)    {}
 func (taskOnlyRouteHandler) DeleteUploadedListingKitImage(c *gin.Context) {}
 func (taskOnlyRouteHandler) AnalyzeStudioReferenceStyle(c *gin.Context)   {}
 func (taskOnlyRouteHandler) GenerateStudioDesigns(c *gin.Context)         {}
-func (taskOnlyRouteHandler) StartStudioAsyncJob(c *gin.Context)           {}
-func (taskOnlyRouteHandler) GetStudioAsyncJob(c *gin.Context)             {}
 func (taskOnlyRouteHandler) GetTaskResult(c *gin.Context)                 {}
 func (taskOnlyRouteHandler) RequeuePendingTasks(c *gin.Context)           {}
 func (taskOnlyRouteHandler) RecoverTaskNow(c *gin.Context)                {}

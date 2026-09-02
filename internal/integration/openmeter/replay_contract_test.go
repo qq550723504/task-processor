@@ -108,7 +108,7 @@ func pocReplayEvents(t *testing.T, runID string) ([]openmeterapi.EventInput, poc
 	for index := 1; index <= 4; index++ {
 		events = append(events, mustPoCUsageEvent(t, UsageFact{
 			TenantID:   tenantID,
-			Metric:     MetricStudioDesignJobsSucceeded,
+			Metric:     MetricListingKitGenerationsSucceeded,
 			Quantity:   "1",
 			SourceType: "design_job",
 			SourceID:   fmt.Sprintf("poc-%s-replay-success-%d", runID, index),

@@ -202,7 +202,7 @@ func TestMemUsageLedgerReconciliationPageReturnsOnlyPendingEvents(t *testing.T) 
 func TestUsageLedgerConcurrentReservationsRespectLimit(t *testing.T) {
 	ctx := context.Background()
 	repo := NewMemRepository()
-	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 10})
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 10})
 	ledger := NewMemUsageLedger(repo)
 
 	start := make(chan struct{})
@@ -275,7 +275,7 @@ func TestUsageLedgerConcurrentReservationsRespectLimit(t *testing.T) {
 func TestMemUsageLedgerConcurrentReplayCreatesOneReservation(t *testing.T) {
 	ctx := context.Background()
 	repo := NewMemRepository()
-	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 10})
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 10})
 	ledger := NewMemUsageLedger(repo)
 
 	start := make(chan struct{})
@@ -338,7 +338,7 @@ func TestMemUsageLedgerConcurrentReplayCreatesOneReservation(t *testing.T) {
 func TestMemUsageLedgerClaimedOutboxBlocksReverseUntilResolved(t *testing.T) {
 	ctx := context.Background()
 	repo := NewMemRepository()
-	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 2})
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewMemUsageLedger(repo)
 	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-claim-reverse", 1))
 	if err != nil {
@@ -359,7 +359,7 @@ func TestMemUsageLedgerClaimedOutboxBlocksReverseUntilResolved(t *testing.T) {
 func TestMemUsageLedgerClaimOutboxHonorsLimit(t *testing.T) {
 	ctx := context.Background()
 	repo := NewMemRepository()
-	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 10})
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"listingkit_generations_succeeded": 10})
 	ledger := NewMemUsageLedger(repo)
 	for _, key := range []string{"request-limit-one", "request-limit-two"} {
 		reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", key, 1))
@@ -382,7 +382,7 @@ func TestMemUsageLedgerClaimOutboxHonorsLimit(t *testing.T) {
 
 func TestMemUsageLedgerRejectsIdempotencyKeyForDifferentUsageFact(t *testing.T) {
 	repo := NewMemRepository()
-	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 10})
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 10})
 	ledger := NewMemUsageLedger(repo)
 	input := usageLedgerReserveInput("tenant-17", "request-fact", 1)
 	if _, err := ledger.Reserve(context.Background(), input); err != nil {
@@ -396,7 +396,7 @@ func TestMemUsageLedgerRejectsIdempotencyKeyForDifferentUsageFact(t *testing.T) 
 
 func TestMemUsageLedgerReplayRejectsExplicitPeriodChangeAcrossBoundary(t *testing.T) {
 	repo := NewMemRepository()
-	seedMemUsageLedgerEntitlement(t, repo, "tenant-period-replay", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 2})
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-period-replay", ModuleStudio, map[string]int{"listingkit_generations_succeeded": 2})
 	ledger := NewMemUsageLedger(repo)
 	firstInput := usageLedgerReserveInput("tenant-period-replay", "period-boundary", 1)
 	firstInput.PeriodKey = "2026-07"
@@ -414,7 +414,7 @@ func TestMemUsageLedgerReplayRejectsExplicitPeriodChangeAcrossBoundary(t *testin
 
 func TestMemUsageLedgerRejectsNonCanonicalPeriodKey(t *testing.T) {
 	repo := NewMemRepository()
-	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"design_jobs": 10})
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"listingkit_generations_succeeded": 10})
 	input := usageLedgerReserveInput("tenant-17", "period-mismatch", 1)
 	input.PeriodKey = "2026-08-retry"
 	if _, err := NewMemUsageLedger(repo).Reserve(context.Background(), input); !errors.Is(err, ErrUsageInvalidInput) {
@@ -425,7 +425,7 @@ func TestMemUsageLedgerRejectsNonCanonicalPeriodKey(t *testing.T) {
 func TestMemUsageLedgerUsesStorageFallbackAndUnlimitedZeroLimit(t *testing.T) {
 	t.Run("legacy entitlement metric mapping", func(t *testing.T) {
 		repo := NewMemRepository()
-		seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"design_jobs": 1})
+		seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"listingkit_generations_succeeded": 1})
 		ledger := NewMemUsageLedger(repo)
 		if _, err := ledger.Reserve(context.Background(), usageLedgerReserveInput("tenant-17", "legacy-limit-1", 1)); err != nil {
 			t.Fatalf("first mapped Reserve() error = %v", err)
@@ -443,7 +443,7 @@ func TestMemUsageLedgerUsesStorageFallbackAndUnlimitedZeroLimit(t *testing.T) {
 	})
 	t.Run("zero limit", func(t *testing.T) {
 		repo := NewMemRepository()
-		seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 0})
+		seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"listingkit_generations_succeeded": 0})
 		if _, err := NewMemUsageLedger(repo).Reserve(context.Background(), usageLedgerReserveInput("tenant-17", "unlimited", 1)); err != nil {
 			t.Fatalf("zero-limit Reserve() error = %v, want unlimited semantics", err)
 		}

@@ -115,8 +115,8 @@ func TestAutoMigrateListingKitRuntimeSchemaCreatesAIInvocationsTable(t *testing.
 	if !db.Migrator().HasTable("ai_invocations") {
 		t.Fatal("expected ai_invocations table to be created")
 	}
-	if !db.Migrator().HasTable("ai_async_jobs") {
-		t.Fatal("expected ai_async_jobs table to be created")
+	if db.Migrator().HasTable("ai_async_jobs") {
+		t.Fatal("listingkit runtime created retired ai_async_jobs table")
 	}
 }
 

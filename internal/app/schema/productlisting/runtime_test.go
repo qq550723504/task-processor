@@ -117,6 +117,9 @@ func TestAutoMigrateRuntimeCreatesExecutionEnvelopeColumns(t *testing.T) {
 			t.Fatalf("missing table %s", table)
 		}
 	}
+	if db.Migrator().HasTable("ai_async_jobs") {
+		t.Fatal("product-listing runtime created retired ai_async_jobs table")
+	}
 	for _, table := range []string{"image_agent_runs", "image_agent_plans", "image_agent_slots", "image_agent_attempts", "image_agent_events", "image_agent_asset_catalog", "image_agent_asset_catalog_manifests", "image_agent_projection_snapshots", "image_agent_projection_commits", "image_agent_slot_external_effects"} {
 		if db.Migrator().HasTable(table) {
 			t.Fatalf("clean bootstrap must not manufacture legacy table %s", table)

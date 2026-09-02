@@ -61,12 +61,6 @@ type UploadedImageService interface {
 	DeleteUploadedImage(ctx context.Context, key string) (*DeletedUploadedImage, error)
 }
 
-type StudioMediaService interface {
-	UploadedImageService
-	AnalyzeStudioReferenceStyle(ctx context.Context, req *StudioReferenceAnalysisRequest) (*StudioReferenceAnalysisResponse, error)
-	GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error)
-}
-
 type StoreAdminService interface {
 	ListSheinStoreProfiles(ctx context.Context) ([]ListingKitStoreProfile, error)
 	UpsertSheinStoreProfile(ctx context.Context, req *ListingKitStoreProfile) (*ListingKitStoreProfile, error)

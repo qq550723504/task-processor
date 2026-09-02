@@ -6,7 +6,6 @@
 //   - generation_service.go - Generation queue and action management
 //   - submission_service.go - Submission readiness and execution
 //   - revision_service.go - Revision history and restoration
-//   - studio_*.go - Studio session and batch management
 //
 // Each service depends on:
 //   - core/ package for interfaces and models (minimal dependency)

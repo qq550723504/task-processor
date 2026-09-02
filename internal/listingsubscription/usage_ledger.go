@@ -15,10 +15,10 @@ const (
 
 const usageMetricStorageBytesCurrent = "storage_bytes_current"
 const (
-	usageMetricStudioDesignJobsSucceeded = "studio_design_jobs_succeeded"
-	usageMetricProductImageJobsSucceeded = "product_image_jobs_succeeded"
-	usageMetricSheinDraftsSucceeded      = "shein_drafts_succeeded"
-	usageMetricSheinPublishesSucceeded   = "shein_publishes_succeeded"
+	usageMetricListingKitGenerationsSucceeded = "listingkit_generations_succeeded"
+	usageMetricProductImageJobsSucceeded      = "product_image_jobs_succeeded"
+	usageMetricSheinDraftsSucceeded           = "shein_drafts_succeeded"
+	usageMetricSheinPublishesSucceeded        = "shein_publishes_succeeded"
 )
 
 const usageStorageBucketPeriodKey = "__current__"
@@ -137,7 +137,7 @@ func NormalizeAndValidateReserveUsageInput(input ReserveUsageInput) (ReserveUsag
 }
 
 func isUsageCountMetric(metric string) bool {
-	return metric == usageMetricStudioDesignJobsSucceeded || metric == usageMetricProductImageJobsSucceeded || metric == usageMetricSheinDraftsSucceeded || metric == usageMetricSheinPublishesSucceeded
+	return metric == usageMetricListingKitGenerationsSucceeded || metric == usageMetricProductImageJobsSucceeded || metric == usageMetricSheinDraftsSucceeded || metric == usageMetricSheinPublishesSucceeded
 }
 
 func isKnownUsageMetric(metric string) bool {
@@ -234,8 +234,8 @@ func usageMetricLimitKeys(metric string) []string {
 	switch metric {
 	case usageMetricStorageBytesCurrent:
 		return []string{usageMetricStorageBytesCurrent, "storage_bytes"}
-	case usageMetricStudioDesignJobsSucceeded:
-		return []string{usageMetricStudioDesignJobsSucceeded, "design_jobs"}
+	case usageMetricListingKitGenerationsSucceeded:
+		return []string{usageMetricListingKitGenerationsSucceeded}
 	case usageMetricProductImageJobsSucceeded:
 		return []string{usageMetricProductImageJobsSucceeded, "product_image_jobs"}
 	case usageMetricSheinDraftsSucceeded:

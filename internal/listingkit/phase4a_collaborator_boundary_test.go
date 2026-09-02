@@ -130,30 +130,6 @@ func TestCollaboratorWiringFilesOwnExplicitBuilders(t *testing.T) {
 				"func buildTaskTemporalSubmissionWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskTemporalSubmissionWiring {",
 			},
 		},
-		{
-			file: "service_studio_session_wiring_support.go",
-			needles: []string{
-				"func buildTaskStudioSessionWiring(s *service) taskStudioSessionWiring {",
-				"func (w taskStudioSessionWiring) newSessionRunner() *listingStudioSessionRunner {",
-				"func (w taskStudioSessionWiring) newBatchDraftRunner() *listingStudioBatchDraftRunner {",
-			},
-		},
-		{
-			file: "service_studio_batch_wiring_support.go",
-			needles: []string{
-				"func buildTaskStudioBatchServiceWiring(s *service) taskStudioBatchServiceWiring {",
-				"func (w taskStudioBatchServiceWiring) newDetailRunner() *listingStudioBatchDetailRunner {",
-				"func (w taskStudioBatchServiceWiring) newReviewRunner() *listingStudioBatchReviewRunner {",
-			},
-		},
-		{
-			file: "service_studio_batch_run_wiring_support.go",
-			needles: []string{
-				"func buildTaskStudioBatchRunWiring(s *service) taskStudioBatchRunWiring {",
-				"func (w taskStudioBatchRunWiring) newServiceRunner(startRun func(context.Context, string) error) *studiodomain.BatchRunService {",
-				"func (w taskStudioBatchRunWiring) newCompletionRunner(now func() time.Time) *listingStudioBatchRunCompletionRunner {",
-			},
-		},
 	}
 
 	for _, tc := range cases {

@@ -28,7 +28,6 @@ func TestAutoMigrateRuntimeCreatesRepresentativeTables(t *testing.T) {
 	}
 	for _, table := range []any{
 		"ai_invocations",
-		"ai_async_jobs",
 		"product_approved_assets",
 		"product_approval_receipts",
 		"product_approved_inventory_heads",
@@ -41,6 +40,22 @@ func TestAutoMigrateRuntimeCreatesRepresentativeTables(t *testing.T) {
 	} {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("expected table for %T(%v) to be created", table, table)
+		}
+	}
+	for _, table := range []string{
+		"ai_async_jobs",
+		"listingkit_studio_async_jobs",
+		"listingkit_studio_batches",
+		"listingkit_studio_batch_items",
+		"listingkit_studio_generation_attempts",
+		"listingkit_studio_materialized_designs",
+		"listingkit_studio_batch_runs",
+		"listingkit_studio_batch_run_items",
+		"shein_studio_sessions",
+		"shein_studio_designs",
+	} {
+		if db.Migrator().HasTable(table) {
+			t.Fatalf("AutoMigrateRuntime() created retired table %s", table)
 		}
 	}
 	if !db.Migrator().HasColumn(&listingkit.SheinPODImageLookupIndex{}, "sds_gallery_image_urls") {

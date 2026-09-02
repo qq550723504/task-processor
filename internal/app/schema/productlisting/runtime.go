@@ -25,9 +25,6 @@ func AutoMigrateRuntime(db *gorm.DB) error {
 	if err := aicapabilitystore.AutoMigrateInvocationLedger(db); err != nil {
 		return fmt.Errorf("ai invocation ledger auto-migrate failed: %w", err)
 	}
-	if err := aicapabilitystore.AutoMigrateAsyncJobBindings(db); err != nil {
-		return fmt.Errorf("ai async job binding auto-migrate failed: %w", err)
-	}
 	if err := imageagentstore.AutoMigrate(db); err != nil {
 		return fmt.Errorf("image agent auto-migrate failed: %w", err)
 	}

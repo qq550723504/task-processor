@@ -119,7 +119,7 @@ func pocMeterRequests(names pocNames) []openmeterapi.CreateMeterRequest {
 			Name:        names.StudioMeterKey,
 			Key:         names.StudioMeterKey,
 			Aggregation: openmeterapi.MeterAggregationCount,
-			EventType:   eventTypeForMetric(MetricStudioDesignJobsSucceeded),
+			EventType:   eventTypeForMetric(MetricListingKitGenerationsSucceeded),
 		},
 		{
 			Name:        names.SheinMeterKey,
@@ -651,7 +651,7 @@ func TestPoCMeterRequestsMatchUsageContract(t *testing.T) {
 		eventType     string
 		valueProperty string
 	}{
-		{key: "poc_run_42_studio_meter", aggregation: openmeterapi.MeterAggregationCount, eventType: "listingkit.usage.studio_design_jobs_succeeded"},
+		{key: "poc_run_42_studio_meter", aggregation: openmeterapi.MeterAggregationCount, eventType: "listingkit.usage.listingkit_generations_succeeded"},
 		{key: "poc_run_42_shein_meter", aggregation: openmeterapi.MeterAggregationCount, eventType: "listingkit.usage.shein_drafts_succeeded"},
 		{key: "poc_run_42_storage_meter", aggregation: openmeterapi.MeterAggregationLatest, eventType: "listingkit.usage.storage_bytes_current", valueProperty: "$.quantity"},
 	}

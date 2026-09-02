@@ -178,9 +178,7 @@ func TestApplySheinVariantImageCoverageGuardMarksBlockedWithoutClearingImages(t 
 
 	mainImage := "https://cdn.example.com/shared-main.jpg"
 	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
-		Options: &GenerateOptions{
-			SheinStudio: &SheinStudioOptions{},
-		},
+		Options: &GenerateOptions{SDS: &SDSSyncOptions{}},
 	},
 		Result: &ListingKitResult{
 			SDSSync: &SDSSyncSummary{
@@ -252,9 +250,7 @@ func TestApplySheinVariantImageCoverageGuardMarksProvidedResultNeedsReview(t *te
 
 	mainImage := "https://cdn.example.com/shared-main.jpg"
 	req := &GenerateRequest{ProductKey: "test-product",
-		Options: &GenerateOptions{
-			SheinStudio: &SheinStudioOptions{},
-		},
+		Options: &GenerateOptions{SDS: &SDSSyncOptions{}},
 	}
 	result := &ListingKitResult{
 		SDSSync: &SDSSyncSummary{
