@@ -85,11 +85,11 @@ func NewProductImageAdapter(config ProductImageAdapterConfig) (*ProductImageAdap
 }
 
 func (a *ProductImageAdapter) Extract(ctx context.Context, request productimage.ExtractRequest) (productimage.Candidate, error) {
-	return a.editOne(ctx, request.Source, request.Product, productimage.RoleSubject, "extract_subject", a.config.Prompts.Subject)
+	return a.editOne(ctx, request.Source, request.Source, request.Product, productimage.RoleSubject, "extract_subject", a.config.Prompts.Subject)
 }
 
 func (a *ProductImageAdapter) RenderWhiteBackground(ctx context.Context, request productimage.RenderRequest) (productimage.Candidate, error) {
-	return a.editOne(ctx, request.Source, request.Product, productimage.RoleWhiteBackground, "render_white_background", a.config.Prompts.WhiteBackground)
+	return a.editOne(ctx, request.Subject.Asset, request.Source, request.Product, productimage.RoleWhiteBackground, "render_white_background", a.config.Prompts.WhiteBackground)
 }
 
 func (a *ProductImageAdapter) RenderScene(ctx context.Context, request productimage.SceneRequest) ([]productimage.Candidate, error) {
@@ -210,7 +210,7 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 	}, nil
 }
 
-func (a *ProductImageAdapter) editOne(ctx context.Context, source productimage.Asset, product productimage.ProductContext, role productimage.Role, operation, basePrompt string) (productimage.Candidate, error) {
+func (a *ProductImageAdapter) editOne(ctx context.Context, input, source productimage.Asset, product productimage.ProductContext, role productimage.Role, operation, basePrompt string) (productimage.Candidate, error) {
 	prompt, err := productImagePrompt(basePrompt, product, struct {
 		Operation string `json:"operation"`
 	}{Operation: operation})
@@ -218,7 +218,8 @@ func (a *ProductImageAdapter) editOne(ctx context.Context, source productimage.A
 		return productimage.Candidate{}, err
 	}
 	response, err := a.editImage(ctx, &ai.ImageEditRequest{
-		Model: a.config.ImageModel, Prompt: prompt, ImageURL: source.URL, ImageContentType: source.MediaType,
+		Model: a.config.ImageModel, Prompt: prompt, Image: append([]byte(nil), input.Bytes...),
+		ImageURL: input.URL, ImageContentType: input.MediaType,
 		ResponseFormat: "b64_json", N: 1, Size: "auto",
 	})
 	if err != nil {

@@ -108,8 +108,8 @@ func (a *ProductImageAdapter) RenderWhiteBackground(ctx context.Context, request
 		return productimage.Candidate{}, productimage.ErrCapabilityUnsupported
 	}
 	response, err := a.invoke(ctx, *a.whiteBackground, productImageHTTPRequest{
-		Task: "white_background", SourceURL: request.Source.URL, Product: newProductImageHTTPProduct(request.Product),
-	}, request.Source)
+		Task: "white_background", SourceURL: request.Subject.Asset.URL, Product: newProductImageHTTPProduct(request.Product),
+	}, request.Subject.Asset)
 	if err != nil {
 		return productimage.Candidate{}, err
 	}
@@ -204,9 +204,13 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 }
 
 func (a *ProductImageAdapter) invoke(ctx context.Context, endpoint ProductImageEndpointConfig, payload productImageHTTPRequest, source productimage.Asset) (productImageHTTPResponse, error) {
-	content, err := a.sourceFetcher(ctx, source.URL)
-	if err != nil {
-		return productImageHTTPResponse{}, err
+	content := append([]byte(nil), source.Bytes...)
+	if content == nil {
+		var err error
+		content, err = a.sourceFetcher(ctx, source.URL)
+		if err != nil {
+			return productImageHTTPResponse{}, err
+		}
 	}
 	if len(content) == 0 || len(content) > productimage.MaxInlineArtifactBytes {
 		return productImageHTTPResponse{}, productimage.ErrInputInvalid

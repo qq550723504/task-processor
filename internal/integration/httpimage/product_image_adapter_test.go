@@ -46,7 +46,7 @@ func TestProductImageHTTPAdapterImplementsExplicitSubjectAndWhiteBackgroundPorts
 
 	extracted, err := subject.Extract(context.Background(), productimage.ExtractRequest{Source: source, Product: productImageHTTPContext()})
 	require.NoError(t, err)
-	whiteResult, err := white.RenderWhiteBackground(context.Background(), productimage.RenderRequest{Source: source, Product: productImageHTTPContext()})
+	whiteResult, err := white.RenderWhiteBackground(context.Background(), productimage.RenderRequest{Source: source, Subject: extracted, Product: productImageHTTPContext()})
 	require.NoError(t, err)
 
 	require.Equal(t, productimage.RoleSubject, extracted.Asset.Role)
@@ -60,6 +60,7 @@ func TestProductImageHTTPAdapterImplementsExplicitSubjectAndWhiteBackgroundPorts
 	require.Equal(t, "subject_extract", first.Task)
 	require.Equal(t, "white_background", second.Task)
 	require.Equal(t, base64.StdEncoding.EncodeToString([]byte("owned-source")), first.ImageBase64)
+	require.Equal(t, base64.StdEncoding.EncodeToString(generated), second.ImageBase64)
 }
 
 func TestProductImageHTTPAdapterSceneSendsStructuredOptionsWithoutCategoryInference(t *testing.T) {

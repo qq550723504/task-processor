@@ -208,7 +208,13 @@ func cloneRenderRequest(request RenderRequest) (RenderRequest, error) {
 	if err != nil {
 		return RenderRequest{}, err
 	}
-	return RenderRequest{Source: source, Product: product}, nil
+	subject, err := validateCandidate(
+		request.Subject, source, RoleSubject, "extract_subject", forbiddenArtifactURLs(source),
+	)
+	if err != nil {
+		return RenderRequest{}, ErrInputInvalid
+	}
+	return RenderRequest{Source: source, Subject: subject, Product: product}, nil
 }
 
 func cloneSceneRequest(request SceneRequest) (SceneRequest, int, error) {

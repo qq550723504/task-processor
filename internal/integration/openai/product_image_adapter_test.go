@@ -50,6 +50,34 @@ func TestProductImageAdapterUsesTypedPortsAndKeepsGeneratedArtifactsInline(t *te
 	require.Equal(t, "image-request-1", result.Metadata.InvocationID)
 }
 
+func TestProductImageAdapterRendersWhiteBackgroundFromInlineSubjectWithOriginalProvenance(t *testing.T) {
+	t.Parallel()
+
+	generated := productImagePNG(t, 3, 4)
+	images := &productImageGeneratorStub{response: &ai.ImageResponse{Data: []ai.ImageData{{B64JSON: base64.StdEncoding.EncodeToString(generated)}}}}
+	adapter, err := NewProductImageAdapter(validProductImageAdapterConfig(images, &productImageChatStub{}))
+	require.NoError(t, err)
+	white, err := productimage.NewWhiteBackgroundCapability(adapter)
+	require.NoError(t, err)
+	source := productImageSource("source-1", "https://source.example/item.png")
+	subjectBytes := productImagePNG(t, 2, 2)
+	subject := productimage.Candidate{Asset: productimage.Asset{
+		Bytes: subjectBytes, MediaType: "image/png", SourceURL: source.URL, SourceAssetID: source.SourceAssetID,
+		Role: productimage.RoleSubject, Width: 2, Height: 2, Operations: []string{"extract_subject"},
+	}}
+
+	result, err := white.RenderWhiteBackground(context.Background(), productimage.RenderRequest{
+		Source: source, Subject: subject, Product: productImageContext(),
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, subjectBytes, images.lastEdit.Image)
+	require.Empty(t, images.lastEdit.ImageURL)
+	require.Equal(t, "image/png", images.lastEdit.ImageContentType)
+	require.Equal(t, source.URL, result.Asset.SourceURL)
+	require.Equal(t, source.SourceAssetID, result.Asset.SourceAssetID)
+}
+
 func TestProductImageAdapterSceneUsesOnlyExplicitOptionsAndAuthorizedStyleReferences(t *testing.T) {
 	t.Parallel()
 

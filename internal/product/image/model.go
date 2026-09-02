@@ -54,6 +54,7 @@ type ExtractRequest struct {
 
 type RenderRequest struct {
 	Source  Asset
+	Subject Candidate
 	Product ProductContext
 }
 

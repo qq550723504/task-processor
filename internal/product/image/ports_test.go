@@ -36,6 +36,28 @@ func (f whiteBackgroundRendererFunc) RenderWhiteBackground(ctx context.Context, 
 	return f(ctx, request)
 }
 
+func TestWhiteBackgroundCapabilityChainsValidatedInlineSubjectToOriginalSource(t *testing.T) {
+	source := validSourceAsset()
+	subject := Candidate{Asset: validInlineGeneratedAsset(RoleSubject, "extract_subject", []byte("subject"))}
+	var received RenderRequest
+	capability, err := NewWhiteBackgroundCapability(whiteBackgroundRendererFunc(func(_ context.Context, request RenderRequest) (Candidate, error) {
+		received = request
+		return Candidate{Asset: validInlineGeneratedAsset(RoleWhiteBackground, "render_white_background", []byte("white"))}, nil
+	}))
+	require.NoError(t, err)
+
+	result, err := capability.RenderWhiteBackground(context.Background(), RenderRequest{
+		Source: source, Subject: subject, Product: validProductContext(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, source, received.Source)
+	require.Equal(t, subject, received.Subject)
+	require.Equal(t, RoleWhiteBackground, result.Asset.Role)
+
+	subject.Asset.Bytes[0] = 'X'
+	require.Equal(t, []byte("subject"), received.Subject.Asset.Bytes)
+}
+
 var canonicalURLSink string
 
 var (
@@ -213,7 +235,7 @@ func TestCapabilitiesFailClosedOnMalformedRawAuthority(t *testing.T) {
 			require.NoError(t, err)
 			source := validSourceAsset()
 			source.URL = malformed
-			_, err = capability.RenderWhiteBackground(context.Background(), RenderRequest{Source: source, Product: validProductContext()})
+			_, err = capability.RenderWhiteBackground(context.Background(), validRenderRequest(source))
 			return calls, err
 		},
 		"scene input": func() (int, error) {
@@ -262,7 +284,7 @@ func TestCapabilitiesFailClosedOnMalformedRawAuthority(t *testing.T) {
 				return Candidate{Asset: validGeneratedAsset(RoleWhiteBackground, "render_white_background", malformed)}, nil
 			}))
 			require.NoError(t, err)
-			_, err = capability.RenderWhiteBackground(context.Background(), RenderRequest{Source: validSourceAsset(), Product: validProductContext()})
+			_, err = capability.RenderWhiteBackground(context.Background(), validRenderRequest(validSourceAsset()))
 			return err
 		},
 		"scene output": func() error {
@@ -363,7 +385,7 @@ func TestEveryCapabilityRejectsCanonicalPortAliasPassThrough(t *testing.T) {
 			return Candidate{Asset: candidate}, nil
 		}))
 		require.NoError(t, err)
-		_, err = renderer.RenderWhiteBackground(context.Background(), RenderRequest{Source: source, Product: validProductContext()})
+		_, err = renderer.RenderWhiteBackground(context.Background(), validRenderRequest(source))
 		require.ErrorIs(t, err, ErrOutputValidation)
 	})
 
@@ -449,7 +471,7 @@ func TestMalformedQueryURLsHaveStableCapabilityErrors(t *testing.T) {
 				return Candidate{Asset: validGeneratedAsset(RoleWhiteBackground, "render_white_background", raw)}, nil
 			}))
 			require.NoError(t, err)
-			_, err = renderer.RenderWhiteBackground(context.Background(), RenderRequest{Source: validSourceAsset(), Product: validProductContext()})
+			_, err = renderer.RenderWhiteBackground(context.Background(), validRenderRequest(validSourceAsset()))
 			return err
 		},
 		"scene output": func(raw string) error {
@@ -985,7 +1007,7 @@ func TestExtractAndWhiteBackgroundRejectSourcePassThrough(t *testing.T) {
 		return Candidate{Asset: validGeneratedAsset(RoleWhiteBackground, "render_white_background", source.URL)}, nil
 	}))
 	require.NoError(t, err)
-	_, err = white.RenderWhiteBackground(context.Background(), RenderRequest{Source: source, Product: validProductContext()})
+	_, err = white.RenderWhiteBackground(context.Background(), validRenderRequest(source))
 	require.ErrorIs(t, err, ErrOutputValidation)
 }
 
@@ -1089,7 +1111,7 @@ func TestEveryCapabilityPrefersCancellationOverConcurrentBackendFailure(t *testi
 			return Candidate{}, backendFailure
 		}))
 		require.NoError(t, err)
-		_, err = capability.RenderWhiteBackground(ctx, RenderRequest{Source: validSourceAsset(), Product: validProductContext()})
+		_, err = capability.RenderWhiteBackground(ctx, validRenderRequest(validSourceAsset()))
 		require.ErrorIs(t, err, context.Canceled)
 		require.NotErrorIs(t, err, backendFailure)
 	})
@@ -1285,6 +1307,13 @@ func validSourceAsset() Asset {
 		Height:        1200,
 		Operations:    []string{"source"},
 	}
+}
+
+func validRenderRequest(source Asset) RenderRequest {
+	subject := validGeneratedAsset(RoleSubject, "extract_subject", "https://generated.example/subject.png")
+	subject.SourceAssetID = source.SourceAssetID
+	subject.SourceURL = source.URL
+	return RenderRequest{Source: source, Subject: Candidate{Asset: subject}, Product: validProductContext()}
 }
 
 func validGeneratedAsset(role Role, operation, imageURL string) Asset {
