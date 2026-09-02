@@ -659,6 +659,46 @@ test("requires explicit design and split evidence for an oversized override", ()
     ),
     false,
   );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "reviewer approved the failure matrix",
+        "No blockers were identified in the independent review",
+      ),
+      ["Henry"],
+    ),
+    true,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "reviewer approved the failure matrix",
+        "pending",
+      ),
+      ["Henry"],
+    ),
+    false,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "reviewer approved the failure matrix",
+        "will be conducted before merge",
+      ),
+      ["Henry"],
+    ),
+    false,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "the consistency boundary cannot be split safely",
+        "This can only be split by breaking the shared transaction",
+      ),
+      ["Henry"],
+    ),
+    true,
+  );
 });
 
 test("binds override evidence to an authorized approver", () => {

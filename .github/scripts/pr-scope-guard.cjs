@@ -328,17 +328,28 @@ function hasRequiredOverrideEvidence(body, approvedLogins) {
     /^\s*-\s*Independent design review:\s*(.+)$/im,
     [
       /\b(?:not|never)\s+(?:performed|conducted|completed|done)\b/i,
-      /\bno\b.*\breview\b/i,
+      /\bno\s+(?:independent\s+)?(?:design\s+)?review\b/i,
       /\bwithout\b.*\breview\b/i,
+      /\b(?:pending|awaiting|waiting|in\s+progress)\b/i,
+      /\b(?:will|shall|should)\s+be\s+(?:performed|conducted|completed|reviewed)\b/i,
+      /\bto\s+be\s+(?:performed|conducted|completed|reviewed)\b/i,
+      /\bnot\s+yet\b/i,
     ],
   );
+  const completedIndependentReview = independentReview &&
+    /\b(?:approved|reviewed|completed|conducted|performed|no\s+blockers|no\s+issues)\b/i.test(
+      independentReview,
+    )
+    ? independentReview
+    : null;
   const approver = valueFor(
     /^\s*-\s*(?:Override approver[^:\n]*|architecture-approved[^:\n]*approval review[^:\n]*split rationale[^:\n]*):\s*(.+)$/im,
   );
   const splitRationale = valueFor(
     /^\s*-\s*(?:Split rationale[^:\n]*|architecture-approved[^:\n]*split rationale[^:\n]*):\s*(.+)$/im,
     [
-      /\b(?:can|could|may|should)\b.*\b(?:be\s+)?split\b/i,
+      /\b(?:can|could|may|should)\b(?![^\n.]*\bonly\s+be\s+split\s+by\b)[^\n.]*\b(?:safe|safely)\b[^\n.]*\bsplit\b/i,
+      /\b(?:can|could|may|should)\b(?![^\n.]*\bonly\s+be\s+split\s+by\b)[^\n.]*\bsplit\b[^\n.]*\b(?:safe|safely)\b/i,
       /\b(?:safe|safely)\s+to\s+split\b/i,
     ],
   );
@@ -350,7 +361,13 @@ function hasRequiredOverrideEvidence(body, approvedLogins) {
     const escapedLogin = login.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return new RegExp(`(?:^|[^A-Za-z0-9_.-])${escapedLogin}(?:$|[^A-Za-z0-9_.-])`, "i").test(approver || "");
   });
-  return Boolean(hasDesignLink && independentReview && approver && splitRationale && hasApprovedLogin);
+  return Boolean(
+    hasDesignLink &&
+      completedIndependentReview &&
+      approver &&
+      splitRationale &&
+      hasApprovedLogin,
+  );
 }
 
 function hasRecentLabelRemoval(events, labelName, now = Date.now(), windowMs = 15 * 60 * 1000) {
