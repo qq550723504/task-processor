@@ -19,9 +19,6 @@ import (
 	platformfeatureflag "task-processor/internal/platform/featureflag"
 	platformobservability "task-processor/internal/platform/observability"
 	productasset "task-processor/internal/product/asset"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	"task-processor/internal/productimage"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsclient "task-processor/internal/sds/client"
 	sdsdesign "task-processor/internal/sds/design"
@@ -197,12 +194,6 @@ func TestBuildRuntimeDepsInitializesSharedRuntimeWithoutFeatureState(t *testing.
 	if deps.features == nil {
 		t.Fatal("expected feature runtime state")
 	}
-	if deps.features.productService != nil {
-		t.Fatal("expected product service to be unset before feature attachment")
-	}
-	if deps.features.imageService != nil {
-		t.Fatal("expected image service to be unset before feature attachment")
-	}
 	if deps.features.listingKitSupport != nil {
 		t.Fatal("expected listingkit support to be lazy")
 	}
@@ -341,89 +332,14 @@ func TestEnsureListingKitSheinCookieStoreCachesStoreAndRegistersCloser(t *testin
 	}
 }
 
-func TestRuntimeDepsAttachBuiltFeatureModules(t *testing.T) {
-	runtimePaths := configureProductImageRuntimePaths(t)
-
-	logger := logrus.New()
-	logger.SetLevel(logrus.FatalLevel)
-	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
-
-	deps, err := buildRuntimeDeps(logger, "../../../config/config-test.yaml")
-	if err != nil {
-		t.Fatalf("buildRuntimeDeps() error = %v", err)
-	}
-	if deps.shared.imageWorkDir != runtimePaths.workDir {
-		t.Fatalf("image work dir = %q, want %q", deps.shared.imageWorkDir, runtimePaths.workDir)
-	}
-	if deps.shared.cfg.ProductImage.Publisher.OutputDir != runtimePaths.publisherOutputDir {
-		t.Fatalf("publisher output dir = %q, want %q", deps.shared.cfg.ProductImage.Publisher.OutputDir, runtimePaths.publisherOutputDir)
-	}
-
-	productModule, err := productenrichhttpapi.BuildRuntimeModule(productenrichhttpapi.RuntimeBuildInput{
-		Logger:        logger,
-		Config:        deps.shared.cfg,
-		LLMManager:    deps.shared.llmMgr,
-		InputParser:   deps.shared.inputParser,
-		Understanding: deps.shared.understanding,
-	})
-	if err != nil {
-		t.Fatalf("BuildRuntimeModule() product error = %v", err)
-	}
-	deps.attachProductModule(productModule)
-	if deps.features.productService == nil {
-		t.Fatal("expected product service to be attached")
-	}
-
-	imageModule, err := productimagehttpapi.BuildRuntimeModule(productimagehttpapi.RuntimeBuildInput{
-		Logger:        logger,
-		Config:        deps.shared.cfg,
-		LLMManager:    deps.shared.llmMgr,
-		OpenAIManager: deps.shared.openaiMgr,
-		InputParser:   deps.shared.inputParser,
-		Understanding: deps.shared.understanding,
-		ImageWorkDir:  deps.shared.imageWorkDir,
-	})
-	if err != nil {
-		t.Fatalf("BuildRuntimeModule() image error = %v", err)
-	}
-	deps.attachImageModule(imageModule)
-	if deps.features.imageService == nil {
-		t.Fatal("expected image service to be attached")
-	}
-	assertRuntimeDirectory(t, runtimePaths.workDir)
-
-	cleanupOwnedRuntimeResources(false, deps.constructionClosers)
-}
-
 type stubStatusProvider func(context.Context) (*sdslogin.Status, error)
 
 func (f stubStatusProvider) Status(ctx context.Context) (*sdslogin.Status, error) {
 	return f(ctx)
 }
 
-var _ productimage.Service = stubRuntimeDepsImageService{}
 var _ sdsusecase.Service = stubRuntimeDepsSDSSyncService{}
 var _ listingkit.SDSBaselineRemoteProvider = stubRuntimeDepsSDSBaselineProvider{}
-
-type stubRuntimeDepsImageService struct{}
-
-func (stubRuntimeDepsImageService) CreateProcessTask(context.Context, *productimage.ImageProcessRequest) (*productimage.Task, error) {
-	return nil, nil
-}
-
-func (stubRuntimeDepsImageService) GetTaskResult(context.Context, string) (*productimage.TaskResult, error) {
-	return nil, nil
-}
-
-func (stubRuntimeDepsImageService) ReviewTask(context.Context, string, *productimage.ReviewTaskRequest) (*productimage.TaskResult, error) {
-	return nil, nil
-}
-
-func (stubRuntimeDepsImageService) ProcessImages(context.Context, *productimage.Task) (*productimage.ImageProcessResult, error) {
-	return nil, nil
-}
-
-func (stubRuntimeDepsImageService) SetTaskSubmitter(productimage.TaskSubmitter) {}
 
 type stubRuntimeDepsSDSSyncService struct{}
 

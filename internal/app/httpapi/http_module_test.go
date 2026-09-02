@@ -18,7 +18,6 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	worker "task-processor/internal/platform/workerpool"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sdslogin"
@@ -109,23 +108,6 @@ func TestSDSLoginHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
 		"POST /api/v1/sds-login/manual-login",
 		"GET /api/v1/sds-login/auth-state",
 		"DELETE /api/v1/sds-login/state",
-	}, routeKeys(reg.Routes()))
-}
-
-func TestProductHTTPModuleRegistersRoutes(t *testing.T) {
-	t.Parallel()
-
-	reg := kernelmodule.NewRegistry()
-
-	err := productenrichhttpapi.NewHTTPModule(&stubProductHandler{}, &stubImageHandler{}).Register(reg)
-	require.NoError(t, err)
-
-	require.Equal(t, []string{
-		"POST /api/v1/products/generate",
-		"GET /api/v1/products/tasks/:task_id",
-		"POST /api/v1/images/process",
-		"GET /api/v1/images/tasks/:task_id",
-		"POST /api/v1/images/tasks/:task_id/review",
 	}, routeKeys(reg.Routes()))
 }
 
@@ -295,24 +277,24 @@ func TestBuildRuntimeBundleFromModulesCollectsRoutesAndWorkerPools(t *testing.T)
 
 	bundle, err := buildRuntimeBundleFromModules(&config.Config{}, []kernelmodule.Module{
 		httpModule{
-			name: "product",
+			name: "custom",
 			register: func(reg *kernelmodule.Registry) error {
 				reg.AddRoutes(httproute.Descriptor{
 					Method: http.MethodGet,
 					Path:   "/health",
-					Module: "product",
+					Module: "custom",
 					Handler: func(c *gin.Context) {
 						c.Status(http.StatusOK)
 					},
 				})
-				return reg.AddWorkerPool("product_enrich", stubWorkerPool{})
+				return reg.AddWorkerPool("custom_pool", stubWorkerPool{})
 			},
 		},
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"GET /health"}, routeKeys(bundle.routes))
 	require.Len(t, bundle.workerPools, 1)
-	require.Equal(t, "product_enrich", bundle.workerPools[0].Name)
+	require.Equal(t, "custom_pool", bundle.workerPools[0].Name)
 }
 
 func TestRuntimeBundleBuildsLocalTaskHealthProviderFromRegisteredPools(t *testing.T) {

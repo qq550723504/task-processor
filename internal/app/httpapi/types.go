@@ -8,10 +8,6 @@ import (
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	localagenthttpapi "task-processor/internal/localagent/httpapi"
-	productenrich "task-processor/internal/productenrich"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	productimage "task-processor/internal/productimage"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdshttpapi "task-processor/internal/sds/httpapi"
@@ -30,14 +26,8 @@ type runtimeDeps struct {
 }
 
 type featureRuntimeState struct {
-	productService         productenrich.ProductService
 	productSnapshotReader  listingkit.ProductSnapshotReader
-	imageService           productimage.Service
 	sdsLoginStatusProvider listingkit.SDSLoginStatusProvider
-	imageSubjectExtractor  productimage.SubjectExtractor
-	imageWhiteBgRenderer   productimage.WhiteBackgroundRenderer
-	imageSceneRenderer     productimage.SceneRenderer
-	imageAssetPublisher    productimage.AssetPublisher
 	listingKitSupport      *listingKitSupport
 }
 
@@ -48,8 +38,6 @@ type listingKitSupport struct {
 }
 
 type httpFeatureComposition struct {
-	productModule         *productenrichhttpapi.Module
-	imageModule           *productimagehttpapi.Module
 	amazonListingModule   *amazonlistinghttpapi.Module
 	listingKitModule      *listingkithttpapi.Module
 	productSourcingModule *a1688httpapi.BuildResult

@@ -3,8 +3,6 @@ package httpapi
 import (
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 )
 
@@ -35,32 +33,6 @@ func (d *runtimeDeps) addClosers(closers ...func() error) {
 		d.shared.closers = append(d.shared.closers, closer)
 		d.constructionClosers = append(d.constructionClosers, closer)
 	}
-}
-
-func (d *runtimeDeps) attachProductModule(module *productenrichhttpapi.Module) {
-	if d == nil || module == nil {
-		return
-	}
-	if d.features == nil {
-		d.features = &featureRuntimeState{}
-	}
-	d.addClosers(module.Closers...)
-	d.features.productService = module.Service
-}
-
-func (d *runtimeDeps) attachImageModule(module *productimagehttpapi.Module) {
-	if d == nil || module == nil {
-		return
-	}
-	if d.features == nil {
-		d.features = &featureRuntimeState{}
-	}
-	d.addClosers(module.Closers...)
-	d.features.imageService = module.Service
-	d.features.imageSubjectExtractor = module.SubjectExtractor
-	d.features.imageWhiteBgRenderer = module.WhiteBackgroundRender
-	d.features.imageSceneRenderer = module.SceneRenderer
-	d.features.imageAssetPublisher = module.AssetPublisher
 }
 
 func (d *runtimeDeps) attachAmazonListingModule(module *amazonlistinghttpapi.Module) {

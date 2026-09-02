@@ -25,10 +25,7 @@ func buildAICapabilityRuntimeDeps(cfg *config.Config, logger *logrus.Logger) (*a
 	}
 	deps := &aiCapabilityRuntimeDeps{}
 	if mode == aicapability.RoutingModeLegacy &&
-		!cfg.AICapability.ProductImageSceneEnabled &&
-		!cfg.AICapability.ProductEnrichTextEnabled &&
-		!cfg.AICapability.ProductEnrichVisionEnabled &&
-		!cfg.AICapability.ProductEnrichListingEnabled {
+		!cfg.AICapability.ProductImageSceneEnabled {
 		return deps, nil
 	}
 	if cfg.Database == nil {

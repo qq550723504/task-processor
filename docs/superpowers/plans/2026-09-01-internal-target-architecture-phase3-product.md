@@ -1388,71 +1388,141 @@ git commit -m "feat(product): publish production product snapshots"
 
 ---
 
-### Task 16: 退役旧 HTTP、Worker、配置和 schema 依赖
+### Task 16A: 退役旧 Product HTTP、运行时装配和 task schema
+
+> **实施拆分（2026-09-02）：** `internal/productenrich` 与 `internal/productimage` 合计约 18,906 行生产代码和 16,757 行测试代码，原 Task 16 同时要求删除两棵目录、重写 App、schema、配置及所有调用方，无法形成可审查的单元。Task 16 因此拆成三个连续、每步可编译的硬切：16A 先移除 App 入口和持久化接线，16B 再删除旧根目录，16C 最后把仍由 ImageAgent 使用的配置改到正确所有权；不增加任何中间兼容入口。
 
 **Files:**
-- Delete: `internal/productenrich/` after every caller has switched to Catalog/Enrichment or been removed
-- Delete: `internal/productimage/` after ImageAgent、ListingKit、SDS、AmazonListing and Publishing callers have switched
-- Modify: `internal/app/httpapi/{adapters_openai.go,adapters_task_repositories.go,adapters.go,bootstrap.go,bootstrap_types.go,types.go,http_modules.go,feature_builder_listingkit.go,feature_module_builders.go,runtime.go,runtime_deps_methods.go,runtime_shared_deps.go,runtime_paths.go,options.go}` and paired tests
-- Delete: `internal/app/httpapi/{runtime_productenrich.go,runtime_productenrich_effective_test.go}`
-- Modify: `internal/core/config/type_productimage.go` → `type_imageagent.go`
-- Modify: `internal/core/config/{config.go,defaults.go,loader.go,loader_builder.go,type_ai_capability.go,validator_ai_capability.go}` and paired tests
-- Modify: `config/{config-test.yaml,config-dev.yaml,config-prod.yaml,worker.yaml}`
+- Modify/delete: `internal/app/httpapi/` 中 ProductEnrich/ProductImage module、adapter、task repository、runtime、worker-pool 和 route 组合及对应测试
 - Modify: `internal/app/schema/productlisting/runtime.go` and tests
-- Modify: `cmd/product-listing-api/{main_test.go,wire_test.go,README.md}`
+- Modify: `cmd/product-listing-api/{main_test.go,wire_test.go,wrappers_test.go,adapters_test.go,README.md}`
+- Modify: `internal/app/worker/imageagent/` dependency tests only when an acceptance gap exists
 
 **Interfaces:**
-- Consumes: ImageAgent HTTP module and worker dependencies only.
-- Produces: App 启动不再构造 ProductEnrich/ProductImage module、queue、worker pool 或 task repository；ImageAgent config 是唯一图片运行配置。
+- Consumes: ImageAgent HTTP module、Catalog/Approved Asset readers 和现有 production worker dependency resolver。
+- Produces: App 启动不再构造、注册或持有 ProductEnrich/ProductImage module、queue、worker pool、task repository 或 task-table schema；五条旧 API 固定为 404。
+- 本切片不改名配置，也不修改旧根目录内部实现；它只切断生产 App 所有权，确保下一切片可以直接删除旧包。
 
-- [ ] **Step 1: 写旧路由 404 和生产依赖失败测试**
+- [x] **Step 1: 写旧路由、module registry 和 schema 退役测试**
 
-```go
-func TestLegacyProductRoutesAreNotRegistered(t *testing.T) {
-	bundle, err := (httpFeatureComposition{}).buildRuntimeBundle(&config.Config{})
-	require.NoError(t, err)
-	server, _ := bundle.buildServerBundle(0)
-	for _, route := range []struct{ method, path string }{
-		{http.MethodPost, "/api/v1/products/generate"},
-		{http.MethodGet, "/api/v1/products/tasks/task-1"},
-		{http.MethodPost, "/api/v1/images/process"},
-		{http.MethodGet, "/api/v1/images/tasks/task-1"},
-		{http.MethodPost, "/api/v1/images/tasks/task-1/review"},
-	} {
-		request := httptest.NewRequest(route.method, route.path, nil)
-		response := httptest.NewRecorder()
-		server.Handler.ServeHTTP(response, request)
-		require.Equal(t, http.StatusNotFound, response.Code)
-	}
-}
-```
+覆盖五条旧 API 返回 404、runtime registry 不含旧 module/worker pool、`AutoMigrateRuntime` 新数据库不创建 `product_enrich_tasks`/`product_image_tasks`。审计 `ResolveImageAgentTemporalDependencies` 已有数据库、Artifact Store、Image capabilities、Asset Repository 缺失测试；只为真实缺口补 RED，不写重复 mock 断言。
 
-增加生产 `ResolveImageAgentTemporalDependencies` 在缺少数据库、Artifact Store、Image capabilities 或 Asset Repository 时返回 error 的测试。
+- [x] **Step 2: 运行测试确认旧 App 接线仍存在**
 
-- [ ] **Step 2: 运行测试确认旧路由仍注册**
+Run: `go test ./internal/app/httpapi ./internal/app/schema/productlisting ./internal/app/worker/imageagent ./cmd/product-listing-api -run 'TestLegacyProductRoutesAreNotRegistered|Test.*Legacy.*Module|Test.*Legacy.*Table|Test.*Dependencies' -count=1 -v`
 
-Run: `go test ./internal/app/httpapi ./cmd/product-listing-api -run 'TestLegacyProductRoutesAreNotRegistered|Test.*Dependencies' -count=1 -v`
+Expected: FAIL，失败必须来自仍注册的旧路由/module/schema，而不是缺少测试 fixture。
 
-Expected: FAIL，旧路由当前可用。
+- [x] **Step 3: 删除旧 App runtime 和 task persistence 接线**
 
-- [ ] **Step 3: 删除旧模块并改名配置**
+删除 ProductEnrich/ProductImage HTTP module、adapter、runtime deps、task repository、queue/worker pool 组合和 `runtime_productenrich*`。从 `AutoMigrateRuntime` 移除两种旧 Task；不得加入 drop migration，既有生产表保持原状。ImageAgent、AmazonListing、ListingKit、SDS 和 Catalog 组合保持可用，禁止临时 facade 或 nil fallback。
 
-把 ImageAgent 仍使用的 model/workdir/publisher/lifecycle 配置移入 `Config.ImageAgent`；删除 ProductEnrich debug/capability 开关和旧 ProductImage scene 开关。保留通用 OpenAI capability routing 配置，不保留旧模块命名。
+- [x] **Step 4: 运行 App/schema/cmd 验证与零引用扫描**
 
-- [ ] **Step 4: 停止 schema 对旧 task 表的依赖**
+Run: `go test ./internal/app/httpapi ./internal/app/schema/productlisting ./internal/app/worker/imageagent ./cmd/product-listing-api -count=1`
 
-从 `AutoMigrateRuntime` 模型列表移除 ProductEnrich/ProductImage Task 以及旧 Asset `InventorySnapshot`/`GenerationTaskSnapshot`；测试新数据库没有这些旧表也能启动。不得加入 drop migration，已有生产表保持原状。
+Run: `rg -n 'task-processor/internal/(productenrich|productimage)|product_enrich_tasks|product_image_tasks|product_enrich|product_image' internal/app/httpapi internal/app/schema/productlisting cmd/product-listing-api --glob '*.go'`
 
-Run: `go test ./internal/core/config ./internal/app/schema/productlisting ./internal/app/httpapi ./internal/app/worker/imageagent ./cmd/product-listing-api -count=1`
+Expected: tests PASS；生产文件扫描零匹配，测试只能保留明确的退役断言文本。
 
-Expected: PASS。
-
-- [ ] **Step 5: 提交运行时退役**
+- [x] **Step 5: 提交 App 运行时退役**
 
 ```powershell
-git add internal/productenrich internal/productimage internal/app internal/core/config config cmd/product-listing-api
+git add internal/app/httpapi internal/app/schema/productlisting internal/app/worker/imageagent cmd/product-listing-api docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
 git diff --cached --check
-git commit -m "refactor(app): retire legacy product task runtimes"
+git commit -m "refactor(app): retire legacy product http runtimes"
+```
+
+---
+
+### Task 16B: 删除 ProductEnrich/ProductImage 旧根目录
+
+**Files:**
+- Delete: `internal/productenrich/`
+- Delete: `internal/productimage/`
+- Modify: remaining tests/guards that import or enumerate the retired roots, including `internal/imageagent/temporal/slot_effect_v3_activity_test.go` and `tests/*`
+
+**Interfaces:**
+- Consumes: Task 16A 已切断的生产 App 边界，以及 Tasks 7–10 已迁出的 `product/enrichment`、`product/image` 能力。
+- Produces: 两个旧根目录和全仓 Go import 均不存在；测试不得复制旧 production 类型形成隐性兼容层。
+- 历史 Temporal 测试若只需身份值，使用当前 ImageAgent/product-image contract 或测试本地值对象；不得保留 `internal/productimage` alias/package。
+
+- [ ] **Step 1: 把两棵旧目录的 absence/import 护栏写成 RED**
+
+护栏检查目录不存在、全仓生产与测试 Go 文件没有旧 import，且 `internal/product/{enrichment,image}` 与 ImageAgent 的行为测试仍覆盖已迁移能力。
+
+- [ ] **Step 2: 运行护栏确认旧根仍存在**
+
+Run: `go test ./tests -run 'TestPhase3.*Legacy|TestPhase3.*Import|Test.*Product.*Boundary' -count=1 -v`
+
+Expected: FAIL，并精确指出两个旧根目录或 import。
+
+- [ ] **Step 3: 删除旧根并清理外部测试依赖**
+
+直接删除全部生产/测试文件；不得保留转发包、Deprecated facade、type alias、JSON 兼容结构或旧 task/result fixture。只迁移仍验证当前架构的测试；纯旧运行时测试随目录删除。
+
+- [ ] **Step 4: 运行目标域、ImageAgent、架构和全仓编译验证**
+
+Run: `go test ./internal/product/... ./internal/imageagent/... ./tests -run 'Test(Product|ImageAgent|Phase3|.*Import.*|.*Depguard.*)' -count=1`
+
+Run: `go test ./... -run '^$' -count=1`
+
+Run: `rg -n 'task-processor/internal/(productenrich|productimage)' internal cmd tests --glob '*.go'`
+
+Expected: tests/compile PASS；扫描零匹配。
+
+- [ ] **Step 5: 提交旧根删除**
+
+```powershell
+git add internal/productenrich internal/productimage internal/imageagent tests
+git diff --cached --check
+git commit -m "refactor(product): remove legacy product task roots"
+```
+
+---
+
+### Task 16C: 将图片运行配置收归 ImageAgent
+
+**Files:**
+- Rename/modify: `internal/core/config/type_productimage.go` → `type_imageagent.go`
+- Modify: `internal/core/config/{config.go,defaults.go,loader.go,loader_builder.go,type_ai_capability.go,validator_ai_capability.go}` and tests
+- Modify: `config/{config-test.yaml,config-dev.yaml,config-prod.yaml,worker.yaml}`
+- Modify: `internal/app/worker/imageagent/`、`internal/app/httpapi/`、`cmd/image-agent-temporal-worker/` and tests
+- Modify: `internal/listingkit/httpapi/` and ListingKit config only if retained manual-upload storage needs its own typed ownership
+
+**Interfaces:**
+- `Config.ImageAgent` 是唯一产品图片运行配置，只保留 ImageAgent 实际消费的 workdir、artifact publication/storage 和 lifecycle 字段；删除旧 Segmenter/WhiteBackground/Scene 配置、ProductEnrich debug/capability 开关和 ProductImage scene 开关。
+- 不接受 `productimage` YAML、`TASK_PROCESSOR_PRODUCTIMAGE_*`、`TASK_PROCESSOR_PRODUCTENRICH_*` 或旧字段 fallback/alias；保留通用 OpenAI capability routing 配置。
+- ListingKit 不得读取 `Config.ImageAgent`。若 Studio 手工上传仍需对象存储，使用 ListingKit 自己的显式 typed 配置/依赖；不得从旧 ProductImage 或新 ImageAgent 配置隐式继承、复制默认值或 fallback。
+
+- [ ] **Step 1: 写新配置所有权与旧键拒绝测试**
+
+覆盖 YAML/env 只接受 `imageagent` 新键，旧 ProductImage/ProductEnrich 配置不再绑定；ImageAgent worker 使用新 typed 配置；ListingKit 不读取 ImageAgent 配置。测试使用独立字面 fixture，不镜像 loader 的字段表。
+
+- [ ] **Step 2: 运行测试确认仍依赖旧配置名**
+
+Run: `go test ./internal/core/config ./internal/app/worker/imageagent ./internal/app/httpapi ./internal/listingkit/httpapi ./cmd/image-agent-temporal-worker -count=1`
+
+Expected: FAIL，直到旧配置字段和调用方全部硬切。
+
+- [ ] **Step 3: 硬改名并删除旧配置语义**
+
+更新 Go 类型、YAML、env binding 和所有真实调用方；不得双读、迁移 fallback 或保留 Deprecated 字段。ListingKit 手工上传若保留，必须由 ListingKit-owned config/typed builder 组装，不能继续借用图片发布配置。
+
+- [ ] **Step 4: 运行配置/worker/App/ListingKit 验证和扫描**
+
+Run: `go test ./internal/core/config ./internal/app/worker/imageagent ./internal/app/httpapi ./internal/listingkit/httpapi ./cmd/image-agent-temporal-worker ./cmd/product-listing-api -count=1`
+
+Run: `rg -n 'ProductImageConfig|ProductImagePublisher|ProductEnrich(Text|Vision|Listing|Mock)|productimage:|productEnrich|productImageScene|TASK_PROCESSOR_PRODUCTIMAGE|TASK_PROCESSOR_PRODUCTENRICH' internal/core/config internal/app internal/listingkit/httpapi cmd config --glob '*.go' --glob '*.yaml' --glob '*.yml'`
+
+Expected: tests PASS；扫描零匹配。
+
+- [ ] **Step 5: 提交配置所有权硬切**
+
+```powershell
+git add internal/core/config internal/app internal/listingkit/httpapi cmd config docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
+git diff --cached --check
+git commit -m "refactor(config): make imageagent own image runtime settings"
 ```
 
 ---

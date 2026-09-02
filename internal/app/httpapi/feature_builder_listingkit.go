@@ -5,97 +5,33 @@ import (
 
 	appruntime "task-processor/internal/app/runtime"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
 var newApprovedAssetReaderForHTTPAPI = listingkithttpapi.BuildApprovedAssetInventoryReader
 
-type listingKitFeatureBuildOptions struct {
-	includeImage      bool
-	includeListingKit bool
-	skipProduct       bool
-}
-
-type listingKitFeatureSet struct {
-	productModule    *productenrichhttpapi.Module
-	imageModule      *productimagehttpapi.Module
-	listingKitModule *listingkithttpapi.Module
-}
-
 type listingKitFeatureBuilder struct {
-	buildProduct    productModuleBuilder
-	buildImage      imageModuleBuilder
 	buildListingKit listingKitModuleBuilder
 }
 
 func newListingKitFeatureBuilder() listingKitFeatureBuilder {
 	return listingKitFeatureBuilder{
-		buildProduct:    buildProductModuleResult,
-		buildImage:      buildImageModuleResult,
 		buildListingKit: buildListingKitModuleResult,
 	}
 }
 
-func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps, options listingKitFeatureBuildOptions) (listingKitFeatureSet, error) {
-	var features listingKitFeatureSet
-
-	if !options.skipProduct {
-		productModule, err := b.buildProduct(productenrichhttpapi.RuntimeBuildInput{
-			Logger:               logger,
-			Config:               deps.shared.cfg,
-			LLMManager:           deps.shared.llmMgr,
-			TextGenerator:        deps.shared.contentGenerator,
-			SpecsGenerator:       deps.shared.specsGenerator,
-			VariantsGenerator:    deps.shared.variantsGenerator,
-			ScoringTextGenerator: deps.shared.scoringTextGenerator,
-			ScoringImageAnalyzer: deps.shared.scoringImageAnalyzer,
-			InputParser:          deps.shared.inputParser,
-			Understanding:        deps.shared.understanding,
-		})
-		if err != nil {
-			return features, err
-		}
-		deps.attachProductModule(productModule)
-		features.productModule = productModule
+func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (*listingkithttpapi.Module, error) {
+	if deps == nil || deps.features == nil || deps.features.productSnapshotReader == nil {
+		return nil, nil
 	}
-
-	if options.includeImage {
-		imageModule, err := b.buildImage(productimagehttpapi.RuntimeBuildInput{
-			Logger:               logger,
-			Config:               deps.shared.cfg,
-			LLMManager:           deps.shared.llmMgr,
-			OpenAIManager:        deps.shared.openaiMgr,
-			AICredentialResolver: deps.shared.aiCredentialStore,
-			AIInvocationRecorder: deps.shared.aiInvocationRecorder,
-			InputParser:          deps.shared.inputParser,
-			Understanding:        deps.shared.understanding,
-			ImageWorkDir:         deps.shared.imageWorkDir,
-			SourceImageFetcher:   deps.shared.sourceImageFetcher,
-		})
-		if err != nil {
-			return features, err
-		}
-		deps.attachImageModule(imageModule)
-		features.imageModule = imageModule
+	if ensureApprovedAssetReader(logger, deps) == nil {
+		return nil, nil
 	}
-
-	if options.includeListingKit {
-		if deps == nil || deps.features == nil || deps.features.productSnapshotReader == nil {
-			return features, nil
-		}
-		if ensureApprovedAssetReader(logger, deps) == nil {
-			return features, nil
-		}
-		listingKitModule, err := b.buildListingKit(newListingKitRuntimeBuildInput(logger, deps))
-		if err != nil {
-			return features, err
-		}
-		deps.attachListingKitModule(listingKitModule)
-		features.listingKitModule = listingKitModule
+	listingKitModule, err := b.buildListingKit(newListingKitRuntimeBuildInput(logger, deps))
+	if err != nil {
+		return nil, err
 	}
-
-	return features, nil
+	deps.attachListingKitModule(listingKitModule)
+	return listingKitModule, nil
 }
 
 func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps) listingkithttpapi.RuntimeBuildInput {

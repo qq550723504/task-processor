@@ -157,7 +157,7 @@ func TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs(t *testing
 		"deps.attachImageModule(",
 		"ImageWorkDir:",
 	} {
-		require.Contains(t, featureBuilderContent, marker)
+		require.NotContains(t, featureBuilderContent, marker)
 	}
 }
 
@@ -240,16 +240,20 @@ func TestHTTPAPICompositionBuilderDoesNotOwnFeatureModuleBuilderContracts(t *tes
 	require.NoError(t, err)
 	contractContent := string(contractSrc)
 	for _, marker := range []string{
-		"type productModuleBuilder func(",
-		"type imageModuleBuilder func(",
 		"type amazonListingModuleBuilder func(",
 		"type listingKitModuleBuilder func(",
-		"func buildProductModuleResult(",
-		"func buildImageModuleResult(",
 		"func buildAmazonListingModuleResult(",
 		"func buildListingKitModuleResult(",
 		"BuildRuntimeModule",
 	} {
 		require.Contains(t, contractContent, marker)
+	}
+	for _, marker := range []string{
+		"type productModuleBuilder func(",
+		"type imageModuleBuilder func(",
+		"func buildProductModuleResult(",
+		"func buildImageModuleResult(",
+	} {
+		require.NotContains(t, contractContent, marker)
 	}
 }

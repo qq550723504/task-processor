@@ -11,8 +11,6 @@ import (
 )
 
 type httpFeatureCompositionBuilder struct {
-	buildProduct       productModuleBuilder
-	buildImage         imageModuleBuilder
 	buildAmazonListing amazonListingModuleBuilder
 	buildSheinLogin    sheinLoginModuleBuilder
 	buildSDSLogin      sdsLoginModuleBuilder
@@ -26,8 +24,6 @@ type httpFeatureCompositionBuilder struct {
 
 func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 	return httpFeatureCompositionBuilder{
-		buildProduct:       buildProductModuleResult,
-		buildImage:         buildImageModuleResult,
 		buildAmazonListing: buildAmazonListingModuleResult,
 		buildSheinLogin:    buildSheinLoginModuleResult,
 		buildSDSLogin:      buildSDSLoginModuleResult,
@@ -47,20 +43,7 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 		return composition, err
 	}
 
-	done := timer.phase("buildProductImageModules")
-	listingKitFeatures, err := listingKitFeatureBuilder{
-		buildProduct:    b.buildProduct,
-		buildImage:      b.buildImage,
-		buildListingKit: b.buildListingKit,
-	}.build(logger, deps, listingKitFeatureBuildOptions{includeImage: true})
-	done()
-	if err != nil {
-		return composition, err
-	}
-	composition.productModule = listingKitFeatures.productModule
-	composition.imageModule = listingKitFeatures.imageModule
-
-	done = timer.phase("buildAmazonListingModule")
+	done := timer.phase("buildAmazonListingModule")
 	amazonListingModule, err := amazonListingFeatureBuilder{
 		buildAmazonListing: b.buildAmazonListing,
 	}.build(logger, deps)
@@ -83,19 +66,12 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	composition.sdsLoginResult = loginFeatures.sdsLoginResult
 
 	done = timer.phase("buildListingKitModule")
-	listingKitFeatures, err = listingKitFeatureBuilder{
-		buildProduct:    b.buildProduct,
-		buildImage:      b.buildImage,
-		buildListingKit: b.buildListingKit,
-	}.build(logger, deps, listingKitFeatureBuildOptions{
-		includeListingKit: true,
-		skipProduct:       true,
-	})
+	listingKitModule, err := listingKitFeatureBuilder{buildListingKit: b.buildListingKit}.build(logger, deps)
 	done()
 	if err != nil {
 		return composition, err
 	}
-	composition.listingKitModule = listingKitFeatures.listingKitModule
+	composition.listingKitModule = listingKitModule
 	var sourceRepository sourceaccount.Repository
 	var sourceValidator sourceaccount.AccessValidator
 	if composition.listingKitModule != nil {

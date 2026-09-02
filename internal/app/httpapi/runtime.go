@@ -105,10 +105,6 @@ func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, buil
 		}
 	}
 
-	done = timer.phase("resolveImageWorkDir")
-	imageWorkDir := resolveImageWorkDir(cfg)
-	done()
-
 	done = timer.phase("buildPromptRuntimeDeps")
 	promptDeps, err := buildPromptRuntimeDeps(cfg, logger)
 	done()
@@ -133,13 +129,6 @@ func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, buil
 	ownedClosers = append(ownedClosers, aiCapabilityDeps.closers...)
 	closers = append(closers, aiCapabilityDeps.closers...)
 	closers = append(closers, promptDeps.closers...)
-	done = timer.phase("buildProductEnrichRuntimeDeps")
-	productEnrichDeps, err := buildProductEnrichRuntimeDeps(logger, cfg, openaiDeps.openaiMgr, openaiDeps.aiCredentialStore, aiCapabilityDeps.invocationRecorder)
-	done()
-	if err != nil {
-		return nil, err
-	}
-
 	done = timer.phase("buildStoreAPI")
 	storeAPI, storeCloser, err := buildHTTPAPIStoreAPI(cfg, logger)
 	done()
@@ -164,16 +153,6 @@ func buildRuntimeDepsWithBuilders(logger *logrus.Logger, configPath string, buil
 			aiInvocationRecorder: aiCapabilityDeps.invocationRecorder,
 			aiAsyncJobStore:      aiCapabilityDeps.asyncJobStore,
 			tenantPromptStore:    promptDeps.tenantPromptStore,
-			llmMgr:               productEnrichDeps.llmMgr,
-			inputParser:          productEnrichDeps.inputParser,
-			understanding:        productEnrichDeps.understanding,
-			contentGenerator:     productEnrichDeps.contentGenerator,
-			specsGenerator:       productEnrichDeps.specsGenerator,
-			variantsGenerator:    productEnrichDeps.variantsGenerator,
-			fusionGenerator:      productEnrichDeps.fusionGenerator,
-			scoringTextGenerator: productEnrichDeps.scoringTextGenerator,
-			scoringImageAnalyzer: productEnrichDeps.scoringImageAnalyzer,
-			imageWorkDir:         imageWorkDir,
 			storeAPI:             storeAPI,
 			productCatalogDB:     productCatalogDB,
 		},

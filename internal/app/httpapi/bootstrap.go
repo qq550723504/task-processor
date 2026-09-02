@@ -6,8 +6,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/productenrich"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
 const productListingTraceOperation = "product-listing-api"
@@ -45,7 +43,6 @@ func buildBootstrapWithDependencies(logger *logrus.Logger, options Options, buil
 	defer func() {
 		cleanupOwnedRuntimeResources(completed, deps.constructionClosers)
 	}()
-	deps.shared.sourceImageFetcher = options.SourceImageFetcher
 	routeAuthorizationBuilder := builders.buildRouteAuthorization
 	if routeAuthorizationBuilder == nil {
 		routeAuthorizationBuilder = buildRouteAuthorization
@@ -91,27 +88,11 @@ func buildBootstrapWithDependencies(logger *logrus.Logger, options Options, buil
 		closers = append(closers, deps.traceCloser)
 	}
 	bootstrap := &appBootstrap{
-		productHandler: composition.productHandler(),
-		imageHandler:   composition.imageHandler(),
-		server:         server,
-		routes:         routes,
-		pools:          runtimeBundle.pools(),
-		closers:        closers,
+		server:  server,
+		routes:  routes,
+		pools:   runtimeBundle.pools(),
+		closers: closers,
 	}
 	completed = true
 	return bootstrap, nil
-}
-
-func (c httpFeatureComposition) productHandler() productenrich.ProductHandler {
-	if c.productModule == nil {
-		return nil
-	}
-	return c.productModule.Handler
-}
-
-func (c httpFeatureComposition) imageHandler() productimagehttpapi.RouteHandler {
-	if c.imageModule == nil {
-		return nil
-	}
-	return c.imageModule.Handler
 }

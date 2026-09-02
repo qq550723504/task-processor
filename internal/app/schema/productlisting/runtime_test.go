@@ -87,7 +87,7 @@ func TestAutoMigrateRuntimeCreatesExecutionEnvelopeColumns(t *testing.T) {
 		t.Fatalf("AutoMigrateRuntime: %v", err)
 	}
 
-	for _, table := range []string{"product_enrich_tasks", "product_image_tasks", "amazon_listing_tasks"} {
+	for _, table := range []string{"amazon_listing_tasks"} {
 		columns, err := db.Migrator().ColumnTypes(table)
 		if err != nil {
 			t.Fatalf("ColumnTypes(%s): %v", table, err)
@@ -133,6 +133,19 @@ func TestAutoMigrateRuntimeCreatesExecutionEnvelopeColumns(t *testing.T) {
 		}
 	}
 	t.Fatal("table ai_invocations missing column cache_status")
+}
+
+func TestAutoMigrateRuntimeLeavesLegacyProductTaskTablesRetired(t *testing.T) {
+	db := openProductListingSchemaTestDB(t)
+	if err := AutoMigrateRuntime(db); err != nil {
+		t.Fatalf("AutoMigrateRuntime: %v", err)
+	}
+
+	for _, table := range []string{"product_enrich_tasks", "product_image_tasks"} {
+		if db.Migrator().HasTable(table) {
+			t.Errorf("AutoMigrateRuntime created retired table %s", table)
+		}
+	}
 }
 
 func openProductListingSchemaTestDB(t *testing.T) *gorm.DB {

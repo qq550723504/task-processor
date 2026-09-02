@@ -220,14 +220,12 @@ func TestListingKitFeatureBuilderRequiresSnapshotAndApprovedAssetReaders(t *test
 				called = true
 				return &listingkithttpapi.Module{}, nil
 			}}
-			features, err := builder.build(logrus.New(), &runtimeDeps{shared: test.shared, features: test.features}, listingKitFeatureBuildOptions{
-				includeListingKit: true, skipProduct: true,
-			})
+			module, err := builder.build(logrus.New(), &runtimeDeps{shared: test.shared, features: test.features})
 			if err != nil {
 				t.Fatalf("builder.build() error = %v", err)
 			}
-			if called || features.listingKitModule != nil {
-				t.Fatalf("ListingKit registered with incomplete readers: called=%v module=%T", called, features.listingKitModule)
+			if called || module != nil {
+				t.Fatalf("ListingKit registered with incomplete readers: called=%v module=%T", called, module)
 			}
 		})
 	}

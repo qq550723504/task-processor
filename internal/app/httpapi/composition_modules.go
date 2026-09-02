@@ -11,7 +11,6 @@ import (
 func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 	return []kernelmodule.Module{
 		newCoreHTTPModule(),
-		c.productHTTPModule(),
 		c.amazonListingHTTPModule(),
 		c.listingKitHTTPModule(),
 		c.imageAgentHTTPModule(),

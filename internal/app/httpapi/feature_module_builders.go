@@ -17,18 +17,12 @@ import (
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
 	platformdatabase "task-processor/internal/platform/database"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	"task-processor/internal/sourceaccount"
 )
 
 type sourceAccountRepositoryBuilder func(*config.Config, *logrus.Logger) (sourceaccount.Repository, []func() error, error)
 
 var buildSourceAccountRepository = listingkithttpapi.BuildSourceAccountRepository
-
-type productModuleBuilder func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)
-
-type imageModuleBuilder func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)
 
 type amazonListingModuleBuilder func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)
 
@@ -46,14 +40,6 @@ func attachImageAgentWorkspace(listingKitModule *listingkithttpapi.Module, image
 	}
 	listingKitModule.ImageAgentWorkspaceHandler = handler
 	return nil
-}
-
-func buildProductModuleResult(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error) {
-	return productenrichhttpapi.BuildRuntimeModule(input)
-}
-
-func buildImageModuleResult(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error) {
-	return productimagehttpapi.BuildRuntimeModule(input)
 }
 
 func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {

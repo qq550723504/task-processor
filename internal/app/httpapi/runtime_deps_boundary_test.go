@@ -33,19 +33,6 @@ func TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated(t *testing.T) {
 }
 
 func TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated(t *testing.T) {
-	adaptersSource := readHTTPAPIBoundaryFile(t, "adapters.go")
-	for _, marker := range []string{
-		`"task-processor/internal/integration/openai"`,
-		"func newOpenAIManager(",
-		"func newDBOpenAICredentialResolver(",
-		"openaiclient.NewManager(",
-		"openaiclient.NewGormCredentialResolver(",
-	} {
-		if strings.Contains(adaptersSource, marker) {
-			t.Fatalf("adapters.go should keep concrete OpenAI runtime adapter assembly in adapters_openai.go; found %s", marker)
-		}
-	}
-
 	openAIAdaptersSource := readHTTPAPIBoundaryFile(t, "adapters_openai.go")
 	for _, marker := range []string{
 		`"task-processor/internal/integration/openai"`,
@@ -61,54 +48,24 @@ func TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated(t *testing.T) {
 }
 
 func TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated(t *testing.T) {
-	adaptersSource := readHTTPAPIBoundaryFile(t, "adapters.go")
-	for _, marker := range []string{
-		`"task-processor/internal/amazonlisting/store"`,
-		`"task-processor/internal/productenrich/store"`,
-		`"task-processor/internal/productimage/store"`,
-		"func newDBTaskRepository(",
-		"func newDBImageTaskRepository(",
-		"func newDBAmazonListingTaskRepository(",
-		"store.NewTaskRepository(",
-		"productimagestore.NewTaskRepository(",
-		"amazonlistingstore.NewTaskRepository(",
-	} {
-		if strings.Contains(adaptersSource, marker) {
-			t.Fatalf("adapters.go should keep task repository adapter assembly in adapters_task_repositories.go; found %s", marker)
-		}
-	}
-
 	repositoryAdaptersSource := readHTTPAPIBoundaryFile(t, "adapters_task_repositories.go")
 	for _, marker := range []string{
 		`"task-processor/internal/amazonlisting/store"`,
-		`"task-processor/internal/productenrich/store"`,
-		`"task-processor/internal/productimage/store"`,
-		"func newDBTaskRepository(",
-		"func newDBImageTaskRepository(",
 		"func newDBAmazonListingTaskRepository(",
-		"store.NewTaskRepository(",
-		"productimagestore.NewTaskRepository(",
 		"amazonlistingstore.NewTaskRepository(",
 	} {
 		if !strings.Contains(repositoryAdaptersSource, marker) {
 			t.Fatalf("adapters_task_repositories.go missing %s", marker)
 		}
 	}
+	for _, marker := range []string{"func newDBTaskRepository(", "func newDBImageTaskRepository(", `"task-processor/internal/productenrich/store"`, `"task-processor/internal/productimage/store"`} {
+		if strings.Contains(repositoryAdaptersSource, marker) {
+			t.Fatalf("adapters_task_repositories.go retained retired product task repository marker %s", marker)
+		}
+	}
 }
 
 func TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated(t *testing.T) {
-	adaptersSource := readHTTPAPIBoundaryFile(t, "adapters.go")
-	for _, marker := range []string{
-		`"task-processor/internal/app/bootstrap/resources"`,
-		`"task-processor/internal/prompt"`,
-		"func newDBTenantPromptStore(",
-		"bootstrapresources.NewDBTenantPromptStore(",
-	} {
-		if strings.Contains(adaptersSource, marker) {
-			t.Fatalf("adapters.go should keep tenant prompt store adapter assembly in adapters_prompt.go; found %s", marker)
-		}
-	}
-
 	promptAdaptersSource := readHTTPAPIBoundaryFile(t, "adapters_prompt.go")
 	for _, marker := range []string{
 		`"task-processor/internal/app/bootstrap/resources"`,
@@ -127,8 +84,6 @@ func TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated(t *testing.T) {
 	for _, marker := range []string{
 		"func (d *runtimeDeps) ensureListingKitSupport(",
 		"func (d *runtimeDeps) addClosers(",
-		"func (d *runtimeDeps) attachProductModule(",
-		"func (d *runtimeDeps) attachImageModule(",
 		"func (d *runtimeDeps) attachAmazonListingModule(",
 		"func (d *runtimeDeps) attachListingKitModule(",
 		"func (d *runtimeDeps) attachSDSLoginResult(",
@@ -145,8 +100,6 @@ func TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated(t *testing.T) {
 	for _, marker := range []string{
 		"func (d *runtimeDeps) ensureListingKitSupport(",
 		"func (d *runtimeDeps) addClosers(",
-		"func (d *runtimeDeps) attachProductModule(",
-		"func (d *runtimeDeps) attachImageModule(",
 		"func (d *runtimeDeps) attachAmazonListingModule(",
 		"func (d *runtimeDeps) attachListingKitModule(",
 		"func (d *runtimeDeps) attachSDSLoginResult(",
@@ -192,7 +145,7 @@ func TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated(t *testing.T) {
 	}
 }
 
-func TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated(t *testing.T) {
+func TestHTTPAPIRuntimeKeepsProductEnrichRuntimeRetired(t *testing.T) {
 	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
 	for _, marker := range []string{
 		"productenrich.NewLLMManagerAdapterFromManager(",
@@ -206,18 +159,8 @@ func TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated(t *testing.T) 
 		}
 	}
 
-	productEnrichRuntimeSource := readHTTPAPIBoundaryFile(t, "runtime_productenrich.go")
-	for _, marker := range []string{
-		"func buildProductEnrichRuntimeDeps(",
-		"productenrich.NewLLMManagerAdapterFromManager(",
-		"productenrich.NewLocalMockLLMManager(",
-		"productenrich.ValidateGovernedLLMManager(",
-		"productenrichenrich.NewProductUnderstanding(",
-		"productenrichenrich.NewInputParser(",
-	} {
-		if !strings.Contains(productEnrichRuntimeSource, marker) {
-			t.Fatalf("runtime_productenrich.go missing %s", marker)
-		}
+	if _, err := os.Stat("runtime_productenrich.go"); !os.IsNotExist(err) {
+		t.Fatalf("runtime_productenrich.go must stay retired: %v", err)
 	}
 }
 
@@ -329,7 +272,7 @@ func TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated(t *testing.T) {
 	}
 }
 
-func TestHTTPAPIRuntimeKeepsPathResolutionDedicated(t *testing.T) {
+func TestHTTPAPIRuntimeKeepsLegacyProductImagePathResolutionRetired(t *testing.T) {
 	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
 	for _, marker := range []string{
 		`"path/filepath"`,
@@ -342,16 +285,8 @@ func TestHTTPAPIRuntimeKeepsPathResolutionDedicated(t *testing.T) {
 		}
 	}
 
-	pathSource := readHTTPAPIBoundaryFile(t, "runtime_paths.go")
-	for _, marker := range []string{
-		`"path/filepath"`,
-		"func resolveImageWorkDir(",
-		"filepath.Clean(",
-		`filepath.Join(".", "tmp", "productimage")`,
-	} {
-		if !strings.Contains(pathSource, marker) {
-			t.Fatalf("runtime_paths.go missing %s", marker)
-		}
+	if _, err := os.Stat("runtime_paths.go"); !os.IsNotExist(err) {
+		t.Fatalf("runtime_paths.go must stay retired: %v", err)
 	}
 }
 
