@@ -9,9 +9,6 @@ func validateServiceConfig(config *ServiceConfig) error {
 	if config.Core.Repository == nil {
 		return fmt.Errorf("repository cannot be nil")
 	}
-	if config.Core.ProductSnapshotReader == nil {
-		return fmt.Errorf("product snapshot reader cannot be nil")
-	}
 	return nil
 }
 
