@@ -118,6 +118,35 @@ func TestListingKitZitadelAuthStoresIdentityForProductImageRoute(t *testing.T) {
 	}
 }
 
+func TestRouteRoleMiddlewareUsesProtocolNeutralResponderWithoutDuplicatingAuthorization(t *testing.T) {
+	t.Cleanup(SetListingKitZitadelAuthConfigForTesting(nil))
+	route := routeDescriptor{
+		Method: http.MethodPost, Path: "/workbench/admin", Module: "listing-kit-admin",
+		Permission: authz.PermissionListingKitAdminWrite,
+	}
+	roleAuth := NewRouteRoleMiddlewareWithResponder(route, func(c *gin.Context, failure RoleAuthorizationFailure, requiredPermission string) {
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
+			"failure": failure, "requiredPermission": requiredPermission,
+		})
+	})
+	router := gin.New()
+	router.Handle(route.Method, route.Path,
+		func(c *gin.Context) {
+			identity := authidentity.AuthenticatedIdentity{TenantID: "org-b", UserID: "user-1", Roles: []string{"listingkit_viewer"}}
+			c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity))
+			c.Next()
+		},
+		roleAuth,
+		func(c *gin.Context) { t.Fatal("handler ran after role denial") },
+	)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, httptest.NewRequest(route.Method, route.Path, nil))
+
+	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+	require.JSONEq(t, `{"failure":"permission_denied","requiredPermission":"listingkit.admin.write"}`, response.Body.String())
+}
+
 func mountRoutes(r *gin.Engine, routes []routeDescriptor) {
 	zitadelAuth := NewZitadelAuthMiddlewareFromEnv()
 	for _, route := range routes {

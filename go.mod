@@ -20,6 +20,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/imroc/req/v3 v3.59.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jellydator/ttlcache/v3 v3.4.1
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/mxschmitt/playwright-go v0.6100.0
 	github.com/oklog/ulid/v2 v2.1.1

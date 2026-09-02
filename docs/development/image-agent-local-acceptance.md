@@ -107,6 +107,34 @@ Seed 会再次验证 Compose project、数据库名、marker 和 bearer token，
 得到同一确定性任务；更换用户、tenant 或目标 URL 必须被拒绝，且不能泄露其他
 任务信息。
 
+### 可选：建立双 Organization 授权验收状态
+
+这一步不是普通 Image Agent 验收的组成部分。它会修改本地 ZITADEL：创建或复用
+`ListingKit Acceptance Organization A` 和 `ListingKit Acceptance Organization B`，
+把现有 ListingKit Project grant 给两者，并把 runtime 文件中记录的同一个 bootstrap
+用户分别赋予 A 的 `listingkit_admin` 和 B 的 `listingkit_viewer`。当已有同名测试状态
+的角色集合不同，命令会把 Project Grant 和 Role Assignment 更新为上述精确集合。
+
+因此只有在操作者已明确授权修改可重置的本地 ZITADEL 测试数据后，才能运行：
+
+```powershell
+go run ./internal/zitadelprovision/cmd provision-multi-org-acceptance `
+  -issuer-url http://localhost:8080 `
+  -management-token-file .local/image-agent-acceptance/management-admin-token.txt `
+  -runtime-file .local/image-agent-acceptance/runtime.env `
+  -confirm-resettable-test-data
+```
+
+该子命令不提供远程覆盖，只接受 hostname 为 `localhost`、`127.0.0.1` 或 `::1` 的
+issuer。Project ID 和 bootstrap user ID 只能从受保护的既有 runtime 文件读取；命令
+只把后续验收需要的两个不透明 Organization ID 写回该文件，标准输出不会显示完整
+用户 ID、Organization ID 或任何凭据。重复执行会复用同名 Organization、Project
+Grant 和 Role Assignment。
+
+provision 后仍需通过现有 Auth.js 流程真实登录，并由服务端持有的浏览器 token 调用
+官方 v2 `ListAuthorizations`。这项读取验证与角色撤销验证是独立门槛；撤销或恢复任何
+授权都需要另一项明确批准。未获批准时，两项真实环境状态都必须记录为 pending。
+
 ### 6. 查看状态和停止
 
 ```powershell
