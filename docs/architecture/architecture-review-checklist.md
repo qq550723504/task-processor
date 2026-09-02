@@ -93,6 +93,7 @@ consider the applicable guards, including:
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestInfrastructureCatalogGuardRejectsNonAdapterFixture`
 - `TestProductCatalogPersistenceAdapterImplementsOnlyApprovedBusinessPort`
+- `TestProductCatalogPersistenceGuardRejectsEverySiblingProductDomainFixture`
 - `depguard: infrastructure_business_boundaries`
 - `depguard: product_catalog_persistence_boundary`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`

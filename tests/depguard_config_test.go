@@ -608,6 +608,31 @@ func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testi
 	}
 }
 
+func TestProductCatalogPersistenceDepguardDeniesEverySiblingProductDomain(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	adapterRule := requireDepguardRule(t, loadDepguardRules(t, configPath), "product_catalog_persistence_boundary")
+	adapterDeny := depguardDenyPackageSet(adapterRule)
+
+	for _, packagePath := range []string{
+		"task-processor/internal/product/asset",
+		"task-processor/internal/product/sourcing",
+		"task-processor/internal/product/enrichment",
+		"task-processor/internal/product/image",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			pattern := packagePath + suffix
+			if _, ok := adapterDeny[pattern]; !ok {
+				t.Errorf("product_catalog_persistence_boundary must deny sibling Product domain pattern %s", pattern)
+			}
+		}
+	}
+	for _, suffix := range []string{"$", "/"} {
+		if _, denied := adapterDeny["task-processor/internal/product/catalog"+suffix]; denied {
+			t.Errorf("product_catalog_persistence_boundary must allow its Catalog-owned port pattern ending in %q", suffix)
+		}
+	}
+}
+
 func TestProjectBoundaryListingKitDepguardPatternCoversDomainTrees(t *testing.T) {
 	configPath := filepath.Join("..", ".golangci.yml")
 	content, err := os.ReadFile(configPath)

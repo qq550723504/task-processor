@@ -3773,6 +3773,7 @@ func TestProductCatalogPersistenceAdapterImplementsOnlyApprovedBusinessPort(t *t
 		"task-processor/internal/temu",
 		"task-processor/internal/workspace",
 	}, nil)
+	assertCatalogIsOnlyProductDomainImport(t, adapterRoot)
 
 	repositorySource, err := os.ReadFile(filepath.Join(adapterRoot, "repository.go"))
 	if err != nil {
@@ -3781,6 +3782,64 @@ func TestProductCatalogPersistenceAdapterImplementsOnlyApprovedBusinessPort(t *t
 	if !strings.Contains(string(repositorySource), `"task-processor/internal/product/catalog"`) {
 		t.Fatal("Catalog persistence adapter must implement the Catalog-owned repository port")
 	}
+}
+
+func TestProductCatalogPersistenceGuardRejectsEverySiblingProductDomainFixture(t *testing.T) {
+	fixtureRoot := filepath.Join("testdata", "catalog_adapter_product_domain_violations")
+	violations := findNonCatalogProductDomainImports(t, fixtureRoot)
+	want := []string{
+		"task-processor/internal/product/asset",
+		"task-processor/internal/product/asset/recipe",
+		"task-processor/internal/product/enrichment",
+		"task-processor/internal/product/enrichment/future",
+		"task-processor/internal/product/image",
+		"task-processor/internal/product/image/presets",
+		"task-processor/internal/product/sourcing",
+		"task-processor/internal/product/sourcing/future",
+	}
+	if len(violations) != len(want) {
+		t.Fatalf("sibling Product domain violations = %+v, want %v", violations, want)
+	}
+	for index, violation := range violations {
+		if violation.importPath != want[index] {
+			t.Fatalf("sibling Product domain violation[%d] = %q, want %q", index, violation.importPath, want[index])
+		}
+	}
+}
+
+func assertCatalogIsOnlyProductDomainImport(t *testing.T, root string) {
+	t.Helper()
+	for _, violation := range findNonCatalogProductDomainImports(t, root) {
+		t.Errorf("%s imports sibling Product business domain %s; the Catalog persistence adapter may import only Catalog-owned ports", violation.path, violation.importPath)
+	}
+}
+
+func findNonCatalogProductDomainImports(t *testing.T, root string) []bannedImportViolation {
+	t.Helper()
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var violations []bannedImportViolation
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/product") &&
+				!importMatchesPrefix(importPath, "task-processor/internal/product/catalog") {
+				violations = append(violations, bannedImportViolation{path: path, importPath: importPath})
+			}
+		}
+	}
+	sort.Slice(violations, func(i, j int) bool {
+		if violations[i].path == violations[j].path {
+			return violations[i].importPath < violations[j].importPath
+		}
+		return violations[i].path < violations[j].path
+	})
+	return violations
 }
 
 func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
