@@ -43,9 +43,6 @@ func (h *handler) attachOptionalServices(service any) {
 	if warmService, ok := service.(listingkit.SDSBaselineWarmService); ok {
 		h.sdsBaselineWarmService = warmService
 	}
-	if deleteService, ok := service.(uploadedImageDeleteService); ok {
-		h.uploadedImageDeleteService = deleteService
-	}
 }
 
 func (h *handler) attachSettingsService(service settingsHandlerService) {

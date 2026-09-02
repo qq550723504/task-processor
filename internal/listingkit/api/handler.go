@@ -21,8 +21,7 @@ type handler struct {
 	sdsRetirementService          listingkit.SDSRetirementService
 	childTaskRetryService         childTaskRetryService
 	taskSDSRepairService          taskSDSRepairService
-	uploadedImageService          uploadedImageService
-	uploadedImageDeleteService    uploadedImageDeleteService
+	uploadedImageService          listingkit.UploadedImageService
 	storeAdminService             storeAdminHandlerService
 	storeRepository               listingadmin.StoreRepository
 	sheinSyncService              listingkit.SheinSyncService
@@ -35,8 +34,8 @@ type handler struct {
 	initErr                       error
 	adminHandlers
 	subscriptionDependencies
-	settingsService                 settingsNamespaceService
-	zitadelSMSService               *zitadelsms.Service
+	settingsService   settingsNamespaceService
+	zitadelSMSService *zitadelsms.Service
 }
 
 type storeAdminHandlers struct {
@@ -79,7 +78,7 @@ type subscriptionDependencies struct {
 
 type handlerCoreService interface {
 	listingkit.TaskLifecycleService
-	uploadedImageService
+	listingkit.UploadedImageService
 }
 
 type HandlerService interface {
@@ -104,15 +103,6 @@ type childTaskRetryService interface {
 type taskSDSRepairService interface {
 	GetTaskSDSRepair(ctx context.Context, taskID string) (*listingkit.TaskSDSRepairSession, error)
 	RepairAndRetryTaskSDS(ctx context.Context, taskID string, req *listingkit.ApplyTaskSDSRepairRequest) (*listingkit.TaskResult, error)
-}
-
-type uploadedImageDeleteService interface {
-	DeleteUploadedImage(ctx context.Context, key string) (*listingkit.DeletedUploadedImage, error)
-}
-
-type uploadedImageService interface {
-	UploadImages(ctx context.Context, req *listingkit.UploadImagesRequest) (*listingkit.UploadImagesResponse, error)
-	GetUploadedImage(ctx context.Context, key string) (*listingkit.UploadedImageFile, error)
 }
 
 type HandlerOption func(*handler)
@@ -146,9 +136,9 @@ type SubscriptionDependencies struct {
 }
 
 type HandlerDependencies struct {
-	Admin                    AdminHandlerDependencies
-	Subscription             SubscriptionDependencies
-	ZitadelSMSService        *zitadelsms.Service
+	Admin             AdminHandlerDependencies
+	Subscription      SubscriptionDependencies
+	ZitadelSMSService *zitadelsms.Service
 }
 
 func withHandlerState(apply func(*handler)) HandlerOption {
@@ -204,7 +194,7 @@ func WithTaskLifecycleService(service listingkit.TaskLifecycleService) HandlerOp
 	})
 }
 
-func WithUploadedImageService(service uploadedImageService) HandlerOption {
+func WithUploadedImageService(service listingkit.UploadedImageService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.uploadedImageService = service
 	})
@@ -219,12 +209,6 @@ func WithTaskRecoveryService(service listingkit.TaskRecoveryService) HandlerOpti
 func WithTaskRequeueService(service listingkit.TaskRequeueService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.taskRequeueService = service
-	})
-}
-
-func WithUploadedImageDeleteService(service uploadedImageDeleteService) HandlerOption {
-	return withHandlerState(func(h *handler) {
-		h.uploadedImageDeleteService = service
 	})
 }
 

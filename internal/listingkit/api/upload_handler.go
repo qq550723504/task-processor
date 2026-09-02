@@ -98,11 +98,7 @@ func (h *handler) GetUploadedListingKitImage(c *gin.Context) {
 
 func (h *handler) DeleteUploadedListingKitImage(c *gin.Context) {
 	key := strings.TrimPrefix(c.Param("key"), "/")
-	if h.uploadedImageDeleteService == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "image_delete_unavailable", "message": "uploaded image delete is not configured"})
-		return
-	}
-	deleted, err := h.uploadedImageDeleteService.DeleteUploadedImage(requestContext(c), key)
+	deleted, err := h.uploadedImageService.DeleteUploadedImage(requestContext(c), key)
 	if err != nil {
 		if errors.Is(err, listingkit.ErrUploadedImageNotFound) {
 			writeUploadedImageNotFound(c)

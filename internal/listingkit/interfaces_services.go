@@ -58,6 +58,7 @@ type SDSRetirementService interface {
 type UploadedImageService interface {
 	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
 	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)
+	DeleteUploadedImage(ctx context.Context, key string) (*DeletedUploadedImage, error)
 }
 
 type StudioMediaService interface {

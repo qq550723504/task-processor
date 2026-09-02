@@ -64,7 +64,7 @@ func TestUploadListingKitImagesReturnsImageURLs(t *testing.T) {
 		},
 	}
 	subscriptionService := activeOSSStorageSubscriptionService(t, nil)
-	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -144,7 +144,6 @@ func TestUploadListingKitImagesUsesForwardedPublicBaseAndRemovesMultipartTempFil
 	h, err := NewHandler(
 		&stubHandlerCoreService{},
 		WithUploadedImageService(svc),
-		WithUploadedImageDeleteService(svc),
 		WithSubscriptionService(activeOSSStorageSubscriptionService(t, nil)),
 	)
 	if err != nil {
@@ -253,7 +252,7 @@ func TestUploadListingKitImagesReturnsQuotaExceededWhenStorageLimitIsExceeded(t 
 		},
 	}
 	subscriptionService := activeOSSStorageSubscriptionService(t, map[string]int{"storage_bytes": 3})
-	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -314,7 +313,7 @@ func TestUploadListingKitImagesAllowsStudioBackedStorageFallback(t *testing.T) {
 		},
 	}
 	subscriptionService := activeStudioOnlySubscriptionService(t)
-	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -351,7 +350,7 @@ func TestUploadListingKitImagesDoesNotRecordStorageUsageWhenUploadFails(t *testi
 	gin.SetMode(gin.TestMode)
 	svc := &stubUploadedImageService{err: errors.New("store unavailable")}
 	subscriptionService := activeOSSStorageSubscriptionService(t, map[string]int{"storage_bytes": 1024})
-	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -412,7 +411,7 @@ func TestDeleteUploadedListingKitImageDecrementsStorageUsage(t *testing.T) {
 	if _, err := subscriptionService.RecordUsage(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleOSSStorage, "uploaded_bytes", 3); err != nil {
 		t.Fatalf("seed uploaded usage: %v", err)
 	}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -455,7 +454,7 @@ func TestDeleteUploadedListingKitImageRefundsOnlyFirstCompletedDelete(t *testing
 	if _, err := subscriptionService.RecordUsage(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleOSSStorage, "storage_bytes", 6); err != nil {
 		t.Fatalf("seed storage usage: %v", err)
 	}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -492,7 +491,7 @@ func TestDeleteUploadedListingKitImageReturnsNotFound(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubUploadedImageService{err: listingkit.ErrUploadedImageNotFound}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(activeOSSStorageSubscriptionService(t, nil)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(activeOSSStorageSubscriptionService(t, nil)))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

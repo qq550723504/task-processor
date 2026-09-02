@@ -21,6 +21,10 @@ func (stubHandlerCoreService) GetUploadedImage(context.Context, string) (*listin
 	return nil, errors.New("not implemented")
 }
 
+func (stubHandlerCoreService) DeleteUploadedImage(context.Context, string) (*listingkit.DeletedUploadedImage, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (stubHandlerCoreService) AnalyzeStudioReferenceStyle(context.Context, *listingkit.StudioReferenceAnalysisRequest) (*listingkit.StudioReferenceAnalysisResponse, error) {
 	return nil, errors.New("not implemented")
 }
