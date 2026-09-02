@@ -72,6 +72,7 @@ jobs:
             const statusSha = guard.statusTargetForPullRequest(initialSnapshot);
             const externalId = `development-admission:${pullRequestNumber}:${statusSha}`;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const nonterminalCheckStatuses = new Set(["queued", "in_progress", "waiting", "requested"]);
             let checkRunId = null;
             let finalPublishStarted = false;
 
@@ -91,6 +92,10 @@ jobs:
               } else {
                 payload.started_at = new Date().toISOString();
               }
+              if (!checkRunId) {
+                const existingCheck = await findExistingCheck();
+                checkRunId = existingCheck?.id || null;
+              }
               if (checkRunId) {
                 return github.rest.checks.update({ ...payload, check_run_id: checkRunId });
               }
@@ -107,7 +112,9 @@ jobs:
                 per_page: 100,
               });
               return checkRuns
-                .filter((run) => run?.external_id === externalId && run?.app?.id === trustedCheckAppId)
+                .filter((run) => run?.external_id === externalId &&
+                  run?.app?.id === trustedCheckAppId &&
+                  nonterminalCheckStatuses.has(run?.status))
                 .sort((left, right) => Number(right.id) - Number(left.id))[0] || null;
             };
 
