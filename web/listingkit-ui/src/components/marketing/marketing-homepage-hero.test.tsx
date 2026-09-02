@@ -1,8 +1,12 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 
 import { HeroSystemVisual } from "@/components/marketing/hero-system-visual";
 import { MarketingHomepage } from "@/components/marketing/marketing-homepage";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("MarketingHomepage hero", () => {
   it("presents the AI commerce operating-system promise and routes entry to the workbench", () => {
@@ -93,4 +97,29 @@ it("keeps the architecture visible in server-rendered markup", () => {
 
   expect(markup).toContain("模型与调用治理");
   expect(markup).not.toMatch(/opacity:0(?:;|\"|})/);
+});
+
+it("enters the boot state without interpolating from the active state", async () => {
+  const frames: FrameRequestCallback[] = [];
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames.push(callback);
+    return frames.length;
+  });
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+  render(<HeroSystemVisual />);
+
+  await act(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, 30));
+  });
+
+  const architecture = screen.getByRole("group", {
+    name: "硕米 AI 电商能力架构",
+  });
+  const core = architecture.querySelector('[class*="coreAnchor"]');
+  expect(core).toHaveStyle({
+    opacity: "0",
+  });
+
+  act(() => frames.shift()?.(0));
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   Bot,
   Boxes,
@@ -13,6 +13,7 @@ import {
 import {
   MotionConfig,
   motion,
+  useAnimationControls,
   useReducedMotion,
   type Variants,
 } from "motion/react";
@@ -162,36 +163,30 @@ const particleVariants: Variants = {
 
 export function HeroSystemVisual() {
   const reduceMotion = Boolean(useReducedMotion());
-  const [visualState, setVisualState] = useState<"active" | "boot">("active");
+  const animationControls = useAnimationControls();
 
   useEffect(() => {
     if (reduceMotion) {
       return;
     }
 
-    let revealFrame: number | undefined;
-    const bootFrame = window.requestAnimationFrame(() => {
-      setVisualState("boot");
-      revealFrame = window.requestAnimationFrame(() => setVisualState("active"));
+    animationControls.set("boot");
+    const revealFrame = window.requestAnimationFrame(() => {
+      void animationControls.start("active");
     });
 
     return () => {
-      window.cancelAnimationFrame(bootFrame);
-      if (revealFrame !== undefined) {
-        window.cancelAnimationFrame(revealFrame);
-      }
+      window.cancelAnimationFrame(revealFrame);
     };
-  }, [reduceMotion]);
+  }, [animationControls, reduceMotion]);
 
   return (
     <MotionConfig reducedMotion="user">
-      <motion.div
-        animate={visualState}
+      <div
         aria-label="硕米 AI 电商能力架构"
         className={styles.systemVisual}
         data-motion-sequence="boot-reveal-active-pulse"
         data-node-id="10:144"
-        initial={false}
         role="group"
       >
         <div aria-hidden="true" className={styles.visualGlow} />
@@ -200,18 +195,21 @@ export function HeroSystemVisual() {
           className={styles.ringOuter}
           direction={360}
           index={0}
+          animationControls={animationControls}
           reduceMotion={reduceMotion}
         />
         <OrbitRing
           className={styles.ringMid}
           direction={-360}
           index={1}
+          animationControls={animationControls}
           reduceMotion={reduceMotion}
         />
         <OrbitRing
           className={styles.ringInner}
           direction={360}
           index={2}
+          animationControls={animationControls}
           reduceMotion={reduceMotion}
         />
 
@@ -230,7 +228,9 @@ export function HeroSystemVisual() {
           </defs>
           {CONNECTIONS.map((connection, index) => (
             <motion.line
+              animate={animationControls}
               custom={index}
+              initial={false}
               key={`${connection.x2}-${connection.y2}`}
               stroke="url(#hero-connection-gradient)"
               strokeWidth="1"
@@ -244,7 +244,9 @@ export function HeroSystemVisual() {
         </svg>
 
         <motion.div
+          animate={animationControls}
           className={styles.coreAnchor}
+          initial={false}
           variants={coreVariants}
         >
           <div className={styles.core}>
@@ -285,8 +287,10 @@ export function HeroSystemVisual() {
             const Icon = capability.icon;
             return (
               <motion.li
+                animate={animationControls}
                 className={`${styles.capabilityCard} ${styles[capability.position]}`}
                 custom={index}
+                initial={false}
                 key={capability.key}
                 variants={capabilityVariants}
               >
@@ -305,14 +309,16 @@ export function HeroSystemVisual() {
         {PARTICLES.map((particle, index) => (
           <motion.span
             aria-hidden="true"
+            animate={animationControls}
             className={styles.particle}
             custom={index}
+            initial={false}
             key={`${particle.left}-${particle.top}`}
             style={particle}
             variants={particleVariants}
           />
         ))}
-      </motion.div>
+      </div>
     </MotionConfig>
   );
 }
@@ -321,8 +327,10 @@ function OrbitRing({
   className,
   direction,
   index,
+  animationControls,
   reduceMotion,
 }: {
+  animationControls: ReturnType<typeof useAnimationControls>;
   className: string;
   direction: number;
   index: number;
@@ -331,8 +339,10 @@ function OrbitRing({
   return (
     <motion.div
       aria-hidden="true"
+      animate={animationControls}
       className={`${styles.ringLayer} ${className}`}
       custom={index}
+      initial={false}
       variants={ringVariants}
     >
       <motion.span
