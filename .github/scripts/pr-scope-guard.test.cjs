@@ -701,6 +701,26 @@ test("requires explicit design and split evidence for an oversized override", ()
   assert.equal(
     hasRequiredOverrideEvidence(
       completeBody.replace(
+        "reviewer approved the failure matrix",
+        "This design was not independently reviewed",
+      ),
+      ["Henry"],
+    ),
+    false,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "reviewer approved the failure matrix",
+        "wasn't reviewed",
+      ),
+      ["Henry"],
+    ),
+    false,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
         "the consistency boundary cannot be split safely",
         "this can be split safely",
       ),
@@ -767,6 +787,26 @@ test("requires explicit design and split evidence for an oversized override", ()
       ["Henry"],
     ),
     true,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "the consistency boundary cannot be split safely",
+        "This can be split cleanly into two independent changes",
+      ),
+      ["Henry"],
+    ),
+    false,
+  );
+  assert.equal(
+    hasRequiredOverrideEvidence(
+      completeBody.replace(
+        "the consistency boundary cannot be split safely",
+        "This can be split without risk",
+      ),
+      ["Henry"],
+    ),
+    false,
   );
 });
 

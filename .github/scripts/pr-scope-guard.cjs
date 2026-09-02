@@ -341,7 +341,8 @@ function hasRequiredOverrideEvidence(body, approvedLogins) {
   const independentReview = valueFor(
     /^\s*-\s*Independent design review:\s*(.+)$/im,
     [
-      /\b(?:not|never)\s+(?:performed|conducted|completed|done|reviewed)\b/i,
+      /\b(?:not|never|isn't|wasn't|weren't)\b[^\n.]*\b(?:performed|conducted|completed|done|reviewed)\b/i,
+      /\b(?:is|was|were|has|have|had)\s+not\b[^\n.]*\b(?:performed|conducted|completed|done|reviewed)\b/i,
       /\bno\s+(?:independent\s+)?(?:design\s+)?review\b/i,
       /\bwithout\b.*\breview\b/i,
       /\b(?:pending|awaiting|waiting|in\s+progress)\b/i,
@@ -362,14 +363,12 @@ function hasRequiredOverrideEvidence(body, approvedLogins) {
   const splitRationale = valueFor(
     /^\s*-\s*(?:Split rationale[^:\n]*|architecture-approved[^:\n]*split rationale[^:\n]*):\s*(.+)$/im,
   );
-  const safeSplitClaim = splitRationale &&
-    /(?:\b(?:can|could|may|should)\b[^\n.]*\b(?:safe|safely)\b[^\n.]*\bsplit\b|\b(?:can|could|may|should)\b[^\n.]*\bsplit\b[^\n.]*\b(?:safe|safely)\b|\b(?:safe|safely)\s+to\s+split\b)/i.test(
+  const validatedSplitRationale = splitRationale &&
+    /\b(?:cannot|can't|can\s+not|impossible|not\s+possible|unsafe|not\s+safe|not\s+separable|not\s+independently\s+separable|only\s+be\s+split\s+by|would\s+break|breaks|none\s+of[^\n.]*\bsafe\b|no\s+safe\s+way)\b/i.test(
       splitRationale,
-    ) &&
-    !/\b(?:not|never|may\s+not|might\s+not|can(?:not|\s+not)|could\s+not|should\s+not|is\s+not|isn't)\b[^\n.]*\b(?:safe|safely)\b[^\n.]*\bsplit\b|\b(?:not|never|may\s+not|might\s+not|can(?:not|\s+not)|could\s+not|should\s+not|is\s+not|isn't)\b[^\n.]*\bsplit\b[^\n.]*\b(?:safe|safely)\b/i.test(
-      splitRationale,
-    );
-  const validatedSplitRationale = safeSplitClaim ? null : splitRationale;
+    )
+    ? splitRationale
+    : null;
   const hasDesignLink = design && /https?:\/\/\S+|(?:^|\s)(?:docs|designs?)\/\S+/i.test(design);
   const hasApprovedLogin = approvedLogins.some((login) => {
     if (typeof login !== "string" || login.trim() === "") {
