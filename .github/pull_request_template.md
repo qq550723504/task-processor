@@ -3,32 +3,9 @@
 - What changed?
 - Why is this needed?
 
-# Development Admission
-
-- Scope class: bounded / architecture-sensitive
-- Affected subsystems:
-- Consistency, authorization, or tenant boundaries:
-- Scope metrics: scope-relevant files / production additions / production churn
-- Design:
-- Independent design review:
-- Invariants and failure matrix:
-- Split rationale (required when oversized):
-
-Admission checklist:
-
-- [ ] The change is at or below 30 scope-relevant files, 1,500 production additions, and 2,500 production churn; oversized changes are split into smaller pull requests.
-- [ ] Architecture-sensitive work has an approved design and a fresh independent design review.
-- [ ] Stateful or multi-boundary work documents durable states, retry identity, recovery ownership, and a failure matrix.
-- [ ] A shared transaction and existing repository or mature open-source facilities were evaluated before adding compensation infrastructure.
-- [ ] Cross-cutting behavior was checked across sibling routes, consumers, and recovery entry points.
-
 # Validation
 
 - [ ] `go test ...`
-- [ ] Lost-response and partial-persistence behavior tested, or `N/A` explained below.
-- [ ] Retry, restart, and concurrency behavior tested, or `N/A` explained below.
-- [ ] Tenant, authorization, Cookie, cache, and multi-tab context drift tested, or `N/A` explained below.
-- [ ] Request size, deadline, and resource bounds tested, or `N/A` explained below.
 - [ ] Other validation steps documented below when needed
 
 Validation notes:
@@ -58,7 +35,6 @@ Use this checklist for changes touching `internal/app`, `internal/listingkit`,
 # Notes For Reviewers
 
 - Risk areas:
-- Residual consistency or recovery risks:
 - Follow-up work:
 - Any intentional boundary exceptions:
 
