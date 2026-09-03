@@ -5,8 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import {
   getCanonicalProductDetail,
   getCanonicalProducts,
-  type CanonicalProductListPage,
 } from "@/lib/api/canonical-products";
+import type { CanonicalProductListPage } from "@/lib/canonical-products/canonical-products";
 
 async function getAllCanonicalProducts(query: { page?: number; page_size?: number }): Promise<CanonicalProductListPage> {
   const pageSize = query.page_size ?? 100;
