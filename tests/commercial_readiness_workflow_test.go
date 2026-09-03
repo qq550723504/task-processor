@@ -30,41 +30,43 @@ func TestListingKitCommercialImageAgentWorkersUseExactSecretAndConfigScope(t *te
 		"IMAGE_AGENT_TEMPORAL_ADDRESS":   "IMAGE_AGENT_TEMPORAL_ADDRESS",
 		"IMAGE_AGENT_TEMPORAL_NAMESPACE": "IMAGE_AGENT_TEMPORAL_NAMESPACE",
 	}
+	withArtifactStoreSecrets := func() map[string]string {
+		result := map[string]string{}
+		for key, value := range sharedSecrets {
+			result[key] = value
+		}
+		result["TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ACCESS_KEY_ID"] = "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ACCESS_KEY_ID"
+		result["TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_SECRET_ACCESS_KEY"] = "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_SECRET_ACCESS_KEY"
+		return result
+	}
+	withArtifactStoreConfig := func() map[string]string {
+		result := map[string]string{}
+		for key, value := range sharedConfig {
+			result[key] = value
+		}
+		for _, key := range []string{
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_ENABLED",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_PROVIDER",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_PUBLIC_BASE",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_BUCKET",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_REGION",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ENDPOINT",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_USE_PATH_STYLE",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ARTIFACT_MODE",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_COS_IMMUTABLE_NON_VERSIONED_BUCKET_POLICY",
+		} {
+			result[key] = key
+		}
+		return result
+	}
 
 	for _, test := range []struct {
 		relativePath string
 		wantSecrets  map[string]string
 		wantConfig   map[string]string
 	}{
-		{relativePath: filepath.Join("base", "image-agent-temporal-worker-deployment.yaml"), wantSecrets: sharedSecrets, wantConfig: sharedConfig},
-		{relativePath: filepath.Join("base", "image-agent-temporal-worker-v3-deployment.yaml"), wantSecrets: func() map[string]string {
-			result := map[string]string{}
-			for key, value := range sharedSecrets {
-				result[key] = value
-			}
-			result["TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ACCESS_KEY_ID"] = "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ACCESS_KEY_ID"
-			result["TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_SECRET_ACCESS_KEY"] = "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_SECRET_ACCESS_KEY"
-			return result
-		}(), wantConfig: func() map[string]string {
-			result := map[string]string{}
-			for key, value := range sharedConfig {
-				result[key] = value
-			}
-			for _, key := range []string{
-				"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_ENABLED",
-				"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_PROVIDER",
-				"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_PUBLIC_BASE",
-				"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_BUCKET",
-				"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_REGION",
-				"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ENDPOINT",
-				"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_USE_PATH_STYLE",
-				"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ARTIFACT_MODE",
-				"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_COS_IMMUTABLE_NON_VERSIONED_BUCKET_POLICY",
-			} {
-				result[key] = key
-			}
-			return result
-		}()},
+		{relativePath: filepath.Join("base", "image-agent-temporal-worker-deployment.yaml"), wantSecrets: withArtifactStoreSecrets(), wantConfig: withArtifactStoreConfig()},
+		{relativePath: filepath.Join("base", "image-agent-temporal-worker-v3-deployment.yaml"), wantSecrets: withArtifactStoreSecrets(), wantConfig: withArtifactStoreConfig()},
 	} {
 		t.Run(test.relativePath, func(t *testing.T) {
 			manifest := loadImageAgentWorkloadManifest(t, filepath.Join(base, test.relativePath))
