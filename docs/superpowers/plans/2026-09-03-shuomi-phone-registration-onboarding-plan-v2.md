@@ -14,6 +14,7 @@
 6. `...-amendments-5.md`
 7. `...-amendments-6.md`
 8. `...-amendments-7.md`
+9. `...-amendments-8.md`
 
 本 V2 计划是执行入口；旧 `2026-09-03-shuomi-phone-registration-onboarding-plan.md` 仅保留历史，不再作为实施指令。
 
@@ -53,16 +54,18 @@ Organization caller-supplied ID + required opaque name
 Human User caller-supplied ID + Technical Email request shape
 Get Organization/User exact ID
 User/Organization ownership marker read/write + read-back
-Create/Get Session
-AddOTPSMS
-CreateSMSChallenge
-VerifySMS
+AddOTPSMS user-factor enrollment
+OTP-SMS factor read-back OR proven idempotent AddOTPSMS contract
+CreateSMSChallenge exact request/returned challenge-bearing Session contract
+VerifySMS against returned challenge-bearing Session
 Project Grant search/create/read-back/state
 User Authorization search/create/read-back/state
 Provider Delete finality / idempotency / operation-status or bounded finality proof
 ```
 
 所有 capability 都做最小权限负向测试。
+
+`AddOTPSMS` 是 User Factor Write。若 response loss 后既不能 read-back factor state，也不能证明同 User 重放 enrollment 安全幂等，则禁止盲重试，self-registration rollout fail closed。
 
 Stop condition：任一能力无法证明且设计依赖它时，self-registration feature 保持关闭。
 
@@ -81,6 +84,7 @@ internal/registrationprovisioning/schema/runtime.go
 ```text
 saas_registration_intents
 saas_registration_capacity
+saas_registration_admissions
 saas_registration_proof_attempts
 saas_registration_proof_acceptances
 saas_registration_provider_operations
@@ -105,66 +109,125 @@ capacity_class
 expires_at
 ```
 
+Generic Admission 在手机号 lookup 前固定：
+
+```text
+admission_id
+logical_admission_key
+capacity_slot_id
+state
+expires_at
+request_fingerprint
+```
+
 Provider Operation：
 
 ```text
-operation_id
+logical_operation_key         // 幂等权威
+operation_id                  // opaque instance UUID
 registration_id
+ownership_epoch
 kind
+provider_target_type
 provider_target_id
 request_fingerprint
-state
+state = prepared | inflight | outcome_unknown | succeeded | failed_definitive
 owner / lease_until / epoch
 last_checked_at
 ```
 
-数据库约束保证同一长期 Provider mutation 的 state / epoch / ownership 可串行化。
+数据库必须：
+
+```text
+UNIQUE(logical_admission_key)
+UNIQUE(logical_operation_key)
+```
+
+同 logical key + same fingerprint 只 replay；same key + changed fingerprint 返回稳定 conflict，不能生成第二个并行 Provider mutation。
 
 ---
 
-## Task 3：Register Admission Shield
+## Task 3：Register Atomic Admission Shield
 
 `/register` 顺序固定：
 
 ```text
 trusted ingress abuse checks
--> check atomic unverified_provider_capacity
--> full => generic unavailable, no login-name lookup, no OTP challenge
--> capacity available => exact E.164 lookup
--> server internal split existing / pending / new
+-> BEGIN TX
+   lock unverified registration-admission capacity
+   allocate ONE generic admission slot
+   persist admission/attempt identity
+   increment admission in_use once
+-> COMMIT
+-> if allocation failed:
+     generic unavailable
+     NO exact E.164 lookup
+     NO OTP challenge
+-> only after successful atomic admission:
+     exact E.164 lookup
+     server-internal split existing / pending / new
 ```
 
-known/unknown/pending 在 capacity full 时必须同 public result、同 nextAction，全部不发 SMS。
+关键规则：
 
-独立 `/login` 不依赖 registration provider-capacity，不通过 register fallback 暴露 existence。
+- lookup 前必须已经真实占有 slot，不能只 `check available`；
+- last-slot 并发下只有成功 acquire 的请求继续 lookup；
+- `new/pending` 复用同一 slot 转成 unverified Provider-object ownership，不二次申请；
+- `existing active` 仍在本次 register attempt 内暂时持有同一 admission slot，直到 challenge definitive、流程取消/TTL 到期或安全转入 login continuation，再事务释放；
+- admission retry 用 stable logical key，不能二次 `in_use++`；
+- known/unknown/pending 在 admission 失败时同 HTTP/public code/nextAction，全部不发 SMS。
+
+独立 `/login` 不依赖 registration admission capacity，不通过 register fallback 暴露 existence。
 
 ---
 
-## Task 4：Atomic Capacity Model
+## Task 4：Capacity Authority 与 Class Transfer
 
-Provider Create 前原子占用 `unverified_provider_capacity`。
+Capacity 分三层：
+
+### 4.1 Global Provider Object High-water
+
+所有尚未安全删除或正式转出 registration pending accounting 的自助注册 Provider object，占用 global provider-object high-water。Class 转移不改变这个总数。
+
+### 4.2 Anonymous Admission / Unverified Class
+
+Generic register admission 与未验证 Provider object 使用 unverified class，保护匿名攻击面。
+
+OTP proof 成功后必须在同一事务执行：
 
 ```text
-lock capacity
--> allocate slot
--> insert Intent
--> in_use++
+lock proof + intent + global slot
+-> persist otp_verified
+-> slot.class = verified_waiting
+-> decrement unverified admission class count
 -> commit
 ```
 
-规则：
+因此已证明手机号所有权的 flow 不会继续占 anonymous admission pool。
 
-- unresolved / quarantine 未确认删除前不释放；
-- reclaim 转移同一 slot，不二次 +1；
-- OTP verified 后若仍无 durable business ownership，继续占 unverified slot；
-- 一旦 `business_prepared` 或检测到 paid/non-disposable business ownership，原子转移到 `verified_onboarding_backlog`；
-- `authorized` 后释放 verified slot；
-- 两个 capacity class 都有 hard limit / SLO / alert；
-- capacity 变化只能由数据库事务完成，重放不可二次增减。
+### 4.3 Verified Onboarding Work Capacity
+
+第一次 non-disposable business write 之前必须获取 verified onboarding work capacity：
+
+```text
+lock intent + verified work capacity
+-> if full:
+     state = verified_waiting_capacity
+     write NO Consent/business projection/subscription
+-> else:
+     acquire verified work lease/slot
+     atomically enter business_preparing + first durable business write
+```
+
+如果 concurrent paid/non-disposable artifact 已存在：只做 classification + verified work scheduling；identity 保持 verified class，禁止回退到 unverified，也禁止 cleanup 删除。
+
+`authorized` 后释放 verified work slot，并将 global registration Provider slot 转出 pending accounting。
+
+所有 acquire/transfer/release 事务可重放，不能二次增减。
 
 ---
 
-## Task 5：Provider Provisioning Adapter + Finality Fence
+## Task 5：Provider Provisioning Adapter + Logical Finality Fence
 
 长期 Provider Write 全部走 durable operation：
 
@@ -176,11 +239,19 @@ Reclaim marker mutation
 Delete User/Organization
 ```
 
+Logical key 推荐：
+
+```text
+provider-op:{registration_id}:{ownership_epoch}:{kind}:{target_type}:{target_id}
+```
+
 调用流程：
 
 ```text
-persist prepared operation
--> acquire epoch/lease
+insert/adopt prepared operation by logical key
+-> exact fingerprint replay / changed fingerprint conflict
+-> acquire operation epoch/lease
+-> mark inflight before Provider call
 -> provider call with bounded deadline
 -> definite response => read-back + succeeded/failed_definitive
 -> timeout/connection loss => outcome_unknown
@@ -189,38 +260,70 @@ persist prepared operation
 
 Cleanup 不能越过 `prepared/inflight/outcome_unknown` 的 create/repair mutation。
 
+Stale recovery：
+
+- stale `prepared` 且确认未发 Provider call：Reconciler 可按同 logical key 取得新 lease 并继续；
+- `inflight` lease 未过期：禁止接管；
+- stale `inflight`：先 fenced CAS 为 `outcome_unknown`，绝不直接重发，再做 Provider finality/read-back；
+- stale worker 晚到结果只有 epoch 仍匹配才可写本地状态。
+
 Stable ID recovery：Get same ID -> exact adopt / missing marker safe repair / mismatch repair_required。
 
 ---
 
 ## Task 6：Login V2 OTP Registration Attempt
 
-OTP 仍由 ZITADEL/Login V2 处理。
+OTP 仍由 ZITADEL/Login V2 处理，task-processor 不保存 OTP code 或 plaintext Session Token。
 
-每次 attempt 绑定：
+每次 attempt：
 
 ```text
 proof_attempt_id
 registration_id
 provider_user_id
-provider_session_ref_hash
+challenge_generation
+provider_session_ref_hash      // CreateSMSChallenge 返回后才写
+challenge_state = preparing | ready | outcome_unknown
 challenge_created_at
 proof_verified_at
 proof_consumed_at
 ```
 
-首次短信流程严格复用 pinned contract：
+首次短信固定使用 pinned contract：
 
 ```text
-Create/Get Session
--> AddOTPSMS
--> CreateSMSChallenge
--> VerifySMS
+1. Ensure AddOTPSMS user factor is definitively installed
+2. create proof_attempt = challenge_preparing（尚未绑定 Session）
+3. call pinned CreateSMSChallenge
+4. CreateSMSChallenge returns challenge-bearing sessionID/sessionToken
+5. persist non-secret reference/hash of THIS returned Session + generation
+6. VerifySMS against this exact returned Session
+7. mark proof verified
 ```
 
-`AddOTPSMS` response-loss 的恢复必须先由 capability test 证明；不能盲目重复未知写入。无法 read-back/idempotent recover 时废弃 Session，建立新的 attempt-bound Session。
+禁止先绑定“Session A”再由 `CreateSMSChallenge` 创建“Session B”。
 
-Challenge / resend 必须有 per-session / phone / IP limit 与 global SMS budget。
+### AddOTPSMS unknown outcome
+
+`AddOTPSMS` response loss 后：
+
+- 有 user-factor read-back：确认 installed 后继续，不重复写；
+- 或 provider contract 已实测 same-user enrollment 安全幂等：按该合同恢复；
+- 两者都没有：`factor_enrollment_outcome_unknown -> repair_required`，禁止换 Session 后盲目再次 AddOTPSMS。
+
+### Challenge response loss
+
+`CreateSMSChallenge` 成功但 response 丢失时：
+
+```text
+challenge_outcome_unknown
+SMS send debt counts against limiter/global budget
+no immediate automatic resend
+```
+
+若 provider 无法恢复丢失的 challenge Session credential，只能在 cooldown 后由用户显式请求新的 `challenge_generation`；旧 generation 永不作为 proof。
+
+Challenge/resend 必须有 per-session/phone/IP limit 与 global SMS budget。
 
 ---
 
@@ -297,9 +400,15 @@ Plan-owned row 必须具有 provenance；legacy provenance 不明确先 migratio
 
 ## Task 10：Business Prepare
 
+只有 `verified_waiting` flow 获得 verified work capacity 后，才允许第一次 non-disposable business write。
+
 ```text
-otp_verified
--> business_preparing
+verified_waiting / verified_waiting_capacity
+-> BEGIN TX
+   acquire verified work capacity
+   state = business_preparing
+   persist first non-disposable Sumi onboarding state
+-> COMMIT
 -> persist current Consent
 -> ensure Sumi user projection
 -> ensure Sumi organization projection
@@ -309,9 +418,9 @@ otp_verified
 -> business_prepared
 ```
 
-任何 paid subscription / Store / resource / order / Project Grant 等 non-disposable artifact 一旦存在，就禁止 Registration cleanup 删除 Provider identity。
+Destination/work capacity 已满时：保持 `verified_waiting_capacity`，不写 Consent/business projection/subscription；不会重新占 anonymous admission pool。
 
-`business_prepared` 后把 capacity 从 unverified class 转到 verified onboarding class。
+任何 paid subscription / Store / resource / order / Project Grant 等 non-disposable artifact 一旦存在，就禁止 Registration cleanup 删除 Provider identity。
 
 ---
 
@@ -348,25 +457,43 @@ business_prepared
 
 ## Task 12：RegistrationReconciler
 
-统一负责：
+统一负责业务状态：
 
 ```text
 otp_verified
+verified_waiting
+verified_waiting_capacity
 consent_required
 business_preparing
 business_prepared
 project_grant_ready
 authorizing
-provider operation outcome_unknown
+```
+
+统一负责 Provider Operation：
+
+```text
+stale prepared
+stale inflight
+outcome_unknown
 ```
 
 使用 bounded backoff/deadline/lease/epoch。
+
+Provider Operation recovery：
+
+```text
+prepared no live lease + call not sent -> resume same logical op
+inflight live lease -> wait
+inflight expired -> fenced outcome_unknown -> read-back
+outcome_unknown -> finality/read-back only; no blind conflicting write
+```
 
 `consent_required`：
 
 - disposable、无 business artifact 的 registration 超时后可进入 bounded cleanup；
 - 已有任何 durable business ownership 时禁止 Provider Delete，只允许 re-consent / repair；
-- verified onboarding backlog 有独立 SLO，不与 anonymous provider-cap 共用同一失败域。
+- verified onboarding backlog 有独立 SLO，不与 anonymous provider admission 共用同一失败域。
 
 ---
 
@@ -375,7 +502,7 @@ provider operation outcome_unknown
 Cleanup 前硬条件：
 
 ```text
-no in-flight/unknown long-lived Provider write
+no prepared/inflight/outcome_unknown long-lived Provider write
 no paid/base subscription requiring identity ownership
 no business projection requiring preservation
 no Project Grant/User Authorization
@@ -385,9 +512,9 @@ Provider finality contract definitive
 
 只有 disposable pre-business registration 才允许自动 Provider Delete。
 
-Reclaim 必须使用新的 attempt-bound OTP Proof；与 Delete 通过 durable Provider Operation / epoch 互斥。
+Reclaim 必须使用新的 attempt-bound OTP Proof；与 Delete 通过 durable Provider Operation logical key / epoch 互斥。
 
-Provider absence + all previous writes definitive 后才释放 capacity。
+Provider absence + all previous writes definitive 后才释放 global Provider-object capacity。
 
 ---
 
@@ -428,18 +555,28 @@ Cleanup Credential
 至少覆盖：
 
 ```text
+last admission slot known/unknown/pending concurrency: lookup 前只有一个成功 acquire
+same admission logical key retry 不二次 in_use++
 capacity full known/unknown/pending indistinguishable
+OTP verified: unverified -> verified_waiting class atomic transfer
+verified work capacity full: no business artifact write, no anonymous-pool reoccupation
 Create Org/User response loss and delayed success
+same Provider logical key two workers -> one operation / one external mutation
+same logical key different fingerprint -> conflict
+stale prepared -> reconciler resumes same operation
+stale inflight -> outcome_unknown -> finality read-back
 Janitor vs delayed Provider Create
 marker write response loss
-AddOTPSMS response loss
+AddOTPSMS response loss + factor read-back installed
+AddOTPSMS unknown without read-back/idempotency -> fail closed
+CreateSMSChallenge returned Session is the exact proof-bound Session
+challenge response loss -> no uncontrolled immediate resend
 OTP challenge abuse budget
 same proof changed acceptance payload
 paid plan apply crash leaves stale entitlement -> canonical repair
 manual override preserved
-business_prepared policy change -> no Provider Delete
+business-prepared policy change -> no Provider Delete
 paid subscription concurrent with consent deadline -> no Provider Delete
-capacity class transfer replay
 Project Grant/User Authorization inactive fail closed
 Provider Delete/Reclaim unknown outcome
 legacy user migration
@@ -450,10 +587,13 @@ legacy user migration
 ## 完成定义
 
 - 没有复制 ZITADEL OTP/Password/Session/OIDC；
-- `/register` capacity saturation 不形成 existence oracle；
+- `/register` 在 lookup 前原子占用 admission，last-slot race 不形成 existence oracle；
+- Provider Operation 有稳定 logical key，同一逻辑 mutation 不会并行重复；
+- stale prepared/inflight/outcome_unknown 都有明确 Reconciler owner；
+- OTP Factor enrollment response loss 不通过“换 Session”伪装成回滚；
+- proof 绑定 `CreateSMSChallenge` 实际返回的 challenge-bearing Session；
 - Provider object creation/cleanup 有 durable finality fence；
-- OTP factor enrollment 顺序与 pinned contract 一致；
 - ownership marker 能力经过真实 capability gate；
 - current paid plan entitlement projection 能修 missing + stale plan-owned rows；
 - business-owned tenant 永不因 consent timeout 被误删；
-- 所有 pending capacity 都有明确 owner、上限、SLO 和可恢复路径。
+- unverified admission、verified onboarding work、global Provider object 都有明确容量权威、SLO 和可恢复路径。
