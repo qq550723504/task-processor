@@ -132,6 +132,26 @@ func TestTaskCommandServicePinsChangedImportsToDistinctPublicationIdentitiesWith
 	}
 }
 
+func TestTaskCommandServiceBindsTaskCreationToIdempotentSourceIdentity(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	publisher := &recordingSourcePublisher{}
+	service := NewTaskCommandService(creator, validStoreAccessValidator(), publisher)
+	command := CreateTaskCommand{
+		URL: "https://detail.1688.com/offer/888.html", TenantID: "101", UserID: "user-1688",
+		SheinStoreID: 168811, Platforms: []string{"shein"}, Product: commandProduct1688("888"),
+		SourceRunID: "run-888", RequestID: "request-888",
+	}
+	if _, err := service.CreateTask(authenticatedCommandContext("101", "user-1688"), command); err != nil {
+		t.Fatalf("first CreateTask() error = %v", err)
+	}
+	if creator.request.IdempotencyKey != "source-run:run-888" {
+		t.Fatalf("IdempotencyKey = %q, want task creation bound to the source run identity", creator.request.IdempotencyKey)
+	}
+	if publisher.request == nil || creator.request.IdempotencyKey != publisher.request.PublicationID {
+		t.Fatalf("idempotency key %q does not match publication ID %v, want a single durable source identity", creator.request.IdempotencyKey, publisher.request)
+	}
+}
+
 func TestSourcePublicationIDBoundsLongSourceRunIDs(t *testing.T) {
 	publicationID := sourcePublicationID(sourcing.SourceEnvelope{Trace: sourcing.SourceTrace{SourceRunID: strings.Repeat("r", 118)}})
 	if len(publicationID) > 128 {

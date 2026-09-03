@@ -127,6 +127,11 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 		return &CreateTaskResult{Handoff: handoff}, err
 	}
 	handoff.Request.ProductKey = boundedProductKey(handoff.Request.ProductKey)
+	// Bind task creation to the same durable identity used for Catalog
+	// publication (source run when present, otherwise the content-derived
+	// snapshot identity) so a retried source request replays the original
+	// task instead of duplicating processing and billing.
+	handoff.Request.IdempotencyKey = sourcePublicationID(handoff.Envelope)
 	if s.sourcePublisher != nil {
 		productKey := handoff.Request.ProductKey
 		published, err := s.sourcePublisher.Publish(ctx, sourcing.PublishRequest{

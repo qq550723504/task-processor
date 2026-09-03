@@ -54,6 +54,14 @@ func (s *taskLifecycleService) CreateGenerateTask(ctx context.Context, req *Gene
 		return nil, err
 	}
 	if err := s.repo.CreateTask(ctx, task); err != nil {
+		if replayed, replayErr := s.replayIdempotentGenerateTask(ctx, task); replayErr != nil {
+			if errors.Is(replayErr, ErrGenerateTaskIdempotencyConflict) {
+				return nil, replayErr
+			}
+			return nil, fmt.Errorf("failed to create task: %w", err)
+		} else if replayed != nil {
+			return replayed, nil
+		}
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 	dispatched, err := s.dispatchGenerateTask(ctx, task)
@@ -66,6 +74,65 @@ func (s *taskLifecycleService) CreateGenerateTask(ctx context.Context, req *Gene
 		return task, err
 	}
 	return dispatched, nil
+}
+
+// replayIdempotentGenerateTask resolves an idempotent replay after
+// CreateTask failed, which for deterministic source-handoff task IDs means the
+// task row already exists. It returns the existing task when the recorded
+// payload matches the replayed request, ErrGenerateTaskIdempotencyConflict
+// when the same key carries a different target payload, and (nil, nil) when
+// no idempotency key is present or no task exists so the caller surfaces the
+// original creation error. Replays never re-dispatch: the existing task keeps
+// its current lifecycle and the task retry/requeue flows own any redelivery.
+func (s *taskLifecycleService) replayIdempotentGenerateTask(ctx context.Context, task *Task) (*Task, error) {
+	if task == nil || task.Request == nil || strings.TrimSpace(task.Request.IdempotencyKey) == "" {
+		return nil, nil
+	}
+	existing, err := s.repo.GetTask(ctx, task.ID)
+	if err != nil {
+		return nil, nil
+	}
+	if existing == nil {
+		return nil, nil
+	}
+	if !generateTaskPayloadsEquivalent(existing, task) {
+		return nil, fmt.Errorf("%w: task %s already exists with a different target payload", ErrGenerateTaskIdempotencyConflict, task.ID)
+	}
+	return existing, nil
+}
+
+func generateTaskPayloadsEquivalent(existing, candidate *Task) bool {
+	if existing == nil || candidate == nil {
+		return false
+	}
+	if existing.TenantID != candidate.TenantID ||
+		existing.SourceSnapshotVersion != candidate.SourceSnapshotVersion {
+		return false
+	}
+	if existing.Request == nil || candidate.Request == nil {
+		return existing.Request == nil && candidate.Request == nil
+	}
+	if existing.Request.ProductKey != candidate.Request.ProductKey {
+		return false
+	}
+	return stringSlicesEqualIgnoreOrder(existing.Request.Platforms, candidate.Request.Platforms)
+}
+
+func stringSlicesEqualIgnoreOrder(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[string]int, len(a))
+	for _, value := range a {
+		counts[value]++
+	}
+	for _, value := range b {
+		counts[value]--
+		if counts[value] < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func markCanceledTaskFailedIfActive(ctx context.Context, repo Repository, taskID, errorMsg string) error {

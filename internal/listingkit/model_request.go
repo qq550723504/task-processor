@@ -1,5 +1,12 @@
 package listingkit
 
+import "errors"
+
+// ErrGenerateTaskIdempotencyConflict signals that an idempotency key was
+// reused with a different target payload. Callers must surface it as a
+// client-visible conflict instead of silently returning the existing task.
+var ErrGenerateTaskIdempotencyConflict = errors.New("generate task idempotency conflict")
+
 type SourceReference struct {
 	Key      string `json:"key,omitempty"`
 	Type     string `json:"type,omitempty"`
@@ -15,6 +22,11 @@ type GenerateRequest struct {
 	// after Catalog publication. It is copied onto Task and never accepted from
 	// or exposed to the caller-facing request JSON.
 	SourceSnapshotVersion uint64 `json:"-"`
+	// IdempotencyKey is populated only by trusted source handoff code so a
+	// retried source request replays the originally created task instead of
+	// creating a duplicate. It derives a deterministic task ID and is never
+	// accepted from or exposed to the caller-facing request JSON.
+	IdempotencyKey string `json:"-"`
 	// BillingTenantID is set only by the authenticated HTTP boundary after its
 	// subscription check. It is intentionally excluded from the persisted
 	// request JSON; Task owns the durable billing identity separately from the

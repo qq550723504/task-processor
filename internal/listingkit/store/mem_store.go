@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"sort"
 	"sync"
@@ -43,6 +44,9 @@ func (r *MemTaskRepository) CreateTask(ctx context.Context, task *listingkit.Tas
 	}
 	if task.Request != nil && task.Request.UserID == "" {
 		task.Request.UserID = task.UserID
+	}
+	if _, exists := r.tasks[task.ID]; exists {
+		return fmt.Errorf("task %s already exists", task.ID)
 	}
 	copied := *task
 	r.tasks[task.ID] = &copied

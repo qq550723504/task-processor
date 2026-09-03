@@ -146,7 +146,7 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	}
 
 	task := &Task{
-		ID:                    uuid.New().String(),
+		ID:                    generateTaskID(req),
 		TenantID:              TenantIDFromContext(ctx),
 		BillingTenantID:       billingTenantIDForTask(req, TenantIDFromContext(ctx)),
 		UserID:                strings.TrimSpace(req.UserID),
@@ -159,6 +159,21 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	}
 	s.applySheinStoreResolutionSnapshot(ctx, task)
 	return ctx, task, nil
+}
+
+// generateTaskID returns a deterministic task ID for trusted source-handoff
+// requests carrying an idempotency key, so a retried source request replays
+// the same task row instead of creating a duplicate. Caller-facing requests
+// without a key keep the random UUID behaviour.
+func generateTaskID(req *GenerateRequest) string {
+	if req == nil {
+		return uuid.New().String()
+	}
+	if key := strings.TrimSpace(req.IdempotencyKey); key != "" {
+		return uuid.NewSHA1(uuid.NameSpaceURL,
+			[]byte("task-processor:listingkit:source-task:"+strings.TrimSpace(req.TenantID)+"\x00"+key)).String()
+	}
+	return uuid.New().String()
 }
 
 func billingTenantIDForTask(req *GenerateRequest, _ string) string {
