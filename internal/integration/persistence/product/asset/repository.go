@@ -145,18 +145,33 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 
 	var actionID string
 	var err error
+	versionBound := scope.SourceSnapshotVersion > 0
 	if scope.SourceSnapshotVersion > 0 {
 		var head ApprovedInventoryVersionHeadRecord
 		err := r.db.WithContext(ctx).
 			Where("tenant_id = ? AND product_key = ? AND source_snapshot_version = ?", scope.TenantID, scope.ProductKey, scope.SourceSnapshotVersion).
 			Take(&head).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
-		}
-		if err != nil {
+			// Legacy approvals predate snapshot binding and are retained as a
+			// compatibility path. New approvals always create a versioned head;
+			// callers that require strict binding should reject legacy inventory.
+			var legacy ApprovedInventoryHeadRecord
+			legacyErr := r.db.WithContext(ctx).
+				Where("tenant_id = ? AND product_key = ?", scope.TenantID, scope.ProductKey).
+				Take(&legacy).Error
+			if legacyErr == nil {
+				actionID = legacy.ActionID
+				versionBound = false
+			} else if errors.Is(legacyErr, gorm.ErrRecordNotFound) {
+				return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+			} else {
+				return productasset.ApprovedAssetInventory{}, mapRepositoryError("load legacy approved inventory head", legacyErr)
+			}
+		} else if err != nil {
 			return productasset.ApprovedAssetInventory{}, mapRepositoryError("load versioned approved inventory head", err)
+		} else {
+			actionID = head.ActionID
 		}
-		actionID = head.ActionID
 	} else {
 		var head ApprovedInventoryHeadRecord
 		err := r.db.WithContext(ctx).
@@ -174,7 +189,7 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 	var records []ApprovedAssetRecord
 	recordQuery := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND product_key = ? AND action_id = ?", scope.TenantID, scope.ProductKey, actionID)
-	if scope.SourceSnapshotVersion > 0 {
+	if versionBound {
 		recordQuery = recordQuery.Where("source_snapshot_version = ?", scope.SourceSnapshotVersion)
 	}
 	err = recordQuery.Order("slot_id ASC, attempt ASC, asset_id ASC").Find(&records).Error
