@@ -32,7 +32,7 @@ export function CanonicalProductListPage() {
   const searchParams = useSearchParams();
   const page = Number(searchParams.get("page") ?? "1") || 1;
   const products = useCanonicalProducts({ page, page_size: 30 });
-  const items = products.data?.items ?? [];
+  const items: CanonicalProductListItem[] = products.data?.items ?? [];
   const total = products.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / 30));
   const recoveryPage = Math.max(1, Math.min(totalPages, page - 1));
