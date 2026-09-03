@@ -99,6 +99,83 @@ func TestMemTaskCloneDurableMetadataSchemaIsExplicit(t *testing.T) {
 	require.Equal(t, want, hidden, "update the persistence-equivalent Task clone when durable hidden fields change")
 }
 
+func TestMemTaskCloneAndMutationNormalizeIndependentSemanticGraphsWithoutTouchingSource(t *testing.T) {
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-semantic")
+	legacySDS := &listingkit.SDSSyncSummary{Status: "completed"}
+	resultPod := memSemanticPodFixture(" result ")
+	snapshotPod := memSemanticPodFixture(" snapshot ")
+	source := &listingkit.Task{
+		ID: "task-semantic-clone", TenantID: "tenant-semantic",
+		Result: &listingkit.ListingKitResult{
+			SDSSync:      legacySDS,
+			PodExecution: resultPod,
+			StandardProductSnapshot: &listingkit.StandardProductSnapshot{
+				SDSSync: legacySDS, PodExecution: snapshotPod,
+			},
+		},
+	}
+
+	cloned, err := cloneMemTask(source)
+	require.NoError(t, err)
+	assertMemSemanticSourceUnchanged(t, source, legacySDS, resultPod, snapshotPod)
+	assertMemSemanticCloneNormalized(t, cloned)
+
+	repo := NewMemTaskRepository().(*MemTaskRepository)
+	require.NoError(t, repo.CreateTask(ctx, source))
+	wantErr := errors.New("reject before mutation")
+	callbackCalled := false
+	failedSnapshot, err := repo.MutateTaskResult(ctx, source.ID, func(*listingkit.Task) error {
+		callbackCalled = true
+		return wantErr
+	})
+	require.ErrorIs(t, err, wantErr)
+	require.True(t, callbackCalled)
+	assertMemSemanticSourceUnchanged(t, repo.tasks[source.ID], legacySDS, resultPod, snapshotPod)
+	assertMemSemanticCloneNormalized(t, failedSnapshot)
+
+	committed, err := repo.MutateTaskResult(ctx, source.ID, func(*listingkit.Task) error { return nil })
+	require.NoError(t, err)
+	assertMemSemanticCloneNormalized(t, repo.tasks[source.ID])
+	assertMemSemanticCloneNormalized(t, committed)
+	committed.Result.PodExecution.History[0].Detail = "caller mutation"
+	committed.Result.StandardProductSnapshot.PodExecution.Provider = "caller"
+	require.NotEqual(t, "caller mutation", repo.tasks[source.ID].Result.PodExecution.History[0].Detail)
+	require.NotEqual(t, "caller", repo.tasks[source.ID].Result.StandardProductSnapshot.PodExecution.Provider)
+}
+
+func memSemanticPodFixture(detail string) *listingkit.PodExecutionSummary {
+	return &listingkit.PodExecutionSummary{
+		Provider: " SDS ", DependencyMode: " OPTIONAL ", Status: " SUCCEEDED ", DecisionSource: " fixture ",
+		History: []listingkit.PodExecutionAuditEvent{{
+			Kind: " STATUS_TRANSITION ", Code: " code ", Detail: detail, Provider: " SDS ", ToStatus: " SUCCEEDED ",
+		}},
+	}
+}
+
+func assertMemSemanticSourceUnchanged(t *testing.T, task *listingkit.Task, legacySDS *listingkit.SDSSyncSummary, resultPod, snapshotPod *listingkit.PodExecutionSummary) {
+	t.Helper()
+	require.Same(t, legacySDS, task.Result.SDSSync)
+	require.Nil(t, task.Result.SDSDesignResult)
+	require.Same(t, resultPod, task.Result.PodExecution)
+	require.Equal(t, " SDS ", resultPod.Provider)
+	require.Equal(t, " result ", resultPod.History[0].Detail)
+	require.Same(t, legacySDS, task.Result.StandardProductSnapshot.SDSSync)
+	require.Nil(t, task.Result.StandardProductSnapshot.SDSDesignResult)
+	require.Same(t, snapshotPod, task.Result.StandardProductSnapshot.PodExecution)
+	require.Equal(t, " SDS ", snapshotPod.Provider)
+	require.Equal(t, " snapshot ", snapshotPod.History[0].Detail)
+}
+
+func assertMemSemanticCloneNormalized(t *testing.T, task *listingkit.Task) {
+	t.Helper()
+	require.Same(t, task.Result.SDSSync, task.Result.SDSDesignResult)
+	require.Equal(t, "sds", task.Result.PodExecution.Provider)
+	require.Equal(t, "result", task.Result.PodExecution.History[0].Detail)
+	require.Same(t, task.Result.StandardProductSnapshot.SDSSync, task.Result.StandardProductSnapshot.SDSDesignResult)
+	require.Equal(t, "sds", task.Result.StandardProductSnapshot.PodExecution.Provider)
+	require.Equal(t, "snapshot", task.Result.StandardProductSnapshot.PodExecution.History[0].Detail)
+}
+
 func assertMemMutationTaskCloneContract(t *testing.T, task *listingkit.Task, billingTenant string, leaseUntil time.Time) {
 	t.Helper()
 	require.Equal(t, billingTenant, task.BillingTenantID)
