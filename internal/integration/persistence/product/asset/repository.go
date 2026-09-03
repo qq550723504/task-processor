@@ -152,9 +152,9 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 			Where("tenant_id = ? AND product_key = ? AND source_snapshot_version = ?", scope.TenantID, scope.ProductKey, scope.SourceSnapshotVersion).
 			Take(&head).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// Legacy approvals predate snapshot binding and are retained as a
-			// compatibility path. New approvals always create a versioned head;
-			// callers that require strict binding should reject legacy inventory.
+			// Legacy approvals predate snapshot binding. They may be used only when
+			// their records are also explicitly unversioned; a versioned approval
+			// must never be substituted for a pinned task.
 			var legacy ApprovedInventoryHeadRecord
 			legacyErr := r.db.WithContext(ctx).
 				Where("tenant_id = ? AND product_key = ?", scope.TenantID, scope.ProductKey).
@@ -198,6 +198,13 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 	}
 	if len(records) == 0 {
 		return productasset.ApprovedAssetInventory{}, repositoryStateInvalid("load approved asset inventory", errors.New("inventory head has no approved assets"))
+	}
+	if scope.SourceSnapshotVersion > 0 && !versionBound {
+		for _, record := range records {
+			if record.SourceSnapshotVersion != 0 {
+				return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+			}
+		}
 	}
 	approved := make([]productasset.ApprovedAsset, len(records))
 	for index, record := range records {
