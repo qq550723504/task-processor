@@ -397,3 +397,28 @@ merging.
 
 If plans, runbooks, or contextual notes introduce a long-lived boundary rule,
 that rule must be copied or linked into a stable boundary document before being used as review policy.
+
+## Review Scope And Stop Rule
+
+Architecture review must stay inside the Product Decisions, Threat Model, Must / Should / Out of Scope, and Accepted Risks declared for the change. Reviewers may identify a broader risk, but they must not silently promote it into a project blocker.
+
+Before changing architecture for a finding, classify it using the project vocabulary from `AGENTS.md`:
+
+- `BLOCKER`
+- `IMPLEMENTATION_TEST`
+- `BACKLOG`
+- `ACCEPTED_RISK`
+- `NOT_APPLICABLE`
+
+Reviewer severity such as P0/P1/P2 is input evidence, not an automatic project classification. A `BLOCKER` must name the concrete correctness or safety category it violates, such as cross-tenant access, privilege escalation, incorrect resource or billing accounting, data corruption, unrecoverable external side effect, invalid Consent or identity ownership, paid-plan overwrite, deleting identities with durable business assets, an unfinishable happy path, or an unsafe rollout/migration.
+
+The normal stopping condition is `IMPLEMENTATION_READY`, not zero findings:
+
+1. Architecture-sensitive work gets at most two normal architecture-review rounds.
+2. After round two, non-blocking findings move to implementation tests or backlog by default.
+3. Once a design is `IMPLEMENTATION_READY`, it is a frozen implementation baseline.
+4. Only a newly demonstrated `BLOCKER` may reopen the frozen architecture.
+5. Theoretical hardening, accepted side channels, extreme operational optimization, and explicit Out of Scope items must not create an endless chain of V8/V9/V10 design documents.
+6. If implementation tests later prove a real state-machine, transaction, recovery, authorization, tenancy, or public-contract blocker, reopen the design from that evidence.
+
+Review comments should state the affected product requirement, project classification, reason, and action before requesting an architecture change.
