@@ -220,15 +220,29 @@ LegacyServiceHistoryResolver.Resolve(store)
 
 Rollout manifest 必须声明 resolver 的 authoritative source/owner。若当前部署根本不存在历史系统，只能使用经过 preflight/审批的 `NoAuthoritativeHistorySource` manifest 返回 CONFIRMED_ABSENT，worker 不得自行推断。
 
-### Snapshot/freeze 不变量
+### Snapshot/freeze 与 authority handoff 不变量
 
 Resolver 返回的 `source_version_or_snapshot_token` 不是审计备注，而是 backfill correctness precondition。
 
-- authoritative source 与 Store 位于同一 PostgreSQL / 可锁事务边界时，Backfill 必须锁 source row/version，并与 Store local CAS 在同一可证明不变的窗口完成；
-- source 是独立但可提供 durable freeze/claim 或 immutable snapshot 时，Backfill 必须持有该 freeze/snapshot token 到 local CAS 完成；
-- source 仍可写且无法提供 durable freeze/claim/immutable snapshot 时，**禁止 hard cut**，不能用一次普通读取代替并发 fence；
+- authoritative source 与 Store 位于同一 PostgreSQL / 可锁事务边界时，Backfill 必须锁 source row/version，并与 Store local CAS 在同一可证明不变的窗口完成；最终 authority handoff 前还必须保证旧 history writer 已 drain/fence，或被 compatibility dual-write 覆盖；
+- source 是独立但可提供 durable freeze/claim 时，**该 freeze/claim 必须从依赖它的 Resolve/Backfill 开始一直持有到 Phase F 的 authority handoff 完成**；不能在单 row local CAS 后释放，再靠 Phase F 一次 revalidate 代替；
+- source 是真正 immutable snapshot 时，snapshot 必须覆盖整个 cutover window，Phase F 仍按 manifest/token 验证同一 snapshot；
+- 如果不能跨整个 cutover window 长持 freeze，则唯一可接受替代是：先让旧 source writer 进入可证明的 dual-write/CDC-to-local 模式，持续把 Phase C 之后的 history mutation 同步到新 authority，并在 Phase F 前 drain/reconcile backlog=0，然后原子 fence 旧 writer / 切换 authority；
+- source 仍可写且既无法提供 durable freeze/claim/immutable snapshot，也无法提供经验证的 dual-write + writer-drain handoff 时，**禁止 hard cut**；
 - 每次 local Store mutation 前必须重新验证 resolver token/version 仍 current；验证失败则 row 不变并重新 Resolve；
-- Phase F 开启前必须再次验证本批次/manifest 的 source snapshot/freeze 仍有效，发现漂移则阻断 enable。
+- Phase D/E 期间 freeze/dual-write handoff contract 仍然有效；Phase F 必须在同一个被 fence 的 authority window 中完成最后验证和 route/read authority switch；
+- **只有 Phase F 已成功切换到新 authority，且旧 history writer 已被原子禁止继续产生未同步 mutation 后，才允许释放旧 source freeze/claim。**
+
+因此“Phase F 前 revalidate 一次，然后释放 freeze，再 enable”不是合法顺序；必须是：
+
+```text
+hold/fence old history authority
+-> backfill + verify + constraints
+-> final revalidate while fence still held
+-> atomically/operationally switch read/write authority + enable new lifecycle
+-> prove old writer cannot create unsynchronized history
+-> release freeze
+```
 
 映射：
 
@@ -244,9 +258,10 @@ history_confirmed_absent_count
 history_unavailable_count
 history_error_count
 history_snapshot_conflict_count
+history_handoff_backlog_count
 ```
 
-Phase D/F 要求 unresolved unavailable/error/snapshot conflict = 0。
+Phase D/F 要求 unresolved unavailable/error/snapshot conflict = 0；若采用 dual-write/CDC handoff，还要求 `history_handoff_backlog_count=0` 且旧 writer fence 已生效。
 
 ## 15. Store Hard-cut Rollout
 
@@ -262,16 +277,34 @@ Phase D/F 要求 unresolved unavailable/error/snapshot conflict = 0。
 
 - Create first insert -> record=provisioning, service=NULL；
 - ResumeCreate/Create completion -> record=active, service=pending_activation；
-- Disable -> active/suspended，并保留当前 authoritative service timestamps；
+- Disable 对已经完成 history resolution 的 Store -> active/suspended，并保留当前 authoritative service timestamps；
+- **Disable 对 legacy active 且尚未完成 history resolution 的 Store -> 立即完成 legacy disable/suspension 安全效果，但不得把 `timestamps=NULL` 当成 CONFIRMED_ABSENT；该 row 必须继续标记/识别为 history-backfill eligible，Phase C 必须再次 Resolve/fence history 并只补全 authoritative timestamps/evidence，不能因为 `service_status=suspended` 非空就 no-op；**
 - BeginDelete -> deleting/service=NULL；
 - SoftDelete -> deleted/service=NULL；
 - legacy disabled + service NULL/suspended 的 `/enable` -> `STORE_SERVICE_RESUME_REQUIRED`。
+
+Compatibility Disable 的安全优先级是“先阻止服务生命周期动作”，不是“伪造 history 已解析”。实现可以通过 migration-owned per-row resolution evidence/claim，或通过 deterministic legacy-row eligibility 规则表达 unresolved history；无论采用哪种存储形式，Phase D 必须能区分：
+
+```text
+suspended + history FOUND
+suspended + history CONFIRMED_ABSENT
+suspended + history UNRESOLVED/UNAVAILABLE
+```
+
+第三种绝不能通过 hard cut。
 
 ### C Backfill With Row-level + History-source Concurrency Authority
 
 逐 row/batch 使用 `SELECT ... FOR UPDATE [SKIP LOCKED]` 或 equivalent expected-version/CAS，锁后重新读取 legacy lifecycle/deleted_at/new state/version。
 
-若 Phase B writer 已写 non-null new state，Backfill 只 validate/no-op；不得覆盖并发 writer。
+一般情况下，Phase B writer 已写完整 non-null new state 时 Backfill 只 validate/no-op；不得覆盖并发 writer。**但 legacy disabled / transitional Disable 是明确例外：即使 `record_status=active, service_status=suspended` 已非空，只要没有 definitive per-row history resolution evidence，Backfill 仍必须调用 §14 Resolver。**
+
+对 transitional suspended row：
+
+- FOUND -> 保持 `record=active, service=suspended`，只在同一 row/source fence 下补全 exact authoritative `started/expires` 与 resolution evidence；
+- CONFIRMED_ABSENT -> 保持 suspended + NULL timestamps，并持久化/审计 definitive absent evidence；
+- UNAVAILABLE/snapshot conflict -> 不把 NULL timestamps 当 absent；保持 suspended 安全状态但 history resolution 仍 unresolved，retry，并阻断 Phase D/F；
+- 并发 Disable/Delete/Create/ResumeCreate writer 已推进 record/service/version 时，Backfill 必须重新读取并只做仍安全的补全；不得把 suspended/deleting/deleted/provisioning 覆盖回 pending_activation/active。
 
 对需要 history resolution 的 row，必须同时执行 §14 的 source snapshot/freeze validation。Store row lock 只能保护本地 Store writer，不能代替 authoritative history source fence。
 
@@ -284,13 +317,14 @@ legacy provisioning -> record=provisioning, service=NULL
 
 legacy active + history FOUND -> record=active, exact active/expired
 legacy active + history CONFIRMED_ABSENT -> record=active, service=pending_activation, timestamps=NULL
-legacy active + history UNAVAILABLE/snapshot conflict -> no mutation, retry/block rollout
+legacy active + history UNAVAILABLE/snapshot conflict -> no authoritative activation mapping, retry/block rollout
 
 legacy disabled + history FOUND -> record=active, service=suspended,
                                   persist authoritative started/expires history
 legacy disabled + history CONFIRMED_ABSENT -> record=active, service=suspended,
                                              started/expires=NULL
-legacy disabled + history UNAVAILABLE/snapshot conflict -> no mutation, retry/block rollout
+legacy disabled + history UNAVAILABLE/snapshot conflict -> keep/ensure suspended safety,
+                                                            history unresolved, retry/block rollout
 ```
 
 **disabled Store 不得绕过 LegacyServiceHistoryResolver。** 否则一个曾购买并正在 suspended 的 Store 会与“从未激活的 suspended Store”不可区分，未来 service resume 无法正确判断剩余/历史服务期。
@@ -303,7 +337,9 @@ Pre-existing provisioning 可继续由现有 ResumeCreate recovery 收敛，也�
 
 要求：record_status 零 NULL；provisioning/deleting/deleted service fields 全 NULL；active service_status 非空；enum/timestamp/legacy cross-check 通过；所有 active/disabled legacy row 的 history resolution 有 definitive FOUND/CONFIRMED_ABSENT；resolver unavailable/error/snapshot conflict blocker=0。
 
-对于 suspended + authoritative historical timestamps，验证 history token/freeze 与持久化值一致；suspended + CONFIRMED_ABSENT 才允许 timestamps NULL。
+对于 suspended + authoritative historical timestamps，验证 history token/freeze 与持久化值一致；suspended + CONFIRMED_ABSENT 才允许 timestamps NULL。**suspended + NULL timestamps 但没有 definitive CONFIRMED_ABSENT evidence 必须算 unresolved blocker。**
+
+若采用 §14 dual-write/CDC authority handoff，Phase D 还必须验证 mutation backlog 可收敛且最终 cutover fence 可执行；不能只验证本地行自洽。
 
 ### E Online Constraints
 
@@ -316,9 +352,18 @@ active/expired timestamp invariants
 suspended timestamps 若存在则必须 ordered/valid
 ```
 
-### F Enable
+### F Enable / Authority Handoff
 
-最后开启新 reads + lifecycle routes。Enable 前重新验证 authoritative history source snapshot/freeze；任何 source drift 都阻断 hard cut。
+最后开启新 reads + lifecycle routes，但必须在 §14 的 history authority fence/handoff window 内完成：
+
+1. 保持 durable source freeze/claim，或保持 dual-write/CDC + old-writer fence 准备状态；
+2. final revalidate 所有 source snapshot/token，确认 unresolved=0、handoff backlog=0；
+3. 原子/受控地 fence 旧 history writer，并把 Store Service 的权威 read/write 切到新 contract；
+4. 在该 authority 切换后开启新 reads + lifecycle routes；
+5. 验证旧 source 已不能产生未同步 mutation；
+6. 此后才允许释放 freeze/claim。
+
+任何 source drift、旧 writer 未 drain、handoff backlog 非零或无法证明 writer fence，都阻断 hard cut。Phase F 的一次普通 revalidate **不能**替代跨 cutover 的 authority fence。
 
 ## 16. Rollback / Acceptance
 
@@ -336,11 +381,18 @@ welcome grant tenant/browser route absent; untrusted principal denied
 welcome grant -> bind store no consume -> Activate consumes exactly 1 and starts 30d
 history FOUND / CONFIRMED_ABSENT / UNAVAILABLE
 history source version changes after Resolve -> local CAS rejected/re-resolve
+history source mutation after row CAS but before Phase F -> old-writer fence/freeze prevents unsynchronized change, or dual-write backlog catches it
 history source changes before Phase F -> hard cut blocked
-history resolver timeout leaves row unchanged
+history freeze remains held through final authority switch; release-before-enable is rejected
+history dual-write/CDC handoff -> backlog must reach zero + old writer fenced before enable
+history resolver timeout leaves row unchanged/unresolved
+legacy active Disable before Backfill -> suspended safety immediately, Phase C still resolves history
+legacy active Disable-before-Backfill + FOUND -> suspended + exact timestamps later filled, not no-op
+legacy active Disable-before-Backfill + CONFIRMED_ABSENT -> suspended + null timestamps + definitive evidence
+legacy active Disable-before-Backfill + UNAVAILABLE -> suspended but unresolved; Phase D/F blocked
 legacy disabled + FOUND history -> suspended + exact timestamps preserved
 legacy disabled + CONFIRMED_ABSENT -> suspended + null timestamps
-legacy disabled + UNAVAILABLE -> row unchanged / rollout blocked
+legacy disabled + UNAVAILABLE -> row unresolved / rollout blocked
 trusted correction proof active/revoked/version race
 correction same Operation key substitutes different proof_id -> replay conflict
 succeeded correction replay after later revocation
@@ -361,4 +413,4 @@ Generic Compensation 的更多 proof/revocation 设计属于 Backlog，因为 Ph
 
 ## 完成定义
 
-Reservation 与 tenant-scoped exact Owner Attempt 原子绑定；Phase1 不提供 Generic Compensation；新直接注册 Organization 的欢迎 `store_renewal_period=1` 只能由 trusted Provisioning + immutable onboarding source 按 Organization exactly-once 入账；价值返还只由受控 Store Correction trusted proof 驱动且 proof identity/revocation/idempotency 明确；Legacy history 查询失败或 source snapshot 漂移绝不被误判为“无历史”；disabled Store 的 authoritative paid-service history 不丢失；Store provisioning 是正式 RecordStatus；Resource/Store mutation 保持 PostgreSQL 原子一致性。
+Reservation 与 tenant-scoped exact Owner Attempt 原子绑定；Phase1 不提供 Generic Compensation；新直接注册 Organization 的欢迎 `store_renewal_period=1` 只能由 trusted Provisioning + immutable onboarding source 按 Organization exactly-once 入账；价值返还只由受控 Store Correction trusted proof 驱动且 proof identity/revocation/idempotency 明确；Legacy history 查询失败、transitional Disable 半迁移或 source snapshot/authority handoff 漂移绝不被误判为“无历史”；disabled Store 的 authoritative paid-service history 不丢失；history source freeze/old-writer fence 持续到 Phase F authority switch 完成；Store provisioning 是正式 RecordStatus；Resource/Store mutation 保持 PostgreSQL 原子一致性。
