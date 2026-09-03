@@ -18,7 +18,8 @@
 5. **业务事实归业务域。** 套餐、企业权益、店铺服务、资源余额不放进 ZITADEL。
 6. **真实数据优先。** Figma 示例用户名、金额、店铺数、余额和认证状态不得成为生产默认数据。
 7. **先交付闭环能力。** 支付、人民币钱包、成员自定义 RBAC、实名认证、退款、发票、推广收益等拆到后续阶段；Phase1 通过一次性新企业体验额度闭合首次 Store 激活路径。
-8. **Product Decision 高于历史 Review 假设。** 已明确接受或移出范围的风险不得被旧 amendment/评审意见重新升级成当前实现要求。
+8. **未有资源获取渠道的付费动作必须 Capability Gate。** Domain 可以先实现 Renew/Reactivate，但客户侧不能在余额为 0 且没有在售续费资源获取渠道时展示成“可完成”的动作。
+9. **Product Decision 高于历史 Review 假设。** 已明确接受或移出范围的风险不得被旧 amendment/评审意见重新升级成当前实现要求。
 
 ---
 
@@ -43,6 +44,8 @@ Figma 中“用户名”统一解释为**展示名称**，不作为登录账号�
 - 永不因为 Provider 标记 verified 就在“我的账户”显示为“已验证邮箱”；
 - 不触发用户侧邮件修改、找回或通知动作；
 - UI 应把它映射为“未设置邮箱”。
+
+现有历史用户可能并非手机号账号，例如由既有邀请/Provisioning 创建的 email-only 用户。**新手机号入口不能删除他们的登录路径。** 受保护页面的默认未登录重定向继续进入通用 Login V2 chooser，而不是强制 OTP。
 
 ### 2.2 资源和计费术语
 
@@ -103,6 +106,19 @@ data_row = 0
 - 历史 Organization 不在本 PR 自动补发，除非后续单独做迁移决策；
 - 触发顺序由 #283 Onboarding 定义，资源入账的 trusted Provisioning / source-bound 幂等合同由 #284 定义。
 
+### 2.6 体验期后的续费边界
+
+Phase1 **不实现客户在线购买 `store_renewal_period`**；人民币钱包、支付回调和资源购买仍延期。
+
+因此首次赠送的 1 期被消费后：
+
+- 若企业没有其它已由可信 Billing/Platform-Finance/Provisioning 入账的 renewal periods，Console 不得把 Renew/Reactivate 展示成当前可完成的客户自助动作；
+- UI 应展示资源不足/续费购买尚未开放的真实状态，而不是一个必然失败的按钮；
+- #284 可以先完成 Renew/Reactivate domain/API 及余额充足场景测试，为后续购买能力复用；
+- 后续一旦有经过批准的资源购买/发放来源，只需增加资源 acquisition，不重新设计 Store lifecycle。
+
+这保持“支付后置”的既定范围，同时避免 Phase1 对用户承诺无法完成的持续续费闭环。
+
 ---
 
 ## 3. Figma 视觉基线
@@ -155,6 +171,7 @@ data_row = 0
 产品要求：
 
 ```text
+通用 Login V2 登录入口（保留既有 email-only 等历史身份）
 手机号注册
 手机号验证码登录
 手机号密码登录（上游能力验证通过后开放）
@@ -167,7 +184,7 @@ data_row = 0
 
 ```text
 ZITADEL 官方 Login V2
-→ OTP / Password / Reset / Session / OIDC
+→ Generic Login / OTP / Password / Reset / Session / OIDC
 
 硕米手机号自助注册与首次业务开通
 → 详细设计见 PR #283 V7
@@ -238,15 +255,16 @@ ZITADEL 官方 Login V2
 店铺列表/详情/编辑
 连接状态与服务状态分离
 显式激活
-使用中续费
-到期后重新激活
+Renew/Reactivate domain 能力（客户入口受资源 acquisition Gate）
 ```
 
-新企业首次业务开通后有 1 个 `store_renewal_period`，因此 Phase1 存在真实闭环：
+新企业首次业务开通后有 1 个 `store_renewal_period`，因此 Phase1 存在真实首次使用闭环：
 
 ```text
 注册完成 -> 绑定第 1 家店 -> 显式 Activate -> 消耗 1 期 -> 服务 30 天
 ```
+
+首次 30 天之后，如果企业没有可用 renewal periods 且在线资源购买尚未上线，Console 必须显示真实的 unavailable/insufficient-resource 状态，不把 Renew/Reactivate 当作当前可自助完成的购买流程。
 
 组织隔离和现有 Store Center 能力继续复用。资源扣减与 Store Service 一致性见 **PR #284**。
 
@@ -257,17 +275,21 @@ ZITADEL 官方 Login V2
 ### 5.1 公开入口
 
 ```text
+/login
 /register
 /login?method=otp
 /login?method=password
 /forgot-password
 ```
 
-这些路由是明确的**认证入口意图**，不能全部丢弃参数后落到同一默认 Login V2 页面。
+`/login` 是**通用上游 Login V2 入口**，用于 protected-route 默认重定向并保留既有 email-only / 非手机号身份的登录能力。不得把 bare `/login` 强制解释成手机号 OTP。
+
+其余带明确意图的路由不能全部丢弃参数后落到同一默认页面。
 
 服务端维护 allowlist 映射：
 
 ```text
+/login                   -> Login V2 generic chooser/default upstream login
 /register                -> Login V2 registration entry
 /login?method=otp        -> Login V2 SMS-OTP login entry
 /login?method=password   -> Login V2 password entry（仅 capability enabled）
@@ -278,8 +300,10 @@ ZITADEL 官方 Login V2
 
 - entry 值只能来自服务器 allowlist，浏览器不能指定任意 Login URL/handler；
 - `returnTo` 继续使用已有安全 allowlist/normalization；
-- password/reset capability 关闭时，相关导航不渲染，直接请求也返回明确的 feature-unavailable 或安全回到 OTP 登录；
-- contract test 必须证明四个公开路由进入各自预期 flow，而不是全部折叠成默认登录。
+- protected-route 的 bare `/login?returnTo=...` 继续能进入 generic upstream flow；
+- password/reset capability 关闭时，相关导航不渲染，直接请求也返回明确的 feature-unavailable 或安全回到 generic/OTP 登录；
+- contract test 必须证明 5 个公开入口进入各自预期 flow；
+- 至少增加 email-only historical user 从 protected-route redirect -> generic Login V2 -> Auth.js session 的回归测试。
 
 实际认证 UI 可部署在独立 Login V2 域名；`listingkit-ui` 仍只消费标准 OIDC/Auth.js 会话。
 
@@ -452,9 +476,10 @@ data_row
 - 店铺绑定不扣续费期；
 - 新直接注册企业首次业务开通一次性 Grant 1 个 `store_renewal_period`；
 - 显式 Activate 才消费 1 个续费期并启动 30 天；
-- Renew/Reactivate 按 #284 生命周期合同消费资源；
+- Renew/Reactivate 按 #284 生命周期合同消费资源，但 customer-facing action 必须同时满足企业已有足够 renewal period 或已有明确资源 acquisition 能力；
+- 余额不足且资源购买未上线时，Console 返回/展示真实 `insufficient_resource / feature_unavailable`，不伪装成可续费；
 - AI 点数/数据条数消耗资源，不再次直接扣人民币；
-- 人民币钱包未来独立设计。
+- 人民币钱包与在线购买未来独立设计。
 
 Bucket、Operation、Reservation、Event、trusted positive mint、Store 事务边界见 **PR #284**。
 
@@ -506,6 +531,7 @@ forbidden
 conflict
 retryable failure
 feature_unavailable（仅 capability-gated 功能）
+insufficient_resource
 ```
 
 任何 Figma 示例数据不能代替真实状态。
@@ -523,6 +549,7 @@ feature_unavailable（仅 capability-gated 功能）
 企业人民币钱包
 在线支付/支付回调/对账
 AI 点数/数据额度在线购买
+store_renewal_period 在线购买/自助充值
 退款/发票/完整账单
 个人实名认证/企业认证提交审核
 推广/收益/提现
@@ -564,7 +591,7 @@ PR #284 V7
 
 - Phase1 用户核心路径无法闭环；
 - 已有生产能力因为 Hard Cut 被无替代删除；
-- 页面承诺了实际上没有 authority/capability 的安全动作；
+- 页面承诺了实际上没有 authority/capability/resource acquisition 的动作；
 - #281 Product Decision 与 #283/#284 Implementation Baseline 直接矛盾；
 - 跨租户/越权或明确泄露不应公开的账户/业务资料。
 
@@ -579,10 +606,12 @@ Provider finality、Registration recovery、Resource locking、Migration concurr
 - 产品术语、页面和 Figma 边界稳定；
 - ZITADEL/Login V2/Auth.js/task-processor 职责边界明确；
 - Account Existence 可公开、技术邮箱不冒充真实邮箱；
+- generic Login V2 入口保留既有 email-only 等历史身份，不因手机号产品化被锁死；
 - OTP→OIDC、手机号 Password、Phone-only Reset、Authenticated Password Management 都有明确 Capability Gate；
-- 四个公开认证入口有明确且 allowlisted 的 Login V2 entry routing；
+- `/login` + 4 个明确认证入口有 allowlisted Login V2 entry routing；
 - 新 Console 是 UI/IA Hard Cut，但未替代的既有生产能力不会消失；
 - 新直接注册企业有 1 个 `store_renewal_period`，Phase1 首次 Store 激活路径闭环；
+- 在线续费资源购买延期时，Renew/Reactivate customer UI 不承诺无资金来源的续费闭环；
 - 账号可靠性和资源账本算法已从本 PR 移到 #283/#284，不再在 Console PR 内重复展开。
 
-**原则：身份能力优先复用 ZITADEL；业务事实留在业务域；Hard Cut 不制造能力回归；复杂一致性问题只在所属领域实现基线中解决。**
+**原则：身份能力优先复用 ZITADEL；业务事实留在业务域；Hard Cut 不制造能力回归；没有真实 authority/resource acquisition 的动作就 feature-gate；复杂一致性问题只在所属领域实现基线中解决。**
