@@ -15,6 +15,11 @@ type standardWorkflowState struct {
 	blocked  bool
 }
 
+const (
+	standardProductReadinessBlockReason  = "standard_product_readiness_pending"
+	standardProductReadinessBlockMessage = "standard product inputs are not ready"
+)
+
 func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*standardWorkflowState, error) {
 	result := initResult(task)
 	recorder := newWorkflowRecorder(result)

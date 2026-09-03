@@ -34,7 +34,11 @@ func TestProcessStandardProductLayerDoesNotStartAdaptationWhenBlocked(t *testing
 	require.Empty(t, client.calls)
 	stored, getErr := repo.GetTask(context.Background(), task.ID)
 	require.NoError(t, getErr)
-	require.Equal(t, core.TaskStatusProcessing, stored.Status)
+	require.Equal(t, core.TaskStatusBlockedRetryable, stored.Status)
+	require.NotNil(t, stored.RetryableBlock)
+	require.Equal(t, standardProductReadinessBlockReason, stored.RetryableBlock.ReasonCode)
+	require.True(t, stored.RetryableBlock.AutoResumeEnabled)
+	require.NotNil(t, stored.RetryableBlock.NextRetryAt)
 	require.NotNil(t, stored.Result)
 	require.NotNil(t, stored.Result.StandardProductSnapshot)
 }

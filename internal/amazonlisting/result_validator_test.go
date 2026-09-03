@@ -76,3 +76,23 @@ func TestValidatorConsumesStructuredListingIPRisk(t *testing.T) {
 		t.Fatalf("validation report = %+v risk = %+v", report, draft.ListingIPRisk)
 	}
 }
+
+func TestValidatorAssessesContentIPRiskAtValidationBoundary(t *testing.T) {
+	draft := &AmazonListingDraft{
+		Marketplace:  "amazon",
+		Country:      "US",
+		Title:        "Replacement filter compatible with Nike equipment",
+		Description:  "A durable replacement filter for home use with a secure fit and easy installation.",
+		CategoryPath: []string{"Home & Kitchen"},
+		Brand:        "Acme",
+		BulletPoints: []string{"Durable filter media", "Easy installation", "Secure fit"},
+		Images:       &AmazonImageBundle{MainImage: "https://cdn.example.com/main.jpg"},
+		Pricing:      &AmazonPricingDraft{Currency: "USD"},
+		Variants:     []AmazonVariantDraft{{SKU: "SKU-1", IsDefault: true}},
+	}
+
+	report := NewValidator().Validate(&GenerateRequest{Marketplace: "amazon", Country: "US"}, draft)
+	if report.Ready || draft.ListingIPRisk == nil || draft.ListingIPRisk.Level != "high" {
+		t.Fatalf("validation report = %+v risk = %+v, want high-risk content blocked", report, draft.ListingIPRisk)
+	}
+}

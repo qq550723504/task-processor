@@ -9,6 +9,7 @@ func IsRecoverableEffectBlockCode(code string) bool {
 	switch strings.TrimSpace(code) {
 	case "recovery_requested", "recovery_start_failed",
 		SlotProviderOutcomeUnknownCode, SlotStagingOutcomeUnknownCode, SlotPublicationOutcomeUnknownCode,
+		SlotReviewRequiredCode,
 		SlotRecoveryBlockedCode, SlotEffectPhaseInvalidCode, SlotEffectPolicyInvalidCode:
 		return true
 	default:

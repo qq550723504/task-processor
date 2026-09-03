@@ -17,10 +17,17 @@ type TaskSubmitter interface {
 type ProductSnapshotQuery struct {
 	TenantID   string
 	ProductKey string
+	Version    uint64
 }
 
 type ProductSnapshotReader interface {
 	GetProductSnapshot(ctx context.Context, query ProductSnapshotQuery) (catalog.ProductSnapshot, error)
+}
+
+// VersionedProductSnapshotReader lets task creation pin the immutable catalog
+// version that asynchronous processing must later read.
+type VersionedProductSnapshotReader interface {
+	GetPublishedProductSnapshot(ctx context.Context, query ProductSnapshotQuery) (catalog.PublishedSnapshot, error)
 }
 
 type ApprovedAssetInventoryReader interface {

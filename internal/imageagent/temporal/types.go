@@ -193,6 +193,7 @@ const (
 	EffectRecoveryOutcomeProviderUnknown    EffectRecoveryOutcome = "provider_unknown"
 	EffectRecoveryOutcomeStagingUnknown     EffectRecoveryOutcome = "staging_unknown"
 	EffectRecoveryOutcomePublicationUnknown EffectRecoveryOutcome = "publication_unknown"
+	EffectRecoveryOutcomeReviewRequired     EffectRecoveryOutcome = "review_required"
 	EffectRecoveryOutcomeRecoveryBlocked    EffectRecoveryOutcome = "recovery_blocked"
 )
 

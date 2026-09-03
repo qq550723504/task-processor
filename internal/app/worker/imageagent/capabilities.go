@@ -76,6 +76,7 @@ func buildProductionImageCapabilities(runtime imageCapabilityRuntime) (ImageCapa
 }
 
 const imageAgentOpenAIClientName = "image_gpt_image_2"
+const imageAgentReviewOpenAIClientName = "vision"
 
 type routedOpenAIProductImageProvider struct {
 	manager *openaiclient.Manager
@@ -132,37 +133,48 @@ func (p *routedOpenAIProductImageProvider) adapter(ctx context.Context, operatio
 	if p == nil || p.manager == nil || ctx == nil {
 		return nil, productimage.ErrExternalCapabilityUnavailable
 	}
-	route, err := p.manager.ResolveEffectiveClientRoute(ctx, imageAgentOpenAIClientName)
+	imageRoute, err := p.manager.ResolveEffectiveClientRoute(ctx, imageAgentOpenAIClientName)
 	if err != nil {
 		return nil, fmt.Errorf("resolve image agent provider route: %w", err)
 	}
-	routeReference := imageAgentRouteReference(route)
+	reviewRoute, err := p.manager.ResolveEffectiveClientRoute(ctx, imageAgentReviewOpenAIClientName)
+	if err != nil {
+		return nil, fmt.Errorf("resolve image agent review route: %w", err)
+	}
+	selectedRoute := imageRoute
+	if operation == "review" {
+		selectedRoute = reviewRoute
+	}
+	selectedRouteReference := imageAgentRouteReference(selectedRoute)
 	if authorization != nil {
 		quote, normalizeErr := productimage.NormalizeUsageAuthorization(*authorization, operation)
 		if normalizeErr != nil {
 			return nil, normalizeErr
 		}
-		if quote.Provider != route.ProviderID || quote.RouteReference != routeReference || quote.Model != route.ModelID ||
-			quote.CredentialReference != route.CredentialReference || quote.ConfigurationVersion != route.ConfigurationVersion {
+		if quote.Provider != selectedRoute.ProviderID || quote.RouteReference != selectedRouteReference || quote.Model != selectedRoute.ModelID ||
+			quote.CredentialReference != selectedRoute.CredentialReference || quote.ConfigurationVersion != selectedRoute.ConfigurationVersion {
 			return nil, productimage.ErrCapabilityUnsupported
 		}
-	}
-	selection := openaiclient.ImageRouteSelection{
-		CredentialReference: route.CredentialReference, ConfigurationVersion: route.ConfigurationVersion,
 	}
 	images, err := p.manager.GetImageClient(imageAgentOpenAIClientName)
 	if err != nil {
 		return nil, fmt.Errorf("resolve image agent image client: %w", err)
 	}
-	reviewer, err := p.manager.GetClientWithRoute(ctx, imageAgentOpenAIClientName, selection)
+	reviewSelection := openaiclient.ImageRouteSelection{
+		CredentialReference: reviewRoute.CredentialReference, ConfigurationVersion: reviewRoute.ConfigurationVersion,
+	}
+	reviewer, err := p.manager.GetClientWithRoute(ctx, imageAgentReviewOpenAIClientName, reviewSelection)
 	if err != nil {
 		return nil, fmt.Errorf("resolve image agent review client: %w", err)
 	}
 	return openaiclient.NewProductImageAdapter(openaiclient.ProductImageAdapterConfig{
 		ImageClient: images, ReviewClient: reviewer, Prompts: openaiclient.DefaultProductImagePrompts(),
-		Provider: route.ProviderID, ImageModel: route.ModelID, ReviewModel: route.ModelID,
-		RouteReference: routeReference, CredentialReference: route.CredentialReference,
-		ConfigurationVersion: route.ConfigurationVersion, PricingVersion: "unpriced-v1",
+		Provider: imageRoute.ProviderID, ImageModel: imageRoute.ModelID, ReviewModel: reviewRoute.ModelID,
+		RouteReference: imageAgentRouteReference(imageRoute), CredentialReference: imageRoute.CredentialReference,
+		ConfigurationVersion: imageRoute.ConfigurationVersion,
+		ReviewProvider:       reviewRoute.ProviderID, ReviewRouteReference: imageAgentRouteReference(reviewRoute),
+		ReviewCredentialReference: reviewRoute.CredentialReference, ReviewConfigurationVersion: reviewRoute.ConfigurationVersion,
+		PricingVersion:      "unpriced-v1",
 		MaximumSceneOutputs: 1, CostUpperBoundKnown: false,
 	})
 }

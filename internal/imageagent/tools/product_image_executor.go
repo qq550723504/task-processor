@@ -181,9 +181,6 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 	if err != nil {
 		return imageagent.SlotGeneratedOutput{}, fmt.Errorf("execute slot %q: %w", resolved.slot.ID, err)
 	}
-	if err := e.reviewGeneratedCandidates(ctx, resolved, candidates, quoted); err != nil {
-		return imageagent.SlotGeneratedOutput{}, fmt.Errorf("review slot %q: %w", resolved.slot.ID, err)
-	}
 	assets := make([]imageagent.GeneratedAsset, len(candidates))
 	for index, candidate := range candidates {
 		asset, mapErr := generatedAsset(candidate, resolved.source, resolved.styles)
@@ -192,10 +189,17 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 		}
 		assets[index] = asset
 	}
-	return imageagent.SlotGeneratedOutput{
+	output := imageagent.SlotGeneratedOutput{
 		SlotID: resolved.slot.ID, Attempt: input.Attempt, SourceAssetID: resolved.sourceAssetID,
 		Assets: assets, UsageReceipt: receipt,
-	}, nil
+	}
+	if err := e.reviewGeneratedCandidates(ctx, resolved, candidates, quoted); err != nil {
+		if e != nil && !e.legacyV2 && !resolved.legacyPolicy && errors.Is(err, imageagent.ErrReviewDecision) {
+			return output, &imageagent.SlotReviewRequiredError{Output: output, Reason: err.Error(), Cause: err}
+		}
+		return imageagent.SlotGeneratedOutput{}, fmt.Errorf("review slot %q: %w", resolved.slot.ID, err)
+	}
+	return output, nil
 }
 
 func (e *ProductImageSlotExecutor) reviewGeneratedCandidates(ctx context.Context, input resolvedSlotInput, candidates []productimage.Candidate, quoted *quotedSlotExecution) error {
@@ -217,7 +221,7 @@ func (e *ProductImageSlotExecutor) reviewGeneratedCandidates(ctx context.Context
 		threshold = input.profile.Thresholds.WhiteBackgroundReview
 	}
 	if review.NeedsHumanReview || review.Score < threshold {
-		return fmt.Errorf("%w: score %.4f is below threshold %.4f", imageagent.ErrValidation, review.Score, threshold)
+		return fmt.Errorf("%w: %w: score %.4f is below threshold %.4f", imageagent.ErrReviewDecision, imageagent.ErrValidation, review.Score, threshold)
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 
 type service struct {
 	repo             Repository
+	productSnapshots ProductSnapshotReader
 	assembler        Assembler
 	exportBuilder    ExportBuilder
 	listingSubmitter ListingSubmitter
@@ -53,6 +54,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 	}
 	return &service{
 		repo:             config.Repository,
+		productSnapshots: config.ProductSnapshotReader,
 		assembler:        config.Assembler,
 		exportBuilder:    config.ExportBuilder,
 		listingSubmitter: config.ListingSubmitter,

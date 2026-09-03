@@ -49,6 +49,7 @@ func (w *listingWorkflow) Run(ctx context.Context, task *Task) (*WorkflowArtifac
 	query := ProductSnapshotQuery{
 		TenantID:   strings.TrimSpace(task.ExecutionTenantID),
 		ProductKey: strings.TrimSpace(task.Request.ProductKey),
+		Version:    task.SourceSnapshotVersion,
 	}
 	if query.TenantID == "" || query.ProductKey == "" || w.productSnapshots == nil {
 		return nil, ErrProductSnapshotNotReady
@@ -84,6 +85,10 @@ func (w *listingWorkflow) Run(ctx context.Context, task *Task) (*WorkflowArtifac
 	if err != nil {
 		return nil, err
 	}
+	if draft == nil {
+		return nil, fmt.Errorf("assembler returned nil draft")
+	}
+	draft.ListingIPRisk = assessContentIPRisk(task.Request, draft)
 	draft.ReviewItems = append(draft.ReviewItems, buildReviewItemsFromSnapshot(&snapshot)...)
 	if w.autoFixer != nil {
 		w.autoFixer.Fix(task.Request, draft)

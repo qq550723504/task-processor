@@ -73,6 +73,13 @@ func TestAppImageAgentCatalogUsesExplicitSourceSelection(t *testing.T) {
 	require.ErrorIs(t, err, imageagent.ErrValidation)
 }
 
+func TestAppImageAgentCatalogRejectsUnselectedTargetPlatform(t *testing.T) {
+	task := catalogTaskFixture()
+	task.Request.Platforms = []string{"shein"}
+	_, err := imageAgentCatalogFromTaskTargetSelection(task, "amazon", "", nil)
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+}
+
 func TestAppImageAgentCatalogRequiresOwnedTaskAndSnapshot(t *testing.T) {
 	task := catalogTaskFixture()
 	resolver := newImageAgentAuthorizedAssetCatalog(listingTaskSourceStub{task: task})

@@ -2,14 +2,20 @@ package amazonlisting
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/shared/aiidentity"
 )
+
+func isAmazonSnapshotNotReady(err error) bool {
+	return errors.Is(err, ErrProductSnapshotNotReady) || errors.Is(err, catalog.ErrSnapshotNotReady)
+}
 
 func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error) {
 	if req == nil {
@@ -32,6 +38,21 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 		return nil, fmt.Errorf("capture execution identity: %w", envelopeErr)
 	}
 	task.SetExecutionEnvelope(identityEnvelope)
+	if versioned, ok := s.productSnapshots.(VersionedProductSnapshotReader); ok {
+		published, err := versioned.GetPublishedProductSnapshot(ctx, ProductSnapshotQuery{
+			TenantID: task.ExecutionTenantID, ProductKey: req.ProductKey,
+		})
+		if isAmazonSnapshotNotReady(err) {
+			return nil, ErrProductSnapshotNotReady
+		}
+		if err != nil {
+			return nil, fmt.Errorf("capture source snapshot version: %w", err)
+		}
+		if published.Version == 0 {
+			return nil, fmt.Errorf("capture source snapshot version: %w", ErrProductSnapshotNotReady)
+		}
+		task.SourceSnapshotVersion = published.Version
+	}
 	if err := s.repo.CreateTask(ctx, task); err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}

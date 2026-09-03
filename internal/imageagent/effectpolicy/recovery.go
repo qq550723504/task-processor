@@ -135,7 +135,7 @@ func validateBlockTransition(transition imageagent.SlotEffectV3BlockTransition) 
 
 func isBlockedPhase(phase imageagent.SlotEffectV3Phase) bool {
 	return phase == imageagent.SlotEffectV3ProviderUnknown || phase == imageagent.SlotEffectV3StagingUnknown ||
-		phase == imageagent.SlotEffectV3PublicationUnknown || phase == imageagent.SlotEffectV3RecoveryBlocked
+		phase == imageagent.SlotEffectV3PublicationUnknown || phase == imageagent.SlotEffectV3ReviewRequired || phase == imageagent.SlotEffectV3RecoveryBlocked
 }
 
 func isRedrivableRecoveryPhase(phase imageagent.SlotEffectV3Phase) bool {
@@ -165,6 +165,8 @@ func canBlock(current, blocked imageagent.SlotEffectV3Phase) bool {
 		return current == imageagent.SlotEffectV3StagingPrepared
 	case imageagent.SlotEffectV3PublicationUnknown:
 		return current == imageagent.SlotEffectV3PublicationClaimed
+	case imageagent.SlotEffectV3ReviewRequired:
+		return current == imageagent.SlotEffectV3ProviderClaimed || current == imageagent.SlotEffectV3StagingPrepared
 	case imageagent.SlotEffectV3RecoveryBlocked:
 		return current == imageagent.SlotEffectV3ProviderClaimed || current == imageagent.SlotEffectV3ProviderNotDispatched ||
 			current == imageagent.SlotEffectV3StagingPrepared || current == imageagent.SlotEffectV3ArtifactStaged ||

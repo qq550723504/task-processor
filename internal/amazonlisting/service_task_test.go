@@ -5,8 +5,19 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/shared/aiidentity"
 )
+
+type versionedTaskSnapshotReader struct{ version uint64 }
+
+func (r versionedTaskSnapshotReader) GetProductSnapshot(context.Context, ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
+	return catalog.ProductSnapshot{Title: "Pinned product"}, nil
+}
+
+func (r versionedTaskSnapshotReader) GetPublishedProductSnapshot(context.Context, ProductSnapshotQuery) (catalog.PublishedSnapshot, error) {
+	return catalog.PublishedSnapshot{Version: r.version, Snapshot: catalog.ProductSnapshot{Title: "Pinned product"}}, nil
+}
 
 func TestCreateGenerateTaskRequiresProductKey(t *testing.T) {
 	repo := &stubRepository{}
@@ -34,6 +45,22 @@ func TestCreateGenerateTaskAcceptsProductKey(t *testing.T) {
 	}
 	if task.Request.ProductKey != "product-1" || repo.task == nil {
 		t.Fatalf("created task = %+v persisted = %+v", task, repo.task)
+	}
+}
+
+func TestCreateGenerateTaskPinsCurrentCatalogSnapshotVersion(t *testing.T) {
+	repo := &stubRepository{}
+	svc, err := NewService(&ServiceConfig{Repository: repo, ProductSnapshotReader: versionedTaskSnapshotReader{version: 7}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	task, err := svc.CreateGenerateTask(ctx, &GenerateRequest{Marketplace: "amazon", ProductKey: "product-1"})
+	if err != nil {
+		t.Fatalf("CreateGenerateTask() error = %v", err)
+	}
+	if task.SourceSnapshotVersion != 7 || repo.task.SourceSnapshotVersion != 7 {
+		t.Fatalf("source snapshot version = task:%d persisted:%d, want 7", task.SourceSnapshotVersion, repo.task.SourceSnapshotVersion)
 	}
 }
 

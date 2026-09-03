@@ -12,14 +12,25 @@ import (
 	"task-processor/internal/product/catalog"
 )
 
-type amazonListingProductSnapshotReader func(context.Context, string, string) (catalog.ProductSnapshot, error)
+type amazonListingProductSnapshotReader func(context.Context, string, string, uint64) (catalog.PublishedSnapshot, error)
 
 func (r amazonListingProductSnapshotReader) GetProductSnapshot(ctx context.Context, query amazonlisting.ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
-	snapshot, err := r(ctx, query.TenantID, query.ProductKey)
+	published, err := r(ctx, query.TenantID, query.ProductKey, query.Version)
 	if isProductSnapshotNotReadyForHTTPAPI(err) {
 		return catalog.ProductSnapshot{}, amazonlisting.ErrProductSnapshotNotReady
 	}
-	return snapshot, err
+	if err != nil {
+		return catalog.ProductSnapshot{}, err
+	}
+	return published.Snapshot, nil
+}
+
+func (r amazonListingProductSnapshotReader) GetPublishedProductSnapshot(ctx context.Context, query amazonlisting.ProductSnapshotQuery) (catalog.PublishedSnapshot, error) {
+	published, err := r(ctx, query.TenantID, query.ProductKey, query.Version)
+	if isProductSnapshotNotReadyForHTTPAPI(err) {
+		return catalog.PublishedSnapshot{}, amazonlisting.ErrProductSnapshotNotReady
+	}
+	return published, err
 }
 
 type amazonListingFeatureBuilder struct {
@@ -35,8 +46,8 @@ func (b amazonListingFeatureBuilder) build(logger *logrus.Logger, deps *runtimeD
 	if approvedAssets == nil {
 		return nil, nil
 	}
-	productSnapshots := amazonListingProductSnapshotReader(func(ctx context.Context, tenantID, productKey string) (catalog.ProductSnapshot, error) {
-		return readProductSnapshotForHTTPAPI(ctx, deps, tenantID, productKey, 0)
+	productSnapshots := amazonListingProductSnapshotReader(func(ctx context.Context, tenantID, productKey string, version uint64) (catalog.PublishedSnapshot, error) {
+		return readPublishedProductSnapshotForHTTPAPI(ctx, deps, tenantID, productKey, version)
 	})
 	if b.buildRepository == nil {
 		return nil, fmt.Errorf("build amazon listing: task repository builder is required")

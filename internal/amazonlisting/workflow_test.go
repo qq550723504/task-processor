@@ -45,6 +45,7 @@ func TestListingWorkflowReadsScopedSnapshotAndApprovedAssets(t *testing.T) {
 	}}
 	workflow := NewListingWorkflow(snapshotReader, assetReader, NewAssembler(), nil, nil)
 	task := &Task{ID: "listing-task-1", Request: &GenerateRequest{Marketplace: "amazon", ProductKey: "product-1"}}
+	task.SourceSnapshotVersion = 9
 	task.SetExecutionEnvelope(aiidentity.ExecutionEnvelope{
 		Version:        aiidentity.CurrentEnvelopeVersion,
 		TenantID:       "tenant-a",
@@ -61,7 +62,7 @@ func TestListingWorkflowReadsScopedSnapshotAndApprovedAssets(t *testing.T) {
 	if artifacts == nil || artifacts.Draft == nil || artifacts.Draft.Title != "Insulated Bottle" {
 		t.Fatalf("workflow artifacts = %+v", artifacts)
 	}
-	if len(snapshotReader.queries) != 1 || snapshotReader.queries[0] != (ProductSnapshotQuery{TenantID: "tenant-a", ProductKey: "product-1"}) {
+	if len(snapshotReader.queries) != 1 || snapshotReader.queries[0] != (ProductSnapshotQuery{TenantID: "tenant-a", ProductKey: "product-1", Version: 9}) {
 		t.Fatalf("snapshot queries = %+v", snapshotReader.queries)
 	}
 	wantScope := productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}

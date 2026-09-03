@@ -117,7 +117,10 @@ func TestBuildImageCapabilitiesPreservesExactResolver(t *testing.T) {
 func TestBuildProductionImageCapabilitiesQuotesCurrentRouteAndRejectsStaleAuthorization(t *testing.T) {
 	clientConfig := openaiclient.NewClientConfig("test-key", "gpt-image-test", "https://provider.example.test/v1", 30)
 	manager, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
-		Clients:       map[string]*openaiclient.ClientConfig{imageAgentOpenAIClientName: clientConfig},
+		Clients: map[string]*openaiclient.ClientConfig{
+			imageAgentOpenAIClientName:       clientConfig,
+			imageAgentReviewOpenAIClientName: openaiclient.NewClientConfig("test-key", "gpt-vision-test", "https://provider.example.test/v1", 30),
+		},
 		DefaultClient: imageAgentOpenAIClientName,
 	})
 	require.NoError(t, err)
@@ -133,6 +136,12 @@ func TestBuildProductionImageCapabilitiesQuotesCurrentRouteAndRejectsStaleAuthor
 	require.Equal(t, imageAgentOpenAIClientName, quote.CredentialReference)
 	require.NotEmpty(t, quote.ConfigurationVersion)
 	require.False(t, quote.CostUpperBoundKnown)
+	reviewQuote, err := capabilities.UsageQuoter.QuoteUsage(context.Background(), productimage.UsageQuoteRequest{
+		Operation: "review", InputFingerprint: "slot-fingerprint-v1", MaximumOutputs: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "gpt-vision-test", reviewQuote.Model)
+	require.Equal(t, imageAgentReviewOpenAIClientName, reviewQuote.CredentialReference)
 
 	provider, err := newRoutedOpenAIProductImageProvider(manager)
 	require.NoError(t, err)

@@ -41,13 +41,17 @@ type ProductImageAdapterConfig struct {
 	ReviewClient ai.ChatCompleter
 	Prompts      ProductImagePrompts
 
-	Provider             string
-	ImageModel           string
-	ReviewModel          string
-	RouteReference       string
-	CredentialReference  string
-	ConfigurationVersion string
-	PricingVersion       string
+	Provider                   string
+	ImageModel                 string
+	ReviewModel                string
+	RouteReference             string
+	CredentialReference        string
+	ConfigurationVersion       string
+	ReviewProvider             string
+	ReviewRouteReference       string
+	ReviewCredentialReference  string
+	ReviewConfigurationVersion string
+	PricingVersion             string
 
 	MaximumSceneOutputs      int
 	ImageCostMicrosPerOutput int64
@@ -66,6 +70,18 @@ type routeBoundProductImageGenerator interface {
 }
 
 func NewProductImageAdapter(config ProductImageAdapterConfig) (*ProductImageAdapter, error) {
+	if config.ReviewProvider == "" {
+		config.ReviewProvider = config.Provider
+	}
+	if config.ReviewRouteReference == "" {
+		config.ReviewRouteReference = config.RouteReference
+	}
+	if config.ReviewCredentialReference == "" {
+		config.ReviewCredentialReference = config.CredentialReference
+	}
+	if config.ReviewConfigurationVersion == "" {
+		config.ReviewConfigurationVersion = config.ConfigurationVersion
+	}
 	if nilInterface(config.ImageClient) || nilInterface(config.ReviewClient) {
 		return nil, fmt.Errorf("openai product image clients are required")
 	}
@@ -78,6 +94,14 @@ func NewProductImageAdapter(config ProductImageAdapterConfig) (*ProductImageAdap
 		"configuration version": config.ConfigurationVersion, "pricing version": config.PricingVersion,
 		"subject prompt": config.Prompts.Subject, "white background prompt": config.Prompts.WhiteBackground,
 		"scene prompt": config.Prompts.Scene, "review prompt": config.Prompts.Review, "prompt version": config.Prompts.Version,
+	} {
+		if !canonicalProductImageString(value) {
+			return nil, fmt.Errorf("openai product image %s is required and must be canonical", name)
+		}
+	}
+	for name, value := range map[string]string{
+		"review provider": config.ReviewProvider, "review route reference": config.ReviewRouteReference,
+		"review credential reference": config.ReviewCredentialReference, "review configuration version": config.ReviewConfigurationVersion,
 	} {
 		if !canonicalProductImageString(value) {
 			return nil, fmt.Errorf("openai product image %s is required and must be canonical", name)
@@ -194,12 +218,14 @@ func (a *ProductImageAdapter) authorize(authorization *productimage.UsageQuote, 
 	if err != nil || quote.MaximumOutputs != maximumOutputs {
 		return productimage.ErrInputInvalid
 	}
+	provider, routeReference, credentialReference, configurationVersion := a.config.Provider, a.config.RouteReference, a.config.CredentialReference, a.config.ConfigurationVersion
 	model := a.config.ImageModel
 	if operation == "review" {
+		provider, routeReference, credentialReference, configurationVersion = a.config.ReviewProvider, a.config.ReviewRouteReference, a.config.ReviewCredentialReference, a.config.ReviewConfigurationVersion
 		model = a.config.ReviewModel
 	}
-	if quote.Provider != a.config.Provider || quote.RouteReference != a.config.RouteReference || quote.Model != model ||
-		quote.CredentialReference != a.config.CredentialReference || quote.ConfigurationVersion != a.config.ConfigurationVersion ||
+	if quote.Provider != provider || quote.RouteReference != routeReference || quote.Model != model ||
+		quote.CredentialReference != credentialReference || quote.ConfigurationVersion != configurationVersion ||
 		quote.PricingVersion != a.config.PricingVersion {
 		return productimage.ErrCapabilityUnsupported
 	}
@@ -231,12 +257,16 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 		return productimage.UsageQuote{}, productimage.ErrInputInvalid
 	}
 	maximumCost := costPerOutput * maximumOutputs
+	provider, routeReference, credentialReference, configurationVersion := a.config.Provider, a.config.RouteReference, a.config.CredentialReference, a.config.ConfigurationVersion
+	if request.Operation == "review" {
+		provider, routeReference, credentialReference, configurationVersion = a.config.ReviewProvider, a.config.ReviewRouteReference, a.config.ReviewCredentialReference, a.config.ReviewConfigurationVersion
+	}
 	fingerprintPayload := struct {
 		Operation, InputFingerprint, Provider, Model, RouteReference, CredentialReference, ConfigurationVersion, PricingVersion string
 		MaximumOutputs, MaximumCost                                                                                             int64
 	}{
-		request.Operation, request.InputFingerprint, a.config.Provider, model, a.config.RouteReference,
-		a.config.CredentialReference, a.config.ConfigurationVersion, a.config.PricingVersion, maximumOutputs, maximumCost,
+		request.Operation, request.InputFingerprint, provider, model, routeReference,
+		credentialReference, configurationVersion, a.config.PricingVersion, maximumOutputs, maximumCost,
 	}
 	encoded, err := json.Marshal(fingerprintPayload)
 	if err != nil {
@@ -244,8 +274,8 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 	}
 	digest := sha256.Sum256(encoded)
 	return productimage.UsageQuote{
-		Operation: request.Operation, Provider: a.config.Provider, RouteReference: a.config.RouteReference, Model: model,
-		CredentialReference: a.config.CredentialReference, ConfigurationVersion: a.config.ConfigurationVersion,
+		Operation: request.Operation, Provider: provider, RouteReference: routeReference, Model: model,
+		CredentialReference: credentialReference, ConfigurationVersion: configurationVersion,
 		PricingVersion: a.config.PricingVersion, Fingerprint: hex.EncodeToString(digest[:]),
 		MaximumOutputs: maximumOutputs, MaximumModelCalls: 1, MaximumCostMicros: maximumCost,
 		CostUpperBoundKnown: a.config.CostUpperBoundKnown,

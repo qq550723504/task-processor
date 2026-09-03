@@ -55,15 +55,67 @@ func (r listingKitProductSnapshotReader) GetProductSnapshot(ctx context.Context,
 	return catalog.CloneProductSnapshot(published.Snapshot)
 }
 
+func (r listingKitProductSnapshotReader) GetPublishedProductSnapshot(ctx context.Context, query listingkit.ProductSnapshotQuery) (catalog.PublishedSnapshot, error) {
+	identity := catalog.SnapshotIdentity{TenantID: query.TenantID, ProductKey: query.ProductKey}
+	var (
+		published catalog.PublishedSnapshot
+		err       error
+	)
+	versioned, ok := r.reader.(catalog.VersionedSnapshotReader)
+	if query.Version > 0 {
+		if !ok {
+			return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
+		}
+		published, err = versioned.GetSnapshot(ctx, identity, query.Version)
+	} else {
+		published, err = r.reader.GetCurrentSnapshot(ctx, identity)
+	}
+	if errors.Is(err, catalog.ErrSnapshotNotReady) {
+		return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
+	}
+	return published, err
+}
+
 func isProductSnapshotNotReadyForHTTPAPI(err error) bool {
 	return errors.Is(err, listingkit.ErrProductSnapshotNotReady) || errors.Is(err, catalog.ErrSnapshotNotReady)
 }
 
 func readProductSnapshotForHTTPAPI(ctx context.Context, deps *runtimeDeps, tenantID, productKey string, version uint64) (catalog.ProductSnapshot, error) {
+	published, err := readPublishedProductSnapshotForHTTPAPI(ctx, deps, tenantID, productKey, version)
+	return published.Snapshot, err
+}
+
+func readPublishedProductSnapshotForHTTPAPI(ctx context.Context, deps *runtimeDeps, tenantID, productKey string, version uint64) (catalog.PublishedSnapshot, error) {
 	if deps == nil || deps.features == nil || deps.features.productSnapshotReader == nil {
-		return catalog.ProductSnapshot{}, listingkit.ErrProductSnapshotNotReady
+		return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
 	}
-	return deps.features.productSnapshotReader.GetProductSnapshot(ctx, listingkit.ProductSnapshotQuery{TenantID: tenantID, ProductKey: productKey, Version: version})
+	if reader, ok := deps.features.productSnapshotReader.(interface {
+		GetPublishedProductSnapshot(context.Context, listingkit.ProductSnapshotQuery) (catalog.PublishedSnapshot, error)
+	}); ok {
+		return reader.GetPublishedProductSnapshot(ctx, listingkit.ProductSnapshotQuery{TenantID: tenantID, ProductKey: productKey, Version: version})
+	}
+	identity := catalog.SnapshotIdentity{TenantID: tenantID, ProductKey: productKey}
+	var (
+		published catalog.PublishedSnapshot
+		err       error
+	)
+	if version > 0 {
+		reader, ok := deps.features.productSnapshotReader.(catalog.VersionedSnapshotReader)
+		if !ok {
+			return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
+		}
+		published, err = reader.GetSnapshot(ctx, identity, version)
+	} else {
+		reader, ok := deps.features.productSnapshotReader.(catalog.SnapshotReader)
+		if !ok {
+			return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
+		}
+		published, err = reader.GetCurrentSnapshot(ctx, identity)
+	}
+	if errors.Is(err, catalog.ErrSnapshotNotReady) {
+		return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
+	}
+	return published, err
 }
 
 func ensureListingKitSheinCookieStore(_ *logrus.Logger, deps *runtimeDeps) (*sheinlogin.RedisStore, error) {

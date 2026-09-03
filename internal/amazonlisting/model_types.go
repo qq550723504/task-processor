@@ -67,6 +67,7 @@ type Task struct {
 	CreatedAt                             time.Time           `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt                             time.Time           `json:"updated_at" gorm:"autoUpdateTime"`
 	RetryCount                            int                 `json:"retry_count" gorm:"default:0"`
+	SourceSnapshotVersion                 uint64              `json:"source_snapshot_version,omitempty" gorm:"index"`
 }
 
 func (t *Task) ExecutionEnvelope() (aiidentity.ExecutionEnvelope, error) {

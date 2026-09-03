@@ -53,9 +53,10 @@ func TestExecutorReviewsGeneratedCandidatesBeforeAcceptance(t *testing.T) {
 		ProfileResolver: &recordingImageProfileResolver{profile: profile},
 	})
 
-	_, err := executor.GenerateSlot(context.Background(), testProductImageExecutionInput())
+	generated, err := executor.GenerateSlot(context.Background(), testProductImageExecutionInput())
 
 	require.ErrorIs(t, err, imageagent.ErrValidation)
+	require.Len(t, generated.Assets, 1, "quality review must retain generated output for operator inspection")
 	require.Len(t, reviewer.request.Candidates, 1)
 	require.Equal(t, "product-1", reviewer.request.Product.ProductKey)
 }

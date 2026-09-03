@@ -69,6 +69,22 @@ func imageAgentCatalogFromTaskTargetSelection(task *listingkit.Task, targetPlatf
 }
 
 func imageAgentCatalogFromTaskTargetSelectionWithResolver(ctx context.Context, task *listingkit.Task, targetPlatform, selectedSourceID string, selectedStyleIDs [][]string, resolver imageDimensionResolver) (imageagent.AssetCatalog, error) {
+	targetPlatform = strings.ToLower(strings.TrimSpace(targetPlatform))
+	if targetPlatform != "" && targetPlatform != "all" {
+		if task == nil || task.Request == nil {
+			return imageagent.AssetCatalog{}, fmt.Errorf("business task platform selection is required")
+		}
+		selected := len(task.Request.Platforms) == 0 // legacy tasks omitted the field and meant all platforms
+		for _, platform := range task.Request.Platforms {
+			if strings.ToLower(strings.TrimSpace(platform)) == targetPlatform {
+				selected = true
+				break
+			}
+		}
+		if !selected {
+			return imageagent.AssetCatalog{}, fmt.Errorf("%w: target platform %q is not selected by business task", imageagent.ErrValidation, targetPlatform)
+		}
+	}
 	snapshot, err := taskCatalogSnapshot(task)
 	if err != nil {
 		return imageagent.AssetCatalog{}, err

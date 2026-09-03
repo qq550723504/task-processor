@@ -273,6 +273,30 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 				generated, generateErr = a.stagedSlotExecutor.GenerateSlot(ctx, executionInput)
 			}
 			if generateErr != nil {
+				if reviewOutput, reviewRequired := imageagent.ReviewRequiredOutput(generateErr); reviewRequired {
+					providerStagingCtx := postProviderContext()
+					if budgeted != nil {
+						if _, settleErr := a.slotEffectsV3.SettleSlotProviderV3(providerStagingCtx, reservation, reviewOutput.UsageReceipt); settleErr != nil {
+							if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(providerStagingCtx, reservation); unknownErr != nil {
+								return v3Result, fmt.Errorf("retain review provider reservation: %w", persistedSlotEffectV3RepositoryError(unknownErr))
+							}
+							return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
+						}
+					}
+					prepared, err = prepareGeneratedSlotArtifacts(executionInput, reviewOutput, a.artifactStore)
+					if err != nil {
+						return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3StagingUnknown, slotStagingOutcomeUnknownCode, imageagent.PublicationClaim{})
+					}
+					if err := a.preserveSlotRecoveryBundle(providerStagingCtx, reservation.Identity, prepared); err != nil {
+						cleanupGeneratedSlotTemporaryAssets(&reviewOutput)
+						return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3StagingUnknown, slotStagingOutcomeUnknownCode, imageagent.PublicationClaim{})
+					}
+					cleanupGeneratedSlotTemporaryAssets(&reviewOutput)
+					if _, err = a.slotEffectsV3.PrepareSlotStagingV3(providerStagingCtx, reservation, prepared.Manifest); err != nil {
+						return v3Result, fmt.Errorf("persist review staging manifest: %w", persistedSlotEffectV3RepositoryError(err))
+					}
+					return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3ReviewRequired, imageagent.SlotReviewRequiredCode, imageagent.PublicationClaim{})
+				}
 				switch imageagent.ProviderDispatchStateOf(generateErr) {
 				case imageagent.ProviderNotDispatched, imageagent.ProviderRejectedBeforeEffect:
 					finalizationCtx, cancelFinalization := providerFinalizationContext(ctx)
@@ -478,6 +502,8 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		return v3Result, blockedSlotEffectV3Error(slotStagingOutcomeUnknownCode)
 	case imageagent.SlotEffectV3PublicationUnknown:
 		return v3Result, blockedSlotEffectV3Error(slotPublicationOutcomeUnknownCode)
+	case imageagent.SlotEffectV3ReviewRequired:
+		return v3Result, blockedSlotEffectV3Error(imageagent.SlotReviewRequiredCode)
 	default:
 		return v3Result, sdktemporal.NewNonRetryableApplicationError(
 			fmt.Sprintf("unsupported persisted slot effect phase %q", effect.Phase), slotEffectPhaseInvalidCode, nil,
@@ -539,6 +565,8 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeStagingUnknown, effect.Phase, slotStagingOutcomeUnknownCode), nil
 	case imageagent.SlotEffectV3PublicationUnknown:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomePublicationUnknown, effect.Phase, slotPublicationOutcomeUnknownCode), nil
+	case imageagent.SlotEffectV3ReviewRequired:
+		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, effect.Phase, imageagent.SlotReviewRequiredCode), nil
 	case imageagent.SlotEffectV3ProviderNotDispatched:
 		return a.blockEffectRecoveryV3(ctx, input, reservation)
 	case imageagent.SlotEffectV3ProviderClaimed:
@@ -612,6 +640,8 @@ func (a *Activities) PersistRecoveryBlockedEffectV3(ctx context.Context, input E
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeStagingUnknown, effect.Phase, slotStagingOutcomeUnknownCode), nil
 	case imageagent.SlotEffectV3PublicationUnknown:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomePublicationUnknown, effect.Phase, slotPublicationOutcomeUnknownCode), nil
+	case imageagent.SlotEffectV3ReviewRequired:
+		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, effect.Phase, imageagent.SlotReviewRequiredCode), nil
 	case imageagent.SlotEffectV3RecoveryBlocked:
 		return effectRecoveryBlockedResult(input), nil
 	}
@@ -697,6 +727,8 @@ func effectRecoveryResultFromDurableEffect(effect imageagent.SlotEffectV3Attempt
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeStagingUnknown, effect.Phase, effect.BlockedCode), nil
 	case imageagent.SlotEffectV3PublicationUnknown:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomePublicationUnknown, effect.Phase, effect.BlockedCode), nil
+	case imageagent.SlotEffectV3ReviewRequired:
+		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, effect.Phase, effect.BlockedCode), nil
 	case imageagent.SlotEffectV3RecoveryBlocked:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeRecoveryBlocked, effect.Phase, effect.BlockedCode), nil
 	default:
@@ -939,6 +971,8 @@ func effectRecoveryResultFromError(err error) (EffectRecoveryResult, bool) {
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeStagingUnknown, imageagent.SlotEffectV3StagingUnknown, slotStagingOutcomeUnknownCode), true
 	case slotPublicationOutcomeUnknownCode:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomePublicationUnknown, imageagent.SlotEffectV3PublicationUnknown, slotPublicationOutcomeUnknownCode), true
+	case imageagent.SlotReviewRequiredCode:
+		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, imageagent.SlotEffectV3ReviewRequired, imageagent.SlotReviewRequiredCode), true
 	default:
 		return EffectRecoveryResult{}, false
 	}
@@ -963,7 +997,7 @@ func validatePersistedSlotEffectV3(effect imageagent.SlotEffectV3Attempt) error 
 		switch effect.Phase {
 		case imageagent.SlotEffectV3ProviderClaimed, imageagent.SlotEffectV3StagingPrepared, imageagent.SlotEffectV3ArtifactStaged,
 			imageagent.SlotEffectV3PublicationClaimed, imageagent.SlotEffectV3PublicationComplete,
-			imageagent.SlotEffectV3ProviderUnknown, imageagent.SlotEffectV3StagingUnknown, imageagent.SlotEffectV3PublicationUnknown,
+			imageagent.SlotEffectV3ProviderUnknown, imageagent.SlotEffectV3StagingUnknown, imageagent.SlotEffectV3PublicationUnknown, imageagent.SlotEffectV3ReviewRequired,
 			imageagent.SlotEffectV3RecoveryBlocked:
 		default:
 			code = slotEffectPhaseInvalidCode

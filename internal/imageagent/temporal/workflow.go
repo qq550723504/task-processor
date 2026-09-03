@@ -2229,6 +2229,8 @@ func cancellationResultTerminalized(result SlotWorkflowResult) bool {
 		return result.Status == imageagent.SlotStatusBlocked && result.ErrorCode == imageagent.SlotStagingOutcomeUnknownCode
 	case imageagent.SlotEffectV3PublicationUnknown:
 		return result.Status == imageagent.SlotStatusBlocked && result.ErrorCode == imageagent.SlotPublicationOutcomeUnknownCode
+	case imageagent.SlotEffectV3ReviewRequired:
+		return result.Status == imageagent.SlotStatusBlocked && result.ErrorCode == imageagent.SlotReviewRequiredCode
 	default:
 		return false
 	}

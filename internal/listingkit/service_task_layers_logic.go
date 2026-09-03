@@ -32,6 +32,19 @@ func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string
 		return nil, err
 	}
 	if state.blocked {
+		now := time.Now().UTC()
+		nextRetryAt := now.Add(time.Minute)
+		if err := s.repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{
+			ReasonCode:           standardProductReadinessBlockReason,
+			ReasonMessage:        standardProductReadinessBlockMessage,
+			BlockedAt:            now,
+			NextRetryAt:          &nextRetryAt,
+			MaxAutoRetryAttempts: 8,
+			RecoveryScope:        "task",
+			AutoResumeEnabled:    true,
+		}, standardProductReadinessBlockMessage); err != nil {
+			return nil, err
+		}
 		return state.snapshot, nil
 	}
 	if client, enabled := resolvePlatformAdaptWorkflowClient(s); enabled && client != nil {

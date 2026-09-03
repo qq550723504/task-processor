@@ -29,7 +29,7 @@ func (v *validator) Validate(req *GenerateRequest, draft *AmazonListingDraft) *V
 	v.validatePricing(report, draft)
 	v.validateVariants(report, draft)
 	v.validateDimensions(report, draft)
-	v.validateIPRisk(report, draft)
+	v.validateIPRisk(report, req, draft)
 	v.mergeReviewSignals(report, draft)
 
 	report.BlockingIssues = uniqueSorted(report.BlockingIssues)
@@ -240,7 +240,10 @@ func (v *validator) validateDimensions(report *ValidationReport, draft *AmazonLi
 	}
 }
 
-func (v *validator) validateIPRisk(report *ValidationReport, draft *AmazonListingDraft) {
+func (v *validator) validateIPRisk(report *ValidationReport, req *GenerateRequest, draft *AmazonListingDraft) {
+	if risk := assessContentIPRisk(req, draft); risk != nil {
+		draft.ListingIPRisk = mergeListingIPRisk(draft.ListingIPRisk, risk)
+	}
 	if draft.ListingIPRisk == nil {
 		return
 	}
