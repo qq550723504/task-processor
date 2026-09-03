@@ -15,6 +15,9 @@ func (value SlotProjection) MarshalJSON() ([]byte, error) {
 		candidates[index] = slotProjectionJSONCandidate{
 			AssetID:       candidate.AssetID,
 			SourceAssetID: candidate.SourceAssetID,
+			Width:         candidate.Width,
+			Height:        candidate.Height,
+			Operations:    append([]string(nil), candidate.Operations...),
 		}
 		if candidate.DurableAsset.ObjectKey != "" || candidate.DurableAsset.SHA256 != "" {
 			identity := candidate.DurableAsset
@@ -47,6 +50,9 @@ func (value *SlotProjection) UnmarshalJSON(raw []byte) error {
 		candidates[index] = AssetCandidate{
 			AssetID:       candidate.AssetID,
 			SourceAssetID: candidate.SourceAssetID,
+			Width:         candidate.Width,
+			Height:        candidate.Height,
+			Operations:    append([]string(nil), candidate.Operations...),
 		}
 		if candidate.URL != nil {
 			candidates[index].URL = *candidate.URL
@@ -75,4 +81,7 @@ type slotProjectionJSONCandidate struct {
 	SourceAssetID string
 	Metadata      *map[string]string    `json:"Metadata,omitempty"`
 	DurableAsset  *DurableAssetIdentity `json:"DurableAsset,omitempty"`
+	Width         int                   `json:"Width,omitempty"`
+	Height        int                   `json:"Height,omitempty"`
+	Operations    []string              `json:"Operations,omitempty"`
 }

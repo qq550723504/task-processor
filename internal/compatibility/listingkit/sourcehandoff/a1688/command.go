@@ -10,6 +10,8 @@ import (
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	crawler1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/listingkit"
+	productcatalog "task-processor/internal/product/catalog"
+	"task-processor/internal/product/sourcing"
 	"task-processor/internal/sourceaccount"
 	"task-processor/internal/tenantbridge"
 )
@@ -48,13 +50,24 @@ type CreateTaskResult struct {
 // boundary and does not fetch, crawl, or submit marketplace payloads.
 type TaskCommandService struct {
 	creator                      sourcehandoff.GenerateTaskCreator
+	sourcePublisher              SourceSnapshotPublisher
 	storeAccessValidator         listingkit.StoreAccessValidator
 	sourceAccountAccessValidator sourceaccount.AccessValidator
+}
+
+// SourceSnapshotPublisher is the Catalog publication boundary used by source
+// ingestion. The publisher owns validation and idempotent persistence; this
+// service only orders publication before task dispatch.
+type SourceSnapshotPublisher interface {
+	Publish(context.Context, sourcing.PublishRequest) (productcatalog.PublishedSnapshot, error)
 }
 
 func NewTaskCommandService(creator sourcehandoff.GenerateTaskCreator, dependencies ...any) *TaskCommandService {
 	service := &TaskCommandService{creator: creator}
 	for _, dependency := range dependencies {
+		if value, ok := dependency.(SourceSnapshotPublisher); ok {
+			service.sourcePublisher = value
+		}
 		if value, ok := dependency.(listingkit.StoreAccessValidator); ok {
 			service.storeAccessValidator = value
 		}
@@ -89,7 +102,7 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 		return nil, fmt.Errorf("1688 source url is required")
 	}
 
-	task, handoff, err := CreateListingKitTask(ctx, s.creator, ListingKitTaskInput{
+	handoff, err := PrepareListingKitTaskHandoff(ListingKitTaskInput{
 		Source: crawler1688.Alibaba1688SourceEnvelopeInput{
 			Request:     crawler1688.Alibaba1688CrawlRequestInput{URL: url, AccountID: command.SourceAccountID},
 			Product:     crawler1688.SnapshotFromLegacyProduct(command.Product),
@@ -110,7 +123,26 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 	if err != nil {
 		return &CreateTaskResult{Handoff: handoff}, err
 	}
+	if s.sourcePublisher != nil {
+		if _, err := s.sourcePublisher.Publish(ctx, sourcing.PublishRequest{
+			TenantID: command.TenantID, ProductKey: handoff.Request.ProductKey,
+			PublicationID: sourcePublicationID(handoff.Envelope), Envelope: handoff.Envelope,
+		}); err != nil {
+			return &CreateTaskResult{Handoff: handoff}, fmt.Errorf("publish source snapshot: %w", err)
+		}
+	}
+	task, err := s.creator.CreateGenerateTask(ctx, &handoff.Request)
+	if err != nil {
+		return &CreateTaskResult{Handoff: handoff}, err
+	}
 	return &CreateTaskResult{Task: task, Handoff: handoff}, nil
+}
+
+func sourcePublicationID(envelope sourcing.SourceEnvelope) string {
+	if sourceRunID := strings.TrimSpace(envelope.Trace.SourceRunID); sourceRunID != "" {
+		return "source-run:" + sourceRunID
+	}
+	return "source:" + envelope.Identity.SourceKey()
 }
 
 func (s *TaskCommandService) validateStores(ctx context.Context, command CreateTaskCommand) error {

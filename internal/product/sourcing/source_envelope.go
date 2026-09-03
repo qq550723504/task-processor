@@ -86,6 +86,8 @@ type AssetCandidate struct {
 	MediaType string
 	Role      string
 	Checksum  string
+	Width     int
+	Height    int
 }
 
 // SupplierOrCostFacts carries source-side commercial facts only when they are

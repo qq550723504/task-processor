@@ -12,6 +12,7 @@ import (
 	catalogpersistence "task-processor/internal/integration/persistence/product/catalog"
 	platformdatabase "task-processor/internal/platform/database"
 	productcatalog "task-processor/internal/product/catalog"
+	"task-processor/internal/product/sourcing"
 )
 
 type productCatalogDatabaseBuilder func(*config.DatabaseConfig, *logrus.Logger) (*gorm.DB, func() error, error)
@@ -27,10 +28,19 @@ func attachProductSnapshotRepository(deps *runtimeDeps, db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
+	catalogPublisher, err := productcatalog.NewPublisher(repository)
+	if err != nil {
+		return err
+	}
+	sourcePublisher, err := sourcing.NewPublisher(catalogPublisher)
+	if err != nil {
+		return err
+	}
 	if deps.features == nil {
 		deps.features = &featureRuntimeState{}
 	}
 	deps.features.productSnapshotReader = newListingKitProductSnapshotReader(repository)
+	deps.features.productSnapshotPublisher = sourcePublisher
 	return nil
 }
 

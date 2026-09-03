@@ -21,7 +21,7 @@ func TestExecutorResolvesOnlyExplicitRunPolicyKeyAndCarriesDefaults(t *testing.T
 	renderer := &recordingProductSceneRenderer{candidates: []productimage.Candidate{testSceneCandidate(t, "https://source.example/item.png")}}
 	executor := NewProductImageSlotExecutor(Dependencies{
 		SubjectExtractor: testProductSubjectExtractor{}, WhiteBackgroundRenderer: testProductWhiteRenderer{},
-		SceneRenderer: renderer, UsageQuoter: testProductUsageQuoter{}, ProfileResolver: resolver,
+		SceneRenderer: renderer, Reviewer: testProductReviewer{}, UsageQuoter: testProductUsageQuoter{}, ProfileResolver: resolver,
 	})
 	input := testProductImageExecutionInput()
 	input.ProductContext.ProductType = "misleading-category"
@@ -42,12 +42,45 @@ func TestExecutorResolvesOnlyExplicitRunPolicyKeyAndCarriesDefaults(t *testing.T
 	require.Equal(t, "image/png", generated.Assets[0].ContentType)
 }
 
+func TestExecutorReviewsGeneratedCandidatesBeforeAcceptance(t *testing.T) {
+	profile := testImageProfile()
+	profile.Thresholds.MainReview = 0.80
+	reviewer := &recordingProductReviewer{review: productimage.Review{Score: 0.55, Reasons: []string{"product mismatch"}}}
+	executor := NewProductImageSlotExecutor(Dependencies{
+		SubjectExtractor: testProductSubjectExtractor{}, WhiteBackgroundRenderer: testProductWhiteRenderer{},
+		SceneRenderer: &recordingProductSceneRenderer{candidates: []productimage.Candidate{testSceneCandidate(t, "https://source.example/item.png")}},
+		Reviewer:      reviewer, UsageQuoter: testProductUsageQuoter{},
+		ProfileResolver: &recordingImageProfileResolver{profile: profile},
+	})
+
+	_, err := executor.GenerateSlot(context.Background(), testProductImageExecutionInput())
+
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+	require.Len(t, reviewer.request.Candidates, 1)
+	require.Equal(t, "product-1", reviewer.request.Product.ProductKey)
+}
+
+func TestFrozenV2ExecutorAcceptsHistoricalInputWithoutV3PolicyFields(t *testing.T) {
+	executor := NewFrozenV2ProductImageSlotExecutor(Dependencies{
+		SceneRenderer: &recordingProductSceneRenderer{candidates: []productimage.Candidate{testSceneCandidate(t, "https://source.example/item.png")}},
+		UsageQuoter:   testProductUsageQuoter{},
+	})
+	input := testProductImageExecutionInput()
+	input.TargetPlatform = ""
+	input.ImagePolicyContext = nil
+
+	generated, err := executor.GenerateSlot(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Len(t, generated.Assets, 1)
+}
+
 func TestExecutorFailsClosedWhenExactPolicyIsMissingBeforeProviderDispatch(t *testing.T) {
 	resolver := &recordingImageProfileResolver{err: imagepolicy.ErrPolicyNotFound}
 	renderer := &recordingProductSceneRenderer{}
 	executor := NewProductImageSlotExecutor(Dependencies{
 		SubjectExtractor: testProductSubjectExtractor{}, WhiteBackgroundRenderer: testProductWhiteRenderer{},
-		SceneRenderer: renderer, UsageQuoter: testProductUsageQuoter{}, ProfileResolver: resolver,
+		SceneRenderer: renderer, Reviewer: testProductReviewer{}, UsageQuoter: testProductUsageQuoter{}, ProfileResolver: resolver,
 	})
 
 	_, err := executor.GenerateSlot(context.Background(), testProductImageExecutionInput())
@@ -63,7 +96,7 @@ func TestExecutorRejectsProviderSourcePassThroughEvenWithoutAppWrapper(t *testin
 	}}}}
 	executor := NewProductImageSlotExecutor(Dependencies{
 		SubjectExtractor: testProductSubjectExtractor{}, WhiteBackgroundRenderer: testProductWhiteRenderer{},
-		SceneRenderer: renderer, UsageQuoter: testProductUsageQuoter{}, ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
+		SceneRenderer: renderer, Reviewer: testProductReviewer{}, UsageQuoter: testProductUsageQuoter{}, ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
 	})
 
 	_, err := executor.GenerateSlot(context.Background(), testProductImageExecutionInput())
@@ -76,7 +109,7 @@ func TestExecutorChainsSubjectIntoWhiteBackgroundAndRetainsOriginalProvenance(t 
 	white := &recordingProductWhiteRenderer{candidate: testWhiteCandidate(t, "https://source.example/item.png")}
 	executor := NewProductImageSlotExecutor(Dependencies{
 		SubjectExtractor: subject, WhiteBackgroundRenderer: white, SceneRenderer: &recordingProductSceneRenderer{},
-		UsageQuoter: testProductUsageQuoter{}, ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
+		Reviewer: testProductReviewer{}, UsageQuoter: testProductUsageQuoter{}, ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
 	})
 	input := testProductImageExecutionInput()
 	input.Slot.Role = imageagent.SlotRoleMain
@@ -99,16 +132,18 @@ func TestExecutorQuotesExactOperationWithExecutingProviderIdentity(t *testing.T)
 	renderer := &recordingProductSceneRenderer{candidates: []productimage.Candidate{testSceneCandidate(t, "https://source.example/item.png")}}
 	executor := NewProductImageSlotExecutor(Dependencies{
 		SubjectExtractor: testProductSubjectExtractor{}, WhiteBackgroundRenderer: testProductWhiteRenderer{},
-		SceneRenderer: renderer, UsageQuoter: quoter,
+		SceneRenderer: renderer, Reviewer: testProductReviewer{}, UsageQuoter: quoter,
 		ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
 	})
 
 	quote, err := executor.QuoteSlot(context.Background(), testProductImageExecutionInput(), imageagent.BudgetPolicy{})
 
 	require.NoError(t, err)
-	require.Equal(t, "render_scene", quoter.request.Operation)
-	require.Equal(t, int64(1), quoter.request.MaximumOutputs)
-	require.Len(t, quote.Operations, 1)
+	require.Len(t, quoter.requests, 2)
+	require.Equal(t, "render_scene", quoter.requests[0].Operation)
+	require.Equal(t, "review", quoter.requests[1].Operation)
+	require.Equal(t, int64(1), quoter.requests[0].MaximumOutputs)
+	require.Len(t, quote.Operations, 2)
 	require.Equal(t, "openai", quote.Operations[0].Provider)
 	require.Equal(t, "gpt-image-1", quote.Operations[0].Model)
 	_, err = executor.GenerateQuotedSlot(context.Background(), testProductImageExecutionInput(), quote)
@@ -229,6 +264,22 @@ type recordingProductSceneRenderer struct {
 	calls      int
 }
 
+type recordingProductReviewer struct {
+	review  productimage.Review
+	request productimage.ReviewRequest
+}
+
+func (r *recordingProductReviewer) Review(_ context.Context, request productimage.ReviewRequest) (productimage.Review, error) {
+	r.request = request
+	return r.review, nil
+}
+
+type testProductReviewer struct{}
+
+func (testProductReviewer) Review(context.Context, productimage.ReviewRequest) (productimage.Review, error) {
+	return productimage.Review{Score: 1}, nil
+}
+
 func (r *recordingProductSceneRenderer) RenderScene(_ context.Context, request productimage.SceneRequest) ([]productimage.Candidate, error) {
 	r.calls++
 	r.request = request
@@ -247,11 +298,15 @@ func (testProductUsageQuoter) QuoteUsage(_ context.Context, request productimage
 }
 
 type recordingProductUsageQuoter struct {
-	request productimage.UsageQuoteRequest
-	quote   productimage.UsageQuote
+	request  productimage.UsageQuoteRequest
+	requests []productimage.UsageQuoteRequest
+	quote    productimage.UsageQuote
 }
 
 func (q *recordingProductUsageQuoter) QuoteUsage(_ context.Context, request productimage.UsageQuoteRequest) (productimage.UsageQuote, error) {
 	q.request = request
-	return q.quote, nil
+	q.requests = append(q.requests, request)
+	quote := q.quote
+	quote.Operation = request.Operation
+	return quote, nil
 }

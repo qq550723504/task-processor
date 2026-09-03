@@ -36,6 +36,9 @@ func TestPublisherCommitsApprovedAssetsExactlyOnce(t *testing.T) {
 	require.Equal(t, productasset.RoleMain, inventory.Assets[0].Role)
 	require.Equal(t, productasset.RoleGallery, inventory.Assets[1].Role)
 	require.Equal(t, "https://cdn.example.test/"+projection.Slots[0].Candidates[0].DurableAsset.ObjectKey, inventory.Assets[0].URL)
+	require.Equal(t, 1200, inventory.Assets[0].Width)
+	require.Equal(t, 900, inventory.Assets[0].Height)
+	require.Equal(t, []string{"render_scene"}, inventory.Assets[1].Operations)
 }
 
 func TestPublisherUsesProductContextIdentityInsteadOfBusinessTaskCompatibility(t *testing.T) {
@@ -153,6 +156,7 @@ func approvedV3Projection(t *testing.T) imageagent.RunProjection {
 			Slot: imageagent.Slot{ID: slot.ID, Role: slot.Role, Status: imageagent.SlotStatusAccepted}, Attempt: 1,
 			Candidates: []imageagent.AssetCandidate{{
 				AssetID: fmt.Sprintf("asset-%d", index+1), SourceAssetID: "source-1",
+				Width: 1200, Height: 900, Operations: []string{"render_scene"},
 				DurableAsset: imageagent.DurableAssetIdentity{
 					ObjectKey: fmt.Sprintf("image-agent/public/tenant-a/%s/run-1/1/%s/1/0-%s.png", ownerKey, slot.ID, hash), SHA256: hash,
 				},

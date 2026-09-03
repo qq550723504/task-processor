@@ -133,7 +133,8 @@ func (p *Publisher) approvalCommitV2(projection imageagent.RunProjection, input 
 			approved = append(approved, productasset.ApprovedAsset{
 				ID: candidate.AssetID, RunID: input.RunID, PlanRevision: input.PlanRevision,
 				SlotID: declared.ID, Attempt: slot.Attempt, Role: role, URL: url,
-				SourceAssetID: candidate.SourceAssetID,
+				SourceAssetID: candidate.SourceAssetID, Width: candidate.Width, Height: candidate.Height,
+				Operations: append([]string(nil), candidate.Operations...),
 			})
 		}
 	}
@@ -211,7 +212,8 @@ func (p *Publisher) approvalCommit(projection imageagent.RunProjection, input im
 			approved = append(approved, productasset.ApprovedAsset{
 				ID: candidate.AssetID, RunID: input.RunID, PlanRevision: input.PlanRevision,
 				SlotID: declared.ID, Attempt: slot.Attempt, Role: role, URL: url,
-				SourceAssetID: candidate.SourceAssetID,
+				SourceAssetID: candidate.SourceAssetID, Width: candidate.Width, Height: candidate.Height,
+				Operations: append([]string(nil), candidate.Operations...),
 			})
 		}
 	}

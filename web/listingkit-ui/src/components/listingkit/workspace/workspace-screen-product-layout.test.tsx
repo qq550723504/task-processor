@@ -363,7 +363,7 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     expect(screen.queryByText("task-1")).not.toBeInTheDocument();
   });
 
-  it("keeps platform navigation, AI issue routing, and layer action keys wired to existing handlers", async () => {
+  it("keeps platform navigation and AI issue routing local to the workspace", async () => {
     const user = userEvent.setup();
     render(<WorkspaceScreen taskId="task-1" />);
 
@@ -376,19 +376,8 @@ describe("WorkspaceScreen Product Workspace composition", () => {
     await user.click(screen.getByRole("button", { name: "处理：Material 缺失" }));
     expect(mocks.handleRunSheinPrimaryAction).toHaveBeenCalledWith("attributes");
 
-    await user.click(screen.getByRole("button", { name: "AI 生成商品" }));
-    expect(mocks.executeActionMutate).toHaveBeenCalledWith({
-      action_key: "run_standard_product_temporal",
-    });
-
-    await user.click(screen.getByRole("button", { name: "生成平台资料" }));
-    expect(mocks.executeActionMutate).toHaveBeenCalledWith({
-      action_key: "run_platform_adapt_temporal",
-      target: {
-        action_key: "run_platform_adapt_temporal",
-        queue_query: { platform: "all" },
-      },
-    });
+    expect(screen.queryByRole("button", { name: "AI 生成商品" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "生成平台资料" })).not.toBeInTheDocument();
   });
 
   it("does not show SHEIN readiness outside the active platform review view", () => {

@@ -3,6 +3,7 @@ package a1688
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"task-processor/internal/authidentity"
@@ -67,6 +68,42 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 		creator.request.Source.ID != "888" ||
 		creator.request.Source.URL != "https://detail.1688.com/offer/888.html" {
 		t.Fatalf("creator request Source = %+v, want normalized 1688 identity", creator.request.Source)
+	}
+}
+
+func TestTaskCommandServicePublishesSourceSnapshotBeforeTaskCreation(t *testing.T) {
+	events := []string{}
+	creator := &fakeGenerateTaskCreator{events: &events}
+	publisher := &recordingSourcePublisher{events: &events}
+	service := NewTaskCommandService(creator, validStoreAccessValidator(), publisher)
+
+	result, err := service.CreateTask(authenticatedCommandContext("101", "user-1688"), CreateTaskCommand{
+		URL:          "https://detail.1688.com/offer/888.html",
+		Product:      commandProduct1688("888"),
+		SourceRunID:  "run-888",
+		RequestID:    "request-888",
+		TenantID:     "101",
+		UserID:       "user-1688",
+		SheinStoreID: 168811,
+		Platforms:    []string{"shein"},
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if result == nil || result.Task == nil {
+		t.Fatalf("result = %+v, want created task", result)
+	}
+	if publisher.request == nil {
+		t.Fatal("source snapshot was not published")
+	}
+	if publisher.request.TenantID != "101" || publisher.request.ProductKey != "crawler:1688:888" {
+		t.Fatalf("publication identity = %+v, want tenant 101 and crawler:1688:888", publisher.request)
+	}
+	if len(publisher.request.Envelope.AssetCandidates) == 0 {
+		t.Fatal("published envelope has no source assets")
+	}
+	if got := strings.Join(events, ","); got != "publish,create" {
+		t.Fatalf("event order = %q, want publish,create", got)
 	}
 }
 

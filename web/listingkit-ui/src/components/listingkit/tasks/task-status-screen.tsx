@@ -18,7 +18,6 @@ import { shouldAutoOpenWorkspace } from "@/components/listingkit/tasks/task-stat
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { useExecuteAction } from "@/lib/query/use-action";
 import {
   getTaskRetryVersion,
   useRetryChildTask,
@@ -98,7 +97,6 @@ export function TaskStatusScreen({
   task?: ListingKitTaskResult | null;
 }) {
   const router = useRouter();
-  const layerAction = useExecuteAction(taskId, {});
   const childTaskRetry = useRetryChildTask(
     taskId,
     getTaskRetryVersion(task),
@@ -149,24 +147,6 @@ export function TaskStatusScreen({
   if (!task) {
     return null;
   }
-
-  const handleRunStandardProductTemporal = () => {
-    layerAction.mutate({
-      action_key: "run_standard_product_temporal",
-    });
-  };
-
-  const handleRunPlatformAdaptTemporal = () => {
-    layerAction.mutate({
-      action_key: "run_platform_adapt_temporal",
-      target: {
-        action_key: "run_platform_adapt_temporal",
-        queue_query: {
-          platform: "all",
-        },
-      },
-    });
-  };
 
   const handleRetrySDSDesignSync = () => {
     childTaskRetry.mutate({
@@ -246,36 +226,6 @@ export function TaskStatusScreen({
         retryError={childTaskRetry.error}
       />
       <ReviewReasonsCard task={task} taskId={taskId} />
-      <Card className="p-6">
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">分层 Temporal 执行</h2>
-            <p className="text-sm leading-6 text-muted-foreground">
-              标准商品层和平台适配层现在可以分别手动触发。标准层会产出稳定的标准商品快照，平台层会基于这个快照继续做 SHEIN 等平台适配。
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            <Button
-              className="w-full sm:w-auto"
-              onClick={handleRunStandardProductTemporal}
-              type="button"
-              variant="secondary"
-              disabled={layerAction.isPending}
-            >
-              运行标准商品层
-            </Button>
-            <Button
-              className="w-full sm:w-auto"
-              onClick={handleRunPlatformAdaptTemporal}
-              type="button"
-              variant="secondary"
-              disabled={layerAction.isPending}
-            >
-              运行平台适配层
-            </Button>
-          </div>
-        </div>
-      </Card>
       <TaskRevisionHistoryPanel taskId={taskId} />
       <TaskPodExecutionCard task={task} />
       {hasPersistedSourceReference(task.source_reference) ? (

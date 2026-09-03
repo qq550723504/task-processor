@@ -20,6 +20,7 @@ func ToSnapshot(in SourceEnvelope) (catalog.ProductSnapshot, error) {
 		Description: normalized.ProductCandidate.Description,
 		Attributes:  snapshotAttributes(normalized.ProductCandidate.Attributes),
 		Variants:    snapshotVariants(normalized.ProductCandidate.Variants),
+		Images:      snapshotImages(normalized),
 		Review:      reviewFromSourceWarnings(normalized.Warnings),
 		Warnings:    snapshotWarnings(normalized.Warnings),
 		Sources: []catalog.SourceRecord{{
@@ -33,6 +34,32 @@ func ToSnapshot(in SourceEnvelope) (catalog.ProductSnapshot, error) {
 			Notes: normalized.Trace.Notes,
 		}},
 	}, nil
+}
+
+func snapshotImages(envelope SourceEnvelope) []catalog.Image {
+	if len(envelope.AssetCandidates) == 0 {
+		return nil
+	}
+	images := make([]catalog.Image, 0, len(envelope.AssetCandidates))
+	for _, candidate := range envelope.AssetCandidates {
+		url := strings.TrimSpace(candidate.URL)
+		mediaType := strings.ToLower(strings.TrimSpace(candidate.MediaType))
+		if url == "" || mediaType != "" && mediaType != "image" && mediaType != "image/*" {
+			continue
+		}
+		images = append(images, catalog.Image{
+			URL: url, Role: strings.TrimSpace(candidate.Role), Width: candidate.Width, Height: candidate.Height,
+			Trace: catalog.Trace{Sources: []catalog.SourceRecord{{
+				Type: envelope.Identity.SourceType, Platform: envelope.Identity.SourcePlatform,
+				SourceID: candidate.SourceID, URL: url, Checksum: strings.TrimSpace(candidate.Checksum),
+				SourceRunID: envelope.Trace.SourceRunID, RequestID: envelope.Trace.RequestID,
+			}}},
+		})
+	}
+	if len(images) == 0 {
+		return nil
+	}
+	return images
 }
 
 func snapshotWarnings(warnings []SourceWarning) []catalog.Warning {

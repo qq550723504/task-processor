@@ -104,9 +104,6 @@ export function buildSheinWorkspaceViewProps({
         payload,
         "图片设置已保存，最终提交会使用当前排序和角色。",
       ),
-    onRegenerate: sheinActions.handleRegenerateSheinImage,
-    isRegenerating: sheinActions.regeneratingSheinImage,
-    regenerationError: sheinActions.sheinImageRegenerationError,
   };
   const finalReviewProps: SheinFinalReviewPanelProps = {
     shein,

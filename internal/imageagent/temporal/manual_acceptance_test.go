@@ -408,7 +408,7 @@ func executePodLossRecoveryAcceptance(t *testing.T) podLossRecoveryAcceptanceRes
 func newAcceptanceProductImageExecutor(artifactPath string) *recordingAcceptanceExecutor {
 	return &recordingAcceptanceExecutor{delegate: imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
 		SubjectExtractor: acceptanceSubjectExtractor{}, WhiteBackgroundRenderer: acceptanceWhiteRenderer{artifactPath: artifactPath},
-		SceneRenderer: acceptanceSceneRenderer{artifactPath: artifactPath}, UsageQuoter: acceptanceUsageQuoter{},
+		SceneRenderer: acceptanceSceneRenderer{artifactPath: artifactPath}, Reviewer: acceptanceReviewer{}, UsageQuoter: acceptanceUsageQuoter{},
 		ProfileResolver: acceptanceProfileResolver{},
 	})}
 }
@@ -525,6 +525,7 @@ func executeAcceptanceWorkflow(t *testing.T, plan imageagent.Plan, invalidSlotID
 		SubjectExtractor:        acceptanceSubjectExtractor{},
 		WhiteBackgroundRenderer: acceptanceWhiteRenderer{artifactPath: artifactPath},
 		SceneRenderer:           acceptanceSceneRenderer{artifactPath: artifactPath},
+		Reviewer:                acceptanceReviewer{},
 		UsageQuoter:             acceptanceUsageQuoter{},
 		ProfileResolver:         acceptanceProfileResolver{},
 	})
@@ -1034,6 +1035,12 @@ func (r acceptanceSceneRenderer) RenderScene(_ context.Context, request producti
 }
 
 type acceptanceUsageQuoter struct{}
+
+type acceptanceReviewer struct{}
+
+func (acceptanceReviewer) Review(context.Context, productimage.ReviewRequest) (productimage.Review, error) {
+	return productimage.Review{Score: 1}, nil
+}
 
 func (acceptanceUsageQuoter) QuoteUsage(_ context.Context, request productimage.UsageQuoteRequest) (productimage.UsageQuote, error) {
 	return productimage.UsageQuote{

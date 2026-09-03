@@ -118,7 +118,7 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	}
 	if composition.listingKitModule != nil && composition.listingKitModule.TaskLifecycleService != nil && composition.listingKitModule.StoreAccessValidator != nil {
 		composition.productSourcingModule = a1688httpapi.BuildModule(
-			a1688handoff.NewTaskCommandService(composition.listingKitModule.TaskLifecycleService, composition.listingKitModule.StoreAccessValidator, sourceValidator),
+			a1688handoff.NewTaskCommandService(composition.listingKitModule.TaskLifecycleService, composition.listingKitModule.StoreAccessValidator, sourceValidator, deps.features.productSnapshotPublisher),
 		)
 	}
 	if composition.listingKitModule != nil {

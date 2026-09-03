@@ -1,4 +1,4 @@
-import { QueueScreen } from "@/components/listingkit/queue/queue-screen";
+import { redirect } from "next/navigation";
 
 export default async function QueuePage({
   params,
@@ -7,5 +7,5 @@ export default async function QueuePage({
 }) {
   const { taskId } = await params;
 
-  return <QueueScreen taskId={taskId} />;
+  redirect(`/listing-kits/${taskId}/workspace`);
 }

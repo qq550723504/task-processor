@@ -24,14 +24,25 @@ type Dependencies struct {
 	SubjectExtractor        productimage.SubjectExtractor
 	WhiteBackgroundRenderer productimage.WhiteBackgroundRenderer
 	SceneRenderer           productimage.SceneRenderer
+	Reviewer                productimage.Reviewer
 	UsageQuoter             productimage.UsageQuoter
 	ProfileResolver         ProfileResolver
 }
 
-type ProductImageSlotExecutor struct{ dependencies Dependencies }
+type ProductImageSlotExecutor struct {
+	dependencies Dependencies
+	legacyV2     bool
+}
 
 func NewProductImageSlotExecutor(dependencies Dependencies) *ProductImageSlotExecutor {
 	return &ProductImageSlotExecutor{dependencies: dependencies}
+}
+
+// NewFrozenV2ProductImageSlotExecutor preserves the historical V2 activity
+// input contract. It deliberately does not require V3 policy fields or the
+// V3 reviewer gate; new runs must use NewProductImageSlotExecutor instead.
+func NewFrozenV2ProductImageSlotExecutor(dependencies Dependencies) *ProductImageSlotExecutor {
+	return &ProductImageSlotExecutor{dependencies: dependencies, legacyV2: true}
 }
 
 type resolvedSlotInput struct {
@@ -70,7 +81,7 @@ func (e *ProductImageSlotExecutor) quoteSlot(ctx context.Context, input imageage
 	if e == nil || e.dependencies.UsageQuoter == nil {
 		return quotedSlotExecution{}, fmt.Errorf("%w: image usage quoter is required", imageagent.ErrBudgetQuoteUnavailable)
 	}
-	operations, err := slotOperations(resolved.slot.Role)
+	operations, err := slotOperations(resolved.slot.Role, e.legacyV2)
 	if err != nil {
 		return quotedSlotExecution{}, err
 	}
@@ -161,6 +172,9 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 	if err != nil {
 		return imageagent.SlotGeneratedOutput{}, fmt.Errorf("execute slot %q: %w", resolved.slot.ID, err)
 	}
+	if err := e.reviewGeneratedCandidates(ctx, resolved, candidates, quoted); err != nil {
+		return imageagent.SlotGeneratedOutput{}, fmt.Errorf("review slot %q: %w", resolved.slot.ID, err)
+	}
 	assets := make([]imageagent.GeneratedAsset, len(candidates))
 	for index, candidate := range candidates {
 		asset, mapErr := generatedAsset(candidate, resolved.source, resolved.styles)
@@ -173,6 +187,30 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 		SlotID: resolved.slot.ID, Attempt: input.Attempt, SourceAssetID: resolved.sourceAssetID,
 		Assets: assets, UsageReceipt: receipt,
 	}, nil
+}
+
+func (e *ProductImageSlotExecutor) reviewGeneratedCandidates(ctx context.Context, input resolvedSlotInput, candidates []productimage.Candidate, quoted *quotedSlotExecution) error {
+	if e != nil && e.legacyV2 {
+		return nil
+	}
+	if e == nil || e.dependencies.Reviewer == nil {
+		return fmt.Errorf("%w: image reviewer is required", imageagent.ErrValidation)
+	}
+	review, err := e.dependencies.Reviewer.Review(ctx, productimage.ReviewRequest{
+		Product: input.product, Sources: []productimage.Asset{input.source}, Candidates: candidates,
+		Authorization: capabilityAuthorization(quoted, "review"),
+	})
+	if err != nil {
+		return dispatchedCapabilityError("review image", err, true)
+	}
+	threshold := input.profile.Thresholds.MainReview
+	if input.slot.Role == imageagent.SlotRoleMain {
+		threshold = input.profile.Thresholds.WhiteBackgroundReview
+	}
+	if review.NeedsHumanReview || review.Score < threshold {
+		return fmt.Errorf("%w: score %.4f is below threshold %.4f", imageagent.ErrValidation, review.Score, threshold)
+	}
+	return nil
 }
 
 func (e *ProductImageSlotExecutor) generateMain(ctx context.Context, input resolvedSlotInput, quoted *quotedSlotExecution) ([]productimage.Candidate, imageagent.SlotUsageReceipt, error) {
@@ -288,6 +326,7 @@ func (e *ProductImageSlotExecutor) BuildSlotResult(_ context.Context, input imag
 		}
 		candidates[index] = imageagent.AssetCandidate{
 			AssetID: durableCandidateAssetID(input, resolved.slot, asset, index), SourceAssetID: asset.SourceAssetID,
+			Width: asset.Width, Height: asset.Height, Operations: append([]string(nil), asset.Operations...),
 			DurableAsset: imageagent.DurableAssetIdentity{ObjectKey: asset.ObjectKey, SHA256: asset.SHA256},
 		}
 	}
@@ -295,7 +334,10 @@ func (e *ProductImageSlotExecutor) BuildSlotResult(_ context.Context, input imag
 }
 
 func (e *ProductImageSlotExecutor) resolveInput(input imageagent.SlotExecutionInput) (resolvedSlotInput, error) {
-	if e == nil || e.dependencies.ProfileResolver == nil {
+	if e == nil {
+		return resolvedSlotInput{}, fmt.Errorf("%w: image executor is required", imageagent.ErrValidation)
+	}
+	if !e.legacyV2 && e.dependencies.ProfileResolver == nil {
 		return resolvedSlotInput{}, fmt.Errorf("%w: image policy resolver is required", imageagent.ErrValidation)
 	}
 	if strings.TrimSpace(input.RunID) == "" || strings.TrimSpace(input.TenantID) == "" || strings.TrimSpace(input.UserID) == "" ||
@@ -306,22 +348,29 @@ func (e *ProductImageSlotExecutor) resolveInput(input imageagent.SlotExecutionIn
 	if strings.TrimSpace(slot.ID) == "" || strings.TrimSpace(slot.IdempotencyKey) == "" || len(slot.SourceAssetIDs) != 1 {
 		return resolvedSlotInput{}, imageagent.ErrValidation
 	}
-	if input.ImagePolicyContext == nil {
+	if !e.legacyV2 && input.ImagePolicyContext == nil {
 		return resolvedSlotInput{}, imageagent.ErrValidation
 	}
-	profileInput := imagepolicy.ProfileInput{
-		Marketplace: strings.TrimSpace(input.TargetPlatform), Country: strings.TrimSpace(input.ImagePolicyContext.Country),
-		Family: strings.TrimSpace(input.ImagePolicyContext.Family), SceneCategory: strings.TrimSpace(input.ImagePolicyContext.SceneCategory),
-	}
-	if err := imagepolicy.ValidateProfileInput(profileInput); err != nil {
-		return resolvedSlotInput{}, err
-	}
-	profile, err := e.dependencies.ProfileResolver.Resolve(profileInput)
-	if err != nil {
-		return resolvedSlotInput{}, err
-	}
-	if profile.Key != imagepolicy.PolicyKey(profileInput) || strings.TrimSpace(profile.PolicyVersion) == "" {
-		return resolvedSlotInput{}, imageagent.ErrValidation
+	var profile imagepolicy.ProductImageProfile
+	if input.ImagePolicyContext != nil && strings.TrimSpace(input.TargetPlatform) != "" {
+		profileInput := imagepolicy.ProfileInput{
+			Marketplace: strings.TrimSpace(input.TargetPlatform), Country: strings.TrimSpace(input.ImagePolicyContext.Country),
+			Family: strings.TrimSpace(input.ImagePolicyContext.Family), SceneCategory: strings.TrimSpace(input.ImagePolicyContext.SceneCategory),
+		}
+		if err := imagepolicy.ValidateProfileInput(profileInput); err != nil {
+			return resolvedSlotInput{}, err
+		}
+		if e.dependencies.ProfileResolver == nil {
+			return resolvedSlotInput{}, fmt.Errorf("%w: image policy resolver is required", imageagent.ErrValidation)
+		}
+		var err error
+		profile, err = e.dependencies.ProfileResolver.Resolve(profileInput)
+		if err != nil {
+			return resolvedSlotInput{}, err
+		}
+		if profile.Key != imagepolicy.PolicyKey(profileInput) || strings.TrimSpace(profile.PolicyVersion) == "" {
+			return resolvedSlotInput{}, imageagent.ErrValidation
+		}
 	}
 	sourceID := strings.TrimSpace(slot.SourceAssetIDs[0])
 	source, err := authorizedProductAsset(input.AssetCatalog, sourceID, imageagent.AuthorizedAssetSource)
@@ -427,12 +476,20 @@ func generatedAsset(candidate productimage.Candidate, source productimage.Asset,
 	}, nil
 }
 
-func slotOperations(role imageagent.SlotRole) ([]string, error) {
+func slotOperations(role imageagent.SlotRole, legacyV2 bool) ([]string, error) {
 	switch role {
 	case imageagent.SlotRoleMain:
-		return []string{"extract_subject", "render_white_background"}, nil
+		operations := []string{"extract_subject", "render_white_background"}
+		if !legacyV2 {
+			operations = append(operations, "review")
+		}
+		return operations, nil
 	case imageagent.SlotRoleScene, imageagent.SlotRoleDetail, imageagent.SlotRoleSellingPoint, imageagent.SlotRoleSize:
-		return []string{"render_scene"}, nil
+		operations := []string{"render_scene"}
+		if !legacyV2 {
+			operations = append(operations, "review")
+		}
+		return operations, nil
 	default:
 		return nil, fmt.Errorf("%w: unsupported slot role %q", imageagent.ErrValidation, role)
 	}

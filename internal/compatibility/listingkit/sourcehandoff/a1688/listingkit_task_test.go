@@ -7,6 +7,8 @@ import (
 
 	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/sourcing"
 )
 
 func TestPrepareListingKitTaskHandoffBuildsRequest(t *testing.T) {
@@ -132,9 +134,30 @@ func testAlibaba1688SourceEnvelopeInput() sourcea1688.Alibaba1688SourceEnvelopeI
 
 type fakeGenerateTaskCreator struct {
 	request *listingkit.GenerateRequest
+	events  *[]string
 }
 
 func (f *fakeGenerateTaskCreator) CreateGenerateTask(_ context.Context, request *listingkit.GenerateRequest) (*listingkit.Task, error) {
+	if f.events != nil {
+		*f.events = append(*f.events, "create")
+	}
 	f.request = request
 	return &listingkit.Task{ID: "task-1688", Request: request}, nil
+}
+
+type recordingSourcePublisher struct {
+	request *sourcing.PublishRequest
+	events  *[]string
+}
+
+func (p *recordingSourcePublisher) Publish(_ context.Context, request sourcing.PublishRequest) (catalog.PublishedSnapshot, error) {
+	if p.events != nil {
+		*p.events = append(*p.events, "publish")
+	}
+	p.request = &request
+	return catalog.PublishedSnapshot{
+		Identity:      catalog.SnapshotIdentity{TenantID: request.TenantID, ProductKey: request.ProductKey},
+		Version:       1,
+		PublicationID: request.PublicationID,
+	}, nil
 }

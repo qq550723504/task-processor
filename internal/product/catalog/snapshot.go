@@ -47,9 +47,11 @@ type Attribute struct {
 }
 
 type Image struct {
-	URL   string `json:"url,omitempty"`
-	Role  string `json:"role,omitempty"`
-	Trace Trace  `json:"trace,omitempty"`
+	URL    string `json:"url,omitempty"`
+	Role   string `json:"role,omitempty"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+	Trace  Trace  `json:"trace,omitempty"`
 }
 
 type Variant struct {

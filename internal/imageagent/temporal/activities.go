@@ -745,6 +745,7 @@ func (a *Activities) reconcileEffectRecoveryProjection(ctx context.Context, inpu
 		for _, candidate := range published.Candidates {
 			candidates = append(candidates, imageagent.AssetCandidate{
 				AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset,
+				Width: candidate.Width, Height: candidate.Height, Operations: append([]string(nil), candidate.Operations...),
 			})
 		}
 		updated.Slots[slotIndex] = imageagent.SlotProjection{
@@ -849,7 +850,7 @@ func recoveredSlotProjectionMatches(slot imageagent.SlotProjection, published im
 		return false
 	}
 	for index, candidate := range normalized.Candidates {
-		if slot.Candidates[index].AssetID != candidate.AssetID || slot.Candidates[index].SourceAssetID != candidate.SourceAssetID || slot.Candidates[index].DurableAsset != candidate.DurableAsset {
+		if slot.Candidates[index].AssetID != candidate.AssetID || slot.Candidates[index].SourceAssetID != candidate.SourceAssetID || slot.Candidates[index].DurableAsset != candidate.DurableAsset || (candidate.Width != 0 || candidate.Height != 0 || candidate.Operations != nil) && (slot.Candidates[index].Width != candidate.Width || slot.Candidates[index].Height != candidate.Height || !reflect.DeepEqual(slot.Candidates[index].Operations, candidate.Operations)) {
 			return false
 		}
 	}
@@ -1260,7 +1261,10 @@ func (a *Activities) PersistSlotResultV3(ctx context.Context, input PersistSlotR
 		result.Published = normalized
 		for _, candidate := range normalized.Candidates {
 			candidateIDs = append(candidateIDs, candidate.AssetID)
-			candidates = append(candidates, imageagent.AssetCandidate{AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset})
+			candidates = append(candidates, imageagent.AssetCandidate{
+				AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset,
+				Width: candidate.Width, Height: candidate.Height, Operations: append([]string(nil), candidate.Operations...),
+			})
 		}
 	}
 	outcome := "accepted"

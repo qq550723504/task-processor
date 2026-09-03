@@ -817,7 +817,10 @@ func (s *workflowUpdateState) applyEffectRecoveryCompleted(signal EffectRecovery
 		}
 		candidates := make([]imageagent.AssetCandidate, 0, len(published.Candidates))
 		for _, candidate := range published.Candidates {
-			candidates = append(candidates, imageagent.AssetCandidate{AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset})
+			candidates = append(candidates, imageagent.AssetCandidate{
+				AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset,
+				Width: candidate.Width, Height: candidate.Height, Operations: append([]string(nil), candidate.Operations...),
+			})
 		}
 		(*s.results)[index] = SlotWorkflowResult{
 			Execution: imageagent.SlotExecutionResult{SlotID: published.SlotID, Attempt: published.Attempt, Candidates: candidates},
@@ -1993,6 +1996,7 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 				for _, candidate := range v3Result.Published.Candidates {
 					result.Execution.Candidates = append(result.Execution.Candidates, imageagent.AssetCandidate{
 						AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset,
+						Width: candidate.Width, Height: candidate.Height, Operations: append([]string(nil), candidate.Operations...),
 					})
 				}
 			}
@@ -2307,7 +2311,10 @@ func slotProjectionsV3(plan imageagent.Plan, results []SlotWorkflowV3Result) []i
 			projection.ErrorCode = result.ErrorCode
 			projection.Slot.Status = result.Status
 			for _, candidate := range result.Published.Candidates {
-				projection.Candidates = append(projection.Candidates, imageagent.AssetCandidate{AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset})
+				projection.Candidates = append(projection.Candidates, imageagent.AssetCandidate{
+					AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset,
+					Width: candidate.Width, Height: candidate.Height, Operations: append([]string(nil), candidate.Operations...),
+				})
 			}
 		}
 		projections = append(projections, projection)

@@ -43,6 +43,9 @@ func TestAttachProductSnapshotRepositoryUsesTypedDatabaseAndProvidesProductionRe
 	if err := attachProductSnapshotRepository(deps, db); err != nil {
 		t.Fatalf("attachProductSnapshotRepository() error = %v", err)
 	}
+	if deps.features.productSnapshotPublisher == nil {
+		t.Fatal("product snapshot publisher was not attached")
+	}
 	got, err := deps.features.productSnapshotReader.GetProductSnapshot(context.Background(), listingkit.ProductSnapshotQuery{
 		TenantID: "tenant-a", ProductKey: "product-1",
 	})

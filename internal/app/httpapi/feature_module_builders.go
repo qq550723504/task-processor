@@ -74,7 +74,7 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 	databaseCloser := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	service, err := newImageAgentHTTPService(
 		imageagentstore.NewGormRepository(db), workflowClient,
-		newImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db)),
+		newImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db), newPublicImageDimensionResolver()),
 	)
 	if err != nil {
 		_ = databaseCloser()

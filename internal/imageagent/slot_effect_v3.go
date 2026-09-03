@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -221,6 +222,9 @@ type SlotEffectV3AssetCandidate struct {
 	AssetID       string               `json:"asset_id"`
 	SourceAssetID string               `json:"source_asset_id"`
 	DurableAsset  DurableAssetIdentity `json:"durable_asset"`
+	Width         int                  `json:"width,omitempty"`
+	Height        int                  `json:"height,omitempty"`
+	Operations    []string             `json:"operations,omitempty"`
 }
 
 // NewSlotEffectV3PublishedResult is the explicit adapter from an in-process
@@ -232,7 +236,10 @@ func NewSlotEffectV3PublishedResult(result SlotExecutionResult) (SlotEffectV3Pub
 		if candidate.URL != "" || len(candidate.Metadata) != 0 {
 			return SlotEffectV3PublishedResult{}, ErrValidation
 		}
-		candidates[index] = SlotEffectV3AssetCandidate{AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset}
+		candidates[index] = SlotEffectV3AssetCandidate{
+			AssetID: candidate.AssetID, SourceAssetID: candidate.SourceAssetID, DurableAsset: candidate.DurableAsset,
+			Width: candidate.Width, Height: candidate.Height, Operations: append([]string(nil), candidate.Operations...),
+		}
 	}
 	return NormalizeSlotEffectV3PublishedResult(SlotEffectV3PublishedResult{SlotID: result.SlotID, Attempt: result.Attempt, Candidates: candidates})
 }
@@ -250,11 +257,16 @@ func NormalizeSlotEffectV3PublishedResult(result SlotEffectV3PublishedResult) (S
 		if err != nil {
 			return SlotEffectV3PublishedResult{}, err
 		}
+		operations, err := NormalizeArtifactOperations(candidate.Operations)
+		if err != nil {
+			return SlotEffectV3PublishedResult{}, err
+		}
 		if _, ok := seen[candidate.AssetID]; ok {
 			return SlotEffectV3PublishedResult{}, ErrValidation
 		}
 		seen[candidate.AssetID] = struct{}{}
 		candidate.DurableAsset = identity
+		candidate.Operations = operations
 		result.Candidates[index] = candidate
 	}
 	return result, nil
@@ -296,7 +308,7 @@ func ValidateSlotEffectV3Completion(result SlotEffectV3PublishedResult, manifest
 			return ErrRevisionConflict
 		}
 		consumed[identity] = struct{}{}
-		if candidate.DurableAsset.ObjectKey != asset.ObjectKey || candidate.DurableAsset.SHA256 != asset.SHA256 || candidate.SourceAssetID != asset.SourceAssetID {
+		if candidate.DurableAsset.ObjectKey != asset.ObjectKey || candidate.DurableAsset.SHA256 != asset.SHA256 || candidate.SourceAssetID != asset.SourceAssetID || (slotEffectV3CandidateMetadataPresent(candidate) && (candidate.Width != asset.Width || candidate.Height != asset.Height || !reflect.DeepEqual(candidate.Operations, asset.Operations))) {
 			return ErrRevisionConflict
 		}
 	}
@@ -308,6 +320,10 @@ func ValidateSlotEffectV3Completion(result SlotEffectV3PublishedResult, manifest
 		return ErrRevisionConflict
 	}
 	return nil
+}
+
+func slotEffectV3CandidateMetadataPresent(candidate SlotEffectV3AssetCandidate) bool {
+	return candidate.Width != 0 || candidate.Height != 0 || candidate.Operations != nil
 }
 
 type SlotExternalEffectV3Repository interface {

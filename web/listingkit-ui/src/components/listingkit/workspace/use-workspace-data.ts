@@ -20,6 +20,7 @@ import {
   pickWorkspaceResolvedActionSummary,
 } from "@/components/listingkit/workspace/workspace-action-routing";
 import { getTaskSDSDesignResult } from "@/lib/listingkit/semantic-fields";
+import type { TargetPlatform } from "@/lib/api/generated";
 import {
   formatWorkspaceDate,
   queryFromSearchParams,
@@ -27,10 +28,14 @@ import {
   workspaceTaskStatusLabel,
 } from "@/components/listingkit/workspace/workspace-screen-helpers";
 import { useListingKitPreview } from "@/lib/query/use-preview";
-import { useReviewPreview } from "@/lib/query/use-review-preview";
-import { useReviewSession } from "@/lib/query/use-review-session";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
-import type { PlatformCard } from "@/lib/types/listingkit";
+import type {
+  PlatformCard,
+  PreviewSlot,
+  ReviewPreviewResponse,
+  ReviewSession,
+  ReviewSlot,
+} from "@/lib/types/listingkit";
 
 export function resolveWorkspaceTitle({
   selectedPlatform,
@@ -95,25 +100,79 @@ export function useWorkspaceData({
     taskResult.data?.result?.updated_at ??
     taskResult.data?.completed_at ??
     taskResult.data?.status;
-  const preview = useListingKitPreview(taskId, previewFreshnessKey);
-  const session = useReviewSession(taskId, baseQuery);
-  const focusedPreviewQuery =
-    session.data?.session?.focused_target?.navigation_target?.preview_query;
-  const reviewPreview = useReviewPreview(
+  const requestedPlatform = targetPlatformFromQuery(baseQuery.platform);
+  const preview = useListingKitPreview(
     taskId,
-    focusedPreviewQuery ?? baseQuery,
-    Boolean(focusedPreviewQuery ?? baseQuery.slot ?? baseQuery.platform),
+    previewFreshnessKey,
+    requestedPlatform,
   );
-
-  const sessionData = session.data?.session;
+  const sessionData = useMemo<ReviewSession | undefined>(() => {
+    const previewData = preview.data;
+    if (!previewData) {
+      return undefined;
+    }
+    const selectedPlatform = requestedPlatform ?? previewData.selected_platform;
+    const slotNavigation = (previewData.asset_render_previews ?? []).map(
+      reviewSlotFromPreview,
+    );
+    const selectedSlot = baseQuery.slot ?? slotNavigation[0]?.slot;
+    const focusedTarget = selectedPlatform
+      ? {
+          platform: selectedPlatform,
+          slot: selectedSlot,
+          capability: baseQuery.preview_capability,
+        }
+      : undefined;
+    return {
+      selected_platform: selectedPlatform,
+      selected_slot: selectedSlot,
+      focused_target: focusedTarget,
+      default_target: focusedTarget,
+      focused_render_preview: findFocusedPreview(
+        previewData.asset_render_previews,
+        selectedSlot,
+      ),
+      review_summary: {
+        approved_sections: previewData.asset_generation_overview?.approved_sections,
+        deferred_sections: previewData.asset_generation_overview?.deferred_sections,
+        pending_sections: previewData.asset_generation_overview?.review_pending_sections,
+      },
+      queue: previewData.asset_generation_queue,
+      overview: previewData.asset_generation_overview,
+      platform_cards: previewData.overview?.platform_cards,
+      slot_navigation: slotNavigation,
+      sections: [],
+    };
+  }, [baseQuery.preview_capability, baseQuery.slot, preview.data, requestedPlatform]);
+  const focusedPreview = sessionData?.focused_render_preview;
+  const reviewPreview: {
+    data?: ReviewPreviewResponse;
+    isLoading: boolean;
+    isError: boolean;
+    refetch: () => Promise<unknown>;
+  } = {
+    data: focusedPreview ? { preview: focusedPreview } : undefined,
+    isLoading: preview.isLoading,
+    isError: preview.isError,
+    refetch: preview.refetch,
+  };
+  const session: {
+    data?: import("@/lib/types/listingkit").ReviewSessionResponse;
+    isLoading: boolean;
+    isError: boolean;
+    refetch: () => Promise<unknown>;
+  } = {
+    data: sessionData ? { session: sessionData } : undefined,
+    isLoading: preview.isLoading,
+    isError: preview.isError,
+    refetch: preview.refetch,
+  };
   const platformCards =
     sessionData?.platform_cards ?? preview.data?.overview?.platform_cards ?? [];
   const navigationPlatformCards = mergeNavigationPlatformCards(
     preview.data?.overview?.platform_cards,
     sessionData?.platform_cards,
   );
-  const focusedPreview =
-    reviewPreview.data?.preview ?? sessionData?.focused_render_preview;
   const selectedPlatform =
     sessionData?.selected_platform ??
     selectedPlatformFromReviewTarget(sessionData?.focused_target) ??
@@ -257,4 +316,32 @@ export function useWorkspaceData({
     workspaceUpdatedAt,
     workspaceSubtitle,
   };
+}
+
+function findFocusedPreview(
+  previews: PreviewSlot[] | undefined,
+  selectedSlot?: string,
+) {
+  return previews?.find((preview) => preview.slot === selectedSlot) ?? previews?.[0];
+}
+
+function reviewSlotFromPreview(preview: PreviewSlot): ReviewSlot {
+  return {
+    slot: preview.slot,
+    asset_id: preview.asset_id,
+    state: preview.state_label,
+    render_preview_available: Boolean(preview.preview_svg || preview.asset_url),
+  };
+}
+
+function targetPlatformFromQuery(value?: string): TargetPlatform | undefined {
+  switch (value) {
+    case "amazon":
+    case "shein":
+    case "temu":
+    case "walmart":
+      return value;
+    default:
+      return undefined;
+  }
 }

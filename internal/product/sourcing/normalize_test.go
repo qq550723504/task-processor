@@ -98,8 +98,8 @@ func TestToSnapshotProducesCanonicalFactsWithoutAssets(t *testing.T) {
 	if len(got.Sources) != 1 || got.Sources[0].Type != "crawler" || got.Sources[0].Detail != "raw-1" {
 		t.Fatalf("ToSnapshot() sources = %+v, want normalized source evidence", got.Sources)
 	}
-	if len(got.Images) != 0 {
-		t.Fatalf("ToSnapshot() images = %+v, want asset candidates to remain in the envelope", got.Images)
+	if len(got.Images) != 1 || got.Images[0].URL != "https://img.example/1.jpg" || got.Images[0].Role != "primary" {
+		t.Fatalf("ToSnapshot() images = %+v, want persisted image candidate", got.Images)
 	}
 	if len(got.Attributes) != 3 || got.Attributes[0].Name != "alpha" || got.Attributes[1].Name != "category" || got.Attributes[2].Name != "zeta" {
 		t.Fatalf("ToSnapshot() attributes = %+v, want deterministic candidate attributes", got.Attributes)

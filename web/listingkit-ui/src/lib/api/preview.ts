@@ -1,10 +1,17 @@
 import { apiRequest } from "@/lib/api/client";
-import type { ListingKitPreview as GeneratedListingKitPreview } from "@/lib/api/generated";
+import type {
+  ListingKitPreview as GeneratedListingKitPreview,
+  TargetPlatform,
+} from "@/lib/api/generated";
 import { parsePreviewResponse } from "@/lib/api/listingkit-response-schema";
-import type { ListingKitPreview } from "@/lib/types/listingkit";
 
-export async function getListingKitPreview(taskId: string) {
+export async function getListingKitPreview(
+  taskId: string,
+  platform?: TargetPlatform,
+) {
   return parsePreviewResponse(
-    await apiRequest<GeneratedListingKitPreview>(`/tasks/${taskId}/preview`),
+    await apiRequest<GeneratedListingKitPreview>(`/tasks/${taskId}/preview`, {
+      query: platform ? { platform } : undefined,
+    }),
   );
 }

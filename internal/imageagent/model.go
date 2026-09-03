@@ -202,6 +202,9 @@ type AssetCandidate struct {
 	URL           string
 	SourceAssetID string
 	Metadata      map[string]string
+	Width         int                  `json:"-"`
+	Height        int                  `json:"-"`
+	Operations    []string             `json:"-"`
 	DurableAsset  DurableAssetIdentity `json:"-"`
 }
 

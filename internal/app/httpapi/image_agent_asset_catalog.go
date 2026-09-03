@@ -3,24 +3,39 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
+	"task-processor/internal/integration/httpimage"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/product/catalog"
+	productimage "task-processor/internal/product/image"
 )
 
 type imageAgentTaskSource interface {
 	GetTask(context.Context, string) (*listingkit.Task, error)
 }
 
-type listingKitAuthorizedAssetCatalog struct{ tasks imageAgentTaskSource }
+type imageDimensionResolver interface {
+	Resolve(context.Context, string) (int, int, error)
+}
 
-func newImageAgentAuthorizedAssetCatalog(tasks imageAgentTaskSource) imageagent.AuthorizedAssetCatalog {
-	return &listingKitAuthorizedAssetCatalog{tasks: tasks}
+type listingKitAuthorizedAssetCatalog struct {
+	tasks      imageAgentTaskSource
+	dimensions imageDimensionResolver
+}
+
+func newImageAgentAuthorizedAssetCatalog(tasks imageAgentTaskSource, resolvers ...imageDimensionResolver) imageagent.AuthorizedAssetCatalog {
+	var dimensions imageDimensionResolver
+	if len(resolvers) > 0 {
+		dimensions = resolvers[0]
+	}
+	return &listingKitAuthorizedAssetCatalog{tasks: tasks, dimensions: dimensions}
 }
 
 func (c *listingKitAuthorizedAssetCatalog) Resolve(ctx context.Context, scope imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
@@ -38,7 +53,7 @@ func (c *listingKitAuthorizedAssetCatalog) Resolve(ctx context.Context, scope im
 	if task == nil || strings.TrimSpace(task.ID) != strings.TrimSpace(scope.BusinessTaskID) || strings.TrimSpace(task.TenantID) != identity.TenantID || listingkit.ResolveTaskUserID(task) != identity.UserID {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task is not owned by verified tenant")
 	}
-	return imageAgentCatalogFromTaskTargetSelection(task, scope.TargetPlatform, scope.PrimarySourceAssetID, scope.StyleReferenceIDs)
+	return imageAgentCatalogFromTaskTargetSelectionWithResolver(ctx, task, scope.TargetPlatform, scope.PrimarySourceAssetID, [][]string{scope.StyleReferenceIDs}, c.dimensions)
 }
 
 func imageAgentCatalogFromTask(task *listingkit.Task, selectedStyleIDs ...[]string) (imageagent.AssetCatalog, error) {
@@ -50,11 +65,15 @@ func imageAgentCatalogFromTaskTarget(task *listingkit.Task, targetPlatform strin
 }
 
 func imageAgentCatalogFromTaskTargetSelection(task *listingkit.Task, targetPlatform, selectedSourceID string, selectedStyleIDs ...[]string) (imageagent.AssetCatalog, error) {
+	return imageAgentCatalogFromTaskTargetSelectionWithResolver(context.Background(), task, targetPlatform, selectedSourceID, selectedStyleIDs, nil)
+}
+
+func imageAgentCatalogFromTaskTargetSelectionWithResolver(ctx context.Context, task *listingkit.Task, targetPlatform, selectedSourceID string, selectedStyleIDs [][]string, resolver imageDimensionResolver) (imageagent.AssetCatalog, error) {
 	snapshot, err := taskCatalogSnapshot(task)
 	if err != nil {
 		return imageagent.AssetCatalog{}, err
 	}
-	assets := authorizedAssetsFromCatalogImages(snapshot.Images)
+	assets := authorizedAssetsFromCatalogImagesWithResolver(ctx, snapshot.Images, resolver)
 	assets, err = selectAuthorizedAssets(assets, selectedSourceID, firstStringSlice(selectedStyleIDs), len(selectedStyleIDs) > 0)
 	if err != nil {
 		return imageagent.AssetCatalog{}, err
@@ -88,11 +107,21 @@ func taskCatalogSnapshot(task *listingkit.Task) (*catalog.ProductSnapshot, error
 }
 
 func authorizedAssetsFromCatalogImages(images []catalog.Image) []imageagent.AuthorizedAsset {
+	return authorizedAssetsFromCatalogImagesWithResolver(context.Background(), images, nil)
+}
+
+func authorizedAssetsFromCatalogImagesWithResolver(ctx context.Context, images []catalog.Image, resolver imageDimensionResolver) []imageagent.AuthorizedAsset {
 	assets := make([]imageagent.AuthorizedAsset, 0, len(images))
 	for index, item := range images {
 		url, err := imageagent.ValidateSafeImageURL(item.URL)
 		if err != nil {
 			continue
+		}
+		width, height := item.Width, item.Height
+		if (width <= 0 || height <= 0) && resolver != nil {
+			if resolvedWidth, resolvedHeight, resolveErr := resolver.Resolve(ctx, url); resolveErr == nil {
+				width, height = resolvedWidth, resolvedHeight
+			}
 		}
 		assetType := imageagent.AuthorizedAssetSource
 		if strings.EqualFold(strings.TrimSpace(item.Role), "style") {
@@ -101,9 +130,38 @@ func authorizedAssetsFromCatalogImages(images []catalog.Image) []imageagent.Auth
 		assets = append(assets, imageagent.AuthorizedAsset{
 			ID: "catalog-image-" + strconv.Itoa(index+1), Type: assetType,
 			URL: url, SourceURL: url, DisplayURL: url, Label: "Product image",
+			Width: width, Height: height,
 		})
 	}
 	return assets
+}
+
+const catalogImageDimensionProbeTimeout = 10 * time.Second
+
+type publicImageDimensionResolver struct {
+	client  *http.Client
+	maxSize int64
+}
+
+func newPublicImageDimensionResolver() imageDimensionResolver {
+	return publicImageDimensionResolver{client: httpimage.NewPublicImageHTTPClient(), maxSize: productimage.MaxInlineArtifactBytes}
+}
+
+func (r publicImageDimensionResolver) Resolve(ctx context.Context, rawURL string) (int, int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, catalogImageDimensionProbeTimeout)
+	defer cancel()
+	content, err := httpimage.Download(probeCtx, r.client, rawURL, r.maxSize)
+	if err != nil {
+		return 0, 0, err
+	}
+	_, width, height, err := httpimage.InspectGeneratedArtifact(content)
+	if err != nil {
+		return 0, 0, err
+	}
+	return width, height, nil
 }
 
 func selectAuthorizedAssets(assets []imageagent.AuthorizedAsset, selectedSourceID string, selectedStyleIDs []string, styleSelectionProvided bool) ([]imageagent.AuthorizedAsset, error) {

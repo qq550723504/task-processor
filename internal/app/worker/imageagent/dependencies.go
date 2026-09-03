@@ -159,12 +159,14 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent v2 asset publisher: %w", err)
 	}
-	executor := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
+	executorDependencies := imageagenttools.Dependencies{
 		SubjectExtractor: capabilities.SubjectExtractor, WhiteBackgroundRenderer: capabilities.WhiteBackgroundRenderer,
-		SceneRenderer: capabilities.SceneRenderer, UsageQuoter: capabilities.UsageQuoter,
+		SceneRenderer: capabilities.SceneRenderer, Reviewer: capabilities.Reviewer, UsageQuoter: capabilities.UsageQuoter,
 		ProfileResolver: capabilities.ProfileResolver,
-	})
-	dependencies := appruntime.ImageAgentTemporalDependencies{Repository: repository, SlotExecutor: executor, Publisher: publisher}
+	}
+	v2Executor := imageagenttools.NewFrozenV2ProductImageSlotExecutor(executorDependencies)
+	v3Executor := imageagenttools.NewProductImageSlotExecutor(executorDependencies)
+	dependencies := appruntime.ImageAgentTemporalDependencies{Repository: repository, SlotExecutor: v2Executor, Publisher: publisher}
 	if mode == imageagenttemporal.WorkerWireModeV2 {
 		return dependencies, closeDB, nil
 	}
@@ -173,7 +175,7 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent v3 asset publisher: %w", err)
 	}
-	dependencies.StagedSlotExecutor = executor
+	dependencies.StagedSlotExecutor = v3Executor
 	dependencies.ArtifactStore = artifactStore
 	dependencies.PublisherV3 = publisherV3
 	dependencies.PublicationLeaseDuration = timing.PublicationLeaseDuration

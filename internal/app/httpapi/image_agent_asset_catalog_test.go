@@ -25,6 +25,24 @@ func TestAppImageAgentCatalogReadsOnlyProductSnapshotCatalogImages(t *testing.T)
 	require.Equal(t, imageagent.AuthorizedAssetStyle, got.Assets[2].Type)
 }
 
+func TestAuthorizedAssetsFromCatalogImagesPreservesDimensions(t *testing.T) {
+	assets := authorizedAssetsFromCatalogImages([]catalog.Image{{
+		URL: "https://cdn.example.test/source.png", Role: "primary", Width: 1200, Height: 900,
+	}})
+	require.Len(t, assets, 1)
+	require.Equal(t, 1200, assets[0].Width)
+	require.Equal(t, 900, assets[0].Height)
+}
+
+func TestAuthorizedAssetsFromCatalogImagesResolvesMissingDimensions(t *testing.T) {
+	assets := authorizedAssetsFromCatalogImagesWithResolver(context.Background(), []catalog.Image{{
+		URL: "https://cdn.example.test/source.png", Role: "primary",
+	}}, imageDimensionResolverStub{width: 1600, height: 900})
+	require.Len(t, assets, 1)
+	require.Equal(t, 1600, assets[0].Width)
+	require.Equal(t, 900, assets[0].Height)
+}
+
 func TestAppImageAgentCatalogUsesExplicitSourceSelection(t *testing.T) {
 	task := catalogTaskFixture()
 	got, err := imageAgentCatalogFromTaskTargetSelection(task, "", "catalog-image-3", []string{"catalog-image-2"})
@@ -73,4 +91,13 @@ type listingTaskSourceStub struct{ task *listingkit.Task }
 
 func (s listingTaskSourceStub) GetTask(context.Context, string) (*listingkit.Task, error) {
 	return s.task, nil
+}
+
+type imageDimensionResolverStub struct {
+	width  int
+	height int
+}
+
+func (s imageDimensionResolverStub) Resolve(context.Context, string) (int, int, error) {
+	return s.width, s.height, nil
 }
