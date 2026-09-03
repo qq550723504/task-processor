@@ -48,11 +48,58 @@ Tenant human不能 AdjustCredit/Grant/MigrationCredit/Generic Compensation，也
 
 Positive mint 只允许 trusted Billing/Platform-Finance/Provisioning principal + immutable approved source + source-level claim + audit。
 
+### 7.1 Phase1 Welcome Store Renewal Grant
+
+PR #281 的 Product Decision 已锁定：新**直接注册**并完成首次业务开通的 Organization，一次性获得：
+
+```text
+resource_type = store_renewal_period
+quantity = 1
+```
+
+该能力使用现有 Positive Mint 边界的一个**窄、命名、内部 Provisioning 用例**，不开放通用 tenant `Grant`。
+
+推荐内部语义：
+
+```text
+GrantWelcomeStoreRenewalPeriod(
+  organization_id,
+  source_type = onboarding_welcome_store_period,
+  source_identity = organization_id,
+  quantity = 1
+)
+```
+
+硬规则：
+
+- caller 必须是 trusted Provisioning principal；
+- `resource_type` 固定 `store_renewal_period`；
+- `quantity` 固定 `1`，调用者不能传任意正数；
+- immutable approved source 必须证明该 Organization 属于 PR #283 的 new-direct-registration first-business-opening；
+- source identity 以 **Organization** 为稳定身份，不以 registration/reclaim attempt 为身份；
+- source-level successful claim 至少唯一约束 `(source_type, source_identity, resource_type)`，保证同 Organization 该 welcome Grant 最多成功一次；
+- same source + same immutable payload retry/read-back -> replay 原成功结果；
+- same source changed org/resource/quantity -> conflict/fail closed；
+- Operation + source claim + Bucket + Event + Audit 必须在同一 PostgreSQL transaction；
+- lost COMMIT 按 Operation/source claim read-back，不重复 mint；
+- 不注册 Workbench/BFF/tenant HTTP route；
+- 历史 Organization 不由该命令自动补发，除非未来另有 migration source/product decision。
+
+Event/Audit 必须能区分：
+
+```text
+reason/source = onboarding_welcome_store_period
+quantity = +1
+resource_type = store_renewal_period
+```
+
+这样 Phase1 首次闭环是：欢迎 Grant 先形成企业余额；用户后续显式 Activate 才真正消费该 1 期，绑定 Store 本身仍不扣资源。
+
 ### Generic Compensation Phase1 明确 Deferred
 
 Phase1 **不实现、不注册 Generic Compensation command/API/worker**。旧 amendments 中关于 Generic `CompensateConsume` proof、revocation、approval lifecycle 的设计全部视为历史/Backlog，不属于当前 Must。
 
-原因：当前 Phase1 需要交付 Resource Ledger、Reservation/Settlement、Store Activate/Renew/Reactivate、MigrationCredit 与受控 Store Service Correction；不存在已批准的通用消费补偿业务入口或权威 proof producer。为了一个未上线能力继续扩展 approval/revocation framework 不符合当前范围。
+原因：当前 Phase1 需要交付 Resource Ledger、Reservation/Settlement、Store Activate/Renew/Reactivate、MigrationCredit、欢迎资源 Grant 与受控 Store Service Correction；不存在已批准的通用消费补偿业务入口或权威 proof producer。为了一个未上线能力继续扩展 approval/revocation framework 不符合当前范围。
 
 未来若重新启用 Generic Compensation，必须单独确认 Product Decision 与 proof authority，并至少定义 source consume Event exact binding、proof current/revoked/expired semantics、proof/source one-time claim、trusted principal 与审计；在那之前任何 HTTP/BFF route 都不得注册。
 
@@ -140,11 +187,15 @@ Effective expiry read-time 计算；materializer 仅优化并使用 aggregate ve
 
 Activate：pending_activation + fresh connected，消费1 renewal period，启动30 days。Renew：effective active，从 current expiry 延长。Reactivate：effective expired，从 now 启动。Resource/Store/Operation snapshot/Audit 同 PostgreSQL transaction。
 
+Welcome Grant 不改变这个规则：**Grant 是资源入账，Activate 是资源消费，两者绝不合并成“绑定即自动激活”。**
+
 ## 12. Exact Error + BFF
 
 固定 Store lifecycle code/status contract。BFF allowlist activate/renew/reactivate，strict body/header forwarding，更新 Zod/client/UI/contract tests。
 
 MigrationCredit 仍仅 trusted migration runner internal path，不注册 Workbench/BFF；`MIGRATION_SOURCE_CHANGED` / `MIGRATION_OWNERSHIP_CHANGED` 是 internal typed outcome + metrics/reconciliation queue。未来若公开 admin HTTP route，注册前必须补固定 status 与 contract test。
+
+Welcome Store Renewal Grant 同样仅 trusted Provisioning internal path，不注册 Workbench/BFF/tenant route；浏览器不能通过伪造 source 自助 mint。
 
 Generic Compensation Phase1 同样没有 HTTP/BFF route。
 
@@ -278,6 +329,11 @@ Hard cut 后仅 feature rollback，不回 pre-dual-write binary。继续运行 R
 ```text
 owner binding tenant scope
 Owner Start-vs-Recovery
+welcome grant new direct org -> available store_renewal_period +1
+welcome grant same org/source concurrent/retry/lost-COMMIT -> exactly one credit event / +1 only
+welcome grant changed quantity/resource/source payload -> conflict
+welcome grant tenant/browser route absent; untrusted principal denied
+welcome grant -> bind store no consume -> Activate consumes exactly 1 and starts 30d
 history FOUND / CONFIRMED_ABSENT / UNAVAILABLE
 history source version changes after Resolve -> local CAS rejected/re-resolve
 history source changes before Phase F -> hard cut blocked
@@ -299,10 +355,10 @@ lost COMMIT/deadlock/timeout/stale If-Match
 
 ## 17. Review Stop Rule For This Plan
 
-本 V7 已达到 `IMPLEMENTATION_READY`。以后只有会造成跨租户/越权、资源或计费错误、数据损坏/权益丢失、重复价值返还、不可恢复事务副作用、hard-cut migration 不安全、或核心 lifecycle 无法完成的 finding 才重新打开架构。
+本 V7 已达到 `IMPLEMENTATION_READY`。以后只有会造成跨租户/越权、资源或计费错误、welcome Grant 重复 mint/错误 mint、数据损坏/权益丢失、重复价值返还、不可恢复事务副作用、hard-cut migration 不安全、或核心 lifecycle 无法完成的 finding 才重新打开架构。
 
 Generic Compensation 的更多 proof/revocation 设计属于 Backlog，因为 Phase1 不实现该能力；不得以此为理由创建 V8 或阻止当前开发。
 
 ## 完成定义
 
-Reservation 与 tenant-scoped exact Owner Attempt 原子绑定；Phase1 不提供 Generic Compensation；价值返还只由受控 Store Correction trusted proof 驱动且 proof identity/revocation/idempotency 明确；Legacy history 查询失败或 source snapshot 漂移绝不被误判为“无历史”；disabled Store 的 authoritative paid-service history 不丢失；Store provisioning 是正式 RecordStatus；Resource/Store mutation 保持 PostgreSQL 原子一致性。
+Reservation 与 tenant-scoped exact Owner Attempt 原子绑定；Phase1 不提供 Generic Compensation；新直接注册 Organization 的欢迎 `store_renewal_period=1` 只能由 trusted Provisioning + immutable onboarding source 按 Organization exactly-once 入账；价值返还只由受控 Store Correction trusted proof 驱动且 proof identity/revocation/idempotency 明确；Legacy history 查询失败或 source snapshot 漂移绝不被误判为“无历史”；disabled Store 的 authoritative paid-service history 不丢失；Store provisioning 是正式 RecordStatus；Resource/Store mutation 保持 PostgreSQL 原子一致性。
