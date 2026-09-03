@@ -1185,6 +1185,7 @@ func TestListingKitRootSheinHelpersStayAllowlisted(t *testing.T) {
 		"shein_submit_sku_variant_support.go":                 {},
 		"shein_submit_state.go":                               {},
 		"shein_template_matcher.go":                           {},
+		"shein_variant_image_coverage.go":                     {},
 		"shein_workspace_editor_bridge.go":                    {},
 		"shein_workspace_inspection_bridge.go":                {},
 		"shein_workspace_readiness_support.go":                {},
@@ -3650,7 +3651,7 @@ func TestBusinessDomainsDoNotImportAppHTTPAPI(t *testing.T) {
 	for _, domainRoot := range []string{
 		filepath.Join("..", "internal", "amazon"),
 		filepath.Join("..", "internal", "amazonlisting"),
-		filepath.Join("..", "internal", "asset"),
+		filepath.Join("..", "internal", "product", "asset"),
 		filepath.Join("..", "internal", "product", "catalog"),
 		filepath.Join("..", "internal", "listing"),
 		filepath.Join("..", "internal", "listingkit"),
@@ -3672,7 +3673,7 @@ func TestBusinessDomainsDoNotImportAppHTTPAPI(t *testing.T) {
 func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
 	for _, domainRoot := range []string{
 		filepath.Join("..", "internal", "amazon"),
-		filepath.Join("..", "internal", "asset"),
+		filepath.Join("..", "internal", "product", "asset"),
 		filepath.Join("..", "internal", "product", "catalog"),
 		filepath.Join("..", "internal", "infra"),
 		filepath.Join("..", "internal", "integration"),
@@ -3845,7 +3846,7 @@ func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
 	for _, domainRoot := range []string{
 		filepath.Join("..", "internal", "amazon"),
 		filepath.Join("..", "internal", "amazonlisting"),
-		filepath.Join("..", "internal", "asset"),
+		filepath.Join("..", "internal", "product", "asset"),
 		filepath.Join("..", "internal", "product", "catalog"),
 		filepath.Join("..", "internal", "listing"),
 		filepath.Join("..", "internal", "listingkit"),
@@ -4908,7 +4909,8 @@ func TestTemporalRuntimePackagesDoNotImportHTTPAPI(t *testing.T) {
 func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{
-		"listingkit_shein_support.go": {},
+		"listingkit_openai_runtime.go": {},
+		"listingkit_shein_support.go":  {},
 	}
 
 	entries, err := os.ReadDir(root)
@@ -5297,6 +5299,8 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 func TestAppHTTPAPIListingKitRootImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "image_agent_asset_catalog.go")):  {},
+		filepath.Clean(filepath.Join(root, "listingkit_openai_runtime.go")):  {},
 		filepath.Clean(filepath.Join(root, "runtime_support_listingkit.go")): {},
 		filepath.Clean(filepath.Join(root, "types.go")):                      {},
 	}

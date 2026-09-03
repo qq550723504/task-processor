@@ -1,7 +1,9 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"reflect"
 	"sort"
 	"sync"
@@ -605,16 +607,37 @@ func (r *MemTaskRepository) MutateTaskResult(ctx context.Context, taskID string,
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
 		return nil, core.ErrTaskNotFound
 	}
-	copied := *task
-	out := &copied
+	candidate, err := cloneMemTask(task)
+	if err != nil {
+		return nil, err
+	}
 	if mutate != nil {
-		if err := mutate(task); err != nil {
+		if err := mutate(candidate); err != nil {
+			out, cloneErr := cloneMemTask(task)
+			if cloneErr != nil {
+				return nil, cloneErr
+			}
 			return out, err
 		}
 	}
-	task.UpdatedAt = time.Now()
-	copied = *task
-	return &copied, nil
+	candidate.UpdatedAt = time.Now()
+	r.tasks[taskID] = candidate
+	return cloneMemTask(candidate)
+}
+
+func cloneMemTask(task *listingkit.Task) (*listingkit.Task, error) {
+	if task == nil {
+		return nil, nil
+	}
+	var encoded bytes.Buffer
+	if err := gob.NewEncoder(&encoded).Encode(task); err != nil {
+		return nil, err
+	}
+	var cloned listingkit.Task
+	if err := gob.NewDecoder(&encoded).Decode(&cloned); err != nil {
+		return nil, err
+	}
+	return &cloned, nil
 }
 
 func (r *MemTaskRepository) ReplaceTaskSDSOptionsForRetry(ctx context.Context, taskID string, options *listingkit.SDSSyncOptions, audit listingkit.PodExecutionAuditEvent) (*listingkit.Task, error) {

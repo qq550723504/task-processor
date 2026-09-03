@@ -20,43 +20,79 @@ func TestPhase3ProductRootContainsNoGoPackage(t *testing.T) {
 }
 
 func TestPhase3LegacyProductRootsAreAbsent(t *testing.T) {
-	for _, path := range []string{
-		filepath.Join("..", "internal", "productenrich"),
-		filepath.Join("..", "internal", "productimage"),
-		filepath.Join("..", "hack", "debug", "test-analyzeimage"),
-		filepath.Join("..", "hack", "debug", "test-productenrich"),
-	} {
+	legacyRoots := []string{"catalog", "asset", "imageasset", "productenrich", "productimage"}
+	require.Empty(t, phase3LegacyProductRootViolations(trackedFiles(t, "internal"), legacyRoots), "retired roots must stay absent from Git's tracked production set")
+	for _, name := range legacyRoots {
+		path := filepath.Join("..", "internal", name)
 		if _, err := os.Stat(path); err == nil {
 			t.Errorf("%s still exists; keep the retired product task root deleted", path)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("stat %s: %v", path, err)
 		}
 	}
+	for _, path := range []string{
+		filepath.Join("..", "hack", "debug", "test-analyzeimage"),
+		filepath.Join("..", "hack", "debug", "test-productenrich"),
+	} {
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("%s still exists; keep the retired product debug root deleted", path)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("stat %s: %v", path, err)
+		}
+	}
+}
+
+func TestPhase3LegacyProductTrackedRootGuardRejectsEveryRetiredRoot(t *testing.T) {
+	legacyRoots := []string{"catalog", "asset", "imageasset", "productenrich", "productimage"}
+	for _, name := range legacyRoots {
+		violations := phase3LegacyProductRootViolations([]string{"internal/" + name + "/reintroduced.go"}, legacyRoots)
+		require.Equal(t, []string{"internal/" + name + "/reintroduced.go"}, violations)
+	}
+}
+
+func phase3LegacyProductRootViolations(files, legacyRoots []string) []string {
+	rootSet := make(map[string]struct{}, len(legacyRoots))
+	for _, root := range legacyRoots {
+		rootSet[root] = struct{}{}
+	}
+	var violations []string
+	for _, path := range files {
+		parts := strings.Split(filepath.ToSlash(path), "/")
+		if len(parts) < 3 || parts[0] != "internal" {
+			continue
+		}
+		if _, retired := rootSet[parts[1]]; retired {
+			violations = append(violations, filepath.ToSlash(path))
+		}
+	}
+	return violations
 }
 
 func TestPhase3LegacyProductImportDeclarationsAreAbsent(t *testing.T) {
+	banned := []string{
+		"task-processor/internal/catalog",
+		"task-processor/internal/asset",
+		"task-processor/internal/imageasset",
+		"task-processor/internal/productenrich",
+		"task-processor/internal/productimage",
+		"task-processor/internal/product/asset/assettest",
+	}
 	for _, root := range []string{
 		filepath.Join("..", "internal"),
 		filepath.Join("..", "cmd"),
-		".",
 		filepath.Join("..", "hack"),
 	} {
-		index, err := loadGoFileIndex(root, "")
-		require.NoError(t, err)
-		for path, facts := range index.files {
-			for literal := range facts.imports {
-				importPath, err := decodeGoImportPath(literal)
-				require.NoError(t, err)
-				for _, prefix := range []string{
-					"task-processor/internal/productenrich",
-					"task-processor/internal/productimage",
-				} {
-					if importMatchesPrefix(importPath, prefix) {
-						t.Errorf("%s imports retired product task package %s", path, importPath)
-					}
-				}
-			}
-		}
+		assertNoBannedImportPrefixes(t, root, banned, nil)
+	}
+}
+
+func TestPhase3ConsumersCannotOrchestrateProductImage(t *testing.T) {
+	for _, root := range []string{"listingkit", "sds", "amazonlisting"} {
+		assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", root), []string{
+			"task-processor/internal/product/image",
+			"task-processor/internal/imageagent/store",
+			"task-processor/internal/imageagent/temporal",
+		}, nil)
 	}
 }
 
@@ -212,18 +248,6 @@ func phase3ProductProductionFiles(root string) ([]string, error) {
 		return nil, err
 	}
 	return production, nil
-}
-
-func TestPhase3RemainingLegacyProductRootsDoNotGrow(t *testing.T) {
-	for root, max := range map[string]int{
-		"catalog":    5,
-		"asset":      26,
-		"imageasset": 1,
-	} {
-		if got := productionGoFileCount(t, filepath.Join("..", "internal", root)); got > max {
-			t.Errorf("internal/%s production files = %d, baseline max = %d", root, got, max)
-		}
-	}
 }
 
 func TestPhase3PipelineDoesNotGrow(t *testing.T) {

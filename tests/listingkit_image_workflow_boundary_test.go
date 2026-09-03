@@ -166,6 +166,26 @@ func TestPhase3ListingKitImageWorkflowBoundaryRejectsRetiredMutations(t *testing
 			},
 			wantRule: "ListingKit provider implementation ownership",
 		},
+		{
+			name:     "retired product generate endpoint",
+			source:   listingKitImageBoundarySource{path: "docs/api/listingkit-asset.openapi.yaml", text: `/api/v1/products/generate:`},
+			wantRule: "retired product task API",
+		},
+		{
+			name:     "retired image review endpoint",
+			source:   listingKitImageBoundarySource{path: "internal/app/httpapi/routes.go", text: `router.POST("/api/v1/images/tasks/:id/review", handler)`},
+			wantRule: "retired product task API",
+		},
+		{
+			name:     "retired product task table",
+			source:   listingKitImageBoundarySource{path: "internal/app/schema/runtime.go", text: `db.Table("product_enrich_tasks")`},
+			wantRule: "retired product task table",
+		},
+		{
+			name:     "retired product worker pool",
+			source:   listingKitImageBoundarySource{path: "config/config.yaml", text: `worker_pool: "product_image"`},
+			wantRule: "retired product worker or queue",
+		},
 	}
 
 	for _, test := range tests {
@@ -178,6 +198,51 @@ func TestPhase3ListingKitImageWorkflowBoundaryRejectsRetiredMutations(t *testing
 			}
 			t.Fatalf("violations = %+v, want rule %q", violations, test.wantRule)
 		})
+	}
+}
+
+func TestPhase3ProductHardCutRuntimeBoundary(t *testing.T) {
+	violations := findListingKitImageBoundaryViolations(trackedPhase3ProductHardCutSources(t))
+	for _, violation := range violations {
+		t.Errorf("%s violates %s", violation.path, violation.rule)
+	}
+}
+
+func TestPhase3ProductHardCutProductionSelectionCoversRuntimeContractsOnly(t *testing.T) {
+	for _, path := range []string{
+		"internal/app/httpapi/routes.go",
+		"cmd/product-listing-api/main.go",
+		"config/config.yaml",
+		"docs/api/listingkit-asset.openapi.yaml",
+		"web/listingkit-ui/src/lib/api/generated/types.gen.ts",
+	} {
+		if !isPhase3ProductHardCutProductionFile(path) {
+			t.Errorf("isPhase3ProductHardCutProductionFile(%q) = false, want true", path)
+		}
+	}
+	for _, path := range []string{
+		"internal/app/httpapi/routes_test.go",
+		"internal/app/httpapi/testdata/routes.go",
+		"tests/target_architecture_phase3_product_test.go",
+		"docs/superpowers/plans/historical.md",
+		"web/listingkit-ui/src/lib/api/client.type-test.ts",
+	} {
+		if isPhase3ProductHardCutProductionFile(path) {
+			t.Errorf("isPhase3ProductHardCutProductionFile(%q) = true, want false", path)
+		}
+	}
+
+	scanned := make(map[string]struct{})
+	for _, source := range trackedPhase3ProductHardCutSources(t) {
+		scanned[source.path] = struct{}{}
+	}
+	for _, path := range []string{
+		"docs/api/listingkit-asset.openapi.yaml",
+		"web/listingkit-ui/src/lib/api/generated/types.gen.ts",
+	} {
+		if _, ok := scanned[path]; !ok {
+			t.Errorf("production scan set does not contain tracked contract %s", path)
+		}
 	}
 }
 
@@ -229,15 +294,25 @@ func TestListingKitImageDependencyOwnershipAllowsNeutralPortsAndApprovedAdapters
 
 func trackedListingKitImageBoundarySources(t *testing.T) []listingKitImageBoundarySource {
 	t.Helper()
+	return trackedProductionTextSources(t, []string{"internal", "cmd", "config", "deployments", "scripts", "tools", "web/listingkit-ui/src"}, isListingKitImageBoundaryProductionFile)
+}
+
+func trackedPhase3ProductHardCutSources(t *testing.T) []listingKitImageBoundarySource {
+	t.Helper()
+	return trackedProductionTextSources(t, []string{"internal", "cmd", "config", "docs/api", "web/listingkit-ui/src/lib/api/generated"}, isPhase3ProductHardCutProductionFile)
+}
+
+func trackedProductionTextSources(t *testing.T, scopes []string, include func(string) bool) []listingKitImageBoundarySource {
+	t.Helper()
 	root, err := filepath.Abs("..")
 	if err != nil {
 		t.Fatalf("resolve repository root: %v", err)
 	}
 	var sources []listingKitImageBoundarySource
-	for _, scope := range []string{"internal", "cmd", "config", "deployments", "scripts", "tools", "web/listingkit-ui/src"} {
+	for _, scope := range scopes {
 		for _, relative := range trackedFiles(t, scope) {
 			relative = filepath.ToSlash(relative)
-			if !isListingKitImageBoundaryProductionFile(relative) {
+			if !include(relative) {
 				continue
 			}
 			content, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
@@ -254,6 +329,20 @@ func trackedListingKitImageBoundarySources(t *testing.T) []listingKitImageBounda
 		}
 	}
 	return sources
+}
+
+func isPhase3ProductHardCutProductionFile(path string) bool {
+	path = filepath.ToSlash(path)
+	base := filepath.Base(path)
+	if strings.HasSuffix(base, "_test.go") || strings.Contains(base, ".test.") || strings.Contains(base, ".type-test.") || strings.Contains(path, "/testdata/") {
+		return false
+	}
+	if strings.HasPrefix(path, "internal/") || strings.HasPrefix(path, "cmd/") {
+		return strings.HasSuffix(base, ".go")
+	}
+	return strings.HasPrefix(path, "config/") ||
+		strings.HasPrefix(path, "docs/api/") ||
+		strings.HasPrefix(path, "web/listingkit-ui/src/lib/api/generated/")
 }
 
 func isListingKitImageBoundaryProductionFile(path string) bool {
@@ -361,6 +450,7 @@ func listingKitImageBoundaryRules() []listingKitImageBoundaryRule {
 			path == "web/listingkit-ui/src/lib/api/subscription.ts"
 	}
 	frontend := func(path string) bool { return strings.HasPrefix(path, "web/listingkit-ui/src/") }
+	phase3ProductRuntime := func(path string) bool { return isPhase3ProductHardCutProductionFile(path) }
 	notRetiredConfigRegistry := func(path string) bool {
 		return listingKitOrConfig(path) && path != "internal/core/config/retired_product_runtime.go"
 	}
@@ -373,5 +463,8 @@ func listingKitImageBoundaryRules() []listingKitImageBoundaryRule {
 		{name: "ListingKit to ImageAgent bridge", paths: listingKit, match: regexp.MustCompile(`["']task-processor/internal/imageagent(?:/[^"']*)?["']|\b(?:ImageAgentWorkspace|NewImageAgentAuthorizedAssetCatalog|imageAgentCatalogFromTask)[A-Za-z0-9_]*\b|/(?:api/v1/)?image-agent/runs\b|/image-agent-runs\b`)},
 		{name: "ListingKit to ImageAgent bridge", paths: frontend, match: regexp.MustCompile(`\b(?:ImageAgentLaunchPanel|createImageAgentWorkspaceRun|getImageAgentWorkspaceAssets)\b|/image-agent-(?:runs|assets)\b`)},
 		{name: "retired frontend image owner", paths: frontend, match: regexp.MustCompile(`(?i)(?:shein-studio|style-gallery|sds-workbench|image_nanobanana|image_background_removal)`)},
+		{name: "retired product task API", paths: phase3ProductRuntime, match: regexp.MustCompile(`(?i)/api/v1/(?:products/(?:generate|tasks)|images/(?:process|tasks))(?:[/\s?:"']|$)`)},
+		{name: "retired product task table", paths: phase3ProductRuntime, match: regexp.MustCompile(`\bproduct_(?:enrich|image)_tasks\b`)},
+		{name: "retired product worker or queue", paths: phase3ProductRuntime, match: regexp.MustCompile(`["']product_(?:enrich|image)["']`)},
 	}
 }

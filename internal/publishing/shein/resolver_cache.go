@@ -38,6 +38,10 @@ type AttributeResolutionCache interface {
 	ClearAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error
 }
 
+type FreshAttributeResolver interface {
+	ResolveFreshAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution
+}
+
 type SaleAttributeResolutionCache interface {
 	RememberSaleAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *SaleAttributeResolution)
 	ClearSaleAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error
@@ -46,6 +50,8 @@ type SaleAttributeResolutionCache interface {
 type attributeResolutionCacheValidator interface {
 	CachedAttributeResolutionIsFresh(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *AttributeResolution) (bool, string)
 }
+
+var _ FreshAttributeResolver = (*cachedAttributeResolver)(nil)
 
 func NewCachedCategoryResolver(inner CategoryResolver, stores ...ResolutionCacheStore) CategoryResolver {
 	if inner == nil {
@@ -188,6 +194,13 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonica
 	}
 	resolution := r.inner.Resolve(req, canonical, pkg)
 	return resolution
+}
+
+func (r *cachedAttributeResolver) ResolveFreshAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution {
+	if r == nil || r.inner == nil {
+		return nil
+	}
+	return r.inner.Resolve(req, canonical, pkg)
 }
 
 func (r *cachedAttributeResolver) cachedAttributeResolutionIsFresh(req *BuildRequest, canonical *canonical.Product, pkg *Package, key string, resolution *AttributeResolution) bool {

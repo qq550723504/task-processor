@@ -483,6 +483,43 @@ func TestCachedAttributeResolverCanRememberManualResolution(t *testing.T) {
 	}
 }
 
+func TestCachedAttributeResolverFreshResolutionBypassesRememberedValue(t *testing.T) {
+	valueID := 2001
+	inner := &countingAttributeResolver{
+		out: &AttributeResolution{
+			Status: "resolved", Source: "fresh", CategoryID: 8218, TemplateCount: 1, ResolvedCount: 1,
+			ResolvedAttributes: []ResolvedAttribute{{Name: "Material", Value: "Cotton", AttributeID: 160, AttributeValueID: &valueID}},
+		},
+	}
+	resolver := NewCachedAttributeResolver(inner)
+	cache := resolver.(AttributeResolutionCache)
+	req := &BuildRequest{SheinStoreID: 42}
+	pkg := &Package{
+		CategoryID:     8218,
+		CategoryIDList: []int{2030, 6012, 8218},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "MG8014192"},
+		},
+	}
+	cache.RememberAttributeResolution(req, nil, pkg, &AttributeResolution{
+		Status: "resolved", Source: "remembered", CategoryID: 8218, TemplateCount: 1, ResolvedCount: 1,
+		ResolvedAttributes: []ResolvedAttribute{{Name: "Material", Value: "Polyester", AttributeID: 160, AttributeValueID: &valueID}},
+	})
+
+	cached := resolver.Resolve(req, nil, pkg)
+	if cached == nil || cached.Source != "remembered" || inner.calls != 0 {
+		t.Fatalf("ordinary resolution = %#v, inner calls = %d; want remembered cache hit", cached, inner.calls)
+	}
+	freshResolver, ok := resolver.(FreshAttributeResolver)
+	if !ok {
+		t.Fatal("cached attribute resolver must expose fresh resolution for atomic regeneration")
+	}
+	fresh := freshResolver.ResolveFreshAttributeResolution(req, nil, pkg)
+	if fresh == nil || fresh.Source != "fresh" || inner.calls != 1 {
+		t.Fatalf("fresh resolution = %#v, inner calls = %d; want one direct inner resolution", fresh, inner.calls)
+	}
+}
+
 func TestCachedAttributeResolverRejectsManualResolutionWithStaleTemplateAttributes(t *testing.T) {
 	valueID := 526
 	resolver := NewCachedAttributeResolver(NewAttributeResolver(stubAttributeAPI{

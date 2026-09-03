@@ -3,9 +3,12 @@ package listingkit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/product/catalog/canonical"
@@ -26,6 +29,37 @@ type revisionResolutionAttributeResolver struct {
 
 func (r revisionResolutionAttributeResolver) Resolve(*sheinpub.BuildRequest, *canonical.Product, *sheinpub.Package) *sheinpub.AttributeResolution {
 	return r.resolution
+}
+
+type revisionRegenerationAttributeResolver struct {
+	resolved     *sheinpub.AttributeResolution
+	fresh        *sheinpub.AttributeResolution
+	clearErr     error
+	resolveCalls int
+	freshCalls   int
+	clearCalls   int
+	events       []string
+}
+
+func (r *revisionRegenerationAttributeResolver) Resolve(*sheinpub.BuildRequest, *canonical.Product, *sheinpub.Package) *sheinpub.AttributeResolution {
+	r.resolveCalls++
+	r.events = append(r.events, "resolve")
+	return r.resolved
+}
+
+func (r *revisionRegenerationAttributeResolver) ResolveFreshAttributeResolution(*sheinpub.BuildRequest, *canonical.Product, *sheinpub.Package) *sheinpub.AttributeResolution {
+	r.freshCalls++
+	r.events = append(r.events, "resolve_fresh")
+	return r.fresh
+}
+
+func (r *revisionRegenerationAttributeResolver) RememberAttributeResolution(*sheinpub.BuildRequest, *canonical.Product, *sheinpub.Package, *sheinpub.AttributeResolution) {
+}
+
+func (r *revisionRegenerationAttributeResolver) ClearAttributeResolution(*sheinpub.BuildRequest, *canonical.Product, *sheinpub.Package) error {
+	r.clearCalls++
+	r.events = append(r.events, "clear")
+	return r.clearErr
 }
 
 type revisionResolutionSaleAttributeResolver struct {
@@ -143,6 +177,97 @@ func TestApplyTaskRevisionFailsClosedWithoutCommittingNilResolution(t *testing.T
 				t.Fatalf("mutation attempts/commits = %d/%d, want 1/0", repo.mutationAttempts, repo.mutationCommits)
 			}
 			assertRevisionTaskJSONEqual(t, repo.task, original)
+		})
+	}
+}
+
+func TestRegenerateAttributesResolvesFreshStateBeforeClearingCacheAndCommitsOnlyAfterClear(t *testing.T) {
+	t.Parallel()
+
+	clearErr := errors.New("attribute cache clear failed")
+	tests := []struct {
+		name             string
+		resolver         *revisionRegenerationAttributeResolver
+		wantErr          string
+		wantEvents       []string
+		wantCommit       bool
+		wantAttributeVal string
+	}{
+		{
+			name:       "missing resolver",
+			wantErr:    "attribute resolver is required",
+			wantEvents: nil,
+		},
+		{
+			name: "fresh resolution fails",
+			resolver: &revisionRegenerationAttributeResolver{
+				resolved: &sheinpub.AttributeResolution{Status: "resolved", Source: "stale-cache", CategoryID: 42},
+			},
+			wantErr:    "attribute resolution is unavailable",
+			wantEvents: []string{"resolve_fresh"},
+		},
+		{
+			name: "cache clear fails",
+			resolver: &revisionRegenerationAttributeResolver{
+				resolved: &sheinpub.AttributeResolution{Status: "resolved", Source: "stale-cache", CategoryID: 42},
+				fresh:    &sheinpub.AttributeResolution{Status: "resolved", Source: "fresh", CategoryID: 42},
+				clearErr: clearErr,
+			},
+			wantErr:    clearErr.Error(),
+			wantEvents: []string{"resolve_fresh", "clear"},
+		},
+		{
+			name: "successful regeneration",
+			resolver: &revisionRegenerationAttributeResolver{
+				resolved: &sheinpub.AttributeResolution{Status: "resolved", Source: "stale-cache", CategoryID: 42},
+				fresh: &sheinpub.AttributeResolution{
+					Status: "resolved", Source: "fresh", CategoryID: 42,
+					ResolvedAttributes: []sheinpub.ResolvedAttribute{{Name: "Color", Value: "Blue"}},
+				},
+			},
+			wantEvents:       []string{"resolve_fresh", "clear"},
+			wantCommit:       true,
+			wantAttributeVal: "Blue",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := revisionFailClosedTaskFixture()
+			repoTask, err := cloneRevisionAtomicTask(original)
+			require.NoError(t, err)
+			repo := &revisionAtomicRepository{task: repoTask}
+			deps := completeRevisionResolutionDependencies()
+			if tt.resolver == nil {
+				deps.attributeResolver = nil
+			} else {
+				deps.attributeResolver = tt.resolver
+			}
+			svc := &service{repo: repo, sheinRuntimeDeps: deps}
+
+			preview, err := svc.ApplyTaskRevision(context.Background(), original.ID, &ApplyRevisionRequest{
+				Platform: "shein", Actor: "reviewer", Reason: "regenerate attributes",
+				Shein: &SheinRevisionInput{RegenerateAttributes: true},
+			})
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				require.Nil(t, preview)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, preview)
+			}
+			if tt.resolver != nil {
+				require.Equal(t, tt.wantEvents, tt.resolver.events)
+				require.Zero(t, tt.resolver.resolveCalls, "regeneration must bypass the cached Resolve path")
+			}
+			if tt.wantCommit {
+				require.Equal(t, 1, repo.mutationCommits)
+				require.Equal(t, "fresh", repo.task.Result.Shein.AttributeResolution.Source)
+				require.Equal(t, tt.wantAttributeVal, repo.task.Result.Shein.AttributeResolution.ResolvedAttributes[0].Value)
+			} else {
+				require.Zero(t, repo.mutationCommits)
+				assertRevisionTaskJSONEqual(t, repo.task, original)
+			}
 		})
 	}
 }

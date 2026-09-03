@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	"task-processor/internal/product/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdspod "task-processor/internal/sds/adapter/product_source"
@@ -70,10 +71,20 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 		buildReq.TargetCategoryHint = strconv.Itoa(task.Result.Shein.CategoryID)
 	}
 	if req.Shein.RegenerateAttributes {
-		if cache, ok := attributeResolver.(sheinpub.AttributeResolutionCache); ok {
-			_ = cache.ClearAttributeResolution(buildReq, task.Result.CanonicalProduct, task.Result.Shein)
+		if err := validateSheinResolver("attribute", attributeResolver != nil); err != nil {
+			return err
 		}
-		return s.refreshSheinAttributeDerivedState(task, buildReq)
+		pkg := prepareSheinAttributeDerivedState(task)
+		resolution := resolveFreshSheinAttributeResolution(attributeResolver, buildReq, task.Result.CanonicalProduct, pkg)
+		if err := validateSheinResolution("attribute", resolution != nil); err != nil {
+			return err
+		}
+		if cache, ok := attributeResolver.(sheinpub.AttributeResolutionCache); ok {
+			if err := cache.ClearAttributeResolution(buildReq, task.Result.CanonicalProduct, pkg); err != nil {
+				return err
+			}
+		}
+		return s.applySheinAttributeDerivedState(task, buildReq, pkg, resolution)
 	}
 	if err := validateSheinResolver("attribute", attributeResolver != nil); err != nil {
 		return err
@@ -120,17 +131,33 @@ func (s *service) refreshSheinAttributeDerivedState(task *Task, buildReq *sheinp
 		return nil
 	}
 	attributeResolver := resolveSheinAttributeResolver(s)
-	pkg := task.Result.Shein
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	pkg.ProductAttributes = common.BuildAttributes(task.Result.CanonicalProduct.Attributes)
-	sheinpub.EnsureDraftPayload(pkg)
 	if err := validateSheinResolver("attribute", attributeResolver != nil); err != nil {
 		return err
 	}
-	pkg.AttributeResolution = attributeResolver.Resolve(buildReq, task.Result.CanonicalProduct, pkg)
-	if err := validateSheinResolution("attribute", pkg.AttributeResolution != nil); err != nil {
+	pkg := prepareSheinAttributeDerivedState(task)
+	resolution := attributeResolver.Resolve(buildReq, task.Result.CanonicalProduct, pkg)
+	if err := validateSheinResolution("attribute", resolution != nil); err != nil {
 		return err
 	}
+	return s.applySheinAttributeDerivedState(task, buildReq, pkg, resolution)
+}
+
+func prepareSheinAttributeDerivedState(task *Task) *sheinpub.Package {
+	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+	pkg.ProductAttributes = common.BuildAttributes(task.Result.CanonicalProduct.Attributes)
+	sheinpub.EnsureDraftPayload(pkg)
+	return pkg
+}
+
+func resolveFreshSheinAttributeResolution(resolver sheinpub.AttributeResolver, buildReq *sheinpub.BuildRequest, product *canonical.Product, pkg *sheinpub.Package) *sheinpub.AttributeResolution {
+	if freshResolver, ok := resolver.(sheinpub.FreshAttributeResolver); ok {
+		return freshResolver.ResolveFreshAttributeResolution(buildReq, product, pkg)
+	}
+	return resolver.Resolve(buildReq, product, pkg)
+}
+
+func (s *service) applySheinAttributeDerivedState(task *Task, buildReq *sheinpub.BuildRequest, pkg *sheinpub.Package, resolution *sheinpub.AttributeResolution) error {
+	pkg.AttributeResolution = resolution
 	sheinpub.ApplyAttributeResolution(pkg, pkg.AttributeResolution)
 	cookieNote := strings.TrimSpace(s.resolveSheinCookieAvailabilityNote(buildReq.Context, task))
 	if cookieNote == "" {

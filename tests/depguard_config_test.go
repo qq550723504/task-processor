@@ -109,6 +109,61 @@ func TestPhase3ProductDomainBoundaryDepguardRuleCoversOnlyTargetSubpackages(t *t
 	}
 }
 
+func TestPhase3FinalProductHardCutDepguardRules(t *testing.T) {
+	rules := loadDepguardRules(t, filepath.Join("..", ".golangci.yml"))
+
+	retired := requireDepguardRule(t, rules, "phase3_retired_product_imports")
+	retiredFiles := stringSet(retired.Files)
+	for _, glob := range []string{
+		"**/internal/*.go", "**/internal/**/*.go",
+		"**/cmd/*.go", "**/cmd/**/*.go",
+	} {
+		if _, ok := retiredFiles[glob]; !ok {
+			t.Errorf("phase3_retired_product_imports must cover %s", glob)
+		}
+	}
+	retiredDenied := depguardDenyPackageSet(retired)
+	for _, packagePath := range []string{
+		"task-processor/internal/catalog",
+		"task-processor/internal/asset",
+		"task-processor/internal/imageasset",
+		"task-processor/internal/productenrich",
+		"task-processor/internal/productimage",
+		"task-processor/internal/product/asset/assettest",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			if _, ok := retiredDenied[packagePath+suffix]; !ok {
+				t.Errorf("phase3_retired_product_imports must deny %s%s", packagePath, suffix)
+			}
+		}
+	}
+
+	consumers := requireDepguardRule(t, rules, "phase3_product_consumers_read_only")
+	consumerFiles := stringSet(consumers.Files)
+	for _, root := range []string{"listingkit", "sds", "amazonlisting"} {
+		for _, glob := range []string{
+			"**/internal/" + root + "/*.go",
+			"**/internal/" + root + "/**/*.go",
+		} {
+			if _, ok := consumerFiles[glob]; !ok {
+				t.Errorf("phase3_product_consumers_read_only must cover %s", glob)
+			}
+		}
+	}
+	consumerDenied := depguardDenyPackageSet(consumers)
+	for _, packagePath := range []string{
+		"task-processor/internal/product/image",
+		"task-processor/internal/imageagent/store",
+		"task-processor/internal/imageagent/temporal",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			if _, ok := consumerDenied[packagePath+suffix]; !ok {
+				t.Errorf("phase3_product_consumers_read_only must deny %s%s", packagePath, suffix)
+			}
+		}
+	}
+}
+
 func TestDepguardRuleParsingUsesYAMLSemantics(t *testing.T) {
 	rules := parseDepguardRules(t, []byte(`
 linters-settings:
@@ -489,14 +544,15 @@ func TestDomainAppHTTPAPIDepguardPatternCoversBusinessTrees(t *testing.T) {
 	for _, packagePath := range []string{
 		"amazon",
 		"amazonlisting",
-		"asset",
+		"product/asset",
 		"product/catalog",
+		"product/enrichment",
+		"product/image",
+		"product/sourcing",
 		"listing",
 		"listingkit",
 		"marketplace",
 		"pricing",
-		"productenrich",
-		"productimage",
 		"publishing",
 		"sds",
 		"shein",
@@ -653,14 +709,15 @@ func TestProjectBoundaryListingKitDepguardPatternCoversDomainTrees(t *testing.T)
 
 	for _, packagePath := range []string{
 		"amazon",
-		"asset",
+		"product/asset",
 		"product/catalog",
+		"product/enrichment",
+		"product/image",
 		"infra",
 		"integration",
 		"marketplace",
 		"platform",
 		"product/sourcing",
-		"productimage",
 		"publishing",
 		"shein",
 		"temu",

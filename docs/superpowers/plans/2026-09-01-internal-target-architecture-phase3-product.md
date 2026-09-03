@@ -1649,17 +1649,17 @@ git commit -m "refactor(listingkit): fail closed without resolution capabilities
 - Delete `aiCapability.studioImageRoutingMode` YAML/env/config and legacy/shadow/active compatibility branches atomically with their consumers. Do not replace them with an always-active adapter or proxy facade.
 - If a caller needs generated assets, it starts an ImageAgent Run through the ImageAgent-owned API and later consumes approved assets; Task 16E does not add a hidden ListingKit-to-ImageAgent orchestration bridge.
 
-- [ ] **Step 1: 写唯一图片工作流与路由退役测试**
+- [x] **Step 1: 写唯一图片工作流与路由退役测试**
 
 覆盖 ListingKit production types/routes/imports 中不存在 image generator/edit/async contracts；旧 Studio AI image routes 固定 404；manual upload 和 ApprovedAsset read paths 保持可用；配置 loader 明确拒绝 `studioImageRoutingMode` 旧键/env。
 
-- [ ] **Step 2: 运行测试确认 ListingKit 仍直接生成图片**
+- [x] **Step 2: 运行测试确认 ListingKit 仍直接生成图片**
 
 Run: `go test ./internal/listingkit/... ./internal/app/httpapi ./internal/core/config -run 'Test.*(Studio.*Image|Image.*Workflow|Legacy.*Route|RoutingMode)' -count=1 -v`
 
 Expected: FAIL，并精确指出当前 generator/contracts/routes/config 分支。
 
-- [ ] **Step 3: 原子删除直接 AI 图片工作流**
+- [x] **Step 3: 原子删除直接 AI 图片工作流**
 
 删除 contracts、adapters、handlers/routes、async binding 与配置开关；不保留 Deprecated API、proxy、alias、双写或 always-active 包装器。只保留手工上传和 ApprovedAsset 读取。
 
@@ -1671,13 +1671,13 @@ Expected: FAIL，并精确指出当前 generator/contracts/routes/config 分支�
 
 > **16E3 封口补充（2026-09-03）：** 16E2 复审后预检发现，订阅权威模块仍以 `ModuleStudio = "studio"` 承载 ListingKit generation、ImageAgent 与 SHEIN 发布额度，前端通用代理仍为已退役 `/studio/*` 保留超时分支，运维脚本仍示例查询旧 Studio 表。这些是同一兼容命名和死路由残留，不能被负向测试永久豁免。16E3 先将订阅模块原子硬切为 `ModuleListingKit = "listingkit"`（后端、默认 plan、usage settlement、管理端 UI/测试同步，不保留旧 module alias/双读），删除 proxy/script 残留，再建立精确架构守卫。`scene_style = "studio"` 等 ImageAgent 摄影场景值不是 ListingKit Studio 聚合，不在禁用范围。
 
-- [ ] **Step 4: 运行 ListingKit、ImageAgent、App、配置和架构验证**
+- [x] **Step 4: 运行 ListingKit、ImageAgent、App、配置和架构验证**
 
 Run: `go test ./internal/listingkit/... ./internal/imageagent/... ./internal/app/httpapi ./internal/core/config ./tests -run 'Test(ListingKit|ImageAgent|Phase3|.*Boundary|.*Route)' -count=1`
 
 Run: `go test ./... -run '^$' -count=1`
 
-- [ ] **Step 5: 提交唯一图片工作流硬切**
+- [x] **Step 5: 提交唯一图片工作流硬切**
 
 ```powershell
 git add -A internal/listingkit internal/imageagent internal/app/httpapi internal/core/config internal/aicapability config tests docs/superpowers/plans/2026-09-01-internal-target-architecture-phase3-product.md
@@ -1701,12 +1701,15 @@ git commit -m "refactor(listingkit): retire direct ai image workflow"
 - Modify: `tests/{depguard_config_test.go,import_boundaries_test.go,import_scan_test.go}`
 - Modify: `.golangci.yml`
 - Modify: `docs/refactoring/phase2-runtime-inventory.md`
+- Modify: `internal/listingkit/store/mem_store.go`
+- Modify: `internal/listingkit/service_revision_recompute.go`
+- Modify: `internal/publishing/shein/resolver_cache.go`
 
 **Interfaces:**
 - Consumes: Tasks 2–16 的全部目标包和只读 Port。
 - Produces: 最终不可回退护栏；旧目录、旧 import、旧路由、旧 queue/table runtime 引用全部为零。
 
-- [ ] **Step 1: 把增长测试收紧为旧目录不存在**
+- [x] **Step 1: 把增长测试收紧为旧目录不存在**
 
 ```go
 func TestPhase3LegacyProductRootsAreAbsent(t *testing.T) {
@@ -1729,13 +1732,13 @@ func TestPhase3ConsumersCannotOrchestrateProductImage(t *testing.T) {
 
 增加扫描断言：生产文件不得 import `internal/product/asset/assettest`；旧 import 前缀、五条旧 API、`product_enrich_tasks`、`product_image_tasks`、两个 worker pool/queue 名称在生产 Go/config/OpenAPI 中为零；历史设计文档不参与运行时扫描。
 
-- [ ] **Step 2: 运行最终护栏确认剩余引用**
+- [x] **Step 2: 运行最终护栏确认剩余引用**
 
 Run: `go test ./tests -run 'TestPhase3|TestDepguard|Test.*Import' -count=1 -v`
 
 Expected: FAIL，并精确列出剩余旧文件或引用。
 
-- [ ] **Step 3: 清理剩余目录、文档和生成客户端**
+- [x] **Step 3: 清理剩余目录、文档和生成客户端**
 
 删除空目录和旧测试。更新 OpenAPI 后使用仓库已固定的生成器版本：
 
@@ -1754,7 +1757,7 @@ Pop-Location
 
 `@hey-api/typescript` 是仓库锁定版本提供的 type-only 插件；输出不是精确两个文件时立即失败，不得手写保留旧 endpoint 类型。
 
-- [ ] **Step 4: 运行聚焦验证**
+- [x] **Step 4: 运行聚焦验证**
 
 Run: `go test ./internal/product/... ./internal/imageagent/... ./internal/listingkit/... ./internal/sds/... ./internal/amazonlisting/... ./internal/integration/persistence/product/asset -count=1`
 
@@ -1764,7 +1767,13 @@ Run: `golangci-lint run ./internal/product/... ./internal/imageagent/... ./inter
 
 Expected: 全部 PASS。
 
-- [ ] **Step 5: 运行 UI 契约验证**
+> **Task 17 验证记录（2026-09-03）：** 产品域聚焦测试、架构聚合、全仓编译和本次变更新增 lint 均通过。完整 lint 命令仍被非 Task 17 基线阻断：基准 `0904073f` 已有 273 个 `gofmt` 报告和 `internal/product/enrichment/proposer.go:57` 的 `S1016`；当前仍有 173 个未改文件的 `gofmt` 报告和同一个 `S1016`。本任务没有批量改写无关 CRLF 文件，也没有把该基线债务伪报为通过；`golangci-lint --new-from-rev=0904073f` 覆盖本次涉及包通过。
+
+> OpenAPI 源契约没有变化。仓库锁定的 `@hey-api/openapi-ts v0.99.0` 重新生成后只产生 `index.ts` 与 `types.gen.ts`，两者 SHA-256 均与当前生成客户端完全一致，因此不制造无意义的生成文件改动。
+
+> Task 17 同时修复两个提交原子性根因：内存 Repository 在独立深拷贝上执行 mutation，只在成功后替换存储并返回独立 snapshot；SHEIN 属性再生成先旁路缓存解析并验证，随后清 cache，clear 失败不提交任何任务状态。两组测试均通过 `-count=20 -shuffle=on` 与 `-race`。
+
+- [x] **Step 5: 运行 UI 契约验证**
 
 ```powershell
 Push-Location web/listingkit-ui
@@ -1775,19 +1784,19 @@ Pop-Location
 
 Expected: PASS；生成客户端不再包含旧 ProductEnrich/ProductImage 和 ListingKit Studio product-images endpoint。
 
-- [ ] **Step 6: 运行全仓最终验证**
+- [x] **Step 6: 运行全仓最终验证**
 
 ```powershell
 go test ./tests -count=1
 go test ./... -count=1 -timeout 20m
 git diff --check
-rg -n 'task-processor/internal/(catalog|asset|imageasset|productenrich|productimage)' internal tests --glob '*.go'
-rg -n '/api/v1/(products/generate|products/tasks|images/process|images/tasks)|product_enrich_tasks|product_image_tasks' internal cmd config docs/api web/listingkit-ui/src/lib/api/generated
+rg -n 'task-processor/internal/(catalog|asset|imageasset|productenrich|productimage)' internal cmd hack --glob '*.go' --glob '!*_test.go'
+rg -n '/api/v1/(products/generate|products/tasks|images/process|images/tasks)|product_enrich_tasks|product_image_tasks' internal cmd config docs/api web/listingkit-ui/src/lib/api/generated --glob '!**/*_test.go' --glob '!**/testdata/**' --glob '!**/*.md'
 ```
 
-Expected: 两组 `go test` 和 `git diff --check` PASS；两个 `rg` 命令返回退出码 1（零匹配）。
+Expected: 两组 `go test` 和 `git diff --check` PASS；两个生产扫描 `rg` 命令返回退出码 1（零匹配）。测试 mutation fixture、历史设计文档与说明退役边界的 Markdown 不属于生产扫描集。
 
-- [ ] **Step 7: 提交最终硬切**
+- [x] **Step 7: 提交最终硬切**
 
 ```powershell
 git add .golangci.yml internal tests docs config cmd web/listingkit-ui
@@ -1799,12 +1808,13 @@ git commit -m "refactor(architecture): complete phase 3 product hard cut"
 
 ## 最终验收清单
 
-- [ ] `internal/product` 根目录没有生产 `.go` 文件，只有 `catalog`、`sourcing`、`enrichment`、`asset`、`image` 子包和说明文档。
-- [ ] 五个旧产品根目录不存在，全仓旧 import 为零。
-- [ ] ProductEnrich/ProductImage Task、Queue、Worker、HTTP API 和 GORM task repository 不存在。
-- [ ] ImageAgent 是唯一图片工作流，并把人工批准结果幂等提交到产品资产 Repository。
-- [ ] ListingKit、SDS、AmazonListing 只读 Snapshot/Approved Inventory，未就绪时不回退来源图。
-- [ ] 产品目标包没有具体运行时、持久化或 Provider 依赖。
-- [ ] `product_enrich_tasks`、`product_image_tasks` 未被物理删除，但应用不再创建、查询或写入它们。
-- [ ] `internal/pipeline` 未迁入产品域且生产文件数没有增长。
-- [ ] Go 聚焦测试、架构护栏、lint、全仓测试以及 UI typecheck/test 全部通过。
+- [x] `internal/product` 根目录没有生产 `.go` 文件，只有 `catalog`、`sourcing`、`enrichment`、`asset`、`image` 子包和说明文档。
+- [x] 五个旧产品根目录不存在，生产 Go 旧 import 声明为零。
+- [x] ProductEnrich/ProductImage Task、Queue、Worker、HTTP API 和 GORM task repository 不存在。
+- [x] ImageAgent 是唯一图片工作流，并把人工批准结果幂等提交到产品资产 Repository。
+- [x] ListingKit、SDS、AmazonListing 只读 Snapshot/Approved Inventory，未就绪时不回退来源图。
+- [x] 产品目标包没有具体运行时、持久化或 Provider 依赖。
+- [x] `product_enrich_tasks`、`product_image_tasks` 未被物理删除，但应用不再创建、查询或写入它们。
+- [x] `internal/pipeline` 未迁入产品域且生产文件数没有增长。
+- [x] Go 聚焦测试、架构护栏、全仓测试、UI typecheck/test 与本次新增 lint 全部通过。
+- [ ] 完整 lint 命令通过；当前仍被上述基准提交已有的 173 个未改文件 `gofmt` 报告和一个 `S1016` 阻断。

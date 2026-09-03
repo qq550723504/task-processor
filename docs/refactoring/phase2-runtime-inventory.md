@@ -46,6 +46,28 @@ guard. The plan's prose called this set “20”, but its path list contains 19;
 not banned as a whole. No package was invented or retired to satisfy that
 counting error.
 
+## Phase 3 product closure
+
+Phase 3 completed the product hard cut without raising any Phase 2 ceiling.
+`internal/product` has no root Go package; its maintained contract packages are
+`catalog`, `sourcing`, `enrichment`, `asset`, and `image`. The former
+`internal/catalog`, `internal/asset`, `internal/imageasset`,
+`internal/productenrich`, and `internal/productimage` roots have no tracked
+production files and are absent from the working tree.
+
+ProductEnrich/ProductImage HTTP tasks, queues, worker pools, and GORM task
+repositories are no longer assembled. Runtime schema code does not create,
+query, or write `product_enrich_tasks` or `product_image_tasks`. Those names may
+still exist as physical tables in an already-deployed database; Phase 3 does
+not issue a destructive drop migration.
+
+ImageAgent is the sole image workflow owner and publishes approved output
+idempotently through the Product Asset repository. ListingKit, SDS, and
+AmazonListing consume Product Snapshot and Approved Asset contracts only;
+they do not orchestrate Product Image or ImageAgent runtime. `internal/pipeline`
+was not moved into the product domain and remains under its existing growth
+ceiling for a later owning-phase decision.
+
 ## Initial baseline
 
 | Root | Production Go files | Test files | Go packages | Internal importers |
@@ -94,11 +116,11 @@ counts and the direct internal importer counts for `core`, `infra`, and
 
 ### `internal/product`
 
-The root `internal/product` package is not the new Catalog. Its fetching and
-caching responsibilities move to `internal/marketplace/sourceproduct`; its
-cross-platform filtering and pricing-policy responsibilities move to
-`internal/marketplace/productpolicy`. It must not be migrated wholesale or
-relabeled as `internal/product/catalog`.
+The retired root package was not relabeled wholesale as Catalog. The directory
+now contains documentation plus the five explicit contract subpackages
+`catalog`, `sourcing`, `enrichment`, `asset`, and `image`; there are no root
+production `.go` files. Marketplace fetching/caching and cross-platform policy
+remain outside these product contracts under their owning marketplace slices.
 
 ### Technical `internal/pkg`
 
@@ -153,7 +175,7 @@ startup. These are recorded and frozen rather than renamed into `integration`:
 | Owning phase | Current adapter-bearing packages |
 | --- | --- |
 | Phase 4 — marketplace | `internal/amazonlisting/store`, `internal/publishing/shein`, `internal/shein/aicache`, `internal/shein/productsync`, `internal/temu/sync` |
-| Phase 5 — listing | `internal/listingadmin`, `internal/listingkit`, `internal/listingkit/api`, `internal/listingkit/httpapi`, `internal/listingkit/imageagentacceptance`, `internal/listingkit/memberinvite`, `internal/listingkit/reviewstore`, `internal/listingkit/schema`, `internal/listingkit/sheinsync`, `internal/listingkit/store`, `internal/listingkit/studiostore`, `internal/listingruntime/local` |
+| Phase 5 — listing | `internal/listingadmin`, `internal/listingkit`, `internal/listingkit/api`, `internal/listingkit/httpapi`, `internal/listingkit/imageagentacceptance`, `internal/listingkit/memberinvite`, `internal/listingkit/reviewstore`, `internal/listingkit/schema`, `internal/listingkit/sheinsync`, `internal/listingkit/store`, `internal/listingruntime/local` |
 | Phase 6 — agent/knowledge/resource catalog | `internal/aicapability/store`, `internal/imageagent/store`, `internal/imageagent/temporal`, `internal/prompt`, `internal/promptmgmt/api` |
 | Phase 7 — commercial/organization | `internal/listingsubscription`, `internal/sourceaccount`, `internal/sourceaccount/bootstrap`, `internal/tenantbridge`, `internal/tenantbridge/bootstrap` |
 
@@ -193,7 +215,6 @@ internal wiring is intentionally excluded; no other package class is excluded.
 | `task-processor/internal/core/logger` | `task-processor/internal/crawler/shared/browser` | crawler business consumer | product + marketplace / Phases 3-4 |
 | `task-processor/internal/core/logger` | `task-processor/internal/listingkit` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/core/logger` | `task-processor/internal/listingkit/api` | listing business consumer | listing owner / Phase 5 |
-| `task-processor/internal/core/logger` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/core/logger` | `task-processor/internal/localagent` | agent business consumer | agent owner / Phase 6 |
 | `task-processor/internal/core/logger` | `task-processor/internal/pipeline` | mixed product pipeline | product owner / Phase 3 |
 | `task-processor/internal/core/logger` | `task-processor/internal/pkg/appenv` | runtime-support debt | app retirement / Phase 8 |
@@ -288,7 +309,6 @@ internal wiring is intentionally excluded; no other package class is excluded.
 | `task-processor/internal/integration/openai` | `task-processor/internal/amazon/llm` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/core/config` | application schema | owning domains / Phases 3-7 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/listingadmin` | listing business consumer | listing owner / Phase 5 |
-| `task-processor/internal/integration/openai` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/publishing/sheinmanaged` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/shein/category` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/shein/content` | marketplace business consumer | marketplace owner / Phase 4 |
@@ -305,12 +325,10 @@ internal wiring is intentionally excluded; no other package class is excluded.
 | `task-processor/internal/integration/openai` | `task-processor/internal/temu/image` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/temu/product` | marketplace business consumer | marketplace owner / Phase 4 |
 | `task-processor/internal/integration/openai` | `task-processor/internal/temu/sku` | marketplace business consumer | marketplace owner / Phase 4 |
-| `task-processor/internal/integration/geminiimage` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
-| `task-processor/internal/integration/grsai` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/integration/s3` | `task-processor/internal/listingkit/httpapi` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/integration/httpimage` | `task-processor/internal/imageagent` | agent business consumer | agent owner / Phase 6 |
-| `task-processor/internal/integration/httpimage` | `task-processor/internal/listingkit` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/integration/httpimage` | `task-processor/internal/listingruntime/local` | listing business consumer | listing owner / Phase 5 |
+| `task-processor/internal/integration/httpimage` | `task-processor/internal/sds/design` | marketplace business consumer | marketplace owner / Phase 4 |
 
 ## Historical pre-migration snapshot
 

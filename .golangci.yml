@@ -125,6 +125,46 @@ linters-settings:
           - pkg: github.com/sashabaranov/go-openai
           - pkg: github.com/tencentcloud/tencentcloud-sdk-go
 
+      phase3_retired_product_imports:
+        # Final Phase 3 hard cut: retired roots and the test-only asset helper
+        # must never regain production consumers.
+        files:
+          - "**/internal/*.go"
+          - "**/internal/**/*.go"
+          - "**/cmd/*.go"
+          - "**/cmd/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/catalog$"
+          - pkg: "task-processor/internal/catalog/"
+          - pkg: "task-processor/internal/asset$"
+          - pkg: "task-processor/internal/asset/"
+          - pkg: "task-processor/internal/imageasset$"
+          - pkg: "task-processor/internal/imageasset/"
+          - pkg: "task-processor/internal/productenrich$"
+          - pkg: "task-processor/internal/productenrich/"
+          - pkg: "task-processor/internal/productimage$"
+          - pkg: "task-processor/internal/productimage/"
+          - pkg: "task-processor/internal/product/asset/assettest$"
+          - pkg: "task-processor/internal/product/asset/assettest/"
+
+      phase3_product_consumers_read_only:
+        # ListingKit, SDS and AmazonListing consume only product snapshots and
+        # approved assets; ImageAgent remains the sole image workflow owner.
+        files:
+          - "**/internal/listingkit/*.go"
+          - "**/internal/listingkit/**/*.go"
+          - "**/internal/sds/*.go"
+          - "**/internal/sds/**/*.go"
+          - "**/internal/amazonlisting/*.go"
+          - "**/internal/amazonlisting/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/product/image$"
+          - pkg: "task-processor/internal/product/image/"
+          - pkg: "task-processor/internal/imageagent/store$"
+          - pkg: "task-processor/internal/imageagent/store/"
+          - pkg: "task-processor/internal/imageagent/temporal$"
+          - pkg: "task-processor/internal/imageagent/temporal/"
+
       platform_domain_dependencies:
         files:
           - "**/internal/platform/*.go"
@@ -359,10 +399,14 @@ linters-settings:
         files:
           - "**/internal/amazon/*.go"
           - "**/internal/amazon/**/*.go"
-          - "**/internal/asset/*.go"
-          - "**/internal/asset/**/*.go"
+          - "**/internal/product/asset/*.go"
+          - "**/internal/product/asset/**/*.go"
           - "**/internal/product/catalog/*.go"
           - "**/internal/product/catalog/**/*.go"
+          - "**/internal/product/enrichment/*.go"
+          - "**/internal/product/enrichment/**/*.go"
+          - "**/internal/product/image/*.go"
+          - "**/internal/product/image/**/*.go"
           - "**/internal/infra/*.go"
           - "**/internal/infra/**/*.go"
           - "**/internal/integration/*.go"
@@ -373,8 +417,6 @@ linters-settings:
           - "**/internal/platform/**/*.go"
           - "**/internal/product/sourcing/*.go"
           - "**/internal/product/sourcing/**/*.go"
-          - "**/internal/productimage/*.go"
-          - "**/internal/productimage/**/*.go"
           - "**/internal/publishing/*.go"
           - "**/internal/publishing/**/*.go"
           - "**/internal/shein/*.go"
@@ -507,10 +549,16 @@ linters-settings:
           - "**/internal/amazon/**/*.go"
           - "**/internal/amazonlisting/*.go"
           - "**/internal/amazonlisting/**/*.go"
-          - "**/internal/asset/*.go"
-          - "**/internal/asset/**/*.go"
+          - "**/internal/product/asset/*.go"
+          - "**/internal/product/asset/**/*.go"
           - "**/internal/product/catalog/*.go"
           - "**/internal/product/catalog/**/*.go"
+          - "**/internal/product/enrichment/*.go"
+          - "**/internal/product/enrichment/**/*.go"
+          - "**/internal/product/image/*.go"
+          - "**/internal/product/image/**/*.go"
+          - "**/internal/product/sourcing/*.go"
+          - "**/internal/product/sourcing/**/*.go"
           - "**/internal/listing/*.go"
           - "**/internal/listing/**/*.go"
           - "**/internal/listingkit/*.go"
@@ -519,10 +567,6 @@ linters-settings:
           - "**/internal/marketplace/**/*.go"
           - "**/internal/pricing/*.go"
           - "**/internal/pricing/**/*.go"
-          - "**/internal/productenrich/*.go"
-          - "**/internal/productenrich/**/*.go"
-          - "**/internal/productimage/*.go"
-          - "**/internal/productimage/**/*.go"
           - "**/internal/publishing/*.go"
           - "**/internal/publishing/**/*.go"
           - "**/internal/sds/*.go"
