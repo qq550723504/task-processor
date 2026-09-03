@@ -63,7 +63,65 @@ INSERT ... ON CONFLICT DO NOTHING
 
 ---
 
-## 2. 店铺状态模型
+## 2. Reverse 必须有单一冲正不变量
+
+第一阶段采用“一条原始资源事件最多有一条完整冲正事件”的简单模型，不支持部分冲正拆分。
+
+资源事件：
+
+```text
+saas_organization_resource_events
+- event_id PRIMARY KEY
+- organization_id
+- resource_type
+- operation_type
+- quantity
+- balance_after
+- idempotency_key
+- request_fingerprint
+- business_type
+- business_id
+- reversal_of NULLABLE
+- actor_user_id
+- occurred_at
+```
+
+数据库必须对非空 `reversal_of` 建唯一约束：
+
+```text
+UNIQUE (reversal_of) WHERE reversal_of IS NOT NULL
+```
+
+如果数据库/ORM 不方便创建部分唯一索引，则使用等价的专门 Reversal 表或可表达“非空唯一”的约束；不能只依赖代码先查再写。
+
+Reverse 执行规则：
+
+```text
+锁定唯一 Bucket
+→ 锁定原始 Event
+→ 校验原始 Event 可被冲正
+→ 尝试写入唯一 reversal_of
+→ 更新 Bucket
+→ 同事务提交
+```
+
+两个不同 Idempotency-Key 并发冲正同一原始 Event 时，最多一个成功；另一个返回稳定的 `RESOURCE_EVENT_ALREADY_REVERSED`，不得再次改变余额。
+
+必须测试：
+
+```text
+相同 Operation ID 重放
+不同 Operation ID 并发冲正同一 Event
+数据库唯一约束竞争
+冲正后再次冲正
+余额与事件流水可重新核对
+```
+
+未来若需要“部分冲正”，必须单独设计累计冲正上限模型，不能直接放宽该唯一约束。
+
+---
+
+## 3. 店铺状态模型
 
 ```text
 ConnectionStatus
@@ -89,7 +147,7 @@ RecordStatus
 
 ---
 
-## 3. `activate` 只允许首次激活
+## 4. `activate` 只允许首次激活
 
 `ActivateStoreService` 的必要前置条件：
 
@@ -142,9 +200,9 @@ service_status: activating → active
 
 ---
 
-## 4. `renew` 与 `reactivate` 是独立命令
+## 5. `renew` 与 `reactivate` 是独立命令
 
-### 4.1 使用中续费
+### 5.1 使用中续费
 
 ```text
 command = renew
@@ -154,7 +212,7 @@ new_expiry = max(now, current_expiry) + N × 30 天
 
 `N` 为经过服务端上限校验的正整数；重复 Operation ID 不重复扣减。
 
-### 4.2 到期后重新激活
+### 5.2 到期后重新激活
 
 ```text
 command = reactivate
@@ -167,13 +225,13 @@ service_status: expired → activating → active
 
 到期状态不得调用首次 `activate`。这样审计、计费和 UI 文案能区分首次激活与恢复服务。
 
-### 4.3 Suspended
+### 5.3 Suspended
 
 `suspended` 不自动等同于到期。第一阶段 `activate`、`renew`、`reactivate` 均拒绝 suspended；恢复必须由单独 `resume` 策略根据停用原因决定是否消耗资源。
 
 ---
 
-## 5. API 边界
+## 6. API 边界
 
 ```http
 POST /api/v1/workbench/stores/{store_id}/activate
@@ -195,10 +253,11 @@ Request Fingerprint
 
 ---
 
-## 6. 验收不变量
+## 7. 验收不变量
 
 - 同一企业同一资源类型始终只有一个 Bucket。
 - 并发首次建账不会产生重复 Bucket。
+- 同一原始资源 Event 最多只能有一条完整 Reverse；并发不同幂等键也不能重复冲正。
 - 已 active 的店铺调用 `activate` 不扣减资源，也不修改到期时间。
 - `activating`、`suspended` 和 `expired` 不可走首次激活路径。
 - active 店铺只通过 `renew` 延长，并保留剩余有效期。
