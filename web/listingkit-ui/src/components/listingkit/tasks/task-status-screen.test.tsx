@@ -43,10 +43,6 @@ vi.mock("@/lib/query/use-task-recovery", () => ({
     mutate: recoverTaskNowMutate,
     isPending: false,
   }),
-  useBulkRecoverTasks: () => ({
-    mutate: vi.fn(),
-    isPending: false,
-  }),
 }));
 
 describe("TaskStatusScreen", () => {
