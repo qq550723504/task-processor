@@ -180,6 +180,22 @@ func AutoMigrateRepository(db *gorm.DB) error {
 		&usageBucketRow{},
 		&usageEventOutboxRow{},
 		&auditLogRow{},
+		&storeQuotaAllocationRow{},
+		&storeQuotaBucketRow{},
+	)
+}
+
+// AutoMigrateStoreQuotaPrerequisites creates only the subscription tables that
+// the Store quota ledger reads at runtime. It keeps the Workbench migration
+// independent from unrelated subscription usage and audit tables.
+func AutoMigrateStoreQuotaPrerequisites(db *gorm.DB) error {
+	if db == nil {
+		return errors.New("database is not configured")
+	}
+	return db.AutoMigrate(
+		&subscriptionPlanModuleRow{},
+		&tenantSubscriptionRow{},
+		&tenantEntitlementRow{},
 	)
 }
 

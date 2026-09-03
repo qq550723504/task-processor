@@ -43,6 +43,7 @@ type Config struct {
 	Debug               DebugConfig               `yaml:"debug"`
 	ListingKit          ListingKitConfig          `yaml:"listingkit"`
 	ListingControlPlane ListingControlPlaneConfig `yaml:"listingControlPlane"`
+	Workbench           WorkbenchConfig           `yaml:"workbench"`
 }
 
 type FeatureFlagsConfig struct {
@@ -734,6 +735,9 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.zitadel.issuerURL": {
 			Primary: "ZITADEL_ISSUER_URL",
 		},
+		"listingkit.zitadel.authorizationAPIURL": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHORIZATION_API_URL",
+		},
 		"listingkit.zitadel.clientID": {
 			Primary: "ZITADEL_CLIENT_ID",
 		},
@@ -785,6 +789,9 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.zitadel.allowedRoles": {
 			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES",
 			Deprecated: []string{"LISTINGKIT_ZITADEL_ALLOWED_ROLES"},
+		},
+		"workbench.enabled": {
+			Primary: "TASK_PROCESSOR_WORKBENCH_ENABLED",
 		},
 	}
 }

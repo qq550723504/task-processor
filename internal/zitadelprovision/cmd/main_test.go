@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"task-processor/internal/zitadelprovision"
 )
 
 func TestProvisionPhaseWritesRuntimeFileWithoutPrintingSecrets(t *testing.T) {
@@ -142,6 +144,35 @@ func TestProvisionPhaseWritesRuntimeFileWithoutPrintingSecrets(t *testing.T) {
 	}
 	if !strings.Contains(runtime, "ZITADEL_SCOPES=openid profile email ") {
 		t.Fatalf("runtime file missing ZITADEL scopes:\n%s", runtime)
+	}
+	if !strings.Contains(runtime, "urn:zitadel:iam:org:project:id:zitadel:aud") {
+		t.Fatalf("runtime file missing ZITADEL API audience scope:\n%s", runtime)
+	}
+}
+
+func TestRuntimeValuesPreservesMultiOrganizationAcceptanceIDs(t *testing.T) {
+	runtime, err := runtimeValues(map[string]string{
+		acceptanceOrgAIDKey:  "910000000000000001",
+		acceptanceOrgBIDKey:  "910000000000000002",
+		bootstrapTenantIDKey: "org-home",
+		bootstrapUserIDKey:   "user-1",
+	}, "http://localhost:19080", "management-token", "", zitadelprovision.LocalApplicationResult{
+		ProjectID:         "project-1",
+		APIAppID:          "api-app-1",
+		APIClientID:       "api-client-1",
+		APIClientSecret:   "api-secret-1",
+		OIDCAppID:         "oidc-app-1",
+		OIDCClientID:      "oidc-client-1",
+		OIDCClientSecret:  "oidc-secret-1",
+		BootstrapTenantID: "org-home",
+		BootstrapUserID:   "user-1",
+		RecommendedScopes: zitadelprovision.RecommendedScopes("project-1"),
+	})
+	if err != nil {
+		t.Fatalf("runtimeValues() error = %v", err)
+	}
+	if runtime[acceptanceOrgAIDKey] != "910000000000000001" || runtime[acceptanceOrgBIDKey] != "910000000000000002" {
+		t.Fatalf("runtime acceptance organization IDs = %q/%q", runtime[acceptanceOrgAIDKey], runtime[acceptanceOrgBIDKey])
 	}
 }
 
@@ -276,6 +307,140 @@ func TestAuthorizePhaseGrantsAdminOnlyWithFlag(t *testing.T) {
 		t.Fatalf("run authorize returned error: %v", err)
 	}
 	assertMainStringSlice(t, grantBody["roleKeys"], []string{"listingkit_operator", "listingkit_admin"})
+}
+
+func TestRunProvisionMultiOrgRequiresExplicitGuardFlags(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		wantError string
+	}{
+		{name: "issuer", args: []string{"provision-multi-org-acceptance"}, wantError: "-issuer-url is required"},
+		{name: "management token file", args: []string{"provision-multi-org-acceptance", "-issuer-url", "http://localhost:8080"}, wantError: "-management-token-file is required"},
+		{name: "runtime file", args: []string{"provision-multi-org-acceptance", "-issuer-url", "http://localhost:8080", "-management-token-file", "token.txt"}, wantError: "-runtime-file is required"},
+		{name: "confirmation", args: []string{"provision-multi-org-acceptance", "-issuer-url", "http://localhost:8080", "-management-token-file", "token.txt", "-runtime-file", "runtime.env"}, wantError: "-confirm-resettable-test-data is required"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := run(context.Background(), test.args, io.Discard, io.Discard)
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("run() error = %v, want %q", err, test.wantError)
+			}
+		})
+	}
+}
+
+func TestRunProvisionMultiOrgRejectsEveryIssuerExceptExplicitLoopbackHosts(t *testing.T) {
+	for _, issuerURL := range []string{
+		"https://identity.example.com",
+		"http://127.0.0.2:8080",
+		"http://[::2]:8080",
+	} {
+		t.Run(issuerURL, func(t *testing.T) {
+			err := run(context.Background(), []string{
+				"provision-multi-org-acceptance",
+				"-issuer-url", issuerURL,
+				"-management-token-file", "does-not-exist",
+				"-runtime-file", "does-not-exist",
+				"-confirm-resettable-test-data",
+			}, io.Discard, io.Discard)
+			if err == nil || !strings.Contains(err.Error(), "localhost, 127.0.0.1, or ::1") {
+				t.Fatalf("run() error = %v, want exact loopback host rejection", err)
+			}
+		})
+	}
+}
+
+func TestRunProvisionMultiOrgReusesPresetStateAndWritesOnlyOpaqueOrganizationIDs(t *testing.T) {
+	tempDir := t.TempDir()
+	managementTokenFile := filepath.Join(tempDir, "management-token.txt")
+	runtimeFile := acceptanceRuntimeFile(tempDir)
+	if err := os.WriteFile(managementTokenFile, []byte("management-token-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	const userID = "bootstrap-user-opaque-123456"
+	const organizationAID = "organization-a-opaque-123456"
+	const organizationBID = "organization-b-opaque-654321"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireManagementAuth(t, r)
+		switch r.URL.Path {
+		case "/v2/organizations/_search":
+			writeMainJSON(t, w, map[string]any{"result": []map[string]any{
+				{"id": organizationAID, "name": "ListingKit Acceptance Organization A", "state": "ORGANIZATION_STATE_ACTIVE"},
+				{"id": organizationBID, "name": "ListingKit Acceptance Organization B", "state": "ORGANIZATION_STATE_ACTIVE"},
+			}})
+		case "/zitadel.project.v2.ProjectService/ListProjectGrants":
+			writeMainJSON(t, w, map[string]any{"projectGrants": []map[string]any{
+				{"projectId": "project-1", "grantedOrganizationId": organizationAID, "grantedRoleKeys": []string{"listingkit_admin"}, "state": "PROJECT_GRANT_STATE_ACTIVE"},
+				{"projectId": "project-1", "grantedOrganizationId": organizationBID, "grantedRoleKeys": []string{"listingkit_viewer"}, "state": "PROJECT_GRANT_STATE_ACTIVE"},
+			}})
+		case "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations":
+			writeMainJSON(t, w, map[string]any{"authorizations": []map[string]any{
+				{
+					"id": "authorization-a", "user": map[string]any{"id": userID},
+					"project": map[string]any{"id": "project-1"}, "organization": map[string]any{"id": organizationAID},
+					"roles": []map[string]any{{"key": "listingkit_admin"}}, "state": "STATE_ACTIVE",
+				},
+				{
+					"id": "authorization-b", "user": map[string]any{"id": userID},
+					"project": map[string]any{"id": "project-1"}, "organization": map[string]any{"id": organizationBID},
+					"roles": []map[string]any{{"key": "listingkit_viewer"}}, "state": "STATE_ACTIVE",
+				},
+			}})
+		default:
+			t.Fatalf("unexpected mutation or request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	writeRuntimeFixture(t, runtimeFile, server.URL)
+	runtime, err := readRuntimeEnv(runtimeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime[bootstrapUserIDKey] = userID
+	runtime[acceptanceOrgAIDKey] = organizationAID
+	runtime[acceptanceOrgBIDKey] = organizationBID
+	if err := writeRuntimeEnv(runtimeFile, runtime); err != nil {
+		t.Fatal(err)
+	}
+
+	args := []string{
+		"provision-multi-org-acceptance",
+		"-issuer-url", server.URL,
+		"-management-token-file", managementTokenFile,
+		"-runtime-file", runtimeFile,
+		"-confirm-resettable-test-data",
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		if err := run(context.Background(), args, &stdout, &stderr); err != nil {
+			t.Fatalf("run() attempt %d error = %v", attempt+1, err)
+		}
+		output := stdout.String() + stderr.String()
+		if !strings.Contains(output, "status=ok phase=provision-multi-org-acceptance organizations=2") {
+			t.Fatalf("output = %q, want sanitized success", output)
+		}
+		for _, sensitive := range []string{"management-token-secret", userID, organizationAID, organizationBID, "api-secret-1", "oidc-secret-1"} {
+			if strings.Contains(output, sensitive) {
+				t.Fatalf("output leaked %q: %s", sensitive, output)
+			}
+		}
+	}
+
+	updated, err := readRuntimeEnv(runtimeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated["TASK_PROCESSOR_LISTINGKIT_ZITADEL_ACCEPTANCE_ORGANIZATION_A_ID"] != organizationAID ||
+		updated["TASK_PROCESSOR_LISTINGKIT_ZITADEL_ACCEPTANCE_ORGANIZATION_B_ID"] != organizationBID {
+		t.Fatalf("runtime acceptance organization IDs = %q/%q", updated["TASK_PROCESSOR_LISTINGKIT_ZITADEL_ACCEPTANCE_ORGANIZATION_A_ID"], updated["TASK_PROCESSOR_LISTINGKIT_ZITADEL_ACCEPTANCE_ORGANIZATION_B_ID"])
+	}
+	if updated[bootstrapUserIDKey] != userID || updated[projectIDEnvKey] != "project-1" {
+		t.Fatalf("runtime lost existing bootstrap user or project")
+	}
 }
 
 func TestAuthorizePhaseRejectsAValidTokenForAnotherLocalUser(t *testing.T) {

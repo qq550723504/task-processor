@@ -11,6 +11,16 @@ import (
 	"task-processor/internal/httproute"
 )
 
+type RoleAuthorizationFailure string
+
+const (
+	RoleAuthorizationIdentityRequired      RoleAuthorizationFailure = "identity_required"
+	RoleAuthorizationPermissionDenied      RoleAuthorizationFailure = "permission_denied"
+	RoleAuthorizationDependencyUnavailable RoleAuthorizationFailure = "dependency_unavailable"
+)
+
+type RoleAuthorizationResponder func(*gin.Context, RoleAuthorizationFailure, string)
+
 func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
 	switch route.AuthPolicy {
 	case httproute.AuthPolicyVerifiedIdentity:
@@ -73,7 +83,23 @@ func NewRouteRoleMiddleware(route httproute.Descriptor) gin.HandlerFunc {
 	return NewRouteRoleMiddlewareWithAuthorizer(route, authorizer)
 }
 
+func NewRouteRoleMiddlewareWithResponder(route httproute.Descriptor, respond RoleAuthorizationResponder) gin.HandlerFunc {
+	runtimeCfg := currentListingKitZitadelRuntimeConfig()
+	var authorizer *authz.ListingKitAuthorizer
+	if runtimeCfg != nil {
+		authorizer = runtimeCfg.Authorizer
+	}
+	return NewRouteRoleMiddlewareWithAuthorizerAndResponder(route, authorizer, respond)
+}
+
 func NewRouteRoleMiddlewareWithAuthorizer(route httproute.Descriptor, authorizer *authz.ListingKitAuthorizer) gin.HandlerFunc {
+	return NewRouteRoleMiddlewareWithAuthorizerAndResponder(route, authorizer, legacyRoleAuthorizationResponder)
+}
+
+func NewRouteRoleMiddlewareWithAuthorizerAndResponder(route httproute.Descriptor, authorizer *authz.ListingKitAuthorizer, respond RoleAuthorizationResponder) gin.HandlerFunc {
+	if respond == nil {
+		respond = legacyRoleAuthorizationResponder
+	}
 	requiredPermission := listingKitRouteRequiredPermission(route)
 	if requiredPermission == "" {
 		return nil
@@ -83,26 +109,37 @@ func NewRouteRoleMiddlewareWithAuthorizer(route httproute.Descriptor, authorizer
 		authorizer, err = authz.NewListingKitAuthorizer(nil, nil)
 		if err != nil {
 			return func(c *gin.Context) {
-				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-					"error":   "listingkit_authorization_unavailable",
-					"message": "ListingKit authorization is not available",
-				})
+				respond(c, RoleAuthorizationDependencyUnavailable, requiredPermission)
 			}
 		}
 	}
 	return func(c *gin.Context) {
 		identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error":   "listingkit_permission_denied",
-				"message": "ZITADEL identity is required to access this ListingKit route",
-			})
+			respond(c, RoleAuthorizationIdentityRequired, requiredPermission)
 			return
 		}
 		if authorizer.Authorize(identity.UserID, identity.Roles, requiredPermission) {
 			c.Next()
 			return
 		}
+		respond(c, RoleAuthorizationPermissionDenied, requiredPermission)
+	}
+}
+
+func legacyRoleAuthorizationResponder(c *gin.Context, failure RoleAuthorizationFailure, requiredPermission string) {
+	switch failure {
+	case RoleAuthorizationDependencyUnavailable:
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error":   "listingkit_authorization_unavailable",
+			"message": "ListingKit authorization is not available",
+		})
+	case RoleAuthorizationIdentityRequired:
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error":   "listingkit_permission_denied",
+			"message": "ZITADEL identity is required to access this ListingKit route",
+		})
+	default:
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 			"error":               "listingkit_permission_denied",
 			"message":             "ZITADEL identity is not allowed to access this ListingKit route",

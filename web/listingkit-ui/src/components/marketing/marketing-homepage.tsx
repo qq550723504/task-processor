@@ -1,22 +1,21 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowRight, BarChart3, Bot, Boxes, BrainCircuit, BriefcaseBusiness, Building2,
-  Check, CircleDollarSign, Database, Factory, Globe2, Megaphone,
-  Network, PackageSearch, Palette, Radar, ShieldCheck, ShoppingBag, Sparkles,
+  ArrowRight, BarChart3, Bot, BrainCircuit, BriefcaseBusiness, Building2,
+  Check, CircleDollarSign, Database, Globe2, Megaphone,
+  Network, PackageSearch, Palette, Radar, ShieldCheck, Sparkles,
   Store, Truck, Users, Zap,
 } from "lucide-react";
 
-import styles from "./marketing-homepage.module.css";
-import { HeroMotionLayers } from "./hero-motion";
 import { ContactPanel } from "./contact-panel";
+import { MarketingHero } from "./marketing-hero";
+import styles from "./marketing-homepage.module.css";
 import { PracticeTabs } from "./practice-tabs";
 import { RoleSolutionTabs } from "./role-solution-tabs";
 
 const ASSET = "/sumi";
-const LOGIN_HREF = "/login?returnTo=%2Flisting-kits%2Fhome";
+const LOGIN_HREF = "/login?returnTo=%2Fworkbench";
 
-const navItems = [["首页", "#home"], ["电商智能体", "#agents"], ["供应链与数据", "#supply-chain"], ["解决方案", "#solutions"], ["服务生态", "#services"], ["应用实践", "#practices"], ["价格与服务", "#pricing"]] as const;
 const industrySteps = ["市场研究", "寻找商品", "对接供应链", "制作内容", "运营店铺", "分析增长"];
 const painPoints = [["人力成本高", "大量时间消耗在重复调研、整理和执行"], ["经验难复制", "增长依赖少数人的经验和临场判断"], ["数据相互割裂", "商品、店铺、供应链数据散落在不同系统"], ["业务响应缓慢", "传统协作链路跟不上市场机会"]];
 const agents = [
@@ -36,22 +35,11 @@ const plans = [["01", "新手创业陪跑", "¥4,999 / 半年", "方向规划 ·
 
 export function MarketingHomepage() {
   return <main className={styles.page}>
-    <header className={styles.header}>
-      <Link className={styles.brand} href="#home" aria-label="硕米智能引擎首页"><Image src={`${ASSET}/a5e50b9c-bfa0-4012-bb43-e53ee1a4ed17.png`} width={44} height={44} alt="" priority /><span>硕米智能引擎</span></Link>
-      <nav className={styles.nav} aria-label="官网导航">{navItems.map(([label, href]) => <a href={href} key={href}>{label}</a>)}</nav>
-      <Link className={styles.navCta} href={LOGIN_HREF}>进入硕米 <ArrowRight size={15} /></Link>
-    </header>
-
-    <section className={styles.hero} id="home">
-      <Image className={styles.heroBackground} src={`${ASSET}/fd824975-1e65-4585-9ebf-212d68cb1507.png`} alt="" fill priority sizes="100vw" /><div className={styles.heroShade} />
-      <HeroMotionLayers />
-      <div className={styles.heroContent}><p className={styles.eyebrow}>新一代 AI 电商智能操作系统</p><h1>硕米智能引擎<br />新一代AI电商<br /><span>智能操作系统</span></h1><p className={styles.heroDescription}>连接AI智能体、全球商品数据、供应链资源与专业服务，让个人和组织拥有一支可执行、可协同、可增长的智能电商团队。</p><div className={styles.heroActions}><a className={styles.primaryButton} href="#agents">了解平台能力 <ArrowRight size={17} /></a><a className={styles.secondaryButton} href="#solutions">查看解决方案</a></div><div className={styles.capabilityStrip}><span><Bot size={15} /> AI智能体</span><span><Globe2 size={15} /> 全球数据</span><span><Boxes size={15} /> 商品与供应链</span><span><BriefcaseBusiness size={15} /> 专业服务</span></div></div>
-      <CommerceNetwork />
-    </section>
+    <MarketingHero loginHref={LOGIN_HREF} />
 
     <section className={`${styles.section} ${styles.industry}`}><SectionHeading title="电商正在进入AI时代" description="从市场洞察、商品开发到供应链和店铺增长，传统依赖人工串联的经营方式，正在被AI重新组织。" centered /><div className={styles.industryFlow}>{industrySteps.map((step, index) => <div className={styles.industryStep} key={step}><span>{String(index + 1).padStart(2, "0")}</span><strong>{step}</strong>{index < industrySteps.length - 1 ? <ArrowRight size={16} /> : null}</div>)}</div><div className={styles.painGrid}>{painPoints.map(([title, description]) => <article key={title}><Zap size={18} /><h3>{title}</h3><p>{description}</p></article>)}</div><p className={styles.statement}>真正需要改变的，不是增加更多工具，而是让 <strong>AI</strong> 重新组织整个电商流程。</p></section>
 
-    <section className={`${styles.section} ${styles.teamSection}`}><SectionHeading label="AI COMMERCE TEAM" title="硕米让每个企业都拥有一支AI电商团队" description="围绕同一个业务目标，AI员工理解任务、调用数据、连接资源并协同执行，让复杂业务从一次回答变成持续完成。" centered /><div className={styles.teamStage}><Image className={styles.teamOrbit} src={`${ASSET}/94b9527e-2b4c-41a7-be99-7ac605a49da9.png`} width={760} height={760} alt="" /><div className={styles.teamCore}><BrainCircuit size={38} /><strong>AI 决策核心</strong><span>理解目标 · 拆解任务 · 调度执行</span></div><TeamNode className={styles.teamNodeOne} icon={<Radar />} text="市场与商品" /><TeamNode className={styles.teamNodeTwo} icon={<Truck />} text="供应链资源" /><TeamNode className={styles.teamNodeThree} icon={<Store />} text="店铺与增长" /><TeamNode className={styles.teamNodeFour} icon={<Database />} text="全球商业数据" /></div><div className={styles.teamResults}><span>一个业务目标</span><ArrowRight /><span>多智能体协作</span><ArrowRight /><span>可执行的业务结果</span></div></section>
+    <section className={`${styles.section} ${styles.teamSection}`} id="architecture"><SectionHeading label="AI COMMERCE TEAM" title="硕米让每个企业都拥有一支AI电商团队" description="围绕同一个业务目标，AI员工理解任务、调用数据、连接资源并协同执行，让复杂业务从一次回答变成持续完成。" centered /><div className={styles.teamStage}><Image className={styles.teamOrbit} src={`${ASSET}/94b9527e-2b4c-41a7-be99-7ac605a49da9.png`} width={760} height={760} alt="" /><div className={styles.teamCore}><BrainCircuit size={38} /><strong>AI 决策核心</strong><span>理解目标 · 拆解任务 · 调度执行</span></div><TeamNode className={styles.teamNodeOne} icon={<Radar />} text="市场与商品" /><TeamNode className={styles.teamNodeTwo} icon={<Truck />} text="供应链资源" /><TeamNode className={styles.teamNodeThree} icon={<Store />} text="店铺与增长" /><TeamNode className={styles.teamNodeFour} icon={<Database />} text="全球商业数据" /></div><div className={styles.teamResults}><span>一个业务目标</span><ArrowRight /><span>多智能体协作</span><ArrowRight /><span>可执行的业务结果</span></div></section>
 
     <section className={`${styles.section} ${styles.agentSection}`} id="agents"><SectionHeading label="打造适合自身业务的AI团队" title="每一个电商岗位，都可以拥有一位 AI 员工" description="从发现市场机会到店铺增长，硕米为不同业务岗位提供专业AI智能体。它们理解目标、调用数据、执行任务，并在协作中持续优化业务结果。" centered /><div className={styles.agentGrid}>{agents.map(([Icon, name, summary, skills, prompt, tone]) => <article className={`${styles.agentCard} ${styles[tone]}`} key={name}><div className={styles.cardTop}><span><Icon size={21} /></span><small>AI EMPLOYEE</small></div><h3>{name}</h3><p>{summary}</p><b>{skills}</b><blockquote>“{prompt}”</blockquote></article>)}</div><div className={styles.agentControl}><div><Users size={22} /><strong>AI 团队控制中心</strong></div><p>一个目标，多智能体协作。不是六个独立工具，而是一支协同工作的 AI 团队。</p><span>还可以根据企业资料，创建和训练专属 AI 员工。</span></div></section>
 
@@ -75,7 +63,5 @@ export function MarketingHomepage() {
 }
 
 function SectionHeading({ label, title, description, centered = false }: { label?: string; title: string; description: string; centered?: boolean }) { return <div className={`${styles.sectionHeading} ${centered ? styles.centered : ""}`}>{label ? <p>{label}</p> : null}<h2>{title}</h2><span>{description}</span></div>; }
-function CommerceNetwork() { return <div className={styles.commerceNetwork} aria-label="硕米智能商业网络"><Image className={styles.networkRing} src={`${ASSET}/430cfb70-82cd-4b7d-bcf9-754e700732f5.svg`} width={588} height={328} alt="" /><Image className={styles.networkRingInner} src={`${ASSET}/24ad7c83-a9a6-47ef-aff8-b2b9e3dfb4c0.svg`} width={420} height={226} alt="" /><div className={styles.networkCore}><small>硕米智能引擎</small><strong>全球商业智能网络</strong><span>● 四大能力协同运行</span></div><NetworkNode className={styles.networkNodeOne} number="01" title="AI智能体" detail="驱动智能决策" icon={<Bot />} /><NetworkNode className={styles.networkNodeTwo} number="02" title="全球商品数据" detail="汇集全球商品信息" icon={<Database />} /><NetworkNode className={styles.networkNodeThree} number="03" title="供应链货盘" detail="链接优质供应资源" icon={<Factory />} /><NetworkNode className={styles.networkNodeFour} number="04" title="生态服务" detail="整合商业服务能力" icon={<ShoppingBag />} /></div>; }
-function NetworkNode({ className, number, title, detail, icon }: { className: string; number: string; title: string; detail: string; icon: React.ReactNode }) { return <div className={`${styles.networkNode} ${className}`}><span>{number}</span><div><b>{title}</b><small>{detail}</small></div>{icon}</div>; }
 function TeamNode({ className, icon, text, network = false }: { className: string; icon: React.ReactNode; text: string; network?: boolean }) { return <div className={`${network ? styles.networkNode : styles.teamNode} ${className}`}>{icon}<b>{text}</b></div>; }
 function SupplyColumn({ items, offset }: { items: string[][]; offset: number }) { return <div className={styles.supplyColumn}>{items.map(([title, description], index) => <article key={title}><span>0{index + offset}</span><div><h3>{title}</h3><p>{description}</p></div></article>)}</div>; }

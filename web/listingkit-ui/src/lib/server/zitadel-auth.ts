@@ -51,7 +51,17 @@ export function resolvePublicAppOrigin() {
 }
 
 export function normalizeReturnTo(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+  if (
+    !value ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\")
+  ) {
+    return "/";
+  }
+  try {
+    decodeURIComponent(value);
+  } catch {
     return "/";
   }
   if (!isAllowedReturnToPath(value)) {
@@ -61,13 +71,24 @@ export function normalizeReturnTo(value: string | null) {
 }
 
 function isAllowedReturnToPath(value: string) {
+  const localOrigin = "http://localhost";
   let pathname: string;
   try {
-    pathname = new URL(value, "http://localhost").pathname;
+    const returnToUrl = new URL(value, localOrigin);
+    if (returnToUrl.origin !== localOrigin) {
+      return false;
+    }
+    pathname = returnToUrl.pathname;
   } catch {
     return false;
   }
-  return pathname === "/" || pathname === "/listing-kits" || pathname.startsWith("/listing-kits/");
+  return (
+    pathname === "/" ||
+    pathname === "/listing-kits" ||
+    pathname.startsWith("/listing-kits/") ||
+    pathname === "/workbench" ||
+    pathname.startsWith("/workbench/")
+  );
 }
 
 export function readZitadelIdentityFromSession(

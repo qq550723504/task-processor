@@ -3906,6 +3906,8 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "listingkit", "studio_session_handler.go")):              {},
 		filepath.Clean(filepath.Join(root, "listingsubscription", "handler.go")):                    {},
 	}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "storecenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "workbenchcontext", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "localagent", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 

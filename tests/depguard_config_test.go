@@ -190,6 +190,56 @@ linters-settings:
 	}
 }
 
+func TestCommerceToolDepguardUsesExactStrictAllowlist(t *testing.T) {
+	rules := loadDepguardRules(t, filepath.Join("..", ".golangci.yml"))
+	rule := requireDepguardRule(t, rules, "commercetool_boundaries")
+
+	if rule.ListMode != "strict" {
+		t.Errorf("commercetool_boundaries list-mode = %q, want strict", rule.ListMode)
+	}
+
+	wantFiles := []string{
+		"**/internal/commercetool/*.go",
+		"**/internal/commercetool/**/*.go",
+	}
+	assertExactStringSet(t, "commercetool_boundaries files", rule.Files, wantFiles)
+
+	wantAllow := []string{
+		"$gostd",
+		"github.com/go-openapi/jsonpointer$",
+		"golang.org/x/mod/semver$",
+		"github.com/santhosh-tekuri/jsonschema/v6$",
+		"go.opentelemetry.io/otel/attribute$",
+		"go.opentelemetry.io/otel/trace$",
+	}
+	assertExactStringSet(t, "commercetool_boundaries allow", rule.Allow, wantAllow)
+	for _, packagePath := range rule.Allow {
+		if strings.HasPrefix(packagePath, "$") {
+			continue
+		}
+		if !strings.HasSuffix(packagePath, "$") {
+			t.Errorf("commercetool_boundaries non-variable allow entry %q must use depguard exact-match suffix $", packagePath)
+		}
+	}
+
+	allowed := stringSet(rule.Allow)
+	for category, packagePaths := range map[string][]string{
+		"internal packages":   {"task-processor/internal", "task-processor/internal/commercetool"},
+		"agent frameworks":    {"github.com/cloudwego/eino"},
+		"transport":           {"github.com/gin-gonic/gin", "github.com/rabbitmq/amqp091-go"},
+		"workflow":            {"go.temporal.io/sdk"},
+		"persistence":         {"gorm.io/gorm"},
+		"provider SDKs":       {"github.com/aws/aws-sdk-go-v2", "go.opentelemetry.io/otel"},
+		"marketplace clients": {"task-processor/internal/marketplace"},
+	} {
+		for _, packagePath := range packagePaths {
+			if _, ok := allowed[packagePath]; ok {
+				t.Errorf("commercetool_boundaries must not allow broad %s dependency %q", category, packagePath)
+			}
+		}
+	}
+}
+
 func TestPhase2RetiredRuntimePathsHavePermanentDepguardRules(t *testing.T) {
 	rules := loadDepguardRules(t, filepath.Join("..", ".golangci.yml"))
 	rule := requireDepguardRule(t, rules, "phase2_retired_runtime_paths")
@@ -239,8 +289,10 @@ type depguardConfig struct {
 }
 
 type depguardRule struct {
-	Files []string       `yaml:"files"`
-	Deny  []depguardDeny `yaml:"deny"`
+	ListMode string         `yaml:"list-mode"`
+	Files    []string       `yaml:"files"`
+	Allow    []string       `yaml:"allow"`
+	Deny     []depguardDeny `yaml:"deny"`
 }
 
 type depguardDeny struct {
@@ -280,6 +332,25 @@ func stringSet(values []string) map[string]struct{} {
 		result[value] = struct{}{}
 	}
 	return result
+}
+
+func assertExactStringSet(t *testing.T, name string, got, want []string) {
+	t.Helper()
+	gotSet := stringSet(got)
+	wantSet := stringSet(want)
+	for value := range wantSet {
+		if _, ok := gotSet[value]; !ok {
+			t.Errorf("%s must contain %q", name, value)
+		}
+	}
+	for value := range gotSet {
+		if _, ok := wantSet[value]; !ok {
+			t.Errorf("%s must not contain extra value %q", name, value)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("%s has %d entries, want exactly %d", name, len(got), len(want))
+	}
 }
 
 func depguardDenyPackageSet(rule depguardRule) map[string]struct{} {

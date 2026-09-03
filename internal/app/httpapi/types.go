@@ -39,15 +39,18 @@ type listingKitSupport struct {
 }
 
 type httpFeatureComposition struct {
-	amazonListingModule   *amazonlistinghttpapi.Module
-	listingKitModule      *listingkithttpapi.Module
-	productSourcingModule *a1688httpapi.BuildResult
-	promptModule          *promptmgmtapi.BuildResult
-	sdsModule             *sdshttpapi.BuildResult
-	taskRPCResult         *taskrpcapi.BuildResult
-	sheinLoginResult      *sheinloginbootstrap.BuildResult
-	sdsLoginResult        *sdsloginbootstrap.BuildResult
-	crawler1688Module     kernelmodule.Module
-	localAgentModule      *localagenthttpapi.BuildResult
-	imageAgentModule      *imageagenthttpapi.BuildResult
+	amazonListingModule       *amazonlistinghttpapi.Module
+	listingKitModule          *listingkithttpapi.Module
+	productSourcingModule     *a1688httpapi.BuildResult
+	promptModule              *promptmgmtapi.BuildResult
+	sdsModule                 *sdshttpapi.BuildResult
+	taskRPCResult             *taskrpcapi.BuildResult
+	sheinLoginResult          *sheinloginbootstrap.BuildResult
+	sdsLoginResult            *sdsloginbootstrap.BuildResult
+	crawler1688Module         kernelmodule.Module
+	localAgentModule          *localagenthttpapi.BuildResult
+	imageAgentModule          *imageagenthttpapi.BuildResult
+	workbenchContextModule    kernelmodule.Module
+	storeCenterModule         kernelmodule.Module
+	workbenchAuthDependencies *routeAuthDependencies
 }

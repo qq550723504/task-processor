@@ -7,6 +7,9 @@ import (
 )
 
 func TestFileUtil_SaveJSONToFile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Cleanup(func() { _ = os.RemoveAll("logs") })
+
 	fu := New()
 
 	taskID := "test_task_123"
@@ -35,7 +38,6 @@ func TestFileUtil_SaveJSONToFile(t *testing.T) {
 		t.Error("未找到保存的JSON文件")
 	}
 
-	os.RemoveAll("logs")
 }
 
 func TestFileUtil_SaveJSONToFile_EmptyTaskID(t *testing.T) {

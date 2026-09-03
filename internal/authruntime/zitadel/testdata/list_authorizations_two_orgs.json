@@ -1,0 +1,60 @@
+{
+  "pagination": {
+    "totalResult": "2",
+    "appliedLimit": "100"
+  },
+  "authorizations": [
+    {
+      "id": "synthetic-authorization-a-000001",
+      "project": {
+        "id": "synthetic-project-000001",
+        "name": "Synthetic ListingKit",
+        "organizationId": "synthetic-provider-org-000001"
+      },
+      "organization": {
+        "id": "synthetic-acceptance-org-a-000001",
+        "name": "ListingKit Acceptance Organization A"
+      },
+      "user": {
+        "id": "synthetic-user-000001",
+        "preferredLoginName": "synthetic-user@example.invalid",
+        "displayName": "Synthetic Acceptance User",
+        "organizationId": "synthetic-home-org-000001"
+      },
+      "state": "STATE_ACTIVE",
+      "roles": [
+        {
+          "key": "listingkit_admin",
+          "displayName": "ListingKit Admin",
+          "group": "ListingKit"
+        }
+      ]
+    },
+    {
+      "id": "synthetic-authorization-b-000001",
+      "project": {
+        "id": "synthetic-project-000001",
+        "name": "Synthetic ListingKit",
+        "organizationId": "synthetic-provider-org-000001"
+      },
+      "organization": {
+        "id": "synthetic-acceptance-org-b-000001",
+        "name": "ListingKit Acceptance Organization B"
+      },
+      "user": {
+        "id": "synthetic-user-000001",
+        "preferredLoginName": "synthetic-user@example.invalid",
+        "displayName": "Synthetic Acceptance User",
+        "organizationId": "synthetic-home-org-000001"
+      },
+      "state": "STATE_ACTIVE",
+      "roles": [
+        {
+          "key": "listingkit_viewer",
+          "displayName": "ListingKit Viewer",
+          "group": "ListingKit"
+        }
+      ]
+    }
+  ]
+}

@@ -24,6 +24,7 @@ func ValidateConfig(c *Config) []error {
 	)
 	errors := validator.Validate()
 	errors = append(errors, ValidateListingKitConfig(&c.ListingKit)...)
+	errors = append(errors, ValidateWorkbenchConfig(&c.Workbench, &c.ListingKit.Zitadel)...)
 	return errors
 }
 

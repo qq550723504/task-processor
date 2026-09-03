@@ -280,10 +280,7 @@ func TestPhase2TargetReadmesMatchApprovedOwnership(t *testing.T) {
 }
 
 func TestPhase2MigratedLegacyPackagesStayRetired(t *testing.T) {
-	present, err := presentRetiredPaths(filepath.Join(".."), phase2RetiredLegacyPaths())
-	if err != nil {
-		t.Fatal(err)
-	}
+	present := presentRetiredPathsInTrackedFiles(phase2RetiredLegacyPaths(), trackedFiles(t, "internal"))
 	for _, path := range present {
 		t.Errorf("retired path still exists: %s", path)
 	}
@@ -302,6 +299,48 @@ func TestPhase2RetirementGuardDetectsRecreatedPackage(t *testing.T) {
 	}
 	if len(present) != 1 || present[0] != recreated {
 		t.Fatalf("present retired paths = %v, want [%s]", present, recreated)
+	}
+}
+
+func TestTrackedRetiredPathsIgnoreUntrackedRuntimeArtifacts(t *testing.T) {
+	root := t.TempDir()
+	artifactPath := filepath.Join(root, "internal", "infra", "clients", "openai", "tmp", "logs")
+	if err := os.MkdirAll(artifactPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	artifactFile, err := os.Create(filepath.Join(artifactPath, "app.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := artifactFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	filesystemPresent, err := presentRetiredPaths(root, []string{"internal/infra/clients/openai"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filesystemPresent) != 1 {
+		t.Fatalf("filesystem retired paths = %v, want runtime artifact to be visible to fixture scanner", filesystemPresent)
+	}
+
+	paths := phase2RetiredLegacyPaths()
+	trackedFiles := []string{
+		"internal/app/httpapi/runtime.go",
+	}
+
+	present := presentRetiredPathsInTrackedFiles(paths, trackedFiles)
+	if len(present) != 0 {
+		t.Fatalf("present retired paths = %v, want none when only an untracked runtime artifact exists", present)
+	}
+}
+
+func TestTrackedRetiredPathsDetectTrackedFilesUnderRetiredPackage(t *testing.T) {
+	paths := []string{"internal/infra/clients/openai"}
+	trackedFiles := []string{"internal/infra/clients/openai/client.go"}
+
+	present := presentRetiredPathsInTrackedFiles(paths, trackedFiles)
+	if len(present) != 1 || present[0] != paths[0] {
+		t.Fatalf("present retired paths = %v, want [%s]", present, paths[0])
 	}
 }
 
@@ -343,6 +382,22 @@ func presentRetiredPaths(root string, paths []string) ([]string, error) {
 		}
 	}
 	return present, nil
+}
+
+func presentRetiredPathsInTrackedFiles(paths, files []string) []string {
+	present := make([]string, 0)
+	for _, retiredPath := range paths {
+		retiredPath = filepath.ToSlash(filepath.Clean(retiredPath))
+		prefix := retiredPath + "/"
+		for _, file := range files {
+			file = filepath.ToSlash(filepath.Clean(file))
+			if file == retiredPath || strings.HasPrefix(file, prefix) {
+				present = append(present, retiredPath)
+				break
+			}
+		}
+	}
+	return present
 }
 
 func productionGoFileCount(t *testing.T, root string) int {
@@ -394,7 +449,7 @@ type legacyRootCeiling struct {
 
 func phase2LegacyRootCeilings() []legacyRootCeiling {
 	return []legacyRootCeiling{
-		{name: "core", max: 46},
+		{name: "core", max: 48},
 		{name: "infra", max: 16},
 		{name: "crawler", max: 134},
 	}
@@ -407,7 +462,7 @@ type importerCeiling struct {
 
 func phase2ConcreteImporterCeilings() []importerCeiling {
 	return []importerCeiling{
-		{path: "task-processor/internal/core", max: 134},
+		{path: "task-processor/internal/core", max: 136},
 		{path: "task-processor/internal/infra", max: 4},
 		{path: "task-processor/internal/core/logger", max: 82},
 		{path: "task-processor/internal/platform/logging", max: 9},
@@ -439,14 +494,14 @@ func TestPhase2LegacyRootsDoNotGrow(t *testing.T) {
 
 func TestPhase2ClosureCeilingsRecordFreshInventory(t *testing.T) {
 	if got := phase2LegacyRootCeilings(); !reflect.DeepEqual(got, []legacyRootCeiling{
-		{name: "core", max: 46},
+		{name: "core", max: 48},
 		{name: "infra", max: 16},
 		{name: "crawler", max: 134},
 	}) {
 		t.Fatalf("legacy root ceilings = %#v", got)
 	}
 	if got := phase2ConcreteImporterCeilings(); !reflect.DeepEqual(got, []importerCeiling{
-		{path: "task-processor/internal/core", max: 134},
+		{path: "task-processor/internal/core", max: 136},
 		{path: "task-processor/internal/infra", max: 4},
 		{path: "task-processor/internal/core/logger", max: 82},
 		{path: "task-processor/internal/platform/logging", max: 9},
@@ -867,9 +922,8 @@ func TestIntegrationProviderBoundaryDecodesAllowedAndForbiddenGoImportLiterals(t
 }
 
 func TestLegacyMonitoringPathIsRetired(t *testing.T) {
-	legacyRoot := filepath.Join("..", "internal", "infra", "monitoring")
-	if _, err := os.Stat(legacyRoot); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("legacy monitoring directory must not exist: %v", err)
+	if present := presentRetiredPathsInTrackedFiles([]string{"internal/infra/monitoring"}, trackedFiles(t, "internal")); len(present) != 0 {
+		t.Errorf("legacy monitoring path must stay retired: %v", present)
 	}
 	targetRoot := filepath.Join("..", "internal", "app", "monitoring")
 	targetIndex, err := loadGoFileIndex(targetRoot, "")

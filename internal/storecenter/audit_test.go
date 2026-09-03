@@ -1,0 +1,310 @@
+package storecenter_test
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"task-processor/internal/storecenter"
+)
+
+func TestAuditRepositoryReplaysOnlyExactSafeEventAndScopesReads(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.TempDir()+"/audit.db?_busy_timeout=5000"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("SQLite DB handle: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := storecenter.AutoMigrateAuditRepository(nil); err == nil {
+		t.Fatal("AutoMigrateAuditRepository(nil) error = nil")
+	}
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("migrate audit: %v", err)
+	}
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("repeat migration: %v", err)
+	}
+	repository, err := storecenter.NewGormAuditRepository(db)
+	if err != nil {
+		t.Fatalf("NewGormAuditRepository: %v", err)
+	}
+	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	event := safeAuditEvent("org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), now)
+
+	stored, replayed, err := repository.Record(context.Background(), event)
+	if err != nil || replayed {
+		t.Fatalf("first Record() = (%+v, %v, %v), want durable non-replay", stored, replayed, err)
+	}
+	replay := event
+	replay.EventID = uuid.NewString()
+	replay.ActorSubject = "actor-other"
+	durable, replayed, err := repository.Record(context.Background(), replay)
+	if err != nil || !replayed || durable.ActorSubject != event.ActorSubject {
+		t.Fatalf("cross-actor Record() = (%+v, %v, %v), want first durable actor replay", durable, replayed, err)
+	}
+
+	exact := event
+	exact.EventID = uuid.NewString()
+	exact.OccurredAt = now.Add(time.Hour)
+	durable, replayed, err = repository.Record(context.Background(), exact)
+	if err != nil || !replayed {
+		t.Fatalf("exact Record() = (%+v, %v, %v), want original replay", durable, replayed, err)
+	}
+	if durable.EventID != event.EventID || !durable.OccurredAt.Equal(now) {
+		t.Fatalf("replay durable authority = %+v, want first event ID/time", durable)
+	}
+	if _, err := repository.Get(context.Background(), "org-b", event.RequestKey, event.Action); !errors.Is(err, storecenter.ErrNotFound) {
+		t.Fatalf("cross-org Get() error = %v, want ErrNotFound", err)
+	}
+
+	got, err := repository.Get(context.Background(), "org-a", event.RequestKey, event.Action)
+	if err != nil {
+		t.Fatalf("same-org Get(): %v", err)
+	}
+	if !reflect.DeepEqual(got.SafeFieldNames, []string{"lifecycle_status", "name"}) {
+		t.Fatalf("safe fields = %v, want sorted/deduplicated allowlist", got.SafeFieldNames)
+	}
+}
+
+func TestAuditMigrationCreatesCreatedAtScopedIndex(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("migrate audit: %v", err)
+	}
+	var columns []struct{ Name string }
+	if err := db.Raw("PRAGMA table_info(workbench_store_audit_logs)").Scan(&columns).Error; err != nil {
+		t.Fatalf("table info: %v", err)
+	}
+	var indexes []struct{ Name string }
+	if err := db.Raw("PRAGMA index_list(workbench_store_audit_logs)").Scan(&indexes).Error; err != nil {
+		t.Fatalf("index list: %v", err)
+	}
+	hasColumn, hasVersion, hasIndex := false, false, false
+	for _, column := range columns {
+		hasColumn = hasColumn || column.Name == "created_at"
+		hasVersion = hasVersion || column.Name == "store_version"
+	}
+	for _, index := range indexes {
+		hasIndex = hasIndex || index.Name == "idx_workbench_store_audit_org_store_created"
+	}
+	if !hasColumn || !hasVersion || !hasIndex {
+		t.Fatalf("audit schema created_at/store_version/index = %v/%v/%v, want all", hasColumn, hasVersion, hasIndex)
+	}
+	var indexColumns []struct{ Name string }
+	if err := db.Raw("PRAGMA index_info(idx_workbench_store_audit_org_store_created)").Scan(&indexColumns).Error; err != nil {
+		t.Fatalf("audit index info: %v", err)
+	}
+	got := make([]string, 0, len(indexColumns))
+	for _, column := range indexColumns {
+		got = append(got, column.Name)
+	}
+	if !reflect.DeepEqual(got, []string{"organization_id", "store_id", "created_at"}) {
+		t.Fatalf("audit index columns = %v, want organization/store/created", got)
+	}
+}
+
+func TestAuditRepositoryConcurrentExactRecordConverges(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.TempDir()+"/concurrent-audit.db?_busy_timeout=5000"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("DB handle: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("migrate audit: %v", err)
+	}
+	repository, err := storecenter.NewGormAuditRepository(db)
+	if err != nil {
+		t.Fatalf("NewGormAuditRepository: %v", err)
+	}
+	event := safeAuditEvent("org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), time.Now().UTC())
+	start := make(chan struct{})
+	results := make(chan struct {
+		event    storecenter.AuditEvent
+		replayed bool
+		err      error
+	}, 2)
+	for range 2 {
+		go func() {
+			<-start
+			candidate := event
+			candidate.EventID = uuid.NewString()
+			candidate.ActorSubject = uuid.NewString()
+			stored, replayed, err := repository.Record(context.Background(), candidate)
+			results <- struct {
+				event    storecenter.AuditEvent
+				replayed bool
+				err      error
+			}{stored, replayed, err}
+		}()
+	}
+	close(start)
+	first := <-results
+	second := <-results
+	if first.err != nil || second.err != nil {
+		t.Fatalf("concurrent Record() errors = %v/%v", first.err, second.err)
+	}
+	if first.replayed == second.replayed {
+		t.Fatalf("concurrent replay flags = %v/%v, want one insert and one replay", first.replayed, second.replayed)
+	}
+	if first.event.EventID != second.event.EventID || first.event.ActorSubject != second.event.ActorSubject || !first.event.OccurredAt.Equal(second.event.OccurredAt) {
+		t.Fatalf("concurrent durable authority differs: %+v / %+v", first.event, second.event)
+	}
+	var rows int64
+	if err := db.Table("workbench_store_audit_logs").Count(&rows).Error; err != nil || rows != 1 {
+		t.Fatalf("concurrent audit rows = %d/%v, want 1", rows, err)
+	}
+}
+
+func TestAuditEventRejectsCredentialShapedFields(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	repository, err := storecenter.NewGormAuditRepository(db)
+	if err != nil {
+		t.Fatalf("NewGormAuditRepository: %v", err)
+	}
+	event := safeAuditEvent("org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), time.Now().UTC())
+	event.SafeFieldNames = []string{"token"}
+	if _, _, err := repository.Record(context.Background(), event); err == nil {
+		t.Fatal("Record() with token-shaped safe field succeeded")
+	}
+	for _, typ := range []reflect.Type{
+		reflect.TypeOf(storecenter.AuditEvent{}), reflect.TypeOf(storecenter.CreateStoreRequest{}), reflect.TypeOf(storecenter.CreateStoreResult{}),
+		reflect.TypeOf(storecenter.ListStoresRequest{}), reflect.TypeOf(storecenter.GetStoreRequest{}), reflect.TypeOf(storecenter.StoreProjection{}),
+		reflect.TypeOf(storecenter.StoreQuotaProjection{}), reflect.TypeOf(storecenter.ListStoresResult{}), reflect.TypeOf(storecenter.UpdateStoreRequest{}),
+		reflect.TypeOf(storecenter.StoreLifecycleRequest{}), reflect.TypeOf(storecenter.StoreMutationResult{}), reflect.TypeOf(storecenter.DeleteStoreRequest{}),
+		reflect.TypeOf(storecenter.DeleteStoreResult{}), reflect.TypeOf(storecenter.ConnectionStatusInput{}),
+	} {
+		for index := 0; index < typ.NumField(); index++ {
+			field := typ.Field(index)
+			if field.PkgPath != "" || strings.Contains(field.Tag.Get("json"), "-") {
+				continue
+			}
+			name := strings.ToLower(field.Name + " " + strings.Split(field.Tag.Get("json"), ",")[0])
+			for _, forbidden := range []string{"password", "token", "cookie", "secret", "credential", "username"} {
+				if strings.Contains(name, forbidden) {
+					t.Fatalf("%s exposes forbidden credential-shaped field %q", typ.Name(), field.Name)
+				}
+			}
+		}
+	}
+}
+
+func TestAuditRepositoryAcceptsOnlyTaskFiveLifecycleActions(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := storecenter.NewGormAuditRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []storecenter.AuditAction{
+		storecenter.AuditActionStoreUpdateStarted, storecenter.AuditActionStoreUpdated, storecenter.AuditActionStoreUpdateNoOp, storecenter.AuditActionStoreLifecycleStarted, storecenter.AuditActionStoreDisabled, storecenter.AuditActionStoreEnabled,
+		storecenter.AuditActionDeleteStarted, storecenter.AuditActionStoreMarkedDeleting, storecenter.AuditActionQuotaDeallocated, storecenter.AuditActionDeleteComplete,
+	} {
+		event := taskFiveAuditEvent(action)
+		if _, _, err := repository.Record(context.Background(), event); err != nil {
+			t.Fatalf("Record(%s) = %v", action, err)
+		}
+	}
+	event := safeAuditEvent("org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), time.Now().UTC())
+	event.Action = storecenter.AuditAction("delete_credentials_exported")
+	if _, _, err := repository.Record(context.Background(), event); err == nil {
+		t.Fatal("unallowlisted action recorded")
+	}
+}
+
+func TestAuditRepositoryRejectsInvalidTaskFiveActionCombinations(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := storecenter.NewGormAuditRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name   string
+		action storecenter.AuditAction
+		mutate func(*storecenter.AuditEvent)
+	}{
+		{"update intent cannot claim success", storecenter.AuditActionStoreUpdateStarted, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeSucceeded }},
+		{"updated cannot remain unknown", storecenter.AuditActionStoreUpdated, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeUnknown }},
+		{"noop cannot claim changed fields", storecenter.AuditActionStoreUpdateNoOp, func(event *storecenter.AuditEvent) { event.SafeFieldNames = []string{"name"} }},
+		{"disable requires active origin", storecenter.AuditActionStoreDisabled, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.StoreStatusDisabled }},
+		{"enable requires disabled origin", storecenter.AuditActionStoreEnabled, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.StoreStatusActive }},
+		{"delete intent cannot claim success", storecenter.AuditActionDeleteStarted, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeSucceeded }},
+		{"marked deleting must be success", storecenter.AuditActionStoreMarkedDeleting, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeUnknown }},
+		{"deallocation changes quota only", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.SafeFieldNames = []string{"lifecycle_status"} }},
+		{"complete begins from deleting", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.StoreStatusActive }},
+		{"task five events require positive version", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.StoreVersion = 0 }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			event := taskFiveAuditEvent(test.action)
+			test.mutate(&event)
+			if _, _, err := repository.Record(context.Background(), event); err == nil {
+				t.Fatalf("Record(%s corrupt combination) error = nil", test.action)
+			}
+		})
+	}
+}
+
+func safeAuditEvent(organizationID, storeID, allocationID, requestKey string, occurredAt time.Time) storecenter.AuditEvent {
+	return storecenter.AuditEvent{EventID: uuid.NewString(), OrganizationID: organizationID, StoreID: storeID, AllocationID: allocationID, RequestKey: requestKey, Action: storecenter.AuditActionQuotaReserved, Outcome: storecenter.AuditOutcomeSucceeded, ActorSubject: "actor-1", SafeFieldNames: []string{"name", "lifecycle_status", "name"}, NewState: storecenter.StoreStatusProvisioning, OccurredAt: occurredAt}
+}
+
+func taskFiveAuditEvent(action storecenter.AuditAction) storecenter.AuditEvent {
+	event := safeAuditEvent("org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), time.Now().UTC())
+	event.Action = action
+	event.Outcome = storecenter.AuditOutcomeSucceeded
+	event.FailureCode = storecenter.AuditFailureNone
+	event.StoreVersion = 3
+	switch action {
+	case storecenter.AuditActionStoreUpdateStarted:
+		event.Outcome, event.SafeFieldNames, event.PreviousState, event.NewState = storecenter.AuditOutcomeUnknown, []string{"name"}, storecenter.StoreStatusActive, storecenter.StoreStatusActive
+	case storecenter.AuditActionStoreUpdated:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"name"}, storecenter.StoreStatusActive, storecenter.StoreStatusActive
+	case storecenter.AuditActionStoreUpdateNoOp:
+		event.SafeFieldNames, event.PreviousState, event.NewState = nil, storecenter.StoreStatusActive, storecenter.StoreStatusActive
+	case storecenter.AuditActionStoreLifecycleStarted:
+		event.Outcome, event.SafeFieldNames, event.PreviousState, event.NewState = storecenter.AuditOutcomeUnknown, []string{"lifecycle_status"}, storecenter.StoreStatusActive, storecenter.StoreStatusDisabled
+	case storecenter.AuditActionStoreDisabled:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"lifecycle_status"}, storecenter.StoreStatusActive, storecenter.StoreStatusDisabled
+	case storecenter.AuditActionStoreEnabled:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"lifecycle_status"}, storecenter.StoreStatusDisabled, storecenter.StoreStatusActive
+	case storecenter.AuditActionDeleteStarted:
+		event.Outcome, event.SafeFieldNames, event.PreviousState, event.NewState = storecenter.AuditOutcomeUnknown, []string{"lifecycle_status"}, storecenter.StoreStatusActive, storecenter.StoreStatusDeleting
+	case storecenter.AuditActionStoreMarkedDeleting:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"lifecycle_status"}, storecenter.StoreStatusActive, storecenter.StoreStatusDeleting
+	case storecenter.AuditActionQuotaDeallocated:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"quota_allocation_id"}, storecenter.StoreStatusDeleting, storecenter.StoreStatusDeleting
+	case storecenter.AuditActionDeleteComplete:
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"lifecycle_status"}, storecenter.StoreStatusDeleting, ""
+	}
+	return event
+}

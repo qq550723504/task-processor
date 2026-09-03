@@ -1,9 +1,13 @@
 package alibaba1688
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/pkg/runtimepath"
 
 	"github.com/mxschmitt/playwright-go"
 )
@@ -19,13 +23,28 @@ func TestResolveAlibaba1688UserDataDirUsesConfiguredValue(t *testing.T) {
 	}
 }
 
-func TestResolveAlibaba1688UserDataDirUsesSharedDefault(t *testing.T) {
-	cfg := config.NewDefaultConfig()
+func TestResolveAlibaba1688UserDataDirUsesNamespacedDefault(t *testing.T) {
+	for _, cfg := range []*config.Config{nil, &config.Config{}} {
+		got := resolveAlibaba1688UserDataDir(cfg)
+		if !strings.HasPrefix(got, filepath.Join(os.TempDir(), "task-processor", "browser-profiles", "1688")) {
+			t.Fatalf("resolveAlibaba1688UserDataDir(%v) = %q, want a namespaced path under the system temp directory", cfg, got)
+		}
+	}
+}
 
-	got := resolveAlibaba1688UserDataDir(cfg)
+func TestAlibaba1688BrowserProfileNamespaceIsStableAcrossRestarts(t *testing.T) {
+	first := runtimepath.NamespaceForDirectory(`C:\checkout\one`)
+	restarted := runtimepath.NamespaceForDirectory(`C:\checkout\one`)
+	secondInstallation := runtimepath.NamespaceForDirectory(`C:\checkout\two`)
 
-	if got == "" {
-		t.Fatal("expected non-empty default user data dir")
+	if first != restarted {
+		t.Fatalf("namespace changed across restarts: first=%q restarted=%q", first, restarted)
+	}
+	if first == secondInstallation {
+		t.Fatal("different installations must not share the default browser profile namespace")
+	}
+	if len(first) == 0 || strings.ContainsAny(first, `/\\:`) {
+		t.Fatalf("namespace = %q, want a non-empty path-safe value", first)
 	}
 }
 

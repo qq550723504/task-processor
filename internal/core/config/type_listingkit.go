@@ -32,6 +32,7 @@ type ListingKitImageUploadS3Config struct {
 
 type ListingKitZitadelConfig struct {
 	IssuerURL             string   `mapstructure:"issuerURL" yaml:"issuerURL"`
+	AuthorizationAPIURL   string   `mapstructure:"authorizationAPIURL" yaml:"authorizationAPIURL"`
 	ClientID              string   `mapstructure:"clientID" yaml:"clientID"`
 	ClientSecret          string   `mapstructure:"clientSecret" yaml:"clientSecret"`
 	TenantDirectoryToken  string   `mapstructure:"tenantDirectoryToken" yaml:"tenantDirectoryToken"`

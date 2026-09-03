@@ -21,6 +21,8 @@ func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 		c.sdsLoginHTTPModule(),
 		c.crawler1688Module,
 		c.localAgentHTTPModule(),
+		c.workbenchContextModule,
+		c.storeCenterModule,
 	}
 }
 
@@ -45,7 +47,12 @@ func (c httpFeatureComposition) routeModules() []kernelmodule.Module {
 }
 
 func (c httpFeatureComposition) buildRuntimeBundle(cfg *config.Config) (runtimeBundle, error) {
-	return buildRuntimeBundleFromModules(cfg, c.routeModules())
+	bundle, err := buildRuntimeBundleFromModules(cfg, c.routeModules())
+	if err != nil {
+		return runtimeBundle{}, err
+	}
+	bundle.authDependencies = c.workbenchAuthDependencies
+	return bundle, nil
 }
 
 func (c httpFeatureComposition) buildServerBundle(port int, cfg *config.Config) (*http.Server, []httproute.Descriptor, error) {

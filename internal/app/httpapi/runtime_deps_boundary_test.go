@@ -278,7 +278,7 @@ func TestHTTPAPIRuntimeKeepsLegacyProductImagePathResolutionRetired(t *testing.T
 		`"path/filepath"`,
 		"func resolveImageWorkDir(",
 		"filepath.Clean(",
-		`filepath.Join(".", "tmp", "productimage")`,
+		`filepath.Join(os.TempDir(), "task-processor", "productimage")`,
 	} {
 		if strings.Contains(runtimeSource, marker) {
 			t.Fatalf("runtime.go should keep path resolution in runtime_paths.go; found %s", marker)

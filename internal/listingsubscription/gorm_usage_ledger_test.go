@@ -631,7 +631,9 @@ func TestGormUsageLedgerUsesPlanLimitsWhenLegacyEntitlementSnapshotLacksMetric(t
 
 func TestGormUsageLedgerConcurrentQuotaReservations(t *testing.T) {
 	ctx := context.Background()
-	db := openConcurrentUsageLedgerTestDB(t)
+	// SQLite has a single writer. Use a small pool here so the test exercises
+	// overlapping transactions without creating an unbounded lock convoy.
+	db := openConcurrentUsageLedgerTestDBWithPool(t, 4)
 	repo := NewGormRepository(db)
 	seedUsageLedgerEntitlement(t, repo, "tenant-concurrent", "listingkit", map[string]int{"listingkit_generations_succeeded": 10})
 	if err := db.Create(&usageBucketRow{TenantID: "tenant-concurrent", ModuleCode: "listingkit", PeriodKey: "2026-08", Metric: "listingkit_generations_succeeded"}).Error; err != nil {
@@ -1369,6 +1371,10 @@ func openUsageLedgerTestDB(t *testing.T) *gorm.DB {
 }
 
 func openConcurrentUsageLedgerTestDB(t *testing.T) *gorm.DB {
+	return openConcurrentUsageLedgerTestDBWithPool(t, 20)
+}
+
+func openConcurrentUsageLedgerTestDBWithPool(t *testing.T, maxOpenConns int) *gorm.DB {
 	t.Helper()
 	dsn := "file:" + filepath.ToSlash(filepath.Join(t.TempDir(), "usage-ledger.db")) + "?mode=rwc&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)"
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: dsn}, &gorm.Config{})
@@ -1379,8 +1385,8 @@ func openConcurrentUsageLedgerTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open concurrent sql db: %v", err)
 	}
-	sqlDB.SetMaxOpenConns(20)
-	sqlDB.SetMaxIdleConns(20)
+	sqlDB.SetMaxOpenConns(maxOpenConns)
+	sqlDB.SetMaxIdleConns(maxOpenConns)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	if err := AutoMigrateRepository(db); err != nil {
 		t.Fatalf("AutoMigrateRepository() concurrent error = %v", err)

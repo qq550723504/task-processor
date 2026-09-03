@@ -375,6 +375,23 @@ func TestDefaultPlansIncludeModuleBundles(t *testing.T) {
 	t.Fatal("default plans missing professional")
 }
 
+func TestDefaultPlansSetStoreCountLimits(t *testing.T) {
+	want := map[string]int{PlanBasic: 1, PlanProfessional: 5, PlanEnterprise: 20}
+	for _, plan := range DefaultPlans() {
+		for _, module := range plan.Modules {
+			if module.ModuleCode == ModuleStoreManagement {
+				if got, ok := module.Limits["store_count"]; !ok || got != want[plan.Plan.Code] {
+					t.Fatalf("%s store_count = %d, present=%v; want %d", plan.Plan.Code, got, ok, want[plan.Plan.Code])
+				}
+				delete(want, plan.Plan.Code)
+			}
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("plans missing store_count limits: %#v", want)
+	}
+}
+
 func TestSubscriptionPlanManagementUpdatesPlanAndModules(t *testing.T) {
 	svc := newTestService(t)
 
