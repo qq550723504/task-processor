@@ -12,6 +12,7 @@ import (
 
 type taskLifecycleServiceConfig struct {
 	repo                        Repository
+	productSnapshots            ProductSnapshotReader
 	sdsBaselineReadinessService sdsBaselineReadinessService
 	validateSheinStoreAccess    func(context.Context, int64, int64) error
 	taskSubmitter               func() TaskSubmitter
@@ -23,6 +24,7 @@ type taskLifecycleServiceConfig struct {
 
 type taskLifecycleService struct {
 	repo                        Repository
+	productSnapshots            ProductSnapshotReader
 	sdsBaselineReadinessService sdsBaselineReadinessService
 	validateSheinStoreAccess    func(context.Context, int64, int64) error
 	taskSubmitter               func() TaskSubmitter
@@ -35,6 +37,7 @@ type taskLifecycleService struct {
 func newTaskLifecycleService(config taskLifecycleServiceConfig) *taskLifecycleService {
 	return &taskLifecycleService{
 		repo:                        config.repo,
+		productSnapshots:            config.productSnapshots,
 		sdsBaselineReadinessService: config.sdsBaselineReadinessService,
 		validateSheinStoreAccess:    config.validateSheinStoreAccess,
 		taskSubmitter:               config.taskSubmitter,

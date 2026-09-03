@@ -46,6 +46,7 @@ func buildTaskLifecycleServiceConfig(s *service) taskLifecycleServiceConfig {
 	repository := buildTaskRepositoryWiring(s)
 	return taskLifecycleServiceConfig{
 		repo:                        repository.repo,
+		productSnapshots:            s.workflowDeps.productSnapshots,
 		sdsBaselineReadinessService: s.sdsBaselineOrDefault(),
 		validateSheinStoreAccess: func(ctx context.Context, tenantID, storeID int64) error {
 			validator := resolveSheinStoreAccessValidator(s)

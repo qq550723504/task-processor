@@ -10,6 +10,7 @@ func buildTaskDependencies(config *ServiceConfig) taskDependencies {
 		return taskDependencies{}
 	}
 	return taskDependencies{
+		productSnapshots:             config.Core.ProductSnapshotReader,
 		sdsLoginStatusProvider:       config.Core.SDSLoginStatusProvider,
 		taskSubmitter:                config.Core.TaskSubmitter,
 		generationUsage:              config.Core.GenerationUsageLedger,

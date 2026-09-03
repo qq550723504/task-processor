@@ -135,6 +135,15 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	if err := s.validateRequestedSheinStoreAccess(ctx, req); err != nil {
 		return ctx, nil, err
 	}
+	if req.SourceSnapshotVersion == 0 {
+		if reader, ok := s.productSnapshots.(PublishedProductSnapshotReader); ok {
+			published, err := reader.GetPublishedProductSnapshot(ctx, ProductSnapshotQuery{TenantID: req.TenantID, ProductKey: req.ProductKey})
+			if err != nil {
+				return ctx, nil, fmt.Errorf("resolve product snapshot version: %w", err)
+			}
+			req.SourceSnapshotVersion = published.Version
+		}
+	}
 
 	task := &Task{
 		ID:                    uuid.New().String(),

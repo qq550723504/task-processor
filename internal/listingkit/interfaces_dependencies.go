@@ -25,6 +25,10 @@ type ProductSnapshotReader interface {
 	GetProductSnapshot(ctx context.Context, query ProductSnapshotQuery) (catalog.ProductSnapshot, error)
 }
 
+type PublishedProductSnapshotReader interface {
+	GetPublishedProductSnapshot(ctx context.Context, query ProductSnapshotQuery) (catalog.PublishedSnapshot, error)
+}
+
 type ApprovedAssetInventoryReader interface {
 	GetApprovedInventory(ctx context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error)
 }
