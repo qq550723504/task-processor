@@ -198,6 +198,8 @@ func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
 	v.Set("listingkit.zitadel.allowedUserIDs", []string{"user-a", "user-b"})
 	v.Set("listingkit.zitadel.allowedUsernames", []string{"alice", "bob"})
 	v.Set("listingkit.zitadel.allowedRoles", []string{"listingkit_admin", "platform_admin"})
+	v.Set("imageagent.admission.enabled", true)
+	v.Set("imageagent.admission.allowedTenantIDs", []string{"tenant-image-a", "tenant-image-b"})
 
 	cfg := BuildConfig(v)
 
@@ -214,6 +216,8 @@ func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
 	assert.Equal(t, []string{"user-a", "user-b"}, cfg.ListingKit.Zitadel.AllowedUserIDs)
 	assert.Equal(t, []string{"alice", "bob"}, cfg.ListingKit.Zitadel.AllowedUsernames)
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)
+	assert.True(t, cfg.ImageAgent.Admission.Enabled)
+	assert.Equal(t, []string{"tenant-image-a", "tenant-image-b"}, cfg.ImageAgent.Admission.AllowedTenantIDs)
 }
 
 func TestLoadFromBytesIncludesListingControlPlaneConfig(t *testing.T) {

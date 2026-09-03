@@ -388,6 +388,9 @@ watermark:
 
 
 imageagent:
+  admission:
+    enabled: false
+    allowedTenantIDs: []
   artifactStore:
     enabled: false
     provider: "s3"

@@ -290,6 +290,9 @@ database:
   connection_max_lifetime: "1h"
 
 imageagent:
+  admission:
+    enabled: false
+    allowedTenantIDs: []
   artifactStore:
     enabled: false
     provider: "s3"

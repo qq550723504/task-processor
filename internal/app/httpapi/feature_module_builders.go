@@ -73,6 +73,7 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 	}
 	databaseCloser := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
 	service, err := newImageAgentHTTPService(
+		cfg,
 		imageagentstore.NewGormRepository(db), workflowClient,
 		newImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db), newPublicImageDimensionResolver()),
 	)
@@ -98,8 +99,13 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 	return built, nil
 }
 
-func newImageAgentHTTPService(repository imageagent.Repository, workflows imageagent.WorkflowClient, catalog imageagent.AuthorizedAssetCatalog) (*imageagent.Service, error) {
-	return imageagent.NewService(repository, workflows, catalog)
+func newImageAgentHTTPService(cfg *config.Config, repository imageagent.Repository, workflows imageagent.WorkflowClient, catalog imageagent.AuthorizedAssetCatalog) (*imageagent.Service, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("build image agent HTTP service: config is required")
+	}
+	return imageagent.NewService(repository, workflows, catalog, imageagent.WithTenantStartGate(imageagent.TenantAllowlistStartGate{
+		Enabled: cfg.ImageAgent.Admission.Enabled, AllowedTenantIDs: append([]string(nil), cfg.ImageAgent.Admission.AllowedTenantIDs...),
+	}))
 }
 
 func imageAgentDurableAssetPublicURLResolver(cfg *config.Config) imageagent.DurableAssetPublicURLResolver {

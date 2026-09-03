@@ -154,6 +154,10 @@ func BuildConfig(v *viper.Viper) *Config {
 			},
 		},
 		ImageAgent: ImageAgentConfig{
+			Admission: ImageAgentAdmissionConfig{
+				Enabled:          v.GetBool("imageagent.admission.enabled"),
+				AllowedTenantIDs: getStringSlice(v, "imageagent.admission.allowedTenantIDs"),
+			},
 			ArtifactStore: ImageAgentArtifactStoreConfig{
 				Enabled:    v.GetBool("imageagent.artifactStore.enabled"),
 				Provider:   v.GetString("imageagent.artifactStore.provider"),

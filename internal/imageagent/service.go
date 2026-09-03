@@ -131,7 +131,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	} else if !errors.Is(getErr, ErrRunNotFound) {
 		return getErr
 	}
-	if s.startGate != nil && !s.startGate.AllowTenantStart(ctx, identity.TenantID) {
+	if !s.tenantStartAllowed(ctx, identity.TenantID) {
 		return fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
 	}
 	if err := ValidateInitialSubmittedPlan(input.Plan); err != nil {
@@ -195,10 +195,17 @@ func (s *Service) RestartFailed(ctx context.Context, runID string) error {
 }
 
 func (s *Service) startExistingProjection(ctx context.Context, projection RunProjection, identity ExecutionIdentity) error {
+	if !s.tenantStartAllowed(ctx, identity.TenantID) {
+		return fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
+	}
 	return s.workflows.StartManual(ctx, WorkflowStart{
 		Run: projection.Run, Plan: projection.Plan, Identity: identity,
 		MaxConcurrentSlots: projection.Run.MaxConcurrentSlots, AssetCatalog: projection.AssetCatalog,
 	})
+}
+
+func (s *Service) tenantStartAllowed(ctx context.Context, tenantID string) bool {
+	return s == nil || s.startGate == nil || s.startGate.AllowTenantStart(ctx, tenantID)
 }
 
 func (s *Service) Get(ctx context.Context, runID string) (RunProjection, error) {

@@ -93,6 +93,8 @@ func setListingControlPlaneDefaults(v *viper.Viper, defaults *Config) {
 }
 
 func setImageAgentDefaults(v *viper.Viper, defaults *Config) {
+	v.SetDefault("imageagent.admission.enabled", defaults.ImageAgent.Admission.Enabled)
+	v.SetDefault("imageagent.admission.allowedTenantIDs", defaults.ImageAgent.Admission.AllowedTenantIDs)
 	store := defaults.ImageAgent.ArtifactStore
 	v.SetDefault("imageagent.artifactStore.enabled", store.Enabled)
 	v.SetDefault("imageagent.artifactStore.provider", store.Provider)

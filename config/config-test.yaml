@@ -266,6 +266,9 @@ updater:
   insecureSkipVerify: false  # 是否跳过TLS证书验证（不建议在生产环境启用）
 
 imageagent:
+  admission:
+    enabled: false
+    allowedTenantIDs: []
   artifactStore:
     enabled: false
     provider: "s3"

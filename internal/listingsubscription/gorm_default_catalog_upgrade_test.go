@@ -10,7 +10,7 @@ import (
 
 const retiredStudioModuleCode = "studio"
 
-func TestNewServiceRetiresStudioCatalogAndDependentRowsAtomically(t *testing.T) {
+func TestNewServiceRetiresStudioCatalogAndPreservesLedgerRowsAtomically(t *testing.T) {
 	db := openUsageLedgerTestDB(t)
 	seedRetiredStudioSubscriptionGraph(t, db)
 
@@ -57,7 +57,7 @@ func TestNewServiceRetiresStudioCatalogAndDependentRowsAtomically(t *testing.T) 
 		}
 	}
 
-	assertRetiredStudioGraphAbsent(t, db)
+	assertRetiredStudioCatalogRetiredAndLedgerPresent(t, db)
 }
 
 func TestNewServiceRollsBackStudioRetirementWhenDefaultCatalogSyncFails(t *testing.T) {
@@ -110,17 +110,17 @@ func seedRetiredStudioSubscriptionGraph(t *testing.T, db *gorm.DB) {
 	}
 }
 
-func assertRetiredStudioGraphAbsent(t *testing.T, db *gorm.DB) {
+func assertRetiredStudioCatalogRetiredAndLedgerPresent(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	assertRowCount(t, db, &subscriptionModuleRow{}, "code = ?", 0, retiredStudioModuleCode)
 	assertRowCount(t, db, &subscriptionPlanModuleRow{}, "module_code = ?", 0, retiredStudioModuleCode)
 	assertRowCount(t, db, &tenantEntitlementRow{}, "module_code = ?", 0, retiredStudioModuleCode)
-	assertRowCount(t, db, &usageCounterRow{}, "module_code = ?", 0, retiredStudioModuleCode)
-	assertRowCount(t, db, &usageCounterAdjustmentRow{}, "module_code = ?", 0, retiredStudioModuleCode)
-	assertRowCount(t, db, &usageEventRow{}, "module_code = ?", 0, retiredStudioModuleCode)
-	assertRowCount(t, db, &usageBucketRow{}, "module_code = ?", 0, retiredStudioModuleCode)
-	assertRowCount(t, db, &auditLogRow{}, "module_code = ?", 0, retiredStudioModuleCode)
-	assertRowCount(t, db, &usageEventOutboxRow{}, "event_id = ?", 0, "studio-event")
+	assertRowCount(t, db, &usageCounterRow{}, "module_code = ?", 1, retiredStudioModuleCode)
+	assertRowCount(t, db, &usageCounterAdjustmentRow{}, "module_code = ?", 1, retiredStudioModuleCode)
+	assertRowCount(t, db, &usageEventRow{}, "module_code = ?", 1, retiredStudioModuleCode)
+	assertRowCount(t, db, &usageBucketRow{}, "module_code = ?", 1, retiredStudioModuleCode)
+	assertRowCount(t, db, &auditLogRow{}, "module_code = ?", 1, retiredStudioModuleCode)
+	assertRowCount(t, db, &usageEventOutboxRow{}, "event_id = ?", 1, "studio-event")
 }
 
 func assertRetiredStudioGraphPresent(t *testing.T, db *gorm.DB) {

@@ -21,20 +21,16 @@ func (r *GormRepository) SyncDefaultCatalog(ctx context.Context, modules []Modul
 }
 
 func retireSystemModule(tx *gorm.DB, moduleCode string) error {
-	eventIDs := tx.Model(&usageEventRow{}).Select("event_id").Where("module_code = ?", moduleCode)
+	// Catalog references may be retired, but usage events, outbox rows, usage
+	// aggregates, and audit records are immutable evidence. Deleting them here
+	// would lose committed billing history and strand pending delivery.
 	deletions := []struct {
 		model any
 		query string
 		args  []any
 	}{
-		{model: &usageEventOutboxRow{}, query: "event_id IN (?)", args: []any{eventIDs}},
-		{model: &usageEventRow{}, query: "module_code = ?", args: []any{moduleCode}},
-		{model: &usageBucketRow{}, query: "module_code = ?", args: []any{moduleCode}},
-		{model: &usageCounterAdjustmentRow{}, query: "module_code = ?", args: []any{moduleCode}},
-		{model: &usageCounterRow{}, query: "module_code = ?", args: []any{moduleCode}},
 		{model: &tenantEntitlementRow{}, query: "module_code = ?", args: []any{moduleCode}},
 		{model: &subscriptionPlanModuleRow{}, query: "module_code = ?", args: []any{moduleCode}},
-		{model: &auditLogRow{}, query: "module_code = ?", args: []any{moduleCode}},
 		{model: &subscriptionModuleRow{}, query: "code = ?", args: []any{moduleCode}},
 	}
 	for _, deletion := range deletions {

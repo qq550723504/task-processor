@@ -229,9 +229,12 @@ func TestImageAgentDurableAssetPublicURLResolverUsesPublisherConfiguration(t *te
 	require.Equal(t, "https://cdn.example.test/assets/image-agent/public/tenant-a/run-1/result.png", resolver.PublicURL("image-agent/public/tenant-a/run-1/result.png"))
 }
 
-func TestNewImageAgentHTTPServiceStartsWithoutRetiredSceneTenantGate(t *testing.T) {
+func TestNewImageAgentHTTPServiceRequiresImageAgentTenantAdmission(t *testing.T) {
 	workflows := &recordingCompositionImageAgentWorkflowClient{}
 	service, err := newImageAgentHTTPService(
+		&config.Config{ImageAgent: config.ImageAgentConfig{Admission: config.ImageAgentAdmissionConfig{
+			Enabled: true, AllowedTenantIDs: []string{"tenant-allowed"},
+		}}},
 		imageagentstore.NewMemoryRepository(),
 		workflows,
 		staticCompositionImageAgentCatalog{catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{
@@ -239,7 +242,7 @@ func TestNewImageAgentHTTPServiceStartsWithoutRetiredSceneTenantGate(t *testing.
 		}}}},
 	)
 	require.NoError(t, err)
-	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-not-in-retired-allowlist", UserID: "user-a"})
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-not-in-allowlist", UserID: "user-a"})
 
 	err = service.Start(ctx, imageagent.StartRunInput{
 		RunID: "run-1", BusinessTaskID: "task-1", TargetPlatform: "shein",
@@ -251,6 +254,19 @@ func TestNewImageAgentHTTPServiceStartsWithoutRetiredSceneTenantGate(t *testing.
 		},
 	})
 
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+	require.Zero(t, workflows.starts)
+
+	allowedCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-allowed", UserID: "user-a"})
+	err = service.Start(allowedCtx, imageagent.StartRunInput{
+		RunID: "run-2", BusinessTaskID: "task-1", TargetPlatform: "shein",
+		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"},
+		Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-2",
+		Plan: imageagent.Plan{
+			Revision: 1, IdempotencyKey: "plan-key-2", SourceAssetIDs: []string{"source-1"},
+			Slots: []imageagent.Slot{{ID: "slot-2", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-2", Status: imageagent.SlotStatusPending}},
+		},
+	})
 	require.NoError(t, err)
 	require.Equal(t, 1, workflows.starts)
 }

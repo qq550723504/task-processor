@@ -27,6 +27,14 @@ type Dependencies struct {
 	Reviewer                productimage.Reviewer
 	UsageQuoter             productimage.UsageQuoter
 	ProfileResolver         ProfileResolver
+	LegacyAssetMaterializer LegacyAssetMaterializer
+}
+
+// LegacyAssetMaterializer bridges byte-producing providers to the frozen v2
+// URL contract. It is intentionally absent from the v3 path, which has its
+// own persisted staging protocol.
+type LegacyAssetMaterializer interface {
+	Materialize(context.Context, imageagent.SlotExecutionInput, int, imageagent.GeneratedAsset) (string, error)
 }
 
 type ProductImageSlotExecutor struct {
@@ -281,10 +289,10 @@ func (e *ProductImageSlotExecutor) ExecuteSlot(ctx context.Context, input imagea
 	return e.PublishSlot(ctx, input, generated)
 }
 
-// PublishSlot is retained only for the frozen v2 activity contract. New
-// inline artifacts must use the v3 durable staging path and therefore fail
-// closed here instead of being written through a compatibility publisher.
-func (e *ProductImageSlotExecutor) PublishSlot(_ context.Context, input imageagent.SlotExecutionInput, generated imageagent.SlotGeneratedOutput) (imageagent.SlotExecutionResult, error) {
+// PublishSlot is retained only for the frozen v2 activity contract. Inline
+// artifacts use the injected compatibility materializer; v3 uses its separate
+// durable staging protocol.
+func (e *ProductImageSlotExecutor) PublishSlot(ctx context.Context, input imageagent.SlotExecutionInput, generated imageagent.SlotGeneratedOutput) (imageagent.SlotExecutionResult, error) {
 	resolved, err := e.resolveInput(input)
 	if err != nil {
 		return imageagent.SlotExecutionResult{}, err
@@ -294,14 +302,22 @@ func (e *ProductImageSlotExecutor) PublishSlot(_ context.Context, input imageage
 	}
 	candidates := make([]imageagent.AssetCandidate, len(generated.Assets))
 	for index, asset := range generated.Assets {
-		if len(asset.Bytes) != 0 || strings.TrimSpace(asset.URL) == "" {
-			return imageagent.SlotExecutionResult{}, imageagent.ErrValidation
+		url := strings.TrimSpace(asset.URL)
+		if len(asset.Bytes) != 0 {
+			if url != "" || e.dependencies.LegacyAssetMaterializer == nil {
+				return imageagent.SlotExecutionResult{}, imageagent.ErrValidation
+			}
+			var materializeErr error
+			url, materializeErr = e.dependencies.LegacyAssetMaterializer.Materialize(ctx, input, index, asset)
+			if materializeErr != nil {
+				return imageagent.SlotExecutionResult{}, fmt.Errorf("materialize v2 slot %q asset %d: %w", resolved.slot.ID, index, materializeErr)
+			}
 		}
-		if _, err := imageagent.ValidateSafeImageURL(asset.URL); err != nil {
+		if _, err := imageagent.ValidateSafeImageURL(url); err != nil {
 			return imageagent.SlotExecutionResult{}, err
 		}
 		candidates[index] = imageagent.AssetCandidate{
-			AssetID: candidateAssetID(input, resolved.slot, index), URL: asset.URL,
+			AssetID: candidateAssetID(input, resolved.slot, index), URL: url,
 			SourceAssetID: resolved.sourceAssetID, Metadata: cloneStringMap(asset.Metadata),
 		}
 	}

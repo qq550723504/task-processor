@@ -345,6 +345,24 @@ func TestServiceStartRejectsTenantBeforeInitializeRunWhenProviderIneligible(t *t
 	require.Empty(t, workflows.starts)
 }
 
+func TestServiceStartRechecksTenantAdmissionBeforeRestartingExistingRun(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	gate := staticTenantStartGate{allowed: map[string]bool{"tenant-a": true}}
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()}, imageagent.WithTenantStartGate(gate))
+	require.NoError(t, err)
+	input := withValidPolicy(imageagent.StartRunInput{
+		RunID: "run-existing-admission", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
+		IdempotencyKey: "run-existing-admission-key", Plan: commandPlan(1),
+	})
+	require.NoError(t, service.Start(verifiedContext("tenant-a", "user-a"), input))
+	require.Len(t, workflows.starts, 1)
+
+	gate.allowed["tenant-a"] = false
+	require.ErrorIs(t, service.Start(verifiedContext("tenant-a", "user-a"), input), imageagent.ErrCommandBlocked)
+	require.Len(t, workflows.starts, 1)
+}
+
 type staticTenantStartGate struct{ allowed map[string]bool }
 
 func (g staticTenantStartGate) AllowTenantStart(_ context.Context, tenantID string) bool {

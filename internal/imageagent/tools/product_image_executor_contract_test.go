@@ -75,6 +75,25 @@ func TestFrozenV2ExecutorAcceptsHistoricalInputWithoutV3PolicyFields(t *testing.
 	require.Len(t, generated.Assets, 1)
 }
 
+func TestFrozenV2ExecutorPublishesInlineProviderArtifactThroughCompatibilityMaterializer(t *testing.T) {
+	materializer := &recordingLegacyAssetMaterializer{url: "https://cdn.example.test/v2/scene.png"}
+	executor := NewFrozenV2ProductImageSlotExecutor(Dependencies{
+		SceneRenderer: &recordingProductSceneRenderer{candidates: []productimage.Candidate{testSceneCandidate(t, "https://source.example/item.png")}},
+		UsageQuoter:   testProductUsageQuoter{}, LegacyAssetMaterializer: materializer,
+	})
+	input := testProductImageExecutionInput()
+	input.TargetPlatform = ""
+	input.ImagePolicyContext = nil
+
+	generated, err := executor.GenerateSlot(context.Background(), input)
+	require.NoError(t, err)
+
+	result, err := executor.PublishSlot(context.Background(), input, generated)
+	require.NoError(t, err)
+	require.Equal(t, materializer.url, result.Candidates[0].URL)
+	require.Equal(t, 1, materializer.calls)
+}
+
 func TestExecutorAcceptsHistoricalV3InputWithoutPolicyFields(t *testing.T) {
 	executor := NewProductImageSlotExecutor(Dependencies{
 		SceneRenderer: &recordingProductSceneRenderer{candidates: []productimage.Candidate{testSceneCandidate(t, "https://source.example/item.png")}},
@@ -234,6 +253,16 @@ type recordingImageProfileResolver struct {
 	input   imagepolicy.ProfileInput
 	profile imagepolicy.ProductImageProfile
 	err     error
+}
+
+type recordingLegacyAssetMaterializer struct {
+	url   string
+	calls int
+}
+
+func (m *recordingLegacyAssetMaterializer) Materialize(context.Context, imageagent.SlotExecutionInput, int, imageagent.GeneratedAsset) (string, error) {
+	m.calls++
+	return m.url, nil
 }
 
 func (r *recordingImageProfileResolver) Resolve(input imagepolicy.ProfileInput) (imagepolicy.ProductImageProfile, error) {

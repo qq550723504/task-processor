@@ -59,7 +59,7 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 	require.Equal(t, 1, closed)
 }
 
-func TestResolveImageAgentTemporalDependenciesForV2SkipsV3ValidationAndDurableComposition(t *testing.T) {
+func TestResolveImageAgentTemporalDependenciesForV2BuildsCompatibilityArtifactStore(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-v2-runtime?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	cfg := &config.Config{Database: &config.DatabaseConfig{}}
@@ -92,10 +92,10 @@ func TestResolveImageAgentTemporalDependenciesForV2SkipsV3ValidationAndDurableCo
 	require.Nil(t, dependencies.ArtifactStore)
 	require.Nil(t, dependencies.PublisherV3)
 	require.Zero(t, dependencies.PublicationLeaseDuration)
-	require.Zero(t, storeBuilds)
+	require.Equal(t, 1, storeBuilds)
 }
 
-func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *testing.T) {
+func TestResolveImageAgentTemporalDependenciesForV2UsesCompatibilityArtifactStoreEvenWhenV3TimingIsDefaulted(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-v2-no-v3-fields?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	cfg := &config.Config{Database: &config.DatabaseConfig{}}
@@ -126,7 +126,7 @@ func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *t
 	require.Nil(t, dependencies.ArtifactStore)
 	require.Nil(t, dependencies.PublisherV3)
 	require.Zero(t, dependencies.PublicationLeaseDuration)
-	require.Zero(t, storeBuilds)
+	require.Equal(t, 1, storeBuilds)
 }
 
 func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseOnInvalidPolicy(t *testing.T) {

@@ -1,6 +1,7 @@
 package imageagentworker
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"task-processor/internal/app/configadapter"
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/core/config"
+	domainimageagent "task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/assetpublication"
 	"task-processor/internal/imageagent/objectstore"
 	imageagentstore "task-processor/internal/imageagent/store"
@@ -45,6 +47,50 @@ type imageAgentWorkerDependencyResolver struct {
 type imageAgentArtifactTiming struct {
 	PublicationLeaseDuration time.Duration
 	OperationTimeout         time.Duration
+}
+
+// legacyV2AssetMaterializer gives the frozen URL-based activity contract a
+// durable publication path while the provider adapter produces inline bytes.
+// The deterministic v3 object key makes retries idempotent without changing
+// the v2 Temporal payload or its product-asset publisher.
+type legacyV2AssetMaterializer struct {
+	store imageagenttemporal.DurableArtifactStore
+}
+
+func (m legacyV2AssetMaterializer) Materialize(ctx context.Context, input domainimageagent.SlotExecutionInput, index int, generated domainimageagent.GeneratedAsset) (string, error) {
+	if m.store == nil || ctx == nil || index < 0 {
+		return "", domainimageagent.ErrValidation
+	}
+	identity := domainimageagent.SlotExternalEffectIdentity{
+		RunScope:     domainimageagent.RunScope{TenantID: input.TenantID, OwnerUserID: input.UserID, RunID: input.RunID},
+		PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt,
+	}
+	sourceAssetID := ""
+	if len(input.Slot.SourceAssetIDs) == 1 {
+		sourceAssetID = strings.TrimSpace(input.Slot.SourceAssetIDs[0])
+	}
+	prepared, err := m.store.PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput{
+		Identity: identity,
+		Assets: []objectstore.ArtifactInput{{
+			Bytes: generated.Bytes, ContentType: generated.ContentType, Width: generated.Width, Height: generated.Height,
+			SourceAssetID: sourceAssetID, Operations: generated.Operations,
+			ProviderReceiptID: generated.ProviderReceiptID,
+		}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("prepare v2 compatibility artifact: %w", err)
+	}
+	if err := m.store.EnsureStaged(ctx, prepared); err != nil {
+		return "", fmt.Errorf("stage v2 compatibility artifact: %w", err)
+	}
+	final, err := m.store.Finalize(ctx, prepared.Manifest)
+	if err != nil || len(final.Assets) != 1 {
+		if err == nil {
+			err = domainimageagent.ErrValidation
+		}
+		return "", fmt.Errorf("publish v2 compatibility artifact: %w", err)
+	}
+	return m.store.PublicURL(final.Assets[0].ObjectKey), nil
 }
 
 var defaultImageAgentArtifactTiming = imageAgentArtifactTiming{
@@ -100,13 +146,21 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	if cfg == nil || cfg.Database == nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent worker database configuration is required")
 	}
-	var timing imageAgentArtifactTiming
+	timing := resolver.ArtifactTiming
+	if timing == (imageAgentArtifactTiming{}) {
+		timing = defaultImageAgentArtifactTiming
+	}
 	var artifactStore imageagenttemporal.DurableArtifactStore
-	if mode == imageagenttemporal.WorkerWireModeV3 {
-		timing = resolver.ArtifactTiming
-		if timing == (imageAgentArtifactTiming{}) {
-			timing = defaultImageAgentArtifactTiming
+	if mode == imageagenttemporal.WorkerWireModeV2 {
+		if resolver.BuildArtifactStore == nil {
+			resolver.BuildArtifactStore = buildImageAgentDurableArtifactStore
 		}
+		artifactStore, err = resolver.BuildArtifactStore(cfg, timing, logger)
+		if err != nil {
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent v2 compatibility artifact store: %w", err)
+		}
+	}
+	if mode == imageagenttemporal.WorkerWireModeV3 {
 		if err := timing.validate(); err != nil {
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact timing: %w", err)
 		}
@@ -163,6 +217,9 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		SubjectExtractor: capabilities.SubjectExtractor, WhiteBackgroundRenderer: capabilities.WhiteBackgroundRenderer,
 		SceneRenderer: capabilities.SceneRenderer, Reviewer: capabilities.Reviewer, UsageQuoter: capabilities.UsageQuoter,
 		ProfileResolver: capabilities.ProfileResolver,
+	}
+	if artifactStore != nil {
+		executorDependencies.LegacyAssetMaterializer = legacyV2AssetMaterializer{store: artifactStore}
 	}
 	v2Executor := imageagenttools.NewFrozenV2ProductImageSlotExecutor(executorDependencies)
 	v3Executor := imageagenttools.NewProductImageSlotExecutor(executorDependencies)
