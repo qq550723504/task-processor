@@ -126,7 +126,17 @@ func TestTrackLeadSendsClickAndStableCustomerIdentity(t *testing.T) {
 }
 
 func TestTrackLeadTreatsDuplicateNullAsSuccess(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if _, exists := body["clickId"]; exists {
+			t.Fatalf("deferred lead payload contains clickId: %#v", body)
+		}
+		if body["customerExternalId"] != "customer-9" || body["eventName"] != "Sign up" {
+			t.Fatalf("deferred lead body = %#v", body)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(" null\n"))
 	}))
