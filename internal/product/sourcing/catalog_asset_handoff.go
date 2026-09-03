@@ -2,6 +2,7 @@ package sourcing
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"task-processor/internal/product/catalog"
@@ -19,7 +20,7 @@ func ToSnapshot(in SourceEnvelope) (catalog.ProductSnapshot, error) {
 		Brand:       normalized.ProductCandidate.Brand,
 		Description: normalized.ProductCandidate.Description,
 		Attributes:  snapshotAttributes(normalized.ProductCandidate.Attributes),
-		Variants:    snapshotVariants(normalized.ProductCandidate.Variants),
+		Variants:    snapshotVariants(normalized),
 		Images:      snapshotImages(normalized),
 		Review:      reviewFromSourceWarnings(normalized.Warnings),
 		Warnings:    snapshotWarnings(normalized.Warnings),
@@ -99,15 +100,24 @@ func reviewFromSourceWarnings(warnings []SourceWarning) *catalog.ReviewState {
 	return &catalog.ReviewState{NeedsReview: true, Reasons: reasons}
 }
 
-func snapshotVariants(candidates []ProductVariantCandidate) []catalog.Variant {
+func snapshotVariants(envelope SourceEnvelope) []catalog.Variant {
+	candidates := envelope.ProductCandidate.Variants
 	if len(candidates) == 0 {
 		return nil
 	}
+	cost, hasCost := parseSupplierCost(envelope.SupplierOrCostFacts)
 	variants := make([]catalog.Variant, len(candidates))
 	for index, candidate := range candidates {
 		var price *catalog.Price
-		if candidate.Price > 0 {
-			price = &catalog.Price{Currency: strings.TrimSpace(candidate.Currency), Amount: candidate.Price}
+		if candidate.Price > 0 || hasCost {
+			currency := strings.TrimSpace(candidate.Currency)
+			if currency == "" {
+				currency = strings.TrimSpace(envelope.SupplierOrCostFacts.Currency)
+			}
+			price = &catalog.Price{
+				Currency: currency, Amount: candidate.Price,
+				CostPrice: cost,
+			}
 		}
 		variants[index] = catalog.Variant{
 			SourceID:   candidate.SourceID,
@@ -119,6 +129,18 @@ func snapshotVariants(candidates []ProductVariantCandidate) []catalog.Variant {
 		}
 	}
 	return variants
+}
+
+func parseSupplierCost(facts SupplierOrCostFacts) (float64, bool) {
+	raw := strings.TrimSpace(facts.Cost)
+	if raw == "" {
+		return 0, false
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
 }
 
 func snapshotAttributes(values map[string]string) []catalog.Attribute {
