@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"task-processor/internal/authidentity"
 	"task-processor/internal/shared/aiidentity"
 )
@@ -173,6 +175,120 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		MaxConcurrentSlots: projection.Run.MaxConcurrentSlots,
 		AssetCatalog:       projection.AssetCatalog,
 	})
+}
+
+// LaunchTaskRun starts a manual single-main-slot run for a verified business
+// task without trusting a browser-built plan. It resolves the task-scoped
+// authorized asset catalog, selects the primary (or caller-requested) source
+// asset, and delegates to Start so admission, idempotent replay, and workflow
+// ingress reuse the generic run-creation semantics unchanged.
+func (s *Service) LaunchTaskRun(ctx context.Context, input TaskRunLaunchInput) (TaskRunLaunchResult, error) {
+	identity, err := verifiedExecutionIdentity(ctx)
+	if err != nil {
+		return TaskRunLaunchResult{}, err
+	}
+	input.BusinessTaskID = strings.TrimSpace(input.BusinessTaskID)
+	input.TargetPlatform = strings.ToLower(strings.TrimSpace(input.TargetPlatform))
+	input.SourceAssetID = strings.TrimSpace(input.SourceAssetID)
+	if input.BusinessTaskID == "" {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: business task ID is required", ErrValidation)
+	}
+	if err := ValidateImagePolicyContext(input.TargetPlatform, input.ImagePolicyContext); err != nil {
+		return TaskRunLaunchResult{}, err
+	}
+	styleIDs, err := normalizeTaskLaunchStyleIDs(input.StyleAssetIDs)
+	if err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	runID := "image-agent-" + uuid.NewString()
+	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{
+		TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: input.BusinessTaskID,
+		RunID: runID, TargetPlatform: input.TargetPlatform,
+		PrimarySourceAssetID: input.SourceAssetID, StyleReferenceIDs: styleIDs,
+	})
+	if err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: resolve authorized image assets: %v", ErrValidation, err)
+	}
+	catalog, err = NormalizeAssetCatalog(catalog)
+	if err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: normalize authorized image assets: %v", ErrValidation, err)
+	}
+	primarySource, err := primaryTaskLaunchSource(catalog, input.SourceAssetID)
+	if err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	if err := validateTaskLaunchStyleIDs(catalog, styleIDs); err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	plan := Plan{
+		Revision: 1, IdempotencyKey: "image-agent-plan-" + uuid.NewString(),
+		SourceAssetIDs: []string{primarySource}, StyleReferenceIDs: styleIDs,
+		Slots: []Slot{{
+			ID: "main", Role: SlotRoleMain, SourceAssetIDs: []string{primarySource}, StyleReferenceIDs: styleIDs,
+			IdempotencyKey: "image-agent-slot-main-" + uuid.NewString(), Status: SlotStatusPending,
+		}},
+	}
+	if err := s.Start(ctx, StartRunInput{
+		RunID: runID, BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
+		ImagePolicyContext: input.ImagePolicyContext, Mode: RunModeManual,
+		IdempotencyKey: "image-agent-run-" + uuid.NewString(), Plan: plan,
+		Budget: Budget{MaxImages: 1, EnabledLimits: BudgetLimitImages}, MaxConcurrentSlots: 1,
+	}); err != nil {
+		return TaskRunLaunchResult{}, err
+	}
+	return TaskRunLaunchResult{RunID: runID}, nil
+}
+
+func normalizeTaskLaunchStyleIDs(raw []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, value := range raw {
+		id := strings.TrimSpace(value)
+		if id == "" {
+			return nil, fmt.Errorf("style asset IDs cannot contain an empty value")
+		}
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func primaryTaskLaunchSource(catalog AssetCatalog, requested string) (string, error) {
+	if requested != "" {
+		for _, asset := range catalog.Assets {
+			if asset.Type == AuthorizedAssetSource && asset.ID == requested {
+				return requested, nil
+			}
+		}
+		return "", fmt.Errorf("source asset %q is not authorized for this business task", requested)
+	}
+	for _, asset := range catalog.Assets {
+		if asset.Type == AuthorizedAssetSource {
+			return asset.ID, nil
+		}
+	}
+	return "", fmt.Errorf("business task has no authorized source images")
+}
+
+func validateTaskLaunchStyleIDs(catalog AssetCatalog, styleIDs []string) error {
+	if len(styleIDs) == 0 {
+		return nil
+	}
+	known := make(map[string]struct{}, len(catalog.Assets))
+	for _, asset := range catalog.Assets {
+		if asset.Type == AuthorizedAssetStyle {
+			known[asset.ID] = struct{}{}
+		}
+	}
+	for _, id := range styleIDs {
+		if _, ok := known[id]; !ok {
+			return fmt.Errorf("style asset %q is not authorized for this business task", id)
+		}
+	}
+	return nil
 }
 
 // RestartFailed exposes the same-request recovery path using only immutable,

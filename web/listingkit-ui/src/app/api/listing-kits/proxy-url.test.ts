@@ -76,6 +76,7 @@ describe("buildListingKitProxyUrl", () => {
 
   it.each([
     ["POST", ["image-agent", "runs"]],
+    ["POST", ["image-agent", "task-runs"]],
     ["GET", ["image-agent", "runs", "run-1"]],
     ["PUT", ["image-agent", "runs", "run-1", "plan"]],
     ["POST", ["image-agent", "runs", "run-1", "slots", "scene-2", "retry"]],

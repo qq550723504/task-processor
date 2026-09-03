@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useState } from "react";
 
 import { RecoverySummaryCard } from "@/components/listingkit/review/recovery-summary-card";
@@ -11,6 +11,7 @@ import { SheinFlowNav } from "@/components/listingkit/shein/shein-flow-nav";
 import { TaskRevisionHistoryPanel } from "@/components/listingkit/tasks/task-revision-history-panel";
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { TaskProgressNotice } from "@/components/listingkit/tasks/task-progress-notice";
+import { ImageAgentTaskRunLauncher } from "@/components/listingkit/image-agent/image-agent-task-run-launcher";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -101,6 +102,7 @@ function WorkspaceScreenContent({
     workspaceDestination:
       !routeHistorySelected && routeParams.get("platform") ? "platform" : "product",
   } as const;
+  const router = useRouter();
   const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
   const [localNavigationState, setLocalNavigationState] = useState<
     typeof routeNavigationState
@@ -218,6 +220,11 @@ function WorkspaceScreenContent({
   const refetchWorkspace = () =>
     Promise.all([preview.refetch(), session.refetch(), taskResult.refetch()]);
 
+  const handleImageAgentLaunched = (runId: string) => {
+    const params = new URLSearchParams(routeSearch);
+    params.set("image_agent_run_id", runId);
+    router.replace(`/listing-kits/${taskId}/workspace?${params.toString()}`);
+  };
   const withAgentSurface = (legacyPanel: ReactNode) =>
     imageAgentRunId ? (
       <WorkspaceAgentSurface context={{ taskId, runId: imageAgentRunId }}>
@@ -475,6 +482,16 @@ function WorkspaceScreenContent({
         }
         actions={
           <div className="space-y-4">
+            {imageAgentRunId ? null : (
+              <ImageAgentTaskRunLauncher
+                country={taskResult.data?.result?.country}
+                onLaunched={handleImageAgentLaunched}
+                targetPlatform={
+                  selectedPlatform ?? taskResult.data?.result?.platforms?.[0]
+                }
+                taskId={taskId}
+              />
+            )}
             <TaskProgressNotice task={taskResult.data} />
             <Card className="p-4">
               <details>

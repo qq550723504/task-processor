@@ -159,6 +159,23 @@ export type ImageAgentProjection = {
   command_ingress?: ImageAgentCommandIngress;
 };
 
+export type ImageAgentTaskLaunchInput = {
+  business_task_id: string;
+  target_platform: string;
+  image_policy_context: {
+    country: string;
+    family: string;
+    scene_category: string;
+  };
+  source_asset_id?: string;
+  style_asset_ids?: string[];
+};
+
+export type ImageAgentTaskLaunchResult = {
+  run_id: string;
+  status: string;
+};
+
 export type ImageAgentProjectionEvent = {
   schema_version: "image-agent.projection.v1";
   type: string;

@@ -4,9 +4,12 @@ import { ApiError } from "@/lib/api/api-error";
 import type {
   ImageAgentPlan,
   ImageAgentProjection,
+  ImageAgentTaskLaunchInput,
+  ImageAgentTaskLaunchResult,
 } from "@/lib/types/image-agent";
 
 const imageAgentBffBase = "/api/listing-kits/image-agent/runs";
+const imageAgentTaskRunsBffBase = "/api/listing-kits/image-agent/task-runs";
 
 const slotRoleSchema = z.enum([
   "main",
@@ -166,6 +169,13 @@ export function parseImageAgentProjection(payload: unknown): ImageAgentProjectio
   return projectionSchema.parse(payload) as ImageAgentProjection;
 }
 
+export async function launchImageAgentTaskRun(
+  input: ImageAgentTaskLaunchInput,
+  signal?: AbortSignal,
+): Promise<ImageAgentTaskLaunchResult> {
+  return imageAgentRequest("", { method: "POST", body: input, signal }, imageAgentTaskRunsBffBase);
+}
+
 export async function getImageAgentRun(runId: string, signal?: AbortSignal) {
 	const payload = await imageAgentRequest<unknown>(encodeId(runId), { signal });
   return parseImageAgentProjection(payload);
@@ -256,9 +266,10 @@ async function command(
 async function imageAgentRequest<T>(
   path: string,
 	{ method = "GET", body, signal }: { method?: "GET" | "POST" | "PUT"; body?: unknown; signal?: AbortSignal } = {},
+  base: string = imageAgentBffBase,
 ): Promise<T> {
   const response = await fetch(
-    path ? `${imageAgentBffBase}/${path}` : imageAgentBffBase,
+    path ? `${base}/${path}` : base,
     {
       method,
       headers: {

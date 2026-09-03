@@ -51,6 +51,7 @@ const safeActionID = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/;
 function isAllowedImageAgentRoute(method: string, route: string[]) {
   const verb = method.toUpperCase();
   if (verb === "POST" && route.length === 1 && route[0] === "runs") return true;
+  if (verb === "POST" && route.length === 1 && route[0] === "task-runs") return true;
   if (route[0] !== "runs" || !safeID.test(route[1] ?? "")) return false;
   if (verb === "GET" && route.length === 2) return true;
   if (verb === "PUT" && route.length === 3 && route[2] === "plan") return true;

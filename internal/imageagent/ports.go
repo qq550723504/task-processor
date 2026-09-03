@@ -123,6 +123,26 @@ type StartRunInput struct {
 	MaxConcurrentSlots int
 }
 
+// TaskRunLaunchInput is the task-scoped launch contract for the workspace
+// entrypoint. The caller supplies the verified business task identity plus
+// the image policy context; ImageAgent owns the durable run identity, plan,
+// and budget shape so the browser never constructs plan payloads directly.
+type TaskRunLaunchInput struct {
+	BusinessTaskID     string
+	TargetPlatform     string
+	ImagePolicyContext ImagePolicyContext
+	// SourceAssetID optionally narrows the launch to one task-owned source
+	// asset. Empty selects the primary source asset of the resolved catalog.
+	SourceAssetID string
+	// StyleAssetIDs optionally promotes task-owned style assets into the
+	// run-scoped authorization snapshot.
+	StyleAssetIDs []string
+}
+
+type TaskRunLaunchResult struct {
+	RunID string
+}
+
 type WorkflowStart struct {
 	Run                Run
 	Plan               Plan

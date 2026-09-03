@@ -28,6 +28,7 @@ const (
 
 type Application interface {
 	Start(context.Context, imageagent.StartRunInput) error
+	LaunchTaskRun(context.Context, imageagent.TaskRunLaunchInput) (imageagent.TaskRunLaunchResult, error)
 	RestartFailed(context.Context, string) error
 	Get(context.Context, string) (imageagent.RunProjection, error)
 	ReplacePlan(context.Context, string, int64, imageagent.Plan, string) error
@@ -110,6 +111,40 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusAccepted, gin.H{"run_id": request.RunID, "status": "accepted"})
+}
+
+type launchTaskRunRequest struct {
+	BusinessTaskID     string                `json:"business_task_id"`
+	TargetPlatform     string                `json:"target_platform"`
+	ImagePolicyContext imagePolicyContextDTO `json:"image_policy_context"`
+	SourceAssetID      string                `json:"source_asset_id,omitempty"`
+	StyleAssetIDs      []string              `json:"style_asset_ids,omitempty"`
+}
+
+// LaunchTaskRun is the task-scoped workspace entrypoint. The browser sends
+// business task identity and image policy context only; the application owns
+// plan construction and the durable run identity.
+func (h *Handler) LaunchTaskRun(c *gin.Context) {
+	if !requireVerifiedIdentity(c) {
+		return
+	}
+	var request launchTaskRunRequest
+	if err := decodeStrictJSON(c, &request); err != nil {
+		writeInvalidJSON(c, err)
+		return
+	}
+	result, err := h.application.LaunchTaskRun(c.Request.Context(), imageagent.TaskRunLaunchInput{
+		BusinessTaskID:     request.BusinessTaskID,
+		TargetPlatform:     request.TargetPlatform,
+		ImagePolicyContext: request.ImagePolicyContext.domain(),
+		SourceAssetID:      request.SourceAssetID,
+		StyleAssetIDs:      request.StyleAssetIDs,
+	})
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"run_id": result.RunID, "status": "accepted"})
 }
 
 type imagePolicyContextDTO struct {
