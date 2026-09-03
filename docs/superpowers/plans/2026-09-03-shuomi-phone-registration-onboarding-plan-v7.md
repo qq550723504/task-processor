@@ -21,6 +21,20 @@
 
 仍然必须保护：手机号日志/存储安全、OTP/SMS 防滥用、账号资料、组织关系、认证因子细节、业务数据、跨租户权限、Consent 正确性与 Provider 写入一致性。
 
+### Phase1 首次 Store 体验资源
+
+PR #281 已确认产品闭环：新**直接注册**并完成首次业务开通的 Organization，一次性获得：
+
+```text
+store_renewal_period = 1
+ai_point = 0
+data_row = 0
+```
+
+该 1 期是独立企业资源 Grant，不属于 `base_payg.store_count`，也不是人民币钱包余额。绑定 Store 不消费它；用户显式 Activate 时才消费 1 期并启动首个 30 天服务周期。
+
+同一新 Organization 最多获得一次，不因 HTTP retry、Registration resume/reclaim、Reconciler 重跑或套餐变化重复赠送。资源入账权威和 trusted Provisioning/source-bound 幂等合同由 PR #284 V7 定义。
+
 ## 1. 职责边界
 
 ```text
@@ -38,6 +52,7 @@ Sumi Onboarding
   current Consent
   business ownership fence
   projections / base_payg / entitlements
+  one-time welcome store renewal Grant readiness
   Project Grant / User Authorization
 ```
 
@@ -59,7 +74,7 @@ Sumi Onboarding
 classification = existing_active
 -> 返回 accountExists=true / 等价明确业务结果
 -> UI 提示“该手机号已注册，请直接登录”
--> 提供短信验证码登录、密码登录、忘记密码入口
+-> 提供短信验证码登录、密码登录、忘记密码入口（对应 capability 可用时）
 ```
 
 要求：
@@ -102,6 +117,8 @@ classification = not_found
 -> VerifySMS
 -> current Consent
 -> Business Bootstrap
+-> Ensure base_payg / current plan entitlements ready
+-> Ensure one-time welcome store_renewal_period Grant ready
 -> Project Grant
 -> User Authorization(listingkit_admin)
 -> official Login V2 CreateCallback / Auth.js session
@@ -300,7 +317,11 @@ lock Intent / work lease / fence / current policy / proof / Acceptance
 
 Policy stale -> zero business write，进入 `consent_required`。除 Bootstrap 外，paid ApplyPlan、projection、Project Grant preparation、Store/resource/order 等 ownership creator 只有 `preserved_business` 才可写。
 
-## 10. Subscription
+首次体验资源 Grant **不需要和这笔 Bootstrap transaction 强行合并成跨 package 巨型事务**；它是 Bootstrap 成功后、授权前必须收敛的独立幂等 readiness effect。这样 #283 只负责业务顺序，资源写入仍由 #284 的 Resource authority 完成。
+
+## 10. Subscription + Welcome Resource Readiness
+
+### 10.1 Subscription
 
 `base_payg` 继续复用现有 `internal/listingsubscription`：
 
@@ -309,9 +330,48 @@ Policy stale -> zero business write，进入 `consent_required`。除 Bootstrap 
 - existing paid plan 必须 canonical reconcile plan-owned entitlement projection；
 - initial assignment 使用 DB conditional insert / locked authority，不能 check-then-unconditional-upsert。
 
+### 10.2 One-time Welcome Store Renewal Grant
+
+对本次确认为**新直接注册 Organization** 的首次业务开通，Onboarding 必须在 `preserved_business` 后确保以下资源事实 ready：
+
+```text
+resource_type = store_renewal_period
+quantity = 1
+source_type = onboarding_welcome_store_period
+source_identity = organization_id
+```
+
+规则：
+
+- 调用 PR #284 Resource authority 的窄 trusted Provisioning path；
+- quantity 固定为 1，浏览器/tenant human 不可传入或提高数量；
+- source identity 按 Organization 唯一，不按可变化的 registration/reclaim attempt 唯一；
+- same Organization 同 source replay -> 返回原成功结果，不再次 +1；
+- source 已成功后 Registration resume/reclaim/Reconciler 重跑只做 read-back；
+- 历史/既有 Organization、existing active User 普通登录不触发该 Grant；
+- paid plan race 不取消或重复该一次性 welcome Grant，它与套餐 code 独立。
+
+如果 Resource authority 尚未就绪或 Grant outcome 未能权威确认：
+
+```text
+-> 不授予 listingkit_admin
+-> RegistrationReconciler 保持 welcome_resource_pending / 等价 readiness 状态
+-> 按同一 source identity 重试/read-back
+```
+
+不允许因为 welcome Grant 暂时失败而回退删除已经 `preserved_business` 的 Provider identity。
+
 ## 11. Project Grant / User Authorization
 
 `listingkit_admin` 始终是最后一项业务访问效果。
+
+进入 Project Grant / User Authorization 前必须同时确认：
+
+```text
+current Consent ready
+current subscription/entitlements ready
+one-time welcome store_renewal_period Grant ready（仅 new direct registration）
+```
 
 Project Grant / User Authorization：absent -> create；exact roles + ACTIVE -> adopt；different/inactive/revoked -> repair_required；禁止 Update/Reactivate 管理员修改或撤销的授权；Create response loss 走 Provider finality protocol。
 
@@ -370,6 +430,8 @@ commit claim
 
 之后整个 Provider Delete/finality 期间保持 `cleanup_claimed`。Bootstrap/ApplyPlan/projection/Grant preparation/Store/resource/order 等 ownership writer 看到 `cleanup_claimed` 必须 fail closed；因此 Cleanup 与第一笔 business ownership 不可能交叉提交。
 
+一旦 `preserved_business` 已成立，包括 welcome resource readiness 正在等待/已完成，都不得再走 destructive pre-business cleanup。资源 Grant 失败只能 repair/retry，不能通过删除 Identity “回滚”。
+
 自动 destructive Provider Delete 还必须满足 pinned ZITADEL 已证明的 atomic/conditional ownership precondition 与 finality；否则 automatic Delete 关闭，new self-registration rollout 保持 gated/off，直到存在经过验证的 bounded cleanup strategy。
 
 Reclaim 使用 fresh ownership proof；reclaim proof 与 onboarding-consent proof 分离。Reclaim 前同样 exact read-back Provider ownership，并与 Delete 共享 stable target fence；不允许 stale Delete 与新 Reclaim 并行 inflight。
@@ -394,6 +456,12 @@ Reclaim 使用 fresh ownership proof；reclaim proof 与 onboarding-consent proo
 - destructive cleanup conditional ownership safety；
 - credential negative permission matrix。
 
+业务 readiness 还必须实测：
+
+- `base_payg`/current plan entitlement reconcile；
+- PR #284 welcome resource Grant path 对同 Organization source identity 的 exactly-once/replay；
+- welcome Grant 不暴露 tenant/browser positive-mint API。
+
 任一关键 Provider finality / Factor recovery / destructive cleanup 条件无法证明时，只关闭 **new phone self-registration**；Login V2、existing user login、Console 其他业务不因此停止开发。
 
 ## 16. Acceptance Tests
@@ -417,8 +485,12 @@ current policy changes before Bootstrap -> zero business write
 current policy changes after Bootstrap before Grant/Auth -> consent_required
 current policy changes while Grant/Auth retry_wait -> 下一次 send 前拦截，不授予 listingkit_admin
 Cleanup vs Bootstrap race -> 只有 cleanup_claimed 或 preserved_business 一方成功
-successful authorization -> authorized + pending-object release + work-lease release 同事务
-paid plan race -> 不覆盖 paid plan，entitlements ready
+new direct org welcome grant -> exactly +1 store_renewal_period
+welcome grant response/retry/resume/reclaim -> same org source replay，不重复 +1
+existing org / ordinary login -> 不触发 welcome grant
+welcome grant unavailable -> 不授权，进入 readiness retry；不 destructive cleanup preserved business
+successful authorization -> consent + plan + welcome resource ready, authorized + pending-object release + work-lease release
+paid plan race -> 不覆盖 paid plan，entitlements ready，welcome grant 仍最多一次
 Grant/Auth absent create，exact active adopt，different/revoked repair
 unsafe automatic Delete capability -> self-registration remains off
 phone ciphertext / phone-derived fingerprints retention 后 scrub
@@ -426,10 +498,10 @@ phone ciphertext / phone-derived fingerprints retention 后 scrub
 
 ## 17. 开发停止条件
 
-本设计不以“自动评审找不到任何 P1/P2”为开工条件。真正阻塞实现的是会导致：跨租户/越权、重复 Provider identity/授权、错误 Consent、paid plan 覆盖、不可恢复 Provider side effect、身份删除与业务资产不一致、pending capacity 永久泄漏导致核心注册不可用、或核心注册流程无法完成的问题。
+本设计不以“自动评审找不到任何 P1/P2”为开工条件。真正阻塞实现的是会导致：跨租户/越权、重复 Provider identity/授权、错误 Consent、paid plan 覆盖、welcome resource 重复 mint/漏发导致 Phase1 首次 Store 闭环失效、不可恢复 Provider side effect、身份删除与业务资产不一致、pending capacity 永久泄漏导致核心注册不可用、或核心注册流程无法完成的问题。
 
 纯 Account Enumeration、branch-neutral capacity、cross-epoch side-channel、零停机 correlator key rotation 不属于 Phase1 blocking requirement。
 
 ## 完成定义
 
-ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；Current Consent 在每次延迟授权 send 前仍有效；Cleanup 与 Business Bootstrap 有互斥 fence；authorized 与 pending capacity release 同事务；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
+ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；Current Consent 在每次延迟授权 send 前仍有效；Cleanup 与 Business Bootstrap 有互斥 fence；新直接注册 Organization 的一次性 `store_renewal_period=1` 在授权前按 Organization source identity 幂等 ready；authorized 与 pending capacity release 同事务；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
