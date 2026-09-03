@@ -47,6 +47,9 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	result.CatalogProduct = &productSnapshot
 	canonicalProduct := canonicalProductFromSnapshot(productSnapshot)
 	result.CanonicalProduct = canonicalProduct
+	if productSnapshot.Review != nil {
+		result.ReviewReasons = append(result.ReviewReasons, productSnapshot.Review.Reasons...)
+	}
 	log.WithFields(logrus.Fields{
 		"has_canonical": canonicalProduct != nil,
 		"image_count": func() int {

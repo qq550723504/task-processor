@@ -126,9 +126,11 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 	if err != nil {
 		return &CreateTaskResult{Handoff: handoff}, err
 	}
+	handoff.Request.ProductKey = boundedProductKey(handoff.Request.ProductKey)
 	if s.sourcePublisher != nil {
+		productKey := handoff.Request.ProductKey
 		published, err := s.sourcePublisher.Publish(ctx, sourcing.PublishRequest{
-			TenantID: command.TenantID, ProductKey: handoff.Request.ProductKey,
+			TenantID: command.TenantID, ProductKey: productKey,
 			PublicationID: sourcePublicationID(handoff.Envelope), Envelope: handoff.Envelope,
 		})
 		if err != nil {
@@ -141,6 +143,15 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 		return &CreateTaskResult{Handoff: handoff}, err
 	}
 	return &CreateTaskResult{Task: task, Handoff: handoff}, nil
+}
+
+func boundedProductKey(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= 128 {
+		return value
+	}
+	digest := sha256.Sum256([]byte(value))
+	return "source-key-hash:" + hex.EncodeToString(digest[:])
 }
 
 func sourcePublicationID(envelope sourcing.SourceEnvelope) string {

@@ -197,7 +197,10 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 		if e != nil && !e.legacyV2 && !resolved.legacyPolicy && errors.Is(err, imageagent.ErrReviewDecision) {
 			return output, &imageagent.SlotReviewRequiredError{Output: output, Reason: err.Error(), Cause: err}
 		}
-		return imageagent.SlotGeneratedOutput{}, fmt.Errorf("review slot %q: %w", resolved.slot.ID, err)
+		// Generation has already dispatched and produced durable candidate material.
+		// Preserve it across reviewer transport failures so the activity can stage
+		// the output and retry the read-only review step instead of losing work.
+		return output, &imageagent.SlotReviewRequiredError{Output: output, Reason: err.Error(), Cause: err}
 	}
 	return output, nil
 }
