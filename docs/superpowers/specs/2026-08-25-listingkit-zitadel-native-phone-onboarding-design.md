@@ -2,14 +2,20 @@
 
 ## Status
 
-- Status: Accepted
+- Status: **Superseded / Historical only**
 - Date: 2026-08-25
 - Scope: ListingKit passwordless phone registration, sign-in, invitation admission, tenant bootstrap, and Login V2 customization
-- Implementation status: Not started
-- Supersedes: `docs/superpowers/plans/2026-08-25-casdoor-phone-idp.md`
-- Accepted amendment: Users provide no email or password; ZITADEL v4.17.1
+- Implementation status: Historical feasibility baseline; **do not implement this document as the current production onboarding contract**
+- Superseded by:
+  - `docs/superpowers/specs/2026-09-02-shuomi-console-phase1-hard-cut-design.md` for current Phase1 Product Decisions and capability boundaries;
+  - PR #283 V7 (`docs/superpowers/plans/2026-09-03-shuomi-phone-registration-onboarding-plan-v7.md`) for current phone Registration/Onboarding implementation;
+  - PR #284 V7 (`docs/superpowers/plans/2026-09-03-shuomi-resource-ledger-store-plan-v7.md`) for current welcome resource / Store Service implementation.
+- Originally superseded: `docs/superpowers/plans/2026-08-25-casdoor-phone-idp.md`
+- Historical amendment: Users provide no email or password; ZITADEL v4.17.1
   receives a generated verified technical email because its Human User schema
   requires the email field.
+
+> **Authority notice:** This file remains only as historical design and feasibility evidence. In particular, its old `professional/trialing` 14-day subscription, one-phone/one-tenant restriction, invitation scope, anti-enumeration guarantees, and production onboarding state model are **not current Phase1 requirements**. New implementation must follow the superseding #281/#283/#284 frozen baselines above. The reusable ZITADEL/SMS feasibility evidence may still be consulted where the newer baselines explicitly retain it.
 
 ## Goal
 
