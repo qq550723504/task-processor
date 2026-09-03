@@ -2,288 +2,93 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans`. Every task is TDD-first and must be committed separately.
 
-**Goal:** 复用已经合并的手机号 OTP 能力，以 ZITADEL User／Organization／Session／OIDC 作为身份流程主干，以 Actions v2 作为签名身份事件桥接，并在 `task-processor` 中补齐并发 Claim、业务就绪、邀请、回调交付、状态恢复、BFF 和 Figma 页面。
+**Goal:** 复用已合并的手机号 OTP 能力，以 ZITADEL User／Organization／Session／OIDC 为身份主干，以 Actions v2 为可关闭的签名身份事件桥，在 `task-processor` 中补齐并发 Claim、Provider 响应丢失恢复、业务就绪、邀请、callback generation、状态恢复、BFF 和 Figma 页面。
 
-**Authoritative design:**
+**Authoritative designs:**
 
 - `docs/superpowers/specs/2026-09-03-shuomi-account-entry-zitadel-native-flow-design.md`
-- `docs/superpowers/specs/2026-09-02-shuomi-console-phase1-hard-cut-design.md`（除账号入口被新设计覆盖的部分外）
+- `docs/superpowers/specs/2026-09-03-shuomi-console-resource-store-amendments.md`
+- `docs/superpowers/specs/2026-09-02-shuomi-console-phase1-hard-cut-design.md`（除被上述文档覆盖的部分外）
 
-**Tech stack:** Go 1.26、Gin/kernel module、GORM、PostgreSQL、Redis、ZITADEL Core/Login V2 + Actions v2 v4.17.1、Next.js 16、React 19、Auth.js 5、Zod、Vitest、Playwright。
-
----
-
-## 一、执行边界
-
-### 已实现并必须复用
-
-PR #218 已经合并：
-
-```text
-internal/listingkit/zitadelsms
-- ZITADEL HTTP SMS Provider
-- 腾讯云短信 Relay
-- OTP SMS 精确事件白名单
-- HMAC 与错误脱敏
-
-internal/listingkit/phoneonboardingpreflight
-- 创建 Organization / Human User
-- 添加 OTP SMS Factor
-- 创建 SMS Challenge
-- 验证短信 Code
-- 读取 Session user + otpSms 因子
-- 精确清理测试资源
-
-hack/debug/listingkit-phone-onboarding-preflight
-- 非生产真实设备验证命令
-```
-
-禁止：
-
-```text
-重新实现短信发送
-建立短信验证码表
-在 task-processor 中比较验证码
-复制第二套 ZITADEL Session HTTP Client
-把手机号字段 isVerified 当作 OTP Proof
-```
-
-### 第一阶段不做
-
-```text
-Temporal Account Entry Workflow
-企业钱包、在线支付、退款、发票
-企业自定义角色
-成员月度消费额度
-个人或企业实名认证
-推广收益与提现
-用户名密码登录
-“记住登录状态”复选框
-```
-
-“记住登录状态”在 Auth.js 与 ZITADEL Session 生命周期没有完成逐次登录语义前不展示，避免无效产品承诺。
-
-### 身份与业务边界
-
-```text
-ZITADEL：User、Phone、Password、OTP、Session、Organization、OIDC、项目授权
-Actions v2：签名身份事件通知，不承载业务逻辑
-PostgreSQL：手机号盲索引、Claim、幂等、业务就绪、邀请、callback 交付
-Redis：短窗口限流
-Auth.js：浏览器业务会话
-Temporal：本 Slice 不使用
-```
+**Tech stack:** Go 1.26、Gin/kernel module、GORM、PostgreSQL、Redis、ZITADEL v4.17.1、Actions v2、Next.js 16、React 19、Auth.js 5、TypeScript、Zod、Vitest、Playwright。
 
 ---
 
-## 二、完成后的主要流程
+## 执行不变量
 
-### 自助注册
-
-```text
-/register
-→ 统一检查 SELF_REGISTRATION
-→ 设备 / IP / 手机号限流
-→ 对全部有效手机号 HMAC Alias 取得注册 Claim
-→ 创建 inert Organization + inert User（无角色、无套餐）
-→ 复用 ZITADEL OTP SMS Challenge
-→ 复用 ZITADEL Session OTP Proof
-→ pending_provisioning 手机身份
-→ Ensure base_payg
-→ Ensure ORG_OWNER
-→ 最后 Ensure listingkit_admin
-→ 手机身份 active
-→ ZITADEL OIDC CreateCallback
-→ callback 加密可重放
-→ Next.js 303 到 Auth.js callback
-→ /auth-complete 确认 Session 并 ACK
-→ /workbench 或合法 returnTo
-```
-
-### OTP 登录
+- PR #218 的 `phoneonboardingpreflight`、`zitadelsms` 和真实 OTP 证据是已实现基线，不得重写。
+- 验证码只交给 ZITADEL Session API；不新增验证码表，不由业务代码比较验证码。
+- ZITADEL 是 User、Phone、Password、Session、Organization、Authorization 和 OIDC 的身份权威。
+- Actions v2 只做签名事件通知与收敛唤醒；Actions 关闭或延迟不阻断登录主链路。
+- Account Entry 第一阶段不使用 Temporal。
+- 一个手机号在并发、响应丢失、重试和 Key 轮换中只能关联一个 ZITADEL User。
+- ZITADEL Organization ID 和 User ID 在 Provider POST 前由硕米预分配并持久化；结果未知时 lookup/adopt，不生成新 ID。
+- 新 Identity 在 `base_payg`、目标授权和业务投影完成前保持 pending，不得走普通登录。
+- `listingkit_admin` 是自助注册最后一个业务访问效果。
+- callback URL 在 Auth.js Session ACK 前加密保存；旧 code 已消费但浏览器没拿到 Session 时必须创建新 OIDC Auth Request generation。
+- 公开错误和时序不得泄露账号存在、pending、是否设置密码或邀请状态。
+- 逻辑 Operation ID 跨 HTTP 重试稳定复用；敏感字段通过服务端 Keyed HMAC 参与 Request Fingerprint。
+- Go、Next.js、Kubernetes 和 Runbook 统一使用：
 
 ```text
-手机号 Blind Index → active User ID
-→ ZITADEL SMS Challenge
-→ user + otpSms Proof
-→ OIDC callback 可重放交付
-→ Auth.js Session ACK
+TASK_PROCESSOR_ACCOUNT_ENTRY_ENABLED
+TASK_PROCESSOR_ACCOUNT_ENTRY_SELF_REGISTRATION_ENABLED
 ```
 
-### 密码登录
-
-```text
-手机号 Blind Index → active User ID
-→ ZITADEL Session user + password check
-→ OIDC callback 可重放交付
-→ Auth.js Session ACK
-```
-
-### 密码重置
-
-```text
-手机号 + SMS OTP Proof
-→ ZITADEL User API 设置新密码
-→ 返回 /login?method=password
-```
-
-### 邀请注册
-
-```text
-已有 active 身份 → 复用同一个 User，增加目标企业授权
-新手机号 → Claim → inert User → OTP Proof → 目标企业授权
-不创建默认企业，不创建 base_payg，不默认授予 ORG_OWNER
-```
+- Slice 1 不渲染“记住登录状态”。
 
 ---
 
-## Task 0：重新校准现有实现与计划基线
+## Task 1：冻结并抽取 PR #218 已验证的 ZITADEL Login V2 Client
 
 **Files:**
 
-- Read: `internal/listingkit/phoneonboardingpreflight/*`
-- Read: `internal/listingkit/zitadelsms/*`
-- Read: `web/listingkit-ui/src/auth.config.ts`
-- Read: `web/listingkit-ui/src/auth.ts`
-- Read: `web/listingkit-ui/src/app/api/zitadel-auth/*`
-- Read: `internal/authz/listingkit.go`
-- Create: `docs/verification/2026-09-03-account-entry-existing-baseline.md`
-
-- [ ] 记录 PR #218 已覆盖的请求、测试和真实验证证据。
-- [ ] 确认现有 OTP Challenge、Verify、Session Proof 的精确函数签名。
-- [ ] 确认 Auth.js 回调路径、Session 策略、Cookie 名称与登出路径。
-- [ ] 确认当前 `listingkit_admin`、`operator`、`viewer` 的授权映射。
-- [ ] 搜索并证明仓库中不存在第二套业务短信验证码存储。
-- [ ] 文档只记录脱敏 ID 后缀，不记录手机号、验证码、Session Token 或 callback URL。
-
-**Run:**
-
-```powershell
-go test ./internal/listingkit/phoneonboardingpreflight ./internal/listingkit/zitadelsms -count=1
-Set-Location web/listingkit-ui
-pnpm test -- src/auth.config.test.ts src/lib/server/zitadel-auth.test.ts
-Set-Location ../..
-```
-
-**Commit:**
-
-```powershell
-git add docs/verification/2026-09-03-account-entry-existing-baseline.md
-git commit -m "docs: verify existing phone onboarding baseline"
-```
-
----
-
-## Task 1：完成 ZITADEL Actions v2 真实能力门槛
-
-**Purpose:** 先验证当前自托管 v4.17.1 的 Actions v2 Target、Execution、签名、事件 Payload 和重复投递行为；不把未经验证的事件名或字段写入生产代码。
-
-**Files:**
-
-- Create: `internal/authruntime/zitadel/actionsv2/client.go`
-- Create: `internal/authruntime/zitadel/actionsv2/client_test.go`
-- Create: `internal/authruntime/zitadel/actionsv2/signature.go`
-- Create: `internal/authruntime/zitadel/actionsv2/signature_test.go`
-- Create: `hack/debug/zitadel-actions-v2-preflight/main.go`
-- Create: `hack/debug/zitadel-actions-v2-preflight/main_test.go`
-- Create: `scripts/verify-zitadel-actions-v2.ps1`
-- Create: `docs/verification/2026-09-03-zitadel-actions-v2.md`
-
-### Step 1：锁定协议来源
-
-- [ ] 以 v4.17.1 下列 proto 为唯一协议来源：
-
-```text
-proto/zitadel/action/v2/action_service.proto
-proto/zitadel/action/v2/execution.proto
-proto/zitadel/action/v2/target.proto
-```
-
-- [ ] 测试 `EventExecution`、有序 Target、RESTAsync／RESTWebhook、`X-ZITADEL-Signature` HMAC-SHA256。
-
-### Step 2：创建非生产 Target 和 Execution
-
-- [ ] Target 指向一次性本地或预发布接收器。
-- [ ] 使用独立签名 Key，不复用 SMS、BFF 或 Auth.js Secret。
-- [ ] 先测试 proto 示例中的 `user.human.added`；其他 event name 必须从实际 Event/Audit 输出确认。
-- [ ] 记录真实 Payload 是否包含：
-
-```text
-稳定 event ID
-事件类型
-aggregate / resource ID
-organization ID
-时间戳或序列
-```
-
-### Step 3：验证投递语义
-
-- [ ] 证明正常投递、目标超时、5xx、重复投递和 Execution 禁用后的行为。
-- [ ] 若无稳定事件 ID，记录 Actions 仅作为唤醒／审计信号，业务 Projector 使用事件复合指纹和 ZITADEL 回读。
-- [ ] Actions 不进入登录阻断路径；门槛失败只阻止 Actions 收敛功能，不否定已验证的 OTP 登录能力。
-
-**Run:**
-
-```powershell
-go test ./internal/authruntime/zitadel/actionsv2 -count=1
-go -C hack/debug test ./zitadel-actions-v2-preflight -count=1
-pwsh -File ./scripts/verify-zitadel-actions-v2.ps1
-```
-
-**Commit:**
-
-```powershell
-git add internal/authruntime/zitadel/actionsv2 `
-        hack/debug/zitadel-actions-v2-preflight `
-        scripts/verify-zitadel-actions-v2.ps1 `
-        docs/verification/2026-09-03-zitadel-actions-v2.md
-git commit -m "test: verify ZITADEL actions v2 identity events"
-```
-
----
-
-## Task 2：抽取已验证的 ZITADEL Login V2 Client
-
-**Files:**
-
-- Create: `internal/authruntime/zitadel/loginv2/client.go`
 - Create: `internal/authruntime/zitadel/loginv2/types.go`
+- Create: `internal/authruntime/zitadel/loginv2/client.go`
 - Create: `internal/authruntime/zitadel/loginv2/client_test.go`
 - Modify: `internal/listingkit/phoneonboardingpreflight/zitadel_client.go`
 - Modify: `internal/listingkit/phoneonboardingpreflight/zitadel_client_test.go`
 - Modify: `internal/listingkit/phoneonboardingpreflight/runner.go`
 - Modify: `internal/listingkit/phoneonboardingpreflight/runner_test.go`
-- Modify: `hack/debug/listingkit-phone-onboarding-preflight/*`
+- Modify: `hack/debug/listingkit-phone-onboarding-preflight/main.go`
+- Modify: `hack/debug/listingkit-phone-onboarding-preflight/main_test.go`
 
-### Step 1：先复制契约测试，不复制实现
+### Step 1：写 Characterization Tests
 
-覆盖：
+锁定已有请求：
 
 ```text
-CreateOrganization
-CreateTechnicalUser
-AddOTPSMS
-CreateSMSChallenge
-VerifySMS
-GetSession
-DeleteSession
-DeleteOrganization
-Provisioning / Login Client Token 隔离
-Provider 错误脱敏与响应大小上限
+POST /v2/organizations
+POST /v2/users/new
+POST /v2/users/{id}/otp_sms
+POST /v2/sessions
+PATCH /v2/sessions/{id}
+GET /v2/sessions/{id}?sessionToken=...
+DELETE /v2/sessions/{id}
+DELETE /v2/organizations/{id}
 ```
 
-### Step 2：移动实现
+锁定：
+
+```text
+Provisioning Token 与 Login Client Token 分离
+Provider response <= 1 MiB
+错误不包含手机号、验证码、Token 或 Provider body
+```
+
+### Step 2：移动而非复制
 
 `phoneonboardingpreflight` 只保留别名或薄适配器：
 
 ```go
 type Client = loginv2.Client
 type ClientConfig = loginv2.ClientConfig
+type SessionMaterial = loginv2.SessionMaterial
 type SessionProof = loginv2.SessionProof
 var NewClient = loginv2.NewClient
 ```
 
-禁止保留两套 `doJSON`。
+不得存在两份 `doJSON` 或两套 Session 请求结构。
 
 ### Step 3：回归
 
@@ -293,20 +98,197 @@ go test ./internal/listingkit/phoneonboardingpreflight ./internal/listingkit/zit
 go -C hack/debug test ./listingkit-phone-onboarding-preflight -count=1
 ```
 
-**Commit:**
+### Step 4：提交
 
 ```powershell
 git add internal/authruntime/zitadel/loginv2 `
         internal/listingkit/phoneonboardingpreflight `
         hack/debug/listingkit-phone-onboarding-preflight
-git commit -m "refactor: reuse verified ZITADEL login client"
+git commit -m "refactor: reuse verified ZITADEL phone session client"
 ```
 
 ---
 
-## Task 3：建立通用 Operation Runtime 最小基础
+## Task 2：验证 Actions v2 的真实签名、Freshness 和 Event Contract
 
-**Purpose:** 抽取会被账号入口和后续店铺激活复用的本地幂等／Claim 原语，但不自行实现 Workflow Engine。
+**Files:**
+
+- Create: `internal/accountentry/actionspreflight/probe.go`
+- Create: `internal/accountentry/actionspreflight/probe_test.go`
+- Create: `hack/debug/zitadel-actions-v2-preflight/main.go`
+- Create: `hack/debug/zitadel-actions-v2-preflight/main_test.go`
+- Create: `scripts/verify-zitadel-actions-v2.ps1`
+- Create: `docs/verification/2026-09-03-zitadel-actions-v2.md`
+
+### Step 1：锁定 v4.17.1 协议
+
+基于：
+
+```text
+proto/zitadel/action/v2/execution.proto@v4.17.1
+proto/zitadel/action/v2/target.proto@v4.17.1
+```
+
+验证：
+
+```text
+EventExecution 可按 event 或 group 触发
+RESTAsync / RESTWebhook 请求形状
+PAYLOAD_TYPE_JWT 的 iss/aud/iat/exp/jti
+JSON Payload 中的稳定 event_id 与 signed creation time
+X-ZITADEL-Signature 对 raw body 的 HMAC-SHA256
+失败与重投行为
+```
+
+### Step 2：Freshness 是硬门槛
+
+生产模式二选一：
+
+```text
+A. JWT：验证签名、iss、aud、iat、exp、jti 和最大时钟偏差
+B. JSON HMAC：验证签名正文中的 event_id、event_created_at 和最大时钟偏差
+```
+
+只有 HMAC 而没有签名时间／唯一 nonce 时，Actions 集成必须保持关闭。
+
+### Step 3：真实非生产测试
+
+创建一次临时 Target 和 Execution，记录：
+
+```text
+Payload 类型
+签名验证结果
+事件 ID 字段
+事件时间字段
+重复投递行为
+超时行为
+```
+
+所有 ID 只保留末 6 位；不记录手机号、Token 或完整 Payload。
+
+### Step 4：提交
+
+```powershell
+go test ./internal/accountentry/actionspreflight -count=1
+go -C hack/debug test ./zitadel-actions-v2-preflight -count=1
+git add internal/accountentry/actionspreflight `
+        hack/debug/zitadel-actions-v2-preflight `
+        scripts/verify-zitadel-actions-v2.ps1 `
+        docs/verification/2026-09-03-zitadel-actions-v2.md
+git commit -m "test: verify ZITADEL actions v2 contract"
+```
+
+若门槛失败：禁用 Actions，继续使用同步初始化 + Reconciler；不得猜测字段。
+
+---
+
+## Task 3：增加统一 Account Entry 配置与版本化 Key Ring
+
+**Files:**
+
+- Create: `internal/core/config/type_account_entry.go`
+- Create: `internal/core/config/keyring.go`
+- Create: `internal/core/config/keyring_test.go`
+- Create: `internal/core/config/validate_account_entry.go`
+- Create: `internal/core/config/validate_account_entry_test.go`
+- Modify: `internal/core/config/config.go`
+- Modify: `internal/core/config/loader_builder.go`
+- Modify: `internal/core/config/config_env_test.go`
+- Create: `web/listingkit-ui/src/lib/server/account-entry-config.ts`
+- Create: `web/listingkit-ui/src/lib/server/account-entry-config.test.ts`
+- Modify: `.env.example`
+
+### Step 1：Canonical Flag
+
+Go 与 Next.js 只读取：
+
+```text
+TASK_PROCESSOR_ACCOUNT_ENTRY_ENABLED
+TASK_PROCESSOR_ACCOUNT_ENTRY_SELF_REGISTRATION_ENABLED
+```
+
+旧名称出现时测试要求启动失败或明确拒绝，不能静默兼容。
+
+### Step 2：结构化 Key Ring
+
+```go
+type VersionedSecret struct {
+    Version string `json:"version"`
+    Value   string `json:"value"`
+}
+
+type SecretKeyRing struct {
+    Current  VersionedSecret   `json:"current"`
+    Previous []VersionedSecret `json:"previous"`
+}
+```
+
+环境变量：
+
+```text
+TASK_PROCESSOR_ACCOUNT_ENTRY_PHONE_HMAC_KEYRING_JSON
+TASK_PROCESSOR_ACCOUNT_ENTRY_FLOW_AEAD_KEYRING_JSON
+TASK_PROCESSOR_ACCOUNT_ENTRY_DEVICE_SIGNING_KEYRING_JSON
+TASK_PROCESSOR_ACCOUNT_ENTRY_OPERATION_FINGERPRINT_KEYRING_JSON
+```
+
+测试：
+
+```text
+多个 Previous Key
+重复 Version
+Current 同时出现在 Previous
+非法 Base64
+错误 Key 长度
+无 Current
+轮换后旧 Version 可读
+```
+
+### Step 3：其他配置
+
+```go
+type AccountEntryConfig struct {
+    Enabled                 bool
+    SelfRegistrationEnabled bool
+    PublicOrigin            string
+    BFFToken                string
+    LoginClientToken        string
+    ProvisioningToken       string
+    PasswordDecoyUserID     string
+    PhoneHMACKeys           SecretKeyRing
+    FlowAEADKeys            SecretKeyRing
+    DeviceSigningKeys       SecretKeyRing
+    OperationFingerprintKeys SecretKeyRing
+    FlowTTL                 time.Duration
+    ChallengeTTL            time.Duration
+    CallbackDeliveryGrace   time.Duration
+    MaxCallbackGenerations  int
+    ResendCooldown          time.Duration
+    ActionMaxClockSkew      time.Duration
+    PasswordResponseFloor   time.Duration
+    PasswordJitterMax       time.Duration
+    PerPhoneHourly          int64
+    PerIPHourly             int64
+    PerDeviceHourly         int64
+}
+```
+
+Enabled 时 Database、Redis、ZITADEL Tokens、Decoy User、Key Rings 和 HTTPS PublicOrigin 必填；loopback 开发可 HTTP。
+
+### Step 4：运行与提交
+
+```powershell
+go test ./internal/core/config -run "AccountEntry|KeyRing" -count=1
+Set-Location web/listingkit-ui
+pnpm test -- src/lib/server/account-entry-config.test.ts
+Set-Location ../..
+git add internal/core/config web/listingkit-ui/src/lib/server/account-entry-config* .env.example
+git commit -m "feat: add versioned account entry configuration"
+```
+
+---
+
+## Task 4：建立通用 Operation Runtime 与多键 Claim
 
 **Files:**
 
@@ -322,35 +304,56 @@ git commit -m "refactor: reuse verified ZITADEL login client"
 - Modify: `internal/workbench/schema/runtime.go`
 - Modify: `internal/workbench/schema/runtime_test.go`
 
-### Step 1：Operation Execution
+### Step 1：逻辑 Operation
 
 ```text
 operation_executions
 - scope_type
 - scope_id
 - operation_name
-- idempotency_key
+- operation_id
 - request_fingerprint
-- state: executing | succeeded | retryable_failed | permanent_failed
+- fingerprint_key_version
+- state
 - result_reference
 - error_code
 - lease_owner
 - lease_until
 - expires_at
-- version
-- UNIQUE(scope_type, scope_id, operation_name, idempotency_key)
+
+UNIQUE(scope_type, scope_id, operation_name, operation_id)
 ```
 
 规则：
 
 ```text
-同 Key + 同 Fingerprint → 等待或重放同一结果
-同 Key + 不同 Fingerprint → IDEMPOTENCY_CONFLICT
-响应丢失 → 重试取得已存结果
-租约过期 → 允许受控恢复
+同 ID + 同 Fingerprint → 重放同一结果或继续同一 Operation
+同 ID + 不同 Fingerprint → IDEMPOTENCY_CONFLICT
 ```
 
-### Step 2：Business Claim
+### Step 2：敏感字段指纹
+
+Canonical Fingerprint 输入：
+
+```text
+非敏感字段 → canonical JSON
+手机号 → identity/alias reference
+OTP、当前密码、新密码 → HMAC(OperationFingerprintKeyVersion, raw secret bytes)
+```
+
+禁止存原值或无 Key Hash。重试先读取已有 Operation 的 Key Version，再计算指纹；旧 Key 保留到 Operation TTL 结束。
+
+测试：
+
+```text
+相同 OTP 重试相同
+修改 OTP 冲突
+修改新密码冲突
+原始秘密不在表、日志或错误
+轮换期间使用 Operation 原 Version
+```
+
+### Step 3：多键 Claim
 
 ```text
 operation_claims
@@ -360,151 +363,41 @@ operation_claims
 - state
 - lease_until
 - version
-- UNIQUE(claim_type, claim_key_hash)
+
+UNIQUE(claim_type, claim_key_hash)
 ```
 
-支持：
+提供：
 
 ```go
-AcquireManySorted
-Renew
-Complete
-Release
-RecoverExpired
+AcquireManySorted(ctx, claimType, keys, owner, ttl)
+CompleteMany(...)
+ReleaseMany(...)
 ```
 
-多 Claim 按规范化 Key 排序后在一个事务中获取，避免 HMAC 多 Alias 死锁。
+全部 Key 在同一事务按排序顺序获取，避免死锁。
 
-### Step 3：请求指纹
+### Step 4：真实并发测试
 
-- [ ] 只对 Schema 校验后的 Canonical Command 计算 SHA-256/HMAC。
-- [ ] 密码、验证码、Session Token、callback URL、完整手机号不得进入可观察指纹输入或日志。
-- [ ] 操作 ID由 `flow + operation + sequence` 稳定派生，BFF 重试不能生成新逻辑 ID。
+```text
+不同 Operation ID 并发争夺同一业务 Claim
+多实例并发
+Lease Owner 崩溃恢复
+旧 Owner 过期后不能再提交
+```
 
-**Run:**
+### Step 5：提交
 
 ```powershell
 go test ./internal/operationruntime -count=1
 go test ./internal/workbench/schema -count=1
-```
-
-**Commit:**
-
-```powershell
 git add internal/operationruntime internal/workbench/schema
-git commit -m "feat: add operation idempotency and claim runtime"
+git commit -m "feat: add operation execution and claim runtime"
 ```
 
 ---
 
-## Task 4：增加账号入口配置、Key Ring 与设备身份
-
-**Files:**
-
-- Create: `internal/core/config/type_account_entry.go`
-- Create: `internal/core/config/validate_account_entry.go`
-- Create: `internal/core/config/validate_account_entry_test.go`
-- Modify: `internal/core/config/config.go`
-- Modify: `internal/core/config/loader_builder.go`
-- Modify: `internal/core/config/config_env_test.go`
-- Create: `internal/accountentry/keyring.go`
-- Create: `internal/accountentry/keyring_test.go`
-- Create: `internal/accountentry/device.go`
-- Create: `internal/accountentry/device_test.go`
-- Create: `web/listingkit-ui/src/lib/server/account-entry-config.ts`
-- Create: `web/listingkit-ui/src/lib/server/account-entry-config.test.ts`
-- Modify: `.env.example`
-
-### Step 1：配置模型
-
-```go
-type VersionedSecret struct {
-    Version string
-    Value   string
-}
-
-type AccountEntryConfig struct {
-    Enabled                 bool
-    SelfRegistrationEnabled bool
-    PublicOrigin            string
-    BFFToken                string
-
-    PhoneHMACCurrent  VersionedSecret
-    PhoneHMACPrevious []VersionedSecret
-    FlowAEADCurrent   VersionedSecret
-    FlowAEADPrevious  []VersionedSecret
-    DeviceHMACCurrent VersionedSecret
-    DeviceHMACPrevious []VersionedSecret
-
-    LoginClientToken  string
-    ProvisioningToken string
-    ActionsSigningKey string
-
-    FlowTTL                 time.Duration
-    ChallengeTTL            time.Duration
-    ResendCooldown          time.Duration
-    MaxVerificationAttempts int
-
-    PerPhoneHourly        int64
-    PerIPHourly           int64
-    PerIPDaily            int64
-    PerDeviceHourly       int64
-    PerDeviceDaily        int64
-    PerPhoneIPHourly      int64
-    PerPhoneDeviceHourly  int64
-}
-```
-
-### Step 2：Key Ring 规则
-
-- [ ] 当前写 Key 只能有一个。
-- [ ] 所有 Previous Key 均可读。
-- [ ] 密钥版本唯一且非空。
-- [ ] AEAD Key 解码后恰好 32 字节。
-- [ ] HMAC Key 解码后至少 32 字节。
-- [ ] 密文记录保存 `cipher_key_version`。
-- [ ] 读取旧密文后下一次写入自动升级到 Current Key。
-- [ ] 提供轮换 Runbook，旧 Key 移除必须晚于最大 Flow TTL 和滚动部署窗口。
-
-### Step 3：设备 Cookie
-
-```text
-shuomi_auth_device
-HttpOnly
-Secure（loopback 开发除外）
-SameSite=Lax
-Path=/
-随机 128 bit 以上
-服务端签名并带 key version
-```
-
-客户端不能自报设备 ID；签名失败时替换 Cookie 并累积风险计数。
-
-### Step 4：注册禁用枚举防护
-
-`SelfRegistrationEnabled=false` 时，在任何手机号 Binding 查询前统一返回同一注册关闭状态。
-
-**Run:**
-
-```powershell
-go test ./internal/core/config -run AccountEntry -count=1
-go test ./internal/accountentry -run "KeyRing|Device" -count=1
-Set-Location web/listingkit-ui
-pnpm test -- src/lib/server/account-entry-config.test.ts
-Set-Location ../..
-```
-
-**Commit:**
-
-```powershell
-git add internal/core/config internal/accountentry/keyring* internal/accountentry/device* `
-        web/listingkit-ui/src/lib/server/account-entry-config* .env.example
-git commit -m "feat: add account entry key rings and device identity"
-```
-
----
-
-## Task 5：建立 Phone Identity、Alias、Attempt、Callback 与 Invitation 数据模型
+## Task 5：建立 Phone Identity、Flow、Callback Delivery 与 Invitation Schema
 
 **Files:**
 
@@ -513,8 +406,16 @@ git commit -m "feat: add account entry key rings and device identity"
 - Create: `internal/accountentry/repository.go`
 - Create: `internal/accountentry/gorm_repository.go`
 - Create: `internal/accountentry/gorm_repository_test.go`
-- Create: `internal/accountentry/cipher.go`
-- Create: `internal/accountentry/cipher_test.go`
+- Create: `internal/accountentry/phone_identity.go`
+- Create: `internal/accountentry/phone_identity_test.go`
+- Create: `internal/accountentry/flow_cipher.go`
+- Create: `internal/accountentry/flow_cipher_test.go`
+- Create: `internal/accountentry/device_cookie.go`
+- Create: `internal/accountentry/device_cookie_test.go`
+- Create: `internal/accountentry/rate_limiter.go`
+- Create: `internal/accountentry/rate_limiter_test.go`
+- Modify: `internal/platform/redis/client.go`
+- Modify: `internal/platform/redis/client_test.go`
 - Modify: `internal/workbench/schema/runtime.go`
 - Modify: `internal/workbench/schema/runtime_test.go`
 
@@ -525,60 +426,62 @@ account_phone_identities
 - identity_id
 - zitadel_user_id
 - home_organization_id
-- state: pending_provisioning | active | quarantined
+- state: pending_provisioning | active | failed | quarantined
 - owning_flow_id
 - proof_verified_at
 - activated_at
-- version
 
 account_phone_fingerprint_aliases
 - identity_id
 - key_version
 - fingerprint
 - UNIQUE(key_version, fingerprint)
-- UNIQUE(identity_id, key_version)
 ```
 
-同一 `zitadel_user_id` 只能有一个 Identity。
+Current/Previous 全部 Alias 双读；命中旧 Alias 时同事务补写 Current Alias。
 
-### Step 2：Attempt
+### Step 2：Flow 与预分配 Provider ID
 
 ```text
-account_entry_attempts
+account_entry_flows
 - id
-- kind: register | otp_login | password_login | password_reset | invitation
+- kind
 - state
-- identity_id
-- phone_claim_operation_id
+- provider_organization_id
+- provider_user_id
+- provider_resource_state
 - encrypted_provider_state
 - cipher_key_version
-- auth_request_fingerprint
+- identity_id
 - invitation_id
-- agreement_version
-- verification_attempts
-- operation_sequence_json
 - challenge_expires_at
 - expires_at
 - version
 ```
 
-Provider State 可包含手机号、Session ID、Session Token，但必须 AEAD；不得包含验证码或密码。
+`provider_organization_id`、`provider_user_id` 在 ZITADEL POST 前生成并提交。
 
-### Step 3：Callback Delivery
+### Step 3：Callback Generation
 
 ```text
 account_entry_callback_deliveries
 - flow_id
+- generation
+- auth_request_fingerprint
 - encrypted_callback_url
 - cipher_key_version
-- expires_at
-- delivery_count
-- last_delivered_at
+- state
+- delivered_at
 - acknowledged_at
-- version
+- expires_at
+- UNIQUE(flow_id, generation)
 ```
 
-第一次返回 callback 不能删除密文。
+状态：
+
+```text
+ready | delivering | acknowledged | consumed_unknown | superseded | expired
+```
 
 ### Step 4：Invitation
 
@@ -588,210 +491,150 @@ account_entry_invitations
 - token_hash
 - organization_id
 - role
-- phone_identity_constraint
+- phone_identity_id
 - state
-- expires_at
 - consuming_flow_id
 - consumed_by_user_id
+- expires_at
 - version
 - created_by
 - operation_id
 ```
 
-原始 Token 只返回一次；数据库只存 SHA-256。
+Token 只首次返回，数据库只存 SHA-256。
 
-### Step 5：HMAC 轮换并发测试
+### Step 5：版本化 AEAD
 
-- [ ] Current + Previous 双读。
-- [ ] 读取旧 Alias 时同事务补写新 Alias。
-- [ ] 新旧实例并发注册同一手机号只产生一个 `identity_id`。
-- [ ] 多 Alias Claim 同事务获取。
+密文保存 Key Version；Current 写、Previous 读，旧版本在下一次保存时重加密。测试覆盖滚动部署、重启、多个 Previous Key 和旧 Key 缺失 fail closed。
 
-**Run:**
+### Step 6：设备 Cookie 与三维限流
 
-```powershell
-go test ./internal/accountentry -run "Identity|Alias|Attempt|Callback|Invitation|Cipher|Rotation" -count=1
-go test ./internal/workbench/schema -count=1
+```text
+shuomi_auth_device
+HttpOnly
+Secure
+SameSite=Lax
+Path=/
 ```
 
-**Commit:**
+Redis 只接收 device/IP/phone HMAC。Lua 原子 `INCR + EXPIRE`；Redis 不可用时 Challenge fail closed。
+
+### Step 7：提交
 
 ```powershell
-git add internal/accountentry internal/workbench/schema
-git commit -m "feat: add durable account identity state"
+go test ./internal/accountentry -run "Identity|Flow|Cipher|Device|Rate|Invitation" -count=1
+go test ./internal/platform/redis -run Window -count=1
+go test ./internal/workbench/schema -count=1
+git add internal/accountentry internal/platform/redis internal/workbench/schema
+git commit -m "feat: add durable account entry identities and flows"
 ```
 
 ---
 
-## Task 6：补齐 ZITADEL OIDC、密码、授权和精确清理 Client
+## Task 6：扩展 ZITADEL Client，支持可恢复创建、OIDC、密码和精确清理
 
 **Files:**
 
-- Modify: `internal/authruntime/zitadel/loginv2/client.go`
 - Modify: `internal/authruntime/zitadel/loginv2/types.go`
+- Modify: `internal/authruntime/zitadel/loginv2/client.go`
 - Modify: `internal/authruntime/zitadel/loginv2/client_test.go`
 
-### Step 1：OIDC
+### Step 1：Provider 预分配 ID
+
+扩展：
 
 ```go
-GetOIDCAuthRequest(context.Context, string) (OIDCAuthRequest, error)
-CreateOIDCCallback(context.Context, OIDCCallbackInput) (string, error)
+type CreateOrganizationInput struct {
+    OrganizationID string
+    TechnicalName  string
+}
+
+type CreateUserInput struct {
+    UserID         string
+    OrganizationID string
+    Username       string
+    TechnicalEmail string
+    Phone          string
+}
 ```
 
-端点锁定：
+请求必须发送 v4.17.1 支持的：
 
 ```text
-GET  /v2/oidc/auth_requests/{id}
-POST /v2/oidc/auth_requests/{id}
+AddOrganizationRequest.organization_id
+CreateUserRequest.user_id
 ```
 
-Callback URL 只允许配置 Origin，以及：
+新增：
+
+```go
+GetOrganizationByID(...)
+GetUserByID(...)
+```
+
+### Step 2：Unknown Outcome Adopt
+
+测试模拟：
+
+```text
+Provider 已持久化对象
+→ 连接在响应前断开
+→ 调用返回 outcome_unknown
+→ 恢复按相同 ID Get
+→ 属性匹配则 adopt
+→ 不发第二个新 ID Create
+```
+
+属性不匹配返回 `ErrProviderCorrelationConflict` 并 quarantine。
+
+### Step 3：OIDC 与新 Generation
+
+```go
+GetOIDCAuthRequest(...)
+CreateOIDCCallback(...)
+```
+
+Callback Origin/Path 白名单锁定：
 
 ```text
 /api/auth/callback/zitadel
 /api/zitadel-auth/callback
 ```
 
-无 userinfo、无 fragment，必须含 `code` 与 `state`。
+每个新 Auth Request 可用同一未过期、已验证 Session 创建新的 callback generation。
 
-### Step 2：密码
+### Step 4：密码
 
 ```go
-AuthenticatePassword(context.Context, PasswordSessionInput) (SessionMaterial, SessionProof, error)
-SetPassword(context.Context, SetPasswordInput) error
+AuthenticatePassword(userID, password, lifetime)
+SetPassword(userID, newPassword)
 ```
 
-密码登录按已解析的 User ID做 `user + password` Session Check；不依赖按手机号搜索 Provider。
+Session Proof 增加 `PasswordVerifiedAt`。密码不进入错误或日志。
 
-### Step 3：组织与项目授权
+### Step 5：角色、授权与清理
 
 ```go
-EnsureOrganizationOwner(context.Context, organizationID, userID string) error
-EnsureProjectAuthorization(context.Context, input ProjectAuthorizationInput) (string, error)
+EnsureOrganizationOwner(...)
+EnsureProjectAuthorization(...)
 GetProjectAuthorization(...)
+DeleteUser(userID)
+DeleteSession(sessionID)
 ```
 
-409 必须读回并核对目标主体、组织、项目和角色，不可一律视为成功。
+DeleteUser 只提供精确 ID 操作；是否允许删除由 Account Entry Service 的 ownership precondition 决定。
 
-### Step 4：邀请废弃 User 清理
-
-```go
-DeleteUser(context.Context, userID string) error
-GetUser(context.Context, userID string) (UserSnapshot, error)
-```
-
-删除前由领域服务核对 `created_by_flow_id`、无 active Identity、无角色、无成功 Session、无其他引用。Client 只执行精确 User ID删除。
-
-### Step 5：Session Proof
-
-```go
-type SessionProof struct {
-    UserID             string
-    OrganizationID     string
-    UserVerifiedAt     time.Time
-    OTPSMSVerifiedAt   time.Time
-    PasswordVerifiedAt time.Time
-}
-```
-
-**Run:**
+### Step 6：运行与提交
 
 ```powershell
 go test ./internal/authruntime/zitadel/loginv2 -count=1
-```
-
-**Commit:**
-
-```powershell
 git add internal/authruntime/zitadel/loginv2
-git commit -m "feat: extend ZITADEL account entry client"
+git commit -m "feat: extend recoverable ZITADEL account entry client"
 ```
 
 ---
 
-## Task 7：增加 Actions v2 Identity Event Inbox 与 Projector
-
-**Files:**
-
-- Create: `internal/accountentry/identityevent/event.go`
-- Create: `internal/accountentry/identityevent/repository.go`
-- Create: `internal/accountentry/identityevent/gorm_repository.go`
-- Create: `internal/accountentry/identityevent/receiver.go`
-- Create: `internal/accountentry/identityevent/receiver_test.go`
-- Create: `internal/accountentry/identityevent/projector.go`
-- Create: `internal/accountentry/identityevent/projector_test.go`
-- Create: `internal/accountentry/identityevent/httpapi/module.go`
-- Create: `internal/accountentry/identityevent/httpapi/handler.go`
-- Create: `internal/accountentry/identityevent/httpapi/handler_test.go`
-- Modify: `internal/workbench/schema/runtime.go`
-- Modify: `internal/workbench/schema/runtime_test.go`
-
-### Step 1：Inbox
-
-```text
-account_identity_event_inbox
-- delivery_id
-- event_id / event_fingerprint
-- event_type
-- aggregate_type
-- aggregate_id
-- raw_body_digest
-- state
-- attempts
-- next_attempt_at
-- last_error_code
-- received_at
-- UNIQUE(event_id) 或验证后的复合唯一键
-```
-
-### Step 2：Receiver
-
-```text
-POST /api/v1/integrations/zitadel/identity-events
-```
-
-- [ ] 验证 `X-ZITADEL-Signature`，常量时间比较。
-- [ ] 请求体 <= 64 KiB，拒绝重复 JSON Key。
-- [ ] 原子写 Inbox 后快速返回。
-- [ ] 不信任 Payload 中的角色或业务就绪状态，必要时回读 ZITADEL。
-- [ ] 不记录完整原始 Payload；只存受控字段和 digest。
-
-### Step 3：Projector
-
-Actions 事件可以：
-
-```text
-唤醒 pending Identity 收敛
-记录 User / Org / Authorization 事实快照
-发现授权撤销
-补偿漏掉的本地映射
-```
-
-不能：
-
-```text
-绕过 OTP Proof 激活身份
-单独创建 base_payg
-仅凭事件 Payload 授予业务权限
-```
-
-**Run:**
-
-```powershell
-go test ./internal/accountentry/identityevent/... -count=1
-go test ./internal/workbench/schema -count=1
-```
-
-**Commit:**
-
-```powershell
-git add internal/accountentry/identityevent internal/workbench/schema
-git commit -m "feat: add ZITADEL identity event inbox"
-```
-
----
-
-## Task 8：实现幂等 Business Readiness 初始化器
+## Task 7：增加 `base_payg` 和幂等业务就绪初始化器
 
 **Files:**
 
@@ -807,59 +650,123 @@ git commit -m "feat: add ZITADEL identity event inbox"
 const PlanBasePayAsYouGo = "base_payg"
 ```
 
-默认：
-
 ```text
 名称：基础方案 · 按需使用
-store_count：1
-store_renewal_periods：0
-ai_points：0
-data_rows：0
-状态：active
-无试用期、无伪造到期日
+store_count = 1
+store_renewal_periods = 0
+ai_points = 0
+data_rows = 0
+状态 = active
+无自动试用期
 ```
 
-旧套餐保留给历史租户；新注册只用 `base_payg`。
+旧 plan 保留给历史租户；新自助注册只使用 `base_payg`。
 
-### Step 2：初始化顺序
+### Step 2：自助注册顺序
 
 ```text
 OTP Proof
-→ Ensure local organization projection
+→ Ensure business organization projection
 → Ensure base_payg
 → Ensure ORG_OWNER
 → Ensure listingkit_admin（最后）
-→ Activate Phone Identity
+→ Activate PhoneIdentity
 ```
 
-每一步有稳定 Operation ID 和可验证结果。`listingkit_admin` 授予后若前序不完整，Identity 不得 active，Reconciler 必须收敛或隔离。
+每一步幂等并可 read-back。Provider 409 不自动视为成功。
 
-### Step 3：邀请规则
+### Step 3：邀请顺序
 
 ```text
-不创建默认 Organization
-不创建 base_payg
-不默认授予 ORG_OWNER
-只确保邀请角色
+OTP Proof
+→ Ensure target organization authorization
+→ Mark Invitation consumed + Access Projection ready（同一事务）
+→ Activate new PhoneIdentity
 ```
 
-**Run:**
+邀请不创建默认企业、`base_payg` 或 ORG_OWNER。
+
+### Step 4：提交
 
 ```powershell
 go test ./internal/listingsubscription -run BasePay -count=1
 go test ./internal/accountentry -run Initializer -count=1
-```
-
-**Commit:**
-
-```powershell
 git add internal/listingsubscription internal/accountentry/initializer*
 git commit -m "feat: add idempotent account business readiness"
 ```
 
 ---
 
-## Task 9：实现 Account Entry Service、状态恢复和轻量 Reconciler
+## Task 8：实现 Freshness-safe Actions v2 Inbox
+
+**Files:**
+
+- Create: `internal/accountentry/actionsreceiver/handler.go`
+- Create: `internal/accountentry/actionsreceiver/handler_test.go`
+- Create: `internal/accountentry/actionsreceiver/verifier.go`
+- Create: `internal/accountentry/actionsreceiver/verifier_test.go`
+- Create: `internal/accountentry/actionsreceiver/inbox.go`
+- Create: `internal/accountentry/actionsreceiver/gorm_inbox.go`
+- Create: `internal/accountentry/actionsreceiver/gorm_inbox_test.go`
+- Create: `internal/accountentry/actionsreceiver/projector.go`
+- Create: `internal/accountentry/actionsreceiver/projector_test.go`
+- Modify: `internal/workbench/schema/runtime.go`
+
+### Step 1：验证签名与时间
+
+JWT：
+
+```text
+签名、iss、aud、iat、exp、jti
+```
+
+JSON HMAC：
+
+```text
+X-ZITADEL-Signature
+raw body
+signed event_id
+signed event_created_at
+abs(now - event_created_at) <= ActionMaxClockSkew
+```
+
+签名正确但过期必须拒绝。
+
+### Step 2：Inbox
+
+```text
+account_identity_event_inbox
+- event_id / jti
+- event_type
+- subject_id
+- organization_id
+- occurred_at
+- received_at
+- state
+- attempts
+- next_attempt_at
+- payload_digest
+- UNIQUE(event_id)
+```
+
+重复事件返回成功但不重复执行。乱序事件必须通过读取 ZITADEL 当前事实收敛，不根据事件顺序盲目覆盖。
+
+### Step 3：非关键路径
+
+Actions 失败不能阻止同步注册。Projector 只更新投影或唤醒 Reconciler；本地初始化服务仍核对业务就绪。
+
+### Step 4：提交
+
+```powershell
+go test ./internal/accountentry/actionsreceiver -count=1
+go test ./internal/workbench/schema -count=1
+git add internal/accountentry/actionsreceiver internal/workbench/schema
+git commit -m "feat: add fresh ZITADEL identity event inbox"
+```
+
+---
+
+## Task 9：实现 Account Entry Service、状态恢复与轻量 Reconciler
 
 **Files:**
 
@@ -867,132 +774,132 @@ git commit -m "feat: add idempotent account business readiness"
 - Create: `internal/accountentry/service_test.go`
 - Create: `internal/accountentry/status.go`
 - Create: `internal/accountentry/status_test.go`
+- Create: `internal/accountentry/password.go`
+- Create: `internal/accountentry/password_test.go`
+- Create: `internal/accountentry/callback.go`
+- Create: `internal/accountentry/callback_test.go`
 - Create: `internal/accountentry/reconciler.go`
 - Create: `internal/accountentry/reconciler_test.go`
 - Create: `internal/accountentry/audit.go`
 - Create: `internal/accountentry/audit_test.go`
 
-### Step 1：Service Contract
+### Step 1：注册前统一 Gate
+
+`SELF_REGISTRATION=false` 时，在手机号 Normalize、Alias 查询或 Challenge 发送前统一拒绝；已存在和未知手机号行为一致。
+
+### Step 2：并发注册与 Provider Recovery
+
+```text
+计算所有 Alias
+→ AcquireManySorted phone_registration Claims
+→ 持久化 Provider IDs
+→ Create/adopt Organization
+→ Create/adopt User
+→ Challenge
+```
+
+测试两个不同 Operation ID、两个服务实例，以及 Provider 创建成功但响应丢失。
+
+### Step 3：OTP Proof 与 Pending Identity
+
+Proof 必须满足：
+
+```text
+SessionProof.UserID == Flow.ProviderUserID
+SessionProof.OrganizationID == Flow.ProviderOrganizationID（自助注册）
+UserVerifiedAt 非零
+OTPSMSVerifiedAt 非零
+Challenge 未过期
+```
+
+Proof 后 Identity 先进入 pending；只有 Task 7 完成后 active。
+
+### Step 4：邀请
+
+- 已有 active Identity：验证 Proof 后复用 User，Grant + consume 完成。
+- 新 Identity：Grant + consume 完成前保持 pending。
+- 清理 abandoned invited User 前重新读取角色、授权、Session 和引用；不确定则 quarantine。
+
+### Step 5：密码登录等时工作
+
+```text
+active Identity → 对真实 User 调一次 ZITADEL password check
+未知或 pending → 对 PasswordDecoyUserID 调一次同类 password check
+全部路径 → 清理临时 Session → 应用 response floor + jitter
+```
+
+统一 `INVALID_CREDENTIALS`。测试延迟分布类别，不使用单次毫秒断言。
+
+### Step 6：密码重置
+
+真实 Identity 使用 OTP Proof 后 SetPassword；未知 Identity 使用假流程。成功后返回密码登录，不自动建立 Session。
+
+### Step 7：Callback Delivery 与 Fresh Auth Request
+
+首次：
+
+```text
+CreateCallback → generation 1 ready → 303 → /auth-complete ACK
+```
+
+响应丢失：
+
+```text
+code 未消费 → 重放当前 generation
+无 ACK 超过 grace 或收到 invalid_grant → generation 标记 consumed_unknown/superseded
+→ BFF 启动新的 Auth.js signIn
+→ 新 authRequest 绑定同一 Flow
+→ 若 ZITADEL Session 未过期，CreateCallback generation N+1
+→ 若已过期，nextAction=reauthenticate
+```
+
+限制 `MaxCallbackGenerations`，超过后要求重新认证。
+
+### Step 8：Flow Status
 
 ```go
-type Service interface {
-    StartChallenge(context.Context, ChallengeRequest) (ChallengeResult, error)
-    ResendChallenge(context.Context, ResendRequest) (ChallengeResult, error)
-    VerifyOTP(context.Context, VerifyOTPRequest) (VerifyResult, error)
-    AuthenticatePassword(context.Context, PasswordRequest) (VerifyResult, error)
-    CompletePasswordReset(context.Context, PasswordResetRequest) error
-    PrepareOIDCCallback(context.Context, PrepareCallbackRequest) error
-    DeliverOIDCCallback(context.Context, DeliverCallbackRequest) (CallbackDelivery, error)
-    AcknowledgeOIDCCallback(context.Context, CallbackAckRequest) error
-    Status(context.Context, StatusRequest) (SafeFlowStatus, error)
-}
+type NextAction string
+const (
+    EnterPhone       NextAction = "enter_phone"
+    EnterOTP         NextAction = "enter_otp"
+    Provisioning     NextAction = "provisioning"
+    EnterNewPassword NextAction = "enter_new_password"
+    RedirectReady    NextAction = "redirect_ready"
+    RestartOIDC      NextAction = "restart_oidc"
+    Reauthenticate   NextAction = "reauthenticate"
+    Completed        NextAction = "completed"
+    Expired          NextAction = "expired"
+)
 ```
 
-### Step 2：并发注册
-
-不同 Idempotency-Key 同时注册同一手机号：
-
-```text
-计算 Current + Previous 全部 Alias
-→ AcquireManySorted phone_registration Claims
-→ 只有 Owner 创建 inert Provider 资源
-→ 其他请求复用 owning Flow 的安全状态
-```
-
-必须有真实数据库并发测试，不只使用内存 Stub。
-
-### Step 3：注册关闭
-
-`SelfRegistration=false` 在 Binding 查询前统一拒绝；已有和未知手机号行为相同。
-
-### Step 4：Pending Binding
-
-OTP Proof 后：
-
-```text
-Identity pending_provisioning
-→ Business Readiness
-→ active
-```
-
-登录遇到 pending 时不走普通 callback；返回 `provisioning` 状态并触发 Reconciler。
-
-### Step 5：假流程和枚举防护
-
-OTP 登录／重置对不存在手机号：
-
-```text
-相同响应结构
-相近时间等级
-不创建 User
-不发送短信
-不可完成 Proof
-```
-
-### Step 6：Callback 可重放与 ACK
-
-```text
-CreateCallback 只调用一次
-callback 密文保留到 ACK 或过期
-同一 Deliver Operation 重放同一 URL
-/auth-complete 确认 Auth.js Session 后 ACK
-ACK 后清除密文并 completed
-```
-
-### Step 7：Safe Status
-
-仅返回：
-
-```text
-enter_phone
-enter_otp
-provisioning
-enter_password
-enter_new_password
-redirect_ready
-completed
-expired
-quarantined
-```
-
-页面刷新不得通过重发 Challenge 推断状态。
-
-### Step 8：邀请废弃清理
-
-Reconciler 对 Flow 创建的 User执行所有权检查后 DeleteUser；失败重试，状态不确定转 quarantined。
+只返回 nextAction、retryAfter、canResend、canRetry。
 
 ### Step 9：Reconciler
 
-数据库租约扫描：
+轮询：
 
 ```text
+Provider outcome_unknown
 pending_provisioning
-callback_ready / delivering
-过期 Attempt
-过期 Claim
-Identity Event Inbox 重试
-abandoned invited User
+Callback delivering 无 ACK
+邀请 consuming
+过期 Flow 和 abandoned User
+Actions Inbox pending
 ```
 
-不使用 Temporal，不重发短信，不伪造 Proof。
+恢复先读取 ZITADEL／PostgreSQL事实，再 adopt、继续或 quarantine；不生成新 Provider ID。
 
-**Run:**
-
-```powershell
-go test ./internal/accountentry -run "Service|Register|OTP|Password|Status|Callback|Reconcile|Concurrent|Enumeration" -count=1
-```
-
-**Commit:**
+### Step 10：提交
 
 ```powershell
-git add internal/accountentry/service* internal/accountentry/status* `
-        internal/accountentry/reconciler* internal/accountentry/audit*
-git commit -m "feat: implement ZITADEL-native account entry service"
+go test ./internal/accountentry -run "Register|OTP|Password|Invitation|Callback|Status|Reconcile" -count=1
+git add internal/accountentry
+git commit -m "feat: productize ZITADEL-native account entry"
 ```
 
 ---
 
-## Task 10：增加 Trusted BFF API 和邀请权限
+## Task 10：暴露 HTTP API，并将邀请绑定 Live Organization
 
 **Files:**
 
@@ -1013,11 +920,9 @@ git commit -m "feat: implement ZITADEL-native account entry service"
 const AuthPolicyTrustedBFF AuthPolicy = "trusted_bff"
 ```
 
-- [ ] 常量时间校验独立 BFF Token。
-- [ ] 删除伪造用户／企业 Header。
-- [ ] 不运行浏览器 Bearer 身份验证。
+常量时间验证 BFF Token，并删除客户端伪造的 User/Org Header。
 
-### Step 2：公开给 BFF 的路由
+### Step 2：BFF-only Routes
 
 ```text
 GET  /api/v1/account-entry/status
@@ -1028,66 +933,56 @@ POST /api/v1/account-entry/password-logins
 POST /api/v1/account-entry/password-resets/challenges
 POST /api/v1/account-entry/password-resets/verifications
 POST /api/v1/account-entry/password-resets/completions
-POST /api/v1/account-entry/oidc-callbacks/prepare
-POST /api/v1/account-entry/oidc-callbacks/deliver
-POST /api/v1/account-entry/oidc-callbacks/ack
+POST /api/v1/account-entry/oidc-completions
+POST /api/v1/account-entry/oidc-acknowledgements
+POST /api/v1/integrations/zitadel/identity-events
 ```
 
-### Step 3：邀请签发路由
+Actions Route 使用自身 JWT/HMAC Freshness 验证，不接受用户 Bearer。
+
+### Step 3：邀请 Route
 
 ```text
 POST /api/v1/workbench/account-invitations
+AuthPolicyVerifiedIdentity
+OrganizationAccessPolicyLiveWrite
+PermissionAccountInvitationCreate
 ```
 
-正式权限：
+请求体不含 `organizationId`；即使提交未知字段也拒绝。服务端只使用 live resolved Effective Organization。
 
-```go
-const PermissionAccountInvitationCreate = "account.invitation.create"
-```
-
-映射：
+权限：
 
 ```text
 listingkit_admin → allow
 platform_admin → 仅受控代管上下文 allow
-operator / viewer → deny
+listingkit_operator / viewer → deny
 ```
 
-增加正反测试。
+必须有 A 企业管理员提交 B 企业 ID／Cookie／Header 的拒绝测试。
 
-### Step 4：幂等协议
-
-BFF 传递由 Flow 派生的逻辑 Operation ID；Go 同时验证 Request Fingerprint。相同 Key 不同载荷返回 `409 IDEMPOTENCY_CONFLICT`。
-
-### Step 5：输入和错误边界
+### Step 4：输入和幂等
 
 ```text
 JSON <= 16 KiB
-读取超时 15s
-拒绝未知字段和重复 Key
-标准错误 Envelope
-不暴露 Provider Body 或主体存在性
+拒绝未知字段和重复 JSON Key
+写请求要求 Operation ID
+同 ID 不同 Fingerprint → 409 IDEMPOTENCY_CONFLICT
 ```
 
-**Run:**
+### Step 5：提交
 
 ```powershell
 go test ./internal/accountentry/httpapi -count=1
 go test ./internal/authz -run Invitation -count=1
-go test ./internal/app/httpapi -run "TrustedBFF|AccountEntry" -count=1
-```
-
-**Commit:**
-
-```powershell
-git add internal/accountentry/httpapi internal/httproute `
-        internal/app/httpapi/server* internal/authz
-git commit -m "feat: expose account entry and invitation APIs"
+go test ./internal/app/httpapi -run "TrustedBFF|AccountEntry|Invitation" -count=1
+git add internal/accountentry/httpapi internal/httproute internal/authz internal/app/httpapi
+git commit -m "feat: expose scoped account entry api"
 ```
 
 ---
 
-## Task 11：组装运行时和生命周期
+## Task 11：接入应用组合、数据库、Redis 与 Reconciler 生命周期
 
 **Files:**
 
@@ -1100,30 +995,44 @@ git commit -m "feat: expose account entry and invitation APIs"
 - Modify: `internal/app/httpapi/bootstrap.go`
 - Modify: `internal/app/httpapi/bootstrap_test.go`
 
-- [ ] `Enabled=false` 时不构造任何 Account Entry 依赖。
-- [ ] `Enabled=true` 时 Database、Redis、ZITADEL Token、Key Ring 和 BFF Token 缺失即启动失败。
-- [ ] 组装：DB → schema → Redis → loginv2 → operationruntime → accountentry → identity event inbox → Reconciler → HTTP module。
-- [ ] 构造失败逆序关闭资源；不遗留 goroutine。
-- [ ] Reconciler 使用有界并发、租约和退避。
-- [ ] 不增加 Temporal Client 依赖。
+### Step 1：启动门槛
 
-**Run:**
+```text
+Enabled=false → module nil，不要求 Secret
+Enabled=true → DB、Redis、ZITADEL Tokens、Decoy User、全部 Key Ring 缺一即失败
+```
+
+### Step 2：组装
+
+```text
+open shared DB
+→ migrate operation/account tables
+→ open Redis
+→ build loginv2 client
+→ build Operation Runtime / repositories / key rings / limiter
+→ build initializer / service / actions receiver
+→ build HTTP module
+→ start bounded lightweight reconciler
+```
+
+不创建 Account Entry Temporal Worker。
+
+### Step 3：关闭顺序
+
+Reconciler → Redis → DB；构造失败逆序清理，不留 goroutine。
+
+### Step 4：提交
 
 ```powershell
 go test ./internal/app/httpapi -run AccountEntry -count=1
 go test ./internal/workbench/schema -count=1
-```
-
-**Commit:**
-
-```powershell
 git add internal/app/httpapi internal/workbench/schema
-git commit -m "feat: wire account entry runtime"
+git commit -m "feat: wire ZITADEL-native account entry runtime"
 ```
 
 ---
 
-## Task 12：实现 Next.js BFF、Flow 恢复和 callback ACK
+## Task 12：实现 Next.js BFF、Flow Cookie 与 OIDC Generation Recovery
 
 **Files:**
 
@@ -1140,65 +1049,80 @@ git commit -m "feat: wire account entry runtime"
 - Create: `web/listingkit-ui/src/app/api/account-entry/password-reset/route.ts`
 - Create: `web/listingkit-ui/src/app/api/account-entry/complete/route.ts`
 - Create: `web/listingkit-ui/src/app/auth-complete/page.tsx`
-- Create: `web/listingkit-ui/src/app/auth-complete/route.test.ts`
+- Create: `web/listingkit-ui/src/app/auth-complete/page.test.tsx`
 - Modify: `web/listingkit-ui/src/app/api/zitadel-auth/login/route.ts`
 - Modify: `web/listingkit-ui/src/lib/server/zitadel-auth.ts`
 - Modify: `web/listingkit-ui/src/proxy.ts`
 
-### Step 1：Intent 和 Flow Cookie
+### Step 1：Begin Intent
 
 ```text
-shuomi_account_entry_intent
+screen=login|register
+method=otp|password
+returnTo=合法站内路径
+invite=一次性 Token（可选）
+```
+
+Intent 与 Operation sequences 保存于加密 HttpOnly Cookie；邀请原始 Token 从地址栏移除，不进 storage。
+
+### Step 2：稳定 Operation ID
+
+BFF 从 Intent/Flow 读取并复用：
+
+```text
+flow_id + operation_kind + sequence
+```
+
+HTTP 重试不递增 sequence；用户修改输入并主动重试才创建下一 sequence。
+
+### Step 3：Flow/Device Cookie
+
+```text
 shuomi_account_entry_flow
 shuomi_auth_device
+HttpOnly
+Secure
+SameSite=Lax
+Path=/
 ```
 
-全部 HttpOnly、Secure、SameSite=Lax。Flow Cookie 只含随机 ID 与 MAC，不含手机号、邀请 Token、Session 或 callback。
+Cookie 不含手机号、Session Token、callback URL 或邀请 Token。
 
-### Step 2：逻辑 Operation ID
+### Step 4：Status 驱动恢复
 
-Operation Sequence 保存在服务端 Attempt；BFF 从 Status/Mutation Response 取得当前操作句柄并在浏览器重试中复用。禁止每次 Route Handler 生成新的业务幂等键。
+页面刷新只调用 Status；不通过重新 POST Challenge/Verify 猜测状态。
 
-### Step 3：Status-first 恢复
+### Step 5：Callback 交付
 
-页面加载和刷新先调用 `/api/account-entry/status`，根据 `nextAction` 渲染，不自动重发验证码或重复 Provisioning。
-
-### Step 4：Complete 与 ACK
+`complete` 从 Go 取得当前 generation 的 callback URL并 303。`/auth-complete`：
 
 ```text
-POST /api/account-entry/complete
-→ 取得可重放 callback
-→ 验证 Origin / Path / code / state
-→ 303
-→ Auth.js callback
-→ /auth-complete
-→ serverAuth 确认 Session subject
-→ POST callback ACK
-→ 清理 Flow Cookie
-→ redirect returnTo
+读取 Auth.js Session
+验证 subject 与 Flow 预期一致
+POST ACK
+清除 Flow Cookie
+跳转 returnTo
 ```
 
-Go/BFF 或 BFF/浏览器响应丢失时，Status 仍返回 `redirect_ready`，可重试相同 callback。
+### Step 6：Code 已消费但 Session 丢失
 
-### Step 5：安全转发
+Status 返回 `restart_oidc` 时：
 
-- [ ] 精确 Origin 校验。
-- [ ] 上游响应 <= 64 KiB。
-- [ ] 只转发白名单字段。
-- [ ] 不转发 `Set-Cookie`、Provider `Location`、内部 ID或原始错误。
+```text
+BFF 使用同一 Flow 启动新的 signIn("zitadel")
+→ 保存新 authRequest generation
+→ Custom Login 使用保留的已验证 ZITADEL Session 创建新 callback
+```
 
-**Run:**
+若 Session 过期，返回 `reauthenticate`。
+
+### Step 7：提交
 
 ```powershell
 Set-Location web/listingkit-ui
 pnpm test -- src/lib/server/account-entry src/app/api/account-entry src/app/auth-complete
 pnpm typecheck
 Set-Location ../..
-```
-
-**Commit:**
-
-```powershell
 git add web/listingkit-ui/src/lib/server/account-entry* `
         web/listingkit-ui/src/app/api/account-entry `
         web/listingkit-ui/src/app/auth-complete `
@@ -1210,82 +1134,84 @@ git commit -m "feat: add recoverable account entry bff"
 
 ---
 
-## Task 13：按 Figma 实现注册、登录与重置页面
+## Task 13：按 Figma 实现注册、登录和重置密码页面
 
 **Files:**
 
-- Create: `web/listingkit-ui/src/components/auth-entry/*`
+- Create: `web/listingkit-ui/src/components/auth-entry/auth-entry-shell.tsx`
+- Create: `web/listingkit-ui/src/components/auth-entry/auth-brand-panel.tsx`
+- Create: `web/listingkit-ui/src/components/auth-entry/auth-card.tsx`
+- Create: `web/listingkit-ui/src/components/auth-entry/phone-field.tsx`
+- Create: `web/listingkit-ui/src/components/auth-entry/otp-field.tsx`
+- Create: `web/listingkit-ui/src/components/auth-entry/password-field.tsx`
+- Create: `web/listingkit-ui/src/components/auth-entry/register-form.tsx`
+- Create: `web/listingkit-ui/src/components/auth-entry/login-form.tsx`
+- Create: `web/listingkit-ui/src/components/auth-entry/reset-password-form.tsx`
+- Create: `web/listingkit-ui/src/components/auth-entry/auth-entry.test.tsx`
 - Create: `web/listingkit-ui/src/app/register/page.tsx`
 - Replace: `web/listingkit-ui/src/app/login/page.tsx`
 - Create: `web/listingkit-ui/src/app/forgot-password/page.tsx`
 - Modify: `web/listingkit-ui/src/components/application-frame.tsx`
 - Modify: `web/listingkit-ui/src/app/globals.css`
 
-### UI Contract
+### Step 1：注册字段
 
-注册只包含：
+严格只有：
 
 ```text
-手机号码
+手机号
 短信验证码
 协议确认
 注册并进入
-已有账号？立即登录
 ```
 
-不存在：
+不得出现用户名、注册密码或邮箱。
 
-```text
-用户名
-注册密码
-邮箱
-经营画像
-```
-
-登录：
+### Step 2：登录
 
 ```text
 验证码登录：手机号 + 验证码
 密码登录：手机号 + 密码
 ```
 
-第一阶段不展示“记住登录状态”。
+Slice 1 不显示“记住登录状态”。
 
-重置：
+### Step 3：重置密码
 
 ```text
 手机号 + 验证码 + 新密码 + 确认密码
 成功后返回密码登录
 ```
 
-### 状态恢复
+### Step 4：Status UI
 
-页面根据 Status API支持：
-
-```text
-手机号输入
-验证码输入
-初始化中
-设置新密码
-准备跳转
-已过期
-隔离错误
-```
-
-刷新不会重新发送短信。
-
-### 可访问性
+支持：
 
 ```text
-输入框有 label
-错误有 aria-describedby
-登录方式为 tablist/tab/tabpanel
-倒计时克制使用 aria-live
-prefers-reduced-motion 关闭光场动画
-1440×900 与 320px 均无横向滚动
+enter_phone
+enter_otp
+provisioning
+enter_new_password
+redirect_ready
+restart_oidc
+reauthenticate
+expired
 ```
 
-**Run:**
+`provisioning` 和 `restart_oidc` 不重复发送短信或重复提交业务初始化。
+
+### Step 5：可访问性和响应式
+
+```text
+真实 label / radio / checkbox
+aria-describedby
+克制的 aria-live
+键盘全流程
+prefers-reduced-motion
+1440×900 与 320px 无横向滚动
+```
+
+### Step 6：提交
 
 ```powershell
 Set-Location web/listingkit-ui
@@ -1294,11 +1220,6 @@ pnpm lint
 pnpm typecheck
 pnpm build
 Set-Location ../..
-```
-
-**Commit:**
-
-```powershell
 git add web/listingkit-ui/src/components/auth-entry `
         web/listingkit-ui/src/app/login `
         web/listingkit-ui/src/app/register `
@@ -1310,7 +1231,7 @@ git commit -m "feat: implement Shuomi account entry pages"
 
 ---
 
-## Task 14：配置 Actions v2、Kubernetes Secret 和发布开关
+## Task 14：部署 Secret、Actions Target、Decoy User 与 Feature Flags
 
 **Files:**
 
@@ -1321,68 +1242,77 @@ git commit -m "feat: implement Shuomi account entry pages"
 - Modify: `deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml`
 - Create: `deployments/kubernetes/listingkit-workbench/base/account-entry-secret.example.yaml`
 - Create: `docs/runbooks/shuomi-account-entry.md`
-- Create: `docs/runbooks/zitadel-actions-v2-identity-events.md`
 - Create: `tests/account_entry_commercial_readiness_test.go`
 
-### Secret Contract
+### Step 1：Key Ring Secret Contract
 
 ```yaml
 stringData:
   bff-token: ""
-  phone-hmac-current: ""
-  phone-hmac-previous: ""
-  flow-aead-current: ""
-  flow-aead-previous: ""
-  device-hmac-current: ""
-  device-hmac-previous: ""
   zitadel-login-client-token: ""
   zitadel-provisioning-token: ""
-  zitadel-actions-signing-key: ""
+  zitadel-password-decoy-user-id: ""
+  phone-hmac-keyring.json: '{"current":{"version":"","value":""},"previous":[]}'
+  flow-aead-keyring.json: '{"current":{"version":"","value":""},"previous":[]}'
+  device-signing-keyring.json: '{"current":{"version":"","value":""},"previous":[]}'
+  operation-fingerprint-keyring.json: '{"current":{"version":"","value":""},"previous":[]}'
+  actions-signing-key: ""
 ```
 
-示例 Secret 不加入 base resources；真实 Secret 由 Overlay 或 Secret Manager 提供。
+示例 Secret 不进入 base resources；真实 Secret 由 Overlay 或 Secret Manager 注入。
 
-### Actions 发布顺序
+### Step 2：Canonical Env
+
+UI 与 API 都使用：
 
 ```text
-1. Receiver 上线但不配置 Execution
-2. 非生产创建 Target
-3. 验证签名和 Payload
-4. 配置 RESTAsync Event Execution
-5. 观察重复／失败行为
-6. 再启用 Projector
+TASK_PROCESSOR_ACCOUNT_ENTRY_ENABLED
+TASK_PROCESSOR_ACCOUNT_ENTRY_SELF_REGISTRATION_ENABLED
 ```
 
-Actions 不作为自助注册开关。
+部署、Loader、Runbook 和 rollout tests 断言完全一致。
 
-### Account Entry 开关
+### Step 3：Decoy User
+
+Runbook 创建一个：
 
 ```text
-1. ACCOUNT_ENTRY_ENABLED=true, SELF_REGISTRATION=false
-2. 验证既有用户 OTP／密码登录
-3. 预发布 SELF_REGISTRATION=true
-4. 完成并发、重试、轮换和清理验收
-5. 再开放生产
+无项目授权
+无企业管理角色
+仅用于密码等时检查
+不可进入 OIDC callback
 ```
 
-**Run:**
+并验证任何临时 Session 都被清理。
+
+### Step 4：Actions
+
+只有 Task 2 门槛通过才创建 Target/Execution。优先 JWT；JSON HMAC 必须含签名事件时间和 ID。Receiver endpoint、audience、时钟偏差和 Key 轮换写入 Runbook。
+
+### Step 5：Rollout
+
+```text
+1. TASK_PROCESSOR_ACCOUNT_ENTRY_ENABLED=true
+2. TASK_PROCESSOR_ACCOUNT_ENTRY_SELF_REGISTRATION_ENABLED=false
+3. 验证既有用户 OTP/密码登录
+4. 预发布开启 Self Registration
+5. 完成新注册、邀请、callback generation、恢复矩阵
+6. 再开放生产
+```
+
+### Step 6：提交
 
 ```powershell
 go test ./tests -run AccountEntry -count=1
 kubectl kustomize deployments/kubernetes/listingkit-workbench/overlays/staging > $null
 kubectl kustomize deployments/kubernetes/listingkit-workbench/overlays/prod > $null
-```
-
-**Commit:**
-
-```powershell
-git add deployments/kubernetes docs/runbooks tests/account_entry_commercial_readiness_test.go
+git add deployments/kubernetes docs/runbooks/shuomi-account-entry.md tests/account_entry_commercial_readiness_test.go
 git commit -m "ops: configure ZITADEL-native account entry"
 ```
 
 ---
 
-## Task 15：全量验证、故障注入与发布报告
+## Task 15：全量故障矩阵、真实预发布验收与发布报告
 
 **Files:**
 
@@ -1391,42 +1321,35 @@ git commit -m "ops: configure ZITADEL-native account entry"
 - Create: `scripts/verify-shuomi-account-entry-release.ps1`
 - Create: `docs/verification/2026-09-03-shuomi-account-entry-release.md`
 
-### 自动化故障矩阵
+### Step 1：自动化故障矩阵
+
+必须覆盖：
 
 ```text
-同手机号、不同 Idempotency-Key 并发注册
-新旧 HMAC Key 实例并发
-Claim Owner 在 Provider 创建前／后崩溃
+不同 Operation ID 并发注册同一手机号
+Organization 创建成功但响应丢失
+User 创建成功但响应丢失
+Claim Owner 崩溃后 lookup/adopt
 OTP Proof 后、base_payg 前崩溃
-base_payg 后、listingkit_admin 前崩溃
-callback 创建后 Go→BFF 响应丢失
-BFF 303 响应丢失
-Auth.js 成功、ACK 响应丢失
-页面刷新和浏览器重启
-Actions Event 重复、延迟、5xx 和签名错误
-邀请 User 创建后放弃
-DeleteUser 失败和服务重启
-SELF_REGISTRATION=false 下已存在／未知手机号一致
-相同 Operation ID + 不同 Payload 冲突
+ORG_OWNER 后、listingkit_admin 前崩溃
+新邀请 Identity 在 Grant 前保持 pending
+邀请 Grant 成功、consume 响应丢失
+跨企业邀请签发拒绝
+callback 303 丢失且 code 未消费
+Auth.js 已消费 code，但 Set-Cookie/redirect 丢失
+新 Auth Request generation 恢复
+ZITADEL Session 过期后 reauthenticate
+Actions 签名正确但过期
+Actions 重复、乱序、延迟
+Phone/AEAD/Device/Fingerprint Key Ring 轮换
+同 Operation ID 修改 OTP
+同 Operation ID 修改新密码
+未知、pending、真实用户的密码登录时序类别
+注册关闭时已注册和未知手机号一致
+页面刷新只走 Status，不重复写操作
 ```
 
-### 产品 E2E
-
-```text
-OTP 登录
-手机号密码登录
-手机号注册
-重复注册不新增 User/Org
-密码重置
-邀请注册不创建默认企业
-Status-first 页面恢复
-callback URL 不进入浏览器 JSON
-无“记住登录状态”无效选项
-320px 和 1440×900
-axe
-```
-
-### 全量命令
+### Step 2：全量回归
 
 ```powershell
 go test ./... -count=1
@@ -1444,72 +1367,55 @@ kubectl kustomize deployments/kubernetes/listingkit-workbench/overlays/prod > $n
 git diff --check
 ```
 
-### 真实预发布验收
+### Step 3：真实预发布验收
 
-复用 PR #218 的短信基础，只验证产品化增量：
+不重复证明 PR #218 的短信基础，只验证产品化增量：
 
 ```text
-已有手机号 OTP 登录 → Auth.js Session
-已有手机号密码登录 → Auth.js Session
-新手机号 → 一条 OTP → 一个 User → 一个 Org → base_payg → ORG_OWNER → listingkit_admin
-并发重复注册 → 无重复 Provider 资源
-邀请新用户放弃 → 精确清理或 quarantined
-callback 响应丢失 → 可恢复
-Actions 重复投递 → 无重复业务效果
-密钥轮换演练 → active Flow 和手机号唯一性保持
+既有手机号 OTP → Auth.js Session
+既有手机号密码 → Auth.js Session
+新手机号 → 单条 OTP → 单一 User/Org → base_payg → ORG_OWNER → listingkit_admin
+重复注册 → 不增加 User/Org
+Provider 响应丢失模拟 → 相同 ID adopt
+邀请注册 → 目标授权完成后 Identity 才 active
+callback code 消费后响应丢失 → 新 generation 成功登录
+密码重置 → 新密码可登录
+Actions 重复与过期请求处理正确
+敏感日志扫描通过
 ```
 
-报告只记录脱敏 ID 后缀，不记录手机号、验证码、密码、Session Token 或 callback URL。
+### Step 4：发布报告
 
-**Commit:**
+记录 Git SHA、ZITADEL 版本、Actions 配置版本、Key Ring Version、测试命令及退出码、对象数量核对、短信条数、故障恢复结果、回滚演练和剩余风险。所有主体 ID 只保留末 6 位。
+
+### Step 5：提交
 
 ```powershell
-git add web/listingkit-ui/e2e scripts/verify-shuomi-account-entry-release.ps1 `
+git add web/listingkit-ui/e2e `
+        scripts/verify-shuomi-account-entry-release.ps1 `
         docs/verification/2026-09-03-shuomi-account-entry-release.md
 git commit -m "test: verify ZITADEL-native account entry release"
 ```
 
 ---
 
-## 三、完成定义
+## 完成定义
 
-- [ ] PR #218 的 OTP 实现被复用，没有第二套短信或 Session Client。
-- [ ] ZITADEL User／Session／OIDC 是身份流程权威。
-- [ ] Actions v2 使用签名 Target 和幂等 Inbox，只负责收敛，不承载业务代码。
-- [ ] Account Entry 第一阶段不使用 Temporal。
-- [ ] 不同请求、不同 Idempotency-Key 的并发注册仍只产生一个 User／Organization。
-- [ ] HMAC Key 轮换保持一手机号一 Identity。
-- [ ] AEAD Key 轮换不破坏 active Flow。
-- [ ] OTP Proof 之前没有业务角色和套餐。
-- [ ] Pending Identity 不能普通登录。
-- [ ] `listingkit_admin` 是自助注册初始化最后的业务访问效果。
-- [ ] 注册关闭时不能枚举账号。
-- [ ] 邀请废弃 User 可精确清理或进入 quarantined。
-- [ ] 邀请权限已加入现有 Authorizer 并有正反测试。
-- [ ] 逻辑 Operation ID 可跨浏览器／代理重试复用，并校验 Fingerprint。
-- [ ] callback 可重放，Auth.js Session ACK 后才清理。
+- [ ] PR #218 已验证的 OTP/SMS Client 被抽取复用，没有第二套验证码系统。
+- [ ] ZITADEL 是身份主流程，Actions v2 仅作为 Freshness-safe 身份事件桥。
+- [ ] Actions 关闭、重复或延迟不影响同步登录正确性。
+- [ ] Organization/User 使用预分配 Provider ID；响应丢失后 lookup/adopt。
+- [ ] 同一手机号在并发和 Key 轮换中只有一个 Identity/User。
+- [ ] 新自助注册在 base_payg、ORG_OWNER、listingkit_admin 完成前保持 pending。
+- [ ] 新邀请 Identity 在目标授权与 Invitation consume 完成前保持 pending。
+- [ ] 邀请签发只使用 live resolved Effective Organization。
+- [ ] 密码登录对未知和 pending 身份执行同类 ZITADEL Decoy Check，并通过时序测试。
+- [ ] Request Fingerprint 对 OTP/密码使用服务端 Keyed HMAC。
+- [ ] Phone、AEAD、Device、Fingerprint Secret 使用带 Version 的 Key Ring，并支持多个 Previous Key。
+- [ ] callback 在 code 未消费时可重放，在 code 已消费且浏览器 Session 丢失时可生成新 Auth Request。
 - [ ] Flow Status 支持刷新、重启和响应丢失恢复。
-- [ ] 设备、IP、手机号及组合限流均生效。
-- [ ] 第一阶段不展示无效的“记住登录状态”。
-- [ ] 注册页只有手机号、验证码和协议。
-- [ ] OTP／密码登录进入同一种 Auth.js 会话。
-- [ ] 全量 Go、前端、Playwright、Kustomize 和商业就绪检查通过。
-- [ ] 生产自助注册默认关闭，真实预发布验收后才开放。
-
-## 四、相对上一版计划的修订
-
-```text
-采用：ZITADEL 原生身份流 + Actions v2 事件收敛
-取消：Account Entry Temporal Workflow 设想
-增加：PostgreSQL Operation Runtime 最小幂等／Claim 原语
-增加：多 HMAC Alias 和版本化 AEAD Key Ring
-增加：pending / active Phone Identity
-增加：callback 重放 + Auth.js ACK
-增加：只读 Flow Status
-增加：设备限流
-增加：邀请 User 精确删除
-增加：account.invitation.create 授权映射
-修正：inert Organization/User 必须在 SMS Challenge 前创建
-修正：注册禁用必须在 Binding 查询前统一处理
-移除：第一阶段“记住登录状态”复选框
-```
+- [ ] Canonical Feature Flag 名称在所有层一致。
+- [ ] Slice 1 不显示无效的“记住登录状态”。
+- [ ] 手机号、验证码、密码、Session Token、callback URL 和管理凭据不进入日志、公开 JSON 或明文数据库列。
+- [ ] Go、前端、Playwright、Kustomize 和商业就绪检查全部通过。
+- [ ] 生产开关默认关闭，真实预发布验收后才开放。
