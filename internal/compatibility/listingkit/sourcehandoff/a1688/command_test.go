@@ -105,6 +105,30 @@ func TestTaskCommandServicePublishesSourceSnapshotBeforeTaskCreation(t *testing.
 	if got := strings.Join(events, ","); got != "publish,create" {
 		t.Fatalf("event order = %q, want publish,create", got)
 	}
+	if result.Task.SourceSnapshotVersion != 1 {
+		t.Fatalf("task source snapshot version = %d, want published version 1", result.Task.SourceSnapshotVersion)
+	}
+}
+
+func TestTaskCommandServicePinsChangedImportsToDistinctPublicationIdentitiesWithoutSourceRunID(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	publisher := &recordingSourcePublisher{}
+	service := NewTaskCommandService(creator, validStoreAccessValidator(), publisher)
+	command := CreateTaskCommand{
+		URL: "https://detail.1688.com/offer/888.html", TenantID: "101", UserID: "user-1688",
+		SheinStoreID: 168811, Platforms: []string{"shein"}, Product: commandProduct1688("888"),
+	}
+	if _, err := service.CreateTask(authenticatedCommandContext("101", "user-1688"), command); err != nil {
+		t.Fatalf("first CreateTask() error = %v", err)
+	}
+	firstPublicationID := publisher.request.PublicationID
+	command.Product.Title = "updated title"
+	if _, err := service.CreateTask(authenticatedCommandContext("101", "user-1688"), command); err != nil {
+		t.Fatalf("second CreateTask() error = %v", err)
+	}
+	if publisher.request.PublicationID == firstPublicationID {
+		t.Fatalf("publication ID = %q, want changed identity for changed raw snapshot", publisher.request.PublicationID)
+	}
 }
 
 func TestTaskCommandServiceNormalizesSourceAccountAndValidatesSheinTargetStore(t *testing.T) {

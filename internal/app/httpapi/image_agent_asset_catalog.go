@@ -73,11 +73,12 @@ func imageAgentCatalogFromTaskTargetSelectionWithResolver(ctx context.Context, t
 	if err != nil {
 		return imageagent.AssetCatalog{}, err
 	}
-	assets := authorizedAssetsFromCatalogImagesWithResolver(ctx, snapshot.Images, resolver)
+	assets := authorizedAssetsFromCatalogImages(snapshot.Images)
 	assets, err = selectAuthorizedAssets(assets, selectedSourceID, firstStringSlice(selectedStyleIDs), len(selectedStyleIDs) > 0)
 	if err != nil {
 		return imageagent.AssetCatalog{}, err
 	}
+	assets = resolveAuthorizedAssetDimensions(ctx, assets, resolver)
 	if len(assets) == 0 {
 		return imageagent.AssetCatalog{}, fmt.Errorf("business task has no authorized source assets")
 	}
@@ -107,21 +108,19 @@ func taskCatalogSnapshot(task *listingkit.Task) (*catalog.ProductSnapshot, error
 }
 
 func authorizedAssetsFromCatalogImages(images []catalog.Image) []imageagent.AuthorizedAsset {
-	return authorizedAssetsFromCatalogImagesWithResolver(context.Background(), images, nil)
+	return buildAuthorizedAssetsFromCatalogImages(images)
 }
 
 func authorizedAssetsFromCatalogImagesWithResolver(ctx context.Context, images []catalog.Image, resolver imageDimensionResolver) []imageagent.AuthorizedAsset {
+	return resolveAuthorizedAssetDimensions(ctx, buildAuthorizedAssetsFromCatalogImages(images), resolver)
+}
+
+func buildAuthorizedAssetsFromCatalogImages(images []catalog.Image) []imageagent.AuthorizedAsset {
 	assets := make([]imageagent.AuthorizedAsset, 0, len(images))
 	for index, item := range images {
 		url, err := imageagent.ValidateSafeImageURL(item.URL)
 		if err != nil {
 			continue
-		}
-		width, height := item.Width, item.Height
-		if (width <= 0 || height <= 0) && resolver != nil {
-			if resolvedWidth, resolvedHeight, resolveErr := resolver.Resolve(ctx, url); resolveErr == nil {
-				width, height = resolvedWidth, resolvedHeight
-			}
 		}
 		assetType := imageagent.AuthorizedAssetSource
 		if strings.EqualFold(strings.TrimSpace(item.Role), "style") {
@@ -130,13 +129,42 @@ func authorizedAssetsFromCatalogImagesWithResolver(ctx context.Context, images [
 		assets = append(assets, imageagent.AuthorizedAsset{
 			ID: "catalog-image-" + strconv.Itoa(index+1), Type: assetType,
 			URL: url, SourceURL: url, DisplayURL: url, Label: "Product image",
-			Width: width, Height: height,
+			Width: item.Width, Height: item.Height,
 		})
 	}
 	return assets
 }
 
 const catalogImageDimensionProbeTimeout = 10 * time.Second
+const catalogImageDimensionProbeBudget = 30 * time.Second
+const catalogImageDimensionProbeMaxCount = 32
+
+func resolveAuthorizedAssetDimensions(ctx context.Context, assets []imageagent.AuthorizedAsset, resolver imageDimensionResolver) []imageagent.AuthorizedAsset {
+	if resolver == nil || len(assets) == 0 {
+		return assets
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, catalogImageDimensionProbeBudget)
+	defer cancel()
+	probes := 0
+	for index := range assets {
+		if assets[index].Width > 0 && assets[index].Height > 0 {
+			continue
+		}
+		if probes >= catalogImageDimensionProbeMaxCount || probeCtx.Err() != nil {
+			break
+		}
+		width, height, err := resolver.Resolve(probeCtx, assets[index].URL)
+		probes++
+		if err == nil {
+			assets[index].Width = width
+			assets[index].Height = height
+		}
+	}
+	return assets
+}
 
 type publicImageDimensionResolver struct {
 	client  *http.Client

@@ -92,6 +92,9 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 	if envelope.RawReference.URL != "https://detail.1688.com/offer/123.html" {
 		t.Fatalf("RawReference.URL = %q, want normalized URL without query", envelope.RawReference.URL)
 	}
+	if envelope.RawReference.SnapshotID != "" {
+		t.Fatalf("RawReference.SnapshotID = %q, want raw evidence excluded from canonical snapshot identity", envelope.RawReference.SnapshotID)
+	}
 	if envelope.ProductCandidate.Title != "Canvas Tote Bag" || envelope.ProductCandidate.Brand != "Factory Brand" {
 		t.Fatalf("sourcing.ProductCandidate = %+v, want title and brand", envelope.ProductCandidate)
 	}
@@ -110,6 +113,9 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 	variant := envelope.ProductCandidate.Variants[0]
 	if variant.Attributes["Color"] != "Blue" || variant.Attributes["price"] != "9.9" || variant.Attributes["stock"] != "20" {
 		t.Fatalf("variant attributes = %+v, want color price and stock", variant.Attributes)
+	}
+	if variant.Price != 9.9 || variant.Stock != 20 || variant.Currency != "CNY" {
+		t.Fatalf("typed variant commerce facts = %+v, want CNY/9.9/20", variant)
 	}
 	if len(envelope.AssetCandidates) != 7 {
 		t.Fatalf("assets = %d, want main/gallery/detail/variant/package/video cover/video", len(envelope.AssetCandidates))

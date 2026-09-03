@@ -30,9 +30,22 @@ func newListingKitProductSnapshotReader(reader catalog.SnapshotReader) listingki
 }
 
 func (r listingKitProductSnapshotReader) GetProductSnapshot(ctx context.Context, query listingkit.ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
-	published, err := r.reader.GetCurrentSnapshot(ctx, catalog.SnapshotIdentity{
+	identity := catalog.SnapshotIdentity{
 		TenantID: query.TenantID, ProductKey: query.ProductKey,
-	})
+	}
+	var (
+		published catalog.PublishedSnapshot
+		err       error
+	)
+	if query.Version > 0 {
+		versioned, ok := r.reader.(catalog.VersionedSnapshotReader)
+		if !ok {
+			return catalog.ProductSnapshot{}, listingkit.ErrProductSnapshotNotReady
+		}
+		published, err = versioned.GetSnapshot(ctx, identity, query.Version)
+	} else {
+		published, err = r.reader.GetCurrentSnapshot(ctx, identity)
+	}
 	if errors.Is(err, catalog.ErrSnapshotNotReady) {
 		return catalog.ProductSnapshot{}, listingkit.ErrProductSnapshotNotReady
 	}
@@ -46,11 +59,11 @@ func isProductSnapshotNotReadyForHTTPAPI(err error) bool {
 	return errors.Is(err, listingkit.ErrProductSnapshotNotReady) || errors.Is(err, catalog.ErrSnapshotNotReady)
 }
 
-func readProductSnapshotForHTTPAPI(ctx context.Context, deps *runtimeDeps, tenantID, productKey string) (catalog.ProductSnapshot, error) {
+func readProductSnapshotForHTTPAPI(ctx context.Context, deps *runtimeDeps, tenantID, productKey string, version uint64) (catalog.ProductSnapshot, error) {
 	if deps == nil || deps.features == nil || deps.features.productSnapshotReader == nil {
 		return catalog.ProductSnapshot{}, listingkit.ErrProductSnapshotNotReady
 	}
-	return deps.features.productSnapshotReader.GetProductSnapshot(ctx, listingkit.ProductSnapshotQuery{TenantID: tenantID, ProductKey: productKey})
+	return deps.features.productSnapshotReader.GetProductSnapshot(ctx, listingkit.ProductSnapshotQuery{TenantID: tenantID, ProductKey: productKey, Version: version})
 }
 
 func ensureListingKitSheinCookieStore(_ *logrus.Logger, deps *runtimeDeps) (*sheinlogin.RedisStore, error) {

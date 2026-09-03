@@ -125,18 +125,38 @@ func (r *repository) GetCurrentSnapshot(ctx context.Context, identity productcat
 	if err != nil {
 		return productcatalog.PublishedSnapshot{}, mapRepositoryError("load current snapshot head", err)
 	}
+	published, err := r.GetSnapshot(ctx, identity, head.CurrentVersion)
+	if err != nil {
+		if errors.Is(err, productcatalog.ErrSnapshotNotReady) {
+			return productcatalog.PublishedSnapshot{}, repositoryStateInvalid("load current snapshot", errors.New("head version is missing"))
+		}
+		return productcatalog.PublishedSnapshot{}, err
+	}
+	if published.PublicationID != head.PublicationID {
+		return productcatalog.PublishedSnapshot{}, repositoryStateInvalid("load current snapshot", errors.New("head publication does not match version"))
+	}
+	return published, nil
+}
+
+func (r *repository) GetSnapshot(ctx context.Context, identity productcatalog.SnapshotIdentity, version uint64) (productcatalog.PublishedSnapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return productcatalog.PublishedSnapshot{}, err
+	}
+	if err := productcatalog.ValidateSnapshotIdentity(identity); err != nil {
+		return productcatalog.PublishedSnapshot{}, err
+	}
+	if version == 0 {
+		return productcatalog.PublishedSnapshot{}, productcatalog.ErrSnapshotNotReady
+	}
 	var record SnapshotVersionRecord
-	err = r.db.WithContext(ctx).
-		Where("tenant_id = ? AND product_key = ? AND version = ?", identity.TenantID, identity.ProductKey, head.CurrentVersion).
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND product_key = ? AND version = ?", identity.TenantID, identity.ProductKey, version).
 		Take(&record).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return productcatalog.PublishedSnapshot{}, repositoryStateInvalid("load current snapshot", errors.New("head version is missing"))
+		return productcatalog.PublishedSnapshot{}, productcatalog.ErrSnapshotNotReady
 	}
 	if err != nil {
-		return productcatalog.PublishedSnapshot{}, mapRepositoryError("load current snapshot", err)
-	}
-	if record.PublicationID != head.PublicationID {
-		return productcatalog.PublishedSnapshot{}, repositoryStateInvalid("load current snapshot", errors.New("head publication does not match version"))
+		return productcatalog.PublishedSnapshot{}, mapRepositoryError("load snapshot version", err)
 	}
 	return publishedFromRecord(record)
 }

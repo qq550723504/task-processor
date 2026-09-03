@@ -11,6 +11,10 @@ type SourceReference struct {
 type GenerateRequest struct {
 	TenantID   string `json:"tenant_id,omitempty"`
 	ProductKey string `json:"product_key"`
+	// SourceSnapshotVersion is populated only by trusted source handoff code
+	// after Catalog publication. It is copied onto Task and never accepted from
+	// or exposed to the caller-facing request JSON.
+	SourceSnapshotVersion uint64 `json:"-"`
 	// BillingTenantID is set only by the authenticated HTTP boundary after its
 	// subscription check. It is intentionally excluded from the persisted
 	// request JSON; Task owns the durable billing identity separately from the

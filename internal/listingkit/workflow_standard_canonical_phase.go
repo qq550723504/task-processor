@@ -55,7 +55,7 @@ func productSnapshotQueryForTask(task *Task) ProductSnapshotQuery {
 	if task == nil {
 		return ProductSnapshotQuery{}
 	}
-	query := ProductSnapshotQuery{TenantID: task.TenantID}
+	query := ProductSnapshotQuery{TenantID: task.TenantID, Version: task.SourceSnapshotVersion}
 	if task.Request != nil {
 		query.ProductKey = task.Request.ProductKey
 	}

@@ -49,6 +49,28 @@ func TestCanonicalPhaseReadsProductSnapshotOnce(t *testing.T) {
 	}
 }
 
+func TestProductSnapshotQueryForTaskUsesPinnedPublishedVersion(t *testing.T) {
+	query := productSnapshotQueryForTask(&Task{
+		TenantID: "tenant-a", SourceSnapshotVersion: 17,
+		Request: &GenerateRequest{ProductKey: "product-1"},
+	})
+	if query.TenantID != "tenant-a" || query.ProductKey != "product-1" || query.Version != 17 {
+		t.Fatalf("query = %+v, want tenant/product/version 17", query)
+	}
+}
+
+func TestPrepareGenerateTaskPersistsPinnedPublishedVersion(t *testing.T) {
+	_, task, err := (&taskLifecycleService{}).prepareGenerateTask(context.Background(), &GenerateRequest{
+		TenantID: "tenant-a", UserID: "user-a", ProductKey: "product-1", Platforms: []string{"amazon"}, SourceSnapshotVersion: 17,
+	})
+	if err != nil {
+		t.Fatalf("prepareGenerateTask() error = %v", err)
+	}
+	if task == nil || task.SourceSnapshotVersion != 17 {
+		t.Fatalf("task source snapshot version = %v, want 17", task)
+	}
+}
+
 func TestCanonicalPhaseTreatsEmptyProductSnapshotAsNotReady(t *testing.T) {
 	phase := standardWorkflowCanonicalPhase{snapshots: &recordingProductSnapshotReader{}}
 

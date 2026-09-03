@@ -410,7 +410,6 @@ func alibaba1688SourceIdentity(input Alibaba1688CrawlRequestInput, product *Alib
 func alibaba1688RawReference(input Alibaba1688CrawlRequestInput, product *Alibaba1688ProductSnapshot, snapshot string) sourcing.RawSourceReference {
 	ref := sourcing.RawSourceReference{
 		ReferenceType: alibaba1688SourceReferenceType,
-		SnapshotID:    strings.TrimSpace(snapshot),
 		Checksum:      sourcing.RawSnapshotChecksum(snapshot),
 		URL:           NormalizeAlibaba1688URL(input.URL),
 	}
@@ -484,11 +483,11 @@ func alibaba1688ProductCandidate(product *Alibaba1688ProductSnapshot) sourcing.P
 		Description: product.NormalizedDescription(),
 		Brand:       strings.TrimSpace(product.Brand),
 		Attributes:  attributes,
-		Variants:    alibaba1688VariantCandidates(product.Variants),
+		Variants:    alibaba1688VariantCandidates(product.Variants, product.NormalizedCurrency()),
 	}
 }
 
-func alibaba1688VariantCandidates(variants []Alibaba1688VariantSnapshot) []sourcing.ProductVariantCandidate {
+func alibaba1688VariantCandidates(variants []Alibaba1688VariantSnapshot, currency string) []sourcing.ProductVariantCandidate {
 	if len(variants) == 0 {
 		return nil
 	}
@@ -501,6 +500,9 @@ func alibaba1688VariantCandidates(variants []Alibaba1688VariantSnapshot) []sourc
 			Title:      strings.TrimSpace(variant.Name),
 			SKU:        sourceSKU,
 			Attributes: attributes,
+			Currency:   strings.TrimSpace(currency),
+			Price:      variant.Price,
+			Stock:      variant.Stock,
 		}
 		if candidate.Title == "" && len(candidate.Attributes) == 0 && strings.TrimSpace(variant.Image) == "" && variant.Price <= 0 && variant.Stock == 0 {
 			continue

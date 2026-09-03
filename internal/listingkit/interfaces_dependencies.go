@@ -18,6 +18,7 @@ var ErrProductSnapshotNotReady = errors.New("product snapshot is not ready")
 type ProductSnapshotQuery struct {
 	TenantID   string
 	ProductKey string
+	Version    uint64
 }
 
 type ProductSnapshotReader interface {

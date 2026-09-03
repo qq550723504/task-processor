@@ -646,6 +646,7 @@ func cloneMemTask(task *listingkit.Task) (*listingkit.Task, error) {
 		return nil, err
 	}
 	cloned.BillingTenantID = task.BillingTenantID
+	cloned.SourceSnapshotVersion = task.SourceSnapshotVersion
 	cloned.GenerationUsageReservationState = task.GenerationUsageReservationState
 	if task.GenerationUsageReservationLeaseUntil != nil {
 		leaseUntil := *task.GenerationUsageReservationLeaseUntil

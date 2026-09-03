@@ -35,6 +35,13 @@ type SnapshotReader interface {
 	GetCurrentSnapshot(context.Context, SnapshotIdentity) (PublishedSnapshot, error)
 }
 
+// VersionedSnapshotReader reads an immutable historical snapshot selected by
+// its Catalog-assigned version. It is optional so legacy readers can continue
+// serving current snapshots while deployments migrate.
+type VersionedSnapshotReader interface {
+	GetSnapshot(context.Context, SnapshotIdentity, uint64) (PublishedSnapshot, error)
+}
+
 // Repository combines Catalog's write and read ports for persistence adapters.
 type Repository interface {
 	SnapshotWriter

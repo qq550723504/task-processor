@@ -105,11 +105,17 @@ func snapshotVariants(candidates []ProductVariantCandidate) []catalog.Variant {
 	}
 	variants := make([]catalog.Variant, len(candidates))
 	for index, candidate := range candidates {
+		var price *catalog.Price
+		if candidate.Price > 0 {
+			price = &catalog.Price{Currency: strings.TrimSpace(candidate.Currency), Amount: candidate.Price}
+		}
 		variants[index] = catalog.Variant{
 			SourceID:   candidate.SourceID,
 			Title:      candidate.Title,
 			SKU:        candidate.SKU,
 			Attributes: snapshotAttributes(candidate.Attributes),
+			Price:      price,
+			Stock:      candidate.Stock,
 		}
 	}
 	return variants

@@ -28,6 +28,7 @@ func TestMemTaskRepositoryMutateTaskResultRollsBackNestedStateAndOwnsReturnedSna
 		ID:                                   "task-atomic-mutation",
 		TenantID:                             "tenant-a",
 		BillingTenantID:                      "billing-a",
+		SourceSnapshotVersion:                17,
 		GenerationUsageReservationState:      listingkit.GenerationUsageReservationStateReserved,
 		GenerationUsageReservationLeaseUntil: &leaseUntil,
 		Request: &listingkit.GenerateRequest{
@@ -95,7 +96,7 @@ func TestMemTaskCloneDurableMetadataSchemaIsExplicit(t *testing.T) {
 		}
 	}
 	sort.Strings(hidden)
-	want := []string{"BillingTenantID", "GenerationUsageReservationLeaseUntil", "GenerationUsageReservationState"}
+	want := []string{"BillingTenantID", "GenerationUsageReservationLeaseUntil", "GenerationUsageReservationState", "SourceSnapshotVersion"}
 	require.Equal(t, want, hidden, "update the persistence-equivalent Task clone when durable hidden fields change")
 }
 
@@ -179,6 +180,7 @@ func assertMemSemanticCloneNormalized(t *testing.T, task *listingkit.Task) {
 func assertMemMutationTaskCloneContract(t *testing.T, task *listingkit.Task, billingTenant string, leaseUntil time.Time) {
 	t.Helper()
 	require.Equal(t, billingTenant, task.BillingTenantID)
+	require.Equal(t, uint64(17), task.SourceSnapshotVersion)
 	require.Equal(t, listingkit.GenerationUsageReservationStateReserved, task.GenerationUsageReservationState)
 	require.NotNil(t, task.GenerationUsageReservationLeaseUntil)
 	require.Equal(t, leaseUntil, *task.GenerationUsageReservationLeaseUntil)

@@ -142,7 +142,7 @@ func (f *fakeGenerateTaskCreator) CreateGenerateTask(_ context.Context, request 
 		*f.events = append(*f.events, "create")
 	}
 	f.request = request
-	return &listingkit.Task{ID: "task-1688", Request: request}, nil
+	return &listingkit.Task{ID: "task-1688", Request: request, SourceSnapshotVersion: request.SourceSnapshotVersion}, nil
 }
 
 type recordingSourcePublisher struct {

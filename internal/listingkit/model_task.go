@@ -23,15 +23,19 @@ type Task struct {
 	GenerationUsageReservationState      GenerationUsageReservationState `json:"-" gorm:"type:varchar(16);index"`
 	GenerationUsageReservationLeaseUntil *time.Time                      `json:"-" gorm:"index"`
 	UserID                               string                          `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
-	Request                              *GenerateRequest                `json:"request" gorm:"type:text"`
-	SheinStoreResolutionSnapshot         *SheinStoreResolutionSnapshot   `json:"shein_store_resolution_snapshot,omitempty" gorm:"type:text"`
-	Status                               core.TaskStatus                 `json:"status" gorm:"type:varchar(20);index"`
-	Result                               *ListingKitResult               `json:"result,omitempty" gorm:"type:text"`
-	RetryableBlock                       *RetryableBlock                 `json:"retryable_block,omitempty" gorm:"type:text"`
-	Error                                string                          `json:"error,omitempty" gorm:"type:text"`
-	CreatedAt                            time.Time                       `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt                            time.Time                       `json:"updated_at" gorm:"autoUpdateTime"`
-	RetryCount                           int                             `json:"retry_count" gorm:"default:0"`
+	// SourceSnapshotVersion pins source-backed tasks to the immutable Catalog
+	// version published before task creation. Zero is reserved for legacy tasks
+	// that must continue reading the current snapshot.
+	SourceSnapshotVersion        uint64                        `json:"-" gorm:"index"`
+	Request                      *GenerateRequest              `json:"request" gorm:"type:text"`
+	SheinStoreResolutionSnapshot *SheinStoreResolutionSnapshot `json:"shein_store_resolution_snapshot,omitempty" gorm:"type:text"`
+	Status                       core.TaskStatus               `json:"status" gorm:"type:varchar(20);index"`
+	Result                       *ListingKitResult             `json:"result,omitempty" gorm:"type:text"`
+	RetryableBlock               *RetryableBlock               `json:"retryable_block,omitempty" gorm:"type:text"`
+	Error                        string                        `json:"error,omitempty" gorm:"type:text"`
+	CreatedAt                    time.Time                     `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt                    time.Time                     `json:"updated_at" gorm:"autoUpdateTime"`
+	RetryCount                   int                           `json:"retry_count" gorm:"default:0"`
 }
 
 type GenerationUsageReservationState string

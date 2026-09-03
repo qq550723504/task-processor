@@ -36,7 +36,7 @@ func (b amazonListingFeatureBuilder) build(logger *logrus.Logger, deps *runtimeD
 		return nil, nil
 	}
 	productSnapshots := amazonListingProductSnapshotReader(func(ctx context.Context, tenantID, productKey string) (catalog.ProductSnapshot, error) {
-		return readProductSnapshotForHTTPAPI(ctx, deps, tenantID, productKey)
+		return readProductSnapshotForHTTPAPI(ctx, deps, tenantID, productKey, 0)
 	})
 	if b.buildRepository == nil {
 		return nil, fmt.Errorf("build amazon listing: task repository builder is required")

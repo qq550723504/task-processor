@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -41,6 +42,25 @@ func TestAuthorizedAssetsFromCatalogImagesResolvesMissingDimensions(t *testing.T
 	require.Len(t, assets, 1)
 	require.Equal(t, 1600, assets[0].Width)
 	require.Equal(t, 900, assets[0].Height)
+}
+
+func TestAppImageAgentCatalogProbesOnlySelectedAssets(t *testing.T) {
+	task := catalogTaskFixture()
+	resolver := &countingImageDimensionResolver{width: 1600, height: 900}
+	_, err := imageAgentCatalogFromTaskTargetSelectionWithResolver(context.Background(), task, "", "catalog-image-1", [][]string{{}}, resolver)
+	require.NoError(t, err)
+	require.Equal(t, 1, resolver.calls)
+}
+
+func TestAuthorizedAssetsFromCatalogImagesCapsDimensionProbes(t *testing.T) {
+	images := make([]catalog.Image, 40)
+	for index := range images {
+		images[index] = catalog.Image{URL: fmt.Sprintf("https://cdn.example.test/source-%d.png", index)}
+	}
+	resolver := &countingImageDimensionResolver{width: 1600, height: 900}
+	assets := authorizedAssetsFromCatalogImagesWithResolver(context.Background(), images, resolver)
+	require.Len(t, assets, 40)
+	require.Equal(t, catalogImageDimensionProbeMaxCount, resolver.calls)
 }
 
 func TestAppImageAgentCatalogUsesExplicitSourceSelection(t *testing.T) {
@@ -100,4 +120,15 @@ type imageDimensionResolverStub struct {
 
 func (s imageDimensionResolverStub) Resolve(context.Context, string) (int, int, error) {
 	return s.width, s.height, nil
+}
+
+type countingImageDimensionResolver struct {
+	width  int
+	height int
+	calls  int
+}
+
+func (r *countingImageDimensionResolver) Resolve(context.Context, string) (int, int, error) {
+	r.calls++
+	return r.width, r.height, nil
 }

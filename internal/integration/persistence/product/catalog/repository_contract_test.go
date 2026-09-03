@@ -58,6 +58,17 @@ func TestRepositoryPublishesImmutableVersionsWithTenantProductIsolationAndIdempo
 	if second.Version != 2 {
 		t.Fatalf("second.Version = %d, want 2", second.Version)
 	}
+	versioned, ok := repository.(productcatalog.VersionedSnapshotReader)
+	if !ok {
+		t.Fatal("repository does not implement VersionedSnapshotReader")
+	}
+	historical, err := versioned.GetSnapshot(ctx, firstRequest.Identity, first.Version)
+	if err != nil {
+		t.Fatalf("GetSnapshot(historical) error = %v", err)
+	}
+	if historical.Version != first.Version || historical.Snapshot.Title != "Bottle v1" {
+		t.Fatalf("GetSnapshot(historical) = %+v, want immutable version 1", historical)
+	}
 
 	for _, request := range []productcatalog.PublishRequest{
 		{Identity: productcatalog.SnapshotIdentity{TenantID: "tenant-b", ProductKey: "product-1"}, PublicationID: "source-run-1", Snapshot: productcatalog.ProductSnapshot{Title: "Tenant B"}},

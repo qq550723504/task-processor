@@ -77,6 +77,9 @@ type ProductVariantCandidate struct {
 	Title      string
 	SKU        string
 	Attributes map[string]string
+	Currency   string
+	Price      float64
+	Stock      int
 }
 
 // AssetCandidate carries neutral image/design facts from the source.

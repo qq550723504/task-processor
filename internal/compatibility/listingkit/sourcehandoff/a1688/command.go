@@ -2,6 +2,9 @@ package a1688
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -124,12 +127,14 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 		return &CreateTaskResult{Handoff: handoff}, err
 	}
 	if s.sourcePublisher != nil {
-		if _, err := s.sourcePublisher.Publish(ctx, sourcing.PublishRequest{
+		published, err := s.sourcePublisher.Publish(ctx, sourcing.PublishRequest{
 			TenantID: command.TenantID, ProductKey: handoff.Request.ProductKey,
 			PublicationID: sourcePublicationID(handoff.Envelope), Envelope: handoff.Envelope,
-		}); err != nil {
+		})
+		if err != nil {
 			return &CreateTaskResult{Handoff: handoff}, fmt.Errorf("publish source snapshot: %w", err)
 		}
+		handoff.Request.SourceSnapshotVersion = published.Version
 	}
 	task, err := s.creator.CreateGenerateTask(ctx, &handoff.Request)
 	if err != nil {
@@ -142,7 +147,24 @@ func sourcePublicationID(envelope sourcing.SourceEnvelope) string {
 	if sourceRunID := strings.TrimSpace(envelope.Trace.SourceRunID); sourceRunID != "" {
 		return "source-run:" + sourceRunID
 	}
-	return "source:" + envelope.Identity.SourceKey()
+	if checksum := strings.TrimSpace(envelope.RawReference.Checksum); checksum != "" {
+		return "source-snapshot:" + checksum
+	}
+	encoded, _ := json.Marshal(struct {
+		Identity            sourcing.SourceIdentity
+		ProductCandidate    sourcing.ProductCandidate
+		AssetCandidates     []sourcing.AssetCandidate
+		SupplierOrCostFacts sourcing.SupplierOrCostFacts
+		Warnings            []sourcing.SourceWarning
+	}{
+		Identity:            envelope.Identity,
+		ProductCandidate:    envelope.ProductCandidate,
+		AssetCandidates:     envelope.AssetCandidates,
+		SupplierOrCostFacts: envelope.SupplierOrCostFacts,
+		Warnings:            envelope.Warnings,
+	})
+	digest := sha256.Sum256(encoded)
+	return "source-snapshot:" + hex.EncodeToString(digest[:])
 }
 
 func (s *TaskCommandService) validateStores(ctx context.Context, command CreateTaskCommand) error {
