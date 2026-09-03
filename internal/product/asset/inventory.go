@@ -1,8 +1,9 @@
 package asset
 
 type InventoryScope struct {
-	TenantID   string `json:"tenant_id"`
-	ProductKey string `json:"product_key"`
+	TenantID              string `json:"tenant_id"`
+	ProductKey            string `json:"product_key"`
+	SourceSnapshotVersion uint64 `json:"source_snapshot_version,omitempty"`
 }
 
 // ApprovedAssetInventory contains only assets produced by committed human

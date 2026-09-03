@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/authidentity"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/product/sourcing"
 	"task-processor/internal/sourceaccount"
 )
 
@@ -128,6 +129,16 @@ func TestTaskCommandServicePinsChangedImportsToDistinctPublicationIdentitiesWith
 	}
 	if publisher.request.PublicationID == firstPublicationID {
 		t.Fatalf("publication ID = %q, want changed identity for changed raw snapshot", publisher.request.PublicationID)
+	}
+}
+
+func TestSourcePublicationIDBoundsLongSourceRunIDs(t *testing.T) {
+	publicationID := sourcePublicationID(sourcing.SourceEnvelope{Trace: sourcing.SourceTrace{SourceRunID: strings.Repeat("r", 118)}})
+	if len(publicationID) > 128 {
+		t.Fatalf("publication ID length = %d, want at most 128", len(publicationID))
+	}
+	if !strings.HasPrefix(publicationID, "source-run-hash:") {
+		t.Fatalf("publication ID = %q, want hashed long source run ID", publicationID)
 	}
 }
 

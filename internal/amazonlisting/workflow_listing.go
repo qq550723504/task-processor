@@ -63,7 +63,7 @@ func (w *listingWorkflow) Run(ctx context.Context, task *Task) (*WorkflowArtifac
 		return nil, err
 	}
 
-	scope := productasset.InventoryScope{TenantID: query.TenantID, ProductKey: query.ProductKey}
+	scope := productasset.InventoryScope{TenantID: query.TenantID, ProductKey: query.ProductKey, SourceSnapshotVersion: query.Version}
 	if w.approvedAssets == nil {
 		return nil, productasset.ErrApprovedAssetsNotReady
 	}

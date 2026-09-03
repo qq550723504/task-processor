@@ -141,7 +141,10 @@ func (p *Publisher) approvalCommitV2(projection imageagent.RunProjection, input 
 	if mainAssets != 1 || !slices.Equal(observed, input.CandidateAssetIDs) {
 		return productasset.ApprovalCommit{}, "", imageagent.ErrRevisionConflict
 	}
-	commit := productasset.ApprovalCommit{TenantID: input.TenantID, ProductKey: product.ProductID, ActionID: input.IdempotencyKey, Assets: approved}
+	commit := productasset.ApprovalCommit{
+		TenantID: input.TenantID, ProductKey: product.ProductID, ActionID: input.IdempotencyKey,
+		SourceSnapshotVersion: sourceSnapshotVersion(projection.AssetCatalog), Assets: approved,
+	}
 	if err := productasset.ValidateApprovalCommit(commit); err != nil {
 		return productasset.ApprovalCommit{}, "", fmt.Errorf("validate approved product assets: %w", err)
 	}
@@ -221,7 +224,8 @@ func (p *Publisher) approvalCommit(projection imageagent.RunProjection, input im
 		return productasset.ApprovalCommit{}, "", imageagent.ErrRevisionConflict
 	}
 	commit := productasset.ApprovalCommit{
-		TenantID: input.TenantID, ProductKey: product.ProductID, ActionID: input.IdempotencyKey, Assets: approved,
+		TenantID: input.TenantID, ProductKey: product.ProductID, ActionID: input.IdempotencyKey,
+		SourceSnapshotVersion: sourceSnapshotVersion(projection.AssetCatalog), Assets: approved,
 	}
 	if err := productasset.ValidateApprovalCommit(commit); err != nil {
 		return productasset.ApprovalCommit{}, "", fmt.Errorf("validate approved product assets: %w", err)
@@ -254,6 +258,10 @@ func nilValue(value any) bool {
 	default:
 		return false
 	}
+}
+
+func sourceSnapshotVersion(catalog imageagent.AssetCatalog) uint64 {
+	return catalog.ProductContext.SourceSnapshotVersion
 }
 
 var _ imageagent.ApprovedAssetPublisherV3 = (*Publisher)(nil)

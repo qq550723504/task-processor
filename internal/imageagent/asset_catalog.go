@@ -118,7 +118,7 @@ func NormalizeProductContextRef(value ProductContextRef) (ProductContextRef, err
 }
 
 func ProductContextRefIsZero(value ProductContextRef) bool {
-	return strings.TrimSpace(value.ProductID) == "" && strings.TrimSpace(value.Title) == "" && strings.TrimSpace(value.ProductType) == "" && len(value.Attributes) == 0
+	return strings.TrimSpace(value.ProductID) == "" && strings.TrimSpace(value.Title) == "" && strings.TrimSpace(value.ProductType) == "" && value.SourceSnapshotVersion == 0 && len(value.Attributes) == 0
 }
 
 func ValidatePlanAgainstCatalog(plan Plan, catalog AssetCatalog) error {

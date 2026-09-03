@@ -766,12 +766,14 @@ func currentE2EProductReaders(t *testing.T, productKey string, snapshot catalog.
 		Snapshot:      snapshot,
 	})
 	require.NoError(t, err)
+	published, err := snapshots.GetCurrentSnapshot(context.Background(), catalog.SnapshotIdentity{TenantID: inventory.Scope.TenantID, ProductKey: inventory.Scope.ProductKey})
+	require.NoError(t, err)
 
 	assets, err := assetpersistence.NewRepository(db)
 	require.NoError(t, err)
 	_, err = assets.CommitApproval(context.Background(), productasset.ApprovalCommit{
 		TenantID: inventory.Scope.TenantID, ProductKey: inventory.Scope.ProductKey,
-		ActionID: "current-e2e-approval-1", Assets: inventory.Assets,
+		ActionID: "current-e2e-approval-1", SourceSnapshotVersion: published.Version, Assets: inventory.Assets,
 	})
 	require.NoError(t, err)
 	return db, dbPath, snapshots, assets

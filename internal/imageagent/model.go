@@ -191,10 +191,11 @@ type CommandIngress struct {
 }
 
 type ProductContextRef struct {
-	ProductID   string
-	Title       string
-	ProductType string
-	Attributes  map[string]string
+	ProductID             string
+	Title                 string
+	ProductType           string
+	SourceSnapshotVersion uint64
+	Attributes            map[string]string
 }
 
 type AssetCandidate struct {

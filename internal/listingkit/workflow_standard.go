@@ -70,7 +70,7 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 
 	assetStage := recorder.Start("approved_assets", "")
 	approvedInventory, assetErr := buildStandardWorkflowAssetPhase(s).run(ctx, productasset.InventoryScope{
-		TenantID: task.TenantID, ProductKey: task.Request.ProductKey,
+		TenantID: task.TenantID, ProductKey: task.Request.ProductKey, SourceSnapshotVersion: task.SourceSnapshotVersion,
 	})
 	if assetErr != nil {
 		if errors.Is(assetErr, productasset.ErrApprovedAssetsNotReady) {

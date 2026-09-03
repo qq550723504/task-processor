@@ -41,6 +41,23 @@ func TestPublisherCommitsApprovedAssetsExactlyOnce(t *testing.T) {
 	require.Equal(t, []string{"render_scene"}, inventory.Assets[1].Operations)
 }
 
+func TestPublisherBindsApprovalToCatalogSourceSnapshot(t *testing.T) {
+	projection := approvedV3Projection(t)
+	projection.AssetCatalog.ProductContext.SourceSnapshotVersion = 7
+	repository := assettest.NewMemoryRepository()
+	publisher, err := NewPublisher(staticProjectionSource{projection: projection}, repository, staticPublicURLResolver{})
+	require.NoError(t, err)
+
+	_, err = publisher.PublishApprovedV3(context.Background(), approvedV3PublicationInput(projection))
+	require.NoError(t, err)
+	inventory, err := repository.GetApprovedInventory(context.Background(), productasset.InventoryScope{
+		TenantID: projection.Run.TenantID, ProductKey: projection.AssetCatalog.ProductContext.ProductID,
+		SourceSnapshotVersion: 7,
+	})
+	require.NoError(t, err)
+	require.Len(t, inventory.Assets, 2)
+}
+
 func TestPublisherUsesProductContextIdentityInsteadOfBusinessTaskCompatibility(t *testing.T) {
 	projection := approvedV3Projection(t)
 	projection.Run.BusinessTaskID = "unrelated-unused-task"

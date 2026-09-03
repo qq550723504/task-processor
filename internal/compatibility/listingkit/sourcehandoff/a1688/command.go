@@ -145,7 +145,12 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 
 func sourcePublicationID(envelope sourcing.SourceEnvelope) string {
 	if sourceRunID := strings.TrimSpace(envelope.Trace.SourceRunID); sourceRunID != "" {
-		return "source-run:" + sourceRunID
+		publicationID := "source-run:" + sourceRunID
+		if len(publicationID) <= 128 {
+			return publicationID
+		}
+		digest := sha256.Sum256([]byte(sourceRunID))
+		return "source-run-hash:" + hex.EncodeToString(digest[:])
 	}
 	if checksum := strings.TrimSpace(envelope.RawReference.Checksum); checksum != "" {
 		return "source-snapshot:" + checksum

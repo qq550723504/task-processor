@@ -38,7 +38,7 @@ func TestListingWorkflowReadsScopedSnapshotAndApprovedAssets(t *testing.T) {
 		Description: "Vacuum insulated stainless steel bottle for everyday use.",
 	}}
 	assetReader := &stubWorkflowApprovedAssetReader{inventory: productasset.ApprovedAssetInventory{
-		Scope: productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"},
+		Scope: productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1", SourceSnapshotVersion: 9},
 		Assets: []productasset.ApprovedAsset{
 			{ID: "main-1", Role: productasset.RoleMain, URL: "https://cdn.example.com/main.jpg"},
 		},
@@ -65,7 +65,7 @@ func TestListingWorkflowReadsScopedSnapshotAndApprovedAssets(t *testing.T) {
 	if len(snapshotReader.queries) != 1 || snapshotReader.queries[0] != (ProductSnapshotQuery{TenantID: "tenant-a", ProductKey: "product-1", Version: 9}) {
 		t.Fatalf("snapshot queries = %+v", snapshotReader.queries)
 	}
-	wantScope := productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}
+	wantScope := productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1", SourceSnapshotVersion: 9}
 	if len(assetReader.scopes) != 1 || assetReader.scopes[0] != wantScope {
 		t.Fatalf("approved asset scopes = %+v, want %+v", assetReader.scopes, wantScope)
 	}

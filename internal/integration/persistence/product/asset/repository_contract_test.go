@@ -81,7 +81,7 @@ func TestCommitApprovalRollsBackWholeBatchAndReceiptOnInsertFailure(t *testing.T
 			t.Fatalf("CommitApproval() error chain exposes SQLite driver error: %v", err)
 		}
 	}
-	for _, model := range []any{&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}, &ApprovedInventoryHeadRecord{}} {
+	for _, model := range []any{&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}, &ApprovedInventoryHeadRecord{}, &ApprovedInventoryVersionHeadRecord{}} {
 		var count int64
 		if err := db.Model(model).Count(&count).Error; err != nil {
 			t.Fatal(err)

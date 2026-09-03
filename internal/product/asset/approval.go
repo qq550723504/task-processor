@@ -12,10 +12,11 @@ import (
 const MaxIdentityLength = 128
 
 type ApprovalCommit struct {
-	TenantID   string          `json:"tenant_id"`
-	ProductKey string          `json:"product_key"`
-	ActionID   string          `json:"action_id"`
-	Assets     []ApprovedAsset `json:"assets"`
+	TenantID              string          `json:"tenant_id"`
+	ProductKey            string          `json:"product_key"`
+	ActionID              string          `json:"action_id"`
+	SourceSnapshotVersion uint64          `json:"source_snapshot_version,omitempty"`
+	Assets                []ApprovedAsset `json:"assets"`
 }
 
 type ApprovalReceipt struct {

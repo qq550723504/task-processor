@@ -29,7 +29,7 @@ func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return repositoryUnavailable("migrate schema", errors.New("database is nil"))
 	}
-	return mapRepositoryError("migrate schema", db.AutoMigrate(&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}, &ApprovedInventoryHeadRecord{}))
+	return mapRepositoryError("migrate schema", db.AutoMigrate(&ApprovedAssetRecord{}, &ApprovalReceiptRecord{}, &ApprovedInventoryHeadRecord{}, &ApprovedInventoryVersionHeadRecord{}))
 }
 
 func (r *repository) CommitApproval(ctx context.Context, commit productasset.ApprovalCommit) (productasset.ApprovalReceipt, error) {
@@ -55,7 +55,7 @@ func (r *repository) CommitApproval(ctx context.Context, commit productasset.App
 		assetRecords[index] = ApprovedAssetRecord{
 			TenantID: commit.TenantID, RunID: approved.RunID, PlanRevision: approved.PlanRevision,
 			SlotID: approved.SlotID, Attempt: approved.Attempt, ActionID: commit.ActionID,
-			AssetID: approved.ID, ProductKey: commit.ProductKey, PayloadJSON: payload,
+			AssetID: approved.ID, ProductKey: commit.ProductKey, SourceSnapshotVersion: commit.SourceSnapshotVersion, PayloadJSON: payload,
 		}
 	}
 	assetIDsJSON, err := json.Marshal(assetIDs)
@@ -84,13 +84,13 @@ func (r *repository) CommitApproval(ctx context.Context, commit productasset.App
 		if inserted.RowsAffected != int64(len(assetRecords)) {
 			return productasset.ErrApprovalConflict
 		}
-		head := ApprovedInventoryHeadRecord{TenantID: commit.TenantID, ProductKey: commit.ProductKey, ActionID: commit.ActionID}
-		updatedHead := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "product_key"}},
-			DoUpdates: clause.AssignmentColumns([]string{"action_id"}),
-		}).Create(&head)
-		if updatedHead.Error != nil {
-			return mapRepositoryError("advance approved inventory head", updatedHead.Error)
+		if err := advanceCurrentInventoryHead(tx, commit); err != nil {
+			return err
+		}
+		if commit.SourceSnapshotVersion > 0 {
+			if err := advanceVersionedInventoryHead(tx, commit); err != nil {
+				return err
+			}
 		}
 		receipt = productasset.ApprovalReceipt{ActionID: commit.ActionID, AssetIDs: append([]string(nil), assetIDs...)}
 		return nil
@@ -143,22 +143,41 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 		return productasset.ApprovedAssetInventory{}, err
 	}
 
-	var head ApprovedInventoryHeadRecord
-	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND product_key = ?", scope.TenantID, scope.ProductKey).
-		Take(&head).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
-	}
-	if err != nil {
-		return productasset.ApprovedAssetInventory{}, mapRepositoryError("load approved inventory head", err)
+	var actionID string
+	var err error
+	if scope.SourceSnapshotVersion > 0 {
+		var head ApprovedInventoryVersionHeadRecord
+		err := r.db.WithContext(ctx).
+			Where("tenant_id = ? AND product_key = ? AND source_snapshot_version = ?", scope.TenantID, scope.ProductKey, scope.SourceSnapshotVersion).
+			Take(&head).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+		}
+		if err != nil {
+			return productasset.ApprovedAssetInventory{}, mapRepositoryError("load versioned approved inventory head", err)
+		}
+		actionID = head.ActionID
+	} else {
+		var head ApprovedInventoryHeadRecord
+		err := r.db.WithContext(ctx).
+			Where("tenant_id = ? AND product_key = ?", scope.TenantID, scope.ProductKey).
+			Take(&head).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+		}
+		if err != nil {
+			return productasset.ApprovedAssetInventory{}, mapRepositoryError("load approved inventory head", err)
+		}
+		actionID = head.ActionID
 	}
 
 	var records []ApprovedAssetRecord
-	err = r.db.WithContext(ctx).
-		Where("tenant_id = ? AND product_key = ? AND action_id = ?", scope.TenantID, scope.ProductKey, head.ActionID).
-		Order("slot_id ASC, attempt ASC, asset_id ASC").
-		Find(&records).Error
+	recordQuery := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND product_key = ? AND action_id = ?", scope.TenantID, scope.ProductKey, actionID)
+	if scope.SourceSnapshotVersion > 0 {
+		recordQuery = recordQuery.Where("source_snapshot_version = ?", scope.SourceSnapshotVersion)
+	}
+	err = recordQuery.Order("slot_id ASC, attempt ASC, asset_id ASC").Find(&records).Error
 	if err != nil {
 		return productasset.ApprovedAssetInventory{}, mapRepositoryError("load approved asset inventory", err)
 	}
@@ -179,11 +198,39 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 	return productasset.CloneApprovedAssetInventory(productasset.ApprovedAssetInventory{Scope: scope, Assets: approved}), nil
 }
 
+func advanceCurrentInventoryHead(tx *gorm.DB, commit productasset.ApprovalCommit) error {
+	head := ApprovedInventoryHeadRecord{TenantID: commit.TenantID, ProductKey: commit.ProductKey, ActionID: commit.ActionID}
+	updated := tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "product_key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"action_id"}),
+	}).Create(&head)
+	if updated.Error != nil {
+		return mapRepositoryError("advance approved inventory head", updated.Error)
+	}
+	return nil
+}
+
+func advanceVersionedInventoryHead(tx *gorm.DB, commit productasset.ApprovalCommit) error {
+	head := ApprovedInventoryVersionHeadRecord{
+		TenantID: commit.TenantID, ProductKey: commit.ProductKey,
+		SourceSnapshotVersion: commit.SourceSnapshotVersion, ActionID: commit.ActionID,
+	}
+	updated := tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "product_key"}, {Name: "source_snapshot_version"}},
+		DoUpdates: clause.AssignmentColumns([]string{"action_id"}),
+	}).Create(&head)
+	if updated.Error != nil {
+		return mapRepositoryError("advance versioned approved inventory head", updated.Error)
+	}
+	return nil
+}
+
 type canonicalApprovalPayload struct {
-	TenantID   string                   `json:"tenant_id"`
-	ProductKey string                   `json:"product_key"`
-	ActionID   string                   `json:"action_id"`
-	Assets     []canonicalApprovedAsset `json:"assets"`
+	TenantID              string                   `json:"tenant_id"`
+	ProductKey            string                   `json:"product_key"`
+	ActionID              string                   `json:"action_id"`
+	SourceSnapshotVersion uint64                   `json:"source_snapshot_version,omitempty"`
+	Assets                []canonicalApprovedAsset `json:"assets"`
 }
 
 type canonicalApprovedAsset struct {
@@ -221,7 +268,8 @@ func (approved canonicalApprovedAsset) domainAsset() productasset.ApprovedAsset 
 func approvalPayloadHash(commit productasset.ApprovalCommit) (string, error) {
 	payload := canonicalApprovalPayload{
 		TenantID: commit.TenantID, ProductKey: commit.ProductKey, ActionID: commit.ActionID,
-		Assets: make([]canonicalApprovedAsset, len(commit.Assets)),
+		SourceSnapshotVersion: commit.SourceSnapshotVersion,
+		Assets:                make([]canonicalApprovedAsset, len(commit.Assets)),
 	}
 	for index, approved := range commit.Assets {
 		payload.Assets[index] = canonicalApprovedAssetFromDomain(approved)
@@ -277,7 +325,8 @@ func validatePersistedAsset(record ApprovedAssetRecord, approved productasset.Ap
 	}
 	commit := productasset.ApprovalCommit{
 		TenantID: record.TenantID, ProductKey: record.ProductKey, ActionID: record.ActionID,
-		Assets: []productasset.ApprovedAsset{approved},
+		SourceSnapshotVersion: record.SourceSnapshotVersion,
+		Assets:                []productasset.ApprovedAsset{approved},
 	}
 	if err := productasset.ValidateApprovalCommit(commit); err != nil {
 		return fmt.Errorf("persisted payload violates domain contract: %v", err)

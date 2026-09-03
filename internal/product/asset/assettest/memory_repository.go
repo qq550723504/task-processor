@@ -14,10 +14,11 @@ import (
 )
 
 type MemoryRepository struct {
-	mu       sync.RWMutex
-	actions  map[actionKey]actionRecord
-	heads    map[inventoryKey]actionKey
-	assetIDs map[tenantAssetKey]struct{}
+	mu             sync.RWMutex
+	actions        map[actionKey]actionRecord
+	heads          map[inventoryKey]actionKey
+	versionedHeads map[versionedInventoryKey]actionKey
+	assetIDs       map[tenantAssetKey]struct{}
 }
 
 type actionKey struct {
@@ -28,6 +29,11 @@ type actionKey struct {
 type inventoryKey struct {
 	tenantID   string
 	productKey string
+}
+
+type versionedInventoryKey struct {
+	inventoryKey
+	version uint64
 }
 
 type tenantAssetKey struct {
@@ -42,9 +48,10 @@ type actionRecord struct {
 
 func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
-		actions:  make(map[actionKey]actionRecord),
-		heads:    make(map[inventoryKey]actionKey),
-		assetIDs: make(map[tenantAssetKey]struct{}),
+		actions:        make(map[actionKey]actionRecord),
+		heads:          make(map[inventoryKey]actionKey),
+		versionedHeads: make(map[versionedInventoryKey]actionKey),
+		assetIDs:       make(map[tenantAssetKey]struct{}),
 	}
 }
 
@@ -84,6 +91,9 @@ func (r *MemoryRepository) CommitApproval(ctx context.Context, commit asset.Appr
 	r.actions[key] = actionRecord{commit: storedCommit, receipt: storedReceipt}
 	invKey := inventoryKey{tenantID: commit.TenantID, productKey: commit.ProductKey}
 	r.heads[invKey] = key
+	if commit.SourceSnapshotVersion > 0 {
+		r.versionedHeads[versionedInventoryKey{inventoryKey: invKey, version: commit.SourceSnapshotVersion}] = key
+	}
 	for _, approved := range commit.Assets {
 		r.assetIDs[tenantAssetKey{tenantID: commit.TenantID, assetID: approved.ID}] = struct{}{}
 	}
@@ -103,7 +113,14 @@ func (r *MemoryRepository) GetApprovedInventory(ctx context.Context, scope asset
 	if err := ctx.Err(); err != nil {
 		return asset.ApprovedAssetInventory{}, err
 	}
-	head, ok := r.heads[inventoryKey{tenantID: scope.TenantID, productKey: scope.ProductKey}]
+	invKey := inventoryKey{tenantID: scope.TenantID, productKey: scope.ProductKey}
+	var head actionKey
+	var ok bool
+	if scope.SourceSnapshotVersion > 0 {
+		head, ok = r.versionedHeads[versionedInventoryKey{inventoryKey: invKey, version: scope.SourceSnapshotVersion}]
+	} else {
+		head, ok = r.heads[invKey]
+	}
 	if !ok {
 		return asset.ApprovedAssetInventory{}, asset.ErrApprovedAssetsNotReady
 	}
@@ -158,6 +175,29 @@ func ExerciseRepositoryContract(t *testing.T, factory RepositoryFactory) {
 		assertNoError(t, err)
 		if len(inventory.Assets) != 1 || inventory.Assets[0].ID != "asset-2" {
 			t.Fatalf("inventory after replay = %+v, want latest approved asset-2", inventory)
+		}
+	})
+
+	t.Run("versioned approval remains bound to its source snapshot", func(t *testing.T) {
+		repo := factory(t)
+		first := contractCommit("tenant-a", "product-versioned", "approve-v1", "asset-v1")
+		first.SourceSnapshotVersion = 1
+		second := contractCommit("tenant-a", "product-versioned", "approve-v2", "asset-v2")
+		second.SourceSnapshotVersion = 2
+		assertNoError(t, commitOnly(repo, first))
+		assertNoError(t, commitOnly(repo, second))
+
+		inventory, err := repo.GetApprovedInventory(context.Background(), asset.InventoryScope{
+			TenantID: "tenant-a", ProductKey: "product-versioned", SourceSnapshotVersion: 1,
+		})
+		assertNoError(t, err)
+		if len(inventory.Assets) != 1 || inventory.Assets[0].ID != "asset-v1" {
+			t.Fatalf("versioned inventory = %+v, want asset-v1", inventory)
+		}
+		current, err := repo.GetApprovedInventory(context.Background(), asset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-versioned"})
+		assertNoError(t, err)
+		if len(current.Assets) != 1 || current.Assets[0].ID != "asset-v2" {
+			t.Fatalf("current inventory = %+v, want asset-v2", current)
 		}
 	})
 

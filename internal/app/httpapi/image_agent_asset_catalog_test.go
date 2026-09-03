@@ -18,6 +18,7 @@ func TestAppImageAgentCatalogReadsOnlyProductSnapshotCatalogImages(t *testing.T)
 	got, err := imageAgentCatalogFromTask(task, []string{"catalog-image-2"})
 	require.NoError(t, err)
 	require.Equal(t, "product-1", got.ProductContext.ProductID)
+	require.Equal(t, uint64(17), got.ProductContext.SourceSnapshotVersion)
 	require.Equal(t, "Travel Bottle", got.ProductContext.Title)
 	require.Equal(t, "Outdoors / Bottles", got.ProductContext.ProductType)
 	require.Equal(t, "Steel", got.ProductContext.Attributes["Material"])
@@ -98,7 +99,7 @@ func TestAppImageAgentCatalogRequiresOwnedTaskAndSnapshot(t *testing.T) {
 func catalogTaskFixture() *listingkit.Task {
 	return &listingkit.Task{
 		ID: "task-1", TenantID: "tenant-a", UserID: "user-a",
-		Request: &listingkit.GenerateRequest{ProductKey: "product-1"},
+		Request: &listingkit.GenerateRequest{ProductKey: "product-1"}, SourceSnapshotVersion: 17,
 		Result: &listingkit.ListingKitResult{StandardProductSnapshot: &listingkit.StandardProductSnapshot{
 			CatalogProduct: &catalog.ProductSnapshot{
 				Title: "Travel Bottle", CategoryPath: []string{"Outdoors", "Bottles"},

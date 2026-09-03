@@ -100,12 +100,14 @@ func imageAgentCatalogFromTaskTargetSelectionWithResolver(ctx context.Context, t
 	}
 	productKey := strings.TrimSpace(task.Request.ProductKey)
 	contextRef := imageagent.ProductContextRef{
-		ProductID:   productKey,
-		Title:       snapshot.Title,
-		ProductType: strings.Join(snapshot.CategoryPath, " / "),
-		Attributes:  catalogAttributes(snapshot.Attributes),
+		ProductID: productKey, Title: snapshot.Title,
+		ProductType:           strings.Join(snapshot.CategoryPath, " / "),
+		SourceSnapshotVersion: task.SourceSnapshotVersion,
+		Attributes:            catalogAttributes(snapshot.Attributes),
 	}
-	normalized, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{Assets: assets, ProductContext: contextRef})
+	normalized, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{
+		Assets: assets, ProductContext: contextRef,
+	})
 	if err != nil {
 		return imageagent.AssetCatalog{}, err
 	}

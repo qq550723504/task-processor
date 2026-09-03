@@ -4,15 +4,16 @@ package assetpersistence
 // primary key preserves the ImageAgent approval identity, while AssetID is
 // unique only inside a tenant.
 type ApprovedAssetRecord struct {
-	TenantID     string `gorm:"primaryKey;size:128;uniqueIndex:ux_product_approved_asset_id,priority:1;index:ix_product_approved_inventory,priority:1"`
-	RunID        string `gorm:"primaryKey;size:128"`
-	PlanRevision int64  `gorm:"primaryKey;autoIncrement:false"`
-	SlotID       string `gorm:"primaryKey;size:128"`
-	Attempt      int    `gorm:"primaryKey;autoIncrement:false"`
-	ActionID     string `gorm:"primaryKey;size:128"`
-	AssetID      string `gorm:"size:128;not null;uniqueIndex:ux_product_approved_asset_id,priority:2"`
-	ProductKey   string `gorm:"size:128;not null;index:ix_product_approved_inventory,priority:2"`
-	PayloadJSON  []byte `gorm:"type:json;not null"`
+	TenantID              string `gorm:"primaryKey;size:128;uniqueIndex:ux_product_approved_asset_id,priority:1;index:ix_product_approved_inventory,priority:1"`
+	RunID                 string `gorm:"primaryKey;size:128"`
+	PlanRevision          int64  `gorm:"primaryKey;autoIncrement:false"`
+	SlotID                string `gorm:"primaryKey;size:128"`
+	Attempt               int    `gorm:"primaryKey;autoIncrement:false"`
+	ActionID              string `gorm:"primaryKey;size:128"`
+	AssetID               string `gorm:"size:128;not null;uniqueIndex:ux_product_approved_asset_id,priority:2"`
+	ProductKey            string `gorm:"size:128;not null;index:ix_product_approved_inventory,priority:2"`
+	SourceSnapshotVersion uint64 `gorm:"not null;index:ix_product_approved_inventory,priority:3"`
+	PayloadJSON           []byte `gorm:"type:json;not null"`
 }
 
 func (ApprovedAssetRecord) TableName() string { return "product_approved_assets" }
@@ -39,3 +40,18 @@ type ApprovedInventoryHeadRecord struct {
 }
 
 func (ApprovedInventoryHeadRecord) TableName() string { return "product_approved_inventory_heads" }
+
+// ApprovedInventoryVersionHeadRecord points at the latest approval for one
+// immutable source snapshot. It is separate from the legacy current-head
+// table so existing deployments can add version pinning without rebuilding
+// that table's primary key.
+type ApprovedInventoryVersionHeadRecord struct {
+	TenantID              string `gorm:"primaryKey;size:128"`
+	ProductKey            string `gorm:"primaryKey;size:128"`
+	SourceSnapshotVersion uint64 `gorm:"primaryKey;autoIncrement:false"`
+	ActionID              string `gorm:"size:128;not null"`
+}
+
+func (ApprovedInventoryVersionHeadRecord) TableName() string {
+	return "product_approved_inventory_version_heads"
+}
