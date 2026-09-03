@@ -138,7 +138,7 @@ func (c *Client) TrackLead(ctx context.Context, input LeadInput) (*LeadResult, e
 		return nil, err
 	}
 	payload := struct {
-		ClickID            string         `json:"clickId"`
+		ClickID            string         `json:"clickId,omitempty"`
 		EventName          string         `json:"eventName"`
 		CustomerExternalID string         `json:"customerExternalId"`
 		CustomerName       string         `json:"customerName,omitempty"`
