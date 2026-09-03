@@ -1,10 +1,6 @@
 # 硕米 Resource Ledger / Store Service Implementation Plan V7
 
-**目标：** 把企业资源余额、Reservation/Settlement、Store Activate/Renew/Reactivate、迁移与纠错收敛为 PostgreSQL 权威实现。本 V7 是 PR #284 唯一执行入口；账号/ZITADEL/Onboarding 不进入本计划。
-
-## 权威输入
-
-执行前读取原始 design 与 review amendments 1–12。冲突时以本 V7 与 amendment-12 为准。旧 plan / v2 / v3 / v4 / v5 / v6 仅保留历史。
+**状态：IMPLEMENTATION_READY / 冻结实施基线。** 本 V7 是 PR #284 唯一执行入口；账号/ZITADEL/Onboarding 不进入本计划。旧 design、review amendments 与旧 plan 只保留历史背景；与本 V7 冲突时一律以本 V7 为准，不再创建 V8/V9 处理非 Blocker finding。
 
 ## 1. PostgreSQL Unit of Work
 
@@ -48,15 +44,21 @@ Store lifecycle：VerifiedIdentity + live org + `PermissionWorkbenchStoreLifecyc
 
 Tenant human `PermissionWorkbenchResourceAdmin` 第一阶段只允许 source-bound AdjustDebit；viewer/operator deny，listingkit_admin allow。
 
-Tenant human不能 AdjustCredit/Grant/MigrationCredit/generic Compensate，也不能执行 Store Service Correction 返还价值。
+Tenant human不能 AdjustCredit/Grant/MigrationCredit/Generic Compensation，也不能执行 Store Service Correction 返还价值。
 
 Positive mint 只允许 trusted Billing/Platform-Finance/Provisioning principal + immutable approved source + source-level claim + audit。
 
-Generic Compensation 只允许 trusted Billing/Reconciliation/Service principal + immutable proof exact 绑定 source consume Event；quantity 从 source Event 派生，proof/source 双 one-time claim。
+### Generic Compensation Phase1 明确 Deferred
 
-## 8. Store Service Correction：Trusted Proof + Revocation
+Phase1 **不实现、不注册 Generic Compensation command/API/worker**。旧 amendments 中关于 Generic `CompensateConsume` proof、revocation、approval lifecycle 的设计全部视为历史/Backlog，不属于当前 Must。
 
-Store-coupled consume 只能走 paired correction，且执行者必须是 trusted Billing/Reconciliation/Support-Finance principal。
+原因：当前 Phase1 需要交付 Resource Ledger、Reservation/Settlement、Store Activate/Renew/Reactivate、MigrationCredit 与受控 Store Service Correction；不存在已批准的通用消费补偿业务入口或权威 proof producer。为了一个未上线能力继续扩展 approval/revocation framework 不符合当前范围。
+
+未来若重新启用 Generic Compensation，必须单独确认 Product Decision 与 proof authority，并至少定义 source consume Event exact binding、proof current/revoked/expired semantics、proof/source one-time claim、trusted principal 与审计；在那之前任何 HTTP/BFF route 都不得注册。
+
+## 8. Store Service Correction：Trusted Proof + Revocation + Immutable Fingerprint
+
+Store-coupled consume 只能走 paired correction，执行者必须是 trusted Billing/Reconciliation/Support-Finance principal。
 
 Correction proof 至少：
 
@@ -73,6 +75,8 @@ issuer / reason
 ```
 
 首次/非终态执行必须锁 authoritative current proof row并验证：active、未过期、expected proof version、org/store/source/decision exact match。
+
+**Correction Operation 的 immutable fingerprint 必须包含 `proof_id + expected_proof_version`**，同时包含 organization/store/source lifecycle operation/command/quantity-derived facts/If-Match 等行为字段。same Operation key 如果把 proof A 替换为 proof B，即使版本号相同，也必须返回 replay conflict，不能把一次审批换成另一审批继续执行。
 
 Correction 仍只允许当前最近一次安全可逆 lifecycle source：锁 source immutable before+after snapshot，要求 current Store service fields/version == source AFTER、full source consumed quantity、无 successful source claim。恢复 BEFORE 的业务字段，但 correction 自身 `aggregate_version=current+1`。
 
@@ -110,9 +114,11 @@ record=active -> service_status MUST NOT NULL
 service=active/expired -> started_at/expires_at valid && expires_at > started_at
 ```
 
+`suspended` 可以保留已存在的 authoritative `service_started_at/service_expires_at`，用于未来 resume 判断该 Store 曾经拥有的付费服务期；从未激活且 confirmed no history 的 suspended Store 可以保持 timestamps NULL。
+
 异常 -> `STORE_SERVICE_STATE_CORRUPT` / 409 fail closed。
 
-新 Create 第一次 durable insert 必须写：
+新 Create 第一次 durable insert：
 
 ```text
 legacy lifecycle_status=provisioning
@@ -140,6 +146,8 @@ Activate：pending_activation + fresh connected，消费1 renewal period，启�
 
 MigrationCredit 仍仅 trusted migration runner internal path，不注册 Workbench/BFF；`MIGRATION_SOURCE_CHANGED` / `MIGRATION_OWNERSHIP_CHANGED` 是 internal typed outcome + metrics/reconciliation queue。未来若公开 admin HTTP route，注册前必须补固定 status 与 contract test。
 
+Generic Compensation Phase1 同样没有 HTTP/BFF route。
+
 ## 13. Migration Credit / Staging
 
 Phase1 MigrationCredit authoritative source 必须位于同一 PostgreSQL 可 `FOR UPDATE` 边界。
@@ -148,23 +156,33 @@ Phase1 MigrationCredit authoritative source 必须位于同一 PostgreSQL 可 `F
 
 Importer ambiguous retry same identity+same fp adopt；changed version/org/quantity/payload -> reconciliation。Ledger claim 从 external identity 派生，不从 staging PK 派生。Migration transaction锁 staging source并原子执行 claim+Operation+Bucket+Event+claim applied。
 
-## 14. Legacy Service History Resolver
+## 14. Legacy Service History Resolver / Snapshot Fence
 
 Backfill 不允许直接使用“有/无历史”的二元猜测。唯一权威接口：
 
 ```text
 LegacyServiceHistoryResolver.Resolve(store)
-  FOUND(history, source, version)
-  CONFIRMED_ABSENT(source_evidence)
+  FOUND(history, source_identity, source_version_or_snapshot_token)
+  CONFIRMED_ABSENT(source_identity, source_version_or_snapshot_token)
   UNAVAILABLE(error, retry_after)
 ```
 
 Rollout manifest 必须声明 resolver 的 authoritative source/owner。若当前部署根本不存在历史系统，只能使用经过 preflight/审批的 `NoAuthoritativeHistorySource` manifest 返回 CONFIRMED_ABSENT，worker 不得自行推断。
 
+### Snapshot/freeze 不变量
+
+Resolver 返回的 `source_version_or_snapshot_token` 不是审计备注，而是 backfill correctness precondition。
+
+- authoritative source 与 Store 位于同一 PostgreSQL / 可锁事务边界时，Backfill 必须锁 source row/version，并与 Store local CAS 在同一可证明不变的窗口完成；
+- source 是独立但可提供 durable freeze/claim 或 immutable snapshot 时，Backfill 必须持有该 freeze/snapshot token 到 local CAS 完成；
+- source 仍可写且无法提供 durable freeze/claim/immutable snapshot 时，**禁止 hard cut**，不能用一次普通读取代替并发 fence；
+- 每次 local Store mutation 前必须重新验证 resolver token/version 仍 current；验证失败则 row 不变并重新 Resolve；
+- Phase F 开启前必须再次验证本批次/manifest 的 source snapshot/freeze 仍有效，发现漂移则阻断 enable。
+
 映射：
 
-- FOUND -> exact derive active/expired；
-- CONFIRMED_ABSENT -> pending_activation，无 charge/credit/ invented expiry；
+- FOUND -> exact derive authoritative history；
+- CONFIRMED_ABSENT -> 没有历史事实，不 charge、不 credit、不 invented expiry；
 - UNAVAILABLE/query failure/timeout -> row unchanged，retry；超过 rollout budget -> blocker，禁止 Phase F。
 
 审计统计至少：
@@ -174,9 +192,10 @@ history_found_count
 history_confirmed_absent_count
 history_unavailable_count
 history_error_count
+history_snapshot_conflict_count
 ```
 
-Phase D/F 要求 unresolved unavailable/error = 0。
+Phase D/F 要求 unresolved unavailable/error/snapshot conflict = 0。
 
 ## 15. Store Hard-cut Rollout
 
@@ -192,16 +211,18 @@ Phase D/F 要求 unresolved unavailable/error = 0。
 
 - Create first insert -> record=provisioning, service=NULL；
 - ResumeCreate/Create completion -> record=active, service=pending_activation；
-- Disable -> active/suspended；
+- Disable -> active/suspended，并保留当前 authoritative service timestamps；
 - BeginDelete -> deleting/service=NULL；
 - SoftDelete -> deleted/service=NULL；
 - legacy disabled + service NULL/suspended 的 `/enable` -> `STORE_SERVICE_RESUME_REQUIRED`。
 
-### C Backfill With Row-level Concurrency Authority
+### C Backfill With Row-level + History-source Concurrency Authority
 
 逐 row/batch 使用 `SELECT ... FOR UPDATE [SKIP LOCKED]` 或 equivalent expected-version/CAS，锁后重新读取 legacy lifecycle/deleted_at/new state/version。
 
 若 Phase B writer 已写 non-null new state，Backfill 只 validate/no-op；不得覆盖并发 writer。
+
+对需要 history resolution 的 row，必须同时执行 §14 的 source snapshot/freeze validation。Store row lock 只能保护本地 Store writer，不能代替 authoritative history source fence。
 
 Authoritative mapping：
 
@@ -209,19 +230,29 @@ Authoritative mapping：
 deleted_at != NULL -> record=deleted, service=NULL
 legacy deleting -> record=deleting, service=NULL
 legacy provisioning -> record=provisioning, service=NULL
-legacy disabled -> record=active, service=suspended
-legacy active + history FOUND -> exact active/expired
-legacy active + history CONFIRMED_ABSENT -> active/pending_activation
-history UNAVAILABLE -> no mutation, retry/block rollout
+
+legacy active + history FOUND -> record=active, exact active/expired
+legacy active + history CONFIRMED_ABSENT -> record=active, service=pending_activation, timestamps=NULL
+legacy active + history UNAVAILABLE/snapshot conflict -> no mutation, retry/block rollout
+
+legacy disabled + history FOUND -> record=active, service=suspended,
+                                  persist authoritative started/expires history
+legacy disabled + history CONFIRMED_ABSENT -> record=active, service=suspended,
+                                             started/expires=NULL
+legacy disabled + history UNAVAILABLE/snapshot conflict -> no mutation, retry/block rollout
 ```
+
+**disabled Store 不得绕过 LegacyServiceHistoryResolver。** 否则一个曾购买并正在 suspended 的 Store 会与“从未激活的 suspended Store”不可区分，未来 service resume 无法正确判断剩余/历史服务期。
 
 不从 create/update timestamp 猜 expiry。
 
-Pre-existing provisioning 可继续由现有 ResumeCreate recovery 收敛，但无需为了模型正确性强制全部消失；它们作为合法 `record_status=provisioning` 保留，且不能进入 service lifecycle routes。
+Pre-existing provisioning 可继续由现有 ResumeCreate recovery 收敛，也可作为合法 `record_status=provisioning` 保留；它们不能进入 service lifecycle routes。
 
 ### D Verify
 
-要求：record_status 零 NULL；provisioning/deleting/deleted service fields 全 NULL；active service_status 非空；enum/timestamp/legacy cross-check 通过；history resolver unavailable/error blocker=0。
+要求：record_status 零 NULL；provisioning/deleting/deleted service fields 全 NULL；active service_status 非空；enum/timestamp/legacy cross-check 通过；所有 active/disabled legacy row 的 history resolution 有 definitive FOUND/CONFIRMED_ABSENT；resolver unavailable/error/snapshot conflict blocker=0。
+
+对于 suspended + authoritative historical timestamps，验证 history token/freeze 与持久化值一致；suspended + CONFIRMED_ABSENT 才允许 timestamps NULL。
 
 ### E Online Constraints
 
@@ -231,11 +262,12 @@ Pre-existing provisioning 可继续由现有 ResumeCreate recovery 收敛，但�
 record=active <=> service_status non-null
 record in provisioning/deleting/deleted => service fields null
 active/expired timestamp invariants
+suspended timestamps 若存在则必须 ordered/valid
 ```
 
 ### F Enable
 
-最后开启新 reads + lifecycle routes。
+最后开启新 reads + lifecycle routes。Enable 前重新验证 authoritative history source snapshot/freeze；任何 source drift 都阻断 hard cut。
 
 ## 16. Rollback / Acceptance
 
@@ -247,9 +279,16 @@ Hard cut 后仅 feature rollback，不回 pre-dual-write binary。继续运行 R
 owner binding tenant scope
 Owner Start-vs-Recovery
 history FOUND / CONFIRMED_ABSENT / UNAVAILABLE
+history source version changes after Resolve -> local CAS rejected/re-resolve
+history source changes before Phase F -> hard cut blocked
 history resolver timeout leaves row unchanged
+legacy disabled + FOUND history -> suspended + exact timestamps preserved
+legacy disabled + CONFIRMED_ABSENT -> suspended + null timestamps
+legacy disabled + UNAVAILABLE -> row unchanged / rollout blocked
 trusted correction proof active/revoked/version race
+correction same Operation key substitutes different proof_id -> replay conflict
 succeeded correction replay after later revocation
+Generic Compensation route/command absent in Phase1
 new Create first provisioning insert after record_status NOT NULL
 provisioning lifecycle rejects Activate/Renew/Reactivate
 ResumeCreate provisioning -> active/pending_activation
@@ -258,6 +297,12 @@ legacy provisioning preserved without invented service
 lost COMMIT/deadlock/timeout/stale If-Match
 ```
 
+## 17. Review Stop Rule For This Plan
+
+本 V7 已达到 `IMPLEMENTATION_READY`。以后只有会造成跨租户/越权、资源或计费错误、数据损坏/权益丢失、重复价值返还、不可恢复事务副作用、hard-cut migration 不安全、或核心 lifecycle 无法完成的 finding 才重新打开架构。
+
+Generic Compensation 的更多 proof/revocation 设计属于 Backlog，因为 Phase1 不实现该能力；不得以此为理由创建 V8 或阻止当前开发。
+
 ## 完成定义
 
-Reservation 与 tenant-scoped exact Owner Attempt 原子绑定；价值返还只由 trusted proof 驱动且撤销语义明确；Legacy history 查询失败绝不被误判为“无历史”；Store provisioning 是正式 RecordStatus，可跨 hard cut 安全恢复；Resource/Store mutation 保持 PostgreSQL 原子一致性。
+Reservation 与 tenant-scoped exact Owner Attempt 原子绑定；Phase1 不提供 Generic Compensation；价值返还只由受控 Store Correction trusted proof 驱动且 proof identity/revocation/idempotency 明确；Legacy history 查询失败或 source snapshot 漂移绝不被误判为“无历史”；disabled Store 的 authoritative paid-service history 不丢失；Store provisioning 是正式 RecordStatus；Resource/Store mutation 保持 PostgreSQL 原子一致性。
